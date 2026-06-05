@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -75,7 +76,7 @@ func agentMapperOptions(n NodeDef) []trpcgraph.Option {
 	return opts
 }
 
-func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *GraphNodeResolverSet) ([]trpcagent.Agent, error) {
+func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *GraphNodeResolverSet, lg loggateway.Logger) ([]trpcagent.Agent, error) {
 	var resolvedFallback trpcagent.Agent
 	if fb := strings.TrimSpace(n.FallbackAgent); fb != "" && deps != nil && deps.Agents != nil {
 		if fa, ferr := deps.Agents.ResolveAgent(ctx, fb); ferr == nil {
@@ -84,7 +85,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 	}
 	opts := nodeOptions(n, resolvedFallback)
 	switch normalizeNodeType(n.Type) {
-	case "llm":
+	case biz.NodeTypeLLM:
 		if deps == nil || deps.Models == nil {
 			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type llm requires GraphNodeResolverSet.Models", n.ID))
 		}
@@ -101,7 +102,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 		}
 		sg.AddLLMNode(n.ID, mdl, n.Instruction, toolMap, opts...)
 		return nil, nil
-	case "tool", "tools":
+	case biz.NodeTypeTool, biz.NodeTypeTools:
 		if deps == nil || deps.Tools == nil {
 			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type tool requires GraphNodeResolverSet.Tools", n.ID))
 		}
@@ -111,7 +112,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 		}
 		sg.AddToolsNode(n.ID, toolMap, opts...)
 		return nil, nil
-	case "agent":
+	case biz.NodeTypeAgent:
 		ref := strings.TrimSpace(n.AgentName)
 		if ref == "" {
 			ref = strings.TrimSpace(n.ID)
@@ -133,7 +134,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 		}
 		sg.AddAgentNode(n.ID, opts...)
 		return extras, nil
-	case "function":
+	case biz.NodeTypeFunction:
 		if n.Func != nil {
 			sg.AddNode(n.ID, n.Func, opts...)
 			return nil, nil
@@ -149,14 +150,25 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 				sg.AddNode(n.ID, callableToolToNodeFunc(n.ID, ct), opts...)
 				return nil, nil
 			}
+			// Degradation: FunctionResolver failed, fall back to skip node with warning.
+			// The function will be treated as a no-op pass-through at runtime.
+			if lg != nil {
+				lg.Warn("FunctionResolver 降级：运行时函数解析失败，节点将作为 no-op 透传",
+					loggateway.StepID("graph.function_resolver_degradation"),
+					loggateway.Str("node_id", n.ID),
+					loggateway.Str("func_ref", n.FuncRef),
+					loggateway.Err(err))
+			}
+			sg.AddNode(n.ID, SkipNodeFunc(n.ID), opts...)
+			return nil, nil
 		}
 		return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef))
-	case "router":
+	case biz.NodeTypeRouter:
 		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
 			return state, nil
 		}, opts...)
 		return nil, nil
-	case "task", "review":
+	case biz.NodeTypeTask, biz.NodeTypeReview:
 		if !n.InterruptAfter {
 			opts = append(opts, trpcgraph.WithInterruptAfter())
 		}

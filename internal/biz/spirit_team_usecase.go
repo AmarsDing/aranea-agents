@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -71,10 +73,22 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	}
 	mode := strings.TrimSpace(params.Mode)
 	if mode == "" {
-		mode = "coordinator"
+		mode = TeamModeCoordinator
 	}
 
 	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentKeys, u.lg, params.ParallelConfigJSON)
+
+	// Check session tree depth limit before creating team.
+	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
+	parentSession, err := u.sessionUC.Get(ctx, spiritSessionID)
+	if err != nil {
+		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "get spirit session: "+err.Error())
+	}
+	if parentSession.AgentDepth >= cfg.MaxSessionDepth {
+		return SpiritTeamResult{}, kerrors.BadRequest("SPIRIT",
+			fmt.Sprintf("session tree depth (%d) exceeds max (%d)", parentSession.AgentDepth, cfg.MaxSessionDepth))
+	}
+	childDepth := parentSession.AgentDepth + 1
 
 	// All teams start as pending regardless of depends_on.
 	// AutoStart=true teams transition to running when StartTeamTurn is called.
@@ -83,7 +97,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	initialStatus := TeamStatusPending
 
 	var result SpiritTeamResult
-	err := u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
+	err = u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
 		team, err := u.teamUC.Create(txCtx, Team{
 			TeamKey:           fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
 			DisplayName:       TruncateRunes(taskDesc, 64),
@@ -106,7 +120,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			TeamID:          team.ID,
 			ParentSessionID: spiritSessionID,
 			RootSessionID:   spiritSessionID,
-			AgentDepth:      1,
+			AgentDepth:      childDepth,
 			Title:           TruncateRunes(taskDesc, 128),
 		})
 		if err != nil {
@@ -119,6 +133,29 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	if err != nil {
 		return SpiritTeamResult{}, err
 	}
+
+	// Register team timeout callback if configured.
+	if cfg.TeamTimeoutSeconds > 0 {
+		teamID := result.Team.ID
+		time.AfterFunc(cfg.TeamTimeout(), func() {
+			safego.Go(context.Background(), "spirit-team-timeout", func() {
+				timeoutCtx := context.Background()
+				team, err := u.teamUC.Get(timeoutCtx, teamID)
+				if err != nil {
+					return
+				}
+				if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled {
+					return
+				}
+				u.lg.Warn("团队执行超时",
+					loggateway.StepID("spirit.team.timeout"),
+					loggateway.Str("team_id", teamID),
+				)
+				u.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed)
+			})
+		})
+	}
+
 	return result, nil
 }
 
@@ -261,6 +298,26 @@ func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error
 	return nil
 }
 
+func (u *SpiritTeamUsecase) AutoArchiveCompletedTeams(ctx context.Context, spiritSessionID string) {
+	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
+	if cfg.AutoArchiveSeconds <= 0 {
+		return
+	}
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		return
+	}
+	threshold := time.Now().Add(-cfg.AutoArchiveAfter())
+	for _, t := range teams {
+		if t.Status == TeamStatusCompleted {
+			updatedAt, parseErr := time.Parse(time.RFC3339, t.UpdatedAt)
+			if parseErr == nil && updatedAt.Before(threshold) {
+				u.teamUC.TransitionStatus(ctx, t.ID, TeamStatusArchived)
+			}
+		}
+	}
+}
+
 type TeamProgress struct {
 	TeamID      string  `json:"team_id"`
 	TeamName    string  `json:"team_name"`
@@ -399,10 +456,10 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 	}
 	members := make([]member, 0, len(agentKeys))
 	for i, key := range agentKeys {
-		role := "worker"
+		role := RoleWorker
 		enabled := true
-		if i == 0 && mode == "coordinator" {
-			role = "synthesizer"
+		if i == 0 && mode == TeamModeCoordinator {
+			role = RoleSynthesizer
 		}
 		members = append(members, member{
 			AgentKey: strings.TrimSpace(key),
@@ -420,7 +477,7 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 	def := map[string]any{
 		"version":            2,
 		"mode":               mode,
-		"runtime_engine":     "graph",
+		"runtime_engine":     RuntimeEngineGraph,
 		"team_graph_runtime": true,
 		"members":            members,
 		"max_concurrency":    maxConcurrency,

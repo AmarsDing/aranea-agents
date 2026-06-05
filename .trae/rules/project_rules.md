@@ -41,12 +41,28 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 | SKILL | 定位 | 触发场景 |
 |-------|------|----------|
-| `openspec-explore` | OpenSpec 探索模式 | 需求探索、问题分析、方案对比 |
-| `openspec-propose` | OpenSpec 提案创建 | 新增变更提案（proposal+design+tasks） |
-| `openspec-apply-change` | OpenSpec 实施执行 | 按 tasks.md 逐步实施变更 |
-| `openspec-archive-change` | OpenSpec 归档 | 变更完成后归档、同步主规格 |
-| `superpowers-workflow` | 开发纪律强制 | 实施阶段：TDD+两阶段审查+验证前置 |
+| `sddflow` | OpenSpec + Superpowers 编排器 | 统一入口，自动路由阶段 |
+| `sddflow-brainstorming` | 需求探索 + 设计 | `/sddflow brainstorming` |
+| `sddflow-spec` | 生成规格 + 工程翻译 | `/sddflow spec` |
+| `sddflow-build` | TDD 实施 + 子代理执行 | `/sddflow build` |
+| `sddflow-amend` | 需求变更回退 | `/sddflow amend` |
+| `sddflow-close` | 验证 + 归档 | `/sddflow close` |
 | `aranea-test-loop` | 自动化测试循环 | 运行测试、修复失败、生成报告 |
+
+### Superpowers 技能（sddflow build 阶段自动激活）
+
+| SKILL | 定位 | 触发场景 |
+|-------|------|----------|
+| `brainstorming` | 协作式设计探索 | 任何创造性工作前 |
+| `writing-plans` | 细粒度实施计划 | 有规格后、编码前 |
+| `subagent-driven-development` | 子代理驱动开发 | 执行实施计划 |
+| `test-driven-development` | TDD 红绿重构 | 实现任何功能/修复 |
+| `verification-before-completion` | 完成前验证 | 声明完成前必须提供证据 |
+| `finishing-a-development-branch` | 分支收尾 | 实施完成后 |
+| `executing-plans` | 顺序执行计划 | 无子代理时的替代方案 |
+| `systematic-debugging` | 系统调试 | 遇到 bug/测试失败 |
+| `requesting-code-review` | 请求代码审查 | 任务/功能完成后 |
+| `receiving-code-review` | 接收审查反馈 | 收到审查意见时 |
 
 ### 各 SKILL 覆盖范围速查
 
@@ -111,16 +127,34 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 
-### 5.1 OpenSpec + Superpowers 工作流
+### 5.1 sddflow 工作流（OpenSpec + Superpowers 编排）
 
-**新变更必须走 OpenSpec 流程**，开发纪律由 Superpowers 强制执行：
+**新变更必须走 sddflow 流程**，由 sddflow 自动编排 OpenSpec 规格管理和 Superpowers 实施纪律：
 
 ```
-1. EXPLORE  → openspec-explore（需求探索，只思考不编码）
-2. PROPOSE  → openspec-propose（生成 proposal+design+tasks）
-3. APPLY    → openspec-apply-change + superpowers-workflow（TDD+审查+验证）
-4. ARCHIVE  → openspec-archive-change（归档、同步主规格）
+/sddflow brainstorming  → 探索需求，生成 proposal.md
+/sddflow spec           → 生成 specs + plan-ready.md + superpowers plan
+/sddflow build          → TDD 实施，子代理执行（两阶段审查）
+/sddflow amend          → 需求变更时回退（不直接改代码）
+/sddflow close          → 验证 + 归档
 ```
+
+**阶段门控（红线）**：
+1. **brainstorming 阶段禁止写代码** — 只能读文件、搜索、讨论
+2. **spec 阶段禁止写代码** — 只能生成规格文档和计划
+3. **build 阶段必须 TDD** — 先写失败测试，再写最小实现
+4. **close 阶段必须验证** — 全量测试 + build + lint 通过才能归档
+5. **需求变更必须走 amend** — 禁止在 build 阶段直接改代码适应新需求
+
+**sddflow 生成的关键文件**：
+- `openspec/changes/<name>/proposal.md` — 做什么和为什么
+- `openspec/changes/<name>/design.md` — 怎么做
+- `openspec/changes/<name>/specs/` — 规格增量
+- `openspec/changes/<name>/tasks.md` — 实施清单
+- `openspec/changes/<name>/plan-ready.md` — 工程翻译层
+- `docs/superpowers/plans/YYYY-MM-DD-<name>.md` — Superpowers 详细计划
+
+**三文档同步校验**：`tasks.md` + `plan-ready.md` + superpowers plan 的任务号必须一致
 
 **目录约定**：活跃变更 `openspec/changes/<name>/`，主规格库 `openspec/specs/`，已归档 `openspec/changes/archive/`
 
@@ -132,11 +166,14 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 5. 如需清理或重组文档结构，必须先创建 change 提案，经审批后再通过 OpenSpec 命令执行
 6. **如需修复主规格库中的格式问题（如 Purpose:TBD 未填写、格式不一致等），必须通过 OpenSpec 命令操作，禁止直接编辑 `openspec/specs/` 下的 spec.md 文件**
 7. **唯一例外**：用户明确要求手动操作时，须在操作前确认并记录原因
+8. **`openspec archive` 会自动完成两件事**：(a) 将变更目录移入 `openspec/changes/archive/`；(b) 自动创建 `openspec/specs/<capability>/` 目录并同步 delta specs。**禁止在归档前手动创建 specs 目录或手动复制 spec 文件**——这是 archive 命令的职责，提前手动操作会导致归档时合并冲突或重复
 
-**Superpowers 纪律**（实施阶段强制）：
-1. **TDD 强制**：先写失败测试 → 最小实现 → 重构（hotfix/typo/CSS 除外）
-2. **两阶段审查**：先过规格合规，再过代码质量
-3. **验证前置**：测试通过 + lint 通过 + build 通过 + 无红线违反 = 才能声明完成
+**Superpowers 纪律**（build 阶段自动激活）：
+1. **TDD 铁律**：无失败测试不写生产代码。先写代码后补测试 = 删掉重来
+2. **两阶段审查**：规格合规审查优先，代码质量审查其次
+3. **验证前置**：无新鲜验证证据不做完成声明。证据先于断言，永远
+4. **子代理驱动**：每个任务派遣独立子代理，隔离上下文，连续执行不暂停
+5. **YAGNI**：不添加未请求的功能，不过度工程
 
 ---
 

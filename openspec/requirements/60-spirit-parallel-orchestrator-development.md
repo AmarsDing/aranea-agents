@@ -1,6 +1,6 @@
 # M60: Spirit Parallel Orchestrator — 开发计划
 
-> **版本**：2026-06-01 | **状态**：✅ P2 已完成（含集成修复）
+> **版本**：2026-06-06 | **状态**：✅ P2 + 深度业务实现已完成（含 P1/P2 差距修复）
 > **需求**：[60-spirit-parallel-orchestrator.md](./60-spirit-parallel-orchestrator.md) · **设计**：[60-spirit-parallel-orchestrator.design.md](./60-spirit-parallel-orchestrator.design.md)
 > **前置**：M59 P0 已完成
 
@@ -180,6 +180,18 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 | 40 | SPO-INT-04 | TaskDAG 拓扑路由接入：assemble_team 集成 ParseTaskDAG + RouteTopology | ✅ |
 | 41 | SPO-INT-05 | LLM 策略重命名为 Prompt 策略（SynthesisStrategyLLM→SynthesisStrategyPrompt） | ✅ |
 | 42 | SPO-INT-06 | TeamProgressCard Mode→Topology 类型映射修复 | ✅ |
+
+### 深度业务实现（P1/P2 差距修复）
+
+| 排序 | ID | 任务 | 状态 |
+|------|-----|------|------|
+| 53 | SPO-DP-01 | DAGDiagramCard.vue 前端 DAG 文本展示组件 | ✅ |
+| 54 | SPO-DP-02 | SynthesisResultCard.vue 展示 summary/keyFindings | ✅ |
+| 55 | SPO-DP-03 | 编排优化建议生成 EvolutionSuggestionRepo 接入 | ✅ |
+| 56 | SPO-DP-04 | 前端取消团队调用后端 API（cancelSpiritTeam） | ✅ |
+| 57 | SPO-DP-05 | 团队超时 TeamTimeout 实现（time.AfterFunc + safego） | ✅ |
+| 58 | SPO-DP-06 | 自动归档 AutoArchiveAfter 实现（AutoArchiveCompletedTeams） | ✅ |
+| 59 | SPO-DP-07 | Session 树深度限制 MaxSessionDepth 实现 | ✅ |
 
 ### Phase P4 任务板
 

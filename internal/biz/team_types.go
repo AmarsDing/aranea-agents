@@ -17,6 +17,7 @@ const (
 	TeamStatusFailed      = "failed"      // Execution failed
 	TeamStatusCancelled   = "cancelled"   // Was cancelled
 	TeamStatusInterrupted = "interrupted" // Abnormally interrupted, recoverable
+	TeamStatusArchived    = "archived"    // Auto-archived after completion
 )
 
 // ValidTeamStatusTransition returns true if a team status transition from→to is allowed.
@@ -40,6 +41,7 @@ var teamStatusValidTransitions = map[string][]string{
 	TeamStatusPending:     {TeamStatusRunning, TeamStatusCancelled},
 	TeamStatusRunning:     {TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted},
 	TeamStatusInterrupted: {TeamStatusRunning},
+	TeamStatusCompleted:   {TeamStatusArchived},
 }
 
 // IsTeamStatusActive returns true if the team status means the team is
@@ -91,7 +93,8 @@ func ValidateTeamRunTransition(from, to string) bool {
 
 const OrchestrationControlToolName = "orchestration_control"
 
-const CriticLoopCondFuncRef = "critic_loop_decision"
+// CriticLoopCondFuncRef is kept as an alias for backward compatibility.
+const CriticLoopCondFuncRef = CriticLoopDecisionFunc
 
 type OrchestrationDecision struct {
 	Action string  `json:"action"`
@@ -188,6 +191,7 @@ type Team struct {
 	ParallelConfigJSON  string
 	Topology            string
 	Readonly            bool
+	Kind                string // user | system_builtin | ecosystem_preset | marketplace | certified (maps from DB kind column)
 	Source              string // user | system | imported
 	CreatedAt           string
 	UpdatedAt           string

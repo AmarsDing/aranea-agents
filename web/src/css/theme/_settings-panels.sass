@@ -856,3 +856,30 @@ body.body--dark
 
   .settings-footer
     background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
+
+// Ecosystem preset industry list
+.ecosystem-industry-list
+  display: flex
+  flex-direction: column
+  gap: 8px
+
+.ecosystem-industry-row
+  display: flex
+  align-items: center
+  gap: 12px
+  padding: 10px 14px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 48%, transparent)
+
+.ecosystem-industry-row__label
+  display: flex
+  align-items: center
+  min-width: 0
+
+.ecosystem-industry-row__stats
+  flex: 1
+  min-width: 0
+
+.ecosystem-industry-row__action
+  flex-shrink: 0

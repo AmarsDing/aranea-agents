@@ -118,9 +118,9 @@ func validateTeamDefinition(raw string) error {
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
 		return kerrors.BadRequest("TEAM", "definition_json must be valid JSON")
 	}
-	mode := firstNonEmpty(body.Mode, "sequential")
+	mode := firstNonEmpty(body.Mode, TeamModeSequential)
 	switch mode {
-	case "sequential", "parallel", "coordinator", "critic_loop", "swarm", "adaptive":
+	case TeamModeSequential, TeamModeParallel, TeamModeCoordinator, TeamModeCriticLoop, TeamModeSwarm, TeamModeAdaptive:
 	default:
 		return kerrors.BadRequest("TEAM", "unsupported team orchestration mode")
 	}
@@ -140,13 +140,13 @@ func validateTeamDefinition(raw string) error {
 			enabledCount++
 		}
 		switch member.Role {
-		case "synthesizer":
+		case RoleSynthesizer:
 			hasSynthesizer = true
-		case "generator":
+		case RoleGenerator:
 			hasGenerator = true
-		case "critic":
+		case RoleCritic:
 			hasCritic = true
-		case "coordinator":
+		case RoleCoordinator:
 			hasCoordinator = true
 		}
 	}
@@ -164,13 +164,13 @@ func validateTeamDefinition(raw string) error {
 	if enabledCount == 0 {
 		return kerrors.BadRequest("TEAM", "team must have at least one enabled member")
 	}
-	if mode == "parallel" && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" && enabledCount > 1 {
+	if mode == TeamModeParallel && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" && enabledCount > 1 {
 		return kerrors.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")
 	}
-	if mode == "coordinator" && !hasSynthesizer && !hasCoordinator && strings.TrimSpace(body.SynthesizerAgent) == "" {
+	if mode == TeamModeCoordinator && !hasSynthesizer && !hasCoordinator && strings.TrimSpace(body.SynthesizerAgent) == "" {
 		return kerrors.BadRequest("TEAM", "coordinator mode requires a synthesizer or coordinator member, or synthesizer_agent_id")
 	}
-	if mode == "critic_loop" && (!hasGenerator || !hasCritic) {
+	if mode == TeamModeCriticLoop && (!hasGenerator || !hasCritic) {
 		return kerrors.BadRequest("TEAM", "critic_loop mode requires generator and critic members")
 	}
 	return nil
@@ -180,15 +180,15 @@ func validateTeamDefinition(raw string) error {
 // Empty role (default member) is always allowed.
 func validRolesForMode(mode string) map[string]bool {
 	switch mode {
-	case "critic_loop":
-		return map[string]bool{"generator": true, "critic": true, "synthesizer": true}
-	case "parallel":
-		return map[string]bool{"synthesizer": true, "worker": true}
-	case "coordinator":
-		return map[string]bool{"coordinator": true, "worker": true, "synthesizer": true}
-	case "sequential":
-		return map[string]bool{"worker": true}
-	case "swarm", "adaptive":
+	case TeamModeCriticLoop:
+		return map[string]bool{RoleGenerator: true, RoleCritic: true, RoleSynthesizer: true}
+	case TeamModeParallel:
+		return map[string]bool{RoleSynthesizer: true, RoleWorker: true}
+	case TeamModeCoordinator:
+		return map[string]bool{RoleCoordinator: true, RoleWorker: true, RoleSynthesizer: true}
+	case TeamModeSequential:
+		return map[string]bool{RoleWorker: true}
+	case TeamModeSwarm, TeamModeAdaptive:
 		// These modes accept any role; no restriction.
 		return nil
 	default:
@@ -382,6 +382,9 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	if team.Kind == "system_builtin" {
+		return kerrors.Forbidden("TEAM", "cannot delete system_builtin team")
+	}
 	if team.IsDefault {
 		return kerrors.Conflict("TEAM", "default team cannot be deleted")
 	}
@@ -497,7 +500,7 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 		return false, kerrors.BadRequest("TEAM", "invalid definition_json")
 	}
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
-	if mode != "swarm" && mode != "adaptive" {
+	if mode != TeamModeSwarm && mode != TeamModeAdaptive {
 		return false, kerrors.BadRequest("TEAM", "swarm member management only applies to swarm or adaptive mode")
 	}
 	removeSet := make(map[string]bool, len(removeIDs))
@@ -516,7 +519,7 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 		if aid == "" {
 			continue
 		}
-		filtered = append(filtered, teamMemberEntry{AgentID: aid, Role: "worker", Enabled: boolPtr(true)})
+		filtered = append(filtered, teamMemberEntry{AgentID: aid, Role: RoleWorker, Enabled: boolPtr(true)})
 	}
 	def.Members = filtered
 	updatedJSON, err := json.Marshal(def)
@@ -553,7 +556,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 		Nodes:       []StructureNode{{NodeID: "team-" + t.TeamKey, Kind: "team", Name: t.DisplayName}},
 	}
 	switch mode {
-	case "coordinator":
+	case TeamModeCoordinator:
 		for i, m := range def.Members {
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
@@ -563,7 +566,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: def.Members[0].AgentID, ToNodeID: nid})
 			}
 		}
-	case "swarm", "adaptive":
+	case TeamModeSwarm, TeamModeAdaptive:
 		for i, m := range def.Members {
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
@@ -606,7 +609,7 @@ type definitionForUpdate struct {
 func parseDefinitionForUpdate(raw string) (*definitionForUpdate, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return &definitionForUpdate{Version: 1, Mode: "sequential"}, nil
+		return &definitionForUpdate{Version: 1, Mode: TeamModeSequential}, nil
 	}
 	var d definitionForUpdate
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
@@ -750,14 +753,14 @@ type teamDefinition struct {
 func parseTeamDefinition(raw string) (teamDefinition, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return teamDefinition{Version: 1, Mode: "sequential"}, nil
+		return teamDefinition{Version: 1, Mode: TeamModeSequential}, nil
 	}
 	var d teamDefinition
 	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return teamDefinition{}, err
 	}
 	if strings.TrimSpace(d.Mode) == "" {
-		d.Mode = "sequential"
+		d.Mode = TeamModeSequential
 	}
 	return d, nil
 }

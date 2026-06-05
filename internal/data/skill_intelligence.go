@@ -231,7 +231,9 @@ func mapEntReport(row *ent.ExperienceReport) biz.ExperienceReport {
 		OptimizationAdvice: row.OptimizationAdvice,
 	}
 	if row.SelectionSnapshot != nil {
-		report.SelectionSnapshot, _ = json.Marshal(row.SelectionSnapshot)
+		if data, err := json.Marshal(row.SelectionSnapshot); err == nil {
+			report.SelectionSnapshot = data
+		}
 	}
 	if row.GeneratedSuggestionID != "" {
 		sid := row.GeneratedSuggestionID

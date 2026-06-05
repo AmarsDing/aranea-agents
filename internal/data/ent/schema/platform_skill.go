@@ -43,5 +43,8 @@ func (PlatformSkill) Fields() []ent.Field {
 		field.Bool("filesystem_missing").Default(false),
 		field.String("visibility").Default("workspace").MaxLen(64),
 		field.Text("fallback_config_json").StorageKey("default_config_json").Default("{}"),
+		field.String("parent_version_id").Default("").MaxLen(256),
+		field.Text("evolution_reason").Default(""),
+		field.String("lifecycle_status").Default("active").MaxLen(64),
 	}
 }

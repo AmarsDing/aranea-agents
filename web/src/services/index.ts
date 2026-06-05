@@ -30,6 +30,8 @@ import { createMemoryServiceClient } from "./kratos/memory/v1/index";
 import { createGraphServiceClient } from "./kratos/graph/v1/index";
 import { createAgentCategoryServiceClient } from "./kratos/agent_category/v1/index";
 import { createSkillEvolutionServiceClient } from "./kratos/skill_evolution/v1/index";
+import { createSkillIntelligenceServiceClient } from "./kratos/skill_intelligence/v1/index";
+import { createSkillEvolutionSuggestionServiceClient } from "./kratos/skill_evolution_suggestion/v1/index";
 import { createPackServiceClient } from "./kratos/pack/v1/index";
 import { createChatServiceClient } from "./kratos/chat/v1/index";
 import { requestHandler, kratosApi } from "./axiosHandler";
@@ -167,6 +169,14 @@ export function createSkillEvolutionService() {
   return createSkillEvolutionServiceClient(requestHandler);
 }
 
+export function createSkillIntelligenceService() {
+  return createSkillIntelligenceServiceClient(requestHandler);
+}
+
+export function createSkillEvolutionSuggestionService() {
+  return createSkillEvolutionSuggestionServiceClient(requestHandler);
+}
+
 export function createWebhookService() {
   return createGatewayServiceClient(requestHandler);
 }
@@ -205,6 +215,9 @@ export function createSpiritService() {
     },
     getTeamDetail(teamId: string) {
       return kratosApi.get(`${basePath}/teams/${encodeURIComponent(teamId)}`);
+    },
+    cancelTeamRun(teamId: string) {
+      return kratosApi.post(`${basePath}/teams/${encodeURIComponent(teamId)}/cancel`);
     },
   };
 }

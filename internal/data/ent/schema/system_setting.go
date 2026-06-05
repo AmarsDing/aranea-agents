@@ -44,6 +44,7 @@ func (SystemSetting) Fields() []ent.Field {
 		field.Text("web_research_http_proxy").Default(""),
 		field.Bool("memory_policy_strict").Default(false),
 		field.Bool("memory_episode_backfill_disabled").Default(false),
+		field.Text("ecosystem_loaded").Default("{}").Comment("JSON: per-industry ecosystem preset load status"),
 		field.Time("update_time").Default(time.Now).UpdateDefault(time.Now),
 	}
 }

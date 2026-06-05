@@ -14,6 +14,10 @@ export async function getSpiritTeamDetail(teamId: string): Promise<SpiritTeam> {
   return mapSpiritTeam(data as Record<string, unknown>);
 }
 
+export async function cancelSpiritTeam(teamId: string): Promise<void> {
+  await spiritService.cancelTeamRun(teamId);
+}
+
 function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
   return {
     id: String(raw.id ?? ''),

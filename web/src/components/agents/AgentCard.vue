@@ -20,6 +20,7 @@
             @click="$emit('toggle-favorite', agent.id)"
           />
           <div class="agent-card__name text-subtitle2 text-weight-bold ellipsis">{{ agent.display_name }}</div>
+          <KindBadge :kind="agent.source" />
           <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{
             statusLabel(agent.status)
           }}</q-badge>
@@ -70,7 +71,7 @@
       <div class="q-gutter-xs">
         <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${agent.id}/settings`" />
         <q-btn v-if="!isBuiltin" flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', agent)" />
-        <q-btn v-if="!isBuiltin" flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
+        <q-btn v-if="!isBuiltin && agent.source !== 'system_builtin'" flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
         <q-chip v-if="isBuiltin" dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
       </div>
     </q-card-actions>
@@ -82,6 +83,7 @@ import { computed } from 'vue';
 import { useQuasar } from 'quasar';
 import type { Agent } from '../../features/agents/types';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
+import KindBadge from './KindBadge.vue';
 import { statusLabel } from './agentUi';
 
 const props = defineProps<{

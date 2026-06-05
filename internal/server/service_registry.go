@@ -44,7 +44,10 @@ type ServiceRegistry struct {
 	IndustryTaxonomy   *service.IndustryTaxonomyService
 	SkillEvo           *service.SkillEvolutionService
 	SkillIntel         *service.SkillIntelligenceService
+	SkillDedup         *service.SkillDedupService
 	Pack               *service.PackService
+	SkillEvoSuggestion *service.SkillEvolutionSuggestionService
+	EcosystemPreset    *service.EcosystemPresetService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -84,7 +87,10 @@ func NewServiceRegistry(
 	industryTaxonomy *service.IndustryTaxonomyService,
 	skillEvo *service.SkillEvolutionService,
 	skillIntel *service.SkillIntelligenceService,
+	skillDedup *service.SkillDedupService,
 	packSvc *service.PackService,
+	skillEvoSuggestion *service.SkillEvolutionSuggestionService,
+	ecosystemPresetSvc *service.EcosystemPresetService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:          admin,
@@ -121,6 +127,9 @@ func NewServiceRegistry(
 		IndustryTaxonomy: industryTaxonomy,
 		SkillEvo:         skillEvo,
 		SkillIntel:       skillIntel,
+		SkillDedup:       skillDedup,
 		Pack:           packSvc,
+		SkillEvoSuggestion: skillEvoSuggestion,
+		EcosystemPreset:    ecosystemPresetSvc,
 	}
 }

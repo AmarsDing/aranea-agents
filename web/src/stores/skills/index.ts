@@ -15,12 +15,15 @@ import {
   refineSkillConflictGroup,
   applySkillImport,
   getSkillFilesystemHealth,
+  getSkill,
+  getSkillHealth,
 } from '../../features/skills/api';
 import type {
   Skill,
   SkillListQuery,
   SkillRunQuery,
   SkillFilesystemHealth,
+  SkillHealthMetric,
   PaginatedResponse,
 } from '../../features/skills/types';
 
@@ -72,6 +75,14 @@ export const useSkillsStore = defineStore('skills', () => {
     return getSkillFilesystemHealth();
   }
 
+  async function loadSkillHealth(skillId: string): Promise<SkillHealthMetric> {
+    return getSkillHealth(skillId);
+  }
+
+  async function loadSkill(id: string): Promise<{ skill: Skill; bodyMarkdown: string }> {
+    return getSkill(id);
+  }
+
   return {
     skills,
     total,
@@ -83,6 +94,8 @@ export const useSkillsStore = defineStore('skills', () => {
     duplicate,
     remove,
     loadFilesystemHealth,
+    loadSkillHealth,
+    loadSkill,
     listSkillFiles,
     readSkillFile,
     updateSkillFile,

@@ -24,50 +24,24 @@
           </template>
 
           <div class="taxonomy-tree-industry__body">
-            <q-expansion-item
+            <taxonomy-department-node
               v-for="department in departmentNodes(industry)"
               :key="department.id"
-              :model-value="isExpanded(department.id)"
-              expand-icon="keyboard_arrow_down"
-              class="taxonomy-tree-department"
-              @update:model-value="setExpanded(department.id, $event)"
-            >
-              <template #header>
-                <taxonomy-node-header
-                  :node="department"
-                  :show-system-chip="showSystemChip"
-                  :readonly="readonly"
-                  :toggle-loading="isToggling(department.id)"
-                  @edit="$emit('edit', department)"
-                  @create-child="$emit('create-child', 'position', department)"
-                  @remove="$emit('remove', department)"
-                  @toggle-enabled="$emit('toggle-enabled', department, $event)"
-                />
-              </template>
-
-              <div class="position-card-grid">
-                <taxonomy-position-card
-                  v-for="position in positionNodes(department)"
-                  :key="position.id"
-                  :position="position"
-                  :path="positionPath(industry, department)"
-                  :readonly="readonly"
-                  :highlight="positionHighlighted(position)"
-                  @edit="$emit('edit', $event)"
-                  @remove="$emit('remove', $event)"
-                />
-
-                <button
-                  v-if="!readonly"
-                  type="button"
-                  class="position-card-add"
-                  @click="$emit('create-child', 'position', department)"
-                >
-                  <q-icon name="add" size="22px" color="primary" />
-                  <span>新增职位</span>
-                </button>
-              </div>
-            </q-expansion-item>
+              :department="department"
+              :positions="positionNodes(department)"
+              :path="positionPath(industry, department)"
+              :expanded="isExpanded(department.id)"
+              :readonly="readonly"
+              :show-system-chip="showSystemChip"
+              :toggle-loading="isToggling(department.id)"
+              :keyword="keyword"
+              @edit="$emit('edit', $event)"
+              @create-child="$emit('create-child', 'position', department)"
+              @remove="$emit('remove', $event)"
+              @toggle-enabled="$emit('toggle-enabled', department, $event)"
+              @update:expanded="setExpanded(department.id, $event)"
+              @reorder-positions="$emit('reorder-positions', department, $event)"
+            />
 
             <q-btn
               v-if="!readonly"
@@ -88,14 +62,13 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import TaxonomyPositionCard from './TaxonomyPositionCard.vue';
+import TaxonomyDepartmentNode from './TaxonomyDepartmentNode.vue';
 import TaxonomyNodeHeader from './TaxonomyNodeHeader.vue';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import {
   collectDefaultExpandedIds,
   collectExpandedIdsForFilter,
   departmentPositions,
-  nodeMatchesKeyword,
   type TaxonomyLevel,
 } from '../../features/platform/taxonomyTreeUtils';
 
@@ -122,6 +95,7 @@ defineEmits<{
   'create-child': [level: TaxonomyLevel, parent: PlatformResourceTreeNode];
   remove: [node: PlatformResourceTreeNode];
   'toggle-enabled': [node: PlatformResourceTreeNode, enabled: boolean];
+  'reorder-positions': [department: PlatformResourceTreeNode, positions: PlatformResourceTreeNode[]];
 }>();
 
 const expandedIds = ref<Set<string>>(new Set());
@@ -173,9 +147,5 @@ function positionNodes(department: PlatformResourceTreeNode) {
 
 function positionPath(industry: PlatformResourceTreeNode, department: PlatformResourceTreeNode) {
   return `${industry.name} / ${department.name}`;
-}
-
-function positionHighlighted(position: PlatformResourceTreeNode) {
-  return nodeMatchesKeyword(position, props.keyword);
 }
 </script>

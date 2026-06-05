@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type stubAgentRepo struct {
@@ -57,6 +59,37 @@ func (s *stubAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) e
 	return fn(ctx)
 }
 func (s *stubAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+
+func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
+	t.Parallel()
+	repo := &stubAgentRepo{
+		agent: Agent{ID: "agent-1", Source: "system_builtin"},
+	}
+	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
+	err := uc.Delete(context.Background(), "agent-1")
+	if err == nil {
+		t.Fatal("expected error when deleting system_builtin agent")
+	}
+	e := kerrors.FromError(err)
+	if e.Code != 403 {
+		t.Fatalf("expected code 403, got %d", e.Code)
+	}
+	if e.Reason != "AGENT" {
+		t.Fatalf("expected reason AGENT, got %s", e.Reason)
+	}
+}
+
+func TestAgentUsecase_DeleteAllowsUserAgent(t *testing.T) {
+	t.Parallel()
+	repo := &stubAgentRepo{
+		agent: Agent{ID: "agent-2", Source: "user"},
+	}
+	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
+	err := uc.Delete(context.Background(), "agent-2")
+	if err != nil {
+		t.Fatalf("expected no error when deleting user agent, got %v", err)
+	}
+}
 
 func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 	t.Parallel()

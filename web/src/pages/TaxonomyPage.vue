@@ -77,20 +77,17 @@
     </q-card>
 
     <section v-else class="taxonomy-grid q-mt-lg">
-      <taxonomy-industry-card
-        v-for="industry in filteredTree"
-        :key="industry.id"
-        :industry="industry"
-        :is-dark="isDark"
+      <taxonomy-tree
+        :tree="filteredTree"
+        :keyword="keyword"
+        :default-expand-all="true"
+        :toggling-ids="togglingIds"
         @edit="openEdit"
         @create-child="openCreate"
         @remove="removeNode"
         @toggle-enabled="toggleNodeEnabled"
+        @reorder-positions="onReorderPositions"
       />
-      <button type="button" class="taxonomy-industry-card-add" @click="openCreate('industry')">
-        <q-icon name="add" size="32px" color="primary" />
-        <span>新增行业</span>
-      </button>
     </section>
 
     <q-dialog v-model="dialogOpen" persistent>
@@ -179,7 +176,7 @@
 import { computed } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
-import TaxonomyIndustryCard from '../components/agents/TaxonomyIndustryCard.vue';
+import TaxonomyTree from '../components/agents/TaxonomyTree.vue';
 import AiRefineButton from '../components/agents/AIRefineButton.vue';
 import { refinePromptField } from '../features/agents/aiRefine';
 import { useTaxonomyPage } from '../features/platform/useTaxonomyPage';
@@ -202,14 +199,17 @@ const {
   filteredTree,
   stats,
   parentName,
+  togglingIds,
   loadTree,
   openCreate,
   openEdit,
   saveNode,
   removeNode,
   toggleNodeEnabled,
+  reorderNodes,
   levelLabel,
   onRefineError,
+  onReorderPositions,
 } = useTaxonomyPage();
 
 const currentLevelNum = computed(() => parseLevelNumber(form.level));

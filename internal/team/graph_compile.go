@@ -192,6 +192,7 @@ func CompileToCompiledTeam(
 	agentKey CompileAgentKey,
 	linked GraphBuildConfigLoader,
 	lg loggateway.Logger,
+	functionResolver biz.FunctionResolver,
 ) (*biz.CompiledTeam, error) {
 	raw := strings.TrimSpace(rawDefinitionJSON)
 	if raw != "" && linked != nil {
@@ -202,6 +203,7 @@ func CompileToCompiledTeam(
 					cfg = applyAdaptiveAgentDestinations(cfg)
 				}
 				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, failurePolicyToBiz(def.FailurePolicy), nil)
+				validateFunctionNodes(ctx, cfg, functionResolver, lg)
 				return biz.NewCompiledTeam(cfg, nil, buildRoleManifest(cfg), failurePolicyToBiz(def.FailurePolicy)), nil
 			}
 		}
@@ -215,7 +217,34 @@ func CompileToCompiledTeam(
 		cfg = applyAdaptiveAgentDestinations(cfg)
 	}
 	cfg = finalizeRuntimeGraphConfig(cfg, def, raw, failurePolicyToBiz(def.FailurePolicy), branchIDs)
+	validateFunctionNodes(ctx, cfg, functionResolver, lg)
 	return biz.NewCompiledTeam(cfg, taskMeta, buildRoleManifest(cfg), failurePolicyToBiz(def.FailurePolicy)), nil
+}
+
+// validateFunctionNodes validates function-type node references via FunctionResolver.
+// When FunctionResolver is nil or returns an error, a warning is logged and compilation
+// continues (degradation). The actual function resolution happens at runtime in
+// internal/graph/trpc wireNode.
+func validateFunctionNodes(ctx context.Context, cfg biz.GraphBuildConfig, resolver biz.FunctionResolver, lg loggateway.Logger) {
+	if resolver == nil {
+		return
+	}
+	for _, node := range cfg.Nodes {
+		if strings.ToLower(strings.TrimSpace(node.Type)) != biz.NodeTypeFunction {
+			continue
+		}
+		funcRef := strings.TrimSpace(node.FuncRef)
+		if funcRef == "" || funcRef == biz.SkipNodeFuncRef {
+			continue
+		}
+		if err := resolver.Resolve(ctx, funcRef); err != nil {
+			lg.Warn("FunctionResolver 降级：编译期函数引用校验失败，运行时将重新解析",
+				loggateway.StepID("team.compile.function_resolver_degraded"),
+				loggateway.Str("node_id", node.ID),
+				loggateway.Str("func_ref", funcRef),
+				loggateway.Err(err))
+		}
+	}
 }
 
 func buildRoleManifest(cfg biz.GraphBuildConfig) map[string]biz.RoleInfo {

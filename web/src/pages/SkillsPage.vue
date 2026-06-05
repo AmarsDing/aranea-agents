@@ -8,6 +8,7 @@
       <template #actions>
         <q-btn outline rounded no-caps color="primary" icon="upload_file" label="上传 Skill" @click="openUpload" />
         <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/skills/runs" />
+        <q-btn outline rounded no-caps color="primary" icon="assessment" label="经验报告" to="/skills/experience-reports" />
         <q-btn
           color="primary"
           unelevated

@@ -349,7 +349,7 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 	if teamID == "" {
 		return kerrors.BadRequest("GRAPH", "team id required")
 	}
-	graphID := "team:" + teamID
+	graphID := GraphIDTeamPrefix + teamID
 	if teamRunID != "" {
 		graphID = graphID + ":" + strings.TrimSpace(teamRunID)
 	}

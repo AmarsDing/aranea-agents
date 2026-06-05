@@ -42,11 +42,13 @@ func DefaultScoreWeights() ScoreWeights {
 // SkillIntelligenceUsecase provides skill intelligence analysis: invocation
 // analysis, scoring, and experience report generation.
 type SkillIntelligenceUsecase struct {
-	writer     ExperienceReportWriter
-	reader     ExperienceReportReader
-	aggregator SkillHealthAggregator
-	lg         loggateway.Logger
-	weights    ScoreWeights
+	writer           ExperienceReportWriter
+	reader           ExperienceReportReader
+	aggregator       SkillHealthAggregator
+	suggestionReader SkillEvolutionSuggestionReader
+	suggestionWriter SkillEvolutionSuggestionWriter
+	lg               loggateway.Logger
+	weights          ScoreWeights
 }
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
@@ -54,14 +56,18 @@ func NewSkillIntelligenceUsecase(
 	reader ExperienceReportReader,
 	writer ExperienceReportWriter,
 	aggregator SkillHealthAggregator,
+	suggestionReader SkillEvolutionSuggestionReader,
+	suggestionWriter SkillEvolutionSuggestionWriter,
 	lg loggateway.Logger,
 ) *SkillIntelligenceUsecase {
 	return &SkillIntelligenceUsecase{
-		writer:     writer,
-		reader:     reader,
-		aggregator: aggregator,
-		lg:         lg,
-		weights:    DefaultScoreWeights(),
+		writer:           writer,
+		reader:           reader,
+		aggregator:       aggregator,
+		suggestionReader: suggestionReader,
+		suggestionWriter: suggestionWriter,
+		lg:               lg,
+		weights:          DefaultScoreWeights(),
 	}
 }
 
@@ -263,6 +269,154 @@ func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) 
 	uc.lg.Info("SkillIntelligenceWorker: scan cycle started",
 		loggateway.StepID("skill_intelligence.scan"))
 	return nil
+}
+
+// ── Skill Evolution Suggestion methods ────────────────────────────────────────
+
+// CheckEvolutionTriggers checks if a skill meets the conditions for generating
+// an evolution suggestion. Returns a new suggestion if triggered, or nil if not.
+func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error) {
+	if uc.aggregator == nil || uc.suggestionReader == nil || uc.suggestionWriter == nil {
+		return nil, nil
+	}
+
+	skillID, err := requireNonEmpty(skillID, "SKILL_INTELLIGENCE", "skill_id")
+	if err != nil {
+		return nil, err
+	}
+
+	// Check cooldown: if a recent suggestion exists within the cooldown period, skip.
+	latest, err := uc.suggestionReader.GetLatestBySkill(ctx, skillID)
+	if err != nil {
+		uc.lg.Warn("CheckEvolutionTriggers: GetLatestBySkill failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err))
+		return nil, err
+	}
+	if latest != nil {
+		cooldownEnd := latest.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
+		if time.Now().UTC().Before(cooldownEnd) {
+			return nil, nil
+		}
+	}
+
+	// Get health metrics for the last 30 days.
+	since30d := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	metrics, err := uc.aggregator.GetHealthMetrics(ctx, skillID, since30d)
+	if err != nil {
+		uc.lg.Warn("CheckEvolutionTriggers: GetHealthMetrics failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err))
+		return nil, err
+	}
+
+	// Check minimum invocations for statistical significance.
+	if metrics.InvocationCount < EvoTriggerMinInvocations {
+		return nil, nil
+	}
+
+	// Determine trigger conditions.
+	var triggerType EvolutionSuggestionType
+	var triggerReason string
+
+	failureRate := 1.0 - metrics.SuccessRate
+	if failureRate > EvoTriggerFailureRate {
+		triggerType = EvoSuggestionFixFailure
+		triggerReason = fmt.Sprintf("30d failure rate %.1f%% exceeds threshold %.1f%% (%d invocations)",
+			failureRate*100, EvoTriggerFailureRate*100, metrics.InvocationCount)
+	}
+
+	// Check score threshold.
+	score, scoreErr := uc.ScoreSkill(ctx, skillID)
+	if scoreErr == nil && score < EvoTriggerScoreThreshold {
+		if triggerType == "" {
+			triggerType = EvoSuggestionBoostEfficiency
+			triggerReason = fmt.Sprintf("Skill score %d below threshold %d", score, EvoTriggerScoreThreshold)
+		} else {
+			triggerReason += fmt.Sprintf("; skill score %d below threshold %d", score, EvoTriggerScoreThreshold)
+		}
+	}
+
+	if triggerType == "" {
+		return nil, nil
+	}
+
+	suggestion := &SkillEvolutionSuggestion{
+		ID:        uuid.New().String(),
+		SkillID:   skillID,
+		Type:      triggerType,
+		Status:    EvoSuggestionPending,
+		TriggerReason: triggerReason,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := uc.suggestionWriter.Create(ctx, *suggestion); err != nil {
+		uc.lg.Warn("CheckEvolutionTriggers: Create suggestion failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err))
+		return nil, err
+	}
+
+	return suggestion, nil
+}
+
+// CreateSuggestion delegates to the suggestion writer.
+func (uc *SkillIntelligenceUsecase) CreateSuggestion(ctx context.Context, suggestion SkillEvolutionSuggestion) error {
+	if uc.suggestionWriter == nil {
+		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	return uc.suggestionWriter.Create(ctx, suggestion)
+}
+
+// GetEvolutionSuggestion returns a single evolution suggestion by ID.
+func (uc *SkillIntelligenceUsecase) GetEvolutionSuggestion(ctx context.Context, id string) (*SkillEvolutionSuggestion, error) {
+	if uc.suggestionReader == nil {
+		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
+	}
+	return uc.suggestionReader.GetByID(ctx, id)
+}
+
+// UpdateSuggestionDraftBody updates the draft skill body of an evolution suggestion.
+func (uc *SkillIntelligenceUsecase) UpdateSuggestionDraftBody(ctx context.Context, id string, draftBody string) error {
+	if uc.suggestionWriter == nil {
+		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	return uc.suggestionWriter.UpdateDraftBody(ctx, id, draftBody)
+}
+
+// UpdateSuggestionSandboxResult updates the sandbox validation result of an evolution suggestion.
+func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
+	if uc.suggestionWriter == nil {
+		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	return uc.suggestionWriter.UpdateSandboxResult(ctx, id, passed, result)
+}
+
+// ListEvolutionSuggestions lists evolution suggestions for a skill, optionally filtered by status.
+func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error) {
+	if uc.suggestionReader == nil {
+		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
+	}
+	return uc.suggestionReader.ListBySkill(ctx, skillID, status, limit, offset)
+}
+
+// ApproveSuggestion approves a pending evolution suggestion.
+func (uc *SkillIntelligenceUsecase) ApproveSuggestion(ctx context.Context, id, approvedBy string) error {
+	if uc.suggestionWriter == nil {
+		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	return uc.suggestionWriter.UpdateStatus(ctx, id, EvoSuggestionApproved, approvedBy, "")
+}
+
+// RejectSuggestion rejects a pending evolution suggestion.
+func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, rejectedBy, reason string) error {
+	if uc.suggestionWriter == nil {
+		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	return uc.suggestionWriter.UpdateStatus(ctx, id, EvoSuggestionRejected, rejectedBy, reason)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

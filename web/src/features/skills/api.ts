@@ -5,6 +5,7 @@ import type {
   SkillFilesystemHealth,
   SkillFile,
   SkillFileContent,
+  SkillHealthMetric,
   SkillImportApplyResult,
   SkillImportDecision,
   SkillImportJob,
@@ -265,4 +266,43 @@ export async function applySkillImport(
 ): Promise<SkillImportApplyResult> {
   const { data } = await kratosApi.post(`/v1/skills/import/${jobId}/apply`, { decisions });
   return data as SkillImportApplyResult;
+}
+
+export async function getSkill(id: string): Promise<{ skill: Skill; bodyMarkdown: string }> {
+  const res = await createSkillService().GetSkill({ id });
+  const r = res as Record<string, unknown>;
+  const rawSkill = r.skill as Record<string, unknown> | undefined;
+  const skill = rawSkill ? mapSkill(rawSkill) : null!;
+  const bodyMarkdown = String(r.bodyMarkdown ?? r.body_markdown ?? '');
+  return { skill, bodyMarkdown };
+}
+
+export async function getSkillHealth(skillId: string): Promise<SkillHealthMetric> {
+  const row = await createSkillService().GetSkillHealth({ skillId });
+  const r = row as Record<string, unknown>;
+  const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
+  const rawDaily = r.daily_metrics ?? r.dailyMetrics;
+  const dailyMetrics: SkillHealthMetric['daily_metrics'] = Array.isArray(rawDaily)
+    ? rawDaily.map((d: unknown) => {
+        const dm = d as Record<string, unknown>;
+        return {
+          date: String(dm.date ?? ''),
+          invocations: Number(dm.invocations ?? 0),
+          successes: Number(dm.successes ?? 0),
+          avg_duration_ms: Number(dm.avg_duration_ms ?? dm.avgDurationMs ?? 0),
+        };
+      })
+    : [];
+  return {
+    skill_id: String(r.skill_id ?? r.skillId ?? ''),
+    total_invocations_7d: n('total_invocations_7d', 'totalInvocations7d'),
+    success_count_7d: n('success_count_7d', 'successCount7d'),
+    success_rate_7d: n('success_rate_7d', 'successRate7d'),
+    p95_duration_ms_7d: n('p95_duration_ms_7d', 'p95DurationMs7d'),
+    total_invocations_30d: n('total_invocations_30d', 'totalInvocations30d'),
+    success_count_30d: n('success_count_30d', 'successCount30d'),
+    success_rate_30d: n('success_rate_30d', 'successRate30d'),
+    p95_duration_ms_30d: n('p95_duration_ms_30d', 'p95DurationMs30d'),
+    daily_metrics: dailyMetrics,
+  };
 }

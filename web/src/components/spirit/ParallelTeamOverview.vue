@@ -34,6 +34,8 @@
       <span class="text-caption">所有团队已完成</span>
     </div>
 
+    <DAGDiagramCard v-if="hasDagTeams" :teams="teams" class="q-mb-sm" />
+
     <SynthesisResultCard v-if="synthesisResult" :result="synthesisResult" class="q-mb-sm" />
 
     <div class="parallel-team-overview__cards">
@@ -52,6 +54,7 @@
 import { computed } from 'vue';
 import TeamProgressCard from './TeamProgressCard.vue';
 import SynthesisResultCard from './SynthesisResultCard.vue';
+import DAGDiagramCard from './DAGDiagramCard.vue';
 import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
 
 const props = defineProps<{
@@ -71,6 +74,10 @@ const activeCount = computed(
 );
 
 const completedCount = computed(() => props.teams.filter((t) => t.status === 'completed').length);
+
+const hasDagTeams = computed(() =>
+  props.teams.some((t) => t.dagNodeId || (t.dependsOn && t.dependsOn.length > 0)),
+);
 </script>
 
 <style scoped lang="sass">

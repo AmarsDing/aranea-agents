@@ -15,6 +15,7 @@
       <div class="min-width-0">
         <div class="row items-center q-gutter-sm">
           <div class="text-h5 text-weight-bold ellipsis">{{ agent.display_name || 'Agent 设置' }}</div>
+          <KindBadge :kind="agent.source" />
           <q-badge rounded :class="['settings-status', agent.status === 'active' ? 'is-active' : '']">{{
             statusLabel(agent.status)
           }}</q-badge>
@@ -71,6 +72,7 @@
 import { computed } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
+import KindBadge from './KindBadge.vue';
 import { promptModeLabel, statusLabel } from './agentUi';
 
 const props = defineProps<{

@@ -39,6 +39,7 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     taxonomy_industry_id: t?.categoryIndustryId ?? '',
     readonly: t?.readonly ?? false,
     source: t?.source ?? '',
+    kind: t?.kind ?? '',
     created_at: t?.createdAt ?? '',
     updated_at: t?.updatedAt ?? '',
     deleted_at: t?.deletedAt ?? '',

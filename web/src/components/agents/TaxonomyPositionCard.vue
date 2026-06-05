@@ -16,6 +16,15 @@
             <q-chip v-if="!position.enabled" dense square size="sm" class="position-card__status-off">已停用</q-chip>
           </div>
           <div class="position-card__path ellipsis">{{ path }}</div>
+          <div v-if="variantTags.length" class="position-card__variants row q-gutter-xs q-mt-xs">
+            <q-chip v-for="tag in variantTags" :key="tag" dense square size="sm" class="position-card__variant-chip">
+              {{ tag }}
+            </q-chip>
+          </div>
+        </div>
+        <div v-if="agentCount > 0" class="position-card__agent-count">
+          <q-icon name="smart_toy" size="14px" />
+          <span>{{ agentCount }}</span>
         </div>
       </div>
 
@@ -43,12 +52,20 @@ import { computed } from 'vue';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import { parseIsSystem, trimmedDesc } from '../../features/platform/taxonomyTreeUtils';
 
-const props = defineProps<{
-  position: PlatformResourceTreeNode;
-  path: string;
-  readonly?: boolean;
-  highlight?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    position: PlatformResourceTreeNode;
+    path: string;
+    readonly?: boolean;
+    highlight?: boolean;
+    agentCount?: number;
+  }>(),
+  {
+    readonly: false,
+    highlight: false,
+    agentCount: 0,
+  },
+);
 
 defineEmits<{
   edit: [node: PlatformResourceTreeNode];
@@ -57,4 +74,14 @@ defineEmits<{
 
 const description = computed(() => trimmedDesc(props.position));
 const isSystem = computed(() => parseIsSystem(props.position));
+
+const variantTags = computed(() => {
+  try {
+    const meta = JSON.parse(props.position.metadata_json || '{}');
+    const variants: string[] = meta.variants ?? meta.variant_tags ?? [];
+    return variants;
+  } catch {
+    return [];
+  }
+});
 </script>

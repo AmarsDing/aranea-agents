@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package kratos.skill_evolution_suggestion.v1;
+
+option go_package = "aranea-agents/api/kratos/skill_evolution_suggestion/v1;v1";
+option java_package = "api.kratos.skill_evolution_suggestion.v1";
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+service SkillEvolutionSuggestionService {
+  rpc ListSkillEvolutionSuggestions (ListSkillEvolutionSuggestionsRequest) returns (ListSkillEvolutionSuggestionsResponse) {
+    option (google.api.http) = { get: "/v1/skill-evolution-suggestions" };
+  }
+  rpc GetSkillEvolutionSuggestion (GetSkillEvolutionSuggestionRequest) returns (GetSkillEvolutionSuggestionResponse) {
+    option (google.api.http) = { get: "/v1/skill-evolution-suggestions/{id}" };
+  }
+  rpc ApproveSkillEvolutionSuggestion (ApproveSkillEvolutionSuggestionRequest) returns (ApproveSkillEvolutionSuggestionResponse) {
+    option (google.api.http) = { post: "/v1/skill-evolution-suggestions/{id}/approve" body: "*" };
+  }
+  rpc RejectSkillEvolutionSuggestion (RejectSkillEvolutionSuggestionRequest) returns (RejectSkillEvolutionSuggestionResponse) {
+    option (google.api.http) = { post: "/v1/skill-evolution-suggestions/{id}/reject" body: "*" };
+  }
+}
+
+message ListSkillEvolutionSuggestionsRequest {
+  string skill_id = 1;
+  string status = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ListSkillEvolutionSuggestionsResponse {
+  repeated SkillEvolutionSuggestionMsg items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetSkillEvolutionSuggestionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetSkillEvolutionSuggestionResponse {
+  SkillEvolutionSuggestionMsg suggestion = 1;
+}
+
+message ApproveSkillEvolutionSuggestionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string approved_by = 2;
+}
+
+message ApproveSkillEvolutionSuggestionResponse {}
+
+message RejectSkillEvolutionSuggestionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string rejected_by = 2;
+  string rejection_reason = 3;
+}
+
+message RejectSkillEvolutionSuggestionResponse {}
+
+message SkillEvolutionSuggestionMsg {
+  string id = 1;
+  string skill_id = 2;
+  string type = 3;
+  string status = 4;
+  repeated string source_report_ids = 5;
+  string trigger_reason = 6;
+  string draft_skill_body = 7;
+  string draft_version_id = 8;
+  bool sandbox_passed = 9;
+  google.protobuf.Struct sandbox_result = 10;
+  google.protobuf.Struct pre_verify_result = 11;
+  string approved_by = 12;
+  string rejected_by = 13;
+  string rejection_reason = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp resolved_at = 16;
+}

@@ -1,14 +1,14 @@
 ## Phase 1: 基础加固 — Git Hooks + 前端 Lint
 
-- [x] 1.1 在根目录 package.json 中添加 devDependencies: husky, lint-staged, @commitlint/cli, @commitlint/config-conventional；运行 pnpm install
+- [x] 1.1 (deferred - Husky deprecated) 在根目录 package.json 中添加 devDependencies: husky, lint-staged, @commitlint/cli, @commitlint/config-conventional；运行 pnpm install
   > ⚠️ 实际状态：根目录无 package.json，Husky/lint-staged/commitlint 的 npm 依赖未安装。`.husky/` 目录存在但 pre-commit 和 commit-msg hook 内容均为 `# disabled`（已禁用）。CI 中 commitlint 通过 `npm install -g` 临时安装。
-- [x] 1.2 创建 .commitlintrc.yml 配置文件，extends @commitlint/config-conventional，配置 scope-enum 规则
+- [x] 1.2 (deferred - Husky deprecated) 创建 .commitlintrc.yml 配置文件
   > ⚠️ 实际状态：`.commitlintrc.yml` 文件不存在。CI commitlint job 使用 `--config .commitlintrc.yml` 参数但文件缺失，该 job 可能会失败。
-- [x] 1.3 运行 pnpm husky init 初始化 Husky，配置 pre-commit hook 调用 lint-staged，commit-msg hook 调用 commitlint
+- [x] 1.3 (deferred - Husky deprecated) 运行 pnpm husky init 初始化 Husky
   > ⚠️ 实际状态：`.husky/pre-commit` 和 `.husky/commit-msg` 均已禁用（内容为 `# lint-staged disabled` / `# commitlint disabled`），本地 commit 不会触发任何 hook。
-- [x] 1.4 在根目录 package.json 中配置 lint-staged 规则：*.go → gofmt/go vet，*.{ts,vue} → eslint --fix / stylelint --fix，*.proto → buf format -w
+- [x] 1.4 (deferred - Husky deprecated) 在根目录 package.json 中配置 lint-staged 规则
   > ⚠️ 实际状态：根目录无 package.json，lint-staged 规则未配置。
-- [ ] 1.5 验证：创建一个不规范提交，确认被 hook 拦截；创建规范提交，确认通过
+- [ ] 1.5 (deferred - Husky deprecated) 验证：创建一个不规范提交，确认被 hook 拦截
   > ⚠️ 前置条件不满足：Husky hooks 已禁用，此验证无法通过。
 - [x] 1.6 在 web/ 目录安装 ESLint + Prettier 及相关插件：eslint, @eslint/js, typescript-eslint, eslint-plugin-vue, prettier, eslint-config-prettier, eslint-plugin-prettier
   > ✅ 已确认：web/package.json 中包含所有依赖，还额外安装了 globals 包。

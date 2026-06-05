@@ -32,6 +32,7 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -1089,8 +1090,8 @@ func provideRootCauseEngine(lg loggateway.Logger) *monitor.RootCauseEngine {
 	return monitor.NewRootCauseEngine(lg)
 }
 
-func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
-	return biz.NewSkillIntelligenceUsecase(repo, repo, repo, lg)
+func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+	return biz.NewSkillIntelligenceUsecase(repo, repo, repo, suggestionRepo, suggestionRepo, lg)
 }
 
 func provideSelfCheckScheduler(
@@ -1407,6 +1408,28 @@ func provideTaskOrchestrator(
 	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
 }
 
+// provideEcosystemPresetSeedPackFn provides the SeedPackFunc for EcosystemPresetUsecase.
+func provideEcosystemPresetSeedPackFn() biz.SeedPackFunc {
+	return func(ctx context.Context, client any, scenarioDir string, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error) {
+		return data.SeedPackIndustry(ctx, client.(*ent.Client), scenarioDir, industryKey, kindOverride, lg)
+	}
+}
+
+// provideEcosystemPresetScenarioDir provides the scenario directory for EcosystemPresetUsecase.
+func provideEcosystemPresetScenarioDir() string {
+	return biz.ScenarioDir()
+}
+
+// provideEcosystemPresetClientProvider provides a function that returns the ent.Client.
+func provideEcosystemPresetClientProvider(d *data.Data) func() any {
+	return func() any {
+		if d == nil {
+			return nil
+		}
+		return d.Ent()
+	}
+}
+
 // wireApp init kratos application.
 func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
@@ -1565,6 +1588,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.SkillLookupReader), new(biz.SkillRepo)),
 		wire.Bind(new(bizskill.SkillQueryReader), new(biz.SkillRepo)),
 		wire.Bind(new(biz.SkillIntelligenceRepo), new(*data.SkillIntelligenceRepo)),
+		wire.Bind(new(biz.SkillDedupReader), new(*data.SkillDedupRepo)),
+		wire.Bind(new(biz.SkillDedupWriter), new(*data.SkillDedupRepo)),
 		wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.SessionReader), new(biz.SessionRepo)),
 		wire.Bind(new(biztool.ToolInvocationReader), new(biz.ToolRepo)),
@@ -1593,6 +1618,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideSelfCheckCleanup,
 		provideSelfCheckJob,
 		provideWSTurnExecutor,
+		// Ecosystem preset: bind repo and provide usecase deps
+		wire.Bind(new(biz.EcosystemPresetRepo), new(*data.EcosystemPresetRepo)),
+		provideEcosystemPresetSeedPackFn,
+		provideEcosystemPresetScenarioDir,
+		provideEcosystemPresetClientProvider,
 		newApp,
 		provideWireOut,
 	))

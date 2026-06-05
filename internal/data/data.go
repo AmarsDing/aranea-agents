@@ -73,6 +73,7 @@ var ProviderSet = wire.NewSet(
 	NewBackgroundJobRepo,
 	NewA2ARepoFromData,
 	NewEcosystemRepo,
+	NewEcosystemPresetRepo,
 	NewEventStoreRepo,
 	NewFlowLogRepo,
 	NewWebhookRepo,
@@ -110,6 +111,8 @@ var ProviderSet = wire.NewSet(
 	NewSelfCheckReportRepo,
 	NewHealRecordRepo,
 	NewSkillIntelligenceRepo,
+	NewSkillDedupRepo,
+	NewSkillEvolutionSuggestionRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -797,17 +800,7 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Err(err))
 		return err
 	}
-	d.lazySeeders = map[string]*LazySeeder{
-		"pack_finance": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedPackIndustry(ctx, client, scenarioDir, "finance", lg)
-		}, lg),
-		"pack_selfmedia": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedPackIndustry(ctx, client, scenarioDir, "selfmedia", lg)
-		}, lg),
-		"pack_softwaredev": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedPackIndustry(ctx, client, scenarioDir, "softwaredev", lg)
-		}, lg),
-	}
+	d.lazySeeders = map[string]*LazySeeder{}
 
 	return nil
 }

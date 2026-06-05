@@ -195,6 +195,26 @@ export type SkillFileContent = {
   language: string;
 };
 
+export type SkillHealthDailyMetric = {
+  date: string;
+  invocations: number;
+  successes: number;
+  avg_duration_ms: number;
+};
+
+export type SkillHealthMetric = {
+  skill_id: string;
+  total_invocations_7d: number;
+  success_count_7d: number;
+  success_rate_7d: number;
+  p95_duration_ms_7d: number;
+  total_invocations_30d: number;
+  success_count_30d: number;
+  success_rate_30d: number;
+  p95_duration_ms_30d: number;
+  daily_metrics: SkillHealthDailyMetric[];
+};
+
 export type PaginatedResponse<T> = {
   items: T[];
   page: number;

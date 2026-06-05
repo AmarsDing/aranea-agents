@@ -21,15 +21,23 @@
       <div
         v-for="tr in result.teamResults"
         :key="tr.teamId"
-        class="synthesis-result-card__team-row row items-center q-gutter-sm"
+        class="synthesis-result-card__team-item"
       >
-        <q-icon
-          :name="tr.status === 'completed' ? 'check_circle' : 'error'"
-          size="14px"
-          :color="tr.status === 'completed' ? 'positive' : 'negative'"
-        />
-        <span class="synthesis-result-card__team-name ellipsis col">{{ tr.teamName }}</span>
-        <span class="synthesis-result-card__team-task text-caption text-grey-6 ellipsis">{{ tr.taskName }}</span>
+        <div class="synthesis-result-card__team-row row items-center q-gutter-sm">
+          <q-icon
+            :name="tr.status === 'completed' ? 'check_circle' : 'error'"
+            size="14px"
+            :color="tr.status === 'completed' ? 'positive' : 'negative'"
+          />
+          <span class="synthesis-result-card__team-name ellipsis col">{{ tr.teamName }}</span>
+          <span class="synthesis-result-card__team-task text-caption text-grey-6 ellipsis">{{ tr.taskName }}</span>
+        </div>
+        <div v-if="tr.summary" class="synthesis-result-card__team-summary text-caption text-grey-6 q-ml-lg">
+          {{ tr.summary }}
+        </div>
+        <div v-if="tr.keyFindings" class="synthesis-result-card__team-findings text-caption q-ml-lg" style="white-space: pre-line; max-height: 60px; overflow-y: auto;">
+          {{ tr.keyFindings }}
+        </div>
       </div>
     </div>
 
@@ -117,6 +125,9 @@ const renderedContent = computed(() => {
 .synthesis-result-card__team-row
   padding: 2px 0
 
+.synthesis-result-card__team-item
+  padding: 2px 0
+
 .synthesis-result-card__team-name
   font-size: var(--text-xs)
   font-weight: 600
@@ -124,6 +135,18 @@ const renderedContent = computed(() => {
 
 .synthesis-result-card__team-task
   max-width: 120px
+
+.synthesis-result-card__team-summary
+  font-size: 11px
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+  padding: 1px 0
+
+.synthesis-result-card__team-findings
+  font-size: 11px
+  color: var(--color-text-tertiary)
+  padding: 1px 0
 
 .synthesis-result-card__meta
   text-align: right

@@ -16,6 +16,7 @@ export type Team = {
   taxonomy_industry_id: string;
   readonly?: boolean;
   source?: string; // user | system | imported
+  kind?: string; // system_builtin | ecosystem_preset | marketplace | certified
   created_at: string;
   updated_at: string;
   deleted_at: string;

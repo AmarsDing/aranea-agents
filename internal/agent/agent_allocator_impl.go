@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,20 +13,20 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/google/uuid"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 )
 
 // agentAllocatorImpl implements biz.AgentAllocatorPort.
 type agentAllocatorImpl struct {
-	repo           biz.AllocationPlanRepository
-	agentReader    biz.AgentReader
-	perfRepo       biz.AgentPerformanceRepository
-	capBuilder     *AgentCapabilityBuilder
-	catalog        *biz.LlmProviderModelUsecase
-	httpClient     *http.Client
-	bus            contract.Bus
-	lg             loggateway.Logger
+	repo        biz.AllocationPlanRepository
+	agentReader biz.AgentReader
+	perfRepo    biz.AgentPerformanceRepository
+	capBuilder  *AgentCapabilityBuilder
+	catalog     *biz.LlmProviderModelUsecase
+	httpClient  *http.Client
+	bus         contract.Bus
+	lg          loggateway.Logger
 }
 
 var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
@@ -159,6 +159,37 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		assignedType = "team"
 	}
 
+	// Priority: use AgentPerformance.GetBestForTaskType if performance data exists.
+	if impl.perfRepo != nil && len(subTask.RequiredCapabilities) > 0 {
+		taskType := subTask.RequiredCapabilities[0]
+		bestPerfs, err := impl.perfRepo.GetBestForTaskType(ctx, taskType, 1)
+		if err == nil && len(bestPerfs) > 0 {
+			bestAgentKey := bestPerfs[0].AgentKey
+			// Find the matching capability for display name
+			for _, cap := range capabilities {
+				if cap.AgentKey == bestAgentKey {
+					impl.lg.Info("AgentPerformance.GetBestForTaskType 命中",
+						loggateway.StepID(biz.SpiritStepAllocatorMatch),
+						loggateway.Str("trace_id", traceID),
+						loggateway.Str("sub_task_id", subTask.ID),
+						loggateway.Str("agent_key", bestAgentKey),
+						loggateway.Float64("success_rate", bestPerfs[0].SuccessRate),
+					)
+					return biz.TaskAllocation{
+						SubTaskID:    subTask.ID,
+						SubTaskName:  subTask.Name,
+						AssignedType: assignedType,
+						AssignedKey:  bestAgentKey,
+						AssignedName: cap.DisplayName,
+						MatchScore:   bestPerfs[0].SuccessRate,
+						MatchLayer:   "performance",
+						MatchReason:  fmt.Sprintf("历史性能最优 (成功率 %.2f, DQ %.2f)", bestPerfs[0].SuccessRate, bestPerfs[0].AvgDQScore),
+					}, nil
+				}
+			}
+		}
+	}
+
 	// Layer 1: Exact match — find agents whose Roles overlap with required_capabilities
 	bestMatch, bestScore, matchReason := impl.exactMatch(subTask.RequiredCapabilities, capabilities)
 
@@ -209,15 +240,15 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 			}
 		}
 		return biz.TaskAllocation{
-			SubTaskID:    subTask.ID,
-			SubTaskName:  subTask.Name,
-			AssignedType: assignedType,
-			AssignedKey:  llmMatch,
-			AssignedName: displayName,
-			MatchScore:   bestScore, // carry forward the best exact score as fallback reference
-			MatchLayer:   "llm_cold_start",
-			MatchReason:  "LLM 冷启动匹配",
-			FallbackKey:  bestMatch.AgentKey,
+			SubTaskID:     subTask.ID,
+			SubTaskName:   subTask.Name,
+			AssignedType:  assignedType,
+			AssignedKey:   llmMatch,
+			AssignedName:  displayName,
+			MatchScore:    bestScore, // carry forward the best exact score as fallback reference
+			MatchLayer:    "llm_cold_start",
+			MatchReason:   "LLM 冷启动匹配",
+			FallbackKey:   bestMatch.AgentKey,
 			FallbackScore: bestScore,
 		}, nil
 	}
@@ -374,10 +405,16 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 
 // computeSemanticScore computes a TF-IDF-like keyword overlap score between
 // a task description and an agent's capability profile.
-// TODO(debt): DEV-05 — Layer 2 uses TF-IDF placeholder. Replace with true embedding
-// cosine similarity via pgvector or the project's knowledge.Embedder when agent
-// capability vectors are persisted.
-// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-05
+//
+// TODO(embedding-upgrade): The project has an Embedder (internal/knowledge/embedder.go)
+// supporting OpenAI/Ollama/Gemini/HuggingFace backends, but it is not wired into the
+// allocator. To upgrade Layer 2 from TF-IDF to true embedding cosine similarity:
+//  1. Add knowledge.BatchEmbedder as a dependency of agentAllocatorImpl
+//  2. Persist agent capability vectors (pre-computed embeddings of role/domain/tool/skill text)
+//  3. Replace this function with embedding cosine similarity via pgvector or in-memory comparison
+//
+// The existing Embedder is only available in the knowledge pipeline, not the agent allocation pipeline.
+// Until wired, TF-IDF remains the Layer 2 strategy.
 func computeSemanticScore(taskDesc string, cap biz.AgentCapability) float64 {
 	// Build a text corpus from the agent's capability profile
 	agentText := cap.DisplayName + " " + cap.Description
@@ -497,6 +534,37 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 		assignedType = "team"
 	}
 
+	// Priority: use AgentPerformance.GetBestForTaskType if performance data exists.
+	if impl.perfRepo != nil {
+		capHints := extractCapabilityHints(taskPlan.UserMessage)
+		if len(capHints) > 0 {
+			bestPerfs, err := impl.perfRepo.GetBestForTaskType(ctx, capHints[0], 1)
+			if err == nil && len(bestPerfs) > 0 {
+				bestAgentKey := bestPerfs[0].AgentKey
+				for _, cap := range capabilities {
+					if cap.AgentKey == bestAgentKey {
+						impl.lg.Info("AgentPerformance.GetBestForTaskType 命中 (whole plan)",
+							loggateway.StepID(biz.SpiritStepAllocatorMatch),
+							loggateway.Str("trace_id", traceID),
+							loggateway.Str("agent_key", bestAgentKey),
+							loggateway.Float64("success_rate", bestPerfs[0].SuccessRate),
+						)
+						return biz.TaskAllocation{
+							SubTaskID:    "whole",
+							SubTaskName:  taskPlan.UserMessage,
+							AssignedType: assignedType,
+							AssignedKey:  bestAgentKey,
+							AssignedName: cap.DisplayName,
+							MatchScore:   bestPerfs[0].SuccessRate,
+							MatchLayer:   "performance",
+							MatchReason:  fmt.Sprintf("历史性能最优 (成功率 %.2f, DQ %.2f)", bestPerfs[0].SuccessRate, bestPerfs[0].AvgDQScore),
+						}, nil
+					}
+				}
+			}
+		}
+	}
+
 	// Try exact match using user message keywords as capability hints
 	capHints := extractCapabilityHints(taskPlan.UserMessage)
 	bestMatch, bestScore, matchReason := impl.exactMatch(capHints, capabilities)
@@ -546,15 +614,15 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 			}
 		}
 		return biz.TaskAllocation{
-			SubTaskID:    "whole",
-			SubTaskName:  taskPlan.UserMessage,
-			AssignedType: assignedType,
-			AssignedKey:  llmMatch,
-			AssignedName: displayName,
-			MatchScore:   bestScore,
-			MatchLayer:   "llm_cold_start",
-			MatchReason:  "LLM 冷启动匹配",
-			FallbackKey:  bestMatch.AgentKey,
+			SubTaskID:     "whole",
+			SubTaskName:   taskPlan.UserMessage,
+			AssignedType:  assignedType,
+			AssignedKey:   llmMatch,
+			AssignedName:  displayName,
+			MatchScore:    bestScore,
+			MatchLayer:    "llm_cold_start",
+			MatchReason:   "LLM 冷启动匹配",
+			FallbackKey:   bestMatch.AgentKey,
 			FallbackScore: bestScore,
 		}, nil
 	}
@@ -765,11 +833,11 @@ func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, pl
 
 	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritAllocationCreated, "agent-allocator", spiritSessionID)
 	env.Metadata = map[string]any{
-		"allocation_id":      plan.ID,
-		"task_plan_id":       plan.TaskPlanID,
-		"spirit_session_id":  spiritSessionID,
-		"allocation_count":   len(plan.Allocations),
-		"status":             string(plan.Status),
+		"allocation_id":     plan.ID,
+		"task_plan_id":      plan.TaskPlanID,
+		"spirit_session_id": spiritSessionID,
+		"allocation_count":  len(plan.Allocations),
+		"status":            string(plan.Status),
 	}
 	impl.bus.Publish(ctx, env)
 }

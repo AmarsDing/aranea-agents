@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { listSpiritTeams } from '../../features/spirit/api';
+import { listSpiritTeams, cancelSpiritTeam } from '../../features/spirit/api';
 import type { SpiritTeam, SpiritPanelMode, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
 import type {
@@ -91,7 +91,12 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     expandedTeamIds.value = next;
   }
 
-  async function archiveTeam(teamId: string) {
+  async function cancelTeam(teamId: string) {
+    try {
+      await cancelSpiritTeam(teamId);
+    } catch {
+      // 即使 API 调用失败也本地移除，保证 UI 响应
+    }
     teams.value = teams.value.filter((t) => t.id !== teamId);
     if (activeTeamId.value === teamId) {
       returnToSpirit();
@@ -297,7 +302,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     selectMember,
     returnToSpirit,
     toggleTeamExpand,
-    archiveTeam,
+    cancelTeam,
     updateTeamProgress,
     updateTeamStatus,
     addTeam,

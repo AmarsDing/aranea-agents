@@ -30,3 +30,39 @@ export type TestWebResearchResult = {
   resultCount?: number;
   latencyMs?: number;
 };
+
+// Ecosystem preset types
+
+export interface IndustryLoadInfo {
+  loaded: boolean;
+  loaded_at?: string;
+  agents?: number;
+  teams?: number;
+  taxonomy_nodes?: number;
+}
+
+export type EcosystemLoadedStatus = Record<string, IndustryLoadInfo>;
+
+export interface EcosystemLoadResult {
+  agents_created: number;
+  teams_created: number;
+  taxonomy_nodes: number;
+}
+
+export interface EcosystemLoadResponse {
+  results: Record<string, EcosystemLoadResult>;
+  already_loaded?: string[];
+  errors?: Record<string, string>;
+}
+
+export interface EcosystemUnloadResult {
+  agents_deleted: number;
+  teams_deleted: number;
+  taxonomy_nodes_deleted: number;
+  teams_modified?: number;
+}
+
+export interface EcosystemUnloadResponse {
+  results: Record<string, EcosystemUnloadResult>;
+  errors?: Record<string, string>;
+}

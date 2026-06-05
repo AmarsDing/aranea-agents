@@ -4,18 +4,20 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"testing"
-	"time"
 
+	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/ent/migrate"
+	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/testutil"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	_ "github.com/lib/pq"
 )
 
-// TestIntegrationChatAPI tests the Chat API endpoint with a real database.
-// Run with: go test -tags=integration -run TestIntegrationChatAPI
+// TestIntegrationChatAPI tests Chat-related database operations with a real PostgreSQL container.
+// Run with: go test -tags=integration ./internal/service/... -run TestIntegrationChatAPI -count=1
 func TestIntegrationChatAPI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -30,49 +32,80 @@ func TestIntegrationChatAPI(t *testing.T) {
 
 	t.Logf("Postgres DSN: %s", pg.DSN())
 
-	// Verify database connectivity
-	db, err := sql.Open("postgres", pg.DSN())
+	// Create Ent Client with PostgreSQL driver
+	drv, err := entsql.Open(dialect.Postgres, pg.DSN())
 	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
+		t.Fatalf("failed to open ent driver: %v", err)
 	}
-	defer db.Close()
+	client := ent.NewClient(ent.Driver(drv))
+	defer client.Close()
 
-	if err := db.PingContext(ctx); err != nil {
-		t.Fatalf("failed to ping database: %v", err)
+	// Run schema migration
+	if err := client.Schema.Create(ctx, migrate.WithDropIndex(true)); err != nil {
+		t.Fatalf("failed to create schema: %v", err)
 	}
-	t.Log("Database connection established")
+	t.Log("Ent schema migration completed")
 
-	// Verify pgvector extension is available
-	var extVersion string
-	row := db.QueryRowContext(ctx, "SELECT extversion FROM pg_extension WHERE extname = 'vector'")
-	if err := row.Scan(&extVersion); err != nil {
-		t.Fatalf("pgvector extension not available: %v", err)
-	}
-	t.Logf("pgvector extension version: %s", extVersion)
-
-	// Verify basic table creation works
-	tableName := fmt.Sprintf("test_chat_%d", time.Now().UnixNano())
-	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		"CREATE TABLE %s (id SERIAL PRIMARY KEY, session_id TEXT NOT NULL, content TEXT)", tableName))
+	// Test: Create a session
+	sess, err := client.Session.Create().
+		SetID("test-session-int-001").
+		SetTitle("Integration Test Session").
+		SetAgentID("test-agent").
+		Save(ctx)
 	if err != nil {
-		t.Fatalf("failed to create test table: %v", err)
+		t.Fatalf("failed to create session: %v", err)
 	}
-	defer db.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
+	t.Logf("Created session: id=%s title=%s", sess.ID, sess.Title)
 
-	// Insert and query
-	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		"INSERT INTO %s (session_id, content) VALUES ($1, $2)", tableName), "sess-1", "hello")
+	// Assert: Session was created with correct fields
+	if sess.Title != "Integration Test Session" {
+		t.Fatalf("expected session title 'Integration Test Session', got %q", sess.Title)
+	}
+	if sess.ID != "test-session-int-001" {
+		t.Fatalf("expected session id 'test-session-int-001', got %q", sess.ID)
+	}
+
+	// Test: Retrieve session by ID
+	retrieved, err := client.Session.Get(ctx, sess.ID)
 	if err != nil {
-		t.Fatalf("failed to insert: %v", err)
+		t.Fatalf("failed to retrieve session: %v", err)
+	}
+	if retrieved.Title != sess.Title {
+		t.Fatalf("expected retrieved title %q, got %q", sess.Title, retrieved.Title)
 	}
 
-	var content string
-	row = db.QueryRowContext(ctx, fmt.Sprintf("SELECT content FROM %s WHERE session_id = $1", tableName), "sess-1")
-	if err := row.Scan(&content); err != nil {
-		t.Fatalf("failed to query: %v", err)
+	// Test: Query sessions by title
+	sessions, err := client.Session.Query().
+		Where(session.Title("Integration Test Session")).
+		All(ctx)
+	if err != nil {
+		t.Fatalf("failed to query sessions by title: %v", err)
 	}
-	if content != "hello" {
-		t.Fatalf("expected content 'hello', got %q", content)
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session with title 'Integration Test Session', got %d", len(sessions))
 	}
-	t.Log("Chat integration test passed: DB connectivity + CRUD verified")
+
+	// Test: Update session title
+	updated, err := client.Session.UpdateOneID(sess.ID).
+		SetTitle("Updated Integration Session").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("failed to update session: %v", err)
+	}
+	if updated.Title != "Updated Integration Session" {
+		t.Fatalf("expected updated title 'Updated Integration Session', got %q", updated.Title)
+	}
+
+	// Test: Delete session
+	err = client.Session.DeleteOneID(sess.ID).Exec(ctx)
+	if err != nil {
+		t.Fatalf("failed to delete session: %v", err)
+	}
+
+	// Assert: Session no longer exists
+	_, err = client.Session.Get(ctx, sess.ID)
+	if err == nil {
+		t.Fatal("expected error when getting deleted session, got nil")
+	}
+	t.Log("Chat integration test passed: Session CRUD verified via Ent Client")
 }

@@ -38,5 +38,5 @@ func ShouldRecordTaskDeadLetter(rawDefinitionJSON string) bool {
 	if err != nil || spec.FailurePolicy == nil {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(spec.FailurePolicy.OnError), "halt")
+	return strings.EqualFold(strings.TrimSpace(spec.FailurePolicy.OnError), FailurePolicyHalt)
 }

@@ -44,6 +44,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/mcp-servers', icon: 'extension', labelKey: 'menu.mcp' },
       { to: '/tools', icon: 'handyman', labelKey: 'menu.tools' },
       { to: '/skills', icon: 'psychology', labelKey: 'menu.skills' },
+      { to: '/skills/evolution-suggestions', icon: 'auto_fix_high', labelKey: 'menu.evolutionSuggestions' },
       { to: '/plugins', icon: 'tune', labelKey: 'menu.plugins' },
       { to: '/hooks', icon: 'link', labelKey: 'menu.hooks' },
       { to: '/webhooks', icon: 'webhook', labelKey: 'menu.webhooks' },

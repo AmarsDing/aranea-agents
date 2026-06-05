@@ -11,7 +11,7 @@ import (
 // CompileToGraphRuntimeConfig builds a graph config for GraphAgent team runtime execution.
 // When linked_graph_id is set, loads the persisted graph asset before mode/embedded compile.
 func CompileToGraphRuntimeConfig(def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
-	ct, err := CompileToCompiledTeam(context.Background(), def, "", agentKey, nil, lg)
+	ct, err := CompileToCompiledTeam(context.Background(), def, "", agentKey, nil, lg, nil)
 	if err != nil {
 		return biz.GraphBuildConfig{}, err
 	}
@@ -26,7 +26,7 @@ func CompileToGraphRuntimeConfigFromJSON(
 	linked GraphBuildConfigLoader,
 	lg loggateway.Logger,
 ) (*biz.CompiledTeam, error) {
-	return CompileToCompiledTeam(ctx, def, rawDefinitionJSON, agentKey, linked, lg)
+	return CompileToCompiledTeam(ctx, def, rawDefinitionJSON, agentKey, linked, lg, nil)
 }
 
 // applyAdaptiveAgentDestinations moves transfer overlay edges into node Destinations

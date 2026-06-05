@@ -50,7 +50,7 @@ func (Agent) Fields() []ent.Field {
 		field.String("deleted_at").Default(""),
 		// CLI-20: system admin agent support.
 		field.Bool("readonly").Default(false).Comment("system agents cannot be deleted"),
-		field.Enum("kind").Values("user", "system", "system_builtin", "industry_template", "marketplace", "certified").Default("user").Comment("agent kind: user | system | system_builtin | industry_template | marketplace | certified"),
+		field.Enum("kind").Values("user", "system_builtin", "ecosystem_preset", "marketplace", "certified").Default("user").Comment("agent kind: user | system_builtin | ecosystem_preset | marketplace | certified"),
 		field.String("position_key").Default("").Comment("FK to positions.key"),
 		field.String("taxonomy_position_id").Default("").Comment("FK to taxonomy positions"),
 		field.String("agent_variant").Default("general").Comment("variant within position: general/code_review/architect/..."),

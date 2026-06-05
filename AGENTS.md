@@ -25,11 +25,12 @@
 
 | 任务 | SKILL | 说明 |
 |------|-------|------|
-| 需求探索 | `openspec-explore` | 问题分析、方案对比（只思考不编码） |
-| 提案创建 | `openspec-propose` | 生成 proposal+design+tasks |
-| 实施执行 | `openspec-apply-change` | 按 tasks.md 逐步实施变更 |
-| 归档 | `openspec-archive-change` | 变更完成后归档、同步主规格 |
-| 开发纪律 | `superpowers-workflow` | TDD+两阶段审查+验证前置 |
+| 统一入口 | `sddflow` | OpenSpec + Superpowers 编排器，自动路由阶段 |
+| 需求探索 | `sddflow-brainstorming` | `/sddflow brainstorming` — 探索需求+设计 |
+| 生成规格 | `sddflow-spec` | `/sddflow spec` — specs + plan-ready.md |
+| TDD 实施 | `sddflow-build` | `/sddflow build` — 子代理执行+两阶段审查 |
+| 需求变更 | `sddflow-amend` | `/sddflow amend` — 回退修改规格 |
+| 验证归档 | `sddflow-close` | `/sddflow close` — 全量验证+归档 |
 | 测试循环 | `aranea-test-loop` | 运行测试、修复失败、生成报告 |
 
 ### 其他
@@ -58,7 +59,8 @@
 
 ## 任务执行
 
-- 列假设 → 编码 → 分级验证 → 通过后再扩 scope
+- **新变更必须走 sddflow 流程**：`/sddflow brainstorming` → `/sddflow spec` → `/sddflow build` → `/sddflow close`
+- 需求变更时用 `/sddflow amend`，禁止直接改代码
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 - **开发前必读模块交叉参考手册**（`openspec/specs/module-cross-reference-full.md`），确认所有关联影响面
 
@@ -66,5 +68,6 @@
 
 - **OpenSpec 文档必须通过 OpenSpec 命令维护**，禁止手动创建、编辑、移动、删除、重命名 `openspec/` 目录下的任何文件
 - 主规格库 `openspec/specs/` 的更新只能通过 `openspec archive` 同步，禁止直接编辑
+- **`openspec archive` 会自动创建 specs 目录并同步 delta specs，禁止在归档前手动创建目录或复制文件**
 - 如需修复格式问题，必须通过 OpenSpec 命令操作
 - **唯一例外**：用户明确要求手动操作时，须在操作前确认并记录原因

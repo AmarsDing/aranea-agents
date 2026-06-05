@@ -25,6 +25,7 @@ type embeddedGraphNode struct {
 	Label              string   `json:"label"`
 	AgentID            string   `json:"agent_id"`
 	Role               string   `json:"role"`
+	FuncRef            string   `json:"func_ref"`
 	SubgraphID         string   `json:"subgraph_id"`
 	AssignmentMode     string   `json:"assignment_mode"`
 	AssignmentStrategy string   `json:"assignment_strategy"`
@@ -70,7 +71,7 @@ func parseEmbeddedGraph(rawDefinitionJSON string) (*embeddedGraphSpec, bool) {
 
 func isEmbeddedExecutableNode(nodeType string) bool {
 	switch strings.ToLower(strings.TrimSpace(nodeType)) {
-	case "agent", "task", "review", "subgraph":
+	case "agent", "task", "review", "subgraph", "function":
 		return true
 	default:
 		return false
@@ -197,6 +198,16 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 			}
 			executableIDs[id] = struct{}{}
 			subgraphs = append(subgraphs, biz.SubgraphDef{ID: id, GraphID: ref, BuildConfig: subCfg})
+		case "function":
+			funcRef := strings.TrimSpace(n.FuncRef)
+			if funcRef == "" {
+				return biz.GraphBuildConfig{}, nil, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("function node %q requires func_ref", id))
+			}
+			executableIDs[id] = struct{}{}
+			nd := compileEmbeddedBizNode(n, biz.NodeDef{
+				ID: id, Type: biz.NodeTypeFunction, FuncRef: funcRef, Description: strings.TrimSpace(n.Label),
+			})
+			nodes = append(nodes, nd)
 		}
 	}
 	if len(executableIDs) == 0 {

@@ -63,34 +63,25 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 }
 
 // SeedPackIndustry 使用 Pack 引擎加载行业数据。
-// 在 Lazy 阶段调用，使用 overwrite 冲突策略。
-func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, industryKey string, lg loggateway.Logger) error {
-	// 版本门控
-	versionKey := industryPackVersion(industryKey)
-	applied, err := isMigrationApplied(ctx, client, versionKey, lg)
-	if err != nil {
-		return fmt.Errorf("check seed pack %s: %w", industryKey, err)
-	}
-	if applied {
-		return nil
-	}
-
+// 在 API 触发时调用，使用 overwrite 冲突策略。
+// Returns (agentsCreated, teamsCreated, error).
+func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error) {
 	// 从现有 agents.yaml 加载并转换为 Pack 格式
 	spec, loadErr := loader.LoadIndustrySpec(scenarioDir, industryKey)
 	if loadErr != nil {
-		return fmt.Errorf("load industry spec %s: %w", industryKey, loadErr)
+		return 0, 0, fmt.Errorf("load industry spec %s: %w", industryKey, loadErr)
 	}
 
 	p, convertErr := pack.ConvertIndustrySpecToPack(spec)
 	if convertErr != nil {
-		return fmt.Errorf("convert industry spec %s to pack: %w", industryKey, convertErr)
+		return 0, 0, fmt.Errorf("convert industry spec %s to pack: %w", industryKey, convertErr)
 	}
 
 	// 创建 Importer 并导入
 	importer := newPackImporter(client, lg)
-	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite)
+	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride(kindOverride))
 	if importErr != nil {
-		return fmt.Errorf("import %s pack: %w", industryKey, importErr)
+		return 0, 0, fmt.Errorf("import %s pack: %w", industryKey, importErr)
 	}
 
 	lg.Info(fmt.Sprintf("%s pack seed completed", industryKey),
@@ -103,38 +94,7 @@ func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, indu
 		loggateway.Int("teams_updated", result.TeamsUpdated),
 		loggateway.Int("failures", len(result.Failures)))
 
-	// 记录版本
-	if recordErr := recordMigrationApplied(ctx, client, versionKey, fmt.Sprintf("pack_%s_v1", industryKey), lg); recordErr != nil {
-		return fmt.Errorf("record pack %s v1: %w", industryKey, recordErr)
-	}
-
-	return nil
-}
-
-// industryPackVersion 返回行业 Pack 的版本号常量。
-func industryPackVersion(industryKey string) int {
-	switch industryKey {
-	case "finance":
-		return SeedPackFinanceV1
-	case "selfmedia":
-		return SeedPackSelfmediaV1
-	case "softwaredev":
-		return SeedPackSoftwaredevV1
-	default:
-		return SeedPackIndustryBase + hashIndustryKey(industryKey)
-	}
-}
-
-// hashIndustryKey 将行业 key 映射为版本号偏移量。
-func hashIndustryKey(key string) int {
-	h := 0
-	for _, c := range key {
-		h = h*31 + int(c)
-	}
-	if h < 0 {
-		h = -h
-	}
-	return h % 1000
+	return result.AgentsCreated, result.TeamsCreated, nil
 }
 
 // seedGraphTemplatesCompat 写入 graph_definitions 表。

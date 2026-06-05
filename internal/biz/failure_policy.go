@@ -12,11 +12,6 @@ type TeamFailurePolicy struct {
 	OnError        string                         `json:"on_error,omitempty"` // await_review | halt
 }
 
-const (
-	ParallelFailContinue = "continue"
-	ParallelFailAbort    = "abort"
-)
-
 // TeamRetryPolicy maps to graph.RetryPolicy at compile time.
 type TeamRetryPolicy struct {
 	MaxAttempts       int     `json:"max_attempts"`
@@ -31,16 +26,6 @@ type TeamNodeFailureOverride struct {
 	Retry         *TeamRetryPolicy `json:"retry"`
 	FallbackAgent string           `json:"fallback_agent"`
 }
-
-const (
-	FailureDefaultRetryThenBlock = "retry_then_block"
-	FailureDefaultSkip           = "skip"
-	FailureDefaultFailFast       = "fail_fast"
-	FailureOnFailureSkip         = "skip_on_failure"
-	SkipNodeFuncRef              = "orchestration.skip"
-	SkippedNodesStateKey         = "_skipped_nodes"
-	SkippedNodeOutputKey         = "_skipped_node"
-)
 
 // ApplyFailurePolicy annotates graph nodes with retry / skip / fallback metadata.
 func ApplyFailurePolicy(cfg GraphBuildConfig, policy *TeamFailurePolicy) GraphBuildConfig {
@@ -82,7 +67,7 @@ func ApplyCircuitBreakerPolicy(cfg GraphBuildConfig, policy *CircuitBreakerPolic
 		return cfg
 	}
 	for i := range cfg.Nodes {
-		if cfg.Nodes[i].Type != "agent" && cfg.Nodes[i].Type != "llm" && cfg.Nodes[i].Type != "tool" {
+		if cfg.Nodes[i].Type != NodeTypeAgent && cfg.Nodes[i].Type != NodeTypeLLM && cfg.Nodes[i].Type != NodeTypeTool {
 			continue
 		}
 		if cfg.Nodes[i].RetryMaxAttempts <= 0 {
@@ -150,7 +135,7 @@ func ApplySkipNodeSemantics(cfg GraphBuildConfig) GraphBuildConfig {
 			continue
 		}
 		hasSkip = true
-		cfg.Nodes[i].Type = "function"
+		cfg.Nodes[i].Type = NodeTypeFunction
 		cfg.Nodes[i].FuncRef = SkipNodeFuncRef
 		cfg.Nodes[i].AgentName = ""
 	}
@@ -231,7 +216,7 @@ func parallelBranchNodeIDs(cfg GraphBuildConfig, parallelBranchIDs []string) map
 	feeders := map[string]struct{}{}
 	outCount := map[string]int{}
 	for _, e := range cfg.Edges {
-		if strings.EqualFold(strings.TrimSpace(e.Kind), "transfer") {
+		if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
 			continue
 		}
 		outCount[e.From]++
@@ -251,7 +236,7 @@ func parallelBranchNodeIDs(cfg GraphBuildConfig, parallelBranchIDs []string) map
 			continue
 		}
 		for _, e := range cfg.Edges {
-			if strings.EqualFold(strings.TrimSpace(e.Kind), "transfer") {
+			if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
 				continue
 			}
 			if e.From == from && e.To != finish {
@@ -269,7 +254,7 @@ func FilterVisualizationEdges(cfg GraphBuildConfig) GraphBuildConfig {
 	}
 	out := make([]EdgeDef, 0, len(cfg.Edges))
 	for _, e := range cfg.Edges {
-		if strings.EqualFold(strings.TrimSpace(e.Kind), "transfer") {
+		if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
 			continue
 		}
 		out = append(out, e)

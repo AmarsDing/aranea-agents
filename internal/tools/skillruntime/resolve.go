@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools/skillrecommend"
 	"aranea-agents/internal/tools/skillrouter"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -16,6 +18,8 @@ import (
 type SkillToolsetOptions struct {
 	Runtime   RuntimeSettings
 	UserQuery string
+	// HealthAgg provides historical performance data for ranking. If nil, ranking is skipped.
+	HealthAgg biz.SkillHealthAggregator
 }
 
 // ResolveResult holds the output of skill resolution with per-slug reasons.
@@ -107,6 +111,15 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 		}
 		return scored[i].slug < scored[j].slug
 	})
+
+	// Apply historical performance ranking if aggregator is available.
+	if opts != nil && opts.HealthAgg != nil {
+		candidates := buildRankCandidates(ctx, scored, opts.HealthAgg, lg)
+		if len(candidates) > 0 {
+			ranked := skillrecommend.Rank(candidates, skillrecommend.DefaultRankFactors())
+			applyRankResults(scored, ranked, reasons)
+		}
+	}
 
 	out := make([]string, 0, len(scored))
 	for _, s := range scored {
@@ -309,4 +322,57 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 		out = append(out, slugScore{slug: c.Slug, score: sc, reason: matchDetail})
 	}
 	return out
+}
+
+// rankLookback is the time window for historical health metrics used in ranking.
+const rankLookback = 30 * 24 * time.Hour
+
+// buildRankCandidates converts scored slugs into skillrecommend.Candidate structs
+// by fetching historical health metrics from the aggregator.
+func buildRankCandidates(ctx context.Context, scored []slugScore, healthAgg biz.SkillHealthAggregator, lg loggateway.Logger) []skillrecommend.Candidate {
+	since := time.Now().UTC().Add(-rankLookback)
+	candidates := make([]skillrecommend.Candidate, 0, len(scored))
+	for _, s := range scored {
+		c := skillrecommend.Candidate{
+			Slug:               s.slug,
+			SemanticSimilarity: float64(s.score) / 1000.0,
+		}
+		if c.SemanticSimilarity > 1.0 {
+			c.SemanticSimilarity = 1.0
+		}
+		metrics, err := healthAgg.GetHealthMetrics(ctx, s.slug, since)
+		if err != nil {
+			lg.Warn("health metrics unavailable for ranking; using defaults",
+				loggateway.StepID("tool.skillruntime.health_metrics_fail"),
+				loggateway.Err(err))
+		} else if metrics != nil {
+			c.HistoricalSuccess = metrics.SuccessRate
+			if metrics.AvgDurationMS > 0 {
+				c.LatencyInverse = 1.0 / (1.0 + metrics.AvgDurationMS/1000.0)
+			}
+		}
+		candidates = append(candidates, c)
+	}
+	return candidates
+}
+
+// applyRankResults reorders scored candidates based on Rank results and updates reasons.
+func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, reasons map[string]string) {
+	rankMap := make(map[string]skillrecommend.RankResult, len(ranked))
+	for _, r := range ranked {
+		rankMap[r.Slug] = r
+	}
+	for i := range scored {
+		if r, ok := rankMap[scored[i].slug]; ok {
+			scored[i].score = int(r.Score * 10000)
+			scored[i].reason += " | " + skillrecommend.FormatSelectionReason(r)
+			reasons[scored[i].slug] = scored[i].reason
+		}
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score != scored[j].score {
+			return scored[i].score > scored[j].score
+		}
+		return scored[i].slug < scored[j].slug
+	})
 }

@@ -222,6 +222,99 @@
                     {{ t('settingsPage.evalLLM.configured') }}
                   </q-banner>
                 </section>
+
+                <section class="settings-section">
+                  <div class="section-heading">
+                    <div class="section-heading__main">
+                      <div class="section-title">
+                        <q-icon name="park" size="sm" color="primary" />
+                        <span class="section-title__text">附带生态</span>
+                      </div>
+                      <p class="settings-section__hint">加载行业预设生态，自动创建对应的 Agent、Team 和分类节点。</p>
+                    </div>
+                  </div>
+
+                  <div v-if="ecosystemLoading" class="row items-center q-py-sm">
+                    <q-spinner-dots color="primary" size="28px" />
+                    <span class="q-ml-sm text-grey-7">正在加载生态状态…</span>
+                  </div>
+
+                  <template v-else-if="ecosystemEntries.length > 0">
+                    <div class="ecosystem-industry-list">
+                      <div
+                        v-for="[industry, info] in ecosystemEntries"
+                        :key="industry"
+                        class="ecosystem-industry-row"
+                      >
+                        <div class="ecosystem-industry-row__label">
+                          <span class="text-body2 text-weight-medium">{{ industry }}</span>
+                          <q-badge
+                            v-if="info.loaded"
+                            color="positive"
+                            outline
+                            label="已加载"
+                            class="q-ml-sm"
+                          />
+                          <q-badge
+                            v-else
+                            color="grey"
+                            outline
+                            label="未加载"
+                            class="q-ml-sm"
+                          />
+                        </div>
+                        <div v-if="info.loaded" class="ecosystem-industry-row__stats text-caption text-grey-7">
+                          <span>Agent: {{ info.agents ?? 0 }}</span>
+                          <span class="q-ml-md">Team: {{ info.teams ?? 0 }}</span>
+                          <span class="q-ml-md">分类节点: {{ info.taxonomy_nodes ?? 0 }}</span>
+                        </div>
+                        <div class="ecosystem-industry-row__action">
+                          <q-btn
+                            v-if="!info.loaded"
+                            flat
+                            dense
+                            no-caps
+                            color="primary"
+                            icon="download"
+                            label="加载"
+                            :loading="ecosystemActionLoading === industry"
+                            @click="handleLoadIndustry(industry)"
+                          />
+                          <q-btn
+                            v-else
+                            flat
+                            dense
+                            no-caps
+                            color="negative"
+                            icon="delete_outline"
+                            label="卸载"
+                            :loading="ecosystemActionLoading === industry"
+                            @click="confirmUnloadIndustry(industry, info)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <q-btn
+                      v-if="unloadedIndustries.length > 0"
+                      flat
+                      no-caps
+                      color="primary"
+                      icon="download"
+                      label="加载全部附带生态"
+                      class="q-mt-sm"
+                      :loading="ecosystemActionLoading === '__all__'"
+                      @click="handleLoadAll"
+                    />
+                  </template>
+
+                  <q-banner v-else dense rounded class="settings-info-banner">
+                    <template #avatar>
+                      <q-icon name="info" color="grey" />
+                    </template>
+                    暂无可用生态预设。
+                  </q-banner>
+                </section>
               </div>
 
               <div class="settings-footer">
@@ -255,18 +348,54 @@
         </q-tab-panels>
       </q-card>
     </div>
+
+    <q-dialog v-model="unloadDialogVisible" persistent>
+      <q-card style="min-width: 340px">
+        <q-card-section>
+          <div class="text-h6">确认卸载</div>
+        </q-card-section>
+        <q-card-section>
+          <p>即将卸载行业 <strong>{{ unloadTargetIndustry }}</strong>，将删除以下资源：</p>
+          <ul class="q-pl-md q-mt-sm">
+            <li>Agent: {{ unloadTargetInfo?.agents ?? 0 }} 个</li>
+            <li>Team: {{ unloadTargetInfo?.teams ?? 0 }} 个</li>
+            <li>分类节点: {{ unloadTargetInfo?.taxonomy_nodes ?? 0 }} 个</li>
+          </ul>
+          <q-banner dense rounded class="bg-warning text-dark q-mt-md">
+            此操作不可撤销。确定要卸载吗？
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="取消" v-close-popup />
+          <q-btn
+            unelevated
+            no-caps
+            color="negative"
+            label="确认卸载"
+            :loading="ecosystemActionLoading === unloadTargetIndustry"
+            @click="handleUnloadConfirmed"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useQuasar } from 'quasar';
 import KnowledgeEmbedderFields from '../components/knowledge/KnowledgeEmbedderFields.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import WebResearchFields from '../components/settings/WebResearchFields.vue';
 import SystemSettingsCatalogTab from './SystemSettingsCatalogTab.vue';
 import { useSystemSettingsPage } from '../features/system-settings/useSystemSettingsPage';
+import { useSystemSettingsStore } from '../stores/system-settings';
+import type { IndustryLoadInfo } from '../features/system-settings/types';
 
 const settingsTab = ref('general');
+const $q = useQuasar();
+const settingsStore = useSystemSettingsStore();
+
 const {
   t,
   rootDir,
@@ -293,4 +422,116 @@ const {
   testWebResearchConnection,
   save,
 } = useSystemSettingsPage();
+
+// --- Ecosystem preset logic ---
+const ecosystemLoading = ref(false);
+const ecosystemActionLoading = ref<string | null>(null);
+const unloadDialogVisible = ref(false);
+const unloadTargetIndustry = ref('');
+const unloadTargetInfo = ref<IndustryLoadInfo | null>(null);
+
+const ecosystemEntries = computed(() => {
+  const status = settingsStore.ecosystemLoaded;
+  if (!status) return [] as [string, IndustryLoadInfo][];
+  return Object.entries(status) as [string, IndustryLoadInfo][];
+});
+
+const unloadedIndustries = computed(() =>
+  ecosystemEntries.value
+    .filter(([, info]) => !info.loaded)
+    .map(([industry]) => industry),
+);
+
+async function fetchEcosystemStatus() {
+  ecosystemLoading.value = true;
+  try {
+    await settingsStore.fetchEcosystemStatus();
+  } finally {
+    ecosystemLoading.value = false;
+  }
+}
+
+async function handleLoadIndustry(industry: string) {
+  ecosystemActionLoading.value = industry;
+  try {
+    const res = await settingsStore.loadEcosystemPreset([industry]);
+    const result = res.results?.[industry];
+    if (result) {
+      $q.notify({
+        type: 'positive',
+        message: `已加载 ${industry}：Agent ${result.agents_created}，Team ${result.teams_created}，分类节点 ${result.taxonomy_nodes}`,
+      });
+    }
+    if (res.already_loaded?.length) {
+      $q.notify({ type: 'info', message: `${res.already_loaded.join(', ')} 已加载过` });
+    }
+    if (res.errors && Object.keys(res.errors).length > 0) {
+      for (const msg of Object.values(res.errors)) {
+        $q.notify({ type: 'negative', message: msg });
+      }
+    }
+  } catch (e: unknown) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    ecosystemActionLoading.value = null;
+  }
+}
+
+async function handleLoadAll() {
+  ecosystemActionLoading.value = '__all__';
+  try {
+    const res = await settingsStore.loadEcosystemPreset(unloadedIndustries.value);
+    for (const [industry, result] of Object.entries(res.results ?? {})) {
+      $q.notify({
+        type: 'positive',
+        message: `已加载 ${industry}：Agent ${result.agents_created}，Team ${result.teams_created}，分类节点 ${result.taxonomy_nodes}`,
+      });
+    }
+    if (res.already_loaded?.length) {
+      $q.notify({ type: 'info', message: `${res.already_loaded.join(', ')} 已加载过` });
+    }
+    if (res.errors && Object.keys(res.errors).length > 0) {
+      for (const msg of Object.values(res.errors)) {
+        $q.notify({ type: 'negative', message: msg });
+      }
+    }
+  } catch (e: unknown) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    ecosystemActionLoading.value = null;
+  }
+}
+
+function confirmUnloadIndustry(industry: string, info: IndustryLoadInfo) {
+  unloadTargetIndustry.value = industry;
+  unloadTargetInfo.value = info;
+  unloadDialogVisible.value = true;
+}
+
+async function handleUnloadConfirmed() {
+  const industry = unloadTargetIndustry.value;
+  ecosystemActionLoading.value = industry;
+  try {
+    const res = await settingsStore.unloadEcosystemPreset([industry]);
+    const result = res.results?.[industry];
+    if (result) {
+      $q.notify({
+        type: 'positive',
+        message: `已卸载 ${industry}：删除 Agent ${result.agents_deleted}，Team ${result.teams_deleted}，分类节点 ${result.taxonomy_nodes_deleted}`,
+      });
+    }
+    if (res.errors && Object.keys(res.errors).length > 0) {
+      for (const msg of Object.values(res.errors)) {
+        $q.notify({ type: 'negative', message: msg });
+      }
+    }
+    unloadDialogVisible.value = false;
+  } catch (e: unknown) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    ecosystemActionLoading.value = null;
+  }
+}
+
+onMounted(fetchEcosystemStatus);
 </script>

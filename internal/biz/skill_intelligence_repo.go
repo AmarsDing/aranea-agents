@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -55,4 +56,28 @@ type SkillFailureStats struct {
 type ErrorCodeCount struct {
 	ErrorCode string
 	Count     int
+}
+
+// SkillEvolutionSuggestionReader reads skill evolution suggestions.
+type SkillEvolutionSuggestionReader interface {
+	// ListBySkill returns evolution suggestions for a given skill, optionally filtered by status.
+	ListBySkill(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error)
+	// GetByID returns a single evolution suggestion by ID.
+	GetByID(ctx context.Context, id string) (*SkillEvolutionSuggestion, error)
+	// ListPending returns pending evolution suggestions, ordered by created_at desc.
+	ListPending(ctx context.Context, limit, offset int) ([]SkillEvolutionSuggestion, error)
+	// GetLatestBySkill returns the most recent evolution suggestion for a skill.
+	GetLatestBySkill(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error)
+}
+
+// SkillEvolutionSuggestionWriter writes skill evolution suggestions.
+type SkillEvolutionSuggestionWriter interface {
+	// Create persists a new evolution suggestion.
+	Create(ctx context.Context, suggestion SkillEvolutionSuggestion) error
+	// UpdateStatus updates the status and resolution info of an evolution suggestion.
+	UpdateStatus(ctx context.Context, id string, status EvolutionSuggestionStatus, resolvedBy string, reason string) error
+	// UpdateDraftBody updates the draft skill body of an evolution suggestion.
+	UpdateDraftBody(ctx context.Context, id string, draftBody string) error
+	// UpdateSandboxResult updates the sandbox validation result of an evolution suggestion.
+	UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
 }

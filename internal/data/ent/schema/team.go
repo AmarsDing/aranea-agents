@@ -36,6 +36,7 @@ func (Team) Fields() []ent.Field {
 		field.Text("parallel_config_json").Default(""),
 		field.String("topology").Default("").MaxLen(64),
 		field.Bool("readonly").Default(false).Comment("system teams cannot be deleted"),
+		field.Enum("kind").Values("user", "system_builtin", "ecosystem_preset", "marketplace", "certified").Default("user").Comment("team kind: aligned with agent.kind for unified permission model"),
 		field.Enum("source").Values("user", "system", "imported").Default("user").Comment("team source: user | system | imported"),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),

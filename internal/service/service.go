@@ -79,6 +79,7 @@ var ProviderSet = wire.NewSet(
 	NewEvaluationService,
 	NewA2AEndpointBuilder,
 	NewEcosystemService,
+	NewEcosystemPresetService,
 	NewGatewayService,
 	NewKnowledgeEmbedder,
 	NewMemoryEmbeddingAdapter,
@@ -110,7 +111,11 @@ var ProviderSet = wire.NewSet(
 	NewTeamStarter,
 	NewSkillEvolutionService,
 	NewSkillIntelligenceService,
+	NewSkillDedupService,
 	NewPackService,
+	NewSkillCuratorService,
+	NewSandboxRunner,
+	NewSkillEvolutionSuggestionService,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

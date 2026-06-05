@@ -282,6 +282,7 @@ export default {
     channels: 'Channel management',
     mcp: 'MCP management',
     skills: 'Skill management',
+    evolutionSuggestions: 'Evolution suggestions',
     plugins: 'Plugin management',
     hooks: 'Hook / Callbacks',
     webhooks: 'Webhooks',

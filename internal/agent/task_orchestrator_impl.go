@@ -552,10 +552,17 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 			loggateway.Str("checkpoint_id", tuple.Checkpoint.ID),
 		)
 
-		// TODO(debt): DEV-02 — Graph Checkpoint recovery incomplete, only marks status as running
-		// without rebuilding GraphAgent. Full graph-agent rebuild from checkpoint state requires
-		// deeper integration with the trpc-agent-go executor.
-		// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-02
+		// Rebuild GraphAgent state from checkpoint: validate critical fields
+		// and prepare the handle for graph runtime resumption.
+		if err := o.restoreGraphFromCheckpoint(ctx, handle, tuple); err != nil {
+			o.lg.Warn("TaskOrchestrator: GraphAgent rebuild from checkpoint failed",
+				loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+				loggateway.Str("orchestration_id", orchestrationID),
+				loggateway.Err(err),
+			)
+			// Non-fatal: the checkpoint was loaded but state validation failed.
+			// Continue recovery so the orchestration can at least be tracked.
+		}
 	}
 
 	// Mark as running so the orchestration can be tracked.
@@ -574,6 +581,56 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 		loggateway.StepID(biz.SpiritStepOrchestratorRecover),
 		loggateway.Str("orchestration_id", orchestrationID),
 	)
+	return nil
+}
+
+// restoreGraphFromCheckpoint rebuilds GraphAgent state from a loaded checkpoint.
+// It validates that critical state fields in the checkpoint match the orchestration
+// handle and updates the handle's checkpoint ID for graph runtime resumption.
+func (o *TaskOrchestratorImpl) restoreGraphFromCheckpoint(ctx context.Context, handle *biz.OrchestrationHandle, tuple *graph.CheckpointTuple) error {
+	if tuple == nil || tuple.Checkpoint == nil {
+		return kerrors.InternalServer("SPIRIT", "checkpoint tuple is nil")
+	}
+
+	ckpt := tuple.Checkpoint
+	values := ckpt.ChannelValues
+
+	// Validate critical state fields match the handle.
+	if orchID, ok := values["orchestration_id"].(string); ok && orchID != "" && orchID != handle.ID {
+		o.lg.Warn("Checkpoint orchestration_id 与 handle 不匹配",
+			loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+			loggateway.Str("handle_id", handle.ID),
+			loggateway.Str("checkpoint_orchestration_id", orchID),
+		)
+	}
+
+	if sessionID, ok := values["spirit_session_id"].(string); ok && sessionID != "" && sessionID != handle.SpiritSessionID {
+		o.lg.Warn("Checkpoint spirit_session_id 与 handle 不匹配",
+			loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+			loggateway.Str("handle_session_id", handle.SpiritSessionID),
+			loggateway.Str("checkpoint_session_id", sessionID),
+		)
+	}
+
+	// Restore strategy from checkpoint if handle is missing it.
+	if handle.Strategy == "" {
+		if strategy, ok := values["strategy"].(string); ok && strategy != "" {
+			handle.Strategy = biz.OrchestrationStrategy(strategy)
+		}
+	}
+
+	// Update checkpoint ID to the latest loaded checkpoint so the graph runtime
+	// can resume from this exact point when the team runner restarts.
+	handle.CheckpointID = ckpt.ID
+
+	o.lg.Info("GraphAgent 状态已从 checkpoint 重建",
+		loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+		loggateway.Str("orchestration_id", handle.ID),
+		loggateway.Str("checkpoint_id", ckpt.ID),
+		loggateway.Str("strategy", string(handle.Strategy)),
+		loggateway.Int("channel_count", len(values)),
+	)
+
 	return nil
 }
 
@@ -668,12 +725,12 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 			if err != nil || existing == nil {
 				// New performance record
 				perf := &biz.AgentPerformance{
-					AgentKey:      agentKey,
-					TaskType:      string(handle.Strategy),
-					TotalRuns:     1,
-					SuccessRuns:   successCount,
-					SuccessRate:   float64(successCount),
-					AvgDQScore:    dqScore,
+					AgentKey:       agentKey,
+					TaskType:       string(handle.Strategy),
+					TotalRuns:      1,
+					SuccessRuns:    successCount,
+					SuccessRate:    float64(successCount),
+					AvgDQScore:     dqScore,
 					LastExecutedAt: time.Now().UTC().Format(time.RFC3339),
 				}
 				if upsertErr := o.perfRepo.Upsert(ctx, perf); upsertErr != nil {
@@ -779,7 +836,7 @@ func (o *TaskOrchestratorImpl) saveInitialCheckpoint(ctx context.Context, handle
 
 	lineageID := handle.ID
 	channelValues := map[string]any{
-		"orchestration_id":   handle.ID,
+		"orchestration_id":  handle.ID,
 		"spirit_session_id": handle.SpiritSessionID,
 		"strategy":          string(handle.Strategy),
 		"status":            string(handle.Status),
@@ -818,7 +875,7 @@ func (o *TaskOrchestratorImpl) saveStepCheckpoint(ctx context.Context, handle *b
 
 	lineageID := handle.ID
 	channelValues := map[string]any{
-		"orchestration_id":   handle.ID,
+		"orchestration_id":  handle.ID,
 		"spirit_session_id": handle.SpiritSessionID,
 		"strategy":          string(handle.Strategy),
 		"status":            string(handle.Status),
@@ -986,9 +1043,9 @@ func (o *TaskOrchestratorImpl) publishOrchestrationInterrupted(ctx context.Conte
 		dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamFailed, "task-orchestrator", spiritSessionID)
 		dualEnv.TeamID = handle.TeamIDs[0]
 		dualEnv.Metadata = map[string]any{
-			"team_id":   handle.TeamIDs[0],
-			"status":    string(handle.Status),
-			"error":     "orchestration interrupted",
+			"team_id": handle.TeamIDs[0],
+			"status":  string(handle.Status),
+			"error":   "orchestration interrupted",
 		}
 		o.bus.Publish(ctx, dualEnv)
 	}

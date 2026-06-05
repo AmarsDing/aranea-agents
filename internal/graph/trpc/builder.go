@@ -207,7 +207,7 @@ func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range rbc.nodes {
-		extras, err := wireNode(ctx, sg, n, deps)
+		extras, err := wireNode(ctx, sg, n, deps, lg)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -1,6 +1,7 @@
 import { createSystemSettingService } from '../../services/index';
+import { kratosApi } from '../../services/axiosHandler';
 import type { SystemSettings } from '../../services/kratos/system_setting/v1/index';
-import type { UpdateSystemSettingsInput, TestWebResearchInput, TestWebResearchResult } from './types';
+import type { UpdateSystemSettingsInput, TestWebResearchInput, TestWebResearchResult, EcosystemLoadResponse, EcosystemUnloadResponse, EcosystemLoadedStatus } from './types';
 
 const api = createSystemSettingService();
 
@@ -61,4 +62,24 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     webResearchTimeoutSec: webResearch?.timeoutSec ?? 15,
     webResearchHttpProxy: webResearch?.httpProxy ?? '',
   });
+}
+
+// Ecosystem preset APIs
+
+export async function loadEcosystemPreset(industries?: string[], force?: boolean): Promise<EcosystemLoadResponse> {
+  const body: Record<string, unknown> = {};
+  if (industries && industries.length > 0) body.industries = industries;
+  if (force) body.force = true;
+  const { data } = await kratosApi.post<EcosystemLoadResponse>('/api/v1/admin/ecosystem/preset/load', body);
+  return data;
+}
+
+export async function unloadEcosystemPreset(industries: string[]): Promise<EcosystemUnloadResponse> {
+  const { data } = await kratosApi.post<EcosystemUnloadResponse>('/api/v1/admin/ecosystem/preset/unload', { industries });
+  return data;
+}
+
+export async function getEcosystemPresetStatus(): Promise<EcosystemLoadedStatus> {
+  const { data } = await kratosApi.get<EcosystemLoadedStatus>('/api/v1/admin/ecosystem/preset/status');
+  return data;
 }

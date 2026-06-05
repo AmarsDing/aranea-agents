@@ -98,8 +98,8 @@ func ParseOrchestrationSpec(raw string) (OrchestrationSpec, error) {
 func DefaultOrchestrationSpec() OrchestrationSpec {
 	return OrchestrationSpec{
 		Version:          OrchestrationSpecVersion,
-		Mode:             "sequential",
-		RuntimeEngine:    "graph",
+		Mode:             TeamModeSequential,
+		RuntimeEngine:    RuntimeEngineGraph,
 		TeamGraphRuntime: true,
 		MaxConcurrency:   2,
 		RunTimeoutSec:    600,
@@ -116,17 +116,17 @@ func NormalizeOrchestrationSpec(spec *OrchestrationSpec) {
 		spec.Version = 1
 	}
 	if strings.TrimSpace(spec.Mode) == "" {
-		spec.Mode = "sequential"
+		spec.Mode = TeamModeSequential
 	}
 	engine := strings.ToLower(strings.TrimSpace(spec.RuntimeEngine))
-	if engine == "graph" || spec.TeamGraphRuntime {
-		spec.RuntimeEngine = "graph"
+	if engine == RuntimeEngineGraph || spec.TeamGraphRuntime {
+		spec.RuntimeEngine = RuntimeEngineGraph
 		spec.TeamGraphRuntime = true
 	} else if engine == "" && spec.Version >= OrchestrationSpecVersion {
-		spec.RuntimeEngine = "graph"
+		spec.RuntimeEngine = RuntimeEngineGraph
 		spec.TeamGraphRuntime = true
 	} else if engine == "" {
-		spec.RuntimeEngine = "graph"
+		spec.RuntimeEngine = RuntimeEngineGraph
 		spec.TeamGraphRuntime = true
 	} else {
 		spec.RuntimeEngine = engine
@@ -196,13 +196,13 @@ func EnsureGraphRuntimeDefault(raw string) string {
 		return raw
 	}
 	engine := strings.ToLower(strings.TrimSpace(spec.RuntimeEngine))
-	if engine == "graph" || spec.TeamGraphRuntime {
+	if engine == RuntimeEngineGraph || spec.TeamGraphRuntime {
 		return raw
 	}
-	if engine == "native" && runtimeEngineExplicitlySet(raw) {
+	if engine == RuntimeEngineNative && runtimeEngineExplicitlySet(raw) {
 		return raw
 	}
-	spec.RuntimeEngine = "graph"
+	spec.RuntimeEngine = RuntimeEngineGraph
 	spec.TeamGraphRuntime = true
 	if spec.Version < OrchestrationSpecVersion {
 		spec.Version = OrchestrationSpecVersion

@@ -13,7 +13,10 @@ import EcosystemPage from '../pages/EcosystemPage.vue';
 import TaxonomyPage from '../pages/TaxonomyPage.vue';
 import TeamsPage from '../pages/TeamsPage.vue';
 import SkillsPage from '../pages/SkillsPage.vue';
+import SkillDetailPage from '../pages/SkillDetailPage.vue';
 import SkillRunsPage from '../pages/SkillRunsPage.vue';
+import EvolutionSuggestionListPage from '../pages/EvolutionSuggestionListPage.vue';
+import ExperienceReportListPage from '../pages/ExperienceReportListPage.vue';
 import PluginsPage from '../pages/PluginsPage.vue';
 import PluginRunsPage from '../pages/PluginRunsPage.vue';
 import HooksPage from '../pages/HooksPage.vue';
@@ -117,6 +120,21 @@ export const routes: RouteRecordRaw[] = [
         path: 'skills/runs',
         name: 'skill-runs',
         component: SkillRunsPage,
+      },
+      {
+        path: 'skills/evolution-suggestions',
+        name: 'evolution-suggestions',
+        component: EvolutionSuggestionListPage,
+      },
+      {
+        path: 'skills/experience-reports',
+        name: 'experience-reports',
+        component: ExperienceReportListPage,
+      },
+      {
+        path: 'skills/:skillId',
+        name: 'skill-detail',
+        component: SkillDetailPage,
       },
       {
         path: 'plugins',

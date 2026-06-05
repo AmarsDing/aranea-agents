@@ -474,6 +474,9 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	if current.Source == "system_builtin" {
+		return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
+	}
 	if current.Readonly {
 		return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
 	}

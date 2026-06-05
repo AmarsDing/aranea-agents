@@ -76,6 +76,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260715, Name: "self_check_report_schema", SQL: "sql/migrations/20260715_self_check_report_schema.sql"},
 	{Version: 20260716, Name: "missing_indexes", SQL: "sql/migrations/20260716_missing_indexes.sql"},
 	{Version: 20260717, Name: "usage_events_schema", SQL: "sql/migrations/20260717_usage_events_schema.sql"},
+	{Version: 20260718, Name: "ecosystem_preset_schema", SQL: "sql/migrations/20260718_ecosystem_preset_schema.sql", Func: ddlEcosystemPresetDataMigration},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -294,6 +295,25 @@ func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client,
 	}
 	if _, err := rawDB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_compiled_teams_session_id ON compiled_teams(session_id)`); err != nil {
 		return fmt.Errorf("create idx_compiled_teams_session_id: %w", err)
+	}
+	return nil
+}
+
+func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	// Migrate agent kind: system -> system_builtin
+	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET kind = 'system_builtin' WHERE kind = 'system'`); err != nil {
+		return fmt.Errorf("migrate agent kind system->system_builtin: %w", err)
+	}
+	// Migrate agent kind: industry_template -> ecosystem_preset
+	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET kind = 'ecosystem_preset' WHERE kind = 'industry_template'`); err != nil {
+		return fmt.Errorf("migrate agent kind industry_template->ecosystem_preset: %w", err)
+	}
+	// Migrate team kind: source=imported -> kind=ecosystem_preset
+	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET kind = 'ecosystem_preset' WHERE source = 'imported'`); err != nil {
+		return fmt.Errorf("migrate team kind imported->ecosystem_preset: %w", err)
 	}
 	return nil
 }

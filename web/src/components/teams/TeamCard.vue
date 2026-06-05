@@ -9,6 +9,7 @@
         <div class="team-card__head-main min-width-0">
           <div class="team-card__title-row">
             <h3 class="team-card__name ellipsis">{{ team.display_name }}</h3>
+            <KindBadge :kind="team.kind" />
             <q-chip dense square size="sm" color="primary" text-color="white" class="team-card__mode-chip">
               {{ definition.mode }}
             </q-chip>
@@ -84,6 +85,7 @@
           <q-btn flat dense round size="sm" color="primary" icon="content_copy" @click="$emit('duplicate', team)" />
           <q-btn flat dense round size="sm" color="primary" icon="edit" @click="$emit('edit', team)" />
           <q-btn
+            v-if="team.kind !== 'system_builtin'"
             flat
             dense
             round
@@ -105,6 +107,7 @@ import { computed } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import type { Team } from '../../features/teams/types';
 import { agentName, formatDate, memberIcon, parseDefinition, topologyNodesFromDefinition } from './teamUtils';
+import KindBadge from '../agents/KindBadge.vue';
 
 const props = defineProps<{
   team: Team;

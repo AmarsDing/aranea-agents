@@ -72,7 +72,7 @@ func (cm *GraphCacheManager) BuildConfigForExecution(ctx context.Context, exec *
 			return ct, nil
 		}
 	}
-	if cm.compiledTeamRepo != nil && exec != nil && strings.HasPrefix(exec.GraphID, "team:") {
+	if cm.compiledTeamRepo != nil && exec != nil && strings.HasPrefix(exec.GraphID, GraphIDTeamPrefix) {
 		parts := strings.SplitN(exec.GraphID, ":", 2)
 		if len(parts) == 2 {
 			ct, err := cm.compiledTeamRepo.LoadForSession(ctx, parts[1], exec.GraphID, exec.SessionID)

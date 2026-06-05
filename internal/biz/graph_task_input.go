@@ -5,7 +5,7 @@ import "strings"
 func GraphTaskInputFromNode(node NodeDef, meta NodeTaskMeta) (requiredRole, assignmentMode, assignmentStrategy, input string) {
 	assignmentMode = strings.TrimSpace(meta.AssignmentMode)
 	if assignmentMode == "" {
-		assignmentMode = "static"
+		assignmentMode = AssignmentModeStatic
 	}
 	input = strings.TrimSpace(node.Description)
 	if input == "" {

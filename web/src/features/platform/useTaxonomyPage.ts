@@ -229,6 +229,24 @@ export function useTaxonomyPage() {
     $q.notify({ type: 'negative', message });
   }
 
+  async function onReorderPositions(
+    department: PlatformResourceTreeNode,
+    positions: PlatformResourceTreeNode[],
+  ) {
+    const ids = positions.map((p) => p.id);
+    try {
+      await reorderTaxonomy(ids);
+      // Optimistically update local tree
+      const patchedChildren = positions.map((p, i) => ({ ...p, sort_order: (i + 1) * 10 }));
+      tree.value = patchTaxonomyTreeNode(tree.value, department.id, {
+        children: patchedChildren,
+      });
+      platformStore.taxonomyTree = tree.value;
+    } catch {
+      $q.notify({ type: 'negative', message: '排序保存失败' });
+    }
+  }
+
   return {
     isDark,
     loading,
@@ -254,5 +272,6 @@ export function useTaxonomyPage() {
     levelLabel,
     trimmedDesc,
     onRefineError,
+    onReorderPositions,
   };
 }

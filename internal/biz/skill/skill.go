@@ -85,6 +85,9 @@ type Skill struct {
 	SyncOrigin           string
 	Visibility           string
 	DefaultConfigJSON    string
+	ParentVersionID      string
+	EvolutionReason      string
+	LifecycleStatus      string
 }
 
 type ListQuery struct {

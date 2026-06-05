@@ -38,6 +38,19 @@ type ImporterRepo interface {
 	SaveGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error)
 }
 
+// importConfig holds optional configuration for an Import call.
+type importConfig struct {
+	kindOverride string // if set, override agent/team kind
+}
+
+// ImportOption configures an Import call.
+type ImportOption func(*importConfig)
+
+// WithKindOverride overrides the kind field for all imported agents and teams.
+func WithKindOverride(kind string) ImportOption {
+	return func(c *importConfig) { c.kindOverride = kind }
+}
+
 // Importer 导入引擎。
 type Importer struct {
 	repo ImporterRepo
@@ -49,7 +62,12 @@ func NewImporter(repo ImporterRepo) *Importer {
 }
 
 // Import 执行 Pack 导入。
-func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrategy) (*ImportResult, error) {
+func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrategy, opts ...ImportOption) (*ImportResult, error) {
+	cfg := &importConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+
 	result := &ImportResult{}
 	mapper := NewKeyMapper()
 
@@ -65,7 +83,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 2: Agents
 	for _, agentSpec := range p.Agents {
-		created, updated, skipped, err := im.importAgent(ctx, agentSpec, p.AgentFiles, strategy, mapper)
+		created, updated, skipped, err := im.importAgent(ctx, agentSpec, p.AgentFiles, strategy, mapper, cfg)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "agent",
@@ -95,7 +113,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 4: Teams
 	for _, teamSpec := range p.Teams {
-		created, updated, skipped, err := im.importTeam(ctx, teamSpec, strategy, mapper)
+		created, updated, skipped, err := im.importTeam(ctx, teamSpec, strategy, mapper, cfg)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "team",
@@ -175,7 +193,7 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 }
 
 // importAgent 导入单个 Agent。
-func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFiles map[string]map[string]string, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, err error) {
+func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFiles map[string]map[string]string, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, err error) {
 	// 保存原始 key（duplicate 场景下用于映射）
 	originalKey := spec.Key
 
@@ -205,6 +223,14 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	}
 
 	// 构建 biz.Agent
+	kind := cfg.kindOverride
+	if kind == "" {
+		kind = firstNonEmpty(spec.Kind, "llm")
+	}
+	source := "imported"
+	if cfg.kindOverride != "" {
+		source = cfg.kindOverride
+	}
 	agent := biz.Agent{
 		AgentKey:           spec.Key,
 		DisplayName:        spec.DisplayName,
@@ -216,10 +242,10 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		Model:              spec.Model,
 		SystemPromptMode:   spec.SystemPromptMode,
 		ContextWindow:      spec.ContextWindow,
-		Kind:               firstNonEmpty(spec.Kind, "llm"),
+		Kind:               kind,
 		Status:             "active",
 		Readonly:           false,
-		Source:             "imported",
+		Source:             source,
 	}
 
 	// overwrite 时保留原始 Status/Readonly/Source
@@ -450,7 +476,7 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 }
 
 // importTeam 导入单个 Team。
-func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, err error) {
+func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, err error) {
 	// 构建 OrchestrationSpec
 	ospec := biz.OrchestrationSpec{
 		Version:            2,
@@ -468,7 +494,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	if spec.RuntimeEngine != "" {
 		ospec.RuntimeEngine = spec.RuntimeEngine
 	} else {
-		ospec.RuntimeEngine = "graph"
+		ospec.RuntimeEngine = biz.RuntimeEngineGraph
 	}
 
 	// 成员：agent_key → agent_id
@@ -560,12 +586,16 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
 	}
 
+	teamSource := "imported"
+	if cfg.kindOverride != "" {
+		teamSource = cfg.kindOverride
+	}
 	team := biz.Team{
 		TeamKey:        spec.Key,
 		DisplayName:    spec.DisplayName,
 		DefinitionJSON: defJSON,
 		Status:         biz.TeamStatusPending,
-		Source:         "imported",
+		Source:         teamSource,
 		Readonly:       false,
 	}
 

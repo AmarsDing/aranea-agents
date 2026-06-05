@@ -11,7 +11,6 @@ import (
 	"aranea-agents/internal/service"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
-	"aranea-agents/pkg/safego"
 
 	"aranea-agents/internal/cronrunner/jobs"
 
@@ -111,11 +110,7 @@ func newApp(
 				memoryDataMigration.Start(startCtx)
 				logger.Log(log.LevelInfo, "msg", "memory data migration worker started")
 			}
-			safego.Go(startCtx, "seed.industry_agents", func() {
-				logger.Log(log.LevelInfo, "msg", "industry agent seed started")
-				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, taxonomyUC, biz.ScenarioDir(), data.NewSeedVersionRepo(d), lg)
-				logger.Log(log.LevelInfo, "msg", "industry agent seed completed")
-			})
+	
 			return nil
 		}),
 		kratos.AfterStop(func(ctx context.Context) error {

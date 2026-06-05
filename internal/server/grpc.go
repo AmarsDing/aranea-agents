@@ -27,7 +27,9 @@ import (
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
 	skillintlv1 "aranea-agents/api/kratos/skill_intelligence/v1"
+	skilldedupv1 "aranea-agents/api/kratos/skill_dedup/v1"
 	skillevov1 "aranea-agents/api/kratos/skill_evolution/v1"
+	skillevosuggv1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
 	industrytaxonomyv1 "aranea-agents/api/kratos/industry_taxonomy/v1"
@@ -100,6 +102,8 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	industrytaxonomyv1.RegisterIndustryTaxonomyServiceServer(srv, s.IndustryTaxonomy)
 	skillevov1.RegisterSkillEvolutionServiceServer(srv, s.SkillEvo)
 	skillintlv1.RegisterSkillIntelligenceServiceServer(srv, s.SkillIntel)
+	skilldedupv1.RegisterSkillDedupServiceServer(srv, s.SkillDedup)
+	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceServer(srv, s.SkillEvoSuggestion)
 	packv1.RegisterPackServiceServer(srv, s.Pack)
 	return srv
 }

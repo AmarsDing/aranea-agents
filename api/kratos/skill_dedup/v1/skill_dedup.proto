@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package kratos.skill_dedup.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/skill_dedup/v1;v1";
+
+message SkillSummary {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  string body_preview = 5;
+}
+
+message SkillDuplicateGroup {
+  string group_id = 1;
+  repeated SkillSummary skills = 2;
+  string overlap_type = 3;
+  float overlap_score = 4;
+}
+
+message ListSkillDuplicateGroupsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListSkillDuplicateGroupsResponse {
+  repeated SkillDuplicateGroup groups = 1;
+  int64 total = 2;
+}
+
+message MergeSkillsRequest {
+  string source_skill_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_skill_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message MergeSkillsResponse {
+  string message = 1;
+}
+
+service SkillDedupService {
+  rpc ListSkillDuplicateGroups(ListSkillDuplicateGroupsRequest) returns (ListSkillDuplicateGroupsResponse) {
+    option (google.api.http) = {get: "/v1/skill-dedup/duplicate-groups"};
+  }
+  rpc MergeSkills(MergeSkillsRequest) returns (MergeSkillsResponse) {
+    option (google.api.http) = {post: "/v1/skill-dedup/merge" body: "*"};
+  }
+}

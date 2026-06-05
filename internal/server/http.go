@@ -33,7 +33,9 @@ import (
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
 	skillintlv1 "aranea-agents/api/kratos/skill_intelligence/v1"
+	skilldedupv1 "aranea-agents/api/kratos/skill_dedup/v1"
 	skillevov1 "aranea-agents/api/kratos/skill_evolution/v1"
+	skillevosuggv1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
 	taxonomyv1 "aranea-agents/api/kratos/taxonomy/v1"
@@ -85,7 +87,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting, s.EcosystemPreset)
 	registerProtoServices(srv, s)
 	registerInfrastructureRoutes(srv, readiness)
 	wsSrv.RegisterOnKratos(srv)
@@ -128,6 +130,8 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	industrytaxonomyv1.RegisterIndustryTaxonomyServiceHTTPServer(srv, s.IndustryTaxonomy)
 	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
 	skillintlv1.RegisterSkillIntelligenceServiceHTTPServer(srv, s.SkillIntel)
+	skilldedupv1.RegisterSkillDedupServiceHTTPServer(srv, s.SkillDedup)
+	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceHTTPServer(srv, s.SkillEvoSuggestion)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 }
 
@@ -147,6 +151,7 @@ func registerCustomRoutes(
 	artifactSvc *service.ArtifactService,
 	a2aPublic *a2atrpc.EndpointRegistry,
 	systemSettingSvc *service.SystemSettingService,
+	ecosystemPresetSvc *service.EcosystemPresetService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -169,6 +174,12 @@ func registerCustomRoutes(
 	if a2aPublic != nil {
 		auth.RegisterNoAuthPathPrefix(a2atrpc.PublicPathPrefix)
 		srv.HandlePrefix(a2atrpc.PublicPathPrefix, a2aPublic)
+	}
+	// Ecosystem preset admin routes: load/unload/status for industry presets.
+	if ecosystemPresetSvc != nil {
+		srv.Route("/").POST("/api/v1/admin/ecosystem/preset/load", ecosystemPresetSvc.HandleLoad())
+		srv.Route("/").POST("/api/v1/admin/ecosystem/preset/unload", ecosystemPresetSvc.HandleUnload())
+		srv.Route("/").GET("/api/v1/admin/ecosystem/preset/status", ecosystemPresetSvc.HandleStatus())
 	}
 }
 
