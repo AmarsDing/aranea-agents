@@ -113,19 +113,15 @@ func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg 
 }
 
 func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
-	local := GraphBuildConfig{
-		Nodes:            append([]biz.NodeDef(nil), cfg.Nodes...),
-		Edges:            append([]EdgeDef(nil), cfg.Edges...),
-		ConditionalEdges: append([]biz.ConditionalEdgeDef(nil), cfg.ConditionalEdges...),
-		Subgraphs:        append([]biz.SubgraphDef(nil), cfg.Subgraphs...),
-		StateFields:      append([]StateFieldDef(nil), cfg.StateFields...),
-		EntryPoint:       cfg.EntryPoint,
-		FinishPoint:      cfg.FinishPoint,
-		EnableCheckpoint: cfg.EnableCheckpoint,
-		ExecutionEngine:  cfg.ExecutionEngine,
-		InterruptBefore:  append([]string(nil), cfg.InterruptBefore...),
-		InterruptAfter:   append([]string(nil), cfg.InterruptAfter...),
-	}
+	// Defensive shallow copy: duplicate slices so caller's data is not mutated.
+	local := cfg
+	local.Nodes = append([]biz.NodeDef(nil), cfg.Nodes...)
+	local.Edges = append([]EdgeDef(nil), cfg.Edges...)
+	local.ConditionalEdges = append([]biz.ConditionalEdgeDef(nil), cfg.ConditionalEdges...)
+	local.Subgraphs = append([]biz.SubgraphDef(nil), cfg.Subgraphs...)
+	local.StateFields = append([]StateFieldDef(nil), cfg.StateFields...)
+	local.InterruptBefore = append([]string(nil), cfg.InterruptBefore...)
+	local.InterruptAfter = append([]string(nil), cfg.InterruptAfter...)
 	var rbc *resolvedBuildConfig
 	if reg != nil {
 		var err error

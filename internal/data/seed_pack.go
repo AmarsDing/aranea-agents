@@ -153,15 +153,9 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 			Version:          1,
 			SortOrder:        0,
 		}
-		def.Nodes = make([]biz.NodeDef, len(buildConfig.Nodes))
-		for i, n := range buildConfig.Nodes {
-			def.Nodes[i] = n.NodeDef
-		}
+		def.Nodes = buildConfig.Nodes
 		def.Edges = buildConfig.Edges
-		def.ConditionalEdges = make([]biz.ConditionalEdgeDef, len(buildConfig.ConditionalEdges))
-		for i, ce := range buildConfig.ConditionalEdges {
-			def.ConditionalEdges[i] = ce.ConditionalEdgeDef
-		}
+		def.ConditionalEdges = buildConfig.ConditionalEdges
 		def.StateFields = buildConfig.StateFields
 
 		if _, err := graphRepo.SaveDefinition(ctx, def); err != nil {

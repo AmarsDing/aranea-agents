@@ -407,10 +407,10 @@ func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, taskMeta
 	return nil
 }
 
-func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee graphtrpc.ExecutionEngineType, cbState *graphtrpc.CircuitBreakerState, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
+func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, cbState *graphtrpc.CircuitBreakerState, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
 	if f.saver != nil && enableCheckpoint {
 		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, cbState, subAgents...)
-	} else if ee != "" && ee != graphtrpc.EngineBSP {
+	} else if ee != "" && ee != biz.EngineBSP {
 		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, cbState, subAgents...)
 	}
 	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)

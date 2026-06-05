@@ -44,7 +44,7 @@ func TestCompileToGraphRuntimeConfig_adaptiveStripsTransferEdges(t *testing.T) {
 			{AgentID: "c", SortOrder: 3},
 		},
 	}
-	preview, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
+	preview, _, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,22 +148,7 @@ func TestGraphRuntimeE2E_buildSequentialTeamGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trpcCfg := graphtrpc.GraphBuildConfig{
-		EntryPoint:  cfg.EntryPoint,
-		FinishPoint: cfg.FinishPoint,
-		Nodes:       make([]biz.NodeDef, len(cfg.Nodes)),
-		Edges:       make([]graphtrpc.EdgeDef, len(cfg.Edges)),
-	}
-	for i, n := range cfg.Nodes {
-		trpcCfg.Nodes[i] = biz.NodeDef{
-			ID: n.ID, Type: n.Type, AgentName: n.AgentName,
-			RetryMaxAttempts: n.RetryMaxAttempts, Destinations: append([]string(nil), n.Destinations...),
-		}
-	}
-	for i, e := range cfg.Edges {
-		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
-	}
-	g, agents, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{
+	g, agents, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), cfg, &graphtrpc.BuildDeps{
 		Agents: stubAgentResolver{},
 	}, nil)
 	if err != nil {
@@ -194,18 +179,7 @@ func TestGraphRuntimeE2E_buildCoordinatorTeamGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trpcCfg := graphtrpc.GraphBuildConfig{
-		EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
-		Nodes: make([]biz.NodeDef, len(cfg.Nodes)),
-		Edges: make([]graphtrpc.EdgeDef, len(cfg.Edges)),
-	}
-	for i, n := range cfg.Nodes {
-		trpcCfg.Nodes[i] = biz.NodeDef{ID: n.ID, Type: n.Type, AgentName: n.AgentName}
-	}
-	for i, e := range cfg.Edges {
-		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
-	}
-	g, _, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{Agents: stubAgentResolver{}}, nil)
+	g, _, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), cfg, &graphtrpc.BuildDeps{Agents: stubAgentResolver{}}, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

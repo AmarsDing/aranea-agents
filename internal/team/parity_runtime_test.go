@@ -8,6 +8,8 @@ import (
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/pkg/loggateway"
+
+	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
 func stubParityCatalogAgent(_ context.Context, id string) (biz.Agent, error) {
@@ -26,29 +28,15 @@ func buildRuntimeGraphFromDef(t *testing.T, def Definition) int {
 	if err != nil {
 		t.Fatalf("CompileToGraphRuntimeConfig: %v", err)
 	}
-	trpcCfg := graphtrpc.GraphBuildConfig{
-		EntryPoint:  cfg.EntryPoint,
-		FinishPoint: cfg.FinishPoint,
-		Nodes:       make([]graphtrpc.NodeDef, len(cfg.Nodes)),
-		Edges:       make([]graphtrpc.EdgeDef, len(cfg.Edges)),
-	}
-	for i, n := range cfg.Nodes {
-		nd := graphtrpc.NodeDef{}
-		nd.ID = n.ID
-		nd.Type = n.Type
-		nd.AgentName = n.AgentName
-		nd.RetryMaxAttempts = n.RetryMaxAttempts
-		nd.Destinations = append([]string(nil), n.Destinations...)
-		trpcCfg.Nodes[i] = nd
-	}
-	for i, e := range cfg.Edges {
-		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
-	}
-	g, agents, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{
+	reg := graphtrpc.NewRegistry()
+	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, trpcgraph.ConditionalFunc(func(ctx context.Context, state trpcgraph.State) (string, error) {
+		return "approved", nil
+	}))
+	g, agents, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, &graphtrpc.BuildDeps{
 		Agents: stubAgentResolver{},
 	}, nil)
 	if err != nil {
-		t.Fatalf("BuildStateGraphWithAgents: %v", err)
+		t.Fatalf("BuildStateGraphWithRegistryAndLogger: %v", err)
 	}
 	if g == nil {
 		t.Fatal("graph nil")

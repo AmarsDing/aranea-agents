@@ -29,7 +29,7 @@ func BuildCompileSnapshot(def Definition, rawDefinitionJSON string, agentKey Com
 		TemplateID: CompileTemplateID(def.Mode),
 		Mode:       mode,
 	}
-	cfg, err := compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey, lg)
+	cfg, taskMeta, err := compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey, lg)
 	if err != nil {
 		snap.Valid = false
 		snap.CompileError = err.Error()
@@ -41,7 +41,7 @@ func BuildCompileSnapshot(def Definition, rawDefinitionJSON string, agentKey Com
 	snap.Nodes = append([]biz.NodeDef(nil), cfg.Nodes...)
 	snap.Edges = append([]biz.EdgeDef(nil), cfg.Edges...)
 	snap.ConditionalEdges = append([]biz.ConditionalEdgeDef(nil), cfg.ConditionalEdges...)
-	snap.TaskMeta = cfg.TaskMeta
+	snap.TaskMeta = taskMeta
 	if b, merr := json.Marshal(cfg); merr == nil {
 		snap.GraphJSON = string(b)
 	}
