@@ -3,7 +3,7 @@
 > **版本**：2026-06-06
 > **定位**：基于需求文档 [60-spirit-parallel-orchestrator.md](./60-spirit-parallel-orchestrator.md) 和现有骨架代码，分析每个验收标准的实现差距，给出深度业务实现的详细设计方案。
 > **前置**：P1 + P2 骨架已完成，Wire 注入链已修复，集成问题已修复。
-> **实现状态**：✅ P0/P1/P2 差距已全部修复（2026-06-06）
+> **实现状态**：✅ P0/P1/P2 差距已全部修复 + 深度架构审查修复已完成（2026-06-06）
 
 ---
 
@@ -1222,17 +1222,6 @@ func (t *buildOrchestrationGraphTool) Call(
             "task_description": input.TaskPrompt,
         },
     )
-    if err != nil {
-        return nil, err
-    }
-
-    return &BuildOrchestrationGraphOutput{
-        GraphExecutionID: executionID,
-        SessionID:        sessID,
-        NodeCount:        len(cfg.Nodes),
-        EstimatedSteps:   t.estimateSteps(cfg),
-    }, nil
-}
 ```
 
 #### 9.3.2 Graph 拓扑生成关键逻辑
@@ -1547,3 +1536,46 @@ SPO-P4-06 → SPO-P4-10 (DAG 生成 → Prompt 规则)
 make api && make wire && make build && make test && make lint
 cd web && pnpm lint && pnpm test && pnpm build
 ```
+
+---
+
+## 十、深度架构审查修复记录
+
+> 2026-06-06：对 Spirit Team 全链路进行深度架构审查，发现并修复 7 个严重问题 + 5 个中等问题 + 3 个轻微问题。
+
+### 10.1 严重问题修复
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| S3 | OrchestrationCache.ToJSON() 递归 RLock 导致死锁 | 提取 `listLocked()` 内部方法，`ToJSON()` 和 `List()` 共用 | `spirit_orchestration_cache.go` |
+| S4 | 超时回调仅转换状态，不触发依赖调度/事件发布/AllDone 检查 | 新增 `TimeoutHandler` 接口（biz 层），`TeamStarter` 实现，`BeforeStart` 阶段注入 | `spirit_team_usecase.go`, `spirit_team.go`, `app.go` |
+| S5 | `interrupted` 状态被 `CheckAllTeamsCompleted` 错误视为终态 | switch 增加 `TeamStatusInterrupted` case；`IsTeamStatusActive` 同步增加 | `spirit_team_usecase.go`, `team_types.go` |
+| FS1 | 前后端 SpiritTeamMode 枚举不一致 | 对齐为 `coordinator/sequential/parallel/critic_loop/swarm/adaptive/direct` | `types.ts`, `TeamTaskCard.vue`, `TeamAssemblyCard.vue`, `TeamProgressCard.vue` |
+| FS2 | 前后端 SpiritTeamStatus 枚举不一致 | 对齐为 `pending/running/completed/failed/cancelled/interrupted/archived` | `types.ts`, `stores/spirit/index.ts` |
+| FS3 | SynthesisResultCard 使用 v-html 渲染未净化内容 | 替换为 `renderChatMarkdown()`（已通过安全审计） | `SynthesisResultCard.vue` |
+| FS4 | cancelTeam 成功后从列表移除团队 | 改为 `updateTeamStatus(teamId, 'cancelled')`，与后端行为一致 | `stores/spirit/index.ts` |
+
+### 10.2 中等问题修复
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| M11 | HandleTeamTurnResult failed/cancelled 路径不取消超时定时器 | 入口统一调用 `CancelTimeoutTimer` | `spirit_team.go` |
+| M13 | BuildGraphConfig 无循环检测和依赖验证 | DFS 三色标记法循环检测 + 悬空依赖跳过 + 环时降级顺序链 | `build_graph.go` |
+| M8 | 前端 spirit_team_progress status 来源混用导致状态回退 | 增加状态转换合法性校验，禁止 running→pending 回退 | `stores/spirit/index.ts` |
+| M6 | mode 默认值 `??` 不覆盖空字符串 | 改为 `\|\|` 运算符 | `stores/spirit/index.ts` |
+| M7 | synthesizedAt 显示原始 ISO 时间戳 | 使用 `toLocaleString()` 格式化 | `SynthesisResultCard.vue` |
+
+### 10.3 轻微问题修复
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| L11 | AutoArchiveCompletedTeams 静默忽略 TransitionStatus 错误 | 添加 Warn 日志 | `spirit_team_usecase.go` |
+| L17 | checkAllTeamsCompleted 在循环内重复调用 | 移到循环外统一调用一次 | `spirit_team.go` |
+| WIRE | provideFailurePatternSyncJob 接口注入 + 测试 stub 缺失 | 改为接收接口类型 + 补全 GetTeamByKey stub | `wire.go`, `*_test.go` |
+
+### 10.4 aranea-review 审查结论
+
+- **1 个阻断项**（R-01: IsTeamStatusActive 与 CheckAllTeamsCompleted 对 interrupted 语义不一致）→ 已修复
+- **10 个建议项**（构造函数参数过多、魔法数字、函数超长等）→ 记录备忘，后续迭代处理
+- **1 个提示项**（NewOrchestrationCache 允许 repo 为 nil）→ 可接受
+- **合规性清单**：依赖方向向内 ✅ | Runner 装配在 Service ✅ | goroutine 走 safego ✅ | 日志用 loggateway ✅ | 业务错误用 kerrors ✅ | 跨模块通过窄接口 ✅

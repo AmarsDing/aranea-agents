@@ -2,10 +2,12 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/ent"
 
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -51,8 +53,12 @@ func (s *EcosystemPresetService) HandleLoad() func(ctx kratoshttp.Context) error
 		if client == nil {
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "database client not available"})
 		}
+		entClient, ok := client.(*ent.Client)
+		if !ok {
+			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("invalid database client type: %T", client)})
+		}
 
-		resp, err := s.uc.LoadEcosystemPreset(ctx, req.Industries, req.Force, client)
+		resp, err := s.uc.LoadEcosystemPreset(ctx, req.Industries, req.Force, entClient)
 		if err != nil {
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

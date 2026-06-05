@@ -59,6 +59,8 @@ export function useTaxonomyPage() {
     try {
       await platformStore.loadTaxonomyTree(CATEGORY_RESOURCE);
       tree.value = platformStore.taxonomyTree;
+    } catch (err) {
+      $q.notify({ type: 'negative', message: errorMessage(err) || '加载行业分类失败' });
     } finally {
       if (!opts?.silent) loading.value = false;
     }

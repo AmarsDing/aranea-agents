@@ -234,6 +234,7 @@ type GraphStepSnapshot struct {
 // GraphReader provides read-only access to graph definitions.
 type GraphReader interface {
 	GetDefinition(ctx context.Context, id string) (*GraphDefinition, error)
+	GetDefinitionByName(ctx context.Context, name string) (*GraphDefinition, error)
 	ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*GraphDefinition, string, error)
 	ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*GraphDefinition, error)
 }

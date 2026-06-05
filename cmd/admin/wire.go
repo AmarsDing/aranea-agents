@@ -23,10 +23,10 @@ import (
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
+	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
 	bizusage "aranea-agents/internal/biz/usage"
-	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
@@ -452,15 +452,15 @@ func (a *sessionMetricsAdapter) AccumulateMetricsDelta(delta bizusage.SessionMet
 		return
 	}
 	a.sessions.AccumulateMetricsDelta(bizsession.SessionMetricsDelta{
-		SessionID:        delta.SessionID,
-		MessageCount:     delta.MessageCount,
-		ModelCallCount:   delta.ModelCallCount,
-		ToolCallCount:    delta.ToolCallCount,
-		SkillCallCount:   delta.SkillCallCount,
-		McpCallCount:     delta.McpCallCount,
-		InputTokens:      delta.InputTokens,
-		OutputTokens:     delta.OutputTokens,
-		TotalTokens:      delta.TotalTokens,
+		SessionID:         delta.SessionID,
+		MessageCount:      delta.MessageCount,
+		ModelCallCount:    delta.ModelCallCount,
+		ToolCallCount:     delta.ToolCallCount,
+		SkillCallCount:    delta.SkillCallCount,
+		McpCallCount:      delta.McpCallCount,
+		InputTokens:       delta.InputTokens,
+		OutputTokens:      delta.OutputTokens,
+		TotalTokens:       delta.TotalTokens,
 		TotalCostMicroUsd: delta.TotalCostMicroUsd,
 	})
 }
@@ -1086,10 +1086,6 @@ func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseE
 	return monitor.NewSelfHealObserver(repo, engine, notifier, lg)
 }
 
-func provideRootCauseEngine(lg loggateway.Logger) *monitor.RootCauseEngine {
-	return monitor.NewRootCauseEngine(lg)
-}
-
 func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	return biz.NewSkillIntelligenceUsecase(repo, repo, repo, suggestionRepo, suggestionRepo, lg)
 }
@@ -1122,6 +1118,18 @@ func provideSelfCheckJob(scheduler *monitor.SelfCheckScheduler, lg loggateway.Lo
 		return nil
 	}
 	return jobs.NewSelfCheckJob(0, scheduler, lg)
+}
+
+func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monitor.FailurePatternWriter, reader monitor.FailurePatternReader, lg loggateway.Logger) *jobs.FailurePatternSyncJob {
+	return jobs.NewFailurePatternSyncJob(0, engine, writer, reader, lg)
+}
+
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
+		biz.WithSpiritTransactor(transactor),
+		biz.WithOrchestrationCache(orchCache),
+		biz.WithEvolutionSuggestionRepo(evolutionSugg),
+	)
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
@@ -1223,7 +1231,7 @@ type wireOut struct {
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
-	AutoHealTTLCleanup         *jobs.AutoHealTTLCleanup
+	AutoHealTTLCleanup          *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
 	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
 	MemoryL2Decay               *jobs.MemoryL2DecayWorker
@@ -1241,6 +1249,7 @@ type wireOut struct {
 	SelfCheckJob                *jobs.SelfCheckJob
 	CronRepo                    biz.CronRepo
 	SkillIntelligence           *biz.SkillIntelligenceUsecase
+	FailurePatternSyncJob       *jobs.FailurePatternSyncJob
 }
 
 func provideWireOut(
@@ -1283,6 +1292,7 @@ func provideWireOut(
 	skillIntelligence *biz.SkillIntelligenceUsecase,
 	skillEvolutionScanner *jobs.SkillEvolutionScanner,
 	skillIntelligenceWorker *jobs.SkillIntelligenceWorker,
+	failurePatternSyncJob *jobs.FailurePatternSyncJob,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -1305,6 +1315,7 @@ func provideWireOut(
 		SkillIntelligence:         skillIntelligence,
 		SkillEvolutionScanner:     skillEvolutionScanner,
 		SkillIntelligenceWorker:   skillIntelligenceWorker,
+		FailurePatternSyncJob:     failurePatternSyncJob,
 	}
 }
 
@@ -1536,7 +1547,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideDiagBundleGenerator,
 		provideSelfHealUsecase,
 		provideSelfHealObserver,
-		provideRootCauseEngine,
 		provideSkillIntelligenceUsecase,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
@@ -1617,6 +1627,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideEventBusResubscriber,
 		provideSelfCheckCleanup,
 		provideSelfCheckJob,
+		provideFailurePatternSyncJob,
+		provideSpiritTeamUsecase,
+		wire.Bind(new(monitor.FailurePatternReader), new(*data.FailurePatternReadWriter)),
+		wire.Bind(new(monitor.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
 		provideWSTurnExecutor,
 		// Ecosystem preset: bind repo and provide usecase deps
 		wire.Bind(new(biz.EcosystemPresetRepo), new(*data.EcosystemPresetRepo)),

@@ -88,8 +88,10 @@ const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
     parallel: 'parallel',
     sequential: 'sequential',
     coordinator: 'coordinator',
-    graph: 'hybrid',
-    debate: 'hybrid',
+    critic_loop: 'hybrid',
+    swarm: 'hybrid',
+    adaptive: 'hybrid',
+    direct: 'sequential',
   };
   return mapping[mode] ?? null;
 };

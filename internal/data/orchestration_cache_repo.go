@@ -35,8 +35,9 @@ func (r *orchestrationCacheRepo) LoadCacheJSON(ctx context.Context) (string, err
 }
 
 func (r *orchestrationCacheRepo) SaveCacheJSON(ctx context.Context, jsonStr string) error {
+	// Use INSERT OR REPLACE to handle both initial insert and subsequent updates.
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE system_settings SET orchestration_cache_json = ? WHERE id = 1`,
+		`INSERT OR REPLACE INTO system_settings (id, orchestration_cache_json) VALUES (1, ?)`,
 		jsonStr,
 	)
 	return err

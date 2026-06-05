@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/pack"
@@ -117,6 +116,10 @@ func (a *PackRepoAdapter) GetTaxonomyNodeByKey(ctx context.Context, key string) 
 	return a.taxonomy.GetTaxonomyNodeByKey(ctx, key)
 }
 
+func (a *PackRepoAdapter) GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (biz.TaxonomyNode, error) {
+	return a.taxonomy.GetTaxonomyNodeByKeyAnyState(ctx, key)
+}
+
 func (a *PackRepoAdapter) CreateAgent(ctx context.Context, agent biz.Agent) (biz.Agent, error) {
 	return a.agents.CreateAgent(ctx, agent)
 }
@@ -146,16 +149,7 @@ func (a *PackRepoAdapter) GetTeamByID(ctx context.Context, id string) (biz.Team,
 }
 
 func (a *PackRepoAdapter) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error) {
-	teams, err := a.teams.ListTeams(ctx)
-	if err != nil {
-		return biz.Team{}, err
-	}
-	for _, t := range teams {
-		if t.TeamKey == teamKey {
-			return t, nil
-		}
-	}
-	return biz.Team{}, fmt.Errorf("team with key %q not found", teamKey)
+	return a.teams.GetTeamByKey(ctx, teamKey)
 }
 
 func (a *PackRepoAdapter) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
@@ -170,6 +164,14 @@ func (a *PackRepoAdapter) SaveGraphDefinition(ctx context.Context, def *biz.Grap
 	return a.graphs.SaveDefinition(ctx, def)
 }
 
+func (a *PackRepoAdapter) GetGraphDefinitionByName(ctx context.Context, name string) (*biz.GraphDefinition, error) {
+	return a.graphs.GetDefinitionByName(ctx, name)
+}
+
+func (a *PackRepoAdapter) UpdateGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
+	return a.graphs.UpdateDefinition(ctx, def)
+}
+
 // --- ValidatorRepo ---
 
 func (a *PackRepoAdapter) AgentKeyExists(ctx context.Context, agentKey string) (bool, error) {
@@ -181,16 +183,11 @@ func (a *PackRepoAdapter) AgentKeyExists(ctx context.Context, agentKey string) (
 }
 
 func (a *PackRepoAdapter) TeamKeyExists(ctx context.Context, teamKey string) (bool, error) {
-	teams, err := a.teams.ListTeams(ctx)
+	_, err := a.teams.GetTeamByKey(ctx, teamKey)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
-	for _, t := range teams {
-		if t.TeamKey == teamKey {
-			return true, nil
-		}
-	}
-	return false, nil
+	return true, nil
 }
 
 func (a *PackRepoAdapter) TaxonomyKeyExists(ctx context.Context, key string) (bool, error) {

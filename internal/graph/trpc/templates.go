@@ -71,6 +71,8 @@ var builtinTemplates = []GraphTemplate{
 		},
 		Edges: []TemplateEdge{
 			{FromNode: "submit", ToNode: "review", Type: "runtime"},
+			{FromNode: "review", ToNode: "approved", Type: "conditional", Label: "approved"},
+			{FromNode: "review", ToNode: "rejected", Type: "conditional", Label: "rejected"},
 			{FromNode: "approved", ToNode: "result", Type: "runtime"},
 			{FromNode: "rejected", ToNode: "result", Type: "runtime"},
 		},
@@ -125,6 +127,7 @@ var builtinTemplates = []GraphTemplate{
 			{FromNode: "generate", ToNode: "evaluate", Type: "runtime"},
 			{FromNode: "evaluate", ToNode: "route", Type: "runtime"},
 			{FromNode: "route", ToNode: "final", Type: "conditional", Label: "approved"},
+			{FromNode: "route", ToNode: "generate", Type: "conditional", Label: "revision"},
 		},
 		StateFields: []StateFieldDef{
 			{Name: "input", Type: "string", Reducer: ReducerDefault},

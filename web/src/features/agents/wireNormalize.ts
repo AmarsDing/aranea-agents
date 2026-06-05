@@ -255,6 +255,7 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     pending_evolution_count: pickNum(w, 'pendingEvolutionCount', 'pending_evolution_count', 0),
     readonly: pickBool(w, 'readonly', 'readonly', false),
     source: pickStrOpt(w, 'source', 'source'),
+    kind: pickStrOpt(w, 'kind', 'kind'),
     settings: normalizeRuntimeSettingsFromWire(w.settings),
     files,
   };

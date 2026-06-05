@@ -27,7 +27,7 @@
 
       <template v-if="!loadError">
         <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" :breakpoint="0">
-          <q-tab name="agent" label="Agent" />
+          <q-tab name="agent" label="Agent 属性" />
           <q-tab name="memory" label="记忆" />
           <q-tab name="files" label="文件" />
           <q-tab name="permissions" label="权限" />

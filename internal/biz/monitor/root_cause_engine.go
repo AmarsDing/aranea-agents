@@ -82,6 +82,100 @@ func NewRootCauseEngine(lg loggateway.Logger) *RootCauseEngine {
 	return &RootCauseEngine{rules: rules, lg: lg}
 }
 
+// Analyze implements RootCauseAnalyzer by delegating to Evaluate and returning
+// the first matching result, or nil if no rule matches.
+func (e *RootCauseEngine) Analyze(ctx context.Context, stepID, phase string, err error, metadata map[string]any) (*RootCauseResult, error) {
+	results := e.Evaluate(ctx, stepID, phase, metadata)
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return &results[0], nil
+}
+
+// AnalyzeFromReport implements RootCauseAnalyzer.AnalyzeFromReport by converting
+// a FailureReport into the internal metadata format and delegating to Analyze.
+// Returns nil if report is nil or no rule matches.
+func (e *RootCauseEngine) AnalyzeFromReport(ctx context.Context, report *FailureReport) (*RootCauseResult, error) {
+	if report == nil {
+		return nil, nil
+	}
+
+	stepID := reportToStepID(report)
+	phase := "error"
+	metadata := reportToMetadata(report)
+
+	return e.Analyze(ctx, stepID, phase, nil, metadata)
+}
+
+// reportToStepID maps a FailureReport to a step ID for rule matching.
+func reportToStepID(report *FailureReport) string {
+	switch report.Type {
+	case FailureTypeBuild, FailureTypeLint, FailureTypeProtoSync:
+		return "build*"
+	case FailureTypeTest:
+		return "test*"
+	case FailureTypeRuntime:
+		// Use the Job field to infer step ID for runtime errors
+		job := strings.ToLower(report.Job)
+		if strings.Contains(job, "mcp") {
+			return "mcp*"
+		}
+		if strings.Contains(job, "llm") {
+			return "llm*"
+		}
+		if strings.Contains(job, "tool") {
+			return "tool*"
+		}
+		if strings.Contains(job, "memory") {
+			return "memory*"
+		}
+		if strings.Contains(job, "session") {
+			return "session*"
+		}
+		if strings.Contains(job, "skill") {
+			return "skill*"
+		}
+		if strings.Contains(job, "graph") {
+			return "graph*"
+		}
+		return "runtime*"
+	default:
+		return "unknown*"
+	}
+}
+
+// reportToMetadata converts a FailureReport into the metadata map format
+// used by the rule matching engine.
+func reportToMetadata(report *FailureReport) map[string]any {
+	metadata := make(map[string]any)
+	if report.ErrorCode != "" {
+		metadata["error_code"] = report.ErrorCode
+	}
+	if report.Message != "" {
+		metadata["error_message"] = report.Message
+	}
+	if report.File != "" {
+		metadata["file"] = report.File
+	}
+	if report.Line > 0 {
+		metadata["line"] = report.Line
+	}
+	if report.Source != "" {
+		metadata["source"] = report.Source
+	}
+	if report.Job != "" {
+		metadata["job"] = report.Job
+	}
+	if report.StackTrace != "" {
+		metadata["stack_trace"] = report.StackTrace
+	}
+	// Copy string metadata into map[string]any
+	for k, v := range report.Metadata {
+		metadata[k] = v
+	}
+	return metadata
+}
+
 func (e *RootCauseEngine) Evaluate(ctx context.Context, stepID, phase string, metadata map[string]any) []RootCauseResult {
 	if e == nil {
 		return nil

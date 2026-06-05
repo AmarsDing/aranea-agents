@@ -12,12 +12,14 @@ import (
 type stubImporterRepo struct {
 	agents map[string]biz.Agent
 	teams  map[string]biz.Team
+	graphs map[string]*biz.GraphDefinition // name → definition
 }
 
 func newStubImporterRepo() *stubImporterRepo {
 	return &stubImporterRepo{
 		agents: make(map[string]biz.Agent),
 		teams:  make(map[string]biz.Team),
+		graphs: make(map[string]*biz.GraphDefinition),
 	}
 }
 
@@ -28,6 +30,9 @@ func (r *stubImporterRepo) UpdateTaxonomyNode(_ context.Context, node biz.Taxono
 	return node, nil
 }
 func (r *stubImporterRepo) GetTaxonomyNodeByKey(_ context.Context, key string) (biz.TaxonomyNode, error) {
+	return biz.TaxonomyNode{}, shared.ErrNotFound
+}
+func (r *stubImporterRepo) GetTaxonomyNodeByKeyAnyState(_ context.Context, key string) (biz.TaxonomyNode, error) {
 	return biz.TaxonomyNode{}, shared.ErrNotFound
 }
 func (r *stubImporterRepo) ListTaxonomyNodesByParentID(_ context.Context, parentID string) ([]biz.TaxonomyNode, error) {
@@ -88,6 +93,21 @@ func (r *stubImporterRepo) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, 
 }
 
 func (r *stubImporterRepo) SaveGraphDefinition(_ context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
+	if def.ID == "" {
+		def.ID = "graph-" + def.Name
+	}
+	r.graphs[def.Name] = def
+	return def, nil
+}
+func (r *stubImporterRepo) GetGraphDefinitionByName(_ context.Context, name string) (*biz.GraphDefinition, error) {
+	g, ok := r.graphs[name]
+	if !ok {
+		return nil, shared.ErrNotFound
+	}
+	return g, nil
+}
+func (r *stubImporterRepo) UpdateGraphDefinition(_ context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
+	r.graphs[def.Name] = def
 	return def, nil
 }
 
@@ -115,10 +135,13 @@ func TestImport_DefaultKind(t *testing.T) {
 		t.Errorf("TeamsCreated = %d, want 1", result.TeamsCreated)
 	}
 
-	// Verify agent has default kind "llm" and source "imported"
+	// Verify agent has default kind "user" (ownership), agent_kind "llm" (technical), and source "imported"
 	agent := repo.agents["test-agent"]
-	if agent.Kind != "llm" {
-		t.Errorf("Agent Kind = %q, want %q", agent.Kind, "llm")
+	if agent.Kind != "user" {
+		t.Errorf("Agent Kind = %q, want %q", agent.Kind, "user")
+	}
+	if agent.AgentKind != "llm" {
+		t.Errorf("Agent AgentKind = %q, want %q", agent.AgentKind, "llm")
 	}
 	if agent.Source != "imported" {
 		t.Errorf("Agent Source = %q, want %q", agent.Source, "imported")
@@ -155,13 +178,13 @@ func TestImport_WithKindOverride(t *testing.T) {
 		t.Errorf("TeamsCreated = %d, want 1", result.TeamsCreated)
 	}
 
-	// Verify agent kind overridden to "ecosystem_preset"
+	// Verify agent kind overridden to "ecosystem_preset" (ownership), source "imported"
 	agent := repo.agents["eco-agent"]
 	if agent.Kind != "ecosystem_preset" {
 		t.Errorf("Agent Kind = %q, want %q", agent.Kind, "ecosystem_preset")
 	}
-	if agent.Source != "ecosystem_preset" {
-		t.Errorf("Agent Source = %q, want %q", agent.Source, "ecosystem_preset")
+	if agent.Source != "imported" {
+		t.Errorf("Agent Source = %q, want %q", agent.Source, "imported")
 	}
 
 	// Verify team kind overridden to "ecosystem_preset", source stays "imported"

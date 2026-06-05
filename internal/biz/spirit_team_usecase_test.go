@@ -63,6 +63,17 @@ func (m *memSpiritTeamRepo) DeleteTeam(_ context.Context, id string) error {
 	delete(m.items, id)
 	return nil
 }
+func (m *memSpiritTeamRepo) BatchArchiveTeams(_ context.Context, ids []string) (int, error) {
+	n := 0
+	for _, id := range ids {
+		if t, ok := m.items[id]; ok {
+			t.Status = TeamStatusArchived
+			m.items[id] = t
+			n++
+		}
+	}
+	return n, nil
+}
 func (m *memSpiritTeamRepo) ListBySpiritSessionID(_ context.Context, spiritSessionID string) ([]Team, error) {
 	var out []Team
 	for _, t := range m.items {
@@ -389,7 +400,7 @@ func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -431,7 +442,7 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -571,7 +582,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -626,7 +637,7 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 
@@ -672,7 +683,7 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
 	ctx := context.Background()
 

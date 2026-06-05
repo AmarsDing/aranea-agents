@@ -12,6 +12,7 @@ import (
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 )
 
 type TaxonomyRepo struct {
@@ -100,6 +101,21 @@ func (r *TaxonomyRepo) GetTaxonomyNodeByKey(ctx context.Context, key string) (bi
 	return entToBizTaxonomy(row), nil
 }
 
+func (r *TaxonomyRepo) GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (biz.TaxonomyNode, error) {
+	row, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
+		Where(
+			industrytaxonomy.TaxonomyKeyEQ(key),
+		).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.TaxonomyNode{}, sql.ErrNoRows
+		}
+		return biz.TaxonomyNode{}, err
+	}
+	return entToBizTaxonomy(row), nil
+}
+
 func (r *TaxonomyRepo) ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error) {
 	rows, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
@@ -142,6 +158,9 @@ func (r *TaxonomyRepo) CreateTaxonomyNode(ctx context.Context, c biz.TaxonomyNod
 		c.CreatedAt = now
 	}
 	c.UpdatedAt = now
+	if c.ID == "" {
+		c.ID = uuid.NewString()
+	}
 	saved, err := r.data.RW().Write(ctx).IndustryTaxonomy.Create().
 		SetID(c.ID).
 		SetTaxonomyKey(c.Key).
@@ -170,7 +189,7 @@ func (r *TaxonomyRepo) CreateTaxonomyNode(ctx context.Context, c biz.TaxonomyNod
 
 func (r *TaxonomyRepo) UpdateTaxonomyNode(ctx context.Context, c biz.TaxonomyNode) (biz.TaxonomyNode, error) {
 	c.UpdatedAt = nowRFC3339()
-	err := r.data.RW().Write(ctx).IndustryTaxonomy.UpdateOneID(c.ID).
+	update := r.data.RW().Write(ctx).IndustryTaxonomy.UpdateOneID(c.ID).
 		SetTaxonomyKey(c.Key).
 		SetName(c.Name).
 		SetDescription(c.Description).
@@ -186,7 +205,8 @@ func (r *TaxonomyRepo) UpdateTaxonomyNode(ctx context.Context, c biz.TaxonomyNod
 		SetConfigJSON(c.ConfigJSON).
 		SetMetadataJSON(c.MetadataJSON).
 		SetUpdatedAt(c.UpdatedAt).
-		Exec(ctx)
+		SetDeletedAt(c.DeletedAt)
+	err := update.Exec(ctx)
 	if err != nil {
 		return biz.TaxonomyNode{}, err
 	}

@@ -31,6 +31,7 @@ func (r *observatoryTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, e
 	return biz.Team{}, nil
 }
 func (r *observatoryTeamRepo) DeleteTeam(context.Context, string) error { return nil }
+func (r *observatoryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
 	if teamID == r.team.ID {
 		return r.runs, nil
@@ -81,6 +82,9 @@ func (r *observatoryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string)
 }
 func (r *observatoryTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
+}
+func (r *observatoryTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, nil
 }
 func (r *observatoryTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil

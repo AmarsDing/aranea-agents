@@ -17,6 +17,7 @@ type ImporterRepo interface {
 	CreateTaxonomyNode(ctx context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error)
 	UpdateTaxonomyNode(ctx context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error)
 	GetTaxonomyNodeByKey(ctx context.Context, key string) (biz.TaxonomyNode, error)
+	GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (biz.TaxonomyNode, error)
 	ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error)
 
 	// Agent
@@ -35,7 +36,9 @@ type ImporterRepo interface {
 	UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 
 	// Graph
+	GetGraphDefinitionByName(ctx context.Context, name string) (*biz.GraphDefinition, error)
 	SaveGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error)
+	UpdateGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error)
 }
 
 // importConfig holds optional configuration for an Import call.
@@ -99,7 +102,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 3: Graphs
 	for _, graphSpec := range p.Graphs {
-		created, err := im.importGraph(ctx, graphSpec, mapper)
+		created, updated, skipped, err := im.importGraph(ctx, graphSpec, strategy, mapper)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "graph",
@@ -109,6 +112,8 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 			continue
 		}
 		result.GraphsCreated += created
+		result.GraphsUpdated += updated
+		result.GraphsSkipped += skipped
 	}
 
 	// Phase 4: Teams
@@ -223,13 +228,16 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	}
 
 	// 构建 biz.Agent
+	// Kind = ownership classification (user | system_builtin | ecosystem_preset | ...)
+	// Source = origin tracking (user | system | imported)
+	// AgentKind = technical type (llm | a2a_proxy), set separately
 	kind := cfg.kindOverride
 	if kind == "" {
-		kind = firstNonEmpty(spec.Kind, "llm")
+		kind = firstNonEmpty(spec.OwnershipKind, "user")
 	}
 	source := "imported"
-	if cfg.kindOverride != "" {
-		source = cfg.kindOverride
+	if kind == "system_builtin" {
+		source = "system"
 	}
 	agent := biz.Agent{
 		AgentKey:           spec.Key,
@@ -243,15 +251,17 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		SystemPromptMode:   spec.SystemPromptMode,
 		ContextWindow:      spec.ContextWindow,
 		Kind:               kind,
+		AgentKind:          firstNonEmpty(spec.Kind, biz.AgentKindLLM),
 		Status:             "active",
 		Readonly:           false,
 		Source:             source,
 	}
 
-	// overwrite 时保留原始 Status/Readonly/Source
+	// overwrite 时保留原始 Status/Readonly/Kind/Source
 	if findErr == nil && strategy == ConflictOverwrite {
 		agent.Status = existing.Status
 		agent.Readonly = existing.Readonly
+		agent.Kind = existing.Kind
 		agent.Source = existing.Source
 	}
 
@@ -337,8 +347,12 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	if spec.Runtime != nil {
 		settings := im.buildRuntimeSettings(agentID, spec)
 		if _, err := im.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
-			// 回滚：删除已创建的 Agent（Files 已通过 Replace 覆盖，无需单独清理）
+			// 回滚：先清理已写入的 PromptFiles，再删除 Agent
 			if created == 1 {
+				// 清理 PromptFiles（ReplaceAgentPromptFiles 传入空切片即清除）
+				if _, cleanErr := im.repo.ReplaceAgentPromptFiles(ctx, agentID, nil); cleanErr != nil {
+					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（清理 PromptFiles 也失败: %v）", spec.Key, err.Error(), cleanErr))
+				}
 				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
 					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
 				}
@@ -351,7 +365,48 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 }
 
 // importGraph 导入单个 Graph。
-func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper *KeyMapper) (int, error) {
+func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, err error) {
+	// 检查是否已存在（按 name 查找）
+	existing, findErr := im.repo.GetGraphDefinitionByName(ctx, spec.Name)
+
+	if findErr == nil {
+		// Graph 已存在
+		switch strategy {
+		case ConflictSkip:
+			mapper.RegisterGraph(spec.ID, existing.ID)
+			return 0, 0, 1, nil
+		case ConflictDuplicate:
+			// Graph 不支持 duplicate（无独立 key 机制），按 overwrite 处理
+		case ConflictOverwrite:
+			// 继续更新
+		}
+	}
+
+	def := im.buildGraphDefinition(spec)
+
+	if findErr == nil && (strategy == ConflictOverwrite || strategy == ConflictDuplicate) {
+		// 更新
+		def.ID = existing.ID
+		saved, updateErr := im.repo.UpdateGraphDefinition(ctx, def)
+		if updateErr != nil {
+			return 0, 0, 0, kerrors.BadRequest("PACK_GRAPH_UPDATE", fmt.Sprintf("更新 Graph %s 失败: %s", spec.ID, updateErr.Error()))
+		}
+		mapper.RegisterGraph(spec.ID, saved.ID)
+		return 0, 1, 0, nil
+	}
+
+	// 创建
+	saved, saveErr := im.repo.SaveGraphDefinition(ctx, def)
+	if saveErr != nil {
+		return 0, 0, 0, kerrors.BadRequest("PACK_GRAPH_CREATE", fmt.Sprintf("创建 Graph %s 失败: %s", spec.ID, saveErr.Error()))
+	}
+
+	mapper.RegisterGraph(spec.ID, saved.ID)
+	return 1, 0, 0, nil
+}
+
+// buildGraphDefinition 从 GraphPackSpec 构建 biz.GraphDefinition。
+func (im *Importer) buildGraphDefinition(spec GraphPackSpec) *biz.GraphDefinition {
 	def := &biz.GraphDefinition{
 		Name:             spec.Name,
 		Description:      spec.Description,
@@ -466,13 +521,7 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 		def.Subgraphs = append(def.Subgraphs, subgraphDef)
 	}
 
-	saved, err := im.repo.SaveGraphDefinition(ctx, def)
-	if err != nil {
-		return 0, kerrors.BadRequest("PACK_GRAPH_CREATE", fmt.Sprintf("创建 Graph %s 失败: %s", spec.ID, err.Error()))
-	}
-
-	mapper.RegisterGraph(spec.ID, saved.ID)
-	return 1, nil
+	return def
 }
 
 // importTeam 导入单个 Team。
@@ -795,6 +844,15 @@ func (im *Importer) upsertTaxonomyNode(ctx context.Context, node biz.TaxonomyNod
 		}
 		// duplicate: 不应用于 taxonomy
 		return existing, nil
+	}
+
+	// 活跃记录不存在，检查是否存在软删除的同 key 记录
+	softDeleted, err2 := im.repo.GetTaxonomyNodeByKeyAnyState(ctx, node.Key)
+	if err2 == nil && softDeleted.DeletedAt != "" {
+		// 软删除记录存在，恢复并更新
+		node.ID = softDeleted.ID
+		node.DeletedAt = ""
+		return im.repo.UpdateTaxonomyNode(ctx, node)
 	}
 
 	// 创建

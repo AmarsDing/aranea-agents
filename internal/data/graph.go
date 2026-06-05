@@ -92,6 +92,20 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 	return entGraphToBiz(row, r.data.lg), nil
 }
 
+func (r *graphRepo) GetDefinitionByName(ctx context.Context, name string) (*biz.GraphDefinition, error) {
+	client := r.data.RW().Read(ctx)
+	row, err := client.GraphDefinition.Query().
+		Where(graphdefinition.NameEQ(name)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, errors.NotFound("GRAPH", "graph definition not found")
+		}
+		return nil, fmt.Errorf("graph repo get by name: %w", err)
+	}
+	return entGraphToBiz(row, r.data.lg), nil
+}
+
 func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*biz.GraphDefinition, string, error) {
 	client := r.data.RW().Read(ctx)
 	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))

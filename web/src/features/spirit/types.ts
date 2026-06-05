@@ -1,14 +1,13 @@
 export type SpiritTeamStatus =
-  | 'assembling'
-  | 'assembled'
+  | 'pending'
   | 'running'
   | 'completed'
   | 'failed'
-  | 'waiting_human'
-  | 'waiting_deps'
-  | 'cancelled';
+  | 'cancelled'
+  | 'interrupted'
+  | 'archived';
 
-export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'graph' | 'debate';
+export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'critic_loop' | 'swarm' | 'adaptive' | 'direct';
 
 export type SpiritMember = {
   agentId: string;

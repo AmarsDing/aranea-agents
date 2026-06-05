@@ -57,8 +57,22 @@ func (m *memTeamRepoB) DeleteTeam(_ context.Context, id string) error {
 	delete(m.items, id)
 	return nil
 }
+func (m *memTeamRepoB) BatchArchiveTeams(_ context.Context, ids []string) (int, error) {
+	n := 0
+	for _, id := range ids {
+		if t, ok := m.items[id]; ok {
+			t.Status = biz.TeamStatusArchived
+			m.items[id] = t
+			n++
+		}
+	}
+	return n, nil
+}
 func (m *memTeamRepoB) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
+}
+func (m *memTeamRepoB) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, nil
 }
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil

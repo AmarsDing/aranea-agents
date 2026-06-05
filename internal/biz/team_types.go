@@ -42,12 +42,14 @@ var teamStatusValidTransitions = map[string][]string{
 	TeamStatusRunning:     {TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted},
 	TeamStatusInterrupted: {TeamStatusRunning},
 	TeamStatusCompleted:   {TeamStatusArchived},
+	TeamStatusFailed:      {TeamStatusArchived},
+	TeamStatusCancelled:   {TeamStatusArchived},
 }
 
 // IsTeamStatusActive returns true if the team status means the team is
 // considered "active" (i.e. not terminal and not deleted).
 func IsTeamStatusActive(status string) bool {
-	return status == TeamStatusPending || status == TeamStatusRunning
+	return status == TeamStatusPending || status == TeamStatusRunning || status == TeamStatusInterrupted
 }
 
 const (
@@ -298,13 +300,25 @@ type TeamGraphSession struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
-type TeamGraphSessionRepo interface {
-	SaveSession(ctx context.Context, sess TeamGraphSession) error
-	UpdateSessionStatus(ctx context.Context, execID, status string) error
+// TeamGraphSessionReader provides read access to team graph sessions.
+type TeamGraphSessionReader interface {
 	GetSession(ctx context.Context, execID string) (TeamGraphSession, error)
 	ListActiveSessions(ctx context.Context) ([]TeamGraphSession, error)
+}
+
+// TeamGraphSessionWriter provides write access to team graph sessions.
+type TeamGraphSessionWriter interface {
+	SaveSession(ctx context.Context, sess TeamGraphSession) error
+	UpdateSessionStatus(ctx context.Context, execID, status string) error
 	DeleteSession(ctx context.Context, execID string) error
 	MarkOrphanedSessionsTerminal(ctx context.Context) (int, error)
+}
+
+// TeamGraphSessionRepo combines read and write access for backward compatibility.
+// New code should depend on TeamGraphSessionReader or TeamGraphSessionWriter instead.
+type TeamGraphSessionRepo interface {
+	TeamGraphSessionReader
+	TeamGraphSessionWriter
 }
 
 // TeamRunSummaryData aggregates run-level and per-member stats for RPC / Monitor.

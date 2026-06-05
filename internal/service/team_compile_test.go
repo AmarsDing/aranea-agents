@@ -30,6 +30,7 @@ func (r *compileTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error
 	return biz.Team{}, nil
 }
 func (r *compileTeamRepo) DeleteTeam(context.Context, string) error { return nil }
+func (r *compileTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *compileTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -70,6 +71,9 @@ func (r *compileTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (bi
 }
 func (r *compileTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
+}
+func (r *compileTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, nil
 }
 func (r *compileTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil

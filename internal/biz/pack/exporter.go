@@ -199,7 +199,8 @@ func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPa
 		Model:              agent.Model,
 		SystemPromptMode:   agent.SystemPromptMode,
 		ContextWindow:      agent.ContextWindow,
-		Kind:               agent.Kind,
+		Kind:               agent.AgentKind,
+		OwnershipKind:      agent.Kind,
 		TeamRole:           "", // 从 Team 成员定义中获取
 	}
 

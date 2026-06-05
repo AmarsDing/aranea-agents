@@ -77,6 +77,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260716, Name: "missing_indexes", SQL: "sql/migrations/20260716_missing_indexes.sql"},
 	{Version: 20260717, Name: "usage_events_schema", SQL: "sql/migrations/20260717_usage_events_schema.sql"},
 	{Version: 20260718, Name: "ecosystem_preset_schema", SQL: "sql/migrations/20260718_ecosystem_preset_schema.sql", Func: ddlEcosystemPresetDataMigration},
+	{Version: 20260719, Name: "agent_source_column", SQL: "sql/migrations/20260719_agent_source_column.sql", Func: ddlAgentSourceDataMigration},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -314,6 +315,21 @@ func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 	// Migrate team kind: source=imported -> kind=ecosystem_preset
 	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET kind = 'ecosystem_preset' WHERE source = 'imported'`); err != nil {
 		return fmt.Errorf("migrate team kind imported->ecosystem_preset: %w", err)
+	}
+	return nil
+}
+
+// ddlAgentSourceDataMigration populates the new agents.source column from existing kind values.
+// Mapping: kind=user -> source=user, kind=system_builtin -> source=system, kind=ecosystem_preset/marketplace/certified -> source=imported.
+func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
+		return fmt.Errorf("migrate agent source system_builtin->system: %w", err)
+	}
+	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET source = 'imported' WHERE kind IN ('ecosystem_preset', 'marketplace', 'certified') AND source = 'user'`); err != nil {
+		return fmt.Errorf("migrate agent source ecosystem->imported: %w", err)
 	}
 	return nil
 }

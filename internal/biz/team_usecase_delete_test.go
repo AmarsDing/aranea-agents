@@ -21,6 +21,7 @@ func (s *stubTeamReader) GetTeamByID(_ context.Context, id string) (Team, error)
 	}
 	return s.team, nil
 }
+func (s *stubTeamReader) GetTeamByKey(context.Context, string) (Team, error) { return Team{}, ErrNotFound }
 func (s *stubTeamReader) ListBySpiritSessionID(context.Context, string) ([]Team, error) { return nil, nil }
 
 type stubTeamWriter struct {
@@ -32,6 +33,9 @@ func (s *stubTeamWriter) UpdateTeam(context.Context, Team) (Team, error) { retur
 func (s *stubTeamWriter) DeleteTeam(_ context.Context, id string) error {
 	s.deletedID = id
 	return nil
+}
+func (s *stubTeamWriter) BatchArchiveTeams(_ context.Context, ids []string) (int, error) {
+	return len(ids), nil
 }
 
 type stubTeamRunReader struct{}

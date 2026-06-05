@@ -14,6 +14,7 @@ type TeamReader interface {
 	ListTeams(ctx context.Context) ([]Team, error)
 	ListTeamsByStatus(ctx context.Context, status string) ([]Team, error)
 	GetTeamByID(ctx context.Context, id string) (Team, error)
+	GetTeamByKey(ctx context.Context, teamKey string) (Team, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
 }
 
@@ -21,6 +22,7 @@ type TeamWriter interface {
 	CreateTeam(ctx context.Context, t Team) (Team, error)
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
 	DeleteTeam(ctx context.Context, id string) error
+	BatchArchiveTeams(ctx context.Context, ids []string) (int, error)
 }
 
 type TeamRunReader interface {
@@ -373,6 +375,15 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 	return u.writer.UpdateTeam(ctx, current)
 }
 
+// BatchArchiveTeams archives multiple teams in a single DB operation.
+// It validates each team's current status allows archiving before proceeding.
+func (u *TeamUsecase) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	return u.writer.BatchArchiveTeams(ctx, ids)
+}
+
 func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {
@@ -384,6 +395,10 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	}
 	if team.Kind == "system_builtin" {
 		return kerrors.Forbidden("TEAM", "cannot delete system_builtin team")
+	}
+	// ecosystem_preset teams must be deleted via industry unload to keep ecosystem_loaded status consistent.
+	if team.Kind == "ecosystem_preset" {
+		return kerrors.Forbidden("TEAM", "cannot delete ecosystem_preset team directly; use industry unload instead")
 	}
 	if team.IsDefault {
 		return kerrors.Conflict("TEAM", "default team cannot be deleted")

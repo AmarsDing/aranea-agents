@@ -41,6 +41,8 @@ func newApp(
 	orchCache *biz.OrchestrationCache,
 	sessions *biz.SessionUsecase,
 	chatSvc *service.ChatService,
+	spiritUC *biz.SpiritTeamUsecase,
+	teamStarter *service.TeamStarter,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -59,6 +61,10 @@ func newApp(
 		kratos.Logger(logger),
 		kratos.Server(srv...),
 		kratos.BeforeStart(func(ctx context.Context) error {
+			// Inject service-layer timeout handler into biz layer (breaks circular dep).
+			if spiritUC != nil && teamStarter != nil {
+				spiritUC.SetTimeoutHandler(teamStarter)
+			}
 			if d != nil {
 				if gate := d.Readiness(); gate != nil {
 					if err := gate.Wait(ctx); err != nil {
@@ -67,7 +73,7 @@ func newApp(
 				}
 			}
 			if err := guard.OnStartup(ctx); err != nil {
-				logger.Log(log.LevelWarn, "msg", "session status guard startup failed", "error", err.Error())
+				lg.Warn("session status guard startup failed", loggateway.StepID("startup.guard"), loggateway.Err(err))
 			}
 			if orchCache != nil {
 				orchCache.InitFromRepo(ctx)
@@ -102,24 +108,24 @@ func newApp(
 					}
 				}
 			}
-			logger.Log(log.LevelInfo, "msg", "event infra bound for monitor flow logs")
+			lg.Info("event infra bound for monitor flow logs", loggateway.StepID("startup.event_infra"))
 			return nil
 		}),
 		kratos.AfterStart(func(startCtx context.Context) error {
 			if memoryDataMigration != nil {
 				memoryDataMigration.Start(startCtx)
-				logger.Log(log.LevelInfo, "msg", "memory data migration worker started")
+				lg.Info("memory data migration worker started", loggateway.StepID("startup.memory_migration"))
 			}
 	
 			return nil
 		}),
 		kratos.AfterStop(func(ctx context.Context) error {
 			if err := guard.OnShutdown(ctx); err != nil {
-				logger.Log(log.LevelWarn, "msg", "session status guard shutdown failed", "error", err.Error())
+				lg.Warn("session status guard shutdown failed", loggateway.StepID("shutdown.guard"), loggateway.Err(err))
 			}
 			if chatSvc != nil {
 				if err := chatSvc.Close(); err != nil {
-					logger.Log(log.LevelWarn, "msg", "chat service close failed", "error", err.Error())
+					lg.Warn("chat service close failed", loggateway.StepID("shutdown.chat"), loggateway.Err(err))
 				}
 			}
 			consumerCancel()

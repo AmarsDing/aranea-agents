@@ -78,10 +78,13 @@ const modeLabel = computed(() => {
   const m = props.team.mode;
   if (!m) return '';
   const labels: Record<string, string> = {
+    coordinator: '协调者',
     sequential: '顺序',
     parallel: '并行',
-    graph: '图编排',
-    debate: '辩论',
+    critic_loop: '批判循环',
+    swarm: '蜂群',
+    adaptive: '自适应',
+    direct: '直接',
   };
   return labels[m] ?? m;
 });

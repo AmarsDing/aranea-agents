@@ -31,27 +31,30 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const lastCheckpoint = ref<SpiritOrchestrationCheckpointPayload | null>(null);
   const orchestrationInterrupted = ref<SpiritOrchestrationInterruptedPayload | null>(null);
 
+  // Track the current spirit session ID for loadSpiritTeams and reset.
+  const currentSpiritSessionId = ref<string | null>(null);
+
   const activeTeam = computed(() => teams.value.find((t) => t.id === activeTeamId.value) ?? null);
 
   const activeTeams = computed(() =>
-    teams.value.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled'),
+    teams.value.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived'),
   );
 
   const completedTeams = computed(() => teams.value.filter((t) => t.status === 'completed'));
 
   const runningTeamCount = computed(
-    () => teams.value.filter((t) => t.status === 'running' || t.status === 'assembled').length,
+    () => teams.value.filter((t) => t.status === 'running' || t.status === 'pending').length,
   );
 
   const sortedTeams = computed(() => {
     const statusOrder: Record<string, number> = {
       running: 0,
-      assembling: 1,
-      assembled: 1,
-      waiting_deps: 2,
+      pending: 1,
+      interrupted: 2,
       completed: 3,
       failed: 4,
       cancelled: 5,
+      archived: 6,
     };
     return [...teams.value].sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
   });
@@ -60,9 +63,39 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     loading.value = true;
     try {
       teams.value = await listSpiritTeams(spiritSessionId);
+      currentSpiritSessionId.value = spiritSessionId;
+    } catch {
+      Notify.create({ type: 'negative', message: '加载团队列表失败', position: 'top' });
     } finally {
       loading.value = false;
     }
+  }
+
+  /** Reload teams for the current spirit session (e.g. after WS reconnect). */
+  async function reloadTeams() {
+    if (currentSpiritSessionId.value) {
+      await loadSpiritTeams(currentSpiritSessionId.value);
+    }
+  }
+
+  /** Reset all store state — call when switching spirit sessions or leaving chat. */
+  function reset() {
+    teams.value = [];
+    expandedTeamIds.value = new Set();
+    activePanelMode.value = 'spirit';
+    activeTeamId.value = null;
+    activeMemberId.value = null;
+    loading.value = false;
+    teamProgress.value = [];
+    allTeamsCompleted.value = false;
+    synthesisCompleted.value = false;
+    synthesisResult.value = null;
+    planCreated.value = null;
+    allocationCreated.value = null;
+    orchestrationStarted.value = null;
+    lastCheckpoint.value = null;
+    orchestrationInterrupted.value = null;
+    currentSpiritSessionId.value = null;
   }
 
   function selectTeam(teamId: string) {
@@ -95,12 +128,16 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   async function cancelTeam(teamId: string) {
     try {
       await cancelSpiritTeam(teamId);
-    } catch (e) {
+      // Update status to cancelled instead of removing — consistent with backend behavior.
+      updateTeamStatus(teamId, 'cancelled');
+      const next = new Set(expandedTeamIds.value);
+      next.delete(teamId);
+      expandedTeamIds.value = next;
+      if (activeTeamId.value === teamId) {
+        returnToSpirit();
+      }
+    } catch {
       Notify.create({ type: 'warning', message: '取消团队请求可能未生效，请刷新确认', position: 'top' });
-    }
-    teams.value = teams.value.filter((t) => t.id !== teamId);
-    if (activeTeamId.value === teamId) {
-      returnToSpirit();
     }
   }
 
@@ -128,6 +165,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   }
 
   function addTeam(team: SpiritTeam) {
+    // Dedup: if team already exists, update it instead of adding a duplicate.
     const idx = teams.value.findIndex((t) => t.id === team.id);
     if (idx >= 0) {
       teams.value[idx] = team;
@@ -143,13 +181,15 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     switch (env.type) {
       case 'spirit_team_assembled':
         synthesisCompleted.value = false;
+        synthesisResult.value = null;
+        allTeamsCompleted.value = false;
         if (teamId) {
           addTeam({
             id: teamId,
             teamName: String(md.team_name ?? ''),
             taskSummary: String(md.task_summary ?? ''),
-            status: 'assembled',
-            mode: String(md.mode ?? 'coordinator') as SpiritTeamMode,
+            status: 'pending',
+            mode: (String(md.mode || 'coordinator')) as SpiritTeamMode,
             memberAvatars: [],
             completedSteps: 0,
             totalSteps: Number(md.total_steps ?? 1),
@@ -191,9 +231,21 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         if (teamId) {
           const pct = Number(md.progress_pct ?? 0);
           const durationMs = Number(md.duration_ms ?? 0);
-          updateTeamStatus(teamId, String(md.status ?? 'running'));
+          const newStatus = String(md.status ?? 'running');
+          // Only allow forward state transitions — prevent running → pending regression.
           const team = teams.value.find((t) => t.id === teamId);
           if (team) {
+            const regressions: Record<string, Set<string>> = {
+              running: new Set(['pending']),
+              completed: new Set(['pending', 'running']),
+              failed: new Set(['pending', 'running']),
+              cancelled: new Set(['pending', 'running']),
+              archived: new Set(['pending', 'running', 'completed', 'failed', 'cancelled']),
+            };
+            const blocked = regressions[team.status];
+            if (!blocked || !blocked.has(newStatus)) {
+              team.status = newStatus as SpiritTeam['status'];
+            }
             if (pct >= 0 && team.totalSteps > 0) {
               team.completedSteps = Math.round((pct * team.totalSteps) / 100);
             }
@@ -210,7 +262,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
       case 'spirit_synthesis_completed':
         synthesisCompleted.value = true;
-        allTeamsCompleted.value = false;
+        // Do NOT reset allTeamsCompleted — all teams completed is a fact
+        // regardless of whether synthesis has also completed.
         {
           const rawResults = Array.isArray(env.metadata?.team_results)
             ? (env.metadata.team_results as Array<{
@@ -293,12 +346,15 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     orchestrationStarted,
     lastCheckpoint,
     orchestrationInterrupted,
+    currentSpiritSessionId,
     activeTeam,
     activeTeams,
     completedTeams,
     runningTeamCount,
     sortedTeams,
     loadSpiritTeams,
+    reloadTeams,
+    reset,
     selectTeam,
     selectMember,
     returnToSpirit,

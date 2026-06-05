@@ -86,6 +86,7 @@ type TaxonomyReader interface {
 	ListTaxonomyNodes(ctx context.Context) ([]TaxonomyNode, error)
 	GetTaxonomyNode(ctx context.Context, id string) (TaxonomyNode, error)
 	GetTaxonomyNodeByKey(ctx context.Context, key string) (TaxonomyNode, error)
+	GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (TaxonomyNode, error)
 	ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]TaxonomyNode, error)
 	ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]TaxonomyNode, error)
 }

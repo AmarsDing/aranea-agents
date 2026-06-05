@@ -205,7 +205,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	if err != nil {
 		return Agent{}, err
 	}
-	computed = EmbedAgentKindInConfigJSON(computed, agent.Kind, agent.A2AProxy, u.lg)
+	computed = EmbedAgentKindInConfigJSON(computed, agent.AgentKind, agent.A2AProxy, u.lg)
 	agent.ConfigJSON = mergeEvaluationFromLegacy(computed, agent.ConfigJSON, u.lg)
 	if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err == nil {
 		if ex, ok := extras[agent.ID]; ok {
@@ -248,13 +248,13 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	in.Provider = strings.TrimSpace(in.Provider)
 	in.Model = strings.TrimSpace(in.Model)
-	in.Kind = NormalizeAgentKind(in.Kind)
+	in.AgentKind = NormalizeAgentKind(in.AgentKind)
 	HydrateAgentKind(&in)
 
 	if in.AgentKey == "" || in.DisplayName == "" {
 		return Agent{}, kerrors.BadRequest("AGENT", "agent_key and display_name are required")
 	}
-	switch in.Kind {
+	switch in.AgentKind {
 	case AgentKindA2AProxy:
 		if in.A2AProxy == nil || strings.TrimSpace(in.A2AProxy.RemoteURL) == "" {
 			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
@@ -269,7 +269,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 		if in.Provider == "" || in.Model == "" {
 			return Agent{}, kerrors.BadRequest("AGENT", "provider and model are required")
 		}
-		in.Kind = AgentKindLLM
+		in.AgentKind = AgentKindLLM
 	}
 	if in.ID == "" {
 		in.ID = newAgentCatalogID()
@@ -288,7 +288,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if err := ValidateRalphLoopSettings(&settings); err != nil {
 		return Agent{}, err
 	}
-	if in.Kind == AgentKindA2AProxy {
+	if in.AgentKind == AgentKindA2AProxy {
 		settings.IntentPassEnabled = false
 		settings.ToolsEnabled = false
 		settings.MemoryEnabled = false
@@ -306,7 +306,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 		}
 		in.ConfigJSON = configJSON
 	}
-	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy, u.lg)
+	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.AgentKind, in.A2AProxy, u.lg)
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = "active"
@@ -364,11 +364,11 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	}
 	HydrateAgentKind(&patch)
 	HydrateAgentKind(&current)
-	if strings.TrimSpace(patch.Kind) != "" && NormalizeAgentKind(patch.Kind) != NormalizeAgentKind(current.Kind) {
+	if strings.TrimSpace(patch.AgentKind) != "" && NormalizeAgentKind(patch.AgentKind) != NormalizeAgentKind(current.AgentKind) {
 		return Agent{}, kerrors.BadRequest("AGENT", "agent_kind is immutable")
 	}
 	merged := mergeAgentCatalog(current, patch)
-	merged.Kind = current.Kind
+	merged.AgentKind = current.AgentKind
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
 	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
@@ -400,7 +400,7 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
 		}
 	}
-	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy, u.lg)
+	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.AgentKind, merged.A2AProxy, u.lg)
 	// #region debug-point agent.update.trace
 	traceTrace.Info("before ExecInTx", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Int("files_len", len(files)))
 	// #endregion debug-point
@@ -474,8 +474,13 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if current.Source == "system_builtin" {
+	// Kind is the ownership classification (user | system_builtin | ecosystem_preset | ...).
+	if current.Kind == "system_builtin" {
 		return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
+	}
+	// ecosystem_preset agents must be deleted via industry unload to keep ecosystem_loaded status consistent.
+	if current.Kind == "ecosystem_preset" {
+		return kerrors.Forbidden("AGENT", "cannot delete ecosystem_preset agent directly; use industry unload instead")
 	}
 	if current.Readonly {
 		return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
@@ -606,7 +611,7 @@ func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string
 		return "", err
 	}
 	HydrateAgentKind(&a)
-	cj = EmbedAgentKindInConfigJSON(cj, a.Kind, a.A2AProxy, u.lg)
+	cj = EmbedAgentKindInConfigJSON(cj, a.AgentKind, a.A2AProxy, u.lg)
 	cj = mergeEvaluationFromLegacy(cj, a.ConfigJSON, u.lg)
 	return cj, nil
 }
@@ -706,7 +711,7 @@ func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, err
 func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error) {
 	agent.AgentKey = strings.TrimSpace(agent.AgentKey)
 	agent.DisplayName = strings.TrimSpace(agent.DisplayName)
-	agent.Kind = NormalizeAgentKind(agent.Kind)
+	agent.AgentKind = NormalizeAgentKind(agent.AgentKind)
 	HydrateAgentKind(&agent)
 
 	if agent.AgentKey == "" || agent.DisplayName == "" {
@@ -742,7 +747,7 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 		}
 		agent.ConfigJSON = cj
 	}
-	agent.ConfigJSON = EmbedAgentKindInConfigJSON(agent.ConfigJSON, agent.Kind, agent.A2AProxy, u.lg)
+	agent.ConfigJSON = EmbedAgentKindInConfigJSON(agent.ConfigJSON, agent.AgentKind, agent.A2AProxy, u.lg)
 
 	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
 		if _, err := u.repo.CreateAgent(txCtx, agent); err != nil {

@@ -158,6 +158,18 @@ func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 	return entTeamToBiz(row, r.data.lg), nil
 }
 
+func (r *teamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error) {
+	c := r.data.RW().Read(ctx)
+	row, err := c.Team.Query().Where(team.TeamKeyEQ(teamKey), team.DeletedAtEQ("")).Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Team{}, sql.ErrNoRows
+		}
+		return biz.Team{}, err
+	}
+	return entTeamToBiz(row, r.data.lg), nil
+}
+
 func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.ID == "" || t.TeamKey == "" || t.DisplayName == "" {
 		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
@@ -253,6 +265,26 @@ func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
 	// Cascade: clean up related records after successful soft-delete
 	cascadeDeleteByTeam(ctx, r.data, id)
 	return nil
+}
+
+func (r *teamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	now := nowRFC3339()
+	n, err := r.data.RW().Write(ctx).Team.Update().
+		Where(
+			team.IDIn(ids...),
+			team.StatusIn(biz.TeamStatusCompleted, biz.TeamStatusFailed, biz.TeamStatusCancelled),
+			team.DeletedAtEQ(""),
+		).
+		SetStatus(biz.TeamStatusArchived).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {

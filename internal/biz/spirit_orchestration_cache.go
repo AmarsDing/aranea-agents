@@ -90,6 +90,11 @@ func (c *OrchestrationCache) Put(entry OrchestrationCacheEntry) {
 func (c *OrchestrationCache) List() []OrchestrationCacheEntry {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.listLocked()
+}
+
+// listLocked returns all entries. Caller must hold at least c.mu.RLock.
+func (c *OrchestrationCache) listLocked() []OrchestrationCacheEntry {
 	result := make([]OrchestrationCacheEntry, 0, len(c.entries))
 	for _, e := range c.entries {
 		result = append(result, *e)
@@ -117,7 +122,7 @@ func (c *OrchestrationCache) LoadFromJSON(jsonStr string) error {
 func (c *OrchestrationCache) ToJSON() (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	entries := c.List()
+	entries := c.listLocked()
 	b, err := json.Marshal(entries)
 	if err != nil {
 		return "", kerrors.InternalServer("SPIRIT", "marshal orchestration cache: "+err.Error())
@@ -140,10 +145,32 @@ type DQScoreBreakdown struct {
 	DurationMs  int64   `json:"duration_ms"`
 }
 
+// DQ Score weight constants.
+const (
+	DQWeightValidity    = 0.4
+	DQWeightSpecificity = 0.3
+	DQWeightCorrectness = 0.3
+	DQScoreMin          = 0.1
+
+	// Specificity thresholds based on summary length.
+	DQSpecificityBase      = 0.7
+	DQSpecificityMedium    = 0.85 // summary > 50 chars
+	DQSpecificityHigh      = 1.0  // summary > 100 chars
+	DQSpecificityFindings  = 0.15 // bonus for key findings
+
+	// Time penalty constants.
+	DQTimePenaltyDivisorMs = 60000.0 // convert ms to minutes
+	DQTimePenaltyMax       = 5.0     // max time penalty in minutes
+	DQTimePenaltyFactor    = 0.1     // penalty per minute
+
+	// Evolution suggestion threshold.
+	DQEvolutionThreshold = 0.5
+)
+
 func (b DQScoreBreakdown) Overall() float64 {
-	score := b.Validity*0.4 + b.Specificity*0.3 + b.Correctness*0.3
-	if score < 0.1 {
-		return 0.1
+	score := b.Validity*DQWeightValidity + b.Specificity*DQWeightSpecificity + b.Correctness*DQWeightCorrectness
+	if score < DQScoreMin {
+		return DQScoreMin
 	}
 	return score
 }
@@ -158,27 +185,27 @@ func ComputeDQScoreBreakdown(teamResult TeamSynthesisResult, durationMs int64) D
 	}
 
 	if teamResult.Summary != "" {
-		b.Specificity = 0.7
+		b.Specificity = DQSpecificityBase
 		if len(teamResult.Summary) > 100 {
-			b.Specificity = 1.0
+			b.Specificity = DQSpecificityHigh
 		} else if len(teamResult.Summary) > 50 {
-			b.Specificity = 0.85
+			b.Specificity = DQSpecificityMedium
 		}
 	}
 	if teamResult.KeyFindings != "" {
-		b.Specificity = min(b.Specificity+0.15, 1.0)
+		b.Specificity = min(b.Specificity+DQSpecificityFindings, 1.0)
 	}
 
 	b.Correctness = 1.0
 	if durationMs > 0 {
-		timePenalty := float64(durationMs) / 60000.0
-		if timePenalty > 5.0 {
-			timePenalty = 5.0
+		timePenalty := float64(durationMs) / DQTimePenaltyDivisorMs
+		if timePenalty > DQTimePenaltyMax {
+			timePenalty = DQTimePenaltyMax
 		}
-		b.Correctness -= timePenalty * 0.1
+		b.Correctness -= timePenalty * DQTimePenaltyFactor
 	}
-	if b.Correctness < 0.1 {
-		b.Correctness = 0.1
+	if b.Correctness < DQScoreMin {
+		b.Correctness = DQScoreMin
 	}
 
 	return b
@@ -189,18 +216,29 @@ func (c *OrchestrationCache) RecordCompletion(ctx context.Context, taskPattern s
 }
 
 func (c *OrchestrationCache) RecordCompletionWithAgents(ctx context.Context, taskPattern string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64, agentKeys []string) {
-	existing, found := c.Get(taskPattern)
+	c.mu.Lock()
+	existing, found := c.entries[taskPattern]
 	if found && existing.DQScore >= dqScore {
+		c.mu.Unlock()
 		return
 	}
-	c.Put(OrchestrationCacheEntry{
+	entry := OrchestrationCacheEntry{
 		TaskPattern:   taskPattern,
 		Topology:      topology,
 		DQScore:       dqScore,
 		TeamCount:     teamCount,
 		AvgDurationMs: avgDurationMs,
 		AgentKeys:     agentKeys,
-	})
+		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
+	c.entries[taskPattern] = &entry
+	c.mu.Unlock()
+
+	c.lg.Info("编排缓存更新",
+		loggateway.StepID("spirit.orchestration_cache"),
+		loggateway.Str("task_pattern", taskPattern),
+		loggateway.Str("topology", string(topology)),
+	)
 	c.persistToRepo(ctx)
 }
 
@@ -267,8 +305,10 @@ func (c *OrchestrationCache) SuggestBestAlternativeTopology(taskDescription stri
 }
 
 func ExtractTaskPattern(desc string) string {
-	if len(desc) > 64 {
-		return desc[:64]
+	// Truncate by runes to avoid breaking multi-byte UTF-8 characters.
+	runes := []rune(desc)
+	if len(runes) > 64 {
+		return string(runes[:64])
 	}
 	return desc
 }

@@ -63,7 +63,7 @@ export function useTeamsPage() {
   const form = reactive({
     team_key: '',
     display_name: '',
-    status: 'active',
+    status: 'pending',
     app_name: '',
     taxonomy_industry_id: '',
   });
@@ -151,7 +151,7 @@ export function useTeamsPage() {
   function openCreate() {
     editingId.value = '';
     selectedTeamTemplateKey.value = null;
-    Object.assign(form, { team_key: '', display_name: '', status: 'active', app_name: '', taxonomy_industry_id: '' });
+    Object.assign(form, { team_key: '', display_name: '', status: 'pending', app_name: '', taxonomy_industry_id: '' });
     resetDefinition(definition);
     editorOpen.value = true;
   }

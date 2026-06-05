@@ -23,6 +23,7 @@ func (s stubTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error
 func (s stubTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (s stubTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (s stubTeamRepo) DeleteTeam(context.Context, string) error               { return nil }
+func (s stubTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (s stubTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -59,6 +60,9 @@ func (s stubTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.Ta
 func (s stubTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
 func (s stubTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
+}
+func (s stubTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, nil
 }
 func (s stubTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil

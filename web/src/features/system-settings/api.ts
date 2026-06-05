@@ -65,6 +65,7 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
 }
 
 // Ecosystem preset APIs
+// TODO(debt): migrate to protobuf service client once proto definitions are added
 
 export async function loadEcosystemPreset(industries?: string[], force?: boolean): Promise<EcosystemLoadResponse> {
   const body: Record<string, unknown> = {};

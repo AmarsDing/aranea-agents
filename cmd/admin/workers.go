@@ -42,6 +42,7 @@ type backgroundWorkersConfig struct {
 	AutoHealTTLCleanup          BackgroundStarter
 	MonitorAlertEvalWorker      BackgroundStarter
 	MonitorTraceBackfillWorker  BackgroundStarter
+	FailurePatternSyncJob       BackgroundStarter
 	MemoryL2Decay               BackgroundStarter
 	MemoryL2Consolidate         BackgroundStarter
 	MemoryL1Archive             BackgroundStarter
@@ -199,6 +200,11 @@ func startBackgroundWorkers(
 	if cfg.MonitorTraceBackfillWorker != nil {
 		goAfterReady("monitor_trace_backfill", func() { cfg.MonitorTraceBackfillWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "monitor trace backfill worker scheduled", "interval", "6h")
+	}
+
+	if cfg.FailurePatternSyncJob != nil {
+		goAfterReady("failure_pattern_sync", func() { cfg.FailurePatternSyncJob.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "failure pattern sync job scheduled", "interval", "24h")
 	}
 
 	if cfg.MemoryL2Decay != nil {

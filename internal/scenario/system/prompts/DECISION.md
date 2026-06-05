@@ -104,7 +104,7 @@
 
 | 场景 | 推荐模式 | 说明 |
 |------|---------|------|
-| 2-3 Agent 顺序执行 | coordinator | 编排管家协调，assemble_team 即可 |
+| 2-3 Agent 顺序执行 | coordinator | 编排管家协调，plan_and_execute 即可 |
 | 4+ Agent 有并行/条件路由 | dag | 使用 build_orchestration_graph 构建 Graph DAG |
 | 需要验证门禁 | dag + verification | Graph 支持自动验证节点 |
 

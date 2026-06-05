@@ -1,5 +1,7 @@
 export type AgentKind = '' | 'llm' | 'a2a_proxy';
 
+export type AgentOwnership = '' | 'user' | 'system_builtin' | 'ecosystem_preset' | 'marketplace' | 'certified';
+
 export type A2AProxyConfig = {
   remote_url: string;
   agent_card_url?: string;
@@ -16,6 +18,7 @@ export type Agent = {
   provider: string;
   model: string;
   agent_kind?: AgentKind;
+  kind?: AgentOwnership; // ownership classification (user | system_builtin | ecosystem_preset | marketplace | certified)
   a2a_proxy_config?: A2AProxyConfig;
   a2a_endpoint_enabled?: boolean;
   last_run_status?: string;
@@ -39,7 +42,7 @@ export type Agent = {
   deleted_at: string;
   created_by?: string;
   readonly?: boolean;
-  source?: string; // user | system | imported
+  source?: string; // user | system | imported (origin tracking)
   settings?: AgentRuntimeSettings;
   files?: AgentPromptFile[];
 };

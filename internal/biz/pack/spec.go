@@ -131,7 +131,8 @@ type AgentPackSpec struct {
 	TeamRole          string              `yaml:"team_role,omitempty"`
 
 	// Agent 类型
-	Kind              string              `yaml:"kind,omitempty"` // llm | a2a_proxy
+	Kind              string              `yaml:"kind,omitempty"`               // llm | a2a_proxy (technical type)
+	OwnershipKind     string              `yaml:"ownership_kind,omitempty"`     // user | system_builtin | ecosystem_preset | marketplace | certified (ownership classification)
 	A2AProxy          *A2AProxyPackSpec   `yaml:"a2a_proxy,omitempty"`
 }
 
@@ -459,6 +460,8 @@ type ImportResult struct {
 	TeamsUpdated  int          `yaml:"teams_updated"`
 	TeamsSkipped  int          `yaml:"teams_skipped"`
 	GraphsCreated int          `yaml:"graphs_created"`
+	GraphsUpdated int          `yaml:"graphs_updated"`
+	GraphsSkipped int          `yaml:"graphs_skipped"`
 	TaxonomyNodes int          `yaml:"taxonomy_nodes"`
 	Failures      []ImportFailure `yaml:"failures,omitempty"`
 	Warnings      []string        `yaml:"warnings,omitempty"`

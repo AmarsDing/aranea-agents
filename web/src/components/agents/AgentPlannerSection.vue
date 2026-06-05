@@ -45,7 +45,7 @@
         emit-value
         map-options
         clearable
-        label="reasoning_effort"
+        label="推理力度"
         :options="effortOptions"
         :hint="effortHint"
       />
@@ -55,7 +55,7 @@
         outlined
         emit-value
         map-options
-        label="thinking_enabled"
+        label="启用思考"
         :options="thinkingEnabledOptions"
         hint="未设置 = 不向 API 下发，由模型默认决定"
       />
@@ -65,7 +65,7 @@
         outlined
         type="number"
         clearable
-        label="thinking_tokens"
+        label="思考 Token 数"
         hint="Claude / Gemini via OpenAI API；留空表示不下发"
       />
     </div>
@@ -152,12 +152,12 @@ const thinkingEnabledChoice = computed({
 const a2uiSchemaFields: { key: keyof PlannerFormState['a2ui']; label: string }[] = [
   {
     key: 'server_to_client_with_standard_catalog_schema_json',
-    label: 'server_to_client_with_standard_catalog_schema_json',
+    label: '服务端→客户端 Schema（含标准目录）',
   },
-  { key: 'client_to_server_schema_json', label: 'client_to_server_schema_json' },
-  { key: 'client_capabilities_schema_json', label: 'client_capabilities_schema_json' },
-  { key: 'server_to_client_only_schema_json', label: 'server_to_client_only_schema_json' },
-  { key: 'standard_catalog_definition_json', label: 'standard_catalog_definition_json' },
-  { key: 'catalog_description_schema_json', label: 'catalog_description_schema_json' },
+  { key: 'client_to_server_schema_json', label: '客户端→服务端 Schema' },
+  { key: 'client_capabilities_schema_json', label: '客户端能力 Schema' },
+  { key: 'server_to_client_only_schema_json', label: '服务端→客户端 Schema（仅服务端）' },
+  { key: 'standard_catalog_definition_json', label: '标准目录定义 Schema' },
+  { key: 'catalog_description_schema_json', label: '目录描述 Schema' },
 ];
 </script>

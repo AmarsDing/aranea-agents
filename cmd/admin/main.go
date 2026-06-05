@@ -146,6 +146,7 @@ func main() {
 		AutoHealTTLCleanup:          out.AutoHealTTLCleanup,
 		MonitorAlertEvalWorker:      out.MonitorAlertEvalWorker,
 		MonitorTraceBackfillWorker:  out.MonitorTraceBackfillWorker,
+		FailurePatternSyncJob:       out.FailurePatternSyncJob,
 		MemoryL2Decay:               out.MemoryL2Decay,
 		MemoryL2Consolidate:         out.MemoryL2Consolidate,
 		MemoryL1Archive:             out.MemoryL1Archive,

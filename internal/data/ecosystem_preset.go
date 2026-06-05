@@ -8,17 +8,19 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type EcosystemPresetRepo struct {
 	data *Data
+	lg   loggateway.Logger
 }
 
 var _ biz.EcosystemPresetRepo = (*EcosystemPresetRepo)(nil)
 
 // NewEcosystemPresetRepo implements biz.EcosystemPresetRepo.
 func NewEcosystemPresetRepo(d *Data) *EcosystemPresetRepo {
-	return &EcosystemPresetRepo{data: d}
+	return &EcosystemPresetRepo{data: d, lg: d.lg}
 }
 
 func (r *EcosystemPresetRepo) GetEcosystemLoaded(ctx context.Context) (biz.EcosystemLoadedStatus, error) {
@@ -152,66 +154,111 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 		return 0, nil
 	}
 
+	// Find agent IDs before soft-deleting (needed for cascade cleanup)
+	agentIDs, err := r.findEcosystemAgentIDsByPositions(ctx, positionIDs)
+	if err != nil {
+		return 0, err
+	}
+	if len(agentIDs) == 0 {
+		return 0, nil
+	}
+
 	// Soft-delete agents where kind='ecosystem_preset' AND taxonomy_position_id IN (position IDs)
+	positionArgs := toAnySlice(positionIDs)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
-		append([]any{now, now}, toAnySlice(positionIDs)...)...)
+		append([]any{now, now}, positionArgs...)...)
 	if err != nil {
 		return 0, err
 	}
 	n, _ := res.RowsAffected()
+
+	// Cascade cleanup for each deleted agent (runtime_settings, prompt_files, sessions)
+	for agentID := range agentIDs {
+		cascadeDeleteByAgent(ctx, r.data, agentID)
+	}
+
 	return int(n), nil
 }
 
 func (r *EcosystemPresetRepo) DeleteTeamsByIndustry(ctx context.Context, industryKey string) (int, int, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// Find position IDs for the industry
 	positionIDs, err := r.findIndustryPositionIDs(ctx, industryKey)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	// Find agents being deleted (kind='ecosystem_preset' AND taxonomy_position_id IN positions)
-	deletedAgentIDs := map[string]bool{}
-	if len(positionIDs) > 0 {
-		agentRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-			`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
-			toAnySlice(positionIDs)...)
-		if err != nil {
-			return 0, 0, err
-		}
-		defer agentRows.Close()
-		for agentRows.Next() {
-			var id string
-			if err := agentRows.Scan(&id); err != nil {
-				return 0, 0, err
-			}
-			deletedAgentIDs[id] = true
-		}
+	deletedAgentIDs, err := r.findEcosystemAgentIDsByPositions(ctx, positionIDs)
+	if err != nil {
+		return 0, 0, err
 	}
 
-	// Find teams with kind='ecosystem_preset'
+	teamsToDelete, teamsToModify, err := r.classifyTeamsByIndustry(ctx, deletedAgentIDs)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	deleted, err := r.softDeleteTeams(ctx, now, teamsToDelete)
+	if err != nil {
+		return deleted, len(teamsToModify), err
+	}
+
+	modified, err := r.modifyTeamDefinitions(ctx, now, teamsToModify)
+	if err != nil {
+		return deleted, modified, err
+	}
+
+	return deleted, modified, nil
+}
+
+// findEcosystemAgentIDsByPositions returns agent IDs for ecosystem_preset agents in the given positions.
+func (r *EcosystemPresetRepo) findEcosystemAgentIDsByPositions(ctx context.Context, positionIDs []string) (map[string]bool, error) {
+	deletedAgentIDs := map[string]bool{}
+	if len(positionIDs) == 0 {
+		return deletedAgentIDs, nil
+	}
+	agentRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+		toAnySlice(positionIDs)...)
+	if err != nil {
+		return nil, err
+	}
+	defer agentRows.Close()
+	for agentRows.Next() {
+		var id string
+		if err := agentRows.Scan(&id); err != nil {
+			return nil, err
+		}
+		deletedAgentIDs[id] = true
+	}
+	return deletedAgentIDs, nil
+}
+
+type teamModifyEntry struct {
+	id         string
+	newDefJSON string
+}
+
+// classifyTeamsByIndustry classifies ecosystem_preset teams into delete vs modify lists.
+func (r *EcosystemPresetRepo) classifyTeamsByIndustry(ctx context.Context, deletedAgentIDs map[string]bool) ([]string, []teamModifyEntry, error) {
 	teamRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, definition_json FROM teams WHERE kind = 'ecosystem_preset' AND deleted_at = ''`)
 	if err != nil {
-		return 0, 0, err
+		return nil, nil, err
 	}
 	defer teamRows.Close()
 
 	var teamsToDelete []string
-	var teamsToModify []struct {
-		id         string
-		newDefJSON string
-	}
+	var teamsToModify []teamModifyEntry
 
 	for teamRows.Next() {
 		var id, defJSON string
 		if err := teamRows.Scan(&id, &defJSON); err != nil {
-			return 0, 0, err
+			return nil, nil, err
 		}
 
-		memberIDs := extractMemberAgentIDs(defJSON)
+		memberIDs := extractMemberAgentIDs(defJSON, r.lg)
 		allBelongToIndustry := true
 		anyBelongsToIndustry := false
 
@@ -226,43 +273,45 @@ func (r *EcosystemPresetRepo) DeleteTeamsByIndustry(ctx context.Context, industr
 		if allBelongToIndustry && anyBelongsToIndustry {
 			teamsToDelete = append(teamsToDelete, id)
 		} else if anyBelongsToIndustry {
-			// Remove deleted agent members from definition
 			newDefJSON, err := removeMembersFromDefinition(defJSON, deletedAgentIDs)
 			if err != nil {
-				return 0, 0, fmt.Errorf("modify team %s definition: %w", id, err)
+				return nil, nil, fmt.Errorf("modify team %s definition: %w", id, err)
 			}
-			teamsToModify = append(teamsToModify, struct {
-				id         string
-				newDefJSON string
-			}{id: id, newDefJSON: newDefJSON})
+			teamsToModify = append(teamsToModify, teamModifyEntry{id: id, newDefJSON: newDefJSON})
 		}
 	}
+	return teamsToDelete, teamsToModify, nil
+}
 
-	// Soft-delete teams
+// softDeleteTeams soft-deletes the given team IDs with cascade cleanup and returns the count deleted.
+func (r *EcosystemPresetRepo) softDeleteTeams(ctx context.Context, now string, ids []string) (int, error) {
 	deleted := 0
-	for _, id := range teamsToDelete {
+	for _, id := range ids {
 		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 			`UPDATE teams SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`,
 			now, now, id)
 		if err != nil {
-			return deleted, len(teamsToModify), err
+			return deleted, err
 		}
+		cascadeDeleteByTeam(ctx, r.data, id)
 		deleted++
 	}
+	return deleted, nil
+}
 
-	// Modify teams to remove deleted agent members
+// modifyTeamDefinitions updates definition_json for teams that need member removal.
+func (r *EcosystemPresetRepo) modifyTeamDefinitions(ctx context.Context, now string, entries []teamModifyEntry) (int, error) {
 	modified := 0
-	for _, tm := range teamsToModify {
+	for _, tm := range entries {
 		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 			`UPDATE teams SET definition_json = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`,
 			tm.newDefJSON, now, tm.id)
 		if err != nil {
-			return deleted, modified, err
+			return modified, err
 		}
 		modified++
 	}
-
-	return deleted, modified, nil
+	return modified, nil
 }
 
 // findIndustryPositionIDs returns all position-level taxonomy node IDs for the given industry.
@@ -320,13 +369,15 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 }
 
 // extractMemberAgentIDs parses the team definition_json and returns member agent IDs.
-func extractMemberAgentIDs(defJSON string) []string {
+func extractMemberAgentIDs(defJSON string, lg loggateway.Logger) []string {
 	var def struct {
 		Members []struct {
 			AgentID string `json:"agent_id"`
 		} `json:"members"`
 	}
 	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		lg.Warn("failed to parse team definition_json in extractMemberAgentIDs",
+			loggateway.Err(err))
 		return nil
 	}
 	ids := make([]string, 0, len(def.Members))

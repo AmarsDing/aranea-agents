@@ -22,6 +22,12 @@ type TeamStarterPort interface {
 	HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string)
 }
 
+// TimeoutHandler is called when a team times out. Implemented by the service
+// layer to trigger dependency scheduling, event publishing, and AllDone checks.
+type TimeoutHandler interface {
+	HandleTeamTimeout(ctx context.Context, spiritSessionID, teamID string)
+}
+
 type SpiritTeamParams struct {
 	SpiritSessionID    string
 	TaskDescription    string
@@ -49,22 +55,53 @@ type SpiritTransactor interface {
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// SpiritTeamUsecaseOption configures a SpiritTeamUsecase during construction.
+type SpiritTeamUsecaseOption func(*SpiritTeamUsecase)
+
+func WithSpiritTransactor(t SpiritTransactor) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.transactor = t }
+}
+
+func WithOrchestrationCache(c *OrchestrationCache) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.orchCache = c }
+}
+
+func WithEvolutionSuggestionRepo(r EvolutionSuggestionRepo) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.evolutionSugg = r }
+}
+
 type SpiritTeamUsecase struct {
-	teamUC        *TeamUsecase
-	sessionUC     *SessionUsecase
-	agentUC       *AgentUsecase
-	transactor    SpiritTransactor
-	orchCache     *OrchestrationCache
-	evolutionSugg EvolutionSuggestionRepo
-	lg            loggateway.Logger
+	teamUC         *TeamUsecase
+	sessionUC      *SessionUsecase
+	agentUC        *AgentUsecase
+	transactor     SpiritTransactor
+	orchCache      *OrchestrationCache
+	evolutionSugg  EvolutionSuggestionRepo
+	timeoutHandler TimeoutHandler
+	lg             loggateway.Logger
+
+	timeoutOnce sync.Once
 
 	// timeoutTimers tracks pending timeout callbacks so they can be cancelled
 	// when a team completes normally before the timeout fires.
 	timeoutTimers sync.Map // map[string]*time.Timer
 }
 
-func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, transactor SpiritTransactor, orchCache *OrchestrationCache, evolutionSugg EvolutionSuggestionRepo, lg loggateway.Logger) *SpiritTeamUsecase {
-	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, transactor: transactor, orchCache: orchCache, evolutionSugg: evolutionSugg, lg: lg}
+func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, lg loggateway.Logger, opts ...SpiritTeamUsecaseOption) *SpiritTeamUsecase {
+	u := &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, lg: lg}
+	for _, opt := range opts {
+		opt(u)
+	}
+	return u
+}
+
+// SetTimeoutHandler injects the service-layer timeout handler.
+// Called after construction to break the circular dependency.
+// Uses sync.Once to ensure the handler is set exactly once.
+func (u *SpiritTeamUsecase) SetTimeoutHandler(h TimeoutHandler) {
+	u.timeoutOnce.Do(func() {
+		u.timeoutHandler = h
+	})
 }
 
 func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamParams) (SpiritTeamResult, error) {
@@ -143,7 +180,11 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	if cfg.TeamTimeoutSeconds > 0 {
 		teamID := result.Team.ID
 		timer := time.AfterFunc(cfg.TeamTimeout(), func() {
-			u.timeoutTimers.Delete(teamID)
+			// If CancelTimeoutTimer already removed this entry, the team completed
+			// normally and we should not interfere.
+			if _, loaded := u.timeoutTimers.LoadAndDelete(teamID); !loaded {
+				return
+			}
 			safego.Go(context.Background(), "spirit-team-timeout", func() {
 				timeoutCtx := context.Background()
 				team, err := u.teamUC.Get(timeoutCtx, teamID)
@@ -157,7 +198,20 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 					loggateway.StepID("spirit.team.timeout"),
 					loggateway.Str("team_id", teamID),
 				)
-				u.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed)
+				if _, err := u.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed); err != nil {
+					u.lg.Warn("超时后转换团队状态失败",
+						loggateway.StepID("spirit.team.timeout_transition_err"),
+						loggateway.Str("team_id", teamID),
+						loggateway.Err(err),
+					)
+					return
+				}
+				// Notify service layer to handle dependency scheduling, event
+				// publishing, and AllDone checks — same lifecycle as a normal
+				// team failure.
+				if u.timeoutHandler != nil && team.SpiritSessionID != "" {
+					u.timeoutHandler.HandleTeamTimeout(timeoutCtx, team.SpiritSessionID, teamID)
+				}
 			})
 		})
 		u.timeoutTimers.Store(teamID, timer)
@@ -321,23 +375,42 @@ func (u *SpiritTeamUsecase) AutoArchiveCompletedTeams(ctx context.Context, spiri
 		return
 	}
 	threshold := time.Now().Add(-cfg.AutoArchiveAfter())
-	// TODO(debt): batch archive — collect IDs and use a single UPDATE query
-	// instead of per-team TransitionStatus calls.
+	var archiveIDs []string
 	for _, t := range teams {
-		if t.Status == TeamStatusCompleted {
-			updatedAt, parseErr := time.Parse(time.RFC3339, t.UpdatedAt)
-			if parseErr != nil {
-				u.lg.Warn("解析团队更新时间失败，跳过归档",
-					loggateway.StepID("spirit.auto_archive.parse_err"),
-					loggateway.Str("team_id", t.ID),
-					loggateway.Err(parseErr),
-				)
-				continue
-			}
-			if updatedAt.Before(threshold) {
-				u.teamUC.TransitionStatus(ctx, t.ID, TeamStatusArchived)
-			}
+		if t.Status != TeamStatusCompleted && t.Status != TeamStatusFailed && t.Status != TeamStatusCancelled {
+			continue
 		}
+		updatedAt, parseErr := time.Parse(time.RFC3339, t.UpdatedAt)
+		if parseErr != nil {
+			u.lg.Warn("解析团队更新时间失败，跳过归档",
+				loggateway.StepID("spirit.auto_archive.parse_err"),
+				loggateway.Str("team_id", t.ID),
+				loggateway.Err(parseErr),
+			)
+			continue
+		}
+		if updatedAt.Before(threshold) {
+			archiveIDs = append(archiveIDs, t.ID)
+		}
+	}
+	if len(archiveIDs) == 0 {
+		return
+	}
+	archived, archiveErr := u.teamUC.BatchArchiveTeams(ctx, archiveIDs)
+	if archiveErr != nil {
+		u.lg.Warn("批量归档团队失败",
+			loggateway.StepID("spirit.auto_archive.batch_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(archiveErr),
+		)
+		return
+	}
+	if archived > 0 {
+		u.lg.Info("批量归档团队完成",
+			loggateway.StepID("spirit.auto_archive.batch_done"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Int("archived_count", archived),
+		)
 	}
 }
 
@@ -480,6 +553,13 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 	return out, nil
 }
 
+// Spirit team definition constants.
+const (
+	SpiritTeamDefVersion     = 2
+	SpiritTeamDefaultTimeout = 600 // seconds
+	SpiritTeamDefaultMaxConc = 2   // default max concurrency
+)
+
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
 	type member struct {
 		AgentKey string `json:"agent_id"`
@@ -499,21 +579,21 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 			Enabled:  &enabled,
 		})
 	}
-	maxConcurrency := 2
+	maxConcurrency := SpiritTeamDefaultMaxConc
 	if len(parallelCfgJSON) > 0 && parallelCfgJSON[0] != "" {
 		cfg := ParseParallelConfig(parallelCfgJSON[0], lg)
-		if cfg.MaxConcurrentTeams > 0 {
-			maxConcurrency = cfg.MaxConcurrentTeams
+		if cfg.MaxTeamConcurrency > 0 {
+			maxConcurrency = cfg.MaxTeamConcurrency
 		}
 	}
 	def := map[string]any{
-		"version":            2,
+		"version":            SpiritTeamDefVersion,
 		"mode":               mode,
 		"runtime_engine":     RuntimeEngineGraph,
 		"team_graph_runtime": true,
 		"members":            members,
 		"max_concurrency":    maxConcurrency,
-		"timeout_seconds":    600,
+		"timeout_seconds":    SpiritTeamDefaultTimeout,
 	}
 	out, err := json.Marshal(def)
 	if err != nil {
@@ -582,9 +662,9 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 		loggateway.Float64("dq_score", dqScore),
 	)
 
-	if dqScore < 0.5 && u.evolutionSugg != nil && team.SpiritSessionID != "" {
+	if dqScore < DQEvolutionThreshold && u.evolutionSugg != nil && team.SpiritSessionID != "" {
 		altTopology, altFound := u.orchCache.SuggestBestAlternativeTopology(team.TaskDescription, topology)
-		content := fmt.Sprintf("团队 %q 的 DQ Score 为 %.2f（低于阈值 0.5），当前拓扑 %s 执行效果不佳。", team.DisplayName, dqScore, topology)
+		content := fmt.Sprintf("团队 %q 的 DQ Score 为 %.2f（低于阈值 %.1f），当前拓扑 %s 执行效果不佳。", team.DisplayName, dqScore, DQEvolutionThreshold, topology)
 		if altFound {
 			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)
 		} else {
@@ -703,6 +783,7 @@ type AllTeamsCompletedResult struct {
 
 // CheckAllTeamsCompleted checks whether all teams for a spirit session are in a terminal state.
 // Returns a result indicating if all teams are done and the list of team IDs.
+// A team is considered "done" if it is in completed, failed, or cancelled state.
 func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult {
 	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
@@ -716,18 +797,13 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 	if len(teams) == 0 {
 		return AllTeamsCompletedResult{}
 	}
-	hasCompleted := false
 	for _, t := range teams {
 		switch t.Status {
-		case TeamStatusPending, TeamStatusRunning:
+		case TeamStatusPending, TeamStatusRunning, TeamStatusInterrupted:
 			return AllTeamsCompletedResult{}
-		case TeamStatusCompleted:
-			hasCompleted = true
 		}
 	}
-	if !hasCompleted {
-		return AllTeamsCompletedResult{}
-	}
+	// All teams are in a terminal state (completed, failed, cancelled, or archived).
 	var teamIDs []string
 	for _, t := range teams {
 		teamIDs = append(teamIDs, t.ID)

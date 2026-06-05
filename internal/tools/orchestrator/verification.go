@@ -10,9 +10,9 @@ import (
 type VerificationType string
 
 const (
-	VerifyOutputFormat   VerificationType = "output_format"
-	VerifyTaskCompletion VerificationType = "task_completion"
-	VerifyHumanApproval VerificationType = "human_approval"
+	VerifyTypeOutputFormat   VerificationType = "output_format"
+	VerifyTypeTaskCompletion VerificationType = "task_completion"
+	VerifyTypeHumanApproval  VerificationType = "human_approval"
 )
 
 // VerificationConfig defines a verification gate to inject into the graph.
@@ -27,12 +27,12 @@ func DefaultVerificationConfigs(mode string) []VerificationConfig {
 	switch mode {
 	case "parallel", "hybrid":
 		return []VerificationConfig{
-			{Type: VerifyOutputFormat, AfterNode: "merge_results", FailureAction: biz.FailurePolicySkip},
-			{Type: VerifyTaskCompletion, AfterNode: "merge_results", FailureAction: biz.FailurePolicyRetryThenBlock},
+			{Type: VerifyTypeOutputFormat, AfterNode: "merge_results", FailureAction: biz.FailurePolicySkip},
+			{Type: VerifyTypeTaskCompletion, AfterNode: "merge_results", FailureAction: biz.FailurePolicyRetryThenBlock},
 		}
 	case "coordinator":
 		return []VerificationConfig{
-			{Type: VerifyOutputFormat, AfterNode: "merge_results", FailureAction: biz.FailurePolicySkip},
+			{Type: VerifyTypeOutputFormat, AfterNode: "merge_results", FailureAction: biz.FailurePolicySkip},
 		}
 	default:
 		return nil
@@ -59,7 +59,7 @@ func injectVerificationNodes(config *biz.GraphBuildConfig, mode string) []string
 		}
 
 		// If FailureAction requires human approval, set interrupt flag.
-		if vc.Type == VerifyHumanApproval {
+		if vc.Type == VerifyTypeHumanApproval {
 			vNode.InterruptBefore = true
 		}
 

@@ -209,8 +209,10 @@ message Agent {
   string position_key = 29;
   string agent_variant = 30;
   string variant_description = 31;
-  // source: user | system | system_builtin | industry_template | marketplace | certified (maps from DB kind column).
+  // source: user | system | imported (origin tracking, maps from DB source column).
   string source = 32;
+  // kind: user | system_builtin | ecosystem_preset | marketplace | certified (ownership classification, maps from DB kind column).
+  string kind = 33;
 }
 
 message ListAgentsRequest {

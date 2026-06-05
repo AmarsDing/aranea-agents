@@ -21,6 +21,7 @@ func (r *deadLetterTeamRepo) GetTeamByID(context.Context, string) (biz.Team, err
 func (r *deadLetterTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (r *deadLetterTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (r *deadLetterTeamRepo) DeleteTeam(context.Context, string) error { return nil }
+func (r *deadLetterTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *deadLetterTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -44,6 +45,9 @@ func (r *deadLetterTeamRepo) UpdateTeamRunTraceID(context.Context, string, strin
 func (r *deadLetterTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
 func (r *deadLetterTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
+}
+func (r *deadLetterTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, nil
 }
 func (r *deadLetterTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil

@@ -21,8 +21,8 @@ func TestEmbedAndHydrateAgentKind(t *testing.T) {
 	var ag Agent
 	ag.ConfigJSON = raw
 	HydrateAgentKind(&ag)
-	if ag.Kind != AgentKindA2AProxy {
-		t.Fatalf("kind: got %q", ag.Kind)
+	if ag.AgentKind != AgentKindA2AProxy {
+		t.Fatalf("kind: got %q", ag.AgentKind)
 	}
 	if ag.A2AProxy == nil || ag.A2AProxy.RemoteURL != cfg.RemoteURL {
 		t.Fatalf("proxy config not hydrated: %+v", ag.A2AProxy)

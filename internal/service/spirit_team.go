@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	_ tools.SpiritTeamAssemblerPort = (*SpiritTeamAssembler)(nil)
-	_ tools.SpiritTeamQueryPort     = (*SpiritTeamAssembler)(nil)
+	_ tools.SpiritTeamAssemblerPort  = (*SpiritTeamAssembler)(nil)
+	_ tools.SpiritTeamQueryPort      = (*SpiritTeamAssembler)(nil)
 	_ tools.SpiritTeamControllerPort = (*SpiritTeamAssembler)(nil)
-	_ biz.TeamStarterPort           = (*TeamStarter)(nil)
+	_ biz.TeamStarterPort            = (*TeamStarter)(nil)
+	_ biz.TimeoutHandler             = (*TeamStarter)(nil)
 )
 
 type TeamStarter struct {
@@ -138,6 +139,9 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		return
 	}
 
+	// Cancel timeout timer for any terminal status to prevent stale callbacks.
+	s.team.SpiritUC.CancelTimeoutTimer(teamID)
+
 	durationMs := int64(0)
 	runs, runErr := s.team.TeamUC.ListRuns(ctx, teamID, 1)
 	if runErr == nil && len(runs) > 0 {
@@ -189,6 +193,8 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 				loggateway.Err(updateErr),
 			)
 		}
+		// Schedule dependent teams so they can detect the failure and cascade cancel.
+		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 	}
 
 	if s.bus != nil {
@@ -255,7 +261,6 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					}
 					s.bus.Publish(ctx, env)
 				}
-				s.checkAllTeamsCompleted(ctx, spiritSessionID)
 			}
 		} else if action.Action == "activate" {
 			_, uerr := s.team.TeamUC.TransitionStatus(ctx, action.TeamID, biz.TeamStatusRunning)
@@ -289,6 +294,11 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				s.findAndStartTeamTurn(startCtx, depTeamID, taskDesc)
 			})
 		}
+	}
+	// Check all teams completed once after processing all actions (instead of
+	// per-action) to avoid redundant DB queries.
+	if len(actions) > 0 {
+		s.checkAllTeamsCompleted(ctx, spiritSessionID)
 	}
 }
 
@@ -324,6 +334,13 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		}
 		s.bus.Publish(ctx, env)
 	}
+}
+
+// HandleTeamTimeout implements biz.TimeoutHandler. Called when a team times out
+// to trigger dependency scheduling, event publishing, and AllDone checks — the
+// same lifecycle as HandleTeamTurnResult for a failed team.
+func (s *TeamStarter) HandleTeamTimeout(ctx context.Context, spiritSessionID, teamID string) {
+	s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusFailed, "team execution timed out")
 }
 
 type SpiritTeamAssembler struct {

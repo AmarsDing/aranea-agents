@@ -88,3 +88,26 @@
 - [x] 10.6 修复 useTaxonomyPage.ts reorderTaxonomy 直接调 API 而非通过 Store 委托（🟡 建议）
 - [x] 10.7 更新 importer_test.go 测试断言（Team Source 改为 "imported"，新增 Team Kind 断言）
 - [x] 10.8 验证：后端编译+测试通过，前端 lint+build 通过
+
+## 11. 审查建议优化
+
+- [x] 11.1 ecosystem API 加 TODO(debt) 注释标注后续迁移 protobuf
+- [x] 11.2 抽取 useEcosystemPreset composable，SystemSettingsPage script 从 ~153 行精简到 ~51 行
+- [x] 11.3 KindBadge kind prop 改为可选（kind?），TeamCard 传 undefined 不报错
+- [x] 11.4 KindBadge 颜色改用 CSS 变量（--color-accent/--color-positive/--q-purple/--q-orange）
+- [x] 11.5 extractMemberAgentIDs 添加 loggateway.Logger 参数，JSON 解析失败时记录 warning
+- [x] 11.6 DeleteTeamsByIndustry 拆分为 5 个子函数（findEcosystemAgentIDsByPositions/classifyTeamsByIndustry/softDeleteTeams/modifyTeamDefinitions）
+- [x] 11.7 team.go schema 新增 kind+deleted_at 复合索引（idx_teams_kind）
+- [x] 11.8 Ent 代码重新生成 + 后端编译+测试通过 + 前端 lint+build 通过
+
+## 12. 深度分析修复
+
+- [x] 12.1 🔴 A5: Ecosystem Unload 添加级联清理（DeleteAgentsByIndustry 调用 cascadeDeleteByAgent，softDeleteTeams 调用 cascadeDeleteByTeam）
+- [x] 12.2 🟡 B1: Agent Delete 增加 Kind 防御性检查（Source + Kind 双重保护）
+- [x] 12.3 🟡 A6: seedP1Data 使用 60s 超时 context 替代 context.Background()
+- [x] 12.4 🟡 A2: newDataFromClient 添加 WARNING 注释说明限制
+- [x] 12.5 🟡 A1: clientProvider 类型断言添加 nil 检查 + 类型验证（*ent.Client）
+- [x] 12.6 🟡 B5: 删除 loader.go 死代码（SeedFromYAML/SeedAgentsFromYAML/SeedTeamsFromYAML/BuildBizAgentFromSpec/BuildBizTeamFromSpec/convertGraphSpec/resolveAgentKeys/resolveModel/jsonStringList/skillRuntimeJSON），保留 LoadIndustrySpec + fillDefaults
+- [x] 12.7 🟡 NEW-1: TeamReader 接口新增 GetTeamByKey 方法，team_repo.go 实现，PackRepoAdapter 改用数据库查询替代全表扫描
+- [x] 12.8 🟡 NEW-2: GraphReader 接口新增 GetDefinitionByName 方法，graph.go 实现，PackRepoAdapter 改用数据库查询替代全表扫描+1000条限制
+- [x] 12.9 验证：后端编译+测试通过 + 前端 lint+build 通过

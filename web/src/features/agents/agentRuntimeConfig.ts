@@ -173,10 +173,27 @@ export const truncateStrategyOptions = ['summary', 'drop_oldest', 'drop_tool_res
   value,
 }));
 
-export const snapshotModeOptions = ['always', 'on_warning', 'off'].map((value) => ({ label: value, value }));
+const snapshotModeLabels: Record<string, string> = {
+  always: '始终',
+  on_warning: '警告时',
+  off: '关闭',
+};
+
+export const snapshotModeOptions = ['always', 'on_warning', 'off'].map((value) => ({
+  label: snapshotModeLabels[value] ?? value,
+  value,
+}));
+
+const memoryScopeLabels: Record<string, string> = {
+  agent: 'Agent',
+  user: '用户',
+  team: '团队',
+  workspace: '工作区',
+  global: '全局',
+};
 
 export const memoryScopeOptions = ['agent', 'user', 'team', 'workspace', 'global'].map((value) => ({
-  label: value,
+  label: memoryScopeLabels[value] ?? value,
   value,
 }));
 

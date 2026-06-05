@@ -47,5 +47,6 @@ func (Team) Fields() []ent.Field {
 func (Team) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("spirit_session_id", "deleted_at").StorageKey("idx_teams_spirit_session"),
+		index.Fields("kind", "deleted_at").StorageKey("idx_teams_kind"),
 	}
 }

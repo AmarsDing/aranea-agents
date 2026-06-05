@@ -27,6 +27,7 @@ type BuildOrchestrationGraphInput struct {
 // BuildOrchestrationGraphOutput is the output for the build_orchestration_graph tool.
 type BuildOrchestrationGraphOutput struct {
 	GraphBuildConfig  biz.GraphBuildConfig `json:"graph_build_config"`
+	GraphExecutionID  string               `json:"graph_execution_id,omitempty"`
 	NodeCount         int                  `json:"node_count"`
 	EdgeCount         int                  `json:"edge_count"`
 	VerificationNodes []string             `json:"verification_nodes"`
@@ -38,6 +39,7 @@ type GraphBuilderPort interface {
 }
 
 // NewBuildOrchestrationGraphTool creates the build_orchestration_graph tool.
+// If builder is nil, the tool only generates the graph config without executing it.
 func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.FunctionTool[BuildOrchestrationGraphInput, BuildOrchestrationGraphOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input BuildOrchestrationGraphInput) (BuildOrchestrationGraphOutput, error) {
@@ -48,12 +50,23 @@ func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.Func
 			config := BuildGraphConfig(input)
 			verificationNodes := injectVerificationNodes(&config, input.Mode)
 
-			return BuildOrchestrationGraphOutput{
+			out := BuildOrchestrationGraphOutput{
 				GraphBuildConfig:  config,
 				NodeCount:         len(config.Nodes),
 				EdgeCount:         len(config.Edges),
 				VerificationNodes: verificationNodes,
-			}, nil
+			}
+
+			// Only execute the graph if a builder implementation is available.
+			if builder != nil {
+				execID, err := builder.BuildAndExecute(ctx, config, "")
+				if err != nil {
+					return BuildOrchestrationGraphOutput{}, err
+				}
+				out.GraphExecutionID = execID
+			}
+
+			return out, nil
 		},
 		trpcfunction.WithName("build_orchestration_graph"),
 		trpcfunction.WithDescription("Build a Graph DAG for complex multi-agent orchestration. Use when 4+ agents need parallel/conditional execution with verification gates."),
@@ -65,53 +78,19 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
 	var nodes []biz.NodeDef
 	var edges []biz.EdgeDef
 
-	// 1. Entry node
 	entryNode := "entry"
 	nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: biz.NodeTypeFunction})
+	agentKeys := buildAgentNodes(&nodes, input.Agents)
+	buildDependencyEdges(&edges, entryNode, input.Agents, agentKeys)
 
-	// 2. Agent nodes
-	for _, a := range input.Agents {
-		nodes = append(nodes, biz.NodeDef{
-			ID:          a.AgentKey,
-			Type:        biz.NodeTypeAgent,
-			AgentName:   a.AgentKey,
-			Instruction: a.SubTask,
-		})
+	if hasCycle(nodes, edges) {
+		buildSequentialChainEdges(&edges, entryNode, input.Agents)
 	}
 
-	// 3. Edges based on dependencies
-	for _, a := range input.Agents {
-		if len(a.DependsOn) == 0 {
-			edges = append(edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
-		} else {
-			for _, dep := range a.DependsOn {
-				edges = append(edges, biz.EdgeDef{From: dep, To: a.AgentKey})
-			}
-		}
-	}
-
-	// 4. Merge node — all leaf agent nodes converge here
 	mergeNode := "merge_results"
 	nodes = append(nodes, biz.NodeDef{ID: mergeNode, Type: biz.NodeTypeFunction})
-	for _, a := range input.Agents {
-		isDependedOn := false
-		for _, other := range input.Agents {
-			for _, dep := range other.DependsOn {
-				if dep == a.AgentKey {
-					isDependedOn = true
-					break
-				}
-			}
-			if isDependedOn {
-				break
-			}
-		}
-		if !isDependedOn {
-			edges = append(edges, biz.EdgeDef{From: a.AgentKey, To: mergeNode})
-		}
-	}
+	buildMergeEdges(&edges, input.Agents, mergeNode)
 
-	// 5. Finish point
 	finishNode := "finish"
 	nodes = append(nodes, biz.NodeDef{ID: finishNode, Type: biz.NodeTypeFunction})
 	edges = append(edges, biz.EdgeDef{From: mergeNode, To: finishNode})
@@ -128,4 +107,112 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
 			{Name: "agent_results", Reducer: biz.ReducerMerge},
 		},
 	}
+}
+
+// buildAgentNodes creates agent nodes and returns the set of valid agent keys.
+func buildAgentNodes(nodes *[]biz.NodeDef, agents []AgentAssignment) map[string]bool {
+	agentKeys := make(map[string]bool, len(agents))
+	for _, a := range agents {
+		agentKeys[a.AgentKey] = true
+		*nodes = append(*nodes, biz.NodeDef{
+			ID:          a.AgentKey,
+			Type:        biz.NodeTypeAgent,
+			AgentName:   a.AgentKey,
+			Instruction: a.SubTask,
+		})
+	}
+	return agentKeys
+}
+
+// buildDependencyEdges creates edges based on agent dependencies.
+// Dangling dependencies (referencing non-existent agents) are skipped.
+func buildDependencyEdges(edges *[]biz.EdgeDef, entryNode string, agents []AgentAssignment, agentKeys map[string]bool) {
+	for _, a := range agents {
+		if len(a.DependsOn) == 0 {
+			*edges = append(*edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
+			continue
+		}
+		hasValidDep := false
+		for _, dep := range a.DependsOn {
+			if !agentKeys[dep] {
+				continue
+			}
+			*edges = append(*edges, biz.EdgeDef{From: dep, To: a.AgentKey})
+			hasValidDep = true
+		}
+		if !hasValidDep {
+			*edges = append(*edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
+		}
+	}
+}
+
+// buildSequentialChainEdges creates a sequential chain as fallback when cycles are detected.
+func buildSequentialChainEdges(edges *[]biz.EdgeDef, entryNode string, agents []AgentAssignment) {
+	*edges = (*edges)[:0]
+	for i, a := range agents {
+		if i == 0 {
+			*edges = append(*edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
+		} else {
+			*edges = append(*edges, biz.EdgeDef{From: agents[i-1].AgentKey, To: a.AgentKey})
+		}
+	}
+}
+
+// buildMergeEdges connects leaf agent nodes (those not depended on by others) to the merge node.
+func buildMergeEdges(edges *[]biz.EdgeDef, agents []AgentAssignment, mergeNode string) {
+	for _, a := range agents {
+		if isDependedOn(agents, a.AgentKey) {
+			continue
+		}
+		*edges = append(*edges, biz.EdgeDef{From: a.AgentKey, To: mergeNode})
+	}
+}
+
+// isDependedOn checks if any agent depends on the given agent key.
+func isDependedOn(agents []AgentAssignment, agentKey string) bool {
+	for _, other := range agents {
+		for _, dep := range other.DependsOn {
+			if dep == agentKey {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasCycle detects cycles in the graph using DFS.
+func hasCycle(nodes []biz.NodeDef, edges []biz.EdgeDef) bool {
+	adj := make(map[string][]string)
+	for _, e := range edges {
+		adj[e.From] = append(adj[e.From], e.To)
+	}
+	const (
+		white = 0 // unvisited
+		gray  = 1 // in current DFS path
+		black = 2 // fully processed
+	)
+	color := make(map[string]int, len(nodes))
+	for _, n := range nodes {
+		color[n.ID] = white
+	}
+	var dfs func(nodeID string) bool
+	dfs = func(nodeID string) bool {
+		color[nodeID] = gray
+		for _, next := range adj[nodeID] {
+			if color[next] == gray {
+				return true // back edge → cycle
+			}
+			if color[next] == white && dfs(next) {
+				return true
+			}
+		}
+		color[nodeID] = black
+		return false
+	}
+	for _, n := range nodes {
+		if color[n.ID] == white && dfs(n.ID) {
+			return true
+		}
+	}
+	return false
 }

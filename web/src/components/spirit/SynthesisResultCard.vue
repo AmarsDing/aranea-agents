@@ -42,7 +42,7 @@
     </div>
 
     <div class="synthesis-result-card__meta q-mt-sm">
-      <span class="text-caption text-grey-6">{{ result.synthesizedAt }}</span>
+      <span class="text-caption text-grey-6">{{ formattedTime }}</span>
     </div>
   </div>
 </template>
@@ -50,6 +50,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { SynthesisOutput, SynthesisStrategy } from '../../features/spirit/types';
+import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 
 const props = defineProps<{
   result: SynthesisOutput;
@@ -65,12 +66,16 @@ const strategyLabel = computed(() => {
 });
 
 const renderedContent = computed(() => {
-  let text = props.result.content;
-  text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  text = text.replace(/^### (.+)$/gm, '<strong>$1</strong>');
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/\n/g, '<br />');
-  return text;
+  return renderChatMarkdown(props.result.content);
+});
+
+const formattedTime = computed(() => {
+  if (!props.result.synthesizedAt) return '';
+  try {
+    return new Date(props.result.synthesizedAt).toLocaleString();
+  } catch {
+    return props.result.synthesizedAt;
+  }
 });
 </script>
 

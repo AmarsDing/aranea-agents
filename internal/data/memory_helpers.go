@@ -1111,6 +1111,19 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer)
 			return fmt.Errorf("monitor patch %s.%s: %w", p.table, p.col, err)
 		}
 	}
+	// Post-migration verification: ensure raw-SQL tables actually exist before
+	// the caller records this migration as applied. Without this check, a
+	// silent DDL failure could leave the tables missing while the migration is
+	// marked done, making it impossible to recover without manual intervention.
+	for _, tbl := range []string{"monitor_events", "monitor_traces"} {
+		exists, err := memSqliteTableExists(ctx, client, tbl)
+		if err != nil {
+			return fmt.Errorf("monitor patch verify %s: %w", tbl, err)
+		}
+		if !exists {
+			return fmt.Errorf("monitor patch verify: table %s not found after CREATE TABLE IF NOT EXISTS", tbl)
+		}
+	}
 	return nil
 }
 
@@ -1143,6 +1156,22 @@ func sessionMemoryEnsureMemoryRelationPatches(ctx context.Context, client execer
 
 func memSqliteColumnExists(ctx context.Context, client execer, table, column string) (bool, error) {
 	rows, err := client.QueryContext(ctx, "SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1", table, column)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return false, nil
+	}
+	var one int
+	if err := rows.Scan(&one); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func memSqliteTableExists(ctx context.Context, client execer, table string) (bool, error) {
+	rows, err := client.QueryContext(ctx, "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1", table)
 	if err != nil {
 		return false, err
 	}

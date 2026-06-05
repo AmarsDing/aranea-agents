@@ -66,6 +66,7 @@ func (m *memTeamRepo) DeleteTeam(_ context.Context, id string) error {
 	delete(m.teams, id)
 	return nil
 }
+func (m *memTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 
 func (m *memTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
@@ -101,6 +102,9 @@ func (m *memTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.Ta
 }
 func (m *memTeamRepo) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return s, nil
+}
+func (m *memTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, fmt.Errorf("team not found by key")
 }
 func (m *memTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil

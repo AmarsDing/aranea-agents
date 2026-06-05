@@ -20,11 +20,69 @@ const (
 	graphsDir    = "graphs/"
 
 	// 安全限制常量
-	MaxTarEntries     = 1000  // 单个 Pack 最多 1000 个 tar 条目
+	MaxTarEntries     = 1000               // 单个 Pack 最多 1000 个 tar 条目
 	MaxEntrySize  int64 = 10 * 1024 * 1024 // 单个条目最大 10MB
 	MaxTotalSize  int64 = 200 * 1024 * 1024 // Pack 解压后总大小上限 200MB
 	MaxPackSize         = 200 * 1024 * 1024 // Pack 原始文件大小上限 200MB
 )
+
+// parsePackEntry 解析单个 Pack 条目并写入内存模型。
+// relPath 是相对于 Pack 根目录的路径，data 是文件内容。
+func parsePackEntry(relPath string, data []byte, p *Pack) error {
+	switch {
+	case relPath == manifestFile:
+		if err := yaml.Unmarshal(data, &p.Manifest); err != nil {
+			return fmt.Errorf("pack: 解析 manifest.yaml 失败: %w", err)
+		}
+	case relPath == taxonomyFile:
+		var spec TaxonomyPackSpec
+		if err := yaml.Unmarshal(data, &spec); err != nil {
+			return fmt.Errorf("pack: 解析 taxonomy.yaml 失败: %w", err)
+		}
+		p.Taxonomy = &spec
+	case strings.HasPrefix(relPath, agentsDir) && strings.HasSuffix(relPath, ".yaml"):
+		var spec AgentPackSpec
+		if err := yaml.Unmarshal(data, &spec); err != nil {
+			return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, err)
+		}
+		p.Agents = append(p.Agents, spec)
+	case strings.HasPrefix(relPath, agentsDir) && !strings.HasSuffix(relPath, ".yaml"):
+		// Agent 文件（如 agents/go-senior-general/IDENTITY.md）
+		parts := strings.SplitN(strings.TrimPrefix(relPath, agentsDir), "/", 2)
+		if len(parts) == 2 {
+			agentKey := parts[0]
+			fileName := parts[1]
+			if p.AgentFiles[agentKey] == nil {
+				p.AgentFiles[agentKey] = make(map[string]string)
+			}
+			p.AgentFiles[agentKey][fileName] = string(data)
+		}
+	case strings.HasPrefix(relPath, teamsDir) && strings.HasSuffix(relPath, ".yaml"):
+		var spec TeamPackSpec
+		if err := yaml.Unmarshal(data, &spec); err != nil {
+			return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, err)
+		}
+		p.Teams = append(p.Teams, spec)
+	case strings.HasPrefix(relPath, graphsDir) && strings.HasSuffix(relPath, ".yaml"):
+		var spec GraphPackSpec
+		if err := yaml.Unmarshal(data, &spec); err != nil {
+			return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, err)
+		}
+		p.Graphs = append(p.Graphs, spec)
+	}
+	return nil
+}
+
+// validatePackManifest 校验 Pack 的 manifest 必填字段。
+func validatePackManifest(p *Pack) error {
+	if p.Manifest.APIVersion == "" {
+		return fmt.Errorf("pack: manifest.yaml 缺少 api_version")
+	}
+	if p.Manifest.Kind == "" {
+		return fmt.Errorf("pack: manifest.yaml 缺少 kind")
+	}
+	return nil
+}
 
 // ReadPack 从 tar.gz 读取 .arpack 并解析为内存模型。
 func ReadPack(r io.Reader) (*Pack, error) {
@@ -85,56 +143,13 @@ func ReadPack(r io.Reader) (*Pack, error) {
 			return nil, fmt.Errorf("pack: 条目 %s 内容超过大小上限", hdr.Name)
 		}
 
-		name := cleanName
-
-		switch {
-		case name == manifestFile:
-			if err := yaml.Unmarshal(data, &p.Manifest); err != nil {
-				return nil, fmt.Errorf("pack: 解析 manifest.yaml 失败: %w", err)
-			}
-		case name == taxonomyFile:
-			var spec TaxonomyPackSpec
-			if err := yaml.Unmarshal(data, &spec); err != nil {
-				return nil, fmt.Errorf("pack: 解析 taxonomy.yaml 失败: %w", err)
-			}
-			p.Taxonomy = &spec
-		case strings.HasPrefix(name, agentsDir) && strings.HasSuffix(name, ".yaml"):
-			var spec AgentPackSpec
-			if err := yaml.Unmarshal(data, &spec); err != nil {
-				return nil, fmt.Errorf("pack: 解析 %s 失败: %w", name, err)
-			}
-			p.Agents = append(p.Agents, spec)
-		case strings.HasPrefix(name, agentsDir) && !strings.HasSuffix(name, ".yaml"):
-			// Agent 文件（如 agents/go-senior-general/IDENTITY.md）
-			parts := strings.SplitN(strings.TrimPrefix(name, agentsDir), "/", 2)
-			if len(parts) == 2 {
-				agentKey := parts[0]
-				fileName := parts[1]
-				if p.AgentFiles[agentKey] == nil {
-					p.AgentFiles[agentKey] = make(map[string]string)
-				}
-				p.AgentFiles[agentKey][fileName] = string(data)
-			}
-		case strings.HasPrefix(name, teamsDir) && strings.HasSuffix(name, ".yaml"):
-			var spec TeamPackSpec
-			if err := yaml.Unmarshal(data, &spec); err != nil {
-				return nil, fmt.Errorf("pack: 解析 %s 失败: %w", name, err)
-			}
-			p.Teams = append(p.Teams, spec)
-		case strings.HasPrefix(name, graphsDir) && strings.HasSuffix(name, ".yaml"):
-			var spec GraphPackSpec
-			if err := yaml.Unmarshal(data, &spec); err != nil {
-				return nil, fmt.Errorf("pack: 解析 %s 失败: %w", name, err)
-			}
-			p.Graphs = append(p.Graphs, spec)
+		if err := parsePackEntry(cleanName, data, p); err != nil {
+			return nil, err
 		}
 	}
 
-	if p.Manifest.APIVersion == "" {
-		return nil, fmt.Errorf("pack: manifest.yaml 缺少 api_version")
-	}
-	if p.Manifest.Kind == "" {
-		return nil, fmt.Errorf("pack: manifest.yaml 缺少 kind")
+	if err := validatePackManifest(p); err != nil {
+		return nil, err
 	}
 
 	return p, nil
@@ -174,45 +189,8 @@ func ReadPackFromFS(fsys fs.FS, root string) (*Pack, error) {
 			return fmt.Errorf("pack: 条目 %s 内容超过大小上限", path)
 		}
 
-		switch {
-		case relPath == manifestFile:
-			if yamlErr := yaml.Unmarshal(data, &p.Manifest); yamlErr != nil {
-				return fmt.Errorf("pack: 解析 manifest.yaml 失败: %w", yamlErr)
-			}
-		case relPath == taxonomyFile:
-			var spec TaxonomyPackSpec
-			if yamlErr := yaml.Unmarshal(data, &spec); yamlErr != nil {
-				return fmt.Errorf("pack: 解析 taxonomy.yaml 失败: %w", yamlErr)
-			}
-			p.Taxonomy = &spec
-		case strings.HasPrefix(relPath, agentsDir) && strings.HasSuffix(relPath, ".yaml"):
-			var spec AgentPackSpec
-			if yamlErr := yaml.Unmarshal(data, &spec); yamlErr != nil {
-				return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, yamlErr)
-			}
-			p.Agents = append(p.Agents, spec)
-		case strings.HasPrefix(relPath, agentsDir) && !strings.HasSuffix(relPath, ".yaml"):
-			parts := strings.SplitN(strings.TrimPrefix(relPath, agentsDir), "/", 2)
-			if len(parts) == 2 {
-				agentKey := parts[0]
-				fileName := parts[1]
-				if p.AgentFiles[agentKey] == nil {
-					p.AgentFiles[agentKey] = make(map[string]string)
-				}
-				p.AgentFiles[agentKey][fileName] = string(data)
-			}
-		case strings.HasPrefix(relPath, teamsDir) && strings.HasSuffix(relPath, ".yaml"):
-			var spec TeamPackSpec
-			if yamlErr := yaml.Unmarshal(data, &spec); yamlErr != nil {
-				return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, yamlErr)
-			}
-			p.Teams = append(p.Teams, spec)
-		case strings.HasPrefix(relPath, graphsDir) && strings.HasSuffix(relPath, ".yaml"):
-			var spec GraphPackSpec
-			if yamlErr := yaml.Unmarshal(data, &spec); yamlErr != nil {
-				return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, yamlErr)
-			}
-			p.Graphs = append(p.Graphs, spec)
+		if parseErr := parsePackEntry(relPath, data, p); parseErr != nil {
+			return parseErr
 		}
 
 		return nil
@@ -221,11 +199,8 @@ func ReadPackFromFS(fsys fs.FS, root string) (*Pack, error) {
 		return nil, err
 	}
 
-	if p.Manifest.APIVersion == "" {
-		return nil, fmt.Errorf("pack: manifest.yaml 缺少 api_version")
-	}
-	if p.Manifest.Kind == "" {
-		return nil, fmt.Errorf("pack: manifest.yaml 缺少 kind")
+	if err := validatePackManifest(p); err != nil {
+		return nil, err
 	}
 
 	return p, nil

@@ -16,14 +16,18 @@ import (
 
 // SeedPackBuiltinTemplates 使用 Pack 引擎加载内置模板（taxonomy + agent templates + graph templates）。
 // 在 P1 阶段调用，使用 overwrite 冲突策略。
-func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
-	// 版本门控：检查是否已应用
-	applied, err := isMigrationApplied(ctx, client, SeedPackBuiltinV1, lg)
-	if err != nil {
-		return fmt.Errorf("check seed pack builtin v1: %w", err)
-	}
-	if applied {
-		return nil
+// force=true 时跳过版本门控，强制重新导入。
+func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger, force ...bool) error {
+	// 版本门控：检查是否已应用（force=true 时跳过）
+	skipVersionCheck := len(force) > 0 && force[0]
+	if !skipVersionCheck {
+		applied, err := isMigrationApplied(ctx, client, SeedPackBuiltinV1, lg)
+		if err != nil {
+			return fmt.Errorf("check seed pack builtin v1: %w", err)
+		}
+		if applied {
+			return nil
+		}
 	}
 
 	// 从 scenarioDir 读取 builtin-templates Pack
@@ -36,7 +40,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 
 	// 创建 Importer 并导入
 	importer := newPackImporter(client, lg)
-	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite)
+	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride("system_builtin"))
 	if importErr != nil {
 		return fmt.Errorf("import builtin-templates pack: %w", importErr)
 	}
@@ -127,6 +131,8 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 }
 
 // newDataFromClient 创建一个最小化的 Data 实例，用于 seed 场景下创建 Repo。
+// WARNING: 此实例缺少 rawDB/readDB/rwDB 字段，仅适用于使用 Ent API（d.RW()/d.Ent()）的 Repo。
+// 任何需要原生 SQL（d.RWDB()/d.RawDB()）的操作都会 panic。
 func newDataFromClient(client *ent.Client, lg loggateway.Logger) *Data {
 	return &Data{
 		entClient:  client,

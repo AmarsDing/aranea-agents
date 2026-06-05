@@ -37,7 +37,7 @@ func NormalizeAgentKind(raw string) string {
 
 // IsA2AProxyAgent reports whether the agent should be built with a2aagent.
 func IsA2AProxyAgent(ag Agent) bool {
-	return NormalizeAgentKind(ag.Kind) == AgentKindA2AProxy
+	return NormalizeAgentKind(ag.AgentKind) == AgentKindA2AProxy
 }
 
 func agentKindFromConfigJSON(configJSON string) string {
@@ -93,15 +93,15 @@ func a2aProxyFromConfigJSON(configJSON string) *A2AProxyConfig {
 	return cfg
 }
 
-// HydrateAgentKind reads agent_kind and a2a_proxy from config_json when struct fields are empty.
+// HydrateAgentKind reads agent_kind and a2a_proxy from config_json when AgentKind is empty.
 func HydrateAgentKind(a *Agent) {
 	if a == nil {
 		return
 	}
-	if strings.TrimSpace(a.Kind) == "" {
-		a.Kind = agentKindFromConfigJSON(a.ConfigJSON)
+	if strings.TrimSpace(a.AgentKind) == "" {
+		a.AgentKind = agentKindFromConfigJSON(a.ConfigJSON)
 	} else {
-		a.Kind = NormalizeAgentKind(a.Kind)
+		a.AgentKind = NormalizeAgentKind(a.AgentKind)
 	}
 	if a.A2AProxy == nil {
 		a.A2AProxy = a2aProxyFromConfigJSON(a.ConfigJSON)

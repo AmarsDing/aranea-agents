@@ -113,6 +113,7 @@ var ProviderSet = wire.NewSet(
 	NewSkillIntelligenceRepo,
 	NewSkillDedupRepo,
 	NewSkillEvolutionSuggestionRepo,
+	NewFailurePatternRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -752,56 +753,65 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 
 func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	lg := d.lg
-	if err := ensureChannelPlatformAvatars(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.channel_avatars"), loggateway.Err(err))
-		return err
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// P1 种子步骤全部幂等（ON CONFLICT UPDATE/DO NOTHING），
+	// 采用 best-effort 模式：收集错误但不中断，下次重启时幂等重试。
+	var seedErrs []error
+
+	seedStep := func(stepID string, fn func() error) {
+		if err := fn(); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID(stepID), loggateway.Err(err))
+			seedErrs = append(seedErrs, fmt.Errorf("%s: %w", stepID, err))
+		}
 	}
-	if err := ensureAgentAvatars(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.agent_avatars"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedSystemAdminAgent(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedSpiritAgent(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedMemoryAgent(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.memory_agent"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedSkillsAgent(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.skills_agent"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Err(err))
-		return err
-	}
+
+	seedStep("data.seed.channel_avatars", func() error {
+		return ensureChannelPlatformAvatars(ctx, entClient, lg)
+	})
+	seedStep("data.seed.agent_avatars", func() error {
+		return ensureAgentAvatars(ctx, entClient, lg)
+	})
+	seedStep("data.seed.system_admin_agent", func() error {
+		return SeedSystemAdminAgent(ctx, entClient, lg)
+	})
+	seedStep("data.seed.spirit_agent", func() error {
+		return SeedSpiritAgent(ctx, entClient, lg)
+	})
+	seedStep("data.seed.memory_agent", func() error {
+		return SeedMemoryAgent(ctx, entClient, lg)
+	})
+	seedStep("data.seed.skills_agent", func() error {
+		return SeedSkillsAgent(ctx, entClient, lg)
+	})
+	seedStep("data.seed.cli_admin_tools", func() error {
+		return SeedBuiltinCLIAdminTools(ctx, entClient, lg)
+	})
 
 	scenarioDir := biz.ScenarioDir()
 
-	if err := SeedPackBuiltinTemplates(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.pack_builtin_templates"), loggateway.Err(err))
-		return err
-	}
+	seedStep("data.seed.pack_builtin_templates", func() error {
+		return SeedPackBuiltinTemplates(ctx, entClient, scenarioDir, lg)
+	})
+	seedStep("data.seed.spirit_prompt_files", func() error {
+		return SeedSpiritPromptFiles(ctx, entClient, scenarioDir, lg)
+	})
+	seedStep("data.seed.butler_prompt_files", func() error {
+		return SeedButlerPromptFiles(ctx, entClient, scenarioDir, lg)
+	})
+	seedStep("data.seed.cron_tasks", func() error {
+		return SeedCronTasks(ctx, entClient, lg)
+	})
 
-	if err := SeedSpiritPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedButlerPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedCronTasks(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Err(err))
-		return err
-	}
 	d.lazySeeders = map[string]*LazySeeder{}
 
+	if len(seedErrs) > 0 {
+		lg.Warn("P1 seed completed with errors",
+			loggateway.StepID("data.seed.p1"),
+			loggateway.Int("error_count", len(seedErrs)))
+		return seedErrs[0]
+	}
 	return nil
 }
 

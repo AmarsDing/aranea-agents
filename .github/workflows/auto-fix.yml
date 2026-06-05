@@ -64,6 +64,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Parse failure logs
+        if: steps.limit.outputs.skip != 'true' && steps.logs.outputs.logs_fetched == 'true'
+        id: parse
+        run: |
+          python3 .auto-fix/scripts/parse-logs.py --job auto-fix --source ci failure-logs-truncated.txt > failure-report.json
+          REPORT_COUNT=$(jq 'length' failure-report.json 2>/dev/null || echo "0")
+          echo "report_count=$REPORT_COUNT" >> $GITHUB_OUTPUT
+          echo "Parsed $REPORT_COUNT failure report(s) from logs."
+
       - name: Classify and attempt fix
         if: steps.limit.outputs.skip != 'true'
         id: fix
@@ -73,8 +82,7 @@ jobs:
             echo "type=lint-error" >> $GITHUB_OUTPUT
             # Rule-based fix for lint errors (no LLM needed)
             go run ./cmd/araneactl/lint --root . --fix
-            cd web && pnpm install --frozen-lockfile && pnpm exec eslint --fix "src/**/*.{ts,vue}" && pnpm exec stylelint --fix "src/**/*.{vue,css}" --config .stylelintrc.json || true
-            cd ..
+            (cd web && pnpm install --frozen-lockfile && (pnpm exec eslint --fix "src/**/*.{ts,vue}" || true) && (pnpm exec stylelint --fix "src/**/*.{vue,css}" --config .stylelintrc.json || true))
           else
             # Determine failure type for LLM diagnosis
             if grep -qE "FAIL|panic|fatal error" failure-logs.txt; then
@@ -160,11 +168,101 @@ jobs:
         run: |
           # Verify the fix doesn't break anything
           go vet ./...
-          cd web && pnpm install --frozen-lockfile && pnpm build
+          go test -short ./... -count=1
+          (cd web && pnpm install --frozen-lockfile && pnpm build && pnpm test)
+
+      - name: Critic Agent review
+        if: steps.fix.outputs.fix_applied == 'true'
+        id: critic
+        env:
+          ENABLE_CRITIC_AGENT: ${{ vars.ENABLE_CRITIC_AGENT || 'true' }}
+        run: |
+          # Skip Critic Agent if disabled
+          if [ "$ENABLE_CRITIC_AGENT" = "false" ]; then
+            echo "Critic Agent disabled via ENABLE_CRITIC_AGENT=false. Skipping."
+            echo "risk_level=low" >> $GITHUB_OUTPUT
+            echo "is_safe=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check daily critic call limit
+          CRITIC_COUNTER=".auto-fix/critic-counter.json"
+          TODAY=$(date -u +%Y-%m-%d)
+          CRITIC_STATS=$(cat "$CRITIC_COUNTER" 2>/dev/null || echo '{"daily_count":0,"daily_date":""}')
+          CRITIC_DATE=$(echo "$CRITIC_STATS" | jq -r '.daily_date')
+          if [ "$CRITIC_DATE" = "$TODAY" ]; then
+            CRITIC_COUNT=$(echo "$CRITIC_STATS" | jq -r '.daily_count')
+          else
+            CRITIC_COUNT=0
+          fi
+          if [ "$CRITIC_COUNT" -ge 10 ]; then
+            echo "Critic Agent daily limit reached ($CRITIC_COUNT/10). Skipping."
+            echo "risk_level=low" >> $GITHUB_OUTPUT
+            echo "is_safe=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          ARANEA_URL="${{ secrets.ARANEA_API_URL }}"
+          if [ -z "$ARANEA_URL" ]; then
+            echo "ARANEA_API_URL not configured. Skipping Critic Agent."
+            echo "risk_level=low" >> $GITHUB_OUTPUT
+            echo "is_safe=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Get the diff for review
+          DIFF_CONTENT=$(git diff | head -500)
+
+          # Call Critic Agent to review the diff for semantic safety
+          CRITIC_RESPONSE=$(curl -s -X POST "${ARANEA_URL}/v1/chat/messages" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.ARANEA_API_TOKEN }}" \
+            -d "{
+              \"session_id\": \"critic-agent\",
+              \"content\": \"Review the following diff for semantic safety. Check for: unintended behavior changes, data loss risks, security vulnerabilities, logic errors.\\n\\n\`\`\`diff\\n${DIFF_CONTENT}\\n\`\`\`\\n\\nRespond with JSON only: {\\\"is_safe\\\": true/false, \\\"risk_level\\\": \\\"low\\\"/\\\"medium\\\"/\\\"high\\\", \\\"concerns\\\": [\\\"...\\\"], \\\"suggestion\\\": \\\"...\\\"}\",
+              \"system_prompt\": \"You are a Critic Agent that reviews code diffs for semantic safety. You must respond with valid JSON only: {\\\"is_safe\\\": boolean, \\\"risk_level\\\": \\\"low\\\"|\\\"medium\\\"|\\\"high\\\", \\\"concerns\\\": string[], \\\"suggestion\\\": string}. Be conservative: if unsure, flag as medium risk.\"
+            }" 2>/dev/null || echo '{"is_safe":true,"risk_level":"low","concerns":[],"suggestion":"API call failed"}')
+
+          # Extract the agent message content
+          CRITIC_JSON=$(echo "$CRITIC_RESPONSE" | jq -r '.agent_message.content // .agent_message // empty' 2>/dev/null)
+          if [ -z "$CRITIC_JSON" ]; then
+            CRITIC_JSON="$CRITIC_RESPONSE"
+          fi
+
+          # Parse CriticResult
+          IS_SAFE=$(echo "$CRITIC_JSON" | jq -r '.is_safe // true' 2>/dev/null)
+          RISK_LEVEL=$(echo "$CRITIC_JSON" | jq -r '.risk_level // "low"' 2>/dev/null)
+          CONCERNS=$(echo "$CRITIC_JSON" | jq -r '.concerns // [] | join("; ")' 2>/dev/null)
+          SUGGESTION=$(echo "$CRITIC_JSON" | jq -r '.suggestion // ""' 2>/dev/null)
+
+          echo "is_safe=$IS_SAFE" >> $GITHUB_OUTPUT
+          echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
+          echo "Critic Agent result: is_safe=$IS_SAFE, risk_level=$RISK_LEVEL"
+          [ -n "$CONCERNS" ] && echo "Concerns: $CONCERNS"
+          [ -n "$SUGGESTION" ] && echo "Suggestion: $SUGGESTION"
+
+          # Update daily counter
+          NEW_COUNT=$((CRITIC_COUNT + 1))
+          jq -n --arg d "$TODAY" --argjson c "$NEW_COUNT" '{daily_count:$c, daily_date:$d}' > "$CRITIC_COUNTER"
+
+          # Act on risk level
+          if [ "$RISK_LEVEL" = "high" ]; then
+            echo "Critic Agent flagged HIGH risk. Aborting fix."
+            git checkout -- .
+            exit 1
+          fi
+
+          if [ "$RISK_LEVEL" = "medium" ]; then
+            echo "Critic Agent flagged MEDIUM risk. Will add label to PR."
+            echo "add_critic_label=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check protected files
         if: steps.fix.outputs.fix_applied == 'true'
         run: |
+          # Whitelist: files in these directories are allowed even if they match protected patterns
+          WHITELIST_DIRS="internal/biz/monitor/"
+
           # Reject fixes that touch protected files
           PROTECTED=".github/workflows/ Makefile go.mod go.sum"
           for file in $PROTECTED; do
@@ -180,6 +278,24 @@ jobs:
             git checkout -- .
             exit 1
           fi
+          # Check for files matching internal/biz/ pattern but NOT in whitelist
+          CHANGED_IN_BIZ=$(git diff --name-only | grep "^internal/biz/" || true)
+          if [ -n "$CHANGED_IN_BIZ" ]; then
+            for f in $CHANGED_IN_BIZ; do
+              ALLOWED=false
+              for wdir in $WHITELIST_DIRS; do
+                if echo "$f" | grep -q "^$wdir"; then
+                  ALLOWED=true
+                  break
+                fi
+              done
+              if [ "$ALLOWED" = "false" ]; then
+                echo "Fix touches protected internal/biz/ file (not in whitelist): $f. Rejecting."
+                git checkout -- .
+                exit 1
+              fi
+            done
+          fi
 
       - name: Create auto-fix PR
         if: steps.fix.outputs.fix_applied == 'true'
@@ -189,6 +305,20 @@ jobs:
           git add -A
           git commit -m "fix: auto-fix for CI failure #${{ github.event.workflow_run.id }}"
           git push origin "$BRANCH"
+
+          # Build label flags
+          LABELS="auto-fix"
+          if [ "${{ steps.critic.outputs.add_critic_label }}" = "true" ]; then
+            LABELS="$LABELS,critic:medium-risk"
+          fi
+
+          # Build PR body with critic info
+          CRITIC_INFO=""
+          if [ "${{ steps.critic.outputs.risk_level }}" != "low" ] && [ -n "${{ steps.critic.outputs.risk_level }}" ]; then
+            CRITIC_INFO="
+          **Critic Agent:** risk_level=${{ steps.critic.outputs.risk_level }}, is_safe=${{ steps.critic.outputs.is_safe }}"
+          fi
+
           gh pr create \
             --base "${{ github.event.workflow_run.head_branch }}" \
             --title "fix: auto-fix for CI failure #${{ github.event.workflow_run.id }}" \
@@ -196,16 +326,24 @@ jobs:
 
           **Failure type:** ${{ steps.fix.outputs.type }}
           **Source CI run:** #${{ github.event.workflow_run.id }}
-          **Diagnosis method:** ${{ steps.fix.outputs.type == 'lint-error' && 'rule-based' || 'self-hosted-agent' }}
+          **Diagnosis method:** ${{ steps.fix.outputs.type == 'lint-error' && 'rule-based' || 'self-hosted-agent' }}${CRITIC_INFO}
 
           Please review the changes carefully before merging." \
-            --label "auto-fix"
+            --label "$LABELS"
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Record failure pattern
         if: always() && steps.limit.outputs.skip != 'true'
         run: |
+          # Switch back to the original branch before recording patterns
+          # (we may be on an auto-fix branch from the "Create auto-fix PR" step)
+          ORIGINAL_BRANCH="${{ github.event.workflow_run.head_branch }}"
+          CURRENT_BRANCH=$(git branch --show-current)
+          if [ "$CURRENT_BRANCH" != "$ORIGINAL_BRANCH" ]; then
+            git checkout "$ORIGINAL_BRANCH"
+          fi
+
           TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           FIX_SUCCESS="${{ steps.fix.outputs.fix_applied }}"
           FIX_TYPE="${{ steps.fix.outputs.type }}"
@@ -223,10 +361,10 @@ jobs:
               '.daily_count=($c|tonumber) | .total_attempts=($t|tonumber) | .total_successes=($s|tonumber)' \
               .auto-fix/stats.json > .auto-fix/stats.json.tmp && mv .auto-fix/stats.json.tmp .auto-fix/stats.json
           else
-            jq -n --arg d "$TODAY" '{daily_count:1, daily_date:$d, total_attempts:1, total_successes:(if "'$FIX_SUCCESS'" == "true" then 1 else 0 end)}' > .auto-fix/stats.json
+            jq -n --arg d "$TODAY" --arg fs "$FIX_SUCCESS" '{daily_count:1, daily_date:$d, total_attempts:1, total_successes:(if $fs == "true" then 1 else 0 end)}' > .auto-fix/stats.json
           fi
 
           git add .auto-fix/patterns.jsonl .auto-fix/stats.json
-          git diff --cached --quiet || git commit -m "chore: record auto-fix pattern" && git push || true
+          git diff --cached --quiet || git commit -m "chore: record auto-fix pattern" && git push
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}

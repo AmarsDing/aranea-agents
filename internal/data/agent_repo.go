@@ -93,8 +93,8 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		ConfigJSON:         a.ConfigJSON,
 		CreatedBy:          a.CreatedBy,
 		Readonly:           a.Readonly,
-		Source:             string(a.Kind),
-		Ownership:          string(a.Kind), // Deprecated: identical to Source
+		Kind:               string(a.Kind),
+		Source:             string(a.Source),
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
@@ -527,8 +527,8 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	if role := strings.TrimSpace(q.Role); role != "" {
 		preds = append(preds, agent.RolesJSONContains(role))
 	}
-	if q.Ownership != "" {
-		preds = append(preds, agent.KindEQ(agent.Kind(q.Ownership)))
+	if q.Kind != "" {
+		preds = append(preds, agent.KindEQ(agent.Kind(q.Kind)))
 	}
 	where := agent.And(preds...)
 	c := r.data.RW().Read(ctx)
@@ -643,6 +643,8 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetConfigJSON(a.ConfigJSON).
 		SetCreatedBy(a.CreatedBy).
 		SetReadonly(a.Readonly).
+		SetKind(agent.Kind(a.Kind)).
+		SetSource(agent.Source(a.Source)).
 		SetCreatedAt(a.CreatedAt).
 		SetUpdatedAt(a.UpdatedAt).
 		SetDeletedAt(a.DeletedAt).
@@ -715,6 +717,8 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetBudgetMonthlyCents(a.BudgetMonthlyCents).
 		SetConfigJSON(a.ConfigJSON).
 		SetReadonly(a.Readonly).
+		SetKind(agent.Kind(a.Kind)).
+		SetSource(agent.Source(a.Source)).
 		SetUpdatedAt(a.UpdatedAt).
 		Save(ctx)
 	// #region debug-point data.update_agent.trace

@@ -431,7 +431,8 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		CreatedAt:          pb.GetCreatedAt(),
 		UpdatedAt:          pb.GetUpdatedAt(),
 		DeletedAt:          pb.GetDeletedAt(),
-		Kind:               pb.GetAgentKind(),
+		Kind:               pb.GetKind(),
+		AgentKind:          pb.GetAgentKind(),
 		A2AProxy:           fromProtoA2AProxy(pb.GetA2AProxyConfig()),
 		Readonly:           pb.GetReadonly(),
 	}
@@ -470,7 +471,7 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		UpdatedAt:          b.UpdatedAt,
 		DeletedAt:          b.DeletedAt,
 		Settings:           toProtoRuntime(b.Settings),
-		AgentKind:          b.Kind,
+		AgentKind:          b.AgentKind,
 		A2AProxyConfig:     toProtoA2AProxy(b.A2AProxy),
 		A2AEndpointEnabled:    b.A2AEndpointEnabled,
 		LastRunStatus:         b.LastRunStatus,
@@ -479,6 +480,7 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		CreatedBy:             b.CreatedBy,
 		Readonly:              b.Readonly,
 		Source:                b.Source,
+		Kind:                  b.Kind,
 	}
 	for i := range b.Files {
 		out.Files = append(out.Files, toProtoFile(b.Files[i]))

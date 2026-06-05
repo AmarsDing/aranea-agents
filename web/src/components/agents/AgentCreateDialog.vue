@@ -101,7 +101,7 @@
               outlined
               emit-value
               map-options
-              label="Provider *"
+              label="提供商 *"
               :options="providerOptions"
               :error="Boolean(providerModelError)"
               :error-message="providerModelError"

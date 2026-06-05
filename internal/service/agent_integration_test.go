@@ -51,7 +51,7 @@ func TestIntegrationAgentCRUD(t *testing.T) {
 		SetID("test-agent-int-001").
 		SetAgentKey("integration-test-agent").
 		SetDisplayName("Integration Test Agent").
-		SetKind("user").
+		SetKind(agent.KindUser).
 		SetProvider("openai").
 		SetModel("gpt-4").
 		Save(ctx)

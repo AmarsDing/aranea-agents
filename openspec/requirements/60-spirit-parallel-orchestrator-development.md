@@ -1,6 +1,6 @@
 # M60: Spirit Parallel Orchestrator — 开发计划
 
-> **版本**：2026-06-06 | **状态**：✅ P2 + 深度业务实现已完成（含 P1/P2 差距修复）
+> **版本**：2026-06-06 | **状态**：✅ P4 智能增强已完成
 > **需求**：[60-spirit-parallel-orchestrator.md](./60-spirit-parallel-orchestrator.md) · **设计**：[60-spirit-parallel-orchestrator.design.md](./60-spirit-parallel-orchestrator.design.md)
 > **前置**：M59 P0 已完成
 
@@ -193,20 +193,38 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 | 58 | SPO-DP-06 | 自动归档 AutoArchiveAfter 实现（AutoArchiveCompletedTeams） | ✅ |
 | 59 | SPO-DP-07 | Session 树深度限制 MaxSessionDepth 实现 | ✅ |
 
+### 深度架构审查修复（P4 Review 后）
+
+| 排序 | ID | 任务 | 状态 |
+|------|-----|------|------|
+| 60 | SPO-DR-S3 | OrchestrationCache ToJSON 递归 RLock 死锁修复（listLocked 内部方法） | ✅ |
+| 61 | SPO-DR-S4 | 超时回调不触发依赖调度修复（TimeoutHandler 接口 + TeamStarter 实现） | ✅ |
+| 62 | SPO-DR-S5 | interrupted 被错误视为终态修复（CheckAllTeamsCompleted + IsTeamStatusActive） | ✅ |
+| 63 | SPO-DR-FS1 | 前后端 SpiritTeamMode 枚举对齐（coordinator/sequential/parallel/critic_loop/swarm/adaptive/direct） | ✅ |
+| 64 | SPO-DR-FS2 | 前后端 SpiritTeamStatus 枚举对齐（pending/running/completed/failed/cancelled/interrupted/archived） | ✅ |
+| 65 | SPO-DR-FS3 | SynthesisResultCard XSS 修复（使用 renderChatMarkdown 替代手工渲染） | ✅ |
+| 66 | SPO-DR-FS4 | cancelTeam 改为更新状态而非移除团队（与后端行为一致） | ✅ |
+| 67 | SPO-DR-M11 | HandleTeamTurnResult 入口统一取消超时定时器 | ✅ |
+| 68 | SPO-DR-M13 | BuildGraphConfig 循环检测 + 依赖验证（DFS 三色标记法 + 悬空依赖跳过） | ✅ |
+| 69 | SPO-DR-M8 | 前端 spirit_team_progress 状态回退防护（禁止 running→pending） | ✅ |
+| 70 | SPO-DR-L11 | AutoArchiveCompletedTeams 错误日志记录 | ✅ |
+| 71 | SPO-DR-L17 | checkAllTeamsCompleted 循环外统一调用优化 | ✅ |
+| 72 | SPO-DR-WIRE | provideFailurePatternSyncJob 接口注入修复 + 测试 stub 补全 | ✅ |
+
 ### Phase P4 任务板
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
-| 43 | SPO-P4-01 | ComplexityRuleEngine + assess_complexity 工具 | ⬜ |
-| 44 | SPO-P4-02 | Spirit Prompt 强制决策规则 | ⬜ |
-| 45 | SPO-P4-03 | chat_orchestrator_spirit.go Team 模式选择 | ⬜ |
-| 46 | SPO-P4-04 | runSingleAgentViaTRPC 集成 | ⬜ |
-| 47 | SPO-P4-05 | build_orchestration_graph 工具 | ⬜ |
-| 48 | SPO-P4-06 | buildGraphConfig DAG 生成 | ⬜ |
-| 49 | SPO-P4-07 | 验证节点类型 + 验证函数 | ⬜ |
-| 50 | SPO-P4-08 | 验证节点注入到 Graph | ⬜ |
-| 51 | SPO-P4-09 | OrchestratorGraphDeps 依赖注入 | ⬜ |
-| 52 | SPO-P4-10 | 编排管家 Prompt 决策规则 | ⬜ |
+| 43 | SPO-P4-01 | ComplexityRuleEngine + assess_complexity 工具 | ✅ 增强 plan_and_execute 内部 ComplexityRuleEngine |
+| 44 | SPO-P4-02 | Spirit Prompt 强制决策规则 | ✅ DECISION.md + CAPABILITIES.md 更新 |
+| 45 | SPO-P4-03 | chat_orchestrator_spirit.go Team 模式选择 | ✅ SelectSpiritMode + ResolveSpiritMode |
+| 46 | SPO-P4-04 | runSingleAgentViaTRPC 集成 | ✅ 注释标记 + 模式选择可用 |
+| 47 | SPO-P4-05 | build_orchestration_graph 工具 | ✅ internal/tools/orchestrator/build_graph.go |
+| 48 | SPO-P4-06 | buildGraphConfig DAG 生成 | ✅ 并行/串行/混合拓扑 |
+| 49 | SPO-P4-07 | 验证节点类型 + 验证函数 | ✅ verification.go + verify_funcs.go |
+| 50 | SPO-P4-08 | 验证节点注入到 Graph | ✅ injectVerificationNodes |
+| 51 | SPO-P4-09 | OrchestratorGraphDeps 依赖注入 | ✅ cli_admin_tools.go 注入 |
+| 52 | SPO-P4-10 | 编排管家 Prompt 决策规则 | ✅ orchestrator.md |
 
 ---
 

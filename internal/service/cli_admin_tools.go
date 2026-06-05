@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cli_admin"
 	"aranea-agents/internal/tools/memory_butler"
+	orchtools "aranea-agents/internal/tools/orchestrator"
 	"aranea-agents/internal/tools/skills_butler"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -137,6 +138,12 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	}
 	var out []trpctool.Tool
 
+	// NOTE: Spirit mode selection is available via ResolveSpiritMode (chat_orchestrator_spirit.go).
+	// Currently, plan_and_execute performs LLM-driven routing. ResolveSpiritMode can be used
+	// as a programmatic override when the LLM's complexity assessment is ambiguous.
+	// Future integration: call ResolveSpiritMode(SpiritModeConfig{...}) before team construction
+	// to determine whether to use coordinator/swarm/direct mode.
+
 	// New three-phase orchestration tools.
 	planner := o.team.TaskPlanner
 	allocator := o.team.AgentAllocator
@@ -151,6 +158,11 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	if o.spiritSynthesis != nil {
 		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis))
 	}
+
+	// Graph orchestration tool for complex multi-agent DAG execution.
+	// TODO(debt): wire GraphBuilderPort implementation for build_orchestration_graph.
+	out = append(out, orchtools.NewBuildOrchestrationGraphTool(nil))
+
 	return out
 }
 

@@ -26,19 +26,20 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		is_default, is_favorite, icon, agent_description,
 		taxonomy_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
-		created_at, updated_at, deleted_at, readonly, kind,
+		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
 	) VALUES (
 		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
 		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin',
+		?, ?, '', 1, 'system_builtin', 'system',
 		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
 		agent_description = excluded.agent_description,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
+		source = excluded.source,
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
@@ -59,19 +60,20 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		is_default, is_favorite, icon, agent_description,
 		taxonomy_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
-		created_at, updated_at, deleted_at, readonly, kind,
+		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
 	) VALUES (
 		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools_profile":"spirit"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin',
+		?, ?, '', 1, 'system_builtin', 'system',
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
 		agent_description = excluded.agent_description,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
+		source = excluded.source,
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
@@ -136,19 +138,20 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		is_default, is_favorite, icon, agent_description,
 		taxonomy_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
-		created_at, updated_at, deleted_at, readonly, kind,
+		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
 	) VALUES (
 		'agent___memory__', ?, '记忆管家', 'openrouter', 'gpt-4.1',
 		'active', 0, 0, '', '基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏',
 		'', 'complete', 0, 0, '{"tools_profile":"system_memory"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin',
+		?, ?, '', 1, 'system_builtin', 'system',
 		'memory', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
 		agent_description = excluded.agent_description,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
+		source = excluded.source,
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
@@ -169,19 +172,20 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		is_default, is_favorite, icon, agent_description,
 		taxonomy_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
-		created_at, updated_at, deleted_at, readonly, kind,
+		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
 	) VALUES (
 		'agent___skills__', ?, '技能管家', 'openrouter', 'gpt-4.1',
 		'active', 0, 0, '', '基于使用数据的技能进化/消亡决策、工具权重优化、编排分析',
 		'', 'complete', 0, 0, '{"tools_profile":"system_skills"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin',
+		?, ?, '', 1, 'system_builtin', 'system',
 		'skills', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
 		agent_description = excluded.agent_description,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
+		source = excluded.source,
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`

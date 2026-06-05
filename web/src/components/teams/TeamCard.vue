@@ -17,8 +17,8 @@
           </div>
           <button type="button" class="team-key" @click="$emit('copyKey', team.team_key)">{{ team.team_key }}</button>
         </div>
-        <q-badge rounded class="team-card__status" :color="team.status === 'active' ? 'positive' : 'grey'">
-          {{ team.status }}
+        <q-badge rounded class="team-card__status" :color="statusColor">
+          {{ statusLabel }}
         </q-badge>
       </header>
 
@@ -127,4 +127,18 @@ defineEmits<{
 
 const definition = computed(() => parseDefinition(props.team));
 const topologyNodes = computed(() => topologyNodesFromDefinition(definition.value));
+
+const statusMap: Record<string, { label: string; color: string }> = {
+  pending: { label: '待执行', color: 'warning' },
+  running: { label: '执行中', color: 'positive' },
+  completed: { label: '已完成', color: 'blue' },
+  failed: { label: '失败', color: 'negative' },
+  cancelled: { label: '已取消', color: 'grey' },
+  interrupted: { label: '已中断', color: 'orange' },
+  archived: { label: '已归档', color: 'grey' },
+  active: { label: '活跃', color: 'positive' },
+};
+const statusConfig = computed(() => statusMap[props.team.status] ?? { label: props.team.status, color: 'grey' });
+const statusColor = computed(() => statusConfig.value.color);
+const statusLabel = computed(() => statusConfig.value.label);
 </script>

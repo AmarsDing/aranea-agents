@@ -15,33 +15,33 @@
 
 ## 1. Phase 1 — 闭环加固：RootCauseAnalyzer 接口抽取
 
-- [ ] 1.1 创建 `internal/biz/monitor/root_cause_analyzer.go`：定义 `RootCauseAnalyzer` 接口（Analyze + AnalyzeFromReport 方法）。DoD: `go build ./internal/biz/...` 通过
-- [ ] 1.2 修改 `internal/biz/monitor/root_cause_engine.go`：让 `RootCauseEngine` 实现 `RootCauseAnalyzer` 接口。DoD: `go build ./internal/biz/...` 通过
-- [ ] 1.3 Wire 绑定：在 `internal/biz/wire.go` 中添加 `RootCauseAnalyzer` 的 Wire 绑定。DoD: `make wire && go build ./cmd/admin` 通过
-- [ ] 1.4 验证：`go test ./internal/biz/monitor/... -count=1` 绿色
+- [x] 1.1 创建 `internal/biz/monitor/root_cause_analyzer.go`：定义 `RootCauseAnalyzer` 接口（Analyze + AnalyzeFromReport 方法）。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: RootCauseAnalyzer 接口定义 -->
+- [x] 1.2 修改 `internal/biz/monitor/root_cause_engine.go`：让 `RootCauseEngine` 实现 `RootCauseAnalyzer` 接口。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: Analyze 方法委托 Evaluate -->
+- [x] 1.3 Wire 绑定：在 `internal/biz/wire.go` 中添加 `RootCauseAnalyzer` 的 Wire 绑定。DoD: `make wire && go build ./cmd/admin` 通过 <!-- 已实现: wire.Bind + NewRootCauseEngine -->
+- [x] 1.4 验证：`go test ./internal/biz/monitor/... -count=1` 绿色 <!-- 已实现: 接口满足测试通过 -->
 
 ## 2. Phase 1 — 闭环加固：FailureReport 标准化错误表示
 
-- [ ] 2.1 创建 `internal/biz/monitor/failure_report.go`：定义 `FailureReport` 结构体和 `FailureType` 常量。DoD: `go build ./internal/biz/...` 通过
-- [ ] 2.2 创建 `internal/biz/monitor/failure_report_parser.go`：实现 `ParseCILogs` 和 `ParseRuntimeError` 函数。DoD: `go build ./internal/biz/...` 通过
-- [ ] 2.3 创建 `internal/biz/monitor/failure_report_parser_test.go`：测试 Go 编译错误/测试失败/Lint 错误解析。DoD: `go test ./internal/biz/monitor/... -run TestParse -count=1` 绿色
-- [ ] 2.4 创建 `.auto-fix/scripts/parse-logs.py`：CI 侧 Python 脚本，将原始日志解析为 FailureReport JSON。DoD: `python3 parse-logs.py < testdata/build_failure.txt` 输出有效 JSON
+- [x] 2.1 创建 `internal/biz/monitor/failure_report.go`：定义 `FailureReport` 结构体和 `FailureType` 常量。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: FailureReport + FailureType -->
+- [x] 2.2 创建 `internal/biz/monitor/failure_report_parser.go`：实现 `ParseCILogs` 和 `ParseRuntimeError` 函数。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: 解析器 + AnalyzeFromReport -->
+- [x] 2.3 创建 `internal/biz/monitor/failure_report_parser_test.go`：测试 Go 编译错误/测试失败/Lint 错误解析。DoD: `go test ./internal/biz/monitor/... -run TestParse -count=1` 绿色 <!-- 已实现: 13 个测试用例通过 -->
+- [x] 2.4 创建 `.auto-fix/scripts/parse-logs.py`：CI 侧 Python 脚本，将原始日志解析为 FailureReport JSON。DoD: `python3 parse-logs.py < testdata/build_failure.txt` 输出有效 JSON <!-- 已实现: Python CLI 脚本 -->
 
 ## 3. Phase 1 — 闭环加固：统一失败模式知识库
 
-- [ ] 3.1 创建 `internal/data/ent/schema/failure_pattern.go`：Ent Schema + 索引 (source,type) + (pattern_hash) + (is_active,confidence)。DoD: `go generate ./internal/data/ent/...` 无错误
-- [ ] 3.2 创建 `internal/biz/monitor/failure_pattern_repo.go`：定义 `FailurePatternReader`/`FailurePatternWriter` 接口。DoD: `go build ./internal/biz/...` 通过
-- [ ] 3.3 创建 `internal/data/failure_pattern.go`：实现 Repo 接口 + Wire 绑定。DoD: `go build ./internal/data/...` 通过
-- [ ] 3.4 创建 `internal/cronrunner/jobs/failure_pattern_sync.go`：Cron Job，每日从 RootCauseEngine 规则 + patterns.jsonl 同步到 failure_pattern 表。DoD: `go build ./internal/cronrunner/...` 通过
-- [ ] 3.5 验证：`go test ./internal/data/... -run TestFailurePattern -count=1` 绿色
+- [x] 3.1 创建 `internal/data/ent/schema/failure_pattern.go`：Ent Schema + 索引 (source,type) + (pattern_hash) + (is_active,confidence)。DoD: `go generate ./internal/data/ent/...` 无错误 <!-- 已实现: Ent Schema 生成成功 -->
+- [x] 3.2 创建 `internal/biz/monitor/failure_pattern_repo.go`：定义 `FailurePatternReader`/`FailurePatternWriter` 接口。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: Reader/Writer 接口 -->
+- [x] 3.3 创建 `internal/data/failure_pattern.go`：实现 Repo 接口 + Wire 绑定。DoD: `go build ./internal/data/...` 通过 <!-- 已实现: raw SQL repo + 7 个测试通过 -->
+- [x] 3.4 创建 `internal/cronrunner/jobs/failure_pattern_sync.go`：Cron Job，每日从 RootCauseEngine 规则 + patterns.jsonl 同步到 failure_pattern 表。DoD: `go build ./internal/cronrunner/...` 通过 <!-- 已实现: syncRuntimeRules + syncCIPatterns -->
+- [x] 3.5 验证：`go test ./internal/data/... -run TestFailurePattern -count=1` 绿色 <!-- 已实现: 7/7 PASS -->
 
 ## 4. Phase 1 — 闭环加固：Auto-Fix 引擎改造
 
-- [ ] 4.1 修改 `.github/workflows/auto-fix.yml`：新增 parse-logs.py 步骤，将原始日志解析为 FailureReport JSON，传给后续步骤。DoD: YAML 语法正确
-- [ ] 4.2 修改 `.github/workflows/auto-fix.yml`：新增 Critic Agent 步骤（调用 ARANEA_API_URL + ARANEA_CRITIC_SESSION），根据 risk_level 决定是否创建 PR。DoD: YAML 语法正确
-- [ ] 4.3 修改 `.github/workflows/auto-fix.yml`：新增保护文件白名单（允许 internal/biz/monitor/ 目录）。DoD: YAML 语法正确
-- [ ] 4.4 修改 `.github/workflows/auto-fix.yml`：新增 ENABLE_CRITIC_AGENT 环境变量支持。DoD: YAML 语法正确
-- [ ] 4.5 验证：`actionlint .github/workflows/auto-fix.yml` 通过（或手动检查语法）
+- [x] 4.1 修改 `.github/workflows/auto-fix.yml`：新增 parse-logs.py 步骤，将原始日志解析为 FailureReport JSON，传给后续步骤。DoD: YAML 语法正确 <!-- 已实现: Parse failure logs 步骤 -->
+- [x] 4.2 修改 `.github/workflows/auto-fix.yml`：新增 Critic Agent 步骤（调用 ARANEA_API_URL + ARANEA_CRITIC_SESSION），根据 risk_level 决定是否创建 PR。DoD: YAML 语法正确 <!-- 已实现: Critic Agent review 步骤 -->
+- [x] 4.3 修改 `.github/workflows/auto-fix.yml`：新增保护文件白名单（允许 internal/biz/monitor/ 目录）。DoD: YAML 语法正确 <!-- 已实现: WHITELIST_DIRS 白名单 -->
+- [x] 4.4 修改 `.github/workflows/auto-fix.yml`：新增 ENABLE_CRITIC_AGENT 环境变量支持。DoD: YAML 语法正确 <!-- 已实现: GitHub Variables 支持 -->
+- [x] 4.5 验证：`actionlint .github/workflows/auto-fix.yml` 通过（或手动检查语法） <!-- 已实现: js-yaml 验证通过 -->
 
 ## 5. Phase 1 — 闭环加固：集成测试补齐
 
