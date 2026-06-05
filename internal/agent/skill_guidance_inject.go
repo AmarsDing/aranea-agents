@@ -21,6 +21,16 @@ const maxSkillGuidanceChars = 4000
 // skillSelectionReasonStateKey is the invocation state key for skill selection reasons.
 const skillSelectionReasonStateKey = "aranea.skill_selection_reasons"
 
+// skillTokenUsageStateKey is the invocation state key for accumulated token usage.
+const skillTokenUsageStateKey = "aranea.skill_token_usage"
+
+// tokenUsageSnapshot stores accumulated prompt/completion/total token counts.
+type tokenUsageSnapshot struct {
+	PromptTokens     int `json:"prompt"`
+	CompletionTokens int `json:"completion"`
+	TotalTokens      int `json:"total"`
+}
+
 func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	if ag.Settings == nil || deps.SkillUC == nil {
 		return nil
