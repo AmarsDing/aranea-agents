@@ -171,7 +171,6 @@ require (
 	github.com/golang/glog v1.2.5 // indirect
 	github.com/gonfva/docxlib v0.0.0-20210517191039-d8f39cecf1ad // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
-	github.com/google/subcommands v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

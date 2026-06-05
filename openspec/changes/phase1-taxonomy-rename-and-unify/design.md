@@ -678,5 +678,6 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 | 重命名 | `categories.yaml` → `taxonomy.yaml` | YAML 数据文件（⚠️ categories.yaml 仍存在） |
 | 修改 | `internal/data/ent/schema/agent.go` | category_position_id → taxonomy_position_id |
 | 修改 | `api/kratos/agent/v1/agent.proto` | ⚠️ 仍使用 category_position_id（未重命名） |
+| 删除 | `web/src/services/kratos/agent_category/v1/index.ts` | 旧前端 Proto 客户端（✅ 已清理） |
 | 修改 | 多个 Biz/Data/Service/Server/Agent/Wire/Cmd 文件 | 全链路重命名引用 |
 

@@ -153,6 +153,82 @@ interrupted → running（从 Checkpoint 恢复）
 - Phase 2：DAGToGraphCompiler 是新增代码，不影响现有路径；旧 assemble_team 路径保留
 - Phase 3：旧工具双写期间可随时切回旧工具
 
+## 实现偏差记录
+
+> 以下记录了实际代码实现与规格设计之间的偏差，供后续迭代参考。
+
+### DEV-01: DAG 编译后的 Definition JSON 未实际替换 Team 的 DefinitionJSON
+
+- **关联规格**: REQ-TO-02 — Generated Definition should go through existing CompileToCompiledTeam compilation
+- **实际实现**: `DAGToGraphCompiler.Compile()` 生成了 Definition JSON，但在 `orchestrateDAG()` 中，编译后的 Definition JSON 仅用于日志记录（"For now, we log the compiled definition for observability"）。实际 Team 创建仍通过 `assembler.AssembleTeam()` 走原始路径。
+- **影响**: **高** — DAG 编译当前仅为可观测性用途，未替换 Team 的 Definition
+- **文件**: `internal/agent/task_orchestrator_impl.go`（~318-324 行）
+
+### DEV-02: Graph Checkpoint 恢复未完整实现
+
+- **关联规格**: REQ-SR-02 — Load latest Checkpoint → Rebuild GraphAgent → ResumeFromLatest
+- **实际实现**: `Recover()` 加载了 Checkpoint，但存在 TODO 注释："TODO: Rebuild GraphAgent from checkpoint state and resume execution. The current implementation marks the orchestration as running and relies on the team/agent infrastructure to pick up the work."
+- **影响**: **高** — Checkpoint 恢复不完整，仅标记状态未真正恢复执行
+- **文件**: `internal/agent/task_orchestrator_impl.go`（~546-551 行）
+
+### DEV-03: AgentCapability.Capacity 字段未使用
+
+- **关联规格**: REQ-AA-03 — 同一 Agent 被分配到多个并行子任务时的冲突检测和负载均衡
+- **实际实现**: 无显式的容量检查或冲突检测逻辑。`AgentCapability` 有 `Capacity` 字段但未在匹配中使用。无 `needs_human_decision` 标记。
+- **影响**: **中**
+- **文件**: `internal/biz/agent_capability.go`
+
+### DEV-04: spirit profile (agent_effective_tools.go) 仍引用旧工具名
+
+- **关联规格**: REQ-SKT-06 — 更新 complexAvailableTools / moderateAvailableTools 工具名
+- **实际实现**: `agent_effective_tools.go` 中的 spirit profile 仍引用旧工具名（assemble_team, list_butlers, query_butler_status, check_team_progress, cancel_team），未更新为新工具名。
+- **影响**: **中**
+- **文件**: `internal/biz/agent_effective_tools.go`（~191 行）
+
+### DEV-05: Layer 2 语义匹配使用 TF-IDF 占位
+
+- **关联规格**: REQ-AA-01 — Embedding 余弦相似度匹配
+- **实际实现**: `matchLayer2()` 使用 TF-IDF 关键词匹配作为占位实现，带 TODO 注释："Replace with true embedding cosine similarity via pgvector"
+- **影响**: **低**（计划在 Phase 3 T3.3 实现）
+- **文件**: `internal/agent/agent_allocator_impl.go`（~282-330 行）
+
+### DEV-06: Team 超时检测和 waiting_deps 超时恢复未完整实现
+
+- **关联规格**: REQ-SR-03/SR-04 — pending/running Team 的超时检测和 waiting_deps 超时恢复
+- **实际实现**: `ParallelConfig` 有 `TeamTimeoutSeconds` 字段，`spirit_team.go` 有单个 Team Turn 的超时检查，但无全局 pending/running Team 超时检测定时任务。`scheduleDependentTeams` 仅在 Team 完成时触发，无主动超时检测。
+- **影响**: **中**
+- **文件**: `internal/service/spirit_team.go`
+
+### DEV-07: Phase 1/2 中断恢复未实现
+
+- **关联规格**: REQ-SR-05 — 通过重新执行后续阶段恢复 draft 状态的 TaskPlan/AllocationPlan
+- **实际实现**: `RecoverAllInterrupted` 仅处理 `OrchestrationHandle`，未处理 `TaskPlan` 和 `AllocationPlan` 的 draft 状态恢复。
+- **影响**: **中**
+
+### DEV-08: list_butlers/query_butler_status 在 builtin_tools_seed.go 中仍注册
+
+- **关联规格**: REQ-ST-03 — "Delete list_butlers / query_butler_status tools"
+- **实际实现**: 仍在 `builtin_tools_seed.go` 中注册（标记为 DEPRECATED）。与 REQ-ST-03 "删除"措辞矛盾，但与 REQ-SKT-05 双写过渡期一致。
+- **影响**: **低**
+
+### DEV-09: TaskOrchestratorPort 额外增加 RecoverAllInterrupted 方法
+
+- **关联规格**: 接口定义 5 个方法（Orchestrate/CheckProgress/Cancel/Synthesize/Recover）
+- **实际实现**: 代码额外增加了 `RecoverAllInterrupted` 方法。被 `SessionStatusGuard` 使用。合理的扩展但不在规格中。
+- **文件**: `internal/biz/task_orchestrator.go`
+
+### DEV-10: orchestration_steps 表未在规格中提及
+
+- **关联规格**: 无
+- **实际实现**: `internal/data/ent/schema/orchestration_step.go` 存在，包含 team_run_id, graph_execution_id, node_id, activity_snapshot_json 字段。未在任何规格文档中提及。
+- **文件**: `internal/data/ent/schema/orchestration_step.go`
+
+### DEV-11: spirit_trace_id 未在 ChatOrchestrator turn 入口生成
+
+- **关联规格**: REQ-SO-01 — spirit_trace_id 在 ChatOrchestrator turn 入口生成
+- **实际实现**: spirit_trace_id 生成逻辑在 `task_planner_impl.go` 和 `task_orchestrator_impl.go` 中，但不在 `ChatOrchestrator` 的 turn 入口处。跳过 TaskPlanner 的 simple/moderate 路径可能缺失 trace ID。
+- **影响**: **中** — 非复杂编排路径可能缺失 trace ID
+
 ## Open Questions
 
 1. AI 任务拆分的 LLM 调用是否应该使用 Spirit Agent 的模型，还是使用独立的轻量模型？

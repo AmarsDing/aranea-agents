@@ -1168,7 +1168,7 @@ git commit -m "chore: final cleanup after Taxonomy rename - no remaining AgentCa
 | D12 | `categories_loader.go` 仍存在（死代码） | `internal/scenario/loader/categories_loader.go` |
 | D13 | `categories.yaml` 仍存在（未删除旧文件） | `internal/scenario/categories.yaml` |
 | D14 | `CategoryTreeNodeHeader.vue` 仍存在（死代码） | `web/src/components/agents/CategoryTreeNodeHeader.vue` |
-| D15 | `agent_category/v1/index.ts` 仍存在（死代码） | `web/src/services/kratos/agent_category/v1/index.ts` |
+| D15 | ~~`agent_category/v1/index.ts` 仍存在（死代码）~~ **已清理**：`web/src/services/kratos/agent_category/` 目录已不存在 | `web/src/services/kratos/agent_category/v1/index.ts` |
 | D16 | `wireNormalize.ts` 仍映射 `categoryPositionId` ↔ `taxonomy_position_id` | `web/src/features/agents/wireNormalize.ts` |
 | D17 | `categoryTreeUtils.ts` 仍存在（作为兼容 re-export 层） | `web/src/features/platform/categoryTreeUtils.ts` |
 | D18 | `memory_chain.sql` 无 `industry_taxonomy` 表 DDL | `internal/data/sql/memory_chain.sql` |

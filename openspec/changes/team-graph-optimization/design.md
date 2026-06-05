@@ -192,7 +192,11 @@ M5 (Team 统一) ← 依赖 M4
 
 **实际**：`nodeOptions` 仍接收 `*biz.TeamFailurePolicy` 参数，通过 `policy.CircuitBreaker` 调用 `circuitBreakerOptions`。`ApplyCircuitBreakerPolicy` 已实现将 `RetryMaxAttempts` 写入 NodeDef，但 `graph/trpc` 层仍直接消费 `TeamFailurePolicy.CircuitBreaker`。
 
-**影响**：`graph/trpc` 层仍依赖 `biz.TeamFailurePolicy` 类型，Goal 4（"Graph 运行时零 Team 类型依赖"）未完全达成。
+**更严重发现**：`BuildStateGraphWithAgents` 调用 `wireNode` 时始终传入 `nil` 作为 policy 参数（`internal/graph/trpc/builder.go:184`：`extras, err := wireNode(ctx, sg, n, deps, nil, cbState)`），导致 `nodeOptions` 中 `if policy != nil && policy.CircuitBreaker != nil` 分支（`internal/graph/trpc/node_wiring.go:58-60`）永远不会执行。`CircuitBreakerState` 虽然每次构建时创建新实例（ARCH-06 修复正确），但运行时熔断回调从未注册到任何节点，`cbState` 成为死对象。
+
+**影响**：
+1. `graph/trpc` 层仍依赖 `biz.TeamFailurePolicy` 类型，Goal 4（"Graph 运行时零 Team 类型依赖"）未完全达成
+2. 编译期 `RetryMaxAttempts` 展开有效（重试策略生效），但运行时熔断状态跟踪（open/close/half-open 转换）完全失效——`CircuitBreakerState` 的 `State()`/`afterNode()`/`Reset()` 方法均为死代码
 
 ### DEV-04：CompiledTeam 持久化使用手写 SQL + Ent Schema 双定义
 
@@ -311,3 +315,46 @@ M5 (Team 统一) ← 依赖 M4
 **实际**：`internal/data/ddl_migration_registry.go` 实现了版本化 DDL 迁移注册机制。`compiled_teams` 表有两个迁移条目：版本 20260705（初始建表）和版本 20260714（新增 `session_id` 字段 + 索引）。迁移在应用启动时按版本号顺序执行。
 
 **影响**：这是项目统一的 DDL 迁移模式，`compiled_teams` 表的 schema 变更应通过新增迁移条目管理，而非直接修改 `compiled_team_schema.go`。
+
+### DEV-18：CircuitBreaker 运行时回调为死代码
+
+**设计**：`CircuitBreakerState` 应在运行时跟踪熔断状态（open/close/half-open 转换），通过 `afterNode` 回调注册到节点执行管线。
+
+**实际**：`BuildStateGraphWithAgents` 调用 `wireNode` 时始终传入 `nil` 作为 policy 参数（`internal/graph/trpc/builder.go:184`），导致 `nodeOptions` 中 `if policy != nil && policy.CircuitBreaker != nil` 分支（`internal/graph/trpc/node_wiring.go:58-60`）永远不会执行。`circuitBreakerOptions` 函数从未被调用，`CircuitBreakerState.afterNode` 回调从未注册到任何节点。
+
+**影响**：
+- `CircuitBreakerState` 结构体及其方法（`State()`/`afterNode()`/`Reset()`）均为死代码
+- 编译期 `RetryMaxAttempts` 展开有效（重试策略生效），但运行时熔断状态跟踪完全失效
+- `cbState` 对象被创建但从未产生运行时效果
+
+**File**: `internal/graph/trpc/builder.go:184`, `internal/graph/trpc/node_wiring.go:58-60`
+
+### DEV-19：wireNode 和 nodeOptions 的 policy 参数为无用参数
+
+**设计**：`wireNode` 和 `nodeOptions` 应接收 `*biz.TeamFailurePolicy` 参数以支持 CircuitBreaker 运行时回调注册。
+
+**实际**：`wireNode` 签名中的 `policy *biz.TeamFailurePolicy` 和 `nodeOptions` 签名中的 `policy *biz.TeamFailurePolicy` 在当前代码中始终接收 `nil` 值（`builder.go:184` 传入 `nil`）。这些参数是冗余参数，可以安全移除。
+
+**影响**：冗余参数增加了代码理解成本，且使 `graph/trpc` 层不必要地依赖 `biz.TeamFailurePolicy` 类型。
+
+**File**: `internal/graph/trpc/node_wiring.go`, `internal/graph/trpc/builder.go`
+
+### DEV-20：evictIfNeeded 不清理 DB 中的 CompiledTeam 记录
+
+**设计**：GC 驱逐执行记录时应同步清理内存缓存和 DB 中的 `CompiledTeam` 记录。
+
+**实际**：`evictIfNeeded()` 在驱逐执行记录时仅删除 `teamBuildConfigs[oldestID]`（内存），但不删除 DB 中对应的 `CompiledTeam` 记录。`gc()` 删除内存条目时同样不清理 DB。
+
+**影响**：DB 中的 `compiled_teams` 记录会无限增长，没有清理机制。虽然 `buildConfigForExecution` 的三级回退（内存→DB→重编译）使功能不受影响，但 DB 空间持续膨胀。
+
+**File**: `internal/biz/graph_execution.go:52`
+
+### DEV-21：CompileToCompiledTeam linked 路径跳过 applyAdaptiveAgentDestinations
+
+**设计**：`CompileToCompiledTeam` 的所有路径都应执行完整的编译管线，包括 `applyAdaptiveAgentDestinations`。
+
+**实际**：在 `CompileToCompiledTeam` 的 linked graph 路径中，调用了 `finalizeRuntimeGraphConfig`，但跳过了 `applyAdaptiveAgentDestinations`。如果 linked graph 同时是 adaptive 模式，`Destinations` 不会被设置。
+
+**影响**：linked + adaptive 组合场景下，节点的 `Destinations` 字段为空，可能导致自适应路由逻辑失效。
+
+**File**: `internal/team/graph_compile.go:197-203`

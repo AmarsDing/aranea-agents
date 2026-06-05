@@ -17,7 +17,7 @@
 **Files:**
 - Create: `web/src/features/chat/composables/useChatEntityCollapse.ts`
 
-- [ ] **Step 1:** 创建 `useChatEntityCollapse.ts`，实现折叠状态管理
+- [x] **Step 1:** 创建 `useChatEntityCollapse.ts`，实现折叠状态管理
 
 ```typescript
 const LS_SECTION_COLLAPSED = "chat:collapsed:sections";  // { agents: bool, teams: bool }
@@ -44,7 +44,7 @@ const LS_GROUP_COLLAPSED = "chat:collapsed:groups";       // { [groupKey]: bool 
 **Files:**
 - Create: `web/src/components/chat/ChatSectionHeader.vue`
 
-- [ ] **Step 1:** 创建可复用的折叠头组件
+- [x] **Step 1:** 创建可复用的折叠头组件
 
 Props: `icon`, `label`, `count`, `collapsed`
 Emits: `update:collapsed`
@@ -63,7 +63,7 @@ Emits: `update:collapsed`
 **Files:**
 - Create: `web/src/components/chat/ChatEntityItem.vue`
 
-- [ ] **Step 1:** 创建单行展示组件
+- [x] **Step 1:** 创建单行展示组件
 
 Props: `entity`, `active`, `statusIcon`, `statusColor`, `statusLabel`
 Emits: `click`, `settings`, `delete`
@@ -82,7 +82,7 @@ Emits: `click`, `settings`, `delete`
 **Files:**
 - Create: `web/src/components/chat/ChatEntityGroup.vue`
 
-- [ ] **Step 1:** 创建分组容器组件
+- [x] **Step 1:** 创建分组容器组件
 
 Props: `items`, `label`, `icon`, `collapsed`, `draggable`, `pinnedId`
 Emits: `update:collapsed`, `reorder`
@@ -109,7 +109,7 @@ Emits: `update:collapsed`, `reorder`
 **Files:**
 - Modify: `web/src/features/chat/composables/chatWorkspaceUtils.ts`
 
-- [ ] **Step 1:** 新增组内排序工具函数
+- [x] **Step 1:** 新增组内排序工具函数
 
 新增：
 - `loadGroupOrder(groupKey: string): string[]`：从 localStorage 读取组内排序
@@ -127,7 +127,7 @@ Emits: `update:collapsed`, `reorder`
 **Files:**
 - Modify: `web/src/components/chat/ChatEntitySidebar.vue`
 
-- [ ] **Step 1:** 重构 ChatEntitySidebar
+- [x] **Step 1:** 重构 ChatEntitySidebar
 
 变更：
 - 引入 `ChatSectionHeader`、`ChatEntityGroup`、`ChatEntityItem` 子组件

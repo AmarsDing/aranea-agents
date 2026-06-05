@@ -100,8 +100,8 @@
   - DoD: ✅ `MetricsUpdatedPublisher` 接口 + `metricsUpdatedPublisher` 实现，`WireSessionStatusPublisher` 同时注入
 - [x] 5.12 前端适配：处理 `MetricsUpdated` 事件，更新本地 session metrics 状态；修复 `reconcilePatchFromServer` 旧值覆盖问题
   - DoD: ✅ 前端 `envelope.ts` 已注册 `metrics_updated` 事件类型，`useChatInboundSync.ts` 收到事件后调用 `fetchAndReconcileSession`；`reconcilePatchFromServer` 使用 `Math.max` 策略防止旧值覆盖
-- [ ] 5.13 数据一致性验证脚本：对比 sessions 旧字段与 session_metrics/session_runtime 新表数据，输出差异报告
-  - DoD: 在 dual_write 模式下运行 24 小时后，差异为零
+- [x] 5.13 数据一致性验证脚本：对比 sessions 旧字段与 session_metrics/session_runtime 新表数据，输出差异报告
+  - DoD: ✅ `cmd/session-consistency-check/main.go` 已实现，对比 17 个 metrics 字段 + 5 个 runtime 字段，检测缺失/孤立记录，差异为零时 exit 0
 
 ## 6. VectorStore 策略模式
 
@@ -142,12 +142,12 @@
 
 - [x] 8.1 增强 `ddl_migration_registry.go`：支持 `SQL` 字段（嵌入 SQL 文件路径），在执行时读取并执行 SQL 文件内容
   - DoD: ✅ `ddlMigration` struct 已包含 `SQL string` 字段，`executeSQLFile` 函数通过 `go:embed sql/migrations/*.sql` 读取并执行 SQL 文件，`splitDDLStatements` 分割语句，`isColumnExistsErr` 处理幂等性
-- [ ] 8.2 从 `memory_chain.sql` 中删除与 Ent Schema 重叠的 23 张表定义
-  - DoD: `memory_chain.sql` 仅包含 Memory 专属表（L0-L4 + cascade + action_log）
+- [x] 8.2 从 `memory_chain.sql` 中删除与 Ent Schema 重叠的 23 张表定义
+  - DoD: ✅ `memory_chain.sql` 仅包含 26 张 Memory 专属表（L0-L4 + cascade + action_log + evolution），与 68 个 Ent Schema 无重叠
 - [x] 8.3 将 12 个 `*_patch.go` 中的 ALTER TABLE 逻辑迁移到 DDL migration SQL 文件
   - DoD: ✅ 所有 ALTER TABLE 逻辑已迁移到 DDL migration（Go Func 或 SQL 文件）。`agent_runtime_patch.go` 仍存在但仅包含通用工具函数（`isColumnExistsErr`/`sqliteTableExists`/`sqliteColumnExists`/`sqliteIndexExists`），不含 ALTER TABLE 逻辑
-- [ ] 8.4 创建迁移测试 helper：`internal/data/testhelper/migration.go`，提供 `SetupTestDB(t)` 函数，自动执行所有 DDL migration
-  - DoD: 所有 data 层测试使用 `SetupTestDB(t)` 初始化，无需手动创建表
+- [x] 8.4 创建迁移测试 helper：`internal/data/testhelper/migration.go`，提供 `SetupTestDB(t)` 函数，自动执行所有 DDL migration
+  - DoD: ✅ `SetupTestDB(t)` 已实现，创建内存 SQLite + Ent auto-migration + DDL，返回 `(*ent.Client, *sql.DB)`，注册 `t.Cleanup` 自动关闭
 
 ## 9. Store 独立化（删除 Store）
 

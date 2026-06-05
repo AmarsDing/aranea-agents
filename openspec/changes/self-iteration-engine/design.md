@@ -719,6 +719,14 @@ telemetry:
 
 chat_integration_test.go 和 agent_integration_test.go 仅为骨架实现——启动 PostgreSQL 容器后只打印 DSN，实际 API 测试标记为 TODO。需要后续补充 Wire 注入的完整服务器实例来运行真实 API 测试。
 
+**2026-06-05 复查确认**：两个集成测试文件仍为空壳状态，testcontainer 工具（`internal/testutil/testcontainer.go`）已完整实现，但测试逻辑未补充。
+
+### D11 偏差：commitlint 配置缺失
+
+**设计文档**：CI commitlint job 使用 `.commitlintrc.yml` 配置文件。
+
+**实际实现**：`.commitlintrc.yml` 文件不存在。CI commitlint job 引用了 `--config .commitlintrc.yml` 参数，但文件缺失，该 job 在 PR 场景下可能会失败。commitlint 通过 `npm install -g @commitlint/cli @commitlint/config-conventional` 临时安装，但缺少配置文件可能导致使用默认配置或报错。
+
 ### 额外实现：ESLint 渐进式规则
 
 ESLint 配置使用渐进式规则（gradual adoption），包括：

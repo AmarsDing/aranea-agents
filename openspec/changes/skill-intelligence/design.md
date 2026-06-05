@@ -696,3 +696,69 @@ func EnsureSkillEvolutionSchema(ctx context.Context, client *ent.Client) error {
 | `TestExtractToolNamesFromDesc` | 从模式描述提取工具名 |
 
 注意：这些测试属于 `skill-evolution-auto-creator` 变更的产出，不属于 Skill Intelligence Phase 1 的任务范围，但记录在此以便后续实施 Phase 4 时参考复用。
+
+### 10.15 biz.SkillInvocation 查询结果类型缺少 Outcome/SelectionReason 字段
+
+- **位置**：`internal/biz/skill/skill.go:112-134`（SkillInvocation struct）、`internal/data/skill.go:530-554`（SearchSkillInvocations mapping）
+- **问题**：Ent 生成的 SkillInvocation entity 包含 Outcome/SelectionReason/TokenUsage 字段，但 Biz 层查询结果类型 biz.SkillInvocation 缺少这些字段。Data 层的 SearchSkillInvocations 在映射时跳过了这三个字段。
+- **影响**：所有通过 SkillQueryReader.SearchSkillInvocations 消费数据的代码（如 ExperienceAnalyticsUsecase.AnalyzeSkillHealth）无法访问 Outcome 和 SelectionReason，只能依赖 Status 字段。
+
+### 10.16 ExperienceAnalyticsUsecase.AnalyzeSkillHealth 成败判断逻辑与 skillHealthRepo 不一致
+
+- **位置**：`internal/biz/experience_analytics.go:283-285` vs `internal/data/skill_health.go:107-115`
+- **问题**：存在两套不同的成败判断逻辑：
+  - ExperienceAnalyticsUsecase 使用 `inv.Status == "success"` 和 `inv.Status == "failure"`
+  - skillHealthRepo 使用 `isSuccess(outcome, status)` 函数，优先检查 outcome，回退到 status
+- **关键**：skill_invocation 表的 status 列值为 "success"/"error"/"pending"/"running"/"completed"/"failed"，**不存在 "failure" 值**。"failure" 是 outcome 枚举值。因此 `inv.Status == "failure"` 永远不会匹配，导致 SkillHealthItem.FailureCount 始终为 0。
+- **根因**：§10.15 — SkillInvocation 查询结果缺少 Outcome 字段，分析代码只能使用 Status 但使用了错误的枚举值。
+
+### 10.17 skillInvocationStatsRepo 查询 tool_invocation 表而非 skill_invocation 表
+
+- **位置**：`internal/data/skill_invocation_stats.go:23-28`
+- **问题**：skillInvocationStatsRepo.GetSkillInvocationStats 查询的是 tool_invocation 表（使用 ToolInvocation Ent client）而非 skill_invocation 表。使用 ToolKey 作为 skill name，实际分析的是 tool 调用而非 skill 调用。
+- **影响**：skills_butler 的 analyze_skill_usage/recommend_skills/optimize_skill 工具获取的是 tool-call 维度的统计，而非 skill-call 维度的统计。
+
+### 10.18 两套独立的 SkillHealth 类型
+
+- **位置**：`internal/biz/experience_analytics_types.go:14-22`（biz.SkillHealth）vs `internal/biz/types/skill_health.go:29-41`（types.SkillHealthDetail）
+- **问题**：存在两套完全不同的"Skill Health"类型，服务于不同场景：
+  - biz.SkillHealth：SkillID/InvokeCount7d/SuccessRate/AvgDurationMS/Trend/HealthStatus/Recommendation — 用于 skills_butler 工具
+  - types.SkillHealthDetail：SkillID/TotalInvocations7d/SuccessCount7d/SuccessRate7d/P95DurationMs7d/...30d/DailyMetrics — 用于 GetSkillHealth API
+- 两者数据源不同、判断逻辑不同。
+
+### 10.19 biz.SkillHealth 类型注释枚举值与实际产出值不匹配
+
+- **位置**：`internal/biz/experience_analytics_types.go:14-22`
+- **问题**：注释标注的枚举值与实际产出值不匹配：
+  - HealthStatus：注释说 healthy/warning/critical/dormant，实际产出 unused/healthy/degraded/unstable/critical
+  - Recommendation：注释说 keep/evolve/retire/merge，实际产出 consider_removing/keep/review_errors/investigate_failures/disable_or_rewrite
+  - Trend：一致（rising/stable/declining/dormant）
+
+### 10.20 ExperienceAnalyticsUsecase 中间分析类型
+
+- **位置**：`internal/biz/experience_analytics.go:15-98`
+- **问题**：§10.6 记录了 5 个分析方法但未记录它们返回的中间分析类型：
+  - AnalyzeToolWeights → ToolWeightAnalysis（含 []ToolWeightItem）
+  - AnalyzeSkillHealth → SkillHealthAnalysis（含 []SkillHealthItem）
+  - AnalyzeOrchestration → OrchestrationAnalysis（含 []OrchestrationModeItem）
+  - AnalyzeMemoryQuality → MemoryQualityAnalysis
+  - AnalyzeAgentCapability → AgentCapabilityAnalysis（合并以上 + CostSummary）
+  - 中间类型拥有更丰富的字段（如 ToolWeightItem 有 normSR/normCount/normInvDur），biz 类型是简化版本。
+
+### 10.21 EvolutionUsecase 与 SkillEvolutionUsecase 的区分
+
+- **位置**：`internal/biz/evolution.go`（EvolutionUsecase）vs `internal/biz/skill_evolution.go`（SkillEvolutionUsecase）
+- **问题**：存在两个不同的进化相关 Usecase。§10.9 仅详述了 SkillEvolutionUsecase 而未记录 EvolutionUsecase：
+  - EvolutionUsecase：产出 EvolutionSuggestion（persona/prompt 类型），使用 EvolutionSuggestionRepo
+  - SkillEvolutionUsecase：产出 SkillProposal（tool_call 类型），使用 skill_proposals 表（原始 SQL）
+  - 两者在 skills_butler_adapter.go 中有各自的适配器
+
+### 10.22 skillHealthRepo 和 skillInvocationStatsRepo 使用不同的数据源表
+
+- **位置**：`internal/data/skill_health.go`（查询 skill_invocation）vs `internal/data/skill_invocation_stats.go`（查询 tool_invocation）
+- **问题**：两者都为 skills_butler 功能提供统计数据，但查询不同的数据库表，可能对同一 skill 产出不一致的结果。
+
+### 10.23 OrchestrationModeReport biz 类型部分字段始终为零值
+
+- **位置**：`internal/biz/experience_analytics_types.go:34-41` vs `internal/biz/experience_analytics.go:56-71`
+- **问题**：biz.OrchestrationModeReport 的 AvgTokens/AvgDurationSec/MemberContributions 字段从未被适配器填充（skillsButlerAnalyticsAdapter.AnalyzeOrchestration 仅映射 Mode/SuccessRate/DQScore），这些字段始终为零值。

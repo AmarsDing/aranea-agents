@@ -1868,3 +1868,107 @@ func NewMemoryAdminUsecase(admin SessionAdminStore, vec *MemoryUsecase, indexSyn
 | 4 | 工具权重 | `agent_runtime_settings.tool_weight_json` + Prompt 策略 | §10.3 替代方案 |
 | 5 | 事件通知 | `EnvelopeTypeAlertNotify` + `alert_type` + `severity` | §10.9 增加 severity |
 
+***
+
+## 十二、代码验证勘误与实现偏差（第三轮）
+
+> 本节基于代码库交叉验证，记录 §1~§11 中与实际实现不符的内容，补充缺失的实现细节。
+
+### 12.1 文件结构偏差
+
+**§6.1 后端新增文件**与实际实现的差异：
+
+| 设计文档指定 | 实际状态 | 说明 |
+|-------------|---------|------|
+| `internal/tools/skills_butler/retire_skill.go` | **未独立实现** | 功能由 `optimize_skill.go` 的 critical 健康状态建议覆盖 |
+| `internal/scenario/system/prompts/memory.md` | 路径为 `prompts/memory/memory.md` | 多了一层目录 |
+| `internal/scenario/system/prompts/skills.md` | 路径为 `prompts/skills/skills.md` | 多了一层目录 |
+| — | `internal/tools/memory_butler/errors.go` 额外存在 | 定义 5 个错误常量 |
+| — | `internal/tools/skills_butler/errors.go` 额外存在 | 定义 4 个错误常量 |
+| — | `internal/tools/skills_butler/optimize_skill.go` 额外存在 | 替代/补充了 retire_skill 的功能 |
+| — | `internal/tools/skills_butler/analyze_skill_usage.go` 额外存在 | skills_butler 基础工具之一 |
+| — | `internal/service/skills_butler_adapter.go` 额外存在 | Analytics 端口适配器 |
+
+### 12.2 工具注入路径偏差
+
+**§6.3 工具注入路径**指定的 `internal/service/system_builtin_tools.go` 与实际不符。
+
+**实际注入路径**：
+
+- 记忆管家：`internal/service/cli_admin_tools.go` 的 `memoryButlerTools()` 方法（第 153 行），检查 `ag.AgentKey == "__memory__"`
+- 技能管家：`internal/service/cli_admin_tools.go` 的 `skillsButlerTools()` 方法（第 137 行），检查 `settings.EvolutionSkillEvolve` 开关
+- 注入点：`internal/service/chat_orchestrator_turn.go` 第 596-597 行
+
+### 12.3 技能管家工具集偏差
+
+**§4.3 专属工具集**列出了 7 个工具，实际实现有 8 个：
+
+| 设计文档工具 | 实际工具名 | 说明 |
+|-------------|-----------|------|
+| `analyze_skill_health` | `skills_butler_analyze_skill_health` | ✅ 一致 |
+| `evolve_skill` | `skills_butler_evolve_skill` | ✅ 一致（创建 SkillProposal） |
+| `retire_skill` | — | ❌ 未独立实现，功能由 optimize_skill 覆盖 |
+| `recommend_skills` | `skills_butler_recommend_skills` | ✅ 一致 |
+| `analyze_tool_weights` | `skills_butler_analyze_tool_weights` | ✅ 一致 |
+| `analyze_orchestration` | `skills_butler_analyze_orchestration` | ✅ 一致 |
+| `optimize_orchestration` | `skills_butler_optimize_orchestration` | ✅ 一致 |
+| — | `skills_butler_optimize_skill` | 额外新增：基于使用统计生成优化建议 |
+| — | `skills_butler_analyze_skill_usage` | 额外新增：分析 Skill 调用频率/成功率/趋势 |
+
+### 12.4 技能管家 Deps 偏差
+
+**§10.14 技能管家工具 Deps**与实际实现有显著差异：
+
+**实际 Deps**（`internal/tools/skills_butler/registry.go`）：
+
+```go
+type Deps struct {
+    Skills    SkillUsecasePort
+    Evolution EvolutionUsecasePort
+    Queries   SkillQueryReaderPort
+    Analytics AnalyticsPort  // 条件注入：非空时注册 4 个 Analytics 工具
+}
+```
+
+使用端口接口（Port）模式而非直接依赖 `*biz.ExperienceAnalyticsUsecase`：
+
+- `SkillUsecasePort`：封装 Skill CRUD 操作
+- `EvolutionUsecasePort`：封装进化建议操作
+- `SkillQueryReaderPort`：封装 Skill 查询操作
+- `AnalyticsPort`：封装分析操作（由 `skills_butler_adapter.go` 适配）
+
+**适配器**（`internal/service/skills_butler_adapter.go`）将 `*biz.ExperienceAnalyticsUsecase` 桥接到 `skills_butler.AnalyticsPort`。
+
+### 12.5 记忆管家工具实现偏差
+
+**§9.9 记忆管家工具的 Go struct 定义**与实际实现的差异：
+
+| 工具 | 设计文档 | 实际实现 | 偏差说明 |
+|------|---------|---------|---------|
+| `selective_remember` | 使用 embedding 余弦相似度 | 使用子串匹配 + TODO 标注 P1 改为 embedding | P0 简化实现 |
+| `deduplicate_memories` | 使用 embedding 余弦相似度 | 使用 trigram 相似度算法 | P0 简化实现 |
+| `consolidate_episodes` | 使用 LLM 蒸馏 | 将 episode 类型 fact 去重拼接后写入 semantic 类型 fact | P0 简化实现，TODO 标注 P1 改为 LLM 蒸馏 |
+| `dream_cycle` | 6 步流程 | 8 步流程（增加快照保存和前后质量测量） | 更完善的实现 |
+
+### 12.6 种子数据偏差
+
+**§6.2 种子数据扩展**与实际实现：
+
+- `SeedMemoryAgent()`：插入 `__memory__` Agent（agent___memory__），模型 gpt-4.1，tools_profile=system_memory
+- `SeedSkillsAgent()`：插入 `__skills__` Agent（agent___skills__），模型 gpt-4.1，tools_profile=system_skills
+- `SeedButlerPromptFiles()`：从 `prompts/memory/` 和 `prompts/skills/` 目录加载 prompt 文件到 agent_prompt_files 表
+- `SeedCronTasks()`：插入 cron_dream_cycle（每日 3:00）和 cron_skill_health_scan（每周一 4:00）
+
+### 12.7 实现偏差汇总
+
+| 设计文档 | 实际实现 | 原因 |
+|----------|----------|------|
+| `retire_skill.go` 独立文件 | 未独立实现，功能由 `optimize_skill.go` 覆盖 | 退役是优化的特例，合并更内聚 |
+| 直接依赖 `*biz.ExperienceAnalyticsUsecase` | 使用端口接口（Port）+ 适配器模式 | 解耦工具层与 biz 层，便于测试 |
+| Prompt 路径 `prompts/memory.md` | `prompts/memory/memory.md` | 按管家分目录，更清晰 |
+| 注入路径 `system_builtin_tools.go` | `cli_admin_tools.go` | 与项目现有工具注入模式一致 |
+| `selective_remember` 使用 embedding | P0 使用子串匹配 | 节省 Token，P1 阶段升级 |
+| `deduplicate_memories` 使用 embedding | P0 使用 trigram 相似度 | 无需 embedding 服务依赖 |
+| `consolidate_episodes` 使用 LLM 蒸馏 | P0 使用去重拼接 | 节省 Token，P1 阶段升级 |
+| `dream_cycle` 6 步流程 | 8 步流程（增加快照和前后质量测量） | 更完善的实现，支持回滚 |
+
