@@ -103,7 +103,6 @@ type GraphBuildConfig struct {
 	ExecutionEngine  ExecutionEngineType  `json:"execution_engine"`
 	InterruptBefore  []string             `json:"interrupt_before"`
 	InterruptAfter   []string             `json:"interrupt_after"`
-	TaskMeta         map[string]NodeTaskMeta `json:"task_meta"`
 }
 
 // GraphExecutor is the biz-level port for executing graphs from other modules.

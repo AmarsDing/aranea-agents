@@ -99,3 +99,12 @@ func (w *AlertEvalWorker) OnCompletion(status string, durationMs int64) {
 func (w *AlertEvalWorker) Ready() bool {
 	return w != nil && w.ready.Load()
 }
+
+// RestartEvalWorker triggers a rebuild from DB to recover the worker from a stalled state.
+func (w *AlertEvalWorker) RestartEvalWorker(ctx context.Context) {
+	if w == nil {
+		return
+	}
+	w.ready.Store(false)
+	w.rebuildFromDB(ctx)
+}

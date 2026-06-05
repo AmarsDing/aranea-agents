@@ -56,12 +56,6 @@ func (p *TraceProjector) AddTestTrace(traceID string, createdAt time.Time) {
 	p.mu.Unlock()
 }
 
-func (p *TraceProjector) TraceCount() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return len(p.traces)
-}
-
 func (a *FlowFileAppender) OnEnvelopeExposed(env contract.Envelope) {
 	a.onEnvelope(env)
 }

@@ -26,9 +26,10 @@ type RoleInfo struct {
 
 type CompiledTeam struct {
 	GraphBuildConfig
-	RoleManifest   map[string]RoleInfo      `json:"role_manifest"`
-	OriginalPolicy *TeamFailurePolicy       `json:"original_policy,omitempty"`
-	CompiledAt     time.Time                `json:"compiled_at"`
+	TaskMeta       map[string]NodeTaskMeta `json:"task_meta"`
+	RoleManifest   map[string]RoleInfo     `json:"role_manifest"`
+	OriginalPolicy *TeamFailurePolicy      `json:"original_policy,omitempty"`
+	CompiledAt     time.Time               `json:"compiled_at"`
 }
 
 type CompiledTeamRepo interface {
@@ -38,15 +39,16 @@ type CompiledTeamRepo interface {
 	Delete(ctx context.Context, teamID, graphID string) error
 }
 
-func NewCompiledTeam(cfg GraphBuildConfig, roleManifest map[string]RoleInfo, originalPolicy *TeamFailurePolicy) *CompiledTeam {
-	if cfg.TaskMeta == nil {
-		cfg.TaskMeta = make(map[string]NodeTaskMeta)
+func NewCompiledTeam(cfg GraphBuildConfig, taskMeta map[string]NodeTaskMeta, roleManifest map[string]RoleInfo, originalPolicy *TeamFailurePolicy) *CompiledTeam {
+	if taskMeta == nil {
+		taskMeta = make(map[string]NodeTaskMeta)
 	}
 	if roleManifest == nil {
 		roleManifest = make(map[string]RoleInfo)
 	}
 	return &CompiledTeam{
 		GraphBuildConfig: cfg,
+		TaskMeta:         taskMeta,
 		RoleManifest:     roleManifest,
 		OriginalPolicy:   originalPolicy,
 		CompiledAt:       time.Now(),

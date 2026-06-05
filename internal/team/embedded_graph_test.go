@@ -33,7 +33,7 @@ func TestCompileToGraphBuildConfig_embeddedGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, func(id string) string { return "key-" + id }, loggateway.NewNoop())
+	cfg, _, err := CompileToGraphBuildConfigFromJSON(def, raw, func(id string) string { return "key-" + id }, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestCompileToGraphBuildConfig_embeddedTaskNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	cfg, taskMeta, err := CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,8 +87,8 @@ func TestCompileToGraphBuildConfig_embeddedTaskNode(t *testing.T) {
 	if !cfg.Nodes[0].InterruptAfter {
 		t.Fatalf("review node=%+v", cfg.Nodes[0])
 	}
-	if m, ok := cfg.TaskMeta[cfg.Nodes[0].ID]; !ok || m.ReviewerAgent != "critic" {
-		t.Fatalf("review taskMeta=%+v", cfg.TaskMeta)
+	if m, ok := taskMeta[cfg.Nodes[0].ID]; !ok || m.ReviewerAgent != "critic" {
+		t.Fatalf("review taskMeta=%+v", taskMeta)
 	}
 }
 
@@ -119,7 +119,7 @@ func TestCompileToGraphBuildConfig_embeddedSubgraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, _, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader, loggateway.NewNoop())
+	cfg, _, _, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestCompileToGraphBuildConfig_embeddedParallelJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, branchIDs, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, stubGraphLoader{}, loggateway.NewNoop())
+	cfg, _, branchIDs, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, stubGraphLoader{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

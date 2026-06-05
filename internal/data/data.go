@@ -107,6 +107,7 @@ var ProviderSet = wire.NewSet(
 	NewAllocationPlanRepo,
 	NewAgentPerformanceRepo,
 	NewSelfCheckReportRepo,
+	NewHealRecordRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -776,8 +777,8 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 
 	scenarioDir := biz.ScenarioDir()
 
-	if err := SeedBuiltinTaxonomy(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.builtin_taxonomy"), loggateway.Err(err))
+	if err := SeedPackBuiltinTemplates(context.Background(), entClient, scenarioDir, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.pack_builtin_templates"), loggateway.Err(err))
 		return err
 	}
 
@@ -794,14 +795,14 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		return err
 	}
 	d.lazySeeders = map[string]*LazySeeder{
-		"agent_categories": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedBuiltinTaxonomy(ctx, client, scenarioDir, lg)
+		"pack_finance": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
+			return SeedPackIndustry(ctx, client, scenarioDir, "finance", lg)
 		}, lg),
-		"agent_templates": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedAgentTemplates(ctx, client, scenarioDir, lg)
+		"pack_selfmedia": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
+			return SeedPackIndustry(ctx, client, scenarioDir, "selfmedia", lg)
 		}, lg),
-		"industry_agents": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedIndustryAgentsRawSQL(ctx, d.RWDB().WriteHandle(), scenarioDir, lg)
+		"pack_softwaredev": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
+			return SeedPackIndustry(ctx, client, scenarioDir, "softwaredev", lg)
 		}, lg),
 	}
 

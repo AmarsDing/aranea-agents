@@ -8,6 +8,5 @@ import (
 )
 
 func ValidateBizGraphBuildConfig(ctx context.Context, cfg biz.GraphBuildConfig, agentChecker graphtrpc.AgentExistenceChecker) *graphtrpc.ValidationResult {
-	trpcCfg := bizCfgToTrpc(cfg)
-	return graphtrpc.ValidateGraph(ctx, &trpcCfg, agentChecker, nil)
+	return graphtrpc.ValidateGraph(ctx, &cfg, agentChecker, nil)
 }

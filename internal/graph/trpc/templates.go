@@ -201,19 +201,17 @@ func GetBuiltinTemplate(id string) *GraphTemplate {
 }
 
 func TemplateToBuildConfig(tmpl GraphTemplate) GraphBuildConfig {
-	nodes := make([]NodeDef, len(tmpl.Nodes))
+	nodes := make([]biz.NodeDef, len(tmpl.Nodes))
 	for i, tn := range tmpl.Nodes {
-		nodes[i] = NodeDef{
-			NodeDef: biz.NodeDef{
-				ID:          tn.NodeID,
-				Type:        tn.Type,
-				Description: tn.Description,
-			},
+		nodes[i] = biz.NodeDef{
+			ID:          tn.NodeID,
+			Type:        tn.Type,
+			Description: tn.Description,
 		}
 	}
 
 	edges := make([]EdgeDef, 0)
-	var condEdges []ConditionalEdgeDef
+	var condEdges []biz.ConditionalEdgeDef
 
 	routePathMaps := make(map[string]map[string]string)
 
@@ -233,11 +231,9 @@ func TemplateToBuildConfig(tmpl GraphTemplate) GraphBuildConfig {
 	}
 
 	for from, pathMap := range routePathMaps {
-		condEdges = append(condEdges, ConditionalEdgeDef{
-			ConditionalEdgeDef: biz.ConditionalEdgeDef{
-				From:    from,
-				PathMap: pathMap,
-			},
+		condEdges = append(condEdges, biz.ConditionalEdgeDef{
+			From:    from,
+			PathMap: pathMap,
 		})
 	}
 

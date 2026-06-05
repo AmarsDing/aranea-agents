@@ -24,6 +24,7 @@ type MonitorService struct {
 	server *conf.Server
 	diag   *biz.DiagBundleGenerator
 	selfHeal *biz.SelfHealUsecase
+	selfHealObserver *biz.SelfHealObserver
 	selfCheckScheduler *monitor.SelfCheckScheduler
 	selfCheckRepo      monitor.SelfCheckReportRepo
 	lg     loggateway.Logger
@@ -32,8 +33,8 @@ type MonitorService struct {
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfHealObserver *biz.SelfHealObserver, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfHealObserver: selfHealObserver, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -426,7 +427,33 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 }
 
 func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAndHealRequest) (*v1.DiagnoseAndHealResponse, error) {
-	if s == nil || s.selfHeal == nil {
+	// Prefer SelfHealObserver (new path); fall back to SelfHealUsecase (deprecated) if observer unavailable
+	if s.selfHealObserver != nil {
+		rec, err := s.selfHealObserver.DiagnoseAndObserve(ctx,
+			in.GetTraceId(), in.GetSessionId(), in.GetStepId(),
+			in.GetTriggerType(), in.GetContextMinutes(),
+		)
+		if err != nil {
+			return nil, kerrors.New(500, "INTERNAL", err.Error())
+		}
+		fixParamsJSON, _ := json.Marshal(rec.FixAction.Params)
+		return &v1.DiagnoseAndHealResponse{
+			HealId:              rec.ID,
+			RuleId:              rec.RuleID,
+			Status:              rec.Status,
+			Reason:              rec.Reason,
+			Confidence:          rec.Confidence,
+			FixActionType:       rec.FixAction.Type,
+			FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
+			FixActionParamsJson: string(fixParamsJSON),
+			RuntimeAutoHealed:   rec.RuntimeAutoHealed,
+			RuntimeHealAttempts: int32(rec.RuntimeHealAttempts),
+			CreatedAt:           rec.CreatedAt,
+		}, nil
+	}
+
+	// Deprecated fallback: SelfHealUsecase
+	if s.selfHeal == nil {
 		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal service not available")
 	}
 	rec, err := s.selfHeal.DiagnoseAndHeal(ctx,
@@ -447,6 +474,8 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		FixActionType:       rec.FixAction.Type,
 		FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
 		FixActionParamsJson: string(fixParamsJSON),
+		RuntimeAutoHealed:   rec.RuntimeAutoHealed,
+		RuntimeHealAttempts: int32(rec.RuntimeHealAttempts),
 		CreatedAt:           rec.CreatedAt,
 	}
 
@@ -484,4 +513,126 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 	}
 
 	return resp, nil
+}
+
+func (s *MonitorService) TriggerSelfCheck(ctx context.Context, _ *v1.TriggerSelfCheckRequest) (*v1.TriggerSelfCheckResponse, error) {
+	if s == nil || s.selfCheckScheduler == nil {
+		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-check scheduler not available")
+	}
+	report := s.selfCheckScheduler.RunOnce(ctx)
+	if report == nil {
+		return nil, kerrors.New(500, "INTERNAL", "self-check returned no report")
+	}
+	return &v1.TriggerSelfCheckResponse{
+		Report: bizSelfCheckReportToProto(report),
+	}, nil
+}
+
+func (s *MonitorService) ListSelfCheckReports(ctx context.Context, in *v1.ListSelfCheckReportsRequest) (*v1.ListSelfCheckReportsResponse, error) {
+	if s == nil || s.selfCheckRepo == nil {
+		return &v1.ListSelfCheckReportsResponse{}, nil
+	}
+	reports, total, err := s.selfCheckRepo.ListSelfCheckReports(ctx, int(in.GetLimit()), int(in.GetOffset()))
+	if err != nil {
+		return nil, kerrors.New(500, "INTERNAL", err.Error())
+	}
+	items := make([]*v1.SelfCheckReportEntry, 0, len(reports))
+	for _, r := range reports {
+		items = append(items, bizSelfCheckReportToProto(&r))
+	}
+	return &v1.ListSelfCheckReportsResponse{
+		Items: items,
+		Total: int32(total),
+	}, nil
+}
+
+func bizSelfCheckReportToProto(r *monitor.SelfCheckReport) *v1.SelfCheckReportEntry {
+	if r == nil {
+		return nil
+	}
+	results := make([]*v1.SelfCheckResultEntry, 0, len(r.CheckResults))
+	for _, cr := range r.CheckResults {
+		detailsJSON, _ := json.Marshal(cr.Details)
+		results = append(results, &v1.SelfCheckResultEntry{
+			CheckId:    cr.CheckID,
+			Checker:    cr.Checker,
+			Status:     string(cr.Status),
+			Message:    cr.Message,
+			DetailsJson: string(detailsJSON),
+			CheckedAt:  cr.CheckedAt.Format(time.RFC3339Nano),
+		})
+	}
+	repairs := make([]*v1.RepairActionEntry, 0, len(r.RepairActions))
+	for _, ra := range r.RepairActions {
+		repairs = append(repairs, &v1.RepairActionEntry{
+			Success: ra.Success,
+			Action:  ra.Action,
+			Message: ra.Message,
+		})
+	}
+	return &v1.SelfCheckReportEntry{
+		Id:            r.ID,
+		CheckResults:  results,
+		OverallStatus: string(r.OverallStatus),
+		RepairActions: repairs,
+		StartedAt:     r.StartedAt.Format(time.RFC3339Nano),
+		FinishedAt:    r.FinishedAt.Format(time.RFC3339Nano),
+		DurationMs:    r.DurationMs,
+	}
+}
+
+func (s *MonitorService) GetHealStats(ctx context.Context, _ *v1.HealStatsRequest) (*v1.HealStatsResponse, error) {
+	if s == nil || s.selfHealObserver == nil {
+		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal observer not available")
+	}
+	stats, err := s.selfHealObserver.GetHealStats(ctx)
+	if err != nil {
+		return nil, kerrors.New(500, "INTERNAL", err.Error())
+	}
+	resp := &v1.HealStatsResponse{
+		TotalHeals:  int32(stats.TotalHeals),
+		SuccessRate: stats.SuccessRate,
+	}
+	for _, r := range stats.TopFailRules {
+		resp.TopFailRules = append(resp.TopFailRules, &v1.RuleFailCount{
+			RuleId: r.RuleID,
+			Count:  int32(r.Count),
+		})
+	}
+	return resp, nil
+}
+
+func (s *MonitorService) ListHealRecords(ctx context.Context, in *v1.ListHealRecordsRequest) (*v1.ListHealRecordsResponse, error) {
+	if s == nil || s.selfHealObserver == nil {
+		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal observer not available")
+	}
+	result, err := s.selfHealObserver.ListHealRecords(ctx, biz.HealRecordQuery{
+		Limit:     int(in.GetLimit()),
+		Offset:    int(in.GetOffset()),
+		RuleID:    in.GetRuleId(),
+		Status:    in.GetStatus(),
+		SessionID: in.GetSessionId(),
+	})
+	if err != nil {
+		return nil, kerrors.New(500, "INTERNAL", err.Error())
+	}
+	items := make([]*v1.HealRecordEntry, 0, len(result.Items))
+	for _, r := range result.Items {
+		items = append(items, &v1.HealRecordEntry{
+			Id:                  r.ID,
+			RuleId:              r.RuleID,
+			TriggerType:         r.TriggerType,
+			TraceId:             r.TraceID,
+			SessionId:           r.SessionID,
+			StepId:              r.StepID,
+			FixActionType:       r.FixAction.Type,
+			Confidence:          r.Confidence,
+			Status:              r.Status,
+			RuntimeAutoHealed:   r.RuntimeAutoHealed,
+			RuntimeHealAttempts: int32(r.RuntimeHealAttempts),
+			Reason:              r.Reason,
+			CreatedAt:           r.CreatedAt,
+		})
+	}
+	return &v1.ListHealRecordsResponse{Items: items, Total: int32(result.Total)}, nil
 }

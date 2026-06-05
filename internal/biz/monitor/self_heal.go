@@ -30,22 +30,27 @@ const (
 	HealStatusSkippedCooldown     HealStatus = "skipped_cooldown"
 	HealStatusSkippedNoAction     HealStatus = "skipped_no_action"
 	HealStatusFailed              HealStatus = "failed"
+	HealStatusObservedHealed      HealStatus = "observed_healed"
+	HealStatusObservedFailed      HealStatus = "observed_failed"
+	HealStatusAlertFired          HealStatus = "alert_fired"
 )
 
 // HealRecord documents a self-heal action taken.
 type HealRecord struct {
-	ID         string         `json:"id"`
-	RuleID     string         `json:"rule_id"`
-	TriggerType string        `json:"trigger_type"`
-	TraceID    string         `json:"trace_id"`
-	SessionID  string         `json:"session_id"`
-	StepID     string         `json:"step_id"`
-	FixAction  FixAction      `json:"fix_action"`
-	Confidence float64        `json:"confidence"`
-	Status     string         `json:"status"` // HealStatus values: applied, skipped_low_confidence, skipped_cooldown, skipped_no_action, failed
-	Reason     string         `json:"reason,omitempty"`
-	CreatedAt  string         `json:"created_at"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	ID                  string         `json:"id"`
+	RuleID              string         `json:"rule_id"`
+	TriggerType         string         `json:"trigger_type"`
+	TraceID             string         `json:"trace_id"`
+	SessionID           string         `json:"session_id"`
+	StepID              string         `json:"step_id"`
+	FixAction           FixAction      `json:"fix_action"`
+	Confidence          float64        `json:"confidence"`
+	Status              string         `json:"status"` // HealStatus values: applied, skipped_low_confidence, skipped_cooldown, skipped_no_action, failed, observed_healed, observed_failed, alert_fired
+	RuntimeAutoHealed   bool           `json:"runtime_auto_healed"`
+	RuntimeHealAttempts int            `json:"runtime_heal_attempts"`
+	Reason              string         `json:"reason,omitempty"`
+	CreatedAt           string         `json:"created_at"`
+	Metadata            map[string]any `json:"metadata,omitempty"`
 }
 
 // HealActionHandler is the port for executing fix actions.
@@ -54,7 +59,47 @@ type HealActionHandler interface {
 	HandleFixAction(ctx context.Context, action FixAction, metadata map[string]any) error
 }
 
+// HealRecordRepo persists heal records to SQLite via Ent.
+type HealRecordRepo interface {
+	InsertHealRecord(ctx context.Context, record HealRecord) error
+	ListHealRecords(ctx context.Context, query HealRecordQuery) (HealRecordListResult, error)
+	DeleteHealRecordsOlderThan(ctx context.Context, olderThan time.Time) (int, error)
+}
+
+// HealRecordQuery filters heal records for listing.
+type HealRecordQuery struct {
+	RuleID    string
+	Status    string
+	SessionID string
+	Limit     int
+	Offset    int
+}
+
+// HealRecordListResult is a paginated heal record list.
+type HealRecordListResult struct {
+	Items []HealRecord
+	Total int
+}
+
+// HealStats aggregates self-heal statistics.
+type HealStats struct {
+	TotalHeals   int     `json:"total_heals"`
+	SuccessRate  float64 `json:"success_rate"`
+	TopFailRules []RuleFailCount `json:"top_fail_rules,omitempty"`
+}
+
+// RuleFailCount tracks repeated failures for a single rule.
+type RuleFailCount struct {
+	RuleID string `json:"rule_id"`
+	Count  int    `json:"count"`
+}
+
 // SelfHealUsecase orchestrates the diagnose → analyze → auto-fix loop.
+//
+// Deprecated: Use SelfHealObserver instead. SelfHealUsecase is kept for backward
+// compatibility during the migration period. The observation role (tracking auto-heal
+// outcomes, firing alerts) has moved to SelfHealObserver. The execution role (applying
+// fix actions) is now handled by the trpc-agent-go runtime.
 type SelfHealUsecase struct {
 	diag    *DiagBundleGenerator
 	handler HealActionHandler
@@ -65,8 +110,9 @@ type SelfHealUsecase struct {
 }
 
 // NewSelfHealUsecase creates a new self-heal usecase.
+// handler may be nil (runtime handles healing); diag must not be nil.
 func NewSelfHealUsecase(diag *DiagBundleGenerator, handler HealActionHandler, lg loggateway.Logger) *SelfHealUsecase {
-	if diag == nil || handler == nil {
+	if diag == nil {
 		return nil
 	}
 	return &SelfHealUsecase{
@@ -146,7 +192,14 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 		return record
 	}
 
-	// Apply fix action
+	// Apply fix action (if handler available)
+	if uc.handler == nil {
+		record.Status = string(HealStatusObservedFailed)
+		record.Reason = "no heal action handler (runtime handles healing)"
+		uc.recordHeal(record)
+		return record
+	}
+
 	if err := uc.handler.HandleFixAction(ctx, best.FixAction, best.Metadata); err != nil {
 		record.Status = string(HealStatusFailed)
 		record.Reason = err.Error()

@@ -31,7 +31,7 @@ func TestBuildStateGraph_skipNode(t *testing.T) {
 		EntryPoint:  "member-1",
 		FinishPoint: "member-1",
 		StateFields: []StateFieldDef{{Name: biz.SkippedNodesStateKey, Type: "[]string", Reducer: ReducerAppend}},
-		Nodes:       []NodeDef{{NodeDef: biz.NodeDef{ID: "member-1", Type: "function", FuncRef: biz.SkipNodeFuncRef}}},
+		Nodes:       []biz.NodeDef{{ID: "member-1", Type: "function", FuncRef: biz.SkipNodeFuncRef}},
 	}
 	g, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
 	if err != nil {

@@ -1,6 +1,10 @@
 // Package orgimport implements PGO-4: CLI-driven automated import of
 // organization (industry → department → position → agent + team) structure.
 //
+// Deprecated: This package is superseded by the Pack import system
+// (internal/biz/pack). New code should use pack.Importer instead.
+// This package will be removed in a future release.
+//
 // Architectural contract (redlines):
 //   - This package MUST NOT import internal/biz, internal/agent, internal/data,
 //     internal/server, or pkg/trpc-agent-go.

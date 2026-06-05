@@ -151,17 +151,14 @@ func TestGraphRuntimeE2E_buildSequentialTeamGraph(t *testing.T) {
 	trpcCfg := graphtrpc.GraphBuildConfig{
 		EntryPoint:  cfg.EntryPoint,
 		FinishPoint: cfg.FinishPoint,
-		Nodes:       make([]graphtrpc.NodeDef, len(cfg.Nodes)),
+		Nodes:       make([]biz.NodeDef, len(cfg.Nodes)),
 		Edges:       make([]graphtrpc.EdgeDef, len(cfg.Edges)),
 	}
 	for i, n := range cfg.Nodes {
-		nd := graphtrpc.NodeDef{}
-		nd.ID = n.ID
-		nd.Type = n.Type
-		nd.AgentName = n.AgentName
-		nd.RetryMaxAttempts = n.RetryMaxAttempts
-		nd.Destinations = append([]string(nil), n.Destinations...)
-		trpcCfg.Nodes[i] = nd
+		trpcCfg.Nodes[i] = biz.NodeDef{
+			ID: n.ID, Type: n.Type, AgentName: n.AgentName,
+			RetryMaxAttempts: n.RetryMaxAttempts, Destinations: append([]string(nil), n.Destinations...),
+		}
 	}
 	for i, e := range cfg.Edges {
 		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
@@ -199,15 +196,11 @@ func TestGraphRuntimeE2E_buildCoordinatorTeamGraph(t *testing.T) {
 	}
 	trpcCfg := graphtrpc.GraphBuildConfig{
 		EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
-		Nodes: make([]graphtrpc.NodeDef, len(cfg.Nodes)),
+		Nodes: make([]biz.NodeDef, len(cfg.Nodes)),
 		Edges: make([]graphtrpc.EdgeDef, len(cfg.Edges)),
 	}
 	for i, n := range cfg.Nodes {
-		nd := graphtrpc.NodeDef{}
-		nd.ID = n.ID
-		nd.Type = n.Type
-		nd.AgentName = n.AgentName
-		trpcCfg.Nodes[i] = nd
+		trpcCfg.Nodes[i] = biz.NodeDef{ID: n.ID, Type: n.Type, AgentName: n.AgentName}
 	}
 	for i, e := range cfg.Edges {
 		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}

@@ -274,7 +274,7 @@ func (uc *GraphDefinitionUsecase) FindNodeDef(ctx context.Context, graphID strin
 		return nil
 	}
 	cfg := defToBuildConfig(def)
-	return uc.factory.FindNodeDef(cfg, nodeID)
+	return uc.factory.FindNodeDef(cfg, nil, nodeID)
 }
 
 func (uc *GraphDefinitionUsecase) FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef {

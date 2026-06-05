@@ -3,9 +3,11 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 
+	"aranea-agents/internal/biz/types"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -34,6 +36,9 @@ type RootCauseCondition struct {
 	Pattern         string
 	compiledPattern *regexp.Regexp
 	Prerequisites   []Prerequisite
+	SelfCheckStatus *types.SelfCheckStatusCondition
+	AutoHealed      *bool // nil=don't care, true=only match auto-healed, false=only match not auto-healed
+	HealAttempts    int   // runtime heal attempts threshold (0=don't care)
 }
 
 type Prerequisite struct {
@@ -42,14 +47,16 @@ type Prerequisite struct {
 }
 
 type RootCauseResult struct {
-	RuleID     string         `json:"rule_id"`
-	Name       string         `json:"name"`
-	RootCause  string         `json:"root_cause"`
-	FixSuggest string         `json:"fix_suggest"`
-	Severity   string         `json:"severity"`
-	Confidence float64        `json:"confidence"`
-	FixAction  FixAction      `json:"fix_action"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	RuleID              string         `json:"rule_id"`
+	Name                string         `json:"name"`
+	RootCause           string         `json:"root_cause"`
+	FixSuggest          string         `json:"fix_suggest"`
+	Severity            string         `json:"severity"`
+	Confidence          float64        `json:"confidence"`
+	FixAction           FixAction      `json:"fix_action"`
+	Metadata            map[string]any `json:"metadata,omitempty"`
+	RuntimeAutoHealed   bool           `json:"runtime_auto_healed"`
+	RuntimeHealAttempts int            `json:"runtime_heal_attempts"`
 }
 
 type RootCauseEngine struct {
@@ -80,47 +87,64 @@ func (e *RootCauseEngine) Evaluate(ctx context.Context, stepID, phase string, me
 	var results []RootCauseResult
 	for _, rule := range e.rules {
 		if match, confidence := e.matchRule(rule, stepID, phase, metadata); match {
+			runtimeAutoHealed := false
+			runtimeHealAttempts := 0
+			if metadata != nil {
+				if v, ok := metadata["auto_healed"].(bool); ok {
+					runtimeAutoHealed = v
+				}
+				if v, ok := metadata["heal_attempts"].(int); ok {
+					runtimeHealAttempts = v
+				}
+			}
 			results = append(results, RootCauseResult{
-				RuleID:     rule.ID,
-				Name:       rule.Name,
-				RootCause:  rule.RootCause,
-				FixSuggest: rule.FixSuggest,
-				Severity:   rule.Severity,
-				Confidence: confidence,
-				FixAction:  rule.FixAction,
-				Metadata:   metadata,
+				RuleID:              rule.ID,
+				Name:                rule.Name,
+				RootCause:           rule.RootCause,
+				FixSuggest:          rule.FixSuggest,
+				Severity:            rule.Severity,
+				Confidence:          confidence,
+				FixAction:           rule.FixAction,
+				Metadata:            metadata,
+				RuntimeAutoHealed:   runtimeAutoHealed,
+				RuntimeHealAttempts: runtimeHealAttempts,
 			})
 		}
 	}
 	return results
 }
 
-// AddRules appends custom rules to the engine. Rules with duplicate IDs are skipped.
-func (e *RootCauseEngine) AddRules(rules []RootCauseRule) {
+// AddRules appends custom rules to the engine. Rules with duplicate IDs or
+// invalid configuration (empty ID/Name, bad regex) return an error.
+func (e *RootCauseEngine) AddRules(rules []RootCauseRule) error {
 	if e == nil {
-		return
+		return nil
 	}
 	existing := make(map[string]struct{}, len(e.rules))
 	for _, r := range e.rules {
 		existing[r.ID] = struct{}{}
 	}
 	for i := range rules {
+		if strings.TrimSpace(rules[i].ID) == "" {
+			return fmt.Errorf("addRules: rule at index %d has empty ID", i)
+		}
+		if strings.TrimSpace(rules[i].Name) == "" {
+			return fmt.Errorf("addRules: rule %q has empty Name", rules[i].ID)
+		}
 		if _, dup := existing[rules[i].ID]; dup {
-			continue
+			return fmt.Errorf("addRules: rule %q has duplicate ID", rules[i].ID)
 		}
 		if p := rules[i].Condition.Pattern; p != "" {
 			if re, err := regexp.Compile(p); err == nil {
 				rules[i].Condition.compiledPattern = re
 			} else {
-				e.lg.Error("AddRules: regexp.Compile failed",
-					loggateway.StepID("monitor.root_cause_regex_fail"),
-					loggateway.Str("rule_id", rules[i].ID), loggateway.Str("pattern", p), loggateway.Err(err))
-				continue
+				return fmt.Errorf("addRules: rule %q has invalid regex %q: %w", rules[i].ID, p, err)
 			}
 		}
 		e.rules = append(e.rules, rules[i])
 		existing[rules[i].ID] = struct{}{}
 	}
+	return nil
 }
 
 // Rules returns a copy of all registered rules.
@@ -163,6 +187,41 @@ func (e *RootCauseEngine) matchRule(rule RootCauseRule, stepID, phase string, me
 			msg = metaStr(metadata, "message")
 		}
 		if !cond.compiledPattern.MatchString(msg) {
+			return false, 0
+		}
+	}
+	if cond.SelfCheckStatus != nil {
+		sc := cond.SelfCheckStatus
+		checkerName := metaStr(metadata, "checker")
+		checkStatus := metaStr(metadata, "self_check_status")
+		if sc.Checker != "" && !strings.EqualFold(sc.Checker, checkerName) {
+			return false, 0
+		}
+		if sc.Status != "" && !strings.EqualFold(sc.Status, checkStatus) {
+			return false, 0
+		}
+	}
+	// AutoHealed condition: nil=don't care, true/false=must match
+	if cond.AutoHealed != nil {
+		autoHealed := false
+		if metadata != nil {
+			if v, ok := metadata["auto_healed"].(bool); ok {
+				autoHealed = v
+			}
+		}
+		if *cond.AutoHealed != autoHealed {
+			return false, 0
+		}
+	}
+	// HealAttempts condition: threshold check (metadata attempts >= condition threshold)
+	if cond.HealAttempts > 0 {
+		healAttempts := 0
+		if metadata != nil {
+			if v, ok := metadata["heal_attempts"].(int); ok {
+				healAttempts = v
+			}
+		}
+		if healAttempts < cond.HealAttempts {
 			return false, 0
 		}
 	}
@@ -361,6 +420,35 @@ func builtinRootCauseRules() []RootCauseRule {
 			Severity:   "high",
 			FixAction:  FixAction{Type: "log_only"},
 		},
+		{
+			ID: "rc-self-check-failure", Name: "Self-Check Failure",
+			Description: "A subsystem self-check reported failure status",
+			Condition: RootCauseCondition{
+				SelfCheckStatus: &types.SelfCheckStatusCondition{
+					Status: "failed",
+				},
+			},
+			RootCause:  "Subsystem self-check detected a failure condition",
+			FixSuggest: "Review self-check report details, check subsystem health, and run repair actions",
+			Severity:   "high",
+			FixAction: FixAction{
+				Type:        "reconnect",
+				MaxAttempts: 1,
+				Params:      map[string]any{"strategy": "self_repair"},
+			},
+		},
+		{
+			ID: "rc-repeated-auto-heal-failure", Name: "Repeated Auto-Heal Failure",
+			Description: "Runtime auto-heal has failed repeatedly after multiple attempts",
+			Condition: RootCauseCondition{
+				AutoHealed:   boolPtr(true),
+				HealAttempts: 3,
+			},
+			RootCause:  "Runtime auto-heal has failed repeatedly",
+			FixSuggest: "Investigate the underlying error pattern, check provider/service health, and consider manual intervention",
+			Severity:   "critical",
+			FixAction:  FixAction{Type: "log_only"},
+		},
 	}
 }
 
@@ -371,3 +459,5 @@ func RootCauseResultsToJSON(results []RootCauseResult) string {
 	b, _ := json.Marshal(results)
 	return string(b)
 }
+
+func boolPtr(b bool) *bool { return &b }

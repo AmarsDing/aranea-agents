@@ -36,8 +36,8 @@ func TestBuildStateGraph_LLMNode(t *testing.T) {
 		EntryPoint:  "llm1",
 		FinishPoint: "llm1",
 		StateFields: []StateFieldDef{{Name: "messages", Type: "[]any", Reducer: ReducerAppend}},
-		Nodes: []NodeDef{
-			{NodeDef: biz.NodeDef{ID: "llm1", Type: "llm", Instruction: "say hi", ModelName: "openai/gpt-4o-mini"}},
+		Nodes: []biz.NodeDef{
+			{ID: "llm1", Type: "llm", Instruction: "say hi", ModelName: "openai/gpt-4o-mini"},
 		},
 	}
 	_, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, &BuildDeps{Models: stubDeps{}}, nil)
@@ -47,15 +47,17 @@ func TestBuildStateGraph_LLMNode(t *testing.T) {
 }
 
 func TestBuildStateGraph_FunctionNode(t *testing.T) {
+	reg := NewRegistry()
+	reg.RegisterNodeFuncInstance("fn-func", PassthroughNodeFunc("fn"))
 	cfg := GraphBuildConfig{
 		EntryPoint:  "fn",
 		FinishPoint: "fn",
 		StateFields: []StateFieldDef{{Name: "messages", Type: "[]any", Reducer: ReducerAppend}},
-		Nodes: []NodeDef{
-			{NodeDef: biz.NodeDef{ID: "fn", Type: "function"}, Func: PassthroughNodeFunc("fn")},
+		Nodes: []biz.NodeDef{
+			{ID: "fn", Type: "function", FuncRef: "fn-func"},
 		},
 	}
-	_, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
+	_, _, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
 	if err != nil {
 		t.Fatalf("build function graph: %v", err)
 	}

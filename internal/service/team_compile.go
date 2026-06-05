@@ -36,7 +36,7 @@ func (s *TeamService) CompileTeamGraph(ctx context.Context, req *v1.CompileTeamG
 
 func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def team.Definition, rawDefinitionJSON string) (*v1.CompileTeamGraphResponse, error) {
 	agentKey := s.compileAgentKeyResolver(ctx)
-	cfg, compileErr := team.CompileToGraphBuildConfigFromJSON(def, rawDefinitionJSON, agentKey, s.lg)
+	cfg, taskMeta, compileErr := team.CompileToGraphBuildConfigFromJSON(def, rawDefinitionJSON, agentKey, s.lg)
 	resp := &v1.CompileTeamGraphResponse{
 		TemplateId: team.CompileTemplateID(def.Mode),
 		Mode:       strings.ToLower(strings.TrimSpace(def.Mode)),
@@ -51,7 +51,7 @@ func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def tea
 	}
 	resp.EntryPoint = cfg.EntryPoint
 	resp.FinishPoint = cfg.FinishPoint
-	resp.Nodes = s.buildCompiledGraphNodeViews(ctx, def, cfg.Nodes, cfg.TaskMeta)
+	resp.Nodes = s.buildCompiledGraphNodeViews(ctx, def, cfg.Nodes, taskMeta)
 	for _, e := range cfg.Edges {
 		resp.Edges = append(resp.Edges, &v1.CompiledGraphEdgeView{From: e.From, To: e.To, EdgeKind: e.Kind})
 	}

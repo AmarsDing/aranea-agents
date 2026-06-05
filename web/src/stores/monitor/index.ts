@@ -11,8 +11,10 @@ import {
   putMonitorAlertRules,
   subscribeMonitorRuntimeEventsWs,
   subscribeMonitorLogsWs,
+  triggerSelfCheck,
+  listSelfCheckReports,
 } from '../../features/monitor/api';
-import type { MonitorAlertRule } from '../../features/monitor/types';
+import type { MonitorAlertRule, SelfCheckReport } from '../../features/monitor/types';
 import { listChannels } from '../../features/channels/api';
 import type {
   AuditLog,
@@ -41,6 +43,10 @@ export const useMonitorStore = defineStore('monitor', () => {
   const flowPaused = ref(false);
   const processPaused = ref(true);
   const eventsPaused = ref(false);
+  const selfCheckReports = ref<SelfCheckReport[]>([]);
+  const selfCheckReportsTotal = ref(0);
+  const selfCheckLoading = ref(false);
+  const selfCheckTriggering = ref(false);
 
   async function loadAuditLogs(query: AuditQuery = {}) {
     loading.value = true;
@@ -166,6 +172,29 @@ export const useMonitorStore = defineStore('monitor', () => {
     logSnapshot.value = null;
   }
 
+  async function loadSelfCheckReports(limit = 20, offset = 0) {
+    selfCheckLoading.value = true;
+    try {
+      const result = await listSelfCheckReports(limit, offset);
+      selfCheckReports.value = result.items;
+      selfCheckReportsTotal.value = result.total;
+    } finally {
+      selfCheckLoading.value = false;
+    }
+  }
+
+  async function triggerSelfCheckAction() {
+    selfCheckTriggering.value = true;
+    try {
+      const report = await triggerSelfCheck();
+      selfCheckReports.value = [report, ...selfCheckReports.value];
+      selfCheckReportsTotal.value += 1;
+      return report;
+    } finally {
+      selfCheckTriggering.value = false;
+    }
+  }
+
   return {
     auditLogs,
     auditTotal,
@@ -199,5 +228,11 @@ export const useMonitorStore = defineStore('monitor', () => {
     setFlowPaused,
     setProcessPaused,
     setEventsPaused,
+    selfCheckReports,
+    selfCheckReportsTotal,
+    selfCheckLoading,
+    selfCheckTriggering,
+    loadSelfCheckReports,
+    triggerSelfCheckAction,
   };
 });

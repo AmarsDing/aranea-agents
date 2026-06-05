@@ -123,3 +123,100 @@ func (r *FlowFileRepairer) Repair(ctx context.Context, result types.SelfCheckRes
 		Message: "cleaned up expired flow files and compressed old files",
 	}
 }
+
+// TraceProjectorBackfiller is the port for triggering trace backfill.
+type TraceProjectorBackfiller interface {
+	BackfillTraces(ctx context.Context) error
+}
+
+// TraceProjectorRepairer triggers a trace backfill when the projector has no active traces.
+type TraceProjectorRepairer struct {
+	backfiller TraceProjectorBackfiller
+}
+
+// NewTraceProjectorRepairer creates a repairer for trace projector issues.
+func NewTraceProjectorRepairer(backfiller TraceProjectorBackfiller) *TraceProjectorRepairer {
+	return &TraceProjectorRepairer{backfiller: backfiller}
+}
+
+func (r *TraceProjectorRepairer) CanRepair(checkName string, status types.SelfCheckStatus) bool {
+	return checkName == "trace_projector" && status != types.SelfCheckStatusPassed
+}
+
+func (r *TraceProjectorRepairer) Repair(ctx context.Context, result types.SelfCheckResult) RepairOutcome {
+	if r.backfiller == nil {
+		return RepairOutcome{Success: false, Action: "trace_projector_repair", Message: "backfiller is nil"}
+	}
+	if err := r.backfiller.BackfillTraces(ctx); err != nil {
+		return RepairOutcome{Success: false, Action: "trace_backfill", Message: "backfill failed: " + err.Error()}
+	}
+	return RepairOutcome{
+		Success: true,
+		Action:  "trace_backfill",
+		Message: "triggered trace backfill successfully",
+	}
+}
+
+// AlertEvalRestarter is the port for restarting the alert evaluation worker.
+type AlertEvalRestarter interface {
+	RestartEvalWorker(ctx context.Context)
+}
+
+// AlertEvalRepairer restarts the AlertEvalWorker goroutine when it is not ready.
+type AlertEvalRepairer struct {
+	restarter AlertEvalRestarter
+}
+
+// NewAlertEvalRepairer creates a repairer for alert eval worker issues.
+func NewAlertEvalRepairer(restarter AlertEvalRestarter) *AlertEvalRepairer {
+	return &AlertEvalRepairer{restarter: restarter}
+}
+
+func (r *AlertEvalRepairer) CanRepair(checkName string, status types.SelfCheckStatus) bool {
+	return checkName == "alert_eval" && status != types.SelfCheckStatusPassed
+}
+
+func (r *AlertEvalRepairer) Repair(ctx context.Context, result types.SelfCheckResult) RepairOutcome {
+	if r.restarter == nil {
+		return RepairOutcome{Success: false, Action: "alert_eval_repair", Message: "restarter is nil"}
+	}
+	r.restarter.RestartEvalWorker(ctx)
+	return RepairOutcome{
+		Success: true,
+		Action:  "restart_eval_worker",
+		Message: "restarted alert evaluation worker",
+	}
+}
+
+// EventBusResubscriber is the port for resubscribing to the event bus.
+type EventBusResubscriber interface {
+	Resubscribe(topic string) error
+}
+
+// EventBusRepairer resubscribes disconnected event bus handlers.
+type EventBusRepairer struct {
+	resubscriber EventBusResubscriber
+}
+
+// NewEventBusRepairer creates a repairer for event bus issues.
+func NewEventBusRepairer(resubscriber EventBusResubscriber) *EventBusRepairer {
+	return &EventBusRepairer{resubscriber: resubscriber}
+}
+
+func (r *EventBusRepairer) CanRepair(checkName string, status types.SelfCheckStatus) bool {
+	return checkName == "eventbus" && status != types.SelfCheckStatusPassed
+}
+
+func (r *EventBusRepairer) Repair(ctx context.Context, result types.SelfCheckResult) RepairOutcome {
+	if r.resubscriber == nil {
+		return RepairOutcome{Success: false, Action: "eventbus_repair", Message: "resubscriber is nil"}
+	}
+	if err := r.resubscriber.Resubscribe("monitor"); err != nil {
+		return RepairOutcome{Success: false, Action: "resubscribe", Message: "resubscribe failed: " + err.Error()}
+	}
+	return RepairOutcome{
+		Success: true,
+		Action:  "resubscribe",
+		Message: "resubscribed to event bus topic 'monitor'",
+	}
+}

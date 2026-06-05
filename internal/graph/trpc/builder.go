@@ -47,27 +47,24 @@ type NodeDef struct {
 }
 
 type SubgraphDef struct {
-	ID              string
-	GraphID         string
-	BuildConfig     GraphBuildConfig
-	InputMapper     trpcgraph.SubgraphInputMapper
-	OutputMapper    trpcgraph.SubgraphOutputMapper
-	InterruptBefore bool
-	InterruptAfter  bool
+	biz.SubgraphDef
+	InputMapper  trpcgraph.SubgraphInputMapper
+	OutputMapper trpcgraph.SubgraphOutputMapper
 }
 
-type GraphBuildConfig struct {
-	Nodes            []NodeDef
-	Edges            []EdgeDef
-	ConditionalEdges []ConditionalEdgeDef
-	Subgraphs        []SubgraphDef
-	StateFields      []StateFieldDef
-	EntryPoint       string
-	FinishPoint      string
-	EnableCheckpoint bool
-	ExecutionEngine  ExecutionEngineType
-	InterruptBefore  []string
-	InterruptAfter   []string
+// GraphBuildConfig is a type alias for biz.GraphBuildConfig.
+// Function pointers (NodeFunc, CondFunc, InputMapper, OutputMapper) are
+// resolved separately in resolvedBuildConfig by the Registry.
+type GraphBuildConfig = biz.GraphBuildConfig
+
+// resolvedBuildConfig holds a GraphBuildConfig with all function pointers
+// resolved by the Registry. The trpc layer uses this internally for building.
+type resolvedBuildConfig struct {
+	cfg       GraphBuildConfig
+	nodes     []NodeDef
+	condEdges []ConditionalEdgeDef
+	subs      []SubgraphDef
+	subRbcs   map[string]*resolvedBuildConfig // subgraphID → resolved sub-config
 }
 
 func resolveReducer(rt ReducerType) trpcgraph.StateReducer {
@@ -107,7 +104,7 @@ func resolveFieldType(typeName string) reflect.Type {
 }
 
 func BuildStateGraph(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, *CircuitBreakerState, error) {
-	g, _, cbState, err := BuildStateGraphWithAgents(ctx, cfg, deps, nil)
+	g, _, cbState, err := BuildStateGraphWithAgents(ctx, cfg, nil, nil)
 	return g, cbState, err
 }
 
@@ -117,10 +114,10 @@ func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg 
 
 func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
 	local := GraphBuildConfig{
-		Nodes:            append([]NodeDef(nil), cfg.Nodes...),
+		Nodes:            append([]biz.NodeDef(nil), cfg.Nodes...),
 		Edges:            append([]EdgeDef(nil), cfg.Edges...),
-		ConditionalEdges: append([]ConditionalEdgeDef(nil), cfg.ConditionalEdges...),
-		Subgraphs:        append([]SubgraphDef(nil), cfg.Subgraphs...),
+		ConditionalEdges: append([]biz.ConditionalEdgeDef(nil), cfg.ConditionalEdges...),
+		Subgraphs:        append([]biz.SubgraphDef(nil), cfg.Subgraphs...),
 		StateFields:      append([]StateFieldDef(nil), cfg.StateFields...),
 		EntryPoint:       cfg.EntryPoint,
 		FinishPoint:      cfg.FinishPoint,
@@ -129,17 +126,51 @@ func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildCon
 		InterruptBefore:  append([]string(nil), cfg.InterruptBefore...),
 		InterruptAfter:   append([]string(nil), cfg.InterruptAfter...),
 	}
+	var rbc *resolvedBuildConfig
 	if reg != nil {
-		resolved, err := reg.ResolveBuildConfig(local)
+		var err error
+		rbc, err = reg.ResolveBuildConfig(local)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		local = resolved
+	} else {
+		rbc = resolvedBuildConfigFromCfg(local)
 	}
-	return BuildStateGraphWithAgents(ctx, local, deps, lg)
+	return buildFromResolved(ctx, rbc, deps, lg)
 }
 
 func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
+	rbc := resolvedBuildConfigFromCfg(cfg)
+	return buildFromResolved(ctx, rbc, deps, lg)
+}
+
+// resolvedBuildConfigFromCfg wraps biz-layer defs into trpc-layer defs without resolving
+// function pointers. Func/CondFunc/InputMapper/OutputMapper will be nil.
+func resolvedBuildConfigFromCfg(cfg GraphBuildConfig) *resolvedBuildConfig {
+	rbc := &resolvedBuildConfig{cfg: cfg}
+	rbc.nodes = make([]NodeDef, len(cfg.Nodes))
+	for i, n := range cfg.Nodes {
+		rbc.nodes[i] = NodeDef{NodeDef: n}
+	}
+	rbc.condEdges = make([]ConditionalEdgeDef, len(cfg.ConditionalEdges))
+	for i, ce := range cfg.ConditionalEdges {
+		rbc.condEdges[i] = ConditionalEdgeDef{ConditionalEdgeDef: ce}
+	}
+	rbc.subs = make([]SubgraphDef, len(cfg.Subgraphs))
+	for i, s := range cfg.Subgraphs {
+		rbc.subs[i] = SubgraphDef{SubgraphDef: s}
+	}
+	return rbc
+}
+
+// BuildFromResolved builds a graph from a pre-resolved config.
+// This is the public entry point for callers that construct resolvedBuildConfig directly.
+func BuildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
+	return buildFromResolved(ctx, rbc, deps, lg)
+}
+
+func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
+	cfg := rbc.cfg
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -180,20 +211,21 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 
 	sg := trpcgraph.NewStateGraph(schema)
 
-	for _, n := range cfg.Nodes {
-		extras, err := wireNode(ctx, sg, n, deps, nil, cbState)
+	for _, n := range rbc.nodes {
+		extras, err := wireNode(ctx, sg, n, deps, cbState)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 		allAgents = append(allAgents, extras...)
 	}
 
-	for _, sub := range cfg.Subgraphs {
-		subGraph, subAgents, subCBState, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps, lg)
+	for _, sub := range rbc.subs {
+		subRbc := rbc.subRbcs[sub.ID]
+		subGraph, subAgents, subCBState, err := buildFromResolved(ctx, subRbc, deps, lg)
 		if err != nil {
 			return nil, nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}
-		subAgent, err := NewGraphAgent(sub.ID, subGraph, sub.BuildConfig.EnableCheckpoint, subAgents...)
+		subAgent, err := NewGraphAgent(sub.ID, subGraph, subRbc.cfg.EnableCheckpoint, subAgents...)
 		if err != nil {
 			return nil, nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
 		}
@@ -225,7 +257,7 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 		sg.AddEdge(e.From, e.To)
 	}
 
-	for _, ce := range cfg.ConditionalEdges {
+	for _, ce := range rbc.condEdges {
 		sg.AddConditionalEdges(ce.From, ce.CondFunc, ce.PathMap)
 	}
 

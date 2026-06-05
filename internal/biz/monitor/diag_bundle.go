@@ -24,9 +24,10 @@ type DiagBundle struct {
 }
 
 type DiagBundleGenerator struct {
-	eventRepo EventRepo
-	traceRepo TraceRepo
-	engine    *RootCauseEngine
+	eventRepo     EventRepo
+	traceRepo     TraceRepo
+	engine        *RootCauseEngine
+	selfCheckRepo SelfCheckReportRepo
 }
 
 func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, lg loggateway.Logger) *DiagBundleGenerator {
@@ -34,6 +35,13 @@ func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, lg loggate
 		return nil
 	}
 	return &DiagBundleGenerator{eventRepo: eventRepo, traceRepo: traceRepo, engine: NewRootCauseEngine(lg)}
+}
+
+// SetSelfCheckRepo injects the self-check report repo for diagnostic snapshots.
+func (g *DiagBundleGenerator) SetSelfCheckRepo(repo SelfCheckReportRepo) {
+	if g != nil {
+		g.selfCheckRepo = repo
+	}
 }
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {
@@ -173,9 +181,56 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		"alerts.jsonl": map[string]any{"entries": len(alertEntries)},
 	}
 
+	// Parse auto-heal metadata from flow entries for self-heal summary
+	var autoHealCount, healSuccessCount, healFailCount int
+	for _, entry := range flowEntries {
+		if m, ok := entry["metadata_json"].(string); ok {
+			var parsed map[string]any
+			if json.Unmarshal([]byte(m), &parsed) == nil {
+				if v, ok := parsed["auto_healed"].(bool); ok && v {
+					autoHealCount++
+					if s, ok := parsed["heal_success"].(bool); ok && s {
+						healSuccessCount++
+					} else {
+						healFailCount++
+					}
+				}
+			}
+		}
+	}
+	if autoHealCount > 0 {
+		manifest["self_heal_summary"] = map[string]any{
+			"auto_heal_count":    autoHealCount,
+			"heal_success_count": healSuccessCount,
+			"heal_fail_count":    healFailCount,
+		}
+	}
+
+	// Self-check snapshot: include the most recent self-check report
+	var selfCheckSnapshot map[string]any
+	if g.selfCheckRepo != nil {
+		reports, _, _ := g.selfCheckRepo.ListSelfCheckReports(ctx, 1, 0)
+		if len(reports) > 0 {
+			latest := reports[0]
+			selfCheckSnapshot = map[string]any{
+				"id":             latest.ID,
+				"overall_status": string(latest.OverallStatus),
+				"started_at":     latest.StartedAt.Format(time.RFC3339),
+				"finished_at":    latest.FinishedAt.Format(time.RFC3339),
+				"duration_ms":    latest.DurationMs,
+				"check_count":    len(latest.CheckResults),
+			}
+			manifest["files"].(map[string]any)["self_check_snapshot"] = map[string]any{"report_id": latest.ID}
+		}
+	}
+
 	var rootCauseResults []RootCauseResult
 	if g.engine != nil && stepID != "" {
 		rootCauseResults = g.engine.Evaluate(ctx, stepID, "error", triggerMetadata)
+	}
+
+	if selfCheckSnapshot != nil {
+		manifest["self_check_snapshot"] = selfCheckSnapshot
 	}
 
 	return &DiagBundle{

@@ -1,5 +1,3 @@
-//go:build ignore
-
 package data
 
 import (
@@ -11,7 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/pack"
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/graph/trpc"
+	trpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/scenario/loader"
 	"aranea-agents/pkg/loggateway"
 )
@@ -37,7 +35,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 	}
 
 	// 创建 Importer 并导入
-	importer := newPackImporter(client)
+	importer := newPackImporter(client, lg)
 	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite)
 	if importErr != nil {
 		return fmt.Errorf("import builtin-templates pack: %w", importErr)
@@ -50,11 +48,6 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 		loggateway.Int("graphs_created", result.GraphsCreated),
 		loggateway.Int("taxonomy_nodes", result.TaxonomyNodes),
 		loggateway.Int("failures", len(result.Failures)))
-
-	// 同时写入 agent_templates 表（兼容现有前端）
-	if tmplErr := seedAgentTemplatesCompat(ctx, client, scenarioDir, lg); tmplErr != nil {
-		lg.Warn("agent templates compat seed failed", loggateway.StepID("data.seed.pack_builtin"), loggateway.Err(tmplErr))
-	}
 
 	// 同时写入 Graph 模板到 graph_definitions 表
 	if graphErr := seedGraphTemplatesCompat(ctx, client, lg); graphErr != nil {
@@ -94,7 +87,7 @@ func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, indu
 	}
 
 	// 创建 Importer 并导入
-	importer := newPackImporter(client)
+	importer := newPackImporter(client, lg)
 	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite)
 	if importErr != nil {
 		return fmt.Errorf("import %s pack: %w", industryKey, importErr)
@@ -144,18 +137,11 @@ func hashIndustryKey(key string) int {
 	return h % 1000
 }
 
-// seedAgentTemplatesCompat 写入 agent_templates 表（兼容现有前端）。
-func seedAgentTemplatesCompat(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
-	return SeedAgentTemplates(ctx, client, scenarioDir, lg)
-}
-
 // seedGraphTemplatesCompat 写入 graph_definitions 表。
 func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	templates := trpc.ListBuiltinTemplates()
-	graphRepo := NewGraphRepo(&Data{entClient: client, readClient: client, lg: lg}, lg)
-	if graphRepo == nil {
-		return nil
-	}
+	d := newDataFromClient(client, lg)
+	graphRepo := NewGraphRepo(d)
 	for _, tmpl := range templates {
 		buildConfig := trpc.TemplateToBuildConfig(tmpl)
 		def := &biz.GraphDefinition{
@@ -178,7 +164,7 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 		}
 		def.StateFields = buildConfig.StateFields
 
-		if _, err := graphRepo.SaveGraphDefinition(ctx, def); err != nil {
+		if _, err := graphRepo.SaveDefinition(ctx, def); err != nil {
 			lg.Warn("seed graph template failed", loggateway.StepID("data.seed.graph_template"), loggateway.Str("id", tmpl.ID), loggateway.Err(err))
 			// 不中断，继续尝试下一个
 		}
@@ -186,29 +172,25 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 	return nil
 }
 
-// packImporterRepo 是 ImporterRepo 的适配器，通过 ent.Client 实现所有接口方法。
-type packImporterRepo struct {
-	client *ent.Client
-	data   *Data
-	lg     loggateway.Logger
+// newDataFromClient 创建一个最小化的 Data 实例，用于 seed 场景下创建 Repo。
+func newDataFromClient(client *ent.Client, lg loggateway.Logger) *Data {
+	return &Data{
+		entClient:  client,
+		readClient: client,
+		rw:         NewReadWriteClient(client, client),
+		lg:         lg,
+	}
 }
 
 // newPackImporter 创建一个使用 ent.Client 的 Pack 导入器。
-func newPackImporter(client *ent.Client) *pack.Importer {
-	// 创建一个临时 Data 实例用于 Repo 创建
-	d := &Data{entClient: client, readClient: client, lg: loggateway.Nop()}
-	repo := &packImporterRepo{
-		client: client,
-		data:   d,
-		lg:     loggateway.Nop(),
-	}
-	return pack.NewImporter(repo)
+func newPackImporter(client *ent.Client, lg loggateway.Logger) *pack.Importer {
+	d := newDataFromClient(client, lg)
+	adapter := NewPackRepoAdapter(
+		NewAgentRepo(d),
+		NewTeamRepo(d),
+		NewTaxonomyRepo(d),
+		NewGraphRepo(d),
+		NewSkillRepo(d),
+	)
+	return pack.NewImporter(adapter)
 }
-
-// 以下方法实现 pack.ImporterRepo 接口。
-// 由于 Pack 导入引擎需要 biz 层的 Repo 接口，
-// 这里通过 data 层的 Repo 实现来桥接。
-
-// 注意：实际的 Repo 方法委托给 data 层已有的 Repo 实现。
-// 由于 pack.ImporterRepo 接口与 data 层 Repo 接口不完全一致，
-// 我们需要一个适配层。这里简化处理，在 seed_pack_adapter.go 中实现。

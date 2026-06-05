@@ -33,18 +33,20 @@ func TestFailureRecoveryAfterNode_skipOnFailure(t *testing.T) {
 }
 
 func TestBuildStateGraph_skipOnFailureRecovery(t *testing.T) {
+	failFunc := func(_ context.Context, _ trpcgraph.State) (any, error) {
+		return nil, errors.New("boom")
+	}
+	reg := NewRegistry()
+	reg.RegisterNodeFuncInstance("fail-func", failFunc)
 	cfg := GraphBuildConfig{
 		EntryPoint:  "fail",
 		FinishPoint: "fail",
 		StateFields: []StateFieldDef{{Name: biz.SkippedNodesStateKey, Type: "[]string", Reducer: ReducerAppend}},
-		Nodes: []NodeDef{{
-			NodeDef: biz.NodeDef{ID: "fail", Type: "function", FailureAction: biz.FailureOnFailureSkip},
-			Func: func(_ context.Context, _ trpcgraph.State) (any, error) {
-				return nil, errors.New("boom")
-			},
+		Nodes: []biz.NodeDef{{
+			ID: "fail", Type: "function", FailureAction: biz.FailureOnFailureSkip, FuncRef: "fail-func",
 		}},
 	}
-	g, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
+	g, _, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

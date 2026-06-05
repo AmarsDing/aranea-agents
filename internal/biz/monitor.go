@@ -34,8 +34,13 @@ type (
 	DiagBundleGenerator     = monitor.DiagBundleGenerator
 	UsecaseOption           = monitor.UsecaseOption
 	SelfHealUsecase         = monitor.SelfHealUsecase
+	SelfHealObserver        = monitor.SelfHealObserver
 	HealActionHandler       = monitor.HealActionHandler
+	HealRecordRepo          = monitor.HealRecordRepo
 	HealRecord              = monitor.HealRecord
+	HealRecordQuery         = monitor.HealRecordQuery
+	HealRecordListResult    = monitor.HealRecordListResult
+	HealStats               = monitor.HealStats
 	FixAction               = monitor.FixAction
 )
 
@@ -54,4 +59,5 @@ var (
 	NewDiagBundleGenerator          = monitor.NewDiagBundleGenerator
 	MergeRunnerCompletionUsagePatch = monitor.MergeRunnerCompletionUsagePatch
 	NewSelfHealUsecase              = monitor.NewSelfHealUsecase
+	NewSelfHealObserver             = monitor.NewSelfHealObserver
 )

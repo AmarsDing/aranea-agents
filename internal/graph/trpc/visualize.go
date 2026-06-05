@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strings"
 
+	"aranea-agents/internal/biz"
+
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
@@ -46,7 +48,7 @@ func NodeTypeStyle(nodeType string) (shape, fill, border string) {
 	}
 }
 
-func ParseDOTToVisualGraph(dot string, nodes []NodeDef, condEdges []ConditionalEdgeDef) *VisualGraph {
+func ParseDOTToVisualGraph(dot string, nodes []biz.NodeDef, condEdges []biz.ConditionalEdgeDef) *VisualGraph {
 	vg := &VisualGraph{
 		DOT: dot,
 	}

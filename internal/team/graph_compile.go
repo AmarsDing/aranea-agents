@@ -17,41 +17,41 @@ type CompileAgentKey func(agentID string) string
 // CompileToGraphBuildConfig maps a team definition to a graph build config for observability
 // and future unified runtime. Topology mirrors web buildGraphFromDefinition() unless
 // definition.graph embeds agent nodes (OrchestrationSpec custom/preset edits).
-func CompileToGraphBuildConfig(def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+func CompileToGraphBuildConfig(def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, map[string]biz.NodeTaskMeta, error) {
 	return compileToGraphBuildConfig(def, "", agentKey, lg)
 }
 
 // CompileToGraphBuildConfigFromJSON is like CompileToGraphBuildConfig but reads embedded graph from raw JSON.
-func CompileToGraphBuildConfigFromJSON(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+func CompileToGraphBuildConfigFromJSON(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, map[string]biz.NodeTaskMeta, error) {
 	return compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey, lg)
 }
 
-func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
-	cfg, _, err := compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil, lg)
-	return cfg, err
+func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, map[string]biz.NodeTaskMeta, error) {
+	cfg, taskMeta, _, err := compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil, lg)
+	return cfg, taskMeta, err
 }
 
-func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader, lg loggateway.Logger) (biz.GraphBuildConfig, []string, error) {
+func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader, lg loggateway.Logger) (biz.GraphBuildConfig, map[string]biz.NodeTaskMeta, []string, error) {
 	if spec, ok := parseEmbeddedGraph(rawDefinitionJSON); ok {
-		cfg, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
+		cfg, taskMeta, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 		if err != nil {
-			return biz.GraphBuildConfig{}, nil, err
+			return biz.GraphBuildConfig{}, nil, nil, err
 		}
-		return cfg, branchIDs, nil
+		return cfg, taskMeta, branchIDs, nil
 	}
 
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", "compile graph: no enabled members")
+		return biz.GraphBuildConfig{}, nil, nil, kerrors.BadRequest("TEAM", "compile graph: no enabled members")
 	}
 
 	mode := normalizeCompileMode(def.Mode)
 	spec := generateGraphSpecFromMode(ctx, def, mode, lg)
-	cfg, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
+	cfg, taskMeta, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 	if err != nil {
-		return biz.GraphBuildConfig{}, nil, err
+		return biz.GraphBuildConfig{}, nil, nil, err
 	}
-	return cfg, branchIDs, nil
+	return cfg, taskMeta, branchIDs, nil
 }
 
 func normalizeCompileMode(mode string) string {
@@ -198,11 +198,11 @@ func CompileToCompiledTeam(
 		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {
 			if cfg, err := linked.LoadGraphBuildConfig(ctx, linkedID); err == nil {
 				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, nil)
-				return biz.NewCompiledTeam(cfg, buildRoleManifest(cfg), def.FailurePolicy), nil
+				return biz.NewCompiledTeam(cfg, nil, buildRoleManifest(cfg), def.FailurePolicy), nil
 			}
 		}
 	}
-	cfg, branchIDs, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked, lg)
+	cfg, taskMeta, branchIDs, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked, lg)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func CompileToCompiledTeam(
 		cfg = applyAdaptiveAgentDestinations(cfg)
 	}
 	cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, branchIDs)
-	return biz.NewCompiledTeam(cfg, buildRoleManifest(cfg), def.FailurePolicy), nil
+	return biz.NewCompiledTeam(cfg, taskMeta, buildRoleManifest(cfg), def.FailurePolicy), nil
 }
 
 func buildRoleManifest(cfg biz.GraphBuildConfig) map[string]biz.RoleInfo {

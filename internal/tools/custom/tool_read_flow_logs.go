@@ -2,6 +2,7 @@ package custom
 
 import (
 	"context"
+	"encoding/json"
 
 	"aranea-agents/internal/biz"
 
@@ -24,13 +25,17 @@ type readFlowLogsOutput struct {
 }
 
 type flowLogEntry struct {
-	ID        string `json:"id"`
-	StepID    string `json:"step_id"`
-	Phase     string `json:"phase"`
-	Severity  string `json:"severity"`
-	Title     string `json:"title"`
-	Message   string `json:"message"`
-	CreatedAt string `json:"created_at"`
+	ID            string `json:"id"`
+	StepID        string `json:"step_id"`
+	Phase         string `json:"phase"`
+	Severity      string `json:"severity"`
+	Title         string `json:"title"`
+	Message       string `json:"message"`
+	AutoHealed    bool   `json:"auto_healed"`
+	HealStrategy  string `json:"heal_strategy,omitempty"`
+	HealAttempts  int    `json:"heal_attempts,omitempty"`
+	HealSuccess   bool   `json:"heal_success,omitempty"`
+	CreatedAt     string `json:"created_at"`
 }
 
 // NewReadFlowLogsTool creates a tool that allows an Agent to read its own flow logs.
@@ -65,7 +70,7 @@ func NewReadFlowLogsTool(uc *biz.FlowLogUsecase) *trpcfunction.FunctionTool[read
 
 			items := make([]flowLogEntry, 0, len(result.Items))
 			for _, r := range result.Items {
-				items = append(items, flowLogEntry{
+				entry := flowLogEntry{
 					ID:        r.ID,
 					StepID:    r.StepID,
 					Phase:     r.FlowPhase,
@@ -73,7 +78,26 @@ func NewReadFlowLogsTool(uc *biz.FlowLogUsecase) *trpcfunction.FunctionTool[read
 					Title:     r.Title,
 					Message:   r.Message,
 					CreatedAt: r.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-				})
+				}
+				// Parse auto-heal metadata from PayloadJSON
+				if r.PayloadJSON != "" {
+					var payload map[string]any
+					if json.Unmarshal([]byte(r.PayloadJSON), &payload) == nil {
+						if v, ok := payload["auto_healed"].(bool); ok {
+							entry.AutoHealed = v
+						}
+						if v, ok := payload["heal_strategy"].(string); ok {
+							entry.HealStrategy = v
+						}
+						if v, ok := payload["heal_attempts"].(float64); ok {
+							entry.HealAttempts = int(v)
+						}
+						if v, ok := payload["heal_success"].(bool); ok {
+							entry.HealSuccess = v
+						}
+					}
+				}
+				items = append(items, entry)
 			}
 
 			return readFlowLogsOutput{

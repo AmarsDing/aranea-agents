@@ -126,3 +126,32 @@ export type MonitorAlertRule = {
   notify_channel_id?: string;
   cooldown_minutes?: number;
 };
+
+// Self-check types
+
+export type SelfCheckStatus = 'passed' | 'warning' | 'failed';
+
+export type SelfCheckResult = {
+  check_id: string;
+  checker: string;
+  status: SelfCheckStatus;
+  message: string;
+  details_json?: string;
+  checked_at: string;
+};
+
+export type RepairAction = {
+  success: boolean;
+  action: string;
+  message: string;
+};
+
+export type SelfCheckReport = {
+  id: string;
+  check_results: SelfCheckResult[];
+  overall_status: SelfCheckStatus;
+  repair_actions: RepairAction[];
+  started_at: string;
+  finished_at: string;
+  duration_ms: number;
+};

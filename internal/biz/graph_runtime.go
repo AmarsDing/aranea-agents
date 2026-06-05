@@ -43,7 +43,7 @@ type GraphTemplateProvider interface {
 
 type GraphNodeInfoProvider interface {
 	AgentExists(ctx context.Context, agentID string) bool
-	FindNodeDef(cfg GraphBuildConfig, nodeID string) *NodeTaskMeta
+	FindNodeDef(cfg GraphBuildConfig, taskMeta map[string]NodeTaskMeta, nodeID string) *NodeTaskMeta
 }
 
 type GraphBuilderFactory interface {

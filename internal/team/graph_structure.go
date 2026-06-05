@@ -9,7 +9,7 @@ import (
 
 // ExportStructureSnapshot builds API structure export from compiled graph topology.
 func ExportStructureSnapshot(teamKey, displayName string, def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (*biz.TeamStructureSnapshot, error) {
-	cfg, err := CompileToGraphBuildConfig(def, agentKey, lg)
+	cfg, _, err := CompileToGraphBuildConfig(def, agentKey, lg)
 	if err != nil {
 		return nil, err
 	}

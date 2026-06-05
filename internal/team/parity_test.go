@@ -60,7 +60,7 @@ func TestParityNativeVsGraph_CompileAllModes(t *testing.T) {
 				t.Fatalf("graph runtime should be enabled for mode %q", mode)
 			}
 
-			buildCfg, err := CompileToGraphBuildConfig(def, compileAgentKey, loggateway.NewNoop())
+			buildCfg, _, err := CompileToGraphBuildConfig(def, compileAgentKey, loggateway.NewNoop())
 			if err != nil {
 				t.Fatalf("CompileToGraphBuildConfig: %v", err)
 			}

@@ -276,57 +276,8 @@ func NewGraphBuilderFactory(
 	}
 }
 
-func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
-	nodes := make([]graphtrpc.NodeDef, len(cfg.Nodes))
-	for i, n := range cfg.Nodes {
-		nodes[i] = graphtrpc.NodeDef{NodeDef: n}
-	}
-	condEdges := make([]graphtrpc.ConditionalEdgeDef, len(cfg.ConditionalEdges))
-	for i, ce := range cfg.ConditionalEdges {
-		condEdges[i] = graphtrpc.ConditionalEdgeDef{ConditionalEdgeDef: ce}
-	}
-	subgraphs := make([]graphtrpc.SubgraphDef, len(cfg.Subgraphs))
-	for i, s := range cfg.Subgraphs {
-		subgraphs[i] = graphtrpc.SubgraphDef{
-			ID: s.ID, GraphID: s.GraphID, BuildConfig: bizCfgToTrpc(s.BuildConfig),
-			InterruptBefore: s.InterruptBefore, InterruptAfter: s.InterruptAfter,
-		}
-	}
-	return graphtrpc.GraphBuildConfig{
-		Nodes: nodes, Edges: cfg.Edges, ConditionalEdges: condEdges, Subgraphs: subgraphs,
-		StateFields: cfg.StateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
-		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: cfg.ExecutionEngine,
-		InterruptBefore: cfg.InterruptBefore, InterruptAfter: cfg.InterruptAfter,
-	}
-}
-
-func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
-	nodes := make([]biz.NodeDef, len(cfg.Nodes))
-	for i, n := range cfg.Nodes {
-		nodes[i] = n.NodeDef
-	}
-	condEdges := make([]biz.ConditionalEdgeDef, len(cfg.ConditionalEdges))
-	for i, ce := range cfg.ConditionalEdges {
-		condEdges[i] = ce.ConditionalEdgeDef
-	}
-	subgraphs := make([]biz.SubgraphDef, len(cfg.Subgraphs))
-	for i, s := range cfg.Subgraphs {
-		subgraphs[i] = biz.SubgraphDef{
-			ID: s.ID, GraphID: s.GraphID, BuildConfig: trpcCfgToBiz(s.BuildConfig),
-			InterruptBefore: s.InterruptBefore, InterruptAfter: s.InterruptAfter,
-		}
-	}
-	return biz.GraphBuildConfig{
-		Nodes: nodes, Edges: cfg.Edges, ConditionalEdges: condEdges, Subgraphs: subgraphs,
-		StateFields: cfg.StateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
-		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: cfg.ExecutionEngine,
-		InterruptBefore: cfg.InterruptBefore, InterruptAfter: cfg.InterruptAfter,
-	}
-}
-
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
-	trpcCfg := bizCfgToTrpc(cfg)
-	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -371,13 +322,12 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 }
 
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
-	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, _, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("build state graph for visualization: %v", err))
 	}
 	dot := g.DOT()
-	vg := graphtrpc.ParseDOTToVisualGraph(dot, trpcCfg.Nodes, trpcCfg.ConditionalEdges)
+	vg := graphtrpc.ParseDOTToVisualGraph(dot, cfg.Nodes, cfg.ConditionalEdges)
 	startEnd := graphtrpc.BuildStartEndNodes()
 	allNodes := make([]graphtrpc.VisualGraphNode, 0, len(vg.Nodes)+2)
 	allNodes = append(allNodes, startEnd...)
@@ -408,9 +358,8 @@ func validationResultToBiz(vr *graphtrpc.ValidationResult) *biz.GraphValidationR
 }
 
 func (f *trpcGraphBuilderFactory) Validate(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphValidationResult, error) {
-	trpcCfg := bizCfgToTrpc(cfg)
 	checker := graphtrpc.AgentExistenceChecker(f.agentChecker)
-	return validationResultToBiz(graphtrpc.ValidateGraph(ctx, &trpcCfg, checker, f.registry)), nil
+	return validationResultToBiz(graphtrpc.ValidateGraph(ctx, &cfg, checker, f.registry)), nil
 }
 
 func (f *trpcGraphBuilderFactory) ListTemplates() any {
@@ -431,12 +380,11 @@ func (f *trpcGraphBuilderFactory) TemplateToDef(template any, name, description 
 		return nil
 	}
 	cfg := graphtrpc.TemplateToBuildConfig(tmpl)
-	bizCfg := trpcCfgToBiz(cfg)
 	return &biz.GraphDefinition{
-		Name: name, Description: description, StateFields: bizCfg.StateFields,
-		Nodes: bizCfg.Nodes, Edges: bizCfg.Edges, ConditionalEdges: bizCfg.ConditionalEdges,
-		EntryPoint: bizCfg.EntryPoint, FinishPoint: bizCfg.FinishPoint,
-		EnableCheckpoint: bizCfg.EnableCheckpoint, ExecutionEngine: bizCfg.ExecutionEngine,
+		Name: name, Description: description, StateFields: cfg.StateFields,
+		Nodes: cfg.Nodes, Edges: cfg.Edges, ConditionalEdges: cfg.ConditionalEdges,
+		EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
+		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: cfg.ExecutionEngine,
 	}
 }
 
@@ -447,10 +395,10 @@ func (f *trpcGraphBuilderFactory) AgentExists(ctx context.Context, agentID strin
 	return f.agentChecker(ctx, agentID)
 }
 
-func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, nodeID string) *biz.NodeTaskMeta {
+func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, taskMeta map[string]biz.NodeTaskMeta, nodeID string) *biz.NodeTaskMeta {
 	for i := range cfg.Nodes {
 		if cfg.Nodes[i].ID == nodeID {
-			if m, ok := cfg.TaskMeta[nodeID]; ok {
+			if m, ok := taskMeta[nodeID]; ok {
 				return &m
 			}
 			return &biz.NodeTaskMeta{}

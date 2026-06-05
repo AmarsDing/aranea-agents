@@ -257,6 +257,28 @@ func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
 	p.mu.Unlock()
 }
 
+// BackfillTraces ensures trace schema and evicts stale traces to refresh the projector state.
+func (p *TraceProjector) BackfillTraces(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	if err := p.repo.EnsureTraceSchema(ctx); err != nil {
+		return err
+	}
+	p.evictStaleTraces()
+	return nil
+}
+
+// TraceCount returns the number of currently active traces in the projector.
+func (p *TraceProjector) TraceCount() int {
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.traces)
+}
+
 func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status string, durationMs int64) {
 	if p == nil || traceID == "" {
 		return

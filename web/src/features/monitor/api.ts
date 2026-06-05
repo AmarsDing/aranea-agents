@@ -12,6 +12,7 @@ import type {
   PaginatedResult,
   PlatformResource,
   RunnerMetricsSummary,
+  SelfCheckReport,
   TeamRunEvent,
 } from './types';
 
@@ -348,4 +349,52 @@ export async function getCodeExecutorCapabilities(): Promise<CodeExecutorCapabil
       reason: String(r.reason ?? ''),
     };
   });
+}
+
+function selfCheckResultFromWire(raw: unknown): SelfCheckReport['check_results'][number] {
+  const r = obj(raw);
+  return {
+    check_id: String(r.checkId ?? r.check_id ?? ''),
+    checker: String(r.checker ?? ''),
+    status: String(r.status ?? 'passed') as SelfCheckReport['check_results'][number]['status'],
+    message: String(r.message ?? ''),
+    details_json: String(r.detailsJson ?? r.details_json ?? ''),
+    checked_at: String(r.checkedAt ?? r.checked_at ?? ''),
+  };
+}
+
+function repairActionFromWire(raw: unknown): SelfCheckReport['repair_actions'][number] {
+  const r = obj(raw);
+  return {
+    success: Boolean(r.success ?? false),
+    action: String(r.action ?? ''),
+    message: String(r.message ?? ''),
+  };
+}
+
+function selfCheckReportFromWire(raw: unknown): SelfCheckReport {
+  const r = obj(raw);
+  const checkResults = (r.checkResults ?? r.check_results ?? []) as unknown[];
+  const repairActions = (r.repairActions ?? r.repair_actions ?? []) as unknown[];
+  return {
+    id: String(r.id ?? ''),
+    check_results: checkResults.map(selfCheckResultFromWire),
+    overall_status: String(r.overallStatus ?? r.overall_status ?? 'passed') as SelfCheckReport['overall_status'],
+    repair_actions: repairActions.map(repairActionFromWire),
+    started_at: String(r.startedAt ?? r.started_at ?? ''),
+    finished_at: String(r.finishedAt ?? r.finished_at ?? ''),
+    duration_ms: Number(r.durationMs ?? r.duration_ms ?? 0),
+  };
+}
+
+export async function triggerSelfCheck(): Promise<SelfCheckReport> {
+  const res = await monitor.TriggerSelfCheck({});
+  const report = (res as { report?: unknown }).report;
+  return selfCheckReportFromWire(report);
+}
+
+export async function listSelfCheckReports(limit = 20, offset = 0): Promise<PaginatedResult<SelfCheckReport>> {
+  const res = await monitor.ListSelfCheckReports({ limit, offset });
+  const items = ((res as { items?: unknown[] }).items ?? []).map(selfCheckReportFromWire);
+  return { items, total: Number((res as { total?: number }).total ?? items.length) };
 }

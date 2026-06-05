@@ -18,14 +18,17 @@ func TestBuildStateGraph_parallelFailContinue(t *testing.T) {
 	fail := func(_ context.Context, _ trpcgraph.State) (any, error) {
 		return nil, errors.New("branch failed")
 	}
+	reg := NewRegistry()
+	reg.RegisterNodeFuncInstance("pass", pass)
+	reg.RegisterNodeFuncInstance("fail", fail)
 	cfg := GraphBuildConfig{
 		EntryPoint:  "member-1",
 		FinishPoint: "member-3",
 		StateFields: []StateFieldDef{{Name: biz.SkippedNodesStateKey, Type: "[]string", Reducer: ReducerAppend}},
-		Nodes: []NodeDef{
-			{NodeDef: biz.NodeDef{ID: "member-1", Type: "function"}, Func: pass},
-			{NodeDef: biz.NodeDef{ID: "member-2", Type: "function", FailureAction: biz.FailureOnFailureSkip}, Func: fail},
-			{NodeDef: biz.NodeDef{ID: "member-3", Type: "function"}, Func: pass},
+		Nodes: []biz.NodeDef{
+			{ID: "member-1", Type: "function", FuncRef: "pass"},
+			{ID: "member-2", Type: "function", FailureAction: biz.FailureOnFailureSkip, FuncRef: "fail"},
+			{ID: "member-3", Type: "function", FuncRef: "pass"},
 		},
 		Edges: []EdgeDef{
 			{From: "member-1", To: "member-2"},
@@ -33,7 +36,7 @@ func TestBuildStateGraph_parallelFailContinue(t *testing.T) {
 			{From: "member-2", To: "member-3"},
 		},
 	}
-	g, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
+	g, _, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

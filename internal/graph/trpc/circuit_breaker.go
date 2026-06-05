@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"aranea-agents/internal/biz"
-
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
@@ -47,15 +45,6 @@ func (s *CircuitBreakerState) State(nodeID string) breakerState {
 		return b.state
 	}
 	return breakerClosed
-}
-
-func circuitBreakerOptions(n NodeDef, policy *biz.CircuitBreakerPolicy, cbState *CircuitBreakerState) []trpcgraph.Option {
-	if policy == nil || policy.FailureThreshold <= 0 || cbState == nil {
-		return nil
-	}
-	nodeID := n.ID
-	threshold := policy.FailureThreshold
-	return []trpcgraph.Option{trpcgraph.WithPostNodeCallback(cbState.afterNode(nodeID, threshold))}
 }
 
 func (s *CircuitBreakerState) afterNode(nodeID string, threshold int) trpcgraph.AfterNodeCallback {

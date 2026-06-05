@@ -97,7 +97,7 @@ func (uc *GraphUsecase) buildConfigForExecution(ctx context.Context, exec *Graph
 		return nil, err
 	}
 	cfg := FinalizeGraphFailurePolicy(defToBuildConfig(def), nil, nil)
-	return NewCompiledTeam(cfg, nil, nil), nil
+	return NewCompiledTeam(cfg, nil, nil, nil), nil
 }
 
 func (uc *GraphUsecase) ensureCheckpointRuntime(ctx context.Context, exec *GraphExecution) error {

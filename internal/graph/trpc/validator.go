@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aranea-agents/internal/biz"
 )
 
 type ValidationErrorCode string
@@ -231,7 +233,7 @@ func validateNodeRefs(def *GraphBuildConfig, reg *Registry, result *ValidationRe
 		case "llm", "tool", "tools", "task", "review", "agent", "router":
 			continue
 		}
-		if n.Func == nil && n.FuncRef != "" {
+		if n.FuncRef != "" {
 			if _, err := reg.GetNodeFunc(n.FuncRef); err != nil {
 				result.AddError(ValidationErrFuncRefNotFound, n.ID, "func_ref",
 					fmt.Sprintf("节点 %q 引用的函数 %q 未注册", n.ID, n.FuncRef))
@@ -239,7 +241,7 @@ func validateNodeRefs(def *GraphBuildConfig, reg *Registry, result *ValidationRe
 		}
 	}
 	for _, ce := range def.ConditionalEdges {
-		if ce.CondFunc == nil && ce.CondFuncRef != "" {
+		if ce.CondFuncRef != "" {
 			if _, err := reg.GetCondFunc(ce.CondFuncRef); err != nil {
 				result.AddError(ValidationErrCondFuncNotFound, ce.From, "cond_func_ref",
 					fmt.Sprintf("条件边源 %q 引用的条件函数 %q 未注册", ce.From, ce.CondFuncRef))
@@ -290,7 +292,7 @@ func validateStateSchema(def *GraphBuildConfig, result *ValidationResult) {
 	}
 }
 
-func validateAgentNodeStateRefs(n NodeDef, fieldSet map[string]StateFieldDef, result *ValidationResult) {
+func validateAgentNodeStateRefs(n biz.NodeDef, fieldSet map[string]StateFieldDef, result *ValidationResult) {
 	if strings.ToLower(strings.TrimSpace(n.Type)) != "agent" {
 		return
 	}

@@ -23,8 +23,7 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if f == nil {
 		return nil, kerrors.InternalServer("GRAPH", "graph builder factory is nil")
 	}
-	trpcCfg := bizCfgToTrpc(cfg)
-	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, err
 	}

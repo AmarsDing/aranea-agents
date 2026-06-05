@@ -53,6 +53,7 @@
         :class="{ 'monitor-panels--logs-fill': tab === 'logs' }"
       >
         <q-tab-panel name="usage">
+          <SelfCheckStatusPanel />
           <MonitorRunnerMetrics />
           <MonitorUsageDashboardLink :range="filters.range" />
         </q-tab-panel>
@@ -100,6 +101,7 @@ import TraceList from '../components/monitor/TraceList.vue';
 import MonitorUsageDashboardLink from '../components/monitor/MonitorUsageDashboardLink.vue';
 import MonitorRunnerMetrics from '../components/monitor/MonitorRunnerMetrics.vue';
 import MonitorAlertRules from '../components/monitor/MonitorAlertRules.vue';
+import SelfCheckStatusPanel from '../components/monitor/SelfCheckStatusPanel.vue';
 import { useMonitorAlertRules } from '../features/monitor/useMonitorAlertRules';
 import { useMonitorPage } from '../features/monitor/useMonitorPage';
 import { useQuasar } from 'quasar';

@@ -987,8 +987,47 @@ func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.Mo
 }
 
 func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger) *biz.SelfHealUsecase {
-	handler := monitor.NewDefaultHealActionHandler(lg)
-	return biz.NewSelfHealUsecase(diag, handler, lg)
+	// Deprecated: SelfHealUsecase is being replaced by SelfHealObserver.
+	// Provide a nil handler since the runtime now handles healing.
+	return biz.NewSelfHealUsecase(diag, nil, lg)
+}
+
+func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) *biz.SelfHealObserver {
+	return monitor.NewSelfHealObserver(repo, engine, notifier, lg)
+}
+
+func provideRootCauseEngine(lg loggateway.Logger) *monitor.RootCauseEngine {
+	return monitor.NewRootCauseEngine(lg)
+}
+
+func provideSelfCheckScheduler(
+	checkers []monitor.SelfChecker,
+	repairers []monitor.SelfCheckRepairer,
+	repo monitor.SelfCheckReportRepo,
+	registry *monitor.AlertMetricRegistry,
+	lg loggateway.Logger,
+) *monitor.SelfCheckScheduler {
+	return monitor.NewSelfCheckScheduler(checkers, repairers, repo, registry, lg)
+}
+
+func provideEventBusHealthChecker() monitor.EventBusHealthChecker { return nil }
+
+func provideWSConnectionCounter() monitor.WSConnectionCounter { return nil }
+
+func provideEventBusResubscriber() monitor.EventBusResubscriber { return nil }
+
+func provideSelfCheckCleanup(repo monitor.SelfCheckReportRepo, lg loggateway.Logger) *jobs.SelfCheckCleanup {
+	if jobs.SelfCheckCleanupDisabled() {
+		return nil
+	}
+	return jobs.NewSelfCheckCleanup(0, repo, lg)
+}
+
+func provideSelfCheckJob(scheduler *monitor.SelfCheckScheduler, lg loggateway.Logger) *jobs.SelfCheckJob {
+	if jobs.SelfCheckJobDisabled() {
+		return nil
+	}
+	return jobs.NewSelfCheckJob(0, scheduler, lg)
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
@@ -1100,6 +1139,9 @@ type wireOut struct {
 	MemoryFactIndexReconciler   *jobs.MemoryFactIndexReconciler
 	MemoryDeadLetterReplayer    *jobs.MemoryDeadLetterReplayer
 	ModelRegistrySyncAgent      *agent.ModelRegistrySyncAgent
+	SelfCheckScheduler          *monitor.SelfCheckScheduler
+	SelfCheckCleanup            *jobs.SelfCheckCleanup
+	SelfCheckJob                *jobs.SelfCheckJob
 	CronRepo                    biz.CronRepo
 }
 
@@ -1135,6 +1177,9 @@ func provideWireOut(
 	memoryFactIndexReconciler *jobs.MemoryFactIndexReconciler,
 	memoryDeadLetterReplayer *jobs.MemoryDeadLetterReplayer,
 	modelRegistrySyncAgent *agent.ModelRegistrySyncAgent,
+	selfCheckScheduler *monitor.SelfCheckScheduler,
+	selfCheckCleanup *jobs.SelfCheckCleanup,
+	selfCheckJob *jobs.SelfCheckJob,
 	cronRepo biz.CronRepo,
 ) wireOut {
 	return wireOut{
@@ -1151,6 +1196,9 @@ func provideWireOut(
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
 		MemoryDeadLetterReplayer:  memoryDeadLetterReplayer,
 		ModelRegistrySyncAgent:    modelRegistrySyncAgent,
+		SelfCheckScheduler:        selfCheckScheduler,
+		SelfCheckCleanup:          selfCheckCleanup,
+		SelfCheckJob:              selfCheckJob,
 		CronRepo:                  cronRepo,
 	}
 }
@@ -1354,6 +1402,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideMonitorTraceBackfillWorker,
 		provideDiagBundleGenerator,
 		provideSelfHealUsecase,
+		provideSelfHealObserver,
+		provideRootCauseEngine,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,
@@ -1411,6 +1461,13 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
 		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
+		// Self-check integration
+		provideSelfCheckScheduler,
+		provideEventBusHealthChecker,
+		provideWSConnectionCounter,
+		provideEventBusResubscriber,
+		provideSelfCheckCleanup,
+		provideSelfCheckJob,
 		provideWSTurnExecutor,
 		newApp,
 		provideWireOut,
