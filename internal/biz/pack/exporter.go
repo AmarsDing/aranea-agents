@@ -580,10 +580,16 @@ func (e *Exporter) collectDependencies(p *Pack) {
 	skillSet := make(map[string]bool)
 	funcRefSet := make(map[string]bool)
 
-	// 从 Agent 收集 Skill
+	// 从 Agent 收集 Skill（同时收集 Allowed 和 Denied，保证 round-trip 完整）
 	for _, a := range p.Agents {
 		if a.Skills != nil {
 			for _, s := range a.Skills.Allowed {
+				if !skillSet[s] {
+					skillSet[s] = true
+					skills = append(skills, s)
+				}
+			}
+			for _, s := range a.Skills.Denied {
 				if !skillSet[s] {
 					skillSet[s] = true
 					skills = append(skills, s)

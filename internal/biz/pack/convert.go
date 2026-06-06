@@ -2,7 +2,7 @@ package pack
 
 import (
 	"fmt"
-	"strings"
+	"sort"
 
 	"aranea-agents/internal/scenario/loader"
 )
@@ -251,10 +251,12 @@ func collectPackDependencies(p *Pack) {
 	}
 
 	if len(skillSet) > 0 {
+		// 排序保证导出确定性（map 迭代顺序随机，会影响 Pack hash / 缓存）
 		skills := make([]string, 0, len(skillSet))
 		for s := range skillSet {
 			skills = append(skills, s)
 		}
+		sort.Strings(skills)
 		p.Manifest.Dependencies = &PackDependencies{
 			Skills: skills,
 		}
@@ -489,6 +491,3 @@ func MergePacks(packs ...*Pack) *Pack {
 	collectPackDependencies(result)
 	return result
 }
-
-// Ensure pack.ConvertIndustrySpecToPack satisfies the unused import check.
-var _ = strings.TrimSpace
