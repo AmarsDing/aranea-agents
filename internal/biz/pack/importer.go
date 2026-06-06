@@ -103,7 +103,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 3: Graphs
 	for _, graphSpec := range p.Graphs {
-		created, updated, skipped, err := im.importGraph(ctx, graphSpec, strategy, mapper)
+		created, updated, skipped, graphWarns, err := im.importGraph(ctx, graphSpec, strategy, mapper)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "graph",
@@ -115,6 +115,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 		result.GraphsCreated += created
 		result.GraphsUpdated += updated
 		result.GraphsSkipped += skipped
+		result.Warnings = append(result.Warnings, graphWarns...)
 	}
 
 	// Phase 4: Teams
@@ -378,7 +379,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 }
 
 // importGraph 导入单个 Graph。
-func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, err error) {
+func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, warns []string, err error) {
 	// 检查是否已存在（按 name 查找）
 	existing, findErr := im.repo.GetGraphDefinitionByName(ctx, spec.Name)
 
@@ -387,9 +388,10 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strateg
 		switch strategy {
 		case ConflictSkip:
 			mapper.RegisterGraph(spec.ID, existing.ID)
-			return 0, 0, 1, nil
+			return 0, 0, 1, nil, nil
 		case ConflictDuplicate:
 			// Graph 不支持 duplicate（无独立 key 机制），按 overwrite 处理
+			warns = append(warns, fmt.Sprintf("graph %q: ConflictDuplicate 被降级为 Overwrite（Graph 无独立 key 机制）", spec.Name))
 		case ConflictOverwrite:
 			// 继续更新
 		}
@@ -402,20 +404,20 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strateg
 		def.ID = existing.ID
 		saved, updateErr := im.repo.UpdateGraphDefinition(ctx, def)
 		if updateErr != nil {
-			return 0, 0, 0, kerrors.BadRequest("PACK_GRAPH_UPDATE", fmt.Sprintf("更新 Graph %s 失败: %s", spec.ID, updateErr.Error()))
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_GRAPH_UPDATE", fmt.Sprintf("更新 Graph %s 失败: %s", spec.ID, updateErr.Error()))
 		}
 		mapper.RegisterGraph(spec.ID, saved.ID)
-		return 0, 1, 0, nil
+		return 0, 1, 0, warns, nil
 	}
 
 	// 创建
 	saved, saveErr := im.repo.SaveGraphDefinition(ctx, def)
 	if saveErr != nil {
-		return 0, 0, 0, kerrors.BadRequest("PACK_GRAPH_CREATE", fmt.Sprintf("创建 Graph %s 失败: %s", spec.ID, saveErr.Error()))
+		return 0, 0, 0, warns, kerrors.BadRequest("PACK_GRAPH_CREATE", fmt.Sprintf("创建 Graph %s 失败: %s", spec.ID, saveErr.Error()))
 	}
 
 	mapper.RegisterGraph(spec.ID, saved.ID)
-	return 1, 0, 0, nil
+	return 1, 0, 0, warns, nil
 }
 
 // buildGraphDefinition 从 GraphPackSpec 构建 biz.GraphDefinition。
