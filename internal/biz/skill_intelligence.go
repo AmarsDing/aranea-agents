@@ -351,6 +351,12 @@ func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) 
 
 // CheckEvolutionTriggers checks if a skill meets the conditions for generating
 // an evolution suggestion. Returns a new suggestion if triggered, or nil if not.
+//
+// Trigger conditions (any one suffices):
+//  1. 30d failure rate > 30% (existing)
+//  2. 7d success rate < 60% (Curator Agent)
+//  3. Same failure tag >= 5 times in 7d (Curator Agent)
+//  4. Skill score < 60 (existing)
 func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error) {
 	if uc.aggregator == nil || uc.suggestionReader == nil || uc.suggestionWriter == nil {
 		return nil, nil
@@ -397,6 +403,7 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	var triggerType EvolutionSuggestionType
 	var triggerReason string
 
+	// Condition 1: 30d failure rate > threshold.
 	failureRate := 1.0 - metrics.SuccessRate
 	if failureRate > EvoTriggerFailureRate {
 		triggerType = EvoSuggestionFixFailure
@@ -404,7 +411,49 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 			failureRate*100, EvoTriggerFailureRate*100, metrics.InvocationCount)
 	}
 
-	// Check score threshold.
+	// Condition 2: 7d success rate < 60%.
+	since7d := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	metrics7d, err7d := uc.aggregator.GetHealthMetrics(ctx, skillID, since7d)
+	if err7d != nil {
+		uc.lg.Warn("CheckEvolutionTriggers: GetHealthMetrics(7d) failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err7d))
+	} else if metrics7d.InvocationCount >= EvoTrigger7dMinInvocations && metrics7d.SuccessRate < EvoTrigger7dSuccessRate {
+		reason7d := fmt.Sprintf("7d success rate %.1f%% below threshold %.1f%% (%d invocations)",
+			metrics7d.SuccessRate*100, EvoTrigger7dSuccessRate*100, metrics7d.InvocationCount)
+		if triggerType == "" {
+			triggerType = EvoSuggestionFixFailure
+			triggerReason = reason7d
+		} else {
+			triggerReason += "; " + reason7d
+		}
+	}
+
+	// Condition 3: Same failure tag >= 5 times in 7d.
+	tagCounts, tagErr := uc.aggregator.GetFailureTagCounts(ctx, skillID, since7d)
+	if tagErr != nil {
+		uc.lg.Warn("CheckEvolutionTriggers: GetFailureTagCounts failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(tagErr))
+	} else {
+		for _, tc := range tagCounts {
+			if tc.Count >= EvoTriggerSameTagThreshold {
+				reasonTag := fmt.Sprintf("failure tag %q appears %d times in 7d (threshold %d)",
+					tc.Tag, tc.Count, EvoTriggerSameTagThreshold)
+				if triggerType == "" {
+					triggerType = EvoSuggestionFixFailure
+					triggerReason = reasonTag
+				} else {
+					triggerReason += "; " + reasonTag
+				}
+				break // one matching tag is enough
+			}
+		}
+	}
+
+	// Condition 4: Skill score < threshold.
 	score, scoreErr := uc.ScoreSkill(ctx, skillID)
 	if scoreErr == nil && score < EvoTriggerScoreThreshold {
 		if triggerType == "" {
@@ -420,12 +469,13 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	}
 
 	suggestion := &SkillEvolutionSuggestion{
-		ID:        uuid.New().String(),
-		SkillID:   skillID,
-		Type:      triggerType,
-		Status:    EvoSuggestionPending,
+		ID:            uuid.New().String(),
+		SkillID:       skillID,
+		Type:          triggerType,
+		Status:        EvoSuggestionPending,
 		TriggerReason: triggerReason,
-		CreatedAt: time.Now().UTC(),
+		LifecycleStatus: EvoLifecycleDraft,
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	if err := uc.suggestionWriter.Create(ctx, *suggestion); err != nil {
@@ -437,6 +487,142 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	}
 
 	return suggestion, nil
+}
+
+// RunCuratorFlow executes the full Curator Agent semi-automatic evolution
+// pipeline for a skill: trigger detection → draft generation → sandbox
+// verification → lifecycle update.
+//
+// The flow is:
+//  1. CheckEvolutionTriggers — detect if the skill needs evolution
+//  2. GenerateDraftBody — produce a rule-based (v1) draft of the improved skill
+//  3. UpdateLifecycleStatus — mark as "validating"
+//  4. RuleBasedSandboxValidation — validate the draft in sandbox
+//  5. UpdateLifecycleStatus — mark as "ready" if passed, "draft" if failed
+//
+// Returns the suggestion if triggered, or nil if no trigger condition was met.
+func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error) {
+	// Step 1: Trigger detection.
+	suggestion, err := uc.CheckEvolutionTriggers(ctx, skillID)
+	if err != nil {
+		return nil, err
+	}
+	if suggestion == nil {
+		return nil, nil
+	}
+
+	// Step 2: Generate draft body (rule-based for v1).
+	draft := uc.generateRuleBasedDraft(suggestion)
+	if err := uc.suggestionWriter.UpdateDraftBody(ctx, suggestion.ID, draft); err != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateDraftBody failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(err))
+		// Non-fatal: continue the flow.
+	}
+	suggestion.DraftSkillBody = draft
+
+	// Step 3: Set lifecycle to validating.
+	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestion.ID, EvoLifecycleValidating); lcErr != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(validating) failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(lcErr))
+	}
+	suggestion.LifecycleStatus = EvoLifecycleValidating
+
+	// Step 4: Rule-based sandbox validation.
+	passed := uc.ruleBasedSandboxValidation(suggestion)
+	resultJSON, _ := json.Marshal(map[string]any{
+		"passed":  passed,
+		"checks":  []map[string]any{
+			{"name": "draft_body_not_empty", "passed": suggestion.DraftSkillBody != ""},
+			{"name": "draft_body_length", "passed": len(suggestion.DraftSkillBody) < 10000},
+			{"name": "skill_id_valid", "passed": suggestion.SkillID != ""},
+		},
+		"message": func() string {
+			if passed {
+				return "All validation checks passed"
+			}
+			return "Some validation checks failed"
+		}(),
+	})
+	if sbErr := uc.suggestionWriter.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON); sbErr != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateSandboxResult failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(sbErr))
+	}
+	suggestion.SandboxPassed = passed
+	suggestion.SandboxResult = resultJSON
+
+	// Step 5: Update lifecycle based on validation result.
+	lifecycleStatus := EvoLifecycleDraft
+	if passed {
+		lifecycleStatus = EvoLifecycleReady
+	}
+	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestion.ID, lifecycleStatus); lcErr != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(final) failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(lcErr))
+	}
+	suggestion.LifecycleStatus = lifecycleStatus
+
+	return suggestion, nil
+}
+
+// generateRuleBasedDraft produces a rule-based draft skill body for the given
+// suggestion type. For v1, this is the primary draft generator; LLM integration
+// will be added in a future iteration.
+func (uc *SkillIntelligenceUsecase) generateRuleBasedDraft(suggestion *SkillEvolutionSuggestion) string {
+	switch suggestion.Type {
+	case EvoSuggestionFixFailure:
+		return fmt.Sprintf("# Skill Evolution Draft (fix_failure)\n\n"+
+			"Original skill: %s\n"+
+			"Trigger reason: %s\n\n"+
+			"## Suggested improvements:\n"+
+			"1. Add error handling for common failure patterns\n"+
+			"2. Improve parameter validation\n"+
+			"3. Add retry logic for transient failures\n",
+			suggestion.SkillID, suggestion.TriggerReason)
+	case EvoSuggestionBoostEfficiency:
+		return fmt.Sprintf("# Skill Evolution Draft (boost_efficiency)\n\n"+
+			"Original skill: %s\n"+
+			"Trigger reason: %s\n\n"+
+			"## Suggested improvements:\n"+
+			"1. Optimize prompt to reduce token usage\n"+
+			"2. Cache frequently used results\n"+
+			"3. Reduce unnecessary tool calls\n",
+			suggestion.SkillID, suggestion.TriggerReason)
+	case EvoSuggestionMergeDuplicate:
+		return fmt.Sprintf("# Skill Evolution Draft (merge_duplicate)\n\n"+
+			"Original skill: %s\n"+
+			"Trigger reason: %s\n\n"+
+			"## Suggested improvements:\n"+
+			"1. Consolidate overlapping functionality\n"+
+			"2. Unify parameter interfaces\n"+
+			"3. Merge description and instructions\n",
+			suggestion.SkillID, suggestion.TriggerReason)
+	default:
+		return fmt.Sprintf("# Skill Evolution Draft\n\nOriginal skill: %s\nTrigger: %s\n",
+			suggestion.SkillID, suggestion.TriggerReason)
+	}
+}
+
+// ruleBasedSandboxValidation performs basic rule-based validation on the
+// suggestion draft. Returns true if all checks pass.
+func (uc *SkillIntelligenceUsecase) ruleBasedSandboxValidation(suggestion *SkillEvolutionSuggestion) bool {
+	if suggestion.DraftSkillBody == "" {
+		return false
+	}
+	if len(suggestion.DraftSkillBody) >= 10000 {
+		return false
+	}
+	if suggestion.SkillID == "" {
+		return false
+	}
+	return true
 }
 
 // CreateSuggestion delegates to the suggestion writer.

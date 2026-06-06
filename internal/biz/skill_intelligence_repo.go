@@ -61,6 +61,12 @@ type ErrorCodeCount struct {
 	Count     int
 }
 
+// FailureTagCount is a count of failures by failure tag.
+type FailureTagCount struct {
+	Tag   string
+	Count int
+}
+
 // SkillEvolutionSuggestionReader reads skill evolution suggestions.
 type SkillEvolutionSuggestionReader interface {
 	// ListBySkill returns evolution suggestions for a given skill, optionally filtered by status.

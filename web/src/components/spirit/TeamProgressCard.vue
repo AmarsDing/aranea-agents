@@ -91,7 +91,6 @@ const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
     critic_loop: 'hybrid',
     swarm: 'hybrid',
     adaptive: 'hybrid',
-    direct: 'sequential',
   };
   return mapping[mode] ?? null;
 };

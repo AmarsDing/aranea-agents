@@ -27,6 +27,7 @@ type TeamWriter interface {
 
 type TeamRunReader interface {
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
+	ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRun, error)
 	HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
 	GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
@@ -61,6 +62,8 @@ type TeamRunRepo interface {
 // Deprecated: Consumers should depend on the narrow sub-interfaces
 // (TeamReader, TeamWriter, TeamRunReader, TeamRunWriter, OrchestrationStepRepo, TaskDeadLetterRepo)
 // instead of this aggregate. New code MUST NOT reference TeamRepository directly.
+// TODO(debt): migrate internal/team/runner.go and team_graph_run_coordinator.go to narrow
+// interfaces, then remove TeamRepository. Issue: #SPIRIT-REPO-MIGRATE
 type TeamRepository interface {
 	TeamReader
 	TeamWriter
@@ -431,6 +434,13 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 
 func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error) {
 	return u.runReader.ListTeamRuns(ctx, teamID, limit)
+}
+
+func (u *TeamUsecase) ListRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRun, error) {
+	if len(teamIDs) == 0 {
+		return nil, nil
+	}
+	return u.runReader.ListTeamRunsByTeamIDs(ctx, teamIDs, limit)
 }
 
 func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {

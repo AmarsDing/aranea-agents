@@ -27,6 +27,9 @@ func (s stubTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, err
 func (s stubTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (s stubTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (s stubTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }

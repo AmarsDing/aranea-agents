@@ -63,4 +63,9 @@ const (
 	EvoTriggerFailureRate    = 0.3 // 30d failure rate > 30% triggers suggestion
 	EvoTriggerMinInvocations = 10  // Minimum invocations for statistical significance
 	EvoTriggerCooldownHours  = 168 // Same skill: 7 days between suggestions
+
+	// Curator Agent semi-automatic evolution triggers
+	EvoTrigger7dSuccessRate     = 0.6 // 7d success rate < 60% triggers suggestion
+	EvoTrigger7dMinInvocations  = 5   // Minimum invocations in 7d window for significance
+	EvoTriggerSameTagThreshold  = 5   // Same failure tag >= 5 times triggers suggestion
 )

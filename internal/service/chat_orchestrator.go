@@ -74,7 +74,7 @@ type TeamOrchestrationDeps struct {
 	Tasks            *biz.TaskUsecase
 	TeamGraphCoord   *team.TeamGraphRunCoordinator
 	TeamMediator     *team.TeamRunMediator
-	SpiritUC         *biz.SpiritTeamUsecase
+	SpiritUC         biz.SpiritTeamController
 	TaskPlanner      biz.TaskPlannerPort
 	AgentAllocator   biz.AgentAllocatorPort
 	TaskOrchestrator biz.TaskOrchestratorPort

@@ -432,6 +432,7 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		UpdatedAt:          pb.GetUpdatedAt(),
 		DeletedAt:          pb.GetDeletedAt(),
 		Kind:               pb.GetKind(),
+		Source:             pb.GetSource(),
 		AgentKind:          pb.GetAgentKind(),
 		A2AProxy:           fromProtoA2AProxy(pb.GetA2AProxyConfig()),
 		Readonly:           pb.GetReadonly(),

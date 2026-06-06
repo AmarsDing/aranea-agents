@@ -347,7 +347,7 @@ func skillHealthStatus(successRate float64, invokeCount int) (status, recommenda
 // ── AnalyzeOrchestration ──────────────────────────────────────────────────────
 
 // AnalyzeOrchestration queries team runs, aggregates by mode, and computes
-// DQ score = 0.4*Validity + 0.3*Specificity + 0.3*Correctness.
+// DQ score = DQWeightValidity*Validity + DQWeightSpecificity*Specificity + DQWeightCorrectness*Correctness.
 func (uc *ExperienceAnalyticsUsecase) AnalyzeOrchestration(ctx context.Context, agentID string, since time.Time) (OrchestrationAnalysis, error) {
 	agentID, err := requireNonEmpty(agentID, "XP_ANALYTICS", "agent_id")
 	if err != nil {
@@ -360,13 +360,20 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeOrchestration(ctx context.Context, 
 		return OrchestrationAnalysis{AgentID: agentID}, nil
 	}
 
+	// Batch query all team runs at once to avoid N+1.
+	teamIDs := make([]string, len(teams))
+	for i, t := range teams {
+		teamIDs[i] = t.ID
+	}
+	runsByTeam, batchErr := uc.runReader.ListTeamRunsByTeamIDs(ctx, teamIDs, 100)
+	if batchErr != nil {
+		uc.lg.Warn("batch list team runs", loggateway.StepID("xp_analytics.orchestration"), loggateway.Err(batchErr))
+		return OrchestrationAnalysis{AgentID: agentID}, nil
+	}
+
 	agg := make(map[string]*orchAgg)
 	for _, team := range teams {
-		runs, runErr := uc.runReader.ListTeamRuns(ctx, team.ID, 100)
-		if runErr != nil {
-			uc.lg.Warn("list team runs", loggateway.StepID("xp_analytics.orchestration"), loggateway.Err(runErr))
-			continue
-		}
+		runs := runsByTeam[team.ID]
 		for _, run := range runs {
 			if run.StartedAt != "" {
 				if t, pErr := time.Parse(time.RFC3339, run.StartedAt); pErr == nil && t.Before(since) {
@@ -402,7 +409,7 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeOrchestration(ctx context.Context, 
 		validity := sr
 		specificity := orchSpecificity(a)
 		correctness := orchCorrectness(a)
-		dq := 0.4*validity + 0.3*specificity + 0.3*correctness
+		dq := DQWeightValidity*validity + DQWeightSpecificity*specificity + DQWeightCorrectness*correctness
 		items = append(items, OrchestrationModeItem{
 			Mode:         a.Mode,
 			RunCount:     a.RunCount,

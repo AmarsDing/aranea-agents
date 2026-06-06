@@ -109,7 +109,7 @@ func (c *OrchestrationCache) LoadFromJSON(jsonStr string) error {
 	var entries []OrchestrationCacheEntry
 	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
 		c.lg.Warn("加载 orchestration cache 失败", loggateway.StepID("spirit.orchestration_cache"), loggateway.Err(err))
-		return kerrors.InternalServer("SPIRIT", "load orchestration cache: "+err.Error())
+		return kerrors.InternalServer("SPIRIT", "load orchestration cache").WithCause(err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -125,7 +125,7 @@ func (c *OrchestrationCache) ToJSON() (string, error) {
 	entries := c.listLocked()
 	b, err := json.Marshal(entries)
 	if err != nil {
-		return "", kerrors.InternalServer("SPIRIT", "marshal orchestration cache: "+err.Error())
+		return "", kerrors.InternalServer("SPIRIT", "marshal orchestration cache").WithCause(err)
 	}
 	return string(b), nil
 }

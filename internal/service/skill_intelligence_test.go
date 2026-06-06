@@ -58,7 +58,7 @@ func (s *stubExperienceReportReader) ListByTimeRange(_ context.Context, _, _ tim
 // newTestSkillIntelligenceService creates a SkillIntelligenceService with a
 // real Usecase backed by stub repos.
 func newTestSkillIntelligenceService(reader *stubExperienceReportReader) *SkillIntelligenceService {
-	uc := biz.NewSkillIntelligenceUsecase(reader, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(reader, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	return NewSkillIntelligenceService(uc, loggateway.NewNoop())
 }
 

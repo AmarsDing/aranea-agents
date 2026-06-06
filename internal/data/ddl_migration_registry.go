@@ -304,19 +304,25 @@ func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 	if rawDB == nil {
 		return nil
 	}
+	// Wrap in transaction for atomicity
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin migration tx: %w", err)
+	}
+	defer tx.Rollback()
 	// Migrate agent kind: system -> system_builtin
-	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET kind = 'system_builtin' WHERE kind = 'system'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE agents SET kind = 'system_builtin' WHERE kind = 'system'`); err != nil {
 		return fmt.Errorf("migrate agent kind system->system_builtin: %w", err)
 	}
 	// Migrate agent kind: industry_template -> ecosystem_preset
-	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET kind = 'ecosystem_preset' WHERE kind = 'industry_template'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE agents SET kind = 'ecosystem_preset' WHERE kind = 'industry_template'`); err != nil {
 		return fmt.Errorf("migrate agent kind industry_template->ecosystem_preset: %w", err)
 	}
 	// Migrate team kind: source=imported -> kind=ecosystem_preset
-	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET kind = 'ecosystem_preset' WHERE source = 'imported'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE teams SET kind = 'ecosystem_preset' WHERE source = 'imported'`); err != nil {
 		return fmt.Errorf("migrate team kind imported->ecosystem_preset: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ddlAgentSourceDataMigration populates the new agents.source column from existing kind values.
@@ -326,21 +332,45 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	if rawDB == nil {
 		return nil
 	}
+	// Wrap in transaction for atomicity
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin migration tx: %w", err)
+	}
+	defer tx.Rollback()
 	// Agent source migration
-	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE agents SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate agent source system_builtin->system: %w", err)
 	}
-	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET source = 'imported' WHERE kind IN ('ecosystem_preset', 'marketplace', 'certified') AND source = 'user'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE agents SET source = 'imported' WHERE kind IN ('ecosystem_preset', 'marketplace', 'certified') AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate agent source ecosystem->imported: %w", err)
 	}
 	// Team source migration: align with Agent source semantics
 	// kind=system_builtin -> source=system
-	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE teams SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate team source system_builtin->system: %w", err)
 	}
 	// kind=ecosystem_preset -> source=imported
-	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET source = 'imported' WHERE kind = 'ecosystem_preset' AND source = 'user'`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE teams SET source = 'imported' WHERE kind = 'ecosystem_preset' AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate team source ecosystem_preset->imported: %w", err)
 	}
-	return nil
+	// Fix over-broad migration from 20260718: teams with kind='ecosystem_preset' but
+	// no ecosystem_preset agent members should be 'user'. The 20260718 migration set
+	// kind='ecosystem_preset' for ALL source='imported' teams, including user-imported packs.
+	// Heuristic: if a team has NO members referencing ecosystem_preset agents, revert to 'user'.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE teams SET kind = 'user', source = 'user'
+		WHERE kind = 'ecosystem_preset'
+		  AND deleted_at = ''
+		  AND id NOT IN (
+		    SELECT DISTINCT t2.id
+		    FROM teams t2, json_each(t2.definition_json, '$.members') tm
+		    INNER JOIN agents a ON a.id = json_extract(tm.value, '$.agent_id') AND a.kind = 'ecosystem_preset' AND a.deleted_at = ''
+		    WHERE t2.kind = 'ecosystem_preset' AND t2.deleted_at = ''
+		  )
+	`); err != nil {
+		// Non-critical: log but don't fail the migration
+		_ = err
+	}
+	return tx.Commit()
 }

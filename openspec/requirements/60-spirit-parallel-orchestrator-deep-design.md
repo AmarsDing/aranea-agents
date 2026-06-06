@@ -1617,3 +1617,29 @@ cd web && pnpm lint && pnpm test && pnpm build
 | FE-R03 | `TeamProgressView.status`/`TeamSynthesisResult.status` 为 `string` | 改为 `SpiritTeamStatus` 类型 | `types.ts` |
 | FE-R04 | `updateTeamStatus` 参数为 `string` | 改为 `SpiritTeamStatus`；新增 `isValidTeamStatus` 类型守卫验证 WS 推送状态 | `stores/spirit/index.ts` |
 | FE-R05 | `SpiritTeamMode` 包含后端不存在的 `'direct'` | 移除 `'direct'`，更新 modeLabel/modeToTopology 映射 | `types.ts`, `TeamTaskCard.vue`, `TeamProgressCard.vue` |
+
+### 10.7 三轮审查修复记录
+
+> 2026-06-06：三轮 aranea-review 发现前端子代理修复未实际写入，1 个阻断项 + 6 个建议项。
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| SPO3-R01 | `isValidTeamStatus` 被引用但未定义，运行时必崩 | 添加 `VALID_TEAM_STATUSES` Set + `isValidTeamStatus` 类型守卫函数 | `stores/spirit/index.ts` |
+| SPO3-S01/S02 | `TeamProgressView.status`/`TeamSynthesisResult.status` 仍为 `string` | 改为 `SpiritTeamStatus` | `types.ts` |
+| SPO3-S03 | `updateTeamStatus` 参数仍为 `string` | 改为 `SpiritTeamStatus` | `stores/spirit/index.ts` |
+| SPO3-S04/S05 | `direct` 死代码残留于 `modeToTopology`/`modeLabel` | 移除 `direct` 映射行 | `TeamProgressCard.vue`, `TeamAssemblyCard.vue` |
+| SPO3-S06 | `TaskExecutionPanel.vue` 遗漏 `as any` | 添加 `mappedStatus` 计算属性（同 TeamTaskCard） | `TaskExecutionPanel.vue` |
+| R3-05 | `experience_analytics.go` DQ 权重硬编码与常量不一致 | 替换 `0.4/0.3/0.3` 为 `DQWeightValidity/DQWeightSpecificity/DQWeightCorrectness` | `experience_analytics.go` |
+
+#### 后端建议项修复（8个）
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| R3-01 | `Runner` 依赖 Deprecated `TeamRepository` | 拆为 `TeamReader+TeamRunReader+TeamRunWriter+OrchestrationStepRepo+TaskDeadLetterRepo` 5个窄接口 | `runner.go`, `runner_team_trpc.go`, `runner_helpers.go`, `runner_team_turn.go`, `runner_team_observer.go`, `team_graph_run_finisher.go`, 4个测试文件 |
+| R3-02 | `TeamRepository` 缺少迁移计划 | 添加 `TODO(debt)` 注释和 Issue 编号 | `team_usecase.go` |
+| R3-03 | 超时回调 `context.Background()` 与优雅关闭冲突 | 添加 `Stop()` 方法取消所有 pending timers | `spirit_team_usecase.go` |
+| R3-04 | `kerrors` 字符串拼接丢失错误链 | 改为 `.WithCause(err)` 保留错误链 | `spirit_team_usecase.go` 4处, `spirit_orchestration_cache.go` 2处 |
+| R3-06 | `TruncateRunes` 截断长度魔法数字 | 提取 5 个命名常量（`MaxTeamDisplayNameLen` 等） | `spirit_team_usecase.go` |
+| R3-07 | `AssembleTeam` ~115 行超限 | 提取 `registerTeamTimeout` 子方法 | `spirit_team_usecase.go` |
+| R3-08 | `AnalyzeOrchestration` N+1 查询 | 新增 `ListTeamRunsByTeamIDs` 批量查询方法 | `team_usecase.go`, `team_repo.go`, `experience_analytics.go`, 12个测试 stub |
+| R3-09 | `TeamOrchestrationDeps` 持有 `*biz.SpiritTeamUsecase` 具体类型 | 定义 `SpiritTeamController` 窄接口（5方法），`wire.Bind` 绑定 | `spirit_team_usecase.go`, `chat_orchestrator.go`, `wire.go` |

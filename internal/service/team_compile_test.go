@@ -34,6 +34,9 @@ func (r *compileTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int,
 func (r *compileTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (r *compileTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (r *compileTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }

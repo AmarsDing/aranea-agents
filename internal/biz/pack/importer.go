@@ -76,7 +76,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 1: Taxonomy
 	if p.Taxonomy != nil {
-		count, warns, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper)
+		count, warns, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper, cfg.kindOverride)
 		if err != nil {
 			return result, kerrors.BadRequest("PACK_TAXONOMY_IMPORT", fmt.Sprintf("pack import: Phase 1 (Taxonomy) 失败: %s", err.Error()))
 		}
@@ -86,7 +86,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 2: Agents
 	for _, agentSpec := range p.Agents {
-		created, updated, skipped, err := im.importAgent(ctx, agentSpec, p.AgentFiles, strategy, mapper, cfg)
+		created, updated, skipped, agentWarns, err := im.importAgent(ctx, agentSpec, p.AgentFiles, strategy, mapper, cfg)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "agent",
@@ -98,6 +98,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 		result.AgentsCreated += created
 		result.AgentsUpdated += updated
 		result.AgentsSkipped += skipped
+		result.Warnings = append(result.Warnings, agentWarns...)
 	}
 
 	// Phase 3: Graphs
@@ -118,7 +119,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 4: Teams
 	for _, teamSpec := range p.Teams {
-		created, updated, skipped, err := im.importTeam(ctx, teamSpec, strategy, mapper, cfg)
+		created, updated, skipped, teamWarns, err := im.importTeam(ctx, teamSpec, strategy, mapper, cfg)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "team",
@@ -130,15 +131,18 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 		result.TeamsCreated += created
 		result.TeamsUpdated += updated
 		result.TeamsSkipped += skipped
+		result.Warnings = append(result.Warnings, teamWarns...)
 	}
 
 	return result, nil
 }
 
 // importTaxonomy 导入行业分类树。
-func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (int, []string, error) {
+func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, strategy ConflictStrategy, mapper *KeyMapper, kindOverride string) (int, []string, error) {
 	count := 0
-	var warnings []string
+	var warns []string
+	// IsSystem: taxonomy nodes from system_builtin or ecosystem_preset packs are system nodes
+	isSystem := kindOverride == "system_builtin" || kindOverride == "ecosystem_preset"
 
 	for _, ind := range spec.Industries {
 		indNode, err := im.upsertTaxonomyNode(ctx, biz.TaxonomyNode{
@@ -147,10 +151,10 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 			Description: ind.Description,
 			Level:       "industry",
 			SortOrder:   ind.SortOrder,
-			IsSystem:    true,
+			IsSystem:    isSystem,
 		}, strategy)
 		if err != nil {
-			return count, warnings, kerrors.BadRequest("PACK_INDUSTRY_IMPORT", fmt.Sprintf("导入行业 %s 失败: %s", ind.Key, err.Error()))
+			return count, warns, kerrors.BadRequest("PACK_INDUSTRY_IMPORT", fmt.Sprintf("导入行业 %s 失败: %s", ind.Key, err.Error()))
 		}
 		mapper.RegisterTaxonomy(ind.Key, indNode.ID)
 		count++
@@ -163,10 +167,10 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 				ParentID:    indNode.ID,
 				Level:       "department",
 				SortOrder:   dept.SortOrder,
-				IsSystem:    true,
+				IsSystem:    isSystem,
 			}, strategy)
 			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("导入部门 %s/%s 失败，跳过其子节点", ind.Key, dept.Key))
+				warns = append(warns, fmt.Sprintf("导入部门 %s/%s 失败，跳过其子节点", ind.Key, dept.Key))
 				continue
 			}
 			deptKey := BuildTaxonomyKey(ind.Key, dept.Key, "")
@@ -181,10 +185,10 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 					ParentID:    deptNode.ID,
 					Level:       "position",
 					SortOrder:   pos.SortOrder,
-					IsSystem:    true,
+					IsSystem:    isSystem,
 				}, strategy)
 				if err != nil {
-					warnings = append(warnings, fmt.Sprintf("导入岗位 %s/%s/%s 失败", ind.Key, dept.Key, pos.Key))
+					warns = append(warns, fmt.Sprintf("导入岗位 %s/%s/%s 失败", ind.Key, dept.Key, pos.Key))
 					continue
 				}
 				posKey := BuildTaxonomyKey(ind.Key, dept.Key, pos.Key)
@@ -194,11 +198,11 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 		}
 	}
 
-	return count, warnings, nil
+	return count, warns, nil
 }
 
 // importAgent 导入单个 Agent。
-func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFiles map[string]map[string]string, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, err error) {
+func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFiles map[string]map[string]string, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, warns []string, err error) {
 	// 保存原始 key（duplicate 场景下用于映射）
 	originalKey := spec.Key
 
@@ -210,7 +214,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		switch strategy {
 		case ConflictSkip:
 			mapper.RegisterAgent(spec.Key, existing.ID)
-			return 0, 0, 1, nil
+			return 0, 0, 1, warns, nil
 		case ConflictDuplicate:
 			// 循环追加后缀直到找到不冲突的 key
 			newKey := spec.Key + "-copy"
@@ -234,10 +238,16 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	kind := cfg.kindOverride
 	if kind == "" {
 		kind = firstNonEmpty(spec.OwnershipKind, "user")
+	} else if spec.OwnershipKind != "" && kind != spec.OwnershipKind {
+		warns = append(warns, fmt.Sprintf("agent %q: kindOverride=%q overrides spec.ownershipKind=%q", spec.Key, kind, spec.OwnershipKind))
 	}
-	source := "imported"
-	if kind == "system_builtin" {
-		source = "system"
+	// Source: prefer spec.Source for round-trip fidelity; fallback to derived value
+	source := spec.Source
+	if source == "" {
+		source = "imported"
+		if kind == "system_builtin" {
+			source = "system"
+		}
 	}
 	agent := biz.Agent{
 		AgentKey:           spec.Key,
@@ -279,11 +289,11 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	// A2A Proxy
 	if spec.A2AProxy != nil {
 		agent.A2AProxy = &biz.A2AProxyConfig{
-			RemoteURL:      spec.A2AProxy.RemoteURL,
-			AgentCardURL:   spec.A2AProxy.AgentCardURL,
+			RemoteURL:       spec.A2AProxy.RemoteURL,
+			AgentCardURL:    spec.A2AProxy.AgentCardURL,
 			EnableStreaming: spec.A2AProxy.EnableStreaming,
-			AuthType:       spec.A2AProxy.AuthType,
-			TimeoutSeconds: spec.A2AProxy.TimeoutSeconds,
+			AuthType:        spec.A2AProxy.AuthType,
+			TimeoutSeconds:  spec.A2AProxy.TimeoutSeconds,
 		}
 	}
 
@@ -293,7 +303,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		agent.ID = existing.ID
 		updatedAgent, err := im.repo.UpdateAgent(ctx, agent)
 		if err != nil {
-			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_UPDATE", fmt.Sprintf("更新 Agent %s 失败: %s", spec.Key, err.Error()))
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_UPDATE", fmt.Sprintf("更新 Agent %s 失败: %s", spec.Key, err.Error()))
 		}
 		agentID = updatedAgent.ID
 		updated = 1
@@ -301,7 +311,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		// 创建
 		createdAgent, err := im.repo.CreateAgent(ctx, agent)
 		if err != nil {
-			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_CREATE", fmt.Sprintf("创建 Agent %s 失败: %s", spec.Key, err.Error()))
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_CREATE", fmt.Sprintf("创建 Agent %s 失败: %s", spec.Key, err.Error()))
 		}
 		agentID = createdAgent.ID
 		created = 1
@@ -336,10 +346,10 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			if created == 1 {
 				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
 					// 回滚失败：记录到错误信息中
-					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
+					return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
 				}
 			}
-			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s", spec.Key, err.Error()))
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s", spec.Key, err.Error()))
 		}
 	}
 
@@ -351,17 +361,17 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			if created == 1 {
 				// 清理 PromptFiles（ReplaceAgentPromptFiles 传入空切片即清除）
 				if _, cleanErr := im.repo.ReplaceAgentPromptFiles(ctx, agentID, nil); cleanErr != nil {
-					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（清理 PromptFiles 也失败: %v）", spec.Key, err.Error(), cleanErr))
+					return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（清理 PromptFiles 也失败: %v）", spec.Key, err.Error(), cleanErr))
 				}
 				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
-					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
+					return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
 				}
 			}
-			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s", spec.Key, err.Error()))
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s", spec.Key, err.Error()))
 		}
 	}
 
-	return created, updated, skipped, nil
+	return created, updated, skipped, warns, nil
 }
 
 // importGraph 导入单个 Graph。
@@ -478,7 +488,7 @@ func (im *Importer) buildGraphDefinition(spec GraphPackSpec) *biz.GraphDefinitio
 	// Subgraphs
 	for _, sg := range spec.Subgraphs {
 		subgraphDef := biz.SubgraphDef{
-			ID:          sg.ID,
+			ID:              sg.ID,
 			InterruptBefore: false,
 			InterruptAfter:  false,
 		}
@@ -525,20 +535,20 @@ func (im *Importer) buildGraphDefinition(spec GraphPackSpec) *biz.GraphDefinitio
 }
 
 // importTeam 导入单个 Team。
-func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, err error) {
+func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, warns []string, err error) {
 	// 构建 OrchestrationSpec
 	ospec := biz.OrchestrationSpec{
-		Version:            2,
-		Mode:               spec.Mode,
-		Description:        spec.Description,
-		MaxConcurrency:     spec.MaxConcurrency,
-		TimeoutSeconds:     spec.TimeoutSeconds,
-		RunTimeoutSec:      spec.RunTimeoutSec,
-		TurnTimeoutSec:     spec.TurnTimeoutSec,
+		Version:             2,
+		Mode:                spec.Mode,
+		Description:         spec.Description,
+		MaxConcurrency:      spec.MaxConcurrency,
+		TimeoutSeconds:      spec.TimeoutSeconds,
+		RunTimeoutSec:       spec.RunTimeoutSec,
+		TurnTimeoutSec:      spec.TurnTimeoutSec,
 		FirstByteTimeoutSec: spec.FirstByteTimeoutSec,
-		LoopMaxIterations:  spec.LoopMaxIter,
-		EnableCheckpoint:   spec.EnableCheckpoint,
-		TeamGraphRuntime:   spec.TeamGraphRuntime,
+		LoopMaxIterations:   spec.LoopMaxIter,
+		EnableCheckpoint:    spec.EnableCheckpoint,
+		TeamGraphRuntime:    spec.TeamGraphRuntime,
 	}
 	if spec.RuntimeEngine != "" {
 		ospec.RuntimeEngine = spec.RuntimeEngine
@@ -550,7 +560,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	for _, m := range spec.Members {
 		agentID, err := mapper.ResolveAgentKey(m.AgentKey)
 		if err != nil {
-			return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_MEMBER", fmt.Sprintf("Team %s 成员 %s 的 agent_key 未找到: %s", spec.Key, m.AgentKey, err.Error()))
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_MEMBER", fmt.Sprintf("Team %s 成员 %s 的 agent_key 未找到: %s", spec.Key, m.AgentKey, err.Error()))
 		}
 		enabled := true
 		if m.Enabled != nil {
@@ -595,9 +605,9 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	// FailurePolicy
 	if spec.FailurePolicy != nil {
 		fp := &biz.TeamFailurePolicy{
-			Default:       spec.FailurePolicy.Default,
-			ParallelFail:  spec.FailurePolicy.ParallelFail,
-			OnError:       spec.FailurePolicy.OnError,
+			Default:      spec.FailurePolicy.Default,
+			ParallelFail: spec.FailurePolicy.ParallelFail,
+			OnError:      spec.FailurePolicy.OnError,
 		}
 		if spec.FailurePolicy.Retry != nil {
 			fp.Retry = biz.TeamRetryPolicy{
@@ -632,18 +642,24 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	// 序列化 definition_json
 	defJSON, err := biz.OrchestrationSpecToDefinitionJSON(ospec)
 	if err != nil {
-		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
+		return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
 	}
 
 	// Kind = ownership classification (user | system_builtin | ecosystem_preset | ...)
 	// Source = origin tracking (user | system | imported), aligned with Agent import logic
 	teamKind := cfg.kindOverride
 	if teamKind == "" {
-		teamKind = "user"
+		teamKind = firstNonEmpty(spec.OwnershipKind, "user")
+	} else if spec.OwnershipKind != "" && teamKind != spec.OwnershipKind {
+		warns = append(warns, fmt.Sprintf("team %q: kindOverride=%q overrides spec.ownershipKind=%q", spec.Key, teamKind, spec.OwnershipKind))
 	}
-	teamSource := "imported"
-	if teamKind == "system_builtin" {
-		teamSource = "system"
+	// Source: prefer spec.Source for round-trip fidelity; fallback to derived value
+	teamSource := spec.Source
+	if teamSource == "" {
+		teamSource = "imported"
+		if teamKind == "system_builtin" {
+			teamSource = "system"
+		}
 	}
 	team := biz.Team{
 		TeamKey:        spec.Key,
@@ -662,7 +678,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		// Team 已存在
 		switch strategy {
 		case ConflictSkip:
-			return 0, 0, 1, nil
+			return 0, 0, 1, warns, nil
 		case ConflictOverwrite:
 			team.ID = existing.ID
 			// 保留原始 Status/Readonly/Kind/Source
@@ -671,9 +687,9 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 			team.Kind = existing.Kind
 			team.Source = existing.Source
 			if _, err := im.repo.UpdateTeam(ctx, team); err != nil {
-				return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_UPDATE", fmt.Sprintf("更新 Team %s 失败: %s", spec.Key, err.Error()))
+				return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_UPDATE", fmt.Sprintf("更新 Team %s 失败: %s", spec.Key, err.Error()))
 			}
-			return 0, 1, 0, nil
+			return 0, 1, 0, warns, nil
 		case ConflictDuplicate:
 			// 循环追加后缀直到找到不冲突的 key
 			newKey := spec.Key + "-copy"
@@ -689,10 +705,10 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	}
 
 	if _, err := im.repo.CreateTeam(ctx, team); err != nil {
-		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_CREATE", fmt.Sprintf("创建 Team %s 失败: %s", spec.Key, err.Error()))
+		return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_CREATE", fmt.Sprintf("创建 Team %s 失败: %s", spec.Key, err.Error()))
 	}
 
-	return 1, 0, 0, nil
+	return 1, 0, 0, warns, nil
 }
 
 // buildEmbeddedGraph 从 TeamGraphPackSpec 构建 EmbeddedGraphSpec。

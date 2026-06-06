@@ -25,6 +25,9 @@ func (r *deadLetterTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (i
 func (r *deadLetterTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (r *deadLetterTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (r *deadLetterTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }

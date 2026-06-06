@@ -4,27 +4,40 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
 
 // SandboxRunner validates skill evolution suggestions in an isolated environment.
+// It performs rule-based validation by default, and optionally uses CodeExecutor
+// for isolated execution when available.
 type SandboxRunner struct {
-	uc *biz.SkillIntelligenceUsecase
-	lg loggateway.Logger
+	uc       *biz.SkillIntelligenceUsecase
+	executor trpcagentcodeexec.CodeExecutor // optional, nil = rule-based only
+	lg       loggateway.Logger
 }
 
-func NewSandboxRunner(uc *biz.SkillIntelligenceUsecase, lg loggateway.Logger) *SandboxRunner {
+// NewSandboxRunner creates a SandboxRunner with optional CodeExecutor.
+// If executor is nil, only rule-based validation is performed.
+func NewSandboxRunner(uc *biz.SkillIntelligenceUsecase, factory *codeexecutor.Factory, lg loggateway.Logger) *SandboxRunner {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SandboxRunner{uc: uc, lg: lg}
+	var executor trpcagentcodeexec.CodeExecutor
+	if factory != nil {
+		executor = factory.Resolve(context.Background(), codeexecutor.TypeLocal, "")
+	}
+	return &SandboxRunner{uc: uc, executor: executor, lg: lg}
 }
 
 // ValidateSuggestion runs sandbox validation on an evolution suggestion.
-// For v1, this performs rule-based validation only (no actual skill execution).
+// It performs rule-based validation first, then optionally runs code execution
+// validation if a CodeExecutor is available and the draft contains code blocks.
 func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID string) (bool, json.RawMessage, error) {
 	suggestion, err := s.uc.GetEvolutionSuggestion(ctx, suggestionID)
 	if err != nil {
@@ -43,6 +56,17 @@ func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID str
 	}
 
 	result := s.ruleBasedValidation(suggestion)
+
+	// If rule-based checks pass and CodeExecutor is available, run code validation.
+	if result.Passed && s.executor != nil {
+		codeResult := s.codeExecutionValidation(ctx, suggestion)
+		result.Checks = append(result.Checks, codeResult.Checks...)
+		if !codeResult.Passed {
+			result.Passed = false
+			result.Message = "Code execution validation failed"
+		}
+	}
+
 	resultJSON, _ := json.Marshal(result)
 
 	// Update the suggestion with sandbox result
@@ -66,6 +90,105 @@ func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID str
 	}
 
 	return result.Passed, resultJSON, nil
+}
+
+// codeExecutionValidation attempts to execute code blocks from the draft body
+// in an isolated environment using CodeExecutor.
+func (s *SandboxRunner) codeExecutionValidation(ctx context.Context, suggestion *biz.SkillEvolutionSuggestion) *sandboxValidationResult {
+	result := &sandboxValidationResult{}
+
+	blocks := s.extractCodeBlocks(suggestion.DraftSkillBody)
+	if len(blocks) == 0 {
+		// No code blocks found — not an error, just nothing to execute.
+		result.Passed = true
+		result.Message = "No code blocks to execute"
+		return result
+	}
+
+	var allPassed = true
+	for i, block := range blocks {
+		input := trpcagentcodeexec.CodeExecutionInput{
+			CodeBlocks: []trpcagentcodeexec.CodeBlock{
+				{Language: block.Language, Code: block.Code},
+			},
+		}
+		execResult, err := s.executor.ExecuteCode(ctx, input)
+		checkName := fmt.Sprintf("code_block_%d_execution", i+1)
+		if err != nil {
+			result.Checks = append(result.Checks, check{
+				Name:    checkName,
+				Passed:  false,
+				Message: fmt.Sprintf("Execution error: %s", err.Error()),
+			})
+			allPassed = false
+			continue
+		}
+		// Check for non-zero exit code in output.
+		hasError := strings.Contains(execResult.Output, "[exit ") && !strings.Contains(execResult.Output, "[exit 0]")
+		result.Checks = append(result.Checks, check{
+			Name:    checkName,
+			Passed:  !hasError && !strings.Contains(execResult.Output, "[OOM killed]") && !strings.Contains(execResult.Output, "[timeout]"),
+			Message: s.truncateOutput(execResult.Output, 200),
+		})
+		if hasError {
+			allPassed = false
+		}
+	}
+
+	result.Passed = allPassed
+	if allPassed {
+		result.Message = "Code execution validation passed"
+	} else {
+		result.Message = "Some code blocks failed execution"
+	}
+	return result
+}
+
+// codeBlock represents an extracted code block from a draft body.
+type codeBlock struct {
+	Language string
+	Code     string
+}
+
+// extractCodeBlocks extracts fenced code blocks from markdown text.
+func (s *SandboxRunner) extractCodeBlocks(draftBody string) []codeBlock {
+	var blocks []codeBlock
+	lines := strings.Split(draftBody, "\n")
+	var inBlock bool
+	var lang string
+	var codeLines []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inBlock && strings.HasPrefix(trimmed, "```") {
+			inBlock = true
+			lang = strings.TrimPrefix(trimmed, "```")
+			lang = strings.TrimSpace(lang)
+			codeLines = nil
+			continue
+		}
+		if inBlock && strings.HasPrefix(trimmed, "```") {
+			inBlock = false
+			if len(codeLines) > 0 {
+				blocks = append(blocks, codeBlock{
+					Language: lang,
+					Code:     strings.Join(codeLines, "\n"),
+				})
+			}
+			continue
+		}
+		if inBlock {
+			codeLines = append(codeLines, line)
+		}
+	}
+	return blocks
+}
+
+func (s *SandboxRunner) truncateOutput(output string, maxLen int) string {
+	if len(output) <= maxLen {
+		return output
+	}
+	return output[:maxLen] + "..."
 }
 
 type sandboxValidationResult struct {

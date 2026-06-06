@@ -9,37 +9,25 @@ import (
 	rt "aranea-agents/internal/runtime"
 )
 
-type stepBusRepo struct {
-	biz.TeamRepository
+type stepBusRunWriter struct {
 	steps []biz.TeamRunStep
 }
 
-func (r *stepBusRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
+func (r *stepBusRunWriter) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	r.steps = append(r.steps, step)
 	return step, nil
 }
 
-func (r *stepBusRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
-func (r *stepBusRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
-func (r *stepBusRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
-func (r *stepBusRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
+func (r *stepBusRunWriter) CreateTeamRun(_ context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+	return run, nil
+}
+func (r *stepBusRunWriter) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (r *stepBusRunWriter) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil
 }
-func (r *stepBusRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
-	return nil, nil
-}
-func (r *stepBusRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
-func (r *stepBusRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
-	return nil, nil
-}
-func (r *stepBusRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
-	return biz.TaskDeadLetter{}, nil
-}
-func (r *stepBusRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
-	return nil, nil
-}
-func (r *stepBusRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
-	return nil, nil
+func (r *stepBusRunWriter) UpdateTeamRunTraceID(_ context.Context, _, _ string) error { return nil }
+func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
+	return nil
 }
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
@@ -48,7 +36,7 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	defer unsub()
 
 	runner := &Runner{
-		teams: &stepBusRepo{},
+		runWriter: &stepBusRunWriter{},
 		td: rt.TurnDeps{
 			Pipeline: rt.EventPipeline{Bus: bus},
 		},
@@ -60,7 +48,7 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 
 	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2)
 
-	repo := runner.teams.(*stepBusRepo)
+	repo := runner.runWriter.(*stepBusRunWriter)
 	if len(repo.steps) != 1 {
 		t.Fatalf("steps=%d", len(repo.steps))
 	}

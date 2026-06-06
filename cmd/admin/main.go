@@ -133,6 +133,7 @@ func main() {
 		LearningLoopScanner:         out.LearningLoopScanner,
 		SkillEvolutionScanner:       out.SkillEvolutionScanner,
 		SkillIntelligenceWorker:     out.SkillIntelligenceWorker,
+		CuratorWorker:               out.CuratorWorker,
 		ProviderHealthScanner:       out.ProviderHealthScanner,
 		ChannelHealthScanner:        out.ChannelHealthScanner,
 		ChannelDeliveryScanner:      out.ChannelDeliveryScanner,

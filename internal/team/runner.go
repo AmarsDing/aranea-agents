@@ -27,7 +27,11 @@ type StreamOptsFactory interface {
 }
 
 type Runner struct {
-	teams           biz.TeamRepository
+	teamReader      biz.TeamReader
+	runReader       biz.TeamRunReader
+	runWriter       biz.TeamRunWriter
+	stepRepo        biz.OrchestrationStepRepo
+	deadLetter      biz.TaskDeadLetterRepo
 	usage           biz.TeamUsageQuerier
 	sessions        biz.TeamSessionManager
 	td              rt.TurnDeps
@@ -58,7 +62,11 @@ func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID,
 }
 
 func NewRunner(
-	teams biz.TeamRepository,
+	teamReader biz.TeamReader,
+	runReader biz.TeamRunReader,
+	runWriter biz.TeamRunWriter,
+	stepRepo biz.OrchestrationStepRepo,
+	deadLetter biz.TaskDeadLetterRepo,
 	usage biz.TeamUsageQuerier,
 	sessions biz.TeamSessionManager,
 	agents biz.AgentRepository,
@@ -86,7 +94,11 @@ func NewRunner(
 	}
 
 	return &Runner{
-		teams:           teams,
+		teamReader:      teamReader,
+		runReader:       runReader,
+		runWriter:       runWriter,
+		stepRepo:        stepRepo,
+		deadLetter:      deadLetter,
 		usage:           usage,
 		sessions:        sessions,
 		skillDBRepo:     skillDBRepo,
@@ -126,7 +138,7 @@ func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error)
 
 // RunTurnFromInput executes one user turn for a team session using biz-level TurnInput.
 func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
-	if r == nil || r.td.Sessions == nil || r.teams == nil || r.td.Catalog.Agents == nil || r.td.Catalog.LLM == nil {
+	if r == nil || r.td.Sessions == nil || r.teamReader == nil || r.runWriter == nil || r.td.Catalog.Agents == nil || r.td.Catalog.LLM == nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not configured")
 	}
 	if !strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
@@ -140,7 +152,7 @@ func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input b
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_TEAM_NATIVE", "team_id does not match session")
 	}
 
-	teamRow, err := r.teams.GetTeamByID(ctx, tid)
+	teamRow, err := r.teamReader.GetTeamByID(ctx, tid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("TEAM", "team not found")

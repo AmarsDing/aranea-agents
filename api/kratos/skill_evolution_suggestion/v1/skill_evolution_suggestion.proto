@@ -23,6 +23,11 @@ service SkillEvolutionSuggestionService {
   rpc RejectSkillEvolutionSuggestion (RejectSkillEvolutionSuggestionRequest) returns (RejectSkillEvolutionSuggestionResponse) {
     option (google.api.http) = { post: "/v1/skill-evolution-suggestions/{id}/reject" body: "*" };
   }
+  // TriggerCuratorFlow runs the full Curator Agent semi-automatic evolution
+  // pipeline for a skill: trigger detection → draft generation → sandbox verification.
+  rpc TriggerCuratorFlow (TriggerCuratorFlowRequest) returns (TriggerCuratorFlowResponse) {
+    option (google.api.http) = { post: "/v1/skill-evolution-suggestions/trigger-curator" body: "*" };
+  }
 }
 
 message ListSkillEvolutionSuggestionsRequest {
@@ -61,6 +66,14 @@ message RejectSkillEvolutionSuggestionRequest {
 }
 
 message RejectSkillEvolutionSuggestionResponse {}
+
+message TriggerCuratorFlowRequest {
+  string skill_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TriggerCuratorFlowResponse {
+  SkillEvolutionSuggestionMsg suggestion = 1;
+}
 
 message SkillEvolutionSuggestionMsg {
   string id = 1;

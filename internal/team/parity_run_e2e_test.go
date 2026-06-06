@@ -37,6 +37,9 @@ func (m *parityMemRepo) DeleteTeam(context.Context, string) error               
 func (m *parityMemRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *parityMemRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (m *parityMemRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }
@@ -108,7 +111,11 @@ func (parityStubAgents) GetAgentByID(_ context.Context, id string) (biz.Agent, e
 
 func newParityTestRunner(repo *parityMemRepo, bus event.Bus) *Runner {
 	return &Runner{
-		teams: repo,
+		teamReader: repo,
+		runReader:  repo,
+		runWriter:  repo,
+		stepRepo:   repo,
+		deadLetter: repo,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{Agents: parityStubAgents{}},
 			Pipeline: rt.EventPipeline{Bus: bus},

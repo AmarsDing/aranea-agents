@@ -86,6 +86,9 @@ func (m *memSpiritTeamRepo) ListBySpiritSessionID(_ context.Context, spiritSessi
 func (m *memSpiritTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]TeamRun, error) {
 	return nil, nil
 }
+func (m *memSpiritTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]TeamRun, error) {
+	return nil, nil
+}
 func (m *memSpiritTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }

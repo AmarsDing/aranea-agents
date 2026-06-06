@@ -24,6 +24,13 @@ func NewSkillCuratorService(uc *biz.SkillIntelligenceUsecase, lg loggateway.Logg
 	return &SkillCuratorService{uc: uc, lg: lg}
 }
 
+// RunCuratorFlow executes the full Curator Agent semi-automatic evolution
+// pipeline: trigger detection → draft generation → sandbox verification.
+// Delegates to biz.SkillIntelligenceUsecase.RunCuratorFlow.
+func (s *SkillCuratorService) RunCuratorFlow(ctx context.Context, skillID string) (*biz.SkillEvolutionSuggestion, error) {
+	return s.uc.RunCuratorFlow(ctx, skillID)
+}
+
 // GenerateDraft generates a draft skill body improvement using LLM.
 // If LLM is unavailable, it falls back to rule-based suggestions.
 func (s *SkillCuratorService) GenerateDraft(ctx context.Context, suggestionID string) (string, error) {

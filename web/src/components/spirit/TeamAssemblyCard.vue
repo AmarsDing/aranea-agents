@@ -67,7 +67,6 @@ const modeLabel = computed(() => {
     critic_loop: '批判循环',
     swarm: '蜂群',
     adaptive: '自适应',
-    direct: '直接',
   };
   return labels[m] ?? m;
 });

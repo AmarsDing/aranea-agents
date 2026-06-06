@@ -195,7 +195,7 @@ func (r *Runner) finalizeTeamRun(
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 	run.FinishedAt = agent.RFC3339Now()
-	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
+	if err := r.runWriter.UpdateTeamRun(ctx, *run); err != nil {
 		r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
 			loggateway.StepID("team.run.finish_update_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))

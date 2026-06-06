@@ -201,6 +201,7 @@ func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPa
 		ContextWindow:      agent.ContextWindow,
 		Kind:               agent.AgentKind,
 		OwnershipKind:      agent.Kind,
+		Source:             agent.Source,
 		TeamRole:           "", // 从 Team 成员定义中获取
 	}
 
@@ -264,8 +265,10 @@ func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPa
 // buildTeamSpec 从 biz.Team 构建 TeamPackSpec。
 func (e *Exporter) buildTeamSpec(ctx context.Context, team biz.Team) (TeamPackSpec, error) {
 	spec := TeamPackSpec{
-		Key:         team.TeamKey,
-		DisplayName: team.DisplayName,
+		Key:           team.TeamKey,
+		DisplayName:   team.DisplayName,
+		OwnershipKind: team.Kind,
+		Source:        team.Source,
 	}
 
 	// 解析 definition_json

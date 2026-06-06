@@ -237,21 +237,35 @@ func (r *l4EntityRepo) AgentIdentityJSON(ctx context.Context, agentID string) ([
 		return nil, fmt.Errorf("agent_id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		"SELECT"+sqlEntityCols+" FROM memory_entities WHERE agent_id = ? AND entity_type = 'agent_identity' AND status = 'active' AND deleted_at = '' LIMIT 1",
-		agentID)
+		`SELECT agent_id, persona, values_json, tone, domains_json, user_expectations,
+		        current_phase, metadata_json, version, created_at, updated_at
+		 FROM agent_identity WHERE agent_id = ?`, agentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	lg := r.data.lg
 	if !rows.Next() {
 		return json.Marshal(map[string]any{"agent_id": agentID, "identity": nil})
 	}
-	b, err := scanEntityRowJSON(rows, lg)
-	if err != nil {
+	var aid, persona, valuesJSON, tone, domainsJSON, userExp, phase, meta, ca, ua string
+	var version int
+	if err := rows.Scan(&aid, &persona, &valuesJSON, &tone, &domainsJSON, &userExp, &phase, &meta, &version, &ca, &ua); err != nil {
 		return nil, err
 	}
-	return json.Marshal(map[string]any{"agent_id": agentID, "identity": json.RawMessage(b)})
+	identity := map[string]any{
+		"agent_id":          aid,
+		"persona":           persona,
+		"values":            decodeJSONStringSlice(valuesJSON, r.data.lg),
+		"tone":              tone,
+		"domains":           decodeJSONStringSlice(domainsJSON, r.data.lg),
+		"user_expectations": userExp,
+		"current_phase":     phase,
+		"metadata_json":     meta,
+		"version":           version,
+		"created_at":        ca,
+		"updated_at":        ua,
+	}
+	return json.Marshal(map[string]any{"agent_id": agentID, "identity": identity})
 }
 
 func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([]byte, error) {
@@ -259,21 +273,43 @@ func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([
 		return nil, fmt.Errorf("agent_id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		"SELECT"+sqlEntityCols+" FROM memory_entities WHERE agent_id = ? AND entity_type = 'agent_strategy' AND status = 'active' AND deleted_at = '' LIMIT 1",
-		agentID)
+		`SELECT agent_id, exploration, conciseness, caution, delegation,
+		        tool_preference_json, tool_blacklist_json,
+		        provider_preference_json, model_preference_json,
+		        stats_json, metadata_json, version, created_at, updated_at
+		 FROM agent_strategy_profile WHERE agent_id = ?`, agentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	lg := r.data.lg
 	if !rows.Next() {
 		return json.Marshal(map[string]any{"agent_id": agentID, "strategy": nil})
 	}
-	b, err := scanEntityRowJSON(rows, lg)
-	if err != nil {
+	var aid, toolPrefJSON, toolBlacklistJSON, providerPrefJSON, modelPrefJSON, statsJSON, meta, ca, ua string
+	var exploration, conciseness, caution, delegation float64
+	var version int
+	if err := rows.Scan(&aid, &exploration, &conciseness, &caution, &delegation,
+		&toolPrefJSON, &toolBlacklistJSON, &providerPrefJSON, &modelPrefJSON,
+		&statsJSON, &meta, &version, &ca, &ua); err != nil {
 		return nil, err
 	}
-	return json.Marshal(map[string]any{"agent_id": agentID, "strategy": json.RawMessage(b)})
+	strategy := map[string]any{
+		"agent_id":     aid,
+		"exploration":  exploration,
+		"conciseness":  conciseness,
+		"caution":      caution,
+		"delegation":   delegation,
+		"tool_preference":     decodeJSONFloatMap(toolPrefJSON, r.data.lg),
+		"tool_blacklist":      decodeJSONStringSlice(toolBlacklistJSON, r.data.lg),
+		"provider_preference": decodeJSONFloatMap(providerPrefJSON, r.data.lg),
+		"model_preference":    decodeJSONFloatMap(modelPrefJSON, r.data.lg),
+		"stats_json":   statsJSON,
+		"metadata_json": meta,
+		"version":      version,
+		"created_at":   ca,
+		"updated_at":   ua,
+	}
+	return json.Marshal(map[string]any{"agent_id": agentID, "strategy": strategy})
 }
 
 func (r *l4EntityRepo) DeleteSessionEventEntities(ctx context.Context, sessionID string) error {
@@ -329,7 +365,9 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 	if lim <= 0 {
 		lim = 20
 	}
-	q := `SELECT id, agent_id, workspace_id, event_kind, kind, target_field, reason, trigger_kind, trigger_source, metadata_json, created_at FROM memory_evolution_events`
+	q := `SELECT id, agent_id, workspace_id, event_kind, target_field, reason,
+		        trigger_kind, trigger_source, metadata_json, created_at, reverted
+		 FROM agent_evolution_events`
 	args := []any{}
 	if agentID != "" {
 		q += ` WHERE agent_id = ?`
@@ -342,17 +380,31 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 		return nil, err
 	}
 	defer rows.Close()
+	lg := r.data.lg
 	var out [][]byte
 	for rows.Next() {
-		var id, aid, wid, ek, kind, tf, reason, tk, ts, meta, ca string
-		if err := rows.Scan(&id, &aid, &wid, &ek, &kind, &tf, &reason, &tk, &ts, &meta, &ca); err != nil {
+		var id, aid, wid, ek, tf, reason, tk, ts, meta, ca string
+		var reverted int
+		if err := rows.Scan(&id, &aid, &wid, &ek, &tf, &reason, &tk, &ts, &meta, &ca, &reverted); err != nil {
 			return nil, err
+		}
+		// `kind` is not a column on agent_evolution_events; it is round-tripped
+		// via metadata_json (see InsertEvolutionEventRow). If absent, fall back to event_kind.
+		kind := ""
+		if m := decodeJSONObject(meta, lg); m != nil {
+			if v, ok := m["kind"].(string); ok {
+				kind = v
+			}
+		}
+		if kind == "" {
+			kind = ek
 		}
 		m := map[string]any{
 			"id": id, "agent_id": aid, "workspace_id": wid,
 			"event_kind": ek, "kind": kind, "target_field": tf,
 			"reason": reason, "trigger_kind": tk, "trigger_source": ts,
 			"metadata_json": meta, "created_at": ca,
+			"reverted": reverted != 0,
 		}
 		b, _ := json.Marshal(m)
 		out = append(out, b)
@@ -367,7 +419,7 @@ func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string)
 		SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
 		SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
 		SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
-	FROM memory_evolution_events`
+	FROM agent_evolution_events`
 	args := []any{}
 	if agentID != "" {
 		metricsQ += ` WHERE agent_id = ?`
@@ -388,29 +440,51 @@ func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string)
 func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.EvolutionEventInsert) ([]byte, error) {
 	id := newUUIDString()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	// Merge `kind` (not a column) into metadata_json to preserve round-trip.
 	meta := strings.TrimSpace(in.MetadataJSON)
 	if meta == "" {
 		meta = "{}"
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_evolution_events (
-		id, agent_id, workspace_id, event_kind, kind, target_field, reason, trigger_kind, trigger_source, metadata_json, created_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+	kind := strings.TrimSpace(in.Kind)
+	if kind != "" {
+		m := decodeJSONObject(meta, r.data.lg)
+		if m == nil {
+			m = map[string]any{}
+		}
+		m["kind"] = kind
+		if b, err := json.Marshal(m); err == nil {
+			meta = string(b)
+		}
+	}
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO agent_evolution_events (
+		id, agent_id, workspace_id, event_kind, target_field,
+		before_json, after_json, diff_json,
+		trigger_kind, trigger_source, evidence_json, reason,
+		applied, reverted, reverted_by_event_id,
+		metadata_json, created_at, applied_at, reverted_at
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id,
 		strings.TrimSpace(in.AgentID),
 		strings.TrimSpace(in.WorkspaceID),
 		strings.TrimSpace(in.EventKind),
-		strings.TrimSpace(in.Kind),
 		strings.TrimSpace(in.TargetField),
-		strings.TrimSpace(in.Reason),
+		"", "", "{}", // before/after/diff
 		strings.TrimSpace(in.TriggerKind),
 		strings.TrimSpace(in.TriggerSource),
-		meta, now,
+		"[]", // evidence_json
+		strings.TrimSpace(in.Reason),
+		1,    // applied
+		0,    // reverted
+		"",   // reverted_by_event_id
+		meta, now, now, "", // applied_at=now, reverted_at=''
 	)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, agent_id, workspace_id, event_kind, kind, target_field, reason, trigger_kind, trigger_source, metadata_json, created_at FROM memory_evolution_events WHERE id = ?`, id)
+		`SELECT id, agent_id, workspace_id, event_kind, target_field, reason,
+		        trigger_kind, trigger_source, metadata_json, created_at, reverted
+		 FROM agent_evolution_events WHERE id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -418,15 +492,21 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 	if !rows.Next() {
 		return nil, fmt.Errorf("evolution event not found after insert")
 	}
-	var rowID, aid, wid, ek, kind, tf, reason, tk, ts, m, ca string
-	if err := rows.Scan(&rowID, &aid, &wid, &ek, &kind, &tf, &reason, &tk, &ts, &m, &ca); err != nil {
+	var rowID, aid, wid, ek, tf, reason, tk, ts, m, ca string
+	var reverted int
+	if err := rows.Scan(&rowID, &aid, &wid, &ek, &tf, &reason, &tk, &ts, &m, &ca, &reverted); err != nil {
 		return nil, err
+	}
+	outKind := kind
+	if outKind == "" {
+		outKind = ek
 	}
 	result := map[string]any{
 		"id": rowID, "agent_id": aid, "workspace_id": wid,
-		"event_kind": ek, "kind": kind, "target_field": tf,
+		"event_kind": ek, "kind": outKind, "target_field": tf,
 		"reason": reason, "trigger_kind": tk, "trigger_source": ts,
 		"metadata_json": m, "created_at": ca,
+		"reverted": reverted != 0,
 	}
 	return json.Marshal(result)
 }

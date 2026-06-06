@@ -133,6 +133,7 @@ type AgentPackSpec struct {
 	// Agent 类型
 	Kind              string              `yaml:"kind,omitempty"`               // llm | a2a_proxy (technical type)
 	OwnershipKind     string              `yaml:"ownership_kind,omitempty"`     // user | system_builtin | ecosystem_preset | marketplace | certified (ownership classification)
+	Source            string              `yaml:"source,omitempty"`             // user | system | imported (origin tracking)
 	A2AProxy          *A2AProxyPackSpec   `yaml:"a2a_proxy,omitempty"`
 }
 
@@ -266,6 +267,10 @@ type TeamPackSpec struct {
 
 	// Critic Loop
 	CriticLoop        *CriticLoopPackSpec `yaml:"critic_loop,omitempty"`
+
+	// 所有权与来源
+	OwnershipKind     string              `yaml:"ownership_kind,omitempty"`     // user | system_builtin | ecosystem_preset | marketplace | certified
+	Source            string              `yaml:"source,omitempty"`             // user | system | imported
 }
 
 // TeamMemberPackSpec Team 成员定义（通过 agent_key 引用）。

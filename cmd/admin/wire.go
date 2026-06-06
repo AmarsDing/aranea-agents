@@ -547,7 +547,7 @@ func provideTeamOrchestrationDeps(
 	tasks *biz.TaskUsecase,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
 	mediator *team.TeamRunMediator,
-	spiritUC *biz.SpiritTeamUsecase,
+	spiritUC biz.SpiritTeamController,
 	taskPlanner biz.TaskPlannerPort,
 	agentAllocator biz.AgentAllocatorPort,
 ) service.TeamOrchestrationDeps {
@@ -891,6 +891,13 @@ func provideSkillIntelligenceWorker(uc *biz.SkillIntelligenceUsecase, lg loggate
 		return nil
 	}
 	return jobs.NewSkillIntelligenceWorker(0, uc, lg)
+}
+
+func provideCuratorWorker(uc *biz.SkillIntelligenceUsecase, skills biz.SkillQueryReader, lg loggateway.Logger) *jobs.CuratorWorker {
+	if strings.TrimSpace(os.Getenv("CURATOR_WORKER_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewCuratorWorker(0, uc, skills, lg)
 }
 
 func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrationPort {
@@ -1262,6 +1269,7 @@ type wireOut struct {
 	LearningLoopScanner         *jobs.LearningLoopScanner
 	SkillEvolutionScanner       *jobs.SkillEvolutionScanner
 	SkillIntelligenceWorker     *jobs.SkillIntelligenceWorker
+	CuratorWorker               *jobs.CuratorWorker
 	ProviderHealthScanner       *jobs.ProviderHealthScanner
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
@@ -1333,6 +1341,7 @@ func provideWireOut(
 	skillIntelligence *biz.SkillIntelligenceUsecase,
 	skillEvolutionScanner *jobs.SkillEvolutionScanner,
 	skillIntelligenceWorker *jobs.SkillIntelligenceWorker,
+	curatorWorker *jobs.CuratorWorker,
 	failurePatternSyncJob *jobs.FailurePatternSyncJob,
 ) wireOut {
 	return wireOut{
@@ -1356,6 +1365,7 @@ func provideWireOut(
 		SkillIntelligence:         skillIntelligence,
 		SkillEvolutionScanner:     skillEvolutionScanner,
 		SkillIntelligenceWorker:   skillIntelligenceWorker,
+		CuratorWorker:             curatorWorker,
 		FailurePatternSyncJob:     failurePatternSyncJob,
 	}
 }
@@ -1557,6 +1567,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideSkillRegistrationPort,
 		provideSkillEvolutionScanner,
 		provideSkillIntelligenceWorker,
+		provideCuratorWorker,
 		provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
@@ -1661,6 +1672,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TeamToolLookup), new(*biz.ToolUsecase)),
 		wire.Bind(new(biz.TeamModelCatalog), new(*biz.LlmProviderModelUsecase)),
 		wire.Bind(new(biz.TeamSkillLookup), new(*biz.SkillUsecase)),
+		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
 		// Self-check integration
 		provideSelfCheckScheduler,
 		provideEventBusHealthChecker,

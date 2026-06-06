@@ -53,7 +53,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		CreatedAt:              agent.RFC3339Now(),
 		UpdatedAt:              agent.RFC3339Now(),
 	}
-	run, err = r.teams.CreateTeamRun(ctx, run)
+	run, err = r.runWriter.CreateTeamRun(ctx, run)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -80,7 +80,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		teamEmitter.SetOtelRefs(teamBridge.TraceID(), teamBridge.RootSpanID())
 		ctx = event.WithTraceEmitter(ctx, teamEmitter)
 		if tid := strings.TrimSpace(teamBridge.TraceID()); tid != "" {
-			if uerr := r.teams.UpdateTeamRunTraceID(ctx, run.ID, tid); uerr != nil {
+			if uerr := r.runWriter.UpdateTeamRunTraceID(ctx, run.ID, tid); uerr != nil {
 				r.lg.Warn("trace_id 持久化失败", loggateway.StepID("team.run.trace_id"), loggateway.Err(uerr))
 			}
 		}
@@ -146,7 +146,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	if graphExecID != "" {
 		run.GraphExecutionID = graphExecID
-		if uerr := r.teams.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
+		if uerr := r.runWriter.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
 			r.lg.Warn("graph_execution_id 持久化失败", loggateway.StepID("team.graph_runtime.persist"), loggateway.Err(uerr))
 		}
 	}

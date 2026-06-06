@@ -50,7 +50,7 @@ func (r *Runner) startObservers(
 			return strings.TrimSpace(ag.DisplayName)
 		},
 	)
-	setup.activityFlusher = NewActivityStepFlusher(r.teams, run.ID, graphExecID, r.lg)
+	setup.activityFlusher = NewActivityStepFlusher(r.stepRepo, run.ID, graphExecID, r.lg)
 	failureOnError := ""
 	if def.FailurePolicy != nil {
 		failureOnError = def.FailurePolicy.OnError

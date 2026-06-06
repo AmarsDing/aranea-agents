@@ -22,6 +22,17 @@ type TeamStarterPort interface {
 	HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string)
 }
 
+// SpiritTeamController exposes the methods needed by the service layer's
+// TeamOrchestrationDeps for team lifecycle orchestration (timeout, completion,
+// dependency scheduling, and completion checks).
+type SpiritTeamController interface {
+	CancelTimeoutTimer(teamID string)
+	RecordTeamCompletion(ctx context.Context, team Team, durationMs int64) (dqScore float64, topology TopologyType)
+	ScheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam Team) []DependentTeamAction
+	CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult
+	GetParallelConfig(ctx context.Context, spiritSessionID string) ParallelConfig
+}
+
 // TimeoutHandler is called when a team times out. Implemented by the service
 // layer to trigger dependency scheduling, event publishing, and AllDone checks.
 type TimeoutHandler interface {
@@ -71,6 +82,7 @@ func WithEvolutionSuggestionRepo(r EvolutionSuggestionRepo) SpiritTeamUsecaseOpt
 }
 
 type SpiritTeamUsecase struct {
+	_              SpiritTeamController // interface assertion
 	teamUC         *TeamUsecase
 	sessionUC      *SessionUsecase
 	agentUC        *AgentUsecase
@@ -124,7 +136,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
 	parentSession, err := u.sessionUC.Get(ctx, spiritSessionID)
 	if err != nil {
-		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "get spirit session: "+err.Error())
+		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "get spirit session").WithCause(err)
 	}
 	if parentSession.AgentDepth >= cfg.MaxSessionDepth {
 		return SpiritTeamResult{}, kerrors.BadRequest("SPIRIT",
@@ -142,7 +154,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	err = u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
 		team, err := u.teamUC.Create(txCtx, Team{
 			TeamKey:           fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
-			DisplayName:       TruncateRunes(taskDesc, 64),
+			DisplayName:       TruncateRunes(taskDesc, MaxTeamDisplayNameLen),
 			Status:            initialStatus,
 			SpiritSessionID:   spiritSessionID,
 			TaskDescription:   taskDesc,
@@ -154,7 +166,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			Topology:          mode,
 		})
 		if err != nil {
-			return kerrors.InternalServer("SPIRIT", "create team: "+err.Error())
+			return kerrors.InternalServer("SPIRIT", "create team").WithCause(err)
 		}
 
 		teamSession, err := u.sessionUC.Create(txCtx, Session{
@@ -163,10 +175,10 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			ParentSessionID: spiritSessionID,
 			RootSessionID:   spiritSessionID,
 			AgentDepth:      childDepth,
-			Title:           TruncateRunes(taskDesc, 128),
+			Title:           TruncateRunes(taskDesc, MaxTeamTitleLen),
 		})
 		if err != nil {
-			return kerrors.InternalServer("SPIRIT", "create team session: "+err.Error())
+			return kerrors.InternalServer("SPIRIT", "create team session").WithCause(err)
 		}
 
 		result = SpiritTeamResult{Team: team, Session: teamSession}
@@ -177,48 +189,54 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	}
 
 	// Register team timeout callback if configured.
-	if cfg.TeamTimeoutSeconds > 0 {
-		teamID := result.Team.ID
-		timer := time.AfterFunc(cfg.TeamTimeout(), func() {
-			// If CancelTimeoutTimer already removed this entry, the team completed
-			// normally and we should not interfere.
-			if _, loaded := u.timeoutTimers.LoadAndDelete(teamID); !loaded {
-				return
-			}
-			safego.Go(context.Background(), "spirit-team-timeout", func() {
-				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer timeoutCancel()
-				team, err := u.teamUC.Get(timeoutCtx, teamID)
-				if err != nil {
-					return
-				}
-				if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled {
-					return
-				}
-				u.lg.Warn("团队执行超时",
-					loggateway.StepID("spirit.team.timeout"),
-					loggateway.Str("team_id", teamID),
-				)
-				if _, err := u.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed); err != nil {
-					u.lg.Warn("超时后转换团队状态失败",
-						loggateway.StepID("spirit.team.timeout_transition_err"),
-						loggateway.Str("team_id", teamID),
-						loggateway.Err(err),
-					)
-					return
-				}
-				// Notify service layer to handle dependency scheduling, event
-				// publishing, and AllDone checks — same lifecycle as a normal
-				// team failure.
-				if u.timeoutHandler != nil && team.SpiritSessionID != "" {
-					u.timeoutHandler.HandleTeamTimeout(timeoutCtx, team.SpiritSessionID, teamID)
-				}
-			})
-		})
-	u.timeoutTimers.Store(teamID, timer)
-	}
+	u.registerTeamTimeout(cfg, result.Team.ID)
 
 	return result, nil
+}
+
+// registerTeamTimeout sets up a timeout callback that transitions the team to
+// failed status if it doesn't complete within the configured duration.
+func (u *SpiritTeamUsecase) registerTeamTimeout(cfg ParallelConfig, teamID string) {
+	if cfg.TeamTimeoutSeconds <= 0 {
+		return
+	}
+	timer := time.AfterFunc(cfg.TeamTimeout(), func() {
+		// If CancelTimeoutTimer already removed this entry, the team completed
+		// normally and we should not interfere.
+		if _, loaded := u.timeoutTimers.LoadAndDelete(teamID); !loaded {
+			return
+		}
+		safego.Go(context.Background(), "spirit-team-timeout", func() {
+			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), TimeoutHandlerContextTimeout)
+			defer timeoutCancel()
+			team, err := u.teamUC.Get(timeoutCtx, teamID)
+			if err != nil {
+				return
+			}
+			if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled {
+				return
+			}
+			u.lg.Warn("团队执行超时",
+				loggateway.StepID("spirit.team.timeout"),
+				loggateway.Str("team_id", teamID),
+			)
+			if _, err := u.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed); err != nil {
+				u.lg.Warn("超时后转换团队状态失败",
+					loggateway.StepID("spirit.team.timeout_transition_err"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Err(err),
+				)
+				return
+			}
+			// Notify service layer to handle dependency scheduling, event
+			// publishing, and AllDone checks — same lifecycle as a normal
+			// team failure.
+			if u.timeoutHandler != nil && team.SpiritSessionID != "" {
+				u.timeoutHandler.HandleTeamTimeout(timeoutCtx, team.SpiritSessionID, teamID)
+			}
+		})
+	})
+	u.timeoutTimers.Store(teamID, timer)
 }
 
 func (u *SpiritTeamUsecase) GetTeam(ctx context.Context, teamID string) (Team, error) {
@@ -420,8 +438,22 @@ func (u *SpiritTeamUsecase) AutoArchiveCompletedTeams(ctx context.Context, spiri
 // to prevent the timeout callback from firing unnecessarily.
 func (u *SpiritTeamUsecase) CancelTimeoutTimer(teamID string) {
 	if v, ok := u.timeoutTimers.LoadAndDelete(teamID); ok {
-		v.(*time.Timer).Stop()
+		if t, ok := v.(*time.Timer); ok {
+			t.Stop()
+		}
 	}
+}
+
+// Stop cancels all pending timeout timers. Call during application shutdown
+// to prevent timeout callbacks from firing after the server has stopped.
+func (u *SpiritTeamUsecase) Stop() {
+	u.timeoutTimers.Range(func(key, value any) bool {
+		u.timeoutTimers.Delete(key)
+		if t, ok := value.(*time.Timer); ok {
+			t.Stop()
+		}
+		return true
+	})
 }
 
 type TeamProgress struct {
@@ -462,7 +494,7 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "assistant" {
 			content := messages[i].ContentMarkdown
-			summary = TruncateRunes(content, 500)
+			summary = TruncateRunes(content, MaxSummaryLen)
 			keyFindings = extractKeyFindings(content)
 			return summary, keyFindings, nil
 		}
@@ -555,10 +587,22 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 }
 
 // Spirit team definition constants.
+// SpiritTeamDefVersion is the current version of spirit team definition JSON.
 const (
 	SpiritTeamDefVersion     = 2
-	SpiritTeamDefaultTimeout = 600 // seconds
-	SpiritTeamDefaultMaxConc = 2   // default max concurrency
+	SpiritTeamDefaultTimeout = 600
+	SpiritTeamDefaultMaxConc = 2
+
+	// Truncation limits for display strings.
+	MaxTeamDisplayNameLen    = 64
+	MaxTeamTitleLen          = 128
+	MaxSummaryLen            = 500
+	MaxSuggestionTitleLen    = 40
+	MaxSpiritQueryLen        = 500
+
+	// TimeoutHandlerContextTimeout is the maximum duration for DB operations
+	// inside the timeout callback goroutine.
+	TimeoutHandlerContextTimeout = 30 * time.Second
 )
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
@@ -622,7 +666,7 @@ func (u *SpiritTeamUsecase) GetSpiritQuery(ctx context.Context, spiritSessionID 
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "user" {
-			return TruncateRunes(messages[i].ContentMarkdown, 500)
+			return TruncateRunes(messages[i].ContentMarkdown, MaxSpiritQueryLen)
 		}
 	}
 	return ""
@@ -633,7 +677,7 @@ func (u *SpiritTeamUsecase) GetSpiritQuery(ctx context.Context, spiritSessionID 
 func (u *SpiritTeamUsecase) UpdateTeamDefinitionJSON(ctx context.Context, teamID string, definitionJSON string) error {
 	_, err := u.teamUC.Update(ctx, teamID, Team{DefinitionJSON: definitionJSON})
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "update team definition: "+err.Error())
+		return kerrors.InternalServer("SPIRIT", "update team definition").WithCause(err)
 	}
 	return nil
 }
@@ -674,7 +718,7 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 		_, suggErr := u.evolutionSugg.Create(ctx, EvolutionSuggestion{
 			AgentID: team.SpiritSessionID,
 			Type:    "orchestration_optimization",
-			Title:   fmt.Sprintf("编排优化建议: %s", TruncateRunes(team.TaskDescription, 40)),
+			Title:   fmt.Sprintf("编排优化建议: %s", TruncateRunes(team.TaskDescription, MaxSuggestionTitleLen)),
 			Content: content,
 			Status:  "pending",
 		})

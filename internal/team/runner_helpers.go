@@ -86,11 +86,11 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	run.ErrorMessage = msg
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
-	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
+	if err := r.runWriter.UpdateTeamRun(ctx, *run); err != nil {
 		r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 	}
 	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
-		if dlerr := r.teams.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
+		if dlerr := r.deadLetter.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
 			ID:               uuid.NewString(),
 			SourceType:       biz.TaskDeadLetterSourceTeamRun,
 			SourceID:         run.ID,
@@ -116,17 +116,17 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
-	if r == nil || r.td.Pipeline.Bus == nil || r.teams == nil {
+	if r == nil || r.td.Pipeline.Bus == nil || r.runReader == nil {
 		return
 	}
-	steps, err := r.teams.ListTeamRunSteps(ctx, run.ID)
+	steps, err := r.runReader.ListTeamRunSteps(ctx, run.ID)
 	if err != nil {
 		steps = nil
 	}
 	data := biz.BuildTeamRunSummaryData(run, steps)
 	summary := SummaryMapFromData(data)
 	if b, merr := json.Marshal(summary); merr == nil {
-		if uerr := r.teams.UpdateTeamRunSummaryJSON(ctx, run.ID, string(b)); uerr != nil {
+		if uerr := r.runWriter.UpdateTeamRunSummaryJSON(ctx, run.ID, string(b)); uerr != nil {
 			r.lg.Warn("UpdateTeamRunSummaryJSON failed", loggateway.StepID("team.run.summary_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(uerr))
 		}
 	}
@@ -164,7 +164,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		envStart.Metadata = map[string]any{"run_id": run.ID, "step": started}
 		r.td.Pipeline.Bus.Publish(ctx, envStart)
 	}
-	saved, err := r.teams.CreateTeamRunStep(ctx, step)
+	saved, err := r.runWriter.CreateTeamRunStep(ctx, step)
 	if err != nil {
 		return
 	}

@@ -41,6 +41,9 @@ func (s *stubTeamWriter) BatchArchiveTeams(_ context.Context, ids []string) (int
 type stubTeamRunReader struct{}
 
 func (s *stubTeamRunReader) ListTeamRuns(context.Context, string, int) ([]TeamRun, error) { return nil, nil }
+func (s *stubTeamRunReader) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]TeamRun, error) {
+	return nil, nil
+}
 func (s *stubTeamRunReader) HasActiveTeamRun(context.Context, string) (bool, error)       { return false, nil }
 func (s *stubTeamRunReader) GetTeamRunByID(context.Context, string) (TeamRun, error)      { return TeamRun{}, nil }
 func (s *stubTeamRunReader) ListTeamRunSteps(context.Context, string) ([]TeamRunStep, error) {

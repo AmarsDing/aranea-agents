@@ -77,6 +77,9 @@ func (m *memTeamRepoB) GetTeamByKey(_ context.Context, _ string) (biz.Team, erro
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memTeamRepoB) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (m *memTeamRepoB) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }

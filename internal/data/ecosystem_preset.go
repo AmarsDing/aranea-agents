@@ -163,10 +163,10 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 		return 0, nil
 	}
 
-	// Soft-delete agents where kind='ecosystem_preset' AND taxonomy_position_id IN (position IDs)
+	// Soft-delete agents where kind='ecosystem_preset' AND source='imported' AND taxonomy_position_id IN (position IDs)
 	positionArgs := toAnySlice(positionIDs)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+		`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
 		append([]any{now, now}, positionArgs...)...)
 	if err != nil {
 		return 0, err
@@ -219,7 +219,7 @@ func (r *EcosystemPresetRepo) findEcosystemAgentIDsByPositions(ctx context.Conte
 		return deletedAgentIDs, nil
 	}
 	agentRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+		`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND source = 'imported' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
 		toAnySlice(positionIDs)...)
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ type teamModifyEntry struct {
 // classifyTeamsByIndustry classifies ecosystem_preset teams into delete vs modify lists.
 func (r *EcosystemPresetRepo) classifyTeamsByIndustry(ctx context.Context, deletedAgentIDs map[string]bool) ([]string, []teamModifyEntry, error) {
 	teamRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, definition_json FROM teams WHERE kind = 'ecosystem_preset' AND deleted_at = ''`)
+		`SELECT id, definition_json FROM teams WHERE kind = 'ecosystem_preset' AND source = 'imported' AND deleted_at = ''`)
 	if err != nil {
 		return nil, nil, err
 	}

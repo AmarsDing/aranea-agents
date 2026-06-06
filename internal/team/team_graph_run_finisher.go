@@ -44,7 +44,7 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 		r.lg.Warn("catalog agent lookup failed", loggateway.StepID("team.graph.step.persist"), loggateway.Str("run_id", stepCtx.TeamRunID), loggateway.Str("node_id", nodeID), loggateway.Str("agent_id", m.AgentID), loggateway.Err(err))
 		return
 	}
-	run, err := r.teams.GetTeamRunByID(ctx, stepCtx.TeamRunID)
+	run, err := r.runReader.GetTeamRunByID(ctx, stepCtx.TeamRunID)
 	if err != nil {
 		r.lg.Warn("team run lookup failed", loggateway.StepID("team.graph.step.persist"), loggateway.Str("run_id", stepCtx.TeamRunID), loggateway.Str("node_id", nodeID), loggateway.Err(err))
 		return
@@ -71,10 +71,10 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 
 // FinalizeGraphTeamRun closes a deferred team run and publishes team_summary.
 func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string) {
-	if r == nil || stepCtx == nil || r.teams == nil {
+	if r == nil || stepCtx == nil || r.runReader == nil {
 		return
 	}
-	run, err := r.teams.GetTeamRunByID(ctx, stepCtx.TeamRunID)
+	run, err := r.runReader.GetTeamRunByID(ctx, stepCtx.TeamRunID)
 	if err != nil {
 		return
 	}
@@ -91,14 +91,14 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		r.finishRunErr(ctx, &run, t0, errMsg)
 		return
 	}
-	steps, _ := r.teams.ListTeamRunSteps(ctx, run.ID)
+	steps, _ := r.runReader.ListTeamRunSteps(ctx, run.ID)
 	enrichTeamRunMetricsFromSteps(&run, steps)
 	now := agent.RFC3339Now()
 	run.Status = biz.TeamRunStatusSuccess
 	run.FinishedAt = now
 	run.UpdatedAt = now
 	run.DurationMS = int(time.Since(t0).Milliseconds())
-	if err := r.teams.UpdateTeamRun(ctx, run); err != nil {
+	if err := r.runWriter.UpdateTeamRun(ctx, run); err != nil {
 		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 	}
 	if r.td.Pipeline.Bus != nil {
@@ -173,10 +173,10 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	assistantMsg biz.ChatMessage,
 	promptTok, completionTok int,
 ) {
-	if r == nil || r.teams == nil {
+	if r == nil || r.runReader == nil {
 		return
 	}
-	steps, err := r.teams.ListTeamRunSteps(ctx, run.ID)
+	steps, err := r.runReader.ListTeamRunSteps(ctx, run.ID)
 	if err != nil || len(steps) > 0 {
 		return
 	}

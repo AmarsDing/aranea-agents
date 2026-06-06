@@ -12,6 +12,14 @@ import type {
 } from '../../realtime/envelope';
 import { Notify } from 'quasar';
 
+const VALID_TEAM_STATUSES = new Set<string>([
+  'pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived',
+]);
+
+function isValidTeamStatus(s: string): s is SpiritTeamStatus {
+  return VALID_TEAM_STATUSES.has(s);
+}
+
 export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const teams = ref<SpiritTeam[]>([]);
   const expandedTeamIds = ref<Set<string>>(new Set());
@@ -146,7 +154,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     for (const p of progress) {
       const team = teams.value.find((t) => t.id === p.teamId);
       if (team) {
-        team.status = p.status as SpiritTeam['status'];
+        team.status = p.status;
         if (p.progressPct >= 0) {
           if (team.totalSteps <= 0) {
             team.totalSteps = 100;
@@ -157,10 +165,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
-  function updateTeamStatus(teamId: string, status: string) {
+  function updateTeamStatus(teamId: string, status: SpiritTeamStatus) {
     const team = teams.value.find((t) => t.id === teamId);
     if (team) {
-      team.status = status as SpiritTeam['status'];
+      team.status = status;
     }
   }
 

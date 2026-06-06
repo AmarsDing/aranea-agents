@@ -42,7 +42,7 @@ export type SpiritPanelMode = 'spirit' | 'team' | 'member';
 export type TeamProgressView = {
   teamId: string;
   teamName: string;
-  status: string;
+  status: SpiritTeamStatus;
   progressPct: number;
   currentStep: string;
   durationMs: number;
@@ -75,7 +75,7 @@ export type TeamSynthesisResult = {
   teamId: string;
   teamName: string;
   taskName: string;
-  status: string;
+  status: SpiritTeamStatus;
   summary: string;
   keyFindings?: string;
 };

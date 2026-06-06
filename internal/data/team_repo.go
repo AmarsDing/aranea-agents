@@ -325,6 +325,26 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	return out, nil
 }
 
+func (r *teamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]biz.TeamRun, error) {
+	if len(teamIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).TeamRun.Query().
+		Where(teamrun.TeamIDIn(teamIDs...)).
+		Order(teamrun.ByCreatedAt(entsql.OrderDesc())).
+		Limit(limit * len(teamIDs)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string][]biz.TeamRun, len(teamIDs))
+	for _, row := range rows {
+		bizRun := entTeamRunToBiz(row)
+		result[bizRun.TeamID] = append(result[bizRun.TeamID], bizRun)
+	}
+	return result, nil
+}
+
 func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
 	count, err := r.data.RW().Read(ctx).TeamRun.Query().
 		Where(

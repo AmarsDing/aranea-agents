@@ -55,8 +55,9 @@ func (m *mockExperienceReportReader) ListByTimeRange(_ context.Context, _, _ tim
 }
 
 type mockSkillHealthAggregator struct {
-	metrics *SkillHealthMetrics
-	err     error
+	metrics   *SkillHealthMetrics
+	tagCounts []FailureTagCount
+	err       error
 }
 
 func (m *mockSkillHealthAggregator) GetHealthMetrics(_ context.Context, _ string, _ time.Time) (*SkillHealthMetrics, error) {
@@ -68,6 +69,13 @@ func (m *mockSkillHealthAggregator) GetHealthMetrics(_ context.Context, _ string
 
 func (m *mockSkillHealthAggregator) GetFailureStats(_ context.Context, _ string, _ time.Time) (*SkillFailureStats, error) {
 	return nil, nil
+}
+
+func (m *mockSkillHealthAggregator) GetFailureTagCounts(_ context.Context, _ string, _ time.Time) ([]FailureTagCount, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.tagCounts, nil
 }
 
 type mockSkillEvolutionSuggestionReader struct {
@@ -117,6 +125,10 @@ func (m *mockSkillEvolutionSuggestionWriter) UpdateDraftBody(_ context.Context, 
 }
 
 func (m *mockSkillEvolutionSuggestionWriter) UpdateSandboxResult(_ context.Context, _ string, _ bool, _ json.RawMessage) error {
+	return m.err
+}
+
+func (m *mockSkillEvolutionSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string, _ string) error {
 	return m.err
 }
 
@@ -679,4 +691,153 @@ func containsTag(tags []string, tag string) bool {
 		}
 	}
 	return false
+}
+
+// ── Test CheckEvolutionTriggers: 7d success rate < 60% ─────────────────────────
+
+func TestCheckEvolutionTriggers_7dLowSuccessRate(t *testing.T) {
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-7d-bad",
+			InvocationCount: 10,
+			SuccessCount:    3,
+			SuccessRate:     0.3, // < 60%
+			AvgDurationMS:   5000,
+		},
+		tagCounts: []FailureTagCount{},
+	}
+	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	sugReader := &mockSkillEvolutionSuggestionReader{}
+	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+
+	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-7d-bad")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if suggestion == nil {
+		t.Fatal("expected suggestion for 7d low success rate")
+	}
+	if suggestion.Type != EvoSuggestionFixFailure {
+		t.Errorf("expected type fix_failure, got %q", suggestion.Type)
+	}
+}
+
+// ── Test CheckEvolutionTriggers: same failure tag >= 5 ─────────────────────────
+
+func TestCheckEvolutionTriggers_SameFailureTagThreshold(t *testing.T) {
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-tag-repeat",
+			InvocationCount: 20,
+			SuccessCount:    15,
+			SuccessRate:     0.75, // healthy success rate
+			AvgDurationMS:   3000,
+		},
+		tagCounts: []FailureTagCount{
+			{Tag: FailureTagToolTimeout, Count: 6}, // >= 5 threshold
+			{Tag: FailureTagToolAPIError, Count: 2},
+		},
+	}
+	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	sugReader := &mockSkillEvolutionSuggestionReader{}
+	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+
+	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-repeat")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if suggestion == nil {
+		t.Fatal("expected suggestion for same failure tag >= 5")
+	}
+	if suggestion.Type != EvoSuggestionFixFailure {
+		t.Errorf("expected type fix_failure, got %q", suggestion.Type)
+	}
+	if !strings.Contains(suggestion.TriggerReason, FailureTagToolTimeout) {
+		t.Errorf("expected trigger reason to mention tag %q, got %q", FailureTagToolTimeout, suggestion.TriggerReason)
+	}
+}
+
+func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-tag-ok",
+			InvocationCount: 20,
+			SuccessCount:    18,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+		tagCounts: []FailureTagCount{
+			{Tag: FailureTagToolTimeout, Count: 3}, // < 5 threshold
+		},
+	}
+	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	sugReader := &mockSkillEvolutionSuggestionReader{}
+	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+
+	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-ok")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if suggestion != nil {
+		t.Errorf("expected nil suggestion when same tag below threshold, got type=%q", suggestion.Type)
+	}
+}
+
+// ── Test RunCuratorFlow: full semi-automatic evolution pipeline ────────────────
+
+func TestRunCuratorFlow_Success(t *testing.T) {
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-curator",
+			InvocationCount: 20,
+			SuccessCount:    5,
+			SuccessRate:     0.25,
+			AvgDurationMS:   25000,
+		},
+		tagCounts: []FailureTagCount{},
+	}
+	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	sugReader := &mockSkillEvolutionSuggestionReader{}
+	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+
+	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-curator")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if suggestion == nil {
+		t.Fatal("expected suggestion from RunCuratorFlow")
+	}
+	if suggestion.Status != EvoSuggestionPending {
+		t.Errorf("expected status=pending, got %q", suggestion.Status)
+	}
+	if suggestion.LifecycleStatus != EvoLifecycleReady {
+		t.Errorf("expected lifecycle_status=ready (sandbox passed), got %q", suggestion.LifecycleStatus)
+	}
+	if suggestion.DraftSkillBody == "" {
+		t.Error("expected non-empty DraftSkillBody after curator flow")
+	}
+}
+
+func TestRunCuratorFlow_NoTrigger(t *testing.T) {
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-healthy",
+			InvocationCount: 20,
+			SuccessCount:    18,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+		tagCounts: []FailureTagCount{},
+	}
+	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	sugReader := &mockSkillEvolutionSuggestionReader{}
+	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+
+	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-healthy")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if suggestion != nil {
+		t.Errorf("expected nil suggestion for healthy skill, got type=%q", suggestion.Type)
+	}
 }

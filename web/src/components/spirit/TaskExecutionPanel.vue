@@ -7,7 +7,7 @@
           <div class="task-execution-panel__title ellipsis">{{ team.teamName }}</div>
           <div class="task-execution-panel__summary ellipsis">{{ team.taskSummary }}</div>
         </div>
-        <SessionStatusBadge :status="team.status as any" :status-reason="undefined" :status-changed-at="undefined" />
+        <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
       </div>
       <div v-if="team.totalSteps > 0" class="q-mt-sm">
         <q-linear-progress :value="team.completedSteps / team.totalSteps" size="6px" rounded color="accent" />
@@ -61,7 +61,8 @@ import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
-import type { SpiritTeam } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritTeamStatus } from '../../features/spirit/types';
+import type { SessionStatus } from '../../features/session/types';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
 
 const props = defineProps<{
@@ -82,6 +83,19 @@ const assistantMessages = computed(() =>
 );
 
 const outputLabel = computed(() => `对话输出 (${assistantMessages.value.length})`);
+
+const mappedStatus = computed(() => {
+  const mapping: Record<SpiritTeamStatus, SessionStatus> = {
+    pending: 'idle',
+    running: 'running',
+    completed: 'completed',
+    failed: 'interrupted',
+    cancelled: 'interrupted',
+    interrupted: 'interrupted',
+    archived: 'completed',
+  };
+  return mapping[props.team.status] ?? 'idle';
+});
 
 function formatTime(iso: string): string {
   const d = new Date(iso);

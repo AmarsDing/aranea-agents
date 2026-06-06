@@ -71,6 +71,9 @@ func (m *memTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, err
 func (m *memTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (m *memTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }

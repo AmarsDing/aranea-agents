@@ -29,6 +29,9 @@ func (r *cancelTeamRunRepo) BatchArchiveTeams(_ context.Context, _ []string) (in
 func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (r *cancelTeamRunRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
 func (r *cancelTeamRunRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	run, ok := r.runs[id]
 	if !ok {

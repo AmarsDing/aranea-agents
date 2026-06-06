@@ -101,6 +101,25 @@ func (s *SkillEvolutionSuggestionService) RejectSkillEvolutionSuggestion(ctx con
 	return &v1.RejectSkillEvolutionSuggestionResponse{}, nil
 }
 
+// TriggerCuratorFlow runs the full Curator Agent semi-automatic evolution
+// pipeline for a skill: trigger detection → draft generation → sandbox verification.
+func (s *SkillEvolutionSuggestionService) TriggerCuratorFlow(ctx context.Context, req *v1.TriggerCuratorFlowRequest) (*v1.TriggerCuratorFlowResponse, error) {
+	if s.curator == nil {
+		return nil, kerrors.ServiceUnavailable("SKILL_EVO_SUGGESTION", "curator service not available")
+	}
+
+	suggestion, err := s.curator.RunCuratorFlow(ctx, req.GetSkillId())
+	if err != nil {
+		return nil, err
+	}
+	if suggestion == nil {
+		return &v1.TriggerCuratorFlowResponse{}, nil
+	}
+	return &v1.TriggerCuratorFlowResponse{
+		Suggestion: toProtoEvolutionSuggestion(*suggestion),
+	}, nil
+}
+
 // ── Proto conversion helpers ──────────────────────────────────────────────────
 
 func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion) *v1.SkillEvolutionSuggestionMsg {

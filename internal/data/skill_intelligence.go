@@ -220,6 +220,38 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
 	return stats, nil
 }
 
+// GetFailureTagCounts returns failure tag counts for a skill over the given
+// time window by querying experience reports.
+func (r *SkillIntelligenceRepo) GetFailureTagCounts(ctx context.Context, skillID string, since time.Time) ([]biz.FailureTagCount, error) {
+	sinceStr := since.UTC().Format(time.RFC3339)
+	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
+		Where(
+			experiencereport.SkillIDEQ(skillID),
+			experiencereport.CreatedAtGTE(sinceStr),
+			experiencereport.IsSuccessEQ(false),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tagCountMap := make(map[string]int)
+	for _, row := range rows {
+		for _, tag := range row.FailureTags {
+			tagCountMap[tag]++
+		}
+	}
+
+	result := make([]biz.FailureTagCount, 0, len(tagCountMap))
+	for tag, count := range tagCountMap {
+		result = append(result, biz.FailureTagCount{Tag: tag, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Count > result[j].Count
+	})
+	return result, nil
+}
+
 // ── Mapping helpers ───────────────────────────────────────────────────────────
 
 func mapEntReport(row *ent.ExperienceReport) biz.ExperienceReport {
