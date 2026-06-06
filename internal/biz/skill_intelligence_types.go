@@ -25,6 +25,8 @@ type ExperienceReport struct {
 	FlowSummary           string
 	OptimizationAdvice    string
 	SelectionSnapshot     json.RawMessage
+	RootCauseAnalysis     string
+	SuggestedFix          string
 	GeneratedSuggestionID *string
 	CreatedAt             time.Time
 }

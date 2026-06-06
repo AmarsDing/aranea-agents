@@ -116,7 +116,10 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	if opts != nil && opts.HealthAgg != nil {
 		candidates := buildRankCandidates(ctx, scored, opts.HealthAgg, lg)
 		if len(candidates) > 0 {
-			ranked := skillrecommend.Rank(candidates, skillrecommend.DefaultRankFactors())
+			// Create adapter bridge from Biz layer to Tools layer interface.
+			provider := biz.NewSkillHealthMetricsAdapter(opts.HealthAgg)
+			factors := skillrecommend.DynamicRankFactors(provider, candidates)
+			ranked := skillrecommend.Rank(candidates, factors)
 			applyRankResults(scored, ranked, reasons)
 		}
 	}

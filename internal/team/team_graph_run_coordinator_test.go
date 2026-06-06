@@ -23,6 +23,7 @@ func (m *memTeamRepoCoord) GetTeamByID(context.Context, string) (biz.Team, error
 func (m *memTeamRepoCoord) CreateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (m *memTeamRepoCoord) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (m *memTeamRepoCoord) DeleteTeam(context.Context, string) error { return nil }
+func (m *memTeamRepoCoord) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (m *memTeamRepoCoord) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }

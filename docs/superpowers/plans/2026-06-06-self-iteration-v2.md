@@ -693,24 +693,24 @@ Expected: PASS
 - Create: `internal/service/skill_intelligence_integration_test.go`
 - Create: `internal/service/chat_turn_integration_test.go`
 
-- [ ] **Step 1: 创建自愈闭环集成测试**
+- [x] **Step 1: 创建自愈闭环集成测试**
 
 创建 `internal/service/monitor_integration_test.go`，测试注入错误→检测→根因分析→FixAction 生成→验证的完整闭环。
 
-- [ ] **Step 2: 创建 Skill Intelligence 集成测试**
+- [x] **Step 2: 创建 Skill Intelligence 集成测试**
 
 创建 `internal/service/skill_intelligence_integration_test.go`，测试 Skill 调用失败→AnalyzeInvocation→GenerateReport→持久化→查询。
 
-- [ ] **Step 3: 创建 Chat Turn 集成测试**
+- [x] **Step 3: 创建 Chat Turn 集成测试**
 
 创建 `internal/service/chat_turn_integration_test.go`，测试创建 Session→发送消息→Agent 响应→Memory 写入。
 
-- [ ] **Step 4: Phase 1 全量验证**
+- [x] **Step 4: Phase 1 全量验证**
 
 Run: `make api && make wire && make build && make test && make lint`
 Expected: All PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -729,32 +729,32 @@ Expected: All PASS
 - Modify: `internal/service/skill_intelligence.go`
 - Wire DI 装配
 
-- [ ] **Step 1: 扩展 ExperienceReport 字段**
+- [x] **Step 1: 扩展 ExperienceReport 字段**
 
 在 `internal/biz/skill_intelligence_types.go` 的 `ExperienceReport` 中新增 `RootCauseAnalysis` 和 `SuggestedFix` 字段。
 
-- [ ] **Step 2: GenerateReport 集成 RootCauseAnalyzer**
+- [x] **Step 2: GenerateReport 集成 RootCauseAnalyzer**
 
 修改 `internal/biz/skill_intelligence.go`，在 `GenerateReport` 中注入 `RootCauseAnalyzer`，调用 `AnalyzeFromReport`。
 
-- [ ] **Step 3: 更新 Ent Schema 和 Data 层**
+- [x] **Step 3: 更新 Ent Schema 和 Data 层**
 
 修改 `internal/data/ent/schema/experience_report.go` 新增字段，更新 `internal/data/skill_intelligence.go` 持久化逻辑。
 
-- [ ] **Step 4: 替换 skill_intelligence_worker 占位实现**
+- [x] **Step 4: 替换 skill_intelligence_worker 占位实现**
 
 修改 `internal/cronrunner/jobs/skill_intelligence_worker.go`，实现批量 AnalyzeInvocation/ScoreSkill/GenerateReport。
 
-- [ ] **Step 5: 更新 Proto 和 Service 层**
+- [x] **Step 5: 更新 Proto 和 Service 层**
 
 修改 `api/kratos/skill_intelligence/v1/skill_intelligence.proto`，更新 `internal/service/skill_intelligence.go`。
 
-- [ ] **Step 6: Wire DI 装配**
+- [x] **Step 6: Wire DI 装配**
 
 Run: `make api && make wire && make build`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -771,36 +771,36 @@ Expected: PASS
 - Modify: `internal/tools/skillruntime/resolve.go`
 - Create: `internal/tools/skillrecommend/rank_feedback.go`
 
-- [ ] **Step 1: 定义 HealthMetricsProvider 接口**
+- [x] **Step 1: 定义 HealthMetricsProvider 接口**
 
 创建 `internal/tools/skillrecommend/health_provider.go`，定义接口。
 
-- [ ] **Step 2: 实现 DynamicRankFactors**
+- [x] **Step 2: 实现 DynamicRankFactors**
 
 修改 `internal/tools/skillrecommend/rank.go`，新增 `DynamicRankFactors` 函数。
 
-- [ ] **Step 3: 测试动态权重调整**
+- [x] **Step 3: 测试动态权重调整**
 
 修改 `internal/tools/skillrecommend/rank_test.go`，测试高成功率/低成功率/无数据场景。
 
-- [ ] **Step 4: Biz 层适配器**
+- [x] **Step 4: Biz 层适配器**
 
 创建 Biz 层适配器，实现 `HealthMetricsProvider` 接口。
 
-- [ ] **Step 5: 集成到 ResolveSkillSlugsDetailed**
+- [x] **Step 5: 集成到 ResolveSkillSlugsDetailed**
 
 修改 `internal/tools/skillruntime/resolve.go`，调用 DynamicRankFactors。
 
-- [ ] **Step 6: 创建 RankFeedback**
+- [x] **Step 6: 创建 RankFeedback**
 
 创建 `internal/tools/skillrecommend/rank_feedback.go`。
 
-- [ ] **Step 7: 验证**
+- [x] **Step 7: 验证**
 
 Run: `go test ./internal/tools/skillrecommend/... -count=1`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 

@@ -47,6 +47,14 @@ func (s *SkillCuratorService) GenerateDraft(ctx context.Context, suggestionID st
 			loggateway.Err(err))
 	}
 
+	// Update lifecycle status to draft (indicates draft has been generated)
+	if lcErr := s.uc.UpdateSuggestionLifecycleStatus(ctx, suggestionID, biz.EvoLifecycleDraft); lcErr != nil {
+		s.lg.Warn("SkillCurator: failed to update lifecycle status",
+			loggateway.StepID("skill_curator.generate"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(lcErr))
+	}
+
 	return draft, nil
 }
 

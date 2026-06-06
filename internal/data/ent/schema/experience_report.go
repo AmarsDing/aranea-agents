@@ -32,6 +32,8 @@ func (ExperienceReport) Fields() []ent.Field {
 		field.Text("flow_summary").Default(""),
 		field.Text("optimization_advice").Default(""),
 		field.JSON("selection_snapshot", map[string]any{}).Optional(),
+		field.Text("root_cause_analysis").Default(""),
+		field.Text("suggested_fix").Default(""),
 		field.String("generated_suggestion_id").Default("").MaxLen(256),
 		field.String("created_at").Default(""),
 	}

@@ -30,7 +30,7 @@
 
     <div v-if="expanded" class="team-task-card__detail q-mt-sm">
       <div class="row items-center q-gutter-xs q-mb-xs">
-        <SessionStatusBadge :status="team.status as any" :status-reason="undefined" :status-changed-at="undefined" />
+        <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
         <q-chip v-if="team.mode" dense size="sm" outline :label="modeLabel" class="team-task-card__mode" />
       </div>
 
@@ -62,6 +62,7 @@
 import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import type { SpiritTeam } from '../../features/spirit/types';
+import type { SessionStatus } from '../../features/session/types';
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -74,6 +75,19 @@ defineEmits<{
   'toggle-expand': [];
 }>();
 
+const mappedStatus = computed(() => {
+  const mapping: Record<SpiritTeam['status'], SessionStatus> = {
+    pending: 'idle',
+    running: 'running',
+    completed: 'completed',
+    failed: 'interrupted',
+    cancelled: 'interrupted',
+    interrupted: 'interrupted',
+    archived: 'completed',
+  };
+  return mapping[props.team.status] ?? 'idle';
+});
+
 const modeLabel = computed(() => {
   const m = props.team.mode;
   if (!m) return '';
@@ -84,7 +98,6 @@ const modeLabel = computed(() => {
     critic_loop: '批判循环',
     swarm: '蜂群',
     adaptive: '自适应',
-    direct: '直接',
   };
   return labels[m] ?? m;
 });

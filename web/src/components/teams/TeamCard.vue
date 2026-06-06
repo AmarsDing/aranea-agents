@@ -10,7 +10,7 @@
           <div class="team-card__title-row">
             <h3 class="team-card__name ellipsis">{{ team.display_name }}</h3>
             <KindBadge :kind="team.kind" />
-            <q-chip dense square size="sm" color="primary" text-color="white" class="team-card__mode-chip">
+            <q-chip v-if="definition.members.length" dense square size="sm" color="primary" text-color="white" class="team-card__mode-chip">
               {{ definition.mode }}
             </q-chip>
             <q-chip v-if="team.is_default" dense square size="sm" color="amber" text-color="black">默认</q-chip>
@@ -106,7 +106,7 @@
 import { computed } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import type { Team } from '../../features/teams/types';
-import { agentName, formatDate, memberIcon, parseDefinition, topologyNodesFromDefinition } from './teamUtils';
+import { agentName, formatDate, memberIcon, parseDefinition, teamStatusMap, topologyNodesFromDefinition } from './teamUtils';
 import KindBadge from '../agents/KindBadge.vue';
 
 const props = defineProps<{
@@ -128,17 +128,7 @@ defineEmits<{
 const definition = computed(() => parseDefinition(props.team));
 const topologyNodes = computed(() => topologyNodesFromDefinition(definition.value));
 
-const statusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: '待执行', color: 'warning' },
-  running: { label: '执行中', color: 'positive' },
-  completed: { label: '已完成', color: 'blue' },
-  failed: { label: '失败', color: 'negative' },
-  cancelled: { label: '已取消', color: 'grey' },
-  interrupted: { label: '已中断', color: 'orange' },
-  archived: { label: '已归档', color: 'grey' },
-  active: { label: '活跃', color: 'positive' },
-};
-const statusConfig = computed(() => statusMap[props.team.status] ?? { label: props.team.status, color: 'grey' });
+const statusConfig = computed(() => teamStatusMap[props.team.status] ?? { label: props.team.status, color: 'grey' });
 const statusColor = computed(() => statusConfig.value.color);
 const statusLabel = computed(() => statusConfig.value.label);
 </script>

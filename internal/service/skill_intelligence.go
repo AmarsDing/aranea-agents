@@ -65,6 +65,8 @@ func toProtoExperienceReport(r biz.ExperienceReport) *v1.ExperienceReport {
 		FailureTags:        r.FailureTags,
 		FlowSummary:        r.FlowSummary,
 		OptimizationAdvice: r.OptimizationAdvice,
+		RootCauseAnalysis:  r.RootCauseAnalysis,
+		SuggestedFix:       r.SuggestedFix,
 		CreatedAt:          timestamppb.New(r.CreatedAt),
 	}
 	if r.SelectionSnapshot != nil {

@@ -795,6 +795,20 @@ func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdat
 				continue
 			}
 			if in.Delete {
+				// Permission check: same as single Delete
+				a, err := u.repo.GetAgentByID(txCtx, id)
+				if err != nil {
+					return err
+				}
+				if a.Kind == "system_builtin" {
+					return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
+				}
+				if a.Kind == "ecosystem_preset" {
+					return kerrors.Forbidden("AGENT", "cannot delete ecosystem_preset agent directly; use industry unload instead")
+				}
+				if a.Readonly {
+					return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
+				}
 				if err := u.repo.DeleteAgent(txCtx, id); err != nil {
 					return err
 				}

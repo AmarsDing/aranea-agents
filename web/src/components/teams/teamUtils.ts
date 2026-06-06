@@ -10,6 +10,17 @@ import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
 
 export { buildGraphFromDefinition };
 
+export const teamStatusMap: Record<string, { label: string; color: string }> = {
+  pending: { label: '待执行', color: 'warning' },
+  running: { label: '执行中', color: 'positive' },
+  completed: { label: '已完成', color: 'blue' },
+  failed: { label: '失败', color: 'negative' },
+  cancelled: { label: '已取消', color: 'grey' },
+  interrupted: { label: '已中断', color: 'orange' },
+  archived: { label: '已归档', color: 'grey' },
+  active: { label: '活跃', color: 'positive' },
+};
+
 export type TeamIndustryGroup = {
   id: string;
   label: string;

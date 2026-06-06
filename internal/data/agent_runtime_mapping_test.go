@@ -314,7 +314,8 @@ func TestEntAgentToBiz_BasicFields(t *testing.T) {
 		ConfigJSON:         `{"kind":"llm"}`,
 		CreatedBy:          "admin",
 		Readonly:           false,
-		Kind:               "llm",
+		Kind:               "user",
+		Source:             "user",
 		CreatedAt:          "2024-01-01",
 		UpdatedAt:          "2024-06-01",
 		DeletedAt:          "",
@@ -322,6 +323,7 @@ func TestEntAgentToBiz_BasicFields(t *testing.T) {
 	}
 
 	got := entAgentToBiz(a, lg)
+	biz.HydrateAgentKind(&got)
 	if got.ID != "a1" || got.AgentKey != "test-agent" {
 		t.Fatalf("agent id/key mismatch: %+v", got)
 	}
@@ -340,8 +342,14 @@ func TestEntAgentToBiz_BasicFields(t *testing.T) {
 	if len(got.Roles) != 1 || got.Roles[0] != "admin" {
 		t.Fatalf("agent roles mismatch: got %v", got.Roles)
 	}
-	if got.Source != "llm" {
+	if got.Source != "user" {
 		t.Fatalf("agent source mismatch: got %q", got.Source)
+	}
+	if got.Kind != "user" {
+		t.Fatalf("agent kind mismatch: got %q", got.Kind)
+	}
+	if got.AgentKind != "llm" {
+		t.Fatalf("agent agent_kind mismatch: got %q", got.AgentKind)
 	}
 }
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { listSpiritTeams, cancelSpiritTeam } from '../../features/spirit/api';
-import type { SpiritTeam, SpiritPanelMode, SpiritTeamMode, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritPanelMode, SpiritTeamMode, SpiritTeamStatus, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
 import type {
   SpiritPlanCreatedPayload,
@@ -244,7 +244,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             };
             const blocked = regressions[team.status];
             if (!blocked || !blocked.has(newStatus)) {
-              team.status = newStatus as SpiritTeam['status'];
+              if (isValidTeamStatus(newStatus)) {
+                team.status = newStatus;
+              }
             }
             if (pct >= 0 && team.totalSteps > 0) {
               team.completedSteps = Math.round((pct * team.totalSteps) / 100);

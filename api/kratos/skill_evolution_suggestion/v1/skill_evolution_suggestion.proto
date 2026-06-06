@@ -79,4 +79,8 @@ message SkillEvolutionSuggestionMsg {
   string rejection_reason = 14;
   google.protobuf.Timestamp created_at = 15;
   google.protobuf.Timestamp resolved_at = 16;
+  // Curator Agent evolution tracking fields
+  string parent_version_id = 17;
+  string evolution_reason = 18;
+  string lifecycle_status = 19;
 }

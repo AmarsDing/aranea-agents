@@ -87,6 +87,10 @@ func (m *parityMemRepo) ResolveTaskDeadLetter(context.Context, string) (biz.Task
 func (m *parityMemRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (m *parityMemRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
+func (m *parityMemRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
+	return biz.Team{}, nil
+}
 
 type parityStubAgents struct {
 	biz.AgentRepository

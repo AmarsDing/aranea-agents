@@ -45,7 +45,7 @@
 - 验证方式：YAML 语法正确，actionlint 通过
 
 ### Task 5: 集成测试补齐
-- [ ] **任务完成**（与 superpowers plan `Task 5`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 5`、`tasks.md` 对应条目同步勾选）
 - 目标：补齐自愈闭环、Skill Intelligence、Chat Turn 核心业务流程的集成测试
 - 改动文件：
   - `internal/service/monitor_integration_test.go`（新增）
@@ -54,7 +54,7 @@
 - 验证方式：`make api && make wire && make build && make test && make lint`
 
 ### Task 6: 经验报告诊断
-- [ ] **任务完成**（与 superpowers plan `Task 6`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 6`、`tasks.md` 对应条目同步勾选）
 - 目标：扩展 ExperienceReport 字段，集成 RootCauseAnalyzer，新增 Cron Worker 和 API
 - 改动文件：
   - `internal/biz/skill_intelligence_types.go`（修改：新增字段）
@@ -68,7 +68,7 @@
 - 验证方式：`make api && make wire && make build` 通过
 
 ### Task 7: 推荐排序进化
-- [ ] **任务完成**（与 superpowers plan `Task 7`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 7`、`tasks.md` 对应条目同步勾选）
 - 目标：引入 DynamicRankFactors + HealthMetricsProvider 接口桥接
 - 改动文件：
   - `internal/tools/skillrecommend/health_provider.go`（新增：接口定义）

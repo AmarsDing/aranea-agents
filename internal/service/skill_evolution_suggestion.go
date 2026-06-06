@@ -118,6 +118,9 @@ func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion) *v1.SkillEvoluti
 		RejectedBy:      s.RejectedBy,
 		RejectionReason: s.RejectionReason,
 		CreatedAt:       timestamppb.New(s.CreatedAt),
+		ParentVersionId: s.ParentVersionID,
+		EvolutionReason: s.EvolutionReason,
+		LifecycleStatus: s.LifecycleStatus,
 	}
 	if s.SandboxResult != nil {
 		var m map[string]interface{}

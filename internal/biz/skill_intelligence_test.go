@@ -120,19 +120,37 @@ func (m *mockSkillEvolutionSuggestionWriter) UpdateSandboxResult(_ context.Conte
 	return m.err
 }
 
+type mockRootCauseAnalyzer struct {
+	result *RootCauseAnalysisResult
+	err    error
+}
+
+func (m *mockRootCauseAnalyzer) AnalyzeInvocationFailure(_ context.Context, _ SkillInvocationWrite) (*RootCauseAnalysisResult, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.result, nil
+}
+
 // newTestUsecase creates a SkillIntelligenceUsecase with the given mocks.
 func newTestUsecase(
 	writer *mockExperienceReportWriter,
 	reader *mockExperienceReportReader,
 	aggregator *mockSkillHealthAggregator,
+	analyzer ...RootCauseAnalyzer,
 ) *SkillIntelligenceUsecase {
 	lg := loggateway.NewNoop()
+	var a RootCauseAnalyzer
+	if len(analyzer) > 0 {
+		a = analyzer[0]
+	}
 	return NewSkillIntelligenceUsecase(
 		reader,
 		writer,
 		aggregator,
 		&mockSkillEvolutionSuggestionReader{},
 		&mockSkillEvolutionSuggestionWriter{},
+		a,
 		lg,
 	)
 }
@@ -449,6 +467,206 @@ func TestSkillIntelligence_GenerateReport_NilWriter(t *testing.T) {
 	}
 	if report.SkillID != "skill-1" {
 		t.Errorf("expected SkillID=skill-1, got %q", report.SkillID)
+	}
+}
+
+// ── TestGenerateReport with RootCauseAnalysis ─────────────────────────────────
+
+func TestSkillIntelligence_GenerateReport_RootCauseAnalysis_Populated(t *testing.T) {
+	writer := &mockExperienceReportWriter{}
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-1",
+			InvocationCount: 50,
+			SuccessCount:    45,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+	}
+	analyzer := &mockRootCauseAnalyzer{
+		result: &RootCauseAnalysisResult{
+			RootCause:  "LLM provider response time exceeded configured timeout",
+			FixSuggest: "Increase provider timeout or switch to a faster model",
+			Severity:   "high",
+			Confidence: 0.8,
+		},
+	}
+	uc := newTestUsecase(writer, nil, agg, analyzer)
+
+	inv := SkillInvocationWrite{
+		SkillID:      "skill-1",
+		SessionID:    "session-1",
+		ActivationID: "activation-rca-1",
+		Outcome:      "failure",
+		DurationMS:   35000,
+		ErrorCode:    "TIMEOUT",
+		ErrorMessage: "operation timed out",
+	}
+
+	report, err := uc.GenerateReport(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.RootCauseAnalysis == "" {
+		t.Error("expected non-empty RootCauseAnalysis for failed invocation with analyzer")
+	}
+	if report.RootCauseAnalysis != "LLM provider response time exceeded configured timeout" {
+		t.Errorf("expected specific RootCauseAnalysis, got %q", report.RootCauseAnalysis)
+	}
+	if report.SuggestedFix == "" {
+		t.Error("expected non-empty SuggestedFix for failed invocation with analyzer")
+	}
+	if report.SuggestedFix != "Increase provider timeout or switch to a faster model" {
+		t.Errorf("expected specific SuggestedFix, got %q", report.SuggestedFix)
+	}
+}
+
+func TestSkillIntelligence_GenerateReport_RootCauseAnalysis_SuccessNoRCA(t *testing.T) {
+	writer := &mockExperienceReportWriter{}
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-1",
+			InvocationCount: 50,
+			SuccessCount:    45,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+	}
+	analyzer := &mockRootCauseAnalyzer{
+		result: &RootCauseAnalysisResult{
+			RootCause:  "should not be used",
+			FixSuggest: "should not be used",
+		},
+	}
+	uc := newTestUsecase(writer, nil, agg, analyzer)
+
+	inv := SkillInvocationWrite{
+		SkillID:      "skill-1",
+		SessionID:    "session-1",
+		ActivationID: "activation-rca-2",
+		Outcome:      "success",
+		DurationMS:   1000,
+	}
+
+	report, err := uc.GenerateReport(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.RootCauseAnalysis != "" {
+		t.Errorf("expected empty RootCauseAnalysis for success invocation, got %q", report.RootCauseAnalysis)
+	}
+	if report.SuggestedFix != "" {
+		t.Errorf("expected empty SuggestedFix for success invocation, got %q", report.SuggestedFix)
+	}
+}
+
+func TestSkillIntelligence_GenerateReport_RootCauseAnalysis_NilAnalyzer(t *testing.T) {
+	writer := &mockExperienceReportWriter{}
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-1",
+			InvocationCount: 50,
+			SuccessCount:    45,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+	}
+	uc := newTestUsecase(writer, nil, agg) // no analyzer
+
+	inv := SkillInvocationWrite{
+		SkillID:      "skill-1",
+		SessionID:    "session-1",
+		ActivationID: "activation-rca-3",
+		Outcome:      "failure",
+		DurationMS:   35000,
+		ErrorCode:    "TIMEOUT",
+		ErrorMessage: "operation timed out",
+	}
+
+	report, err := uc.GenerateReport(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.RootCauseAnalysis != "" {
+		t.Errorf("expected empty RootCauseAnalysis when analyzer is nil, got %q", report.RootCauseAnalysis)
+	}
+	if report.SuggestedFix != "" {
+		t.Errorf("expected empty SuggestedFix when analyzer is nil, got %q", report.SuggestedFix)
+	}
+}
+
+func TestSkillIntelligence_GenerateReport_RootCauseAnalysis_AnalyzerReturnsNil(t *testing.T) {
+	writer := &mockExperienceReportWriter{}
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-1",
+			InvocationCount: 50,
+			SuccessCount:    45,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+	}
+	analyzer := &mockRootCauseAnalyzer{
+		result: nil, // no rule matches
+	}
+	uc := newTestUsecase(writer, nil, agg, analyzer)
+
+	inv := SkillInvocationWrite{
+		SkillID:      "skill-1",
+		SessionID:    "session-1",
+		ActivationID: "activation-rca-4",
+		Outcome:      "failure",
+		DurationMS:   500,
+		ErrorMessage: "something went wrong",
+	}
+
+	report, err := uc.GenerateReport(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.RootCauseAnalysis != "" {
+		t.Errorf("expected empty RootCauseAnalysis when analyzer returns nil, got %q", report.RootCauseAnalysis)
+	}
+	if report.SuggestedFix != "" {
+		t.Errorf("expected empty SuggestedFix when analyzer returns nil, got %q", report.SuggestedFix)
+	}
+}
+
+func TestSkillIntelligence_GenerateReport_RootCauseAnalysis_AnalyzerError(t *testing.T) {
+	writer := &mockExperienceReportWriter{}
+	agg := &mockSkillHealthAggregator{
+		metrics: &SkillHealthMetrics{
+			SkillID:         "skill-1",
+			InvocationCount: 50,
+			SuccessCount:    45,
+			SuccessRate:     0.9,
+			AvgDurationMS:   3000,
+		},
+	}
+	analyzer := &mockRootCauseAnalyzer{
+		err: fmt.Errorf("analyzer unavailable"),
+	}
+	uc := newTestUsecase(writer, nil, agg, analyzer)
+
+	inv := SkillInvocationWrite{
+		SkillID:      "skill-1",
+		SessionID:    "session-1",
+		ActivationID: "activation-rca-5",
+		Outcome:      "failure",
+		DurationMS:   35000,
+		ErrorCode:    "TIMEOUT",
+		ErrorMessage: "operation timed out",
+	}
+
+	report, err := uc.GenerateReport(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v (analyzer error should be non-fatal)", err)
+	}
+	if report.RootCauseAnalysis != "" {
+		t.Errorf("expected empty RootCauseAnalysis when analyzer errors, got %q", report.RootCauseAnalysis)
+	}
+	if report.SuggestedFix != "" {
+		t.Errorf("expected empty SuggestedFix when analyzer errors, got %q", report.SuggestedFix)
 	}
 }
 

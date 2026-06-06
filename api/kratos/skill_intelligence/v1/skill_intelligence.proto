@@ -25,6 +25,8 @@ message ExperienceReport {
   google.protobuf.Struct selection_snapshot = 11;
   string generated_suggestion_id = 12;
   google.protobuf.Timestamp created_at = 13;
+  string root_cause_analysis = 14;
+  string suggested_fix = 15;
 }
 
 message ListExperienceReportsRequest {

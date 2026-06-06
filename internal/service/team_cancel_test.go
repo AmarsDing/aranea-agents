@@ -25,6 +25,7 @@ func (r *cancelTeamRunRepo) GetTeamByID(_ context.Context, _ string) (biz.Team, 
 func (r *cancelTeamRunRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
 func (r *cancelTeamRunRepo) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
 func (r *cancelTeamRunRepo) DeleteTeam(_ context.Context, _ string) error                 { return nil }
+func (r *cancelTeamRunRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }

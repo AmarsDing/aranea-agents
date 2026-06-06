@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -540,7 +541,6 @@ func provideRuntimeTooling(
 }
 
 func provideTeamOrchestrationDeps(
-	teams biz.TeamRepository,
 	teamsNative *team.Runner,
 	graphFactory biz.GraphBuilderFactory,
 	graphs *biz.GraphUsecase,
@@ -552,7 +552,6 @@ func provideTeamOrchestrationDeps(
 	agentAllocator biz.AgentAllocatorPort,
 ) service.TeamOrchestrationDeps {
 	return service.TeamOrchestrationDeps{
-		Teams:          teams,
 		TeamsNative:    teamsNative,
 		GraphFactory:   graphFactory,
 		Graphs:         graphs,
@@ -1086,8 +1085,50 @@ func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseE
 	return monitor.NewSelfHealObserver(repo, engine, notifier, lg)
 }
 
-func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
-	return biz.NewSkillIntelligenceUsecase(repo, repo, repo, suggestionRepo, suggestionRepo, lg)
+func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+	analyzer := &skillIntelligenceRCAAdapter{inner: rca}
+	uc := biz.NewSkillIntelligenceUsecase(repo, repo, repo, suggestionRepo, suggestionRepo, analyzer, lg)
+	uc.SetUnanalyzedReader(repo)
+	return uc
+}
+
+// skillIntelligenceRCAAdapter bridges monitor.RootCauseAnalyzer to biz.RootCauseAnalyzer.
+type skillIntelligenceRCAAdapter struct {
+	inner monitor.RootCauseAnalyzer
+}
+
+func (a *skillIntelligenceRCAAdapter) AnalyzeInvocationFailure(ctx context.Context, inv biz.SkillInvocationWrite) (*biz.RootCauseAnalysisResult, error) {
+	report := &monitor.FailureReport{
+		Type:      monitor.FailureTypeRuntime,
+		Source:    "runtime",
+		Job:       "skill",
+		ErrorCode: inv.ErrorCode,
+		Message:   inv.ErrorMessage,
+		Metadata:  make(map[string]string),
+	}
+	if inv.DurationMS > biz.TimeoutThresholdMS {
+		report.Metadata["duration_ms"] = fmt.Sprintf("%d", inv.DurationMS)
+	}
+	if inv.InputPreview != "" {
+		report.Metadata["input_preview_len"] = fmt.Sprintf("%d", len(inv.InputPreview))
+	}
+	if inv.SkillID != "" {
+		report.Metadata["skill_id"] = inv.SkillID
+	}
+
+	result, err := a.inner.AnalyzeFromReport(ctx, report)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+	return &biz.RootCauseAnalysisResult{
+		RootCause:  result.RootCause,
+		FixSuggest: result.FixSuggest,
+		Severity:   result.Severity,
+		Confidence: result.Confidence,
+	}, nil
 }
 
 func provideSelfCheckScheduler(

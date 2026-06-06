@@ -635,9 +635,15 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
 	}
 
-	teamKind := "user"
-	if cfg.kindOverride != "" {
-		teamKind = cfg.kindOverride
+	// Kind = ownership classification (user | system_builtin | ecosystem_preset | ...)
+	// Source = origin tracking (user | system | imported), aligned with Agent import logic
+	teamKind := cfg.kindOverride
+	if teamKind == "" {
+		teamKind = "user"
+	}
+	teamSource := "imported"
+	if teamKind == "system_builtin" {
+		teamSource = "system"
 	}
 	team := biz.Team{
 		TeamKey:        spec.Key,
@@ -645,7 +651,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		DefinitionJSON: defJSON,
 		Status:         biz.TeamStatusPending,
 		Kind:           teamKind,
-		Source:         "imported",
+		Source:         teamSource,
 		Readonly:       false,
 	}
 
@@ -659,9 +665,10 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 			return 0, 0, 1, nil
 		case ConflictOverwrite:
 			team.ID = existing.ID
-			// 保留原始 Status/Readonly/Source
+			// 保留原始 Status/Readonly/Kind/Source
 			team.Status = existing.Status
 			team.Readonly = existing.Readonly
+			team.Kind = existing.Kind
 			team.Source = existing.Source
 			if _, err := im.repo.UpdateTeam(ctx, team); err != nil {
 				return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_UPDATE", fmt.Sprintf("更新 Team %s 失败: %s", spec.Key, err.Error()))

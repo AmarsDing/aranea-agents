@@ -11,7 +11,8 @@ import (
 // PackRepoAdapter adapts existing biz repos to satisfy pack engine interfaces.
 type PackRepoAdapter struct {
 	agents      biz.AgentRepository
-	teams       biz.TeamRepository
+	teamReader  biz.TeamReader
+	teamWriter  biz.TeamWriter
 	taxonomy    biz.TaxonomyRepo
 	graphs      biz.GraphRepo
 	skillLookup biz.SkillLookupReader
@@ -24,14 +25,16 @@ var _ pack.ValidatorRepo = (*PackRepoAdapter)(nil)
 // NewPackRepoAdapter creates a composite adapter from existing repos.
 func NewPackRepoAdapter(
 	agents biz.AgentRepository,
-	teams biz.TeamRepository,
+	teamReader biz.TeamReader,
+	teamWriter biz.TeamWriter,
 	taxonomy biz.TaxonomyRepo,
 	graphs biz.GraphRepo,
 	skillLookup biz.SkillLookupReader,
 ) *PackRepoAdapter {
 	return &PackRepoAdapter{
 		agents:      agents,
-		teams:       teams,
+		teamReader:  teamReader,
+		teamWriter:  teamWriter,
 		taxonomy:    taxonomy,
 		graphs:      graphs,
 		skillLookup: skillLookup,
@@ -53,11 +56,11 @@ func (a *PackRepoAdapter) SearchAgents(ctx context.Context, q biz.AgentListQuery
 }
 
 func (a *PackRepoAdapter) GetTeam(ctx context.Context, id string) (biz.Team, error) {
-	return a.teams.GetTeamByID(ctx, id)
+	return a.teamReader.GetTeamByID(ctx, id)
 }
 
 func (a *PackRepoAdapter) ListTeams(ctx context.Context) ([]biz.Team, error) {
-	return a.teams.ListTeams(ctx)
+	return a.teamReader.ListTeams(ctx)
 }
 
 func (a *PackRepoAdapter) GetTaxonomyNode(ctx context.Context, id string) (biz.TaxonomyNode, error) {
@@ -145,19 +148,19 @@ func (a *PackRepoAdapter) ReplaceAgentPromptFiles(ctx context.Context, agentID s
 }
 
 func (a *PackRepoAdapter) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
-	return a.teams.GetTeamByID(ctx, id)
+	return a.teamReader.GetTeamByID(ctx, id)
 }
 
 func (a *PackRepoAdapter) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error) {
-	return a.teams.GetTeamByKey(ctx, teamKey)
+	return a.teamReader.GetTeamByKey(ctx, teamKey)
 }
 
 func (a *PackRepoAdapter) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
-	return a.teams.CreateTeam(ctx, t)
+	return a.teamWriter.CreateTeam(ctx, t)
 }
 
 func (a *PackRepoAdapter) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
-	return a.teams.UpdateTeam(ctx, t)
+	return a.teamWriter.UpdateTeam(ctx, t)
 }
 
 func (a *PackRepoAdapter) SaveGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
@@ -183,7 +186,7 @@ func (a *PackRepoAdapter) AgentKeyExists(ctx context.Context, agentKey string) (
 }
 
 func (a *PackRepoAdapter) TeamKeyExists(ctx context.Context, teamKey string) (bool, error) {
-	_, err := a.teams.GetTeamByKey(ctx, teamKey)
+	_, err := a.teamReader.GetTeamByKey(ctx, teamKey)
 	if err != nil {
 		return false, nil
 	}

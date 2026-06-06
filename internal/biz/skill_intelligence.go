@@ -39,6 +39,24 @@ func DefaultScoreWeights() ScoreWeights {
 	}
 }
 
+// RootCauseAnalysisResult represents the result of a root cause analysis,
+// decoupled from the monitor package so that biz does not import monitor.
+type RootCauseAnalysisResult struct {
+	RootCause  string
+	FixSuggest string
+	Severity   string
+	Confidence float64
+}
+
+// RootCauseAnalyzer performs root cause analysis for skill failures.
+// The monitor package provides the concrete implementation; biz depends on
+// this interface to avoid importing monitor.
+type RootCauseAnalyzer interface {
+	// AnalyzeInvocationFailure analyzes a failed skill invocation and returns
+	// a root cause analysis result. Returns nil if no rule matches.
+	AnalyzeInvocationFailure(ctx context.Context, inv SkillInvocationWrite) (*RootCauseAnalysisResult, error)
+}
+
 // SkillIntelligenceUsecase provides skill intelligence analysis: invocation
 // analysis, scoring, and experience report generation.
 type SkillIntelligenceUsecase struct {
@@ -47,6 +65,8 @@ type SkillIntelligenceUsecase struct {
 	aggregator       SkillHealthAggregator
 	suggestionReader SkillEvolutionSuggestionReader
 	suggestionWriter SkillEvolutionSuggestionWriter
+	analyzer         RootCauseAnalyzer
+	unanalyzedReader SkillInvocationUnanalyzedReader
 	lg               loggateway.Logger
 	weights          ScoreWeights
 }
@@ -58,6 +78,7 @@ func NewSkillIntelligenceUsecase(
 	aggregator SkillHealthAggregator,
 	suggestionReader SkillEvolutionSuggestionReader,
 	suggestionWriter SkillEvolutionSuggestionWriter,
+	analyzer RootCauseAnalyzer,
 	lg loggateway.Logger,
 ) *SkillIntelligenceUsecase {
 	return &SkillIntelligenceUsecase{
@@ -66,9 +87,15 @@ func NewSkillIntelligenceUsecase(
 		aggregator:       aggregator,
 		suggestionReader: suggestionReader,
 		suggestionWriter: suggestionWriter,
+		analyzer:         analyzer,
 		lg:               lg,
 		weights:          DefaultScoreWeights(),
 	}
+}
+
+// SetUnanalyzedReader sets the reader for unanalyzed skill invocations (optional dependency).
+func (uc *SkillIntelligenceUsecase) SetUnanalyzedReader(r SkillInvocationUnanalyzedReader) {
+	uc.unanalyzedReader = r
 }
 
 // SkillIntelligenceRepo is the combined interface for skill intelligence data access.
@@ -76,6 +103,7 @@ type SkillIntelligenceRepo interface {
 	ExperienceReportReader
 	ExperienceReportWriter
 	SkillHealthAggregator
+	SkillInvocationUnanalyzedReader
 }
 
 // AnalyzeInvocation performs rule-based analysis of a skill invocation and
@@ -229,6 +257,19 @@ func (uc *SkillIntelligenceUsecase) GenerateReport(ctx context.Context, inv Skil
 		CreatedAt:          time.Now().UTC(),
 	}
 
+	// Root cause analysis for failed invocations.
+	if !isSuccess && uc.analyzer != nil {
+		if rcaResult, rcaErr := uc.analyzer.AnalyzeInvocationFailure(ctx, inv); rcaErr != nil {
+			uc.lg.Warn("GenerateReport: root cause analysis failed",
+				loggateway.StepID("skill_intelligence.generate"),
+				loggateway.Str("skill_id", inv.SkillID),
+				loggateway.Err(rcaErr))
+		} else if rcaResult != nil {
+			report.RootCauseAnalysis = rcaResult.RootCause
+			report.SuggestedFix = rcaResult.FixSuggest
+		}
+	}
+
 	// Persist the report.
 	if uc.writer != nil {
 		if err := uc.writer.Create(ctx, *report); err != nil {
@@ -262,12 +303,47 @@ func (uc *SkillIntelligenceUsecase) GetExperienceReport(ctx context.Context, id 
 // ScanAndGenerateReports scans recent skill invocations that don't have
 // experience reports yet and generates reports for them.
 func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) error {
-	// This is a placeholder implementation that will be enhanced later.
-	// For now, it returns nil to allow the worker to start without errors.
-	// Full implementation will scan skill_invocation table for recent
-	// invocations without corresponding experience_reports and generate them.
-	uc.lg.Info("SkillIntelligenceWorker: scan cycle started",
-		loggateway.StepID("skill_intelligence.scan"))
+	if uc.unanalyzedReader == nil {
+		uc.lg.Info("SkillIntelligenceWorker: no unanalyzed reader configured, skipping scan",
+			loggateway.StepID("skill_intelligence.scan"))
+		return nil
+	}
+
+	const batchSize = 100
+	invs, err := uc.unanalyzedReader.ListUnanalyzed(ctx, batchSize)
+	if err != nil {
+		uc.lg.Warn("SkillIntelligenceWorker: ListUnanalyzed failed",
+			loggateway.StepID("skill_intelligence.scan"),
+			loggateway.Err(err))
+		return err
+	}
+
+	if len(invs) == 0 {
+		return nil
+	}
+
+	uc.lg.Info("SkillIntelligenceWorker: processing unanalyzed invocations",
+		loggateway.StepID("skill_intelligence.scan"),
+		loggateway.Int("count", len(invs)))
+
+	for _, inv := range invs {
+		// GenerateReport handles AnalyzeInvocation + ScoreSkill + RCA internally.
+		if _, genErr := uc.GenerateReport(ctx, inv); genErr != nil {
+			uc.lg.Warn("SkillIntelligenceWorker: GenerateReport failed for invocation",
+				loggateway.StepID("skill_intelligence.scan"),
+				loggateway.Str("invocation_id", inv.ActivationID),
+				loggateway.Err(genErr))
+			continue
+		}
+		// Mark as analyzed regardless of report generation success.
+		if markErr := uc.unanalyzedReader.MarkAnalyzed(ctx, inv.ActivationID); markErr != nil {
+			uc.lg.Warn("SkillIntelligenceWorker: MarkAnalyzed failed",
+				loggateway.StepID("skill_intelligence.scan"),
+				loggateway.Str("invocation_id", inv.ActivationID),
+				loggateway.Err(markErr))
+		}
+	}
+
 	return nil
 }
 
@@ -393,6 +469,14 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Co
 		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.UpdateSandboxResult(ctx, id, passed, result)
+}
+
+// UpdateSuggestionLifecycleStatus updates the lifecycle status of an evolution suggestion.
+func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error {
+	if uc.suggestionWriter == nil {
+		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+	}
+	return uc.suggestionWriter.UpdateLifecycleStatus(ctx, id, lifecycleStatus)
 }
 
 // ListEvolutionSuggestions lists evolution suggestions for a skill, optionally filtered by status.

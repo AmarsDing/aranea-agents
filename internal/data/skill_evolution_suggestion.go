@@ -122,6 +122,15 @@ func (r *SkillEvolutionSuggestionRepo) Create(ctx context.Context, suggestion bi
 	if suggestion.ResolvedAt != nil {
 		builder.SetResolvedAt(suggestion.ResolvedAt.UTC().Format(time.RFC3339))
 	}
+	if suggestion.ParentVersionID != "" {
+		builder.SetParentVersionID(suggestion.ParentVersionID)
+	}
+	if suggestion.EvolutionReason != "" {
+		builder.SetEvolutionReason(suggestion.EvolutionReason)
+	}
+	if suggestion.LifecycleStatus != "" {
+		builder.SetLifecycleStatus(suggestion.LifecycleStatus)
+	}
 	_, err := builder.Save(ctx)
 	return err
 }
@@ -161,6 +170,13 @@ func (r *SkillEvolutionSuggestionRepo) UpdateSandboxResult(ctx context.Context, 
 	return err
 }
 
+func (r *SkillEvolutionSuggestionRepo) UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error {
+	_, err := r.data.RW().Write(ctx).SkillEvolutionSuggestion.UpdateOneID(id).
+		SetLifecycleStatus(lifecycleStatus).
+		Save(ctx)
+	return err
+}
+
 // ── Mapping helpers ───────────────────────────────────────────────────────────
 
 func mapEntEvoSuggestion(row *ent.SkillEvolutionSuggestion) biz.SkillEvolutionSuggestion {
@@ -177,6 +193,9 @@ func mapEntEvoSuggestion(row *ent.SkillEvolutionSuggestion) biz.SkillEvolutionSu
 		ApprovedBy:      row.ApprovedBy,
 		RejectedBy:      row.RejectedBy,
 		RejectionReason: row.RejectionReason,
+		ParentVersionID: row.ParentVersionID,
+		EvolutionReason: row.EvolutionReason,
+		LifecycleStatus: row.LifecycleStatus,
 	}
 	if row.SandboxResult != nil {
 		if data, err := json.Marshal(row.SandboxResult); err == nil {

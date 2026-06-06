@@ -7,7 +7,7 @@ export type SpiritTeamStatus =
   | 'interrupted'
   | 'archived';
 
-export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'critic_loop' | 'swarm' | 'adaptive' | 'direct';
+export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'critic_loop' | 'swarm' | 'adaptive';
 
 export type SpiritMember = {
   agentId: string;

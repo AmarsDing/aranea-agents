@@ -37,6 +37,10 @@ func (SkillEvolutionSuggestion) Fields() []ent.Field {
 		field.Text("rejection_reason").Default(""),
 		field.String("created_at").Default(""),
 		field.String("resolved_at").Default("").Optional(),
+		// Curator Agent evolution tracking fields
+		field.String("parent_version_id").Default("").MaxLen(256).Optional(),
+		field.Text("evolution_reason").Default("").Optional(),
+		field.String("lifecycle_status").Default("draft").MaxLen(64).Optional(),
 	}
 }
 

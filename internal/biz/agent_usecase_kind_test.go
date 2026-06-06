@@ -63,7 +63,7 @@ func (s *stubAgentRepo) ReorderAgents(context.Context, []string) error { return 
 func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	t.Parallel()
 	repo := &stubAgentRepo{
-		agent: Agent{ID: "agent-1", Source: "system_builtin"},
+		agent: Agent{ID: "agent-1", Kind: "system_builtin"},
 	}
 	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
 	err := uc.Delete(context.Background(), "agent-1")
@@ -97,12 +97,12 @@ func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 		agent: Agent{
 			ID:         "agent-1",
 			AgentKey:   "demo",
-			Kind:       AgentKindLLM,
+			AgentKind:  AgentKindLLM,
 			ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil, loggateway.NewNoop()),
 		},
 	}
 	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
-	_, err := uc.Update(context.Background(), "agent-1", Agent{Kind: AgentKindA2AProxy})
+	_, err := uc.Update(context.Background(), "agent-1", Agent{AgentKind: AgentKindA2AProxy})
 	if err == nil {
 		t.Fatal("expected error")
 	}

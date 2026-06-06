@@ -34,6 +34,14 @@ func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID str
 		return false, nil, kerrors.NotFound("SANDBOX_RUNNER", fmt.Sprintf("suggestion not found: %s", suggestionID))
 	}
 
+	// Update lifecycle status to validating
+	if lcErr := s.uc.UpdateSuggestionLifecycleStatus(ctx, suggestionID, biz.EvoLifecycleValidating); lcErr != nil {
+		s.lg.Warn("SandboxRunner: failed to set validating status",
+			loggateway.StepID("sandbox.validate"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(lcErr))
+	}
+
 	result := s.ruleBasedValidation(suggestion)
 	resultJSON, _ := json.Marshal(result)
 
@@ -43,6 +51,18 @@ func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID str
 			loggateway.StepID("sandbox.validate"),
 			loggateway.Str("suggestion_id", suggestionID),
 			loggateway.Err(err))
+	}
+
+	// Update lifecycle status based on validation result
+	lifecycleStatus := biz.EvoLifecycleDraft
+	if result.Passed {
+		lifecycleStatus = biz.EvoLifecycleReady
+	}
+	if lcErr := s.uc.UpdateSuggestionLifecycleStatus(ctx, suggestionID, lifecycleStatus); lcErr != nil {
+		s.lg.Warn("SandboxRunner: failed to update lifecycle status",
+			loggateway.StepID("sandbox.validate"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(lcErr))
 	}
 
 	return result.Passed, resultJSON, nil

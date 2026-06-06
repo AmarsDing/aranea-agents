@@ -19,10 +19,11 @@ type SkillIntelligenceRepo struct {
 }
 
 var (
-	_ biz.SkillIntelligenceRepo  = (*SkillIntelligenceRepo)(nil)
-	_ biz.ExperienceReportReader  = (*SkillIntelligenceRepo)(nil)
-	_ biz.ExperienceReportWriter  = (*SkillIntelligenceRepo)(nil)
-	_ biz.SkillHealthAggregator   = (*SkillIntelligenceRepo)(nil)
+	_ biz.SkillIntelligenceRepo           = (*SkillIntelligenceRepo)(nil)
+	_ biz.ExperienceReportReader          = (*SkillIntelligenceRepo)(nil)
+	_ biz.ExperienceReportWriter          = (*SkillIntelligenceRepo)(nil)
+	_ biz.SkillHealthAggregator           = (*SkillIntelligenceRepo)(nil)
+	_ biz.SkillInvocationUnanalyzedReader = (*SkillIntelligenceRepo)(nil)
 )
 
 // NewSkillIntelligenceRepo creates a new SkillIntelligenceRepo.
@@ -91,6 +92,8 @@ func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.Experienc
 		SetScore(report.Score).
 		SetFlowSummary(report.FlowSummary).
 		SetOptimizationAdvice(report.OptimizationAdvice).
+		SetRootCauseAnalysis(report.RootCauseAnalysis).
+		SetSuggestedFix(report.SuggestedFix).
 		SetCreatedAt(report.CreatedAt.UTC().Format(time.RFC3339))
 	if len(report.FailureTags) > 0 {
 		builder.SetFailureTags(report.FailureTags)
@@ -124,6 +127,8 @@ func (r *SkillIntelligenceRepo) BatchCreate(ctx context.Context, reports []biz.E
 			SetScore(report.Score).
 			SetFlowSummary(report.FlowSummary).
 			SetOptimizationAdvice(report.OptimizationAdvice).
+			SetRootCauseAnalysis(report.RootCauseAnalysis).
+			SetSuggestedFix(report.SuggestedFix).
 			SetCreatedAt(report.CreatedAt.UTC().Format(time.RFC3339))
 		if len(report.FailureTags) > 0 {
 			builder.SetFailureTags(report.FailureTags)
@@ -229,6 +234,8 @@ func mapEntReport(row *ent.ExperienceReport) biz.ExperienceReport {
 		FailureTags:        row.FailureTags,
 		FlowSummary:        row.FlowSummary,
 		OptimizationAdvice: row.OptimizationAdvice,
+		RootCauseAnalysis:  row.RootCauseAnalysis,
+		SuggestedFix:       row.SuggestedFix,
 	}
 	if row.SelectionSnapshot != nil {
 		if data, err := json.Marshal(row.SelectionSnapshot); err == nil {
@@ -253,4 +260,71 @@ func mapEntReports(rows []*ent.ExperienceReport) []biz.ExperienceReport {
 		result = append(result, mapEntReport(row))
 	}
 	return result
+}
+
+// ── SkillInvocationUnanalyzedReader ───────────────────────────────────────────
+
+func (r *SkillIntelligenceRepo) ListUnanalyzed(ctx context.Context, batchSize int) ([]biz.SkillInvocationWrite, error) {
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	rows, err := r.data.RW().Read(ctx).SkillInvocation.Query().
+		Where(
+			skillinvocation.AnalyzedAtEQ(""),
+			skillinvocation.OutcomeNEQ(""),
+		).
+		Order(ent.Asc(skillinvocation.FieldCreatedAt)).
+		Limit(batchSize).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]biz.SkillInvocationWrite, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapEntSkillInvocationToWrite(row))
+	}
+	return result, nil
+}
+
+func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID string) error {
+	if activationID == "" {
+		return nil
+	}
+	// Find by activation_id and update analyzed_at.
+	rows, err := r.data.RW().Read(ctx).SkillInvocation.Query().
+		Where(skillinvocation.ActivationIDEQ(activationID)).
+		Limit(1).
+		All(ctx)
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	_, err = r.data.RW().Write(ctx).SkillInvocation.UpdateOneID(rows[0].ID).
+		SetAnalyzedAt(time.Now().UTC().Format(time.RFC3339)).
+		Save(ctx)
+	return err
+}
+
+func mapEntSkillInvocationToWrite(row *ent.SkillInvocation) biz.SkillInvocationWrite {
+	return biz.SkillInvocationWrite{
+		SkillID:         row.SkillID,
+		SkillVersion:    row.SkillVersion,
+		AgentID:         row.AgentID,
+		UserID:          row.UserID,
+		SessionID:       row.SessionID,
+		Status:          row.Status,
+		DurationMS:      row.DurationMs,
+		StartedAt:       row.StartedAt,
+		EndedAt:         row.EndedAt,
+		InputPreview:    row.InputPreview,
+		InputHash:       row.InputHash,
+		OutputPreview:   row.OutputPreview,
+		ErrorCode:       row.ErrorCode,
+		ErrorMessage:    row.ErrorMessage,
+		Source:          row.Source,
+		ActivationID:    row.ActivationID,
+		MessageID:       row.MessageID,
+		SelectionReason: row.SelectionReason,
+		Outcome:         row.Outcome,
+		TokenUsage:      row.TokenUsage,
+	}
 }

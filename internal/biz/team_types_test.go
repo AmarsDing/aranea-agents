@@ -151,13 +151,13 @@ func TestValidTeamStatusTransition(t *testing.T) {
 }
 
 func TestIsTeamStatusActive(t *testing.T) {
-	active := []string{TeamStatusPending, TeamStatusRunning}
+	active := []string{TeamStatusPending, TeamStatusRunning, TeamStatusInterrupted}
 	for _, s := range active {
 		if !IsTeamStatusActive(s) {
 			t.Errorf("expected %q to be active", s)
 		}
 	}
-	inactive := []string{TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted}
+	inactive := []string{TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusArchived}
 	for _, s := range inactive {
 		if IsTeamStatusActive(s) {
 			t.Errorf("expected %q to NOT be active", s)

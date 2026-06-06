@@ -148,6 +148,7 @@ func newPackImporter(client *ent.Client, lg loggateway.Logger) *pack.Importer {
 	adapter := NewPackRepoAdapter(
 		NewAgentRepo(d),
 		NewTeamRepo(d),
+		NewTeamRepo(d),
 		NewTaxonomyRepo(d),
 		NewGraphRepo(d),
 		NewSkillRepo(d),

@@ -321,15 +321,26 @@ func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 
 // ddlAgentSourceDataMigration populates the new agents.source column from existing kind values.
 // Mapping: kind=user -> source=user, kind=system_builtin -> source=system, kind=ecosystem_preset/marketplace/certified -> source=imported.
+// Also fixes Team source and corrects over-broad Team kind migration from 20260718.
 func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
+	// Agent source migration
 	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate agent source system_builtin->system: %w", err)
 	}
 	if _, err := rawDB.ExecContext(ctx, `UPDATE agents SET source = 'imported' WHERE kind IN ('ecosystem_preset', 'marketplace', 'certified') AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate agent source ecosystem->imported: %w", err)
+	}
+	// Team source migration: align with Agent source semantics
+	// kind=system_builtin -> source=system
+	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET source = 'system' WHERE kind = 'system_builtin' AND source = 'user'`); err != nil {
+		return fmt.Errorf("migrate team source system_builtin->system: %w", err)
+	}
+	// kind=ecosystem_preset -> source=imported
+	if _, err := rawDB.ExecContext(ctx, `UPDATE teams SET source = 'imported' WHERE kind = 'ecosystem_preset' AND source = 'user'`); err != nil {
+		return fmt.Errorf("migrate team source ecosystem_preset->imported: %w", err)
 	}
 	return nil
 }

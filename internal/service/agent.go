@@ -507,7 +507,9 @@ func fromProtoCreate(req *v1.CreateAgentRequest) biz.Agent {
 		ContextWindow:      int(req.GetContextWindow()),
 		BudgetMonthlyCents: int(req.GetBudgetMonthlyCents()),
 		ConfigJSON:         req.GetConfigJson(),
-		Kind:               req.GetAgentKind(),
+		Kind:               "user", // ownership: user-created agents are always "user"
+		Source:             "user",
+		AgentKind:          req.GetAgentKind(), // technical type: llm | a2a_proxy
 		A2AProxy:           fromProtoA2AProxy(req.GetA2AProxyConfig()),
 	}
 	biz.HydrateAgentKind(&a)

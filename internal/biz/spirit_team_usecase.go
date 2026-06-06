@@ -186,7 +186,8 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				return
 			}
 			safego.Go(context.Background(), "spirit-team-timeout", func() {
-				timeoutCtx := context.Background()
+				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer timeoutCancel()
 				team, err := u.teamUC.Get(timeoutCtx, teamID)
 				if err != nil {
 					return
@@ -214,7 +215,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				}
 			})
 		})
-		u.timeoutTimers.Store(teamID, timer)
+	u.timeoutTimers.Store(teamID, timer)
 	}
 
 	return result, nil

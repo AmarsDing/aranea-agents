@@ -1,6 +1,7 @@
 package skillrecommend
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -194,5 +195,111 @@ func TestFormatSelectionReason(t *testing.T) {
 	// Verify actual values are present
 	if !strings.Contains(reason, "0.756") {
 		t.Errorf("expected reason to contain score '0.756', got %q", reason)
+	}
+}
+
+// ── DynamicRankFactors Tests (TDD Red Phase) ───────────────────────────────────
+
+type mockHealthProvider struct {
+	successRates map[string]float64
+	avgDurations map[string]float64
+	err          error
+}
+
+func (m *mockHealthProvider) GetRecentSuccessRate(ctx context.Context, skillID string, days int) (float64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	if rate, ok := m.successRates[skillID]; ok {
+		return rate, nil
+	}
+	return 0, nil // no data
+}
+
+func (m *mockHealthProvider) GetRecentAvgDuration(ctx context.Context, skillID string, days int) (float64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	if dur, ok := m.avgDurations[skillID]; ok {
+		return dur, nil
+	}
+	return 0, nil // no data
+}
+
+func TestDynamicRankFactors_HighSuccessRate(t *testing.T) {
+	// High success rate (>80%) should reduce W2 (historical success) and boost W1 (semantic).
+	provider := &mockHealthProvider{
+		successRates: map[string]float64{
+			"high-success-skill": 0.85,
+		},
+	}
+	candidates := []Candidate{
+		{Slug: "high-success-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
+	}
+
+	factors := DynamicRankFactors(provider, candidates)
+	defaults := DefaultRankFactors()
+
+	// With high success rate, W2 should decrease and W1 should increase.
+	if factors.W2 >= defaults.W2 {
+		t.Errorf("expected W2 to decrease for high-success skills, got W2=%.3f (default=%.3f)", factors.W2, defaults.W2)
+	}
+	if factors.W1 <= defaults.W1 {
+		t.Errorf("expected W1 to increase for high-success skills, got W1=%.3f (default=%.3f)", factors.W1, defaults.W1)
+	}
+}
+
+func TestDynamicRankFactors_LowSuccessRate(t *testing.T) {
+	// Low success rate (<40%) should reduce W2 (historical success) and boost W1 (semantic).
+	provider := &mockHealthProvider{
+		successRates: map[string]float64{
+			"low-success-skill": 0.25,
+		},
+	}
+	candidates := []Candidate{
+		{Slug: "low-success-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
+	}
+
+	factors := DynamicRankFactors(provider, candidates)
+	defaults := DefaultRankFactors()
+
+	// With low success rate, W2 should decrease and W1 should increase.
+	if factors.W2 >= defaults.W2 {
+		t.Errorf("expected W2 to decrease for low-success skills, got W2=%.3f (default=%.3f)", factors.W2, defaults.W2)
+	}
+	if factors.W1 <= defaults.W1 {
+		t.Errorf("expected W1 to increase for low-success skills, got W1=%.3f (default=%.3f)", factors.W1, defaults.W1)
+	}
+}
+
+func TestDynamicRankFactors_NoData(t *testing.T) {
+	// No health data → use default static RankFactors.
+	provider := &mockHealthProvider{
+		successRates: map[string]float64{}, // empty
+	}
+	candidates := []Candidate{
+		{Slug: "no-data-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
+	}
+
+	factors := DynamicRankFactors(provider, candidates)
+	defaultFactors := DefaultRankFactors()
+
+	// Without data, factors should equal default.
+	if factors != defaultFactors {
+		t.Errorf("expected default factors when no data, got %+v", factors)
+	}
+}
+
+func TestDynamicRankFactors_NilProvider(t *testing.T) {
+	// Nil provider → use default static RankFactors.
+	candidates := []Candidate{
+		{Slug: "test-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
+	}
+
+	factors := DynamicRankFactors(nil, candidates)
+	defaultFactors := DefaultRankFactors()
+
+	if factors != defaultFactors {
+		t.Errorf("expected default factors when provider is nil, got %+v", factors)
 	}
 }

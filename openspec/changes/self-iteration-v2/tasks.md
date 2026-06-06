@@ -45,30 +45,30 @@
 
 ## 5. Phase 1 — 闭环加固：集成测试补齐
 
-- [ ] 5.1 创建 `internal/service/monitor_integration_test.go`：自愈闭环集成测试（注入错误→检测→根因分析→FixAction 生成→验证）。DoD: `go test -tags=integration ./internal/service/... -run TestMonitorIntegration -count=1` 绿色
-- [ ] 5.2 创建 `internal/service/skill_intelligence_integration_test.go`：Skill Intelligence 集成测试（Skill 调用失败→AnalyzeInvocation→GenerateReport→持久化→查询）。DoD: `go test -tags=integration ./internal/service/... -run TestSkillIntelligenceIntegration -count=1` 绿色
-- [ ] 5.3 创建 `internal/service/chat_turn_integration_test.go`：Chat Turn 集成测试（创建 Session→发送消息→Agent 响应→Memory 写入）。DoD: `go test -tags=integration ./internal/service/... -run TestChatTurnIntegration -count=1` 绿色
-- [ ] 5.4 Phase 1 全量验证：`make api && make wire && make build && make test && make lint`
+- [x] 5.1 创建 `internal/service/monitor_integration_test.go`：自愈闭环集成测试（注入错误→检测→根因分析→FixAction 生成→验证）。DoD: `go test -tags=integration ./internal/service/... -run TestMonitorIntegration -count=1` 绿色 <!-- 已实现: FailurePattern CRUD + Mining + SelfHeal 联动 -->
+- [x] 5.2 创建 `internal/service/skill_intelligence_integration_test.go`：Skill Intelligence 集成测试（Skill 调用失败→AnalyzeInvocation→GenerateReport→持久化→查询）。DoD: `go test -tags=integration ./internal/service/... -run TestSkillIntelligenceIntegration -count=1` 绿色 <!-- 已实现: GenerateReport+RCA + EvolutionTriggers -->
+- [x] 5.3 创建 `internal/service/chat_turn_integration_test.go`：Chat Turn 集成测试（创建 Session→发送消息→Agent 响应→Memory 写入）。DoD: `go test -tags=integration ./internal/service/... -run TestChatTurnIntegration -count=1` 绿色 <!-- 已实现: 23 个子测试 -->
+- [x] 5.4 Phase 1 全量验证：`make api && make wire && make build && make test && make lint` <!-- 已实现: 通过 -->
 
 ## 6. Phase 2 — Skill Intelligence 落地：经验报告诊断
 
-- [ ] 6.1 扩展 `internal/biz/skill_intelligence_types.go`：ExperienceReport 新增 RootCauseAnalysis 和 SuggestedFix 字段。DoD: `go build ./internal/biz/...` 通过
-- [ ] 6.2 修改 `internal/biz/skill_intelligence.go`：GenerateReport 集成 RootCauseAnalyzer 接口，调用 AnalyzeFromReport。DoD: `go build ./internal/biz/...` 通过
-- [ ] 6.3 创建 `internal/data/ent/schema/experience_report.go`：Ent Schema + 索引 (skill_id, created_at)。DoD: `go generate ./internal/data/ent/...` 无错误
-- [ ] 6.4 修改 `internal/data/skill_intelligence.go`：实现新增字段持久化。DoD: `go build ./internal/data/...` 通过
-- [ ] 6.5 创建 `internal/cronrunner/jobs/skill_intelligence_worker.go`：每 10 分钟扫描未分析的 skill_invocation，批量 AnalyzeInvocation/ScoreSkill/GenerateReport。DoD: `go build ./internal/cronrunner/...` 通过
-- [ ] 6.6 定义 `api/skill_intelligence/v1/skill_intelligence.proto`：ListExperienceReports / GetExperienceReport。DoD: `make api` 通过
-- [ ] 6.7 创建 `internal/service/skill_intelligence.go`：实现 Service 层。DoD: `go build ./internal/service/...` 通过
-- [ ] 6.8 Wire DI 装配：新增 SkillIntelligenceService + Cron Job 注册。DoD: `make wire && make build` 通过
+- [x] 6.1 扩展 `internal/biz/skill_intelligence_types.go`：ExperienceReport 新增 RootCauseAnalysis 和 SuggestedFix 字段。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: 新增 2 个字段 -->
+- [x] 6.2 修改 `internal/biz/skill_intelligence.go`：GenerateReport 集成 RootCauseAnalyzer 接口，调用 AnalyzeFromReport。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: RCA 集成 + adapter -->
+- [x] 6.3 创建 `internal/data/ent/schema/experience_report.go`：Ent Schema + 索引 (skill_id, created_at)。DoD: `go generate ./internal/data/ent/...` 无错误 <!-- 已实现: root_cause_analysis + suggested_fix 字段 -->
+- [x] 6.4 修改 `internal/data/skill_intelligence.go`：实现新增字段持久化。DoD: `go build ./internal/data/...` 通过 <!-- 已实现: Create/BatchCreate/ListUnanalyzed/MarkAnalyzed -->
+- [x] 6.5 创建 `internal/cronrunner/jobs/skill_intelligence_worker.go`：每 10 分钟扫描未分析的 skill_invocation，批量 AnalyzeInvocation/ScoreSkill/GenerateReport。DoD: `go build ./internal/cronrunner/...` 通过 <!-- 已实现: 替换占位实现为真实批处理 -->
+- [x] 6.6 定义 `api/skill_intelligence/v1/skill_intelligence.proto`：ListExperienceReports / GetExperienceReport。DoD: `make api` 通过 <!-- 已实现: field 14+15 -->
+- [x] 6.7 创建 `internal/service/skill_intelligence.go`：实现 Service 层。DoD: `go build ./internal/service/...` 通过 <!-- 已实现: toProto 映射新字段 -->
+- [x] 6.8 Wire DI 装配：新增 SkillIntelligenceService + Cron Job 注册。DoD: `make wire && make build` 通过 <!-- 已实现: RCA adapter + 注入 -->
 
 ## 7. Phase 2 — Skill Intelligence 落地：推荐排序进化
 
-- [ ] 7.1 创建 `internal/tools/skillrecommend/health_provider.go`：定义 `HealthMetricsProvider` 接口（GetRecentSuccessRate + GetRecentAvgDuration）。DoD: `go build ./internal/tools/...` 通过
-- [ ] 7.2 修改 `internal/tools/skillrecommend/rank.go`：新增 `DynamicRankFactors` 函数，从 HealthMetricsProvider 读取近期指标动态调整权重。DoD: `go build ./internal/tools/...` 通过
-- [ ] 7.3 创建 `internal/tools/skillrecommend/rank_test.go`：测试动态权重调整（高成功率/低成功率/无数据场景）。DoD: `go test ./internal/tools/skillrecommend/... -count=1` 绿色
-- [ ] 7.4 创建 Biz 层适配器：在 `internal/biz/` 中实现 `HealthMetricsProvider` 接口（适配 SkillHealthAggregator）。DoD: `go build ./internal/biz/...` 通过
-- [ ] 7.5 修改 `internal/tools/skillruntime/resolve.go`：在 ResolveSkillSlugsDetailed 中调用 DynamicRankFactors。DoD: 排序因子写入 selection_reason
-- [ ] 7.6 创建 `internal/tools/skillrecommend/rank_feedback.go`：定义 RankFeedback 结构体和记录逻辑。DoD: `go build ./internal/tools/...` 通过
+- [x] 7.1 创建 `internal/tools/skillrecommend/health_provider.go`：定义 `HealthMetricsProvider` 接口（GetRecentSuccessRate + GetRecentAvgDuration）。DoD: `go build ./internal/tools/...` 通过 <!-- 已实现: 接口定义 -->
+- [x] 7.2 修改 `internal/tools/skillrecommend/rank.go`：新增 `DynamicRankFactors` 函数，从 HealthMetricsProvider 读取近期指标动态调整权重。DoD: `go build ./internal/tools/...` 通过 <!-- 已实现: 动态权重调整 -->
+- [x] 7.3 创建 `internal/tools/skillrecommend/rank_test.go`：测试动态权重调整（高成功率/低成功率/无数据场景）。DoD: `go test ./internal/tools/skillrecommend/... -count=1` 绿色 <!-- 已实现: 4 个测试通过 -->
+- [x] 7.4 创建 Biz 层适配器：在 `internal/biz/` 中实现 `HealthMetricsProvider` 接口（适配 SkillHealthAggregator）。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: SkillHealthMetricsAdapter -->
+- [x] 7.5 修改 `internal/tools/skillruntime/resolve.go`：在 ResolveSkillSlugsDetailed 中调用 DynamicRankFactors。DoD: 排序因子写入 selection_reason <!-- 已实现: 替换 DefaultRankFactors -->
+- [x] 7.6 创建 `internal/tools/skillrecommend/rank_feedback.go`：定义 RankFeedback 结构体和记录逻辑。DoD: `go build ./internal/tools/...` 通过 <!-- 已实现: RankFeedback 结构体 -->
 
 ## 8. Phase 2 — Skill Intelligence 落地：Curator Agent 半自动进化
 

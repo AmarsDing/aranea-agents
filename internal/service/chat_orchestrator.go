@@ -67,7 +67,6 @@ type RuntimeTooling struct {
 // These are only used when a session is owned by a team or when graph execution
 // is triggered from the chat orchestrator.
 type TeamOrchestrationDeps struct {
-	Teams            biz.TeamRepository
 	TeamUC           *biz.TeamUsecase
 	TeamsNative      *team.Runner
 	GraphFactory     biz.GraphBuilderFactory

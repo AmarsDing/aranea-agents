@@ -13,7 +13,7 @@
         <q-icon v-else-if="team.status === 'completed'" name="check_circle" size="16px" color="positive" />
         <q-icon v-else-if="team.status === 'failed'" name="error" size="16px" color="negative" />
         <q-icon v-else-if="team.status === 'cancelled'" name="cancel" size="16px" color="grey-6" />
-        <q-icon v-else-if="team.status === 'waiting_deps'" name="schedule" size="16px" color="warning" />
+        <q-icon v-else-if="team.status === 'pending'" name="schedule" size="16px" color="warning" />
         <q-icon v-else name="groups" size="16px" color="accent" />
       </div>
       <div class="col min-width-0">
@@ -99,13 +99,13 @@ const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
 const topology = computed(() => modeToTopology(props.team.mode));
 
 const isRunning = computed(
-  () => props.team.status === 'running' || props.team.status === 'assembled' || props.team.status === 'assembling',
+  () => props.team.status === 'running' || props.team.status === 'pending',
 );
 
-const isWaitingDeps = computed(() => props.team.status === 'waiting_deps');
+const isWaitingDeps = computed(() => props.team.status === 'pending');
 
 const canCancel = computed(
-  () => props.team.status === 'running' || props.team.status === 'assembled' || props.team.status === 'waiting_deps',
+  () => props.team.status === 'running' || props.team.status === 'pending',
 );
 
 const statusClass = computed(() => {
@@ -116,11 +116,9 @@ const statusClass = computed(() => {
       return 'failed';
     case 'cancelled':
       return 'cancelled';
-    case 'waiting_deps':
+    case 'pending':
       return 'waiting';
     case 'running':
-    case 'assembled':
-    case 'assembling':
       return 'running';
     default:
       return 'idle';

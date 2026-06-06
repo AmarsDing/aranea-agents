@@ -211,6 +211,33 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 | 71 | SPO-DR-L17 | checkAllTeamsCompleted 循环外统一调用优化 | ✅ |
 | 72 | SPO-DR-WIRE | provideFailurePatternSyncJob 接口注入修复 + 测试 stub 补全 | ✅ |
 
+### 迭代建议修复（Review S-01~S-10）
+
+| 排序 | ID | 任务 | 状态 |
+|------|-----|------|------|
+| 73 | SPO-RS-01 | NewSpiritTeamUsecase 7参数→Options模式（SpiritTeamUsecaseOption） | ✅ |
+| 74 | SPO-RS-02 | TeamGraphSessionRepo 6方法→拆分 Reader+Writer 嵌入组合 | ✅ |
+| 75 | SPO-RS-04 | RecordCompletionWithAgents Get+Put非原子→合并单Lock | ✅ |
+| 76 | SPO-RS-05 | app.go 混用 Kratos logger 和 loggateway→统一 loggateway | ✅ |
+| 77 | SPO-RS-06 | SetTimeoutHandler 并发安全→sync.Once | ✅ |
+| 78 | SPO-RS-07 | ComputeDQScoreBreakdown 魔法数字→命名常量（DQWeight*/DQScoreMin/DQEvolutionThreshold） | ✅ |
+| 79 | SPO-RS-08 | BuildGraphConfig 95行→拆分 buildAgentNodes/buildDependencyEdges/buildSequentialChainEdges/buildMergeEdges | ✅ |
+| 80 | SPO-RS-09 | buildSpiritTeamDefinitionJSON 魔法数字→命名常量（SpiritTeamDefVersion/SpiritTeamDefaultTimeout/SpiritTeamDefaultMaxConc） | ✅ |
+| 81 | SPO-RS-10 | AutoArchiveCompletedTeams 逐条DB→BatchArchiveTeams 批量操作 | ✅ |
+
+### 二轮审查阻塞项修复（Review BR-R01~BR-R03, FE-R01~FE-R05）
+
+| 排序 | ID | 任务 | 状态 |
+|------|-----|------|------|
+| 82 | SPO-RR-01 | TeamOrchestrationDeps 移除未使用的 Teams biz.TeamRepository 字段 | ✅ |
+| 83 | SPO-RR-02 | TeamRepository 添加 Deprecated 注释 + 迁移 ExperienceAnalytics/PackRepoAdapter 到窄接口 | ✅ |
+| 84 | SPO-RR-03 | 超时回调 context.Background()→30s 超时控制 | ✅ |
+| 85 | SPO-RR-04 | TeamTaskCard.vue as any→mappedStatus 计算属性映射类型 | ✅ |
+| 86 | SPO-RR-05 | TeamProgressCard 废弃状态值 waiting_deps/assembled/assembling→pending/running | ✅ |
+| 87 | SPO-RR-06 | TeamProgressView/TeamSynthesisResult.status string→SpiritTeamStatus | ✅ |
+| 88 | SPO-RR-07 | updateTeamStatus string→SpiritTeamStatus + isValidTeamStatus 类型守卫 | ✅ |
+| 89 | SPO-RR-08 | SpiritTeamMode 移除后端不存在的 direct 值 | ✅ |
+
 ### Phase P4 任务板
 
 | 排序 | ID | 任务 | 状态 |

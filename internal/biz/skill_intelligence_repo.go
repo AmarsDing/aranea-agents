@@ -33,6 +33,9 @@ type SkillHealthAggregator interface {
 	GetHealthMetrics(ctx context.Context, skillID string, since time.Time) (*SkillHealthMetrics, error)
 	// GetFailureStats returns failure statistics for a skill over the given time window.
 	GetFailureStats(ctx context.Context, skillID string, since time.Time) (*SkillFailureStats, error)
+	// GetFailureTagCounts returns failure tag counts for a skill over the given time window.
+	// Used by Curator Agent to detect repeated failure patterns (e.g., same tag >= 5 times).
+	GetFailureTagCounts(ctx context.Context, skillID string, since time.Time) ([]FailureTagCount, error)
 }
 
 // SkillHealthMetrics holds aggregated health metrics for a single skill.
@@ -80,4 +83,15 @@ type SkillEvolutionSuggestionWriter interface {
 	UpdateDraftBody(ctx context.Context, id string, draftBody string) error
 	// UpdateSandboxResult updates the sandbox validation result of an evolution suggestion.
 	UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
+	// UpdateLifecycleStatus updates the lifecycle status of an evolution suggestion.
+	UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error
+}
+
+// SkillInvocationUnanalyzedReader reads unanalyzed skill invocations for batch processing.
+type SkillInvocationUnanalyzedReader interface {
+	// ListUnanalyzed returns skill invocations that have not been analyzed yet
+	// (analyzed_at is empty), ordered by created_at asc, limited to batchSize.
+	ListUnanalyzed(ctx context.Context, batchSize int) ([]SkillInvocationWrite, error)
+	// MarkAnalyzed sets the analyzed_at timestamp for a skill invocation.
+	MarkAnalyzed(ctx context.Context, id string) error
 }

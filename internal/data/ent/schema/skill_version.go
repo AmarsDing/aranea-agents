@@ -32,5 +32,9 @@ func (SkillVersion) Fields() []ent.Field {
 		field.String("published_at").Default(""),
 		field.String("validation_status").Default(""),
 		field.Text("file_manifest_json").Default("[]"),
+		// Curator Agent evolution tracking fields
+		field.String("parent_version_id").Default("").MaxLen(256).Optional(),
+		field.Text("evolution_reason").Default("").Optional(),
+		field.String("lifecycle_status").Default("active").MaxLen(64).Optional(),
 	}
 }

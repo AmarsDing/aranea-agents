@@ -1,6 +1,7 @@
 package skillrecommend
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -126,4 +127,75 @@ func neutralIfZero(v float64) float64 {
 		return 0.5
 	}
 	return v
+}
+
+// Dynamic weight adjustment thresholds.
+const (
+	HighSuccessThreshold = 0.8  // success rate above this → reduce exploration
+	LowSuccessThreshold  = 0.4  // success rate below this → reduce historical weight
+	WeightAdjustStep     = 0.05 // amount to shift weights per adjustment
+	DynamicLookbackDays  = 30   // default lookback window for health metrics
+)
+
+// DynamicRankFactors computes adjusted RankFactors based on recent health
+// metrics from the provider. If the provider is nil or no data is available
+// for any candidate, it falls back to DefaultRankFactors.
+//
+// Adjustment rules:
+//   - High success rate (>80%): reduce exploration bonus by shifting weight
+//     from W2 (historical success) toward W1 (semantic similarity), since
+//     the skill is already proven and doesn't need extra help.
+//   - Low success rate (<40%): reduce W2 (historical success) weight and
+//     redistribute to W1 (semantic similarity), preventing "rich get richer"
+//     for failing skills while giving semantic relevance more say.
+//   - No data or provider nil: return default static factors.
+func DynamicRankFactors(provider HealthMetricsProvider, candidates []Candidate) RankFactors {
+	if provider == nil || len(candidates) == 0 {
+		return DefaultRankFactors()
+	}
+
+	ctx := context.Background()
+	factors := DefaultRankFactors()
+
+	hasData := false
+	highSuccessCount := 0
+	lowSuccessCount := 0
+
+	for _, c := range candidates {
+		rate, err := provider.GetRecentSuccessRate(ctx, c.Slug, DynamicLookbackDays)
+		if err != nil || rate <= 0 {
+			continue
+		}
+		hasData = true
+		if rate > HighSuccessThreshold {
+			highSuccessCount++
+		} else if rate < LowSuccessThreshold {
+			lowSuccessCount++
+		}
+	}
+
+	if !hasData {
+		return factors
+	}
+
+	total := len(candidates)
+	// Proportional adjustment: the more candidates in a bucket, the stronger the shift.
+	highRatio := float64(highSuccessCount) / float64(total)
+	lowRatio := float64(lowSuccessCount) / float64(total)
+
+	// High success: reduce W2, boost W1 (skill proven, rely more on semantic match).
+	if highSuccessCount > 0 {
+		shift := WeightAdjustStep * highRatio
+		factors.W2 = math.Max(0.1, factors.W2-shift)
+		factors.W1 = math.Min(0.6, factors.W1+shift)
+	}
+
+	// Low success: reduce W2 further, boost W1 (don't let bad history dominate).
+	if lowSuccessCount > 0 {
+		shift := WeightAdjustStep * lowRatio
+		factors.W2 = math.Max(0.1, factors.W2-shift)
+		factors.W1 = math.Min(0.6, factors.W1+shift)
+	}
+
+	return factors
 }

@@ -57,6 +57,10 @@ type TeamRunRepo interface {
 	TeamRunWriter
 }
 
+// TeamRepository is a composition interface for backward compatibility.
+// Deprecated: Consumers should depend on the narrow sub-interfaces
+// (TeamReader, TeamWriter, TeamRunReader, TeamRunWriter, OrchestrationStepRepo, TaskDeadLetterRepo)
+// instead of this aggregate. New code MUST NOT reference TeamRepository directly.
 type TeamRepository interface {
 	TeamReader
 	TeamWriter

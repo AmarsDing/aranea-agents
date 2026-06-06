@@ -1576,6 +1576,44 @@ cd web && pnpm lint && pnpm test && pnpm build
 ### 10.4 aranea-review 审查结论
 
 - **1 个阻断项**（R-01: IsTeamStatusActive 与 CheckAllTeamsCompleted 对 interrupted 语义不一致）→ 已修复
-- **10 个建议项**（构造函数参数过多、魔法数字、函数超长等）→ 记录备忘，后续迭代处理
+- **10 个建议项**（构造函数参数过多、魔法数字、函数超长等）→ 已全部修复（见 10.5）
 - **1 个提示项**（NewOrchestrationCache 允许 repo 为 nil）→ 可接受
 - **合规性清单**：依赖方向向内 ✅ | Runner 装配在 Service ✅ | goroutine 走 safego ✅ | 日志用 loggateway ✅ | 业务错误用 kerrors ✅ | 跨模块通过窄接口 ✅
+
+### 10.5 迭代建议修复记录
+
+> 2026-06-06：对 aranea-review 10 个建议项全部实施修复。
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| S-01/S-03 | NewSpiritTeamUsecase 7参数过多 | Options 模式：`SpiritTeamUsecaseOption` + `WithSpiritTransactor`/`WithOrchestrationCache`/`WithEvolutionSuggestionRepo` | `spirit_team_usecase.go`, `wire.go`, `biz.go` |
+| S-02 | TeamGraphSessionRepo 6方法超限 | 拆分为 `TeamGraphSessionReader`(2) + `TeamGraphSessionWriter`(4)，原接口嵌入组合 | `team_types.go` |
+| S-04 | RecordCompletionWithAgents Get+Put 非原子 | 合并为单 Lock：直接操作 `c.entries`，避免 Get→Put 间锁释放 | `spirit_orchestration_cache.go` |
+| S-05 | app.go 混用 Kratos logger 和 loggateway | 统一为 `lg`（loggateway.Logger），`logger` 仅用于 `kratos.Logger(logger)` | `app.go` |
+| S-06 | SetTimeoutHandler 并发安全隐患 | `sync.Once` 保证只设置一次 | `spirit_team_usecase.go` |
+| S-07 | ComputeDQScoreBreakdown 魔法数字 | 命名常量：`DQWeightValidity/Specificity/Correctness`、`DQScoreMin`、`DQSpecificityBase/Medium/High/Findings`、`DQTimePenaltyDivisorMs/Max/Factor`、`DQEvolutionThreshold` | `spirit_orchestration_cache.go`, `spirit_team_usecase.go` |
+| S-08 | BuildGraphConfig 95行超限 | 拆分为 `buildAgentNodes`/`buildDependencyEdges`/`buildSequentialChainEdges`/`buildMergeEdges`/`isDependedOn` | `build_graph.go` |
+| S-09 | buildSpiritTeamDefinitionJSON 魔法数字 | 命名常量：`SpiritTeamDefVersion`/`SpiritTeamDefaultTimeout`/`SpiritTeamDefaultMaxConc` | `spirit_team_usecase.go` |
+| S-10 | AutoArchiveCompletedTeams 逐条DB | 新增 `BatchArchiveTeams` 方法（TeamWriter 接口 + data 层 Ent 批量 UPDATE），收集 ID 后一次性归档 | `team_usecase.go`, `team_repo.go`, `spirit_team_usecase.go`, 7个测试 stub |
+
+### 10.6 二轮审查阻塞项修复记录
+
+> 2026-06-06：对 aranea-review 二轮审查发现的 8 个阻塞项全部修复。
+
+#### 后端阻塞项（3个）
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| BR-R01 | TeamOrchestrationDeps 持有未使用的 `biz.TeamRepository` 上帝接口 | 移除 `Teams biz.TeamRepository` 字段，所有操作已通过 `TeamUC`/`SpiritUC`/`TeamsNative` | `chat_orchestrator.go`, `wire.go` |
+| BR-R02 | `TeamRepository` 23方法上帝接口 | 添加 `Deprecated` 注释；迁移 `ExperienceAnalyticsUsecase`→`TeamReader+TeamRunReader`；迁移 `PackRepoAdapter`→`TeamReader+TeamWriter` | `team_usecase.go`, `experience_analytics.go`, `pack_repo.go`, `seed_pack.go` |
+| BR-R03 | 超时回调 `context.Background()` 无超时控制 | 改为 `context.WithTimeout(context.Background(), 30*time.Second)` | `spirit_team_usecase.go` |
+
+#### 前端阻塞项（5个）
+
+| ID | 问题 | 修复方案 | 影响文件 |
+|----|------|----------|----------|
+| FE-R01 | TeamTaskCard.vue `as any` 类型逃逸 | 新增 `mappedStatus` 计算属性，映射 `SpiritTeamStatus→SessionStatus` | `TeamTaskCard.vue` |
+| FE-R02 | TeamProgressCard 检查废弃状态值 | `'waiting_deps'→'pending'`，`'assembled'/'assembling'→'running'/'pending'` | `TeamProgressCard.vue` |
+| FE-R03 | `TeamProgressView.status`/`TeamSynthesisResult.status` 为 `string` | 改为 `SpiritTeamStatus` 类型 | `types.ts` |
+| FE-R04 | `updateTeamStatus` 参数为 `string` | 改为 `SpiritTeamStatus`；新增 `isValidTeamStatus` 类型守卫验证 WS 推送状态 | `stores/spirit/index.ts` |
+| FE-R05 | `SpiritTeamMode` 包含后端不存在的 `'direct'` | 移除 `'direct'`，更新 modeLabel/modeToTopology 映射 | `types.ts`, `TeamTaskCard.vue`, `TeamProgressCard.vue` |

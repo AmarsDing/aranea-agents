@@ -103,7 +103,8 @@ type CostSummary struct {
 type ExperienceAnalyticsUsecase struct {
 	metricsRepo  EvolutionMetricsRepo
 	skillRepo    SkillQueryReader
-	teamRunRepo  TeamRepository
+	teamReader   TeamReader
+	runReader    TeamRunReader
 	usageRepo    UsageAnalyticsRepo
 	memoryAdmin  *MemoryAdminUsecase
 	sessionRepo  SessionReader
@@ -115,7 +116,8 @@ type ExperienceAnalyticsUsecase struct {
 func NewExperienceAnalyticsUsecase(
 	metricsRepo EvolutionMetricsRepo,
 	skillRepo SkillQueryReader,
-	teamRunRepo TeamRepository,
+	teamReader TeamReader,
+	runReader TeamRunReader,
 	usageRepo UsageAnalyticsRepo,
 	memoryAdmin *MemoryAdminUsecase,
 	sessionRepo SessionReader,
@@ -125,7 +127,8 @@ func NewExperienceAnalyticsUsecase(
 	return &ExperienceAnalyticsUsecase{
 		metricsRepo:  metricsRepo,
 		skillRepo:    skillRepo,
-		teamRunRepo:  teamRunRepo,
+		teamReader:   teamReader,
+		runReader:    runReader,
 		usageRepo:    usageRepo,
 		memoryAdmin:  memoryAdmin,
 		sessionRepo:  sessionRepo,
@@ -351,7 +354,7 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeOrchestration(ctx context.Context, 
 		return OrchestrationAnalysis{}, err
 	}
 
-	teams, err := uc.teamRunRepo.ListTeams(ctx)
+	teams, err := uc.teamReader.ListTeams(ctx)
 	if err != nil {
 		uc.lg.Warn("list teams for orchestration analysis", loggateway.StepID("xp_analytics.orchestration"), loggateway.Err(err))
 		return OrchestrationAnalysis{AgentID: agentID}, nil
@@ -359,7 +362,7 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeOrchestration(ctx context.Context, 
 
 	agg := make(map[string]*orchAgg)
 	for _, team := range teams {
-		runs, runErr := uc.teamRunRepo.ListTeamRuns(ctx, team.ID, 100)
+		runs, runErr := uc.runReader.ListTeamRuns(ctx, team.ID, 100)
 		if runErr != nil {
 			uc.lg.Warn("list team runs", loggateway.StepID("xp_analytics.orchestration"), loggateway.Err(runErr))
 			continue
