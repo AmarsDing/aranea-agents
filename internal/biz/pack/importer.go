@@ -275,10 +275,13 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		agent.Source = existing.Source
 	}
 
-	// 解析 position_key → taxonomy_position_id
+	// 解析 position_key → taxonomy_position_id（可选引用；缺失写警告）。
 	if spec.PositionKey != "" {
 		posID, err := mapper.ResolvePositionKey(spec.PositionKey)
-		if err == nil {
+		if err != nil {
+			warns = append(warns, fmt.Sprintf("agent %q: position_key=%q 解析失败: %s",
+				spec.Key, spec.PositionKey, err.Error()))
+		} else {
 			agent.TaxonomyPositionID = posID
 		}
 		// 同时设置 position_key（取路径最后一段）
@@ -577,17 +580,25 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	}
 
 	// IntentAnchor / Synthesizer
+	// IntentAnchor / Synthesizer 是运行时必填引用；缺失必须硬失败以保持
+	// 与 validator.validateReferences 的语义一致（dry-run 与 real-import 对齐）。
 	if spec.IntentAnchorKey != "" {
 		id, err := mapper.ResolveAgentKey(spec.IntentAnchorKey)
-		if err == nil {
-			ospec.IntentAnchorAgentID = id
+		if err != nil {
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_INTENT_ANCHOR",
+				fmt.Sprintf("Team %s intent_anchor_key=%q 未找到: %s",
+					spec.Key, spec.IntentAnchorKey, err.Error()))
 		}
+		ospec.IntentAnchorAgentID = id
 	}
 	if spec.SynthesizerKey != "" {
 		id, err := mapper.ResolveAgentKey(spec.SynthesizerKey)
-		if err == nil {
-			ospec.SynthesizerAgentID = id
+		if err != nil {
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_SYNTHESIZER",
+				fmt.Sprintf("Team %s synthesizer_key=%q 未找到: %s",
+					spec.Key, spec.SynthesizerKey, err.Error()))
 		}
+		ospec.SynthesizerAgentID = id
 	}
 
 	// Graph
@@ -596,9 +607,17 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 			newID, ok := mapper.GraphID(spec.Graph.LinkedGraphID)
 			if ok {
 				ospec.LinkedGraphID = newID
+			} else {
+				// LinkedGraph 是可选引用；缺失写警告便于用户诊断，但继续 import。
+				warns = append(warns, fmt.Sprintf("Team %s linked_graph_id=%q 在本次 import 中未生成，已忽略",
+					spec.Key, spec.Graph.LinkedGraphID))
 			}
 		} else if len(spec.Graph.Nodes) > 0 {
-			ospec.Graph = im.buildEmbeddedGraph(spec.Graph, mapper)
+			eg, err := im.buildEmbeddedGraph(spec.Graph, mapper)
+			if err != nil {
+				return 0, 0, 0, warns, err
+			}
+			ospec.Graph = eg
 		}
 	}
 
@@ -712,7 +731,8 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 }
 
 // buildEmbeddedGraph 从 TeamGraphPackSpec 构建 EmbeddedGraphSpec。
-func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMapper) *biz.EmbeddedGraphSpec {
+// 节点的 agent_key 引用若解析不到，返回硬错误（与 validator.validateReferences 对齐）。
+func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMapper) (*biz.EmbeddedGraphSpec, error) {
 	eg := &biz.EmbeddedGraphSpec{Version: 1, Layout: spec.Layout}
 	for _, n := range spec.Nodes {
 		nodeSpec := biz.EmbeddedGraphNodeSpec{
@@ -726,12 +746,15 @@ func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMappe
 			RetryMaxAttempts: n.RetryMaxAttempts,
 			FallbackAgent:    n.FallbackAgent,
 		}
-		// agent_key → agent_id
+		// agent_key → agent_id：必填引用，缺失必须硬失败
 		if n.AgentKey != "" {
 			id, err := mapper.ResolveAgentKey(n.AgentKey)
-			if err == nil {
-				nodeSpec.AgentID = id
+			if err != nil {
+				return nil, kerrors.BadRequest("PACK_TEAM_GRAPH_NODE",
+					fmt.Sprintf("Team Graph 节点 %s agent_key=%q 未找到: %s",
+						n.ID, n.AgentKey, err.Error()))
 			}
+			nodeSpec.AgentID = id
 		}
 		eg.Nodes = append(eg.Nodes, nodeSpec)
 	}
@@ -744,7 +767,7 @@ func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMappe
 			Condition: e.Condition,
 		})
 	}
-	return eg
+	return eg, nil
 }
 
 // buildRuntimeSettings 从 AgentPackSpec 构建 AgentRuntimeSettings。
