@@ -259,7 +259,10 @@ import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 
 import type { CascadePreview, CascadeProposal, CascadeSagaStep } from '../../features/memory/types';
-import { CASCADE_SAGA_TABLE_COLUMNS, memoryCascadeStatusColor as statusColor } from '../../features/memory/memoryTableUi';
+import {
+  CASCADE_SAGA_TABLE_COLUMNS,
+  memoryCascadeStatusColor as statusColor,
+} from '../../features/memory/memoryTableUi';
 
 const props = defineProps<{
   agentId: string | null;

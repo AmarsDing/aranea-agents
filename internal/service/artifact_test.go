@@ -86,7 +86,7 @@ func (m *memArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, nam
 
 func newArtifactService() *service.ArtifactService {
 	repo := newMemArtifactRepo()
-	uc := biz.NewArtifactUsecase(repo)
+	uc := biz.NewArtifactUsecase(repo, loggateway.NewNoop())
 	signer := artifact.NewSigner(loggateway.NewNoop())
 	return service.NewArtifactService(uc, signer)
 }

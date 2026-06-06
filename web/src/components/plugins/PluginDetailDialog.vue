@@ -59,12 +59,15 @@
               :disable="!target.permissions?.can_edit_config"
               @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')"
             />
-            <q-input
+            <q-select
               v-if="scopeMode === 'agent'"
               :model-value="scopeAgentId"
+              :options="agentOptions"
               dense
               outlined
-              label="Agent ID"
+              emit-value
+              map-options
+              label="选择 Agent"
               :disable="!target.permissions?.can_edit_config"
               @update:model-value="$emit('update:scopeAgentId', String($event ?? ''))"
             />
@@ -118,6 +121,7 @@ const props = defineProps<{
   target: Plugin | null;
   scopeMode: 'global' | 'agent';
   scopeAgentId: string;
+  agentOptions: { label: string; value: string }[];
   savingScope: boolean;
   bumpingSort: boolean;
 }>();

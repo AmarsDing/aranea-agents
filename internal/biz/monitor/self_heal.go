@@ -2,7 +2,8 @@ package monitor
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/rand"
+	"fmt"
 	"sync"
 	"time"
 
@@ -345,6 +346,11 @@ func stringsEqualFold(a, b string) bool {
 }
 
 func generateHealID() string {
-	b, _ := json.Marshal(map[string]int64{"ts": time.Now().UnixNano()})
-	return string(b)
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback: use single UnixNano call for 4 bytes of entropy
+		nano := time.Now().UnixNano()
+		b = [4]byte{byte(nano), byte(nano >> 8), byte(nano >> 16), byte(nano >> 24)}
+	}
+	return fmt.Sprintf("heal-%d-%x", time.Now().UnixNano(), b)
 }

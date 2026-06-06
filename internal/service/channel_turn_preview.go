@@ -97,7 +97,9 @@ func (c *TurnPreviewCoordinator) Start(ctx context.Context, sessionID string) co
 	if c.initialAck != "" {
 		c.transcript.SetSystem(c.initialAck)
 		if c.updater != nil {
-			_ = c.patch(ctx, preview.RenderPlainText(c.transcript, c.policy), true)
+			if err := c.patch(ctx, preview.RenderPlainText(c.transcript, c.policy), true); err != nil {
+				c.lg.Warn("initial ack patch failed", loggateway.Err(err))
+			}
 		}
 	}
 	if c.bus == nil || sessionID == "" {
@@ -162,7 +164,9 @@ func (c *TurnPreviewCoordinator) maybeHeartbeat(ctx context.Context) {
 	if strings.TrimSpace(rendered) != "" {
 		text = preview.FormatRenderedTranscriptForIM(c.platform, rendered) + "\n\n" + heartbeat
 	}
-	_ = c.patchLocked(ctx, text, false)
+	if err := c.patchLocked(ctx, text, false); err != nil {
+		c.lg.Warn("heartbeat patch failed", loggateway.Err(err))
+	}
 }
 
 func (c *TurnPreviewCoordinator) SetActiveRunID(runID string) {
@@ -255,7 +259,9 @@ func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope
 				patchText = channelPreviewThinkingHint
 			}
 			if strings.TrimSpace(patchText) != "" {
-				_ = c.patch(ctx, patchText, false)
+				if err := c.patch(ctx, patchText, false); err != nil {
+					c.lg.Warn("envelope patch failed", loggateway.Err(err))
+				}
 			}
 		}
 	}

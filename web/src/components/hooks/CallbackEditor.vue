@@ -94,8 +94,28 @@
             dense
             outlined
             :label="t('hooksPage.callbackEditor.fieldWebhookUrl')"
-            @update:model-value="emitChange"
+            :error="webhookUrlError !== ''"
+            :error-message="webhookUrlError"
+            @update:model-value="onWebhookUrlChange"
           />
+          <q-input
+            v-model="localRule.action.webhook_secret"
+            class="app-grid-span-full"
+            dense
+            outlined
+            :type="showSecret ? 'text' : 'password'"
+            :label="t('hooksPage.callbackEditor.fieldWebhookSecret')"
+            :hint="t('hooksPage.callbackEditor.webhookSecretHint')"
+            @update:model-value="emitChange"
+          >
+            <template #append>
+              <q-icon
+                :name="showSecret ? 'visibility_off' : 'visibility'"
+                class="cursor-pointer"
+                @click="showSecret = !showSecret"
+              />
+            </template>
+          </q-input>
           <div class="app-form-field-grid app-form-field-grid--2col app-grid-span-full">
             <q-input
               v-model.number="localRule.action.notify_max_retries"
@@ -176,10 +196,10 @@ import type { HookRuleConfig } from '../../features/hooks/types';
 const { t } = useI18n();
 
 const logLevelOptions = computed(() => [
-  { label: 'debug', value: 'debug' },
-  { label: 'info', value: 'info' },
-  { label: 'warn', value: 'warn' },
-  { label: 'error', value: 'error' },
+  { label: t('hooksPage.logLevels.debug'), value: 'debug' },
+  { label: t('hooksPage.logLevels.info'), value: 'info' },
+  { label: t('hooksPage.logLevels.warn'), value: 'warn' },
+  { label: t('hooksPage.logLevels.error'), value: 'error' },
 ]);
 
 const props = defineProps<{
@@ -207,8 +227,11 @@ const {
   showLogFields,
   showModifyFields,
   showMessageField,
+  showSecret,
+  webhookUrlError,
   emitChange,
   emitMeta,
   onModifyPatchInput,
+  onWebhookUrlChange,
 } = useCallbackEditor(props, emit);
 </script>

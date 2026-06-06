@@ -39,79 +39,94 @@ func cascadeDeleteByAgent(ctx context.Context, d *Data, agentID string) {
 		Save(ctx); err != nil {
 		lg.Warn("cascade: soft-delete sessions by agent failed", loggateway.Err(err))
 	}
+
+	// Hard-delete tool_agent_overrides for this agent
+	execer := d.RWDB().WriteDB(ctx)
+	if _, err := execer.ExecContext(ctx, `DELETE FROM tool_agent_overrides WHERE agent_id = ?`, agentID); err != nil {
+		lg.Warn("cascade: delete tool_agent_overrides failed", loggateway.Err(err))
+	}
 }
 
 // cascadeDeleteBySession cleans up related records when a session is soft-deleted.
-// Failures are logged but do not block the primary delete operation.
+// All 14 DELETE operations are wrapped in a single transaction to prevent
+// partial success leaving the database in an inconsistent state.
 func cascadeDeleteBySession(ctx context.Context, d *Data, sessionID string) {
 	if d == nil || sessionID == "" {
 		return
 	}
 	lg := d.lg.With(loggateway.StepID("data.cascade.session"), loggateway.Str("session_id", sessionID))
-	execer := d.RWDB().WriteDB(ctx)
 
-	// Hard-delete session_turns (no soft-delete support)
-	if _, err := execer.ExecContext(ctx, `DELETE FROM session_turns WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete session_turns failed", loggateway.Err(err))
-	}
+	err := d.ExecInTx(ctx, func(txCtx context.Context) error {
+		execer := d.RWDB().WriteDB(txCtx)
 
-	// Hard-delete session_participants
-	if _, err := execer.ExecContext(ctx, `DELETE FROM session_participants WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete session_participants failed", loggateway.Err(err))
-	}
+		// Hard-delete session_turns (no soft-delete support)
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_turns WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete session_run_checkpoints
-	if _, err := execer.ExecContext(ctx, `DELETE FROM session_run_checkpoints WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete session_run_checkpoints failed", loggateway.Err(err))
-	}
+		// Hard-delete session_participants
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_participants WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete tool_invocation_params + tool_invocations
-	if _, err := execer.ExecContext(ctx, `DELETE FROM tool_invocation_params WHERE invocation_id IN (SELECT id FROM tool_invocations WHERE session_id = ?)`, sessionID); err != nil {
-		lg.Warn("cascade: delete tool_invocation_params failed", loggateway.Err(err))
-	}
-	if _, err := execer.ExecContext(ctx, `DELETE FROM tool_invocations WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete tool_invocations failed", loggateway.Err(err))
-	}
+		// Hard-delete session_run_checkpoints
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_run_checkpoints WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete skill_invocations
-	if _, err := execer.ExecContext(ctx, `DELETE FROM skill_invocation WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete skill_invocations failed", loggateway.Err(err))
-	}
+		// Hard-delete tool_invocation_params + tool_invocations
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_invocation_params WHERE invocation_id IN (SELECT id FROM tool_invocations WHERE session_id = ?)`, sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_invocations WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete tool_result_blobs + tool_result_replacements
-	if _, err := execer.ExecContext(ctx, `DELETE FROM tool_result_replacements WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete tool_result_replacements failed", loggateway.Err(err))
-	}
-	if _, err := execer.ExecContext(ctx, `DELETE FROM tool_result_blobs WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete tool_result_blobs failed", loggateway.Err(err))
-	}
+		// Hard-delete skill_invocations
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM skill_invocation WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete messages
-	if _, err := execer.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete messages failed", loggateway.Err(err))
-	}
+		// Hard-delete tool_result_blobs + tool_result_replacements
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_result_replacements WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_result_blobs WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete event_store entries
-	if _, err := execer.ExecContext(ctx, `DELETE FROM event_store WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete event_store failed", loggateway.Err(err))
-	}
+		// Hard-delete messages
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM messages WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete session_runs (created by DDL migration, not Ent schema)
-	if _, err := execer.ExecContext(ctx, `DELETE FROM session_runs WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete session_runs failed", loggateway.Err(err))
-	}
+		// Hard-delete event_store entries
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM event_store WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete session_runtime + session_metrics (1:1 with session)
-	if _, err := execer.ExecContext(ctx, `DELETE FROM session_runtime WHERE id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete session_runtime failed", loggateway.Err(err))
-	}
-	if _, err := execer.ExecContext(ctx, `DELETE FROM session_metrics WHERE id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete session_metrics failed", loggateway.Err(err))
-	}
+		// Hard-delete session_runs (created by DDL migration, not Ent schema)
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_runs WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
 
-	// Hard-delete channel_turn_jobs
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_turn_job WHERE session_id = ?`, sessionID); err != nil {
-		lg.Warn("cascade: delete channel_turn_jobs failed", loggateway.Err(err))
+		// Hard-delete session_runtime + session_metrics (1:1 with session)
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_runtime WHERE id = ?`, sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_metrics WHERE id = ?`, sessionID); err != nil {
+			return err
+		}
+
+		// Hard-delete channel_turn_jobs
+		if _, err := execer.ExecContext(txCtx, `DELETE FROM channel_turn_job WHERE session_id = ?`, sessionID); err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		lg.Warn("cascade: delete session related records failed", loggateway.Err(err))
 	}
 }
 

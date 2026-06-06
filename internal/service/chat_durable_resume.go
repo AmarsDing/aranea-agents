@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -38,12 +39,16 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 	}
 	cp, err := s.orch.chJobs.SessionRuns.GetCheckpoint(ctx, sessionRunID)
 	if err != nil || cp.ID == "" {
-		_ = s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
+		if err := s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID); err != nil {
+			s.lg.Warn("durable resume: clear claim failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+		}
 		return err
 	}
 	payload, err := biz.ParseDurableCheckpointPayload(cp.PayloadJSON)
 	if err != nil {
-		_ = s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
+		if err := s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID); err != nil {
+			s.lg.Warn("durable resume: clear claim failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+		}
 		return err
 	}
 	deadline := time.Duration(biz.DefaultDurableDeadlineSec()) * time.Second
@@ -74,20 +79,30 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 		_, asst, turnErr := s.RunNativeTurn(bgCtx, req)
 		persistCtx := context.WithoutCancel(runCtx)
 		if turnErr != nil {
-			_ = s.orch.chJobs.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error())
+			if err := s.orch.chJobs.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error()); err != nil {
+				s.lg.Warn("durable resume: fail session run failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+			}
 			if s.orch.chNotify.RunEscalation != nil {
 				if failed, gerr := s.orch.chJobs.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
-					_ = s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error())
+					if err := s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error()); err != nil {
+						s.lg.Warn("durable resume: notify run failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+					}
 				} else {
-					_ = s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error())
+					if err := s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error()); err != nil {
+						s.lg.Warn("durable resume: notify run failed (fallback)", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+					}
 				}
 			}
 			return
 		}
-		_ = s.orch.chJobs.SessionRuns.Complete(persistCtx, sessionRunID)
+		if err := s.orch.chJobs.SessionRuns.Complete(persistCtx, sessionRunID); err != nil {
+			s.lg.Warn("durable resume: complete session run failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+		}
 		if s.orch.chNotify.RunEscalation != nil {
 			if completed, gerr := s.orch.chJobs.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && completed.ID != "" {
-				_ = s.orch.chNotify.RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown)
+				if err := s.orch.chNotify.RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown); err != nil {
+					s.lg.Warn("durable resume: notify run completed failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
+				}
 			}
 		}
 	})

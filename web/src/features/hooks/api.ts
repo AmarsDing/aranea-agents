@@ -46,6 +46,11 @@ export async function createHook(input: {
   return wireToHook(row as Record<string, unknown>);
 }
 
+// TECH-DEBT: updateHook does a Get+merge on the frontend, duplicating the backend's
+// own merge logic in biz/hook.Usecase.Update. This adds an extra network round-trip
+// and a race window between Get and Update. The proper fix is to send only changed
+// fields and let the backend handle the merge, but that requires proto field_mask
+// support. See ARCH-1 in the hook review report.
 export async function updateHook(
   id: string,
   patch: Partial<Pick<HookRow, 'key' | 'name' | 'description' | 'enabled' | 'sort_order' | 'status'>> & {

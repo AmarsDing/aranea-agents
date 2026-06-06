@@ -369,7 +369,9 @@ func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment s
 		return nil, err
 	}
 	if comment != "" {
-		_, _ = uc.AddTaskComment(ctx, taskID, "system", comment, "unblock")
+		if _, err := uc.AddTaskComment(ctx, taskID, "system", comment, "unblock"); err != nil {
+			uc.lg.Warn("add task unblock comment failed", loggateway.Err(err), loggateway.Str("task_id", taskID))
+		}
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_unblocked", task.NodeID, comment)
 	uc.afterTaskMutation(ctx, task, nil)

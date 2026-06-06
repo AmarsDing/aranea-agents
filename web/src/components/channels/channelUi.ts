@@ -180,5 +180,7 @@ export function deliveryStatusColor(status: string) {
 
 /** Channel Delivery 状态标签 */
 export function deliveryStatusLabel(status: string) {
-  return deliveryStatusFromChannelStatus(status) ? presentDeliveryStatus(deliveryStatusFromChannelStatus(status)).label : status || '—';
+  return deliveryStatusFromChannelStatus(status)
+    ? presentDeliveryStatus(deliveryStatusFromChannelStatus(status)).label
+    : status || '—';
 }

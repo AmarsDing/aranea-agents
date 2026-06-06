@@ -46,7 +46,19 @@ func fromProtoNode(n *graphv1.NodeDef) biz.NodeDef {
 		InputFromLastResponse: n.InputFromLastResponse,
 		CacheEnabled:          n.CacheEnabled,
 		CacheTTLSeconds:       int(n.CacheTtlSeconds),
+		RequiredRole:             n.RequiredRole,
+		AssignmentMode:           n.AssignmentMode,
+		AssignmentStrategy:       n.AssignmentStrategy,
+		ReviewerAgent:            n.ReviewerAgent,
+		ReviewRules:              n.ReviewRules,
+		TimeoutSeconds:           int(n.TimeoutSeconds),
+		HeartbeatIntervalSeconds: int(n.HeartbeatIntervalSeconds),
+		EnableLeaseExtension:     n.EnableLeaseExtension,
 	}
+}
+
+func fromProtoEdge(e *graphv1.EdgeDef) biz.EdgeDef {
+	return biz.EdgeDef{From: e.From, To: e.To, Kind: e.Kind}
 }
 
 func fromProtoCondEdge(ce *graphv1.ConditionalEdgeDef) biz.ConditionalEdgeDef {
@@ -60,6 +72,7 @@ func fromProtoCondEdge(ce *graphv1.ConditionalEdgeDef) biz.ConditionalEdgeDef {
 func fromProtoSubgraph(sub *graphv1.SubgraphDef) biz.SubgraphDef {
 	return biz.SubgraphDef{
 		ID:              sub.Id,
+		GraphID:         sub.GraphId,
 		InterruptBefore: sub.InterruptBefore,
 		InterruptAfter:  sub.InterruptAfter,
 	}
@@ -111,13 +124,21 @@ func toProtoGraph(def *biz.GraphDefinition, lg loggateway.Logger) (*graphv1.Grap
 				InputFromLastResponse: n.InputFromLastResponse,
 				CacheEnabled:          n.CacheEnabled,
 				CacheTtlSeconds:       int32(n.CacheTTLSeconds),
+				RequiredRole:             n.RequiredRole,
+				AssignmentMode:           n.AssignmentMode,
+				AssignmentStrategy:       n.AssignmentStrategy,
+				ReviewerAgent:            n.ReviewerAgent,
+				ReviewRules:              n.ReviewRules,
+				TimeoutSeconds:           int32(n.TimeoutSeconds),
+				HeartbeatIntervalSeconds: int32(n.HeartbeatIntervalSeconds),
+				EnableLeaseExtension:     n.EnableLeaseExtension,
 			}
 		}
 	}
 	if def.Edges != nil {
 		pb.Edges = make([]*graphv1.EdgeDef, len(def.Edges))
 		for i, e := range def.Edges {
-			pb.Edges[i] = &graphv1.EdgeDef{From: e.From, To: e.To}
+			pb.Edges[i] = &graphv1.EdgeDef{From: e.From, To: e.To, Kind: e.Kind}
 		}
 	}
 	if def.ConditionalEdges != nil {
@@ -135,6 +156,7 @@ func toProtoGraph(def *biz.GraphDefinition, lg loggateway.Logger) (*graphv1.Grap
 		for i, sub := range def.Subgraphs {
 			pb.Subgraphs[i] = &graphv1.SubgraphDef{
 				Id:              sub.ID,
+				GraphId:         sub.GraphID,
 				InterruptBefore: sub.InterruptBefore,
 				InterruptAfter:  sub.InterruptAfter,
 			}
@@ -173,6 +195,8 @@ func toProtoStep(step biz.GraphStepSnapshot) *graphv1.GraphStepSnapshot {
 	pb := &graphv1.GraphStepSnapshot{
 		NodeId:    step.NodeID,
 		StepIndex: int32(step.StepIndex),
+		Status:    step.Status,
+		Error:     step.Error,
 	}
 	if step.InputState != nil {
 		st, err := structpb.NewStruct(step.InputState)
@@ -185,6 +209,9 @@ func toProtoStep(step biz.GraphStepSnapshot) *graphv1.GraphStepSnapshot {
 		if err == nil {
 			pb.OutputState = st
 		}
+	}
+	if !step.Timestamp.IsZero() {
+		pb.Timestamp = timestamppb.New(step.Timestamp)
 	}
 	return pb
 }

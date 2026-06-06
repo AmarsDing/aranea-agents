@@ -2,12 +2,13 @@ package artifact_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz/artifact"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockRepo struct {
@@ -80,7 +81,7 @@ func TestUsecase_Save(t *testing.T) {
 				return want, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		got, err := uc.Save(context.Background(), "s1", "f.csv", "text/csv", []byte("data"))
 		if err != nil {
 			t.Fatal(err)
@@ -92,15 +93,14 @@ func TestUsecase_Save(t *testing.T) {
 
 	t.Run("exceeds_size_limit", func(t *testing.T) {
 		repo := &mockRepo{}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		big := make([]byte, artifact.MaxUploadBytes+1)
 		_, err := uc.Save(context.Background(), "s1", "big.bin", "application/octet-stream", big)
 		if err == nil {
 			t.Fatal("expected error for oversized upload")
 		}
-		ke := kerrors.FromError(err)
-		if ke.Reason != "ARTIFACT" {
-			t.Fatalf("expected ARTIFACT reason, got %q", ke.Reason)
+		if !errors.Is(err, artifact.ErrSizeExceeded) {
+			t.Fatalf("expected ErrSizeExceeded, got %v", err)
 		}
 	})
 
@@ -110,7 +110,7 @@ func TestUsecase_Save(t *testing.T) {
 				return artifact.Artifact{}, fmt.Errorf("db fail")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, err := uc.Save(context.Background(), "s1", "f.csv", "text/csv", []byte("x"))
 		if err == nil {
 			t.Fatal("expected error")
@@ -124,7 +124,7 @@ func TestUsecase_Save(t *testing.T) {
 				return want, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		ctx, c := artifact.WithTurnCollector(context.Background())
 		_, err := uc.Save(ctx, "s1", "f.csv", "text/csv", []byte("data"))
 		if err != nil {
@@ -146,7 +146,7 @@ func TestUsecase_Save(t *testing.T) {
 				return want, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, err := uc.Save(context.Background(), "s1", "f.csv", "text/csv", []byte("x"))
 		if err != nil {
 			t.Fatal(err)
@@ -166,7 +166,7 @@ func TestUsecase_Load(t *testing.T) {
 				return wantArt, wantData, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		a, d, err := uc.Load(context.Background(), "a1", 2)
 		if err != nil {
 			t.Fatal(err)
@@ -182,7 +182,7 @@ func TestUsecase_Load(t *testing.T) {
 				return artifact.Artifact{}, nil, fmt.Errorf("not found")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, _, err := uc.Load(context.Background(), "missing", 0)
 		if err == nil {
 			t.Fatal("expected error")
@@ -198,7 +198,7 @@ func TestUsecase_LoadMeta(t *testing.T) {
 				return want, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		got, err := uc.LoadMeta(context.Background(), "a1", 0)
 		if err != nil {
 			t.Fatal(err)
@@ -214,7 +214,7 @@ func TestUsecase_LoadMeta(t *testing.T) {
 				return artifact.Artifact{}, fmt.Errorf("not found")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, err := uc.LoadMeta(context.Background(), "missing", 0)
 		if err == nil {
 			t.Fatal("expected error")
@@ -241,7 +241,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems[:2], 2, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, total, err := uc.List(context.Background(), "s1", 10, 5, "", "")
 		if err != nil {
 			t.Fatal(err)
@@ -260,7 +260,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems, 3, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, total, err := uc.List(context.Background(), "s1", 10, 0, "csv", "")
 		if err != nil {
 			t.Fatal(err)
@@ -279,7 +279,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems, 3, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, total, err := uc.List(context.Background(), "s1", 10, 0, "", "image/")
 		if err != nil {
 			t.Fatal(err)
@@ -295,7 +295,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems, 3, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, total, err := uc.List(context.Background(), "s1", 10, 0, "photo", "image/")
 		if err != nil {
 			t.Fatal(err)
@@ -311,7 +311,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems, 3, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, total, err := uc.List(context.Background(), "s1", 10, 100, "csv", "")
 		if err != nil {
 			t.Fatal(err)
@@ -330,7 +330,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems, 3, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, total, err := uc.List(context.Background(), "s1", 1, 0, "s1", "")
 		if err != nil {
 			t.Fatal(err)
@@ -349,7 +349,7 @@ func TestUsecase_List(t *testing.T) {
 				return nil, 0, fmt.Errorf("db fail")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, _, err := uc.List(context.Background(), "s1", 10, 0, "", "")
 		if err == nil {
 			t.Fatal("expected error")
@@ -365,7 +365,7 @@ func TestUsecase_List(t *testing.T) {
 				return allItems, 3, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		items, _, err := uc.List(context.Background(), "s1", 10, 0, "  ", "  ")
 		if err != nil {
 			t.Fatal(err)
@@ -377,40 +377,27 @@ func TestUsecase_List(t *testing.T) {
 }
 
 func TestUsecase_Delete(t *testing.T) {
-	t.Run("empty_id_delegates_to_repo", func(t *testing.T) {
-		called := false
-		repo := &mockRepo{
-			deleteFn: func(_ context.Context, id string) error {
-				called = true
-				if id != "" {
-					t.Errorf("id=%q, expected empty", id)
-				}
-				return nil
-			},
+	t.Run("empty_id_returns_bad_request", func(t *testing.T) {
+		repo := &mockRepo{}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		err := uc.Delete(context.Background(), "")
+		if err == nil {
+			t.Fatal("expected error for empty id")
 		}
-		uc := artifact.NewUsecase(repo)
-		if err := uc.Delete(context.Background(), ""); err != nil {
-			t.Fatal(err)
-		}
-		if !called {
-			t.Fatal("expected repo.Delete to be called")
+		if !strings.Contains(err.Error(), "id is required") {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	t.Run("whitespace_id_delegates_to_repo", func(t *testing.T) {
-		called := false
-		repo := &mockRepo{
-			deleteFn: func(_ context.Context, id string) error {
-				called = true
-				return nil
-			},
+	t.Run("whitespace_id_returns_bad_request", func(t *testing.T) {
+		repo := &mockRepo{}
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
+		err := uc.Delete(context.Background(), "   ")
+		if err == nil {
+			t.Fatal("expected error for whitespace id")
 		}
-		uc := artifact.NewUsecase(repo)
-		if err := uc.Delete(context.Background(), "   "); err != nil {
-			t.Fatal(err)
-		}
-		if !called {
-			t.Fatal("expected repo.Delete to be called")
+		if !strings.Contains(err.Error(), "id is required") {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
@@ -434,7 +421,7 @@ func TestUsecase_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		if err := uc.Delete(context.Background(), "a1"); err != nil {
 			t.Fatal(err)
 		}
@@ -454,7 +441,7 @@ func TestUsecase_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		err := uc.Delete(context.Background(), "a1")
 		if err == nil {
 			t.Fatal("expected error from Load")
@@ -482,7 +469,7 @@ func TestUsecase_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		if err := uc.Delete(context.Background(), "a1"); err != nil {
 			t.Fatal(err)
 		}
@@ -506,7 +493,7 @@ func TestUsecase_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		if err := uc.Delete(context.Background(), "a1"); err != nil {
 			t.Fatal(err)
 		}
@@ -535,7 +522,7 @@ func TestUsecase_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		err := uc.Delete(context.Background(), "a1")
 		if err == nil {
 			t.Fatal("expected first delete error")
@@ -545,7 +532,7 @@ func TestUsecase_Delete(t *testing.T) {
 
 func TestUsecase_DeleteVersion(t *testing.T) {
 	t.Run("empty_id", func(t *testing.T) {
-		uc := artifact.NewUsecase(&mockRepo{})
+		uc := artifact.NewUsecase(&mockRepo{}, loggateway.NewNoop())
 		err := uc.DeleteVersion(context.Background(), "", 1)
 		if err == nil {
 			t.Fatal("expected error for empty id")
@@ -553,7 +540,7 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 	})
 
 	t.Run("whitespace_id", func(t *testing.T) {
-		uc := artifact.NewUsecase(&mockRepo{})
+		uc := artifact.NewUsecase(&mockRepo{}, loggateway.NewNoop())
 		err := uc.DeleteVersion(context.Background(), "   ", 1)
 		if err == nil {
 			t.Fatal("expected error for whitespace id")
@@ -561,7 +548,7 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 	})
 
 	t.Run("version_zero", func(t *testing.T) {
-		uc := artifact.NewUsecase(&mockRepo{})
+		uc := artifact.NewUsecase(&mockRepo{}, loggateway.NewNoop())
 		err := uc.DeleteVersion(context.Background(), "a1", 0)
 		if err == nil {
 			t.Fatal("expected error for version 0")
@@ -569,7 +556,7 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 	})
 
 	t.Run("negative_version", func(t *testing.T) {
-		uc := artifact.NewUsecase(&mockRepo{})
+		uc := artifact.NewUsecase(&mockRepo{}, loggateway.NewNoop())
 		err := uc.DeleteVersion(context.Background(), "a1", -1)
 		if err == nil {
 			t.Fatal("expected error for negative version")
@@ -589,7 +576,7 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 				return nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		if err := uc.DeleteVersion(context.Background(), "a1", 2); err != nil {
 			t.Fatal(err)
 		}
@@ -601,7 +588,7 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 				return artifact.Artifact{}, nil, fmt.Errorf("not found")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		err := uc.DeleteVersion(context.Background(), "a1", 1)
 		if err == nil {
 			t.Fatal("expected error")
@@ -618,7 +605,7 @@ func TestUsecase_DeleteVersion(t *testing.T) {
 				return fmt.Errorf("db fail")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		err := uc.DeleteVersion(context.Background(), "a1", 1)
 		if err == nil {
 			t.Fatal("expected error")
@@ -640,7 +627,7 @@ func TestUsecase_ListVersions(t *testing.T) {
 				return want, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		got, err := uc.ListVersions(context.Background(), "s1", "f.csv")
 		if err != nil {
 			t.Fatal(err)
@@ -656,7 +643,7 @@ func TestUsecase_ListVersions(t *testing.T) {
 				return nil, fmt.Errorf("db fail")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, err := uc.ListVersions(context.Background(), "s1", "f.csv")
 		if err == nil {
 			t.Fatal("expected error")
@@ -679,7 +666,7 @@ func (m *mockRepoWithStorage) StorageBytes(ctx context.Context) (int64, error) {
 func TestUsecase_StorageBytes(t *testing.T) {
 	t.Run("repo_without_storage_reporter", func(t *testing.T) {
 		repo := &mockRepo{}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		n, err := uc.StorageBytes(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -696,7 +683,7 @@ func TestUsecase_StorageBytes(t *testing.T) {
 				return 4096, nil
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		n, err := uc.StorageBytes(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -713,7 +700,7 @@ func TestUsecase_StorageBytes(t *testing.T) {
 				return 0, fmt.Errorf("storage error")
 			},
 		}
-		uc := artifact.NewUsecase(repo)
+		uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 		_, err := uc.StorageBytes(context.Background())
 		if err == nil {
 			t.Fatal("expected error")

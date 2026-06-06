@@ -14,6 +14,20 @@ type ExperienceReportReader interface {
 	GetByID(ctx context.Context, id string) (*ExperienceReport, error)
 	// ListByTimeRange returns experience reports within a time range, ordered by created_at desc.
 	ListByTimeRange(ctx context.Context, from, to time.Time, limit, offset int) ([]ExperienceReport, error)
+	// ListFiltered returns experience reports with optional skillID and time range filters.
+	// skillID empty = no skill filter; startTime/endTime nil = no time boundary.
+	// Returns the matched reports and total count for pagination.
+	ListFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit, offset int) ([]ExperienceReport, int, error)
+}
+
+// ExperienceReportStatsReader reads aggregate statistics for experience reports.
+type ExperienceReportStatsReader interface {
+	// GetFailureTagCountsFiltered returns failure tag counts with optional skillID and time range filters.
+	// skillID empty = no skill filter; startTime/endTime nil = no time boundary.
+	GetFailureTagCountsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time) ([]FailureTagCount, error)
+	// GetRootCauseReportsFiltered returns experience reports that have root cause analysis,
+	// with optional skillID and time range filters, ordered by created_at desc.
+	GetRootCauseReportsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit int) ([]ExperienceReport, error)
 }
 
 // ExperienceReportWriter writes experience reports.
@@ -71,6 +85,8 @@ type FailureTagCount struct {
 type SkillEvolutionSuggestionReader interface {
 	// ListBySkill returns evolution suggestions for a given skill, optionally filtered by status.
 	ListBySkill(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error)
+	// CountBySkill returns the total count of evolution suggestions for a given skill, optionally filtered by status.
+	CountBySkill(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error)
 	// GetByID returns a single evolution suggestion by ID.
 	GetByID(ctx context.Context, id string) (*SkillEvolutionSuggestion, error)
 	// ListPending returns pending evolution suggestions, ordered by created_at desc.
@@ -90,7 +106,7 @@ type SkillEvolutionSuggestionWriter interface {
 	// UpdateSandboxResult updates the sandbox validation result of an evolution suggestion.
 	UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
 	// UpdateLifecycleStatus updates the lifecycle status of an evolution suggestion.
-	UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error
+	UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus EvolutionLifecycleStatus) error
 }
 
 // SkillInvocationUnanalyzedReader reads unanalyzed skill invocations for batch processing.

@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	v1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -28,17 +30,35 @@ func NewSkillIntelligenceService(uc *biz.SkillIntelligenceUsecase, lg loggateway
 
 func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, req *v1.ListExperienceReportsRequest) (*v1.ListExperienceReportsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
-	reports, err := s.uc.GetExperienceReports(ctx, req.GetSkillId(), limit, offset)
-	if err != nil {
-		return nil, err
+
+	var startTime, endTime *time.Time
+	if ts := req.GetStartTime(); ts != nil {
+		t := ts.AsTime()
+		startTime = &t
 	}
+	if ts := req.GetEndTime(); ts != nil {
+		t := ts.AsTime()
+		endTime = &t
+	}
+
+	result, err := s.uc.GetExperienceReportsFiltered(ctx, req.GetSkillId(), startTime, endTime, limit, offset)
+	if err != nil {
+		return nil, mapSkillIntelligenceError(err)
+	}
+
 	resp := &v1.ListExperienceReportsResponse{
-		Total:    int64(len(reports)),
+		Total:    int64(result.TotalCount),
 		Page:     page,
 		PageSize: pageSize,
 	}
-	for i := range reports {
-		resp.Items = append(resp.Items, toProtoExperienceReport(reports[i]))
+	for i := range result.Reports {
+		resp.Items = append(resp.Items, toProtoExperienceReport(result.Reports[i]))
+	}
+	for _, fc := range result.FailureTagCounts {
+		resp.FailureTagCounts = append(resp.FailureTagCounts, toProtoFailureTagCount(fc))
+	}
+	for i := range result.RootCauseReports {
+		resp.RootCauseReports = append(resp.RootCauseReports, toProtoExperienceReport(result.RootCauseReports[i]))
 	}
 	return resp, nil
 }
@@ -46,7 +66,7 @@ func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, re
 func (s *SkillIntelligenceService) GetExperienceReport(ctx context.Context, req *v1.GetExperienceReportRequest) (*v1.GetExperienceReportResponse, error) {
 	r, err := s.uc.GetExperienceReport(ctx, req.GetId())
 	if err != nil {
-		return nil, err
+		return nil, mapSkillIntelligenceError(err)
 	}
 	return &v1.GetExperienceReportResponse{
 		Report: toProtoExperienceReport(*r),
@@ -60,6 +80,7 @@ func toProtoExperienceReport(r biz.ExperienceReport) *v1.ExperienceReport {
 		SessionId:          r.SessionID,
 		InvocationId:       r.InvocationID,
 		SkillId:            r.SkillID,
+		SkillName:          r.SkillName,
 		IsSuccess:          r.IsSuccess,
 		Score:              int32(r.Score),
 		FailureTags:        r.FailureTags,
@@ -81,6 +102,28 @@ func toProtoExperienceReport(r biz.ExperienceReport) *v1.ExperienceReport {
 		pb.GeneratedSuggestionId = *r.GeneratedSuggestionID
 	}
 	return pb
+}
+
+// mapSkillIntelligenceError converts biz-layer errors to kerrors for the transport layer.
+// If the error is already a kerrors error (e.g. from biz layer), it passes through.
+func mapSkillIntelligenceError(err error) error {
+	if err == nil {
+		return nil
+	}
+	// Already a kratos error — pass through.
+	if ke := kerrors.FromError(err); ke != nil {
+		return err
+	}
+	// Wrap unknown errors as Internal.
+	return kerrors.InternalServer("SKILL_INTELLIGENCE", err.Error())
+}
+
+// toProtoFailureTagCount converts a biz FailureTagCount to proto.
+func toProtoFailureTagCount(fc biz.FailureTagCount) *v1.FailureTagCount {
+	return &v1.FailureTagCount{
+		Tag:   fc.Tag,
+		Count: int32(fc.Count),
+	}
 }
 
 

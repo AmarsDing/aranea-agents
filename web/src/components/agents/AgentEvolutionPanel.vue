@@ -252,23 +252,17 @@ const props = defineProps<{
 
 const evolutionRange = ref('30d');
 
-const {
-  metricsLoading,
-  metrics,
-  suggestions,
-  applyingId,
-  rejectingId,
-  pendingSuggestionsCount,
-  onApply,
-  onReject,
-} = useAgentEvolutionPanel(
-  () => props.agentId,
-  () => evolutionRange.value,
-);
+const { metricsLoading, metrics, suggestions, applyingId, rejectingId, pendingSuggestionsCount, onApply, onReject } =
+  useAgentEvolutionPanel(
+    () => props.agentId,
+    () => evolutionRange.value,
+  );
 
 const rangeModel = computed({
   get: () => evolutionRange.value,
-  set: (value: string) => { evolutionRange.value = value; },
+  set: (value: string) => {
+    evolutionRange.value = value;
+  },
 });
 
 const rangeOptions = ['7d', '30d', '90d'].map((value) => ({ label: value, value }));

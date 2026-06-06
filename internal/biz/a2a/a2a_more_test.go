@@ -80,7 +80,7 @@ func TestListRemoteAgents(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockUsecaseRepo{}
 			tt.setup(repo)
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			if tt.name == "nil_usecase_returns_internal_server" {
 				var nilUc *Usecase
 				agents, err := nilUc.ListRemoteAgents(context.Background(), tt.workspace)
@@ -167,7 +167,7 @@ func TestDeleteRemoteAgent(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			err := uc.DeleteRemoteAgent(context.Background(), tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -277,7 +277,7 @@ func TestPersistRemoteHealth(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			err := uc.PersistRemoteHealth(context.Background(), tt.id, tt.ok, tt.errMsg)
 			if tt.wantErr {
 				if err == nil {
@@ -379,7 +379,7 @@ func TestAppendAudit(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			err := uc.AppendAudit(context.Background(), tt.entry)
 			if tt.wantErr {
 				if err == nil {
@@ -490,7 +490,7 @@ func TestListAudit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockUsecaseRepo{}
 			tt.setup(repo)
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			entries, total, err := uc.ListAudit(context.Background(), tt.callerID, tt.calleeID, tt.limit, tt.offset)
 			if tt.wantErr {
 				if err == nil {
@@ -564,7 +564,7 @@ func TestGetRemoteAgent(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			agent, err := uc.GetRemoteAgent(context.Background(), tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -671,7 +671,7 @@ func TestFinishInvocation(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, repo, repo, repo)
+			uc := NewUsecase(repo, repo, repo, repo, nil)
 			err := uc.FinishInvocation(context.Background(), tt.inv)
 			if tt.wantErr {
 				if err == nil {

@@ -1,27 +1,46 @@
-import type { ModelTokenUsageEvent, ModelUsageQuery } from '../usage/types';
 import type { TeamRunEvent } from '../teams/types';
 import type { PlatformResource } from '../platform/types';
 
-export type { ModelTokenUsageEvent, ModelUsageQuery, PlatformResource, TeamRunEvent };
+export type { PlatformResource, TeamRunEvent };
 
-export type MonitorTraceEvent = ModelTokenUsageEvent & {
-  date_key?: string;
-  hour_key?: string;
-  request_id?: string;
-  team_id?: string;
-  user_id?: string;
-  usage_kind?: string;
-  cached_input_tokens?: number;
-  reasoning_tokens?: number;
-  embedding_tokens?: number;
-  input_cost_micro_usd?: number;
-  output_cost_micro_usd?: number;
-  error_code?: string;
-  retry_count?: number;
-  time_to_first_token_ms?: number;
-  metadata_json?: string;
-  created_at?: string;
+/** Monitor trace row — mirrors backend MonitorPlatformRow from ListMonitorTraces. */
+export type MonitorTrace = {
+  id: string;
+  resource: string;
+  key: string;
+  name: string;
+  description: string;
+  status: string;
+  enabled: boolean;
+  sort_order: number;
+  parent_id: string;
+  level: string;
+  agent_id: string;
+  provider: string;
+  model: string;
+  config_json: string;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string;
 };
+
+/** Monitor trace detail — mirrors backend GetMonitorTrace response. */
+export type MonitorTraceDetail = {
+  trace: MonitorTrace;
+  config_json: string;
+  metadata_json: string;
+  spans_json: string;
+};
+
+/** Alias for MonitorTrace — use MonitorTraceRow when the context is specifically a trace list row. */
+export type MonitorTraceRow = MonitorTrace;
+
+/**
+ * @deprecated Use MonitorTraceRow (or MonitorTrace) instead. This type was incorrectly based on
+ * ModelTokenUsageEvent and will be removed in a future release.
+ */
+export type MonitorTraceEvent = MonitorTraceRow;
 
 export type AuditLog = {
   id: string;

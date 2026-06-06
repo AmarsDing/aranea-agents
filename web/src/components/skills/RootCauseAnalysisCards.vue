@@ -11,7 +11,7 @@
         <q-card v-for="card in cards" :key="card.id" flat bordered class="rca-card">
           <q-card-section class="q-pb-sm">
             <div class="row items-center q-gutter-sm">
-              <q-badge rounded color="negative">{{ card.skillId || '未知 Skill' }}</q-badge>
+              <q-badge rounded color="negative">{{ card.skillName || card.skillId || '-' }}</q-badge>
               <span class="text-caption text-grey-7">{{ formatDate(card.createdAt) }}</span>
             </div>
           </q-card-section>
@@ -38,10 +38,10 @@
 </template>
 
 <script setup lang="ts">
-import type { ExperienceReport } from '../../services/kratos/skill_intelligence/v1/index';
+import type { ExperienceReportView } from '../../features/skills/types';
 
 defineProps<{
-  cards: ExperienceReport[];
+  cards: ExperienceReportView[];
 }>();
 
 function formatDate(value?: string) {

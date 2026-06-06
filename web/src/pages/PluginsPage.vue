@@ -102,6 +102,7 @@
       v-model:scope-mode="scopeMode"
       v-model:scope-agent-id="scopeAgentId"
       :target="detailTarget"
+      :agent-options="agentOptions"
       :saving-scope="savingScope"
       :bumping-sort="bumpingSort"
       @bump-sort="(delta) => detailTarget && bumpSort(detailTarget, delta)"
@@ -147,6 +148,7 @@ const {
   detailTarget,
   scopeMode,
   scopeAgentId,
+  agentOptions,
   savingScope,
   bumpingSort,
   configOpen,

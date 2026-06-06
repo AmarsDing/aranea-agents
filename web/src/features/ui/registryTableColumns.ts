@@ -23,6 +23,9 @@ export const REGISTRY_COL_W = {
   actions: '90px',
   actionsWide: '100px',
   select: '48px',
+  content: '25%',
+  contentWide: '28%',
+  traceAction: '30px',
 } as const;
 
 /**

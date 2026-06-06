@@ -1,12 +1,15 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { createSkillIntelligenceService } from '../../services';
-import type { ExperienceReport } from '../../services/kratos/skill_intelligence/v1/index';
+import { listExperienceReports } from '../../features/skills/api';
+import type { ExperienceReportView, FailureTagCountView } from '../../features/skills/types';
 
 export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => {
-  const reports = ref<ExperienceReport[]>([]);
+  const reports = ref<ExperienceReportView[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  const error = ref('');
+  const failureTagCounts = ref<FailureTagCountView[]>([]);
+  const rootCauseReports = ref<ExperienceReportView[]>([]);
 
   async function loadExperienceReports(params: {
     skillId?: string;
@@ -14,20 +17,17 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
     endTime?: string;
     page?: number;
     pageSize?: number;
-  }): Promise<{ items: ExperienceReport[]; total: number }> {
+  }): Promise<void> {
     loading.value = true;
+    error.value = '';
     try {
-      const svc = createSkillIntelligenceService();
-      const data = await svc.ListExperienceReports({
-        skillId: params.skillId || undefined,
-        startTime: params.startTime || undefined,
-        endTime: params.endTime || undefined,
-        page: params.page,
-        pageSize: params.pageSize,
-      });
-      reports.value = data.items ?? [];
-      total.value = data.total ?? 0;
-      return { items: reports.value, total: total.value };
+      const res = await listExperienceReports(params);
+      reports.value = res.items;
+      total.value = res.total;
+      failureTagCounts.value = res.failureTagCounts;
+      rootCauseReports.value = res.rootCauseReports;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载经验报告失败';
     } finally {
       loading.value = false;
     }
@@ -37,6 +37,9 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
     reports,
     total,
     loading,
+    error,
+    failureTagCounts,
+    rootCauseReports,
     loadExperienceReports,
   };
 });

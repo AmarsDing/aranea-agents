@@ -425,7 +425,7 @@ body:not(.body--dark) .dashboard-side-toggle .dashboard-sell
     background: rgba(201, 123, 99, 0.12) !important
   &.dashboard-sell--on
     background: #C97B63 !important
-    color: #fff !important
+    color: var(--color-on-accent) !important
 
 // --- Theme Preview（dev 验收页）---
 body:not(.body--dark) .theme-preview-page
@@ -712,7 +712,7 @@ body.body--dark .theme-preview-page
   background: color-mix(in srgb, var(--glass-surface) 88%, transparent) !important
 
 .chat-toolbar-btn--filled .q-icon
-  color: #fff
+  color: var(--color-on-accent)
 
 .chat-context-pill
   min-height: 42px
@@ -778,7 +778,7 @@ body:not(.body--dark)
     .chat-side__toggle-btn
       box-shadow: var(--glass-inner-highlight) !important
       background: var(--color-accent) !important
-      color: #fff !important
+      color: var(--color-on-accent) !important
       &:hover
         background: var(--color-accent-hover) !important
     .chat-icon-btn,
@@ -791,7 +791,7 @@ body:not(.body--dark)
     .chat-send-btn,
     .chat-primary-btn
       background: var(--color-accent) !important
-      color: #fff !important
+      color: var(--color-on-accent) !important
       box-shadow: var(--glass-inner-highlight)
       &:hover
         background: var(--color-accent-hover) !important
@@ -1322,7 +1322,7 @@ body:not(.body--dark)
 
     .sessions-btn-accent
       background: var(--color-accent) !important
-      color: #fff !important
+      color: var(--color-on-accent) !important
       &:hover
         background: var(--color-accent-hover) !important
 
@@ -1410,13 +1410,13 @@ body:not(.body--dark)
   border-radius: 12px
 
 body.body--dark .skill-import-dialog
-  box-shadow: 0 0 28px rgba(77, 216, 232, 0.14)
+  box-shadow: 0 0 28px color-mix(in srgb, var(--color-accent) 14%, transparent)
 
 body.body--dark
   .skills-page,
   .skill-runs-page,
   .sessions-page
-    background: linear-gradient(160deg, var(--canvas-base) 0%, #111827 48%, #0f172a 100%)
+    background: linear-gradient(160deg, var(--canvas-base) 0%, var(--color-page-tint-alt) 48%, var(--color-page-tint) 100%)
     color: var(--color-text-primary)
 
     .skill-filter-card,
@@ -1448,14 +1448,14 @@ body.body--dark
       &:hover
         background: var(--glass-surface-hover) !important
         border-color: var(--glass-border-hover)
-        box-shadow: 0 0 20px rgba(77, 216, 232, 0.12)
+        box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 12%, transparent)
 
     .sessions-summary-card
       transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease
       &:hover
         background: var(--glass-surface-hover) !important
         border-color: var(--glass-border-hover)
-        box-shadow: 0 0 16px rgba(77, 216, 232, 0.1)
+        box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 10%, transparent)
 
     .q-table th
       background: var(--glass-surface)
@@ -1494,13 +1494,13 @@ body.body--dark
       color: var(--color-accent) !important
       border-color: color-mix(in srgb, var(--color-accent) 38%, transparent) !important
       &:hover
-        background: rgba(77, 216, 232, 0.08)
+        background: color-mix(in srgb, var(--color-accent) 8%, transparent)
 
     .sessions-btn-ghost
       color: var(--color-text-secondary) !important
       &:hover
         color: var(--color-accent) !important
-        background: rgba(77, 216, 232, 0.06)
+        background: color-mix(in srgb, var(--color-accent) 6%, transparent)
 
     .sessions-icon-btn
       color: var(--color-text-secondary)
@@ -1522,7 +1522,7 @@ body.body--dark
       color: var(--color-accent)
 
   .skill-ux-dialog-card
-    box-shadow: 0 0 24px rgba(77, 216, 232, 0.12)
+    box-shadow: 0 0 24px color-mix(in srgb, var(--color-accent) 12%, transparent)
 
 // Session detail + timeline（UX.md §2 玻璃 token）
 .session-detail-page
@@ -1860,7 +1860,7 @@ body.body--dark
     border-color: color-mix(in srgb, var(--color-neon-violet) 35%, var(--glass-border))
 
   .session-timeline__filter .q-field__control
-    background: rgba(18, 24, 34, 0.45)
+    background: color-mix(in srgb, var(--color-surface-solid) 45%, transparent)
     border-radius: 14px
     backdrop-filter: blur(8px)
     -webkit-backdrop-filter: blur(8px)
@@ -1901,10 +1901,10 @@ body.body--dark .monitor-trace-dialog
   -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
 
 .monitor-json
-  background: color-mix(in srgb, var(--canvas-base) 8%, #111827)
+  background: color-mix(in srgb, var(--canvas-base) 8%, var(--color-surface-elevated))
   border-radius: 14px
   border: 1px solid var(--glass-border)
-  color: color-mix(in srgb, var(--color-success) 65%, #fff)
+  color: color-mix(in srgb, var(--color-success) 65%, var(--color-on-accent))
   font-size: 12px
   line-height: 1.6
   margin: 0
@@ -2054,12 +2054,12 @@ body:not(.body--dark) .monitor-alert-rule-row
   box-shadow: var(--glass-inner-highlight)
 
 body.body--dark .monitor-info-banner
-  background: rgb(30 58 138 / 35%)
+  background: color-mix(in srgb, var(--color-accent-blue) 35%, transparent)
   color: var(--color-status-info-text-light)
   border-color: var(--glass-border)
 
 body.body--dark .monitor-alert-rule-row
-  background: rgb(15 23 42 / 55%)
+  background: color-mix(in srgb, var(--color-surface-solid) 55%, transparent)
   border: 1px solid var(--glass-border)
 
 body.body--dark .monitor-alert-rules
@@ -2069,7 +2069,7 @@ body.body--dark .monitor-alert-rules .text-h6
   color: var(--color-text-primary)
 
 body.body--dark .monitor-alert-rules .q-field__control
-  background: rgb(15 23 42 / 72%)
+  background: color-mix(in srgb, var(--color-surface-solid) 72%, transparent)
 
 body.body--dark .monitor-alert-rules .q-field__native,
 body.body--dark .monitor-alert-rules .q-field__input
@@ -2079,7 +2079,7 @@ body.body--dark .monitor-alert-rules .q-field__label
   color: var(--color-text-secondary)
 
 .monitor-log-console
-  background: color-mix(in srgb, var(--canvas-base) 6%, #0f172a)
+  background: color-mix(in srgb, var(--canvas-base) 6%, var(--color-surface-solid))
   border-radius: 16px
   border: 1px solid var(--glass-border)
   color: var(--color-text-secondary)
@@ -2209,9 +2209,9 @@ $monitor-log-control-h: 36px
     box-shadow: 0 1px 4px color-mix(in srgb, var(--canvas-base) 40%, transparent)
 
   &--active.monitor-log-level-toggle__btn--debug
-    background: color-mix(in srgb, #64748b 22%, transparent)
-    border-color: color-mix(in srgb, #94a3b8 45%, transparent)
-    color: #cbd5e1
+    background: color-mix(in srgb, var(--color-text-slate-500) 22%, transparent)
+    border-color: color-mix(in srgb, var(--color-text-slate-600) 45%, transparent)
+    color: var(--color-text-slate-700)
 
   &--active.monitor-log-level-toggle__btn--info
     background: color-mix(in srgb, var(--color-accent) 24%, transparent)
@@ -2219,26 +2219,26 @@ $monitor-log-control-h: 36px
     color: var(--color-accent-hover)
 
   &--active.monitor-log-level-toggle__btn--warn
-    background: color-mix(in srgb, #f59e0b 22%, transparent)
-    border-color: color-mix(in srgb, #fbbf24 45%, transparent)
-    color: #fcd34d
+    background: color-mix(in srgb, var(--color-warning) 22%, transparent)
+    border-color: color-mix(in srgb, var(--color-accent-amber) 45%, transparent)
+    color: var(--color-accent-amber-light)
 
   &--active.monitor-log-level-toggle__btn--error
-    background: color-mix(in srgb, #ef4444 22%, transparent)
-    border-color: color-mix(in srgb, #f87171 45%, transparent)
-    color: #fca5a5
+    background: color-mix(in srgb, var(--color-danger) 22%, transparent)
+    border-color: color-mix(in srgb, var(--color-danger) 45%, transparent)
+    color: var(--color-danger-text)
 
 body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--debug
-  color: #475569
+  color: var(--color-text-slate-600)
 
 body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--info
   color: var(--color-accent)
 
 body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--warn
-  color: #b45309
+  color: var(--color-status-warning-text)
 
 body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--error
-  color: #b91c1c
+  color: var(--color-danger-text)
 
 .monitor-log-stream-body
   flex: 1
@@ -2258,14 +2258,14 @@ body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-t
   min-width: max-content
 
 .monitor-log-time
-  color: color-mix(in srgb, var(--color-accent) 75%, #fff)
+  color: color-mix(in srgb, var(--color-accent) 75%, var(--color-on-accent))
 
 body:not(.body--dark) .monitor-log-level
   color: var(--color-accent-hover)
   font-weight: 700
 
 body.body--dark .monitor-log-level
-  color: color-mix(in srgb, var(--color-neon-violet) 90%, #fff)
+  color: color-mix(in srgb, var(--color-neon-violet) 90%, var(--color-on-accent))
   font-weight: 700
 
 .monitor-log-line--warn .monitor-log-level
@@ -2276,7 +2276,7 @@ body.body--dark .monitor-log-level
 
 .monitor-log-line--flow-ok .monitor-log-title,
 .monitor-log-line--flow-info .monitor-log-title
-  color: var(--color-success, #21ba45)
+  color: var(--color-success)
 
 .monitor-log-line--flow-warn .monitor-log-title
   color: var(--color-warning)
@@ -2336,12 +2336,12 @@ body.body--dark
   align-items: flex-end
   padding: 12px 16px
   border-radius: 12px
-  background: var(--color-background-elevated, rgba(128, 128, 128, 0.06))
-  border: 1px solid rgba(128, 128, 128, 0.10)
+  background: var(--overview-neutral-bg-alt)
+  border: 1px solid var(--overview-neutral-border-alt)
 
 body.body--dark .overview-filter-bar__inner
-  background: rgba(255, 255, 255, 0.03)
-  border-color: rgba(255, 255, 255, 0.06)
+  background: var(--overview-neutral-bg-alt)
+  border-color: var(--overview-neutral-border-alt)
 
 .overview-filter-field
   min-width: 128px
@@ -2391,36 +2391,36 @@ body.body--dark .overview-filter-bar__inner
 .overview-panel,
 .overview-metric-card
   border-radius: 14px !important
-  background: var(--color-background-elevated, rgba(128, 128, 128, 0.04)) !important
-  border: 1px solid rgba(128, 128, 128, 0.08) !important
+  background: var(--overview-neutral-bg) !important
+  border: 1px solid var(--overview-neutral-border) !important
   box-shadow: none !important
   transition: border-color 0.18s ease, background 0.18s ease
 
 body.body--dark .overview-panel,
 body.body--dark .overview-metric-card
-  background: rgba(255, 255, 255, 0.025) !important
-  border-color: rgba(255, 255, 255, 0.05) !important
+  background: var(--overview-neutral-bg) !important
+  border-color: var(--overview-neutral-border) !important
 
 .overview-panel:hover,
 .overview-metric-card:hover
-  border-color: rgba(128, 128, 128, 0.16) !important
+  border-color: var(--overview-neutral-border-hover) !important
 
 body.body--dark .overview-panel:hover,
 body.body--dark .overview-metric-card:hover
-  border-color: rgba(255, 255, 255, 0.10) !important
+  border-color: var(--overview-neutral-border-hover) !important
 
 // ── 警示面板 ──
 .overview-panel--warning
   border-left: 3px solid var(--color-warning) !important
 
 body.body--dark .overview-panel--warning
-  border-left-color: rgba(255, 175, 77, 0.55) !important
+  border-left-color: var(--overview-warning-border) !important
 
 .overview-panel--danger
   border-left: 3px solid var(--color-danger) !important
 
 body.body--dark .overview-panel--danger
-  border-left-color: rgba(255, 94, 122, 0.45) !important
+  border-left-color: var(--overview-danger-border) !important
 
 .overview-panel__alert-icon
   font-size: 20px
@@ -2447,8 +2447,8 @@ body.body--dark .overview-panel--danger
 
 .overview-stat-card
   border-radius: 14px
-  background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-  border: 1px solid rgba(128, 128, 128, 0.08)
+  background: var(--overview-neutral-bg)
+  border: 1px solid var(--overview-neutral-border)
   padding: 20px 22px
   display: flex
   flex-direction: column
@@ -2456,14 +2456,14 @@ body.body--dark .overview-panel--danger
   transition: border-color 0.2s ease, background 0.2s ease
 
 body.body--dark .overview-stat-card
-  background: rgba(255, 255, 255, 0.025)
-  border-color: rgba(255, 255, 255, 0.05)
+  background: var(--overview-neutral-bg)
+  border-color: var(--overview-neutral-border)
 
 .overview-stat-card:hover
-  border-color: rgba(128, 128, 128, 0.18)
+  border-color: var(--overview-neutral-border-hover-alt)
 
 body.body--dark .overview-stat-card:hover
-  border-color: rgba(255, 255, 255, 0.12)
+  border-color: var(--overview-neutral-border-hover-alt)
 
 .overview-stat-card--clickable
   cursor: pointer
@@ -2471,11 +2471,11 @@ body.body--dark .overview-stat-card:hover
 .overview-stat-card--clickable:hover
   border-color: var(--color-accent)
   transform: translateY(-1px)
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08)
+  box-shadow: var(--overview-shadow-clickable)
 
 body.body--dark .overview-stat-card--clickable:hover
   border-color: var(--color-accent)
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)
+  box-shadow: var(--overview-shadow-clickable)
 
 .overview-stat-card__header
   display: flex
@@ -2490,26 +2490,26 @@ body.body--dark .overview-stat-card--clickable:hover
   align-items: center
   justify-content: center
   color: var(--color-text-secondary)
-  background: rgba(128, 128, 128, 0.10)
+  background: var(--overview-neutral-bg-icon)
 
 body.body--dark .overview-stat-card__icon-wrap
-  background: rgba(255, 255, 255, 0.06)
+  background: var(--overview-neutral-bg-icon)
 
 .overview-stat-card__icon-wrap--accent
-  color: #fff
+  color: var(--color-on-accent)
   background: var(--color-accent)
 
 body.body--dark .overview-stat-card__icon-wrap--accent
   color: var(--color-accent)
-  background: rgba(77, 216, 232, 0.14)
+  background: var(--overview-accent-icon-bg)
 
 .overview-stat-card__icon-wrap--warn
   color: var(--color-warning)
-  background: rgba(240, 155, 84, 0.12)
+  background: var(--overview-warn-icon-bg)
 
 .overview-stat-card__icon-wrap--danger
   color: var(--color-danger)
-  background: rgba(229, 92, 92, 0.10)
+  background: var(--overview-danger-icon-bg)
 
 .overview-stat-card__label
   font-size: 0.78rem
@@ -2532,50 +2532,50 @@ body.body--dark .overview-stat-card__icon-wrap--accent
   font-variant-numeric: tabular-nums
 
   &--tech-blue
-    background: linear-gradient(135deg, #4F46E5, #2563EB)
+    background: linear-gradient(135deg, var(--color-accent-indigo-darker), var(--color-accent-blue))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
   &--tech-cyan
-    background: linear-gradient(135deg, #0891B2, #06B6D4)
+    background: linear-gradient(135deg, var(--color-accent-cyan), #06B6D4)
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
   &--tech-amber
-    background: linear-gradient(135deg, #D97706, #F59E0B)
+    background: linear-gradient(135deg, #D97706, var(--color-accent-amber))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
   &--tech-green
-    background: linear-gradient(135deg, #059669, #10B981)
+    background: linear-gradient(135deg, #059669, var(--color-accent-green-light))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
   &--tech-red
-    background: linear-gradient(135deg, #DC2626, #EF4444)
+    background: linear-gradient(135deg, #DC2626, var(--color-danger))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
 body.body--dark
   .overview-stat-card__value--tech-blue
-    background: linear-gradient(135deg, #818CF8, #3B82F6)
+    background: linear-gradient(135deg, var(--color-accent-indigo-light), var(--color-accent-blue))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
   .overview-stat-card__value--tech-cyan
-    background: linear-gradient(135deg, #22D3EE, #67E8F9)
+    background: linear-gradient(135deg, var(--color-accent-cyan), #67E8F9)
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
 
   .overview-stat-card__value--tech-amber
-    background: linear-gradient(135deg, #FBBF24, #FCD34D)
+    background: linear-gradient(135deg, var(--color-accent-amber), var(--color-accent-amber-dark))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
@@ -2610,7 +2610,7 @@ body.body--dark
   white-space: nowrap
 
   &--tech
-    background: linear-gradient(135deg, #4F46E5, #2563EB)
+    background: linear-gradient(135deg, var(--color-accent-indigo-darker), var(--color-accent-blue))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
@@ -2618,7 +2618,7 @@ body.body--dark
 
 body.body--dark
   .overview-stat-card__bottom-left--tech
-    background: linear-gradient(135deg, #818CF8, #22D3EE)
+    background: linear-gradient(135deg, var(--color-accent-indigo-light), var(--color-accent-cyan))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
@@ -2656,11 +2656,11 @@ body.body--dark
 .overview-stat-card__bar
   height: 6px
   border-radius: 999px
-  background: rgba(128, 128, 128, 0.10)
+  background: var(--overview-neutral-bg-bar)
   overflow: hidden
 
 body.body--dark .overview-stat-card__bar
-  background: rgba(255, 255, 255, 0.06)
+  background: var(--overview-neutral-bg-bar)
 
 .overview-stat-card__bar-fill
   height: 100%
@@ -2773,20 +2773,20 @@ body.body--dark .overview-stat-card__bar
 // ═══════════════════════════════════════════════════════════════
 
 .overview-separator
-  background: rgba(128, 128, 128, 0.08) !important
+  background: var(--overview-neutral-border) !important
 
 body.body--dark .overview-separator
-  background: rgba(255, 255, 255, 0.05) !important
+  background: var(--overview-neutral-border) !important
 
 .overview-chip
   color: var(--color-accent) !important
-  border: 1px solid rgba(128, 128, 128, 0.12) !important
+  border: 1px solid var(--overview-neutral-border-chip) !important
   background: var(--color-info-soft) !important
 
 // 主按钮
 .overview-primary-btn
   background: var(--color-accent) !important
-  color: var(--color-on-accent, #fff) !important
+  color: var(--color-on-accent) !important
   border-radius: 10px
   font-weight: 600
   font-size: 0.82rem
@@ -2796,7 +2796,7 @@ body:not(.body--dark) .overview-primary-btn:hover
 
 body.body--dark .overview-primary-btn
   border: 1px solid var(--color-accent) !important
-  background: rgba(77, 216, 232, 0.13) !important
+  background: var(--overview-accent-glow) !important
   color: var(--color-accent) !important
 
 // ── 空状态 ──
@@ -2835,13 +2835,13 @@ body.body--dark .overview-primary-btn
   font-size: 0.7rem
   font-weight: 700
   color: var(--color-text-secondary)
-  background: rgba(128, 128, 128, 0.10)
+  background: var(--overview-neutral-bg-icon)
 
 body.body--dark .overview-rank-badge
-  background: rgba(255, 255, 255, 0.06)
+  background: var(--overview-neutral-bg-icon)
 
 .overview-rank-badge--top
-  color: var(--color-on-accent, #fff)
+  color: var(--color-on-accent)
   background: var(--color-accent)
 
 body.body--dark .overview-rank-badge--top
@@ -2854,7 +2854,7 @@ body.body--dark .overview-rank-badge--top
   color: var(--color-accent) !important
 
 body.body--dark .overview-agent-avatar
-  border: 1px solid rgba(255, 255, 255, 0.06)
+  border: 1px solid var(--overview-neutral-border-chip)
 
 // ═══════════════════════════════════════════════════════════════
 //  异常表格
@@ -2867,18 +2867,18 @@ body.body--dark .overview-agent-avatar
   color: var(--color-text-secondary)
   font-weight: 600
   font-size: 0.73rem
-  border-bottom: 1px solid rgba(128, 128, 128, 0.08)
+  border-bottom: 1px solid var(--overview-neutral-border)
 
 body.body--dark .overview-anomaly-table thead th
-  border-bottom-color: rgba(255, 255, 255, 0.05)
+  border-bottom-color: var(--overview-neutral-border)
 
 .overview-anomaly-table tbody td
   color: var(--color-text-primary)
   font-size: 0.82rem
-  border-bottom: 1px solid rgba(128, 128, 128, 0.05)
+  border-bottom: 1px solid var(--overview-neutral-border-table)
 
 body.body--dark .overview-anomaly-table tbody td
-  border-bottom-color: rgba(255, 255, 255, 0.03)
+  border-bottom-color: var(--overview-neutral-border-table)
 
 .overview-anomaly-error
   max-width: 280px
@@ -2886,12 +2886,12 @@ body.body--dark .overview-anomaly-table tbody td
 
 .overview-status-badge--error
   color: var(--color-danger) !important
-  border-color: rgba(229, 92, 92, 0.45) !important
+  border-color: var(--overview-danger-border) !important
   background: var(--color-danger-soft) !important
 
 .overview-flag-chip
   color: var(--color-warning) !important
-  border-color: rgba(240, 155, 84, 0.40) !important
+  border-color: var(--overview-warning-border) !important
   background: var(--color-warning-soft) !important
 
 // ═══════════════════════════════════════════════════════════════
@@ -2899,15 +2899,15 @@ body.body--dark .overview-anomaly-table tbody td
 // ═══════════════════════════════════════════════════════════════
 
 body:not(.body--dark) .overview-page .q-field--outlined .q-field__control
-  background: rgba(255, 253, 245, 0.50)
+  background: var(--overview-field-bg)
 
 body.body--dark .overview-page .q-field--outlined .q-field__control
-  background: rgba(30, 41, 59, 0.40)
-  border-color: rgba(255, 255, 255, 0.06) !important
+  background: var(--overview-field-bg)
+  border-color: var(--overview-neutral-border-alt) !important
 
 body.body--dark .overview-page .q-field--focused .q-field__control
   border-color: var(--color-accent) !important
-  box-shadow: 0 0 0 2px rgba(77, 216, 232, 0.15)
+  box-shadow: var(--overview-accent-focus-ring)
 
 // ═══════════════════════════════════════════════════════════════
 //  警示区堆叠

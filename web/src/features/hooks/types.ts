@@ -19,6 +19,7 @@ export type HookRuleConfig = {
   action: {
     type: HookActionType;
     webhook_url?: string;
+    webhook_secret?: string;
     modify_patch?: Record<string, unknown>;
     log_level?: string;
     message?: string;
@@ -41,14 +42,7 @@ export type HookRow = {
   updated_at: string;
 };
 
-export { CALLBACK_POINT_OPTIONS } from '../callback/constants';
-
-export const ACTION_TYPE_OPTIONS: { label: string; value: HookActionType }[] = [
-  { label: 'Log', value: 'log' },
-  { label: 'Notify (Webhook)', value: 'notify' },
-  { label: 'Block', value: 'block' },
-  { label: 'Modify', value: 'modify' },
-];
+export { CALLBACK_POINT_OPTIONS, useCallbackPointOptions } from '../callback/constants';
 
 export function defaultHookRuleConfig(agentId = '', agentKey = ''): HookRuleConfig {
   return {

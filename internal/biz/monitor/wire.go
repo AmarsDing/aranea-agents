@@ -1,14 +1,12 @@
 package monitor
 
 import (
-	"database/sql"
-
 	"github.com/google/wire"
 )
 
 // ProvideSelfCheckers returns the list of all registered SelfChecker implementations.
 func ProvideSelfCheckers(
-	db *sql.DB,
+	db DBPinger,
 	projector *TraceProjector,
 	worker *AlertEvalWorker,
 	bus EventBusHealthChecker,
@@ -64,7 +62,6 @@ func ProvideSelfCheckRepairers(
 var WireProviderSet = wire.NewSet(
 	NewAlertMetricRegistry,
 	NewRootCauseEngine,
-	wire.Bind(new(RootCauseAnalyzer), new(*RootCauseEngine)),
 	ProvideSelfCheckers,
 	ProvideSelfCheckRepairers,
 )

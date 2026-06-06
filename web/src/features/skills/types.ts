@@ -221,3 +221,62 @@ export type PaginatedResponse<T> = {
   page_size: number;
   total: number;
 };
+
+export type FailureTagCountView = {
+  tag: string;
+  count: number;
+};
+
+export type ExperienceReportListResult = {
+  items: ExperienceReportView[];
+  total: number;
+  page: number;
+  page_size: number;
+  failureTagCounts: FailureTagCountView[];
+  rootCauseReports: ExperienceReportView[];
+};
+
+// ── Experience Report (Skill Intelligence) ──────────────────────
+
+export type ExperienceReportView = {
+  id: string;
+  tenantId: string;
+  sessionId: string;
+  invocationId: string;
+  skillId: string;
+  skillName: string;
+  isSuccess: boolean;
+  score: number;
+  failureTags: string[];
+  flowSummary: string;
+  rootCauseAnalysis: string;
+  suggestedFix: string;
+  optimizationAdvice: string;
+  selectionSnapshot: Record<string, unknown>;
+  generatedSuggestionId: string;
+  createdAt: string;
+};
+
+// ── Evolution Suggestion ────────────────────────────────────────
+
+export type EvolutionSuggestionView = {
+  id: string;
+  skillId: string;
+  type: string;
+  status: string;
+  triggerReason: string;
+  sourceReportIds: string[];
+  draftSkillBody: string;
+  sandboxPassed: boolean | null; // null = not yet validated
+  sandboxResult: Record<string, unknown>;
+  preVerifyResult: Record<string, unknown>;
+  parentVersionId: string;
+  draftVersionId: string;
+  evolutionReason: string;
+  lifecycleStatus: string;
+  approvedBy: string;
+  rejectedBy: string;
+  rejectionReason: string;
+  resolvedAt: string;
+  createdAt: string;
+};

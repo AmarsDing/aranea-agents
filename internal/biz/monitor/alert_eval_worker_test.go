@@ -10,7 +10,6 @@ import (
 )
 
 type workerTestRepo struct {
-	Repo
 	mu                 sync.Mutex
 	listAlertRulesCalled bool
 	countCalled        int

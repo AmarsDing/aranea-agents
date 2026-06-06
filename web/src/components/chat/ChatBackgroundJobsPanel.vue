@@ -285,8 +285,6 @@ async function cancelJob(job: ChatBackgroundJobRow) {
   });
 }
 
-
-
 function deadLetterStatusColor(status: string) {
   switch (status) {
     case 'pending':

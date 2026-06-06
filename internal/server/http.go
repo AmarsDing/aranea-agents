@@ -31,13 +31,13 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
-	skillintlv1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	skilldedupv1 "aranea-agents/api/kratos/skill_dedup/v1"
 	skillevov1 "aranea-agents/api/kratos/skill_evolution/v1"
 	skillevosuggv1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
+	skillintlv1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
-	teamv1 "aranea-agents/api/kratos/team/v1"
 	taxonomyv1 "aranea-agents/api/kratos/taxonomy/v1"
+	teamv1 "aranea-agents/api/kratos/team/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
@@ -48,6 +48,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/validate"
 
+	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -71,6 +72,10 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 			recovery.Recovery(),
 			validate.Middleware(),
 		),
+		// Ensure all JSON responses declare charset=utf-8 to prevent
+		// encoding misinterpretation on Windows (e.g. GBK default).
+		kratoshttp.ResponseEncoder(utf8ResponseEncoder),
+		kratoshttp.ErrorEncoder(utf8ErrorEncoder),
 	}
 	if c.Http.Network != "" {
 		opts = append(opts, kratoshttp.Network(c.Http.Network))
@@ -207,4 +212,48 @@ func registerInfrastructureRoutes(srv *kratoshttp.Server, readiness ReadinessPro
 		promhttp.Handler().ServeHTTP(ctx.Response(), ctx.Request())
 		return nil
 	})
+}
+
+// utf8ResponseEncoder wraps Kratos DefaultResponseEncoder to ensure
+// Content-Type includes charset=utf-8. Without this, Kratos sets
+// "application/json" without charset, which can cause Windows HTTP clients
+// to misinterpret UTF-8 bytes as GBK/GB2312, rendering Chinese as "????".
+func utf8ResponseEncoder(w nethttp.ResponseWriter, r *nethttp.Request, v interface{}) error {
+	codec, _ := kratoshttp.CodecForRequest(r, "Accept")
+	data, err := codec.Marshal(v)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", contentTypeWithCharset(codec.Name()))
+	_, err = w.Write(data)
+	return err
+}
+
+// utf8ErrorEncoder wraps Kratos DefaultErrorEncoder to ensure
+// Content-Type includes charset=utf-8 in error responses.
+func utf8ErrorEncoder(w nethttp.ResponseWriter, r *nethttp.Request, err error) {
+	se := errors.FromError(err)
+	codec, _ := kratoshttp.CodecForRequest(r, "Accept")
+	body, marshalErr := codec.Marshal(se)
+	if marshalErr != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(nethttp.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"code":500,"reason":"CODEC","message":"internal marshal error"}`))
+		return
+	}
+	w.Header().Set("Content-Type", contentTypeWithCharset(codec.Name()))
+	w.WriteHeader(int(se.Code))
+	_, _ = w.Write(body)
+}
+
+// contentTypeWithCharset returns "application/<subtype>; charset=utf-8"
+// for known text-based subtypes, or "application/<subtype>" otherwise.
+func contentTypeWithCharset(subtype string) string {
+	base := "application/" + subtype
+	switch subtype {
+	case "json", "xml", "x-www-form-urlencoded":
+		return base + "; charset=utf-8"
+	default:
+		return base
+	}
 }

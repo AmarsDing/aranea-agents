@@ -431,11 +431,9 @@ func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
 
 	sugReader.suggestions = []SkillEvolutionSuggestion{oldSuggestion, recentSuggestion}
 
-	loop := NewSkillEvolutionLoop(nil, nil, nil, nil, nil, loggateway.NewNoop())
-	loop.suggestionReader = sugReader
-	loop.suggestionWriter = sugWriter
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
-	expired, err := loop.ExpirePendingSuggestions(context.Background())
+	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -462,11 +460,9 @@ func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
 		},
 	}
 
-	loop := NewSkillEvolutionLoop(nil, nil, nil, nil, nil, loggateway.NewNoop())
-	loop.suggestionReader = sugReader
-	loop.suggestionWriter = sugWriter
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
-	expired, err := loop.ExpirePendingSuggestions(context.Background())
+	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -492,11 +488,9 @@ func TestEvolutionLoop_ExpirePendingSuggestions_OnlyPendingExpired(t *testing.T)
 		},
 	}
 
-	loop := NewSkillEvolutionLoop(nil, nil, nil, nil, nil, loggateway.NewNoop())
-	loop.suggestionReader = sugReader
-	loop.suggestionWriter = sugWriter
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
-	expired, err := loop.ExpirePendingSuggestions(context.Background())
+	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1023,11 +1017,9 @@ func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 
-	loop := NewSkillEvolutionLoop(nil, nil, nil, nil, nil, loggateway.NewNoop())
-	loop.suggestionReader = sugReader
-	loop.suggestionWriter = sugWriter
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
-	_, err := loop.ExpirePendingSuggestions(context.Background())
+	_, err := uc.ExpirePendingSuggestions(context.Background())
 	if err == nil {
 		t.Fatal("expected error when ListPending fails, got nil")
 	}
@@ -1036,9 +1028,9 @@ func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
 // ── Test: Expiration - Nil reader/writer (no-op) ────────────────────────────────
 
 func TestEvolutionLoop_ExpirePendingSuggestions_NilAccessors(t *testing.T) {
-	loop := NewSkillEvolutionLoop(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
-	expired, err := loop.ExpirePendingSuggestions(context.Background())
+	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1061,11 +1053,9 @@ func TestEvolutionLoop_ExpirePendingSuggestions_PartialUpdateFailure(t *testing.
 		{ID: "sug-old-2", SkillID: "skill-2", Status: EvoSuggestionPending, LifecycleStatus: EvoLifecycleDraft, CreatedAt: oldTime},
 	}
 
-	loop := NewSkillEvolutionLoop(nil, nil, nil, nil, nil, loggateway.NewNoop())
-	loop.suggestionReader = sugReader
-	loop.suggestionWriter = sugWriter
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
-	expired, err := loop.ExpirePendingSuggestions(context.Background())
+	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1103,7 +1093,7 @@ func (m *mockSkillEvolutionSuggestionWriterWithFailure) UpdateSandboxResult(_ co
 	return nil
 }
 
-func (m *mockSkillEvolutionSuggestionWriterWithFailure) UpdateLifecycleStatus(_ context.Context, _ string, _ string) error {
+func (m *mockSkillEvolutionSuggestionWriterWithFailure) UpdateLifecycleStatus(_ context.Context, _ string, _ EvolutionLifecycleStatus) error {
 	return nil
 }
 

@@ -52,6 +52,9 @@ export type A2ARemoteAgent = {
   discovered_card?: A2AAgentCard;
   created_at: string;
   updated_at: string;
+  /** Health status from gateway probe runner. */
+  healthy?: boolean;
+  last_health_at?: string;
 };
 
 export type RegisterRemoteAgentInput = {

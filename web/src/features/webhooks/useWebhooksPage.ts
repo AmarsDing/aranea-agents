@@ -2,7 +2,7 @@ import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
-import type { WebhookRow } from './types';
+import { WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
 import { useWebhooksStore } from '../../stores/webhooks';
 import { useLocalPagination } from '../../composables/useLocalPagination';
 
@@ -32,6 +32,15 @@ export function useWebhooksPage() {
     filterFn: (r, q) => r.name.toLowerCase().includes(q) || r.url.toLowerCase().includes(q),
   });
 
+  function isValidWebhookUrl(url: string): boolean {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch {
+      return false;
+    }
+  }
+
   async function loadRows() {
     error.value = '';
     try {
@@ -43,7 +52,7 @@ export function useWebhooksPage() {
 
   function openCreate() {
     editingId.value = '';
-    dialogRef.value?.reset(true);
+    dialogRef.value?.reset();
     editorOpen.value = true;
   }
 
@@ -59,12 +68,20 @@ export function useWebhooksPage() {
       $q.notify({ type: 'warning', message: t('webhooksPage.notifyRequired') });
       return;
     }
+    if (!isValidWebhookUrl(payload.url)) {
+      $q.notify({ type: 'warning', message: t('webhooksPage.notifyUrlInvalid') });
+      return;
+    }
     saving.value = true;
     try {
       if (editingId.value) {
         await webhooksStore.saveWebhook(editingId.value, payload);
       } else {
-        await webhooksStore.addWebhook(payload);
+        const created = await webhooksStore.addWebhook(payload);
+        // Show plaintext secret if present (only returned on create)
+        if (created.secret && created.secret !== WEBHOOK_SECRET_MASK) {
+          showSecretReveal(created.secret);
+        }
       }
       editorOpen.value = false;
       $q.notify({ type: 'positive', message: t('webhooksPage.notifySaved') });
@@ -95,9 +112,24 @@ export function useWebhooksPage() {
     }).onOk(async () => {
       try {
         await webhooksStore.removeWebhook(row.id);
+        $q.notify({ type: 'positive', message: t('webhooksPage.notifyDeleted') });
       } catch (e) {
         $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
       }
+    });
+  }
+
+  function showSecretReveal(secret: string) {
+    $q.dialog({
+      title: t('webhooksPage.secretRevealTitle'),
+      message: t('webhooksPage.secretRevealMessage') + '\n\n' + secret,
+      ok: { label: t('webhooksPage.secretCopy'), color: 'primary' },
+      cancel: { label: t('webhooksPage.btnCancel'), flat: true },
+      persistent: true,
+    }).onOk(() => {
+      navigator.clipboard.writeText(secret).then(() => {
+        $q.notify({ type: 'positive', message: t('webhooksPage.secretCopied') });
+      });
     });
   }
 

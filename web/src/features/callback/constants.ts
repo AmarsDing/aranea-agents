@@ -43,9 +43,9 @@ export function useCallbackPointOptions() {
 }
 
 export const PLUGIN_RUN_STATUS_OPTIONS = [
-  { label: '成功', value: 'success' },
-  { label: '阻断', value: 'blocked' },
-  { label: '错误', value: 'error' },
+  { label: 'Success', value: 'success' },
+  { label: 'Blocked', value: 'blocked' },
+  { label: 'Error', value: 'error' },
 ] as const;
 
 export const PLUGIN_RUN_KEY_PRESETS = [

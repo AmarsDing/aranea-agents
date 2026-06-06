@@ -255,12 +255,6 @@ export function buildTaxonomyKey(level: string, name: string, parentId: string) 
 }
 
 /** Compute the next sort order for a new sibling under the given parent. */
-export function nextTaxonomySortOrder(
-  siblings: PlatformResourceTreeNode[],
-): number {
-  return siblings.length > 0
-    ? Math.max(...siblings.map((node) => node.sort_order || 0)) + 10
-    : 10;
+export function nextTaxonomySortOrder(siblings: PlatformResourceTreeNode[]): number {
+  return siblings.length > 0 ? Math.max(...siblings.map((node) => node.sort_order || 0)) + 10 : 10;
 }
-
-

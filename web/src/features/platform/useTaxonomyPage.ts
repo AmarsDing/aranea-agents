@@ -210,10 +210,7 @@ export function useTaxonomyPage() {
     $q.notify({ type: 'negative', message });
   }
 
-  async function onReorderPositions(
-    department: PlatformResourceTreeNode,
-    positions: PlatformResourceTreeNode[],
-  ) {
+  async function onReorderPositions(department: PlatformResourceTreeNode, positions: PlatformResourceTreeNode[]) {
     const ids = positions.map((p) => p.id);
     try {
       await platformStore.reorderTaxonomyNodes(ids);

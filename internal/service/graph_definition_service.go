@@ -35,7 +35,7 @@ func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraph
 	if req.Edges != nil {
 		def.Edges = make([]biz.EdgeDef, len(req.Edges))
 		for i, e := range req.Edges {
-			def.Edges[i] = biz.EdgeDef{From: e.From, To: e.To}
+			def.Edges[i] = fromProtoEdge(e)
 		}
 	}
 	if req.ConditionalEdges != nil {
@@ -119,7 +119,7 @@ func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraph
 	if req.Edges != nil {
 		def.Edges = make([]biz.EdgeDef, len(req.Edges))
 		for i, e := range req.Edges {
-			def.Edges[i] = biz.EdgeDef{From: e.From, To: e.To}
+			def.Edges[i] = fromProtoEdge(e)
 		}
 	}
 	if req.ConditionalEdges != nil {

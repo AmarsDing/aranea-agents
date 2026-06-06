@@ -23,12 +23,7 @@
       <div class="app-metrics-grid q-mb-md">
         <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">整体状态</div>
-          <q-chip
-            :color="statusColor(latestReport.overall_status)"
-            text-color="white"
-            dense
-            class="q-mt-xs"
-          >
+          <q-chip :color="statusColor(latestReport.overall_status)" text-color="white" dense class="q-mt-xs">
             {{ statusLabel(latestReport.overall_status) }}
           </q-chip>
         </div>
@@ -81,9 +76,7 @@
         </q-list>
       </div>
 
-      <div class="text-caption text-grey-7 q-mt-sm">
-        上次自检: {{ formatTime(latestReport.finished_at) }}
-      </div>
+      <div class="text-caption text-grey-7 q-mt-sm">上次自检: {{ formatTime(latestReport.finished_at) }}</div>
     </q-card-section>
 
     <q-card-section v-else-if="loading">

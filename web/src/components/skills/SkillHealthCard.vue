@@ -60,7 +60,10 @@
           </div>
         </div>
 
-        <div v-if="health.total_invocations_7d === 0 && health.total_invocations_30d === 0" class="text-caption text-grey-6 q-mt-md">
+        <div
+          v-if="health.total_invocations_7d === 0 && health.total_invocations_30d === 0"
+          class="text-caption text-grey-6 q-mt-md"
+        >
           暂无调用数据
         </div>
       </template>

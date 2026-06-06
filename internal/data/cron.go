@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -110,7 +109,7 @@ func (r *cronRepo) GetCronTask(ctx context.Context, id string) (biz.CronTask, er
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.CronTask{}, sql.ErrNoRows
+			return biz.CronTask{}, biz.ErrCronNotFound
 		}
 		return biz.CronTask{}, err
 	}
@@ -179,7 +178,7 @@ func (r *cronRepo) GetCronTaskRun(ctx context.Context, id string) (biz.CronTaskR
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.CronTaskRun{}, sql.ErrNoRows
+			return biz.CronTaskRun{}, biz.ErrCronNotFound
 		}
 		return biz.CronTaskRun{}, err
 	}

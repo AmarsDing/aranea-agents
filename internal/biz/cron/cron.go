@@ -280,4 +280,5 @@ var (
 	ErrRunnerDisabled = stderrors.New("cron runner disabled")
 	ErrTaskDeleted    = stderrors.New("cron task deleted")
 	ErrSessionBusy    = stderrors.New("cron session has active run")
+	ErrNotFound       = stderrors.New("cron task not found")
 )

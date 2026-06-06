@@ -35,7 +35,9 @@ export const pageSizeSelectOptions = [10, 20, 50].map((value) => ({
   value,
 }));
 
-export const sessionsTableSelectionColumn = registryCol('select', '', 'id', 'left', REGISTRY_COL_W.select, { sortable: false });
+export const sessionsTableSelectionColumn = registryCol('select', '', 'id', 'left', REGISTRY_COL_W.select, {
+  sortable: false,
+});
 
 export const sessionsTableColumns = [
   registryCol('session', '会话', 'title', 'left', '16%; max-width: 168px', { sortable: false }),

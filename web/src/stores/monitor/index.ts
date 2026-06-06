@@ -5,7 +5,8 @@ import {
   listMonitorAlertRules,
   listMonitorAudit,
   listMonitorEvents,
-  listMonitorTraceEvents,
+  listMonitorTraces,
+  getMonitorTrace,
   getMonitorLogs,
   getRunnerMetrics,
   putMonitorAlertRules,
@@ -14,7 +15,7 @@ import {
   triggerSelfCheck,
   listSelfCheckReports,
 } from '../../features/monitor/api';
-import type { MonitorAlertRule, SelfCheckReport } from '../../features/monitor/types';
+import type { MonitorAlertRule, MonitorTrace, MonitorTraceDetail, SelfCheckReport } from '../../features/monitor/types';
 import { listChannels } from '../../features/channels/api';
 import type {
   AuditLog,
@@ -23,7 +24,7 @@ import type {
   MonitorLogLine,
   TeamRunEvent,
   AuditQuery,
-  ModelUsageQuery,
+  MonitorTracesQuery,
   PaginatedResult,
   RunnerMetricsSummary,
 } from '../../features/monitor/types';
@@ -71,8 +72,12 @@ export const useMonitorStore = defineStore('monitor', () => {
     return listMonitorEvents();
   }
 
-  async function fetchTraceEvents(query: ModelUsageQuery = {}) {
-    return listMonitorTraceEvents({ ...query, limit: query.limit ?? 100 });
+  async function fetchTraceEvents(query: MonitorTracesQuery = {}): Promise<PaginatedResult<MonitorTrace>> {
+    return listMonitorTraces({ ...query, limit: query.limit ?? 100 });
+  }
+
+  async function fetchTraceDetail(id: string): Promise<MonitorTraceDetail> {
+    return getMonitorTrace(id);
   }
 
   async function loadLogs() {
@@ -208,6 +213,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     fetchAuditPage,
     fetchMonitorEvents,
     fetchTraceEvents,
+    fetchTraceDetail,
     loadLogs,
     loadRunnerMetrics,
     startRuntimeEventsStream,

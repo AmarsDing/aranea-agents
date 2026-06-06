@@ -19,6 +19,7 @@ type ExperienceReport struct {
 	SessionID             string
 	InvocationID          string
 	SkillID               string
+	SkillName             string
 	IsSuccess             bool
 	Score                 int
 	FailureTags           []string

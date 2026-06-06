@@ -163,19 +163,26 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 		return 0, nil
 	}
 
-	// Soft-delete agents where kind='ecosystem_preset' AND source='imported' AND taxonomy_position_id IN (position IDs)
-	positionArgs := toAnySlice(positionIDs)
-	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
-		append([]any{now, now}, positionArgs...)...)
+	// Soft-delete agents and cascade cleanup in a single transaction
+	var n int64
+	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		positionArgs := toAnySlice(positionIDs)
+		res, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+			append([]any{now, now}, positionArgs...)...)
+		if err != nil {
+			return err
+		}
+		n, _ = res.RowsAffected()
+
+		// Cascade cleanup for each deleted agent (runtime_settings, prompt_files, sessions)
+		for agentID := range agentIDs {
+			cascadeDeleteByAgent(txCtx, r.data, agentID)
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, err
-	}
-	n, _ := res.RowsAffected()
-
-	// Cascade cleanup for each deleted agent (runtime_settings, prompt_files, sessions)
-	for agentID := range agentIDs {
-		cascadeDeleteByAgent(ctx, r.data, agentID)
 	}
 
 	return int(n), nil

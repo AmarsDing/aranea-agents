@@ -5,6 +5,7 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/errors"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var llmRandFallback uint64
@@ -195,18 +197,24 @@ type LLMInspector interface {
 	Run(in InspectMerge) (LLMInspectResult, error)
 }
 
-type LlmProviderModelUsecase struct {
-	reader    LlmProviderModelReader
-	writer    LlmProviderModelWriter
-	validator LlmProviderModelValidator
-	pricing   ModelPricingRepo
-	inspector LLMInspector
-	crypto    *CredentialCrypto
-	lg        loggateway.Logger
+// AgentReferenceChecker checks whether any agent references a given provider+model.
+type AgentReferenceChecker interface {
+	CountAgentsByProviderAndModel(ctx context.Context, provider, model string) (int, error)
 }
 
-func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto, lg loggateway.Logger) *LlmProviderModelUsecase {
-	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto, lg: lg}
+type LlmProviderModelUsecase struct {
+	reader     LlmProviderModelReader
+	writer     LlmProviderModelWriter
+	validator  LlmProviderModelValidator
+	pricing    ModelPricingRepo
+	inspector  LLMInspector
+	crypto     *CredentialCrypto
+	agentRefs  AgentReferenceChecker
+	lg         loggateway.Logger
+}
+
+func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto, agentRefs AgentReferenceChecker, lg loggateway.Logger) *LlmProviderModelUsecase {
+	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto, agentRefs: agentRefs, lg: lg}
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
@@ -333,6 +341,20 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 }
 
 func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
+	m, err := u.reader.GetProviderModel(ctx, id)
+	if err != nil {
+		return err
+	}
+	if u.agentRefs != nil {
+		count, refErr := u.agentRefs.CountAgentsByProviderAndModel(ctx, m.Provider, m.Model)
+		if refErr != nil {
+			u.lg.Warn("agent reference check failed, proceeding with delete",
+				loggateway.StepID("llm_provider_model.agent_ref_check"),
+				loggateway.Err(refErr))
+		} else if count > 0 {
+			return kerrors.Conflict("LLM_PROVIDER_MODEL", fmt.Sprintf("cannot delete provider model referenced by %d agent(s); reassign agents first", count))
+		}
+	}
 	return u.writer.DeleteProviderModel(ctx, id)
 }
 

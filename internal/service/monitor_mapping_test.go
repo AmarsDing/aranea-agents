@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -510,7 +511,7 @@ func TestNotFoundMonitor(t *testing.T) {
 }
 
 func TestDefaultAlertRules(t *testing.T) {
-	rules := defaultAlertRules()
+	rules := monitor.DefaultAlertRules()
 	if len(rules) != 1 {
 		t.Fatalf("len = %d, want 1", len(rules))
 	}

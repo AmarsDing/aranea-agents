@@ -223,6 +223,7 @@ type UpdateDraft struct {
 // InvocationWrite inserts a skill_invocation row (filesystem sync, runtime, etc.).
 type InvocationWrite struct {
 	SkillID         string
+	SkillName       string
 	SkillVersion    string
 	AgentID         string
 	UserID          string

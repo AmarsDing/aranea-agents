@@ -52,8 +52,7 @@ export function useTaxonomyTreeField(opts: {
   });
 
   function onPick(node: TaxonomyQTreeNode) {
-    const canSelect =
-      opts.selectableLevel.value === 'any' || node.level === opts.selectableLevel.value;
+    const canSelect = opts.selectableLevel.value === 'any' || node.level === opts.selectableLevel.value;
     if (!canSelect) return;
     opts.onUpdate(node.id);
     menuOpen.value = false;

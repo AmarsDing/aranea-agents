@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md">
+    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
       <q-card-section class="text-h6">用例结果 · {{ runId }}</q-card-section>
       <q-card-section class="app-dialog-body q-pt-none">
         <AppRegistryTable

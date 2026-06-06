@@ -38,9 +38,10 @@ type SelfCheckScheduler struct {
 	registry  *AlertMetricRegistry
 	lg        loggateway.Logger
 
-	mu       sync.Mutex
-	running  bool
-	interval time.Duration
+	mu         sync.Mutex
+	running    bool
+	interval   time.Duration
+	checkersMu sync.RWMutex // protects checkers and repairers slices
 }
 
 // NewSelfCheckScheduler creates a new scheduler with the given checkers, repairers, and report repo.
@@ -76,7 +77,9 @@ func (s *SelfCheckScheduler) RegisterChecker(c SelfChecker) {
 	if s == nil || c == nil {
 		return
 	}
+	s.checkersMu.Lock()
 	s.checkers = append(s.checkers, c)
+	s.checkersMu.Unlock()
 }
 
 // RegisterRepairer adds a repairer to the scheduler.
@@ -84,7 +87,9 @@ func (s *SelfCheckScheduler) RegisterRepairer(r SelfCheckRepairer) {
 	if s == nil || r == nil {
 		return
 	}
+	s.checkersMu.Lock()
 	s.repairers = append(s.repairers, r)
+	s.checkersMu.Unlock()
 }
 
 // Start begins the periodic self-check loop. Blocks until ctx is cancelled.
@@ -141,7 +146,11 @@ func (s *SelfCheckScheduler) RunOnce(ctx context.Context) *SelfCheckReport {
 	defer cancel()
 
 	var results []types.SelfCheckResult
-	for _, checker := range s.checkers {
+	s.checkersMu.RLock()
+	checkersCopy := make([]SelfChecker, len(s.checkers))
+	copy(checkersCopy, s.checkers)
+	s.checkersMu.RUnlock()
+	for _, checker := range checkersCopy {
 		checkCtx, checkCancel := context.WithTimeout(overallCtx, SelfCheckTimeout)
 		result := s.runChecker(checkCtx, checker)
 		checkCancel()
@@ -152,11 +161,15 @@ func (s *SelfCheckScheduler) RunOnce(ctx context.Context) *SelfCheckReport {
 
 	// Run repairs for non-passed results
 	var repairActions []RepairOutcome
+	s.checkersMu.RLock()
+	repairersCopy := make([]SelfCheckRepairer, len(s.repairers))
+	copy(repairersCopy, s.repairers)
+	s.checkersMu.RUnlock()
 	for _, result := range results {
 		if result.Status == types.SelfCheckStatusPassed {
 			continue
 		}
-		for _, repairer := range s.repairers {
+		for _, repairer := range repairersCopy {
 			if repairer.CanRepair(result.Checker, result.Status) {
 				outcome := repairer.Repair(overallCtx, result)
 				repairActions = append(repairActions, outcome)
@@ -281,7 +294,11 @@ func (m *SelfCheckUnhealthyCountMetric) Evaluate(ctx context.Context, _ time.Dur
 	}
 	// Count current unhealthy checkers
 	count := 0
-	for _, c := range m.scheduler.checkers {
+	m.scheduler.checkersMu.RLock()
+	checkersCopy := make([]SelfChecker, len(m.scheduler.checkers))
+	copy(checkersCopy, m.scheduler.checkers)
+	m.scheduler.checkersMu.RUnlock()
+	for _, c := range checkersCopy {
 		result := c.Check(ctx)
 		if result.Status != types.SelfCheckStatusPassed {
 			count++

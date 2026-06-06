@@ -343,11 +343,11 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 	if uc.admin == nil {
 		return nil
 	}
-	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", 10, 0)
+	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", 100, 0)
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
-	negationPatterns := []string{"not ", "don't ", "doesn't ", "never ", "no longer ", "不喜欢", "不", "没有"}
+	negationPatterns := []string{"not ", "don't ", "doesn't ", "never ", "no longer ", "不喜欢", "不需要", "不想", "不再", "没有"}
 	for _, raw := range rows {
 		m, _ := jsonutil.ParseMap(raw)
 		if m == nil {

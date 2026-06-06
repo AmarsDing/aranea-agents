@@ -1,11 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import {
-  loginAdminByUsername,
-  loginAdminByEmail,
-  logoutAdmin,
-  getCurrentAdmin,
-} from '../../features/admin/api';
+import { loginAdminByUsername, loginAdminByEmail, logoutAdmin, getCurrentAdmin } from '../../features/admin/api';
 import type { AdminSession } from '../../features/admin/types';
 
 export const useAdminStore = defineStore('admin', () => {

@@ -126,7 +126,6 @@
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import { onMounted } from 'vue';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
@@ -136,11 +135,8 @@ import KnowledgeSearchPanel from '../components/knowledge/KnowledgeSearchPanel.v
 import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
 import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
-import { useKnowledgeStore } from '../stores/knowledge';
 import { formatKnowledgeTime } from '../features/knowledge/knowledgeUi';
 
-const $q = useQuasar();
-const knowledgeStore = useKnowledgeStore();
 const {
   collections,
   selectedId,
@@ -173,6 +169,7 @@ const {
   saveEmbedderConfig,
   loadCollections,
   loadDocuments,
+  loadEmbedderConfig,
   selectCollection,
   openCreateCollection,
   submitCreateCollection,
@@ -185,9 +182,6 @@ const {
 
 onMounted(() => {
   void loadCollections();
-  void knowledgeStore.loadEmbedderConfig().catch((e) => {
-    console.warn('[knowledge] embedder config load failed', e);
-    $q.notify({ type: 'warning', message: 'Embedder 配置加载失败，检索功能可能不可用' });
-  });
+  void loadEmbedderConfig();
 });
 </script>

@@ -99,9 +99,7 @@ export function validateTeamDefinition(definition: TeamDefinition): string | nul
   }
 
   // 成员 agent_id 必填
-  const missingAgent = definition.members.find(
-    (m) => m.enabled !== false && !String(m.agent_id || '').trim(),
-  );
+  const missingAgent = definition.members.find((m) => m.enabled !== false && !String(m.agent_id || '').trim());
   if (missingAgent) {
     return '所有启用成员必须选择 Agent';
   }
@@ -206,6 +204,22 @@ export function parseDefinition(team: Team): TeamDefinition {
   try {
     const parsed = JSON.parse(team.definition_json || '{}') as TeamDefinition;
     const linkedFromTeam = String(team.linked_graph_id || '').trim();
+    let members = Array.isArray(parsed.members) ? parsed.members : [];
+    // Backfill members from graph.nodes when members is empty but graph has agent nodes.
+    // This handles data inconsistency where some teams were created with graph.nodes
+    // but empty members array (e.g. certain pack import paths).
+    if (members.length === 0 && parsed.graph?.nodes?.length) {
+      members = parsed.graph.nodes
+        .filter((n) => n.type === 'agent' && n.agent_id)
+        .map((n, i) => ({
+          agent_id: n.agent_id!,
+          role: n.role || 'worker',
+          name: n.label || `Agent ${i + 1}`,
+          task_prompt: n.task_prompt || '',
+          enabled: n.enabled !== undefined ? n.enabled : true,
+          sort_order: i + 1,
+        }));
+    }
     return withGraph({
       ...parsed,
       version: parsed.version || 1,
@@ -220,7 +234,7 @@ export function parseDefinition(team: Team): TeamDefinition {
       loop_max_iterations: typeof parsed.loop_max_iterations === 'number' ? parsed.loop_max_iterations : 0,
       intent_anchor_agent_id: typeof parsed.intent_anchor_agent_id === 'string' ? parsed.intent_anchor_agent_id : '',
       a2a: parsed.a2a || defaultA2AConfig(),
-      members: Array.isArray(parsed.members) ? parsed.members : [],
+      members,
       graph: parsed.graph,
       synthesizer_agent_id: parsed.synthesizer_agent_id,
       critic_loop: parsed.critic_loop || { max_iterations: 3, score_threshold: 0.8 },
@@ -370,9 +384,10 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: P
 }
 
 function findIndustryNode(taxonomyTree: PlatformResourceTreeNode[], industryId: string) {
-  return taxonomyTree.find(
-    (node) => node.level === 'industry' && (node.id === industryId || node.key === industryId),
-  ) ?? null;
+  return (
+    taxonomyTree.find((node) => node.level === 'industry' && (node.id === industryId || node.key === industryId)) ??
+    null
+  );
 }
 
 export function industryOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]) {

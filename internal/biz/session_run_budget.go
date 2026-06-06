@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -39,7 +40,9 @@ func (u *SessionRunUsecase) StartBudgetWatcher(
 		if !softFired.CompareAndSwap(false, true) {
 			return
 		}
-		_ = u.MarkPhase(ctx, runID, SessionRunPhaseEscalating)
+		if err := u.MarkPhase(ctx, runID, SessionRunPhaseEscalating); err != nil {
+			u.lg.Warn("mark soft budget phase failed", loggateway.Err(err), loggateway.Str("run_id", runID))
+		}
 		if cb.OnSoftBudget != nil {
 			cb.OnSoftBudget(SessionRunPhaseEscalating)
 		}

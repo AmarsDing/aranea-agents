@@ -40,6 +40,8 @@ message Team {
   bool readonly = 21;
   // source: user | system | imported.
   string source = 22;
+  // kind: user | system_builtin | ecosystem_preset | marketplace | certified (ownership classification, maps from DB kind column).
+  string kind = 23;
 }
 
 message TeamRun {
@@ -225,6 +227,8 @@ message EmbeddedGraphNode {
   bool interrupt_before = 6;
   bool interrupt_after = 7;
   repeated string destinations = 8;
+  string task_prompt = 9;
+  optional bool enabled = 10;
 }
 
 message EmbeddedGraphEdge {

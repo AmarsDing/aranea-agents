@@ -27,6 +27,7 @@ message ExperienceReport {
   google.protobuf.Timestamp created_at = 13;
   string root_cause_analysis = 14;
   string suggested_fix = 15;
+  string skill_name = 16;
 }
 
 message ListExperienceReportsRequest {
@@ -37,11 +38,18 @@ message ListExperienceReportsRequest {
   int32 page_size = 5;
 }
 
+message FailureTagCount {
+  string tag = 1;
+  int32 count = 2;
+}
+
 message ListExperienceReportsResponse {
   repeated ExperienceReport items = 1;
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated FailureTagCount failure_tag_counts = 5;
+  repeated ExperienceReport root_cause_reports = 6;
 }
 
 message GetExperienceReportRequest {

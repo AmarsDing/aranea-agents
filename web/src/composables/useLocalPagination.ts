@@ -31,9 +31,7 @@ export function useLocalPagination<T>(options: {
     return filteredRows.value.slice(start, start + rowsPerPage.value);
   });
 
-  const totalPages = computed(() =>
-    Math.max(1, Math.ceil(filteredRows.value.length / rowsPerPage.value)),
-  );
+  const totalPages = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / rowsPerPage.value)));
 
   // 筛选变化时自动重置页码
   if (options.filter && 'value' in options.filter) {

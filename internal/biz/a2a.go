@@ -28,6 +28,8 @@ type (
 	A2AAuditRepo                = a2a.AuditRepo
 	A2ARemoteAgentRepo          = a2a.RemoteAgentRepo
 	A2AUsecase                  = a2a.Usecase
+	A2AAgentLookup              = a2a.AgentLookup
+	A2AAgentMeta                = a2a.AgentMeta
 )
 
 // Backward-compatible aliases using original biz type names.
@@ -46,4 +48,6 @@ var (
 	NewA2AUsecase        = a2a.NewUsecase
 	A2AAgentIDsFromCards = a2a.AgentIDsFromCards
 	AgentIDsFromCards    = a2a.AgentIDsFromCards
+	NewA2AID             = a2a.NewID
+	NewAgentLookupAdapter = a2a.NewAgentLookupAdapter
 )

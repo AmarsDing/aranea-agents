@@ -2,19 +2,12 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   listPlugins,
-  listPluginRuns,
   togglePluginEnabled,
   updatePluginConfig,
   updatePluginScope,
   updatePluginSortOrder,
 } from '../../features/plugins/api';
-import type {
-  Plugin,
-  PluginListQuery,
-  PluginRunListQuery,
-  PluginRun,
-  PaginatedResponse,
-} from '../../features/plugins/types';
+import type { Plugin, PluginListQuery } from '../../features/plugins/types';
 
 export const usePluginsStore = defineStore('plugins', () => {
   const plugins = ref<Plugin[]>([]);
@@ -24,7 +17,7 @@ export const usePluginsStore = defineStore('plugins', () => {
   async function loadPlugins(query?: PluginListQuery) {
     loading.value = true;
     try {
-      const result: PaginatedResponse<Plugin> = await listPlugins(query);
+      const result = await listPlugins(query);
       plugins.value = result.items ?? [];
       total.value = result.total ?? plugins.value.length;
     } finally {
@@ -56,9 +49,5 @@ export const usePluginsStore = defineStore('plugins', () => {
     return updated;
   }
 
-  async function loadPluginRuns(query: PluginRunListQuery = {}): Promise<PaginatedResponse<PluginRun>> {
-    return listPluginRuns(query);
-  }
-
-  return { plugins, total, loading, loadPlugins, loadPluginRuns, toggle, setConfig, setScope, bumpSort };
+  return { plugins, total, loading, loadPlugins, toggle, setConfig, setScope, bumpSort };
 });

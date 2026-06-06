@@ -223,10 +223,12 @@ func (o *ChatOrchestrator) syncSessionProviderModel(ctx context.Context, session
 		return
 	}
 	p, m := prov, mod
-	_, _ = o.td.Sessions.Update(ctx, sessionID, biz.SessionUpdateFields{
+	if _, err := o.td.Sessions.Update(ctx, sessionID, biz.SessionUpdateFields{
 		DefaultProvider: &p,
 		DefaultModel:    &m,
-	})
+	}); err != nil {
+		o.lg.Warn("sync session provider model failed", loggateway.Err(err), loggateway.Str("session_id", sessionID))
+	}
 }
 
 // hydratedAgent loads and returns an Agent by ID.

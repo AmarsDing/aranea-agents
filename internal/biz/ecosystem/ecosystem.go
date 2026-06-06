@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
@@ -69,11 +71,12 @@ type Repo interface {
 // Usecase implements ecosystem workflows.
 type Usecase struct {
 	repo Repo
+	lg   loggateway.Logger
 }
 
 // NewUsecase constructs an ecosystem Usecase.
-func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
+	return &Usecase{repo: repo, lg: lg}
 }
 
 func newEcosystemID() string {
@@ -106,7 +109,11 @@ func (u *Usecase) Get(ctx context.Context, id string) (Product, error) {
 		return Product{}, err
 	}
 	if u.repo != nil {
-		p.Installed, _ = u.repo.IsInstalled(ctx, id)
+		installed, err := u.repo.IsInstalled(ctx, id)
+		if err != nil {
+			u.lg.Warn("check ecosystem install status failed", loggateway.Err(err), loggateway.Str("id", id))
+		}
+		p.Installed = installed
 	}
 	return p, nil
 }

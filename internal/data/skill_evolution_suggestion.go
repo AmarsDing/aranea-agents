@@ -32,9 +32,11 @@ func (r *SkillEvolutionSuggestionRepo) ListBySkill(ctx context.Context, skillID 
 	if limit <= 0 {
 		limit = 50
 	}
-	q := r.data.RW().Read(ctx).SkillEvolutionSuggestion.Query().
-		Where(skillevolutionsuggestion.SkillIDEQ(skillID)).
-		Order(ent.Desc(skillevolutionsuggestion.FieldCreatedAt)).
+	q := r.data.RW().Read(ctx).SkillEvolutionSuggestion.Query()
+	if skillID != "" {
+		q = q.Where(skillevolutionsuggestion.SkillIDEQ(skillID))
+	}
+	q = q.Order(ent.Desc(skillevolutionsuggestion.FieldCreatedAt)).
 		Limit(limit).
 		Offset(offset)
 	if status != "" {
@@ -45,6 +47,17 @@ func (r *SkillEvolutionSuggestionRepo) ListBySkill(ctx context.Context, skillID 
 		return nil, err
 	}
 	return mapEntEvoSuggestions(rows), nil
+}
+
+func (r *SkillEvolutionSuggestionRepo) CountBySkill(ctx context.Context, skillID string, status biz.EvolutionSuggestionStatus) (int, error) {
+	q := r.data.RW().Read(ctx).SkillEvolutionSuggestion.Query()
+	if skillID != "" {
+		q = q.Where(skillevolutionsuggestion.SkillIDEQ(skillID))
+	}
+	if status != "" {
+		q = q.Where(skillevolutionsuggestion.StatusEQ(string(status)))
+	}
+	return q.Count(ctx)
 }
 
 func (r *SkillEvolutionSuggestionRepo) GetByID(ctx context.Context, id string) (*biz.SkillEvolutionSuggestion, error) {
@@ -129,7 +142,7 @@ func (r *SkillEvolutionSuggestionRepo) Create(ctx context.Context, suggestion bi
 		builder.SetEvolutionReason(suggestion.EvolutionReason)
 	}
 	if suggestion.LifecycleStatus != "" {
-		builder.SetLifecycleStatus(suggestion.LifecycleStatus)
+		builder.SetLifecycleStatus(string(suggestion.LifecycleStatus))
 	}
 	_, err := builder.Save(ctx)
 	return err
@@ -170,9 +183,9 @@ func (r *SkillEvolutionSuggestionRepo) UpdateSandboxResult(ctx context.Context, 
 	return err
 }
 
-func (r *SkillEvolutionSuggestionRepo) UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error {
+func (r *SkillEvolutionSuggestionRepo) UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus biz.EvolutionLifecycleStatus) error {
 	_, err := r.data.RW().Write(ctx).SkillEvolutionSuggestion.UpdateOneID(id).
-		SetLifecycleStatus(lifecycleStatus).
+		SetLifecycleStatus(string(lifecycleStatus)).
 		Save(ctx)
 	return err
 }
@@ -195,7 +208,7 @@ func mapEntEvoSuggestion(row *ent.SkillEvolutionSuggestion) biz.SkillEvolutionSu
 		RejectionReason: row.RejectionReason,
 		ParentVersionID: row.ParentVersionID,
 		EvolutionReason: row.EvolutionReason,
-		LifecycleStatus: row.LifecycleStatus,
+		LifecycleStatus: biz.EvolutionLifecycleStatus(row.LifecycleStatus),
 	}
 	if row.SandboxResult != nil {
 		if data, err := json.Marshal(row.SandboxResult); err == nil {

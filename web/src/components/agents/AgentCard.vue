@@ -19,7 +19,7 @@
             :icon="favorite ? 'star' : 'star_border'"
             @click="$emit('toggle-favorite', agent.id)"
           />
-          <div class="agent-card__name text-subtitle2 text-weight-bold ellipsis">{{ agent.display_name }}</div>
+          <div class="agent-card__name text-subtitle2 text-weight-bold ellipsis">{{ displayName }}</div>
           <KindBadge :kind="agent.kind" />
           <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{
             statusLabel(agent.status)
@@ -69,9 +69,10 @@
     <q-card-actions align="between" class="agent-card__actions">
       <span class="agent-card__context">{{ contextLabel }}</span>
       <div class="q-gutter-xs">
-        <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${agent.id}/settings`" />
+        <q-btn v-if="!isBuiltin" flat dense rounded color="primary" label="编辑" :to="`/agents/${agent.id}/settings`" />
+        <q-btn v-if="isBuiltin" flat dense rounded color="primary" label="设置" :to="`/agents/${agent.id}/settings`" />
         <q-btn v-if="!isBuiltin" flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', agent)" />
-        <q-btn v-if="!isBuiltin && agent.kind !== 'system_builtin'" flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
+        <q-btn v-if="!isBuiltin" flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
         <q-chip v-if="isBuiltin" dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
       </div>
     </q-card-actions>
@@ -104,4 +105,5 @@ defineEmits<{
 const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
 const isBuiltin = computed(() => props.agent.readonly === true);
+const displayName = computed(() => props.agent.display_name || props.taxonomyLabel);
 </script>

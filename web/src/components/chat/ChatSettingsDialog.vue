@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
+    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="text-h6">{{ title }}</q-card-section>
       <q-card-section v-if="mode === 'agent'" class="app-dialog-body q-gutter-y-sm q-pt-none">
         <q-input

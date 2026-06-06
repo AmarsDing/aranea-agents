@@ -1,9 +1,9 @@
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useGraphStore } from '../../stores/graph';
-import type { GraphDefinition, NodeType } from './types';
+import type { GraphDefinition, GraphTemplateInfo, NodeType } from './types';
 import { NODE_TYPE_STYLES } from './types';
 import { relativeTime } from './utils';
 import { useGraphExecute } from './useGraphExecute';
@@ -223,6 +223,45 @@ export function useGraphsPage() {
     }
   }
 
+  // --- Template dialog ---
+  const templateDialogOpen = ref(false);
+  const selectedTemplateId = ref('');
+  const templateCreating = ref(false);
+  const templatesLoading = ref(false);
+  const templates = ref<GraphTemplateInfo[]>([]);
+
+  watch(templateDialogOpen, async (open) => {
+    if (open) {
+      selectedTemplateId.value = '';
+      templatesLoading.value = true;
+      try {
+        await graphStore.loadTemplates();
+        templates.value = graphStore.templates;
+      } catch {
+        $q.notify({ type: 'negative', message: '加载模板失败' });
+      } finally {
+        templatesLoading.value = false;
+      }
+    }
+  });
+
+  async function createFromTemplate() {
+    if (!selectedTemplateId.value) return;
+    const tpl = templates.value.find((t) => t.id === selectedTemplateId.value);
+    if (!tpl) return;
+    templateCreating.value = true;
+    try {
+      const created = await graphStore.instantiateTemplate(selectedTemplateId.value, tpl.name, tpl.description ?? '');
+      templateDialogOpen.value = false;
+      $q.notify({ type: 'positive', message: 'Graph 已从模板创建' });
+      router.push({ name: 'graph-editor', params: { id: created.id } });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '从模板创建失败' });
+    } finally {
+      templateCreating.value = false;
+    }
+  }
+
   return {
     isDark,
     rows,
@@ -262,5 +301,11 @@ export function useGraphsPage() {
     onCardContextMenu,
     closeCtxMenu,
     onCtxMenuAction,
+    templateDialogOpen,
+    selectedTemplateId,
+    templateCreating,
+    templatesLoading,
+    templates,
+    createFromTemplate,
   };
 }

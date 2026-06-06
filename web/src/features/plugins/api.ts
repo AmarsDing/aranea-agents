@@ -1,6 +1,9 @@
 import { createPluginService } from '../../services';
 import type { PaginatedResponse, Plugin, PluginListQuery, PluginRun, PluginRunListQuery } from './types';
 
+/** 模块级 service 单例，避免每次 API 调用重复创建实例 */
+const pluginService = createPluginService();
+
 function mapPluginRow(row: unknown): Plugin {
   const r = row as Record<string, unknown>;
   const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
@@ -45,7 +48,7 @@ function mapPluginRow(row: unknown): Plugin {
 }
 
 export async function listPlugins(query: PluginListQuery = {}): Promise<PaginatedResponse<Plugin>> {
-  const svc = createPluginService();
+  const svc = pluginService;
   let enabled: string | undefined;
   if (query.enabled === true) enabled = 'true';
   else if (query.enabled === false) enabled = 'false';
@@ -69,25 +72,25 @@ export async function listPlugins(query: PluginListQuery = {}): Promise<Paginate
 }
 
 export async function togglePluginEnabled(id: string, enabled: boolean): Promise<Plugin> {
-  const svc = createPluginService();
+  const svc = pluginService;
   const row = await svc.TogglePluginEnabled({ id, enabled });
   return mapPluginRow(row);
 }
 
 export async function updatePluginConfig(id: string, configJSON: string): Promise<Plugin> {
-  const svc = createPluginService();
+  const svc = pluginService;
   const row = await svc.UpdatePluginConfig({ id, configJson: configJSON });
   return mapPluginRow(row);
 }
 
 export async function updatePluginSortOrder(id: string, sortOrder: number): Promise<Plugin> {
-  const svc = createPluginService();
+  const svc = pluginService;
   const row = await svc.UpdatePluginSortOrder({ id, sortOrder });
   return mapPluginRow(row);
 }
 
 export async function updatePluginScope(id: string, scope: string): Promise<Plugin> {
-  const svc = createPluginService();
+  const svc = pluginService;
   const row = await svc.UpdatePluginScope({ id, scope });
   return mapPluginRow(row);
 }
@@ -111,7 +114,7 @@ function mapPluginRunRow(row: unknown): PluginRun {
 }
 
 export async function listPluginRuns(query: PluginRunListQuery = {}): Promise<PaginatedResponse<PluginRun>> {
-  const svc = createPluginService();
+  const svc = pluginService;
   const page = query.page ?? 1;
   const pageSize = query.page_size ?? 20;
   const res = await svc.ListPluginRuns({

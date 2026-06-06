@@ -74,7 +74,7 @@ const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.i
   place-items: center
   font-weight: 700
   font-size: 12px
-  color: #fff
+  color: var(--color-on-accent, #fff)
   flex-shrink: 0
 
 .industry-market-table-row__name
@@ -101,11 +101,11 @@ const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.i
 
   &.is-on
     background: var(--color-success-soft, #ECFDF3)
-    color: #2D6A4F
+    color: var(--color-accent-green, #2D6A4F)
 
   &.is-off
     background: rgba(229, 92, 92, 0.1)
-    color: #B13939
+    color: var(--color-danger, #B13939)
 
 .industry-market-table-row__status-dot
   width: 6px

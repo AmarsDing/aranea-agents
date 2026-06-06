@@ -5,9 +5,9 @@ import {
   flowLogExportEntryFromLine,
   flowLogMatchesTrace,
   monitorLogLineFromFlowEnvelope,
-  traceCorrelationFromUsageRow,
+  traceCorrelationFromTraceRow,
 } from '../flow';
-import type { MonitorLogLine, MonitorTraceEvent } from '../types';
+import type { MonitorLogLine, MonitorTrace } from '../types';
 
 describe('monitorLogLineFromFlowEnvelope', () => {
   it('maps flow_log metadata to MonitorLogLine', () => {
@@ -70,14 +70,29 @@ describe('flowLogMatchesTrace', () => {
   });
 });
 
-describe('traceCorrelationFromUsageRow', () => {
+describe('traceCorrelationFromTraceRow', () => {
   it('reads trace_id from metadata_json', () => {
     const row = {
-      message_id: 'run-1',
-      session_id: 'sess-9',
-      metadata_json: JSON.stringify({ trace_id: 'tr_meta', spans: [] }),
-    } as MonitorTraceEvent;
-    expect(traceCorrelationFromUsageRow(row)).toEqual({
+      id: 'trace-1',
+      resource: 'monitor-traces',
+      key: '',
+      name: '',
+      description: '',
+      status: '',
+      enabled: true,
+      sort_order: 0,
+      parent_id: '',
+      level: '',
+      agent_id: '',
+      provider: '',
+      model: '',
+      config_json: '{}',
+      metadata_json: JSON.stringify({ trace_id: 'tr_meta', run_id: 'run-1', session_id: 'sess-9', spans: [] }),
+      created_at: '',
+      updated_at: '',
+      deleted_at: '',
+    } as MonitorTrace;
+    expect(traceCorrelationFromTraceRow(row)).toEqual({
       traceId: 'tr_meta',
       runId: 'run-1',
       sessionId: 'sess-9',

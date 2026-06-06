@@ -72,7 +72,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import type { MemoryDeadLetterEntry } from './types';
-import { listMemoryDeadLetters } from './api';
+import { useMemoryApi } from './composables/useMemoryApi';
+const { listMemoryDeadLetters } = useMemoryApi();
 
 const emit = defineEmits<{
   (e: 'replay', id: number): void;

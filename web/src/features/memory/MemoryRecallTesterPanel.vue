@@ -75,7 +75,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { CompositeSearchHit, MemoryRecallHit } from './types';
-import { compositeSearchMemories, debugMemoryRecall } from './api';
+import { useMemoryApi } from './composables/useMemoryApi';
+const { compositeSearchMemories, debugMemoryRecall } = useMemoryApi();
 import RecallHitTable from '../../components/memory/RecallHitTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';

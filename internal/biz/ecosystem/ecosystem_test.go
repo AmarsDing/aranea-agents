@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -71,7 +73,7 @@ func isKerrorReason(err error, reason string) bool {
 }
 
 func TestNewUsecase(t *testing.T) {
-	uc := NewUsecase(&mockRepo{})
+	uc := NewUsecase(&mockRepo{}, loggateway.NewNoop())
 	if uc == nil {
 		t.Fatal("expected non-nil Usecase")
 	}
@@ -124,7 +126,7 @@ func TestUsecase_List(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			_, err := uc.List(context.Background(), tt.query)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("List() error = %v, wantErr %v", err, tt.wantErr)
@@ -223,7 +225,7 @@ func TestUsecase_Get(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			p, err := uc.Get(context.Background(), tt.id)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Get() error = %v, wantErr %v", err, tt.wantErr)
@@ -360,7 +362,7 @@ func TestUsecase_Publish(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			p, err := uc.Publish(context.Background(), tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Publish() error = %v, wantErr %v", err, tt.wantErr)
@@ -461,7 +463,7 @@ func TestUsecase_Install(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			r, err := uc.Install(context.Background(), tt.productID)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Install() error = %v, wantErr %v", err, tt.wantErr)
@@ -527,7 +529,7 @@ func TestUsecase_Uninstall(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			err := uc.Uninstall(context.Background(), tt.productID)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Uninstall() error = %v, wantErr %v", err, tt.wantErr)

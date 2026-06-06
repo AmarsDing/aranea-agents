@@ -251,7 +251,12 @@ export const useSessionStore = defineStore('session', () => {
     if (!id) return;
     sessions.value = sessions.value.map((s) =>
       s.id === id
-        ? { ...s, status: status as Session['status'], status_reason: statusReason as Session['status_reason'], status_changed_at: statusChangedAt }
+        ? {
+            ...s,
+            status: status as Session['status'],
+            status_reason: statusReason as Session['status_reason'],
+            status_changed_at: statusChangedAt,
+          }
         : s,
     );
     if (activeSession.value?.id === id) {

@@ -3,7 +3,7 @@
     <q-card-section>
       <q-banner rounded class="monitor-info-banner">
         <template #avatar>
-          <q-icon name="dashboard" color="primary" />
+          <q-icon name="dashboard" color="accent" />
         </template>
         完整用量与成本大盘在<strong>概览</strong>页维护；本 Tab 仅保留 Runner 运行时指标。时间范围请使用页面顶栏筛选（与
         Traces 共用）。

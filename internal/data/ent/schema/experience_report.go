@@ -26,6 +26,7 @@ func (ExperienceReport) Fields() []ent.Field {
 		field.String("session_id").Default("").MaxLen(256),
 		field.String("invocation_id").Default("").MaxLen(256),
 		field.String("skill_id").Default("").MaxLen(256),
+		field.String("skill_name").Default("").MaxLen(256).Optional(),
 		field.Bool("is_success").Default(false),
 		field.Int("score").Default(0),
 		field.JSON("failure_tags", []string{}).Optional(),

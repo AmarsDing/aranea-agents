@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -150,11 +152,12 @@ type Repo interface {
 // Usecase implements dataset/run management.
 type Usecase struct {
 	repo Repo
+	lg   loggateway.Logger
 }
 
 // NewUsecase constructs an evaluation Usecase.
-func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
+	return &Usecase{repo: repo, lg: lg}
 }
 
 func newEvalID() string {
@@ -243,7 +246,9 @@ func (u *Usecase) UploadCases(ctx context.Context, datasetID, casesJSON string) 
 	if err := u.repo.InsertCases(ctx, cases); err != nil {
 		return 0, err
 	}
-	_ = u.repo.UpdateDatasetCaseCount(ctx, datasetID, len(cases))
+	if err := u.repo.UpdateDatasetCaseCount(ctx, datasetID, len(cases)); err != nil {
+		u.lg.Warn("update dataset case count failed", loggateway.Err(err), loggateway.Str("dataset_id", datasetID))
+	}
 	return len(cases), nil
 }
 

@@ -1,8 +1,9 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useSkillEvolutionSuggestionStore } from '../../stores/skillEvolutionSuggestion';
-import type { SkillEvolutionSuggestionMsg } from '../../services/kratos/skill_evolution_suggestion/v1/index';
+import { useAuthStore } from '../../stores/auth';
+import type { EvolutionSuggestionView } from '../skills/types';
 
-export type EvolutionSuggestion = SkillEvolutionSuggestionMsg;
+export type EvolutionSuggestion = EvolutionSuggestionView;
 
 export const statusOptions = [
   { label: '全部', value: '' },
@@ -14,15 +15,18 @@ export const statusOptions = [
 
 export function useEvolutionSuggestionListPage() {
   const store = useSkillEvolutionSuggestionStore();
+  const auth = useAuthStore();
 
   const status = ref('');
   const skillId = ref('');
   const page = ref(1);
   const pageSize = ref(20);
-  const rows = ref<EvolutionSuggestion[]>([]);
-  const total = ref(0);
-  const loading = ref(false);
-  const error = ref('');
+
+  // Derive data from Store via computed to avoid dual-source refs.
+  const rows = computed(() => store.suggestions);
+  const total = computed(() => store.total);
+  const loading = computed(() => store.loading);
+  const error = computed(() => store.error ?? '');
 
   const rejectDialogOpen = ref(false);
   const rejectTarget = ref<EvolutionSuggestion | null>(null);
@@ -34,21 +38,15 @@ export function useEvolutionSuggestionListPage() {
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
   async function loadRows() {
-    loading.value = true;
-    error.value = '';
     try {
-      const data = await store.loadSuggestions({
+      await store.loadSuggestions({
         skillId: skillId.value?.trim() || undefined,
         status: status.value?.trim() || undefined,
         page: page.value,
         pageSize: pageSize.value,
       });
-      rows.value = data.items;
-      total.value = data.total;
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载进化建议列表失败';
-    } finally {
-      loading.value = false;
+    } catch {
+      // error is already captured in store.error, exposed via computed
     }
   }
 
@@ -56,10 +54,11 @@ export function useEvolutionSuggestionListPage() {
     if (!item.id) return;
     approvingId.value = item.id;
     try {
-      await store.approveSuggestion(item.id, 'admin');
-      void loadRows();
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '审批失败';
+      await store.approveSuggestion(item.id, auth.displayLabel || 'unknown');
+      // Delay refresh to allow backend GenerateDraft + ValidateSuggestion to complete
+      setTimeout(() => void loadRows(), 500);
+    } catch {
+      // error is already captured in store.error
     } finally {
       approvingId.value = '';
     }
@@ -77,17 +76,26 @@ export function useEvolutionSuggestionListPage() {
     try {
       await store.rejectSuggestion(
         rejectTarget.value.id,
-        'admin',
+        auth.displayLabel || 'unknown',
         rejectionReason.value?.trim() || undefined,
       );
       rejectDialogOpen.value = false;
       rejectTarget.value = null;
       rejectionReason.value = '';
       void loadRows();
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '拒绝失败';
+    } catch {
+      // error is already captured in store.error
     } finally {
       rejecting.value = false;
+    }
+  }
+
+  async function triggerCuratorFlow(targetSkillId: string): Promise<EvolutionSuggestionView | null> {
+    try {
+      return await store.runCuratorFlow(targetSkillId);
+    } catch {
+      // error is already captured in store.error
+      throw store.error;
     }
   }
 
@@ -130,5 +138,6 @@ export function useEvolutionSuggestionListPage() {
     openRejectDialog,
     confirmReject,
     resetFilters,
+    triggerCuratorFlow,
   };
 }

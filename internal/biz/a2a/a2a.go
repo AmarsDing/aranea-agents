@@ -158,20 +158,33 @@ const (
 	SourceRemote = "remote"
 )
 
+// AgentLookup provides read-only access to agent metadata for workspace resolution.
+type AgentLookup interface {
+	GetAgentByID(ctx context.Context, id string) (AgentMeta, error)
+}
+
+// AgentMeta is a minimal agent metadata subset needed by A2A.
+type AgentMeta struct {
+	DisplayName string
+	Workspace   string
+}
+
 // Usecase implements A2A card management and invocation logic.
 type Usecase struct {
 	cardRepo       CardRepo
 	invocationRepo InvocationRepo
 	auditRepo      AuditRepo
 	remoteRepo     RemoteAgentRepo
+	agents         AgentLookup
 }
 
 // NewUsecase constructs an A2AUsecase.
-func NewUsecase(card CardRepo, invocation InvocationRepo, audit AuditRepo, remote RemoteAgentRepo) *Usecase {
-	return &Usecase{cardRepo: card, invocationRepo: invocation, auditRepo: audit, remoteRepo: remote}
+func NewUsecase(card CardRepo, invocation InvocationRepo, audit AuditRepo, remote RemoteAgentRepo, agents AgentLookup) *Usecase {
+	return &Usecase{cardRepo: card, invocationRepo: invocation, auditRepo: audit, remoteRepo: remote, agents: agents}
 }
 
-func newA2AID() string {
+// NewID generates a random A2A entity ID.
+func NewID() string {
 	buf := make([]byte, 10)
 	if _, err := rand.Read(buf); err != nil {
 		return "a2a-fallback"
@@ -183,6 +196,17 @@ func newA2AID() string {
 func (u *Usecase) UpdateAgentCard(ctx context.Context, card AgentCard) (AgentCard, error) {
 	if strings.TrimSpace(card.AgentID) == "" {
 		return AgentCard{}, errors.BadRequest("A2A", "agent_id is required")
+	}
+	// Fill workspace/displayName from agent metadata when not provided.
+	if u.agents != nil && (strings.TrimSpace(card.Workspace) == "" || strings.TrimSpace(card.DisplayName) == "") {
+		if meta, err := u.agents.GetAgentByID(ctx, card.AgentID); err == nil {
+			if strings.TrimSpace(card.DisplayName) == "" {
+				card.DisplayName = strings.TrimSpace(meta.DisplayName)
+			}
+			if strings.TrimSpace(card.Workspace) == "" {
+				card.Workspace = strings.TrimSpace(meta.Workspace)
+			}
+		}
 	}
 	return u.cardRepo.UpsertAgentCard(ctx, card)
 }
@@ -244,10 +268,18 @@ func (u *Usecase) Discover(ctx context.Context, workspace, capability string) ([
 	return out, nil
 }
 
+// ensureRemoteRepo checks that the remote repo is available.
+func (u *Usecase) ensureRemoteRepo() error {
+	if u == nil || u.remoteRepo == nil {
+		return errors.InternalServer("A2A", "a2a repo not configured")
+	}
+	return nil
+}
+
 // GetRemoteAgent returns one remote registry entry by id.
 func (u *Usecase) GetRemoteAgent(ctx context.Context, id string) (RemoteAgent, error) {
-	if u == nil || u.remoteRepo == nil {
-		return RemoteAgent{}, errors.InternalServer("A2A", "a2a repo not configured")
+	if err := u.ensureRemoteRepo(); err != nil {
+		return RemoteAgent{}, err
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -275,7 +307,7 @@ func (u *Usecase) StartInvocation(ctx context.Context, inv Invocation) (Invocati
 		inv.PayloadJSON = "{}"
 	}
 	if inv.ID == "" {
-		inv.ID = newA2AID()
+		inv.ID = NewID()
 	}
 	if inv.Status == "" {
 		inv.Status = "pending"
@@ -294,7 +326,7 @@ func (u *Usecase) FinishInvocation(ctx context.Context, inv Invocation) error {
 // AppendAudit writes one audit log record.
 func (u *Usecase) AppendAudit(ctx context.Context, entry AuditEntry) error {
 	if entry.ID == "" {
-		entry.ID = newA2AID()
+		entry.ID = NewID()
 	}
 	return u.auditRepo.InsertAudit(ctx, entry)
 }
@@ -309,7 +341,7 @@ func (u *Usecase) ListAudit(ctx context.Context, callerID, calleeID string, limi
 
 // MapEndpointEnabled batch-loads a2a_agent_cards.enabled for catalog agent ids.
 func (u *Usecase) MapEndpointEnabled(ctx context.Context, agentIDs []string) (map[string]bool, error) {
-	if u == nil || u.remoteRepo == nil {
+	if err := u.ensureRemoteRepo(); err != nil {
 		return map[string]bool{}, nil
 	}
 	return u.remoteRepo.MapEndpointEnabled(ctx, agentIDs)
@@ -317,8 +349,8 @@ func (u *Usecase) MapEndpointEnabled(ctx context.Context, agentIDs []string) (ma
 
 // RegisterRemoteAgent validates input, discovers the remote card, and persists.
 func (u *Usecase) RegisterRemoteAgent(ctx context.Context, in RegisterRemoteAgentInput) (RemoteAgent, error) {
-	if u == nil || u.remoteRepo == nil {
-		return RemoteAgent{}, errors.InternalServer("A2A", "a2a repo not configured")
+	if err := u.ensureRemoteRepo(); err != nil {
+		return RemoteAgent{}, err
 	}
 	remoteURL := strings.TrimSpace(in.RemoteURL)
 	if remoteURL == "" {
@@ -358,16 +390,16 @@ func (u *Usecase) RegisterRemoteAgent(ctx context.Context, in RegisterRemoteAgen
 
 // ListRemoteAgents returns registry entries for a workspace.
 func (u *Usecase) ListRemoteAgents(ctx context.Context, workspace string) ([]RemoteAgent, error) {
-	if u == nil || u.remoteRepo == nil {
-		return nil, errors.InternalServer("A2A", "a2a repo not configured")
+	if err := u.ensureRemoteRepo(); err != nil {
+		return nil, err
 	}
 	return u.remoteRepo.ListRemoteAgents(ctx, strings.TrimSpace(workspace))
 }
 
 // DeleteRemoteAgent removes a remote registry entry.
 func (u *Usecase) DeleteRemoteAgent(ctx context.Context, id string) error {
-	if u == nil || u.remoteRepo == nil {
-		return errors.InternalServer("A2A", "a2a repo not configured")
+	if err := u.ensureRemoteRepo(); err != nil {
+		return err
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -378,8 +410,8 @@ func (u *Usecase) DeleteRemoteAgent(ctx context.Context, id string) error {
 
 // DiscoverRemoteAgent fetches AgentCard metadata from a remote URL.
 func (u *Usecase) DiscoverRemoteAgent(ctx context.Context, in RemoteCardDiscoverInput) (AgentCard, error) {
-	if u == nil || u.remoteRepo == nil {
-		return AgentCard{}, errors.InternalServer("A2A", "a2a repo not configured")
+	if err := u.ensureRemoteRepo(); err != nil {
+		return AgentCard{}, err
 	}
 	if strings.TrimSpace(in.RemoteURL) == "" {
 		return AgentCard{}, errors.BadRequest("A2A", "remote_url is required")
@@ -389,8 +421,8 @@ func (u *Usecase) DiscoverRemoteAgent(ctx context.Context, in RemoteCardDiscover
 
 // PersistRemoteHealth stores the latest gateway health probe result for a remote registry entry.
 func (u *Usecase) PersistRemoteHealth(ctx context.Context, id string, ok bool, errMsg string) error {
-	if u == nil || u.remoteRepo == nil {
-		return errors.InternalServer("A2A", "a2a repo not configured")
+	if err := u.ensureRemoteRepo(); err != nil {
+		return err
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -401,7 +433,7 @@ func (u *Usecase) PersistRemoteHealth(ctx context.Context, id string, ok bool, e
 
 // GatewayDiscover aggregates local enabled endpoints and remote registry entries.
 func (u *Usecase) GatewayDiscover(ctx context.Context, in GatewayDiscoverInput, publicBaseURL string) ([]GatewayEntry, error) {
-	if u == nil || u.remoteRepo == nil {
+	if err := u.ensureRemoteRepo(); err != nil {
 		return nil, nil
 	}
 	publicBaseURL = strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")

@@ -1,17 +1,17 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import { useMonitorStore } from '../../stores/monitor/index';
-import type { MonitorLogLine, MonitorTraceEvent } from './types';
-import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromUsageRow } from './flow';
+import type { MonitorLogLine, MonitorTrace } from './types';
+import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromTraceRow } from './flow';
 
-export function useMonitorTraceFlow(detail: Ref<MonitorTraceEvent | null>, detailOpen: Ref<boolean>) {
+export function useMonitorTraceFlow(detail: Ref<MonitorTrace | null>, detailOpen: Ref<boolean>) {
   const monitorStore = useMonitorStore();
   const flowLines = ref<MonitorLogLine[]>([]);
   let flowWsSub: ReturnType<typeof monitorStore.startLogsStream> | null = null;
 
   const activeCorrelation = computed(() => {
     if (!detail.value) return { traceId: '', runId: '', sessionId: '' };
-    return traceCorrelationFromUsageRow(detail.value);
+    return traceCorrelationFromTraceRow(detail.value);
   });
 
   async function loadFlowHistory() {
@@ -53,7 +53,7 @@ export function useMonitorTraceFlow(detail: Ref<MonitorTraceEvent | null>, detai
     flowWsSub = null;
   }
 
-  async function openTraceDetail(row: MonitorTraceEvent) {
+  async function openTraceDetail(row: MonitorTrace) {
     detail.value = row;
     flowLines.value = [];
     detailOpen.value = true;

@@ -3,7 +3,7 @@ import { copyToClipboard, Notify } from 'quasar';
 import { storeToRefs } from 'pinia';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import { useMonitorStore } from '../../stores/monitor/index';
-import type { PlatformResource, StreamState, TeamRunEvent, MonitorTraceEvent } from './types';
+import type { PlatformResource, StreamState, TeamRunEvent, MonitorTrace } from './types';
 import {
   completionFallbackSubtitle,
   completionCanOpenInRuns,
@@ -35,7 +35,7 @@ export type MonitorViewEvent = {
 
 export function useMonitorRealtimeEvents(
   persistedEvents: Ref<PlatformResource[]>,
-  traces: Ref<MonitorTraceEvent[] | undefined>,
+  traces: Ref<MonitorTrace[] | undefined>,
 ) {
   const { openChatSession, openRunsTab } = useMonitorRunNavigation();
   const monitorStore = useMonitorStore();

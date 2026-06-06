@@ -13,14 +13,47 @@ import (
 	"github.com/google/uuid"
 )
 
+// DBPinger abstracts database health-check operations so the biz layer
+// does not depend directly on *sql.DB (infrastructure).
+type DBPinger interface {
+	PingContext(ctx context.Context) error
+	QueryRowContext(ctx context.Context, query string, args ...any) DBRow
+}
+
+// DBRow abstracts sql.Row.Scan for health-check queries.
+type DBRow interface {
+	Scan(dest ...any) error
+}
+
+// dbPingerAdapter wraps *sql.DB to implement DBPinger.
+type dbPingerAdapter struct {
+	db *sql.DB
+}
+
+func (a *dbPingerAdapter) PingContext(ctx context.Context) error {
+	return a.db.PingContext(ctx)
+}
+
+func (a *dbPingerAdapter) QueryRowContext(ctx context.Context, query string, args ...any) DBRow {
+	return a.db.QueryRowContext(ctx, query, args...)
+}
+
+// NewDBPinger creates a DBPinger from *sql.DB. Returns nil if db is nil.
+func NewDBPinger(db *sql.DB) DBPinger {
+	if db == nil {
+		return nil
+	}
+	return &dbPingerAdapter{db: db}
+}
+
 // DBHealthChecker verifies SQLite connectivity and basic schema integrity.
 type DBHealthChecker struct {
-	db *sql.DB
+	db DBPinger
 }
 
 // NewDBHealthChecker creates a checker that pings the database and verifies
 // the monitor_events table exists.
-func NewDBHealthChecker(db *sql.DB) *DBHealthChecker {
+func NewDBHealthChecker(db DBPinger) *DBHealthChecker {
 	return &DBHealthChecker{db: db}
 }
 

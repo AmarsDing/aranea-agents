@@ -63,9 +63,7 @@ describe('useAgentsPageStore', () => {
     const { emitSessionMutation } = await import('../sessionSync');
 
     const store = useAgentsPageStore();
-    store.agents = [
-      { id: 'a1', display_name: 'Agent 1', is_favorite: false },
-    ] as any;
+    store.agents = [{ id: 'a1', display_name: 'Agent 1', is_favorite: false }] as any;
 
     const updatedAgent = { id: 'a1', display_name: 'Agent 1', is_favorite: true };
     (toggleAgentFavorite as ReturnType<typeof vi.fn>).mockResolvedValueOnce(updatedAgent);
@@ -80,9 +78,7 @@ describe('useAgentsPageStore', () => {
     const { toggleAgentFavorite } = await import('../../features/agents/api');
 
     const store = useAgentsPageStore();
-    store.agents = [
-      { id: 'a1', display_name: 'Agent 1', is_favorite: false },
-    ] as any;
+    store.agents = [{ id: 'a1', display_name: 'Agent 1', is_favorite: false }] as any;
 
     (toggleAgentFavorite as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('fail'));
 

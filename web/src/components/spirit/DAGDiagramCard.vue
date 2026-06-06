@@ -10,11 +10,7 @@
     </div>
 
     <div class="dag-diagram-card__nodes">
-      <div
-        v-for="node in dagNodes"
-        :key="node.teamId"
-        class="dag-diagram-card__node"
-      >
+      <div v-for="node in dagNodes" :key="node.teamId" class="dag-diagram-card__node">
         <span class="dag-diagram-card__prefix">{{ node.prefix }}</span>
         <span class="dag-diagram-card__name">{{ node.teamName }}</span>
         <span v-if="node.dependsOn.length > 0" class="dag-diagram-card__deps text-caption text-grey-6">
@@ -33,9 +29,7 @@ const props = defineProps<{
   teams: SpiritTeam[];
 }>();
 
-const dagTeams = computed(() =>
-  props.teams.filter((t) => t.dagNodeId || (t.dependsOn && t.dependsOn.length > 0)),
-);
+const dagTeams = computed(() => props.teams.filter((t) => t.dagNodeId || (t.dependsOn && t.dependsOn.length > 0)));
 
 const dagNodes = computed(() =>
   dagTeams.value.map((t) => ({

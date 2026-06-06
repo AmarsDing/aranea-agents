@@ -29,6 +29,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   const collections = ref<KnowledgeCollection[]>([]);
   const collectionsTotal = ref(0);
   /** Documents keyed by collection_id */
+  // TECH-DEBT: no TTL or invalidation — long-running sessions may serve stale data.
+  // Consider adding a per-key expiry or a "lastFetchedAt" timestamp.
   const documentsByCollection = ref<Record<string, KnowledgeDocument[]>>({});
   const loading = ref(false);
   const embedderConfig = ref<EmbedderConfig | null>(null);

@@ -948,7 +948,9 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 	if u.completion != nil && strings.TrimSpace(in.SessionID) != "" && strings.TrimSpace(in.RunID) != "" {
 		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer linkCancel()
-		_ = u.completion.LinkRunnerCompletionUsage(linkCtx, in.SessionID, in.RunID, usageID, in.TraceID)
+		if err := u.completion.LinkRunnerCompletionUsage(linkCtx, in.SessionID, in.RunID, usageID, in.TraceID); err != nil {
+			u.lg.Warn("link runner completion usage failed", loggateway.Err(err), loggateway.Str("session_id", in.SessionID), loggateway.Str("run_id", in.RunID))
+		}
 	}
 	return nil
 }
@@ -1012,7 +1014,9 @@ func (u *Usecase) evaluateBudgetAlertsForScope(ctx context.Context, scopeType, s
 		if err := u.alertNotifier.NotifyBudgetAlert(ctx, a, spent, q.MonthlyMicroUSD, util); err != nil {
 			continue
 		}
-		_ = u.repo.UpdateBudgetAlertLastFired(ctx, a.ID, now.Format(time.RFC3339))
+		if err := u.repo.UpdateBudgetAlertLastFired(ctx, a.ID, now.Format(time.RFC3339)); err != nil {
+			u.lg.Warn("update budget alert last fired failed", loggateway.Err(err), loggateway.Str("alert_id", a.ID))
+		}
 		u.markAlertFired(a.ID, now)
 	}
 }

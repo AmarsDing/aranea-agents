@@ -32,7 +32,13 @@ describe('useToolsStore', () => {
 
   it('loadTools populates tools, total, summary and sets loading to false', async () => {
     const { listTools } = await import('../../features/tools/api');
-    const mockSummary = { total_tools: 5, enabled_tools: 3, high_risk_enabled: 1, calls_24h: 100, failure_rate_24h: 0.02 };
+    const mockSummary = {
+      total_tools: 5,
+      enabled_tools: 3,
+      high_risk_enabled: 1,
+      calls_24h: 100,
+      failure_rate_24h: 0.02,
+    };
     const mockTools = [
       { id: 't1', name: 'Tool 1', enabled: true },
       { id: 't2', name: 'Tool 2', enabled: false },

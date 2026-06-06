@@ -1,7 +1,6 @@
 package service
 
 import (
-	"database/sql"
 	"errors"
 	"strings"
 
@@ -14,7 +13,7 @@ func mapCronError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, biz.ErrCronNotFound) {
 		return kerrors.NotFound("CRON", "cron task not found")
 	}
 	if errors.Is(err, biz.ErrCronRunnerDisabled) {

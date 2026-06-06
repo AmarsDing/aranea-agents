@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/vector"
+	"aranea-agents/pkg/loggateway"
 )
 
 // l3FactRepo implements biz L3 interfaces using direct Raw SQL.
@@ -521,7 +522,20 @@ func (r *l3FactRepo) DeleteFactRow(ctx context.Context, factID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE id = ?`, now, factID)
-	return err
+	if err != nil {
+		return err
+	}
+	// Cascade: remove pgvector embedding so deleted facts are not recalled.
+	if r.vectorStore != nil {
+		if delErr := r.vectorStore.Delete(ctx, factID); delErr != nil {
+			// Best-effort: log but don't fail the primary delete.
+			r.data.lg.Warn("cascade: delete fact vector failed (best-effort)",
+				loggateway.StepID("memory.l3.vector_delete"),
+				loggateway.Str("fact_id", factID),
+				loggateway.Err(delErr))
+		}
+	}
+	return nil
 }
 
 func (r *l3FactRepo) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error) {

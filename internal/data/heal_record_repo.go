@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	bizmonitor "aranea-agents/internal/biz/monitor"
@@ -26,16 +25,8 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor
 		return kerrors.InternalServer("HEAL_RECORD", "database not configured")
 	}
 
-	fixParamsJSON := "{}"
-	if record.FixAction.Params != nil {
-		b, err := json.Marshal(record.FixAction.Params)
-		if err == nil {
-			fixParamsJSON = string(b)
-		}
-	}
-
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`INSERT INTO heal_records (id, rule_id, trigger_type, trace_id, session_id, step_id,
+		`INSERT OR IGNORE INTO heal_records (id, rule_id, trigger_type, trace_id, session_id, step_id,
 			fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.ID,
@@ -52,7 +43,6 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor
 		record.Reason,
 		record.CreatedAt,
 	)
-	_ = fixParamsJSON // fix_action params not stored in separate column; metadata covers it
 	return err
 }
 

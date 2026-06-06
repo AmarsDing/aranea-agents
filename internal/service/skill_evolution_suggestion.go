@@ -39,12 +39,17 @@ func NewSkillEvolutionSuggestionService(
 
 func (s *SkillEvolutionSuggestionService) ListSkillEvolutionSuggestions(ctx context.Context, req *v1.ListSkillEvolutionSuggestionsRequest) (*v1.ListSkillEvolutionSuggestionsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
-	suggestions, err := s.uc.ListEvolutionSuggestions(ctx, req.GetSkillId(), biz.EvolutionSuggestionStatus(req.GetStatus()), limit, offset)
+	status := biz.EvolutionSuggestionStatus(req.GetStatus())
+	suggestions, err := s.uc.ListEvolutionSuggestions(ctx, req.GetSkillId(), status, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.uc.CountEvolutionSuggestions(ctx, req.GetSkillId(), status)
 	if err != nil {
 		return nil, err
 	}
 	resp := &v1.ListSkillEvolutionSuggestionsResponse{
-		Total:    int64(len(suggestions)),
+		Total:    int64(total),
 		Page:     page,
 		PageSize: pageSize,
 	}
@@ -139,7 +144,7 @@ func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion) *v1.SkillEvoluti
 		CreatedAt:       timestamppb.New(s.CreatedAt),
 		ParentVersionId: s.ParentVersionID,
 		EvolutionReason: s.EvolutionReason,
-		LifecycleStatus: s.LifecycleStatus,
+		LifecycleStatus: string(s.LifecycleStatus),
 	}
 	if s.SandboxResult != nil {
 		var m map[string]interface{}

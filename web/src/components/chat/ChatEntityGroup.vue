@@ -126,8 +126,6 @@ function onDragEnd() {
     }
   }
 }
-
-
 </script>
 
 <style scoped>

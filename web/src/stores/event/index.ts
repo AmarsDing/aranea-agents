@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import {
-  listSessionEvents,
-} from '../../features/event/api';
+import { listSessionEvents } from '../../features/event/api';
 import type { ListSessionEventsParams, ListSessionEventsResult } from '../../features/event/types';
 import type { Envelope } from '../../realtime/envelope';
 

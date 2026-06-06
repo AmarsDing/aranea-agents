@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="emit('update:open', $event)">
-    <q-card class="prompt-dialog app-dialog-card">
+    <q-card class="prompt-dialog app-dialog-card app-glass-dialog">
       <q-card-section class="row items-center justify-between prompt-dialog__header">
         <div>
           <div class="text-h6">系统提示词</div>
@@ -10,7 +10,14 @@
         </div>
         <q-btn v-close-popup flat round icon="close" />
       </q-card-section>
-      <q-tabs :model-value="mode" dense align="left" narrow-indicator class="prompt-dialog__mode-tabs" @update:model-value="emit('update:mode', $event)">
+      <q-tabs
+        :model-value="mode"
+        dense
+        align="left"
+        narrow-indicator
+        class="prompt-dialog__mode-tabs"
+        @update:model-value="emit('update:mode', $event)"
+      >
         <q-tab v-for="m in modes" :key="m.value" :name="m.value" :label="m.label" />
       </q-tabs>
       <q-separator />

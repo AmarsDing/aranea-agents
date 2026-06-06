@@ -46,46 +46,31 @@ function normalizeProposal(row: KnowledgeProposal): LearningProposal {
   };
 }
 
-export async function listLearningObservations(
-  agentId: string,
-  since?: string,
-): Promise<LearningObservation[]> {
+export async function listLearningObservations(agentId: string, since?: string): Promise<LearningObservation[]> {
   const svc = createLearningLoopService();
   const res = await svc.ListObservations({ agentId, since });
   return (res.items ?? []).map(normalizeObservation);
 }
 
-export async function listLearningPatterns(
-  agentId: string,
-  status?: string,
-): Promise<LearningPattern[]> {
+export async function listLearningPatterns(agentId: string, status?: string): Promise<LearningPattern[]> {
   const svc = createLearningLoopService();
   const res = await svc.ListPatterns({ agentId, status });
   return (res.items ?? []).map(normalizePattern);
 }
 
-export async function listLearningProposals(
-  agentId: string,
-  status?: string,
-): Promise<LearningProposal[]> {
+export async function listLearningProposals(agentId: string, status?: string): Promise<LearningProposal[]> {
   const svc = createLearningLoopService();
   const res = await svc.ListProposals({ agentId, status });
   return (res.items ?? []).map(normalizeProposal);
 }
 
-export async function approveLearningProposal(
-  agentId: string,
-  proposalId: string,
-): Promise<LearningProposal> {
+export async function approveLearningProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
   const svc = createLearningLoopService();
   const res = await svc.ApproveProposal({ agentId, id: proposalId });
   return normalizeProposal(res);
 }
 
-export async function rejectLearningProposal(
-  agentId: string,
-  proposalId: string,
-): Promise<LearningProposal> {
+export async function rejectLearningProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
   const svc = createLearningLoopService();
   const res = await svc.RejectProposal({ agentId, id: proposalId });
   return normalizeProposal(res);

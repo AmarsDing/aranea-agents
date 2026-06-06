@@ -39,7 +39,9 @@
         <span class="industry-market-card__metric-label">{{ t('industries.market.metricPos') }}</span>
       </div>
       <div class="industry-market-card__metric">
-        <span class="industry-market-card__metric-value app-mono">{{ industry.agentCount ?? industry.posCount ?? 0 }}</span>
+        <span class="industry-market-card__metric-value app-mono">{{
+          industry.agentCount ?? industry.posCount ?? 0
+        }}</span>
         <span class="industry-market-card__metric-label">{{ t('industries.market.metricAgent') }}</span>
       </div>
       <div class="industry-market-card__metric">
@@ -117,7 +119,7 @@ const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.i
   font-weight: 700
   font-size: 14px
   letter-spacing: 0.02em
-  color: #fff
+  color: var(--color-on-accent, #fff)
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06)
   user-select: none
 
@@ -154,11 +156,11 @@ const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.i
 
   &.is-on
     background: var(--color-success-soft, #ECFDF3)
-    color: #2D6A4F
+    color: var(--color-accent-green, #2D6A4F)
 
   &.is-off
     background: rgba(229, 92, 92, 0.1)
-    color: #B13939
+    color: var(--color-danger, #B13939)
 
 .industry-market-card__status-dot
   width: 6px
@@ -229,7 +231,7 @@ const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.i
     color: var(--color-text-primary, #2C2218)
 
   &--primary
-    color: #8a6014
+    color: var(--color-warning, #8a6014)
 
     &:hover
       background: rgba(220, 160, 62, 0.12)

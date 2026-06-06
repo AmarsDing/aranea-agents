@@ -1,11 +1,12 @@
 <!--
-  Container：Flow/WS 经 useMonitorTraceFlow + monitorStore；列表数据由 MonitorPage props 注入。
+  Pure presentation: all data via props, all actions via emits.
+  No composable / Store access.
 -->
 <template>
   <q-card flat bordered class="monitor-card">
     <q-card-section class="q-pb-none">
       <div class="text-h6 text-weight-bold">运行</div>
-      <div class="text-caption text-grey-7">单次对话运行真相源（Token 用量 + Flow / Waterfall / Span）</div>
+      <div class="text-caption text-grey-7">单次对话运行真相源（Trace + Flow / Waterfall / Span）</div>
     </q-card-section>
 
     <AppPageToolbar class="monitor-traces-toolbar">
@@ -16,7 +17,7 @@
         outlined
         clearable
         debounce="200"
-        label="搜索 Agent / 模型 / 状态"
+        label="搜索名称 / Agent / 模型 / 状态"
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
@@ -39,36 +40,38 @@
       >
         <template #body-cell-name="props">
           <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.error_message">
-              <div class="min-width-0">
-                <div class="app-registry-cell-primary ellipsis">
-                  {{ props.row.agent_key || props.row.agent_id || 'unknown agent' }}
-                </div>
-                <div class="app-registry-cell-sub ellipsis">
-                  {{ props.row.provider_code || 'provider' }} / {{ props.row.model_api_id || 'model' }}
-                  ·
-                  <q-badge dense :color="statusColor(props.row.status)" text-color="white">{{
-                    props.row.status || 'unknown'
-                  }}</q-badge>
-                </div>
+            <div class="min-width-0">
+              <div class="app-registry-cell-primary ellipsis">
+                {{ props.row.name || props.row.key || 'unknown' }}
               </div>
-            </AppRegistryHoverTip>
+              <div class="app-registry-cell-sub ellipsis">
+                {{ props.row.provider || 'provider' }} / {{ props.row.model || 'model' }}
+                ·
+                <q-badge dense :color="statusColor(props.row.status)" text-color="white">{{
+                  props.row.status || 'unknown'
+                }}</q-badge>
+              </div>
+            </div>
           </q-td>
         </template>
-        <template #body-cell-tokens="props">
+        <template #body-cell-agent="props">
           <q-td :props="props">
-            {{ formatCount(props.row.input_tokens) }} / {{ formatCount(props.row.output_tokens) }}
+            <span class="app-registry-cell-sub">{{ props.row.agent_id || '-' }}</span>
           </q-td>
         </template>
-        <template #body-cell-latency="props">
-          <q-td :props="props">{{ formatLatency(props.row.latency_ms) }}</q-td>
+        <template #body-cell-provider="props">
+          <q-td :props="props">
+            <span class="app-registry-cell-sub">{{ props.row.provider || '-' }}</span>
+          </q-td>
         </template>
-        <template #body-cell-cost="props">
-          <q-td :props="props">{{ formatMoney(props.row.total_cost_micro_usd) }}</q-td>
+        <template #body-cell-model="props">
+          <q-td :props="props">
+            <span class="app-registry-cell-sub">{{ props.row.model || '-' }}</span>
+          </q-td>
         </template>
         <template #body-cell-time="props">
           <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ formatDate(props.row.occurred_at) }}</span>
+            <span class="app-registry-cell-sub">{{ formatDate(props.row.created_at) }}</span>
           </q-td>
         </template>
         <template #body-cell-actions="props">
@@ -79,9 +82,9 @@
                 dense
                 round
                 icon="account_tree"
-                color="primary"
+                color="accent"
                 aria-label="查看 Trace"
-                @click="onOpenTrace(props.row)"
+                @click="$emit('openTrace', props.row)"
               >
                 <q-tooltip>详情</q-tooltip>
               </q-btn>
@@ -102,13 +105,13 @@
     </div>
   </q-card>
 
-  <q-dialog v-model="detailOpen" maximized @hide="stopFlowStream">
+  <q-dialog :model-value="detailOpen" maximized @update:model-value="$emit('closeDetail')">
     <q-card class="app-dialog-card app-glass-dialog monitor-trace-dialog">
       <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div>
           <div class="app-glass-dialog__title">Trace 详情</div>
           <div class="app-glass-dialog__subtitle">
-            {{ detail?.agent_key || detail?.agent_id }} / {{ detail?.provider_code }} / {{ detail?.model_api_id }}
+            {{ detail?.name || detail?.key }} / {{ detail?.provider }} / {{ detail?.model }}
           </div>
           <div v-if="activeCorrelation.traceId" class="text-caption text-grey-6 q-mt-xs">
             trace_id: {{ activeCorrelation.traceId }}
@@ -122,8 +125,8 @@
             no-caps
             icon="chat"
             label="打开会话"
-            color="primary"
-            @click="openChatSession(activeCorrelation.sessionId)"
+            color="accent"
+            @click="$emit('openChatSession', activeCorrelation.sessionId)"
           />
           <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" @export="onExportFlow" />
           <q-btn flat icon="content_copy" label="复制 JSON" @click="copyDetail" />
@@ -146,29 +149,16 @@
                       </q-item-section>
                     </q-item>
                     <q-item>
+                      <q-item-section>名称</q-item-section>
+                      <q-item-section side>{{ detail?.name || '-' }}</q-item-section>
+                    </q-item>
+                    <q-item>
                       <q-item-section>Agent</q-item-section>
-                      <q-item-section side>{{ detail?.agent_key || detail?.agent_id || '-' }}</q-item-section>
+                      <q-item-section side>{{ detail?.agent_id || '-' }}</q-item-section>
                     </q-item>
                     <q-item>
                       <q-item-section>Provider / 模型</q-item-section>
-                      <q-item-section side
-                        >{{ detail?.provider_code || '-' }} / {{ detail?.model_api_id || '-' }}</q-item-section
-                      >
-                    </q-item>
-                    <q-item>
-                      <q-item-section>Token 数</q-item-section>
-                      <q-item-section side
-                        >{{ formatCount(detail?.input_tokens) }} /
-                        {{ formatCount(detail?.output_tokens) }}</q-item-section
-                      >
-                    </q-item>
-                    <q-item>
-                      <q-item-section>延迟</q-item-section>
-                      <q-item-section side>{{ formatLatency(detail?.latency_ms) }}</q-item-section>
-                    </q-item>
-                    <q-item>
-                      <q-item-section>费用</q-item-section>
-                      <q-item-section side>{{ formatMoney(detail?.total_cost_micro_usd) }}</q-item-section>
+                      <q-item-section side>{{ detail?.provider || '-' }} / {{ detail?.model || '-' }}</q-item-section>
                     </q-item>
                   </q-list>
                 </q-card-section>
@@ -177,7 +167,7 @@
             <div class="col-12 col-md-8">
               <q-card flat bordered class="monitor-card">
                 <q-card-section>
-                  <q-tabs v-model="detailTab" dense align="left" active-color="primary">
+                  <q-tabs v-model="detailTab" dense align="left" active-color="accent">
                     <q-tab name="flow" label="流程" icon="timeline" />
                     <q-tab name="waterfall" label="瀑布图" icon="waterfall_chart" />
                     <q-tab name="tree" label="Span 树" icon="account_tree" />
@@ -218,16 +208,12 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useMonitorRunNavigation } from '../../features/monitor/useMonitorRunNavigation';
-import { useMonitorTraceFlow } from '../../features/monitor/useMonitorTraceFlow';
 import { copyToClipboard } from 'quasar';
-import type { MonitorTraceEvent } from '../../features/monitor/types';
+import type { MonitorTrace } from '../../features/monitor/types';
+import type { MonitorLogLine } from '../../features/monitor/types';
 import {
   compactJSON,
-  formatCount,
   formatDate,
-  formatLatency,
-  formatMoney,
   parseJSON,
 } from '../../features/monitor/utils';
 import { downloadFlowDiagnosticJsonl } from '../../features/monitor/flow';
@@ -235,7 +221,6 @@ import TraceWaterfall from './TraceWaterfall.vue';
 import FlowTracePanel from './FlowTracePanel.vue';
 import FlowLogExportButton from './FlowLogExportButton.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import { MONITOR_TRACES_TABLE_COLUMNS, traceStatusColor as statusColor } from './monitorTableUi';
@@ -248,41 +233,40 @@ type TreeNode = {
 };
 
 const props = defineProps<{
-  rows: MonitorTraceEvent[];
+  rows: MonitorTrace[];
   loading: boolean;
   highlightUsageEventId?: string;
+  flowLines: MonitorLogLine[];
+  activeCorrelation: { traceId: string; runId: string; sessionId: string };
+  detail: MonitorTrace | null;
+  detailOpen: boolean;
 }>();
 
 const emit = defineEmits<{
   reload: [];
   notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
+  openTrace: [row: MonitorTrace];
+  closeDetail: [];
+  openChatSession: [sessionId: string];
 }>();
-
-const { openChatSession } = useMonitorRunNavigation();
 
 const keyword = ref('');
 const page = ref(1);
 const pageSize = ref(12);
-const detail = ref<MonitorTraceEvent | null>(null);
-const detailOpen = ref(false);
 const detailTab = ref<'flow' | 'waterfall' | 'tree'>('flow');
-
-const { flowLines, activeCorrelation, stopFlowStream, openTraceDetail } = useMonitorTraceFlow(detail, detailOpen);
 
 const filteredRows = computed(() => {
   const q = keyword.value.trim().toLowerCase();
   if (!q) return props.rows;
   return props.rows.filter((row) =>
     [
-      row.agent_key,
+      row.name,
+      row.key,
       row.agent_id,
-      row.provider_code,
-      row.provider_display_name,
-      row.model_api_id,
-      row.model_display_name,
+      row.provider,
+      row.model,
       row.status,
-      row.error_code,
-      row.error_message,
+      row.description,
     ].some((value) =>
       String(value || '')
         .toLowerCase()
@@ -301,38 +285,30 @@ watch(keyword, () => {
   page.value = 1;
 });
 
-const detailJSON = computed(() => compactJSON(detail.value ?? {}));
+const detailJSON = computed(() => compactJSON(props.detail ?? {}));
 const spanList = computed(() => {
-  if (!detail.value) return [];
-  const metadata = parseJSON(detail.value.metadata_json || '');
+  if (!props.detail) return [];
+  const metadata = parseJSON(props.detail.metadata_json || '');
   return Array.isArray(metadata.spans) ? metadata.spans : [];
 });
 const spanNodes = computed<TreeNode[]>(() => {
-  if (!detail.value) return [];
+  if (!props.detail) return [];
   const metadataSpans = spanList.value;
-  if (metadataSpans.length) return metadataSpans.map((span, index) => spanToNode(span, index));
+  if (metadataSpans.length) return metadataSpans.map((span: unknown, index: number) => spanToNode(span, index));
   return [
     {
-      id: detail.value.id,
-      label: `${detail.value.provider_code || 'provider'} / ${detail.value.model_api_id || 'model'}`,
-      caption: `${detail.value.status} | ${formatLatency(detail.value.latency_ms)} | ${formatCount(detail.value.total_tokens)} tokens`,
-      children: detail.value.error_message
-        ? [{ id: `${detail.value.id}-error`, label: 'error', caption: detail.value.error_message }]
-        : undefined,
+      id: props.detail.id,
+      label: `${props.detail.provider || 'provider'} / ${props.detail.model || 'model'}`,
+      caption: props.detail.status,
     },
   ];
 });
-
-async function onOpenTrace(row: MonitorTraceEvent) {
-  detailTab.value = 'flow';
-  await openTraceDetail(row);
-}
 
 function tryOpenHighlightedRun() {
   const hit = (props.highlightUsageEventId || '').trim();
   if (!hit || props.rows.length === 0) return;
   const row = props.rows.find((r) => String(r.id || '').trim() === hit);
-  if (row) void onOpenTrace(row);
+  if (row) emit('openTrace', row);
 }
 
 watch(() => props.highlightUsageEventId, tryOpenHighlightedRun);
@@ -341,7 +317,7 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
 function spanToNode(span: unknown, index: number): TreeNode {
   const row = (span && typeof span === 'object' ? span : {}) as Record<string, unknown>;
   const children = Array.isArray(row.children)
-    ? row.children.map((child, childIndex) => spanToNode(child, childIndex))
+    ? row.children.map((child: unknown, childIndex: number) => spanToNode(child, childIndex))
     : undefined;
   return {
     id: String(row.id || row.name || `span-${index}`),
@@ -359,15 +335,13 @@ async function copyDetail() {
 }
 
 function onExportFlow() {
-  if (!flowLines.value.length) {
+  if (!props.flowLines.length) {
     emit('notify', { message: '暂无流程日志可导出', type: 'warning' });
     return;
   }
-  downloadFlowDiagnosticJsonl(activeCorrelation.value.traceId, flowLines.value);
+  downloadFlowDiagnosticJsonl(props.activeCorrelation.traceId, props.flowLines);
   emit('notify', { message: '已下载流程诊断 JSONL', type: 'positive' });
 }
-
-
 </script>
 
 <style scoped>

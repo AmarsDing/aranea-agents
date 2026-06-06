@@ -1,5 +1,5 @@
 import type { QTableColumn } from 'quasar';
-import type { AuditLog, MonitorTraceEvent } from '../../features/monitor/types';
+import type { AuditLog, MonitorTrace } from '../../features/monitor/types';
 import type { MonitorViewEvent } from '../../features/monitor/useMonitorRealtimeEvents';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
 
@@ -14,20 +14,20 @@ export const AUDIT_TABLE_COLUMNS: QTableColumn<AuditLog>[] = [
 
 /** RealtimeEvents 列定义 */
 export const MONITOR_EVENTS_TABLE_COLUMNS: QTableColumn<MonitorViewEvent>[] = [
-  registryCol<MonitorViewEvent>('title', '事件', 'title', 'left', '28%'),
-  registryCol<MonitorViewEvent>('tags', '类型', 'type', 'left', '25%'),
-  registryCol<MonitorViewEvent>('time', '时间', 'time', 'left', '10%'),
+  registryCol<MonitorViewEvent>('title', '事件', 'title', 'left', REGISTRY_COL_W.contentWide),
+  registryCol<MonitorViewEvent>('tags', '类型', 'type', 'left', REGISTRY_COL_W.content),
+  registryCol<MonitorViewEvent>('time', '时间', 'time', 'left', REGISTRY_COL_W.agent),
   registryColActions<MonitorViewEvent>(REGISTRY_COL_W.actionsWide, ''),
 ];
 
 /** TraceList 列定义 */
-export const MONITOR_TRACES_TABLE_COLUMNS: QTableColumn<MonitorTraceEvent>[] = [
-  registryCol<MonitorTraceEvent>('name', 'Agent', 'agent_key', 'left', '25%'),
-  registryCol<MonitorTraceEvent>('tokens', 'Token 入/出', 'total_tokens', 'left', '18%'),
-  registryCol<MonitorTraceEvent>('latency', '延迟', 'latency_ms', 'left', '18%'),
-  registryCol<MonitorTraceEvent>('cost', '费用', 'total_cost_micro_usd', 'left', '18%'),
-  registryCol<MonitorTraceEvent>('time', '时间', 'occurred_at', 'left', '18%'),
-  registryColActions<MonitorTraceEvent>('30px', ''),
+export const MONITOR_TRACES_TABLE_COLUMNS: QTableColumn<MonitorTrace>[] = [
+  registryCol<MonitorTrace>('name', '名称', 'name', 'left', REGISTRY_COL_W.content),
+  registryCol<MonitorTrace>('agent', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.nameWide),
+  registryCol<MonitorTrace>('provider', 'Provider', 'provider', 'left', REGISTRY_COL_W.nameWide),
+  registryCol<MonitorTrace>('model', '模型', 'model', 'left', REGISTRY_COL_W.nameWide),
+  registryCol<MonitorTrace>('time', '时间', 'created_at', 'left', REGISTRY_COL_W.nameWide),
+  registryColActions<MonitorTrace>(REGISTRY_COL_W.traceAction, ''),
 ];
 
 /** Trace 状态颜色 */

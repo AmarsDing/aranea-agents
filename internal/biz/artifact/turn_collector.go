@@ -9,7 +9,7 @@ type turnCollectorKey struct{}
 
 // TurnCollector accumulates artifact refs produced during a single agent turn.
 type TurnCollector struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex
 	refs []Ref
 }
 
@@ -57,8 +57,8 @@ func (c *TurnCollector) Refs() []Ref {
 	if c == nil {
 		return nil
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	out := make([]Ref, len(c.refs))
 	copy(out, c.refs)
 	return out

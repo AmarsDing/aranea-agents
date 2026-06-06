@@ -11,6 +11,22 @@ type CallbackEditorProps = {
   agentKey?: string;
 };
 
+/** Private IP / localhost patterns that must not be used as webhook targets. */
+const PRIVATE_URL_PATTERN =
+  /^(https?:\/\/)(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|::1|\[::1\])/i;
+
+function validateWebhookUrl(url: string, t: (key: string) => string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (!/^https:\/\//i.test(trimmed)) {
+    return t('hooksPage.callbackEditor.webhookUrlMustBeHttps');
+  }
+  if (PRIVATE_URL_PATTERN.test(trimmed)) {
+    return t('hooksPage.callbackEditor.webhookUrlPrivate');
+  }
+  return '';
+}
+
 export function useCallbackEditor(
   props: Readonly<CallbackEditorProps>,
   emit: {
@@ -23,6 +39,8 @@ export function useCallbackEditor(
   const sortOrder = ref(props.sortOrder ?? 0);
   const modifyPatchText = ref('{}');
   const modifyPatchError = ref('');
+  const showSecret = ref(false);
+  const webhookUrlError = ref('');
 
   const pointOptions = useCallbackPointOptions();
   const actionOptions = computed(() => [
@@ -74,11 +92,29 @@ export function useCallbackEditor(
     () => localRule.value.action.type,
     (type, prev) => {
       if (type === prev) return;
-      if (type === 'modify') {
-        syncModifyText();
-      } else {
+      // Clear action fields that are irrelevant for the new type
+      const action = localRule.value.action;
+      if (type !== 'notify') {
+        action.webhook_url = '';
+        action.webhook_secret = '';
+        action.notify_max_retries = undefined;
+        action.notify_timeout_sec = undefined;
+        webhookUrlError.value = '';
+      }
+      if (type !== 'log') {
+        action.log_level = undefined;
+      }
+      if (type !== 'block') {
+        action.message = '';
+      }
+      if (type !== 'modify') {
+        action.modify_patch = undefined;
         modifyPatchError.value = '';
       }
+      if (type === 'modify') {
+        syncModifyText();
+      }
+      emitChange();
     },
   );
 
@@ -103,6 +139,12 @@ export function useCallbackEditor(
     emitChange();
   }
 
+  function onWebhookUrlChange(url: string | number | null) {
+    const str = String(url ?? '');
+    webhookUrlError.value = validateWebhookUrl(str, t);
+    emitChange();
+  }
+
   return {
     localRule,
     sortOrder,
@@ -116,8 +158,11 @@ export function useCallbackEditor(
     showLogFields,
     showModifyFields,
     showMessageField,
+    showSecret,
+    webhookUrlError,
     emitChange,
     emitMeta,
     onModifyPatchInput,
+    onWebhookUrlChange,
   };
 }

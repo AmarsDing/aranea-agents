@@ -58,7 +58,11 @@ var ProviderSet = wire.NewSet(
 	NewSessionRunCheckpointRepo,
 	NewSessionParticipantRepo,
 	NewUsageRepo,
-	NewMonitorRepo,
+	NewMonitorAuditRepo,
+	NewMonitorEventRepo,
+	NewMonitorTraceRepo,
+	NewMonitorAlertRepo,
+	NewMonitorRunnerCompletionRepo,
 	NewSystemSettingRepo,
 	NewEvolutionMetricsRepo,
 	NewEvolutionSuggestionRepo,
@@ -585,6 +589,15 @@ func runStartupStep(name string, fn func() error, lg loggateway.Logger) error {
 	return nil
 }
 
+// entLogAdapter bridges loggateway.Logger to Ent's func(...any) logger interface.
+// Ent uses this for debug-mode SQL logging; without it the default falls back
+// to log.Println which violates the project's "no log/slog" rule (Red Line #16).
+func entLogAdapter(lg loggateway.Logger) func(...any) {
+	return func(args ...any) {
+		lg.Info(fmt.Sprint(args...), loggateway.StepID("ent.sql"))
+	}
+}
+
 // initSQLite opens the SQLite database, configures Ent, applies PRAGMAs,
 // and runs migration.
 func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.Client, *sql.DB, error) {
@@ -608,7 +621,7 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	rawDB.SetConnMaxIdleTime(5 * time.Minute)
 
 	drv := entsql.OpenDB(driverName, rawDB)
-	entClient := ent.NewClient(ent.Driver(drv))
+	entClient := ent.NewClient(ent.Driver(drv), ent.Log(entLogAdapter(lg)))
 
 	if driverName == dialect.SQLite {
 		for _, pragma := range []string{
@@ -664,7 +677,7 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 		}
 	}
 	readDrv := entsql.OpenDB(driverName, readDB)
-	readClient := ent.NewClient(ent.Driver(readDrv))
+	readClient := ent.NewClient(ent.Driver(readDrv), ent.Log(entLogAdapter(lg)))
 
 	return entClient, rawDB, readClient, readDB, nil
 }
@@ -828,7 +841,11 @@ func NewKnowledgeSparseSearcherFromData(d *Data) biz.KnowledgeSparseSearcher {
 	if repo == nil {
 		return nil
 	}
-	return repo.(*knowledgeRepo)
+	kr, ok := repo.(*knowledgeRepo)
+	if !ok {
+		return nil
+	}
+	return kr
 }
 
 func NewEvalRepoFromData(d *Data) biz.EvalRepo {
@@ -852,7 +869,7 @@ func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
 
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).
 // Do not use against a DSN while admin is running — use in-process NewData migrations instead.
-func OpenSQLiteEntClient(dsn string) (*ent.Client, *sql.DB, func(), error) {
+func OpenSQLiteEntClient(dsn string, lg loggateway.Logger) (*ent.Client, *sql.DB, func(), error) {
 	dsn = normalizeSQLiteDSN(dsn)
 	rawDB, err := sql.Open(dialect.SQLite, dsn)
 	if err != nil {
@@ -871,7 +888,7 @@ func OpenSQLiteEntClient(dsn string) (*ent.Client, *sql.DB, func(), error) {
 			return nil, nil, nil, fmt.Errorf("sqlite %s: %w", pragma, err)
 		}
 	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, rawDB)))
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, rawDB)), ent.Log(entLogAdapter(lg)))
 	cleanup := func() {
 		_ = client.Close()
 		_ = rawDB.Close()

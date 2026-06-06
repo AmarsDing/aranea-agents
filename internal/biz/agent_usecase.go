@@ -74,9 +74,15 @@ type AgentRepository interface {
 	AgentAtomicWriter
 	AgentRuntimeSettingsRepo
 	AgentPromptFileRepo
+	AgentReferenceChecker
 	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
 	ReorderAgents(ctx context.Context, ids []string) error
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// ProviderModelPairValidator validates that a provider+model pair exists in the catalog.
+type ProviderModelPairValidator interface {
+	ValidatePair(ctx context.Context, provider, model string) (bool, string, error)
 }
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
@@ -85,6 +91,7 @@ type AgentUsecase struct {
 	tools              ToolCatalogReader
 	sys                SystemSettingRepo
 	webResearchChecker WebResearchReadinessChecker
+	providerValidator  ProviderModelPairValidator
 	lg                 loggateway.Logger
 }
 
@@ -94,6 +101,10 @@ func NewAgentUsecase(repo AgentRepository, tools ToolCatalogReader, sys SystemSe
 
 func (u *AgentUsecase) SetWebResearchChecker(checker WebResearchReadinessChecker) {
 	u.webResearchChecker = checker
+}
+
+func (u *AgentUsecase) SetProviderModelValidator(v ProviderModelPairValidator) {
+	u.providerValidator = v
 }
 
 // ListAgentCreators returns distinct creators for list filter options.
@@ -280,6 +291,19 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 		}
 		in.AgentKind = AgentKindLLM
 	}
+	// Validate that the provider+model pair exists in the catalog (non-A2A agents only).
+	if u.providerValidator != nil && in.AgentKind != AgentKindA2AProxy {
+		ok, msg, valErr := u.providerValidator.ValidatePair(ctx, in.Provider, in.Model)
+		if valErr != nil {
+			u.lg.Warn("provider model validation failed, proceeding with create",
+				loggateway.StepID("agent.create.provider_validate"),
+				loggateway.Str("provider", in.Provider),
+				loggateway.Str("model", in.Model),
+				loggateway.Err(valErr))
+		} else if !ok {
+			return Agent{}, kerrors.BadRequest("AGENT", "provider/model is not enabled: "+msg)
+		}
+	}
 	if in.ID == "" {
 		in.ID = newAgentCatalogID()
 	}
@@ -373,10 +397,14 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	}
 	HydrateAgentKind(&patch)
 	HydrateAgentKind(&current)
+	if strings.TrimSpace(patch.AgentKey) != "" && strings.TrimSpace(patch.AgentKey) != strings.TrimSpace(current.AgentKey) {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_key is immutable")
+	}
 	if strings.TrimSpace(patch.AgentKind) != "" && NormalizeAgentKind(patch.AgentKind) != NormalizeAgentKind(current.AgentKind) {
 		return Agent{}, kerrors.BadRequest("AGENT", "agent_kind is immutable")
 	}
 	merged := mergeAgentCatalog(current, patch)
+	merged.AgentKey = current.AgentKey
 	merged.AgentKind = current.AgentKind
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
@@ -486,10 +514,6 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	// Kind is the ownership classification (user | system_builtin | ecosystem_preset | ...).
 	if current.Kind == "system_builtin" {
 		return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
-	}
-	// ecosystem_preset agents must be deleted via industry unload to keep ecosystem_loaded status consistent.
-	if current.Kind == "ecosystem_preset" {
-		return kerrors.Forbidden("AGENT", "cannot delete ecosystem_preset agent directly; use industry unload instead")
 	}
 	if current.Readonly {
 		return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")

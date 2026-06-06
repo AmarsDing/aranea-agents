@@ -174,7 +174,7 @@ type AlertNotifier interface {
 	Notify(ctx context.Context, rule AlertRule, payload map[string]any)
 }
 
-// Repo abstracts monitor persistence.
+// RunnerCompletionRow represents a runner completion record.
 type RunnerCompletionRow struct {
 	TraceID   string
 	SessionID string
@@ -224,15 +224,7 @@ type RunnerCompletionRepo interface {
 	ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]RunnerCompletionRow, error)
 }
 
-// Repo is a convenience aggregate for Wire binding.
-// Deprecated: consumers should depend on individual sub-interfaces.
-type Repo interface {
-	AuditRepo
-	EventRepo
-	TraceRepo
-	AlertRepo
-	RunnerCompletionRepo
-}
+
 
 // RunnerMetricsSummary aggregates runner.completion monitor events.
 type RunnerMetricsSummary struct {
@@ -375,6 +367,33 @@ func (u *Usecase) ListMonitorEvents(ctx context.Context, query EventsQuery) (Lis
 	return u.eventRepo.ListMonitorEvents(ctx, query)
 }
 
+// ListAlertRulesWithDefaults returns alert rules, creating defaults if none exist.
+func (u *Usecase) ListAlertRulesWithDefaults(ctx context.Context) ([]AlertRule, error) {
+	rules, err := u.ListAlertRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		defaults := DefaultAlertRules()
+		if err := u.ReplaceAlertRules(ctx, defaults); err != nil {
+			u.lg.Warn("ListAlertRulesWithDefaults: ReplaceAlertRules failed",
+				loggateway.StepID("monitor.alert_rules_replace_fail"),
+				loggateway.Err(err),
+			)
+		}
+		rules = defaults
+	}
+	return rules, nil
+}
+
+// DefaultAlertRules returns the built-in default alert rules.
+func DefaultAlertRules() []AlertRule {
+	return []AlertRule{{
+		ID: "default-runner-errors", Name: "Runner error rate",
+		MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
+	}}
+}
+
 // ListAlertRules returns all alert rules.
 func (u *Usecase) ListAlertRules(ctx context.Context) ([]AlertRule, error) {
 	if u == nil || u.alertRepo == nil {
@@ -463,11 +482,16 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 		meta, _ := json.Marshal(map[string]any{
 			"rule_id": rule.ID, "metric_key": rule.MetricKey, "value": value, "recovery_threshold": recoveryThreshold(rule),
 		})
-		_ = u.RecordMonitorEvent(ctx, EventWrite{
+		if err := u.RecordMonitorEvent(ctx, EventWrite{
 			EventKey: "alert.recovered", Name: rule.Name,
 			Description: fmt.Sprintf("%s %.2f recovered below %.2f", rule.MetricKey, value, recoveryThreshold(rule)),
 			Status:      "recovered", MetadataJSON: string(meta),
-		})
+		}); err != nil {
+			u.lg.Warn("RecordMonitorEvent for alert.recovered failed",
+				loggateway.StepID("monitor.alert_recovered_persist_fail"),
+				loggateway.Str("rule_id", rule.ID),
+				loggateway.Err(err))
+		}
 		if u.notifier != nil {
 			u.notifier.Notify(ctx, rule, map[string]any{
 				"rule_id": rule.ID, "name": rule.Name, "metric_key": rule.MetricKey,

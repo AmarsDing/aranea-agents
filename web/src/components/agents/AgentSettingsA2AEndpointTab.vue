@@ -10,12 +10,7 @@
     <q-inner-loading :showing="loading" />
 
     <div v-if="card" class="q-gutter-md">
-      <q-toggle
-        :model-value="card.enabled"
-        color="primary"
-        label="启用 A2A"
-        @update:model-value="setCardEnabled"
-      />
+      <q-toggle :model-value="card.enabled" color="primary" label="启用 A2A" @update:model-value="setCardEnabled" />
       <div>
         <div class="text-caption text-grey-7 q-mb-sm">Capabilities（JSON 名称列表，每行一个能力名）</div>
         <q-input
@@ -53,12 +48,7 @@ const props = defineProps<{
   agentId: string;
 }>();
 
-const {
-  loading,
-  saving,
-  card,
-  capabilityLines,
-  setCardEnabled,
-  saveEndpoint,
-} = reactive(useAgentA2AEndpointTab(() => props.agentId));
+const { loading, saving, card, capabilityLines, setCardEnabled, saveEndpoint } = reactive(
+  useAgentA2AEndpointTab(() => props.agentId),
+);
 </script>

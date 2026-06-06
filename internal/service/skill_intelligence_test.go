@@ -55,10 +55,23 @@ func (s *stubExperienceReportReader) ListByTimeRange(_ context.Context, _, _ tim
 	return nil, nil
 }
 
+func (s *stubExperienceReportReader) ListFiltered(_ context.Context, skillID string, _, _ *time.Time, _, _ int) ([]biz.ExperienceReport, int, error) {
+	if skillID == "" {
+		return s.reports, len(s.reports), nil
+	}
+	var filtered []biz.ExperienceReport
+	for _, r := range s.reports {
+		if r.SkillID == skillID {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, len(filtered), nil
+}
+
 // newTestSkillIntelligenceService creates a SkillIntelligenceService with a
 // real Usecase backed by stub repos.
 func newTestSkillIntelligenceService(reader *stubExperienceReportReader) *SkillIntelligenceService {
-	uc := biz.NewSkillIntelligenceUsecase(reader, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(reader, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	return NewSkillIntelligenceService(uc, loggateway.NewNoop())
 }
 

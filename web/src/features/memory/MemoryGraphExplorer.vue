@@ -123,7 +123,8 @@ import { computed, ref, watch } from 'vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
 import { REGISTRY_COL_W, registryCol } from '../ui/registryTableColumns';
 import type { GraphNeighborhood, MemoryEntity } from './types';
-import { getMemoryNeighborhood } from './api';
+import { useMemoryApi } from './composables/useMemoryApi';
+const { getMemoryNeighborhood } = useMemoryApi();
 
 const relationColumns = [
   registryCol('source_id', 'Source', 'source_id', 'left', REGISTRY_COL_W.name),

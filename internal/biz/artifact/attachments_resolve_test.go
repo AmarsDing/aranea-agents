@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/artifact"
+	"aranea-agents/pkg/loggateway"
 )
 
 type resolveMemRepo struct {
@@ -54,7 +55,7 @@ func (m *resolveMemRepo) ListBySessionAndName(context.Context, string, string) (
 
 func TestResolveAttachmentRefs_ok(t *testing.T) {
 	repo := &resolveMemRepo{items: map[string]artifact.Artifact{}, data: map[string][]byte{}}
-	uc := artifact.NewUsecase(repo)
+	uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 	ctx := context.Background()
 	saved, err := uc.Save(ctx, "sess-1", "a.png", "image/png", []byte{1})
 	if err != nil {
@@ -71,7 +72,7 @@ func TestResolveAttachmentRefs_ok(t *testing.T) {
 
 func TestResolveAttachmentRefs_sessionMismatch(t *testing.T) {
 	repo := &resolveMemRepo{items: map[string]artifact.Artifact{}, data: map[string][]byte{}}
-	uc := artifact.NewUsecase(repo)
+	uc := artifact.NewUsecase(repo, loggateway.NewNoop())
 	ctx := context.Background()
 	saved, _ := uc.Save(ctx, "sess-a", "a.png", "image/png", []byte{1})
 	_, err := artifact.ResolveAttachmentRefs(ctx, uc, "sess-b", []string{saved.ID})
@@ -81,7 +82,7 @@ func TestResolveAttachmentRefs_sessionMismatch(t *testing.T) {
 }
 
 func TestResolveAttachmentRefs_missing(t *testing.T) {
-	uc := artifact.NewUsecase(&resolveMemRepo{items: map[string]artifact.Artifact{}, data: map[string][]byte{}})
+	uc := artifact.NewUsecase(&resolveMemRepo{items: map[string]artifact.Artifact{}, data: map[string][]byte{}}, loggateway.NewNoop())
 	_, err := artifact.ResolveAttachmentRefs(context.Background(), uc, "sess-1", []string{"missing-id"})
 	if err == nil {
 		t.Fatal("expected not found error")

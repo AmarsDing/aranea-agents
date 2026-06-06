@@ -1,4 +1,9 @@
-import { createSkillService, kratosApi } from '../../services';
+import {
+  createSkillService,
+  createSkillIntelligenceService,
+  createSkillEvolutionSuggestionService,
+  kratosApi,
+} from '../../services';
 import type {
   PaginatedResponse,
   Skill,
@@ -14,6 +19,9 @@ import type {
   SkillRefineResult,
   SkillRunQuery,
   SkillTag,
+  ExperienceReportView,
+  ExperienceReportListResult,
+  EvolutionSuggestionView,
 } from './types';
 
 // ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`** 由 **`cmd/admin`** 内挂载（multipart + JSON）。
@@ -305,4 +313,166 @@ export async function getSkillHealth(skillId: string): Promise<SkillHealthMetric
     p95_duration_ms_30d: n('p95_duration_ms_30d', 'p95DurationMs30d'),
     daily_metrics: dailyMetrics,
   };
+}
+
+// ── Experience Report (Skill Intelligence) ──────────────────────
+
+function mapExperienceReport(raw: unknown): ExperienceReportView {
+  const r = raw as Record<string, unknown>;
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
+  const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
+  const b = (snake: string, camel: string) => Boolean(r[snake] ?? r[camel]);
+  const rawTags = r.failure_tags ?? r.failureTags;
+  const failureTags: string[] = Array.isArray(rawTags) ? rawTags.map(String) : [];
+  const rawSnapshot = r.selection_snapshot ?? r.selectionSnapshot;
+  const selectionSnapshot: Record<string, unknown> =
+    rawSnapshot && typeof rawSnapshot === 'object' && !Array.isArray(rawSnapshot)
+      ? (rawSnapshot as Record<string, unknown>)
+      : {};
+  return {
+    id: s('id', 'id'),
+    tenantId: s('tenant_id', 'tenantId'),
+    sessionId: s('session_id', 'sessionId'),
+    invocationId: s('invocation_id', 'invocationId'),
+    skillId: s('skill_id', 'skillId'),
+    skillName: s('skill_name', 'skillName'),
+    isSuccess: b('is_success', 'isSuccess'),
+    score: n('score', 'score'),
+    failureTags,
+    flowSummary: s('flow_summary', 'flowSummary'),
+    rootCauseAnalysis: s('root_cause_analysis', 'rootCauseAnalysis'),
+    suggestedFix: s('suggested_fix', 'suggestedFix'),
+    optimizationAdvice: s('optimization_advice', 'optimizationAdvice'),
+    selectionSnapshot,
+    generatedSuggestionId: s('generated_suggestion_id', 'generatedSuggestionId'),
+    createdAt: s('created_at', 'createdAt'),
+  };
+}
+
+function mapFailureTagCount(raw: unknown): { tag: string; count: number } {
+  const r = raw as Record<string, unknown>;
+  return {
+    tag: String(r.tag ?? ''),
+    count: Number(r.count ?? 0),
+  };
+}
+
+export async function listExperienceReports(params: {
+  skillId?: string;
+  startTime?: string;
+  endTime?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<ExperienceReportListResult> {
+  const svc = createSkillIntelligenceService();
+  const res = await svc.ListExperienceReports({
+    skillId: params.skillId || undefined,
+    startTime: params.startTime || undefined,
+    endTime: params.endTime || undefined,
+    page: params.page,
+    pageSize: params.pageSize,
+  });
+  return {
+    items: (res.items ?? []).map(mapExperienceReport),
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? params.page ?? 1),
+    page_size: Number(res.pageSize ?? params.pageSize ?? 20),
+    failureTagCounts: (res.failureTagCounts ?? []).map(mapFailureTagCount),
+    rootCauseReports: (res.rootCauseReports ?? []).map(mapExperienceReport),
+  };
+}
+
+// ── Evolution Suggestion ────────────────────────────────────────
+
+function mapEvolutionSuggestion(raw: unknown): EvolutionSuggestionView {
+  const r = raw as Record<string, unknown>;
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
+  const rawReportIds = r.source_report_ids ?? r.sourceReportIds;
+  const sourceReportIds: string[] = Array.isArray(rawReportIds) ? rawReportIds.map(String) : [];
+  const toStruct = (snake: string, camel: string): Record<string, unknown> => {
+    const v = r[snake] ?? r[camel];
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  };
+  // Proto bool defaults to false; use lifecycleStatus to distinguish
+  // "not yet validated" from "validation failed".
+  const lifecycleStatus = String(r['lifecycle_status'] ?? r['lifecycleStatus'] ?? '');
+  const rawSandboxPassed = r['sandbox_passed'] ?? r['sandboxPassed'];
+  const sandboxPassed: boolean | null = (() => {
+    if (rawSandboxPassed === true) return true;
+    if (
+      rawSandboxPassed === false &&
+      (lifecycleStatus === 'validating' || lifecycleStatus === 'ready' || lifecycleStatus === 'applied')
+    )
+      return false;
+    return null; // not yet validated
+  })();
+  return {
+    id: s('id', 'id'),
+    skillId: s('skill_id', 'skillId'),
+    type: s('type', 'type'),
+    status: s('status', 'status'),
+    triggerReason: s('trigger_reason', 'triggerReason'),
+    sourceReportIds,
+    draftSkillBody: s('draft_skill_body', 'draftSkillBody'),
+    sandboxPassed,
+    sandboxResult: toStruct('sandbox_result', 'sandboxResult'),
+    preVerifyResult: toStruct('pre_verify_result', 'preVerifyResult'),
+    parentVersionId: s('parent_version_id', 'parentVersionId'),
+    draftVersionId: s('draft_version_id', 'draftVersionId'),
+    evolutionReason: s('evolution_reason', 'evolutionReason'),
+    lifecycleStatus,
+    approvedBy: s('approved_by', 'approvedBy'),
+    rejectedBy: s('rejected_by', 'rejectedBy'),
+    rejectionReason: s('rejection_reason', 'rejectionReason'),
+    resolvedAt: s('resolved_at', 'resolvedAt'),
+    createdAt: s('created_at', 'createdAt'),
+  };
+}
+
+export async function listEvolutionSuggestions(params: {
+  skillId?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<PaginatedResponse<EvolutionSuggestionView>> {
+  const svc = createSkillEvolutionSuggestionService();
+  const res = await svc.ListSkillEvolutionSuggestions({
+    skillId: params.skillId || undefined,
+    status: params.status || undefined,
+    page: params.page,
+    pageSize: params.pageSize,
+  });
+  return {
+    items: (res.items ?? []).map(mapEvolutionSuggestion),
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? params.page ?? 1),
+    page_size: Number(res.pageSize ?? params.pageSize ?? 20),
+  };
+}
+
+export async function approveEvolutionSuggestion(id: string, approvedBy: string): Promise<void> {
+  const svc = createSkillEvolutionSuggestionService();
+  await svc.ApproveSkillEvolutionSuggestion({ id, approvedBy });
+}
+
+export async function rejectEvolutionSuggestion(
+  id: string,
+  rejectedBy: string,
+  rejectionReason?: string,
+): Promise<void> {
+  const svc = createSkillEvolutionSuggestionService();
+  await svc.RejectSkillEvolutionSuggestion({
+    id,
+    rejectedBy,
+    rejectionReason: rejectionReason || undefined,
+  });
+}
+
+export async function triggerCuratorFlow(skillId: string): Promise<EvolutionSuggestionView | null> {
+  const svc = createSkillEvolutionSuggestionService();
+  const res = await svc.TriggerCuratorFlow({ skillId });
+  if (res.suggestion) {
+    return mapEvolutionSuggestion(res.suggestion);
+  }
+  return null;
 }

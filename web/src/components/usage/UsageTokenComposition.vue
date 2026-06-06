@@ -29,10 +29,10 @@ const slices = computed<TokenSlice[]>(() => {
   const otherVal = Math.max(0, s.total_tokens - inputVal - outputVal);
   const result: TokenSlice[] = [
     { name: '输入 Token', value: inputVal, color: palette.accent },
-    { name: '输出 Token', value: outputVal, color: palette.series[2] ?? '#60a5fa' },
+    { name: '输出 Token', value: outputVal, color: palette.series[2] ?? 'var(--color-info, #60a5fa)' },
   ];
   if (otherVal > 0) {
-    result.push({ name: '其他', value: otherVal, color: palette.series[3] ?? '#a78bfa' });
+    result.push({ name: '其他', value: otherVal, color: palette.series[3] ?? 'var(--chart-color-skills, #a78bfa)' });
   }
   return result.filter((sl) => sl.value > 0);
 });

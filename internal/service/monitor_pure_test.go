@@ -8,6 +8,7 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -104,7 +105,7 @@ func TestParseFlowLogTimeBounds(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			since, until, err := parseFlowLogTimeBounds(tc.sinceRaw, tc.untilRaw)
+			since, until, err := monitor.ParseFlowLogTimeBounds(tc.sinceRaw, tc.untilRaw)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -161,9 +162,9 @@ func TestIsSensitiveKey(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := isSensitiveKey(tc.key)
+			got := monitor.IsSensitiveKey(tc.key)
 			if got != tc.want {
-				t.Fatalf("isSensitiveKey(%q) = %v, want %v", tc.key, got, tc.want)
+				t.Fatalf("IsSensitiveKey(%q) = %v, want %v", tc.key, got, tc.want)
 			}
 		})
 	}
@@ -201,7 +202,7 @@ func TestSanitizeJSONValue(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := sanitizeJSONValue(tc.in)
+			got := monitor.SanitizeJSONValue(tc.in)
 			gotJSON, _ := json.Marshal(got)
 			wantJSON, _ := json.Marshal(tc.want)
 			if string(gotJSON) != string(wantJSON) {
@@ -250,7 +251,7 @@ func TestSanitizeJSONString(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := sanitizeJSONString(tc.raw, loggateway.Global())
+			got := monitor.SanitizeJSONString(tc.raw, loggateway.Global())
 			if tc.name == "invalid_json" || tc.name == "empty_string" || tc.name == "whitespace_only" {
 				if got != tc.want {
 					t.Fatalf("got %q, want %q", got, tc.want)
@@ -312,7 +313,7 @@ func TestParseJSONMap(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseJSONMap(tc.raw, loggateway.NewNoop())
+			got := monitor.ParseJSONMap(tc.raw, loggateway.NewNoop())
 			gotJSON, _ := json.Marshal(got)
 			wantJSON, _ := json.Marshal(tc.want)
 			if string(gotJSON) != string(wantJSON) {

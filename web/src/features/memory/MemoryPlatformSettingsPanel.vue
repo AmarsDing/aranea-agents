@@ -48,7 +48,8 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { getMemoryPlatformSettings, updateMemoryPlatformSettings } from './api';
+import { useMemoryApi } from './composables/useMemoryApi';
+const { getMemoryPlatformSettings, updateMemoryPlatformSettings } = useMemoryApi();
 
 const loading = ref(false);
 const saving = ref(false);

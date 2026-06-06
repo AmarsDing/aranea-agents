@@ -54,11 +54,7 @@ function pieOption(): EChartsCoreOption {
   };
 }
 
-useUsageChart(
-  chartEl,
-  pieOption,
-  () => [slices.value],
-);
+useUsageChart(chartEl, pieOption, () => [slices.value]);
 </script>
 
 <style scoped lang="sass">

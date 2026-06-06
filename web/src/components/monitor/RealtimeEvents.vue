@@ -4,14 +4,14 @@
       <div class="row items-center q-gutter-sm">
         <div class="text-h6 text-weight-bold">实时事件</div>
         <q-badge :color="streamColor">{{ streamText }}</q-badge>
-        <q-badge outline color="primary">{{ visibleEvents.length }} 个事件</q-badge>
+        <q-badge outline color="accent">{{ visibleEvents.length }} 个事件</q-badge>
       </div>
       <div class="text-caption text-grey-7">Team / Agent 运行时事件与持久化监控事件</div>
     </q-card-section>
 
     <AppPageToolbar class="monitor-events-toolbar">
       <q-select
-        v-model="category"
+        :model-value="category"
         class="app-page-toolbar__field"
         dense
         outlined
@@ -19,6 +19,7 @@
         map-options
         label="分类"
         :options="categoryOptions"
+        @update:model-value="$emit('update:category', $event)"
       />
       <template #actions>
         <q-btn
@@ -27,7 +28,7 @@
           no-caps
           :icon="paused ? 'play_arrow' : 'pause'"
           :label="paused ? '恢复' : '暂停'"
-          @click="toggleStream"
+          @click="$emit('toggleStream')"
         />
         <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="$emit('clear')" />
       </template>
@@ -45,7 +46,7 @@
           :pagination="{ rowsPerPage: 0 }"
         >
           <template #body-cell-title="props">
-            <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
+            <q-td :props="props" class="cursor-pointer" @click="$emit('openDetail', props.row)">
               <AppRegistryHoverTip :text="props.row.subtitle">
                 <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
               </AppRegistryHoverTip>
@@ -73,9 +74,9 @@
                   dense
                   round
                   icon="timeline"
-                  color="primary"
+                  color="accent"
                   aria-label="在 Runs 中查看"
-                  @click="openLinkedRun(props.row)"
+                  @click="$emit('openLinkedRun', props.row)"
                 >
                   <q-tooltip>在 Runs 中查看</q-tooltip>
                 </q-btn>
@@ -85,9 +86,9 @@
                   dense
                   round
                   icon="chat"
-                  color="primary"
+                  color="accent"
                   aria-label="打开会话"
-                  @click="openChatSession(props.row.completionSessionId!)"
+                  @click="$emit('openChatSession', props.row.completionSessionId!)"
                 >
                   <q-tooltip>打开会话</q-tooltip>
                 </q-btn>
@@ -96,9 +97,9 @@
                   dense
                   round
                   icon="visibility"
-                  color="primary"
+                  color="accent"
                   aria-label="查看详情"
-                  @click="openDetail(props.row)"
+                  @click="$emit('openDetail', props.row)"
                 />
               </div>
             </q-td>
@@ -122,7 +123,7 @@
     </q-card-section>
   </q-card>
 
-  <q-dialog v-model="detailOpen">
+  <q-dialog :model-value="detailOpen" @update:model-value="detailOpen = $event">
     <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div>
@@ -139,64 +140,69 @@
       </div>
       <q-separator />
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="copyJSON" />
+        <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="$emit('copyJSON')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
-import type { PlatformResource, MonitorTraceEvent } from '../../features/monitor/types';
-import { useMonitorRealtimeEvents, type MonitorViewEvent } from '../../features/monitor/useMonitorRealtimeEvents';
+import type { MonitorTrace } from '../../features/monitor/types';
+import type { MonitorViewEvent } from '../../features/monitor/useMonitorRealtimeEvents';
 import { MONITOR_EVENTS_TABLE_COLUMNS } from './monitorTableUi';
 
 const props = defineProps<{
-  persistedEvents: PlatformResource[];
-  traces?: MonitorTraceEvent[];
+  visibleEvents: MonitorViewEvent[];
+  streamText: string;
+  streamColor: string;
+  paused: boolean;
+  category: string;
+  categoryOptions: { label: string; value: string }[];
+  emptyHint: string;
+  selected: MonitorViewEvent | null;
+  detailOpen: boolean;
+  selectedJSON: string;
+  traces?: MonitorTrace[];
 }>();
 
 defineEmits<{
   clear: [];
+  toggleStream: [];
+  openDetail: [event: MonitorViewEvent];
+  openLinkedRun: [event: MonitorViewEvent];
+  openChatSession: [sessionId: string];
+  copyJSON: [];
+  'update:category': [value: string];
 }>();
 
-const {
-  category,
-  categoryOptions,
-  paused,
-  selected,
-  detailOpen,
-  visibleEvents,
-  selectedJSON,
-  emptyHint,
-  streamText,
-  streamColor,
-  toggleStream,
-  clearRuntimeEvents,
-  openDetail,
-  openLinkedRun,
-  openChatSession,
-  copyJSON,
-  eventColor,
-} = useMonitorRealtimeEvents(
-  toRef(() => props.persistedEvents),
-  toRef(() => props.traces),
-);
+function eventColor(type: string) {
+  if (type.includes('failed') || type.includes('error')) return 'negative';
+  if (type.includes('finished') || type.includes('completed')) return 'positive';
+  if (type === 'intent_pass') return 'cyan';
+  if (type.includes('tool') || type.includes('step')) return 'orange';
+  if (type.includes('agent')) return 'cyan';
+  return 'primary';
+}
 
 const page = ref(1);
 const pageSize = ref(12);
-const pageMax = computed(() => Math.max(1, Math.ceil(visibleEvents.value.length / pageSize.value)));
+const pageMax = computed(() => Math.max(1, Math.ceil(props.visibleEvents.length / pageSize.value)));
 const pagedEvents = computed(() => {
   const start = (page.value - 1) * pageSize.value;
-  return visibleEvents.value.slice(start, start + pageSize.value);
+  return props.visibleEvents.slice(start, start + pageSize.value);
 });
 
-watch([category, visibleEvents], () => {
+watch(() => props.category, () => {
+  page.value = 1;
+});
+
+watch(() => props.visibleEvents.length, () => {
   page.value = 1;
 });
 </script>

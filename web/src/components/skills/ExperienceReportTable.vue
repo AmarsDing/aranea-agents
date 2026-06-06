@@ -7,9 +7,9 @@
     :loading="loading"
     hide-pagination
   >
-    <template #body-cell-skillId="props">
+    <template #body-cell-skillName="props">
       <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ props.row.skillId || '-' }}</div>
+        <div class="app-registry-cell-primary">{{ props.row.skillName || '-' }}</div>
       </q-td>
     </template>
     <template #body-cell-result="props">
@@ -27,14 +27,7 @@
     <template #body-cell-failureTags="props">
       <q-td :props="props">
         <template v-if="props.row.failureTags && props.row.failureTags.length > 0">
-          <q-chip
-            v-for="tag in props.row.failureTags"
-            :key="tag"
-            dense
-            size="sm"
-            color="negative"
-            text-color="white"
-          >
+          <q-chip v-for="tag in props.row.failureTags" :key="tag" dense size="sm" color="negative" text-color="white">
             {{ tag }}
           </q-chip>
         </template>
@@ -59,16 +52,16 @@
 <script setup lang="ts">
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
-import type { ExperienceReport } from '../../services/kratos/skill_intelligence/v1/index';
+import type { ExperienceReportView } from '../../features/skills/types';
 import { EXPERIENCE_REPORT_TABLE_COLUMNS } from './experienceReportTableUi';
 
 defineProps<{
-  rows: ExperienceReport[];
+  rows: ExperienceReportView[];
   loading: boolean;
 }>();
 
 function formatDate(value?: string) {
   if (!value) return '-';
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleString('zh-CN', { hour12: false });
 }
 </script>

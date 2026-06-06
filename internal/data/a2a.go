@@ -294,7 +294,7 @@ func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgen
 		return biz.A2ARemoteAgent{}, kerrors.InternalServer("A2A", "a2a db nil")
 	}
 	if agent.ID == "" {
-		agent.ID = fmt.Sprintf("remote-%d", time.Now().UnixNano())
+		agent.ID = biz.NewA2AID()
 	}
 	cardJSON, err := json.Marshal(agent.DiscoveredCard)
 	if err != nil {

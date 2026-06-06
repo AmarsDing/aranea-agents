@@ -162,3 +162,10 @@ export function cronTeamSelectOptions(teams: Team[]): Array<{ label: string; val
     value: team.id,
   }));
 }
+
+/** Format an ISO date string for display; returns '—' for empty/invalid values. */
+export function formatCronDate(value?: string): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}

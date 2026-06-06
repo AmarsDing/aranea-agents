@@ -23,7 +23,6 @@ type (
 	MonitorTraceRepo        = monitor.TraceRepo
 	MonitorAlertRepo        = monitor.AlertRepo
 	MonitorRunnerCompletionRepo = monitor.RunnerCompletionRepo
-	MonitorRepo             = monitor.Repo
 	MonitorUsecase          = monitor.Usecase
 	RunnerMetricsSummary    = monitor.RunnerMetricsSummary
 	RunnerCompletionBridge  = monitor.RunnerCompletionBridge
@@ -42,10 +41,16 @@ type (
 	HealRecordListResult    = monitor.HealRecordListResult
 	HealStats               = monitor.HealStats
 	FixAction               = monitor.FixAction
+	DiagnoseAndHealResult   = monitor.DiagnoseAndHealResult
+	RootCauseConditionResult = monitor.RootCauseConditionResult
+	AutoHealedResult        = monitor.AutoHealedResult
+	HealAttemptsResult      = monitor.HealAttemptsResult
+	SelfCheckResult         = monitor.SelfCheckResult
 )
 
 var (
 	NewMonitorUsecase               = monitor.NewUsecase
+	DefaultAlertRules               = monitor.DefaultAlertRules
 	WithFilesystemHealthReader      = monitor.WithFilesystemHealthReader
 	WithRingBuffer                  = monitor.WithRingBuffer
 	WithEvalWorker                  = monitor.WithEvalWorker

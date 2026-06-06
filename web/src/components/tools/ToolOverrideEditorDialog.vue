@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
+    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="row items-center justify-between">
         <div class="text-h6">{{ editing ? '编辑 Agent 覆盖' : '添加 Agent 覆盖' }}</div>
         <q-btn flat dense round icon="close" class="app-dialog-icon-btn" @click="$emit('update:open', false)" />

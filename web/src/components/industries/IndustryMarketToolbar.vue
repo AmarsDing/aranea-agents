@@ -46,12 +46,16 @@
         type="button"
         :class="['industry-market-toolbar__view-btn', { 'is-active': view === 'grid' }]"
         @click="view = 'grid'"
-      >▦ {{ t('industries.market.viewGrid') }}</button>
+      >
+        ▦ {{ t('industries.market.viewGrid') }}
+      </button>
       <button
         type="button"
         :class="['industry-market-toolbar__view-btn', { 'is-active': view === 'table' }]"
         @click="view = 'table'"
-      >≡ {{ t('industries.market.viewTable') }}</button>
+      >
+        ≡ {{ t('industries.market.viewTable') }}
+      </button>
     </div>
   </div>
 </template>
@@ -59,7 +63,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { IndustryStatusFilter, IndustrySourceFilter, IndustrySummary } from '../../features/industries/useIndustryMarket';
+import type {
+  IndustryStatusFilter,
+  IndustrySourceFilter,
+  IndustrySummary,
+} from '../../features/industries/useIndustryMarket';
 
 const props = defineProps<{
   modelValue: {
@@ -207,7 +215,7 @@ const sourceChips = computed(() => [
 
 .is-active .industry-market-chip__count
   background: rgba(220, 160, 62, 0.18)
-  color: #8a6014
+  color: var(--color-warning, #8a6014)
 
 .industry-market-toolbar__spacer
   flex: 1

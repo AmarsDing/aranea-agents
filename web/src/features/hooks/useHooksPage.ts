@@ -2,9 +2,8 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
-import { hookRuleOf } from '../../components/hooks/hookTableUi';
 import { useCallbackPointOptions } from '../callback/constants';
-import { defaultHookRuleConfig, type HookRow, type HookRuleConfig } from '../hooks/types';
+import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from '../hooks/types';
 import { useHooksStore } from '../../stores/hooks';
 import { useLocalPagination } from '../../composables/useLocalPagination';
 
@@ -32,7 +31,7 @@ export function useHooksPage() {
   });
 
   function ruleOf(row: HookRow) {
-    return hookRuleOf(row);
+    return parseHookConfig(row.config_json);
   }
 
   const {

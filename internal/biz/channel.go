@@ -368,7 +368,9 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 				return
 			}
 			mu.Lock()
-			_, _ = u.updateTestMetadata(writeCtx, ch, result)
+			if _, err := u.updateTestMetadata(writeCtx, ch, result); err != nil {
+				u.lg.Warn("update channel test metadata failed", loggateway.Err(err), loggateway.Str("channel_id", ch.ID))
+			}
 			mu.Unlock()
 		})
 	}
@@ -428,13 +430,15 @@ func (u *ChannelUsecase) CommitChannelTest(ctx context.Context, row Channel, cre
 		"credential_ok": credentialCount(credentials),
 		"result_status": result.Status,
 	})
-	_, _ = u.repo.AddDelivery(ctx, ChannelDelivery{
+	if _, err := u.repo.AddDelivery(ctx, ChannelDelivery{
 		ID:           uuid.NewString(),
 		ChannelID:    row.ID,
 		Status:       result.Status,
 		PayloadJSON:  string(payload),
 		ErrorMessage: errorMessageForTest(result),
-	})
+	}); err != nil {
+		u.lg.Warn("add channel delivery failed", loggateway.Err(err), loggateway.Str("channel_id", row.ID))
+	}
 	return u.updateTestMetadata(ctx, row, result)
 }
 

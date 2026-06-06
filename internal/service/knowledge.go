@@ -34,8 +34,8 @@ var allowedIngestMIMEs = map[string]bool{
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true,
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
-	"image/png":  true,
-	"image/jpeg": true,
+	// TODO(debt): image/png and image/jpeg removed until OCR is implemented.
+	// Re-add when internal/knowledge/ocr.go has a working provider.
 }
 
 var (

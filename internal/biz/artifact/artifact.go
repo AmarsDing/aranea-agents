@@ -7,6 +7,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
+)
+
+// Domain errors — the Service layer maps these to kerrors.
+var (
+	// ErrIDRequired is returned when a required artifact ID is empty.
+	ErrIDRequired = errors.New("artifact: id is required")
 )
 
 // Artifact represents a stored binary artifact associated with a session.
@@ -23,32 +31,45 @@ type Artifact struct {
 	CreatedAt   string
 }
 
-// Repo is the persistence interface for artifact metadata + bytes.
-type Repo interface {
-	// Save stores artifact bytes and returns the saved Artifact (with ID, version, SHA256, etc.).
-	Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
+// Reader is the read-only persistence interface for artifact metadata + bytes.
+type Reader interface {
 	// Load returns artifact data.  version <= 0 means latest.
 	Load(ctx context.Context, id string, version int) (Artifact, []byte, error)
 	// LoadMeta returns artifact metadata without loading payload bytes. version <= 0 means latest.
 	LoadMeta(ctx context.Context, id string, version int) (Artifact, error)
 	// List returns artifact metadata for a session (no data payload).
 	List(ctx context.Context, sessionID string, limit, offset int) ([]Artifact, int, error)
+	// ListBySessionAndName lists all version metadata for a session+name combo.
+	ListBySessionAndName(ctx context.Context, sessionID, name string) ([]Artifact, error)
+}
+
+// Writer is the write persistence interface for artifact metadata + bytes.
+type Writer interface {
+	// Save stores artifact bytes and returns the saved Artifact (with ID, version, SHA256, etc.).
+	Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
 	// Delete removes all versions of an artifact by ID.
 	Delete(ctx context.Context, id string) error
 	// DeleteVersion removes a single version identified by session+name+version.
 	DeleteVersion(ctx context.Context, sessionID, name string, version int) error
-	// ListBySessionAndName lists all version metadata for a session+name combo.
-	ListBySessionAndName(ctx context.Context, sessionID, name string) ([]Artifact, error)
+}
+
+// Repo is the combined persistence interface for artifact metadata + bytes.
+// It composes Reader and Writer for backward compatibility.
+// New code should depend on Reader or Writer directly when only one aspect is needed.
+type Repo interface {
+	Reader
+	Writer
 }
 
 // Usecase wraps artifact Repo.
 type Usecase struct {
 	repo Repo
+	lg   loggateway.Logger
 }
 
 // NewUsecase constructs an artifact Usecase.
-func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
+	return &Usecase{repo: repo, lg: lg}
 }
 
 // Save stores an artifact.
@@ -111,13 +132,15 @@ func (uc *Usecase) List(ctx context.Context, sessionID string, limit, offset int
 // DeleteArtifactVersion RPC (not yet defined).
 func (uc *Usecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return uc.repo.Delete(ctx, id)
+		return ErrIDRequired
 	}
 	meta, _, err := uc.repo.Load(ctx, id, 0)
 	if err != nil {
 		// Best-effort: still attempt the legacy single-id delete so callers
 		// can clean up an orphan whose meta is unreadable.
-		_ = uc.repo.Delete(ctx, id)
+		if delErr := uc.repo.Delete(ctx, id); delErr != nil {
+			uc.lg.Warn("best-effort delete failed for orphan artifact", loggateway.Err(delErr), loggateway.Str("id", id))
+		}
 		return err
 	}
 	versions, lvErr := uc.repo.ListBySessionAndName(ctx, meta.SessionID, meta.Name)
@@ -166,6 +189,57 @@ func (uc *Usecase) StorageBytes(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	return r.StorageBytes(ctx)
+}
+
+// PreviewKind describes how an artifact should be rendered in the browser.
+type PreviewKind string
+
+const (
+	PreviewKindText   PreviewKind = "text"
+	PreviewKindImage  PreviewKind = "image"
+	PreviewKindPDF    PreviewKind = "pdf"
+	PreviewKindBinary PreviewKind = "binary"
+)
+
+// PreviewResult holds the preview content for browser rendering.
+type PreviewResult struct {
+	Meta        Artifact
+	Kind        PreviewKind
+	TextContent string // populated when Kind == PreviewKindText
+	Data        []byte // populated when Kind == PreviewKindImage or PreviewKindPDF
+}
+
+// maxTextPreviewBytes is the maximum bytes of text content returned in a preview.
+const maxTextPreviewBytes = 512 << 10 // 512 KB
+
+// Preview returns inline preview content for browser rendering.
+// MIME classification and text truncation are business logic that belongs here,
+// not in the Service layer.
+func (uc *Usecase) Preview(ctx context.Context, id string, version int) (PreviewResult, error) {
+	meta, data, err := uc.repo.Load(ctx, id, version)
+	if err != nil {
+		return PreviewResult{}, err
+	}
+	mime := strings.ToLower(strings.TrimSpace(meta.MimeType))
+	result := PreviewResult{Meta: meta}
+	switch {
+	case strings.HasPrefix(mime, "text/") || mime == "application/json" || mime == "application/xml":
+		result.Kind = PreviewKindText
+		if len(data) > maxTextPreviewBytes {
+			result.TextContent = string(data[:maxTextPreviewBytes]) + "\n…(truncated)"
+		} else {
+			result.TextContent = string(data)
+		}
+	case strings.HasPrefix(mime, "image/"):
+		result.Kind = PreviewKindImage
+		result.Data = data
+	case mime == "application/pdf":
+		result.Kind = PreviewKindPDF
+		result.Data = data
+	default:
+		result.Kind = PreviewKindBinary
+	}
+	return result, nil
 }
 
 // NewArtifactID generates a random hex ID for a new artifact.

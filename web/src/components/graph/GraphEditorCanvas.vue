@@ -759,7 +759,7 @@ function onConnect(connection: Connection) {
   if (connection.source && connection.target) {
     const existing = props.graphDef.edges.find((e) => e.from === connection.source && e.to === connection.target);
     if (!existing) {
-      const edge: EdgeDef = { from: connection.source, to: connection.target };
+      const edge: EdgeDef = { from: connection.source, to: connection.target, kind: '' };
       props.graphDef.edges.push(edge);
       if (props.undoRedo) {
         props.undoRedo.pushAddEdge(edge);

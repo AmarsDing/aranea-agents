@@ -1,10 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import {
-  installEcosystemProduct,
-  listEcosystemProducts,
-  publishEcosystemProduct,
-} from '../../features/ecosystem/api';
+import { installEcosystemProduct, listEcosystemProducts, publishEcosystemProduct } from '../../features/ecosystem/api';
 import type { EcosystemProduct } from '../../features/ecosystem/types';
 
 export const useEcosystemStore = defineStore('ecosystem', () => {

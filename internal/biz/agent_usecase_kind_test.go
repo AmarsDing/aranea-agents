@@ -59,6 +59,9 @@ func (s *stubAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) e
 	return fn(ctx)
 }
 func (s *stubAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (s *stubAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
+	return 0, nil
+}
 func (s *stubAgentRepo) CreateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ AgentRuntimeSettings) (Agent, error) {
 	return a, nil
 }
@@ -94,6 +97,34 @@ func TestAgentUsecase_DeleteAllowsUserAgent(t *testing.T) {
 	err := uc.Delete(context.Background(), "agent-2")
 	if err != nil {
 		t.Fatalf("expected no error when deleting user agent, got %v", err)
+	}
+}
+
+func TestAgentUsecase_DeleteAllowsEcosystemPresetAgent(t *testing.T) {
+	t.Parallel()
+	repo := &stubAgentRepo{
+		agent: Agent{ID: "agent-3", Kind: "ecosystem_preset"},
+	}
+	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
+	err := uc.Delete(context.Background(), "agent-3")
+	if err != nil {
+		t.Fatalf("expected no error when deleting ecosystem_preset agent, got %v", err)
+	}
+}
+
+func TestAgentUsecase_DeleteRejectsReadonlyAgent(t *testing.T) {
+	t.Parallel()
+	repo := &stubAgentRepo{
+		agent: Agent{ID: "agent-4", Kind: "ecosystem_preset", Readonly: true},
+	}
+	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
+	err := uc.Delete(context.Background(), "agent-4")
+	if err == nil {
+		t.Fatal("expected error when deleting readonly agent")
+	}
+	e := kerrors.FromError(err)
+	if e.Code != 403 {
+		t.Fatalf("expected code 403, got %d", e.Code)
 	}
 }
 

@@ -1,20 +1,28 @@
 <template>
   <RunnerMetricsPanel
     variant="monitor"
-    :metrics="runnerMetrics"
-    :loading="runnerLoading"
+    :metrics="metrics"
+    :loading="loading"
     :window-minutes="windowMinutes"
-    @update:window-minutes="windowMinutes = $event"
-    @refresh="reload"
-    @drill="openRunsTab({ tab: 'traces' })"
+    @update:window-minutes="$emit('update:windowMinutes', $event)"
+    @refresh="$emit('refresh')"
+    @drill="$emit('drill')"
   />
 </template>
 
 <script setup lang="ts">
 import RunnerMetricsPanel from './RunnerMetricsPanel.vue';
-import { useRunnerMetrics } from '../../features/monitor/useRunnerMetrics';
-import { useMonitorRunNavigation } from '../../features/monitor/useMonitorRunNavigation';
+import type { RunnerMetricsSummary } from '../../features/monitor/types';
 
-const { runnerMetrics, runnerLoading, windowMinutes, reload } = useRunnerMetrics(60);
-const { openRunsTab } = useMonitorRunNavigation();
+defineProps<{
+  metrics: RunnerMetricsSummary | null;
+  loading: boolean;
+  windowMinutes: number;
+}>();
+
+defineEmits<{
+  'update:windowMinutes': [value: number];
+  refresh: [];
+  drill: [];
+}>();
 </script>

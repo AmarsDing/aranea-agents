@@ -20,6 +20,7 @@ import (
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -191,7 +192,7 @@ func (r *Runner) TriggerTask(ctx context.Context, taskID string) (biz.CronTaskRu
 	}
 	cfgSnapshot := cfg
 	safego.Go(ctx, "cron.manual_trigger", func() {
-		r.runManualTask(context.Background(), taskID, runID, started, cfgSnapshot)
+		r.runManualTask(ctx, taskID, runID, started, cfgSnapshot)
 	})
 	return r.deps.Cron.GetCronTaskRun(ctx, runID)
 }
@@ -369,10 +370,22 @@ func (r *Runner) resolveCronAgent(ctx context.Context, task biz.CronTask) (biz.A
 func (r *Runner) persistMetadata(ctx context.Context, task biz.CronTask, meta cronTaskMetadata) {
 	raw, err := json.Marshal(meta)
 	if err != nil {
+		r.lg.Warn("marshal metadata failed", loggateway.Str("task_id", task.ID), loggateway.Err(err))
 		return
 	}
-	task.MetadataJSON = string(raw)
-	_, _ = r.deps.Cron.UpdateCronTask(ctx, task)
+	// Acquire per-task lock to avoid racing with finalizeRun on the same task.
+	unlock := r.lockTask(task.ID)
+	defer unlock()
+	// Reload task to avoid overwriting concurrent updates (e.g. from TriggerTask).
+	current, err := r.deps.Cron.GetCronTask(ctx, task.ID)
+	if err != nil {
+		r.lg.Warn("reload task for metadata persist failed", loggateway.Str("task_id", task.ID), loggateway.Err(err))
+		return
+	}
+	current.MetadataJSON = string(raw)
+	if _, err := r.deps.Cron.UpdateCronTask(ctx, current); err != nil {
+		r.lg.Warn("persist cron metadata failed", loggateway.Str("task_id", task.ID), loggateway.Err(err))
+	}
 }
 
 type sendMessagePayload struct {
@@ -462,7 +475,7 @@ func (r *Runner) sessionBusyErr(sessionID string) error {
 }
 
 func validationErr(format string, args ...any) error {
-	return fmt.Errorf(format, args...)
+	return kerrors.BadRequest("CRON", fmt.Sprintf(format, args...))
 }
 
 func errString(err error) string {

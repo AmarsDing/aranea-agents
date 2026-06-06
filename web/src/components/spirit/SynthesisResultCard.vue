@@ -18,11 +18,7 @@
       <div class="synthesis-result-card__teams-title text-caption text-grey-6 q-mb-xs">
         团队结果 ({{ result.teamResults.length }})
       </div>
-      <div
-        v-for="tr in result.teamResults"
-        :key="tr.teamId"
-        class="synthesis-result-card__team-item"
-      >
+      <div v-for="tr in result.teamResults" :key="tr.teamId" class="synthesis-result-card__team-item">
         <div class="synthesis-result-card__team-row row items-center q-gutter-sm">
           <q-icon
             :name="tr.status === 'completed' ? 'check_circle' : 'error'"
@@ -35,7 +31,11 @@
         <div v-if="tr.summary" class="synthesis-result-card__team-summary text-caption text-grey-6 q-ml-lg">
           {{ tr.summary }}
         </div>
-        <div v-if="tr.keyFindings" class="synthesis-result-card__team-findings text-caption q-ml-lg" style="white-space: pre-line; max-height: 60px; overflow-y: auto;">
+        <div
+          v-if="tr.keyFindings"
+          class="synthesis-result-card__team-findings text-caption q-ml-lg"
+          style="white-space: pre-line; max-height: 60px; overflow-y: auto"
+        >
           {{ tr.keyFindings }}
         </div>
       </div>

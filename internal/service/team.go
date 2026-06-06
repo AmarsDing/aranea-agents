@@ -73,6 +73,7 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		ParallelConfigJson:  t.ParallelConfigJSON,
 		Readonly:            t.Readonly,
 		Source:              t.Source,
+		Kind:                t.Kind,
 	}
 }
 
@@ -315,7 +316,9 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		return nil, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
 	}
 	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
-		_, _ = s.runs.Cancel(r.SessionID)
+		if cancelled, reason := s.runs.Cancel(r.SessionID); !cancelled && reason != "" {
+			s.lg.Warn("cancel team run session failed", loggateway.Str("session_id", r.SessionID), loggateway.Str("reason", reason))
+		}
 		runID := strings.TrimSpace(r.ID)
 		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
 			runID = entry.RunID
@@ -343,6 +346,13 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 	if _, err := s.uc.Get(ctx, teamID); err != nil {
 		return nil, mapTeamErr(err)
 	}
+	active, err := s.uc.HasActiveRun(ctx, teamID)
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	if active {
+		return nil, kerrors.Conflict("TEAM", "team has an active run; test is not allowed until the run finishes")
+	}
 
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
@@ -358,7 +368,11 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = s.sessions.Delete(ctx, sess.ID) }()
+	defer func() {
+		if err := s.sessions.Delete(ctx, sess.ID); err != nil {
+			s.lg.Warn("delete team test session failed", loggateway.Err(err), loggateway.Str("session_id", sess.ID))
+		}
+	}()
 
 	testInput := biz.TurnInput{
 		SessionID: sess.ID,

@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
+    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="text-h6">新建数据集</q-card-section>
       <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
         <q-input

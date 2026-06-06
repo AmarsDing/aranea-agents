@@ -6,14 +6,7 @@
  * 共享于 IndustryCard / IndustryDrawer / IndustryTableRow。
  */
 
-const PALETTES = [
-  'indigo',
-  'rose',
-  'sky',
-  'emerald',
-  'amber',
-  'violet',
-] as const;
+const PALETTES = ['indigo', 'rose', 'sky', 'emerald', 'amber', 'violet'] as const;
 
 /** 根据 key hash 选择渐变色板，从 CSS 变量读取颜色值 */
 export function monoBgForKey(key: string): string {
@@ -22,12 +15,8 @@ export function monoBgForKey(key: string): string {
     h = (h * 31 + key.charCodeAt(i)) | 0;
   }
   const idx = Math.abs(h) % PALETTES.length;
-  const s = getComputedStyle(document.documentElement)
-    .getPropertyValue(`--palette-industry-${idx}-start`)
-    .trim();
-  const e = getComputedStyle(document.documentElement)
-    .getPropertyValue(`--palette-industry-${idx}-end`)
-    .trim();
+  const s = getComputedStyle(document.documentElement).getPropertyValue(`--palette-industry-${idx}-start`).trim();
+  const e = getComputedStyle(document.documentElement).getPropertyValue(`--palette-industry-${idx}-end`).trim();
   return `linear-gradient(135deg, ${s} 0%, ${e} 100%)`;
 }
 

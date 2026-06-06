@@ -62,6 +62,7 @@ type RootCauseAnalyzer interface {
 type SkillIntelligenceUsecase struct {
 	writer           ExperienceReportWriter
 	reader           ExperienceReportReader
+	statsReader      ExperienceReportStatsReader
 	aggregator       SkillHealthAggregator
 	suggestionReader SkillEvolutionSuggestionReader
 	suggestionWriter SkillEvolutionSuggestionWriter
@@ -75,6 +76,7 @@ type SkillIntelligenceUsecase struct {
 func NewSkillIntelligenceUsecase(
 	reader ExperienceReportReader,
 	writer ExperienceReportWriter,
+	statsReader ExperienceReportStatsReader,
 	aggregator SkillHealthAggregator,
 	suggestionReader SkillEvolutionSuggestionReader,
 	suggestionWriter SkillEvolutionSuggestionWriter,
@@ -84,6 +86,7 @@ func NewSkillIntelligenceUsecase(
 	return &SkillIntelligenceUsecase{
 		writer:           writer,
 		reader:           reader,
+		statsReader:      statsReader,
 		aggregator:       aggregator,
 		suggestionReader: suggestionReader,
 		suggestionWriter: suggestionWriter,
@@ -93,15 +96,26 @@ func NewSkillIntelligenceUsecase(
 	}
 }
 
-// SetUnanalyzedReader sets the reader for unanalyzed skill invocations (optional dependency).
+// SetUnanalyzedReader sets the unanalyzed invocation reader.
+// NOTE: Must only be called during initialization, before any concurrent access. Not goroutine-safe.
 func (uc *SkillIntelligenceUsecase) SetUnanalyzedReader(r SkillInvocationUnanalyzedReader) {
 	uc.unanalyzedReader = r
+}
+
+// ExperienceReportListResult holds the result of a filtered experience report query,
+// including pagination total and aggregate statistics.
+type ExperienceReportListResult struct {
+	Reports          []ExperienceReport
+	TotalCount       int
+	FailureTagCounts []FailureTagCount
+	RootCauseReports []ExperienceReport
 }
 
 // SkillIntelligenceRepo is the combined interface for skill intelligence data access.
 type SkillIntelligenceRepo interface {
 	ExperienceReportReader
 	ExperienceReportWriter
+	ExperienceReportStatsReader
 	SkillHealthAggregator
 	SkillInvocationUnanalyzedReader
 }
@@ -233,7 +247,11 @@ func (uc *SkillIntelligenceUsecase) GenerateReport(ctx context.Context, inv Skil
 	// Build selection snapshot.
 	var selectionSnapshot json.RawMessage
 	if inv.SelectionReason != nil {
-		selectionSnapshot, _ = json.Marshal(inv.SelectionReason)
+		if data, err := json.Marshal(inv.SelectionReason); err == nil {
+			selectionSnapshot = data
+		} else {
+			uc.lg.Warn("marshal selection reason failed", loggateway.Err(err))
+		}
 	}
 
 	// Rule-based flow summary.
@@ -248,6 +266,7 @@ func (uc *SkillIntelligenceUsecase) GenerateReport(ctx context.Context, inv Skil
 		SessionID:          inv.SessionID,
 		InvocationID:       inv.ActivationID,
 		SkillID:            inv.SkillID,
+		SkillName:          inv.SkillName,
 		IsSuccess:          isSuccess,
 		Score:              score,
 		FailureTags:        failureTags,
@@ -292,12 +311,105 @@ func (uc *SkillIntelligenceUsecase) GetExperienceReports(ctx context.Context, sk
 	return uc.reader.ListBySkill(ctx, skillID, limit, offset)
 }
 
+// GetExperienceReportsFiltered returns experience reports with optional skillID
+// and time range filters, along with total count for pagination and aggregate
+// statistics (failure tag counts and root cause reports).
+// skillID empty = no skill filter; startTime/endTime nil = no time boundary.
+func (uc *SkillIntelligenceUsecase) GetExperienceReportsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit, offset int) (*ExperienceReportListResult, error) {
+	if uc.reader == nil {
+		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "reader not available")
+	}
+
+	reports, totalCount, err := uc.reader.ListFiltered(ctx, skillID, startTime, endTime, limit, offset)
+	if err != nil {
+		uc.lg.Warn("GetExperienceReportsFiltered: ListFiltered failed",
+			loggateway.StepID("skill_intelligence.list_filtered"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err))
+		return nil, err
+	}
+
+	result := &ExperienceReportListResult{
+		Reports:    reports,
+		TotalCount: totalCount,
+	}
+
+	// Fetch failure tag counts if stats reader is available.
+	if uc.statsReader != nil {
+		tagCounts, tagErr := uc.statsReader.GetFailureTagCountsFiltered(ctx, skillID, startTime, endTime)
+		if tagErr != nil {
+			uc.lg.Warn("GetExperienceReportsFiltered: GetFailureTagCountsFiltered failed",
+				loggateway.StepID("skill_intelligence.list_filtered"),
+				loggateway.Str("skill_id", skillID),
+				loggateway.Err(tagErr))
+		} else {
+			result.FailureTagCounts = tagCounts
+		}
+
+		rootCauseReports, rcErr := uc.statsReader.GetRootCauseReportsFiltered(ctx, skillID, startTime, endTime, 10)
+		if rcErr != nil {
+			uc.lg.Warn("GetExperienceReportsFiltered: GetRootCauseReportsFiltered failed",
+				loggateway.StepID("skill_intelligence.list_filtered"),
+				loggateway.Str("skill_id", skillID),
+				loggateway.Err(rcErr))
+		} else {
+			result.RootCauseReports = rootCauseReports
+		}
+	}
+
+	return result, nil
+}
+
 // GetExperienceReport returns a single experience report by ID.
 func (uc *SkillIntelligenceUsecase) GetExperienceReport(ctx context.Context, id string) (*ExperienceReport, error) {
 	if uc.reader == nil {
 		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "reader not available")
 	}
 	return uc.reader.GetByID(ctx, id)
+}
+
+// ExpirePendingSuggestions marks pending evolution suggestions as rejected
+// if they have been pending for more than EvoExpirationDays (7 days).
+func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context) ([]SkillEvolutionSuggestion, error) {
+	if uc.suggestionReader == nil || uc.suggestionWriter == nil {
+		return nil, nil
+	}
+
+	pending, err := uc.suggestionReader.ListPending(ctx, 1000, 0)
+	if err != nil {
+		uc.lg.Warn("ExpirePendingSuggestions: ListPending failed",
+			loggateway.StepID("skill_intelligence.expire"),
+			loggateway.Err(err))
+		return nil, err
+	}
+
+	expirationCutoff := time.Now().UTC().Add(-EvoExpirationDays * 24 * time.Hour)
+	var expired []SkillEvolutionSuggestion
+
+	for _, sug := range pending {
+		if sug.Status != EvoSuggestionPending {
+			continue
+		}
+		if sug.CreatedAt.Before(expirationCutoff) {
+			if updateErr := uc.suggestionWriter.UpdateStatus(ctx, sug.ID, EvoSuggestionRejected, "system", "auto-expired: pending for more than 7 days"); updateErr != nil {
+				uc.lg.Warn("ExpirePendingSuggestions: UpdateStatus failed",
+					loggateway.StepID("skill_intelligence.expire"),
+					loggateway.Str("suggestion_id", sug.ID),
+					loggateway.Err(updateErr))
+				continue
+			}
+			sug.Status = EvoSuggestionRejected
+			expired = append(expired, sug)
+		}
+	}
+
+	if len(expired) > 0 {
+		uc.lg.Info("ExpirePendingSuggestions: expired suggestions",
+			loggateway.StepID("skill_intelligence.expire"),
+			loggateway.Int("count", len(expired)))
+	}
+
+	return expired, nil
 }
 
 // ScanAndGenerateReports scans recent skill invocations that don't have
@@ -518,7 +630,7 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 			loggateway.StepID("skill_intelligence.curator_flow"),
 			loggateway.Str("suggestion_id", suggestion.ID),
 			loggateway.Err(err))
-		// Non-fatal: continue the flow.
+		return nil, kerrors.InternalServer("SKILL_INTELLIGENCE", fmt.Sprintf("failed to persist draft body for suggestion %s: %s", suggestion.ID, err.Error()))
 	}
 	suggestion.DraftSkillBody = draft
 
@@ -625,6 +737,37 @@ func (uc *SkillIntelligenceUsecase) ruleBasedSandboxValidation(suggestion *Skill
 	return true
 }
 
+// GenerateDraftForSuggestion generates a draft skill body for an existing
+// evolution suggestion, updates the suggestion, and returns the draft.
+func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Context, suggestionID string) (string, error) {
+	suggestion, err := uc.GetEvolutionSuggestion(ctx, suggestionID)
+	if err != nil {
+		return "", err
+	}
+	if suggestion == nil {
+		return "", kerrors.NotFound("SKILL_INTELLIGENCE", fmt.Sprintf("suggestion not found: %s", suggestionID))
+	}
+
+	draft := uc.generateRuleBasedDraft(suggestion)
+
+	if err := uc.UpdateSuggestionDraftBody(ctx, suggestionID, draft); err != nil {
+		uc.lg.Warn("GenerateDraftForSuggestion: UpdateSuggestionDraftBody failed",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(err))
+		return "", err
+	}
+
+	if lcErr := uc.UpdateSuggestionLifecycleStatus(ctx, suggestionID, EvoLifecycleDraft); lcErr != nil {
+		uc.lg.Warn("GenerateDraftForSuggestion: UpdateSuggestionLifecycleStatus failed",
+			loggateway.StepID("skill_intelligence.generate_draft"),
+			loggateway.Str("suggestion_id", suggestionID),
+			loggateway.Err(lcErr))
+	}
+
+	return draft, nil
+}
+
 // CreateSuggestion delegates to the suggestion writer.
 func (uc *SkillIntelligenceUsecase) CreateSuggestion(ctx context.Context, suggestion SkillEvolutionSuggestion) error {
 	if uc.suggestionWriter == nil {
@@ -658,7 +801,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Co
 }
 
 // UpdateSuggestionLifecycleStatus updates the lifecycle status of an evolution suggestion.
-func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error {
+func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus EvolutionLifecycleStatus) error {
 	if uc.suggestionWriter == nil {
 		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
@@ -671,6 +814,14 @@ func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context
 		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
 	return uc.suggestionReader.ListBySkill(ctx, skillID, status, limit, offset)
+}
+
+// CountEvolutionSuggestions returns the total count of evolution suggestions for a skill, optionally filtered by status.
+func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error) {
+	if uc.suggestionReader == nil {
+		return 0, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
+	}
+	return uc.suggestionReader.CountBySkill(ctx, skillID, status)
 }
 
 // ApproveSuggestion approves a pending evolution suggestion.

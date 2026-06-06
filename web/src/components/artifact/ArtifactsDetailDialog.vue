@@ -1,7 +1,7 @@
 // Container: approved — artifact detail + preview dialog.
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md">
+    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
       <q-card-section class="text-h6">{{ meta?.name }}</q-card-section>
       <q-card-section v-if="meta" class="app-dialog-body q-gutter-sm q-pt-none text-body2">
         <div><b>ID：</b>{{ meta.id }}</div>

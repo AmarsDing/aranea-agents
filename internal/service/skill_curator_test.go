@@ -29,9 +29,12 @@ func (s *stubSuggestionReader) ListPending(_ context.Context, _, _ int) ([]biz.S
 func (s *stubSuggestionReader) GetLatestBySkill(_ context.Context, _ string) (*biz.SkillEvolutionSuggestion, error) {
 	return nil, nil
 }
+func (s *stubSuggestionReader) CountBySkill(_ context.Context, _ string, _ biz.EvolutionSuggestionStatus) (int, error) {
+	return 0, nil
+}
 
 type stubSuggestionWriter struct {
-	lastLifecycleStatus string
+	lastLifecycleStatus biz.EvolutionLifecycleStatus
 	lastSandboxPassed   bool
 	lastSandboxResult   json.RawMessage
 	err                 error
@@ -47,13 +50,13 @@ func (s *stubSuggestionWriter) UpdateSandboxResult(_ context.Context, _ string, 
 	s.lastSandboxResult = result
 	return s.err
 }
-func (s *stubSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string, lifecycleStatus string) error {
+func (s *stubSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string, lifecycleStatus biz.EvolutionLifecycleStatus) error {
 	s.lastLifecycleStatus = lifecycleStatus
 	return s.err
 }
 
 func newTestSandboxRunner(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SandboxRunner {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, reader, writer, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, reader, writer, nil, loggateway.NewNoop())
 	// Pass nil factory → rule-based only (no CodeExecutor)
 	return NewSandboxRunner(uc, nil, loggateway.NewNoop())
 }
@@ -158,7 +161,7 @@ func TestSandboxRunner_ValidateSuggestion_DraftBodyTooLong(t *testing.T) {
 // ── SkillCuratorService Tests ────────────────────────────────────────────────
 
 func newTestCuratorService(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SkillCuratorService {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, reader, writer, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, reader, writer, nil, loggateway.NewNoop())
 	return NewSkillCuratorService(uc, loggateway.NewNoop())
 }
 

@@ -31,8 +31,16 @@ export function useTeamsPage() {
   const isDark = computed(() => $q.dark.isActive);
 
   // Store refs (single source of truth for data)
-  const { agents: storeAgents, runs, runsLoading, runsError, stepsByRun, stepsLoading, summariesByRun, summariesLoading } =
-    storeToRefs(store);
+  const {
+    agents: storeAgents,
+    runs,
+    runsLoading,
+    runsError,
+    stepsByRun,
+    stepsLoading,
+    summariesByRun,
+    summariesLoading,
+  } = storeToRefs(store);
 
   // ── List state ──
   const loading = ref(false);

@@ -60,6 +60,9 @@ func (r *batchAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) 
 	return fn(ctx)
 }
 func (r *batchAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (r *batchAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
+	return 0, nil
+}
 func (r *batchAgentRepo) CreateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ AgentRuntimeSettings) (Agent, error) {
 	r.agents[a.AgentKey] = a
 	return a, nil

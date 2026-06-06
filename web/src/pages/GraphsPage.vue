@@ -6,14 +6,7 @@
       subtitle="可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。"
     >
       <template #actions>
-        <q-btn
-          outline
-          rounded
-          icon="dashboard"
-          label="从模板创建"
-          class="q-mr-sm"
-          @click="templateDialogOpen = true"
-        />
+        <q-btn outline rounded icon="dashboard" label="从模板创建" class="q-mr-sm" @click="templateDialogOpen = true" />
         <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
       </template>
     </AppPageHero>
@@ -125,31 +118,7 @@
           </template>
         </draggable>
 
-        <q-card v-if="!loading && rows.length === 0" flat :class="['graphs-empty', { 'is-dark': isDark }, 'q-mt-lg']">
-          <q-card-section class="column items-center text-center q-pa-xl">
-            <q-avatar size="72px" color="primary" text-color="white" icon="account_tree" />
-            <div class="text-h6 q-mt-md">暂无 Graph</div>
-            <div class="text-body2 app-text-secondary q-mt-sm">
-              创建一个 Graph 工作流，可视化编排 Agent、条件路由和并行分支。
-            </div>
-            <div class="q-mt-md q-gutter-sm">
-              <q-btn
-                outline
-                rounded
-                icon="dashboard"
-                label="从模板创建"
-                @click="templateDialogOpen = true"
-              />
-              <q-btn
-                rounded
-                unelevated
-                icon="add"
-                label="新增 Graph"
-                @click="openCreate"
-              />
-            </div>
-          </q-card-section>
-        </q-card>
+
       </div>
 
       <GraphDetailPanel
@@ -237,17 +206,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
-import { useRouter } from 'vue-router';
+import { computed, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
 import GraphDetailPanel from '../components/graph/GraphDetailPanel.vue';
 import GraphCardContextMenu from '../components/graph/GraphCardContextMenu.vue';
 import { useGraphsPage } from '../features/graph/useGraphsPage';
-import { useGraphStore } from '../stores/graph';
-import type { GraphDefinition, GraphTemplateInfo } from '../features/graph/types';
+import type { GraphDefinition } from '../features/graph/types';
 
 const {
   isDark,
@@ -288,6 +254,12 @@ const {
   onCardContextMenu,
   closeCtxMenu,
   onCtxMenuAction,
+  templateDialogOpen,
+  selectedTemplateId,
+  templateCreating,
+  templatesLoading,
+  templates,
+  createFromTemplate,
 } = useGraphsPage();
 
 const isDefaultSort = computed(() => sortKey.value === 'updatedAt' && sortOrder.value === 'desc');
@@ -311,46 +283,4 @@ const selectedGraphNodeCounts = computed(() => {
   if (!selectedGraph.value) return {};
   return countNodesByType(selectedGraph.value);
 });
-
-// --- Template dialog ---
-const $q = useQuasar();
-const router = useRouter();
-const graphStore = useGraphStore();
-const templateDialogOpen = ref(false);
-const selectedTemplateId = ref('');
-const templateCreating = ref(false);
-const templatesLoading = ref(false);
-const templates = ref<GraphTemplateInfo[]>([]);
-
-watch(templateDialogOpen, async (open) => {
-  if (open) {
-    selectedTemplateId.value = '';
-    templatesLoading.value = true;
-    try {
-      await graphStore.loadTemplates();
-      templates.value = graphStore.templates;
-    } catch {
-      $q.notify({ type: 'negative', message: '加载模板失败' });
-    } finally {
-      templatesLoading.value = false;
-    }
-  }
-});
-
-async function createFromTemplate() {
-  if (!selectedTemplateId.value) return;
-  const tpl = templates.value.find((t) => t.id === selectedTemplateId.value);
-  if (!tpl) return;
-  templateCreating.value = true;
-  try {
-    const created = await graphStore.instantiateTemplate(selectedTemplateId.value, tpl.name, tpl.description ?? '');
-    templateDialogOpen.value = false;
-    $q.notify({ type: 'positive', message: 'Graph 已从模板创建' });
-    router.push({ name: 'graph-editor', params: { id: created.id } });
-  } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '从模板创建失败' });
-  } finally {
-    templateCreating.value = false;
-  }
-}
 </script>

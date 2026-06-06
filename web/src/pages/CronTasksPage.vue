@@ -8,7 +8,7 @@
       <template #actions>
         <q-btn flat rounded no-caps icon="history" label="执行历史" @click="openRuns()" />
         <q-btn
-          color="orange"
+          color="accent"
           text-color="white"
           rounded
           unelevated
@@ -64,7 +64,7 @@
         <div class="text-body2 text-grey-7 q-mt-sm">创建定时任务以安排定期 Agent 任务。</div>
         <q-btn
           class="q-mt-md"
-          color="orange"
+          color="accent"
           text-color="white"
           rounded
           unelevated
@@ -128,8 +128,8 @@
 
         <template #body-cell-timing="props">
           <q-td :props="props">
-            <div class="app-registry-cell-sub">上次 {{ formatDate(metadata(props.row).last_run_at) }}</div>
-            <div class="app-registry-cell-sub">下次 {{ formatDate(metadata(props.row).next_run_at) }}</div>
+            <div class="app-registry-cell-sub">上次 {{ formatCronDate(metadata(props.row).last_run_at) }}</div>
+            <div class="app-registry-cell-sub">下次 {{ formatCronDate(metadata(props.row).next_run_at) }}</div>
           </q-td>
         </template>
 
@@ -282,7 +282,7 @@ const {
   targetLabel,
   statusColor,
   metadata,
-  formatDate,
+  formatCronDate,
   runsOpen,
   runs,
   runsTaskId,

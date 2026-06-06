@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ── Evolution Loop Stage Constants ────────────────────────────────────────────
@@ -278,84 +279,37 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 
 func (l *SkillEvolutionLoop) solve(ctx context.Context, skillID string, task string) (*SkillTaskResult, error) {
 	if l.runner == nil {
-		return nil, fmt.Errorf("skill task runner not configured")
+		return nil, kerrors.BadRequest("EVO_LOOP", "skill task runner not configured")
 	}
 	return l.runner.RunTask(ctx, skillID, task)
 }
 
 func (l *SkillEvolutionLoop) observe(ctx context.Context, skillID string, result *SkillTaskResult) (*EvolutionObservationReport, error) {
 	if l.observer == nil {
-		return nil, fmt.Errorf("skill observer not configured")
+		return nil, kerrors.BadRequest("EVO_LOOP", "skill observer not configured")
 	}
 	return l.observer.Observe(ctx, skillID, result)
 }
 
 func (l *SkillEvolutionLoop) evolve(ctx context.Context, skillID string, report *EvolutionObservationReport) (string, error) {
 	if l.evolver == nil {
-		return "", fmt.Errorf("skill evolver not configured")
+		return "", kerrors.BadRequest("EVO_LOOP", "skill evolver not configured")
 	}
 	return l.evolver.Evolve(ctx, skillID, report)
 }
 
 func (l *SkillEvolutionLoop) gateVerify(ctx context.Context, skillID string, draftBody string, observation *EvolutionObservationReport) (*GateVerificationResult, error) {
 	if l.gate == nil {
-		return nil, fmt.Errorf("skill gate verifier not configured")
+		return nil, kerrors.BadRequest("EVO_LOOP", "skill gate verifier not configured")
 	}
 	return l.gate.Verify(ctx, skillID, draftBody, observation)
 }
 
 func (l *SkillEvolutionLoop) reload(ctx context.Context, skillID string, draftBody string, parentVersionID string, evolutionReason string) error {
 	if l.reloader == nil {
-		return fmt.Errorf("skill reloader not configured")
+		return kerrors.BadRequest("EVO_LOOP", "skill reloader not configured")
 	}
 	return l.reloader.Reload(ctx, skillID, draftBody, parentVersionID, evolutionReason)
-}
-
-// ── Expiration mechanism ──────────────────────────────────────────────────────
-
-// ExpirePendingSuggestions finds all pending evolution suggestions older than
-// EvoExpirationDays and marks them as expired (rejected). Returns the list of
-// expired suggestions.
-func (l *SkillEvolutionLoop) ExpirePendingSuggestions(ctx context.Context) ([]SkillEvolutionSuggestion, error) {
-	if l.suggestionReader == nil || l.suggestionWriter == nil {
-		return nil, nil
-	}
-
-	pending, err := l.suggestionReader.ListPending(ctx, 1000, 0)
-	if err != nil {
-		l.lg.Warn("ExpirePendingSuggestions: ListPending failed",
-			loggateway.StepID("evo_loop.expire"),
-			loggateway.Err(err))
-		return nil, err
-	}
-
-	expirationCutoff := time.Now().UTC().Add(-EvoExpirationDays * 24 * time.Hour)
-	var expired []SkillEvolutionSuggestion
-
-	for _, sug := range pending {
-		if sug.Status != EvoSuggestionPending {
-			continue
-		}
-		if sug.CreatedAt.Before(expirationCutoff) {
-			if updateErr := l.suggestionWriter.UpdateStatus(ctx, sug.ID, EvoSuggestionRejected, "system", "auto-expired: pending for more than 7 days"); updateErr != nil {
-				l.lg.Warn("ExpirePendingSuggestions: UpdateStatus failed",
-					loggateway.StepID("evo_loop.expire"),
-					loggateway.Str("suggestion_id", sug.ID),
-					loggateway.Err(updateErr))
-				continue
-			}
-			sug.Status = EvoSuggestionRejected
-			expired = append(expired, sug)
-		}
-	}
-
-	if len(expired) > 0 {
-		l.lg.Info("ExpirePendingSuggestions: expired suggestions",
-			loggateway.StepID("evo_loop.expire"),
-			loggateway.Int("count", len(expired)))
-	}
-
-	return expired, nil
 }
 
 // ── GateVerifier ──────────────────────────────────────────────────────────────

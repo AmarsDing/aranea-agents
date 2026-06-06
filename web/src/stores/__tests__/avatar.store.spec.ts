@@ -65,9 +65,7 @@ describe('useAvatarCatalogStore', () => {
 
   it('ensurePickerAssets skips when already loaded', async () => {
     const { listAvatarAssets } = await import('../../features/avatar/api');
-    (listAvatarAssets as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    (listAvatarAssets as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const store = useAvatarCatalogStore();
     await store.ensurePickerAssets();

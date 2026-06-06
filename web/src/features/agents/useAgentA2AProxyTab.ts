@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import type { A2AProxyConfig } from './types';
 import { useAgentDetailStore } from '../../stores/agents';
+import { buildA2AAuthJSON, A2A_AUTH_TYPE_OPTIONS } from '../a2a/authUtils';
 
 export function useAgentA2AProxyTab(
   agentId: () => string,
@@ -15,12 +16,7 @@ export function useAgentA2AProxyTab(
   const showSecret = ref(false);
   const authSecret = ref('');
   const mtls = reactive({ cert_file: '', key_file: '', ca_file: '' });
-  const authTypeOptions = [
-    { label: '无', value: 'none' },
-    { label: 'API Key', value: 'api_key' },
-    { label: 'Bearer Token', value: 'bearer' },
-    { label: 'mTLS', value: 'mtls' },
-  ];
+  const authTypeOptions = A2A_AUTH_TYPE_OPTIONS;
   const proxyForm = reactive<A2AProxyConfig>({
     remote_url: '',
     enable_streaming: true,
@@ -55,22 +51,7 @@ export function useAgentA2AProxyTab(
   }
 
   function buildAuthConfigJson(): string | undefined {
-    const authType = proxyForm.auth_type?.trim();
-    if (!authType || authType === 'none') return undefined;
-    if (authType === 'mtls') {
-      if (!mtls.cert_file.trim() || !mtls.key_file.trim()) return undefined;
-      return JSON.stringify({
-        cert_file: mtls.cert_file.trim(),
-        key_file: mtls.key_file.trim(),
-        ca_file: mtls.ca_file.trim(),
-      });
-    }
-    const secret = authSecret.value.trim();
-    if (!secret) return undefined;
-    if (authType === 'bearer') {
-      return JSON.stringify({ token: secret });
-    }
-    return JSON.stringify({ api_key: secret });
+    return buildA2AAuthJSON(proxyForm.auth_type, authSecret.value, mtls);
   }
 
   watch(

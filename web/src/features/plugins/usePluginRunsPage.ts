@@ -9,12 +9,11 @@ import {
 import type { PluginRun } from './types';
 
 import { PLUGIN_RUN_TABLE_COLUMNS } from './pluginRunsTableUi';
-import { usePluginsStore } from '../../stores/plugins';
+import { listPluginRuns } from './api';
 
 export function usePluginRunsPage() {
   const route = useRoute();
   const router = useRouter();
-  const pluginsStore = usePluginsStore();
 
   const pluginKey = ref('');
   const agentId = ref('');
@@ -65,7 +64,7 @@ export function usePluginRunsPage() {
     loading.value = true;
     error.value = '';
     try {
-      const data = await pluginsStore.loadPluginRuns({
+      const data = await listPluginRuns({
         plugin_key: pluginKey.value.trim() || undefined,
         agent_id: agentId.value.trim() || undefined,
         callback_point: callbackPoint.value || undefined,

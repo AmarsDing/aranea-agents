@@ -93,7 +93,9 @@ describe('useSystemSettingsStore', () => {
   it('loadSettings sets loading to true during fetch', async () => {
     const { getSystemSettings } = await import('../../features/system-settings/api');
     let resolvePromise: (v: any) => void;
-    const pending = new Promise((resolve) => { resolvePromise = resolve; });
+    const pending = new Promise((resolve) => {
+      resolvePromise = resolve;
+    });
     (getSystemSettings as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending);
 
     const store = useSystemSettingsStore();

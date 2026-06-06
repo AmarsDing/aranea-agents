@@ -1,9 +1,19 @@
 import { computed, ref } from 'vue';
 import { listIndustries, listDepartments, listPositions, invalidateCache } from './api';
 import type { Industry, Department, Position } from './types';
-import { filterIndustries, summarizeIndustries, type IndustryFilters, type IndustrySummary } from './industryMarketFilters';
+import {
+  filterIndustries,
+  summarizeIndustries,
+  type IndustryFilters,
+  type IndustrySummary,
+} from './industryMarketFilters';
 
-export type { IndustryFilters, IndustrySummary, IndustryStatusFilter, IndustrySourceFilter } from './industryMarketFilters';
+export type {
+  IndustryFilters,
+  IndustrySummary,
+  IndustryStatusFilter,
+  IndustrySourceFilter,
+} from './industryMarketFilters';
 export { filterIndustries, summarizeIndustries } from './industryMarketFilters';
 
 export interface IndustryDetail {
@@ -39,10 +49,7 @@ export function useIndustryMarket() {
       const enriched = await Promise.all(
         items.map(async (ind) => {
           try {
-            const [deptRes, posRes] = await Promise.all([
-              listDepartments(ind.key),
-              listPositions(ind.key),
-            ]);
+            const [deptRes, posRes] = await Promise.all([listDepartments(ind.key), listPositions(ind.key)]);
             return {
               ...ind,
               deptCount: deptRes.items.length,
@@ -71,10 +78,7 @@ export function useIndustryMarket() {
   async function fetchIndustryDetail(industryKey: string) {
     detailLoading.value = true;
     try {
-      const [deptRes, posRes] = await Promise.all([
-        listDepartments(industryKey),
-        listPositions(industryKey),
-      ]);
+      const [deptRes, posRes] = await Promise.all([listDepartments(industryKey), listPositions(industryKey)]);
       const grouped: Record<string, Position[]> = {};
       for (const pos of posRes.items) {
         (grouped[pos.department_key] ??= []).push(pos);
@@ -100,5 +104,16 @@ export function useIndustryMarket() {
     return filterIndustries(industries.value, filters);
   }
 
-  return { industries, loading, error, summary, fetchIndustries, applyFilters, industryDetail, detailLoading, fetchIndustryDetail, clearIndustryDetail };
+  return {
+    industries,
+    loading,
+    error,
+    summary,
+    fetchIndustries,
+    applyFilters,
+    industryDetail,
+    detailLoading,
+    fetchIndustryDetail,
+    clearIndustryDetail,
+  };
 }

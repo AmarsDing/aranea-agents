@@ -1,4 +1,4 @@
-import type { MonitorTraceEvent, PlatformResource } from './types';
+import type { MonitorTrace, PlatformResource } from './types';
 import { parseJSON } from './utils';
 
 export type RunnerCompletionMeta = {
@@ -39,7 +39,7 @@ export function isRunnerCompletionRow(row: PlatformResource): boolean {
 }
 
 /** Plan C: hide persisted Chat completion when Runs already has the truth row. */
-export function shouldHideCompletionInEvents(meta: RunnerCompletionMeta, traces: MonitorTraceEvent[] = []): boolean {
+export function shouldHideCompletionInEvents(meta: RunnerCompletionMeta, traces: MonitorTrace[] = []): boolean {
   if (String(meta.usage_event_id || '').trim()) return true;
   const traceId = String(meta.trace_id || '').trim();
   if (!traceId) return false;
@@ -50,7 +50,7 @@ export function shouldHideCompletionInEvents(meta: RunnerCompletionMeta, traces:
 }
 
 /** True when Runs list has a row we can open for this completion metadata. */
-export function completionCanOpenInRuns(meta: RunnerCompletionMeta, traces: MonitorTraceEvent[] = []): boolean {
+export function completionCanOpenInRuns(meta: RunnerCompletionMeta, traces: MonitorTrace[] = []): boolean {
   const usageId = String(meta.usage_event_id || '').trim();
   if (usageId && findRunByUsageEventId(traces, usageId)) return true;
   const traceId = String(meta.trace_id || '').trim();
@@ -64,15 +64,15 @@ export function shouldHideWsRunnerCompletion(type: string): boolean {
 }
 
 export function findRunByUsageEventId(
-  traces: MonitorTraceEvent[],
+  traces: MonitorTrace[],
   usageEventId: string,
-): MonitorTraceEvent | undefined {
+): MonitorTrace | undefined {
   const id = usageEventId.trim();
   if (!id) return undefined;
   return traces.find((row) => String(row.id || '').trim() === id);
 }
 
-export function findRunByTraceId(traces: MonitorTraceEvent[], traceId: string): MonitorTraceEvent | undefined {
+export function findRunByTraceId(traces: MonitorTrace[], traceId: string): MonitorTrace | undefined {
   const tid = traceId.trim();
   if (!tid) return undefined;
   return traces.find((row) => {

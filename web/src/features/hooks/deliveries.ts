@@ -1,5 +1,11 @@
 import { createHookService } from '../../services';
-import type { PaginatedResponse } from '../plugins/types';
+
+export type PaginatedResponse<T> = {
+  items: T[];
+  page: number;
+  page_size: number;
+  total: number;
+};
 
 export type HookDeliveryRow = {
   id: string;
@@ -11,6 +17,7 @@ export type HookDeliveryRow = {
   attempt_count: number;
   max_attempts: number;
   last_error: string;
+  idempotency_key: string;
   created_at: string;
   updated_at: string;
 };
@@ -37,6 +44,7 @@ function mapRow(raw: Record<string, unknown>): HookDeliveryRow {
     attempt_count: n('attempt_count', 'attemptCount'),
     max_attempts: n('max_attempts', 'maxAttempts'),
     last_error: s('last_error', 'lastError'),
+    idempotency_key: s('idempotency_key', 'idempotencyKey'),
     created_at: s('created_at', 'createdAt'),
     updated_at: s('updated_at', 'updatedAt'),
   };

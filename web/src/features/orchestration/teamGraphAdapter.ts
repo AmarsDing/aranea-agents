@@ -37,7 +37,7 @@ export function teamDefinitionToGraphDef(definition: TeamDefinition): GraphDefin
       cacheEnabled: false,
       cacheTtlSeconds: 0,
     }));
-  const edges: EdgeDef[] = graph.edges.map((e) => ({ from: e.source, to: e.target }));
+  const edges: EdgeDef[] = graph.edges.map((e) => ({ from: e.source, to: e.target, kind: '' }));
   return {
     id: '',
     name: 'team-orchestration',

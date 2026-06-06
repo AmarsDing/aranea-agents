@@ -21,15 +21,29 @@ type monitorRepo struct {
 	firingColsOnce sync.Once // H-04: run schema migration only once per process
 }
 
-var _ biz.MonitorRepo = (*monitorRepo)(nil)
-var _ bizmonitor.Repo = (*monitorRepo)(nil)
 var _ bizmonitor.AuditRepo = (*monitorRepo)(nil)
 var _ bizmonitor.EventRepo = (*monitorRepo)(nil)
 var _ bizmonitor.TraceRepo = (*monitorRepo)(nil)
 var _ bizmonitor.AlertRepo = (*monitorRepo)(nil)
 var _ bizmonitor.RunnerCompletionRepo = (*monitorRepo)(nil)
 
-func NewMonitorRepo(d *Data) biz.MonitorRepo {
+func NewMonitorAuditRepo(d *Data) biz.MonitorAuditRepo {
+	return &monitorRepo{data: d}
+}
+
+func NewMonitorEventRepo(d *Data) biz.MonitorEventRepo {
+	return &monitorRepo{data: d}
+}
+
+func NewMonitorTraceRepo(d *Data) biz.MonitorTraceRepo {
+	return &monitorRepo{data: d}
+}
+
+func NewMonitorAlertRepo(d *Data) biz.MonitorAlertRepo {
+	return &monitorRepo{data: d}
+}
+
+func NewMonitorRunnerCompletionRepo(d *Data) biz.MonitorRunnerCompletionRepo {
 	return &monitorRepo{data: d}
 }
 

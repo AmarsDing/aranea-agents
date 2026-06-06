@@ -18,6 +18,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type agentRepo struct {
@@ -612,7 +613,7 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 
 func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
 	if a.ID == "" || a.AgentKey == "" || a.DisplayName == "" || a.Provider == "" || a.Model == "" {
-		return biz.Agent{}, fmt.Errorf("missing required fields")
+		return biz.Agent{}, kerrors.BadRequest("AGENT", "missing required fields")
 	}
 	now := nowRFC3339()
 	if a.CreatedAt == "" {
@@ -665,7 +666,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 	defer func() { tl.Info("exit UpdateAgent", loggateway.Duration(time.Since(t0).Milliseconds())) }()
 	// #endregion debug-point
 	if a.ID == "" {
-		return biz.Agent{}, fmt.Errorf("id is required")
+		return biz.Agent{}, kerrors.BadRequest("AGENT", "id is required")
 	}
 	// #region debug-point data.update_agent.trace
 	s1 := time.Now()
@@ -743,7 +744,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 
 func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 	if id == "" {
-		return fmt.Errorf("id is required")
+		return kerrors.BadRequest("AGENT", "id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).Agent.UpdateOneID(id).
@@ -778,7 +779,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 	defer func() { tl.Info("exit UpsertAgentRuntimeSettings", loggateway.Duration(time.Since(t0).Milliseconds())) }()
 	// #endregion debug-point
 	if v.AgentID == "" {
-		return biz.AgentRuntimeSettings{}, fmt.Errorf("agent id is required")
+		return biz.AgentRuntimeSettings{}, kerrors.BadRequest("AGENT", "agent id is required")
 	}
 	now := nowRFC3339()
 	if v.CreatedAt == "" {
@@ -841,7 +842,7 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 	defer func() { tl.Info("exit ReplaceAgentPromptFiles", loggateway.Duration(time.Since(t0).Milliseconds())) }()
 	// #endregion debug-point
 	if agentID == "" {
-		return nil, fmt.Errorf("agent id is required")
+		return nil, kerrors.BadRequest("AGENT", "agent id is required")
 	}
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		// #region debug-point data.replace_files.trace
@@ -858,6 +859,7 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 		tl.Info("after AgentPromptFile.Delete.Exec", loggateway.Duration(time.Since(sd).Milliseconds()))
 		// #endregion debug-point
 		now := nowRFC3339()
+		builders := make([]*ent.AgentPromptFileCreate, 0, len(files))
 		for i, file := range files {
 			if strings.TrimSpace(file.Name) == "" {
 				continue
@@ -870,26 +872,27 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 			if sortOrder == 0 {
 				sortOrder = (i + 1) * 10
 			}
-			// #region debug-point data.replace_files.trace
-			si := time.Now()
-			tl.Info("before AgentPromptFile.Create.Save", loggateway.Int("i", i), loggateway.Str("file_id", id))
-			// #endregion debug-point
-			if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Create().
+			builders = append(builders, r.data.RW().Write(txCtx).AgentPromptFile.Create().
 				SetID(id).
 				SetAgentID(agentID).
 				SetFileName(strings.TrimSpace(file.Name)).
 				SetBody(file.Body).
 				SetSortOrder(sortOrder).
 				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(txCtx); err != nil {
+				SetUpdatedAt(now))
+		}
+		if len(builders) > 0 {
+			// #region debug-point data.replace_files.trace
+			tl.Info("before AgentPromptFile.CreateBulk.Save", loggateway.Int("count", len(builders)))
+			// #endregion debug-point
+			if _, err := r.data.RW().Write(txCtx).AgentPromptFile.CreateBulk(builders...).Save(txCtx); err != nil {
 				// #region debug-point data.replace_files.trace
-				tl.Info("AgentPromptFile.Create.Save returned error", loggateway.Int("i", i), loggateway.Duration(time.Since(si).Milliseconds()), loggateway.Err(err))
+				tl.Info("AgentPromptFile.CreateBulk.Save returned error", loggateway.Err(err))
 				// #endregion debug-point
 				return err
 			}
 			// #region debug-point data.replace_files.trace
-			tl.Info("after AgentPromptFile.Create.Save", loggateway.Int("i", i), loggateway.Duration(time.Since(si).Milliseconds()))
+			tl.Info("after AgentPromptFile.CreateBulk.Save", loggateway.Int("count", len(builders)))
 			// #endregion debug-point
 		}
 		return nil
@@ -963,7 +966,7 @@ func (r *agentRepo) UpdateAgentAtomic(ctx context.Context, a biz.Agent, files []
 
 func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
 	if f.AgentID == "" || strings.TrimSpace(f.Name) == "" {
-		return biz.AgentPromptFile{}, fmt.Errorf("agent_id and name are required")
+		return biz.AgentPromptFile{}, kerrors.BadRequest("AGENT", "agent_id and name are required")
 	}
 	id := f.ID
 	if id == "" {
@@ -987,7 +990,7 @@ func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 
 func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
 	if f.ID == "" || f.AgentID == "" {
-		return biz.AgentPromptFile{}, fmt.Errorf("id and agent_id are required")
+		return biz.AgentPromptFile{}, kerrors.BadRequest("AGENT", "id and agent_id are required")
 	}
 	update := r.data.RW().Write(ctx).AgentPromptFile.UpdateOneID(f.ID).
 		SetUpdatedAt(nowRFC3339())
@@ -1012,7 +1015,7 @@ func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 
 func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id string) error {
 	if agentID == "" || id == "" {
-		return fmt.Errorf("agent_id and id are required")
+		return kerrors.BadRequest("AGENT", "agent_id and id are required")
 	}
 	_, err := r.data.RW().Write(ctx).AgentPromptFile.Delete().
 		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
@@ -1026,4 +1029,14 @@ func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) e
 
 func (r *agentRepo) ReorderAgents(ctx context.Context, ids []string) error {
 	return nil
+}
+
+// CountAgentsByProviderAndModel counts agents referencing a given provider+model.
+func (r *agentRepo) CountAgentsByProviderAndModel(ctx context.Context, provider, model string) (int, error) {
+	if r.data == nil {
+		return 0, nil
+	}
+	return r.data.RW().Read(ctx).Agent.Query().
+		Where(agent.ProviderEQ(provider), agent.ModelEQ(model), agent.DeletedAtEQ("")).
+		Count(ctx)
 }

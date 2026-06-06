@@ -5,7 +5,7 @@
         <div class="row items-center q-gutter-sm">
           <div class="text-h6 text-weight-bold">进程日志</div>
           <q-badge :color="stateColor">{{ stateText }}</q-badge>
-          <q-badge outline color="primary">{{ filteredLines.length }}/{{ hub.processLines.value.length }}</q-badge>
+          <q-badge outline color="accent">{{ filteredLines.length }}/{{ hub.processLines.value.length }}</q-badge>
         </div>
         <div class="text-caption text-grey-7">
           Gateway / 插件 stderr（由 configs/config.yaml server.monitor.process_log_enabled 控制）

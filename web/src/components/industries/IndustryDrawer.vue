@@ -47,7 +47,9 @@
               <div class="industry-market-drawer__metric-label">{{ t('industries.market.metricPos') }}</div>
             </div>
             <div class="industry-market-drawer__metric">
-              <div class="industry-market-drawer__metric-value app-mono">{{ industry.agentCount ?? industry.posCount ?? 0 }}</div>
+              <div class="industry-market-drawer__metric-value app-mono">
+                {{ industry.agentCount ?? industry.posCount ?? 0 }}
+              </div>
               <div class="industry-market-drawer__metric-label">{{ t('industries.market.metricAgent') }}</div>
             </div>
           </div>
@@ -66,7 +68,9 @@
             <div v-for="dep in departments" :key="dep.key" class="industry-market-drawer__dept">
               <div class="industry-market-drawer__dept-head">
                 <span class="industry-market-drawer__dept-name">{{ dep.name }}</span>
-                <span class="industry-market-drawer__dept-count app-mono">{{ positionsByDept[dep.key]?.length ?? 0 }} {{ t('industries.market.metricPos') }}</span>
+                <span class="industry-market-drawer__dept-count app-mono"
+                  >{{ positionsByDept[dep.key]?.length ?? 0 }} {{ t('industries.market.metricPos') }}</span
+                >
               </div>
               <div v-if="(positionsByDept[dep.key]?.length ?? 0) > 0" class="industry-market-drawer__dept-pos">
                 <div
@@ -76,7 +80,9 @@
                 >
                   <span class="industry-market-drawer__pos-dot" />
                   <span class="industry-market-drawer__pos-name">{{ pos.name }}</span>
-                  <span v-if="pos.seniority_level" class="industry-market-drawer__pos-seniority app-mono">{{ pos.seniority_level }}</span>
+                  <span v-if="pos.seniority_level" class="industry-market-drawer__pos-seniority app-mono">{{
+                    pos.seniority_level
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -182,7 +188,7 @@ function close() {
   place-items: center
   font-weight: 700
   font-size: 16px
-  color: #fff
+  color: var(--color-on-accent, #fff)
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06)
   flex-shrink: 0
 
@@ -368,7 +374,7 @@ function close() {
 
 .app-btn--primary
   background: var(--color-accent, #DCA03E)
-  color: #fff
+  color: var(--color-on-accent, #fff)
   border: 1px solid var(--color-accent, #DCA03E)
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 2px rgba(220, 160, 62, 0.2)
 

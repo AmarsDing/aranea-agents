@@ -1,7 +1,14 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { listSpiritTeams, cancelSpiritTeam } from '../../features/spirit/api';
-import type { SpiritTeam, SpiritPanelMode, SpiritTeamMode, SpiritTeamStatus, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
+import type {
+  SpiritTeam,
+  SpiritPanelMode,
+  SpiritTeamMode,
+  SpiritTeamStatus,
+  TeamProgressView,
+  SynthesisOutput,
+} from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
 import type {
   SpiritPlanCreatedPayload,
@@ -13,7 +20,13 @@ import type {
 import { Notify } from 'quasar';
 
 const VALID_TEAM_STATUSES = new Set<string>([
-  'pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived',
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'archived',
 ]);
 
 function isValidTeamStatus(s: string): s is SpiritTeamStatus {
@@ -51,7 +64,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const activeTeam = computed(() => teams.value.find((t) => t.id === activeTeamId.value) ?? null);
 
   const activeTeams = computed(() =>
-    teams.value.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived'),
+    teams.value.filter(
+      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
+    ),
   );
 
   const completedTeams = computed(() => teams.value.filter((t) => t.status === 'completed'));
@@ -203,7 +218,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             teamName: String(md.team_name ?? ''),
             taskSummary: String(md.task_summary ?? ''),
             status: 'pending',
-            mode: (String(md.mode || 'coordinator')) as SpiritTeamMode,
+            mode: String(md.mode || 'coordinator') as SpiritTeamMode,
             memberAvatars: [],
             completedSteps: 0,
             totalSteps: Number(md.total_steps ?? 1),
@@ -300,7 +315,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
               teamId: String(r.team_id ?? ''),
               teamName: String(r.team_name ?? ''),
               taskName: String(r.task_name ?? ''),
-              status: isValidTeamStatus(String(r.status ?? '')) ? (String(r.status ?? '') as SpiritTeamStatus) : 'failed',
+              status: isValidTeamStatus(String(r.status ?? ''))
+                ? (String(r.status ?? '') as SpiritTeamStatus)
+                : 'failed',
               summary: String(r.summary ?? ''),
               keyFindings: String(r.key_findings ?? ''),
             })),

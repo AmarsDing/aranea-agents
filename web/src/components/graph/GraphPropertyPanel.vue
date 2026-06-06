@@ -503,7 +503,7 @@
                 map-options
                 label="Reducer"
                 :options="reducerOptions"
-                @update:model-value="(v: string) => updateStateField(idx, 'reducer', v)"
+                @update:model-value="(v: ReducerType) => updateStateField(idx, 'reducer', v)"
               />
               <q-btn
                 class="col-1"
@@ -677,7 +677,7 @@ function addStateField() {
     const field = {
       name: '',
       type: 'string' as const,
-      reducer: 'replace' as ReducerType,
+      reducer: 'cover' as ReducerType,
       required: false,
       disableDeepCopy: false,
     };

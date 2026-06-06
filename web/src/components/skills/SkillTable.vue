@@ -143,7 +143,12 @@ import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import SkillStatsStrip from './SkillStatsStrip.vue';
 import type { Skill } from '../../features/skills/types';
-import { SKILL_TABLE_COLUMNS, skillStatusLabel as statusLabel, skillStatusColor as statusColor, skillOriginLabel as originLabel } from './skillTableUi';
+import {
+  SKILL_TABLE_COLUMNS,
+  skillStatusLabel as statusLabel,
+  skillStatusColor as statusColor,
+  skillOriginLabel as originLabel,
+} from './skillTableUi';
 
 defineProps<{
   rows: Skill[];

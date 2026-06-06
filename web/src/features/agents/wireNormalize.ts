@@ -190,7 +190,11 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     memory_compact_enabled: pickBoolOpt(w, 'memoryCompactEnabled', 'memory_compact_enabled'),
     tool_result_gate_enabled: pickBoolOpt(w, 'toolResultGateEnabled', 'tool_result_gate_enabled'),
     tools_circuit_breaker_enabled: pickBoolOpt(w, 'toolsCircuitBreakerEnabled', 'tools_circuit_breaker_enabled'),
-    tools_circuit_breaker_overrides_json: pickStrOpt(w, 'toolsCircuitBreakerOverridesJson', 'tools_circuit_breaker_overrides_json'),
+    tools_circuit_breaker_overrides_json: pickStrOpt(
+      w,
+      'toolsCircuitBreakerOverridesJson',
+      'tools_circuit_breaker_overrides_json',
+    ),
     tools_deferred_json: pickStrOpt(w, 'toolsDeferredJson', 'tools_deferred_json'),
     tools_command_safety_enabled: pickBoolOpt(w, 'toolsCommandSafetyEnabled', 'tools_command_safety_enabled'),
     compress_llm_cache_enabled: pickBoolOpt(w, 'compressLlmCacheEnabled', 'compress_llm_cache_enabled'),

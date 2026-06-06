@@ -46,6 +46,8 @@ func toProtoOrchestrationSpec(raw string) *v1.OrchestrationSpec {
 				Label:           n.Label,
 				AgentId:         n.AgentID,
 				Role:            n.Role,
+				TaskPrompt:      n.TaskPrompt,
+				Enabled:         n.Enabled,
 				InterruptBefore: n.InterruptBefore,
 				InterruptAfter:  n.InterruptAfter,
 				Destinations:    append([]string(nil), n.Destinations...),
@@ -138,6 +140,7 @@ func fromProtoOrchestrationSpec(pb *v1.OrchestrationSpec) biz.OrchestrationSpec 
 			eg.Nodes = append(eg.Nodes, biz.EmbeddedGraphNodeSpec{
 				ID: n.GetId(), Type: n.GetType(), Label: n.GetLabel(),
 				AgentID: n.GetAgentId(), Role: n.GetRole(),
+				TaskPrompt: n.GetTaskPrompt(), Enabled: n.Enabled,
 				InterruptBefore: n.GetInterruptBefore(), InterruptAfter: n.GetInterruptAfter(),
 				Destinations: append([]string(nil), n.GetDestinations()...),
 			})

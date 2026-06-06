@@ -1,10 +1,5 @@
 import { defineStore } from 'pinia';
-import {
-  getCurrentAdmin,
-  loginAdminByEmail,
-  loginAdminByUsername,
-  logoutAdmin,
-} from '../features/admin/api';
+import { getCurrentAdmin, loginAdminByEmail, loginAdminByUsername, logoutAdmin } from '../features/admin/api';
 import type { AdminSession } from '../features/admin/types';
 import { clearServerDownNotify } from '../features/heartbeat/useServerHeartbeat';
 

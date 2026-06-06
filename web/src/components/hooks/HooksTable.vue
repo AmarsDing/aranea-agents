@@ -12,7 +12,7 @@
   >
     <template #body-cell-name="props">
       <q-td :props="props">
-        <AppRegistryHoverTip :text="props.row.description" empty-label="暂无说明">
+        <AppRegistryHoverTip :text="props.row.description" :empty-label="t('hooksPage.noDescription')">
           <div class="min-width-0">
             <div class="app-registry-cell-primary ellipsis">{{ props.row.name }}</div>
             <div class="app-registry-cell-sub ellipsis">{{ props.row.key }}</div>

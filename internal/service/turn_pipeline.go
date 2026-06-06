@@ -139,7 +139,9 @@ func (p TurnPipeline) project(ctx context.Context, ev biz.TurnEvent) {
 	if p.Projector == nil {
 		return
 	}
-	_ = p.Projector.ProjectTurnEvent(ctx, ev)
+	if err := p.Projector.ProjectTurnEvent(ctx, ev); err != nil {
+		p.Lg.Warn("project turn event failed", loggateway.Err(err), loggateway.Str("turn_id", ev.TurnID))
+	}
 }
 
 func (p TurnPipeline) now() time.Time {

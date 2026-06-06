@@ -301,6 +301,8 @@ type TeamGraphNodeSpec struct {
 	Label            string   `yaml:"label,omitempty"`
 	AgentKey         string   `yaml:"agent_key,omitempty"`
 	Role             string   `yaml:"role,omitempty"`
+	TaskPrompt       string   `yaml:"task_prompt,omitempty"`
+	Enabled          *bool    `yaml:"enabled,omitempty"`
 	InterruptBefore  bool     `yaml:"interrupt_before,omitempty"`
 	InterruptAfter   bool     `yaml:"interrupt_after,omitempty"`
 	Destinations     []string `yaml:"destinations,omitempty"`

@@ -59,6 +59,9 @@ message NodeDef {
 message EdgeDef {
   string from = 1 [(google.api.field_behavior) = REQUIRED];
   string to = 2 [(google.api.field_behavior) = REQUIRED];
+  // Optional visualization metadata. Empty string means "no edge kind".
+  // Known values: "transfer" (dashed edge). Runtime ignores unknown kinds.
+  string kind = 3;
 }
 
 message ConditionalEdgeDef {

@@ -144,6 +144,8 @@ function mapRemoteAgent(raw: unknown): A2ARemoteAgent {
     discovered_card: cardRaw ? mapAgentCard(cardRaw) : undefined,
     created_at: pickStr(r, 'created_at', 'createdAt'),
     updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    healthy: pickBool(r, 'healthy', 'healthy') || false,
+    last_health_at: pickStr(r, 'last_health_at', 'lastHealthAt'),
   };
 }
 

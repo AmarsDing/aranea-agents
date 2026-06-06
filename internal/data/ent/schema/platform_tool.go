@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // PlatformTool maps legacy table tools（capability 目录；Ent 类型名避免单字 Tool）。
@@ -41,5 +42,16 @@ func (PlatformTool) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+// Indexes of the PlatformTool.
+func (PlatformTool) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("category").StorageKey("idx_tools_category"),
+		index.Fields("enabled").StorageKey("idx_tools_enabled"),
+		index.Fields("deleted_at").StorageKey("idx_tools_deleted_at"),
+		index.Fields("enabled", "deleted_at").StorageKey("idx_tools_enabled_deleted"),
+		index.Fields("category", "enabled", "deleted_at").StorageKey("idx_tools_cat_enabled_deleted"),
 	}
 }

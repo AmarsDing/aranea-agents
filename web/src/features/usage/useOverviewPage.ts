@@ -5,12 +5,13 @@ import { useI18n } from 'vue-i18n';
 import { useUsageStore } from '../../stores/usage';
 import { usePlatformStore } from '../../stores/platform';
 import { useMonitorStore } from '../../stores/monitor';
-import { useAgentsCatalogStore } from '../../stores/agents/catalog';
+import { listAgentsPaged } from '../agents/api';
+import type { AgentListQuery } from '../agents/types';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from './moneyFormat';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
 import { listTeams } from '../teams/api';
-import { listPlatformResources } from '../platform/api';
+import { listIndustries } from '../industries/api';
 
 const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
 
@@ -123,15 +124,17 @@ export function useOverviewPage() {
     return fmtPercent(value);
   }
 
-  const agentsCatalogStore = useAgentsCatalogStore();
   const agentStats = ref({ active: 0, total: 0 });
 
   async function loadAgentStats() {
     try {
-      const list = await agentsCatalogStore.fetchAgents({ limit: 1000 });
+      const [activeResult, totalResult] = await Promise.all([
+        listAgentsPaged({ status: 'active', limit: 1, offset: 0 } as AgentListQuery),
+        listAgentsPaged({ limit: 1, offset: 0 } as AgentListQuery),
+      ]);
       agentStats.value = {
-        active: list.filter((a: { status: string }) => a.status === 'active' || !a.status).length,
-        total: list.length,
+        active: activeResult.total,
+        total: totalResult.total,
       };
     } catch {
       // silent
@@ -152,8 +155,8 @@ export function useOverviewPage() {
 
   async function loadCategoryCount() {
     try {
-      const rows = await listPlatformResources('taxonomy');
-      categoryCount.value = rows.length;
+      const { total } = await listIndustries();
+      categoryCount.value = total;
     } catch {
       // silent
     }

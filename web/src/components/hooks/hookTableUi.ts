@@ -61,15 +61,15 @@ export function hookRunsTo(row: HookRow) {
   };
 }
 
-export function hookConditionHint(row: HookRow, t?: (key: string) => string) {
+export function hookConditionHint(row: HookRow, t: (key: string) => string) {
   const rule = hookRuleOf(row);
   const parts: string[] = [];
   if (rule.condition.agent_id?.trim())
-    parts.push(`${t ? t('hooksPage.conditionAgent') : 'Agent'}: ${rule.condition.agent_id.trim()}`);
+    parts.push(`${t('hooksPage.conditionAgent')}: ${rule.condition.agent_id.trim()}`);
   if (rule.condition.tool_name?.trim())
-    parts.push(`${t ? t('hooksPage.conditionTool') : 'Tool'}: ${rule.condition.tool_name.trim()}`);
+    parts.push(`${t('hooksPage.conditionTool')}: ${rule.condition.tool_name.trim()}`);
   if (rule.condition.event_type?.trim())
-    parts.push(`${t ? t('hooksPage.conditionEvent') : 'Event'}: ${rule.condition.event_type.trim()}`);
+    parts.push(`${t('hooksPage.conditionEvent')}: ${rule.condition.event_type.trim()}`);
   return parts.length ? parts.join('\n') : '';
 }
 

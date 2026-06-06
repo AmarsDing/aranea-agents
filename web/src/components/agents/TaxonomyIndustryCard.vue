@@ -1,7 +1,5 @@
 <template>
-  <article
-    :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]"
-  >
+  <article :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]">
     <!-- Header: monogram + title + status -->
     <header class="taxonomy-industry-card__head">
       <div class="taxonomy-industry-card__mono" :style="{ background: monoBg }" :aria-label="`行业 ${industry.name}`">
@@ -43,11 +41,7 @@
 
     <!-- Collapsible departments -->
     <div v-if="departments.length" class="taxonomy-industry-card__depts">
-      <button
-        type="button"
-        class="taxonomy-industry-card__depts-toggle"
-        @click="deptsExpanded = !deptsExpanded"
-      >
+      <button type="button" class="taxonomy-industry-card__depts-toggle" @click="deptsExpanded = !deptsExpanded">
         <q-icon :name="deptsExpanded ? 'expand_less' : 'expand_more'" size="18px" />
         <span>{{ deptsExpanded ? '收起部门' : `查看 ${departments.length} 个部门` }}</span>
       </button>
@@ -252,7 +246,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   font-weight: 700
   font-size: 14px
   letter-spacing: 0.02em
-  color: #fff
+  color: var(--color-on-accent, #fff)
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06)
   user-select: none
 
@@ -290,11 +284,11 @@ function positionNodes(dept: PlatformResourceTreeNode) {
 
   &.is-on
     background: var(--color-success-soft, #ECFDF3)
-    color: #2D6A4F
+    color: var(--color-accent-green, #2D6A4F)
 
   &.is-off
     background: rgba(229, 92, 92, 0.1)
-    color: #B13939
+    color: var(--color-danger, #B13939)
 
 .taxonomy-industry-card__status-dot
   width: 6px
@@ -435,11 +429,11 @@ body.body--dark .taxonomy-industry-card
 
   .taxonomy-industry-card__status.is-on
     background: rgba(63, 224, 160, 0.12)
-    color: #3FE0A0
+    color: var(--color-success, #3FE0A0)
 
   .taxonomy-industry-card__status.is-off
     background: rgba(255, 94, 122, 0.12)
-    color: #FF5E7A
+    color: var(--color-danger, #FF5E7A)
 
 .app-mono
   font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace

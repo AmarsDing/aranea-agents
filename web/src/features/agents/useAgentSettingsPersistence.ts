@@ -14,7 +14,14 @@ export interface UseAgentSettingsPersistenceDeps {
 
   detailStore: {
     fetchById: (id: string) => Promise<Agent>;
-    patch: (id: string, data: Partial<Agent> & { settings?: Record<string, unknown>; files?: { name: string; body: string; sort_order: number }[]; config_json?: string }) => Promise<Agent>;
+    patch: (
+      id: string,
+      data: Partial<Agent> & {
+        settings?: Record<string, unknown>;
+        files?: { name: string; body: string; sort_order: number }[];
+        config_json?: string;
+      },
+    ) => Promise<Agent>;
   };
   appStore: {
     upsertAgent: (agent: Agent) => void;

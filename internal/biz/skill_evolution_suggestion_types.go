@@ -46,15 +46,18 @@ type SkillEvolutionSuggestion struct {
 	// Curator Agent evolution tracking fields
 	ParentVersionID string // ID of the parent skill version this evolution is based on
 	EvolutionReason string // Detailed reason for the evolution (populated by Curator Agent)
-	LifecycleStatus string // Current lifecycle status: draft, validating, ready, applied
+	LifecycleStatus EvolutionLifecycleStatus // Current lifecycle status: draft, validating, ready, applied
 }
+
+// EvolutionLifecycleStatus defines the lifecycle status of a skill evolution suggestion.
+type EvolutionLifecycleStatus string
 
 // EvolutionLifecycleStatus constants for SkillEvolutionSuggestion.LifecycleStatus.
 const (
-	EvoLifecycleDraft      = "draft"      // Initial state after suggestion creation
-	EvoLifecycleValidating = "validating" // Sandbox validation in progress
-	EvoLifecycleReady      = "ready"      // Validation passed, ready for approval
-	EvoLifecycleApplied    = "applied"    // Suggestion has been applied to the skill
+	EvoLifecycleDraft      EvolutionLifecycleStatus = "draft"      // Initial state after suggestion creation
+	EvoLifecycleValidating EvolutionLifecycleStatus = "validating" // Sandbox validation in progress
+	EvoLifecycleReady      EvolutionLifecycleStatus = "ready"      // Validation passed, ready for approval
+	EvoLifecycleApplied    EvolutionLifecycleStatus = "applied"    // Suggestion has been applied to the skill
 )
 
 // EvoTriggerThresholds defines when evolution suggestions should be triggered.

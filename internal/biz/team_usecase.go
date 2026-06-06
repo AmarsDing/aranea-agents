@@ -413,6 +413,13 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	if team.Readonly {
 		return kerrors.Forbidden("TEAM", "cannot delete a readonly team")
 	}
+	active, err := u.HasActiveRun(ctx, id)
+	if err != nil {
+		return err
+	}
+	if active {
+		return kerrors.Conflict("TEAM", "team has an active run; delete is not allowed until the run finishes")
+	}
 	return u.writer.DeleteTeam(ctx, id)
 }
 

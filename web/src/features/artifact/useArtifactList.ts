@@ -1,9 +1,11 @@
 import { ref } from 'vue';
+import { useQuasar } from 'quasar';
 import type { ArtifactMeta } from './types';
 import { useArtifactStore } from '../../stores/artifact';
 import { formatBytes } from '../../shared/format';
 
 export function useArtifactList() {
+  const $q = useQuasar();
   const artifactStore = useArtifactStore();
   const previewOpen = ref(false);
   const previewMeta = ref<ArtifactMeta | null>(null);
@@ -28,19 +30,29 @@ export function useArtifactList() {
     return 'insert_drive_file';
   }
 
-  function openPreview(item: ArtifactMeta, onOpen?: (id: string) => void) {
+  function openPreview(item: ArtifactMeta) {
     previewMeta.value = item;
     previewArtifactId.value = item.id;
     previewOpen.value = true;
-    onOpen?.(item.id);
   }
 
   async function downloadItem(item: ArtifactMeta) {
     try {
       const signed = await artifactStore.signDownload(item.id, item.version);
       window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
-    } catch {
-      // silent — user can retry
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '获取下载链接失败' });
+    }
+  }
+
+  async function deleteItem(item: ArtifactMeta): Promise<boolean> {
+    try {
+      await artifactStore.remove(item.id);
+      $q.notify({ type: 'positive', message: '已删除' });
+      return true;
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '删除失败' });
+      return false;
     }
   }
 
@@ -52,5 +64,6 @@ export function useArtifactList() {
     formatBytes,
     openPreview,
     downloadItem,
+    deleteItem,
   };
 }

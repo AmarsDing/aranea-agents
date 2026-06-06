@@ -8,13 +8,7 @@
       <template #actions>
         <q-btn flat rounded no-caps :label="`↻ ${t('industries.market.actionRefresh')}`" @click="refresh" />
         <q-btn flat rounded no-caps :label="`↥ ${t('industries.market.actionExport')}`" />
-        <q-btn
-          unelevated
-          rounded
-          no-caps
-          color="primary"
-          :label="`+ ${t('industries.market.actionRequestNew')}`"
-        />
+        <q-btn unelevated rounded no-caps color="primary" :label="`+ ${t('industries.market.actionRequestNew')}`" />
       </template>
     </AppPageHero>
 
@@ -60,12 +54,7 @@
           </tr>
         </thead>
         <tbody>
-          <IndustryTableRow
-            v-for="ind in filtered"
-            :key="ind.key"
-            :industry="ind"
-            @select="openKey = ind.key"
-          />
+          <IndustryTableRow v-for="ind in filtered" :key="ind.key" :industry="ind" @select="openKey = ind.key" />
         </tbody>
       </table>
     </div>
@@ -102,7 +91,11 @@ import IndustryMarketToolbar from '../../components/industries/IndustryMarketToo
 import IndustryCard from '../../components/industries/IndustryCard.vue';
 import IndustryTableRow from '../../components/industries/IndustryTableRow.vue';
 import IndustryDrawer from '../../components/industries/IndustryDrawer.vue';
-import { useIndustryMarket, type IndustryStatusFilter, type IndustrySourceFilter } from '../../features/industries/useIndustryMarket';
+import {
+  useIndustryMarket,
+  type IndustryStatusFilter,
+  type IndustrySourceFilter,
+} from '../../features/industries/useIndustryMarket';
 import type { Industry } from '../../features/industries/types';
 
 const { t } = useI18n();

@@ -7,6 +7,7 @@ import type { PlatformResourceInput } from '../platform/types';
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from './types';
 import { CRON_TASK_TABLE_COLUMNS, CRON_RUN_TABLE_COLUMNS } from './cronTableUi';
 import { useCronStore } from '../../stores/cron';
+import { formatCronDate } from '../../components/cron/cronTaskUtils';
 
 export function useCronTasksPage() {
   const $q = useQuasar();
@@ -233,7 +234,7 @@ export function useCronTasksPage() {
   function scheduleLabel(row: CronTaskRow) {
     const cfg = config(row);
     if (cfg.schedule_type === 'cron') return `cron: ${cfg.cron_expression || '-'}`;
-    if (cfg.schedule_type === 'once') return `once @ ${formatDate(cfg.run_at)}`;
+    if (cfg.schedule_type === 'once') return `once @ ${formatCronDate(cfg.run_at)}`;
     return `每 ${Math.max(1, Math.round((cfg.interval_seconds || 0) / 60))} 分钟`;
   }
 
@@ -273,12 +274,6 @@ export function useCronTasksPage() {
     return parseCronMetadata(row);
   }
 
-  function formatDate(value?: string) {
-    if (!value) return '-';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-  }
-
   return {
     rows,
     agents,
@@ -315,7 +310,7 @@ export function useCronTasksPage() {
     statusColor,
     recentFailures,
     metadata,
-    formatDate,
+    formatCronDate,
     runsOpen,
     runs,
     runsTaskId,

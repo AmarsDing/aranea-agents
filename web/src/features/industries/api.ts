@@ -5,7 +5,7 @@ import { pickStr } from '../../shared/wireJson';
 
 /** 从 TaxonomyNode wire 数据中安全取值 */
 function asRecord(raw: unknown): Record<string, unknown> {
-  return (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, unknown> : {};
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 }
 
 /** 将 TaxonomyNode 映射为 Industry 类型（level=industry） */

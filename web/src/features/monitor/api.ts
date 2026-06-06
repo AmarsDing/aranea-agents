@@ -4,11 +4,13 @@ import type {
   AuditLog,
   AuditQuery,
   CodeExecutorCapability,
-  ModelUsageQuery,
+  MonitorTrace,
+  MonitorTraceDetail,
+  MonitorTracesQuery,
+  MonitorTraceRow,
   MonitorAlertRule,
   MonitorLogLine,
   MonitorLogSnapshot,
-  MonitorTraceEvent,
   PaginatedResult,
   PlatformResource,
   RunnerMetricsSummary,
@@ -17,7 +19,6 @@ import type {
 } from './types';
 
 export type { CodeExecutorCapability } from './types';
-import { listModelUsageEvents } from '../usage/api';
 import { useEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import type { Envelope } from '../../realtime/envelope';
 import { flowSeverityToLevel, monitorLogLineFromFlowEnvelope } from './flow';
@@ -273,10 +274,63 @@ export function subscribeMonitorRuntimeEventsWs(
   };
 }
 
-export async function listMonitorTraceEvents(query: ModelUsageQuery = {}): Promise<MonitorTraceEvent[]> {
-  const rows = await listModelUsageEvents(query);
-  // Safe cast: tokenEventFromUnknown covers all fields and MonitorTraceEvent extends ModelTokenUsageEvent
-  return rows as MonitorTraceEvent[];
+function traceRowFromWire(raw: unknown): MonitorTraceRow {
+  const r = obj(raw);
+  return {
+    id: String(r.id ?? ''),
+    resource: String(r.resource ?? 'monitor-traces'),
+    key: String(r.key ?? ''),
+    name: String(r.name ?? ''),
+    description: String(r.description ?? ''),
+    status: String(r.status ?? ''),
+    enabled: Boolean(r.enabled ?? true),
+    sort_order: Number(r.sort_order ?? r.sortOrder ?? 0),
+    parent_id: String(r.parent_id ?? r.parentId ?? ''),
+    level: String(r.level ?? ''),
+    agent_id: String(r.agent_id ?? r.agentId ?? ''),
+    provider: String(r.provider ?? ''),
+    model: String(r.model ?? ''),
+    config_json: String(r.config_json ?? r.configJson ?? '{}'),
+    metadata_json: String(r.metadata_json ?? r.metadataJson ?? '{}'),
+    created_at: String(r.created_at ?? r.createdAt ?? ''),
+    updated_at: String(r.updated_at ?? r.updatedAt ?? ''),
+    deleted_at: String(r.deleted_at ?? r.deletedAt ?? ''),
+  };
+}
+
+export async function listMonitorTraces(query: MonitorTracesQuery = {}): Promise<PaginatedResult<MonitorTraceRow>> {
+  const res = await monitor.ListMonitorTraces({
+    limit: query.limit,
+    offset: query.offset,
+    agentId: query.agent_id,
+    provider: query.provider,
+    model: query.model,
+    status: query.status,
+  });
+  const items = (res.items ?? []).map((item: unknown) => traceRowFromWire(item));
+  return { items, total: Number(res.total ?? items.length) };
+}
+
+/** @deprecated Use listMonitorTraces instead. */
+export async function listMonitorTraceEvents(query: MonitorTracesQuery = {}): Promise<MonitorTraceRow[]> {
+  const result = await listMonitorTraces(query);
+  return result.items;
+}
+
+function traceDetailFromWire(raw: unknown): MonitorTraceDetail {
+  const r = obj(raw);
+  const traceRaw = r.trace ?? r.Trace;
+  return {
+    trace: traceRowFromWire(traceRaw),
+    config_json: String(r.config_json ?? r.configJson ?? '{}'),
+    metadata_json: String(r.metadata_json ?? r.metadataJson ?? '{}'),
+    spans_json: String(r.spans_json ?? r.spansJson ?? '[]'),
+  };
+}
+
+export async function getMonitorTrace(id: string): Promise<MonitorTraceDetail> {
+  const res = await monitor.GetMonitorTrace({ id });
+  return traceDetailFromWire(res);
 }
 
 function alertRuleFromWire(raw: unknown): MonitorAlertRule {

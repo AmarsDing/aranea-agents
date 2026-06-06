@@ -145,17 +145,18 @@ func (s *HookService) DeleteHook(ctx context.Context, req *v1.DeleteHookRequest)
 
 func toProtoHookDelivery(d biz.HookDelivery) *v1.HookDelivery {
 	return &v1.HookDelivery{
-		Id:           d.ID,
-		HookKey:      d.HookKey,
-		HookId:       d.HookID,
-		WebhookUrl:   d.WebhookURL,
-		PayloadJson:  d.PayloadJSON,
-		Status:       string(d.Status),
-		AttemptCount: int32(d.AttemptCount),
-		MaxAttempts:  int32(d.MaxAttempts),
-		LastError:    d.LastError,
-		CreatedAt:    d.CreatedAt,
-		UpdatedAt:    d.UpdatedAt,
+		Id:             d.ID,
+		HookKey:        d.HookKey,
+		HookId:         d.HookID,
+		WebhookUrl:     d.WebhookURL,
+		PayloadJson:    d.PayloadJSON,
+		Status:         string(d.Status),
+		AttemptCount:   int32(d.AttemptCount),
+		MaxAttempts:    int32(d.MaxAttempts),
+		LastError:      d.LastError,
+		CreatedAt:      d.CreatedAt,
+		UpdatedAt:      d.UpdatedAt,
+		IdempotencyKey: d.IdempotencyKey,
 	}
 }
 

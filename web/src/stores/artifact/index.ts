@@ -39,7 +39,9 @@ export const useArtifactStore = defineStore('artifact', () => {
 
   async function upload(input: UploadArtifactInput): Promise<ArtifactMeta> {
     const meta = await uploadArtifact(input);
-    artifacts.value.unshift(meta);
+    // Do not optimistically insert into artifacts — the current list may have
+    // active filters (session/mime/query) that the new item does not match.
+    // The caller (useArtifactsPage) will refresh the list after upload.
     total.value += 1;
     return meta;
   }

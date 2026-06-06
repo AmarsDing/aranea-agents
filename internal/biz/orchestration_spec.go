@@ -53,6 +53,8 @@ type EmbeddedGraphNodeSpec struct {
 	Label            string   `json:"label"`
 	AgentID          string   `json:"agent_id,omitempty"`
 	Role             string   `json:"role,omitempty"`
+	TaskPrompt       string   `json:"task_prompt,omitempty"`
+	Enabled          *bool    `json:"enabled,omitempty"`
 	InterruptBefore  bool     `json:"interrupt_before,omitempty"`
 	InterruptAfter   bool     `json:"interrupt_after,omitempty"`
 	Destinations     []string `json:"destinations,omitempty"`
@@ -143,6 +145,27 @@ func NormalizeOrchestrationSpec(spec *OrchestrationSpec) {
 	if spec.TimeoutSeconds <= 0 {
 		spec.TimeoutSeconds = spec.RunTimeoutSec
 	}
+	// Backfill members from graph.nodes when members is empty but graph has agent nodes.
+	// This fixes data inconsistency where some teams were created with graph.nodes
+	// but empty members array (e.g. certain pack import paths).
+	if len(spec.Members) == 0 && spec.Graph != nil && len(spec.Graph.Nodes) > 0 {
+		for _, n := range spec.Graph.Nodes {
+			if n.Type == "agent" && strings.TrimSpace(n.AgentID) != "" {
+				enabled := true
+				if n.Enabled != nil {
+					enabled = *n.Enabled
+				}
+				spec.Members = append(spec.Members, OrchestrationMember{
+					AgentID:    n.AgentID,
+					Role:       firstNonEmpty(strings.TrimSpace(n.Role), RoleWorker),
+					Name:       firstNonEmpty(strings.TrimSpace(n.Label), "Agent"),
+					TaskPrompt: strings.TrimSpace(n.TaskPrompt),
+					Enabled:    enabled,
+					SortOrder:  len(spec.Members) + 1,
+				})
+			}
+		}
+	}
 }
 
 // OrchestrationSpecToDefinitionJSON serializes spec to definition_json (v2 canonical).
@@ -175,6 +198,16 @@ func MergeOrchestrationSpecIntoDefinition(raw string, spec OrchestrationSpec) (s
 		return "", err
 	}
 	for k, v := range overlay {
+		// Protect base members from being overwritten by empty overlay members.
+		// When a partial update omits members (and graph), the overlay contains members:[]
+		// which would wipe out existing members in base. Skip the overwrite in this case.
+		if k == "members" {
+			if overlayArr, ok := v.([]any); ok && len(overlayArr) == 0 {
+				if baseArr, ok := base["members"].([]any); ok && len(baseArr) > 0 {
+					continue
+				}
+			}
+		}
 		base[k] = v
 	}
 	b, err := json.Marshal(base)

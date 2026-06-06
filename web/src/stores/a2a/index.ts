@@ -4,6 +4,7 @@ import {
   discoverAgents,
   discoverRemoteAgent,
   deleteRemoteAgent,
+  gatewayDiscoverAgents,
   getA2AConfig,
   getAgentCard,
   invokeA2A,
@@ -15,6 +16,7 @@ import {
 import type {
   A2AAgentCard,
   A2AAuditEntry,
+  A2AGatewayEntry,
   A2AInvokeInput,
   A2AInvokeResult,
   A2ARemoteAgent,
@@ -32,6 +34,7 @@ export const useA2AStore = defineStore('a2a', () => {
   const auditLog = ref<A2AAuditEntry[]>([]);
   const auditTotal = ref(0);
   const remoteAgents = ref<A2ARemoteAgent[]>([]);
+  const gatewayEntries = ref<A2AGatewayEntry[]>([]);
   const loading = ref(false);
   const runtimeConfig = ref<A2ARuntimeConfig | null>(null);
 
@@ -98,11 +101,19 @@ export const useA2AStore = defineStore('a2a', () => {
     return discoverRemoteAgent(input);
   }
 
+  async function loadGateway(
+    params: { workspace?: string; capability?: string; checkHealth?: boolean } = {},
+  ): Promise<A2AGatewayEntry[]> {
+    gatewayEntries.value = await gatewayDiscoverAgents(params);
+    return gatewayEntries.value;
+  }
+
   return {
     agentCards,
     auditLog,
     auditTotal,
     remoteAgents,
+    gatewayEntries,
     loading,
     runtimeConfig,
     loadRuntimeConfig,
@@ -115,5 +126,6 @@ export const useA2AStore = defineStore('a2a', () => {
     registerRemote,
     removeRemote,
     previewRemote,
+    loadGateway,
   };
 });

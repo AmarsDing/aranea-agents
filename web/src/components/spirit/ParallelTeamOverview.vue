@@ -75,9 +75,7 @@ const activeCount = computed(
 
 const completedCount = computed(() => props.teams.filter((t) => t.status === 'completed').length);
 
-const hasDagTeams = computed(() =>
-  props.teams.some((t) => t.dagNodeId || (t.dependsOn && t.dependsOn.length > 0)),
-);
+const hasDagTeams = computed(() => props.teams.some((t) => t.dagNodeId || (t.dependsOn && t.dependsOn.length > 0)));
 </script>
 
 <style scoped lang="sass">

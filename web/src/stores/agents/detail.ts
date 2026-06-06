@@ -82,15 +82,25 @@ export const useAgentDetailStore = defineStore('agentDetail', () => {
     return estimateAgentTokens(agentId);
   }
 
-  async function updateToolPolicy(agentId: string, payload: { tools_enabled?: boolean; profile?: string; allow?: string[]; deny?: string[] }): Promise<void> {
+  async function updateToolPolicy(
+    agentId: string,
+    payload: { tools_enabled?: boolean; profile?: string; allow?: string[]; deny?: string[] },
+  ): Promise<void> {
     return updateAgentToolPolicy(agentId, payload);
   }
 
-  async function createPromptFile(agentId: string, payload: { name: string; body: string; sort_order: number }): Promise<AgentPromptFile> {
+  async function createPromptFile(
+    agentId: string,
+    payload: { name: string; body: string; sort_order: number },
+  ): Promise<AgentPromptFile> {
     return createAgentPromptFile(agentId, payload);
   }
 
-  async function updatePromptFile(agentId: string, fileId: string, payload: { name?: string; body?: string; sort_order?: number }): Promise<AgentPromptFile> {
+  async function updatePromptFile(
+    agentId: string,
+    fileId: string,
+    payload: { name?: string; body?: string; sort_order?: number },
+  ): Promise<AgentPromptFile> {
     return updateAgentPromptFile(agentId, fileId, payload);
   }
 

@@ -1,6 +1,6 @@
 export type NodeType = 'function' | 'llm' | 'tool' | 'agent' | 'router' | 'join' | 'hitl';
 
-export type ReducerType = 'append' | 'replace' | 'merge' | 'custom';
+export type ReducerType = 'append' | 'cover' | 'merge' | 'default';
 
 export type StateFieldDef = {
   name: string;
@@ -45,7 +45,7 @@ export type NodeDef = {
 export type EdgeDef = {
   from: string;
   to: string;
-  kind?: string;
+  kind: string;
 };
 
 export type ConditionalEdgeDef = {
@@ -239,10 +239,10 @@ export const EXECUTION_STATUS_STYLES: Record<string, { color: string; icon: stri
 };
 
 export const REDUCER_OPTIONS: Array<{ label: string; value: ReducerType }> = [
-  { label: 'Append（追加）', value: 'append' },
-  { label: 'Replace（替换）', value: 'replace' },
-  { label: 'Merge（合并）', value: 'merge' },
-  { label: 'Custom（自定义）', value: 'custom' },
+  { label: '追加', value: 'append' },
+  { label: '覆盖', value: 'cover' },
+  { label: '合并', value: 'merge' },
+  { label: '默认', value: 'default' },
 ];
 
 export const STATE_FIELD_TYPE_OPTIONS: Array<{ label: string; value: string }> = [

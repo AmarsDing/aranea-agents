@@ -1,56 +1,82 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { createSkillEvolutionSuggestionService } from '../../services';
-import type { SkillEvolutionSuggestionMsg } from '../../services/kratos/skill_evolution_suggestion/v1/index';
+import {
+  listEvolutionSuggestions,
+  approveEvolutionSuggestion,
+  rejectEvolutionSuggestion,
+  triggerCuratorFlow,
+} from '../../features/skills/api';
+import type { EvolutionSuggestionView } from '../../features/skills/types';
 
 export const useSkillEvolutionSuggestionStore = defineStore('skillEvolutionSuggestion', () => {
-  const suggestions = ref<SkillEvolutionSuggestionMsg[]>([]);
+  const suggestions = ref<EvolutionSuggestionView[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  const error = ref<string | null>(null);
 
   async function loadSuggestions(params: {
     skillId?: string;
     status?: string;
     page?: number;
     pageSize?: number;
-  }): Promise<{ items: SkillEvolutionSuggestionMsg[]; total: number }> {
+  }): Promise<{ items: EvolutionSuggestionView[]; total: number }> {
     loading.value = true;
+    error.value = null;
     try {
-      const svc = createSkillEvolutionSuggestionService();
-      const res = await svc.ListSkillEvolutionSuggestions({
-        skillId: params.skillId || undefined,
-        status: params.status || undefined,
-        page: params.page,
-        pageSize: params.pageSize,
-      });
-      suggestions.value = res.items ?? [];
-      total.value = Number(res.total ?? 0);
+      const res = await listEvolutionSuggestions(params);
+      suggestions.value = res.items;
+      total.value = res.total;
       return { items: suggestions.value, total: total.value };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      error.value = msg;
+      throw e;
     } finally {
       loading.value = false;
     }
   }
 
   async function approveSuggestion(id: string, approvedBy: string): Promise<void> {
-    const svc = createSkillEvolutionSuggestionService();
-    await svc.ApproveSkillEvolutionSuggestion({ id, approvedBy });
+    error.value = null;
+    try {
+      await approveEvolutionSuggestion(id, approvedBy);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      error.value = msg;
+      throw e;
+    }
   }
 
   async function rejectSuggestion(id: string, rejectedBy: string, rejectionReason?: string): Promise<void> {
-    const svc = createSkillEvolutionSuggestionService();
-    await svc.RejectSkillEvolutionSuggestion({
-      id,
-      rejectedBy,
-      rejectionReason: rejectionReason || undefined,
-    });
+    error.value = null;
+    try {
+      await rejectEvolutionSuggestion(id, rejectedBy, rejectionReason);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      error.value = msg;
+      throw e;
+    }
+  }
+
+  async function runCuratorFlow(skillId: string): Promise<EvolutionSuggestionView | null> {
+    error.value = null;
+    try {
+      return await triggerCuratorFlow(skillId);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      error.value = msg;
+      throw e;
+    }
   }
 
   return {
     suggestions,
     total,
     loading,
+    error,
     loadSuggestions,
     approveSuggestion,
     rejectSuggestion,
+    runCuratorFlow,
   };
 });

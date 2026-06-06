@@ -232,7 +232,12 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 		)
 		return
 	}
-	o.cancelActiveRun(ctx, sessionID)
+	// Cancel the runtime runner without transitioning session status (cancelActiveRun
+	// would set status_reason=UserCancelled, overwriting the BudgetEscalated reason).
+	stopped, runID := o.runs.Cancel(sessionID)
+	if stopped {
+		o.setRunStatus(ctx, sessionID, runID, "cancelled", "")
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonBudgetEscalated)
 	run.Phase = biz.SessionRunPhaseDurable
 	run.CheckpointID = cp.ID

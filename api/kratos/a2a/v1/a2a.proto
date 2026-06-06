@@ -60,6 +60,9 @@ message A2ARemoteAgent {
   A2AAgentCard discovered_card = 8;
   string created_at = 9;
   string updated_at = 10;
+  // Health fields populated by the gateway health probe runner.
+  bool healthy = 11;
+  string last_health_at = 12;
 }
 
 message RegisterRemoteAgentRequest {

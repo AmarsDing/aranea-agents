@@ -15,6 +15,7 @@
     <div class="app-tab-shell">
       <q-tabs v-model="tab" dense align="left" class="text-primary">
         <q-tab name="discover" label="发现" />
+        <q-tab name="gateway" label="Gateway" />
         <q-tab name="remote" label="远程注册" />
         <q-tab name="audit" label="审计" />
         <q-tab name="invoke" label="Invoke" />
@@ -37,6 +38,17 @@
           :loading="loading"
           :columns="cardColumns"
           @discover="loadDiscover"
+        />
+      </q-tab-panel>
+      <q-tab-panel name="gateway" class="q-pa-none">
+        <A2AGatewayPanel
+          v-model:workspace="gatewayWorkspace"
+          v-model:capability="gatewayCapability"
+          v-model:check-health="gatewayCheckHealth"
+          :entries="gatewayEntries"
+          :loading="gatewayLoading"
+          :columns="gatewayColumns"
+          @discover="loadGateway"
         />
       </q-tab-panel>
       <q-tab-panel name="remote" class="q-pa-none q-gutter-md">
@@ -87,6 +99,16 @@
           <template #body-cell-auth_type="props">
             <q-td :props="props">
               {{ a2aAuthTypeLabel(props.row.auth_type) }}
+            </q-td>
+          </template>
+          <template #body-cell-healthy="props">
+            <q-td :props="props">
+              <q-badge
+                v-if="props.row.last_health_at"
+                :color="props.row.healthy ? 'positive' : 'negative'"
+                :label="props.row.healthy ? '健康' : '异常'"
+              />
+              <span v-else class="text-grey-6">未探测</span>
             </q-td>
           </template>
           <template #body-cell-actions="props">
@@ -144,6 +166,7 @@ import A2AAuditPanel from '../components/a2a/A2AAuditPanel.vue';
 import A2AInvokePanel from '../components/a2a/A2AInvokePanel.vue';
 import A2ARemoteAgentPanel from '../components/a2a/A2ARemoteAgentPanel.vue';
 import A2ARuntimeConfigBanner from '../components/a2a/A2ARuntimeConfigBanner.vue';
+import A2AGatewayPanel from '../components/a2a/A2AGatewayPanel.vue';
 import { useA2APage } from '../features/a2a/useA2APage';
 import { a2aAuthTypeLabel } from '../features/a2a/a2aTableUi';
 import type { RegisterRemoteAgentInput } from '../features/a2a/types';
@@ -153,6 +176,7 @@ const {
   auditRows,
   auditTotal,
   remoteAgents,
+  gatewayEntries,
   loading,
   tab,
   auditLoading,
@@ -160,16 +184,21 @@ const {
   remoteLoading,
   remoteDiscoverLoading,
   remoteRegisterLoading,
+  gatewayLoading,
   error,
   invokeResult,
   remotePreview,
   discoverWorkspace,
   discoverCapability,
   remoteWorkspace,
+  gatewayWorkspace,
+  gatewayCapability,
+  gatewayCheckHealth,
   invokeForm,
   cardColumns,
   remoteColumns,
   auditColumns,
+  gatewayColumns,
   auditStatusColor,
   loadDiscover,
   loadRemote,
@@ -177,6 +206,7 @@ const {
   submitRemoteRegister,
   previewRemote,
   removeRemote,
+  loadGateway,
   reload,
   runtimeConfig,
 } = useA2APage();

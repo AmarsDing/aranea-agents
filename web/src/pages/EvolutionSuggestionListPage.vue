@@ -11,11 +11,12 @@
           unelevated
           rounded
           no-caps
-          icon="refresh"
-          label="刷新"
-          :loading="loading"
-          @click="loadRows"
+          icon="auto_fix_high"
+          label="触发 Curator"
+          :loading="triggeringCurator"
+          @click="handleTriggerCurator"
         />
+        <q-btn unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </template>
     </AppPageHero>
 
@@ -85,23 +86,35 @@
 
         <template #body-cell-type="props">
           <q-td :props="props">
-            <q-chip dense square :color="typeColor(props.row.type)" text-color="white">
-              {{ props.row.type || '—' }}
+            <q-chip dense square :color="evoSuggestionTypeColor(props.row.type)" text-color="white">
+              {{ evoSuggestionTypeLabel(props.row.type) }}
             </q-chip>
           </q-td>
         </template>
 
         <template #body-cell-status="props">
           <q-td :props="props">
-            <q-chip dense square :color="statusColor(props.row.status)" text-color="white">
-              {{ statusLabel(props.row.status) }}
+            <q-chip dense square :color="evoSuggestionStatusColor(props.row.status)" text-color="white">
+              {{ evoSuggestionStatusLabel(props.row.status) }}
+            </q-chip>
+          </q-td>
+        </template>
+
+        <template #body-cell-lifecycleStatus="props">
+          <q-td :props="props">
+            <q-chip dense square :color="evoLifecycleStatusColor(props.row.lifecycleStatus)" text-color="white">
+              {{ evoLifecycleStatusLabel(props.row.lifecycleStatus) }}
             </q-chip>
           </q-td>
         </template>
 
         <template #body-cell-triggerReason="props">
           <q-td :props="props">
-            <span class="app-registry-cell-sub ellipsis" :title="props.row.triggerReason ?? ''" style="max-width: 240px">
+            <span
+              class="app-registry-cell-sub ellipsis"
+              :title="props.row.triggerReason ?? ''"
+              style="max-width: 240px"
+            >
               {{ props.row.triggerReason || '—' }}
             </span>
           </q-td>
@@ -130,14 +143,7 @@
         <template #body-cell-actions="props">
           <q-td :props="props">
             <div class="app-registry-cell-actions">
-              <q-btn
-                flat
-                dense
-                round
-                icon="visibility"
-                color="primary"
-                @click="openDetailDialog(props.row)"
-              >
+              <q-btn flat dense round icon="visibility" color="primary" @click="openDetailDialog(props.row)">
                 <q-tooltip>查看详情</q-tooltip>
               </q-btn>
               <template v-if="props.row.status === 'pending'">
@@ -171,47 +177,42 @@
       />
     </template>
 
-    <q-dialog v-model="rejectDialogOpen" persistent>
+    <EvolutionSuggestionRejectDialog
+      :open="rejectDialogOpen"
+      :target="rejectTarget"
+      :reason="rejectionReason"
+      :loading="rejecting"
+      @update:open="rejectDialogOpen = $event"
+      @update:reason="rejectionReason = $event"
+      @confirm="confirmReject"
+    />
+
+    <q-dialog v-model="curatorDialogOpen" persistent>
       <q-card class="app-dialog-card app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">拒绝进化建议</div>
+          <div class="app-glass-dialog__title">触发 Curator 流水线</div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-            <div v-if="rejectTarget" class="text-body2">
-              <div class="q-mb-sm">
-                <span class="text-grey-7">Skill ID：</span>{{ rejectTarget.skillId || '—' }}
-              </div>
-              <div class="q-mb-sm">
-                <span class="text-grey-7">类型：</span>{{ rejectTarget.type || '—' }}
-              </div>
-              <div>
-                <span class="text-grey-7">触发原因：</span>{{ rejectTarget.triggerReason || '—' }}
-              </div>
+            <div class="text-body2">
+              为指定 Skill 运行完整的 Curator Agent 进化流水线：触发检测 → 草稿生成 → 沙箱验证。
             </div>
-            <q-input
-              v-model="rejectionReason"
-              dense
-              outlined
-              type="textarea"
-              autogrow
-              label="拒绝原因"
-              placeholder="请输入拒绝原因（可选）"
-            />
+            <q-input v-model="curatorSkillId" dense outlined label="Skill ID" placeholder="输入要触发进化的 Skill ID" />
           </q-card-section>
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
           <q-btn v-close-popup flat no-caps label="取消" />
           <q-btn
-            color="negative"
+            color="primary"
             unelevated
             no-caps
-            label="确认拒绝"
-            :loading="rejecting"
-            @click="confirmReject"
+            label="触发"
+            :loading="triggeringCurator"
+            :disable="!curatorSkillId.trim()"
+            @click="confirmTriggerCurator"
           />
         </q-card-actions>
       </q-card>
@@ -232,13 +233,25 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import EvolutionSuggestionDetailDialog from '../components/skills/EvolutionSuggestionDetailDialog.vue';
-import { useEvolutionSuggestionListPage, statusOptions as rawStatusOptions } from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
-import { EVOLUTION_SUGGESTION_TABLE_COLUMNS } from '../components/skills/evolutionSuggestionTableUi';
-import type { SkillEvolutionSuggestionMsg } from '../services/kratos/skill_evolution_suggestion/v1/index';
+import EvolutionSuggestionRejectDialog from '../components/skills/EvolutionSuggestionRejectDialog.vue';
+import {
+  EVOLUTION_SUGGESTION_TABLE_COLUMNS,
+  evoSuggestionTypeColor,
+  evoSuggestionTypeLabel,
+  evoSuggestionStatusColor,
+  evoSuggestionStatusLabel,
+  evoLifecycleStatusColor,
+  evoLifecycleStatusLabel,
+} from '../components/skills/evolutionSuggestionTableUi';
+import {
+  useEvolutionSuggestionListPage,
+  statusOptions,
+} from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
+import type { EvolutionSuggestionView } from '../features/skills/types';
 
 const {
-  status,
   skillId,
+  status,
   page,
   pageSize,
   rows,
@@ -256,46 +269,40 @@ const {
   openRejectDialog,
   confirmReject,
   resetFilters,
+  triggerCuratorFlow,
 } = useEvolutionSuggestionListPage();
 
-const statusOptions = rawStatusOptions;
 const columns = EVOLUTION_SUGGESTION_TABLE_COLUMNS;
 
 const detailDialogOpen = ref(false);
-const detailTarget = ref<SkillEvolutionSuggestionMsg | null>(null);
+const detailTarget = ref<EvolutionSuggestionView | null>(null);
+const curatorDialogOpen = ref(false);
+const curatorSkillId = ref('');
+const triggeringCurator = ref(false);
 
-function openDetailDialog(row: SkillEvolutionSuggestionMsg) {
+function openDetailDialog(row: EvolutionSuggestionView) {
   detailTarget.value = row;
   detailDialogOpen.value = true;
 }
 
-function statusColor(s?: string): string {
-  switch (s) {
-    case 'pending': return 'warning';
-    case 'approved': return 'positive';
-    case 'rejected': return 'negative';
-    case 'applied': return 'info';
-    default: return 'grey';
-  }
+function handleTriggerCurator() {
+  curatorSkillId.value = skillId.value || '';
+  curatorDialogOpen.value = true;
 }
 
-function statusLabel(s?: string): string {
-  switch (s) {
-    case 'pending': return '待审批';
-    case 'approved': return '已批准';
-    case 'rejected': return '已拒绝';
-    case 'applied': return '已应用';
-    default: return s || '—';
-  }
-}
-
-function typeColor(t?: string): string {
-  switch (t) {
-    case 'optimize': return 'blue';
-    case 'evolve': return 'purple';
-    case 'deprecate': return 'orange';
-    case 'create': return 'teal';
-    default: return 'grey';
+async function confirmTriggerCurator() {
+  const id = curatorSkillId.value.trim();
+  if (!id) return;
+  triggeringCurator.value = true;
+  try {
+    await triggerCuratorFlow(id);
+    curatorDialogOpen.value = false;
+    curatorSkillId.value = '';
+    void loadRows();
+  } catch {
+    // error handled in composable
+  } finally {
+    triggeringCurator.value = false;
   }
 }
 

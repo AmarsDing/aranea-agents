@@ -13,7 +13,6 @@ import (
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -108,7 +107,7 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return kerrors.InternalServer("KNOWLEDGE", "knowledge schema: "+err.Error())
+			return fmt.Errorf("knowledge schema: %w", err)
 		}
 	}
 	return nil
@@ -291,11 +290,11 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 	err := r.data.Postgres().QueryRowContext(ctx,
 		"SELECT dim FROM knowledge_collections WHERE id = $1", chunks[0].CollectionID).Scan(&expectedDim)
 	if err != nil {
-		return kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("failed to query collection dimension: %s", err.Error()))
+		return fmt.Errorf("failed to query collection dimension: %w", err)
 	}
 	for _, ch := range chunks {
 		if expectedDim > 0 && len(ch.Embedding) != expectedDim {
-			return kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding)))
+			return fmt.Errorf("embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding))
 		}
 	}
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -328,7 +327,7 @@ func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string
 
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "embedding is empty")
+		return nil, fmt.Errorf("embedding is empty")
 	}
 	vec := pgvector.NewVector(queryEmbedding)
 	scoreFilter := ""

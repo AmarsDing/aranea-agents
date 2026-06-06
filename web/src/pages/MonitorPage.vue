@@ -7,17 +7,6 @@
         subtitle="审计、实时事件、模型用量总览、真实模型调用 Trace 与日志预留入口统一查看。"
       >
         <template #actions>
-          <q-select
-            v-model="filters.range"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="时间范围"
-            :options="rangeOptions"
-            class="monitor-range"
-            @update:model-value="loadTraces"
-          />
           <q-btn
             rounded
             no-caps
@@ -54,14 +43,21 @@
       >
         <q-tab-panel name="usage">
           <SelfCheckStatusPanel
-            :loading="monitorStore.selfCheckLoading"
-            :triggering="monitorStore.selfCheckTriggering"
-            :latest-report="monitorStore.selfCheckReports[0] ?? null"
-            @refresh="monitorStore.loadSelfCheckReports()"
-            @trigger="monitorStore.triggerSelfCheckAction()"
+            :loading="selfCheckLoading"
+            :triggering="selfCheckTriggering"
+            :latest-report="selfCheckLatestReport"
+            @refresh="loadSelfCheckReports"
+            @trigger="triggerSelfCheckAction"
           />
-          <MonitorRunnerMetrics />
-          <MonitorUsageDashboardLink :range="filters.range" />
+          <MonitorRunnerMetrics
+            :metrics="runnerMetrics"
+            :loading="runnerLoading"
+            :window-minutes="runnerWindowMinutes"
+            @update:window-minutes="runnerWindowMinutes = $event"
+            @refresh="reloadRunnerMetrics"
+            @drill="openRunsTab({ tab: 'traces' })"
+          />
+          <MonitorUsageDashboardLink :range="''" />
         </q-tab-panel>
         <q-tab-panel name="alerts">
           <MonitorAlertRules
@@ -74,22 +70,52 @@
           />
         </q-tab-panel>
         <q-tab-panel name="audit">
-          <AuditTable :rows="auditRows" :loading="loadingAudit" @reload="loadAudit" @notify="onChildNotify" />
+          <AuditTable :rows="auditRows" :loading="loadingAudit" @reload="loadAudit" @notify="notify" />
         </q-tab-panel>
         <q-tab-panel name="events">
-          <RealtimeEvents :persisted-events="events" :traces="traces" @clear="confirmClearEvents" />
+          <RealtimeEvents
+            :visible-events="visibleEvents"
+            :stream-text="streamText"
+            :stream-color="streamColor"
+            :paused="paused"
+            :category="category"
+            :category-options="categoryOptions"
+            :empty-hint="emptyHint"
+            :selected="selected"
+            :detail-open="detailOpen"
+            :selected-j-s-o-n="selectedJSON"
+            :traces="traces"
+            @clear="confirmClearEvents"
+            @toggle-stream="toggleStream"
+            @open-detail="openDetail"
+            @open-linked-run="openLinkedRun"
+            @open-chat-session="openChatSession"
+            @copy-j-s-o-n="copyJSON"
+            @update:category="category = $event"
+          />
         </q-tab-panel>
         <q-tab-panel name="traces">
           <TraceList
             :rows="traces"
             :loading="loadingTraces"
             :highlight-usage-event-id="highlightUsageEventId"
+            :flow-lines="flowLines"
+            :active-correlation="activeCorrelation"
+            :detail="traceDetail"
+            :detail-open="traceDetailOpen"
             @reload="loadTraces"
-            @notify="onChildNotify"
+            @notify="notify"
+            @open-trace="openTraceDetail"
+            @close-detail="stopFlowStream"
+            @open-chat-session="openChatSession"
           />
         </q-tab-panel>
         <q-tab-panel name="logs" class="monitor-logs-panel">
-          <LogStreamPanel @clear-flow="confirmClearFlow" />
+          <LogStreamPanel
+            :sub-tab="subTab"
+            @update:sub-tab="subTab = $event"
+            @clear-flow="confirmClearFlow"
+          />
         </q-tab-panel>
       </q-tab-panels>
     </div>
@@ -110,11 +136,6 @@ import MonitorAlertRules from '../components/monitor/MonitorAlertRules.vue';
 import SelfCheckStatusPanel from '../components/monitor/SelfCheckStatusPanel.vue';
 import { useMonitorAlertRules } from '../features/monitor/useMonitorAlertRules';
 import { useMonitorPage } from '../features/monitor/useMonitorPage';
-import { useQuasar } from 'quasar';
-import { useMonitorStore } from '../stores/monitor';
-
-const $q = useQuasar();
-const monitorStore = useMonitorStore();
 
 const {
   tab,
@@ -131,6 +152,47 @@ const {
   loadAll,
   loadAudit,
   loadTraces,
+  // Runner metrics
+  runnerMetrics,
+  runnerLoading,
+  runnerWindowMinutes,
+  reloadRunnerMetrics,
+  openRunsTab,
+  openChatSession,
+  // Realtime events
+  visibleEvents,
+  streamText,
+  streamColor,
+  paused,
+  category,
+  categoryOptions,
+  emptyHint,
+  selected,
+  detailOpen,
+  selectedJSON,
+  toggleStream,
+  openDetail,
+  openLinkedRun,
+  copyJSON,
+  // Trace flow
+  flowLines,
+  activeCorrelation,
+  openTraceDetail,
+  stopFlowStream,
+  traceDetail,
+  traceDetailOpen,
+  // Log stream
+  subTab,
+  // SelfCheck
+  selfCheckLoading,
+  selfCheckTriggering,
+  selfCheckLatestReport,
+  loadSelfCheckReports,
+  triggerSelfCheckAction,
+  // Notify & confirm
+  notify,
+  confirmClearEvents,
+  confirmClearFlow,
 } = useMonitorPage();
 
 const {
@@ -141,30 +203,4 @@ const {
   load: loadAlertRules,
   save: saveAlertRules,
 } = useMonitorAlertRules();
-
-function onChildNotify(payload: { message: string; type: 'positive' | 'negative' | 'warning' }) {
-  $q.notify({ message: payload.message, type: payload.type, position: 'top' });
-}
-
-function confirmClearEvents() {
-  $q.dialog({
-    title: '清除事件',
-    message: '确定清除所有实时事件？此操作不可撤销。',
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    monitorStore.clearRuntimeEvents();
-  });
-}
-
-function confirmClearFlow() {
-  $q.dialog({
-    title: '清除日志',
-    message: '确定清除所有流程日志？此操作不可撤销。',
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    monitorStore.clearFlowLogs();
-  });
-}
 </script>

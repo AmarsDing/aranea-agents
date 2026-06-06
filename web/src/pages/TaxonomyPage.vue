@@ -69,19 +69,14 @@
     </section>
 
     <section class="taxonomy-page__content" aria-label="分类列表">
-      <q-card v-if="loading" flat bordered class="app-entity-glass-panel taxonomy-tree-shell q-mt-lg">
+      <q-card v-if="loading" flat bordered class="app-entity-glass-panel taxonomy-tree-shell">
         <q-card-section>
           <q-skeleton type="text" width="32%" />
           <q-skeleton class="q-mt-md" height="240px" />
         </q-card-section>
       </q-card>
 
-      <q-card
-        v-else-if="filteredTree.length === 0"
-        flat
-        bordered
-        class="app-entity-glass-panel taxonomy-empty q-mt-lg"
-      >
+      <q-card v-else-if="filteredTree.length === 0" flat bordered class="app-entity-glass-panel taxonomy-empty">
         <q-card-section class="column items-center text-center">
           <div class="taxonomy-empty__visual"><q-icon name="account_tree" size="44px" color="primary" /></div>
           <div class="text-h6 q-mt-md">暂无匹配分类</div>
@@ -98,7 +93,7 @@
         </q-card-section>
       </q-card>
 
-      <div v-else class="taxonomy-grid q-mt-lg">
+      <template v-else>
         <taxonomy-tree
           v-if="viewMode === 'tree'"
           :tree="filteredTree"
@@ -124,7 +119,7 @@
             @toggle-enabled="toggleNodeEnabled"
           />
         </div>
-      </div>
+      </template>
     </section>
 
     <TaxonomyNodeDialog

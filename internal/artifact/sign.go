@@ -18,9 +18,6 @@ import (
 
 const defaultDownloadTTL = 15 * time.Minute
 
-// devSignKeyOnce makes the "insecure dev key" warning fire exactly once per process.
-var devSignKeyOnce sync.Once
-
 // ErrSignKeyMissing is returned when no artifact signing key is configured in a
 // production environment. OUT-05 / ART-02: prior behavior fell back to a
 // hardcoded "aranea-artifact-dev-key" which makes every artifact URL forgeable.
@@ -43,12 +40,14 @@ func isDevEnv() bool {
 	return false
 }
 
-// SignKey returns the HMAC secret used for artifact download tokens.
-// Returns ErrSignKeyMissing when no env key is configured AND the process is
-// NOT in an explicit dev/local/test environment, so callers can fail closed
-// instead of issuing forgeable tokens. Staging / pre-prod are also fail-closed.
+// Signer manages HMAC signing for artifact download tokens.
+// The signing key is resolved once from environment variables and cached for
+// the lifetime of the process. Key rotation requires a process restart.
 type Signer struct {
-	lg loggateway.Logger
+	lg       loggateway.Logger
+	once     sync.Once
+	cached   []byte
+	cacheErr error
 }
 
 func NewSigner(lg loggateway.Logger) *Signer {
@@ -56,21 +55,25 @@ func NewSigner(lg loggateway.Logger) *Signer {
 }
 
 func (s *Signer) SignKey() ([]byte, error) {
-	if v := strings.TrimSpace(os.Getenv("KRATOS_ARTIFACT_SIGN_KEY")); v != "" {
-		return []byte(v), nil
-	}
-	if v := strings.TrimSpace(os.Getenv("KRATOS_AUTH_SECRET")); v != "" {
-		return []byte(v), nil
-	}
-	if isDevEnv() {
-		devSignKeyOnce.Do(func() {
+	s.once.Do(func() {
+		if v := strings.TrimSpace(os.Getenv("KRATOS_ARTIFACT_SIGN_KEY")); v != "" {
+			s.cached = []byte(v)
+			return
+		}
+		if v := strings.TrimSpace(os.Getenv("KRATOS_AUTH_SECRET")); v != "" {
+			s.cached = []byte(v)
+			return
+		}
+		if isDevEnv() {
 			s.lg.Warn("artifact: no signing key configured (KRATOS_ARTIFACT_SIGN_KEY / KRATOS_AUTH_SECRET); using insecure dev key — set a strong key before going to production",
 				loggateway.StepID("auth.bypass_warn"),
 			)
-		})
-		return []byte("aranea-artifact-dev-key"), nil
-	}
-	return nil, ErrSignKeyMissing
+			s.cached = []byte("aranea-artifact-dev-key")
+			return
+		}
+		s.cacheErr = ErrSignKeyMissing
+	})
+	return s.cached, s.cacheErr
 }
 
 func (s *Signer) DownloadToken(id string, version int, expires time.Time) (string, error) {

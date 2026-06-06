@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
@@ -69,8 +68,8 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.
 		AgentId:      row.AgentID,
 		Provider:     row.Provider,
 		Model:        row.Model,
-		ConfigJson:   sanitizeJSONString(row.ConfigJSON, lg),
-		MetadataJson: sanitizeJSONString(row.MetadataJSON, lg),
+		ConfigJson:   monitor.SanitizeJSONString(row.ConfigJSON, lg),
+		MetadataJson: monitor.SanitizeJSONString(row.MetadataJSON, lg),
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 		DeletedAt:    row.DeletedAt,
@@ -82,6 +81,15 @@ func notFoundMonitor(err error) error {
 		return kerrors.NotFound("MONITOR_NOT_FOUND", err.Error())
 	}
 	return err
+}
+
+// wrapInternalError preserves the error chain: if err is already a *kerrors.Error
+// it is returned directly; otherwise it is wrapped as a 500 INTERNAL error.
+func wrapInternalError(err error) error {
+	if ke := kerrors.FromError(err); ke != nil {
+		return ke
+	}
+	return kerrors.New(500, "INTERNAL", err.Error())
 }
 
 func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogsRequest) (*v1.ListAuditLogsResponse, error) {
@@ -153,11 +161,11 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 	if err != nil {
 		return nil, notFoundMonitor(err)
 	}
-	cfg := parseJSONMap(row.ConfigJSON, s.lg)
-	spans := traceSpansRaw(cfg)
+	cfg := monitor.ParseJSONMap(row.ConfigJSON, s.lg)
+	spans := monitor.TraceSpansRaw(cfg)
 	spansJSON, _ := json.Marshal(spans)
-	cfgSanitized := sanitizeJSONString(row.ConfigJSON, s.lg)
-	metaSanitized := sanitizeJSONString(row.MetadataJSON, s.lg)
+	cfgSanitized := monitor.SanitizeJSONString(row.ConfigJSON, s.lg)
+	metaSanitized := monitor.SanitizeJSONString(row.MetadataJSON, s.lg)
 	tr := bizMonitorRowToProto(row, s.lg)
 	return &v1.MonitorTraceDetail{
 		Trace:        tr,
@@ -201,32 +209,15 @@ func fromProtoAlertRule(r *v1.MonitorAlertRule) biz.MonitorAlertRule {
 }
 
 func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.ListMonitorAlertRulesResponse, error) {
-	rules, err := s.uc.ListAlertRules(ctx)
+	rules, err := s.uc.ListAlertRulesWithDefaults(ctx)
 	if err != nil {
 		return nil, err
-	}
-	if len(rules) == 0 {
-		defaults := defaultAlertRules()
-		if err := s.uc.ReplaceAlertRules(ctx, defaults); err != nil {
-			s.lg.Warn("ListMonitorAlertRules: ReplaceAlertRules failed",
-				loggateway.StepID("monitor.alert_rules_replace_fail"),
-				loggateway.Err(err),
-			)
-		}
-		rules = defaults
 	}
 	resp := &v1.ListMonitorAlertRulesResponse{Items: make([]*v1.MonitorAlertRule, 0, len(rules))}
 	for i := range rules {
 		resp.Items = append(resp.Items, toProtoAlertRule(rules[i]))
 	}
 	return resp, nil
-}
-
-func defaultAlertRules() []biz.MonitorAlertRule {
-	return []biz.MonitorAlertRule{{
-		ID: "default-runner-errors", Name: "Runner error rate",
-		MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
-	}}
 }
 
 func (s *MonitorService) PutMonitorAlertRules(ctx context.Context, req *v1.PutMonitorAlertRulesRequest) (*v1.PutMonitorAlertRulesResponse, error) {
@@ -293,102 +284,6 @@ func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsReque
 	}, nil
 }
 
-func parseFlowLogTimeBounds(sinceRaw, untilRaw string) (since, until time.Time, err error) {
-	if s := strings.TrimSpace(sinceRaw); s != "" {
-		since, err = time.Parse(time.RFC3339Nano, s)
-		if err != nil {
-			if since, err = time.Parse(time.RFC3339, s); err != nil {
-				return time.Time{}, time.Time{}, kerrors.BadRequest("MONITOR", "invalid since: "+err.Error())
-			}
-		}
-		since = since.UTC()
-	}
-	if u := strings.TrimSpace(untilRaw); u != "" {
-		until, err = time.Parse(time.RFC3339Nano, u)
-		if err != nil {
-			if until, err = time.Parse(time.RFC3339, u); err != nil {
-				return time.Time{}, time.Time{}, kerrors.BadRequest("MONITOR", "invalid until: "+err.Error())
-			}
-		}
-		until = until.UTC()
-	}
-	if !since.IsZero() && !until.IsZero() && until.Before(since) {
-		return time.Time{}, time.Time{}, kerrors.BadRequest("MONITOR", "until must be after since")
-	}
-	return since, until, nil
-}
-
-func sanitizeJSONString(raw string, lg loggateway.Logger) string {
-	parsed := parseJSONMap(raw, lg)
-	if len(parsed) == 0 {
-		return raw
-	}
-	sanitized := sanitizeJSONValue(parsed)
-	out, err := json.Marshal(sanitized)
-	if err != nil {
-		return raw
-	}
-	return string(out)
-}
-
-func parseJSONMap(raw string, lg loggateway.Logger) map[string]any {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return map[string]any{}
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		lg.Warn("json map unmarshal failed", loggateway.StepID("monitor.parse_json_map"), loggateway.Err(err))
-		return map[string]any{}
-	}
-	return sanitizeJSONValue(parsed).(map[string]any)
-}
-
-func sanitizeJSONValue(value any) any {
-	switch v := value.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for key, child := range v {
-			if isSensitiveKey(key) {
-				out[key] = "******"
-				continue
-			}
-			out[key] = sanitizeJSONValue(child)
-		}
-		return out
-	case []any:
-		out := make([]any, 0, len(v))
-		for _, child := range v {
-			out = append(out, sanitizeJSONValue(child))
-		}
-		return out
-	default:
-		return value
-	}
-}
-
-func isSensitiveKey(key string) bool {
-	key = strings.ToLower(strings.TrimSpace(key))
-	for _, token := range []string{"api_key", "apikey", "token", "secret", "password", "authorization", "cookie"} {
-		if strings.Contains(key, token) {
-			return true
-		}
-	}
-	return false
-}
-
-func traceSpansRaw(config map[string]any) []any {
-	if spans, ok := config["spans"].([]any); ok {
-		return spans
-	}
-	if trace, ok := config["trace"].(map[string]any); ok {
-		if spans, ok := trace["spans"].([]any); ok {
-			return spans
-		}
-	}
-	return []any{}
-}
-
 func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, in *v1.GetMonitorLogsRequest) (*v1.GetCodeExecutorCapabilitiesResponse, error) {
 	if s == nil || s.codeExecSvc == nil {
 		return &v1.GetCodeExecutorCapabilitiesResponse{}, nil
@@ -405,7 +300,7 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 		in.GetTriggerType(), in.GetContextMinutes(),
 	)
 	if err != nil {
-		return nil, kerrors.New(500, "INTERNAL", err.Error())
+		return nil, wrapInternalError(err)
 	}
 	manifestJSON, _ := json.Marshal(bundle.Manifest)
 	if len(bundle.RootCauses) > 0 {
@@ -427,88 +322,59 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 }
 
 func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAndHealRequest) (*v1.DiagnoseAndHealResponse, error) {
-	// Prefer SelfHealObserver (new path); fall back to SelfHealUsecase (deprecated) if observer unavailable
-	if s.selfHealObserver != nil {
-		rec, err := s.selfHealObserver.DiagnoseAndObserve(ctx,
-			in.GetTraceId(), in.GetSessionId(), in.GetStepId(),
-			in.GetTriggerType(), in.GetContextMinutes(),
-		)
-		if err != nil {
-			return nil, kerrors.New(500, "INTERNAL", err.Error())
-		}
-		fixParamsJSON, _ := json.Marshal(rec.FixAction.Params)
-		return &v1.DiagnoseAndHealResponse{
-			HealId:              rec.ID,
-			RuleId:              rec.RuleID,
-			Status:              rec.Status,
-			Reason:              rec.Reason,
-			Confidence:          rec.Confidence,
-			FixActionType:       rec.FixAction.Type,
-			FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
-			FixActionParamsJson: string(fixParamsJSON),
-			RuntimeAutoHealed:   rec.RuntimeAutoHealed,
-			RuntimeHealAttempts: int32(rec.RuntimeHealAttempts),
-			CreatedAt:           rec.CreatedAt,
-		}, nil
-	}
-
-	// Deprecated fallback: SelfHealUsecase
-	if s.selfHeal == nil {
-		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal service not available")
-	}
-	rec, err := s.selfHeal.DiagnoseAndHeal(ctx,
+	result, err := s.uc.DiagnoseAndHeal(ctx, s.selfHealObserver, s.selfHeal,
 		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
 		in.GetTriggerType(), in.GetContextMinutes(),
 	)
 	if err != nil {
-		return nil, kerrors.New(500, "INTERNAL", err.Error())
+		return nil, err
 	}
-	fixParamsJSON, _ := json.Marshal(rec.FixAction.Params)
 
 	resp := &v1.DiagnoseAndHealResponse{
-		HealId:              rec.ID,
-		RuleId:              rec.RuleID,
-		Status:              rec.Status,
-		Reason:              rec.Reason,
-		Confidence:          rec.Confidence,
-		FixActionType:       rec.FixAction.Type,
-		FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
-		FixActionParamsJson: string(fixParamsJSON),
-		RuntimeAutoHealed:   rec.RuntimeAutoHealed,
-		RuntimeHealAttempts: int32(rec.RuntimeHealAttempts),
-		CreatedAt:           rec.CreatedAt,
+		HealId:              result.HealID,
+		RuleId:              result.RuleID,
+		Status:              result.Status,
+		Reason:              result.Reason,
+		Confidence:          result.Confidence,
+		FixActionType:       result.FixAction.Type,
+		FixActionMaxAttempts: int32(result.FixAction.MaxAttempts),
+		FixActionParamsJson: monitor.DiagnoseAndHealFixParamsJSON(result),
+		RuntimeAutoHealed:   result.RuntimeAutoHealed,
+		RuntimeHealAttempts: int32(result.RuntimeHealAttempts),
+		CreatedAt:           result.CreatedAt,
 	}
 
-	// Populate RootCauseCondition based on heal result.
-	switch rec.Status {
-	case string(monitor.HealStatusApplied):
-		resp.RootCauseCondition = &v1.RootCauseCondition{
-			Condition: &v1.RootCauseCondition_AutoHealed{
-				AutoHealed: &v1.AutoHealedCondition{
-					AutoHealed:   true,
-					HealStrategy: rec.FixAction.Type,
+	if rc := result.RootCauseCondition; rc != nil {
+		switch {
+		case rc.AutoHealed != nil:
+			resp.RootCauseCondition = &v1.RootCauseCondition{
+				Condition: &v1.RootCauseCondition_AutoHealed{
+					AutoHealed: &v1.AutoHealedCondition{
+						AutoHealed:   rc.AutoHealed.AutoHealed,
+						HealStrategy: rc.AutoHealed.HealStrategy,
+					},
 				},
-			},
-		}
-	case string(monitor.HealStatusSkippedLowConfidence), string(monitor.HealStatusSkippedCooldown), string(monitor.HealStatusSkippedNoAction):
-		resp.RootCauseCondition = &v1.RootCauseCondition{
-			Condition: &v1.RootCauseCondition_HealAttempts{
-				HealAttempts: &v1.HealAttemptsCondition{
-					Attempts:     0,
-					MaxAttempts:  int32(rec.FixAction.MaxAttempts),
-					LastStrategy: rec.FixAction.Type,
+			}
+		case rc.HealAttempts != nil:
+			resp.RootCauseCondition = &v1.RootCauseCondition{
+				Condition: &v1.RootCauseCondition_HealAttempts{
+					HealAttempts: &v1.HealAttemptsCondition{
+						Attempts:     int32(rc.HealAttempts.Attempts),
+						MaxAttempts:  int32(rc.HealAttempts.MaxAttempts),
+						LastStrategy: rc.HealAttempts.LastStrategy,
+					},
 				},
-			},
-		}
-	case string(monitor.HealStatusFailed):
-		resp.RootCauseCondition = &v1.RootCauseCondition{
-			Condition: &v1.RootCauseCondition_SelfCheckStatus{
-				SelfCheckStatus: &v1.SelfCheckStatusCondition{
-					CheckName: rec.RuleID,
-					Status:    "failed",
-					Message:   rec.Reason,
+			}
+		case rc.SelfCheck != nil:
+			resp.RootCauseCondition = &v1.RootCauseCondition{
+				Condition: &v1.RootCauseCondition_SelfCheckStatus{
+					SelfCheckStatus: &v1.SelfCheckStatusCondition{
+						CheckName: rc.SelfCheck.CheckName,
+						Status:    rc.SelfCheck.Status,
+						Message:   rc.SelfCheck.Message,
+					},
 				},
-			},
+			}
 		}
 	}
 
@@ -534,7 +400,7 @@ func (s *MonitorService) ListSelfCheckReports(ctx context.Context, in *v1.ListSe
 	}
 	reports, total, err := s.selfCheckRepo.ListSelfCheckReports(ctx, int(in.GetLimit()), int(in.GetOffset()))
 	if err != nil {
-		return nil, kerrors.New(500, "INTERNAL", err.Error())
+		return nil, wrapInternalError(err)
 	}
 	items := make([]*v1.SelfCheckReportEntry, 0, len(reports))
 	for _, r := range reports {
@@ -587,7 +453,7 @@ func (s *MonitorService) GetHealStats(ctx context.Context, _ *v1.HealStatsReques
 	}
 	stats, err := s.selfHealObserver.GetHealStats(ctx)
 	if err != nil {
-		return nil, kerrors.New(500, "INTERNAL", err.Error())
+		return nil, wrapInternalError(err)
 	}
 	resp := &v1.HealStatsResponse{
 		TotalHeals:  int32(stats.TotalHeals),
@@ -614,7 +480,7 @@ func (s *MonitorService) ListHealRecords(ctx context.Context, in *v1.ListHealRec
 		SessionID: in.GetSessionId(),
 	})
 	if err != nil {
-		return nil, kerrors.New(500, "INTERNAL", err.Error())
+		return nil, wrapInternalError(err)
 	}
 	items := make([]*v1.HealRecordEntry, 0, len(result.Items))
 	for _, r := range result.Items {

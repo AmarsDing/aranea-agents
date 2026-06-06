@@ -1,5 +1,5 @@
 import type { Envelope } from '../../realtime/envelope';
-import type { MonitorLogLine, MonitorTraceEvent } from './types';
+import type { MonitorLogLine, MonitorTrace } from './types';
 import { parseJSON } from './utils';
 
 export type FlowSeverity = 'ok' | 'info' | 'warn' | 'error' | 'critical';
@@ -50,8 +50,8 @@ export function monitorLogLineFromFlowEnvelope(env: Envelope): MonitorLogLine | 
   };
 }
 
-/** Correlation extracted from a usage / trace row. */
-export function traceCorrelationFromUsageRow(row: MonitorTraceEvent): {
+/** Correlation extracted from a MonitorTrace row. */
+export function traceCorrelationFromTraceRow(row: MonitorTrace): {
   traceId: string;
   runId: string;
   sessionId: string;
@@ -59,10 +59,13 @@ export function traceCorrelationFromUsageRow(row: MonitorTraceEvent): {
   const meta = parseJSON(row.metadata_json || '');
   return {
     traceId: str(meta.trace_id),
-    runId: str(row.message_id || meta.run_id),
-    sessionId: str(row.session_id),
+    runId: str(meta.run_id),
+    sessionId: str(meta.session_id),
   };
 }
+
+/** @deprecated Use traceCorrelationFromTraceRow instead. */
+export const traceCorrelationFromUsageRow = traceCorrelationFromTraceRow;
 
 /** Whether a live flow log line belongs to the open trace detail. */
 export function flowLogMatchesTrace(

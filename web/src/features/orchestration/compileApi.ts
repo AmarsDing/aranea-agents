@@ -88,7 +88,7 @@ export function compiledGraphToGraphDef(
     .map((e) => ({
       from: e.from ?? '',
       to: e.to ?? '',
-      kind: e.edgeKind?.trim() || undefined,
+      kind: e.edgeKind?.trim() || '',
     }))
     .filter((e) => e.from && e.to && e.from !== e.to);
   const conditionalEdges: ConditionalEdgeDef[] = (compiled.conditional_edges ?? []).map((ce) => ({

@@ -10,9 +10,7 @@ function makeDef(overrides: Partial<TeamDefinition> = {}): TeamDefinition {
     max_concurrency: 2,
     timeout_seconds: 600,
     loop_max_iterations: 0,
-    members: [
-      { agent_id: 'a1', role: 'worker', name: 'W1', enabled: true, sort_order: 10 },
-    ],
+    members: [{ agent_id: 'a1', role: 'worker', name: 'W1', enabled: true, sort_order: 10 }],
     ...overrides,
   };
 }

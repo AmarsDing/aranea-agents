@@ -40,6 +40,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
 import type { A2AAgentCard, DiscoverRemoteInput, RegisterRemoteAgentInput } from '../../features/a2a/types';
+import { buildA2AAuthJSON, A2A_AUTH_TYPE_OPTIONS } from '../../features/a2a/authUtils';
 
 defineProps<{
   loading: boolean;
@@ -62,29 +63,7 @@ const form = reactive<RegisterRemoteAgentInput>({
 });
 const mtls = reactive({ cert_file: '', key_file: '', ca_file: '' });
 
-const authTypeOptions = [
-  { label: '无', value: 'none' },
-  { label: 'API Key', value: 'api_key' },
-  { label: 'Bearer', value: 'bearer' },
-  { label: 'mTLS', value: 'mtls' },
-];
-
-function buildAuthJSON() {
-  if (form.auth_type === 'mtls') {
-    return JSON.stringify({
-      cert_file: mtls.cert_file.trim(),
-      key_file: mtls.key_file.trim(),
-      ca_file: mtls.ca_file.trim(),
-    });
-  }
-  if (form.auth_type === 'api_key') {
-    return JSON.stringify({ api_key: authSecret.value.trim() });
-  }
-  if (form.auth_type === 'bearer') {
-    return JSON.stringify({ token: authSecret.value.trim() });
-  }
-  return '';
-}
+const authTypeOptions = A2A_AUTH_TYPE_OPTIONS;
 
 function payload(): RegisterRemoteAgentInput {
   return {
@@ -92,7 +71,7 @@ function payload(): RegisterRemoteAgentInput {
     remote_url: form.remote_url.trim(),
     display_name: form.display_name?.trim(),
     auth_type: form.auth_type,
-    auth_config_json: buildAuthJSON(),
+    auth_config_json: buildA2AAuthJSON(form.auth_type, authSecret.value, mtls),
     enabled: true,
   };
 }
@@ -101,7 +80,7 @@ function onDiscover() {
   emit('discover', {
     remote_url: form.remote_url.trim(),
     auth_type: form.auth_type,
-    auth_config_json: buildAuthJSON(),
+    auth_config_json: buildA2AAuthJSON(form.auth_type, authSecret.value, mtls),
   });
 }
 

@@ -28,9 +28,7 @@ describe('filterIndustries', () => {
   ];
 
   it('returns all when filters are empty/default', () => {
-    expect(
-      filterIndustries(industries, { query: '', status: 'all', source: 'all' }),
-    ).toHaveLength(3);
+    expect(filterIndustries(industries, { query: '', status: 'all', source: 'all' })).toHaveLength(3);
   });
 
   it('matches by name (case-insensitive)', () => {
@@ -127,9 +125,7 @@ describe('summarizeIndustries', () => {
   });
 
   it('falls back to posCount when agentCount is missing', () => {
-    const s = summarizeIndustries([
-      makeIndustry({ deptCount: 1, posCount: 10, agentCount: undefined, installed: 0 }),
-    ]);
+    const s = summarizeIndustries([makeIndustry({ deptCount: 1, posCount: 10, agentCount: undefined, installed: 0 })]);
     expect(s.positions).toBe(10);
     expect(s.agents).toBe(10); // fallback
   });

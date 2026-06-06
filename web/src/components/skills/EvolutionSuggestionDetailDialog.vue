@@ -10,18 +10,29 @@
         <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
           <template v-if="suggestion">
             <div class="row q-col-gutter-sm text-body2">
-              <div class="col-6"><span class="text-weight-medium text-grey-7">Skill ID：</span>{{ suggestion.skillId || '—' }}</div>
-              <div class="col-6"><span class="text-weight-medium text-grey-7">类型：</span>
-                <q-chip dense square :color="typeColor(suggestion.type)" text-color="white">
-                  {{ suggestion.type || '—' }}
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">Skill ID：</span>{{ suggestion.skillId || '—' }}
+              </div>
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">类型：</span>
+                <q-chip dense square :color="evoSuggestionTypeColor(suggestion.type)" text-color="white">
+                  {{ evoSuggestionTypeLabel(suggestion.type) }}
                 </q-chip>
               </div>
-              <div class="col-6"><span class="text-weight-medium text-grey-7">状态：</span>
-                <q-chip dense square :color="statusColor(suggestion.status)" text-color="white">
-                  {{ statusLabel(suggestion.status) }}
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">状态：</span>
+                <q-chip dense square :color="evoSuggestionStatusColor(suggestion.status)" text-color="white">
+                  {{ evoSuggestionStatusLabel(suggestion.status) }}
                 </q-chip>
               </div>
-              <div class="col-6"><span class="text-weight-medium text-grey-7">沙箱验证：</span>
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">生命周期：</span>
+                <q-chip dense square :color="evoLifecycleStatusColor(suggestion.lifecycleStatus)" text-color="white">
+                  {{ evoLifecycleStatusLabel(suggestion.lifecycleStatus) }}
+                </q-chip>
+              </div>
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">沙箱验证：</span>
                 <template v-if="suggestion.sandboxPassed === true">
                   <q-icon name="check_circle" color="positive" size="sm" class="q-mr-xs" />通过
                 </template>
@@ -30,10 +41,17 @@
                 </template>
                 <template v-else>—</template>
               </div>
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">父版本：</span>{{ suggestion.parentVersionId || '—' }}
+              </div>
             </div>
 
             <div v-if="suggestion.triggerReason" class="text-body2">
               <span class="text-weight-medium text-grey-7">触发原因：</span>{{ suggestion.triggerReason }}
+            </div>
+
+            <div v-if="suggestion.evolutionReason" class="text-body2">
+              <span class="text-weight-medium text-grey-7">进化原因：</span>{{ suggestion.evolutionReason }}
             </div>
 
             <div v-if="suggestion.sourceReportIds && suggestion.sourceReportIds.length" class="text-body2">
@@ -93,46 +111,24 @@
 </template>
 
 <script setup lang="ts">
-import type { SkillEvolutionSuggestionMsg } from '../../services/kratos/skill_evolution_suggestion/v1/index';
+import type { EvolutionSuggestionView } from '../../features/skills/types';
+import {
+  evoSuggestionTypeColor,
+  evoSuggestionTypeLabel,
+  evoSuggestionStatusColor,
+  evoSuggestionStatusLabel,
+  evoLifecycleStatusColor,
+  evoLifecycleStatusLabel,
+} from './evolutionSuggestionTableUi';
 
 defineProps<{
   open: boolean;
-  suggestion: SkillEvolutionSuggestionMsg | null;
+  suggestion: EvolutionSuggestionView | null;
 }>();
 
 defineEmits<{
   'update:open': [value: boolean];
 }>();
-
-function statusColor(s?: string): string {
-  switch (s) {
-    case 'pending': return 'warning';
-    case 'approved': return 'positive';
-    case 'rejected': return 'negative';
-    case 'applied': return 'info';
-    default: return 'grey';
-  }
-}
-
-function statusLabel(s?: string): string {
-  switch (s) {
-    case 'pending': return '待审批';
-    case 'approved': return '已批准';
-    case 'rejected': return '已拒绝';
-    case 'applied': return '已应用';
-    default: return s || '—';
-  }
-}
-
-function typeColor(t?: string): string {
-  switch (t) {
-    case 'optimize': return 'blue';
-    case 'evolve': return 'purple';
-    case 'deprecate': return 'orange';
-    case 'create': return 'teal';
-    default: return 'grey';
-  }
-}
 
 function hasKeys(obj: Record<string, unknown> | undefined): boolean {
   return !!obj && Object.keys(obj).length > 0;
@@ -149,12 +145,12 @@ function formatJson(obj: Record<string, unknown>): string {
 
 <style scoped lang="sass">
 .evolution-detail-section
-  border: 1px solid rgba(0,0,0,0.08)
+  border: 1px solid var(--glass-border, rgba(0,0,0,0.08))
   border-radius: 8px
   margin-bottom: 8px
 
 .evolution-detail-pre
-  background: rgba(0,0,0,0.03)
+  background: var(--glass-elevated, rgba(0,0,0,0.03))
   border-radius: 6px
   padding: 12px
   font-size: 13px

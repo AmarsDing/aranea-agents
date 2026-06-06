@@ -36,7 +36,7 @@
     </div>
 
     <q-dialog v-model="previewOpen" transition-show="slide-up" transition-hide="slide-down">
-      <q-card class="app-dialog-card app-dialog-card--sm">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-subtitle1 app-ellipsis col">{{ previewMeta?.name }}</div>
           <q-btn v-close-popup flat round dense icon="close" />
@@ -57,11 +57,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
-import { useArtifactStore } from '../../stores/artifact';
 import { formatBytes } from '../../shared/format';
 import ArtifactPreview from './ArtifactPreview.vue';
 import type { ArtifactMeta } from './types';
+import { useArtifactList } from './useArtifactList';
 
 const props = defineProps<{
   items: ArtifactMeta[];
@@ -74,65 +73,30 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { notify } = useQuasar();
-const artifactStore = useArtifactStore();
+const { mimeIcon, openPreview, downloadItem, deleteItem, previewOpen, previewMeta, previewArtifactId } =
+  useArtifactList();
 
 const deletedIds = ref(new Set<string>());
 const displayItems = computed(() => props.items.filter((item) => !deletedIds.value.has(item.id)));
 
-const previewOpen = ref(false);
-const previewMeta = ref<ArtifactMeta | null>(null);
-const previewArtifactId = ref('');
-
-function mimeIcon(mime: string): string {
-  if (!mime) return 'insert_drive_file';
-  const m = mime.toLowerCase();
-  if (m.startsWith('image/')) return 'image';
-  if (m === 'application/pdf') return 'picture_as_pdf';
-  if (
-    m.startsWith('text/') ||
-    m.includes('json') ||
-    m.includes('xml') ||
-    m.includes('javascript') ||
-    m.includes('yaml')
-  )
-    return 'code';
-  if (m.startsWith('video/')) return 'videocam';
-  if (m.startsWith('audio/')) return 'audiotrack';
-  if (m.includes('zip') || m.includes('tar') || m.includes('gzip') || m.includes('compressed')) return 'folder_zip';
-  return 'insert_drive_file';
-}
-
 function onView(item: ArtifactMeta) {
-  previewMeta.value = item;
-  previewArtifactId.value = item.id;
-  previewOpen.value = true;
+  openPreview(item);
+  emit('open', item.id);
 }
 
-async function onDownload(item: ArtifactMeta) {
-  try {
-    const signed = await artifactStore.signDownload(item.id, item.version);
-    window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
-  } catch (e) {
-    notify({
-      type: 'negative',
-      message: e instanceof Error ? e.message : t('chat.sessionArtifacts.download', '下载失败'),
-    });
-  }
+function onDownload(item: ArtifactMeta) {
+  void downloadItem(item);
 }
 
 async function onPreviewDownload(meta: ArtifactMeta) {
-  await onDownload(meta);
+  await downloadItem(meta);
 }
 
 async function onDelete(item: ArtifactMeta) {
-  try {
-    await artifactStore.remove(item.id);
+  const ok = await deleteItem(item);
+  if (ok) {
     deletedIds.value.add(item.id);
     emit('deleted', item.id);
-    notify({ type: 'positive', message: t('chat.attachmentDeleted') });
-  } catch {
-    notify({ type: 'negative', message: t('chat.attachmentDeleteFailed') });
   }
 }
 </script>

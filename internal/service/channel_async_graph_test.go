@@ -125,6 +125,9 @@ func (s channelTestAgentRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, 
 func (s channelTestAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
 	return a, nil
 }
+func (s channelTestAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
+	return 0, nil
+}
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }

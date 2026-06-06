@@ -30,7 +30,7 @@
             label="选择文件"
             outlined
             dense
-            accept=".txt,.md,.json,.csv,.log,.html,.htm,.xml,.yaml,.yml,.toml,.pdf,.doc,.docx,.pptx,.xlsx,.png,.jpg,.jpeg"
+            accept=".txt,.md,.json,.csv,.log,.html,.htm,.xml,.yaml,.yml,.toml,.pdf,.doc,.docx,.pptx,.xlsx"
             hint="文本类型可在下方预览编辑；二进制（PDF/DOCX/…）按原字节上传，依赖后端解析支持"
             @update:model-value="$emit('update:file', $event)"
           />

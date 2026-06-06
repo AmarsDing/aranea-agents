@@ -1,7 +1,7 @@
 // Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="mcp-form-card app-dialog-card app-dialog-card--xl">
+    <q-card class="mcp-form-card app-dialog-card app-dialog-card--xl app-glass-dialog">
       <q-card-section class="row items-start justify-between q-gutter-md">
         <div>
           <div class="text-h6">{{ row ? '编辑 MCP 服务器' : '添加 MCP 服务器' }}</div>

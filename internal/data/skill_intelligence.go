@@ -3,12 +3,14 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/experiencereport"
+	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/pkg/loggateway"
 )
@@ -21,6 +23,7 @@ type SkillIntelligenceRepo struct {
 var (
 	_ biz.SkillIntelligenceRepo           = (*SkillIntelligenceRepo)(nil)
 	_ biz.ExperienceReportReader          = (*SkillIntelligenceRepo)(nil)
+	_ biz.ExperienceReportStatsReader     = (*SkillIntelligenceRepo)(nil)
 	_ biz.ExperienceReportWriter          = (*SkillIntelligenceRepo)(nil)
 	_ biz.SkillHealthAggregator           = (*SkillIntelligenceRepo)(nil)
 	_ biz.SkillInvocationUnanalyzedReader = (*SkillIntelligenceRepo)(nil)
@@ -79,15 +82,113 @@ func (r *SkillIntelligenceRepo) ListByTimeRange(ctx context.Context, from, to ti
 	return mapEntReports(rows), nil
 }
 
+// buildExperienceReportPredicates constructs dynamic Ent predicates from optional
+// skillID and time range filters. Empty skillID = no skill filter; nil time = no time boundary.
+func buildExperienceReportPredicates(skillID string, startTime, endTime *time.Time) []predicate.ExperienceReport {
+	var preds []predicate.ExperienceReport
+	if skillID != "" {
+		preds = append(preds, experiencereport.SkillIDEQ(skillID))
+	}
+	if startTime != nil {
+		preds = append(preds, experiencereport.CreatedAtGTE(startTime.UTC().Format(time.RFC3339)))
+	}
+	if endTime != nil {
+		preds = append(preds, experiencereport.CreatedAtLTE(endTime.UTC().Format(time.RFC3339)))
+	}
+	return preds
+}
+
+// ── ExperienceReportReader (ListFiltered) ─────────────────────────────────────
+
+func (r *SkillIntelligenceRepo) ListFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit, offset int) ([]biz.ExperienceReport, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	preds := buildExperienceReportPredicates(skillID, startTime, endTime)
+
+	count, err := r.data.RW().Read(ctx).ExperienceReport.Query().
+		Where(preds...).
+		Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
+		Where(preds...).
+		Order(ent.Desc(experiencereport.FieldCreatedAt)).
+		Limit(limit).
+		Offset(offset).
+		All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	return mapEntReports(rows), count, nil
+}
+
+// ── ExperienceReportStatsReader ────────────────────────────────────────────────
+
+func (r *SkillIntelligenceRepo) GetFailureTagCountsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time) ([]biz.FailureTagCount, error) {
+	preds := buildExperienceReportPredicates(skillID, startTime, endTime)
+	preds = append(preds, experiencereport.IsSuccessEQ(false))
+
+	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
+		Where(preds...).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tagCountMap := make(map[string]int)
+	for _, row := range rows {
+		for _, tag := range row.FailureTags {
+			tagCountMap[tag]++
+		}
+	}
+
+	result := make([]biz.FailureTagCount, 0, len(tagCountMap))
+	for tag, count := range tagCountMap {
+		result = append(result, biz.FailureTagCount{Tag: tag, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Count > result[j].Count
+	})
+	return result, nil
+}
+
+func (r *SkillIntelligenceRepo) GetRootCauseReportsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit int) ([]biz.ExperienceReport, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	preds := buildExperienceReportPredicates(skillID, startTime, endTime)
+	preds = append(preds, experiencereport.IsSuccessEQ(false))
+	preds = append(preds, experiencereport.Or(
+		experiencereport.RootCauseAnalysisNEQ(""),
+		experiencereport.SuggestedFixNEQ(""),
+	))
+
+	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
+		Where(preds...).
+		Order(ent.Desc(experiencereport.FieldCreatedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return mapEntReports(rows), nil
+}
+
 // ── ExperienceReportWriter ────────────────────────────────────────────────────
 
-func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.ExperienceReport) error {
+// reportToCreateBuilder creates an Ent builder pre-filled with all report fields.
+// Caller must call Save(ctx) on the returned builder.
+func (r *SkillIntelligenceRepo) reportToCreateBuilder(ctx context.Context, report biz.ExperienceReport) (*ent.ExperienceReportCreate, error) {
 	builder := r.data.RW().Write(ctx).ExperienceReport.Create().
 		SetID(report.ID).
 		SetTenantID(report.TenantID).
 		SetSessionID(report.SessionID).
 		SetInvocationID(report.InvocationID).
 		SetSkillID(report.SkillID).
+		SetSkillName(report.SkillName).
 		SetIsSuccess(report.IsSuccess).
 		SetScore(report.Score).
 		SetFlowSummary(report.FlowSummary).
@@ -100,14 +201,23 @@ func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.Experienc
 	}
 	if report.SelectionSnapshot != nil {
 		var snap map[string]any
-		if err := json.Unmarshal(report.SelectionSnapshot, &snap); err == nil {
-			builder.SetSelectionSnapshot(snap)
+		if err := json.Unmarshal(report.SelectionSnapshot, &snap); err != nil {
+			return nil, fmt.Errorf("invalid selection_snapshot JSON for report %s: %w", report.ID, err)
 		}
+		builder.SetSelectionSnapshot(snap)
 	}
 	if report.GeneratedSuggestionID != nil && *report.GeneratedSuggestionID != "" {
 		builder.SetGeneratedSuggestionID(*report.GeneratedSuggestionID)
 	}
-	_, err := builder.Save(ctx)
+	return builder, nil
+}
+
+func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.ExperienceReport) error {
+	builder, err := r.reportToCreateBuilder(ctx, report)
+	if err != nil {
+		return err
+	}
+	_, err = builder.Save(ctx)
 	return err
 }
 
@@ -117,30 +227,9 @@ func (r *SkillIntelligenceRepo) BatchCreate(ctx context.Context, reports []biz.E
 	}
 	builders := make([]*ent.ExperienceReportCreate, 0, len(reports))
 	for _, report := range reports {
-		builder := r.data.RW().Write(ctx).ExperienceReport.Create().
-			SetID(report.ID).
-			SetTenantID(report.TenantID).
-			SetSessionID(report.SessionID).
-			SetInvocationID(report.InvocationID).
-			SetSkillID(report.SkillID).
-			SetIsSuccess(report.IsSuccess).
-			SetScore(report.Score).
-			SetFlowSummary(report.FlowSummary).
-			SetOptimizationAdvice(report.OptimizationAdvice).
-			SetRootCauseAnalysis(report.RootCauseAnalysis).
-			SetSuggestedFix(report.SuggestedFix).
-			SetCreatedAt(report.CreatedAt.UTC().Format(time.RFC3339))
-		if len(report.FailureTags) > 0 {
-			builder.SetFailureTags(report.FailureTags)
-		}
-		if report.SelectionSnapshot != nil {
-			var snap map[string]any
-			if err := json.Unmarshal(report.SelectionSnapshot, &snap); err == nil {
-				builder.SetSelectionSnapshot(snap)
-			}
-		}
-		if report.GeneratedSuggestionID != nil {
-			builder.SetGeneratedSuggestionID(*report.GeneratedSuggestionID)
+		builder, err := r.reportToCreateBuilder(ctx, report)
+		if err != nil {
+			return err
 		}
 		builders = append(builders, builder)
 	}
@@ -261,6 +350,7 @@ func mapEntReport(row *ent.ExperienceReport) biz.ExperienceReport {
 		SessionID:          row.SessionID,
 		InvocationID:       row.InvocationID,
 		SkillID:            row.SkillID,
+		SkillName:          row.SkillName,
 		IsSuccess:          row.IsSuccess,
 		Score:              row.Score,
 		FailureTags:        row.FailureTags,
@@ -327,8 +417,11 @@ func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID s
 		Where(skillinvocation.ActivationIDEQ(activationID)).
 		Limit(1).
 		All(ctx)
-	if err != nil || len(rows) == 0 {
+	if err != nil {
 		return err
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("skill invocation with activation_id %s not found", activationID)
 	}
 	_, err = r.data.RW().Write(ctx).SkillInvocation.UpdateOneID(rows[0].ID).
 		SetAnalyzedAt(time.Now().UTC().Format(time.RFC3339)).

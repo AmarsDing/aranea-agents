@@ -180,15 +180,19 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 	inv.ResultJSON = result
 	inv.ErrorMessage = errMsg
 	inv.DurationMs = durationMs
-	_ = s.uc.FinishInvocation(ctx, inv)
-	_ = s.uc.AppendAudit(ctx, biz.A2AAuditEntry{
+	if err := s.uc.FinishInvocation(ctx, inv); err != nil {
+		s.lg.Warn("finish a2a invocation failed", loggateway.Err(err), loggateway.Str("invoke_id", inv.ID))
+	}
+	if err := s.uc.AppendAudit(ctx, biz.A2AAuditEntry{
 		InvokeID:      inv.ID,
 		CalleeAgentID: calleeID,
 		Capability:    capability,
 		Status:        status,
 		DurationMs:    durationMs,
 		Workspace:     card.Workspace,
-	})
+	}); err != nil {
+		s.lg.Warn("append a2a audit failed", loggateway.Err(err), loggateway.Str("invoke_id", inv.ID))
+	}
 
 	return &v1.A2AInvokeResponse{
 		InvokeId:     inv.ID,
@@ -213,23 +217,8 @@ func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCar
 			OutputSchemaJSON: c.GetOutputSchemaJson(),
 		})
 	}
-	workspace := ""
-	displayName := ""
-	if s.agents != nil {
-		if ag, err := s.agents.GetAgentByID(ctx, req.GetAgentId()); err == nil {
-			displayName = strings.TrimSpace(ag.DisplayName)
-			if ag.Settings != nil {
-				workspace = strings.TrimSpace(ag.Settings.GetIdentity().Workspace)
-			}
-			if workspace == "" {
-				workspace = displayName
-			}
-		}
-	}
 	card, err := s.uc.UpdateAgentCard(ctx, biz.A2AAgentCard{
 		AgentID:      req.GetAgentId(),
-		DisplayName:  displayName,
-		Workspace:    workspace,
 		Enabled:      req.GetEnabled(),
 		Capabilities: caps,
 	})
@@ -418,5 +407,7 @@ func toProtoRemoteAgent(r biz.A2ARemoteAgent) *v1.A2ARemoteAgent {
 		DiscoveredCard: toProtoA2ACard(r.DiscoveredCard),
 		CreatedAt:      r.CreatedAt,
 		UpdatedAt:      r.UpdatedAt,
+		Healthy:        r.LastHealthOK,
+		LastHealthAt:   r.LastHealthAt,
 	}
 }

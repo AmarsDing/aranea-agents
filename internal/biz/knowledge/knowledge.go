@@ -121,6 +121,12 @@ func (u *Usecase) requireRepo() error {
 	return nil
 }
 
+// IsUnavailable reports whether the knowledge backend (Postgres/pgvector) is not configured.
+// When true, knowledge_search/knowledge_reflect tools should not be registered for agents.
+func (u *Usecase) IsUnavailable() bool {
+	return u == nil || u.collections == nil || u.documents == nil || u.chunks == nil
+}
+
 func newKnowledgeID() string {
 	buf := make([]byte, 10)
 	if _, err := rand.Read(buf); err != nil {
@@ -242,7 +248,13 @@ func (u *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error {
 	if len(chunks) == 0 {
 		return nil
 	}
-	return u.chunks.InsertChunks(ctx, chunks)
+	if err := u.chunks.InsertChunks(ctx, chunks); err != nil {
+		if strings.Contains(err.Error(), "dimension mismatch") {
+			return errors.BadRequest("KNOWLEDGE", err.Error())
+		}
+		return errors.InternalServer("KNOWLEDGE", err.Error())
+	}
+	return nil
 }
 
 // Search performs a vector similarity search.
@@ -259,7 +271,14 @@ func (u *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []fl
 	if q.TopK <= 0 {
 		q.TopK = 5
 	}
-	return u.chunks.SearchChunks(ctx, q, queryEmbedding)
+	chunks, err := u.chunks.SearchChunks(ctx, q, queryEmbedding)
+	if err != nil {
+		if strings.Contains(err.Error(), "embedding is empty") {
+			return nil, errors.BadRequest("KNOWLEDGE", err.Error())
+		}
+		return nil, errors.InternalServer("KNOWLEDGE", err.Error())
+	}
+	return chunks, nil
 }
 
 // UpdateDocumentStatus marks a document's indexing state.

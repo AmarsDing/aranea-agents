@@ -61,6 +61,14 @@ type NodeDef struct {
 	InputFromLastResponse bool     `json:"input_from_last_response"`
 	CacheEnabled          bool     `json:"cache_enabled"`
 	CacheTTLSeconds       int      `json:"cache_ttl_seconds"`
+	RequiredRole              string   `json:"required_role"`
+	AssignmentMode            string   `json:"assignment_mode"`
+	AssignmentStrategy        string   `json:"assignment_strategy"`
+	ReviewerAgent             string   `json:"reviewer_agent"`
+	ReviewRules               string   `json:"review_rules"`
+	TimeoutSeconds            int      `json:"timeout_seconds"`
+	HeartbeatIntervalSeconds  int      `json:"heartbeat_interval_seconds"`
+	EnableLeaseExtension      bool     `json:"enable_lease_extension"`
 }
 
 // EdgeDef is a directed edge between two graph nodes.

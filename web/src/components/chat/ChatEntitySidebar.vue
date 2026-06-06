@@ -194,9 +194,7 @@ const agentGroups = computed((): AgentGroup[] => {
   const groups: AgentGroup[] = [];
 
   if (systemAgents.length > 0) {
-    const items = toEntityItems(
-      loadGroupOrder(systemAgents, 'system', defaultId),
-    );
+    const items = toEntityItems(loadGroupOrder(systemAgents, 'system', defaultId));
     groups.push({
       key: 'system',
       label: '系统 Agent',
@@ -207,12 +205,10 @@ const agentGroups = computed((): AgentGroup[] => {
   }
 
   if (customAgents.length > 0) {
-    const items = toEntityItems(
-      loadGroupOrder(customAgents, 'custom'),
-    );
+    const items = toEntityItems(loadGroupOrder(customAgents, 'custom'));
     groups.push({
       key: 'custom',
-      label: '自定义 Agent',
+      label: '系统内置',
       icon: 'person',
       items,
     });

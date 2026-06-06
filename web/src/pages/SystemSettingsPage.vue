@@ -241,27 +241,11 @@
 
                   <template v-else-if="ecosystemEntries.length > 0">
                     <div class="ecosystem-industry-list">
-                      <div
-                        v-for="[industry, info] in ecosystemEntries"
-                        :key="industry"
-                        class="ecosystem-industry-row"
-                      >
+                      <div v-for="[industry, info] in ecosystemEntries" :key="industry" class="ecosystem-industry-row">
                         <div class="ecosystem-industry-row__label">
                           <span class="text-body2 text-weight-medium">{{ industry }}</span>
-                          <q-badge
-                            v-if="info.loaded"
-                            color="positive"
-                            outline
-                            label="已加载"
-                            class="q-ml-sm"
-                          />
-                          <q-badge
-                            v-else
-                            color="grey"
-                            outline
-                            label="未加载"
-                            class="q-ml-sm"
-                          />
+                          <q-badge v-if="info.loaded" color="positive" outline label="已加载" class="q-ml-sm" />
+                          <q-badge v-else color="grey" outline label="未加载" class="q-ml-sm" />
                         </div>
                         <div v-if="info.loaded" class="ecosystem-industry-row__stats text-caption text-grey-7">
                           <span>Agent: {{ info.agents ?? 0 }}</span>
@@ -350,23 +334,24 @@
     </div>
 
     <q-dialog v-model="unloadDialogVisible" persistent>
-      <q-card class="app-dialog-card" style="min-width: 340px">
+      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 340px">
         <q-card-section>
           <div class="text-h6">确认卸载</div>
         </q-card-section>
         <q-card-section>
-          <p>即将卸载行业 <strong>{{ unloadTargetIndustry }}</strong>，将删除以下资源：</p>
+          <p>
+            即将卸载行业 <strong>{{ unloadTargetIndustry }}</strong
+            >，将删除以下资源：
+          </p>
           <ul class="q-pl-md q-mt-sm">
             <li>Agent: {{ unloadTargetInfo?.agents ?? 0 }} 个</li>
             <li>Team: {{ unloadTargetInfo?.teams ?? 0 }} 个</li>
             <li>分类节点: {{ unloadTargetInfo?.taxonomy_nodes ?? 0 }} 个</li>
           </ul>
-          <q-banner dense rounded class="bg-warning text-dark q-mt-md">
-            此操作不可撤销。确定要卸载吗？
-          </q-banner>
+          <q-banner dense rounded class="bg-warning text-dark q-mt-md"> 此操作不可撤销。确定要卸载吗？ </q-banner>
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat no-caps label="取消" v-close-popup />
+          <q-btn v-close-popup flat no-caps label="取消" />
           <q-btn
             unelevated
             no-caps

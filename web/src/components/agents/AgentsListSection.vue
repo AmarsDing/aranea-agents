@@ -106,7 +106,9 @@
             />
             <agent-avatar-q :icon="props.row.icon" :alt="props.row.display_name" size="36px" />
             <div class="min-width-0">
-              <div class="app-registry-cell-primary ellipsis">{{ props.row.display_name }}</div>
+              <div class="app-registry-cell-primary ellipsis">
+                {{ props.row.display_name || getCategoryLabel(props.row.taxonomy_position_id) }}
+              </div>
               <button type="button" class="agent-handle ellipsis" @click="$emit('copy-key', props.row.agent_key)">
                 {{ props.row.agent_key }}
               </button>
@@ -129,7 +131,26 @@
       <template #body-cell-actions="props">
         <q-td :props="props">
           <div class="app-registry-cell-actions">
-            <q-btn flat dense round color="primary" icon="settings" :to="`/agents/${props.row.id}/settings`">
+            <q-btn
+              v-if="!props.row.readonly"
+              flat
+              dense
+              round
+              color="primary"
+              icon="edit"
+              :to="`/agents/${props.row.id}/settings`"
+            >
+              <q-tooltip>编辑</q-tooltip>
+            </q-btn>
+            <q-btn
+              v-if="props.row.readonly"
+              flat
+              dense
+              round
+              color="primary"
+              icon="settings"
+              :to="`/agents/${props.row.id}/settings`"
+            >
               <q-tooltip>设置</q-tooltip>
             </q-btn>
             <q-btn

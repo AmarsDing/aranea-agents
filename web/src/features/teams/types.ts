@@ -37,6 +37,8 @@ export type TeamDefinitionGraphNode = {
   label: string;
   agent_id?: string;
   role?: string;
+  task_prompt?: string;
+  enabled?: boolean;
   x?: number;
   y?: number;
 };

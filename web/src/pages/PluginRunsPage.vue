@@ -144,17 +144,7 @@
       label="条运行记录"
     />
 
-    <q-dialog v-model="detailOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-        <q-card-section class="text-h6">运行详情</q-card-section>
-        <q-card-section class="app-dialog-body q-pt-none">
-          <pre class="plugin-run-detail app-code-block">{{ detailText }}</pre>
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn v-close-popup flat no-caps label="关闭" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <PluginRunDetailDialog v-model:open="detailOpen" :text="detailText" />
   </q-page>
 </template>
 
@@ -164,6 +154,7 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import PluginRunDetailDialog from '../components/plugins/PluginRunDetailDialog.vue';
 import { usePluginRunsPage } from '../features/plugins/usePluginRunsPage';
 
 const {

@@ -71,8 +71,8 @@
               </template>
               <template #body-cell-time="props">
                 <q-td :props="props">
-                  <div>开始 {{ formatDate(props.row.started_at || props.row.created_at) }}</div>
-                  <div class="text-caption text-grey-7">结束 {{ formatDate(props.row.finished_at) }}</div>
+                  <div>开始 {{ formatCronDate(props.row.started_at || props.row.created_at) }}</div>
+                  <div class="text-caption text-grey-7">结束 {{ formatCronDate(props.row.finished_at) }}</div>
                 </q-td>
               </template>
               <template #body-cell-status="props">
@@ -131,6 +131,7 @@ import type { QTableColumn } from 'quasar';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import type { CronTaskRun } from '../../features/cron/types';
+import { formatCronDate } from './cronTaskUtils';
 
 defineProps<{
   loading: boolean;
@@ -192,11 +193,5 @@ function triggerColor(value: string) {
   if (value === 'manual') return 'primary';
   if (value === 'api') return 'accent';
   return 'grey-7';
-}
-
-function formatDate(value?: string) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 </script>

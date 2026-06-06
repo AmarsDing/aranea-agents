@@ -1,7 +1,14 @@
 import { createSystemSettingService } from '../../services/index';
 import { kratosApi } from '../../services/axiosHandler';
 import type { SystemSettings } from '../../services/kratos/system_setting/v1/index';
-import type { UpdateSystemSettingsInput, TestWebResearchInput, TestWebResearchResult, EcosystemLoadResponse, EcosystemUnloadResponse, EcosystemLoadedStatus } from './types';
+import type {
+  UpdateSystemSettingsInput,
+  TestWebResearchInput,
+  TestWebResearchResult,
+  EcosystemLoadResponse,
+  EcosystemUnloadResponse,
+  EcosystemLoadedStatus,
+} from './types';
 
 const api = createSystemSettingService();
 
@@ -76,7 +83,9 @@ export async function loadEcosystemPreset(industries?: string[], force?: boolean
 }
 
 export async function unloadEcosystemPreset(industries: string[]): Promise<EcosystemUnloadResponse> {
-  const { data } = await kratosApi.post<EcosystemUnloadResponse>('/api/v1/admin/ecosystem/preset/unload', { industries });
+  const { data } = await kratosApi.post<EcosystemUnloadResponse>('/api/v1/admin/ecosystem/preset/unload', {
+    industries,
+  });
   return data;
 }
 

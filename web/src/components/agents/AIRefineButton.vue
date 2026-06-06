@@ -22,7 +22,7 @@
 
   <!-- Result dialog -->
   <q-dialog v-model="showResult" persistent>
-    <q-card class="ai-refine-dialog-card app-dialog-card">
+    <q-card class="ai-refine-dialog-card app-dialog-card app-glass-dialog">
       <q-card-section class="row items-center">
         <div class="text-h6">AI 优化结果</div>
         <q-space />

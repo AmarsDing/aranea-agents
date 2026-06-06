@@ -67,7 +67,7 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
     try {
       await hooksStore.addHook({
         key,
-        name: `${prefix} callback`,
+        name: t('hooksPage.agentPanel.defaultHookName', { prefix }),
         enabled: true,
         sort_order: draftSort.value,
         rule: draftRule.value,

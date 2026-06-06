@@ -20,6 +20,8 @@ type runOutcome struct {
 }
 
 func (r *Runner) lockTask(taskID string) func() {
+	// LoadOrStore is atomic: concurrent calls for the same key always return
+	// the same mutex pointer (the one already stored or the newly stored one).
 	v, _ := r.taskMu.LoadOrStore(taskID, &sync.Mutex{})
 	mu := v.(*sync.Mutex)
 	mu.Lock()
@@ -73,7 +75,7 @@ func (r *Runner) finalizeRun(
 		"session_id":       outcome.result.SessionID,
 		"user_message_id":  outcome.result.UserMessageID,
 		"agent_message_id": outcome.result.AgentMessageID,
-		"run_id":           outcome.result.AgentMessageID,
+		"run_id":           outcome.result.SessionID,
 	}
 	outJSON := mustMarshalJSON(output)
 	if err := r.deps.Cron.UpdateCronTaskRun(ctx, runID, outcome.status, finished, outJSON, outcome.errMsg); err != nil {
@@ -90,9 +92,9 @@ func (r *Runner) finalizeRun(
 	case "success":
 		meta.SuccessCount++
 		meta.LastError = ""
-		if !manual {
-			meta.FailureCount = 0
-		}
+		// Any successful execution (manual or scheduled) proves the task is
+		// healthy, so reset the consecutive failure counter.
+		meta.FailureCount = 0
 	case "skipped":
 		meta.LastError = outcome.errMsg
 	case "failure":

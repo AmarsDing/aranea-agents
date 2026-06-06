@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"aranea-agents/internal/biz"
 
@@ -632,6 +633,27 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		}
 	}
 
+	// 当 Pack YAML 只定义了 graph 没有 members 时，从 graph.nodes 预构建 members。
+	// 这确保 definition_json 中 members 与 graph.nodes 一致，避免前端展示"无成员"。
+	if len(ospec.Members) == 0 && ospec.Graph != nil && len(ospec.Graph.Nodes) > 0 {
+		for _, n := range ospec.Graph.Nodes {
+			if n.Type == "agent" && strings.TrimSpace(n.AgentID) != "" {
+				enabled := true
+				if n.Enabled != nil {
+					enabled = *n.Enabled
+				}
+				ospec.Members = append(ospec.Members, biz.OrchestrationMember{
+					AgentID:    n.AgentID,
+					Role:       firstNonEmpty(strings.TrimSpace(n.Role), biz.RoleWorker),
+					Name:       firstNonEmpty(strings.TrimSpace(n.Label), "Agent"),
+					TaskPrompt: strings.TrimSpace(n.TaskPrompt),
+					Enabled:    enabled,
+					SortOrder:  len(ospec.Members) + 1,
+				})
+			}
+		}
+	}
+
 	// FailurePolicy
 	if spec.FailurePolicy != nil {
 		fp := &biz.TeamFailurePolicy{
@@ -755,6 +777,8 @@ func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMappe
 			Type:             n.Type,
 			Label:            n.Label,
 			Role:             n.Role,
+			TaskPrompt:       n.TaskPrompt,
+			Enabled:          n.Enabled,
 			InterruptBefore:  n.InterruptBefore,
 			InterruptAfter:   n.InterruptAfter,
 			Destinations:     n.Destinations,

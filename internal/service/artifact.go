@@ -54,7 +54,7 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 	}
 	saved, err := s.uc.Save(ctx, req.GetSessionId(), req.GetName(), mime, data)
 	if err != nil {
-		return nil, err
+		return nil, mapArtifactBizError(err)
 	}
 	metrics.ArtifactUploadBytesTotal.Add(float64(len(data)))
 	s.refreshStorageGauge(ctx)
@@ -136,7 +136,7 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
 	}
 	if err := s.uc.Delete(ctx, id); err != nil {
-		return nil, err
+		return nil, mapArtifactBizError(err)
 	}
 	s.refreshStorageGauge(ctx)
 	return &emptypb.Empty{}, nil
@@ -156,7 +156,7 @@ func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.Del
 		if strings.Contains(err.Error(), "not found") {
 			return nil, kerrors.NotFound("ARTIFACT", err.Error())
 		}
-		return nil, err
+		return nil, mapArtifactBizError(err)
 	}
 	s.refreshStorageGauge(ctx)
 	return &emptypb.Empty{}, nil
@@ -169,29 +169,24 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
 	}
 	version := int(req.GetVersion())
-	meta, data, err := s.uc.Load(ctx, id, version)
+	result, err := s.uc.Preview(ctx, id, version)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return nil, kerrors.NotFound("ARTIFACT", err.Error())
 		}
 		return nil, err
 	}
-	mime := strings.ToLower(strings.TrimSpace(meta.MimeType))
-	resp := &v1.PreviewArtifactResponse{Meta: toProtoArtifactMeta(meta)}
-	switch {
-	case strings.HasPrefix(mime, "text/") || mime == "application/json" || mime == "application/xml":
+	resp := &v1.PreviewArtifactResponse{Meta: toProtoArtifactMeta(result.Meta)}
+	switch result.Kind {
+	case artifactbiz.PreviewKindText:
 		resp.PreviewKind = "text"
-		if len(data) > 512<<10 {
-			resp.TextContent = string(data[:512<<10]) + "\n…(truncated)"
-		} else {
-			resp.TextContent = string(data)
-		}
-	case strings.HasPrefix(mime, "image/"):
+		resp.TextContent = result.TextContent
+	case artifactbiz.PreviewKindImage:
 		resp.PreviewKind = "image"
-		resp.DataBase64 = base64.StdEncoding.EncodeToString(data)
-	case mime == "application/pdf":
+		resp.DataBase64 = base64.StdEncoding.EncodeToString(result.Data)
+	case artifactbiz.PreviewKindPDF:
 		resp.PreviewKind = "pdf"
-		resp.DataBase64 = base64.StdEncoding.EncodeToString(data)
+		resp.DataBase64 = base64.StdEncoding.EncodeToString(result.Data)
 	default:
 		resp.PreviewKind = "binary"
 	}
@@ -277,7 +272,11 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, meta.Name))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	metrics.ArtifactDownloadBytesTotal.Add(float64(len(data)))
-	_, _ = w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		// Client may have disconnected mid-stream; nothing we can do but log.
+		// Do not treat as a server error since the response headers are already sent.
+		return
+	}
 }
 
 func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {

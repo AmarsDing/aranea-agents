@@ -60,7 +60,7 @@
     />
 
     <q-dialog v-model="deleteOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
         <q-card-section>
           <div class="text-h6">删除 Agent</div>
           <div class="text-body2 text-grey-7 q-mt-sm">
@@ -75,7 +75,7 @@
     </q-dialog>
 
     <q-dialog v-model="migrationOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
         <q-card-section>
           <div class="text-h6">Agent 迁移 <q-badge color="orange" class="q-ml-sm">即将推出</q-badge></div>
           <div class="text-body2 text-grey-7 q-mt-sm">导入、导出、批量映射与冲突处理功能正在开发中，敬请期待。</div>

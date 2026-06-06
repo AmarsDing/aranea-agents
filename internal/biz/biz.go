@@ -50,6 +50,7 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeUsecase,
 	NewEvalUsecase,
 	NewA2AUsecase,
+	ProvideA2AAgentLookup,
 	NewEcosystemUsecase,
 	NewEcosystemPresetUsecase,
 	NewEventStoreUsecase,
@@ -121,6 +122,24 @@ func (c *agentIDExistenceChecker) AgentExistsByID(ctx context.Context, agentID s
 // ProvideAgentIDExistenceChecker creates an AgentIDExistenceChecker from AgentRepository.
 func ProvideAgentIDExistenceChecker(repo AgentRepository) AgentIDExistenceChecker {
 	return &agentIDExistenceChecker{repo: repo}
+}
+
+// ProvideA2AAgentLookup creates an A2AAgentLookup from AgentRepository.
+func ProvideA2AAgentLookup(repo AgentRepository) A2AAgentLookup {
+	return NewAgentLookupAdapter(func(ctx context.Context, id string) (string, string, error) {
+		ag, err := repo.GetAgentByID(ctx, id)
+		if err != nil {
+			return "", "", err
+		}
+		ws := ""
+		if ag.Settings != nil {
+			ws = ag.Settings.Workspace
+		}
+		if ws == "" {
+			ws = ag.DisplayName
+		}
+		return ag.DisplayName, ws, nil
+	})
 }
 
 func requireNonEmpty(val, domain, field string) (string, error) {

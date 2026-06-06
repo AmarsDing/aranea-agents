@@ -9,6 +9,7 @@ import (
 
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 )
@@ -121,7 +122,7 @@ func (r *memArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, nam
 func makeAdapter(t *testing.T) *artifacttrpc.ServiceAdapter {
 	t.Helper()
 	repo := newMemArtifactRepo()
-	uc := biz.NewArtifactUsecase(repo)
+	uc := biz.NewArtifactUsecase(repo, loggateway.NewNoop())
 	return artifacttrpc.NewServiceAdapter(uc)
 }
 

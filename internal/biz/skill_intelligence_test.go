@@ -54,6 +54,10 @@ func (m *mockExperienceReportReader) ListByTimeRange(_ context.Context, _, _ tim
 	return m.reports, m.err
 }
 
+func (m *mockExperienceReportReader) ListFiltered(_ context.Context, _ string, _, _ *time.Time, _, _ int) ([]ExperienceReport, int, error) {
+	return m.reports, len(m.reports), m.err
+}
+
 type mockSkillHealthAggregator struct {
 	metrics   *SkillHealthMetrics
 	tagCounts []FailureTagCount
@@ -103,6 +107,10 @@ func (m *mockSkillEvolutionSuggestionReader) GetLatestBySkill(_ context.Context,
 	return m.latest, m.err
 }
 
+func (m *mockSkillEvolutionSuggestionReader) CountBySkill(_ context.Context, _ string, _ EvolutionSuggestionStatus) (int, error) {
+	return len(m.suggestions), m.err
+}
+
 type mockSkillEvolutionSuggestionWriter struct {
 	suggestions []SkillEvolutionSuggestion
 	err         error
@@ -128,7 +136,7 @@ func (m *mockSkillEvolutionSuggestionWriter) UpdateSandboxResult(_ context.Conte
 	return m.err
 }
 
-func (m *mockSkillEvolutionSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string, _ string) error {
+func (m *mockSkillEvolutionSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string, _ EvolutionLifecycleStatus) error {
 	return m.err
 }
 
@@ -159,6 +167,7 @@ func newTestUsecase(
 	return NewSkillIntelligenceUsecase(
 		reader,
 		writer,
+		nil,
 		aggregator,
 		&mockSkillEvolutionSuggestionReader{},
 		&mockSkillEvolutionSuggestionWriter{},
@@ -708,7 +717,7 @@ func TestCheckEvolutionTriggers_7dLowSuccessRate(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-7d-bad")
 	if err != nil {
@@ -740,7 +749,7 @@ func TestCheckEvolutionTriggers_SameFailureTagThreshold(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-repeat")
 	if err != nil {
@@ -772,7 +781,7 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-ok")
 	if err != nil {
@@ -798,7 +807,7 @@ func TestRunCuratorFlow_Success(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-curator")
 	if err != nil {
@@ -831,7 +840,7 @@ func TestRunCuratorFlow_NoTrigger(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-healthy")
 	if err != nil {

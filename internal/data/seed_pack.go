@@ -40,7 +40,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 
 	// 创建 Importer 并导入
 	importer := newPackImporter(client, lg)
-	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride("system_builtin"))
+	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride("ecosystem_preset"))
 	if importErr != nil {
 		return fmt.Errorf("import builtin-templates pack: %w", importErr)
 	}

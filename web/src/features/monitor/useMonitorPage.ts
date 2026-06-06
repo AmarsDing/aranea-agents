@@ -1,8 +1,14 @@
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, toRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
+import { Notify } from 'quasar';
 import { useMonitorStore } from '../../stores/monitor';
-import type { ModelUsageQuery, MonitorTraceEvent } from './types';
+import type { MonitorTrace, MonitorTracesQuery } from './types';
+import { useRunnerMetrics } from './useRunnerMetrics';
+import { useMonitorRunNavigation } from './useMonitorRunNavigation';
+import { useMonitorRealtimeEvents } from './useMonitorRealtimeEvents';
+import { useMonitorTraceFlow } from './useMonitorTraceFlow';
+import { useMonitorLogStreamPanel } from './useMonitorLogStreamPanel';
 
 const VALID_TABS = ['usage', 'alerts', 'audit', 'events', 'traces', 'logs'] as const;
 
@@ -10,18 +16,17 @@ export function useMonitorPage() {
   const route = useRoute();
   const router = useRouter();
   const monitorStore = useMonitorStore();
-  const { auditLogs, events } = storeToRefs(monitorStore);
+  const { auditLogs, events, selfCheckReports, selfCheckLoading, selfCheckTriggering } = storeToRefs(monitorStore);
   const initialTab = String(route.query.tab || 'usage');
   const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : 'usage');
   const highlightUsageEventId = ref(String(route.query.usage_event_id || '').trim());
-  const traces = ref<MonitorTraceEvent[]>([]);
+  const traces = ref<MonitorTrace[]>([]);
   const loadingAudit = ref(false);
   const loadingEvents = ref(false);
   const loadingTraces = ref(false);
   const error = ref('');
 
-  const filters = reactive<ModelUsageQuery>({
-    range: '30d',
+  const filters = reactive<MonitorTracesQuery>({
     limit: 50,
   });
 
@@ -33,6 +38,40 @@ export function useMonitorPage() {
   ];
 
   const loading = computed(() => loadingAudit.value || loadingEvents.value || loadingTraces.value);
+
+  // ── Runner Metrics (was in MonitorRunnerMetrics.vue) ──
+  const { runnerMetrics, runnerLoading, windowMinutes: runnerWindowMinutes, reload: reloadRunnerMetrics } = useRunnerMetrics(60);
+  const { openRunsTab, openChatSession } = useMonitorRunNavigation();
+
+  // ── Realtime Events (was in RealtimeEvents.vue) ──
+  const realtimeEvents = useMonitorRealtimeEvents(
+    toRef(() => events.value),
+    toRef(() => traces.value),
+  );
+
+  // ── Trace Flow (was in TraceList.vue) ──
+  const traceDetail = ref<MonitorTrace | null>(null);
+  const traceDetailOpen = ref(false);
+  const traceFlow = useMonitorTraceFlow(traceDetail, traceDetailOpen);
+
+  // ── SelfCheck ──
+  const selfCheckLatestReport = computed(() => selfCheckReports.value[0] ?? null);
+
+  function loadSelfCheckReports() {
+    void monitorStore.loadSelfCheckReports();
+  }
+
+  function triggerSelfCheckAction() {
+    void monitorStore.triggerSelfCheckAction();
+  }
+
+  // ── Log Stream (was in LogStreamPanel.vue) ──
+  const logStream = useMonitorLogStreamPanel();
+
+  // ── Notify handler (was inline in MonitorPage.vue) ──
+  function notify(payload: { message: string; type: 'positive' | 'negative' | 'warning' }) {
+    Notify.create({ message: payload.message, type: payload.type, position: 'top' });
+  }
 
   const autoRefreshMs = 30_000;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -103,10 +142,35 @@ export function useMonitorPage() {
   async function loadTraces() {
     loadingTraces.value = true;
     try {
-      traces.value = await monitorStore.fetchTraceEvents({ ...filters, limit: 100 });
+      const result = await monitorStore.fetchTraceEvents({ ...filters, limit: 100 });
+      traces.value = result.items;
     } finally {
       loadingTraces.value = false;
     }
+  }
+
+  function confirmClearEvents() {
+    Notify.create({
+      message: '确定清除所有实时事件？此操作不可撤销。',
+      type: 'warning',
+      position: 'top',
+      actions: [
+        { label: '取消', color: 'white', handler: () => {} },
+        { label: '确定', color: 'red', handler: () => monitorStore.clearRuntimeEvents() },
+      ],
+    });
+  }
+
+  function confirmClearFlow() {
+    Notify.create({
+      message: '确定清除所有流程日志？此操作不可撤销。',
+      type: 'warning',
+      position: 'top',
+      actions: [
+        { label: '取消', color: 'white', handler: () => {} },
+        { label: '确定', color: 'red', handler: () => monitorStore.clearFlowLogs() },
+      ],
+    });
   }
 
   return {
@@ -126,5 +190,30 @@ export function useMonitorPage() {
     loadAudit,
     loadEvents,
     loadTraces,
+    // Runner metrics
+    runnerMetrics,
+    runnerLoading,
+    runnerWindowMinutes,
+    reloadRunnerMetrics,
+    openRunsTab,
+    openChatSession,
+    // Realtime events
+    ...realtimeEvents,
+    // Trace flow
+    ...traceFlow,
+    traceDetail,
+    traceDetailOpen,
+    // Log stream
+    ...logStream,
+    // SelfCheck
+    selfCheckLoading,
+    selfCheckTriggering,
+    selfCheckLatestReport,
+    loadSelfCheckReports,
+    triggerSelfCheckAction,
+    // Notify & confirm
+    notify,
+    confirmClearEvents,
+    confirmClearFlow,
   };
 }

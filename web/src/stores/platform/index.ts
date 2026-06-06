@@ -22,10 +22,7 @@ import type {
   InspectProviderModelResult,
 } from '../../features/platform/types';
 
-function removeTaxonomyTreeNodeInner(
-  tree: PlatformResourceTreeNode[],
-  id: string,
-): PlatformResourceTreeNode[] {
+function removeTaxonomyTreeNodeInner(tree: PlatformResourceTreeNode[], id: string): PlatformResourceTreeNode[] {
   return tree
     .filter((node) => node.id !== id)
     .map((node) => ({

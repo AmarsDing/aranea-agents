@@ -14,26 +14,52 @@
             <q-input v-model="form.name" dense outlined :label="t('webhooksPage.fieldName')" />
             <q-toggle v-model="form.enabled" :label="t('webhooksPage.fieldEnabled')" />
           </div>
-          <q-input v-model="form.url" dense outlined :label="t('webhooksPage.fieldUrl')" />
-          <q-input v-model="form.secret" dense outlined type="password" :label="t('webhooksPage.fieldSecret')" />
           <q-input
-            v-model="form.event_types_json"
+            v-model="form.url"
             dense
             outlined
-            type="textarea"
-            autogrow
-            :label="t('webhooksPage.fieldEventTypes')"
-            :hint="t('webhooksPage.fieldEventTypesHint')"
+            :label="t('webhooksPage.fieldUrl')"
+            :hint="t('webhooksPage.fieldUrlHint')"
           />
           <q-input
-            v-model="form.headers_json"
+            v-model="form.secret"
             dense
             outlined
-            type="textarea"
-            autogrow
-            :label="t('webhooksPage.fieldHeaders')"
-            :hint="t('webhooksPage.fieldHeadersHint')"
+            type="password"
+            :label="t('webhooksPage.fieldSecret')"
+            :hint="editingId ? t('webhooksPage.fieldSecretHintEdit') : t('webhooksPage.fieldSecretHintCreate')"
           />
+          <div>
+            <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldEventTypes') }}</div>
+            <div class="q-gutter-sm">
+              <q-checkbox
+                v-for="et in WEBHOOK_EVENT_TYPES"
+                :key="et.value"
+                v-model="selectedEventTypes"
+                :val="et.value"
+                :label="t(et.labelKey)"
+                dense
+              />
+            </div>
+          </div>
+          <div>
+            <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldHeaders') }}</div>
+            <div v-for="(entry, idx) in headerEntries" :key="idx" class="row items-center q-gutter-x-sm q-mb-xs">
+              <q-input v-model="entry.key" dense outlined :placeholder="t('webhooksPage.headerKey')" class="col-4" />
+              <q-input v-model="entry.value" dense outlined :placeholder="t('webhooksPage.headerValue')" class="col" />
+              <q-btn flat dense round icon="remove" color="negative" size="sm" @click="headerEntries.splice(idx, 1)" />
+            </div>
+            <q-btn
+              flat
+              dense
+              no-caps
+              icon="add"
+              :label="t('webhooksPage.addHeader')"
+              color="primary"
+              size="sm"
+              @click="headerEntries.push({ key: '', value: '' })"
+            />
+          </div>
         </q-card-section>
       </div>
       <q-separator />
@@ -56,6 +82,7 @@
 <script setup lang="ts">
 import { reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { WEBHOOK_EVENT_TYPES, type WebhookRow } from '../../features/webhooks/types';
 
 const { t } = useI18n();
 
@@ -72,51 +99,80 @@ const form = reactive({
   name: '',
   url: '',
   secret: '',
-  event_types_json: '[]',
-  headers_json: '{}',
   enabled: true,
 });
 
-function reset(create: boolean) {
+const selectedEventTypes = reactive<string[]>([]);
+const headerEntries = reactive<{ key: string; value: string }[]>([]);
+
+function reset() {
   form.name = '';
   form.url = '';
   form.secret = '';
-  form.event_types_json = '[]';
-  form.headers_json = '{}';
   form.enabled = true;
+  selectedEventTypes.splice(0, selectedEventTypes.length);
+  headerEntries.splice(0, headerEntries.length);
 }
 
-function fill(row: {
-  name: string;
-  url: string;
-  secret: string;
-  event_types_json: string;
-  headers: Record<string, string>;
-  enabled: boolean;
-}) {
+function fill(row: WebhookRow) {
   form.name = row.name;
   form.url = row.url;
-  form.secret = row.secret;
-  form.event_types_json = row.event_types_json || '[]';
-  form.headers_json = JSON.stringify(row.headers ?? {}, null, 2);
+  // Never prefill secret — backend returns masked value on list/get
+  form.secret = '';
   form.enabled = row.enabled;
+  // Parse event types from JSON
+  selectedEventTypes.splice(0, selectedEventTypes.length);
+  if (row.event_types_json) {
+    try {
+      const types = JSON.parse(row.event_types_json);
+      if (Array.isArray(types)) {
+        selectedEventTypes.push(...types.filter((v: unknown) => typeof v === 'string'));
+      }
+    } catch {
+      /* ignore invalid JSON */
+    }
+  }
+  // Parse headers from Record to key-value entries
+  headerEntries.splice(0, headerEntries.length);
+  if (row.headers && typeof row.headers === 'object') {
+    for (const [key, value] of Object.entries(row.headers)) {
+      headerEntries.push({ key, value: String(value) });
+    }
+  }
 }
 
-function getPayload() {
-  let headers: Record<string, string> = {};
-  try {
-    headers = JSON.parse(form.headers_json || '{}');
-  } catch {
-    // intentional empty — invalid headers fall back to empty object
+function getPayload(): {
+  name: string;
+  url: string;
+  event_types_json: string;
+  secret?: string;
+  headers: Record<string, string>;
+  enabled: boolean;
+} {
+  const headers: Record<string, string> = {};
+  for (const entry of headerEntries) {
+    const k = entry.key?.trim();
+    if (k) headers[k] = entry.value ?? '';
   }
-  return {
+  const payload: {
+    name: string;
+    url: string;
+    event_types_json: string;
+    secret?: string;
+    headers: Record<string, string>;
+    enabled: boolean;
+  } = {
     name: form.name,
     url: form.url,
-    secret: form.secret,
-    event_types_json: form.event_types_json,
+    event_types_json: JSON.stringify(selectedEventTypes),
     headers,
     enabled: form.enabled,
   };
+  // Only include secret when non-empty (empty = keep original on update, or unsigned on create)
+  if (form.secret.trim()) {
+    payload.secret = form.secret;
+  }
+  return payload;
 }
 
 defineExpose({ form, reset, fill, getPayload });

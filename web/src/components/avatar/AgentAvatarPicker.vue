@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="dialogModel">
-    <q-card class="avatar-picker-card app-dialog-card app-dialog-card--md">
+    <q-card class="avatar-picker-card app-dialog-card app-dialog-card--md app-glass-dialog">
       <q-card-section class="avatar-picker-card__header">
         <div>
           <div class="text-h6">{{ title }}</div>

@@ -31,4 +31,5 @@ var (
 	ErrCronRunnerDisabled    = cron.ErrRunnerDisabled
 	ErrCronTaskDeleted       = cron.ErrTaskDeleted
 	ErrCronSessionBusy       = cron.ErrSessionBusy
+	ErrCronNotFound          = cron.ErrNotFound
 )

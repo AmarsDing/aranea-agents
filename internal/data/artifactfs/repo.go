@@ -89,17 +89,18 @@ func (m artifactMeta) toBiz() biz.Artifact {
 //
 //	<root>/<session_id>/<artifact_id>-v<version>.json (meta sidecar)
 type FSArtifactRepo struct {
-	root string
-	lg   loggateway.Logger
-	mu   sync.Mutex
+	root    string
+	lg      loggateway.Logger
+	mu      sync.RWMutex
+	idIndex map[string][]artifactMeta // id → all versions of that artifact ID
 }
 
 func NewFSArtifactRepo(lg loggateway.Logger) *FSArtifactRepo {
-	return &FSArtifactRepo{root: artifactStorageRoot(), lg: lg}
+	return &FSArtifactRepo{root: artifactStorageRoot(), lg: lg, idIndex: make(map[string][]artifactMeta)}
 }
 
 func NewFSArtifactRepoAt(root string, lg loggateway.Logger) *FSArtifactRepo {
-	return &FSArtifactRepo{root: root, lg: lg}
+	return &FSArtifactRepo{root: root, lg: lg, idIndex: make(map[string][]artifactMeta)}
 }
 
 var _ biz.ArtifactRepo = (*FSArtifactRepo)(nil)
@@ -154,7 +155,10 @@ func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType strin
 		Version:     version,
 		CreatedAt:   now,
 	}
-	metaBytes, _ := json.Marshal(meta)
+	metaBytes, err := json.Marshal(meta)
+	if err != nil {
+		return biz.Artifact{}, fmt.Errorf("artifact meta marshal: %w", err)
+	}
 	metaPath := filepath.Join(dir, fmt.Sprintf("%s-v%d.json", id, version))
 	if err := os.WriteFile(metaPath, metaBytes, 0o644); err != nil {
 		return biz.Artifact{}, fmt.Errorf("artifact meta write: %w", err)
@@ -162,13 +166,16 @@ func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType strin
 
 	// Artifact upload/download metrics are recorded at the service layer.
 
+	// Update in-memory index.
+	r.idIndex[id] = append(r.idIndex[id], meta)
+
 	return meta.toBiz(), nil
 }
 
 // Load returns artifact data.  version <= 0 means latest.
 func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Artifact, []byte, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	meta, err := r.findMeta(id, version)
 	if err != nil {
@@ -184,8 +191,8 @@ func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Ar
 
 // LoadMeta returns artifact metadata without reading the binary payload.
 func (r *FSArtifactRepo) LoadMeta(_ context.Context, id string, version int) (biz.Artifact, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	meta, err := r.findMeta(id, version)
 	if err != nil {
@@ -219,8 +226,8 @@ func (r *FSArtifactRepo) resolveBinPath(meta artifactMeta) string {
 // List returns artifact metadata for a session (no payload).
 // When sessionID is empty, aggregates latest versions across all sessions (cross-session browse).
 func (r *FSArtifactRepo) List(_ context.Context, sessionID string, limit, offset int) ([]biz.Artifact, int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	var (
 		metas []artifactMeta
@@ -267,7 +274,28 @@ func (r *FSArtifactRepo) Delete(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Walk all session dirs to find the artifact.
+	// Fast path: use index to locate files directly.
+	if indexed, ok := r.idIndex[id]; ok && len(indexed) > 0 {
+		var firstErr error
+		for _, m := range indexed {
+			dir := r.sessionDir(m.SessionID)
+			// Remove binary.
+			binPath := r.resolveBinPath(m)
+			if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
+				r.lg.Warn("artifact delete file failed", loggateway.Err(err), loggateway.Str("path", binPath))
+				firstErr = fmt.Errorf("artifact delete %s: %w", binPath, err)
+			}
+			// Remove sidecar.
+			metaPath := filepath.Join(dir, fmt.Sprintf("%s-v%d.json", m.ID, m.Version))
+			if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
+				r.lg.Warn("artifact delete file failed", loggateway.Err(err), loggateway.Str("path", metaPath))
+				firstErr = fmt.Errorf("artifact delete %s: %w", metaPath, err)
+			}
+		}
+		delete(r.idIndex, id)
+		return firstErr
+	}
+	// Slow path: scan disk for entries not in index.
 	entries, err := os.ReadDir(r.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -275,6 +303,7 @@ func (r *FSArtifactRepo) Delete(_ context.Context, id string) error {
 		}
 		return fmt.Errorf("artifact delete scan: %w", err)
 	}
+	var firstErr error
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -287,11 +316,15 @@ func (r *FSArtifactRepo) Delete(_ context.Context, id string) error {
 		for _, f := range files {
 			if strings.HasPrefix(f.Name(), id+"-") {
 				path := filepath.Join(dir, f.Name())
-				_ = os.Remove(path)
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) && firstErr == nil {
+					r.lg.Warn("artifact delete file failed", loggateway.Err(err), loggateway.Str("path", path))
+					firstErr = fmt.Errorf("artifact delete %s: %w", path, err)
+				}
 			}
 		}
 	}
-	return nil
+	delete(r.idIndex, id)
+	return firstErr
 }
 
 // DeleteVersion removes exactly one version of a logical artifact identified by
@@ -320,17 +353,37 @@ func (r *FSArtifactRepo) DeleteVersion(_ context.Context, sessionID, name string
 	}
 	dir := r.sessionDir(sessionID)
 	// Remove binary data file.
-	_ = os.Remove(r.resolveBinPath(*target))
+	if err := os.Remove(r.resolveBinPath(*target)); err != nil {
+		r.lg.Warn("artifact delete bin failed", loggateway.Err(err), loggateway.Str("id", target.ID))
+		return fmt.Errorf("artifact delete bin: %w", err)
+	}
 	// Remove metadata sidecar.
 	metaPath := filepath.Join(dir, fmt.Sprintf("%s-v%d.json", target.ID, target.Version))
-	_ = os.Remove(metaPath)
+	if err := os.Remove(metaPath); err != nil {
+		r.lg.Warn("artifact delete meta failed", loggateway.Err(err), loggateway.Str("path", metaPath))
+		return fmt.Errorf("artifact delete meta: %w", err)
+	}
+	// Update in-memory index: remove the deleted version.
+	if versions, ok := r.idIndex[target.ID]; ok {
+		filtered := make([]artifactMeta, 0, len(versions))
+		for _, v := range versions {
+			if v.Version != target.Version {
+				filtered = append(filtered, v)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(r.idIndex, target.ID)
+		} else {
+			r.idIndex[target.ID] = filtered
+		}
+	}
 	return nil
 }
 
 // ListBySessionAndName returns all version metadata for a session+name combo.
 func (r *FSArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, name string) ([]biz.Artifact, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	metas, err := r.listSessionMetas(sessionID)
 	if err != nil {
@@ -380,6 +433,31 @@ func (r *FSArtifactRepo) listSessionMetas(sessionID string) ([]artifactMeta, err
 }
 
 func (r *FSArtifactRepo) findMeta(id string, version int) (artifactMeta, error) {
+	// Fast path: check in-memory index (caller holds RLock).
+	if entries, ok := r.idIndex[id]; ok && len(entries) > 0 {
+		var best *artifactMeta
+		for i := range entries {
+			if version > 0 && entries[i].Version != version {
+				continue
+			}
+			if best == nil || entries[i].Version > best.Version {
+				cp := entries[i]
+				best = &cp
+			}
+		}
+		if best != nil {
+			return *best, nil
+		}
+	}
+	// Slow path: scan disk (handles entries written before this process started
+	// or index misses due to process restart). We must release the read lock
+	// before acquiring the write lock to avoid deadlock, then populate the
+	// index under the write lock for future lookups.
+	//
+	// Since findMeta is called from methods that already hold a lock, we
+	// cannot simply re-lock here. Instead, we do the disk scan without
+	// modifying the index, and let the caller handle index population
+	// separately if needed.
 	entries, err := os.ReadDir(r.root)
 	if err != nil {
 		return artifactMeta{}, fmt.Errorf("artifact root read: %w", err)
@@ -423,11 +501,25 @@ func (r *FSArtifactRepo) findMeta(id string, version int) (artifactMeta, error) 
 }
 
 func (r *FSArtifactRepo) nextVersion(dir, name string) int {
+	// Try in-memory index first to avoid disk scan.
+	max := -1
+	for _, versions := range r.idIndex {
+		for _, m := range versions {
+			if m.Name == name && filepath.Base(filepath.Dir(r.resolveBinPath(m))) == filepath.Base(dir) {
+				if m.Version > max {
+					max = m.Version
+				}
+			}
+		}
+	}
+	if max >= 0 {
+		return max + 1
+	}
+	// Fallback: scan disk for entries not in index.
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return 0
 	}
-	max := -1
 	for _, f := range files {
 		if !strings.HasSuffix(f.Name(), ".json") {
 			continue
@@ -450,8 +542,8 @@ func (r *FSArtifactRepo) nextVersion(dir, name string) int {
 
 // StorageBytes returns total bytes stored in .bin files under the artifact root.
 func (r *FSArtifactRepo) StorageBytes(_ context.Context) (int64, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.storageBytesLocked()
 }
 

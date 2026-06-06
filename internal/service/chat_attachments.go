@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/provider"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -38,7 +41,31 @@ func (o *ChatOrchestrator) resolveUserAttachmentRefs(ctx context.Context, sessio
 	if len(artifactbiz.NormalizeAttachmentIDs(attachmentIDs)) == 0 || o == nil || o.artifacts == nil {
 		return nil, nil
 	}
-	return artifactbiz.ResolveAttachmentRefs(ctx, o.artifacts, sessionID, attachmentIDs)
+	refs, err := artifactbiz.ResolveAttachmentRefs(ctx, o.artifacts, sessionID, attachmentIDs)
+	if err != nil {
+		return nil, mapArtifactBizError(err)
+	}
+	return refs, nil
+}
+
+// mapArtifactBizError converts biz-layer domain errors to kerrors for the transport layer.
+func mapArtifactBizError(err error) error {
+	if errors.Is(err, biz.ErrSizeExceeded) {
+		return kerrors.BadRequest("ARTIFACT", err.Error())
+	}
+	if errors.Is(err, biz.ErrIDRequired) {
+		return kerrors.BadRequest("ARTIFACT", err.Error())
+	}
+	if errors.Is(err, biz.ErrArtifactServiceRequired) {
+		return kerrors.BadRequest("ARTIFACT", err.Error())
+	}
+	if errors.Is(err, biz.ErrAttachmentLoadFailed) {
+		return kerrors.BadRequest("ARTIFACT", err.Error())
+	}
+	if errors.Is(err, biz.ErrAttachmentWrongSession) {
+		return kerrors.BadRequest("ARTIFACT", err.Error())
+	}
+	return err
 }
 
 func mergeUserAttachmentRefs(userOpts string, refs []artifactbiz.Ref) (string, error) {

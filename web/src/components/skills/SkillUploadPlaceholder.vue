@@ -178,7 +178,11 @@ import type {
   SkillRefineResult,
   SkillSimilarityMetrics,
 } from '../../features/skills/types';
-import { skillCandidateStatusColor as statusColor, skillCandidateIcon as candidateIcon, skillCandidateStatusColor as candidateColor } from './skillTableUi';
+import {
+  skillCandidateStatusColor as statusColor,
+  skillCandidateIcon as candidateIcon,
+  skillCandidateStatusColor as candidateColor,
+} from './skillTableUi';
 
 const props = defineProps<{
   /** `kratosApi` **`/v1/skills/import*`**（**`cmd/admin`**）；由 Page 绑定 `features/skills/api` */

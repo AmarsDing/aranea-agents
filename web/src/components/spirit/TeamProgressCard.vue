@@ -97,15 +97,11 @@ const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
 
 const topology = computed(() => modeToTopology(props.team.mode));
 
-const isRunning = computed(
-  () => props.team.status === 'running' || props.team.status === 'pending',
-);
+const isRunning = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
 const isWaitingDeps = computed(() => props.team.status === 'pending');
 
-const canCancel = computed(
-  () => props.team.status === 'running' || props.team.status === 'pending',
-);
+const canCancel = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
 const statusClass = computed(() => {
   switch (props.team.status) {

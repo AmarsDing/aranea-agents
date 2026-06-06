@@ -5,7 +5,7 @@
         <div class="row items-center q-gutter-sm">
           <div class="text-h6 text-weight-bold">流程日志</div>
           <q-badge :color="stateColor">{{ stateText }}</q-badge>
-          <q-badge outline color="primary">{{ filteredLines.length }}/{{ hub.flowLines.value.length }}</q-badge>
+          <q-badge outline color="accent">{{ filteredLines.length }}/{{ hub.flowLines.value.length }}</q-badge>
         </div>
         <div class="text-caption text-grey-7">业务编排时间线（中文步骤，带 trace 关联）</div>
       </div>

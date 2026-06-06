@@ -258,8 +258,8 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 	return cc
 }
 
-func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
-	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector, crypto, lg)
+func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
+	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector, crypto, agentRefs, lg)
 }
 
 // webResearchReadinessAdapter wraps internal/tools/webresearch to implement biztool.WebResearchReadinessChecker.
@@ -324,9 +324,10 @@ func provideBizWebResearchReadinessChecker() biz.WebResearchReadinessChecker {
 	return bizWebResearchReadinessAdapter{}
 }
 
-func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolCatalogReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, lg loggateway.Logger) *biz.AgentUsecase {
+func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolCatalogReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, providerValidator biz.ProviderModelPairValidator, lg loggateway.Logger) *biz.AgentUsecase {
 	uc := biz.NewAgentUsecase(repo, tools, sys, lg)
 	uc.SetWebResearchChecker(checker)
+	uc.SetProviderModelValidator(providerValidator)
 	return uc
 }
 
@@ -1094,7 +1095,7 @@ func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseE
 
 func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	analyzer := &skillIntelligenceRCAAdapter{inner: rca}
-	uc := biz.NewSkillIntelligenceUsecase(repo, repo, repo, suggestionRepo, suggestionRepo, analyzer, lg)
+	uc := biz.NewSkillIntelligenceUsecase(repo, repo, repo, repo, suggestionRepo, suggestionRepo, analyzer, lg)
 	uc.SetUnanalyzedReader(repo)
 	return uc
 }
@@ -1153,6 +1154,10 @@ func provideEventBusHealthChecker() monitor.EventBusHealthChecker { return nil }
 func provideWSConnectionCounter() monitor.WSConnectionCounter { return nil }
 
 func provideEventBusResubscriber() monitor.EventBusResubscriber { return nil }
+
+func provideDBPinger(rawDB *sql.DB) monitor.DBPinger {
+	return monitor.NewDBPinger(rawDB)
+}
 
 func provideSelfCheckCleanup(repo monitor.SelfCheckReportRepo, lg loggateway.Logger) *jobs.SelfCheckCleanup {
 	if jobs.SelfCheckCleanupDisabled() {
@@ -1638,11 +1643,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.A2AInvocationRepo), new(biz.A2ARepo)),
 		wire.Bind(new(biz.A2AAuditRepo), new(biz.A2ARepo)),
 		wire.Bind(new(biz.A2ARemoteAgentRepo), new(biz.A2ARepo)),
-		wire.Bind(new(biz.MonitorAuditRepo), new(biz.MonitorRepo)),
-		wire.Bind(new(biz.MonitorEventRepo), new(biz.MonitorRepo)),
-		wire.Bind(new(biz.MonitorTraceRepo), new(biz.MonitorRepo)),
-		wire.Bind(new(biz.MonitorAlertRepo), new(biz.MonitorRepo)),
-		wire.Bind(new(biz.MonitorRunnerCompletionRepo), new(biz.MonitorRepo)),
 		provideMonitorAlertNotifier,
 		provideChannelRunEscalationNotifier,
 		provideSessionRunDurableWorker,
@@ -1695,6 +1695,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TaskDeadLetterRepo), new(biz.TeamRepository)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
 		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
+		wire.Bind(new(biz.AgentReferenceChecker), new(biz.AgentRepository)),
+		wire.Bind(new(biz.ProviderModelPairValidator), new(*biz.LlmProviderModelUsecase)),
 		// Team-layer narrow interface bindings
 		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
 		wire.Bind(new(biz.TeamSessionManager), new(*biz.SessionUsecase)),
@@ -1705,6 +1707,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
 		// Self-check integration
 		provideSelfCheckScheduler,
+		provideDBPinger,
 		provideEventBusHealthChecker,
 		provideWSConnectionCounter,
 		provideEventBusResubscriber,
@@ -1718,6 +1721,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideSpiritTeamUsecase,
 		wire.Bind(new(monitor.FailurePatternReader), new(*data.FailurePatternReadWriter)),
 		wire.Bind(new(monitor.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
+		wire.Bind(new(monitor.RootCauseAnalyzer), new(*monitor.RootCauseEngine)),
 		provideWSTurnExecutor,
 		// Ecosystem preset: bind repo and provide usecase deps
 		wire.Bind(new(biz.EcosystemPresetRepo), new(*data.EcosystemPresetRepo)),

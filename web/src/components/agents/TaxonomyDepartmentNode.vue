@@ -39,12 +39,7 @@
         </template>
       </draggable>
 
-      <button
-        v-if="!readonly"
-        type="button"
-        class="position-card-add"
-        @click="emit('create-child')"
-      >
+      <button v-if="!readonly" type="button" class="position-card-add" @click="emit('create-child')">
         <q-icon name="add" size="22px" color="primary" />
         <span>新增职位</span>
       </button>
@@ -90,9 +85,7 @@ const emit = defineEmits<{
   'reorder-positions': [positions: PlatformResourceTreeNode[]];
 }>();
 
-const resolvedPositions = computed(() =>
-  props.positions ?? departmentPositions(props.department),
-);
+const resolvedPositions = computed(() => props.positions ?? departmentPositions(props.department));
 
 function positionHighlighted(position: PlatformResourceTreeNode) {
   return nodeMatchesKeyword(position, props.keyword);

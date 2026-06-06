@@ -152,9 +152,7 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   function memberAccentHex(message: Message): string {
     const idx = AVATAR_PALETTE[paletteIndex(message)]?.varIdx;
     if (idx !== undefined) {
-      const v = getComputedStyle(document.documentElement)
-        .getPropertyValue(`--palette-avatar-${idx}`)
-        .trim();
+      const v = getComputedStyle(document.documentElement).getPropertyValue(`--palette-avatar-${idx}`).trim();
       if (v) return v;
     }
     return '#5c6bc0';

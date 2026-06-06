@@ -1,10 +1,10 @@
 <template>
   <div class="monitor-log-stream-panel">
-    <q-tabs v-model="subTab" dense align="left" no-caps class="monitor-log-stream-tabs">
+    <q-tabs :model-value="subTab" dense align="left" no-caps class="monitor-log-stream-tabs" @update:model-value="$emit('update:subTab', $event)">
       <q-tab name="flow" icon="timeline" label="流程日志" />
       <q-tab name="process" icon="terminal" label="进程日志" />
     </q-tabs>
-    <q-tab-panels v-model="subTab" animated class="monitor-log-stream-panels">
+    <q-tab-panels :model-value="subTab" animated class="monitor-log-stream-panels">
       <q-tab-panel name="flow" class="q-pa-none">
         <FlowLogStream @clear="$emit('clearFlow')" />
       </q-tab-panel>
@@ -16,13 +16,15 @@
 </template>
 
 <script setup lang="ts">
-import { useMonitorLogStreamPanel } from '../../features/monitor/useMonitorLogStreamPanel';
 import FlowLogStream from './FlowLogStream.vue';
 import ProcessLogStream from './ProcessLogStream.vue';
 
-const { subTab } = useMonitorLogStreamPanel();
+defineProps<{
+  subTab: 'flow' | 'process';
+}>();
 
 defineEmits<{
+  'update:subTab': [value: 'flow' | 'process'];
   clearFlow: [];
 }>();
 </script>

@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -24,7 +25,7 @@ func (s *FlowLogService) ListFlowLogs(ctx context.Context, in *v1.ListFlowLogsRe
 	if s == nil || s.flowLogs == nil {
 		return &v1.ListFlowLogsResponse{}, nil
 	}
-	since, until, err := parseFlowLogTimeBounds(in.GetSince(), in.GetUntil())
+	since, until, err := monitor.ParseFlowLogTimeBounds(in.GetSince(), in.GetUntil())
 	if err != nil {
 		return nil, kerrors.BadRequest("MONITOR", err.Error())
 	}

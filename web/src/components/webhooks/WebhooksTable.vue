@@ -26,7 +26,7 @@
             v-for="evt in parseEventTypes(props.row.event_types_json)"
             :key="evt"
             class="webhook-tag webhook-tag--event"
-            >{{ evt }}</span
+            >{{ eventLabel(evt) }}</span
           >
           <span v-if="parseEventTypes(props.row.event_types_json).length === 0" class="app-registry-cell-sub">—</span>
         </div>
@@ -80,7 +80,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import type { WebhookRow } from '../../features/webhooks/types';
+import { WEBHOOK_EVENT_TYPES, type WebhookRow } from '../../features/webhooks/types';
 import { createWebhookColumns } from './webhookTableUi';
 
 const { t } = useI18n();
@@ -114,5 +114,10 @@ function parseEventTypes(json: string): string[] {
   } catch {
     return [];
   }
+}
+
+function eventLabel(evt: string): string {
+  const found = WEBHOOK_EVENT_TYPES.find((et) => et.value === evt);
+  return found ? t(found.labelKey) : evt;
 }
 </script>

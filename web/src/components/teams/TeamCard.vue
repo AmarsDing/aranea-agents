@@ -10,7 +10,15 @@
           <div class="team-card__title-row">
             <h3 class="team-card__name ellipsis">{{ team.display_name }}</h3>
             <KindBadge :kind="team.kind" />
-            <q-chip v-if="definition.members.length" dense square size="sm" color="primary" text-color="white" class="team-card__mode-chip">
+            <q-chip
+              v-if="definition.members.length"
+              dense
+              square
+              size="sm"
+              color="primary"
+              text-color="white"
+              class="team-card__mode-chip"
+            >
               {{ definition.mode }}
             </q-chip>
             <q-chip v-if="team.is_default" dense square size="sm" color="amber" text-color="black">默认</q-chip>
@@ -82,8 +90,12 @@
           <q-btn flat dense round size="sm" color="primary" icon="timeline" @click="$emit('openRuns', team)">
             <q-tooltip>查看运行轨迹</q-tooltip>
           </q-btn>
-          <q-btn flat dense round size="sm" color="primary" icon="content_copy" @click="$emit('duplicate', team)" />
-          <q-btn flat dense round size="sm" color="primary" icon="edit" @click="$emit('edit', team)" />
+          <q-btn v-if="team.kind !== 'system_builtin'" flat dense round size="sm" color="primary" icon="content_copy" @click="$emit('duplicate', team)">
+            <q-tooltip>复制</q-tooltip>
+          </q-btn>
+          <q-btn flat dense round size="sm" color="primary" icon="edit" @click="$emit('edit', team)">
+            <q-tooltip>编辑</q-tooltip>
+          </q-btn>
           <q-btn
             v-if="team.kind !== 'system_builtin'"
             flat
@@ -106,7 +118,14 @@
 import { computed } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import type { Team } from '../../features/teams/types';
-import { agentName, formatDate, memberIcon, parseDefinition, teamStatusMap, topologyNodesFromDefinition } from './teamUtils';
+import {
+  agentName,
+  formatDate,
+  memberIcon,
+  parseDefinition,
+  teamStatusMap,
+  topologyNodesFromDefinition,
+} from './teamUtils';
 import KindBadge from '../agents/KindBadge.vue';
 
 const props = defineProps<{

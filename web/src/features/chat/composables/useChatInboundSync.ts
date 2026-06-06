@@ -331,7 +331,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
     }
     if (env.type === 'token_usage' && env.token_usage) {
-      console.info('[envelope] token_usage received', { sessionId, model: env.token_usage.model_display_name, totalTokens: env.token_usage.total_tokens });
+      console.info('[envelope] token_usage received', {
+        sessionId,
+        model: env.token_usage.model_display_name,
+        totalTokens: env.token_usage.total_tokens,
+      });
     }
     if (env.type === 'monitor.auto_healed' || env.type === 'monitor.self_check_completed') {
       console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });

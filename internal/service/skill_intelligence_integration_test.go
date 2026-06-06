@@ -99,6 +99,12 @@ func (s *stubExpReportReader) ListByTimeRange(_ context.Context, _, _ time.Time,
 	return nil, nil
 }
 
+func (s *stubExpReportReader) ListFiltered(_ context.Context, _ string, _, _ *time.Time, _, _ int) ([]biz.ExperienceReport, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reports, len(s.reports), nil
+}
+
 // stubSkillHealthAggregator implements biz.SkillHealthAggregator for integration tests.
 type stubSkillHealthAggregator struct {
 	metrics *biz.SkillHealthMetrics
@@ -218,7 +224,7 @@ func (s *stubEvoSuggestionWriter) count() int {
 // method produces correct failure tags for various invocation outcomes.
 // Run with: go test -tags=integration ./internal/service/... -run TestSkillIntelligenceIntegration_AnalyzeInvocation -count=1
 func TestSkillIntelligenceIntegration_AnalyzeInvocation(t *testing.T) {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	t.Run("Success_NoFailureTags", func(t *testing.T) {
 		inv := biz.SkillInvocationWrite{
@@ -359,7 +365,7 @@ func TestSkillIntelligenceIntegration_GenerateReport(t *testing.T) {
 		reader := newStubExpReportReader()
 		aggregator := newStubSkillHealthAggregator()
 
-		uc := biz.NewSkillIntelligenceUsecase(reader, writer, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(reader, writer, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		inv := biz.SkillInvocationWrite{
 			SkillID:    "skill-web-search",
@@ -402,7 +408,7 @@ func TestSkillIntelligenceIntegration_GenerateReport(t *testing.T) {
 		reader := newStubExpReportReader()
 		aggregator := newStubSkillHealthAggregator()
 
-		uc := biz.NewSkillIntelligenceUsecase(reader, writer, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(reader, writer, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		inv := biz.SkillInvocationWrite{
 			SkillID:      "skill-code-gen",
@@ -450,7 +456,7 @@ func TestSkillIntelligenceIntegration_ScoreSkill(t *testing.T) {
 			},
 		}
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		score, err := uc.ScoreSkill(context.Background(), "skill-high-perf")
 		if err != nil {
@@ -471,7 +477,7 @@ func TestSkillIntelligenceIntegration_ScoreSkill(t *testing.T) {
 			},
 		}
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		score, err := uc.ScoreSkill(context.Background(), "skill-low-perf")
 		if err != nil {
@@ -492,7 +498,7 @@ func TestSkillIntelligenceIntegration_ScoreSkill(t *testing.T) {
 			},
 		}
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		score, err := uc.ScoreSkill(context.Background(), "skill-new")
 		if err != nil {
@@ -504,7 +510,7 @@ func TestSkillIntelligenceIntegration_ScoreSkill(t *testing.T) {
 	})
 
 	t.Run("EmptySkillID_Error", func(t *testing.T) {
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 		_, err := uc.ScoreSkill(context.Background(), "")
 		if err == nil {
 			t.Error("expected error for empty skill_id, got nil")
@@ -519,7 +525,7 @@ func TestSkillIntelligenceIntegration_ExperienceReportCRUD(t *testing.T) {
 	reader := newStubExpReportReader()
 	aggregator := newStubSkillHealthAggregator()
 
-	uc := biz.NewSkillIntelligenceUsecase(reader, writer, aggregator, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(reader, writer, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 	// Generate a report for a failure invocation
 	inv := biz.SkillInvocationWrite{
@@ -575,7 +581,7 @@ func TestSkillIntelligenceIntegration_EvolutionSuggestions(t *testing.T) {
 		sugWriter := newStubEvoSuggestionWriter()
 		sugReader := newStubEvoSuggestionReader()
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 		suggestion := biz.SkillEvolutionSuggestion{
 			ID:            "sug-int-001",
@@ -626,7 +632,7 @@ func TestSkillIntelligenceIntegration_EvolutionSuggestions(t *testing.T) {
 		sugWriter := newStubEvoSuggestionWriter()
 		sugReader := newStubEvoSuggestionReader()
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 		suggestion := biz.SkillEvolutionSuggestion{
 			ID:            "sug-int-002",
@@ -663,7 +669,7 @@ func TestSkillIntelligenceIntegration_GenerateReportWithRootCauseAnalyzer(t *tes
 		reader := newStubExpReportReader()
 		aggregator := newStubSkillHealthAggregator()
 
-		uc := biz.NewSkillIntelligenceUsecase(reader, writer, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(reader, writer, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		// Simulate a skill timeout failure
 		inv := biz.SkillInvocationWrite{
@@ -709,7 +715,7 @@ func TestSkillIntelligenceIntegration_GenerateReportWithRootCauseAnalyzer(t *tes
 		reader := newStubExpReportReader()
 		aggregator := newStubSkillHealthAggregator()
 
-		uc := biz.NewSkillIntelligenceUsecase(reader, writer, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(reader, writer, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		inv := biz.SkillInvocationWrite{
 			SkillID:      "skill-code-gen",
@@ -735,7 +741,7 @@ func TestSkillIntelligenceIntegration_GenerateReportWithRootCauseAnalyzer(t *tes
 		reader := newStubExpReportReader()
 		aggregator := newStubSkillHealthAggregator()
 
-		uc := biz.NewSkillIntelligenceUsecase(reader, writer, aggregator, nil, nil, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(reader, writer, nil, aggregator, nil, nil, nil, loggateway.NewNoop())
 
 		// Generate multiple failure reports for the same skill
 		for i := 0; i < 3; i++ {
@@ -777,7 +783,7 @@ func TestSkillIntelligenceIntegration_CheckEvolutionTriggers(t *testing.T) {
 			},
 		}
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, aggregator, sugReader, sugWriter, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, aggregator, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 		suggestion, err := uc.CheckEvolutionTriggers(ctx, "skill-broken")
 		if err != nil {
@@ -814,7 +820,7 @@ func TestSkillIntelligenceIntegration_CheckEvolutionTriggers(t *testing.T) {
 			},
 		}
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, aggregator, sugReader, sugWriter, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, aggregator, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 		suggestion, err := uc.CheckEvolutionTriggers(ctx, "skill-healthy")
 		if err != nil {
@@ -837,7 +843,7 @@ func TestSkillIntelligenceIntegration_CheckEvolutionTriggers(t *testing.T) {
 			},
 		}
 
-		uc := biz.NewSkillIntelligenceUsecase(nil, nil, aggregator, sugReader, sugWriter, nil, loggateway.NewNoop())
+		uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, aggregator, sugReader, sugWriter, nil, loggateway.NewNoop())
 
 		suggestion, err := uc.CheckEvolutionTriggers(ctx, "skill-new")
 		if err != nil {

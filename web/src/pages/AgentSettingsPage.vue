@@ -146,10 +146,7 @@
               :a2a-proxy="form.a2a_proxy_config"
               @saved="reloadAgent"
             />
-            <agent-settings-a2-a-endpoint-tab
-              v-else
-              :agent-id="agentId"
-            />
+            <agent-settings-a2-a-endpoint-tab v-else :agent-id="agentId" />
           </q-tab-panel>
         </q-tab-panels>
       </template>

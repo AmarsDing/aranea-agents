@@ -65,6 +65,7 @@ message HookDelivery {
   string last_error = 9;
   string created_at = 10;
   string updated_at = 11;
+  string idempotency_key = 12;
 }
 
 message ListHookDeliveriesRequest {

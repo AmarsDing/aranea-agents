@@ -1172,14 +1172,22 @@ body.body--dark .app-entity-page--warm:not(.app-standard-page),
   .taxonomy-toolbar__toggle
     justify-content: space-between
 
+// ── Taxonomy Page Content ────────────────────────────────────────
+.taxonomy-page__content
+  margin-top: var(--space-5)
+
 // ── Taxonomy Card Grid ──────────────────────────────────────────
-.taxonomy-grid
+.taxonomy-card-grid
   display: grid
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr))
-  gap: 14px
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr))
+  gap: 16px
+  align-items: start
 
   @media (max-width: 1024px)
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))
+
+  @media (max-width: 599px)
+    grid-template-columns: 1fr
 
 .taxonomy-industry-card-add
   display: flex
@@ -1293,9 +1301,12 @@ body.body--dark .taxonomy-page .taxonomy-tree-panel .q-tree__node-header:hover
 
 .position-card-grid
   display: grid
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr))
-  gap: 12px
+  grid-template-columns: repeat(3, 1fr)
+  gap: 16px
   padding-top: 4px
+
+.position-card-grid__draggable
+  display: contents
 
 .position-card
   position: relative
@@ -1723,7 +1734,7 @@ body.body--dark .resource-manager-page.is-dark .empty-state
     padding: 18px
 
   .app-entity-grid,
-  .taxonomy-grid
+  .taxonomy-card-grid
     grid-template-columns: 1fr
 
   .position-list

@@ -63,11 +63,11 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     id: (g?.id as string) ?? '',
     name: (g?.name as string) ?? '',
     description: (g?.description as string) ?? '',
-    stateFields: (g?.stateFields as StateFieldDef[]) ?? [],
+    stateFields: wireStateFields(g?.stateFields as StateFieldDef[] | undefined),
     nodes: (g?.nodes as NodeDef[])?.map((n) => wireNode(n as Record<string, unknown>)) ?? [],
-    edges: (g?.edges as EdgeDef[]) ?? [],
+    edges: (g?.edges as Record<string, unknown>[])?.map(wireEdge) ?? [],
     conditionalEdges: (g?.conditionalEdges as ConditionalEdgeDef[]) ?? [],
-    subgraphs: (g?.subgraphs as SubgraphDef[]) ?? [],
+    subgraphs: (g?.subgraphs as Record<string, unknown>[])?.map(wireSubgraph) ?? [],
     entryPoint: (g?.entryPoint as string) ?? '',
     finishPoint: (g?.finishPoint as string) ?? '',
     enableCheckpoint: (g?.enableCheckpoint as boolean) ?? false,
@@ -112,6 +112,35 @@ function wireNode(n: Record<string, unknown> | null | undefined): NodeDef {
     inputFromLastResponse: (n?.inputFromLastResponse as boolean) ?? false,
     cacheEnabled: (n?.cacheEnabled as boolean) ?? false,
     cacheTtlSeconds: (n?.cacheTtlSeconds as number) ?? 0,
+  };
+}
+
+// wireStateFields maps state fields, migrating legacy reducer values.
+// Cast to string for comparison since server may return old 'replace'/'custom' values.
+function wireStateFields(fields: StateFieldDef[] | undefined): StateFieldDef[] {
+  if (!fields) return [];
+  return fields.map((sf) => {
+    const r = sf.reducer as string;
+    if (r === 'replace') sf.reducer = 'cover';
+    if (r === 'custom') sf.reducer = 'default';
+    return sf;
+  });
+}
+
+function wireEdge(e: Record<string, unknown> | null | undefined): EdgeDef {
+  return {
+    from: (e?.from as string) ?? '',
+    to: (e?.to as string) ?? '',
+    kind: (e?.kind as string) ?? '',
+  };
+}
+
+function wireSubgraph(s: Record<string, unknown> | null | undefined): SubgraphDef {
+  return {
+    id: (s?.id as string) ?? '',
+    graphId: (s?.graphId as string) ?? '',
+    interruptBefore: (s?.interruptBefore as boolean) ?? false,
+    interruptAfter: (s?.interruptAfter as boolean) ?? false,
   };
 }
 
@@ -166,7 +195,7 @@ export async function createGraph(payload: Partial<GraphDefinition>): Promise<Gr
     description: payload.description,
     stateFields: payload.stateFields,
     nodes: payload.nodes,
-    edges: payload.edges,
+    edges: payload.edges?.map((e) => ({ from: e.from, to: e.to, kind: e.kind })),
     conditionalEdges: payload.conditionalEdges,
     subgraphs: payload.subgraphs,
     entryPoint: payload.entryPoint,
@@ -188,7 +217,7 @@ export async function updateGraph(id: string, payload: Partial<GraphDefinition>)
     description: payload.description,
     stateFields: payload.stateFields,
     nodes: payload.nodes,
-    edges: payload.edges,
+    edges: payload.edges?.map((e) => ({ from: e.from, to: e.to, kind: e.kind })),
     conditionalEdges: payload.conditionalEdges,
     subgraphs: payload.subgraphs,
     entryPoint: payload.entryPoint,

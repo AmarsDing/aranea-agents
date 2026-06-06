@@ -1,6 +1,5 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useSkillIntelligenceStore } from '../../stores/skillIntelligence';
-import type { ExperienceReport } from '../../services/kratos/skill_intelligence/v1/index';
 
 export function useExperienceReportListPage(skillIdFromQuery?: string) {
   const store = useSkillIntelligenceStore();
@@ -10,49 +9,31 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
   const to = ref('');
   const page = ref(1);
   const pageSize = ref(20);
-  const rows = ref<ExperienceReport[]>([]);
-  const total = ref(0);
-  const loading = ref(false);
-  const error = ref('');
 
-  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+  // Filter guard: prevent double-load when filter change resets page to 1.
+  let skipNextPageWatch = false;
 
-  /** 失败标签分布统计 */
+  const pageMax = computed(() => Math.max(1, Math.ceil(store.total / pageSize.value)));
+
+  /** 失败标签分布统计（来自后端聚合，非当前页计算） */
   const failureTagsDistribution = computed(() => {
     const map: Record<string, number> = {};
-    for (const row of rows.value) {
-      if (row.failureTags) {
-        for (const tag of row.failureTags) {
-          map[tag] = (map[tag] || 0) + 1;
-        }
-      }
+    for (const fc of store.failureTagCounts) {
+      map[fc.tag] = fc.count;
     }
     return map;
   });
 
-  /** 有根因分析的失败报告 */
-  const rootCauseReports = computed(() =>
-    rows.value.filter(r => !r.isSuccess && (r.rootCauseAnalysis || r.suggestedFix)),
-  );
-
   async function loadRows() {
-    loading.value = true;
-    error.value = '';
-    try {
-      const data = await store.loadExperienceReports({
-        skillId: skillId.value || undefined,
-        startTime: from.value || undefined,
-        endTime: to.value || undefined,
-        page: page.value,
-        pageSize: pageSize.value,
-      });
-      rows.value = data.items;
-      total.value = data.total;
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载经验报告失败';
-    } finally {
-      loading.value = false;
-    }
+    // Convert YYYY-MM-DD date strings to RFC 3339 format for google.protobuf.Timestamp.
+    const toRFC3339 = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
+    await store.loadExperienceReports({
+      skillId: skillId.value || undefined,
+      startTime: toRFC3339(from.value),
+      endTime: to.value ? `${to.value}T23:59:59Z` : undefined,
+      page: page.value,
+      pageSize: pageSize.value,
+    });
   }
 
   function resetFilters() {
@@ -60,6 +41,7 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
     from.value = '';
     to.value = '';
     page.value = 1;
+    skipNextPageWatch = true;
     void loadRows();
   }
 
@@ -67,10 +49,16 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
     if (page.value === 1) {
       void loadRows();
     } else {
-      page.value = 1;
+      skipNextPageWatch = true;
+      page.value = 1; // triggers page watch, but skipNextPageWatch prevents double load
     }
   });
+
   watch([page, pageSize], () => {
+    if (skipNextPageWatch) {
+      skipNextPageWatch = false;
+      return;
+    }
     void loadRows();
   });
 
@@ -82,13 +70,13 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
     to,
     page,
     pageSize,
-    rows,
-    total,
-    loading,
-    error,
+    rows: computed(() => store.reports),
+    total: computed(() => store.total),
+    loading: computed(() => store.loading),
+    error: computed(() => store.error),
     pageMax,
     failureTagsDistribution,
-    rootCauseReports,
+    rootCauseReports: computed(() => store.rootCauseReports),
     loadRows,
     resetFilters,
   };

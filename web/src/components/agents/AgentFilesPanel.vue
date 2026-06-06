@@ -72,7 +72,14 @@ const props = defineProps<{
   dirty: boolean;
   fileTokenByName?: Record<string, number>;
   agentId?: string;
-  refineFn?: (params: { scope: string; fileName?: string; resourceId?: string; originalText: string; userHint: string; targetMode: string }) => Promise<RefineResponse>;
+  refineFn?: (params: {
+    scope: string;
+    fileName?: string;
+    resourceId?: string;
+    originalText: string;
+    userHint: string;
+    targetMode: string;
+  }) => Promise<RefineResponse>;
 }>();
 
 function fileTokenLabel(name: string, body: string) {

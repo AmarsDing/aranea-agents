@@ -220,8 +220,7 @@ export function useKnowledgePage() {
     if (lower.endsWith('.doc')) return 'application/msword';
     if (lower.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    // TODO(debt): image MIME removed until OCR is implemented on the backend.
     return 'application/octet-stream';
   }
 
@@ -394,6 +393,14 @@ export function useKnowledgePage() {
     }
   }
 
+  async function loadEmbedderConfig() {
+    try {
+      await knowledgeStore.loadEmbedderConfig();
+    } catch (e) {
+      $q.notify({ type: 'warning', message: 'Embedder 配置加载失败，检索功能可能不可用' });
+    }
+  }
+
   return {
     collections,
     selectedId,
@@ -426,6 +433,7 @@ export function useKnowledgePage() {
     saveEmbedderConfig,
     loadCollections,
     loadDocuments,
+    loadEmbedderConfig,
     selectCollection,
     openCreateCollection,
     submitCreateCollection,

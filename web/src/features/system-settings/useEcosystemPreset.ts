@@ -20,9 +20,7 @@ export function useEcosystemPreset() {
   });
 
   const unloadedIndustries = computed(() =>
-    ecosystemEntries.value
-      .filter(([, info]) => !info.loaded)
-      .map(([industry]) => industry),
+    ecosystemEntries.value.filter(([, info]) => !info.loaded).map(([industry]) => industry),
   );
 
   async function fetchEcosystemStatus() {

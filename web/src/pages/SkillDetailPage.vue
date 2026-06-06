@@ -33,12 +33,7 @@
 
       <div class="row q-col-gutter-md">
         <div class="col-12 col-md-6">
-          <SkillHealthCard
-            :health="health"
-            :loading="loadingHealth"
-            :error="healthError"
-            @refresh="loadHealth"
-          />
+          <SkillHealthCard :health="health" :loading="loadingHealth" :error="healthError" @refresh="loadHealth" />
         </div>
 
         <div class="col-12 col-md-6">
@@ -102,16 +97,8 @@ import { skillStatusLabel as statusLabel, skillStatusColor as statusColor } from
 const route = useRoute();
 const skillId = route.params.skillId as string;
 
-const {
-  skill,
-  health,
-  loadingSkill,
-  loadingHealth,
-  skillError,
-  healthError,
-  loadHealth,
-  goBack,
-} = useSkillDetailPage(skillId);
+const { skill, health, loadingSkill, loadingHealth, skillError, healthError, loadHealth, goBack } =
+  useSkillDetailPage(skillId);
 
 function formatDate(value?: string) {
   if (!value) return '-';
