@@ -51,8 +51,28 @@
           />
         </div>
       </div>
+      <div v-if="presetAgents.length" class="q-mb-lg">
+        <div class="text-subtitle2 text-weight-bold q-mb-sm">
+          <q-icon name="auto_awesome" size="18px" class="q-mr-xs" />预设模板
+        </div>
+        <div class="app-entity-grid">
+          <agent-card
+            v-for="agent in presetAgents"
+            :key="agent.id"
+            :agent="agent"
+            :favorite="isFavorite(agent.id)"
+            :category-label="getCategoryLabel(agent.taxonomy_position_id)"
+            :context-label="formatLastRunContext(agent)"
+            :evolving="isAgentEvolving(agent)"
+            @toggle-favorite="$emit('toggle-favorite', $event)"
+            @copy-key="$emit('copy-key', $event)"
+            @delete="$emit('delete', $event)"
+            @duplicate="$emit('duplicate', $event)"
+          />
+        </div>
+      </div>
       <div v-if="userAgents.length">
-        <div v-if="builtinAgents.length" class="text-subtitle2 text-weight-bold q-mb-sm">
+        <div v-if="builtinAgents.length || presetAgents.length" class="text-subtitle2 text-weight-bold q-mb-sm">
           <q-icon name="person" size="18px" class="q-mr-xs" />我的 Agent
         </div>
         <draggable
@@ -218,7 +238,12 @@ const emit = defineEmits<{
 }>();
 
 const builtinAgents = computed(() => props.agents.filter((a) => a.readonly));
-const userAgents = computed(() => props.agents.filter((a) => !a.readonly));
+const presetAgents = computed(() =>
+  props.agents.filter((a) => !a.readonly && a.kind === 'ecosystem_preset'),
+);
+const userAgents = computed(() =>
+  props.agents.filter((a) => !a.readonly && a.kind !== 'ecosystem_preset'),
+);
 
 const draggableUserAgents = computed({
   get: () => userAgents.value,

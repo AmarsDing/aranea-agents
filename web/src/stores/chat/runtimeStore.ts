@@ -13,11 +13,12 @@ import {
   getPendingMessages,
   getRunStatus,
   listChatOptions as apiListChatOptions,
+  sendMessage as apiSendMessage,
   stopGeneration,
   submitMessageFeedback as apiSubmitFeedback,
   updatePendingMessage,
 } from '../../features/chat/api';
-import type { ChatOption, RunStatus, PendingMessage } from '../../features/chat/types';
+import type { ChatOption, RunStatus, PendingMessage, SendMessageOptions, SendMessageResult } from '../../features/chat/types';
 
 export const useChatRuntimeStore = defineStore('chatRuntime', () => {
   const wsConnectedBySession = ref<Record<string, boolean>>({});
@@ -70,6 +71,16 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     return apiListChatOptions(type);
   }
 
+  async function send(payload: {
+    session_id: string;
+    agent_key?: string;
+    team_id?: string;
+    content: string;
+    options?: SendMessageOptions;
+  }): Promise<SendMessageResult> {
+    return apiSendMessage(payload);
+  }
+
   function deleteSessionRuntime(sessionId: string) {
     delete wsConnectedBySession.value[sessionId];
   }
@@ -88,6 +99,7 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     submitFeedback,
     cancelBackgroundJob,
     listChatOptions,
+    send,
     deleteSessionRuntime,
   };
 });

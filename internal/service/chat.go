@@ -95,8 +95,15 @@ func configureMCPObserve(bus event.Bus, mcp *biz.MCPServerUsecase) {
 	if mcp == nil {
 		return
 	}
+	lg := loggateway.NewNoop()
 	mcpobserve.SetMetadataRecorder(func(ctx context.Context, serverKey string, at time.Time) {
-		_ = mcp.RecordReconnectMetadata(ctx, serverKey, at)
+		if err := mcp.RecordReconnectMetadata(ctx, serverKey, at); err != nil {
+			lg.Warn("MCP reconnect metadata record failed",
+				loggateway.StepID("chat.mcp.reconnect_meta"),
+				loggateway.Str("server_key", serverKey),
+				loggateway.Err(err),
+			)
+		}
 	})
 }
 

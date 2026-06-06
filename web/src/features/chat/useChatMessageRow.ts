@@ -155,7 +155,9 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
       const v = getComputedStyle(document.documentElement).getPropertyValue(`--palette-avatar-${idx}`).trim();
       if (v) return v;
     }
-    return '#5c6bc0';
+    // Fallback: read the generic avatar accent CSS variable.
+    const fallback = getComputedStyle(document.documentElement).getPropertyValue('--palette-avatar-fallback').trim();
+    return fallback || 'var(--q-primary)';
   }
 
   function bubbleAccentStyle(message: Message): Record<string, string> | undefined {

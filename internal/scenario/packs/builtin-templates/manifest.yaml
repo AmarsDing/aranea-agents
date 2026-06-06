@@ -14,6 +14,9 @@ contents:
     - key: translator
     - key: luo
     - key: mimi
+  teams:
+    - key: fox-team
+    - key: support-team
   graphs:
     - key: pipeline
     - key: approval

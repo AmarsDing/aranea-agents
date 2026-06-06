@@ -27,7 +27,7 @@ data:
     access: admin
   # SECURITY: Override via env var DATA__POSTGRES__SOURCE in production.
   postgres:
-    source: ""
+    source: "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable"
     vector_dim: 1536
   redis:
     addr: 127.0.0.1:6379

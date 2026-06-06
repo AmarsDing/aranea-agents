@@ -653,7 +653,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			return
 		}
 		rollbackDone = true
-		if err := runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary); err != nil {
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer rollbackCancel()
+		if err := runnerMgr.RollbackToBoundary(rollbackCtx, rollbackBoundary); err != nil {
 			emitter.LogWarn("chat.runner.rollback", "Runner 会话回滚失败", "", event.P("error", err.Error()))
 		}
 	}

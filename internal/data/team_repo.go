@@ -171,8 +171,11 @@ func (r *teamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, 
 }
 
 func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
-	if t.ID == "" || t.TeamKey == "" || t.DisplayName == "" {
+	if t.TeamKey == "" || t.DisplayName == "" {
 		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
+	}
+	if t.ID == "" {
+		t.ID = generateCatalogID()
 	}
 	now := nowRFC3339()
 	if t.CreatedAt == "" {

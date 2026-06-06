@@ -9,7 +9,7 @@ import { findTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Team, TeamDefinition } from '../../features/teams/types';
 import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
-import { runtimeEngineOptions, BuiltinIndustryId } from './teamConstants';
+import { runtimeEngineOptions, BuiltinIndustryId, PresetIndustryId } from './teamConstants';
 import { defaultDefinition, defaultA2AConfig, withGraph } from './teamTemplates';
 
 // Re-export from split modules
@@ -25,6 +25,7 @@ export {
   parallelFailOptions,
   failureOnErrorOptions,
   BuiltinIndustryId,
+  PresetIndustryId,
   validStatusTransitions,
   isValidStatusTransition,
 } from './teamConstants';
@@ -407,14 +408,15 @@ export function groupTeamsByIndustry(
   industryFilter = '',
 ): TeamIndustryGroup[] {
   const builtinTeams = teams.filter((t) => t.readonly);
-  const nonBuiltinTeams = teams.filter((t) => !t.readonly);
+  const presetTeams = teams.filter((t) => !t.readonly && t.kind === 'ecosystem_preset');
+  const userTeams = teams.filter((t) => !t.readonly && t.kind !== 'ecosystem_preset');
 
   const industries = taxonomyTree.filter((node) => node.level === 'industry');
   const buckets = new Map<string, Team[]>();
   buckets.set(UNCategorizedIndustryId, []);
   for (const industry of industries) buckets.set(industry.id, []);
 
-  for (const team of nonBuiltinTeams) {
+  for (const team of userTeams) {
     const industryId = inferTeamIndustryId(team, agents, taxonomyTree);
     if (!buckets.has(industryId)) buckets.set(industryId, []);
     buckets.get(industryId)!.push(team);
@@ -431,7 +433,7 @@ export function groupTeamsByIndustry(
 
   const uncategorized = buckets.get(UNCategorizedIndustryId) ?? [];
   const assigned = new Set(groups.flatMap((group) => group.teams.map((team) => team.id)));
-  for (const team of nonBuiltinTeams) {
+  for (const team of userTeams) {
     if (!assigned.has(team.id)) uncategorized.push(team);
   }
   if (uncategorized.length > 0) {
@@ -440,6 +442,15 @@ export function groupTeamsByIndustry(
       label: '未分类',
       sortOrder: 9999,
       teams: uncategorized,
+    });
+  }
+
+  if (presetTeams.length > 0) {
+    groups.unshift({
+      id: PresetIndustryId,
+      label: '预设模板',
+      sortOrder: 0,
+      teams: presetTeams,
     });
   }
 
@@ -454,5 +465,7 @@ export function groupTeamsByIndustry(
 
   groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'zh-CN'));
   if (!industryFilter) return groups;
-  return groups.filter((group) => group.id === industryFilter || group.id === BuiltinIndustryId);
+  return groups.filter(
+    (group) => group.id === industryFilter || group.id === BuiltinIndustryId || group.id === PresetIndustryId,
+  );
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -100,7 +101,7 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		EmbeddingModel: model,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapKnowledgeBizError(err)
 	}
 	return toProtoCollection(c), nil
 }
@@ -109,7 +110,7 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 func (s *KnowledgeService) GetCollection(ctx context.Context, req *v1.GetCollectionRequest) (*v1.KnowledgeCollection, error) {
 	c, err := s.uc.GetCollection(ctx, req.GetId())
 	if err != nil {
-		return nil, err
+		return nil, mapKnowledgeBizError(err)
 	}
 	return toProtoCollection(c), nil
 }
@@ -118,7 +119,7 @@ func (s *KnowledgeService) GetCollection(ctx context.Context, req *v1.GetCollect
 func (s *KnowledgeService) ListCollections(ctx context.Context, req *v1.ListCollectionsRequest) (*v1.ListCollectionsResponse, error) {
 	cols, total, err := s.uc.ListCollections(ctx, "", int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
-		return nil, err
+		return nil, mapKnowledgeBizError(err)
 	}
 	out := make([]*v1.KnowledgeCollection, 0, len(cols))
 	for _, c := range cols {
@@ -129,7 +130,7 @@ func (s *KnowledgeService) ListCollections(ctx context.Context, req *v1.ListColl
 
 // DeleteCollection removes a collection.
 func (s *KnowledgeService) DeleteCollection(ctx context.Context, req *v1.DeleteCollectionRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.uc.DeleteCollection(ctx, req.GetId())
+	return &emptypb.Empty{}, mapKnowledgeBizError(s.uc.DeleteCollection(ctx, req.GetId()))
 }
 
 // IngestDocument ingests a document, chunks it, embeds the chunks, and indexes them.
@@ -151,7 +152,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
-		return nil, err
+		return nil, mapKnowledgeBizError(err)
 	}
 	doc, err := s.uc.CreateDocument(ctx, biz.KnowledgeDocument{
 		CollectionID: req.GetCollectionId(),
@@ -160,7 +161,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		SizeBytes:    int64(len(raw)),
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapKnowledgeBizError(err)
 	}
 
 	metaJSON, err := knowledge.NormalizeMetadataJSON(req.GetMetadataJson())
@@ -253,7 +254,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 func (s *KnowledgeService) ListDocuments(ctx context.Context, req *v1.ListDocumentsRequest) (*v1.ListDocumentsResponse, error) {
 	docs, total, err := s.uc.ListDocuments(ctx, req.GetCollectionId(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
-		return nil, err
+		return nil, mapKnowledgeBizError(err)
 	}
 	out := make([]*v1.KnowledgeDocument, 0, len(docs))
 	for _, d := range docs {
@@ -264,7 +265,7 @@ func (s *KnowledgeService) ListDocuments(ctx context.Context, req *v1.ListDocume
 
 // DeleteDocument removes a document and its chunks.
 func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDocumentRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.uc.DeleteDocument(ctx, req.GetId())
+	return &emptypb.Empty{}, mapKnowledgeBizError(s.uc.DeleteDocument(ctx, req.GetId()))
 }
 
 // Search performs a semantic search over a collection.
@@ -401,6 +402,20 @@ func (s *KnowledgeService) publishKnowledgeIngest(collectionID, docID, status, e
 		"chunk_count":   chunkCount,
 	}
 	s.bus.Publish(context.Background(), env)
+}
+
+// mapKnowledgeBizError converts biz-layer domain errors to kerrors for the transport layer.
+func mapKnowledgeBizError(err error) error {
+	if errors.Is(err, biz.ErrKnowledgeUnavailable) {
+		return kerrors.ServiceUnavailable("KNOWLEDGE", err.Error())
+	}
+	if errors.Is(err, biz.ErrKnowledgeNameRequired) || errors.Is(err, biz.ErrKnowledgeIDRequired) ||
+		errors.Is(err, biz.ErrKnowledgeEmbeddingModelRequired) || errors.Is(err, biz.ErrKnowledgeCollectionIDRequired) ||
+		errors.Is(err, biz.ErrKnowledgeSourceRequired) || errors.Is(err, biz.ErrKnowledgeQueryRequired) ||
+		errors.Is(err, biz.ErrKnowledgeDimensionMismatch) || errors.Is(err, biz.ErrKnowledgeEmbeddingEmpty) {
+		return kerrors.BadRequest("KNOWLEDGE", err.Error())
+	}
+	return err
 }
 
 // --- proto conversion helpers ---

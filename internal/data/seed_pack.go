@@ -66,6 +66,43 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 	return nil
 }
 
+// SeedPackBuiltinTemplatesV2 增量导入内置模板中的 teams 定义。
+// V1 只导入了 agents + graphs，V2 补充 teams。
+func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+	applied, err := isMigrationApplied(ctx, client, SeedPackBuiltinV2, lg)
+	if err != nil {
+		return fmt.Errorf("check seed pack builtin v2: %w", err)
+	}
+	if applied {
+		return nil
+	}
+
+	fsys := os.DirFS(filepath.Join(scenarioDir, ".."))
+	p, readErr := pack.ReadPackFromFS(fsys, "scenario/packs/builtin-templates")
+	if readErr != nil {
+		return fmt.Errorf("read builtin-templates pack: %w", readErr)
+	}
+
+	importer := newPackImporter(client, lg)
+	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride("ecosystem_preset"))
+	if importErr != nil {
+		return fmt.Errorf("import builtin-templates pack v2: %w", importErr)
+	}
+
+	lg.Info("builtin-templates pack v2 seed completed",
+		loggateway.StepID("data.seed.pack_builtin_v2"),
+		loggateway.Int("teams_created", result.TeamsCreated),
+		loggateway.Int("teams_updated", result.TeamsUpdated),
+		loggateway.Int("teams_skipped", result.TeamsSkipped),
+		loggateway.Int("failures", len(result.Failures)))
+
+	if recordErr := recordMigrationApplied(ctx, client, SeedPackBuiltinV2, "pack_builtin_v2", lg); recordErr != nil {
+		return fmt.Errorf("record pack builtin v2: %w", recordErr)
+	}
+
+	return nil
+}
+
 // SeedPackIndustry 使用 Pack 引擎加载行业数据。
 // 在 API 触发时调用，使用 overwrite 冲突策略。
 // Returns (agentsCreated, teamsCreated, error).

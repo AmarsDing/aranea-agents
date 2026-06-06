@@ -13,8 +13,7 @@ import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import type { WsUpstream } from '../envelope';
 import { createPlaceholderMessage } from '../streamHandlers';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
-// TECH-DEBT: direct API call; move to store — chat optimization
-import { sendMessage } from '../api';
+// TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
 
 import type { RunStatusValue } from '../types';
@@ -377,7 +376,7 @@ export function useChatSender(deps: SenderDeps) {
       knowledgeBases: string[];
     },
   ): Promise<void> {
-    await sendMessage({
+    await runtime.send({
       session_id: sessionId,
       agent_key: agentKey,
       team_id: teamId,

@@ -2,9 +2,9 @@ package knowledge
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockRepo struct {
@@ -87,34 +87,34 @@ func TestUsecase_CreateCollection(t *testing.T) {
 		in        Collection
 		repoFn    func(_ context.Context, c Collection) (Collection, error)
 		wantErr   bool
-		errReason string
+		wantErrIs error
 		check     func(t *testing.T, got Collection)
 	}{
 		{
 			"empty name rejected",
 			Collection{EmbeddingModel: "text-embedding-ada-002"},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrNameRequired, nil,
 		},
 		{
 			"whitespace name rejected",
 			Collection{Name: "  ", EmbeddingModel: "text-embedding-ada-002"},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrNameRequired, nil,
 		},
 		{
 			"empty embedding model rejected",
 			Collection{Name: "test"},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrEmbeddingModelRequired, nil,
 		},
 		{
 			"whitespace embedding model rejected",
 			Collection{Name: "test", EmbeddingModel: "  "},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrEmbeddingModelRequired, nil,
 		},
 		{
 			"defaults applied dim and status",
 			Collection{Name: "test", EmbeddingModel: "text-embedding-ada-002"},
 			func(_ context.Context, c Collection) (Collection, error) { return c, nil },
-			false, "",
+			false, nil,
 			func(t *testing.T, got Collection) {
 				if got.Dim != 1536 {
 					t.Errorf("Dim = %d, want 1536", got.Dim)
@@ -131,7 +131,7 @@ func TestUsecase_CreateCollection(t *testing.T) {
 			"explicit dim preserved",
 			Collection{Name: "test", EmbeddingModel: "m", Dim: 768, Status: "inactive", ID: "custom-id"},
 			func(_ context.Context, c Collection) (Collection, error) { return c, nil },
-			false, "",
+			false, nil,
 			func(t *testing.T, got Collection) {
 				if got.Dim != 768 {
 					t.Errorf("Dim = %d, want 768", got.Dim)
@@ -148,9 +148,9 @@ func TestUsecase_CreateCollection(t *testing.T) {
 			"repo error propagated",
 			Collection{Name: "test", EmbeddingModel: "m"},
 			func(_ context.Context, _ Collection) (Collection, error) {
-				return Collection{}, errors.InternalServer("KNOWLEDGE", "db error")
+				return Collection{}, fmt.Errorf("knowledge: db error")
 			},
-			true, "KNOWLEDGE", nil,
+			true, nil, nil,
 		},
 	}
 
@@ -160,14 +160,14 @@ func TestUsecase_CreateCollection(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.collCreateFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			got, err := u.CreateCollection(context.Background(), tt.in)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 			if tt.check != nil {
@@ -183,17 +183,17 @@ func TestUsecase_GetCollection(t *testing.T) {
 		id        string
 		repoFn    func(_ context.Context, id string) (Collection, error)
 		wantErr   bool
-		errReason string
+		wantErrIs error
 	}{
 		{
 			"empty id rejected",
 			"",
-			nil, true, "KNOWLEDGE",
+			nil, true, ErrIDRequired,
 		},
 		{
 			"whitespace id rejected",
 			"  ",
-			nil, true, "KNOWLEDGE",
+			nil, true, ErrIDRequired,
 		},
 		{
 			"valid id passed through",
@@ -201,15 +201,15 @@ func TestUsecase_GetCollection(t *testing.T) {
 			func(_ context.Context, id string) (Collection, error) {
 				return Collection{ID: id}, nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"repo not found",
 			"col-missing",
 			func(_ context.Context, _ string) (Collection, error) {
-				return Collection{}, errors.NotFound("KNOWLEDGE", "not found")
+				return Collection{}, fmt.Errorf("not found")
 			},
-			true, "KNOWLEDGE",
+			true, nil,
 		},
 	}
 
@@ -219,7 +219,7 @@ func TestUsecase_GetCollection(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.collGetFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			got, err := u.GetCollection(context.Background(), tt.id)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
@@ -227,9 +227,9 @@ func TestUsecase_GetCollection(t *testing.T) {
 			if err == nil && tt.id != "" && tt.id != "  " && got.ID != tt.id {
 				t.Errorf("ID = %q, want %q", got.ID, tt.id)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 		})
@@ -256,7 +256,7 @@ func TestUsecase_ListCollections(t *testing.T) {
 				capturedLimit = limit
 				return nil, 0, nil
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			_, _, err := u.ListCollections(context.Background(), "ws", tt.limit, tt.offset)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
@@ -273,24 +273,24 @@ func TestUsecase_DeleteCollection(t *testing.T) {
 		name      string
 		id        string
 		wantErr   bool
-		errReason string
+		wantErrIs error
 	}{
-		{"empty id rejected", "", true, "KNOWLEDGE"},
-		{"whitespace id rejected", "  ", true, "KNOWLEDGE"},
-		{"valid id passes", "col-1", false, ""},
+		{"empty id rejected", "", true, ErrIDRequired},
+		{"whitespace id rejected", "  ", true, ErrIDRequired},
+		{"valid id passes", "col-1", false, nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mr := noOpMockRepo()
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			err := u.DeleteCollection(context.Background(), tt.id)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 		})
@@ -303,34 +303,34 @@ func TestUsecase_CreateDocument(t *testing.T) {
 		in        Document
 		repoFn    func(_ context.Context, d Document) (Document, error)
 		wantErr   bool
-		errReason string
+		wantErrIs error
 		check     func(t *testing.T, got Document)
 	}{
 		{
 			"empty collection id rejected",
 			Document{Source: "file.txt"},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrCollectionIDRequired, nil,
 		},
 		{
 			"whitespace collection id rejected",
 			Document{CollectionID: "  ", Source: "file.txt"},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrCollectionIDRequired, nil,
 		},
 		{
 			"empty source rejected",
 			Document{CollectionID: "col-1"},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrSourceRequired, nil,
 		},
 		{
 			"whitespace source rejected",
 			Document{CollectionID: "col-1", Source: "  "},
-			nil, true, "KNOWLEDGE", nil,
+			nil, true, ErrSourceRequired, nil,
 		},
 		{
 			"defaults applied id and status",
 			Document{CollectionID: "col-1", Source: "file.txt"},
 			func(_ context.Context, d Document) (Document, error) { return d, nil },
-			false, "",
+			false, nil,
 			func(t *testing.T, got Document) {
 				if got.ID == "" {
 					t.Error("ID should be auto-generated")
@@ -344,7 +344,7 @@ func TestUsecase_CreateDocument(t *testing.T) {
 			"explicit id and status preserved",
 			Document{ID: "doc-1", CollectionID: "col-1", Source: "file.txt", Status: "ready"},
 			func(_ context.Context, d Document) (Document, error) { return d, nil },
-			false, "",
+			false, nil,
 			func(t *testing.T, got Document) {
 				if got.ID != "doc-1" {
 					t.Errorf("ID = %q, want %q", got.ID, "doc-1")
@@ -362,14 +362,14 @@ func TestUsecase_CreateDocument(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.docCreateFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			got, err := u.CreateDocument(context.Background(), tt.in)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 			if tt.check != nil {
@@ -398,7 +398,7 @@ func TestUsecase_ListDocuments(t *testing.T) {
 				capturedLimit = limit
 				return nil, 0, nil
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			_, _, err := u.ListDocuments(context.Background(), "col-1", tt.limit, 0)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
@@ -415,33 +415,33 @@ func TestUsecase_Search(t *testing.T) {
 		name      string
 		q         SearchQuery
 		wantErr   bool
-		errReason string
+		wantErrIs error
 		check     func(t *testing.T, q SearchQuery)
 	}{
 		{
 			"empty collection id rejected",
 			SearchQuery{Query: "hello"},
-			true, "KNOWLEDGE", nil,
+			true, ErrCollectionIDRequired, nil,
 		},
 		{
 			"whitespace collection id rejected",
 			SearchQuery{CollectionID: "  ", Query: "hello"},
-			true, "KNOWLEDGE", nil,
+			true, ErrCollectionIDRequired, nil,
 		},
 		{
 			"empty query rejected",
 			SearchQuery{CollectionID: "col-1"},
-			true, "KNOWLEDGE", nil,
+			true, ErrQueryRequired, nil,
 		},
 		{
 			"whitespace query rejected",
 			SearchQuery{CollectionID: "col-1", Query: "  "},
-			true, "KNOWLEDGE", nil,
+			true, ErrQueryRequired, nil,
 		},
 		{
 			"zero topk defaults to 5",
 			SearchQuery{CollectionID: "col-1", Query: "hello"},
-			false, "",
+			false, nil,
 			func(t *testing.T, q SearchQuery) {
 				if q.TopK != 5 {
 					t.Errorf("TopK = %d, want 5", q.TopK)
@@ -451,7 +451,7 @@ func TestUsecase_Search(t *testing.T) {
 		{
 			"negative topk defaults to 5",
 			SearchQuery{CollectionID: "col-1", Query: "hello", TopK: -1},
-			false, "",
+			false, nil,
 			func(t *testing.T, q SearchQuery) {
 				if q.TopK != 5 {
 					t.Errorf("TopK = %d, want 5", q.TopK)
@@ -461,7 +461,7 @@ func TestUsecase_Search(t *testing.T) {
 		{
 			"explicit topk preserved",
 			SearchQuery{CollectionID: "col-1", Query: "hello", TopK: 10},
-			false, "",
+			false, nil,
 			func(t *testing.T, q SearchQuery) {
 				if q.TopK != 10 {
 					t.Errorf("TopK = %d, want 10", q.TopK)
@@ -478,14 +478,14 @@ func TestUsecase_Search(t *testing.T) {
 				capturedQ = q
 				return nil, nil
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			_, err := u.Search(context.Background(), tt.q, nil)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 			if tt.check != nil {
@@ -503,7 +503,7 @@ func TestUsecase_RequireRepo(t *testing.T) {
 	}{
 		{"nil usecase", nil, true},
 		{"nil collections", &Usecase{}, true},
-		{"all present", NewUsecase(noOpMockRepo()), false},
+		{"all present", NewUsecaseFromRepo(noOpMockRepo()), false},
 	}
 
 	for _, tt := range tests {

@@ -47,7 +47,7 @@ var ProviderSet = wire.NewSet(
 	NewEvolutionUsecase,
 	NewTaskUsecase,
 	NewArtifactUsecase,
-	NewKnowledgeUsecase,
+	NewKnowledgeUsecaseFromRepo,
 	NewEvalUsecase,
 	NewA2AUsecase,
 	ProvideA2AAgentLookup,

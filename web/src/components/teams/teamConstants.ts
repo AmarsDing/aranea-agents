@@ -108,3 +108,4 @@ export const failureOnErrorOptions = [
 ];
 
 export const BuiltinIndustryId = '__builtin__';
+export const PresetIndustryId = '__preset__';

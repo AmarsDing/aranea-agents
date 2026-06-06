@@ -268,7 +268,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		DisplayName:        spec.DisplayName,
 		AgentDescription:   spec.Description,
 		Icon:               spec.Icon,
-		AgentVariant:       spec.Variant,
+		AgentVariant:       firstNonEmpty(spec.Variant, "general"),
 		VariantDescription: spec.VariantDescription,
 		Provider:           spec.Provider,
 		Model:              spec.Model,
@@ -279,6 +279,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		Status:             "active",
 		Readonly:           false,
 		Source:             source,
+		PositionKey:        spec.Key, // 默认使用 agent_key 作为 position_key，避免唯一约束冲突
 	}
 
 	// overwrite 时保留原始 Status/Readonly/Kind/Source

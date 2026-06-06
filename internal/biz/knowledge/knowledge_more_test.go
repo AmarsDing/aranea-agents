@@ -2,9 +2,9 @@ package knowledge
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 func TestUsecase_UpdateDocumentStatus(t *testing.T) {
@@ -16,7 +16,7 @@ func TestUsecase_UpdateDocumentStatus(t *testing.T) {
 		chunkCount int
 		repoFn     func(_ context.Context, id, status, errMsg string, chunkCount int) error
 		wantErr    bool
-		errReason  string
+		wantErrIs  error
 	}{
 		{
 			"delegates to repo on success",
@@ -33,15 +33,15 @@ func TestUsecase_UpdateDocumentStatus(t *testing.T) {
 				}
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"repo error propagated",
 			"doc-1", "failed", "parse error", 0,
 			func(_ context.Context, _, _, _ string, _ int) error {
-				return errors.InternalServer("KNOWLEDGE", "db error")
+				return fmt.Errorf("knowledge: db error")
 			},
-			true, "KNOWLEDGE",
+			true, nil,
 		},
 	}
 
@@ -51,14 +51,14 @@ func TestUsecase_UpdateDocumentStatus(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.docUpdateFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			err := u.UpdateDocumentStatus(context.Background(), tt.id, tt.status, tt.errMsg, tt.chunkCount)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 		})
@@ -71,8 +71,8 @@ func TestUsecase_UpdateDocumentStatus_NilUsecase(t *testing.T) {
 	if err == nil {
 		t.Fatal("nil usecase should return error")
 	}
-	if e := errors.FromError(err); e == nil || e.Reason != "KNOWLEDGE" {
-		t.Errorf("expected KNOWLEDGE error, got %v", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("expected ErrUnavailable, got %v", err)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestUsecase_UpdateCollectionCounts(t *testing.T) {
 		chunkDelta int
 		repoFn     func(_ context.Context, id string, docDelta, chunkDelta int) error
 		wantErr    bool
-		errReason  string
+		wantErrIs  error
 	}{
 		{
 			"delegates to repo on success",
@@ -101,7 +101,7 @@ func TestUsecase_UpdateCollectionCounts(t *testing.T) {
 				}
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"negative deltas passed through",
@@ -115,15 +115,15 @@ func TestUsecase_UpdateCollectionCounts(t *testing.T) {
 				}
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"repo error propagated",
 			"col-1", 1, 1,
 			func(_ context.Context, _ string, _, _ int) error {
-				return errors.InternalServer("KNOWLEDGE", "db error")
+				return fmt.Errorf("knowledge: db error")
 			},
-			true, "KNOWLEDGE",
+			true, nil,
 		},
 	}
 
@@ -133,14 +133,14 @@ func TestUsecase_UpdateCollectionCounts(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.collUpdateFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			err := u.UpdateCollectionCounts(context.Background(), tt.id, tt.docDelta, tt.chunkDelta)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 		})
@@ -161,7 +161,7 @@ func TestUsecase_InsertChunks(t *testing.T) {
 		chunks    []Chunk
 		repoFn    func(_ context.Context, chunks []Chunk) error
 		wantErr   bool
-		errReason string
+		wantErrIs error
 	}{
 		{
 			"nil slice short circuits",
@@ -170,7 +170,7 @@ func TestUsecase_InsertChunks(t *testing.T) {
 				t.Error("repo should not be called for nil chunks")
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"empty slice short circuits",
@@ -179,7 +179,7 @@ func TestUsecase_InsertChunks(t *testing.T) {
 				t.Error("repo should not be called for empty chunks")
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"non-empty chunks delegates to repo",
@@ -190,15 +190,15 @@ func TestUsecase_InsertChunks(t *testing.T) {
 				}
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"repo error propagated",
 			[]Chunk{{ID: "c1"}},
 			func(_ context.Context, _ []Chunk) error {
-				return errors.InternalServer("KNOWLEDGE", "insert error")
+				return fmt.Errorf("knowledge: insert error")
 			},
-			true, "KNOWLEDGE",
+			true, nil,
 		},
 	}
 
@@ -208,14 +208,14 @@ func TestUsecase_InsertChunks(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.chunkInsertFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			err := u.InsertChunks(context.Background(), tt.chunks)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 		})
@@ -244,17 +244,17 @@ func TestUsecase_DeleteDocument(t *testing.T) {
 		id        string
 		repoFn    func(_ context.Context, id string) error
 		wantErr   bool
-		errReason string
+		wantErrIs error
 	}{
 		{
 			"empty id rejected",
 			"",
-			nil, true, "KNOWLEDGE",
+			nil, true, ErrIDRequired,
 		},
 		{
 			"whitespace id rejected",
 			"  ",
-			nil, true, "KNOWLEDGE",
+			nil, true, ErrIDRequired,
 		},
 		{
 			"valid id passes",
@@ -265,15 +265,15 @@ func TestUsecase_DeleteDocument(t *testing.T) {
 				}
 				return nil
 			},
-			false, "",
+			false, nil,
 		},
 		{
 			"repo error propagated",
 			"doc-1",
 			func(_ context.Context, _ string) error {
-				return errors.InternalServer("KNOWLEDGE", "db error")
+				return fmt.Errorf("knowledge: db error")
 			},
-			true, "KNOWLEDGE",
+			true, nil,
 		},
 	}
 
@@ -283,14 +283,14 @@ func TestUsecase_DeleteDocument(t *testing.T) {
 			if tt.repoFn != nil {
 				mr.docDeleteFn = tt.repoFn
 			}
-			u := NewUsecase(mr)
+			u := NewUsecaseFromRepo(mr)
 			err := u.DeleteDocument(context.Background(), tt.id)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+			if err != nil && tt.wantErrIs != nil {
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("error = %v, want errors.Is(err, %v)", err, tt.wantErrIs)
 				}
 			}
 		})

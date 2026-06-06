@@ -1,0 +1,17 @@
+key: support-team
+display_name: 客服支持团队
+description: 以客服助手为核心的服务团队，高效处理用户问题与工单。
+mode: coordinator
+members:
+  - agent_key: support
+    role: coordinator
+    name: 客服助手
+    task_prompt: 作为客服协调者，理解用户问题并分配给合适的成员处理。
+  - agent_key: translator
+    role: worker
+    name: 翻译助手
+    task_prompt: 负责多语种翻译与本地化处理。
+  - agent_key: writer
+    role: worker
+    name: 写作助手
+    task_prompt: 负责回复文案撰写与知识库文档整理。

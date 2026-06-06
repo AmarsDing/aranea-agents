@@ -5,9 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"strings"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 // Collection is a named vector store.
@@ -96,10 +96,17 @@ type SparseSearcher interface {
 	SearchChunksBM25(ctx context.Context, q SearchQuery) ([]Chunk, error)
 }
 
-// ErrUnavailable is returned when Postgres/pgvector is not configured.
-var ErrUnavailable = errors.ServiceUnavailable(
-	"KNOWLEDGE",
-	"knowledge base requires PostgreSQL with pgvector; configure data.postgres.source",
+// Domain errors for knowledge biz layer — the Service layer maps these to kerrors.
+var (
+	ErrUnavailable          = errors.New("knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
+	ErrNameRequired         = errors.New("knowledge: name is required")
+	ErrEmbeddingModelRequired = errors.New("knowledge: embedding_model is required")
+	ErrIDRequired           = errors.New("knowledge: id is required")
+	ErrCollectionIDRequired = errors.New("knowledge: collection_id is required")
+	ErrSourceRequired       = errors.New("knowledge: source is required")
+	ErrQueryRequired        = errors.New("knowledge: query is required")
+	ErrDimensionMismatch    = errors.New("knowledge: embedding dimension mismatch")
+	ErrEmbeddingEmpty       = errors.New("knowledge: embedding is empty")
 )
 
 // Usecase implements collection/document/search operations.
@@ -109,8 +116,13 @@ type Usecase struct {
 	chunks      ChunkRepo
 }
 
-// NewUsecase constructs a KnowledgeUsecase.
-func NewUsecase(repo Repo) *Usecase {
+// NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.
+func NewUsecase(collections CollectionRepo, documents DocumentRepo, chunks ChunkRepo) *Usecase {
+	return &Usecase{collections: collections, documents: documents, chunks: chunks}
+}
+
+// NewUsecaseFromRepo constructs a KnowledgeUsecase from the combined Repo interface.
+func NewUsecaseFromRepo(repo Repo) *Usecase {
 	return &Usecase{collections: repo, documents: repo, chunks: repo}
 }
 
@@ -143,10 +155,10 @@ func (u *Usecase) CreateCollection(ctx context.Context, in Collection) (Collecti
 	in.Name = strings.TrimSpace(in.Name)
 	in.EmbeddingModel = strings.TrimSpace(in.EmbeddingModel)
 	if in.Name == "" {
-		return Collection{}, errors.BadRequest("KNOWLEDGE", "name is required")
+		return Collection{}, ErrNameRequired
 	}
 	if in.EmbeddingModel == "" {
-		return Collection{}, errors.BadRequest("KNOWLEDGE", "embedding_model is required")
+		return Collection{}, ErrEmbeddingModelRequired
 	}
 	if in.Dim <= 0 {
 		in.Dim = 1536
@@ -166,7 +178,7 @@ func (u *Usecase) GetCollection(ctx context.Context, id string) (Collection, err
 		return Collection{}, err
 	}
 	if strings.TrimSpace(id) == "" {
-		return Collection{}, errors.BadRequest("KNOWLEDGE", "id is required")
+		return Collection{}, ErrIDRequired
 	}
 	return u.collections.GetCollection(ctx, id)
 }
@@ -188,7 +200,7 @@ func (u *Usecase) DeleteCollection(ctx context.Context, id string) error {
 		return err
 	}
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("KNOWLEDGE", "id is required")
+		return ErrIDRequired
 	}
 	return u.collections.DeleteCollection(ctx, id)
 }
@@ -201,10 +213,10 @@ func (u *Usecase) CreateDocument(ctx context.Context, d Document) (Document, err
 	d.Source = strings.TrimSpace(d.Source)
 	d.CollectionID = strings.TrimSpace(d.CollectionID)
 	if d.CollectionID == "" {
-		return Document{}, errors.BadRequest("KNOWLEDGE", "collection_id is required")
+		return Document{}, ErrCollectionIDRequired
 	}
 	if d.Source == "" {
-		return Document{}, errors.BadRequest("KNOWLEDGE", "source is required")
+		return Document{}, ErrSourceRequired
 	}
 	if d.ID == "" {
 		d.ID = newKnowledgeID()
@@ -235,7 +247,7 @@ func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
 		return err
 	}
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("KNOWLEDGE", "id is required")
+		return ErrIDRequired
 	}
 	return u.documents.DeleteDocument(ctx, id)
 }
@@ -250,9 +262,9 @@ func (u *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error {
 	}
 	if err := u.chunks.InsertChunks(ctx, chunks); err != nil {
 		if strings.Contains(err.Error(), "dimension mismatch") {
-			return errors.BadRequest("KNOWLEDGE", err.Error())
+			return ErrDimensionMismatch
 		}
-		return errors.InternalServer("KNOWLEDGE", err.Error())
+		return fmt.Errorf("knowledge: %w", err)
 	}
 	return nil
 }
@@ -263,10 +275,10 @@ func (u *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []fl
 		return nil, err
 	}
 	if strings.TrimSpace(q.CollectionID) == "" {
-		return nil, errors.BadRequest("KNOWLEDGE", "collection_id is required")
+		return nil, ErrCollectionIDRequired
 	}
 	if strings.TrimSpace(q.Query) == "" {
-		return nil, errors.BadRequest("KNOWLEDGE", "query is required")
+		return nil, ErrQueryRequired
 	}
 	if q.TopK <= 0 {
 		q.TopK = 5
@@ -274,9 +286,9 @@ func (u *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []fl
 	chunks, err := u.chunks.SearchChunks(ctx, q, queryEmbedding)
 	if err != nil {
 		if strings.Contains(err.Error(), "embedding is empty") {
-			return nil, errors.BadRequest("KNOWLEDGE", err.Error())
+			return nil, ErrEmbeddingEmpty
 		}
-		return nil, errors.InternalServer("KNOWLEDGE", err.Error())
+		return nil, fmt.Errorf("knowledge: %w", err)
 	}
 	return chunks, nil
 }

@@ -612,8 +612,11 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 }
 
 func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
-	if a.ID == "" || a.AgentKey == "" || a.DisplayName == "" || a.Provider == "" || a.Model == "" {
+	if a.AgentKey == "" || a.DisplayName == "" || a.Provider == "" || a.Model == "" {
 		return biz.Agent{}, kerrors.BadRequest("AGENT", "missing required fields")
+	}
+	if a.ID == "" {
+		a.ID = generateCatalogID()
 	}
 	now := nowRFC3339()
 	if a.CreatedAt == "" {

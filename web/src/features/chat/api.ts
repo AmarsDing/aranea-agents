@@ -155,7 +155,8 @@ export async function stopGeneration(sessionId: string): Promise<boolean> {
   try {
     const data = await chatService.StopGeneration({ sessionId });
     return !!data?.stopped;
-  } catch {
+  } catch (err) {
+    console.warn('[chat] stopGeneration failed:', err);
     return false;
   }
 }

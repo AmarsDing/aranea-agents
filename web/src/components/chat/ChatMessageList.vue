@@ -163,6 +163,8 @@ import TurnBlock from './TurnBlock.vue';
 import ChatMessageRow from './ChatMessageRow.vue';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import type { Message, ReactToolLinkIndex, PendingMessage } from '../../features/chat/types';
+import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
+import type { ArtifactMeta } from '../../features/artifact/types';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import type { TimelineItem } from '../../features/chat/composables/useChatTimeline';
 
@@ -188,13 +190,13 @@ defineEmits<{
   'messages-click': [event: MouseEvent];
   scroll: [event: Event];
   'scroll-to-bottom': [smooth: boolean];
-  'a2ui-user-action': [payload: any];
+  'a2ui-user-action': [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: 'positive' | 'negative' }];
   regenerate: [message: Message];
   retry: [messageId: string];
   'dismiss-failed': [messageId: string];
   'attachment-deleted': [id: string];
-  'download-artifact': [meta: any];
+  'download-artifact': [meta: ArtifactMeta];
   'pin-reasoning-message': [messageId: string];
   'cancel-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];

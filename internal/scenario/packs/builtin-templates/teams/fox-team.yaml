@@ -1,0 +1,17 @@
+key: fox-team
+display_name: 小狐全能团队
+description: 以小狐助手为核心的通用协调团队，适合日常对话与任务处理。
+mode: coordinator
+members:
+  - agent_key: fox
+    role: coordinator
+    name: 小狐助手
+    task_prompt: 作为团队协调者，理解用户意图并分配任务给合适的成员。
+  - agent_key: programmer
+    role: worker
+    name: 研发助手
+    task_prompt: 负责技术方案设计与代码实现。
+  - agent_key: writer
+    role: worker
+    name: 写作助手
+    task_prompt: 负责文案撰写、内容润色与多语种表达。

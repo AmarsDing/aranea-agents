@@ -2,7 +2,9 @@ package data
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -807,6 +809,9 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	seedStep("data.seed.pack_builtin_templates", func() error {
 		return SeedPackBuiltinTemplates(ctx, entClient, scenarioDir, lg)
 	})
+	seedStep("data.seed.pack_builtin_templates_v2", func() error {
+		return SeedPackBuiltinTemplatesV2(ctx, entClient, scenarioDir, lg)
+	})
 	seedStep("data.seed.spirit_prompt_files", func() error {
 		return SeedSpiritPromptFiles(ctx, entClient, scenarioDir, lg)
 	})
@@ -919,4 +924,14 @@ func normalizeSQLiteDSN(dsn string) string {
 		return dsn
 	}
 	return "file:" + dsn + "?cache=shared&_fk=1"
+}
+
+// generateCatalogID generates a random 24-hex-char ID for agent/team catalog entries.
+func generateCatalogID() string {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		// Fallback: use timestamp-based ID
+		return fmt.Sprintf("%012x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
 }
