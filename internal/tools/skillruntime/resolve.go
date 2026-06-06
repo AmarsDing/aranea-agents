@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/skillrecommend"
@@ -18,8 +17,8 @@ import (
 type SkillToolsetOptions struct {
 	Runtime   RuntimeSettings
 	UserQuery string
-	// HealthAgg provides historical performance data for ranking. If nil, ranking is skipped.
-	HealthAgg biz.SkillHealthAggregator
+	// HealthProvider provides historical performance data for ranking. If nil, ranking is skipped.
+	HealthProvider skillrecommend.HealthMetricsProvider
 }
 
 // ResolveResult holds the output of skill resolution with per-slug reasons.
@@ -112,13 +111,11 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 		return scored[i].slug < scored[j].slug
 	})
 
-	// Apply historical performance ranking if aggregator is available.
-	if opts != nil && opts.HealthAgg != nil {
-		candidates := buildRankCandidates(ctx, scored, opts.HealthAgg, lg)
+	// Apply historical performance ranking if provider is available.
+	if opts != nil && opts.HealthProvider != nil {
+		candidates := buildRankCandidates(ctx, scored, opts.HealthProvider, lg)
 		if len(candidates) > 0 {
-			// Create adapter bridge from Biz layer to Tools layer interface.
-			provider := biz.NewSkillHealthMetricsAdapter(opts.HealthAgg)
-			factors := skillrecommend.DynamicRankFactors(provider, candidates)
+			factors := skillrecommend.DynamicRankFactors(opts.HealthProvider, candidates)
 			ranked := skillrecommend.Rank(candidates, factors)
 			applyRankResults(scored, ranked, reasons)
 		}
@@ -327,13 +324,9 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 	return out
 }
 
-// rankLookback is the time window for historical health metrics used in ranking.
-const rankLookback = 30 * 24 * time.Hour
-
 // buildRankCandidates converts scored slugs into skillrecommend.Candidate structs
 // by fetching historical health metrics from the aggregator.
-func buildRankCandidates(ctx context.Context, scored []slugScore, healthAgg biz.SkillHealthAggregator, lg loggateway.Logger) []skillrecommend.Candidate {
-	since := time.Now().UTC().Add(-rankLookback)
+func buildRankCandidates(ctx context.Context, scored []slugScore, healthProvider skillrecommend.HealthMetricsProvider, lg loggateway.Logger) []skillrecommend.Candidate {
 	candidates := make([]skillrecommend.Candidate, 0, len(scored))
 	for _, s := range scored {
 		c := skillrecommend.Candidate{
@@ -343,16 +336,17 @@ func buildRankCandidates(ctx context.Context, scored []slugScore, healthAgg biz.
 		if c.SemanticSimilarity > 1.0 {
 			c.SemanticSimilarity = 1.0
 		}
-		metrics, err := healthAgg.GetHealthMetrics(ctx, s.slug, since)
+		successRate, err := healthProvider.GetRecentSuccessRate(ctx, s.slug, 30)
 		if err != nil {
 			lg.Warn("health metrics unavailable for ranking; using defaults",
 				loggateway.StepID("tool.skillruntime.health_metrics_fail"),
 				loggateway.Err(err))
-		} else if metrics != nil {
-			c.HistoricalSuccess = metrics.SuccessRate
-			if metrics.AvgDurationMS > 0 {
-				c.LatencyInverse = 1.0 / (1.0 + metrics.AvgDurationMS/1000.0)
-			}
+		} else {
+			c.HistoricalSuccess = successRate
+		}
+		avgDuration, err := healthProvider.GetRecentAvgDuration(ctx, s.slug, 30)
+		if err == nil && avgDuration > 0 {
+			c.LatencyInverse = 1.0 / (1.0 + avgDuration/1000.0)
 		}
 		candidates = append(candidates, c)
 	}

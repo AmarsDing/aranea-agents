@@ -122,7 +122,7 @@
 - 验证方式：`go test ./internal/biz/... -run TestEvolutionLoop -count=1` 绿色
 
 ### Task 12: 知识库动态挖掘
-- [ ] **任务完成**（与 superpowers plan `Task 12`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 12`、`tasks.md` 对应条目同步勾选）
 - 目标：从历史修复记录自动提取修复模板，动态更新知识库
 - 改动文件：
   - `internal/biz/monitor/pattern_mining.go`（新增：PatternMiningUsecase）
@@ -132,7 +132,7 @@
 - 验证方式：`go test ./internal/biz/monitor/... -run TestPatternMining -count=1` 绿色
 
 ### Task 13: 全量验证
-- [ ] **任务完成**（与 superpowers plan `Task 13`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 13`、`tasks.md` 对应条目同步勾选）
 - 目标：后端 + 前端全量验证通过
 - 改动文件：无新增，仅验证
 - 验证方式：`make api && make wire && make build && make test && make lint` && `cd web && pnpm lint && pnpm test && pnpm build`

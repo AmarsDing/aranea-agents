@@ -148,6 +148,8 @@ func main() {
 		MonitorAlertEvalWorker:      out.MonitorAlertEvalWorker,
 		MonitorTraceBackfillWorker:  out.MonitorTraceBackfillWorker,
 		FailurePatternSyncJob:       out.FailurePatternSyncJob,
+		PredictiveHealJob:           out.PredictiveHealJob,
+		PatternMiningJob:            out.PatternMiningJob,
 		MemoryL2Decay:               out.MemoryL2Decay,
 		MemoryL2Consolidate:         out.MemoryL2Consolidate,
 		MemoryL1Archive:             out.MemoryL1Archive,

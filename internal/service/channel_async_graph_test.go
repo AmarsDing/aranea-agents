@@ -119,6 +119,12 @@ func (s channelTestAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCre
 	return nil, nil
 }
 func (s channelTestAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (s channelTestAgentRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
+func (s channelTestAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }

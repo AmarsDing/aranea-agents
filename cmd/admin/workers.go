@@ -44,6 +44,8 @@ type backgroundWorkersConfig struct {
 	MonitorAlertEvalWorker      BackgroundStarter
 	MonitorTraceBackfillWorker  BackgroundStarter
 	FailurePatternSyncJob       BackgroundStarter
+	PredictiveHealJob           BackgroundStarter
+	PatternMiningJob            BackgroundStarter
 	MemoryL2Decay               BackgroundStarter
 	MemoryL2Consolidate         BackgroundStarter
 	MemoryL1Archive             BackgroundStarter
@@ -211,6 +213,16 @@ func startBackgroundWorkers(
 	if cfg.FailurePatternSyncJob != nil {
 		goAfterReady("failure_pattern_sync", func() { cfg.FailurePatternSyncJob.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "failure pattern sync job scheduled", "interval", "24h")
+	}
+
+	if cfg.PredictiveHealJob != nil {
+		goAfterReady("predictive_heal", func() { cfg.PredictiveHealJob.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "predictive heal job scheduled", "interval", "5m")
+	}
+
+	if cfg.PatternMiningJob != nil {
+		goAfterReady("pattern_mining", func() { cfg.PatternMiningJob.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "pattern mining job scheduled", "interval", "24h")
 	}
 
 	if cfg.MemoryL2Decay != nil {

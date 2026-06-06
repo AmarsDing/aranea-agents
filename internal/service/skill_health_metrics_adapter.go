@@ -1,21 +1,22 @@
-package biz
+package service
 
 import (
 	"context"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/skillrecommend"
 )
 
 // SkillHealthMetricsAdapter adapts the Biz layer's SkillHealthAggregator
-// to the Tools layer's HealthMetricsProvider interface. This avoids a direct
-// dependency from Tools → Biz.
+// to both biz.HealthMetricsProvider and skillrecommend.HealthMetricsProvider.
+// Placed in the service layer because it depends on both biz and tools packages.
 type SkillHealthMetricsAdapter struct {
-	agg SkillHealthAggregator
+	agg biz.SkillHealthAggregator
 }
 
 // NewSkillHealthMetricsAdapter creates a new adapter.
-func NewSkillHealthMetricsAdapter(agg SkillHealthAggregator) *SkillHealthMetricsAdapter {
+func NewSkillHealthMetricsAdapter(agg biz.SkillHealthAggregator) *SkillHealthMetricsAdapter {
 	return &SkillHealthMetricsAdapter{agg: agg}
 }
 
@@ -47,5 +48,6 @@ func (a *SkillHealthMetricsAdapter) GetRecentAvgDuration(ctx context.Context, sk
 	return metrics.AvgDurationMS, nil
 }
 
-// Compile-time check that the adapter satisfies the interface.
+// Compile-time checks that the adapter satisfies both interfaces.
+var _ biz.HealthMetricsProvider = (*SkillHealthMetricsAdapter)(nil)
 var _ skillrecommend.HealthMetricsProvider = (*SkillHealthMetricsAdapter)(nil)

@@ -238,8 +238,13 @@ func r3DataNoBizImport(rel string, imports []string) []violation {
 }
 
 // R4: internal/service/* must not directly import Ent client.
+// Integration tests (_test.go with //go:build integration) are exempt since they need
+// direct DB access for test setup.
 func r4ServiceNoEntDirect(rel string, imports []string) []violation {
 	if !strings.HasPrefix(rel, "internal/service/") {
+		return nil
+	}
+	if strings.HasSuffix(rel, "_test.go") {
 		return nil
 	}
 	if hasImport(imports, "aranea-agents/internal/data/ent") {

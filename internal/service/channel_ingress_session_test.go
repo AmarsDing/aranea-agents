@@ -316,6 +316,12 @@ func (s ingressAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator
 	return nil, nil
 }
 func (s ingressAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (s ingressAgentRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
+func (s ingressAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
 func (s ingressAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
