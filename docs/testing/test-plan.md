@@ -275,8 +275,8 @@ cd web && pnpm lint && pnpm test && pnpm build
 | `sample-webhook-config.json` | Webhook 配置样例 |
 | `sample-graph-definition.json` | Graph 定义样例 |
 | `sample-team-config.json` | Team 配置样例 |
-| `error-codes.json` | 错误码清单 |
-| `test-users.json` | 测试用户数据 |
+| `sample-error-codes.json` | 错误码清单 |
+| `sample-test-users.json` | 测试用户数据 |
 
 ---
 

@@ -30,6 +30,12 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | `aranea-frontend-guide` | 前端项目编码指南（详细版） | 编写 Vue 3/Quasar/Pinia/TS 代码 |
 | `vue-frontend-guide` | 通用 Vue 3 编程指导 | 组件/Composable/TypeScript 设计 |
 
+### 文档类
+
+| SKILL | 定位 | 触发场景 |
+|-------|------|----------|
+| `aranea-docs-guide` | docs 目录文档维护规范 | 创建/修改/移动 docs/ 下的任何文档 |
+
 ### 审查类
 
 | SKILL | 定位 | 触发场景 |
@@ -83,6 +89,9 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | 代码审查清单 | `aranea-review`（全栈）、`go-oop-review`（Go OOP） |
 | 决策树（代码该放哪） | `aranea-coding-guide` §4、`aranea-frontend-guide` §2 |
 | AI 编码自检清单 | `aranea-coding-guide` §11、`aranea-frontend-guide` §10 |
+| docs 文档命名/存放规范 | `aranea-docs-guide` |
+| 模块文档三件套格式 | `aranea-docs-guide` §2 |
+| 子模块合并规则 | `aranea-docs-guide` §2.3 |
 
 ---
 
@@ -177,7 +186,27 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 ---
 
-## 六、模块关联强制读取（违反即停）
+## 六、docs 目录规范
+
+> **操作 docs/ 目录下的任何文件前，必须先读 `aranea-docs-guide` SKILL。**
+
+| 目录 | 用途 | 命名规范 |
+|------|------|----------|
+| `docs/development/` | 模块开发文档 | `<N>-<name>.md` / `.design.md` / `.development.md` |
+| `docs/testing/` | 测试文档 | 见各子目录 README.md |
+| `docs/scenarios/` | 专业场景文档 | 每场景一个子目录，kebab-case |
+| `docs/reports/` | 调研报告 | `YYYY-MM-DD-<type>-<topic>.md` |
+| `docs/notes/` | 个人笔记 | 用户自维护，AI 不主动修改 |
+
+**关键红线**：
+1. 同一模块的子功能文档必须合并到主文档，禁止创建独立子文档文件
+2. development 文档后缀必须用点号分隔（`.development.md`），禁止连字符（`-development.md`）
+3. 禁止文件名中使用空格
+4. 禁止同一编号下放置不同主题的模块
+
+---
+
+## 七、模块关联强制读取（违反即停）
 
 > **任何模块开发前必须先读关联文档。** 模块不是孤岛，改一处必知影响面。
 

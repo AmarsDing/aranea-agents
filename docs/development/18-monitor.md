@@ -436,3 +436,380 @@ Tab 与深链 query（刷新可保留）：
 ---
 
 *文档版本：2026-05-29 — 对齐代码：6 Tab（含 Alerts）、Runner 指标、方案 C Phase 1d ✅、Logs 流程/进程二级 Tab、MON-OPT-01~06 ✅、LOG-01/TRACE-01/DIAG-01/02 ✅、Latency P50/P95/P99 ✅、LOG-03 P0/P1/P2 ✅、REDLINE ✅、QUALITY ✅。实现差距见 [18-monitor-development.md](./18-monitor-development.md)。*
+
+
+---
+
+## 子模块：Monitor Dashboard
+
+> **路由**：`/overview` · **页面**：`OverviewPage.vue`  
+> **与 Monitor 运维页区分**：`/monitor/logs`（`MonitorPage`）负责审计、实时事件、Runs 排障、日志流；**本页**面向运营/管理员的 **用量与成本大盘**，默认登录后首页。
+
+**关联文档**：[18 monitor.md](./18%20monitor.md)（运维监控）· [29 token.md](./29%20token.md)（用量口径）· [frontend-pages.md](./frontend-pages.md) §概览
+
+---
+
+## 0. 模块边界
+
+| 概念 | 路由 | 回答的问题 |
+|------|------|------------|
+| **监控 Dashboard（本文）** | `/overview` | 今天花了多少 Token/钱？趋势如何？哪个模型/Agent 最贵？有无异常调用？ |
+| **Monitor 运维页** | `/monitor/logs` | 谁在改配置？实时告警？单次运行卡在哪？进程日志？ |
+| **用量明细** | `/usage/events` | 逐条 `model_token_usage_events` 对账与导出 |
+
+**非目标**
+
+- 不在概览页编辑 Agent/Provider/配额（跳转 Agent 设置「权限」Tab 或 `/models`）。
+- 不把概览当作 Runs/Flow 排障入口（跳转 Monitor **Traces** 或 Chat）。
+- 不替代 Grafana/Prometheus（`docs/observability/` 为 SRE 外链能力）。
+
+---
+
+## 1. 用户故事
+
+| ID | 角色 | 故事 | 验收 |
+|----|------|------|------|
+| DASH-01 | 运营 | 登录后第一眼看到今日调用、Token、费用与成功率 | 默认进入 `/overview`；指标卡有数或可读空态 |
+| DASH-02 | 运营 | 按时间/Provider/模型/状态筛选后，区间摘要与趋势一致 | 改筛选后 `range` 段与趋势点刷新 |
+| DASH-03 | 运营 | 识别 Top 模型与 Top Agent 成本 | 两列排行表有 provider/model/agent 字段 |
+| DASH-04 | 运营 | 发现失败/超时调用 | 「异常请求」列表可点开或跳转明细 |
+| DASH-05 | 运营 | 从大盘进入逐条明细 | 「查看明细」→ `/usage/events` 且携带 `range` |
+| DASH-06 | 财务 | 有 Agent 月配额时看到预算使用率 | 配置 `usage_quotas` 时出现「月预算使用率」卡 |
+| DASH-07 | 运维 | 从大盘跳到 Monitor 排障 | ✅ Hero「运维监控」：Runs / Events / Alerts / Logs |
+| DASH-08 | 运维 | 看到 Runner 窗口错误率 | ✅ `OverviewRunnerMetrics`；与用量 `range` 独立（有说明文案） |
+
+---
+
+## 2. 信息架构
+
+### 2.1 页面结构（当前实现）
+
+```
+OverviewPage
+├── OverviewPageHero          「查看明细」+ OverviewMonitorQuickLinks
+├── OverviewRunnerMetrics     Runner 窗口指标（Store → 下钻 Monitor Traces）
+├── 筛选条                     range / provider / model / status / 趋势粒度
+├── UsageMetricCards          今日/本月/延迟/TPS/配额（可选）
+├── UsageTrendChart           ECharts：Token/调用/费用/成功率
+├── 区间摘要                   四指标列表
+├── UsageBreakdownCharts      模型/Provider 费用占比（Top 样本）
+├── Top 模型 | Top Agent       UsageTopModels / UsageTopAgents
+├── 低性价比模型（有数据时）    UsageInefficientModels
+└── 异常请求                   UsageAnomalyList
+```
+
+### 2.2 导航关系
+
+```mermaid
+flowchart LR
+  Login --> Overview["/overview Dashboard"]
+  Overview --> Events["/usage/events 明细"]
+  Overview --> Monitor["/monitor/logs 运维"]
+  Overview --> Agents["/agents 配额配置"]
+  Monitor --> Overview
+```
+
+侧栏：**主工作区 → 概览**（`menu.groupMain`）。
+
+---
+
+## 3. 功能规格
+
+### 3.1 筛选
+
+| 控件 | 字段 | 说明 |
+|------|------|------|
+| 时间范围 | `range` | `today` / `7d` / `30d` / `month` |
+| Provider | `provider_code` | 模糊过滤 |
+| 模型 | `model_api_id` | 模糊过滤 |
+| 状态 | `status` | `success` / `failed` / `cancelled` / `timeout` |
+| 趋势粒度 | `granularity` | `day`（默认）/ `hour`（二次请求 `ListUsageTrends`） |
+
+### 3.2 指标卡（UsageMetricCards）
+
+| 卡片 | 主指标 | 辅助 |
+|------|--------|------|
+| 月预算使用率（可选） | 活跃 Agent 最大利用率 % | 已用/总 cap USD |
+| 今日调用 | `today.call_count` | 较昨日 Δ% |
+| 今日 Token | `today.total_tokens` | in/out |
+| 今日费用 | `today.total_cost_micro_usd` | 较昨日 Δ% |
+| 本月费用 | `month.total_cost_micro_usd` | 本月调用次数 |
+| 平均延迟 | `today.avg_latency_ms` | 今日成功率 |
+| 平均 TPS | `today.avg_tokens_per_second` | 区间 TPS |
+
+### 3.3 趋势与摘要
+
+| 区块 | 规格 | 实现状态 |
+|------|------|----------|
+| 消耗趋势 | `UsageTrendChart`：metric 切换 Token / 调用 / 费用 / 成功率（成功+失败堆叠 %） | ✅ ECharts |
+| 趋势粒度 | 按天（overview 内建）/ 按小时（`ListUsageTrends`） | ✅ |
+| 区间摘要 | 筛选范围内总调用/Token/费用/成功率 | ✅ |
+
+### 3.4 费用占比
+
+| 图表 | 口径 | 状态 |
+|------|------|------|
+| 模型费用占比 | Top 5 模型（按 `top_models` 费用排序） | ✅ |
+| Provider 费用占比 | 由 Top 模型行聚合（**非全量 Provider**，UI 已标注） | ✅ |
+
+### 3.5 排行与异常
+
+| 模块 | 字段 | 实现状态 |
+|------|------|----------|
+| Top 模型 | provider、model、调用、Token、费用、成功率 | ✅ |
+| Top Agent | agent、调用、Token、费用、成功率 | ✅ |
+| 低性价比模型 | 高费用低成功率模型提示 | ✅ |
+| 异常请求 | 时间、Agent、Provider、状态、错误摘要 | ✅ |
+
+### 3.6 统计口径（与 Token 模块一致）
+
+概览、排行、配额已用额 **仅计可计费行**：`chat_turn` + `team_member`（**不含** `team_turn`）。  
+明细页 `/usage/events` 展示全部 `usage_kind`。详见 [29 token.md §3.6](./29%20token.md)。
+
+---
+
+## 4. 数据契约（摘要）
+
+| API | 用途 |
+|-----|------|
+| `GET /v1/usage/overview` | 指标卡、区间、Top、异常、低性价比、`quota_dashboard` |
+| `GET /v1/usage/trends?granularity=hour` | 小时趋势（概览内二次请求） |
+| `GET /v1/usage/events` | 明细页（非本页主数据） |
+| `GET /v1/monitor/runner-metrics` | Runner 窗口指标（经 `useMonitorStore`） |
+
+写入真相源：`trpc_turn` → `recordTurnUsage`（`usage_kind=chat_turn` 等）。
+
+---
+
+## 5. 与 Monitor Usage Tab 的关系
+
+| 页面 | Usage 相关 UI |
+|------|----------------|
+| `/overview`（本文） | 完整用量大盘 + Runner 条 + 运维快捷入口 |
+| `/monitor/logs` Usage Tab | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink`（打开概览/明细） |
+
+**产品原则（已实现）**
+
+- 用量卡片/趋势/Top **仅在** `/overview` 维护；Monitor 不再嵌入 `UsageOverview`。
+- Runner 指标两页共用 `RunnerMetricsPanel`（纯展示）+ `useRunnerMetrics`（Store）；时间范围：Runner 用滑动窗口，用量用 `range` 筛选。
+
+---
+
+## 6. 验收要点
+
+- [x] 默认路由 `/` → `/overview`；页面可加载 overview API。
+- [x] 筛选变更后指标、趋势、Top、异常一致刷新。
+- [x] 「查看明细」跳转 `/usage/events` 并带 `range`。
+- [x] 有配额时展示月预算使用率卡。
+- [x] 统计口径不含 `team_turn`（与 29 token 一致）。
+- [x] ECharts 多指标趋势 + 成功率堆叠。
+- [x] 费用占比环图（Provider 样本口径已披露）。
+- [x] Runner 指标条 + 跳转 Monitor Traces。
+- [x] Monitor Usage Tab 与概览去重；请求经 Store/composable。
+- [ ] 待办：Provider 全量占比 API；异常行深链；自动刷新（见开发计划 Phase 4）。
+
+---
+
+*文档版本：2026-05-21 — 与 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) 同步。*
+
+
+---
+
+## 子模块：Monitor Loop 01 需求
+
+> **版本**：2026-05-29-v2 | **状态**：🟡 待实施 | **优先级**：P2
+> **关联**：[`18-monitor-development.md`](./18-monitor-development.md) · [`18-monitor-ai-closed-loop-2026-05-28.md`](./18-monitor-ai-closed-loop-2026-05-28.md)
+> **设计**：[`18-monitor-loop-01-design.md`](./18-monitor-loop-01-design.md)
+
+---
+
+## 1. 需求原文
+
+> "通过后台的 logs 日志，记录服务的所有运行状态，AI 可以根据日志运行的记录文件追踪到问题，定位问题，形成闭环。"
+
+**用户澄清（2026-05-29）**：
+
+> "通过 monitor 模块，在系统运行的各个节点上打上输出日志到前端的 Logs 监控界面，相当于系统的调试信息，通过这个信息，方便我开发这个系统时定位问题。不用在 fmt 去打日志输出信息了。"
+
+**核心意图**：用 FlowLog/SysLog 替代 `fmt.Println`/`log.Printf`，让系统运行信息直接显示在 Monitor Logs 界面，方便开发时定位问题。
+
+---
+
+## 2. 需求拆解
+
+### 2.1 核心诉求
+
+| 子需求 | 含义 | 当前状态 |
+|--------|------|----------|
+| **系统各节点有调试日志** | 关键运行路径都有 FlowLog 输出 | 🟡 ~80 个 step_id 已注册，但仍有缺口（见 §4） |
+| **调试日志显示在前端** | Monitor Logs 页面实时展示系统运行状态 | ✅ WS 推送 + FlowFileAppender 落盘 |
+| **替代 fmt/log 调试** | 开发者不再需要 `fmt.Println`/`log.Printf` | ❌ 仍有 9 处 `log.Printf` + 29 处 Kratos `log.Helper` |
+| **AI 辅助分析** | AI 读取日志，分析问题，给出修复/优化建议 | ❌ 当前无 AI 分析能力（远期目标） |
+
+### 2.2 用户角色与场景
+
+| 角色 | 场景 | 期望 |
+|------|------|------|
+| **系统开发者** | 开发时 Provider 调用超时，需要知道哪个 Provider、哪个模型、耗时多少 | 在 Monitor Logs 界面看到 `system.provider.ha_failover` 日志，含 provider/model/duration_ms |
+| **系统开发者** | Agent 运行异常，需要追踪完整执行链路 | 在 Monitor Logs 界面按 trace_id 过滤，看到完整的 start→done/error 链 |
+| **系统开发者** | 定时任务执行失败，需要知道哪个任务、失败原因 | 在 Monitor Logs 界面看到 `system.cron.*` 日志，含 error_message |
+| **系统开发者** | 想了解系统当前运行状态，不想加 `fmt.Println` | 直接打开 Monitor Logs 页面，实时观察系统行为 |
+
+---
+
+## 3. 业务价值
+
+### 3.1 解决的痛点
+
+| 痛点 | 现状 | LOOP-01 后 |
+|------|------|-----------|
+| 开发调试靠 `fmt.Println` | 临时加日志 → 忘记删除 → 污染代码 | FlowLog 结构化输出，无需临时日志 |
+| `log.Printf` 看不到 | 日志打到 stdout，需要 SSH 到服务器查看 | Monitor Logs 界面实时展示 |
+| 关键路径无日志 | 部分模块（evolution、modelcatalog）无 FlowLog | 全路径覆盖，无盲区 |
+| 日志无结构 | `log.Printf` 输出自由格式，难以过滤 | FlowLog 有 step_id/severity/trace_id，可精确过滤 |
+| 双重日志 | cronrunner 同时写 FlowLog + Kratos log.Helper | 统一为 FlowLog，消除冗余 |
+
+### 3.2 价值量化目标
+
+| 指标 | 目标 |
+|------|------|
+| 系统关键路径 FlowLog 覆盖率 | ≥ 95% |
+| `log.Printf`/`log.Infof` 在 biz/service 层 | 0 处 |
+| step_id 注册率 | 100%（使用的 step_id 全部注册中文标题） |
+| 开发者使用 Monitor Logs 定位问题 | 替代 80% 的 `fmt.Println` 调试 |
+
+---
+
+## 4. 当前缺口（扫描结果）
+
+### 4.1 P0 — 红线违规：biz 层使用 `log.Printf`
+
+| 文件 | 行号 | 代码 | 应替换为 |
+|------|------|------|----------|
+| `internal/biz/evolution.go` | 80 | `log.Printf("[EVOLUTION] GetToolSuccessRate ...")` | `event.SysLogWarn("system.evolution.metrics_fail", ...)` |
+| `internal/biz/evolution.go` | 84 | `log.Printf("[EVOLUTION] GetRetrievalQuality ...")` | 同上 |
+| `internal/biz/evolution.go` | 88 | `log.Printf("[EVOLUTION] GetEpisodeCount ...")` | 同上 |
+| `internal/biz/evolution.go` | 92 | `log.Printf("[EVOLUTION] GetNegativeFeedbackCount ...")` | 同上 |
+
+### 4.2 P0 — 红线违规：modelcatalog 使用 `log.Logger`
+
+| 文件 | 行号 | 代码 | 应替换为 |
+|------|------|------|----------|
+| `internal/modelcatalog/runner.go` | 59 | `r.logger.Printf("model-catalog: store resolve failed: %v", err)` | `event.SysLogWarn("system.model_catalog.resolve_fail", ...)` |
+| `internal/modelcatalog/runner.go` | 65 | `r.logger.Printf("model-catalog: schedule check failed: %v", err)` | `event.SysLogWarn("system.model_catalog.sync_fail", ...)` |
+| `internal/modelcatalog/runner.go` | 73 | `r.logger.Printf("model-catalog: scheduled sync failed: %v", err)` | 同上 |
+| `internal/modelcatalog/runner.go` | 77 | `r.logger.Printf("model-catalog: scheduled sync apply failed: %v", ...)` | 同上 |
+| `internal/modelcatalog/runner.go` | 79 | `r.logger.Printf("model-catalog: scheduled sync ok ...")` | `event.SysLogInfo("system.model_catalog.sync_ok", ...)` |
+
+### 4.3 P1 — 冗余日志：cronrunner 15 个文件同时写 FlowLog + Kratos log.Helper
+
+29 处 `w.log.*` 调用中：
+- **12 处冗余**：已有 `event.SysLogWarn`，Kratos 日志可直接删除
+- **17 处缺口**：仅有 Kratos 日志，需补充 FlowLog 后再删除
+
+| 文件 | 冗余处 | 缺口处 |
+|------|--------|--------|
+| `memory_l4_decay.go` | 1 | 1 |
+| `memory_fact_index_reconciler.go` | 1 | 1 |
+| `memory_dead_letter_replayer.go` | 1 | 1 |
+| `channel_delivery.go` | 0 | 1 |
+| `monitor_alert_cooldown.go` | 0 | 1 |
+| `memory_l2_decay.go` | 2 | 2 |
+| `memory_l3_decay.go` | 2 | 2 |
+| `memory_data_migration.go` | 1 | 2 |
+| `memory_episode_backfill.go` | 0 | 1 |
+| `event_store_cleanup.go` | 1 | 1 |
+| `evolution_scanner.go` | 0 | 1 |
+| `flow_log_cleanup.go` | 1 | 1 |
+| `provider_health.go` | 0 | 1 |
+| `tool_audit_cleanup.go` | 1 | 1 |
+| `channel_health.go` | 0 | 1 |
+| **合计** | **12** | **17** |
+
+### 4.4 P2 — stepTitleRegistry 缺口：18 个已使用但未注册的 step_id
+
+| step_id | 使用位置 | 建议中文标题 |
+|---------|---------|------------|
+| `system.evolution.metrics_fail` | evolution.go | 进化指标查询失败 |
+| `system.model_catalog.resolve_fail` | modelcatalog/runner.go | 模型目录解析失败 |
+| `system.model_catalog.sync_fail` | modelcatalog/runner.go | 模型目录同步失败 |
+| `system.model_catalog.sync_ok` | modelcatalog/runner.go | 模型目录同步完成 |
+| `memory.l4_decay` | memory_l4_decay.go | L4 图谱衰减 |
+| `memory.l2_decay` | memory_l2_decay.go | L2 情景衰减 |
+| `memory.l3_decay` | memory_l3_decay.go | L3 事实衰减 |
+| `memory.index_reconcile` | memory_fact_index_reconciler.go | 记忆索引对账 |
+| `memory.dead_letter_replay` | memory_dead_letter_replayer.go | 记忆死信重放 |
+| `memory.data_migration` | memory_data_migration.go | 记忆数据迁移 |
+| `memory.episode_backfill` | memory_episode_backfill.go | 情景嵌入回填 |
+| `event_store.cleanup` | event_store_cleanup.go | 事件存储清理 |
+| `flow_log.cleanup` | flow_log_cleanup.go | 流程日志清理 |
+| `tool_audit.cleanup` | tool_audit_cleanup.go | 工具审计清理 |
+| `channel.delivery` | channel_delivery.go | 渠道投递 |
+| `channel.health` | channel_health.go | 渠道健康检查 |
+| `provider.health` | provider_health.go | 模型供应商健康检查 |
+| `evolution.scanner` | evolution_scanner.go | 进化扫描 |
+| `monitor.alert_cooldown_cleanup` | monitor_alert_cooldown.go | 告警冷却清理 |
+| `webresearch.proxy_parse` | tools/webresearch/http_client.go | 网络研究代理解析 |
+| `knowledge_reflect.eval_fail` | tools/knowledge/tool.go | 知识反思评估失败 |
+| `graph.event_bridge` | graph/trpc/event_bridge.go | 图事件桥接 |
+
+---
+
+## 5. 功能需求
+
+### 5.1 FR-01：消除 `log.Printf`/`log.Infof` 红线违规
+
+- 将 `internal/biz/evolution.go` 的 4 处 `log.Printf` 替换为 `event.SysLogWarn`
+- 将 `internal/modelcatalog/runner.go` 的 5 处 `r.logger.Printf` 替换为 `event.SysLogWarn/SysLogInfo`
+- 移除 `import "log"` 和 `*log.Logger` 依赖
+
+### 5.2 FR-02：清理 cronrunner 双重日志
+
+- 12 处冗余 Kratos `log.Helper` 调用直接删除
+- 17 处缺口先补充 `event.SysLogInfo/SysLogWarn`，再删除 Kratos 日志
+- 最终移除 cronrunner 中 `*log.Helper` 字段
+
+### 5.3 FR-03：补全 stepTitleRegistry
+
+- 在 `internal/event/flow_log.go` 的 `stepTitleRegistry` 中注册 22 个缺失 step_id
+- 确保前端 Monitor Logs 界面显示中文标题
+
+### 5.4 FR-04（远期）：AI 辅助分析
+
+- AI 读取系统日志，分析错误模式，给出修复/优化建议
+- 此为远期目标，不在本需求实施范围内
+- 前置条件：FR-01~03 完成后，日志覆盖率和结构化程度足够 AI 分析
+
+---
+
+## 6. 验收标准
+
+- [ ] `internal/biz/` 中 0 处 `log.Printf`/`log.Infof`/`log.Warnf`/`log.Errorf`
+- [ ] `internal/modelcatalog/` 中 0 处 `log.Logger.Printf`
+- [ ] `internal/cronrunner/jobs/` 中 0 处 Kratos `log.Helper` 调用
+- [ ] 所有已使用的 step_id 在 `stepTitleRegistry` 中有中文标题
+- [ ] `go build ./internal/...` 通过
+- [ ] `go vet ./internal/...` 通过
+
+---
+
+## 7. 不在本需求范围
+
+| 项 | 理由 |
+|----|------|
+| AI 自动分析日志 | 远期目标，前置条件是日志覆盖率达标 |
+| AI 修改代码 | 远期目标，需独立设计安全审批机制 |
+| 前端闭环 UI | 无闭环概念，本需求仅涉及日志覆盖 |
+| `internal/data/data.go` 启动日志 | 启动阶段 FlowLog 未初始化，可接受 |
+| `internal/cli/` CLI 日志 | CLI 工具不在服务器运行时路径上 |
+
+---
+
+## 8. 与已有功能的关系
+
+| 已有功能 | 关系 |
+|----------|------|
+| LOG-03（P0/P1/P2 红线修复） | **延续**：LOOP-01 是 LOG-03 的扩展，覆盖更多模块 |
+| FlowFileAppender（LOG-01） | **消费者**：FlowLog 输出后由 FlowFileAppender 落盘 |
+| Monitor Logs 前端页面 | **展示层**：所有 FlowLog 通过 WS 推送到前端 |
+| `stepTitleRegistry` | **注册层**：新增 step_id 需在此注册中文标题 |

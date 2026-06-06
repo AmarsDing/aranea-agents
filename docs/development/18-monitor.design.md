@@ -471,3 +471,374 @@ Chat Turn 结束
 
 - UI 标签 `Traces` → `Runs`，query `?tab=runs` 别名。
 - `ListMonitorEvents` 服务端过滤 `hide_linked_completions`（减轻前端过滤）。
+
+
+---
+
+## 子模块：Monitor Dashboard 设计
+
+> 对应需求：[18 monitor-dashboard.md](./18%20monitor-dashboard.md)  
+> 用量契约：[29 token.design.md](./29%20token.design.md) · 运维页：[18 monitor.design.md](./18%20monitor.design.md)  
+> **版本**：2026-05-21（Phase 2/3 + 前端分层整改）
+
+---
+
+## 一、架构定位
+
+```text
+OverviewPage (/overview)
+  ├─ useOverviewPage → useUsageStore → features/usage/api → UsageService
+  └─ OverviewRunnerMetrics → useRunnerMetrics → useMonitorStore → GetRunnerMetrics
+
+MonitorPage Usage Tab
+  ├─ MonitorRunnerMetrics → useRunnerMetrics（同上 Store）
+  └─ MonitorUsageDashboardLink → /overview?range=（顶栏 filters.range）
+```
+
+```
+                    ┌─────────────────────────────────────┐
+                    │  OverviewPage (/overview)           │
+                    └──────────────┬──────────────────────┘
+                                   │
+          ┌────────────────────────┼────────────────────────┐
+          │                        │                        │
+          ▼                        ▼                        ▼
+   useUsageStore            useMonitorStore          components (props)
+   UsageService            MonitorService
+```
+
+Runner 指标 **不写入 Usage 表**；只读 `GET /v1/monitor/runner-metrics`。
+
+---
+
+## 二、后端
+
+### 2.1 已有 API
+
+| RPC | HTTP | 响应要点 |
+|-----|------|----------|
+| `GetUsageOverview` | `GET /v1/usage/overview` | `today` / `yesterday` / `month` / `range` / `trends` / `top_models` / `top_agents` / `anomalies` / `inefficient_models` / `quota_dashboard` |
+| `ListUsageTrends` | `GET /v1/usage/trends` | `granularity=hour` → `model_token_usage_hourly` |
+| `ListUsageEvents` | `GET /v1/usage/events` | 明细页 |
+| `GetRunnerMetrics` | `GET /v1/monitor/runner-metrics` | `RunnerMetricsSummary`（Dashboard / Monitor Usage 共用） |
+
+### 2.2 聚合规则（读路径）
+
+- `UsageUsecase.Overview` → `usageWhere(..., billableOnly=true)` 排除 `team_turn`。
+- 状态归一：`usage_status_sql.go`。
+- 费用：`usage_pricing.go` + Provider 模型 `config_json`。
+
+### 2.3 待扩展 API
+
+| 能力 | 说明 |
+|------|------|
+| `top_providers` 独立聚合 | Provider 饼图当前基于 `top_models` 样本，非全量 Provider rollup |
+| P50/P95 延迟 | `UsageOverview` 增 `latency_percentiles`（MDB-02-06） |
+
+---
+
+## 三、前端分层（`frontend-guide.md`）
+
+### 3.1 合法数据流
+
+```text
+用量大盘：
+  Page → useOverviewPage → useUsageStore.loadOverview → features/usage/api
+
+Runner 指标：
+  容器组件 → useRunnerMetrics → useMonitorStore.loadRunnerMetrics → features/monitor/api
+
+图表：
+  UsageTrendChart / UsageBreakdownCharts（props only）
+    → useUsageChart（ECharts 生命周期）
+    → usageTrendMetrics / usageBreakdownSlices（纯函数）
+```
+
+**红线遵守**：
+
+- `RunnerMetricsPanel.vue`：**仅 props/emits**，不 import `api` / `store`。
+- `OverviewPage` / `MonitorPage`：不直连 `features/*/api`（Runner 经容器 composable）。
+
+### 3.2 目录结构（当前）
+
+```text
+web/src/
+├── pages/OverviewPage.vue
+├── features/usage/
+│   ├── useOverviewPage.ts
+│   ├── useUsageChart.ts              ← ECharts 宿主 + resize debounce
+│   ├── usageEcharts.ts               ← 按需注册 + 主题色（--color-success/danger）
+│   ├── usageTrendMetrics.ts
+│   ├── usageBreakdownSlices.ts
+│   └── api.ts / types.ts
+├── features/monitor/
+│   ├── useRunnerMetrics.ts           ← Runner 唯一请求入口（页面/容器）
+│   └── useMonitorRunNavigation.ts
+├── stores/
+│   ├── usage/index.ts
+│   └── monitor/index.ts              ← loadRunnerMetrics
+└── components/
+    ├── usage/
+    │   ├── OverviewPageHero.vue
+    │   ├── OverviewRunnerMetrics.vue ← 容器：composable + RunnerMetricsPanel
+    │   ├── OverviewMonitorQuickLinks.vue
+    │   ├── UsageMetricCards.vue
+    │   ├── UsageTrendChart.vue       ← async chunk
+    │   ├── UsageBreakdownCharts.vue  ← async chunk
+    │   └── …
+    └── monitor/
+        ├── RunnerMetricsPanel.vue    ← 纯展示
+        ├── MonitorRunnerMetrics.vue  ← 容器
+        └── MonitorUsageDashboardLink.vue
+```
+
+已删除：`UsageTrendPanel.vue`、`UsageOverview.vue`。
+
+### 3.3 用量数据流
+
+```text
+筛选变更 / onMounted
+  → useOverviewPage.loadOverview()
+  → useUsageStore.loadOverview(query, granularity)
+  → getModelUsageOverview + [hour] listModelUsageTrends
+  → 子组件 props（overview.trends / top_models / …）
+```
+
+### 3.4 路由与深链
+
+| Query | 行为 |
+|-------|------|
+| `range` | `useOverviewPage` 初始化筛选（`?range=30d` 等） |
+| — | 「打开概览」从 Monitor 携带 `range`，与顶栏 `filters.range` 一致 |
+
+### 3.5 图表实现
+
+| 模块 | 实现 |
+|------|------|
+| 趋势 | `UsageTrendChart`：metric 切换 tokens / calls / cost / success_rate（堆叠 %） |
+| 占比 | `UsageBreakdownCharts`：模型 Top5 费用环图；Provider 由 Top 模型样本聚合（UI 已标注） |
+| 分包 | `defineAsyncComponent` + `useUsageChart` 独立 chunk（`usageEcharts`） |
+
+主题色：`usageChartPalette()` 读取 `--color-accent`、`--color-success`、`--color-danger`。
+
+---
+
+## 四、Monitor Usage Tab（已实现）
+
+```text
+Monitor → Usage Tab
+  ├── MonitorRunnerMetrics（Store + RunnerMetricsPanel）
+  └── MonitorUsageDashboardLink（打开概览 / 查看明细；range 用页面顶栏，无重复下拉）
+```
+
+不再维护 `UsageOverview.vue`。
+
+---
+
+## 五、测试
+
+| 层 | 内容 |
+|----|------|
+| Web | `usageTrendMetrics.spec.ts`、`usageBreakdownSlices.spec.ts` |
+| Web（P2） | Overview 筛选 → store mock；E2E `/overview` → `/usage/events` |
+| Go | `usage_*_test.go` 聚合口径 |
+
+---
+
+*任务与验收见 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md)。*
+
+
+---
+
+## 子模块：Monitor Loop 01 设计
+
+> **版本**：2026-05-29-v2 | **状态**：🟡 待实施
+> **需求**：[`18-monitor-loop-01-requirement.md`](./18-monitor-loop-01-requirement.md)
+> **规则真相源**：[`project_rules.md`](../../.trae/rules/project_rules.md) · [`aranea-coding-guide`](../../.trae/skills/aranea-coding-guide.md)
+
+---
+
+## 1. 设计目标
+
+用 FlowLog/SysLog 替代 `fmt.Println`/`log.Printf`，让系统运行信息直接显示在 Monitor Logs 界面，方便开发时定位问题。
+
+**核心思路**：不是新增功能，而是**补全和统一**——把散落在 `log.Printf`、Kratos `log.Helper` 中的调试信息统一收敛到 FlowLog 体系。
+
+---
+
+## 2. 数据流
+
+```
+系统运行时
+    │
+    ├── event.SysLogInfo(stepID, msg, ...Pair)    ← 正确方式
+    ├── event.SysLogWarn(stepID, msg, ...Pair)    ← 正确方式
+    ├── event.SysLogError(stepID, msg, ...Pair)   ← 正确方式
+    │
+    ├── log.Printf(...)                            ← ❌ 红线违规，需消除
+    ├── w.log.Warnf(...)                           ← ❌ 冗余，需消除
+    └── fmt.Println(...)                           ← ❌ 调试残留，需消除
+          │
+          ▼
+    MonitorBus (channel="monitor")
+          │
+          ├── FlowFileAppender → JSONL 文件落盘
+          ├── TraceProjector → monitor_traces 表
+          ├── flowLogPersistConsumer → monitor_events 表
+          └── WS 推送 → 前端 Monitor Logs 页面
+```
+
+---
+
+## 3. 修复方案
+
+### 3.1 FR-01：消除 `log.Printf` 红线违规
+
+#### 3.1.1 `internal/biz/evolution.go`
+
+**当前**：
+```go
+import "log"
+
+log.Printf("[EVOLUTION] GetToolSuccessRate agent=%s err=%v", agentID, err)
+log.Printf("[EVOLUTION] GetRetrievalQuality agent=%s err=%v", agentID, err)
+log.Printf("[EVOLUTION] GetEpisodeCount agent=%s err=%v", agentID, err)
+log.Printf("[EVOLUTION] GetNegativeFeedbackCount agent=%s err=%v", agentID, err)
+```
+
+**修复**：
+```go
+import "event"
+
+event.SysLogWarn("system.evolution.metrics_fail", "evolution metric query failed",
+    event.P("metric", "tool_success_rate"), event.P("agent_id", agentID), event.P("error", err.Error()))
+event.SysLogWarn("system.evolution.metrics_fail", "evolution metric query failed",
+    event.P("metric", "retrieval_quality"), event.P("agent_id", agentID), event.P("error", err.Error()))
+event.SysLogWarn("system.evolution.metrics_fail", "evolution metric query failed",
+    event.P("metric", "episode_count"), event.P("agent_id", agentID), event.P("error", err.Error()))
+event.SysLogWarn("system.evolution.metrics_fail", "evolution metric query failed",
+    event.P("metric", "negative_feedback_count"), event.P("agent_id", agentID), event.P("error", err.Error()))
+```
+
+**改动**：移除 `import "log"`，新增 `import "event"`（路径 `aranea-agents/internal/event`）。
+
+#### 3.1.2 `internal/modelcatalog/runner.go`
+
+**当前**：
+```go
+logger *log.Logger
+
+r.logger.Printf("model-catalog: store resolve failed: %v", err)
+r.logger.Printf("model-catalog: schedule check failed: %v", err)
+r.logger.Printf("model-catalog: scheduled sync failed: %v", err)
+r.logger.Printf("model-catalog: scheduled sync apply failed: %v", applyRes.Errors)
+r.logger.Printf("model-catalog: scheduled sync ok providers=%d models=%d policy=%s", ...)
+```
+
+**修复**：
+```go
+event.SysLogWarn("system.model_catalog.resolve_fail", "model catalog store resolve failed",
+    event.P("error", err.Error()))
+event.SysLogWarn("system.model_catalog.sync_fail", "model catalog schedule check failed",
+    event.P("error", err.Error()))
+event.SysLogWarn("system.model_catalog.sync_fail", "model catalog scheduled sync failed",
+    event.P("error", err.Error()))
+event.SysLogWarn("system.model_catalog.sync_fail", "model catalog sync apply failed",
+    event.P("errors", fmt.Sprintf("%v", applyRes.Errors)))
+event.SysLogInfo("system.model_catalog.sync_ok", "model catalog sync completed",
+    event.P("providers", providers), event.P("models", models), event.P("policy", policy))
+```
+
+**改动**：移除 `*log.Logger` 字段和 `log.New(...)` 初始化，新增 `import "event"`。注意 `fmt.Sprintf` 仍保留用于 `applyRes.Errors` 的格式化（非红线违规）。
+
+### 3.2 FR-02：清理 cronrunner 双重日志
+
+**模式 A — 已有 FlowLog 的冗余调用**（12 处）：
+
+直接删除 `w.log.*` 行，保留 `event.SysLogWarn`。
+
+```go
+// Before:
+event.SysLogWarn("memory.l4_decay", "list targets failed", event.P("error", err.Error()))
+w.log.Warnf("memory l4 decay: list targets: %v", err)  // ← 删除
+
+// After:
+event.SysLogWarn("memory.l4_decay", "list targets failed", event.P("error", err.Error()))
+```
+
+**模式 B — 仅有 Kratos 日志的缺口**（17 处）：
+
+先补充 FlowLog，再删除 Kratos 日志。
+
+```go
+// Before:
+w.log.Infof("memory l4 decay: %d agents, importance=%d", len(targets), importance)  // ← 仅 Kratos
+
+// After:
+event.SysLogInfo("memory.l4_decay", "decay completed",
+    event.P("agents", len(targets)), event.P("importance", importance))
+```
+
+**最终**：移除 `cronrunner` 中所有 `*log.Helper` 字段和构造函数参数。
+
+### 3.3 FR-03：补全 stepTitleRegistry
+
+在 `internal/event/flow_log.go` 的 `stepTitleRegistry` 中新增 22 个条目：
+
+```go
+"system.evolution.metrics_fail":    "进化指标查询失败",
+"system.model_catalog.resolve_fail": "模型目录解析失败",
+"system.model_catalog.sync_fail":    "模型目录同步失败",
+"system.model_catalog.sync_ok":      "模型目录同步完成",
+"memory.l4_decay":                   "L4 图谱衰减",
+"memory.l2_decay":                   "L2 情景衰减",
+"memory.l3_decay":                   "L3 事实衰减",
+"memory.index_reconcile":            "记忆索引对账",
+"memory.dead_letter_replay":         "记忆死信重放",
+"memory.data_migration":             "记忆数据迁移",
+"memory.episode_backfill":           "情景嵌入回填",
+"event_store.cleanup":               "事件存储清理",
+"flow_log.cleanup":                  "流程日志清理",
+"tool_audit.cleanup":                "工具审计清理",
+"channel.delivery":                  "渠道投递",
+"channel.health":                    "渠道健康检查",
+"provider.health":                   "模型供应商健康检查",
+"evolution.scanner":                 "进化扫描",
+"monitor.alert_cooldown_cleanup":    "告警冷却清理",
+"webresearch.proxy_parse":           "网络研究代理解析",
+"knowledge_reflect.eval_fail":       "知识反思评估失败",
+"graph.event_bridge":                "图事件桥接",
+```
+
+---
+
+## 4. 实施分期
+
+| 阶段 | 内容 | 文件数 | 改动量 |
+|------|------|--------|--------|
+| **Phase 1** | FR-01：消除 `log.Printf` 红线违规 | 2 | 9 处替换 |
+| **Phase 2** | FR-02：清理 cronrunner 双重日志 | 15 | 29 处替换/删除 |
+| **Phase 3** | FR-03：补全 stepTitleRegistry | 1 | 22 条注册 |
+
+---
+
+## 5. 验证方案
+
+| 阶段 | 验证命令 |
+|------|----------|
+| Phase 1 | `go build ./internal/biz/... ./internal/modelcatalog/...` + `go vet` |
+| Phase 2 | `go build ./internal/cronrunner/...` + `go vet` |
+| Phase 3 | `go build ./internal/event/...` |
+| 全量 | `grep -rn 'log\.Printf\|log\.Infof\|log\.Warnf\|log\.Errorf' internal/biz/ internal/modelcatalog/` → 0 结果 |
+
+---
+
+## 6. 远期展望：AI 辅助分析
+
+当 FR-01~03 完成后，系统日志覆盖率和结构化程度将足够支撑 AI 分析。远期可考虑：
+
+1. **AI 日志分析 Agent**：内置 `__system_optimizer__` Agent，读取 JSONL 日志，识别错误模式
+2. **代码修复建议**：AI 定位到具体代码文件和行号，生成 diff
+3. **人工审批闭环**：AI 建议经人工审批后执行，自动验证
+
+此为独立需求，不在 LOOP-01 范围内，需另行设计。

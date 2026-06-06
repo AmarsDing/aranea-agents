@@ -14,6 +14,12 @@
 | 前端 | `aranea-frontend-guide` | 数据流铁律、分层规范、UX 主题（详细版） |
 | 前端 Vue 3 | `vue-frontend-guide` | 通用 Vue 3 编程指导 |
 
+### 文档类
+
+| 任务 | SKILL | 说明 |
+|------|-------|------|
+| docs 文档维护 | `aranea-docs-guide` | docs 目录命名规范、存放规则、合并规则 |
+
 ### 审查类
 
 | 任务 | SKILL | 说明 |
@@ -63,6 +69,18 @@
 - 需求变更时用 `/sddflow amend`，禁止直接改代码
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 - **开发前必读模块交叉参考手册**（`openspec/specs/module-cross-reference-full.md`），确认所有关联影响面
+
+## docs 目录规范
+
+> **操作 docs/ 目录下的任何文件前，必须先读 `aranea-docs-guide` SKILL。**
+
+| 目录 | 用途 | 命名规范 |
+|------|------|----------|
+| `docs/development/` | 模块开发文档 | `<N>-<name>.md` / `.design.md` / `.development.md` |
+| `docs/testing/` | 测试文档 | 见各子目录 README.md |
+| `docs/scenarios/` | 专业场景文档 | 每场景一个子目录，kebab-case |
+| `docs/reports/` | 调研报告 | `YYYY-MM-DD-<type>-<topic>.md` |
+| `docs/notes/` | 个人笔记 | 用户自维护，AI 不主动修改 |
 
 ## OpenSpec 文档维护纪律（红线）
 
