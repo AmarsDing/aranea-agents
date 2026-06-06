@@ -643,8 +643,10 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		}
 		if spec.FailurePolicy.CircuitBreaker != nil {
 			fp.CircuitBreaker = &biz.CircuitBreakerPolicy{
-				FailureThreshold:    spec.FailurePolicy.CircuitBreaker.FailureThreshold,
-				ResetTimeoutSeconds: spec.FailurePolicy.CircuitBreaker.RecoveryTimeoutMs / 1000,
+				FailureThreshold: spec.FailurePolicy.CircuitBreaker.FailureThreshold,
+				// 单位换算：spec 字段是毫秒（兼容旧 yaml），biz 字段是秒。
+				// 常量化避免散落 magic 1000。
+				ResetTimeoutSeconds: msToSec(spec.FailurePolicy.CircuitBreaker.RecoveryTimeoutMs),
 			}
 		}
 		ospec.FailurePolicy = fp
@@ -908,6 +910,12 @@ func (im *Importer) upsertTaxonomyNode(ctx context.Context, node biz.TaxonomyNod
 }
 
 // --- 辅助函数 ---
+
+// 毫秒→秒的单位换算常量。spec 字段名是 RecoveryTimeoutMs，biz 字段名是
+// ResetTimeoutSeconds，避免散落的 magic 1000。
+const msPerSecond = 1000
+
+func msToSec(ms int) int { return ms / msPerSecond }
 
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {

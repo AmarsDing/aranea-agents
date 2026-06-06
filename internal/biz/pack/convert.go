@@ -9,6 +9,15 @@ import (
 
 // ConvertIndustrySpecToPack 将 loader.IndustrySpec 转换为 Pack 格式。
 // 用于将现有 agents.yaml 格式的行业数据转换为 Pack 导入引擎可用的内存模型。
+
+// 默认值常量（避免散落在转换逻辑里的 magic numbers/strings）
+const (
+	DefaultContextWindow    = 64000
+	DefaultVariant          = "general"
+	DefaultToolsProfile     = "general"
+	DefaultSystemPromptMode = "file"
+)
+
 func ConvertIndustrySpecToPack(spec *loader.IndustrySpec) (*Pack, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("pack: IndustrySpec 为 nil")
@@ -57,7 +66,7 @@ func convertAgentSpec(spec *loader.IndustrySpec, as *loader.AgentSpec) AgentPack
 
 	toolsProfile := as.ToolsProfile
 	if toolsProfile == "" {
-		toolsProfile = "general"
+		toolsProfile = DefaultToolsProfile
 	}
 
 	spm := as.SystemPromptMode
@@ -65,7 +74,7 @@ func convertAgentSpec(spec *loader.IndustrySpec, as *loader.AgentSpec) AgentPack
 		spm = spec.Defaults.SystemPromptMode
 	}
 	if spm == "" {
-		spm = "file"
+		spm = DefaultSystemPromptMode
 	}
 
 	cw := as.ContextWindow
@@ -73,7 +82,7 @@ func convertAgentSpec(spec *loader.IndustrySpec, as *loader.AgentSpec) AgentPack
 		cw = spec.Defaults.ContextWindow
 	}
 	if cw == 0 {
-		cw = 64000
+		cw = DefaultContextWindow
 	}
 
 	ce := as.CodeExecutor
@@ -83,7 +92,7 @@ func convertAgentSpec(spec *loader.IndustrySpec, as *loader.AgentSpec) AgentPack
 
 	variant := as.Variant
 	if variant == "" {
-		variant = "general"
+		variant = DefaultVariant
 	}
 
 	// 构建 position_key 路径格式：industry/dept/pos
