@@ -54,6 +54,15 @@
     </q-card>
 
     <template v-else>
+      <div class="row q-col-gutter-md q-mb-md">
+        <div class="col-12 col-md-6">
+          <FailureTagsChart :failure-tags="failureTagsDistribution" />
+        </div>
+        <div class="col-12 col-md-6">
+          <RootCauseAnalysisCards :cards="rootCauseReports" />
+        </div>
+      </div>
+
       <experience-report-table :rows="rows" :loading="loading" />
 
       <skill-pagination
@@ -74,6 +83,8 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import SkillPagination from '../components/skills/SkillPagination.vue';
 import ExperienceReportTable from '../components/skills/ExperienceReportTable.vue';
+import FailureTagsChart from '../components/skills/FailureTagsChart.vue';
+import RootCauseAnalysisCards from '../components/skills/RootCauseAnalysisCards.vue';
 import { useExperienceReportListPage } from '../features/skills/useExperienceReportListPage';
 
 const route = useRoute();
@@ -90,6 +101,8 @@ const {
   loading,
   error,
   pageMax,
+  failureTagsDistribution,
+  rootCauseReports,
   loadRows,
   resetFilters,
 } = useExperienceReportListPage(initialSkillId);

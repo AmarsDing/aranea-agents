@@ -61,8 +61,8 @@ import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
-import type { SpiritTeam, SpiritTeamStatus } from '../../features/spirit/types';
-import type { SessionStatus } from '../../features/session/types';
+import type { SpiritTeam } from '../../features/spirit/types';
+import { mapSpiritStatusToSession } from '../../features/spirit/spiritUi';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
 
 const props = defineProps<{
@@ -84,18 +84,7 @@ const assistantMessages = computed(() =>
 
 const outputLabel = computed(() => `对话输出 (${assistantMessages.value.length})`);
 
-const mappedStatus = computed(() => {
-  const mapping: Record<SpiritTeamStatus, SessionStatus> = {
-    pending: 'idle',
-    running: 'running',
-    completed: 'completed',
-    failed: 'interrupted',
-    cancelled: 'interrupted',
-    interrupted: 'interrupted',
-    archived: 'completed',
-  };
-  return mapping[props.team.status] ?? 'idle';
-});
+const mappedStatus = computed(() => mapSpiritStatusToSession(props.team.status));
 
 function formatTime(iso: string): string {
   const d = new Date(iso);

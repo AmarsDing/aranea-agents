@@ -14,6 +14,8 @@ export type SpiritMember = {
   agentKey: string;
   displayName: string;
   role: string;
+  // status is kept as string because the backend sends member-specific lifecycle
+  // states (e.g. "idle", "running", "error") that differ from SpiritTeamStatus.
   status: string;
   avatarUrl: string;
 };

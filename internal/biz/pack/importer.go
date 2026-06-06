@@ -22,9 +22,15 @@ type ImporterRepo interface {
 
 	// Agent
 	GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error)
+	// CreateAgentAtomic / UpdateAgentAtomic 在同一个 ExecInTx 中完成
+	// "agent + prompt files + runtime settings" 的三步写入。
+	// Pack 场景必须使用这两个方法以保证 partial failure 安全。
+	CreateAgentAtomic(ctx context.Context, a biz.Agent, files []biz.AgentPromptFile, settings biz.AgentRuntimeSettings) (biz.Agent, error)
+	UpdateAgentAtomic(ctx context.Context, a biz.Agent, files []biz.AgentPromptFile, settings *biz.AgentRuntimeSettings) (biz.Agent, error)
+	DeleteAgent(ctx context.Context, id string) error
+	// 以下三个保留以供其他 Usecase 单步调用，Pack Importer 不应直接使用。
 	CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error)
 	UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error)
-	DeleteAgent(ctx context.Context, id string) error
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error)
 	UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error)
 	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error)
@@ -74,6 +80,12 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 	result := &ImportResult{}
 	mapper := NewKeyMapper()
 
+	// Taxonomy 阶段不支持 duplicate 策略（节点 key 必须唯一），提前告知用户
+	if p.Taxonomy != nil && strategy == ConflictDuplicate {
+		result.Warnings = append(result.Warnings,
+			"taxonomy 不支持 duplicate 策略，重复 key 将被忽略并使用现有节点")
+	}
+
 	// Phase 1: Taxonomy
 	if p.Taxonomy != nil {
 		count, warns, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper, cfg.kindOverride)
@@ -120,7 +132,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 4: Teams
 	for _, teamSpec := range p.Teams {
-		created, updated, skipped, teamWarns, err := im.importTeam(ctx, teamSpec, strategy, mapper, cfg)
+		created, updated, skipped, teamWarns, err := im.importTeam(ctx, teamSpec, strategy, mapper, cfg, p)
 		if err != nil {
 			result.Failures = append(result.Failures, ImportFailure{
 				EntityType: "team",
@@ -301,34 +313,8 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		}
 	}
 
-	var agentID string
-	if findErr == nil && strategy == ConflictOverwrite {
-		// 更新
-		agent.ID = existing.ID
-		updatedAgent, err := im.repo.UpdateAgent(ctx, agent)
-		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_UPDATE", fmt.Sprintf("更新 Agent %s 失败: %s", spec.Key, err.Error()))
-		}
-		agentID = updatedAgent.ID
-		updated = 1
-	} else {
-		// 创建
-		createdAgent, err := im.repo.CreateAgent(ctx, agent)
-		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_CREATE", fmt.Sprintf("创建 Agent %s 失败: %s", spec.Key, err.Error()))
-		}
-		agentID = createdAgent.ID
-		created = 1
-	}
-
-	// 注册映射：新 key → 新 ID
-	mapper.RegisterAgent(spec.Key, agentID)
-	// duplicate 策略下，同时注册原始 key → 新 ID，确保后续 Team/Graph 引用能解析
-	if strategy == ConflictDuplicate && spec.Key != originalKey {
-		mapper.RegisterAgent(originalKey, agentID)
-	}
-
-	// 写入 Prompt Files
+	// 准备 prompt files + runtime settings，让 atomic 写入一次性完成。
+	var promptFiles []biz.AgentPromptFile
 	if files, ok := agentFiles[spec.Key]; ok && len(files) > 0 {
 		// 按文件名排序保证 SortOrder 确定性
 		names := make([]string, 0, len(files))
@@ -336,43 +322,51 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		var promptFiles []biz.AgentPromptFile
 		for i, name := range names {
 			promptFiles = append(promptFiles, biz.AgentPromptFile{
-				AgentID:   agentID,
+				AgentID:   "", // atomic 写入后由内部填入 created.ID
 				Name:      name,
 				Body:      files[name],
 				SortOrder: i,
 			})
 		}
-		if _, err := im.repo.ReplaceAgentPromptFiles(ctx, agentID, promptFiles); err != nil {
-			// 回滚：删除已创建的 Agent
-			if created == 1 {
-				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
-					// 回滚失败：记录到错误信息中
-					return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
-				}
-			}
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s", spec.Key, err.Error()))
-		}
+	}
+	var settings biz.AgentRuntimeSettings
+	hasSettings := spec.Runtime != nil
+	if hasSettings {
+		settings = im.buildRuntimeSettings("", spec) // AgentID 由 atomic 填入
 	}
 
-	// 写入 RuntimeSettings
-	if spec.Runtime != nil {
-		settings := im.buildRuntimeSettings(agentID, spec)
-		if _, err := im.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
-			// 回滚：先清理已写入的 PromptFiles，再删除 Agent
-			if created == 1 {
-				// 清理 PromptFiles（ReplaceAgentPromptFiles 传入空切片即清除）
-				if _, cleanErr := im.repo.ReplaceAgentPromptFiles(ctx, agentID, nil); cleanErr != nil {
-					return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（清理 PromptFiles 也失败: %v）", spec.Key, err.Error(), cleanErr))
-				}
-				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
-					return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
-				}
-			}
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s", spec.Key, err.Error()))
+	// 使用 atomic 写入：CreateAgent/UpdateAgent + prompt files + runtime settings
+	// 三步在同一个 ExecInTx 中，任意一步失败整体回滚，修复了之前"半新半旧"问题。
+	var agentID string
+	if findErr == nil && strategy == ConflictOverwrite {
+		agent.ID = existing.ID
+		var settingsPtr *biz.AgentRuntimeSettings
+		if hasSettings {
+			settingsPtr = &settings
 		}
+		updatedAgent, err := im.repo.UpdateAgentAtomic(ctx, agent, promptFiles, settingsPtr)
+		if err != nil {
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_UPDATE", fmt.Sprintf("更新 Agent %s 失败: %s", spec.Key, err.Error()))
+		}
+		agentID = updatedAgent.ID
+		updated = 1
+	} else {
+		// 创建路径：promptFiles / settings 为 nil 时 atomic 内部跳过对应步骤
+		createdAgent, err := im.repo.CreateAgentAtomic(ctx, agent, promptFiles, settings)
+		if err != nil {
+			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_CREATE", fmt.Sprintf("创建 Agent %s 失败: %s", spec.Key, err.Error()))
+		}
+		agentID = createdAgent.ID
+		created = 1
+	}
+
+	// 注册映射：仅在原子写入成功后注册，避免 mapper 指向被回滚的 ID。
+	mapper.RegisterAgent(spec.Key, agentID)
+	// duplicate 策略下，同时注册原始 key → 新 ID，确保后续 Team/Graph 引用能解析
+	if strategy == ConflictDuplicate && spec.Key != originalKey {
+		mapper.RegisterAgent(originalKey, agentID)
 	}
 
 	return created, updated, skipped, warns, nil
@@ -494,8 +488,8 @@ func (im *Importer) buildGraphDefinition(spec GraphPackSpec) *biz.GraphDefinitio
 	for _, sg := range spec.Subgraphs {
 		subgraphDef := biz.SubgraphDef{
 			ID:              sg.ID,
-			InterruptBefore: false,
-			InterruptAfter:  false,
+			InterruptBefore: sg.InterruptBefore,
+			InterruptAfter:  sg.InterruptAfter,
 		}
 		// Build subgraph's BuildConfig
 		var nodes []biz.NodeDef
@@ -539,11 +533,26 @@ func (im *Importer) buildGraphDefinition(spec GraphPackSpec) *biz.GraphDefinitio
 	return def
 }
 
+// OrchestrationSpec 当前协议版本。Manifest.APIVersion 推导规则：
+//   - "v1" → 1（老协议，回退）
+//   - 其他/未指定 → 2（当前默认）
+//
+// 未来 manifest 升级时在此函数集中调整映射。
+const currentOrchestrationVersion = 2
+
+// orchestrationVersionFromPack 根据 Manifest.APIVersion 推导 OrchestrationSpec.Version。
+func orchestrationVersionFromPack(p *Pack) int {
+	if p != nil && p.Manifest.APIVersion == "v1" {
+		return 1
+	}
+	return currentOrchestrationVersion
+}
+
 // importTeam 导入单个 Team。
-func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig) (created, updated, skipped int, warns []string, err error) {
+func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper, cfg *importConfig, p *Pack) (created, updated, skipped int, warns []string, err error) {
 	// 构建 OrchestrationSpec
 	ospec := biz.OrchestrationSpec{
-		Version:             2,
+		Version:             orchestrationVersionFromPack(p),
 		Mode:                spec.Mode,
 		Description:         spec.Description,
 		MaxConcurrency:      spec.MaxConcurrency,
@@ -615,7 +624,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 					spec.Key, spec.Graph.LinkedGraphID))
 			}
 		} else if len(spec.Graph.Nodes) > 0 {
-			eg, err := im.buildEmbeddedGraph(spec.Graph, mapper)
+			eg, err := im.buildEmbeddedGraph(spec.Graph, mapper, spec.Key, p)
 			if err != nil {
 				return 0, 0, 0, warns, err
 			}
@@ -701,6 +710,8 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		// Team 已存在
 		switch strategy {
 		case ConflictSkip:
+			// 与 Agent 行为对齐：注册原 key → 现存 ID，便于下游引用解析
+			mapper.RegisterTeam(spec.Key, existing.ID)
 			return 0, 0, 1, warns, nil
 		case ConflictOverwrite:
 			team.ID = existing.ID
@@ -736,8 +747,8 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 
 // buildEmbeddedGraph 从 TeamGraphPackSpec 构建 EmbeddedGraphSpec。
 // 节点的 agent_key 引用若解析不到，返回硬错误（与 validator.validateReferences 对齐）。
-func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMapper) (*biz.EmbeddedGraphSpec, error) {
-	eg := &biz.EmbeddedGraphSpec{Version: 1, Layout: spec.Layout}
+func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMapper, teamKey string, p *Pack) (*biz.EmbeddedGraphSpec, error) {
+	eg := &biz.EmbeddedGraphSpec{Version: orchestrationVersionFromPack(p), Layout: spec.Layout}
 	for _, n := range spec.Nodes {
 		nodeSpec := biz.EmbeddedGraphNodeSpec{
 			ID:               n.ID,

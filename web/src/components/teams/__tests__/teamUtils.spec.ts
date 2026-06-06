@@ -12,6 +12,7 @@ describe('teamUtils.parseDefinition', () => {
       display_name: 'Demo',
       status: 'active',
       is_default: false,
+      taxonomy_industry_id: '',
       definition_json: JSON.stringify({
         version: 1,
         mode: 'parallel',
@@ -115,6 +116,7 @@ describe('teamUtils.groupTeamsByIndustry', () => {
     display_name: 'Demo',
     status: 'active',
     is_default: false,
+    taxonomy_industry_id: '',
     definition_json: JSON.stringify({
       version: 1,
       mode: 'sequential',

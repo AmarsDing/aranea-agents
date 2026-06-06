@@ -908,6 +908,59 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 	return out, err
 }
 
+// --- 高阶原子化方法（供 pack.Importer 使用）---
+
+// CreateAgentAtomic 创建 agent + 写入 prompt files + upsert runtime settings，
+// 三步包在同一个 ExecInTx 中，任意一步失败则整体回滚。
+// 比 Pack 手工调用 CreateAgent + ReplaceFiles + UpsertSettings 强一档。
+func (r *agentRepo) CreateAgentAtomic(ctx context.Context, a biz.Agent, files []biz.AgentPromptFile, settings biz.AgentRuntimeSettings) (biz.Agent, error) {
+	var created biz.Agent
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		var err error
+		created, err = r.CreateAgent(txCtx, a)
+		if err != nil {
+			return fmt.Errorf("create agent: %w", err)
+		}
+		settings.AgentID = created.ID
+		if _, err = r.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
+			return fmt.Errorf("upsert runtime settings: %w", err)
+		}
+		if len(files) > 0 {
+			if _, err = r.ReplaceAgentPromptFiles(txCtx, created.ID, files); err != nil {
+				return fmt.Errorf("replace prompt files: %w", err)
+			}
+		}
+		return nil
+	})
+	return created, err
+}
+
+// UpdateAgentAtomic 覆盖 agent + 替换 prompt files + upsert runtime settings，
+// 三步包在同一个 ExecInTx 中，任意一步失败则整体回滚到调用前状态。
+// 对应 Pack 场景下的 ConflictOverwrite 路径；之前的"半新半旧"问题由此修复。
+func (r *agentRepo) UpdateAgentAtomic(ctx context.Context, a biz.Agent, files []biz.AgentPromptFile, settings *biz.AgentRuntimeSettings) (biz.Agent, error) {
+	var updated biz.Agent
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		var err error
+		updated, err = r.UpdateAgent(txCtx, a)
+		if err != nil {
+			return fmt.Errorf("update agent: %w", err)
+		}
+		if settings != nil {
+			if _, err = r.UpsertAgentRuntimeSettings(txCtx, *settings); err != nil {
+				return fmt.Errorf("upsert runtime settings: %w", err)
+			}
+		}
+		if files != nil {
+			if _, err = r.ReplaceAgentPromptFiles(txCtx, updated.ID, files); err != nil {
+				return fmt.Errorf("replace prompt files: %w", err)
+			}
+		}
+		return nil
+	})
+	return updated, err
+}
+
 func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
 	if f.AgentID == "" || strings.TrimSpace(f.Name) == "" {
 		return biz.AgentPromptFile{}, fmt.Errorf("agent_id and name are required")

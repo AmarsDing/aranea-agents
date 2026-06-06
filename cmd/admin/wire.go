@@ -1172,6 +1172,24 @@ func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monito
 	return jobs.NewFailurePatternSyncJob(0, engine, writer, reader, lg)
 }
 
+func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.FailurePatternReader, healRepo monitor.HealRecordRepo, lg loggateway.Logger) *monitor.PredictiveHealUsecase {
+	metricsReader := monitor.NewMonitorSystemMetricsReader(uc)
+	handler := &monitor.NoopHealActionHandler{}
+	return monitor.NewPredictiveHealUsecase(metricsReader, patternReader, handler, healRepo, lg)
+}
+
+func providePredictiveHealJob(uc *monitor.PredictiveHealUsecase, lg loggateway.Logger) *jobs.PredictiveHealJob {
+	return jobs.NewPredictiveHealJob(0, uc, lg)
+}
+
+func providePatternMiningUsecase(healRepo monitor.HealRecordRepo, patternReader monitor.FailurePatternReader, patternWriter monitor.FailurePatternWriter, lg loggateway.Logger) *monitor.PatternMiningUsecase {
+	return monitor.NewPatternMiningUsecase(healRepo, patternReader, patternWriter, lg)
+}
+
+func providePatternMiningJob(uc *monitor.PatternMiningUsecase, lg loggateway.Logger) *jobs.PatternMiningJob {
+	return jobs.NewPatternMiningJob(0, uc, lg)
+}
+
 func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
@@ -1299,6 +1317,10 @@ type wireOut struct {
 	CronRepo                    biz.CronRepo
 	SkillIntelligence           *biz.SkillIntelligenceUsecase
 	FailurePatternSyncJob       *jobs.FailurePatternSyncJob
+	PredictiveHealUsecase       *monitor.PredictiveHealUsecase
+	PredictiveHealJob           *jobs.PredictiveHealJob
+	PatternMiningUsecase        *monitor.PatternMiningUsecase
+	PatternMiningJob            *jobs.PatternMiningJob
 }
 
 func provideWireOut(
@@ -1343,6 +1365,10 @@ func provideWireOut(
 	skillIntelligenceWorker *jobs.SkillIntelligenceWorker,
 	curatorWorker *jobs.CuratorWorker,
 	failurePatternSyncJob *jobs.FailurePatternSyncJob,
+	predictiveHealUsecase *monitor.PredictiveHealUsecase,
+	predictiveHealJob *jobs.PredictiveHealJob,
+	patternMiningUsecase *monitor.PatternMiningUsecase,
+	patternMiningJob *jobs.PatternMiningJob,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -1367,6 +1393,10 @@ func provideWireOut(
 		SkillIntelligenceWorker:   skillIntelligenceWorker,
 		CuratorWorker:             curatorWorker,
 		FailurePatternSyncJob:     failurePatternSyncJob,
+		PredictiveHealUsecase:     predictiveHealUsecase,
+		PredictiveHealJob:         predictiveHealJob,
+		PatternMiningUsecase:      patternMiningUsecase,
+		PatternMiningJob:          patternMiningJob,
 	}
 }
 
@@ -1681,6 +1711,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideSelfCheckCleanup,
 		provideSelfCheckJob,
 		provideFailurePatternSyncJob,
+		providePredictiveHealUsecase,
+		providePredictiveHealJob,
+		providePatternMiningUsecase,
+		providePatternMiningJob,
 		provideSpiritTeamUsecase,
 		wire.Bind(new(monitor.FailurePatternReader), new(*data.FailurePatternReadWriter)),
 		wire.Bind(new(monitor.FailurePatternWriter), new(*data.FailurePatternReadWriter)),

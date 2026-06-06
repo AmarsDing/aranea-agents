@@ -72,35 +72,35 @@
 
 ## 8. Phase 2 — Skill Intelligence 落地：Curator Agent 半自动进化
 
-- [ ] 8.1 创建 `internal/biz/skill_evolution_suggestion_types.go`：SkillEvolutionSuggestion 领域模型 + 类型/状态枚举。DoD: `go build ./internal/biz/...` 通过
-- [ ] 8.2 创建 `internal/data/ent/schema/skill_evolution_suggestion.go`：Ent Schema + 索引。DoD: `go generate ./internal/data/ent/...` 无错误
-- [ ] 8.3 扩展 `internal/biz/skill_intelligence_repo.go`：定义 SkillEvolutionSuggestionReader/Writer 端口。DoD: `go build ./internal/biz/...` 通过
-- [ ] 8.4 实现 Data 层 Repo：`internal/data/skill_evolution_suggestion.go`。DoD: `go build ./internal/data/...` 通过
-- [ ] 8.5 修改 `internal/biz/skill_intelligence.go`：实现触发条件判定（7d 成功率 < 60% 或同一失败标签 >= 5 次）+ CreateSuggestion。DoD: `go build ./internal/biz/...` 通过
-- [ ] 8.6 创建 `internal/service/skill_curator.go`：Curator Agent 装配与 invoke（通过 ChatOrchestrator 调用自身 Agent）。DoD: `go build ./internal/service/...` 通过
-- [ ] 8.7 实现 Sandbox Runner 验证：使用 codeexecutor.CodeExecutor 隔离执行。DoD: 隔离执行，不影响生产
-- [ ] 8.8 定义进化建议 API proto + 实现 Service 层。DoD: `make api && go build ./...` 通过
-- [ ] 8.9 Skill 元数据扩展：新增 parent_version_id / evolution_reason / lifecycle_status 字段。DoD: `go generate ./internal/data/ent/...` 无错误
-- [ ] 8.10 Wire DI 装配。DoD: `make wire && make build` 通过
+- [x] 8.1 创建 `internal/biz/skill_evolution_suggestion_types.go`：SkillEvolutionSuggestion 领域模型 + 类型/状态枚举。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: 已存在 -->
+- [x] 8.2 创建 `internal/data/ent/schema/skill_evolution_suggestion.go`：Ent Schema + 索引。DoD: `go generate ./internal/data/ent/...` 无错误 <!-- 已实现: 已存在 -->
+- [x] 8.3 扩展 `internal/biz/skill_intelligence_repo.go`：定义 SkillEvolutionSuggestionReader/Writer 端口。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: 已存在 -->
+- [x] 8.4 实现 Data 层 Repo：`internal/data/skill_evolution_suggestion.go`。DoD: `go build ./internal/data/...` 通过 <!-- 已实现: 已存在 -->
+- [x] 8.5 修改 `internal/biz/skill_intelligence.go`：实现触发条件判定（7d 成功率 < 60% 或同一失败标签 >= 5 次）+ CreateSuggestion。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: CheckEvolutionTriggers 增强 -->
+- [x] 8.6 创建 `internal/service/skill_curator.go`：Curator Agent 装配与 invoke（通过 ChatOrchestrator 调用自身 Agent）。DoD: `go build ./internal/service/...` 通过 <!-- 已实现: SkillCuratorService + CuratorWorker -->
+- [x] 8.7 实现 Sandbox Runner 验证：使用 codeexecutor.CodeExecutor 隔离执行。DoD: 隔离执行，不影响生产 <!-- 已实现: SandboxRunner 增强 -->
+- [x] 8.8 定义进化建议 API proto + 实现 Service 层。DoD: `make api && go build ./...` 通过 <!-- 已实现: 已有 proto -->
+- [x] 8.9 Skill 元数据扩展：新增 parent_version_id / evolution_reason / lifecycle_status 字段。DoD: `go generate ./internal/data/ent/...` 无错误 <!-- 已实现: 已有字段 -->
+- [x] 8.10 Wire DI 装配。DoD: `make wire && make build` 通过 <!-- 已实现: CuratorWorker 注入 -->
 
 ## 9. Phase 2 — Skill Intelligence 落地：前端
 
-- [ ] 9.1 前端经验报告列表页：调用 ListExperienceReports API，显示失败标签分布图 + 根因分析卡片。DoD: `pnpm lint && pnpm build` 通过
-- [ ] 9.2 前端 Skill 进化审批 UI：显示进化建议列表 + Approve/Reject 操作。DoD: `pnpm lint && pnpm build` 通过
+- [x] 9.1 前端经验报告列表页：调用 ListExperienceReports API，显示失败标签分布图 + 根因分析卡片。DoD: `pnpm lint && pnpm build` 通过 <!-- 已实现: FailureTagsChart + RootCauseAnalysisCards -->
+- [x] 9.2 前端 Skill 进化审批 UI：显示进化建议列表 + Approve/Reject 操作。DoD: `pnpm lint && pnpm build` 通过 <!-- 已实现: EvolutionSuggestionDetailDialog + 详情按钮 -->
 
 ## 10. Phase 3 — 自我进化闭环：预测性自愈
 
-- [ ] 10.1 创建 `internal/biz/monitor/predictive_heal.go`：PredictiveHealUsecase，基于 FailurePattern 知识库的趋势预测。DoD: `go build ./internal/biz/...` 通过
-- [ ] 10.2 创建 `internal/cronrunner/jobs/predictive_heal.go`：每 5 分钟扫描系统指标 + 匹配前置条件模式。DoD: `go build ./internal/cronrunner/...` 通过
-- [ ] 10.3 创建 `internal/biz/monitor/predictive_heal_test.go`：测试置信度阈值 + 冷却期 + 审计记录。DoD: `go test ./internal/biz/monitor/... -run TestPredictive -count=1` 绿色
-- [ ] 10.4 Wire DI 装配。DoD: `make wire && make build` 通过
+- [x] 10.1 创建 `internal/biz/monitor/predictive_heal.go`：PredictiveHealUsecase，基于 FailurePattern 知识库的趋势预测。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: PredictiveHealUsecase + SystemMetricsReader -->
+- [x] 10.2 创建 `internal/cronrunner/jobs/predictive_heal.go`：每 5 分钟扫描系统指标 + 匹配前置条件模式。DoD: `go build ./internal/cronrunner/...` 通过 <!-- 已实现: Cron Job + PREDICTIVE_HEAL_INTERVAL -->
+- [x] 10.3 创建 `internal/biz/monitor/predictive_heal_test.go`：测试置信度阈值 + 冷却期 + 审计记录。DoD: `go test ./internal/biz/monitor/... -run TestPredictive -count=1` 绿色 <!-- 已实现: 11 个测试通过 -->
+- [x] 10.4 Wire DI 装配。DoD: `make wire && make build` 通过 <!-- 已实现: Wire 绑定完成 -->
 
 ## 11. Phase 3 — 自我进化闭环：Skill 五阶段进化闭环
 
-- [ ] 11.1 创建 `internal/biz/skill_evolution_loop.go`：实现 Solve→Observe→Evolve→Gate→Reload 五阶段流程。DoD: `go build ./internal/biz/...` 通过
-- [ ] 11.2 实现 Gate 多维验证：功能正确性（Sandbox Runner）+ 安全性（敏感信息检测）+ 性能（Token/耗时对比 >20% 拒绝）+ 风格（araneactl lint）。DoD: `go build ./internal/biz/...` 通过
-- [ ] 11.3 实现进化建议过期机制：7 天未审批自动标记 expired。DoD: `go build ./internal/biz/...` 通过
-- [ ] 11.4 创建 `internal/biz/skill_evolution_loop_test.go`：测试五阶段流程 + Gate 验证 + 过期机制。DoD: `go test ./internal/biz/... -run TestEvolutionLoop -count=1` 绿色
+- [x] 11.1 创建 `internal/biz/skill_evolution_loop.go`：实现 Solve→Observe→Evolve→Gate→Reload 五阶段流程。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: 五阶段闭环 -->
+- [x] 11.2 实现 Gate 多维验证：功能正确性（Sandbox Runner）+ 安全性（敏感信息检测）+ 性能（Token/耗时对比 >20% 拒绝）+ 风格（araneactl lint）。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: 四维验证 -->
+- [x] 11.3 实现进化建议过期机制：7 天未审批自动标记 expired。DoD: `go build ./internal/biz/...` 通过 <!-- 已实现: ExpirePendingSuggestions -->
+- [x] 11.4 创建 `internal/biz/skill_evolution_loop_test.go`：测试五阶段流程 + Gate 验证 + 过期机制。DoD: `go test ./internal/biz/... -run TestEvolutionLoop -count=1` 绿色 <!-- 已实现: 35 个测试通过 -->
 
 ## 12. Phase 3 — 自我进化闭环：知识库动态挖掘
 

@@ -73,7 +73,11 @@
       >
         <template #body-cell-skillId="props">
           <q-td :props="props">
-            <span class="app-registry-cell-primary ellipsis" :title="props.row.skillId ?? ''">
+            <span
+              class="app-registry-cell-primary ellipsis cursor-pointer"
+              :title="props.row.skillId ?? ''"
+              @click="openDetailDialog(props.row)"
+            >
               {{ props.row.skillId || '—' }}
             </span>
           </q-td>
@@ -125,23 +129,34 @@
 
         <template #body-cell-actions="props">
           <q-td :props="props">
-            <div v-if="props.row.status === 'pending'" class="app-registry-cell-actions">
+            <div class="app-registry-cell-actions">
               <q-btn
                 flat
                 dense
                 round
-                icon="check"
-                color="positive"
-                :loading="approvingId === props.row.id"
-                @click="approveSuggestion(props.row)"
+                icon="visibility"
+                color="primary"
+                @click="openDetailDialog(props.row)"
               >
-                <q-tooltip>批准</q-tooltip>
+                <q-tooltip>查看详情</q-tooltip>
               </q-btn>
-              <q-btn flat dense round icon="close" color="negative" @click="openRejectDialog(props.row)">
-                <q-tooltip>拒绝</q-tooltip>
-              </q-btn>
+              <template v-if="props.row.status === 'pending'">
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="check"
+                  color="positive"
+                  :loading="approvingId === props.row.id"
+                  @click="approveSuggestion(props.row)"
+                >
+                  <q-tooltip>批准</q-tooltip>
+                </q-btn>
+                <q-btn flat dense round icon="close" color="negative" @click="openRejectDialog(props.row)">
+                  <q-tooltip>拒绝</q-tooltip>
+                </q-btn>
+              </template>
             </div>
-            <span v-else class="text-grey-7 text-caption">—</span>
           </q-td>
         </template>
       </AppRegistryTable>
@@ -201,16 +216,25 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <EvolutionSuggestionDetailDialog
+      :open="detailDialogOpen"
+      :suggestion="detailTarget"
+      @update:open="detailDialogOpen = $event"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import EvolutionSuggestionDetailDialog from '../components/skills/EvolutionSuggestionDetailDialog.vue';
 import { useEvolutionSuggestionListPage, statusOptions as rawStatusOptions } from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
 import { EVOLUTION_SUGGESTION_TABLE_COLUMNS } from '../components/skills/evolutionSuggestionTableUi';
+import type { SkillEvolutionSuggestionMsg } from '../services/kratos/skill_evolution_suggestion/v1/index';
 
 const {
   status,
@@ -236,6 +260,14 @@ const {
 
 const statusOptions = rawStatusOptions;
 const columns = EVOLUTION_SUGGESTION_TABLE_COLUMNS;
+
+const detailDialogOpen = ref(false);
+const detailTarget = ref<SkillEvolutionSuggestionMsg | null>(null);
+
+function openDetailDialog(row: SkillEvolutionSuggestionMsg) {
+  detailTarget.value = row;
+  detailDialogOpen.value = true;
+}
 
 function statusColor(s?: string): string {
   switch (s) {

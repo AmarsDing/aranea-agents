@@ -310,8 +310,8 @@ func ConvertAgentTemplatesToPack(spec *loader.AgentTemplatesSpec) *Pack {
 			Icon:             t.Icon,
 			Provider:         t.Provider,
 			Model:            t.Model,
-			SystemPromptMode: "file",
-			ContextWindow:    64000,
+			SystemPromptMode: DefaultSystemPromptMode,
+			ContextWindow:    DefaultContextWindow,
 			Kind:             "llm",
 		})
 	}

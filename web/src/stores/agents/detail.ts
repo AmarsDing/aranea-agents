@@ -9,11 +9,17 @@ import {
   getAgentEvolutionSuggestions,
   applyEvolutionSuggestion,
   rejectEvolutionSuggestion,
+  editPromptFileByAI,
+  estimateAgentTokens,
+  updateAgentToolPolicy,
+  createAgentPromptFile,
+  updateAgentPromptFile,
+  deleteAgentPromptFile,
   type Agent,
   type EvolutionMetrics,
   type EvolutionSuggestion,
 } from '../../features/agents/api';
-import type { AgentPromptPreview } from '../../features/agents/types';
+import type { AgentPromptPreview, AgentPromptFile } from '../../features/agents/types';
 
 /** Agent 详情 / 设置页：HTTP 仅在此 Store actions（aranea-frontend-guide SKILL §3.1）。 */
 export const useAgentDetailStore = defineStore('agentDetail', () => {
@@ -68,6 +74,30 @@ export const useAgentDetailStore = defineStore('agentDetail', () => {
     return toggleAgentFavoriteApi(id);
   }
 
+  async function editPromptFile(agentId: string, fileId: string, instruction: string): Promise<AgentPromptFile> {
+    return editPromptFileByAI(agentId, fileId, instruction);
+  }
+
+  async function estimateTokens(agentId: string) {
+    return estimateAgentTokens(agentId);
+  }
+
+  async function updateToolPolicy(agentId: string, payload: { tools_enabled?: boolean; profile?: string; allow?: string[]; deny?: string[] }): Promise<void> {
+    return updateAgentToolPolicy(agentId, payload);
+  }
+
+  async function createPromptFile(agentId: string, payload: { name: string; body: string; sort_order: number }): Promise<AgentPromptFile> {
+    return createAgentPromptFile(agentId, payload);
+  }
+
+  async function updatePromptFile(agentId: string, fileId: string, payload: { name?: string; body?: string; sort_order?: number }): Promise<AgentPromptFile> {
+    return updateAgentPromptFile(agentId, fileId, payload);
+  }
+
+  async function deletePromptFile(agentId: string, fileId: string): Promise<void> {
+    return deleteAgentPromptFile(agentId, fileId);
+  }
+
   return {
     loading,
     saving,
@@ -80,5 +110,11 @@ export const useAgentDetailStore = defineStore('agentDetail', () => {
     fetchEvolutionSuggestions,
     applyEvolution,
     rejectEvolution,
+    editPromptFile,
+    estimateTokens,
+    updateToolPolicy,
+    createPromptFile,
+    updatePromptFile,
+    deletePromptFile,
   };
 });

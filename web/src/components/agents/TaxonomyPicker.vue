@@ -82,7 +82,7 @@
 <script setup lang="ts">
 import { toRef } from 'vue';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
-import { useTaxonomyTreeField } from '../../features/platform/useCategoryTreeField';
+import { useTaxonomyTreeField } from '../../features/platform/useTaxonomyTreeField';
 import type { TaxonomyLevel } from '../../features/platform/taxonomyTreeUtils';
 
 const props = withDefaults(

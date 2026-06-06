@@ -9,6 +9,21 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// ExperienceAnalytics weight and threshold constants.
+const (
+	// Tool weight formula: WeightScore = normSR*W + normCount*W + normInvDur*W
+	ToolWeightSuccessRate  = 0.5
+	ToolWeightCallCount    = 0.3
+	ToolWeightInvDuration  = 0.2
+
+	// Memory health formula: 0.4*coverage + 0.4*retrieval + 0.2*(1-penalty)
+	MemoryCoverageWeight    = 0.4
+	MemoryRetrievalWeight   = 0.4
+	MemoryPenaltyWeight     = 0.2
+	MemoryMaxFactCount      = 100.0
+	MemoryMaxNegFeedback    = 10.0
+)
+
 // ── Result types ──────────────────────────────────────────────────────────────
 
 // ToolWeightAnalysis is the result of AnalyzeToolWeights.
@@ -193,7 +208,7 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeToolWeights(ctx context.Context, ag
 	normalizeToolWeights(items)
 
 	for i := range items {
-		items[i].WeightScore = items[i].normSR*0.5 + items[i].normCount*0.3 + items[i].normInvDur*0.2
+		items[i].WeightScore = items[i].normSR*ToolWeightSuccessRate + items[i].normCount*ToolWeightCallCount + items[i].normInvDur*ToolWeightInvDuration
 		items[i].Recommendation = toolWeightRecommendation(items[i].WeightScore, items[i].SuccessRate)
 	}
 
@@ -499,9 +514,9 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeMemoryQuality(ctx context.Context, 
 }
 
 func computeMemoryHealthScore(factCount int, retrievalQuality float64, negFeedback int) float64 {
-	coverageScore := math.Min(float64(factCount)/100.0, 1.0)
-	penalty := math.Min(float64(negFeedback)/10.0, 1.0)
-	return 0.4*coverageScore + 0.4*retrievalQuality + 0.2*(1.0-penalty)
+	coverageScore := math.Min(float64(factCount)/MemoryMaxFactCount, 1.0)
+	penalty := math.Min(float64(negFeedback)/MemoryMaxNegFeedback, 1.0)
+	return MemoryCoverageWeight*coverageScore + MemoryRetrievalWeight*retrievalQuality + MemoryPenaltyWeight*(1.0-penalty)
 }
 
 func memoryQualityRecommendation(healthScore float64, factCount int) string {

@@ -80,7 +80,6 @@
             />
           </q-tab-panel>
           <q-tab-panel name="files" class="settings-tab-panel-fill">
-            <!-- PGO-3-WEB-04: old @ai-edit replaced by AIRefineButton inside AgentFilesPanel -->
             <agent-files-panel
               v-model:active-file="activeFile"
               v-model:splitter="fileSplitter"
@@ -121,19 +120,10 @@
           </q-tab-panel>
           <q-tab-panel name="evolution">
             <agent-evolution-panel
-              v-model:range="evolutionRange"
               :agent-id="agentId"
               :evolution="config.evolution"
               :evolution-settings="config.evolutionSettings"
               :guardrails="config.evolution_guardrails"
-              :metrics-loading="evolutionMetricsLoading"
-              :metrics="evolutionMetrics"
-              :suggestions="evolutionSuggestions"
-              :applying-id="evolutionApplyingId"
-              :rejecting-id="evolutionRejectingId"
-              :pending-suggestions-count="evolutionPendingCount"
-              @apply="applyEvolutionSuggestion"
-              @reject="rejectEvolutionSuggestion"
             />
           </q-tab-panel>
 
@@ -158,13 +148,7 @@
             />
             <agent-settings-a2-a-endpoint-tab
               v-else
-              :loading="a2aEndpoint.loading"
-              :saving="a2aEndpoint.saving"
-              :card="a2aEndpoint.card"
-              :capability-lines="a2aEndpoint.capabilityLines"
-              @save="a2aEndpoint.saveEndpoint()"
-              @update:card-enabled="a2aEndpoint.setCardEnabled($event)"
-              @update:capability-lines="a2aEndpoint.capabilityLines = $event"
+              :agent-id="agentId"
             />
           </q-tab-panel>
         </q-tab-panels>
@@ -172,105 +156,16 @@
       <q-inner-loading :showing="pageLoading" />
     </q-card>
 
-    <q-dialog v-model="promptDialog">
-      <q-card class="prompt-dialog app-dialog-card">
-        <q-card-section class="row items-center justify-between prompt-dialog__header">
-          <div>
-            <div class="text-h6">系统提示词</div>
-            <div class="text-caption prompt-dialog__stats">
-              构建期约 {{ promptStaticTokens }} tokens · 运行时追加约 {{ promptRuntimeTokens }} tokens
-            </div>
-          </div>
-          <q-btn v-close-popup flat round icon="close" />
-        </q-card-section>
-        <q-tabs v-model="previewMode" dense align="left" narrow-indicator class="prompt-dialog__mode-tabs">
-          <q-tab v-for="mode in promptModes" :key="mode.value" :name="mode.value" :label="mode.label" />
-        </q-tabs>
-        <q-separator />
-        <q-card-section class="prompt-dialog__body">
-          <p class="prompt-dialog__hint">
-            下方为<strong>构建期</strong>写入模型的 System Prompt（Description、Prompt 文件、运行时策略）。
-            实际对话时还会按开关追加记忆、Skills、Intent 等，可在「Token 分解」中查看估算。
-          </p>
-          <pre class="agent-prompt-preview">{{ promptInstructionText }}</pre>
-          <q-expansion-item
-            v-if="promptPreview.sections.length"
-            dense
-            expand-separator
-            icon="analytics"
-            label="Token 分解（估算）"
-            caption="构建期已含于上文；运行时按每轮对话追加"
-            class="prompt-dialog__breakdown"
-          >
-            <AppRegistryTable
-              :shell="false"
-              :data-shell="true"
-              hide-bottom
-              row-key="key"
-              :rows="promptPreview.sections"
-              :columns="promptSectionColumns"
-              hide-pagination
-              :pagination="{ rowsPerPage: 0 }"
-            >
-              <template #body-cell-source="props">
-                <q-td :props="props">
-                  <q-chip
-                    dense
-                    size="sm"
-                    :color="props.row.source === 'build' ? 'primary' : 'secondary'"
-                    text-color="white"
-                  >
-                    {{ props.row.source === 'build' ? '构建期' : '运行时' }}
-                  </q-chip>
-                </q-td>
-              </template>
-              <template #body-cell-est_tokens="props">
-                <q-td :props="props" class="text-right">
-                  {{ props.row.est_tokens > 0 ? props.row.est_tokens : '—' }}
-                </q-td>
-              </template>
-            </AppRegistryTable>
-          </q-expansion-item>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+    <agent-prompt-preview-dialog
+      v-model:open="promptDialog"
+      v-model:mode="previewMode"
+      :modes="promptModes"
+      :instruction-text="promptInstructionText"
+      :static-tokens="promptStaticTokens"
+      :runtime-tokens="promptRuntimeTokens"
+      :sections="promptPreviewSections"
+    />
 
-    <!-- PGO-3-WEB-04: Legacy AI-edit dialog (retained for Flag-off fallback).
-         The primary path is now AIRefineButton embedded in AgentFilesPanel. -->
-    <q-dialog v-model="aiEditOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm">
-        <q-card-section class="row items-center justify-between">
-          <div>
-            <div class="text-h6">AI 编辑（旧版）</div>
-            <div class="text-caption text-grey-7">请在文件 Tab 中使用新版「AI 优化」按钮。此入口保留向后兼容。</div>
-          </div>
-          <q-btn v-close-popup flat round icon="close" />
-        </q-card-section>
-        <q-card-section class="app-dialog-body">
-          <q-input
-            v-model="aiInstruction"
-            class="app-field-long"
-            outlined
-            type="textarea"
-            rows="6"
-            label="编辑指令"
-            placeholder="例如：使 Agent 更正式、添加中文支持..."
-          />
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn v-close-popup flat rounded no-caps label="取消" />
-          <q-btn
-            color="primary"
-            rounded
-            unelevated
-            no-caps
-            label="重新生成"
-            :loading="aiEditing"
-            @click="applyAiEdit"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
     <agent-advanced-dialog
       v-model:open="advancedDialog"
       :saving="saving"
@@ -290,9 +185,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, toValue } from 'vue';
+import { computed, toValue } from 'vue';
 import { useQuasar } from 'quasar';
-import { useChannelsStore } from '../stores/channels';
 import AgentAvatarPicker from '../components/avatar/AgentAvatarPicker.vue';
 import AgentEvolutionPanel from '../components/agents/AgentEvolutionPanel.vue';
 import AgentLearningLoopPanel from '../components/agents/AgentLearningLoopPanel.vue';
@@ -301,20 +195,15 @@ import { refinePromptField } from '../features/agents/aiRefine';
 import AgentSettingsHeader from '../components/agents/AgentSettingsHeader.vue';
 import AgentAdvancedDialog from '../components/agents/AgentAdvancedDialog.vue';
 import AgentHooksPanel from '../components/agents/AgentHooksPanel.vue';
+import AgentPromptPreviewDialog from '../components/agents/AgentPromptPreviewDialog.vue';
 import AgentSettingsAgentTab from './agent-settings/AgentSettingsAgentTab.vue';
 import AgentSettingsMemoryTab from './agent-settings/AgentSettingsMemoryTab.vue';
 import AgentSettingsSkillsTab from './agent-settings/AgentSettingsSkillsTab.vue';
 import AgentSettingsA2ATab from '../components/agents/AgentSettingsA2ATab.vue';
 import AgentSettingsA2AEndpointTab from '../components/agents/AgentSettingsA2AEndpointTab.vue';
 import AgentUsageQuotaPanel from '../components/agents/AgentUsageQuotaPanel.vue';
-import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
-import { useAgentEvolutionPanel } from '../features/agents/useAgentEvolutionPanel';
-import { useAgentA2AEndpointTab } from '../features/agents/useAgentA2AEndpointTab';
 import { useAgentSettingsPage } from '../features/agents/useAgentSettingsPage';
 
-import { AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS } from '../components/agents/agentTableUi';
-
-const promptSectionColumns = AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS;
 const $q = useQuasar();
 
 function onRefineError(message: string) {
@@ -334,7 +223,6 @@ const {
   advancedDialog,
   loadError,
   pageLoading,
-  modelChanged,
   toggleFavorite,
   reloadAgent,
   loadInitial,
@@ -367,45 +255,25 @@ const {
   fileDirty,
   updateFileBody,
   reloadActiveFile,
-  aiEditOpen,
-  aiEditing,
   truncateStrategyOptions,
   snapshotModeOptions,
   memoryScopeOptions,
   piiPolicyOptions,
   loadSkillSlugOptions,
-  resetSkillRuntimeDefaults,
   confirmResetSkillDefaults,
   loadingSkillSlugs,
   skillSlugOptions,
   codeExecutorCapabilities,
-  evolutionRange,
   showEvolving,
   fileTokenByName,
   tokenEstimateFor,
   previewMode,
   promptPreview,
-  aiInstruction,
-  applyAiEdit,
   advancedState,
   onAdvancedSave,
+  advancedChannelOptions,
+  loadingAdvancedChannels,
 } = useAgentSettingsPage();
-
-const {
-  metricsLoading: evolutionMetricsLoading,
-  metrics: evolutionMetrics,
-  suggestions: evolutionSuggestions,
-  applyingId: evolutionApplyingId,
-  rejectingId: evolutionRejectingId,
-  pendingSuggestionsCount: evolutionPendingCount,
-  onApply: applyEvolutionSuggestion,
-  onReject: rejectEvolutionSuggestion,
-} = useAgentEvolutionPanel(
-  () => toValue(agentId),
-  () => toValue(evolutionRange),
-);
-
-const a2aEndpoint = reactive(useAgentA2AEndpointTab(() => toValue(agentId)));
 
 const promptInstructionText = computed(() => {
   const p = toValue(promptPreview);
@@ -429,9 +297,5 @@ const promptRuntimeTokens = computed(() => {
     .reduce((sum, row) => sum + row.est_tokens, 0);
 });
 
-const channelsStore = useChannelsStore();
-const advancedChannelOptions = computed(() =>
-  channelsStore.channels.map((ch) => ({ label: ch.name || ch.key, value: ch.id })),
-);
-const loadingAdvancedChannels = computed(() => channelsStore.loading);
+const promptPreviewSections = computed(() => toValue(promptPreview).sections);
 </script>

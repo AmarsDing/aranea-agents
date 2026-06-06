@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { SpiritMember } from '../../features/spirit/types';
+import { spiritModeLabel } from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   status: 'assembling' | 'assembled' | 'completed' | 'failed';
@@ -57,19 +58,7 @@ defineEmits<{
   'view-team': [];
 }>();
 
-const modeLabel = computed(() => {
-  const m = props.mode;
-  if (!m) return '';
-  const labels: Record<string, string> = {
-    coordinator: '协调者',
-    sequential: '顺序',
-    parallel: '并行',
-    critic_loop: '批判循环',
-    swarm: '蜂群',
-    adaptive: '自适应',
-  };
-  return labels[m] ?? m;
-});
+const modeLabel = computed(() => spiritModeLabel(props.mode));
 </script>
 
 <style scoped lang="sass">

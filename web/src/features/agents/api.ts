@@ -306,4 +306,53 @@ export async function rejectEvolutionSuggestion(agentId: string, suggestionId: s
   };
 }
 
+export async function updateAgentToolPolicy(
+  agentId: string,
+  payload: { tools_enabled?: boolean; profile?: string; allow?: string[]; deny?: string[] },
+): Promise<void> {
+  const svc = createAgentService();
+  await svc.UpdateAgentToolPolicy({
+    agentId,
+    toolsEnabled: payload.tools_enabled,
+    profile: payload.profile,
+    allow: payload.allow,
+    deny: payload.deny,
+  });
+}
+
+export async function createAgentPromptFile(
+  agentId: string,
+  payload: { name: string; body: string; sort_order: number },
+): Promise<AgentPromptFile> {
+  const svc = createAgentService();
+  const res = await svc.CreateAgentPromptFile({
+    agentId,
+    name: payload.name,
+    body: payload.body,
+    sortOrder: payload.sort_order,
+  });
+  return normalizePromptFileFromWire(res);
+}
+
+export async function updateAgentPromptFile(
+  agentId: string,
+  fileId: string,
+  payload: { name?: string; body?: string; sort_order?: number },
+): Promise<AgentPromptFile> {
+  const svc = createAgentService();
+  const res = await svc.UpdateAgentPromptFile({
+    agentId,
+    id: fileId,
+    name: payload.name,
+    body: payload.body,
+    sortOrder: payload.sort_order,
+  });
+  return normalizePromptFileFromWire(res);
+}
+
+export async function deleteAgentPromptFile(agentId: string, fileId: string): Promise<void> {
+  const svc = createAgentService();
+  await svc.DeleteAgentPromptFile({ agentId, id: fileId });
+}
+
 export { listPlatformResources as listAgentDependencies, validateModel, type PlatformResource } from '../platform/api';

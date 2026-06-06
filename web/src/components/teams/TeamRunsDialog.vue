@@ -4,7 +4,7 @@
 -->
 <template>
   <q-dialog :model-value="modelValue" position="right" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-runs-panel', { 'is-dark': isDark }]">
+    <q-card :class="['team-runs-panel app-dialog-card app-glass-dialog', { 'is-dark': isDark }]">
       <q-card-section class="row items-center justify-between">
         <div>
           <div class="text-h6">运行轨迹</div>

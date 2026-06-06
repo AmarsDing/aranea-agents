@@ -72,7 +72,7 @@ defineEmits<{
   remove: [node: PlatformResourceTreeNode];
 }>();
 
-const description = computed(() => trimmedDesc(props.position));
+const description = computed(() => trimmedDesc(props.position.description));
 const isSystem = computed(() => parseIsSystem(props.position));
 
 const variantTags = computed(() => {

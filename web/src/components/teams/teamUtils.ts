@@ -1,25 +1,35 @@
 /**
  * Team 展示用纯函数（无网络）。与 `components/teams/*.vue` 共址，见 aranea-frontend-guide SKILL §3.3 路径硬性约定。
  * 类型来自 `features/teams/api`（仅 type import）。
+ *
+ * 常量 → teamConstants.ts | 模板 → teamTemplates.ts | 本文件 → 解析/序列化/格式化/分组
  */
 import type { Agent } from '../../features/agents/types';
 import { findTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Team, TeamDefinition } from '../../features/teams/types';
 import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
+import { runtimeEngineOptions, BuiltinIndustryId } from './teamConstants';
+import { defaultDefinition, defaultA2AConfig, withGraph } from './teamTemplates';
 
-export { buildGraphFromDefinition };
-
-export const teamStatusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: '待执行', color: 'warning' },
-  running: { label: '执行中', color: 'positive' },
-  completed: { label: '已完成', color: 'blue' },
-  failed: { label: '失败', color: 'negative' },
-  cancelled: { label: '已取消', color: 'grey' },
-  interrupted: { label: '已中断', color: 'orange' },
-  archived: { label: '已归档', color: 'grey' },
-  active: { label: '活跃', color: 'positive' },
-};
+// Re-export from split modules
+export { buildGraphFromDefinition } from '../../features/teams/graphUtils';
+export {
+  teamStatusMap,
+  modeOptions,
+  statusOptions,
+  roleOptions,
+  teamTemplateOptions,
+  runtimeEngineOptions,
+  failureDefaultOptions,
+  parallelFailOptions,
+  failureOnErrorOptions,
+  BuiltinIndustryId,
+  validStatusTransitions,
+  isValidStatusTransition,
+} from './teamConstants';
+export type { TeamTemplateKey } from './teamConstants';
+export { defaultDefinition, definitionFromTemplate, defaultA2AConfig, withGraph } from './teamTemplates';
 
 export type TeamIndustryGroup = {
   id: string;
@@ -30,74 +40,121 @@ export type TeamIndustryGroup = {
 
 const UNCategorizedIndustryId = '__uncategorized__';
 
-export const modeOptions = [
-  { label: '顺序 sequential', value: 'sequential' },
-  { label: '并行 parallel', value: 'parallel' },
-  { label: '主控 coordinator', value: 'coordinator' },
-  { label: '生成评审 critic_loop', value: 'critic_loop' },
-  {
-    label: '群智 adaptive（Swarm）',
-    value: 'adaptive',
-    description: '成员间 transfer_to_agent 协作；后端与 swarm 共用 Swarm 运行时。',
-  },
-];
+// ── Role-mode validation (mirrors backend validRolesForMode) ──
 
-export const statusOptions = ['draft', 'active', 'archived'].map((value) => ({ label: value, value }));
+/**
+ * 后端 biz/validRolesForMode 的前端镜像。
+ * 返回当前 mode 允许的角色集合；null 表示任意角色均允许（swarm/adaptive）。
+ */
+export function validRolesForMode(mode: string): Map<string, boolean> | null {
+  switch (mode) {
+    case 'critic_loop':
+      return new Map([
+        ['generator', true],
+        ['critic', true],
+        ['synthesizer', true],
+      ]);
+    case 'parallel':
+      return new Map([
+        ['synthesizer', true],
+        ['worker', true],
+      ]);
+    case 'coordinator':
+      return new Map([
+        ['coordinator', true],
+        ['worker', true],
+        ['synthesizer', true],
+      ]);
+    case 'sequential':
+      return new Map([['worker', true]]);
+    case 'swarm':
+    case 'adaptive':
+      return null; // any role allowed
+    default:
+      return new Map(); // empty = no role allowed
+  }
+}
 
-export const roleOptions = ['worker', 'coordinator', 'synthesizer', 'generator', 'critic'].map((value) => ({
-  label: value,
-  value,
-}));
+/** 根据 mode 过滤可选角色列表（供 TeamEditorDialog 角色下拉使用） */
+export function roleOptionsForMode(mode: string): Array<{ label: string; value: string }> {
+  const allowed = validRolesForMode(mode);
+  if (allowed === null) {
+    // swarm/adaptive: all roles
+    return ['worker', 'coordinator', 'synthesizer', 'generator', 'critic'].map((v) => ({ label: v, value: v }));
+  }
+  return Array.from(allowed.keys()).map((v) => ({ label: v, value: v }));
+}
 
-export type TeamTemplateKey = 'sequential' | 'parallel_experts' | 'critic_loop' | 'coordinator';
+/**
+ * 前端 Team 定义校验，对齐后端 biz/validateTeamDefinition。
+ * 返回错误提示字符串；null 表示通过。
+ */
+export function validateTeamDefinition(definition: TeamDefinition): string | null {
+  const mode = String(definition.mode || 'sequential').toLowerCase();
+  const enabled = definition.members.filter((m) => m.enabled !== false && String(m.agent_id || '').trim() !== '');
 
-export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey; description: string }> = [
-  { label: '顺序协作', value: 'sequential', description: '多个 worker 按顺序接力处理任务。' },
-  {
-    label: '并行专家组',
-    value: 'parallel_experts',
-    description: '前若干成员并行产出；列表中的最后一位 Agent 固定为汇总角色（与专家槽位不同实例）。',
-  },
-  {
-    label: '生成评审',
-    value: 'critic_loop',
-    description: 'generator 与 critic 顺序迭代；迭代次数取自编排里的 critic_loop.max_iterations。',
-  },
-  {
-    label: '主控分派',
-    value: 'coordinator',
-    description: '成员顺序执行；当前运行时为带迭代的上屏顺序链（非独立并行拓扑），适合分步接力。',
-  },
-];
+  // 至少一个 enabled 成员
+  if (enabled.length === 0) {
+    return '请至少启用一名成员并选择 Agent';
+  }
 
-export const runtimeEngineOptions = [
-  {
-    label: 'Graph（默认，GraphAgent）',
-    value: 'graph',
-    description: 'CompileToGraphRuntimeConfig → GraphAgent；生产推荐。',
-  },
-  {
-    label: 'Native（BuildTRPCTeam）',
-    value: 'native',
-    description: '按 mode 分发 Chain/Parallel/Swarm；仅 fallback 或调试。',
-  },
-];
+  // 成员 agent_id 必填
+  const missingAgent = definition.members.find(
+    (m) => m.enabled !== false && !String(m.agent_id || '').trim(),
+  );
+  if (missingAgent) {
+    return '所有启用成员必须选择 Agent';
+  }
 
-export const failureDefaultOptions = [
-  { label: '重试后阻塞 retry_then_block', value: 'retry_then_block' },
-  { label: '跳过 skip', value: 'skip' },
-  { label: '快速失败 fail_fast', value: 'fail_fast' },
-];
+  // 角色-模式兼容性
+  const allowedRoles = validRolesForMode(mode);
+  if (allowedRoles !== null) {
+    const invalid = enabled.find((m) => {
+      const role = String(m.role || '').trim();
+      return role && !allowedRoles.has(role);
+    });
+    if (invalid) {
+      return `角色「${invalid.role}」与模式「${mode}」不兼容`;
+    }
+  }
 
-export const parallelFailOptions = [
-  { label: '继续 continue（分支失败可跳过）', value: 'continue' },
-  { label: '中止 abort', value: 'abort' },
-];
+  // parallel: 需要 synthesizer
+  if (mode === 'parallel') {
+    const synthRaw = String(definition.synthesizer_agent_id || '').trim();
+    const synthFromRole = enabled.find((m) => String(m.role || '').toLowerCase() === 'synthesizer')?.agent_id?.trim();
+    const synth = synthRaw || synthFromRole || '';
+    if (!synth) {
+      return '并行模式需要指定汇总 Agent（synthesizer_agent_id 或成员角色 synthesizer）';
+    }
+    const workers = enabled.filter((m) => String(m.agent_id).trim() !== synth);
+    if (workers.length === 0) {
+      return '并行模式至少需要一名与汇总 Agent 不同的并行成员';
+    }
+  }
 
-export const failureOnErrorOptions = [
-  { label: '暂停等审核 await_review', value: 'await_review' },
-  { label: '终止 halt', value: 'halt' },
-];
+  // coordinator: 需要 synthesizer 或 coordinator
+  if (mode === 'coordinator') {
+    const hasSynth = enabled.some((m) => String(m.role || '').toLowerCase() === 'synthesizer');
+    const hasCoord = enabled.some((m) => String(m.role || '').toLowerCase() === 'coordinator');
+    const hasSynthAgent = String(definition.synthesizer_agent_id || '').trim() !== '';
+    if (!hasSynth && !hasCoord && !hasSynthAgent) {
+      return '主控模式需要 synthesizer 或 coordinator 成员，或指定 synthesizer_agent_id';
+    }
+  }
+
+  // critic_loop: 需要 generator + critic
+  if (mode === 'critic_loop') {
+    const hasGenerator = enabled.some((m) => String(m.role || '').toLowerCase() === 'generator');
+    const hasCritic = enabled.some((m) => String(m.role || '').toLowerCase() === 'critic');
+    if (!hasGenerator || !hasCritic) {
+      return '生成评审模式需要 generator 和 critic 成员';
+    }
+  }
+
+  return null;
+}
+
+// ── Label helpers ──
 
 export function runtimeEngineLabel(value?: string) {
   const v = String(value || 'graph').toLowerCase() === 'native' ? 'native' : 'graph';
@@ -116,6 +173,8 @@ export function failurePolicySummary(def: TeamDefinition): string {
   return parts.length ? parts.join(' · ') : '—';
 }
 
+// ── Definition reset ──
+
 export function resetDefinition(target: TeamDefinition): void {
   const fresh = defaultDefinition();
   const optionalKeys: (keyof TeamDefinition)[] = [
@@ -132,95 +191,7 @@ export function resetDefinition(target: TeamDefinition): void {
   Object.assign(target, fresh);
 }
 
-export function defaultDefinition(): TeamDefinition {
-  const definition: TeamDefinition = {
-    version: 1,
-    description: '',
-    runtime_engine: 'graph',
-    team_graph_runtime: true,
-    mode: 'sequential',
-    max_concurrency: 2,
-    timeout_seconds: 600,
-    loop_max_iterations: 0,
-    intent_anchor_agent_id: '',
-    a2a: defaultA2AConfig(),
-    members: [],
-    critic_loop: { max_iterations: 3, score_threshold: 0.8 },
-  };
-  return withGraph(definition);
-}
-
-export function definitionFromTemplate(template: TeamTemplateKey, agents: Agent[]): TeamDefinition {
-  const base = defaultDefinition();
-  if (template === 'parallel_experts') {
-    const synthId = agents.length ? agents[agents.length - 1].id : '';
-    return withGraph({
-      ...base,
-      description: '并行专家组：靠前槽位的专家并行产出；团队 Agent 列表中的最后一位负责汇总（与并行槽位区分）。',
-      mode: 'parallel',
-      max_concurrency: Math.max(2, Math.min(3, agents.length || 2)),
-      synthesizer_agent_id: synthId,
-      members: [
-        templateMember(agents, 0, 'worker', '专家 A', 10),
-        templateMember(agents, 1, 'worker', '专家 B', 20),
-        templateMember(agents, 2, 'worker', '专家 C', 30),
-      ].filter((member) => member.agent_id),
-    });
-  }
-  if (template === 'critic_loop') {
-    return withGraph({
-      ...base,
-      description: '生成评审：generator 先产出初稿，critic 评审后按需修订。',
-      mode: 'critic_loop',
-      max_concurrency: 1,
-      critic_loop: { max_iterations: 2, score_threshold: 0.8 },
-      members: [
-        templateMember(agents, 0, 'generator', '生成者', 10),
-        templateMember(agents, 1, 'critic', '评审者', 20),
-      ].filter((member) => member.agent_id),
-    });
-  }
-  if (template === 'coordinator') {
-    return withGraph({
-      ...base,
-      description: '主控分派：coordinator 先拆解任务，worker 按计划完成分工。',
-      mode: 'coordinator',
-      max_concurrency: 2,
-      loop_max_iterations: 1,
-      members: [
-        templateMember(agents, 0, 'coordinator', '主控', 10),
-        templateMember(agents, 1, 'worker', '执行者 A', 20),
-        templateMember(agents, 2, 'worker', '执行者 B', 30),
-      ].filter((member) => member.agent_id),
-    });
-  }
-  return withGraph({
-    ...base,
-    description: '顺序协作：多个 Agent 按顺序接力，上一个成员输出作为下一个成员输入。',
-    mode: 'sequential',
-    max_concurrency: 1,
-    members: [
-      templateMember(agents, 0, 'worker', '第一棒', 10),
-      templateMember(agents, 1, 'worker', '第二棒', 20),
-    ].filter((member) => member.agent_id),
-  });
-}
-
-function templateMember(agents: Agent[], index: number, role: string, fallbackName: string, sortOrder: number) {
-  const agent = pickAgent(agents, index);
-  return {
-    agent_id: agent?.id ?? '',
-    role,
-    name: agent?.display_name || fallbackName,
-    enabled: true,
-    sort_order: sortOrder,
-  };
-}
-
-function pickAgent(agents: Agent[], index: number) {
-  if (agents.length === 0) return undefined;
-  return agents[Math.min(index, agents.length - 1)];
-}
+// ── Definition parse / serialize ──
 
 function resolveRuntimeEngine(parsed: TeamDefinition): TeamDefinition['runtime_engine'] {
   const raw = String(parsed.runtime_engine || '')
@@ -273,15 +244,7 @@ export function definitionToJSON(definition: TeamDefinition): string {
   return JSON.stringify(payload);
 }
 
-export function defaultA2AConfig() {
-  return {
-    enabled: true,
-    envelope_version: 'a2a.v1',
-    message_format: 'markdown_json',
-    include_trace: true,
-    max_payload_chars: 6000,
-  };
-}
+// ── Agent helpers ──
 
 export function agentName(agents: Agent[], id: string) {
   return agents.find((agent) => agent.id === id)?.display_name || id || '未选择 Agent';
@@ -300,6 +263,8 @@ export function memberIcon(role: string) {
     )[role] || 'smart_toy'
   );
 }
+
+// ── Topology ──
 
 export function topologyNodesFromDefinition(def: TeamDefinition) {
   const mode = def.mode || 'sequential';
@@ -338,17 +303,14 @@ export function topologyNodes(team: Team) {
   return topologyNodesFromDefinition(parseDefinition(team));
 }
 
-export function withGraph(definition: TeamDefinition): TeamDefinition {
-  return {
-    ...definition,
-    graph: definition.graph?.nodes?.length ? definition.graph : buildGraphFromDefinition(definition),
-  };
-}
+// ── Date ──
 
 export function formatDate(value: string) {
   if (!value) return '-';
   return new Date(value).toLocaleString();
 }
+
+// ── Industry grouping ──
 
 function teamDefinitionExtras(team: Team) {
   try {
@@ -364,12 +326,14 @@ function teamDefinitionExtras(team: Team) {
 
 /** 根据成员 Agent 所属行业投票；无成员时回退 definition 中的 category / industry_id。 */
 export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: PlatformResourceTreeNode[]): string {
-  if (team.taxonomy_industry_id && findIndustryNode(taxonomyTree, team.taxonomy_industry_id)) {
-    return team.taxonomy_industry_id;
+  if (team.taxonomy_industry_id) {
+    const found = findIndustryNode(taxonomyTree, team.taxonomy_industry_id);
+    if (found) return found.id; // normalize key → UUID
   }
   const extras = teamDefinitionExtras(team);
-  if (extras.industry_id && findIndustryNode(taxonomyTree, extras.industry_id)) {
-    return extras.industry_id;
+  if (extras.industry_id) {
+    const found = findIndustryNode(taxonomyTree, extras.industry_id);
+    if (found) return found.id; // normalize key → UUID
   }
 
   const industries = taxonomyTree.filter((node) => node.level === 'industry');
@@ -406,7 +370,9 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: P
 }
 
 function findIndustryNode(taxonomyTree: PlatformResourceTreeNode[], industryId: string) {
-  return taxonomyTree.find((node) => node.level === 'industry' && node.id === industryId) ?? null;
+  return taxonomyTree.find(
+    (node) => node.level === 'industry' && (node.id === industryId || node.key === industryId),
+  ) ?? null;
 }
 
 export function industryOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]) {
@@ -418,8 +384,6 @@ export function industryOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]
       value: node.id,
     }));
 }
-
-export const BuiltinIndustryId = '__builtin__';
 
 export function groupTeamsByIndustry(
   teams: Team[],

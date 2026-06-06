@@ -46,7 +46,7 @@
         <template #item="{ element: team }">
           <TeamCard
             :team="team"
-            :agents="agents"
+            :agents="storeAgents"
             :is-dark="isDark"
             @copy-key="copyKey"
             @open-runs="openRuns"
@@ -136,7 +136,7 @@
       :steps-loading="stepsLoading"
       :summaries-by-run="summariesByRun"
       :summaries-loading="summariesLoading"
-      :agents="agents"
+      :agents="storeAgents"
       :loading="runsLoading"
       :error="runsError"
       :live-connected="runEventsConnected"
@@ -171,17 +171,18 @@ import TeamRunsDialog from '../components/teams/TeamRunsDialog.vue';
 import TeamTestDialog from '../components/teams/TeamTestDialog.vue';
 import TeamToolbar from '../components/teams/TeamToolbar.vue';
 import { useTeamsPage } from '../features/teams/useTeamsPage';
+import { useTeamsStore } from '../stores/teams';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../stores/auth';
 import type { Team } from '../features/teams/types';
 
 const authStore = useAuthStore();
 const { isPlatformAdmin } = storeToRefs(authStore);
+const teamsStore = useTeamsStore();
+const { agents: storeAgents } = storeToRefs(teamsStore);
 
 const {
   isDark,
-  rows,
-  agents,
   loading,
   saving,
   error,

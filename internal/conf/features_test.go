@@ -7,8 +7,8 @@ import (
 
 func TestPGODefaultFilesV2_Default(t *testing.T) {
 	os.Unsetenv("PGO_DEFAULT_FILES_V2")
-	if PGODefaultFilesV2() {
-		t.Fatal("should default to false")
+	if !PGODefaultFilesV2() {
+		t.Fatal("should default to true")
 	}
 }
 
@@ -25,6 +25,14 @@ func TestPGODefaultFilesV2_True(t *testing.T) {
 	defer os.Unsetenv("PGO_DEFAULT_FILES_V2")
 	if !PGODefaultFilesV2() {
 		t.Fatal("should be true when set to true")
+	}
+}
+
+func TestPGODefaultFilesV2_Disabled(t *testing.T) {
+	os.Setenv("PGO_DEFAULT_FILES_V2", "0")
+	defer os.Unsetenv("PGO_DEFAULT_FILES_V2")
+	if PGODefaultFilesV2() {
+		t.Fatal("should be false when set to 0")
 	}
 }
 

@@ -12,6 +12,7 @@ import {
   reorderTaxonomy,
 } from '../../features/platform/api';
 import { getSystemSettings } from '../../features/system-settings/api';
+import { patchTaxonomyTreeNode } from '../../features/platform/taxonomyTreeUtils';
 import type {
   PlatformResource,
   PlatformResourceTreeNode,
@@ -20,6 +21,34 @@ import type {
   InspectProviderModelInput,
   InspectProviderModelResult,
 } from '../../features/platform/types';
+
+function removeTaxonomyTreeNodeInner(
+  tree: PlatformResourceTreeNode[],
+  id: string,
+): PlatformResourceTreeNode[] {
+  return tree
+    .filter((node) => node.id !== id)
+    .map((node) => ({
+      ...node,
+      children: removeTaxonomyTreeNodeInner(node.children ?? [], id),
+    }));
+}
+
+function appendChildInner(
+  tree: PlatformResourceTreeNode[],
+  parentId: string,
+  child: PlatformResourceTreeNode,
+): PlatformResourceTreeNode[] {
+  return tree.map((node) => {
+    if (node.id === parentId) {
+      return { ...node, children: [...(node.children ?? []), child] };
+    }
+    if (node.children?.length) {
+      return { ...node, children: appendChildInner(node.children, parentId, child) };
+    }
+    return node;
+  });
+}
 
 export const usePlatformStore = defineStore('platform', () => {
   const providerModels = ref<PlatformResource[]>([]);
@@ -81,6 +110,22 @@ export const usePlatformStore = defineStore('platform', () => {
     return reorderTaxonomy(ids);
   }
 
+  function setTaxonomyTree(tree: PlatformResourceTreeNode[]) {
+    taxonomyTree.value = tree;
+  }
+
+  function applyTaxonomyTreePatch(id: string, patch: Partial<PlatformResourceTreeNode>) {
+    taxonomyTree.value = patchTaxonomyTreeNode(taxonomyTree.value, id, patch);
+  }
+
+  function removeTaxonomyTreeNode(id: string) {
+    taxonomyTree.value = removeTaxonomyTreeNodeInner(taxonomyTree.value, id);
+  }
+
+  function appendTaxonomyTreeChild(parentId: string, child: PlatformResourceTreeNode) {
+    taxonomyTree.value = appendChildInner(taxonomyTree.value, parentId, child);
+  }
+
   return {
     providerModels,
     taxonomyTree,
@@ -93,6 +138,10 @@ export const usePlatformStore = defineStore('platform', () => {
     editResource,
     removeResource,
     reorderTaxonomyNodes,
+    setTaxonomyTree,
+    applyTaxonomyTreePatch,
+    removeTaxonomyTreeNode,
+    appendTaxonomyTreeChild,
     checkModel,
     revealCredentials,
     inspectModel,

@@ -38,8 +38,8 @@ export function parseIsSystem(node: PlatformResourceTreeNode) {
   }
 }
 
-export function trimmedDesc(raw?: string | null) {
-  return (raw ?? '').trim();
+export function trimmedDesc(raw?: string | null | unknown) {
+  return (typeof raw === 'string' ? raw : '').trim();
 }
 
 export function flattenTaxonomyTree(nodes: PlatformResourceTreeNode[]): PlatformResourceTreeNode[] {
@@ -236,6 +236,31 @@ export function collectDefaultExpandedIds(tree: PlatformResourceTreeNode[]) {
     }
   }
   return ids;
+}
+
+/** Build a unique key for a new taxonomy node. */
+export function buildTaxonomyKey(level: string, name: string, parentId: string) {
+  const ascii = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  const parentPart = parentId
+    ? parentId
+        .replace(/[^a-z0-9]+/gi, '')
+        .slice(-8)
+        .toLowerCase()
+    : 'root';
+  const entropy = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  return `${level}-${parentPart}-${ascii || 'node'}-${entropy}`;
+}
+
+/** Compute the next sort order for a new sibling under the given parent. */
+export function nextTaxonomySortOrder(
+  siblings: PlatformResourceTreeNode[],
+): number {
+  return siblings.length > 0
+    ? Math.max(...siblings.map((node) => node.sort_order || 0)) + 10
+    : 10;
 }
 
 

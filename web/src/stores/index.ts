@@ -30,7 +30,7 @@ export { useSessionStore } from './session';
 export { useSkillsStore } from './skills';
 export { useSystemSettingsStore } from './system-settings';
 export { useTeamsStore } from './teams';
-export { useTeamsPageStore } from './teams/page';
+
 export { useToolsStore } from './tools';
 export { useToolDetailStore } from './tools/toolDetail';
 export { useToolEditorStore } from './tools/toolEditor';

@@ -5,13 +5,13 @@ import { errorMessage } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
 import {
   taxonomyTreeStats,
-  collectDefaultExpandedIds,
   filterTaxonomyTree,
   findTaxonomyNode,
   levelLabel,
   parseIsSystem,
-  patchTaxonomyTreeNode,
   trimmedDesc,
+  buildTaxonomyKey,
+  nextTaxonomySortOrder,
   type TaxonomyLevel,
 } from './taxonomyTreeUtils';
 
@@ -29,7 +29,6 @@ export function useTaxonomyPage() {
   const dialogOpen = ref(false);
   const editingId = ref('');
   const parentNode = ref<PlatformResourceTreeNode | null>(null);
-  const tree = ref<PlatformResourceTreeNode[]>([]);
   const togglingIds = ref<Set<string>>(new Set());
 
   const form = reactive<PlatformResourceInput & { level: TaxonomyLevel }>({
@@ -46,19 +45,18 @@ export function useTaxonomyPage() {
 
   const filteredTree = computed(() =>
     filterTaxonomyTree(
-      tree.value.filter((node) => node.level === 'industry'),
+      platformStore.taxonomyTree.filter((node) => node.level === 'industry'),
       keyword.value,
       onlyCustom.value,
     ),
   );
-  const stats = computed(() => taxonomyTreeStats(tree.value));
+  const stats = computed(() => taxonomyTreeStats(platformStore.taxonomyTree));
   const parentName = computed(() => parentNode.value?.name || '无');
 
   async function loadTree(opts?: { silent?: boolean }) {
     if (!opts?.silent) loading.value = true;
     try {
       await platformStore.loadTaxonomyTree(CATEGORY_RESOURCE);
-      tree.value = platformStore.taxonomyTree;
     } catch (err) {
       $q.notify({ type: 'negative', message: errorMessage(err) || '加载行业分类失败' });
     } finally {
@@ -67,20 +65,22 @@ export function useTaxonomyPage() {
   }
 
   function syncTreePatch(id: string, patch: Partial<PlatformResourceTreeNode>) {
-    tree.value = patchTaxonomyTreeNode(tree.value, id, patch);
-    platformStore.taxonomyTree = tree.value;
+    platformStore.applyTaxonomyTreePatch(id, patch);
   }
 
   function openCreate(level: TaxonomyLevel, parent?: PlatformResourceTreeNode) {
     const canonicalParent = parent ? (findNode(parent.id) ?? parent) : null;
     editingId.value = '';
     parentNode.value = canonicalParent;
+    const siblings = canonicalParent
+      ? (canonicalParent.children ?? [])
+      : platformStore.taxonomyTree.filter((node) => node.level === 'industry');
     Object.assign(form, {
       key: '',
       name: '',
       description: '',
       enabled: true,
-      sort_order: nextSortOrder(canonicalParent ?? undefined),
+      sort_order: nextTaxonomySortOrder(siblings),
       parent_id: canonicalParent?.id ?? '',
       level,
       is_system: false,
@@ -119,7 +119,7 @@ export function useTaxonomyPage() {
       const payload: PlatformResourceInput = {
         ...form,
         name: trimmedName,
-        key: editingId.value ? form.key : buildKey(form.level, trimmedName),
+        key: editingId.value ? form.key : buildTaxonomyKey(form.level, trimmedName, form.parent_id),
         parent_id: form.parent_id || '',
         metadata_json: form.metadata_json || '{}',
       };
@@ -191,29 +191,9 @@ export function useTaxonomyPage() {
     }
   }
 
-  function nextSortOrder(parent?: PlatformResourceTreeNode) {
-    const siblings = parent ? (parent.children ?? []) : tree.value.filter((node) => node.level === 'industry');
-    return siblings.length > 0 ? Math.max(...siblings.map((node) => node.sort_order || 0)) + 10 : 10;
-  }
-
   function findNode(id: string) {
     if (!id) return null;
-    return findTaxonomyNode(tree.value, id);
-  }
-
-  function buildKey(level: string, name: string) {
-    const ascii = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-    const parentPart = form.parent_id
-      ? form.parent_id
-          .replace(/[^a-z0-9]+/gi, '')
-          .slice(-8)
-          .toLowerCase()
-      : 'root';
-    const entropy = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    return `${level}-${parentPart}-${ascii || 'node'}-${entropy}`;
+    return findTaxonomyNode(platformStore.taxonomyTree, id);
   }
 
   onMounted(loadTree);
@@ -237,12 +217,10 @@ export function useTaxonomyPage() {
     const ids = positions.map((p) => p.id);
     try {
       await platformStore.reorderTaxonomyNodes(ids);
-      // Optimistically update local tree
       const patchedChildren = positions.map((p, i) => ({ ...p, sort_order: (i + 1) * 10 }));
-      tree.value = patchTaxonomyTreeNode(tree.value, department.id, {
+      platformStore.applyTaxonomyTreePatch(department.id, {
         children: patchedChildren,
       });
-      platformStore.taxonomyTree = tree.value;
     } catch {
       $q.notify({ type: 'negative', message: '排序保存失败' });
     }
@@ -258,7 +236,6 @@ export function useTaxonomyPage() {
     dialogOpen,
     editingId,
     parentNode,
-    tree,
     form,
     filteredTree,
     stats,

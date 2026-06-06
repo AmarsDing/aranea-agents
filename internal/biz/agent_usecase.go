@@ -60,9 +60,18 @@ type AgentPromptFileRepo interface {
 	DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
 }
 
+// AgentAtomicWriter 提供跨方法的事务化写入，保证 "agent + prompt files +
+// runtime settings" 三步原子化。Pack 导入场景必须使用这两个方法以避免
+// partial failure 导致数据半新半旧；其他 Usecase 可继续走单步 API。
+type AgentAtomicWriter interface {
+	CreateAgentAtomic(ctx context.Context, a Agent, files []AgentPromptFile, settings AgentRuntimeSettings) (Agent, error)
+	UpdateAgentAtomic(ctx context.Context, a Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error)
+}
+
 type AgentRepository interface {
 	AgentReader
 	AgentWriter
+	AgentAtomicWriter
 	AgentRuntimeSettingsRepo
 	AgentPromptFileRepo
 	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)

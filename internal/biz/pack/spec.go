@@ -424,12 +424,14 @@ type GraphCondEdgePackSpec struct {
 
 // SubgraphPackSpec Graph 子图定义。
 type SubgraphPackSpec struct {
-	ID          string              `yaml:"id"`
-	Name        string              `yaml:"name,omitempty"`
-	EntryPoint  string              `yaml:"entry_point"`
-	FinishPoint string              `yaml:"finish_point,omitempty"`
-	Nodes       []GraphNodePackSpec `yaml:"nodes,omitempty"`
-	Edges       []GraphEdgePackSpec `yaml:"edges,omitempty"`
+	ID              string              `yaml:"id"`
+	Name            string              `yaml:"name,omitempty"`
+	EntryPoint      string              `yaml:"entry_point"`
+	FinishPoint     string              `yaml:"finish_point,omitempty"`
+	InterruptBefore bool                `yaml:"interrupt_before,omitempty"`
+	InterruptAfter  bool                `yaml:"interrupt_after,omitempty"`
+	Nodes           []GraphNodePackSpec `yaml:"nodes,omitempty"`
+	Edges           []GraphEdgePackSpec `yaml:"edges,omitempty"`
 }
 
 // ConflictStrategy 冲突策略。

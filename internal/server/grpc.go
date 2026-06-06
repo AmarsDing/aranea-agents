@@ -32,7 +32,6 @@ import (
 	skillevosuggv1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
-	industrytaxonomyv1 "aranea-agents/api/kratos/industry_taxonomy/v1"
 	taxonomyv1 "aranea-agents/api/kratos/taxonomy/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
@@ -99,7 +98,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	eventv1.RegisterEventServiceServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceServer(srv, s.Taxonomy)
-	industrytaxonomyv1.RegisterIndustryTaxonomyServiceServer(srv, s.IndustryTaxonomy)
 	skillevov1.RegisterSkillEvolutionServiceServer(srv, s.SkillEvo)
 	skillintlv1.RegisterSkillIntelligenceServiceServer(srv, s.SkillIntel)
 	skilldedupv1.RegisterSkillDedupServiceServer(srv, s.SkillDedup)

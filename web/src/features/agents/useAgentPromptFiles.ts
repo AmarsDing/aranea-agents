@@ -1,6 +1,6 @@
 import { computed, reactive, ref, watch, type Ref } from 'vue';
 import type { AgentPromptFile } from './types';
-import { editPromptFileByAI, estimateAgentTokens } from './api';
+import { useAgentDetailStore } from '../../stores/agents/detail';
 import { defaultAgentFiles, type AgentFile } from '../../components/agents/agentUi';
 
 // PGO-1: only non-optional files are created by default.
@@ -10,6 +10,7 @@ type NotifyFn = (opts: { type: string; message: string }) => void;
 
 /** Prompt file editor state for Agent settings. */
 export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
+  const detailStore = useAgentDetailStore();
   const fileSplitter = ref(28);
   const activeFile = ref('AGENTS_CORE.md');
   const initialFileBodies = ref<Record<string, string>>({});
@@ -89,7 +90,7 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
       return;
     }
     try {
-      const est = await estimateAgentTokens(id);
+      const est = await detailStore.estimateTokens(id);
       const byName: Record<string, number> = {};
       for (const row of est.file_estimates) {
         const name = String(row.file_name ?? '').trim();
@@ -114,7 +115,7 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
     }
     aiEditing.value = true;
     try {
-      const updated = await editPromptFileByAI(formId, fileId, instruction);
+      const updated = await detailStore.editPromptFile(formId, fileId, instruction);
       updateFileBody(activeFile.value, updated.body);
       const row = files.find((f) => f.name === activeFile.value);
       if (row) row.id = updated.id;

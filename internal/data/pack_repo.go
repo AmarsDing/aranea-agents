@@ -127,8 +127,16 @@ func (a *PackRepoAdapter) CreateAgent(ctx context.Context, agent biz.Agent) (biz
 	return a.agents.CreateAgent(ctx, agent)
 }
 
+func (a *PackRepoAdapter) CreateAgentAtomic(ctx context.Context, agent biz.Agent, files []biz.AgentPromptFile, settings biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a.agents.CreateAgentAtomic(ctx, agent, files, settings)
+}
+
 func (a *PackRepoAdapter) UpdateAgent(ctx context.Context, agent biz.Agent) (biz.Agent, error) {
 	return a.agents.UpdateAgent(ctx, agent)
+}
+
+func (a *PackRepoAdapter) UpdateAgentAtomic(ctx context.Context, agent biz.Agent, files []biz.AgentPromptFile, settings *biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a.agents.UpdateAgentAtomic(ctx, agent, files, settings)
 }
 
 func (a *PackRepoAdapter) DeleteAgent(ctx context.Context, id string) error {

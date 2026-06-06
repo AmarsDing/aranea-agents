@@ -1,0 +1,90 @@
+package jobs
+
+import (
+	"context"
+	"os"
+	"strings"
+	"time"
+
+	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
+)
+
+// PredictiveHealJob runs the PredictiveHealUsecase on a periodic basis via CronRunner.
+// It scans system metrics, matches precondition patterns from the FailurePattern
+// knowledge base, and executes preventive actions when confidence exceeds 0.8.
+type PredictiveHealJob struct {
+	interval time.Duration
+	uc       *bizmonitor.PredictiveHealUsecase
+	lg       loggateway.Logger
+}
+
+// NewPredictiveHealJob creates a new predictive heal periodic job.
+// Pass interval ≤ 0 to use the environment-variable default or 5 minutes.
+func NewPredictiveHealJob(interval time.Duration, uc *bizmonitor.PredictiveHealUsecase, lg loggateway.Logger) *PredictiveHealJob {
+	if interval <= 0 {
+		interval = predictiveHealIntervalFromEnv()
+	}
+	return &PredictiveHealJob{
+		interval: interval,
+		uc:       uc,
+		lg:       lg,
+	}
+}
+
+func predictiveHealIntervalFromEnv() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("PREDICTIVE_HEAL_INTERVAL")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d >= time.Minute {
+			return d
+		}
+	}
+	return 5 * time.Minute
+}
+
+// Start runs the predictive heal job loop until ctx is cancelled.
+func (j *PredictiveHealJob) Start(ctx context.Context) {
+	if j == nil || j.uc == nil {
+		return
+	}
+	ticker := time.NewTicker(j.interval)
+	defer ticker.Stop()
+	// Run once immediately
+	j.runOnce(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			j.runOnce(ctx)
+		}
+	}
+}
+
+func (j *PredictiveHealJob) runOnce(ctx context.Context) {
+	safego.Go(ctx, "predictive_heal.job", func() {
+		records, err := j.uc.PredictAndHeal(ctx)
+		if err != nil {
+			j.lg.Error("PredictiveHealJob: PredictAndHeal failed",
+				loggateway.StepID("predictive_heal.job_fail"),
+				loggateway.Err(err))
+			return
+		}
+		applied := 0
+		skipped := 0
+		for _, r := range records {
+			if r.Status == string(bizmonitor.HealStatusApplied) {
+				applied++
+			} else {
+				skipped++
+			}
+		}
+		if len(records) > 0 {
+			j.lg.Info("PredictiveHealJob: scan complete",
+				loggateway.StepID("predictive_heal.job_done"),
+				loggateway.Int("total", len(records)),
+				loggateway.Int("applied", applied),
+				loggateway.Int("skipped", skipped))
+		}
+	})
+}

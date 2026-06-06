@@ -226,6 +226,16 @@ func (r *TaxonomyRepo) DeleteTaxonomyNode(ctx context.Context, id string) error 
 }
 
 func (r *TaxonomyRepo) ensureNodeCanDelete(ctx context.Context, id string) error {
+	node, err := r.data.RW().Read(ctx).IndustryTaxonomy.Get(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return kerrors.NotFound("TAXONOMY", "node not found")
+		}
+		return err
+	}
+	if node.IsSystem {
+		return kerrors.BadRequest("TAXONOMY", "system preset category cannot be deleted")
+	}
 	n, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.ParentIDEQ(id),
@@ -257,7 +267,7 @@ func (r *TaxonomyRepo) ReorderTaxonomyNodes(ctx context.Context, ids []string) e
 	c := r.data.RW().Write(ctx)
 	for i, id := range ids {
 		_, err := c.IndustryTaxonomy.UpdateOneID(id).
-			SetSortOrder(i + 1).
+			SetSortOrder((i + 1) * 10).
 			Save(ctx)
 		if err != nil {
 			return fmt.Errorf("taxonomy repo reorder [%s]: %w", id, err)

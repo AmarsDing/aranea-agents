@@ -173,7 +173,7 @@
                 color="positive"
                 size="sm"
                 :loading="applyingId === s.id"
-                @click="emit('apply', s.id)"
+                @click="onApply(s.id)"
               >
                 <q-tooltip>应用</q-tooltip>
               </q-btn>
@@ -185,7 +185,7 @@
                 color="negative"
                 size="sm"
                 :loading="rejectingId === s.id"
-                @click="emit('reject', s.id)"
+                @click="onReject(s.id)"
               >
                 <q-tooltip>拒绝</q-tooltip>
               </q-btn>
@@ -233,10 +233,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+// Container: approved — evolution Tab 内指标/建议编排；内部调用 useAgentEvolutionPanel。
+import { computed, ref } from 'vue';
 import type { EvolutionKey } from './agentUi';
-import type { EvolutionMetrics, EvolutionSuggestion } from '../../features/agents/types';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
+import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
 
 const props = defineProps<{
   agentId: string;
@@ -247,24 +248,27 @@ const props = defineProps<{
     min_data_points: number;
     rollback_on_decline_percent: number;
   };
-  range: string;
-  metricsLoading: boolean;
-  metrics: EvolutionMetrics | null;
-  suggestions: EvolutionSuggestion[];
-  applyingId: string | null;
-  rejectingId: string | null;
-  pendingSuggestionsCount: number;
 }>();
 
-const emit = defineEmits<{
-  'update:range': [value: string];
-  apply: [id: string];
-  reject: [id: string];
-}>();
+const evolutionRange = ref('30d');
+
+const {
+  metricsLoading,
+  metrics,
+  suggestions,
+  applyingId,
+  rejectingId,
+  pendingSuggestionsCount,
+  onApply,
+  onReject,
+} = useAgentEvolutionPanel(
+  () => props.agentId,
+  () => evolutionRange.value,
+);
 
 const rangeModel = computed({
-  get: () => props.range,
-  set: (value: string) => emit('update:range', value),
+  get: () => evolutionRange.value,
+  set: (value: string) => { evolutionRange.value = value; },
 });
 
 const rangeOptions = ['7d', '30d', '90d'].map((value) => ({ label: value, value }));

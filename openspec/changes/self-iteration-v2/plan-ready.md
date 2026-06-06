@@ -80,7 +80,7 @@
 - 验证方式：`go test ./internal/tools/skillrecommend/... -count=1` 绿色
 
 ### Task 8: Curator Agent 半自动进化
-- [ ] **任务完成**（与 superpowers plan `Task 8`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 8`、`tasks.md` 对应条目同步勾选）
 - 目标：实现 Curator Agent 半自动进化流程（触发判定→草案生成→Sandbox 验证→审批）
 - 改动文件：
   - `internal/biz/skill_evolution_suggestion_types.go`（新增：领域模型）
@@ -96,7 +96,7 @@
 - 验证方式：`make api && make wire && make build` 通过
 
 ### Task 9: 前端经验报告与进化审批
-- [ ] **任务完成**（与 superpowers plan `Task 9`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 9`、`tasks.md` 对应条目同步勾选）
 - 目标：前端经验报告列表页 + Skill 进化审批 UI
 - 改动文件：
   - 前端经验报告列表页组件
@@ -104,7 +104,7 @@
 - 验证方式：`pnpm lint && pnpm build` 通过
 
 ### Task 10: 预测性自愈
-- [ ] **任务完成**（与 superpowers plan `Task 10`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 10`、`tasks.md` 对应条目同步勾选）
 - 目标：基于历史模式的预测性自愈，从被动响应进化到主动预防
 - 改动文件：
   - `internal/biz/monitor/predictive_heal.go`（新增：PredictiveHealUsecase）
@@ -114,7 +114,7 @@
 - 验证方式：`go test ./internal/biz/monitor/... -run TestPredictive -count=1` 绿色
 
 ### Task 11: Skill 五阶段进化闭环
-- [ ] **任务完成**（与 superpowers plan `Task 11`、`tasks.md` 对应条目同步勾选）
+- [x] **任务完成**（与 superpowers plan `Task 11`、`tasks.md` 对应条目同步勾选）
 - 目标：实现 Solve→Observe→Evolve→Gate→Reload 五阶段流程 + Gate 多维验证 + 过期机制
 - 改动文件：
   - `internal/biz/skill_evolution_loop.go`（新增：五阶段流程）

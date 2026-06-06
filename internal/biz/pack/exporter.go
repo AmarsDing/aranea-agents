@@ -838,7 +838,7 @@ func buildFailurePolicySpec(fp *biz.TeamFailurePolicy) *TeamFailurePolicySpec {
 	if fp.CircuitBreaker != nil {
 		spec.CircuitBreaker = &CircuitBreakerPolicySpec{
 			FailureThreshold:  fp.CircuitBreaker.FailureThreshold,
-			RecoveryTimeoutMs: fp.CircuitBreaker.ResetTimeoutSeconds * 1000,
+			RecoveryTimeoutMs: fp.CircuitBreaker.ResetTimeoutSeconds * msPerSecond,
 		}
 	}
 	return spec

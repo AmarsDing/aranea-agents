@@ -329,7 +329,7 @@ func (u *SpiritTeamUsecase) BuildCascadeBlockedResults(ctx context.Context, team
 					TeamID:   teams[i].ID,
 					TeamName: teams[i].DisplayName,
 					TaskName: teams[i].TaskDescription,
-					Status:   "blocked",
+					Status:   TeamStatusBlocked,
 					Summary:  fmt.Sprintf("被失败团队 %s 阻塞", failedName),
 				})
 				break
@@ -479,7 +479,7 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 		return "", "", nil
 	}
 	teamSession := result.Items[0]
-	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, 10)
+	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, DefaultRecentMessageCount)
 	if msgErr != nil {
 		u.lg.Warn("获取团队消息失败",
 			loggateway.StepID("spirit.extract_output.msg_err"),
@@ -509,7 +509,7 @@ func extractKeyFindings(content string) string {
 		isBullet := strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ")
 		isNumbered := isNumberedListItem(trimmed)
 		isQuote := strings.HasPrefix(trimmed, "> ")
-		if (isBullet || isNumbered) && !isQuote && len(findings) < 5 {
+		if (isBullet || isNumbered) && !isQuote && len(findings) < MaxKeyFindingsCount {
 			findings = append(findings, trimmed)
 		}
 	}
@@ -561,14 +561,14 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 			tp.CurrentStep = "等待执行"
 		default:
 		}
-		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, 10)
+		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, DefaultRecentRunCount)
 		if runErr == nil && len(runs) > 0 {
 			latestRun := runs[0]
 			tp.DurationMs = int64(latestRun.DurationMS)
 			if IsTeamStatusActive(tp.Status) {
 				completedRuns := 0
 				for _, r := range runs {
-					if r.Status == "success" {
+					if r.Status == TeamRunStatusSuccess {
 						completedRuns++
 					}
 				}
@@ -603,6 +603,14 @@ const (
 	// TimeoutHandlerContextTimeout is the maximum duration for DB operations
 	// inside the timeout callback goroutine.
 	TimeoutHandlerContextTimeout = 30 * time.Second
+
+	// MaxKeyFindingsCount is the maximum number of key findings extracted.
+	MaxKeyFindingsCount = 5
+
+	// DefaultRecentMessageCount is the default number of recent messages to fetch.
+	DefaultRecentMessageCount = 10
+	// DefaultRecentRunCount is the default number of recent runs to fetch.
+	DefaultRecentRunCount = 10
 )
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
@@ -695,7 +703,9 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 		TeamID:   team.ID,
 		TeamName: team.DisplayName,
 		TaskName: team.TaskDescription,
-		Status:   "completed",
+	// RecordTeamCompletion always records for a completed team; the "completed"
+	// status is intentional — DQ Score is only meaningful for successful executions.
+	Status:   TeamStatusCompleted,
 	}, durationMs)
 	taskPattern := ExtractTaskPattern(team.TaskDescription)
 	topology = InferTopologyFromTeam(team, u.lg)

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
@@ -69,6 +70,7 @@ type EcosystemPresetUsecase struct {
 	seedPack    SeedPackFunc
 	lg          loggateway.Logger
 	scenarioDir string
+	mu          sync.Mutex // protects load/unload from concurrent execution
 }
 
 // NewEcosystemPresetUsecase constructs an EcosystemPresetUsecase.
@@ -82,6 +84,9 @@ var DefaultIndustries = []string{"finance", "selfmedia", "softwaredev"}
 // LoadEcosystemPreset loads ecosystem preset data for the specified industries.
 // The client parameter is the ent.Client (typed as any to avoid import cycles).
 func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, industries []string, force bool, client any) (*EcosystemLoadResponse, error) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
 	if len(industries) == 0 {
 		industries = DefaultIndustries
 	}
@@ -135,6 +140,9 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 
 // UnloadEcosystemPreset unloads ecosystem preset data for the specified industries.
 func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, industries []string) (*EcosystemUnloadResponse, error) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
 	if len(industries) == 0 {
 		return nil, kerrors.BadRequest("ECOSYSTEM", "industries list is required")
 	}
@@ -159,30 +167,54 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 			continue
 		}
 
-		taxDeleted, err := uc.repo.DeleteTaxonomyNodesByIndustry(ctx, ind)
+		var (
+			taxDeleted    int
+			agentsDeleted int
+			teamsDeleted  int
+			teamsModified int
+			partialErr    string
+		)
+
+		taxDeleted, err = uc.repo.DeleteTaxonomyNodesByIndustry(ctx, ind)
 		if err != nil {
-			resp.Errors[ind] = fmt.Sprintf("delete taxonomy: %v", err)
-			continue
+			partialErr = fmt.Sprintf("delete taxonomy: %v", err)
+			uc.lg.Warn("ecosystem unload: taxonomy deletion failed",
+				loggateway.Str("industry", ind),
+				loggateway.Err(err))
 		}
 
-		agentsDeleted, err := uc.repo.DeleteAgentsByIndustry(ctx, ind)
+		agentsDeleted, err = uc.repo.DeleteAgentsByIndustry(ctx, ind)
 		if err != nil {
-			resp.Errors[ind] = fmt.Sprintf("delete agents: %v", err)
-			continue
+			if partialErr != "" {
+				partialErr += "; "
+			}
+			partialErr += fmt.Sprintf("delete agents: %v", err)
+			uc.lg.Warn("ecosystem unload: agents deletion failed",
+				loggateway.Str("industry", ind),
+				loggateway.Err(err))
 		}
 
-		teamsDeleted, teamsModified, err := uc.repo.DeleteTeamsByIndustry(ctx, ind)
+		teamsDeleted, teamsModified, err = uc.repo.DeleteTeamsByIndustry(ctx, ind)
 		if err != nil {
-			resp.Errors[ind] = fmt.Sprintf("delete teams: %v", err)
-			continue
+			if partialErr != "" {
+				partialErr += "; "
+			}
+			partialErr += fmt.Sprintf("delete teams: %v", err)
+			uc.lg.Warn("ecosystem unload: teams deletion failed",
+				loggateway.Str("industry", ind),
+				loggateway.Err(err))
 		}
 
+		// Mark as unloaded regardless of partial failures, since data has been partially deleted
 		status[ind] = IndustryLoadInfo{Loaded: false}
 		resp.Results[ind] = &UnloadResult{
 			AgentsDeleted:        agentsDeleted,
 			TeamsDeleted:         teamsDeleted,
 			TaxonomyNodesDeleted: taxDeleted,
 			TeamsModified:        teamsModified,
+		}
+		if partialErr != "" {
+			resp.Errors[ind] = partialErr
 		}
 	}
 

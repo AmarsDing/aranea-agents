@@ -17,6 +17,10 @@ import (
 // biz → conf import cycle. Both read the same env var; keep them in sync.
 func pgoDefaultFilesV2() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("PGO_DEFAULT_FILES_V2")))
+	// Default to V2 (rich Chinese content); set "0" or "false" to use legacy stubs.
+	if v == "" {
+		return true
+	}
 	return v == "1" || v == "true" || v == "yes"
 }
 

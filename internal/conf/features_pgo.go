@@ -10,7 +10,12 @@ import "os"
 // PGODefaultFilesV2 controls whether new agents are created with the V2
 // default prompt file set (5 core files) instead of the legacy 9-file set.
 // PGO-1-BIZ-01: When true, defaultPromptFiles() returns 5 files.
+// Defaults to true; set PGO_DEFAULT_FILES_V2=0 to use legacy stubs.
 func PGODefaultFilesV2() bool {
+	v := os.Getenv("PGO_DEFAULT_FILES_V2")
+	if v == "" {
+		return true // default to V2
+	}
 	return parseBoolFlag("PGO_DEFAULT_FILES_V2")
 }
 

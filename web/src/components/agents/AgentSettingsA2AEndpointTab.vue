@@ -14,7 +14,7 @@
         :model-value="card.enabled"
         color="primary"
         label="启用 A2A"
-        @update:model-value="emit('update:cardEnabled', $event)"
+        @update:model-value="setCardEnabled"
       />
       <div>
         <div class="text-caption text-grey-7 q-mb-sm">Capabilities（JSON 名称列表，每行一个能力名）</div>
@@ -25,7 +25,7 @@
           type="textarea"
           rows="4"
           hint="例如 chat、summarize"
-          @update:model-value="emit('update:capabilityLines', String($event ?? ''))"
+          @update:model-value="capabilityLines = String($event ?? '')"
         />
       </div>
       <div class="app-actions-bar app-actions-bar--start">
@@ -37,7 +37,7 @@
           label="保存 AgentCard"
           :loading="saving"
           :disable="!card"
-          @click="emit('save')"
+          @click="saveEndpoint"
         />
       </div>
     </div>
@@ -45,18 +45,20 @@
 </template>
 
 <script setup lang="ts">
-import type { Ref } from 'vue';
+// Container: approved — A2A endpoint Tab；内部调用 useAgentA2AEndpointTab。
+import { reactive } from 'vue';
+import { useAgentA2AEndpointTab } from '../../features/agents/useAgentA2AEndpointTab';
 
-defineProps<{
-  loading: boolean;
-  saving: boolean;
-  card: { enabled: boolean; [k: string]: unknown } | null;
-  capabilityLines: string;
+const props = defineProps<{
+  agentId: string;
 }>();
 
-const emit = defineEmits<{
-  save: [];
-  'update:cardEnabled': [value: boolean];
-  'update:capabilityLines': [value: string];
-}>();
+const {
+  loading,
+  saving,
+  card,
+  capabilityLines,
+  setCardEnabled,
+  saveEndpoint,
+} = reactive(useAgentA2AEndpointTab(() => props.agentId));
 </script>

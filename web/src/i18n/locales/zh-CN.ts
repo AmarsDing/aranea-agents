@@ -281,6 +281,7 @@ export default {
     mcp: 'MCP 管理',
     skills: 'Skill 管理',
     evolutionSuggestions: '进化建议',
+    experienceReports: '经验报告',
     plugins: 'Plugin 管理',
     hooks: 'Hook / 回调',
     webhooks: 'Webhook 管理',

@@ -283,6 +283,7 @@ export default {
     mcp: 'MCP management',
     skills: 'Skill management',
     evolutionSuggestions: 'Evolution suggestions',
+    experienceReports: 'Experience reports',
     plugins: 'Plugin management',
     hooks: 'Hook / Callbacks',
     webhooks: 'Webhooks',

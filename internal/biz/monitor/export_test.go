@@ -109,3 +109,8 @@ func (a *FlowFileAppender) RotatingFilePaths() []string {
 	}
 	return paths
 }
+
+// SetCooldownForTest allows tests to manipulate the cooldown state of PredictiveHealUsecase.
+func (uc *PredictiveHealUsecase) SetCooldownForTest(actionType string, t time.Time) {
+	uc.setCooldown(actionType, t)
+}

@@ -340,7 +340,7 @@
                       emit-value
                       map-options
                       label="角色"
-                      :options="roleOptions"
+                      :options="roleOptionsForMode(definition.mode || 'sequential')"
                     />
                     <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
                     <q-input
@@ -414,7 +414,7 @@ import {
   failureOnErrorOptions,
   modeOptions,
   parallelFailOptions,
-  roleOptions,
+  roleOptionsForMode,
   runtimeEngineOptions,
   statusOptions,
   teamTemplateOptions,

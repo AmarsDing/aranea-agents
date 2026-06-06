@@ -69,6 +69,8 @@ import {
   collectDefaultExpandedIds,
   collectExpandedIdsForFilter,
   departmentPositions,
+  findTaxonomyPath,
+  formatTaxonomyPath,
   type TaxonomyLevel,
 } from '../../features/platform/taxonomyTreeUtils';
 
@@ -146,6 +148,7 @@ function positionNodes(department: PlatformResourceTreeNode) {
 }
 
 function positionPath(industry: PlatformResourceTreeNode, department: PlatformResourceTreeNode) {
-  return `${industry.name} / ${department.name}`;
+  const path = findTaxonomyPath([industry], department.id);
+  return formatTaxonomyPath(path);
 }
 </script>

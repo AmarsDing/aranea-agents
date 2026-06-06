@@ -48,6 +48,7 @@ export type PlatformResource = {
 
 export type PlatformResourceTreeNode = PlatformResource & {
   children?: PlatformResourceTreeNode[];
+  agent_count?: number;
 };
 
 export type PlatformResourceInput = Partial<

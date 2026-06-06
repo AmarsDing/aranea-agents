@@ -20,6 +20,12 @@ function isValidTeamStatus(s: string): s is SpiritTeamStatus {
   return VALID_TEAM_STATUSES.has(s);
 }
 
+const VALID_STRATEGIES = new Set<string>(['template', 'prompt', 'hybrid']);
+
+function isValidStrategy(s: string): boolean {
+  return VALID_STRATEGIES.has(s);
+}
+
 export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const teams = ref<SpiritTeam[]>([]);
   const expandedTeamIds = ref<Set<string>>(new Set());
@@ -286,13 +292,15 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
               }>)
             : [];
           synthesisResult.value = {
-            strategy: String(env.metadata?.strategy ?? 'template') as SynthesisOutput['strategy'],
+            strategy: isValidStrategy(String(env.metadata?.strategy ?? 'template'))
+              ? (String(env.metadata?.strategy ?? 'template') as SynthesisOutput['strategy'])
+              : 'template',
             content: String(env.metadata?.content ?? ''),
             teamResults: rawResults.map((r) => ({
               teamId: String(r.team_id ?? ''),
               teamName: String(r.team_name ?? ''),
               taskName: String(r.task_name ?? ''),
-              status: String(r.status ?? ''),
+              status: isValidTeamStatus(String(r.status ?? '')) ? (String(r.status ?? '') as SpiritTeamStatus) : 'failed',
               summary: String(r.summary ?? ''),
               keyFindings: String(r.key_findings ?? ''),
             })),

@@ -1,5 +1,7 @@
 import { ref, watch, type Ref } from 'vue';
-import { promptModes, type PromptMode } from '../../components/agents/agentUi';
+import { promptModes, type PromptMode, type PromptModeOption } from '../../components/agents/agentUi';
+
+export type { PromptModeOption };
 import { useAgentDetailStore } from '../../stores/agents';
 import type { AgentPromptPreview } from './types';
 

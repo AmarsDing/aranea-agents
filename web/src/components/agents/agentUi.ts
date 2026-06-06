@@ -2,6 +2,7 @@ import type { PlatformResource, PlatformResourceTreeNode } from '../../features/
 import type { Agent } from '../../features/agents/types';
 
 export type PromptMode = 'complete' | 'task' | 'minimized' | 'none';
+export type PromptModeOption = (typeof promptModes)[number];
 export type EvolutionKey =
   | 'self_evolve'
   | 'skill_evolve'

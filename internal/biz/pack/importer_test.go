@@ -53,7 +53,21 @@ func (r *stubImporterRepo) CreateAgent(_ context.Context, a biz.Agent) (biz.Agen
 	r.agents[a.AgentKey] = a
 	return a, nil
 }
+func (r *stubImporterRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, files []biz.AgentPromptFile, settings biz.AgentRuntimeSettings) (biz.Agent, error) {
+	if a.ID == "" {
+		a.ID = "agent-" + a.AgentKey
+	}
+	r.agents[a.AgentKey] = a
+	if settings.AgentID == "" {
+		settings.AgentID = a.ID
+	}
+	return a, nil
+}
 func (r *stubImporterRepo) UpdateAgent(_ context.Context, a biz.Agent) (biz.Agent, error) {
+	r.agents[a.AgentKey] = a
+	return a, nil
+}
+func (r *stubImporterRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
 	r.agents[a.AgentKey] = a
 	return a, nil
 }

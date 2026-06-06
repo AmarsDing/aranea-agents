@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -82,13 +84,16 @@ type TaxonomyAncestors struct {
 	Position   TaxonomyNode
 }
 
-type TaxonomyReader interface {
+type TaxonomyListReader interface {
 	ListTaxonomyNodes(ctx context.Context) ([]TaxonomyNode, error)
+	ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]TaxonomyNode, error)
+	ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]TaxonomyNode, error)
+}
+
+type TaxonomyItemReader interface {
 	GetTaxonomyNode(ctx context.Context, id string) (TaxonomyNode, error)
 	GetTaxonomyNodeByKey(ctx context.Context, key string) (TaxonomyNode, error)
 	GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (TaxonomyNode, error)
-	ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]TaxonomyNode, error)
-	ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]TaxonomyNode, error)
 }
 
 type TaxonomyWriter interface {
@@ -99,7 +104,8 @@ type TaxonomyWriter interface {
 }
 
 type TaxonomyRepo interface {
-	TaxonomyReader
+	TaxonomyListReader
+	TaxonomyItemReader
 	TaxonomyWriter
 }
 
@@ -477,7 +483,7 @@ func ErrTaxonomyBadRequest(msg string) error {
 }
 
 func isErrNoRows(err error) bool {
-	return err != nil && err.Error() == "sql: no rows in result set"
+	return errors.Is(err, sql.ErrNoRows)
 }
 
 func truncateResponsibility(s string, maxChars int) string {

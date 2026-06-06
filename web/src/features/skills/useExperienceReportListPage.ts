@@ -17,6 +17,24 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
+  /** 失败标签分布统计 */
+  const failureTagsDistribution = computed(() => {
+    const map: Record<string, number> = {};
+    for (const row of rows.value) {
+      if (row.failureTags) {
+        for (const tag of row.failureTags) {
+          map[tag] = (map[tag] || 0) + 1;
+        }
+      }
+    }
+    return map;
+  });
+
+  /** 有根因分析的失败报告 */
+  const rootCauseReports = computed(() =>
+    rows.value.filter(r => !r.isSuccess && (r.rootCauseAnalysis || r.suggestedFix)),
+  );
+
   async function loadRows() {
     loading.value = true;
     error.value = '';
@@ -69,6 +87,8 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
     loading,
     error,
     pageMax,
+    failureTagsDistribution,
+    rootCauseReports,
     loadRows,
     resetFilters,
   };

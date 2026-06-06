@@ -328,7 +328,7 @@ func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 // ddlAgentSourceDataMigration populates the new agents.source column from existing kind values.
 // Mapping: kind=user -> source=user, kind=system_builtin -> source=system, kind=ecosystem_preset/marketplace/certified -> source=imported.
 // Also fixes Team source and corrects over-broad Team kind migration from 20260718.
-func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, lg loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
@@ -369,8 +369,8 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 		    WHERE t2.kind = 'ecosystem_preset' AND t2.deleted_at = ''
 		  )
 	`); err != nil {
-		// Non-critical: log but don't fail the migration
-		_ = err
+		// Non-critical: log the error but don't fail the entire migration
+		lg.Warn("ddl migration: fix over-broad team kind migration failed", loggateway.Err(err))
 	}
 	return tx.Commit()
 }

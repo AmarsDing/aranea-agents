@@ -18,6 +18,10 @@ const (
 	TeamStatusCancelled   = "cancelled"   // Was cancelled
 	TeamStatusInterrupted = "interrupted" // Abnormally interrupted, recoverable
 	TeamStatusArchived    = "archived"    // Auto-archived after completion
+
+	// TeamStatusBlocked is a virtual status used only in cascade blocked results
+	// to indicate a team was blocked by a failed dependency. It is never persisted.
+	TeamStatusBlocked = "blocked"
 )
 
 // ValidTeamStatusTransition returns true if a team status transition from→to is allowed.

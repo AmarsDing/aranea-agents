@@ -59,6 +59,12 @@ func (s *stubAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) e
 	return fn(ctx)
 }
 func (s *stubAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (s *stubAgentRepo) CreateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ AgentRuntimeSettings) (Agent, error) {
+	return a, nil
+}
+func (s *stubAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ *AgentRuntimeSettings) (Agent, error) {
+	return a, nil
+}
 
 func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	t.Parallel()

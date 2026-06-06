@@ -60,13 +60,65 @@
             <q-chip dense square size="sm" :class="parseIsSystem(dept) ? 'system-chip' : 'custom-chip'">
               {{ parseIsSystem(dept) ? '系统' : '自建' }}
             </q-chip>
+            <q-btn flat dense round size="sm" color="primary" icon="edit" @click.stop="$emit('edit', dept)">
+              <q-tooltip>编辑部门</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              :color="dept.enabled ? 'negative' : 'positive'"
+              :icon="dept.enabled ? 'pause' : 'play_arrow'"
+              :disable="isToggling(dept.id)"
+              @click.stop="$emit('toggle-enabled', dept, !dept.enabled)"
+            >
+              <q-tooltip>{{ dept.enabled ? '停用' : '启用' }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              v-if="!parseIsSystem(dept)"
+              flat
+              dense
+              round
+              size="sm"
+              color="negative"
+              icon="delete"
+              @click.stop="$emit('remove', dept)"
+            >
+              <q-tooltip>删除部门</q-tooltip>
+            </q-btn>
           </div>
           <div v-if="positionNodes(dept).length" class="taxonomy-industry-card__positions">
             <div v-for="pos in positionNodes(dept)" :key="pos.id" class="taxonomy-industry-card__position">
               <q-icon name="badge" size="12px" />
               <span class="ellipsis">{{ pos.name }}</span>
               <q-chip v-if="!pos.enabled" dense square size="sm" class="taxonomy-industry-card__pos-off">停用</q-chip>
+              <q-btn flat dense round size="sm" color="primary" icon="edit" @click.stop="$emit('edit', pos)">
+                <q-tooltip>编辑职位</q-tooltip>
+              </q-btn>
+              <q-btn
+                v-if="!parseIsSystem(pos)"
+                flat
+                dense
+                round
+                size="sm"
+                color="negative"
+                icon="delete"
+                @click.stop="$emit('remove', pos)"
+              >
+                <q-tooltip>删除职位</q-tooltip>
+              </q-btn>
             </div>
+            <q-btn
+              flat
+              rounded
+              color="primary"
+              icon="add"
+              label="新增职位"
+              size="sm"
+              class="q-mt-xs"
+              @click.stop="$emit('create-child', 'position', dept)"
+            />
           </div>
         </div>
       </div>
@@ -82,7 +134,7 @@
           size="sm"
           color="primary"
           icon="add"
-          @click.stop="$emit('createChild', 'department', industry)"
+          @click.stop="$emit('create-child', 'department', industry)"
         >
           <q-tooltip>新增部门</q-tooltip>
         </q-btn>
@@ -96,7 +148,7 @@
           size="sm"
           :color="industry.enabled ? 'negative' : 'positive'"
           :icon="industry.enabled ? 'pause' : 'play_arrow'"
-          @click.stop="$emit('toggleEnabled', industry, !industry.enabled)"
+          @click.stop="$emit('toggle-enabled', industry, !industry.enabled)"
         >
           <q-tooltip>{{ industry.enabled ? '停用' : '启用' }}</q-tooltip>
         </q-btn>
@@ -131,13 +183,14 @@ import { monoBgForKey, monoLettersForKey } from '../../features/industries/indus
 const props = defineProps<{
   industry: PlatformResourceTreeNode;
   isDark: boolean;
+  togglingIds?: Set<string>;
 }>();
 
 defineEmits<{
   edit: [node: PlatformResourceTreeNode];
-  createChild: [level: TaxonomyLevel, parent: PlatformResourceTreeNode];
+  'create-child': [level: TaxonomyLevel, parent: PlatformResourceTreeNode];
   remove: [node: PlatformResourceTreeNode];
-  toggleEnabled: [node: PlatformResourceTreeNode, enabled: boolean];
+  'toggle-enabled': [node: PlatformResourceTreeNode, enabled: boolean];
 }>();
 
 const deptsExpanded = ref(false);
@@ -150,6 +203,10 @@ const posCount = computed(() => departments.value.reduce((sum, dept) => sum + po
 
 const monoBg = computed(() => monoBgForKey(props.industry.key));
 const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.industry.name));
+
+function isToggling(id: string) {
+  return props.togglingIds?.has(id) ?? false;
+}
 
 function positionNodes(dept: PlatformResourceTreeNode) {
   return departmentPositions(dept);

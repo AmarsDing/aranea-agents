@@ -821,44 +821,44 @@ Expected: PASS
 - Skill 元数据扩展
 - Wire DI 装配
 
-- [ ] **Step 1: 创建 SkillEvolutionSuggestion 领域模型**
+- [x] **Step 1: 创建 SkillEvolutionSuggestion 领域模型**
 
 创建 `internal/biz/skill_evolution_suggestion_types.go`。
 
-- [ ] **Step 2: 更新 Ent Schema**
+- [x] **Step 2: 更新 Ent Schema**
 
 修改 `internal/data/ent/schema/skill_evolution_suggestion.go`。
 
-- [ ] **Step 3: 扩展 Repo 接口**
+- [x] **Step 3: 扩展 Repo 接口**
 
 修改 `internal/biz/skill_intelligence_repo.go`。
 
-- [ ] **Step 4: 实现 Data 层 Repo**
+- [x] **Step 4: 实现 Data 层 Repo**
 
 创建 `internal/data/skill_evolution_suggestion.go`。
 
-- [ ] **Step 5: 实现触发条件判定 + CreateSuggestion**
+- [x] **Step 5: 实现触发条件判定 + CreateSuggestion**
 
 修改 `internal/biz/skill_intelligence.go`。
 
-- [ ] **Step 6: 创建 Curator Agent Service**
+- [x] **Step 6: 创建 Curator Agent Service**
 
 创建 `internal/service/skill_curator.go`。
 
-- [ ] **Step 7: Sandbox Runner 验证**
+- [x] **Step 7: Sandbox Runner 验证**
 
 实现 Sandbox Runner 隔离执行。
 
-- [ ] **Step 8: 进化建议 API + Skill 元数据扩展**
+- [x] **Step 8: 进化建议 API + Skill 元数据扩展**
 
 定义 proto + 实现 Service + 扩展 Skill 元数据。
 
-- [ ] **Step 9: Wire DI 装配**
+- [x] **Step 9: Wire DI 装配**
 
 Run: `make api && make wire && make build`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -871,20 +871,20 @@ Expected: PASS
 - 前端经验报告列表页组件
 - 前端 Skill 进化审批 UI 组件
 
-- [ ] **Step 1: 前端经验报告列表页**
+- [x] **Step 1: 前端经验报告列表页**
 
 调用 ListExperienceReports API，显示失败标签分布图 + 根因分析卡片。
 
-- [ ] **Step 2: 前端 Skill 进化审批 UI**
+- [x] **Step 2: 前端 Skill 进化审批 UI**
 
 显示进化建议列表 + Approve/Reject 操作。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 Run: `cd web && pnpm lint && pnpm build`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -898,24 +898,24 @@ Expected: PASS
 - Create: `internal/cronrunner/jobs/predictive_heal.go`
 - Create: `internal/biz/monitor/predictive_heal_test.go`
 
-- [ ] **Step 1: 创建 PredictiveHealUsecase**
+- [x] **Step 1: 创建 PredictiveHealUsecase**
 
 创建 `internal/biz/monitor/predictive_heal.go`，基于 FailurePattern 知识库的趋势预测。
 
-- [ ] **Step 2: 创建 Cron Job**
+- [x] **Step 2: 创建 Cron Job**
 
 创建 `internal/cronrunner/jobs/predictive_heal.go`，每 5 分钟扫描系统指标。
 
-- [ ] **Step 3: 创建测试**
+- [x] **Step 3: 创建测试**
 
 创建 `internal/biz/monitor/predictive_heal_test.go`，测试置信度阈值 + 冷却期 + 审计记录。
 
-- [ ] **Step 4: Wire DI 装配**
+- [x] **Step 4: Wire DI 装配**
 
 Run: `make wire && make build`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -928,28 +928,28 @@ Expected: PASS
 - Create: `internal/biz/skill_evolution_loop.go`
 - Create: `internal/biz/skill_evolution_loop_test.go`
 
-- [ ] **Step 1: 实现五阶段流程**
+- [x] **Step 1: 实现五阶段流程**
 
 创建 `internal/biz/skill_evolution_loop.go`，实现 Solve→Observe→Evolve→Gate→Reload。
 
-- [ ] **Step 2: 实现 Gate 多维验证**
+- [x] **Step 2: 实现 Gate 多维验证**
 
 功能正确性 + 安全性 + 性能 + 风格验证。
 
-- [ ] **Step 3: 实现进化建议过期机制**
+- [x] **Step 3: 实现进化建议过期机制**
 
 7 天未审批自动标记 expired。
 
-- [ ] **Step 4: 创建测试**
+- [x] **Step 4: 创建测试**
 
 创建 `internal/biz/skill_evolution_loop_test.go`。
 
-- [ ] **Step 5: 验证**
+- [x] **Step 5: 验证**
 
 Run: `go test ./internal/biz/... -run TestEvolutionLoop -count=1`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -963,24 +963,24 @@ Expected: PASS
 - Create: `internal/cronrunner/jobs/pattern_mining.go`
 - Create: `internal/biz/monitor/pattern_mining_test.go`
 
-- [ ] **Step 1: 创建 PatternMiningUsecase**
+- [x] **Step 1: 创建 PatternMiningUsecase**
 
 创建 `internal/biz/monitor/pattern_mining.go`，聚类相似失败模式 + 提取共性修复策略。
 
-- [ ] **Step 2: 创建 Cron Job**
+- [x] **Step 2: 创建 Cron Job**
 
 创建 `internal/cronrunner/jobs/pattern_mining.go`，每日执行挖掘。
 
-- [ ] **Step 3: 创建测试**
+- [x] **Step 3: 创建测试**
 
 创建 `internal/biz/monitor/pattern_mining_test.go`，测试聚类 + 置信度提升 + 自动禁用。
 
-- [ ] **Step 4: Wire DI 装配**
+- [x] **Step 4: Wire DI 装配**
 
 Run: `make wire && make build`
 Expected: PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**
 
 ---
 
@@ -1002,4 +1002,4 @@ Expected: All PASS
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: All PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**

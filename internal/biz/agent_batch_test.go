@@ -60,6 +60,14 @@ func (r *batchAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) 
 	return fn(ctx)
 }
 func (r *batchAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (r *batchAgentRepo) CreateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ AgentRuntimeSettings) (Agent, error) {
+	r.agents[a.AgentKey] = a
+	return a, nil
+}
+func (r *batchAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ *AgentRuntimeSettings) (Agent, error) {
+	r.agents[a.ID] = a
+	return a, nil
+}
 
 func TestBatchUpdateAgents_Status(t *testing.T) {
 	repo := &batchAgentRepo{agents: map[string]Agent{"a1": {ID: "a1", Status: "active"}}}

@@ -32,6 +32,7 @@
             :path="path"
             :readonly="readonly"
             :highlight="positionHighlighted(pos)"
+            :agent-count="pos.agent_count ?? 0"
             @edit="emit('edit', $event)"
             @remove="emit('remove', $event)"
           />

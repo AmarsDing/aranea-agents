@@ -19,6 +19,7 @@ import { useAgentPromptPreview } from './useAgentPromptPreview';
 import { useAgentEvolutionSettings } from './useAgentEvolutionSettings';
 import { useAgentAvatarIcon } from './useAgentAvatarIcon';
 import { resetSkillRuntimeDefaults } from './agentSkillRuntimeConfig';
+import { useAgentSettingsPersistence } from './useAgentSettingsPersistence';
 
 export function useAgentSettingsPage() {
   const $q = useQuasar();
@@ -68,10 +69,6 @@ export function useAgentSettingsPage() {
   } = useAgentSkillCatalog();
 
   const tab = ref('agent');
-  const advancedDialog = ref(false);
-  const loadError = ref('');
-  const pageLoading = ref(true);
-  const modelChanged = ref(false);
 
   const form = reactive<Agent>({
     id: '',
@@ -103,7 +100,7 @@ export function useAgentSettingsPage() {
   const { promptDialog, previewMode, promptPreview, promptModes, loadPromptPreview, syncPreviewModeFromAgent } =
     useAgentPromptPreview(agentId, systemPromptMode);
 
-  const { evolutionRange, showEvolving } = useAgentEvolutionSettings(form, config);
+  const { showEvolving } = useAgentEvolutionSettings(form, config);
 
   const {
     loadingProviderModels,
@@ -127,14 +124,6 @@ export function useAgentSettingsPage() {
     () => form.model,
   );
 
-  const selectedProviderModelIDModel = computed({
-    get: () => selectedProviderModelID.value,
-    set: (value: string | null | undefined) => {
-      selectProviderModel(value ?? null);
-      modelChanged.value = true;
-    },
-  });
-
   const promptFiles = useAgentPromptFiles(agentId, (opts) => $q.notify(opts));
   const {
     fileSplitter,
@@ -148,11 +137,7 @@ export function useAgentSettingsPage() {
     reloadActiveFile,
     hydrateFiles,
     refreshFileTokenEstimates,
-    applyAiEdit,
     filesForSave,
-    aiEditOpen,
-    aiEditing,
-    aiInstruction,
     fileTokenByName,
   } = promptFiles;
 
@@ -169,62 +154,51 @@ export function useAgentSettingsPage() {
     },
   });
 
-  function runtimeHydrateHooks() {
-    return {
-      onFromSettings: (agent: Agent) => {
-        hydratePlannerForm(agent.settings?.planner_kind, agent.settings?.planner_config_json);
-        hydrateRalphLoopForm(agent.settings);
-      },
-      onFromConfigJson: () => {
-        hydratePlannerForm();
-        hydrateRalphLoopForm();
-      },
-    };
-  }
-
-  async function applyLoadedAgent(agent: Agent | null | undefined) {
-    if (!agent?.id) {
-      loadError.value = '未找到该 Agent';
-      return false;
-    }
-    Object.assign(form, agent);
-    hydrateSettings(agent, runtimeHydrateHooks());
-    store.upsertAgent(agent);
-    snapshotFiles();
-    syncPreviewModeFromAgent(form.system_prompt_mode);
-    await loadPromptPreview();
-    await primeThumbnailCache();
-    void refreshFileTokenEstimates(form.id);
-    if (agent.files?.length) {
-      hydrateFiles(agent.files);
-    }
-    modelChanged.value = false;
-    return true;
-  }
-
-  onMounted(async () => {
-    const id = String(route.params.id ?? '').trim();
-    if (!id) {
-      loadError.value = '缺少 Agent ID';
-      pageLoading.value = false;
-      return;
-    }
-    try {
-      const [agent] = await Promise.all([
-        detailStore.fetchById(id),
-        loadProviderModels(),
-        loadCatalogTools(),
-        loadSkillSlugOptions(),
-        loadCodeExecutorCapabilities(),
-        channelsStore.loadChannels().catch(() => {}),
-      ]);
-      await applyLoadedAgent(agent);
-    } catch (e) {
-      loadError.value = e instanceof Error ? e.message : '加载 Agent 失败';
-    } finally {
-      pageLoading.value = false;
-    }
+  // ── Persistence ──────────────────────────────────────────────
+  const persistence = useAgentSettingsPersistence({
+    form,
+    $q,
+    agentId,
+    detailStore,
+    appStore: store,
+    channelsStore,
+    selectedProviderModelID,
+    orphanProviderModel,
+    loadProviderModels,
+    runAgentModelValidate,
+    validatePlannerFormState,
+    serializePlannerFormState,
+    hydratePlannerForm,
+    validateRalphLoopFormState,
+    serializeRalphLoopFormState,
+    hydrateRalphLoopForm,
+    hydrateSettings,
+    buildSettingsPayload,
+    buildConfigJson,
+    onAdvancedSave,
+    advancedState,
+    filesForSave,
+    snapshotFiles,
+    hydrateFiles,
+    refreshFileTokenEstimates,
+    loadPromptPreview,
+    syncPreviewModeFromAgent,
+    primeThumbnailCache,
+    loadCatalogTools,
+    loadSkillSlugOptions,
+    loadCodeExecutorCapabilities,
   });
+
+  const selectedProviderModelIDModel = computed({
+    get: () => selectedProviderModelID.value,
+    set: (value: string | null | undefined) => {
+      selectProviderModel(value ?? null);
+      persistence.modelChanged.value = true;
+    },
+  });
+
+  // ── Lifecycle ────────────────────────────────────────────────
+  onMounted(() => void persistence.loadInitial());
 
   watch(
     () => String(route.params.id ?? '').trim(),
@@ -232,77 +206,14 @@ export function useAgentSettingsPage() {
       if (!newId || newId === prevId) return;
       try {
         const agent = await detailStore.fetchById(newId);
-        await applyLoadedAgent(agent);
+        await persistence.applyLoadedAgent(agent);
       } catch (e) {
-        loadError.value = e instanceof Error ? e.message : '加载 Agent 失败';
+        persistence.loadError.value = e instanceof Error ? e.message : '加载 Agent 失败';
       }
     },
   );
 
-  async function saveAgent() {
-    if (!selectedProviderModelID.value) {
-      $q.notify({
-        type: 'negative',
-        message: orphanProviderModel.value
-          ? '当前模型不在 Provider 目录或已禁用，请在「模型管理」修正后重新选择'
-          : '请选择已录入且启用的模型',
-      });
-      return;
-    }
-    if (modelChanged.value) {
-      const modelResult = await runAgentModelValidate();
-      if (!modelResult.ok) {
-        $q.notify({
-          type: 'negative',
-          message: modelResult.message || '模型不可用，请检查 Provider 管理中的目录配置',
-        });
-        return;
-      }
-    }
-    const plannerErr = validatePlannerFormState();
-    if (plannerErr) {
-      $q.notify({ type: 'negative', message: plannerErr });
-      return;
-    }
-    const ralphErr = validateRalphLoopFormState();
-    if (ralphErr) {
-      $q.notify({ type: 'negative', message: ralphErr });
-      return;
-    }
-    const fileRows = filesForSave();
-    try {
-      const updated = await detailStore.patch(form.id, {
-        ...form,
-        settings: buildSettingsPayload({
-          ...serializePlannerFormState(),
-          ...serializeRalphLoopFormState(),
-        }),
-        files: fileRows.map(({ name, body, sort_order }) => ({ name, body, sort_order })),
-        config_json: buildConfigJson(fileRows),
-      });
-      Object.assign(form, updated);
-      hydrateSettings(updated, runtimeHydrateHooks());
-      store.upsertAgent(updated);
-      snapshotFiles();
-      await loadPromptPreview();
-      await primeThumbnailCache();
-      void refreshFileTokenEstimates(form.id);
-      modelChanged.value = false;
-      $q.notify({ type: 'positive', message: '已保存' });
-    } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });
-    }
-  }
-
-  async function handleAdvancedSave(payload: typeof advancedState) {
-    try {
-      await onAdvancedSave(payload, saveAgent);
-      advancedDialog.value = false;
-    } catch {
-      // saveAgent already shows error notification
-    }
-  }
-
+  // ── Non-persistence actions ──────────────────────────────────
   async function toggleFavorite() {
     const next = !form.is_favorite;
     form.is_favorite = next;
@@ -330,41 +241,10 @@ export function useAgentSettingsPage() {
     }).onOk(() => void reloadActiveFile());
   }
 
-  async function reloadAgent() {
-    const id = String(route.params.id ?? '').trim();
-    if (!id) return;
-    try {
-      const agent = await detailStore.fetchById(id);
-      await applyLoadedAgent(agent);
-    } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '刷新 Agent 失败' });
-    }
-  }
-
-  async function loadInitial() {
-    const id = String(route.params.id ?? '').trim();
-    if (!id) {
-      loadError.value = '缺少 Agent ID';
-      return;
-    }
-    loadError.value = '';
-    pageLoading.value = true;
-    try {
-      const [agent] = await Promise.all([
-        detailStore.fetchById(id),
-        loadProviderModels(),
-        loadCatalogTools(),
-        loadSkillSlugOptions(),
-        loadCodeExecutorCapabilities(),
-        channelsStore.loadChannels().catch(() => {}),
-      ]);
-      await applyLoadedAgent(agent);
-    } catch (e) {
-      loadError.value = e instanceof Error ? e.message : '加载 Agent 失败';
-    } finally {
-      pageLoading.value = false;
-    }
-  }
+  const advancedChannelOptions = computed(() =>
+    channelsStore.channels.map((ch) => ({ label: ch.name || ch.key, value: ch.id })),
+  );
+  const loadingAdvancedChannels = computed(() => channelsStore.loading);
 
   return {
     tab,
@@ -376,19 +256,17 @@ export function useAgentSettingsPage() {
     router,
     avatarPickerOpen,
     promptDialog,
-    advancedDialog,
-    loadError,
-    pageLoading,
-    modelChanged,
+    advancedDialog: persistence.advancedDialog,
+    loadError: persistence.loadError,
+    pageLoading: persistence.pageLoading,
     toggleFavorite,
-    reloadAgent,
-    loadInitial,
-    saveAgent,
+    reloadAgent: persistence.reloadAgent,
+    loadInitial: persistence.loadInitial,
+    saveAgent: persistence.saveAgent,
     confirmFileReload,
     promptModes,
     statusOptions,
     copyKey,
-    selectedProviderModelID,
     selectedProviderModelIDModel,
     filteredProviderModelOptions,
     loadingProviderModels,
@@ -415,8 +293,6 @@ export function useAgentSettingsPage() {
     fileDirty,
     updateFileBody,
     reloadActiveFile,
-    aiEditOpen,
-    aiEditing,
     truncateStrategyOptions,
     snapshotModeOptions,
     memoryScopeOptions,
@@ -435,16 +311,15 @@ export function useAgentSettingsPage() {
     loadingSkillSlugs,
     skillSlugOptions,
     codeExecutorCapabilities,
-    evolutionRange,
     showEvolving,
     fileTokenByName,
     refreshFileTokenEstimates: () => void refreshFileTokenEstimates(form.id),
     tokenEstimateFor,
     previewMode,
     promptPreview,
-    aiInstruction,
-    applyAiEdit: () => applyAiEdit(form.id),
     advancedState,
-    onAdvancedSave: handleAdvancedSave,
+    onAdvancedSave: persistence.handleAdvancedSave,
+    advancedChannelOptions,
+    loadingAdvancedChannels,
   };
 }

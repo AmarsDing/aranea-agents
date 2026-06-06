@@ -75,6 +75,9 @@ func (c *OrchestrationCache) Get(taskPattern string) (*OrchestrationCacheEntry, 
 	return entry, true
 }
 
+// Put adds or replaces a cache entry directly.
+// Deprecated: Use RecordCompletionWithAgents instead, which handles DQ score
+// comparison and agent tracking. Put bypasses these safeguards.
 func (c *OrchestrationCache) Put(entry OrchestrationCacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -131,7 +134,7 @@ func (c *OrchestrationCache) ToJSON() (string, error) {
 }
 
 func ComputeDQScore(teamResult TeamSynthesisResult, durationMs int64) float64 {
-	if teamResult.Status != "completed" {
+	if teamResult.Status != TeamStatusCompleted {
 		return 0.0
 	}
 	breakdown := ComputeDQScoreBreakdown(teamResult, durationMs)
@@ -165,6 +168,9 @@ const (
 
 	// Evolution suggestion threshold.
 	DQEvolutionThreshold = 0.5
+
+	// MaxTaskPatternLen is the maximum rune length for extracted task patterns.
+	MaxTaskPatternLen = 64
 )
 
 func (b DQScoreBreakdown) Overall() float64 {
@@ -178,7 +184,7 @@ func (b DQScoreBreakdown) Overall() float64 {
 func ComputeDQScoreBreakdown(teamResult TeamSynthesisResult, durationMs int64) DQScoreBreakdown {
 	b := DQScoreBreakdown{DurationMs: durationMs}
 
-	if teamResult.Status == "completed" {
+	if teamResult.Status == TeamStatusCompleted {
 		b.Validity = 1.0
 	} else {
 		b.Validity = 0.0
@@ -307,8 +313,8 @@ func (c *OrchestrationCache) SuggestBestAlternativeTopology(taskDescription stri
 func ExtractTaskPattern(desc string) string {
 	// Truncate by runes to avoid breaking multi-byte UTF-8 characters.
 	runes := []rune(desc)
-	if len(runes) > 64 {
-		return string(runes[:64])
+	if len(runes) > MaxTaskPatternLen {
+		return string(runes[:MaxTaskPatternLen])
 	}
 	return desc
 }
