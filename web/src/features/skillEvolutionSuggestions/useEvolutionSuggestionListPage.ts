@@ -35,6 +35,10 @@ export function useEvolutionSuggestionListPage() {
 
   const approvingId = ref('');
 
+  const curatorSkillId = ref('');
+  const curatorDialogOpen = ref(false);
+  const triggeringCurator = ref(false);
+
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
   async function loadRows() {
@@ -99,6 +103,27 @@ export function useEvolutionSuggestionListPage() {
     }
   }
 
+  function handleTriggerCurator(currentSkillId: string) {
+    curatorSkillId.value = currentSkillId || '';
+    curatorDialogOpen.value = true;
+  }
+
+  async function confirmTriggerCurator() {
+    const id = curatorSkillId.value.trim();
+    if (!id) return;
+    triggeringCurator.value = true;
+    try {
+      await triggerCuratorFlow(id);
+      curatorDialogOpen.value = false;
+      curatorSkillId.value = '';
+      void loadRows();
+    } catch {
+      // error handled in composable
+    } finally {
+      triggeringCurator.value = false;
+    }
+  }
+
   function resetFilters() {
     status.value = '';
     skillId.value = '';
@@ -133,10 +158,15 @@ export function useEvolutionSuggestionListPage() {
     rejectTarget,
     rejectionReason,
     rejecting,
+    curatorSkillId,
+    curatorDialogOpen,
+    triggeringCurator,
     loadRows,
     approveSuggestion,
     openRejectDialog,
     confirmReject,
+    handleTriggerCurator,
+    confirmTriggerCurator,
     resetFilters,
     triggerCuratorFlow,
   };

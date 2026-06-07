@@ -27,7 +27,7 @@ func (r *Runner) tryNativeFallback(
 	if !envTeamNativeForced() {
 		return nil, nil, false, nil
 	}
-	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent, r.lg)
+	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.lookupAgent, r.lg)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -68,7 +68,7 @@ func (r *Runner) compileTeamRuntime(
 
 	graphExecID = uuid.NewString()
 	ct, cerr := CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, func(agentID string) string {
-		ag, gerr := r.catalogAgent(ctx, agentID)
+		ag, gerr := r.lookupAgent(ctx, agentID)
 		if gerr != nil {
 			return ""
 		}
@@ -101,7 +101,7 @@ func (r *Runner) compileTeamRuntime(
 	}
 
 	root = groot
-	_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent, r.lg)
+	_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.lookupAgent, r.lg)
 	if err != nil {
 		return
 	}

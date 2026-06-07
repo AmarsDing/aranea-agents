@@ -4,6 +4,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/skill"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -15,6 +16,7 @@ type Deps struct {
 	Embedder      skill.SkillEmbedder
 	EventBus      contract.Bus
 	Agents        biz.AgentRuntimeSettingsRepo
+	LG            loggateway.Logger
 }
 
 // RegisterAll creates and returns all memory butler tools.

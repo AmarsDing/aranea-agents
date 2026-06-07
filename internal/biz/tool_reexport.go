@@ -33,11 +33,11 @@ type (
 	ToolOverrideReader       = tool.ToolOverrideReader
 	ToolOverrideWriter       = tool.ToolOverrideWriter
 	ToolSyncer               = tool.ToolSyncer
-	ToolCatalogReader        = tool.ToolCatalogReader
+	ToolRegistryReader        = tool.ToolRegistryReader
 	ToolUsecase              = tool.ToolUsecase
 	ToolTestResult           = tool.ToolTestResult
 	ToolSettingRepo          = tool.SettingRepo
-	WebResearchCatalogReadyFunc = tool.WebResearchCatalogReadyFunc
+	WebResearchReadinessFunc = tool.WebResearchReadinessFunc
 )
 
 var (
@@ -47,8 +47,8 @@ var (
 	PropagateAllowAliases                = tool.PropagateAllowAliases
 	PropagateDenyAliases                 = tool.PropagateDenyAliases
 	LoadWebResearchPlatform              = tool.LoadWebResearchPlatform
-	EnrichToolCatalogRuntimeWithPlatform = tool.EnrichToolCatalogRuntimeWithPlatform
-	CheckerToCatalogReadyFunc            = tool.CheckerToCatalogReadyFunc
+	EnrichToolRuntimeFieldsWithPlatform = tool.EnrichToolRuntimeFieldsWithPlatform
+	CheckerToReadinessFunc            = tool.CheckerToReadinessFunc
 	MergeToolConfigMaps                  = tool.MergeToolConfigMaps
 	MergeJSONMapInto                     = tool.MergeJSONMapInto
 	ToolRequiresConfirmation             = tool.ToolRequiresConfirmation

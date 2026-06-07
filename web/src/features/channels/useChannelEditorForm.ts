@@ -34,7 +34,7 @@ import { buildChannelWebhookURL, isLocalhostOrigin } from './publicWebhookOrigin
 import { useChannelsStore } from '../../stores/channels';
 import { useAgentModelValidation } from '../agents/useAgentModelValidation';
 import type {
-  ChannelCatalogItem,
+  ChannelTypeItem,
   ChannelConfig,
   ChannelCredential,
   ChannelCredentialInput,
@@ -43,7 +43,7 @@ import type {
 } from './types';
 
 type EditorProps = {
-  catalog: ChannelCatalogItem[];
+  catalog: ChannelTypeItem[];
   row: ChannelRow | null;
   credentials: ChannelCredential[];
 };
@@ -388,7 +388,7 @@ export function useChannelEditorForm(
     );
   }
 
-  function applyCatalogDefaults(item: ChannelCatalogItem, previousType: string | undefined) {
+  function applyCatalogDefaults(item: ChannelTypeItem, previousType: string | undefined) {
     form.key = item.type;
     form.name = item.label;
     form.description = item.description;
@@ -644,7 +644,7 @@ export function useChannelEditorForm(
   };
 }
 
-function defaultConfigFor(item: ChannelCatalogItem): Record<string, unknown> {
+function defaultConfigFor(item: ChannelTypeItem): Record<string, unknown> {
   const base: Record<string, unknown> = {};
   if (item.type === 'feishu') base.default_account = 'default';
   else if (item.type === 'wechat') base.subtype = 'official';

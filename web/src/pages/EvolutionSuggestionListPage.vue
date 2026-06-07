@@ -14,7 +14,7 @@
           icon="auto_fix_high"
           label="触发 Curator"
           :loading="triggeringCurator"
-          @click="handleTriggerCurator"
+          @click="handleTriggerCurator(skillId)"
         />
         <q-btn unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </template>
@@ -264,10 +264,15 @@ const {
   rejectTarget,
   rejectionReason,
   rejecting,
+  curatorSkillId,
+  curatorDialogOpen,
+  triggeringCurator,
   loadRows,
   approveSuggestion,
   openRejectDialog,
   confirmReject,
+  handleTriggerCurator,
+  confirmTriggerCurator,
   resetFilters,
   triggerCuratorFlow,
 } = useEvolutionSuggestionListPage();
@@ -276,34 +281,10 @@ const columns = EVOLUTION_SUGGESTION_TABLE_COLUMNS;
 
 const detailDialogOpen = ref(false);
 const detailTarget = ref<EvolutionSuggestionView | null>(null);
-const curatorDialogOpen = ref(false);
-const curatorSkillId = ref('');
-const triggeringCurator = ref(false);
 
 function openDetailDialog(row: EvolutionSuggestionView) {
   detailTarget.value = row;
   detailDialogOpen.value = true;
-}
-
-function handleTriggerCurator() {
-  curatorSkillId.value = skillId.value || '';
-  curatorDialogOpen.value = true;
-}
-
-async function confirmTriggerCurator() {
-  const id = curatorSkillId.value.trim();
-  if (!id) return;
-  triggeringCurator.value = true;
-  try {
-    await triggerCuratorFlow(id);
-    curatorDialogOpen.value = false;
-    curatorSkillId.value = '';
-    void loadRows();
-  } catch {
-    // error handled in composable
-  } finally {
-    triggeringCurator.value = false;
-  }
 }
 
 function formatDate(ts: unknown): string {

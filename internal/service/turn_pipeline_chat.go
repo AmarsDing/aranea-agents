@@ -37,7 +37,7 @@ func (e chatTurnExecutor) ExecuteTurn(ctx context.Context, turn biz.Turn, input 
 		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, errChatOrchestratorNil
 	}
 	result, err := e.orch.RunNativeAgentTurnWithOutcome(contextWithAdmittedTurnID(ctx, turn.ID), input)
-	if IsTurnMessageQueued(err) {
+	if isTurnMessageQueued(err) {
 		return result, nil
 	}
 	return result, err

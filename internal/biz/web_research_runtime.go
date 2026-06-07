@@ -22,7 +22,7 @@ type WebResearchPlatformFields struct {
 // WebResearchReadinessChecker abstracts web_research readiness resolution.
 type WebResearchReadinessChecker interface {
 	ResolveReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
-	CatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
+	IsReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
 }
 
 // loadWebResearchPlatformFromSys loads WebResearchSetting via SystemSettingRepo.
@@ -78,13 +78,13 @@ func bizToToolPlatformFields(p *WebResearchPlatformFields) *tool.WebResearchPlat
 	}
 }
 
-// checkerToCatalogReadyFunc adapts a biz.WebResearchReadinessChecker to a tool.WebResearchCatalogReadyFunc.
-func checkerToCatalogReadyFunc(c WebResearchReadinessChecker) tool.WebResearchCatalogReadyFunc {
+// checkerToReadinessFunc adapts a biz.WebResearchReadinessChecker to a tool.WebResearchReadinessFunc.
+func checkerToReadinessFunc(c WebResearchReadinessChecker) tool.WebResearchReadinessFunc {
 	if c == nil {
 		return nil
 	}
 	return func(agentMap map[string]any, platform *tool.WebResearchPlatformFields) bool {
-		return c.CatalogReady(agentMap, bizToToolPlatformFieldsReverse(platform))
+		return c.IsReady(agentMap, bizToToolPlatformFieldsReverse(platform))
 	}
 }
 

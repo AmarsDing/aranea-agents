@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/loggateway"
 )
 
 // --- Team usecase tests ---

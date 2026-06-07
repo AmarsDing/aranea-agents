@@ -36,14 +36,14 @@ func (r *Runner) startObservers(
 
 	obsReg := BuildOrchestrationRegistry(def,
 		func(agentID string) string {
-			ag, cerr := r.catalogAgent(ctx, agentID)
+			ag, cerr := r.lookupAgent(ctx, agentID)
 			if cerr != nil {
 				return ""
 			}
 			return strings.TrimSpace(ag.AgentKey)
 		},
 		func(agentID string) string {
-			ag, cerr := r.catalogAgent(ctx, agentID)
+			ag, cerr := r.lookupAgent(ctx, agentID)
 			if cerr != nil {
 				return ""
 			}

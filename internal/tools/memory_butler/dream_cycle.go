@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -122,7 +123,11 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 		settings, getErr := deps.Agents.GetAgentRuntimeSettings(ctx, input.AgentID)
 		if getErr == nil {
 			settings.DreamSnapshotJSON = string(snapJSON)
-			_, _ = deps.Agents.UpsertAgentRuntimeSettings(ctx, settings)
+			if _, upsertErr := deps.Agents.UpsertAgentRuntimeSettings(ctx, settings); upsertErr != nil {
+				if deps.LG != nil {
+					deps.LG.Warn("dream snapshot persist failed", loggateway.StepID("memory_butler.dream_snapshot"), loggateway.Str("agent_id", input.AgentID), loggateway.Err(upsertErr))
+				}
+			}
 		}
 
 		// Step 8: Measure quality after.

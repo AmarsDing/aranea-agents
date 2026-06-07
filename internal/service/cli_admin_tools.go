@@ -173,6 +173,7 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 		Analytics:   o.expAnalytics,
 		MemoryAdmin: o.td.Persist.Memory.AdminUsecase,
 		Agents:      o.td.ReadDeps.Agents,
+		LG:          o.lg,
 	})
 }
 

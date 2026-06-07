@@ -577,6 +577,19 @@ func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, 
 // RunHealthChecks probes enabled provider models and marks unhealthy rows.
 const healthCheckPoolSize = 5
 
+// PickTitleModel selects a lightweight model from the list suitable for
+// generating session titles. It prefers models with "mini", "flash",
+// "lite", or "small" in their name; otherwise falls back to the first model.
+func PickTitleModel(models []ProviderModel) ProviderModel {
+	for _, m := range models {
+		name := strings.ToLower(m.Model)
+		if strings.Contains(name, "mini") || strings.Contains(name, "flash") || strings.Contains(name, "lite") || strings.Contains(name, "small") {
+			return m
+		}
+	}
+	return models[0]
+}
+
 func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 	items, err := u.reader.ListProviderModels(ctx)
 	if err != nil {

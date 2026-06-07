@@ -35,6 +35,10 @@ const (
 	GlobalQuotaScopeID = "global"
 )
 
+// floatCompareEpsilon is used for floating-point comparisons to avoid
+// false negatives due to rounding.
+const floatCompareEpsilon = 1e-9
+
 // ── Models ────────────────────────────────────────────────────────────────────
 
 // Query mirrors legacy model-usage GET params.
@@ -869,7 +873,7 @@ func (u *Usecase) enforceQuota(ctx context.Context, scopeType, scopeID string) e
 		return err
 	}
 	if !check.Allowed {
-		return fmt.Errorf("USAGE_QUOTA: %s", check.Reason)
+		return errors.Forbidden("USAGE_QUOTA", check.Reason)
 	}
 	return nil
 }
@@ -1005,7 +1009,7 @@ func (u *Usecase) evaluateBudgetAlertsForScope(ctx context.Context, scopeType, s
 	}
 	now := u.now().UTC()
 	for _, a := range alerts {
-		if !a.Enabled || a.AlertRatio <= 0 || util+1e-9 < a.AlertRatio {
+		if !a.Enabled || a.AlertRatio <= 0 || util+floatCompareEpsilon < a.AlertRatio {
 			continue
 		}
 		if u.alertRecentlyFired(a, now) {
@@ -1157,9 +1161,9 @@ func (u *Usecase) InefficientModels(ctx context.Context, query Query) ([]ModelIn
 
 // ExportUsageEventsCSV returns CSV rows for usage events.
 func (u *Usecase) ExportUsageEventsCSV(ctx context.Context, query Query) (string, error) {
-	query.Limit = 5000
-	if query.Limit <= 0 {
-		query.Limit = 5000
+	const csvExportMaxRows = 5000
+	if query.Limit <= 0 || query.Limit > csvExportMaxRows {
+		query.Limit = csvExportMaxRows
 	}
 	events, err := u.Events(ctx, query)
 	if err != nil {

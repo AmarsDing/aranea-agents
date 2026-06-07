@@ -92,14 +92,14 @@ type ProviderModelPairValidator interface {
 // AgentUsecase is catalog agent CRUD + prompt preview.
 type AgentUsecase struct {
 	repo               AgentRepository
-	tools              ToolCatalogReader
+	tools              ToolRegistryReader
 	sys                SystemSettingRepo
 	webResearchChecker WebResearchReadinessChecker
 	providerValidator  ProviderModelPairValidator
 	lg                 loggateway.Logger
 }
 
-func NewAgentUsecase(repo AgentRepository, tools ToolCatalogReader, sys SystemSettingRepo, lg loggateway.Logger) *AgentUsecase {
+func NewAgentUsecase(repo AgentRepository, tools ToolRegistryReader, sys SystemSettingRepo, lg loggateway.Logger) *AgentUsecase {
 	return &AgentUsecase{repo: repo, tools: tools, sys: sys, lg: lg}
 }
 

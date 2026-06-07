@@ -14,7 +14,7 @@ import {
 } from '../../features/channels/api';
 import type {
   ChannelRow,
-  ChannelCatalogItem,
+  ChannelTypeItem,
   ChannelCredential,
   ChannelResourceInput,
   ChannelDeliveryRow,
@@ -27,7 +27,7 @@ import type { Team } from '../../features/teams/types';
 
 export const useChannelsStore = defineStore('channels', () => {
   const channels = ref<ChannelRow[]>([]);
-  const catalog = ref<ChannelCatalogItem[]>([]);
+  const catalog = ref<ChannelTypeItem[]>([]);
   const loading = ref(false);
   const routingAgents = ref<Agent[]>([]);
   const routingTeams = ref<Team[]>([]);

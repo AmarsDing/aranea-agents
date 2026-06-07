@@ -348,7 +348,7 @@ func TestHasOpenAPIMetadata(t *testing.T) {
 	}
 }
 
-func TestCatalogConfigReady(t *testing.T) {
+func TestToolConfigReady(t *testing.T) {
 
 	tests := []struct {
 		name     string
@@ -490,9 +490,9 @@ func TestCatalogConfigReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CatalogConfigReady(tt.tool, tt.platform)
+			got := ToolConfigReady(tt.tool, tt.platform)
 			if got != tt.want {
-				t.Errorf("CatalogConfigReady() = %v, want %v", got, tt.want)
+				t.Errorf("ToolConfigReady() = %v, want %v", got, tt.want)
 			}
 		})
 	}

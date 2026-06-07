@@ -1,10 +1,12 @@
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useQuasar } from 'quasar';
 import { useUsageStore } from '../../stores/usage';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro } from './moneyFormat';
 
 export function useUsageEventsPage() {
+  const $q = useQuasar();
   const usageStore = useUsageStore();
   const { events, eventsLoading, eventsError, exporting } = storeToRefs(usageStore);
   const filters = ref<ModelUsageQuery>({ range: '7d', limit: 200 });
@@ -66,6 +68,30 @@ export function useUsageEventsPage() {
     return `${s.slice(0, max)}…`;
   }
 
+  const purging = ref(false);
+
+  function onPurgeConfirm() {
+    const days = retainDays.value;
+    $q.dialog({
+      class: 'app-dialog-card app-dialog-card--sm',
+      title: '确认删除',
+      message: `将只保留最近 ${days} 天的数据，其他用量事件将全部删除。此操作不可撤销，确认继续？`,
+      cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
+      ok: { label: '确认删除', color: 'negative', flat: true, rounded: true, noCaps: true },
+      persistent: true,
+    }).onOk(async () => {
+      purging.value = true;
+      try {
+        const deleted = await purgeEvents();
+        $q.notify({ type: 'positive', message: `已删除 ${deleted} 条用量事件` });
+      } catch {
+        $q.notify({ type: 'negative', message: '删除用量事件失败' });
+      } finally {
+        purging.value = false;
+      }
+    });
+  }
+
   function resetFilters() {
     filters.value = { range: '7d', limit: 200 };
     void load();
@@ -81,9 +107,11 @@ export function useUsageEventsPage() {
     statusOptions,
     usageKindOptions,
     retainDays,
+    purging,
     load,
     exportCsv,
     purgeEvents,
+    onPurgeConfirm,
     resetFilters,
     formatMoney,
     truncate,

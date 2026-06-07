@@ -125,7 +125,7 @@ import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import ChannelPlatformAvatar from './ChannelPlatformAvatar.vue';
-import type { ChannelCatalogItem, ChannelRow } from '../../features/channels/types';
+import type { ChannelTypeItem, ChannelRow } from '../../features/channels/types';
 
 import {
   channelTableColumns,
@@ -147,7 +147,7 @@ const CHANNEL_TABLE_COLUMNS = channelTableColumns(t);
 
 defineProps<{
   rows: ChannelRow[];
-  catalog: ChannelCatalogItem[];
+  catalog: ChannelTypeItem[];
   loading: boolean;
   togglingId: string;
   testingId: string;

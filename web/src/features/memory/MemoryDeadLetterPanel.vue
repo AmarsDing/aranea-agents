@@ -32,7 +32,7 @@
             <td>
               <q-badge :color="priorityColor(r.priority)">{{ priorityLabel(r.priority) }}</q-badge>
             </td>
-            <td class="ellipsis-cell" style="max-width: 200px" :title="r.drop_reason">{{ r.drop_reason }}</td>
+            <td class="ellipsis-cell" style="max-width: var(--col-w-lg, 200px)" :title="r.drop_reason">{{ r.drop_reason }}</td>
             <td>{{ r.attempts }}</td>
             <td>
               <q-badge :color="stateColor(r.state)">{{ r.state }}</q-badge>

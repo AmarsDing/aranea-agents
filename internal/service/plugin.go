@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
+
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -35,9 +37,13 @@ func (s *PluginService) Bootstrap(ctx context.Context) {
 }
 
 // NewPluginServiceWithBootstrap constructs PluginService and runs one-time bootstrap.
+// TECH-DEBT(#plugin-bootstrap): constructor side-effect — should be called explicitly
+// after Wire graph construction instead of inside a provider.
 func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
 	s := NewPluginService(uc, runtime, lg)
-	s.Bootstrap(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s.Bootstrap(ctx)
 	return s
 }
 

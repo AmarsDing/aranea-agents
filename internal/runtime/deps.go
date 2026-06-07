@@ -23,7 +23,7 @@ type TurnReadDeps struct {
 	Agents          biz.AgentRepository
 	AgentsUC        biz.TeamAgentLookup
 	CLIAdminAgentUC biz.CLIAdminAgentLister
-	Tools           biz.ToolCatalogReader
+	Tools           biz.ToolRegistryReader
 	ToolUC          biz.TeamToolLookup
 	LLM             biz.TeamModelCatalog
 	SkillUC         biz.TeamSkillLookup

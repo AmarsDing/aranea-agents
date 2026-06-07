@@ -536,3 +536,4 @@ func (ch Channel) ParseMetadata() (map[string]any, error) {
 		return map[string]any{}, err
 	}
 	return m, nil
+}

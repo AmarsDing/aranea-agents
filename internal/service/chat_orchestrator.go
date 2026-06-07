@@ -248,14 +248,14 @@ var (
 func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
 	nativeResult, err := o.RunNativeAgentTurnWithOutcome(ctx, input)
 	result, classifyErr := turn.ClassifyNativeOutcome(nativeResult, mapTurnExecutorError(err))
-	if classifyErr != nil && IsTurnMessageQueued(classifyErr) {
+	if classifyErr != nil && isTurnMessageQueued(classifyErr) {
 		return result, ErrTurnMessageQueued
 	}
 	return result, classifyErr
 }
 
 func mapTurnExecutorError(err error) error {
-	if err == nil || !IsTurnMessageQueued(err) {
+	if err == nil || !isTurnMessageQueued(err) {
 		return err
 	}
 	return turn.QueuedSentinel

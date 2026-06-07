@@ -39,7 +39,7 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 	if !ok {
 		return
 	}
-	ag, err := r.catalogAgent(ctx, m.AgentID)
+	ag, err := r.lookupAgent(ctx, m.AgentID)
 	if err != nil {
 		r.lg.Warn("catalog agent lookup failed", loggateway.StepID("team.graph.step.persist"), loggateway.Str("run_id", stepCtx.TeamRunID), loggateway.Str("node_id", nodeID), loggateway.Str("agent_id", m.AgentID), loggateway.Err(err))
 		return

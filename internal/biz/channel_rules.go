@@ -25,7 +25,7 @@ func channelValidationError(format string, args ...any) error {
 }
 
 func catalogHasType(channelType string) bool {
-	for _, item := range channelCatalog {
+	for _, item := range channelTypeRegistry {
 		if item.Type == channelType {
 			return true
 		}
@@ -33,8 +33,8 @@ func catalogHasType(channelType string) bool {
 	return false
 }
 
-func catalogSorted() []ChannelCatalogItem {
-	items := append([]ChannelCatalogItem{}, channelCatalog...)
+func catalogSorted() []ChannelTypeItem {
+	items := append([]ChannelTypeItem{}, channelTypeRegistry...)
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].SortOrder != items[j].SortOrder {
 			return items[i].SortOrder < items[j].SortOrder

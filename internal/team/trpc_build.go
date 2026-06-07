@@ -30,14 +30,14 @@ func BuildTeamMemberAgents(
 	ctx context.Context,
 	def Definition,
 	deps TRPCTeamBuilderDeps,
-	catalogAgent func(ctx context.Context, id string) (biz.Agent, error),
+	lookupAgent func(ctx context.Context, id string) (biz.Agent, error),
 	lg loggateway.Logger,
 ) ([]trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	memberAgents := make([]trpcagent.Agent, 0, len(members))
 	lookup := make(map[string]trpcagent.Agent, len(members))
 	for _, m := range members {
-		ag, err := catalogAgent(ctx, strings.TrimSpace(m.AgentID))
+		ag, err := lookupAgent(ctx, strings.TrimSpace(m.AgentID))
 		if err != nil {
 			return nil, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
 		}
@@ -61,7 +61,7 @@ func BuildTeamMemberAgents(
 // Deprecated: Team runs use the GraphAgent compile path by default (M53 Phase 7).
 // BuildTRPCTeam is retained only for emergency fallback when ARANEA_TEAM_NATIVE=1.
 // TODO(phase-8): Remove BuildTRPCTeam, tryNativeFallback, envTeamNativeForced, DecideNativeFallback.
-func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error), lg loggateway.Logger) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
+func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, lookupAgent func(ctx context.Context, id string) (biz.Agent, error), lg loggateway.Logger) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
 		return nil, nil, kerrors.BadRequest("TEAM", "no enabled members")
@@ -69,7 +69,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
 
-	memberAgents, lookup, err := BuildTeamMemberAgents(ctx, def, deps, catalogAgent, lg)
+	memberAgents, lookup, err := BuildTeamMemberAgents(ctx, def, deps, lookupAgent, lg)
 	if err != nil {
 		return nil, nil, err
 	}

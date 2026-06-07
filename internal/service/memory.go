@@ -534,13 +534,13 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 		ModelPreference:    map[string]float64{},
 	}
 	if raw, ok := m["tool_preference"].(map[string]any); ok {
-		out.ToolPreference = mapStringFloat(raw)
+		out.ToolPreference = jsonutil.MapStringFloat(raw)
 	}
 	if raw, ok := m["provider_preference"].(map[string]any); ok {
-		out.ProviderPreference = mapStringFloat(raw)
+		out.ProviderPreference = jsonutil.MapStringFloat(raw)
 	}
 	if raw, ok := m["model_preference"].(map[string]any); ok {
-		out.ModelPreference = mapStringFloat(raw)
+		out.ModelPreference = jsonutil.MapStringFloat(raw)
 	}
 	if raw, ok := m["tool_blacklist"].([]any); ok {
 		for _, v := range raw {
@@ -550,19 +550,6 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 		}
 	}
 	return out, nil
-}
-
-func mapStringFloat(in map[string]any) map[string]float64 {
-	out := make(map[string]float64)
-	for k, v := range in {
-		switch t := v.(type) {
-		case float64:
-			out[k] = t
-		case int:
-			out[k] = float64(t)
-		}
-	}
-	return out
 }
 
 func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.ListEvolutionProposalsRequest) (*v1.ListEvolutionProposalsResponse, error) {

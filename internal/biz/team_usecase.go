@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -77,17 +78,17 @@ type TeamRepository interface {
 }
 
 type TeamUsecase struct {
-	reader         TeamReader
-	writer         TeamWriter
-	runReader      TeamRunReader
-	runWriter      TeamRunWriter
-	stepRepo       OrchestrationStepRepo
-	deadLetter     TaskDeadLetterRepo
-	agentChecker   AgentIDExistenceChecker
-	deptLeadMgr    *DeptLeadManager
-	graphReader    GraphReader
-	graphWriter    GraphWriter
-	lg             loggateway.Logger
+	reader       TeamReader
+	writer       TeamWriter
+	runReader    TeamRunReader
+	runWriter    TeamRunWriter
+	stepRepo     OrchestrationStepRepo
+	deadLetter   TaskDeadLetterRepo
+	agentChecker AgentIDExistenceChecker
+	deptLeadMgr  *DeptLeadManager
+	graphReader  GraphReader
+	graphWriter  GraphWriter
+	lg           loggateway.Logger
 }
 
 func NewTeamUsecase(
@@ -244,6 +245,50 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		}
 		// NOTE: AgentIDExistenceChecker only checks existence, not active status.
 		// Adding AgentIsActiveByID would require interface changes across multiple packages.
+	}
+	return nil
+}
+
+// RecoverOrphanedRunningTeams transitions all running teams to interrupted
+// and their running runs to failed. Called on server startup to clean up
+// stale state from a previous crash.
+func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) error {
+	teams, err := u.ListTeamsByStatus(ctx, TeamStatusRunning)
+	if err != nil {
+		return err
+	}
+	if len(teams) == 0 {
+		return nil
+	}
+	for i := range teams {
+		if _, err := u.TransitionStatus(ctx, teams[i].ID, TeamStatusInterrupted); err != nil {
+			u.lg.Warn("recover orphaned teams: failed to transition team to interrupted",
+				loggateway.Str("team_id", teams[i].ID),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		orphanRecoveryMaxRuns := 10
+		runs, err := u.ListRuns(ctx, teams[i].ID, orphanRecoveryMaxRuns)
+		if err != nil {
+			u.lg.Warn("recover orphaned teams: failed to list team runs",
+				loggateway.Str("team_id", teams[i].ID),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		for _, run := range runs {
+			if run.Status != TeamRunStatusRunning {
+				continue
+			}
+			run.Status = TeamRunStatusFailed
+			if err := u.UpdateRun(ctx, run); err != nil {
+				u.lg.Warn("recover orphaned teams: failed to transition team run to failed",
+					loggateway.Str("team_run_id", run.ID),
+					loggateway.Err(err),
+				)
+			}
+		}
 	}
 	return nil
 }
@@ -522,6 +567,26 @@ func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 		return kerrors.BadRequest("TEAM", "run id is required")
 	}
 	return u.runWriter.UpdateTeamRun(ctx, r)
+}
+
+// CancelRun cancels a team run if it is in running or pending status.
+// Returns the updated run or an error if the run cannot be cancelled.
+func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, error) {
+	r, err := u.GetRun(ctx, runID)
+	if err != nil {
+		return TeamRun{}, err
+	}
+	if r.Status != TeamRunStatusRunning && r.Status != TeamRunStatusPending {
+		return TeamRun{}, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	r.Status = TeamRunStatusCancelled
+	r.FinishedAt = now
+	r.UpdatedAt = now
+	if err := u.UpdateRun(ctx, r); err != nil {
+		return TeamRun{}, err
+	}
+	return r, nil
 }
 
 func (u *TeamUsecase) UpdateRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
@@ -853,12 +918,12 @@ type teamMemberDef struct {
 
 // teamDefinition mirrors team.Definition (subset needed for EnabledMemberAgentIDs).
 type teamDefinition struct {
-	Version            int               `json:"version"`
-	Mode               string            `json:"mode"`
-	SynthesizerAgentID string            `json:"synthesizer_agent_id"`
-	Members            []teamMemberDef   `json:"members"`
-	MaxConcurrency     int               `json:"max_concurrency"`
-	TimeoutSeconds     int               `json:"timeout_seconds"`
+	Version            int             `json:"version"`
+	Mode               string          `json:"mode"`
+	SynthesizerAgentID string          `json:"synthesizer_agent_id"`
+	Members            []teamMemberDef `json:"members"`
+	MaxConcurrency     int             `json:"max_concurrency"`
+	TimeoutSeconds     int             `json:"timeout_seconds"`
 }
 
 // parseTeamDefinition unmarshals team JSON; empty string yields default.

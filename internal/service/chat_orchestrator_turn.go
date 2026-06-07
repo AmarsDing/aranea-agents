@@ -80,7 +80,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 
 	userMsg, assistantMsg, err := o.runNativeAgentTurnBody(ctx, input, flow)
 	if err != nil {
-		if IsTurnMessageQueued(err) {
+		if isTurnMessageQueued(err) {
 			return biz.NativeTurnResult{
 				Outcome:   biz.NativeTurnOutcomeQueued,
 				PendingID: o.LastPendingMessageID(sessionID),
@@ -408,7 +408,7 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 			SessionID: sessionID,
 			Content:   reply,
 		})
-		if turnErr != nil && !IsTurnMessageQueued(turnErr) {
+		if turnErr != nil && !isTurnMessageQueued(turnErr) {
 			o.setRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error())
 			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
@@ -1264,7 +1264,7 @@ func (o *ChatOrchestrator) notifyNativeTurnHooks(ctx context.Context, sessionID 
 func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	tr, err := o.Execute(ctx, turnInputFromProto(req))
 	if err != nil {
-		if IsTurnMessageQueued(err) {
+		if isTurnMessageQueued(err) {
 			return &chatv1.SendChatMessageResponse{}, nil
 		}
 		return nil, err

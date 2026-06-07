@@ -158,7 +158,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		plugins = r.cfg.PluginRT.PluginsForAgent(ar.agent.ID)
 	}
 	builderDeps.Plugins = plugins
-	memberKeys, err := memberAgentKeys(ctx, def, r.catalogAgent)
+	memberKeys, err := memberAgentKeys(ctx, def, r.lookupAgent)
 	if err != nil {
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())

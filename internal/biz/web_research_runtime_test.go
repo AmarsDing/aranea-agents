@@ -19,7 +19,7 @@ func (s stubWebResearchChecker) ResolveReady(_ map[string]any, platform *WebRese
 	return s.resolveReady
 }
 
-func (s stubWebResearchChecker) CatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool {
+func (s stubWebResearchChecker) IsReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool {
 	if s.ResolveReady(agentMap, platform) {
 		return true
 	}

@@ -1,6 +1,6 @@
 import type { QTableColumn } from 'quasar';
 import type {
-  ChannelCatalogItem,
+  ChannelTypeItem,
   ChannelConfig,
   ChannelDeliveryRow,
   ChannelMetadata,
@@ -45,7 +45,7 @@ export function receiveMode(row: ChannelRow): string {
   return channelConfig(row).receive_mode || '-';
 }
 
-export function catalogLabelForType(catalog: ChannelCatalogItem[], type: string): string {
+export function catalogLabelForType(catalog: ChannelTypeItem[], type: string): string {
   return catalog.find((item) => item.type === type)?.label || type;
 }
 
@@ -104,7 +104,7 @@ export function channelWebhookIsLocalhost(row: ChannelRow): boolean {
   return isLocalhostOrigin(channelWebhookOrigin(row));
 }
 
-export function channelSupportsWebhook(row: ChannelRow, catalog: ChannelCatalogItem[]): boolean {
+export function channelSupportsWebhook(row: ChannelRow, catalog: ChannelTypeItem[]): boolean {
   const type = channelType(row);
   const item = catalog.find((entry) => entry.type === type);
   if (item) return item.supports_webhook;

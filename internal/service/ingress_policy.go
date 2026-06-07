@@ -1,98 +1,39 @@
 package service
 
 import (
-	"strings"
-
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/runtime/turn"
 )
 
 // IngressDecision classifies how an inbound request should be handled before Turn execution.
-type IngressDecision string
+// Delegated to biz layer; type alias preserves service-level API compatibility.
+type IngressDecision = biz.IngressDecision
 
 const (
-	IngressAdmit           IngressDecision = "admit"
-	IngressQueue           IngressDecision = "queue"
-	IngressSteer           IngressDecision = "steer"
-	IngressRejectBusy      IngressDecision = "reject_busy"
-	IngressRouteAsync      IngressDecision = "route_async"
-	IngressRouteBackground IngressDecision = "route_background"
-	IngressCancel          IngressDecision = "cancel"
-	IngressStatus          IngressDecision = "status"
-	IngressSkipDuplicate   IngressDecision = "skip_duplicate"
+	IngressAdmit           = biz.IngressAdmit
+	IngressQueue           = biz.IngressQueue
+	IngressSteer           = biz.IngressSteer
+	IngressRejectBusy      = biz.IngressRejectBusy
+	IngressRouteAsync      = biz.IngressRouteAsync
+	IngressRouteBackground = biz.IngressRouteBackground
+	IngressCancel          = biz.IngressCancel
+	IngressStatus          = biz.IngressStatus
+	IngressSkipDuplicate   = biz.IngressSkipDuplicate
 )
 
 // IngressPolicyInput is the pure input for L2 ingress policy evaluation.
-type IngressPolicyInput struct {
-	Text            string
-	EntryPoint      biz.TurnEntryPoint
-	AllowQueue      bool
-	HasActiveRun    bool
-	HasActiveRunner bool
-	RouteAsync        bool
-	IsCancelCommand    bool
-	IsStatusQuery      bool
-	IsBackgroundCommand bool
-	IsRecentDuplicate  bool
-	ContextPressure    bool
-}
+type IngressPolicyInput = biz.IngressPolicyInput
 
 // IngressPolicyResult is the outcome of ingress policy evaluation.
-type IngressPolicyResult struct {
-	Decision       IngressDecision
-	Intent         string
-	SuggestDurable bool
-}
+type IngressPolicyResult = biz.IngressPolicyResult
 
-// EvaluateIngressPolicy decides how an inbound message should be routed before Turn execution.
-// It is a pure function: no I/O, no trpc imports (DECO-08).
+// EvaluateIngressPolicy delegates to biz.EvaluateIngressPolicy.
 func EvaluateIngressPolicy(in IngressPolicyInput) IngressPolicyResult {
-	if in.IsRecentDuplicate {
-		return IngressPolicyResult{Decision: IngressSkipDuplicate, Intent: "dedupe"}
-	}
-	if in.IsCancelCommand {
-		return IngressPolicyResult{Decision: IngressCancel, Intent: "cancel"}
-	}
-	if in.IsBackgroundCommand {
-		return IngressPolicyResult{Decision: IngressRouteBackground, Intent: "route_background"}
-	}
-	if in.RouteAsync {
-		return IngressPolicyResult{Decision: IngressRouteAsync, Intent: "route_async"}
-	}
-	if in.IsStatusQuery && in.HasActiveRun {
-		return IngressPolicyResult{Decision: IngressStatus, Intent: "status"}
-	}
-	if in.ContextPressure && in.HasActiveRun {
-		if in.AllowQueue && in.EntryPoint != biz.EntryPointChannel {
-			return IngressPolicyResult{Decision: IngressQueue, Intent: "context_force_queue"}
-		}
-		return IngressPolicyResult{Decision: IngressRejectBusy, Intent: "context_pressure"}
-	}
-	if in.HasActiveRun {
-		allowQueue := in.AllowQueue
-		if in.EntryPoint == "" {
-			allowQueue = true
-		}
-		switch turn.EvaluateAdmission(in.HasActiveRun, in.HasActiveRunner, allowQueue) {
-		case biz.AdmitEnqueue:
-			if in.EntryPoint == biz.EntryPointChannel {
-				return IngressPolicyResult{Decision: IngressSteer, Intent: "steer"}
-			}
-			return IngressPolicyResult{Decision: IngressQueue, Intent: "queue"}
-		case biz.AdmitReject:
-			return IngressPolicyResult{Decision: IngressRejectBusy, Intent: "reject_busy"}
-		}
-	}
-	return IngressPolicyResult{Decision: IngressAdmit, Intent: "admit"}
+	return biz.EvaluateIngressPolicy(in)
 }
 
-// ResolveChannelAcceptRoute decides sync vs async execution plane for accepted inbound (DECO-11).
+// ResolveChannelAcceptRoute delegates to biz.ResolveChannelAcceptRoute.
 func ResolveChannelAcceptRoute(text string, ltCfg biz.ChannelLongTaskConfig, allowQueue bool) IngressPolicyResult {
-	result := EvaluateIngressPolicy(channelIngressPolicyInput(text, ltCfg, allowQueue, false, false, false))
-	if result.Decision == IngressAdmit && ltCfg.SuggestDurableRun(text) && !ltCfg.ShouldRunAsync(text) {
-		result.SuggestDurable = true
-	}
-	return result
+	return biz.ResolveChannelAcceptRoute(text, ltCfg, allowQueue)
 }
 
 // channelAcceptOutcomeFromRoute maps ingress route policy to accept outcome flags.
@@ -105,55 +46,31 @@ func channelAcceptOutcomeFromRoute(route IngressPolicyResult) inboundAcceptOutco
 	}
 }
 
-// AllowPendingQueueFromEntry resolves queue policy for legacy callers without EntryPoint set.
+// AllowPendingQueueFromEntry delegates to biz.AllowPendingQueueFromEntry.
 func AllowPendingQueueFromEntry(entry biz.TurnEntryPoint, allowQueue bool) bool {
-	if entry == "" {
-		return true
-	}
-	return allowQueue
+	return biz.AllowPendingQueueFromEntry(entry, allowQueue)
 }
 
+// ingressPolicyFromTurnInput delegates to biz.IngressPolicyFromTurnInput.
 func ingressPolicyFromTurnInput(input biz.TurnInput, hasActive, hasRunner, contextPressure bool) IngressPolicyResult {
-	return EvaluateIngressPolicy(IngressPolicyInput{
-		Text:            input.Content,
-		EntryPoint:      input.EntryConfig.EntryPoint,
-		AllowQueue:      input.EntryConfig.AllowQueue,
-		HasActiveRun:    hasActive,
-		HasActiveRunner: hasRunner,
-		IsCancelCommand: biz.IsChannelCancelCommand(input.Content),
-		IsStatusQuery:   biz.IsChannelStatusQuery(input.Content),
-		ContextPressure: contextPressure,
-	})
+	return biz.IngressPolicyFromTurnInput(input, hasActive, hasRunner, contextPressure)
 }
 
+// channelIngressPolicyInput delegates to biz.ChannelIngressPolicyInput.
 func channelIngressPolicyInput(text string, ltCfg biz.ChannelLongTaskConfig, allowQueue, hasActive, hasRunner, contextPressure bool) IngressPolicyInput {
-	return IngressPolicyInput{
-		Text:                text,
-		EntryPoint:          biz.EntryPointChannel,
-		AllowQueue:          allowQueue,
-		HasActiveRun:        hasActive,
-		HasActiveRunner:     hasRunner,
-		RouteAsync:          ltCfg.ShouldRunAsync(text),
-		IsCancelCommand:     biz.IsChannelCancelCommand(text),
-		IsStatusQuery:       biz.IsChannelStatusQuery(text),
-		IsBackgroundCommand: biz.IsChannelBackgroundCommand(text),
-		ContextPressure:     contextPressure,
-	}
+	return biz.ChannelIngressPolicyInput(text, ltCfg, allowQueue, hasActive, hasRunner, contextPressure)
 }
 
 func channelAllowQueueFromConfig(configJSON string) bool {
 	return biz.ChannelBusyInputQueue(configJSON)
 }
 
+// ingressDecisionNeedsTurn delegates to biz.IngressDecisionNeedsTurn.
 func ingressDecisionNeedsTurn(decision IngressDecision) bool {
-	switch decision {
-	case IngressAdmit, IngressQueue, IngressSteer:
-		return true
-	default:
-		return false
-	}
+	return biz.IngressDecisionNeedsTurn(decision)
 }
 
+// ingressIntentLabel delegates to biz.IngressIntentLabel.
 func ingressIntentLabel(decision IngressDecision) string {
-	return strings.TrimSpace(string(decision))
+	return biz.IngressIntentLabel(decision)
 }

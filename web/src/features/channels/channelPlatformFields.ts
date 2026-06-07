@@ -1,4 +1,4 @@
-import type { ChannelCatalogItem } from './types';
+import type { ChannelTypeItem } from './types';
 import { FIRST_BYTE_TIMEOUT_OPTIONS, PROGRESS_QUIET_OPTIONS, TURN_TIMEOUT_OPTIONS } from './channelLongTaskDefaults';
 
 /** MuseBot ConfigForm 风格：snake_case 字段名 + 分区标题 */
@@ -56,7 +56,7 @@ const RECEIVE_MODE_LABELS: Record<string, string> = {
   onebot: 'onebot',
 };
 
-function credentialFieldsFromCatalog(catalog: ChannelCatalogItem | null): ChannelPlatformField[] {
+function credentialFieldsFromCatalog(catalog: ChannelTypeItem | null): ChannelPlatformField[] {
   const schema = catalog?.credential_schema;
   const props = schema?.properties as
     | Record<string, { title?: string; format?: string; 'x-required'?: boolean }>
@@ -71,7 +71,7 @@ function credentialFieldsFromCatalog(catalog: ChannelCatalogItem | null): Channe
   }));
 }
 
-function baseFields(type: string, catalog: ChannelCatalogItem | null): ChannelPlatformField[] {
+function baseFields(type: string, catalog: ChannelTypeItem | null): ChannelPlatformField[] {
   const creds = catalog?.credential_schema?.required ?? [];
   const fields: ChannelPlatformField[] = [
     { museKey: 'channel_name', bind: { source: 'form', key: 'name' }, kind: 'text', required: true },
@@ -246,7 +246,7 @@ function baseFields(type: string, catalog: ChannelCatalogItem | null): ChannelPl
   return fields;
 }
 
-function connectionFields(catalog: ChannelCatalogItem | null): ChannelPlatformField[] {
+function connectionFields(catalog: ChannelTypeItem | null): ChannelPlatformField[] {
   if (!catalog?.receive_modes?.length) return [];
 
   const modeOptions = catalog.receive_modes.map((v) => ({
@@ -401,7 +401,7 @@ function longTaskFields(): ChannelPlatformField[] {
 }
 
 /** 按 MuseBot ConfigForm 分区返回当前平台的表单结构 */
-export function buildPlatformSections(type: string, catalog: ChannelCatalogItem | null): ChannelPlatformSection[] {
+export function buildPlatformSections(type: string, catalog: ChannelTypeItem | null): ChannelPlatformSection[] {
   const sections: ChannelPlatformSection[] = [
     {
       id: 'base',
@@ -462,6 +462,6 @@ export function visibleFields(section: ChannelPlatformSection, receiveMode: stri
 }
 
 /** Prefer catalog credential_schema.properties when platform switch lacks explicit credential rows. */
-export function catalogCredentialFields(catalog: ChannelCatalogItem | null): ChannelPlatformField[] {
+export function catalogCredentialFields(catalog: ChannelTypeItem | null): ChannelPlatformField[] {
   return credentialFieldsFromCatalog(catalog);
 }

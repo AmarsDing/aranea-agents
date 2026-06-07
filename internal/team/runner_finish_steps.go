@@ -32,7 +32,7 @@ func (r *Runner) persistNativeBulkMemberSteps(ctx context.Context, in TeamRunFin
 		return
 	}
 	for i, m := range members {
-		ag, err := r.catalogAgent(ctx, m.AgentID)
+		ag, err := r.lookupAgent(ctx, m.AgentID)
 		if err != nil {
 			continue
 		}

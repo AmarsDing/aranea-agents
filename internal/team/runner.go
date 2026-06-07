@@ -71,7 +71,7 @@ func NewRunner(
 	sessions biz.TeamSessionManager,
 	agents biz.AgentRepository,
 	agentsUC biz.TeamAgentLookup,
-	toolsCatalog biz.ToolCatalogReader,
+	toolRegistry biz.ToolRegistryReader,
 	toolUC biz.TeamToolLookup,
 	catalog biz.TeamModelCatalog,
 	eventBus event.Bus,
@@ -109,7 +109,7 @@ func NewRunner(
 			ReadDeps: rt.TurnReadDeps{
 				Agents:   agents,
 				AgentsUC: agentsUC,
-				Tools:    toolsCatalog,
+				Tools:    toolRegistry,
 				ToolUC:   toolUC,
 				LLM:      catalog,
 				SkillUC:  skillUC,
@@ -126,7 +126,7 @@ func NewRunner(
 	}
 }
 
-func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {
+func (r *Runner) lookupAgent(ctx context.Context, id string) (biz.Agent, error) {
 	if r.td.ReadDeps.AgentsUC != nil {
 		return r.td.ReadDeps.AgentsUC.Get(ctx, id)
 	}

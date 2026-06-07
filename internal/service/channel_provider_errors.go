@@ -26,7 +26,7 @@ func classifyChannelTurnError(err error) channelTurnErrorKind {
 	if err == nil || turnErrorIsCanceled(err) {
 		return channelTurnErrNone
 	}
-	if IsTurnBusyError(err) {
+	if isTurnBusyError(err) {
 		return channelTurnErrBusy
 	}
 	switch TurnErrorCodeFromErr(err) {

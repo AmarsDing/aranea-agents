@@ -1,5 +1,7 @@
 package service
 
+import "aranea-agents/internal/biz"
+
 var (
 	EncodePassword                = encodePassword
 	ConvertAdmin                  = convertAdmin
@@ -46,7 +48,7 @@ var (
 	WebhookToProtoWithSecret      = webhookToProtoWithSecret
 	WebhookFromCreate             = webhookFromCreate
 	ToProtoMCP                    = toProtoMCP
-	PatchFromProtoMCPWithDiff = patchFromProtoMCPWithDiff
+	PatchFromProtoMCPWithDiff     = patchFromProtoMCPWithDiff
 	ToProtoMCPUserCred            = toProtoMCPUserCred
 	BizToolToProto                = bizToolToProto
 	BizSummaryToProto             = bizSummaryToProto
@@ -80,7 +82,6 @@ var (
 	PbMemoryEntity                = pbMemoryEntity
 	PbMemoryRelation              = pbMemoryRelation
 	PbCascadeProposal             = pbCascadeProposal
-	MapStringFloat                = mapStringFloat
 	ToProtoDataset                = toProtoDataset
 	ToProtoRun                    = toProtoRun
 	ToProtoCaseResult             = toProtoCaseResult
@@ -100,7 +101,7 @@ var (
 	ToProtoBudgetAlerts           = toProtoBudgetAlerts
 	ToProtoAvatar                 = toProtoAvatar
 	ProductToProto                = productToProto
-	BizCatalogItemToProto         = bizCatalogItemToProto
+	BizTypeItemToProto         = bizTypeItemToProto
 	BizChannelToProto             = bizChannelToProto
 	BizCredToProto                = bizCredToProto
 	BizDeliveryToProto            = bizDeliveryToProto
@@ -113,7 +114,7 @@ var (
 	AllowWebhookRequest           = allowWebhookRequest
 	MetaBool                      = metaBool
 	UniqueNonEmptyStrings         = uniqueNonEmptyStrings
-	InboundAccessContextFromEvent  = inboundAccessContextFromEvent
+	InboundAccessContextFromEvent = inboundAccessContextFromEvent
 	WithChannelTurnJob            = withChannelTurnJob
 	WithChannelTurnJobID          = withChannelTurnJobID
 	ChannelTurnJobFromContext     = channelTurnJobFromContext
@@ -141,13 +142,13 @@ var (
 	ToTaxonomyTreeNode            = toTaxonomyTreeNode
 	ToTaxonomyTree                = toTaxonomyTree
 
-	FirstNonEmptyString           = firstNonEmptyString
-	ObservatoryPayloadMaxBytes    = observatoryPayloadMaxBytes
-	TruncateObservatoryPayload    = truncateObservatoryPayload
-	PickTitleModel                = pickTitleModel
-	ErrString                     = errString
-	ChatIngressRecordingEnabled   = chatIngressRecordingEnabled
-	ChatIngressRecordingDisabled  = chatIngressRecordingDisabled
-	EnvInt                        = envInt
-	GraphExecutionFinishErr       = graphExecutionFinishErr
+	FirstNonEmptyString          = firstNonEmptyString
+	ObservatoryPayloadMaxBytes   = observatoryPayloadMaxBytes
+	TruncateObservatoryPayload   = truncateObservatoryPayload
+	PickTitleModel               = biz.PickTitleModel
+	ErrString                    = errString
+	ChatIngressRecordingEnabled  = chatIngressRecordingEnabled
+	ChatIngressRecordingDisabled = chatIngressRecordingDisabled
+	EnvInt                       = envInt
+	GraphExecutionFinishErr      = graphExecutionFinishErr
 )

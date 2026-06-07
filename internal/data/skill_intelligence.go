@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/types"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/predicate"
@@ -257,7 +258,7 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 
 	for _, row := range rows {
 		metrics.InvocationCount++
-		if isSuccess(row.Outcome, row.Status) {
+		if types.IsSuccess(row.Outcome, row.Status) {
 			metrics.SuccessCount++
 		}
 		totalDuration += row.DurationMs
@@ -268,7 +269,7 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 		metrics.SuccessRate = float64(metrics.SuccessCount) / float64(metrics.InvocationCount)
 		metrics.AvgDurationMS = float64(totalDuration) / float64(metrics.InvocationCount)
 	}
-	metrics.P95DurationMS = p95(durations)
+	metrics.P95DurationMS = types.P95(durations)
 	return metrics, nil
 }
 
@@ -287,7 +288,7 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
 	stats := &biz.SkillFailureStats{SkillID: skillID}
 	codeCount := make(map[string]int)
 	for _, row := range rows {
-		if !isSuccess(row.Outcome, row.Status) {
+		if !types.IsSuccess(row.Outcome, row.Status) {
 			stats.FailureCount++
 			code := row.ErrorCode
 			if code == "" {

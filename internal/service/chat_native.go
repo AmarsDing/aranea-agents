@@ -101,7 +101,7 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz
 				loggateway.StepID("chat.execute_turn_admission"),
 				loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 				loggateway.Any("handled", true))
-			if IsTurnMessageQueued(err) {
+			if isTurnMessageQueued(err) {
 				return tr, ErrTurnMessageQueued
 			}
 			return tr, err

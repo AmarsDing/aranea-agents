@@ -5,6 +5,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/jsonutil"
 )
 
 func TestPbL0AssemblySnapshot(t *testing.T) {
@@ -388,7 +389,7 @@ func TestMapStringFloat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := service.MapStringFloat(tt.input)
+			got := jsonutil.MapStringFloat(tt.input)
 			if len(got) != len(tt.want) {
 				t.Fatalf("len = %d, want %d", len(got), len(tt.want))
 			}

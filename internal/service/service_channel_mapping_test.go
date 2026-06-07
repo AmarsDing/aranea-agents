@@ -193,8 +193,8 @@ func TestChannelRowToProto_EmptyRuntimeMeta(t *testing.T) {
 	}
 }
 
-func TestBizCatalogItemToProto(t *testing.T) {
-	item := biz.ChannelCatalogItem{
+func TestBizTypeItemToProto(t *testing.T) {
+	item := biz.ChannelTypeItem{
 		Type:             "feishu",
 		Label:            "飞书",
 		Description:      "Feishu/Lark Bot",
@@ -210,7 +210,7 @@ func TestBizCatalogItemToProto(t *testing.T) {
 		SortOrder:        10,
 	}
 
-	got, err := service.BizCatalogItemToProto(item)
+	got, err := service.BizTypeItemToProto(item)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

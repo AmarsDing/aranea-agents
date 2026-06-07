@@ -23,7 +23,7 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 		if stepCtx.AlreadyPersisted(nodeID) {
 			continue
 		}
-		ag, err := r.catalogAgent(ctx, m.AgentID)
+		ag, err := r.lookupAgent(ctx, m.AgentID)
 		if err != nil {
 			continue
 		}

@@ -1,72 +1,34 @@
 package service
 
 import (
-	"fmt"
+	"aranea-agents/internal/biz"
 )
 
-// SpiritTeamMode determines how the Spirit agent builds its team.
-type SpiritTeamMode string
+// SpiritTeamMode is an alias for biz.SpiritTeamMode for backward compatibility
+// within the service package. New code should use biz.SpiritTeamMode directly.
+type SpiritTeamMode = biz.SpiritTeamMode
 
 const (
 	// SpiritModeCoordinator builds a coordinator-led team (default for complex tasks).
-	SpiritModeCoordinator SpiritTeamMode = "coordinator"
+	SpiritModeCoordinator SpiritTeamMode = biz.SpiritModeCoordinator
 	// SpiritModeSwarm builds a swarm-style team for collaborative tasks.
-	SpiritModeSwarm SpiritTeamMode = "swarm"
+	SpiritModeSwarm SpiritTeamMode = biz.SpiritModeSwarm
 	// SpiritModeDirect routes directly to a single agent without team construction.
-	SpiritModeDirect SpiritTeamMode = "direct"
+	SpiritModeDirect SpiritTeamMode = biz.SpiritModeDirect
 )
 
-// SpiritModeDecision captures the result of Spirit mode selection.
-type SpiritModeDecision struct {
-	Mode        SpiritTeamMode
-	TargetAgent string // Only set when Mode == SpiritModeDirect
-	Reasoning   string
-}
+// SpiritModeDecision is an alias for biz.SpiritModeDecision for backward compatibility.
+type SpiritModeDecision = biz.SpiritModeDecision
 
-// SelectSpiritMode determines the appropriate team construction mode
-// based on complexity assessment and task characteristics.
+// SpiritModeConfig is an alias for biz.SpiritModeConfig for backward compatibility.
+type SpiritModeConfig = biz.SpiritModeConfig
+
+// SelectSpiritMode delegates to biz.SelectSpiritMode.
 func SelectSpiritMode(complexityLevel string, taskDescription string, agentCount int) SpiritModeDecision {
-	switch complexityLevel {
-	case "simple":
-		return SpiritModeDecision{
-			Mode:      SpiritModeDirect,
-			Reasoning: "简单任务，Spirit 直接回答",
-		}
-	case "moderate":
-		return SpiritModeDecision{
-			Mode:        SpiritModeDirect,
-			TargetAgent: "", // Will be filled by plan_and_execute
-			Reasoning:   "中等复杂度，委派单一 Agent",
-		}
-	case "complex":
-		if agentCount >= 4 {
-			return SpiritModeDecision{
-				Mode:      SpiritModeCoordinator,
-				Reasoning: fmt.Sprintf("复杂任务，%d 个 Agent 需要协调编排", agentCount),
-			}
-		}
-		return SpiritModeDecision{
-			Mode:      SpiritModeCoordinator,
-			Reasoning: "复杂任务，使用编排管家协调",
-		}
-	default:
-		return SpiritModeDecision{
-			Mode:      SpiritModeCoordinator,
-			Reasoning: "未知复杂度，使用安全默认值 coordinator",
-		}
-	}
+	return biz.SelectSpiritMode(complexityLevel, taskDescription, agentCount)
 }
 
-// SpiritModeConfig holds the configuration needed for Spirit mode selection.
-type SpiritModeConfig struct {
-	ComplexityLevel string
-	TaskDescription string
-	AgentCount      int
-}
-
-// ResolveSpiritMode is the entry point for Spirit mode selection.
-// It can be called from chat_orchestrator_turn.go to determine
-// how to construct the Spirit agent's team.
+// ResolveSpiritMode delegates to biz.ResolveSpiritMode.
 func ResolveSpiritMode(cfg SpiritModeConfig) SpiritModeDecision {
-	return SelectSpiritMode(cfg.ComplexityLevel, cfg.TaskDescription, cfg.AgentCount)
+	return biz.ResolveSpiritMode(cfg)
 }

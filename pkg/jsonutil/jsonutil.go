@@ -99,3 +99,18 @@ func ParseMap(raw []byte) (map[string]any, error) {
 	}
 	return m, nil
 }
+
+// MapStringFloat extracts float64 values from a map[string]any,
+// converting int values to float64.
+func MapStringFloat(in map[string]any) map[string]float64 {
+	out := make(map[string]float64)
+	for k, v := range in {
+		switch t := v.(type) {
+		case float64:
+			out[k] = t
+		case int:
+			out[k] = float64(t)
+		}
+	}
+	return out
+}

@@ -10,13 +10,13 @@ import (
 func memberAgentKeys(
 	ctx context.Context,
 	def Definition,
-	catalogAgent func(ctx context.Context, id string) (biz.Agent, error),
+	lookupAgent func(ctx context.Context, id string) (biz.Agent, error),
 ) ([]string, error) {
 	members := EnabledMembers(def)
 	keys := make([]string, 0, len(members))
 	seen := make(map[string]struct{}, len(members))
 	for _, m := range members {
-		ag, err := catalogAgent(ctx, strings.TrimSpace(m.AgentID))
+		ag, err := lookupAgent(ctx, strings.TrimSpace(m.AgentID))
 		if err != nil {
 			return nil, err
 		}

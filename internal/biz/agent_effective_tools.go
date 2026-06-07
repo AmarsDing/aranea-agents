@@ -59,8 +59,8 @@ var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
 var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"}
 
-// syntheticShellExecCatalogTool matches internal/data builtin seeds when the tools table has no shell_exec row.
-func syntheticShellExecCatalogTool() Tool {
+// syntheticShellExecTool matches internal/data builtin seeds when the tools table has no shell_exec row.
+func syntheticShellExecTool() Tool {
 	return Tool{
 		Key:                  "shell_exec",
 		DisplayName:          "Shell 命令",
@@ -74,7 +74,7 @@ func syntheticShellExecCatalogTool() Tool {
 	}
 }
 
-func syntheticWebSearchCatalogTool() Tool {
+func syntheticWebSearchTool() Tool {
 	return Tool{
 		Key:                  "duckduckgo_search",
 		DisplayName:          "DuckDuckGo 搜索",
@@ -88,7 +88,7 @@ func syntheticWebSearchCatalogTool() Tool {
 	}
 }
 
-func syntheticWebFetchCatalogTool() Tool {
+func syntheticWebFetchTool() Tool {
 	return Tool{
 		Key:                  "web_fetch",
 		DisplayName:          "Web 抓取",
@@ -102,7 +102,7 @@ func syntheticWebFetchCatalogTool() Tool {
 	}
 }
 
-func cliAdminKeysFromCatalog(catalog []Tool) []string {
+func cliAdminKeysFromRegistry(catalog []Tool) []string {
 	var keys []string
 	for _, t := range catalog {
 		if strings.HasPrefix(t.Key, "cli_admin_") {
@@ -133,7 +133,7 @@ func expandToolGroup(name string, catalog []Tool) []string {
 	case "integration":
 		return append([]string{}, toolGroupsIntegration...)
 	case "cli_admin":
-		return cliAdminKeysFromCatalog(catalog)
+		return cliAdminKeysFromRegistry(catalog)
 	default:
 		return nil
 	}
@@ -154,10 +154,10 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 	return result
 }
 
-// catalogOptInOnlyKeys matches platform seeds with enabled=false: catalog row off still allows
+// registryOptInOnlyKeys matches platform seeds with enabled=false: catalog row off still allows
 // profile/allow JSON to opt in (e.g. shell_exec on "full"). Default-enabled tools (gemini_web_fetch)
 // administratively disabled in Tools UI are forced into denySet so profiles cannot re-enable them.
-var catalogOptInOnlyKeys = map[string]bool{
+var registryOptInOnlyKeys = map[string]bool{
 	"shell_exec":     true,
 	"send_email":     true,
 	"claude_code":    true,
@@ -166,12 +166,12 @@ var catalogOptInOnlyKeys = map[string]bool{
 	"tts":            true,
 }
 
-func applyCatalogAdminDenials(catalog []Tool, deny map[string]bool) {
+func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
 	if deny == nil {
 		return
 	}
 	for _, tool := range catalog {
-		if tool.Enabled || catalogOptInOnlyKeys[tool.Key] {
+		if tool.Enabled || registryOptInOnlyKeys[tool.Key] {
 			continue
 		}
 		deny[tool.Key] = true
@@ -264,9 +264,9 @@ func computePolicyDenySet(denyList []string, catalog []Tool) map[string]bool {
 func computeEffectiveToolState(settings AgentRuntimeSettings, tool Tool, prof string, allowed, deny map[string]bool) (state, reason string, enabled bool) {
 	state = "denied"
 	reason = "global_disabled"
-	catalogOpenByDefault := tool.Enabled
+	toolOpenByDefault := tool.Enabled
 	policyNamesKey := allowed[tool.Key]
-	baseEnabled := settings.ToolsEnabled && (catalogOpenByDefault || policyNamesKey)
+	baseEnabled := settings.ToolsEnabled && (toolOpenByDefault || policyNamesKey)
 	if baseEnabled && (prof == "" || prof == "full" || allowed[tool.Key]) {
 		state = "allowed"
 		reason = "profile:" + settings.ToolsProfile
@@ -289,11 +289,11 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 	prof := strings.TrimSpace(settings.ToolsProfile)
 	allowedSet := computePolicyAllowedSet(prof, allow, catalog)
 	denySet := computePolicyDenySet(deny, catalog)
-	applyCatalogAdminDenials(catalog, denySet)
+	applyRegistryAdminDenials(catalog, denySet)
 
-	catalogKeys := make(map[string]bool, len(catalog))
+	registryKeys := make(map[string]bool, len(catalog))
 	for _, tool := range catalog {
-		catalogKeys[tool.Key] = true
+		registryKeys[tool.Key] = true
 	}
 
 	items := make([]EffectiveAgentTool, 0, len(catalog)+3)
@@ -311,8 +311,8 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 	}
 
 	const shellExecKey = "shell_exec"
-	if !catalogKeys[shellExecKey] && allowedSet[shellExecKey] {
-		syn := syntheticShellExecCatalogTool()
+	if !registryKeys[shellExecKey] && allowedSet[shellExecKey] {
+		syn := syntheticShellExecTool()
 		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)
 		items = append(items, EffectiveAgentTool{
 			ToolKey:        shellExecKey,
@@ -326,8 +326,8 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 	}
 
 	const webSearchKey = "duckduckgo_search"
-	if !catalogKeys[webSearchKey] && allowedSet[webSearchKey] {
-		syn := syntheticWebSearchCatalogTool()
+	if !registryKeys[webSearchKey] && allowedSet[webSearchKey] {
+		syn := syntheticWebSearchTool()
 		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)
 		items = append(items, EffectiveAgentTool{
 			ToolKey:        webSearchKey,
@@ -340,8 +340,8 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 		})
 	}
 	const webFetchKey = "web_fetch"
-	if !catalogKeys[webFetchKey] && allowedSet[webFetchKey] {
-		syn := syntheticWebFetchCatalogTool()
+	if !registryKeys[webFetchKey] && allowedSet[webFetchKey] {
+		syn := syntheticWebFetchTool()
 		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)
 		items = append(items, EffectiveAgentTool{
 			ToolKey:        webFetchKey,
@@ -382,7 +382,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	}
 	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {
-		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform, checkerToCatalogReadyFunc(u.webResearchChecker))
+		EnrichToolRuntimeFieldsWithPlatform(&all.Items[i], platform, checkerToReadinessFunc(u.webResearchChecker))
 	}
 	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride
@@ -443,7 +443,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 
 	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {
-		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform, checkerToCatalogReadyFunc(u.webResearchChecker))
+		EnrichToolRuntimeFieldsWithPlatform(&all.Items[i], platform, checkerToReadinessFunc(u.webResearchChecker))
 	}
 	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride

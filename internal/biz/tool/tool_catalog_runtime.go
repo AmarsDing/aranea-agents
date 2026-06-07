@@ -21,7 +21,7 @@ type WebResearchPlatformFields struct {
 // WebResearchReadinessChecker abstracts web_research readiness resolution.
 type WebResearchReadinessChecker interface {
 	ResolveReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
-	CatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
+	IsReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
 }
 
 // webResearchPlatformFields converts WebResearchSetting to WebResearchPlatformFields.
@@ -80,32 +80,32 @@ var sessionBoundToolKeys = map[string]struct{}{
 	"skill_search": {}, "use_skill": {},
 }
 
-// WebResearchCatalogReadyFunc is the function signature for checking web_research catalog readiness.
-type WebResearchCatalogReadyFunc func(agentMap map[string]any, platform *WebResearchPlatformFields) bool
+// WebResearchReadinessFunc is the function signature for checking web_research tool readiness.
+type WebResearchReadinessFunc func(agentMap map[string]any, platform *WebResearchPlatformFields) bool
 
-// WebResearchReadinessChecker adapts a WebResearchCatalogReadyFunc from a WebResearchReadinessChecker interface.
-func CheckerToCatalogReadyFunc(c WebResearchReadinessChecker) WebResearchCatalogReadyFunc {
+// CheckerToReadinessFunc adapts a WebResearchReadinessFunc from a WebResearchReadinessChecker interface.
+func CheckerToReadinessFunc(c WebResearchReadinessChecker) WebResearchReadinessFunc {
 	if c == nil {
 		return nil
 	}
-	return c.CatalogReady
+	return c.IsReady
 }
 
-// EnrichToolCatalogRuntime fills RuntimeStatus and RuntimeKind for API responses.
-func EnrichToolCatalogRuntime(t *Tool) {
-	EnrichToolCatalogRuntimeWithPlatform(t, nil, nil)
+// EnrichToolRuntimeFields fills RuntimeStatus and RuntimeKind for API responses.
+func EnrichToolRuntimeFields(t *Tool) {
+	EnrichToolRuntimeFieldsWithPlatform(t, nil, nil)
 }
 
-// EnrichToolCatalogRuntimeWithPlatform applies catalog runtime fields using optional platform web research settings.
-func EnrichToolCatalogRuntimeWithPlatform(t *Tool, platform *WebResearchSetting, catalogReady WebResearchCatalogReadyFunc) {
+// EnrichToolRuntimeFieldsWithPlatform applies tool runtime fields using optional platform web research settings.
+func EnrichToolRuntimeFieldsWithPlatform(t *Tool, platform *WebResearchSetting, readiness WebResearchReadinessFunc) {
 	if t == nil {
 		return
 	}
-	t.RuntimeKind = catalogRuntimeKind(*t)
-	t.RuntimeStatus = catalogRuntimeStatus(*t, platform, catalogReady)
+	t.RuntimeKind = toolRuntimeKind(*t)
+	t.RuntimeStatus = toolRuntimeStatus(*t, platform, readiness)
 }
 
-func catalogRuntimeKind(t Tool) string {
+func toolRuntimeKind(t Tool) string {
 	if t.RequiresConfirmation {
 		return RuntimeKindApproval
 	}
@@ -115,7 +115,7 @@ func catalogRuntimeKind(t Tool) string {
 	return RuntimeKindFunction
 }
 
-func catalogRuntimeStatus(t Tool, platform *WebResearchSetting, catalogReady WebResearchCatalogReadyFunc) string {
+func toolRuntimeStatus(t Tool, platform *WebResearchSetting, readiness WebResearchReadinessFunc) string {
 	if !t.Enabled {
 		return RuntimeStatusDisabled
 	}
@@ -132,7 +132,7 @@ func catalogRuntimeStatus(t Tool, platform *WebResearchSetting, catalogReady Web
 		}
 		return RuntimeStatusAvailable
 	}
-	if !catalogConfigReady(t, platform, catalogReady) {
+	if !toolConfigReady(t, platform, readiness) {
 		return RuntimeStatusRegisteredOnly
 	}
 	if _, ok := registryBackedToolKeys[t.Key]; ok {
@@ -144,7 +144,7 @@ func catalogRuntimeStatus(t Tool, platform *WebResearchSetting, catalogReady Web
 	return RuntimeStatusRegisteredOnly
 }
 
-func catalogConfigReady(t Tool, platform *WebResearchSetting, catalogReady WebResearchCatalogReadyFunc) bool {
+func toolConfigReady(t Tool, platform *WebResearchSetting, readiness WebResearchReadinessFunc) bool {
 	cfg := MergeToolConfigMaps(t.ConfigJSON, t.DefaultConfigJSON)
 	switch t.Key {
 	case "google_search":
@@ -154,17 +154,17 @@ func catalogConfigReady(t Tool, platform *WebResearchSetting, catalogReady WebRe
 		return configString(cfg, "model", "gemini_model") != ""
 	case ToolKeyWebResearch:
 		pf := webResearchPlatformFieldsPtr(platform)
-		return webResearchCatalogReady(cfg, pf, catalogReady)
+		return webResearchToolReady(cfg, pf, readiness)
 	default:
 		return true
 	}
 }
 
-// webResearchCatalogReady delegates to the injected checker when available,
+// webResearchToolReady delegates to the injected checker when available,
 // otherwise falls back to a simple key-presence check.
-func webResearchCatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields, catalogReady WebResearchCatalogReadyFunc) bool {
-	if catalogReady != nil {
-		return catalogReady(agentMap, platform)
+func webResearchToolReady(agentMap map[string]any, platform *WebResearchPlatformFields, readiness WebResearchReadinessFunc) bool {
+	if readiness != nil {
+		return readiness(agentMap, platform)
 	}
 	// Fallback: simple key-presence check
 	if platform != nil && (platform.HasAPIKey || strings.TrimSpace(platform.APIKey) != "") {
@@ -225,9 +225,9 @@ func configString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-func enrichToolList(items []Tool, platform *WebResearchSetting, catalogReady WebResearchCatalogReadyFunc) []Tool {
+func enrichToolList(items []Tool, platform *WebResearchSetting, readiness WebResearchReadinessFunc) []Tool {
 	for i := range items {
-		EnrichToolCatalogRuntimeWithPlatform(&items[i], platform, catalogReady)
+		EnrichToolRuntimeFieldsWithPlatform(&items[i], platform, readiness)
 	}
 	return items
 }

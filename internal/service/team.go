@@ -9,7 +9,6 @@ import (
 	"time"
 
 	v1 "aranea-agents/api/kratos/team/v1"
-	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
@@ -52,32 +51,32 @@ func NewTeamService(
 
 func toProtoTeam(t biz.Team) *v1.Team {
 	return &v1.Team{
-		Id:                  t.ID,
-		TeamKey:             t.TeamKey,
-		DisplayName:         t.DisplayName,
-		Status:              t.Status,
-		IsDefault:           t.IsDefault,
-		DefinitionJson:      t.DefinitionJSON,
-		OrchestrationSpec:   toProtoOrchestrationSpec(t.DefinitionJSON),
-		AdkAppName:          t.ADKAppName,
-		CreatedAt:           t.CreatedAt,
-		UpdatedAt:           t.UpdatedAt,
-		DeletedAt:           t.DeletedAt,
-		LinkedGraphId:       team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
-		DepartmentId:      t.DepartmentID,
-		SpiritSessionId:     t.SpiritSessionID,
-		TaskDescription:     t.TaskDescription,
-		AutoCreated:         t.AutoCreated,
-		DagNodeId:           t.DagNodeID,
-		DependsOn:           t.DependsOn,
-		ParallelConfigJson:  t.ParallelConfigJSON,
-		Readonly:            t.Readonly,
-		Source:              t.Source,
-		Kind:                t.Kind,
-		Deliverables:        t.Deliverables,
-		InputContract:       t.InputContract,
-		DeptLeadAgentId:     t.DeptLeadAgentID,
-		CrossDeptMemberIds:  t.CrossDeptMemberIDs,
+		Id:                 t.ID,
+		TeamKey:            t.TeamKey,
+		DisplayName:        t.DisplayName,
+		Status:             t.Status,
+		IsDefault:          t.IsDefault,
+		DefinitionJson:     t.DefinitionJSON,
+		OrchestrationSpec:  toProtoOrchestrationSpec(t.DefinitionJSON),
+		AdkAppName:         t.ADKAppName,
+		CreatedAt:          t.CreatedAt,
+		UpdatedAt:          t.UpdatedAt,
+		DeletedAt:          t.DeletedAt,
+		LinkedGraphId:      team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
+		DepartmentId:       t.DepartmentID,
+		SpiritSessionId:    t.SpiritSessionID,
+		TaskDescription:    t.TaskDescription,
+		AutoCreated:        t.AutoCreated,
+		DagNodeId:          t.DagNodeID,
+		DependsOn:          t.DependsOn,
+		ParallelConfigJson: t.ParallelConfigJSON,
+		Readonly:           t.Readonly,
+		Source:             t.Source,
+		Kind:               t.Kind,
+		Deliverables:       t.Deliverables,
+		InputContract:      t.InputContract,
+		DeptLeadAgentId:    t.DeptLeadAgentID,
+		CrossDeptMemberIds: t.CrossDeptMemberIDs,
 	}
 }
 
@@ -179,7 +178,7 @@ func teamFromProto(pb *v1.Team) biz.Team {
 		IsDefault:          pb.GetIsDefault(),
 		DefinitionJSON:     pb.GetDefinitionJson(),
 		ADKAppName:         pb.GetAdkAppName(),
-		DepartmentID: pb.GetDepartmentId(),
+		DepartmentID:       pb.GetDepartmentId(),
 		Deliverables:       pb.GetDeliverables(),
 		InputContract:      pb.GetInputContract(),
 		DeptLeadAgentID:    pb.GetDeptLeadAgentId(),
@@ -227,12 +226,12 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 		defJSON = biz.EnsureGraphRuntimeDefault(defJSON)
 	}
 	in := biz.Team{
-		TeamKey:            req.GetTeamKey(),
-		DisplayName:        req.GetDisplayName(),
-		Status:             req.GetStatus(),
-		DefinitionJSON:     defJSON,
-		ADKAppName:         req.GetAdkAppName(),
-		DepartmentID: req.GetDepartmentId(),
+		TeamKey:        req.GetTeamKey(),
+		DisplayName:    req.GetDisplayName(),
+		Status:         req.GetStatus(),
+		DefinitionJSON: defJSON,
+		ADKAppName:     req.GetAdkAppName(),
+		DepartmentID:   req.GetDepartmentId(),
 	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {
@@ -316,12 +315,9 @@ func (s *TeamService) GetTeamRun(ctx context.Context, req *v1.GetTeamRunRequest)
 }
 
 func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRequest) (*v1.TeamRun, error) {
-	r, err := s.uc.GetRun(ctx, req.GetId())
+	r, err := s.uc.CancelRun(ctx, req.GetId())
 	if err != nil {
 		return nil, mapTeamErr(err)
-	}
-	if r.Status != biz.TeamRunStatusRunning && r.Status != biz.TeamRunStatusPending {
-		return nil, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
 	}
 	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
 		if cancelled, reason := s.runs.Cancel(r.SessionID); !cancelled && reason != "" {
@@ -332,13 +328,6 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 			runID = entry.RunID
 		}
 		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID, s.lg)
-	}
-	now := agent.RFC3339Now()
-	r.Status = biz.TeamRunStatusCancelled
-	r.FinishedAt = now
-	r.UpdatedAt = now
-	if err := s.uc.UpdateRun(ctx, r); err != nil {
-		return nil, err
 	}
 	return toProtoTeamRun(r), nil
 }

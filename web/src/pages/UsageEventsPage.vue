@@ -146,7 +146,6 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -156,8 +155,6 @@ import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
 import { useLocalPagination } from '../composables/useLocalPagination';
-
-const $q = useQuasar();
 
 const {
   events,
@@ -169,15 +166,15 @@ const {
   statusOptions,
   usageKindOptions,
   retainDays,
+  purging,
   load,
   exportCsv,
   purgeEvents,
+  onPurgeConfirm,
   resetFilters,
   formatMoney,
   truncate,
 } = useUsageEventsPage();
-
-const purging = ref(false);
 
 const {
   page,
@@ -209,28 +206,6 @@ async function onExportCsv() {
 function onFilterChange() {
   page.value = 1;
   void load();
-}
-
-function onPurgeConfirm() {
-  const days = retainDays.value;
-  $q.dialog({
-    class: 'app-dialog-card app-dialog-card--sm',
-    title: '确认删除',
-    message: `将只保留最近 ${days} 天的数据，其他用量事件将全部删除。此操作不可撤销，确认继续？`,
-    cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
-    ok: { label: '确认删除', color: 'negative', flat: true, rounded: true, noCaps: true },
-    persistent: true,
-  }).onOk(async () => {
-    purging.value = true;
-    try {
-      const deleted = await purgeEvents();
-      $q.notify({ type: 'positive', message: `已删除 ${deleted} 条用量事件` });
-    } catch {
-      $q.notify({ type: 'negative', message: '删除用量事件失败' });
-    } finally {
-      purging.value = false;
-    }
-  });
 }
 
 watch(events, () => {

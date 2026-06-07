@@ -169,6 +169,17 @@ export function useA2APage() {
     }
   }
 
+  function confirmRemoveRemote(id: string, name: string) {
+    $q.dialog({
+      title: '确认删除',
+      message: `确定要删除远程 Agent「${name || id}」吗？`,
+      cancel: true,
+      persistent: true,
+    }).onOk(() => {
+      void removeRemote(id);
+    });
+  }
+
   async function loadGateway() {
     gatewayLoading.value = true;
     error.value = '';
@@ -236,6 +247,7 @@ export function useA2APage() {
     submitRemoteRegister,
     previewRemote,
     removeRemote,
+    confirmRemoveRemote,
     loadGateway,
     reload,
     runtimeConfig,

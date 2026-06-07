@@ -1,12 +1,12 @@
 import { createChannelService } from '../../services/index';
 import type {
   Channel as KratosChannel,
-  ChannelCatalogItem as KratosCatalogItem,
+  ChannelTypeItem as KratosCatalogItem,
   ChannelCredential as KratosCredential,
   ChannelTestResult as KratosTestResult,
 } from '../../services/kratos/channel/v1/index';
 import type {
-  ChannelCatalogItem,
+  ChannelTypeItem,
   ChannelCredential,
   ChannelCredentialInput,
   ChannelDeliveryRow,
@@ -30,7 +30,7 @@ function parseRecord(raw: string | undefined): Record<string, unknown> {
   }
 }
 
-function kratosCatalogToLegacy(k: KratosCatalogItem): ChannelCatalogItem {
+function kratosCatalogToLegacy(k: KratosCatalogItem): ChannelTypeItem {
   const cred = parseRecord(k.credentialSchemaJson);
   return {
     type: k.type ?? '',
@@ -43,7 +43,7 @@ function kratosCatalogToLegacy(k: KratosCatalogItem): ChannelCatalogItem {
     supports_test: Boolean(k.supportsTest),
     supports_webhook: Boolean(k.supportsWebhook),
     config_schema: parseRecord(k.configSchemaJson),
-    credential_schema: cred as ChannelCatalogItem['credential_schema'],
+    credential_schema: cred as ChannelTypeItem['credential_schema'],
     ui_hints: parseRecord(k.uiHintsJson),
     sort_order: k.sortOrder ?? 0,
   };
@@ -115,8 +115,8 @@ function inputsToKratos(creds: ChannelCredentialInput[]) {
   }));
 }
 
-export async function listChannelCatalog(): Promise<ChannelCatalogItem[]> {
-  const data = await channelApi.ListChannelCatalog({});
+export async function listChannelCatalog(): Promise<ChannelTypeItem[]> {
+  const data = await channelApi.ListChannelTypes({});
   return (data.items ?? []).map(kratosCatalogToLegacy);
 }
 
@@ -194,7 +194,7 @@ export async function deleteChannelCredential(channelId: string, credentialKey: 
 
 export type {
   ChannelRow,
-  ChannelCatalogItem,
+  ChannelTypeItem,
   ChannelResourceInput,
   ChannelCredential,
   ChannelCredentialInput,

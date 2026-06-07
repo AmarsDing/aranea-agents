@@ -39,7 +39,7 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 	var durations30d []int
 
 	for _, row := range rows {
-		day := dayFromCreatedAt(row.CreatedAt)
+		day := types.DayFromCreatedAt(row.CreatedAt)
 		b, ok := dailyBuckets[day]
 		if !ok {
 			b = &dailyBucket{}
@@ -47,13 +47,13 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 		}
 		b.count++
 		b.totalDurationMs += row.DurationMs
-		if isSuccess(row.Outcome, row.Status) {
+		if types.IsSuccess(row.Outcome, row.Status) {
 			b.successes++
 		}
 
 		// 30d window
 		inv30d++
-		if isSuccess(row.Outcome, row.Status) {
+		if types.IsSuccess(row.Outcome, row.Status) {
 			succ30d++
 		}
 		durations30d = append(durations30d, row.DurationMs)
@@ -61,7 +61,7 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 		// 7d window
 		if row.CreatedAt >= since7d.Format(time.RFC3339) {
 			inv7d++
-			if isSuccess(row.Outcome, row.Status) {
+			if types.IsSuccess(row.Outcome, row.Status) {
 				succ7d++
 			}
 			durations7d = append(durations7d, row.DurationMs)
@@ -87,12 +87,12 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 		SkillID:             skillID,
 		TotalInvocations7d:  inv7d,
 		SuccessCount7d:      succ7d,
-		SuccessRate7d:       safeRate(succ7d, inv7d),
-		P95DurationMs7d:     p95(durations7d),
+		SuccessRate7d:       types.SafeRate(succ7d, inv7d),
+		P95DurationMs7d:     types.P95(durations7d),
 		TotalInvocations30d: inv30d,
 		SuccessCount30d:     succ30d,
-		SuccessRate30d:      safeRate(succ30d, inv30d),
-		P95DurationMs30d:    p95(durations30d),
+		SuccessRate30d:      types.SafeRate(succ30d, inv30d),
+		P95DurationMs30d:    types.P95(durations30d),
 		DailyMetrics:        dailyMetrics,
 	}
 	return result, nil
@@ -104,38 +104,3 @@ type dailyBucket struct {
 	totalDurationMs int
 }
 
-func isSuccess(outcome, status string) bool {
-	if outcome == "success" {
-		return true
-	}
-	if outcome == "" && (status == "completed" || status == "success") {
-		return true
-	}
-	return false
-}
-
-func safeRate(success, total int) float64 {
-	if total <= 0 {
-		return 0
-	}
-	return float64(success) / float64(total)
-}
-
-func p95(durations []int) int {
-	if len(durations) == 0 {
-		return 0
-	}
-	sort.Ints(durations)
-	idx := int(float64(len(durations)) * 0.95)
-	if idx >= len(durations) {
-		idx = len(durations) - 1
-	}
-	return durations[idx]
-}
-
-func dayFromCreatedAt(createdAt string) string {
-	if len(createdAt) >= 10 {
-		return createdAt[:10]
-	}
-	return createdAt
-}

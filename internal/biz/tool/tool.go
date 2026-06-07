@@ -301,7 +301,7 @@ type ToolSyncer interface {
 	SyncBuiltinTools(ctx context.Context) error
 }
 
-type ToolCatalogReader interface {
+type ToolRegistryReader interface {
 	ToolReader
 	ToolOverrideReader
 }
@@ -368,7 +368,7 @@ func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListR
 	if err != nil {
 		return ToolListResult{}, err
 	}
-	result.Items = enrichToolList(result.Items, LoadWebResearchPlatform(ctx, u.sys), CheckerToCatalogReadyFunc(u.webResChecker))
+	result.Items = enrichToolList(result.Items, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
 	return result, nil
 }
 
@@ -380,7 +380,7 @@ func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error) {
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolCatalogRuntimeWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToCatalogReadyFunc(u.webResChecker))
+	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
 	return t, nil
 }
 
@@ -392,7 +392,7 @@ func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, err
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolCatalogRuntimeWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToCatalogReadyFunc(u.webResChecker))
+	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
 	return t, nil
 }
 
@@ -414,7 +414,7 @@ func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput)
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolCatalogRuntimeWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToCatalogReadyFunc(u.webResChecker))
+	EnrichToolRuntimeFieldsWithPlatform(&t, LoadWebResearchPlatform(ctx, u.sys), CheckerToReadinessFunc(u.webResChecker))
 	return t, nil
 }
 

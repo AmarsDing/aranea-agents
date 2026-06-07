@@ -325,11 +325,11 @@ import ChannelTurnJobsPanel from './ChannelTurnJobsPanel.vue';
 import { useChannelEditorForm } from './useChannelEditorForm';
 import { useChannelEditorLabels } from './useChannelEditorLabels';
 import { useChannelIconRefresh } from './useChannelIconRefresh';
-import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from './types';
+import type { ChannelTypeItem, ChannelCredential, ChannelRow } from './types';
 
 const props = defineProps<{
   modelValue: boolean;
-  catalog: ChannelCatalogItem[];
+  catalog: ChannelTypeItem[];
   row: ChannelRow | null;
   credentials: ChannelCredential[];
 }>();

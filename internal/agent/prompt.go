@@ -13,7 +13,7 @@ import (
 type Deps struct {
 	Agents       biz.AgentRepository
 	AgentUC      biz.TeamAgentLookup
-	ToolsCatalog biz.ToolCatalogReader
+	ToolRegistry biz.ToolRegistryReader
 	SQLiteSessionMemory bool
 	Organization  *biz.OrganizationUsecase
 	LG            loggateway.Logger
@@ -120,7 +120,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 			files = loaded
 		}
 	}
-	skipToolCatalogCue := HasFilteredPromptFile(files, ag.SystemPromptMode, "CAPABILITIES.md")
+	skipToolCue := HasFilteredPromptFile(files, ag.SystemPromptMode, "CAPABILITIES.md")
 	if level >= cueLevelFull {
 		b.WriteString("When tools are enabled below, filesystem tools operate under a shared workspace root (override with env ARANEA_WORKSPACE_ROOT or WORKSPACE_ROOT).\n")
 		b.WriteString("exec_command (shell_exec) uses that workspace as default cwd; optional JSON field workdir sets a subdirectory or absolute path allowed by the OS user. Prefer relative paths under the workspace (e.g. mkdir notes). If stderr reports access errors, explain once—do not loop repeating the same shell command.\n")
@@ -138,8 +138,8 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 		b.WriteString("- Subagents: disabled (this process runs a single agent turn; delegate via instructions only).\n")
 	}
 	uc := d.AgentUC
-	if uc == nil && d.Agents != nil && d.ToolsCatalog != nil {
-		uc = biz.NewAgentUsecase(d.Agents, d.ToolsCatalog, nil, nil)
+	if uc == nil && d.Agents != nil && d.ToolRegistry != nil {
+		uc = biz.NewAgentUsecase(d.Agents, d.ToolRegistry, nil, nil)
 	}
 	if uc != nil {
 		eff, err := uc.GetEffectiveTools(ctx, ag.ID)
@@ -171,33 +171,33 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 						}
 					}
 				}
-				if len(keys) > 0 && !skipToolCatalogCue {
+				if len(keys) > 0 && !skipToolCue {
 					b.WriteString("- Effective tool keys this turn: " + strings.Join(keys, ", ") + "\n")
 					if level >= cueLevelStandard {
 						b.WriteString("- Call tools by their runtime function names: save_file (not write_file), exec_command (not shell_exec), list_file (not list_files).\n")
 					}
 				} else if len(keys) == 0 && level >= cueLevelCompact {
 					b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
-				} else if skipToolCatalogCue && len(keys) > 0 && level >= cueLevelCompact {
+				} else if skipToolCue && len(keys) > 0 && level >= cueLevelCompact {
 					b.WriteString("- Tools: see CAPABILITIES.md in instruction; effective keys resolved at runtime.\n")
 				}
-				if hasWorkspaceSearch && level >= cueLevelFull && !skipToolCatalogCue {
+				if hasWorkspaceSearch && level >= cueLevelFull && !skipToolCue {
 					b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → diff_edit (or patch_file when you have unified diff). Use save_file only for new files or small full rewrites; use replace_content for simple single replacements. Avoid list_file at repo root without a narrowed path or keyword.\n")
 				}
 				if level >= cueLevelFull {
 					b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")
 				}
-				if memCue && level >= cueLevelStandard && !skipToolCatalogCue {
+				if memCue && level >= cueLevelStandard && !skipToolCue {
 					if d.SQLiteSessionMemory {
 						b.WriteString("- load_memory/preload_memory: SQLite-backed session memory (memory_entities); durable across process restarts for turns that sync into the store.\n")
 					} else {
 						b.WriteString("- load_memory/preload_memory: in-process recall only (no SessionMemory store wired to this runner); not durable across restarts.\n")
 					}
 				}
-				if mcpCue && level >= cueLevelStandard && !skipToolCatalogCue {
+				if mcpCue && level >= cueLevelStandard && !skipToolCue {
 					b.WriteString("- MCP (mcp_tool_set): tools from enabled platform MCP servers (stdio/sse/streamable_http per row). Optional: include `mcp:<server_key>` in Tools allow/deny JSON to restrict which servers mount; stdio servers respect request context cancellation when the tool runner passes it through.\n")
 				}
-				if mcpBrokerCue && level >= cueLevelStandard && !skipToolCatalogCue {
+				if mcpBrokerCue && level >= cueLevelStandard && !skipToolCue {
 					b.WriteString("- MCP Broker (mcp_broker): runtime MCP discovery tools (mcp_list_servers, mcp_list_tools, mcp_inspect_tools, mcp_call). Use these to dynamically discover and invoke MCP servers at runtime instead of having tools pre-mounted.\n")
 				}
 				if len(eff.Deny) > 0 && level >= cueLevelStandard {
@@ -209,7 +209,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	if p := strings.TrimSpace(st.ToolsToolCallPrefix); p != "" && level >= cueLevelStandard {
 		fmt.Fprintf(&b, "- Strip tool name prefix before resolution: %q\n", p)
 	}
-	if uc == nil && skipToolCatalogCue && level >= cueLevelCompact {
+	if uc == nil && skipToolCue && level >= cueLevelCompact {
 		b.WriteString("- Tools: see CAPABILITIES.md in instruction; effective keys resolved at runtime.\n")
 	}
 	return strings.TrimSpace(b.String())

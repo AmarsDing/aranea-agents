@@ -32,7 +32,7 @@ message Channel {
   string deleted_at = 18;
 }
 
-message ChannelCatalogItem {
+message ChannelTypeItem {
   string type = 1;
   string label = 2;
   string description = 3;
@@ -86,8 +86,8 @@ message ChannelTestResult {
   string details_json = 4;
 }
 
-message ListChannelCatalogResponse {
-  repeated ChannelCatalogItem items = 1;
+message ListChannelTypesResponse {
+  repeated ChannelTypeItem items = 1;
 }
 
 message ListChannelsResponse {
@@ -188,7 +188,7 @@ message ListChannelTurnJobsResponse {
 }
 
 service ChannelService {
-  rpc ListChannelCatalog(google.protobuf.Empty) returns (ListChannelCatalogResponse) {
+  rpc ListChannelTypes(google.protobuf.Empty) returns (ListChannelTypesResponse) {
     option (google.api.http) = {get: "/v1/channels/catalog"};
   }
   rpc ListChannels(google.protobuf.Empty) returns (ListChannelsResponse) {

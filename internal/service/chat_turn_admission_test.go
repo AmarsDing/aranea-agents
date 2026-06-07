@@ -13,7 +13,7 @@ func TestNativeResultFromAdmissionVerdict_queued(t *testing.T) {
 		Action:    turn.AdmissionQueued,
 		PendingID: "p-1",
 	})
-	if !IsTurnMessageQueued(err) {
+	if !isTurnMessageQueued(err) {
 		t.Fatalf("err=%v", err)
 	}
 	if result.Outcome != biz.NativeTurnOutcomeQueued || result.PendingID != "p-1" {
@@ -23,7 +23,7 @@ func TestNativeResultFromAdmissionVerdict_queued(t *testing.T) {
 
 func TestNativeResultFromAdmissionVerdict_busy(t *testing.T) {
 	_, err := nativeResultFromAdmissionVerdict(turn.AdmissionVerdict{Action: turn.AdmissionRejectBusy})
-	if !IsTurnBusyError(err) {
+	if !isTurnBusyError(err) {
 		t.Fatalf("err=%v", err)
 	}
 }

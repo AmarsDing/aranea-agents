@@ -84,16 +84,6 @@ func (g *LLMSessionTitleGenerator) resolveModel(ctx context.Context) (trpcmodel.
 		return nil, kerrors.NotFound("SESSION", "no models in catalog")
 	}
 
-	pm := pickTitleModel(models)
+	pm := biz.PickTitleModel(models)
 	return provider.TRPCModelForProviderModel(ctx, g.catalog, g.rt, pm.Provider, pm.Model, g.lg)
-}
-
-func pickTitleModel(models []biz.ProviderModel) biz.ProviderModel {
-	for _, m := range models {
-		name := strings.ToLower(m.Model)
-		if strings.Contains(name, "mini") || strings.Contains(name, "flash") || strings.Contains(name, "lite") || strings.Contains(name, "small") {
-			return m
-		}
-	}
-	return models[0]
 }

@@ -12,7 +12,7 @@ import (
 // queue while another turn is active; no assistant message is produced yet.
 var ErrTurnMessageQueued = errors.New("turn message queued")
 
-func IsTurnMessageQueued(err error) bool {
+func isTurnMessageQueued(err error) bool {
 	return errors.Is(err, ErrTurnMessageQueued)
 }
 
@@ -20,8 +20,8 @@ func turnBusyError() error {
 	return kerrors.Conflict("CHAT_TURN_BUSY", "session turn is starting; retry in a moment or use enqueue")
 }
 
-// IsTurnBusyError reports admission conflict while a run is starting (no runner yet).
-func IsTurnBusyError(err error) bool {
+// isTurnBusyError reports admission conflict while a run is starting (no runner yet).
+func isTurnBusyError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -33,7 +33,7 @@ func IsTurnBusyError(err error) bool {
 
 func turnResultToNative(tr biz.TurnResult, err error) (biz.NativeTurnResult, error) {
 	if err != nil {
-		if IsTurnMessageQueued(err) {
+		if isTurnMessageQueued(err) {
 			return biz.NativeTurnResult{
 				Outcome:   biz.NativeTurnOutcomeQueued,
 				PendingID: tr.PendingID,

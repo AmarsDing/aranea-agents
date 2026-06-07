@@ -30,7 +30,7 @@ export type ChannelDeliveryRow = {
   updated_at: string;
 };
 
-export type ChannelCatalogItem = {
+export type ChannelTypeItem = {
   type: string;
   label: string;
   description: string;

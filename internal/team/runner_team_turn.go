@@ -57,7 +57,7 @@ func (r *Runner) resolveAnchorAndAttachments(
 				loggateway.Str("intent_anchor_agent_id", want))
 		}
 	}
-	firstAg, err := r.catalogAgent(ctx, anchorMem.AgentID)
+	firstAg, err := r.lookupAgent(ctx, anchorMem.AgentID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			err = kerrors.NotFound("AGENT", "team member agent not found")

@@ -119,7 +119,7 @@ func (s *ChannelService) runtimeMetadataPatch(channelID string) string {
 	return string(b)
 }
 
-func bizCatalogItemToProto(it biz.ChannelCatalogItem) (*v1.ChannelCatalogItem, error) {
+func bizTypeItemToProto(it biz.ChannelTypeItem) (*v1.ChannelTypeItem, error) {
 	cfg, err := json.Marshal(it.ConfigSchema)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func bizCatalogItemToProto(it biz.ChannelCatalogItem) (*v1.ChannelCatalogItem, e
 	if err != nil {
 		return nil, err
 	}
-	return &v1.ChannelCatalogItem{
+	return &v1.ChannelTypeItem{
 		Type:                 it.Type,
 		Label:                it.Label,
 		Description:          it.Description,
@@ -212,17 +212,17 @@ func protoCredInputs(in []*v1.ChannelCredentialInput) []biz.ChannelCredentialInp
 	return out
 }
 
-func (s *ChannelService) ListChannelCatalog(ctx context.Context, _ *emptypb.Empty) (*v1.ListChannelCatalogResponse, error) {
-	items := s.uc.Catalog()
-	protoItems := make([]*v1.ChannelCatalogItem, 0, len(items))
+func (s *ChannelService) ListChannelTypes(ctx context.Context, _ *emptypb.Empty) (*v1.ListChannelTypesResponse, error) {
+	items := s.uc.ChannelTypes()
+	protoItems := make([]*v1.ChannelTypeItem, 0, len(items))
 	for _, it := range items {
-		p, err := bizCatalogItemToProto(it)
+		p, err := bizTypeItemToProto(it)
 		if err != nil {
 			return nil, err
 		}
 		protoItems = append(protoItems, p)
 	}
-	return &v1.ListChannelCatalogResponse{Items: protoItems}, nil
+	return &v1.ListChannelTypesResponse{Items: protoItems}, nil
 }
 
 func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v1.ListChannelsResponse, error) {

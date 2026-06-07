@@ -269,7 +269,7 @@ func (webResearchReadinessAdapter) ResolveReady(agentMap map[string]any, platfor
 	return webresearchpkg.ResolveReady(agentMap, bizToolToWebResearchPlatform(platform))
 }
 
-func (webResearchReadinessAdapter) CatalogReady(agentMap map[string]any, platform *biztool.WebResearchPlatformFields) bool {
+func (webResearchReadinessAdapter) IsReady(agentMap map[string]any, platform *biztool.WebResearchPlatformFields) bool {
 	return webresearchpkg.CatalogReady(agentMap, bizToolToWebResearchPlatform(platform))
 }
 
@@ -300,7 +300,7 @@ func (bizWebResearchReadinessAdapter) ResolveReady(agentMap map[string]any, plat
 	return webresearchpkg.ResolveReady(agentMap, bizToWebResearchPlatform(platform))
 }
 
-func (bizWebResearchReadinessAdapter) CatalogReady(agentMap map[string]any, platform *biz.WebResearchPlatformFields) bool {
+func (bizWebResearchReadinessAdapter) IsReady(agentMap map[string]any, platform *biz.WebResearchPlatformFields) bool {
 	return webresearchpkg.CatalogReady(agentMap, bizToWebResearchPlatform(platform))
 }
 
@@ -324,7 +324,7 @@ func provideBizWebResearchReadinessChecker() biz.WebResearchReadinessChecker {
 	return bizWebResearchReadinessAdapter{}
 }
 
-func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolCatalogReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, providerValidator biz.ProviderModelPairValidator, lg loggateway.Logger) *biz.AgentUsecase {
+func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistryReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, providerValidator biz.ProviderModelPairValidator, lg loggateway.Logger) *biz.AgentUsecase {
 	uc := biz.NewAgentUsecase(repo, tools, sys, lg)
 	uc.SetWebResearchChecker(checker)
 	uc.SetProviderModelValidator(providerValidator)
@@ -634,7 +634,7 @@ func provideChatServiceDeps(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
-	toolsCatalog biz.ToolCatalogReader,
+	toolRegistry biz.ToolRegistryReader,
 	toolUC *biz.ToolUsecase,
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
@@ -670,7 +670,7 @@ func provideChatServiceDeps(
 				Agents:          agents,
 				AgentsUC:        agentsUC,
 				CLIAdminAgentUC: agentsUC,
-				Tools:           toolsCatalog,
+				Tools:           toolRegistry,
 				ToolUC:          toolUC,
 				LLM:             llmCatalog,
 				SkillUC:         skillUC,
@@ -1693,7 +1693,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
 		biz.NewPromptRefiner,
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
-		wire.Bind(new(biz.ToolCatalogReader), new(biz.ToolRepo)),
+		wire.Bind(new(biz.ToolRegistryReader), new(biz.ToolRepo)),
 		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
 		wire.Bind(new(araneasession.CompressorDeps), new(biz.SessionRepo)),
 		wire.Bind(new(server.ReadinessProbe), new(*data.Data)),

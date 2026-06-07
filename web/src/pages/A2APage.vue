@@ -156,7 +156,6 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useQuasar } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -206,28 +205,16 @@ const {
   submitRemoteRegister,
   previewRemote,
   removeRemote,
+  confirmRemoveRemote,
   loadGateway,
   reload,
   runtimeConfig,
 } = useA2APage();
-
-const $q = useQuasar();
 
 const remoteAgentPanelRef = ref<InstanceType<typeof A2ARemoteAgentPanel> | null>(null);
 
 async function onRemoteRegister(input: RegisterRemoteAgentInput) {
   await submitRemoteRegister(input);
   remoteAgentPanelRef.value?.resetForm();
-}
-
-function confirmRemoveRemote(id: string, name: string) {
-  $q.dialog({
-    title: '确认删除',
-    message: `确定要删除远程 Agent「${name || id}」吗？`,
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    removeRemote(id);
-  });
 }
 </script>

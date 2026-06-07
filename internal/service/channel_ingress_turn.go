@@ -28,7 +28,7 @@ func (h *ChannelIngress) runChatTurnWithOutcome(ctx context.Context, chRow biz.C
 		}
 		result, err := h.runChatTurnWithOutcomeOnce(ctx, chRow, platform, ev)
 		last, lastErr = result, err
-		if err == nil || !IsTurnBusyError(err) {
+		if err == nil || !isTurnBusyError(err) {
 			return result, err
 		}
 	}
@@ -53,14 +53,14 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 
 	result, err := h.runNativeTurnWithBusyRetry(ctx, chRow, platform, input)
 	if err != nil {
-		if IsTurnMessageQueued(err) || result.Outcome == biz.NativeTurnOutcomeQueued {
+		if isTurnMessageQueued(err) || result.Outcome == biz.NativeTurnOutcomeQueued {
 			pendingID := strings.TrimSpace(result.PendingID)
 			if pendingID == "" {
 				pendingID = h.chat.LastPendingMessageID(sessionID)
 			}
 			return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeQueued, PendingID: pendingID}, nil
 		}
-		if IsTurnBusyError(err) {
+		if isTurnBusyError(err) {
 			return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 		}
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
@@ -91,7 +91,7 @@ func (h *ChannelIngress) runNativeTurnWithBusyRetry(ctx context.Context, chRow b
 			input,
 		)
 		last, lastErr = result, err
-		if err == nil || !IsTurnBusyError(err) {
+		if err == nil || !isTurnBusyError(err) {
 			return result, err
 		}
 	}

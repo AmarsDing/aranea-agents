@@ -7,7 +7,7 @@
     @update:model-value="$emit('update:open', $event)"
     @hide="$emit('update:open', false)"
   >
-    <q-card class="tool-help-drawer column">
+    <q-card class="app-dialog-card tool-help-drawer column">
       <q-card-section class="tool-help-drawer__head row items-center justify-between no-wrap">
         <div class="tool-help-drawer__title">Tool 编辑帮助</div>
         <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="$emit('update:open', false)" />
