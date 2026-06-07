@@ -171,7 +171,7 @@ func pkgValidateCmd() *cobra.Command {
 				"version", manifest.Metadata.Version,
 				"mcp_servers", fmt.Sprintf("%d", len(manifest.Spec.MCPServers)),
 				"skills", fmt.Sprintf("%d", len(manifest.Spec.Skills)),
-				"industries", fmt.Sprintf("%d", len(manifest.Spec.Industries)),
+				"companies", fmt.Sprintf("%d", len(manifest.Spec.Companies)),
 				"agents", fmt.Sprintf("%d", len(manifest.Spec.Agents)),
 				"teams", fmt.Sprintf("%d", len(manifest.Spec.Teams)),
 				"graphs", fmt.Sprintf("%d", len(manifest.Spec.Graphs)),

@@ -50,7 +50,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 		loggateway.Int("agents_created", result.AgentsCreated),
 		loggateway.Int("agents_updated", result.AgentsUpdated),
 		loggateway.Int("graphs_created", result.GraphsCreated),
-		loggateway.Int("taxonomy_nodes", result.TaxonomyNodes),
+		loggateway.Int("org_nodes", result.OrgNodes),
 		loggateway.Int("failures", len(result.Failures)))
 
 	// 同时写入 Graph 模板到 graph_definitions 表
@@ -108,12 +108,12 @@ func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenari
 // Returns (agentsCreated, teamsCreated, error).
 func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error) {
 	// 从现有 agents.yaml 加载并转换为 Pack 格式
-	spec, loadErr := loader.LoadIndustrySpec(scenarioDir, industryKey)
+	spec, loadErr := loader.LoadCompanySpec(scenarioDir, industryKey)
 	if loadErr != nil {
 		return 0, 0, fmt.Errorf("load industry spec %s: %w", industryKey, loadErr)
 	}
 
-	p, convertErr := pack.ConvertIndustrySpecToPack(spec)
+	p, convertErr := pack.ConvertCompanySpecToPack(spec)
 	if convertErr != nil {
 		return 0, 0, fmt.Errorf("convert industry spec %s to pack: %w", industryKey, convertErr)
 	}
@@ -186,7 +186,7 @@ func newPackImporter(client *ent.Client, lg loggateway.Logger) *pack.Importer {
 		NewAgentRepo(d),
 		NewTeamRepo(d),
 		NewTeamRepo(d),
-		NewTaxonomyRepo(d),
+		NewOrganizationRepo(d),
 		NewGraphRepo(d),
 		NewSkillRepo(d),
 	)

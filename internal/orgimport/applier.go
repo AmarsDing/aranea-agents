@@ -96,7 +96,7 @@ func (a *Applier) Apply(spec *Spec) (*ApplyResult, error) {
 	result := &ApplyResult{}
 
 	// Phase 1: categories (industry → dept → position order).
-	for _, ind := range spec.Spec.Industries {
+	for _, ind := range spec.Spec.Companies {
 		desc := ind.Description
 		if a.opts.Refine {
 			if refined, err := a.refineText("category.industry", "", desc, ""); err == nil && refined != "" {
@@ -248,7 +248,7 @@ func (a *Applier) upsertAgent(ag AgentSpec, spec *Spec, result *ApplyResult) err
 		"provider":             ag.Provider,
 		"model":                ag.Model,
 		"agent_description":    desc,
-		"taxonomy_position_id": catPositionID,
+		"position_id":          catPositionID,
 		"system_prompt_mode":   ag.SystemPromptMode,
 		"status":               "active",
 	}

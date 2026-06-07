@@ -14,12 +14,12 @@ import (
 
 // ImporterRepo 导入引擎所需的写入仓库接口。
 type ImporterRepo interface {
-	// Taxonomy
-	CreateTaxonomyNode(ctx context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error)
-	UpdateTaxonomyNode(ctx context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error)
-	GetTaxonomyNodeByKey(ctx context.Context, key string) (biz.TaxonomyNode, error)
-	GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (biz.TaxonomyNode, error)
-	ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error)
+	// Organization
+	CreateOrganizationNode(ctx context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error)
+	UpdateOrganizationNode(ctx context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error)
+	GetOrganizationNodeByKey(ctx context.Context, key string) (biz.OrganizationNode, error)
+	GetOrganizationNodeByKeyAnyState(ctx context.Context, key string) (biz.OrganizationNode, error)
+	ListOrganizationNodesByParentID(ctx context.Context, parentID string) ([]biz.OrganizationNode, error)
 
 	// Agent
 	GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error)
@@ -81,19 +81,19 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 	result := &ImportResult{}
 	mapper := NewKeyMapper()
 
-	// Taxonomy 阶段不支持 duplicate 策略（节点 key 必须唯一），提前告知用户
-	if p.Taxonomy != nil && strategy == ConflictDuplicate {
+	// Organization 阶段不支持 duplicate 策略（节点 key 必须唯一），提前告知用户
+	if p.Organization != nil && strategy == ConflictDuplicate {
 		result.Warnings = append(result.Warnings,
-			"taxonomy 不支持 duplicate 策略，重复 key 将被忽略并使用现有节点")
+			"organization 不支持 duplicate 策略，重复 key 将被忽略并使用现有节点")
 	}
 
-	// Phase 1: Taxonomy
-	if p.Taxonomy != nil {
-		count, warns, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper, cfg.kindOverride)
+	// Phase 1: Organization
+	if p.Organization != nil {
+		count, warns, err := im.importOrganization(ctx, p.Organization, strategy, mapper, cfg.kindOverride)
 		if err != nil {
-			return result, kerrors.BadRequest("PACK_TAXONOMY_IMPORT", fmt.Sprintf("pack import: Phase 1 (Taxonomy) 失败: %s", err.Error()))
+			return result, kerrors.BadRequest("PACK_ORGANIZATION_IMPORT", fmt.Sprintf("pack import: Phase 1 (Organization) 失败: %s", err.Error()))
 		}
-		result.TaxonomyNodes = count
+		result.OrgNodes = count
 		result.Warnings = append(result.Warnings, warns...)
 	}
 
@@ -151,48 +151,48 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 	return result, nil
 }
 
-// importTaxonomy 导入行业分类树。
-func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, strategy ConflictStrategy, mapper *KeyMapper, kindOverride string) (int, []string, error) {
+// importOrganization 导入组织分类树。
+func (im *Importer) importOrganization(ctx context.Context, spec *OrganizationPackSpec, strategy ConflictStrategy, mapper *KeyMapper, kindOverride string) (int, []string, error) {
 	count := 0
 	var warns []string
-	// IsSystem: taxonomy nodes from system_builtin or ecosystem_preset packs are system nodes
+	// IsSystem: organization nodes from system_builtin or ecosystem_preset packs are system nodes
 	isSystem := kindOverride == "system_builtin" || kindOverride == "ecosystem_preset"
 
-	for _, ind := range spec.Industries {
-		indNode, err := im.upsertTaxonomyNode(ctx, biz.TaxonomyNode{
-			Key:         ind.Key,
-			Name:        ind.Name,
-			Description: ind.Description,
-			Level:       "industry",
-			SortOrder:   ind.SortOrder,
+	for _, comp := range spec.Companies {
+		compNode, err := im.upsertOrganizationNode(ctx, biz.OrganizationNode{
+			Key:         comp.Key,
+			Name:        comp.Name,
+			Description: comp.Description,
+			Level:       "company",
+			SortOrder:   comp.SortOrder,
 			IsSystem:    isSystem,
 		}, strategy)
 		if err != nil {
-			return count, warns, kerrors.BadRequest("PACK_INDUSTRY_IMPORT", fmt.Sprintf("导入行业 %s 失败: %s", ind.Key, err.Error()))
+			return count, warns, kerrors.BadRequest("PACK_COMPANY_IMPORT", fmt.Sprintf("导入公司 %s 失败: %s", comp.Key, err.Error()))
 		}
-		mapper.RegisterTaxonomy(ind.Key, indNode.ID)
+		mapper.RegisterOrg(comp.Key, compNode.ID)
 		count++
 
-		for _, dept := range ind.Departments {
-			deptNode, err := im.upsertTaxonomyNode(ctx, biz.TaxonomyNode{
+		for _, dept := range comp.Departments {
+			deptNode, err := im.upsertOrganizationNode(ctx, biz.OrganizationNode{
 				Key:         dept.Key,
 				Name:        dept.Name,
 				Description: dept.Description,
-				ParentID:    indNode.ID,
+				ParentID:    compNode.ID,
 				Level:       "department",
 				SortOrder:   dept.SortOrder,
 				IsSystem:    isSystem,
 			}, strategy)
 			if err != nil {
-				warns = append(warns, fmt.Sprintf("导入部门 %s/%s 失败，跳过其子节点", ind.Key, dept.Key))
+				warns = append(warns, fmt.Sprintf("导入部门 %s/%s 失败，跳过其子节点", comp.Key, dept.Key))
 				continue
 			}
-			deptKey := BuildTaxonomyKey(ind.Key, dept.Key, "")
-			mapper.RegisterTaxonomy(deptKey, deptNode.ID)
+			deptKey := BuildOrgKey(comp.Key, dept.Key, "")
+			mapper.RegisterOrg(deptKey, deptNode.ID)
 			count++
 
 			for _, pos := range dept.Positions {
-				posNode, err := im.upsertTaxonomyNode(ctx, biz.TaxonomyNode{
+				posNode, err := im.upsertOrganizationNode(ctx, biz.OrganizationNode{
 					Key:         pos.Key,
 					Name:        pos.Name,
 					Description: pos.Description,
@@ -202,11 +202,11 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 					IsSystem:    isSystem,
 				}, strategy)
 				if err != nil {
-					warns = append(warns, fmt.Sprintf("导入岗位 %s/%s/%s 失败", ind.Key, dept.Key, pos.Key))
+					warns = append(warns, fmt.Sprintf("导入岗位 %s/%s/%s 失败", comp.Key, dept.Key, pos.Key))
 					continue
 				}
-				posKey := BuildTaxonomyKey(ind.Key, dept.Key, pos.Key)
-				mapper.RegisterTaxonomy(posKey, posNode.ID)
+				posKey := BuildOrgKey(comp.Key, dept.Key, pos.Key)
+				mapper.RegisterOrg(posKey, posNode.ID)
 				count++
 			}
 		}
@@ -297,10 +297,10 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			warns = append(warns, fmt.Sprintf("agent %q: position_key=%q 解析失败: %s",
 				spec.Key, spec.PositionKey, err.Error()))
 		} else {
-			agent.TaxonomyPositionID = posID
+			agent.PositionID = posID
 		}
 		// 同时设置 position_key（取路径最后一段）
-		_, _, posKey, _ := ParseTaxonomyKeyPath(spec.PositionKey)
+		_, _, posKey, _ := ParseOrgKeyPath(spec.PositionKey)
 		agent.PositionKey = posKey
 	}
 
@@ -916,9 +916,9 @@ func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz
 	return s
 }
 
-// upsertTaxonomyNode 创建或更新分类节点。
-func (im *Importer) upsertTaxonomyNode(ctx context.Context, node biz.TaxonomyNode, strategy ConflictStrategy) (biz.TaxonomyNode, error) {
-	existing, err := im.repo.GetTaxonomyNodeByKey(ctx, node.Key)
+// upsertOrganizationNode 创建或更新组织节点。
+func (im *Importer) upsertOrganizationNode(ctx context.Context, node biz.OrganizationNode, strategy ConflictStrategy) (biz.OrganizationNode, error) {
+	existing, err := im.repo.GetOrganizationNodeByKey(ctx, node.Key)
 	if err == nil {
 		// 已存在
 		if strategy == ConflictSkip {
@@ -926,25 +926,25 @@ func (im *Importer) upsertTaxonomyNode(ctx context.Context, node biz.TaxonomyNod
 		}
 		if strategy == ConflictOverwrite {
 			node.ID = existing.ID
-			return im.repo.UpdateTaxonomyNode(ctx, node)
+			return im.repo.UpdateOrganizationNode(ctx, node)
 		}
-		// duplicate: 不应用于 taxonomy
+		// duplicate: 不应用于 organization
 		return existing, nil
 	}
 
 	// 活跃记录不存在，检查是否存在软删除的同 key 记录
-	softDeleted, err2 := im.repo.GetTaxonomyNodeByKeyAnyState(ctx, node.Key)
+	softDeleted, err2 := im.repo.GetOrganizationNodeByKeyAnyState(ctx, node.Key)
 	if err2 == nil && softDeleted.DeletedAt != "" {
 		// 软删除记录存在，恢复并更新
 		node.ID = softDeleted.ID
 		node.DeletedAt = ""
-		return im.repo.UpdateTaxonomyNode(ctx, node)
+		return im.repo.UpdateOrganizationNode(ctx, node)
 	}
 
 	// 创建
 	node.Status = "active"
 	node.Enabled = true
-	return im.repo.CreateTaxonomyNode(ctx, node)
+	return im.repo.CreateOrganizationNode(ctx, node)
 }
 
 // --- 辅助函数 ---

@@ -23,7 +23,7 @@ import {
 } from './wireNormalize';
 import type { A2AProxyConfig, AgentKind } from './types';
 import { asRecord, pickI32, pickStr } from '../../shared/wireJson';
-import { tokenEstimateFor } from '../../components/agents/agentUi';
+import { tokenEstimateFor } from './agentUtils';
 
 export type {
   Agent,
@@ -45,7 +45,7 @@ export async function listAgentsPaged(query: AgentListQuery = {}): Promise<Agent
     keyword: query.keyword,
     status: query.status,
     provider: query.provider,
-    categoryId: query.category_id,
+    orgNodeId: query.org_node_id,
     createdBy: query.created_by,
     limit: query.limit,
     offset: query.offset,

@@ -42,7 +42,7 @@ func TestWebhookSubscribes_GraphTaskStatus(t *testing.T) {
 
 func TestWebhookUsecase_Create_PreservesDisabled(t *testing.T) {
 	repo := &stubWebhookRepo{}
-	uc := NewWebhookUsecase(repo)
+	uc := NewWebhookUsecase(repo, repo)
 	_, err := uc.Create(context.Background(), WebhookConfig{
 		Name:    "Alerts",
 		URL:     "https://example.com/hook",

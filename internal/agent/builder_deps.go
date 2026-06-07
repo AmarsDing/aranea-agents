@@ -20,9 +20,9 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// TRPCCatalogDeps documents catalog/repo dependencies on TRPCBuilderDeps.
-type TRPCCatalogDeps struct {
-	Catalog  biz.TeamModelCatalog
+// TRPCModelCatalogDeps documents model-catalog/repo dependencies on TRPCBuilderDeps.
+type TRPCModelCatalogDeps struct {
+	ModelCatalog biz.TeamModelCatalog
 	AgentUC  biz.TeamAgentLookup
 	Agents   biz.AgentRepository
 	Sys      biz.SystemSettingRepo
@@ -73,8 +73,8 @@ type TRPCSkillDeps struct {
 // TRPCBuilderDeps is the stable extension DTO for BuildTRPCLLMAgent / BuildTRPCAgent.
 // Field groups match TRPC*Deps types above; composite literals stay flat for Wire/service call sites.
 type TRPCBuilderDeps struct {
-	// TRPCCatalogDeps
-	Catalog  biz.TeamModelCatalog
+	// TRPCModelCatalogDeps
+	ModelCatalog biz.TeamModelCatalog
 	AgentUC  biz.TeamAgentLookup
 	Agents   biz.AgentRepository
 	Sys      biz.SystemSettingRepo
@@ -109,7 +109,7 @@ type TRPCBuilderDeps struct {
 	// PGO-1: Taxonomy is used to resolve the 岗位职责 (position description)
 	// from industry_taxonomy for injection into the system instruction.
 	// Optional: when nil, category responsibility injection is skipped.
-	Taxonomy *biz.TaxonomyUsecase
+	Organization *biz.OrganizationUsecase
 	ToolResultGate *biz.ToolResultGate
 	// DeferredManager controls lazy tool visibility. Optional: when nil,
 	// deferred tool filtering is skipped and all tools are always visible.
@@ -132,10 +132,10 @@ type TRPCBuilderDeps struct {
 	SubAgentService *subagenttool.Service
 }
 
-// CatalogGroup returns the catalog subset (for tests and future refactors).
-func (d TRPCBuilderDeps) CatalogGroup() TRPCCatalogDeps {
-	return TRPCCatalogDeps{
-		Catalog: d.Catalog, AgentUC: d.AgentUC, Agents: d.Agents, Sys: d.Sys, Sessions: d.Sessions,
+// ModelCatalogGroup returns the model-catalog subset (for tests and future refactors).
+func (d TRPCBuilderDeps) ModelCatalogGroup() TRPCModelCatalogDeps {
+	return TRPCModelCatalogDeps{
+		ModelCatalog: d.ModelCatalog, AgentUC: d.AgentUC, Agents: d.Agents, Sys: d.Sys, Sessions: d.Sessions,
 	}
 }
 

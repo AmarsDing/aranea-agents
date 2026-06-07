@@ -64,7 +64,7 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		UpdatedAt:           t.UpdatedAt,
 		DeletedAt:           t.DeletedAt,
 		LinkedGraphId:       team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
-		CategoryIndustryId:  t.CategoryIndustryID,
+		DepartmentId:      t.DepartmentID,
 		SpiritSessionId:     t.SpiritSessionID,
 		TaskDescription:     t.TaskDescription,
 		AutoCreated:         t.AutoCreated,
@@ -74,6 +74,10 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		Readonly:            t.Readonly,
 		Source:              t.Source,
 		Kind:                t.Kind,
+		Deliverables:        t.Deliverables,
+		InputContract:       t.InputContract,
+		DeptLeadAgentId:     t.DeptLeadAgentID,
+		CrossDeptMemberIds:  t.CrossDeptMemberIDs,
 	}
 }
 
@@ -175,7 +179,11 @@ func teamFromProto(pb *v1.Team) biz.Team {
 		IsDefault:          pb.GetIsDefault(),
 		DefinitionJSON:     pb.GetDefinitionJson(),
 		ADKAppName:         pb.GetAdkAppName(),
-		CategoryIndustryID: pb.GetCategoryIndustryId(),
+		DepartmentID: pb.GetDepartmentId(),
+		Deliverables:       pb.GetDeliverables(),
+		InputContract:      pb.GetInputContract(),
+		DeptLeadAgentID:    pb.GetDeptLeadAgentId(),
+		CrossDeptMemberIDs: pb.GetCrossDeptMemberIds(),
 		SpiritSessionID:    pb.GetSpiritSessionId(),
 		TaskDescription:    pb.GetTaskDescription(),
 		AutoCreated:        pb.GetAutoCreated(),
@@ -224,7 +232,7 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 		Status:             req.GetStatus(),
 		DefinitionJSON:     defJSON,
 		ADKAppName:         req.GetAdkAppName(),
-		CategoryIndustryID: req.GetCategoryIndustryId(),
+		DepartmentID: req.GetDepartmentId(),
 	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {

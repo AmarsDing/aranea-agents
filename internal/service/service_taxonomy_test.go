@@ -9,7 +9,7 @@ import (
 )
 
 func TestToProtoTaxonomy(t *testing.T) {
-	c := biz.TaxonomyNode{
+	c := biz.OrganizationNode{
 		ID:           "cat-1",
 		Key:          "general",
 		Name:         "通用",
@@ -128,8 +128,8 @@ func TestToTaxonomyTreeNode_Nil(t *testing.T) {
 }
 
 func TestToTaxonomyTreeNode_Single(t *testing.T) {
-	n := &biz.TaxonomyTreeNode{
-		Category: biz.TaxonomyNode{
+	n := &biz.OrganizationTreeNode{
+		Category: biz.OrganizationNode{
 			ID:   "cat-1",
 			Key:  "root",
 			Name: "Root",
@@ -146,22 +146,22 @@ func TestToTaxonomyTreeNode_Single(t *testing.T) {
 }
 
 func TestToTaxonomyTreeNode_WithChildren(t *testing.T) {
-	n := &biz.TaxonomyTreeNode{
-		Category: biz.TaxonomyNode{
+	n := &biz.OrganizationTreeNode{
+		Category: biz.OrganizationNode{
 			ID:   "parent",
 			Key:  "parent-key",
 			Name: "Parent",
 		},
-		Children: []biz.TaxonomyTreeNode{
+		Children: []biz.OrganizationTreeNode{
 			{
-				Category: biz.TaxonomyNode{
+				Category: biz.OrganizationNode{
 					ID:   "child-1",
 					Key:  "child-key-1",
 					Name: "Child 1",
 				},
 			},
 			{
-				Category: biz.TaxonomyNode{
+				Category: biz.OrganizationNode{
 					ID:   "child-2",
 					Key:  "child-key-2",
 					Name: "Child 2",
@@ -185,14 +185,14 @@ func TestToTaxonomyTreeNode_WithChildren(t *testing.T) {
 }
 
 func TestToTaxonomyTreeNode_DeepNesting(t *testing.T) {
-	n := &biz.TaxonomyTreeNode{
-		Category: biz.TaxonomyNode{ID: "root", Key: "root", Name: "Root"},
-		Children: []biz.TaxonomyTreeNode{
+	n := &biz.OrganizationTreeNode{
+		Category: biz.OrganizationNode{ID: "root", Key: "root", Name: "Root"},
+		Children: []biz.OrganizationTreeNode{
 			{
-				Category: biz.TaxonomyNode{ID: "level1", Key: "l1", Name: "L1"},
-				Children: []biz.TaxonomyTreeNode{
+				Category: biz.OrganizationNode{ID: "level1", Key: "l1", Name: "L1"},
+				Children: []biz.OrganizationTreeNode{
 					{
-						Category: biz.TaxonomyNode{ID: "level2", Key: "l2", Name: "L2"},
+						Category: biz.OrganizationNode{ID: "level2", Key: "l2", Name: "L2"},
 					},
 				},
 			},
@@ -217,9 +217,9 @@ func TestToTaxonomyTree_Empty(t *testing.T) {
 }
 
 func TestToTaxonomyTree_MultipleRoots(t *testing.T) {
-	nodes := []biz.TaxonomyTreeNode{
-		{Category: biz.TaxonomyNode{ID: "r1", Key: "root1", Name: "Root 1"}},
-		{Category: biz.TaxonomyNode{ID: "r2", Key: "root2", Name: "Root 2"}},
+	nodes := []biz.OrganizationTreeNode{
+		{Category: biz.OrganizationNode{ID: "r1", Key: "root1", Name: "Root 1"}},
+		{Category: biz.OrganizationNode{ID: "r2", Key: "root2", Name: "Root 2"}},
 	}
 	pb := service.ToTaxonomyTree(nodes)
 	if len(pb) != 2 {

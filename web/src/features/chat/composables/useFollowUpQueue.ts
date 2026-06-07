@@ -1,6 +1,6 @@
 import { onUnmounted, ref, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
-import type { PendingMessage } from '../api';
+import type { PendingMessage } from '../types';
 import { messageQueuedFromEnvelope, type RunStatusFromWs } from '../envelopeRunStatus';
 import type { Envelope } from '../envelope';
 

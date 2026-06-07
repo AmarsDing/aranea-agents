@@ -790,3 +790,24 @@ export async function abandonMemoryDeadLetter(id: number): Promise<MemoryDeadLet
   const resp = asRecord(raw);
   return mapDeadLetterEntry(resp.entry);
 }
+
+// ── A-03 fix: add missing Memory PII RPC wrappers ──────────────────
+
+export async function listConflictingFacts(agentID: string, limit = 50): Promise<MemoryFact[]> {
+  const raw = await memory.ListConflictingFacts({ agentId: agentID, limit });
+  const resp = asRecord(raw);
+  const items = resp.facts ?? resp.items ?? [];
+  return (Array.isArray(items) ? items : []).map(mapFact);
+}
+
+export async function listPIIFlaggedFacts(agentID: string, limit = 50): Promise<MemoryFact[]> {
+  const raw = await memory.ListPIIFlaggedFacts({ agentId: agentID, limit });
+  const resp = asRecord(raw);
+  const items = resp.facts ?? resp.items ?? [];
+  return (Array.isArray(items) ? items : []).map(mapFact);
+}
+
+export async function reviewPIIFact(factID: string, action: 'confirm_pii' | 'clear_pii' | 'delete', reviewer = 'admin'): Promise<MemoryFact> {
+  const raw = await memory.ReviewPIIFact({ factId: factID, action, reviewer });
+  return mapFact(asRecord(raw));
+}

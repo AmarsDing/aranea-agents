@@ -2,11 +2,12 @@ package backgroundjob
 
 import (
 	"context"
-	"errors"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ErrNotFound is returned by Repo.Get when the job does not exist.
-var ErrNotFound = errors.New("background job not found")
+var ErrNotFound = kerrors.NotFound("BACKGROUND_JOB", "background job not found")
 
 // Repo is the port interface for persisting and querying BackgroundJobs.
 // Implementations live in internal/data/.

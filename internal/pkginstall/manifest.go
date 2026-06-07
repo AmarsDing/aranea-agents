@@ -27,7 +27,7 @@ type ManifestMetadata struct {
 // ManifestSpec is the installation payload.
 type ManifestSpec struct {
 	// Org structure (reuse orgimport types).
-	Industries []orgimport.IndustrySpec `yaml:"industries"`
+	Companies []orgimport.OrganizationSpec `yaml:"companies"`
 	Agents     []orgimport.AgentSpec    `yaml:"agents"`
 	Teams      []orgimport.TeamSpec     `yaml:"teams"`
 	// New resource types.

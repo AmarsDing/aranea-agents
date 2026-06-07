@@ -1,19 +1,19 @@
 /**
  * PGO-1-UI: Category description label & placeholder helpers.
- * Switches UI copy based on category level (1=industry, 2=dept, 3=position).
+ * Switches UI copy based on category level (1=company, 2=dept, 3=position).
  */
 import { categoryDescriptionLabel, categoryDescriptionPlaceholder, type FieldScope } from '../agents/fieldGuides';
 
 /** Level to FieldScope mapping. */
 const levelToScope: Record<1 | 2 | 3, FieldScope> = {
-  1: 'category.industry',
+  1: 'category.company',
   2: 'category.department',
   3: 'category.position',
 };
 
 /**
  * Returns the form label for the description field based on category level.
- * 1 → "行业说明", 2 → "部门职责", 3 → "岗位职责"
+ * 1 → "公司说明", 2 → "部门职责", 3 → "岗位职责"
  */
 export function descriptionLabel(level: 1 | 2 | 3): string {
   return categoryDescriptionLabel(level);
@@ -34,12 +34,12 @@ export function levelScope(level: 1 | 2 | 3): FieldScope {
 }
 
 /**
- * Parses a raw level string (e.g. "industry" | "department" | "position")
+ * Parses a raw level string (e.g. "company" | "department" | "position")
  * to the numeric 1 | 2 | 3 representation.
  */
 export function parseLevelNumber(level: string): 1 | 2 | 3 {
   switch (level) {
-    case 'industry':
+    case 'company':
       return 1;
     case 'department':
       return 2;

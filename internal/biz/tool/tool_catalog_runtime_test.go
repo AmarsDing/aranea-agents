@@ -12,7 +12,7 @@ func TestCatalogRuntimeStatus(t *testing.T) {
 		t.Fatalf("available: got %q", got)
 	}
 	mcp := Tool{Key: "mcp_call", Enabled: true, Source: "mcp"}
-	if got := catalogRuntimeStatus(mcp, nil, nil); got != RuntimeStatusCatalogOnly {
+	if got := catalogRuntimeStatus(mcp, nil, nil); got != RuntimeStatusRegisteredOnly {
 		t.Fatalf("mcp: got %q", got)
 	}
 }

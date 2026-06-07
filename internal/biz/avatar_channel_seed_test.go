@@ -2,8 +2,9 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	"testing"
+
+	"aranea-agents/internal/biz/shared"
 )
 
 type avatarSeedRepo struct {
@@ -18,7 +19,7 @@ func (s *avatarSeedRepo) GetAvatarAssetByKey(_ context.Context, assetKey string)
 	if a, ok := s.byKey[assetKey]; ok {
 		return a, nil
 	}
-	return AvatarAsset{}, sql.ErrNoRows
+	return AvatarAsset{}, shared.ErrNotFound
 }
 
 func (s *avatarSeedRepo) GetAvatarImage(context.Context, string, bool) (AvatarImage, error) {

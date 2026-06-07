@@ -34,13 +34,13 @@ type SpecMetadata struct {
 
 // SpecBody is the payload of the spec document.
 type SpecBody struct {
-	Industries []IndustrySpec `yaml:"industries"`
-	Agents     []AgentSpec    `yaml:"agents"`
-	Teams      []TeamSpec     `yaml:"teams"`
+	Companies []OrganizationSpec `yaml:"companies"`
+	Agents    []AgentSpec        `yaml:"agents"`
+	Teams     []TeamSpec         `yaml:"teams"`
 }
 
-// IndustrySpec describes a top-level industry node.
-type IndustrySpec struct {
+// OrganizationSpec describes a top-level organization node.
+type OrganizationSpec struct {
 	Key         string           `yaml:"key"`
 	Name        string           `yaml:"name"`
 	Description string           `yaml:"description"`

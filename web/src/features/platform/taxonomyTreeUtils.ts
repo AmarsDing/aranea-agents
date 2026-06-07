@@ -1,6 +1,6 @@
 import type { PlatformResourceTreeNode } from './types';
 
-export type TaxonomyLevel = 'industry' | 'department' | 'position';
+export type TaxonomyLevel = 'company' | 'department' | 'position';
 
 export type TaxonomyQTreeNode = {
   id: string;
@@ -14,13 +14,13 @@ export type TaxonomyQTreeNode = {
 };
 
 const LEVEL_ICONS: Record<TaxonomyLevel, string> = {
-  industry: 'domain',
+  company: 'business',
   department: 'lan',
   position: 'badge',
 };
 
 const LEVEL_LABELS: Record<TaxonomyLevel, string> = {
-  industry: '行业',
+  company: '公司',
   department: '部门',
   position: '职位',
 };
@@ -150,7 +150,7 @@ export function collectExpandedIdsForFilter(nodes: PlatformResourceTreeNode[], k
 export function taxonomyTreeStats(tree: PlatformResourceTreeNode[]) {
   const rows = flattenTaxonomyTree(tree);
   return {
-    industries: rows.filter((row) => row.level === 'industry').length,
+    companies: rows.filter((row) => row.level === 'company').length,
     departments: rows.filter((row) => row.level === 'department').length,
     positions: rows.filter((row) => row.level === 'position').length,
   };
@@ -188,10 +188,10 @@ export function toQTreeNodes(
 export function inferCascadeFromPosition(
   tree: PlatformResourceTreeNode[],
   positionId: string,
-): { industryId: string | null; departmentId: string | null } {
+): { companyId: string | null; departmentId: string | null } {
   const path = findTaxonomyPath(tree, positionId);
   return {
-    industryId: path.find((node) => node.level === 'industry')?.id ?? null,
+    companyId: path.find((node) => node.level === 'company')?.id ?? null,
     departmentId: path.find((node) => node.level === 'department')?.id ?? null,
   };
 }
@@ -229,9 +229,9 @@ function patchTaxonomyTreeNodeInner(
 
 export function collectDefaultExpandedIds(tree: PlatformResourceTreeNode[]) {
   const ids = new Set<string>();
-  for (const industry of tree) {
-    ids.add(industry.id);
-    for (const department of industry.children ?? []) {
+  for (const company of tree) {
+    ids.add(company.id);
+    for (const department of company.children ?? []) {
       if (department.level === 'department') ids.add(department.id);
     }
   }

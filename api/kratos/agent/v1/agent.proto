@@ -183,7 +183,7 @@ message Agent {
   bool is_favorite = 8;
   string icon = 9;
   string agent_description = 10;
-  string taxonomy_position_id = 11;
+  string position_id = 11;
   string system_prompt_mode = 12;
   int32 context_window = 13;
   int32 budget_monthly_cents = 14;
@@ -219,7 +219,7 @@ message ListAgentsRequest {
   string keyword = 1;
   string status = 2;
   string provider = 3;
-  string category_id = 4;
+  string org_node_id = 4;
   int32 limit = 5;
   int32 offset = 6;
   // Filter by creator: empty = all; "mine" = current user; otherwise specific user id.
@@ -250,7 +250,7 @@ message CreateAgentRequest {
   string model = 4;
   string icon = 5;
   string agent_description = 6;
-  string taxonomy_position_id = 7;
+  string position_id = 7;
   string system_prompt_mode = 8;
   int32 context_window = 9;
   int32 budget_monthly_cents = 10;

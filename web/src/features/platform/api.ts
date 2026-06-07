@@ -8,6 +8,7 @@ import type { CreateProviderModelRequest, ProviderModel } from '../../services/k
 import {
   createIndustryTaxonomyService,
   createTaxonomyService,
+  createOrganizationService,
   createAvatarService,
   createChannelService,
   createCronService,
@@ -102,6 +103,31 @@ function taxonomyWireToPlatform(raw: unknown): PlatformResource {
   };
 }
 
+function organizationWireToPlatform(raw: unknown): PlatformResource {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, 'id', 'id'),
+    resource: 'organization',
+    key: pickStr(r, 'orgKey', 'orgKey'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sortOrder', 'sortOrder'),
+    parent_id: pickStr(r, 'parentId', 'parentId'),
+    level: pickStr(r, 'level', 'level'),
+    agent_id: '',
+    provider: '',
+    model: '',
+    is_system: pickBool(r, 'isSystem', 'isSystem'),
+    config_json: pickStr(r, 'configJson', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadataJson', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'createdAt', 'createdAt'),
+    updated_at: pickStr(r, 'updatedAt', 'updatedAt'),
+    deleted_at: pickStr(r, 'deletedAt', 'deletedAt'),
+  };
+}
+
 function mapIndustryTaxonomyTreeNode(raw: unknown): PlatformResourceTreeNode {
   const o = asRecord(raw);
   const cat = asRecord(o.industryTaxonomy ?? o.IndustryTaxonomy);
@@ -117,6 +143,15 @@ function mapTaxonomyTreeNode(raw: unknown): PlatformResourceTreeNode {
   const base = taxonomyWireToPlatform(node);
   const childrenRaw = o.children ?? o.Children;
   const children = Array.isArray(childrenRaw) ? childrenRaw.map(mapTaxonomyTreeNode) : [];
+  return { ...base, children };
+}
+
+function mapOrganizationTreeNode(raw: unknown): PlatformResourceTreeNode {
+  const o = asRecord(raw);
+  const node = asRecord(o.node ?? o.Node);
+  const base = organizationWireToPlatform(node);
+  const childrenRaw = o.children ?? o.Children;
+  const children = Array.isArray(childrenRaw) ? childrenRaw.map(mapOrganizationTreeNode) : [];
   return { ...base, children };
 }
 
@@ -435,6 +470,11 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
       const res = await svc.ListTaxonomy({});
       return (res.items ?? []).map((row: unknown) => taxonomyWireToPlatform(row));
     }
+    case 'organization': {
+      const svc = createOrganizationService();
+      const res = await svc.ListOrganization({});
+      return (res.items ?? []).map((row: unknown) => organizationWireToPlatform(row));
+    }
     case 'llm-provider-models': {
       const res = await llmModels.ListProviderModels({});
       return (res.items ?? []).map((row: unknown) => llmProviderWireToPlatform(row));
@@ -482,13 +522,19 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
 }
 
 export async function listPlatformResourceTree(
-  resource: 'taxonomy-nodes' | 'taxonomy',
+  resource: 'taxonomy-nodes' | 'taxonomy' | 'organization',
 ): Promise<PlatformResourceTreeNode[]> {
   if (resource === 'taxonomy') {
     const svc = createTaxonomyService();
     const res = await svc.ListTaxonomyTree({});
     const items = res.items ?? [];
     return items.map(mapTaxonomyTreeNode);
+  }
+  if (resource === 'organization') {
+    const svc = createOrganizationService();
+    const res = await svc.ListOrganizationTree({});
+    const items = res.items ?? [];
+    return items.map(mapOrganizationTreeNode);
   }
   const svc = createIndustryTaxonomyService();
   const res = await svc.ListIndustryTaxonomyTree({});
@@ -538,6 +584,24 @@ export async function createPlatformResource(
         metadataJson: payload.metadata_json ?? '{}',
       });
       return taxonomyWireToPlatform(row);
+    }
+    case 'organization': {
+      const svc = createOrganizationService();
+      const row = await svc.CreateOrganization({
+        orgKey: payload.key,
+        name: payload.name,
+        description: payload.description,
+        status: payload.status ?? 'active',
+        enabled: payload.enabled ?? true,
+        sortOrder: payload.sort_order ?? 0,
+        parentId: payload.parent_id || undefined,
+        level: payload.level || undefined,
+        workspaceId: undefined,
+        ownerUserId: undefined,
+        configJson: payload.config_json ?? '{}',
+        metadataJson: payload.metadata_json ?? '{}',
+      });
+      return organizationWireToPlatform(row);
     }
     case 'llm-provider-models': {
       const row = await llmModels.CreateProviderModel(providerInputToCreateBody(payload));
@@ -662,6 +726,33 @@ export async function updatePlatformResource(
       const row = await svc.UpdateTaxonomy({ id, node: merged });
       return taxonomyWireToPlatform(row);
     }
+    case 'organization': {
+      const svc = createOrganizationService();
+      const cur = await svc.GetOrganization({ id });
+      const curIsSystem = pickBool(asRecord(cur), 'isSystem', 'isSystem');
+      const curEnabled = pickBool(asRecord(cur), 'enabled', 'enabled');
+      const merged = {
+        id: cur.id,
+        orgKey: payload.key ?? cur.orgKey,
+        name: payload.name ?? cur.name,
+        description: payload.description ?? cur.description,
+        status: payload.status ?? cur.status,
+        enabled: payload.enabled ?? curEnabled,
+        sortOrder: payload.sort_order ?? cur.sortOrder,
+        parentId: payload.parent_id !== undefined ? payload.parent_id || undefined : cur.parentId,
+        level: payload.level ?? cur.level,
+        workspaceId: cur.workspaceId,
+        ownerUserId: cur.ownerUserId,
+        isSystem: curIsSystem,
+        configJson: payload.config_json ?? cur.configJson,
+        metadataJson: payload.metadata_json ?? cur.metadataJson,
+        createdAt: cur.createdAt,
+        updatedAt: cur.updatedAt,
+        deletedAt: cur.deletedAt,
+      };
+      const row = await svc.UpdateOrganization({ id, node: merged });
+      return organizationWireToPlatform(row);
+    }
     case 'llm-provider-models': {
       const cur = (await llmModels.GetProviderModel({ id })) as ProviderModel;
       const merged = mergeProviderModel(cur, payload);
@@ -756,6 +847,11 @@ export async function deletePlatformResource(resource: PlatformResourceName, id:
     case 'taxonomy': {
       const svc = createTaxonomyService();
       await svc.DeleteTaxonomy({ id });
+      return;
+    }
+    case 'organization': {
+      const svc = createOrganizationService();
+      await svc.DeleteOrganization({ id });
       return;
     }
     case 'llm-provider-models': {

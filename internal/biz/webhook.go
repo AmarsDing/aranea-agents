@@ -43,28 +43,44 @@ type WebhookUpdatePatch struct {
 	Enabled        *bool
 }
 
-type WebhookRepository interface {
-	Create(ctx context.Context, w WebhookConfig) (WebhookConfig, error)
+// WebhookReader provides read-only access to webhook configs.
+type WebhookReader interface {
 	Get(ctx context.Context, id string) (WebhookConfig, error)
 	List(ctx context.Context) ([]WebhookConfig, error)
 	ListEnabled(ctx context.Context) ([]WebhookConfig, error)
+}
+
+// WebhookWriter provides write access to webhook configs.
+type WebhookWriter interface {
+	Create(ctx context.Context, w WebhookConfig) (WebhookConfig, error)
 	Update(ctx context.Context, w WebhookConfig) (WebhookConfig, error)
 	Delete(ctx context.Context, id string) error
 }
 
-type WebhookUsecase struct {
-	repo WebhookRepository
+// WebhookRepository combines read and write access.
+// Deprecated: use WebhookReader or WebhookWriter for narrower dependency.
+type WebhookRepository interface {
+	WebhookReader
+	WebhookWriter
 }
 
-func NewWebhookUsecase(repo WebhookRepository) *WebhookUsecase {
-	return &WebhookUsecase{repo: repo}
+// WebhookUsecase manages webhook configs.
+// W-2 fix: depend on narrow interfaces instead of composite WebhookRepository.
+type WebhookUsecase struct {
+	reader WebhookReader
+	writer WebhookWriter
+}
+
+// S-2 fix: accept narrow interfaces instead of composite WebhookRepository.
+func NewWebhookUsecase(reader WebhookReader, writer WebhookWriter) *WebhookUsecase {
+	return &WebhookUsecase{reader: reader, writer: writer}
 }
 
 func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookConfig, error) {
-	if uc == nil || uc.repo == nil {
+	if uc == nil || uc.writer == nil {
 		return WebhookConfig{}, errors.InternalServer("GATEWAY", "webhook repository not configured")
 	}
-	if err := validateWebhookConfig(w, true); err != nil {
+	if err := validateWebhookConfig(w); err != nil {
 		return WebhookConfig{}, err
 	}
 	if strings.TrimSpace(w.ID) == "" {
@@ -79,47 +95,47 @@ func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookC
 	now := time.Now().UTC().Format(time.RFC3339)
 	w.CreatedAt = now
 	w.UpdatedAt = now
-	return uc.repo.Create(ctx, w)
+	return uc.writer.Create(ctx, w)
 }
 
 func (uc *WebhookUsecase) Get(ctx context.Context, id string) (WebhookConfig, error) {
 	if strings.TrimSpace(id) == "" {
 		return WebhookConfig{}, errors.BadRequest("GATEWAY", "id is required")
 	}
-	return uc.repo.Get(ctx, id)
+	return uc.reader.Get(ctx, id)
 }
 
 func (uc *WebhookUsecase) List(ctx context.Context) ([]WebhookConfig, error) {
-	if uc == nil || uc.repo == nil {
+	if uc == nil || uc.reader == nil {
 		return nil, errors.InternalServer("GATEWAY", "webhook repository not configured")
 	}
-	return uc.repo.List(ctx)
+	return uc.reader.List(ctx)
 }
 
 func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) (WebhookConfig, error) {
-	if uc == nil || uc.repo == nil {
+	if uc == nil || uc.writer == nil {
 		return WebhookConfig{}, errors.InternalServer("GATEWAY", "webhook repository not configured")
 	}
 	if strings.TrimSpace(patch.ID) == "" {
 		return WebhookConfig{}, errors.BadRequest("GATEWAY", "id is required")
 	}
-	cur, err := uc.repo.Get(ctx, patch.ID)
+	cur, err := uc.reader.Get(ctx, patch.ID)
 	if err != nil {
 		return WebhookConfig{}, err
 	}
 	merged := mergeWebhookPatch(cur, patch)
-	if err := validateWebhookConfig(merged, false); err != nil {
+	if err := validateWebhookConfig(merged); err != nil {
 		return WebhookConfig{}, err
 	}
 	merged.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return uc.repo.Update(ctx, merged)
+	return uc.writer.Update(ctx, merged)
 }
 
 func (uc *WebhookUsecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("GATEWAY", "id is required")
 	}
-	return uc.repo.Delete(ctx, id)
+	return uc.writer.Delete(ctx, id)
 }
 
 func mergeWebhookPatch(cur WebhookConfig, patch WebhookUpdatePatch) WebhookConfig {
@@ -145,7 +161,7 @@ func mergeWebhookPatch(cur WebhookConfig, patch WebhookUpdatePatch) WebhookConfi
 	return out
 }
 
-func validateWebhookConfig(w WebhookConfig, requireSecret bool) error {
+func validateWebhookConfig(w WebhookConfig) error {
 	if strings.TrimSpace(w.Name) == "" {
 		return errors.BadRequest("GATEWAY", "name is required")
 	}
@@ -156,9 +172,7 @@ func validateWebhookConfig(w WebhookConfig, requireSecret bool) error {
 	if err := webhookurl.ValidateNotifyURL(rawURL); err != nil {
 		return errors.BadRequest("GATEWAY", err.Error())
 	}
-	if requireSecret && strings.TrimSpace(w.Secret) == "" {
-		// Secret optional on create; empty means unsigned callbacks.
-	}
+	// S-08 fix: removed unused requireSecret parameter; secret is optional.
 	if v := strings.TrimSpace(w.EventTypesJSON); v != "" {
 		var types []string
 		if err := json.Unmarshal([]byte(v), &types); err != nil {

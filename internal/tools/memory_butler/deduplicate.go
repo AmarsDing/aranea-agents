@@ -22,7 +22,7 @@ type deduplicateMemoriesOutput struct {
 func newDeduplicateMemoriesTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input deduplicateMemoriesInput) (deduplicateMemoriesOutput, error) {
 		if input.AgentID == "" {
-			return deduplicateMemoriesOutput{}, errAgentIDRequired
+			return deduplicateMemoriesOutput{}, ErrAgentIDRequired
 		}
 		threshold := input.SimThreshold
 		if threshold <= 0 {

@@ -23,22 +23,22 @@ func ValidateSpec(spec *Spec) error {
 	// Collect all position paths for reference validation.
 	positionPaths := collectPositionPaths(spec)
 
-	for i, ind := range spec.Spec.Industries {
+	for i, ind := range spec.Spec.Companies {
 		if ind.Key == "" {
-			errs = append(errs, fmt.Sprintf("industries[%d]: key is required", i))
+			errs = append(errs, fmt.Sprintf("companies[%d]: key is required", i))
 		}
 		if ind.Name == "" {
-			errs = append(errs, fmt.Sprintf("industries[%d] (%s): name is required", i, ind.Key))
+			errs = append(errs, fmt.Sprintf("companies[%d] (%s): name is required", i, ind.Key))
 		}
 		if ind.Description != "" {
 			chars := utf8.RuneCountInString(ind.Description)
 			if chars > 600 {
-				errs = append(errs, fmt.Sprintf("industry %q: description exceeds hard limit 600 chars (%d)", ind.Key, chars))
+				errs = append(errs, fmt.Sprintf("company %q: description exceeds hard limit 600 chars (%d)", ind.Key, chars))
 			}
 		}
 		for j, dept := range ind.Departments {
 			if dept.Key == "" {
-				errs = append(errs, fmt.Sprintf("industries[%d].departments[%d]: key is required", i, j))
+				errs = append(errs, fmt.Sprintf("companies[%d].departments[%d]: key is required", i, j))
 			}
 			if dept.Description != "" {
 				chars := utf8.RuneCountInString(dept.Description)
@@ -48,7 +48,7 @@ func ValidateSpec(spec *Spec) error {
 			}
 			for k, pos := range dept.Positions {
 				if pos.Key == "" {
-					errs = append(errs, fmt.Sprintf("industries[%d].departments[%d].positions[%d]: key is required", i, j, k))
+					errs = append(errs, fmt.Sprintf("companies[%d].departments[%d].positions[%d]: key is required", i, j, k))
 				}
 				if pos.Description != "" {
 					chars := utf8.RuneCountInString(pos.Description)
@@ -98,7 +98,7 @@ func ValidateSpec(spec *Spec) error {
 // collectPositionPaths builds a set of "ind/dept/pos" path strings.
 func collectPositionPaths(spec *Spec) map[string]struct{} {
 	paths := map[string]struct{}{}
-	for _, ind := range spec.Spec.Industries {
+	for _, ind := range spec.Spec.Companies {
 		for _, dept := range ind.Departments {
 			for _, pos := range dept.Positions {
 				key := ind.Key + "/" + dept.Key + "/" + pos.Key

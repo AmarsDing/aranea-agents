@@ -24,7 +24,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
-		taxonomy_position_id, system_prompt_mode, context_window,
+		position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
@@ -58,7 +58,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
-		taxonomy_position_id, system_prompt_mode, context_window,
+		position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
@@ -136,7 +136,7 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
-		taxonomy_position_id, system_prompt_mode, context_window,
+		position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
@@ -170,7 +170,7 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
-		taxonomy_position_id, system_prompt_mode, context_window,
+		position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind, source,
 		position_key, agent_variant
@@ -336,6 +336,127 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggat
 		if _, err := client.ExecContext(ctx, q, id, t.key, t.name, t.desc, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Str("tool_key", t.key), loggateway.Err(err))
 			return kerrors.InternalServer("SEED", "seed cli_admin tool "+t.key+": "+err.Error())
+		}
+	}
+	return nil
+}
+
+// SeedDeptLeadAgents creates department lead agents for all existing department-level
+// org nodes. This is called during seed to ensure every department has a lead agent.
+func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	// Query all department-level org nodes that don't have a dept_lead_agent_id
+	rows, err := client.QueryContext(ctx, `SELECT id, key, name, description FROM organization_nodes WHERE level = 'department' AND deleted_at = ''`)
+	if err != nil {
+		lg.Warn("seed step failed: query departments", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
+		return kerrors.InternalServer("SEED", "query departments: "+err.Error())
+	}
+	defer rows.Close()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	for rows.Next() {
+		var id, key, name, desc string
+		if err := rows.Scan(&id, &key, &name, &desc); err != nil {
+			lg.Warn("seed step failed: scan department row", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
+			continue
+		}
+		agentKey := biz.DeptLeadAgentKeyPrefix + key + "__"
+		agentID := "agent___dept_lead_" + key + "__"
+		displayName := "部门主管-" + name
+		description := "部门主管，负责「" + name + "」的资源协调和跨部门交付审批。"
+		if desc != "" {
+			description = "部门主管，负责「" + name + "」的资源协调和跨部门交付审批。" + desc
+		}
+
+		const q = `INSERT INTO agents (
+			id, agent_key, display_name, provider, model, status,
+			is_default, is_favorite, icon, agent_description,
+			position_id, system_prompt_mode, context_window,
+			budget_monthly_cents, config_json, roles_json, created_by,
+			created_at, updated_at, deleted_at, readonly, kind, source,
+			position_key, agent_variant
+		) VALUES (
+			?, ?, ?, 'openrouter', 'gpt-4.1-mini',
+			'active', 0, 0, '', ?,
+			'', 'complete', 0, 0, '{"tools_profile":"dept_lead","memory_enabled":true}', '[]', 'system',
+			?, ?, '', 1, 'system_builtin', 'system',
+			?, 'dept_lead'
+		) ON CONFLICT(agent_key) DO UPDATE SET
+			display_name = excluded.display_name,
+			agent_description = excluded.agent_description,
+			readonly = excluded.readonly,
+			kind = excluded.kind,
+			source = excluded.source,
+			position_key = excluded.position_key,
+			agent_variant = excluded.agent_variant,
+			updated_at = excluded.updated_at`
+		if _, err := client.ExecContext(ctx, q, agentID, agentKey, displayName, description, now, now, key+"_dept_lead"); err != nil {
+			lg.Warn("seed step failed: create dept lead agent",
+				loggateway.StepID("data.seed.dept_lead_agents"),
+				loggateway.Str("dept_key", key),
+				loggateway.Err(err))
+			continue
+		}
+
+		// Link dept_lead_agent_id on the org node
+		if _, err := client.ExecContext(ctx, `UPDATE organization_nodes SET dept_lead_agent_id = ?, updated_at = ? WHERE id = ? AND (dept_lead_agent_id = '' OR dept_lead_agent_id IS NULL)`, agentID, now, id); err != nil {
+			lg.Warn("seed step failed: link dept lead to org node",
+				loggateway.StepID("data.seed.dept_lead_agents"),
+				loggateway.Str("dept_id", id),
+				loggateway.Err(err))
+		}
+	}
+	return nil
+}
+
+// SeedDeptLeadPromptFiles seeds the dept_lead.md prompt file for each department lead agent.
+func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	promptPath := filepath.Join(scenarioDir, "system", "prompts", "dept_lead.md")
+	data, err := os.ReadFile(promptPath)
+	if err != nil {
+		lg.Warn("dept_lead.md not found, skipping",
+			loggateway.StepID("data.seed.dept_lead_prompt_files"),
+			loggateway.Str("path", promptPath),
+			loggateway.Err(err))
+		return nil
+	}
+
+	// Find all dept lead agents
+	rows, err := client.QueryContext(ctx, `SELECT id, agent_key FROM agents WHERE agent_variant = 'dept_lead' AND deleted_at = ''`)
+	if err != nil {
+		lg.Warn("seed step failed: query dept lead agents", loggateway.StepID("data.seed.dept_lead_prompt_files"), loggateway.Err(err))
+		return kerrors.InternalServer("SEED", "query dept lead agents: "+err.Error())
+	}
+	defer rows.Close()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	const q = `INSERT INTO agent_prompt_files (
+		id, agent_id, file_name, body, sort_order, created_at, updated_at
+	) VALUES (
+		?, ?, ?, ?, ?, ?, ?
+	) ON CONFLICT(id) DO UPDATE SET
+		body = excluded.body,
+		sort_order = excluded.sort_order,
+		updated_at = excluded.updated_at`
+
+	for rows.Next() {
+		var agentID, agentKey string
+		if err := rows.Scan(&agentID, &agentKey); err != nil {
+			lg.Warn("seed step failed: scan dept lead agent row", loggateway.StepID("data.seed.dept_lead_prompt_files"), loggateway.Err(err))
+			continue
+		}
+		id := "apf_dept_lead_" + agentKey
+		if _, err := client.ExecContext(ctx, q, id, agentID, "dept_lead", string(data), 0, now, now); err != nil {
+			lg.Warn("seed step failed: seed dept lead prompt file",
+				loggateway.StepID("data.seed.dept_lead_prompt_files"),
+				loggateway.Str("agent_key", agentKey),
+				loggateway.Err(err))
 		}
 	}
 	return nil

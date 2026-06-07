@@ -18,15 +18,25 @@ import (
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
+// OpenAIRunnerBuilder builds a trpc-agent-go Runner suitable for the
+// OpenAI-compatible endpoint. Extracted from *ChatService so that
+// OpenAICompatService depends on a narrow interface, not a concrete type.
+type OpenAIRunnerBuilder interface {
+	BuildOpenAIRunner(ctx context.Context, agentKey string) (trpcrunner.Runner, func(), error)
+}
+
+// Compile-time check that *ChatService satisfies OpenAIRunnerBuilder.
+var _ OpenAIRunnerBuilder = (*ChatService)(nil)
+
 type OpenAICompatService struct {
-	chat   *ChatService
+	chat   OpenAIRunnerBuilder
 	conf   *conf.OpenAI
 	mu     sync.RWMutex
 	server *trpcopenai.Server
 	closer func()
 }
 
-func NewOpenAICompatService(chat *ChatService, c *conf.Server) *OpenAICompatService {
+func NewOpenAICompatService(chat OpenAIRunnerBuilder, c *conf.Server) *OpenAICompatService {
 	oc := &OpenAICompatService{chat: chat}
 	if c != nil && c.Openai != nil && c.Openai.Enable {
 		oc.conf = c.Openai
@@ -114,7 +124,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 	if s == nil || s.orch == nil {
 		return nil, nil, biz.ErrNotFound
 	}
-	ag, err := s.orch.td.Catalog.Agents.GetAgentByAgentKey(ctx, agentKey)
+	ag, err := s.orch.td.ReadDeps.Agents.GetAgentByAgentKey(ctx, agentKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -126,15 +136,15 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:               s.orch.td.Catalog.LLM,
-		AgentUC:               s.orch.td.Catalog.AgentsUC,
-		Agents:                s.orch.td.Catalog.Agents,
+		ModelCatalog:               s.orch.td.ReadDeps.LLM,
+		AgentUC:               s.orch.td.ReadDeps.AgentsUC,
+		Agents:                s.orch.td.ReadDeps.Agents,
 		RT:                    s.orch.td.RoundTrip(),
-		SkillUC:               s.orch.td.Catalog.SkillUC,
+		SkillUC:               s.orch.td.ReadDeps.SkillUC,
 		MCPTooling:            s.orch.td.Persist.AgentMCP,
-		ToolUC:                s.orch.td.Catalog.ToolUC,
+		ToolUC:                s.orch.td.ReadDeps.ToolUC,
 		Sessions:              s.orch.td.Sessions,
-		Sys:                   s.orch.td.Catalog.Settings,
+		Sys:                   s.orch.td.ReadDeps.Settings,
 		Provider:              prov,
 		Model:                 mod,
 		SkillDBRepo:           s.orch.rt.SkillDBRepo,

@@ -1,4 +1,8 @@
-// Container: approved — feature-local panel/dialog; data from Page composable via props.
+// Container: approved — feature-local dialog that manages its own credential CRUD lifecycle.
+// Unlike pure display components, this Container directly uses Store for credential
+// operations (fetch/save/remove) because the credential lifecycle is self-contained
+// within this dialog and does not need to be orchestrated by the parent Page.
+// FB3+FB4 fix: CRUD logic + $q.notify extracted to useMcpUserCredentialDialog composable.
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
@@ -65,10 +69,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
-import type { McpUserCredential } from './types';
-import { useMcpStore } from '../../stores/mcp';
+import { toRef } from 'vue';
+import { useMcpUserCredentialDialog } from './useMcpUserCredentialDialog';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -82,71 +84,10 @@ const emit = defineEmits<{
   saved: [];
 }>();
 
-const $q = useQuasar();
-const mcpStore = useMcpStore();
-const loading = ref(false);
-const saving = ref(false);
-const items = ref<McpUserCredential[]>([]);
-let form = reactive({ credential_key: 'Authorization', secret: '' });
-
-const canSave = computed(() =>
-  Boolean(props.mcpServerId && props.userId && form.credential_key.trim() && form.secret.trim()),
+const { loading, saving, items, form, canSave, save, confirmRemove } = useMcpUserCredentialDialog(
+  toRef(props, 'modelValue'),
+  toRef(props, 'mcpServerId'),
+  toRef(props, 'userId'),
+  emit,
 );
-
-watch(
-  () => [props.modelValue, props.mcpServerId, props.userId] as const,
-  ([open, serverId, uid]) => {
-    if (open && serverId && uid) void reload();
-  },
-);
-
-async function reload() {
-  if (!props.mcpServerId || !props.userId) return;
-  loading.value = true;
-  try {
-    items.value = await mcpStore.fetchUserCredentials(props.mcpServerId, props.userId);
-  } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载凭据失败' });
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function save() {
-  if (!canSave.value) return;
-  saving.value = true;
-  try {
-    await mcpStore.saveUserCredential(props.mcpServerId, props.userId, {
-      credential_key: form.credential_key.trim(),
-      secret: form.secret.trim(),
-    });
-    form.secret = '';
-    await reload();
-    emit('saved');
-    $q.notify({ type: 'positive', message: '凭据已保存' });
-  } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function remove(credentialKey: string) {
-  try {
-    await mcpStore.removeUserCredential(props.mcpServerId, props.userId, credentialKey);
-    await reload();
-    $q.notify({ type: 'positive', message: '已删除' });
-  } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
-  }
-}
-
-function confirmRemove(credentialKey: string) {
-  $q.dialog({
-    title: '删除凭据',
-    message: `确定删除凭据「${credentialKey}」？删除后 Agent 将无法使用该凭据访问 MCP 服务。`,
-    cancel: true,
-    persistent: true,
-  }).onOk(() => void remove(credentialKey));
-}
 </script>

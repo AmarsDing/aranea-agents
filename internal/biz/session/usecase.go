@@ -2,13 +2,13 @@ package session
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -607,7 +607,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 			return Session{}, validationErr("team_id is required")
 		}
 		if _, err := uc.teams.GetTeamByID(ctx, in.TeamID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, shared.ErrNotFound) {
 				return Session{}, kerrors.NotFound("SESSION", "team not found")
 			}
 			return Session{}, err
@@ -617,7 +617,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 			return Session{}, validationErr("agent_id is required")
 		}
 		if _, err := uc.agents.GetAgentByID(ctx, in.AgentID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, shared.ErrNotFound) {
 				return Session{}, kerrors.NotFound("SESSION", "agent not found")
 			}
 			return Session{}, err

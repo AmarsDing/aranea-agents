@@ -57,13 +57,14 @@ func NewBus(lg loggateway.Logger) Bus {
 // criticalTypes returns the set of event types that must never be silently dropped.
 // These are persisted session events where loss causes observable data corruption.
 var criticalTypeSet = map[EnvelopeType]struct{}{
-	EnvelopeTypeToolResult:       {},
-	EnvelopeTypeError:            {},
-	EnvelopeTypeRunnerCompletion: {},
-	EnvelopeTypeContextUsage:     {},
-	EnvelopeTypeGraphNodeEnd:     {},
-	EnvelopeTypeTeamRunFinished:  {},
-	EnvelopeTypeTeamRunFailed:    {},
+	EnvelopeTypeToolResult:           {},
+	EnvelopeTypeError:                {},
+	EnvelopeTypeRunnerCompletion:     {},
+	EnvelopeTypeContextUsage:         {},
+	EnvelopeTypeGraphNodeEnd:         {},
+	EnvelopeTypeTeamRunFinished:      {},
+	EnvelopeTypeTeamRunFailed:        {},
+	EnvelopeTypeSessionStatusChanged: {}, // R-07 fix: session status loss causes frontend state inconsistency
 }
 
 func (b *bus) Publish(ctx context.Context, env Envelope) {

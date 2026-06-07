@@ -25,7 +25,7 @@ type analyzeMemoryQualityOutput struct {
 func newAnalyzeMemoryQualityTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input analyzeMemoryQualityInput) (analyzeMemoryQualityOutput, error) {
 		if input.AgentID == "" {
-			return analyzeMemoryQualityOutput{}, errAgentIDRequired
+			return analyzeMemoryQualityOutput{}, ErrAgentIDRequired
 		}
 		report, err := deps.Analytics.AnalyzeMemoryQuality(ctx, input.AgentID, time.Now().AddDate(0, 0, -30))
 		if err != nil {

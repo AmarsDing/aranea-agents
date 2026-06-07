@@ -30,7 +30,7 @@ type dreamCycleOutput struct {
 func newDreamCycleTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input dreamCycleInput) (dreamCycleOutput, error) {
 		if input.AgentID == "" {
-			return dreamCycleOutput{}, errAgentIDRequired
+			return dreamCycleOutput{}, ErrAgentIDRequired
 		}
 
 		// Step 1: Measure quality before.

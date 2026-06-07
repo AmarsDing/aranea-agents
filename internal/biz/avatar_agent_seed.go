@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -10,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz/agenticons"
 	"aranea-agents/internal/biz/avatar"
+	"aranea-agents/internal/biz/shared"
 )
 
 func EnsureAgentAvatars(ctx context.Context, repo AvatarRepo) error {
@@ -38,7 +38,7 @@ func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatar
 	if err == nil && existing.ID != "" {
 		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, shared.ErrNotFound) {
 		return err
 	}
 

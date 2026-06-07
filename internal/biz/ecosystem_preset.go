@@ -20,21 +20,21 @@ type IndustryLoadInfo struct {
 	LoadedAt      string `json:"loaded_at,omitempty"`
 	Agents        int    `json:"agents,omitempty"`
 	Teams         int    `json:"teams,omitempty"`
-	TaxonomyNodes int    `json:"taxonomy_nodes,omitempty"`
+	OrgNodes       int    `json:"org_nodes,omitempty"`
 }
 
 // LoadResult contains the result of loading an industry.
 type LoadResult struct {
 	AgentsCreated int `json:"agents_created"`
 	TeamsCreated  int `json:"teams_created"`
-	TaxonomyNodes int `json:"taxonomy_nodes"`
+	OrgNodes      int `json:"org_nodes"`
 }
 
 // UnloadResult contains the result of unloading an industry.
 type UnloadResult struct {
 	AgentsDeleted        int `json:"agents_deleted"`
 	TeamsDeleted         int `json:"teams_deleted"`
-	TaxonomyNodesDeleted int `json:"taxonomy_nodes_deleted"`
+	OrgNodesDeleted      int `json:"org_nodes_deleted"`
 	TeamsModified        int `json:"teams_modified,omitempty"`
 }
 
@@ -55,7 +55,7 @@ type EcosystemUnloadResponse struct {
 type EcosystemPresetRepo interface {
 	GetEcosystemLoaded(ctx context.Context) (EcosystemLoadedStatus, error)
 	SetEcosystemLoaded(ctx context.Context, status EcosystemLoadedStatus) error
-	DeleteTaxonomyNodesByIndustry(ctx context.Context, industryKey string) (int, error)
+	DeleteOrgNodesByCompany(ctx context.Context, companyKey string) (int, error)
 	DeleteAgentsByIndustry(ctx context.Context, industryKey string) (int, error)
 	DeleteTeamsByIndustry(ctx context.Context, industryKey string) (deleted int, modified int, err error)
 }
@@ -175,7 +175,7 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 			partialErr    string
 		)
 
-		taxDeleted, err = uc.repo.DeleteTaxonomyNodesByIndustry(ctx, ind)
+		taxDeleted, err = uc.repo.DeleteOrgNodesByCompany(ctx, ind)
 		if err != nil {
 			partialErr = fmt.Sprintf("delete taxonomy: %v", err)
 			uc.lg.Warn("ecosystem unload: taxonomy deletion failed",
@@ -210,7 +210,7 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 		resp.Results[ind] = &UnloadResult{
 			AgentsDeleted:        agentsDeleted,
 			TeamsDeleted:         teamsDeleted,
-			TaxonomyNodesDeleted: taxDeleted,
+			OrgNodesDeleted: taxDeleted,
 			TeamsModified:        teamsModified,
 		}
 		if partialErr != "" {

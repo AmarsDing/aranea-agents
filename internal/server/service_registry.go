@@ -41,6 +41,7 @@ type ServiceRegistry struct {
 	ChannelIngress *service.ChannelIngress
 	AIRefine       *service.AIRefineService
 	Taxonomy           *service.TaxonomyService
+	Organization       *service.OrganizationService
 	SkillEvo           *service.SkillEvolutionService
 	SkillIntel         *service.SkillIntelligenceService
 	SkillDedup         *service.SkillDedupService
@@ -83,6 +84,7 @@ func NewServiceRegistry(
 	channelIngress *service.ChannelIngress,
 	aiRefine *service.AIRefineService,
 	taxonomy *service.TaxonomyService,
+	organization *service.OrganizationService,
 	skillEvo *service.SkillEvolutionService,
 	skillIntel *service.SkillIntelligenceService,
 	skillDedup *service.SkillDedupService,
@@ -122,6 +124,7 @@ func NewServiceRegistry(
 		ChannelIngress: channelIngress,
 		AIRefine:       aiRefine,
 		Taxonomy:         taxonomy,
+		Organization:     organization,
 		SkillEvo:         skillEvo,
 		SkillIntel:       skillIntel,
 		SkillDedup:       skillDedup,

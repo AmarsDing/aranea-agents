@@ -77,6 +77,11 @@ const (
 	// Monitor self-healing events
 	EnvelopeTypeMonitorAutoHealed           EnvelopeType = "monitor.auto_healed"
 	EnvelopeTypeMonitorSelfCheckCompleted   EnvelopeType = "monitor.self_check_completed"
+
+	// Borrow request events (cross-department collaboration)
+	EnvelopeTypeBorrowApproved     EnvelopeType = "borrow.approved"
+	EnvelopeTypeBorrowRejected     EnvelopeType = "borrow.rejected"
+	EnvelopeTypeBorrowAutoApproved EnvelopeType = "borrow.auto_approved"
 )
 
 // Envelope is the universal event carrier.

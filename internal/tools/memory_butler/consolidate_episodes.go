@@ -22,7 +22,7 @@ type consolidateEpisodesOutput struct {
 func newConsolidateEpisodesTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input consolidateEpisodesInput) (consolidateEpisodesOutput, error) {
 		if input.AgentID == "" {
-			return consolidateEpisodesOutput{}, errAgentIDRequired
+			return consolidateEpisodesOutput{}, ErrAgentIDRequired
 		}
 
 		// List episodic facts (kind="episode") for the agent.

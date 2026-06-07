@@ -237,21 +237,27 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		if statErr != nil {
 			errMsg = statErr.Error()
 		}
-		_ = r.writer.MarkFilesystemMissing(ctx, slug, true)
+		if err := r.writer.MarkFilesystemMissing(ctx, slug, true); err != nil {
+			r.lg.Warn("failed to mark filesystem missing", loggateway.Err(err), loggateway.Str("slug", slug))
+		}
 		dur := int(time.Since(t0).Milliseconds())
-		_ = r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
+		if err := r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
 			Status:       "failure",
 			DurationMS:   dur,
 			InputPreview: preview(slug + " missing"),
 			ErrorCode:    "filesystem_missing",
 			ErrorMessage: errMsg,
 			Source:       source,
-		})
+		}); err != nil {
+			r.lg.Warn("failed to record skill invocation", loggateway.Err(err), loggateway.Str("slug", slug))
+		}
 		r.lg.Warn("skill filesystem missing", loggateway.StepID(sourceTag), loggateway.Str("slug", slug), loggateway.Str("err", errMsg))
 		r.reportSync(ctx, "skill.filesystem.missing", slug, "Skill 磁盘目录缺失: "+slug, "warn")
 		return
 	}
-	_ = r.writer.MarkFilesystemMissing(ctx, slug, false)
+	if err := r.writer.MarkFilesystemMissing(ctx, slug, false); err != nil {
+		r.lg.Warn("failed to mark filesystem missing", loggateway.Err(err), loggateway.Str("slug", slug))
+	}
 
 	files, err := importer.ReadSkillDirFiles(dir)
 	if err != nil {
@@ -304,7 +310,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	if sk.CurrentVersion != nil {
 		ver = sk.CurrentVersion.Version
 	}
-	_ = r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
+	if err := r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
 		SkillID:       sk.ID,
 		SkillVersion:  ver,
 		Status:        "success",
@@ -312,7 +318,9 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		InputPreview:  preview(slug + " sync"),
 		OutputPreview: preview(sk.Name + " @" + sk.Slug),
 		Source:        source,
-	})
+	}); err != nil {
+		r.lg.Warn("failed to record skill invocation", loggateway.Err(err), loggateway.Str("slug", slug))
+	}
 	r.lg.Info("skill sync success", loggateway.StepID(sourceTag), loggateway.Str("slug", slug), loggateway.Str("skill_id", sk.ID), loggateway.Int("duration_ms", dur))
 	eventKey := "skill.filesystem.updated"
 	severity := "info"
@@ -346,14 +354,16 @@ func (r *Runner) recordFailure(ctx context.Context, slug, source string, t0 time
 	if err != nil {
 		msg = err.Error()
 	}
-	_ = r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
+	if err := r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
 		Status:       "failure",
 		DurationMS:   dur,
 		InputPreview: preview(slug + " sync"),
 		ErrorCode:    code,
 		ErrorMessage: msg,
 		Source:       source,
-	})
+	}); err != nil {
+		r.lg.Warn("failed to record skill invocation", loggateway.Err(err), loggateway.Str("slug", slug))
+	}
 }
 
 func preview(s string) string {

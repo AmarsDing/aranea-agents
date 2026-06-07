@@ -304,7 +304,7 @@ func TestEntAgentToBiz_BasicFields(t *testing.T) {
 		IsFavorite:         false,
 		Icon:               "robot",
 		AgentDescription:   "A test agent",
-		TaxonomyPositionID: "pos1",
+		PositionID:         "pos1",
 		PositionKey:        "pk1",
 		AgentVariant:       "v1",
 		VariantDescription: "variant desc",
@@ -333,7 +333,7 @@ func TestEntAgentToBiz_BasicFields(t *testing.T) {
 	if got.Status != "active" || !got.IsDefault || got.IsFavorite {
 		t.Fatalf("agent status/favorite mismatch: %+v", got)
 	}
-	if got.TaxonomyPositionID != "pos1" || got.PositionKey != "pk1" {
+	if got.PositionID != "pos1" || got.PositionKey != "pk1" {
 		t.Fatalf("agent taxonomy mismatch: %+v", got)
 	}
 	if got.Readonly {

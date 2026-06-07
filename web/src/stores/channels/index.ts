@@ -11,13 +11,15 @@ import {
   testChannel,
   listChannelDeliveries,
   listChannelTurnJobs,
-  type ChannelRow,
-  type ChannelCatalogItem,
-  type ChannelCredential,
-  type ChannelResourceInput,
-  type ChannelDeliveryRow,
-  type ChannelTurnJobRow,
 } from '../../features/channels/api';
+import type {
+  ChannelRow,
+  ChannelCatalogItem,
+  ChannelCredential,
+  ChannelResourceInput,
+  ChannelDeliveryRow,
+  ChannelTurnJobRow,
+} from '../../features/channels/types';
 import { listAgents } from '../../features/agents/api';
 import type { Agent } from '../../features/agents/types';
 import { listTeams } from '../../features/teams/api';

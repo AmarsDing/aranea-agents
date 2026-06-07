@@ -89,7 +89,7 @@ func (s *stubUsageRepo) RollupDailyHourly(context.Context, TokenUsageEvent) erro
 }
 
 func TestCheckQuota_noConfigAllowed(t *testing.T) {
-	uc := NewUsageUsecase(&stubUsageRepo{hasQuota: false}, loggateway.Global())
+	uc := NewUsageUsecase(&stubUsageRepo{hasQuota: false}, loggateway.NewNoop())
 	check, err := uc.CheckQuota(context.Background(), "agent", "a1")
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestCheckQuota_userScope(t *testing.T) {
 			PeriodEnd:       "2026-05-31",
 		},
 		spent: 1_000_000,
-	}, loggateway.Global())
+	}, loggateway.NewNoop())
 	check, err := uc.CheckQuota(context.Background(), "user", "u1")
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestCheckQuota_exceededBlocked(t *testing.T) {
 			PeriodEnd:       "2026-05-31",
 		},
 		spent: 2_000_000,
-	}, loggateway.Global())
+	}, loggateway.NewNoop())
 	check, err := uc.CheckQuota(context.Background(), "agent", "a1")
 	if err != nil {
 		t.Fatal(err)

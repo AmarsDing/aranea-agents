@@ -16,14 +16,14 @@ import (
 type TaxonomyService struct {
 	v1.UnimplementedTaxonomyServiceServer
 
-	uc *biz.TaxonomyUsecase
+	uc *biz.OrganizationUsecase
 }
 
-func NewTaxonomyService(uc *biz.TaxonomyUsecase) *TaxonomyService {
+func NewTaxonomyService(uc *biz.OrganizationUsecase) *TaxonomyService {
 	return &TaxonomyService{uc: uc}
 }
 
-func toProtoTaxonomy(c biz.TaxonomyNode) *v1.TaxonomyNode {
+func toProtoTaxonomy(c biz.OrganizationNode) *v1.TaxonomyNode {
 	return &v1.TaxonomyNode{
 		Id:           c.ID,
 		Key:          c.Key,
@@ -45,11 +45,11 @@ func toProtoTaxonomy(c biz.TaxonomyNode) *v1.TaxonomyNode {
 	}
 }
 
-func fromProtoTaxonomy(pb *v1.TaxonomyNode) biz.TaxonomyNode {
+func fromProtoTaxonomy(pb *v1.TaxonomyNode) biz.OrganizationNode {
 	if pb == nil {
-		return biz.TaxonomyNode{}
+		return biz.OrganizationNode{}
 	}
-	return biz.TaxonomyNode{
+	return biz.OrganizationNode{
 		ID:           pb.GetId(),
 		Key:          pb.GetKey(),
 		Name:         pb.GetName(),
@@ -70,7 +70,7 @@ func fromProtoTaxonomy(pb *v1.TaxonomyNode) biz.TaxonomyNode {
 	}
 }
 
-func toTaxonomyTree(nodes []biz.TaxonomyTreeNode) []*v1.TaxonomyTreeNode {
+func toTaxonomyTree(nodes []biz.OrganizationTreeNode) []*v1.TaxonomyTreeNode {
 	out := make([]*v1.TaxonomyTreeNode, 0, len(nodes))
 	for i := range nodes {
 		out = append(out, toTaxonomyTreeNode(&nodes[i]))
@@ -78,7 +78,7 @@ func toTaxonomyTree(nodes []biz.TaxonomyTreeNode) []*v1.TaxonomyTreeNode {
 	return out
 }
 
-func toTaxonomyTreeNode(n *biz.TaxonomyTreeNode) *v1.TaxonomyTreeNode {
+func toTaxonomyTreeNode(n *biz.OrganizationTreeNode) *v1.TaxonomyTreeNode {
 	if n == nil {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (s *TaxonomyService) ListTaxonomyTree(ctx context.Context, _ *emptypb.Empty
 }
 
 func (s *TaxonomyService) CreateTaxonomy(ctx context.Context, req *v1.CreateTaxonomyRequest) (*v1.TaxonomyNode, error) {
-	in := biz.TaxonomyNode{
+	in := biz.OrganizationNode{
 		Key:          req.GetKey(),
 		Name:         req.GetName(),
 		Description:  req.GetDescription(),

@@ -17,6 +17,12 @@ import {
   getCascadeSagaSteps,
   retryCascadeApprove,
   compensateCascadeApprove,
+  compositeSearchMemories,
+  debugMemoryRecall,
+  getMemoryNeighborhood,
+  getMemoryPlatformSettings,
+  listMemoryDeadLetters,
+  updateMemoryPlatformSettings,
 } from '../../features/memory/api';
 import type {
   L0AssemblySnapshot,
@@ -171,6 +177,31 @@ export const useMemoryStore = defineStore('memory', () => {
     entities.value = [];
   }
 
+  // F-08 fix: wrap ad-hoc memory API calls in Store actions
+  async function searchMemoriesComposite(params: Parameters<typeof compositeSearchMemories>[0]) {
+    return compositeSearchMemories(params);
+  }
+
+  async function recallDebug(params: Parameters<typeof debugMemoryRecall>[0]) {
+    return debugMemoryRecall(params);
+  }
+
+  async function fetchNeighborhood(centerID: string, params?: Parameters<typeof getMemoryNeighborhood>[1]) {
+    return getMemoryNeighborhood(centerID, params);
+  }
+
+  async function fetchPlatformSettings() {
+    return getMemoryPlatformSettings();
+  }
+
+  async function fetchDeadLetters(state?: string, limit?: number) {
+    return listMemoryDeadLetters(state, limit);
+  }
+
+  async function savePlatformSettings(input: Parameters<typeof updateMemoryPlatformSettings>[0]) {
+    return updateMemoryPlatformSettings(input);
+  }
+
   return {
     snapshots,
     facts,
@@ -198,5 +229,11 @@ export const useMemoryStore = defineStore('memory', () => {
     clearSnapshots,
     clearFacts,
     clearEntities,
+    searchMemoriesComposite,
+    recallDebug,
+    fetchNeighborhood,
+    fetchPlatformSettings,
+    fetchDeadLetters,
+    savePlatformSettings,
   };
 });

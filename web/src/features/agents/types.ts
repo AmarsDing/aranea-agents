@@ -187,7 +187,8 @@ export type AgentListQuery = {
   keyword?: string;
   status?: string;
   provider?: string;
-  category_id?: string;
+  /** S-10 fix: renamed from category_id to match proto field org_node_id */
+  org_node_id?: string;
   /** empty = all; "mine" = current user; otherwise user id */
   created_by?: string;
   limit?: number;

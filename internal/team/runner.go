@@ -106,7 +106,7 @@ func NewRunner(
 		cfg:             cfg,
 		lg:              lg,
 		td: rt.TurnDeps{
-			Catalog: rt.Catalog{
+			ReadDeps: rt.TurnReadDeps{
 				Agents:   agents,
 				AgentsUC: agentsUC,
 				Tools:    toolsCatalog,
@@ -127,18 +127,18 @@ func NewRunner(
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {
-	if r.td.Catalog.AgentsUC != nil {
-		return r.td.Catalog.AgentsUC.Get(ctx, id)
+	if r.td.ReadDeps.AgentsUC != nil {
+		return r.td.ReadDeps.AgentsUC.Get(ctx, id)
 	}
-	if r.td.Catalog.Agents != nil && r.td.Catalog.Tools != nil {
-		return biz.NewAgentUsecase(r.td.Catalog.Agents, r.td.Catalog.Tools, nil, nil).Get(ctx, id)
+	if r.td.ReadDeps.Agents != nil && r.td.ReadDeps.Tools != nil {
+		return biz.NewAgentUsecase(r.td.ReadDeps.Agents, r.td.ReadDeps.Tools, nil, nil).Get(ctx, id)
 	}
-	return r.td.Catalog.Agents.GetAgentByID(ctx, id)
+	return r.td.ReadDeps.Agents.GetAgentByID(ctx, id)
 }
 
 // RunTurnFromInput executes one user turn for a team session using biz-level TurnInput.
 func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
-	if r == nil || r.td.Sessions == nil || r.teamReader == nil || r.runWriter == nil || r.td.Catalog.Agents == nil || r.td.Catalog.LLM == nil {
+	if r == nil || r.td.Sessions == nil || r.teamReader == nil || r.runWriter == nil || r.td.ReadDeps.Agents == nil || r.td.ReadDeps.LLM == nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not configured")
 	}
 	if !strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {

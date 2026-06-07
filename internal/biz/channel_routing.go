@@ -2,10 +2,13 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"path"
 	"strings"
+
+	stderrors "errors"
+
+	"aranea-agents/internal/biz/shared"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -104,7 +107,7 @@ func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams Tea
 			return "", "", "", errors.InternalServer("CHANNEL", "team repository not configured")
 		}
 		if _, e := teams.GetTeamByID(ctx, teamID); e != nil {
-			if errors.IsNotFound(e) || e == sql.ErrNoRows {
+			if errors.IsNotFound(e) || stderrors.Is(e, shared.ErrNotFound) {
 				return "", "", "", errors.NotFound("TEAM", "routing team not found")
 			}
 			return "", "", "", e

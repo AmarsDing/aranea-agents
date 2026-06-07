@@ -1,4 +1,7 @@
-// Container: approved — feature-local panel/dialog; data from Page composable via props.
+// Container: approved — feature-local dialog; manages channel CRUD lifecycle.
+// Uses channels store for channel operations and avatar store for avatar catalog
+// lookup (auxiliary data for channel icon selection).
+// FB4 fix: icon refresh + $q.notify extracted to useChannelIconRefresh composable.
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="app-dialog-card app-dialog-card--900 app-glass-dialog channel-editor-dialog">
@@ -129,7 +132,7 @@
                         :label="t('channelEditor.refreshPlatformIcons')"
                         :loading="refreshingIcons"
                         class="q-mt-sm"
-                        @click.stop="onRefreshPlatformIcons"
+                        @click.stop="refreshPlatformIcons"
                       />
                       <agent-avatar-picker v-model="iconAssetId" v-model:open="iconPickerOpen" scope="channel" />
                     </div>
@@ -311,9 +314,8 @@
 </template>
 
 <script setup lang="ts">
-import { toRef, computed, ref } from 'vue';
+import { toRef, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import ChannelCatalogPicker from './ChannelCatalogPicker.vue';
 import ChannelConfigRow from '../../components/channels/ChannelConfigRow.vue';
 import ChannelRoutingFields from '../../components/channels/ChannelRoutingFields.vue';
@@ -322,7 +324,7 @@ import AgentAvatarPicker from '../../components/avatar/AgentAvatarPicker.vue';
 import ChannelTurnJobsPanel from './ChannelTurnJobsPanel.vue';
 import { useChannelEditorForm } from './useChannelEditorForm';
 import { useChannelEditorLabels } from './useChannelEditorLabels';
-import { useAvatarCatalogStore } from '../../stores/avatar';
+import { useChannelIconRefresh } from './useChannelIconRefresh';
 import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from './types';
 
 const props = defineProps<{
@@ -406,23 +408,5 @@ function sectionDomId(id: string) {
   return `channel-section-${id}`;
 }
 
-const refreshingIcons = ref(false);
-const avatarStore = useAvatarCatalogStore();
-const $q = useQuasar();
-
-async function onRefreshPlatformIcons() {
-  refreshingIcons.value = true;
-  try {
-    const result = await avatarStore.refreshChannelIcons();
-    $q.notify({
-      type: result.failed > 0 ? 'warning' : 'positive',
-      message: t('channelEditor.refreshIconsResult', { updated: result.updated, failed: result.failed }),
-      position: 'top',
-    });
-  } catch {
-    $q.notify({ type: 'negative', message: t('channelEditor.refreshIconsFailed'), position: 'top' });
-  } finally {
-    refreshingIcons.value = false;
-  }
-}
+const { refreshingIcons, refreshPlatformIcons } = useChannelIconRefresh();
 </script>

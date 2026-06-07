@@ -24,6 +24,16 @@ func NewWebhookRepo(d *Data) biz.WebhookRepository {
 	return &webhookRepo{data: d}
 }
 
+// NewWebhookReader returns a narrow WebhookReader from the composite repo.
+func NewWebhookReader(d *Data) biz.WebhookReader {
+	return NewWebhookRepo(d)
+}
+
+// NewWebhookWriter returns a narrow WebhookWriter from the composite repo.
+func NewWebhookWriter(d *Data) biz.WebhookWriter {
+	return NewWebhookRepo(d)
+}
+
 func entToWebhook(lg loggateway.Logger, e *ent.GatewayWebhook) biz.WebhookConfig {
 	if e == nil {
 		return biz.WebhookConfig{}

@@ -28,7 +28,7 @@ type recommendSkillsOutput struct {
 func newRecommendSkillsTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input recommendSkillsInput) (recommendSkillsOutput, error) {
 		if input.AgentID == "" {
-			return recommendSkillsOutput{}, errAgentIDRequired
+			return recommendSkillsOutput{}, ErrAgentIDRequired
 		}
 		var recs []skillRecommendation
 		pendingProposals, err := deps.Skills.ListProposals(ctx, input.AgentID, "pending")

@@ -64,6 +64,7 @@
             :loading="loading"
             :saving="saving"
             :list-key-state="listKeyState"
+            :fetch-provider-logo-svg="fetchProviderLogoSvg"
             @toggle-enabled="toggleEnabled"
             @toggle-reveal-key="toggleListKeyReveal"
             @trend="openTrend"
@@ -336,6 +337,7 @@ import ProviderWizardStep2Specs from '../components/platform/ProviderWizardStep2
 import ProviderWizardStep3HA from '../components/platform/ProviderWizardStep3HA.vue';
 import ProviderWizardStep4Advanced from '../components/platform/ProviderWizardStep4Advanced.vue';
 import { useResourceManagerPage } from '../features/platform/useResourceManagerPage';
+import { useModelCatalogStore } from '../stores/model-catalog';
 
 const providerWizardSteps = [
   { id: 1, title: '连接', caption: '密钥与身份' },
@@ -435,4 +437,8 @@ const {
   metadataLabel,
   credentialEncryptionAvailable,
 } = useResourceManagerPage();
+
+// F-03 fix: pass Store function via props instead of component importing Store
+const modelCatalogStore = useModelCatalogStore();
+const fetchProviderLogoSvg = (id: string) => modelCatalogStore.fetchProviderLogoSvg(id);
 </script>

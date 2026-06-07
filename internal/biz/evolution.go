@@ -19,6 +19,10 @@ type EvolutionMetrics struct {
 	NegativeFeedback       int
 	ToolSuccessSeries      []MetricDataPoint
 	RetrievalQualitySeries []MetricDataPoint
+	// S-05 fix: indicate when metrics data is incomplete due to partial query failures.
+	Partial bool
+	// S-08 fix: record which sub-queries failed for observability.
+	PartialErrors []string
 }
 
 type MetricDataPoint struct {
@@ -79,20 +83,30 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 		return EvolutionMetrics{}, err
 	}
 	since := timeRangeToSince(timeRange)
+	var partial bool
+	var partialErrors []string
 	toolRate, toolSeries, err := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
 	if err != nil {
+		partial = true
+		partialErrors = append(partialErrors, "GetToolSuccessRate: "+err.Error())
 		uc.lg.Warn("GetToolSuccessRate failed", loggateway.StepID("evolution.get_tool_success_rate"), loggateway.Err(err))
 	}
 	retrievalRate, retrievalSeries, err := uc.metricsRepo.GetRetrievalQuality(ctx, agentID, since)
 	if err != nil {
+		partial = true
+		partialErrors = append(partialErrors, "GetRetrievalQuality: "+err.Error())
 		uc.lg.Warn("GetRetrievalQuality failed", loggateway.StepID("evolution.get_retrieval_quality"), loggateway.Err(err))
 	}
 	episodes, err := uc.metricsRepo.GetEpisodeCount(ctx, agentID, since)
 	if err != nil {
+		partial = true
+		partialErrors = append(partialErrors, "GetEpisodeCount: "+err.Error())
 		uc.lg.Warn("GetEpisodeCount failed", loggateway.StepID("evolution.get_episode_count"), loggateway.Err(err))
 	}
 	negFeedback, err := uc.metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
 	if err != nil {
+		partial = true
+		partialErrors = append(partialErrors, "GetNegativeFeedbackCount: "+err.Error())
 		uc.lg.Warn("GetNegativeFeedbackCount failed", loggateway.StepID("evolution.get_negative_feedback_count"), loggateway.Err(err))
 	}
 	return EvolutionMetrics{
@@ -104,6 +118,8 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 		NegativeFeedback:       negFeedback,
 		ToolSuccessSeries:      toolSeries,
 		RetrievalQualitySeries: retrievalSeries,
+		Partial:                partial,
+		PartialErrors:          partialErrors,
 	}, nil
 }
 

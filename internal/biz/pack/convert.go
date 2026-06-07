@@ -7,7 +7,7 @@ import (
 	"aranea-agents/internal/scenario/loader"
 )
 
-// ConvertIndustrySpecToPack 将 loader.IndustrySpec 转换为 Pack 格式。
+// ConvertCompanySpecToPack 将 loader.CompanySpec 转换为 Pack 格式。
 // 用于将现有 agents.yaml 格式的行业数据转换为 Pack 导入引擎可用的内存模型。
 
 // 默认值常量（避免散落在转换逻辑里的 magic numbers/strings）
@@ -18,17 +18,17 @@ const (
 	DefaultSystemPromptMode = "file"
 )
 
-func ConvertIndustrySpecToPack(spec *loader.IndustrySpec) (*Pack, error) {
+func ConvertCompanySpecToPack(spec *loader.CompanySpec) (*Pack, error) {
 	if spec == nil {
-		return nil, fmt.Errorf("pack: IndustrySpec 为 nil")
+		return nil, fmt.Errorf("pack: CompanySpec 为 nil")
 	}
 
 	p := &Pack{
 		Manifest: ManifestSpec{
 			APIVersion:  "v1",
 			Kind:        "industry",
-			Name:        spec.IndustryKey,
-			Description: fmt.Sprintf("%s 行业场景包", spec.IndustryKey),
+			Name:        spec.CompanyKey,
+			Description: fmt.Sprintf("%s 行业场景包", spec.CompanyKey),
 			Version:     "1.0.0",
 			Author:      "system",
 		},
@@ -56,7 +56,7 @@ func ConvertIndustrySpecToPack(spec *loader.IndustrySpec) (*Pack, error) {
 }
 
 // convertAgentSpec 将 loader.AgentSpec 转换为 AgentPackSpec。
-func convertAgentSpec(spec *loader.IndustrySpec, as *loader.AgentSpec) AgentPackSpec {
+func convertAgentSpec(spec *loader.CompanySpec, as *loader.AgentSpec) AgentPackSpec {
 	provider, model := resolveModelFromDefaults(spec.Defaults, as.ModelTier)
 
 	toolsDeny := as.ToolsDeny
@@ -96,7 +96,7 @@ func convertAgentSpec(spec *loader.IndustrySpec, as *loader.AgentSpec) AgentPack
 	}
 
 	// 构建 position_key 路径格式：industry/dept/pos
-	positionKey := buildPositionKeyPath(spec.IndustryKey, as.PositionKey)
+	positionKey := buildPositionKeyPath(spec.CompanyKey, as.PositionKey)
 
 	agentSpec := AgentPackSpec{
 		Key:               as.Key,
@@ -273,8 +273,8 @@ func collectPackDependencies(p *Pack) {
 
 	// 收集 contents
 	p.Manifest.Contents = &PackContents{}
-	if p.Taxonomy != nil {
-		p.Manifest.Contents.Taxonomy = true
+	if p.Organization != nil {
+		p.Manifest.Contents.Organization = true
 	}
 	for _, a := range p.Agents {
 		p.Manifest.Contents.Agents = append(p.Manifest.Contents.Agents, PackContentRef{Key: a.Key})
@@ -324,18 +324,18 @@ func ConvertAgentTemplatesToPack(spec *loader.AgentTemplatesSpec) *Pack {
 	return p
 }
 
-// ConvertTaxonomySpecToPack 将 loader.TaxonomySpec 转换为 Pack 中的 TaxonomyPackSpec。
-func ConvertTaxonomySpecToPack(spec *loader.TaxonomySpec) *TaxonomyPackSpec {
-	result := &TaxonomyPackSpec{}
-	for _, ind := range spec.Industries {
-		indSpec := IndustrySpec{
-			Key:         ind.Key,
-			Name:        ind.Name,
-			Icon:        ind.Icon,
-			Description: ind.Description,
-			SortOrder:   ind.SortOrder,
+// ConvertOrganizationSpecToPackFromLoader 将 loader.OrganizationSpec（新格式）转换为 Pack 中的 OrganizationPackSpec。
+func ConvertOrganizationSpecToPackFromLoader(spec *loader.OrganizationSpec) *OrganizationPackSpec {
+	result := &OrganizationPackSpec{}
+	for _, comp := range spec.ResolvedCompanies() {
+		compSpec := CompanySpec{
+			Key:         comp.Key,
+			Name:        comp.Name,
+			Icon:        comp.Icon,
+			Description: comp.Description,
+			SortOrder:   comp.SortOrder,
 		}
-		for _, dept := range ind.Departments {
+		for _, dept := range comp.Departments {
 			deptSpec := DepartmentSpec{
 				Key:         dept.Key,
 				Name:        dept.Name,
@@ -361,9 +361,9 @@ func ConvertTaxonomySpecToPack(spec *loader.TaxonomySpec) *TaxonomyPackSpec {
 					Variants:         variants,
 				})
 			}
-			indSpec.Departments = append(indSpec.Departments, deptSpec)
+			compSpec.Departments = append(compSpec.Departments, deptSpec)
 		}
-		result.Industries = append(result.Industries, indSpec)
+		result.Companies = append(result.Companies, compSpec)
 	}
 	return result
 }
@@ -477,8 +477,8 @@ func MergePacks(packs ...*Pack) *Pack {
 	}
 
 	for _, p := range packs {
-		if p.Taxonomy != nil {
-			result.Taxonomy = p.Taxonomy
+		if p.Organization != nil {
+			result.Organization = p.Organization
 		}
 		result.Agents = append(result.Agents, p.Agents...)
 		result.Teams = append(result.Teams, p.Teams...)

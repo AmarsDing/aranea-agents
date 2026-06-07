@@ -86,7 +86,7 @@ func TestAlertEvalWorker_NilUsecase(t *testing.T) {
 }
 
 func newTestTraceProjector(repo monitor.TraceRepo) *monitor.TraceProjector {
-	return monitor.NewTraceProjector(repo, loggateway.Global(), newMockBus())
+	return monitor.NewTraceProjector(repo, loggateway.NewNoop(), newMockBus())
 }
 
 func TestTraceProjector_OnRunnerCompletion_Success(t *testing.T) {
@@ -270,7 +270,7 @@ func TestTraceProjector_EvictStaleTraces_EmptyMap(t *testing.T) {
 }
 
 func TestTraceProjector_NewTraceProjector_NilRepo(t *testing.T) {
-	p := monitor.NewTraceProjector(nil, loggateway.Global(), newMockBus())
+	p := monitor.NewTraceProjector(nil, loggateway.NewNoop(), newMockBus())
 	if p != nil {
 		t.Error("NewTraceProjector(nil, bus) should return nil")
 	}
@@ -278,7 +278,7 @@ func TestTraceProjector_NewTraceProjector_NilRepo(t *testing.T) {
 
 func TestTraceProjector_NewTraceProjector_NilBus(t *testing.T) {
 	repo := &mockRepo{}
-	p := monitor.NewTraceProjector(repo, loggateway.Global())
+	p := monitor.NewTraceProjector(repo, loggateway.NewNoop())
 	if p != nil {
 		t.Error("NewTraceProjector(repo) with no buses should return nil")
 	}
@@ -287,7 +287,7 @@ func TestTraceProjector_NewTraceProjector_NilBus(t *testing.T) {
 func TestTraceProjector_NewTraceProjector_DuplicateBus(t *testing.T) {
 	repo := &mockRepo{}
 	bus := newMockBus()
-	p := monitor.NewTraceProjector(repo, loggateway.Global(), bus, bus)
+	p := monitor.NewTraceProjector(repo, loggateway.NewNoop(), bus, bus)
 	if p == nil {
 		t.Fatal("NewTraceProjector with duplicate bus should still return non-nil")
 	}

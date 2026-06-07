@@ -30,7 +30,7 @@ type analyzeSkillUsageOutput struct {
 func newAnalyzeSkillUsageTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input analyzeSkillUsageInput) (analyzeSkillUsageOutput, error) {
 		if input.AgentID == "" {
-			return analyzeSkillUsageOutput{}, errAgentIDRequired
+			return analyzeSkillUsageOutput{}, ErrAgentIDRequired
 		}
 		since := timeRangeToSince(input.TimeRange)
 		stats, err := deps.Queries.GetSkillInvocationStats(ctx, input.AgentID, since)

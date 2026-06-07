@@ -99,6 +99,12 @@ message GraphDefinition {
   google.protobuf.Timestamp updated_at = 17;
   int32 version = 18;
   int32 sort_order = 19;
+  // Associated team ID for team-bound graphs.
+  string team_id = 20;
+  // Whether this graph is a reusable template.
+  bool is_template = 21;
+  // JSON array of verification gate definitions.
+  string verification_gates = 22;
 }
 
 // --- CreateGraph ---
@@ -118,6 +124,12 @@ message CreateGraphRequest {
   repeated string interrupt_before = 12;
   repeated string interrupt_after = 13;
   google.protobuf.Struct metadata = 14;
+  // Associated team ID for team-bound graphs.
+  string team_id = 15;
+  // Whether this graph is a reusable template.
+  bool is_template = 16;
+  // JSON array of verification gate definitions.
+  string verification_gates = 17;
 }
 
 message CreateGraphResponse {
@@ -164,6 +176,12 @@ message UpdateGraphRequest {
   repeated string interrupt_before = 13;
   repeated string interrupt_after = 14;
   google.protobuf.Struct metadata = 15;
+  // Associated team ID for team-bound graphs.
+  string team_id = 16;
+  // Whether this graph is a reusable template.
+  bool is_template = 17;
+  // JSON array of verification gate definitions.
+  string verification_gates = 18;
 }
 
 message UpdateGraphResponse {

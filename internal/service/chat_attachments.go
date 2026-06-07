@@ -80,7 +80,7 @@ func (o *ChatOrchestrator) validateTurnAttachmentCapabilities(ctx context.Contex
 	if len(refs) == 0 || o == nil {
 		return nil
 	}
-	if err := provider.ValidateAttachmentCapabilities(ctx, o.td.Catalog.LLM, prov, mod, refs); err != nil {
+	if err := provider.ValidateAttachmentCapabilities(ctx, o.td.ReadDeps.LLM, prov, mod, refs); err != nil {
 		return TurnError(TurnErrAttachmentUnsupported, err.Error())
 	}
 	return nil

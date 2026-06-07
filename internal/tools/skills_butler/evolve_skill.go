@@ -29,13 +29,13 @@ type evolveSkillOutput struct {
 func newEvolveSkillTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input evolveSkillInput) (evolveSkillOutput, error) {
 		if input.AgentID == "" {
-			return evolveSkillOutput{}, errAgentIDRequired
+			return evolveSkillOutput{}, ErrAgentIDRequired
 		}
 		if input.SkillName == "" {
-			return evolveSkillOutput{}, errSkillNameRequired
+			return evolveSkillOutput{}, ErrSkillNameRequired
 		}
 		if input.ImprovementDescription == "" {
-			return evolveSkillOutput{}, errImprovementDescRequired
+			return evolveSkillOutput{}, ErrImprovementDescRequired
 		}
 		patternDesc := fmt.Sprintf("%s: %s", input.SkillName, input.ImprovementDescription)
 		h := sha256.Sum256([]byte(patternDesc))

@@ -65,7 +65,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
         keyword: keyword.value || undefined,
         status: selectedStatus.value || undefined,
         provider: selectedProvider.value || undefined,
-        category_id: selectedTaxonomy.value || undefined,
+        org_node_id: selectedTaxonomy.value || undefined,
         created_by: selectedCreator.value && selectedCreator.value !== '' ? selectedCreator.value : undefined,
         limit: rowsPerPage.value,
         offset: (page.value - 1) * rowsPerPage.value,

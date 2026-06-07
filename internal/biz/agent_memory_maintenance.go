@@ -2,8 +2,9 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	stderrors "errors"
+
+	"aranea-agents/internal/biz/shared"
 )
 
 // AgentMemoryMaintenanceTarget is one agent's background memory maintenance knobs.
@@ -33,7 +34,7 @@ func (u *AgentUsecase) ListMemoryMaintenanceTargets(ctx context.Context) ([]Agen
 		for _, ag := range page.Items {
 			settings, err := u.repo.GetAgentRuntimeSettings(ctx, ag.ID)
 			if err != nil {
-				if !stderrors.Is(err, sql.ErrNoRows) {
+				if !stderrors.Is(err, shared.ErrNotFound) {
 					return nil, err
 				}
 				settings = DefaultAgentRuntimeSettings()

@@ -110,15 +110,15 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 
 	builderDeps := agent.TRPCBuilderDeps{
-		Catalog:               r.td.Catalog.LLM,
-		AgentUC:               r.td.Catalog.AgentsUC,
-		Agents:                r.td.Catalog.Agents,
+		ModelCatalog:               r.td.ReadDeps.LLM,
+		AgentUC:               r.td.ReadDeps.AgentsUC,
+		Agents:                r.td.ReadDeps.Agents,
 		RT:                    r.td.RoundTrip(),
-		SkillUC:               r.td.Catalog.SkillUC,
+		SkillUC:               r.td.ReadDeps.SkillUC,
 		MCPTooling:            r.td.Persist.AgentMCP,
-		ToolUC:                r.td.Catalog.ToolUC,
+		ToolUC:                r.td.ReadDeps.ToolUC,
 		Sessions:              r.td.Sessions,
-		Sys:                   r.td.Catalog.Settings,
+		Sys:                   r.td.ReadDeps.Settings,
 		Provider:              ar.prov,
 		Model:                 ar.mod,
 		DialogMode:            dialogMode,

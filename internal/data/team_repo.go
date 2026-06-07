@@ -42,7 +42,12 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 		IsDefault:          e.IsDefault,
 		DefinitionJSON:     e.DefinitionJSON,
 		ADKAppName:         e.AdkAppName,
-		CategoryIndustryID: e.CategoryIndustryID,
+		DepartmentID:        e.DepartmentID,
+		DeptLeadAgentID:    e.DeptLeadAgentID,
+		Deliverables:       e.Deliverables,
+		InputContract:      e.InputContract,
+		CrossDeptMemberIDs: e.CrossDeptMemberIds,
+		LinkedGraphID:     e.LinkedGraphID,
 		SpiritSessionID:    e.SpiritSessionID,
 		TaskDescription:    e.TaskDescription,
 		AutoCreated:        e.AutoCreated,
@@ -196,7 +201,12 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetIsDefault(t.IsDefault).
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
-		SetCategoryIndustryID(t.CategoryIndustryID).
+		SetDepartmentID(t.DepartmentID).
+		SetDeptLeadAgentID(t.DeptLeadAgentID).
+		SetDeliverables(t.Deliverables).
+		SetInputContract(t.InputContract).
+		SetCrossDeptMemberIds(t.CrossDeptMemberIDs).
+		SetLinkedGraphID(t.LinkedGraphID).
 		SetSpiritSessionID(t.SpiritSessionID).
 		SetTaskDescription(t.TaskDescription).
 		SetAutoCreated(t.AutoCreated).
@@ -233,7 +243,12 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetIsDefault(t.IsDefault).
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
-		SetCategoryIndustryID(t.CategoryIndustryID).
+		SetDepartmentID(t.DepartmentID).
+		SetDeptLeadAgentID(t.DeptLeadAgentID).
+		SetDeliverables(t.Deliverables).
+		SetInputContract(t.InputContract).
+		SetCrossDeptMemberIds(t.CrossDeptMemberIDs).
+		SetLinkedGraphID(t.LinkedGraphID).
 		SetSpiritSessionID(t.SpiritSessionID).
 		SetTaskDescription(t.TaskDescription).
 		SetAutoCreated(t.AutoCreated).
@@ -288,6 +303,25 @@ func (r *teamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, er
 		return 0, err
 	}
 	return n, nil
+}
+
+// ListTeamsByDepartmentID lists all teams belonging to a specific department.
+func (r *teamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]biz.Team, error) {
+	if deptID == "" {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).Team.Query().
+		Where(team.DepartmentIDEQ(deptID), team.DeletedAtEQ("")).
+		Order(team.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.Team, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTeamToBiz(row, r.data.lg))
+	}
+	return out, nil
 }
 
 func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {

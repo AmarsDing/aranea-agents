@@ -22,7 +22,7 @@ type forgetLowQualityOutput struct {
 func newForgetLowQualityTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input forgetLowQualityInput) (forgetLowQualityOutput, error) {
 		if input.AgentID == "" {
-			return forgetLowQualityOutput{}, errAgentIDRequired
+			return forgetLowQualityOutput{}, ErrAgentIDRequired
 		}
 
 		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", 500, 0)

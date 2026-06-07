@@ -3,6 +3,8 @@ package backgroundjob
 import (
 	"errors"
 	"testing"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func TestJob_IsDone(t *testing.T) {
@@ -97,7 +99,7 @@ func TestErrNotFound(t *testing.T) {
 	if !errors.Is(ErrNotFound, ErrNotFound) {
 		t.Fatal("ErrNotFound should match itself via errors.Is")
 	}
-	if ErrNotFound.Error() != "background job not found" {
-		t.Fatalf("unexpected error message: %q", ErrNotFound.Error())
+	if !kerrors.IsNotFound(ErrNotFound) {
+		t.Fatalf("ErrNotFound should be NotFound kerror, got %v", ErrNotFound)
 	}
 }

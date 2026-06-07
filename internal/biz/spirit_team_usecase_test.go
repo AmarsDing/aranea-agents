@@ -401,7 +401,7 @@ func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 	sessionRepo := newMemSpiritSessionRepo()
 	transactor := &memSpiritTransactor{}
 
-	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
@@ -443,7 +443,7 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 	sessionRepo := newMemSpiritSessionRepo()
 	transactor := &memSpiritTransactor{}
 
-	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
@@ -476,7 +476,7 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 
 func TestTransitionStatus_ValidTransitions(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
-	uc := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	uc := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	// Create a team in pending status
@@ -506,7 +506,7 @@ func TestTransitionStatus_ValidTransitions(t *testing.T) {
 
 func TestTransitionStatus_InvalidTransitions(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
-	uc := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	uc := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	// Create a team in pending status
@@ -554,7 +554,7 @@ func TestTransitionStatus_InvalidTransitions(t *testing.T) {
 
 func TestTransitionStatus_InterruptedRecovery(t *testing.T) {
 	teamRepo := newMemSpiritTeamRepo()
-	uc := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	uc := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, Team{TeamKey: "recovery", DisplayName: "Recovery"})
@@ -583,7 +583,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	sessionRepo := newMemSpiritSessionRepo()
 	transactor := &memSpiritTransactor{}
 
-	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
@@ -638,7 +638,7 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 	sessionRepo := newMemSpiritSessionRepo()
 	transactor := &memSpiritTransactor{}
 
-	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 
@@ -684,7 +684,7 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 	sessionRepo := newMemSpiritSessionRepo()
 	transactor := &memSpiritTransactor{}
 
-	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil)
+	teamUC := NewTeamUsecase(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, nil, nil, nil, nil, loggateway.NewNoop())
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, loggateway.NewNoop(), WithSpiritTransactor(transactor))
 

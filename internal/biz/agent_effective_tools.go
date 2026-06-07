@@ -2,11 +2,11 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
 
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -397,7 +397,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 func (u *AgentUsecase) runtimeSettingsForEffective(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, shared.ErrNotFound) {
 			s := DefaultAgentRuntimeSettings()
 			s.AgentID = agentID
 			return withSettingDefaults(s), nil

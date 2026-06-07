@@ -12,14 +12,14 @@ import (
 )
 
 type Deps struct {
-	AgentUC     *biz.AgentUsecase
-	TeamUC      *biz.TeamUsecase
-	Taxonomy    *biz.TaxonomyUsecase
-	ScenarioDir string
+	AgentUC      *biz.AgentUsecase
+	TeamUC       *biz.TeamUsecase
+	Organization *biz.OrganizationUsecase
+	ScenarioDir  string
 }
 
-func SeedFromYAML(ctx context.Context, d Deps, industryKey string, dryRun bool) (int, int, error) {
-	spec, err := LoadIndustrySpec(d.ScenarioDir, industryKey)
+func SeedFromYAML(ctx context.Context, d Deps, companyKey string, dryRun bool) (int, int, error) {
+	spec, err := LoadCompanySpec(d.ScenarioDir, companyKey)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -34,34 +34,34 @@ func SeedFromYAML(ctx context.Context, d Deps, industryKey string, dryRun bool) 
 	return agentCount, teamCount, nil
 }
 
-func SeedAgentsFromYAML(ctx context.Context, d Deps, industryKey string) (int, error) {
-	spec, err := LoadIndustrySpec(d.ScenarioDir, industryKey)
+func SeedAgentsFromYAML(ctx context.Context, d Deps, companyKey string) (int, error) {
+	spec, err := LoadCompanySpec(d.ScenarioDir, companyKey)
 	if err != nil {
 		return 0, err
 	}
 	return seedAgents(ctx, d, spec, false)
 }
 
-func SeedTeamsFromYAML(ctx context.Context, d Deps, spec *IndustrySpec) (int, error) {
+func SeedTeamsFromYAML(ctx context.Context, d Deps, spec *CompanySpec) (int, error) {
 	return seedTeams(ctx, d, spec, false)
 }
 
-func LoadIndustrySpec(scenarioDir, industryKey string) (*IndustrySpec, error) {
-	path := filepath.Join(scenarioDir, industryKey, "agents.yaml")
+func LoadCompanySpec(scenarioDir, companyKey string) (*CompanySpec, error) {
+	path := filepath.Join(scenarioDir, companyKey, "agents.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	var spec IndustrySpec
+	var spec CompanySpec
 	if err := yamlUnmarshal(data, &spec); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	spec.IndustryKey = industryKey
+	spec.CompanyKey = companyKey
 	fillDefaults(&spec)
 	return &spec, nil
 }
 
-func seedAgents(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (int, error) {
+func seedAgents(ctx context.Context, d Deps, spec *CompanySpec, dryRun bool) (int, error) {
 	count := 0
 	for i := range spec.Agents {
 		as := &spec.Agents[i]
@@ -88,7 +88,7 @@ func seedAgents(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (i
 	return count, nil
 }
 
-func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (int, error) {
+func seedTeams(ctx context.Context, d Deps, spec *CompanySpec, dryRun bool) (int, error) {
 	if len(spec.Teams) == 0 {
 		return 0, nil
 	}
@@ -130,21 +130,21 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 	return count, nil
 }
 
-func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpec) (biz.Agent, error) {
+func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *CompanySpec, as *AgentSpec) (biz.Agent, error) {
 	posName := as.DisplayName
 	posDesc := as.Description
-	if as.PositionKey != "" && d.Taxonomy != nil {
-		posNode, err := d.Taxonomy.GetByKey(ctx, as.PositionKey)
+	if as.PositionKey != "" && d.Organization != nil {
+		posNode, err := d.Organization.GetByKey(ctx, as.PositionKey)
 		if err == nil {
-			anc, ancErr := d.Taxonomy.GetAncestors(ctx, posNode.ID)
+			anc, ancErr := d.Organization.GetAncestors(ctx, posNode.ID)
 			if ancErr == nil {
 				if posName == "" {
 					posName = anc.Position.Name
 				}
 				if posDesc == "" {
 					parts := []string{}
-					if anc.Industry.Key != "" {
-						parts = append(parts, anc.Industry.Name)
+					if anc.Company.Key != "" {
+						parts = append(parts, anc.Company.Name)
 					}
 					if anc.Department.Key != "" {
 						parts = append(parts, anc.Department.Name)
@@ -224,9 +224,9 @@ func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *
 		variantDesc = fmt.Sprintf("本岗位的 %s 方向专家", variant)
 	}
 
-	roles := []string{as.RoleKey, as.TeamRole, spec.IndustryKey}
+	roles := []string{as.RoleKey, as.TeamRole, spec.CompanyKey}
 	if as.RoleKey == "" && as.TeamRole == "" {
-		roles = []string{spec.IndustryKey}
+		roles = []string{spec.CompanyKey}
 	}
 
 	return biz.Agent{
@@ -247,7 +247,7 @@ func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *
 	}, nil
 }
 
-func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]string) (biz.Team, error) {
+func BuildBizTeamFromSpec(spec *CompanySpec, ts *TeamSpec, keyToID map[string]string) (biz.Team, error) {
 	members := make([]biz.OrchestrationMember, 0, len(ts.Members))
 	for _, m := range ts.Members {
 		agentKey := m.AgentKey
@@ -303,12 +303,12 @@ func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]s
 	}
 
 	return biz.Team{
-		TeamKey:            ts.Key,
-		DisplayName:        ts.DisplayName,
-		Status:             "active",
-		IsDefault:          false,
-		DefinitionJSON:     defJSON,
-		CategoryIndustryID: spec.IndustryKey,
+		TeamKey:        ts.Key,
+		DisplayName:    ts.DisplayName,
+		Status:         "active",
+		IsDefault:      false,
+		DefinitionJSON: defJSON,
+		DepartmentID:   spec.CompanyKey,
 	}, nil
 }
 
@@ -335,7 +335,7 @@ func convertGraphSpec(gs *GraphSpec, keyToID map[string]string) *biz.EmbeddedGra
 	}
 }
 
-func resolveAgentKeys(ctx context.Context, d Deps, spec *IndustrySpec) (map[string]string, error) {
+func resolveAgentKeys(ctx context.Context, d Deps, spec *CompanySpec) (map[string]string, error) {
 	keyToID := make(map[string]string)
 	for _, as := range spec.Agents {
 		agent, err := d.AgentUC.GetByAgentKey(ctx, as.Key)

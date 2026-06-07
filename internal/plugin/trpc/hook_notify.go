@@ -84,10 +84,11 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 		bg, cancel := context.WithTimeout(context.Background(), maxRetryDuration)
 		defer cancel()
 		if err := n.repo.Insert(bg, d); err != nil {
-			getHookLogger().Warn("hook.notify: enqueue failed", "hook", rh.Hook.Key, "error", err)
-			if ferr := deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec); ferr != nil {
-				getHookLogger().Warn("hook.notify: fallback delivery failed", "hook", rh.Hook.Key, "error", ferr)
-			}
+			// B-06 fix: do NOT fallback to synchronous HTTP delivery in the
+			// callback hot path. Log the enqueue failure and let the
+			// HookDeliveryRetryWorker pick it up on the next cycle.
+			getHookLogger().Warn("hook.notify: enqueue failed; will be retried by delivery worker",
+				"hook", rh.Hook.Key, "error", err)
 			return
 		}
 		n.processDelivery(bg, d, opts.TimeoutSec)

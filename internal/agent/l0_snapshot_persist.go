@@ -240,8 +240,8 @@ func l0SnapshotPendingMap(inv *trpcagent.Invocation) map[int]l0SnapshotPending {
 
 func resolveL0ContextWindow(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, prov, mod string) int {
 	cfgJSON := ""
-	if deps.Catalog != nil {
-		if row, err := deps.Catalog.GetByProviderAndModel(ctx, prov, mod); err == nil {
+	if deps.ModelCatalog != nil {
+		if row, err := deps.ModelCatalog.GetByProviderAndModel(ctx, prov, mod); err == nil {
 			cfgJSON = row.ConfigJSON
 		}
 	}

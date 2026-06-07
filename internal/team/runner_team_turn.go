@@ -79,13 +79,13 @@ func (r *Runner) resolveAnchorAndAttachments(
 			return
 		}
 		attN = len(attachmentRefs)
-		if refsContainImageAttachment(attachmentRefs) && !provider.ModelSupportsImageAttachments(ctx, r.td.Catalog.LLM, prov0, mod0) {
+		if refsContainImageAttachment(attachmentRefs) && !provider.ModelSupportsImageAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0) {
 			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support image attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, run, t0, err.Error())
 			return
 		}
-		if refsContainFileAttachment(attachmentRefs) && !provider.ModelSupportsFileAttachments(ctx, r.td.Catalog.LLM, prov0, mod0) {
+		if refsContainFileAttachment(attachmentRefs) && !provider.ModelSupportsFileAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0) {
 			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support file attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, run, t0, err.Error())
@@ -135,7 +135,7 @@ func (r *Runner) prepareUserTurnOptions(
 	var intRes intent.RunResult
 	shouldRunIntent := intent.ShouldRun(ar.agent, content)
 	if shouldRunIntent {
-		intRes = intent.RunForAgent(ctx, ar.agent, r.td.Catalog.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, r.lg)
+		intRes = intent.RunForAgent(ctx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, r.lg)
 		if intRes.Artifact != nil {
 			if strings.TrimSpace(intRes.RawJSON) != "" {
 				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)

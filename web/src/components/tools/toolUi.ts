@@ -1,5 +1,6 @@
 import type { QTableColumn } from 'quasar';
 import type { Tool, ToolInvocation, ToolInvocationAudit, ToolSummary } from '../../features/tools/types';
+import type { ToolAgentBindingRow } from '../../features/tools/toolAgentBindingSummary';
 import {
   REGISTRY_COL_W,
   registryCol,
@@ -101,14 +102,14 @@ export function riskLabel(value: string): string {
 
 export function runtimeStatusLabel(value?: string): string {
   if (!value || value === 'available') return '可用';
-  if (value === 'catalog_only') return '仅目录';
+  if (value === 'registered_only') return '仅注册';
   if (value === 'disabled') return '禁用';
   return value;
 }
 
 export function runtimeStatusColor(value?: string): string {
   if (value === 'disabled') return 'negative';
-  if (value === 'catalog_only') return 'grey';
+  if (value === 'registered_only') return 'grey';
   return 'positive';
 }
 
@@ -255,3 +256,10 @@ export function firstInvalidToolJsonKey(errors: Record<string, string>): ToolEdi
 export function invocationAgentLine(row: ToolInvocation): string {
   return row.agent_display_name || row.agent_key || row.agent_id || '—';
 }
+
+/** ToolDetailDrawer — Agent Binding 列定义 */
+export const AGENT_BINDING_COLUMNS: QTableColumn<ToolAgentBindingRow>[] = [
+  registryCol<ToolAgentBindingRow>('agent_name', 'Agent', 'agent_name', 'left', REGISTRY_COL_W.name),
+  registryCol<ToolAgentBindingRow>('state', '生效状态', 'effective_state', 'left', REGISTRY_COL_W.status),
+  registryCol<ToolAgentBindingRow>('reason', '来源 / 原因', 'reason', 'left', REGISTRY_COL_W.desc),
+];

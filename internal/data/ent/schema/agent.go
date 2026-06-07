@@ -53,7 +53,7 @@ func (Agent) Fields() []ent.Field {
 		field.Enum("kind").Values("user", "system_builtin", "ecosystem_preset", "marketplace", "certified").Default("user").Comment("agent kind: ownership classification (user | system_builtin | ecosystem_preset | marketplace | certified)"),
 		field.Enum("source").Values("user", "system", "imported").Default("user").Comment("agent source: origin tracking (user | system | imported), aligned with team.source"),
 		field.String("position_key").Default("").Comment("FK to positions.key"),
-		field.String("taxonomy_position_id").Default("").Comment("FK to taxonomy positions"),
+		field.String("position_id").Default("").Comment("FK to organizations(position), renamed from taxonomy_position_id"),
 		field.String("agent_variant").Default("general").Comment("variant within position: general/code_review/architect/..."),
 		field.Text("variant_description").Default("").Comment("human-readable description of this variant"),
 	}

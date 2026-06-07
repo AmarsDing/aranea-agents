@@ -19,7 +19,7 @@ func TestInefficientModels_flagsHighCostLowTPS(t *testing.T) {
 		AvgTokensPerSecond: 2.0,
 		SuccessRate:        0.95,
 	}}
-	uc := NewUsageUsecase(repo, loggateway.Global())
+	uc := NewUsageUsecase(repo, loggateway.NewNoop())
 	items, err := uc.InefficientModels(context.Background(), UsageQuery{Range: "7d"})
 	if err != nil {
 		t.Fatal(err)

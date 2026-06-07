@@ -57,7 +57,7 @@ type RuntimeTooling struct {
 	CodeExecFactory            *localexec.Factory
 	KanbanBridge               kanbanpkg.Bridge
 	DebugRecorder              *debug.RecorderFactory
-	TaxonomyUC                *biz.TaxonomyUsecase
+	OrganizationUC           *biz.OrganizationUsecase
 	ToolResultGate             *biz.ToolResultGate
 	OutboundRouter             *outbound.Router
 	SubAgentService            *subagenttool.Service

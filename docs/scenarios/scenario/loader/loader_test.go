@@ -130,7 +130,7 @@ func TestDeriveToolsProfile(t *testing.T) {
 func TestFillDefaults(t *testing.T) {
 	t.Run("fills all empty defaults", func(t *testing.T) {
 		spec := IndustrySpec{
-			IndustryKey: "finance",
+			CompanyKey: "finance",
 			Defaults:    AgentDefaults{},
 			Agents:      []AgentSpec{},
 		}
@@ -167,7 +167,7 @@ func TestFillDefaults(t *testing.T) {
 
 	t.Run("preserves already-set defaults", func(t *testing.T) {
 		spec := IndustrySpec{
-			IndustryKey: "healthcare",
+			CompanyKey: "healthcare",
 			Defaults: AgentDefaults{
 				Provider:         "anthropic",
 				FastModel:        "claude-3-haiku",
@@ -206,7 +206,7 @@ func TestFillDefaults(t *testing.T) {
 
 	t.Run("fills agent defaults", func(t *testing.T) {
 		spec := IndustrySpec{
-			IndustryKey: "retail",
+			CompanyKey: "retail",
 			Defaults:    AgentDefaults{},
 			Agents: []AgentSpec{
 				{Key: "a1"},
@@ -234,7 +234,7 @@ func TestFillDefaults(t *testing.T) {
 
 	t.Run("derives tools profile from position key when tools allow is set", func(t *testing.T) {
 		spec := IndustrySpec{
-			IndustryKey: "legal",
+			CompanyKey: "legal",
 			Defaults:    AgentDefaults{},
 			Agents: []AgentSpec{
 				{Key: "a1", PositionKey: "data-analyst", ToolsAllow: []string{"search"}},
@@ -249,7 +249,7 @@ func TestFillDefaults(t *testing.T) {
 
 	t.Run("preserves explicitly set tools profile", func(t *testing.T) {
 		spec := IndustrySpec{
-			IndustryKey: "legal",
+			CompanyKey: "legal",
 			Defaults:    AgentDefaults{},
 			Agents: []AgentSpec{
 				{Key: "a1", ToolsProfile: "coordinator"},
@@ -266,7 +266,7 @@ func TestFillDefaults(t *testing.T) {
 func TestYamlUnmarshal(t *testing.T) {
 	t.Run("parses valid YAML into IndustrySpec", func(t *testing.T) {
 		yamlData := []byte(`
-industry_key: fintech
+company_key: fintech
 defaults:
   provider: openrouter
   fast_model: gpt-4.1-mini
@@ -284,8 +284,8 @@ teams:
 		if err := yamlUnmarshal(yamlData, &spec); err != nil {
 			t.Fatalf("yamlUnmarshal() error = %v", err)
 		}
-		if spec.IndustryKey != "fintech" {
-			t.Errorf("IndustryKey = %q, want %q", spec.IndustryKey, "fintech")
+		if spec.CompanyKey != "fintech" {
+			t.Errorf("CompanyKey = %q, want %q", spec.CompanyKey, "fintech")
 		}
 		if spec.Defaults.Provider != "openrouter" {
 			t.Errorf("Provider = %q, want %q", spec.Defaults.Provider, "openrouter")
@@ -444,7 +444,7 @@ func TestConvertGraphSpec(t *testing.T) {
 }
 
 func TestBuildBizTeam(t *testing.T) {
-	spec := &IndustrySpec{IndustryKey: "fintech"}
+	spec := &IndustrySpec{CompanyKey: "fintech"}
 	keyToID := map[string]string{
 		"analyst": "id-a",
 		"writer":  "id-b",
@@ -488,8 +488,8 @@ func TestBuildBizTeam(t *testing.T) {
 		if team.Status != "active" {
 			t.Errorf("Status = %q, want %q", team.Status, "active")
 		}
-		if team.CategoryIndustryID != "fintech" {
-			t.Errorf("CategoryIndustryID = %q, want %q", team.CategoryIndustryID, "fintech")
+		if team.DepartmentID != "fintech" {
+			t.Errorf("DepartmentID = %q, want %q", team.DepartmentID, "fintech")
 		}
 		if team.DefinitionJSON == "" {
 			t.Error("DefinitionJSON is empty, want non-empty")

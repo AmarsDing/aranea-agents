@@ -3,7 +3,6 @@ package biz
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	stderrors "errors"
@@ -12,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -68,6 +68,9 @@ type AgentAtomicWriter interface {
 	UpdateAgentAtomic(ctx context.Context, a Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error)
 }
 
+// TODO(debt): AgentRepository has 14+ methods and should be split into narrow sub-interfaces
+// per consumer need (e.g., AgentPositionClearer, AgentCreatorLister, AgentReorderRepo).
+// Current consumers should depend on the minimal sub-interface they need.
 type AgentRepository interface {
 	AgentReader
 	AgentWriter
@@ -78,6 +81,7 @@ type AgentRepository interface {
 	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
 	ReorderAgents(ctx context.Context, ids []string) error
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+	ClearPositionByDepartment(ctx context.Context, deptID string) (int, error)
 }
 
 // ProviderModelPairValidator validates that a provider+model pair exists in the catalog.
@@ -155,7 +159,7 @@ func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey s
 	if err == nil {
 		return false, "agent_key already in use", nil
 	}
-	if !stderrors.Is(err, sql.ErrNoRows) {
+	if !stderrors.Is(err, shared.ErrNotFound) {
 		return false, "", err
 	}
 	return true, "available", nil
@@ -193,7 +197,7 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if stderrors.Is(err, shared.ErrNotFound) {
 			return DefaultAgentRuntimeSettings(), nil
 		}
 		return AgentRuntimeSettings{}, err
@@ -204,7 +208,7 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) {
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agent.ID)
 	if err != nil {
-		if !stderrors.Is(err, sql.ErrNoRows) {
+		if !stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, err
 		}
 		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
@@ -513,10 +517,23 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	}
 	// Kind is the ownership classification (user | system_builtin | ecosystem_preset | ...).
 	if current.Kind == "system_builtin" {
+		if strings.HasPrefix(current.AgentKey, "__dept_lead_") {
+			return kerrors.Forbidden("AGENT", "cannot delete department lead agent; delete the department instead")
+		}
 		return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
 	}
 	if current.Readonly {
 		return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
+	}
+	return u.repo.DeleteAgent(ctx, id)
+}
+
+// ForceDelete soft-deletes the agent bypassing kind/readonly permission checks.
+// Only for internal system operations (e.g., cleaning up dept lead agents).
+func (u *AgentUsecase) ForceDelete(ctx context.Context, id string) error {
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return err
 	}
 	return u.repo.DeleteAgent(ctx, id)
 }
@@ -529,7 +546,7 @@ func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, er
 	}
 	a, err := u.repo.GetAgentByID(ctx, id)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, kerrors.NotFound("AGENT", "agent not found")
 		}
 		return Agent{}, err
@@ -629,7 +646,7 @@ func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, id)
 	if err != nil {
-		if !stderrors.Is(err, sql.ErrNoRows) {
+		if !stderrors.Is(err, shared.ErrNotFound) {
 			return "", err
 		}
 		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
@@ -691,7 +708,7 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	out.IsFavorite = patch.IsFavorite
 	out.Icon = patch.Icon
 	out.AgentDescription = patch.AgentDescription
-	out.TaxonomyPositionID = patch.TaxonomyPositionID
+	out.PositionID = patch.PositionID
 	out.SystemPromptMode = patch.SystemPromptMode
 	out.ContextWindow = patch.ContextWindow
 	out.BudgetMonthlyCents = patch.BudgetMonthlyCents
@@ -732,7 +749,7 @@ func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, err
 		agent.ID = existing.ID
 		return u.Update(ctx, existing.ID, agent)
 	}
-	if !stderrors.Is(err, sql.ErrNoRows) {
+	if !stderrors.Is(err, shared.ErrNotFound) {
 		return Agent{}, err
 	}
 	// 不存在 → 创建

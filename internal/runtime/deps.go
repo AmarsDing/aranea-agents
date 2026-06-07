@@ -15,18 +15,20 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// Catalog provides read-only access to biz repositories and use-cases
-// needed during each chat turn (agent lookup, tool catalog, model catalog, …).
+// TurnReadDeps provides read-only access to biz repositories and use-cases
+// needed during each chat turn (agent lookup, tool registry, model catalog, …).
 // Usecase fields use narrow interfaces so consumers (team, agent, service)
 // depend only on the methods they actually call.
-type Catalog struct {
-	Agents   biz.AgentRepository
-	AgentsUC biz.TeamAgentLookup
-	Tools    biz.ToolCatalogReader
-	ToolUC   biz.TeamToolLookup
-	LLM      biz.TeamModelCatalog
-	SkillUC  biz.TeamSkillLookup
-	Settings biz.SystemSettingRepo
+type TurnReadDeps struct {
+	Agents          biz.AgentRepository
+	AgentsUC        biz.TeamAgentLookup
+	CLIAdminAgentUC biz.CLIAdminAgentLister
+	Tools           biz.ToolCatalogReader
+	ToolUC          biz.TeamToolLookup
+	LLM             biz.TeamModelCatalog
+	SkillUC         biz.TeamSkillLookup
+	CLIAdminSkillUC biz.CLIAdminSkillLister
+	Settings        biz.SystemSettingRepo
 }
 
 // PersistenceSet groups the session and memory persistence services for a turn.
@@ -47,10 +49,10 @@ type EventPipeline struct {
 }
 
 // TurnDeps is the consolidated dependency set threaded through each chat turn.
-// Fields are grouped into four sub-aggregates (Catalog, Persist, Pipeline)
+// Fields are grouped into four sub-aggregates (ReadDeps, Persist, Pipeline)
 // plus three utility scalars (Sessions, LLMHTTP, Compress).
 type TurnDeps struct {
-	Catalog  Catalog
+	ReadDeps TurnReadDeps
 	Persist  PersistenceSet
 	Pipeline EventPipeline
 

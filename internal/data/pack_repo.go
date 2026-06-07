@@ -13,7 +13,7 @@ type PackRepoAdapter struct {
 	agents      biz.AgentRepository
 	teamReader  biz.TeamReader
 	teamWriter  biz.TeamWriter
-	taxonomy    biz.TaxonomyRepo
+	organization biz.OrganizationRepo
 	graphs      biz.GraphRepo
 	skillLookup biz.SkillLookupReader
 }
@@ -27,17 +27,17 @@ func NewPackRepoAdapter(
 	agents biz.AgentRepository,
 	teamReader biz.TeamReader,
 	teamWriter biz.TeamWriter,
-	taxonomy biz.TaxonomyRepo,
+	organization biz.OrganizationRepo,
 	graphs biz.GraphRepo,
 	skillLookup biz.SkillLookupReader,
 ) *PackRepoAdapter {
 	return &PackRepoAdapter{
-		agents:      agents,
-		teamReader:  teamReader,
-		teamWriter:  teamWriter,
-		taxonomy:    taxonomy,
-		graphs:      graphs,
-		skillLookup: skillLookup,
+		agents:       agents,
+		teamReader:   teamReader,
+		teamWriter:   teamWriter,
+		organization: organization,
+		graphs:       graphs,
+		skillLookup:  skillLookup,
 	}
 }
 
@@ -63,42 +63,42 @@ func (a *PackRepoAdapter) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	return a.teamReader.ListTeams(ctx)
 }
 
-func (a *PackRepoAdapter) GetTaxonomyNode(ctx context.Context, id string) (biz.TaxonomyNode, error) {
-	return a.taxonomy.GetTaxonomyNode(ctx, id)
+func (a *PackRepoAdapter) GetOrganizationNode(ctx context.Context, id string) (biz.OrganizationNode, error) {
+	return a.organization.GetOrgNode(ctx, id)
 }
 
-func (a *PackRepoAdapter) GetTaxonomyAncestors(ctx context.Context, positionID string) (biz.TaxonomyAncestors, error) {
-	pos, err := a.taxonomy.GetTaxonomyNode(ctx, positionID)
+func (a *PackRepoAdapter) GetOrgAncestors(ctx context.Context, positionID string) (biz.OrgAncestors, error) {
+	pos, err := a.organization.GetOrgNode(ctx, positionID)
 	if err != nil {
-		return biz.TaxonomyAncestors{}, err
+		return biz.OrgAncestors{}, err
 	}
-	var dept biz.TaxonomyNode
+	var dept biz.OrganizationNode
 	if pos.ParentID != "" {
-		dept, err = a.taxonomy.GetTaxonomyNode(ctx, pos.ParentID)
+		dept, err = a.organization.GetOrgNode(ctx, pos.ParentID)
 		if err != nil {
-			return biz.TaxonomyAncestors{}, err
+			return biz.OrgAncestors{}, err
 		}
 	}
-	var ind biz.TaxonomyNode
+	var company biz.OrganizationNode
 	if dept.ParentID != "" {
-		ind, err = a.taxonomy.GetTaxonomyNode(ctx, dept.ParentID)
+		company, err = a.organization.GetOrgNode(ctx, dept.ParentID)
 		if err != nil {
-			return biz.TaxonomyAncestors{}, err
+			return biz.OrgAncestors{}, err
 		}
 	}
-	return biz.TaxonomyAncestors{
-		Industry:   ind,
+	return biz.OrgAncestors{
+		Company:    company,
 		Department: dept,
 		Position:   pos,
 	}, nil
 }
 
-func (a *PackRepoAdapter) ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error) {
-	return a.taxonomy.ListTaxonomyNodesByParentID(ctx, parentID)
+func (a *PackRepoAdapter) ListOrganizationNodesByParentID(ctx context.Context, parentID string) ([]biz.OrganizationNode, error) {
+	return a.organization.ListOrgNodesByParentID(ctx, parentID)
 }
 
-func (a *PackRepoAdapter) ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]biz.TaxonomyNode, error) {
-	return a.taxonomy.ListTaxonomyNodesByLevel(ctx, level)
+func (a *PackRepoAdapter) ListOrganizationNodesByLevel(ctx context.Context, level string) ([]biz.OrganizationNode, error) {
+	return a.organization.ListOrgNodesByLevel(ctx, level)
 }
 
 func (a *PackRepoAdapter) GetGraph(ctx context.Context, id string) (*biz.GraphDefinition, error) {
@@ -107,20 +107,20 @@ func (a *PackRepoAdapter) GetGraph(ctx context.Context, id string) (*biz.GraphDe
 
 // --- ImporterRepo ---
 
-func (a *PackRepoAdapter) CreateTaxonomyNode(ctx context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error) {
-	return a.taxonomy.CreateTaxonomyNode(ctx, node)
+func (a *PackRepoAdapter) CreateOrganizationNode(ctx context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error) {
+	return a.organization.CreateOrgNode(ctx, node)
 }
 
-func (a *PackRepoAdapter) UpdateTaxonomyNode(ctx context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error) {
-	return a.taxonomy.UpdateTaxonomyNode(ctx, node)
+func (a *PackRepoAdapter) UpdateOrganizationNode(ctx context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error) {
+	return a.organization.UpdateOrgNode(ctx, node)
 }
 
-func (a *PackRepoAdapter) GetTaxonomyNodeByKey(ctx context.Context, key string) (biz.TaxonomyNode, error) {
-	return a.taxonomy.GetTaxonomyNodeByKey(ctx, key)
+func (a *PackRepoAdapter) GetOrganizationNodeByKey(ctx context.Context, key string) (biz.OrganizationNode, error) {
+	return a.organization.GetOrgNodeByKey(ctx, key)
 }
 
-func (a *PackRepoAdapter) GetTaxonomyNodeByKeyAnyState(ctx context.Context, key string) (biz.TaxonomyNode, error) {
-	return a.taxonomy.GetTaxonomyNodeByKeyAnyState(ctx, key)
+func (a *PackRepoAdapter) GetOrganizationNodeByKeyAnyState(ctx context.Context, key string) (biz.OrganizationNode, error) {
+	return a.organization.GetOrgNodeByKeyAnyState(ctx, key)
 }
 
 func (a *PackRepoAdapter) CreateAgent(ctx context.Context, agent biz.Agent) (biz.Agent, error) {
@@ -201,8 +201,8 @@ func (a *PackRepoAdapter) TeamKeyExists(ctx context.Context, teamKey string) (bo
 	return true, nil
 }
 
-func (a *PackRepoAdapter) TaxonomyKeyExists(ctx context.Context, key string) (bool, error) {
-	_, err := a.taxonomy.GetTaxonomyNodeByKey(ctx, key)
+func (a *PackRepoAdapter) OrgKeyExists(ctx context.Context, key string) (bool, error) {
+	_, err := a.organization.GetOrgNodeByKey(ctx, key)
 	if err != nil {
 		return false, nil
 	}

@@ -59,7 +59,11 @@ var ProviderSet = wire.NewSet(
 	NewAgentTemplateUsecase,
 	NewLearningLoopUsecase,
 	NewSkillEvolutionUsecase,
-	NewTaxonomyUsecase,
+	NewOrganizationUsecase,
+	ProvideDeptTeamLister,
+	ProvideDeptAgentPositionClearer,
+	ProvideGraphReaderForTeam,
+	ProvideGraphWriterForTeam,
 	NewToolResultGate,
 	NewExperienceAnalyticsUsecase,
 	NewSkillHealthUsecase,
@@ -100,6 +104,26 @@ func ProvideAgentListerByRole(repo AgentRepository) AgentListerByRole {
 		}
 		return matched, nil
 	}
+}
+
+// ProvideDeptTeamLister provides a DeptTeamLister from the TeamRepository.
+func ProvideDeptTeamLister(repo TeamRepository) DeptTeamLister {
+	return repo.(DeptTeamLister)
+}
+
+// ProvideDeptAgentPositionClearer provides a DeptAgentPositionClearer from the AgentRepository.
+func ProvideDeptAgentPositionClearer(repo AgentRepository) DeptAgentPositionClearer {
+	return repo.(DeptAgentPositionClearer)
+}
+
+// ProvideGraphReaderForTeam provides a GraphReader from GraphUsecase for TeamUsecase.
+func ProvideGraphReaderForTeam(uc *GraphUsecase) GraphReader {
+	return uc.DefUC().Reader()
+}
+
+// ProvideGraphWriterForTeam provides a GraphWriter from GraphUsecase for TeamUsecase.
+func ProvideGraphWriterForTeam(uc *GraphUsecase) GraphWriter {
+	return uc.DefUC().Writer()
 }
 
 func ProvideAgentExistenceChecker(repo AgentRepository) AgentExistenceCheckerFunc {

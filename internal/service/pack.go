@@ -107,7 +107,7 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 	}
 
 	resp := &packv1.ImportPackResponse{
-		TaxonomyNodes:   int32(result.TaxonomyNodes),
+		OrgNodes:        int32(result.OrgNodes),
 		AgentsCreated:   int32(result.AgentsCreated),
 		AgentsUpdated:   int32(result.AgentsUpdated),
 		AgentsSkipped:   int32(result.AgentsSkipped),

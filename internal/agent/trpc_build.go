@@ -39,7 +39,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 
 	lg.Info("Agent 构建", loggateway.StepID("agent.build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("provider", prov), loggateway.Str("model", mod))
 
-	m, err := provider.TRPCModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod, lg)
+	m, err := provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
 	if err != nil {
 		lg.Error("Agent 构建失败：模型解析", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
 		return nil, err
@@ -54,14 +54,14 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		}
 	}
 	// PGO-1-AGENT-02: Inject 岗位职责 from the category tree when the flag is on
-	// and the agent has a position associated (TaxonomyPositionID != "").
+	// and the agent has a position associated (PositionID != "").
 	var catResp string
-	if shouldInjectCategoryResponsibility(ag) && deps.Taxonomy != nil {
-		catResp, _ = deps.Taxonomy.BuildResponsibility(ctx, ag.TaxonomyPositionID, ag.SystemPromptMode)
+	if shouldInjectCategoryResponsibility(ag) && deps.Organization != nil {
+		catResp, _ = deps.Organization.BuildResponsibility(ctx, ag.PositionID, ag.SystemPromptMode)
 	}
 	if indCtx := BuildIndustryContext(ctx, Deps{
 		Agents: deps.Agents, AgentUC: deps.AgentUC,
-		Taxonomy: deps.Taxonomy, LG: deps.Logger(),
+		Organization: deps.Organization, LG: deps.Logger(),
 	}, ag); indCtx != "" {
 		if catResp != "" {
 			catResp += "\n\n" + indCtx
@@ -81,13 +81,13 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		if routerCfg, ok := deps.PluginManager.ModelRouterConfigForAgent(ag.ID); ok {
 			hasPluginModelRouter = true
 			modelSelectors = append(modelSelectors,
-				PluginModelSelector(prov, mod, deps.Catalog, deps.RT, routerCfg, lg),
+				PluginModelSelector(prov, mod, deps.ModelCatalog, deps.RT, routerCfg, lg),
 			)
 		}
 		if cgCfg, ok := deps.PluginManager.CostGuardConfigForAgent(ag.ID); ok {
 			hasPluginCostGuard = true
 			modelSelectors = append(modelSelectors,
-				PluginCostGuardSelector(prov, mod, deps.Catalog, deps.RT, cgCfg, deps.PluginManager.CostGuardBudgetTrackerForAgent(ag.ID), lg),
+				PluginCostGuardSelector(prov, mod, deps.ModelCatalog, deps.RT, cgCfg, deps.PluginManager.CostGuardBudgetTrackerForAgent(ag.ID), lg),
 			)
 		}
 	}
@@ -319,7 +319,7 @@ func buildModelSelector(selector string) trpcagent.ModelSelector {
 
 // shouldInjectCategoryResponsibility returns true when:
 //  1. PGO_CATEGORY_RESPONSIBILITY_INJECT env flag is on, AND
-//  2. the agent has a TaxonomyPositionID, AND
+//  2. the agent has a PositionID, AND
 //  3. the agent has NOT explicitly opted out via metadata_json.
 //
 // PGO-1-AGENT-02.
@@ -328,7 +328,7 @@ func shouldInjectCategoryResponsibility(ag biz.Agent) bool {
 	if v != "1" && v != "true" && v != "yes" {
 		return false
 	}
-	if strings.TrimSpace(ag.TaxonomyPositionID) == "" {
+	if strings.TrimSpace(ag.PositionID) == "" {
 		return false
 	}
 	return !ag.SkipCategoryResponsibility()

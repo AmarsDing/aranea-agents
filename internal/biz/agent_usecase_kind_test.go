@@ -68,6 +68,7 @@ func (s *stubAgentRepo) CreateAgentAtomic(_ context.Context, a Agent, _ []AgentP
 func (s *stubAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ *AgentRuntimeSettings) (Agent, error) {
 	return a, nil
 }
+func (s *stubAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
 
 func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	t.Parallel()

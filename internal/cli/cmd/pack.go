@@ -89,7 +89,7 @@ func packImportCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(os.Stderr, "Import result:\n")
-			fmt.Fprintf(os.Stderr, "  Taxonomy nodes: %d\n", resp.TaxonomyNodes)
+			fmt.Fprintf(os.Stderr, "  Org nodes: %d\n", resp.OrgNodes)
 			fmt.Fprintf(os.Stderr, "  Agents created: %d, updated: %d, skipped: %d\n", resp.AgentsCreated, resp.AgentsUpdated, resp.AgentsSkipped)
 			fmt.Fprintf(os.Stderr, "  Graphs created: %d\n", resp.GraphsCreated)
 			fmt.Fprintf(os.Stderr, "  Teams created: %d, updated: %d, skipped: %d\n", resp.TeamsCreated, resp.TeamsUpdated, resp.TeamsSkipped)

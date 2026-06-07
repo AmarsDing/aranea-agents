@@ -2,12 +2,12 @@ package pack
 
 // Pack 表示一个内存中的 Aranea 场景包。
 type Pack struct {
-	Manifest  ManifestSpec
-	Taxonomy  *TaxonomyPackSpec
-	Agents    []AgentPackSpec
-	Teams     []TeamPackSpec
-	Graphs    []GraphPackSpec
-	AgentFiles map[string]map[string]string // agent_key → filename → content
+	Manifest    ManifestSpec
+	Organization *OrganizationPackSpec
+	Agents      []AgentPackSpec
+	Teams       []TeamPackSpec
+	Graphs      []GraphPackSpec
+	AgentFiles  map[string]map[string]string // agent_key → filename → content
 }
 
 // ManifestSpec 定义 .arpack 包的元数据。
@@ -32,10 +32,10 @@ type PackDependencies struct {
 
 // PackContents 声明 Pack 包含的实体索引。
 type PackContents struct {
-	Taxonomy bool              `yaml:"taxonomy,omitempty"`
-	Agents   []PackContentRef  `yaml:"agents,omitempty"`
-	Teams    []PackContentRef  `yaml:"teams,omitempty"`
-	Graphs   []PackContentRef  `yaml:"graphs,omitempty"`
+	Organization bool             `yaml:"organization,omitempty"`
+	Agents       []PackContentRef `yaml:"agents,omitempty"`
+	Teams        []PackContentRef `yaml:"teams,omitempty"`
+	Graphs       []PackContentRef `yaml:"graphs,omitempty"`
 }
 
 // PackContentRef 引用 Pack 中的一个实体。
@@ -43,13 +43,13 @@ type PackContentRef struct {
 	Key string `yaml:"key"`
 }
 
-// TaxonomyPackSpec 定义行业分类树，与现有 taxonomy.yaml 格式一致。
-type TaxonomyPackSpec struct {
-	Industries []IndustrySpec `yaml:"industries"`
+// OrganizationPackSpec 定义组织分类树，与现有 taxonomy.yaml 格式一致。
+type OrganizationPackSpec struct {
+	Companies []CompanySpec `yaml:"companies"`
 }
 
-// IndustrySpec 行业级节点。
-type IndustrySpec struct {
+// CompanySpec 公司级节点。
+type CompanySpec struct {
 	Key         string           `yaml:"key"`
 	Name        string           `yaml:"name"`
 	Icon        string           `yaml:"icon,omitempty"`
@@ -471,7 +471,7 @@ type ImportResult struct {
 	GraphsCreated int          `yaml:"graphs_created"`
 	GraphsUpdated int          `yaml:"graphs_updated"`
 	GraphsSkipped int          `yaml:"graphs_skipped"`
-	TaxonomyNodes int          `yaml:"taxonomy_nodes"`
+	OrgNodes      int          `yaml:"org_nodes"`
 	Failures      []ImportFailure `yaml:"failures,omitempty"`
 	Warnings      []string        `yaml:"warnings,omitempty"`
 }

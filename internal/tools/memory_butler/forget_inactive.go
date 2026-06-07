@@ -24,7 +24,7 @@ type forgetInactiveOutput struct {
 func newForgetInactiveTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input forgetInactiveInput) (forgetInactiveOutput, error) {
 		if input.AgentID == "" {
-			return forgetInactiveOutput{}, errAgentIDRequired
+			return forgetInactiveOutput{}, ErrAgentIDRequired
 		}
 		threshold := input.InactiveThresholdDays
 		if threshold <= 0 {

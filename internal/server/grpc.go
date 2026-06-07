@@ -18,6 +18,7 @@ import (
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
+	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
@@ -98,6 +99,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	eventv1.RegisterEventServiceServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceServer(srv, s.Taxonomy)
+	organizationv1.RegisterOrganizationServiceServer(srv, s.Organization)
 	skillevov1.RegisterSkillEvolutionServiceServer(srv, s.SkillEvo)
 	skillintlv1.RegisterSkillIntelligenceServiceServer(srv, s.SkillIntel)
 	skilldedupv1.RegisterSkillDedupServiceServer(srv, s.SkillDedup)

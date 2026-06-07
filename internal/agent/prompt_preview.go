@@ -43,8 +43,8 @@ func BuildPreviewReport(ctx context.Context, ag biz.Agent, mode string, deps Dep
 
 	// PGO-1-AGENT-03: resolve category responsibility for preview.
 	var catResp string
-	if shouldInjectCategoryResponsibility(agPreview) && deps.Taxonomy != nil {
-		catResp, _ = deps.Taxonomy.BuildResponsibility(ctx, agPreview.TaxonomyPositionID, mode)
+	if shouldInjectCategoryResponsibility(agPreview) && deps.Organization != nil {
+		catResp, _ = deps.Organization.BuildResponsibility(ctx, agPreview.PositionID, mode)
 	}
 	sys := BuildSystemPrompt(agPreview, files, mode, catResp)
 	instruction := sys

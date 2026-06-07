@@ -91,6 +91,9 @@ func toProtoGraph(def *biz.GraphDefinition, lg loggateway.Logger) (*graphv1.Grap
 		InterruptAfter:   def.InterruptAfter,
 		Version:          int32(biz.GraphVersion(def)),
 		SortOrder:        int32(def.SortOrder),
+		VerificationGates: def.VerificationGates,
+		TeamId:           def.TeamID,
+		IsTemplate:       def.IsTemplate,
 		CreatedAt:        timestamppb.New(def.CreatedAt),
 		UpdatedAt:        timestamppb.New(def.UpdatedAt),
 	}

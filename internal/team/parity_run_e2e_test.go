@@ -117,7 +117,7 @@ func newParityTestRunner(repo *parityMemRepo, bus event.Bus) *Runner {
 		stepRepo:   repo,
 		deadLetter: repo,
 		td: rt.TurnDeps{
-			Catalog: rt.Catalog{Agents: parityStubAgents{}},
+			ReadDeps: rt.TurnReadDeps{Agents: parityStubAgents{}},
 			Pipeline: rt.EventPipeline{Bus: bus},
 		},
 	}

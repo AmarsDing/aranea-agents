@@ -8,10 +8,10 @@ import (
 	kratos "github.com/go-kratos/kratos/v2/errors"
 )
 
-// BuildTaxonomyKey 从 industry/department/position key 组合构建 taxonomy_key 路径。
-// 格式：industry_key/department_key/position_key
-func BuildTaxonomyKey(industryKey, deptKey, posKey string) string {
-	parts := []string{industryKey}
+// BuildOrgKey 从 company/department/position key 组合构建 org_key 路径。
+// 格式：company_key/department_key/position_key
+func BuildOrgKey(companyKey, deptKey, posKey string) string {
+	parts := []string{companyKey}
 	if deptKey != "" {
 		parts = append(parts, deptKey)
 	}
@@ -21,9 +21,9 @@ func BuildTaxonomyKey(industryKey, deptKey, posKey string) string {
 	return strings.Join(parts, "/")
 }
 
-// ParseTaxonomyKeyPath 解析 taxonomy_key 路径为 industry/department/position 三段。
-// 输入格式：industry_key/department_key/position_key
-func ParseTaxonomyKeyPath(path string) (industry, dept, pos string, err error) {
+// ParseOrgKeyPath 解析 org_key 路径为 company/department/position 三段。
+// 输入格式：company_key/department_key/position_key
+func ParseOrgKeyPath(path string) (company, dept, pos string, err error) {
 	parts := strings.Split(path, "/")
 	switch len(parts) {
 	case 1:
@@ -33,7 +33,7 @@ func ParseTaxonomyKeyPath(path string) (industry, dept, pos string, err error) {
 	case 3:
 		return parts[0], parts[1], parts[2], nil
 	default:
-		return "", "", "", kratos.BadRequest("PACK_TAXONOMY_KEY_INVALID", fmt.Sprintf("无效的 taxonomy_key 路径: %s", path))
+		return "", "", "", kratos.BadRequest("PACK_ORG_KEY_INVALID", fmt.Sprintf("无效的 org_key 路径: %s", path))
 	}
 }
 
@@ -43,17 +43,17 @@ type KeyMapper struct {
 	mu             sync.RWMutex
 	agentKeyToID   map[string]string // agent_key → agent_id
 	teamKeyToID    map[string]string // team_key → team_id
-	taxonomyKeyToID map[string]string // taxonomy_key 路径 → taxonomy_node_id
+	orgKeyToID     map[string]string // org_key 路径 → organization_node_id
 	graphIDMap     map[string]string // 原始 graph_id → 新 graph_id
 }
 
 // NewKeyMapper 创建新的映射器。
 func NewKeyMapper() *KeyMapper {
 	return &KeyMapper{
-		agentKeyToID:    make(map[string]string),
-		teamKeyToID:     make(map[string]string),
-		taxonomyKeyToID: make(map[string]string),
-		graphIDMap:      make(map[string]string),
+		agentKeyToID: make(map[string]string),
+		teamKeyToID:  make(map[string]string),
+		orgKeyToID:   make(map[string]string),
+		graphIDMap:   make(map[string]string),
 	}
 }
 
@@ -87,18 +87,18 @@ func (m *KeyMapper) ResolveTeamKey(teamKey string) (string, bool) {
 	return id, ok
 }
 
-// RegisterTaxonomy 记录 taxonomy_key 路径 → taxonomy_node_id 映射。
-func (m *KeyMapper) RegisterTaxonomy(taxonomyKey, nodeID string) {
+// RegisterOrg 记录 org_key 路径 → organization_node_id 映射。
+func (m *KeyMapper) RegisterOrg(orgKey, nodeID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.taxonomyKeyToID[taxonomyKey] = nodeID
+	m.orgKeyToID[orgKey] = nodeID
 }
 
-// TaxonomyID 通过 taxonomy_key 路径查找 node_id。
-func (m *KeyMapper) TaxonomyID(taxonomyKey string) (string, bool) {
+// OrgID 通过 org_key 路径查找 node_id。
+func (m *KeyMapper) OrgID(orgKey string) (string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	id, ok := m.taxonomyKeyToID[taxonomyKey]
+	id, ok := m.orgKeyToID[orgKey]
 	return id, ok
 }
 
@@ -128,11 +128,11 @@ func (m *KeyMapper) ResolveAgentKey(agentKey string) (string, error) {
 	return id, nil
 }
 
-// ResolvePositionKey 将 position_key 路径解析为 taxonomy_position_id。
+// ResolvePositionKey 将 position_key 路径解析为 position_id。
 func (m *KeyMapper) ResolvePositionKey(positionKey string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	id, ok := m.taxonomyKeyToID[positionKey]
+	id, ok := m.orgKeyToID[positionKey]
 	if !ok {
 		return "", kratos.BadRequest("PACK_POSITION_KEY_NOT_FOUND", fmt.Sprintf("position_key %q 未在映射表中找到", positionKey))
 	}

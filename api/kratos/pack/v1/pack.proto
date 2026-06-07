@@ -56,8 +56,8 @@ message ImportPackRequest {
 
 // ImportPackResponse returns the import result.
 message ImportPackResponse {
-  // Number of taxonomy nodes created.
-  int32 taxonomy_nodes = 1;
+  // Number of organization nodes created.
+  int32 org_nodes = 1;
   // Number of agents created.
   int32 agents_created = 2;
   // Number of agents updated.

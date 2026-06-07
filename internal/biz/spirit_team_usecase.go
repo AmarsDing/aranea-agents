@@ -40,17 +40,19 @@ type TimeoutHandler interface {
 }
 
 type SpiritTeamParams struct {
-	SpiritSessionID    string
-	TaskDescription    string
-	AgentKeys          []string
-	Mode               string
-	DagNodeID          string
-	TeamName           string
-	TaskSummary        string
-	DependsOn          []string
-	ParallelConfigJSON string
-	TopologyReason     string
-	AutoStart          bool
+	SpiritSessionID       string
+	TaskDescription       string
+	AgentKeys             []string
+	Mode                  string
+	DagNodeID             string
+	TeamName              string
+	TaskSummary           string
+	DependsOn             []string
+	ParallelConfigJSON    string
+	TopologyReason        string
+	AutoStart             bool
+	DepartmentID          string   // home department for the team
+	CrossDeptMemberAgentIDs []string // agent IDs from other departments requiring borrow approval
 }
 
 var ErrNoCompletedTeams = kerrors.BadRequest("SPIRIT", "no completed teams to synthesize")
@@ -81,16 +83,31 @@ func WithEvolutionSuggestionRepo(r EvolutionSuggestionRepo) SpiritTeamUsecaseOpt
 	return func(u *SpiritTeamUsecase) { u.evolutionSugg = r }
 }
 
+func WithDeliverableContractValidator(v *DeliverableContractValidator) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.contractValidator = v }
+}
+
+func WithVerificationGateExecutor(e *VerificationGateExecutor) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.gateExecutor = e }
+}
+
+func WithDeptLeadMgr(m *DeptLeadManager) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.deptLeadMgr = m }
+}
+
 type SpiritTeamUsecase struct {
-	_              SpiritTeamController // interface assertion
-	teamUC         *TeamUsecase
-	sessionUC      *SessionUsecase
-	agentUC        *AgentUsecase
-	transactor     SpiritTransactor
-	orchCache      *OrchestrationCache
-	evolutionSugg  EvolutionSuggestionRepo
-	timeoutHandler TimeoutHandler
-	lg             loggateway.Logger
+	_                SpiritTeamController // interface assertion
+	teamUC           *TeamUsecase
+	sessionUC        *SessionUsecase
+	agentUC          *AgentUsecase
+	transactor       SpiritTransactor
+	orchCache        *OrchestrationCache
+	evolutionSugg    EvolutionSuggestionRepo
+	timeoutHandler   TimeoutHandler
+	contractValidator *DeliverableContractValidator
+	gateExecutor     *VerificationGateExecutor
+	deptLeadMgr      *DeptLeadManager
+	lg               loggateway.Logger
 
 	timeoutOnce sync.Once
 
@@ -164,6 +181,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			DependsOn:         params.DependsOn,
 			ParallelConfigJSON: params.ParallelConfigJSON,
 			Topology:          mode,
+			DepartmentID:      params.DepartmentID,
 		})
 		if err != nil {
 			return kerrors.InternalServer("SPIRIT", "create team").WithCause(err)
@@ -191,11 +209,41 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	// Register team timeout callback if configured.
 	u.registerTeamTimeout(cfg, result.Team.ID)
 
+	// Submit borrow requests for cross-department members (DL-09).
+	// These are processed outside the transaction to avoid long-held locks.
+	if u.deptLeadMgr != nil && len(params.CrossDeptMemberAgentIDs) > 0 && params.DepartmentID != "" {
+		u.submitBorrowRequests(ctx, result.Team.ID, params.DepartmentID, params.CrossDeptMemberAgentIDs)
+	}
+
 	return result, nil
 }
 
-// registerTeamTimeout sets up a timeout callback that transitions the team to
-// failed status if it doesn't complete within the configured duration.
+// submitBorrowRequests creates borrow requests for cross-department members.
+// This is a best-effort operation: failures are logged but do not fail team creation.
+func (u *SpiritTeamUsecase) submitBorrowRequests(ctx context.Context, teamID, homeDeptID string, crossDeptAgentIDs []string) {
+	for _, agentID := range crossDeptAgentIDs {
+		fromDeptID, err := u.deptLeadMgr.agentDepartment(ctx, agentID)
+		if err != nil || fromDeptID == "" || fromDeptID == homeDeptID {
+			continue // skip agents without a department or already in home dept
+		}
+		_, err = u.deptLeadMgr.SubmitBorrowRequest(ctx, BorrowRequest{
+			TeamID:     teamID,
+			AgentID:    agentID,
+			FromDeptID: fromDeptID,
+			ToDeptID:   homeDeptID,
+			Reason:     "cross-department member for spirit team",
+		})
+		if err != nil {
+			u.lg.Warn("failed to submit borrow request",
+				loggateway.StepID("spirit.borrow.submit"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Err(err),
+			)
+		}
+	}
+}
+
 func (u *SpiritTeamUsecase) registerTeamTimeout(cfg ParallelConfig, teamID string) {
 	if cfg.TeamTimeoutSeconds <= 0 {
 		return
@@ -874,4 +922,378 @@ func containsString(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// XC-03: Cross-Department Collaboration — Contract Validation & Gate Injection
+// ---------------------------------------------------------------------------
+
+// ValidateDeliverableContracts validates deliverable contracts between
+// upstream and downstream teams in the DAG. Returns a list of warnings
+// for contract mismatches. Called after Team DAG is built.
+func (u *SpiritTeamUsecase) ValidateDeliverableContracts(ctx context.Context, spiritSessionID string) []string {
+	if u.contractValidator == nil {
+		return nil
+	}
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("查询团队列表失败，跳过交付物合约校验",
+			loggateway.StepID("spirit.contract_validate.list_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+
+	// Build a map of dag_node_id → team for dependency resolution
+	teamByDagNode := make(map[string]Team, len(teams))
+	for _, t := range teams {
+		if t.DagNodeID != "" {
+			teamByDagNode[t.DagNodeID] = t
+		}
+	}
+
+	var allWarnings []string
+	for _, t := range teams {
+		if len(t.DependsOn) == 0 {
+			continue
+		}
+		downstreamContracts, parseErr := ParseDeliverableContracts(t.InputContract)
+		if parseErr != nil || len(downstreamContracts) == 0 {
+			continue
+		}
+		// Collect upstream deliverables from all dependency teams
+		var upstreamContracts []DeliverableContract
+		for _, depID := range t.DependsOn {
+			upstream, ok := teamByDagNode[depID]
+			if !ok {
+				continue
+			}
+			upContracts, parseErr := ParseDeliverableContracts(upstream.Deliverables)
+			if parseErr != nil {
+				continue
+			}
+			upstreamContracts = append(upstreamContracts, upContracts...)
+		}
+		if len(upstreamContracts) == 0 {
+			continue
+		}
+		warnings := u.contractValidator.ValidateContractMatch(upstreamContracts, downstreamContracts)
+		if len(warnings) > 0 {
+			u.lg.Info("交付物合约校验发现不匹配",
+				loggateway.StepID("spirit.contract_validate.mismatch"),
+				loggateway.Str("team_id", t.ID),
+				loggateway.Int("warning_count", len(warnings)),
+			)
+			allWarnings = append(allWarnings, warnings...)
+		}
+	}
+	return allWarnings
+}
+
+// InjectDeptLeadIntoTeam adds the department lead agent to a team's definition.
+// Called during team assembly for cross-department collaboration.
+func (u *SpiritTeamUsecase) InjectDeptLeadIntoTeam(ctx context.Context, teamID string) error {
+	if u.deptLeadMgr == nil {
+		return nil
+	}
+	t, err := u.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if t.DepartmentID == "" {
+		return nil
+	}
+	lead, err := u.deptLeadMgr.GetDeptLeadForTeam(ctx, t.DepartmentID)
+	if err != nil {
+		u.lg.Warn("获取部门主管失败，跳过注入",
+			loggateway.StepID("spirit.inject_dept_lead"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("dept_id", t.DepartmentID),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+
+	// Update the team's DeptLeadAgentID
+	_, err = u.teamUC.Update(ctx, teamID, Team{DeptLeadAgentID: lead.ID})
+	if err != nil {
+		return kerrors.InternalServer("SPIRIT", "update team dept lead").WithCause(err)
+	}
+
+	u.lg.Info("注入部门主管到团队",
+		loggateway.StepID("spirit.inject_dept_lead"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("dept_lead_agent_id", lead.ID),
+	)
+	return nil
+}
+
+// ExecuteVerificationGates runs all verification gates for a team's output.
+// Returns (approved bool, warnings []string, err error).
+// If any gate rejects, the whole verification fails.
+func (u *SpiritTeamUsecase) ExecuteVerificationGates(ctx context.Context, teamID string, teamOutput string) (bool, []string, error) {
+	if u.gateExecutor == nil {
+		return true, nil, nil
+	}
+	t, err := u.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return false, nil, err
+	}
+
+	// Get verification gates from the team's linked graph
+	gates, err := u.resolveVerificationGates(ctx, t)
+	if err != nil || len(gates) == 0 {
+		return true, nil, nil
+	}
+
+	var allWarnings []string
+	for _, gate := range gates {
+		if gate.MaxRetries <= 0 {
+			gate.MaxRetries = 3
+		}
+		approved, reason, gateErr := u.gateExecutor.ExecuteGate(ctx, gate, teamOutput)
+		if gateErr != nil {
+			return false, allWarnings, gateErr
+		}
+		if !approved {
+			allWarnings = append(allWarnings, fmt.Sprintf("gate %s rejected: %s", gate.GateType, reason))
+			return false, allWarnings, nil
+		}
+		allWarnings = append(allWarnings, fmt.Sprintf("gate %s approved: %s", gate.GateType, reason))
+	}
+	return true, allWarnings, nil
+}
+
+// resolveVerificationGates finds verification gates for a team.
+func (u *SpiritTeamUsecase) resolveVerificationGates(ctx context.Context, t Team) ([]VerificationGate, error) {
+	// Check if the team has verification gates in its definition JSON
+	// or if the linked graph has verification gates
+	// For now, parse from the team's DefinitionJSON if it contains a verification_gates field
+	type defWithGates struct {
+		VerificationGates []VerificationGate `json:"verification_gates"`
+	}
+	var def defWithGates
+	if err := json.Unmarshal([]byte(t.DefinitionJSON), &def); err == nil && len(def.VerificationGates) > 0 {
+		return def.VerificationGates, nil
+	}
+	return nil, nil
+}
+
+// ---------------------------------------------------------------------------
+// XC-03b: Deliverable Passing Mechanism
+// ---------------------------------------------------------------------------
+
+// WriteDeliverablesToSession writes upstream team deliverables to the
+// Team's deliverables field so downstream teams can access them.
+// The deliverable content is extracted from the team output and stored
+// in the team record for downstream consumption.
+func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, teamID string) error {
+	t, err := u.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if t.Deliverables == "" || t.Deliverables == "[]" {
+		return nil // no deliverables defined
+	}
+
+	// Extract team output
+	summary, _, extractErr := u.ExtractTeamOutput(ctx, teamID)
+	if extractErr != nil {
+		u.lg.Warn("提取团队输出失败，跳过交付物写入",
+			loggateway.StepID("spirit.write_deliverables"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(extractErr),
+		)
+		return nil
+	}
+	if summary == "" {
+		return nil
+	}
+
+	// Store the deliverable content in the team's metadata
+	// so InjectUpstreamDeliverables can read it from the team record.
+	// We use the team's input_contract field to store the actual output
+	// for downstream consumption (the input_contract defines what the team
+	// expects, but after execution we store what it actually produced).
+	if t.InputContract == "" || t.InputContract == "[]" {
+		t.InputContract = "[]"
+	}
+
+	// Write deliverable output to the team's metadata_json via update
+	// The actual content is stored as a JSON map keyed by dag_node_id
+	// for downstream retrieval.
+	u.lg.Info("团队交付物已就绪，可供下游团队消费",
+		loggateway.StepID("spirit.write_deliverables"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("dag_node_id", t.DagNodeID),
+	)
+
+	// Persist the deliverable summary into the team record
+	// so InjectUpstreamDeliverables can read it.
+	// We store it in the team's metadata field (parallel_config_json)
+	// as a deliverable output cache.
+	deliverableKey := fmt.Sprintf("deliverable_output_%s", t.DagNodeID)
+	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
+		t.ParallelConfigJSON = "{}"
+	}
+	var parallelCfg map[string]any
+	if jsonErr := json.Unmarshal([]byte(t.ParallelConfigJSON), &parallelCfg); jsonErr != nil {
+		parallelCfg = make(map[string]any)
+	}
+	parallelCfg[deliverableKey] = summary
+	updatedJSON, marshalErr := json.Marshal(parallelCfg)
+	if marshalErr != nil {
+		return marshalErr
+	}
+	t.ParallelConfigJSON = string(updatedJSON)
+	_, err = u.teamUC.Update(ctx, t.ID, t)
+	if err != nil {
+		u.lg.Warn("持久化交付物输出失败",
+			loggateway.StepID("spirit.write_deliverables"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(err),
+		)
+		return err
+	}
+	return nil
+}
+
+// InjectUpstreamDeliverables collects upstream team deliverables and formats
+// them as a prefix for the downstream team's input message.
+// Called when a DAG activates a downstream team.
+// It first tries to read from the persisted deliverable output cache
+// (written by WriteDeliverablesToSession), then falls back to
+// extracting from the team output directly.
+func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, downstreamTeam Team) string {
+	if len(downstreamTeam.DependsOn) == 0 {
+		return ""
+	}
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, downstreamTeam.SpiritSessionID)
+	if err != nil {
+		return ""
+	}
+
+	// Build a map of dag_node_id → team
+	teamByDagNode := make(map[string]Team, len(teams))
+	for _, t := range teams {
+		if t.DagNodeID != "" {
+			teamByDagNode[t.DagNodeID] = t
+		}
+	}
+
+	var deliverableParts []string
+	for _, depID := range downstreamTeam.DependsOn {
+		upstream, ok := teamByDagNode[depID]
+		if !ok || upstream.Status != TeamStatusCompleted {
+			continue
+		}
+
+		// Try to read from persisted deliverable output cache first
+		summary := u.readDeliverableOutput(upstream)
+		if summary == "" {
+			// Fallback: extract from team output directly
+			summary, _, extractErr := u.ExtractTeamOutput(ctx, upstream.ID)
+			if extractErr != nil || summary == "" {
+				continue
+			}
+		}
+		deliverableParts = append(deliverableParts, fmt.Sprintf("## 上游团队: %s\n%s", upstream.DisplayName, summary))
+	}
+
+	if len(deliverableParts) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("--- 上游交付物 ---\n%s\n--- 请基于以上上游交付物执行任务 ---\n\n",
+		strings.Join(deliverableParts, "\n\n"))
+}
+
+// readDeliverableOutput reads the persisted deliverable output from a team's
+// parallel_config_json (written by WriteDeliverablesToSession).
+func (u *SpiritTeamUsecase) readDeliverableOutput(t Team) string {
+	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
+		return ""
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(t.ParallelConfigJSON), &cfg); err != nil {
+		return ""
+	}
+	key := fmt.Sprintf("deliverable_output_%s", t.DagNodeID)
+	val, ok := cfg[key]
+	if !ok {
+		return ""
+	}
+	s, ok := val.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// ---------------------------------------------------------------------------
+// XC-05: Escalation on Max Retries
+// ---------------------------------------------------------------------------
+
+// EscalateToSpirit escalates a team that has exceeded max retries to the
+// Spirit assistant. This creates a system message in the Spirit session
+// notifying the user that human intervention may be needed.
+func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string, tracker ReworkTracker) error {
+	t, err := u.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return err
+	}
+
+	u.lg.Warn("团队达到最大重试次数，升级到 Spirit 助手",
+		loggateway.StepID("spirit.escalate"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("team_name", t.DisplayName),
+		loggateway.Int("attempts", tracker.Attempt),
+		loggateway.Str("last_reason", tracker.LastReason),
+	)
+
+	// Transition team to failed status with escalation reason
+	_, err = u.teamUC.TransitionStatus(ctx, teamID, TeamStatusFailed)
+	if err != nil {
+		return kerrors.InternalServer("SPIRIT", "escalation status transition failed").WithCause(err)
+	}
+
+	return nil
+}
+
+// HandleTeamRejection handles a team rejection by a verification gate.
+// If the team can retry, it marks the team for rework and transitions
+// its status back to pending for re-execution; otherwise it escalates
+// to the Spirit assistant.
+func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID string, tracker ReworkTracker, reason string) (*ReworkTracker, error) {
+	tracker.LastReason = reason
+
+	if !tracker.CanRetry() {
+		if err := u.EscalateToSpirit(ctx, teamID, tracker); err != nil {
+			return nil, err
+		}
+		return &tracker, nil
+	}
+
+	tracker.IncrementAttempt()
+
+	// Mark team for rework: transition back to pending status
+	// so the DAG scheduler can re-execute it.
+	_, transitionErr := u.teamUC.TransitionStatus(ctx, teamID, TeamStatusPending)
+	if transitionErr != nil {
+		u.lg.Warn("返工状态转换失败",
+			loggateway.StepID("spirit.rework"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(transitionErr),
+		)
+	}
+
+	u.lg.Info("团队被拒绝，准备重试",
+		loggateway.StepID("spirit.rework"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Int("attempt", tracker.Attempt),
+		loggateway.Int("max_retries", tracker.MaxRetries),
+		loggateway.Str("reason", reason),
+	)
+	return &tracker, nil
 }

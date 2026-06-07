@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestBuildTeamRunSummaryData(t *testing.T) {
@@ -33,7 +35,7 @@ func TestTeamUsecase_GetRunSummary(t *testing.T) {
 			"run-1": {{AgentKey: "a1", ToolCallCount: 4}},
 		},
 	}
-	uc := NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)
+	uc := NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	data, err := uc.GetRunSummary(context.Background(), "run-1")
 	if err != nil {
 		t.Fatal(err)
@@ -64,5 +66,8 @@ func (r *runSummaryRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]T
 	return nil, nil
 }
 func (r *runSummaryRepo) ListTeamsByStatus(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}
+func (r *runSummaryRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]Team, error) {
 	return nil, nil
 }

@@ -15,7 +15,7 @@ func TestValidateSpec_EmptySpec(t *testing.T) {
 func TestValidateSpec_MissingIndustryKey(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{Name: "Tech"}},
+			Companies: []OrganizationSpec{{Name: "Tech"}},
 		},
 	}
 	err := ValidateSpec(spec)
@@ -30,7 +30,7 @@ func TestValidateSpec_MissingIndustryKey(t *testing.T) {
 func TestValidateSpec_MissingIndustryName(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{Key: "tech"}},
+			Companies: []OrganizationSpec{{Key: "tech"}},
 		},
 	}
 	err := ValidateSpec(spec)
@@ -42,7 +42,7 @@ func TestValidateSpec_MissingIndustryName(t *testing.T) {
 func TestValidateSpec_MissingDepartmentKey(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{
+			Companies: []OrganizationSpec{{
 				Key:   "tech",
 				Name:  "Technology",
 				Departments: []DepartmentSpec{{Name: "Engineering"}},
@@ -58,7 +58,7 @@ func TestValidateSpec_MissingDepartmentKey(t *testing.T) {
 func TestValidateSpec_MissingPositionKey(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{
+			Companies: []OrganizationSpec{{
 				Key:  "tech",
 				Name: "Technology",
 				Departments: []DepartmentSpec{{
@@ -134,7 +134,7 @@ func TestValidateSpec_IndustryDescriptionTooLong(t *testing.T) {
 	longDesc := strings.Repeat("x", 601)
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{
+			Companies: []OrganizationSpec{{
 				Key:         "tech",
 				Name:        "Technology",
 				Description: longDesc,
@@ -153,7 +153,7 @@ func TestValidateSpec_IndustryDescriptionTooLong(t *testing.T) {
 func TestValidateSpec_ValidSpec(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{
+			Companies: []OrganizationSpec{{
 				Key:  "tech",
 				Name: "Technology",
 				Departments: []DepartmentSpec{{
@@ -188,7 +188,7 @@ func TestValidateSpec_ValidSpec(t *testing.T) {
 func TestBuildPlan_BasicOrder(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{
+			Companies: []OrganizationSpec{{
 				Key:  "tech",
 				Name: "Technology",
 				Departments: []DepartmentSpec{{
@@ -228,7 +228,7 @@ func TestBuildPlan_BasicOrder(t *testing.T) {
 func TestBuildPlan_WithExisting(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{Key: "tech", Name: "Technology"}},
+			Companies: []OrganizationSpec{{Key: "tech", Name: "Technology"}},
 		},
 	}
 	existing := &stubExisting{categories: map[string]bool{"tech": true}}
@@ -338,7 +338,7 @@ func TestApplier_DryRun(t *testing.T) {
 	a := NewApplier(ApplyOptions{DryRun: true})
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{Key: "tech", Name: "Technology"}},
+			Companies: []OrganizationSpec{{Key: "tech", Name: "Technology"}},
 			Agents:     []AgentSpec{{Key: "bot-1", DisplayName: "Bot"}},
 			Teams:      []TeamSpec{{Key: "team-1", Name: "Alpha", Members: []MemberSpec{{AgentKey: "bot-1", Role: "member"}}}},
 		},
@@ -355,7 +355,7 @@ func TestApplier_DryRun(t *testing.T) {
 func TestCollectPositionPaths(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
-			Industries: []IndustrySpec{{
+			Companies: []OrganizationSpec{{
 				Key: "tech",
 				Departments: []DepartmentSpec{{
 					Key: "eng",

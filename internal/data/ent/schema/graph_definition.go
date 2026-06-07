@@ -37,5 +37,9 @@ func (GraphDefinition) Fields() []ent.Field {
 		field.Int("sort_order").Default(0),
 		field.Time("created_at"),
 		field.Time("updated_at"),
+		// organization redesign: team ownership + verification gates
+		field.String("team_id").Default("").Optional().Comment("owning team ID (empty for template graphs)"),
+		field.Bool("is_template").Default(false).Comment("whether this graph is a reusable template"),
+		field.Text("verification_gates").Default("[]").Comment("verification gate definitions JSON"),
 	}
 }

@@ -12,10 +12,10 @@ import (
 )
 
 type Deps struct {
-	AgentUC     *biz.AgentUsecase
-	TeamUC      *biz.TeamUsecase
-	Taxonomy    *biz.TaxonomyUsecase
-	ScenarioDir string
+	AgentUC      *biz.AgentUsecase
+	TeamUC       *biz.TeamUsecase
+	Organization *biz.OrganizationUsecase
+	ScenarioDir  string
 }
 
 func SeedFromYAML(ctx context.Context, d Deps, industryKey string, dryRun bool) (int, int, error) {
@@ -56,7 +56,7 @@ func LoadIndustrySpec(scenarioDir, industryKey string) (*IndustrySpec, error) {
 	if err := yamlUnmarshal(data, &spec); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	spec.IndustryKey = industryKey
+	spec.CompanyKey = industryKey
 	fillDefaults(&spec)
 	return &spec, nil
 }
@@ -133,18 +133,18 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpec) (biz.Agent, error) {
 	posName := as.DisplayName
 	posDesc := as.Description
-	if as.PositionKey != "" && d.Taxonomy != nil {
-		posNode, err := d.Taxonomy.GetByKey(ctx, as.PositionKey)
+	if as.PositionKey != "" && d.Organization != nil {
+		posNode, err := d.Organization.GetByKey(ctx, as.PositionKey)
 		if err == nil {
-			anc, ancErr := d.Taxonomy.GetAncestors(ctx, posNode.ID)
+			anc, ancErr := d.Organization.GetAncestors(ctx, posNode.ID)
 			if ancErr == nil {
 				if posName == "" {
 					posName = anc.Position.Name
 				}
 				if posDesc == "" {
 					parts := []string{}
-					if anc.Industry.Key != "" {
-						parts = append(parts, anc.Industry.Name)
+					if anc.Company.Key != "" {
+						parts = append(parts, anc.Company.Name)
 					}
 					if anc.Department.Key != "" {
 						parts = append(parts, anc.Department.Name)
@@ -224,9 +224,9 @@ func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *
 		variantDesc = fmt.Sprintf("本岗位的 %s 方向专家", variant)
 	}
 
-	roles := []string{as.RoleKey, as.TeamRole, spec.IndustryKey}
+	roles := []string{as.RoleKey, as.TeamRole, spec.CompanyKey}
 	if as.RoleKey == "" && as.TeamRole == "" {
-		roles = []string{spec.IndustryKey}
+		roles = []string{spec.CompanyKey}
 	}
 
 	return biz.Agent{
@@ -303,12 +303,12 @@ func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]s
 	}
 
 	return biz.Team{
-		TeamKey:            ts.Key,
-		DisplayName:        ts.DisplayName,
-		Status:             "active",
-		IsDefault:          false,
-		DefinitionJSON:     defJSON,
-		CategoryIndustryID: spec.IndustryKey,
+		TeamKey:        ts.Key,
+		DisplayName:    ts.DisplayName,
+		Status:         "active",
+		IsDefault:      false,
+		DefinitionJSON: defJSON,
+		DepartmentID:   spec.CompanyKey,
 	}, nil
 }
 

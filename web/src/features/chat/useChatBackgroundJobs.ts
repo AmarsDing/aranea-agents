@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
-import { listChatBackgroundJobs, type ChatBackgroundJobRow } from './api';
+import { listChatBackgroundJobs } from './api';
+import type { ChatBackgroundJobRow } from './types';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from './globalWsHub';
 import type { Envelope } from './envelope';
 

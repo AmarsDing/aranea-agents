@@ -36,6 +36,16 @@ func NewAdminRepo(data *Data) biz.AdminRepo {
 	}
 }
 
+// NewAdminReader returns a narrow AdminReader from the composite repo.
+func NewAdminReader(data *Data) biz.AdminReader {
+	return NewAdminRepo(data)
+}
+
+// NewAdminWriter returns a narrow AdminWriter from the composite repo.
+func NewAdminWriter(data *Data) biz.AdminWriter {
+	return NewAdminRepo(data)
+}
+
 func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) {
 	po, err := r.data.RW().Read(ctx).Admin.Get(ctx, id)
 	if err != nil {

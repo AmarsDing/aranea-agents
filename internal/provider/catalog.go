@@ -8,13 +8,16 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-// ModelCatalogInput is the provider-model slice needed to build a runtime catalog (no biz import).
+// ModelCatalogInput is the provider-model slice needed to build a runtime model config (no biz import).
 type ModelCatalogInput struct {
 	Model      string
 	ConfigJSON string
 }
 
-type CatalogConfig struct {
+// ProviderModelConfig holds the resolved connection parameters parsed from a
+// provider-model catalog row. It is NOT "the config of the catalog" — it is
+// "the model config derived from a catalog entry".
+type ProviderModelConfig struct {
 	ProviderType         string
 	Variant              string
 	BaseURL              string
@@ -74,25 +77,25 @@ type catalogConfigJSON struct {
 	Capabilities         biz.ModelCapabilities   `json:"capabilities"`
 }
 
-func CatalogFromModel(in ModelCatalogInput) (CatalogConfig, error) {
+func ResolveModelConfig(in ModelCatalogInput) (ProviderModelConfig, error) {
 	base := strings.TrimSpace(in.Model)
 	if base == "" {
-		return CatalogConfig{}, fmt.Errorf("provider model: empty model id")
+		return ProviderModelConfig{}, fmt.Errorf("provider model: empty model id")
 	}
 	var c catalogConfigJSON
 	_ = json.Unmarshal([]byte(strings.TrimSpace(in.ConfigJSON)), &c)
 	return catalogConfigToConfig(c, base), nil
 }
 
-func CatalogFromEndpoints(providerType, baseURL, apiKey string) CatalogConfig {
-	return CatalogConfig{
+func ModelConfigFromEndpoints(providerType, baseURL, apiKey string) ProviderModelConfig {
+	return ProviderModelConfig{
 		ProviderType: strings.TrimSpace(providerType),
 		BaseURL:      strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		APIKey:       strings.TrimSpace(apiKey),
 	}
 }
 
-func MergeCatalogConfig(cfg CatalogConfig, configJSON string) CatalogConfig {
+func MergeModelConfig(cfg ProviderModelConfig, configJSON string) ProviderModelConfig {
 	raw := strings.TrimSpace(configJSON)
 	if raw == "" {
 		return cfg
@@ -174,8 +177,8 @@ func MergeCatalogConfig(cfg CatalogConfig, configJSON string) CatalogConfig {
 	return merged
 }
 
-func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) CatalogConfig {
-	cfg := CatalogConfig{
+func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelConfig {
+	cfg := ProviderModelConfig{
 		ProviderType:      strings.TrimSpace(c.ProviderType),
 		Variant:           strings.TrimSpace(c.Variant),
 		BaseURL:           strings.TrimRight(strings.TrimSpace(c.APIBaseURL), "/"),

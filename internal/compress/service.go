@@ -39,21 +39,21 @@ type Compressor interface {
 
 // LLMService implements Compressor using OpenAI-compatible chat completions.
 type LLMService struct {
-	Catalog    *biz.LlmProviderModelUsecase
-	HTTPClient *http.Client
-	lg         loggateway.Logger
+	ModelCatalog *biz.LlmProviderModelUsecase
+	HTTPClient   *http.Client
+	lg           loggateway.Logger
 }
 
 // NewLLMService builds a compressor; httpClient must be non-nil for outbound calls.
 func NewLLMService(catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, lg loggateway.Logger) *LLMService {
-	return &LLMService{Catalog: catalog, HTTPClient: httpClient, lg: lg}
+	return &LLMService{ModelCatalog: catalog, HTTPClient: httpClient, lg: lg}
 }
 
 var _ Compressor = (*LLMService)(nil)
 
 // Compress implements [Compressor].
 func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) {
-	if s == nil || s.Catalog == nil {
+	if s == nil || s.ModelCatalog == nil {
 		return Result{}, ErrCatalogRequired
 	}
 	s.lg.Info("L1 压缩开始", loggateway.StepID("compress.start"), loggateway.Str("provider", req.Provider), loggateway.Str("model", req.Model))
@@ -69,7 +69,7 @@ func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) 
 		return out, ErrEmptyTranscript
 	}
 
-	row, err := s.Catalog.GetByProviderAndModel(ctx, out.Provider, out.Model)
+	row, err := s.ModelCatalog.GetByProviderAndModel(ctx, out.Provider, out.Model)
 	if err != nil {
 		s.lg.Error("L2 压缩模型查询失败", loggateway.StepID("compress.catalog_fail"), loggateway.Str("provider", out.Provider), loggateway.Str("model", out.Model), loggateway.Err(err))
 		return out, err

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -16,6 +18,7 @@ type TeamReader interface {
 	GetTeamByID(ctx context.Context, id string) (Team, error)
 	GetTeamByKey(ctx context.Context, teamKey string) (Team, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
+	ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]Team, error)
 }
 
 type TeamWriter interface {
@@ -81,6 +84,10 @@ type TeamUsecase struct {
 	stepRepo       OrchestrationStepRepo
 	deadLetter     TaskDeadLetterRepo
 	agentChecker   AgentIDExistenceChecker
+	deptLeadMgr    *DeptLeadManager
+	graphReader    GraphReader
+	graphWriter    GraphWriter
+	lg             loggateway.Logger
 }
 
 func NewTeamUsecase(
@@ -91,6 +98,10 @@ func NewTeamUsecase(
 	stepRepo OrchestrationStepRepo,
 	deadLetter TaskDeadLetterRepo,
 	agentChecker AgentIDExistenceChecker,
+	deptLeadMgr *DeptLeadManager,
+	graphReader GraphReader,
+	graphWriter GraphWriter,
+	lg loggateway.Logger,
 ) *TeamUsecase {
 	return &TeamUsecase{
 		reader:       reader,
@@ -100,6 +111,10 @@ func NewTeamUsecase(
 		stepRepo:     stepRepo,
 		deadLetter:   deadLetter,
 		agentChecker: agentChecker,
+		deptLeadMgr:  deptLeadMgr,
+		graphReader:  graphReader,
+		graphWriter:  graphWriter,
+		lg:           lg,
 	}
 }
 
@@ -297,6 +312,22 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 	if err := u.validateTeamMembersExist(ctx, in.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
+	// Auto-inherit dept lead agent ID from department
+	if in.DepartmentID != "" && in.DeptLeadAgentID == "" && u.deptLeadMgr != nil {
+		lead, dlErr := u.deptLeadMgr.GetDeptLeadForTeam(ctx, in.DepartmentID)
+		if dlErr == nil && lead != nil {
+			in.DeptLeadAgentID = lead.ID
+		}
+	}
+	// Validate borrow ratio: cross-dept members must not exceed 50% of total
+	if in.DepartmentID != "" && u.deptLeadMgr != nil {
+		memberIDs := u.extractEnabledMemberIDs(in.DefinitionJSON)
+		if len(memberIDs) > 0 {
+			if ratioErr := u.deptLeadMgr.ValidateBorrowRatio(ctx, in.DepartmentID, memberIDs); ratioErr != nil {
+				return Team{}, ratioErr
+			}
+		}
+	}
 	return u.writer.CreateTeam(ctx, in)
 }
 
@@ -352,14 +383,22 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if patch.ADKAppName == "" {
 		current.ADKAppName = current.TeamKey
 	}
-	current.CategoryIndustryID = firstNonEmpty(patch.CategoryIndustryID, current.CategoryIndustryID)
+	current.DepartmentID = firstNonEmpty(patch.DepartmentID, current.DepartmentID)
+	current.LinkedGraphID = firstNonEmpty(patch.LinkedGraphID, current.LinkedGraphID)
 	if err := validateTeamDefinition(current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
 	if err := u.validateTeamMembersExist(ctx, current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
-	return u.writer.UpdateTeam(ctx, current)
+
+	// ORG-11b: Sync Graph.team_id when Team.linked_graph_id changes
+	updated, updateErr := u.writer.UpdateTeam(ctx, current)
+	if updateErr != nil {
+		return Team{}, updateErr
+	}
+	u.syncGraphTeamID(ctx, current.LinkedGraphID, updated.LinkedGraphID, updated.ID)
+	return updated, nil
 }
 
 // TransitionStatus validates and applies a team status transition.
@@ -420,6 +459,26 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	if active {
 		return kerrors.Conflict("TEAM", "team has an active run; delete is not allowed until the run finishes")
 	}
+
+	// ORG-11c: Clean up Graph association on team deletion
+	if team.LinkedGraphID != "" && u.graphReader != nil && u.graphWriter != nil {
+		graphDef, graphErr := u.graphReader.GetDefinition(ctx, team.LinkedGraphID)
+		if graphErr == nil && graphDef != nil {
+			if graphDef.IsTemplate {
+				// Template Graph: only clear team_id reference
+				graphDef.TeamID = ""
+				if _, updateErr := u.graphWriter.UpdateDefinition(ctx, graphDef); updateErr != nil {
+					u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))
+				}
+			} else {
+				// Exclusive Graph: delete along with the team
+				if deleteErr := u.graphWriter.DeleteDefinition(ctx, team.LinkedGraphID); deleteErr != nil {
+					u.lg.Warn("best-effort delete failed", loggateway.Err(deleteErr))
+				}
+			}
+		}
+	}
+
 	return u.writer.DeleteTeam(ctx, id)
 }
 
@@ -670,6 +729,23 @@ func (uc *TeamUsecase) ResolveTaskDeadLetter(ctx context.Context, id string) (Ta
 
 func boolPtr(v bool) *bool { return &v }
 
+// extractEnabledMemberIDs parses the team definition JSON and returns the
+// agent IDs of all enabled members.
+func (u *TeamUsecase) extractEnabledMemberIDs(definitionJSON string) []string {
+	def, err := parseTeamDefinition(definitionJSON)
+	if err != nil {
+		return nil
+	}
+	members := enabledTeamMembers(def)
+	ids := make([]string, 0, len(members))
+	for _, m := range members {
+		if aid := strings.TrimSpace(m.AgentID); aid != "" {
+			ids = append(ids, aid)
+		}
+	}
+	return ids
+}
+
 // ResolveMemberAgentKeys 将 Team definition_json 中的 agent_key 解析为 agent_id。
 // 用于 Pack 导入场景：导入时 Team 成员使用 agent_key 引用，需转为实际 agent_id。
 // agentKeyResolver 接收 agent_key 返回 (agent_id, error)。
@@ -837,4 +913,36 @@ func enabledTeamMembers(d teamDefinition) []teamMemberDef {
 		out[i] = p.m
 	}
 	return out
+}
+
+// syncGraphTeamID updates Graph.team_id when Team.linked_graph_id changes.
+// ORG-11b: When a team's linked_graph_id is set or changed, the Graph's
+// team_id field must be updated to maintain the bidirectional reference.
+// Best-effort: errors are logged but do not fail the parent operation.
+func (u *TeamUsecase) syncGraphTeamID(ctx context.Context, oldGraphID, newGraphID, teamID string) {
+	if u.graphReader == nil || u.graphWriter == nil {
+		return
+	}
+
+	// Clear team_id on the old graph if it changed
+	if oldGraphID != "" && oldGraphID != newGraphID {
+		oldGraph, err := u.graphReader.GetDefinition(ctx, oldGraphID)
+		if err == nil && oldGraph != nil && oldGraph.TeamID == teamID {
+			oldGraph.TeamID = ""
+			if _, updateErr := u.graphWriter.UpdateDefinition(ctx, oldGraph); updateErr != nil {
+				u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))
+			}
+		}
+	}
+
+	// Set team_id on the new graph
+	if newGraphID != "" {
+		newGraph, err := u.graphReader.GetDefinition(ctx, newGraphID)
+		if err == nil && newGraph != nil {
+			newGraph.TeamID = teamID
+			if _, updateErr := u.graphWriter.UpdateDefinition(ctx, newGraph); updateErr != nil {
+				u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))
+			}
+		}
+	}
 }

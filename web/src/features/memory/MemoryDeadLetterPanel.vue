@@ -1,4 +1,5 @@
 // Container: approved — dead-letter queue management with replay/abandon actions.
+// FD4+FB3 fix: data fetching + error handling extracted to useMemoryDeadLetterPanel composable.
 <template>
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">
@@ -70,18 +71,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import type { MemoryDeadLetterEntry } from './types';
-import { useMemoryApi } from './composables/useMemoryApi';
-const { listMemoryDeadLetters } = useMemoryApi();
+import { useMemoryDeadLetterPanel } from './composables/useMemoryDeadLetterPanel';
 
 const emit = defineEmits<{
   (e: 'replay', id: number): void;
   (e: 'abandon', id: number): void;
 }>();
 
-const rows = ref<MemoryDeadLetterEntry[]>([]);
-const loading = ref(false);
+const { rows, loading, load } = useMemoryDeadLetterPanel();
 
 function priorityLabel(p: number) {
   if (p >= 2) return 'High';
@@ -111,17 +108,6 @@ function formatTime(t: string) {
   }
 }
 
-async function load() {
-  loading.value = true;
-  try {
-    rows.value = await listMemoryDeadLetters('pending', 50);
-  } catch {
-    rows.value = [];
-  } finally {
-    loading.value = false;
-  }
-}
-
 function replay(id: number) {
   emit('replay', id);
 }
@@ -129,8 +115,6 @@ function replay(id: number) {
 function abandon(id: number) {
   emit('abandon', id);
 }
-
-onMounted(load);
 
 defineExpose({ load });
 </script>

@@ -195,7 +195,6 @@
 <script setup lang="ts">
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ProviderLogo from './ProviderLogo.vue';
-import { useModelCatalogStore } from '../../stores/model-catalog';
 import type { PlatformResource } from '../../features/platform/types';
 import {
   PROVIDER_MODEL_TABLE_COLUMNS,
@@ -222,9 +221,7 @@ import {
 
 type ListKeyEntry = { visible: boolean; revealing: boolean; value: string };
 
-const modelCatalogStore = useModelCatalogStore();
-const fetchProviderLogoSvg = (id: string) => modelCatalogStore.fetchProviderLogoSvg(id);
-
+// F-03 fix: fetchProviderLogoSvg now passed via props instead of direct Store access
 withDefaults(
   defineProps<{
     rows: PlatformResource[];
@@ -232,6 +229,7 @@ withDefaults(
     saving?: boolean;
     shell?: boolean;
     listKeyState: (id: string) => ListKeyEntry;
+    fetchProviderLogoSvg: (id: string) => Promise<string>;
   }>(),
   {
     saving: false,

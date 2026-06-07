@@ -165,9 +165,8 @@ export function promptModeLabel(value: string) {
   return promptModes.find((mode) => mode.value === value)?.label ?? '完整';
 }
 
-export function tokenEstimateFor(value: string) {
-  return Math.ceil((value || '').length / 4);
-}
+// Re-export from features/agents/agentUtils.ts (F-07 fix: canonical location)
+export { tokenEstimateFor } from '../../features/agents/agentUtils';
 
 export function tokenText(value: string) {
   const count = tokenEstimateFor(value);

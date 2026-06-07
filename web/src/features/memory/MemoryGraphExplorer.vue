@@ -126,12 +126,7 @@ import type { GraphNeighborhood, MemoryEntity } from './types';
 import { useMemoryApi } from './composables/useMemoryApi';
 const { getMemoryNeighborhood } = useMemoryApi();
 
-const relationColumns = [
-  registryCol('source_id', 'Source', 'source_id', 'left', REGISTRY_COL_W.name),
-  registryCol('relation_type', 'Relation', 'relation_type', 'left', '11%'),
-  registryCol('target_id', 'Target', 'target_id', 'left', REGISTRY_COL_W.name),
-  registryCol('weight', 'Weight', 'weight', 'right', REGISTRY_COL_W.metric),
-];
+const relationColumns = RELATION_COLUMNS;
 
 const props = defineProps<{
   entities: MemoryEntity[];

@@ -21,7 +21,7 @@ export type Tool = {
   config_json: string;
   default_config_json: string;
   metadata_json: string;
-  runtime_status?: 'available' | 'catalog_only' | 'disabled' | string;
+  runtime_status?: 'available' | 'registered_only' | 'disabled' | string;
   runtime_kind?: 'function' | 'streaming' | 'approval' | string;
   invoke_count: number;
   invoke_count_24h: number;

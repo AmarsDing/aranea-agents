@@ -35,11 +35,14 @@ import (
 var ProviderSet = wire.NewSet(
 	NewData,
 	NewAdminRepo,
+	NewAdminReader,
+	NewAdminWriter,
 	NewAvatarRepo,
 	NewMemoryRepo,
 	NewAgentRepo,
 	NewTeamRepo,
-	NewTaxonomyRepo,
+	NewOrganizationRepo,
+	NewBorrowRequestRepo,
 	NewLlmProviderModelRepo,
 	NewHookRepo,
 	NewCronRepo,
@@ -83,6 +86,8 @@ var ProviderSet = wire.NewSet(
 	NewEventStoreRepo,
 	NewFlowLogRepo,
 	NewWebhookRepo,
+	NewWebhookReader,
+	NewWebhookWriter,
 	NewMemoryJobDeadLetterRepo,
 	NewTeamGraphSessionRepo,
 	NewAgentTemplateRepo,
@@ -641,6 +646,10 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	}
 
 	ctxEnt := context.Background()
+
+	// Pre-Ent migration: rename industry_taxonomy → organizations before Ent auto-creates the table.
+	PreEntOrganizationRedesignMigration(ctxEnt, rawDB, lg)
+
 	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
 		entClient, err = migrateDev(ctxEnt, entClient, "sqlite(ent)")
 		if err != nil {
@@ -713,6 +722,10 @@ func runPendingDataMigrations(d *Data) error {
 	if err := RunSessionStatusIdleMigration(ctx, entClient, d.lg); err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.session_status_idle"), loggateway.Err(err))
 		return fmt.Errorf("session status migration: %w", err)
+	}
+	if err := RunOrganizationRedesignMigration(ctx, entClient, d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.organization_redesign"), loggateway.Err(err))
+		return fmt.Errorf("organization redesign migration: %w", err)
 	}
 	return nil
 }
@@ -820,6 +833,12 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	})
 	seedStep("data.seed.cron_tasks", func() error {
 		return SeedCronTasks(ctx, entClient, lg)
+	})
+	seedStep("data.seed.dept_lead_agents", func() error {
+		return SeedDeptLeadAgents(ctx, entClient, lg)
+	})
+	seedStep("data.seed.dept_lead_prompt_files", func() error {
+		return SeedDeptLeadPromptFiles(ctx, entClient, scenarioDir, lg)
 	})
 
 	d.lazySeeders = map[string]*LazySeeder{}

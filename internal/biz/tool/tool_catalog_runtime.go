@@ -48,11 +48,11 @@ func webResearchPlatformFieldsPtr(s *WebResearchSetting) *WebResearchPlatformFie
 	return webResearchPlatformFields(*s)
 }
 
-// Catalog runtime_status values (see 23 tools.design.md).
+// Runtime status values (see 23 tools.design.md).
 const (
-	RuntimeStatusAvailable   = "available"
-	RuntimeStatusCatalogOnly = "catalog_only"
-	RuntimeStatusDisabled    = "disabled"
+	RuntimeStatusAvailable      = "available"
+	RuntimeStatusRegisteredOnly = "registered_only"
+	RuntimeStatusDisabled       = "disabled"
 )
 
 // Catalog runtime_kind values.
@@ -120,20 +120,20 @@ func catalogRuntimeStatus(t Tool, platform *WebResearchSetting, catalogReady Web
 		return RuntimeStatusDisabled
 	}
 	if _, sessionOnly := sessionBoundToolKeys[t.Key]; sessionOnly {
-		return RuntimeStatusCatalogOnly
+		return RuntimeStatusRegisteredOnly
 	}
 	src := strings.ToLower(strings.TrimSpace(t.Source))
 	if src == "mcp" {
-		return RuntimeStatusCatalogOnly
+		return RuntimeStatusRegisteredOnly
 	}
 	if src == "external" || src == "custom" {
 		if !hasOpenAPIMetadata(t.MetadataJSON) {
-			return RuntimeStatusCatalogOnly
+			return RuntimeStatusRegisteredOnly
 		}
 		return RuntimeStatusAvailable
 	}
 	if !catalogConfigReady(t, platform, catalogReady) {
-		return RuntimeStatusCatalogOnly
+		return RuntimeStatusRegisteredOnly
 	}
 	if _, ok := registryBackedToolKeys[t.Key]; ok {
 		return RuntimeStatusAvailable
@@ -141,7 +141,7 @@ func catalogRuntimeStatus(t Tool, platform *WebResearchSetting, catalogReady Web
 	if strings.HasPrefix(t.Key, "working_memory.") {
 		return RuntimeStatusAvailable
 	}
-	return RuntimeStatusCatalogOnly
+	return RuntimeStatusRegisteredOnly
 }
 
 func catalogConfigReady(t Tool, platform *WebResearchSetting, catalogReady WebResearchCatalogReadyFunc) bool {

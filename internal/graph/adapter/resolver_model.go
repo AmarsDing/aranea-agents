@@ -18,9 +18,9 @@ import (
 
 // CatalogModelResolver resolves models via LlmProviderModelUsecase.
 type CatalogModelResolver struct {
-	Catalog *biz.LlmProviderModelUsecase
-	RT      *provider.RoundTrip
-	lg      loggateway.Logger
+	ModelCatalog *biz.LlmProviderModelUsecase
+	RT           *provider.RoundTrip
+	lg           loggateway.Logger
 }
 
 var _ graphtrpc.ModelResolver = (*CatalogModelResolver)(nil)
@@ -29,18 +29,18 @@ func NewCatalogModelResolver(catalog *biz.LlmProviderModelUsecase, rt *provider.
 	if rt == nil {
 		rt = &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	}
-	return &CatalogModelResolver{Catalog: catalog, RT: rt, lg: lg}
+	return &CatalogModelResolver{ModelCatalog: catalog, RT: rt, lg: lg}
 }
 
 func (r *CatalogModelResolver) ResolveModel(ctx context.Context, modelName string) (trpcmodel.Model, error) {
-	if r == nil || r.Catalog == nil {
+	if r == nil || r.ModelCatalog == nil {
 		return nil, kerrors.InternalServer("GRAPH", "graph: model catalog not configured")
 	}
-	prov, api, err := parseModelRef(ctx, r.Catalog, modelName)
+	prov, api, err := parseModelRef(ctx, r.ModelCatalog, modelName)
 	if err != nil {
 		return nil, err
 	}
-	return provider.TRPCModelForProviderModel(ctx, r.Catalog, r.RT, prov, api, r.lg)
+	return provider.TRPCModelForProviderModel(ctx, r.ModelCatalog, r.RT, prov, api, r.lg)
 }
 
 func parseModelRef(ctx context.Context, catalog *biz.LlmProviderModelUsecase, modelName string) (prov, api string, err error) {

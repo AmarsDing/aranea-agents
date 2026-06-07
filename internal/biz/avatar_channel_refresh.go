@@ -3,7 +3,6 @@ package biz
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"image"
@@ -18,6 +17,7 @@ import (
 	"github.com/srwiley/rasterx"
 
 	"aranea-agents/internal/biz/avatar"
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/biz/channelicons"
 )
 
@@ -192,7 +192,7 @@ func upsertChannelIconFromPNG(ctx context.Context, repo avatar.Repo, spec Channe
 	if err == nil && existing.ID != "" {
 		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, shared.ErrNotFound) {
 		return err
 	}
 

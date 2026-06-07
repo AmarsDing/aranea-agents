@@ -3,7 +3,7 @@ package provider
 import "testing"
 
 func TestInferVariantFromProviderType(t *testing.T) {
-	got := InferVariant(CatalogConfig{
+	got := InferVariant(ProviderModelConfig{
 		ProviderType: "deepseek",
 		BaseURL:      "https://example.com/v1",
 	})
@@ -13,7 +13,7 @@ func TestInferVariantFromProviderType(t *testing.T) {
 }
 
 func TestInferVariantFromExplicitVariant(t *testing.T) {
-	got := InferVariant(CatalogConfig{
+	got := InferVariant(ProviderModelConfig{
 		ProviderType: "openai",
 		Variant:      "deepseek",
 		BaseURL:      "https://example.com/v1",
@@ -24,7 +24,7 @@ func TestInferVariantFromExplicitVariant(t *testing.T) {
 }
 
 func TestInferVariantFromDeepSeekBaseURL(t *testing.T) {
-	got := InferVariant(CatalogConfig{
+	got := InferVariant(ProviderModelConfig{
 		ProviderType: "openai",
 		BaseURL:      "https://api.deepseek.com/v1",
 	})

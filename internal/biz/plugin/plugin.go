@@ -3,7 +3,6 @@ package plugin
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -177,8 +176,8 @@ func (u *Usecase) GetByKey(ctx context.Context, key string) (Plugin, error) {
 	}
 	p, err := u.repo.GetByKey(ctx, key)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Plugin{}, sql.ErrNoRows
+		if errors.Is(err, shared.ErrNotFound) {
+			return Plugin{}, shared.ErrNotFound
 		}
 		return Plugin{}, err
 	}
@@ -253,7 +252,7 @@ func (u *Usecase) UpdateScope(ctx context.Context, id string, scope string) (Plu
 	}
 	if !strings.EqualFold(scope, "global") && u.agents != nil {
 		if err := u.agents.AgentExists(ctx, scope); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, shared.ErrNotFound) {
 				return Plugin{}, errors.BadRequest("PLUGIN", "scope agent not found")
 			}
 			return Plugin{}, err

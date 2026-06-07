@@ -1,10 +1,10 @@
 package loader
 
-type IndustrySpec struct {
-	IndustryKey   string       `yaml:"industry_key"`
+type CompanySpec struct {
+	CompanyKey    string        `yaml:"company_key"`
 	Defaults      AgentDefaults `yaml:"defaults"`
-	Agents        []AgentSpec  `yaml:"agents"`
-	Teams         []TeamSpec   `yaml:"teams"`
+	Agents        []AgentSpec   `yaml:"agents"`
+	Teams         []TeamSpec    `yaml:"teams"`
 }
 
 type AgentDefaults struct {

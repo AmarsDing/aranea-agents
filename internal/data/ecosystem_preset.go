@@ -53,14 +53,14 @@ func (r *EcosystemPresetRepo) SetEcosystemLoaded(ctx context.Context, status biz
 	return err
 }
 
-func (r *EcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context, industryKey string) (int, error) {
+func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, companyKey string) (int, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// Find the industry node ID
-	var industryID string
+	// Find the company node ID
+	var companyID string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id FROM industry_taxonomy WHERE taxonomy_key = ? AND level = 'industry' AND deleted_at = ''`,
-		[]any{industryKey}, &industryID)
+		`SELECT id FROM organizations WHERE org_key = ? AND level = 'company' AND deleted_at = ''`,
+		[]any{companyKey}, &companyID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
@@ -70,7 +70,7 @@ func (r *EcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context,
 
 	// Find department IDs
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM industry_taxonomy WHERE parent_id = ? AND deleted_at = ''`, industryID)
+		`SELECT id FROM organizations WHERE parent_id = ? AND deleted_at = ''`, companyID)
 	if err != nil {
 		return 0, err
 	}
@@ -88,7 +88,7 @@ func (r *EcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context,
 	if len(deptIDs) > 0 {
 		// Find position IDs
 		posRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-			`SELECT id FROM industry_taxonomy WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
+			`SELECT id FROM organizations WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
 			toAnySlice(deptIDs)...)
 		if err != nil {
 			return 0, err
@@ -108,7 +108,7 @@ func (r *EcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context,
 	// Soft-delete positions
 	if len(positionIDs) > 0 {
 		res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE industry_taxonomy SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+			`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
 			append([]any{now, now}, toAnySlice(positionIDs)...)...)
 		if err != nil {
 			return total, err
@@ -120,7 +120,7 @@ func (r *EcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context,
 	// Soft-delete departments
 	if len(deptIDs) > 0 {
 		res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE industry_taxonomy SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
+			`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
 			append([]any{now, now}, toAnySlice(deptIDs)...)...)
 		if err != nil {
 			return total, err
@@ -129,10 +129,10 @@ func (r *EcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context,
 		total += int(n)
 	}
 
-	// Soft-delete industry node
+	// Soft-delete company node
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE industry_taxonomy SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id = ? AND deleted_at = ''`,
-		now, now, industryID)
+		`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id = ? AND deleted_at = ''`,
+		now, now, companyID)
 	if err != nil {
 		return total, err
 	}
@@ -168,7 +168,7 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		positionArgs := toAnySlice(positionIDs)
 		res, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+			`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
 			append([]any{now, now}, positionArgs...)...)
 		if err != nil {
 			return err
@@ -226,7 +226,7 @@ func (r *EcosystemPresetRepo) findEcosystemAgentIDsByPositions(ctx context.Conte
 		return deletedAgentIDs, nil
 	}
 	agentRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND source = 'imported' AND taxonomy_position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+		`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND source = 'imported' AND position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
 		toAnySlice(positionIDs)...)
 	if err != nil {
 		return nil, err
@@ -324,10 +324,10 @@ func (r *EcosystemPresetRepo) modifyTeamDefinitions(ctx context.Context, now str
 // findIndustryPositionIDs returns all position-level taxonomy node IDs for the given industry.
 func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, industryKey string) ([]string, error) {
 	// Find the industry node ID
-	var industryID string
+	var companyID string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id FROM industry_taxonomy WHERE taxonomy_key = ? AND level = 'industry' AND deleted_at = ''`,
-		[]any{industryKey}, &industryID)
+		`SELECT id FROM organizations WHERE taxonomy_key = ? AND level = 'industry' AND deleted_at = ''`,
+		[]any{industryKey}, &companyID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -337,7 +337,7 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 
 	// Find department IDs
 	deptRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM industry_taxonomy WHERE parent_id = ? AND deleted_at = ''`, industryID)
+		`SELECT id FROM organizations WHERE parent_id = ? AND deleted_at = ''`, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 
 	// Find position IDs
 	posRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM industry_taxonomy WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
+		`SELECT id FROM organizations WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
 		toAnySlice(deptIDs)...)
 	if err != nil {
 		return nil, err

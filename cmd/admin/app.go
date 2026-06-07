@@ -35,7 +35,7 @@ func newApp(
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	agentUC *biz.AgentUsecase,
 	teamUC *biz.TeamUsecase,
-	taxonomyUC *biz.TaxonomyUsecase,
+	organizationUC *biz.OrganizationUsecase,
 	d *data.Data,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,

@@ -23,6 +23,7 @@ import (
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
+	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
@@ -93,6 +94,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 	// patterns (e.g. /v1/artifacts/{id}).
 	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting, s.EcosystemPreset)
 	registerProtoServices(srv, s)
+	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
 	wsSrv.RegisterOnKratos(srv)
 
@@ -131,6 +133,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
+	organizationv1.RegisterOrganizationServiceHTTPServer(srv, s.Organization)
 	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
 	skillintlv1.RegisterSkillIntelligenceServiceHTTPServer(srv, s.SkillIntel)
 	skilldedupv1.RegisterSkillDedupServiceHTTPServer(srv, s.SkillDedup)
@@ -255,5 +258,24 @@ func contentTypeWithCharset(subtype string) string {
 		return base + "; charset=utf-8"
 	default:
 		return base
+	}
+}
+
+// registerCompatibilityRedirects adds HTTP 307 redirects from legacy
+// /v1/taxonomy/* paths to /v1/organization/* so that old client code
+// is transparently forwarded to the new API. These are registered after
+// proto services so the actual taxonomy handlers take priority when
+// clients still call the old endpoints directly.
+func registerCompatibilityRedirects(srv *kratoshttp.Server) {
+	redirects := map[string]string{
+		"/v1/taxonomy/legacy/list":   "/v1/organization",
+		"/v1/taxonomy/legacy/tree":   "/v1/organization/tree",
+	}
+	for from, to := range redirects {
+		srv.Route("/").GET(from, func(ctx kratoshttp.Context) error {
+			ctx.Response().Header().Set("Location", to)
+			ctx.Response().WriteHeader(nethttp.StatusTemporaryRedirect)
+			return nil
+		})
 	}
 }

@@ -2,11 +2,11 @@ package biz_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/shared"
 )
 
 // --- Team usecase tests ---
@@ -74,6 +74,9 @@ func (m *memTeamRepoB) ListBySpiritSessionID(_ context.Context, _ string) ([]biz
 func (m *memTeamRepoB) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
 	return biz.Team{}, nil
 }
+func (m *memTeamRepoB) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -119,7 +122,7 @@ func (m *memTeamRepoB) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (
 
 func TestTeamUsecase_CreateAndList(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)
+	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	team, err := uc.Create(ctx, biz.Team{TeamKey: "alpha", DisplayName: "Alpha Team"})
@@ -141,7 +144,7 @@ func TestTeamUsecase_CreateAndList(t *testing.T) {
 
 func TestTeamUsecase_Create_Validation(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)
+	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	_, err := uc.Create(ctx, biz.Team{TeamKey: "", DisplayName: "X"})
@@ -157,7 +160,7 @@ func TestTeamUsecase_Create_Validation(t *testing.T) {
 
 func TestTeamUsecase_Delete_DefaultBlocked(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)
+	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "default", DisplayName: "Default"})
@@ -174,7 +177,7 @@ func TestTeamUsecase_Delete_DefaultBlocked(t *testing.T) {
 
 func TestTeamUsecase_Update(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)
+	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "t1", DisplayName: "Original"})
@@ -189,7 +192,7 @@ func TestTeamUsecase_Update(t *testing.T) {
 
 func TestTeamUsecase_Duplicate(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)
+	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "orig", DisplayName: "Orig"})
@@ -338,7 +341,7 @@ func (m *memPluginRepoB) GetByKey(_ context.Context, key string) (biz.Plugin, er
 			return p, nil
 		}
 	}
-	return biz.Plugin{}, sql.ErrNoRows
+	return biz.Plugin{}, shared.ErrNotFound
 }
 
 func (m *memPluginRepoB) CreatePlugin(_ context.Context, p biz.Plugin) (biz.Plugin, error) {
@@ -541,7 +544,7 @@ func (m *memArtifactRepoB) ListBySessionAndName(_ context.Context, sessionID, na
 }
 
 func TestArtifactUsecase_SaveLoadDeleteList(t *testing.T) {
-	uc := biz.NewArtifactUsecase(newMemArtifactRepoB())
+	uc := biz.NewArtifactUsecase(newMemArtifactRepoB(), nil)
 	ctx := context.Background()
 	payload := []byte("artifact data")
 
@@ -583,7 +586,7 @@ func TestArtifactUsecase_SaveLoadDeleteList(t *testing.T) {
 }
 
 func TestArtifactUsecase_ListVersions(t *testing.T) {
-	uc := biz.NewArtifactUsecase(newMemArtifactRepoB())
+	uc := biz.NewArtifactUsecase(newMemArtifactRepoB(), nil)
 	ctx := context.Background()
 
 	_, _ = uc.Save(ctx, "sess-2", "file.txt", "text/plain", []byte("v1"))
@@ -601,7 +604,7 @@ func TestArtifactUsecase_ListVersions(t *testing.T) {
 // DAT-01 / ART-04: Deleting one ID must remove all sibling versions sharing
 // session+name. Prior behavior left orphan version files on disk.
 func TestArtifactUsecase_DeleteRemovesAllVersions(t *testing.T) {
-	uc := biz.NewArtifactUsecase(newMemArtifactRepoB())
+	uc := biz.NewArtifactUsecase(newMemArtifactRepoB(), nil)
 	ctx := context.Background()
 
 	v1, err := uc.Save(ctx, "sess-3", "doc.txt", "text/plain", []byte("v1"))
@@ -640,7 +643,7 @@ func TestArtifactUsecase_DeleteRemovesAllVersions(t *testing.T) {
 // TestArtifactUsecase_DeleteVersionRemovesSingleVersion verifies that
 // DeleteVersion removes exactly one version while leaving siblings intact.
 func TestArtifactUsecase_DeleteVersionRemovesSingleVersion(t *testing.T) {
-	uc := biz.NewArtifactUsecase(newMemArtifactRepoB())
+	uc := biz.NewArtifactUsecase(newMemArtifactRepoB(), nil)
 	ctx := context.Background()
 
 	v1, _ := uc.Save(ctx, "sess-4", "log.txt", "text/plain", []byte("v1"))

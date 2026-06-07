@@ -57,7 +57,10 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 		SetInterruptBefore(string(interruptBeforeJSON)).
 		SetInterruptAfter(string(interruptAfterJSON)).
 		SetMetadata(string(metadataJSON)).
-		SetSortOrder(def.SortOrder)
+		SetVerificationGates(def.VerificationGates).
+		SetSortOrder(def.SortOrder).
+		SetTeamID(def.TeamID).
+		SetIsTemplate(def.IsTemplate)
 
 	if def.ID != "" {
 		builder.SetID(def.ID)
@@ -181,7 +184,10 @@ func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefiniti
 		SetInterruptBefore(string(interruptBeforeJSON)).
 		SetInterruptAfter(string(interruptAfterJSON)).
 		SetMetadata(string(metadataJSON)).
+		SetVerificationGates(def.VerificationGates).
 		SetSortOrder(def.SortOrder).
+		SetTeamID(def.TeamID).
+		SetIsTemplate(def.IsTemplate).
 		SetUpdatedAt(def.UpdatedAt).
 		Save(ctx)
 	if err != nil {
@@ -202,7 +208,10 @@ func entGraphToBiz(row *ent.GraphDefinition, lg loggateway.Logger) *biz.GraphDef
 		FinishPoint:      row.FinishPoint,
 		EnableCheckpoint: row.EnableCheckpoint,
 		ExecutionEngine:  biz.ExecutionEngineType(row.ExecutionEngine),
+		VerificationGates: row.VerificationGates,
 		SortOrder:        row.SortOrder,
+		TeamID:           row.TeamID,
+		IsTemplate:       row.IsTemplate,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}

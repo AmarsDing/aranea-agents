@@ -80,12 +80,9 @@ const { compositeSearchMemories, debugMemoryRecall } = useMemoryApi();
 import RecallHitTable from '../../components/memory/RecallHitTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
-import { REGISTRY_COL_W, registryCol } from '../ui/registryTableColumns';
+import { COMPOSITE_COLUMNS } from './memoryTableUi';
 
-const compositeColumns = [
-  registryCol('layer', 'Layer', 'layer', 'left', REGISTRY_COL_W.nameWide),
-  registryCol('score', 'Score', 'score', 'right', REGISTRY_COL_W.metric),
-];
+const compositeColumns = COMPOSITE_COLUMNS;
 
 const compositeRows = computed(() => compositeHits.value.map((row) => ({ ...row, row_uid: `${row.layer}-${row.id}` })));
 

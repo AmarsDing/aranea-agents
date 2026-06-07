@@ -30,10 +30,10 @@ type optimizeSkillOutput struct {
 func newOptimizeSkillTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input optimizeSkillInput) (optimizeSkillOutput, error) {
 		if input.AgentID == "" {
-			return optimizeSkillOutput{}, errAgentIDRequired
+			return optimizeSkillOutput{}, ErrAgentIDRequired
 		}
 		if input.SkillName == "" {
-			return optimizeSkillOutput{}, errSkillNameRequired
+			return optimizeSkillOutput{}, ErrSkillNameRequired
 		}
 		since := time.Now().AddDate(0, 0, -30)
 		stats, err := deps.Queries.GetSkillInvocationStats(ctx, input.AgentID, since)

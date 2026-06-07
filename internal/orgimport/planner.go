@@ -24,7 +24,7 @@ type Plan struct {
 func BuildPlan(spec *Spec, existing ExistingResources) Plan {
 	var actions []PlanAction
 
-	for _, ind := range spec.Spec.Industries {
+	for _, ind := range spec.Spec.Companies {
 		isUpdate := existing.HasCategory(ind.Key)
 		actions = append(actions, PlanAction{
 			Kind:        "create_industry",

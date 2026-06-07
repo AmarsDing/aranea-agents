@@ -1,5 +1,5 @@
 import type { QTableColumn } from 'quasar';
-import type { CascadeProposal, L0AssemblySnapshot, MemoryFact } from './types';
+import type { CascadeProposal, CompositeSearchHit, L0AssemblySnapshot, MemoryFact, MemoryRelation } from './types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
 
 export const CASCADE_SAGA_TABLE_COLUMNS: QTableColumn<CascadeProposal>[] = [
@@ -78,3 +78,17 @@ export function memoryCascadeStatusColor(status: string) {
       return 'grey-7';
   }
 }
+
+/** MemoryGraphExplorer — Neighborhood BFS 关系列 */
+export const RELATION_COLUMNS: QTableColumn<MemoryRelation>[] = [
+  registryCol<MemoryRelation>('source_id', 'Source', 'source_id', 'left', REGISTRY_COL_W.name),
+  registryCol<MemoryRelation>('relation_type', 'Relation', 'relation_type', 'left', '11%'),
+  registryCol<MemoryRelation>('target_id', 'Target', 'target_id', 'left', REGISTRY_COL_W.name),
+  registryCol<MemoryRelation>('weight', 'Weight', 'weight', 'right', REGISTRY_COL_W.metric),
+];
+
+/** MemoryRecallTester — Composite Search 结果列 */
+export const COMPOSITE_COLUMNS: QTableColumn<CompositeSearchHit>[] = [
+  registryCol<CompositeSearchHit>('layer', 'Layer', 'layer', 'left', REGISTRY_COL_W.nameWide),
+  registryCol<CompositeSearchHit>('score', 'Score', 'score', 'right', REGISTRY_COL_W.metric),
+];

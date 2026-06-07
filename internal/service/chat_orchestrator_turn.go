@@ -189,8 +189,8 @@ func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, pro
 	if prov != "" && mod != "" {
 		return prov, mod
 	}
-	if o.td.Catalog.Settings != nil {
-		if refine, err := o.td.Catalog.Settings.GetRefineLLM(ctx); err == nil {
+	if o.td.ReadDeps.Settings != nil {
+		if refine, err := o.td.ReadDeps.Settings.GetRefineLLM(ctx); err == nil {
 			prov = strutil.FirstNonEmpty(prov, refine.Provider)
 			mod = strutil.FirstNonEmpty(mod, refine.Model)
 		}
@@ -198,8 +198,8 @@ func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, pro
 	if prov != "" && mod != "" {
 		return prov, mod
 	}
-	if o.td.Catalog.LLM != nil {
-		if models, err := o.td.Catalog.LLM.List(ctx); err == nil {
+	if o.td.ReadDeps.LLM != nil {
+		if models, err := o.td.ReadDeps.LLM.List(ctx); err == nil {
 			for _, m := range models {
 				if m.Enabled && m.Provider != "" && m.Model != "" {
 					prov = strutil.FirstNonEmpty(prov, m.Provider)
@@ -237,13 +237,13 @@ func (o *ChatOrchestrator) hydratedAgent(ctx context.Context, agentID string) (b
 	if agentID == "" {
 		return biz.Agent{}, kerrors.BadRequest("CHAT_NATIVE", "agent id is required")
 	}
-	if o.td.Catalog.AgentsUC != nil {
-		return o.td.Catalog.AgentsUC.Get(ctx, agentID)
+	if o.td.ReadDeps.AgentsUC != nil {
+		return o.td.ReadDeps.AgentsUC.Get(ctx, agentID)
 	}
-	if o.td.Catalog.Agents == nil {
+	if o.td.ReadDeps.Agents == nil {
 		return biz.Agent{}, kerrors.InternalServer("CHAT_NATIVE", "agent repository not configured")
 	}
-	return o.td.Catalog.Agents.GetAgentByID(ctx, agentID)
+	return o.td.ReadDeps.Agents.GetAgentByID(ctx, agentID)
 }
 
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch.
@@ -346,7 +346,7 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 	if o == nil || o.a2aUC == nil {
 		return ctx
 	}
-	inv := a2apkg.NewInvoker(o, o.a2aUC, o.td.Catalog.Agents, o.lg)
+	inv := a2apkg.NewInvoker(o, o.a2aUC, o.td.ReadDeps.Agents, o.lg)
 	return a2apkg.InjectRunContext(ctx, o.a2aUC, callerAgentID, inv)
 }
 
@@ -556,15 +556,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:               o.td.Catalog.LLM,
-		AgentUC:               o.td.Catalog.AgentsUC,
-		Agents:                o.td.Catalog.Agents,
+		ModelCatalog:               o.td.ReadDeps.LLM,
+		AgentUC:               o.td.ReadDeps.AgentsUC,
+		Agents:                o.td.ReadDeps.Agents,
 		RT:                    o.td.RoundTrip(),
-		SkillUC:               o.td.Catalog.SkillUC,
+		SkillUC:               o.td.ReadDeps.SkillUC,
 		MCPTooling:            o.td.Persist.AgentMCP,
-		ToolUC:                o.td.Catalog.ToolUC,
+		ToolUC:                o.td.ReadDeps.ToolUC,
 		Sessions:              o.td.Sessions,
-		Sys:                   o.td.Catalog.Settings,
+		Sys:                   o.td.ReadDeps.Settings,
 		Provider:              prov,
 		Model:                 mod,
 		DialogMode:            dialogMode,
@@ -582,7 +582,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		CodeExecFactory:       o.rt.CodeExecFactory,
 		CustomTools:           o.cliAdminTools(ctx, ag),
 		KanbanBridge:          o.rt.KanbanBridge,
-		Taxonomy:              o.rt.TaxonomyUC,
+		Organization:          o.rt.OrganizationUC,
 		ToolResultGate:        o.rt.ToolResultGate,
 		SubAgentService:       o.subAgentService,
 	}
@@ -693,7 +693,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if !biz.IsA2AProxyAgent(ag) {
 		if intent.ShouldRun(ag, content) {
 			emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-			intRes := intent.RunForAgent(ctx, ag, o.td.Catalog.LLM, o.td.LLMHTTP, prov, mod, content, o.lg)
+			intRes := intent.RunForAgent(ctx, ag, o.td.ReadDeps.LLM, o.td.LLMHTTP, prov, mod, content, o.lg)
 			if intRes.Artifact != nil {
 				emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
 				if strings.TrimSpace(intRes.RawJSON) != "" {
@@ -879,7 +879,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(toolUCCast(o.td.Catalog.ToolUC), o.td.Catalog.Agents, o.td.Sessions)
+	streamOpts := NewChatStreamConsumeOptions(o.td.ReadDeps.ToolUC, o.td.ReadDeps.Agents, o.td.Sessions)
 	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
@@ -1313,10 +1313,10 @@ func (o *ChatOrchestrator) nativeGetChatOptions(ctx context.Context, req *chatv1
 }
 
 func (o *ChatOrchestrator) nativeGetProviderOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
-	if o.td.Catalog.LLM == nil {
+	if o.td.ReadDeps.LLM == nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	rows, err := o.td.Catalog.LLM.List(ctx)
+	rows, err := o.td.ReadDeps.LLM.List(ctx)
 	if err != nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
@@ -1343,10 +1343,10 @@ func (o *ChatOrchestrator) nativeGetProviderOptions(ctx context.Context) (*chatv
 }
 
 func (o *ChatOrchestrator) nativeGetModelOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
-	if o.td.Catalog.LLM == nil {
+	if o.td.ReadDeps.LLM == nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	rows, err := o.td.Catalog.LLM.List(ctx)
+	rows, err := o.td.ReadDeps.LLM.List(ctx)
 	if err != nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}

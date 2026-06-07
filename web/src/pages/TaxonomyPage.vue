@@ -39,7 +39,7 @@
         <template #actions>
           <div class="taxonomy-stats">
             <div class="app-entity-stat">
-              <strong>{{ stats.industries }}</strong
+              <strong>{{ stats.companies }}</strong
               ><span>行业</span>
             </div>
             <div class="app-entity-stat">

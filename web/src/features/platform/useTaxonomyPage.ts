@@ -15,7 +15,7 @@ import {
   type TaxonomyLevel,
 } from './taxonomyTreeUtils';
 
-const CATEGORY_RESOURCE = 'taxonomy' as const;
+const CATEGORY_RESOURCE = 'organization' as const;
 
 export function useTaxonomyPage() {
   const $q = useQuasar();
@@ -38,14 +38,14 @@ export function useTaxonomyPage() {
     enabled: true,
     sort_order: 0,
     parent_id: '',
-    level: 'industry',
+    level: 'company',
     config_json: '{}',
     metadata_json: '{}',
   });
 
   const filteredTree = computed(() =>
     filterTaxonomyTree(
-      platformStore.taxonomyTree.filter((node) => node.level === 'industry'),
+      platformStore.taxonomyTree.filter((node) => node.level === 'company'),
       keyword.value,
       onlyCustom.value,
     ),
@@ -58,7 +58,7 @@ export function useTaxonomyPage() {
     try {
       await platformStore.loadTaxonomyTree(CATEGORY_RESOURCE);
     } catch (err) {
-      $q.notify({ type: 'negative', message: errorMessage(err) || '加载行业分类失败' });
+      $q.notify({ type: 'negative', message: errorMessage(err) || '加载组织架构失败' });
     } finally {
       if (!opts?.silent) loading.value = false;
     }
@@ -74,7 +74,7 @@ export function useTaxonomyPage() {
     parentNode.value = canonicalParent;
     const siblings = canonicalParent
       ? (canonicalParent.children ?? [])
-      : platformStore.taxonomyTree.filter((node) => node.level === 'industry');
+      : platformStore.taxonomyTree.filter((node) => node.level === 'company');
     Object.assign(form, {
       key: '',
       name: '',

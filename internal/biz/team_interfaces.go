@@ -63,6 +63,21 @@ type TeamSkillLookup interface {
 	RecordInvocation(ctx context.Context, in SkillInvocationWrite) error
 }
 
+// CLIAdminSkillLister captures the subset of SkillUsecase needed by the
+// cli_admin tool adapters in internal/service.
+type CLIAdminSkillLister interface {
+	List(ctx context.Context, q SkillListQuery) (SkillListResult, error)
+	Get(ctx context.Context, id string) (Skill, error)
+}
+
+// CLIAdminAgentLister captures the subset of AgentUsecase needed by the
+// cli_admin tool adapters in internal/service.
+type CLIAdminAgentLister interface {
+	List(ctx context.Context, q AgentListQuery) (AgentListResult, error)
+	Get(ctx context.Context, id string) (Agent, error)
+	GetByAgentKey(ctx context.Context, agentKey string) (Agent, error)
+}
+
 // ---------------------------------------------------------------------------
 // Compile-time assertions that concrete Usecase types satisfy the interfaces.
 // ---------------------------------------------------------------------------
@@ -73,3 +88,5 @@ var _ TeamAgentLookup = (*AgentUsecase)(nil)
 var _ TeamToolLookup = (*ToolUsecase)(nil)
 var _ TeamModelCatalog = (*LlmProviderModelUsecase)(nil)
 var _ TeamSkillLookup = (*SkillUsecase)(nil)
+var _ CLIAdminSkillLister = (*SkillUsecase)(nil)
+var _ CLIAdminAgentLister = (*AgentUsecase)(nil)

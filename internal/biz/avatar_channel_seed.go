@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -10,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/channelicons"
+	"aranea-agents/internal/biz/shared"
 )
 
 // EnsureChannelPlatformAvatars upserts built-in channel platform icons from embedded PNGs.
@@ -42,7 +42,7 @@ func ensureOneChannelPlatformAvatar(ctx context.Context, repo AvatarRepo, spec C
 	if err == nil && existing.ID != "" {
 		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, shared.ErrNotFound) {
 		return err
 	}
 

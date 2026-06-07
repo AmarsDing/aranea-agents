@@ -13,6 +13,8 @@ type agentTemplateRepo struct {
 	data *Data
 }
 
+var _ biz.AgentTemplateRepo = (*agentTemplateRepo)(nil)
+
 func NewAgentTemplateRepo(d *Data) biz.AgentTemplateRepo {
 	return &agentTemplateRepo{data: d}
 }

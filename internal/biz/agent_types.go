@@ -19,7 +19,7 @@ type Agent struct {
 	IsFavorite         bool
 	Icon               string
 	AgentDescription   string
-	TaxonomyPositionID string
+	PositionID string
 	PositionKey       string
 	AgentVariant      string
 	VariantDescription string
@@ -430,7 +430,7 @@ type AgentListQuery struct {
 	Keyword    string
 	Status     string
 	Provider   string
-	CategoryID string
+	OrgNodeID  string
 	CreatedBy  string
 	Role       string
 	Kind       string // filter by ownership classification (user | system_builtin | ecosystem_preset | marketplace | certified)

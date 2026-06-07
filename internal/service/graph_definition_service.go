@@ -53,6 +53,9 @@ func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraph
 	if req.Metadata != nil {
 		def.Metadata = req.Metadata.AsMap()
 	}
+	def.VerificationGates = req.VerificationGates
+	def.TeamID = req.TeamId
+	def.IsTemplate = req.IsTemplate
 	saved, err := s.uc.CreateGraph(ctx, def)
 	if err != nil {
 		return nil, err
@@ -137,6 +140,9 @@ func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraph
 	if req.Metadata != nil {
 		def.Metadata = req.Metadata.AsMap()
 	}
+	def.VerificationGates = req.VerificationGates
+	def.TeamID = req.TeamId
+	def.IsTemplate = req.IsTemplate
 	saved, err := s.uc.UpdateGraph(ctx, def)
 	if err != nil {
 		return nil, err

@@ -25,10 +25,10 @@ type selectiveRememberOutput struct {
 func newSelectiveRememberTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input selectiveRememberInput) (selectiveRememberOutput, error) {
 		if input.AgentID == "" {
-			return selectiveRememberOutput{}, errAgentIDRequired
+			return selectiveRememberOutput{}, ErrAgentIDRequired
 		}
 		if input.Content == "" {
-			return selectiveRememberOutput{}, errContentRequired
+			return selectiveRememberOutput{}, ErrContentRequired
 		}
 
 		// Check for redundancy by listing existing facts and comparing.

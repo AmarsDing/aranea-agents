@@ -188,7 +188,12 @@ type Team struct {
 	IsDefault           bool
 	DefinitionJSON      string
 	ADKAppName          string
-	CategoryIndustryID  string
+	DepartmentID        string
+	DeptLeadAgentID     string
+	Deliverables        string // JSON array of DeliverableContract
+	InputContract       string // JSON array of DeliverableContract (expected from upstream)
+	CrossDeptMemberIDs  string // JSON array of cross-department member agent IDs
+	LinkedGraphID      string // FK to graph_definitions; bidirectional reference with graph.team_id
 	SpiritSessionID     string
 	TaskDescription     string
 	AutoCreated         bool

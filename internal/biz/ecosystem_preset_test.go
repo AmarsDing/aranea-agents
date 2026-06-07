@@ -31,9 +31,9 @@ func (m *mockEcosystemPresetRepo) SetEcosystemLoaded(ctx context.Context, status
 	return nil
 }
 
-func (m *mockEcosystemPresetRepo) DeleteTaxonomyNodesByIndustry(ctx context.Context, industryKey string) (int, error) {
+func (m *mockEcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, companyKey string) (int, error) {
 	if m.deleteTaxonomy != nil {
-		return m.deleteTaxonomy(ctx, industryKey)
+		return m.deleteTaxonomy(ctx, companyKey)
 	}
 	return 0, nil
 }
@@ -233,8 +233,8 @@ func TestEcosystemPresetUsecase_UnloadEcosystemPreset_Success(t *testing.T) {
 	if result.TeamsDeleted != 1 {
 		t.Fatalf("expected 1 team deleted, got %d", result.TeamsDeleted)
 	}
-	if result.TaxonomyNodesDeleted != 5 {
-		t.Fatalf("expected 5 taxonomy nodes deleted, got %d", result.TaxonomyNodesDeleted)
+	if result.OrgNodesDeleted != 5 {
+		t.Fatalf("expected 5 org nodes deleted, got %d", result.OrgNodesDeleted)
 	}
 }
 

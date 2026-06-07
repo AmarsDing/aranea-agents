@@ -2,7 +2,7 @@ package tool
 
 import (
 	"context"
-	"database/sql"
+	"aranea-agents/internal/biz/shared"
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
@@ -17,7 +17,7 @@ func (s *stubToolRepo) GetTool(ctx context.Context, idOrKey string) (Tool, error
 	if s.getTool != nil {
 		return s.getTool(ctx, idOrKey)
 	}
-	return Tool{}, sql.ErrNoRows
+	return Tool{}, shared.ErrNotFound
 }
 
 func TestToolUsecase_ResolveToolKey(t *testing.T) {
@@ -29,7 +29,7 @@ func TestToolUsecase_ResolveToolKey(t *testing.T) {
 			if idOrKey == "duckduckgo_search" {
 				return Tool{ID: "tool_duckduckgo_search", Key: "duckduckgo_search"}, nil
 			}
-			return Tool{}, sql.ErrNoRows
+			return Tool{}, shared.ErrNotFound
 		},
 	}, nil, loggateway.NewNoop())
 

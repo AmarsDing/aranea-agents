@@ -287,5 +287,11 @@ func (uc *GraphDefinitionUsecase) FindGraphNode(ctx context.Context, graphID str
 	return nodeDefFromConfig(defToBuildConfig(def), nodeID)
 }
 
+// Reader returns the underlying GraphReader for narrow-interface consumers.
+func (uc *GraphDefinitionUsecase) Reader() GraphReader { return uc.reader }
+
+// Writer returns the underlying GraphWriter for narrow-interface consumers.
+func (uc *GraphDefinitionUsecase) Writer() GraphWriter { return uc.writer }
+
 // Compile-time interface assertion.
 var _ GraphDefinitionProvider = (*GraphDefinitionUsecase)(nil)

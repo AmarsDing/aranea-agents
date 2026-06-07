@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -23,6 +25,7 @@ func (s *stubTeamReader) GetTeamByID(_ context.Context, id string) (Team, error)
 }
 func (s *stubTeamReader) GetTeamByKey(context.Context, string) (Team, error) { return Team{}, ErrNotFound }
 func (s *stubTeamReader) ListBySpiritSessionID(context.Context, string) ([]Team, error) { return nil, nil }
+func (s *stubTeamReader) ListTeamsByDepartmentID(context.Context, string) ([]Team, error) { return nil, nil }
 
 type stubTeamWriter struct {
 	deletedID string
@@ -84,7 +87,7 @@ func TestTeamUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	t.Parallel()
 	reader := &stubTeamReader{team: Team{ID: "team-1", Kind: "system_builtin"}}
 	writer := &stubTeamWriter{}
-	uc := NewTeamUsecase(reader, writer, &stubTeamRunReader{}, &stubTeamRunWriter{}, &stubOrchestrationStepRepo{}, &stubTaskDeadLetterRepo{}, nil)
+	uc := NewTeamUsecase(reader, writer, &stubTeamRunReader{}, &stubTeamRunWriter{}, &stubOrchestrationStepRepo{}, &stubTaskDeadLetterRepo{}, nil, nil, nil, nil, loggateway.NewNoop())
 	err := uc.Delete(context.Background(), "team-1")
 	if err == nil {
 		t.Fatal("expected error when deleting system_builtin team")
@@ -105,7 +108,7 @@ func TestTeamUsecase_DeleteAllowsUserTeam(t *testing.T) {
 	t.Parallel()
 	reader := &stubTeamReader{team: Team{ID: "team-2", Kind: "user"}}
 	writer := &stubTeamWriter{}
-	uc := NewTeamUsecase(reader, writer, &stubTeamRunReader{}, &stubTeamRunWriter{}, &stubOrchestrationStepRepo{}, &stubTaskDeadLetterRepo{}, nil)
+	uc := NewTeamUsecase(reader, writer, &stubTeamRunReader{}, &stubTeamRunWriter{}, &stubOrchestrationStepRepo{}, &stubTaskDeadLetterRepo{}, nil, nil, nil, nil, loggateway.NewNoop())
 	err := uc.Delete(context.Background(), "team-2")
 	if err != nil {
 		t.Fatalf("expected no error when deleting user team, got %v", err)

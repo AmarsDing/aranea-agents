@@ -21,20 +21,20 @@ func TestNewCronTaskID_NonEmpty(t *testing.T) {
 }
 
 func TestErrRunnerDisabled(t *testing.T) {
-	if ErrRunnerDisabled.Error() != "cron runner disabled" {
-		t.Errorf("ErrRunnerDisabled.Error() = %q, want %q", ErrRunnerDisabled.Error(), "cron runner disabled")
+	if !errors.IsServiceUnavailable(ErrRunnerDisabled) {
+		t.Errorf("ErrRunnerDisabled should be ServiceUnavailable, got %v", ErrRunnerDisabled)
 	}
 }
 
 func TestErrTaskDeleted(t *testing.T) {
-	if ErrTaskDeleted.Error() != "cron task deleted" {
-		t.Errorf("ErrTaskDeleted.Error() = %q, want %q", ErrTaskDeleted.Error(), "cron task deleted")
+	if !errors.IsNotFound(ErrTaskDeleted) {
+		t.Errorf("ErrTaskDeleted should be NotFound, got %v", ErrTaskDeleted)
 	}
 }
 
 func TestErrSessionBusy(t *testing.T) {
-	if ErrSessionBusy.Error() != "cron session has active run" {
-		t.Errorf("ErrSessionBusy.Error() = %q, want %q", ErrSessionBusy.Error(), "cron session has active run")
+	if !errors.IsConflict(ErrSessionBusy) {
+		t.Errorf("ErrSessionBusy should be Conflict, got %v", ErrSessionBusy)
 	}
 }
 
@@ -242,7 +242,7 @@ func TestUsecase_GetTaskRun_EmptyID(t *testing.T) {
 func TestUsecase_TriggerTask_NilTrigger(t *testing.T) {
 	u := NewUsecase(noOpRepo(), nil)
 	_, err := u.TriggerTask(context.Background(), "some-id")
-	if err != ErrRunnerDisabled {
+	if !errors.Is(err, ErrRunnerDisabled) {
 		t.Errorf("err = %v, want ErrRunnerDisabled", err)
 	}
 }

@@ -10,7 +10,7 @@ func yamlUnmarshal(data []byte, v any) error {
 	return yaml.Unmarshal(data, v)
 }
 
-func fillDefaults(spec *IndustrySpec) {
+func fillDefaults(spec *CompanySpec) {
 	d := &spec.Defaults
 	if d.Provider == "" {
 		d.Provider = "openrouter"

@@ -35,11 +35,11 @@ func parsePackEntry(relPath string, data []byte, p *Pack) error {
 			return fmt.Errorf("pack: 解析 manifest.yaml 失败: %w", err)
 		}
 	case relPath == taxonomyFile:
-		var spec TaxonomyPackSpec
+		var spec OrganizationPackSpec
 		if err := yaml.Unmarshal(data, &spec); err != nil {
 			return fmt.Errorf("pack: 解析 taxonomy.yaml 失败: %w", err)
 		}
-		p.Taxonomy = &spec
+		p.Organization = &spec
 	case strings.HasPrefix(relPath, agentsDir) && strings.HasSuffix(relPath, ".yaml"):
 		var spec AgentPackSpec
 		if err := yaml.Unmarshal(data, &spec); err != nil {

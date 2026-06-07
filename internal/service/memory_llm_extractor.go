@@ -15,10 +15,10 @@ import (
 
 // MemoryLLMExtractor implements biz.MemoryTextExtractor using OpenAI-compatible chat completions.
 type MemoryLLMExtractor struct {
-	Agents   *biz.AgentUsecase
-	Sessions *biz.SessionUsecase
-	Catalog  *biz.LlmProviderModelUsecase
-	HTTP     *http.Client
+	Agents      *biz.AgentUsecase
+	Sessions    *biz.SessionUsecase
+	ModelCatalog *biz.LlmProviderModelUsecase
+	HTTP        *http.Client
 }
 
 func NewMemoryLLMExtractor(
@@ -28,17 +28,17 @@ func NewMemoryLLMExtractor(
 	httpClient *http.Client,
 ) *MemoryLLMExtractor {
 	return &MemoryLLMExtractor{
-		Agents:   agents,
-		Sessions: sessions,
-		Catalog:  catalog,
-		HTTP:     httpClient,
+		Agents:      agents,
+		Sessions:    sessions,
+		ModelCatalog: catalog,
+		HTTP:        httpClient,
 	}
 }
 
 var _ biz.MemoryTextExtractor = (*MemoryLLMExtractor)(nil)
 
 func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.ConsolidateInput) ([]biz.MemoryProposal, error) {
-	if e == nil || e.Catalog == nil || e.HTTP == nil {
+	if e == nil || e.ModelCatalog == nil || e.HTTP == nil {
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 	if strings.TrimSpace(os.Getenv("MEMORY_WORKER_LLM_DISABLED")) == "1" {
@@ -57,7 +57,7 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 
-	row, err := e.Catalog.GetByProviderAndModel(ctx, prov, mod)
+	row, err := e.ModelCatalog.GetByProviderAndModel(ctx, prov, mod)
 	if err != nil {
 		return nil, err
 	}

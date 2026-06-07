@@ -667,13 +667,15 @@ func provideChatServiceDeps(
 	return service.ChatOrchestratorDeps{
 		TurnDeps: rt.TurnDeps{
 			Catalog: rt.Catalog{
-				Agents:   agents,
-				AgentsUC: agentsUC,
-				Tools:    toolsCatalog,
-				ToolUC:   toolUC,
-				LLM:      llmCatalog,
-				SkillUC:  skillUC,
-				Settings: sys,
+				Agents:          agents,
+				AgentsUC:        agentsUC,
+				CLIAdminAgentUC: agentsUC,
+				Tools:           toolsCatalog,
+				ToolUC:          toolUC,
+				LLM:             llmCatalog,
+				SkillUC:         skillUC,
+				CLIAdminSkillUC: skillUC,
+				Settings:        sys,
 			},
 			Persist:   persist,
 			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
@@ -1506,6 +1508,26 @@ func provideTaskOrchestrator(
 }
 
 // provideEcosystemPresetSeedPackFn provides the SeedPackFunc for EcosystemPresetUsecase.
+func provideDeptLeadManager(
+	orgRepo biz.OrganizationRepo,
+	borrowRepo biz.BorrowRequestRepo,
+	agentRepo biz.AgentRepository,
+	agentUC *biz.AgentUsecase,
+	teamGetter biz.DeptLeadTeamGetter,
+	bus contract.Bus,
+	lg loggateway.Logger,
+) *biz.DeptLeadManager {
+	return biz.NewDeptLeadManager(biz.DeptLeadManagerOpts{
+		OrgRepo:    orgRepo,
+		BorrowRepo: borrowRepo,
+		AgentRepo:  agentRepo,
+		AgentUC:    agentUC,
+		TeamGetter: teamGetter,
+		EventBus:   bus,
+		Logger:     lg,
+	})
+}
+
 func provideEcosystemPresetSeedPackFn() biz.SeedPackFunc {
 	return func(ctx context.Context, client any, scenarioDir string, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error) {
 		return data.SeedPackIndustry(ctx, client.(*ent.Client), scenarioDir, industryKey, kindOverride, lg)
@@ -1728,6 +1750,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideEcosystemPresetSeedPackFn,
 		provideEcosystemPresetScenarioDir,
 		provideEcosystemPresetClientProvider,
+		wire.Bind(new(biz.DeptLeadTeamGetter), new(biz.TeamRepository)),
+		provideDeptLeadManager,
 		newApp,
 		provideWireOut,
 	))

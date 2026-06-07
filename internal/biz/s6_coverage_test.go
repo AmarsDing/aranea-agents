@@ -94,7 +94,7 @@ func (m *memKnowledgeRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearch
 // --- Tests ---
 
 func TestKnowledgeUsecase_UnavailableWithoutRepo(t *testing.T) {
-	uc := biz.NewKnowledgeUsecase(nil)
+	uc := biz.NewKnowledgeUsecase(nil, nil, nil)
 	ctx := context.Background()
 	_, _, err := uc.ListCollections(ctx, "", 10, 0)
 	if err == nil {
@@ -103,7 +103,7 @@ func TestKnowledgeUsecase_UnavailableWithoutRepo(t *testing.T) {
 }
 
 func TestKnowledgeUsecase_CreateCollection(t *testing.T) {
-	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo())
+	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo(), newMemKnowledgeRepo(), newMemKnowledgeRepo())
 	c, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{
 		Name:           "test",
 		EmbeddingModel: "text-embedding-3-small",
@@ -120,7 +120,7 @@ func TestKnowledgeUsecase_CreateCollection(t *testing.T) {
 }
 
 func TestKnowledgeUsecase_CreateCollectionValidation(t *testing.T) {
-	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo())
+	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo(), newMemKnowledgeRepo(), newMemKnowledgeRepo())
 	_, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{EmbeddingModel: "x"})
 	if err == nil {
 		t.Error("expected error for missing name")
@@ -133,7 +133,7 @@ func TestKnowledgeUsecase_CreateCollectionValidation(t *testing.T) {
 
 func TestKnowledgeUsecase_DeleteCollection(t *testing.T) {
 	repo := newMemKnowledgeRepo()
-	uc := biz.NewKnowledgeUsecase(repo)
+	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
 	c, _ := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{Name: "x", EmbeddingModel: "m"})
 	if err := uc.DeleteCollection(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestKnowledgeUsecase_DeleteCollection(t *testing.T) {
 }
 
 func TestKnowledgeUsecase_Search_EmptyInput(t *testing.T) {
-	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo())
+	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo(), newMemKnowledgeRepo(), newMemKnowledgeRepo())
 	_, err := uc.Search(context.Background(), biz.KnowledgeSearchQuery{}, nil)
 	if err == nil {
 		t.Error("expected error for empty collection_id")
@@ -319,7 +319,7 @@ func (m *memEvalRepo2) GetRunsByIDs(_ context.Context, ids []string) ([]biz.Eval
 }
 
 func TestEvalUsecase_CreateDataset(t *testing.T) {
-	uc := biz.NewEvalUsecase(newMemEvalRepo2())
+	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
 	d, err := uc.CreateDataset(context.Background(), biz.EvalDataset{Name: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestEvalUsecase_CreateDataset(t *testing.T) {
 
 func TestEvalUsecase_UploadCases(t *testing.T) {
 	repo := newMemEvalRepo2()
-	uc := biz.NewEvalUsecase(repo)
+	uc := biz.NewEvalUsecase(repo, nil)
 	d, _ := uc.CreateDataset(context.Background(), biz.EvalDataset{Name: "test"})
 	n, err := uc.UploadCases(context.Background(), d.ID, `[{"input":"q1","expected_output":"a1"},{"input":"q2","expected_output":"a2"}]`)
 	if err != nil {
@@ -343,7 +343,7 @@ func TestEvalUsecase_UploadCases(t *testing.T) {
 }
 
 func TestEvalUsecase_UploadCasesInvalidJSON(t *testing.T) {
-	uc := biz.NewEvalUsecase(newMemEvalRepo2())
+	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
 	_, err := uc.UploadCases(context.Background(), "some-id", "not-json")
 	if err == nil {
 		t.Error("expected error for invalid JSON")
@@ -351,7 +351,7 @@ func TestEvalUsecase_UploadCasesInvalidJSON(t *testing.T) {
 }
 
 func TestEvalUsecase_CreateRun(t *testing.T) {
-	uc := biz.NewEvalUsecase(newMemEvalRepo2())
+	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
 	r, err := uc.CreateRun(context.Background(), biz.EvalRun{DatasetID: "ds1", AgentID: "ag1"})
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +440,7 @@ func (m *memA2ARepo) UpdateRemoteAgentHealth(_ context.Context, _ string, _ bool
 
 func TestA2AUsecase_UpdateAndGetCard(t *testing.T) {
 	repo := newMemA2ARepo()
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	card, err := uc.UpdateAgentCard(context.Background(), biz.A2AAgentCard{
 		AgentID: "agent-1",
 		Enabled: true,
@@ -465,7 +465,7 @@ func TestA2AUsecase_UpdateAndGetCard(t *testing.T) {
 
 func TestA2AUsecase_DisabledByDefault(t *testing.T) {
 	repo := newMemA2ARepo()
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	// Agent doesn't exist → ErrNotFound
 	_, err := uc.GetAgentCard(context.Background(), "unknown")
 	if err == nil {
@@ -475,7 +475,7 @@ func TestA2AUsecase_DisabledByDefault(t *testing.T) {
 
 func TestA2AUsecase_StartInvocation(t *testing.T) {
 	repo := newMemA2ARepo()
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	inv, err := uc.StartInvocation(context.Background(), biz.A2AInvocation{
 		CalleeAgentID: "agent-2",
 		Capability:    "summarize",

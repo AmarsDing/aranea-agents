@@ -25,7 +25,7 @@ type optimizeOrchestrationOutput struct {
 func newOptimizeOrchestrationTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input optimizeOrchestrationInput) (optimizeOrchestrationOutput, error) {
 		if input.TimeRange == "" {
-			return optimizeOrchestrationOutput{}, errTimeRangeRequired
+			return optimizeOrchestrationOutput{}, ErrTimeRangeRequired
 		}
 		reports, err := deps.Analytics.AnalyzeOrchestration(ctx, input.TimeRange, "")
 		if err != nil {

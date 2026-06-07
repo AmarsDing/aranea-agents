@@ -22,11 +22,11 @@ type ExporterRepo interface {
 	GetTeam(ctx context.Context, id string) (biz.Team, error)
 	ListTeams(ctx context.Context) ([]biz.Team, error)
 
-	// Taxonomy
-	GetTaxonomyNode(ctx context.Context, id string) (biz.TaxonomyNode, error)
-	GetTaxonomyAncestors(ctx context.Context, positionID string) (biz.TaxonomyAncestors, error)
-	ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error)
-	ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]biz.TaxonomyNode, error)
+	// Organization
+	GetOrganizationNode(ctx context.Context, id string) (biz.OrganizationNode, error)
+	GetOrgAncestors(ctx context.Context, positionID string) (biz.OrgAncestors, error)
+	ListOrganizationNodesByParentID(ctx context.Context, parentID string) ([]biz.OrganizationNode, error)
+	ListOrganizationNodesByLevel(ctx context.Context, level string) ([]biz.OrganizationNode, error)
 
 	// Graph
 	GetGraph(ctx context.Context, id string) (*biz.GraphDefinition, error)
@@ -117,7 +117,7 @@ func (e *Exporter) ExportTeam(ctx context.Context, teamID string) (*Pack, error)
 // ExportIndustry 导出整个行业场景。
 func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pack, error) {
 	// 1. 查找 industry 节点
-	industryNode, err := e.repo.GetTaxonomyNode(ctx, industryKey)
+	industryNode, err := e.repo.GetOrganizationNode(ctx, industryKey)
 	if err != nil {
 		// 尝试通过 key 查找
 		nodes, err2 := e.listIndustryNodes(ctx)
@@ -137,8 +137,8 @@ func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pac
 		}
 	}
 
-	// 2. 构建 taxonomy 树
-	taxSpec, err := e.buildTaxonomySpec(ctx, industryNode)
+	// 2. 构建 organization 树
+	orgSpec, err := e.buildOrganizationSpec(ctx, industryNode)
 	if err != nil {
 		return nil, err
 	}
@@ -169,13 +169,13 @@ func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pac
 			Version:    "1.0.0",
 			CreatedAt:  time.Now().Format("2006-01-02"),
 			Contents: &PackContents{
-				Taxonomy: true,
+				Organization: true,
 				Agents:   buildContentRefsFromAgentSpecs(agentSpecs),
 				Teams:    buildContentRefsFromTeamSpecs(teamSpecs),
 				Graphs:   buildContentRefsFromGraphSpecs(graphSpecs),
 			},
 		},
-		Taxonomy:   taxSpec,
+		Organization: orgSpec,
 		Agents:     agentSpecs,
 		Teams:      teamSpecs,
 		Graphs:     graphSpecs,
@@ -206,10 +206,10 @@ func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPa
 	}
 
 	// position_key 路径转换
-	if agent.TaxonomyPositionID != "" {
-		ancestors, err := e.repo.GetTaxonomyAncestors(ctx, agent.TaxonomyPositionID)
+	if agent.PositionID != "" {
+		ancestors, err := e.repo.GetOrgAncestors(ctx, agent.PositionID)
 		if err == nil {
-			spec.PositionKey = BuildTaxonomyKey(ancestors.Industry.Key, ancestors.Department.Key, ancestors.Position.Key)
+			spec.PositionKey = BuildOrgKey(ancestors.Company.Key, ancestors.Department.Key, ancestors.Position.Key)
 		}
 	}
 
@@ -385,18 +385,18 @@ func (e *Exporter) buildEmbeddedGraphSpec(ctx context.Context, eg *biz.EmbeddedG
 	return spec
 }
 
-// buildTaxonomySpec 从 industry 节点构建 TaxonomyPackSpec。
-func (e *Exporter) buildTaxonomySpec(ctx context.Context, industryNode biz.TaxonomyNode) (*TaxonomyPackSpec, error) {
-	indSpec := IndustrySpec{
-		Key:         industryNode.Key,
-		Name:        industryNode.Name,
+// buildOrganizationSpec 从 industry 节点构建 OrganizationPackSpec。
+func (e *Exporter) buildOrganizationSpec(ctx context.Context, companyNode biz.OrganizationNode) (*OrganizationPackSpec, error) {
+	compSpec := CompanySpec{
+		Key:         companyNode.Key,
+		Name:        companyNode.Name,
 		Icon:        "", // icon 存在 config_json 中，简化处理
-		Description: industryNode.Description,
-		SortOrder:   industryNode.SortOrder,
+		Description: companyNode.Description,
+		SortOrder:   companyNode.SortOrder,
 	}
 
 	// 获取 departments
-	deptNodes, err := e.repo.ListTaxonomyNodesByParentID(ctx, industryNode.ID)
+	deptNodes, err := e.repo.ListOrganizationNodesByParentID(ctx, companyNode.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +408,7 @@ func (e *Exporter) buildTaxonomySpec(ctx context.Context, industryNode biz.Taxon
 			SortOrder:   deptNode.SortOrder,
 		}
 		// 获取 positions
-		posNodes, err := e.repo.ListTaxonomyNodesByParentID(ctx, deptNode.ID)
+		posNodes, err := e.repo.ListOrganizationNodesByParentID(ctx, deptNode.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -420,30 +420,30 @@ func (e *Exporter) buildTaxonomySpec(ctx context.Context, industryNode biz.Taxon
 				SortOrder:   posNode.SortOrder,
 			})
 		}
-		indSpec.Departments = append(indSpec.Departments, deptSpec)
+		compSpec.Departments = append(compSpec.Departments, deptSpec)
 	}
 
-	return &TaxonomyPackSpec{Industries: []IndustrySpec{indSpec}}, nil
+	return &OrganizationPackSpec{Companies: []CompanySpec{compSpec}}, nil
 }
 
 // collectIndustryAgentSpecs 收集行业下所有 Agent。
-func (e *Exporter) collectIndustryAgentSpecs(ctx context.Context, industryNode biz.TaxonomyNode) ([]AgentPackSpec, map[string]map[string]string, error) {
+func (e *Exporter) collectIndustryAgentSpecs(ctx context.Context, companyNode biz.OrganizationNode) ([]AgentPackSpec, map[string]map[string]string, error) {
 	var specs []AgentPackSpec
 	files := make(map[string]map[string]string)
 	seen := make(map[string]bool)
 
 	// 遍历 department → position → 查找关联 Agent
-	deptNodes, err := e.repo.ListTaxonomyNodesByParentID(ctx, industryNode.ID)
+	deptNodes, err := e.repo.ListOrganizationNodesByParentID(ctx, companyNode.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 	for _, deptNode := range deptNodes {
-		posNodes, err := e.repo.ListTaxonomyNodesByParentID(ctx, deptNode.ID)
+		posNodes, err := e.repo.ListOrganizationNodesByParentID(ctx, deptNode.ID)
 		if err != nil {
 			return nil, nil, err
 		}
 		for _, posNode := range posNodes {
-			result, err := e.repo.SearchAgents(ctx, biz.AgentListQuery{CategoryID: posNode.ID, Limit: 1000})
+			result, err := e.repo.SearchAgents(ctx, biz.AgentListQuery{OrgNodeID: posNode.ID, Limit: 1000})
 			if err != nil {
 				continue
 			}
@@ -473,7 +473,7 @@ func (e *Exporter) collectIndustryAgentSpecs(ctx context.Context, industryNode b
 }
 
 // collectIndustryTeamSpecs 收集行业关联的 Team。
-func (e *Exporter) collectIndustryTeamSpecs(ctx context.Context, industryNode biz.TaxonomyNode, agentSpecs []AgentPackSpec) ([]TeamPackSpec, error) {
+func (e *Exporter) collectIndustryTeamSpecs(ctx context.Context, companyNode biz.OrganizationNode, agentSpecs []AgentPackSpec) ([]TeamPackSpec, error) {
 	// 构建已导出的 agent_key 集合
 	agentKeys := make(map[string]bool)
 	for _, a := range agentSpecs {
@@ -632,8 +632,8 @@ func (e *Exporter) resolveAgentKey(ctx context.Context, agentID string) (string,
 }
 
 // listIndustryNodes 列出所有 industry 级别的节点。
-func (e *Exporter) listIndustryNodes(ctx context.Context) ([]biz.TaxonomyNode, error) {
-	return e.repo.ListTaxonomyNodesByLevel(ctx, "industry")
+func (e *Exporter) listIndustryNodes(ctx context.Context) ([]biz.OrganizationNode, error) {
+	return e.repo.ListOrganizationNodesByLevel(ctx, "company")
 }
 
 // --- 辅助函数 ---

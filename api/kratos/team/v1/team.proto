@@ -28,8 +28,8 @@ message Team {
   bool has_active_run = 12;
   // Strong-typed OrchestrationSpec v2 (parallel to definition_json; M53 TG-CMP-V2).
   OrchestrationSpec orchestration_spec = 13;
-  // Industry category node ID for team grouping.
-  string category_industry_id = 14;
+  // Department node ID for team grouping.
+  string department_id = 14;
   string spirit_session_id = 15;
   string task_description = 16;
   bool auto_created = 17;
@@ -42,6 +42,14 @@ message Team {
   string source = 22;
   // kind: user | system_builtin | ecosystem_preset | marketplace | certified (ownership classification, maps from DB kind column).
   string kind = 23;
+  // JSON array of team deliverables.
+  string deliverables = 24;
+  // JSON schema for team input contract.
+  string input_contract = 25;
+  // Agent ID of the department lead.
+  string dept_lead_agent_id = 26;
+  // JSON array of cross-department member IDs.
+  string cross_dept_member_ids = 27;
 }
 
 message TeamRun {
@@ -315,7 +323,7 @@ message CreateTeamRequest {
   string status = 3;
   string definition_json = 4;
   string adk_app_name = 5;
-  string category_industry_id = 6;
+  string department_id = 6;
 }
 
 message GetTeamRequest {

@@ -15,8 +15,8 @@ func TestPackRoundTrip(t *testing.T) {
 			Name:       "测试 Agent",
 			Version:    "1.0.0",
 		},
-		Taxonomy: &TaxonomyPackSpec{
-			Industries: []IndustrySpec{
+		Organization: &OrganizationPackSpec{
+			Companies: []CompanySpec{
 				{
 					Key:   "finance",
 					Name:  "金融",
@@ -101,15 +101,15 @@ func TestPackRoundTrip(t *testing.T) {
 		t.Errorf("Name = %q, want %q", got.Manifest.Name, "测试 Agent")
 	}
 
-	// 验证 taxonomy
-	if got.Taxonomy == nil {
-		t.Fatal("Taxonomy 为 nil")
+	// 验证 organization
+	if got.Organization == nil {
+		t.Fatal("Organization 为 nil")
 	}
-	if len(got.Taxonomy.Industries) != 1 {
-		t.Fatalf("Industries 数量 = %d, want 1", len(got.Taxonomy.Industries))
+	if len(got.Organization.Companies) != 1 {
+		t.Fatalf("Companies 数量 = %d, want 1", len(got.Organization.Companies))
 	}
-	if got.Taxonomy.Industries[0].Key != "finance" {
-		t.Errorf("Industry Key = %q, want %q", got.Taxonomy.Industries[0].Key, "finance")
+	if got.Organization.Companies[0].Key != "finance" {
+		t.Errorf("Company Key = %q, want %q", got.Organization.Companies[0].Key, "finance")
 	}
 
 	// 验证 agents
@@ -182,8 +182,8 @@ func TestKeyMapper(t *testing.T) {
 		t.Errorf("AgentID = %q, %v; want %q, true", id, ok, "agent-123")
 	}
 
-	// Taxonomy 映射
-	m.RegisterTaxonomy("finance/quant_trading/quant_researcher", "tax-pos-456")
+	// Organization 映射
+	m.RegisterOrg("finance/quant_trading/quant_researcher", "tax-pos-456")
 	tid, err := m.ResolvePositionKey("finance/quant_trading/quant_researcher")
 	if err != nil || tid != "tax-pos-456" {
 		t.Errorf("ResolvePositionKey = %q, %v; want %q, nil", tid, err, "tax-pos-456")
@@ -203,7 +203,7 @@ func TestKeyMapper(t *testing.T) {
 	}
 }
 
-func TestParseTaxonomyKeyPath(t *testing.T) {
+func TestParseOrgKeyPath(t *testing.T) {
 	tests := []struct {
 		input   string
 		ind     string
@@ -217,13 +217,13 @@ func TestParseTaxonomyKeyPath(t *testing.T) {
 		{"a/b/c/d", "", "", "", true},
 	}
 	for _, tt := range tests {
-		ind, dept, pos, err := ParseTaxonomyKeyPath(tt.input)
+		ind, dept, pos, err := ParseOrgKeyPath(tt.input)
 		if (err != nil) != tt.wantErr {
-			t.Errorf("ParseTaxonomyKeyPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			t.Errorf("ParseOrgKeyPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
 		}
 		if !tt.wantErr {
 			if ind != tt.ind || dept != tt.dept || pos != tt.pos {
-				t.Errorf("ParseTaxonomyKeyPath(%q) = (%q, %q, %q), want (%q, %q, %q)",
+				t.Errorf("ParseOrgKeyPath(%q) = (%q, %q, %q), want (%q, %q, %q)",
 					tt.input, ind, dept, pos, tt.ind, tt.dept, tt.pos)
 			}
 		}

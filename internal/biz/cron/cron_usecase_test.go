@@ -495,8 +495,8 @@ func TestUsecase_TriggerTask(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.name == "nil trigger returns ErrRunnerDisabled" {
-				if err.Error() != "cron runner disabled" {
-					t.Errorf("err = %q, want ErrRunnerDisabled", err.Error())
+				if !errors.Is(err, ErrRunnerDisabled) {
+					t.Errorf("err = %v, want ErrRunnerDisabled", err)
 				}
 			}
 		})

@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	stderrors "errors"
 	"strings"
 	"sync/atomic"
 
@@ -277,8 +276,8 @@ func ResetFailureMetadata(raw string) (string, error) {
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 var (
-	ErrRunnerDisabled = stderrors.New("cron runner disabled")
-	ErrTaskDeleted    = stderrors.New("cron task deleted")
-	ErrSessionBusy    = stderrors.New("cron session has active run")
-	ErrNotFound       = stderrors.New("cron task not found")
+	ErrRunnerDisabled = errors.ServiceUnavailable("CRON", "cron runner disabled")
+	ErrTaskDeleted    = errors.NotFound("CRON", "cron task deleted")
+	ErrSessionBusy    = errors.Conflict("CRON", "cron session has active run")
+	ErrNotFound       = errors.NotFound("CRON", "cron task not found")
 )

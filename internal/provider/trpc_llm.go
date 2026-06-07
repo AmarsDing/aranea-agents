@@ -32,18 +32,18 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 		lg.Error("模型目录查询失败", loggateway.StepID("provider.catalog_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
-	cfg, err := CatalogFromModel(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
+	cfg, err := ResolveModelConfig(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
 	if err != nil {
 		lg.Error("模型目录配置解析失败", loggateway.StepID("provider.catalog_parse_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
-	cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+	cfg = MergeModelConfig(cfg, pm.ConfigJSON)
 	lg.Info("模型配置已解析", loggateway.StepID("provider.config_resolved"), loggateway.Phase("done"),
 		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HAMode))
-	return trpcModelFromCatalogConfig(ctx, cfg, rt, lg)
+	return trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
 }
 
-func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
+func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	name := strings.TrimSpace(cfg.ModelAPI)
 	if name == "" {
 		return nil, ErrNilLlmCatalog
@@ -116,7 +116,7 @@ func mapVariant(pt string) string {
 	}
 }
 
-func InferVariant(cfg CatalogConfig) string {
+func InferVariant(cfg ProviderModelConfig) string {
 	if v := mapVariant(cfg.ProviderType); v != "" {
 		return v
 	}
@@ -148,12 +148,12 @@ func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCat
 	if pm.CapabilitiesExplicit {
 		return pm.Capabilities.Vision && !pm.Capabilities.TextOnly
 	}
-	cfg, err := CatalogFromModel(ModelCatalogInput{
+	cfg, err := ResolveModelConfig(ModelCatalogInput{
 		Model:      pm.Model,
 		ConfigJSON: pm.ConfigJSON,
 	})
 	if err == nil {
-		cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+		cfg = MergeModelConfig(cfg, pm.ConfigJSON)
 		if hasExplicitCapabilities(cfg.Capabilities) {
 			return cfg.Capabilities.Vision && !cfg.Capabilities.TextOnly
 		}
@@ -175,12 +175,12 @@ func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCata
 	if pm.CapabilitiesExplicit {
 		return pm.Capabilities.File
 	}
-	cfg, err := CatalogFromModel(ModelCatalogInput{
+	cfg, err := ResolveModelConfig(ModelCatalogInput{
 		Model:      pm.Model,
 		ConfigJSON: pm.ConfigJSON,
 	})
 	if err == nil {
-		cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+		cfg = MergeModelConfig(cfg, pm.ConfigJSON)
 		if hasExplicitCapabilities(cfg.Capabilities) {
 			return cfg.Capabilities.File
 		}
@@ -192,12 +192,12 @@ func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities {
 	if pm.CapabilitiesExplicit {
 		return pm.Capabilities
 	}
-	cfg, err := CatalogFromModel(ModelCatalogInput{
+	cfg, err := ResolveModelConfig(ModelCatalogInput{
 		Model:      pm.Model,
 		ConfigJSON: pm.ConfigJSON,
 	})
 	if err == nil {
-		cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+		cfg = MergeModelConfig(cfg, pm.ConfigJSON)
 	}
 	caps := cfg.Capabilities
 	if !hasExplicitCapabilities(caps) {
@@ -229,7 +229,7 @@ func looksLikeDeepSeek(parts ...string) bool {
 	return false
 }
 
-func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Option {
+func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
 	var opts []trpcprovider.Option
 
 	if apiKey := strings.TrimSpace(cfg.APIKey); apiKey != "" {
@@ -272,11 +272,11 @@ func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Optio
 	return opts
 }
 
-func buildHuggingFaceSpecificOptions(_ CatalogConfig) []trpcprovider.Option {
+func buildHuggingFaceSpecificOptions(_ ProviderModelConfig) []trpcprovider.Option {
 	return nil
 }
 
-func buildBedrockSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildBedrockSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 	if strings.ToLower(cfg.ProviderType) != "bedrock" {
 		return nil
 	}
@@ -287,7 +287,7 @@ func buildBedrockSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithExtraFields(map[string]any{"aws_region": region})}
 }
 
-func buildOpenAISpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildOpenAISpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 	var providerOpts []trpcopenai.Option
 	if cfg.OptimizeForCache {
 		providerOpts = append(providerOpts, trpcopenai.WithOptimizeForCache(true))
@@ -307,7 +307,7 @@ func buildOpenAISpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithOpenAIOption(providerOpts...)}
 }
 
-func buildAnthropicSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 	var providerOpts []trpcanthropic.Option
 	if cfg.CacheSystemPrompt {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPrompt(true))
@@ -327,7 +327,7 @@ func buildAnthropicSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithAnthropicOption(providerOpts...)}
 }
 
-func buildGeminiSpecificOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Option {
+func buildGeminiSpecificOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
 	var providerOpts []trpcgemini.Option
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey != "" || (rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil) {
@@ -349,7 +349,7 @@ func buildGeminiSpecificOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider
 	return []trpcprovider.Option{trpcprovider.WithGeminiOption(providerOpts...)}
 }
 
-func buildOllamaSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildOllamaSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 	var providerOpts []trpcollama.Option
 	if cfg.KeepAliveMinutes > 0 {
 		providerOpts = append(providerOpts, trpcollama.WithKeepAlive(time.Duration(cfg.KeepAliveMinutes)*time.Minute))
@@ -363,7 +363,7 @@ func buildOllamaSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithOllamaOption(providerOpts...)}
 }
 
-func buildHunyuanSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildHunyuanSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 	var providerOpts []trpchunyuan.Option
 	if secretID := strings.TrimSpace(cfg.SecretID); secretID != "" {
 		providerOpts = append(providerOpts, trpchunyuan.WithSecretId(secretID))
@@ -380,7 +380,7 @@ func buildHunyuanSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithHunyuanOption(providerOpts...)}
 }
 
-func wrapHA(primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
+func wrapHA(primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.HAMode)) {
 	case "failover":
 		return wrapFailover(cfg, rt, primary, lg)
@@ -390,7 +390,7 @@ func wrapHA(primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip, lg loggat
 	return primary, nil
 }
 
-func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
+func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
 	for _, c := range cfg.HACandidates {
 		m, err := trpcModelFromCandidate(c, rt, lg)
@@ -422,7 +422,7 @@ func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model, lg 
 	return fo, nil
 }
 
-func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
+func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
 	for _, c := range cfg.HACandidates {
 		m, err := trpcModelFromCandidate(c, rt, lg)

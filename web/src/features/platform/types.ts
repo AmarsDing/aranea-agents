@@ -4,6 +4,7 @@ export type PlatformResourceName =
   | 'avatar-assets'
   | 'taxonomy-nodes'
   | 'taxonomy'
+  | 'organization'
   | 'llm-provider-models'
   | 'hooks'
   | 'channels'

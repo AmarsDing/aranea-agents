@@ -9,7 +9,7 @@ import (
 type ValidatorRepo interface {
 	AgentKeyExists(ctx context.Context, agentKey string) (bool, error)
 	TeamKeyExists(ctx context.Context, teamKey string) (bool, error)
-	TaxonomyKeyExists(ctx context.Context, key string) (bool, error)
+	OrgKeyExists(ctx context.Context, key string) (bool, error)
 	SkillExists(ctx context.Context, slug string) (bool, error)
 	FuncRefExists(funcRef string) bool
 }
@@ -152,14 +152,14 @@ func validateConflicts(ctx context.Context, p *Pack, repo ValidatorRepo, result 
 		}
 	}
 
-	// Taxonomy 冲突
-	if p.Taxonomy != nil {
-		for _, ind := range p.Taxonomy.Industries {
-			exists, err := repo.TaxonomyKeyExists(ctx, ind.Key)
+	// Organization 冲突
+	if p.Organization != nil {
+		for _, comp := range p.Organization.Companies {
+			exists, err := repo.OrgKeyExists(ctx, comp.Key)
 			if err == nil && exists {
 				result.Conflicts = append(result.Conflicts, ConflictItem{
-					EntityType: "taxonomy",
-					Key:        ind.Key,
+					EntityType: "organization",
+					Key:        comp.Key,
 				})
 			}
 		}

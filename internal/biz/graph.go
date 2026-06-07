@@ -138,6 +138,9 @@ type GraphDefinition struct {
 	Metadata         map[string]any
 	Version          int
 	SortOrder        int
+	VerificationGates string // JSON array of VerificationGate
+	TeamID           string // owning team ID (empty for template graphs)
+	IsTemplate       bool   // whether this graph is a reusable template
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }

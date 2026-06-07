@@ -27,6 +27,7 @@ export const sideNavGroups: NavGroup[] = [
     items: [
       { to: '/agents', icon: 'smart_toy', labelKey: 'menu.agents' },
       { to: '/settings/taxonomy', icon: 'account_tree', labelKey: 'menu.taxonomy' },
+      { to: '/settings/organization', icon: 'business', labelKey: 'menu.organization' },
       { to: '/team', icon: 'groups', labelKey: 'menu.team' },
       { to: '/graphs', icon: 'hub', labelKey: 'menu.graphs' },
     ],
@@ -67,6 +68,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/monitor/logs', icon: 'monitor_heart', labelKey: 'menu.monitor', exact: false },
       { to: '/shop', icon: 'storefront', labelKey: 'menu.shop' },
       { to: '/industries', icon: 'store', labelKey: 'menu.industryMarket' },
+      { to: '/organization', icon: 'apartment', labelKey: 'menu.orgMarket' },
       { to: '/settings', icon: 'settings', labelKey: 'menu.settings' },
     ],
   },

@@ -76,11 +76,11 @@ func (ins *Installer) Install(pkgDir string, manifest *Manifest) (*Result, error
 
 	// Step 3: Org structure (via orgimport).
 	ins.report(3, totalSteps, "行业/部门/岗位", "installing")
-	if len(manifest.Spec.Industries) > 0 || len(manifest.Spec.Agents) > 0 || len(manifest.Spec.Teams) > 0 {
+	if len(manifest.Spec.Companies) > 0 || len(manifest.Spec.Agents) > 0 || len(manifest.Spec.Teams) > 0 {
 		orgSpec := &orgimport.Spec{
 			Version: 1,
 			Spec: orgimport.SpecBody{
-				Industries: manifest.Spec.Industries,
+				Companies: manifest.Spec.Companies,
 				Agents:     manifest.Spec.Agents,
 				Teams:      manifest.Spec.Teams,
 			},

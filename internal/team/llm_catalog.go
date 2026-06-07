@@ -33,5 +33,5 @@ func (r *Runner) teamLLMCatalog() llmCatalogContext {
 	if r == nil {
 		return llmCatalogContext{}
 	}
-	return llmCatalogContext{llm: r.td.Catalog.LLM}
+	return llmCatalogContext{llm: r.td.ReadDeps.LLM}
 }

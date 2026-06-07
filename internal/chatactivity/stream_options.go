@@ -12,12 +12,12 @@ import (
 )
 
 type catalogActivityMetaResolver struct {
-	tools  *biz.ToolUsecase
+	tools  biz.TeamToolLookup
 	agents biz.AgentRepository
 	cache  sync.Map
 }
 
-func newCatalogActivityMetaResolver(tools *biz.ToolUsecase, agents biz.AgentRepository) chatagent.ActivityMetaResolver {
+func newCatalogActivityMetaResolver(tools biz.TeamToolLookup, agents biz.AgentRepository) chatagent.ActivityMetaResolver {
 	return &catalogActivityMetaResolver{tools: tools, agents: agents}
 }
 
@@ -125,7 +125,7 @@ func (p *sessionActivityPersister) UpsertActivity(ctx context.Context, meta chat
 }
 
 // NewStreamConsumeOptions wires catalog lookup and activity persistence for a chat turn.
-func NewStreamConsumeOptions(tools *biz.ToolUsecase, agents biz.AgentRepository, sessions *biz.SessionUsecase) *chatagent.StreamConsumeOptions {
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions *biz.SessionUsecase) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	var persister chatagent.ActivityPersister
 	if tools != nil || agents != nil {
@@ -145,7 +145,7 @@ func NewStreamConsumeOptions(tools *biz.ToolUsecase, agents biz.AgentRepository,
 // Inject this into the team Runner via SetStreamOptsFactory to eliminate
 // the team→chatactivity direct import.
 type StreamOptsFactoryAdapter struct {
-	Tools    *biz.ToolUsecase
+	Tools    biz.TeamToolLookup
 	Agents   biz.AgentRepository
 	Sessions *biz.SessionUsecase
 }

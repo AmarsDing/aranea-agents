@@ -1,4 +1,5 @@
-// Container: approved — feature-local ops panel; data is loaded through channels store.
+// Container: approved — feature-local ops panel; manages delivery/turn-job data
+// through channels store. Self-contained CRUD lifecycle within this panel.
 <template>
   <div class="channel-deliveries-panel">
     <div class="row items-center justify-between q-mb-sm">

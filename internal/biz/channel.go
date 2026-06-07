@@ -2,10 +2,11 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"sync"
+
+	"aranea-agents/internal/biz/shared"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ type Channel struct {
 	DeletedAt    string
 }
 
-type ChannelCatalogItem struct {
+type ChannelTypeItem struct {
 	Type             string
 	Label            string
 	Description      string
@@ -160,7 +161,7 @@ func NewChannelUsecase(
 	return &ChannelUsecase{repo: repo, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, lg: lg}
 }
 
-func (u *ChannelUsecase) Catalog() []ChannelCatalogItem {
+func (u *ChannelUsecase) ChannelTypes() []ChannelTypeItem {
 	return catalogSorted()
 }
 
@@ -481,7 +482,7 @@ func (u *ChannelUsecase) DeletePeerBindingsByChannelID(ctx context.Context, chan
 
 func (u *ChannelUsecase) GetPeerSession(ctx context.Context, channelID, peerKey string) (ChannelPeerSession, error) {
 	if u.peers == nil {
-		return ChannelPeerSession{}, sql.ErrNoRows
+		return ChannelPeerSession{}, shared.ErrNotFound
 	}
 	return u.peers.GetByChannelAndPeer(ctx, channelID, peerKey)
 }
@@ -535,4 +536,3 @@ func (ch Channel) ParseMetadata() (map[string]any, error) {
 		return map[string]any{}, err
 	}
 	return m, nil
-}

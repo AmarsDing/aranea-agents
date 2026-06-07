@@ -11,7 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
-	"aranea-agents/internal/data/ent/industrytaxonomy"
+	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/agentruntimesetting"
 	"aranea-agents/internal/data/ent/predicate"
@@ -84,7 +84,7 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		IsFavorite:         a.IsFavorite,
 		Icon:               a.Icon,
 		AgentDescription:   a.AgentDescription,
-		TaxonomyPositionID: a.TaxonomyPositionID,
+		PositionID:         a.PositionID,
 		PositionKey:        a.PositionKey,
 		AgentVariant:       a.AgentVariant,
 		VariantDescription: a.VariantDescription,
@@ -434,10 +434,10 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	if categoryID == "" {
 		return nil, nil
 	}
-	node, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
+	node, err := r.data.RW().Read(ctx).Organization.Query().
 		Where(
-			industrytaxonomy.IDEQ(categoryID),
-			industrytaxonomy.DeletedAtEQ(""),
+			organization.IDEQ(categoryID),
+			organization.DeletedAtEQ(""),
 		).
 		Only(ctx)
 	if err != nil {
@@ -450,19 +450,19 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	case "position":
 		return []string{node.ID}, nil
 	case "department":
-		return r.data.RW().Read(ctx).IndustryTaxonomy.Query().
+		return r.data.RW().Read(ctx).Organization.Query().
 			Where(
-				industrytaxonomy.ParentIDEQ(categoryID),
-				industrytaxonomy.LevelEQ("position"),
-				industrytaxonomy.DeletedAtEQ(""),
+				organization.ParentIDEQ(categoryID),
+				organization.LevelEQ("position"),
+				organization.DeletedAtEQ(""),
 			).
 			IDs(ctx)
-	case "industry":
-		deptIDs, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
+	case "company":
+		deptIDs, err := r.data.RW().Read(ctx).Organization.Query().
 			Where(
-				industrytaxonomy.ParentIDEQ(categoryID),
-				industrytaxonomy.LevelEQ("department"),
-				industrytaxonomy.DeletedAtEQ(""),
+				organization.ParentIDEQ(categoryID),
+				organization.LevelEQ("department"),
+				organization.DeletedAtEQ(""),
 			).
 			IDs(ctx)
 		if err != nil {
@@ -471,11 +471,11 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if len(deptIDs) == 0 {
 			return []string{}, nil
 		}
-		return r.data.RW().Read(ctx).IndustryTaxonomy.Query().
+		return r.data.RW().Read(ctx).Organization.Query().
 			Where(
-				industrytaxonomy.ParentIDIn(deptIDs...),
-				industrytaxonomy.LevelEQ("position"),
-				industrytaxonomy.DeletedAtEQ(""),
+				organization.ParentIDIn(deptIDs...),
+				organization.LevelEQ("position"),
+				organization.DeletedAtEQ(""),
 			).
 			IDs(ctx)
 	default:
@@ -509,17 +509,17 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	if q.Provider != "" {
 		preds = append(preds, agent.ProviderEQ(q.Provider))
 	}
-	if q.CategoryID != "" {
-		positionIDs, err := r.categoryPositionIDsForFilter(ctx, q.CategoryID)
+	if q.OrgNodeID != "" {
+		positionIDs, err := r.categoryPositionIDsForFilter(ctx, q.OrgNodeID)
 		if err != nil {
 			return biz.AgentListResult{}, err
 		}
 		if len(positionIDs) == 0 {
-			preds = append(preds, agent.TaxonomyPositionIDEQ("__no_such_category__"))
+			preds = append(preds, agent.PositionIDEQ("__no_such_category__"))
 		} else if len(positionIDs) == 1 {
-			preds = append(preds, agent.TaxonomyPositionIDEQ(positionIDs[0]))
+			preds = append(preds, agent.PositionIDEQ(positionIDs[0]))
 		} else {
-			preds = append(preds, agent.TaxonomyPositionIDIn(positionIDs...))
+			preds = append(preds, agent.PositionIDIn(positionIDs...))
 		}
 	}
 	if cb := strings.TrimSpace(q.CreatedBy); cb != "" {
@@ -637,7 +637,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetTaxonomyPositionID(a.TaxonomyPositionID).
+		SetPositionID(a.PositionID).
 		SetPositionKey(a.PositionKey).
 		SetAgentVariant(a.AgentVariant).
 		SetVariantDescription(a.VariantDescription).
@@ -712,7 +712,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetTaxonomyPositionID(a.TaxonomyPositionID).
+		SetPositionID(a.PositionID).
 		SetPositionKey(a.PositionKey).
 		SetAgentVariant(a.AgentVariant).
 		SetVariantDescription(a.VariantDescription).
@@ -1042,4 +1042,42 @@ func (r *agentRepo) CountAgentsByProviderAndModel(ctx context.Context, provider,
 	return r.data.RW().Read(ctx).Agent.Query().
 		Where(agent.ProviderEQ(provider), agent.ModelEQ(model), agent.DeletedAtEQ("")).
 		Count(ctx)
+}
+
+// ClearPositionByDepartment clears the position_id field for all agents
+// whose position belongs to the given department. Used during department deletion cascade.
+func (r *agentRepo) ClearPositionByDepartment(ctx context.Context, deptID string) (int, error) {
+	if deptID == "" || r.data == nil {
+		return 0, nil
+	}
+	// Find all position IDs under this department
+	positions, err := r.data.RW().Read(ctx).Organization.Query().
+		Where(
+			organization.ParentIDEQ(deptID),
+			organization.LevelEQ("position"),
+			organization.DeletedAtEQ(""),
+		).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(positions) == 0 {
+		return 0, nil
+	}
+	positionIDs := make([]string, 0, len(positions))
+	for _, p := range positions {
+		positionIDs = append(positionIDs, p.ID)
+	}
+	// Clear position_id for agents in those positions
+	n, err := r.data.RW().Write(ctx).Agent.Update().
+		Where(
+			agent.PositionIDIn(positionIDs...),
+			agent.DeletedAtEQ(""),
+		).
+		SetPositionID("").
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }

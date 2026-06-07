@@ -41,7 +41,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	if s == nil || s.orch == nil {
 		return nil, nil, biz.ErrNotFound
 	}
-	ag, err := s.orch.td.Catalog.Agents.GetAgentByID(ctx, agentID)
+	ag, err := s.orch.td.ReadDeps.Agents.GetAgentByID(ctx, agentID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -60,15 +60,15 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:                s.orch.td.Catalog.LLM,
-		AgentUC:                s.orch.td.Catalog.AgentsUC,
-		Agents:                 s.orch.td.Catalog.Agents,
+		ModelCatalog:                s.orch.td.ReadDeps.LLM,
+		AgentUC:                s.orch.td.ReadDeps.AgentsUC,
+		Agents:                 s.orch.td.ReadDeps.Agents,
 		RT:                     s.orch.td.RoundTrip(),
-		SkillUC:                s.orch.td.Catalog.SkillUC,
+		SkillUC:                s.orch.td.ReadDeps.SkillUC,
 		MCPTooling:             s.orch.td.Persist.AgentMCP,
-		ToolUC:                 s.orch.td.Catalog.ToolUC,
+		ToolUC:                 s.orch.td.ReadDeps.ToolUC,
 		Sessions:               s.orch.td.Sessions,
-		Sys:                    s.orch.td.Catalog.Settings,
+		Sys:                    s.orch.td.ReadDeps.Settings,
 		Provider:               prov,
 		Model:                  mod,
 		SkillDBRepo:            s.orch.rt.SkillDBRepo,
@@ -82,7 +82,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 		KnowledgeRetriever:     s.orch.rt.KnowledgeRetriever,
 		CodeExecFactory:        s.orch.rt.CodeExecFactory,
 		KanbanBridge:           s.orch.rt.KanbanBridge,
-		Taxonomy:               s.orch.rt.TaxonomyUC,
+		Organization:           s.orch.rt.OrganizationUC,
 	}
 	var plugins []trpcplugin.Plugin
 	if s.orch.rt.PluginManager != nil {

@@ -1,6 +1,7 @@
 import { createAdminServiceClient } from "./kratos/admin/v1/index";
 import { createIndustryTaxonomyServiceClient } from "./kratos/industry_taxonomy/v1/index";
 import { createTaxonomyServiceClient } from "./kratos/taxonomy/v1/index";
+import { createOrganizationServiceClient } from "./kratos/organization/v1/index";
 import { createAgentServiceClient } from "./kratos/agent/v1/index";
 import { createArtifactServiceClient } from "./kratos/artifact/v1/index";
 import { createA2AServiceClient } from "./kratos/a2a/v1/index";
@@ -55,6 +56,10 @@ export function createIndustryTaxonomyService() {
 
 export function createTaxonomyService() {
   return createTaxonomyServiceClient(requestHandler);
+}
+
+export function createOrganizationService() {
+  return createOrganizationServiceClient(requestHandler);
 }
 
 export function createAgentService() {

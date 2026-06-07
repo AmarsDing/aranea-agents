@@ -19,7 +19,7 @@ func BenchmarkCheckQuota(b *testing.B) {
 		},
 		spent: 1_000_000,
 	}
-	uc := NewUsageUsecase(repo, loggateway.Global())
+	uc := NewUsageUsecase(repo, loggateway.NewNoop())
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

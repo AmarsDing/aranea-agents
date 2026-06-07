@@ -42,42 +42,42 @@ func TestMapProviderType(t *testing.T) {
 
 func TestBuildOpenAISpecificOptions(t *testing.T) {
 	t.Run("empty_config_returns_nil", func(t *testing.T) {
-		opts := buildOpenAISpecificOptions(CatalogConfig{})
+		opts := buildOpenAISpecificOptions(ProviderModelConfig{})
 		if opts != nil {
 			t.Fatalf("expected nil for empty config, got %v", opts)
 		}
 	})
 
 	t.Run("optimize_for_cache", func(t *testing.T) {
-		opts := buildOpenAISpecificOptions(CatalogConfig{OptimizeForCache: true})
+		opts := buildOpenAISpecificOptions(ProviderModelConfig{OptimizeForCache: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with OptimizeForCache")
 		}
 	})
 
 	t.Run("reasoning_backfill", func(t *testing.T) {
-		opts := buildOpenAISpecificOptions(CatalogConfig{ReasoningBackfill: true})
+		opts := buildOpenAISpecificOptions(ProviderModelConfig{ReasoningBackfill: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ReasoningBackfill")
 		}
 	})
 
 	t.Run("show_tool_call_delta", func(t *testing.T) {
-		opts := buildOpenAISpecificOptions(CatalogConfig{ShowToolCallDelta: true})
+		opts := buildOpenAISpecificOptions(ProviderModelConfig{ShowToolCallDelta: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ShowToolCallDelta")
 		}
 	})
 
 	t.Run("context_window", func(t *testing.T) {
-		opts := buildOpenAISpecificOptions(CatalogConfig{ContextWindow: 128000})
+		opts := buildOpenAISpecificOptions(ProviderModelConfig{ContextWindow: 128000})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ContextWindow")
 		}
 	})
 
 	t.Run("multiple_flags", func(t *testing.T) {
-		opts := buildOpenAISpecificOptions(CatalogConfig{
+		opts := buildOpenAISpecificOptions(ProviderModelConfig{
 			OptimizeForCache:  true,
 			ReasoningBackfill: true,
 		})
@@ -89,42 +89,42 @@ func TestBuildOpenAISpecificOptions(t *testing.T) {
 
 func TestBuildAnthropicSpecificOptions(t *testing.T) {
 	t.Run("empty_config_returns_nil", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(CatalogConfig{})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{})
 		if opts != nil {
 			t.Fatalf("expected nil for empty config, got %v", opts)
 		}
 	})
 
 	t.Run("cache_system_prompt", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(CatalogConfig{CacheSystemPrompt: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{CacheSystemPrompt: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with CacheSystemPrompt")
 		}
 	})
 
 	t.Run("cache_tools", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(CatalogConfig{CacheTools: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{CacheTools: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with CacheTools")
 		}
 	})
 
 	t.Run("cache_messages", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(CatalogConfig{CacheMessages: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{CacheMessages: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with CacheMessages")
 		}
 	})
 
 	t.Run("show_tool_call_delta", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(CatalogConfig{ShowToolCallDelta: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{ShowToolCallDelta: true})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ShowToolCallDelta")
 		}
 	})
 
 	t.Run("multiple_cache_flags", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(CatalogConfig{
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{
 			CacheSystemPrompt: true,
 			CacheTools:        true,
 			CacheMessages:     true,
@@ -137,21 +137,21 @@ func TestBuildAnthropicSpecificOptions(t *testing.T) {
 
 func TestBuildGeminiSpecificOptions(t *testing.T) {
 	t.Run("empty_config_returns_nil", func(t *testing.T) {
-		opts := buildGeminiSpecificOptions(CatalogConfig{}, nil)
+		opts := buildGeminiSpecificOptions(ProviderModelConfig{}, nil)
 		if opts != nil {
 			t.Fatalf("expected nil for empty config, got %v", opts)
 		}
 	})
 
 	t.Run("with_api_key", func(t *testing.T) {
-		opts := buildGeminiSpecificOptions(CatalogConfig{APIKey: "test-key"}, nil)
+		opts := buildGeminiSpecificOptions(ProviderModelConfig{APIKey: "test-key"}, nil)
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with APIKey")
 		}
 	})
 
 	t.Run("with_context_window", func(t *testing.T) {
-		opts := buildGeminiSpecificOptions(CatalogConfig{ContextWindow: 1000000}, nil)
+		opts := buildGeminiSpecificOptions(ProviderModelConfig{ContextWindow: 1000000}, nil)
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ContextWindow")
 		}
@@ -161,7 +161,7 @@ func TestBuildGeminiSpecificOptions(t *testing.T) {
 		rt := &RoundTrip{
 			HTTP: &http.Client{},
 		}
-		opts := buildGeminiSpecificOptions(CatalogConfig{APIKey: "key"}, rt)
+		opts := buildGeminiSpecificOptions(ProviderModelConfig{APIKey: "key"}, rt)
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with roundtrip")
 		}
@@ -170,28 +170,28 @@ func TestBuildGeminiSpecificOptions(t *testing.T) {
 
 func TestBuildOllamaSpecificOptions(t *testing.T) {
 	t.Run("empty_config_returns_nil", func(t *testing.T) {
-		opts := buildOllamaSpecificOptions(CatalogConfig{})
+		opts := buildOllamaSpecificOptions(ProviderModelConfig{})
 		if opts != nil {
 			t.Fatalf("expected nil for empty config, got %v", opts)
 		}
 	})
 
 	t.Run("with_keep_alive", func(t *testing.T) {
-		opts := buildOllamaSpecificOptions(CatalogConfig{KeepAliveMinutes: 30})
+		opts := buildOllamaSpecificOptions(ProviderModelConfig{KeepAliveMinutes: 30})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with KeepAliveMinutes")
 		}
 	})
 
 	t.Run("with_context_window", func(t *testing.T) {
-		opts := buildOllamaSpecificOptions(CatalogConfig{ContextWindow: 8192})
+		opts := buildOllamaSpecificOptions(ProviderModelConfig{ContextWindow: 8192})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ContextWindow")
 		}
 	})
 
 	t.Run("multiple_options", func(t *testing.T) {
-		opts := buildOllamaSpecificOptions(CatalogConfig{
+		opts := buildOllamaSpecificOptions(ProviderModelConfig{
 			KeepAliveMinutes: 30,
 			ContextWindow:    8192,
 		})
@@ -203,35 +203,35 @@ func TestBuildOllamaSpecificOptions(t *testing.T) {
 
 func TestBuildHunyuanSpecificOptions(t *testing.T) {
 	t.Run("empty_config_returns_nil", func(t *testing.T) {
-		opts := buildHunyuanSpecificOptions(CatalogConfig{})
+		opts := buildHunyuanSpecificOptions(ProviderModelConfig{})
 		if opts != nil {
 			t.Fatalf("expected nil for empty config, got %v", opts)
 		}
 	})
 
 	t.Run("with_secret_id", func(t *testing.T) {
-		opts := buildHunyuanSpecificOptions(CatalogConfig{SecretID: "sid-123"})
+		opts := buildHunyuanSpecificOptions(ProviderModelConfig{SecretID: "sid-123"})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with SecretID")
 		}
 	})
 
 	t.Run("with_secret_key", func(t *testing.T) {
-		opts := buildHunyuanSpecificOptions(CatalogConfig{SecretKey: "skey-456"})
+		opts := buildHunyuanSpecificOptions(ProviderModelConfig{SecretKey: "skey-456"})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with SecretKey")
 		}
 	})
 
 	t.Run("with_context_window", func(t *testing.T) {
-		opts := buildHunyuanSpecificOptions(CatalogConfig{ContextWindow: 32768})
+		opts := buildHunyuanSpecificOptions(ProviderModelConfig{ContextWindow: 32768})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with ContextWindow")
 		}
 	})
 
 	t.Run("with_secret_id_and_key", func(t *testing.T) {
-		opts := buildHunyuanSpecificOptions(CatalogConfig{
+		opts := buildHunyuanSpecificOptions(ProviderModelConfig{
 			SecretID:      "sid-123",
 			SecretKey:     "skey-456",
 			ContextWindow: 32768,
@@ -242,7 +242,7 @@ func TestBuildHunyuanSpecificOptions(t *testing.T) {
 	})
 
 	t.Run("whitespace_only_secret_id_returns_nil", func(t *testing.T) {
-		opts := buildHunyuanSpecificOptions(CatalogConfig{SecretID: "   "})
+		opts := buildHunyuanSpecificOptions(ProviderModelConfig{SecretID: "   "})
 		if opts != nil {
 			t.Fatalf("expected nil for whitespace-only SecretID, got %v", opts)
 		}

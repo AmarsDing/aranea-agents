@@ -120,9 +120,13 @@ func (r *Runner) executeFramework(
 	}
 	for i := range results {
 		results[i].RunID = run.ID
-		_ = r.uc.InsertCaseResult(ctx, results[i])
+		if err := r.uc.InsertCaseResult(ctx, results[i]); err != nil {
+			r.lg.Warn("failed to insert evaluation case result", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+		}
 		run.CompletedCases++
-		_ = r.uc.UpdateRun(ctx, run)
+		if err := r.uc.UpdateRun(ctx, run); err != nil {
+			r.lg.Warn("failed to update evaluation run", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+		}
 	}
 	run.ScoresJSON = normalizeScoresJSON(run.ScoresJSON)
 	for name, avg := range scores {

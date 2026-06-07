@@ -29,8 +29,8 @@ func WritePack(p *Pack, w io.Writer) error {
 	}
 
 	// 2. 写入 taxonomy.yaml
-	if p.Taxonomy != nil {
-		if err := writeYAMLFile(tw, taxonomyFile, p.Taxonomy, now); err != nil {
+	if p.Organization != nil {
+		if err := writeYAMLFile(tw, taxonomyFile, p.Organization, now); err != nil {
 			return fmt.Errorf("pack: 写入 taxonomy.yaml 失败: %w", err)
 		}
 	}

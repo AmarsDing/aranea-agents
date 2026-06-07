@@ -2,7 +2,7 @@ package biz
 
 import (
 	"context"
-	"database/sql"
+	"aranea-agents/internal/biz/shared"
 	"testing"
 
 	"aranea-agents/pkg/auth"
@@ -24,11 +24,11 @@ func (r *duplicateAgentRepo) GetAgentByID(ctx context.Context, id string) (Agent
 	if id == r.src.ID {
 		return r.src, nil
 	}
-	return Agent{}, sql.ErrNoRows
+	return Agent{}, shared.ErrNotFound
 }
 
 func (r *duplicateAgentRepo) GetAgentByAgentKey(ctx context.Context, key string) (Agent, error) {
-	return Agent{}, sql.ErrNoRows
+	return Agent{}, shared.ErrNotFound
 }
 
 func (r *duplicateAgentRepo) CreateAgent(ctx context.Context, a Agent) (Agent, error) {

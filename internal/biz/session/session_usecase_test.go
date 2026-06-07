@@ -2,7 +2,7 @@ package session
 
 import (
 	"context"
-	"database/sql"
+	"aranea-agents/internal/biz/shared"
 	"errors"
 	"testing"
 
@@ -418,7 +418,7 @@ func TestCreate(t *testing.T) {
 			},
 			agentFn: func(_ context.Context, id string) (struct{}, error) {
 				if id != "agent-2" {
-					return struct{}{}, sql.ErrNoRows
+					return struct{}{}, shared.ErrNotFound
 				}
 				return struct{}{}, nil
 			},
@@ -460,7 +460,7 @@ func TestCreate(t *testing.T) {
 				AgentID:   "ghost-agent",
 			},
 			agentFn: func(_ context.Context, _ string) (struct{}, error) {
-				return struct{}{}, sql.ErrNoRows
+				return struct{}{}, shared.ErrNotFound
 			},
 			wantErr:    true,
 			wantStatus: 404,

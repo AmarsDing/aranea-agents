@@ -361,8 +361,7 @@ import { bindingSummaryLine } from '../../features/tools/toolAgentBindingSummary
 import type { ToolAgentBindingRow, ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
 import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
-import { registryCol, REGISTRY_COL_W } from '../../features/ui/registryTableColumns';
-import { riskLabel, riskQuasarColor, runtimeStatusLabel, runtimeStatusColor, prettyJSON } from './toolUi';
+import { AGENT_BINDING_COLUMNS, riskLabel, riskQuasarColor, runtimeStatusLabel, runtimeStatusColor, prettyJSON } from './toolUi';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
 import ToolJsonBlock from './ToolJsonBlock.vue';
@@ -466,11 +465,7 @@ const hasResultSchema = computed(() => {
   return raw && raw.trim() !== '{}';
 });
 
-const agentBindingColumns = [
-  registryCol<ToolAgentBindingRow>('agent_name', 'Agent', 'agent_name', 'left', REGISTRY_COL_W.name),
-  registryCol<ToolAgentBindingRow>('state', '生效状态', 'effective_state', 'left', REGISTRY_COL_W.status),
-  registryCol<ToolAgentBindingRow>('reason', '来源 / 原因', 'reason', 'left', REGISTRY_COL_W.desc),
-];
+const agentBindingColumns = AGENT_BINDING_COLUMNS;
 
 function onDrawerUpdate(val: boolean) {
   if (!val) emit('close');

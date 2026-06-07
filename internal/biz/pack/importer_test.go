@@ -23,19 +23,19 @@ func newStubImporterRepo() *stubImporterRepo {
 	}
 }
 
-func (r *stubImporterRepo) CreateTaxonomyNode(_ context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error) {
+func (r *stubImporterRepo) CreateOrganizationNode(_ context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error) {
 	return node, nil
 }
-func (r *stubImporterRepo) UpdateTaxonomyNode(_ context.Context, node biz.TaxonomyNode) (biz.TaxonomyNode, error) {
+func (r *stubImporterRepo) UpdateOrganizationNode(_ context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error) {
 	return node, nil
 }
-func (r *stubImporterRepo) GetTaxonomyNodeByKey(_ context.Context, key string) (biz.TaxonomyNode, error) {
-	return biz.TaxonomyNode{}, shared.ErrNotFound
+func (r *stubImporterRepo) GetOrganizationNodeByKey(_ context.Context, key string) (biz.OrganizationNode, error) {
+	return biz.OrganizationNode{}, shared.ErrNotFound
 }
-func (r *stubImporterRepo) GetTaxonomyNodeByKeyAnyState(_ context.Context, key string) (biz.TaxonomyNode, error) {
-	return biz.TaxonomyNode{}, shared.ErrNotFound
+func (r *stubImporterRepo) GetOrganizationNodeByKeyAnyState(_ context.Context, key string) (biz.OrganizationNode, error) {
+	return biz.OrganizationNode{}, shared.ErrNotFound
 }
-func (r *stubImporterRepo) ListTaxonomyNodesByParentID(_ context.Context, parentID string) ([]biz.TaxonomyNode, error) {
+func (r *stubImporterRepo) ListOrganizationNodesByParentID(_ context.Context, parentID string) ([]biz.OrganizationNode, error) {
 	return nil, nil
 }
 

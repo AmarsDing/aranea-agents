@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"context"
-	"database/sql"
+	"aranea-agents/internal/biz/shared"
 	"testing"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -188,7 +188,7 @@ func TestUsecase_GetByKey(t *testing.T) {
 			"sql err no rows",
 			"missing",
 			func(_ context.Context, _ string) (Plugin, error) {
-				return Plugin{}, sql.ErrNoRows
+				return Plugin{}, shared.ErrNotFound
 			},
 			true, "",
 		},
@@ -460,7 +460,7 @@ func TestUsecase_UpdateScope(t *testing.T) {
 		{
 			"agent scope with missing agent",
 			"p-1", "agent-missing",
-			func(_ context.Context, _ string) error { return sql.ErrNoRows },
+			func(_ context.Context, _ string) error { return shared.ErrNotFound },
 			true, "PLUGIN",
 		},
 		{

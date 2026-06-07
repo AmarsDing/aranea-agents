@@ -168,7 +168,7 @@ func TestAlertEvalWorker_Evaluate_CallsUsecase(t *testing.T) {
 	repo := &workerTestRepo{}
 	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
+	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	w.ready.Store(true)
 	w.evaluate(context.Background())
 	repo.mu.Lock()
@@ -183,7 +183,7 @@ func TestAlertEvalWorker_Evaluate_NotReady(t *testing.T) {
 	repo := &workerTestRepo{}
 	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
+	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	w.ready.Store(false)
 	w.evaluate(context.Background())
 	repo.mu.Lock()
@@ -198,7 +198,7 @@ func TestAlertEvalWorker_RebuildFromDB_SetsReady(t *testing.T) {
 	repo := &workerTestRepo{}
 	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
+	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	w.rebuildFromDB(context.Background())
 	time.Sleep(200 * time.Millisecond)
 	if !w.ready.Load() {
@@ -215,7 +215,7 @@ func TestAlertEvalWorker_RebuildFromDB_SetsReady(t *testing.T) {
 func TestAlertEvalWorker_RebuildFromDB_NilBuffer(t *testing.T) {
 	repo := &workerTestRepo{}
 	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
-	w := NewAlertEvalWorker(uc, nil, loggateway.Global())
+	w := NewAlertEvalWorker(uc, nil, loggateway.NewNoop())
 	w.rebuildFromDB(context.Background())
 	time.Sleep(200 * time.Millisecond)
 	if !w.ready.Load() {
@@ -227,7 +227,7 @@ func TestNewAlertEvalWorker_SetsInterval(t *testing.T) {
 	t.Setenv("MONITOR_ALERT_EVAL_INTERVAL", "15s")
 	uc := NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
+	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	if w.interval != 15*time.Second {
 		t.Errorf("interval = %v, want %v", w.interval, 15*time.Second)
 	}
@@ -236,7 +236,7 @@ func TestNewAlertEvalWorker_SetsInterval(t *testing.T) {
 func TestNewAlertEvalWorker_DefaultInterval(t *testing.T) {
 	uc := NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
+	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	if w.interval != defaultEvalInterval {
 		t.Errorf("interval = %v, want %v", w.interval, defaultEvalInterval)
 	}

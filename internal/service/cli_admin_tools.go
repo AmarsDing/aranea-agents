@@ -15,28 +15,8 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// agentUCCast extracts the concrete *biz.AgentUsecase from the narrow interface.
-// TECH-DEBT: cli_admin tools need the full Usecase API; remove once cli_admin
-// is refactored to use narrow interfaces.
-func agentUCCast(uc biz.TeamAgentLookup) *biz.AgentUsecase {
-	if c, ok := uc.(*biz.AgentUsecase); ok {
-		return c
-	}
-	return nil
-}
-
-// skillUCCast extracts the concrete *biz.SkillUsecase from the narrow interface.
-// TECH-DEBT: cli_admin tools need the full Usecase API; remove once cli_admin
-// is refactored to use narrow interfaces.
-func skillUCCast(uc biz.TeamSkillLookup) *biz.SkillUsecase {
-	if c, ok := uc.(*biz.SkillUsecase); ok {
-		return c
-	}
-	return nil
-}
-
 type cliAdminSkillRepo struct {
-	uc *biz.SkillUsecase
+	uc biz.CLIAdminSkillLister
 }
 
 func (r cliAdminSkillRepo) ListSkills(ctx context.Context, keyword string, limit, offset int32) ([]cli_admin.SkillItem, int32, error) {
@@ -71,7 +51,7 @@ func (r cliAdminSkillRepo) GetSkill(ctx context.Context, id string) (*cli_admin.
 }
 
 type cliAdminAgentRepo struct {
-	uc *biz.AgentUsecase
+	uc biz.CLIAdminAgentLister
 }
 
 func (r cliAdminAgentRepo) ListAgents(ctx context.Context, keyword string, limit, offset int32) ([]cli_admin.AgentItem, int32, error) {
@@ -122,9 +102,9 @@ func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []tr
 		return nil
 	}
 	return cli_admin.RegisterAll(cli_admin.Deps{
-		SkillRepo:  cliAdminSkillRepo{uc: skillUCCast(o.td.Catalog.SkillUC)},
-		AgentRepo:  cliAdminAgentRepo{uc: agentUCCast(o.td.Catalog.AgentsUC)},
-		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td.Catalog.Settings),
+		SkillRepo:  cliAdminSkillRepo{uc: o.td.ReadDeps.CLIAdminSkillUC},
+		AgentRepo:  cliAdminAgentRepo{uc: o.td.ReadDeps.CLIAdminAgentUC},
+		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td.ReadDeps.Settings),
 		APIToken:   cliAdminAPIToken(),
 	})
 }
@@ -170,7 +150,7 @@ func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) 
 	if o == nil {
 		return nil
 	}
-	settings, err := o.td.Catalog.Agents.GetAgentRuntimeSettings(ctx, ag.ID)
+	settings, err := o.td.ReadDeps.Agents.GetAgentRuntimeSettings(ctx, ag.ID)
 	if err != nil || !settings.EvolutionSkillEvolve {
 		return nil
 	}
@@ -192,7 +172,7 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 	return memory_butler.RegisterAll(memory_butler.Deps{
 		Analytics:   o.expAnalytics,
 		MemoryAdmin: o.td.Persist.Memory.AdminUsecase,
-		Agents:      o.td.Catalog.Agents,
+		Agents:      o.td.ReadDeps.Agents,
 	})
 }
 

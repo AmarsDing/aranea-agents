@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"fmt"
 	"strings"
 )
@@ -98,15 +98,15 @@ type SparseSearcher interface {
 
 // Domain errors for knowledge biz layer — the Service layer maps these to kerrors.
 var (
-	ErrUnavailable          = errors.New("knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
-	ErrNameRequired         = errors.New("knowledge: name is required")
-	ErrEmbeddingModelRequired = errors.New("knowledge: embedding_model is required")
-	ErrIDRequired           = errors.New("knowledge: id is required")
-	ErrCollectionIDRequired = errors.New("knowledge: collection_id is required")
-	ErrSourceRequired       = errors.New("knowledge: source is required")
-	ErrQueryRequired        = errors.New("knowledge: query is required")
-	ErrDimensionMismatch    = errors.New("knowledge: embedding dimension mismatch")
-	ErrEmbeddingEmpty       = errors.New("knowledge: embedding is empty")
+	ErrUnavailable            = kerrors.InternalServer("KNOWLEDGE", "knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
+	ErrNameRequired           = kerrors.BadRequest("KNOWLEDGE", "name is required")
+	ErrEmbeddingModelRequired = kerrors.BadRequest("KNOWLEDGE", "embedding_model is required")
+	ErrIDRequired             = kerrors.BadRequest("KNOWLEDGE", "id is required")
+	ErrCollectionIDRequired   = kerrors.BadRequest("KNOWLEDGE", "collection_id is required")
+	ErrSourceRequired         = kerrors.BadRequest("KNOWLEDGE", "source is required")
+	ErrQueryRequired          = kerrors.BadRequest("KNOWLEDGE", "query is required")
+	ErrDimensionMismatch      = kerrors.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
+	ErrEmbeddingEmpty         = kerrors.BadRequest("KNOWLEDGE", "embedding is empty")
 )
 
 // Usecase implements collection/document/search operations.

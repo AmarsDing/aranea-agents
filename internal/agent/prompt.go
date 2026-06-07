@@ -15,7 +15,7 @@ type Deps struct {
 	AgentUC      biz.TeamAgentLookup
 	ToolsCatalog biz.ToolCatalogReader
 	SQLiteSessionMemory bool
-	Taxonomy      *biz.TaxonomyUsecase
+	Organization  *biz.OrganizationUsecase
 	LG            loggateway.Logger
 }
 
@@ -68,26 +68,26 @@ func BuildIndustryContext(ctx context.Context, d Deps, ag biz.Agent) string {
 	if strings.TrimSpace(ag.PositionKey) == "" {
 		return ""
 	}
-	if d.Taxonomy == nil {
+	if d.Organization == nil {
 		return ""
 	}
 	lg := d.LG
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	posNode, err := d.Taxonomy.GetByKey(ctx, ag.PositionKey)
+	posNode, err := d.Organization.GetByKey(ctx, ag.PositionKey)
 	if err != nil {
 		lg.Error("行业上下文构建失败：无法获取岗位节点", loggateway.StepID("agent.industry_context"), loggateway.Str("position_key", ag.PositionKey), loggateway.Err(err))
 		return ""
 	}
-	anc, err := d.Taxonomy.GetAncestors(ctx, posNode.ID)
+	anc, err := d.Organization.GetAncestors(ctx, posNode.ID)
 	if err != nil {
 		lg.Error("行业上下文构建失败：无法获取岗位祖先链", loggateway.StepID("agent.industry_context"), loggateway.Str("position_key", ag.PositionKey), loggateway.Err(err))
 		return ""
 	}
 	var b strings.Builder
-	if anc.Industry.Key != "" {
-		fmt.Fprintf(&b, "## 行业\n%s： %s\n", anc.Industry.Name, anc.Industry.Description)
+	if anc.Company.Key != "" {
+		fmt.Fprintf(&b, "## 行业\n%s： %s\n", anc.Company.Name, anc.Company.Description)
 	}
 	fmt.Fprintf(&b, "## 部门\n%s： %s\n", anc.Department.Name, anc.Department.Description)
 	fmt.Fprintf(&b, "## 岗位\n%s： %s\n", anc.Position.Name, anc.Position.Description)
