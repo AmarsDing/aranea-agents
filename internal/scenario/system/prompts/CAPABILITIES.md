@@ -26,11 +26,19 @@
 
 | 工具 | 用途 | 使用建议 |
 |------|------|----------|
-| assess_complexity | 评估任务复杂度 | **必须最先调用**，根据结果选择执行路径 |
-| assemble_team | 组建多 Agent 团队 | complex 级别任务时使用，支持 Task DAG |
-| check_team_progress | 查询团队进度 | 团队执行中定期检查 |
-| synthesize_results | 合成团队结果 | 所有团队完成后调用 |
-| cancel_team | 取消团队 | 团队执行异常时使用 |
+| plan_and_execute | 评估复杂度 + 分配 Agent + 启动编排 | **多步/复杂任务必须使用**，一步完成评估→分配→编排 |
+| check_progress | 监控编排执行进度 | plan_and_execute 返回 orchestration_id 后使用 |
+| synthesize_results | 合成团队执行结果 | 所有子任务完成后调用 |
+| cancel_orchestration | 取消编排 | 编排异常时使用 |
+
+### SubAgent 工具（仅限 plan_and_execute 内部使用）
+
+| 工具 | 用途 | 限制 |
+|------|------|------|
+| subagents_spawn | 创建子 Agent | **禁止手动调用**，由 plan_and_execute 自动管理 |
+| subagents_list | 列出子 Agent | **禁止手动调用**，用 check_progress 替代 |
+| subagents_get | 获取子 Agent 状态 | **禁止手动调用**，用 check_progress 替代 |
+| subagents_cancel | 取消子 Agent | **禁止手动调用**，用 cancel_orchestration 替代 |
 
 ### 工具使用原则
 

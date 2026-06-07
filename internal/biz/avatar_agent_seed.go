@@ -25,6 +25,28 @@ func EnsureAgentAvatars(ctx context.Context, repo AvatarRepo) error {
 }
 
 func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatarSpec) error {
+	existing, err := repo.GetAvatarAssetByKey(ctx, spec.AssetKey)
+	if err == nil && existing.ID != "" {
+		// 头像已存在且元数据一致，跳过图像处理和 UPDATE
+		if existing.WidthPx == avatar.AvatarMainMaxPx && existing.FileSizeBytes > 0 {
+			return nil
+		}
+		// 元数据不一致，需要重新处理图像
+		pngData, err := agenticons.LoadPNG(spec.AssetKey)
+		if err != nil {
+			return fmt.Errorf("load embedded png %s: %w", spec.AssetKey, err)
+		}
+		main, thumb, w, h, mime, procErr := avatar.ProcessAvatarUpload(pngData, "image/png")
+		if procErr != nil {
+			return procErr
+		}
+		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
+	}
+	if err != nil && !errors.Is(err, shared.ErrNotFound) {
+		return err
+	}
+
+	// 不存在，创建新头像
 	pngData, err := agenticons.LoadPNG(spec.AssetKey)
 	if err != nil {
 		return fmt.Errorf("load embedded png %s: %w", spec.AssetKey, err)
@@ -32,14 +54,6 @@ func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatar
 	main, thumb, w, h, mime, procErr := avatar.ProcessAvatarUpload(pngData, "image/png")
 	if procErr != nil {
 		return procErr
-	}
-
-	existing, err := repo.GetAvatarAssetByKey(ctx, spec.AssetKey)
-	if err == nil && existing.ID != "" {
-		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
-	}
-	if err != nil && !errors.Is(err, shared.ErrNotFound) {
-		return err
 	}
 
 	asset := AvatarAsset{

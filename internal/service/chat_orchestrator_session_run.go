@@ -289,6 +289,14 @@ func (o *ChatOrchestrator) finishSessionRunLifecycle(ctx context.Context, sessio
 	if err == nil && cur.Phase == biz.SessionRunPhaseDurable {
 		return
 	}
+	// If the run is in escalating phase and the turn completed successfully,
+	// mark it as completed (the turn finished before hard budget was reached).
+	if err == nil && cur.Phase == biz.SessionRunPhaseEscalating {
+		o.lg.Info("session run in escalating phase, marking as completed since turn finished",
+			loggateway.StepID("chat.session_run_escalating_complete"),
+			loggateway.Str("session_run_id", sessionRunID),
+		)
+	}
 	if err := o.chJobs.SessionRuns.Complete(ctx, sessionRunID); err != nil {
 		o.lg.Error("session run complete transition failed",
 			loggateway.StepID("chat.session_run_complete"),

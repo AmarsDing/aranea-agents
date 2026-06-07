@@ -162,13 +162,9 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 	} else if status == biz.TeamStatusCancelled {
 		envType = event.EnvelopeTypeSpiritTeamFailed
-		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCancelled); updateErr != nil {
-			s.lg.Warn("更新团队状态为 cancelled 失败",
-				loggateway.StepID("spirit.team.cancelled_err"),
-				loggateway.Str("team_id", teamID),
-				loggateway.Err(updateErr),
-			)
-		}
+		// Note: TransitionStatus is skipped here because the caller (CancelTeam)
+		// has already transitioned the status to cancelled. Double-writing is
+		// unnecessary and wasteful.
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 		result, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 10})
 		if searchErr == nil {

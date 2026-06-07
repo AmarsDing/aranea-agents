@@ -16,6 +16,7 @@ type PackRepoAdapter struct {
 	organization biz.OrganizationRepo
 	graphs      biz.GraphRepo
 	skillLookup biz.SkillLookupReader
+	execInTx    func(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 var _ pack.ExporterRepo = (*PackRepoAdapter)(nil)
@@ -31,6 +32,11 @@ func NewPackRepoAdapter(
 	graphs biz.GraphRepo,
 	skillLookup biz.SkillLookupReader,
 ) *PackRepoAdapter {
+	// Use agents' ExecInTx as the transaction provider (AgentRepository embeds it)
+	var txFn func(ctx context.Context, fn func(ctx context.Context) error) error
+	if agents != nil {
+		txFn = agents.ExecInTx
+	}
 	return &PackRepoAdapter{
 		agents:       agents,
 		teamReader:   teamReader,
@@ -38,6 +44,7 @@ func NewPackRepoAdapter(
 		organization: organization,
 		graphs:       graphs,
 		skillLookup:  skillLookup,
+		execInTx:     txFn,
 	}
 }
 
@@ -227,4 +234,13 @@ func (a *PackRepoAdapter) FuncRefExists(funcRef string) bool {
 		}
 	}
 	return false
+}
+
+// ExecInTx delegates to the underlying transaction provider.
+func (a *PackRepoAdapter) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if a.execInTx != nil {
+		return a.execInTx(ctx, fn)
+	}
+	// Fallback: no transaction support, execute directly
+	return fn(ctx)
 }

@@ -136,8 +136,8 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 type ParallelConfig struct {
     MaxConcurrentTeams int           `json:"max_concurrent_teams"`
     MaxTeamConcurrency int           `json:"max_team_concurrency"`
-    TeamTimeout        time.Duration `json:"team_timeout"`
-    AutoArchiveAfter   time.Duration `json:"auto_archive_after"`
+    TeamTimeoutSeconds int           `json:"team_timeout_seconds"`   // 秒数（JSON 序列化友好）
+    AutoArchiveSeconds int           `json:"auto_archive_seconds"`   // 秒数（JSON 序列化友好）
     MaxSessionDepth    int           `json:"max_session_depth"`
 }
 
@@ -145,10 +145,19 @@ func DefaultParallelConfig() ParallelConfig {
     return ParallelConfig{
         MaxConcurrentTeams: 3,
         MaxTeamConcurrency: 2,
-        TeamTimeout:        10 * time.Minute,
-        AutoArchiveAfter:   1 * time.Hour,
+        TeamTimeoutSeconds: 600,    // 10 分钟
+        AutoArchiveSeconds: 3600,   // 1 小时
         MaxSessionDepth:    2,
     }
+}
+
+// 辅助方法：将秒数转换为 time.Duration
+func (c ParallelConfig) TeamTimeout() time.Duration {
+    return time.Duration(c.TeamTimeoutSeconds) * time.Second
+}
+
+func (c ParallelConfig) AutoArchiveAfter() time.Duration {
+    return time.Duration(c.AutoArchiveSeconds) * time.Second
 }
 ```
 
@@ -156,23 +165,26 @@ func DefaultParallelConfig() ParallelConfig {
 
 ### 2.4 SpiritTeamAssemblerPort 接口扩展
 
+代码中拆分为 3 个小接口（遵循接口隔离原则）：
+
 ```go
+// 团队组装端口
 type SpiritTeamAssemblerPort interface {
-    AssembleTeam(ctx context.Context, params SpiritTeamParams) (*SpiritTeamResult, error)
-    GetActiveTeam(ctx context.Context, spiritSessionID string) (*biz.Team, error)
-    ListActiveTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error)
-    GetMaxParallelTeams(ctx context.Context, spiritSessionID string) int
-    CancelTeam(ctx context.Context, teamID string) error
-    CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]TeamProgress, error)
+    AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, error)
+    SuggestTopology(ctx context.Context, taskDescription string) (string, bool)
 }
 
-type TeamProgress struct {
-    TeamID      string  `json:"team_id"`
-    TeamName    string  `json:"team_name"`
-    Status      string  `json:"status"`
-    ProgressPct float64 `json:"progress_pct"`
-    CurrentStep string  `json:"current_step"`
-    DurationMs  int64   `json:"duration_ms"`
+// 团队查询端口
+type SpiritTeamQueryPort interface {
+    ListActiveTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error)
+    ListAllTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error)
+    GetMaxParallelTeams(ctx context.Context, spiritSessionID string) int
+}
+
+// 团队控制端口
+type SpiritTeamControllerPort interface {
+    CancelTeam(ctx context.Context, teamID string) error
+    CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]biz.TeamProgress, error)
 }
 ```
 
@@ -351,78 +363,32 @@ func (d *TaskDAG) hasCycle() bool {
 对齐 AdaptOrch (arXiv:2602.16873) 的 O(|V|+|E|) 拓扑路由：
 
 ```go
-func (d *TaskDAG) RouteTopology() string {
-    if len(d.Nodes) == 1 {
-        return "sequential"
+type TopologyType string
+
+const (
+    TopologyDirect      TopologyType = "direct"      // 单 Agent 直连（RouteTopology 不返回此值）
+    TopologyParallel    TopologyType = "parallel"    // 所有节点无依赖
+    TopologySequential  TopologyType = "sequential"  // 有依赖但宽度=1
+    TopologyHybrid      TopologyType = "hybrid"      // 部分并行+部分串行
+    TopologyCoordinator TopologyType = "coordinator" // 依赖链深度>3
+)
+
+func (d *TaskDAG) RouteTopology() TopologyType {
+    if len(d.Nodes) == 0 {
+        return TopologyCoordinator
     }
-
-    allIndependent := true
-    hasDeps := false
-    maxDepth := 0
-    maxWidth := 0
-
-    for _, n := range d.Nodes {
-        if len(n.Dependencies) > 0 {
-            hasDeps = true
-            allIndependent = false
-        }
+    if len(d.Roots) == len(d.Nodes) {
+        return TopologyParallel
     }
-
-    if allIndependent {
-        return "parallel"
-    }
-
     depth := d.computeDepth()
-    width := d.computeWidth()
-
+    width := d.computeMaxWidth()
     if depth > 3 {
-        return "coordinator"
+        return TopologyCoordinator
     }
     if width > 1 {
-        return "hybrid"
+        return TopologyHybrid
     }
-    return "sequential"
-}
-
-func (d *TaskDAG) computeDepth() int {
-    depthMap := make(map[string]int)
-    var calcDepth func(id string) int
-    calcDepth = func(id string) int {
-        if d, ok := depthMap[id]; ok {
-            return d
-        }
-        node := d.nodeByID(id)
-        maxDep := 0
-        for _, dep := range node.Dependencies {
-            if d := calcDepth(dep); d > maxDep {
-                maxDep = d
-            }
-        }
-        depthMap[id] = maxDep + 1
-        return depthMap[id]
-    }
-    maxDepth := 0
-    for _, n := range d.Nodes {
-        if d := calcDepth(n.ID); d > maxDepth {
-            maxDepth = d
-        }
-    }
-    return maxDepth
-}
-
-func (d *TaskDAG) computeWidth() int {
-    levelMap := make(map[int]int)
-    for _, n := range d.Nodes {
-        level := d.computeDepth()
-        levelMap[level]++
-    }
-    maxWidth := 0
-    for _, w := range levelMap {
-        if w > maxWidth {
-            maxWidth = w
-        }
-    }
-    return maxWidth
+    return TopologySequential
 }
 ```
 
@@ -455,13 +421,27 @@ func (s *DependencyScheduler) OnTeamCompleted(ctx context.Context, teamID string
 }
 ```
 
-团队新增状态 `waiting_deps`：
+团队新增状态 `pending`（替代旧的 `waiting_deps`/`assembling`/`assembled`）：
 
 ```
-assembling → waiting_deps → running → completed
-                                  → failed
-                                  → cancelled
+pending → running → completed → archived
+                 → failed → archived
+                 → cancelled → archived
+                 → interrupted → running
 ```
+
+完整状态常量（`internal/biz/team_types.go`）：
+
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| `TeamStatusPending` | `"pending"` | 已创建，等待执行 |
+| `TeamStatusRunning` | `"running"` | 正在执行 |
+| `TeamStatusCompleted` | `"completed"` | 成功完成 |
+| `TeamStatusFailed` | `"failed"` | 执行失败 |
+| `TeamStatusCancelled` | `"cancelled"` | 已取消 |
+| `TeamStatusInterrupted` | `"interrupted"` | 异常中断，可恢复 |
+| `TeamStatusArchived` | `"archived"` | 自动归档 |
+| `TeamStatusBlocked` | `"blocked"` | 虚拟状态，仅用于级联阻塞结果展示，不持久化 |
 
 ### 3.4 Synthesis Engine
 
@@ -528,9 +508,9 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, spiritSessionID string
 | 场景 | 策略 |
 |------|------|
 | 全部成功 + < 3 团队 | 模板合成（拼接各团队摘要） |
-| 全部成功 + >= 3 团队 | LLM 合成（调用精灵 LLM 生成综合摘要） |
-| 部分失败 | 混合合成（成功团队模板 + 失败团队标注 + LLM 总结） |
-| 全部失败 | LLM 合成（分析失败原因 + 建议） |
+| 全部成功 + >= 3 团队 | 混合合成（模板 + Prompt 综合摘要） |
+| 部分失败 | 混合合成（成功团队模板 + 失败团队标注 + Prompt 总结） |
+| 全部失败 | 混合合成（分析失败原因 + 建议） |
 
 ### 3.5 synthesize_results 工具
 
@@ -679,10 +659,13 @@ message SynthesizeResultsResponse {
 
 #### 7.1.1 工具定义
 
+> **注意**：`assess_complexity` 工具已标记 DEPRECATED，委托给 `plan_and_execute` 三阶段流程。
+> 当 `TaskPlannerPort` 可用时，优先委托给 `Plan()` 方法；否则回退到规则引擎。
+
 ```go
-// internal/tools/spirit/assess_complexity.go
+// internal/tools/spirit_tools.go
 type AssessComplexityInput struct {
-    UserMessage string `json:"user_message" jsonschema:"description=用户消息"`
+    UserMessage string `json:"user_message" jsonschema:"description=用户消息内容"`
 }
 
 type AssessComplexityOutput struct {
@@ -690,25 +673,100 @@ type AssessComplexityOutput struct {
     Reasoning      string   `json:"reasoning"`        // 复杂度判断理由
     SuggestedPath  string   `json:"suggested_path"`   // "direct_answer" | "single_butler" | "orchestrator"
     RequiredSkills []string `json:"required_skills"`  // 需要的能力标签
+    AvailableTools []string `json:"available_tools"`  // 可用工具列表
 }
 ```
 
 #### 7.1.2 规则引擎
 
 ```go
-// internal/tools/spirit/complexity_rules.go
-var simplePatterns = []string{
-    "什么是", "解释一下", "帮我看看", "怎么用",
-    "是什么意思", "告诉我", "列出", "显示",
+// internal/tools/spirit_complexity.go
+type ComplexityLevel string
+
+const (
+    ComplexitySimple   ComplexityLevel = "simple"
+    ComplexityModerate ComplexityLevel = "moderate"
+    ComplexityComplex  ComplexityLevel = "complex"
+)
+
+type ComplexityRuleEngine struct {
+    mu            sync.Mutex
+    lastReasoning string
 }
 
-var complexIndicators = []string{
-    "分析", "对比", "编写", "设计", "规划", "编排",
-    "多个", "跨行业", "团队", "协作", "流程",
+func NewComplexityRuleEngine() *ComplexityRuleEngine {
+    return &ComplexityRuleEngine{}
+}
+
+func (r *ComplexityRuleEngine) Assess(message string) ComplexityLevel {
+    return r.AssessDetailed(message).Level
+}
+
+func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessment {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    lower := strings.ToLower(message)
+
+    // 1. 简单问答模式（最高优先级）
+    for _, p := range lowerSimplePatterns {
+        if strings.Contains(lower, p) {
+            r.lastReasoning = "匹配简单问答模式: " + p
+            return ComplexityAssessment{
+                Level: ComplexitySimple, SuggestedPath: PathDirectAnswer,
+                RequiredSkills: nil, Reasoning: r.lastReasoning,
+            }
+        }
+    }
+
+    // 2. 复杂任务指标
+    complexHits := 0
+    for _, p := range lowerComplexIndicators {
+        if strings.Contains(lower, p) { complexHits++ }
+    }
+    if complexHits >= 2 {
+        r.lastReasoning = fmt.Sprintf("匹配 %d 个复杂任务指标", complexHits)
+        return ComplexityAssessment{
+            Level: ComplexityComplex, SuggestedPath: PathOrchestrator,
+            RequiredSkills: complexAvailableTools, Reasoning: r.lastReasoning,
+        }
+    }
+    if complexHits == 1 {
+        r.lastReasoning = "匹配 1 个复杂任务指标，但不足以确定，降级为 moderate"
+        return ComplexityAssessment{
+            Level: ComplexityModerate, SuggestedPath: PathSingleButler,
+            RequiredSkills: moderateAvailableTools, Reasoning: r.lastReasoning,
+        }
+    }
+
+    // 3. 中等任务指标
+    moderateHits := 0
+    for _, p := range moderateIndicators {
+        if strings.Contains(lower, p) { moderateHits++ }
+    }
+    if moderateHits >= 1 {
+        r.lastReasoning = "匹配中等任务指标"
+        return ComplexityAssessment{
+            Level: ComplexityModerate, SuggestedPath: PathSingleButler,
+            RequiredSkills: moderateAvailableTools, Reasoning: r.lastReasoning,
+        }
+    }
+
+    r.lastReasoning = "无法通过规则确定复杂度，使用安全默认值 moderate"
+    return ComplexityAssessment{
+        Level: ComplexityModerate, SuggestedPath: PathSingleButler,
+        RequiredSkills: moderateAvailableTools, Reasoning: r.lastReasoning,
+    }
 }
 ```
 
-规则引擎优先判断（零 Token 消耗），无法判断时返回 `moderate` 作为安全默认值。
+关键词列表（`internal/tools/spirit_complexity.go`）：
+
+| 类别 | 关键词 |
+|------|--------|
+| 简单问答 | "什么是"、"解释一下"、"帮我看看"、"怎么用"、"查询"、"查找"、"搜索"、"what is"、"explain"、"show me" |
+| 复杂任务 | "分析"、"对比"、"编写"、"设计"、"规划"、"编排"、"重构"、"迁移"、"集成"、"部署"、"优化"、"analyze"、"compare"、"design"、"plan" |
+| 中等任务 | "创建"、"修改"、"更新"、"删除"、"配置"、"修复"、"调试"、"测试"、"转换"、"create"、"modify"、"fix"、"debug"、"test" |
 
 #### 7.1.3 Spirit Prompt 增强
 
@@ -733,86 +791,104 @@ var complexIndicators = []string{
 
 ```go
 // internal/tools/orchestrator/build_graph.go
-type BuildOrchestrationGraphInput struct {
-    TaskDescription string            `json:"task_description"`
-    Agents          []AgentAssignment `json:"agents"`
-    Mode            string            `json:"mode"`
-    TaskPrompt      string            `json:"task_prompt"`
+type AgentAssignment struct {
+    AgentKey  string   `json:"agent_key" jsonschema:"description=Agent key"`
+    Role      string   `json:"role" jsonschema:"description=Agent role in the task"`
+    SubTask   string   `json:"sub_task" jsonschema:"description=Sub-task description for this agent"`
+    DependsOn []string `json:"depends_on" jsonschema:"description=Agent keys this agent depends on"`
 }
 
-type AgentAssignment struct {
-    AgentKey  string   `json:"agent_key"`
-    Role      string   `json:"role"`
-    SubTask   string   `json:"sub_task"`
-    DependsOn []string `json:"depends_on"`
+type BuildOrchestrationGraphInput struct {
+    TaskDescription string            `json:"task_description" jsonschema:"description=Overall task description"`
+    Agents          []AgentAssignment `json:"agents" jsonschema:"description=Agent assignments for the graph"`
+    Mode            string            `json:"mode" jsonschema:"description=Graph mode: parallel|sequential|hybrid|coordinator"`
 }
 
 type BuildOrchestrationGraphOutput struct {
-    GraphExecutionID string `json:"graph_execution_id"`
-    SessionID        string `json:"session_id"`
-    NodeCount        int    `json:"node_count"`
-    EstimatedSteps   int    `json:"estimated_steps"`
+    GraphBuildConfig  biz.GraphBuildConfig `json:"graph_build_config"`
+    GraphExecutionID  string               `json:"graph_execution_id,omitempty"`
+    NodeCount         int                  `json:"node_count"`
+    EdgeCount         int                  `json:"edge_count"`
+    VerificationNodes []string             `json:"verification_nodes"`
 }
 ```
 
 #### 7.2.2 Graph 动态构建核心逻辑
 
 ```go
-func (t *buildOrchestrationGraphTool) buildGraphConfig(
-    input BuildOrchestrationGraphInput,
-) biz.GraphBuildConfig {
+func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
     var nodes []biz.NodeDef
     var edges []biz.EdgeDef
 
     // 1. 入口节点
     entryNode := "entry"
-    nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: "function"})
+    nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: biz.NodeTypeFunction})
 
     // 2. 为每个 Agent 创建节点
+    agentKeys := make(map[string]bool)
     for _, a := range input.Agents {
+        agentKeys[a.AgentKey] = true
         nodes = append(nodes, biz.NodeDef{
             ID:          a.AgentKey,
-            Type:        "agent",
+            Type:        biz.NodeTypeAgent,
             AgentName:   a.AgentKey,
             Instruction: a.SubTask,
         })
     }
 
-    // 3. 根据依赖关系生成边
+    // 3. 根据依赖关系生成边（悬空依赖跳过）
     for _, a := range input.Agents {
         if len(a.DependsOn) == 0 {
             edges = append(edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
-        } else {
-            for _, dep := range a.DependsOn {
-                edges = append(edges, biz.EdgeDef{From: dep, To: a.AgentKey})
+            continue
+        }
+        hasValidDep := false
+        for _, dep := range a.DependsOn {
+            if !agentKeys[dep] { continue }
+            edges = append(edges, biz.EdgeDef{From: dep, To: a.AgentKey})
+            hasValidDep = true
+        }
+        if !hasValidDep {
+            edges = append(edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
+        }
+    }
+
+    // 4. 循环检测：DFS 三色标记法，检测到环时降级为顺序链
+    if hasCycle(nodes, edges) {
+        // 降级：清空边，重建为顺序链
+        edges = edges[:0]
+        for i, a := range input.Agents {
+            if i == 0 {
+                edges = append(edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
+            } else {
+                edges = append(edges, biz.EdgeDef{From: input.Agents[i-1].AgentKey, To: a.AgentKey})
             }
         }
     }
 
-    // 4. 汇合节点
+    // 5. 汇合节点：叶子 Agent（不被其他 Agent 依赖的）连接到 merge
     mergeNode := "merge_results"
-    nodes = append(nodes, biz.NodeDef{ID: mergeNode, Type: "function"})
+    nodes = append(nodes, biz.NodeDef{ID: mergeNode, Type: biz.NodeTypeFunction})
+    for _, a := range input.Agents {
+        if isDependedOn(input.Agents, a.AgentKey) { continue }
+        edges = append(edges, biz.EdgeDef{From: a.AgentKey, To: mergeNode})
+    }
 
-    // 5. 验证门禁节点
-    verifyNode := "verify_results"
-    nodes = append(nodes, biz.NodeDef{
-        ID:             verifyNode,
-        Type:           "function",
-        InterruptAfter: true,
-    })
-    edges = append(edges, biz.EdgeDef{From: mergeNode, To: verifyNode})
+    // 6. 完成节点
+    finishNode := "finish"
+    nodes = append(nodes, biz.NodeDef{ID: finishNode, Type: biz.NodeTypeFunction})
+    edges = append(edges, biz.EdgeDef{From: mergeNode, To: finishNode})
 
     return biz.GraphBuildConfig{
         Nodes:            nodes,
         Edges:            edges,
         EntryPoint:       entryNode,
-        FinishPoint:      verifyNode,
+        FinishPoint:      finishNode,
         EnableCheckpoint: true,
-        ExecutionEngine:  biz.ExecutionEnginePregel,
-        InterruptAfter:   []string{verifyNode},
+        ExecutionEngine:  biz.EngineDAG,
         StateFields: []biz.StateFieldDef{
-            {Key: "task_description", Reducer: "default"},
-            {Key: "agent_results", Reducer: "merge"},
+            {Name: "task_description", Reducer: biz.ReducerDefault},
+            {Name: "agent_results", Reducer: biz.ReducerMerge},
         },
     }
 }
@@ -976,18 +1052,17 @@ Spirit（总管家）
 ```
 internal/
   tools/
-    spirit/
-      assess_complexity.go      # GAP-1: 复杂度评估工具
-      complexity_rules.go       # GAP-1: 规则引擎
+    spirit_complexity.go           # GAP-1: 复杂度评估工具 + 规则引擎（已合并为单文件）
+    spirit_tools.go                # GAP-1: assess_complexity 工具注册（DEPRECATED，委托 plan_and_execute）
     orchestrator/
-      build_graph.go            # GAP-2: Graph 构建工具
-      verification.go           # GAP-4: 验证节点类型定义
-      verify_funcs.go           # GAP-4: 验证函数实现
+      build_graph.go               # GAP-2: Graph 构建工具 + GraphBuilderPort 接口
+      verification.go              # GAP-4: 验证节点类型定义 + injectVerificationNodes
+      verify_funcs.go              # GAP-4: 验证函数实现
   service/
-    chat_orchestrator_spirit.go # GAP-3: Spirit Team 构建 + 模式选择
+    chat_orchestrator_spirit.go    # GAP-3: Spirit Team 构建 + 模式选择
   scenario/system/prompts/
-    spirit.md                   # 修改：增加强制决策规则
-    orchestrator.md             # 修改：增加 Graph 编排决策规则
+    spirit.md                      # 修改：增加强制决策规则
+    orchestrator.md                # 修改：增加 Graph 编排决策规则
 ```
 
 ### 7.7 依赖关系
@@ -1113,10 +1188,11 @@ func (a *SpiritTeamAssembler) StartTeam(ctx context.Context, teamID string, init
 // internal/biz/spirit_team_usecase.go
 type TeamStarterPort interface {
     StartTeamTurn(ctx context.Context, sessionID string, content string) error
+    HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string)
 }
 ```
 
-`ChatOrchestrator` 实现此接口，内部调用 `executeTeamTurnViaHooks`。
+`ChatOrchestrator` 实现此接口，`StartTeamTurn` 内部调用 `executeTeamTurnViaHooks`，`HandleTeamTurnResult` 处理团队 Turn 完成回调（取消超时定时器、触发依赖调度等）。
 
 **Wire 绑定**：在 `cmd/admin/wire.go` 中将 `ChatOrchestrator` 作为 `TeamStarterPort` 注入 `SpiritTeamAssembler`。
 
@@ -1299,22 +1375,14 @@ for _, t := range teams {
 
 ---
 
-### 2.3 P0-03：DependencyScheduler 死代码清理
+### 2.3 P0-03：DependencyScheduler 已删除
 
-**现状**：`DependencyScheduler`（`spirit_dependency_scheduler.go`）定义了完整的调度逻辑，但没有任何调用者。实际调度由 `team_turn_hooks.go` 中的 `scheduleDependentTeams` 实现。
+**现状**：`DependencyScheduler`（`spirit_dependency_scheduler.go`）已在深度架构审查后删除。实际调度由 `team_turn_hooks.go` 中的 `scheduleDependentTeams` 实现。
 
-**设计方案**：删除 `DependencyScheduler`，将其中有价值的逻辑合并到 `TaskDAG` 和 `scheduleDependentTeams` 中。
-
-#### 2.3.1 保留 `TeamAssemblerPort` 接口
-
-`TeamAssemblerPort` 被 `DependencyScheduler` 定义但实际未使用。检查是否有其他引用：
-
-- 如果无引用 → 删除
-- 如果有引用 → 移到 `spirit_team_usecase.go`（更符合 biz 层规范）
-
-#### 2.3.2 删除文件
-
-删除 `internal/biz/spirit_dependency_scheduler.go`，确认 `DependencyScheduler` 和 `TeamAssemblerPort` 无其他引用。
+**已完成**：
+- 删除 `internal/biz/spirit_dependency_scheduler.go`
+- 调度逻辑由 `SpiritTeamController.ScheduleDependentTeams` 承担
+- `TeamAssemblerPort` 接口已移除，相关功能由拆分后的 3 个小接口承担
 
 ---
 
@@ -1562,73 +1630,59 @@ type DQScoreBreakdown struct {
     DurationMs   int64   `json:"duration_ms"`    // 执行时长
 }
 
-func ComputeDQScoreV2(teamResult TeamSynthesisResult, durationMs int64, toolInvocations []ToolInvocation) DQScoreBreakdown {
-    if teamResult.Status != "completed" {
-        return DQScoreBreakdown{Overall: 0.0}
+func ComputeDQScoreBreakdown(teamResult TeamSynthesisResult, durationMs int64) DQScoreBreakdown {
+    b := DQScoreBreakdown{DurationMs: durationMs}
+
+    // Validity: 团队是否成功完成（二值判断）
+    if teamResult.Status == "completed" {
+        b.Validity = 1.0
+    } else {
+        b.Validity = 0.0
     }
 
-    // Validity: 工具调用成功率
-    validity := 1.0
-    if len(toolInvocations) > 0 {
-        successCount := 0
-        for _, inv := range toolInvocations {
-            if inv.Status == "success" {
-                successCount++
-            }
+    // Specificity: 结果摘要长度和结构化程度
+    if teamResult.Summary != "" {
+        b.Specificity = DQSpecificityBase   // 0.7
+        if len(teamResult.Summary) > 100 {
+            b.Specificity = DQSpecificityHigh  // 1.0
+        } else if len(teamResult.Summary) > 50 {
+            b.Specificity = DQSpecificityMedium // 0.85
         }
-        validity = float64(successCount) / float64(len(toolInvocations))
-    }
-
-    // Specificity: 结果长度和结构化程度
-    specificity := 0.5
-    contentLen := len(teamResult.Summary + teamResult.KeyFindings)
-    if contentLen > 100 {
-        specificity = 0.7
-    }
-    if contentLen > 500 {
-        specificity = 0.9
     }
     if teamResult.KeyFindings != "" {
-        specificity = min(specificity+0.1, 1.0)
+        b.Specificity = min(b.Specificity+DQSpecificityFindings, 1.0) // +0.15
     }
 
     // Correctness: 基于时间效率的代理指标
-    correctness := 1.0
+    b.Correctness = 1.0
     if durationMs > 0 {
-        timePenalty := float64(durationMs) / 60000.0
-        if timePenalty > 5.0 {
-            timePenalty = 5.0
+        timePenalty := float64(durationMs) / DQTimePenaltyDivisorMs // 60000ms
+        if timePenalty > DQTimePenaltyMax {  // 5.0
+            timePenalty = DQTimePenaltyMax
         }
-        correctness -= timePenalty * 0.1
+        b.Correctness -= timePenalty * DQTimePenaltyFactor // 0.1
     }
-    if correctness < 0.1 {
-        correctness = 0.1
+    if b.Correctness < DQScoreMin {  // 0.1
+        b.Correctness = DQScoreMin
     }
 
-    overall := validity*0.4 + specificity*0.3 + correctness*0.3
-    return DQScoreBreakdown{
-        Validity:    validity,
-        Specificity: specificity,
-        Correctness: correctness,
-        Overall:     overall,
-        DurationMs:  durationMs,
-    }
+    return b
 }
 ```
 
 #### 3.5.2 数据来源
 
-- **Validity**：从 `ToolInvocation` 表查询团队 session 下的工具调用记录
-- **Specificity**：从团队最后一条 assistant 消息的内容长度和结构化程度推断
-- **Correctness**：基于执行时长的代理指标（无人工标注时的替代方案）
+- **Validity**：基于团队最终状态（completed=1.0, 否则=0.0），二值判断
+- **Specificity**：从团队 Summary 长度推断（>50 字符=0.85, >100 字符=1.0, 基准=0.7），KeyFindings 额外 +0.15
+- **Correctness**：基于执行时长的代理指标（每分钟 -0.1，上限 5 分钟惩罚）
 
 #### 3.5.3 调用入口
 
 ```go
 // team_turn_hooks.go recordSpiritTeamCompletion 中：
-toolInvs, _ := o.team.TeamUC.ListToolInvocations(ctx, team.ID)
-dqBreakdown := biz.ComputeDQScoreV2(biz.TeamSynthesisResult{...}, durationMs, toolInvs)
-o.orchCache.RecordCompletion(ctx, taskPattern, topology, dqBreakdown.Overall, 1, durationMs)
+dqBreakdown := biz.ComputeDQScoreBreakdown(biz.TeamSynthesisResult{...}, durationMs)
+dqScore := dqBreakdown.Overall()
+o.orchCache.RecordCompletion(ctx, taskPattern, topology, dqScore, 1, durationMs)
 ```
 
 ---
@@ -1641,14 +1695,21 @@ o.orchCache.RecordCompletion(ctx, taskPattern, topology, dqBreakdown.Overall, 1,
 
 **设计方案**：在 `recordSpiritTeamCompletion` 中，当 DQ Score < 0.5 时，调用 `EvolutionUsecase` 生成编排优化建议。
 
-#### 3.6.1 新增 `EvolutionSuggestionPort`
+#### 3.6.1 复用 `EvolutionSuggestionRepo`
+
+代码中未实现专用的 `EvolutionSuggestionPort`，而是复用通用的 `EvolutionSuggestionRepo`（`internal/biz/evolution.go`），通过 `WithEvolutionSuggestionRepo` 选项注入 `SpiritTeamUsecase`：
 
 ```go
-// internal/biz/spirit_orchestration_cache.go
-type EvolutionSuggestionPort interface {
-    CreateOrchestrationSuggestion(ctx context.Context, agentKey string, taskPattern string, currentTopology TopologyType, dqScore float64) error
+// internal/biz/evolution.go 中已有接口
+type EvolutionSuggestionRepo interface {
+    ListByAgent(ctx context.Context, agentKey string) ([]EvolutionSuggestion, error)
+    GetByID(ctx context.Context, id string) (EvolutionSuggestion, error)
+    Create(ctx context.Context, suggestion EvolutionSuggestion) error
+    UpdateStatus(ctx context.Context, id string, status string) error
 }
 ```
+
+`SpiritTeamUsecase` 在 `RecordTeamCompletion` 中直接调用 `u.evolutionSugg.Create()` 生成编排优化建议。拓扑替代建议由 `OrchestrationCache.SuggestBestAlternativeTopology()` 承担。
 
 #### 3.6.2 EvolutionUsecase 实现
 
@@ -2204,28 +2265,35 @@ tools = append(tools,
 **实现位置**：`internal/tools/orchestrator/build_graph.go`
 
 ```go
-type buildOrchestrationGraphTool struct {
-    deps OrchestratorGraphDeps
+// GraphBuilderPort 定义 Graph 执行接口，替代原先的 OrchestratorGraphDeps 结构体。
+// 接口注入模式比函数字段注入更利于测试和 Wire 绑定。
+type GraphBuilderPort interface {
+    BuildAndExecute(ctx context.Context, config biz.GraphBuildConfig, sessionID string) (executionID string, err error)
 }
 
-type OrchestratorGraphDeps struct {
-    GraphExecutor func() biz.GraphExecutor
-    SessionIDFunc func(ctx context.Context) string
-}
-
-func (t *buildOrchestrationGraphTool) Call(
-    ctx context.Context, input BuildOrchestrationGraphInput,
-) (*BuildOrchestrationGraphOutput, error) {
-    cfg := t.buildGraphConfig(input)
-
-    graphID := fmt.Sprintf("orchestration_%d", time.Now().UnixMilli())
-    sessID := t.deps.SessionIDFunc(ctx)
-
-    executionID, err := t.deps.GraphExecutor().ExecuteGraphBuildConfig(
-        ctx, graphID, sessID, cfg, map[string]any{
-            "task_description": input.TaskPrompt,
+// NewBuildOrchestrationGraphTool 创建工具。
+// 如果 builder 为 nil，工具仅生成 Graph 配置而不执行。
+func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.FunctionTool[BuildOrchestrationGraphInput, BuildOrchestrationGraphOutput] {
+    return trpcfunction.NewFunctionTool(
+        func(ctx context.Context, input BuildOrchestrationGraphInput) (BuildOrchestrationGraphOutput, error) {
+            config := BuildGraphConfig(input)
+            verificationNodes := injectVerificationNodes(&config, input.Mode)
+            out := BuildOrchestrationGraphOutput{
+                GraphBuildConfig:  config,
+                NodeCount:         len(config.Nodes),
+                EdgeCount:         len(config.Edges),
+                VerificationNodes: verificationNodes,
+            }
+            if builder != nil {
+                execID, err := builder.BuildAndExecute(ctx, config, "")
+                if err != nil { return BuildOrchestrationGraphOutput{}, err }
+                out.GraphExecutionID = execID
+            }
+            return out, nil
         },
+        // ...
     )
+}
 ```
 
 #### 9.3.2 Graph 拓扑生成关键逻辑
@@ -2250,16 +2318,14 @@ func (t *buildOrchestrationGraphTool) Call(
 
 #### 9.3.4 依赖注入路径
 
-`OrchestratorGraphDeps.GraphExecutor` 通过 `ChatOrchestratorDeps.Team.GraphFactory` 获取：
+`GraphBuilderPort` 接口通过 `ChatOrchestratorDeps` 获取实现：
 
 ```go
 func (o *ChatOrchestrator) orchestratorTools(ctx context.Context, ag biz.Agent) []trpctool.Tool {
     if ag.AgentKey != "__orchestrator__" { return nil }
     return orchestrator.RegisterAll(orchestrator.Deps{
         // ... 现有依赖
-        GraphDeps: orchestrator.OrchestratorGraphDeps{
-            GraphExecutor: func() biz.GraphExecutor { return o.td.Team.GraphFactory },
-        },
+        GraphBuilder: orchestrator.GraphBuilderPort(/* 实现者 */),
     })
 }
 ```
@@ -2274,16 +2340,15 @@ func (o *ChatOrchestrator) orchestratorTools(ctx context.Context, ag biz.Agent) 
 type VerificationType string
 
 const (
-    VerifyOutputFormat   VerificationType = "output_format"
-    VerifyTaskCompletion VerificationType = "task_completion"
-    VerifyHumanApproval VerificationType = "human_approval"
+    VerifyTypeOutputFormat   VerificationType = "output_format"
+    VerifyTypeTaskCompletion VerificationType = "task_completion"
+    VerifyTypeHumanApproval  VerificationType = "human_approval"
 )
 
 type VerificationConfig struct {
-    Type          VerificationType `json:"type"`
-    NodeID        string           `json:"node_id"`
-    InjectAfter   string           `json:"inject_after"`    // 在哪个节点后注入
-    FailureAction string           `json:"failure_action"`  // skip / retry_then_block / fail_fast
+    Type          VerificationType
+    AfterNode     string // Insert verification after this node
+    FailureAction string // "skip" | "retry_then_block" | "interrupt_before"
 }
 ```
 
@@ -2341,52 +2406,57 @@ func verifyTaskCompletion(ctx context.Context, state graph.State) (any, error) {
 
 #### 9.4.3 验证节点注入到 Graph
 
-在 `buildGraphConfig` 中根据 `VerificationConfig` 注入验证节点：
+在 `BuildGraphConfig` 后通过 `injectVerificationNodes` 独立注入验证节点：
 
 ```go
-func (t *buildOrchestrationGraphTool) addVerificationNodes(
-    cfg *biz.GraphBuildConfig, verifyConfigs []VerificationConfig,
-) {
-    for _, vc := range verifyConfigs {
-        verifyNodeID := vc.NodeID
-        if verifyNodeID == "" {
-            verifyNodeID = fmt.Sprintf("verify_%s", vc.InjectAfter)
+// injectVerificationNodes 在 Graph 配置中插入验证节点。
+// 找到所有指向 AfterNode 的边，在源节点和 AfterNode 之间插入验证节点。
+// 返回添加的验证节点 ID 列表。
+func injectVerificationNodes(config *biz.GraphBuildConfig, mode string) []string {
+    configs := DefaultVerificationConfigs(mode)
+    var nodeIDs []string
+
+    for i, vc := range configs {
+        nodeID := fmt.Sprintf("verify_%s_%d", vc.Type, i)
+
+        vNode := biz.NodeDef{
+            ID:            nodeID,
+            Type:          biz.NodeTypeFunction,
+            Description:   fmt.Sprintf("Verification gate: %s", vc.Type),
+            FailureAction: vc.FailureAction,
         }
 
-        failureAction := biz.FailureActionSkip
-        switch vc.FailureAction {
-        case "retry_then_block":
-            failureAction = biz.FailureActionRetryThenBlock
-        case "fail_fast":
-            failureAction = biz.FailureActionFailFast
+        if vc.Type == VerifyTypeHumanApproval {
+            vNode.InterruptBefore = true
         }
 
-        interruptAfter := vc.Type == VerifyHumanApproval
-
-        cfg.Nodes = append(cfg.Nodes, biz.NodeDef{
-            ID:             verifyNodeID,
-            Type:           "function",
-            Instruction:    fmt.Sprintf("验证类型: %s", vc.Type),
-            FailureAction:  failureAction,
-            InterruptAfter: interruptAfter,
-        })
-
-        // 修改边：inject_after → verify_node → 原下游
-        for i, e := range cfg.Edges {
-            if e.From == vc.InjectAfter {
-                cfg.Edges[i].From = verifyNodeID
+        // 重写边：source → verify_node → AfterNode
+        var newEdges []biz.EdgeDef
+        for _, edge := range config.Edges {
+            if edge.To == vc.AfterNode {
+                newEdges = append(newEdges, biz.EdgeDef{From: edge.From, To: nodeID})
+            } else {
+                newEdges = append(newEdges, edge)
             }
         }
-        cfg.Edges = append(cfg.Edges, biz.EdgeDef{
-            From: vc.InjectAfter, To: verifyNodeID,
-        })
+        newEdges = append(newEdges, biz.EdgeDef{From: nodeID, To: vc.AfterNode})
 
-        if interruptAfter {
-            cfg.InterruptAfter = append(cfg.InterruptAfter, verifyNodeID)
-        }
+        config.Edges = newEdges
+        config.Nodes = append(config.Nodes, vNode)
+        nodeIDs = append(nodeIDs, nodeID)
     }
+
+    return nodeIDs
 }
 ```
+
+**默认验证配置**（`DefaultVerificationConfigs`）：
+
+| 模式 | 验证节点 | FailureAction |
+|------|---------|---------------|
+| parallel/hybrid | output_format (merge 后) | Skip |
+| parallel/hybrid | task_completion (merge 后) | RetryThenBlock |
+| coordinator | output_format (merge 后) | Skip |
 
 ### 9.5 GAP-3 详细实现：AdaptiveTeamMode
 
@@ -2554,7 +2624,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 | S3 | OrchestrationCache.ToJSON() 递归 RLock 导致死锁 | 提取 `listLocked()` 内部方法，`ToJSON()` 和 `List()` 共用 | `spirit_orchestration_cache.go` |
 | S4 | 超时回调仅转换状态，不触发依赖调度/事件发布/AllDone 检查 | 新增 `TimeoutHandler` 接口（biz 层），`TeamStarter` 实现，`BeforeStart` 阶段注入 | `spirit_team_usecase.go`, `spirit_team.go`, `app.go` |
 | S5 | `interrupted` 状态被 `CheckAllTeamsCompleted` 错误视为终态 | switch 增加 `TeamStatusInterrupted` case；`IsTeamStatusActive` 同步增加 | `spirit_team_usecase.go`, `team_types.go` |
-| FS1 | 前后端 SpiritTeamMode 枚举不一致 | 对齐为 `coordinator/sequential/parallel/critic_loop/swarm/adaptive/direct` | `types.ts`, `TeamTaskCard.vue`, `TeamAssemblyCard.vue`, `TeamProgressCard.vue` |
+| FS1 | 前后端 SpiritTeamMode 枚举不一致 | 对齐为两套独立系统：`SpiritTeamMode`（精灵路由层：coordinator/swarm/direct）+ `TeamMode*`（团队定义层：sequential/parallel/coordinator/critic_loop/swarm/adaptive）。前端 `SpiritTeamMode` 移除 `direct`（精灵路由层内部使用，不暴露给前端），`TeamMode*` 对齐为 6 值 | `types.ts`, `TeamTaskCard.vue`, `TeamAssemblyCard.vue`, `TeamProgressCard.vue` |
 | FS2 | 前后端 SpiritTeamStatus 枚举不一致 | 对齐为 `pending/running/completed/failed/cancelled/interrupted/archived` | `types.ts`, `stores/spirit/index.ts` |
 | FS3 | SynthesisResultCard 使用 v-html 渲染未净化内容 | 替换为 `renderChatMarkdown()`（已通过安全审计） | `SynthesisResultCard.vue` |
 | FS4 | cancelTeam 成功后从列表移除团队 | 改为 `updateTeamStatus(teamId, 'cancelled')`，与后端行为一致 | `stores/spirit/index.ts` |

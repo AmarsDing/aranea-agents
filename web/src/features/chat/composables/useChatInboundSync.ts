@@ -325,7 +325,8 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       console.warn('[envelope] alert.notify received', { sessionId, metadata: env.metadata });
     }
     if (env.type.startsWith('butler.orchestration.')) {
-      console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
+      const spiritStore = useSpiritTeamStore();
+      spiritStore.handleSpiritEnvelope(env);
     }
     if (env.type === 'skill.health_changed' || env.type === 'skill.evolution_proposed') {
       console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });

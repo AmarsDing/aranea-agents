@@ -55,6 +55,9 @@ func (r *deadLetterTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team
 func (r *deadLetterTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *deadLetterTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (r *deadLetterTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.OrchestrationStep) error {
 	return nil
 }

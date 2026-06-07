@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -128,7 +127,7 @@ func TestMapCronError(t *testing.T) {
 		wantNil bool
 	}{
 		{name: "nil", in: nil, wantNil: true},
-		{name: "sql_no_rows", in: sql.ErrNoRows, want404: true},
+		{name: "cron_not_found", in: biz.ErrCronNotFound, want404: true},
 		{name: "runner_disabled", in: biz.ErrCronRunnerDisabled, want503: true},
 		{name: "task_deleted", in: biz.ErrCronTaskDeleted, want404: true},
 		{name: "session_busy", in: biz.ErrCronSessionBusy, want409: true},

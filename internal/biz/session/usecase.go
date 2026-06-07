@@ -731,6 +731,13 @@ func (uc *SessionUsecase) GetRootSession(ctx context.Context, sessionID string) 
 		}
 		sess = root
 	}
+	if sess.RootSessionID != "" {
+		uc.lg.Warn("GetRootSession 达到最大遍历深度，可能存在循环引用",
+			loggateway.StepID("session.root_max_depth"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Int("max_depth", maxDepth),
+		)
+	}
 	return sess, nil
 }
 

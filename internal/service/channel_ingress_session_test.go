@@ -328,6 +328,7 @@ func (s ingressAgentRepo) CountAgentsByProviderAndModel(context.Context, string,
 func (s ingressAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (s ingressAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
 
 func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	const (

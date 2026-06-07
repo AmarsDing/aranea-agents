@@ -18,9 +18,13 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 | Biz 团队并行 | `internal/biz/spirit_team_usecase.go` | P1 |
 | Biz Task DAG | `internal/biz/spirit_task_dag.go` | P2 |
 | Biz 合成引擎 | `internal/biz/spirit_synthesis.go` | P2 |
+| Biz 编排缓存 | `internal/biz/spirit_orchestration_cache.go` | P2 |
+| Biz 精灵模式 | `internal/biz/spirit_mode.go` | P4 |
 | Service 团队组装 | `internal/service/spirit_team.go` | P1 |
 | Service 合成 | `internal/service/spirit_synthesis.go` | P2 |
-| Tools 精灵工具 | `internal/tools/spirit_tools.go` | P1-P2 |
+| Service 精灵编排 | `internal/service/chat_orchestrator_spirit.go` | P4 |
+| Tools 精灵工具 | `internal/tools/spirit_tools.go` + `spirit_complexity.go` | P1-P4 |
+| Tools 编排工具 | `internal/tools/orchestrator/build_graph.go` + `verification.go` + `verify_funcs.go` | P4 |
 | Event | `internal/event/contract/envelope.go` | P1-P2 |
 | 前端 Store | `web/src/stores/spirit/index.ts` | P1-P2 |
 | 前端组件 | `web/src/components/spirit/` | P1-P2 |
@@ -116,15 +120,15 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 
 | ID | 任务 | 影响域 | 验收 |
 |----|------|--------|------|
-| SPO-P4-01 | `ComplexityRuleEngine` 规则引擎 + `assess_complexity` 工具 | `internal/tools/spirit/assess_complexity.go` (新) + `complexity_rules.go` (新) | [ ] |
+| SPO-P4-01 | `ComplexityRuleEngine` 规则引擎 + `assess_complexity` 工具 | `internal/tools/spirit_complexity.go` (新) + `spirit_tools.go` (DEPRECATED) | [ ] |
 | SPO-P4-02 | Spirit Prompt 强制决策规则（assess_complexity 优先） | `internal/scenario/system/prompts/spirit.md` | [ ] |
 | SPO-P4-03 | `chat_orchestrator_spirit.go`：Spirit Team 构建逻辑 + 模式选择 | `internal/service/chat_orchestrator_spirit.go` (新) | [ ] |
 | SPO-P4-04 | `runSingleAgentViaTRPC` 集成 Spirit 模式选择 | `internal/service/chat_orchestrator_turn.go` | [ ] |
 | SPO-P4-05 | `build_orchestration_graph` 工具定义 | `internal/tools/orchestrator/build_graph.go` (新) | [ ] |
-| SPO-P4-06 | `buildGraphConfig` DAG 生成逻辑（并行/串行/混合拓扑） | `internal/tools/orchestrator/build_graph.go` | [ ] |
+| SPO-P4-06 | `BuildGraphConfig` DAG 生成逻辑（并行/串行/混合拓扑） | `internal/tools/orchestrator/build_graph.go` | [ ] |
 | SPO-P4-07 | 验证节点类型定义 + 验证函数（output_format/task_completion） | `internal/tools/orchestrator/verification.go` (新) + `verify_funcs.go` (新) | [ ] |
-| SPO-P4-08 | 验证节点注入到 Graph（addVerificationNodes） | `internal/tools/orchestrator/build_graph.go` | [ ] |
-| SPO-P4-09 | `OrchestratorGraphDeps` 依赖注入 + Wire 绑定 | `internal/service/cli_admin_tools.go` + `cmd/admin/wire.go` | [ ] |
+| SPO-P4-08 | 验证节点注入到 Graph（injectVerificationNodes） | `internal/tools/orchestrator/verification.go` | [ ] |
+| SPO-P4-09 | `GraphBuilderPort` 依赖注入 + Wire 绑定 | `internal/service/cli_admin_tools.go` + `cmd/admin/wire.go` | [ ] |
 | SPO-P4-10 | 编排管家 Prompt Graph 编排决策规则 | `internal/scenario/system/prompts/orchestrator.md` | [ ] |
 
 ---
@@ -154,7 +158,7 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 | 19 | SPO-FE-05 | WS 事件处理 | ✅ |
 | 20 | SPO-BE-15 | TaskDAG 数据模型 + 环检测 | ✅ |
 | 21 | SPO-BE-16 | 拓扑路由算法 | ✅ |
-| 22 | SPO-BE-17 | DependencyScheduler | ✅ |
+| 22 | SPO-BE-17 | DependencyScheduler | ✅ 已创建后删除（死代码清理，调度逻辑由 SpiritTeamController.ScheduleDependentTeams 承担） |
 | 23 | SPO-BE-18 | SynthesisEngine | ✅ |
 | 24 | SPO-BE-19 | SynthesisPort + Service | ✅ |
 | 25 | SPO-BE-20 | synthesize_results 工具 | ✅ |
@@ -242,15 +246,15 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
-| 43 | SPO-P4-01 | ComplexityRuleEngine + assess_complexity 工具 | ✅ 增强 plan_and_execute 内部 ComplexityRuleEngine |
+| 43 | SPO-P4-01 | ComplexityRuleEngine + assess_complexity 工具 | ✅ 增强 plan_and_execute 内部 ComplexityRuleEngine（assess_complexity 已 DEPRECATED，委托 plan_and_execute） |
 | 44 | SPO-P4-02 | Spirit Prompt 强制决策规则 | ✅ DECISION.md + CAPABILITIES.md 更新 |
 | 45 | SPO-P4-03 | chat_orchestrator_spirit.go Team 模式选择 | ✅ SelectSpiritMode + ResolveSpiritMode |
 | 46 | SPO-P4-04 | runSingleAgentViaTRPC 集成 | ✅ 注释标记 + 模式选择可用 |
-| 47 | SPO-P4-05 | build_orchestration_graph 工具 | ✅ internal/tools/orchestrator/build_graph.go |
+| 47 | SPO-P4-05 | build_orchestration_graph 工具 | ✅ internal/tools/orchestrator/build_graph.go（GraphBuilderPort 接口替代 OrchestratorGraphDeps） |
 | 48 | SPO-P4-06 | buildGraphConfig DAG 生成 | ✅ 并行/串行/混合拓扑 |
 | 49 | SPO-P4-07 | 验证节点类型 + 验证函数 | ✅ verification.go + verify_funcs.go |
 | 50 | SPO-P4-08 | 验证节点注入到 Graph | ✅ injectVerificationNodes |
-| 51 | SPO-P4-09 | OrchestratorGraphDeps 依赖注入 | ✅ cli_admin_tools.go 注入 |
+| 51 | SPO-P4-09 | OrchestratorGraphDeps 依赖注入 | ✅ cli_admin_tools.go 注入（已改为 GraphBuilderPort 接口注入） |
 | 52 | SPO-P4-10 | 编排管家 Prompt 决策规则 | ✅ orchestrator.md |
 
 ---
@@ -300,7 +304,7 @@ Spirit Parallel Orchestrator (SPO)：精灵多任务并行编排，支持同一�
 | Synthesis Engine LLM 调用增加成本 | 简单场景用模板合成，仅复杂场景调用 LLM |
 | 规则引擎覆盖不全导致误判 | P0 使用安全默认值 moderate；P1 引入历史数据优化 |
 | Graph DAG 生成不合理 | P0 保留 assemble_team 回退；P1 增加模板缓存 |
-| OrchestratorGraphDeps 循环依赖 | 接口定义在 biz 层，实现注入在 service 层 |
+| OrchestratorGraphDeps 循环依赖 | 接口定义在 biz 层，实现注入在 service 层（已改为 GraphBuilderPort 接口注入） |
 
 ---
 

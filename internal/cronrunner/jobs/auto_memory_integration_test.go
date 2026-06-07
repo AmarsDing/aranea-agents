@@ -86,6 +86,16 @@ func (r *memoryTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Cont
 	return fn(ctx)
 }
 func (r *memoryTestAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (r *memoryTestAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (r *memoryTestAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
+	return 0, nil
+}
+func (r *memoryTestAgentRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
+func (r *memoryTestAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
 
 type fakeConsolidationWriter struct {
 	mu      sync.Mutex

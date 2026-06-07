@@ -38,6 +38,12 @@ func (r *stubImporterRepo) GetOrganizationNodeByKeyAnyState(_ context.Context, k
 func (r *stubImporterRepo) ListOrganizationNodesByParentID(_ context.Context, parentID string) ([]biz.OrganizationNode, error) {
 	return nil, nil
 }
+func (r *stubImporterRepo) ListOrganizationNodesByLevel(_ context.Context, level string) ([]biz.OrganizationNode, error) {
+	return nil, nil
+}
+func (r *stubImporterRepo) ExecInTx(_ context.Context, fn func(context.Context) error) error {
+	return fn(context.Background())
+}
 
 func (r *stubImporterRepo) GetAgentByAgentKey(_ context.Context, agentKey string) (biz.Agent, error) {
 	a, ok := r.agents[agentKey]

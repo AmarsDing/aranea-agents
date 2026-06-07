@@ -83,7 +83,7 @@ func TestNewInvoker_RequiresEnabledCapability(t *testing.T) {
 			},
 		},
 	}}
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	runner := &mockTurnRunner{}
 	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop())
 	ctx := WithCallerAgentID(context.Background(), "caller")

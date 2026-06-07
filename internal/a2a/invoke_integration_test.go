@@ -36,7 +36,7 @@ func TestInvokeIntegration_LocalChatCapability(t *testing.T) {
 			},
 		}},
 	}
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	runner := &mockTurnRunner{}
 	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop())
 	ctx := workspace.WithContext(
@@ -70,7 +70,7 @@ func TestInvokeIntegration_CrossWorkspaceDenied(t *testing.T) {
 			},
 		}},
 	}
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	inv := NewInvoker(&mockTurnRunner{}, uc, nil, loggateway.NewNoop())
 	ctx := WithCallerAgentID(context.Background(), "caller-1")
 	_, err := inv(ctx, "agent-a", "chat", `{"message":"x"}`, 30)

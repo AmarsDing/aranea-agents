@@ -111,6 +111,7 @@ func (parityStubAgents) GetAgentByID(_ context.Context, id string) (biz.Agent, e
 		Model:       "stub-model",
 	}, nil
 }
+func (parityStubAgents) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
 
 func newParityTestRunner(repo *parityMemRepo, bus event.Bus) *Runner {
 	return &Runner{

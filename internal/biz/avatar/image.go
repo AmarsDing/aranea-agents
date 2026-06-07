@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	avatarMainMaxPx  = 512
+	AvatarMainMaxPx  = 512
 	avatarThumbMaxPx = 128
 )
 
@@ -40,7 +40,7 @@ func ProcessAvatarUpload(data []byte, mime string) (main []byte, thumb []byte, w
 	cropped := image.NewRGBA(cropRect)
 	draw.CatmullRom.Scale(cropped, cropRect, img, image.Rect(sx, sy, sx+side, sy+side), draw.Over, nil)
 
-	mainImg := resizeSquare(cropped, avatarMainMaxPx)
+	mainImg := resizeSquare(cropped, AvatarMainMaxPx)
 	thumbImg := resizeSquare(cropped, avatarThumbMaxPx)
 	outMime = "image/jpeg"
 	main, err = encodeJPEG(mainImg, 92)

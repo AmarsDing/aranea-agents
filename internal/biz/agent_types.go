@@ -5,7 +5,12 @@ import (
 	"strings"
 )
 
-const SpiritAgentKey = "__spirit__"
+const (
+	SpiritAgentKey      = "__spirit__"
+	MemoryAgentKey      = "__memory__"
+	SkillsAgentKey      = "__skills__"
+	SystemAdminAgentKey = "__system_admin__"
+)
 
 // Agent is the catalog agent aggregate (legacy agents table + hydrated runtime state).
 type Agent struct {

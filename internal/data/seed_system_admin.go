@@ -14,7 +14,7 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-const systemAdminAgentKey = "__system_admin__"
+const systemAdminAgentKey = biz.SystemAdminAgentKey
 
 func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
@@ -173,7 +173,7 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, q, "__memory__", now, now); err != nil {
+	if _, err := client.ExecContext(ctx, q, biz.MemoryAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.memory_agent"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "seed memory agent: "+err.Error())
 	}
@@ -213,7 +213,7 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, q, "__skills__", now, now); err != nil {
+	if _, err := client.ExecContext(ctx, q, biz.SkillsAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.skills_agent"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "seed skills agent: "+err.Error())
 	}
@@ -293,7 +293,8 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, lg loggateway.Logger
 			name:        "记忆整理周期",
 			description: "每日凌晨3点触发记忆管家执行 dream_cycle：删除 misaligned 记忆、遗忘不活跃记忆、去重、蒸馏",
 			agentID:     "agent___memory__",
-			configJSON:  `{"schedule":"0 3 * * *","dry_run":true}`,
+			// dry_run=true: 默认仅模拟执行，避免首次启动误删记忆。生产环境可通过管理面板关闭。
+			configJSON: `{"schedule":"0 3 * * *","dry_run":true}`,
 		},
 		{
 			id:          "cron_skill_health_scan",
@@ -372,7 +373,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 		return nil
 	}
 	// Query all department-level org nodes that don't have a dept_lead_agent_id
-	rows, err := client.QueryContext(ctx, `SELECT id, key, name, description FROM organization_nodes WHERE level = 'department' AND deleted_at = ''`)
+	rows, err := client.QueryContext(ctx, `SELECT id, org_key, name, description FROM organizations WHERE level = 'department' AND deleted_at = ''`)
 	if err != nil {
 		lg.Warn("seed step failed: query departments", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "query departments: "+err.Error())
@@ -432,7 +433,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 		}
 
 		// Link dept_lead_agent_id on the org node
-		if _, err := client.ExecContext(ctx, `UPDATE organization_nodes SET dept_lead_agent_id = ?, updated_at = ? WHERE id = ? AND (dept_lead_agent_id = '' OR dept_lead_agent_id IS NULL)`, agentID, now, id); err != nil {
+		if _, err := client.ExecContext(ctx, `UPDATE organizations SET dept_lead_agent_id = ?, updated_at = ? WHERE id = ? AND (dept_lead_agent_id = '' OR dept_lead_agent_id IS NULL)`, agentID, now, id); err != nil {
 			lg.Warn("seed step failed: link dept lead to org node",
 				loggateway.StepID("data.seed.dept_lead_agents"),
 				loggateway.Str("dept_id", id),

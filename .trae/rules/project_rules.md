@@ -135,6 +135,9 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 - 有任务 ID 时：只读对应 development.md / blueprint 中该 ID 块
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
+- 实现前显式声明假设，困惑时停下来问，不静默选择（Karpathy: Think Before Coding）
+- 最小代码解决问题：不添加未请求的功能/抽象/灵活性/可配置性（Karpathy: Simplicity First）
+- 每行改动必须可追溯到用户请求；发现无关死代码只提不删（Karpathy: Surgical Changes）
 
 ### 5.1 sddflow 工作流（OpenSpec + Superpowers 编排）
 

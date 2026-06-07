@@ -1,7 +1,6 @@
 package service
 
 import (
-	"database/sql"
 	"errors"
 	"testing"
 
@@ -19,7 +18,7 @@ func TestMapCronError(t *testing.T) {
 		wantReason string
 	}{
 		{"nil", nil, true, 0, ""},
-		{"sql_no_rows", sql.ErrNoRows, false, 404, "CRON"},
+		{"cron_not_found", biz.ErrCronNotFound, false, 404, "CRON"},
 		{"runner_disabled", biz.ErrCronRunnerDisabled, false, 503, "CRON"},
 		{"task_deleted", biz.ErrCronTaskDeleted, false, 404, "CRON"},
 		{"session_busy", biz.ErrCronSessionBusy, false, 409, "CRON_SESSION_BUSY"},

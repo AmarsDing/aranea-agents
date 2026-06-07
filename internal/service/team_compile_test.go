@@ -81,6 +81,9 @@ func (r *compileTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, e
 func (r *compileTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *compileTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestCompileTeamGraph_sequential(t *testing.T) {
 	repo := &compileTeamRepo{team: biz.Team{

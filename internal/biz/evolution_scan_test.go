@@ -22,6 +22,7 @@ func (r *scanAgentRepo) ListAgentCreators(ctx context.Context) ([]AgentCreator, 
 func (r *scanAgentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
 	return AgentRuntimeSettings{}, context.Canceled
 }
+func (r *scanAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
 
 func TestScanAll_joinsPerAgentErrors(t *testing.T) {
 	uc := &EvolutionUsecase{

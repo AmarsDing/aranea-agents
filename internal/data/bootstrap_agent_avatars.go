@@ -12,10 +12,10 @@ func ensureAgentAvatars(ctx context.Context, entClient *ent.Client, lg loggatewa
 	if entClient == nil {
 		return nil
 	}
-	repo := &avatarRepo{data: &Data{entClient: entClient, readClient: entClient, rw: NewReadWriteClient(entClient, entClient)}}
-	if err := biz.EnsureAgentAvatars(ctx, repo); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.agent_avatars"), loggateway.Err(err))
-		return err
-	}
-	return nil
+	d := &Data{entClient: entClient, readClient: entClient, rw: NewReadWriteClient(entClient, entClient), lg: lg}
+	repo := &avatarRepo{data: d}
+	// 用事务包裹所有头像操作，减少 SQLite WAL 锁开销
+	return d.ExecInTx(ctx, func(txCtx context.Context) error {
+		return biz.EnsureAgentAvatars(txCtx, repo)
+	})
 }

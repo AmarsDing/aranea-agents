@@ -510,7 +510,7 @@ func TestPgoDefaultFilesV2(t *testing.T) {
 		{"YES", true},
 		{"0", false},
 		{"false", false},
-		{"", false},
+		{"", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.envVal, func(t *testing.T) {

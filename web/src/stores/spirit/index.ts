@@ -256,6 +256,18 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         }
         break;
 
+      case 'spirit_team_cancelled':
+        if (teamId) {
+          updateTeamStatus(teamId, 'cancelled');
+        }
+        break;
+
+      case 'spirit_team_interrupted':
+        if (teamId) {
+          updateTeamStatus(teamId, 'interrupted');
+        }
+        break;
+
       case 'spirit_team_progress':
         if (teamId) {
           const pct = Number(md.progress_pct ?? 0);
@@ -360,6 +372,35 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         {
           const payload = md as unknown as SpiritOrchestrationInterruptedPayload;
           orchestrationInterrupted.value = payload;
+        }
+        break;
+
+      // --- Butler orchestration envelope types (routed from useChatInboundSync) ---
+
+      case 'butler.orchestration.started':
+        // Butler orchestration started — no specific state update needed,
+        // the spirit_plan_created / spirit_orchestration_started events
+        // handle the detailed state transitions.
+        break;
+
+      case 'butler.orchestration.completed':
+        // Butler orchestration completed — the spirit_team_completed /
+        // spirit_teams_all_completed events handle the detailed state transitions.
+        break;
+
+      case 'butler.orchestration.failed':
+        // Butler orchestration failed — mark all pending/running teams
+        // under the current spirit session as failed if no specific team
+        // event was emitted.
+        {
+          const phase = String(md.phase ?? '');
+          const errMsg = String(md.error ?? '');
+          // If a specific team_id is provided, update that team.
+          if (teamId) {
+            updateTeamStatus(teamId, 'failed');
+          }
+          // Log the failure for debugging.
+          console.warn(`[spirit] Butler orchestration failed at phase: ${phase}`, errMsg);
         }
         break;
     }

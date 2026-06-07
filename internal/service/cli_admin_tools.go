@@ -129,7 +129,7 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	allocator := o.team.AgentAllocator
 	orchestrator := o.team.TaskOrchestrator
 	if planner != nil && allocator != nil && orchestrator != nil {
-		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.td.Pipeline.Bus, o.lg))
+		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler, o.td.Pipeline.Bus, o.lg))
 		out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg))
 		out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg))
 	}
@@ -141,6 +141,8 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 
 	// Graph orchestration tool for complex multi-agent DAG execution.
 	// TODO(debt): wire GraphBuilderPort implementation for build_orchestration_graph.
+	// Currently the tool only generates Graph config without executing it.
+	// When GraphBuilderPort is wired, the tool will also execute the built graph.
 	out = append(out, orchtools.NewBuildOrchestrationGraphTool(nil))
 
 	return out
@@ -150,8 +152,7 @@ func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) 
 	if o == nil {
 		return nil
 	}
-	settings, err := o.td.ReadDeps.Agents.GetAgentRuntimeSettings(ctx, ag.ID)
-	if err != nil || !settings.EvolutionSkillEvolve {
+	if strings.TrimSpace(ag.AgentKey) != biz.SkillsAgentKey {
 		return nil
 	}
 	return skills_butler.RegisterAll(skills_butler.Deps{
@@ -166,7 +167,7 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 	if o == nil {
 		return nil
 	}
-	if strings.TrimSpace(ag.AgentKey) != "__memory__" {
+	if strings.TrimSpace(ag.AgentKey) != biz.MemoryAgentKey {
 		return nil
 	}
 	return memory_butler.RegisterAll(memory_butler.Deps{

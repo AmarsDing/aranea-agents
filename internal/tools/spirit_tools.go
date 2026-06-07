@@ -53,17 +53,19 @@ type planAndExecuteDeps struct {
 	planner      biz.TaskPlannerPort
 	allocator    biz.AgentAllocatorPort
 	orchestrator biz.TaskOrchestratorPort
+	teamQuery    SpiritTeamQueryPort
 	bus          contract.Bus
 	lg           loggateway.Logger
 }
 
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
-func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, bus contract.Bus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, bus contract.Bus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
 	deps := planAndExecuteDeps{
 		planner:      planner,
 		allocator:    allocator,
 		orchestrator: orchestrator,
+		teamQuery:    teamQuery,
 		bus:          bus,
 		lg:           lg,
 	}
@@ -88,6 +90,22 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 					"mode":        input.Mode,
 				}
 				deps.bus.Publish(ctx, env)
+			}
+
+			// Check parallel quota before proceeding.
+			if deps.teamQuery != nil {
+				maxParallel := deps.teamQuery.GetMaxParallelTeams(ctx, spiritSessionID)
+				if maxParallel > 0 {
+					activeTeams, listErr := deps.teamQuery.ListActiveTeams(ctx, spiritSessionID)
+					if listErr != nil {
+						deps.lg.Warn("查询活跃团队列表失败，跳过配额检查",
+							loggateway.StepID("spirit.quota_check_err"),
+							loggateway.Err(listErr),
+						)
+					} else if len(activeTeams) >= maxParallel {
+						return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", fmt.Sprintf("并行团队数已达上限 (%d/%d)，请等待当前团队完成后再试", len(activeTeams), maxParallel))
+					}
+				}
 			}
 
 			var steps []biztypes.OrchestrationStepRecord
@@ -123,12 +141,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 2: Allocate
-			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
-			out.Steps = append(out.Steps, allocStep)
-			if allocErr != nil {
-				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
-				return out, nil
-			}
+		allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
+		out.Steps = append(out.Steps, allocStep)
+		if allocErr != nil {
+			publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
+			return out, nil
+		}
 
 			// Fill agent keys from allocation into subtask summaries.
 			for i := range out.SubTasks {
@@ -141,12 +159,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 3: Orchestrate
-			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
-			out.Steps = append(out.Steps, orchStep)
-			if orchErr != nil {
-				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
-				return out, nil
-			}
+		handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
+		out.Steps = append(out.Steps, orchStep)
+		if orchErr != nil {
+			publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "orchestrate", orchErr.Error())
+			return out, nil
+		}
 
 			out.OrchestrationID = handle.ID
 			publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))

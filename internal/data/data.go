@@ -491,11 +491,10 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 			if p1Ctx.Err() != nil {
 				return
 			}
-			p1Err = err
-			st.lg.Error("P1 startup step failed",
+			// seedP1Data is best-effort: errors are already logged inside,
+			// do NOT call MarkFailed — service should still become ready.
+			st.lg.Warn("P1 seed completed with errors, service will still be ready",
 				loggateway.StepID("data.p1"), loggateway.Str("step", "seedP1Data"), loggateway.Err(err))
-			st.readiness.MarkFailed("seedP1Data: " + err.Error())
-			return
 		}
 
 		if p1Err == nil {
@@ -781,63 +780,64 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 
 func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	lg := d.lg
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
 
 	// P1 种子步骤全部幂等（ON CONFLICT UPDATE/DO NOTHING），
 	// 采用 best-effort 模式：收集错误但不中断，下次重启时幂等重试。
+	// 每个步骤使用独立的 30 秒 context，避免前面的步骤消耗共享 context 时间。
 	var seedErrs []error
 
-	seedStep := func(stepID string, fn func() error) {
-		if err := fn(); err != nil {
+	seedStep := func(stepID string, fn func(ctx context.Context) error) {
+		stepCtx, stepCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer stepCancel()
+		if err := fn(stepCtx); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID(stepID), loggateway.Err(err))
 			seedErrs = append(seedErrs, fmt.Errorf("%s: %w", stepID, err))
 		}
 	}
 
-	seedStep("data.seed.channel_avatars", func() error {
+	seedStep("data.seed.channel_avatars", func(ctx context.Context) error {
 		return ensureChannelPlatformAvatars(ctx, entClient, lg)
 	})
-	seedStep("data.seed.agent_avatars", func() error {
+	seedStep("data.seed.agent_avatars", func(ctx context.Context) error {
 		return ensureAgentAvatars(ctx, entClient, lg)
 	})
-	seedStep("data.seed.system_admin_agent", func() error {
+	seedStep("data.seed.system_admin_agent", func(ctx context.Context) error {
 		return SeedSystemAdminAgent(ctx, entClient, lg)
 	})
-	seedStep("data.seed.spirit_agent", func() error {
+	seedStep("data.seed.spirit_agent", func(ctx context.Context) error {
 		return SeedSpiritAgent(ctx, entClient, lg)
 	})
-	seedStep("data.seed.memory_agent", func() error {
+	seedStep("data.seed.memory_agent", func(ctx context.Context) error {
 		return SeedMemoryAgent(ctx, entClient, lg)
 	})
-	seedStep("data.seed.skills_agent", func() error {
+	seedStep("data.seed.skills_agent", func(ctx context.Context) error {
 		return SeedSkillsAgent(ctx, entClient, lg)
 	})
-	seedStep("data.seed.cli_admin_tools", func() error {
+	seedStep("data.seed.cli_admin_tools", func(ctx context.Context) error {
 		return SeedBuiltinCLIAdminTools(ctx, entClient, lg)
 	})
 
 	scenarioDir := biz.ScenarioDir()
 
-	seedStep("data.seed.pack_builtin_templates", func() error {
+	seedStep("data.seed.pack_builtin_templates", func(ctx context.Context) error {
 		return SeedPackBuiltinTemplates(ctx, entClient, scenarioDir, lg)
 	})
-	seedStep("data.seed.pack_builtin_templates_v2", func() error {
+	seedStep("data.seed.pack_builtin_templates_v2", func(ctx context.Context) error {
 		return SeedPackBuiltinTemplatesV2(ctx, entClient, scenarioDir, lg)
 	})
-	seedStep("data.seed.spirit_prompt_files", func() error {
+	seedStep("data.seed.spirit_prompt_files", func(ctx context.Context) error {
 		return SeedSpiritPromptFiles(ctx, entClient, scenarioDir, lg)
 	})
-	seedStep("data.seed.butler_prompt_files", func() error {
+	seedStep("data.seed.butler_prompt_files", func(ctx context.Context) error {
 		return SeedButlerPromptFiles(ctx, entClient, scenarioDir, lg)
 	})
-	seedStep("data.seed.cron_tasks", func() error {
+	seedStep("data.seed.cron_tasks", func(ctx context.Context) error {
 		return SeedCronTasks(ctx, entClient, lg)
 	})
-	seedStep("data.seed.dept_lead_agents", func() error {
+	seedStep("data.seed.dept_lead_agents", func(ctx context.Context) error {
 		return SeedDeptLeadAgents(ctx, entClient, lg)
 	})
-	seedStep("data.seed.dept_lead_prompt_files", func() error {
+	seedStep("data.seed.dept_lead_prompt_files", func(ctx context.Context) error {
 		return SeedDeptLeadPromptFiles(ctx, entClient, scenarioDir, lg)
 	})
 

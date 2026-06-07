@@ -61,6 +61,14 @@ func (m *memAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) er
 	return fn(ctx)
 }
 func (m *memAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
+func (m *memAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (m *memAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) { return 0, nil }
+func (m *memAgentRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
+func (m *memAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
+	return a, nil
+}
 
 func TestResolveBizAgentByKey(t *testing.T) {
 	repo := &memAgentRepo{byKey: map[string]biz.Agent{

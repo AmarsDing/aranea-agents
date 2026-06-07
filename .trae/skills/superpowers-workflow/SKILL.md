@@ -62,6 +62,17 @@ Find the target module card and check:
 - Frontend Vue code → `aranea-frontend-guide` skill
 - Go OOP design → `go-oop-guide` skill
 
+### 1.4 State Assumptions (Karpathy Principle)
+
+Before writing any code, explicitly state:
+
+- **Declare assumptions** — What assumptions are you making about the task? Write them out.
+- **Present alternatives** — If multiple interpretations exist, present them. Don't pick silently.
+- **Stop when confused** — If something is unclear, stop and ask for clarification before proceeding. Don't guess and run.
+- **Simplicity check** — Is there a simpler approach? If so, say so and push back when warranted.
+
+This step ensures you think before coding, not after making mistakes.
+
 ---
 
 ## Phase 2: TDD Implementation (RED-GREEN-REFACTOR)

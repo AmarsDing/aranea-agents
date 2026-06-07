@@ -7,7 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-func TestisTurnMessageQueued(t *testing.T) {
+func TestIsTurnMessageQueued(t *testing.T) {
 	if !isTurnMessageQueued(ErrTurnMessageQueued) {
 		t.Fatal("expected ErrTurnMessageQueued to match")
 	}
@@ -16,7 +16,7 @@ func TestisTurnMessageQueued(t *testing.T) {
 	}
 }
 
-func TestisTurnBusyError(t *testing.T) {
+func TestIsTurnBusyError(t *testing.T) {
 	if !isTurnBusyError(turnBusyError()) {
 		t.Fatal("expected busy error")
 	}

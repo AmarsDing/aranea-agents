@@ -13,8 +13,7 @@
 
 | 管家 | 用途 | 调用方式 |
 |------|------|----------|
-| 编排管家 | 跨行业任务编排，动态组建团队 | assemble_team |
-| 系统管家 | 管理 Skill、MCP、行业安装 | assemble_team + agent_keys=["__system_admin__"] |
-| 记忆管家 | 记忆整理、选择性记忆、遗忘策略 | assemble_team + agent_keys=["__memory__"] |
-| 技能管家 | 技能进化/消亡、工具权重优化 | assemble_team + agent_keys=["__skills__"] |
-| 监控管家 | 系统健康监控 | assemble_team + agent_keys=["__monitor__"] |
+| 编排管家 | 跨行业任务编排，动态组建团队 | plan_and_execute(mode=coordinator) |
+| 系统管家 | 管理 Skill、MCP、行业安装 | plan_and_execute + agent_keys=["__system_admin__"] |
+| 记忆管家 | 记忆整理、选择性记忆、遗忘策略 | plan_and_execute + agent_keys=["__memory__"] |
+| 技能管家 | 技能进化/消亡、工具权重优化 | plan_and_execute + agent_keys=["__skills__"] |

@@ -3,10 +3,12 @@ package cli_admin
 import (
 	"strings"
 	"testing"
+
+	"aranea-agents/internal/biz"
 )
 
 func TestIsCLIAdminAllowed_SystemAdminKey(t *testing.T) {
-	if !IsCLIAdminAllowed("__system_admin__") {
+	if !IsCLIAdminAllowed(biz.SystemAdminAgentKey) {
 		t.Fatal("expected __system_admin__ to be allowed")
 	}
 }

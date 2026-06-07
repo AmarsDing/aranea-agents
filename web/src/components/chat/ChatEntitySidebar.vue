@@ -227,8 +227,8 @@ function toEntityItems(agents: Agent[]): EntityItem[] {
 }
 
 // --- Team lists ---
-const activeTeamList = computed(() => props.spiritTeams.filter((t) => t.status !== 'completed'));
-const completedTeamList = computed(() => props.spiritTeams.filter((t) => t.status === 'completed'));
+const activeTeamList = computed(() => props.spiritTeams.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived'));
+const completedTeamList = computed(() => props.spiritTeams.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'));
 
 // --- Agent selection ---
 function onSelectAgent(item: EntityItem) {

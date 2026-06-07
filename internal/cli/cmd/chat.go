@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"aranea-agents/internal/cli"
+	"aranea-agents/internal/cli/config"
 	"aranea-agents/internal/cli/repl"
 
 	"github.com/spf13/cobra"
@@ -42,7 +43,7 @@ func NewChatCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&sessionID, "session", "", "要附加的会话 ID（留空则创建新会话）")
-	cmd.Flags().StringVar(&agentKey, "agent", "__system_admin__", "指定 Agent key（默认系统管家）")
+	cmd.Flags().StringVar(&agentKey, "agent", config.DefaultAgentKey, "指定 Agent key（默认系统管家）")
 
 	return cmd
 }

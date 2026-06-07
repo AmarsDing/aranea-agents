@@ -498,7 +498,10 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 
 	provider, model := resolvePlannerProviderModel()
 	if provider == "" || model == "" {
-		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation")
+		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, "allocator.fallback_model", "AgentAllocator")
+	}
+	if provider == "" || model == "" {
+		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
@@ -640,7 +643,10 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 
 	provider, model := resolvePlannerProviderModel()
 	if provider == "" || model == "" {
-		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation")
+		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, "allocator.fallback_model", "AgentAllocator")
+	}
+	if provider == "" || model == "" {
+		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)

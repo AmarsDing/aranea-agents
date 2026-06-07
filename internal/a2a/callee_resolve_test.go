@@ -67,7 +67,7 @@ func TestResolveInvokeTarget_LocalDisabledDoesNotFallbackRemote(t *testing.T) {
 			"agent-1": {ID: "agent-1", Enabled: true},
 		},
 	}
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	_, err := ResolveInvokeTarget(context.Background(), uc, "agent-1")
 	if err == nil {
 		t.Fatal("expected forbidden for disabled local card")
@@ -81,7 +81,7 @@ func TestResolveInvokeTarget_RemoteWhenNoLocalCard(t *testing.T) {
 			"remote-1": {ID: "remote-1", Enabled: true, DiscoveredCard: biz.A2AAgentCard{Enabled: true}},
 		},
 	}
-	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	target, err := ResolveInvokeTarget(context.Background(), uc, "remote-1")
 	if err != nil || target.Kind != InvokeTargetRemote {
 		t.Fatalf("got %#v err=%v", target, err)

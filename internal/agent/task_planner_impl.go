@@ -14,9 +14,13 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/google/uuid"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 )
+
+// minSubTasksForParallel is the minimum number of subtasks to consider
+// parallel or coordinator strategies instead of single-agent execution.
+const minSubTasksForParallel = 3
 
 // taskPlannerImpl implements biz.TaskPlannerPort.
 type taskPlannerImpl struct {
@@ -171,7 +175,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			if dag != nil {
 				if len(dag.RootIDs) == len(dag.Nodes) {
 					// All independent
-					if len(subTasks) >= 3 {
+					if len(subTasks) >= minSubTasksForParallel {
 						strategy = biz.StrategyParallel
 						strategyReason = fmt.Sprintf("基于 DAG 分析: %d 个独立子任务，选择并行策略", len(subTasks))
 					}
@@ -179,7 +183,8 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 					strategy = biz.StrategyDAG
 					strategyReason = fmt.Sprintf("基于 DAG 分析: %d 个子任务存在依赖关系，选择 DAG 策略", len(subTasks))
 				}
-				if len(subTasks) >= 3 {
+				// Only fall back to coordinator when DAG has no clear structure
+				if strategy != biz.StrategyParallel && strategy != biz.StrategyDAG && len(subTasks) >= minSubTasksForParallel {
 					strategy = biz.StrategyCoordinator
 					strategyReason = fmt.Sprintf("基于 DAG 分析: %d 个子任务需要协调，选择 coordinator 策略", len(subTasks))
 				}
@@ -198,22 +203,22 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 
 	// Step 6: Build and persist TaskPlan
 	plan := &biz.TaskPlan{
-		ID:                  "tp_" + uuid.NewString(),
-		SpiritSessionID:     input.SpiritSessionID,
-		TraceID:             traceID,
-		UserMessage:         input.UserMessage,
-		IntentArtifactJSON:  intentArtifactJSON,
-		ComplexityLevel:     complexityLevel,
-		ComplexityScore:     complexityScore,
-		Dimensions:          dimensions,
-		SubTasks:            subTasks,
-		TaskDAG:             dag,
-		DecomposeReason:     decomposeReason,
-		Strategy:            strategy,
-		StrategyReason:      strategyReason,
-		TopologyHint:        topologyHint,
-		MemoryHit:           nil, // Memory hit is handled in Step 0; normal path has no cache hit
-		Status:              biz.PlanStatusDraft,
+		ID:                 "tp_" + uuid.NewString(),
+		SpiritSessionID:    input.SpiritSessionID,
+		TraceID:            traceID,
+		UserMessage:        input.UserMessage,
+		IntentArtifactJSON: intentArtifactJSON,
+		ComplexityLevel:    complexityLevel,
+		ComplexityScore:    complexityScore,
+		Dimensions:         dimensions,
+		SubTasks:           subTasks,
+		TaskDAG:            dag,
+		DecomposeReason:    decomposeReason,
+		Strategy:           strategy,
+		StrategyReason:     strategyReason,
+		TopologyHint:       topologyHint,
+		MemoryHit:          nil, // Memory hit is handled in Step 0; normal path has no cache hit
+		Status:             biz.PlanStatusDraft,
 	}
 
 	impl.lg.Info("持久化 TaskPlan",
@@ -266,13 +271,13 @@ func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adj
 	}
 	if adjustments.AddSubTask != nil {
 		newTask := biz.SubTask{
-			ID:                  "st_" + uuid.NewString(),
-			Name:                adjustments.AddSubTask.Name,
-			Description:         adjustments.AddSubTask.Description,
-			DependsOn:           adjustments.AddSubTask.DependsOn,
+			ID:                   "st_" + uuid.NewString(),
+			Name:                 adjustments.AddSubTask.Name,
+			Description:          adjustments.AddSubTask.Description,
+			DependsOn:            adjustments.AddSubTask.DependsOn,
 			RequiredCapabilities: adjustments.AddSubTask.RequiredCapabilities,
-			Priority:            adjustments.AddSubTask.Priority,
-			EstimatedComplexity: 0.5,
+			Priority:             adjustments.AddSubTask.Priority,
+			EstimatedComplexity:  0.5,
 		}
 		plan.SubTasks = append(plan.SubTasks, newTask)
 	}
@@ -515,7 +520,11 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 	// Use the default provider/model from catalog (same pattern as intent pass)
 	provider, model := resolvePlannerProviderModel()
 	if provider == "" || model == "" {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "no provider/model configured for task decomposition")
+		// Fallback: use the first available model from catalog
+		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, biz.SpiritStepPlannerAssess, "TaskPlanner")
+	}
+	if provider == "" || model == "" {
+		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "no provider/model configured for task decomposition (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
@@ -599,6 +608,30 @@ func getEnvOrDefault(key, defaultVal string) string {
 	return v
 }
 
+// resolveFallbackProviderModelFromCatalog attempts to find the first available
+// provider/model from the catalog when environment variables are not configured.
+// Shared by TaskPlanner and AgentAllocator.
+func resolveFallbackProviderModelFromCatalog(ctx context.Context, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger, stepID, component string) (string, string) {
+	if catalog == nil {
+		return "", ""
+	}
+	models, err := catalog.List(ctx)
+	if err != nil || len(models) == 0 {
+		return "", ""
+	}
+	for _, m := range models {
+		if m.Provider != "" && m.Model != "" {
+			lg.Info(component+": using fallback provider/model from catalog",
+				loggateway.StepID(stepID),
+				loggateway.Str("provider", m.Provider),
+				loggateway.Str("model", m.Model),
+			)
+			return m.Provider, m.Model
+		}
+	}
+	return "", ""
+}
+
 // parseDecompositionOutput parses the LLM output into SubTask slice.
 func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 	text = strings.TrimSpace(text)
@@ -614,13 +647,13 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 	}
 
 	var rawTasks []struct {
-		ID                  string   `json:"id"`
-		Name                string   `json:"name"`
-		Description         string   `json:"description"`
-		DependsOn           []string `json:"depends_on"`
+		ID                   string   `json:"id"`
+		Name                 string   `json:"name"`
+		Description          string   `json:"description"`
+		DependsOn            []string `json:"depends_on"`
 		RequiredCapabilities []string `json:"required_capabilities"`
-		Priority            int      `json:"priority"`
-		EstimatedComplexity float64  `json:"estimated_complexity"`
+		Priority             int      `json:"priority"`
+		EstimatedComplexity  float64  `json:"estimated_complexity"`
 	}
 
 	if err := json.Unmarshal([]byte(text), &rawTasks); err != nil {
@@ -645,13 +678,13 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 			rt.EstimatedComplexity = 0.5
 		}
 		subTasks = append(subTasks, biz.SubTask{
-			ID:                  rt.ID,
-			Name:                rt.Name,
-			Description:         rt.Description,
-			DependsOn:           rt.DependsOn,
+			ID:                   rt.ID,
+			Name:                 rt.Name,
+			Description:          rt.Description,
+			DependsOn:            rt.DependsOn,
 			RequiredCapabilities: rt.RequiredCapabilities,
-			Priority:            rt.Priority,
-			EstimatedComplexity: rt.EstimatedComplexity,
+			Priority:             rt.Priority,
+			EstimatedComplexity:  rt.EstimatedComplexity,
 		})
 	}
 
@@ -792,13 +825,13 @@ func mergeSubTasks(tasks []biz.SubTask, ids []string) []biz.SubTask {
 		if idSet[t.ID] {
 			if first {
 				merged = biz.SubTask{
-					ID:                  t.ID,
-					Name:                t.Name,
-					Description:         t.Description,
-					DependsOn:           t.DependsOn,
+					ID:                   t.ID,
+					Name:                 t.Name,
+					Description:          t.Description,
+					DependsOn:            t.DependsOn,
 					RequiredCapabilities: t.RequiredCapabilities,
-					Priority:            t.Priority,
-					EstimatedComplexity: t.EstimatedComplexity,
+					Priority:             t.Priority,
+					EstimatedComplexity:  t.EstimatedComplexity,
 				}
 				first = false
 			} else {
@@ -833,13 +866,13 @@ func splitSubTask(tasks []biz.SubTask, id string) []biz.SubTask {
 		if t.ID == id {
 			// Split into two: original + new
 			split := biz.SubTask{
-				ID:                  id + "_b",
-				Name:                t.Name + " (Part 2)",
-				Description:         t.Description,
-				DependsOn:           []string{id},
+				ID:                   id + "_b",
+				Name:                 t.Name + " (Part 2)",
+				Description:          t.Description,
+				DependsOn:            []string{id},
 				RequiredCapabilities: t.RequiredCapabilities,
-				Priority:            t.Priority + 1,
-				EstimatedComplexity: t.EstimatedComplexity / 2,
+				Priority:             t.Priority + 1,
+				EstimatedComplexity:  t.EstimatedComplexity / 2,
 			}
 			t.Name = t.Name + " (Part 1)"
 			t.EstimatedComplexity = t.EstimatedComplexity / 2
@@ -914,11 +947,11 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 	// so that the existing frontend continues to work during migration.
 	dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamAssembled, "task-planner", spiritSessionID)
 	dualEnv.Metadata = map[string]any{
-		"team_id":         plan.ID,
-		"team_name":       "Task Plan: " + biz.TruncateRunes(plan.UserMessage, 50),
-		"task_summary":    biz.TruncateRunes(plan.UserMessage, 200),
-		"mode":            string(plan.Strategy),
-		"total_steps":     len(plan.SubTasks),
+		"team_id":           plan.ID,
+		"team_name":         "Task Plan: " + biz.TruncateRunes(plan.UserMessage, 50),
+		"task_summary":      biz.TruncateRunes(plan.UserMessage, 200),
+		"mode":              string(plan.Strategy),
+		"total_steps":       len(plan.SubTasks),
 		"spirit_session_id": spiritSessionID,
 	}
 	impl.bus.Publish(ctx, dualEnv)

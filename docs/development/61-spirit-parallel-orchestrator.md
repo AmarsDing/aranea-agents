@@ -226,27 +226,29 @@ M59 实现了精灵模式基础骨架：精灵为唯一对话入口，LLM 自主
 **团队生命周期扩展**：
 
 ```
-assembling → running → completed → archived
-                     → failed → retrying → running
-                     → waiting_human → running
-                     → cancelled
-         → waiting_deps → running  (新增：等待依赖团队完成)
+pending → running → completed → archived
+                 → failed → archived
+                 → cancelled → archived
+                 → interrupted → running  (可恢复)
 ```
+
+> 注：旧状态 `assembling`/`assembled`/`waiting_deps` 已统一为 `pending`/`running`。
+> `blocked` 为虚拟状态，仅用于级联阻塞结果展示，不持久化。
 
 ### 4.2 Task DAG 模型
 
 ```
 TaskNode:
-  id: string
-  task_prompt: string
-  agent_ids: []string
-  mode: string              // parallel / sequential / coordinator / hybrid
-  dependencies: []string    // 依赖的 TaskNode ID
-  priority: int             // 优先级（0=最高）
+  id: TaskNodeID
+  task_name: string
+  description: string
+  depends_on: []TaskNodeID    // 依赖的 TaskNode ID
+  mode: string                // parallel / sequential / coordinator / hybrid
+  agent_keys: []string        // 参与的 Agent key
 
 TaskDAG:
-  nodes: []TaskNode
-  spirit_session_id: string
+  nodes: map[TaskNodeID]*TaskNode
+  roots: []TaskNodeID         // 无入边的根节点
 ```
 
 **拓扑路由规则**（对齐 AdaptOrch）：
@@ -322,6 +324,12 @@ Team C completed → spirit_team_completed → Spirit Observer
 | 0.5 ~ 0.7 | 记录但不操作 |
 | 0.3 ~ 0.5 | 生成编排优化建议 |
 | < 0.3 | 生成优化建议 + 告警 |
+
+**DQ Score 三元分解**：`Validity(×0.4) + Specificity(×0.3) + Correctness(×0.3)`
+
+- **Validity**：团队是否成功完成（completed=1.0, 否则=0.0）
+- **Specificity**：结果摘要长度和结构化程度（基准 0.7，>50 字符 0.85，>100 字符 1.0，KeyFindings +0.15）
+- **Correctness**：基于执行时长的代理指标（每分钟 -0.1，上限 5 分钟惩罚）
 
 ### 4.7 任务复杂度评估
 

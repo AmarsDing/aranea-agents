@@ -70,6 +70,9 @@ func (s stubTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error
 func (s stubTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (s stubTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 type channelTestAgentRepo struct {
 	key string
@@ -131,6 +134,7 @@ func (s channelTestAgentRepo) CountAgentsByProviderAndModel(context.Context, str
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (s channelTestAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
 
 type stubGraphExecutor struct {
 	lastGraphID string

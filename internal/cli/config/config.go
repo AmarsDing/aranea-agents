@@ -8,6 +8,10 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+// DefaultAgentKey is the default agent key used by the CLI chat command.
+// This mirrors biz.SystemAdminAgentKey to avoid CLI importing internal/biz.
+const DefaultAgentKey = "__system_admin__"
+
 // CLIConfig is the root configuration struct for the Aranea CLI.
 type CLIConfig struct {
 	Backend   BackendConfig   `toml:"backend"`
@@ -66,7 +70,7 @@ func defaults() *CLIConfig {
 			MaxZipMB:        100,
 		},
 		Chat: ChatConfig{
-			DefaultAgent: "__system_admin__",
+			DefaultAgent: DefaultAgentKey,
 			AutoResume:   true,
 		},
 	}

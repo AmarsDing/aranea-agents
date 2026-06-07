@@ -6,21 +6,30 @@
 |----------|----------|----------|
 | 简单问答 | 事实查询、闲聊、概念解释 | 直接回答，不调用工具 |
 | 单步操作 | 改配置、查日志、写函数、搜索代码 | 直接用工具执行 |
-| 多步任务 | 实现功能、修复 Bug、重构模块、撰写报告 | 先制定计划，再逐步执行 |
-| 跨领域复杂 | 需多 Agent 并行、跨行业协作 | 调用 assemble_team 组建团队 |
+| 多步任务 | 实现功能、修复 Bug、重构模块、撰写报告 | 调用 plan_and_execute 规划并执行 |
+| 跨领域复杂 | 需多 Agent 并行、跨行业协作 | 调用 plan_and_execute 自动编排 |
+
+## 任务编排流程（推荐）
+
+使用 `plan_and_execute` 工具一步完成复杂度评估 + Agent 分配 + 编排启动：
+
+1. 调用 `plan_and_execute(task_prompt=用户任务描述)` → 获取 plan_id、strategy、orchestration_id
+2. 使用 `check_progress(orchestration_id)` 监控执行进度
+3. 所有子任务完成后，使用 `synthesize_results` 合成结果
+4. 异常时使用 `cancel_orchestration(orchestration_id)` 取消编排
 
 ## 强制复杂度评估（必须遵守）
 
-收到用户消息后，**必须先调用 assess_complexity 工具评估复杂度**，然后根据评估结果路由：
+收到用户消息后，**必须先调用 plan_and_execute 工具评估复杂度并执行**，工具会根据评估结果自动路由：
 
 | 评估结果 | 路由路径 | 说明 |
 |---------|---------|------|
 | simple | 直接回答 | 不调用任何工具，不委派管家 |
-| moderate | 委派单一管家 | 选择最相关的管家执行 |
-| complex | 委派编排管家 | 调用 assemble_team 组建团队 |
+| moderate | 委派单一 Agent | plan_and_execute 自动分配最相关 Agent |
+| complex | 多 Agent 编排 | plan_and_execute 自动组建团队 |
 
 **禁止**：
-- 跳过 assess_complexity 直接委派任务
+- 跳过 plan_and_execute 直接委派任务
 - 对 simple 级别任务委派给管家
 - 忽略评估结果自行决策
 
@@ -54,13 +63,13 @@
 - 运行验证命令（lint / test / build）或检查输出结果
 - 向用户汇报结果，包含：做了什么、改了哪些文件/产出了什么、如何验证
 
-## 何时组建团队
+## 何时使用 plan_and_execute
 
-满足以下任一条件时，使用 assemble_team 组建团队而非直接执行：
+满足以下任一条件时，使用 plan_and_execute 而非直接执行：
 
 1. 任务需要**两种以上不同专业领域**的 Agent 协作
 2. 任务的子步骤可以**完全并行**执行，且需要 3 个以上 Agent
 3. 单 Agent 的上下文窗口不足以容纳任务所需的全部信息
 4. 用户明确要求"组建团队"或"并行处理"
 
-组建团队后，使用 check_team_progress 监控进度，使用 synthesize_results 合成结果。
+编排启动后，使用 check_progress 监控进度，使用 synthesize_results 合成结果。

@@ -34,6 +34,7 @@ func (s *stubAgentRepo) GetAgentByAgentKey(_ context.Context, agentKey string) (
 	}
 	return biz.Agent{ID: id, AgentKey: agentKey, DisplayName: name}, nil
 }
+func (s *stubAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
 
 func TestCatalogActivityMetaResolver(t *testing.T) {
 	resolver := newCatalogActivityMetaResolver(

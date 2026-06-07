@@ -15,6 +15,8 @@ import (
 	"context"
 	"fmt"
 
+	"aranea-agents/internal/biz"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -69,7 +71,7 @@ type AgentItem struct {
 
 // IsCLIAdminAllowed returns true only for the system admin agent.
 func IsCLIAdminAllowed(agentKey string) bool {
-	return agentKey == "__system_admin__"
+	return agentKey == biz.SystemAdminAgentKey
 }
 
 // RegisterAll returns all cli_admin tools instantiated with the given deps.

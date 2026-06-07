@@ -334,7 +334,7 @@ func (r *TeamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) (
 func (r *TeamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
-		return nil, nil
+		return nil, kerrors.BadRequest("TEAM", "spirit_session_id is required")
 	}
 	rows, err := r.data.RW().Read(ctx).Team.Query().
 		Where(team.SpiritSessionIDEQ(spiritSessionID), team.DeletedAtEQ("")).

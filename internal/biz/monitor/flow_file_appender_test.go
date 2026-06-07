@@ -301,7 +301,7 @@ func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
 func TestFlowFileAppender_CompressOldFiles(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
-	a.SetCompressAge(1 * time.Millisecond)
+	a.SetCompressAge(1 * time.Hour)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
 	oldFileName := "flow-" + oldDate + ".jsonl"

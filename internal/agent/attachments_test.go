@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/agent"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -58,7 +59,7 @@ func (m *memArtifactRepo) ListBySessionAndName(context.Context, string, string) 
 
 func TestBuildUserMessageFromAttachments_image(t *testing.T) {
 	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
-	uc := artifactbiz.NewUsecase(repo)
+	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
 	ctx := context.Background()
 	saved, err := uc.Save(ctx, "sess-1", "pic.png", "image/png", []byte{1, 2, 3})
 	if err != nil {

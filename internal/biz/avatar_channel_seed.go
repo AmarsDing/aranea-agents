@@ -26,6 +26,31 @@ func EnsureChannelPlatformAvatars(ctx context.Context, repo AvatarRepo) error {
 }
 
 func ensureOneChannelPlatformAvatar(ctx context.Context, repo AvatarRepo, spec ChannelPlatformAvatarSpec) error {
+	existing, err := repo.GetAvatarAssetByKey(ctx, spec.AssetKey)
+	if err == nil && existing.ID != "" {
+		// 头像已存在且元数据一致，跳过图像处理和 UPDATE
+		if existing.WidthPx == avatar.AvatarMainMaxPx && existing.FileSizeBytes > 0 {
+			return nil
+		}
+		// 元数据不一致，需要重新处理图像
+		pngData, err := channelicons.LoadPNG(spec.AssetKey)
+		if err != nil {
+			pngData, err = RenderChannelPlatformAvatarPNG(spec)
+			if err != nil {
+				return err
+			}
+		}
+		main, thumb, w, h, mime, err := avatar.ProcessAvatarUpload(pngData, "image/png")
+		if err != nil {
+			return err
+		}
+		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
+	}
+	if err != nil && !errors.Is(err, shared.ErrNotFound) {
+		return err
+	}
+
+	// 不存在，创建新头像
 	pngData, err := channelicons.LoadPNG(spec.AssetKey)
 	if err != nil {
 		pngData, err = RenderChannelPlatformAvatarPNG(spec)
@@ -35,14 +60,6 @@ func ensureOneChannelPlatformAvatar(ctx context.Context, repo AvatarRepo, spec C
 	}
 	main, thumb, w, h, mime, err := avatar.ProcessAvatarUpload(pngData, "image/png")
 	if err != nil {
-		return err
-	}
-
-	existing, err := repo.GetAvatarAssetByKey(ctx, spec.AssetKey)
-	if err == nil && existing.ID != "" {
-		return repo.UpdateAvatarAssetImages(ctx, existing.ID, main, thumb, mime, w, h, len(main))
-	}
-	if err != nil && !errors.Is(err, shared.ErrNotFound) {
 		return err
 	}
 
