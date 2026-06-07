@@ -71,6 +71,7 @@ pkg/trpc-agent-go/runner/
 | RalphLoop | ✅ | ✅ | Ent + `RalphLoopConfigFromSettings` |
 | 独立 CancelRun RPC | — | — | 非目标；沿用 StopGeneration |
 | RunnerInstanceRegistry / RunnerManager | — | ✅ | `RunnerManager.NewTurnRunner`；每 turn 仍 `Close` |
+| Web 运行状态 UI | — | 🟡 | API/类型层已就绪；`ChatRunnerStatus.vue`、`ChatEnqueueMessage.vue` 组件未创建 |
 
 ---
 
@@ -129,7 +130,7 @@ service ChatService {
 
 ### GetRunStatus Proto 对齐
 
-当前 `GetRunStatus` 返回的 `RunStatus` 消息仅包含 `run_id`、`status`、`error_message`、`updated_at`。需与 `ManagedRunner.RunStatus` 对齐，增加 `invocation_id`、`agent_name`、`started_at`、`last_event_at`、`event_count` 字段：
+`RunStatus` 消息已与 `ManagedRunner.RunStatus` 对齐，包含完整字段：
 
 ```protobuf
 message RunStatus {
@@ -137,12 +138,16 @@ message RunStatus {
   string status = 2;
   string error_message = 3;
   string updated_at = 4;
-  // 新增：与 ManagedRunner.RunStatus 对齐
+  // 与 ManagedRunner.RunStatus 对齐
   string invocation_id = 5;
   string agent_name = 6;
   string started_at = 7;
   string last_event_at = 8;
   int32 event_count = 9;
+  // AwaitUserReply 元数据
+  string await_kind = 10;
+  string await_tool_key = 11;
+  string await_tool_call_id = 12;
 }
 ```
 
@@ -158,6 +163,9 @@ field.Int("ralph_loop_max_iterations").Default(0),
 field.String("ralph_loop_completion_promise").Default(""),
 field.String("ralph_loop_verify_command").Default(""),
 field.Int("ralph_loop_verify_timeout_seconds").Default(0),
+field.String("ralph_loop_promise_tag_open").Default(""),
+field.String("ralph_loop_promise_tag_close").Default(""),
+field.String("ralph_loop_verify_work_dir").Default(""),
 ```
 
 **校验与接线**（2026-05-21）：
@@ -206,65 +214,67 @@ type RunStatusInfo struct {
 
 ### 3.2 RunnerUsecase
 
-运行控制已第一步抽到 `internal/runtime.RunRegistry`（active run、cancel、status）；`pendingQueue` / `awaitChans` 仍在 `ChatService`。后续可引入 `RunnerUsecase` 或 `RunnerManager` 统一入口：
+运行控制已通过 `internal/runtime.RunRegistry`（active run、cancel、status）+ `RunnerManager`（统一装配）实现。`pendingQueue` 经 `PendingMessageQueue` 管理，`awaitChans` 在 `ChatOrchestrator` 中。无需再引入独立的 `RunnerUsecase`：
 
 ```go
-type RunnerUsecase struct {
-    registry *RunnerRegistry
-}
-
-func NewRunnerUsecase(registry *RunnerRegistry) *RunnerUsecase
-
-func (uc *RunnerUsecase) GetRunStatus(ctx context.Context, sessionID, requestID string) (*RunStatusInfo, error)
-func (uc *RunnerUsecase) CancelRun(ctx context.Context, sessionID, requestID string) (bool, error)
-func (uc *RunnerUsecase) EnqueueUserMessage(ctx context.Context, sessionID, requestID, content string) error
+// 运行控制入口（已实现）
+type RunRegistry struct { ... }       // internal/runtime/run_registry.go
+type RunnerManager struct { ... }     // internal/runtime/runner_manager.go
+type PendingMessageQueue struct { ... } // internal/runtime/pending_queue.go
 ```
 
 ### 3.3 Runner 注册表
 
-项目需要维护一个全局的 Runner 注册表，支持多 Runner 实例并行：
+`RunRegistry` 已实现（`internal/runtime/run_registry.go`），基于 `sync.Map` 提供类型安全的并发访问：
 
 ```go
-type RunnerRegistry struct {
-    mu      sync.RWMutex
-    runners map[string]trpcrunner.Runner
+type RunRegistry struct {
+    activeRuns     activeRunMap     // sessionID → activeRun
+    pendingCancels cancelMap        // sessionID → context.CancelFunc
+    runStatuses    statusMap        // sessionID → RunStatusEntry
 }
 
-func NewRunnerRegistry() *RunnerRegistry
+func NewRunRegistry() *RunRegistry
 
-func (r *RunnerRegistry) Register(key string, runner trpcrunner.Runner)
-func (r *RunnerRegistry) Get(key string) (trpcrunner.Runner, bool)
-func (r *RunnerRegistry) Unregister(key string)
-func (r *RunnerRegistry) List() []string
+func (r *RunRegistry) HasActive(sessionID string) bool
+func (r *RunRegistry) StorePlaceholder(sessionID, runID string)
+func (r *RunRegistry) StoreRunner(sessionID string, runner trpcrunner.Runner)
+func (r *RunRegistry) StoreCancelable(sessionID string, cancel context.CancelFunc)
+func (r *RunRegistry) Finish(sessionID string)
+func (r *RunRegistry) Cancel(sessionID string) bool
+func (r *RunRegistry) EnqueueUserMessage(sessionID, content string) bool
+func (r *RunRegistry) SetStatus(sessionID string, entry RunStatusEntry)
+func (r *RunRegistry) ActiveRunner(sessionID string) (trpcrunner.Runner, bool)
+func (r *RunRegistry) GetStatus(sessionID string) (RunStatusEntry, bool)
+func (r *RunRegistry) SetPendingCancel(sessionID string, cancel context.CancelFunc)
+func (r *RunRegistry) ClearPendingCancel(sessionID string)
 ```
 
 ---
 
 ## 四、运行时层
 
-### 4.1 TRPCRunnerDeps 扩展
+### 4.1 TRPCRunnerDeps
 
-当前 `TRPCRunnerDeps` 仅有 `AppName`、`SessionService`、`MemoryService`、`Plugins`。需扩展：
+`TRPCRunnerDeps` 已扩展为完整结构（`internal/agent/trpc_runtime.go`）：
 
 ```go
 type TRPCRunnerDeps struct {
-    AppName        string
-    SessionService trpcsession.Service
-    MemoryService  trpcmemory.Service
-    Plugins        []trpcplugin.Plugin
-
-    // 新增
-    Ingestor              trpcsession.Ingestor
+    AppName               string
+    SessionService        trpcsession.Service
+    MemoryService         trpcmemory.Service
     ArtifactService       trpcartifact.Service
+    Plugins               []trpcplugin.Plugin
+    Ingestor              trpcsession.Ingestor
     AwaitUserReplyRouting bool
-    AgentFactories        map[string]trpcrunner.AgentFactory
     RalphLoop             *trpcrunner.RalphLoopConfig
+    LG                    loggateway.Logger
 }
 ```
 
-### 4.2 NewTRPCRunner 扩展
+### 4.2 NewTRPCRunner
 
-当前 `NewTRPCRunner` 已处理 `SessionService`、`MemoryService`、`Plugins`。需在现有逻辑基础上增加：
+`NewTRPCRunner` 已完整实现所有 option 注入（`internal/agent/trpc_runtime.go`）：
 
 ```go
 if deps.Ingestor != nil {
@@ -279,49 +289,37 @@ if deps.AwaitUserReplyRouting {
 if deps.RalphLoop != nil {
     opts = append(opts, trpcrunner.WithRalphLoop(*deps.RalphLoop))
 }
-for name, factory := range deps.AgentFactories {
-    opts = append(opts, trpcrunner.WithAgentFactory(name, factory))
-}
 ```
+
+AgentFactory 通过 `RunnerManager.NewTurnRunner` 的 `TurnRunnerSpec.AgentFactoryKeys` 注入，不在 `TRPCRunnerDeps` 中。
 
 ### 4.3 AgentFactory 实现
 
-`BizAgentFactory` 根据名称从数据库查找 Agent 配置并动态构建 trpc Agent：
+`BizAgentFactoryOptions` 按 `agent_key` 注册工厂闭包（`internal/agent/factory.go`）：
 
 ```go
-type BizAgentFactory struct {
-    agents   biz.AgentRepository
-    agentsUC *biz.AgentUsecase
-    deps     TRPCBuilderDeps
-}
-
-func NewBizAgentFactory(
-    agents biz.AgentRepository,
-    agentsUC *biz.AgentUsecase,
+func BizAgentFactoryOptions(
+    keys []string,
     deps TRPCBuilderDeps,
-) *BizAgentFactory
-
-func (f *BizAgentFactory) Create(
-    ctx context.Context,
-    ro trpcagent.RunOptions,
-) (trpcagent.Agent, error)
+    lg loggateway.Logger,
+) []trpcrunner.Option
 ```
 
-`Create` 逻辑：从 `ro.AgentByName` 获取名称 → `agentsUC.Get` 查找 → `BuildTRPCLLMAgent` 构建。
+工厂闭包逻辑：`resolveBizAgentByKey` 从数据库解析 Agent → `BuildTRPCAgentCached` 构建/缓存。查找顺序：已注册实例 → AgentFactory → 未找到。
 
 ### 4.4 SessionIngestor 实现
 
-`BizSessionIngestor` 将完成的 Session 转录文本摄入外部记忆平台：
+`BizSessionIngestor` 已实现（`internal/agent/ingestor.go`），当前记录摄入元数据，为外部 backend 预留扩展点：
 
 ```go
 type BizSessionIngestor struct {
-    sessions *biz.SessionUsecase
-    memory   trpcmemory.Service
+    memory trpcmemory.Service
+    lg     loggateway.Logger
 }
 
 func NewBizSessionIngestor(
-    sessions *biz.SessionUsecase,
     memory trpcmemory.Service,
+    lg loggateway.Logger,
 ) *BizSessionIngestor
 
 func (ing *BizSessionIngestor) IngestSession(
@@ -330,64 +328,69 @@ func (ing *BizSessionIngestor) IngestSession(
 ) error
 ```
 
-`IngestSession` 逻辑：检查 `memory` 是否可用 → 提取 Session 事件中的对话转录 → 调用 `memory.Add` 摄入。摄入失败仅记录日志，不阻塞主流程。
+`IngestSession` 当前仅做日志记录。摄入失败不阻塞主流程。外部 Mem0 等 backend 待扩展。
 
 ### 4.5 AwaitUserReplyRouting（框架层）
 
-当前项目通过 Service 层自行实现 AwaitUserReply（`serviceawaitreply.ServiceTool` + `ChatService.makeAwaitReplyFunc` + `ChatService.AwaitUserReply` RPC），实现了 mid-turn 阻塞等待用户回复。
+当前项目通过 Service 层自行实现 AwaitUserReply（`serviceawaitreply.ServiceTool` + `ChatOrchestrator` await hook + `ChatService.AwaitUserReply` RPC），实现了 mid-turn 阻塞等待用户回复。
 
-框架层的 `WithAwaitUserReplyRouting` 提供的是跨 turn 的路由能力：Agent 调用 `await_user_reply` 后在 Session 状态中记录路由，下一轮用户消息自动路由到该 Agent。
+框架层的 `WithAwaitUserReplyRouting` 提供跨 turn 的路由能力：Agent 调用 `await_user_reply` 后在 Session 状态中记录路由，下一轮用户消息自动路由到该 Agent。
 
 两层机制互补：
-- **Service 层**（已有）：mid-turn 阻塞，当前 turn 内等待用户回复
-- **框架层**（待启用）：跨 turn 路由，下一轮用户消息自动路由到指定 Agent
+- **Service 层**（已实现）：mid-turn 阻塞，当前 turn 内等待用户回复
+- **框架层**（已启用）：跨 turn 路由，下一轮用户消息自动路由到指定 Agent
 
-启用方式：在 `NewTRPCRunner` 中传入 `WithAwaitUserReplyRouting(true)`，框架的 `runner.applyAwaitUserReplyRoute` 会自动处理路由逻辑。
+启用方式：`RunnerManager.NewTurnRunner` 中 `TurnRunnerSpec.AwaitUserReplyRouting` 为 true 时（即 `AwaitHook != nil`），传入 `WithAwaitUserReplyRouting(true)`。
 
 ### 4.6 RalphLoop 配置
 
-`RalphLoopConfig` 从 `AgentRuntimeSettings` 数据库配置映射：
+`RalphLoopConfig` 从 `AgentRuntimeSettings` 数据库配置映射（`internal/agent/ralph_loop.go`）：
 
 ```go
-func ralphLoopConfigFromSettings(settings *biz.AgentRuntimeSettings) *trpcrunner.RalphLoopConfig
+func RalphLoopConfigFromSettings(settings *biz.AgentRuntimeSettings) *trpcrunner.RalphLoopConfig
+func ResolveRalphLoopTurn(settings *biz.AgentRuntimeSettings) RalphLoopTurnResult
 ```
 
 映射规则：
 - `RalphLoopMaxIterations > 0` 时启用
 - `CompletionPromise` → `PromiseTagOpen`/`PromiseTagClose` 默认 `<promise>`/`</promise>`
-- `VerifyCommand` → `VerifyCommand` + `VerifyTimeout`
+- `VerifyCommand` → `VerifyCommand` + `VerifyWorkDir` + `VerifyTimeout`
+- 无效配置：`RalphLoopTurnResult.SkipErr` 非空时跳过并记录 Warn
 
 ### 4.7 RunnerManager
 
-当前每次请求创建临时 Runner（`runSingleAgentViaTRPC` 中 `NewTRPCRunner` + `defer runner.Close()`）。引入 `RunnerManager` 支持长生命周期 Runner 实例：
+`RunnerManager` 已实现（`internal/runtime/runner_manager.go`），统一 Runner 装配入口：
 
 ```go
-type RunnerManager struct {
-    registry *RunnerRegistry
-    deps     RunnerFactoryDeps
-}
-
 type RunnerFactoryDeps struct {
-    SessionSvc   trpcsession.Service
-    MemorySvc    trpcmemory.Service
-    Ingestor     trpcsession.Ingestor
-    ArtifactSvc  trpcartifact.Service
-    Plugins      []trpcplugin.Plugin
+    Persist PersistenceSet
 }
 
-func NewRunnerManager(deps RunnerFactoryDeps) *RunnerManager
+type TurnRunnerSpec struct {
+    Plugins               []trpcplugin.Plugin
+    AwaitUserReplyRouting bool
+    BuilderDeps           TRPCBuilderDeps
+    AgentFactoryKeys      []string
+    LookupAgents          map[string]trpcagent.Agent
+    RalphLoop             *trpcrunner.RalphLoopConfig
+    ExtraOpts             []trpcrunner.Option
+    RegistryKey           string  // 非空时支持长生命周期 Runner
+}
 
-func (m *RunnerManager) CreateRunner(
-    ctx context.Context,
-    key string,
-    root trpcagent.Agent,
-    opts ...trpcrunner.Option,
-) (trpcrunner.Runner, error)
+type RunnerManager struct {
+    factory  RunnerFactoryDeps
+    registry *RunRegistry
+    lg       loggateway.Logger
+}
 
+func NewRunnerManager(deps RunnerFactoryDeps, registry *RunRegistry, lg loggateway.Logger) *RunnerManager
+
+func (m *RunnerManager) Registry() *RunRegistry
+func (m *RunnerManager) NewTurnRunner(ctx context.Context, root trpcagent.Agent, spec TurnRunnerSpec) (trpcrunner.Runner, error)
 func (m *RunnerManager) CloseRunner(key string) error
 ```
 
-`CreateRunner` 逻辑：构建 `TRPCRunnerDeps` → `NewTRPCRunner` → `registry.Register`。
+`NewTurnRunner` 逻辑：构建 `TRPCRunnerDeps` → 注册 AgentFactory → 注册 LookupAgents → `NewTRPCRunner` → `registry.StoreRunner`。每 turn 默认 `Close`；`RegistryKey` 非空时支持长生命周期实例。
 
 ---
 
@@ -409,28 +412,36 @@ func (m *RunnerManager) CloseRunner(key string) error
 |------|------|
 | `runtime.RunRegistry` | 每 session active runner、cancel、steerable enqueue、服务层 status |
 | `runtime.RunnerManager` | 统一 `NewTRPCRunner` 装配（Session/Memory/Artifact/Plugins/Factory/Routing） |
-| `biz.ChatUsecase` | 会话锁、pending 队列、Enqueue 编排（steerable 失败则入队） |
-| `ChatService` | RPC/WS 桥接、`setRunStatus`（含 webhook/await meta）、turn 执行 |
-| `ChatService.RunGateway()` | Cron/Channel/Team 共用 `RunGateway` |
+| `runtime.PendingMessageQueue` | FIFO 待执行队列（快照持久化、followup 合并） |
+| `biz.ChatUsecase` | 会话锁、Enqueue 编排（steerable 失败则入队） |
+| `ChatOrchestrator` | turn 执行（`runSingleAgentViaTRPC`）、`RunGateway`、pending 处理 |
+| `ChatService` | RPC/WS 桥接、`setRunStatus`（含 webhook/await meta） |
 
 `ChatService` 不再持有 `activeRuns`/`pendingQueue` sync.Map；运行控制经 Wire 注入的 `RunRegistry` 与 `PendingMessageQueue`。
 
-### 6.2 ChatService 扩展
+### 6.2 ChatService RPC 实现
 
-新增 RPC 实现：
+已实现的 RPC 方法：
 
 ```go
-func (s *ChatService) CancelRunRPC(ctx context.Context, req *chatv1.CancelRunRequest) (*chatv1.CancelRunResponse, error)
-func (s *ChatService) EnqueueUserMessageRPC(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
+func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenerationRequest) (*chatv1.StopGenerationResponse, error)
+    // → orch.CancelRun(sessionID)
+
+func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
+    // → orch.EnqueueUserMessage(sessionID, content)
+
+func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatusRequest) (*chatv1.GetRunStatusResponse, error)
+    // → RunRegistry.GetStatus + 运行中合并 ManagedRunner.RunStatus + awaiting_user 元数据
+
+func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserReplyRequest) (*chatv1.AwaitUserReplyResponse, error)
+    // → 重启恢复逻辑
 ```
 
-`CancelRunRPC` 逻辑：从 `activeRuns` 获取 Runner → `CancelTRPCRun(r, requestID)`。
-
-`EnqueueUserMessageRPC` 逻辑：从 `activeRuns` 获取 Runner → `EnqueueTRPCUserMessage(r, requestID, content)`。
+取消运行沿用 `StopGeneration`（HTTP）与 WS `cancel`，不设独立 `CancelRun` RPC。
 
 ### 6.3 GetRunStatus 对齐
 
-当前 `GetRunStatus` 从 `runStatuses` sync.Map 读取 Service 层维护的状态。需同时查询 `ManagedRunner.RunStatus` 以获取框架层的完整状态信息（invocation_id、agent_name、event_count 等）。
+`GetRunStatus` 已实现双源合并：从 `RunRegistry.GetStatus` 读取服务层状态，运行中时额外查询 `ManagedRunner.RunStatus` 获取框架层完整信息（invocation_id、agent_name、event_count、await_kind 等）。
 
 ---
 
@@ -464,7 +475,8 @@ Runner 为运行时基础设施，无独立前端页面。相关 UI 通过 Chat 
 
 | 组件/文件 | 状态 | 说明 |
 |-----------|------|------|
-| `web/src/features/chat/api.ts` | ✅ | 已有 `getRunStatus`、`stopGeneration`、`awaitUserReply` |
+| `web/src/features/chat/api.ts` | ✅ | 已有 `getRunStatus`、`stopGeneration`、`enqueueMessage`、`awaitUserReply` |
+| `web/src/domain/types.ts` | ✅ | `RunStatus` 接口含完整字段（含 awaitKind/awaitToolKey/awaitToolCallId） |
 | `web/src/composables/useRunStatus.ts` | ✅ | 已有轮询运行状态 + 提交回复 |
 | `ChatRunnerStatus.vue` | ❌ | 未创建独立运行状态指示器组件 |
 | `ChatEnqueueMessage.vue` | ❌ | 未创建运行中追加消息组件 |
@@ -484,8 +496,8 @@ Runner 为运行时基础设施，无独立前端页面。相关 UI 通过 Chat 
 ```
 web/src/features/chat/
 └── components/
-    ├── ChatRunnerStatus.vue    ← 运行状态指示器
-    └── ChatEnqueueMessage.vue  ← 运行中追加消息
+    ├── ChatRunnerStatus.vue    ← 运行状态指示器（待创建）
+    └── ChatEnqueueMessage.vue  ← 运行中追加消息（待创建）
 ```
 
 ### 8.2 ChatRunnerStatus.vue
@@ -496,7 +508,7 @@ web/src/features/chat/
 | Agent 名称 | `QChip` | 当前运行的 Agent |
 | 运行时长 | `span` | 从 startedAt 计算已运行时间 |
 | 事件数 | `span` | 已处理的事件数量 |
-| 取消按钮 | `QBtn` | 点击调用 CancelRun API |
+| 取消按钮 | `QBtn` | 点击调用 StopGeneration API |
 
 ### 8.3 ChatEnqueueMessage.vue
 
@@ -506,30 +518,38 @@ web/src/features/chat/
 | 发送按钮 | `QBtn` | 点击调用 EnqueueUserMessage API |
 | 状态提示 | `QTooltip` | 消息将在工具调用边界后注入 |
 
-### 8.4 API 接口扩展
+### 8.4 API 接口
 
-当前 `api.ts` 已有 `getRunStatus`、`stopGeneration`、`awaitUserReply`。需新增：
+`api.ts` 已实现：
 
 ```typescript
-export async function cancelRun(sessionId: string, requestId: string): Promise<boolean>
-export async function enqueueUserMessage(sessionId: string, requestId: string, content: string): Promise<boolean>
+export async function enqueueMessage(sessionId: string, content: string): Promise<EnqueueMessageResult>
+export async function getRunStatus(sessionId: string): Promise<RunStatus | null>
+export async function stopGeneration(sessionId: string): Promise<void>
+export async function awaitUserReply(sessionId: string, toolCallId: string, content: string): Promise<void>
 ```
 
-### 8.5 RunStatus 类型扩展
+注意：前端使用 `stopGeneration` 而非 `cancelRun`；`enqueueUserMessage` 已废弃，委托给 `enqueueMessage`。
 
-当前 `RunStatus` 接口仅有 `runId`、`status`、`errorMessage`、`updatedAt`。需与 Proto 对齐新增：
+### 8.5 RunStatus 类型
+
+`web/src/domain/types.ts` 已定义完整类型：
 
 ```typescript
+export type RunStatusValue = 'idle' | 'pending' | 'running' | 'awaiting_user' | 'sync' | 'completed' | 'failed' | 'cancelled'
+
 export interface RunStatus {
   runId: string;
   status: RunStatusValue;
   errorMessage: string;
   updatedAt: string;
-  // 新增
-  invocationId: string;
-  agentName: string;
-  startedAt: string;
-  lastEventAt: string;
-  eventCount: number;
+  invocationId?: string;
+  agentName?: string;
+  startedAt?: string;
+  lastEventAt?: string;
+  eventCount?: number;
+  awaitKind?: string;
+  awaitToolKey?: string;
+  awaitToolCallId?: string;
 }
 ```

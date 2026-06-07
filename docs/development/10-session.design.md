@@ -12,8 +12,8 @@
 | `api/kratos/session/v1` | 对外 RPC/HTTP 契约 | 业务分支 |
 | `internal/service/session.go` | Proto ↔ biz、Audit、**不含**消息发送/Runner Run | import `pkg/trpc-agent-go` 编排 |
 | `internal/service/session_batch.go` | 批量预览/归档/删除 RPC | 与 Timeline 聚合混写 |
-| `internal/service/session_compress.go` | 异步上下文压缩、`NativeTurnCompressor` | 直接写 Ent |
-| `internal/biz/session_usecase.go` | CRUD、Timeline 聚合、消息追加、Turn/State | import trpc-agent-go |
+| `internal/service/session_compress.go` | 异步上下文压缩触发（委托 `biz/session/compression.go`） | 直接写 Ent |
+| `internal/biz/session/` | SessionUsecase + 独立子用例（compression/batch/export/pin/participant/timeline/state/turns/messages/metrics/summary/title/status） | import trpc-agent-go |
 | `internal/biz/session_batch.go` | cutoff 解析、scope 扫描、批量命中（与 CRUD 分文件） | SQL |
 | `internal/data/session_repo*.go` | Ent/SQL 持久化 | 业务规则（running 不可删在 biz 校验） |
 | `internal/data/message_search.go` | 消息 FTS/LIKE 检索 | — |
@@ -1509,28 +1509,27 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 }
 ```
 
-### 5.4 SessionCompressor
+### 5.4 SessionCompressionUsecase
 
-文件：`internal/service/session_compress.go`
+文件：`internal/biz/session/compression.go`
 
 ```go
-type SessionCompressor struct {
-    Sessions    *biz.SessionUsecase
-    Agents      biz.AgentRepository
-    Compress    compress.Compressor
-    RT          *runtimedeps.Runtime
-    MonitorLogs *biz.MonitorLogBroker
-    inFlight    sync.Map
+type SessionCompressionUsecase struct {
+    compressRepo   CompressRepo
+    contextUpdater ContextUpdater
+    summaryReader  SummaryReader
+    summaryWriter  SummaryWriter
 }
 
-func NewSessionCompressor(
-    sessions *biz.SessionUsecase,
-    agents biz.AgentRepository,
-    rt *runtimedeps.Runtime,
-    comp compress.Compressor,
-    monitorLogs *biz.MonitorLogBroker,
-) *SessionCompressor
+func NewSessionCompressionUsecase(
+    compressRepo CompressRepo,
+    contextUpdater ContextUpdater,
+    summaryReader SummaryReader,
+    summaryWriter SummaryWriter,
+) *SessionCompressionUsecase
 ```
+
+> **O8 变更**：`SessionCompressor`（service 层）的 `CompressorDeps` 已从 `biz.AgentRepository`（54 方法）收窄为 `AgentKeyLookup` 窄接口；压缩核心逻辑提取到 `SessionCompressionUsecase`（biz 层），依赖 4 个窄接口。
 
 **压缩流程**：
 1. 检查 `context_used_ratio` 是否超过 agent 阈值（默认 0.6）
@@ -1627,9 +1626,23 @@ var ProviderSet = wire.NewSet(
 ```
 web/src/features/session/
 ├── api.ts                          ← Kratos API 封装 + 类型定义
+├── types.ts                        ← 类型定义（BatchPreviewResult, BulkProgress 等）
+├── useSessionsPage.ts              ← 会话列表页 composable
+├── useSessionDetailPage.ts         ← 会话详情页 composable
+├── useSessionTimelinePanel.ts      ← Timeline 面板 composable（服务端分页）
+├── useSessionTimelineInspector.ts  ← Timeline 检查器 composable
+├── useSessionTurnsPanel.ts         ← Turn 面板 composable
+├── useSessionRunsPanel.ts          ← Run 面板 composable
+├── useSessionParticipantsPanel.ts  ← 参与者面板 composable
+├── useSessionMessagesPanel.ts      ← 消息面板 composable
+├── timelineHelpers.ts              ← Timeline 辅助函数
+├── sessionSort.ts                  ← 排序逻辑
+├── downloadExport.ts               ← 导出下载
+├── contextMetrics.ts               ← 上下文指标（阈值与 Go llmcontext/metrics.go 同步）
+├── batchNotify.ts                  ← 批量操作通知
 web/src/components/chat/
 ├── ChatSessionSidebar.vue          ← Chat 页右侧 Session 列表
-├── SessionTimelineDialog.vue       ← 历史追踪弹窗
+├── SessionTimelineDialog.vue       ← 历史追踪弹窗（服务端分页）
 web/src/components/sessions/
 ├── sessionUi.ts                    ← 工具函数（格式化、颜色、列定义）
 ├── SessionsPageHero.vue            ← 页面标题
@@ -1638,6 +1651,10 @@ web/src/components/sessions/
 ├── SessionsErrorBanner.vue         ← 错误提示
 ├── SessionsSelectedDetail.vue      ← 选中详情
 ├── SessionsTableSection.vue        ← 表格+分页
+├── SessionsBulkToolbar.vue         ← 批量选择 toggle、按天数按钮
+├── SessionsBulkSelectionBar.vue    ← 已选 N + 归档/删除
+├── SessionDeleteConfirmDialog.vue  ← 单条/批量删除确认
+├── SessionRetentionDialog.vue      ← 保留天数 + preview + 归档/删除确认
 web/src/pages/
 ├── SessionsPage.vue                ← Session 管理页面
 ```
@@ -1794,6 +1811,8 @@ Pin/Favorite 存储：`localStorage` 键 `chat:pinned-sessions` / `chat:favorite
 
 文件：`web/src/components/chat/SessionTimelineDialog.vue`
 
+> **FE-TL-01 已完成**：Timeline 弹窗已实现服务端分页（`useSessionTimelinePanel`，PAGE_SIZE=100，offset 翻页），与详情页 Timeline Panel 对齐。
+
 Props：
 - `modelValue: boolean` — 弹窗开关
 - `sessionId?: string | null` — 会话 ID
@@ -1829,7 +1848,7 @@ Props：
 | Agent | primary |
 | Team | orange |
 | Tool | info |
-| Skill | deep-purple |
+| Skill | teal |
 | MCP | teal |
 
 图标映射：
@@ -1959,7 +1978,7 @@ async function runBulkOperation(
 
 ```typescript
 export function ownerLabel(value: string): string        // "team" → "Team", else → "Agent"
-export function ownerChipColor(value: string): string    // "team" → "deep-purple", else → "primary"
+export function ownerChipColor(value: string): string    // "team" → "teal", else → "primary"
 export function statusBadgeColor(value: string): string  // failed→negative, archived→grey, running→primary, else→positive
 export function contextProgressColor(value: string): string  // exceeded→purple, critical→negative, warning→warning, else→positive
 export function ratioValue(value: number): number        // clamp(0, 1)
@@ -2046,7 +2065,7 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 ### 10.3 开发阶段建议
 
 **Phase 1（近期优化）** — ✅ 已完成：
-- O1 · O5 · F1 · F2 · O2 Timeline UNION
+- O1 · O5 · F1 · F2 · F3 · O2 Timeline UNION
 
 **Phase 2（编排增强）** — 🟡 进行中：
 - F4: session_runs 列表 ✅（M55）
@@ -2061,9 +2080,5 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 - F15: 前端 Trace 链路页
 - F16: 前端 Context 趋势线
 
-**Phase 4（导出与搜索）**：
-- F2: Session 导出
-- F3: 消息搜索
-
-**Phase 5（框架对齐）**：
+**Phase 4（框架对齐）**：
 - F10-F14: trpc session.Service 适配器 + 多后端

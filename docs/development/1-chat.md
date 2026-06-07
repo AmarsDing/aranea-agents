@@ -295,7 +295,7 @@ Cron Scheduler
 - `AwaitUserReply` 向 `awaitChans` 投递人工回复，恢复正在等待的 run
 - 单 Agent 和 Team 路径均通过 `makeAwaitReplyFunc` 注入 AwaitHook；Team Runner 通过 `SetAwaitHookProvider` 注入，`runCtx` 注入 `serviceawaitreply.WithReplyFunc`
 - 前端：`useEnvelopeStream` / `useChatStream` / `useTeamStream` 消费 WS；`useChatWorkspace` 轮询 `GetRunStatus` 并在 `awaiting_user` 时展示提交回复横幅（`ChatMessagePanel` + `AwaitUserReply` RPC）
-- 当前状态与等待通道为进程内内存结构；服务重启后不可恢复，后续应持久化或接入 EventBuffer 恢复
+- 当前状态通过 `state_json` 持久化；`awaitChans` 仍为进程内结构，服务重启后 awaiting_user 状态可通过 `PendingAwaitUserReplyRoute` 恢复；`resumeInFlight` 防双 turn
 
 ### 1.11 Session 标题自动生成
 
@@ -371,12 +371,12 @@ Cron Scheduler
 |--------|-----|------|------|
 | P1 | 结构化工具事件卡片 | ✅ | `ChatToolCallCard`：参数 JSON、结果、耗时、`is_long_running` 徽章 |
 | P1 | Reasoning 展示 | ✅ | `ChatReasoningPeek`：思考/正文分离；默认 **live tail 最后两行**；单击/滚轮/双击展开（见 [R-UX changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)） |
-| P2 | Follow-up Queue UX（Cursor 对齐） | 待做 | 运行中解除 `sending` 阻塞；监听 `message_queued` 刷新队列；可选 `pending_enqueued` Envelope |
+| P2 | Follow-up Queue UX（Cursor 对齐） | ✅ | 运行中 `enqueue_message` + WS `message_queued` 刷新（Round1） |
 | P2 | RunStatus WS 驱动 | ✅ | 后端 `run_status` Envelope；前端监听 WS（切换会话 HTTP 校准） |
 | P2 | Team 成员流 UX | ✅ | `team_member` 元数据 + 成员色条分栏 |
 | P2 | WS 回放 UX | ✅ | 顶栏「正在同步历史事件…」 |
-| P3 | 多模态附件 | 待做 | 前端占位 ID；后端无持久化/Vision 装配 |
-| P3 | RunStatus 可恢复性 | 待做 | `awaitChans` / RunRegistry 进程内；重启后 `awaiting_user` 不可恢复 |
+| P3 | 多模态附件 | 待做 | Artifact 上传已实现；Vision 输入装配待闭环 |
+| P3 | RunStatus 可恢复性 | ✅ | `state_json` 持久化 + `PendingAwaitUserReplyRoute`；resume 同步清状态 + `resumeInFlight` 防双 turn |
 | P3 | 模型选项单一来源 | 部分 | 优先 `llm-provider-models` Platform；空列表时回退 `GetChatOptions("model")` |
 
 ### 3.3 已完成（历史项归档）
@@ -418,20 +418,14 @@ Cron Scheduler
 - [x] `runAgentTurn` 移除，直接调用 `runSingleAgentViaTRPC`
 - [x] Session 标题 LLM 自动生成
 
-### 4.2 待优化（2026-05-19 复核）
+### 4.2 待优化（2026-06-06 复核）
 
 | 项 | 优先级 | 说明 |
 |----|--------|------|
-| 工具事件结构化 UI | P1 | Envelope 已有；Chat 气泡仍为 `🔧 name (status)` 简写 |
-| Reasoning 展示规格 | P1 | 产品定稿 + `ChatMessagePanel` 折叠区 |
-| RunStatus WS 驱动 | P2 | 替代 `useChatWorkspace` 2s 轮询 |
-| Team 成员分栏展示 | P2 | `member_*` 已通；增强 UX（头像、角色标签） |
-| 回放中 UI 提示 | P2 | `onReplayState` 已接入 transport；页面未展示 |
-| 附件持久化 + Vision | P3 | 仅本地占位 |
-| RunStatus 持久化/恢复 | P3 | 进程内 `awaitChans` |
-| 模型列表单一真相源 | P3 | Platform 优先 + `GetChatOptions("model")` 回退（已实现） |
+| 多模态附件 Vision 闭环 | P3 | Artifact 上传已实现；Vision 输入装配与 LLM 多模态调用待闭环 |
+| 模型列表单一真相源 | P3 | Platform 优先 + `GetChatOptions("model")` 回退（已实现）；长期统一为单一来源 |
 
-**已关闭**：SSE 主路径移除；RunRegistry；EnqueueUserMessage；processPendingQueue；AwaitHook Team；pending_id；Channel/Cron 互斥；recordTeamSessionTurn；EventBuffer TTL；member_* 后端投影；AwaitUserReply Chat UI；WS 控制消息协议层。
+**已关闭**：SSE 主路径移除；RunRegistry；EnqueueUserMessage；processPendingQueue；AwaitHook Team；pending_id；Channel/Cron 互斥；recordTeamSessionTurn；EventBuffer TTL；member_* 后端投影；AwaitUserReply Chat UI；WS 控制消息协议层；工具事件结构化 UI；Reasoning 展示；RunStatus WS 驱动；Team 成员分栏；WS 回放提示；RunStatus 持久化（state_json）。
 
 ### 4.3 已优化（本轮新增）
 
@@ -442,6 +436,16 @@ Cron Scheduler
 - [x] **toolEventMessage 重复定义消除**：提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块，`stores/app.ts` 和 `useChatWorkspace.ts` 统一使用
 - [x] **WS 错误事件处理**：`useEnvelopeStream` / `useChatWorkspace` 监听 `error` Envelope 并展示错误通知
 - [x] **state_delta/extensions 投影**：后端 Envelope 支持 `state_delta` 与 `extensions` 字段，前端类型已覆盖
+- [x] **工具事件结构化卡片**：`ChatExecutionCard`（原 `ChatToolCallCard`）默认折叠、Skill/MCP 图标与摘要、`act-{tool_call_id}` 稳定 upsert
+- [x] **Reasoning 展示**：`ChatReasoningPeek` 思考/正文分离；live tail + 展开；空 reasoning 不展示
+- [x] **RunStatus WS 驱动**：后端 `run_status` Envelope 驱动；前端监听 WS（切换会话 HTTP 校准）
+- [x] **Team 成员分栏 UX**：`team_member` 元数据 + 左侧色条分栏
+- [x] **WS 回放提示**：`replay_start/end` → 顶栏「正在同步历史事件…」
+- [x] **RunStatus 持久化**：`state_json` + `PendingAwaitUserReplyRoute`；resume 同步清状态 + `resumeInFlight` 防双 turn
+- [x] **Follow-up Queue UX**：运行中 `enqueue_message` + WS `message_queued` hint 刷新
+- [x] **前端发送路径重构**：`useChatSender` 策略模式统一 Agent/Team 双通道；`errorCodeHints` 错误码映射；Stall 检测激活
+- [x] **展示组件红线修复**：`ChatBackgroundJobsPanel`/`ChatMessageAttachments` 移除直接 API/Store 调用，改为 emit 事件
+- [x] **Store 依赖解耦**：`messageStore`/`runtimeStore` 移除 `sessionStore` 硬依赖；`useChatWorkspace` 拆分 `useChatDialogs`/`useChatComposerActions`
 
 ---
 

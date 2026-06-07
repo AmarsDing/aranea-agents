@@ -1,6 +1,6 @@
 # A2A 协议 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 Phase 1–3.5 已落地；Phase 4（网关增强）待做
+> **版本**：2026-06-06 | **状态**：🟢 Phase 1–4 部分已落地；Phase 4 剩余联邦路由 + HTTP 限流
 > **需求**：[26 a2a-protocol.md](./26%20a2a-protocol.md) · **设计**：[26 a2a-protocol.design.md](./26%20a2a-protocol.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) I7-A2A · **变更**：[Phase1-2](../changelog/2026-05-20-A2A-Phase1-2.md) · [Phase3](../changelog/2026-05-20-A2A-Phase3.md) · [Phase35](../changelog/2026-05-20-A2A-Phase35.md) · [Review](../changelog/2026-05-20-A2A-Review-Fixes.md) · [DocSync](../changelog/2026-05-21-A2A-DocSync.md)
 
@@ -16,13 +16,16 @@ Agent-to-Agent：同工作区 `call_agent`、Admin Invoke、LLM **A2A Endpoint**
 
 | 包 / 文件 | 职责 |
 |-----------|------|
-| `internal/a2a/` | 协议桥接：tool、invoker、remote_client、remote_invoke、callee_resolve、card_validate、graph_resume、public_base_url |
+| `internal/a2a/` | 协议桥接：tool、invoker、remote_client、remote_invoke、callee_resolve、card_validate、graph_resume、capability_metadata、invoke_workspace、public_base_url、public_base_store |
+| `internal/a2a/health/` | 网关健康 Cron：Runner、probeAll/One、Prometheus 指标 |
 | `internal/a2a/trpc/` | trpc-agent-go 包装：agent、server、registry、auth |
-| `internal/biz/a2a.go` | AgentCard / Invocation / Audit 用例 |
-| `internal/biz/a2a_remote.go` | 远程注册表用例 |
-| `internal/biz/a2a_gateway.go` | 联邦 GatewayDiscover |
-| `internal/service/a2a.go` | A2AService RPC + Prometheus |
+| `internal/biz/a2a.go` | 别名层（A2AUsecase = a2a.Usecase 等） |
+| `internal/biz/a2a/a2a.go` | 核心领域：Card/Invocation/Audit/Remote/Gateway 用例 |
+| `internal/biz/a2a_limit.go` | 业务层限流器（A2AInvokeLimiter） |
+| `internal/biz/agent_kind.go` | Agent Kind 常量 + A2AProxyConfig |
+| `internal/service/a2a.go` | A2AService RPC + Prometheus + 限流 |
 | `internal/service/a2a_endpoint.go` | 公开 Endpoint 构建（`A2AEndpointBuilder`） |
+| `internal/service/a2a_public_base.go` | 公开 URL 热更新（`A2APublicBaseReloader`） |
 | `internal/service/chat_native.go` | `RunAgentTurn` + `injectA2AContext` |
 | `internal/agent/trpc_build_router.go` | `BuildTRPCAgent`（llm / a2a_proxy） |
 | `web/src/pages/A2APage.vue` | 运维页；`features/a2a/useA2APage.ts` + 面板组件 |
@@ -33,19 +36,19 @@ Agent-to-Agent：同工作区 `call_agent`、Admin Invoke、LLM **A2A Endpoint**
 
 | 原则 | 落地 |
 |------|------|
-| **biz 不 import trpc** | `A2AUsecase`、Card/远程/联邦逻辑均在 `internal/biz`；`agent_kind` 在 `agent_kind.go` |
+| **biz 不 import trpc** | `A2AUsecase`、Card/远程/联邦逻辑均在 `internal/biz/a2a/`；`agent_kind` 在 `agent_kind.go`；限流在 `a2a_limit.go` |
 | **单一派发路径** | `NewInvoker` → 本地 `RunAgentTurn` 或 `InvokeRemoteRegistry`；`A2AService.Invoke` 复用同一 Invoker |
 | **Card 校验集中** | `CheckCalleeCard`（`card_validate.go`）供 tool 与 HTTP Invoke |
 | **目标解析集中** | `ResolveInvokeTarget`（`callee_resolve.go`）：本地 Card 优先，disabled 不 fallback 远程 |
 | **Endpoint 组装在 service** | `A2AEndpointBuilder` 读 catalog + Card，调用 `BuildA2AEndpointServer`；`internal/server` 只注册前缀 |
-| **前端分层** | `features/a2a`（api/types/mappers）+ `stores/a2a` + `useA2APage` + `components/a2a/*`；mapper 单测 |
+| **前端分层** | `features/a2a`（api/types/mappers/a2aTableUi/authUtils）+ `stores/a2a` + `useA2APage` + `components/a2a/*`；mapper 单测 |
 
 **依赖方向**（不变）：
 
 ```
 api/kratos/a2a/v1/*.proto
-  → internal/service (A2AService, A2AEndpointBuilder)
-  → internal/biz (A2AUsecase, A2ARemote, Gateway)
+  → internal/service (A2AService, A2AEndpointBuilder, A2APublicBaseReloader)
+  → internal/biz (A2AUsecase, A2ALimit, Gateway)
   → internal/data (SQLite)
 internal/a2a/trpc → pkg/trpc-agent-go (a2aagent, server/a2a)
 internal/service/chat_native → internal/a2a (InjectRunContext, Invoker)
@@ -71,9 +74,10 @@ internal/service/chat_native → internal/a2a (InjectRunContext, Invoker)
 | Graph resume metadata | ✅ | `graph_resume.go` |
 | Proxy/Endpoint 流式 | ✅ | `enable_streaming` / AgentCard streaming |
 | `/a2a` 运维页 | ✅ | Discover / Audit / Invoke / 远程 / Banner |
-| 网关健康 Cron | ❌ | 仅 `check_health` 同步探测 |
+| 网关健康 Cron | ✅ | `internal/a2a/health/runner.go`；默认 10 分钟；`A2A_HEALTH_DISABLED=1` 可禁用 |
+| 业务层速率限制 | ✅ | `A2AInvokeLimiter`（60次/分钟）；`A2AService.Invoke` 超限返回 429 |
 | Admin Invoke SSE | ❌ | 有意非流式 |
-| API 速率限制 | ❌ | Ingress / middleware |
+| HTTP 中间件层限流 | ❌ | 待 Ingress / Kratos middleware |
 | Ent 列级 agent_kind | 🟡 | 现用 `config_json` + `Kind` 字段 |
 
 ---
@@ -82,11 +86,10 @@ internal/service/chat_native → internal/a2a (InjectRunContext, Invoker)
 
 | # | 差距 | 优先级 | 说明 |
 |---|------|--------|------|
-| 1 | 网关健康后台 job | **P2** | Cron 探测 + Prometheus `a2a_gateway_healthy` |
-| 2 | 联邦路由策略 | **P3** | 按 healthy/source 选路 |
-| 3 | 速率限制 | **P2** | Ingress / middleware |
-| 4 | Admin Invoke 可选流式 | **P3** | 外部客户端应走 Public Endpoint |
-| 5 | Ent `agent_kind` 列迁移 | **P3** | 可选 schema 硬化 |
+| 1 | 联邦路由策略 | **P3** | 按 healthy/source 选路 |
+| 2 | HTTP 中间件层限流 | **P2** | Ingress / Kratos middleware（业务层已实现） |
+| 3 | Admin Invoke 可选流式 | **P3** | 外部客户端应走 Public Endpoint |
+| 4 | Ent `agent_kind` 列迁移 | **P3** | 可选 schema 硬化 |
 
 ---
 
@@ -128,17 +131,21 @@ internal/service/chat_native → internal/a2a (InjectRunContext, Invoker)
 | 3.5.4 | GatewayDiscover | ✅ |
 | 3.5.5 | Discover enrichment（source/url） | ✅ |
 
-### Phase 4 — 网关增强（待实现）
+### Phase 4 — 网关增强（部分实现）
 
-| # | 任务 | 验收标准 |
-|---|------|----------|
-| 4.1 | 健康探测 Cron | 远程离线告警 + 指标 |
-| 4.2 | 联邦路由策略 | 按 healthy/source 选路 |
-| 4.3 | 速率限制 / Server mTLS 文档 | Ingress 指引 + 可选内置 |
+| # | 任务 | 状态 | 验收标准 |
+|---|------|------|----------|
+| 4.1 | 健康探测 Cron | ✅ | `internal/a2a/health/runner.go`；远程离线告警 + `aranea_a2a_gateway_healthy` 指标 |
+| 4.2 | 业务层速率限制 | ✅ | `A2AInvokeLimiter`（60次/分钟）；超限返回 429 |
+| 4.3 | 联邦路由策略 | ❌ | 按 healthy/source 选路 |
+| 4.4 | HTTP 中间件层限流 | ❌ | Ingress 指引 + 可选 Kratos middleware |
+| 4.5 | Admin Invoke 可选流式 | ❌ | 低优先级；外部客户端应走 Public Endpoint |
 
 ---
 
-## 6. 验收标准（Phase 3.5）
+## 6. 验收标准
+
+### Phase 3.5
 
 - [x] 文档明确：A2A HTTP vs `/v1/ws` vs Admin Invoke
 - [x] Public Endpoint 广告 streaming；Proxy 可配置 streaming
@@ -146,6 +153,11 @@ internal/service/chat_native → internal/a2a (InjectRunContext, Invoker)
 - [x] Discover/Gateway 远程条目可用 registry id Invoke
 - [x] `GET /v1/a2a/gateway/discover` 返回 local + remote 联邦视图
 - [x] `call_agent` 同工作区互调成功并写审计
+
+### Phase 4（已完成项）
+
+- [x] 健康探测 Cron：`internal/a2a/health/runner.go` 周期探测 + `aranea_a2a_gateway_healthy` 指标
+- [x] 业务层速率限制：`A2AInvokeLimiter` 60次/分钟滑动窗口；超限 429
 
 ---
 

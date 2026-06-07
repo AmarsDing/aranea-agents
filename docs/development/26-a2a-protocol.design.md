@@ -33,6 +33,7 @@ Agent-to-Agent：平台内 `call_agent`、Admin Invoke、LLM **公开 Endpoint**
 │  Service                                                     │
 │  a2a.go           — Discover/Invoke/Card/Audit/Remote/Gateway│
 │  a2a_endpoint.go  — A2AEndpointBuilder → 公开 handler 缓存    │
+│  a2a_public_base.go — A2APublicBaseReloader（热更新 + 清缓存）│
 │  chat_native.go   — RunAgentTurn + injectA2AContext          │
 │  trpc_turn.go     — runCtx 注入 A2A；Proxy 跳过 intent        │
 ├─────────────────────────────────────────────────────────────┤
@@ -44,7 +45,11 @@ Agent-to-Agent：平台内 `call_agent`、Admin Invoke、LLM **公开 Endpoint**
 │  remote_client.go — FetchRemoteAgentCard、MTLSHTTPClient     │
 │  remote_invoke.go — InvokeRemoteRegistry                     │
 │  graph_resume.go  — BuildGraphResumeMetadata                 │
+│  capability_metadata.go — CapabilityMetadata                 │
+│  invoke_workspace.go — ValidateAdminInvokeWorkspace          │
 │  public_base_url.go — ResolvePublicBaseURL                   │
+│  public_base_store.go — PublicBaseURLStore                   │
+│  health/          — Runner（周期探测 + Prometheus）          │
 ├─────────────────────────────────────────────────────────────┤
 │  internal/a2a/trpc（框架包装）                              │
 │  agent.go         — BuildTRPCA2AAgent                        │
@@ -53,7 +58,8 @@ Agent-to-Agent：平台内 `call_agent`、Admin Invoke、LLM **公开 Endpoint**
 │  auth.go          — ProxyClientAuthOptions                   │
 ├─────────────────────────────────────────────────────────────┤
 │  Biz                                                         │
-│  a2a.go · a2a_remote.go · a2a_gateway.go                     │
+│  a2a.go（别名层）· a2a/a2a.go（核心领域）· a2a_limit.go      │
+│  agent_kind.go                                               │
 ├─────────────────────────────────────────────────────────────┤
 │  Data                                                        │
 │  a2a.go — a2a_agent_cards / a2a_invocations / a2a_audit /   │
@@ -115,22 +121,19 @@ Agent proto：`api/kratos/agent/v1/agent.proto` — `agent_kind`、`A2AProxyConf
 
 ## 四、Biz 层（已实现）
 
-### 4.1 核心模型 — `internal/biz/a2a.go`
+### 4.1 核心模型 — `internal/biz/a2a.go`（别名层）+ `internal/biz/a2a/a2a.go`（领域真相）
 
-- `A2ACapability`、`A2AAgentCard`、`A2AInvocation`、`A2AAuditEntry`
-- `A2ARepo`：Card、Invocation、Audit
-- `A2AUsecase`：Discover、Start/FinishInvocation、AppendAudit
+- `a2a.go`（别名层）：`A2AUsecase = a2a.Usecase`、`A2AAgentCard`、`A2ARemoteAgent`、`A2ARepo` 等类型别名；`A2ARunnerFactory` 接口
+- `a2a/a2a.go`（核心领域）：`Capability`、`AgentCard`、`Invocation`、`AuditEntry`、`RemoteAgent`、`GatewayEntry`；`CardRepo`、`InvocationRepo`、`AuditRepo`、`RemoteAgentRepo`、`Repo` 接口；`Usecase` 结构体及全部业务方法（Discover、Start/FinishInvocation、AppendAudit、RegisterRemoteAgent、DiscoverRemoteAgent、GatewayDiscover、PersistRemoteHealth、MapEndpointEnabled）
+- `a2a/agent_lookup.go`：`AgentLookupAdapter`
 
-### 4.2 远程注册 — `internal/biz/a2a_remote.go`
+### 4.2 速率限制 — `internal/biz/a2a_limit.go`
 
-- `A2ARemoteAgent`：workspace、remote_url、auth_type、discovered_card
-- Register / List / Delete / DiscoverRemote（预览）
+- `A2AInvokeLimiter`：基于 caller→callee 键的滑动窗口限流器
+- 默认 60 次/分钟（`defaultA2ALimiter`）
+- `A2AService.Invoke` 调用 `Allow()`，超限返回 429
 
-### 4.3 联邦 — `internal/biz/a2a_gateway.go`
-
-- `GatewayDiscover`：合并本地 Endpoint 与远程 registry；可选 `check_health` 同步探测
-
-### 4.4 Agent Kind — `internal/biz/agent_kind.go`
+### 4.3 Agent Kind — `internal/biz/agent_kind.go`
 
 ```go
 const (
@@ -195,11 +198,13 @@ kind "a2a_proxy" → BuildTRPCA2AAgent (internal/a2a/trpc/agent.go)
 
 ## 七、Service 层（已实现）
 
-`internal/service/a2a.go`：RPC 适配、Prometheus、`Invoke` 工作区校验。
+`internal/service/a2a.go`：RPC 适配、Prometheus、`Invoke` 工作区校验 + 业务层限流（`A2AInvokeLimiter`）。
 
 `internal/service/a2a_endpoint.go`：`A2AEndpointBuilder` 实现 `a2atrpc.EndpointBuilder`。
 
-Wire：`NewA2AEndpointBuilder`、`A2APublicBaseReloader`（系统设置保存后热更新 + 清 Endpoint 缓存）。
+`internal/service/a2a_public_base.go`：`A2APublicBaseReloader`（系统设置保存后热更新 + 清 Endpoint 缓存）。
+
+Wire：`NewA2AEndpointBuilder`、`NewA2APublicBaseReloader`。
 
 ---
 
@@ -229,7 +234,7 @@ Wire：`NewA2AEndpointBuilder`、`A2APublicBaseReloader`（系统设置保存后
 | Card 校验 | `CheckCalleeCard` |
 | 公开路径 | 仅 enabled LLM Endpoint；免 JWT 前缀注册 |
 | 远程鉴权 | api_key / bearer / mtls（`auth_config_json`） |
-| 速率限制 | 待 Phase 4（Ingress） |
+| 速率限制 | ✅ 业务层 `A2AInvokeLimiter`（60次/分钟）；HTTP/Ingress 层待做 |
 | Server mTLS 终止 | 文档化；建议反向代理 |
 
 ---
@@ -241,17 +246,17 @@ Wire：`NewA2AEndpointBuilder`、`A2APublicBaseReloader`（系统设置保存后
 | 文件 | 说明 |
 |------|------|
 | `api/kratos/a2a/v1/a2a.proto` | 契约 |
-| `internal/biz/a2a.go` · `a2a_remote.go` · `a2a_gateway.go` | 用例 |
+| `internal/biz/a2a.go`（别名层）· `internal/biz/a2a/a2a.go`（领域）· `a2a_limit.go` · `agent_kind.go` | 用例 |
 | `internal/data/a2a.go` | 持久化 |
-| `internal/service/a2a.go` · `a2a_endpoint.go` | 传输 |
-| `internal/a2a/*.go` · `internal/a2a/trpc/*.go` | 协议桥接 |
+| `internal/service/a2a.go` · `a2a_endpoint.go` · `a2a_public_base.go` | 传输 |
+| `internal/a2a/*.go` · `internal/a2a/health/*.go` · `internal/a2a/trpc/*.go` | 协议桥接 + 健康探测 |
 | `internal/agent/trpc_build_router.go` | Kind 路由 |
 
 ### 前端
 
 | 文件 | 说明 |
 |------|------|
-| `web/src/features/a2a/` | api · types · mappers · useA2APage |
+| `web/src/features/a2a/` | api · types · mappers · useA2APage · a2aTableUi · authUtils |
 | `web/src/pages/A2APage.vue` | 路由页 |
 | `web/src/components/a2a/` | 面板 |
 | `web/src/components/agents/AgentSettingsA2A*.vue` | 设置 Tab |
@@ -314,13 +319,13 @@ env (A2A_PUBLIC_BASE_URL)
 
 ---
 
-## 十三、Phase 4 设计预留（待实现）
+## 十三、Phase 4 设计预留
 
-| 项 | 方向 |
-|----|------|
-| 健康 Cron | `internal/biz` 或 cron 模块调度；写 `a2a_gateway_healthy` |
-| 联邦路由 | `GatewayDiscover` 消费 healthy 标记选路 |
-| 速率限制 | Kratos middleware 或 Ingress 文档 |
-| Admin Invoke 流式 | 可选 SSE；默认保持非流式 |
+| 项 | 状态 | 方向 |
+|----|------|------|
+| 健康 Cron | ✅ 已实现 | `internal/a2a/health/runner.go`；默认 10 分钟间隔；`A2A_HEALTH_DISABLED=1` 可禁用；Prometheus `aranea_a2a_gateway_healthy` + `aranea_a2a_health_probe_total` |
+| 联邦路由 | ❌ 待实现 | `GatewayDiscover` 消费 healthy 标记选路 |
+| 速率限制 | 🟡 部分实现 | 业务层 `A2AInvokeLimiter`（60次/分钟）已实现；HTTP/Ingress 层待做 |
+| Admin Invoke 流式 | ❌ 待实现 | 可选 SSE；默认保持非流式 |
 
 实现任务与验收见 [26-a2a-development.md](./26-a2a-development.md) Phase 4。

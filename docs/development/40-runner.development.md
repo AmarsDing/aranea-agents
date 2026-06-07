@@ -1,6 +1,6 @@
 # Runner 运行器 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ M1 完成（RunRegistry / RunGateway / RunnerManager）；Review Phase D 文档同步
+> **版本**：2026-06-06 | **状态**：后端 ✅ 完成；前端 UI 组件待创建
 > **需求**：[40 runner.md](./40%20runner.md) · **设计**：[40 runner.design.md](./40%20runner.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：M20
 
@@ -17,8 +17,8 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 - `internal/runtime/run_registry.go` — RunRegistry（active run、pending cancel、run status）
 - `internal/runtime/deps.go` — `PersistenceSet`（Session / Memory / AgentMCP / Artifact）
 - `cmd/admin/wire.go` — `provideArtifactRuntimeService` → `NewPersistenceSet`
-- `internal/service/chat.go` — ChatService 桥接 + pendingQueue / awaitChans / EnqueueUserMessage RPC
-- `internal/service/trpc_turn.go` — runSingleAgentViaTRPC / processPendingQueue
+- `internal/service/chat.go` — ChatService 桥接 + EnqueueUserMessage / GetRunStatus / StopGeneration RPC
+- `internal/service/chat_orchestrator_turn.go` — runSingleAgentViaTRPC / processPendingQueue
 - `internal/team/runner_team_trpc.go` — Team 运行
 - `internal/plugin/trpc/runtime.go` — 插件热加载
 - `internal/artifact/trpc/service.go` — ArtifactService 适配器
@@ -64,7 +64,7 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 6. ~~**P2**：SessionIngestor~~ 🟡 — ingest hook + FlowLog；Mem0 等外部 backend 待接
 7. ~~**P3**：RalphLoop~~ ✅ — Ent/SQL + 按 Agent 设置注入
 8. ~~**P3**：RunnerManager~~ ✅ — 统一装配已落地；长生命周期按需 `RegistryKey`
-9. **P3**：Web 前端 ChatRunnerStatus + ChatEnqueueMessage — UI 完善
+9. **P3**：Web 前端 ChatRunnerStatus + ChatEnqueueMessage — API/类型层已就绪，Vue 组件未创建
 
 ---
 
@@ -74,24 +74,25 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 
 - ~~ArtifactService 注入 Runner~~ ✅
 - ~~EnqueueUserMessage RPC~~ ✅（Cancel 仍用 StopGeneration + WS cancel）
-- GetRunStatus 与 ManagedRunner 对齐
+- ~~GetRunStatus 与 ManagedRunner 对齐~~ ✅
 
 ### Phase 2：框架层集成
 
-- AgentFactory + AgentLookup
-- AwaitUserReplyRouting（框架层）
-- SessionIngestor
+- ~~AgentFactory + AgentLookup~~ ✅
+- ~~AwaitUserReplyRouting（框架层）~~ ✅
+- ~~SessionIngestor~~ ✅（占位，外部 backend 待扩展）
 
 ### Phase 3：高级能力
 
-- RalphLoop
-- RunRegistry ✅ / RunnerManager ✅
+- ~~RalphLoop~~ ✅
+- ~~RunRegistry~~ ✅ / ~~RunnerManager~~ ✅
 
 ### Phase 4：前端完善
 
-- ChatRunnerStatus.vue
-- ChatEnqueueMessage.vue
-- RunStatus 类型扩展
+- ~~RunStatus 类型扩展~~ ✅（`web/src/domain/types.ts`）
+- ~~api.ts 接口~~ ✅（`enqueueMessage` / `getRunStatus` / `stopGeneration` / `awaitUserReply`）
+- ChatRunnerStatus.vue — 待创建
+- ChatEnqueueMessage.vue — 待创建
 
 ---
 
@@ -108,7 +109,7 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 | 6 | Chat Proto `RunStatus` 消息扩展（invocation_id 等字段） | P1 | 1 | `api/kratos/chat/v1/chat.proto` | ✅ |
 | 7 | `ChatService.GetRunStatus` 查询 `ManagedRunner.RunStatus` | P1 | 1 | `internal/service/chat.go`, `internal/runtime/run_registry.go` | ✅ |
 | 8 | 新建 `BizAgentFactory` + `trpcrunner.AgentFactory` 适配 | P2 | 2 | `internal/agent/factory.go` | ✅ |
-| 9 | Chat/Team `NewTRPCRunner` 传入 `BizAgentFactoryOptions` | P2 | 2 | `trpc_turn.go`, `runner_team_trpc.go` | ✅ |
+| 9 | Chat/Team `NewTRPCRunner` 传入 `BizAgentFactoryOptions` | P2 | 2 | `chat_orchestrator_turn.go`, `runner_team_trpc.go` | ✅ |
 | 10 | Team 共享 `RunRegistry`（`SetRunRegistry` + `StoreRunner`） | P1 | 1 | `team/runner.go`, `chat.go`, `run_registry.go` | ✅ |
 | 11 | `AwaitUserReplyRouting` 经 `RunnerManager.TurnRunnerSpec` 传入 `NewTRPCRunner` | P2 | 2 | `runner_manager.go`, `trpc_runtime.go` | ✅ |
 | 12 | 新建 `BizSessionIngestor` 实现 `trpcsession.Ingestor` | P2 | 2 | `internal/agent/ingestor.go` | ✅（占位，外部 backend 待扩展） |
@@ -120,11 +121,11 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 | 18 | 新建 `RunnerManager`（RunRegistry 已在 `internal/runtime`） | P3 | 3 | `internal/runtime/runner_manager.go` | ✅ |
 | 19 | Wire 注入 `NewBizAgentFactory` / `NewBizSessionIngestor` / `NewRunnerManager` | P2 | 2-3 | `cmd/admin/wire.go` |
 | 20 | 前端 `api.ts` 新增 `enqueueUserMessage` | P3 | 4 | `web/src/features/chat/api.ts` | ✅ |
-| 21 | 前端 `RunStatus` 类型扩展 | P3 | 4 | `web/src/features/chat/api.ts` |
-| 22 | 新建 `ChatRunnerStatus.vue` | P3 | 4 | `web/src/features/chat/components/` | ✅ |
-| 23 | 新建 `ChatEnqueueMessage.vue` | P3 | 4 | `web/src/features/chat/components/` | ✅ |
+| 21 | 前端 `RunStatus` 类型扩展 | P3 | 4 | `web/src/domain/types.ts` | ✅ |
+| 22 | 新建 `ChatRunnerStatus.vue` | P3 | 4 | `web/src/features/chat/components/` | ❌ |
+| 23 | 新建 `ChatEnqueueMessage.vue` | P3 | 4 | `web/src/features/chat/components/` | ❌ |
 | 24 | Agent 设置页 Ralph Loop 表单 | P3 | 4 | `AgentRalphLoopSection.vue`, `ralphLoopConfig.ts` | ✅ |
-| 25 | `ensureAgentRuntimePatches` + `02_agent_ralph_loop.sql` | P3 | 3 | `internal/data/agent_runtime_patch.go` | ✅ |
+| 25 | RalphLoop 列迁移（SQL 迁移文件） | P3 | 3 | `internal/data/sql/migrations/` | ✅ |
 | 26 | `biz.ValidateRalphLoopSettings` + `ResolveRalphLoopTurn` | P1 | 2 | `internal/biz/ralph_loop.go`, `internal/agent/ralph_loop.go` | ✅ |
 | 27 | A2A Runner Ralph + Lookup | P1 | 2 | `internal/service/a2a_endpoint.go` | ✅ |
 | 28 | `useAgentRalphLoopForm` / `useAgentPlannerForm` | P3 | 4 | `web/src/features/agents/` | ✅ |
@@ -143,15 +144,17 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 - [x] Session 摄入 hook（auto-memory 由 runner 入队；外部 Mem0 待扩展）
 - [x] RalphLoop 支持迭代执行和验证（按 `agent_runtime_settings` 配置）
 - [x] Runner 装配统一经 `RunnerManager`（多实例并行仍受 session 锁与 RunRegistry 约束）
-- [x] 前端显示运行状态、支持取消和追加消息（`ChatRunnerStatus` / `ChatEnqueueMessage`）
+- [ ] 前端独立运行状态/追加消息组件（`ChatRunnerStatus.vue` / `ChatEnqueueMessage.vue` 待创建；API/类型层已就绪）
 
 ---
 
 ## 7. 依赖与风险
 
-- **ArtifactService 注入**：已接入 `provideArtifactRuntimeService` → `PersistenceSet` → Chat/Team `NewTRPCRunner`
-- **AgentFactory**：需确认 `BuildTRPCLLMAgent` 在工厂模式下是否能正确获取 `TRPCBuilderDeps`（Provider/Model 等参数来自请求上下文）
-- **AwaitUserReplyRouting**：框架层路由与 Service 层 `serviceawaitreply.ServiceTool` 的交互需验证，避免两层机制冲突
-- **RalphLoop**：需 AgentRuntimeSettings 数据库字段支持，依赖 Ent Schema 迁移
-- **RunnerManager**：长生命周期 Runner 的资源回收策略需设计，避免内存泄漏
+- **ArtifactService 注入**：✅ 已接入 `provideArtifactRuntimeService` → `PersistenceSet` → Chat/Team `NewTRPCRunner`
+- **AgentFactory**：✅ `BizAgentFactoryOptions` 按 `agent_key` 注册，`BuildTRPCAgentCached` 构建并缓存
+- **AwaitUserReplyRouting**：✅ 框架层路由与 Service 层 `serviceawaitreply.ServiceTool` 互补运行，未发现冲突
+- **RalphLoop**：✅ AgentRuntimeSettings 数据库字段已迁移，Ent Schema 已更新
+- **RunnerManager**：✅ 统一装配已落地；长生命周期 Runner 通过 `RegistryKey` 支持，每 turn 仍默认 Close
+- **SessionIngestor**：🟡 外部 Mem0 等 backend 待扩展，当前仅记录摄入元数据
+- **前端 UI 组件**：❌ `ChatRunnerStatus.vue` / `ChatEnqueueMessage.vue` 待创建，API/类型层已就绪
 - **Proto 扩展**：每次修改需 `make api` 重新生成

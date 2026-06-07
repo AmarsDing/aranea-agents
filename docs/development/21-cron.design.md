@@ -104,9 +104,19 @@ service CronService {
       body: "*"
     };
   }
+  rpc ResetCronTaskFailures(ResetCronTaskFailuresRequest) returns (CronTask) {
+    option (google.api.http) = {
+      post: "/v1/cron-tasks/{id}/reset-failures"
+      body: "*"
+    };
+  }
 }
 
 message TriggerCronTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ResetCronTaskFailuresRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 ```
@@ -131,7 +141,7 @@ message TriggerCronTaskRequest {
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `target_type` | string | `agent` / `team` |
+| `target_type` | string | `agent` / `team` / `model_registry_sync` |
 | `team_id` | string | target_type=team 时必填 |
 | `schedule_type` | string | `interval` / `cron` / `once` |
 | `cron_expression` | string | schedule_type=cron 时必填，标准5段 |
@@ -189,7 +199,7 @@ type CronTaskRun struct {
     ID           string
     TaskID       string
     TaskName     string
-    Status       string  // "success" / "failure" / "running"
+    Status       string  // "success" / "failure" / "pending" / "skipped"
     StartedAt    string
     FinishedAt   string
     OutputJSON   string
@@ -322,18 +332,26 @@ func NewCronRepo(d *Data) biz.CronRepo
 ```go
 // internal/cronrunner/runner.go
 type Runner struct {
-    deps RunnerDeps
+    deps Deps
+    lg   loggateway.Logger
+    mu   sync.Mutex
+    taskMu sync.Map
 }
 
-type RunnerDeps struct {
-    Cron      biz.CronRepo
-    Chat      CronChatRunner
-    Event     EventPublisher
+type Deps struct {
+    Cron              biz.CronRepo
+    Session           SessionUsecase
+    Teams             TeamLister
+    Agents            AgentLister
+    Chat              CronChatRunner
+    Event             EventPublisher
+    RegistrySyncAgent RegistrySyncAgent
 }
 
-func NewRunner(deps RunnerDeps) *Runner
-func (r *Runner) Start(ctx context.Context) error
+func NewRunner(deps Deps, lg loggateway.Logger) *Runner
+func (r *Runner) Start(ctx context.Context, interval time.Duration) error
 func (r *Runner) Stop()
+func (r *Runner) TriggerTask(ctx context.Context, taskID string) (biz.CronTaskRun, error)
 ```
 
 **调度执行流程**（`internal/cronrunner/runner.go`）：
@@ -341,7 +359,7 @@ func (r *Runner) Stop()
 2. 每 tick 用 `TryLock` 防重入，加载全部未删 `cron_task`，筛选 `enabled=true`、`status=active`
 3. 在 Go 进程内解析 `metadata_json.next_run_at`，仅调度 `next_run_at <= now` 的到期任务
 4. 解析 `config_json` 与 schedule；**无效配置/空 message/到期计算错误** → 写入 `cron_task_run`（`failure`），递增 `failure_count`，**不 dispatch**（与 dispatch 失败共用 `finalizeRun` 路径）
-5. 解析 `config_json.target_type`：`agent` 使用 `cron_task.agent_id`；`team` 使用 `config_json.team_id`
+5. 解析 `config_json.target_type`：`agent` 使用 `cron_task.agent_id`；`team` 使用 `config_json.team_id`；`model_registry_sync` 触发模型注册表同步
 6. 写入 `cron_task_run`（`pending`），`dispatchWithRetry` 按 `retry_max_attempts` 退避（默认 3 次：30s/2m/10m；`0`=不重试）
 7. 创建 Session（`dialog_mode=cron`），调用 **`ChatService.RunCronTurn`**（EP-RT-07 in-process）；`CRON_CHAT_DISPATCH_ORIGIN` 保留 HTTP fallback
 8. 写回 `cron_task_run` + `metadata_json` 统计 + 重算 `next_run_at`；`once` 执行后自动暂停
@@ -389,6 +407,8 @@ func NewCronService(uc *biz.CronUsecase, runner *cronrunner.Runner) *CronService
 | `UpdateCronTask` | `req.Task` → `patchFromProtoCronTask` → `uc.UpdateTask` → `toProtoCronTask` |
 | `DeleteCronTask` | `uc.DeleteTask` → `emptypb.Empty` |
 | `ListCronTaskRuns` | `req` → `biz.CronTaskRunQuery` → `uc.ListTaskRuns` → 逐条 `toProtoCronTaskRun` |
+| `TriggerCronTask` | `runner.TriggerTask` → `toProtoCronTaskRun`；异步执行，立即返回 `pending` run |
+| `ResetCronTaskFailures` | `uc.ResetTaskFailures` → `toProtoCronTask` |
 
 **类型转换函数**：
 - `toProtoCronTask(biz.CronTask) *v1.CronTask`
@@ -419,25 +439,23 @@ Runner 在 **`cmd/admin/main.go`** 中通过 Wire 注入；`CRON_RUNNER_DISABLED
 web/src/
 ├── features/cron/
 │   ├── api.ts                          # API 调用与类型转换
-│   ├── types.ts                        # TypeScript 类型定义
-│   └── __tests__/cron-types.spec.ts    # 类型单元测试
+│   └── types.ts                        # TypeScript 类型定义
 ├── components/cron/
 │   ├── CronTaskFormDialog.vue          # 创建/编辑对话框
 │   ├── CronTaskFormFields.vue          # 表单字段（主容器）
 │   ├── CronTaskFormTargetFields.vue    # 目标类型选择（Agent/Team）
 │   ├── CronTaskFormScheduleFields.vue  # 计划类型选择（interval/cron/once）
+│   ├── CronRunsDialog.vue              # 执行历史弹窗
 │   └── cronTaskUtils.ts               # 表单工具函数
 └── pages/
-    ├── CronTasksPage.vue               # 定时任务管理主页
-    └── CronRunsPage.vue                # 执行历史页
+    └── CronTasksPage.vue               # 定时任务管理主页（含执行历史弹窗入口）
 ```
 
 ### 7.2 页面路由
 
 | 路由 | 页面 | 说明 |
 |------|------|------|
-| `/cron` | `CronTasksPage.vue` | 定时任务管理主页 |
-| `/cron/runs` | `CronRunsPage.vue` | 执行历史页 |
+| `/cron` | `CronTasksPage.vue` | 定时任务管理主页（含执行历史弹窗 `CronRunsDialog`） |
 
 ### 7.3 CronTasksPage.vue
 
@@ -446,7 +464,7 @@ web/src/
 | 顶栏 | `QToolbar` | 标题「定时任务」+ 副标题「安排定期 Agent 任务」+ 刷新按钮 + 新建按钮 |
 | 搜索 | `QInput` | `outlined rounded dense debounce="300"`，搜索 `name`/`description` |
 | 空状态 | `QIcon` + `QAvatar` + `QBtn` | 图标 `schedule`，文案「暂无定时任务」，新建按钮 |
-| 表格 | `QTable` | 服务端分页，列如下 |
+| 表格 | `QTable` | 客户端分页与搜索（当前 `ListCronTasks` 无 search/page 参数，全量返回后前端过滤） |
 
 **表格列**：
 
@@ -461,7 +479,7 @@ web/src/
 | 状态 | `status` + `enabled` | `QBadge`：active 绿、paused 灰、dead 红 |
 | 上次运行 | `metadata_json.last_run_at` | 相对时间 |
 | 下次运行 | `metadata_json.next_run_at` | once 已执行显示「—」 |
-| 操作 | — | 启用/暂停 `QToggle` + 编辑/删除 `QBtn flat dense` + 历史 `QBtn icon="history"` |
+| 操作 | — | 启用/暂停 `QToggle` + 编辑/删除 `QBtn flat dense` + 历史 `QBtn icon="history"` + dead 任务「重置失败计数」`QBtn icon="restart_alt"` |
 
 ### 7.4 CronTaskFormDialog.vue
 
@@ -477,24 +495,33 @@ web/src/
 | `QInput` 执行时间 | `config.runAt` | schedule_type=once 时显示，`QPopupProxy` + `QDate` + `QTime` |
 | `QInput` 描述 | `description` | `autogrow` |
 | `QInput` 消息 | `config.message` | `type="textarea" autogrow`，placeholder="Agent 应该做什么?" |
+| `QInput` 最大重试次数 | `config.retryMaxAttempts` | `type="number"`，hint="0=禁用重试，默认3" |
 | `QToggle` 启用 | `enabled` | 默认启用 |
 
-### 7.5 CronRunListPage.vue
+### 7.5 CronRunsDialog.vue
+
+> 执行历史以弹窗形式嵌入 `CronTasksPage`，非独立路由页面。
 
 | 区域 | 组件 | 说明 |
 |------|------|------|
-| 筛选器 | `QSelect` + `QInput` | 定时任务（可清空=全部）、状态 success/failure、时间范围 |
-| 表格 | `QTable` | 列：任务名称、started_at、finished_at、status、error_message 摘要、trigger、run_id |
+| 筛选器 | `QSelect` + `QInput` | 定时任务（可清空=全部）、状态 success/failure/pending/skipped |
+| 表格 | `QTable` | 列：任务名称、started_at、finished_at、status、error_message 摘要、trigger、run_id；前端分页 |
 
 ### 7.6 API
 
 ```typescript
 export async function listCronTasks(): Promise<CronTask[]>
 export async function getCronTask(id: string): Promise<CronTask>
-export async function createCronTask(req: CreateCronTaskRequest): Promise<CronTask>
-export async function updateCronTask(id: string, task: CronTask): Promise<CronTask>
+export async function createCronTask(payload: CreateCronTaskRequest): Promise<CronTask>
+export async function updateCronTask(id: string, payload: CronTask): Promise<CronTask>
 export async function deleteCronTask(id: string): Promise<void>
+export async function triggerCronTask(id: string): Promise<CronTaskRun>
+export async function resetCronTaskFailures(id: string): Promise<PlatformResource>
 export async function listCronTaskRuns(query: { cron_task_id?: string; status?: string; limit?: number }): Promise<CronTaskRun[]>
+export async function listCronAgents(): Promise<Agent[]>
+export async function listCronTeams(): Promise<Team[]>
+export function parseCronConfig(row: CronTask): CronTaskConfig
+export function parseCronMetadata(row: CronTask): CronTaskMetadata
 ```
 
 ### 7.7 类型定义
@@ -520,18 +547,18 @@ export interface CronTaskRun {
   id: string
   task_id: string
   task_name: string
-  status: string
+  status: string  // "success" | "failure" | "pending" | "skipped"
   started_at: string
   finished_at: string
-  trigger: string
+  trigger: string  // "schedule" | "manual"
   run_id: string
   output_json: string
   error_message: string
   created_at: string
 }
 
-export interface CronConfig {
-  target_type: 'agent' | 'team'
+export interface CronTaskConfig {
+  target_type: 'agent' | 'team' | 'model_registry_sync'
   team_id: string
   schedule_type: 'interval' | 'cron' | 'once'
   cron_expression: string
@@ -539,9 +566,10 @@ export interface CronConfig {
   run_at: string
   timezone: string
   message: string
+  retry_max_attempts: number
 }
 
-export interface CronMetadata {
+export interface CronTaskMetadata {
   run_count: number
   success_count: number
   failure_count: number

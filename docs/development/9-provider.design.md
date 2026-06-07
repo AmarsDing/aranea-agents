@@ -9,7 +9,7 @@
 
 LLM Provider/Model 管理：多厂商注册、模型目录、Failover/Hedge 高可用、TokenTailor 自动裁剪。核心包 `internal/provider` 桥接 trpc-agent-go `model` 包。
 
-**当前实现状态**（2026-05-17 现状对齐）：
+**当前实现状态**（2026-06-06 现状对齐）：
 - ✅ Proto CRUD + Inspect + ValidatePair 已实现
 - ✅ `internal/provider/trpc_llm.go` 已实现按 `provider_type` 分发构建 `model.Model`（5 种原生 Provider + 4 种 Variant）
 - ✅ `internal/provider/catalog.go` 已实现 `CatalogConfig` 解析和合并（含所有 Provider 专属字段 + HA 配置）
@@ -20,18 +20,37 @@ LLM Provider/Model 管理：多厂商注册、模型目录、Failover/Hedge 高�
 - ✅ `internal/provider/stream_delta.go` 流式 Delta 合并已实现
 - ✅ `internal/provider/roundtrip.go` HTTP Transport 注入已实现
 - ✅ 前端 `providerPresets.ts` 已对齐 trpc Provider 类型枚举（20 个预设）
-- ✅ 前端 `ProviderModelRow.vue` 列表行已实现（6 列网格布局、热度、用量、密钥状态）
+- ✅ 前端 `ProviderModelsTable.vue` 列表已实现（Variant Chip + HA Chip + 定价警告图标）
 - ✅ 前端 `ProviderTrendDialog.vue` 趋势看板已实现（30 天趋势柱状图、汇总卡片、详情表）
 - ✅ 前端 `ResourceManagerPage.vue` 管理页面已实现（搜索、分页、创建/编辑弹窗）
 - ✅ Agent 构建链路已接入（`internal/agent/trpc_build.go` + `internal/service/session_title_llm.go`）
-- ⏳ Inspect 请求/响应扩展字段（variant、secret_id、secret_key、aws_region、enable_token_tailoring、supports_cache、supports_thinking）
-- ⏳ `mergeInspectConfigJSON` 仅合并 3 个字段，缺 variant / secret_id / secret_key / aws_region
-- ⏳ 前端添加/编辑弹窗四步表单（当前为单弹窗表单，非设计文档 §6 的四步表单）
-- ⏳ 前端 Variant Chip 展示（ProviderModelRow 未展示 Variant Chip）
-- ⏳ 前端 HA Chip 展示（ProviderModelRow 未展示 Failover/Hedge Chip）
-- ⏳ llminspect 缺少 Gemini / Ollama / Hunyuan 专属探测路径
-- ⏳ HuggingFace / Bedrock Provider 未注册到 trpc provider 工厂（前端预设已预留）
-- ⏳ 凭据未加密存储（api_key 明文存 SQLite config_json），前端对apikey 增加显示按钮，点击可以查看明文
+- ✅ Inspect 请求/响应扩展字段（variant、secret_id、secret_key、aws_region、enable_token_tailoring、supports_cache、supports_thinking）
+- ✅ mergeInspectConfigJSON 已支持 variant / secret_id / secret_key / aws_region 合并
+- ✅ 前端添加/编辑弹窗四步表单（QStepper：① 连接与身份 → ② 模型分类与规格 → ③ 高可用配置 → ④ 高级选项）
+- ✅ 前端 Variant Chip 展示（ProviderModelsTable 含 Variant Chip）
+- ✅ 前端 HA Chip 展示（ProviderModelsTable 含 Failover/Hedge Chip）
+- ✅ llminspect 已实现 Gemini / Ollama / Hunyuan 专属探测路径 + 单测
+- ⏳ HuggingFace / Bedrock Provider 未注册到 trpc provider 工厂（前端预设已预留；register_extra.go + MapProviderType 已就绪）
+- ✅ 凭据加密存储（AES-256-GCM / ARANEA_CREDENTIAL_KEY）；List/Get 脱敏；降级警告；CredentialCrypto 构造函数注入
+- ✅ 速率限制（config_json rate_limit_rpm + RoundTrip 令牌桶）
+- ✅ 健康检查（ProviderHealthScanner 5min；safego.Go；UpdateProviderModelStatus）
+- ✅ Repo 接口拆分（LlmProviderModelRepo → Reader/Writer/Validator/Pricing 子接口）
+- ✅ ModelCapabilities 统一到 biz 层
+- ✅ HA 候选模型预检 + 指标装饰（outboundguard.ValidateURL + WrapModelWithMetrics）
+- ✅ 定价缺失提示（后端 PricingConfigured + 前端 price_check 警告图标）
+- ✅ 凭据加密降级提示（IsCredentialEncryptionAvailable + 前端 q-banner 警告）
+- ✅ HA 故障转移事件可视化（WithSwitchCallback → event.CtxFlowLogWarn）
+- ✅ Proto pricing_configured 字段（field 16）
+- ✅ Provider 适配路径单测（37 用例）
+- ✅ 前端 composable 拆分（useProviderList / useProviderCatalog / useProviderCredentials / useProviderInspect / useProviderPresets / useProviderWizard / useProviderSave / useResourceManagerPage）
+- ✅ 前端类型统一到 types.ts（ProviderConfig / ModelCategory / CapabilityChip）
+- ✅ 前端数据流合规（useAgentProviderModelPicker + useProviderWizard 走 Store）
+- ✅ Wire DI 合规（CredentialCrypto 构造函数注入，SetInspector + SetCredentialKeyResolver 已删除）
+- ✅ UpsertModelPricingRule 事务安全
+- ✅ RunHealthChecks 并发安全 + safego 合规
+- ✅ MCPServerRepo 接口拆分（Reader/Writer/MetadataWriter）
+- ✅ DecryptConfigJSONForRuntime 返回 (string, error)
+- ✅ RunHealthChecks goroutine ctx 取消修复
 
 ---
 
@@ -67,6 +86,7 @@ message ProviderModel {
   string created_at = 12;
   string updated_at = 13;
   string deleted_at = 14;
+  bool pricing_configured = 16;
 }
 
 message ListProviderModelsResponse {
@@ -116,6 +136,10 @@ message InspectProviderModelRequest {
   string model_api_id = 4;
   string api_base_url = 5;
   string api_key = 6;
+  string variant = 7;
+  string secret_id = 8;
+  string secret_key = 9;
+  string aws_region = 10;
 }
 
 message InspectProviderModelResponse {
@@ -135,6 +159,10 @@ message InspectProviderModelResponse {
   int64 embedding_price_micro_usd_per_1k = 14;
   string source = 15;
   string raw_metadata_json = 16;
+  string variant = 17;
+  bool enable_token_tailoring = 18;
+  bool supports_cache = 19;
+  bool supports_thinking = 20;
 }
 
 service LlmProviderModelService {
@@ -162,17 +190,17 @@ service LlmProviderModelService {
 }
 ```
 
-### 2.2 待新增 Proto 字段
+### 2.2 已新增 Proto 字段（已实现）
 
 #### InspectProviderModelRequest 新增字段
 
 ```protobuf
 message InspectProviderModelRequest {
   // ... 现有字段 1-6 ...
-  string variant = 7;       // OpenAI Variant: openai/deepseek/qwen/hunyuan
-  string secret_id = 8;     // Hunyuan SecretId
-  string secret_key = 9;    // Hunyuan SecretKey
-  string aws_region = 10;   // Bedrock AWS Region
+  string variant = 7;       // 已新增：OpenAI Variant: openai/deepseek/qwen/hunyuan
+  string secret_id = 8;     // 已新增：Hunyuan SecretId
+  string secret_key = 9;    // 已新增：Hunyuan SecretKey
+  string aws_region = 10;   // 已新增：Bedrock AWS Region
 }
 ```
 
@@ -181,10 +209,10 @@ message InspectProviderModelRequest {
 ```protobuf
 message InspectProviderModelResponse {
   // ... 现有字段 1-16 ...
-  string variant = 17;                // 检测到的 OpenAI Variant
-  bool enable_token_tailoring = 18;   // 是否启用 Token Tailoring
-  bool supports_cache = 19;           // 是否支持 Prompt Cache
-  bool supports_thinking = 20;        // 是否支持思考/推理模式
+  string variant = 17;                // 已新增：检测到的 OpenAI Variant
+  bool enable_token_tailoring = 18;   // 已新增：是否启用 Token Tailoring
+  bool supports_cache = 19;           // 已新增：是否支持 Prompt Cache
+  bool supports_thinking = 20;        // 已新增：是否支持思考/推理模式
 }
 ```
 
@@ -238,10 +266,16 @@ type InspectMerge struct {
     ModelAPIID   string
     APIBaseURL   string
     APIKey       string
+    Variant      string
+    SecretID     string
+    SecretKey    string
+    AWSRegion    string
 }
 ```
 
-### 3.2 InspectMerge 扩展（待实现）
+### 3.2 InspectMerge 扩展（已实现）
+
+`InspectMerge` 已扩展支持 variant / secret_id / secret_key / aws_region 字段，与 Proto 层对齐：
 
 ```go
 type InspectMerge struct {
@@ -251,25 +285,48 @@ type InspectMerge struct {
     ModelAPIID   string
     APIBaseURL   string
     APIKey       string
-    Variant      string // 新增：OpenAI Variant
-    SecretID     string // 新增：Hunyuan SecretId
-    SecretKey    string // 新增：Hunyuan SecretKey
-    AWSRegion    string // 新增：Bedrock AWS Region
+    Variant      string // 已实现：OpenAI Variant
+    SecretID     string // 已实现：Hunyuan SecretId
+    SecretKey    string // 已实现：Hunyuan SecretKey
+    AWSRegion    string // 已实现：Bedrock AWS Region
 }
 ```
 
-### 3.3 Repo 接口（当前实现）
+### 3.3 Repo 接口拆分（已实现）
+
+`LlmProviderModelRepo` 已拆分为 Reader/Writer/Validator/Pricing 子接口 + 组合接口：
 
 ```go
-type LlmProviderModelRepo interface {
+// Reader 只读操作
+type LlmProviderModelReader interface {
     ListProviderModels(ctx context.Context) ([]ProviderModel, error)
     GetProviderModel(ctx context.Context, id string) (ProviderModel, error)
     GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
+}
+
+// Writer 写操作
+type LlmProviderModelWriter interface {
     CreateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
     UpdateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
     DeleteProviderModel(ctx context.Context, id string) error
+}
+
+// Validator 验证操作
+type LlmProviderModelValidator interface {
     ValidateProviderPair(ctx context.Context, provider, model string) (bool, error)
+}
+
+// Pricing 定价操作
+type LlmProviderModelPricing interface {
     UpsertModelPricingRule(ctx context.Context, rule ModelPricingRule) error
+}
+
+// LlmProviderModelRepo 组合接口
+type LlmProviderModelRepo interface {
+    LlmProviderModelReader
+    LlmProviderModelWriter
+    LlmProviderModelValidator
+    LlmProviderModelPricing
 }
 ```
 
@@ -291,9 +348,9 @@ func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, mo
 func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (llminspect.Result, error)
 ```
 
-### 3.5 Inspect 方法扩展（待实现）
+### 3.5 Inspect 方法扩展（已实现）
 
-`Inspect` 方法需扩展 `mergeInspectConfigJSON` 以支持新字段：
+`Inspect` 方法已扩展 `mergeInspectConfigJSON` 以支持 variant / secret_id / secret_key / aws_region 字段合并：
 
 ```go
 func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
@@ -301,10 +358,10 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
         ProviderType string `json:"provider_type"`
         APIBaseURL   string `json:"api_base_url"`
         APIKey       string `json:"api_key"`
-        Variant      string `json:"variant"`       // 新增
-        SecretID     string `json:"secret_id"`      // 新增
-        SecretKey    string `json:"secret_key"`      // 新增
-        AWSRegion    string `json:"aws_region"`      // 新增
+        Variant      string `json:"variant"`
+        SecretID     string `json:"secret_id"`
+        SecretKey    string `json:"secret_key"`
+        AWSRegion    string `json:"aws_region"`
     }
     if json.Unmarshal([]byte(cfg), &c) != nil {
         return
@@ -889,9 +946,9 @@ func (s *LlmProviderModelService) ValidateProviderPair(ctx context.Context, req 
 }
 ```
 
-### 6.2 Inspect 扩展（待实现）
+### 6.2 Inspect 扩展（已实现）
 
-Proto 新增字段后，Service 层需更新 `InspectProviderModel` 方法：
+Proto 新增字段后，Service 层已更新 `InspectProviderModel` 方法：
 
 ```go
 func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req *v1.InspectProviderModelRequest) (*v1.InspectProviderModelResponse, error) {
@@ -902,18 +959,18 @@ func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req 
         ModelAPIID:   req.GetModelApiId(),
         APIBaseURL:   req.GetApiBaseUrl(),
         APIKey:       req.GetApiKey(),
-        Variant:      req.GetVariant(),       // 新增
-        SecretID:     req.GetSecretId(),       // 新增
-        SecretKey:    req.GetSecretKey(),       // 新增
-        AWSRegion:    req.GetAwsRegion(),       // 新增
+        Variant:      req.GetVariant(),
+        SecretID:     req.GetSecretId(),
+        SecretKey:    req.GetSecretKey(),
+        AWSRegion:    req.GetAwsRegion(),
     })
     if err != nil { return nil, err }
     return &v1.InspectProviderModelResponse{
         // ... 现有字段 ...
-        Variant:              out.Variant,              // 新增
-        EnableTokenTailoring: out.EnableTokenTailoring,  // 新增
-        SupportsCache:        out.SupportsCache,          // 新增
-        SupportsThinking:     out.SupportsThinking,       // 新增
+        Variant:              out.Variant,
+        EnableTokenTailoring: out.EnableTokenTailoring,
+        SupportsCache:        out.SupportsCache,
+        SupportsThinking:     out.SupportsThinking,
     }, nil
 }
 ```
@@ -922,12 +979,30 @@ func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req 
 
 ## 七、Wire 注入
 
-已有注入链（无需修改）：
+已有注入链：
 
 ```
 data.ProviderSet   → NewLlmProviderModelRepo
 biz.ProviderSet    → NewLlmProviderModelUsecase
 service.ProviderSet → NewLlmProviderModelService
+```
+
+新增注入链：
+
+```
+// CredentialCrypto 凭据加密（构造函数注入）
+data.ProviderSet   → NewCredentialCrypto
+biz.ProviderSet    → NewLlmProviderModelUsecase（接收 CredentialCrypto）
+
+// MCPServerReader Wire binding
+data.ProviderSet   → NewMCPRepo → Wire 绑定 biz.MCPServerReader
+```
+
+已删除的注入：
+
+```
+// 以下已删除，改为构造函数注入
+SetInspector + SetCredentialKeyResolver → 已移除
 ```
 
 ---
@@ -943,15 +1018,26 @@ web/src/
 ├── features/
 │   └── platform/
 │       ├── api.ts                  ← 平台资源 API（已实现）
+│       ├── types.ts                ← 前端类型定义（ProviderConfig / ModelCategory / CapabilityChip）（已实现）
+│       ├── providerUtils.ts        ← Provider 工具函数（已实现）
+│       ├── useProviderList.ts      ← Provider 列表 composable（已实现）
+│       ├── useProviderCatalog.ts   ← Provider 目录 composable（已实现）
+│       ├── useProviderCredentials.ts ← Provider 凭据 composable（已实现）
+│       ├── useProviderInspect.ts   ← Provider 探测 composable（已实现）
+│       ├── useProviderPresets.ts   ← Provider 预设 composable（已实现）
+│       ├── useProviderWizard.ts    ← Provider 向导 composable（已实现）
+│       ├── useProviderSave.ts      ← Provider 保存 composable（已实现）
+│       ├── useResourceManagerPage.ts ← 资源管理页面 composable（已实现）
 │       └── usePlatformResource.ts  ← 组合式函数（已实现）
 ├── components/
 │   └── platform/
-│       ├── ProviderModelRow.vue    ← 列表行组件（已实现）
+│       ├── ProviderModelsTable.vue ← 列表表格组件（已实现，含 Variant Chip + HA Chip + 定价警告图标）
+│       ├── providerModelUi.ts      ← Provider 模型 UI 工具函数（已实现）
 │       ├── ProviderTrendDialog.vue ← 趋势看板（已实现）
-│       ├── ProviderFormDialog.vue  ← 添加/编辑弹窗（待实现）
-│       └── ProviderHAConfig.vue    ← 高可用配置组件（待实现）
+│       ├── ProviderFormDialog.vue  ← 添加/编辑弹窗（已实现，集成在 ResourceManagerPage QStepper 中）
+│       └── ProviderHAConfig.vue    ← 高可用配置组件（已实现）
 └── pages/
-    └── ResourceManagerPage.vue     ← 资源管理页面（已实现，需改造）
+    └── ResourceManagerPage.vue     ← 资源管理页面（已实现）
 ```
 
 ### 8.2 providerPresets.ts（已实现）
@@ -1008,40 +1094,31 @@ export const VARIANT_OPTIONS: { label: string; value: OpenAIVariant }[] = [
 | `huggingface` | `huggingface` | — | `api_key` |
 | `bedrock` | `bedrock` | — | `aws_config` |
 
-### 8.3 ProviderModelRow.vue（已实现）
+### 8.3 ProviderModelsTable.vue（已实现）
 
-列表行组件，展示模型信息和操作按钮。
+列表表格组件，展示模型信息和操作按钮。已实现 Variant Chip + HA Chip + 定价警告图标。
 
 **Props**：
 
 ```typescript
 defineProps<{
-  row: PlatformResource;
-  saving?: boolean;
-}>();
-
-defineEmits<{
-  "toggle-enabled": [row: PlatformResource, enabled: boolean];
-  trend: [row: PlatformResource];
-  edit: [row: PlatformResource];
-  delete: [row: PlatformResource];
+  rows: PlatformResource[];
+  loading?: boolean;
 }>();
 ```
 
-**展示区域**（6 列网格布局）：
+**展示区域**：
 
 | 区域 | 内容 |
 |------|------|
-| 身份 | 状态点 + Provider 展示名 + 模型名 + Provider/Type Chip |
+| 身份 | 状态点 + Provider 展示名 + 模型名 + Provider/Type Chip + **Variant Chip**（仅 OpenAI 类型且 Variant ≠ openai 时显示） |
 | 模型类型 | 模型分类 Chip 列表 |
 | 指标 | 模型大小 / 上下文 / TPS |
 | 使用情况 | 热度进度条 + 30天调用/费用 |
 | 密钥 | API 密钥设置状态 Chip |
+| 高可用 | **Failover 蓝色 Chip / Hedge 紫色 Chip** |
+| 定价 | **定价缺失警告图标**（price_check 未配置时显示） |
 | 操作 | 启用 Toggle + 趋势/编辑/删除按钮 |
-
-**待改造项**：
-- 新增 Variant Chip（仅 OpenAI 类型且 Variant ≠ openai 时显示）
-- 新增高可用 Chip（Failover 蓝色 / Hedge 紫色）
 
 ### 8.4 ProviderTrendDialog.vue（已实现）
 
@@ -1064,7 +1141,7 @@ defineProps<{
 | 趋势柱状图 | 每日 Token 消耗柱状图 |
 | 详情表格 | 成功率 / 平均延迟 / TPS / 上下文 / 最大输出 |
 
-### 8.5 ProviderFormDialog.vue（待实现）
+### 8.5 ProviderFormDialog.vue（已实现，集成在 ResourceManagerPage QStepper 中）
 
 添加/编辑 Provider 弹窗，四步表单。
 
@@ -1309,7 +1386,7 @@ function buildConfigJson(form: ProviderFormData): string {
 }
 ```
 
-### 8.6 ProviderHAConfig.vue（待实现）
+### 8.6 ProviderHAConfig.vue（已实现）
 
 高可用配置独立组件，供 `ProviderFormDialog.vue` 步骤三使用。
 
@@ -1338,9 +1415,9 @@ function buildConfigJson(form: ProviderFormData): string {
 </template>
 ```
 
-### 8.7 ResourceManagerPage.vue 改造（待实现）
+### 8.7 ResourceManagerPage.vue 改造（已实现）
 
-当前页面使用统一的 `ResourceManagerPage.vue` 管理 Provider/Model 列表。需改造：
+ResourceManagerPage 已完成改造，集成 QStepper 四步表单、Provider 类型筛选、Variant Chip、高可用 Chip：
 
 1. **Provider 类型筛选**：`QSelect` 多选，选项为 `PROVIDER_TYPE_OPTIONS`
 2. **ProviderFormDialog 集成**：替换现有添加/编辑弹窗
@@ -1364,14 +1441,15 @@ export async function validateModel(provider: string, model: string): Promise<Va
 
 ## 九、实现优先级
 
-| 优先级 | 任务 | 涉及文件 |
-|--------|------|----------|
-| P0 | Proto Inspect 新增字段 | `api/kratos/llm_provider_model/v1/llm_provider_model.proto` |
-| P0 | Biz InspectMerge 扩展 | `internal/biz/llm_provider_model.go` |
-| P0 | Service Inspect 映射更新 | `internal/service/llm_provider_model.go` |
-| P0 | 前端 ProviderFormDialog 四步表单 | `web/src/components/platform/ProviderFormDialog.vue`（新建） |
-| P1 | 前端 Variant Chip 展示 | `web/src/components/platform/ProviderModelRow.vue` |
-| P1 | 前端高可用 Chip 展示 | `web/src/components/platform/ProviderModelRow.vue` |
-| P1 | 前端 ProviderHAConfig 组件 | `web/src/components/platform/ProviderHAConfig.vue`（新建） |
-| P2 | ResourceManagerPage Provider 类型筛选 | `web/src/pages/ResourceManagerPage.vue` |
-| P2 | 数据兼容性：旧 provider_type 映射 | `internal/provider/catalog.go` |
+| 优先级 | 任务 | 涉及文件 | 状态 |
+|--------|------|----------|------|
+| P0 | Proto Inspect 新增字段 | `api/kratos/llm_provider_model/v1/llm_provider_model.proto` | ✅ |
+| P0 | Biz InspectMerge 扩展 | `internal/biz/llm_provider_model.go` | ✅ |
+| P0 | Service Inspect 映射更新 | `internal/service/llm_provider_model.go` | ✅ |
+| P0 | 前端 ProviderFormDialog 四步表单 | `web/src/components/platform/ProviderFormDialog.vue` | ✅ |
+| P1 | 前端 Variant Chip 展示 | `web/src/components/platform/ProviderModelsTable.vue` | ✅ |
+| P1 | 前端高可用 Chip 展示 | `web/src/components/platform/ProviderModelsTable.vue` | ✅ |
+| P1 | 前端 ProviderHAConfig 组件 | `web/src/components/platform/ProviderHAConfig.vue` | ✅ |
+| P2 | ResourceManagerPage Provider 类型筛选 | `web/src/pages/ResourceManagerPage.vue` | ✅ |
+| P2 | 数据兼容性：旧 provider_type 映射 | `internal/provider/catalog.go` | ✅ |
+| P3 | HuggingFace / Bedrock Provider 注册 | `internal/provider/register_extra.go` | ⏳ |

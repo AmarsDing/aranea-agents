@@ -18,7 +18,7 @@
 |------|------|
 | **回调钩子（Callback Hook）** | 在 Agent/Model/Tool 生命周期特定点触发的拦截函数 |
 | **回调链（Callback Chain）** | 多个回调按优先级排序组成的执行链，前一个输出为后一个输入 |
-| **回调点（Callback Point）** | 触发生命周期位置：BeforeAgent / AfterAgent / BeforeModel / AfterModel / BeforeTool / AfterTool / OnEvent / OnError |
+| **回调点（Callback Point）** | 触发生命周期位置：BeforeAgent / AfterAgent / BeforeModel / AfterModel / BeforeTool / AfterTool / OnError；OnEvent 通过 Runner Plugin 桥接，非 Chain 枚举 |
 | **Plugin** | 平台内置或 DB 配置的运行时插件，经 Runner `WithPlugins` 注入框架 |
 | **Hook** | 产品层配置的回调规则（`hooks` 表），经 Chain 在 Agent 构造时合并 |
 

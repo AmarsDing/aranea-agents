@@ -5,6 +5,7 @@
 > 2026-05-20 更新：Logs Tab 拆分为 **流程日志** / **进程日志** 二级 Tab；共享 `LogStreamHub`（单 WS）；legacy `EnvelopeTypeLog` 重复发射点迁移至 `flow_log`。
 > 2026-05-21 更新：对齐代码 — **6 Tab**（含 Alerts）、`GetRunnerMetrics` / 告警规则 API、方案 C Phase 1d ✅（[changelog](../changelog/2026-05-20-Monitor-Phase1d-PlanC.md)）。
 > 2026-05-29 更新：MON-OPT-01~06 ✅（FlowLog Bus 分离、告警冷却持久化、评估批量化、WS 反压、Trace 写入回路、告警注册表）；LOG-01/TRACE-01/DIAG-01/02 ✅（文件落盘、诊断包、根因引擎）；Latency P50/P95/P99 ✅；LOG-03 P0/P1/P2 ✅（红线修复、路径补全、fmt.Errorf 清理）；REDLINE ✅；QUALITY ✅（27 项质量修复）。
+> 2026-06-06 更新：自检/自愈/模式挖掘 ✅（SelfCheck + SelfHeal + PredictiveHeal + PatternMining + FailureReport）；LOOP-01 FR-01 ✅ FR-02 🟡（7 处残留）FR-03 ❌（22 个 step_id 未注册）。
 
 ---
 
@@ -24,6 +25,8 @@
 | Runs（Traces Tab） | `model_token_usage_events`（`metadata_json.spans`） | HTTP REST + WS `flow_log` | 单次运行真相源；瀑布图与 FlowLog **同源 Span 投影** |
 | **Flow 流程日志** | WS `flow_log` | WebSocket | 业务时间线；Logs **流程** 二级 Tab；[52-flow-logger.design](./52-flow-logger.design.md) |
 | **Process 进程日志** | WS `log` | WebSocket + `enable_log` | Gateway/插件 stderr；Logs **进程** 二级 Tab |
+| **自检 SelfCheck** | 内置 Checker 插件 | 定时（5 min） | 周期性子系统健康检查 + 自动修复 |
+| **自愈 SelfHeal** | FlowLog 错误事件 + 诊断包 | 事件驱动 | 诊断→根因→修复闭环；含预测性自愈与模式挖掘 |
 
 > **Tracing 与 Flow 分工**（v2）：OTel → Jaeger（运维）；Monitor 内 **FlowLog**（Logs Tab）+ **Span**（瀑布图），一次 `TraceEmitter` 写入。见 [52-flow-logger.design.md](./52-flow-logger.design.md)。
 
@@ -190,13 +193,38 @@ type MonitorListResult struct {
 ### 3.2 Usecase
 
 ```go
-type MonitorUsecase struct { repo MonitorRepo }
+type Usecase struct {
+    auditRepo        AuditRepo
+    eventRepo        EventRepo
+    traceRepo        TraceRepo
+    alertRepo        AlertRepo
+    runnerCompletion RunnerCompletionRepo
+    notifier         AlertNotifier
+    fsHealth         FilesystemHealthReader
+    lg               loggateway.Logger
+    lastFired        sync.Map
+    rulesCache       []AlertRule
+    rulesExpire      time.Time
+    rulesMu          sync.RWMutex
+    ringBuffer       *MetricRingBuffer
+    evalWorker       *AlertEvalWorker
+    registry         *AlertMetricRegistry
+}
 
-func (u *MonitorUsecase) ListAuditLogs(ctx, query AuditQuery) (AuditListResult, error)
-func (u *MonitorUsecase) ListMonitorEvents(ctx, query MonitorEventsQuery) (MonitorListResult, error)
-func (u *MonitorUsecase) GetMonitorEvent(ctx, id string) (MonitorPlatformRow, error)
-func (u *MonitorUsecase) ListMonitorTraces(ctx, query MonitorTracesQuery) (MonitorListResult, error)
-func (u *MonitorUsecase) GetMonitorTrace(ctx, id string) (MonitorPlatformRow, error)
+type UsecaseOption func(*Usecase)
+```
+
+构造函数：`NewUsecase(audit, event, trace, alert, runner, notifier, ...UsecaseOption)` — 6 个必选依赖 + 可选注入。
+
+```go
+func (u *Usecase) ListAuditLogs(ctx, query AuditQuery) (AuditListResult, error)
+func (u *Usecase) ListMonitorEvents(ctx, query MonitorEventsQuery) (MonitorListResult, error)
+func (u *Usecase) GetMonitorEvent(ctx, id string) (MonitorPlatformRow, error)
+func (u *Usecase) ListMonitorTraces(ctx, query MonitorTracesQuery) (MonitorListResult, error)
+func (u *Usecase) GetMonitorTrace(ctx, id string) (MonitorPlatformRow, error)
+func (u *Usecase) GetRunnerMetrics(ctx, windowMinutes int32) (RunnerMetricsSummary, error)
+func (u *Usecase) EvaluateAlerts(ctx) error
+func (u *Usecase) GenerateDiagnosticBundle(ctx, req DiagnosticBundleRequest) (DiagnosticBundleResponse, error)
 ```
 
 ### 3.3 Usage Usecase（独立模块）
@@ -814,31 +842,183 @@ event.SysLogInfo("memory.l4_decay", "decay completed",
 
 ## 4. 实施分期
 
-| 阶段 | 内容 | 文件数 | 改动量 |
-|------|------|--------|--------|
-| **Phase 1** | FR-01：消除 `log.Printf` 红线违规 | 2 | 9 处替换 |
-| **Phase 2** | FR-02：清理 cronrunner 双重日志 | 15 | 29 处替换/删除 |
-| **Phase 3** | FR-03：补全 stepTitleRegistry | 1 | 22 条注册 |
+| 阶段 | 内容 | 文件数 | 改动量 | 状态 |
+|------|------|--------|--------|------|
+| **Phase 1** | FR-01：消除 `log.Printf` 红线违规 | 2 | 9 处替换 | ✅ 已完成 |
+| **Phase 2** | FR-02：清理 cronrunner 双重日志 | 5 | 7 处残留 | 🟡 部分完成（29→7） |
+| **Phase 3** | FR-03：补全 stepTitleRegistry | 1 | 22 条注册 | ❌ 未实施 |
 
 ---
 
 ## 5. 验证方案
 
-| 阶段 | 验证命令 |
-|------|----------|
-| Phase 1 | `go build ./internal/biz/... ./internal/modelcatalog/...` + `go vet` |
-| Phase 2 | `go build ./internal/cronrunner/...` + `go vet` |
-| Phase 3 | `go build ./internal/event/...` |
-| 全量 | `grep -rn 'log\.Printf\|log\.Infof\|log\.Warnf\|log\.Errorf' internal/biz/ internal/modelcatalog/` → 0 结果 |
+| 阶段 | 验证命令 | 状态 |
+|------|----------|------|
+| Phase 1 | `go build ./internal/biz/...` + `go vet` | ✅ |
+| Phase 2 | `go build ./internal/cronrunner/...` + `go vet` | 🟡 |
+| Phase 3 | `go build ./internal/event/...` | ❌ |
+| 全量 | `grep -rn 'log\.Printf\|log\.Infof\|log\.Warnf\|log\.Errorf' internal/biz/` → 0 结果 | ✅ biz 层已清零 |
 
 ---
 
-## 6. 远期展望：AI 辅助分析
+## 6. ~~远期展望：AI 辅助分析~~ ✅ 已实现
 
-当 FR-01~03 完成后，系统日志覆盖率和结构化程度将足够支撑 AI 分析。远期可考虑：
+原远期目标已通过以下组件实现：
 
-1. **AI 日志分析 Agent**：内置 `__system_optimizer__` Agent，读取 JSONL 日志，识别错误模式
-2. **代码修复建议**：AI 定位到具体代码文件和行号，生成 diff
-3. **人工审批闭环**：AI 建议经人工审批后执行，自动验证
+1. **AI 诊断包**（DIAG-01）：`DiagBundleGenerator` + `GenerateDiagnosticBundle` API — 自动聚合错误上下文
+2. **根因分析引擎**（DIAG-02）：`RootCauseEngine` 5 条内置规则 + 置信度评分 — 自动推导错误根因
+3. **自检体系**：`SelfCheckScheduler`（5 min 周期）+ `SelfCheckRepairDispatcher`（4 个修复器）— 自动检测+修复
+4. **自愈体系**：`SelfHealObserver`（事件驱动修复）+ `PredictiveHeal`（预测性自愈）— 闭环工作流
+5. **模式挖掘**：`PatternMiningUsecase`（故障聚类 + 自动修复模板生成）— 从历史中学习
 
-此为独立需求，不在 LOOP-01 范围内，需另行设计。
+详见 §十「自检与自愈设计」。
+
+
+---
+
+## 子模块：自检与自愈设计
+
+> **版本**：2026-06-06 | **状态**：✅ 已实现
+> **需求**：[18 monitor.md](./18%20monitor.md) §0.2 自检与自愈
+> **代码锚点**：`internal/biz/monitor/self_check*.go`、`self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`
+
+---
+
+### 1. 架构概览
+
+```text
+SelfCheckScheduler（5 min ticker）
+    ├── SelfChecker 插件（每个子系统一个）
+    │   ├── TraceProjectorChecker
+    │   ├── FlowFileChecker
+    │   ├── AlertEvalChecker
+    │   └── EventBusChecker
+    ├── SelfCheckRepairDispatcher
+    │   ├── FlowFileRepairer（清理过期流文件）
+    │   ├── TraceProjectorRepairer（触发 trace 回填）
+    │   ├── AlertEvalRepairer（重启告警评估 worker）
+    │   └── EventBusRepairer（重新订阅事件总线）
+    └── SelfCheckReport（聚合报告）
+
+SelfHealObserver（事件驱动）
+    ├── 订阅 FlowLog severity=error/critical
+    ├── DiagBundleGenerator → 诊断包
+    ├── RootCauseEngine → 根因分析
+    └── 执行修复 + 记录 HealRecord
+
+PredictiveHealUsecase（预测性自愈）
+    ├── 读取系统指标（provider 延迟、内存使用率、会话积压）
+    ├── 匹配活跃故障模式（FailurePattern）
+    └── 置信度 > 0.8 时执行预防性修复
+
+PatternMiningUsecase（模式挖掘）
+    ├── 从历史 HealRecord 聚类相似故障
+    ├── 聚类 >= 3 次成功修复 → 自动生成修复模板
+    └── 写入 failure_pattern 表（source="mined"）
+```
+
+### 2. 核心接口
+
+```go
+// SelfChecker — 每个子系统一个检查插件
+type SelfChecker interface {
+    Name() string
+    Check(ctx context.Context) SelfCheckResult
+}
+
+type SelfCheckResult struct {
+    Name      string
+    Healthy   bool
+    Message   string
+    RepairKey string  // 路由到对应 Repairer
+}
+
+// SelfCheckRepairer — 检查-修复解耦（SRP）
+type SelfCheckRepairer interface {
+    RepairKey() string
+    Repair(ctx context.Context, result SelfCheckResult) RepairOutcome
+}
+
+type RepairOutcome struct {
+    Success  bool
+    Message  string
+    Duration time.Duration
+}
+```
+
+### 3. 自愈闭环
+
+```text
+FlowLog error/critical
+    → SelfHealObserver.OnFlowLogError()
+    → DiagBundleGenerator.Generate()
+    → RootCauseEngine.Evaluate()
+    → 执行修复（基于 FailurePattern 或内置规则）
+    → 记录 HealRecord
+    → PatternMining 异步聚类
+```
+
+**置信度阈值**：根因置信度 < 0.5 时不自动修复，仅记录诊断包。
+
+**Cooldown**：同一 (step_id, session_id) 5 分钟内不重复修复。
+
+### 4. 故障模式
+
+```go
+type FailurePattern struct {
+    ID           string
+    PatternHash  string    // error_code + 归一化 stack_trace
+    Source       string    // runtime | ci | mined
+    ErrorCode    string
+    Description  string
+    FixTemplate  string    // 修复步骤模板
+    Confidence   float64   // 0.0~1.0
+    SuccessCount int
+    FailCount    int
+    Active       bool
+}
+```
+
+**来源**：
+- `runtime`：运维手动录入
+- `ci`：从 CI 日志解析（`FailureReportParser`）
+- `mined`：`PatternMiningUsecase` 自动挖掘
+
+**置信度晋升**：mined 模式初始 0.5，连续 3 次成功修复后晋升到 0.8。
+
+**自动停用**：失败率 > 50% 且尝试 >= 5 次时自动停用。
+
+### 5. 预测性自愈
+
+`PredictiveHealUsecase` 读取系统指标，匹配活跃故障模式：
+
+| 指标 | 阈值 | 匹配模式 |
+|------|------|----------|
+| Provider 平均延迟 | > 5s | Provider 降级模式 |
+| 内存使用率 | > 90% | 内存压力模式 |
+| 会话积压数 | > 100 | 队列积压模式 |
+
+当匹配到模式且置信度 > 0.8 时，执行预防性修复（如提前切换 Provider、触发 GC、扩容 Worker）。
+
+### 6. 故障报告
+
+`FailureReport` 统一 CI 和 runtime 错误格式：
+
+| 类型 | 说明 |
+|------|------|
+| `lint_error` | 代码风格违规 |
+| `test_failure` | 测试失败 |
+| `build_failure` | 编译失败 |
+| `proto_sync` | Proto 生成物不同步 |
+| `runtime_error` | 运行时 panic/nil pointer/connection refused |
+
+`FailureReportParser` 支持 Go build error、test failure、lint error、proto sync、runtime panic 的正则识别。
+
+### 7. 与已有模块的关系
+
+| 模块 | 关系 |
+|------|------|
+| DIAG-01/02 | 自愈的前置步骤：诊断包 + 根因分析 |
+| MON-OPT-01~06 | 自检的检查对象：Bus 分离、告警评估、Trace 写入等 |
+| LOOP-01 | 自愈是 LOOP-01「闭环」的具体实现 |
+| `failure_pattern` 表 | 模式挖掘的持久化存储 |

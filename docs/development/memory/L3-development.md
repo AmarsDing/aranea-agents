@@ -1,44 +1,62 @@
 # L3 — 开发计划
 
 > **需求**：[`L3.md`](./L3.md) · **设计**：[`L3.design.md`](./L3.design.md)
+> **进度真相**：以本文为准；需求/设计正文不写修复记录。
 
 ---
 
-## 现状
+## 现状（2026-06-06）
 
-| 项 | 状态 |
-|----|------|
-| memory_facts 表 + Admin API | ✅ |
-| ListMemoryFacts / Upsert | ✅ |
-| Legacy trpc_memory → facts backfill | ✅（启动管道；见 [`memory-development.md`](./memory-development.md) §7） |
-| 冲突元数据 l4ConflictMeta 复用钩子 | 🟡 |
-| pgvector MemoryUsecase | 🟡 可选 |
-| 衰减 Job | ❌ |
-| rerank | ❌ |
-| 冲突仲裁 UI | ❌ |
-| 存储三写收敛 | ❌ |
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Fact CRUD | ✅ | `internal/data/sessionmemory/store_facts_ops.go`（Upsert/Delete/Clear/List） |
+| 融合召回 | ✅ | `internal/biz/memory_l3_fused_recall.go`（跨 scope 融合 agent+workspace+global） |
+| Embedding 索引 | ✅ | `internal/data/sessionmemory/store_fact_embedding.go`（UpsertFactEmbedding） |
+| 索引同步 (MEM-OPT-01) | ✅ | `internal/data/memory_fact_index_sync.go`（stale/fresh/disabled 状态机 + reconciler） |
+| Legacy 回填 | ✅ | `internal/data/sessionmemory/store_legacy_backfill.go`（BackfillLegacyTRPCMemoryEntities） |
+| Decay | ✅ | `internal/data/sessionmemory/store_l3_decay.go` + `internal/cronrunner/jobs/memory_l3_decay.go`（per-agent importance 衰减） |
+| Cascade 联动 | ✅ | `internal/data/sessionmemory/store_cascade_facts.go`（L4 改名时自动替换 fact） |
+| Prompt 注入 | ✅ | `internal/agent/l3_prompt.go`（L3MemoryCue，独立 + 融合两种模式） |
+| Dead Letter | ✅ | `internal/data/memory_job_deadletter.go`（失败任务记录） |
+| 批量写入 | ✅ | `internal/data/sessionmemory/store_consolidate_batch.go`（事务写入 facts + episode） |
+| Facts 唯一写路径 | ✅ | `internal/data/sessionmemory/store_writes.go`（统一通过 UpsertFactRow 写入，ON CONFLICT 幂等） |
+| pgvector 索引同步 | ✅ | `internal/data/memory_fact_index_sync.go` + `internal/cronrunner/jobs/memory_fact_index_reconciler.go`（6h reconciler） |
+| 冲突检测 | ✅ | `internal/biz/memory_admin_usecase.go`（DetectFactConflicts 启发式否定词检测 + IncrementConflictCount） |
+| 冲突 API | ✅ | `api/kratos/memory/v1/memory.proto`（ListConflictingFacts RPC） |
+| quality_score 5维评分 | ✅ | `internal/data/memory_shim_l3.go`（keyword(0.25) + vector(0.30) + importance(0.20) + recency(0.15) + quality(0.10)） |
+| pgvector HNSW 索引 | ❌ | 仅有 B-tree 索引，无 HNSW 向量近似索引 |
+| Conflict UI | ❌ | 冲突检测前端展示 |
+| rerank (Cross-Encoder) | ❌ | P3 |
 
 ---
 
 ## 待办
 
-| # | 任务 | 状态 |
-|---|------|------|
-| L3-1 | facts 为唯一写路径；adapter 对齐 | ❌ P1 |
-| L3-2 | pgvector 降为索引同步 | ❌ P1 |
-| L3-3 | 衰减 cron Job | ❌ |
-| L3-4 | Conflict List/Resolve API + UI | ❌ |
-| L3-5 | Cross-Encoder rerank | ❌ P3 |
-| L3-6 | PII 管道 | ❌ P3 |
+| # | 任务 | 状态 | 优先级 |
+|---|------|------|--------|
+| L3-1 | pgvector HNSW 索引（大数据量下性能优化） | ❌ | P2 |
+| L3-2 | Conflict UI（冲突检测前端展示 + 仲裁） | ❌ | P2 |
+| L3-3 | rerank（Cross-Encoder 重排序） | ❌ | P3 |
 
 ---
 
 ## 代码锚点
 
-- `internal/biz/memory_admin_*.go`
-- `internal/biz/memory.go`（pgvector）
-- `internal/data/sessionmemory/store*.go`
-- `internal/memory/trpc/sqlite_adapter.go`
+- `internal/data/sessionmemory/store_facts_ops.go` — Fact CRUD
+- `internal/data/sessionmemory/store_fact_embedding.go` — Embedding 索引
+- `internal/data/sessionmemory/store_l3_decay.go` — L3 衰减
+- `internal/data/sessionmemory/store_cascade_facts.go` — Cascade 联动
+- `internal/data/sessionmemory/store_writes.go` — 统一写路径
+- `internal/data/sessionmemory/store_consolidate_batch.go` — 批量写入
+- `internal/data/memory_fact_index_sync.go` — 索引同步状态机
+- `internal/data/memory_job_deadletter.go` — Dead Letter
+- `internal/data/memory_shim_l3.go` — quality_score 5维评分
+- `internal/biz/memory_l3_fused_recall.go` — 融合召回
+- `internal/biz/memory_admin_usecase.go` — 冲突检测
+- `internal/biz/memory_pii.go` — PII 检测
+- `internal/agent/l3_prompt.go` — L3MemoryCue prompt 注入
+- `internal/cronrunner/jobs/memory_l3_decay.go` — Decay Worker
+- `internal/cronrunner/jobs/memory_fact_index_reconciler.go` — 索引 Reconciler
 
 ---
 

@@ -41,6 +41,7 @@
 | Usage | ✅ 已实现 | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink`（完整大盘在 `/overview`）；Runner 下钻 Traces；Latency P50/P95/P99 |
 | Logs | ✅ 已实现 | **二级 Tab**：流程日志（默认连接）+ 进程日志（`process_log_enabled`）；共享一条 WS；流程 Tab 可暂停/清除；进程 Tab 切离丢弃入站、切回恢复；LOG-01 文件落盘 + gzip + 30 天清理 |
 | AI 诊断 | ✅ 已实现 | DIAG-01 诊断包 + DIAG-02 根因分析引擎（5 条内置规则 + 置信度评分） |
+| 自检与自愈 | ✅ 已实现 | SelfCheck 周期性检查（5 min）+ SelfCheckRepairDispatcher（4 个修复器）+ SelfHealObserver（事件驱动修复）+ PredictiveHeal（预测性自愈）+ PatternMining（故障模式挖掘） |
 
 ### 0.3 非目标
 
@@ -435,7 +436,7 @@ Tab 与深链 query（刷新可保留）：
 
 ---
 
-*文档版本：2026-05-29 — 对齐代码：6 Tab（含 Alerts）、Runner 指标、方案 C Phase 1d ✅、Logs 流程/进程二级 Tab、MON-OPT-01~06 ✅、LOG-01/TRACE-01/DIAG-01/02 ✅、Latency P50/P95/P99 ✅、LOG-03 P0/P1/P2 ✅、REDLINE ✅、QUALITY ✅。实现差距见 [18-monitor-development.md](./18-monitor-development.md)。*
+*文档版本：2026-06-06 — 对齐代码：6 Tab（含 Alerts）、Runner 指标、方案 C Phase 1d ✅、Logs 流程/进程二级 Tab、MON-OPT-01~06 ✅、LOG-01/TRACE-01/DIAG-01/02 ✅、Latency P50/P95/P99 ✅、LOG-03 P0/P1/P2 ✅、REDLINE ✅、QUALITY ✅、自检/自愈 ✅、LOOP-01 FR-01 ✅ FR-02 🟡 FR-03 ❌。实现差距见 [18-monitor-development.md](./18-monitor-development.md)。*
 
 
 ---
@@ -617,7 +618,7 @@ flowchart LR
 
 ## 子模块：Monitor Loop 01 需求
 
-> **版本**：2026-05-29-v2 | **状态**：🟡 待实施 | **优先级**：P2
+> **版本**：2026-06-06-v3 | **状态**：🟡 部分实施 | **优先级**：P2
 > **关联**：[`18-monitor-development.md`](./18-monitor-development.md) · [`18-monitor-ai-closed-loop-2026-05-28.md`](./18-monitor-ai-closed-loop-2026-05-28.md)
 > **设计**：[`18-monitor-loop-01-design.md`](./18-monitor-loop-01-design.md)
 
@@ -641,10 +642,10 @@ flowchart LR
 
 | 子需求 | 含义 | 当前状态 |
 |--------|------|----------|
-| **系统各节点有调试日志** | 关键运行路径都有 FlowLog 输出 | 🟡 ~80 个 step_id 已注册，但仍有缺口（见 §4） |
+| **系统各节点有调试日志** | 关键运行路径都有 FlowLog 输出 | 🟡 88 个 step_id 已注册，但仍有缺口（见 §4） |
 | **调试日志显示在前端** | Monitor Logs 页面实时展示系统运行状态 | ✅ WS 推送 + FlowFileAppender 落盘 |
-| **替代 fmt/log 调试** | 开发者不再需要 `fmt.Println`/`log.Printf` | ❌ 仍有 9 处 `log.Printf` + 29 处 Kratos `log.Helper` |
-| **AI 辅助分析** | AI 读取日志，分析问题，给出修复/优化建议 | ❌ 当前无 AI 分析能力（远期目标） |
+| **替代 fmt/log 调试** | 开发者不再需要 `fmt.Println`/`log.Printf` | 🟡 `log.Printf` 已清零；cronrunner 仍有 7 处 Kratos `log.Helper` |
+| **AI 辅助分析** | AI 读取日志，分析问题，给出修复/优化建议 | ✅ DIAG-01 诊断包 + DIAG-02 根因引擎 + 自检/自愈体系 |
 
 ### 2.2 用户角色与场景
 
@@ -671,62 +672,40 @@ flowchart LR
 
 ### 3.2 价值量化目标
 
-| 指标 | 目标 |
-|------|------|
-| 系统关键路径 FlowLog 覆盖率 | ≥ 95% |
-| `log.Printf`/`log.Infof` 在 biz/service 层 | 0 处 |
-| step_id 注册率 | 100%（使用的 step_id 全部注册中文标题） |
-| 开发者使用 Monitor Logs 定位问题 | 替代 80% 的 `fmt.Println` 调试 |
+| 指标 | 目标 | 当前 |
+|------|------|------|
+| 系统关键路径 FlowLog 覆盖率 | ≥ 95% | 🟡 88 个 step_id 已注册，22 个待补 |
+| `log.Printf`/`log.Infof` 在 biz/service 层 | 0 处 | ✅ 已清零 |
+| cronrunner Kratos `log.Helper` | 0 处 | 🟡 7 处残留 |
+| step_id 注册率 | 100%（使用的 step_id 全部注册中文标题） | 🟡 LOOP-01 的 22 个 step_id 未注册 |
+| 开发者使用 Monitor Logs 定位问题 | 替代 80% 的 `fmt.Println` 调试 | ✅ 基本达成 |
 
 ---
 
-## 4. 当前缺口（扫描结果）
+## 4. 当前缺口（扫描结果，2026-06-06 更新）
 
-### 4.1 P0 — 红线违规：biz 层使用 `log.Printf`
+### 4.1 ~~P0 — 红线违规：biz 层使用 `log.Printf`~~ ✅ 已修复
 
-| 文件 | 行号 | 代码 | 应替换为 |
-|------|------|------|----------|
-| `internal/biz/evolution.go` | 80 | `log.Printf("[EVOLUTION] GetToolSuccessRate ...")` | `event.SysLogWarn("system.evolution.metrics_fail", ...)` |
-| `internal/biz/evolution.go` | 84 | `log.Printf("[EVOLUTION] GetRetrievalQuality ...")` | 同上 |
-| `internal/biz/evolution.go` | 88 | `log.Printf("[EVOLUTION] GetEpisodeCount ...")` | 同上 |
-| `internal/biz/evolution.go` | 92 | `log.Printf("[EVOLUTION] GetNegativeFeedbackCount ...")` | 同上 |
+`internal/biz/evolution.go` 的 4 处 `log.Printf` 已替换为 `event.SysLogWarn`。
 
-### 4.2 P0 — 红线违规：modelcatalog 使用 `log.Logger`
+### 4.2 ~~P0 — 红线违规：modelcatalog 使用 `log.Logger`~~ ✅ 已修复
 
-| 文件 | 行号 | 代码 | 应替换为 |
-|------|------|------|----------|
-| `internal/modelcatalog/runner.go` | 59 | `r.logger.Printf("model-catalog: store resolve failed: %v", err)` | `event.SysLogWarn("system.model_catalog.resolve_fail", ...)` |
-| `internal/modelcatalog/runner.go` | 65 | `r.logger.Printf("model-catalog: schedule check failed: %v", err)` | `event.SysLogWarn("system.model_catalog.sync_fail", ...)` |
-| `internal/modelcatalog/runner.go` | 73 | `r.logger.Printf("model-catalog: scheduled sync failed: %v", err)` | 同上 |
-| `internal/modelcatalog/runner.go` | 77 | `r.logger.Printf("model-catalog: scheduled sync apply failed: %v", ...)` | 同上 |
-| `internal/modelcatalog/runner.go` | 79 | `r.logger.Printf("model-catalog: scheduled sync ok ...")` | `event.SysLogInfo("system.model_catalog.sync_ok", ...)` |
+`internal/modelcatalog/runner.go` 已随模块重构移除，5 处 `r.logger.Printf` 红线违规已不存在。
 
-### 4.3 P1 — 冗余日志：cronrunner 15 个文件同时写 FlowLog + Kratos log.Helper
+### 4.3 P1 — 冗余日志：cronrunner 7 处 Kratos `log.Helper` 残留
 
-29 处 `w.log.*` 调用中：
-- **12 处冗余**：已有 `event.SysLogWarn`，Kratos 日志可直接删除
-- **17 处缺口**：仅有 Kratos 日志，需补充 FlowLog 后再删除
+从原 29 处已清理至 7 处（5 个文件）：
 
-| 文件 | 冗余处 | 缺口处 |
-|------|--------|--------|
-| `memory_l4_decay.go` | 1 | 1 |
-| `memory_fact_index_reconciler.go` | 1 | 1 |
-| `memory_dead_letter_replayer.go` | 1 | 1 |
-| `channel_delivery.go` | 0 | 1 |
-| `monitor_alert_cooldown.go` | 0 | 1 |
-| `memory_l2_decay.go` | 2 | 2 |
-| `memory_l3_decay.go` | 2 | 2 |
-| `memory_data_migration.go` | 1 | 2 |
-| `memory_episode_backfill.go` | 0 | 1 |
-| `event_store_cleanup.go` | 1 | 1 |
-| `evolution_scanner.go` | 0 | 1 |
-| `flow_log_cleanup.go` | 1 | 1 |
-| `provider_health.go` | 0 | 1 |
-| `tool_audit_cleanup.go` | 1 | 1 |
-| `channel_health.go` | 0 | 1 |
-| **合计** | **12** | **17** |
+| 文件 | 调用 | 应替换为 |
+|------|------|----------|
+| `monitor_alert_cooldown.go` | `w.log.Debugf(...)` | 可删除（调试日志，已有 FlowLog） |
+| `memory_dead_letter_replayer.go` | `w.log.Warnf(...)` + `w.log.Infof(...)` | `event.SysLogWarn`/`SysLogInfo` |
+| `provider_health.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
+| `channel_health.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
+| `evolution_scanner.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
+| `channel_delivery.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
 
-### 4.4 P2 — stepTitleRegistry 缺口：18 个已使用但未注册的 step_id
+### 4.4 P2 — stepTitleRegistry 缺口：22 个已使用但未注册的 step_id
 
 | step_id | 使用位置 | 建议中文标题 |
 |---------|---------|------------|
@@ -757,39 +736,40 @@ flowchart LR
 
 ## 5. 功能需求
 
-### 5.1 FR-01：消除 `log.Printf`/`log.Infof` 红线违规
+### 5.1 ~~FR-01：消除 `log.Printf`/`log.Infof` 红线违规~~ ✅ 已完成
 
-- 将 `internal/biz/evolution.go` 的 4 处 `log.Printf` 替换为 `event.SysLogWarn`
-- 将 `internal/modelcatalog/runner.go` 的 5 处 `r.logger.Printf` 替换为 `event.SysLogWarn/SysLogInfo`
-- 移除 `import "log"` 和 `*log.Logger` 依赖
+- `internal/biz/evolution.go` 的 4 处 `log.Printf` 已替换为 `event.SysLogWarn`
+- `internal/modelcatalog/runner.go` 已随模块重构移除
 
-### 5.2 FR-02：清理 cronrunner 双重日志
+### 5.2 FR-02：清理 cronrunner 双重日志（🟡 部分完成）
 
-- 12 处冗余 Kratos `log.Helper` 调用直接删除
-- 17 处缺口先补充 `event.SysLogInfo/SysLogWarn`，再删除 Kratos 日志
+- 已清理 22 处（从 29 处降至 7 处）
+- 剩余 5 个文件 7 处 `w.log.*` 调用需替换为 `event.SysLogWarn`/`SysLogInfo`
 - 最终移除 cronrunner 中 `*log.Helper` 字段
 
-### 5.3 FR-03：补全 stepTitleRegistry
+### 5.3 FR-03：补全 stepTitleRegistry（❌ 未实施）
 
 - 在 `internal/event/flow_log.go` 的 `stepTitleRegistry` 中注册 22 个缺失 step_id
 - 确保前端 Monitor Logs 界面显示中文标题
 
-### 5.4 FR-04（远期）：AI 辅助分析
+### 5.4 FR-04（远期→✅ 已实现）：AI 辅助分析
 
-- AI 读取系统日志，分析错误模式，给出修复/优化建议
-- 此为远期目标，不在本需求实施范围内
-- 前置条件：FR-01~03 完成后，日志覆盖率和结构化程度足够 AI 分析
+- ✅ DIAG-01 诊断包：`DiagBundleGenerator` + `GenerateDiagnosticBundle` API
+- ✅ DIAG-02 根因分析引擎：`RootCauseEngine` 5 条内置规则 + 置信度评分
+- ✅ 自检体系：`SelfCheckScheduler` + `SelfCheckRepairDispatcher`（4 个修复器）
+- ✅ 自愈体系：`SelfHealObserver`（事件驱动修复）+ `PredictiveHeal`（预测性自愈）
+- ✅ 模式挖掘：`PatternMiningUsecase`（故障聚类 + 自动修复模板生成）
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `internal/biz/` 中 0 处 `log.Printf`/`log.Infof`/`log.Warnf`/`log.Errorf`
-- [ ] `internal/modelcatalog/` 中 0 处 `log.Logger.Printf`
-- [ ] `internal/cronrunner/jobs/` 中 0 处 Kratos `log.Helper` 调用
-- [ ] 所有已使用的 step_id 在 `stepTitleRegistry` 中有中文标题
-- [ ] `go build ./internal/...` 通过
-- [ ] `go vet ./internal/...` 通过
+- [x] `internal/biz/` 中 0 处 `log.Printf`/`log.Infof`/`log.Warnf`/`log.Errorf`
+- [x] `internal/modelcatalog/` 中 0 处 `log.Logger.Printf`（模块已移除）
+- [ ] `internal/cronrunner/jobs/` 中 0 处 Kratos `log.Helper` 调用（剩余 7 处）
+- [ ] 所有已使用的 step_id 在 `stepTitleRegistry` 中有中文标题（22 个待注册）
+- [x] `go build ./internal/...` 通过
+- [x] `go vet ./internal/...` 通过
 
 ---
 

@@ -2,7 +2,7 @@
 
 > 对标 `pkg/trpc-agent-go/knowledge` 包，实现 RAG 知识库能力。
 >
-> **2026-05-29 现状对齐**：
+> **2026-06-06 现状对齐**：
 > - ✅ Collection/Document/Chunk CRUD + 语义搜索 API 已上线（HTTP + gRPC）。
 > - ✅ `knowledge_search` 工具经 `buildToolsetsForAgent` + `ToolKeyKnowledgeSearch` 进入 Agent 装配链（需 Agent 工具开关启用）。
 > - ✅ 前端 Knowledge 管理页 + Store + API；文档入库 WS 进度（`useKnowledgeIngestWs` / `knowledge_ingest` 事件）。
@@ -11,10 +11,12 @@
 > - ✅ 检索 Reranker（`KRATOS_KNOWLEDGE_RERANKER`：topk/cohere/infinity，KN-01）；Search 支持 `use_rerank` / `rerank_candidates`。
 > - ✅ **Advanced RAG（Phase 5）**：查询重写（HyDE/Decomposition/MultiQuery）+ 混合检索（Dense+BM25+RRF）+ 自适应路由 + 检索质量评估（CRAG）。
 > - ✅ **Agentic RAG（Phase 6）**：`knowledge_reflect` 工具（Agent 自校验检索质量）+ 跨 Collection 联邦搜索（`FederatedRetriever`）+ Plan-Then-Retrieve（BeforeModel 钩子注入 Collection 摘要）+ 联邦搜索 Route 策略。
-> - ❌ AgenticFilter / OCR / 多租户隔离 / code_search 未实现。
+> - ✅ **质量优化（Phase 7）**：KnowledgeService 构造函数优化（`KnowledgeSearchDeps`）+ IngestParams 默认值下移 + 安全守卫（32MB 限制/MIME magic/白名单）+ Embedder 解耦（MemoryEmbeddingAdapter）+ Gemini task type 分离 + IVFFlat lists 参数化。
+> - ⏳ OCR stub 已就位（`ocr.go` + `KNOWLEDGE_OCR` 环境变量），tesseract/docling 后端待接入。
+> - ❌ AgenticFilter / 多租户隔离 / code_search 未实现。
 >
-> 进度以 `guides/execution-plan.md` 与 [37-knowledge-development.md](./37-knowledge-development.md) 为准。
-> 演进路线：[37-knowledge-evolution-roadmap.md](./37-knowledge-evolution-roadmap.md)（Naive RAG → Advanced RAG → Agentic RAG → GraphRAG → Skill Knowledge）。
+> 进度以 [37-knowledge.development.md](./37-knowledge.development.md) 为准。
+> 演进路线：Naive RAG → Advanced RAG → Agentic RAG → GraphRAG → Skill Knowledge，详见 [37-knowledge.development.md](./37-knowledge.development.md) 子模块。
 
 ---
 
@@ -83,6 +85,7 @@
 - 图片/PDF 上传后自动 OCR 提取文本。
 - 提取的文本进入分块和向量化流水线。
 - OCR 失败时文档状态标记为 `error`。
+- OCR 提供者通过 `KNOWLEDGE_OCR` 环境变量配置（当前 stub，tesseract/docling 后端待接入）。
 
 ### US-8：多租户知识库隔离（超越层）
 
@@ -161,7 +164,7 @@
 | 混合检索 | Dense + BM25 + RRF 融合（`hybrid_search` 参数） | ✅ |
 | 自适应路由 | 查询复杂度分类 → 自动选择检索模式 | ✅ |
 | 检索质量评估 | CRAG 式自校验，不足时自动补充检索 | ✅ |
-| BM25 全文检索 | PostgreSQL ts_vector + GIN 索引 | ✅ |
+| BM25 全文检索 | PostgreSQL ts_vector + pg_trgm 双路检索 + GIN 索引 | ✅ |
 
 ### 2.4 分块策略
 
@@ -196,7 +199,7 @@
 
 | 功能 | 说明 | 状态 |
 |------|------|------|
-| OCR 识别 | 图片/PDF 自动提取文本 | ❌ |
+| OCR 识别 | 图片/PDF 自动提取文本（stub 已就位，后端待接入） | ⏳ |
 | Reranker | 检索结果重排序（TopK/Cohere/Infinity） | ✅ |
 | SourceSync | 数据源增量同步 | ❌ |
 | 多租户隔离 | 租户间知识库完全隔离 | ❌ |
@@ -322,7 +325,7 @@ llmagent.New("agent",
 | 4 | Agent 可调用 `knowledge_search` 工具搜索知识库 | ✅ |
 | 5 | 支持元数据过滤（filter_json） | ✅ |
 | 6 | 知识搜索支持动态过滤（AgenticFilter） | ❌ |
-| 7 | 图片/PDF 文档可 OCR 识别入库 | ❌ |
+| 7 | 图片/PDF 文档可 OCR 识别入库 | ⏳（stub 已就位） |
 | 8 | 多租户知识库隔离 | ❌ |
 | 9 | 摄取进度前端可观测（WS / 文档 status） | ✅ |
 | 10 | Embedder 配置从 conf/env 注入 + Admin 运行时更新 | ✅ |
@@ -375,24 +378,30 @@ Knowledge 模块添加基于 pgvector 的 RAG（检索增强生成）管道。Ag
 | 组件 | 路径 | 用途 |
 |------|------|------|
 | Proto | `api/kratos/knowledge/v1/knowledge.proto` | HTTP + gRPC API |
-| Biz | `internal/biz/knowledge.go` | 领域逻辑 + `KnowledgeRepo` 接口 |
+| Biz | `internal/biz/knowledge.go` + `internal/biz/knowledge/` | 领域逻辑 + Repo/Usecase 接口（类型别名转发） |
 | Data | `internal/data/knowledge.go` | PostgreSQL + pgvector raw SQL |
 | Chunker | `internal/knowledge/chunker.go` | 文本分割（字符/Token 策略） |
-| Embedder | `internal/knowledge/embedder.go` | OpenAI 兼容 + Ollama 嵌入 API |
-| Retriever | `internal/knowledge/retriever.go` | 嵌入查询 → 调用 `SearchChunks` |
+| Embedder | `internal/knowledge/embedder.go` | OpenAI 兼容 + Ollama + Gemini + HuggingFace 嵌入 API |
+| Retriever | `internal/knowledge/retriever.go` | 嵌入查询 → 调用 `SearchChunks`（含 TaskTypeEmbedder） |
 | QueryRewriter | `internal/knowledge/query_rewriter.go` | 查询重写（HyDE/Decomposition/MultiQuery） |
 | HybridRetriever | `internal/knowledge/hybrid_retriever.go` | 混合检索（Dense+Sparse+RRF） |
 | AdaptiveRouter | `internal/knowledge/adaptive_router.go` | 自适应检索路由 |
 | RetrievalEvaluator | `internal/knowledge/retrieval_evaluator.go` | 检索质量评估（CRAG） |
 | FederatedRetriever | `internal/knowledge/federated_retriever.go` | 跨 Collection 联邦搜索 |
 | SearchHelpers | `internal/knowledge/search_helpers.go` | 检索评估辅助（`SearchWithEvaluation`） |
+| LLM Resolver | `internal/knowledge/llm_resolver.go` | LLM 模型解析（Advanced RAG 共用） |
+| OCR | `internal/knowledge/ocr.go` | OCR 提供者接口（stub，`KNOWLEDGE_OCR` 环境变量） |
+| HTML Text | `internal/knowledge/html_text.go` | HTML 文本剥离 |
+| Chunk Strategy | `internal/knowledge/chunk_strategy.go` | trpc 高级分块桥接 |
+| Document Extract | `internal/knowledge/document_extract.go` | PDF/DOCX/HTML 文本提取 |
 | Tool | `internal/tools/knowledge/tool.go` | `knowledge_search` + `knowledge_reflect` 工具 |
 | Service | `internal/service/knowledge.go` | Kratos 服务适配器 |
-| Advanced Wire | `internal/service/knowledge_advanced.go` | Advanced RAG 组件 Wire 工厂 |
+| Advanced Wire | `internal/service/knowledge_advanced.go` | Advanced RAG 组件 Wire 工厂（6 个 Provider） |
 | Wire | `internal/service/knowledge_embedder.go` | Embedder 工厂（env，EP-KN-01） |
 | Retriever Wire | `internal/service/knowledge_retriever.go` | Retriever + env Reranker（KN-01） |
 | Reranker | `internal/knowledge/reranker_factory.go` | topk/cohere/infinity |
 | Ingest 流水线 | `internal/knowledge/ingest.go` | 分块 + 向量化（`BuildIndexedChunks`） |
+| Biz Sub-package | `internal/biz/knowledge/knowledge.go` | 领域模型 + Repo/Usecase 接口定义 |
 | 前端页面 | `web/src/pages/KnowledgePage.vue` | 集合/文档/检索/Embedder 管理 |
 | 前端 WS | `web/src/features/knowledge/useKnowledgeIngestWs.ts` | 入库进度订阅 |
 
@@ -406,7 +415,7 @@ knowledge_documents     (id, collection_id, source, mime_type, size_bytes, chunk
 knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N), metadata jsonb, chunk_index, ...)
 ```
 
-索引：`ivfflat` on `knowledge_chunks.embedding` 用于余弦相似度。
+索引：`ivfflat` on `knowledge_chunks.embedding` 用于余弦相似度；`GIN` on `ts_vector` 列用于 BM25 全文检索；`gin_trgm_ops` on `content` 用于 pg_trgm 模糊搜索。
 
 **要求**：PostgreSQL + `pgvector` 扩展。
 
@@ -430,12 +439,14 @@ knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N)
 
 ### 6.6 嵌入提供者
 
-`Embedder` 支持两种后端，通过 `provider` 选择：
+`Embedder` 支持四种后端，通过 `provider` 选择：
 
 | 提供者 | 端点 | 说明 |
 |--------|------|------|
 | `openai`（默认） | `POST /v1/embeddings` | 兼容任何 OpenAI-API 服务器 |
 | `ollama` | `POST /api/embeddings` | 本地 Ollama 实例 |
+| `gemini` | Google GenAI `EmbedContent` | 支持 task type 分离（入库/查询） |
+| `huggingface` | TEI `POST /embed` | 批量 inputs 数组 |
 
 ### 6.8 Agent 工具：`knowledge_search` / `knowledge_reflect`
 
@@ -444,7 +455,7 @@ knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N)
 模型可调用：
 
 ```json
-{ "collection_id": "abc123", "query": "What is the refund policy?", "top_k": 5 }
+{ "collection_id": "abc123", "query": "What is the refund policy?", "top_k": 5, "min_score": 0.5, "filter_json": "{\"category\":\"policy\"}", "use_rerank": true }
 ```
 
 **knowledge_reflect** 工具通过 `ToolKeyKnowledgeReflect` 装配链注入，需 Agent 工具配置中启用 `knowledge_reflect` 开关。FederatedRetriever/RetrievalEvaluator 经 context 注入。
@@ -504,7 +515,7 @@ Search RPC 可选 `use_rerank`、`rerank_candidates` 覆盖单次请求行为。
 
 - 需要 pgvector；当 Postgres 未配置时 Repo 为 nil，API 返回 `ErrKnowledgeUnavailable`。
 - 嵌入维度每个集合固定；更改需重建集合。
-- 文档内容必须可文本解码（PDF/图像提取不在当前范围；OCR 待 Phase 4）。
+- 文档内容必须可文本解码；图片/PDF 需 OCR 提取（当前 OCR 为 stub，`KNOWLEDGE_OCR` 环境变量配置，tesseract/docling 后端待接入）。
 - 文档级 `metadata_json` 写入每个 Chunk 的 JSONB 列，供 `filter_json` 检索过滤。
 - 查询重写和检索评估依赖 LLM 调用，无可用 LLM 时自动降级（透传原始查询 / 跳过评估）。
 - 联邦搜索支持 Broadcast 和 Route 两种策略，Route 策略基于 Collection 名称/描述相关性评分。

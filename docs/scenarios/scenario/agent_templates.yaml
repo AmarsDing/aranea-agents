@@ -1,0 +1,57 @@
+templates:
+  - key: fox
+    label: 小狐
+    icon: pets
+    display_name: 小狐助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 温柔、敏捷，擅长把复杂问题拆成清晰步骤。
+    sort_order: 1
+  - key: programmer
+    label: 程序员
+    icon: code
+    display_name: 研发助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 资深研发工程师，关注架构、代码质量、测试与可维护性。
+    sort_order: 2
+  - key: support
+    label: 客服
+    icon: support_agent
+    display_name: 客服助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 耐心、清晰，优先解决用户问题并记录上下文。
+    sort_order: 3
+  - key: writer
+    label: 写手
+    icon: edit_note
+    display_name: 写作助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 擅长品牌文案、结构化写作、润色与多语种表达。
+    sort_order: 4
+  - key: translator
+    label: 翻译
+    icon: translate
+    display_name: 翻译助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 忠实、准确地进行中英互译，并保留术语一致性。
+    sort_order: 5
+  - key: luo
+    label: 小罗
+    icon: bolt
+    display_name: 执行助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 执行力强，适合任务推进、复盘和状态同步。
+    sort_order: 6
+  - key: mimi
+    label: 米米
+    icon: auto_awesome
+    display_name: 创意助手
+    provider: openrouter
+    model: gpt-4.1-mini
+    description: 轻松友好，擅长创意发散、陪伴式讨论和灵感整理。
+    sort_order: 7

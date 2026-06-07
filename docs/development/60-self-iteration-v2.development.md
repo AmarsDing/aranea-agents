@@ -1,6 +1,6 @@
 # Self-Iteration V2 — 开发计划
 
-> **版本**：2026-06-05-v1 | **状态**：📋 待实施
+> **版本**：2026-06-06-v2 | **状态**：✅ Phase 1–3 已落地
 > **需求**：[60-self-iteration-v2.md](./60-self-iteration-v2.md) · **设计**：[60-self-iteration-v2.design.md](./60-self-iteration-v2.design.md)
 > **OpenSpec Change**：`openspec/changes/self-iteration-v2/`
 
@@ -14,13 +14,13 @@
 
 | 层 | 新增路径 |
 |----|----------|
-| Biz | `internal/biz/monitor/root_cause_analyzer.go`、`failure_report.go`、`failure_report_parser.go`、`failure_pattern_repo.go`、`predictive_heal.go`、`critic_agent.go`、`pattern_mining.go`、`skill_evolution_loop.go`、`skill_evolution_suggestion_types.go` |
+| Biz | `internal/biz/monitor/root_cause_analyzer.go`、`failure_report.go`、`failure_report_parser.go`、`failure_pattern_repo.go`、`predictive_heal.go`、`pattern_mining.go`、`skill_evolution_loop.go`、`skill_evolution_suggestion_types.go` |
 | Biz（扩展） | `internal/biz/skill_intelligence.go`（集成 RootCauseAnalyzer）、`internal/biz/skill_intelligence_repo.go`（新增端口） |
-| Data | `internal/data/ent/schema/failure_pattern.go`、`internal/data/ent/schema/skill_evolution_suggestion.go`、`internal/data/ent/schema/experience_report.go`、`internal/data/failure_pattern.go`、`internal/data/skill_evolution_suggestion.go` |
+| Data | `internal/data/ent/schema/failure_pattern.go`、`internal/data/ent/schema/skill_evolution_suggestion.go`、`internal/data/ent/schema/experience_report.go`、`internal/data/failure_pattern_repo.go`、`internal/data/skill_evolution_suggestion.go` |
 | Service | `internal/service/skill_intelligence.go`、`internal/service/skill_curator.go` |
 | Tools | `internal/tools/skillrecommend/health_provider.go`、`internal/tools/skillrecommend/rank.go`（扩展）、`internal/tools/skillrecommend/rank_feedback.go` |
 | Cron | `internal/cronrunner/jobs/skill_intelligence_worker.go`、`failure_pattern_sync.go`、`predictive_heal.go`、`pattern_mining.go` |
-| Proto | `api/skill_intelligence/v1/skill_intelligence.proto` |
+| Proto | `api/kratos/skill_intelligence/v1/skill_intelligence.proto` |
 | CI/CD | `.github/workflows/auto-fix.yml`（改造）、`.auto-fix/scripts/parse-logs.py`（新增） |
 | 前端 | 经验报告列表页、Skill 进化审批 UI |
 | 集成测试 | `internal/service/monitor_integration_test.go`、`skill_intelligence_integration_test.go`、`chat_turn_integration_test.go` |
@@ -120,128 +120,128 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 1.1 | 创建 `internal/biz/monitor/root_cause_analyzer.go`：定义 `RootCauseAnalyzer` 接口 | Biz | P0 | ❌ | `go build ./internal/biz/...` 通过 |
-| 1.2 | 修改 `internal/biz/monitor/root_cause_engine.go`：让 `RootCauseEngine` 实现 `RootCauseAnalyzer` 接口 | Biz | P0 | ❌ | `go build ./internal/biz/...` 通过 |
-| 1.3 | Wire 绑定：在 `internal/biz/wire.go` 中添加 `RootCauseAnalyzer` 的 Wire 绑定 | Biz | P0 | ❌ | `make wire && go build ./cmd/admin` 通过 |
-| 1.4 | 验证 | — | P0 | ❌ | `go test ./internal/biz/monitor/... -count=1` 绿色 |
+| 1.1 | 创建 `internal/biz/monitor/root_cause_analyzer.go`：定义 `RootCauseAnalyzer` 接口 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
+| 1.2 | 修改 `internal/biz/monitor/root_cause_engine.go`：让 `RootCauseEngine` 实现 `RootCauseAnalyzer` 接口 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
+| 1.3 | Wire 绑定：在 `internal/biz/wire.go` 中添加 `RootCauseAnalyzer` 的 Wire 绑定 | Biz | P0 | ✅ | `make wire && go build ./cmd/admin` 通过 |
+| 1.4 | 验证 | — | P0 | ✅ | `go test ./internal/biz/monitor/... -count=1` 绿色 |
 
 ### Phase 1 — 闭环加固：FailureReport 标准化错误表示
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 2.1 | 创建 `internal/biz/monitor/failure_report.go`：定义 `FailureReport` 结构体和 `FailureType` 常量 | Biz | P0 | ❌ | `go build ./internal/biz/...` 通过 |
-| 2.2 | 创建 `internal/biz/monitor/failure_report_parser.go`：实现 `ParseCILogs` 和 `ParseRuntimeError` 函数 | Biz | P0 | ❌ | `go build ./internal/biz/...` 通过 |
-| 2.3 | 创建 `internal/biz/monitor/failure_report_parser_test.go`：测试 Go 编译错误/测试失败/Lint 错误解析 | Biz | P0 | ❌ | `go test ./internal/biz/monitor/... -run TestParse -count=1` 绿色 |
-| 2.4 | 创建 `.auto-fix/scripts/parse-logs.py`：CI 侧 Python 脚本 | CI | P0 | ❌ | `python3 parse-logs.py < testdata/build_failure.txt` 输出有效 JSON |
+| 2.1 | 创建 `internal/biz/monitor/failure_report.go`：定义 `FailureReport` 结构体和 `FailureType` 常量 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
+| 2.2 | 创建 `internal/biz/monitor/failure_report_parser.go`：实现 `ParseCILogs` 和 `ParseRuntimeError` 函数 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
+| 2.3 | 创建 `internal/biz/monitor/failure_report_parser_test.go`：测试 Go 编译错误/测试失败/Lint 错误解析 | Biz | P0 | ✅ | `go test ./internal/biz/monitor/... -run TestParse -count=1` 绿色 |
+| 2.4 | 创建 `.auto-fix/scripts/parse-logs.py`：CI 侧 Python 脚本 | CI | P0 | ✅ | `python3 parse-logs.py < testdata/build_failure.txt` 输出有效 JSON |
 
 ### Phase 1 — 闭环加固：统一失败模式知识库
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 3.1 | 创建 `internal/data/ent/schema/failure_pattern.go`：Ent Schema + 索引 | Data | P0 | ❌ | `go generate ./internal/data/ent/...` 无错误 |
-| 3.2 | 创建 `internal/biz/monitor/failure_pattern_repo.go`：定义 `FailurePatternReader`/`FailurePatternWriter` 接口 | Biz | P0 | ❌ | `go build ./internal/biz/...` 通过 |
-| 3.3 | 创建 `internal/data/failure_pattern.go`：实现 Repo 接口 + Wire 绑定 | Data | P0 | ❌ | `go build ./internal/data/...` 通过 |
-| 3.4 | 创建 `internal/cronrunner/jobs/failure_pattern_sync.go`：Cron Job | Cron | P1 | ❌ | `go build ./internal/cronrunner/...` 通过 |
-| 3.5 | 验证 | — | P0 | ❌ | `go test ./internal/data/... -run TestFailurePattern -count=1` 绿色 |
+| 3.1 | 创建 `internal/data/ent/schema/failure_pattern.go`：Ent Schema + 索引 | Data | P0 | ✅ | `go generate ./internal/data/ent/...` 无错误 |
+| 3.2 | 创建 `internal/biz/monitor/failure_pattern_repo.go`：定义 `FailurePatternReader`/`FailurePatternWriter` 接口 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
+| 3.3 | 创建 `internal/data/failure_pattern_repo.go`：实现 Repo 接口 + Wire 绑定 | Data | P0 | ✅ | `go build ./internal/data/...` 通过 |
+| 3.4 | 创建 `internal/cronrunner/jobs/failure_pattern_sync.go`：Cron Job | Cron | P1 | ✅ | `go build ./internal/cronrunner/...` 通过 |
+| 3.5 | 验证 | — | P0 | ✅ | `go test ./internal/data/... -run TestFailurePattern -count=1` 绿色 |
 
 ### Phase 1 — 闭环加固：Auto-Fix 引擎改造
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 4.1 | 修改 `.github/workflows/auto-fix.yml`：新增 parse-logs.py 步骤 | CI | P1 | ❌ | YAML 语法正确 |
-| 4.2 | 修改 `.github/workflows/auto-fix.yml`：新增 Critic Agent 步骤 | CI | P1 | ❌ | YAML 语法正确 |
-| 4.3 | 修改 `.github/workflows/auto-fix.yml`：新增保护文件白名单 | CI | P1 | ❌ | YAML 语法正确 |
-| 4.4 | 修改 `.github/workflows/auto-fix.yml`：新增 ENABLE_CRITIC_AGENT 环境变量 | CI | P1 | ❌ | YAML 语法正确 |
-| 4.5 | 验证 | — | P1 | ❌ | `actionlint .github/workflows/auto-fix.yml` 通过 |
+| 4.1 | 修改 `.github/workflows/auto-fix.yml`：新增 parse-logs.py 步骤 | CI | P1 | ✅ | YAML 语法正确 |
+| 4.2 | 修改 `.github/workflows/auto-fix.yml`：新增 Critic Agent 步骤 | CI | P1 | ✅ | YAML 语法正确 |
+| 4.3 | 修改 `.github/workflows/auto-fix.yml`：新增保护文件白名单 | CI | P1 | ✅ | YAML 语法正确 |
+| 4.4 | 修改 `.github/workflows/auto-fix.yml`：新增 ENABLE_CRITIC_AGENT 环境变量 | CI | P1 | ✅ | YAML 语法正确 |
+| 4.5 | 验证 | — | P1 | ✅ | `actionlint .github/workflows/auto-fix.yml` 通过 |
 
 ### Phase 1 — 闭环加固：集成测试补齐
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 5.1 | 创建 `internal/service/monitor_integration_test.go`：自愈闭环集成测试 | Service | P1 | ❌ | `go test -tags=integration ./internal/service/... -run TestMonitorIntegration -count=1` 绿色 |
-| 5.2 | 创建 `internal/service/skill_intelligence_integration_test.go`：Skill Intelligence 集成测试 | Service | P1 | ❌ | `go test -tags=integration ./internal/service/... -run TestSkillIntelligenceIntegration -count=1` 绿色 |
-| 5.3 | 创建 `internal/service/chat_turn_integration_test.go`：Chat Turn 集成测试 | Service | P1 | ❌ | `go test -tags=integration ./internal/service/... -run TestChatTurnIntegration -count=1` 绿色 |
-| 5.4 | Phase 1 全量验证 | — | P0 | ❌ | `make api && make wire && make build && make test && make lint` |
+| 5.1 | 创建 `internal/service/monitor_integration_test.go`：自愈闭环集成测试 | Service | P1 | ✅ | `go test -tags=integration ./internal/service/... -run TestMonitorIntegration -count=1` 绿色 |
+| 5.2 | 创建 `internal/service/skill_intelligence_integration_test.go`：Skill Intelligence 集成测试 | Service | P1 | ✅ | `go test -tags=integration ./internal/service/... -run TestSkillIntelligenceIntegration -count=1` 绿色 |
+| 5.3 | 创建 `internal/service/chat_turn_integration_test.go`：Chat Turn 集成测试 | Service | P1 | ✅ | `go test -tags=integration ./internal/service/... -run TestChatTurnIntegration -count=1` 绿色 |
+| 5.4 | Phase 1 全量验证 | — | P0 | ✅ | `make api && make wire && make build && make test && make lint` |
 
 ### Phase 2 — Skill Intelligence 落地：经验报告诊断
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 6.1 | 扩展 `internal/biz/skill_intelligence_types.go`：ExperienceReport 新增字段 | Biz | P1 | ❌ | `go build ./internal/biz/...` 通过 |
-| 6.2 | 修改 `internal/biz/skill_intelligence.go`：GenerateReport 集成 RootCauseAnalyzer | Biz | P1 | ❌ | `go build ./internal/biz/...` 通过 |
-| 6.3 | 创建 `internal/data/ent/schema/experience_report.go`：Ent Schema + 索引 | Data | P1 | ❌ | `go generate ./internal/data/ent/...` 无错误 |
-| 6.4 | 修改 `internal/data/skill_intelligence.go`：实现新增字段持久化 | Data | P1 | ❌ | `go build ./internal/data/...` 通过 |
-| 6.5 | 创建 `internal/cronrunner/jobs/skill_intelligence_worker.go`：Cron Job | Cron | P1 | ❌ | `go build ./internal/cronrunner/...` 通过 |
-| 6.6 | 定义 `api/skill_intelligence/v1/skill_intelligence.proto` | Proto | P1 | ❌ | `make api` 通过 |
-| 6.7 | 创建 `internal/service/skill_intelligence.go`：Service 层 | Service | P1 | ❌ | `go build ./internal/service/...` 通过 |
-| 6.8 | Wire DI 装配 | Wire | P1 | ❌ | `make wire && make build` 通过 |
+| 6.1 | 扩展 `internal/biz/skill_intelligence_types.go`：ExperienceReport 新增字段 | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
+| 6.2 | 修改 `internal/biz/skill_intelligence.go`：GenerateReport 集成 RootCauseAnalyzer | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
+| 6.3 | 创建 `internal/data/ent/schema/experience_report.go`：Ent Schema + 索引 | Data | P1 | ✅ | `go generate ./internal/data/ent/...` 无错误 |
+| 6.4 | 修改 `internal/data/skill_intelligence.go`：实现新增字段持久化 | Data | P1 | ✅ | `go build ./internal/data/...` 通过 |
+| 6.5 | 创建 `internal/cronrunner/jobs/skill_intelligence_worker.go`：Cron Job | Cron | P1 | ✅ | `go build ./internal/cronrunner/...` 通过 |
+| 6.6 | 定义 `api/kratos/skill_intelligence/v1/skill_intelligence.proto` | Proto | P1 | ✅ | `make api` 通过 |
+| 6.7 | 创建 `internal/service/skill_intelligence.go`：Service 层 | Service | P1 | ✅ | `go build ./internal/service/...` 通过 |
+| 6.8 | Wire DI 装配 | Wire | P1 | ✅ | `make wire && make build` 通过 |
 
 ### Phase 2 — Skill Intelligence 落地：推荐排序进化
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 7.1 | 创建 `internal/tools/skillrecommend/health_provider.go`：`HealthMetricsProvider` 接口 | Tools | P1 | ❌ | `go build ./internal/tools/...` 通过 |
-| 7.2 | 修改 `internal/tools/skillrecommend/rank.go`：新增 `DynamicRankFactors` | Tools | P1 | ❌ | `go build ./internal/tools/...` 通过 |
-| 7.3 | 创建 `internal/tools/skillrecommend/rank_test.go`：测试动态权重调整 | Tools | P1 | ❌ | `go test ./internal/tools/skillrecommend/... -count=1` 绿色 |
-| 7.4 | 创建 Biz 层适配器：实现 `HealthMetricsProvider` 接口 | Biz | P1 | ❌ | `go build ./internal/biz/...` 通过 |
-| 7.5 | 修改 `internal/tools/skillruntime/resolve.go`：集成 DynamicRankFactors | Tools | P1 | ❌ | 排序因子写入 selection_reason |
-| 7.6 | 创建 `internal/tools/skillrecommend/rank_feedback.go`：RankFeedback 结构体 | Tools | P1 | ❌ | `go build ./internal/tools/...` 通过 |
+| 7.1 | 创建 `internal/tools/skillrecommend/health_provider.go`：`HealthMetricsProvider` 接口 | Tools | P1 | ✅ | `go build ./internal/tools/...` 通过 |
+| 7.2 | 修改 `internal/tools/skillrecommend/rank.go`：新增 `DynamicRankFactors` | Tools | P1 | ✅ | `go build ./internal/tools/...` 通过 |
+| 7.3 | 创建 `internal/tools/skillrecommend/rank_test.go`：测试动态权重调整 | Tools | P1 | ✅ | `go test ./internal/tools/skillrecommend/... -count=1` 绿色 |
+| 7.4 | 创建 Biz 层适配器：实现 `HealthMetricsProvider` 接口 | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
+| 7.5 | 修改 `internal/tools/skillruntime/resolve.go`：集成 DynamicRankFactors | Tools | P1 | ✅ | 排序因子写入 selection_reason |
+| 7.6 | 创建 `internal/tools/skillrecommend/rank_feedback.go`：RankFeedback 结构体 | Tools | P1 | ✅ | `go build ./internal/tools/...` 通过 |
 
 ### Phase 2 — Skill Intelligence 落地：Curator Agent 半自动进化
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 8.1 | 创建 `internal/biz/skill_evolution_suggestion_types.go`：领域模型 | Biz | P1 | ❌ | `go build ./internal/biz/...` 通过 |
-| 8.2 | 创建 `internal/data/ent/schema/skill_evolution_suggestion.go`：Ent Schema | Data | P1 | ❌ | `go generate ./internal/data/ent/...` 无错误 |
-| 8.3 | 扩展 `internal/biz/skill_intelligence_repo.go`：Reader/Writer 端口 | Biz | P1 | ❌ | `go build ./internal/biz/...` 通过 |
-| 8.4 | 实现 Data 层 Repo：`internal/data/skill_evolution_suggestion.go` | Data | P1 | ❌ | `go build ./internal/data/...` 通过 |
-| 8.5 | 修改 `internal/biz/skill_intelligence.go`：触发条件判定 + CreateSuggestion | Biz | P1 | ❌ | `go build ./internal/biz/...` 通过 |
-| 8.6 | 创建 `internal/service/skill_curator.go`：Curator Agent 装配与 invoke | Service | P1 | ❌ | `go build ./internal/service/...` 通过 |
-| 8.7 | 实现 Sandbox Runner 验证 | Service | P1 | ❌ | 隔离执行，不影响生产 |
-| 8.8 | 定义进化建议 API proto + 实现 Service 层 | Proto+Service | P1 | ❌ | `make api && go build ./...` 通过 |
-| 8.9 | Skill 元数据扩展：新增 parent_version_id / evolution_reason / lifecycle_status | Data | P1 | ❌ | `go generate ./internal/data/ent/...` 无错误 |
-| 8.10 | Wire DI 装配 | Wire | P1 | ❌ | `make wire && make build` 通过 |
+| 8.1 | 创建 `internal/biz/skill_evolution_suggestion_types.go`：领域模型 | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
+| 8.2 | 创建 `internal/data/ent/schema/skill_evolution_suggestion.go`：Ent Schema | Data | P1 | ✅ | `go generate ./internal/data/ent/...` 无错误 |
+| 8.3 | 扩展 `internal/biz/skill_intelligence_repo.go`：Reader/Writer 端口 | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
+| 8.4 | 实现 Data 层 Repo：`internal/data/skill_evolution_suggestion.go` | Data | P1 | ✅ | `go build ./internal/data/...` 通过 |
+| 8.5 | 修改 `internal/biz/skill_intelligence.go`：触发条件判定 + CreateSuggestion | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
+| 8.6 | 创建 `internal/service/skill_curator.go`：Curator Agent 装配与 invoke | Service | P1 | ✅ | `go build ./internal/service/...` 通过 |
+| 8.7 | 实现 Sandbox Runner 验证 | Service | P1 | ✅ | 隔离执行，不影响生产 |
+| 8.8 | 定义进化建议 API proto + 实现 Service 层 | Proto+Service | P1 | ✅ | `make api && go build ./...` 通过 |
+| 8.9 | Skill 元数据扩展：新增 parent_version_id / evolution_reason / lifecycle_status | Data | P1 | ✅ | `go generate ./internal/data/ent/...` 无错误 |
+| 8.10 | Wire DI 装配 | Wire | P1 | ✅ | `make wire && make build` 通过 |
 
 ### Phase 2 — Skill Intelligence 落地：前端
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 9.1 | 前端经验报告列表页：调用 ListExperienceReports API | Web | P1 | ❌ | `pnpm lint && pnpm build` 通过 |
-| 9.2 | 前端 Skill 进化审批 UI：进化建议列表 + Approve/Reject | Web | P1 | ❌ | `pnpm lint && pnpm build` 通过 |
+| 9.1 | 前端经验报告列表页：调用 ListExperienceReports API | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
+| 9.2 | 前端 Skill 进化审批 UI：进化建议列表 + Approve/Reject | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
 
 ### Phase 3 — 自我进化闭环：预测性自愈
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 10.1 | 创建 `internal/biz/monitor/predictive_heal.go`：PredictiveHealUsecase | Biz | P2 | ❌ | `go build ./internal/biz/...` 通过 |
-| 10.2 | 创建 `internal/cronrunner/jobs/predictive_heal.go`：Cron Job | Cron | P2 | ❌ | `go build ./internal/cronrunner/...` 通过 |
-| 10.3 | 创建 `internal/biz/monitor/predictive_heal_test.go`：测试 | Biz | P2 | ❌ | `go test ./internal/biz/monitor/... -run TestPredictive -count=1` 绿色 |
-| 10.4 | Wire DI 装配 | Wire | P2 | ❌ | `make wire && make build` 通过 |
+| 10.1 | 创建 `internal/biz/monitor/predictive_heal.go`：PredictiveHealUsecase | Biz | P2 | ✅ | `go build ./internal/biz/...` 通过 |
+| 10.2 | 创建 `internal/cronrunner/jobs/predictive_heal.go`：Cron Job | Cron | P2 | ✅ | `go build ./internal/cronrunner/...` 通过 |
+| 10.3 | 创建 `internal/biz/monitor/predictive_heal_test.go`：测试 | Biz | P2 | ✅ | `go test ./internal/biz/monitor/... -run TestPredictive -count=1` 绿色 |
+| 10.4 | Wire DI 装配 | Wire | P2 | ✅ | `make wire && make build` 通过 |
 
 ### Phase 3 — 自我进化闭环：Skill 五阶段进化闭环
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 11.1 | 创建 `internal/biz/skill_evolution_loop.go`：五阶段流程 | Biz | P2 | ❌ | `go build ./internal/biz/...` 通过 |
-| 11.2 | 实现 Gate 多维验证 | Biz | P2 | ❌ | `go build ./internal/biz/...` 通过 |
-| 11.3 | 实现进化建议过期机制 | Biz | P2 | ❌ | `go build ./internal/biz/...` 通过 |
-| 11.4 | 创建 `internal/biz/skill_evolution_loop_test.go`：测试 | Biz | P2 | ❌ | `go test ./internal/biz/... -run TestEvolutionLoop -count=1` 绿色 |
+| 11.1 | 创建 `internal/biz/skill_evolution_loop.go`：五阶段流程 | Biz | P2 | ✅ | `go build ./internal/biz/...` 通过 |
+| 11.2 | 实现 Gate 多维验证 | Biz | P2 | ✅ | `go build ./internal/biz/...` 通过 |
+| 11.3 | 实现进化建议过期机制 | Biz | P2 | ✅ | `go build ./internal/biz/...` 通过 |
+| 11.4 | 创建 `internal/biz/skill_evolution_loop_test.go`：测试 | Biz | P2 | ✅ | `go test ./internal/biz/... -run TestEvolutionLoop -count=1` 绿色 |
 
 ### Phase 3 — 自我进化闭环：知识库动态挖掘
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 12.1 | 创建 `internal/biz/monitor/pattern_mining.go`：PatternMiningUsecase | Biz | P2 | ❌ | `go build ./internal/biz/...` 通过 |
-| 12.2 | 创建 `internal/cronrunner/jobs/pattern_mining.go`：Cron Job | Cron | P2 | ❌ | `go build ./internal/cronrunner/...` 通过 |
-| 12.3 | 创建 `internal/biz/monitor/pattern_mining_test.go`：测试 | Biz | P2 | ❌ | `go test ./internal/biz/monitor/... -run TestPatternMining -count=1` 绿色 |
-| 12.4 | Wire DI 装配 | Wire | P2 | ❌ | `make wire && make build` 通过 |
+| 12.1 | 创建 `internal/biz/monitor/pattern_mining.go`：PatternMiningUsecase | Biz | P2 | ✅ | `go build ./internal/biz/...` 通过 |
+| 12.2 | 创建 `internal/cronrunner/jobs/pattern_mining.go`：Cron Job | Cron | P2 | ✅ | `go build ./internal/cronrunner/...` 通过 |
+| 12.3 | 创建 `internal/biz/monitor/pattern_mining_test.go`：测试 | Biz | P2 | ✅ | `go test ./internal/biz/monitor/... -run TestPatternMining -count=1` 绿色 |
+| 12.4 | Wire DI 装配 | Wire | P2 | ✅ | `make wire && make build` 通过 |
 
 ### 全量验证
 
 | ID | 任务 | 优先级 | 状态 | DoD |
 |----|------|--------|------|-----|
-| 13.1 | 后端全量验证 | P0 | ❌ | `make api && make wire && make build && make test && make lint` |
-| 13.2 | 前端全量验证 | P0 | ❌ | `cd web && pnpm lint && pnpm test && pnpm build` |
+| 13.1 | 后端全量验证 | P0 | ✅ | `make api && make wire && make build && make test && make lint` |
+| 13.2 | 前端全量验证 | P0 | ✅ | `cd web && pnpm lint && pnpm test && pnpm build` |
 
 ---
 
@@ -330,4 +330,4 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 
 ---
 
-*文档版本：2026-06-05 — 基于 openspec/changes/self-iteration-v2/tasks.md 生成。*
+*文档版本：2026-06-06 — Phase 1–3 全部落地，所有任务状态更新为 ✅。*

@@ -1,6 +1,6 @@
 # CodeExecutor 代码执行 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 P0–P2 + Review 修复已落地；❌ Jupyter / Workspace / Interactive（P3）
+> **版本**：2026-06-06 | **状态**：🟢 P0–P2 + Review 修复已落地；❌ Jupyter / Workspace / Interactive（P3）
 > **需求**：[32 codeexecutor.md](./32%20codeexecutor.md) · **设计**：[32 codeexecutor.design.md](./32%20codeexecutor.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **变更**：[changelog/2026-05-21-CodeExecutor-Review-Fixes.md](../changelog/2026-05-21-CodeExecutor-Review-Fixes.md) · [架构图 DocSync](../changelog/2026-05-21-CodeExecutor-DocSync-Architecture.md)
 > **关联**：[20-skill-development.md](./20-skill-development.md) · [27-artifact-development.md](./27-artifact-development.md)
@@ -23,7 +23,7 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 | Skill 适配 | `internal/skill/trpc/executor.go` — `NewExecutorForAgent` |
 | 产出物 | `internal/skill/trpc/artifact_executor.go` — `WrapWithArtifactSave` |
 | Agent 装配 | `internal/agent/trpc_build.go` → `buildSkillDeps` → `WithCodeExecutor` |
-| Wire | `cmd/admin/wire.go` — `provideCodeExecutorFactory` |
+| Wire | `cmd/admin/wire.go` — `provideCodeExecutorFactory` → `NewFactoryWithLogger` |
 | 运维 | `docker-compose.executor.yml` — `CODE_EXECUTOR_BACKEND=docker` |
 | 框架生态 | `pkg/trpc-agent-go/codeexecutor/` — local / docker / e2b / jupyter / container / Workspace |
 
@@ -39,7 +39,7 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 | 全局后端选择 | ✅ | `Factory.Resolve` + `CODE_EXECUTOR_BACKEND` 回退 |
 | Skill 默认 local 路径 | ✅ | 非 docker 时使用框架 `trpclocal.New()`（**非**项目 `LocalExecutor`） |
 | Skill 工具集成 | ✅ | `buildSkillDeps` → `NewExecutorForAgent` → `WithCodeExecutor` |
-| 产出物自动收集 | ✅ | `WrapWithArtifactSave` + Docker 输出目录 / framework `OutputFiles` |
+| 产出物自动收集 | ✅ | `WrapWithArtifactSave` 覆盖所有后端路径（local/docker/e2b/container） |
 | Agent 级别执行器配置 | ✅ | `CodeExecutorType` + 前端 Skill Tab + `buildSkillDeps` |
 | ExecutorRegistry / Factory | ✅ | `internal/agent/codeexecutor/factory.go`（Wire 单例 + lazy E2B/Container） |
 | Docker 不可用回退 | ✅ | probe 回退 + 运行时 `dockerRuntimeFallback` |
@@ -55,7 +55,7 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 
 | # | 差距 | 优先级 | 说明 |
 |---|------|--------|------|
-| 1 | 产出物全路径 + OutputSpec | P2 | Local 路径收集；Workspace glob 规则 |
+| 1 | OutputSpec / glob 规则 | P3 | Workspace glob 收集规则；文件数量限制 |
 | 2 | Jupyter + Interactive | P3 | 需 Jupyter 服务 + 前端多轮交互 |
 | 3 | WorkspaceRegistry + Session 复用 | P3 | 配合 Session 管理 |
 | 4 | `NewEnvInjectingCodeExecutor` | P3 | identity 场景 per-user env |
@@ -73,8 +73,8 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 |---|------|----------|
 | 1.1 | `AgentRuntimeSettings.CodeExecutorType` | `internal/biz/agent_types.go` |
 | 1.2 | 默认值 `"local"` | `internal/biz/agent_defaults.go` |
-| 1.3 | Ent `code_executor_type` | `internal/data/ent/schema/agent_runtime_setting.go` |
-| 1.4 | SQL 迁移 | `docs/sql/` |
+| 1.3 | Ent `code_executor_type` 列 + auto migration | `internal/data/ent/schema/agent_runtime_setting.go` |
+| 1.4 | ~~SQL 迁移~~（已由 Ent auto migration 覆盖，无手动 SQL 文件） | — |
 | 1.5 | `Factory`（原 Registry 计划） | `internal/agent/codeexecutor/factory.go` |
 | 1.6 | `buildSkillDeps` 优先级：Agent → env → default | `internal/agent/trpc_build.go` |
 | 1.7 | `NewExecutorForAgent` + Factory 注入 | `internal/skill/trpc/executor.go` |
@@ -98,8 +98,8 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 |---|------|----------|
 | 2.1 | Factory lazy 注册框架 `e2b.CodeExecutor` | `factory.go` + `E2B_API_KEY` |
 | 2.2 | Factory lazy 注册框架 `container.CodeExecutor` | `factory.go` + build tag |
-| 2.3 | Local 路径产出物收集 | `artifact_executor.go` / framework local |
-| 2.4 | OutputSpec / glob 规则（可选配置） | `internal/agent/codeexecutor/` |
+| 2.3 | ~~Local 路径产出物收集~~（已实现：`WrapWithArtifactSave` 覆盖所有路径） | `artifact_executor.go` |
+| 2.4 | OutputSpec / glob 规则（**未实现**，降级至 P3） | `internal/agent/codeexecutor/` |
 | 2.5 | 集成测试（mock E2B） | `*_test.go` |
 
 **验收**：
@@ -133,7 +133,7 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 | E2B API Key | 需网络与密钥 | Key 缺失时不注册或标记不可用 |
 | Jupyter 服务 | 需运行中 Jupyter | 连接失败时不注册 |
 | 双 Local 实现 | 项目 `LocalExecutor` vs 框架 `trpclocal` | Factory Skill 入口；项目 LocalExecutor 仅底层/单测 |
-| Ent Schema 变更 | `code_executor_type` 列 | ALTER TABLE SQL |
+| Ent Schema 变更 | `code_executor_type` 列 | Ent auto migration 管理，无手动 SQL |
 | 红线 R2 | `internal/biz` 不 import `trpc-agent-go` | 组装在 `internal/agent` / `internal/skill` |
 
 ---
@@ -144,7 +144,7 @@ CodeExecutor 为 **Skill 运行时**提供安全代码执行：Local 子进程�
 |----|------|
 | Local / Docker 基础执行（Skill 路径） | ✅ |
 | Docker 安全约束 + OOM/超时标识 | ✅ |
-| Docker 产出物 → Artifact（部分） | 🟡 |
+| 所有后端路径产出物 → Artifact | ✅ |
 | Agent 可配置执行器类型 | ✅ |
 | Factory（Wire 单例） | ✅ |
 | 生产环境**建议** Docker（非默认） | 📋 运维配置 + `AllowLocalInProd` 告警 |

@@ -8,8 +8,7 @@
 
 | 路由（示例） | 说明 |
 |--------------|------|
-| `/cron` 或 `/scheduled-tasks` | 定时任务管理主页 |
-| `/cron/runs` 或 `/scheduled-tasks/runs` | **执行历史**（可按 `cron_task_id` 查询参数默认筛选） |
+| `/cron` 或 `/scheduled-tasks` | 定时任务管理主页（含执行历史弹窗） |
 
 | 区域 | Quasar / 布局 |
 |------|----------------|
@@ -71,14 +70,17 @@
 
 分页：服务端分页时 **`QTable`** `@request` + **`QPagination`**。
 
-### 2.3.1 执行历史页（与失败点击联动）
+### 2.3.1 执行历史弹窗（与失败点击联动）
+
+> **实现说明**：执行历史以弹窗（`CronRunsDialog`）形式嵌入定时任务管理页，而非独立路由页面。
 
 | 区域 | 说明 |
 |------|------|
-| **入口** | 侧栏「执行历史」；或列表 **失败次数** / **操作 · 历史** |
-| **默认筛选** | URL **`?cron_task_id=`** 时，筛选器 **`QSelect`** 或只读 Chip 显示当前任务名称，表格仅展示该任务产生的 **`cron_task_run`** |
-| **筛选器** | 定时任务（可清空=全部）、结果 `success`/`failure`、时间范围 |
+| **入口** | 列表 **失败次数** / **操作 · 历史** 按钮 |
+| **默认筛选** | 打开时传入 `cron_task_id`，筛选器 **`QSelect`** 或只读 Chip 显示当前任务名称，表格仅展示该任务产生的 **`cron_task_run`** |
+| **筛选器** | 定时任务（可清空=全部）、结果 `success`/`failure`/`pending`/`skipped` |
 | **表格列** | 任务名称、`started_at`、`finished_at`、`status`、`error_message` 摘要、`trigger`；可 **跳转 Agent 运行**（若有 `run_id`） |
+| **分页** | 前端分页（当前 `ListCronTaskRuns` 仅支持 `limit`，无 offset） |
 
 ### 2.4 Quasar 映射（列表）
 
@@ -116,6 +118,7 @@
 | **执行时间（一次）** | 当 `schedule_type === 'once'`：**`QInput`** + **`QPopupProxy`** 包 **`QDate`** + **`QTime`**，或项目统一日期时间组件；绑定 `run_at`（ISO 本地） |
 | **描述（可选）** | **`QInput`** `outlined` `label="描述"` `autogrow` 或固定行数；落库 `description` |
 | **消息** | **`QInput`** `type="textarea"` `autogrow` `label="消息"` `placeholder="Agent 应该做什么?"` |
+| **最大重试次数** | **`QInput`** `type="number"` `outlined` `label="最大重试次数"` `hint="0=禁用重试，默认3"`；绑定 `config_json.retry_max_attempts` |
 
 ### 3.2.1 当前工程实现映射
 
@@ -127,7 +130,7 @@
 | 展示名称 | `cron_task.name` |
 | `description` | `cron_task.description` |
 | `agent_id` | `cron_task.agent_id`（目标为 Agent 时） |
-| `target_type`、`team_id`、`schedule_type`、`cron_expression`、`interval_seconds`、`run_at`、`timezone`、`message` | `config_json` |
+| `target_type`、`team_id`、`schedule_type`、`cron_expression`、`interval_seconds`、`run_at`、`timezone`、`message`、`retry_max_attempts` | `config_json` |
 | `run_count`、`success_count`、`failure_count`、`last_run_at`、`last_run_status`、`last_error`、`next_run_at`、`recent_failures[]` | `metadata_json`，执行历史页也可从 `cron_task_run` 查询 |
 | 启用 / 暂停 | `enabled` + `status`（`active` / `paused`） |
 
@@ -189,7 +192,7 @@
 | `cron_task_id` | uuid | FK |
 | `started_at` | timestamptz | |
 | `finished_at` | timestamptz | nullable |
-| `status` | varchar(16) | `success` \| `failure` |
+| `status` | varchar(16) | NOT NULL | `success` \| `failure` \| `pending` \| `skipped` |
 | `trigger` | varchar(32) | `schedule` \| `manual` |
 | `run_id` | uuid | nullable | 关联 Agent  |
 | `error_message` | text | nullable |
@@ -202,41 +205,42 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/cron-tasks?search=&status=&page=` | 列表；支持 `search` 匹配 `name` / `description`；每条含 `run_count`、`success_count`、`failure_count`，可选 `recent_failures[]` |
-| POST | `/cron-tasks` | 创建；服务端校验计划字段互斥 |
-| GET | `/cron-tasks/:id` | 详情 |
-| PATCH | `/cron-tasks/:id` | 更新名称、计划、消息、`status` |
-| DELETE | `/cron-tasks/:id` | 软删 |
-| POST | `/cron-tasks/:id/trigger` | 立即执行一次（可选） |
-| GET | `/cron-task-runs?cron_task_id=&status=&from=&to=&page=` | 执行历史列表；**从列表点击失败次数**进入时带 `cron_task_id` 做默认筛选 |
+| GET | `/v1/cron-tasks` | 列表（当前无搜索/分页参数，前端客户端过滤；P3 待实现服务端 search/page） |
+| POST | `/v1/cron-tasks` | 创建；服务端校验计划字段互斥 |
+| GET | `/v1/cron-tasks/:id` | 详情 |
+| PATCH | `/v1/cron-tasks/:id` | 更新名称、计划、消息、`status` |
+| DELETE | `/v1/cron-tasks/:id` | 软删 |
+| POST | `/v1/cron-tasks/:id/trigger` | 立即执行一次（异步，返回 `pending` 状态的 `CronTaskRun`） |
+| POST | `/v1/cron-tasks/:id/reset-failures` | 重置失败计数（清零 `failure_count`/`last_error`/`recent_failures`，恢复 `active`） |
+| GET | `/v1/cron-task-runs?cron_task_id=&status=&limit=` | 执行历史列表；支持按任务、状态筛选 |
 
 调度器服务根据 `cron_task` 计算并回写 `next_run_at`，触发时消费 `message`（+ `payload`）启动 Agent 运行；每次运行结束更新 **`run_count` / `success_count` / `failure_count`**（或由异步任务根据 `cron_task_run` 汇总回写）。
 
 ### 5.1 Cron 调动 Agent / Team 的执行设计
 
-Cron 不直接实现 Agent 或 Team 的运行逻辑，而是复用现有 **`ChatService.Send`** 作为统一入口：
+Cron 不直接实现 Agent 或 Team 的运行逻辑，而是复用现有 **`RunGateway.RunCronTurn`** 作为统一入口（in-process 调用，非 HTTP）：
 
 1. **调度器扫描任务**：后台 runner 定期读取 `cron_task`，筛选 `enabled=true`、`status=active`、`metadata_json.next_run_at <= now` 的任务。
-2. **解析目标**：`config_json.target_type=agent` 时使用 `cron_task.agent_id`；`target_type=team` 时使用 `config_json.team_id`。
+2. **解析目标**：`config_json.target_type=agent` 时使用 `cron_task.agent_id`；`target_type=team` 时使用 `config_json.team_id`；`target_type=model_registry_sync` 时触发模型注册表同步。
 3. **创建执行记录**：先写入 `cron_task_run`，状态为 `pending`，`started_at=now`，`output_json.trigger=schedule`。
 4. **创建 Session**：
    - Agent：`owner_type=agent`、`agent_id=<agent_id>`、`dialog_mode=cron`。
    - Team：`owner_type=team`、`team_id=<team_id>`、`dialog_mode=cron`。
-5. **调用 ChatService**：
-   - Agent：`SendMessageInput{SessionID, AgentKey, Content: message}`。
-   - Team：`SendMessageInput{SessionID, TeamID, Content: message}`；`ChatService.Send` 会因 session owner 为 `team` 自动进入 `sendTeam(...)`。
+5. **调用 RunCronTurn**：in-process 调用 `ChatService.RunCronTurn`（EP-RT-07）；`CRON_CHAT_DISPATCH_ORIGIN` 环境变量保留 HTTP fallback。
 6. **写回结果**：
    - 成功：`cron_task_run.status=success`，`output_json` 写入 `session_id` / `message_id`，`metadata_json.success_count++`。
    - 失败：`cron_task_run.status=failure`，写入 `error_message`，`metadata_json.failure_count++`、`last_error`、`recent_failures[]`。
+   - 跳过：`cron_task_run.status=skipped`（Session 忙），不递增 `failure_count`。
    - 所有结果都更新 `run_count`、`last_run_at`、`last_run_status` 并重新计算 `next_run_at`；`once` 任务执行后自动暂停。
 
 ### 5.2 本期实施范围
 
-- `/cron`：专用定时任务管理页，替代通用 `ResourceManagerPage`。
-- `/cron/runs`：执行历史页，支持 `cron_task_id` 与 `status` 筛选。
-- `GET /cron-task-runs`：读取已有 `cron_task_run` 表，返回最近运行记录。
-- 创建 / 编辑 / 删除 / 启停：继续使用 `/cron-tasks` 通用资源 CRUD。
-- 后端 Cron runner：定时扫描到期任务，调动 Agent 或 Team，并回写执行历史与统计字段。
+- `/cron`：专用定时任务管理页（含执行历史弹窗 `CronRunsDialog`），替代通用 `ResourceManagerPage`。
+- `GET /v1/cron-task-runs`：读取已有 `cron_task_run` 表，返回最近运行记录。
+- 创建 / 编辑 / 删除 / 启停：继续使用 `/v1/cron-tasks` 通用资源 CRUD。
+- 手动触发：`POST /v1/cron-tasks/{id}/trigger`（异步执行，返回 `pending` run）。
+- 重置失败计数：`POST /v1/cron-tasks/{id}/reset-failures`。
+- 后端 Cron runner：定时扫描到期任务，调动 Agent / Team / ModelRegistrySync，并回写执行历史与统计字段。
 
 ---
 
@@ -251,7 +255,7 @@ Cron 不直接实现 Agent 或 Team 的运行逻辑，而是复用现有 **`Chat
 
 ---
 
-*文档版本：1.3 — 增加 Cron 调动 Agent / Team 的执行设计，并将后端 Cron runner 纳入本期实施。*
+*文档版本：1.4 — 对齐实际实现：执行历史改为弹窗、补充 reset-failures API、补充 retry_max_attempts 表单字段、补充 model_registry_sync 目标类型、修正执行路径为 RunCronTurn。*
 
 ---
 

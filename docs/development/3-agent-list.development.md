@@ -1,6 +1,6 @@
 # Agent 列表 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ 主路径 + 运行态 + 复制 + LIST-02；🟡 批量 / 迁移待补
+> **版本**：2026-06-06 | **状态**：✅ 主路径 + 运行态 + 复制 + 分类体系 + 三组布局 + 拖拽排序；🟡 BatchUpdate/Reorder 待补
 > **变更记录**：[changelog/2026-05-21-Agent-CreatedBy-Templates-Errors.md](../changelog/2026-05-21-Agent-CreatedBy-Templates-Errors.md)
 > **需求**：[3 agent-list.md](./3%20agent-list.md) · **设计**：[3 agent-list.design.md](./3%20agent-list.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **系统待办**：[0-system-development.md](./0-system-development.md) §8.11 AGT-07
@@ -15,9 +15,14 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 - `api/kratos/agent/v1/agent.proto` — `ListAgents` / `ToggleFavorite` / `DeleteAgent`
 - `internal/service/agent.go` — `AgentService`
 - `internal/biz/agent_usecase.go` — `AgentUsecase.List`
+- `internal/biz/agent_kind.go` — agent kind 归一化（builtin/preset/user）
+- `internal/biz/agent_duplicate.go` — 复制逻辑
 - `web/src/pages/AgentsPage.vue` — 页面壳
 - `web/src/features/agents/useAgentsPage.ts` — 列表/筛选/创建组合逻辑
-- `web/src/components/agents/AgentsListSection.vue` — 网格/表格/空态/骨架屏
+- `web/src/features/agents/useAgentProviderModelPicker.ts` — Provider/Model 选择器
+- `web/src/components/agents/AgentsListSection.vue` — 网格/表格/空态/骨架屏/拖拽排序
+- `web/src/components/agents/KindBadge.vue` — Agent 归属类型徽章
+- `web/src/components/agents/TaxonomyFilter.vue` — 分类体系筛选（替代旧 category filter）
 
 ---
 
@@ -35,6 +40,10 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | `last_run_status` / `last_run_at` | ✅ | `ListExtrasForAgents`（批量 session + pending 计数）→ proto 24–25；终态 `runtime.status` 由 `persistRunStatus` 保留 |
 | `pending_evolution_count` | ✅ | evolution_suggestion `pending` 计数 → proto 26 |
 | `created_by` | ✅ | Ent + 迁移 `docs/sql/02_agent_created_by.sql`（含 `idx_agents_created_by`）；`ResolveListCreatedByFilter`（`mine` / 用户 id） |
+| `BatchUpdateAgents` | ✅ | biz 层已实现（尚无 proto RPC） |
+| `agent_variant` / `kind` / `source` | ✅ | proto 字段 28–33；kind 归一化 `agent_kind.go` |
+| `position_key` | ✅ | 分类体系 position key 字段 |
+| `ReorderAgents` | 🟡 | biz/data 层 stub（return nil） |
 
 ### 2.2 前端状态
 
@@ -52,6 +61,10 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | Agent 迁移入口 | 🟡 | 对话框占位文案，无导入导出 |
 | 批量操作 | ❌ | 无多选 / `BatchUpdateAgents` |
 | 创建者筛选 | ✅ | `AgentsFiltersCard`；`GET /v1/agents/creators`（「仅我的」`user_id=mine`）；创建成功后 `resetListFiltersAfterCreate` 清空筛选 |
+| KindBadge | ✅ | `KindBadge.vue` — 归属类型徽章（builtin/preset/user） |
+| TaxonomyFilter | ✅ | `TaxonomyFilter.vue` — 替代旧 category filter |
+| 拖拽排序 | ✅ | `AgentsListSection` 拖拽排序（三组：builtin/preset/user） |
+| 三组布局 | ✅ | Built-in / Preset / User 分组展示 |
 
 ---
 
@@ -62,9 +75,11 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | LIST-01 | P2 | `last_run_status` 聚合 | ✅ 迭代 9 + 审查：批量查询、终态 status 持久化 |
 | LIST-02 | P2 | `created_by` 列 + 筛选 | ✅ Ent + 列表筛选 + 创建者下拉 |
 | LIST-03 | P3 | `DuplicateAgent` RPC | ✅ 迭代 10 |
-| LIST-04 | P3 | 批量启用/停用/删除 | `BatchUpdateAgents` + 表格多选 |
+| LIST-04 | P3 | 批量启用/停用/删除 | ✅ biz；⏳ proto RPC + 表格多选 |
 | LIST-05 | P3 | 虚拟滚动 | 100+ Agent 性能 |
 | LIST-06 | P3 | Agent 迁移实现 | 当前仅 `AgentsPage` 占位对话框 |
+| LIST-07 | P3 | ReorderAgents 实现 | biz/data stub 已有，需补 proto RPC + 前端对接 |
+| LIST-08 | P3 | Debug trace 清理 | 运行态相关 debug 日志待清理 |
 
 ---
 
@@ -75,9 +90,15 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | 1 | `agents.created_by` + Ent | 后端 | P2 | ✅ |
 | 2 | `ListAgents` 增加 `last_run_status` | 后端 | P2 | ✅ |
 | 3 | `DuplicateAgent` proto + Usecase | 后端 | P3 | ✅ |
-| 4 | `BatchUpdateAgents` | 后端 | P3 | ⏳ |
+| 4 | `BatchUpdateAgents` | 后端 | P3 | ✅ biz；⏳ proto RPC |
 | 5 | 列表展示运行状态 / 创建者筛选 | 前端 | P2 | ✅ |
 | 6 | 批量操作 UI | 前端 | P3 | ⏳ |
+| 7 | `agent_variant` / `kind` / `source` proto 字段 | 后端 | P2 | ✅ |
+| 8 | `position_key` 分类体系字段 | 后端 | P2 | ✅ |
+| 9 | KindBadge + TaxonomyFilter 前端组件 | 前端 | P2 | ✅ |
+| 10 | 三组布局 + 拖拽排序 | 前端 | P2 | ✅ |
+| 11 | `ReorderAgents` proto RPC + 前端对接 | 全栈 | P3 | ⏳ |
+| 12 | Debug trace 清理 | 后端 | P3 | ⏳ |
 
 ---
 
@@ -88,7 +109,12 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 - [x] 列表可显示最近一次运行状态（`last_run_status` / `last_run_at`）
 - [x] 创建者筛选可正常工作
 - [x] 单 Agent 复制可执行
+- [x] Agent 归属类型（KindBadge）可正常展示
+- [x] 分类体系筛选（TaxonomyFilter）可正常工作
+- [x] 三组布局（Built-in / Preset / User）可正常展示
+- [x] 拖拽排序可正常执行
 - [ ] 批量操作可执行（若产品确认需要）
+- [ ] ReorderAgents RPC 对接完成
 
 ---
 

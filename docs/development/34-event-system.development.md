@@ -1,6 +1,6 @@
 # Event 事件系统 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 P2 + P3 Chat Inspector 已实现
+> **版本**：2026-06-06 | **状态**：🟢 P2 + P3 已实现，2.10 工具生命周期事件未实现
 > **需求**：[34 event-system.md](./34%20event-system.md) · **设计**：[34 event-system.design.md](./34%20event-system.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-RT-06 ✅ / EP-FE-02 ✅ / I5-SYS-03 ✅
 
@@ -28,8 +28,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | Monitor 实时事件 UI | ✅ | `RealtimeEvents.vue` |
 | Chat 会话事件检视 | ✅ | `SessionTimelineDialog` 双 Tab + Inspector 组件 |
 | Monitor EventTimeline 原型 | ✅ | 已删除（O1） |
-
-（完整后端项见上一轮评估；P2 均已 ✅。）
+| 工具生命周期事件 | ❌ | EnvelopeType 无 ToolRegistered/ToolUpdated/ToolRemoved |
 
 ---
 
@@ -38,7 +37,8 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 ### 3.1 功能差距
 
 1. ~~**P2** 事件持久化 + 回放 API~~ ✅
-2. **P3** Chat 会话事件检视（Dialog 双 Tab，非第四列侧边栏）— 见设计 §12
+2. ~~**P3** Chat 会话事件检视（Dialog 双 Tab）~~ ✅
+3. **P4** 工具生命周期事件与自动触发（ToolRegistered / ToolUpdated / ToolRemoved）— 见需求 §2.10
 
 ### 3.2 优化项
 
@@ -62,20 +62,32 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 
 见 [changelog/2026-05-21-Event-Store-P2.md](../changelog/2026-05-21-Event-Store-P2.md)。
 
-### Phase 2：Chat 会话事件检视（P3）
+### Phase 2：Chat 会话事件检视（P3）— ✅ 完成
 
 **方案**：扩展 `SessionTimelineDialog` 为双 Tab（Trace | Envelope），**不**新增第四列侧边栏。
 
 **任务**：
-1. 删除 `web/src/components/monitor/EventTimeline.vue`（O1）
-2. `web/src/features/event/api.ts` — `listSessionEvents`
-3. `web/src/features/chat/eventFilter.ts` — filterEnvelopes / buildBranchTree
-4. `web/src/features/chat/composables/useEventFilter.ts`
-5. `web/src/features/chat/composables/useChatEventInspector.ts`
-6. `components/chat/` — EventFilterBar / BranchTree / StateDeltaIndicator / TransferBadge / SessionEventInspectorPanel
-7. 扩展 `SessionTimelineDialog` — q-tabs + `initialTab` prop
-8. `ChatMessagePanel` — 「事件」按钮 → 打开 Envelope Tab
-9. `useChatWorkspace` — `openSessionTrace(id, tab?)`
+1. ~~删除 `web/src/components/monitor/EventTimeline.vue`（O1）~~ ✅
+2. ~~`web/src/features/event/api.ts` — `listSessionEvents`~~ ✅
+3. ~~`web/src/features/chat/eventFilter.ts` — filterEnvelopes / buildBranchTree~~ ✅
+4. ~~`web/src/features/chat/composables/useEventFilter.ts`~~ ✅
+5. ~~`web/src/features/chat/composables/useChatEventInspector.ts`~~ ✅
+6. ~~`components/chat/` — EventFilterBar / BranchTree / StateDeltaIndicator / TransferBadge / SessionEventInspectorPanel~~ ✅
+7. ~~扩展 `SessionTimelineDialog` — q-tabs + `initialTab` prop~~ ✅
+8. ~~`ChatMessagePanel` — 「事件」按钮 → 打开 Envelope Tab~~ ✅
+9. ~~`useChatWorkspace` — `openSessionTrace(id, tab?)`~~ ✅
+
+### Phase 3：工具生命周期事件与自动触发（P4）— ❌ 未实现
+
+> 来源：BabyAGI Triggers 机制，竞品分析差距 #8。见需求 §2.10。
+
+**任务**：
+1. 增加 `ToolRegistered` / `ToolUpdated` / `ToolRemoved` 三种 EnvelopeType
+2. `ToolRegistered` 事件触发 LLM 自动生成工具描述和 embedding
+3. `ToolUpdated` 事件触发 `BuildTRPCAgentCached` 缓存失效
+4. `ToolRemoved` 事件触发依赖该工具的 Agent 配置告警
+5. 所有触发操作经 broker/async 异步执行
+6. 触发结果记录到 FlowLog
 
 ---
 
@@ -90,6 +102,11 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | 11 | BranchTree | 2 | ✅ |
 | 12 | SessionEventInspectorPanel + Dialog Tab | 2 | ✅ |
 | 13 | ChatMessagePanel 入口 | 2 | ✅ |
+| 14 | ToolRegistered / ToolUpdated / ToolRemoved EnvelopeType | 3 | ❌ |
+| 15 | ToolRegistered → 自动生成描述 + embedding | 3 | ❌ |
+| 16 | ToolUpdated → 缓存失效 | 3 | ❌ |
+| 17 | ToolRemoved → Agent 配置告警 | 3 | ❌ |
+| 18 | 异步触发 + FlowLog 记录 | 3 | ❌ |
 
 ---
 
@@ -102,6 +119,10 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 - [x] Chat Dialog Envelope Tab：类型/分支/标签过滤
 - [x] Branch 树可视化
 - [x] StateDelta 指示器
+- [ ] 新工具注册后自动生成描述和 embedding
+- [ ] 工具更新后相关 Agent 缓存自动失效
+- [ ] 触发操作异步执行，不阻塞主流程
+- [ ] 触发结果在 FlowLog 中可追踪
 
 ---
 

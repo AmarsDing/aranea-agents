@@ -1,7 +1,7 @@
 # Plugin 管理 — 产品需求文档
 
-> **版本**：2026-05-21 | **状态**：Runtime + 管理页 + 运行记录已通；P3 沙箱/版本待做
-> **设计**：[22 plugin.design.md](./22%20plugin.design.md) · **开发计划**：[22-plugin-development.md](./22-plugin-development.md)
+> **版本**：2026-06-06 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
+> **设计**：[22 plugin.design.md](./22%20plugin.design.md) · **开发计划**：[22-plugin.development.md](./22-plugin.development.md)
 
 ---
 
@@ -33,6 +33,14 @@ Plugin 与 Skill / Tool 的边界：
 | 上传第三方插件代码 | 否 | 不允许上传任意 Go / 动态库插件，避免安全和跨平台问题 |
 | 动态插件运行时 | 后续迭代 | 可考虑外部进程 / gRPC / MCP / WASM 插件 |
 | 真正注入框架 Runner | 已接入 | Plugin 列表已注入 Agent Runner |
+| ConfirmGate + AwaitUserReply | 是 | 统一 catalog + confirmation_guard 确认链路；支持 mid-turn 审批 |
+| model_router rules[] | 是 | 可配置路由规则（priority + contains/regex/min_chars），优先于启发式 |
+| cost_guard 日预算持久化 | 是 | daily_token_budget 跨进程持久化，重启不丢失 |
+| cost_guard Agent scope 分桶 | 是 | 全局 scope 时按 agent_id 独立计桶 |
+| Schema 驱动配置表单 | 是 | 表单 / JSON 双模式编辑配置 |
+| retry_and_reflect 反思注入 | 是 | 工具失败时 LLM 收到 reflection_hint CustomResult |
+| 工具确认专用 UI | 是 | RunStatus await 元数据 + Approve/Deny 按钮，结构化解析 |
+| model_router rules[] 可视化编辑器 | 是 | 可视化规则编辑器，支持增删改排序 |
 
 ### 0.2 默认产品决策
 
@@ -178,8 +186,9 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 
 - 对通用 Agent 可默认启用。
 - 对高风险工具只允许生成反思提示，不自动重复危险操作。
+- 工具失败时注入 `reflection_hint` CustomResult，LLM 根据错误信息修正下一次调用。
 
-注册回调点：`AfterTool`（检查 `args.Error != nil` 判断工具失败）
+注册回调点：`AfterAgent`、`AfterTool`（检查 `args.Error != nil` 判断工具失败）
 
 配置项：
 
@@ -226,6 +235,8 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 
 注册回调点：`BeforeTool`
 
+**ConfirmGate 统一机制**：catalog `requires_confirmation` + Plugin `confirmation_guard` 配置合并为统一 ConfirmGate 链路。当存在 `AwaitUserReply` 时支持 mid-turn 审批，前端通过 `await_kind=tool_confirm` 专用 UI 展示 Approve/Deny 按钮，发送 `__aranea:tool_confirm:approve|deny` 结构化消息。
+
 配置项：
 
 | 字段 | 类型 | 默认值 | 说明 |
@@ -247,6 +258,10 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 - 预算不足时自动降级模型。
 
 注册回调点：`BeforeModel`
+
+**日预算持久化**：`daily_token_budget` 通过 `plugin_cost_guard_usage` 表跨进程持久化，服务重启后日预算累计不丢失。
+
+**Agent scope 分桶**：当 scope 为 `global` 时，按 `agent_id` 独立计桶，每个 Agent 有独立的日预算消耗追踪。
 
 配置项：
 
@@ -270,6 +285,18 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 - 中文 / 英文任务使用不同 provider。
 
 注册回调点：`BeforeModel`
+
+**rules[] 路由规则**：可配置路由规则列表，优先于 `code_model` / `long_context_model` 启发式。每条规则包含：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `model` | string | 命中时使用的模型 |
+| `priority` | number | 优先级，数字越大越优先 |
+| `contains` | string[] | prompt 包含任一关键词时命中 |
+| `regex` | string | prompt 匹配正则时命中 |
+| `min_chars` | number | prompt 最小字符数，低于则跳过 |
+
+匹配逻辑：rules 按 priority 降序排列，依次检查 contains / regex / min_chars 条件，首个命中的 model 生效。
 
 配置项：
 
@@ -352,9 +379,9 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 
 | Plugin | Key | Category | RiskLevel | 默认状态 | Callback Points |
 |--------|-----|----------|-----------|----------|-----------------|
-| 运行日志和审计 | `runtime_audit` | observability | low | 开发环境建议启用 | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent |
+| 运行日志和审计 | `audit_log` | observability | low | 开发环境建议启用 | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent |
 | Skill 调用统计 | `skill_usage_tracker` | tracking | low | 可启用 | BeforeTool, AfterTool |
-| 工具失败自愈 | `retry_and_reflect` | debug | medium | 可启用 | AfterTool |
+| 工具失败自愈 | `retry_and_reflect` | debug | medium | 可启用 | AfterAgent, AfterTool |
 | 输入输出脱敏 | `sensitive_data_mask` | guard | medium | 建议启用 | BeforeModel, AfterModel |
 | 高风险操作确认 | `confirmation_guard` | guard | high | 默认启用但默认拒绝 | BeforeTool |
 | 模型成本控制 | `cost_guard` | guard | medium | 可启用 | BeforeModel |
@@ -425,7 +452,7 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 | Tab | 内容 |
 |-----|------|
 | 基础信息 | 名称、描述、类型、作用阶段、风险等级 |
-| 配置 | 后端 schema 渲染动态表单 |
+| 配置 | Schema 驱动动态表单（表单 / JSON 双模式）；model_router 额外提供 rules[] 可视化规则编辑器 |
 | Agent 绑定 | 选择生效 Agent；支持全局 / 指定 Agent |
 | 运行统计 | 调用次数、拦截次数、错误次数 |
 | 最近日志 | 最近 20 条运行摘要 |
@@ -663,6 +690,12 @@ Response：
 }
 ```
 
+### 6.7 工具确认审批
+
+`POST /v1/chat/send`（复用聊天消息通道）
+
+前端发送 `__aranea:tool_confirm:approve` 或 `__aranea:tool_confirm:deny` 结构化消息，后端解析后完成工具确认审批。
+
 ---
 
 ## 7. 已确认决策
@@ -674,6 +707,11 @@ Response：
 | `retry_and_reflect` 对高风险工具是否默认禁止自动重试 | 是 | 高风险工具应先经过 `confirmation_guard` 确认，不自动重试 |
 | `skill_usage_tracker` 是否作为 Skill 统计唯一来源 | 否，第一阶段为运行时摘要 | 后续接入持久化后作为主要来源，当前为辅助 |
 | Plugin 注入 ADK Runner 的优先级 | 高于其他运行时能力 | Plugin 是治理和风控的基础设施，应优先接入 |
+| model_router rules[] 与启发式路由优先级 | rules[] 优先 | 配置化规则优先于 code_model/long_context_model 启发式 |
+| cost_guard 日预算持久化方式 | `plugin_cost_guard_usage` 表 | 跨进程持久化，重启不丢失 |
+| cost_guard 全局 scope 预算分桶 | 按 agent_id 独立计桶 | 避免单 Agent 消耗全部预算 |
+| 工具确认审批通道 | 复用聊天消息通道 | `__aranea:tool_confirm:approve|deny` 结构化消息 |
+| confirmation_guard Runner 级阻断 | BeforeTool CustomResult 直接阻断 | 不再依赖 Chain ConfirmGate |
 
 > **后端技术设计**（种子同步、热重载、配置校验、Agent 绑定、统计更新等）参见 [22 plugin.design.md](./22%20plugin.design.md)。
 
@@ -696,10 +734,13 @@ Response：
 | `PluginFilterBar.vue` | 搜索和筛选 |
 | `PluginTable.vue` | 插件列表 |
 | `PluginStatsStrip.vue` | 顶部统计 |
-| `PluginConfigDrawer.vue` | 配置详情抽屉 |
-| `PluginConfigForm.vue` | 根据 schema 渲染表单 |
-| `PluginRunTable.vue` | 运行记录表 |
+| `PluginConfigDialog.vue` | 配置详情对话框 |
+| `PluginDetailDialog.vue` | 插件详情对话框 |
+| `PluginSchemaForm.vue` | Schema 驱动配置表单（表单 / JSON 双模式） |
+| `ModelRouterRulesEditor.vue` | model_router rules[] 可视化规则编辑器 |
+| `PluginRunDetailDialog.vue` | 运行详情对话框 |
 | `PluginRiskBadge.vue` | 风险等级展示 |
+| `pluginUi.ts` | 插件 UI 工具函数 |
 
 ### 8.3 Agent 绑定交互
 
@@ -746,3 +787,15 @@ Plugin 详情抽屉的「Agent 绑定」Tab：
 - 高风险插件默认停用。
 - 修改高风险插件配置需要管理员权限。
 - 敏感日志默认脱敏。
+
+### 9.4 Phase 5–6 增强验收
+
+- ConfirmGate 合并 catalog `requires_confirmation` + Plugin `confirmation_guard`，统一确认链路。
+- Chat 有 AwaitHook 时可 mid-turn 审批工具。
+- 工具确认 UI 发送 `__aranea:tool_confirm:approve|deny`，后端结构化解析。
+- rules[] 配置化路由优先于 code/long_context 启发式。
+- rules[] 可在 Plugin 配置页可视化编辑。
+- cost_guard 重启后日预算累计不丢失。
+- cost_guard 全局 scope 时按 agent_id 独立计桶。
+- retry_and_reflect 失败时 LLM 收到 reflection_hint CustomResult。
+- Plugin 配置页 Schema 表单可编辑并保存。

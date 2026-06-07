@@ -1,6 +1,6 @@
 # Agent 创建 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ 端到端可用；查重/模型检查/模板全字段/结构化错误已通
+> **版本**：2026-06-06 | **状态**：✅ 端到端可用；P2 全部完成；Planner/Ralph Loop/FieldGuide/Taxonomy/Duplicate/BatchUpdate 已通
 > **变更记录**：[changelog/2026-05-21-Agent-CreatedBy-Templates-Errors.md](../changelog/2026-05-21-Agent-CreatedBy-Templates-Errors.md) · [Modules 2–8 文档同步](../changelog/2026-05-21-Agent-Modules-2-8-DocSync.md)
 > **需求**：[2 agents-create.md](./2%20agents-create.md) · **设计**：[2 agents-create.design.md](./2%20agents-create.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
@@ -19,8 +19,17 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 - `internal/agent/trpc_build.go` — BuildTRPCLLMAgent
 - `internal/biz/agent_templates.go` — `ListAgentTemplates` 内置预设
 - `internal/biz/agent_context.go` — 创建时 `created_by`（auth 上下文，Create 请求不可伪造）
+- `internal/biz/agent_kind.go` — `NormalizeAgentKind` / `IsA2AProxyAgent` / `HydrateAgentKind`
+- `internal/biz/agent_duplicate.go` — `AgentUsecase.Duplicate` 方法
+- `internal/biz/agent_effective_tools.go` — effective tools 引擎
 - `web/src/utils/kratosError.ts` — `parseKratosApiError` / `mapAgentCreateFieldErrors`
 - `web/src/services/axiosHandler.ts` — `CreateAgent` 自动 `skipErrorNotify`
+- `web/src/features/agents/useAgentProviderModelPicker.ts` — Provider/Model picker composable
+- `web/src/features/agents/useAgentModelValidation.ts` — 模型校验 composable
+- `web/src/features/agents/plannerConfig.ts` — Planner 配置
+- `web/src/features/agents/ralphLoopConfig.ts` — Ralph Loop 配置
+- `web/src/features/agents/fieldGuides.ts` — FieldGuide 注册表（10 scopes）
+- `web/src/components/agents/TaxonomyPicker.vue` — 创建弹窗分类选择器（替代旧 `AgentCategoryCascade.vue`）
 
 ---
 
@@ -39,6 +48,12 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 | 创建者写入 | ✅ | `Create` 空 `created_by` 时 `AgentCreatedByFromContext`；Proto `CreateAgentRequest` 无该字段 |
 | 结构化创建错误 | ✅ | `AGENT_KEY_CONFLICT` / `AGENT_KEY_INVALID` / `AGENT`（Kratos `reason` + `message`） |
 | Agent 模板 API | ✅ | `GET /v1/agent-templates`（`display_name` / `provider` / `model` / `description`） |
+| `agent_kind` / A2A Proxy | ✅ | `agent_kind` 字段 + `A2AProxyConfig` + `HydrateAgentKind` |
+| `DuplicateAgent` | ✅ | `AgentUsecase.Duplicate` + `agent_duplicate.go` |
+| `BatchUpdateAgents` | ✅ | `AgentUsecase.BatchUpdateAgents`（biz only，无 proto RPC） |
+| Planner config | ✅ | `AgentRuntimeSettings` 字段：`planner_kind`、`planner_config_json` |
+| Ralph Loop | ✅ | `AgentRuntimeSettings` 字段：`ralph_loop_max_iterations` / `completion_promise` / `verify_command` / `verify_timeout_seconds` / `promise_tag_open` / `promise_tag_close` / `verify_work_dir` |
+| Agent variant/kind/source | ✅ | `agent_variant`、`variant_description`、`source`、`kind` 字段 in proto |
 
 ### 2.2 前端状态
 
@@ -52,6 +67,11 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 | 模型检查按钮 | ✅ | `POST /v1/agents/validate-model` + 弹窗「检查」 |
 | agent_key 实时查重 | ✅ | `GET /v1/agent-keys/check` + 500ms 防抖（2026-05-21） |
 | 头像选择器 | ✅ | `AgentAvatarPicker` |
+| Planner section | ✅ | `AgentPlannerSection.vue` + `plannerConfig.ts` + `useAgentPlannerForm.ts` |
+| Ralph Loop section | ✅ | `AgentRalphLoopSection.vue` + `ralphLoopConfig.ts` + `useAgentRalphLoopForm.ts` |
+| FieldGuide system | ✅ | `fieldGuides.ts` + `AIRefineButton.vue`（5 scopes: `category.industry/department/position` + `agent.description` + `agent.file`×6） |
+| Taxonomy picker | ✅ | `TaxonomyPicker.vue`（替代旧 `AgentCategoryCascade.vue`） |
+| Provider/Model picker | ✅ | `useAgentProviderModelPicker.ts` + `useAgentModelValidation.ts` |
 
 ---
 
@@ -63,6 +83,10 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 4. ~~**P2**：创建失败结构化错误~~ → ✅ `reason`（`AGENT_KEY_*` / `AGENT`）→ `kratosError.ts` + 创建弹窗 inline / banner（2026-05-21）。
 5. **P3**：创建成功后的跳转行为未明确（需求 §1 写"关闭弹窗并刷新列表或跳转详情"，两种行为需产品决策）。
 6. ~~**P1（A2A）**：创建对话框 Agent 类型~~ → ✅ 已实现（LLM / A2A Proxy），见 [changelog/2026-05-20-A2A-Phase1-2.md](../changelog/2026-05-20-A2A-Phase1-2.md)
+7. **P3**：`BatchUpdateAgents` proto RPC — biz 层已实现，缺少 HTTP endpoint / proto RPC 定义
+8. **P3**：`ReorderAgents` 实际实现 — 当前 `agent_repo.ReorderAgents` 为空 stub（直接 `return nil`）
+9. **P3**：trpc-agent-go §8 对齐项（7 项功能待实现）
+10. **P3**：Debug trace 清理 — `agent_usecase.go` / `agent_repo.go` 中残留 `#region debug-point` 计时代码需移除
 
 ---
 
@@ -90,6 +114,20 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 | 9 | Proto `agent_kind` + `A2AProxyConfig` | 后端 | P1 | — | 需求 §9 | ✅ |
 | 10 | 创建弹窗：Agent 类型 LLM / A2A Proxy | 前端 | P1 | — | 需求 §9 | ✅ |
 | 11 | 创建弹窗：远程 URL + 流式/超时 | 前端 | P1 | — | 需求 §9.3 | ✅ |
+| 12 | `DuplicateAgent`（复制 Agent） | 后端 | P2 | — | — | ✅ |
+| 13 | `BatchUpdateAgents` biz 层 | 后端 | P2 | — | — | ✅ |
+| 14 | Planner config 后端字段 | 后端 | P2 | — | — | ✅ |
+| 15 | Ralph Loop 后端字段 | 后端 | P2 | — | — | ✅ |
+| 16 | Agent variant/kind/source proto 字段 | 后端 | P2 | — | — | ✅ |
+| 17 | Planner section 前端 | 前端 | P2 | — | — | ✅ |
+| 18 | Ralph Loop section 前端 | 前端 | P2 | — | — | ✅ |
+| 19 | FieldGuide system 前端 | 前端 | P2 | — | — | ✅ |
+| 20 | TaxonomyPicker 替换 AgentCategoryCascade | 前端 | P2 | — | — | ✅ |
+| 21 | Provider/Model picker composable | 前端 | P2 | — | — | ✅ |
+| 22 | `BatchUpdateAgents` proto RPC + HTTP endpoint | 后端 | P3 | — | — | 🔲 |
+| 23 | `ReorderAgents` 实际实现（当前 stub） | 后端 | P3 | — | — | 🔲 |
+| 24 | trpc-agent-go §8 对齐（7 项功能） | 后端 | P3 | — | — | 🔲 |
+| 25 | Debug trace 清理（`agent_usecase.go` / `agent_repo.go`） | 后端 | P3 | — | — | 🔲 |
 
 ---
 
@@ -102,6 +140,14 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 - [x] 可创建 A2A 远程代理 Agent（`agent_kind=a2a_proxy`）并在列表展示 **A2A ↗** 徽章
 - [x] `go test ./internal/biz/...` 通过（含 `agent_context_test`、`agent_duplicate` created_by、`agent_create_errors_test`）
 - [x] `web` `kratosError.spec.ts` 断言 `AGENT_KEY_CONFLICT` → `reason` 映射
+- [x] Planner section 可配置 `planner_kind`（`""` / `builtin` / `react` / `a2ui`）+ `planner_config_json`
+- [x] Ralph Loop section 可配置 `ralph_loop_*` 7 个字段
+- [x] FieldGuide 系统覆盖 10 个 scope（3 分类 + 1 描述 + 6 文件），`AIRefineButton` 可用
+- [x] `TaxonomyPicker.vue` 替代旧 `AgentCategoryCascade.vue`，创建弹窗分类选择正常
+- [x] `Duplicate` 方法可复制 Agent（含 settings + prompt files）
+- [ ] `BatchUpdateAgents` proto RPC + HTTP endpoint（biz 已实现，缺 proto 层）
+- [ ] `ReorderAgents` 实际排序逻辑（当前 stub `return nil`）
+- [ ] Debug trace 代码清理（`agent_usecase.go` / `agent_repo.go` 中 `#region debug-point`）
 
 ---
 
@@ -111,7 +157,7 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 
 | 依赖模块 | 依赖项 | 说明 |
 |----------|--------|------|
-| 模块4 Agent分类 | `AgentCategoryCascade.vue` | 创建弹窗业务分类级联选择组件 |
+| 模块4 Agent分类 | `TaxonomyPicker.vue` | 创建弹窗业务分类选择组件（替代旧 `AgentCategoryCascade.vue`） |
 | 模块9 Provider | `GET /providers` 接口 | Provider 下拉选项数据源 |
 | 模块9 Provider | `llm_provider_models` 表 | Provider/Model 可用性校验数据源 |
 | 模块50 Avatar | `AgentAvatarPicker` | 头像选择器组件 |

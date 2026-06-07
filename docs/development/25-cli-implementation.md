@@ -1,7 +1,8 @@
 # 25 CLI 模块实施方案（2026-05-27）
 
-> **状态**：草案 v1（取代 `25-cli-development.md` 的开发计划部分；需求 `25 cli.md` 与设计 `25 cli.design.md` 中与本方案冲突的细节以本文档为准）。
-> **作者口径**：本方案对 `25 cli.md` / `25 cli.design.md` / `25-cli-development.md` 三份既有材料做对仓库实际代码的对账，剔除假设字段、对齐框架红线，并把 MVP 收窄到能在 1～2 周交付的体量。
+> **状态**：v1.1（取代 `25-cli.development.md` 的开发计划部分；需求 `25-cli.md` 与设计 `25-cli.design.md` 中与本方案冲突的细节以本文档为准）。
+> **作者口径**：本方案对 `25-cli.md` / `25-cli.design.md` / `25-cli.development.md` 三份既有材料做对仓库实际代码的对账，剔除假设字段、对齐框架红线，并把 MVP 收窄到能在 1～2 周交付的体量。
+> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；设计 → [`25-cli.design.md`](./25-cli.design.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)
 
 ---
 
@@ -36,33 +37,38 @@ Aranea CLI（二进制 `aranea`）是一只与 `cmd/admin` 后端**完全异构*
 | 模块 | 现状 | CLI 复用方式 |
 |------|------|--------------|
 | HTTP API（Kratos v2） | 35 个 proto 文件覆盖 agent/team/skill/tool/plugin/mcp_server/cron/channel/session/monitor/chat/llm_provider_model/... | CLI 通过 `net/http` + pb JSON 调用 |
-| WS 流 | `internal/server/ws.go` 注册 `/v1/ws`，已实现 chat 上下行（`wsUpstream` / `wsDownstream` / `system.*` / `await.user.reply` 等） | CLI 对话模式唯一通道 |
+| WS 流 | `internal/event/contract/envelope.go` 定义 envelope 类型；`tool_call` / `tool_result` 已实现；`tool.error` 缺失（使用通用 `error` 类型） | CLI 对话模式唯一通道 |
 | Chat HTTP | `/v1/chat/messages`（send）、`/v1/chat/options`、`/v1/chat/pending`、`/v1/chat/run-status`、`/v1/chat/jobs`、`/v1/chat/await-reply`、`/v1/chat/messages/enqueue`、`/v1/chat/messages/{id}/feedback` | 非交互/CI 退化模式调用 |
 | Skill 导入 | `POST /v1/skills/import`（multipart，`RegisterSkillImportMultipart`）；`SkillImportJob` / `ApplySkillImportRequest` / `RefineSkillImportConflictRequest` 已 proto-first | CLI `skill install/import/import-status/import-apply` 直接调用 |
 | 鉴权 | `pkg/auth`：JWT bearer + cookie 双轨；`/v1/admins/login` 颁发 token；`KRATOS_HTTP_AUTH_DISABLED=1` 本地 bypass | CLI 走 bearer header；同 dev bypass 兼容 |
 | Agent runtime | `internal/agent/trpc_build.go::BuildTRPCLLMAgent`、`internal/agent/trpc_runtime.go::NewTRPCRunner` / `RunTRPCUserTurn*` | **仅在后端 service 层调用**，CLI 不直接 import |
-| 系统种子机制 | `internal/data/*` 有迁移与种子；`internal/agent` 有 builder | 新增 `SeedSystemAdminAgent` / `SeedBuiltinTools` 落于后端，CLI 不参与 |
+| 系统种子机制 | **已实现**：`internal/data/seed_system_admin.go` 含 SeedSystemAdminAgent 等 8 个 seed 函数 | CLI 不参与 seed |
+| 系统信息 | **已实现**：`internal/service/system_info.go` + 手动注册路由；但缺少 `system_admin_agent_id/key`、`skill_max_zip_mb` 字段 | CLI `aranea system info` 消费 |
+| cli_admin 工具集 | **已实现**：`internal/tools/cli_admin/` 含 registry + agent_tools + skill_install + pkg_install | CLI 不直接 import；通过 WS 对话间接调用 |
 
 ### 1.2 CLI 相关遗产
 
 | 项 | 路径 | 与新 CLI 的关系 |
 |----|------|----------------|
-| 开发者 lint | `cmd/araneactl/lint/main.go`（stdlib `flag`） | 共存；不复用其入口 |
-| fmtcheck | `cmd/araneactl/fmtcheck/main.go` | 共存 |
+| 开发者 lint | `cmd/araneactl/lint/main.go`（stdlib `flag`） | **不存在**：`cmd/araneactl/` 目录未创建，R12 lint 规则缺失 |
+| fmtcheck | `cmd/araneactl/fmtcheck/main.go` | **不存在**：同上 |
 | 一次性数据 CLI | `cmd/fetch-channel-icons`、`cmd/memory-migrate`、`cmd/sqlmigrate`、`cmd/seed-stockx-org`、`cmd/pginit`、`cmd/pgprobe` | 一次性数据维护工具，与终端用户 CLI 无关 |
-| Cobra/spf13 依赖 | **主模块 `go.mod` 当前无 cobra**；只有 `pkg/trpc-agent-go/...` 子模块 go.sum 里间接出现 | 需要新增 `github.com/spf13/cobra` 主模块依赖 |
-| `cmd/aranea/` | **不存在** | 本次新建 |
-| `internal/cli/` | **不存在** | 本次新建 |
+| Cobra/spf13 依赖 | **已引入**：`github.com/spf13/cobra v1.10.2` | — |
+| `cmd/aranea/` | **已实现** | 完整 cobra CLI 入口 |
+| `internal/cli/` | **已实现** | 7 子包：client/clierr/cmd/config/output/repl/ui |
 
 ### 1.3 待解决的 gap
 
-1. 没有终端用户 CLI 入口，无任何 cobra 集成。
-2. 没有"系统管家 Agent"种子（`__system_admin__` `agent_key` 在 DB 中不存在）。
-3. 没有 `cli_admin_*` 工具集（应落在 `internal/tools/cli_admin/`，由 service 层装配）。
-4. `/v1/system/info` 接口不存在（CLI 需要它确认后端版本、默认 provider、系统管家 agent_key）。
-5. Skill import multipart 表单当前不支持 `source / source_url / source_ref / source_subpath / client_validation` 字段（CLI 安装链路要回填）。
-6. WS 协议层没有"工具步骤步进"语义；当前是 chat delta + system 事件，CLI 渲染折叠块要在 CLI 侧靠 `tool.call` / `tool.result` / `tool.error` envelope 区分（如尚未细化，需要在 §6 标记为后端待定）。
-7. 没有跨平台二进制发布脚本；`Makefile` 仅有 `make ci/build/lint/test`，缺 `make cli/cli-all`。
+1. ~~没有终端用户 CLI 入口，无任何 cobra 集成。~~ **已解决**：`cmd/aranea/` + `internal/cli/` 已实现。
+2. ~~没有"系统管家 Agent"种子~~ **已解决**：`internal/data/seed_system_admin.go` 已实现。
+3. ~~没有 `cli_admin_*` 工具集~~ **部分解决**：`internal/tools/cli_admin/` 已有首批工具；剩余 team/plugin/mcp/cron/channel/provider/session 工具待实现。
+4. ~~`/v1/system/info` 接口不存在~~ **已解决**，但字段有差距：缺少 `system_admin_agent_id/key`、`skill_max_zip_mb`。
+5. Skill import multipart 表单当前不支持 `source / source_url / source_ref / source_subpath / client_validation` 字段（待确认）。
+6. WS 协议层 `tool.error` envelope 子类型未定义（当前使用通用 `error` 类型）。
+7. ~~没有跨平台二进制发布脚本~~ **部分解决**：`make cli` 已实现，但 `cli-all` 仅覆盖 Linux/amd64。
+8. `cmd/araneactl/` 目录不存在，R12 lint 规则缺失——CLI 红线无 CI 守护。
+9. CLI 子命令测试覆盖不足：`cmd/` 下仅 `config_test.go`，其他子命令缺 httptest。
+10. `docs/guides/cli-quickstart.md` 未创建。
 
 ---
 
@@ -799,4 +805,4 @@ func newAgentCmd() *cobra.Command {
 
 ---
 
-*文档版本：1.0 — 2026-05-27；基于仓库实际代码盘点对 25 cli 系列做对账与收窄。如 P0 实施过程中发现仓库代码与本文档假设不一致（特别是 WS envelope、Skill import multipart 字段、`/v1/admins/login` 响应体），以代码为准并补一份 `docs/changelog/` 变更记录。*
+*文档版本：1.1 — 2026-06-06；基于仓库实际代码盘点对 25 cli 系列做对账与收窄。如实施过程中发现仓库代码与本文档假设不一致（特别是 WS envelope、Skill import multipart 字段、`/v1/admins/login` 响应体），以代码为准并补一份 `docs/changelog/` 变更记录。详细技术设计见 [`25-cli.design.md`](./25-cli.design.md)，任务表见 [`25-cli.development.md`](./25-cli.development.md)。*

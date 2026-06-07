@@ -247,7 +247,7 @@ func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) Cod
 
 | 函数 | 返回 | 说明 |
 |------|------|------|
-| `NewExecutorForAgent(ctx, factory, agentType, workDir)` | `codeexecutor.CodeExecutor` | Factory.Resolve + `WrapWithArtifactSave` |
+| `NewExecutorForAgent(ctx, factory, agentType, workDir, lg)` | `codeexecutor.CodeExecutor` | Factory.Resolve + `WrapWithArtifactSave` |
 | `NewLocalExecutor(factory, workDir)` | `codeexecutor.CodeExecutor` | 强制 local |
 | `WrapWithArtifactSave(inner)` | `codeexecutor.CodeExecutor` | 产出物持久化（`artifact_executor.go`） |
 
@@ -272,7 +272,8 @@ func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) Cod
 核心 API：
 
 ```go
-func NewFactory() *Factory                                    // Wire 单例
+func NewFactory() *Factory                                    // Deprecated: 使用 NewFactoryWithLogger
+func NewFactoryWithLogger(lg loggateway.Logger) *Factory      // Wire 单例（推荐）
 func (f *Factory) Resolve(ctx, agentType, workDir string) codeexecutor.CodeExecutor
 func (f *Factory) Capabilities() []Capability                   // Monitor / 前端
 func (f *Factory) RegisteredTypes() []string                    // 可用 backend 列表
@@ -290,7 +291,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 
 - biz：`ValidateCodeExecutorType` — 非法值 API 400
 - 默认：`"local"`（`agent_defaults.go` + DB DEFAULT）
-- Ent：`code_executor_type`；迁移见 `docs/sql/02_agent_code_executor_type.sql`
+- Ent：`code_executor_type` 列；Ent auto migration 管理（无手动 SQL 迁移文件）
 - 前端：Agent 设置 Skill Tab + Monitor capabilities 禁用不可用项
 
 ### 5.2 Docker 后端配置
@@ -299,7 +300,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 |--------|--------|------|
 | `Image` | `python:3.11-slim` | 执行镜像 |
 | `Network` | `none` | 网络模式 |
-| `CPUQuota` | `50000` | CPU 配额（微秒/周期，50%） |
+| `CPUs` | `0.5` | CPU 限制（`--cpus`） |
 | `MemoryBytes` | `268435456` | 内存限制（256 MiB） |
 | `TmpSize` | `128m` | /tmp tmpfs 大小 |
 | `PullPolicy` | `missing` | 镜像拉取策略 |
@@ -360,9 +361,13 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 
 ### 6.2 回退策略
 
-**目标（Phase 1，待实现）**：Docker daemon 不可用或 `docker run` 失败时，回退到框架 `trpclocal` 并记录 FlowLog 告警（`system.codeexec.docker_fallback`）。
+**已实现双层回退**：
 
-**当前**：无自动回退；Docker 失败直接返回错误。
+| 层级 | 机制 | 说明 |
+|------|------|------|
+| 启动时 | `applyAvailabilityFallback()` | Docker daemon 不可用 → local + FlowLog；E2B/Container 不可用 → local |
+| 运行时 | `dockerRuntimeFallback` | Docker 执行失败 → local + `ResetDockerProbe()` 清缓存 |
+| 生产告警 | `warnLocalInProd()` | `ARANEA_ENV=production` 且使用 local → FlowLog 告警（`AllowLocalInProd` 可关闭） |
 
 未来可扩展 `firecracker` 或 `nsjail` 轻量 VM 后端。
 
@@ -377,10 +382,11 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 | `aranea_codeexec_runs_total` | `kind`, `status` | 总执行次数（success/error/timeout/oom） |
 | `aranea_codeexec_duration_seconds` | `kind` | 执行时长直方图 |
 | `aranea_codeexec_oom_total` | `kind` | OOM kill 计数 |
+| `aranea_codeexec_blocks_total` | `kind`, `status` | 代码块级计数 |
 
-**覆盖范围（当前）**：仅 `internal/agent/codeexecutor` 的 `LocalExecutor` / `DockerExecutor`（`kind=local|docker`）。
+**覆盖范围**：`metricsExecutor` 装饰器包裹所有 Factory.Resolve 出口的执行器（`kind=local|docker|e2b|container`），Skill 全路径（含框架 `trpclocal`）均已覆盖。
 
-**缺口**：Skill 默认路径使用框架 `trpclocal`，不经过上述指标。Phase 1 Registry 应增加统一 metrics 装饰器，覆盖所有 Skill 路径执行。
+**状态分类**：`classifyExecutionStatus()` 根据 exit code / timeout / OOM 归类为 `success` / `error` / `oom` / `timeout`。
 
 ### 7.2 框架 Engine 能力描述
 
@@ -420,7 +426,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 
 #### Ent / SQL ✅
 
-`code_executor_type` 列；启动 patch + `docs/sql/02_agent_code_executor_type.sql`。
+`code_executor_type` 列；Ent auto migration 管理（无手动 SQL 迁移文件）。
 
 ---
 

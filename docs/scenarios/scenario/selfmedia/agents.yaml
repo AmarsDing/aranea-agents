@@ -1,0 +1,485 @@
+industry_key: selfmedia
+
+defaults:
+  provider: openrouter
+  fast_model: gpt-4.1-mini
+  strong_model: gpt-4.1
+  tools_deny: [workspace_exec, filesystem, shell, bash]
+  system_prompt_mode: file
+  context_window: 64000
+
+agents:
+  - key: webnovel-author-data-driven
+    position_key: webnovel_author
+    variant: data-driven
+    model_tier: fast
+    skills: [selfmedia-novel-pacing]
+
+  - key: webnovel-author-drafting
+    position_key: webnovel_author
+    variant: drafting
+    model_tier: strong
+    skills: [selfmedia-novel-pacing]
+
+  - key: webnovel-author-ghostwriting
+    position_key: webnovel_author
+    variant: ghostwriting
+    model_tier: fast
+    skills: [selfmedia-novel-pacing]
+
+  - key: webnovel-author-polishing
+    position_key: webnovel_author
+    variant: polishing
+    model_tier: strong
+    skills: [selfmedia-novel-pacing]
+
+  - key: webnovel-plotter-outline
+    position_key: webnovel_plotter
+    variant: outline
+    model_tier: fast
+    skills: [selfmedia-novel-pacing]
+
+  - key: webnovel-plotter-pacing
+    position_key: webnovel_plotter
+    variant: pacing
+    model_tier: fast
+    skills: [selfmedia-novel-pacing]
+
+  - key: worldbuilding-designer-geography-history
+    position_key: worldbuilding_designer
+    variant: geography-history
+    model_tier: fast
+
+  - key: worldbuilding-designer-magic-system
+    position_key: worldbuilding_designer
+    variant: magic-system
+    model_tier: fast
+
+  - key: character-writer-consistency
+    position_key: character_writer
+    variant: consistency
+    model_tier: fast
+
+  - key: character-writer-creation
+    position_key: character_writer
+    variant: creation
+    model_tier: fast
+
+  - key: fiction-editor-compliance
+    position_key: fiction_editor
+    variant: compliance
+    model_tier: fast
+    skills: [selfmedia-compliance-guide]
+
+  - key: fiction-editor-review
+    position_key: fiction_editor
+    variant: review
+    model_tier: fast
+    skills: [selfmedia-compliance-guide]
+
+  - key: short-video-director-planning
+    position_key: short_video_director
+    variant: planning
+    model_tier: strong
+    skills: [selfmedia-viral-analysis]
+
+  - key: short-video-director-review
+    position_key: short_video_director
+    variant: review
+    model_tier: fast
+    skills: [selfmedia-viral-analysis]
+
+  - key: short-video-director-storyboard
+    position_key: short_video_director
+    variant: storyboard
+    model_tier: fast
+    skills: [selfmedia-viral-analysis]
+
+  - key: video-scriptwriter-platform-adapt
+    position_key: video_scriptwriter
+    variant: platform-adapt
+    model_tier: fast
+
+  - key: video-scriptwriter-scriptwriting
+    position_key: video_scriptwriter
+    variant: scriptwriting
+    model_tier: strong
+
+  - key: video-editor-premiere-editing
+    position_key: video_editor_premiere
+    variant: editing
+    model_tier: fast
+    skills: [selfmedia-video-editing-standards]
+
+  - key: video-editor-premiere-effects
+    position_key: video_editor_premiere
+    variant: effects
+    model_tier: fast
+    skills: [selfmedia-video-editing-standards]
+
+  - key: video-editor-capcut-editing
+    position_key: video_editor_capcut
+    variant: editing
+    model_tier: fast
+    skills: [selfmedia-video-editing-standards]
+
+  - key: video-editor-capcut-template
+    position_key: video_editor_capcut
+    variant: template
+    model_tier: fast
+    skills: [selfmedia-video-editing-standards]
+
+  - key: motion-graphics-artist-branding
+    position_key: motion_graphics_artist
+    variant: branding
+    model_tier: fast
+
+  - key: motion-graphics-artist-motion
+    position_key: motion_graphics_artist
+    variant: motion
+    model_tier: fast
+
+  - key: sound-designer-design
+    position_key: sound_designer
+    variant: design
+    model_tier: fast
+
+  - key: thumbnail-designer-design
+    position_key: thumbnail_designer
+    variant: design
+    model_tier: fast
+
+  - key: wechat-operator-content
+    position_key: wechat_operator
+    variant: content
+    model_tier: fast
+    skills: [selfmedia-content-calendar]
+
+  - key: wechat-operator-growth
+    position_key: wechat_operator
+    variant: growth
+    model_tier: fast
+    skills: [selfmedia-content-calendar]
+
+  - key: xiaohongshu-creator-planting
+    position_key: xiaohongshu_creator
+    variant: planting
+    model_tier: fast
+    skills: [selfmedia-seo-optimization]
+
+  - key: xiaohongshu-creator-seo
+    position_key: xiaohongshu_creator
+    variant: seo
+    model_tier: fast
+    skills: [selfmedia-seo-optimization]
+
+  - key: knowledge-pay-writer-course
+    position_key: knowledge_pay_writer
+    variant: course
+    model_tier: fast
+
+  - key: live-stream-host-hosting
+    position_key: live_stream_host
+    variant: hosting
+    model_tier: fast
+
+  - key: live-stream-host-interaction
+    position_key: live_stream_host
+    variant: interaction
+    model_tier: fast
+
+  - key: live-stream-scriptwriter-script
+    position_key: live_stream_scriptwriter
+    variant: script
+    model_tier: fast
+
+  - key: live-stream-analyst-analytics
+    position_key: live_stream_analyst
+    variant: analytics
+    model_tier: fast
+    skills: [selfmedia-platform-algorithm]
+
+  - key: multi-platform-operator-adapt
+    position_key: multi_platform_operator
+    variant: adapt
+    model_tier: fast
+
+  - key: multi-platform-operator-sync
+    position_key: multi_platform_operator
+    variant: sync
+    model_tier: fast
+
+  - key: seo-specialist-optimization
+    position_key: seo_specialist
+    variant: optimization
+    model_tier: fast
+    skills: [selfmedia-seo-optimization]
+
+  - key: fan-growth-strategist-strategy
+    position_key: fan_growth_strategist
+    variant: strategy
+    model_tier: fast
+    skills: [selfmedia-fan-economy]
+
+  - key: monetization-specialist-revenue
+    position_key: monetization_specialist
+    variant: revenue
+    model_tier: fast
+
+teams:
+  - key: team-novel-daily-production
+    display_name: 网文日更流水线
+    mode: coordinator
+    description: "协调式网文生产流水线：起草、大纲、角色创建、世界观构建、编辑审核与润色。"
+    max_concurrency: 3
+    timeout_seconds: 600
+    loop_max_iterations: 1
+    intent_anchor_key: webnovel-author-drafting
+    synthesizer_key: webnovel-author-polishing
+    members:
+      - agent_key: webnovel-author-drafting
+        role: coordinator
+        name: 起草主控
+        sort_order: 10
+      - agent_key: webnovel-plotter-outline
+        role: worker
+        name: 大纲规划
+        sort_order: 20
+      - agent_key: character-writer-creation
+        role: worker
+        name: 角色创建
+        sort_order: 30
+      - agent_key: worldbuilding-designer-magic-system
+        role: worker
+        name: 世界观构建
+        sort_order: 40
+      - agent_key: fiction-editor-review
+        role: worker
+        name: 小说审核
+        sort_order: 50
+      - agent_key: webnovel-author-polishing
+        role: synthesizer
+        name: 润色综合
+        sort_order: 90
+
+  - key: team-viral-video-factory
+    display_name: 爆款视频工厂
+    mode: coordinator
+    description: "协调式爆款视频生产：策划、编剧、剪辑、封面设计与小红书种草。"
+    max_concurrency: 3
+    timeout_seconds: 600
+    loop_max_iterations: 1
+    intent_anchor_key: short-video-director-planning
+    members:
+      - agent_key: short-video-director-planning
+        role: coordinator
+        name: 导演
+        sort_order: 10
+      - agent_key: video-scriptwriter-scriptwriting
+        role: worker
+        name: 编剧
+        sort_order: 20
+      - agent_key: video-editor-capcut-editing
+        role: worker
+        name: 剪映剪辑
+        sort_order: 30
+      - agent_key: thumbnail-designer-design
+        role: worker
+        name: 封面设计
+        sort_order: 40
+      - agent_key: xiaohongshu-creator-planting
+        role: worker
+        name: 小红书种草
+        sort_order: 50
+
+  - key: team-multi-platform-sync
+    display_name: 多平台同步发布
+    mode: parallel
+    description: "并行多平台内容分发：微信、小红书与跨平台适配，同步发布。"
+    max_concurrency: 3
+    timeout_seconds: 300
+    synthesizer_key: multi-platform-operator-sync
+    members:
+      - agent_key: wechat-operator-content
+        role: worker
+        name: 微信内容
+        sort_order: 10
+      - agent_key: xiaohongshu-creator-seo
+        role: worker
+        name: 小红书 SEO
+        sort_order: 20
+      - agent_key: multi-platform-operator-adapt
+        role: worker
+        name: 平台适配
+        sort_order: 30
+      - agent_key: multi-platform-operator-sync
+        role: synthesizer
+        name: 同步协调
+        sort_order: 90
+    graph:
+      layout: parallel
+      nodes:
+        - id: wechat-content
+          type: agent
+          label: 微信内容
+          agent_key: wechat-operator-content
+          role: worker
+        - id: xiaohongshu-seo
+          type: agent
+          label: 小红书 SEO
+          agent_key: xiaohongshu-creator-seo
+          role: worker
+        - id: platform-adapt
+          type: agent
+          label: 平台适配
+          agent_key: multi-platform-operator-adapt
+          role: worker
+        - id: sync-publish
+          type: agent
+          label: 同步发布
+          agent_key: multi-platform-operator-sync
+          role: synthesizer
+      edges:
+        - id: e-start-wechat
+          source: __start__
+          target: wechat-content
+        - id: e-start-xiaohongshu
+          source: __start__
+          target: xiaohongshu-seo
+        - id: e-start-adapt
+          source: __start__
+          target: platform-adapt
+        - id: e-wechat-sync
+          source: wechat-content
+          target: sync-publish
+        - id: e-xiaohongshu-sync
+          source: xiaohongshu-seo
+          target: sync-publish
+        - id: e-adapt-sync
+          source: platform-adapt
+          target: sync-publish
+
+  - key: team-live-stream-crew
+    display_name: 直播团队
+    mode: sequential
+    description: "顺序式直播工作流：脚本编写、直播执行与直播后数据分析。"
+    max_concurrency: 1
+    timeout_seconds: 300
+    members:
+      - agent_key: live-stream-scriptwriter-script
+        role: worker
+        name: 直播编剧
+        sort_order: 10
+      - agent_key: live-stream-host-hosting
+        role: worker
+        name: 直播主持
+        sort_order: 20
+      - agent_key: live-stream-analyst-analytics
+        role: worker
+        name: 直播分析师
+        sort_order: 30
+    graph:
+      layout: linear
+      nodes:
+        - id: write-script
+          type: agent
+          label: 编写脚本
+          agent_key: live-stream-scriptwriter-script
+          role: worker
+        - id: host-stream
+          type: agent
+          label: 直播主持
+          agent_key: live-stream-host-hosting
+          role: worker
+        - id: analyze-stream
+          type: agent
+          label: 数据分析
+          agent_key: live-stream-analyst-analytics
+          role: worker
+      edges:
+        - id: e-start-script
+          source: __start__
+          target: write-script
+        - id: e-script-host
+          source: write-script
+          target: host-stream
+        - id: e-host-analyze
+          source: host-stream
+          target: analyze-stream
+        - id: e-analyze-end
+          source: analyze-stream
+          target: __end__
+
+  - key: team-content-calendar
+    display_name: 内容日历
+    mode: coordinator
+    description: 协调式内容日历规划，覆盖微信、小红书、短视频与粉丝增长渠道。
+    max_concurrency: 3
+    timeout_seconds: 300
+    loop_max_iterations: 1
+    intent_anchor_key: wechat-operator-content
+    members:
+      - agent_key: wechat-operator-content
+        role: coordinator
+        name: 微信协调
+        sort_order: 10
+      - agent_key: xiaohongshu-creator-planting
+        role: worker
+        name: 小红书种草
+        sort_order: 20
+      - agent_key: short-video-director-planning
+        role: worker
+        name: 视频导演
+        sort_order: 30
+      - agent_key: fan-growth-strategist-strategy
+        role: worker
+        name: 粉丝增长策略
+        sort_order: 40
+
+  - key: team-fan-community
+    display_name: 粉丝社区
+    mode: parallel
+    description: "并行粉丝社区运营：增长策略、商业变现与直播互动。"
+    max_concurrency: 3
+    timeout_seconds: 300
+    members:
+      - agent_key: fan-growth-strategist-strategy
+        role: worker
+        name: 粉丝增长策略师
+        sort_order: 10
+      - agent_key: monetization-specialist-revenue
+        role: worker
+        name: 变现专员
+        sort_order: 20
+      - agent_key: live-stream-host-interaction
+        role: worker
+        name: 直播互动主持
+        sort_order: 30
+    graph:
+      layout: parallel
+      nodes:
+        - id: fan-growth
+          type: agent
+          label: 粉丝增长策略
+          agent_key: fan-growth-strategist-strategy
+          role: worker
+        - id: monetization
+          type: agent
+          label: 商业变现
+          agent_key: monetization-specialist-revenue
+          role: worker
+        - id: live-interaction
+          type: agent
+          label: 直播互动
+          agent_key: live-stream-host-interaction
+          role: worker
+      edges:
+        - id: e-start-growth
+          source: __start__
+          target: fan-growth
+        - id: e-start-monetization
+          source: __start__
+          target: monetization
+        - id: e-start-interaction
+          source: __start__
+          target: live-interaction

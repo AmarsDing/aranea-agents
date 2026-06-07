@@ -7,7 +7,7 @@
 
 ## 一、模块概述
 
-Evaluation 模块对 Agent 输出质量进行结构化评估。采用 Dataset → Case → Run → Result 模型，提供 4 种内置指标、异步评估执行、人工标注与客户端报告导出。
+Evaluation 模块对 Agent 输出质量进行结构化评估。采用 Dataset → Case → Run → Result 模型，提供 4 种核心指标 + 4 种扩展指标、异步评估执行、人工标注与客户端报告导出。
 
 **核心流程**：创建数据集 → 上传用例 → 启动评估运行 → 异步执行推理 + 评分 → 查看汇总分数和逐用例结果 → 可选人工标注 / 导出报告
 
@@ -37,22 +37,30 @@ evaluation.Runner (async goroutine)
 
 | 层 | 文件 | 职责 |
 |----|------|------|
-| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约 |
+| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（14 RPC） |
 | Service | `internal/service/evaluation.go` | proto ↔ biz 映射；RunEvaluation 触发 Runner |
 | Service | `internal/service/evaluation_runner.go` | Wire：`NewEvaluationRunner` 装配 AgentRunner + LLMJudge + FrameworkBridge |
-| Biz | `internal/biz/evaluation.go` | 领域模型 + EvalRepo 接口 + EvalUsecase |
-| Data | `internal/data/evaluation.go` | Raw SQL 持久化 + EnsureEvalSchema |
+| Service | `internal/service/evaluation_after_turn.go` | Wire：`NewEvaluationAfterTurnTrigger` 创建 AfterTurn 触发器 |
+| Biz | `internal/biz/evaluation.go` | 类型重导出（子包 `evaluation/` 的别名） |
+| Biz | `internal/biz/evaluation/evaluation.go` | 领域模型 + EvalRepo 接口（16 方法）+ EvalUsecase（17 方法） |
+| Data | `internal/data/evaluation.go` | Raw SQL 持久化 + EnsureEvalSchema（4 表 + 11 条 ALTER 迁移） |
 | Runner | `internal/evaluation/runner.go` | 异步调度、Prometheus |
+| Legacy | `internal/evaluation/runner_legacy.go` | FrameworkBridge 不可用时的降级执行路径 |
 | Metrics | `internal/evaluation/metrics.go` | 指标解析与 legacy 路径计分（SRP） |
 | Framework | `internal/evaluation/framework.go` | trpc AgentEvaluator 桥接 + UserSimulator 注入 |
 | FrameworkMetrics | `internal/evaluation/framework_metrics.go` | 扩展指标注册（JSON/XML/ROUGE/ToolTrajectory） |
 | Scores | `internal/evaluation/scores.go` | `scores_json` 映射与 run 聚合 |
+| Registry | `internal/evaluation/evaluator_registry.go` | 注册 9 种 trpc-agent-go 内置评估器 |
+| MultiRun | `internal/evaluation/multirun.go` | 多次运行配置 |
+| PassMetrics | `internal/evaluation/pass_metrics.go` | pass@k / pass^k 计算 |
 | UserSim | `internal/evaluation/scripted_simulator.go` / `llm_simulator.go` | 脚本 vs LLM UserSimulation |
 | EvalLLM | `internal/evaluation/eval_llm_resolve.go` | env + system_settings 模型解析 |
 | Adapter | `internal/evaluation/evalset_adapter.go` | biz EvalCase → trpc EvalSet |
 | EvalTools | `internal/evaluation/evalset_tools.go` | expected_tool_calls → Invocation.Tools |
+| CaseMeta | `internal/evaluation/case_metadata.go` | 用例元数据解析（turns / user_simulation / expected_tools） |
 | Chat | `internal/evaluation/chat_runner.go` | ChatService → runner.Runner 适配 |
 | Judge | `internal/evaluation/llm_judge.go` | LLM-as-Judge |
+| AfterTurn | `internal/evaluation/after_turn.go` | AfterTurn 自动评估触发（含限流） |
 
 ---
 
@@ -103,7 +111,7 @@ evaluation.Runner (async goroutine)
 
 ### 4.1 领域模型
 
-**EvalDataset** / **EvalCase** / **EvalRun** / **EvalCaseResult** / **EvalCaseResultAnnotation** — 见 `internal/biz/evaluation.go`。
+**EvalDataset** / **EvalCase** / **EvalRun** / **EvalCaseResult** / **EvalCaseResultAnnotation** — 见 `internal/biz/evaluation/evaluation.go`。
 
 人工标注字段：`HumanPass`、`HumanScore`、`HumanComment`、`AnnotatedAt`、`AnnotatedBy`。
 
@@ -112,7 +120,7 @@ evaluation.Runner (async goroutine)
 ```
 Dataset：Create / Get / List / Update / Delete / UpdateCaseCount
 Case：Insert / List
-Run：Create / Get / Update / Delete / List
+Run：Create / Get / Update / Delete / List / ListTrendPoints / GetRunsByIDs
 CaseResult：Insert / List / Get / UpdateAnnotation
 ```
 
@@ -121,6 +129,7 @@ CaseResult：Insert / List / Get / UpdateAnnotation
 - Dataset CRUD + UploadCases（JSON 数组解析）
 - Run 创建（初始 status=`pending`）+ 查询 + DeleteRun
 - CaseResult 列表 + AnnotateCaseResult（EVAL-02）
+- GetAgentEvalTrend（趋势数据）+ CompareEvalRuns（A/B 对比）
 
 ---
 
@@ -243,27 +252,48 @@ Proto：`SystemSettings.eval_llm`；前端 **系统设置** `/settings` 表单�
 
 ## 七、前端
 
-| 路径 | 组件 | 说明 |
-|------|------|------|
+| 路径 | 组件/模块 | 说明 |
+|------|----------|------|
 | `/evaluation` | `EvaluationPage.vue` | 数据集 + 运行 + 结果 + **趋势/A/B**（`EvaluationAnalyticsPanel`） |
+| — | `EvaluationDatasetList.vue` | 左侧数据集列表，高亮选中项 |
+| — | `EvaluationCreateDialog.vue` | 新建数据集弹窗（名称 + 描述） |
+| — | `EvaluationRunDialog.vue` | 启动评估弹窗（Agent 选择 + 指标 + MultiRun 次数） |
 | — | `EvaluationResultsDialog.vue` | 逐用例详情 + 人工标注 + CSV/JSON 导出 |
-| — | `features/evaluation/` | api / types / `getAgentEvalTrend` / `compareEvalRuns` / exportRunResults |
+| — | `EvaluationAnalyticsPanel.vue` | 趋势表 + A/B Run 多选对比 |
+| — | `features/evaluation/api.ts` | 12 个 API 函数（含 snake_case/camelCase 双格式映射） |
+| — | `features/evaluation/types.ts` | 13 个类型定义 |
+| — | `features/evaluation/useEvaluationPage.ts` | 页面级 Composable |
+| — | `features/evaluation/evaluationTableUi.ts` | 5 组表格列定义 |
+| — | `features/evaluation/mappers.ts` | 轻量版 mapper |
+| — | `features/evaluation/exportRunResults.ts` | 客户端 CSV/JSON 导出 |
+| — | `stores/evaluation/index.ts` | Pinia Store（13 个方法） |
+| — | `features/system-settings/eval-llm.ts` | Eval LLM 表单类型 + 映射 |
 | `/settings` | `SystemSettingsPage.vue` | Eval LLM（UserSim/Judge）Provider/Model 持久化 |
 
 ---
 
-## 八、演进方向（对标 trpc-agent-go evaluation）
+## 八、已交付能力总览
 
-| 能力 | 当前状态 |
-|------|----------|
-| AgentEvaluator 集成 | ✅ FrameworkBridge |
-| EvalSet 多轮 Invocation | ✅ metadata_json.turns |
-| UserSimulation | ✅ 脚本 + LLM（simRunner） |
-| pass@k / pass^k | ✅ num_runs>1 |
-| AfterTurn 自动评估 | ✅ NativeTurnAfterHook |
-| 趋势 / A/B API + 前端 | ✅ GetAgentEvalTrend / CompareEvalRuns / AnalyticsPanel |
-| FinalResponse ROUGE/XML/JSON | ✅ opt-in metrics |
-| ToolTrajectory 完整序列 | ✅ tool_trajectory + expected_tool_calls |
-| Eval LLM 系统配置 | ✅ system_settings + Settings 页 |
+| 能力 | 状态 | 实现位置 |
+|------|------|----------|
+| AgentEvaluator 集成 | ✅ | `framework.go` FrameworkBridge |
+| EvalSet 多轮 Invocation | ✅ | `evalset_adapter.go` + `case_metadata.go` |
+| UserSimulation | ✅ | `scripted_simulator.go` + `llm_simulator.go` |
+| pass@k / pass^k | ✅ | `pass_metrics.go` + `multirun.go` |
+| AfterTurn 自动评估 | ✅ | `after_turn.go` + `evaluation_after_turn.go` |
+| 趋势 / A/B API + 前端 | ✅ | `GetAgentEvalTrend` / `CompareEvalRuns` / `EvaluationAnalyticsPanel` |
+| FinalResponse ROUGE/XML/JSON | ✅ | `framework_metrics.go` opt-in metrics |
+| ToolTrajectory 完整序列 | ✅ | `tool_trajectory` + `evalset_tools.go` |
+| Eval LLM 系统配置 | ✅ | `eval_llm_resolve.go` + `system_settings` + Settings 页 |
+| 人工标注 | ✅ | `AnnotateCaseResult` API + `EvaluationResultsDialog` |
+| 客户端报告导出 | ✅ | `exportRunResults.ts` CSV/JSON |
+| 内置评估器注册 | ✅ | `evaluator_registry.go` 9 种评估器 |
 
-框架目录结构见 `pkg/trpc-agent-go/evaluation/`；Phase 演进路径见 [33-evaluation-development.md](./33-evaluation-development.md) Phase 5。
+### 已知短板
+
+| 项 | 说明 |
+|----|------|
+| Service 层单元测试 | `internal/service/evaluation*_test.go` 不存在 |
+| Runner 异步执行测试 | `internal/evaluation/runner_test.go` 不存在 |
+| AfterTurn 触发器测试 | `internal/evaluation/after_turn_test.go` 不存在 |
+| 前端数据集编辑 | 后端 `UpdateDataset` API 已实现，前端未暴露编辑入口 |

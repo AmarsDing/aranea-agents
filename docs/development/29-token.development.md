@@ -1,6 +1,6 @@
 # Token 用量 — 开发计划
 
-> **版本**：2026-05-20 | **状态**：✅ 基础 + 配额/明细/Team 写入/告警/小时聚合已实现
+> **版本**：2026-06-06 | **状态**：✅ 全部 Phase 已实现（P3 待扩展项见 §2.3）
 > **需求**：[29 token.md](./29%20token.md) · **设计**：[29 token.design.md](./29%20token.design.md) · **前端页面**：[frontend-pages.md](./frontend-pages.md) §4.2
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -38,9 +38,11 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | 写入时费用计算 | ✅ | `RecordTokenUsageEvent` → `GetActiveModelPricing` + `ApplyTokenUsageCosts` |
 | 用量告警（budget alert） | ✅ | `budget_alerts` + `EvaluateBudgetAlerts` → `usage.budget_alert` 监控事件 |
 | 价格回退 | ✅ | `model_pricing_rules` 优先，否则 `llm_provider_models.config_json` 单价 |
-| 价格自动同步 | 部分 | Provider 模型 inspect/保存 → `syncProviderModelPricing`；无独立定价 UI |
+| 价格自动同步 | 部分 | Provider 模型 inspect/保存 → `syncProviderModelPricing`；无独立定价 UI；无 API 定时拉取 |
 | 小时聚合表 | ✅ | `model_token_usage_hourly` + 写入 upsert |
 | CSV 导出 | ✅ | `GET /v1/usage/events/export` |
+| 低性价比模型识别 | ✅ | `InefficientModels` + `UsageOverview.inefficient_models` |
+| 事件清理 | ✅ | `PurgeUsageEvents` RPC |
 
 ### 2.2 前端
 
@@ -48,11 +50,14 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 |----|------|------|
 | 类型定义 | ✅ | `web/src/features/usage/types.ts` |
 | API 调用层 | ✅ | `web/src/features/usage/api.ts`（含 snake_case ↔ camelCase 转换） |
+| 限额 + 告警 API | ✅ | `web/src/features/usage/quotaApi.ts`（quota + budget alert 合并） |
+| 限额 + 告警 composable | ✅ | `web/src/features/usage/useAgentUsageQuota.ts` |
 | 核心指标卡片 | ✅ | `web/src/components/usage/UsageMetricCards.vue` |
 | 趋势图 | ✅ | `web/src/components/usage/UsageTrendChart.vue` + `features/usage/usageTrendMetrics.ts` |
 | Top 模型排行 | ✅ | `web/src/components/usage/UsageTopModels.vue` |
 | Top Agent 排行 | ✅ | `web/src/components/usage/UsageTopAgents.vue` |
 | 异常请求列表 | ✅ | `web/src/components/usage/UsageAnomalyList.vue` |
+| 低性价比模型 | ✅ | `web/src/components/usage/UsageInefficientModels.vue` |
 | 明细列表页 | ✅ | `UsageEventsPage.vue`（费用/来源/错误列） |
 | 限额配置 UI | ✅ | `AgentUsageQuotaPanel`（权限 Tab）；Agent Tab 预算字段已弃用展示 |
 | 告警配置 UI | ✅ | `AgentUsageQuotaPanel` 预算告警阈值 |
@@ -60,13 +65,13 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | 月预算使用率卡片 | ✅ | `UsageMetricCards`（`quota_dashboard`） |
 | 小时趋势 | ✅ | 概览「趋势粒度」→ `granularity=hour` |
 
-### 2.3 差距总结（2026-05-20 复审后）
+### 2.3 差距总结（2026-06-06 复审后）
 
 | 优先级 | 差距 | 影响 |
 |--------|------|------|
-| P3 | daily/hourly rollup 与 billable 口径完全对齐 | 读层已过滤；写入 rollup 仍含 team_turn 维度 |
+| P3 | daily/hourly rollup 写入层与 billable 口径完全对齐 | 读层已过滤；写入 rollup 仍含 team_turn 维度 |
 | P3 | Team 维度概览 API / 前端 Team 用量卡片 | 需 `team_id` 汇总接口或复用 events 聚合 |
-| P3 | 低性价比模型识别（#24） | 运营分析增强 |
+| P3 | 价格自动同步（OpenRouter / Anthropic / Gemini / OpenAI API 定时拉取） | 当前仅 `syncProviderModelPricing` 手动触发 |
 | P3 | Provider 独立定价 UI | 单价维护入口分散在模型页 |
 | P3 | `cancelled` 流式中断落库路径未统一验证 | 验收 §5.1 部分项待补测 |
 
@@ -145,10 +150,10 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 ### Phase 1
 
 - [x] 可为 **Agent** 设置月度费用预算（`usage_quotas`）
-- [ ] 用户 / 全局 scope（`CheckQuota` 仅实现 `agent`）
+- [x] 用户 / 全局 scope（`CheckQuota` 支持 `agent` / `user` / `global`）
 - [x] 超过预算后 Agent / Team 对话被拦截（`USAGE_QUOTA`）
 - [x] 周期由 `period_start` / `period_end` 界定（保存时默认当月）
-- [ ] quota 延迟基准测试（预期单次 SUM < 50ms）
+- [x] quota 延迟基准测试（`internal/biz/usage_quota_bench_test.go`）
 
 ### Phase 2
 
@@ -160,13 +165,13 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 
 - [x] 达到告警阈值时写入监控（`usage.budget_alert`）
 - [x] 告警阈值可配置（Agent 权限 Tab）
-- [ ] 价格规则可从 Provider API 自动同步
+- [ ] 价格规则可从 Provider API 自动同步（当前仅手动触发）
 
 ### Phase 4
 
 - [x] 小时级趋势查询可用（`granularity=hour`）
 - [x] CSV 导出功能可用
-- [ ] 低性价比模型可被识别和标记
+- [x] 低性价比模型可被识别和标记（`InefficientModels` + `UsageInefficientModels.vue`）
 
 ---
 
@@ -215,8 +220,11 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 
 ### 7.4 待办（P3）
 
+- [ ] 价格规则自动同步（OpenRouter / Anthropic / Gemini / OpenAI API 定时拉取）
 - [ ] Provider 模型页独立定价编辑 UI
-- [ ] 低性价比模型识别（任务 #24）
+- [ ] `cancelled` 流式中断落库路径统一验证
+- [ ] daily/hourly rollup 写入层与 billable 口径完全对齐
+- [ ] Team 维度概览 API / 前端 Team 用量卡片
 
 ---
 
@@ -311,7 +319,7 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | P1 | `UsageQuery.team_id` / `usage_kind`；Proto 字段 | API/Biz | ✅ | `usage.proto`、`usage_mapper.go`、`biz/usage.go` 常量 |
 | P1 | 单元测试 billable WHERE | Test | ✅ | `usage_where_test.go` |
 | P2 | 明细页筛选 `team_id`、`usage_kind` | Web | ✅ | `UsageEventsPage`、`types.ts`、`api.ts` |
-| P3 | daily/hourly upsert 不写或 rollup 查询排除 `team_turn` | Data | 暂缓 | 读层已正确；表内历史行可保留 |
+| P3 | daily/hourly upsert 不写或 rollup 查询排除 `team_turn` | Data | 暂缓 | 读层已正确；写入层对齐见 §7.4 |
 | P3 | `GetTeamUsageSummary(team_id)` 或概览 Team 卡片 | Biz/Service/Web | 待办 | 产品需 Team 页展示时再开 |
 
 ### 9.2 验收

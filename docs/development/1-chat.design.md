@@ -637,7 +637,7 @@ type EnvelopeTrace struct {
 | `user_feedback` | chat | `metadata.message_id/rating/comment` | 用户对助手消息的 👍/👎 反馈 |
 | `intent_pass` | chat/team | `metadata` | 意图识别结果 |
 | `transfer` | team | `transfer.from_agent/to_agent` | Team/Swarm 转交 |
-| `member_message_start` | team | `author`, `content` | 成员消息开始；类型已定义，仍需 Team Runner 稳定发射 |
+| `member_message_start` | team | `author`, `content` | 成员消息开始；`EventProjector` 在 `MemberAgentKeys` 下稳定投影 |
 | `member_delta` | team | `author`, `content` | 成员消息增量 |
 | `member_message_done` | team | `author`, `content`, `usage` | 成员消息完成 |
 
@@ -1053,12 +1053,22 @@ web/src/
 │   ├── api.ts                     ← Chat API 调用封装（sendMessage/stop/listOptions/getPending/cancelPending/updatePending/getRunStatus/awaitUserReply）
 │   ├── types.ts                   ← TypeScript 类型定义
 │   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染 + toolEventToMessage 共享转换函数
+│   ├── errorCodeHints.ts          ← 错误码 → 用户可读提示映射
+│   ├── envelopeToolCall.ts        ← Envelope → ToolUseEvent v2 映射 + upsert
+│   ├── activityPresentation.ts    ← activity_kind → icon/label/summary 前端 fallback
+│   ├── useEnvelopeStream.ts       ← WS Envelope 底层消费（EnvelopeDispatcher + 事件分发）
+│   ├── streamHandlers.ts          ← WS 事件处理器（withSessionFilter + onRunActivity + errorCodeHints）
 │   └── composables/
-│       ├── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑）
+│       ├── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑；拆分后聚焦编排）
+│       ├── useChatSender.ts       ← 发送策略模式（Agent/Team 统一发送路径 + enqueue_message）
 │       ├── useChatStream.ts       ← 单 Agent WS 事件流消费（text_delta/tool_call/tool_result 等）
 │       ├── useTeamStream.ts       ← Team WS 事件流消费（member_* / team_run_* 等）
-│       ├── useEnvelopeStream.ts   ← WS Envelope 底层消费（EnvelopeDispatcher + 事件分发）
-│       └── useRunStatus.ts        ← RunStatus 轮询 + AwaitUserReply 回复提交
+│       ├── useRunStatus.ts        ← RunStatus 轮询 + AwaitUserReply 回复提交
+│       ├── useFollowUpQueue.ts    ← Follow-up Queue 状态管理（pending 列表 + WS 刷新）
+│       ├── useAwaitReply.ts       ← AwaitUserReply 交互（提交回复 + 横幅状态）
+│       ├── useChatDialogs.ts      ← dialog 状态聚合 composable
+│       ├── useChatComposerActions.ts ← composer action 方法 composable
+│       └── useChatProviderOptions.ts ← Provider/Model 选项加载（Store 调用）
 ├── composables/
 │   ├── useWsTransport.ts          ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放）
 │   └── useEnvelopeDispatcher.ts   ← Envelope 分发器（按 type 分发到对应 handler）
@@ -1066,13 +1076,26 @@ web/src/
 │   ├── ChatWorkspaceShell.vue     ← 工作区外壳（标题 + 三栏布局容器）
 │   ├── ChatEntitySidebar.vue      ← 左侧 Agent/Team 列表
 │   ├── ChatSessionSidebar.vue     ← 右侧 Session 历史
-│   ├── ChatMessagePanel.vue       ← 中间对话内容 + 输入区域
+│   ├── ChatMessagePanel.vue       ← 中间对话内容 + 输入区域（Container: approved）
+│   ├── ChatMessageRow.vue         ← 单条消息行（含 reasoning + regenerate + 事件转发）
+│   ├── ChatReasoningPeek.vue      ← Reasoning 折叠展示（live tail + 展开）
+│   ├── ChatExecutionCard.vue      ← 执行过程卡片（原 ChatToolCallCard；默认折叠 + v2 元数据）
+│   ├── ChatEnqueueMessage.vue     ← 待执行消息条目
+│   ├── ChatRunnerStatus.vue       ← 运行状态指示
+│   ├── ChatComposer.vue           ← 输入框组件（emit 事件，不直接调 API/Store）
+│   ├── ChatBackgroundJobsPanel.vue ← 后台任务面板（emit 事件，不直接调 API）
+│   ├── ChatMessageAttachments.vue ← 附件展示（emit 事件，不直接调 Store）
+│   ├── TurnBlock.vue              ← TurnBlock 一轮对话容器（User → ToolStrip → Assistant）
 │   ├── ChatSideToggle.vue         ← 侧栏折叠按钮
 │   ├── ChatSettingsDialog.vue     ← Agent/Team 设置弹框
 │   ├── ChatDeleteDialog.vue       ← 删除确认弹框
 │   ├── SessionTimelineDialog.vue  ← Session 历史追踪弹框
 │   └── types.ts                   ← 组件级类型定义
 ├── config/chatOptions.ts          ← 对话模式/模型配置
+├── stores/chat/
+│   ├── index.ts                   ← Chat Store re-export（facade 已移除）
+│   ├── messageStore.ts            ← 消息 Store（sessionId 必传，无 sessionStore 硬依赖）
+│   └── runtimeStore.ts            ← 运行时 Store（含 submitFeedback/cancelBackgroundJob/listChatOptions）
 ├── stores/app.ts                  ← 全局状态（含 Agent/Session 选择）
 ```
 
@@ -1300,6 +1323,9 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 |--------|------|------|------|
 | P0 | `NewChatService` 参数封装 | 改为 `ChatServiceDeps` struct | ✅ 已完成 |
 | P0 | `CancelPendingMessage` RPC | 新增取消待执行消息端点 | ✅ 已实现 |
+| P0 | WS 客户端断连与取消 | `WSServer` 心跳、连接上限、cancel 上行、EventBuffer 回放 | ✅ 已实现 |
+| P0 | 实时事件统一投影 | `EventProjector` 将 trpc events 投影为 `text_delta/tool_call/state_delta/runner_completion` 等 Envelope | ✅ 已实现 |
+| P0 | pendingQueue 大小限制 | `enqueuePending` 增加 `maxPendingPerSession=32` 上限，超出返回 `BadRequest` 错误 | ✅ 已修复 |
 | P1 | `firstNonEmpty` 统一 | 6 处重复定义 → `pkg/strutil.FirstNonEmpty` | ✅ 已完成 |
 | P1 | `memory_decode.go` 提取 | `ifaceStr`/`ifaceBool` 等通用函数 → `pkg/jsonutil` | ✅ 已完成 |
 | P1 | `compress_wire.go` 合并 | 仅含一个函数，合并到 `session_compress.go` | ✅ 已完成 |
@@ -1308,34 +1334,31 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | P1 | `hydratedAgent` 简化 | 逻辑冗余，移除 ephemeral AgentUsecase 分支 | ✅ 已优化 |
 | P1 | `runAgentTurn` 移除 | 冗余中间方法，直接调用 `runSingleAgentViaTRPC` | ✅ 已移除 |
 | P1 | Session 标题 LLM 生成 | 异步 LLM 生成高质量标题 | ✅ 已实现 |
+| P1 | processPendingQueue 错误上报 | 待执行消息执行失败时通过 WS `error` Envelope 通知前端；`pending_id` 字段统一到 `error.pending_id` | ✅ 已修复 |
+| P1 | toolEventMessage 重复定义消除 | 提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块 | ✅ 已修复 |
+| P1 | WS error 事件处理 | `useEnvelopeStream` / `useChatWorkspace` 监听 `error` Envelope 并通知用户 | ✅ 已修复 |
+| P1 | Team stop/pending 行为一致性 | Team turn 通过 `teamRunGuard` 接入 `activeRuns`，`lockSession` per-session 互斥锁保护 | ✅ 已修复 |
+| P1 | Team processPendingQueue 缺失 | Team turn 完成后 defer 调用 `processPendingQueue`，内部按 `OwnerType` 路由 | ✅ 已修复 |
+| P1 | AwaitUserReply 全链路 | 后端：Team Runner 通过 `SetAwaitHookProvider` 注入 `makeAwaitReplyFunc`；前端 Chat 页 UI | ✅ 已实现 |
+| P1 | EnvelopeError.PendingID 统一 | `env.Error.PendingID = entry.ID`，metadata 双写已移除 | ✅ 已修复 |
+| P1 | WS 控制消息文档化 | `connected`/`pong`/`replay_*`/`server_shutdown` 已在本文档 §2.2 和需求文档 §1.4 描述 | ✅ 已完成 |
+| P1 | 工具事件结构化展示 | `ChatExecutionCard` 默认折叠 + Skill/MCP 图标与摘要 + `act-{tool_call_id}` 稳定 upsert | ✅ 已实现 |
+| P1 | Reasoning 展示规格 | `ChatReasoningPeek` 思考/正文分离；live tail + 展开；空 reasoning 不展示 | ✅ 已实现 |
 | P2 | `legacychat` 废弃 | `LEGACY_REST_ORIGIN` 模式已移除，所有 Chat 请求直接由 admin 进程内处理 | ✅ 已移除 |
 | P2 | `GetChatOptions` 动态化 | Provider/Model 选项从 LLM Catalog 动态获取 | ✅ 已实现 |
 | P2 | `processPendingQueue` 超时 | 600 秒超时 + 取消传播（pendingCancels sync.Map） | ✅ 已实现 |
 | P2 | `pendingEntry` ID 生成 | 使用 `github.com/google/uuid` 替代 `UnixNano` | ✅ 已实现 |
 | P2 | `UpdatePendingMessage` RPC | 新增编辑待执行消息端点 | ✅ 已实现 |
 | P2 | 意图识别增强 | 单 Agent/Team 通过 EventBus 发送 `intent_pass` Envelope + 前端展示 | ✅ 已实现 |
-| P0 | WS 客户端断连与取消 | `WSServer` 心跳、连接上限、cancel 上行、EventBuffer 回放 | ✅ 已实现 |
-| P0 | 实时事件统一投影 | `EventProjector` 将 trpc events 投影为 `text_delta/tool_call/state_delta/runner_completion` 等 Envelope | ✅ 已实现 |
-| P0 | pendingQueue 大小限制 | `enqueuePending` 增加 `maxPendingPerSession=32` 上限，超出返回 `BadRequest` 错误 | ✅ 已修复 |
-| P1 | processPendingQueue 错误上报 | 待执行消息执行失败时通过 WS `error` Envelope 通知前端；`pending_id` 字段统一到 `error.pending_id` | ✅ 已修复 |
-| P1 | toolEventMessage 重复定义消除 | 提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块 | ✅ 已修复 |
-| P1 | WS error 事件处理 | `useEnvelopeStream` / `useChatWorkspace` 监听 `error` Envelope 并通知用户 | ✅ 已修复 |
 | P2 | state_delta/extensions 前后端覆盖 | Envelope 支持 `state_delta` / `extensions` 字段，前端类型已覆盖 | ✅ 已修复 |
-| P1 | Team stop/pending 行为一致性 | Team turn 通过 `teamRunGuard` 接入 `activeRuns`，`lockSession` per-session 互斥锁保护 | ✅ 已修复 |
-| P1 | Team processPendingQueue 缺失 | Team turn 完成后 defer 调用 `processPendingQueue`，内部按 `OwnerType` 路由 | ✅ 已修复 |
-| P1 | AwaitUserReply 全链路 | 后端：Team Runner 通过 `SetAwaitHookProvider` 注入 `makeAwaitReplyFunc`；前端 Chat 页 UI 待闭环 | ✅ 后端 |
-| P1 | EnvelopeError.PendingID 统一 | `env.Error.PendingID = entry.ID`，metadata 双写已移除 | ✅ 已修复 |
-| P1 | WS 控制消息文档化 | `connected`/`pong`/`replay_*`/`server_shutdown` 已在本文档 §2.2 和需求文档 §1.4 描述；前端消费链路待确认 | ✅ 后端文档 |
-| P2 | Team 成员级实时事件 | `member_*` 类型和前端处理存在，但 Team Runner 尚未稳定发射成员级 start/delta/done | ⏳ 待优化 |
-| P2 | 工具事件结构化展示 | 当前有 `tool_call/tool_result` Envelope，但 Chat 面板仍是简化文本 | ⏳ 待优化 |
+| P2 | Team 成员级实时事件 | `EventProjector` 在 `MemberAgentKeys` 下稳定投影；前端 `useChatWorkspace` 成员流消费 | ✅ 已实现 |
 | P2 | SessionTurn 一致性 | 新增 `recordTeamSessionTurn`，Team turn 成功后调用 | ✅ 已修复 |
 | P2 | Channel/Cron 并发保护 | `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位 | ✅ 已修复 |
 | P2 | EventBuffer TTL 清理 | TTL 30min + 5min eviction ticker + `Close()` 优雅停止 | ✅ 已修复 |
-| P2 | 前端 RunStatus 轮询改事件驱动 | `useRunStatus` 每 2s 轮询 HTTP，应改为 WS 事件驱动 | ⏳ 待优化 |
-| P2 | Reasoning 展示规格 | 前端已消费 `content.reasoning`，但缺少展示规格定义 | ⏳ 待定义 |
-| P3 | 模型选项来源统一 | 后端 `GetChatOptions("provider"|"model")` 已支持动态选项，Chat 前端主要读取 Platform Resource | ⏳ 待优化 |
-| P3 | 多模态附件闭环 | proto/前端有 attachments，但后端缺上传、持久化、权限和 LLM Vision 输入 | ⏳ 待实现 |
-| P3 | RunStatus/AwaitUserReply 可恢复性 | 当前为进程内 `sync.Map` / channel，服务重启不可恢复 | ⏳ 待优化 |
+| P2 | 前端 RunStatus 事件驱动 | 后端 `run_status` Envelope 驱动；前端监听 WS（切换会话 HTTP 校准） | ✅ 已实现 |
+| P3 | 模型选项来源统一 | 后端 `GetChatOptions("provider"|"model")` 已支持动态选项；Chat 前端主要读取 Platform Resource | 部分（回退已实现） |
+| P3 | 多模态附件闭环 | Artifact 上传已实现；Vision 输入装配与 LLM 多模态调用待闭环 | ⏳ 待实现 |
+| P3 | RunStatus/AwaitUserReply 可恢复性 | `state_json` 持久化 + `PendingAwaitUserReplyRoute`；`awaitChans` 仍为进程内 | ✅ state_json 已持久化 |
 
 ---
 
@@ -1714,16 +1737,16 @@ stateDiagram-v2
 
 ## 11. 实施分期
 
-| 阶段 | 内容 | 文件触点 |
-|------|------|----------|
-| **P0** | EnvelopeToolCall v2 + Projector 填 id/name/duration/kind/label | `envelope.go`, `event_projector.go`, `activity_meta.go` |
-| **P0** | 前端默认折叠卡片 + stable upsert id | `ChatExecutionCard.vue`, `envelopeToolCall.ts` |
-| **P0** | 脱敏 + summary | `activity_meta.go` |
+| 阶段 | 内容 | 文件触点 | 状态 |
+|------|------|----------|------|
+| **P0** | EnvelopeToolCall v2 + Projector 填 id/name/duration/kind/label | `envelope.go`, `event_projector.go`, `activity_meta.go` | ✅ |
+| **P0** | 前端默认折叠卡片 + stable upsert id | `ChatExecutionCard.vue`, `envelopeToolCall.ts` | ✅ |
+| **P0** | 脱敏 + summary | `activity_meta.go` | ✅ |
 | **P1** | messages 持久化 schema `chat.activity/v1` + 历史还原 | `activity_persist.go`, `session_repo.go` | ✅ |
 | **P1** | catalog display_name 查表 | `ActivityMetaResolver` + ToolUC | ✅ |
 | **P1** | Team 成员标识 | `envelope` author + UI | ✅ |
 | **P2** | running 态落库 / 取消态 | session messages | ✅ running upsert + StopGeneration 取消落库 |
-| **P2** | `activity_*` Envelope 类型评估 | 仅当 tool_call 过载时 |
+| **P2** | `activity_*` Envelope 类型评估 | 仅当 tool_call 过载时 | 📋 暂不需要 |
 
 ---
 

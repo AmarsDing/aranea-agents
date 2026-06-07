@@ -1,6 +1,6 @@
 # M17: Evaluation 评估 — 需求文档
 
-> **版本**：2026-05-21 | **状态**：🟢 Phase 5 完整（扩展指标 + LLM UserSim + 趋势/对比 + Eval LLM 系统配置）
+> **版本**：2026-06-06 | **状态**：🟢 全部完成（所有 Phase 已交付）
 > **设计**：[33 evaluation.design.md](./33%20evaluation.design.md) · **开发计划**：[33-evaluation-development.md](./33-evaluation-development.md)
 
 ---
@@ -22,7 +22,7 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 **验收标准**：
 - 可创建评估数据集（名称、描述）
 - 可上传评估用例（JSON 数组，每条包含 input + expected_output）
-- 可查看、删除数据集
+- 可查看、更新、删除数据集
 - 数据集显示用例数量
 
 ### US-2 运行评估
@@ -35,6 +35,7 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 - 可查看评估运行状态（pending → running → completed/failed）
 - 可查看评估运行进度（已完成用例数/总用例数）
 - 可选择运行的评估指标子集
+- 可删除评估运行（级联删除结果）
 
 ### US-3 评估指标
 
@@ -181,6 +182,7 @@ UserSim 与 LLM-as-Judge 共用 Provider 目录凭证；模型解析优先级：
 7. 可查看评估报告和趋势（US-7）✅ 客户端导出 + 趋势/A/B API
 8. 高级评估：多轮/UserSim/扩展指标/pass@k/趋势对比（US-8）✅
 9. Eval LLM 可在系统设置页配置并持久化 ✅
+10. 可更新数据集名称/描述、删除评估运行（级联）✅
 
 ---
 

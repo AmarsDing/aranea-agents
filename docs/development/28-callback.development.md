@@ -1,9 +1,9 @@
 # Callback 回调 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 Phase 1–3 已落地  
-> **需求**：[28 callback.md](./28%20callback.md) · **设计**：[28 callback.design.md](./28%20callback.design.md)  
-> **进度**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-CB-01 ✅  
-> **变更**：[DocSync](../changelog/2026-05-21-Callback-DocSync.md) · [P2](../changelog/2026-05-21-Callback-P2.md) · [P3](../changelog/2026-05-21-Callback-P3.md)
+> **版本**：2026-06-06 | **状态**：🟢 Phase 1–3 已落地
+> **需求**：[28 callback.md](./28%20callback.md) · **设计**：[28 callback.design.md](./28%20callback.design.md)
+> **进度**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-CB-01 ✅
+> **变更**：[DocSync](../changelog/2026-05-21-Callback-DocSync.md) · [P2](../changelog/2026-05-21-Callback-P2.md) · [P3](../changelog/2026-05-21-Callback-P3.md) · [DocAlign](../changelog/2026-06-06-Callback-DocAlign.md)
 
 ---
 
@@ -17,28 +17,28 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 |------|------|
 | Chain | `internal/agent/callbacks/` |
 | 装配 | `internal/agent/callback_chain.go`、`product_chain_builtins.go` |
-| Manager | `internal/plugin/trpc/manager.go`、`orchestration.go` |
-| Hook | `internal/biz/hook_resolver.go`、`hook_config.go` |
-| Hook 执行 | `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go` |
-| 前端 | `web/src/pages/HooksPage.vue`、`AgentHooksPanel.vue`、`CallbackEditor.vue` |
+| Manager | `internal/plugin/trpc/manager.go`（含编排边界注释）、`orchestration_policy.go` |
+| Hook 领域 | `internal/biz/hook/hook.go`（实现）、`internal/biz/hook.go`（re-export）、`internal/biz/hook_resolver.go` |
+| Hook 执行 | `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go`、`hook_events.go`、`hook_notify.go`、`hook_audit.go`、`hook_resilience.go`、`hook_retry_worker.go` |
+| 前端 | `web/src/pages/HooksPage.vue`、`HookDeliveriesPage.vue`、`PluginRunsPage.vue`、`AgentHooksPanel.vue`、`CallbackEditor.vue` |
 
 ---
 
-## 2. 现状评估（2026-05-21）
+## 2. 现状评估（2026-06-06）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Chain 抽象 + 适配器 | ✅ | `callbacks.go`、`adapter.go`、单测 |
 | Agent/Model/Tool Chain 挂载 | ✅ | `buildCallbackChainOptions` → `With*Callbacks` |
-| 产品工具链 | ✅ | guard/cache/timing/confirm/recorder |
+| 产品工具链 | ✅ | guard/cache/timing/confirm/recorder/circuit-breaker/command-safety |
 | PluginManager | ✅ | `manager.go`：`MergeChain`、`RunnerPluginsForAgent`、`OnEvent` |
-| Hook → Chain | ✅ | `hook_resolver.go` + `HookCallbacks` + `wrapResilientHooks` |
+| Hook → Chain | ✅ | `hook/hook.go` + `hook_resolver.go` + `HookCallbacks` + `wrapResilientHooks` |
 | Runner 内置 Plugin | ✅ | `runtime.go` + 9 `builtin()`；scope 过滤 |
 | OnEvent + Hook on_event | ✅ | `productEventPlugin`、`hook_events.go` |
 | Prometheus 回调指标 | ✅ | `metrics.ObserveCallback`、`PluginInvokeTotal`（product_chain） |
-| 前端 Hook 管理 | ✅ | `/hooks`、`AgentHooksPanel`、`CallbackEditor` |
-| Plugin Chain 镜像（opt-in） | ✅ | `callback_orchestration:"chain"`；内置/on_event 强制 Runner |
-| Hook notify 投递队列 | ✅ | `hook_deliveries` + `HookNotifier` 重试 |
+| 前端 Hook 管理 | ✅ | `/hooks`、`/hooks/deliveries`、`/plugins/runs`、`AgentHooksPanel`、`CallbackEditor` |
+| 编排统一 Runner 路径 | ✅ | `orchestration_policy.go`：`ResolvePluginOrchestration` 始终返回 `OrchestrationRunner`；Chain 镜像已废弃 |
+| Hook notify 投递队列 | ✅ | `hook_deliveries` + `HookNotifier` 重试 + `HookDeliveryRetryWorker` |
 
 ---
 
@@ -58,7 +58,7 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 |----|-----|------|
 | CB-CODE-01 | 产品链指标遥测拆至 `product_chain_builtins.go` | ✅ |
 | CB-CODE-02 | `callbacks.PluginCallback` 注释与 Manager 实现对齐 | ✅ |
-| CB-CODE-03 | `callback_chain.go` 引用 `orchestration.go` 边界 | ✅ |
+| CB-CODE-03 | `callback_chain.go` 引用 `manager.go` 编排边界注释 | ✅ |
 
 ### P2 — 产品与可观测（2026-05-21 ✅）
 
@@ -72,7 +72,7 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 
 | ID | 项 | 状态 |
 |----|-----|------|
-| CB-ARCH-01 | Plugin Chain 镜像（opt-in） | ✅ `orchestration_policy.go` + `plugin_chain_mirror.go`；Runner 排他 |
+| CB-ARCH-01 | 编排统一 Runner 路径 | ✅ `orchestration_policy.go`：`ResolvePluginOrchestration` 始终返回 Runner；Chain 镜像已废弃，`plugin_chain_mirror.go` 已移除 |
 | CB-ARCH-02 | Hook 投递队列 | ✅ `hook_deliveries` + `hook_notify.go`；前端 notify 重试字段 |
 
 ---
@@ -132,9 +132,9 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 |----|-----|------|
 | CB-R0-01 | `StatsRecorder.RecordEvent`；`recordHookAudit` 去掉 `*RepoStatsRecorder` 断言 | ✅ |
 | CB-R0-02 | `EnqueueNotify` Insert 改 `safego` 异步 | ✅ |
-| CB-R1-01 | Chain 镜像插件 `wrapResilientHooks` | ✅ |
+| CB-R1-01 | Chain 镜像已废弃，Hook 统一使用 `wrapResilientHooks` | ✅ |
 | CB-R1-02 | notify 指标 `queued` / `delivery_failed` | ✅ |
-| CB-R1-03 | 内置 Chain 白名单文档化（`chainAllowlistBuiltinKeys`） | ✅ |
+| CB-R1-03 | Chain 镜像白名单已随镜像移除而废弃；编排统一 Runner | ✅ |
 | CB-R2-01 | `ListHookDeliveries` API + `/hooks/deliveries` 页 | ✅ |
 | CB-R2-02 | Webhook SSRF（`pkg/webhookurl`） | ✅ |
 

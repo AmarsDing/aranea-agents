@@ -51,13 +51,13 @@ service UsageService {
 | `TokenUsageEvent` | 明细事件：50 个字段，包含时间/归属/模型/Token/价格快照/费用/性能/状态/上下文 |
 | `UsageOverview` | 概览：today / yesterday / month / range_summary / trends / top_models / top_agents / anomalies |
 
-### 2.3 待新增（P2：限额 + P3：告警）
+### 2.3 限额 + 告警 + 导出（已实现）
 
 ```protobuf
 service UsageService {
-  // ... 现有 6 个 RPC ...
+  // ... 基础 6 个 RPC ...
 
-  // P2: 用量限额
+  // 限额（P2，已实现）
   rpc GetUsageQuota(GetUsageQuotaRequest) returns (UsageQuota) {
     option (google.api.http) = { get: "/v1/usage/quotas/{scope_type}/{scope_id}" };
   }
@@ -68,12 +68,22 @@ service UsageService {
     option (google.api.http) = { get: "/v1/usage/quotas/{scope_type}/{scope_id}/check" };
   }
 
-  // P3: 用量告警
+  // 告警（P3，已实现）
   rpc ListBudgetAlerts(ListBudgetAlertsRequest) returns (ListBudgetAlertsResponse) {
     option (google.api.http) = { get: "/v1/usage/budget-alerts" };
   }
   rpc SetBudgetAlert(SetBudgetAlertRequest) returns (BudgetAlert) {
     option (google.api.http) = { post: "/v1/usage/budget-alerts" body: "*" };
+  }
+
+  // 导出（P3，已实现）
+  rpc ExportUsageEvents(UsageQuery) returns (google.api.HttpBody) {
+    option (google.api.http) = { get: "/v1/usage/events/export" };
+  }
+
+  // 清理（已实现）
+  rpc PurgeUsageEvents(PurgeUsageEventsRequest) returns (PurgeUsageEventsResponse) {
+    option (google.api.http) = { post: "/v1/usage/events/purge" body: "*" };
   }
 }
 ```
@@ -208,7 +218,7 @@ type UsageOverview struct {
 }
 ```
 
-#### 待新增（P2/P3）
+#### 限额 + 告警（已实现）
 
 ```go
 type UsageQuota struct {
@@ -231,6 +241,10 @@ type BudgetAlert struct {
     CreatedAt   string
     UpdatedAt   string
 }
+
+type QuotaCheck struct { /* ... */ }
+type QuotaDashboard struct { /* ... */ }
+type ModelInsight struct { /* ... */ }
 ```
 
 ### 3.2 Repo 接口
@@ -239,28 +253,44 @@ type BudgetAlert struct {
 
 ```go
 type UsageRepo interface {
+    AnalyticsRepo
+    WriteRepo
+    QuotaRepo
+}
+
+type AnalyticsRepo interface {
     GetModelUsageSummary(ctx context.Context, query UsageQuery) (UsageSummary, error)
     ListModelUsageTrends(ctx context.Context, query UsageQuery) ([]UsageTrendPoint, error)
     ListTopModelUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
     ListTopAgentUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
     ListModelUsageEvents(ctx context.Context, query UsageQuery) ([]TokenUsageEvent, error)
-    RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
+    // ... 其他分析方法
 }
-```
 
-#### 待新增（P2/P3）
+type WriteRepo interface {
+    RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
+    GetActiveModelPricing(ctx context.Context, providerCode, modelAPIID string) (*ModelPricing, error)
+    PurgeUsageEventsOlderThan(ctx context.Context, before string) (int, error)
+    RollupDailyHourly(ctx context.Context, event TokenUsageEvent) error
+}
 
-```go
-type UsageQuotaRepo interface {
+type QuotaRepo interface {
     GetQuota(ctx context.Context, scopeType, scopeID string) (UsageQuota, error)
     SetQuota(ctx context.Context, quota UsageQuota) (UsageQuota, error)
-    CheckQuota(ctx context.Context, scopeType, scopeID string) (UsageQuota, bool, error)
+    SumScopeCostInPeriod(ctx context.Context, scopeType, scopeID, start, end string) (int64, error)
+    ListActiveQuotas(ctx context.Context, scopeType string) ([]UsageQuota, error)
+    BatchSumScopeCost(ctx context.Context, quotas []UsageQuota) (map[string]int64, error)
+    ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]BudgetAlert, error)
+    SetBudgetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error)
+    UpdateBudgetAlertLastFired(ctx context.Context, id string) error
 }
 
-type BudgetAlertRepo interface {
-    ListAlerts(ctx context.Context, scopeType, scopeID string) ([]BudgetAlert, error)
-    SetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error)
-}
+// 窄接口（跨 usecase 依赖）
+type TeamQuotaReader interface { /* ... */ }
+type SessionMetricsAccumulator interface { /* ... */ }
+type CompletionUsageLinker interface { /* ... */ }
+type UsageEnvelopePublisher interface { /* ... */ }
+type AlertNotifier interface { /* ... */ }
 ```
 
 ### 3.3 Usecase
@@ -273,22 +303,35 @@ type UsageUsecase struct {
     now  func() time.Time
 }
 
+// 查询
 func (u *UsageUsecase) Overview(ctx, query) (UsageOverview, error)
 func (u *UsageUsecase) Trends(ctx, query) ([]UsageTrendPoint, error)
 func (u *UsageUsecase) TopModels(ctx, query) ([]UsageBreakdownRow, error)
 func (u *UsageUsecase) TopAgents(ctx, query) ([]UsageBreakdownRow, error)
 func (u *UsageUsecase) Events(ctx, query) ([]TokenUsageEvent, error)
+
+// 写入
 func (u *UsageUsecase) RecordTokenUsageEvent(ctx, event) (TokenUsageEvent, error)
-```
+func (u *UsageUsecase) RecordTurnUsage(ctx, ...) (TokenUsageEvent, error)
 
-#### 待新增（P2/P3）
-
-```go
+// 限额
 func (u *UsageUsecase) GetQuota(ctx, scopeType, scopeID string) (UsageQuota, error)
 func (u *UsageUsecase) SetQuota(ctx, quota UsageQuota) (UsageQuota, error)
-func (u *UsageUsecase) CheckQuota(ctx, scopeType, scopeID string) (UsageQuota, bool, error)
+func (u *UsageUsecase) CheckQuota(ctx, scopeType, scopeID string) (QuotaCheck, error)
+func (u *UsageUsecase) QuotaDashboard(ctx, query) (QuotaDashboard, error)
+func (u *UsageUsecase) CheckTeamMemberQuotas(ctx, ...) error
+
+// 告警
 func (u *UsageUsecase) ListBudgetAlerts(ctx, scopeType, scopeID string) ([]BudgetAlert, error)
 func (u *UsageUsecase) SetBudgetAlert(ctx, alert BudgetAlert) (BudgetAlert, error)
+func (u *UsageUsecase) EvaluateBudgetAlerts(ctx, event TokenUsageEvent) error
+
+// 导出 / 清理
+func (u *UsageUsecase) ExportUsageEventsCSV(ctx, query) (io.Reader, error)
+func (u *UsageUsecase) PurgeEvents(ctx, before string) (int, error)
+
+// 增强
+func (u *UsageUsecase) InefficientModels(ctx, query) ([]ModelInsight, error)
 ```
 
 ---
@@ -354,7 +397,9 @@ UNIQUE 约束：`(date_key, workspace_id, agent_id, provider_code, model_api_id,
 
 Ent Schema：`internal/data/ent/schema/model_pricing_rule.go`
 
-#### 待新增（P2）：`usage_quotas`
+#### 已实现：`usage_quotas`
+
+Ent Schema：`internal/data/ent/schema/usage_quota.go`
 
 ```sql
 CREATE TABLE IF NOT EXISTS usage_quotas (
@@ -370,7 +415,9 @@ CREATE TABLE IF NOT EXISTS usage_quotas (
 );
 ```
 
-#### 待新增（P3）：`budget_alerts`
+#### 已实现：`budget_alerts`
+
+Ent Schema：`internal/data/ent/schema/budget_alert.go`
 
 ```sql
 CREATE TABLE IF NOT EXISTS budget_alerts (
@@ -384,6 +431,12 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
   UNIQUE(scope_type, scope_id, alert_ratio)
 );
 ```
+
+#### 已实现：`model_token_usage_hourly`
+
+Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
+
+小时聚合表，结构同 `model_token_usage_daily`，按 `hour_key` 分组。写入明细时自动 upsert。
 
 ### 4.2 写入流程
 
@@ -499,7 +552,7 @@ func (s *UsageService) RecordTokenUsageEvent(ctx, *v1.TokenUsageEvent) (*v1.Toke
 
 **告警**：`EvaluateBudgetAlerts` → 监控事件 `usage.budget_alert`（60min 冷却）。
 
-### 5.3 Quota / Alert / Export RPC（已实现）
+### 5.3 Quota / Alert / Export / Purge RPC（已实现）
 
 ```go
 func (s *UsageService) GetUsageQuota(...)
@@ -508,17 +561,17 @@ func (s *UsageService) CheckUsageQuota(...)
 func (s *UsageService) ListBudgetAlerts(...)
 func (s *UsageService) SetBudgetAlert(...)
 func (s *UsageService) ExportUsageEvents(...)
+func (s *UsageService) PurgeUsageEvents(...)
 ```
 
 `UsageOverview.quota_dashboard`；`UsageQuery.granularity`（`hour` → `model_token_usage_hourly`）。
 
-### 5.4 待新增（P3）
+辅助文件：`internal/service/usage_mapper.go`（Proto ↔ Biz 类型映射）、`internal/service/usage_alert_notifier.go`（AlertNotifier 实现）。
 
-```go
-// 低性价比模型识别等 — 见 29-token-development.md #24
-```
+### 5.4 待扩展
 
-P2 quota 检查需在 Chat turn 前执行（`ChatService.RunNativeTurnUnary` 入口处），增加约 1 次 DB 查询延迟。
+- 价格规则自动同步（OpenRouter / Anthropic / Gemini / OpenAI API 定时拉取，当前仅 `syncProviderModelPricing` 手动触发）
+- Team 维度概览 API / 前端 Team 用量卡片
 
 ---
 
@@ -527,17 +580,17 @@ P2 quota 检查需在 Chat turn 前执行（`ChatService.RunNativeTurnUnary` 入
 ### 6.1 已实现
 
 ```
-data.ProviderSet  → NewUsageRepo
-biz.ProviderSet   → NewUsageUsecase
+data.ProviderSet  → NewUsageRepo（含 AnalyticsRepo / WriteRepo / QuotaRepo）
+biz.ProviderSet   → provideUsageUsecase
 service.ProviderSet → NewUsageService
-```
 
-### 6.2 待新增（P2/P3）
+// Wire Bindings
+wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo))
+wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo))
+wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase))
 
-```
-data.ProviderSet  → NewUsageQuotaRepo / NewBudgetAlertRepo
-biz.ProviderSet   → NewUsageQuotaUsecase / (扩展 UsageUsecase)
-service.ProviderSet → (扩展 UsageService)
+// 窄接口适配
+sessionMetricsAdapter / completionLinkerAdapter / envelopePublisherAdapter
 ```
 
 ---
@@ -550,26 +603,61 @@ service.ProviderSet → (扩展 UsageService)
 
 ```
 web/src/features/usage/
-├── api.ts          ← API 调用 + snake_case ↔ camelCase 转换
-└── types.ts        ← TypeScript 类型定义
+├── api.ts                    ← API 调用 + snake_case ↔ camelCase 转换
+├── quotaApi.ts               ← 限额 + 告警 API（含 listBudgetAlerts / setBudgetAlert）
+├── useAgentUsageQuota.ts     ← 限额 + 告警 composable
+├── useOverviewPage.ts        ← 概览页 composable
+├── useUsageEventsPage.ts     ← 明细页 composable
+├── useUsageChart.ts          ← 趋势图 composable
+├── useProviderTrendDialog.ts  ← Provider 趋势弹窗
+├── usageTrendMetrics.ts      ← 趋势指标定义
+├── usageTableUi.ts           ← 明细表格 UI 配置
+├── usageEcharts.ts           ← ECharts 配置
+├── usageBreakdownSlices.ts   ← 占比切片定义
+├── pricingWarning.ts         ← 定价缺失警告
+├── moneyFormat.ts            ← 金额格式化
+└── types.ts                  ← TypeScript 类型定义
 
 web/src/components/usage/
-├── UsageMetricCards.vue       ← 核心指标卡片
-├── UsageTrendChart.vue        ← ECharts 趋势（useUsageChart + usageTrendMetrics）
-├── UsageBreakdownCharts.vue   ← 模型/Provider 占比饼图
-├── OverviewRunnerMetrics.vue  ← 概览页 Runner 条
-├── UsageTopModels.vue         ← Top 模型排行
-├── UsageTopAgents.vue         ← Top Agent 排行
-└── UsageAnomalyList.vue       ← 异常请求列表
+├── UsageMetricCards.vue          ← 核心指标卡片（含月预算使用率）
+├── UsageTrendChart.vue           ← ECharts 趋势（useUsageChart + usageTrendMetrics）
+├── UsageBreakdownCharts.vue      ← 模型/Provider 占比饼图
+├── UsageTopModels.vue            ← Top 模型排行
+├── UsageTopAgents.vue            ← Top Agent 排行
+├── UsageAnomalyList.vue          ← 异常请求列表
+├── UsageInefficientModels.vue    ← 低性价比模型识别
+├── UsageProviderCostPie.vue      ← Provider 费用占比
+├── UsageModelCostPie.vue         ← 模型费用占比
+├── UsageTokenComposition.vue     ← Token 组成
+├── UsageFallbackEvents.vue       ← 降级事件列表
+├── TokenTrendDialog.vue          ← Token 趋势弹窗
+├── OverviewRunnerMetrics.vue     ← 概览页 Runner 条
+├── OverviewProviderHealth.vue    ← 概览页 Provider 健康
+├── OverviewPageHero.vue          ← 概览页 Hero
+└── OverviewMonitorQuickLinks.vue ← 概览页监控快捷链接
+
+web/src/components/agents/
+└── AgentUsageQuotaPanel.vue      ← Agent 权限 Tab 限额 + 告警配置
 ```
 
 #### API 函数
 
 ```typescript
+// features/usage/api.ts
 export async function getModelUsageOverview(query?: ModelUsageQuery): Promise<ModelUsageOverview>
 export async function listModelUsageTrends(query?: ModelUsageQuery): Promise<ModelUsageTrendPoint[]>
 export async function listModelUsageEvents(query?: ModelUsageQuery): Promise<ModelTokenUsageEvent[]>
+export async function exportUsageEventsCsv(query?: ModelUsageQuery): Promise<void>
 export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promise<ModelTokenUsageEvent>
+export async function purgeUsageEvents(before: string): Promise<void>
+
+// features/usage/quotaApi.ts
+export async function getUsageQuota(scopeType: string, scopeId: string): Promise<UsageQuota>
+export async function setUsageQuota(scopeType: string, scopeId: string, quota: UsageQuota): Promise<UsageQuota>
+export async function checkUsageQuota(scopeType: string, scopeId: string): Promise<QuotaCheck>
+export async function listBudgetAlerts(scopeType: string, scopeId: string): Promise<BudgetAlert[]>
+export async function setBudgetAlert(alert: BudgetAlert): Promise<BudgetAlert>
+export function microUsdToUsd(micro: number): number
 ```
 
 #### 类型定义
@@ -581,34 +669,16 @@ export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promi
 | `ModelUsageTrendPoint` | 趋势点 |
 | `ModelUsageBreakdownRow` | 占比行 |
 | `ModelTokenUsageEvent` | 明细事件 |
-| `ModelUsageOverview` | 概览（today/yesterday/month/range/trends/top_models/top_agents/anomalies） |
+| `ModelUsageOverview` | 概览（today/yesterday/month/range/trends/top_models/top_agents/anomalies/quota_dashboard/inefficient_models） |
+| `UsageQuota` | 限额配置 |
+| `BudgetAlert` | 告警配置 |
+| `QuotaCheck` | 配额检查结果 |
+| `ModelInsight` | 低性价比模型洞察 |
 
-### 7.2 待新增（P2/P3）
+### 7.2 待扩展
 
-```
-web/src/features/usage/
-├── quotaApi.ts             ← 限额 API
-├── budgetAlertApi.ts       ← 告警 API
-└── components/
-    ├── UsageQuotaEditor.vue    ← 限额配置
-    └── BudgetAlertEditor.vue   ← 告警配置
-```
-
-#### 限额编辑器
-
-| 控件 | 绑定 | 说明 |
-|------|------|------|
-| `QSelect` 范围 | `scopeType` | agent / user / global |
-| `QInput` 月预算 | `monthlyMicroUSD` | micro USD |
-| `QToggle` 启用 | `enabled` | — |
-
-#### 告警编辑器
-
-| 控件 | 绑定 | 说明 |
-|------|------|------|
-| `QSelect` 范围 | `scopeType` | agent / user / global |
-| `QSlider` 告警比例 | `alertRatio` | 0.5–1.0 |
-| `QToggle` 启用 | `enabled` | — |
+- Team 维度用量卡片 / 页面
+- Provider 独立定价编辑 UI（当前 `/models` 页可维护单价，独立定价页非本期）
 
 ---
 

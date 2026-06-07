@@ -13,17 +13,17 @@
 1. EventBus 发布/订阅 + 三种背压策略（DropOldest / DropNewest / BlockUpTo）+ 可靠订阅 + ChannelPriority 投递顺序
 2. Envelope 统一事件信封，携带完整元数据（StateDelta / Extensions / FilterKey / Branch / Tag / Actions / Trace）
 3. EventProjector 将 trpc-agent-go Event 投影为 Envelope（含 Activity 元数据、LongRunningToolIDs）
-4. EventBusConsumer 拆分为 buffer / runner / state 三 handler，单一职责消费
+4. EventBusConsumer 拆分为 buffer / runner / state / persist 等多 handler，单一职责消费
 5. WebSocket 统一传输（Channel 路由：chat / monitor / team / graph / knowledge / system）
 6. EventBuffer 环形缓冲 + TTL 淘汰 + lastEventID 断连重放
 7. Flow Log v2（`flow_log` + TraceEmitter / SysLog*，SlogBridge 已删除）
 8. 前端 Envelope 类型 + WsTransport + useEnvelopeStream；Monitor `RealtimeEvents` 实时事件面板
+9. 事件持久化（SQLite `event_store` + 异步 `eventPersistHandler`，排除 log/flow_log）
+10. 事件回放 API（`GET /v1/events` 按 session/时间/类型分页查询）
+11. Chat 会话事件检视（SessionTimelineDialog 双 Tab + Inspector 组件：EventFilterBar / BranchTree / StateDeltaIndicator / TransferBadge / SessionEventInspectorPanel）
 
 **未实现能力**：
-1. 事件持久化（SQLite 存储）
-2. 事件回放 API（HTTP 按时间范围查询）
-3. Chat 侧边栏事件可视化（BranchTree / StateDeltaIndicator / TransferBadge / useEventFilter）
-4. 清理或挂载未使用原型 `web/src/components/monitor/EventTimeline.vue`
+1. 工具生命周期事件与自动触发（ToolRegistered / ToolUpdated / ToolRemoved，见需求 §2.10）
 
 ---
 
@@ -45,13 +45,15 @@ trpc-agent-go Runner
          │          │          │
          ▼          ▼          ▼
    EventBusConsumer  ─┬─ eventBufferHandler   (环形缓冲 Append)
-   (三 handler SRP)   ├─ runnerCompletionHandler (Monitor / Usage / TurnMemory)
-                      └─ stateDeltaHandler    (ApplyStateDelta)
+   (多 handler SRP)   ├─ runnerCompletionHandler (Monitor / Usage / TurnMemory)
+                      ├─ stateDeltaHandler    (ApplyStateDelta)
+                      └─ eventPersistHandler  (异步持久化 → event_store)
          │          │
          ▼          ▼
    SessionUsecase   前端 WsTransport
    (ApplyStateDelta)   + useEnvelopeStream
                         + Monitor RealtimeEvents
+                        + Chat Inspector (SessionTimelineDialog 双 Tab)
 ```
 
 ---
@@ -335,13 +337,20 @@ func MatchFilterKey(subscriberKey, eventKey string) bool {
 
 ### 6.1 EventBusConsumer
 
-`internal/biz/event_bus_consumer.go` + 三 handler（I5-SYS-03 拆分）：
+`internal/biz/event_bus_consumer.go` + 多 handler（I5-SYS-03 拆分 + P2 持久化 + 后续扩展）：
 
 | Handler | 文件 | 职责 |
 |---------|------|------|
 | eventBufferHandler | `event_bus_buffer_handler.go` | 所有 Envelope 写入环形 Buffer（断连重放） |
 | runnerCompletionHandler | `event_bus_runner_handler.go` | RunnerCompletion → TurnMemoryWorker + Monitor 持久化 + Usage 记录（`CHAT_RECORD_RUNNER_USAGE`） |
 | stateDeltaHandler | `event_bus_state_handler.go` | StateDelta → SessionUsecase.ApplyStateDelta / UpdateRunnerSnapshotJSON |
+| eventPersistHandler | `event_persist_handler.go` | 异步持久化 Envelope → event_store（排除 log/flow_log，有界队列 512） |
+| messageStoreConsumer | `event_bus_message_store_consumer.go` | 消息存储 |
+| flowLogConsumer | `event_bus_flow_log_consumer.go` | FlowLog 消费 |
+| toolCallConsumer | `event_bus_tool_call_consumer.go` | ToolCall 消费 |
+| usageRollupConsumer | `event_bus_usage_rollup_consumer.go` | Usage 汇总 |
+| callbackConsumer | `event_bus_callback_consumer.go` | 回调消费 |
+| userFeedbackConsumer | `event_bus_user_feedback_consumer.go` | 用户反馈消费 |
 
 `Start()` 以 `Reliable=true` 全局订阅 Bus，经 `envelopeToDomainEvent` 转换后按 Type 分派。
 
@@ -535,7 +544,7 @@ Monitor `/monitor` Events Tab 生产组件：合并 WS 运行时 Envelope 与持
 
 ---
 
-## 十二、Chat 会话事件检视（P3 设计）
+## 十二、Chat 会话事件检视（已实现）
 
 > **产品决策**：不增加第四列固定侧边栏（左 Entity / 中 Message / 右 Session 已占满）。采用 **Dialog 双 Tab**，与现有 `SessionTimelineDialog` 入口合并。
 
@@ -637,11 +646,13 @@ Branch 树由 `invocation_id` / `parent_invocation_id` 在线推导，不新增�
 | `internal/cronrunner/jobs/event_store_cleanup.go` | TTL 清理 |
 | `web/src/features/event/api.ts` | 回放 API 门面 |
 | `web/src/features/chat/eventFilter.ts` | 过滤 + Branch 树纯函数 |
+| `web/src/features/chat/composables/useEventFilter.ts` | 过滤状态 + computed |
+| `web/src/features/chat/composables/useChatEventInspector.ts` | WS + 历史合并、暂停 |
 | `web/src/components/monitor/RealtimeEvents.vue` | Monitor Events Tab（生产） |
-
 | `web/src/components/chat/SessionEventInspectorPanel.vue` | Envelope Tab 容器 |
 | `web/src/components/chat/EventFilterBar.vue` | 过滤栏 |
 | `web/src/components/chat/BranchTree.vue` | 分支追踪树 |
+| `web/src/components/chat/BranchTreeNode.vue` | 分支追踪树节点 |
 | `web/src/components/chat/StateDeltaIndicator.vue` | 状态变更指示器 |
 | `web/src/components/chat/TransferBadge.vue` | Agent 转移标签 |
 | `web/src/components/chat/SessionTimelineDialog.vue` | Trace + Envelope 双 Tab |

@@ -113,9 +113,10 @@ Docker 后端必须满足以下安全约束：
 
 ### 3.7 产出物收集
 
-- Docker 路径：执行输出目录中的文件可收集并保存为 Artifact（**部分已实现**）
+- 执行输出目录中的文件可收集并保存为 Artifact（**已实现**：`WrapWithArtifactSave` 装饰器覆盖所有后端路径）
 - 产出物自动保存为 Artifact（经 `SaveArtifactHelper`，需 Runner 已注入 ArtifactService）
-- 支持配置产出物收集规则（glob 模式、文件数量限制、大小限制）（**待 Phase 2–4**）
+- 单文件大小限制：`DefaultMaxOutputFileBytes`（10 MiB）+ `MaxUploadBytes`（10 MiB）（**已实现**）
+- 支持配置产出物收集规则（glob 模式、文件数量限制）（**待 Phase 3–4**）
 
 ### 3.8 可观测性
 
@@ -167,7 +168,7 @@ Docker 后端必须满足以下安全约束：
 
 - [ ] 执行前可准备输入文件
 - [ ] 执行后可按规则收集输出文件
-- [x] Docker 路径产出物可自动保存为 Artifact（`WrapWithArtifactSave`）
+- [x] 所有后端路径产出物可自动保存为 Artifact（`WrapWithArtifactSave` 覆盖 local/docker/e2b/container）
 
 ### 4.7 可观测性
 

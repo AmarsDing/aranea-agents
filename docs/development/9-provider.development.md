@@ -1,6 +1,6 @@
 # Provider — 开发计划
 
-> **版本**：2026-05-29 | **状态**：✅ 端到端可用（核心链路）+ Phase 6-9 优化完成
+> **版本**：2026-06-06 | **状态**：✅ 端到端可用（核心链路）+ Phase 6-9 优化完成
 > **需求**：[9 provider.md](./9%20provider.md) · **设计**：[9 provider.design.md](./9%20provider.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -148,9 +148,11 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 
 | # | 差距 | 优先级 | 说明 |
 |---|------|--------|------|
-| R1 | useProviderWizard 仍 527 行 | � | 可继续拆 `populateProviderForm`+`resetProviderForm` → `useProviderFormLifecycle.ts` |
-| R2 | DecryptConfigJSONForRuntime 降级策略 | � | 当前解密失败仍返回原 JSON（降级），可考虑在 Inspect 场景返回 error 而非降级 |
-| R3 | AgentRuntimeSettings / RalphLoopSettings 测试失败 | 🟡 | 非本次改动引起，需单独排查 |
+| R1 | useProviderWizard 仍 527 行 | P3 | 可继续拆 `populateProviderForm`+`resetProviderForm` → `useProviderFormLifecycle.ts` |
+| R2 | DecryptConfigJSONForRuntime 降级策略 | P3 | 当前解密失败仍返回原 JSON（降级），可考虑在 Inspect 场景返回 error 而非降级 |
+| R3 | AgentRuntimeSettings / RalphLoopSettings 测试失败 | P2 | 非本次改动引起，需单独排查 |
+| R4 | IterModel 优化 | P3 | 当前代码未检查模型是否支持 IterModel 接口，所有模型统一使用 channel 模式 |
+| R5 | HuggingFace / Bedrock Provider 注册 | P3 | trpc provider 工厂未注册；前端预设已预留；register_extra.go + MapProviderType 已就绪 |
 
 ---
 
@@ -252,10 +254,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 
 ## 7. 依赖与风险
 
-- Inspect 扩展字段需同步更新 Proto（`make api`）和前端类型
-- 凭据加密需迁移现有明文数据
-- 速率限制需与 trpc-agent-go LLM 调用链集成
 - HuggingFace / Bedrock Provider 依赖 trpc 上游注册到 provider 工厂
-- llminspect Gemini / Ollama / Hunyuan 专属探测需研究各厂商 API 规范
-- HA 故障切换回调依赖框架 `WithSwitchCallback` 选项，需确保框架版本兼容
 - CredentialCrypto 通过 Wire 注入，所有需要加解密的 Usecase 均需声明依赖
+- IterModel 优化需 trpc-agent-go 框架支持 `model.IterModel` 接口检测
+- useProviderWizard 仍 527 行，可继续拆分表单生命周期逻辑

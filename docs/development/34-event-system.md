@@ -171,4 +171,4 @@
 6. ✅ Runner 正确处理 Actions 提示（SkipSummarization）
 7. ✅ 系统重启后可查询历史事件
 8. ✅ 可按时间范围回放事件
-9. Chat 会话事件检视：Drawer/Dialog 双 Tab（Trace + 实时 Envelope），支持类型/分支/标签过滤与 Branch 树
+9. ✅ Chat 会话事件检视：Drawer/Dialog 双 Tab（Trace + 实时 Envelope），支持类型/分支/标签过滤与 Branch 树

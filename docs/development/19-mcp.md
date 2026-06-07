@@ -1,14 +1,17 @@
 # MCP 服务器管理
 
-> **2026-05-21 现状对齐**：
+> **2026-06-06 现状对齐**：
 > - ✅ 控制台 CRUD + 测试连接 + 状态灯（`metadata_json.health_*`）。
 > - ✅ API：`/v1/mcp-servers`（`MCPServerService`）；存储为 `mcp_server` + `config_json` / `metadata_json` 拆分（非扁平列）。
 > - ✅ 运行时装配：`AgentMCPTooling` → `tool_assembly.resolveMCPServers` → `tools.buildMCPToolSet` / `buildMCPBrokerTools`。
 > - ✅ 后台探活：`internal/mcp/health`；OAuth2 静态/Client Credentials/Refresh（`config_json.auth`）。
-> - 🟡 `mcp_call_count` 会话统计已有字段与分类逻辑，与全链路验收待补。
-> - ❌ 按用户动态凭据（`require_user_credentials`）独立配置页未实现。
+> - ✅ `mcp_call_count` 会话统计：`classify` 分类 + Prometheus `aranea_mcp_invocation_total` 指标。
+> - ✅ 按用户动态凭据（`require_user_credentials`）：`platform_mcp_user_credential` 表 + API + 前端 `McpUserCredentialDialog`。
+> - ✅ URL 预检：`POST /v1/mcp-servers/validate`（不持久化，仅校验连通性）。
+> - ✅ Probe 策略化：`ProbeStrategy` 接口 + `ConnectivityProbe` / `AuthAwareProbe` + `probe_mode` 配置。
+> - ✅ MCP 子系统架构优化：Transport 类型化、defaults 集中、context.WithoutCancel、bounded concurrency 等。
 >
-> 进度以 [19-mcp-development.md](./19-mcp-development.md) 与 [execution-plan.md](../guides/execution-plan.md) 为准。
+> 进度以 [19-mcp-development.md](./19-mcp.development.md) 与 [execution-plan.md](../guides/execution-plan.md) 为准。
 
 本文档描述 **Model Context Protocol（MCP）服务器** 在控制台中的 **列表、CRUD、状态灯、添加/编辑表单** 的 UI 设计，以及 **持久化模型** 与 **HTTP API**。前端采用 **Quasar（Vue 3）**，与 Monitor 控制台风格一致。
 
@@ -105,6 +108,7 @@
 | `timeout_sec` | `QInput` `type=number` 或 `QSlider` | 否 | 默认 `60` |
 | `enabled` | `QToggle` | 否 | 默认开 |
 | `require_user_credentials` | `QToggle` | 否 | 副文案：每个用户须配置自己的凭据，否则无法使用 |
+| `probe_mode` | `QSelect` 或 `QBtnToggle` | 否 | `connectivity`（默认）\| `auth_aware`；控制探活策略 |
 
 **动态键值**：`v-for` 行 + `QInput`×2 + `QBtn` `icon="delete"`；或用小型 **`QTable`** `hide-pagination` 内嵌编辑。
 
@@ -155,7 +159,9 @@
 | `timeout_sec` | 默认 60s，传入 trpc `ConnectionConfig.Timeout` |
 | `session_reconnect_max` | SSE/Streamable 重连次数（0=关闭） |
 | `allow_adhoc_http` | Broker AdHoc，需叠加系统设置 `mcp_allow_adhoc_http` |
-| `require_user_credentials` | 产品标记；按用户凭据页待实现 |
+| `require_user_credentials` | 产品标记；为真时需用户级凭据（`platform_mcp_user_credential`） |
+| `probe_mode` | `connectivity`（默认）\| `auth_aware`；控制探活策略 |
+| `adhoc_timeout_sec` | Broker AdHoc 请求超时 |
 
 ### 4.3 `metadata_json` 字段（逻辑）
 
@@ -164,6 +170,8 @@
 | `health_status` | `ok` / `error` / `unknown` |
 | `last_health_at` | RFC3339 |
 | `last_error_message` | 列表状态灯 Tooltip |
+| `health_error_since` | 健康错误起始时间（用于持续告警判定） |
+| `last_health_alert_at` | 最近一次健康告警时间 |
 | `last_reconnect_at` / `reconnect_count` | `mcpobserve` 重连可观测 |
 
 **说明**：敏感 `headers` / `auth` 不落日志明文；列表 API 可对值脱敏。
@@ -181,8 +189,10 @@
 | PATCH | `/v1/mcp-servers/{id}` | 更新（body `mcp_server`） |
 | DELETE | `/v1/mcp-servers/{id}` | 软删除 |
 | POST | `/v1/mcp-servers/{id}/test` | 探活并写入 `metadata_json` |
-
-可选预检 `POST /v1/mcp-servers/validate` **未实现**；创建前依赖「测试连接」或保存后 Test。
+| POST | `/v1/mcp-servers/validate` | URL 预检（不持久化，仅校验连通性） |
+| GET | `/v1/mcp-servers/{mcp_server_id}/user-credentials` | 列出用户凭据 |
+| POST | `/v1/mcp-servers/{mcp_server_id}/user-credentials` | 新增/更新用户凭据 |
+| DELETE | `/v1/mcp-servers/{mcp_server_id}/user-credentials/{id}` | 删除用户凭据 |
 
 ---
 
@@ -196,11 +206,14 @@
 
 ## 7. 验收要点
 
-- [ ] 列表：**`QList`** 每项挂载 **McpServerItem/MCP 组件**；搜索、状态灯、空态、刷新、添加入口。  
-- [ ] CRUD：创建、编辑、删除确认；`name` slug 校验。  
-- [ ] 传输切换：`url` vs `command`/`args` 显隐正确。  
-- [ ] 测试连接与错误文案（含 SSRF/网络失败）可感知。  
-- [ ] 数据库字段与表单一致；`require_user_credentials` 为真时有用户凭据入口（可另页）。  
+- [x] 列表：**`QList`** 每项挂载 **McpServerItem/MCP 组件**；搜索、状态灯、空态、刷新、添加入口。
+- [x] CRUD：创建、编辑、删除确认；`name` slug 校验。
+- [x] 传输切换：`url` vs `command`/`args` 显隐正确。
+- [x] 测试连接与错误文案（含 SSRF/网络失败）可感知。
+- [x] 数据库字段与表单一致；`require_user_credentials` 为真时有用户凭据入口（`McpUserCredentialDialog`）。
+- [x] URL 预检 API（`POST /v1/mcp-servers/validate`）可用。
+- [x] MCP 调用统计闭环（`classify` + Prometheus 指标）。
+- [x] 健康持续告警（`mcp/alert` + Monitor 事件 `mcp.health_alert`）。
 
 ---
 
@@ -210,4 +223,4 @@
 
 ---
 
-*文档版本：1.4 — 2026-05-21 与 PlatformResource + config/metadata JSON 存储对齐；运行时装配见 `19 mcp.design.md`。*
+*文档版本：2.0 — 2026-06-06 与代码实现对齐：用户凭据、URL 预检、Probe 策略化、metadata 字段补全。*

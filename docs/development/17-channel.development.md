@@ -1,6 +1,6 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-05-29 | **状态**：🟢 12 平台连接；Runtime 生产级重连 + 流式出站 MVP；Phase K+L 全部优化完成（剩余 0 项）
+> **版本**：2026-06-06 | **状态**：🟢 13 平台连接；Runtime 生产级重连 + 流式出站 MVP；Phase K+L 全部优化完成（剩余 0 项）
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [**四层目标架构**](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · [**Phase DECO**](./17-channel-development.md#14-phase-deco--四层架构解耦deco)  
 > **Hermes 对照**：[17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
@@ -42,21 +42,21 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 
 | 项 | 状态 | 说明 |
 |----|------|------|
-| Webhook 入站 7 平台 | ✅ | feishu / dingtalk / wecom / slack / telegram / wechat / onebot |
+| Webhook 入站 10 平台 | ✅ | feishu / dingtalk / wecom / slack / telegram / wechat / onebot / line / mattermost / teams |
 | 统一 ProcessInbound | ✅ | webhook + runtime 共用；流式/一元分支 |
 | 异步 delivery + 重试 | ✅ | worker 5s，指数退避，最多 3 次 |
 | delivery Prometheus + dead-letter | ✅ | `aranea_channel_delivery_total{platform,status}` |
 | DB 多实例 + 凭据加密 | ✅ | `channel` + `channel_credential` |
-| Catalog bundled 标记 | ✅ | 12/12 平台 bundled（line ✅ · mattermost ✅ · teams ✅） |
-| MuseBot 全平台 Catalog 规格 | ✅ | 文档 + catalog 10 项 |
-| 长连接 Runtime | ✅ | larkws / ding stream / socketmode / polling / discord / mattermost |
+| Catalog bundled 标记 | ✅ | 13/13 平台 bundled（line ✅ · mattermost ✅ · teams ✅） |
+| MuseBot 全平台 Catalog 规格 | ✅ | 文档 + catalog 13 项 |
+| 长连接 Runtime | ✅ | larkws / ding stream / socketmode / polling / discord / mattermost（6 长连接） |
 | Manager.Reload reconcile | ✅ | config/enabled/receive_mode fingerprint |
 | Runtime 断线重连 | ✅ | `runSupervised` 指数退避 1s→5m |
 | Runtime fingerprint 含凭据 revision | ✅ | `CredentialsRevision` + CRUD reload |
 | 流式 edit 回复 | ✅ MVP | Telegram / Feishu / Slack / LINE / Mattermost；其余 unary 回退 |
 | 流式错误传播 + Prometheus | ✅ | `OnReplyDelta` 中断 + `aranea_channel_stream_update_total` |
 | platformAdapters 统一出站/流式 | ✅ | `channel_platform_registry.go` |
-| 全平台 webhook 单测 | 🟡 | 部分（lark/dingtalk/slack/telegram/wecom/wechat/onebot） |
+| 全平台 webhook 单测 | 🟡 | 部分（lark/dingtalk/slack/telegram/wecom/wechat/onebot/line/mattermost/teams） |
 | 前端 MuseBot 布局 + composable | ✅ | `useChannelEditorForm.ts` |
 | safego 合规 | ✅ | 全部 `go func()` 已走 `safego.Go`（Phase I/J/K 审查修复） |
 | Service 层 kerrors 合规 | ✅ | 10 处 `fmt.Errorf` 已替换为 `kerrors`（Phase J 修复） |
@@ -194,13 +194,13 @@ ProcessInbound → processInboundStreaming → RunNativeTurnStreaming
 ## 7. 验收标准
 
 - [x] 文档以 MuseBot 平台连接为参考源（无 GoClaw 依赖）
-- [x] 7 平台 Webhook 端到端可用
-- [x] Runtime scaffold（5 长连接 + Reload reconcile）
+- [x] 10 平台 Webhook 端到端可用
+- [x] Runtime scaffold（6 长连接 + Reload reconcile）
 - [x] Runtime 断线重连 + 定期 Reload
-- [x] 流式出站 Telegram / Feishu / Slack
+- [x] 流式出站 Telegram / Feishu / Slack / LINE / Mattermost
 - [x] delivery Prometheus dead-letter 指标
 - [x] 前端 MuseBot 布局 + `useChannelEditorForm`
-- [x] Catalog 含 MuseBot 10 平台
+- [x] Catalog 含 MuseBot 10 平台 + LINE/Mattermost/Teams = 13 平台
 - [x] `go test ./internal/channel/... ./internal/service/...` 全绿
 - [ ] Phase B 多实例生产压测（可选）
 
@@ -1136,6 +1136,7 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 1.11 | 2026-05-29 | §17.5 Phase J 续：J-11~J-22 修复 + Review 审查 J-23/J-24；Service 层 fmt.Errorf→kerrors 10 处；关键 `_ =` 加日志 11 处；atomic 修复数据竞态；死代码清理；剩余项 17→11 |
 | 1.12 | 2026-05-29 | §17.6 Phase K P0-P2 优化：K-06 消除 chatv1 proto import；K-09 Service→Usecase 消除直接 Repo 依赖；K-14 json.Unmarshal 错误处理 7 处；K-19 中文常量提取；K-25/K-26 delivery 日志；J-07/J-08 误报排除；红线 #15/#17 全部合规；剩余项 11→3 |
 | 1.13 | 2026-05-29 | §17.7 Phase L 剩余 P0/P1 收尾：J-10 4 个 Repo 接口移入 ChannelUsecase（7 新方法）；J-12 分析结论合规（channel 层非 biz 层）；J-15 recordDelivery 改 void 消除 32+ 处 `_ =`；红线 #13 全部合规；剩余项 3→0，Phase J/K/L 全部闭合 |
+| 1.14 | 2026-06-06 | 版本状态 12→13 平台；§2 现状评估对齐（Webhook 10 平台、6 长连接、13 catalog）；§7 验收标准对齐；子模块迁移 W1-W6 状态全部 ✅；进度汇总表 10→13 行 |
 
 
 ---
@@ -1153,12 +1154,12 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 波次 | 内容 | 平台数 | 状态 |
 |------|------|--------|------|
 | **W0** | 运行时骨架 + 统一入站 API | — | ✅ |
-| **W1** | 已有 Webhook 加固 + 凭据对齐 | 6 | ⏳ |
+| **W1** | 已有 Webhook 加固 + 凭据对齐 | 6 | ✅ |
 | **W2** | 长连接升级（MuseBot 主模式） | 4 | ✅ |
-| **W3** | 国内 Webhook 补全 | 2 | ⏳ |
-| **W4** | 海外 / QQ | 2 | ⏳ |
-| **W5** | 流式出站 + 策略 | 全部 | ⏳ |
-| **W6** | 前端 schema + E2E | 全部 | ⏳ |
+| **W3** | 国内 Webhook 补全 | 2 | ✅ |
+| **W4** | 海外 / QQ | 2 | ✅ |
+| **W5** | 流式出站 + 策略 | 全部 | ✅ |
+| **W6** | 前端 schema + E2E | 全部 | ✅ |
 
 ---
 
@@ -1192,7 +1193,7 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 | ID | 横切任务 | 状态 |
 |----|----------|------|
-| W1-1 | 全部 `webhook_test.go` 覆盖验签 | ⏳ |
+| W1-1 | 全部 `webhook_test.go` 覆盖验签 | 🟡 部分 |
 | W1-2 | `requiredCredentials` 与 MuseBot conf 字段 1:1 | ✅ |
 | W1-3 | catalog `bundled=true` | ✅ |
 
@@ -1211,8 +1212,8 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 |----|------|------|
 | W2-1 | `go.mod` 引入上述 SDK | ✅ |
 | W2-2 | 各 Connector 实现 `runtime.Starter` | ✅ |
-| W2-3 | 群 @ 门控 `require_mention` | ⏳ |
-| W2-4 | 编辑页 `receive_mode` 下拉 | ⏳ |
+| W2-3 | 群 @ 门控 `require_mention` | ✅ |
+| W2-4 | 编辑页 `receive_mode` 下拉 | ✅ |
 
 **验收**：无公网 IP 下飞书 WS / 钉钉 Stream / Telegram polling 可收发。
 
@@ -1222,13 +1223,13 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 | 平台 | type | MuseBot | SDK | 路由 | 状态 |
 |------|------|---------|-----|------|------|
-| 微信公众号 | `wechat` | `wechat.go` + `WechatComm` | 轻量 XML 验签 | `/webhooks/{key}` | ✅ 基础 |
-| 企微增强 | `wecom-app` | `ComWechatComm` | PowerWeChat work | 同上 | ⏳ |
+| 微信公众号 | `wechat` | `wechat.go` + `WechatComm` | 轻量 XML 验签 | `/webhooks/{key}` | ✅ |
+| 企微增强 | `wecom-app` | `ComWechatComm` | PowerWeChat work | 同上 | ✅ |
 
 | ID | 任务 | 状态 |
 |----|------|------|
-| W3-1 | `internal/channel/wechat/` PowerWeChat 适配 | ⏳ |
-| W3-2 | 被动回复 vs `active_mode` 客服 API | ⏳ |
+| W3-1 | `internal/channel/wechat/` PowerWeChat 适配 | ✅ |
+| W3-2 | 被动回复 vs `active_mode` 客服 API | ✅ |
 | W3-3 | ingress 注册 wechat type | ✅ |
 | W3-4 | catalog `bundled=true` | ✅ |
 
@@ -1239,13 +1240,13 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 平台 | type | 连接 | MuseBot | Aranea | 状态 |
 |------|------|------|---------|--------|------|
 | Discord | `discord` | gateway WS | `discord.go` | `discord/gateway.go` | ✅ |
-| QQ 官方 | `qq` | webhook + botgo WS | `qq.go` | `qq/` | ⏳ |
-| OneBot | `personal_qq` | HTTP 推送 | `personalqq.go` | `onebot/` | ✅ 基础 |
+| QQ 官方 | `qq` | webhook + botgo WS | `qq.go` | `qq/` | ✅ |
+| OneBot | `personal_qq` | HTTP 推送 | `personalqq.go` | `onebot/` | ✅ |
 
 | ID | 任务 | 状态 |
 |----|------|------|
 | W4-1 | discordgo Gateway + 出站 | ✅ |
-| W4-2 | botgo webhook 验签 + 事件 WS | ⏳ |
+| W4-2 | botgo webhook 验签 + 事件 WS | ✅ |
 | W4-3 | OneBot HMAC + 反向 HTTP 发送 | ✅ |
 
 ---
@@ -1254,12 +1255,12 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 | ID | 任务 | MuseBot 参考 | 状态 |
 |----|------|-------------|------|
-| W5-1 | `StreamOutbound` 接口 | `MsgChan` | ⏳ |
-| W5-2 | Telegram edit 流式 | `sendTextStream` | ⏳ |
-| W5-3 | 飞书卡片更新 | lark im update | ⏳ |
-| W5-4 | Slack message update | slack.go | ⏳ |
-| W5-5 | `allowed_user_ids` / `allowed_group_ids` | conf allowlist | ⏳ |
-| W5-6 | delivery Prometheus 指标 | — | ⏳ |
+| W5-1 | `StreamOutbound` 接口 | `MsgChan` | ✅ |
+| W5-2 | Telegram edit 流式 | `sendTextStream` | ✅ |
+| W5-3 | 飞书卡片更新 | lark im update | ✅ |
+| W5-4 | Slack message update | slack.go | ✅ |
+| W5-5 | `allowed_user_ids` / `allowed_group_ids` | conf allowlist | ✅ |
+| W5-6 | delivery Prometheus 指标 | — | ✅ |
 
 ---
 
@@ -1267,11 +1268,11 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 | ID | 任务 | 状态 |
 |----|------|------|
-| W6-1 | schema 驱动凭据表单（10 平台） | ⏳ |
-| W6-2 | receive_mode / connection_mode UI | ⏳ |
-| W6-3 | 微信 active_mode、钉钉 client_id 分区 | ⏳ |
-| W6-4 | 路由 Team / dm_scope / rules | ⏳ |
-| W6-5 | 各平台 sandbox E2E 清单 | ⏳ |
+| W6-1 | schema 驱动凭据表单（13 平台） | ✅ |
+| W6-2 | receive_mode / connection_mode UI | ✅ |
+| W6-3 | 微信 active_mode、钉钉 client_id 分区 | ✅ |
+| W6-4 | 路由 Team / dm_scope / rules | ✅ |
+| W6-5 | 各平台 sandbox E2E 清单 | 🟡 部分 |
 
 ---
 
@@ -1315,14 +1316,17 @@ github.com/tencent-connect/botgo
 | dingtalk | ✅ | ✅ Stream | ✅ | ✅ |
 | wecom | ✅ | — | ✅ | ✅ |
 | wecom-app | ✅ | — | ✅ | ✅ |
-| wechat | ✅ 基础 | — | ⏳ 被动回复 | ✅ |
+| wechat | ✅ | — | ✅ | ✅ |
 | slack | ✅ Events | ✅ Socket | ✅ | ✅ |
 | telegram | ✅ | ✅ Poll | ✅ | ✅ |
 | discord | — | ✅ GW | ✅ | ✅ |
-| qq | ⏳ | ⏳ | ⏳ | ❌ |
+| qq | ✅ | ✅ | ✅ | ✅ |
 | personal_qq | ✅ OneBot | — | ✅ | ✅ |
+| line | ✅ | — | ✅ | ✅ |
+| mattermost | ✅ | ✅ WS | ✅ | ✅ |
+| teams | ✅ | — | ✅ | ✅ |
 
-**完成定义（全部迁移）**：上表全部 ✅ + W5 流式 + W6 前端 + `go test ./internal/channel/...` 全绿。
+**完成定义（全部迁移）**：上表全部 ✅ + W5 流式 ✅ + W6 前端 ✅ + `go test ./internal/channel/...` 全绿。
 
 
 ---

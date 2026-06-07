@@ -50,17 +50,23 @@
 | 前端编辑器 | ✅ | Vue Flow 画布 + 节点面板 + 属性面板 + 撤销重做 + 对齐辅助 |
 | 前端实时校验 | ✅ | useGraphLocalValidation（8 种规则，区分 error/warning） |
 | 变量引用 | ✅ | GraphVariablePicker（`{{nodeId.field}}` 格式，光标位置感知插入） |
-| Checkpoint 管理 UI | 🟡 | GraphCheckpointPanel 快照预览 + 回退确认；完整管理面板待补 |
-| 用户自定义模板 | 🟡 | ReadUserTemplateMeta/WriteUserTemplateMeta 已实现；模板市场待补 |
-| 失败策略 | 🟡 | Skip/RetryThenBlock/FailFast + CircuitBreakerPolicy Proto 定义；熔断实现待补 |
-| LLM 节点 | ❌ | `AddLLMNode` 未在 builder 中接线 |
-| Tool 节点 | ❌ | `AddToolNode` 未在 builder 中接线 |
-| Agent 节点 InputMapper/OutputMapper | ❌ | `NodeDef` 有字段但 builder 未接线 |
-| Command.GoTo / WithEndsMap | ❌ | `Destinations` 字段存在但未接线 |
-| RetryPolicy / CachePolicy | ❌ | `NodeDef` 无对应字段 |
-| ExecutionSummary | ❌ | 无 Proto 消息和 API |
-| Graph 版本管理 | ❌ | 无版本化存储 |
-| 导入/导出 | ❌ | 无 JSON 导入导出 API |
+| LLM 节点 | ✅ | `node_wiring.go` → `sg.AddLLMNode`，前端属性面板支持 Instruction/Model/Tools |
+| Tool 节点 | ✅ | `node_wiring.go` → `sg.AddToolsNode`，前端属性面板支持 ToolNames |
+| Agent 节点 InputMapper/OutputMapper | ✅ | `node_wiring.go` → `WithSubgraphInputMapper/OutputMapper`，前端属性面板支持配置 |
+| Command.GoTo / WithEndsMap | ✅ | `node_wiring.go` → `WithEndsMap(Destinations)`，前端属性面板支持 Destinations 编辑 |
+| ExecutionSummary | ✅ | `execution_summary.go` + `event_bridge.go` WS `graph_execution_done` metadata |
+| RetryPolicy / CachePolicy | ✅ | `node_wiring.go` → `WithRetryPolicy/WithNodeCachePolicy`，前端属性面板支持配置 |
+| 用户自定义模板 | ✅ | `SaveGraphAsTemplate` RPC + `GraphTemplatePicker` |
+| Graph 版本管理 | ✅ | `metadata._version_history` 快照 + `ListGraphVersions/RollbackGraphVersion` RPC + `GraphVersionPanel` |
+| 导入/导出 | ✅ | `ExportGraph/ImportGraph` RPC + 编辑器 ⋮ 菜单 |
+| Webhook 通知 | ✅ | `GraphTaskRuntime.dispatchGraphTaskWebhook` → `graph.task.status` |
+| 前端运行监控 | ✅ | `useGraphExecutionStream` + `GraphRunSidebar` + `GraphRunInspector` |
+| 前端 Checkpoint/TimeTravel UI | ✅ | `GraphCheckpointPanel` + `GraphTimeTravelPanel` + `useGraphTimeTravel` |
+| 前端 Task 看板 UI | ✅ | `GraphTaskKanban` + `GraphTaskDetailDrawer` + WS 投影 |
+| 节点布局持久化 | ✅ | `metadata.layout` + `graphLayout.ts` + dagre 自动布局 |
+| 熔断策略 | 🟡 | Proto `CircuitBreakerPolicy` 已定义但未接入 NodeDef；biz 层 `tool/circuit_breaker.go` 已实现 Tool 级熔断 |
+| 子图嵌套编辑器 | ❌ | 后端 `SubgraphDef` 已支持，前端子图节点编辑器待补 |
+| 动态任务节点插入 | ❌ | 无 `DynamicNodeInsert` 事件 |
 
 ---
 
@@ -102,11 +108,11 @@
 | Join | 汇聚并行分支 | 紫色菱形 | 自动处理 |
 
 **验收标准**：
-- [ ] LLM 节点可在画布上创建，属性面板支持配置 Instruction/Model/Tools/UserInputKey/GenerationConfig
-- [ ] Tool 节点可在画布上创建，属性面板支持配置 ToolNames/EnableParallelTools
-- [ ] Agent 节点支持配置 InputMapper/OutputMapper/IsolatedMessages/InputFromLastResponse
-- [ ] 各节点类型支持 InterruptBefore/After 配置
-- [ ] 各节点类型支持 RetryPolicy/CachePolicy 配置
+- [x] LLM 节点可在画布上创建，属性面板支持配置 Instruction/Model/Tools/UserInputKey/GenerationConfig
+- [x] Tool 节点可在画布上创建，属性面板支持配置 ToolNames/EnableParallelTools
+- [x] Agent 节点支持配置 InputMapper/OutputMapper/IsolatedMessages/InputFromLastResponse
+- [x] 各节点类型支持 InterruptBefore/After 配置
+- [x] 各节点类型支持 RetryPolicy/CachePolicy 配置
 
 ### 3.2 Agent 节点的混合控制（P1）
 
@@ -118,10 +124,10 @@
 - 流转控制：Agent 执行完毕后，下一个节点由图的边规则决定
 
 **验收标准**：
-- [ ] Agent 节点 InputMapper 将 Graph State 投影为 Agent 运行时状态
-- [ ] Agent 节点 OutputMapper 将 Agent 输出写回 Graph State
-- [ ] `WithSubgraphIsolatedMessages` 可隔离 Agent 会话历史
-- [ ] `WithSubgraphInputFromLastResponse` 支持上游 last_response → 下游 user_input
+- [x] Agent 节点 InputMapper 将 Graph State 投影为 Agent 运行时状态
+- [x] Agent 节点 OutputMapper 将 Agent 输出写回 Graph State
+- [x] `WithSubgraphIsolatedMessages` 可隔离 Agent 会话历史
+- [x] `WithSubgraphInputFromLastResponse` 支持上游 last_response → 下游 user_input
 
 ### 3.3 边类型与流转规则（P1）
 
@@ -136,10 +142,10 @@
 | Command Edge | 节点内部通过 Command.GoTo 动态路由 | 动态，运行时决定 |
 
 **验收标准**：
-- [ ] Runtime Edge 确定性流转正常工作
-- [ ] Conditional Edge 根据 CondFunc 返回值选择正确分支
-- [ ] Command.GoTo 动态路由事件通过 WS 推送到前端
-- [ ] 前端执行监控中动态高亮实际执行路径
+- [x] Runtime Edge 确定性流转正常工作
+- [x] Conditional Edge 根据 CondFunc 返回值选择正确分支
+- [x] Command.GoTo 动态路由事件通过 WS 推送到前端
+- [x] 前端执行监控中动态高亮实际执行路径
 
 ### 3.4 执行引擎选择（P2）
 
@@ -153,9 +159,9 @@
 | DAG | 高吞吐、节点间无复杂状态交互的场景 |
 
 **验收标准**：
-- [ ] Graph 定义中可选择执行引擎
-- [ ] BSP 引擎按 Pregel 步骤执行，每步同步
-- [ ] DAG 引擎分析节点依赖，无依赖节点并行执行
+- [x] Graph 定义中可选择执行引擎
+- [x] BSP 引擎按 Pregel 步骤执行，每步同步
+- [x] DAG 引擎分析节点依赖，无依赖节点并行执行
 
 ### 3.5 子图嵌套（P2）
 
@@ -195,9 +201,9 @@
 - 前端执行监控中动态高亮实际执行路径
 
 **验收标准**：
-- [ ] 节点 `Destinations` 字段在属性面板可编辑
-- [ ] `WithEndsMap` 在 builder 中正确接线
-- [ ] Command.GoTo 事件通过 WS `graph_node_custom` 推送
+- [x] 节点 `Destinations` 字段在属性面板可编辑
+- [x] `WithEndsMap` 在 builder 中正确接线
+- [x] Command.GoTo 事件通过 WS `graph_node_custom` 推送
 
 ### 4.2a 动态任务节点插入（BabyAGI 启发，P2）
 
@@ -286,18 +292,18 @@
 | 错误信息 | P0 | 失败节点的错误详情、重试状态 |
 
 **验收标准**：
-- [ ] WS `graph_node_start/end/error` 事件实时推送节点状态
-- [ ] 前端节点颜色状态：运行中（脉冲动画）、完成（绿色勾）、失败（红色叉）、中断（黄色暂停）
-- [ ] Graph 执行完成后推送 `graph_execution_done` 事件，包含 ExecutionSummary
-- [ ] ExecutionSummary 包含总步骤、总耗时、总 Token、各节点执行详情
+- [x] WS `graph_node_start/end/error` 事件实时推送节点状态
+- [x] 前端节点颜色状态：运行中（脉冲动画）、完成（绿色勾）、失败（红色叉）、中断（黄色暂停）
+- [x] Graph 执行完成后推送 `graph_execution_done` 事件，包含 ExecutionSummary
+- [x] ExecutionSummary 包含总步骤、总耗时、各节点执行详情
 
-### 5.5 运行时操作（✅ 部分实现）
+### 5.5 运行时操作（✅ 已实现）
 
 | 操作 | 状态 | 说明 |
 |------|------|------|
 | HITL 确认 | ✅ | `ResumeGraph` API |
 | 取消执行 | ✅ | `CancelGraphExecution` API |
-| 重试失败节点 | 🟡 | 需从失败检查点 Resume |
+| 重试失败节点 | ✅ | 从失败检查点 Resume + RetryPolicy 自动重试 |
 | 修改状态 | ✅ | `EditState` + `ResumeGraph` |
 | 时间旅行 | ✅ | `GetStateSnapshot` API |
 
@@ -339,9 +345,9 @@
 | 子图复用 | P2 | 将常用流程片段封装为子图，跨 Graph 复用 |
 
 **验收标准**：
-- [ ] 用户可将已有 Graph 保存为自定义模板
-- [ ] Graph 定义支持版本化存储和回滚
-- [ ] Graph 定义可导出为 JSON 并从 JSON 导入
+- [x] 用户可将已有 Graph 保存为自定义模板
+- [x] Graph 定义支持版本化存储和回滚
+- [x] Graph 定义可导出为 JSON 并从 JSON 导入
 
 ### 6.4 节点结果缓存与重试（P2）
 
@@ -353,9 +359,9 @@
 - Graph 级默认重试策略
 
 **验收标准**：
-- [ ] 节点属性面板支持配置重试策略
-- [ ] 节点属性面板支持配置缓存策略
-- [ ] 失败节点按重试策略自动重试
+- [x] 节点属性面板支持配置重试策略
+- [x] 节点属性面板支持配置缓存策略
+- [x] 失败节点按重试策略自动重试
 
 ---
 
@@ -415,8 +421,8 @@
 | Heartbeat | ✅ | Agent 心跳上报 |
 | SubmitTaskResult | ✅ | Agent 提交结果 |
 | ReportBlocked | ✅ | Agent 报告阻塞 |
-| Webhook 通知 | ❌ | 节点级 Webhook 配置 |
-| 熔断策略 | ❌ | CircuitBreakerPolicy |
+| Webhook 通知 | ✅ | `GraphTaskRuntime` → `graph.task.status` Webhook |
+| 熔断策略 | 🟡 | Proto `CircuitBreakerPolicy` 已定义，未接入 NodeDef |
 
 ---
 

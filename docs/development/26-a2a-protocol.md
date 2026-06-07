@@ -2,12 +2,13 @@
 
 > 对标 `pkg/trpc-agent-go/agent/a2aagent` + `server/a2a`，实现 Agent-to-Agent 通信与平台内互调。
 >
-> **2026-05-21 现状对齐**：
+> **2026-06-06 现状对齐**：
 > - ✅ 平台内 `call_agent`、Admin Invoke、AgentCard CRUD、审计、Prometheus。
 > - ✅ `agent_kind=a2a_proxy` 远程代理；LLM Agent A2A Endpoint 设置 Tab；`/a2a` 运维页（Discover / Audit / Invoke / 远程注册）。
 > - ✅ 公开 A2A HTTP（`/v1/a2a/public/{agent_id}`）、远程注册表、mTLS/api_key/bearer、联邦 `GatewayDiscover`、Graph resume metadata。
-> - 🟡 网关健康仅同步探测；无后台 Cron。
-> - ❌ Admin Invoke 流式、Ingress 速率限制、Server 侧 mTLS 内置终止（建议走反向代理）。
+> - ✅ 网关健康 Cron（`internal/a2a/health/`）+ Prometheus 指标 `aranea_a2a_gateway_healthy`。
+> - 🟡 业务层速率限制（`A2AInvokeLimiter` 60次/分钟）；HTTP 中间件层限流待 Ingress。
+> - ❌ Admin Invoke 流式、Server 侧 mTLS 内置终止（建议走反向代理）。
 >
 > 进度与差距以 [26-a2a-development.md](./26-a2a-development.md) 与 [execution-plan.md](../guides/execution-plan.md) 为准；技术方案见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md)。
 
@@ -26,14 +27,16 @@
 | 远程注册表 | 工作区级外部 A2A URL 注册与预览 |
 | 运维页 `/a2a` | 发现、审计、Invoke 测试、远程管理、运行时配置 Banner |
 | 联邦发现 | `GatewayDiscover` 聚合本地 Endpoint + 远程 registry |
+| 网关健康 Cron | `internal/a2a/health/` 周期探测 + Prometheus `aranea_a2a_gateway_healthy` |
+| 业务层限流 | `A2AInvokeLimiter` 60次/分钟滑动窗口 |
 | 安全基线 | 工作区隔离、审计、Card 校验、鉴权类型配置 |
 
 ### 1.2 仍缺失或半成品
 
-1. **网关健康 Cron**：无周期性探测与专用指标（同步 `check_health` 已有）。
+1. **HTTP 中间件层限流**：业务层 `A2AInvokeLimiter` 已实现；HTTP/Ingress 层限流待做。
 2. **Admin Invoke 流式**：运维 Invoke 为一元 JSON 聚合（有意设计，见设计 §十二）。
-3. **API 速率限制**：未在应用层实现，建议 Ingress。
-4. **Server 侧 mTLS 终止**：客户端 mTLS 已支持；服务端建议 Nginx/Ingress。
+3. **Server 侧 mTLS 终止**：客户端 mTLS 已支持；服务端建议 Nginx/Ingress。
+4. **联邦路由策略**：按 healthy/source 选路未实现。
 
 ---
 
@@ -116,14 +119,14 @@ trpc-agent-go 中 `a2aagent.A2AAgent` 与 `llmagent.LLMAgent` 均实现 `agent.A
 **验收标准**：
 - [x] `/a2a`：Discover、Audit、Invoke、远程注册、运行时 Banner
 
-### 3.8 网关增强（P3）— 待实现
+### 3.8 网关增强（P3）— 部分实现
 
-| 项 | 说明 |
-|----|------|
-| 健康 Cron | 周期性探测远程 registry |
-| 联邦路由 | 按 healthy/source 选路 |
-| 速率限制 | API 网关 / middleware |
-| Admin Invoke 流式 | 低优先级 |
+| 项 | 状态 | 说明 |
+|----|------|------|
+| 健康 Cron | ✅ | `internal/a2a/health/runner.go`；默认 10 分钟间隔；`A2A_HEALTH_DISABLED=1` 可禁用 |
+| 联邦路由 | ❌ | 按 healthy/source 选路未实现 |
+| 速率限制 | 🟡 | 业务层 `A2AInvokeLimiter`（60次/分钟）；HTTP/Ingress 层待做 |
+| Admin Invoke 流式 | ❌ | 低优先级；有意非流式设计 |
 
 ---
 
@@ -141,8 +144,8 @@ trpc-agent-go 中 `a2aagent.A2AAgent` 与 `llmagent.LLMAgent` 均实现 `agent.A
 | 8 | 远程注册 + 联邦 Discover | ✅ |
 | 9 | 流式 Proxy/Endpoint | ✅ |
 | 10 | Graph resume metadata | ✅ |
-| 11 | 网关健康 Cron | ❌ |
-| 12 | API 速率限制 | ❌ |
+| 11 | 网关健康 Cron | ✅ |
+| 12 | API 速率限制 | 🟡（业务层已实现；HTTP 层待做） |
 
 ---
 
@@ -213,7 +216,7 @@ trpc-agent-go 中 `a2aagent.A2AAgent` 与 `llmagent.LLMAgent` 均实现 `agent.A
 | 审计 | ✅ |
 | Card/capability 校验 | ✅ |
 | 客户端鉴权配置 | ✅ |
-| API 速率限制 | ❌ |
+| API 速率限制 | 🟡（业务层已实现） |
 | Server mTLS 内置 | ❌（建议 Ingress） |
 
 ### 5.6 Prometheus
@@ -222,3 +225,5 @@ trpc-agent-go 中 `a2aagent.A2AAgent` 与 `llmagent.LLMAgent` 均实现 `agent.A
 |------|------|
 | `aranea_a2a_invoke_total` | 调用次数（caller/callee/status） |
 | `aranea_a2a_invoke_duration_seconds` | 延迟直方图 |
+| `aranea_a2a_gateway_healthy` | 网关健康状态（1=健康/0=不健康） |
+| `aranea_a2a_health_probe_total` | 健康探测次数 |

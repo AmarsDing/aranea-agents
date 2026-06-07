@@ -22,9 +22,9 @@
 | Agent 工具覆盖 | ✅ 已实现 | `tool_agent_overrides` 表支持单 Tool 粒度的 Agent 级覆盖 |
 | Tool 配置更新 | ✅ 已实现 | `PUT /v1/tools/{id}/config` 独立更新工具配置 |
 | 动态上传 Tool 代码 | 否 | 不允许前端上传任意 Go / JS 代码作为 Tool |
-| MCP Tool 发现 | 后续增强 | 本期先预留 `source=mcp`，可先展示已注册 MCP 工具 |
+| MCP Tool 发现 | 后续增强 | 已注册 MCP 工具可展示；MCP Broker 运行时发现已实现 |
 | 工具在线测试 | ✅ 已实现 | `TestTool` RPC + 工具详情「在线测试」 |
-| 工具调用审计日志 | 后续 | 工具调用无审计日志，无法追溯谁在何时调用了什么工具 |
+| 工具调用审计日志 | ✅ 已实现 | tool_invocation_audit 表 + ListToolInvocationAudits API；前端审计页待补 |
 | 片段级文件编辑 | ✅ 已实现 | `diff_edit` / `patch_file` + SessionFileState；见 [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) |
 | **工具工作区统一** | ✅ 已实现 | file / shell / claude_code 共用 `workspace_root`；见 [23-tools-development.md §Phase 5](./23-tools-development.md#phase-5工具工作区统一p0) |
 
@@ -99,7 +99,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | file 工具 | 严格限制在工作区内 |
 | `shell_exec` | 默认 cwd = 工作区根；调用参数 `workdir` 可指定子目录或（在 OS 权限内）绝对路径 |
 | `claude_code` | 未单独配置 `claude_code_dir` 时与工作区根相同 |
-| 不需工作区的工具 | web 搜索/抓取、email、todo、MCP、memory、knowledge 等（见设计 §7.8 矩阵） |
+| 不需工作区的工具 | web 搜索/抓取、email、todo、MCP、memory、knowledge、spirit、browser(MCP 桥接) 等（见设计 §7.8 矩阵） |
 | `workspace_exec` | 依赖 CodeExecutor 工作区，与 file/shell 根目录 **可能不同**；不替代日常 `shell_exec` |
 
 **验收**：同一 turn 内 `save_file` 写入的文件，紧随其后的 `exec_command` 可在工作区内访问；shell 不再落在 Server 进程当前目录。
@@ -168,6 +168,22 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `working_memory.write` | 工作记忆写入 | memory | low | 启用 | 向当前任务写入或更新字段 |
 | `working_memory.patch` | 工作记忆批量补丁 | memory | low | 启用 | 一次写入多个字段 |
 | `working_memory.delete` | 工作记忆删除 | memory | low | 启用 | 删除当前任务下的一个字段 |
+| `browser` | 浏览器自动化 | browser | critical | 停用 | Playwright MCP 桥接；需确认 |
+| `read_spreadsheet` | 电子表格读取 | media | medium | 启用 | 读取 Excel/CSV 等电子表格 |
+| `model_registry_sync` | 模型注册表同步 | system | medium | 停用 | 同步模型注册表信息 |
+| `read_tool_result` | 读取工具结果 | system | low | 启用 | 读取延迟工具的执行结果（deferred 通道） |
+| `kanban` | 看板工具 | integration | medium | 启用 | CI/CD 看板集成 |
+| `knowledge_reflect` | 知识反思 | integration | medium | 停用 | 知识库反思与自评估 |
+| `plan_and_execute` | 计划执行 | spirit | low | 启用 | 编排式计划与执行 |
+| `check_progress` | 检查进度 | spirit | low | 启用 | 检查编排任务进度 |
+| `cancel_orchestration` | 取消编排 | spirit | medium | 启用 | 取消正在运行的编排任务 |
+| `synthesize_results` | 汇总结果 | spirit | low | 启用 | 汇总编排任务结果 |
+| `assemble_team` | 组建团队（已废弃） | spirit | medium | 停用 | 已废弃，改用 plan_and_execute |
+| `assess_complexity` | 评估复杂度（已废弃） | spirit | low | 停用 | 已废弃 |
+| `list_butlers` | 列出管家（已废弃） | spirit | low | 停用 | 已废弃 |
+| `query_butler_status` | 查询管家状态（已废弃） | spirit | low | 停用 | 已废弃 |
+| `check_team_progress` | 检查团队进度（已废弃） | spirit | low | 停用 | 已废弃，改用 check_progress |
+| `cancel_team` | 取消团队（已废弃） | spirit | medium | 停用 | 已废弃，改用 cancel_orchestration |
 
 ### 3.3 框架注册但未在种子表独立列出的工具
 
@@ -192,6 +208,16 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `agent` | Agent-as-Tool 委托 | 通过 AssemblyConfig.AgentTools |
 | `mcp` | MCP ToolSet 外部工具 | ToolSetFactory |
 | `mcpbroker` | MCP Broker 运行时发现 | Factory |
+| `browser` | Playwright MCP 桥接 | ToolSetFactory |
+| `read_spreadsheet` | 电子表格读取 | Factory |
+| `read_tool_result` | 延迟工具结果读取 | Factory（Deferred: true） |
+| `model_registry_sync` | 模型注册表同步 | 仅元数据 |
+| `working_memory` | 工作记忆 ToolSet | ToolSetFactory |
+| `message` | 统一消息发送 | ToolSetFactory |
+| `subagents_spawn` | 子代理生成 | 仅元数据 |
+| `subagents_list` | 子代理列表 | 仅元数据 |
+| `subagents_get` | 子代理获取 | 仅元数据 |
+| `subagents_cancel` | 子代理取消 | 仅元数据 |
 
 ---
 
@@ -398,6 +424,10 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `coding` | `group:filesystem`、`group:web`、`group:skill`、`group:session`、`datetime` |
 | `research` | 搜索 + 文件读取 + skill + memory + `datetime` |
 | `full` | 全部工具组 |
+| `minimal` | 无工具（最简模式） |
+| `safe` | `datetime`、`read_file`、`read_multiple_files`、`list_file`、`search_file`、`search_content`、`todo_write` |
+| `system_admin` | `group:cli_admin`、`web_fetch`、`datetime` |
+| `spirit` | `plan_and_execute`、`check_progress`、`cancel_orchestration`、`assemble_team`、`check_team_progress`、`cancel_team`、`synthesize_results`、`memory_search`、`datetime` |
 
 ### 6.3 Agent 页 UI
 
@@ -497,8 +527,8 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 需求 | 优先级 | 说明 |
 |------|--------|------|
 | **片段级文件编辑** | ✅ **P1** | Phase 4 已实现；[changelog](../changelog/2026-05-22-Tools-Phase4-Fragment-Edit.md) |
-| 工具在线测试 | P3 | 自定义工具可在配置时在线测试 |
-| 工具调用审计日志 | P3 | `tool_invocation_audit` 表 + 查询 API |
+| 工具在线测试 | ✅ **P3** | Phase 2 已实现；TestTool RPC + 工具详情「在线测试」 |
+| 工具调用审计日志 | ✅ **P3** | Phase 3 已实现；tool_invocation_audit 表 + API；前端审计页待补 |
 | 工作区搜索增强 | P1 | `workspace_search` 字面检索工具（P0-WS） |
 | 代码沙箱执行 | P2 | E2B / Jupyter / Container 沙箱 |
 | 多渠道通知 | P2 | 统一通知接口（邮件/IM/Webhook） |

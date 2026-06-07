@@ -123,6 +123,7 @@ type ContextCfg struct {
     OutputSchemaJSON      string `json:"output_schema_json,omitempty"`
     ModelSelector         string `json:"model_selector,omitempty"`
     PlannerKind           string `json:"planner_kind,omitempty"`
+    PlannerConfigJSON     string `json:"planner_config_json,omitempty"`
 }
 ```
 
@@ -149,9 +150,11 @@ internal/agent/planner/
 
 选择逻辑：
 - `react` → `trpcreact.New()`
-- `a2ui` → `trpca2ui.New(...Option)`（非空 JSON 字段才附加 Option）
+- `a2ui` → `trpca2ui.New(...Option)`（非空 JSON 字段才附加 Option）；集成本地 `a2ui.Pipeline`（`a2uiPlannerWrapper` 包装）
 - `builtin` → `trpcbuiltin.New(Options{...})` 自 JSON
 - `plannerKind` 为空且 `dialogMode == "plan"` → builtin（兼容 S1）
+
+签名：`Select(dialogMode, plannerKind, plannerConfigJSON string, pipeline *a2ui.Pipeline) Planner`
 
 ---
 
@@ -218,16 +221,23 @@ A2UIPlanner 生成符合 A2UI 规范的结构化输出，用于 UI 交互场景�
 | `StandardCatalogDefinition` | 标准组件目录定义 |
 | `CatalogDescription` | 目录描述 Schema |
 
-**A2UI 组件类型**：
+**A2UI 组件类型**（已实现 14 种）：
 - `Text`：文本显示（支持 h1-h5/caption/body 样式）
+- `Divider`：分隔线
 - `Image`：图片显示（支持 icon/avatar/feature/header 样式）
 - `Icon`：图标显示（预定义图标集）
 - `Video`：视频播放
-- `AudioPlayer`：音频播放
 - `Row`/`Column`：布局容器（支持 flex 布局）
 - `List`：列表容器（支持模板化子组件）
 - `Button`：交互按钮（支持 action 事件）
-- `TextField`：文本输入
+- `TextField`：文本输入（当前只读）
+- `CheckBox`：复选框（当前禁用交互）
+- `Card`：卡片容器
+- `Modal`：对话框容器
+- `Tabs`：标签页容器
+
+**A2UI 组件类型**（未实现，长尾）：
+- `AudioPlayer`：音频播放
 - `Dropdown`：下拉选择
 - `Switch`：开关切换
 - `Carousel`：轮播
@@ -254,7 +264,8 @@ A2UIPlanner 生成符合 A2UI 规范的结构化输出，用于 UI 交互场景�
 
 ```go
 // internal/agent/trpc_build.go
-if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerConfigJSON(ag)); p != nil {
+pipeline := /* create a2ui.Pipeline if plannerKind == "a2ui" */
+if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerConfigJSON(ag), pipeline); p != nil {
     opts = append(opts, trpcllmagent.WithPlanner(p))
 }
 ```
@@ -271,7 +282,7 @@ if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerConfigJSON(
 | Ent Schema | ✅ | ✅ |
 | Data 映射 | ✅ `entRuntimeToBiz` / `applyBizRuntimeToCreate` | ✅ |
 
-**迁移**：`docs/sql/02_agent_planner.sql`（已有库增量）；`docs/sql/02_agent.sql` 基线含两列。
+**迁移**：`planner_kind` / `planner_config_json` 列已合并在 `internal/data/sql/migrations/20260607_agent_runtime_patches.sql`（增量 ALTER TABLE）。无独立 `docs/sql/02_agent_planner.sql` 文件。
 
 ---
 
@@ -301,7 +312,8 @@ PlannerKind: b.PlannerKind,
 
 | 层 | 文件 | 职责（单一） |
 |----|------|----------------|
-| 表单契约 | `features/agents/plannerConfig.ts` | parse / serialize / `validatePlannerForm`；`VALID_REASONING_EFFORTS` 与 biz 对齐 |
+| 表单契约 | `features/agents/plannerConfig.ts` | `plannerFormFromSettings` / `serializePlannerForm` / `validatePlannerForm`；`VALID_REASONING_EFFORTS` 与 biz 对齐 |
+| 表单状态 | `features/agents/useAgentPlannerForm.ts` | reactive 表单状态、hydrateFromSettings、validate、serialize 四方法 |
 | 设置 UI | `components/agents/AgentPlannerSection.vue` | 规划模式 + 空 kind 三态 banner |
 | 设置编排 | `features/agents/useAgentSettingsPage.ts` | hydrate / save `planner_*` |
 | 共享类型 | `features/chat/types.ts` | `Message`、`ToolUseEvent`、`ReactToolLinkIndex`、`ReactStepWithTools` |
@@ -310,11 +322,15 @@ PlannerKind: b.PlannerKind,
 | ReAct 链接 | `features/chat/reactPlannerToolLink.ts` | ACTION ↔ 后续 `tool_event` 启发式（仅索引构建时调用） |
 | ReAct 索引 | `features/chat/reactToolLinkIndex.ts` | `buildReactToolLinkIndex` O(n)；`isToolLinkedInReactIndex` |
 | A2UI 解析 | `features/chat/a2uiParse.ts` | JSONL 行解析 |
-| A2UI 路由 | `features/chat/a2ui/a2uiKindRegistry.ts` | kind → primitive/form/layout/container |
-| userAction 展示 | `features/chat/a2uiUserActionDisplay.ts` | 用户气泡 JSON 摘要 |
+| A2UI Surface | `features/chat/a2uiSurfaceState.ts` | `reduceA2UISurface` 折叠 JSONL 为 surface 状态 |
+| A2UI 路由 | `features/chat/a2ui/a2uiKindRegistry.ts` | kind → primitive/form/layout/container/unknown |
+| userAction 构建 | `features/chat/a2uiUserAction.ts` | `buildUserActionPayload`、`formatUserActionMessage`（WS 上行 JSON） |
+| userAction 展示 | `features/chat/a2uiUserActionDisplay.ts` | 用户气泡 JSON 摘要（`parseUserActionFromContent` + `formatUserActionUserMarkdown`） |
 | 展示门面 | `features/chat/messagePlannerPresentation.ts` | `buildMessagePresentation(plannerKind, message, index, reactLinkIndex)` |
-| Chat UI | `ChatMessagePanel`（必填 `reactToolLinkIndex`）、`ChatMessageRow`、`ChatReactSteps`、`ChatA2UIPreview` | 纯展示 |
-| Chat 编排 | `useChatWorkspace` | `computed(buildReactToolLinkIndex(displayMessages))` → Panel |
+| Chat UI | `ChatMessagePanel`（必填 `reactToolLinkIndex`）、`ChatMessageRow`、`ChatReactSteps`、`ChatA2UIPreview`、`ChatA2UISurface`、`A2UIComponentNode` | 纯展示 |
+| A2UI Kind 组件 | `components/chat/a2ui/kinds/A2UIKind{Primitive,Form,Layout,Container}.vue` | 按 route 渲染具体组件 |
+| A2UI Kind 路由 | `components/chat/a2ui/A2UIKindContent.vue` | `resolveA2UIKindRoute()` 分发到 4 个 kind 组件 |
+| Chat 编排 | `useChatWorkspace` | `shallowRef` + `watch(displayMessages)` → `buildReactToolLinkIndex` → Panel |
 
 ### 7.2 Agent 设置 — 配置面板
 
@@ -343,7 +359,7 @@ PlannerKind: b.PlannerKind,
 | 运行时 | `planner.Select`：仅当 `dialog_mode=plan` 注入 Builtin |
 | Chat 展示 | 可按正文 `/*PLANNING*/` 等启发式展示 ReAct/A2UI，**不**写入 Agent settings |
 
-历史脏数据（`planner_kind=''` 且 `planner_config_json` 非 `{}`）见 `docs/sql/02_agent_planner_legacy_cleanup.sql`。
+历史脏数据（`planner_kind=''` 且 `planner_config_json` 非 `{}`）须手动清理；无独立 SQL 脚本。
 
 **`reasoning_effort`**：biz 白名单 `low|medium|high|max`（与 OpenAI o 系 / DeepSeek v4 前端选项对齐）；空字符串表示不下发，由模型默认。
 
@@ -375,11 +391,11 @@ PlannerKind: b.PlannerKind,
 - 规则：每个 `/*ACTION*/` 至多链接其后、下一条「实质 assistant」之前的第一个未占用 `tool_event`；工具名 hint 来自 ACTION 正文正则（`functions.*` 等）。
 - **流式 / 乱序**：工具 activity 若先于 assistant 正文落库，当轮可能暂无法链接；索引随列表刷新重算，最终顺序稳定后对齐。多 ACTION / 多 tool / Team 会话不保证一一对应（见 `39-planner-development.md` backlog）。
 
-### 7.4 Chat — A2UI 预览（MVP）
+### 7.4 Chat — A2UI 组件渲染
 
 **触发**：`activePlannerKind === 'a2ui'` 或正文 JSONL 含允许键（`beginRendering` 等）。
 
-**Chat 行为**（`ChatA2UIPreview.vue` + `ChatA2UISurface.vue`）：`reduceA2UISurface` 折叠 JSONL 为 surface；`A2UIComponentNode` 渲染 StandardCatalog 核心组件（Text/Button/Row/Column/List/Card/Modal/Tabs/Divider/Image/Icon/Video/TextField/CheckBox）；`a2uiChildren` 支持 `explicitList` 与 `template.dataBinding`。Button 点击经 `formatUserActionMessage` 作为 WS `user_message.content` 单行 JSON 上行（与 [51 消息机制](./51%20消息机制.md) §4.5 一致）。
+**Chat 行为**（`ChatA2UIPreview.vue` + `ChatA2UISurface.vue`）：`reduceA2UISurface`（`a2uiSurfaceState.ts`）折叠 JSONL 为 surface；`A2UIComponentNode` → `useA2UIComponent()` → `A2UIKindContent` → `resolveA2UIKindRoute()` 路由到 4 个 kind 组件（`A2UIKindPrimitive`/`A2UIKindForm`/`A2UIKindLayout`/`A2UIKindContainer`），渲染 StandardCatalog 14 种核心组件（Text/Divider/Image/Icon/Video/Button/TextField/CheckBox/List/Row/Column/Card/Modal/Tabs）；`a2uiChildren` 支持 `explicitList` 与 `template.dataBinding`。Button 点击经 `formatUserActionMessage` 作为 WS `user_message.content` 单行 JSON 上行（与 [51 消息机制](./51%20消息机制.md) §4.5 一致）。
 
 **ReAct Chat**（`ChatReactSteps.vue`）：`reactPlannerToolLink` 将 `/*ACTION*/` 步骤与同轮次后续 `tool_call` activity 行（`options_json.tool_event`）关联，内嵌 `ChatExecutionCard` 展示。
 

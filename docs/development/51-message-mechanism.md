@@ -1,14 +1,6 @@
 # 消息机制 — 需求规格
 
-> **2026-05-19 现状对齐**：§1.1 现状问题 1–8 项落地情况：
-> - ✅ 1：事件投影逻辑已抽取到 `EventProjector`，事件循环简化为 `ConsumeEventStream`（投影+发布）。
-> - ✅ 2：事件类型已统一为 Envelope type（Chat / Team / Monitor / Graph 共享 `EnvelopeType` 常量）。
-> - ✅ 3：`EventBus`（`internal/event/bus.go`）已替代所有独立 Broker。
-> - ✅ 4：`EventBuffer`（`internal/event/buffer.go`）环形缓冲区 + WS 重放同步屏障已实现。
-> - ✅ 5：双向通信已实现——`cancel` / `user_message` / `enqueue_message` 均通过 WS 上行。
-> - ✅ 6：背压策略已实现（`DropOldest` / `DropNewest` / `BlockUpTo` 三级策略 + `Reliable` 关键事件保障 + Prometheus 丢弃计数）。
-> - ✅ 7：Monitor 流程日志为 `EnvelopeTypeFlowLog`（Flow Log v2），经 `TraceEmitter` / `SysLog*` 发布，走 WS `channel:monitor`（SlogBridge 已移除）。
-> - ✅ 8：WS 单连接复用 Chat / Monitor / Team / Graph / System，`TeamRunEventBroker` / `MonitorLogBroker` / 独立 SSE 端口均已删除。
+> **2026-06-06 现状对齐**：§1.1 现状问题 1–8 项全部落地；EnvelopeType 从 31 种扩展至 **57 种**（新增 Spirit/Butler/Skill/Monitor/SpiritOrchestration 等系列）；Side Consumers 全部实现；FTS5 搜索已实现；session_revision 增量同步已实现；前端传输层已提升到 `web/src/realtime/`。
 >
 > 后续以 `guides/execution-plan.md` 附录 A "消息机制" 行为准；本文余下作为产品需求基线参考。
 
@@ -52,7 +44,7 @@
 
 ### 2.1 已实现
 
-- 统一信封模型（Envelope）：项目层统一的事件传输单元，含 **31 种** `EnvelopeType`（见 [51a §5.4](./51a%20后端消息机制.md#54-事件类型映射)）
+- 统一信封模型（Envelope）：项目层统一的事件传输单元，含 **57 种** `EnvelopeType`（见 [51a §5.4](./51a%20后端消息机制.md#54-事件类型映射)）
 - EventBus 统一事件总线：替代所有独立 Broker，统一事件路由，三级背压策略
 - EventProjector 事件投影器：将 trpc `event.Event` 投影为 Envelope（Chat + Team 共用）
 - WebSocket 统一传输：挂入 Kratos HTTP Server，支持双向通信与多路复用
@@ -61,18 +53,20 @@
 - 心跳与断连检测：应用层 ping/pong（25s 间隔）+ 协议层 Ping/Pong（30s 间隔）
 - 事件缓冲与重放：环形缓冲区（每 Session 200 条）+ replay 同步屏障
 - 内部消费者：`EventBusConsumer` 编排 buffer / runner / state / persist 四 handler（StateDelta、用量、EventBuffer、event_store 持久化）
+- Side Consumers：ToolCallConsumer / CallbackConsumer / MessageStoreConsumer / FlowLogPersistConsumer / UserFeedbackConsumer / UsageRollupConsumer（独立 Bus 订阅，按 EventTypes 过滤）
 - Monitor 流程日志：Flow Log v2（`flow_log`）→ WS channel:monitor；进程 `log` 与 `flow_log` 前端分流
 - 全局监控模式：`session_id=*` 连接可订阅所有 Session 的 Monitor/Team/Graph 事件
 - 服务端优雅关闭：`server_shutdown` 下行通知
+- FTS5 消息搜索：`messages_fts` 虚拟表 + `SearchSessionMessages` RPC
+- session_revision 增量同步：Turn 完成 revision++；`ListSessionMessages?after_revision=`；前端入站同步
 
 ### 2.2 未来扩展
 
-- Envelope 持久化到 SQLite（可选）
-- Webhook 传输投射（同一 Envelope 投射到 Webhook）
+- Envelope 持久化到外部存储（Redis/SQLite WAL），支持跨重启重放
+- 消息引用/回复（`reply_to_id` 字段 + Envelope `quote` 扩展）
 - A2A 协议消息映射
 - Artifact 通知事件
 - 事件时间线可视化（前端）
-- ToolCallConsumer / CallbackConsumer / MessageStoreConsumer 独立消费者
 - JWT 连接期间定期校验 token 有效性
 
 ---
@@ -204,10 +198,36 @@
 | `team_step_started` | Team 步骤开始 | team |
 | `team_step_finished` | Team 步骤完成 | team |
 | `team_summary` | Team 结构化汇总 | team |
-| `run_status` | 运行生命周期（含 Follow-up 入队通知） | chat / team |
 | `knowledge_ingest` | 知识库入库进度 | knowledge |
 | `mcp.session.reconnect` | MCP 重连通知 | monitor |
+| `mcp.health.alert` | MCP 健康告警 | monitor |
 | `alert.notify` | 告警通知 | monitor |
+| `context_usage` | 上下文用量（ReAct 子步） | chat |
+| `run_status` | 运行生命周期（含 Follow-up 入队通知） | chat / team |
+| `token_usage` | Token 用量事件 | chat |
+| `metrics_updated` | 指标更新事件 | system |
+| `orchestration_agent_status` | 编排 Agent 状态 | team |
+| `user_feedback` | 用户反馈事件 | chat |
+| `session.status_changed` | Session 状态变更 | system |
+| `spirit_team_assembled` | Spirit Team 组装完成 | team |
+| `spirit_team_completed` | Spirit Team 完成 | team |
+| `spirit_team_failed` | Spirit Team 失败 | team |
+| `spirit_team_progress` | Spirit Team 进度 | team |
+| `spirit_teams_all_completed` | Spirit Teams 全部完成 | team |
+| `spirit_synthesis_completed` | Spirit 合成完成 | team |
+| `spirit_plan_created` | Spirit 计划创建 | team |
+| `spirit_allocation_created` | Spirit 分配创建 | team |
+| `spirit_orchestration_started` | Spirit 编排开始 | team |
+| `spirit_orchestration_checkpoint` | Spirit 编排检查点 | team |
+| `spirit_orchestration_interrupted` | Spirit 编排中断 | team |
+| `butler.orchestration.started` | Butler 编排开始 | team |
+| `butler.orchestration.completed` | Butler 编排完成 | team |
+| `butler.orchestration.failed` | Butler 编排失败 | team |
+| `skill.health_changed` | Skill 健康变更 | system |
+| `skill.evolution_proposed` | Skill 演进提议 | system |
+| `monitor.auto_healed` | Monitor 自动修复 | monitor |
+| `monitor.self_check_completed` | Monitor 自检完成 | monitor |
+| `graph_task_status` | Graph 任务状态 | graph |
 
 #### `run_status` 与 Follow-up Queue（`message_queued`）
 
@@ -354,10 +374,13 @@ Steerable 直注与 Pending FIFO 降级均会发送此 Envelope。运行取消�
 
 | 消费者 | 订阅条件 | 职责 | 状态 |
 |--------|---------|------|------|
-| EventBusConsumer | 全量（Reliable） | 编排：`eventBufferHandler` + `eventPersistHandler` + `runnerCompletionHandler` + `stateDeltaHandler` | ✅ 已实现（I5-SYS-03） |
-| ToolCallConsumer | `tool_result`（终态） | 记录工具调用到 ToolInvocation（`tinv-{tool_call_id}` upsert） | ✅ |
-| CallbackConsumer | `run_status` 终态 | 出站 Webhook（`WebhookDispatcher`） | ✅ |
-| MessageStoreConsumer | `member_message_done`（Team） | 成员消息落库 `role=member`，不 bump model_call | ✅ |
+| EventBusConsumer | 全量（Reliable） | 编排：`eventBufferHandler` + `eventPersistHandler` + `runnerCompletionHandler` + `stateDeltaHandler` | ✅ 已实现 |
+| ToolCallConsumer | `tool_result`（终态） | 记录工具调用到 ToolInvocation（`tinv-{tool_call_id}` upsert） | ✅ 已实现 |
+| CallbackConsumer | `run_status` 终态 | 出站 Webhook（`WebhookDispatcher`） | ✅ 已实现 |
+| MessageStoreConsumer | `member_message_done`（Team） | 成员消息落库 `role=member`，不 bump model_call | ✅ 已实现 |
+| FlowLogPersistConsumer | `flow_log` | FlowLog 持久化 | ✅ 已实现 |
+| UserFeedbackConsumer | `user_feedback` | 用户反馈处理 | ✅ 已实现 |
+| UsageRollupConsumer | `token_usage` / `runner_completion` | 用量汇总 | ✅ 已实现 |
 
 **验收标准**：
 - 各消费者独立运行，互不影响
@@ -448,13 +471,23 @@ Steerable 直注与 Pending FIFO 降级均会发送此 Envelope。运行取消�
 
 | 文件 | 说明 |
 |------|------|
-| `internal/event/bus.go` | Bus 接口与实现（三级背压策略、Reliable 关键事件保障、Prometheus 指标） |
-| `internal/event/envelope.go` | Envelope 领域模型（31 种 EnvelopeType）、`RouteChannel`、MatchFilterKey、Clone、ContainsTag |
+| `internal/event/contract/envelope.go` | Envelope 领域模型（**57 种** EnvelopeType）、`RouteChannel`、MatchFilterKey、Clone、ContainsTag |
+| `internal/event/envelope.go` | 契约包再导出 |
+| `internal/event/contract/bus.go` | Bus 接口定义 |
+| `internal/event/bus.go` | Bus 实现（三级背压策略、Reliable 关键事件保障、Prometheus 指标） |
 | `internal/event/buffer.go` | 事件内存缓冲区（环形缓冲区、TTL 淘汰、Replay） |
-| `internal/event/trace_emitter.go` | Flow Log v2 + usage spans |
-| `internal/event/system_flow.go` | 系统域 FlowLog（`SetGlobalBus`） |
+| `internal/event/trace_emitter.go` | Flow Log v2 + UsageAggregator 桥接 |
+| `internal/event/flow_context.go` | CtxFlowLog* 上下文辅助（遗留 API） |
+| `internal/event/flow_tracker.go` | FlowTracker 流程追踪 |
+| `internal/event/session_revision.go` | SessionRevisionBumper 接口 + BumpAndPublishSessionRevision |
 | `internal/event/wire.go` | Wire ProviderSet（NewBus + NewBuffer） |
-| `internal/server/ws.go` | WSServer（挂入 Kratos HTTP、三级认证、replay 同步屏障、全局监控模式、server_shutdown） |
+| `internal/server/ws.go` | WSServer 主文件（挂入 Kratos HTTP、三级认证、全局监控模式、server_shutdown） |
+| `internal/server/ws_conn.go` | WS 连接管理 |
+| `internal/server/ws_codec.go` | WS 编解码 |
+| `internal/server/ws_message_handler.go` | WS 上行消息处理 |
+| `internal/server/ws_io_pump.go` | WS 读写泵 |
+| `internal/server/ws_event.go` | WS 事件订阅与推送 |
+| `internal/server/ws_priority.go` | WS 三优先级发送队列 |
 | `internal/agent/event_projector.go` | EventProjector：trpc Event → Envelope 投影器 + Team/Log/Intent 辅助方法 |
 | `internal/agent/turn_helpers.go` | ConsumeEventStream：事件循环简化为投影+发布 |
 | `internal/biz/event_bus_consumer.go` | EventBusConsumer 编排器 |
@@ -462,8 +495,13 @@ Steerable 直注与 Pending FIFO 降级均会发送此 Envelope。运行取消�
 | `internal/biz/event_bus_runner_handler.go` | runner_completion → Usage / Monitor / Memory |
 | `internal/biz/event_bus_state_handler.go` | state_delta 持久化 |
 | `internal/biz/event_persist_handler.go` | event_store 异步持久化（可选） |
+| `internal/biz/event_bus_side_consumers.go` | Side Consumers 编排器（统一启动/停止） |
+| `internal/biz/event_bus_tool_call_consumer.go` | tool_result → ToolInvocation 落库 |
+| `internal/biz/event_bus_callback_consumer.go` | run_status 终态 → Webhook 回调 |
+| `internal/biz/event_bus_message_store_consumer.go` | member_message_done → 成员消息落库 |
 | `internal/biz/domain_event.go` | DomainEvent 领域模型（与 Envelope 双向转换） |
 | `internal/biz/domain_event_adapter.go` | DomainEvent ↔ Envelope 适配器 |
+| `internal/data/sql/message_fts.sql` | FTS5 全文搜索虚拟表 + 触发器 |
 | `internal/metrics/vars.go` | Prometheus 指标（EventBusPublished / EventBusDropped） |
 
 ### 8.2 后端修改
@@ -490,12 +528,17 @@ Steerable 直注与 Pending FIFO 降级均会发送此 Envelope。运行取消�
 
 | 文件 | 说明 |
 |------|------|
-| `web/src/features/chat/ws-transport.ts` | createWsTransport（应用层心跳、Cookie token 回退、pending 队列、server_shutdown 处理） |
-| `web/src/features/chat/envelope.ts` | Envelope 类型定义（31 种，与后端 JSON 对齐） |
-| `web/src/features/monitor/useLogStreamHub.ts` | Monitor Logs：`flow_log` / `log` 分流 |
-| `web/src/features/chat/dispatcher.ts` | EnvelopeDispatcher 类（onType / onChannel / on 过滤 + matchFilterKey） |
-| `web/src/features/chat/useEnvelopeStream.ts` | useEnvelopeStream + useChatStream + useTeamStream + useMonitorStream + useGraphStream |
+| `web/src/realtime/ws-transport.ts` | createWsTransport（应用层心跳、Cookie token 回退、pending 队列、server_shutdown 处理） |
+| `web/src/realtime/envelope.ts` | Envelope 类型定义（57 种，与后端 JSON 对齐） |
+| `web/src/realtime/dispatcher.ts` | EnvelopeDispatcher 类（onType / onChannel / on 过滤 + matchFilterKey） |
+| `web/src/realtime/envelopeRunStatus.ts` | run_status 解析 |
+| `web/src/features/chat/ws-transport.ts` | 再导出桶 → `realtime/ws-transport` |
+| `web/src/features/chat/envelope.ts` | 再导出桶 → `realtime/envelope` |
+| `web/src/features/chat/dispatcher.ts` | 再导出桶 → `realtime/dispatcher` |
+| `web/src/features/chat/useEnvelopeStream.ts` | useEnvelopeStream + useChatStream + useTeamStream + useMonitorStream |
+| `web/src/features/chat/inboundSyncEnvelope.ts` | session_revision 入站同步处理 |
 | `web/src/features/chat/useEventFilter.ts` | 事件过滤辅助 |
+| `web/src/features/monitor/useLogStreamHub.ts` | Monitor Logs：`flow_log` / `log` 分流 |
 | `web/src/config/runtime.ts` | buildWsUrl + readAccessTokenCookie + buildHealthWsUrl |
 
 ---
@@ -662,11 +705,12 @@ trpc-agent-go 的 `event.Event` 是运行时内部结构，包含 `*model.Respon
 ### 5.2 Envelope 结构
 
 ```go
-// internal/event/envelope.go
+// internal/event/contract/envelope.go
 
 type EnvelopeType string
 
 const (
+    // Chat 场景
     EnvelopeTypeTextDelta          EnvelopeType = "text_delta"
     EnvelopeTypeTextDone           EnvelopeType = "text_done"
     EnvelopeTypeToolCall           EnvelopeType = "tool_call"
@@ -674,16 +718,33 @@ const (
     EnvelopeTypeStateDelta         EnvelopeType = "state_delta"
     EnvelopeTypeTransfer           EnvelopeType = "transfer"
     EnvelopeTypeRunnerCompletion   EnvelopeType = "runner_completion"
+    EnvelopeTypeContextUsage       EnvelopeType = "context_usage"
+    EnvelopeTypeRunStatus          EnvelopeType = "run_status"
     EnvelopeTypeError              EnvelopeType = "error"
+    EnvelopeTypeIntentPass         EnvelopeType = "intent_pass"
+    EnvelopeTypeUserFeedback       EnvelopeType = "user_feedback"
+    EnvelopeTypeTokenUsage         EnvelopeType = "token_usage"
+
+    // Monitor 场景
     EnvelopeTypeLog                EnvelopeType = "log"
+    EnvelopeTypeFlowLog            EnvelopeType = "flow_log"
+    EnvelopeTypeMCPSessionReconnect EnvelopeType = "mcp.session.reconnect"
+    EnvelopeTypeMCPHealthAlert     EnvelopeType = "mcp.health.alert"
+    EnvelopeTypeAlertNotify        EnvelopeType = "alert.notify"
+    EnvelopeTypeMonitorAutoHealed  EnvelopeType = "monitor.auto_healed"
+    EnvelopeTypeMonitorSelfCheckCompleted EnvelopeType = "monitor.self_check_completed"
+
+    // Graph 场景
     EnvelopeTypeGraphNodeStart     EnvelopeType = "graph_node_start"
     EnvelopeTypeGraphNodeEnd       EnvelopeType = "graph_node_end"
     EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
     EnvelopeTypeGraphStep          EnvelopeType = "graph_step"
     EnvelopeTypeGraphExecutionDone EnvelopeType = "graph_execution_done"
     EnvelopeTypeGraphCustom        EnvelopeType = "graph_node_custom"
+    EnvelopeTypeGraphTaskStatus    EnvelopeType = "graph_task_status"
     EnvelopeTypeCheckpoint         EnvelopeType = "checkpoint"
-    EnvelopeTypeIntentPass         EnvelopeType = "intent_pass"
+
+    // Team 场景
     EnvelopeTypeMemberMsgStart     EnvelopeType = "member_message_start"
     EnvelopeTypeMemberDelta        EnvelopeType = "member_delta"
     EnvelopeTypeMemberMsgDone      EnvelopeType = "member_message_done"
@@ -692,6 +753,35 @@ const (
     EnvelopeTypeTeamRunFailed      EnvelopeType = "team_run_failed"
     EnvelopeTypeTeamStepStarted    EnvelopeType = "team_step_started"
     EnvelopeTypeTeamStepFinished   EnvelopeType = "team_step_finished"
+    EnvelopeTypeTeamSummary        EnvelopeType = "team_summary"
+    EnvelopeTypeOrchestrationAgentStatus EnvelopeType = "orchestration_agent_status"
+
+    // Knowledge 场景
+    EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
+
+    // System 场景
+    EnvelopeTypeSessionStatusChanged EnvelopeType = "session.status_changed"
+    EnvelopeTypeMetricsUpdated     EnvelopeType = "metrics_updated"
+    EnvelopeTypeSkillHealthChanged EnvelopeType = "skill.health_changed"
+    EnvelopeTypeSkillEvolutionProposed EnvelopeType = "skill.evolution_proposed"
+
+    // Spirit 编排场景
+    EnvelopeTypeSpiritTeamAssembled           EnvelopeType = "spirit_team_assembled"
+    EnvelopeTypeSpiritTeamCompleted           EnvelopeType = "spirit_team_completed"
+    EnvelopeTypeSpiritTeamFailed              EnvelopeType = "spirit_team_failed"
+    EnvelopeTypeSpiritTeamProgress            EnvelopeType = "spirit_team_progress"
+    EnvelopeTypeSpiritTeamsAllCompleted       EnvelopeType = "spirit_teams_all_completed"
+    EnvelopeTypeSpiritSynthesisCompleted      EnvelopeType = "spirit_synthesis_completed"
+    EnvelopeTypeSpiritPlanCreated             EnvelopeType = "spirit_plan_created"
+    EnvelopeTypeSpiritAllocationCreated       EnvelopeType = "spirit_allocation_created"
+    EnvelopeTypeSpiritOrchestrationStarted    EnvelopeType = "spirit_orchestration_started"
+    EnvelopeTypeSpiritOrchestrationCheckpoint EnvelopeType = "spirit_orchestration_checkpoint"
+    EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
+
+    // Butler 编排场景
+    EnvelopeTypeButlerOrchestrationStarted  EnvelopeType = "butler.orchestration.started"
+    EnvelopeTypeButlerOrchestrationCompleted EnvelopeType = "butler.orchestration.completed"
+    EnvelopeTypeButlerOrchestrationFailed   EnvelopeType = "butler.orchestration.failed"
 )
 
 type Envelope struct {
@@ -768,25 +858,61 @@ func (e Envelope) ContainsTag(tag string) bool
 | `team_run_failed` | — | Team 运行失败 | team |
 | `team_step_started` | — | Team 步骤开始 | team |
 | `team_step_finished` | — | Team 步骤完成 | team |
+| `context_usage` | — | 上下文用量（ReAct 子步） | chat |
+| `token_usage` | — | Token 用量事件 | chat |
+| `metrics_updated` | — | 指标更新事件 | system |
+| `orchestration_agent_status` | — | 编排 Agent 状态 | team |
+| `user_feedback` | — | 用户反馈事件 | chat |
+| `session.status_changed` | — | Session 状态变更 | system |
+| `spirit_team_assembled` | — | Spirit Team 组装完成 | team |
+| `spirit_team_completed` | — | Spirit Team 完成 | team |
+| `spirit_team_failed` | — | Spirit Team 失败 | team |
+| `spirit_team_progress` | — | Spirit Team 进度 | team |
+| `spirit_teams_all_completed` | — | Spirit Teams 全部完成 | team |
+| `spirit_synthesis_completed` | — | Spirit 合成完成 | team |
+| `spirit_plan_created` | — | Spirit 计划创建 | team |
+| `spirit_allocation_created` | — | Spirit 分配创建 | team |
+| `spirit_orchestration_started` | — | Spirit 编排开始 | team |
+| `spirit_orchestration_checkpoint` | — | Spirit 编排检查点 | team |
+| `spirit_orchestration_interrupted` | — | Spirit 编排中断 | team |
+| `butler.orchestration.started` | — | Butler 编排开始 | team |
+| `butler.orchestration.completed` | — | Butler 编排完成 | team |
+| `butler.orchestration.failed` | — | Butler 编排失败 | team |
+| `skill.health_changed` | — | Skill 健康变更 | system |
+| `skill.evolution_proposed` | — | Skill 演进提议 | system |
+| `monitor.auto_healed` | — | Monitor 自动修复 | monitor |
+| `monitor.self_check_completed` | — | Monitor 自检完成 | monitor |
+| `graph_task_status` | — | Graph 任务状态 | graph |
+| `mcp.health.alert` | — | MCP 健康告警 | monitor |
 
 **关键设计决策**：同一 Envelope 类型可路由到不同 Channel（如 `transfer` 在单 Agent 场景走 `chat`，在 Team 场景走 `team`），由 `RouteChannel()` 根据 TeamID 自动判断。
 
 ### 5.5 Channel 自动路由
 
 ```go
-// internal/event/envelope.go — 包函数 RouteChannel(env Envelope)
+// internal/event/contract/envelope.go — 包函数 RouteChannel(env Envelope)
 
 func RouteChannel(env Envelope) string {
     switch env.Type {
     case EnvelopeTypeLog, EnvelopeTypeFlowLog,
-         EnvelopeTypeMCPSessionReconnect, EnvelopeTypeAlertNotify:
+         EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert,
+         EnvelopeTypeAlertNotify, EnvelopeTypeMonitorAutoHealed,
+         EnvelopeTypeMonitorSelfCheckCompleted:
         return "monitor"
-    case EnvelopeTypeMemberMessageStart, /* … */ EnvelopeTypeTeamSummary:
+    case EnvelopeTypeMemberMessageStart, /* … */ EnvelopeTypeTeamSummary,
+         EnvelopeTypeOrchestrationAgentStatus,
+         EnvelopeTypeSpiritTeamAssembled, /* … */ EnvelopeTypeSpiritOrchestrationInterrupted,
+         EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted,
+         EnvelopeTypeButlerOrchestrationFailed:
         return "team"
-    case EnvelopeTypeGraphNodeStart, /* … */ EnvelopeTypeGraphNodeCustom:
+    case EnvelopeTypeGraphNodeStart, /* … */ EnvelopeTypeGraphNodeCustom,
+         EnvelopeTypeGraphTaskStatus:
         return "graph"
     case EnvelopeTypeKnowledgeIngest:
         return "knowledge"
+    case EnvelopeTypeSessionStatusChanged, EnvelopeTypeMetricsUpdated,
+         EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed:
+        return "system"
     default:
         if env.TeamID != "" {
             return "team"
@@ -1401,9 +1527,12 @@ func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env event.Envelop
 | `eventPersistHandler` | 全量（异步队列） | `event_store` 持久化 | ✅（EventStore 启用时） |
 | `runnerCompletionHandler` | `DomainEventRunnerCompletion` | Usage / Monitor / TurnMemory | ✅ |
 | `stateDeltaHandler` | `DomainEventStateDelta` | Session state 合并写 | ✅ |
-| ToolCallConsumer | `tool_result`（终态） | ToolInvocation 落库（upsert，`source=event_bus`） | ✅ P3 |
-| CallbackConsumer | `run_status` 终态 | Webhook 回调 | ✅ P3 |
-| MessageStoreConsumer | `member_message_done` | Team 成员 `role=member` + `options_json.team_member`（`chat.team_member/v1`） | ✅ P3 |
+| ToolCallConsumer | `tool_result`（终态） | ToolInvocation 落库（upsert，`source=event_bus`） | ✅ |
+| CallbackConsumer | `run_status` 终态 | Webhook 回调（`WebhookDispatcher`） | ✅ |
+| MessageStoreConsumer | `member_message_done` | Team 成员 `role=member` + `options_json.team_member`（`chat.team_member/v1`） | ✅ |
+| FlowLogPersistConsumer | `flow_log` | FlowLog 持久化 | ✅ |
+| UserFeedbackConsumer | `user_feedback` | 用户反馈处理 | ✅ |
+| UsageRollupConsumer | `token_usage` / `runner_completion` | 用量汇总 | ✅ |
 
 ### 10.3 StateDelta 持久化
 
@@ -1546,18 +1675,28 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan Envelope) {
 
 | 文件 | 说明 |
 |------|------|
-| `internal/event/bus.go` | Bus 接口与实现（三级背压策略、Reliable 关键事件保障、Prometheus 指标） |
-| `internal/event/envelope.go` | Envelope 领域模型（31 种 EnvelopeType）、`RouteChannel`、MatchFilterKey、Clone、ContainsTag |
+| `internal/event/contract/envelope.go` | Envelope 领域模型（**57 种** EnvelopeType）、`RouteChannel`、MatchFilterKey、Clone、ContainsTag |
+| `internal/event/contract/bus.go` | Bus 接口定义 |
+| `internal/event/envelope.go` | 契约包再导出 |
+| `internal/event/bus.go` | Bus 实现（三级背压策略、Reliable 关键事件保障、Prometheus 指标） |
 | `internal/event/buffer.go` | 事件内存缓冲区（环形缓冲区、TTL 淘汰、Replay） |
-| `internal/event/trace_emitter.go` | Flow Log v2 |
-| `internal/event/system_flow.go` | 系统域 FlowLog |
+| `internal/event/trace_emitter.go` | Flow Log v2 + UsageAggregator 桥接 |
+| `internal/event/flow_context.go` | CtxFlowLog* 上下文辅助（遗留 API） |
+| `internal/event/flow_tracker.go` | FlowTracker 流程追踪 |
+| `internal/event/session_revision.go` | SessionRevisionBumper 接口 + BumpAndPublishSessionRevision |
 | `internal/event/wire.go` | Wire ProviderSet（NewBus + NewBuffer） |
 
 ### 13.2 Server 层
 
 | 文件 | 说明 |
 |------|------|
-| `internal/server/ws.go` | WSServer（挂入 Kratos HTTP、三级认证、replay 同步屏障、全局监控模式、server_shutdown） |
+| `internal/server/ws.go` | WSServer 主文件（挂入 Kratos HTTP、三级认证、全局监控模式、server_shutdown） |
+| `internal/server/ws_conn.go` | WS 连接管理 |
+| `internal/server/ws_codec.go` | WS 编解码 |
+| `internal/server/ws_message_handler.go` | WS 上行消息处理 |
+| `internal/server/ws_io_pump.go` | WS 读写泵 |
+| `internal/server/ws_event.go` | WS 事件订阅与推送 |
+| `internal/server/ws_priority.go` | WS 三优先级发送队列 |
 
 ### 13.3 Agent 层
 
@@ -1573,6 +1712,10 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan Envelope) {
 | `internal/biz/event_bus_consumer.go` | EventBusConsumer 编排器 |
 | `internal/biz/event_bus_*_handler.go` | buffer / runner / state handler |
 | `internal/biz/event_persist_handler.go` | event_store 异步持久化 |
+| `internal/biz/event_bus_side_consumers.go` | Side Consumers 编排器（统一启动/停止） |
+| `internal/biz/event_bus_tool_call_consumer.go` | tool_result → ToolInvocation 落库 |
+| `internal/biz/event_bus_callback_consumer.go` | run_status 终态 → Webhook 回调 |
+| `internal/biz/event_bus_message_store_consumer.go` | member_message_done → 成员消息落库 |
 | `internal/biz/domain_event.go` | DomainEvent 领域模型（与 Envelope 双向转换） |
 | `internal/biz/domain_event_adapter.go` | DomainEvent ↔ Envelope 适配器 |
 
@@ -2006,6 +2149,8 @@ WS /v1/ws?session_id=sess-uuid&token=jwt_token
 ### 3.1 TypeScript 类型
 
 ```typescript
+// web/src/realtime/envelope.ts
+
 export interface Envelope {
   id: string;
   type: EnvelopeType;
@@ -2021,6 +2166,7 @@ export interface Envelope {
   timestamp: string;
   version: number;
   channel?: string;
+  session_revision?: number;
   content?: EnvelopeContent;
   tool_call?: EnvelopeToolCall;
   state_delta?: EnvelopeStateDelta;
@@ -2034,31 +2180,38 @@ export interface Envelope {
 }
 
 export type EnvelopeType =
-  | "text_delta"
-  | "text_done"
-  | "tool_call"
-  | "tool_result"
-  | "state_delta"
-  | "transfer"
-  | "runner_completion"
-  | "error"
-  | "log"
-  | "graph_node_start"
-  | "graph_node_end"
-  | "graph_node_error"
-  | "graph_step"
-  | "graph_execution_done"
-  | "graph_node_custom"
-  | "checkpoint"
-  | "intent_pass"
-  | "member_message_start"
-  | "member_delta"
-  | "member_message_done"
-  | "team_run_started"
-  | "team_run_finished"
-  | "team_run_failed"
-  | "team_step_started"
-  | "team_step_finished";
+  // Chat
+  | "text_delta" | "text_done" | "tool_call" | "tool_result"
+  | "state_delta" | "transfer" | "runner_completion" | "error"
+  | "context_usage" | "run_status" | "intent_pass"
+  | "user_feedback" | "token_usage"
+  // Monitor
+  | "log" | "flow_log"
+  | "mcp.session.reconnect" | "mcp.health.alert" | "alert.notify"
+  | "monitor.auto_healed" | "monitor.self_check_completed"
+  // Graph
+  | "graph_node_start" | "graph_node_end" | "graph_node_error"
+  | "graph_step" | "graph_execution_done" | "graph_node_custom"
+  | "graph_task_status" | "checkpoint"
+  // Team
+  | "member_message_start" | "member_delta" | "member_message_done"
+  | "team_run_started" | "team_run_finished" | "team_run_failed"
+  | "team_step_started" | "team_step_finished" | "team_summary"
+  | "orchestration_agent_status"
+  // Spirit
+  | "spirit_team_assembled" | "spirit_team_completed" | "spirit_team_failed"
+  | "spirit_team_progress" | "spirit_teams_all_completed"
+  | "spirit_synthesis_completed" | "spirit_plan_created"
+  | "spirit_allocation_created" | "spirit_orchestration_started"
+  | "spirit_orchestration_checkpoint" | "spirit_orchestration_interrupted"
+  // Butler
+  | "butler.orchestration.started" | "butler.orchestration.completed"
+  | "butler.orchestration.failed"
+  // Knowledge
+  | "knowledge_ingest"
+  // System
+  | "session.status_changed" | "metrics_updated"
+  | "skill.health_changed" | "skill.evolution_proposed";
 
 export interface EnvelopeContent {
   text: string;
@@ -2734,20 +2887,24 @@ export function useGraphStream(sessionId: string) {
 web/src/
   config/
     runtime.ts                     # buildWsUrl（含 token 参数）+ readAccessTokenCookie + buildHealthWsUrl
+  realtime/                        # 实时传输核心层（从 features/chat/ 提升）
+    ws-transport.ts                 # createWsTransport（含应用层心跳、Cookie token 回退、pending 队列、server_shutdown 处理）
+    envelope.ts                     # Envelope 类型定义（57 种，与后端对齐）+ session_revision 字段
+    dispatcher.ts                   # EnvelopeDispatcher 类（onType / onChannel / on 过滤 + matchFilterKey）
+    envelopeRunStatus.ts            # run_status 解析
   features/
     chat/
-      ws-transport.ts              # createWsTransport（含应用层心跳、Cookie token 回退、pending 队列、server_shutdown 处理）
-      envelope.ts                  # Envelope 类型定义（31 种，与后端对齐）
-      envelopeRunStatus.ts         # run_status 解析
+      ws-transport.ts               # 再导出桶 → realtime/ws-transport
+      envelope.ts                   # 再导出桶 → realtime/envelope
+      dispatcher.ts                 # 再导出桶 → realtime/dispatcher
+      useEnvelopeStream.ts          # useEnvelopeStream + 场景 hooks
+                                       useChatStream(sessionId) → { text, reasoning, toolCalls, done, error }
+                                       useTeamStream(sessionId) → { members, transfers, done }
+                                       useMonitorStream(sessionId) → { logs, enableLog, disableLog }
+      inboundSyncEnvelope.ts        # session_revision 入站同步处理
+      useEventFilter.ts             # 事件过滤辅助
     monitor/
-      useLogStreamHub.ts           # flow_log / log 分流；FlowTracePanel 按 trace 过滤
-      dispatcher.ts                # EnvelopeDispatcher 类（onType / onChannel / on 过滤 + matchFilterKey）
-      useEnvelopeStream.ts         # useEnvelopeStream + 场景 hooks
-                                     useChatStream(sessionId) → { text, reasoning, toolCalls, done, error }
-                                     useTeamStream(sessionId) → { members, transfers, done }
-                                     useMonitorStream(sessionId) → { logs, enableLog, disableLog }
-                                     useGraphStream(sessionId) → { nodes, steps, done }
-      useEventFilter.ts            # 事件过滤辅助
+      useLogStreamHub.ts            # flow_log / log 分流；FlowTracePanel 按 trace 过滤
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 > 对应需求：`37 knowledge.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> **2026-05-29 校准**：与实际代码对齐；补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）。
+> **2026-06-06 校准**：与实际代码对齐；补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）、OCR stub、BM25 双路检索、Biz 子包迁移、KnowledgeSearchDeps 聚合。
 
 ---
 
@@ -27,21 +27,26 @@ Agent 调用 knowledge_search ← Tool(搜索工具) ← AdaptiveRouter ← Hybr
 ```
 internal/
 ├── biz/
-│   ├── knowledge.go
-│   └── knowledge_embed_setting.go  # Embedder DB patch 合并（EP-KN-01）
-├── data/knowledge.go             # KnowledgeRepo 实现（PostgreSQL + pgvector raw SQL）
+│   ├── knowledge.go              # 类型别名转发（KnowledgeRepo = knowledge.Repo 等）
+│   ├── knowledge_embed_setting.go # Embedder DB patch 合并（EP-KN-01）
+│   └── knowledge/                # 领域子包
+│       └── knowledge.go          # Collection/Document/Chunk 模型 + Repo/Usecase 接口
+├── data/knowledge.go             # KnowledgeRepo 实现（PostgreSQL + pgvector + BM25 双路 raw SQL）
 ├── service/
-│   ├── knowledge.go              # KnowledgeService（Kratos 传输适配）
+│   ├── knowledge.go              # KnowledgeService（Kratos 传输适配，KnowledgeSearchDeps 聚合）
 │   ├── knowledge_embedder.go     # Embedder Wire 工厂（EP-KN-01）
 │   ├── knowledge_retriever.go    # Retriever + env Reranker（KN-01）
-│   └── knowledge_advanced.go     # Advanced RAG 组件 Wire 工厂
+│   └── knowledge_advanced.go     # Advanced RAG 组件 Wire 工厂（6 个 Provider）
 ├── knowledge/
 │   ├── chunker.go                # 文本分块（char/token 策略）
 │   ├── embedder.go               # 向量化（openai/ollama/gemini/huggingface + EmbedBatch）
-│   ├── chunk_strategy.go         # trpc 高级分块桥接
+│   ├── chunk_strategy.go         # trpc 高级分块桥接（markdown/json/recursive）
 │   ├── document_extract.go       # PDF/DOCX/HTML 文本提取
-│   ├── ingest.go                 # 分块+向量化流水线
-│   ├── retriever.go              # 检索器（embed + search + optional rerank）
+│   ├── ocr.go                    # OCR 提供者接口（stub，KNOWLEDGE_OCR 环境变量）
+│   ├── html_text.go              # HTML 文本剥离（strip script/style）
+│   ├── readers_import.go         # trpc document reader 注册
+│   ├── ingest.go                 # 分块+向量化流水线（IngestParams.ApplyDefaults）
+│   ├── retriever.go              # 检索器（embed + search + optional rerank + TaskTypeEmbedder）
 │   ├── reranker_factory.go       # env → trpc reranker（topk/cohere/infinity）
 │   ├── query_rewriter.go         # 查询重写（HyDE/Decomposition/MultiQuery）
 │   ├── hybrid_retriever.go       # 混合检索（Dense+Sparse+RRF 融合）
@@ -232,8 +237,12 @@ service KnowledgeService {
 
 ### 3.1 领域模型
 
+> 领域模型定义在 `internal/biz/knowledge/knowledge.go`，`internal/biz/knowledge.go` 通过类型别名转发。
+
 ```go
-type KnowledgeCollection struct {
+// internal/biz/knowledge/knowledge.go
+
+type Collection struct {
     ID             string
     Name           string
     Description    string
@@ -247,7 +256,7 @@ type KnowledgeCollection struct {
     UpdatedAt      string
 }
 
-type KnowledgeDocument struct {
+type Document struct {
     ID           string
     CollectionID string
     Source       string
@@ -260,7 +269,7 @@ type KnowledgeDocument struct {
     UpdatedAt    string
 }
 
-type KnowledgeChunk struct {
+type Chunk struct {
     ID           string
     DocID        string
     CollectionID string
@@ -271,7 +280,7 @@ type KnowledgeChunk struct {
     Score        float32     // 仅搜索结果
 }
 
-type KnowledgeSearchQuery struct {
+type SearchQuery struct {
     CollectionID     string
     Query            string
     TopK             int
@@ -286,46 +295,62 @@ type KnowledgeSearchQuery struct {
 
 ### 3.2 Repo 接口
 
+> 接口定义在 `internal/biz/knowledge/knowledge.go`，`internal/biz/knowledge.go` 通过类型别名转发（`type KnowledgeRepo = knowledge.Repo`）。
+
 ```go
-type KnowledgeRepo interface {
-    CreateCollection(ctx context.Context, c KnowledgeCollection) (KnowledgeCollection, error)
-    GetCollection(ctx context.Context, id string) (KnowledgeCollection, error)
-    ListCollections(ctx context.Context, workspace string, limit, offset int) ([]KnowledgeCollection, int, error)
+// 子接口拆分
+type CollectionRepo interface {
+    CreateCollection(ctx context.Context, c Collection) (Collection, error)
+    GetCollection(ctx context.Context, id string) (Collection, error)
+    ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
     DeleteCollection(ctx context.Context, id string) error
     UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
+}
 
-    CreateDocument(ctx context.Context, d KnowledgeDocument) (KnowledgeDocument, error)
-    GetDocument(ctx context.Context, id string) (KnowledgeDocument, error)
+type DocumentRepo interface {
+    CreateDocument(ctx context.Context, d Document) (Document, error)
+    GetDocument(ctx context.Context, id string) (Document, error)
     UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
-    ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]KnowledgeDocument, int, error)
+    ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
     DeleteDocument(ctx context.Context, id string) error
+}
 
-    InsertChunks(ctx context.Context, chunks []KnowledgeChunk) error
+type ChunkRepo interface {
+    InsertChunks(ctx context.Context, chunks []Chunk) error
     DeleteChunksByDocument(ctx context.Context, docID string) error
-    SearchChunks(ctx context.Context, q KnowledgeSearchQuery, queryEmbedding []float32) ([]KnowledgeChunk, error)
+    SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
+}
+
+// 组合接口（向后兼容）
+type Repo interface {
+    CollectionRepo
+    DocumentRepo
+    ChunkRepo
 }
 ```
 
 ### 3.3 Usecase
 
 ```go
-type KnowledgeUsecase struct {
-    repo KnowledgeRepo
+type Usecase struct {
+    collections CollectionRepo
+    documents   DocumentRepo
+    chunks      ChunkRepo
 }
 
-func (uc *KnowledgeUsecase) CreateCollection(ctx context.Context, in KnowledgeCollection) (KnowledgeCollection, error)
-func (uc *KnowledgeUsecase) GetCollection(ctx context.Context, id string) (KnowledgeCollection, error)
-func (uc *KnowledgeUsecase) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]KnowledgeCollection, int, error)
-func (uc *KnowledgeUsecase) DeleteCollection(ctx context.Context, id string) error
-func (uc *KnowledgeUsecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
+func (uc *Usecase) CreateCollection(ctx context.Context, in Collection) (Collection, error)
+func (uc *Usecase) GetCollection(ctx context.Context, id string) (Collection, error)
+func (uc *Usecase) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
+func (uc *Usecase) DeleteCollection(ctx context.Context, id string) error
+func (uc *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
 
-func (uc *KnowledgeUsecase) CreateDocument(ctx context.Context, d KnowledgeDocument) (KnowledgeDocument, error)
-func (uc *KnowledgeUsecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]KnowledgeDocument, int, error)
-func (uc *KnowledgeUsecase) DeleteDocument(ctx context.Context, id string) error
-func (uc *KnowledgeUsecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
+func (uc *Usecase) CreateDocument(ctx context.Context, d Document) (Document, error)
+func (uc *Usecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
+func (uc *Usecase) DeleteDocument(ctx context.Context, id string) error
+func (uc *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
 
-func (uc *KnowledgeUsecase) InsertChunks(ctx context.Context, chunks []KnowledgeChunk) error
-func (uc *KnowledgeUsecase) Search(ctx context.Context, q KnowledgeSearchQuery, queryEmbedding []float32) ([]KnowledgeChunk, error)
+func (uc *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error
+func (uc *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
 ```
 
 ---
@@ -392,7 +417,15 @@ CREATE INDEX IF NOT EXISTS knowledge_chunks_collection_idx
 
 ### 4.3 Repo 实现
 
-`knowledgeRepo` 使用 `*sql.DB` 直接操作 PostgreSQL：
+`knowledgeRepo` 使用 `*sql.DB` 直接操作 PostgreSQL，同时实现 `biz.KnowledgeRepo`、`biz.KnowledgeSparseSearcher`、`bizknowledge.Repo` 三个接口：
+
+```go
+var (
+    _ biz.KnowledgeRepo           = (*knowledgeRepo)(nil)
+    _ biz.KnowledgeSparseSearcher = (*knowledgeRepo)(nil)
+    _ bizknowledge.Repo           = (*knowledgeRepo)(nil)
+)
+```
 
 | 方法 | SQL 要点 |
 |------|----------|
@@ -403,8 +436,10 @@ CREATE INDEX IF NOT EXISTS knowledge_chunks_collection_idx
 | `UpdateCollectionCounts` | `UPDATE ... SET document_count = document_count + $2, chunk_count = chunk_count + $3` |
 | `CreateDocument` | `INSERT INTO knowledge_documents ... RETURNING ...` |
 | `UpdateDocumentStatus` | `UPDATE ... SET status, error_message, chunk_count, updated_at` |
-| `InsertChunks` | 事务批量 `INSERT INTO knowledge_chunks`，使用 `pgvector.NewVector` |
+| `InsertChunks` | 事务批量 `INSERT INTO knowledge_chunks`，使用 `pgvector.NewVector`，含维度校验 |
 | `SearchChunks` | `ORDER BY embedding <=> $1::vector LIMIT $3`，支持 `min_score` 和 `filter_json` |
+| `SearchChunksBM25` | 双路 BM25：tsvector 全文检索 + pg_trgm 模糊搜索，合并去重 |
+| `DeleteDocument` | 事务删除 + 计数器修正 |
 
 ### 4.4 搜索过滤
 
@@ -509,10 +544,16 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 ### 5.4 Retriever（internal/knowledge/retriever.go）
 
 ```go
+type TaskTypeEmbedder interface {
+    QueryEmbedder
+    EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error)
+}
+
 type Retriever struct {
     embedder QueryEmbedder
     repo     biz.KnowledgeRepo
     reranker reranker.Reranker  // 可选，来自 NewRerankerFromEnv
+    lg       loggateway.Logger
 }
 
 func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker) *Retriever
@@ -521,6 +562,7 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 
 **设计决策**：
 - Retriever 封装「嵌入查询 → 向量搜索 → 可选 Rerank」三步。
+- `embedQuery` 私有方法：优先使用 `TaskTypeEmbedder`（Gemini 用 `RETRIEVAL_QUERY` task type），否则走标准 `Embed`。
 - Rerank 失败时 FlowLog 警告并回退向量排序（`knowledge.rerank.fallback`）。
 - 通过 `knowledgetool.WithRetriever(ctx, retriever)` 注入到工具上下文。
 
@@ -689,6 +731,7 @@ type FederatedRetriever struct {
     router    *AdaptiveRouter
     retriever *Retriever
     meta      CollectionMetaFetcher
+    lg        loggateway.Logger
 }
 
 func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever) *FederatedRetriever
@@ -706,7 +749,7 @@ func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionID
 - 单 Collection 时自动降级为 AdaptiveRouter 或 Retriever 直接搜索。
 - 多 Collection 并行：使用 `safego.Go` + `sync.WaitGroup`，部分集合失败时 FlowLog 警告，返回成功集合的结果。
 
-### 5.5 Ingest 流水线（internal/knowledge/ingest.go）
+### 5.11 Ingest 流水线（internal/knowledge/ingest.go）
 
 ```go
 func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestParams) ([]biz.KnowledgeChunk, error)
@@ -715,8 +758,10 @@ func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestPar
 **设计决策**：
 - Service：`ExtractDocumentText` → 异步 `BuildIndexedChunks` → Event Bus。
 - `IngestParams.Strategy` 驱动 `SplitWithStrategy`；`BatchEmbedder.EmbedBatch` 批量向量化。
+- `IngestParams.ApplyDefaults()` 下移默认值逻辑（ChunkSize=512, ChunkOverlap=64），Service 层不再硬编码。
+- `BuildIndexedChunks` 使用 `QueryEmbedder` 接口（而非 `Embedder` 具体类型），支持 `BatchEmbedder` 优化路径。
 
-### 5.6 Reranker 工厂（internal/knowledge/reranker_factory.go）
+### 5.12 Reranker 工厂（internal/knowledge/reranker_factory.go）
 
 环境变量 `KRATOS_KNOWLEDGE_RERANKER`：`off` | `topk` | `cohere` | `infinity`。
 Wire 经 `NewKnowledgeRetriever` 装配；配置错误时 SysLog 警告并禁用 rerank。
@@ -733,6 +778,8 @@ type searchInput struct {
     Query        string  `json:"query"`
     TopK         int     `json:"top_k,omitempty"`
     MinScore     float32 `json:"min_score,omitempty"`
+    FilterJSON   string  `json:"filter_json,omitempty"`
+    UseRerank    *bool   `json:"use_rerank,omitempty"`
 }
 
 type searchOutput struct {
@@ -833,16 +880,20 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase) string
 ### 7.1 KnowledgeService（internal/service/knowledge.go）
 
 ```go
+type KnowledgeSearchDeps struct {
+    Retriever *knowledge.Retriever
+    Router    *knowledge.AdaptiveRouter
+    Evaluator *knowledge.RetrievalEvaluator
+}
+
 type KnowledgeService struct {
     v1.UnimplementedKnowledgeServiceServer
     uc            *biz.KnowledgeUsecase
-    chunker       *knowledge.Chunker
     embedder      *knowledge.Embedder
-    retriever     *knowledge.Retriever
-    router        *knowledge.AdaptiveRouter
-    evaluator     *knowledge.RetrievalEvaluator
+    search        KnowledgeSearchDeps
     bus           event.Bus
     systemSetting biz.SystemSettingRepo
+    lg            loggateway.Logger
 }
 ```
 
@@ -895,12 +946,13 @@ IngestDocument(req)
 // internal/service/wire_providers.go — Chunker 默认 512/64 char
 // internal/service/knowledge_embedder.go — NewKnowledgeEmbedder(c *conf.Data)
 // internal/service/knowledge_retriever.go — NewKnowledgeRetriever(emb, repo)
-// internal/service/knowledge_advanced.go — Advanced RAG 组件工厂
+// internal/service/knowledge_advanced.go — Advanced RAG 组件工厂（6 个 Provider）
 //   - NewKnowledgeHybridRetriever(retriever, sparse)
 //   - NewKnowledgeQueryRewriter(llm, sys, catalog)
 //   - NewKnowledgeAdaptiveRouter(hybrid, rewriter)
 //   - NewKnowledgeRetrievalEvaluator(llm, sys, catalog)
-//   - NewKnowledgeFederatedRetriever(router, retriever)
+//   - NewKnowledgeFederatedRetriever(router, retriever, uc)
+//   - ProvideKnowledgeSearchDeps(retriever, router, evaluator) → KnowledgeSearchDeps
 ```
 
 **Wire 依赖链**：
@@ -982,8 +1034,12 @@ type Reranker interface {
 
 ### 9.6 OCR / Extractor
 
-- OCR：集成 `knowledge/ocr/tesseract`，图片/PDF → 文本。
-- Extractor：集成 `knowledge/extractor/docling`，PDF/图片 → Markdown。
+- OCR：`internal/knowledge/ocr.go` 已实现 `OCRProvider` 接口和工厂函数 `NewOCRProviderFromEnv()`。
+  - 环境变量 `KNOWLEDGE_OCR`：`stub` / `placeholder` / `tesseract` / `docling`。
+  - 当前所有值均回落到 `stubOCR`（返回占位文本），tesseract/docling 后端待接入。
+  - `noopOCR`（默认）：静默返回空字符串。
+  - `ExtractDocumentTextWithOCR` 支持注入自定义 OCR provider。
+- Extractor：集成 `knowledge/extractor/docling`，PDF/图片 → Markdown（未实现）。
 
 ### 9.7 多租户隔离
 
@@ -1021,10 +1077,11 @@ Route 策略实现：
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `api/kratos/knowledge/v1/knowledge.proto` | ✅ 已实现 | Proto 定义（含 `rewrite_strategy` + `hybrid_search` 字段） |
-| `internal/biz/knowledge.go` | ✅ 已实现 | Knowledge Usecase + Repo 接口 + `SparseSearcher` |
+| `internal/biz/knowledge.go` | ✅ 已实现 | 类型别名转发（KnowledgeRepo = knowledge.Repo 等） |
+| `internal/biz/knowledge/knowledge.go` | ✅ 已实现 | 领域模型 + Repo/Usecase 接口（子接口拆分） |
 | `internal/data/knowledge.go` | ✅ 已实现 | PostgreSQL + pgvector Repo + `SearchChunksBM25` |
 | `internal/service/knowledge.go` | ✅ 已实现 | Knowledge Service（含 AdaptiveRouter + RetrievalEvaluator 集成） |
-| `internal/service/knowledge_advanced.go` | ✅ 已实现 | Advanced RAG 组件 Wire 工厂（5 个 Provider） |
+| `internal/service/knowledge_advanced.go` | ✅ 已实现 | Advanced RAG 组件 Wire 工厂（6 个 Provider） |
 | `internal/knowledge/chunker.go` | ✅ 已实现 | 文本分块 |
 | `internal/knowledge/embedder.go` | ✅ 已实现 | 向量化 |
 | `internal/knowledge/ingest.go` | ✅ 已实现 | 分块+向量化流水线 |
@@ -1037,6 +1094,9 @@ Route 策略实现：
 | `internal/knowledge/federated_retriever.go` | ✅ 已实现 | 跨 Collection 联邦搜索（Broadcast + Route 策略） |
 | `internal/knowledge/search_helpers.go` | ✅ 已实现 | 检索评估辅助 |
 | `internal/knowledge/llm_resolver.go` | ✅ 已实现 | LLM 模型解析 |
+| `internal/knowledge/ocr.go` | ✅ 已实现 | OCR 提供者接口（stub） |
+| `internal/knowledge/html_text.go` | ✅ 已实现 | HTML 文本剥离 |
+| `internal/knowledge/readers_import.go` | ✅ 已实现 | trpc document reader 注册 |
 | `internal/agent/knowledge_inject.go` | ✅ 已实现 | Plan-Then-Retrieve BeforeModel 钩子 |
 | `internal/service/knowledge_embedder.go` | ✅ 已实现 | Embedder Wire + DB 回落（EP-KN-01） |
 | `internal/biz/knowledge_embed_setting.go` | ✅ 已实现 | Embedder patch 合并 |

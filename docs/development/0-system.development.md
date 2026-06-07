@@ -426,7 +426,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | # | 计划编号 | 主题 | 主文档 | 开发计划 | 体量 |
 |---|---------|------|--------|----------|------|
 | 1 | **M56 BLO** | Channel × Chat × Agent/Team 业务模型 5 主题 | [`56 business-logic-optimization.md`](./56%20business-logic-optimization.md) | [`56-business-logic-optimization-development.md`](./56-business-logic-optimization-development.md) | 5 主题 / ~40 任务 / 12 周 |
-| 2 | **M57 TPM** | Tools / Plugin / Skill / MCP 子系统代码债 | [Review](../review/2026-05-26-Tools-Plugin-Skill-MCP-Code-Review.md) | [`57-tools-plugin-skill-mcp-optimization-development.md`](./57-tools-plugin-skill-mcp-optimization-development.md) | 12 P1 + 30 P2 + 13 P3 + 14 D / 4 Wave |
+| 2 | **M57 TPM** | Tools / Plugin / Skill / MCP 子系统代码债 | — | [`38-tools-plugin-skill-mcp-optimization.development.md`](./38-tools-plugin-skill-mcp-optimization.development.md) | 12 P1 + 30 P2 + 13 P3 + 14 D / 4 Wave |
 | 3 | **MEM-OPT** | Memory 业务逻辑（一致性 / 衰减 / 队列 / PII / 提取 / Cascade） | [`memory-optimization-2026-05-26.md`](./memory/memory-optimization-2026-05-26.md) | 内嵌 §8 排期 | 6 主题 / 5 Sprint / 11 周 |
 | 4 | **MON-OPT** | Monitor 业务逻辑（Bus 分离 / 冷却 / 评估 / 反压 / Trace / DSL） | [`18 monitor-optimization-2026-05-26.md`](./18%20monitor-optimization-2026-05-26.md) | 内嵌 §8 排期 | 6 主题 / 6 Sprint / 13 周 |
 | 5 | **TG-Q** | Team Graph 代码债（review 直接 backlog） | [Review §6](../review/2026-05-26-Team-Graph-Code-Review.md#6-问题清单按优先级) | 无独立 dev plan | 5 P1 + 6 P2 + 3 P3 / ~3 周 |
@@ -804,7 +804,7 @@ Lane E（Team）    : TG-Q-01/02/05（P1 速胜）→ 04/03 → 07/08/09
 
 - M56 BLO 主文档：[`56 business-logic-optimization.md`](./56%20business-logic-optimization.md)
 - M56 BLO 开发计划：[`56-business-logic-optimization-development.md`](./56-business-logic-optimization-development.md)
-- M57 TPM 开发计划：[`57-tools-plugin-skill-mcp-optimization-development.md`](./57-tools-plugin-skill-mcp-optimization-development.md)
+- M57 TPM 开发计划：[`38-tools-plugin-skill-mcp-optimization.development.md`](./38-tools-plugin-skill-mcp-optimization.development.md)
 - Memory OPT：[`memory/memory-optimization-2026-05-26.md`](./memory/memory-optimization-2026-05-26.md)
 - Monitor OPT：[`18 monitor-optimization-2026-05-26.md`](./18%20monitor-optimization-2026-05-26.md)
 - Team Graph Review backlog：[`../review/2026-05-26-Team-Graph-Code-Review.md`](../review/2026-05-26-Team-Graph-Code-Review.md)

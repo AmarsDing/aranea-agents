@@ -1,6 +1,6 @@
 # Session — 开发计划
 
-> **版本**：2026-05-24 | **状态**：🟢 Phase 1–2 核心已落地 · Phase 3+ 待办见 §8
+> **版本**：2026-06-06 | **状态**：🟢 Phase 1–2 核心已落地 · Phase 3+ 待办见 §8
 > **需求**：[10 session.md](./10%20session.md) · **设计**：[10 session.design.md](./10%20session.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **规范**：[docs/README.md](../README.md)
 
@@ -18,8 +18,11 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `internal/service/session.go` | SessionService：CRUD、Timeline、消息、Turn |
 | `internal/service/session_observability.go` | Export / ListSessionRuns / ListSessionParticipants |
 | `internal/service/session_batch.go` | BatchPreview / BatchArchive / BatchDelete + Audit |
-| `internal/biz/session/` | 领域用例：CRUD、Timeline、Export、Participants、Pin、Turn |
-| `internal/biz/session_state.go` | State KV / ApplyStateDelta |
+| `internal/biz/session/` | 领域用例：CRUD、Timeline、Export、Participants、Pin、Turn、Compression、Metrics、State、Status |
+| `internal/biz/session/compression.go` | SessionCompressionUsecase（窄接口：CompressRepo/ContextUpdater/SummaryReader/SummaryWriter） |
+| `internal/biz/native_turn_compressor.go` | NativeTurnCompressor 接口（AfterNativeTurn） |
+| `internal/session/compressor.go` | 压缩触发器（调用 biz SessionCompressionUsecase） |
+| `internal/biz/session/state.go` | State KV / ApplyStateDelta |
 | `internal/data/session_repo.go` | 主表（~705 行） |
 | `internal/data/session_message_repo.go` | 消息子接口实现（~340 行） |
 | `internal/data/session_state_repo.go` | State KV 实现（~45 行） |
@@ -27,11 +30,11 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `internal/data/session_participant_*.go` | participants 表 + 读时聚合 |
 | `internal/data/session_run_*.go` | M55 `session_runs` 生命周期 |
 | `internal/session/` | trpc Runtime、Compressor、KV sync |
-| `web/src/features/session/` | API、`useSessionsPage`、详情页 Tab |
+| `web/src/features/session/` | API、composables（`useSessionsPage`/`useSessionDetailPage`/`useSessionTimelinePanel` 等）、详情页 Tab |
 
 ---
 
-## 2. 现状评估（2026-05-24）
+## 2. 现状评估（2026-06-06）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
@@ -50,7 +53,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | session_run_steps | ❌ | F5 未建表 |
 | session_trace_spans / snapshots | ❌ | F7–F8 未建表 |
 | trpc session 多后端 | 🟡 | SQLite 共用池；in-memory 回退有日志 |
-| 前端 Timeline 对话框（Chat） | 🟡 | 详情页已服务端分页；`SessionTimelineDialog` 仍全量拉取 |
+| 前端 Timeline 对话框（Chat） | ✅ | `SessionTimelineDialog` 已实现服务端分页（`useSessionTimelinePanel`） |
 
 ---
 
@@ -128,6 +131,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 - [x] Timeline UNION 分页 / 全量无 2000 cap
 - [x] Export Markdown/JSON
 - [x] Runs 列表（M55 表）
+- [x] Timeline 弹窗服务端分页（`useSessionTimelinePanel`，PAGE_SIZE=100）
 
 ### Phase 2 剩余
 
@@ -190,10 +194,10 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 
 | 变更 | 文件 | 说明 |
 |------|------|------|
-| CompressorDeps | compressor.go | 7 子接口窄聚合替代 SessionRepo（54 方法） |
+| CompressorDeps | internal/session/compressor.go | 7 子接口窄聚合替代 SessionRepo（54 方法） |
 | RawDB() 访问器 | session_repo.go | rawDB → RawDB()，与项目 40+ 处用法一致 |
 | kerrors 替换 | channel_peer_session.go | fmt.Errorf → kerrors.BadRequest |
-| resolveAgentAuthor | compressor.go | 提取重复的 author 解析逻辑 |
+| resolveAgentAuthor | internal/session/compressor.go | 提取重复的 author 解析逻辑 |
 | formatSessionDate | sessionUi.ts + 4 组件 | 统一日期格式化函数 |
 
 ### O9 SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复（2026-05-29）
@@ -222,7 +226,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | F6-c | Team Handoff Badge | 设计 §7.5；消息 options 展示 handoff | 待办 |
 | F5 | session_run_steps | 表 + model/tool/skill/mcp step 写入 + List RPC | 待办 |
 | F4-schema | M55 runs vs 编排 runs | 扩展字段或独立表；与 Chat/Team 写入对齐 | 待办 |
-| FE-TL-01 | Chat `SessionTimelineDialog` 服务端分页 | 对齐 `useSessionTimelinePanel` | 待办 · Review **SESS-R-P1-03** |
+| FE-TL-01 | Chat `SessionTimelineDialog` 服务端分页 | 对齐 `useSessionTimelinePanel` | ✅ |
 | FE-EXP-01 | 聊天侧栏导出入口 | 可选：Session 菜单 Export | 待办 |
 
 ### 8.2 P3 — 代码质量
@@ -284,7 +288,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 |------|-----|
 | 性能 | P1 消息分页、P3 批量 IDs、O1 kerrors、O2 UNION、O3 inv limit、O5 防抖 |
 | 功能 | F1 置顶、F2 导出、F3 FTS、F4 Runs 列表（M55） |
-| 前端 | 置顶（聊天+管理页）、导出（详情+列表卡片）、Runs/Participants/Timeline 详情 Tab |
+| 前端 | 置顶（聊天+管理页）、导出（详情+列表卡片）、Runs/Participants/Timeline 详情 Tab、Timeline 弹窗服务端分页 |
 | 基础设施 | Phase 1b 批量、SQLite 父目录自动创建、trpc `DefaultAppName`、KV state delta sync |
 
 ---
@@ -300,4 +304,4 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | [2026-05-24-Session-Phase2-Review.md](../review/2026-05-24-Session-Phase2-Review.md) | **代码 Review**（83/100）；P1 风险 SESS-R-P1-01~03 映射 §8 任务 ID |
 | [10-session-review.md](../review/10-session-review.md) | 模块 Review 基线 + Phase 2 增量索引 |
 
-**最后同步**：2026-05-29
+**最后同步**：2026-06-06

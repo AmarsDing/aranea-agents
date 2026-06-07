@@ -1,6 +1,6 @@
 # Memory L0–L4 文档索引
 
-> **模块编号**：12–16 · **最后整合**：2026-05-28
+> **模块编号**：12–16 · **最后整合**：2026-06-06
 > **进度真相**：以 [`memory-development.md`](./memory-development.md) 与各层 `*-development.md` 为准；需求/设计正文不写修复记录。
 
 ---
@@ -35,7 +35,7 @@
 | 设计 | [`memory.design.md`](./memory.design.md) | 目标架构、存储拓扑、双轨、Policy、MemoryWorker、Proto 索引 |
 | 开发计划 | [`memory-development.md`](./memory-development.md) | 模块定位、分层包表、全局现状、Phase、跨层任务 |
 | 优化方案 | [`memory-optimization-2026-05-26.md`](./memory-optimization-2026-05-26.md) | 6 项业务逻辑优化（L3 双轨、L4 衰减、队列隔离、PII、提取协议、Cascade Saga） |
-| **实施进度** | [`实施进度.md`](./实施进度.md) | **各层实施进度总览**：代码位置、完成状态、待办事项（2026-06-02 更新） |
+| **实施进度** | [`实施进度.md`](./实施进度.md) | **各层实施进度总览**：代码位置、完成状态、待办事项（2026-06-06 更新） |
 | 理论 | [`theory.md`](./theory.md) | 知识体系思辨（原 `38 memory.md`） |
 
 ### 分层
@@ -43,6 +43,7 @@
 | 层 | 用户名称 | 需求 | 设计 | 开发计划 |
 |----|----------|------|------|----------|
 | L0 | 上下文窗口 | [`L0.md`](./L0.md) | [`L0.design.md`](./L0.design.md) | [`L0-development.md`](./L0-development.md) |
+| L0 压缩优化 | 上下文压缩 | [`L0-compression.md`](./L0-compression.md) | [`L0-compression.design.md`](./L0-compression.design.md) | [`L0-compression-development.md`](./L0-compression-development.md) |
 | L1 | 工作记忆 | [`L1.md`](./L1.md) | [`L1.design.md`](./L1.design.md) | [`L1-development.md`](./L1-development.md) |
 | L2 | 会话事件 | [`L2.md`](./L2.md) | [`L2.design.md`](./L2.design.md) | [`L2-development.md`](./L2-development.md) |
 | L3 | 知识记忆 | [`L3.md`](./L3.md) | [`L3.design.md`](./L3.design.md) | [`L3-development.md`](./L3-development.md) |

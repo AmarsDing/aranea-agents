@@ -16,7 +16,7 @@
 | AI 炼化 | 是，上传后按冲突组启用 | 不提供单独炼化入口；仅当上传检查产生相似冲突组时，在组内显示炼化按钮 |
 | 编辑 Skill | 是 | 编辑元数据与正文，支持保存草稿和发布 |
 | 运行记录 | 是 | 按 Skill、Agent、结果、时间范围筛选，服务端分页 |
-| 版本历史 / 回滚 | 后续迭代 | 本期只展示当前版本号 |
+| 版本历史 / 回滚 | 是 | 版本历史列表与回滚；不可变策略（新建版本 + patch 递增） |
 | 自动负熵报告 | 后续迭代 | 本期只展示已有聚合指标 |
 
 ### 0.2 默认产品决策
@@ -866,8 +866,11 @@ AI 炼化用于将一个冲突组中的相似 Skill 合并成一份新草稿。*
 | Agent 策略 | `agent_runtime_settings.skill_runtime_json`：allow/deny slug、标签、意图收窄、数量上限 |
 | 按回合收窄 | 用户本轮输入经 RuntimeState 传入，驱动 Layer B 意图/标签路由 |
 | Team | 各成员 Agent **独立**构建，各自使用成员 Agent 的 `skill_runtime_json` |
-| 待实现 | Prompt 注入方式 C、embedding 精排、Preview 选中原因（P4） |
+| Prompt 注入方式 C | ✅ 已实现：BeforeModelHook + `BatchGetSkillGuidance` 批量获取 + 截断 + 空 guidance 防护 |
+| Embedding 语义精排 | ✅ 已实现：`SkillEmbedder` + `ScoreByEmbedding` + 评分融合 + 优雅降级 |
+| Preview 选中原因 | ✅ 已实现：`ResolveSkillSlugsDetailed` 返回 `Reasons map[string]string` + `agent_id` 关联 |
+| 待实现 | Budget 中间件（token 上限裁剪）、Skill 依赖/冲突表 |
 
 ---
 
-*文档版本：3.4 — API 前缀与编辑入口对齐代码；运行时章节收敛为产品结论（2026-05-21）。*
+*文档版本：3.5 — 版本历史/回滚纳入本期范围；运行时行为对齐代码现状（2026-06-06）。*

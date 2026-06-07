@@ -33,7 +33,7 @@
 | RalphLoop（Aranea 配置） | ✅ | `agent_runtime_settings` + `RalphLoopConfigFromSettings` |
 | 外部 Session 摄入（Mem0 等） | 🟡 | ingest hook 已接；Mem0 等外部 backend 待扩展 |
 | 独立 `CancelRun` RPC | — | 非目标；沿用 `StopGeneration` + WS `cancel` |
-| Web 运行状态 / 追加消息 UI | ✅ | `ChatRunnerStatus.vue`、`ChatEnqueueMessage.vue` |
+| Web 运行状态 / 追加消息 UI | 🟡 | API/类型层已就绪；`ChatRunnerStatus.vue`、`ChatEnqueueMessage.vue` 组件未创建 |
 
 ---
 
@@ -176,7 +176,7 @@
 3. Agent 可通过 ArtifactService 管理制品
 4. Session 完成后自动摄入到外部记忆平台
 5. Agent 可指定下一轮用户消息路由
-6. 可通过 API 查询运行状态、取消运行、追加消息
+6. 可通过 API 查询运行状态、取消运行（`StopGeneration`）、追加消息（`EnqueueUserMessage`）
 7. TransferTool 可通过名称查找目标 Agent
 8. Agent 可在验证循环中反复执行直到满足完成条件
 9. 多个 Runner 实例可并行运行

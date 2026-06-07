@@ -1,6 +1,6 @@
 # M59: Chat 管家模式 — 精灵入口与任务团队面板
 
-> **版本**：2026-06-01
+> **版本**：2026-06-06 | **状态**：✅ P0 已完成 · 🔄 P0.5 三阶段编排已完成 · P1 进行中
 > **读者**：产品、全栈开发、运维
 > **关联**：[system-builtin-agents-design](../superpowers/specs/2026-05-31-system-builtin-agents-design.md) · [memory-skills-butler-design](../superpowers/specs/2026-05-31-memory-skills-butler-design.md) · [1-chat.md](./1-chat.md) · [11-multi-agent.md](./11-multi-agent.md) · [53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · [1-chat-execution-trace.md](./1-chat-execution-trace.md)
 > **技术设计**：[59-chat-spirit-mode.design.md](./59-chat-spirit-mode.design.md)
@@ -50,7 +50,7 @@
 **验收**：
 
 - 简单对话（闲聊、知识问答、简单查询）：精灵直接回复，不组建团队
-- 任务型对话（开发、分析、创作等复杂任务）：精灵调用 `assemble_team` 工具组建团队
+- 任务型对话（开发、分析、创作等复杂任务）：精灵调用 `plan_and_execute` 工具，经三阶段编排（Plan → Allocate → Orchestrate）组建团队执行
 - 精灵在组建团队时，向用户展示任务分析结果（任务类型、所需角色、预估步骤）
 - 组建过程对用户可见：精灵回复中包含"正在组建团队…"的执行卡片
 - 用户可在精灵对话中下达多个任务指令，每个任务独立组建团队
@@ -66,13 +66,15 @@
 - 每个任务团队在精灵下方显示为一个卡片条目，包含：
   - **团队名称**：精灵根据任务自动生成（如"后端 API 开发团队"）
   - **任务摘要**：一句话描述团队正在执行的任务
-  - **运行状态**：`running` / `completed` / `failed` / `waiting_human`，使用 `SessionStatusBadge` 组件
+  - **运行状态**：`pending` / `running` / `completed` / `failed` / `cancelled` / `interrupted` / `archived`，使用 `SessionStatusBadge` 组件
   - **成员头像组**：最多显示 4 个成员头像，超出显示 +N
-  - **编排模式标签**：sequential / parallel / coordinator / swarm 等
+  - **编排模式标签**：sequential / parallel / hybrid / coordinator（`OrchestrationModeBadge` 组件）
   - **进度指示**：已完成步骤 / 总步骤（如 2/5）
-- 团队按**活跃度排序**：running → waiting_human → completed → failed
+  - **DAG 依赖提示**：等待前置任务时显示依赖数量
+- 团队按**活跃度排序**：running → pending → interrupted → completed → failed → cancelled
 - 同状态的团队按创建时间倒序
 - 已完成的团队默认折叠到"已完成"分组，可展开查看
+- 并行团队概览区显示进行中/已完成团队计数和并行配额进度条
 
 ### US-04 点击团队查看任务执行面板
 
@@ -90,45 +92,38 @@
 | [← 返回精灵]  团队名称    状态 Badge    编排模式标签      |
 +----------------------------------------------------------+
 |                                                          |
-|  ┌─ 任务概览 ────────────────────────────────────────┐   |
-|  │ 任务描述：开发用户注册 API                          │   |
-|  │ 编排模式：sequential                               │   |
-|  │ 开始时间：2026-06-01 10:30                         │   |
-|  │ 已用 Token：12,340                                 │   |
+|  ┌─ 并行团队概览 ────────────────────────────────────┐   |
+|  │ 进行中：2  已完成：1  并行配额：2/3               │   |
+|  │ ┌─ DAG 依赖图 ──────────────────────────────┐     │   |
+|  │ │ ▶ 任务A → ⏳ 任务B(依赖A) → ⏳ 任务C(依赖B)│     │   |
+|  │ └────────────────────────────────────────────┘     │   |
 |  └───────────────────────────────────────────────────┘   |
 |                                                          |
-|  ┌─ 执行时间线 ──────────────────────────────────────┐   |
-|  │                                                    │   |
-|  │  ● Golang 工程师    ✓ 已完成    1.2s              │   |
-|  │    └ read_file · main.go                           │   |
-|  │    └ write_file · handler.go                       │   |
-|  │                                                    │   |
-|  │  ● 代码审查员      ⏳ 执行中                       │   |
-|  │    └ review_code · handler.go                      │   |
-|  │                                                    │   |
-|  │  ○ 测试工程师      ○ 等待中                        │   |
-|  │                                                    │   |
+|  ┌─ 团队进度卡片 ────────────────────────────────────┐   |
+|  │ 后端 API 开发团队    ⚡ running    2/5 步骤        │   |
+|  │ ████████░░░░░░░░░░░░ 40%    耗时 1m 20s           │   |
+|  │ 👤 Golang 工程师 · 代码审查员 · 测试工程师 +1     │   |
 |  └───────────────────────────────────────────────────┘   |
 |                                                          |
-|  ┌─ 对话输出流 ──────────────────────────────────────┐   |
-|  │ [Golang 工程师] 我来开发用户注册 API...            │   |
-|  │   → 执行 read_file(main.go)                        │   |
-|  │   → 执行 write_file(handler.go)                    │   |
-|  │ [代码审查员] 正在审查代码...                        │   |
-|  │   → 执行 review_code(handler.go)                   │   |
+|  ┌─ 综合结果 ────────────────────────────────────────┐   |
+|  │ 📋 混合合成    耗时 3m 20s                         │   |
+|  │ 各团队结果摘要...                                  │   |
 |  └───────────────────────────────────────────────────┘   |
 |                                                          |
 +----------------------------------------------------------+
 ```
 
-- **任务概览区**：固定在顶部，展示任务元信息
-- **执行时间线**：对齐 Trae 执行卡片设计（ChatExecutionCard），每个成员为一个时间线条目
-  - 折叠态：成员名称 + 状态图标 + 耗时
-  - 展开态：该成员的工具调用卡片列表（ChatExecutionCard 嵌套）
-- **对话输出流**：该团队 Session 的消息流，按堆栈模型分组（`groupMessagesByTurn`）
-  - 每条消息标注发送成员的名称和角色
-  - 工具调用卡片嵌入消息流中（复用 ChatExecutionCard）
-- WS 实时推送：`member_message_start/delta/done`、`team_step_started/finished` 等事件实时更新面板
+- **并行团队概览区**（`ParallelTeamOverview`）：展示多团队并行状态、并行配额、DAG 依赖图
+  - DAG 依赖图（`DAGDiagramCard`）：简化文本视图展示任务依赖关系
+  - 所有团队完成后显示"所有团队已完成"提示
+- **团队进度卡片**（`TeamProgressCard`）：每个团队独立展示进度、状态、成员
+  - 状态图标：running(spinner) / completed(✓) / failed(✗) / cancelled(⊘) / pending(⏳)
+  - 进度条 + 执行时长
+  - 取消按钮（running/pending 状态可用）
+- **综合结果区**（`SynthesisResultCard`）：所有团队完成后展示合成结果
+  - 合成策略标签（模板合成 / Prompt 合成 / 混合合成）
+  - 各团队结果摘要和关键发现
+- WS 实时推送：`spirit_team_assembled` / `spirit_team_completed` / `spirit_team_failed` / `spirit_team_progress` / `spirit_teams_all_completed` / `spirit_synthesis_completed` 等事件实时更新面板
 
 ### US-05 展开团队查看成员树形列表
 
@@ -198,6 +193,8 @@
   - 仍可复用（Agent 可并行工作）
   - 在团队卡片中标注"共用 Agent"标识
   - 精灵回复中提示"该工程师同时参与其他团队"
+- **并行配额**：`ParallelConfig` 控制最大并行团队数（默认 3）和单团队最大并发数（默认 2）
+- **DAG 编排**：复杂任务可分解为多个子任务，形成 DAG 依赖图，按拓扑顺序执行
 
 ### US-08 团队生命周期管理
 
@@ -210,27 +207,27 @@
 - **团队状态流转**：
 
 ```
-assembling → running → completed
-                     → failed
-                     → waiting_human → running
-                                     → completed/failed/cancelled
+pending → running → completed
+                  → failed
+                  → interrupted → running（恢复）
+                  → cancelled
          → cancelled
 ```
 
 - **任务完成后**：
   - 团队状态自动变为 `completed`
   - 团队卡片从"进行中"区域移入"已完成"折叠分组
-  - 已完成团队默认折叠，7 天后自动归档（从列表中移除，Session 保留）
-  - 用户可手动归档已完成团队
+  - 已完成团队默认折叠，超过 `ParallelConfig.AutoArchiveSeconds`（默认 3600s）后自动归档（从列表中移除，Session 保留）
+  - 用户可手动归档已完成团队（P1 待实现前端 UI）
 - **团队不自动销毁**：
   - 团队定义（Team row）保留，标记 `status = completed`
   - 关联的 Session 保留，支持回溯查看
   - TeamRun / TeamRunStep 记录保留，支持执行审计
 - **失败团队**：
   - 显示错误信息和失败步骤
-  - 提供"重试"按钮（精灵重新组建团队或从失败点恢复）
-  - 提供"放弃"按钮（标记 cancelled，归档）
-- **精灵可主动汇报**：团队完成后，精灵在对话中主动通知用户任务结果
+  - 提供"取消"按钮（标记 cancelled）— ✅ 已实现
+  - 提供"重试"按钮（精灵重新组建团队或从失败点恢复）— P1 待实现
+- **精灵可主动汇报**：团队完成后，精灵在对话中主动通知用户任务结果（`spirit_team_completed` / `spirit_teams_all_completed` 事件）
 
 ### US-09 返回精灵对话
 
@@ -240,11 +237,11 @@ assembling → running → completed
 
 **验收**：
 
-- 任务执行面板和成员只读面板顶部均有"← 返回精灵"按钮
-- 点击后切换回精灵的聊天面板
-- 左侧列表点击精灵入口也切换回精灵对话
-- 切换不丢失当前团队的 WS 连接和实时状态
-- 面包屑导航：精灵 > 团队名称 > 成员名称
+- 任务执行面板和成员只读面板顶部均有"← 返回精灵"按钮 — ✅ 已实现
+- 点击后切换回精灵的聊天面板 — ✅ 已实现
+- 左侧列表点击精灵入口也切换回精灵对话 — ✅ 已实现
+- 切换不丢失当前团队的 WS 连接和实时状态 — ✅ 已实现
+- 面包屑导航：精灵 > 团队名称 > 成员名称 — P1 待实现
 
 ---
 
@@ -254,7 +251,7 @@ assembling → running → completed
 
 精灵对话面板保持标准 Chat 布局，增加以下特殊卡片：
 
-**团队组建卡片**（精灵调用 `assemble_team` 时显示）：
+**团队组建卡片**（精灵调用 `plan_and_execute` 时显示）：
 
 ```
 ┌─ 🏗️ 组建团队 ──────────────────────────────────┐
@@ -287,6 +284,17 @@ assembling → running → completed
 └──────────────────────────────────────────────────┘
 ```
 
+多团队全部完成后展示综合结果：
+
+```
+┌─ 📋 综合结果 ──────────────────────────────────┐
+│ 合成策略：混合合成                                 │
+│ 团队 1：后端 API 开发团队 ✓ 完成                  │
+│ 团队 2：前端页面开发团队 ✓ 完成                    │
+│ 综合摘要：...                                     │
+└──────────────────────────────────────────────────┘
+```
+
 ### 3.2 任务执行面板设计原则（对齐 Trae-solo）
 
 | 原则 | 说明 |
@@ -301,11 +309,12 @@ assembling → running → completed
 
 | 状态 | 图标 | 文案 | 动画 |
 |------|------|------|------|
+| pending | ⏳ 黄色 | "等待中" | 无 |
 | running | ⚡ / spinner | "执行中..." | 左边框呼吸动画 |
 | completed | ✓ 绿色 | 耗时 | 无 |
 | failed | ✗ 红色 | "失败" + 耗时 | 无 |
-| waiting | ○ 灰色 | "等待中" | 无 |
-| waiting_human | ⏸ 橙色 | "待确认" | 无 |
+| cancelled | ⊘ 灰色 | "已取消" | 无 |
+| interrupted | ⏸ 橙色 | "已中断" | 无 |
 
 ### 3.3 中间面板状态机
 
@@ -361,9 +370,9 @@ assembling → running → completed
 | Team (11) | 精灵自动创建 Team、TeamRun 状态追踪 |
 | Orchestration (53) | Agent 节点状态投影、执行时间线 |
 | Session (10) | Session 树状关联、ParentSessionID / RootSessionID |
-| Agent (2-8) | 精灵 Agent 种子数据、`assemble_team` 工具 |
+| Agent (2-8) | 精灵 Agent 种子数据、`plan_and_execute` 三阶段编排工具 |
 | Memory (L0-L4) | Team Session 记忆提取、Agent 复用时 L3/L4 共享 |
-| Builtin Agents (superpowers) | 精灵/编排管家定义、8 个专属工具 |
+| Builtin Agents (superpowers) | 精灵/编排管家定义、三阶段编排工具（plan_and_execute / check_progress / cancel_orchestration / synthesize_results / build_orchestration_graph） |
 
 **不在范围**：Agent 目录 CRUD、非精灵模式的 Team 编辑、记忆管家/技能管家的前端面板（P2）。
 
@@ -371,30 +380,33 @@ assembling → running → completed
 
 ## 6. 开放问题
 
-| # | 问题 | 选项 | 建议 |
-|---|------|------|------|
-| 1 | 已完成团队是否自动归档？ | A: 7 天自动归档 B: 仅手动归档 C: 可配置 | C |
-| 2 | 团队失败后是否自动重试？ | A: 自动重试 B: 仅提示用户 C: 精灵决策 | B |
-| 3 | 成员只读面板是否支持"接管对话"？ | A: 纯只读 B: 可接管 C: 可追加指令 | A（后续迭代考虑 B） |
-| 4 | 精灵对话中是否显示历史团队列表？ | A: 仅显示活跃团队 B: 显示所有 C: 可切换 | A |
-| 5 | Agent 复用上限？ | A: 无限制 B: 最多 3 个 Team C: 可配置 | C |
-| 6 | Session 树最大深度？ | A: 2 层 B: 3 层 C: 可配置 | A（与 `max_orchestration_depth=2` 一致） |
+| # | 问题 | 选项 | 决议 | 状态 |
+|---|------|------|------|------|
+| 1 | 已完成团队是否自动归档？ | A: 7 天自动归档 B: 仅手动归档 C: 可配置 | C：`ParallelConfig.AutoArchiveSeconds`（默认 3600s） | ✅ 已决议 |
+| 2 | 团队失败后是否自动重试？ | A: 自动重试 B: 仅提示用户 C: 精灵决策 | B：提供取消按钮，重试由精灵决策 | ✅ 已决议 |
+| 3 | 成员只读面板是否支持"接管对话"？ | A: 纯只读 B: 可接管 C: 可追加指令 | A（后续迭代考虑 B） | ✅ 已决议 |
+| 4 | 精灵对话中是否显示历史团队列表？ | A: 仅显示活跃团队 B: 显示所有 C: 可切换 | A：仅显示活跃团队 | ✅ 已决议 |
+| 5 | Agent 复用上限？ | A: 无限制 B: 最多 3 个 Team C: 可配置 | C：`ParallelConfig.MaxConcurrentTeams`（默认 3） | ✅ 已决议 |
+| 6 | Session 树最大深度？ | A: 2 层 B: 3 层 C: 可配置 | C：`ParallelConfig.MaxSessionDepth`（默认 2） | ✅ 已决议 |
 
 ---
 
 ## 7. 验收标准索引
 
-| ID | 摘要 | 阶段 |
-|----|------|------|
-| SP-01 | 左侧列表仅显示精灵 + 团队树 | P0 |
-| SP-02 | 精灵区分简单/任务型对话 | P0 |
-| SP-03 | 团队卡片展示名称/状态/成员/进度 | P0 |
-| SP-04 | 任务执行面板三区布局 | P0 |
-| SP-05 | 成员树形展开 + 状态 | P1 |
-| SP-06 | 成员只读面板（无输入框） | P1 |
-| SP-07 | 多任务并行 + Agent 复用隔离 | P1 |
-| SP-08 | 团队生命周期（归档/重试/放弃） | P1 |
-| SP-09 | 面包屑导航 + 返回精灵 | P1 |
-| SP-10 | Session 数据 → 进化体系闭环 | P2 |
+| ID | 摘要 | 阶段 | 状态 |
+|----|------|------|------|
+| SP-01 | 左侧列表仅显示精灵 + 团队树 | P0 | ✅ |
+| SP-02 | 精灵区分简单/任务型对话 | P0 | ✅ |
+| SP-03 | 团队卡片展示名称/状态/成员/进度 | P0 | ✅ |
+| SP-04 | 任务执行面板三区布局 | P0 | ✅ |
+| SP-05 | 成员树形展开 + 状态 | P1 | ❌ 未实现 |
+| SP-06 | 成员只读面板（无输入框） | P1 | ❌ 占位符 |
+| SP-07 | 多任务并行 + Agent 复用隔离 | P0.5 | ✅ |
+| SP-08 | 团队生命周期（归档/取消/重试） | P1 | ⚠️ 取消已实现，重试/手动归档未实现 |
+| SP-09 | 面包屑导航 + 返回精灵 | P1 | ⚠️ 返回精灵已实现，面包屑未实现 |
+| SP-10 | Session 数据 → 进化体系闭环 | P2 | — |
+| SP-11 | 三阶段编排（Plan→Allocate→Orchestrate） | P0.5 | ✅ |
+| SP-12 | DAG 编排图 + 并行团队概览 | P0.5 | ✅ |
+| SP-13 | 综合结果合成 | P0.5 | ✅ |
 
 完整任务拆分见 [开发计划](./59-chat-spirit-mode-development.md)。

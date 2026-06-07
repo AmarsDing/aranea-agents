@@ -4,7 +4,8 @@
 
 > 对应 OpenSpec Change：`openspec/changes/self-iteration-v2/`
 > 设计文档：[60-self-iteration-v2.design.md](./60-self-iteration-v2.design.md)
-> 开发计划：[60-self-iteration-v2-development.md](./60-self-iteration-v2-development.md)
+> 开发计划：[60-self-iteration-v2.development.md](./60-self-iteration-v2-development.md)
+> **当前进度**：Phase 1–3 ✅ 已落地
 
 ---
 
@@ -14,11 +15,14 @@
 
 | 能力 | 现状 | 问题 |
 |------|------|------|
-| 运行时自愈 | `SelfHealObserver` + `RootCauseEngine`（12 条内置规则）+ 滑动窗口断路器 | `RootCauseEngine` 是具体结构体，无法被其他模块复用 |
-| CI Auto-Fix | `auto-fix.yml` 完整流水线（日志提取→分类→修复→验证→PR） | `stats.json` 全为 0，从未实际运行；日志解析为原始文本，非结构化 |
-| Skill Intelligence | `SkillIntelligenceUsecase`（AnalyzeInvocation/ScoreSkill/GenerateReport）已实现 | Cron Worker 未实现，无法自动触发；Phase 2-5 的 61 步未落地 |
-| 知识库 | 运行时 `RootCauseEngine` 规则与 CI `.auto-fix/patterns.jsonl` 互相独立 | 两套知识库隔离，无法共享学习成果 |
-| 集成测试 | 仅 3 个文件覆盖 Agent CRUD/Chat API/Channel Turn Preview | 核心业务流程无覆盖 |
+| 运行时自愈 | `SelfHealObserver` + `RootCauseEngine`（12 条内置规则）+ 滑动窗口断路器 | ✅ `RootCauseAnalyzer` 接口已抽取，可被其他模块复用 |
+| CI Auto-Fix | `auto-fix.yml` 完整流水线（日志提取→分类→修复→验证→PR） | ✅ 结构化 FailureReport 输入 + Critic Agent + 白名单已实现 |
+| Skill Intelligence | `SkillIntelligenceUsecase`（AnalyzeInvocation/ScoreSkill/GenerateReport）已实现 | ✅ Cron Worker 已实现；经验报告 API + Curator Agent + 进化建议已落地 |
+| 知识库 | 运行时 `RootCauseEngine` 规则与 CI `.auto-fix/patterns.jsonl` 互相独立 | ✅ `failure_pattern` 表统一存储；Cron Job 同步运行时规则和 CI 模式 |
+| 集成测试 | 仅 3 个文件覆盖 Agent CRUD/Chat API/Channel Turn Preview | ✅ 自愈闭环 + Skill Intelligence + Chat Turn 集成测试已补齐 |
+| 预测性自愈 | — | ✅ `PredictiveHealUsecase` + Cron Job 已实现 |
+| Skill 进化闭环 | — | ✅ 五阶段闭环（Solve→Observe→Evolve→Gate→Reload）已实现 |
+| 知识库动态挖掘 | — | ✅ `PatternMiningUsecase` + Cron Job 已实现 |
 
 ### 0.2 竞品趋势
 
@@ -323,20 +327,20 @@ P1（阶段二）
 
 ## 12. 验收要点
 
-- [ ] FailureReport 结构体定义完整，CI/运行时解析器可正确解析各类错误
-- [ ] failure_pattern 表创建成功，Cron Job 可同步运行时规则和 CI 模式
-- [ ] Critic Agent 可在 Auto-Fix 验证通过后执行语义回归检查，按 risk_level 分级处理
-- [ ] Auto-Fix 引擎支持结构化 FailureReport 输入，白名单机制生效
-- [ ] RootCauseAnalyzer 接口抽取完成，Wire 绑定正确
-- [ ] skill_intelligence_worker Cron Job 可自动触发分析
-- [ ] 经验报告 API 可查询，包含根因分析和修复建议
-- [ ] DynamicRankFactors 可根据健康指标动态调整排序权重
-- [ ] Curator Agent 可通过 ChatOrchestrator 生成 Skill 草案
-- [ ] 预测性自愈仅对高置信度预测执行预防行动，冷却期生效
-- [ ] Skill 五阶段进化闭环可端到端运行，Gate 多维验证生效
-- [ ] 知识库动态挖掘可从历史修复记录提取修复模板
-- [ ] 集成测试覆盖自愈闭环、Skill Intelligence、Chat Turn 核心业务流程
+- [x] FailureReport 结构体定义完整，CI/运行时解析器可正确解析各类错误
+- [x] failure_pattern 表创建成功，Cron Job 可同步运行时规则和 CI 模式
+- [x] Critic Agent 可在 Auto-Fix 验证通过后执行语义回归检查，按 risk_level 分级处理
+- [x] Auto-Fix 引擎支持结构化 FailureReport 输入，白名单机制生效
+- [x] RootCauseAnalyzer 接口抽取完成，Wire 绑定正确
+- [x] skill_intelligence_worker Cron Job 可自动触发分析
+- [x] 经验报告 API 可查询，包含根因分析和修复建议
+- [x] DynamicRankFactors 可根据健康指标动态调整排序权重
+- [x] Curator Agent 可通过 ChatOrchestrator 生成 Skill 草案
+- [x] 预测性自愈仅对高置信度预测执行预防行动，冷却期生效
+- [x] Skill 五阶段进化闭环可端到端运行，Gate 多维验证生效
+- [x] 知识库动态挖掘可从历史修复记录提取修复模板
+- [x] 集成测试覆盖自愈闭环、Skill Intelligence、Chat Turn 核心业务流程
 
 ---
 
-*文档版本：2026-06-05 — 基于 openspec/changes/self-iteration-v2/ proposal + specs 生成。*
+*文档版本：2026-06-06 — Phase 1–3 已落地，验收要点全部勾选。*

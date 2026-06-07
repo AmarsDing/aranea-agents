@@ -3,6 +3,7 @@
 > 对应需求：[60-self-iteration-v2.md](./60-self-iteration-v2.md)
 > 遵循规范：四层架构（Server→Service→Biz→Data）+ Wire DI
 > OpenSpec Change：`openspec/changes/self-iteration-v2/design.md`
+> **当前进度**：Phase 1–3 ✅ 已落地
 
 ---
 
@@ -306,11 +307,13 @@ type RootCauseAnalyzer interface {
 }
 ```
 
-**实现者**：`RootCauseEngine`（已有，无需修改方法签名）
+**实现者**：`RootCauseEngine`（已实现，无需修改方法签名）
 
 **消费者**：
-- `SkillIntelligenceUsecase`（通过 Wire 注入）
-- `PredictiveHealUsecase`（通过 Wire 注入）
+- `SkillIntelligenceUsecase`（通过 Wire 注入）✅
+- `PredictiveHealUsecase`（通过 Wire 注入）✅
+
+> **实现备注**：Biz 层 `skill_intelligence.go` 另定义了 `AnalyzeInvocationFailure(ctx, inv)` 方法用于解耦 biz→monitor 依赖，与 monitor 包的接口互补。
 
 ### 4.2 HealthMetricsProvider
 
@@ -322,9 +325,9 @@ type HealthMetricsProvider interface {
 }
 ```
 
-**实现者**：Biz 层 `SkillHealthAggregator` 适配器
+**实现者**：Biz 层 `SkillHealthAggregator` 适配器 ✅
 
-**消费者**：`DynamicRankFactors`（Tools 层）
+**消费者**：`DynamicRankFactors`（Tools 层）✅
 
 ### 4.3 FailurePatternReader / FailurePatternWriter
 
@@ -344,21 +347,23 @@ type FailurePatternWriter interface {
 }
 ```
 
-**实现者**：`internal/data/failure_pattern.go`
+**实现者**：`internal/data/failure_pattern_repo.go` ✅
 
 ---
 
 ## 五、Cron Job 设计
 
-### 5.1 skill_intelligence_worker
+> 以下 Cron Job 均已实现并注册到 Wire DI。
+
+### 5.1 skill_intelligence_worker ✅
 
 | 项 | 说明 |
 |----|------|
-| 频率 | 每 10 分钟 |
+| 频率 | 每 15 分钟（实际实现） |
 | 路径 | `internal/cronrunner/jobs/skill_intelligence_worker.go` |
 | 逻辑 | 查询 `analyzed_at IS NULL` 的 `skill_invocation` → 批量 AnalyzeInvocation → ScoreSkill → GenerateReport（集成 RootCauseAnalyzer）→ 更新 `analyzed_at` |
 
-### 5.2 failure_pattern_sync
+### 5.2 failure_pattern_sync ✅
 
 | 项 | 说明 |
 |----|------|
@@ -366,7 +371,7 @@ type FailurePatternWriter interface {
 | 路径 | `internal/cronrunner/jobs/failure_pattern_sync.go` |
 | 逻辑 | 从 `RootCauseEngine` 规则 + `.auto-fix/patterns.jsonl` 同步到 `failure_pattern` 表 |
 
-### 5.3 predictive_heal
+### 5.3 predictive_heal ✅
 
 | 项 | 说明 |
 |----|------|
@@ -374,7 +379,7 @@ type FailurePatternWriter interface {
 | 路径 | `internal/cronrunner/jobs/predictive_heal.go` |
 | 逻辑 | 读取系统指标 → 匹配 FailurePattern 前置条件 → 计算预测置信度 → 高置信度（> 0.8）时执行预防行动 |
 
-### 5.4 pattern_mining
+### 5.4 pattern_mining ✅
 
 | 项 | 说明 |
 |----|------|
@@ -386,7 +391,9 @@ type FailurePatternWriter interface {
 
 ## 六、CI/CD 改造设计
 
-### 6.1 auto-fix.yml 改造
+> 以下改造已在 `.github/workflows/auto-fix.yml` 中实现。
+
+### 6.1 auto-fix.yml 改造 ✅
 
 **新增步骤**：
 
@@ -441,7 +448,9 @@ type FailurePatternWriter interface {
 
 ## 七、Wire DI 影响分析
 
-### 7.1 新增绑定
+> 以下绑定均已实现。
+
+### 7.1 新增绑定 ✅
 
 | 接口 | 实现 | Wire Set |
 |------|------|----------|
@@ -450,17 +459,17 @@ type FailurePatternWriter interface {
 | `FailurePatternWriter` | `FailurePatternRepo` | `internal/data/wire.go` |
 | `HealthMetricsProvider` | `SkillHealthAggregatorAdapter` | `internal/biz/wire.go` |
 
-### 7.2 新增 Provider
+### 7.2 新增 Provider ✅
 
 | Provider | 位置 | 说明 |
 |----------|------|------|
-| `NewFailurePatternRepo` | `internal/data/failure_pattern.go` | FailurePattern 数据层 |
+| `NewFailurePatternRepo` | `internal/data/failure_pattern_repo.go` | FailurePattern 数据层 |
 | `NewSkillHealthAggregatorAdapter` | `internal/biz/` | HealthMetricsProvider 适配器 |
 | `NewSkillIntelligenceService` | `internal/service/skill_intelligence.go` | Skill Intelligence API |
 | `NewPredictiveHealUsecase` | `internal/biz/monitor/predictive_heal.go` | 预测性自愈 |
 | `NewPatternMiningUsecase` | `internal/biz/monitor/pattern_mining.go` | 知识库动态挖掘 |
 
-### 7.3 新增 Cron Job 注册
+### 7.3 新增 Cron Job 注册 ✅
 
 | Job | 注册位置 |
 |-----|----------|
@@ -488,7 +497,9 @@ type FailurePatternWriter interface {
 
 ## 九、Proto 设计
 
-### 9.1 skill_intelligence.proto
+### 9.1 skill_intelligence.proto ✅
+
+> 实际路径：`api/kratos/skill_intelligence/v1/skill_intelligence.proto`（Kratos 规范路径）
 
 ```protobuf
 service SkillIntelligenceService {
@@ -509,4 +520,4 @@ service SkillIntelligenceService {
 
 ---
 
-*文档版本：2026-06-05 — 基于 openspec/changes/self-iteration-v2/design.md 生成。*
+*文档版本：2026-06-06 — Phase 1–3 已落地，标注实现状态。*

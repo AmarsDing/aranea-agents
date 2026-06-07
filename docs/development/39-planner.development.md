@@ -16,15 +16,15 @@ Planner 规划：为 Agent 提供 BuiltinPlanner、ReActPlanner、A2UIPlanner �
 |----|------|
 | 后端校验 | `internal/biz/planner.go` |
 | 运行时桥接 | `internal/agent/planner/{selector,build,config}.go` |
-| SQL | `docs/sql/02_agent_planner.sql`、`02_agent_planner_legacy_cleanup.sql` |
+| SQL | `internal/data/sql/migrations/20260607_agent_runtime_patches.sql`（planner_kind + planner_config_json 列） |
 | 设置表单 | `features/agents/plannerConfig.ts`、`components/agents/AgentPlannerSection.vue` |
 | ReAct 类型/解析 | `features/chat/reactPlannerTypes.ts`、`reactPlannerParse.ts` |
 | ReAct 工具链接 | `features/chat/reactPlannerToolLink.ts`、`reactToolLinkIndex.ts` |
 | 展示门面 | `features/chat/messagePlannerPresentation.ts` |
 | Chat 类型 | `features/chat/types.ts`（`Message`、`ReactToolLinkIndex`） |
-| A2UI | `a2uiParse.ts`、`a2uiSurfaceState.ts`、`a2ui/kinds/*`、`a2ui/a2uiKindRegistry.ts`、`a2uiUserAction.ts`、`a2uiUserActionDisplay.ts` |
+| A2UI | `a2uiParse.ts`、`a2uiSurfaceState.ts`、`a2ui/a2uiKindRegistry.ts`、`components/chat/a2ui/kinds/*`、`components/chat/a2ui/A2UIKindContent.vue`、`a2uiUserAction.ts`、`a2uiUserActionDisplay.ts` |
 | Chat 编排 | `features/chat/composables/useChatWorkspace.ts`（`buildReactToolLinkIndex`、`activePlannerKind`） |
-| Chat UI | `ChatMessagePanel`（**必填** `reactToolLinkIndex`）、`ChatMessageRow`、`ChatReactSteps`、`ChatA2UIPreview` |
+| Chat UI | `ChatMessagePanel`（**必填** `reactToolLinkIndex`）、`ChatMessageRow`、`ChatReactSteps`、`ChatA2UIPreview`、`ChatA2UISurface`、`A2UIComponentNode` |
 
 ---
 
@@ -50,7 +50,7 @@ Planner 规划：为 Agent 提供 BuiltinPlanner、ReActPlanner、A2UIPlanner �
 | 优先级 | 项 | 说明 |
 |--------|-----|------|
 | P5 | A2UI 表单可编辑 | TextField/CheckBox + dataModel 双向绑定 |
-| P5 | StandardCatalog 长尾 | Carousel / WebView 等 |
+| P5 | StandardCatalog 长尾 | AudioPlayer / Dropdown / Switch / Carousel / TabBar / WebView 等 |
 | P5 | ReAct 链接增强 | 多 ACTION↔多 tool、Team 会话、流式乱序（设计 §7.3 已记录局限） |
 | P5 | 性能 | 按 `message.id` memo `parseReactPlannerContent`（列表极长时） |
 
@@ -100,7 +100,7 @@ Planner 规划：为 Agent 提供 BuiltinPlanner、ReActPlanner、A2UIPlanner �
 
 ## 7. 依赖与风险
 
-- 新库执行 `docs/sql/02_agent_planner.sql`；升级后可选 `02_agent_planner_legacy_cleanup.sql`。
+- 新库执行 `internal/data/sql/migrations/20260607_agent_runtime_patches.sql`（planner_kind + planner_config_json 列）；无独立 legacy cleanup 脚本。
 - **空 kind 三态**：API 保存 / 运行时 Builtin / Chat 展示启发式 — 须在 UI 区分（见 design §7.2）。
 - **ReAct 链接**：流式过程中工具行可能短暂重复，索引随 `displayMessages` 刷新后收敛。
 - 列表 API 省略 `settings` 时依赖 `hydrateAgentSettings`；正文标签仍作 `planner_kind` 为空时的展示兜底。
@@ -111,5 +111,6 @@ Planner 规划：为 Agent 提供 BuiltinPlanner、ReActPlanner、A2UIPlanner �
 
 | 范围 | 命令 |
 |------|------|
-| 前端 Chat + planner 表单 | `cd web && pnpm vitest run src/features/chat/__tests__ src/features/agents/__tests__/plannerConfig.spec.ts` |
+| 前端 planner 表单 + Chat planner 相关 | `cd web && pnpm vitest run src/features/agents/__tests__/plannerConfig.spec.ts src/features/chat/__tests__/reactPlannerParse.spec.ts src/features/chat/__tests__/reactToolLinkIndex.spec.ts src/features/chat/__tests__/reactPlannerToolLink.spec.ts src/features/chat/__tests__/messagePlannerPresentation.spec.ts src/features/chat/__tests__/a2uiKindRegistry.spec.ts src/features/chat/__tests__/a2uiSurfaceState.spec.ts src/features/chat/__tests__/a2uiUserAction.spec.ts src/features/chat/__tests__/a2uiUserActionDisplay.spec.ts` |
 | 后端 biz | `go test ./internal/biz/... -run TestValidatePlanner` |
+| 后端 selector | `go test ./internal/agent/planner/...` |

@@ -1,8 +1,7 @@
 # Knowledge 知识库 — 开发计划
 
-> **版本**：2026-05-29 | **状态**：✅ Phase 5 Advanced RAG 完成，Phase 6 Agentic RAG 完成，Phase 7 质量优化完成，OCR/多租户待补
+> **版本**：2026-06-06 | **状态**：✅ Phase 1-7 已完成，OCR stub/AgenticFilter/多租户待补
 > **需求**：[37 knowledge.md](./37%20knowledge.md) · **设计**：[37 knowledge.design.md](./37%20knowledge.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md)
 
 ---
 
@@ -12,23 +11,24 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 **代码锚点**：
 - `api/kratos/knowledge/v1/knowledge.proto` — Knowledge CRUD + Search RPC（含 `rewrite_strategy` + `hybrid_search`）
-- `internal/service/knowledge.go` — KnowledgeService
-- `internal/service/knowledge_advanced.go` — Advanced RAG Wire 工厂
-- `internal/biz/knowledge.go` — KnowledgeUsecase + KnowledgeRepo + SparseSearcher
-- `internal/data/knowledge.go` — KnowledgeRepo（PostgreSQL + pgvector + BM25）
+- `internal/biz/knowledge.go` — 类型别名转发（KnowledgeRepo = knowledge.Repo 等）
+- `internal/biz/knowledge/knowledge.go` — 领域模型 + Repo/Usecase 接口（子接口拆分）
+- `internal/data/knowledge.go` — KnowledgeRepo（PostgreSQL + pgvector + BM25 双路）
+- `internal/service/knowledge.go` — KnowledgeService（KnowledgeSearchDeps 聚合）
+- `internal/service/knowledge_advanced.go` — Advanced RAG Wire 工厂（6 个 Provider）
 - `internal/knowledge/chunker.go` — 文档分块（char/token）
 - `internal/knowledge/embedder.go` — 向量化（四 provider + EmbedBatch）
-- `internal/knowledge/ingest.go` — 分块+向量化流水线
-- `internal/knowledge/retriever.go` — 检索器
+- `internal/knowledge/ingest.go` — 分块+向量化流水线（IngestParams.ApplyDefaults）
+- `internal/knowledge/retriever.go` — 检索器（含 TaskTypeEmbedder）
 - `internal/knowledge/query_rewriter.go` — 查询重写（HyDE/Decomposition/MultiQuery）
 - `internal/knowledge/hybrid_retriever.go` — 混合检索（Dense+Sparse+RRF）
 - `internal/knowledge/adaptive_router.go` — 自适应检索路由
 - `internal/knowledge/retrieval_evaluator.go` — 检索质量评估（CRAG）
 - `internal/knowledge/federated_retriever.go` — 跨 Collection 联邦搜索
 - `internal/knowledge/search_helpers.go` — 检索评估辅助
-- `internal/tools/knowledge/tool.go` — knowledge_search + knowledge_reflect 工具
-- `internal/agent/knowledge_inject.go` — Plan-Then-Retrieve BeforeModel 钩子
-- `internal/agent/tool_assembly.go` — KnowledgeSearch/KnowledgeReflect 装配
+- `internal/knowledge/llm_resolver.go` — LLM 模型解析
+- `internal/knowledge/ocr.go` — OCR 提供者接口（stub，KNOWLEDGE_OCR 环境变量）
+- `internal/knowledge/html_text.go` — HTML 文本剥离
 - `internal/knowledge/chunk_strategy.go` — trpc 高级分块桥接
 - `internal/knowledge/document_extract.go` — PDF/DOCX/HTML 文本提取
 - `internal/knowledge/readers_import.go` — trpc reader 注册
@@ -37,6 +37,9 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `internal/biz/knowledge_embed_setting.go` — Embedder patch 合并
 - `api/kratos/system_setting/v1/system_setting.proto` — `KnowledgeEmbedSettings`
 - `internal/service/knowledge_retriever.go` — Retriever Wire
+- `internal/tools/knowledge/tool.go` — knowledge_search + knowledge_reflect 工具
+- `internal/agent/knowledge_inject.go` — Plan-Then-Retrieve BeforeModel 钩子
+- `internal/agent/tool_assembly.go` — KnowledgeSearch/KnowledgeReflect 装配
 - `web/src/features/knowledge/api.ts` — 前端 API
 - `web/src/stores/knowledge/index.ts` — 前端 Store
 - `web/src/features/knowledge/useKnowledgeIngestWs.ts` — 入库 WS 进度
@@ -68,14 +71,14 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | Gemini/HuggingFace Embedder | ✅ | env + `system_settings` + `embedder.go` |
 | 查询重写 | ✅ | `query_rewriter.go`（HyDE/Decomposition/MultiQuery） |
 | 混合检索 | ✅ | `hybrid_retriever.go`（Dense+BM25+RRF） |
-| BM25 全文检索 | ✅ | `data/knowledge.go` `SearchChunksBM25` + GIN 索引 |
+| BM25 全文检索 | ✅ | `data/knowledge.go` `SearchChunksBM25`（tsvector + pg_trgm 双路） + GIN 索引 |
 | 自适应检索路由 | ✅ | `adaptive_router.go`（查询复杂度分类） |
 | 检索质量评估 | ✅ | `retrieval_evaluator.go`（CRAG 式自校验） |
 | 跨 Collection 联邦搜索 | ✅ | `federated_retriever.go`（并行广播 + Route 策略） |
 | Plan-Then-Retrieve | ✅ | `agent/knowledge_inject.go`（BeforeModel 钩子注入 Collection 摘要） |
 | 联邦搜索 Route 策略 | ✅ | `federated_retriever.go`（`SearchWithOptions` + `routeCollections`） |
 | AgenticFilter | ❌ | 未实现 |
-| OCR / Extractor | ❌ | 未实现 |
+| OCR / Extractor | ⏳ | `ocr.go` stub 已就位（`KNOWLEDGE_OCR` 环境变量），tesseract/docling 后端待接入 |
 | Reranker | ✅ | `KRATOS_KNOWLEDGE_RERANKER`（topk/cohere/infinity） |
 | 多租户隔离 | ❌ | 未实现 |
 | code_search 工具 | ❌ | 未实现 |
@@ -93,23 +96,23 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | G4 | Embedder 写入 system_settings | ✅ | EP-KN-01 |
 | G5 | 文档 metadata_json → Chunk | ✅ | — |
 
-### 3.2 功能扩展（P2）
+### 3.2 功能扩展（P2）— 已完成
 
-| 编号 | 差距 | 优先级 | 说明 |
-|------|------|--------|------|
-| G5 | Markdown 按标题分块 | P2 | 集成 trpc `chunking/markdown.go` |
-| G6 | JSON 结构分块 | P2 | 集成 trpc `chunking/json.go` |
-| G7 | 递归分块 | P2 | 集成 trpc `chunking/recursive.go` |
-| G8 | PDF/Word/HTML 文档解析 | P2 | 集成 trpc `document/reader/` 或 Extractor |
-| G9 | 本地 Embedding 模型 | P2 | Gemini/HuggingFace embedder |
-| G10 | EmbedBatch 批量 API | P2 | 减少逐条 embed HTTP 往返 |
+| 编号 | 差距 | 优先级 | 说明 | 状态 |
+|------|------|--------|------|------|
+| G5 | Markdown 按标题分块 | P2 | 集成 trpc `chunking/markdown.go` | ✅ |
+| G6 | JSON 结构分块 | P2 | 集成 trpc `chunking/json.go` | ✅ |
+| G7 | 递归分块 | P2 | 集成 trpc `chunking/recursive.go` | ✅ |
+| G8 | PDF/Word/HTML 文档解析 | P2 | 集成 trpc `document/reader/` 或 Extractor | ✅ |
+| G9 | 本地 Embedding 模型 | P2 | Gemini/HuggingFace embedder | ✅ |
+| G10 | EmbedBatch 批量 API | P2 | 减少逐条 embed HTTP 往返 | ✅ |
 
 ### 3.3 超越层（P3）
 
 | 编号 | 差距 | 优先级 | 说明 |
 |------|------|--------|------|
 | G11 | AgenticFilter | P3 | LLM 动态生成过滤条件 |
-| G12 | OCR 识别 | P3 | Tesseract/Docling 图片→文本 |
+| G12 | OCR 识别 | P3 | `ocr.go` stub 已就位，tesseract/docling 后端待接入 |
 | G13 | 多租户隔离 | P3 | tenant_id 分区 |
 | G14 | code_search 工具 | P3 | 代码语义搜索 |
 | G15 | SourceSync 增量同步 | P3 | 数据源自动增量更新 |
@@ -139,21 +142,21 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | EmbedBatch | ✅ | `embedder.go` |
 | Gemini / HuggingFace Embedder | ✅ | `embedder.go`、`knowledge_embedder.go` |
 
-### Phase 3：高级检索 — Rerank ✅，AgenticFilter 待补
+### Phase 3：高级检索 — ✅ Rerank 已完成，AgenticFilter 待补
 
 | 任务 | 状态 | 涉及文件 |
 |------|------|----------|
 | TopK / Cohere / Infinity Reranker | ✅ | `reranker_factory.go`、`retriever.go` |
 | AgenticFilter | ⏳ | 集成 trpc `searchfilter` |
 
-### Phase 4：超越层
+### Phase 4：超越层 — 待实现
 
-| 任务 | 涉及文件 |
-|------|----------|
-| OCR 识别 | 新建 `internal/knowledge/ocr.go` |
-| 多租户隔离 | 修改搜索过滤 + 向量存储 |
-| code_search 工具 | 新建 `internal/tools/knowledge/code_search.go` |
-| SourceSync 增量同步 | 新建 `internal/knowledge/sync.go` |
+| 任务 | 涉及文件 | 状态 |
+|------|----------|------|
+| OCR 识别（tesseract/docling 后端） | `internal/knowledge/ocr.go`（stub 已就位） | ⏳ |
+| 多租户隔离 | 修改搜索过滤 + 向量存储 | ❌ |
+| code_search 工具 | 新建 `internal/tools/knowledge/code_search.go` | ❌ |
+| SourceSync 增量同步 | 新建 `internal/knowledge/sync.go` | ❌ |
 
 ---
 
@@ -209,14 +212,14 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - [x] EmbedBatch 减少 OpenAI/Gemini/TEI HTTP 往返
 - [x] Gemini / HuggingFace TEI embedder 可用
 
-### Phase 3
+### Phase 3 — ✅ Rerank / ⏳ AgenticFilter
 
 - [x] 检索结果经 Reranker 重排序（env 配置 + Search 请求覆盖）
 - [ ] AgenticFilter 启用后 LLM 可动态生成过滤条件
 
-### Phase 4
+### Phase 4 — 待实现
 
-- [ ] 图片/PDF 文档可 OCR 识别入库
+- [ ] 图片/PDF 文档可 OCR 识别入库（stub 已就位，tesseract/docling 后端待接入）
 - [ ] 不同租户搜索不到彼此的知识
 - [ ] Agent 可调用 code_search 工具
 
@@ -253,34 +256,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ### Phase 8+（路线图）
 
-> 完整方案见 [37-knowledge-evolution-roadmap.md](./37-knowledge-evolution-roadmap.md)
-
 - [ ] **GraphRAG** — 知识图谱构建（实体/关系提取）+ 图增强检索 + 图查询工具
 - [ ] **Skill Knowledge** — 技能知识库（三层技能层次）+ 知识导航工具 + 技能蒸馏管线
-
-### Phase 5：Advanced RAG — ✅ 已完成
-
-| 任务 | 状态 | 涉及文件 |
-|------|------|----------|
-| 查询重写（HyDE/Decomposition/MultiQuery） | ✅ | `query_rewriter.go`、`llm_resolver.go` |
-| BM25 全文检索（PostgreSQL ts_vector） | ✅ | `data/knowledge.go`（`SearchChunksBM25` + GIN 索引） |
-| 混合检索（Dense+Sparse+RRF 融合） | ✅ | `hybrid_retriever.go` |
-| 自适应检索路由（查询复杂度分类） | ✅ | `adaptive_router.go` |
-| 检索质量评估（CRAG 式自校验） | ✅ | `retrieval_evaluator.go`、`search_helpers.go` |
-| Search API 集成（rewrite_strategy/hybrid_search 参数） | ✅ | `knowledge.proto`、`service/knowledge.go` |
-| 前端搜索面板增加混合检索/查询重写控件 | ✅ | `KnowledgeSearchPanel.vue`、`useKnowledgePage.ts` |
-| Wire 工厂（5 个新 Provider） | ✅ | `knowledge_advanced.go` |
-
-### Phase 6：Agentic RAG — ✅ 已完成
-
-| 任务 | 状态 | 涉及文件 |
-|------|------|----------|
-| knowledge_reflect 工具（Agent 自校验检索质量） | ✅ | `tools/knowledge/tool.go` |
-| 跨 Collection 联邦搜索（FederatedRetriever） | ✅ | `federated_retriever.go` |
-| Context 注入链（FederatedRetriever/Evaluator） | ✅ | `chat_orchestrator.go`、`chat_orchestrator_turn.go`、`runner.go`、`runner_team_trpc.go` |
-| 工具注册链（ToolKey + effective_config + tool_assembly + seed） | ✅ | `tool.go`、`tool_catalog_runtime.go`、`effective_config.go`、`tool_assembly.go`、`builtin_tools_seed.go` |
-| Plan-Then-Retrieve（L4 prompt 注入 Collection 摘要） | ✅ | `agent/knowledge_inject.go`、`builder_deps.go`、`callback_chain.go` |
-| 联邦搜索 Route 策略（智能路由到最相关 Collection） | ✅ | `federated_retriever.go`（`SearchWithOptions` + `routeCollections`） |
 
 ---
 
@@ -292,7 +269,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | Embedding API | OpenAI 或 Ollama 端点必须可达 |
 | PDF 解析 | 需引入第三方库（如 unidoc/unioffice）或 Docling 服务 |
 | 本地 Embedding | 需 GPU 或大量 CPU 资源 |
-| OCR | 需 Tesseract 或 Docling 服务部署 |
+| OCR | 需 Tesseract 或 Docling 服务部署（当前为 stub） |
 | LLM API | 查询重写和检索评估依赖 LLM 调用，无 LLM 时自动降级 |
 
 ---
@@ -338,29 +315,9 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 | 优先级 | 问题 | 说明 |
 |--------|------|------|
-| ~~P2~~ | ~~KnowledgeService 构造函数 8 参数~~ | ✅ Phase 7：引入 `KnowledgeSearchDeps` 聚合检索依赖，8→6 参数 |
-| ~~P2~~ | ~~NewUsecase 仍接收 Repo 组合接口~~ | 保持向后兼容，内部已拆分为 collections/documents/chunks 子接口 |
-| ~~P2~~ | ~~IngestDocument 默认值逻辑可下移~~ | ✅ Phase 7：`IngestParams.ApplyDefaults()` 下移到 knowledge 包 |
-| ~~P3~~ | ~~agent/knowledge_inject.go 编译错误~~ | ✅ 已验证无编译错误 |
-| ~~P2~~ | ~~tools/knowledge 13 处 fmt.Errorf~~ | ✅ Round 1：全部替换为 kerrors.BadRequest/InternalServer |
-| ~~P0~~ | ~~上传大小/解码/MIME magic 校验~~ | ✅ Round 3：32MB 限制 + MIME magic + 白名单（KB-02） |
-| ~~P0~~ | ~~嵌入维度强校验~~ | ✅ Round 2：InsertChunks 事务前校验维度（KB-03） |
-| ~~P1~~ | ~~CreateCollection embedding_model 绑定校验~~ | ✅ Round 3：校验与当前 embedder 配置一致（KB-05） |
-| ~~P1~~ | ~~Memory 与 Knowledge Embedder 解耦~~ | ✅ Round 4：MemoryEmbeddingAdapter 适配器（KB-06） |
-| ~~P1~~ | ~~Team Runner 注入 KnowledgeBases~~ | ✅ Round 4：WithKnowledgeCollections 注入（KB-07） |
-| P1 | OCR tesseract/docling 实现 | 仍返回 stub（KB-09） |
-| ~~P1~~ | ~~Gemini ingest/query 分 task type~~ | ✅ Round 4：TaskTypeEmbedder + RETRIEVAL_QUERY（KB-10） |
-| ~~P2~~ | ~~rerank chunk_index 类型断言~~ | ✅ Round 2：改为 `.(float64)` + `int(v)`（KB-12） |
-| ~~P2~~ | ~~chunk index 用 metadata 而非循环 i~~ | ✅ Round 3：从 trpc Metadata 读取 MetaChunkIndex（KB-13/14） |
-| ~~P2~~ | ~~异步 ingest context 传递~~ | ✅ Round 2：传递请求 ctx 到 safego.Go（KB-15） |
-| ~~P2~~ | ~~KnowledgeService.chunker 死代码~~ | ✅ Round 2：字段、构造函数参数、Wire provider 全部清理（KB-16） |
-| ~~P2~~ | ~~MinScore SQL 参数化~~ | ✅ Round 2：提取 `hasMinScore` 布尔变量（KB-18） |
-| ~~P2~~ | ~~knowledge_search 暴露 filter_json/use_rerank~~ | ✅ Round 3：searchInput 新增两个字段（KB-19） |
-| ~~P2~~ | ~~HTTP embedder timeout 配置~~ | ✅ Round 3：`KRATOS_KNOWLEDGE_EMBED_TIMEOUT_SEC` 环境变量可配（KB-11） |
-| ~~P2~~ | ~~IVFFlat lists=100 写死~~ | ✅ Round 4：`ivfflatLists(dim)` 动态计算 + 环境变量覆盖（KB-20） |
+| P1 | OCR tesseract/docling 实现 | `ocr.go` stub 已就位，后端待接入（KB-09） |
 | P2 | ListChunks/ReindexDocument/UpdateDocument RPC | 运维调试不便（KB-17） |
 | P3 | AgenticFilter | 集成 trpc `searchfilter` |
-| P3 | OCR 识别 | Tesseract/Docling 图片→文本 |
 | P3 | 多租户知识库隔离 | tenant_id 分区 |
 | P3 | code_search 工具 | 代码语义搜索 |
 | P3 | SourceSync 增量同步 | 数据源自动增量更新 |
@@ -401,8 +358,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ## 子模块：Knowledge Evolution Roadmap
 
-> **版本**：2026-05-29 | **状态**：Phase 1（Advanced RAG）✅ 已实现，Phase 2（Agentic RAG）✅ 已实现
-> **前置**：[37 knowledge.md](./37-knowledge.md) · [37 knowledge.design.md](./37-knowledge.design.md) · [37-knowledge-development.md](./37-knowledge-development.md)
+> **版本**：2026-06-06 | **状态**：Phase 1（Advanced RAG）✅ 已实现，Phase 2（Agentic RAG）✅ 已实现
+> **前置**：[37 knowledge.md](./37-knowledge.md) · [37 knowledge.design.md](./37-knowledge.design.md)
 > **学术参考**：见附录 A
 
 ---
@@ -415,7 +372,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 |------|------|----------|
 | Collection/Document/Chunk 三级数据模型 | ✅ | `internal/biz/knowledge/knowledge.go` |
 | 多 Provider Embedder（OpenAI/Ollama/Gemini/HuggingFace） | ✅ | `internal/knowledge/embedder.go` |
-| 多格式文档提取（PDF/DOCX/XLSX/PPTX/HTML/OCR stub） | ✅ | `internal/knowledge/document_extract.go` |
+| 多格式文档提取（PDF/DOCX/XLSX/PPTX/HTML/OCR stub） | ✅ | `internal/knowledge/document_extract.go` + `ocr.go` |
 | 多分块策略（char/token/markdown/json/recursive） | ✅ | `internal/knowledge/chunker.go` + `chunk_strategy.go` |
 | pgvector 向量存储 + 余弦相似度搜索 | ✅ | `internal/data/knowledge.go` |
 | 可选 Rerank（topk/cohere/infinity） | ✅ | `internal/knowledge/retriever.go` |
@@ -425,7 +382,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | Embedder 运行时热更新 | ✅ | `internal/service/knowledge_embedder.go` |
 | 查询重写（HyDE/Decomposition/MultiQuery） | ✅ | `internal/knowledge/query_rewriter.go` |
 | 混合检索（BM25+向量 RRF 融合） | ✅ | `internal/knowledge/hybrid_retriever.go` |
-| BM25 全文检索（PostgreSQL ts_vector） | ✅ | `internal/data/knowledge.go` |
+| BM25 全文检索（PostgreSQL ts_vector + pg_trgm 双路） | ✅ | `internal/data/knowledge.go` |
 | 自适应检索路由（查询复杂度分类） | ✅ | `internal/knowledge/adaptive_router.go` |
 | 检索质量评估（CRAG 式自校验） | ✅ | `internal/knowledge/retrieval_evaluator.go` |
 | knowledge_reflect 工具（Agent 自校验） | ✅ | `internal/tools/knowledge/tool.go` |
@@ -456,8 +413,8 @@ Naive RAG (2023)    Advanced RAG (2024)    Agentic RAG (2025-2026)
   固定 topK           混合检索                多源融合+图推理
      │                    │                       │
                           │                  ▲
-                     当前位置 ◄─── Phase 1 ✅  │
-                     Phase 1 ✅          Phase 2 🔄 部分实现
+                     Phase 1 ✅          Phase 2 ✅
+                     已完成               已完成
 ```
 
 **当前 Aranea 知识库处于 Agentic RAG 阶段**（已具备查询重写、混合检索、自适应路由、检索评估、联邦搜索、Agent 自校验工具、Plan-Then-Retrieve），正向 GraphRAG 阶段演进（知识图谱构建待实现）。
@@ -729,7 +686,7 @@ func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string,
 ```
 
 - **Broadcast**（已实现）：向所有指定 Collection 并行广播查询，结果合并去重
-- **Route**（待实现）：先路由到最相关的 Collection，再检索
+- **Route**（已实现）：先基于 Collection 名称/描述相关性评分路由到最相关的 Collection，再检索
 
 **架构位置**：`internal/knowledge/federated_retriever.go`（已实现）
 
@@ -1021,7 +978,7 @@ Phase 1.4 质量评估 ──────┘
 | 3 | 工具注册 | 新工具通过 `internal/tools/` 的 Registry 注册，走 `ToolKeyKnowledge*` 常量 |
 | 4 | Wire 注入 | 新依赖通过 Wire ProviderSet 注入，不手动 new |
 | 5 | 并发安全 | 所有 `go func()` 走 `pkg/safego` |
-| 6 | 日志统一 | 使用 `internal/event` 的 `FlowLog`，禁止 `log/slog` |
+| 6 | 日志统一 | 使用 `loggateway.Logger`（构造注入），禁止 `log/slog`、`loggateway.Global()` |
 | 7 | Proto 契约 | 新增 API 先写 proto，`make api` 生成，不手写 |
 | 8 | 向后兼容 | 每个 Phase 向后兼容，不破坏现有 API |
 
@@ -1031,7 +988,7 @@ Phase 1.4 质量评估 ──────┘
 
 | 维度 | Phase 1 ✅ | Phase 2 ✅ | Phase 3 | Phase 4 |
 |------|-----------|---------|---------|---------|
-| 检索模式 | 混合检索+查询重写 | 多轮迭代+自校验+Plan-Then-Retrieve | 图+向量融合 | 层次导航 |
+| 检索模式 | 混合检索+查询重写 | 多轮迭代+自校验+Plan-Then-Retrieve+Route策略 | 图+向量融合 | 层次导航 |
 | Agent 角色 | 被动消费者 | 主动检索者 | 主动推理者 | 主动导航者 |
 | 知识结构 | 扁平 chunks | 扁平 chunks | 实体关系图谱 | 技能层次树 |
 | 检索质量 | +20-30% | +40-50% | +60-70% | +80%+ |
@@ -1071,8 +1028,8 @@ Phase 1.4 质量评估 ──────┘
 | `internal/knowledge/query_rewriter_test.go` | 新增 | 查询重写单测 |
 | `internal/knowledge/hybrid_retriever_test.go` | 新增 | 混合检索单测 |
 | `internal/knowledge/adaptive_router_test.go` | 新增 | 自适应路由单测 |
-| `internal/service/knowledge_advanced.go` | 新增 | Service 层 Wire 工厂（4 个新 Provider） |
-| `internal/biz/knowledge/knowledge.go` | 修改 | 新增 `SparseSearcher` 接口 |
+| `internal/service/knowledge_advanced.go` | 新增 | Service 层 Wire 工厂（6 个 Provider） |
+| `internal/biz/knowledge/knowledge.go` | 修改 | 新增 `SparseSearcher` 接口 + 子接口拆分 |
 | `internal/biz/knowledge.go` | 修改 | 导出 `KnowledgeSparseSearcher` 类型别名 |
 | `internal/data/knowledge.go` | 修改 | 新增 `SearchChunksBM25` + GIN tsvector 索引 |
 | `internal/data/data.go` | 修改 | 新增 `NewKnowledgeSparseSearcherFromData` Provider |

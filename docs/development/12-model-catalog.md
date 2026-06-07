@@ -1,8 +1,8 @@
 # Model Catalog（models.dev 集成）
 
-> **版本**：2026-05-25 | **状态**：✅ 核心可用（P0–P3 已完成）  
-> **外部数据源**：[anomalyco/models.dev](https://github.com/anomalyco/models.dev) · **唯一官方 API**：`https://models.dev/api.json`  
-> **关联**：[9 provider.md](./9%20provider.md) · **开发计划**：[10-model-catalog-development.md](./10-model-catalog-development.md)
+> **版本**：2026-06-06 | **状态**：✅ 核心可用（P0–P3 + Backlog 高/中/低 已完成）
+> **外部数据源**：[anomalyco/models.dev](https://github.com/anomalyco/models.dev) · **唯一官方 API**：`https://models.dev/api.json`
+> **关联**：[9 provider.md](./9%20provider.md) · **开发计划**：[12-model-catalog.development.md](./12-model-catalog.development.md)
 
 ---
 
@@ -27,7 +27,7 @@
 | 项 | 决策 |
 |----|------|
 | Provider 命名 | 使用 models.dev `provider.id`（如 `google`、`alibaba-cn`） |
-| 定价单位 | **USD / 1M tokens**，与 models.dev 一致；config_json 与 pricing_rules 双写 USD；Usage 计费仍用 micro/1K 内部存储 |
+| 定价单位 | **USD / 1M tokens**，与 models.dev 一致；config_json 与 pricing_rules 双写 USD；Usage 计费内核 USD/1M 优先（micro/1K 仅 legacy fallback） |
 | Usage 历史 | DB 历史 `provider_code` **不 rewrite**；新事件写入 `canonical_provider_code`；报表/筛选读侧 alias（含 legacy 扩展） |
 | deprecated | catalog `status=deprecated` → 自动 `enabled=false`（`catalog_managed` 记录） |
 | catalog 无条目 | **自定义 Provider/模型** 路径，面向 Ollama / 本地 OpenAI 兼容部署 |
@@ -56,13 +56,13 @@ ModelCatalogService API
 | 路径 | 职责 |
 |------|------|
 | `api/kratos/model_catalog/v1/model_catalog.proto` | Catalog API |
-| `internal/modelcatalog/` | fetch、store、sync、apply、migrate、overlay、logos、chips |
-| `internal/biz/model_catalog.go` | Usecase + 动态 Store root |
-| `internal/data/model_catalog_apply.go` | ApplyBackend（事务迁移） |
+| `internal/modelregistry/` | fetch、store、sync、apply、migrate、overlay、logos、chips |
+| `internal/biz/model_registry.go` | Usecase + 动态 Store root |
+| `internal/data/model_registry_apply.go` | ApplyBackend（事务迁移） |
 | `internal/data/usage_breakdown_alias.go` | Usage 展示 alias |
 | `web/src/features/model-catalog/` | 前端 API + applyCatalog |
 | `web/src/pages/SystemSettingsCatalogTab.vue` | Settings Tab |
-| `internal/modelcatalog/runtime_overlay.json` | Go embed 运行时映射（与 web 同名 JSON 同步） |
+| `internal/modelregistry/runtime_overlay.json` | Go embed 运行时映射（与 web 同名 JSON 同步） |
 
 ---
 
@@ -91,10 +91,10 @@ ModelCatalogService API
 | `status` | alpha/beta/deprecated | `metadata_json.catalog_status` + chip | ✅ |
 | `attachment` / `reasoning` / `tool_call` 等 | 能力 chip | `config_json.capability_chips[]` | ✅ |
 | `structured_output` / `temperature` / `open_weights` | 能力 chip | 同上 | ✅ |
-| `interleaved` | 推理格式 hint | `config_json` 推理相关 hint | ⏳ 未实现 |
+| `interleaved` | 推理格式 hint | `config_json` 推理相关 hint（`interleaved` / `interleaved_field` / `reasoning_content_backfill`） | ✅ |
 | `cost.*` | **USD/1M** | `config_json.cost.*_usd_per_1m` | ✅（含 cache_read/write） |
 | `limit.*` | token 限制 | `config_json.limit.*_tokens` | ✅ |
-| `modalities.*` | 模态 | `metadata_json.catalog_modalities`；vision chip | ✅ 后端；前端目录选模未读 modalities |
+| `modalities.*` | 模态 | `metadata_json.catalog_modalities`；vision chip（从 modality_input/output 推导） | ✅ |
 
 ### 4.3 Aranea 独有（永不同步自 models.dev）
 
@@ -106,8 +106,8 @@ model_category（用户运营分类）, usage_* 统计, tokens_per_second
 
 ### 4.4 Runtime Overlay（Aranea 维护）
 
-models.dev id → trpc 运行时：`provider_type`、`variant`、`auth_type`、中国区 URL 等。  
-**单一 JSON 源**：`internal/modelcatalog/runtime_overlay.json`（Go embed）；前端 `web/src/config/provider_runtime_overlay.json` 须手动保持同步。
+models.dev id → trpc 运行时：`provider_type`、`variant`、`auth_type`、中国区 URL 等。
+**单一 JSON 源**：`internal/modelregistry/runtime_overlay.json`（Go embed）；前端 `web/src/config/provider_runtime_overlay.json` 须手动保持同步。
 
 ---
 
@@ -157,7 +157,7 @@ models.dev id → trpc 运行时：`provider_type`、`variant`、`auth_type`、�
 | `gemini` | `google` |
 | `custom` | 不迁移 |
 
-**真相源**：`internal/modelcatalog/overlay.go` → `ProviderMigration`（与 `runtime_overlay.json` 同级，随发版更新）。
+**真相源**：`internal/modelregistry/overlay.go` → `ProviderMigration`（与 `runtime_overlay.json` 同级，随发版更新）。
 
 **写入侧**：sync 的 `auto_apply` 或 `POST /v1/model-catalog/apply-migration` 事务更新 agents / sessions / eval / runtime / skills / knowledge_embed / web_research / llm 行。
 
@@ -186,7 +186,7 @@ models.dev id → trpc 运行时：`provider_type`、`variant`、`auth_type`、�
 }
 ```
 
-Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；事件表与 pricing_rules 仍存 **micro-USD/1K** 整数（见 §12 待优化）。
+Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；计费内核 `ApplyTokenUsageCosts` 已以 USD/1M 为主路径（`usageCostMicro` 优先 USD/1M，micro/1K 仅 legacy fallback）；`model_pricing_rules` 双写 USD/1M + micro/1K 列；事件表仍存 **micro-USD** 整数。
 
 ---
 
@@ -234,8 +234,8 @@ Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；事件表与 pr
 - [x] 强制迁移更新 agents / sessions / eval 等绑定（事务）
 - [x] Usage 报表 alias 合并旧 provider 维度（Top / 筛选 / 事件展示）
 - [x] Provider logo 本地缓存与 API 展示
-- [ ] Usage **计费内核**全面切 USD/1M（仍部分 micro/1K，见 §12）
-- [ ] `interleaved` 等剩余 spec 字段 merge
+- [x] Usage **计费内核** USD/1M 优先（`ApplyTokenUsageCosts` → `usageCostMicro` 优先 USD/1M；micro/1K 仅 legacy fallback）
+- [x] `interleaved` 字段 merge（`applyInterleavedHints` → `interleaved` / `interleaved_field` / `reasoning_content_backfill`）
 
 ---
 
@@ -271,24 +271,12 @@ Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；事件表与 pr
 |---|-----|----------|
 | 1 | **`cache_write` 定价落库** | `model_pricing_rules` + usage 事件增列；UpsertModelPricing / ApplyTokenUsageCosts / enrichPricing |
 | 2 | **`interleaved` 字段** | `Model.Interleaved` + `applyInterleavedHints()` → `interleaved` / `interleaved_field` / `reasoning_content_backfill` |
-| 3 | **Usage 计费 USD/1M 内核** | pricing snapshot 双写 USD + micro；`ApplyTokenUsageCosts` 优先 USD/1M（micro 仍保留双读） |
+| 3 | **Usage 计费 USD/1M 内核** | pricing snapshot 双写 USD + micro；`ApplyTokenUsageCosts` 优先 USD/1M（micro 仍保留双读 fallback） |
 | 4 | **Runtime overlay 双文件** | `make check-overlay` + `TestRuntimeOverlayMatchesWebCopy` |
 | 5 | **目录选模 vision chip** | proto `modality_input`/`modality_output`；`applyCatalog.ts` buildCapabilityChips |
 | 6 | **migration-map UI** | ~~已删除~~ → 只读内置规则 + 一键对齐 |
 | 7 | **Logo proactive default** | sync 开始时拉取 `logos/default.svg` |
 | 8 | **Resource Manager env 提示** | `catalogProviderHint` + `catalog_env` 横幅 |
-
-### 高优先级（剩余）
-
-| # | 项 | 现状 | 建议 |
-|---|-----|------|------|
-| — | （暂无） | 上表 #1–#3 已完成 | — |
-
-### 中优先级（剩余）
-
-| # | 项 | 现状 | 建议 |
-|---|-----|------|------|
-| — | （暂无） | 上表 #4–#8 已完成 | — |
 
 ### 已完成（低优先级，2026-05）
 
@@ -305,6 +293,8 @@ Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；事件表与 pr
 | # | 项 | 现状 | 建议 |
 |---|-----|------|------|
 | 9 | **测试覆盖** | 单元 + sqlite；无 E2E sync→apply→RM | enttest + 前端 smoke |
+| 14 | **Settings Tab env 展示** | 数据已映射（`catalogWire.ts`），但 Settings Provider 浏览列表未渲染 `env` 字段 | 在 Provider item 中展示环境变量 |
+| 15 | **Usage 事件表 USD/1M 列** | `TokenUsageEvent` struct 有 USD/1M 字段，但 `model_token_usage_events` 表仅存 micro 列，USD/1M 价格落盘后丢失 | events 表追加 `*_price_usd_per_1m` 列 |
 
 ### 已知限制（文档化，非必改）
 
@@ -312,6 +302,7 @@ Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；事件表与 pr
 - `catalog_managed=false` / custom 永不 auto_apply
 - models.dev **logo 不在 JSON 内**，独立 `https://models.dev/logos/{id}.svg`
 - 修改 wire / proto 后须 **`make api` + 重启 admin**
+- `model_token_usage_events` 表仅存 micro_usd 列，USD/1M 价格不持久化（计算时从 pricing_rules 实时读取）
 
 ---
 
@@ -319,7 +310,7 @@ Usage 计费：`costUSD = tokens × priceUSDPer1M / 1_000_000`；事件表与 pr
 
 ```bash
 make api && make wire-admin && go build ./cmd/admin
-go test ./internal/modelcatalog/... ./internal/data/ -run 'Catalog|Migration|Usage|Merge' -count=1
+go test ./internal/modelregistry/... ./internal/data/ -run 'Catalog|Migration|Usage|Merge' -count=1
 ```
 
 手动：System Settings → Model Catalog → 立即同步 → 迁移预览 → **立即对齐** → Resource Manager 目录选模。

@@ -6,21 +6,22 @@
 
 ## 1. 现状分析
 
-项目已集成 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划器的运行时选择逻辑，通过 `planner_kind`、`planner_config_json` 与 `dialogMode` 在 Agent 构建时选择并配置规划器（2026-05-21 P0–P1 已落地，详见 [39-planner-development.md](./39-planner-development.md)）。
+项目已集成 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划器的运行时选择逻辑，通过 `planner_kind`、`planner_config_json` 与 `dialogMode` 在 Agent 构建时选择并配置规划器。全部开发阶段（P0–P3 + Phase B/C + Review 打磨）已落地，详见 [39-planner-development.md](./39-planner-development.md)。
 
 **已具备**：
-- 运行时选择与 `planner_config_json` 参数注入（Builtin / A2UI）
+- 运行时选择与 `planner_config_json` 参数注入（Builtin / A2UI）；A2UI 集成本地 Pipeline
 - `planner_kind` / `planner_config_json` 数据库持久化与 API 往返
 - Web types / wire 字段贯通
+- 迁移 SQL 合并于 `internal/data/sql/migrations/20260607_agent_runtime_patches.sql`
 
-**前端（2026-05-21）**：
+**前端（已落地）**：
 - Agent 设置页「规划模式」表单（`AgentPlannerSection`）；`reasoning_effort` 前后端枚举校验
 - Chat ReAct 步骤卡 + ACTION 内嵌工具卡（`reactToolLinkIndex` 会话级去重）
-- Chat A2UI StandardCatalog 组件树 + Button `userAction` 上行；用户消息友好摘要
+- Chat A2UI StandardCatalog 组件树（14 种组件：Text/Divider/Image/Icon/Video/Button/TextField/CheckBox/List/Row/Column/Card/Modal/Tabs）+ Button `userAction` 上行；用户消息友好摘要
 
 **仍待完善**（见 [39-planner-development.md](./39-planner-development.md) backlog）：
 - A2UI 表单字段可编辑（dataModel 双向绑定）
-- StandardCatalog 长尾组件（Carousel / WebView 等）
+- StandardCatalog 长尾组件（AudioPlayer / Dropdown / Switch / Carousel / TabBar / WebView 等）
 
 ---
 
@@ -84,7 +85,7 @@
 - ReAct 模式：解析 `/*PLANNING*/`/`/*REASONING*/`/`/*ACTION*/`/`/*REPLANNING*/`/`/*FINAL_ANSWER*/` 标签，以步骤卡片形式展示
 - A2UI 模式：解析 JSONL 输出，渲染 A2UI 组件预览
 
-**验收标准**：ReAct 模式下 Chat 展示步骤卡片（`/*PLANNING*/` 等标签）；A2UI 模式下展示 JSONL 行预览（允许的消息键）；完整组件渲染为后续迭代
+**验收标准**：ReAct 模式下 Chat 展示步骤卡片（`/*PLANNING*/` 等标签）；A2UI 模式下渲染 StandardCatalog 组件树（14 种核心组件）；长尾组件（AudioPlayer/Dropdown/Switch/Carousel/TabBar/WebView）为后续迭代
 
 ---
 

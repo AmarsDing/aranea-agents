@@ -1,7 +1,7 @@
 # 25 Aranea CLI — 需求文档（PRD, 2026-05-27）
 
-> **版本**：3.0（取代 `25 cli.md` v2.0）
-> **同系列**：设计 → [`25-cli-design-2026-05-27.md`](./25-cli-design-2026-05-27.md)；开发计划 → [`25-cli-development-plan-2026-05-27.md`](./25-cli-development-plan-2026-05-27.md)；上层方案 → [`25-cli-implementation-plan-2026-05-27.md`](./25-cli-implementation-plan-2026-05-27.md)
+> **版本**：3.1（取代 `25 cli.md` v2.0）
+> **同系列**：设计 → [`25-cli.design.md`](./25-cli.design.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)；上层方案 → [`25-cli-implementation.md`](./25-cli-implementation.md)
 > **范围**：终端可执行二进制 `aranea`；不包括 `cmd/araneactl/`（开发者 lint/fmtcheck 工具链，与本 PRD 共存）。
 
 ---
@@ -29,7 +29,7 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 
 ### 1.1 与原方案的关键差异（必须对齐）
 
-为避免使用过期细节落地，本 PRD 对原 `25 cli.md`（v2.0）做以下勘误与收窄；详细差异说明见 [`25-cli-implementation-plan-2026-05-27.md` §0](./25-cli-implementation-plan-2026-05-27.md)。
+为避免使用过期细节落地，本 PRD 对原 `25 cli.md`（v2.0）做以下勘误与收窄；详细差异说明见 [`25-cli-implementation.md` §0](./25-cli-implementation.md)。
 
 | # | 项 | 原方案 | 本 PRD |
 |---|----|--------|--------|
@@ -43,7 +43,7 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 | D8 | 输出格式 | MVP 4 种（text/json/yaml/table） | MVP 收窄为 **text + json** 两种；yaml/table 推到 P1 |
 | D9 | `--workspace_id` 全局 flag | 全局 flag 之一 | **移除**（与 D3 一致） |
 
-> 历史方案中 `25 cli.md` / `25 cli.design.md` / `25-cli-development.md` 与本 PRD 不一致处，**以本 PRD 为准**；原三份将在顶部标注 superseded。
+> 历史方案中 `25 cli.md` / `25 cli.design.md` / `25-cli.development.md` 与本 PRD 不一致处，**以本 PRD 为准**；原三份将在顶部标注 superseded。
 
 ---
 
@@ -235,6 +235,8 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 | `skill` | `import-apply <job_id>` | P1 | `POST /v1/skills/import/{job_id}/apply` | |
 | `tool` | `ls / get / enable / disable` | P0 | `/v1/tools*` | `enable/disable` 高风险二次确认 |
 | `system` | `info` | P0 | **新增** `GET /v1/system/info` | 见 §3.4 |
+| `graph` | `ls / get / create / update / delete` | P1 | `/v1/graphs*` | 实施中新增 |
+| `pkg` | `install <url>` | P1 | 走 skill import + multipart | 实施中新增，包安装快捷方式 |
 | `team` | `ls / get / create / update / delete / run / runs / run-events` | P1 | `/v1/teams*` / `/v1/team-runs*` | |
 | `plugin` | `ls / get / enable / disable / order-set / config-set` | P1 | `/v1/plugins*` | |
 | `mcp` | `ls / get / add / update / delete / test` | P1 | `/v1/mcp-servers*` | |
@@ -257,6 +259,7 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 | `--debug` | bool | false | HTTP 请求/响应详情到 stderr |
 | `--config` | string | 跨平台默认路径 | 覆盖配置文件 |
 | `--no-color` | bool | false | 同 `NO_COLOR=1` |
+| `--timeout` | int | 30 | HTTP 请求超时秒数（实施中新增） |
 
 ### 3.4 后端契约新增（必须由后端先实现）
 
@@ -527,46 +530,46 @@ enabled = false                   # 对齐 24 telemetry
 
 ### 9.1 P0（必须）
 
-- [ ] **R0** `make cli` 产出 `./bin/aranea`；`go build ./cmd/aranea/` 编译通过；
-- [ ] **R1** `aranea version` 在无后端时也能输出本地版本与 commit；后端不可达 → exit 3 + 友好提示；
-- [ ] **R2** `aranea login` 成功后 token 写入 `config.toml`，文件权限 0600（Win 跳过 chmod 仅提示）；
-- [ ] **R3** `aranea agent ls / get / create / update / delete / enable / disable / tools / tools-set` 全部 happy path 通过 + httptest；
-- [ ] **R4** `aranea skill ls / get / create / update / delete / enable / disable / publish` 同上；
-- [ ] **R5** `aranea tool ls / get / enable / disable` 同上；
-- [ ] **R6** `aranea system info` 显示后端版本 / commit / 默认 provider / `__system_admin__` agent_key；
-- [ ] **R7** `--output json` 输出可被 `jq` 解析；`--quiet` 输出每行一个 ID；
-- [ ] **R8** 删除 / 启停高风险动作无 `--yes` 时拒绝执行并提示；
-- [ ] **R9** 401 / 403 → exit 6 + 重跑 login 提示；
-- [ ] **R10** `aranea config path` 在 Win / mac / Linux 输出正确路径；旧 `config.toml` 缺字段时 CLI 不崩溃（用默认值）；
-- [ ] **R11** `cmd/araneactl/lint` 新增 R12 黑名单生效（CLI 误 import biz/agent/server/service/trpc-agent-go 时 lint 失败）；
+- [x] **R0** `make cli` 产出 `./bin/aranea`；`go build ./cmd/aranea/` 编译通过；
+- [x] **R1** `aranea version` 在无后端时也能输出本地版本与 commit；后端不可达 → exit 3 + 友好提示；
+- [x] **R2** `aranea login` 成功后 token 写入 `config.toml`，文件权限 0600（Win 跳过 chmod 仅提示）；
+- [x] **R3** `aranea agent ls / get / create / update / delete / enable / disable / tools / tools-set` 全部 happy path 通过 + httptest；
+- [x] **R4** `aranea skill ls / get / create / update / delete / enable / disable / publish` 同上；
+- [x] **R5** `aranea tool ls / get / enable / disable` 同上；
+- [x] **R6** `aranea system info` 显示后端版本 / commit / 默认 provider / `__system_admin__` agent_key；
+- [x] **R7** `--output json` 输出可被 `jq` 解析；`--quiet` 输出每行一个 ID；
+- [ ] **R8** 删除 / 启停高风险动作无 `--yes` 时拒绝执行并提示；（待确认：当前实现是否完整覆盖所有高风险动作）
+- [x] **R9** 401 / 403 → exit 6 + 重跑 login 提示；
+- [x] **R10** `aranea config path` 在 Win / mac / Linux 输出正确路径；旧 `config.toml` 缺字段时 CLI 不崩溃（用默认值）；
+- [ ] **R11** `cmd/araneactl/lint` 新增 R12 黑名单生效（CLI 误 import biz/agent/server/service/trpc-agent-go 时 lint 失败）；（**未实现**：`cmd/araneactl/` 目录不存在）
 - [ ] **R12** `docs/guides/cli-quickstart.md` 落地，链接进 `docs/README.md`；
 
 ### 9.2 P1（应做）
 
-- [ ] **R20** 后端 `__system_admin__` 种子存在（重启后端不重复创建）；
-- [ ] **R21** 后端 `cli_admin_*` 首批工具注册成功；系统管家 Agent 单测能调用工具；
-- [ ] **R22** WS 客户端能正确解码 5 类事件（`message.delta / tool.call / tool.result / tool.error / await.user.reply`）；
-- [ ] **R23** `aranea` 启动进入 REPL；`/help / /quit` 工作；一次完整 skill install 对话流跑通；
-- [ ] **R24** `aranea skill install <github-url>` happy path 成功；冲突 warn 时按 `--decision` 工作；
-- [ ] **R25** 后端 multipart 接收 `source / source_url / source_ref / source_subpath / client_validation` 写入 `metadata_json`；`tool_invocations` / `audit_logs` 可见来源；
+- [x] **R20** 后端 `__system_admin__` 种子存在（重启后端不重复创建）；
+- [x] **R21** 后端 `cli_admin_*` 首批工具注册成功；系统管家 Agent 单测能调用工具；
+- [ ] **R22** WS 客户端能正确解码 5 类事件（`message.delta / tool.call / tool.result / tool.error / await.user.reply`）；（**部分**：`tool.error` envelope 类型未定义，当前使用通用 `error` 类型）
+- [x] **R23** `aranea` 启动进入 REPL；`/help / /quit` 工作；一次完整 skill install 对话流跑通；
+- [ ] **R24** `aranea skill install <github-url>` happy path 成功；冲突 warn 时按 `--decision` 工作；（待确认完整状态机）
+- [ ] **R25** 后端 multipart 接收 `source / source_url / source_ref / source_subpath / client_validation` 写入 `metadata_json`；`tool_invocations` / `audit_logs` 可见来源；（待确认后端实现）
 - [ ] **R26** `aranea skill import / import-status / import-apply` 全部 httptest 通过；
-- [ ] **R27** `team / plugin / mcp / cron / channel / session / monitor` 每个资源至少 1 条 smoke；
+- [x] **R27** `team / plugin / mcp / cron / channel / session / monitor` 每个资源至少 1 条 smoke；
 - [ ] **R28** `aranea completion bash/zsh/powershell` 三种各跑一次；
 - [ ] **R29** 后端剩余 `cli_admin_*` 工具（team/plugin/mcp/cron/channel/provider/session）单测覆盖；
 
 ### 9.3 安全与审计
 
 - [ ] **R30** CLI 二进制不调用 `shell_exec` / `write_file` 等高危工具（在 P1 系统管家 Agent 工具集层面约束）；
-- [ ] **R31** `__system_admin__` Agent 不可删除、不可改名；尝试删除返回 `READONLY_AGENT`；
+- [x] **R31** `__system_admin__` Agent 不可删除、不可改名；尝试删除返回 `READONLY_AGENT`；
 - [ ] **R32** `--yes` / `/yes` 仅当前进程会话内生效；
 - [ ] **R33** Skill 安装在 block 时立即 exit 5；非交互终端 + 无 `--decision` 遇 warn 也以 exit 5 退出；
 - [ ] **R34** CLI 调用在 Web 控制台 `/tools/runs` 看到 `source=cli` 的记录（P1 系统管家工具触发）；
 
 ### 9.4 配置与可移植
 
-- [ ] **R40** 跨平台编译三平台 amd64+arm64 全部通过（`make cli-all`）；
-- [ ] **R41** `config.toml` 权限不安全时 CLI 拒绝读 token；
-- [ ] **R42** 升级新版本旧 `config.toml` 兼容；
+- [ ] **R40** 跨平台编译三平台 amd64+arm64 全部通过（`make cli-all`）；（**部分**：当前 `cli-all` 仅覆盖 Linux/amd64）
+- [x] **R41** `config.toml` 权限不安全时 CLI 拒绝读 token；
+- [x] **R42** 升级新版本旧 `config.toml` 兼容；
 - [ ] **R43** 临时目录 `<UserCacheDir>/aranea/tmp/<job>/` 在 apply 成功后清理（除非 `keep_temp=true`）；Windows 文件句柄清理失败时 defer + 记录日志，不阻塞退出。
 
 ---
@@ -604,4 +607,4 @@ enabled = false                   # 对齐 24 telemetry
 
 ---
 
-*文档版本：3.0 — 2026-05-27；与设计 `25-cli-design-2026-05-27.md`、计划 `25-cli-development-plan-2026-05-27.md` 同步。若实施中发现仓库代码与本 PRD 假设不一致（特别是 WS envelope 子类型、Skill import multipart 字段、`/v1/admins/login` 响应体），以代码为准，并补一份 `docs/changelog/` 变更记录回写本 PRD。*
+*文档版本：3.1 — 2026-06-06；与设计 [`25-cli.design.md`](./25-cli.design.md)、计划 [`25-cli.development.md`](./25-cli.development.md) 同步。若实施中发现仓库代码与本 PRD 假设不一致（特别是 WS envelope 子类型、Skill import multipart 字段、`/v1/admins/login` 响应体），以代码为准，并补一份 `docs/changelog/` 变更记录回写本 PRD。*

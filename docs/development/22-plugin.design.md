@@ -1,5 +1,6 @@
 # Plugin 插件模块 — 实现设计文档
 
+> **版本**：2026-06-06 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
 > 对应需求：[22 plugin.md](./22%20plugin.md)
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 
@@ -15,7 +16,14 @@ Plugin 是 ADK 运行时的回调扩展机制，用于在 Agent 执行过程中�
 
 当前系统管理内置 Plugin 的启用、配置、排序和绑定关系，不支持用户上传任意 Go 插件代码。
 
-**回调编排（2026-05-28）**：编排注释已合并至 `internal/plugin/trpc/manager.go` 顶部。DB 内置 Plugin 走 Runner `WithPlugins`（按 `sort_order`）；框架 Plugin（Identity、Guardrail、ToolCallID、MessageMerger）由 `Manager.RunnerPluginsForAgent` 自动追加；产品 Hook 规则走 LLMAgent Callback Chain；`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`。`confirmation_guard` Runner Plugin 直接阻断（BeforeTool CustomResult），不再依赖 Chain ConfirmGate。
+**回调编排（2026-06-06）**：编排注释位于 `internal/plugin/trpc/manager.go` 顶部。四层回调边界：
+
+1. **Runner WithPlugins** — DB 内置插件 + 框架插件（identity, guardrail, toolcallid, messagemerger）。排序：`sort_order ASC` 在 `Runtime.Apply` 时，框架插件由 `Manager.RunnerPluginsForAgent` 追加。
+2. **LLMAgent Callback Chain** — 产品指标、工具计时/记录器 + hook 规则。排序：固定产品优先级（timing=5, recorder=50）+ hooks 在 300+sort_order。Plugin 回调通过 `chain_adapter.go` 适配为 Chain 条目。
+3. **ModelSelector** — `ChainedModelSelector`：model_router（rules+启发式）→ cost_guard fallback。仅 catalog 换模，无重复 BeforeModel 路由。
+4. **Hook rules** — 用户定义的 Chain 条目；on_event 通过 productEventPlugin 桥接。
+
+`confirmation_guard` Runner 插件通过 `BeforeTool CustomResult` 直接阻断；`permission_guard` 通过 `BeforeTool CustomResult` 拒绝 `deny_tools`。ConfirmGate（`tool_confirm_gate.go`）合并 catalog `requires_confirmation` + Plugin `confirmation_guard` 配置，支持 `AwaitUserReply` mid-turn 审批。
 
 ---
 
@@ -510,7 +518,7 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
     safego.Go(ctx, "plugin.reloadRuntime", func() {
         result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
         if err != nil {
-            slog.Warn("plugin.reloadRuntime: list enabled failed", "error", err)
+            s.lg.Warn("plugin.reloadRuntime: list enabled failed", loggateway.Err(err))
             return
         }
         s.runtime.Apply(context.Background(), result.Items)
@@ -676,33 +684,54 @@ service.ProviderSet → NewPluginService(uc, runtime)
 | 组件 | 文件路径 | 职责 |
 |------|----------|------|
 | `plugintrpc.Runtime` | `internal/plugin/trpc/runtime.go` | 管理活跃插件实例，支持热重载 |
-| `plugintrpc.adapt` | `internal/plugin/trpc/adapter.go` | 将 `biz.Plugin` 转换为 `trpcplugin.Plugin` |
+| `plugintrpc.Manager` | `internal/plugin/trpc/manager.go` | RunnerPluginsForAgent、回调编排 |
+| `plugintrpc.adapt` | `internal/plugin/trpc/adapter.go` | 将 `biz.Plugin` 转换为 `adaptedPlugin` |
 | `plugintrpc.builtin` | `internal/plugin/trpc/adapter.go` | 根据 Key 创建具体内置插件实例 |
-| `AuditLogPlugin` | `internal/plugin/trpc/audit.go` | 内置审计日志插件 |
+| `chain_adapter` | `internal/plugin/trpc/chain_adapter.go` | Plugin → Chain 条目适配 |
+| `CostGuardBudgetTracker` | `internal/plugin/trpc/cost_guard_budget.go` | 日预算持久化 |
+| `CostGuardBudgetRegistry` | `internal/plugin/trpc/cost_guard_registry.go` | Agent scope 分桶 |
+| `ModelRouterRule` | `internal/plugin/trpc/model_router_rules.go` | rules[] 路由规则 |
+| `toolConfirmGate` | `internal/agent/tool_confirm_gate.go` | 统一 ConfirmGate |
+| `ChainedModelSelector` | `internal/agent/model_selector.go` | model_router → cost_guard 链式选择 |
 
 ### 7.2 Runtime 热重载
 
 ```go
 type Runtime struct {
-    mu          sync.RWMutex
-    active      []runtimeEntry
-    stats       StatsRecorder
-    retryWorker *HookRetryWorker
+    mu             sync.RWMutex
+    active         []runtimeEntry
+    stats          StatsRecorder
+    notifier       *HookNotifier
+    retryWorker    *HookDeliveryRetryWorker
+    bus            event.Bus
+    budgets        *CostGuardBudgetRegistry
+    resolveAgent   AgentKeyResolver
+    catalogConfirm CatalogConfirmChecker
+    lg             loggateway.Logger
 }
 
 type runtimeEntry struct {
-    plugin        trpcplugin.Plugin
-    scope         string
-    sortOrder     int
-    orchestration PluginOrchestrationPath
+    plugin            trpcplugin.Plugin
+    scope             string
+    key               string
+    enabled           bool
+    sortOrder         int
+    orchestration     PluginOrchestrationPath
+    modelRouter       *ModelRouterConfig
+    costGuard         *CostGuardConfig
+    confirmationGuard *ConfirmationGuardConfig
 }
 
 // Apply 替换活跃插件集（仅实例化 enabled + 已知 key 的插件）
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
     built := make([]runtimeEntry, 0, len(plugins))
     for _, p := range plugins {
-        if tp := adapt(p, rt.stats, rt.bus, rt); tp != nil {
-            built = append(built, runtimeEntry{plugin: tp, scope: p.Scope, sortOrder: p.SortOrder})
+        if ap := adapt(p, rt.stats, rt.bus, rt); ap != nil {
+            built = append(built, runtimeEntry{
+                plugin: ap.plugin, scope: p.Scope, key: p.Key,
+                sortOrder: p.SortOrder, orchestration: ResolvePluginOrchestration(p),
+                modelRouter: ap.modelRouter, costGuard: ap.costGuard, confirmationGuard: ap.confirmationGuard,
+            })
         }
     }
     rt.mu.Lock()
@@ -715,7 +744,6 @@ func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin { ... }
 
 // Close stops background workers (hook retry worker, stats batch worker).
 func (rt *Runtime) Close() { ... }
-```
 ```
 
 线程安全保证：
@@ -766,12 +794,27 @@ func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *adapt
 
 // builtin 根据 key 创建具体内置插件实例
 // 未知 key 返回 nil（静默跳过，防止数据库实验数据破坏运行时）
-func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) trpcplugin.Plugin {
+func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) trpcplugin.Plugin {
     key := strings.ToLower(strings.TrimSpace(p.Key))
     switch key {
     case "audit_log":
-        return NewAuditLogPlugin(p, stats, bus)
-    // 后续内置插件在此添加 case
+        return NewAuditLogPlugin(p, stats, bus, lg)
+    case "skill_usage_tracker":
+        return NewSkillUsageTrackerPlugin(p, stats, bus, lg)
+    case "retry_and_reflect":
+        return NewRetryAndReflectPlugin(p, stats, bus, rt, lg)
+    case "sensitive_data_mask":
+        return NewSensitiveDataMaskPlugin(p, stats, bus, lg)
+    case "confirmation_guard":
+        return NewConfirmationGuardPlugin(p, stats, bus, rt, lg)
+    case "cost_guard":
+        return NewCostGuardPlugin(p, stats, bus, rt, lg)
+    case "model_router":
+        return NewModelRouterPlugin(p, stats, bus, rt, lg)
+    case "permission_guard":
+        return NewPermissionGuardPlugin(p, stats, bus, rt, lg)
+    case "output_policy":
+        return NewOutputPolicyPlugin(p, stats, bus, lg)
     default:
         return nil
     }
@@ -1293,7 +1336,7 @@ func (r *pluginRepo) IncrementStats(ctx context.Context, key string, delta biz.P
 
 ---
 
-## 十一、EP-CB-01 集成方案
+## 十一、EP-CB-01 集成方案（✅ 已完成）
 
 ### 11.1 当前状态
 
@@ -1301,143 +1344,34 @@ func (r *pluginRepo) IncrementStats(ctx context.Context, key string, delta biz.P
 |--------|----------|------|
 | Tool AfterTool | `trpcllmagent.WithToolCallbacks(callbacks)` | ✅ 已接入 |
 | Plugin Runtime | `trpcrunner.WithPlugins(plugins...)` | ✅ 已接入 |
-| Agent BeforeAgent/AfterAgent | `trpcllmagent.WithAgentCallbacks(callbacks)` | ❌ 未接入 |
-| Model BeforeModel/AfterModel | `trpcllmagent.WithModelCallbacks(callbacks)` | ❌ 未接入 |
+| Agent BeforeAgent/AfterAgent | `trpcllmagent.WithAgentCallbacks(callbacks)` | ✅ 已接入（经 Chain） |
+| Model BeforeModel/AfterModel | `trpcllmagent.WithModelCallbacks(callbacks)` | ✅ 已接入（经 Chain） |
 
-### 11.2 两条回调路径
+### 11.2 统一方案（已实现）
 
-Plugin 系统存在两条并行的回调注入路径，EP-CB-01 完成后需要统一：
-
-**路径 A：Plugin Runtime → Runner 级别**
+Plugin Runtime 的回调通过 `chain_adapter.go` 适配为 Chain 条目，注入 LLMAgent：
 
 ```
-plugintrpc.Runtime.Plugins() → trpcrunner.WithPlugins(plugins...)
-→ Runner 创建 plugin.Manager
-→ Manager 在 Runner 执行期间自动调用 Agent/Model/Tool 回调
-```
-
-- 这是 `trpc-agent-go` 框架原生路径。
-- Plugin 通过 `Register(r *Registry)` 注册回调到 `Manager`。
-- `Manager.AgentCallbacks()` / `ModelCallbacks()` / `ToolCallbacks()` 返回框架原生回调集合。
-- **当前仅 Tool 回调被框架自动触发**，Agent/Model 回调需要 EP-CB-01 挂载。
-
-**路径 B：Callback Chain → Agent 级别**
-
-```
-callbacks.Chain → AdaptAgentCallbacks() / AdaptModelCallbacks() / AdaptToolCallbacks()
-→ trpcllmagent.WithAgentCallbacks() / WithModelCallbacks() / WithToolCallbacks()
-→ LLMAgent 构造时注入
-```
-
-- 这是 Aranea 产品层路径，位于 `internal/agent/callbacks/`。
-- Chain 支持优先级排序和产品层 Hook 桥接。
-- **当前仅 Tool 回调通过 Chain 接入**（`buildToolCallbacks`）。
-
-### 11.3 统一方案
-
-EP-CB-01 的核心是将路径 A 和路径 B 合并，使 Plugin Runtime 的回调通过 Chain 注入 LLMAgent：
-
-```
-Plugin Runtime → adaptPluginsToChainEntries() → callbacks.Chain
+Plugin Runtime → chain_adapter.go → callbacks.Chain
 → Chain.AdaptAgentCallbacks() / AdaptModelCallbacks() / AdaptToolCallbacks()
 → trpcllmagent.WithAgentCallbacks() / WithModelCallbacks() / WithToolCallbacks()
 ```
 
-具体步骤：
+**chain_adapter.go**（`internal/plugin/trpc/chain_adapter.go`）：将 `trpcplugin.Plugin` 拆解为 `callbacks.Callback` 条目，通过 `plugin.NewManager(p)` 创建 Manager，再从 `Manager.AgentCallbacks()` / `ModelCallbacks()` / `ToolCallbacks()` 中提取回调，包装为 Chain 条目。
 
-1. **新增适配器**：在 `internal/plugin/trpc/` 下新增 `chain_adapter.go`，将 `trpcplugin.Plugin` 转换为 `callbacks.Callback` 条目。
+**ModelSelector 路径**：`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`（`ChainedModelSelector`），不经过 BeforeModel Chain 回调，避免重复路由。
 
-```go
-// chain_adapter.go 核心逻辑
+### 11.3 回调触发矩阵
 
-// adaptPluginToChainEntries 将一个 trpcplugin.Plugin 拆解为多个 callbacks.Callback 条目。
-// 实现方式：创建临时 Registry，让 Plugin 注册回调，然后从 Registry 中提取各回调点，
-// 包装为 callbacks.BeforeAgentHookFunc / AfterAgentHookFunc / BeforeModelHookFunc / AfterModelHookFunc 等。
-func adaptPluginToChainEntries(p trpcplugin.Plugin, priority int) []callbacks.Callback {
-    reg := trpcplugin.NewRegistry()  // 临时 Registry
-    p.Register(reg)                  // 让 Plugin 注册回调到临时 Registry
-
-    var entries []callbacks.Callback
-
-    // 从 reg 中提取 BeforeAgent 回调
-    for _, cb := range reg.BeforeAgentCallbacks() {
-        entries = append(entries, callbacks.NewBeforeAgentHook(priority, cb))
-    }
-    // 从 reg 中提取 AfterAgent 回调
-    for _, cb := range reg.AfterAgentCallbacks() {
-        entries = append(entries, callbacks.NewAfterAgentHook(priority, cb))
-    }
-    // BeforeModel / AfterModel 同理
-    for _, cb := range reg.BeforeModelCallbacks() {
-        entries = append(entries, callbacks.NewBeforeModelHook(priority, cb))
-    }
-    for _, cb := range reg.AfterModelCallbacks() {
-        entries = append(entries, callbacks.NewAfterModelHook(priority, cb))
-    }
-    // BeforeTool / AfterTool
-    for _, cb := range reg.BeforeToolCallbacks() {
-        entries = append(entries, callbacks.NewBeforeToolHook(priority, cb))
-    }
-    for _, cb := range reg.AfterToolCallbacks() {
-        entries = append(entries, callbacks.NewAfterToolHook(priority, cb))
-    }
-    return entries
-}
-```
-
-> **注意**：`trpcplugin.Registry` 的具体导出 API 需要查看 `trpc-agent-go` 框架源码确认。如果 Registry 不暴露回调列表，则需要改用 `plugin.NewManager(p)` 创建 Manager，再从 `Manager.AgentCallbacks()` / `ModelCallbacks()` / `ToolCallbacks()` 中提取回调，包装为 Chain 条目。
-
-2. **新增适配器函数**：在 `internal/agent/callbacks/adapter.go` 中补充 `BeforeModelHookFunc` 和 `AfterModelHookFunc`（参照已有的 `BeforeAgentHookFunc` 和 `AfterAgentHookFunc`）。
-
-```go
-type BeforeModelHookFunc struct {
-    priority int
-    fn       trpcmodel.BeforeModelCallbackStructured
-}
-
-func NewBeforeModelHook(priority int, fn trpcmodel.BeforeModelCallbackStructured) *BeforeModelHookFunc
-
-type AfterModelHookFunc struct {
-    priority int
-    fn       trpcmodel.AfterModelCallbackStructured
-}
-
-func NewAfterModelHook(priority int, fn trpcmodel.AfterModelCallbackStructured) *AfterModelHookFunc
-```
-
-3. **修改 `BuildTRPCLLMAgent`**：在 `internal/agent/trpc_build.go` 中，构建 Chain 时合并 Plugin 回调和产品层 Hook。
-
-```go
-// 伪代码
-chain := callbacks.NewChain()
-
-// 1. 加入 Plugin Runtime 回调
-for _, entry := range adaptPluginToChainEntries(plugins...) {
-    chain = chain.Append(entry)
-}
-
-// 2. 加入产品层 Hook（未来）
-// for _, hook := range hookResolver.Resolve(agentID) { ... }
-
-// 3. 注入到 LLMAgent
-opts = append(opts, trpcllmagent.WithAgentCallbacks(chain.AdaptAgentCallbacks()))
-opts = append(opts, trpcllmagent.WithModelCallbacks(chain.AdaptModelCallbacks()))
-opts = append(opts, trpcllmagent.WithToolCallbacks(chain.AdaptToolCallbacks()))
-```
-
-3. **保留 Runner 级别 Plugin 注入**：`trpcrunner.WithPlugins()` 继续用于 Runner 级别的 `OnEvent` 回调，因为 `OnEvent` 不属于 Agent/Model/Tool 生命周期。
-
-### 11.4 EP-CB-01 完成后的回调触发矩阵
-
-| 回调点 | 触发方式 | 当前 | EP-CB-01 后 |
-|--------|----------|------|-------------|
-| BeforeAgent | LLMAgent 构造时 WithAgentCallbacks | ❌ | ✅ |
-| AfterAgent | LLMAgent 构造时 WithAgentCallbacks | ❌ | ✅ |
-| BeforeModel | LLMAgent 构造时 WithModelCallbacks | ❌ | ✅ |
-| AfterModel | LLMAgent 构造时 WithModelCallbacks | ❌ | ✅ |
-| BeforeTool | LLMAgent 构造时 WithToolCallbacks | ✅ | ✅（经 Chain） |
-| AfterTool | LLMAgent 构造时 WithToolCallbacks | ✅ | ✅（经 Chain） |
-| OnEvent | Runner 级别 WithPlugins | ✅ | ✅ |
+| 回调点 | 触发方式 | 状态 |
+|--------|----------|------|
+| BeforeAgent | LLMAgent 构造时 WithAgentCallbacks | ✅ 经 Chain |
+| AfterAgent | LLMAgent 构造时 WithAgentCallbacks | ✅ 经 Chain |
+| BeforeModel | LLMAgent 构造时 WithModelCallbacks | ✅ 经 Chain |
+| AfterModel | LLMAgent 构造时 WithModelCallbacks | ✅ 经 Chain |
+| BeforeTool | LLMAgent 构造时 WithToolCallbacks | ✅ 经 Chain |
+| AfterTool | LLMAgent 构造时 WithToolCallbacks | ✅ 经 Chain |
+| OnEvent | Runner 级别 WithPlugins | ✅ |
 
 ---
 
@@ -1566,9 +1500,9 @@ func builtin(p biz.Plugin, stats StatsUpdater) trpcplugin.Plugin {
 
 ## 十四、配置校验机制
 
-### 14.1 当前状态
+### 14.1 当前状态（✅ 已实现）
 
-`PluginUsecase.UpdateConfig` 仅校验 `json.Valid()`，不校验配置是否符合 `config_schema_json` 定义的 JSON Schema。
+`PluginUsecase.UpdateConfig` 和 `Create` 均已实现 JSON Schema 校验，委托给 `shared.ValidateDocumentAgainstSchema("PLUGIN", schemaJSON, docJSON)`。
 
 ### 14.2 设计方案
 
@@ -1628,9 +1562,9 @@ func validateJSONSchema(schemaJSON, docJSON string) error {
 
 ## 十五、Agent 绑定机制
 
-### 15.1 当前状态
+### 15.1 当前状态（✅ 已实现）
 
-`plugins` 表有 `scope` 字段（"global" 或 agent_id），但运行时未消费此字段——`Runtime.Apply()` 加载所有 enabled 插件，不区分 scope。
+`Runtime.Apply()` 加载所有 enabled 插件（含 scope 信息），`PluginsForAgent(agentID)` 按 scope 过滤返回匹配插件。
 
 ### 15.2 设计方案
 
@@ -1677,3 +1611,137 @@ Agent 绑定的 UI 交互设计参见需求文档 §8.3。
 ### 15.4 scope 字段扩展
 
 当前 `scope` 为单值（"global" 或单个 agent_id）。如需支持多 Agent 绑定，可改为逗号分隔的 agent_id 列表或新增关联表。本期建议保持单值 + global，后续迭代扩展。
+
+---
+
+## 十六、model_router rules[] 路由规则（✅ 已实现）
+
+### 16.1 数据结构
+
+文件路径：`internal/plugin/trpc/model_router_rules.go`
+
+```go
+type ModelRouterRule struct {
+    Model    string   `json:"model"`
+    Contains []string `json:"contains"`
+    Regex    string   `json:"regex"`
+    MinChars int      `json:"min_chars"`
+    Priority int      `json:"priority"`
+
+    compiledRegex *regexp.Regexp
+}
+```
+
+### 16.2 匹配逻辑
+
+`resolveModelFromRules(prompt, rules)` 按 priority 降序排列规则，依次检查：
+
+1. `min_chars`：prompt 长度不足则跳过。
+2. `regex`：编译后的正则匹配 prompt。
+3. `contains`：prompt 包含任一关键词（大小写不敏感）。
+
+首个命中的 `model` 生效，返回模型名。无命中返回空字符串，回退到 `code_model` / `long_context_model` 启发式。
+
+### 16.3 与 ModelSelector 的关系
+
+`model_router` BeforeModel 回调中，先尝试 `resolveModelFromRules`，再回退到启发式路由。命中后通过 `CustomResponse` 改写 `LLMRequest.Model`。
+
+`ChainedModelSelector`（`internal/agent/model_selector.go`）中，model_router selector 优先于 cost_guard selector，两者通过 catalog 换模而非重复 BeforeModel 路由。
+
+### 16.4 前端可视化编辑器
+
+文件路径：`web/src/components/plugins/ModelRouterRulesEditor.vue`
+
+支持增删改排序规则，每条规则可编辑 model、priority、contains、regex、min_chars。
+
+---
+
+## 十七、cost_guard 日预算持久化与 Agent scope 分桶（✅ 已实现）
+
+### 17.1 日预算持久化
+
+文件路径：`internal/plugin/trpc/cost_guard_budget.go`
+
+`CostGuardBudgetTracker` 通过 `plugin_cost_guard_usage` 表持久化日预算消耗：
+
+- 异步批量写入：`persistCh` channel + `persistWorker` goroutine。
+- 启动时从 DB 加载当日已消耗 token。
+- 服务重启后日预算累计不丢失。
+
+### 17.2 Agent scope 分桶
+
+`CostGuardBudgetRegistry`（`internal/plugin/trpc/cost_guard_registry.go`）管理多个 `CostGuardBudgetTracker`：
+
+- scope 为 `global` 时，按 `agent_id` 创建独立 tracker（`BudgetTrackerForContext`）。
+- 每个 Agent 有独立的日预算消耗追踪。
+- BeforeModel 回调和 ModelSelector 共用同一个 `BudgetTrackerForContext`，避免双路径计量。
+
+### 17.3 与 ModelSelector 的关系
+
+`PluginCostGuardSelector`（`internal/agent/model_selector.go`）作为 `ChainedModelSelector` 的第二层：
+
+1. model_router selector 尝试路由。
+2. cost_guard selector 检查预算，超限则切换到 `fallback_model`。
+3. 均通过 catalog 换模，不重复 BeforeModel 路由。
+
+---
+
+## 十八、ConfirmGate 与工具确认审批（✅ 已实现）
+
+### 18.1 ConfirmGate 统一
+
+文件路径：`internal/agent/tool_confirm_gate.go`
+
+`toolConfirmGate` 合并两个来源的确认配置：
+
+1. **catalog** `requires_confirmation`：工具 catalog 中标记需要确认的工具。
+2. **Plugin** `confirmation_guard` 配置：`confirm_tools` + `confirm_patterns`。
+
+两者合并为统一 ConfirmGate 链路，在 `BeforeTool` Chain 回调中检查。
+
+### 18.2 AwaitUserReply mid-turn 审批
+
+当存在 `AwaitUserReply` 时，工具确认支持 mid-turn 审批：
+
+- 前端通过 `await_kind=tool_confirm` 专用 UI 展示 Approve/Deny 按钮。
+- 用户点击后发送 `__aranea:tool_confirm:approve` 或 `__aranea:tool_confirm:deny` 结构化消息。
+- 后端解析结构化消息，完成审批流程。
+
+### 18.3 confirmation_guard Runner 级阻断
+
+`confirmation_guard` Runner 插件通过 `BeforeTool CustomResult` 直接阻断，不再依赖 Chain ConfirmGate。Runner 级 `confirmation_guard` 仅做 telemetry 记录。
+
+---
+
+## 十九、retry_and_reflect 反思注入（✅ 已实现）
+
+### 19.1 反思机制
+
+文件路径：`internal/plugin/trpc/retry_reflect.go`
+
+`RetryAndReflectPlugin` 在 `AfterTool` 回调中检测工具失败（`args.Error != nil`）：
+
+1. 检查重试次数是否超过 `max_retries`。
+2. 检查工具是否在 `excluded_tools` 中。
+3. 检查是否为高风险工具（需确认）。
+4. 通过 `CustomResult` 注入 `reflection_hint`，LLM 根据错误信息修正下一次调用。
+5. 通过 `event.Bus` 发布 `plugin.retry_reflect` 事件。
+
+### 19.2 注册回调点
+
+- `AfterTool`：检测工具失败，注入反思提示。
+- `AfterAgent`：清理 invocation 级别的重试计数。
+
+---
+
+## 二十、Schema 驱动配置表单（✅ 已实现）
+
+### 20.1 前端实现
+
+文件路径：`web/src/components/plugins/PluginSchemaForm.vue`
+
+- 根据 `config_schema_json` 动态渲染表单。
+- 支持表单 / JSON 双模式切换。
+- 表单模式：按 schema 的 properties 渲染输入控件。
+- JSON 模式：直接编辑 JSON 文本。
+- 保存时调用 `UpdatePluginConfig`，后端通过 `ValidateJSONSchema` 校验。

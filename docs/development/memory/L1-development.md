@@ -1,37 +1,48 @@
 # L1 — 开发计划
 
 > **需求**：[`L1.md`](./L1.md) · **设计**：[`L1.design.md`](./L1.design.md)
+> **进度真相**：以本文为准；需求/设计正文不写修复记录。
 
 ---
 
-## 现状
+## 现状（2026-06-06）
 
-| 项 | 状态 |
-|----|------|
-| `memory_l1_*` 表 | ✅ |
-| Admin ListL1Tasks/Fields | ✅ |
-| working_memory 工具 | 🟡 |
-| task→episode 归档 | 🟡 |
-| 前端工作记忆 Tab | 🟡 |
+| 项 | 状态 | 证据 |
+|----|------|------|
+| `memory_l1_*` 表 | ✅ | `memory_l1_tasks` / `memory_l1_fields` / `memory_l1_field_history` |
+| Admin ListL1Tasks/Fields | ✅ | `internal/biz/memory_admin_store.go` |
+| working_memory 工具（5 个） | ✅ | `internal/tools/working_memory/tools.go`（read/list/write/patch/delete） |
+| L1 写入 Store | ✅ | `internal/data/sessionmemory/store_l1.go`（StartTask/EndTask/UpsertField/DeleteField/PatchFields/ArchiveTask） |
+| L1 Writer Biz | ✅ | `internal/biz/memory_admin_store.go`（L1Writer 接口 + DTO） |
+| task→episode 归档 hook | ✅ | `internal/biz/memory_admin_usecase.go`（EndL1Task 自动归档 + 创建 L2 Episode） |
+| L1 归档 Worker | ✅ | `internal/cronrunner/jobs/memory_l1_archive.go` |
+| Context 注入 | ✅ | `internal/agent/working_memory_inject.go`（BeforeToolHook 注入 L1Writer/L1Reader） |
+| Prompt 注入 | ✅ | `internal/agent/l1_prompt.go`（L1MemoryCue） |
+| 工具 Catalog 注册 | ✅ | `internal/data/builtin_tools_seed.go`（5 个 working_memory 工具种子） |
+| shared_with 传输层 | ✅ | Schema + Store + Proto + Frontend 管道已打通 |
+| Team shared_with 业务逻辑 | 🟡 | 传输层管道已打通，但无写入/权限验证/跨 agent 共享逻辑 |
+| field history UI | ❌ | 字段版本历史前端展示，revision 字段存在但无 UI |
 
 ---
 
 ## 待办
 
-| # | 任务 | 状态 |
-|---|------|------|
-| L1-1 | working_memory 工具端到端 | 🟡 |
-| L1-2 | 自动 episode 归档 hook | 🟡 |
-| L1-3 | field history UI | ❌ |
-| L1-4 | Team shared_with_json | ❌ |
+| # | 任务 | 状态 | 优先级 |
+|---|------|------|--------|
+| L1-1 | Team shared_with 写入/权限验证/跨 agent 共享逻辑 | 🟡 | P2 |
+| L1-2 | field history UI（字段版本历史展示 + 回滚） | ❌ | P3 |
 
 ---
 
 ## 代码锚点
 
-- `internal/data/sessionmemory/store*.go`
-- `internal/service/memory.go`
-- `internal/biz/memory_admin_*.go`
+- `internal/data/sessionmemory/store_l1.go` — L1 表读写
+- `internal/tools/working_memory/tools.go` — 5 个 working_memory 工具
+- `internal/biz/memory_admin_store.go` — L1Writer 接口
+- `internal/biz/memory_admin_usecase.go` — EndL1Task 归档 hook
+- `internal/cronrunner/jobs/memory_l1_archive.go` — 空闲任务归档 Worker
+- `internal/agent/l1_prompt.go` — L1MemoryCue prompt 注入
+- `internal/agent/working_memory_inject.go` — BeforeToolHook 注入
 
 ---
 

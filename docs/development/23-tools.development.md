@@ -1,6 +1,6 @@
 # Tools 工具 — 开发计划
 
-> **版本**：8.0（2026-05-29）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Round 3 P2/P3 修复 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**；**Round 5 Wire 窄接口 + 错误规范 ✅**
+> **版本**：8.1（2026-06-06）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Round 3 P2/P3 修复 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**；**Round 5 Wire 窄接口 + 错误规范 ✅**
 > **需求**：[23 tools.md](./23%20tools.md) · [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -60,6 +60,14 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | **shell 参数 schema** | ✅ 已实现 | seed `workdir`；`hostexecnorm` 兼容 `working_dir` |
 | **confirm 覆盖 exec_command** | ✅ 已实现 | `runtimeConfirmAliases`：`exec_command` ↔ `shell_exec` |
 | **workspace_exec 装配** | ✅ 已修复 | registry 不独立挂载 nil executor；仅 CodeExecutor 路径 |
+| **浏览器自动化** | ✅ 已实现 | `browser` Playwright MCP 桥接 + 种子表 |
+| **统一消息发送** | ✅ 已实现 | `message` ToolSet + OutboundRouter |
+| **子代理工具** | ✅ 已实现 | `subagents_spawn/list/get/cancel` + SubAgentService |
+| **延迟工具机制** | ✅ 已实现 | `read_tool_result` Deferred 通道 + ToolSearchTool |
+| **电子表格读取** | ✅ 已实现 | `read_spreadsheet` + 种子表 |
+| **知识反思工具** | ✅ 已实现 | `knowledge_reflect` + 种子表 |
+| **工具调用审计** | ✅ 已实现 | `tool_invocation_audit` 表 + ListToolInvocationAudits API |
+| **Profile 扩展** | ✅ 已实现 | 9 种 profile（新增 minimal/safe/system_admin/spirit） |
 
 ---
 
@@ -117,6 +125,11 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 48 | **P2** | CreateSkillDir 空 slug 校验 | ✅ Round 5：kerrors.BadRequest 拒绝空/不安全 slug |
 | 49 | **P2** | testexec/trpc fmt.Errorf → kerrors | ✅ Round 5：3 处业务错误迁移 |
 | 50 | **P1** | RunHealthChecks 闭包变量编译错误 | ✅ Round 5：循环变量捕获修复 |
+| 51 | **P3** | 浏览器自动化工具 | ✅ `browser` Playwright MCP 桥接 |
+| 52 | **P3** | 统一消息发送工具 | ✅ `message` ToolSet + OutboundRouter |
+| 53 | **P2** | 子代理工具 | ✅ `subagents_*` + SubAgentService |
+| 54 | **P2** | 延迟工具机制 | ✅ `read_tool_result` Deferred 通道 |
+| 55 | **P3** | Profile 扩展 | ✅ 9 种 profile（minimal/safe/system_admin/spirit） |
 
 > **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及 Electron/App 打包。
 
@@ -191,7 +204,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 4.2 | 实现 `patch` 包（hunk 类型、apply、unified 解析） | `pkg/trpc-agent-go/tool/file/patch/` | ✅ `patch_test.go` |
 | 4.3 | 实现 `patch_file` 工具 | `pkg/trpc-agent-go/tool/file/patchfile.go` · `file.go` | ✅ unified + hunk；原子写盘 |
 | 4.4 | 实现 `diff_edit` 工具 | `pkg/trpc-agent-go/tool/file/diffedit.go` | ✅ 多 edit 原子；结构化错误 |
-| 4.5 | 实现 SessionFileState | `editcontent.go` · `internal/toolcache/file_views.go` | ✅ `TestFileViewCache_SkipsSecondRead` |
+| 4.5 | 实现 SessionFileState | `editcontent.go` · `pkg/trpc-agent-go/internal/toolcache/file_views.go` | ✅ `TestFileViewCache_SkipsSecondRead` |
 | 4.6 | catalog 种子 + Effective Tools 组 | `builtin_tools_seed.go` · `agent_effective_tools.go` | ✅ filesystem 组含新 key |
 | 4.7 | testexec + Activity 标签 | `testexec/config.go` · `activity_meta.go` | ✅ 在线测试 + 活动流中文名 |
 | 4.8 | Agent Prompt 工作流 | `internal/agent/prompt.go` | ✅ diff_edit 优先工作流 |
@@ -457,6 +470,8 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 7 | BM25 分数归一化 | `mergeBM25Results` 直接拼接 tsvector 和 trigram 结果，分数尺度不同可能导致排序偏差 |
 | 8 | `AdaptiveRouter.Search` 签名简化 | 调用方常传 `nil` + `""`，考虑提供简化签名 |
 | 9 | `slugify("")` 全局唯一 slug 生成 | 空 slug 已在 `CreateSkillDir` 校验拦截，但 `slugify` 本身仍生成 "skill-0" 非唯一值 |
+| 10 | `browser` / `message` / `subagents_*` 种子表补全 | Registry 有注册但种子表缺 `message` 和 `subagents_*` 条目 |
+| 11 | `browser` / `kanban` / `spirit` 纳入 toolGroup | 当前 `toolGroupsIntegration` 不含 browser/kanban；无 `toolGroupsSpirit`；`full` profile 不含 browser |
 
 ### P3（低优先级）
 
@@ -466,6 +481,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 11 | E2E 全链路测试 | `read_file` → `diff_edit` → shell 读同路径 |
 | 12 | `AgentPromptFileRepo` 监控 | 恰好 5 方法处于红线边界，新增方法需立即拆分 |
 | 13 | `biz/` 预存测试失败修复 | `TestRecordReconnectMetadata`/`TestAgentRuntimeSettings_DomainAccessors`/`TestValidateRalphLoopSettings` 3 个测试失败 |
+| 14 | spirit 工具 group 变量化 | spirit profile 直接枚举 key，无法通过 `group:spirit` 引用 |
 
 ---
 

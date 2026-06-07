@@ -24,7 +24,7 @@
 | 类型 | 标签 | 颜色建议 |
 |------|------|----------|
 | Tool | `Tool` | primary / info |
-| Skill | `Skill` | deep-purple |
+| Skill | `Skill` | teal |
 | MCP | `MCP` | teal |
 | Message | `User` / `Agent` / `Team` | grey / primary |
 
@@ -752,56 +752,45 @@ ALTER TABLE messages ADD COLUMN visibility TEXT NOT NULL DEFAULT 'visible';
 | 模块 | 职责 | 所在层 |
 |------|------|--------|
 | `SessionUsecase` | Session CRUD、timeline 聚合、上下文治理、摘要触发 | biz |
+| `SessionCompressionUsecase` | 上下文压缩，依赖窄接口（CompressRepo/ContextUpdater/SummaryReader/SummaryWriter） | biz |
 | `SessionRepository` | 读写 `sessions`、turns、participants、runs、steps、trace spans、snapshots | biz 接口 / data 实现 |
 | `SessionService` | proto ↔ biz 映射、Runner 装配编排 | service |
 | `ChatService` | 单 Agent 对话处理，写 message、turn、trace span、usage、context snapshot | service |
-| `SessionCompressor` | 上下文接近阈值时生成摘要，写 system message 和 context snapshot | service |
 | `UsageService` | 维护 `model_token_usage_events`，回填 session 聚合字段 | service |
 | `sessionmemory.Store` | L0-L4 记忆链读写，Runner 会话实体同步 | data |
 | `trpc session.Service` 适配器 | 桥接 Ent session 到 trpc session.Service 接口（后续实现） | internal/session/trpc |
 
-当前 `SessionUsecase` 已实现 create/search/get/rename/archive/delete/restore/update/timeline/appendChatTurn/turns/state/titleGeneration 等基础能力，建议逐步扩展为 session 历史中心：
+当前 `SessionUsecase` 已实现 create/search/get/rename/archive/delete/restore/update/timeline/appendChatTurn/turns/state/titleGeneration/pin/unpin/export/participants 等基础能力，逐步扩展为 session 历史中心。
+
+> **接口拆分**：`SessionRepository` 聚合接口已拆分为 17 个子接口（SessionReader/SessionWriter/SessionBatchWriter/SessionPinWriter/SessionRevisionWriter/MessageReader/MessageSearchReader/MessageWriter/MessageStatusWriter/TimelineReader/InvocationReader/SummaryReader/SummaryWriter/StateRepo/TurnRepo/ContextUpdater/CompressRepo），详见 [10-session.design.md §3.2](./10%20session.design.md#32-repository-接口)。
 
 ```go
 // biz 层：SessionUsecase（不 import pkg/trpc-agent-go）
 type SessionUsecase struct {
-    sessions       SessionRepository
-    agents         AgentRepository
-    teams          TeamRepository
-    titleGenerator SessionTitleGenerator
+    // 依赖 17 个窄子接口 + AgentLookup + TeamLookup + SessionTitleGenerator
+    // ...
 }
 
-// SessionRepository 接口定义在 biz，实现在 data
-type SessionRepository interface {
-    SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
-    CreateSession(ctx context.Context, s Session) (Session, error)
-    GetSessionByID(ctx context.Context, id string) (Session, error)
-    UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
-    UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
-    RestoreSession(ctx context.Context, id string) (Session, error)
-    ArchiveSession(ctx context.Context, id string) error
-    DeleteSession(ctx context.Context, id string) error
-    DeleteSessionsByAgentID(ctx context.Context, agentID string) error
-    ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
-    ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
-    ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
-    AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
-    AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-    UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
-    UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
-    UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
-    InsertSessionSummary(ctx context.Context, row SessionSummary) error
-    MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
-    ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
-    LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
-    UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
-    GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
-    SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
-    CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
-    UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
-    ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
-    GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
-    // 后续扩展：runs / steps / trace_spans / participants / context_snapshots
+// SessionRepo 聚合接口仅用于 Wire 绑定，消费者应依赖具体子接口
+type SessionRepo interface {
+    SessionReader
+    SessionWriter
+    SessionBatchWriter
+    SessionPinWriter
+    SessionRevisionWriter
+    MessageReader
+    MessageSearchReader
+    MessageWriter
+    MessageStatusWriter
+    TimelineReader
+    InvocationReader
+    SummaryReader
+    SummaryWriter
+    StateRepo
+    TurnRepo
+    ContextUpdater
+    CompressRepo
+    // 后续扩展：runs / steps / trace_spans / context_snapshots
 }
 ```
 
@@ -1521,7 +1510,7 @@ export const useSessionStore = defineStore("sessions", {
 | ListSessionMessages 分页 | limit/offset | ✅ |
 | SearchSessions 增强 | user_id/sort_by/sort_order 筛选 | ✅ |
 
-### Phase 1：扩展 Session 主表与列表（部分完成）
+### Phase 1：扩展 Session 主表与列表（✅ 已完成）
 
 | 工作 | 说明 | 状态 |
 |------|------|------|
@@ -1534,7 +1523,7 @@ export const useSessionStore = defineStore("sessions", {
 | Session 置顶 | sessions 增加 `pinned_at` 字段 + PinSession/UnpinSession RPC | ✅ |
 | Session 导出 | ExportSession Markdown/JSON | ✅ |
 
-### Phase 2：Context 快照与聚合
+### Phase 2：Context 快照与聚合（部分完成）
 
 | 工作 | 说明 | 状态 |
 |------|------|------|
@@ -1542,6 +1531,8 @@ export const useSessionStore = defineStore("sessions", {
 | ChatService | 模型调用完成后写快照，更新 `context_status` | 待实现 |
 | Usage 聚合 | 从 `model_token_usage_events` 回填 session token / cost | 待实现 |
 | 前端 | 显示 context 趋势和 warning/critical 状态 | 待实现 |
+| Session 导出 | ExportSession Markdown/JSON | ✅ |
+| 消息搜索 | SearchSessionMessages FTS/LIKE | ✅ |
 
 ### Phase 3：Run / Step 编排记录
 
@@ -1554,7 +1545,7 @@ export const useSessionStore = defineStore("sessions", {
 | Team | 编排器 step/span 写入 | 待实现 |
 | 前端 | Timeline Tab ✅ · Runs Tab ✅ · Trace Tab 待办 | 🟡 |
 
-### Phase 4：Team Participants 与复盘
+### Phase 4：Team Participants 与复盘（部分完成）
 
 | 工作 | 说明 | 状态 |
 |------|------|------|
@@ -1790,13 +1781,15 @@ export const useSessionStore = defineStore("sessions", {
 
 实现状态与任务 ID 以 **[10-session-development.md](./10-session-development.md)** 为准。
 
-| 能力 | 验收要点 |
-|------|----------|
-| Session CRUD / 搜索 / 部分更新 / 归档恢复 | `GET/POST/PATCH/DELETE /v1/sessions` |
-| 列表治理 | 行内删除、批量勾选归档/删除、按保留天数预览与执行 |
-| Timeline / 消息 / 轮次 | 历史追踪弹窗、消息分页、Turn 列表 |
-| 上下文与摘要 | `context_used_ratio`、异步 `SessionCompressor`、`session_summaries` |
-| Runner 持久化 | `runner_snapshot_json` 读写 |
-| 消息搜索 | `SearchSessionMessages`（FTS5 优先，LIKE 回退） |
-| 编排可观测（远期） | `session_runs` / `steps` / `trace_spans` / `participants` |
-| 框架对齐（远期） | trpc `session.Service` 多后端、Ingestor |
+| 能力 | 验收要点 | 状态 |
+|------|----------|------|
+| Session CRUD / 搜索 / 部分更新 / 归档恢复 | `GET/POST/PATCH/DELETE /v1/sessions` | ✅ |
+| 列表治理 | 行内删除、批量勾选归档/删除、按保留天数预览与执行 | ✅ |
+| Timeline / 消息 / 轮次 | 历史追踪弹窗、消息分页、Turn 列表 | ✅ |
+| 上下文与摘要 | `context_used_ratio`、异步 `SessionCompressor`、`session_summaries` | ✅ |
+| Runner 持久化 | `runner_snapshot_json` 读写 | ✅ |
+| 消息搜索 | `SearchSessionMessages`（FTS5 优先，LIKE 回退） | ✅ |
+| Session 置顶 | `pinned_at` + PinSession/UnpinSession RPC | ✅ |
+| Session 导出 | `ExportSession`（Markdown/JSON） | ✅ |
+| 编排可观测（部分） | `session_runs` ✅ / `steps` ❌ / `trace_spans` ❌ / `participants` 🟡 | 🟡 |
+| 框架对齐（远期） | trpc `session.Service` 多后端、Ingestor | 待办 |

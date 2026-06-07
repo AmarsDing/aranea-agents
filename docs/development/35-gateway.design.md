@@ -13,9 +13,12 @@
 **设计目标**：
 1. `RunRegistry` / `RunGateway` 位于 `internal/runtime`，供 Chat / Team / Cron / Channel / WS 共用
 2. `ChatUsecase`（Biz 层）编排运行状态、排队、入队、await channel
-3. `RunnerManager` 统一 TurnRunner 构建，条件启用 `AwaitUserReplyRouting`
-4. SteerableRunner 入队优先，不支持时降级 `PendingMessageQueue`
-5. 新增 Webhook 回调系统（持久化 + 分发）— **已实现**
+3. `ChatOrchestrator`（Service 层）核心 Turn 编排，实现 `biz.TurnExecutor`；`ChatService` 为薄传输桥
+4. `TurnPipeline` 显式 Ingress → Service → Executor → Projector 管道
+5. `AdmissionGate` 准入控制：放行/入队/拒绝三路决策
+6. `RunnerManager` 统一 TurnRunner 构建，条件启用 `AwaitUserReplyRouting`
+7. SteerableRunner 入队优先，不支持时降级 `PendingMessageQueue`
+8. 新增 Webhook 回调系统（持久化 + 分发）— **已实现**
 
 **与 Runner 模块的边界**：
 - **Runner（40）**：Agent 运行器构建和生命周期（AgentFactory、PluginManager、ManagedRunner 封装）
@@ -34,20 +37,28 @@
 │  internal/server/ws.go   — WebSocket 事件通道       │
 ├─────────────────────────────────────────────────────┤
 │  Service 层                                         │
-│  internal/service/chat.go        — ChatService RPC  │
-│  internal/service/chat_native.go — 发送/Team 委派     │
-│  internal/service/trpc_turn.go   — 单 Agent Turn    │
-│  internal/service/chat_run_gateway.go — Biz 适配器  │
-│  internal/service/chat_pending.go   — PendingMessageQueue（待下沉）│
+│  internal/service/chat.go                — ChatService RPC（薄传输桥）│
+│  internal/service/chat_orchestrator.go   — ChatOrchestrator（核心编排）│
+│  internal/service/chat_orchestrator_turn.go — Turn 执行 + processPendingQueue│
+│  internal/service/turn_pipeline.go       — TurnPipeline 管道         │
+│  internal/service/chat_turn_admission.go — 准入适配器               │
+│  internal/service/chat_native.go         — 发送/Team/A2A/Cron 入口  │
+│  internal/service/chat_run_gateway.go    — Biz 适配器               │
+│  internal/service/chat_enqueue.go        — 入队拒绝辅助             │
 ├─────────────────────────────────────────────────────┤
 │  Biz 层                                             │
 │  internal/biz/chat_usecase.go — 运行编排 Usecase    │
 │    ↓ ChatRunGateway / ChatPendingQueue 接口         │
+│  internal/biz/webhook.go — WebhookUsecase           │
+│  internal/biz/webhook_dispatcher.go — WebhookDispatcher│
+│  internal/biz/event_bus_callback_consumer.go — callbackConsumer│
 ├─────────────────────────────────────────────────────┤
 │  Runtime 层（Agent 运行时边界，非 biz）              │
 │  internal/runtime/run_registry.go  — RunRegistry    │
 │  internal/runtime/gateway.go       — RunGateway 接口│
 │  internal/runtime/runner_manager.go — RunnerManager │
+│  internal/runtime/pending_queue.go — PendingMessageQueue│
+│  internal/runtime/turn/admission_gate.go — AdmissionGate│
 ├─────────────────────────────────────────────────────┤
 │  Agent 层                                           │
 │  internal/agent/trpc_runtime.go — NewTRPCRunner     │
@@ -62,17 +73,24 @@
 **正常聊天流程**：
 
 ```
-用户消息 → ChatService.nativeSendChatMessage
+用户消息 → ChatService.SendChatMessage
               ↓
-           chatUC.HasActiveRun(sessionID)?
-              ├─ Yes → chatUC.EnqueueUserMessage
-              │           ├─ RunRegistry.EnqueueUserMessage (SteerableRunner)
-              │           └─ 降级 PendingMessageQueue.Enqueue
-              └─ No  → RunRegistry.StoreCancelable → StoreRunner → Agent Turn
-                         ↓
-                      RunnerManager.NewTurnRunner (AwaitUserReplyRouting)
-                         ↓
-                      RunRegistry.Finish → chatUC.DequeuePendingMessage
+           ChatOrchestrator.Execute (biz.TurnExecutor)
+              ↓
+           TurnPipeline.Run（可选持久化路径）
+              ├─ TurnIngress → 标准化为 TurnIntent
+              ├─ TurnService.AdmitTurn → 准入判定
+              │     └─ AdmissionGate.Check → Proceed / Queued / Reject
+              ├─ TurnExecutor.ExecuteTurn → ChatOrchestrator.RunNativeAgentTurnWithOutcome
+              │     ├─ 有活跃运行 → chatUC.EnqueueUserMessage
+              │     │     ├─ RunRegistry.EnqueueUserMessage (SteerableRunner)
+              │     │     └─ 降级 PendingMessageQueue.Enqueue
+              │     └─ 无活跃运行 → RunRegistry.StoreCancelable → StoreRunner → Agent Turn
+              │           ↓
+              │        RunnerManager.NewTurnRunner (AwaitUserReplyRouting)
+              │           ↓
+              │        RunRegistry.Finish → processPendingQueue
+              └─ TurnProjector → 投影到 WS / Channel / Monitor
 ```
 
 **AwaitUserReply 流程**：
@@ -80,7 +98,7 @@
 ```
 Agent 调用 await_user_reply 工具（ServiceTool + makeAwaitReplyFunc）
               ↓
-         RunRegistry.SetStatus → "awaiting_user"
+         ChatOrchestrator.setRunStatusWithAwait → "awaiting_user"
               ↓
          前端轮询 GetRunStatus → 显示回复 UI
               ↓
@@ -150,17 +168,26 @@ func (uc *ChatUsecase) GetRunStatus(sessionID string) (ChatRunStatus, bool)
 
 Service 适配器位于 `internal/service/chat_run_gateway.go`。
 
-### 3.4 PendingMessageQueue — 消息排队（Service 层，待下沉）
+### 3.4 PendingMessageQueue — 消息排队（Runtime 层，已下沉）
 
 ```go
-// internal/service/chat_pending.go
+// internal/runtime/pending_queue.go
 
-type PendingMessageQueue struct { /* map[sessionID][]PendingMessage, optional disk snapshot */ }
+type PendingMessage struct { ID, Content, Status string; CreatedAt time.Time }
+type PendingMessageQueue struct { /* queues map[string][]PendingMessage, optional disk snapshot */ }
 
-func (q *PendingMessageQueue) Enqueue(sessionID, content string) string  // 上限 32
+const MaxPendingPerSession = 32
+
+func (q *PendingMessageQueue) Enqueue(sessionID, content string) string       // 上限 32
+func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator string) string // 合并到最后一条
 func (q *PendingMessageQueue) Dequeue(sessionID string) (PendingMessage, bool)
-func (q *PendingMessageQueue) List / Remove / Update
+func (q *PendingMessageQueue) List(sessionID string) []PendingMessage
+func (q *PendingMessageQueue) Remove(sessionID, entryID string) bool
+func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool
+func (q *PendingMessageQueue) Close()  // 含快照持久化
 ```
+
+> **下沉完成**：`PendingMessageQueue` 已从 `internal/service/chat_pending.go` 迁移至 `internal/runtime/pending_queue.go`。Service 层通过 `pendingQueueAdapter`（`chat_run_gateway.go`）做类型适配。
 
 ### 3.5 RunnerManager — TurnRunner 构建
 
@@ -169,16 +196,74 @@ func (q *PendingMessageQueue) List / Remove / Update
 
 type TurnRunnerSpec struct {
     Plugins               []trpcplugin.Plugin
-    AwaitUserReplyRouting bool  // true when AwaitHook != nil
+    AwaitUserReplyRouting bool                // true when AwaitHook != nil
     BuilderDeps           chatagent.TRPCBuilderDeps
     AgentFactoryKeys      []string
+    LookupAgents          trpcrunner.AgentLookupFunc  // Agent 查找
+    RalphLoop             *trpcrunner.RalphLoopConfig // 可选迭代执行
     ExtraOpts             []trpcrunner.Option
+    RegistryKey           string               // 长驻 runner 注册键
 }
 
 func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec) (trpcrunner.ManagedRunner, error)
+func (m *RunnerManager) CloseRunner(key string)  // 关闭并反注册长驻 runner
 ```
 
-### 3.6 Follow-up Queue（对话阶段连续发送）
+### 3.6 ChatOrchestrator — 核心编排器
+
+```go
+// internal/service/chat_orchestrator.go
+
+type ChatOrchestrator struct {
+    td         rt.TurnDeps            // 运行时依赖
+    rt         RuntimeTooling         // 插件/技能/知识库/代码执行
+    team       TeamOrchestrationDeps  // 团队执行
+    admitGate  *turn.AdmissionGate    // 准入控制
+    runs       *rt.RunRegistry        // 运行注册表
+    chatUC     *biz.ChatUsecase       // Biz 编排
+    // ... session 绑定、await 缓存、resume 防重
+}
+
+func (o *ChatOrchestrator) Execute(ctx, TurnInput) (TurnResult, error)  // biz.TurnExecutor
+func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx, TurnInput) (NativeTurnResult, error)
+func (o *ChatOrchestrator) CancelRun(ctx, sessionID) bool
+func (o *ChatOrchestrator) EnqueueUserMessage(sessionID, content, mergeFollowup) (accepted, queued bool, pendingID, rejectReason string, err error)
+// ... GetRunStatus / GetPendingMessages / processPendingQueue / setRunStatusWithAwait
+```
+
+> **ChatService 为薄传输桥**：`ChatService` 将所有编排工作委托给 `ChatOrchestrator`，自身仅负责 RPC 入口、`biz.NativeTurnGateway` 实现和 `RunGateway()` 暴露。
+
+### 3.7 TurnPipeline — Turn 管道
+
+```go
+// internal/service/turn_pipeline.go
+
+type TurnPipeline struct {
+    Service   TurnService    // 准入 + 持久化生命周期
+    Executor  TurnExecutor   // 执行已准入的 turn
+    Projector TurnProjector  // 投影到 WS / Channel / Monitor
+}
+
+func (p *TurnPipeline) Run(ctx, TurnIntent) (Turn, NativeTurnResult, error)
+```
+
+管道阶段：`TurnIngress`（标准化）→ `TurnService.AdmitTurn`（准入）→ `TurnExecutor.ExecuteTurn`（执行）→ `TurnProjector.ProjectTurnEvent`（投影）。
+
+### 3.8 AdmissionGate — 准入控制
+
+```go
+// internal/runtime/turn/admission_gate.go
+
+type AdmissionAction int  // AdmissionProceed / AdmissionQueued / AdmissionRejectBusy / AdmissionRejectEnqueue
+type AdmissionVerdict struct { Action AdmissionAction; PendingID, RejectReason string; Err error }
+
+type AdmissionGate struct { /* locker, enqueuer */ }
+func (g *AdmissionGate) Check(input) AdmissionVerdict
+```
+
+Service 层适配器位于 `chat_turn_admission.go`，将 `ChatUsecase` 适配为 `turn.SessionLocker` 和 `turn.MessageEnqueuer`。
+
+### 3.9 Follow-up Queue（对话阶段连续发送）
 
 > 产品需求：[1 chat.md §1.9](./1%20chat.md#19-对话阶段连续发送follow-up-queue--待发送队列)
 
@@ -187,7 +272,7 @@ func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec)
 **WS 通知**：`ChatEventPublisher.PublishMessageQueued` → `run_status` Envelope，`metadata: { status: "queued", hint: "message_queued" }`。  
 `ChatService.publishMessageQueued` 已废弃，禁止新增调用。
 
-**出队执行**：`ChatService.processPendingQueue` 在 turn defer 中调用 `chatUC.DequeuePendingMessage`，单 Agent / Team 共用。
+**出队执行**：`ChatOrchestrator.processPendingQueue` 在 turn defer 中调用 `chatUC.DequeuePendingMessage`，单 Agent / Team 共用。
 
 **待优化（P2 UX）**：
 - 前端运行中解除 `sending` 阻塞，支持 Cursor 式连续 Enter
@@ -241,14 +326,13 @@ SQL 迁移：`docs/sql/19_gateway_webhook.sql`
 
 ```go
 type ChatService struct {
-    runs     *rt.RunRegistry          // 生命周期：StoreRunner/Finish/ActiveRunner/Cancel
-    chatUC   *biz.ChatUsecase          // 编排：状态/排队/入队/锁/await channel
-    webhooks *biz.WebhookDispatcher     // 出站：run 终态回调
-    // awaitMetaCache / resumeInFlight 保留在 Service（传输层 resume 逻辑）
+    orch        *ChatOrchestrator       // 核心编排（所有 turn 逻辑委托）
+    turnPipeline *TurnPipeline          // 显式管道（可选持久化路径）
+    lg          loggateway.Logger
 }
 ```
 
-`NewChatService` 通过 `NewChatUsecaseFromDeps` 组装共享 `RunRegistry` + `PendingMessageQueue` + `sessionLockManager`。
+`ChatService` 为薄传输桥，实现 `biz.NativeTurnGateway` 接口，将 RPC 调用委托给 `ChatOrchestrator`。`RunGateway()` 暴露 `*rt.RunRegistry` 给 WS / Channel / Cron。
 
 ### 6.2 AwaitUserReply 集成（已实现）
 
@@ -258,8 +342,9 @@ Service 层 `makeAwaitReplyFunc` 处理当前轮次暂停；框架路由处理�
 ### 6.3 Webhook 出站（已实现）
 
 - **配置面**：`WebhookUsecase` + `GatewayService` — CRUD，校验 URL/事件类型
-- **分发面**：`WebhookDispatcher.Dispatch` — 异步 fan-out，HMAC-SHA256 签名
-- **触发面**：`callbackConsumer` 订阅 `run_status` 终态 → `WebhookDispatcher.Dispatch`
+- **分发面**：`WebhookDispatcher.Dispatch` — 异步 fan-out，HMAC-SHA256 签名，3 次重试
+- **触发面**：`callbackConsumer`（`internal/biz/event_bus_callback_consumer.go`）订阅 `run_status` 终态 → `WebhookDispatcher.Dispatch`
+- **事件类型**：`run.completed` / `run.failed` / `run.cancelled` / `graph_task_status`
 
 ### 6.4 GatewayService（已实现）
 
@@ -271,9 +356,10 @@ Service 层 `makeAwaitReplyFunc` 处理当前轮次暂停；框架路由处理�
 
 | 触发事件 | 触发位置 | eventType |
 |----------|----------|-----------|
-| 运行完成 | `ChatService.setRunStatus` 终态 | `run.completed` |
-| 运行失败 | `ChatService.setRunStatus` 终态 | `run.failed` |
+| 运行完成 | `ChatOrchestrator.setRunStatus` 终态 | `run.completed` |
+| 运行失败 | `ChatOrchestrator.setRunStatus` 终态 | `run.failed` |
 | 运行取消 | `StopGeneration` + `setRunStatus` 终态 | `run.cancelled` |
+| 图任务状态 | Graph 执行引擎 | `graph_task_status` |
 
 触发方式：`PublishRunStatus` → EventBus → `callbackConsumer` → `WebhookDispatcher.Dispatch`（异步，不阻塞主流程）。
 
@@ -286,14 +372,20 @@ Service 层 `makeAwaitReplyFunc` 处理当前轮次暂停；框架路由处理�
 | `internal/runtime/run_registry.go` | ✅ | RunRegistry 运行注册表 |
 | `internal/runtime/gateway.go` | ✅ | RunGateway 接口 |
 | `internal/runtime/runner_manager.go` | ✅ | RunnerManager TurnRunner 构建 |
+| `internal/runtime/pending_queue.go` | ✅ | PendingMessageQueue（已从 service 层下沉） |
+| `internal/runtime/turn/admission_gate.go` | ✅ | AdmissionGate 准入控制 |
 | `internal/biz/chat_usecase.go` | ✅ | ChatUsecase 编排 |
-| `internal/service/chat_run_gateway.go` | ✅ | Biz 适配器 + NewChatUsecaseFromDeps |
-| `internal/service/chat_pending.go` | 🟡 | PendingMessageQueue（待下沉） |
-| `internal/service/chat.go` | ✅ | ChatService 委托 chatUC |
-| `internal/service/chat_native.go` | ✅ | 发送路径 + Team 委派 |
-| `internal/service/trpc_turn.go` | ✅ | 单 Agent Turn + processPendingQueue |
 | `internal/biz/webhook.go` | ✅ | WebhookConfig + WebhookUsecase |
 | `internal/biz/webhook_dispatcher.go` | ✅ | WebhookDispatcher |
+| `internal/biz/event_bus_callback_consumer.go` | ✅ | callbackConsumer（EventBus → Webhook） |
+| `internal/service/chat.go` | ✅ | ChatService 薄传输桥 |
+| `internal/service/chat_orchestrator.go` | ✅ | ChatOrchestrator 核心编排器 |
+| `internal/service/chat_orchestrator_turn.go` | ✅ | Turn 执行 + processPendingQueue |
+| `internal/service/turn_pipeline.go` | ✅ | TurnPipeline 管道 |
+| `internal/service/chat_turn_admission.go` | ✅ | 准入适配器 |
+| `internal/service/chat_native.go` | ✅ | 发送/Team/A2A/Cron 入口 |
+| `internal/service/chat_run_gateway.go` | ✅ | Biz 适配器 + NewChatUsecaseFromDeps |
+| `internal/service/chat_enqueue.go` | ✅ | 入队拒绝辅助 |
+| `internal/service/gateway.go` | ✅ | GatewayService |
 | `internal/data/webhook.go` | ✅ | WebhookRepo |
 | `api/kratos/gateway/v1/gateway.proto` | ✅ | Webhook CRUD Proto |
-| `internal/service/gateway.go` | ✅ | GatewayService |

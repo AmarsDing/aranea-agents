@@ -1,7 +1,7 @@
 # 25 Aranea CLI — 开发计划（Dev Plan, 2026-05-27）
 
-> **版本**：3.0（取代 `25-cli-development.md` v2.0）
-> **同系列**：需求 → [`25-cli-PRD-2026-05-27.md`](./25-cli-PRD-2026-05-27.md)；设计 → [`25-cli-design-2026-05-27.md`](./25-cli-design-2026-05-27.md)；上层方案 → [`25-cli-implementation-plan-2026-05-27.md`](./25-cli-implementation-plan-2026-05-27.md)
+> **版本**：3.1（取代 `25-cli-development.md` v2.0）
+> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；设计 → [`25-cli.design.md`](./25-cli.design.md)；上层方案 → [`25-cli-implementation.md`](./25-cli-implementation.md)
 > **任务 ID 约定**：`CLI-XX` 前缀；每条 ≤1 天（≤8h），含明确 DoD 与可执行验收信号；多步动作拆分到 `CLI-XX.N` 子任务。
 > **执行者**：AI agent / 工程师；每个任务都给出"AI 落地提示词"（在 §6 集中），可直接喂给 cursor-agent / claude code。
 
@@ -27,21 +27,25 @@
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| `cmd/aranea/` | 不存在 | `cmd/` 仅有 `admin / araneactl / fetch-channel-icons / memory-migrate / pginit / pgprobe / seed-stockx-org / sqlmigrate` |
-| `internal/cli/` | 不存在 | — |
-| `cobra` 主依赖 | 未引入 | 主 `go.mod` 无 `spf13/cobra` |
-| `internal/tools/cli_admin/` | 不存在 | — |
-| `__system_admin__` agent 种子 | 不存在 | `internal/data/` 无对应 seed 文件 |
-| `GET /v1/system/info` | 不存在 | `api/kratos/` 30 个 proto 无 system_info RPC |
-| Skill import multipart 来源字段 | 不存在 | `internal/service/skill_import.go` 待 review |
+| `cmd/aranea/` | **已实现** | `cmd/aranea/main.go` 存在，完整 cobra CLI 入口 |
+| `internal/cli/` | **已实现** | 7 子包：`client/` `clierr/` `cmd/` `config/` `output/` `repl/` `ui/` |
+| `cobra` 主依赖 | **已引入** | `go.mod` 含 `github.com/spf13/cobra v1.10.2` |
+| `internal/tools/cli_admin/` | **已实现** | 含 registry + agent_tools + skill_install + pkg_install |
+| `__system_admin__` agent 种子 | **已实现** | `internal/data/seed_system_admin.go` 含 SeedSystemAdminAgent 等 8 个 seed 函数 |
+| `GET /v1/system/info` | **已实现** | `internal/service/system_info.go` + 手动注册路由；但字段与设计有差距（缺 `system_admin_agent_id/key`、`skill_max_zip_mb`） |
+| Skill import multipart 来源字段 | **待确认** | `internal/service/skill_import.go` 待 review |
 | `pkg/auth.Auth` | `UserID + Access` 两字段 | `pkg/auth/auth.go:10-13` |
 | `/v1/admins/login` 路径 | 已存在并放 noAuthPaths | `api/kratos/admin/v1/admin.proto:50-55`、`pkg/auth/middleware.go:17` |
-| WS upstream / downstream envelope | 已有 `wsUpstream` / `wsDownstream`；`tool.call/result/error` 子类型 type 字符串待对照 | `internal/server/ws.go:48-62` |
+| WS envelope 类型 | **部分实现** | `internal/event/contract/envelope.go`：`tool_call` / `tool_result` 已定义；`tool.error` 未定义（使用通用 `error` 类型） |
 | Skill proto 既有 RPC | `import / import-status / import-apply / refine-conflict-group` 已 proto-first | `api/kratos/skill/v1/skill.proto` |
 | Chat `AwaitUserReply` / `EnqueueUserMessage` | 已 proto-first | `api/kratos/chat/v1/chat.proto:223,229` |
-| `cmd/araneactl/lint` 规则 | 现有 R1–R11 | `cmd/araneactl/lint/main.go:190–397` |
+| `cmd/araneactl/lint` 规则 | **未实现** | `cmd/araneactl/` 目录不存在；R12 lint 规则缺失 |
+| `make cli` target | **已实现** | Makefile 含 `cli` / `cli-all` target |
+| REPL | **已实现** | `internal/cli/repl/` 含 repl.go / slash.go / render.go / history.go |
+| 额外命令（实施中新增） | **已实现** | `graph` / `pkg` / `import` / `pack` 命令已存在 |
+| `--timeout` 全局 flag | **已实现** | 实施中新增，非原计划 |
 
-> 结论：所有 CLI 客户端代码 0 起步；后端有部分能力可直接复用，少量必须新增（见 §3 BE-1..BE-6）。
+> 结论：P0 核心任务（CLI-01~11）已基本完成；P1 部分任务（CLI-20/21/22/23/27）已实现；主要缺口为 R12 lint（CLI-12）、文档（CLI-13/30）、`tool.error` envelope、`SystemInfoResponse` 字段补齐。
 
 ---
 
@@ -78,7 +82,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 
 ### 3.2 Phase P0（MVP，1 周）
 
-#### CLI-01 创建 CLI 入口骨架（cobra root + Execute）
+#### CLI-01 创建 CLI 入口骨架（cobra root + Execute） ✅ 已完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：—
@@ -93,7 +97,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `internal/cli/execute_test.go`：root.RunE 返回特定 error 时 ExitCodeOf 正确。
 - **关联**：设计 §3.1 / §3.2 / §14.1；PRD §3.3
 
-#### CLI-02 Config 包（CLIConfig + 跨平台路径 + 权限校验）
+#### CLI-02 Config 包（CLIConfig + 跨平台路径 + 权限校验） ✅ 已完成
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-01
@@ -108,7 +112,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `config get backend.token` 默认输出 `***<last4>`；`--show-token` 输出全文（stderr 警告）。
 - **关联**：设计 §3.3 / §8；PRD §7 / R10 / R41
 
-#### CLI-03 HTTP Client（Bearer / UA / 重试 / --debug）
+#### CLI-03 HTTP Client（Bearer / UA / 重试 / --debug） ✅ 已完成
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-01
@@ -121,7 +125,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 响应 4xx/5xx 时返回 `*CLIError`，404 → `Code=NOT_FOUND`、401 → `Code=UNAUTHENTICATED`（按 Kratos `reason` 透传）。
 - **关联**：设计 §3.4 / §6 / §14.2
 
-#### CLI-04 错误解码与退出码
+#### CLI-04 错误解码与退出码 ✅ 已完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-03
@@ -135,7 +139,9 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `ExitCodeOf(USER_CANCELED) == 4`；`ExitCodeOf(SKILL_IMPORT_BLOCKED) == 5`；`ExitCodeOf(401/403) == 6`。
 - **关联**：设计 §6；PRD §5.2
 
-#### CLI-05 Output / Printer（text + json + TTY 检测 + golden）
+**实施偏差**：错误类型从 `internal/cli/exit.go` 的 `CLIError` 改为独立包 `internal/cli/clierr/` 的 `Error`，避免循环依赖。
+
+#### CLI-05 Output / Printer（text + json + TTY 检测 + golden） ✅ 已完成
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-01
@@ -151,7 +157,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `UPDATE_GOLDEN=1 go test ./internal/cli/output/...` 能刷新 golden。
 - **关联**：设计 §3.5 / §10.2；PRD §5
 
-#### CLI-06 `aranea version`（含 reachability 探测）
+#### CLI-06 `aranea version`（含 reachability 探测） ✅ 已完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-01..05
@@ -163,15 +169,12 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 网络明显失败时 exit 3。
 - **关联**：PRD US-01 / R1
 
-#### CLI-07 后端新增 `GET /v1/system/info`
+#### CLI-07 后端新增 `GET /v1/system/info` ✅ 已完成（有差距）
 - **工种**：BE
 - **估时**：1
 - **依赖**：—（可与 CLI-01..05 并行）
 - **新增 / 修改**：
-  - `api/kratos/system_setting/v1/system_setting.proto`（追加 service & message；或新建 `api/kratos/system/v1/system.proto`，由实施者据现状决定，**在 PR 中说明选择理由**）
-  - `internal/service/system_info.go`
-  - `internal/server` wire 注入
-  - `internal/service/system_info_test.go`（httptest 断言所有字段非 nil）
+  - `internal/service/system_info.go`（手动 HTTP handler，非 proto 生成）+ `internal/server/http.go` 注册路由
 - **DoD**：
   - `curl http://127.0.0.1:8080/v1/system/info -H "Authorization: Bearer <token>"` 返回 JSON，含 `version / git_commit / build_time / default_provider / default_model / system_admin_agent_id / system_admin_agent_key / skill_max_zip_mb / skill_storage_root / features`；
   - `system_admin_agent_*` 在 P0 阶段（未 seed）允许返回空串；
@@ -179,7 +182,9 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - **不**改 `noAuthPaths`。
 - **关联**：设计 §4.2.1；PRD BE-1
 
-#### CLI-08 `aranea login` 实现
+**差距**：缺少 `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段，需后续补齐。
+
+#### CLI-08 `aranea login` 实现 ✅ 已完成
 - **工种**：CLI（+少量代码考古 A1）
 - **估时**：1
 - **依赖**：CLI-02, CLI-03, CLI-04
@@ -195,7 +200,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 后续 `aranea agent ls` 不再 401。
 - **关联**：PRD US-01 / R2 / R9；设计 §3.2 / §14.4 / §15 A1
 
-#### CLI-09 `aranea agent` 全套子命令
+#### CLI-09 `aranea agent` 全套子命令 ✅ 已完成
 - **工种**：CLI
 - **估时**：1（建议拆 CLI-09.1 ls/get、CLI-09.2 create/update、CLI-09.3 delete/enable/disable/tools/tools-set）
 - **依赖**：CLI-03, CLI-05
@@ -212,7 +217,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `enable`/`disable` 实施前对照 proto（若无独立 RPC 则调 `UpdateAgent` + FieldMask `enabled`，在 PR 注明）。
 - **关联**：PRD US-02..05；设计 §14.3 / §15 A5
 
-#### CLI-10 `aranea skill` 全套子命令（不含 install）
+#### CLI-10 `aranea skill` 全套子命令（不含 install） ✅ 已完成
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-03, CLI-05
@@ -225,7 +230,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `publish` 高风险二次确认。
 - **关联**：PRD US-04
 
-#### CLI-11 `aranea tool` 子命令
+#### CLI-11 `aranea tool` 子命令 ✅ 已完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-03, CLI-05
@@ -236,7 +241,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：4 个子命令均通过；`enable`/`disable` 二次确认。
 - **关联**：PRD US-04
 
-#### CLI-12 Makefile target + lint R12 黑名单
+#### CLI-12 Makefile target + lint R12 黑名单 ⚠️ 部分完成
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-01..11（建议在所有 CLI 业务文件落地后引入 R12，避免误伤）
@@ -251,7 +256,9 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 手工构造一个 `internal/cli/cmd/_bad.go` 引入 `internal/biz` → `make lint` 失败；删除后通过。
 - **关联**：设计 §7.3；PRD R11 / R40
 
-#### CLI-13 文档 `docs/guides/cli-quickstart.md`
+✅ `make cli` 已完成；❌ `cmd/araneactl/` 目录不存在，R12 lint 规则缺失；⚠️ `cli-all` 仅覆盖 Linux/amd64
+
+#### CLI-13 文档 `docs/guides/cli-quickstart.md` ❌ 未完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-01..12
@@ -263,17 +270,19 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 
 #### **P0 退出条件（必须全部满足）**
 
-- [ ] CLI-01..13 全绿；
-- [ ] `./bin/aranea agent ls` 对真实 `cmd/admin` 后端可正确分页；
-- [ ] `make lint` / `make test` / `go build ./cmd/aranea/` 全绿；
-- [ ] PRD §9.1 的 R0..R12 全绿；
+- [x] CLI-01..11 ✅ 已完成；CLI-12 ⚠️ 部分完成（R12 lint 缺失）；CLI-13 ❌ 未完成
+- [x] `./bin/aranea agent ls` 对真实 `cmd/admin` 后端可正确分页；
+- [x] `make lint` / `make test` / `go build ./cmd/aranea/` 全绿；
+- [ ] PRD §9.1 的 R0..R12 全绿（R12 lint 规则缺失，待补齐）；
 - [ ] 在 `docs/changelog/2026-XX-XX-CLI-P0-MVP.md` 写一份变更说明，列入 `make ci` 不收紧（不强制 `make cli`）。
+
+> **差距汇总**：CLI-07 缺少 `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段；CLI-12 R12 lint 规则缺失、`cli-all` 仅覆盖 Linux/amd64；CLI-13 文档未完成。
 
 ---
 
 ### 3.3 Phase P1（对话 + Skill 安装 + 剩余资源，2~3 周）
 
-#### CLI-20 后端 `__system_admin__` 种子 + 工具组种子
+#### CLI-20 后端 `__system_admin__` 种子 + 工具组种子 ✅ 已完成
 - **工种**：BE
 - **估时**：1
 - **依赖**：CLI-07（依赖 system_info 已上线，便于在 `system_info` 返回 `system_admin_agent_id`）
@@ -291,7 +300,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `system_info` 返回的 `system_admin_agent_id / key` 非空。
 - **关联**：设计 §4.2.3；PRD BE-3 / R20 / R31
 
-#### CLI-21 后端 `cli_admin_*` 首批工具实现
+#### CLI-21 后端 `cli_admin_*` 首批工具实现 ✅ 已完成
 - **工种**：BE
 - **估时**：1
 - **依赖**：CLI-20
@@ -305,7 +314,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 白名单：`IsCLIAdminAllowed(agentKey)` 在非 `__system_admin__` Agent 装配时拒绝加载 `group:cli_admin`。
 - **关联**：设计 §4.2.4；PRD BE-5 / R21
 
-#### CLI-22 CLI WS Client + envelope 编解码 + WS envelope 后端细化
+#### CLI-22 CLI WS Client + envelope 编解码 + WS envelope 后端细化 ⚠️ 部分完成
 - **工种**：BE + CLI
 - **估时**：1.5（建议拆为 CLI-22.1 后端细化 0.5d、CLI-22.2 CLI WS 客户端 1d）
 - **依赖**：CLI-01..05
@@ -319,7 +328,9 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - **代码考古 A2 完成**（WS token 怎么带），结果回写本任务的 PR。
 - **关联**：设计 §4.2.5 / §15 A2 A3；PRD BE-6 / R22
 
-#### CLI-23 REPL 主循环 + slash 命令 + render
+WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用 `error` 类型）
+
+#### CLI-23 REPL 主循环 + slash 命令 + render ✅ 已完成
 - **工种**：CLI
 - **估时**：1.5
 - **依赖**：CLI-22
@@ -335,7 +346,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `Ctrl+D` 退出 REPL。
 - **关联**：设计 §5.3；PRD US-10 / R23
 
-#### CLI-24 `aranea skill install <url>` 直接命令实现
+#### CLI-24 `aranea skill install <url>` 直接命令实现 ⚠️ 待确认
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-10
@@ -353,7 +364,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - `--ref main` / `--subpath xxx` 工作。
 - **关联**：设计 §5.2；PRD US-11 / R24
 
-#### CLI-25 后端 Skill import 接收 multipart 来源字段
+#### CLI-25 后端 Skill import 接收 multipart 来源字段 ⚠️ 待确认
 - **工种**：BE
 - **估时**：0.5
 - **依赖**：—（可与 CLI-21..24 并行）
@@ -366,7 +377,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 既有调用方（Web 上传）不受影响（字段全部 optional）。
 - **关联**：设计 §4.2.2；PRD BE-2 / R25
 
-#### CLI-26 `aranea skill import / import-status / import-apply` 子命令
+#### CLI-26 `aranea skill import / import-status / import-apply` 子命令 ⚠️ 待确认
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-10, CLI-25
@@ -375,7 +386,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：每个子命令各一条 httptest；手工对真实后端 import 一个本地 zip → 看到 job_id → status pending → apply → 成功。
 - **关联**：PRD US-12 / R26
 
-#### CLI-27 剩余资源命令（team / plugin / mcp / cron / channel / session / monitor）
+#### CLI-27 剩余资源命令（team / plugin / mcp / cron / channel / session / monitor） ✅ 已完成
 - **工种**：CLI
 - **估时**：3（建议拆 CLI-27.1 team、CLI-27.2 plugin、CLI-27.3 mcp、CLI-27.4 cron、CLI-27.5 channel、CLI-27.6 session、CLI-27.7 monitor，每个 0.5d）
 - **依赖**：CLI-03, CLI-05
@@ -385,7 +396,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：每个资源至少 1 条 happy-path smoke + 1 条 httptest；`channel send` 必须 `--yes`，否则即使 TTY 也拒绝（与删除不同：channel send 是外部副作用，无 prompt 路径）。
 - **关联**：PRD US-12 / R27
 
-#### CLI-28 `aranea completion <shell>`
+#### CLI-28 `aranea completion <shell>` ❌ 未完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-01
@@ -395,7 +406,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：bash / zsh / fish / powershell 四种各跑一次（写到临时文件、source / `. .`、tab 补全 `aranea ag<TAB>` → `aranea agent`）。
 - **关联**：PRD US-13 / R28
 
-#### CLI-29 后端剩余 `cli_admin_*` 工具全量
+#### CLI-29 后端剩余 `cli_admin_*` 工具全量 ❌ 未完成
 - **工种**：BE
 - **估时**：2（建议按资源拆 0.5d × 4：team/plugin/mcp/cron + channel/provider/session）
 - **依赖**：CLI-21
@@ -405,7 +416,7 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：所有 `cli_admin_*` 都在 `RegisterAll` 中注册；模拟 system_admin Agent 调用每个工具均能返回合法结果。
 - **关联**：PRD R29
 
-#### CLI-30 P1 文档与变更说明
+#### CLI-30 P1 文档与变更说明 ❌ 未完成
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-20..29
@@ -416,10 +427,12 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 
 #### **P1 退出条件**
 
-- [ ] CLI-20..30 全绿；
+- [ ] CLI-20..30 全绿（CLI-20/21/23/27 ✅；CLI-22 ⚠️ 部分完成；CLI-24/25/26 ⚠️ 待确认；CLI-28/29/30 ❌ 未完成）；
 - [ ] PRD §9.2 R20..R29 + §9.3 R30..R34 全绿；
 - [ ] 手工跑 `aranea` 进 REPL → "帮我把 figma-code-connect 装上" → 看到工具调用 + 二次确认 + 成功；
 - [ ] Web 控制台 `/tools/runs` 看到 `source=cli` 的记录。
+
+> **差距汇总**：CLI-22 `tool.error` envelope 类型未定义；CLI-24/25/26 待确认实现状态；CLI-28/29/30 未完成。
 
 ---
 
@@ -567,15 +580,15 @@ P1
 ## 8. 验收 checklist（汇总）
 
 ### 8.1 P0 出口
-- [ ] CLI-01..13 全绿
-- [ ] PRD §9.1 R0..R12 全绿
-- [ ] `make cli` / `make lint` / `make test` 全绿
-- [ ] `./bin/aranea agent ls` 对真实 admin 后端正确分页
+- [x] CLI-01..11 ✅ 已完成；CLI-12 ⚠️ 部分完成；CLI-13 ❌ 未完成
+- [ ] PRD §9.1 R0..R12 全绿（R12 lint 规则缺失，待补齐）
+- [x] `make cli` / `make lint` / `make test` 全绿
+- [x] `./bin/aranea agent ls` 对真实 admin 后端正确分页
 - [ ] `docs/changelog/2026-XX-XX-CLI-P0-MVP.md` 已合入
-- [ ] 原 `25-cli-development.md` 顶部已加 superseded 指向本计划
+- [x] 原 `25-cli-development.md` 顶部已加 superseded 指向本计划
 
 ### 8.2 P1 出口
-- [ ] CLI-20..30 全绿
+- [ ] CLI-20..30 全绿（CLI-20/21/23/27 ✅；CLI-22 ⚠️；CLI-24/25/26 ⚠️ 待确认；CLI-28/29/30 ❌）
 - [ ] PRD §9.2 R20..R29 全绿
 - [ ] PRD §9.3 R30..R34 全绿
 - [ ] 手工跑通对话模式 + skill install
@@ -588,7 +601,7 @@ P1
 
 ---
 
-## 9. 与原 `25-cli-development.md` 的差异
+## 9. 与原 `25-cli.development.md` 的差异
 
 | 项 | 原 v2.0 | 本 v3.0 |
 |----|---------|---------|
@@ -615,4 +628,4 @@ P1
 
 ---
 
-*文档版本：3.0 — 2026-05-27；与 `25-cli-PRD-2026-05-27.md` / `25-cli-design-2026-05-27.md` 同步。原 `25-cli-development.md` v2.0 已被取代，仅保留作为历史；如本计划与原计划任何条目冲突，以本计划为准。*
+*文档版本：3.1 — 2026-06-06；与 [`25-cli.md`](./25-cli.md) / [`25-cli.design.md`](./25-cli.design.md) 同步。*

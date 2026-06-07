@@ -1,7 +1,7 @@
 # 25 Aranea CLI — 设计文档（Design, 2026-05-27）
 
-> **版本**：3.0（取代 `25 cli.design.md` v2.0）
-> **同系列**：需求 → [`25-cli-PRD-2026-05-27.md`](./25-cli-PRD-2026-05-27.md)；开发计划 → [`25-cli-development-plan-2026-05-27.md`](./25-cli-development-plan-2026-05-27.md)；上层方案 → [`25-cli-implementation-plan-2026-05-27.md`](./25-cli-implementation-plan-2026-05-27.md)
+> **版本**：3.1（取代 `25 cli.design.md` v2.0）
+> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)；上层方案 → [`25-cli-implementation.md`](./25-cli-implementation.md)
 > **规范基线**：`docs/guides/AI-DEVELOPMENT-SPECIFICATION.md` · `.cursor/rules/trpc-agent-framework-first.mdc` · `docs/AGENT_RUNTIME_BOUNDARY.md`
 
 ---
@@ -118,19 +118,24 @@ internal/cli/
 ├── execute.go              # Execute(ctx, BuildInfo) error；Build root + Run
 ├── root.go                 # NewRoot(ctx) *cobra.Command；全局 flag；PersistentPreRunE
 ├── ctx.go                  # type Context / WithCLI / CLIFrom；持有 Config + Client + Printer
-├── exit.go                 # ExitCodeOf(err) int；CLIError 类型；退出码常量
+├── exit.go                 # ExitCodeOf(err) int；退出码常量
 ├── buildinfo.go            # type BuildInfo struct { Version, Commit, BuildTime string }
+│
+├── clierr/                 # CLI 错误类型（独立包，避免循环依赖）
+│   ├── clierr.go           # type Error struct { Code, HTTPStatus, Message, Hint, Metadata, Cause }
+│   └── clierr_test.go
 │
 ├── config/
 │   ├── config.go           # CLIConfig + Load/Save/OverrideFromEnv/OverrideFromFlags
 │   ├── paths.go            # 跨平台路径解析；FilePerm 检查
 │   ├── secret.go           # token mask / 0600 校正
-│   └── config_test.go
+│   ├── config_test.go
+│   └── secret_test.go
 │
 ├── client/
 │   ├── http.go             # type Client；Do(ctx,method,path,body,out) error
-│   ├── ws.go               # type WSClient (P1)；Envelope 编解码
-│   ├── errors.go           # decode(*http.Response,out) error；CLIError 映射
+│   ├── ws.go               # type WSClient；Envelope 编解码
+│   ├── errors.go           # decode(*http.Response,out) error；clierr.Error 映射
 │   ├── retry.go            # 仅幂等 GET 重试；指数退避
 │   ├── multipart.go        # Skill import 专用
 │   ├── agent.go            # ListAgents / GetAgent / CreateAgent / ...
@@ -138,14 +143,19 @@ internal/cli/
 │   ├── tool.go
 │   ├── system.go
 │   ├── admin.go            # Login / Current
-│   ├── team.go             (P1)
-│   ├── plugin.go           (P1)
-│   ├── mcp.go              (P1)
-│   ├── cron.go             (P1)
-│   ├── channel.go          (P1)
-│   ├── session.go          (P1)
-│   ├── monitor.go          (P1)
-│   └── client_test.go
+│   ├── team.go
+│   ├── plugin.go
+│   ├── mcp.go
+│   ├── cron.go
+│   ├── channel.go
+│   ├── session.go
+│   ├── graph.go            # Graph 资源（实施中新增）
+│   ├── pack.go             # Pack 资源（实施中新增）
+│   ├── agent_test.go
+│   ├── skill_test.go
+│   ├── tool_test.go
+│   ├── client_test.go
+│   └── errors_test.go
 │
 ├── output/
 │   ├── printer.go          # interface Printer + 工厂
@@ -160,55 +170,63 @@ internal/cli/
 │   ├── color.go            # fatih/color wrapper
 │   ├── spinner.go          # ASCII spinner；TTY 才动；超 5s 显示已耗时
 │   ├── table.go            # tablewriter wrapper
-│   └── prompt.go           # 二次确认 / 多选；P1 也复用
+│   ├── prompt.go           # 二次确认 / 多选；P1 也复用
+│   └── ui_test.go
 │
-├── repl/                   # 全 P1
+├── repl/
 │   ├── repl.go             # 主循环；连 client.WS
 │   ├── slash.go            # 斜杠命令处理
 │   ├── render.go           # WS 事件 → 终端折叠块
 │   ├── history.go          # peterh/liner 行编辑 + 历史
+│   ├── slash_test.go
 │   └── repl_test.go        # mock WS server
 │
 └── cmd/                    # 一个资源一个文件；handler 只组装请求 + 调 client + 调 printer
-    ├── version.go          (P0)
-    ├── login.go            (P0)
-    ├── config_cmd.go       (P0)
-    ├── system.go           (P0)
-    ├── agent.go            (P0)
-    ├── skill.go            (P0)
-    ├── skill_install.go    (P1)
-    ├── tool.go             (P0)
-    ├── chat.go             (P1)
-    ├── team.go             (P1)
-    ├── plugin.go           (P1)
-    ├── mcp.go              (P1)
-    ├── cron.go             (P1)
-    ├── channel.go          (P1)
-    ├── session.go          (P1)
-    ├── monitor.go          (P1)
-    └── completion.go       (P1)
+    ├── version.go
+    ├── login.go
+    ├── config_cmd.go
+    ├── system.go
+    ├── agent.go
+    ├── skill.go
+    ├── skill_install.go
+    ├── tool.go
+    ├── chat.go
+    ├── team.go
+    ├── plugin.go
+    ├── mcp.go
+    ├── cron.go
+    ├── channel.go
+    ├── session.go
+    ├── graph.go             # 实施中新增
+    ├── import.go            # 实施中新增（import 命令入口）
+    ├── pack.go              # 实施中新增
+    ├── pkg.go               # 实施中新增（pkg install 快捷方式）
+    ├── config_test.go
+    └── completion.go
 ```
 
 ### 2.3 后端侧新增目录
 
 ```
 internal/service/
-├── system_info.go          (P0, CLI-07) GET /v1/system/info Handler
-└── ... (P1) cli_admin 工具集装配到 system_admin Agent 走这里
+├── system_info.go          GET /v1/system/info Handler（已实现；手动注册 HTTP handler，非 proto 生成）
+└── ... cli_admin 工具集装配到 system_admin Agent 走这里
 
 internal/data/
-├── seed_system_admin.go    (P1, CLI-20) 启动时 upsert __system_admin__
+├── seed_system_admin.go    启动时 upsert __system_admin__（已实现；含 SeedSpiritAgent/SeedMemoryAgent/SeedSkillsAgent/SeedBuiltinCLIAdminTools 等）
 └── ...
 
-internal/tools/cli_admin/   (P1, CLI-21/29) 系统管家工具集；走 service 注入
+internal/tools/cli_admin/   系统管家工具集；走 service 注入（已实现）
 ├── registry.go             # RegisterAll(deps) []tool.Tool
+├── agent_tools.go          # agent_list / agent_get
 ├── skill_list.go
 ├── skill_install_from_url.go
-├── skill_import_status.go
-├── skill_import_apply.go
-├── agent_list.go
-├── agent_get.go
-└── ...
+├── pkg_install_from_url.go # 实施中新增：包安装
+├── registry_test.go
+├── agent_tools_test.go
+├── skill_install_from_url_test.go
+├── pkg_install_test.go
+└── export_test.go
 ```
 
 > **`internal/tools/cli_admin/` 不 import `cmd/aranea` 或 `internal/cli`**（反向依赖会污染服务端二进制）。CLI 与 `cli_admin` 工具完全解耦：前者是终端二进制，后者是服务端 Agent 工具。
@@ -234,8 +252,9 @@ func Execute(ctx context.Context, bi BuildInfo) error
 // ExitCodeOf 把 error 翻译成退出码（见 §5 退出码表）。
 func ExitCodeOf(err error) int
 
-// CLIError 是 client/errors.go 输出的错误类型；root 在 RunE 之外捕获并转退出码。
-type CLIError struct {
+// clierr.Error 是 client/errors.go 输出的错误类型；独立包避免循环依赖。
+// root 在 RunE 之外捕获并转退出码。
+type Error struct {
     Code       string          // 后端 error.code 或 CLI 自定义（如 "USER_CANCELED"）
     HTTPStatus int             // 0 表示非 HTTP
     Message    string
@@ -244,8 +263,8 @@ type CLIError struct {
     Cause      error
 }
 
-func (e *CLIError) Error() string
-func (e *CLIError) Unwrap() error
+func (e *Error) Error() string
+func (e *Error) Unwrap() error
 ```
 
 ### 3.2 Context
@@ -448,40 +467,31 @@ func (u UI) Color(name string) ColorFn                     // red/yellow/green/d
 
 ### 4.2 必须新增的后端能力（详细需求见 PRD §3.4）
 
-#### 4.2.1 BE-1：`GET /v1/system/info`（P0，CLI-07）
+#### 4.2.1 BE-1：`GET /v1/system/info`（P0，CLI-07）— 已实现
 
-**契约（建议落于 `api/kratos/system_setting/v1/` 或新 `api/kratos/system/v1/`）**：
+**已实现**：`internal/service/system_info.go` + `internal/server/http.go` 手动注册路由。
 
-```proto
-service SystemInfoService {
-  rpc GetSystemInfo (google.protobuf.Empty) returns (SystemInfo) {
-    option (google.api.http) = { get: "/v1/system/info" };
-  }
-}
+> **注意**：当前实现为手动 HTTP handler（非 proto 生成），路由在 `internal/server/http.go` 第 159-161 行注册。
 
-message SystemInfo {
-  string version              = 1;
-  string git_commit           = 2;
-  google.protobuf.Timestamp build_time = 3;
-  string default_provider     = 4;
-  string default_model        = 5;
-  // P0 即使 __system_admin__ 还未 seed 也保留字段，返回空字符串
-  string system_admin_agent_id  = 6;
-  string system_admin_agent_key = 7;
-  // 限额
-  int32  skill_max_zip_mb     = 8;
-  string skill_storage_root   = 9;
-  // 关键 feature flag（按需扩展）
-  map<string, string> features = 10;
-}
-```
+**当前服务端 `SystemInfoResponse` 字段**（实际）：
 
-实现要点：
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `version` | string | 后端版本 |
+| `git_commit` | string | Git commit |
+| `build_time` | string | 构建时间 |
+| `default_provider` | string | 默认 LLM provider |
+| `default_model` | string | 默认模型 |
+| `skill_storage_root` | string | Skill 存储根路径 |
+| `features` | map | 功能特性检测 |
 
-- 走标准 service / wire 注入，**不**新增对 `pkg/trpc-agent-go` 的直接依赖；
-- 路径 **未** 加入 `noAuthPaths`（要求登录后才能查；CLI 在 `aranea version` 探测 reachability 时只 `GET /` 或 `HEAD /v1/admins/login`，**不**用 `/v1/system/info` 做匿名探测）；
-- 字段缺失返回空串而非 404；
-- 后端 e2e：httptest 断言所有字段非 nil（即使为空串）。
+**与设计预期的差距**（待补齐）：
+
+| 缺失字段 | 说明 |
+|----------|------|
+| `system_admin_agent_id` | 系统管家 Agent ID（当前未返回） |
+| `system_admin_agent_key` | 系统管家 Agent key（当前未返回） |
+| `skill_max_zip_mb` | Skill zip 最大体积限制（当前未返回） |
 
 #### 4.2.2 BE-2：`POST /v1/skills/import` 接收来源字段（P1，CLI-25）
 
@@ -498,41 +508,28 @@ message SystemInfo {
 
 后端在 `SkillImportJob` / `tool_invocations` / `audit_logs` 中保留以上字段，便于审计追溯。
 
-#### 4.2.3 BE-3 / BE-4：种子数据（P1，CLI-20）
+#### 4.2.3 BE-3 / BE-4：种子数据（P1，CLI-20）— 已实现
 
-```go
-// internal/data/seed_system_admin.go
-func SeedSystemAdminAgent(ctx context.Context, db *ent.Client) error {
-    // upsert agent WHERE agent_key = "__system_admin__"
-    // 字段：
-    //   display_name        = "系统管家"
-    //   kind                = "system"
-    //   readonly            = true
-    //   category            = "system"
-    //   tools_profile       = "system_admin"
-    //   tools_allow_json    = `["group:cli_admin","web_fetch","read_file","datetime"]`
-    //   tools_deny_json     = `["shell_exec","write_file","create_image","tts"]`
-    //   system_prompt       = systemAdminInstruction (见 §4.2.4)
-    //   provider / model    = 跟随 default_provider / default_model
-    // 重复运行 idempotent。
-}
+**已实现**：`internal/data/seed_system_admin.go` 包含以下 seed 函数：
+- `SeedSystemAdminAgent` — upsert `agent_key = "__system_admin__"`，`readonly=1`, `kind="system"`, `tools_profile="system_admin"`
+- `SeedSpiritAgent` / `SeedMemoryAgent` / `SeedSkillsAgent` — 其他系统 Agent
+- `SeedBuiltinCLIAdminTools` — 注册 `cli_admin_*` 工具记录
+- `SeedCronTasks` / `SeedSpiritPromptFiles` / `SeedButlerPromptFiles` — 其他种子数据
 
-// internal/data/seed_builtin_tools.go
-func SeedBuiltinTools(ctx context.Context, db *ent.Client) error
-func SeedToolGroups(ctx context.Context, db *ent.Client) error
-```
+> **与原设计的差异**：原设计计划在 `internal/data/ent/schema/agent.go` 新增 `readonly` / `kind` 字段。实际实现中需确认 Ent schema 是否已包含这些字段。
 
-agent 表如需新增 `readonly` / `kind` 字段，走 Ent schema 迁移：
+#### 4.2.4 BE-5：`cli_admin_*` 工具实现（P1，CLI-21/29）— 部分实现
 
-```go
-// internal/data/ent/schema/agent.go
-field.Bool("readonly").Default(false),
-field.Enum("kind").Values("user", "system").Default("user"),
-```
+**已实现**（`internal/tools/cli_admin/`）：
+- `cli_admin_skill_list` / `cli_admin_skill_get`
+- `cli_admin_skill_install_from_url`
+- `cli_admin_skill_import_status` / `cli_admin_skill_import_apply`
+- `cli_admin_agent_list` / `cli_admin_agent_get`
+- `cli_admin_pkg_install_from_url`（实施中新增）
 
-#### 4.2.4 BE-5：`cli_admin_*` 工具实现（P1，CLI-21/29）
-
-**入口契约**（trpc-agent-go `tool.Tool` 接口）：
+**待实现**（CLI-29）：
+- `cli_admin_team_*` / `cli_admin_plugin_*` / `cli_admin_mcp_*`
+- `cli_admin_cron_*` / `cli_admin_channel_*` / `cli_admin_provider_*` / `cli_admin_session_*`
 
 ```go
 // internal/tools/cli_admin/registry.go
@@ -577,18 +574,18 @@ func IsCLIAdminAllowed(agentKey string) bool {
 
 #### 4.2.5 BE-6：WS envelope 细化（P1，CLI-22 前置）
 
-`internal/server/ws.go` 当前 `wsDownstream` 已有 `Direction / Channel / Type / Payload / Envelope`。CLI REPL 渲染需要稳定的 `Type` 取值：
+`internal/event/contract/envelope.go` 已定义 envelope 类型常量。CLI REPL 渲染需要的 `Type` 取值：
 
-| 期望 Type | 含义 | 当前是否已实现 |
-|-----------|------|----------------|
-| `message.delta` | 模型增量文本 | 待对照 `internal/service/chat_wire.go` 实际值 |
-| `tool.call` | 工具调用开始 | 待实现 |
-| `tool.result` | 工具结果 | 待实现 |
-| `tool.error` | 工具错误 | 待实现 |
+| 期望 Type | 含义 | 当前实现状态 |
+|-----------|------|------------|
+| `message.delta` | 模型增量文本 | 待对照 `internal/event/` 实际值 |
+| `tool.call` | 工具调用开始 | **已实现**（`EnvelopeTypeToolCall`） |
+| `tool.result` | 工具结果 | **已实现**（`EnvelopeTypeToolResult`） |
+| `tool.error` | 工具错误 | **未实现**：当前使用通用 `EnvelopeTypeError`（值为 `"error"`），非 `tool.error` 子类型 |
 | `await.user.reply` | 等待用户回复 | 已通过 `AwaitUserReply` 协议 |
 | `system.done` / `done` | 一轮结束 | 已有 |
 
-新事件 type **不能**在 `internal/server/` 直接生成（保持其与 `pkg/trpc-agent-go` 解耦），由 `internal/service/chat_wire.go` 在投影 ADK Event 到 `wsDownstream` 时填充。
+> **差距**：`tool.error` 作为独立 envelope 子类型尚未定义。当前 `internal/cli/repl/render.go` 消费 `tool_call` 和 `tool_result`，但错误事件走通用 `error` 类型。建议后续在 `internal/event/contract/envelope.go` 新增 `EnvelopeTypeToolError = "tool.error"`，并在 `internal/event/span_collector.go` 中投影工具错误到该类型。
 
 **Payload schema**（CLI-22 实施前与后端对齐）：
 
@@ -1162,15 +1159,16 @@ func NewLoginCmd() *cobra.Command {
 
 ## 15. 开放假设（实施时必须验证）
 
-> 这些假设在文档定稿时无法不读源码完全核验；实施第一步必须先做一次"代码考古"，结果偏离时以代码为准并补 changelog。
+> 这些假设在文档定稿时无法不读源码完全核验；部分已在实施中验证。
 
 1. **A1：`/v1/admins/login` 的 token 返回方式**。当前 `pkg/auth/middleware.go::noAuthPaths` 已包含 `/v1/admins/login`，但 token 是 body 字段、cookie，还是 header，需读 `internal/service/admin.go` 与 `pkg/auth/cookie.go` 后决定 CLI 怎样取 token；
-2. **A2：WS token 携带方式**。`internal/server/ws.go::ServeHTTP` 读取 token 的位置（query / Sec-WebSocket-Protocol / cookie）必须在 CLI-22 之前确认；
-3. **A3：WS 下行事件 type 取值**。BE-6 给出建议值，实际 `internal/service/chat_wire.go` 投影的 type 字符串以代码为准；
+2. **A2：WS token 携带方式**。`internal/server/` 下无 `ws.go`，WebSocket 实现位置需确认；token 读取位置（query / Sec-WebSocket-Protocol / cookie）必须在 CLI WS 客户端实现前确认；
+3. **A3：WS 下行事件 type 取值**。`internal/event/contract/envelope.go` 已定义 `EnvelopeTypeToolCall` / `EnvelopeTypeToolResult`，但 `tool.error` 子类型缺失（使用通用 `error` 类型）；`message.delta` 的实际值待对照；
 4. **A4：Skill import multipart 字段命名空间**。`internal/service/skill_import.go` 当前接收哪些 form 字段，需在 CLI-25 之前盘点；
 5. **A5：Agent enable/disable RPC**。`api/kratos/agent/v1/agent.proto` 是否暴露独立 enable/disable RPC，还是只能走 `UpdateAgent + FieldMask`；CLI 实现按 proto 真相为准；
-6. **A6：是否已有 R1～R11 之外的 lint 规则**。R12 命名按现有最高编号 +1；提交前 grep 确认。
+6. **A6：是否已有 R1～R11 之外的 lint 规则**。`cmd/araneactl/` 目录当前不存在，R12 lint 规则尚未实现；
+7. **A7：`SystemInfoResponse` 字段补齐**。当前服务端缺少 `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段，需决定是补齐还是 CLI 端适配。
 
 ---
 
-*文档版本：3.0 — 2026-05-27；与 `25-cli-PRD-2026-05-27.md` / `25-cli-development-plan-2026-05-27.md` 同步。*
+*文档版本：3.1 — 2026-06-06；与 [`25-cli.md`](./25-cli.md) / [`25-cli.development.md`](./25-cli.development.md) 同步。*

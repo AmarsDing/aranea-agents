@@ -1,6 +1,6 @@
 # Agent 设置 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ 端到端可用；Tab 子组件已拆；页壳仍偏大（~488 行）
+> **版本**：2026-06-06 | **状态**：✅ 端到端可用；Composable 大幅拆分；页壳 ~298 行；9 Tab
 > **文档同步**：[changelog/2026-05-21-Agent-Modules-2-8-DocSync.md](../changelog/2026-05-21-Agent-Modules-2-8-DocSync.md)
 > **需求**：[5 agent-setting.md](./5%20agent-setting.md) · **设计**：[5 agent-setting.design.md](./5%20agent-setting.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-06
@@ -16,7 +16,28 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 - `internal/service/agent.go` — AgentService
 - `internal/biz/agent_usecase.go` — AgentUsecase
 - `internal/biz/agent_settings.go` — AgentSettings（effective tools / MCP）
+- `internal/biz/agent_effective_tools.go` — effective tools engine（9 tool groups, 8 profiles）
+- `internal/biz/agent_settings_helpers.go` — helpers（withSettingDefaults, settingsFromLegacyConfig, etc.）
 - `internal/agent/trpc_build.go` — BuildTRPCLLMAgent（装配链）
+- `web/src/features/agents/useAgentSettingsPage.ts` — settings page composable
+- `web/src/features/agents/useAgentSettingsPersistence.ts` — persistence logic
+- `web/src/features/agents/useAgentRuntimeConfig.ts` — runtime config form
+- `web/src/features/agents/agentRuntimeConfig.ts` — defaults + options
+- `web/src/features/agents/agentRuntimeConfigHydrate.ts` — form hydration
+- `web/src/features/agents/agentRuntimeConfigSerialize.ts` — form serialization
+- `web/src/features/agents/useAgentProviderModelPicker.ts` — Provider/Model picker
+- `web/src/features/agents/useAgentChannelRefs.ts` — channel references
+- `web/src/features/agents/useAgentPlannerForm.ts` — Planner form
+- `web/src/features/agents/useAgentRalphLoopForm.ts` — Ralph Loop form
+- `web/src/features/agents/useAgentSkillCatalog.ts` — Skill catalog
+- `web/src/features/agents/useAgentToolsCatalog.ts` — Tools catalog
+- `web/src/features/agents/fieldGuides.ts` — FieldGuide registry（10 scopes）
+- `web/src/components/agents/AIRefineButton.vue` — AI Refine button
+- `web/src/components/agents/AgentPlannerSection.vue` — Planner section
+- `web/src/components/agents/AgentRalphLoopSection.vue` — Ralph Loop section
+- `web/src/components/agents/AgentChannelRefsSection.vue` — Channel refs section
+- `web/src/components/agents/AgentUsageQuotaPanel.vue` — Usage quota panel
+- `web/src/components/agents/AgentLearningLoopPanel.vue` — Learning loop panel
 
 ---
 
@@ -35,12 +56,16 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 | **A2A Endpoint Tab** | ✅ | `AgentSettingsA2AEndpointTab.vue` + Proxy Tab |
 | 系统提示模式切换 | ✅ | `system_prompt_mode` 字段 + `FilesForMode` |
 | Prompt 预览 | ✅ | `GetAgentPromptPreview` RPC |
+| Planner config | ✅ | `AgentRuntimeSettings` planner_type/react/a2ui fields |
+| Ralph Loop | ✅ | `AgentRuntimeSettings` ralph_loop_* fields |
+| Agent variant/kind/source | ✅ | proto fields 28-33 |
+| `MergeAgentConfigJSON` | ✅ | shallow merge for PATCH |
 
 ### 2.2 前端状态
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 设置页 QTabs | ✅ | `AgentSettingsPage.vue`（~488 行页壳）+ `pages/agent-settings/*Tab.vue`（AGT-08） |
+| 设置页 QTabs | ✅ | `AgentSettingsPage.vue`（~298 行页壳）+ 9 tabs（agent/memory/files/permissions/skills/evolution/learning/hooks/a2a） |
 | 顶栏 | ✅ | `AgentSettingsHeader.vue` |
 | 系统提示模式四卡片 | ✅ | `AgentSettingsPromptSection` / agent Tab |
 | Agent 个性 / 模型 / 工具 / 记忆 | ✅ | 各 section 于 agent/memory Tab |
@@ -49,19 +74,29 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 | 进化 Tab | ✅ | `AgentEvolutionPanel`（见模块 7） |
 | A2A Tab | ✅ | `AgentSettingsA2ATab` / Endpoint |
 | 高级对话框 | ✅ | `AgentAdvancedDialog.vue` |
-| 记忆分组折叠 | ❌ | L0-L4 平铺表单 |
-| `config_json` PATCH merge | ✅ | `MergeAgentConfigJSON`（2026-05-21） |
+| PlannerSection | ✅ | `AgentPlannerSection.vue` |
+| RalphLoopSection | ✅ | `AgentRalphLoopSection.vue` |
+| LearningLoopPanel | ✅ | `AgentLearningLoopPanel.vue` |
+| UsageQuotaPanel | ✅ | `AgentUsageQuotaPanel.vue` |
+| ChannelRefsSection | ✅ | `AgentChannelRefsSection.vue` |
+| AIRefineButton | ✅ | `AIRefineButton.vue` |
+| FieldGuide system | ✅ | 10 scopes with word budgets and examples |
+| Runtime Config system | ✅ | 3-file split（defaults/hydrate/serialize） |
+| 记忆分组折叠 | ✅ | L0-L4 via `MemoryLevelSection.vue` |
+| `config_json` PATCH merge | ✅ | `MergeAgentConfigJSON` |
 
 ---
 
 ## 3. 差距与优化
 
 1. ~~**P2（EP-BIZ-06）**：ToolOverride CRUD~~ → ✅ 见 `tool.proto` 与 `AgentToolOverridesPanel`。
-2. **P3**：记忆配置区分组折叠 UI。
+2. ~~**P3**：记忆配置区分组折叠 UI~~ → ✅ `MemoryLevelSection.vue` L0-L4 分组折叠。
 3. ~~**P2**：`config_json` PATCH 覆盖~~ → ✅ 顶层键浅合并 `MergeAgentConfigJSON`；嵌套 `other_config` 对象仍为整对象替换（若需 RFC7396 再开任务）。
 4. **P3**：系统提示模式切换后，"文件"Tab 应联动显示当前模式下哪些文件生效，当前未实现联动。
 5. **P3**：Agent 设置页各分区缺少"重置为默认值"功能。
 6. ~~**P1（A2A）**：Agent 设置页 A2A Tab~~ → ✅ 已实现
+7. **P3**：Debug trace 清理（运行时调试日志残留）。
+8. **P3**：Learning loop 文档与代码实现对齐。
 
 ---
 
@@ -76,18 +111,25 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 
 ## 5. 任务清单
 
-| # | 任务 | 层 | 优先级 | EP | 需求回溯 |
-|---|------|-----|--------|-----|----------|
-| 1 | `biz/tool_override.go`：模型 + Repo 接口 + Usecase | 后端 | P2 | EP-BIZ-06 | 需求 §9.2 |
-| 2 | `data/tool_agent_override.go`：Repo 实现 | 后端 | P2 | EP-BIZ-06 | — |
-| 3 | `service/tool.go`：增加 ToolOverride CRUD RPC | 后端 | P2 | EP-BIZ-06 | — |
-| 4 | proto 增加 ToolOverride 相关 RPC | 后端 | P2 | EP-BIZ-06 | — |
-| 5 | 前端 Agent 设置页工具覆盖管理 | 前端 | P2 | EP-BIZ-06 | 需求 §9.2 |
-| 6 | `other_config` PATCH 深度合并策略实现 | 后端 | P2 | — | 需求 §5 |
-| 7 | 记忆配置分组折叠 UI | 前端 | P3 | — | 需求 §9 |
-| 8 | 系统提示模式与文件 Tab 联动 | 前端 | P3 | — | 需求 §5 |
-| 9 | 各分区"重置为默认值"按钮 | 前端 | P3 | — | — |
+| # | 任务 | 层 | 优先级 | EP | 需求回溯 | 状态 |
+|---|------|-----|--------|-----|----------|------|
+| 1 | `biz/tool_override.go`：模型 + Repo 接口 + Usecase | 后端 | P2 | EP-BIZ-06 | 需求 §9.2 | ✅ |
+| 2 | `data/tool_agent_override.go`：Repo 实现 | 后端 | P2 | EP-BIZ-06 | — | ✅ |
+| 3 | `service/tool.go`：增加 ToolOverride CRUD RPC | 后端 | P2 | EP-BIZ-06 | — | ✅ |
+| 4 | proto 增加 ToolOverride 相关 RPC | 后端 | P2 | EP-BIZ-06 | — | ✅ |
+| 5 | 前端 Agent 设置页工具覆盖管理 | 前端 | P2 | EP-BIZ-06 | 需求 §9.2 | ✅ |
+| 6 | `other_config` PATCH 深度合并策略实现 | 后端 | P2 | — | 需求 §5 | ✅ |
+| 7 | 记忆配置分组折叠 UI | 前端 | P3 | — | 需求 §9 | ✅ |
+| 8 | 系统提示模式与文件 Tab 联动 | 前端 | P3 | — | 需求 §5 | — |
+| 9 | 各分区"重置为默认值"按钮 | 前端 | P3 | — | — | — |
 | 10 | Agent 设置 A2A Tab（Endpoint + Proxy） | 前端 | P1 | — | [5 agent-setting.md](./5%20agent-setting.md) §10 | ✅ |
+| 11 | Planner config（planner_type/react/a2ui） | 后端+前端 | P2 | — | — | ✅ |
+| 12 | Ralph Loop config（ralph_loop_* fields） | 后端+前端 | P2 | — | — | ✅ |
+| 13 | FieldGuide system（10 scopes） | 前端 | P2 | — | — | ✅ |
+| 14 | Runtime Config 3-file split（defaults/hydrate/serialize） | 前端 | P2 | — | — | ✅ |
+| 15 | Learning loop panel + composable | 前端 | P2 | — | — | ✅ |
+| 16 | Debug trace 清理 | 前端 | P3 | — | — | — |
+| 17 | Learning loop 文档对齐 | 文档 | P3 | — | — | — |
 
 ---
 
@@ -96,8 +138,14 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 - [x] Agent 设置页可管理每个工具的参数覆盖
 - [x] 覆盖参数在 `BuildTRPCLLMAgent` 装配链中生效
 - [x] `config_json` PATCH 顶层键合并（未提交键保留）
-- [ ] 记忆配置区可折叠/展开各层参数
+- [x] 记忆配置区可折叠/展开各层参数（`MemoryLevelSection.vue`）
+- [x] 设置页 9 Tab 布局（agent/memory/files/permissions/skills/evolution/learning/hooks/a2a）
+- [x] Planner / Ralph Loop / Channel Refs / Usage Quota / Learning Loop 各 section 可用
+- [x] FieldGuide 系统 10 scope 可用
+- [x] Runtime Config 3-file split（defaults/hydrate/serialize）可用
 - [ ] `go test ./internal/biz/... -run TestToolOverride` 通过
+- [ ] 系统提示模式与文件 Tab 联动
+- [ ] 各分区"重置为默认值"功能
 
 ---
 

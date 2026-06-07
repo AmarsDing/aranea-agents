@@ -1,6 +1,6 @@
 # Plugin 插件 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
+> **版本**：2026-06-06 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
 > **需求**：[22 plugin.md](./22%20plugin.md) · **设计**：[22 plugin.design.md](./22%20plugin.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)
 > **变更**：[changelog/2026-05-21-Plugin-Phase6.md](../changelog/2026-05-21-Plugin-Phase6.md) · [Review 修复](../changelog/2026-05-21-Plugin-Phase6-Review-Fixes.md)
@@ -9,7 +9,7 @@
 
 ## 1. 模块定位
 
-Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 Skill / Tool / Hook 的边界见 `internal/plugin/trpc/orchestration.go`。
+Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 Skill / Tool / Hook 的边界见 `internal/plugin/trpc/manager.go` 顶部编排注释。
 
 **代码锚点**：
 - `api/kratos/plugin/v1/plugin.proto`
@@ -23,7 +23,7 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 
 ---
 
-## 2. 现状评估（2026-05-21）
+## 2. 现状评估（2026-06-06）
 
 | 项 | 状态 | 说明 |
 |----|------|------|
@@ -101,7 +101,7 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 
 | 风险 | 缓解 |
 |------|------|
-| 四层回调顺序难感知 | orchestration.go + sort_order 提示 |
+| 四层回调顺序难感知 | manager.go 编排注释 + sort_order 提示 |
 | Schema 表单不支持复杂嵌套 | 数组 object 仍用 JSON 子编辑器；完整 JSON 模式保留 |
 | 工具确认与通用 await 混淆 | `await_kind` 区分 reply / tool_confirm；内存 cache + 同步 persist |
 | high_risk 跳过反思 | confirmation_guard **或** catalog `requires_confirmation` |

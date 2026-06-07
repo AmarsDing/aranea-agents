@@ -177,49 +177,57 @@
 
 ### 5.1 用量记录
 
-- [ ] 每次模型调用（含流式/非流式/失败/取消）均产生一条明细记录
-- [ ] 明细记录包含完整的 Token 数（输入/输出/缓存/推理/Embedding）
-- [ ] 明细记录包含价格快照和计算后的费用
-- [ ] 费用以 micro USD 存储，无浮点误差
-- [ ] 流式回复在结束后写入完整记录
-- [ ] 用户中断流式时写入 cancelled 状态记录
-- [ ] 模型请求失败时写入 failed 状态及错误信息
+- [x] 每次模型调用（含流式/非流式/失败/取消）均产生一条明细记录
+- [x] 明细记录包含完整的 Token 数（输入/输出/缓存/推理/Embedding）
+- [x] 明细记录包含价格快照和计算后的费用
+- [x] 费用以 micro USD 存储，无浮点误差
+- [x] 流式回复在结束后写入完整记录
+- [ ] 用户中断流式时写入 cancelled 状态记录（落库路径待统一验证）
+- [x] 模型请求失败时写入 failed 状态及错误信息
 
 ### 5.2 用量查询
 
-- [ ] 概览 API 返回今日/昨日/本月/自定义范围的汇总数据
-- [ ] 趋势 API 按天返回 Token、费用、调用次数、成功率
-- [ ] Top 模型 API 按费用排序返回模型排行
-- [ ] Top Agent API 按费用排序返回 Agent 排行
-- [ ] 明细 API 支持按 Provider/Model/Agent/Team/来源/状态/时间范围筛选
-- [ ] 异常请求 API 返回非 success 状态的请求
-- [ ] 概览/排行/配额 SUM **不包含** `team_turn`；Team 整体可按 `team_id` 汇总 `team_member`
+- [x] 概览 API 返回今日/昨日/本月/自定义范围的汇总数据
+- [x] 趋势 API 按天返回 Token、费用、调用次数、成功率
+- [x] Top 模型 API 按费用排序返回模型排行
+- [x] Top Agent API 按费用排序返回 Agent 排行
+- [x] 明细 API 支持按 Provider/Model/Agent/Team/来源/状态/时间范围筛选
+- [x] 异常请求 API 返回非 success 状态的请求
+- [x] 概览/排行/配额 SUM **不包含** `team_turn`；Team 整体可按 `team_id` 汇总 `team_member`
 
 ### 5.3 前端看板
 
-- [ ] 概览页展示核心卡片（调用/Token/费用/延迟/TPS）
-- [ ] 趋势图展示按天的调用/Token/费用/成功率
-- [ ] Top 模型和 Top Agent 排行列表
-- [ ] 异常请求列表
-- [ ] 明细列表支持筛选和分页
+- [x] 概览页展示核心卡片（调用/Token/费用/延迟/TPS）
+- [x] 趋势图展示按天的调用/Token/费用/成功率
+- [x] Top 模型和 Top Agent 排行列表
+- [x] 异常请求列表
+- [x] 明细列表支持筛选和分页
 
 ### 5.4 用量限额（P2）
 
-- [ ] 可为 Agent / 用户 / 全局设置月度费用预算
-- [ ] 超过预算后 Agent 对话被拦截并提示
-- [ ] 预算每月自动重置
+- [x] 可为 Agent 设置月度费用预算（`usage_quotas`）
+- [x] 可为用户 / 全局设置月度费用预算（`scope_type=user/global`）
+- [x] 超过预算后 Agent / Team 对话被拦截（`USAGE_QUOTA`）
+- [x] 预算每月自动重置（`period_start` / `period_end` 界定）
 
 ### 5.5 用量告警（P3）
 
-- [ ] 达到告警阈值时通知用户
-- [ ] 告警阈值可配置
+- [x] 达到告警阈值时写入监控事件（`usage.budget_alert`）
+- [x] 告警阈值可配置（Agent 权限 Tab）
+
+### 5.6 增强分析（P3）
+
+- [x] 小时级趋势查询可用（`granularity=hour`）
+- [x] CSV 导出功能可用
+- [x] 低性价比模型可被识别和标记（`InefficientModels` + `UsageInefficientModels.vue`）
 
 ---
 
 ## 6. 后续扩展
 
-- 支持低性价比模型识别：高成本、低 TPS、高失败率
-- 支持价格自动同步：OpenRouter / Gemini / Anthropic / OpenAI
-- 支持导出 CSV
-- 支持按 Agent、模型、用户维度设置月度预算
-- 支持小时级趋势查询
+- 支持价格自动同步：OpenRouter / Gemini / Anthropic / OpenAI API 定时拉取（当前仅 `syncProviderModelPricing` 手动触发）
+- 支持导出更多格式（PDF 报表等）
+- 支持小时级以下趋势查询（分钟级）
+- `cancelled` 流式中断落库路径统一验证
+- daily/hourly rollup 写入层与 billable 口径完全对齐（当前读层已过滤，写入仍含 team_turn 维度）
+- Team 维度概览 API / 前端 Team 用量卡片

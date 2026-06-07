@@ -1,6 +1,6 @@
 # Evaluation 评估 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 Phase 5 完整（扩展指标 + LLM UserSim + 趋势/对比前端）
+> **版本**：2026-06-06 | **状态**：🟢 全部完成（所有 Phase 已交付，差距已关闭）
 > **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33%20evaluation.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01 ✅, EP-RT-08 ✅, EP-BIZ-04 ✅, EVAL-02 ✅
 
@@ -11,43 +11,57 @@
 Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动评估（含 LLM-as-Judge）、人工标注与客户端报告导出。
 
 **代码锚点**：
-- `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API
+- `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API（14 RPC）
 - `internal/service/evaluation.go` — EvaluationService（传输桥点）
 - `internal/service/evaluation_runner.go` — NewEvaluationRunner（Wire 装配）
-- `internal/biz/evaluation.go` — EvalUsecase + EvalRepo 接口
-- `internal/data/evaluation.go` — EvalRepo + EnsureEvalSchema
+- `internal/service/evaluation_after_turn.go` — NewEvaluationAfterTurnTrigger
+- `internal/biz/evaluation.go` — 类型重导出（子包 `evaluation/` 的别名）
+- `internal/biz/evaluation/evaluation.go` — 领域模型 + EvalRepo 接口（16 方法）+ EvalUsecase（17 方法）
+- `internal/data/evaluation.go` — EvalRepo + EnsureEvalSchema（4 表 + 11 条 ALTER 迁移）
 - `internal/evaluation/runner.go` — 异步调度
+- `internal/evaluation/runner_legacy.go` — Legacy 回退路径
 - `internal/evaluation/metrics.go` — 指标解析与 legacy 计分
 - `internal/evaluation/framework.go` — trpc AgentEvaluator 桥接
+- `internal/evaluation/framework_metrics.go` — 扩展指标（JSON/XML/ROUGE/ToolTrajectory）
+- `internal/evaluation/evaluator_registry.go` — 9 种内置评估器注册
+- `internal/evaluation/multirun.go` — MultiRun 配置
 - `internal/evaluation/chat_runner.go` — ChatService → runner.Runner
 - `internal/evaluation/llm_judge.go` — LLM-as-Judge
 - `internal/evaluation/llm_simulator.go` — LLM UserSimulation + simRunner
+- `internal/evaluation/scripted_simulator.go` — 脚本化 UserSimulation
 - `internal/evaluation/eval_llm_resolve.go` — env + system_settings 模型解析
-- `internal/evaluation/framework_metrics.go` — 扩展指标（JSON/XML/ROUGE/ToolTrajectory）
 - `internal/evaluation/scores.go` — scores_json 映射
+- `internal/evaluation/evalset_adapter.go` — biz EvalCase → trpc EvalSet
 - `internal/evaluation/evalset_tools.go` — expected_tool_calls → ToolTrajectory
+- `internal/evaluation/case_metadata.go` — 用例元数据解析
 - `internal/evaluation/pass_metrics.go` — pass@k / pass^k
 - `internal/evaluation/after_turn.go` — AfterTurn 自动评估
-- `web/src/components/evaluation/EvaluationAnalyticsPanel.vue` — 趋势 + A/B 对比
-- `web/src/features/system-settings/eval-llm.ts` — Eval LLM 表单（默认 openai/gpt-4o-mini）
 - `web/src/pages/EvaluationPage.vue` — 管理页 `/evaluation`
-- `web/src/features/evaluation/` — api / types / mappers / exportRunResults
+- `web/src/components/evaluation/EvaluationAnalyticsPanel.vue` — 趋势 + A/B 对比
+- `web/src/components/evaluation/EvaluationResultsDialog.vue` — 逐用例详情 + 人工标注
+- `web/src/components/evaluation/EvaluationDatasetList.vue` — 数据集列表
+- `web/src/components/evaluation/EvaluationCreateDialog.vue` — 新建数据集弹窗
+- `web/src/components/evaluation/EvaluationRunDialog.vue` — 启动评估弹窗
+- `web/src/features/evaluation/` — api / types / mappers / exportRunResults / useEvaluationPage / evaluationTableUi
+- `web/src/stores/evaluation/index.ts` — Pinia Store（13 方法）
+- `web/src/features/system-settings/eval-llm.ts` — Eval LLM 表单（默认 openai/gpt-4o-mini）
 
 ---
 
-## 2. 现状评估（2026-05-21 代码审计）
+## 2. 现状评估（2026-06-06 代码审计）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Dataset CRUD | ✅ | Create/Get/List/Delete + UploadCases |
-| UpdateDataset | ✅ | `PATCH /v1/evaluation/datasets/{id}` |
+| Proto 14 RPC | ✅ | evaluation.proto：14 个 RPC + 18 个 Message |
+| Dataset CRUD | ✅ | Create/Get/List/Update/Delete + UploadCases |
 | DeleteRun | ✅ | `DELETE /v1/evaluation/runs/{id}`（级联 results） |
 | DeleteDataset 级联 | ✅ | 事务删 cases + dataset |
-| EvalRun 创建/查询 | ✅ | CreateRun/GetRun/ListRuns/GetRunResults |
+| EvalRun 创建/查询 | ✅ | CreateRun/GetRun/ListRuns/GetRunResults/DeleteRun |
 | 异步 Runner | ✅ | `runner.go` + safego |
 | FrameworkBridge | ✅ | `framework.go` → trpc AgentEvaluator + MultiRun |
 | Legacy 回退路径 | ✅ | `runner_legacy.go` + `metrics.go` |
-| 4 种内置指标 | ✅ | exact / contains / llm_as_judge / tool_call_accuracy |
+| 4 种核心指标 | ✅ | exact / contains / llm_as_judge / tool_call_accuracy |
+| 4 种扩展指标 | ✅ | json_match / xml_match / rouge_l / tool_trajectory |
 | AgentRunner 注入 | ✅ | `evaluation_runner.go` → ChatService.RunNativeTurnUnary |
 | LLM-as-Judge | ✅ | `llm_judge.go`；env `KRATOS_EVAL_JUDGE_*` 或目录首 mini/flash 模型 |
 | num_runs (MultiRun) | ✅ | Proto `num_runs` → AgentEvaluator.WithNumRuns |
@@ -55,23 +69,39 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | AnnotateCaseResult | ✅ | PATCH annotation + Results 对话框（EVAL-02） |
 | 报告导出（客户端） | ✅ | `exportRunResults.ts` CSV/JSON |
 | HTTP+gRPC 注册 | ✅ | `http.go` / `grpc.go` |
+| Wire 注入 | ✅ | `wire_gen.go`：Repo → Usecase → Runner → Service → Registry |
 | Prometheus | ✅ | eval_runs_total / eval_case_duration_seconds |
-| 前端页面 | ✅ | EvaluationPage.vue + features/evaluation |
-| AfterTurn 自动评估 | ✅ | `NativeTurnAfterHook` + `AfterTurnTrigger` + `config_json.evaluation` |
+| 前端页面 | ✅ | EvaluationPage + 5 个子组件 + features/evaluation + Store |
+| AfterTurn 自动评估 | ✅ | `AfterTurnTrigger` + `evaluation_after_turn.go` + `config_json.evaluation` |
 | GetAgentEvalTrend | ✅ | `GET /v1/evaluation/agents/{agent_id}/trend` |
 | CompareEvalRuns A/B | ✅ | `POST /v1/evaluation/runs/compare` |
 | EvalSet 多轮 turns | ✅ | `metadata_json.turns` → evalset_adapter |
 | UserSimulation 脚本 | ✅ | `scripted_simulator.go` + `use_user_simulation` |
 | UserSimulation LLM | ✅ | `llm_simulator.go` + trpc `simRunner` |
-| 扩展指标 | ✅ | `json_match` / `xml_match` / `rouge_l` / `tool_trajectory` |
 | scores_json | ✅ | run/result 扩展分数字段 |
 | 趋势/对比前端 | ✅ | `EvaluationAnalyticsPanel` + API |
 | Eval LLM 系统配置 | ✅ | `system_settings.eval_*` + Settings 页 + `eval_llm_resolve.go` |
 | pass@k / pass^k | ✅ | `pass_metrics.go` + `eval_runs.pass_at_k/pass_hat_k` |
+| 内置评估器注册 | ✅ | `evaluator_registry.go` 9 种评估器 |
+| Biz 子包结构 | ✅ | `internal/biz/evaluation/` 子包 + 外层类型重导出 |
+| 前端 Pinia Store | ✅ | `stores/evaluation/index.ts` 13 方法 |
+| 前端路由 + 导航 + i18n | ✅ | `/evaluation` 路由 + 侧边栏 + 中英文 |
+
+### 未完成项
+
+| 项 | 说明 |
+|----|------|
+| Service 层单元测试 | `internal/service/evaluation*_test.go` 不存在 |
+| Runner 异步执行测试 | `internal/evaluation/runner_test.go` 不存在 |
+| AfterTurn 触发器测试 | `internal/evaluation/after_turn_test.go` 不存在 |
+| FrameworkBridge 集成测试 | `internal/evaluation/framework_test.go` 不存在 |
+| LLM Judge 测试 | `internal/evaluation/llm_judge_test.go` 不存在 |
+| ChatRunner 适配器测试 | `internal/evaluation/chat_runner_test.go` 不存在 |
+| 前端数据集编辑 | 后端 `UpdateDataset` API 已实现，前端未暴露编辑入口 |
 
 ---
 
-## 3. 差距与优化（按优先级）
+## 3. 差距与优化（全部已关闭）
 
 | 优先级 | 项 | 状态 |
 |--------|-----|------|
@@ -79,16 +109,24 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | **P1** | LLM-as-Judge 实现 | ✅ llm_judge.go |
 | **P1** | FrameworkBridge / EP-RT-08 | ✅ framework.go + chat_runner |
 | **P1** | 前端 Evaluation 页面 | ✅ EvaluationPage.vue |
-| **P2** | DeleteRun / UpdateDataset API | ✅ 2026-05-21 |
-| **P2** | DeleteDataset 级联删 cases | ✅ 2026-05-21 |
+| **P2** | DeleteRun / UpdateDataset API | ✅ |
+| **P2** | DeleteDataset 级联删 cases | ✅ |
 | **P2** | Runner 指标逻辑 SRP 拆分 | ✅ metrics.go + runner_legacy.go |
-| **P2** | 自动评估触发（AfterTurn） | ✅ 2026-05-21 |
-| **P2** | 报告导出（客户端） | ✅ 迭代 7 |
+| **P2** | 自动评估触发（AfterTurn） | ✅ |
+| **P2** | 报告导出（客户端） | ✅ |
 | **P3** | 人工评估标注 | ✅ EVAL-02 |
 | **P3** | 服务端评估报告 / 趋势 API | ✅ 趋势 + A/B |
 | **P3** | EvalSet 多轮 + UserSimulation + pass@k | ✅ Phase 5 |
-| **P3** | 扩展指标 + LLM UserSim + 趋势前端 | ✅ 2026-05-21 |
-| **P3** | Eval LLM → system_settings | ✅ 2026-05-21 |
+| **P3** | 扩展指标 + LLM UserSim + 趋势前端 | ✅ |
+| **P3** | Eval LLM → system_settings | ✅ |
+
+### 待改进项（非阻塞）
+
+| 优先级 | 项 | 说明 |
+|--------|-----|------|
+| P2 | Service 层单元测试 | `internal/service/evaluation*_test.go` 缺失 |
+| P2 | Runner 核心组件测试 | runner / after_turn / framework / llm_judge / chat_runner 无测试 |
+| P3 | 前端数据集编辑入口 | 后端 API 已就绪，前端未暴露 |
 
 ---
 
@@ -133,8 +171,11 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 - [x] 趋势 API / A/B 对比 API + 前端趋势表与 Run 多选对比
 - [x] 扩展指标 opt-in（json_match / xml_match / rouge_l / tool_trajectory）与 scores_json
 - [x] Eval LLM 可在系统设置页配置（env 优先）
-- [x] `go test ./internal/evaluation/...` 通过
-- [x] `go test ./internal/data/... -run Eval` 通过
+- [x] `go test ./internal/evaluation/...` 通过（5 个测试文件）
+- [x] `go test ./internal/data/... -run Eval` 通过（2 个测试文件）
+- [x] `go test ./internal/biz/evaluation/...` 通过（4 个测试文件）
+- [ ] Service 层单元测试（缺失）
+- [ ] Runner 核心组件测试（runner / after_turn / framework / llm_judge / chat_runner 缺失）
 
 ---
 

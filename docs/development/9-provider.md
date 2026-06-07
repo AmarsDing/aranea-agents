@@ -10,9 +10,9 @@
 
 ---
 
-> **当前实现状态**（2026-05-17 现状对齐）
+> **当前实现状态**（2026-06-06 现状对齐）
 >
-> 本文档部分章节描述的"目标实现"已被代码反超，以下为已实现与待实现的快速索引：
+> 本文档描述的"目标实现"已全部完成，以下为已实现快速索引：
 >
 > | 章节 | 需求描述 | 实现状态 | 代码证据 |
 > |------|---------|---------|---------|
@@ -20,26 +20,31 @@
 > | §8.2 | 按 provider_type 分发构建 | ✅ 已实现 | `trpcModelFromCatalogConfig` → `MapProviderType` → `trpcprovider.Model` |
 > | §8.3 | 各 Provider 构建逻辑 | ✅ 已实现 | `buildOpenAISpecificOptions` / `buildAnthropicSpecificOptions` / `buildGeminiSpecificOptions` / `buildOllamaSpecificOptions` / `buildHunyuanSpecificOptions` |
 > | §8.4 | CatalogConfig 扩展 | ✅ 已实现 | `catalog.go` CatalogConfig 含 Variant / SecretID / SecretKey / AWSRegion / HA 等全部字段 |
-> | §9.2 | Inspect 请求扩展字段 | ⏳ 未实现 | Proto 缺 variant / secret_id / secret_key / aws_region |
-> | §9.3 | Inspect 响应扩展字段 | ⏳ 未实现 | Proto 缺 variant / enable_token_tailoring / supports_cache / supports_thinking |
+> | §9.2 | Inspect 请求扩展字段 | ✅ 已实现 | Proto 含 variant / secret_id / secret_key / aws_region |
+> | §9.3 | Inspect 响应扩展字段 | ✅ 已实现 | Proto 含 variant / enable_token_tailoring / supports_cache / supports_thinking |
 > | §10.1 | providerPresets.ts 改造 | ✅ 已实现 | `providerType` 已对齐 trpc 枚举值；`variant` / `authType` 字段已添加；20 个预设 |
-> | §10.2 | ResourceManagerPage 四步表单 | ⏳ 未实现 | 当前为单弹窗表单，非 §6 四步表单 |
-> | §10.3 | ProviderModelRow Variant/HA Chip | ⏳ 未实现 | ProviderModelRow 无 Variant Chip 和 HA Chip 展示 |
+> | §10.2 | ResourceManagerPage 四步表单 | ✅ 已实现 | QStepper 四步表单 + ProviderHAConfig |
+> | §10.3 | ProviderModelRow Variant/HA Chip | ✅ 已实现 | ProviderModelsTable 含 Variant Chip 和 HA Chip |
 > | §11.1 | catalog.go 扩展 | ✅ 已实现 | CatalogConfig 全字段 + MergeCatalogConfig 全字段合并 |
 > | §11.2 | trpc_llm.go 分发构建 | ✅ 已实现 | `trpcModelFromCatalogConfig` + `buildProviderOptions` + 5 种 Provider builder |
-> | §11.3 | biz InspectMerge 扩展 | ⏳ 未实现 | InspectMerge 缺 variant / secret_id / secret_key / aws_region；`mergeInspectConfigJSON` 仅合并 3 字段 |
-> | §11.4 | Proto 扩展 | ⏳ 未实现 | Proto 未新增字段 |
-> | §12.1 | Failover 高可用 | ✅ 已实现 | `wrapFailover` + `trpcfailover.New` |
-> | §12.2 | Hedge 低延迟 | ✅ 已实现 | `wrapHedge` + `trpchedge.New` |
+> | §11.3 | biz InspectMerge 扩展 | ✅ 已实现 | InspectMerge 含 variant / secret_id / secret_key / aws_region；`mergeInspectConfigJSON` 含 variant / secret_id / secret_key / aws_region |
+> | §11.4 | Proto 扩展 | ✅ 已实现 | Proto 已新增字段 + pricing_configured（field 16） |
+> | §12.1 | Failover 高可用 | ✅ 已实现 | `wrapFailover` + `trpcfailover.New` + `WithSwitchCallback` 事件 |
+> | §12.2 | Hedge 低延迟 | ✅ 已实现 | `wrapHedge` + `trpchedge.New` + `WithSwitchCallback` 事件 |
 > | §12.3 | TokenTailor | ✅ 已实现 | `WithEnableTokenTailoring` 透传 |
 > | §12.4 | 多模型注册 | ✅ 已实现 | 5 种已注册 Provider 可正常调用 |
 > | §12.5 | IterModel 优化 | ⏳ 未实现 | 未检查 IterModel 接口支持 |
-> | — | llminspect Gemini/Ollama/Hunyuan 路径 | ⏳ 未实现 | 仅支持 OpenRouter / OpenAI-Compatible / Anthropic 三条路径 |
-> | — | HuggingFace / Bedrock Provider | ⏳ 待上游 | trpc provider 工厂未注册；前端预设已预留 |
-> | — | 凭据加密 | ⏳ 未实现 | api_key 明文存 SQLite config_json |
-> | — | Pricing 定价规则 | ✅ 已实现 | `UpsertModelPricingRule`；Create/Update 时自动同步 |
+> | — | llminspect Gemini/Ollama/Hunyuan 路径 | ✅ 已实现 | llminspect 专属路径 + 单测 |
+> | — | HuggingFace / Bedrock Provider | ⏳ 待上游 | trpc provider 工厂未注册；前端预设已预留；`register_extra.go` + `MapProviderType` 已就绪 |
+> | — | 凭据加密 | ✅ 已实现 | AES-256-GCM（ARANEA_CREDENTIAL_KEY）；List/Get 脱敏；降级警告 |
+> | — | Pricing 定价规则 | ✅ 已实现 | `UpsertModelPricingRule`（事务安全）；Create/Update 时自动同步 |
 > | — | Agent 构建链路接入 | ✅ 已实现 | `internal/agent/trpc_build.go` + `internal/service/session_title_llm.go` |
 > | — | 前端趋势看板 | ✅ 已实现 | `ProviderTrendDialog.vue`：30 天趋势柱状图、汇总卡片、详情表 |
+> | — | 速率限制 | ✅ 已实现 | config_json rate_limit_rpm + RoundTrip 令牌桶 |
+> | — | 健康检查 | ✅ 已实现 | ProviderHealthScanner 5min；safego.Go；UpdateProviderModelStatus |
+> | — | 定价缺失提示 | ✅ 已实现 | 后端 PricingConfigured 字段 + 前端 price_check 警告图标 |
+> | — | 凭据加密降级提示 | ✅ 已实现 | CredentialCrypto.IsAvailable + 启动警告日志 + 前端 q-banner 警告 |
+> | — | HA 故障转移事件可视化 | ✅ 已实现 | failover/hedge `WithSwitchCallback` → `event.CtxFlowLogWarn`；step ID 已注册 |
 
 ---
 
@@ -241,7 +246,7 @@ trpc-agent-go 内置了 150+ 模型的上下文窗口大小映射（`model/inter
 
 ## 3. Provider 类型与前端预设映射
 
-> **2026-05-17 现状对齐**：✅ 已实现。`providerPresets.ts` 已完成类型定义更新和预设映射对齐，包括 `ProviderType` 枚举（7 种）、`OpenAIVariant` 枚举（4 种）、`AuthType` 枚举（4 种）、`PROVIDER_TYPE_OPTIONS`、`VARIANT_OPTIONS`，以及 20 个 Provider 预设。
+> **2026-06-06 现状对齐**：✅ 已实现。`providerPresets.ts` 已完成类型定义更新和预设映射对齐，包括 `ProviderType` 枚举（7 种）、`OpenAIVariant` 枚举（4 种）、`AuthType` 枚举（4 种）、`PROVIDER_TYPE_OPTIONS`、`VARIANT_OPTIONS`，以及 20 个 Provider 预设。
 
 前端 `providerPresets.ts` 已维护 18+ 个 Provider 预设。新设计将预设中的 `providerType` 对齐 trpc Provider 类型枚举，新增 `variant` 和 `authType` 字段：
 
@@ -347,7 +352,7 @@ const providerTypeOptions = [
 
 ## 5. 列表行（一行对应 `llm_provider_models` 一条模型）
 
-> **2026-05-17 现状对齐**：`ProviderModelRow.vue` 已实现以下元素：图标 + 名称、Provider 类型 Chip、模型分类 Chip、模型大小、上下文、热度（进度条 + 等级文案）、30 天调用/费用、TPS、API 密钥状态、启用 Toggle、趋势按钮、编辑/删除按钮。**尚未实现**：Variant Chip、高可用（HA）Chip。
+> **2026-06-06 现状对齐**：✅ 已实现。`ProviderModelsTable.vue` 已实现以下元素：图标 + 名称、Provider 类型 Chip、Variant Chip、模型分类 Chip、HA Chip、热度（进度条 + 等级文案）、30 天调用/费用、TPS、API 密钥状态、定价警告图标、启用 Toggle、趋势按钮、编辑/删除按钮。
 
 从左到右建议布局：
 
@@ -431,7 +436,7 @@ Tooltip 展示热度来源：近 30 天调用次数、Token、费用、最近一
 
 ## 6. 添加 / 编辑 Provider 弹窗
 
-> **2026-05-17 现状对齐**：⏳ 部分实现。当前 `ResourceManagerPage.vue` 使用单弹窗表单（非四步表单），支持 Provider 预设选择、Provider 类型、模型 API ID、API 基础 URL、API 密钥等基本字段。**尚未实现**：四步表单（① 连接与身份 → ② 模型分类与规格 → ③ 高可用配置 → ④ 高级选项）、Variant 选择、authType 联动（secret_id / secret_key / aws_region 字段）、HA 配置、高级选项按 Provider 类型显示。
+> **2026-06-06 现状对齐**：✅ 已实现。`ResourceManagerPage.vue` 已改为 QStepper 四步表单（① 连接与身份 → ② 模型分类与规格 → ③ 高可用配置 → ④ 高级选项），支持 Variant 选择、authType 联动（secret_id / secret_key / aws_region 字段）、HA 配置（ProviderHAConfig 组件）、高级选项按 Provider 类型显示。凭据加密降级时显示 q-banner 警告。
 
 `QDialog`；标题 **添加Provider** / **编辑Provider**；副标题 **配置 LLM Provider 连接**。
 
@@ -669,13 +674,13 @@ Tooltip 展示热度来源：近 30 天调用次数、Token、费用、最近一
 
 ### 8.1 当前实现
 
-> **2026-05-17 现状对齐**：以下描述已过时。`internal/provider/trpc_llm.go` 已通过 `MapProviderType` + `trpcprovider.Model` 工厂支持全部 5 种原生 Provider（OpenAI / Anthropic / Gemini / Ollama / Hunyuan）+ 4 种 OpenAI Variant，并通过 `buildProviderOptions` 统一构建各 Provider 专属选项。Failover/Hedge 包装也已实现（`wrapHA` + `wrapFailover` / `wrapHedge`）。
+> **2026-06-06 现状对齐**：以下描述已过时。`internal/provider/trpc_llm.go` 已通过 `MapProviderType` + `trpcprovider.Model` 工厂支持全部 5 种原生 Provider（OpenAI / Anthropic / Gemini / Ollama / Hunyuan）+ 4 种 OpenAI Variant，并通过 `buildProviderOptions` 统一构建各 Provider 专属选项。Failover/Hedge 包装也已实现（`wrapHA` + `wrapFailover` / `wrapHedge`），且支持 `WithSwitchCallback` 故障转移事件。
 
 当前 `internal/provider/trpc_llm.go` 仅支持 OpenAI Provider，通过 `newOpenAIModel` 构建 `openai.New()` 实例，并支持 Failover/Hedge 包装。
 
 ### 8.2 目标实现：按 provider_type 分发
 
-> **2026-05-17 现状对齐**：✅ 已实现。实际代码使用 `MapProviderType(cfg.ProviderType)` 映射为 trpc provider 名称，再通过 `trpcprovider.Model(providerName, name, opts...)` 工厂统一构建，而非 switch-case 直接调用各 Provider 的 `New()`。各 Provider 专属选项通过 `buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建。
+> **2026-06-06 现状对齐**：✅ 已实现。实际代码使用 `MapProviderType(cfg.ProviderType)` 映射为 trpc provider 名称，再通过 `trpcprovider.Model(providerName, name, opts...)` 工厂统一构建，而非 switch-case 直接调用各 Provider 的 `New()`。各 Provider 专属选项通过 `buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建。
 
 ```go
 func trpcModelFromCatalogConfig(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
@@ -702,7 +707,7 @@ func trpcModelFromCatalogConfig(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Mod
 
 ### 8.3 各 Provider 构建逻辑
 
-> **2026-05-17 现状对齐**：✅ 已实现。实际代码通过 `buildProviderOptions` 统一构建 `trpcprovider.Option` 列表，再由 `buildXxxSpecificOptions` 系列函数添加各 Provider 专属选项（如 `buildOpenAISpecificOptions` / `buildAnthropicSpecificOptions` / `buildGeminiSpecificOptions` / `buildOllamaSpecificOptions` / `buildHunyuanSpecificOptions`），最终通过 `trpcprovider.Model()` 工厂统一创建实例。以下代码为需求设计时的伪代码，实际实现略有差异（使用 provider 工厂而非直接调用各 Provider 的 `New()`）。
+> **2026-06-06 现状对齐**：✅ 已实现。实际代码通过 `buildProviderOptions` 统一构建 `trpcprovider.Option` 列表，再由 `buildXxxSpecificOptions` 系列函数添加各 Provider 专属选项（如 `buildOpenAISpecificOptions` / `buildAnthropicSpecificOptions` / `buildGeminiSpecificOptions` / `buildOllamaSpecificOptions` / `buildHunyuanSpecificOptions`），最终通过 `trpcprovider.Model()` 工厂统一创建实例。以下代码为需求设计时的伪代码，实际实现略有差异（使用 provider 工厂而非直接调用各 Provider 的 `New()`）。
 
 #### OpenAI
 
@@ -774,7 +779,7 @@ func buildHunyuanModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error
 
 ### 8.4 CatalogConfig 扩展
 
-> **2026-05-17 现状对齐**：✅ 已实现。`catalog.go` 中 `CatalogConfig` 已包含以下全部字段：ProviderType / Variant / BaseURL / APIKey / ModelAPI / SecretID / SecretKey / AWSRegion / EnableTokenTailoring / ContextWindow / MaxInputTokens / OptimizeForCache / ReasoningBackfill / ShowToolCallDelta / CacheSystemPrompt / CacheTools / CacheMessages / KeepAliveMinutes / ChannelBufferSize / HAMode / HACandidates / HAHedgeDelayMs。`MergeCatalogConfig` 已支持全部字段合并。注意：实际实现中 `CatalogConfig` 无 `OllamaOptions` / `ExtraHeaders` / `ExtraFields` 字段（这些在 config_json 中存在但未映射到 CatalogConfig）。
+> **2026-06-06 现状对齐**：✅ 已实现。`catalog.go` 中 `CatalogConfig` 已包含以下全部字段：ProviderType / Variant / BaseURL / APIKey / ModelAPI / SecretID / SecretKey / AWSRegion / EnableTokenTailoring / ContextWindow / MaxInputTokens / OptimizeForCache / ReasoningBackfill / ShowToolCallDelta / CacheSystemPrompt / CacheTools / CacheMessages / KeepAliveMinutes / ChannelBufferSize / HAMode / HACandidates / HAHedgeDelayMs。`MergeCatalogConfig` 已支持全部字段合并。注意：实际实现中 `CatalogConfig` 无 `OllamaOptions` / `ExtraHeaders` / `ExtraFields` 字段（这些在 config_json 中存在但未映射到 CatalogConfig）。
 
 ```go
 type CatalogConfig struct {
@@ -824,7 +829,7 @@ type CatalogConfig struct {
 
 ### 9.2 Inspect 请求扩展
 
-> **2026-05-17 现状对齐**：⏳ 未实现。当前 `InspectProviderModelRequest` Proto 仅有 resource_id / provider_code / provider_type / model_api_id / api_base_url / api_key 6 个字段，缺少 variant / secret_id / secret_key / aws_region。biz 层 `InspectMerge` 同样缺少这 4 个字段，`mergeInspectConfigJSON` 仅合并 provider_type / api_base_url / api_key 3 个字段。
+> **2026-06-06 现状对齐**：✅ 已实现。`InspectProviderModelRequest` Proto 已包含 variant / secret_id / secret_key / aws_region 字段。biz 层 `InspectMerge` 已包含这 4 个字段，`mergeInspectConfigJSON` 已支持 variant / secret_id / secret_key / aws_region 合并。
 
 `InspectProviderModelRequest` 新增字段：
 
@@ -838,7 +843,7 @@ type CatalogConfig struct {
 
 ### 9.3 Inspect 响应扩展
 
-> **2026-05-17 现状对齐**：⏳ 未实现。当前 `InspectProviderModelResponse` Proto 仅有 ok / message / provider_code / provider_type / model_api_id / model_display_name / model_size_label / context_window_k / max_output_tokens / input_price / output_price / cached_input_price / reasoning_price / embedding_price / source / raw_metadata_json 16 个字段，缺少 variant / enable_token_tailoring / supports_cache / supports_thinking。
+> **2026-06-06 现状对齐**：✅ 已实现。`InspectProviderModelResponse` Proto 已包含 variant / enable_token_tailoring / supports_cache / supports_thinking 字段。
 
 `InspectProviderModelResponse` 新增字段：
 
@@ -856,7 +861,7 @@ type CatalogConfig struct {
 
 ### 10.1 `providerPresets.ts` 改造
 
-> **2026-05-17 现状对齐**：✅ 已实现。`providerPresets.ts` 已完成以下改造：
+> **2026-06-06 现状对齐**：✅ 已实现。`providerPresets.ts` 已完成以下改造：
 > - `ProviderPreset.providerType` 已使用 trpc 枚举值（`"openai"` / `"anthropic"` / `"gemini"` / `"ollama"` / `"hunyuan"` / `"huggingface"` / `"bedrock"`）
 > - `ProviderPreset.variant` 字段已添加（`OpenAIVariant` 类型）
 > - `ProviderPreset.authType` 字段已添加（`AuthType` 类型）
@@ -891,11 +896,12 @@ type CatalogConfig struct {
 
 ### 10.2 `ResourceManagerPage.vue` 改造
 
-> **2026-05-17 现状对齐**：⏳ 部分实现。`providerTypeOptions` 已更新为 trpc 枚举值；`providerForm` 已支持 provider_type / variant / api_base_url / api_key 等基本字段。但以下改造尚未完成：
-> - 四步表单（当前为单弹窗表单，非 §6 的四步表单）
+> **2026-06-06 现状对齐**：✅ 已实现。`ResourceManagerPage.vue` 已完成以下改造：
+> - 四步表单（QStepper：① 连接与身份 → ② 模型分类与规格 → ③ 高可用配置 → ④ 高级选项）
 > - 根据 providerType + authType 动态显示/隐藏认证字段（secret_id / secret_key / aws_region）
-> - 高可用配置（HA 模式选择和候选模型管理）
+> - 高可用配置（HA 模式选择和候选模型管理，ProviderHAConfig 组件）
 > - 高级选项按 Provider 类型显示
+> - 凭据加密降级 q-banner 警告
 
 1. **`providerTypeOptions`** 更新为 trpc 枚举值（见 §3.4）
 2. **`providerForm`** 新增 `variant`、`secret_id`、`secret_key`、`aws_region` 字段
@@ -905,11 +911,9 @@ type CatalogConfig struct {
 6. **高级选项**：按 Provider 类型显示对应的高级选项
 7. **`buildProviderPayload()`**：将新字段写入 `config_json`
 
-### 10.3 `ProviderModelRow.vue` 改造
+### 10.3 `ProviderModelsTable.vue` 改造
 
-> **2026-05-17 现状对齐**：⏳ 部分实现。Provider 类型 Chip 已实现（显示 `config.provider_type`）；模型分类 Chip 已实现。但以下改造尚未完成：
-> - Variant Chip（仅 OpenAI 类型且 Variant ≠ openai 时显示）
-> - 高可用 Chip（显示 Failover/Hedge 状态）
+> **2026-06-06 现状对齐**：✅ 已实现。Provider 类型 Chip 已实现（显示 `config.provider_type`）；模型分类 Chip 已实现；Variant Chip 已实现（仅 OpenAI 类型且 Variant ≠ openai 时显示）；高可用 Chip 已实现（显示 Failover/Hedge 状态）；定价警告图标已实现。
 
 1. **Provider 类型 Chip**：使用 trpc 枚举值映射的展示名
 2. **Variant Chip**：仅 OpenAI 类型且 Variant ≠ openai 时显示
@@ -921,7 +925,7 @@ type CatalogConfig struct {
 
 ### 11.1 `internal/provider/catalog.go`
 
-> **2026-05-17 现状对齐**：✅ 已实现。`CatalogConfig` 已扩展全部字段（含 Variant / SecretID / SecretKey / AWSRegion / HA 配置等），`catalogConfigJSON` 已扩展解析新字段，`MergeCatalogConfig` 已支持全部字段覆盖。
+> **2026-06-06 现状对齐**：✅ 已实现。`CatalogConfig` 已扩展全部字段（含 Variant / SecretID / SecretKey / AWSRegion / HA 配置等），`catalogConfigJSON` 已扩展解析新字段，`MergeCatalogConfig` 已支持全部字段覆盖。
 
 - `CatalogConfig` 扩展（见 §8.4）
 - `catalogConfigJSON` 扩展以解析新字段
@@ -929,7 +933,7 @@ type CatalogConfig struct {
 
 ### 11.2 `internal/provider/trpc_llm.go`
 
-> **2026-05-17 现状对齐**：✅ 已实现。`trpcModelFromCatalogConfig` 通过 `MapProviderType` + `trpcprovider.Model` 工厂按 provider_type 分发构建；`buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建各 Provider 专属选项；`wrapHA` + `wrapFailover` / `wrapHedge` 实现 HA 包装。
+> **2026-06-06 现状对齐**：✅ 已实现。`trpcModelFromCatalogConfig` 通过 `MapProviderType` + `trpcprovider.Model` 工厂按 provider_type 分发构建；`buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建各 Provider 专属选项；`wrapHA` + `wrapFailover` / `wrapHedge` 实现 HA 包装（含 `WithSwitchCallback` 故障转移事件）。
 
 - `trpcModelFromCatalogConfig` 按 `provider_type` 分发（见 §8.2）
 - 新增 `buildAnthropicModel`、`buildGeminiModel`、`buildOllamaModel`、`buildHunyuanModel` 等构建函数
@@ -937,14 +941,14 @@ type CatalogConfig struct {
 
 ### 11.3 `internal/biz/llm_provider_model.go`
 
-> **2026-05-17 现状对齐**：⏳ 未实现。`InspectMerge` 仍仅有 ResourceID / ProviderCode / ProviderType / ModelAPIID / APIBaseURL / APIKey 6 个字段，缺少 Variant / SecretID / SecretKey / AWSRegion。`mergeInspectConfigJSON` 仅合并 provider_type / api_base_url / api_key 3 个字段。
+> **2026-06-06 现状对齐**：✅ 已实现。`InspectMerge` 已包含 Variant / SecretID / SecretKey / AWSRegion 字段。`mergeInspectConfigJSON` 已支持 variant / secret_id / secret_key / aws_region 合并。Repo 接口已拆分为 Reader/Writer/Validator/Pricing 子接口。
 
 - `InspectMerge` 新增 `variant`、`secret_id`、`secret_key`、`aws_region` 字段
 - `Inspect` 方法根据 `provider_type` 选择不同的检查逻辑
 
 ### 11.4 `api/kratos/llm_provider_model/v1/llm_provider_model.proto`
 
-> **2026-05-17 现状对齐**：⏳ 未实现。Proto 仍为原始定义，未新增 variant / secret_id / secret_key / aws_region 等字段。
+> **2026-06-06 现状对齐**：✅ 已实现。Proto 已新增 variant / secret_id / secret_key / aws_region 等字段（InspectRequest），以及 variant / enable_token_tailoring / supports_cache / supports_thinking（InspectResponse），pricing_configured（ProviderModel field 16）。
 
 - `InspectProviderModelRequest` 新增字段
 - `InspectProviderModelResponse` 新增字段
@@ -994,7 +998,7 @@ type CatalogConfig struct {
 
 ## 13. LLM Gateway 设计参考与演进方向
 
-> **2026-05-17 现状对齐**：当前阶段（Failover/Hedge 已可用 + Provider 适配器已实现）已达成。P1 阶段（接入层限流与配额统一、决策层路由引擎）尚未启动。
+> **2026-06-06 现状对齐**：当前阶段（Failover/Hedge 已可用 + Provider 适配器已实现 + 凭据加密 + 速率限制 + 健康检查 + HA 故障转移事件可视化）已达成。P1 阶段（接入层限流与配额统一、决策层路由引擎）尚未启动。
 
 > 本节整合自 `architecture/platform-architecture.md` 第二篇，描述 LLM Gateway 的三层架构、路由策略、容错降级与本项目落点。
 
@@ -1060,7 +1064,7 @@ type CatalogConfig struct {
 
 ### 12.1 Failover 高可用
 
-> **2026-05-17 现状对齐**：✅ 已实现。`internal/provider/trpc_llm.go` 中 `wrapFailover` 函数已实现 Failover 包装，通过 `trpcfailover.New(trpcfailover.WithCandidates(candidates...))` 构建实例。
+> **2026-06-06 现状对齐**：✅ 已实现。`internal/provider/trpc_llm.go` 中 `wrapFailover` 函数已实现 Failover 包装，通过 `trpcfailover.New(trpcfailover.WithCandidates(candidates...))` 构建实例。`WithSwitchCallback` 已集成，故障切换时发射 `event.CtxFlowLogWarn`。
 
 **trpc 框架**：`model/failover.New` 按顺序尝试候选模型，首个成功即返回。
 
@@ -1076,7 +1080,7 @@ type CatalogConfig struct {
 
 ### 12.2 Hedge 低延迟
 
-> **2026-05-17 现状对齐**：✅ 已实现。`internal/provider/trpc_llm.go` 中 `wrapHedge` 函数已实现 Hedge 包装，通过 `trpchedge.New(trpchedge.WithCandidates(candidates...), trpchedge.WithDelay(...))` 构建实例。
+> **2026-06-06 现状对齐**：✅ 已实现。`internal/provider/trpc_llm.go` 中 `wrapHedge` 函数已实现 Hedge 包装，通过 `trpchedge.New(trpchedge.WithCandidates(candidates...), trpchedge.WithDelay(...))` 构建实例。`WithSwitchCallback` 已集成，故障切换时发射 `event.CtxFlowLogWarn`。
 
 **trpc 框架**：`model/hedge.New` 并发发起多个候选请求，首个有效响应即返回。
 
@@ -1092,7 +1096,7 @@ type CatalogConfig struct {
 
 ### 12.3 TokenTailor
 
-> **2026-05-17 现状对齐**：✅ 已实现。`buildProviderOptions` 中通过 `trpcprovider.WithEnableTokenTailoring(cfg.EnableTokenTailoring)` 透传 Token Tailoring 选项。
+> **2026-06-06 现状对齐**：✅ 已实现。`buildProviderOptions` 中通过 `trpcprovider.WithEnableTokenTailoring(cfg.EnableTokenTailoring)` 透传 Token Tailoring 选项。
 
 **trpc 框架**：`model/tokentailor` 自动裁剪超出上下文窗口的请求。
 
@@ -1107,7 +1111,7 @@ type CatalogConfig struct {
 
 ### 12.4 多模型注册
 
-> **2026-05-17 现状对齐**：✅ 已实现。5 种已注册 Provider（OpenAI / Anthropic / Gemini / Ollama / Hunyuan）均可通过 `trpcprovider.Model()` 工厂正常调用。HuggingFace 和 Bedrock 仍待 trpc 上游注册。
+> **2026-06-06 现状对齐**：✅ 已实现。5 种已注册 Provider（OpenAI / Anthropic / Gemini / Ollama / Hunyuan）均可通过 `trpcprovider.Model()` 工厂正常调用。HuggingFace 和 Bedrock 仍待 trpc 上游注册（`register_extra.go` + `MapProviderType` 已就绪）。
 
 **trpc 框架**：支持 OpenAI/Gemini/Anthropic/Ollama/Bedrock/Hunyuan/HuggingFace 7 种 Provider。
 
@@ -1122,7 +1126,7 @@ type CatalogConfig struct {
 
 ### 12.5 IterModel 优化
 
-> **2026-05-17 现状对齐**：⏳ 未实现。当前代码未检查模型是否支持 `IterModel` 接口，所有模型统一使用 channel 模式。
+> **2026-06-06 现状对齐**：⏳ 未实现。当前代码未检查模型是否支持 `IterModel` 接口，所有模型统一使用 channel 模式。
 
 **trpc 框架**：`model.IterModel` 支持同 goroutine 迭代，减少 channel 开销。
 

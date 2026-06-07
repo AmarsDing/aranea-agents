@@ -214,6 +214,109 @@ message ListToolRunsForToolRequest {
   int32 page_size = 8;
 }
 
+message ToolAgentOverride {
+  string id = 1;
+  string tool_id = 2;
+  string tool_key = 3;
+  string agent_id = 4;
+  bool enabled = 5;
+  string mode = 6;                    // "inherit"/"override"/"deny"
+  string config_override_json = 7;
+  bool requires_confirmation = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message ListToolAgentOverridesRequest {
+  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListToolAgentOverridesByAgentRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListToolAgentOverridesResponse {
+  repeated ToolAgentOverride items = 1;
+}
+
+message UpsertToolAgentOverrideRequest {
+  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+  bool enabled = 3;
+  string mode = 4;
+  string config_override_json = 5;
+  bool requires_confirmation = 6;
+}
+
+message DeleteToolAgentOverrideRequest {
+  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetToolInvocationParamsRequest {
+  string invocation_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ToolInvocationParam {
+  string id = 1;
+  string invocation_id = 2;
+  string tool_key = 3;
+  string params_json = 4;
+  bool redaction_applied = 5;
+  string created_at = 6;
+}
+
+message UpdateToolConfigRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string config_json = 2;
+}
+
+message TestToolRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string arguments_json = 2;
+  int32 timeout_sec = 3;
+}
+
+message TestToolResponse {
+  string status = 1;                   // "success"/"error"/"timeout"
+  string result_preview = 2;
+  string error_message = 3;
+  int32 duration_ms = 4;
+}
+
+message ToolInvocationAudit {
+  string id = 1;
+  string invocation_id = 2;
+  string tool_key = 3;
+  string agent_id = 4;
+  string user_id = 5;
+  string session_id = 6;
+  string action = 7;
+  string result_summary = 8;
+  string status = 9;
+  string source = 10;
+  string created_at = 11;
+}
+
+message ListToolInvocationAuditsRequest {
+  string tool_key = 1;
+  string agent_id = 2;
+  string user_id = 3;
+  string session_id = 4;
+  string status = 5;
+  string from = 6;
+  string to = 7;
+  int32 page = 8;
+  int32 page_size = 9;
+}
+
+message ListToolInvocationAuditsResponse {
+  repeated ToolInvocationAudit items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
 service ToolService {
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse) {
     option (google.api.http) = {get: "/v1/tools"};
@@ -239,6 +342,30 @@ service ToolService {
   rpc ListToolRunsForTool(ListToolRunsForToolRequest) returns (ListToolRunsResponse) {
     option (google.api.http) = {get: "/v1/tools/{tool_id}/runs"};
   }
+  rpc ListToolAgentOverrides(ListToolAgentOverridesRequest) returns (ListToolAgentOverridesResponse) {
+    option (google.api.http) = {get: "/v1/tools/{tool_key}/overrides"};
+  }
+  rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-overrides"};
+  }
+  rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
+    option (google.api.http) = {put: "/v1/tools/{tool_key}/overrides/{agent_id}" body: "*"};
+  }
+  rpc DeleteToolAgentOverride(DeleteToolAgentOverrideRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/tools/{tool_key}/overrides/{agent_id}"};
+  }
+  rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
+    option (google.api.http) = {get: "/v1/tools/invocations/{invocation_id}/params"};
+  }
+  rpc UpdateToolConfig(UpdateToolConfigRequest) returns (Tool) {
+    option (google.api.http) = {put: "/v1/tools/{id}/config" body: "*"};
+  }
+  rpc TestTool(TestToolRequest) returns (TestToolResponse) {
+    option (google.api.http) = {post: "/v1/tools/{id}/test" body: "*"};
+  }
+  rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
+    option (google.api.http) = {get: "/v1/tools/audits"};
+  }
 }
 ```
 
@@ -254,6 +381,14 @@ service ToolService {
 | PATCH | `/v1/tools/{id}/enabled` | 启用/停用工具 |
 | GET | `/v1/tools/runs` | 全局工具调用记录查询 |
 | GET | `/v1/tools/{tool_id}/runs` | 指定工具的调用记录查询 |
+| GET | `/v1/tools/{tool_key}/overrides` | 查询工具的 Agent 覆盖列表 |
+| GET | `/v1/agents/{agent_id}/tool-overrides` | 查询 Agent 的工具覆盖列表 |
+| PUT | `/v1/tools/{tool_key}/overrides/{agent_id}` | 创建/更新 Agent 工具覆盖 |
+| DELETE | `/v1/tools/{tool_key}/overrides/{agent_id}` | 删除 Agent 工具覆盖 |
+| GET | `/v1/tools/invocations/{invocation_id}/params` | 查询工具调用脱敏参数 |
+| PUT | `/v1/tools/{id}/config` | 更新工具配置 |
+| POST | `/v1/tools/{id}/test` | 在线测试工具 |
+| GET | `/v1/tools/audits` | 查询工具调用审计日志 |
 
 ---
 
@@ -942,6 +1077,16 @@ type AssembledToolsets struct {
 | `agent` | composition | — | medium | ❌ | `trpc-agent-go/tool/agent` |
 | `mcp` | integration | — | medium | ❌ | `trpc-agent-go/tool/mcp` |
 | `mcpbroker` | integration | — | medium | ❌ | `trpc-agent-go/tool/mcpbroker` |
+| `browser` | browser | ToolSet | critical | ❌ | `trpc-agent-go/tool/browser`（Playwright MCP 桥接） |
+| `read_spreadsheet` | media | Tool | medium | ❌ | `trpc-agent-go/tool/readspreadsheet` |
+| `read_tool_result` | system | Tool | low | ❌ | `Deferred: true`；延迟工具结果读取 |
+| `model_registry_sync` | system | — | medium | ❌ | 仅元数据，无 Factory |
+| `working_memory` | memory | ToolSet | low | ❌ | `trpc-agent-go/tool/workingmemory` |
+| `message` | messaging | ToolSet | medium | ❌ | 统一消息发送（OutboundRouter） |
+| `subagents_spawn` | composition | — | medium | ❌ | 仅元数据，运行时通过 SubAgentService 注入 |
+| `subagents_list` | composition | — | low | ❌ | 仅元数据 |
+| `subagents_get` | composition | — | low | ❌ | 仅元数据 |
+| `subagents_cancel` | composition | — | medium | ❌ | 仅元数据 |
 
 **Assemble 流程**：
 
@@ -987,10 +1132,16 @@ type ToolsetConfig struct {
     MCPServers      []MCPServerConfig
     MCPBroker       *MCPBrokerConfig
     CustomTools     []trpctool.Tool
+    KnowledgeReflect bool
+    CallAgent        bool
+    Browser          *browser.PlaywrightMCPConfig
+    SubAgentService  SubAgentServiceProvider
+    OutboundRouter   OutboundRouterProvider
+    BlobReader       BlobReaderProvider
+    DeferredTools    []DeferredToolEntry
     KnowledgeSearch bool
     CallAgent       bool
 }
-
 func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, error)
 ```
 
@@ -1106,6 +1257,10 @@ internal/tools/
 ├── mcpmount/                        — MCP 服务器发现与 ToolSet 装配
 ├── skillrouter/                     — Skill 检测与分类
 └── skillruntime/                    — Skill 工具集解析
+├── outbound/                 — 统一消息发送工具
+│   └── message.go            — NewMessageTool(OutboundRouter)
+├── deferred/                 — 延迟工具加载机制
+│   └── deferred.go           — DeferredToolEntry + NewToolSearchTool + NewDeferredCallableTool
 ```
 
 ### 7.8 工具工作区统一（Phase 5）
@@ -1165,6 +1320,36 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 #### 7.8.5 与 Electron / App 打包
 
 App 壳、Electron 打包 **不在本模块范围**（曾起草编号 53 文档，**不实施**）。工作区路径仍通过系统设置 / 环境变量 / Tool 配置注入，与是否 Electron 无关。
+
+### 7.9 延迟工具机制（Deferred Tools）
+
+部分工具（如 `read_tool_result`）标记为 `Deferred: true`，不随 Agent 初始化时立即装配，而是通过延迟加载机制按需实例化。
+
+**核心流程**：
+
+```
+Assemble()
+  → 识别 Deferred: true 的注册项
+  → 构建 DeferredToolEntry 列表
+  → 创建 ToolSearchTool（搜索可用延迟工具）
+  → 创建 DeferredCallableTool（按需实例化并调用）
+  → 追加到 AssembledToolsets.Tools
+```
+
+### 7.10 子代理工具（SubAgent Tools）
+
+子代理工具通过 `SubAgentService` 注入，支持运行时动态生成、列表、查询和取消子代理。
+
+**注入路径**：
+
+```
+AssemblyConfig.SubAgentService
+  → SubAgentService.FrameworkTools()
+  → 按 enabled 列表过滤
+  → 追加到 AssembledToolsets.Tools
+```
+
+**4 个子代理工具**：`subagents_spawn`、`subagents_list`、`subagents_get`、`subagents_cancel`。
 
 ---
 
@@ -1500,7 +1685,7 @@ LLM 返回 tool_call
 
 ### 9.5 项目集成设计
 
-**ToolsetConfig 扩展**（待实现）：
+**ToolsetConfig 扩展**（✅ 已实现）：
 
 ```go
 type ToolsetConfig struct {
@@ -1509,7 +1694,7 @@ type ToolsetConfig struct {
 }
 ```
 
-**tool_invocations 扩展**（待实现）：
+**tool_invocations 扩展**（✅ 已实现）：
 
 ```sql
 ALTER TABLE tool_invocations ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0;

@@ -1,6 +1,6 @@
 # Gateway 网关 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 核心 + Webhook 已落地；Follow-up Queue 前端 UX / PendingQueue 下沉待做
+> **版本**：2026-06-06 | **状态**：🟢 核心 + Webhook + ChatOrchestrator 已落地；API 版本管理/文档待做
 > **需求**：[35 gateway.md](./35%20gateway.md) · **设计**：[35 gateway.design.md](./35%20gateway.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) M1 · **EP**：EP-RT-01/02 ✅
 
@@ -13,11 +13,18 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 **代码锚点**：
 - `internal/runtime/run_registry.go` — RunRegistry + RunGateway
 - `internal/runtime/runner_manager.go` — RunnerManager TurnRunner 构建
+- `internal/runtime/pending_queue.go` — PendingMessageQueue（Follow-up FIFO）
+- `internal/runtime/turn/admission_gate.go` — AdmissionGate 准入控制
 - `internal/biz/chat_usecase.go` — Biz 编排（状态/排队/入队/await）
 - `internal/service/chat_run_gateway.go` — Biz 适配器
-- `internal/runtime/pending_queue.go` — PendingMessageQueue（Follow-up FIFO）
-- `internal/service/chat.go` / `chat_native.go` / `trpc_turn.go` — Chat RPC + Turn
+- `internal/service/chat.go` — ChatService 薄传输桥
+- `internal/service/chat_orchestrator.go` — ChatOrchestrator 核心编排器
+- `internal/service/chat_orchestrator_turn.go` — Turn 执行 + processPendingQueue
+- `internal/service/turn_pipeline.go` — TurnPipeline 管道
+- `internal/service/chat_turn_admission.go` — 准入适配器
+- `internal/service/chat_native.go` — 发送/Team/A2A/Cron 入口
 - `internal/biz/webhook.go` / `webhook_dispatcher.go` — 出站 Webhook
+- `internal/biz/event_bus_callback_consumer.go` — callbackConsumer
 - `internal/service/gateway.go` / `chat_enqueue.go` — CRUD + 终态经 Bus `callbackConsumer`
 - `internal/server/ws.go` — WebSocket 网关
 - `pkg/auth/middleware.go` — JWT 认证
@@ -30,21 +37,23 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 |----|------|------|
 | RunRegistry / RunGateway | ✅ | `internal/runtime/run_registry.go` + `gateway.go` |
 | RunnerManager | ✅ | `internal/runtime/runner_manager.go` |
+| ChatOrchestrator | ✅ | `internal/service/chat_orchestrator.go`，实现 `biz.TurnExecutor` |
+| TurnPipeline | ✅ | `internal/service/turn_pipeline.go`，显式管道 |
+| AdmissionGate | ✅ | `internal/runtime/turn/admission_gate.go` + `chat_turn_admission.go` |
 | Chat/Team/Cron/Channel 共用 RunGateway | ✅ | `wire.go provideRunRegistry` + `ChatService.RunGateway()` |
 | 会话并发控制 | ✅ | `RunRegistry.HasActive` + placeholder 清理 |
 | SteerableRunner 入队 | ✅ | `RunRegistry.EnqueueUserMessage` |
 | Follow-up Queue 后端 | ✅ | Steerable + Pending FIFO；`PublishMessageQueued` |
-| Follow-up Queue 前端 UX | 🟡 | 连续发送 / `message_queued` 监听待 Phase 1.5 |
+| Follow-up Queue 前端 UX | ✅ | 连续发送 + `message_queued` WS 刷新 |
 | 运行取消 | ✅ | `StopGeneration` + `RunRegistry.Cancel` |
 | 运行状态查询 | ✅ | `GetRunStatus` + trpc RunStatus 合并 |
 | 用户回复路由 | ✅ | `AwaitUserReply` + `makeAwaitReplyFunc` |
 | AwaitUserReplyRouting | ✅ | `RunnerManager` 在 `AwaitHook != nil` 时启用 |
-| Biz 编排 ChatUsecase | ✅ | `NewChatUsecaseFromDeps` 接入 ChatService |
-| WebSocket 网关 | ✅ | `ws.go` |
-| 认证中间件 | ✅ | JWT + Workspace |
+| Biz 编排 ChatUsecase | ✅ | `NewChatUsecaseFromDeps` 接入 ChatOrchestrator |
+| WebSocket 网关 | ✅ | `ws.go`，双 bus + 三优先级队列 |
+| 认证中间件 | ✅ | JWT + Workspace + Webhook 路径安全（EP-SEC-03） |
 | PendingMessageQueue 下沉 | ✅ | `internal/runtime/pending_queue.go` |
-| Follow-up Queue 前端 UX | ✅ | 连续发送 + `message_queued` WS 刷新 |
-| 出站 Webhook | ✅ | `GatewayService` + `WebhookDispatcher` + 终态触发 |
+| 出站 Webhook | ✅ | `GatewayService` + `WebhookDispatcher` + 终态触发，含 `graph_task_status` |
 | API 版本管理策略 | ❌ | 无文档 |
 | API 文档自动生成 | ❌ | 无 Swagger |
 
@@ -54,12 +63,13 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 
 | # | 差距 | 优先级 | 对应需求 | 说明 |
 |---|------|--------|----------|------|
-| 1 | Follow-up Queue 前端 UX | ✅ | 3.0 | Phase 1.5 |
+| 1 | Follow-up Queue 前端 UX | ✅ | 3.0 | Phase 1.5 已完成 |
 | 2 | PendingMessageQueue 下沉 | ✅ | 3.1 | `internal/runtime/pending_queue.go` |
-| 3 | 出站 Webhook | ✅ | 3.2 | 2026-05-21 Phase 3 |
-| 3 | setRunStatus 委托 ChatUsecase | P3 | — | await meta 发布仍留 Service |
-| 4 | API 版本管理策略 | P3 | 3.3 | 文档化版本演进规则 |
-| 5 | API 文档自动生成 | P3 | 3.4 | protoc-gen-openapi |
+| 3 | 出站 Webhook | ✅ | 3.2 | Phase 3 已完成，含 `graph_task_status` |
+| 4 | ChatOrchestrator 重构 | ✅ | — | `trpc_turn.go` 拆分为 ChatOrchestrator 体系 |
+| 5 | TurnPipeline + AdmissionGate | ✅ | — | 显式管道 + 准入控制 |
+| 6 | API 版本管理策略 | P3 | 3.3 | 文档化版本演进规则 |
+| 7 | API 文档自动生成 | P3 | 3.4 | protoc-gen-openapi |
 
 ---
 
@@ -72,15 +82,20 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 | 1.1 | RunRegistry + RunGateway | ✅ |
 | 1.2 | RunnerManager | ✅ |
 | 1.3 | ChatUsecase + 适配器 | ✅ |
-| 1.4 | ChatService 委托 chatUC | ✅ 2026-05-21 |
+| 1.4 | ChatService 委托 ChatOrchestrator | ✅ |
 | 1.5 | SteerableRunner + 降级 | ✅ |
 | 1.6 | AwaitUserReplyRouting 条件启用 | ✅ |
+| 1.7 | ChatOrchestrator 重构（`trpc_turn.go` 拆分） | ✅ |
+| 1.8 | TurnPipeline 显式管道 | ✅ |
+| 1.9 | AdmissionGate 准入控制 | ✅ |
 
 **验收**：
 - [x] Chat / Team / Cron / Channel 共用 RunRegistry
 - [x] ChatUsecase 编排入队/排队/状态/锁/await channel
 - [x] SteerableRunner 优先 + PendingMessageQueue 降级
-- [x] 现有 Chat API 行为不变
+- [x] ChatService 为薄传输桥，ChatOrchestrator 为核心编排器
+- [x] TurnPipeline 显式 Ingress → Service → Executor → Projector 管道
+- [x] AdmissionGate 放行/入队/拒绝三路决策
 
 ### Phase 1.5：Follow-up Queue UX（Cursor 对齐）（P2）
 
@@ -132,9 +147,8 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| PendingMessageQueue 迁移引入回归 | 排队行为变化 | 保留现有单元测试 + 快照逻辑 |
-| Webhook 目标不可达 | 通知丢失 | 异步发送 + 日志，不阻塞主流程 |
-| await meta 发布与 ChatUsecase 合并 | 行为变化 | Phase 3 前保持 Service 层 setRunStatusWithAwait |
+| Webhook 目标不可达 | 通知丢失 | 异步发送 + 日志 + 3 次重试，不阻塞主流程 |
+| ChatOrchestrator 职责膨胀 | 可维护性下降 | 按关注点拆分文件（turn / admission / durable / session_run / spirit） |
 
 ---
 
@@ -145,19 +159,20 @@ Gateway 网关：运行编排层，负责会话并发控制、**Follow-up Queue�
 | Runner 构建 | — | AgentFactory、PluginManager、ManagedRunner |
 | AwaitUserReplyRouting | RunnerManager 注入选项 | 框架提供路由能力 |
 | SteerableRunner 联调 | RunRegistry.EnqueueUserMessage | 框架提供接口 |
-| 运行编排 | RunRegistry + ChatUsecase | — |
+| 运行编排 | ChatOrchestrator + ChatUsecase + RunRegistry | — |
+| Turn 管道 | TurnPipeline + AdmissionGate | — |
 | Follow-up Queue | ChatUsecase + PendingMessageQueue + processPendingQueue | SteerableRunner |
-| Webhook 出站 | WebhookDispatcher | — |
+| Webhook 出站 | WebhookDispatcher + callbackConsumer | — |
 
 ---
 
-## 7. 2026-05-21 优化记录
+## 7. 优化记录
 
 | 优化项 | 说明 |
 |--------|------|
 | ChatUsecase 接入 ChatService | 消除 Service 层重复的入队/排队/锁/await 逻辑 |
 | Steerable 入队 WS 通知 | `ChatUsecase.EnqueueUserMessage` 在 Steerable 成功时也 PublishMessageQueued |
 | 文档与代码对齐 | RunRegistry 位于 runtime 层；设计文档更新分层说明 |
-| 待优化 | PendingMessageQueue 下沉；setRunStatusWithAwait 合并到 Biz |
 | 2026-05-21 Phase 3 | 出站 Webhook CRUD + HMAC 回调；chat_native 入队拒绝码（`CHAT_RUN_ENDED` / `CHAT_QUEUE_FULL`） |
 | 2026-05-21 DocSync | Follow-up Queue 产品规格（Cursor 对齐）；`publishMessageQueued` 收敛至 ChatUsecase；Phase 1.5 前端 UX |
+| 2026-06-06 DocSync | ChatOrchestrator 重构对齐：`trpc_turn.go` 已拆分为 ChatOrchestrator 体系；`chat_pending.go` 已删除；新增 TurnPipeline / AdmissionGate；Webhook 新增 `graph_task_status` 事件；认证新增 EP-SEC-03 |

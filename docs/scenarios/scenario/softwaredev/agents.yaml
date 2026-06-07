@@ -1,0 +1,332 @@
+defaults:
+  provider: openrouter
+  fast_model: gpt-4.1-mini
+  strong_model: gpt-4.1
+  tools_deny: [workspace_exec, filesystem, shell, bash]
+  system_prompt_mode: file
+  context_window: 64000
+
+agents:
+  - key: go-senior-general
+    position_key: go_senior_engineer
+    variant: general
+    display_name: Go 高级工程师
+    description: Go 后端通用开发
+    model_tier: strong
+    tools_profile: general
+    skills: [softwaredev-go-best-practices]
+
+  - key: go-senior-code-review
+    position_key: go_senior_engineer
+    variant: code_review
+    display_name: Go 代码审查
+    description: Go 代码审查与质量把关
+    model_tier: fast
+    skills: [softwaredev-code-review-checklist]
+
+  - key: go-senior-architect
+    position_key: go_senior_engineer
+    variant: architect
+    display_name: Go 架构师
+    description: Go 架构设计与技术决策
+    model_tier: strong
+    skills: [softwaredev-clean-arch, softwaredev-ddd-tactical]
+    subagents_enabled: true
+
+  - key: ue-client-general
+    position_key: ue_client_programmer
+    variant: general
+    display_name: UE 客户端程序员
+    description: 虚幻引擎客户端通用开发
+    model_tier: fast
+
+  - key: ue-client-gameplay
+    position_key: ue_client_programmer
+    variant: gameplay
+    display_name: UE Gameplay 程序员
+    description: 虚幻引擎 Gameplay 系统开发
+    model_tier: fast
+    skills: [softwaredev-ue5-gas]
+
+  - key: ue-client-network
+    position_key: ue_client_programmer
+    variant: network
+    display_name: UE 网络程序员
+    description: 虚幻引擎网络同步开发
+    model_tier: fast
+
+  - key: ue-client-performance
+    position_key: ue_client_programmer
+    variant: performance
+    display_name: UE 性能优化程序员
+    description: 虚幻引擎性能分析与优化
+    model_tier: fast
+
+  - key: vue3-senior-general
+    position_key: vue3_senior_engineer
+    variant: general
+    display_name: Vue3 高级工程师
+    description: Vue3 前端通用开发
+    model_tier: strong
+    skills: [softwaredev-go-best-practices]
+
+  - key: vue3-senior-code-review
+    position_key: vue3_senior_engineer
+    variant: code_review
+    display_name: Vue3 代码审查
+    description: Vue3 代码审查与质量把关
+    model_tier: fast
+    skills: [softwaredev-code-review-checklist]
+
+  - key: vue3-senior-ux-auditor
+    position_key: vue3_senior_engineer
+    variant: ux_auditor
+    display_name: Vue3 UX 审计
+    description: Vue3 用户体验审计
+    model_tier: fast
+
+teams:
+  - key: team-fullstack-feature
+    display_name: 全栈功能开发团队
+    mode: coordinator
+    description: 从需求到交付的全栈协作，前后端并行开发与审查
+    max_concurrency: 3
+    timeout_seconds: 300
+    intent_anchor_key: vue3-senior-general
+    synthesizer_key: go-senior-architect
+    members:
+      - agent_key: vue3-senior-general
+        role: coordinator
+        name: 前端主控
+        sort_order: 0
+      - agent_key: go-senior-general
+        role: worker
+        name: 后端开发
+        sort_order: 10
+        task_prompt: 实现后端 API 和业务逻辑
+      - agent_key: vue3-senior-code-review
+        role: worker
+        name: 前端审查
+        sort_order: 20
+        task_prompt: 审查前端代码质量与规范合规
+      - agent_key: go-senior-code-review
+        role: worker
+        name: 后端审查
+        sort_order: 30
+        task_prompt: 审查后端代码质量与规范合规
+
+  - key: team-code-review-bureau
+    display_name: 代码审查局
+    mode: parallel
+    description: 前后端并行代码审查，汇总后由架构师综合评审
+    max_concurrency: 2
+    timeout_seconds: 180
+    synthesizer_key: go-senior-architect
+    graph:
+      nodes:
+        - key: start
+          type: start
+        - key: go-review
+          type: agent
+          agent_key: go-senior-code-review
+        - key: vue-review
+          type: agent
+          agent_key: vue3-senior-code-review
+        - key: join-reviews
+          type: join
+        - key: synthesize
+          type: agent
+          agent_key: go-senior-architect
+        - key: end
+          type: end
+      edges:
+        - from: start
+          to: go-review
+        - from: start
+          to: vue-review
+        - from: go-review
+          to: join-reviews
+        - from: vue-review
+          to: join-reviews
+        - from: join-reviews
+          to: synthesize
+        - from: synthesize
+          to: end
+
+  - key: team-ci-cd-pipeline
+    display_name: CI/CD 流水线
+    mode: sequential
+    description: 顺序执行开发、审查、架构验证的流水线
+    max_concurrency: 1
+    timeout_seconds: 300
+    graph:
+      nodes:
+        - key: start
+          type: start
+        - key: develop
+          type: agent
+          agent_key: go-senior-general
+        - key: review
+          type: agent
+          agent_key: go-senior-code-review
+        - key: validate
+          type: agent
+          agent_key: go-senior-architect
+        - key: end
+          type: end
+      edges:
+        - from: start
+          to: develop
+        - from: develop
+          to: review
+        - from: review
+          to: validate
+        - from: validate
+          to: end
+
+  - key: team-incident-response
+    display_name: 线上故障响应
+    mode: coordinator
+    description: 线上故障快速定位与修复，架构师统筹调度
+    max_concurrency: 3
+    timeout_seconds: 180
+    intent_anchor_key: go-senior-architect
+    synthesizer_key: go-senior-architect
+    members:
+      - agent_key: go-senior-architect
+        role: coordinator
+        name: 故障指挥
+        sort_order: 0
+      - agent_key: go-senior-general
+        role: worker
+        name: 后端修复
+        sort_order: 10
+        task_prompt: 定位并修复后端故障
+      - agent_key: ue-client-performance
+        role: worker
+        name: 客户端排查
+        sort_order: 20
+        task_prompt: 排查客户端性能瓶颈与异常
+      - agent_key: go-senior-code-review
+        role: worker
+        name: 修复审查
+        sort_order: 30
+        task_prompt: 审查修复代码，防止引入新问题
+
+  - key: team-game-content
+    display_name: 游戏内容开发
+    mode: coordinator
+    description: UE5 游戏内容协作开发，Gameplay 主控统筹
+    max_concurrency: 3
+    timeout_seconds: 300
+    intent_anchor_key: ue-client-gameplay
+    members:
+      - agent_key: ue-client-gameplay
+        role: coordinator
+        name: Gameplay 主控
+        sort_order: 0
+      - agent_key: ue-client-general
+        role: worker
+        name: 通用开发
+        sort_order: 10
+        task_prompt: 实现客户端通用功能与 UI 逻辑
+      - agent_key: ue-client-network
+        role: worker
+        name: 网络同步
+        sort_order: 20
+        task_prompt: 实现网络同步与多人交互逻辑
+      - agent_key: ue-client-performance
+        role: worker
+        name: 性能保障
+        sort_order: 30
+        task_prompt: 监控并优化内容性能表现
+
+  - key: team-security-audit
+    display_name: 安全审计
+    mode: parallel
+    description: 架构师与审查员并行审计，架构师综合出具报告
+    max_concurrency: 2
+    timeout_seconds: 240
+    synthesizer_key: go-senior-architect
+    graph:
+      nodes:
+        - key: start
+          type: start
+        - key: arch-audit
+          type: agent
+          agent_key: go-senior-architect
+        - key: code-audit
+          type: agent
+          agent_key: go-senior-code-review
+        - key: join-audits
+          type: join
+        - key: synthesize
+          type: agent
+          agent_key: go-senior-architect
+        - key: end
+          type: end
+      edges:
+        - from: start
+          to: arch-audit
+        - from: start
+          to: code-audit
+        - from: arch-audit
+          to: join-audits
+        - from: code-audit
+          to: join-audits
+        - from: join-audits
+          to: synthesize
+        - from: synthesize
+          to: end
+
+  - key: team-architecture-review
+    display_name: 架构评审
+    mode: coordinator
+    description: 架构师主持评审，前后端工程师与审查员参与
+    max_concurrency: 3
+    timeout_seconds: 300
+    intent_anchor_key: go-senior-architect
+    synthesizer_key: go-senior-architect
+    members:
+      - agent_key: go-senior-architect
+        role: coordinator
+        name: 架构主持
+        sort_order: 0
+      - agent_key: go-senior-general
+        role: worker
+        name: 后端评估
+        sort_order: 10
+        task_prompt: 评估后端架构可行性与实现方案
+      - agent_key: vue3-senior-general
+        role: worker
+        name: 前端评估
+        sort_order: 20
+        task_prompt: 评估前端架构可行性与实现方案
+      - agent_key: go-senior-code-review
+        role: worker
+        name: 规范审查
+        sort_order: 30
+        task_prompt: 审查架构方案是否符合编码规范
+
+  - key: team-onboarding-mentor
+    display_name: 新人导师
+    mode: coordinator
+    description: 架构师统筹新人引导，前后端工程师分域辅导
+    max_concurrency: 2
+    timeout_seconds: 300
+    intent_anchor_key: go-senior-architect
+    members:
+      - agent_key: go-senior-architect
+        role: coordinator
+        name: 导师总控
+        sort_order: 0
+      - agent_key: go-senior-general
+        role: worker
+        name: 后端导师
+        sort_order: 10
+        task_prompt: 指导后端开发规范与最佳实践
+      - agent_key: vue3-senior-general
+        role: worker
+        name: 前端导师
+        sort_order: 20
+        task_prompt: 指导前端开发规范与最佳实践

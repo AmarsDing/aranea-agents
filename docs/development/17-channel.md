@@ -46,18 +46,21 @@ Catalog 由 `ListChannelCatalog` 返回。
 
 | type | 标签 | MuseBot 参考 | 连接模式 | 状态 | 入站 | 出站 |
 |------|------|-------------|----------|------|------|------|
-| `feishu` | 飞书 / Lark | `robot/lark.go` | webhook · **websocket** | webhook ✅ | ✅ | ✅ |
-| `dingtalk` | 钉钉 | `robot/ding.go` | webhook · **stream** | webhook ✅ | ✅ | ✅ |
+| `feishu` | 飞书 / Lark | `robot/lark.go` | webhook · **websocket** | ✅ | ✅ | ✅ |
+| `dingtalk` | 钉钉 | `robot/ding.go` | webhook · **stream** | ✅ | ✅ | ✅ |
 | `wecom` | 企微智能机器人 | `robot/comwechat.go` | webhook | ✅ | ✅ | ✅ |
 | `wecom-app` | 企微自建应用 | `robot/comwechat.go` | webhook | ✅ | ✅ | ✅ |
-| `wechat` | 微信公众号 | `robot/wechat.go` | webhook（被动/客服） | ❌ | — | — |
-| `slack` | Slack | `robot/slack.go` | event · **socket_mode** | event ✅ | ✅ | ✅ |
-| `telegram` | Telegram | `robot/telegram.go` | webhook · **polling** | webhook ✅ | ✅ | ✅ |
-| `discord` | Discord | `robot/discord.go` | **gateway** WebSocket | ❌ | — | — |
-| `qq` | QQ 官方机器人 | `robot/qq.go` | webhook + WS 事件 | ❌ | — | — |
-| `personal_qq` | QQ（OneBot） | `robot/personalqq.go` | OneBot HTTP 推送 | ❌ | — | — |
+| `wechat` | 微信公众号 | `robot/wechat.go` | webhook（被动/客服） | ✅ | ✅ | ✅ |
+| `slack` | Slack | `robot/slack.go` | event · **socket_mode** | ✅ | ✅ | ✅ |
+| `telegram` | Telegram | `robot/telegram.go` | webhook · **polling** | ✅ | ✅ | ✅ |
+| `discord` | Discord | `robot/discord.go` | **gateway** WebSocket | ✅ | ✅ | ✅ |
+| `qq` | QQ 官方机器人 | `robot/qq.go` | webhook + WS 事件 | ✅ | ✅ | ✅ |
+| `personal_qq` | QQ（OneBot） | `robot/personalqq.go` | OneBot HTTP 推送 | ✅ | ✅ | ✅ |
+| `line` | LINE | — | webhook | ✅ | ✅ | ✅ |
+| `mattermost` | Mattermost | — | webhook · **websocket** | ✅ | ✅ | ✅ |
+| `teams` | Microsoft Teams | — | Bot Framework webhook | ✅ | ✅ | ✅ |
 
-**MuseBot SDK 对照**（实现时优先采用）：
+**SDK 对照**（实现时优先采用）：
 
 | 平台 | Go 依赖 |
 |------|---------|
@@ -68,6 +71,9 @@ Catalog 由 `ListChannelCatalog` 返回。
 | Telegram | `go-telegram-bot-api/v5` |
 | Discord | `bwmarrin/discordgo` |
 | QQ 官方 | `tencent-connect/botgo` |
+| LINE | `line-bot-sdk-go`（仅类型引用，核心逻辑自研） |
+| Mattermost | `gorilla/websocket` + REST API v4（无官方 SDK） |
+| Teams | Bot Framework OAuth2 + REST API（无 Go SDK） |
 
 ---
 
@@ -75,8 +81,8 @@ Catalog 由 `ListChannelCatalog` 返回。
 
 | 模式 | 适用平台 | 说明 | 公网要求 |
 |------|----------|------|----------|
-| `webhook` | 飞书、企微、微信、Slack Events、Telegram、QQ | Kratos HTTP 回调；路径 `/webhooks/{channel_key}` 或平台专用路径 | 需 HTTPS |
-| `websocket` | 飞书 Lark WS | 长连接收事件；MuseBot `larkws.Client.Start` | 出站即可 |
+| `webhook` | 飞书、企微、微信、Slack Events、Telegram、QQ、LINE、Mattermost、Teams | Kratos HTTP 回调；路径 `/webhooks/{channel_key}` 或平台专用路径 | 需 HTTPS |
+| `websocket` | 飞书 Lark WS、Mattermost | 长连接收事件；MuseBot `larkws.Client.Start` | 出站即可 |
 | `stream` | 钉钉 Stream | `dingtalk-stream-sdk-go`；替代传统机器人 Webhook | 出站即可 |
 | `socket_mode` | Slack | App Token + Bot Token；MuseBot Socket Mode | 出站即可 |
 | `polling` | Telegram | `GetUpdatesChan`；无需 Webhook | 出站即可 |
@@ -297,7 +303,7 @@ Webhook 与 WS 统一 **Accept（ACK + 200）→ 异步 Execute Turn**；详见 
 ### 7.2 出站与流式
 
 - 默认：完整回复经 `channel_delivery` 异步发送  
-- 流式（MVP ✅）：Telegram / 飞书 / Slack — `config.streaming_enabled`；长任务场景 **建议开启**（见 §8）  
+- 流式（MVP ✅）：Telegram / 飞书 / Slack / LINE / Mattermost — `config.streaming_enabled`；长任务场景 **建议开启**（见 §8）  
 - 长任务 ACK / 进度 / 排队提示：Phase E（见 [开发计划 §10](./17-channel-development.md#10-长任务异步执行phase-e)）
 
 ### 7.3 健康与运维
@@ -433,10 +439,12 @@ Team 流水线（群 @）：
 | CH-02 | Webhook 平台收发消息 | Agent 回复送达 |
 | CH-03 | 复制 Webhook URL | 完整 HTTPS |
 | CH-04 | 禁用 Channel | 入站拒绝 |
-| CH-05 | 非 bundled 平台 | Catalog 展示「即将支持」，不可保存 |
-| CH-06 | 飞书 Stream / WS 模式（Phase 2） | 无公网 IP 可收消息 |
-| CH-07 | 钉钉 Stream 模式（Phase 2） | 替代 Webhook 机器人 |
+| CH-05 | 非 bundled 平台 | Catalog 展示「即将支持」，不可保存（当前 13/13 平台 bundled） |
+| CH-06 | 飞书 Stream / WS 模式 | 无公网 IP 可收消息 |
+| CH-07 | 钉钉 Stream 模式 | 替代 Webhook 机器人 |
 | CH-08 | `allowed_user_ids` / `allowed_group_ids` | 非白名单用户/群收到拒绝提示，`access_denied` 投递记录，不触发 Agent |
+| CH-09 | LINE / Mattermost / Teams Webhook | 入站验签 + 出站可达 |
+| CH-10 | LINE / Mattermost 流式出站 | edit-in-place PATCH 正常 |
 
 ---
 
@@ -448,6 +456,7 @@ Team 流水线（群 @）：
 | 3.1 | 2026-05-22 | §6 访问控制：`allowed_user_ids` / `allowed_group_ids` / `require_mention` 入站强制执行与用法说明 |
 | 3.2 | 2026-05-22 | §8 长任务场景：用户故事、配置项、验收 LT-01–07；与 Phase E 开发计划对齐 |
 | 3.3 | 2026-05-23 | §8.8 卡 Turn / 飞书无回复排查；链至 M55 Stuck-Turn 分析 |
+| 3.4 | 2026-06-06 | §2 Catalog 扩展至 13 平台（+LINE/Mattermost/Teams）；全部 bundled ✅；§3 连接模式补充新平台；§7.2 流式补充 LINE/Mattermost；§9 验收 CH-09/10 |
 
 
 ---

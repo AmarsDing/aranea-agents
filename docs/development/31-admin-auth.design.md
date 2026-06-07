@@ -1,7 +1,7 @@
 # Admin 认证 — 设计文档（用户友好度导向）
 
-> **版本**：2026-05-20  
-> **状态**：设计稿（Phase 0 与现网实现对齐；Phase 1+ 为演进目标）  
+> **版本**：2026-06-06
+> **状态**：Phase 0/1 已落地；Phase 2+ 为演进目标  
 > **关联**：`pkg/auth`、`internal/service/admin.go`、`web/src/stores/auth.ts`  
 > **开发计划**：[admin-auth-development.md](./admin-auth-development.md)  
 > **规范**：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
@@ -46,20 +46,24 @@ Aranea 管理端需要一套**对人和对机器都清晰**的认证方式：
 ┌─────────────────────────────────────────────────────────────┐
 │  web：Login 页 → POST /v1/admins/login → Cookie access_token │
 │       kratosApi.withCredentials + 路由守卫 ensureSession      │
-│       WS：buildWsUrl 从 Cookie 读 token 写入 ?token=（回退）    │
+│       WS：同源 Cookie 自动携带；跨源 buildWsUrl ?token= 回退   │
+│       readAccessTokenCookie 已 deprecated（HttpOnly 不可读）   │
 └───────────────────────────┬─────────────────────────────────┘
                             │ HTTP / WS
 ┌───────────────────────────▼─────────────────────────────────┐
 │  pkg/auth                                                    │
-│    Middleware()     — HTTP：Cookie JWT（HS256）               │
-│    GRPCMiddleware() — gRPC：Bearer JWT（可选，无 token 暂放行）│
+│    Middleware()     — HTTP：Cookie JWT / Bearer / query token │
+│    GRPCMiddleware() — gRPC：Bearer JWT（无 token 仅 warning） │
 │    features.go      — KRATOS_HTTP_AUTH_DISABLED + DEPLOY_ENV │
 │    webhook.go       — /webhooks/* 注册路径 + 签名头粗检        │
+│    cookie.go        — HttpOnly + SameSite=Lax + 可选 Secure   │
+│    health.go        — /healthz 暴露 auth_mode 等诊断信息      │
+│    request_token.go — 三级提取：Cookie > Bearer > query token │
 └───────────────────────────┬─────────────────────────────────┘
                             │ auth.FromContext(ctx)
 ┌───────────────────────────▼─────────────────────────────────┐
-│  internal/service/admin.go — Login / Logout / Current         │
-│  internal/biz + data       — admins 表，密码 MD5 存储          │
+│  internal/service/admin.go — Login / Logout / Current / CRUD  │
+│  internal/biz + data       — admins 表，密码 MD5 存储（待升级） │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -75,13 +79,15 @@ Aranea 管理端需要一套**对人和对机器都清晰**的认证方式：
 
 ### 2.3 已知体验问题（驱动本设计）
 
-| 现象 | 根因 | 设计应对（见 Phase 1） |
-|------|------|------------------------|
-| 已登录但 Chat/WS 401 | 页面在 `:9000`（gRPC）或跨 host，Cookie 未带上 | 文档 + 启动自检；统一 `localhost:9001` 代理 |
-| dev 下 HTTP 可用、WS 不行 | 曾要求 Cookie，bypass 未覆盖 WS | 已对齐 bypass；文档写明 WS 同端口 |
-| 心跳失败就跳登录 | `isAlive` 与真实 `/healthz` 脱节 | 发送前 `checkBackendHealth`；dev 不强制登出 |
-| 脚本难以调用 API | 仅 Cookie 登录 | PAT + `Authorization: Bearer` |
-| `KRATOS_AUTH_SECRET` 难理解 | 命名像「API 秘钥」 | 文档区分 **JWT 签名密钥** vs **PAT** vs **Webhook secret** |
+| 现象 | 根因 | 状态 |
+|------|------|------|
+| 已登录但 Chat/WS 401 | 页面在 `:9000`（gRPC）或跨 host，Cookie 未带上 | ✅ 已对齐：WS 同源 Cookie；跨源 `?token=` 回退 |
+| dev 下 HTTP 可用、WS 不行 | 曾要求 Cookie，bypass 未覆盖 WS | ✅ 已对齐：bypass 覆盖 WS |
+| 心跳失败就跳登录 | `isAlive` 与真实 `/healthz` 脱节 | ✅ 已修复：`checkBackendHealth` + `/healthz` auth_mode |
+| 脚本难以调用 API | 仅 Cookie 登录 | ⏳ Phase 2：PAT + `Authorization: Bearer` |
+| `KRATOS_AUTH_SECRET` 难理解 | 命名像「API 秘钥」 | ✅ 文档区分 JWT 签名密钥 / PAT / Webhook secret |
+| Cookie 非 HttpOnly | JS 可读 token，XSS 风险 | ✅ 已修复：HttpOnly + SameSite=Lax |
+| 密码 MD5 存储 | MD5 可快速碰撞 | ⏳ Phase 3：迁移 bcrypt |
 
 ---
 
@@ -89,13 +95,13 @@ Aranea 管理端需要一套**对人和对机器都清晰**的认证方式：
 
 ### 3.1 凭证类型一览
 
-| 类型 | 持有者 | 传输方式 | 有效期 | 用途 |
-|------|--------|----------|--------|------|
-| **Session Cookie** | 浏览器 | `Set-Cookie` HttpOnly（目标）/ 当前 Lax | 7 天（可配置） | 管理 UI 主路径 |
-| **Session JWT** | 浏览器 / WS | Cookie 或 `?token=` / `Authorization` | 与 Cookie 一致 | WS、gRPC、可选 Header |
-| **Personal Access Token (PAT)** | 人 / CI | `Authorization: Bearer arn_pat_…` | 可配置 30/90 天，可撤销 | CLI、脚本、集成 |
-| **Webhook 签名** | 飞书/钉钉等 | 平台 Header + 渠道配置的 secret | — | `/webhooks/{channel_key}` |
-| **Dev Bypass** | 仅本地 | 无凭证 | — | `DEPLOY_ENV=dev` + `KRATOS_HTTP_AUTH_DISABLED=1` |
+| 类型 | 持有者 | 传输方式 | 有效期 | 用途 | 状态 |
+|------|--------|----------|--------|------|------|
+| **Session Cookie** | 浏览器 | `Set-Cookie` HttpOnly; SameSite=Lax; 可选 Secure | 7 天（可配置） | 管理 UI 主路径 | ✅ |
+| **Session JWT** | 浏览器 / WS | Cookie 或 `?token=` / `Authorization: Bearer` | 与 Cookie 一致 | WS、gRPC、可选 Header | ✅ |
+| **Personal Access Token (PAT)** | 人 / CI | `Authorization: Bearer arn_pat_…` | 可配置 30/90 天，可撤销 | CLI、脚本、集成 | ⏳ Phase 2 |
+| **Webhook 签名** | 飞书/钉钉等 | 平台 Header + 渠道配置的 secret | — | `/webhooks/{channel_key}` | ✅ |
+| **Dev Bypass** | 仅本地 | 无凭证 | — | `DEPLOY_ENV=dev` + `KRATOS_HTTP_AUTH_DISABLED=1` | ✅ |
 
 **命名约定（对用户可见）**
 
@@ -131,12 +137,12 @@ sequenceDiagram
   participant P as Quasar 代理 :9001
   participant S as WSServer :8000
 
-  Note over B,S: 理想路径（Phase 1 强化）
+  Note over B,S: 主路径（已实现）
   B->>P: GET /v1/ws?session_id=... (Cookie 自动携带)
   P->>S: 转发 Cookie
   S->>S: 从 Cookie 解析 JWT（与 HTTP 同一 secret）
 
-  Note over B,S: 回退路径（保留）
+  Note over B,S: 回退路径（跨源部署）
   B->>P: GET /v1/ws?session_id=...&token=JWT
   P->>S: query token
   S->>S: ParseToken
@@ -172,14 +178,15 @@ sequenceDiagram
   MW->>App: ctx 含 UserID、access
 ```
 
-**前端交互要求（Phase 1）**
+**前端交互要求**
 
-| 步骤 | 行为 |
-|------|------|
-| 提交登录 | 按钮 loading；错误展示服务端 `message`（账号/密码错误 vs 网络错误） |
-| 登录成功 | 写入 Pinia `user`；跳转 `?redirect=` |
-| 冷启动 | `ensureSession()` → `GET /v1/admins/current`；静默失败则进登录页 |
-| 401 拦截 | 带 `redirect` 回登录；**dev 下若 bypass 开启不应出现 401** |
+| 步骤 | 行为 | 状态 |
+|------|------|------|
+| 提交登录 | 按钮 loading；错误展示服务端 `message`（账号/密码错误 vs 网络错误） | ✅ |
+| 登录成功 | 写入 Pinia `user`；跳转 `?redirect=` | ✅ |
+| 冷启动 | `ensureSession()` → `GET /v1/admins/current`；静默失败则进登录页 | ✅ |
+| 401 拦截 | 带 `redirect` 回登录；dev bypass 开启时登录页显示「进入系统（免登录）」 | ✅ |
+| 登录错误分类 | `loginErrors.ts` 区分网络 / 凭据 / 服务端错误 | ✅ |
 
 ### 4.2 浏览器：会话保持与退出
 
@@ -272,14 +279,14 @@ sequenceDiagram
 
 ## 六、安全边界
 
-| 项 | 要求 |
-|----|------|
-| `KRATOS_AUTH_SECRET` | 生产随机 ≥32 字节；仅运维持有；轮换时需接受全体用户重新登录 |
-| Cookie | 目标 Phase 1：`HttpOnly; SameSite=Lax; Secure`（HTTPS 时） |
-| bypass | 仅 `DEPLOY_ENV=dev|development|test` 或 CI；`production` **必须 false** |
-| 密码存储 | 现状 MD5（弱）；Phase 3 迁移 bcrypt/argon2，登录仍兼容一次升级 |
-| gRPC | 现状无 token 放行；生产应内网 + 后续强制 Bearer 或 mTLS |
-| PAT | 仅存 hash；支持吊销；审计「谁在何时创建」 |
+| 项 | 要求 | 状态 |
+|----|------|------|
+| `KRATOS_AUTH_SECRET` | 生产随机 ≥32 字节；仅运维持有；轮换时需接受全体用户重新登录 | ✅ |
+| Cookie | `HttpOnly; SameSite=Lax; Secure`（HTTPS 时通过 `KRATOS_AUTH_COOKIE_SECURE` 开启） | ✅ |
+| bypass | 仅 `DEPLOY_ENV=dev\|development\|test` 或 CI；`production` **必须 false** | ✅ |
+| 密码存储 | 现状 MD5（弱）；Phase 3 迁移 bcrypt/argon2，登录仍兼容一次升级 | ⏳ |
+| gRPC | 现状无 token 仅 warning 不拒绝；生产应内网 + 后续强制 Bearer 或 mTLS | ⏳ |
+| PAT | 仅存 hash；支持吊销；审计「谁在何时创建」 | ⏳ Phase 2 |
 
 ---
 
@@ -322,21 +329,21 @@ export DATA__POSTGRES__SOURCE="<真实 DSN>"        # 覆盖示例 DSN
 
 ## 八、实施分期
 
-### Phase 0 — 文档与体验修补（当前迭代，低成本）
+### Phase 0 — 文档与体验修补（已完成）
 
 - [x] 本文档
 - [x] dev 发送前 `checkBackendHealth`；避免误跳登录
 - [x] WS bypass 与 HTTP 对齐
-- [ ] README / 登录页脚注：端口 9001、两种 dev 模式说明
-- [ ] 登录失败区分网络 vs 凭据（解析 error envelope）
+- [x] README / 登录页脚注：端口 9001、两种 dev 模式说明
+- [x] 登录失败区分网络 vs 凭据（解析 error envelope）
 
-### Phase 1 — 浏览器会话加固
+### Phase 1 — 浏览器会话加固（已完成）
 
-- [ ] Cookie 增加 `HttpOnly`（评估对 `readAccessTokenCookie` 的影响：WS 改纯 Cookie 转发，去掉 JS 读 token）
-- [ ] `SameSite` / `Secure` 按环境配置
-- [ ] 统一 WS 鉴权：同源时仅 Cookie，无需 `?token=`
-- [ ] `/healthz` 或诊断接口暴露 `auth_mode`
-- [ ] 前端「会话即将过期」可选提示（解析 JWT `exp`）
+- [x] Cookie 增加 `HttpOnly`（WS 改纯 Cookie 转发，`readAccessTokenCookie` 已 deprecated）
+- [x] `SameSite=Lax` / `Secure` 按环境配置（`KRATOS_AUTH_COOKIE_SECURE`）
+- [x] 统一 WS 鉴权：同源时仅 Cookie，无需 `?token=`；跨源回退 `?token=`
+- [x] `/healthz` 暴露 `auth_mode`
+- [x] 登录错误分类（`loginErrors.ts`）
 
 ### Phase 2 — Personal Access Token
 
@@ -360,23 +367,43 @@ export DATA__POSTGRES__SOURCE="<真实 DSN>"        # 覆盖示例 DSN
 |--------|----------|
 | HTTP 中间件 | `pkg/auth/middleware.go` |
 | JWT 签发/解析 | `pkg/auth/token.go`、`pkg/auth/config.go` |
+| Cookie 设置 | `pkg/auth/cookie.go`（HttpOnly + SameSite-Lax + 可选 Secure） |
+| Token 三级提取 | `pkg/auth/request_token.go`（Cookie > Bearer > query） |
+| 健康诊断 | `pkg/auth/health.go`（auth_mode / cookie_name / deploy_env） |
 | Bypass | `pkg/auth/features.go` |
 | Webhook 注册 | `pkg/auth/webhook.go`、`internal/server/http.go` |
-| 登录/登出 | `internal/service/admin.go` |
-| WS 鉴权 | `internal/server/ws.go` `handleWS` |
-| 前端会话 | `web/src/stores/auth.ts`、`web/src/services/axiosHandler.ts` |
-| WS token | `web/src/config/runtime.ts` `readAccessTokenCookie` |
+| 登录/登出/CRUD | `internal/service/admin.go` |
+| WS 鉴权 | `internal/server/ws.go` `wsAuthenticate` |
+| 前端会话 | `web/src/stores/auth.ts` |
+| 登录错误分类 | `web/src/features/admin/loginErrors.ts` |
+| WS URL 构建 | `web/src/config/runtime.ts` `buildWsUrl`（`readAccessTokenCookie` 已 deprecated） |
 | dev 种子账号 | `internal/data/bootstrap_dev_admin.go` |
+| 初始管理员 | `internal/data/bootstrap_initial_admin.go` |
 
 ---
 
-## 十、验收标准（Phase 1 完成时）
+## 十、验收标准
 
-- [ ] 新同事仅读 README + 本文，可在 10 分钟内完成「模式 A 免登录」或「模式 B 登录」并开始 Chat。
-- [ ] 浏览器在 `localhost:9001` 登录后，Chat WS 无需手动配置 token 即可收流。
-- [ ] 生产未配置 `KRATOS_AUTH_SECRET` 时进程拒绝启动；配置 bypass 在 `production` 无效。
-- [ ] 401/后端不可用时，用户看到的文案能区分「重新登录」与「检查后端是否启动」。
-- [ ] Webhook 与 Admin 凭证在文档中无混称「秘钥」。
+### Phase 0/1（已完成）
+
+- [x] 新同事仅读 README + 本文，可在 10 分钟内完成「模式 A 免登录」或「模式 B 登录」并开始 Chat。
+- [x] 浏览器在 `localhost:9001` 登录后，Chat WS 无需手动配置 token 即可收流。
+- [x] 生产未配置 `KRATOS_AUTH_SECRET` 时进程拒绝启动；配置 bypass 在 `production` 无效。
+- [x] 401/后端不可用时，用户看到的文案能区分「重新登录」与「检查后端是否启动」。
+- [x] Webhook 与 Admin 凭证在文档中无混称「秘钥」。
+- [x] Cookie 为 HttpOnly + SameSite-Lax；`readAccessTokenCookie` 已 deprecated。
+
+### Phase 2（待实施）
+
+- [ ] PAT CRUD：创建/列表/吊销，仅展示一次明文。
+- [ ] `auth.Middleware` 支持 `Bearer arn_pat_*` 与 Cookie JWT 并存。
+- [ ] CLI `aranea login` / `ARANEA_TOKEN` 文档。
+
+### Phase 3（待实施）
+
+- [ ] 密码哈希从 MD5 升级到 bcrypt（登录兼容一次迁移）。
+- [ ] RBAC：角色与权限点。
+- [ ] gRPC 生产强制认证。
 
 ---
 

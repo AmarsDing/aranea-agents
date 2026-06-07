@@ -1,9 +1,9 @@
 # MCP 协议 — 开发计划
 
-> **版本**：2026-05-28 | **状态**：🟢 Phase 5 已落地，Phase 6 规划中
+> **版本**：2026-06-06 | **状态**：🟢 Phase 6 大部分已落地，仅 Lifecycle FSM 待规划
 > **需求**：[19 mcp.md](./19%20mcp.md) · **设计**：[19 mcp.design.md](./19%20mcp.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：I4-MCP-01 / I5-MCP-01 ✅
-> **优化计划**：[57-tools-plugin-skill-mcp-optimization-development.md](./57-tools-plugin-skill-mcp-optimization-development.md)
+> **优化计划**：[38-tools-plugin-skill-mcp-optimization.development.md](./38-tools-plugin-skill-mcp-optimization.development.md)
 
 ---
 
@@ -17,9 +17,9 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 |------|------|
 | API | `api/kratos/mcp_server/v1/` |
 | Service | `internal/service/mcp_server.go` |
-| Biz | `internal/biz/mcp_server.go`、`agent_mcp_effective.go` |
-| Data | `internal/data/mcp_server.go`、`ent/schema/platform_mcp_server.go` |
-| MCP 子系统 | `internal/mcp/config`、`probe`、`metadata`、`health`、`alert`、`classify` |
+| Biz | `internal/biz/mcp_server.go`、`mcp_user_credential.go`、`agent_mcp_effective.go` |
+| Data | `internal/data/mcp_server.go`、`mcp_user_credential.go`、`ent/schema/platform_mcp_server.go`、`platform_mcp_user_credential.go` |
+| MCP 子系统 | `internal/mcp/config`、`probe`、`metadata`、`health`、`alert`、`classify`、`defaults` |
 | 运行时装配 | `internal/agent/tool_assembly.go`、`mcp_oauth.go` |
 | 工具运行时 | `internal/tools/toolset.go`、`mcpobserve/` |
 | Wire | `runtime.PersistenceSet.AgentMCP`、MCP health runner |
@@ -38,13 +38,19 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | MCP ToolSet 挂载 | ✅ | `buildMCPToolSet` + `timeout_sec` 默认 60s |
 | MCPBroker | ✅ | 有服务器行时 `buildMCPBrokerFromServers` 自动挂载 |
 | Effective MCP 策略 | ✅ | `mcp:<server_key>` allow/deny |
-| OAuth2 / API Key | 🟡 | `config_json.auth` + `mcp_oauth.go`；平台级 auth 在 config |
+| OAuth2 / API Key | ✅ | `config_json.auth` + `mcp_oauth.go`；OAuth2 refresh 失败强失败不再 fallback |
 | 会话重连可观测 | ✅ | `mcpobserve` + `RecordReconnectMetadata` + 前端 chip |
 | AdHoc HTTP 门禁 | ✅ | 服务器 flag + `system_settings.mcp_allow_adhoc_http` |
 | 按用户凭据 | ✅ | `platform_mcp_user_credential` + API + 前端对话框 |
 | MCP 调用统计闭环 | ✅ | `classify` + `mcp_call_count` + `aranea_mcp_invocation_total` |
 | 健康持续告警 | ✅ | `mcp/alert` + Monitor 事件 `mcp.health_alert` |
 | URL 预检 | ✅ | `POST /v1/mcp-servers/validate` + 表单预检 |
+| Probe 策略化 | ✅ | `ProbeStrategy` 接口 + `ConnectivityProbe` / `AuthAwareProbe` + `probe_mode` 配置 |
+| Transport 类型化 | ✅ | `config.Transport` 类型 + `UnmarshalJSON` 自动 normalize |
+| Defaults 集中 | ✅ | `internal/mcp/defaults.go`：超时/间隔/重连等常量 |
+| Health bounded concurrency | ✅ | `maxConcurrentProbes=8` semaphore |
+| mcpobserve 精确查询 | ✅ | `GetMCPServerByKey` 替代 O(n) 全表扫 |
+| Metadata 并发写隔离 | ✅ | `UpdateMCPServerMetadata` 只写 metadata+status 字段 |
 
 ---
 
@@ -61,12 +67,14 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 
 ## 4. 演进方向
 
-| 方向 | 现状 | 建议 |
+| 方向 | 状态 | 说明 |
 |------|------|------|
-| MCP 统计闭环 | 分类与 DB 字段已有 | Runner 回合结束校验 `mcp_call_count` 与 Prometheus |
-| 按用户凭据 | 配置开关无 UI | 参考 Channel 凭据表 + Agent 用户作用域 |
-| 探活告警 | 仅 metadata + 指标 | Monitor 规则：`health_status=error` 超 N 分钟 |
-| URL 预检 API | 未实现 | 可选 `POST /v1/mcp-servers/validate` 复用 probe |
+| MCP 统计闭环 | ✅ | `classify` + `mcp_call_count` + Prometheus `aranea_mcp_invocation_total` |
+| 按用户凭据 | ✅ | `platform_mcp_user_credential` + API + `McpUserCredentialDialog` |
+| 探活告警 | ✅ | `mcp/alert` + Monitor 事件 `mcp.health_alert` + 持续错误判定 |
+| URL 预检 API | ✅ | `POST /v1/mcp-servers/validate` 复用 probe |
+| Probe 策略化 | ✅ | `ProbeStrategy` 接口 + `ConnectivityProbe` / `AuthAwareProbe` |
+| Lifecycle FSM | 📋 | 中长期：消除 metadata 并发写 + 告警逻辑散落，需独立 design 文档 |
 
 ---
 
@@ -77,7 +85,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - **Phase 3**（✅）：按用户凭据 + 密钥加密存储
 - **Phase 4**（✅）：URL 预检 API + P1-09 probe auth_required + P1-08 skill ApplyImport
 - **Phase 5**（✅）：MCP 子系统架构优化（TPM-P1-10/11/12 + P2 修复 + 测试补全 + defaults 集中）
-- **Phase 6**（🚧）：MCP 中长期优化（P2 安全/性能 ✅ + Probe 策略化 ✅ + Review 修复 ✅ + Lifecycle FSM 📋）
+- **Phase 6**（✅ 大部分完成）：MCP 中长期优化（P2 安全/性能 ✅ + Probe 策略化 ✅ + Review 修复 ✅ + Lifecycle FSM 📋）
 
 ---
 
@@ -93,15 +101,15 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | 6 | ~~按用户凭据配置页~~ ✅ | P3 | Phase 3 |
 | 7 | ~~`POST /v1/mcp-servers/validate`~~ ✅ | P4 | Phase 3 |
 | 8 | ~~probe 401/403 → auth_required~~ ✅ | P1 | Phase 4 |
-| 9 | Transport 类型化 + NormalizeTransport 全链统一 | P1 | Phase 5 |
-| 10 | probe SSRF CheckRedirect 修复 | P1 | Phase 5 |
-| 11 | ToConnectionConfig 统一 + MCPServerConfig 消除双 Config | P1 | Phase 5 |
-| 12 | mcpobserve 统一使用 config.NormalizeTransport | P1 | Phase 5 |
-| 13 | MCP Broker 显式挂载（需 mcp_broker 工具键启用） | P2 | Phase 5 |
-| 14 | mcpobserve context.Background() → context.WithoutCancel | P2 | Phase 5 |
-| 15 | alert.MarkHealthAlertEmitted 失败不再静默吞错 | P2 | Phase 5 |
-| 16 | 补 probe/health/alert 单元测试 | P2 | Phase 5 |
-| 17 | Magic numbers 集中到 defaults.go | P3 | Phase 5 |
+| 9 | ~~Transport 类型化 + NormalizeTransport 全链统一~~ ✅ | P1 | Phase 5 |
+| 10 | ~~probe SSRF CheckRedirect 修复~~ ✅ | P1 | Phase 5 |
+| 11 | ~~ToConnectionConfig 统一 + MCPServerConfig 消除双 Config~~ ✅ | P1 | Phase 5 |
+| 12 | ~~mcpobserve 统一使用 config.NormalizeTransport~~ ✅ | P1 | Phase 5 |
+| 13 | ~~MCP Broker 显式挂载~~ ✅ | P2 | Phase 5 |
+| 14 | ~~mcpobserve context.Background() → context.WithoutCancel~~ ✅ | P2 | Phase 5 |
+| 15 | ~~alert.MarkHealthAlertEmitted 失败不再静默吞错~~ ✅ | P2 | Phase 5 |
+| 16 | ~~补 probe/health/alert 单元测试~~ ✅ | P2 | Phase 5 |
+| 17 | ~~Magic numbers 集中到 defaults.go~~ ✅ | P3 | Phase 5 |
 
 ---
 
@@ -114,6 +122,14 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - [x] OAuth2 Client Credentials / Refresh 可注入 Authorization
 - [x] `mcp_call_count` 与 MCP 工具分类一致（`classify` + 指标；生产 E2E 建议抽检）
 - [x] `require_user_credentials=true` 时有用户级凭据入口（MCP 列表 → 用户凭据）
+- [x] URL 预检 API 可用（`POST /v1/mcp-servers/validate`）
+- [x] Probe 策略化：`ConnectivityProbe` / `AuthAwareProbe` + `probe_mode` 配置
+- [x] Transport 类型化 + `NormalizeTransport` 全链统一
+- [x] Magic numbers 集中到 `defaults.go`
+- [x] Health bounded concurrency（semaphore）
+- [x] mcpobserve 使用 `GetMCPServerByKey` 精确查询
+- [x] OAuth2 refresh 失败强失败不再 fallback
+- [x] Metadata 并发写隔离（`UpdateMCPServerMetadata` 只写 metadata+status 字段）
 
 ---
 
@@ -121,7 +137,8 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 
 - MCP 协议版本演进需跟踪 trpc-agent-go `tool/mcp` 更新。
 - OAuth token 缓存在进程内；多副本部署需后续外置 token store。
-- 探活 HTTP GET 不等同完整 MCP 握手，仅作可达性粗检。
+- ~~探活 HTTP GET 不等同完整 MCP 握手，仅作可达性粗检。~~ 已通过 Probe 策略化支持 `AuthAwareProbe`；`FullHandshakeProbe` 预留但需 trpc-agent-go 框架侧支持 MCP Initialize 探活接口。
+- ~~metadata 并发写 last-write-wins 可能丢数据。~~ 已通过 `UpdateMCPServerMetadata` 字段级隔离缓解；根本解为 Lifecycle FSM（D-M3）。
 
 ---
 
@@ -171,8 +188,8 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 
 ### 10.4 依赖与风险
 
-- **P2-27 OAuth token 管理**：当前每次 Agent 回合重新获取 token（client_credentials），无缓存无主动刷新；多副本部署需外置 token store
-- **P2-28 metadata 并发写**：health runner 和 mcpobserve 并发写 `metadata_json`，last-write-wins 可能丢数据；FSM 是根本解
-- **P2-30 无 worker pool**：大量 MCP 服务器时 health probe 可能产生大量并发 goroutine
-- **D-M2 Probe 策略化**：✅ 已完成。ConnectivityProbe（默认，仅网络连通性）+ AuthAwareProbe（带 OAuth/API Key 探活）。full_handshake 模式预留但未实现，需 trpc-agent-go 框架侧支持 MCP Initialize 探活接口。Review 修复：validateHTTPConfig 消除 DRY 违规、auth_aware 无 auth 路径 401/403 翻转为 OK=false
-- **D-M3 Lifecycle FSM**：是中长期最大架构改动，需要独立 design 文档
+- **P2-27 OAuth token 管理**：✅ 已修复。OAuth2 refresh 失败强失败不再 fallback；但每次 Agent 回合仍重新获取 token（client_credentials），无缓存无主动刷新；多副本部署需外置 token store
+- **P2-28 metadata 并发写**：✅ 已缓解。`UpdateMCPServerMetadata` 只写 metadata+status 字段，避免 last-write-wins；FSM 是根本解
+- **P2-30 无 worker pool**：✅ 已修复。semaphore bounded concurrency（`maxConcurrentProbes=8`）
+- **D-M2 Probe 策略化**：✅ 已完成。ConnectivityProbe（默认，仅网络连通性）+ AuthAwareProbe（带 OAuth/API Key 探活）。full_handshake 模式预留但未实现，需 trpc-agent-go 框架侧支持 MCP Initialize 探活接口
+- **D-M3 Lifecycle FSM**：📋 待规划。是中长期最大架构改动，需要独立 design 文档

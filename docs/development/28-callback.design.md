@@ -46,7 +46,7 @@
 
 ## 三、编排边界（三层 + 框架 Plugin）
 
-权威注释：`internal/plugin/trpc/orchestration.go`。
+权威注释：`internal/plugin/trpc/manager.go` 头部（1–17 行）；编排策略见 `orchestration_policy.go`。
 
 | 层 | 职责 | 排序依据 |
 |----|------|----------|
@@ -70,7 +70,7 @@
 
 | 类型 | 说明 |
 |------|------|
-| `CallbackPoint` | BeforeAgent … AfterTool、OnError |
+| `CallbackPoint` | BeforeAgent … AfterTool、OnError（OnEvent 通过 productEventPlugin 桥接，非 Chain 枚举） |
 | `Callback` + `*Hook` 接口 | 按点实现 `Handle*` |
 | `Chain` | 优先级稳定排序；`Adapt*Callbacks()` 转框架类型 |
 | `adapter.go` | `ToolRecorderCallback`、`Before*HookFunc` 等函数适配器 |
@@ -82,8 +82,8 @@
 | 组件 | 说明 |
 |------|------|
 | `buildCallbackChainOptions` | 按链内容注入 `WithAgent/Model/ToolCallbacks` |
-| `productCallbackChain` | 指标遥测 + 工具链（guard/cache/timing/confirm/recorder） |
-| `buildProductCallbackChain` | 合并 `PluginManager.MergeChain` |
+| `productCallbackChain` | 指标遥测 + 工具链（guard/cache/timing/confirm/recorder/circuit-breaker 等） |
+| `productCallbackChainWithRegistry` | 返回 Chain + CircuitBreakerRegistry |
 
 ### 4.3 PluginManager
 
@@ -97,7 +97,7 @@
 
 ### 4.4 Hook 解析
 
-**位置**：`internal/biz/hook_config.go`、`hook_resolver.go`；执行 `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go`、`hook_events.go`
+**位置**：`internal/biz/hook/hook.go`（实现）、`internal/biz/hook.go`（re-export）；解析 `internal/biz/hook_resolver.go`；执行 `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go`、`hook_events.go`
 
 `config_json` 结构：
 
@@ -113,6 +113,13 @@
   }
 }
 ```
+
+### 4.5 数据表
+
+| 表 | 关键字段 |
+|----|----------|
+| `plugins` | `callback_points_json`、`config_json`、`scope`、`sort_order` |
+| `hooks` | `config_json`、`enabled`、`sort_order` |
 
 ### 4.6 Hook `modify` 合并策略（before_tool）
 
@@ -131,26 +138,19 @@
 
 管理端 `/plugins/runs`：按 lifecycle point、agent_id、status、时间范围筛选；`plugin_key=hook:` 前缀匹配所有 Hook 记录。
 
-### 4.5 数据表
-
-| 表 | 关键字段 |
-|----|----------|
-| `plugins` | `callback_points_json`、`config_json`、`scope`、`sort_order` |
-| `hooks` | `config_json`、`enabled`、`sort_order` |
-
 ### 4.8 Plugin 编排路径（统一 Runner）
 
-所有 DB 内置 Plugin 统一走 Runner `WithPlugins` 路径，不再支持 `callback_orchestration:"chain"` 镜像。
+所有 DB 内置 Plugin 统一走 Runner `WithPlugins` 路径，`orchestration_policy.go` 中 `ResolvePluginOrchestration` 始终返回 `OrchestrationRunner`，Chain 镜像路径已废弃。
 
 内置插件（`audit_log`、`model_router`、`cost_guard` 等）与声明 `on_event` 的插件**强制 runner**，防止双触发与 OnEvent 丢失。
 
-`OrchestrationChain` 路径和 `plugin_chain_mirror.go` 已移除。`skill_usage_tracker` 等原白名单插件也统一走 Runner 路径。
+`plugin_chain_mirror.go` 已移除；`callbacks.PluginCallback` 接口保留供未来 Chain 镜像预留。`skill_usage_tracker` 等原白名单插件也统一走 Runner 路径。
 
 Hook 规则使用 **`wrapResilientHooks`**（非 block 错误不中断回合）。
 
 ### 4.9 Hook notify 投递（P3）
 
-表 `hook_deliveries`（`docs/sql/28_callback_delivery.sql`）：`pending` → 重试 → `success`/`failed`。
+表 `hook_deliveries`（`internal/data/sql/hook_delivery.sql`）：`pending` → 重试 → `success`/`failed`。
 
 `HookAction.notify_max_retries`（默认 3）、`notify_timeout_sec`（默认 8）。
 
@@ -212,11 +212,15 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 | `internal/agent/callbacks/*.go` | Chain 类型与适配 |
 | `internal/agent/callback_chain.go` | 链装配入口 |
 | `internal/agent/product_chain_builtins.go` | 产品固定链（指标等） |
-| `internal/agent/tool_*.go` | 工具确认、缓存、计时、记录 |
-| `internal/plugin/trpc/manager.go` | 聚合 Hook + Plugin |
-| `internal/plugin/trpc/hook_*.go` | Hook 动作执行 |
-| `internal/plugin/trpc/orchestration.go` | 四层边界文档 |
-| `internal/biz/hook_*.go` | Hook 领域与解析 |
+| `internal/agent/tool_*.go` | 工具确认、缓存、计时、记录、熔断、命令安全 |
+| `internal/plugin/trpc/manager.go` | 聚合 Hook + Plugin（含编排边界注释） |
+| `internal/plugin/trpc/hook_*.go` | Hook 动作执行（callbacks/modify/notify/audit/events/resilience/retry_worker） |
+| `internal/plugin/trpc/orchestration_policy.go` | 编排策略（统一 Runner） |
+| `internal/plugin/trpc/runtime.go` | 内置 Plugin 注册与生命周期 |
+| `internal/biz/hook/*.go` | Hook 领域实现（Config/Resolver/Usecase） |
+| `internal/biz/hook.go` | Hook 领域 re-export |
+| `internal/biz/hook_resolver.go` | Hook 解析器 |
+| `internal/data/sql/hook_delivery.sql` | hook_deliveries 表 DDL |
 
 ---
 
@@ -225,7 +229,12 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 | 组件 | 路由 / 用途 |
 |------|-------------|
 | `HooksPage.vue` | `/hooks` 全局 Hook CRUD |
+| `HookDeliveriesPage.vue` | `/hooks/deliveries` Hook 投递记录查看 |
+| `PluginRunsPage.vue` | `/plugins/runs` Plugin/Callback 运行记录（含 `hook:` 前缀筛选） |
 | `AgentHooksPanel.vue` | Agent 设置内嵌作用域 Hook |
-| `CallbackEditor.vue` | `config_json` 可视化编辑 |
+| `CallbackEditor.vue` | `config_json` 可视化编辑（支持 log/notify/block/modify 四种动作） |
+| `HooksTable.vue` | Hook 规则列表（page/agent 两种模式） |
+
+共享常量：`web/src/features/callback/constants.ts`（`CALLBACK_POINT_VALUES`、`PLUGIN_RUN_KEY_PRESETS`）。
 
 API：`HookService` gRPC/HTTP；Agent 设置页复用同一编辑器组件。

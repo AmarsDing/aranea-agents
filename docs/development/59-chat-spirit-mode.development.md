@@ -1,6 +1,6 @@
 # M59: Chat 管家模式 — 开发计划
 
-> **版本**：2026-06-01 | **状态**：✅ P0 已完成
+> **版本**：2026-06-06 | **状态**：✅ P0 已完成 · ✅ P0.5 已完成 · 🔄 P1 进行中
 > **需求**：[59-chat-spirit-mode.md](./59-chat-spirit-mode.md) · **设计**：[59-chat-spirit-mode.design.md](./59-chat-spirit-mode.design.md)
 
 ---
@@ -13,14 +13,22 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 
 | 层级 | 路径 | 阶段 |
 |------|------|------|
-| Service 精灵路由 | `internal/service/chat.go` | P0 |
-| Service 团队组装 | `internal/service/spirit_team.go` | P0 |
+| Service 精灵工具注入 | `internal/service/chat_orchestrator_turn.go` | P0 |
+| Service 团队生命周期 | `internal/service/spirit_team.go` | P0-P0.5 |
+| Service Team Turn 回调 | `internal/service/team_turn_hooks.go` | P0 |
+| Tools 三阶段编排 | `internal/tools/spirit_tools.go` | P0.5 |
+| Tools DAG 图构建 | `internal/tools/orchestrator/build_graph.go` | P0.5 |
+| Biz 三阶段端口 | `internal/biz/task_planner.go` / `agent_allocator.go` / `task_orchestrator.go` | P0.5 |
 | Biz Session 树 | `internal/biz/session/usecase.go` | P0 |
 | Biz Team 扩展 | `internal/biz/team_usecase.go` | P0 |
-| Event | `internal/event/envelope.go` | P0 |
-| 前端 Store | `web/src/stores/spirit/index.ts` | P0 |
+| Biz 精灵团队用例 | `internal/biz/spirit_team_usecase.go` | P0-P0.5 |
+| Biz DAG 拓扑 | `internal/biz/spirit_task_dag.go` | P0.5 |
+| Biz 并行配置 | `internal/biz/spirit_parallel_config.go` | P0.5 |
+| Event | `internal/event/contract/envelope.go` | P0-P0.5 |
+| 前端 Store | `web/src/stores/spirit/index.ts` | P0-P0.5 |
 | 前端组件 | `web/src/components/spirit/` | P0-P1 |
 | Proto | `api/kratos/session/v1/session.proto` | P0 |
+| Proto | `api/kratos/team/v1/team.proto` | P0-P0.5 |
 
 ---
 
@@ -28,67 +36,103 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 
 | 依赖 | 状态 | 说明 |
 |------|------|------|
-| 精灵 Agent 种子数据 | ✅ | `__spirit__` Agent 行 + Ownership=system_builtin |
-| `assemble_team` 工具 | ✅ | SpiritTeamAssembler 实现团队组装 |
+| 精灵 Agent 种子数据 | ✅ | `__spirit__` Agent 行 + Ownership=system_builtin + tools_profile=spirit |
+| `plan_and_execute` 工具 | ✅ | 三阶段编排统一入口（Plan → Allocate → Orchestrate） |
 | Session 树字段 | ✅ | ParentSessionID / RootSessionID / AgentDepth |
 | ChatEntitySidebar 重构 | ✅ | 从 Agent/Team 平铺 → 精灵 + 团队树 |
 | Team AutoCreated 字段 | ✅ | 区分精灵创建 vs 用户手动创建 |
+| DAG 依赖字段 | ✅ | DAGNodeID / DependsOn |
+| 并行配置 | ✅ | ParallelConfig（MaxConcurrentTeams / AutoArchiveSeconds 等） |
 
 ---
 
 ## 3. 开发阶段
 
-### Phase P0 — 核心骨架（约 2 周）
+### Phase P0 — 核心骨架
 
 > **目标**：精灵为唯一入口，左侧列表重构，团队列表展示，任务执行面板基础版，Session 树关联。
+> **状态**：✅ 已完成
 
-| ID | 任务 | 影响域 | 验收 |
-|----|------|--------|------|
-| SP-BE-01 | Session Proto 扩展：parent_session_id / root_session_id / agent_depth | `api/kratos/session/v1` | `make api && make build` 通过 |
-| SP-BE-02 | Session Biz：ListByParentSessionID / GetRootSession 查询 | `internal/biz/session` | 单测通过 |
-| SP-BE-03 | Session Data：parent_session_id 索引 + 查询实现 | `internal/data` | 单测通过 |
-| SP-BE-04 | Team Proto 扩展：spirit_session_id / task_description / auto_created | `api/kratos/team/v1` | `make api && make build` 通过 |
-| SP-BE-05 | Team Biz：Create 支持 AutoCreated / SpiritSessionID | `internal/biz/team` | 单测通过 |
-| SP-BE-06 | spirit_team.go：AssembleTeam 流程（创建 Team + 创建 Session + 发射 Envelope） | `internal/service` | 集成测试通过 |
-| SP-BE-07 | chat.go：识别 `__spirit__` → buildSpiritTeam 路由 | `internal/service` | 精灵对话走 Team 路径 |
-| SP-BE-08 | Event：spirit_team_assembled / completed / failed EnvelopeType | `internal/event` | 单测通过 |
-| SP-BE-09 | 精灵 Agent 种子数据（`__spirit__` + Ownership=system_builtin） | `internal/data/seed` | 启动后精灵 Agent 可查 |
-| SP-FE-01 | `features/spirit/types.ts` + `api.ts` | `web/src/features/spirit` | 类型与 Proto 对齐 |
-| SP-FE-02 | `useSpiritTeamStore`：团队列表 + 面板模式 + 展开/折叠 | `web/src/stores/spirit` | Store 单测通过 |
-| SP-FE-03 | `SpiritEntry.vue`：精灵入口卡片 | `web/src/components/spirit` | 点击切换精灵对话 |
-| SP-FE-04 | `ChatEntitySidebar.vue` 重构：精灵 + 团队树 | `web/src/components/chat` | SP-01 验收 |
-| SP-FE-05 | `TeamTaskCard.vue`：团队卡片（名称/状态/成员/进度） | `web/src/components/spirit` | SP-03 验收 |
-| SP-FE-06 | `TaskExecutionPanel.vue` 基础版：概览 + 时间线 | `web/src/components/spirit` | SP-04 验收 |
-| SP-FE-07 | `ChatMessagePanel.vue` 三模式切换 | `web/src/components/chat` | 精灵/团队/成员面板切换 |
-| SP-FE-08 | `TeamAssemblyCard.vue`：精灵对话中的团队组建卡片 | `web/src/components/spirit` | SP-02 验收 |
-
-**不涉及**：成员树形展开、成员只读面板、Agent 复用标识、归档/重试。
-
----
-
-### Phase P1 — 交互增强（约 2 周）
-
-> **目标**：成员树/只读面板、多任务并行、Agent 复用标识、团队生命周期管理、面包屑导航。
-
-| ID | 任务 | 影响域 | 验收 |
-|----|------|--------|------|
-| SP-FE-09 | `TeamMemberTreeNode.vue`：成员树节点（名称/角色/状态） | `web/src/components/spirit` | SP-05 验收 |
-| SP-FE-10 | `TeamTaskCard.vue` 展开成员树 | `web/src/components/spirit` | 展开/折叠 + 成员状态 |
-| SP-FE-11 | `MemberReadOnlyPanel.vue`：只读面板（无输入框） | `web/src/components/spirit` | SP-06 验收 |
-| SP-FE-12 | 成员消息过滤：按 `OptionsJSON.team_member` 过滤 | `web/src/stores/spirit` | 成员只看自己的消息 |
-| SP-FE-13 | 多任务并行：精灵连续下达多任务，左侧多团队卡片 | `web/src/stores/spirit` | SP-07 验收 |
-| SP-FE-14 | Agent 复用标识：团队卡片标注"共用 Agent" | `web/src/components/spirit` | 复用 Agent 可见标识 |
-| SP-FE-15 | `TaskCompletionCard.vue`：精灵对话中的任务完成汇报 | `web/src/components/spirit` | 团队完成后精灵通知 |
-| SP-FE-16 | 团队归档：手动归档 + 自动归档（7 天） | `web/src/stores/spirit` | SP-08 验收 |
-| SP-FE-17 | 失败团队：重试/放弃按钮 | `web/src/components/spirit` | SP-08 验收 |
-| SP-FE-18 | 面包屑导航：精灵 > 团队 > 成员 | `web/src/features/spirit` | SP-09 验收 |
-| SP-FE-19 | 返回精灵按钮 + WS 连接保持 | `web/src/components/spirit` | 切换不丢 WS |
-| SP-BE-10 | ListSpiritTeams RPC：按 spirit_session_id 查团队列表 | `api/kratos/session/v1` | 前端团队列表数据源 |
-| SP-BE-11 | ArchiveTeam RPC：归档已完成团队 | `api/kratos/team/v1` | 归档后列表不显示 |
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| SP-BE-01 | Session Proto 扩展：parent_session_id / root_session_id / agent_depth | `api/kratos/session/v1` | `make api && make build` 通过 | ✅ |
+| SP-BE-02 | Session Biz：ListByParentSessionID / GetRootSession 查询 | `internal/biz/session` | 单测通过 | ✅ |
+| SP-BE-03 | Session Data：parent_session_id 索引 + 查询实现 | `internal/data` | 单测通过 | ✅ |
+| SP-BE-04 | Team Proto 扩展：spirit_session_id / task_description / auto_created | `api/kratos/team/v1` | `make api && make build` 通过 | ✅ |
+| SP-BE-05 | Team Biz：Create 支持 AutoCreated / SpiritSessionID | `internal/biz/team` | 单测通过 | ✅ |
+| SP-BE-06 | spirit_team.go：AssembleTeam 流程（创建 Team + 创建 Session + 发射 Envelope） | `internal/service` | 集成测试通过 | ✅ |
+| SP-BE-07 | chat.go：识别 `__spirit__` → buildSpiritTeam 路由 | `internal/service` | 精灵对话走 Team 路径 | ✅ → P0.5 重构 |
+| SP-BE-08 | Event：spirit_team_assembled / completed / failed EnvelopeType | `internal/event` | 单测通过 | ✅ |
+| SP-BE-09 | 精灵 Agent 种子数据（`__spirit__` + Ownership=system_builtin） | `internal/data/seed` | 启动后精灵 Agent 可查 | ✅ |
+| SP-FE-01 | `features/spirit/types.ts` + `api.ts` | `web/src/features/spirit` | 类型与 Proto 对齐 | ✅ |
+| SP-FE-02 | `useSpiritTeamStore`：团队列表 + 面板模式 + 展开/折叠 | `web/src/stores/spirit` | Store 单测通过 | ✅ |
+| SP-FE-03 | `SpiritEntry.vue`：精灵入口卡片 | `web/src/components/spirit` | 点击切换精灵对话 | ✅ |
+| SP-FE-04 | `ChatEntitySidebar.vue` 重构：精灵 + 团队树 | `web/src/components/chat` | SP-01 验收 | ✅ |
+| SP-FE-05 | `TeamTaskCard.vue`：团队卡片（名称/状态/成员/进度） | `web/src/components/spirit` | SP-03 验收 | ✅ |
+| SP-FE-06 | `TaskExecutionPanel.vue` 基础版：概览 + 时间线 | `web/src/components/spirit` | SP-04 验收 | ✅ |
+| SP-FE-07 | `ChatMessagePanel.vue` 三模式切换 | `web/src/components/chat` | 精灵/团队/成员面板切换 | ✅ |
+| SP-FE-08 | `TeamAssemblyCard.vue`：精灵对话中的团队组建卡片 | `web/src/components/spirit` | SP-02 验收 | ✅ |
 
 ---
 
-### Phase P2 — 进化闭环（约 3 周）
+### Phase P0.5 — 三阶段编排
+
+> **目标**：从 `assemble_team` 单步组建演进为 Plan → Allocate → Orchestrate 三阶段编排，支持 DAG 依赖、并行团队、结果合成、自动归档。
+> **状态**：✅ 已完成
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| SP-BE-10 | 移除路由层拦截，精灵走 `runSingleAgentViaTRPC` + `spiritCustomTools` 注入 | `internal/service/chat_orchestrator_turn.go` | 精灵不再硬编码路由 | ✅ |
+| SP-BE-11 | `plan_and_execute` 工具：三阶段统一入口 | `internal/tools/spirit_tools.go` | Plan → Allocate → Orchestrate 流程 | ✅ |
+| SP-BE-12 | `check_progress` / `cancel_orchestration` / `synthesize_results` 工具 | `internal/tools/spirit_tools.go` | 工具可调用 | ✅ |
+| SP-BE-13 | `build_orchestration_graph` 工具：DAG 图构建 | `internal/tools/orchestrator/build_graph.go` | 4+ Agent 时构建 DAG | ✅ |
+| SP-BE-14 | `TaskPlannerPort` / `AgentAllocatorPort` / `TaskOrchestratorPort` 端口接口 | `internal/biz/` | 三阶段解耦 | ✅ |
+| SP-BE-15 | `TaskDAG` 拓扑路由：parallel / sequential / hybrid / coordinator | `internal/biz/spirit_task_dag.go` | 自动选择拓扑 | ✅ |
+| SP-BE-16 | `ParallelConfig`：并行配额 + 自动归档配置 | `internal/biz/spirit_parallel_config.go` | 可配置并行数和归档时间 | ✅ |
+| SP-BE-17 | `AutoArchiveCompletedTeams`：自动归档已完成团队 | `internal/biz/spirit_team_usecase.go` | 超时后自动归档 | ✅ |
+| SP-BE-18 | `CancelTeam`：取消团队 + 级联依赖处理 | `internal/biz/spirit_team_usecase.go` + `internal/service/spirit_team.go` | 取消后依赖团队处理 | ✅ |
+| SP-BE-19 | `TeamStarter`：团队生命周期管理（启动/完成/超时/依赖调度） | `internal/service/spirit_team.go` | 全完成检查 + 事件发布 | ✅ |
+| SP-BE-20 | 三阶段编排事件：plan_created / allocation_created / orchestration_started 等 | `internal/event/contract/envelope.go` | 前端可感知编排进度 | ✅ |
+| SP-BE-21 | `SpiritTeamProgress` / `SpiritTeamsAllCompleted` 事件 | `internal/event/contract/envelope.go` | 团队进度和全完成通知 | ✅ |
+| SP-BE-22 | Team Schema 索引：`idx_teams_spirit_session` | `internal/data/ent/schema/team.go` | 查询性能 | ✅ |
+| SP-BE-23 | 旧工具标记 DEPRECATED：assemble_team / assess_complexity / check_team_progress / cancel_team | `internal/tools/spirit_tools.go` | 旧工具委托到新流程 | ✅ |
+| SP-FE-09 | `SpiritTeamStatus` / `SpiritTeamMode` / `TopologyType` 联合类型 | `web/src/features/spirit/types.ts` | 编译期类型约束 | ✅ |
+| SP-FE-10 | `TeamProgressCard.vue`：进度卡片（进度条/取消按钮/依赖提示） | `web/src/components/spirit` | SP-12 验收 | ✅ |
+| SP-FE-11 | `ParallelTeamOverview.vue`：并行团队概览 | `web/src/components/spirit` | SP-07 验收 | ✅ |
+| SP-FE-12 | `DAGDiagramCard.vue`：DAG 依赖图文本视图 | `web/src/components/spirit` | SP-12 验收 | ✅ |
+| SP-FE-13 | `SynthesisResultCard.vue`：综合结果卡片 | `web/src/components/spirit` | SP-13 验收 | ✅ |
+| SP-FE-14 | `OrchestrationModeBadge.vue`：编排模式徽章 | `web/src/components/spirit` | 4 种拓扑标签 | ✅ |
+| SP-FE-15 | Store 事件处理扩展：三阶段编排事件 + synthesis 事件 | `web/src/stores/spirit/index.ts` | WS 事件正确处理 | ✅ |
+| SP-FE-16 | `spiritUi.ts`：状态映射和标签函数 | `web/src/features/spirit` | UI 文案统一 | ✅ |
+
+**不涉及**：成员树形展开、成员只读面板、面包屑导航、重试失败团队、手动归档 UI。
+
+---
+
+### Phase P1 — 交互增强
+
+> **目标**：成员树/只读面板、面包屑导航、重试失败团队、手动归档 UI、ListSpiritTeams API 闭环。
+> **状态**：🔄 进行中
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| SP-BE-24 | `ListSpiritTeams` RPC：按 spirit_session_id 查团队列表，暴露为 HTTP 端点 | `api/kratos/team/v1` | 前端团队列表数据源闭环 | ❌ |
+| SP-BE-25 | `ArchiveTeam` RPC：手动归档已完成团队 | `api/kratos/team/v1` | 归档后列表不显示 | ❌ |
+| SP-BE-26 | `RetryTeam` RPC：重试失败团队 | `api/kratos/team/v1` | 失败团队可重新启动 | ❌ |
+| SP-FE-17 | `TeamMemberTreeNode.vue`：成员树节点（名称/角色/状态） | `web/src/components/spirit` | SP-05 验收 | ❌ |
+| SP-FE-18 | `TeamTaskCard.vue` 展开成员树 | `web/src/components/spirit` | 展开/折叠 + 成员状态 | ❌ |
+| SP-FE-19 | `MemberReadOnlyPanel.vue`：只读面板（无输入框） | `web/src/components/spirit` | SP-06 验收 | ❌ |
+| SP-FE-20 | 成员消息过滤：按 `OptionsJSON.team_member` 过滤 | `web/src/stores/spirit` | 成员只看自己的消息 | ❌ |
+| SP-FE-21 | Agent 复用标识：团队卡片标注"共用 Agent" | `web/src/components/spirit` | 复用 Agent 可见标识 | ❌ |
+| SP-FE-22 | 团队归档 UI：手动归档按钮 | `web/src/components/spirit` | SP-08 验收 | ❌ |
+| SP-FE-23 | 失败团队：重试/放弃按钮 | `web/src/components/spirit` | SP-08 验收 | ❌ |
+| SP-FE-24 | 面包屑导航：精灵 > 团队 > 成员 | `web/src/features/spirit` | SP-09 验收 | ❌ |
+| SP-FE-25 | 返回精灵按钮 + WS 连接保持 | `web/src/components/spirit` | 切换不丢 WS | ✅ 已在 P0 实现 |
+| SP-FE-26 | `api.ts` 双键名兼容清理 | `web/src/features/spirit/api.ts` | 统一 camelCase | ❌ |
+
+---
+
+### Phase P2 — 进化闭环
 
 > **目标**：Session 数据 → 技能/记忆/编排分析，Agent 能力画像 → 团队组建优化，知识图谱数据积累。
 
@@ -103,7 +147,9 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 
 ---
 
-## 4. 任务板（P0 当前冲刺）
+## 4. 任务板（P0 + P0.5 已完成，P1 当前冲刺）
+
+### P0 任务板
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
@@ -113,7 +159,7 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 | 4 | SP-BE-04 | Team Proto 扩展 | ✅ |
 | 5 | SP-BE-05 | Team Biz AutoCreated | ✅ |
 | 6 | SP-BE-06 | spirit_team.go AssembleTeam | ✅ |
-| 7 | SP-BE-07 | chat.go 精灵路由 | ✅ |
+| 7 | SP-BE-07 | chat.go 精灵路由 | ✅ → P0.5 重构 |
 | 8 | SP-BE-08 | Event 新增 EnvelopeType | ✅ |
 | 9 | SP-BE-09 | 精灵 Agent 种子数据 | ✅ |
 | 10 | SP-FE-01 | 前端 types + api | ✅ |
@@ -124,6 +170,51 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 | 15 | SP-FE-06 | TaskExecutionPanel.vue | ✅ |
 | 16 | SP-FE-07 | ChatMessagePanel 三模式 | ✅ |
 | 17 | SP-FE-08 | TeamAssemblyCard.vue | ✅ |
+
+### P0.5 任务板
+
+| 排序 | ID | 任务 | 状态 |
+|------|-----|------|------|
+| 1 | SP-BE-10 | 移除路由层拦截，spiritCustomTools 注入 | ✅ |
+| 2 | SP-BE-11 | plan_and_execute 三阶段工具 | ✅ |
+| 3 | SP-BE-12 | check_progress / cancel_orchestration / synthesize_results | ✅ |
+| 4 | SP-BE-13 | build_orchestration_graph DAG 工具 | ✅ |
+| 5 | SP-BE-14 | 三阶段端口接口 | ✅ |
+| 6 | SP-BE-15 | TaskDAG 拓扑路由 | ✅ |
+| 7 | SP-BE-16 | ParallelConfig 并行配置 | ✅ |
+| 8 | SP-BE-17 | AutoArchiveCompletedTeams | ✅ |
+| 9 | SP-BE-18 | CancelTeam + 级联处理 | ✅ |
+| 10 | SP-BE-19 | TeamStarter 生命周期管理 | ✅ |
+| 11 | SP-BE-20 | 三阶段编排事件 | ✅ |
+| 12 | SP-BE-21 | Progress / AllCompleted 事件 | ✅ |
+| 13 | SP-BE-22 | Team Schema 索引 | ✅ |
+| 14 | SP-BE-23 | 旧工具标记 DEPRECATED | ✅ |
+| 15 | SP-FE-09 | 联合类型定义 | ✅ |
+| 16 | SP-FE-10 | TeamProgressCard.vue | ✅ |
+| 17 | SP-FE-11 | ParallelTeamOverview.vue | ✅ |
+| 18 | SP-FE-12 | DAGDiagramCard.vue | ✅ |
+| 19 | SP-FE-13 | SynthesisResultCard.vue | ✅ |
+| 20 | SP-FE-14 | OrchestrationModeBadge.vue | ✅ |
+| 21 | SP-FE-15 | Store 事件处理扩展 | ✅ |
+| 22 | SP-FE-16 | spiritUi.ts 状态映射 | ✅ |
+
+### P1 当前冲刺
+
+| 排序 | ID | 任务 | 状态 |
+|------|-----|------|------|
+| 1 | SP-BE-24 | ListSpiritTeams RPC + HTTP 端点 | ❌ |
+| 2 | SP-BE-25 | ArchiveTeam RPC | ❌ |
+| 3 | SP-BE-26 | RetryTeam RPC | ❌ |
+| 4 | SP-FE-17 | TeamMemberTreeNode.vue | ❌ |
+| 5 | SP-FE-18 | TeamTaskCard 展开成员树 | ❌ |
+| 6 | SP-FE-19 | MemberReadOnlyPanel.vue | ❌ |
+| 7 | SP-FE-20 | 成员消息过滤 | ❌ |
+| 8 | SP-FE-21 | Agent 复用标识 | ❌ |
+| 9 | SP-FE-22 | 团队归档 UI | ❌ |
+| 10 | SP-FE-23 | 失败团队重试/放弃 | ❌ |
+| 11 | SP-FE-24 | 面包屑导航 | ❌ |
+| 12 | SP-FE-25 | 返回精灵 + WS 保持 | ✅ |
+| 13 | SP-FE-26 | api.ts 双键名清理 | ❌ |
 
 ---
 
@@ -140,13 +231,30 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 - [x] 任务执行面板三区布局（SP-04）
 - [x] `cd web && pnpm lint && pnpm test && pnpm build` 通过
 
+### Phase P0.5
+
+- [x] 精灵走 `runSingleAgentViaTRPC`，不再硬编码路由
+- [x] `plan_and_execute` 三阶段编排工具可调用
+- [x] DAG 拓扑自动路由（parallel / sequential / hybrid / coordinator）
+- [x] 并行团队支持（ParallelConfig + DAG 依赖调度）
+- [x] 综合结果合成（synthesize_results + SynthesisResultCard）
+- [x] 自动归档已完成团队（AutoArchiveCompletedTeams）
+- [x] 取消团队 + 级联依赖处理
+- [x] 三阶段编排事件（plan_created / allocation_created / orchestration_started 等）
+- [x] 团队进度和全完成事件（spirit_team_progress / spirit_teams_all_completed）
+- [x] 前端联合类型约束（SpiritTeamStatus / SpiritTeamMode / TopologyType）
+- [x] `make api && make wire && make build` 通过
+- [x] `cd web && pnpm lint && pnpm test && pnpm build` 通过
+
 ### Phase P1
 
 - [ ] 成员树形展开 + 状态（SP-05）
 - [ ] 成员只读面板无输入框（SP-06）
-- [ ] 多任务并行 + Agent 复用隔离（SP-07）
+- [ ] Agent 复用标识可见（SP-07 补充）
 - [ ] 团队归档/重试/放弃（SP-08）
 - [ ] 面包屑导航 + 返回精灵（SP-09）
+- [ ] ListSpiritTeams API 闭环（前端 `/v1/spirit/{id}/teams` 有后端 handler）
+- [ ] api.ts 双键名兼容清理
 
 ### Phase P2
 
@@ -166,6 +274,8 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 | Agent 复用时 L3/L4 共享导致记忆污染 | L3/L4 只读共享，写入仍按 Session 隔离 |
 | WS 事件量增大（每个团队独立 WS） | 复用 Team Session WS，前端按 team_id 过滤 |
 | 团队自动归档误删 | 归档仅移除列表显示，Session/TeamRun 保留 |
+| 前端 `/v1/spirit/{id}/teams` API 断裂 | P1 阶段补齐 ListSpiritTeams HTTP 端点 |
+| 旧工具 DEPRECATED 但仍可调用 | 旧工具委托到新流程，不删除确保向后兼容 |
 
 ---
 
@@ -183,7 +293,6 @@ Chat 管家模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 
 
 ---
-
 ## 子模块：Chat Spirit Mode Review
 
 > **审查日期**：2026-06-01
@@ -356,8 +465,8 @@ M59 的业务定位清晰——"精灵为唯一入口，用户只需描述需求
 | `internal/biz` 不 import `pkg/trpc-agent-go` | ✅ 通过 | 精灵逻辑在 `spirit_team_usecase.go` 中纯 biz 实现 |
 | `internal/biz` 不 import `api/*/v1` | ✅ 通过 | Proto 映射在 Service 层 |
 | Runner 装配只在 `internal/service` | ✅ 通过 | `executeSpiritTeamTurn` 在 Service 层 |
-| Service 层不写业务逻辑 | ⚠️ 边界模糊 | `buildSpiritTeam` 中 Mode 硬编码为 `"coordinator"` 属于业务决策，应在 biz 层 |
-| 跨模块调用通过窄接口 | ✅ 通过 | `SpiritTeamAssembler` 通过 `SpiritTeamUsecase` 端口交互 |
+| Service 层不写业务逻辑 | ✅ 改善 | 拓扑路由已移至 biz 层 `TaskDAG.RouteTopology()` |
+| 跨模块调用通过窄接口 | ✅ 通过 | 三阶段端口接口（TaskPlannerPort / AgentAllocatorPort / TaskOrchestratorPort） |
 | 前端展示组件不 import Store | ✅ 通过 | Spirit 组件均为 props/emits |
 | 前端展示组件不直接调 API | ✅ 通过 | API 调用在 Store action 中 |
 | 消息分组使用堆栈模型 | ⚠️ 需验证 | `TaskExecutionPanel` 中消息过滤逻辑需确认是否遵循 `groupMessagesByTurn` |
@@ -369,14 +478,17 @@ M59 的业务定位清晰——"精灵为唯一入口，用户只需描述需求
 | 需求用户故事 | 后端实现 | 前端实现 | 闭环状态 |
 |-------------|---------|---------|---------|
 | US-01 精灵为唯一入口 | ✅ `__spirit__` 路由 | ✅ `SpiritEntry` + 侧边栏重构 | ✅ 闭环 |
-| US-02 简单/任务型区分 | ❌ 每次都创建 Team | ✅ `TeamAssemblyCard` | ❌ **核心逻辑缺失** |
-| US-03 团队列表展示 | ✅ `ListSpiritTeams`（P1） | ✅ `TeamTaskCard` | ⚠️ 后端 P1 才实现 |
-| US-04 任务执行面板 | ✅ Team Run 事件流 | ✅ `TaskExecutionPanel` | ⚠️ Completed/Failed 事件缺失 |
+| US-02 简单/任务型区分 | ✅ LLM 自主决策 + `plan_and_execute` | ✅ `TeamAssemblyCard` | ✅ 闭环 |
+| US-03 团队列表展示 | ✅ `ListBySpiritSessionID`（biz 层） | ✅ `TeamTaskCard` + `TeamProgressCard` | ⚠️ HTTP 端点未暴露 |
+| US-04 任务执行面板 | ✅ Team Run 事件流 + 生命周期事件 | ✅ `TaskExecutionPanel` + `ParallelTeamOverview` | ✅ 闭环 |
 | US-05 成员树形展开 | P1 | P1 | — |
 | US-06 成员只读面板 | P1 | P1（空壳占位） | — |
-| US-07 多任务并行 | ⚠️ TeamKey 冲突风险 | ✅ Store 支持多 Team | ❌ 并发安全问题 |
-| US-08 团队生命周期 | ❌ Completed/Failed 事件未实现 | ⚠️ `archiveTeam` 仅本地 | ❌ **未闭环** |
-| US-09 返回精灵对话 | ✅ `returnToSpirit` | ✅ 返回按钮 + 面包屑 | ✅ 闭环 |
+| US-07 多任务并行 | ✅ `ParallelConfig` + DAG 依赖调度 | ✅ `ParallelTeamOverview` + `DAGDiagramCard` | ✅ 闭环 |
+| US-08 团队生命周期 | ✅ Completed/Failed/Progress/AllCompleted 事件 + AutoArchive + CancelTeam | ⚠️ 取消已实现，归档/重试 UI 未实现 | ⚠️ 部分闭环 |
+| US-09 返回精灵对话 | ✅ `returnToSpirit` | ✅ 返回按钮 | ✅ 闭环（面包屑 P1） |
+| SP-11 三阶段编排 | ✅ Plan → Allocate → Orchestrate | ✅ 事件处理 + 进度展示 | ✅ 闭环 |
+| SP-12 DAG 编排图 | ✅ `build_orchestration_graph` + `TaskDAG` | ✅ `DAGDiagramCard` | ✅ 闭环 |
+| SP-13 综合结果合成 | ✅ `synthesize_results` + 事件 | ✅ `SynthesisResultCard` | ✅ 闭环 |
 
 ---
 
@@ -384,81 +496,85 @@ M59 的业务定位清晰——"精灵为唯一入口，用户只需描述需求
 
 | 优先级 | 问题 | 修复方向 |
 |--------|------|---------|
-| **P0** | S1: 每次 Turn 都创建 Team | 改为精灵 LLM 自主决策是否调用 `assemble_team`，路由层不拦截 |
-| **P0** | S2: Composer 不渲染 | `panelMode` 默认值或条件修正 |
-| **P0** | S3: Completed/Failed 事件未实现 | 在 Team Run 回调中发射事件 |
-| **P1** | M1: 并发保护 | CAS 或移除冗余数组 |
-| **P1** | M4: 类型约束 | 定义联合类型 |
-| **P1** | M8: 缺索引 | 添加 `spirit_session_id` 索引 |
-| **P2** | 其余中等问题 | 逐步清理技术债 |
+| **P0** | ~~S1: 每次 Turn 都创建 Team~~ | ✅ P0.5 已修复：改为 LLM 自主决策 + `plan_and_execute` |
+| **P0** | ~~S2: Composer 不渲染~~ | ✅ P0 已修复：`!panelMode \|\| panelMode === 'spirit'` |
+| **P0** | ~~S3: Completed/Failed 事件未实现~~ | ✅ P0.5 已修复：TeamStarter + team_turn_hooks 发布生命周期事件 |
+| **P1** | ~~M1: 并发保护~~ | ✅ P0.5 已修复：移除 `appendChildSessionID` |
+| **P1** | ~~M4: 类型约束~~ | ✅ P0.5 已修复：定义联合类型 |
+| **P1** | ~~M8: 缺索引~~ | ✅ P0.5 已修复：添加 `idx_teams_spirit_session` |
+| **P1** | TD-1: api.ts 双键名兼容 | 与后端对齐为 camelCase |
+| **P1** | TD-2: ListSpiritTeams HTTP 端点 | 归属到 `team/v1`，暴露 HTTP handler |
+| **P1** | TD-3: ArchiveTeam RPC | 定义 Proto + HTTP handler |
+| **P1** | TD-4: MemberReadOnlyPanel | 实现只读面板 |
+| **P1** | TD-5: TeamMemberTreeNode | 实现成员树节点 |
+| **P1** | TD-6: 面包屑导航 | 实现 `useSpiritWorkspace` composable |
+| **P1** | TD-7: 重试失败团队 | 实现 RetryTeam RPC + 前端 UI |
+| **P2** | 其余轻微问题 | 逐步清理技术债 |
 
 ---
 
 ## 八、核心结论
 
-M59 的架构分层和模块划分是合理的，但**最关键的业务逻辑——精灵何时组建团队——当前实现与需求设计存在根本性偏差**（S1）。需求设计是"精灵 LLM 自主判断后调用工具"，实现是"路由层无条件拦截"。这会导致简单对话也触发 Team 组装，与 US-02 的"简单对话精灵直接回复"直接矛盾。建议优先修正此逻辑，使精灵路由回归到"工具调用触发"而非"AgentKey 匹配触发"。
+M59 的架构分层和模块划分是合理的。P0 阶段的核心问题（S1: 路由层无条件组建团队）已在 P0.5 阶段通过三阶段编排架构根本性解决——精灵现在作为普通 LLM Agent 运行，LLM 自主决定是否调用 `plan_and_execute` 工具。P0.5 新增的 DAG 拓扑路由、并行配置、综合结果合成、自动归档等功能，使精灵模式从"基础骨架"升级为"可用产品"。P1 阶段需补齐成员交互、API 闭环和手动管理功能。
 
 ---
 
-## 九、修复记录（2026-06-01）
+## 九、修复记录
+
+### 2026-06-01 P0 Review 修复
 
 > **修复范围**：S1 / S2 / S3 / M1 / M2 / M3 / M4 / M5 / M6 / M8
 
-### S1 ✅ 已修复：移除路由层拦截，实现 assemble_team 工具
+| 编号 | 问题 | 修复方案 | 状态 |
+|------|------|---------|------|
+| S1 | 每次 Turn 都创建 Team | 移除路由拦截，精灵走 `runSingleAgentViaTRPC`，LLM 自主决策调用 `assemble_team` | ✅ → P0.5 进一步升级为 `plan_and_execute` |
+| S2 | Composer 不渲染 | `v-if="!panelMode \|\| panelMode === 'spirit'"` | ✅ |
+| S3 | Completed/Failed 事件未实现 | `team_turn_hooks.go` 中 `HandleTeamTurnResult` 发布生命周期事件 | ✅ |
+| M1 | appendChildSessionID 并发保护 | 移除 `appendChildSessionID` 方法 | ✅ |
+| M2 | child_session_ids 冗余 | 移除，统一使用 `ListByParentSessionID` 查询 | ✅ |
+| M3 | spiritAssembler 静默降级 | 移除 `spiritAssembler` 字段和路由拦截逻辑 | ✅ |
+| M4 | SpiritTeam 类型约束 | 定义 `SpiritTeamStatus` / `SpiritTeamMode` 联合类型 | ✅ |
+| M5 | 类型导入红线 | 统一从 `types.ts` 导入类型 | ✅ |
+| M6 | API 双键名兼容 | 部分清理，仍有残留（TD-1） | ⚠️ P1 继续 |
+| M8 | Team Schema 索引 | 添加 `idx_teams_spirit_session` 复合索引 | ✅ |
 
-**修复方案**：方案 A（框架原生模式）
+### 2026-06-06 P0.5 三阶段编排实施
+
+> **修复范围**：S1 深度修复 + 新增三阶段编排架构
 
 | 变更 | 文件 | 说明 |
 |------|------|------|
-| 移除路由拦截 | `chat_orchestrator_turn.go` | 删除 `AgentKey == "__spirit__"` 条件分支，精灵走 `runSingleAgentViaTRPC` |
-| 移除 spiritAssembler 字段 | `chat_orchestrator.go` | 从 `ChatOrchestrator` / `ChatOrchestratorDeps` 中移除 |
-| 删除旧方法 | `spirit_team.go` | 删除 `executeSpiritTeamTurn` / `buildSpiritTeam` |
-| 新增 assemble_team 工具 | `tools/spirit_tools.go` | `NewAssembleTeamTool` + `NewListButlersTool` + `NewQueryButlerStatusTool` |
-| 新增 spirit profile | `agent_effective_tools.go` | `toolProfiles["spirit"]` = assemble_team + list_butlers + query_butler_status + memory_search + datetime |
-| 新增 GetActiveTeam | `spirit_team_usecase.go` | 查询精灵会话下是否有活跃 Team，有则复用 |
-| 新增 ListBySpiritSessionID | `team_usecase.go` + `team_repo.go` | TeamRepository 接口新增方法 |
-
-**核心逻辑变更**：精灵 Agent 现在作为普通 LLMAgent 运行，LLM 自主决定是否调用 `assemble_team` 工具。简单对话直接回复，复杂任务才组建团队。
-
-### S2 ✅ 已修复：panelMode undefined 时 Composer 渲染
-
-**修复**：`ChatMessagePanel.vue` 中 `v-if="panelMode === 'spirit'"` → `v-if="!panelMode || panelMode === 'spirit'"`
-
-### S3 ✅ 已修复：SpiritTeamCompleted/Failed 事件发射
-
-**修复**：`team_turn_hooks.go` 中新增 `publishSpiritTeamLifecycleEvent` 方法，在 Team Run 完成/失败时检测 `AutoCreated=true` 的精灵 Team，发射对应事件。
-
-### M1 ✅ 已修复：appendChildSessionID 并发保护
-
-**修复**：随 M2 一起移除了 `appendChildSessionID` 方法，消除了并发问题。
-
-### M2 ✅ 已修复：child_session_ids 冗余
-
-**修复**：移除 `appendChildSessionID` 方法及其调用。子 Session 通过 `ParentSessionID` 反查即可。
-
-### M3 ✅ 已修复：spiritAssembler 静默降级
-
-**修复**：随 S1 一起移除了 `spiritAssembler` 字段和路由拦截逻辑，问题不再存在。
-
-### M4 ✅ 已修复：SpiritTeam 类型约束
-
-**修复**：`types.ts` 中新增 `SpiritTeamStatus` 和 `SpiritTeamMode` 联合类型，`SpiritTeam.status` 和 `SpiritTeam.mode` 使用联合类型。
-
-### M5 ✅ 已修复：类型导入红线
-
-**修复**：所有展示组件从 `features/spirit/types.ts` 导入类型，移除 `api.ts` 中的 re-export。
-
-### M6 ✅ 已修复：API 双键名兼容
-
-**修复**：`api.ts` 中统一使用 camelCase 单键，移除 `raw.xxx ?? raw.yyy_snake_case` 回退模式和 `data?.items ?? data?.teams` 回退。
-
-### M8 ✅ 已修复：Team Ent Schema 索引
-
-**修复**：`team.go` 新增 `Indexes()` 方法，定义 `(spirit_session_id, deleted_at)` 复合索引。
+| 移除路由拦截 | `chat_orchestrator_turn.go` | 精灵走 `runSingleAgentViaTRPC`，通过 `spiritCustomTools` 注入工具 |
+| 新增 plan_and_execute | `internal/tools/spirit_tools.go` | 三阶段统一入口（Plan → Allocate → Orchestrate） |
+| 新增 check_progress / cancel_orchestration / synthesize_results | `internal/tools/spirit_tools.go` | 辅助工具 |
+| 新增 build_orchestration_graph | `internal/tools/orchestrator/build_graph.go` | DAG 图构建工具 |
+| 新增三阶段端口 | `internal/biz/task_planner.go` / `agent_allocator.go` / `task_orchestrator.go` | Plan / Allocate / Orchestrate 解耦 |
+| 新增 TaskDAG | `internal/biz/spirit_task_dag.go` | 拓扑路由（parallel / sequential / hybrid / coordinator） |
+| 新增 ParallelConfig | `internal/biz/spirit_parallel_config.go` | 并行配额 + 自动归档配置 |
+| 新增 AutoArchiveCompletedTeams | `internal/biz/spirit_team_usecase.go` | 自动归档已完成团队 |
+| 新增 CancelTeam | `internal/biz/spirit_team_usecase.go` + `internal/service/spirit_team.go` | 取消 + 级联依赖处理 |
+| 新增 TeamStarter | `internal/service/spirit_team.go` | 团队生命周期管理 |
+| 新增三阶段事件 | `internal/event/contract/envelope.go` | plan_created / allocation_created / orchestration_started 等 6 个事件 |
+| 新增 Progress / AllCompleted 事件 | `internal/event/contract/envelope.go` | spirit_team_progress / spirit_teams_all_completed |
+| 旧工具标记 DEPRECATED | `internal/tools/spirit_tools.go` | assemble_team / assess_complexity / check_team_progress / cancel_team |
+| 新增 TeamProgressCard | `web/src/components/spirit/TeamProgressCard.vue` | 进度卡片 |
+| 新增 ParallelTeamOverview | `web/src/components/spirit/ParallelTeamOverview.vue` | 并行团队概览 |
+| 新增 DAGDiagramCard | `web/src/components/spirit/DAGDiagramCard.vue` | DAG 依赖图 |
+| 新增 SynthesisResultCard | `web/src/components/spirit/SynthesisResultCard.vue` | 综合结果卡片 |
+| 新增 OrchestrationModeBadge | `web/src/components/spirit/OrchestrationModeBadge.vue` | 编排模式徽章 |
+| Store 事件处理扩展 | `web/src/stores/spirit/index.ts` | 三阶段编排事件 + synthesis 事件 |
+| 新增 spiritUi.ts | `web/src/features/spirit/spiritUi.ts` | 状态映射和标签函数 |
 
 ### 未修复项
 
 | 编号 | 原因 |
 |------|------|
 | M7 | `ListSpiritTeams` RPC 归属需要 Proto 变更，属于 P1 范畴 |
+| TD-1 | api.ts 双键名兼容需与后端对齐，属于 P1 |
+| TD-2 | ListSpiritTeams HTTP 端点未暴露，属于 P1 |
+| TD-3 | ArchiveTeam RPC 未定义，属于 P1 |
+| TD-4 | MemberReadOnlyPanel 仅有占位符，属于 P1 |
+| TD-5 | TeamMemberTreeNode 未实现，属于 P1 |
+| TD-6 | 面包屑导航未实现，属于 P1 |
+| TD-7 | 重试失败团队功能未实现，属于 P1 |
 | L1-L9 | 轻微问题，不影响核心功能，后续迭代清理 |

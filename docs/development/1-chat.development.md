@@ -137,7 +137,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 13 | RunStatus WS 事件驱动 | P2 | ✅ |
 | 14 | 多模态附件后端 | P3 | ✅ |
 | 15 | 模型选项单一来源（长期） | P3 | 🟡 回退已实现 |
-| 16 | RunStatus 持久化 | P3 | 🟡 |
+| 16 | RunStatus 持久化 | P3 | ✅ `state_json` + `PendingAwaitUserReplyRoute` |
 | 17 | ChatService / WS 单测 | P1 | ⏳ |
 | 18 | RunRegistry + EnqueueUserMessage | P0 | ✅ |
 | 19 | 执行过程卡片 v2（EnvelopeToolCall v2、ChatExecutionCard） | P0 | ✅ |

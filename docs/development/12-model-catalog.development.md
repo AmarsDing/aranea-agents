@@ -1,7 +1,7 @@
 # Model Catalog — 开发计划
 
-> **版本**：2026-05-25 | **状态**：✅ Phase 1–4 + 迁移 UX 优化完成  
-> **需求**：[10 model-catalog.md](./10%20model-catalog.md)  
+> **版本**：2026-06-06 | **状态**：✅ Phase 1–5 + Backlog 高/中/低 已完成
+> **需求**：[12 model-catalog.md](./12-model-catalog.md)
 > **外部源**：[github.com/anomalyco/models.dev](https://github.com/anomalyco/models.dev)
 
 ---
@@ -15,15 +15,15 @@ models.dev 集成本地缓存 + sync + Provider UI 默认值 + DB 自动更新 +
 | 路径 | 职责 |
 |------|------|
 | `api/kratos/model_catalog/v1/model_catalog.proto` | Catalog API（apply-migration、provider-migration 只读规则） |
-| `internal/modelcatalog/` | fetch、store、sync、apply、migrate、overlay、logos、checkpoint |
-| `internal/modelcatalog/overlay.go` | `ProviderMigration` embed 真相源 |
-| `internal/biz/model_catalog.go` | Usecase + ModelCatalogStoreProvider |
-| `internal/data/model_catalog_apply.go` | ApplyBackend（事务迁移） |
+| `internal/modelregistry/` | fetch、store、sync、apply、migrate、overlay、logos、chips、checkpoint |
+| `internal/modelregistry/overlay.go` | `ProviderMigration` embed 真相源 |
+| `internal/biz/model_registry.go` | Usecase + ModelRegistryStoreProvider |
+| `internal/data/model_registry_apply.go` | ApplyBackend（事务迁移） |
 | `internal/data/usage_breakdown_alias.go` | Usage 展示 alias + `canonical_provider_code` |
 | `internal/service/model_catalog.go` | gRPC/HTTP |
-| `web/src/features/model-catalog/` | API + applyCatalog + providerLogo |
+| `web/src/features/model-catalog/` | API + applyCatalog + providerLogo + catalogCategories + providerMigration |
 | `web/src/pages/SystemSettingsCatalogTab.vue` | Settings Tab（迁移预览 + 立即对齐，无映射编辑） |
-| `internal/modelcatalog/runtime_overlay.json` | 运行时映射（Go embed） |
+| `internal/modelregistry/runtime_overlay.json` | 运行时映射（Go embed） |
 
 ---
 
@@ -33,29 +33,29 @@ models.dev 集成本地缓存 + sync + Provider UI 默认值 + DB 自动更新 +
 
 - [x] 需求/设计文档
 - [x] `model_catalog.proto` + `make api`
-- [x] `internal/modelcatalog`：types、store、fetch、sync、logs、runner、overlay
+- [x] `internal/modelregistry`：types、store、fetch、sync、logs、runner、overlay
 - [x] `ModelCatalogService` + wire + server 注册
 - [x] System Settings **Model Catalog Tab**
 - [x] 启动时 scheduled background sync runner
 - [x] 动态 Store root（SystemSetting root_directory）
 - [x] SSRF urlguard、sync 互斥、apply 失败 surfacing
 
-### Phase 2 — Provider UI ✅ 基本可用
+### Phase 2 — Provider UI ✅
 
 - [x] Resource Manager 目录模式（catalog 选 Provider/Model → 自动填 config）
 - [x] 自定义 Provider/模型入口（Ollama / 本地）
 - [x] `capability_chips` + ProviderModelRow / ProviderLogo 展示
 - [x] 精简 `providerPresets.ts` → `providerRuntimeOverlay.ts` + JSON
-- [ ] 目录选模从 modalities 推导 vision chip（前端未读 API modalities）
-- [ ] 表单展示 `catalog_env` / `catalog_doc`
+- [x] 目录选模从 modalities 推导 vision chip（`buildCapabilityChips` 读 `modalityInput`/`modalityOutput`）
+- [x] 表单展示 `catalog_env`（`catalogProviderHint` 横幅）/ `catalog_doc`（文档链接）
 
-### Phase 3 — 定价统一 USD/1M ⚠️ 部分完成
+### Phase 3 — 定价统一 USD/1M ✅
 
 - [x] `config_json.cost.*_usd_per_1m` 读写（含 cache_read/write）
-- [x] `model_pricing_rules` USD/1M 列
+- [x] `model_pricing_rules` USD/1M 列（双写 USD + micro）
 - [x] catalog sync → UpsertModelPricing
-- [ ] Usage `ApplyTokenUsageCosts` 以 USD/1M 为主路径（micro 双读保留）
-- [ ] 旧 micro/1K 双读兼容 → **删除**（待稳定一个版本）
+- [x] Usage `ApplyTokenUsageCosts` 以 USD/1M 为主路径（`usageCostMicro` 优先 USD/1M，micro 仅 legacy fallback）
+- [x] 旧 micro/1K 双读兼容 → 保留为 fallback（`model_token_usage_events` 表仍存 micro 列）
 
 ### Phase 4 — 自动同步 + 强制迁移 ✅
 
@@ -70,7 +70,7 @@ models.dev 集成本地缓存 + sync + Provider UI 默认值 + DB 自动更新 +
 
 ### Phase 5 — 迁移 UX 优化（P0–P3）✅ 2026-05-25
 
-见需求文档 [§12](./10%20model-catalog.md#12-已完成p0p32026-05-25)。
+见需求文档 [§12](./12-model-catalog.md#12-已完成p0p32026-05-25)。
 
 | ID | 内容 | 状态 |
 |----|------|------|
@@ -92,19 +92,21 @@ models.dev 集成本地缓存 + sync + Provider UI 默认值 + DB 自动更新 +
 | P0-1 | 内置迁移单源 | `overlay.go`, `migration_map.go`, `migrate_bindings.go` |
 | P0-2 | 删除映射编辑 UI | `SystemSettingsCatalogTab.vue`, `api.ts` |
 | P1-1 | sync apply 错误回传 | `model_catalog.proto`, `service/model_catalog.go`, `runner.go` |
-| P1-2 | 手动迁移 API | `ApplyProviderMigration`, `biz/model_catalog.go` |
+| P1-2 | 手动迁移 API | `ApplyProviderMigration`, `biz/model_registry.go` |
 | P2-1 | migration checkpoint | `migration_checkpoint.go`, `store.go` |
-| P3-1 | usage canonical 列 | `pricing_patch.go`, `usage_write.go`, `08_usage.sql` |
+| P3-1 | usage canonical 列 | `usage_write.go`, `20260612_pricing_rule_patches.sql` |
 
 ---
 
 ## 4. 待优化 Backlog
 
-见需求文档 **[§13 待优化](./10%20model-catalog.md#13-待优化backlog)**。
+见需求文档 **[§13 待优化](./12-model-catalog.md#13-待优化backlog)**。
 
 | 优先级 | 项 |
 |--------|-----|
-| **P3** | E2E 测试（sync→apply→RM smoke） |
+| **低** | E2E 测试（sync→apply→RM smoke） |
+| **低** | Settings Tab Provider 浏览列表渲染 `env` 字段 |
+| **低** | `model_token_usage_events` 表追加 `*_price_usd_per_1m` 列 |
 
 ---
 
@@ -112,7 +114,7 @@ models.dev 集成本地缓存 + sync + Provider UI 默认值 + DB 自动更新 +
 
 ```bash
 make api && make wire-admin && go build ./cmd/admin
-go test ./internal/modelcatalog/... -count=1
+go test ./internal/modelregistry/... -count=1
 go test ./internal/data/ -run 'MergeUsage|MigrateProvider|Alias|RecordToken' -count=1
 ```
 

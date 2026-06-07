@@ -1,6 +1,7 @@
 # Multi-Agent / Team 编排需求文档
 
 > **编排融合（M53）**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) — Team 与 Graph 统一拓扑、Agent 状态观测、Kanban 看板。
+> **开发计划**：[11-multi-agent.development.md](./11-multi-agent.development.md) · **设计文档**：[11-multi-agent.design.md](./11-multi-agent.design.md)
 
 ## 1. 背景与目标
 
@@ -14,6 +15,9 @@
 - 编排过程可追踪：展示每个子 Agent 的输入、输出、状态、耗时、错误和成本
 - 支持 Swarm 动态成员管理、Team 结构导出、运行测试与取消
 - 实时观测经 WebSocket Envelope 推送（含子 Agent 流式输出与运行汇总）
+- Graph 编排画布可视化编辑与编译预览
+- 运行观测台：Agent 工作看板、Timeline、HITL 人工审核、任务看板
+- 失败策略（FailurePolicy）与熔断器（CircuitBreaker）容错机制
 
 ## 2. 范围定义
 
@@ -21,27 +25,35 @@
 
 **Team 管理与配置**
 
-- Team 管理页：列表、搜索、新增、编辑、删除、复制
-- Team 编辑器：基础信息、成员 Agent、编排模式、并发/超时、Swarm 配置、JSON 预览
+- Team 管理页：列表、搜索、新增、编辑、删除、复制、行业分组、拖拽排序
+- Team 编辑器：基础信息、成员 Agent、编排模式、并发/超时、Swarm 配置、运行时引擎、失败策略、A2A 协议、JSON 预览
+- 编排画布页（TeamOrchestratePage）：Graph 可视化编辑、节点面板、运行时/容错面板、成员看板
+- 编译预览（TeamCompilePreview）：实时 CompileTeamGraph API 展示拓扑与校验
 - 四个内置模板（顺序 / 并行专家组 / 生成评审 / 主控分派）
-- Definition JSON 含 graph 预览节点（前端 schema，非独立 Graph 执行引擎）
+- Definition JSON 含 embedded graph 节点（agent / task / review / subgraph / function 五种节点类型）
 
 **编排运行时**
 
 - 五种后端编排模式：`sequential` / `parallel` / `coordinator` / `critic_loop` / `swarm`
 - 前端 UI 以 `adaptive` 对应后端 Swarm 运行时（与 `swarm` 共用 `NewSwarm` 构建）
+- **Graph 为默认执行路径**：`CompileToGraphRuntimeConfig` → `GraphAgent`；Native（`BuildTRPCTeam`）已 Deprecated，仅 `ARANEA_TEAM_NATIVE=1` 应急
 - Swarm 安全限制：MaxHandoffs / NodeTimeout / RepetitiveHandoff / CrossRequestTransfer
 - MemberToolConfig：StreamInner / InnerTextMode / HistoryScope / SkipSummarization
 - Critic Loop 支持 ScoreThreshold 结构化评分终止
+- FailurePolicy 容错：重试（RetryPolicy）、熔断器（CircuitBreaker）、节点级覆盖
 - Team 成员构建时接入 `PluginsForAgent` 与有效工具集（含 `call_agent`，需 Agent 启用 A2A 工具）
 
 **运行记录与 API**
 
-- `team_runs` / `team_run_steps` 持久化
+- `team_runs` / `team_run_steps` / `orchestration_steps` 持久化
 - Team CRUD + DuplicateTeam
 - ListTeamRuns / GetTeamRun / CancelTeamRun / ListTeamRunSteps
 - UpdateSwarmMembers / ExportTeamStructure
-- RunTeamTest 后端 · CancelTeamRun · GetTeamRunSummary RPC
+- RunTeamTest · CancelTeamRun · GetTeamRunSummary RPC
+- GetTeamRunObservatory / GetTeamRunObservatoryTimeline — 运行观测台
+- ResumeTeamRunExecution — HITL 恢复 / Checkpoint 恢复
+- CompileTeamGraph — 编译预览
+- ListTaskDeadLetters / ResolveTaskDeadLetter — 死信队列
 - team_step_started / team_summary WS · tool_call_count 落库
 - Team 管理页 RunTeamTest UI · TeamRuns 汇总与 WS 回放
 - Chat Team 成员 strip（`ChatTeamMemberStrip`）
@@ -50,22 +62,25 @@
 
 - Chat 选择 Team 创建 `owner_type=team` 会话
 - Channel 路由 `default_team_id` 时同样创建 `owner_type=team` 会话（飞书等 IM 入口）；出站为汇总文本，见 [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)
-- WS Envelope：`team_run_*` / `team_step_started` / `team_step_finished` / `team_summary` / `member_message_*` / `member_delta` / `intent_pass` / `transfer`
+- WS Envelope：`team_run_*` / `team_step_started` / `team_step_finished` / `team_summary` / `member_message_*` / `member_delta` / `intent_pass` / `transfer` / `orchestration_agent_status` / `graph_node_start` / `graph_node_finish`
+- 运行观测台（TeamRunObservatoryPage）：Agent 工作看板 / Timeline / Summary / HITL 审核 / 任务看板
 - Monitor EventTimeline 可订阅 Team 相关 Envelope
 
 ### 2.2 待补全（见开发计划）
 
 - 历史 run 在 `tool_call_count` 字段上线前的步骤工具计数为 0（可选 Usage 回填，TEAM-11）
+- TeamRuns 自动加载汇总（展开 run 时，TEAM-10）
+- 拖拽排序后端持久化 API（前端已本地排序）
 
 ### 2.3 未来扩展
 
 - A2A 跨框架协议发现与握手（见 [26 a2a-protocol.md](./26%20a2a-protocol.md)）
 - Agent Kind `a2a_proxy` 与 LLM Agent A2A Endpoint 设置页
-- 图工作流拖拽编辑器、条件分支、后端 DAG 调度
 - Team 模板后端库 / 自定义模板保存
 - 强化学习调度、自动拓扑训练
 - 外部 Team 市场或模板商店
 - 复杂人工审批流
+- Native 执行栈完全移除（M53 Phase 8 单轨化）
 
 ## 3. 用户场景
 
@@ -97,6 +112,18 @@
 
 用户在 Team 管理页触发「运行测试」，系统发送测试消息并返回 TeamRun 与助手回复，无需进入 Chat。
 
+### 场景 8：编排画布编辑
+
+用户在编排画布页（TeamOrchestratePage）可视化编辑 Team 拓扑：拖拽节点、调整连线、配置节点属性。编译预览实时展示拓扑校验结果与编译问题。
+
+### 场景 9：运行观测台
+
+用户在运行观测台（TeamRunObservatoryPage）查看 Team 运行实时状态：Agent 工作看板展示各成员状态，Timeline 展示执行时间线，Summary 展示汇总统计。
+
+### 场景 10：HITL 人工审核
+
+Team 运行中遇到 task/review 节点时暂停等待人工审核；审核人在观测台 approve/reject/fallback 后，运行通过 ResumeTeamRunExecution 恢复。
+
 ## 4. 产品需求
 
 ### 4.1 Team 管理页
@@ -106,10 +133,12 @@
 页面能力：
 
 - Team 列表：名称、Key、编排模式、成员数、状态、创建时间
-- 搜索与筛选：名称、Key、模式、状态
+- 搜索与筛选：名称、Key、模式、状态、行业
 - 新增 / 编辑 / 删除（默认 Team 不可删）/ 复制
+- 行业分组与拖拽排序
 - 运行记录对话框（TeamRunsDialog）：历史 Run、Steps、实时 WS 事件
-- **运行测试**（待 UI 接线）：调用 RunTeamTest RPC
+- 运行测试（TeamTestDialog）：调用 RunTeamTest RPC
+- 导航至编排画布页 / 运行观测台
 
 ### 4.2 Team 编辑器
 
@@ -132,6 +161,12 @@
 - `critic_loop.max_iterations`、`critic_loop.score_threshold`
 - `intent_anchor_agent_id`（意图锚点成员）
 
+运行时配置：
+
+- `runtime_engine`：graph（默认）/ native（应急）
+- `failure_policy`：重试（RetryPolicy）、熔断器（CircuitBreaker）、节点级覆盖
+- `enable_checkpoint`：长任务 checkpoint 支持
+
 Swarm 配置（adaptive / swarm 模式）：
 
 - `swarm.max_handoffs`、`node_timeout_seconds`
@@ -142,30 +177,64 @@ Swarm 配置（adaptive / swarm 模式）：
 
 - `member_tool_config.*`：stream_inner、inner_text_mode、skip_summarization、history_scope、tool_set_name
 
-### 4.3 Chat 页面 Team 运行
+A2A 协议配置：
+
+- `a2a.*`：跨框架协议相关设置
+
+编译预览（TeamCompilePreview）：
+
+- 实时调用 CompileTeamGraph API
+- 展示编译后拓扑（节点/边）与校验问题列表
+
+### 4.3 编排画布页
+
+入口：Team 管理页卡片 → 编排画布按钮（`/teams/:teamId/orchestrate`）。
+
+页面能力：
+
+- Graph 可视化编辑器（GraphEditorCanvas）
+- 节点详情面板（TeamOrchestrateNodePanel）：名称/角色/输入/做什么/输出
+- 运行时与容错面板（TeamOrchestrateRuntimePanel）
+- 成员看板（TeamMemberKanban）：按角色分列展示编译节点
+- 实时运行模式：有活跃 Run 时自动切换只读 + 实时流
+
+### 4.4 运行观测台
+
+入口：Team 管理页卡片 → 观测台按钮 / TeamRunsDialog → 观测台链接（`/teams/:teamId/runs/:runId/observatory`）。
+
+页面能力：
+
+- Agent 工作看板（OrchestrationKanban）：各成员实时状态
+- Timeline（OrchestrationActivityTimeline）：执行时间线
+- Summary：运行汇总统计
+- HITL 审核（OrchestrationHitlReviewDialog）：approve / reject / fallback
+- 任务看板（GraphTaskKanban）：task/review 节点创建的 Task
+- ResumeTeamRunExecution：恢复暂停的运行
+
+### 4.5 Chat 页面 Team 运行
 
 - Team 列表来自 `/v1/teams`
 - 选择 Team 后创建 `owner_type=team` 的 Session
 - 发送消息携带 `team_id`；后端调用 Team Runner
 - 消息区展示最终答案；可查看子 Agent 轨迹（WS `member_*` / `team_step_*`）
 
-### 4.4 编排运行轨迹
+### 4.6 编排运行轨迹
 
 **TeamRun**：run id、team id、session id、message id、mode、status、时间、token、成本、topology_json、error_message。
 
 **TeamRunStep**：step id、agent 信息、role、sort_order、status、input/output preview、token、耗时、error。
 
-### 4.5 动态成员管理
+### 4.7 动态成员管理
 
 - UpdateSwarmMembers：仅 `swarm` / `adaptive` 模式
 - 新增成员默认 worker、enabled=true
 
-### 4.6 结构导出
+### 4.8 结构导出
 
 - ExportTeamStructure：入口节点、成员节点、边、面
 - coordinator → 星形；swarm/adaptive → 全连接；其他 → 线性
 
-### 4.7 运行管理
+### 4.9 运行管理
 
 - GetTeamRun / CancelTeamRun（running/pending 可取消，经 RunRegistry 中断运行时）
 - RunTeamTest：手动测试运行
@@ -201,6 +270,12 @@ Swarm 配置（adaptive / swarm 模式）：
 | GET | `/v1/teams/{team_id}/structure` | 结构导出 |
 | POST | `/v1/teams/{id}/run-test` | 运行测试 |
 | GET | `/v1/team-runs/{id}/summary` | 运行结构化汇总 |
+| GET | `/v1/team-runs/{run_id}/observatory` | 运行观测台快照 |
+| GET | `/v1/team-runs/{run_id}/observatory/timeline` | 运行观测台时间线 |
+| POST | `/v1/team-runs/{run_id}/resume` | HITL / Checkpoint 恢复 |
+| POST | `/v1/teams/{team_id}/compile-graph` | 编译预览 |
+| GET | `/v1/task-dead-letters` | 死信列表 |
+| POST | `/v1/task-dead-letters/{id}/resolve` | 解决死信 |
 
 ## 6. 数据模型
 
@@ -245,6 +320,20 @@ Swarm 配置（adaptive / swarm 模式）：
     "skip_summarization": false,
     "history_scope": "default",
     "tool_set_name": ""
+  },
+  "graph": {
+    "nodes": [
+      { "id": "start", "type": "agent", "ref_member_index": 0 },
+      { "id": "end", "type": "agent", "ref_member_index": 1 }
+    ],
+    "edges": [
+      { "source": "start", "target": "end" }
+    ]
+  },
+  "failure_policy": {
+    "on_error": "retry",
+    "retry": { "max_attempts": 3, "delay_ms": 1000 },
+    "circuit_breaker": { "failure_threshold": 5, "reset_timeout_ms": 30000 }
   }
 }
 ```
@@ -265,16 +354,25 @@ Swarm 配置（adaptive / swarm 模式）：
 - [x] RunTeamTest 后端端到端
 - [x] WS 推送 `member_message_*` / `team_summary` / `team_step_finished`
 - [x] `call_agent` 工具在 Agent 有效工具集启用时可注入
-
-### 待验收
-
-- [ ] 历史 run 工具调用数回填（可选）
-
-### 已完成（Phase 3 — 2026-05-21）
-
 - [x] Team 管理页 RunTeamTest UI
 - [x] team_step_started Envelope
 - [x] GetTeamRunSummary REST RPC
 - [x] 汇总含 tool_call_count
 - [x] Chat Team 成员 strip
 - [x] Runner persistStep 单测
+- [x] Graph 为默认执行路径（Native 已 Deprecated）
+- [x] 编排画布页（TeamOrchestratePage）可视化编辑
+- [x] 编译预览（CompileTeamGraph RPC + TeamCompilePreview）
+- [x] 运行观测台（TeamRunObservatoryPage）
+- [x] HITL 人工审核 + ResumeTeamRunExecution
+- [x] FailurePolicy 容错（RetryPolicy / CircuitBreaker）
+- [x] 死信队列（TaskDeadLetter）
+- [x] embedded graph 五种节点类型（agent / task / review / subgraph / function）
+- [x] OrchestrationSpec v2（含 linked_graph_id / failure_policy / graph）
+- [x] 行业分组与拖拽排序
+
+### 待验收
+
+- [ ] 历史 run 工具调用数回填（可选，TEAM-11）
+- [ ] TeamRuns 自动加载汇总（展开 run 时，TEAM-10）
+- [ ] 拖拽排序后端持久化 API

@@ -1,6 +1,6 @@
 # Memory 记忆 — 开发计划（总）
 
-> **版本**：2026-05-28 | **状态**：🟢 L0–L3 + 运行时双轨已落地；🟢 L3 向量双写 + recall usecase 注入；🟢 CompositeSearch 分数修复；🟢 MemoryWorker LLM + 配置 UI；🟢 Cascade 后端 + Memory Center Tab；🟢 全局衰减 + 业务化置信度模型 + 强化因子；🟢 MEM-OPT-01 L3 双轨读一致性 + MEM-OPT-03 优先级/Dead-Letter + MEM-OPT-02 L4 衰减/强化
+> **版本**：2026-06-06 | **状态**：🟢 L0–L3 + 运行时双轨已落地；🟢 L0 压缩优化阶段一已落地；🟢 L3 向量双写 + recall usecase 注入；🟢 CompositeSearch 分数修复；🟢 MemoryWorker LLM + 配置 UI；🟢 Cascade Saga + Memory Center Cascade Tab；🟢 全局衰减 + 业务化置信度模型 + 强化因子；🟢 MEM-OPT-01 L3 双轨读一致性 + MEM-OPT-03 优先级/Dead-Letter + MEM-OPT-02 L4 衰减/强化 + MEM-OPT-04 PII + MEM-OPT-05 提取协议 + MEM-OPT-06 Cascade Saga；❌ L0 压缩阶段二/三 + L4 LLM/bi-temporal + Neural Memory 未启动
 > **需求**：[`memory.md`](./memory.md) · [`L0.md`](./L0.md)～[`L4.md`](./L4.md)  
 > **设计**：[`memory.design.md`](./memory.design.md)  
 > **进度真相**：[execution-plan.md](../../guides/execution-plan.md) · [0-system-development.md](../0-system-development.md) §8.6  
@@ -52,30 +52,40 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 
 ---
 
-## 2. 全局现状（2026-05-28）
+## 2. 全局现状（2026-06-06）
 
 | 项 | 状态 |
 |----|------|
 | `MemorySet` / runtime 边界 | ✅ |
 | L0 上下文压缩 + 快照 | ✅ |
-| L1 SQLite + Admin API | ✅ |
-| L2 episodes + 事件视图 | ✅ |
+| L0 压缩优化（阶段一：工程补强） | ✅ |
+| L1 SQLite + Admin API + working_memory 工具 | ✅ |
+| L1 归档 Worker + episode 归档 hook | ✅ |
+| L2 episodes + 事件视图 + 多策略 Recall | ✅ |
+| L2 Decay + Retention + Consolidate Worker | ✅ |
 | L3 facts SQLite + Admin | ✅ |
 | L3 embedding 双写（SQLite blob + pgvector 索引） | ✅ |
-| L3 pgvector（可选 Search 轨） | 🟡 |
 | L3 双轨读一致性（MEM-OPT-01） | ✅ Phase 0–3 全部落地 |
+| L3 衰减 cron Job | ✅ |
+| L3 冲突检测 + API | ✅ |
+| L3 quality_score 5维评分 | ✅ |
+| L3 PII 检测 + Review API（MEM-OPT-04） | ✅ 9 种 PII 检测器 + block/redact/review 策略 |
+| L3 提取协议结构化（MEM-OPT-05） | ✅ function call schema + quality_score |
 | L4 实体/关系 + prompt 注入 | ✅ |
-| L4 启发式写入 / 衰减元数据 | 🟡 MVP |
+| L4 Cascade Saga（MEM-OPT-06） | ✅ 4 步 Saga + 补偿 + Dry-Run |
+| L4 Business Decay + reinforcement | ✅ |
 | trpc memory.Service | ✅ |
-| TurnMemoryWorker 入队 | 🟡 MVP |
-| LLM 提取管道 | 🟡 MVP（LLM→启发式链 + fallback 指标） |
-| 级联 BFS + 审核 UI | ✅ RPC + 门控 + Memory Center Cascade Tab |
-| L3 rerank / 统一 decay | 🟡 rerank + scored recall ✅；decay cron ✅ |
-| Auto-memory upsert 失败重试 | ✅ 任一 fact 失败 fail job |
+| TurnMemoryWorker 入队 | ✅ |
+| LLM 提取管道 | ✅ MVP（LLM→启发式链 + fallback 指标） |
 | AutoMemoryQueue 优先级 / Dead-Letter（MEM-OPT-03） | ✅ 三优先级 + 租户配额 + Dead-Letter 持久化 + Replay RPC + 自动重放 cron |
+| Auto-memory upsert 失败重试 | ✅ 任一 fact 失败 fail job |
 | SessionAdminStore 子接口拆分 | 🟡 L0–L4 接口已拆；typed RecallHit 渐进 |
-| Memory Center 前端 | 🟡（Cascade Tab ✅；其余 Tab 已接入） |
-| 存储三写收敛 | ✅ facts 权威 + legacy backfill（旧 trpc 路径，见 §7）+ pgvector 索引 |
+| Memory Center 前端 | 🟡（Cascade Tab ✅；Knowledge/Session/Debug 已接入；Graph Tab 需 feature flag） |
+| 存储三写收敛 | ✅ facts 权威 + legacy backfill + pgvector 索引 |
+| L0 压缩优化（阶段二/三） | ❌ 记忆演化 + Agent 自主压缩 |
+| L4 LLM 实体抽取 | ❌ |
+| L4 bi-temporal 边 | ❌ |
+| Neural Memory 神经记忆系统 | ❌ 48 项任务全部未启动 |
 
 分层现状见各 [`L*-development.md`](./README.md)。
 
@@ -85,41 +95,59 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 
 | 优先级 | 项 | 说明 |
 |--------|-----|------|
-| **P1** | 存储收敛 | L3 单一写路径；pgvector 降为索引 |
 | **P1** | Policy Action Log | 统一 memory action 审计 | 🟡 Upsert/Delete/Clear/Entity/Cascade |
-| **P2** | MemoryWorker LLM | 替代 regex 提取 | ✅ MVP + Agent 设置 UI |
-| **P2** | L4 级联 + bi-temporal | CascadeProposal + valid_from/to | ✅ 后端 + Cascade Tab |
-| **P2** | L4 治理 UI | 冲突、Evolution 审核台 | 🟡 Cascade ✅ / Evolution 图谱 Tab 需 `VITE_MEMORY_GRAPH_TAB` |
-| **P3** | L3 rerank、PII、全局衰减 | Phase 4–5 |
+| **P2** | L0 压缩优化阶段二 | 记忆操作语义化（ADD/UPDATE/DELETE/MERGE/NOOP）+ 时间维度 + 动态链接 |
+| **P2** | L0 压缩优化阶段三 | Agent 自主压缩（CompactContext/RecallDetail 工具）+ 代码骨架提取 |
+| **P2** | L4 LLM 实体/关系抽取 | 替代 regex 启发式 |
+| **P2** | L4 bi-temporal 边 | valid_from/valid_to 时间维度 |
+| **P2** | L4 治理 UI | Evolution 审核 UI 闭环 + Graph Tab 生产就绪 |
+| **P2** | L3 Conflict UI | 冲突检测前端展示 + 仲裁 |
+| **P2** | L2 ListEvents 跨表视图 | UNION ALL 统一视图 |
+| **P3** | L3 rerank / pgvector HNSW | Cross-Encoder 重排序 + 向量近似索引 |
+| **P3** | L1 field history UI | 字段版本历史展示 + 回滚 |
+| **P3** | Neural Memory 神经记忆系统 | 48 项任务，依赖 L0-L4 基础设施 |
 
 ---
 
 ## 4. 开发阶段
 
-### Phase 1：L4 基础 — 🟡 MVP
+### Phase 1：L4 基础 — ✅
 
 - ✅ Schema / Repo / `L4MemoryCue` / 启发式写入
-- ❌ GraphRAG、Proposal 审核台、EvolutionScanner 闭环
+- ✅ Cascade Saga + 补偿回滚 + Dry-Run
+- ✅ Business Decay + reinforcement + 归档
+- ✅ Name Conflict 检测 + 中文 regex
+- ❌ GraphRAG、EvolutionScanner 闭环
 
-### Phase 2：MemoryWorker — 🟢 MVP
+### Phase 2：MemoryWorker — ✅ MVP
 
 - ✅ Turn 完成后入队 + AutoMemory cron
 - ✅ LLM 提取（`MemoryLLMExtractor` + 启发式 fallback）
 - ✅ `memory_worker_provider/model` + `l0_compress_*`（Agent 设置 · 记忆 Tab）
 - ✅ AutoMemory 直写 `memory_facts`（含 session/message provenance）
 - ✅ L2 episode 写入（巩固完成后）
+- ✅ AutoMemoryQueue 优先级 + Dead-Letter + 自动重放
 
 ### Phase 3：级联与 Policy — 🟡
 
-- ✅ bi-temporal 边、BFS、CascadeProposal RPC
+- ✅ Cascade Saga（4 步 + 补偿 + Dry-Run）
 - ✅ Approve 同步 L3 facts 更名 + L4 实体
 - ✅ Memory Center Cascade Tab
+- ✅ PII 检测 + Review API（MEM-OPT-04）
+- ✅ 提取协议结构化（MEM-OPT-05）
 - 🟡 Action Log（Upsert/Delete/Clear/Entity/Cascade；turn_id 经 source_message_id）
 
-### Phase 4–5：L3 增强
+### Phase 4：L0 压缩优化 — 🟡 阶段一完成
 
-- ❌ rerank、Cross-Encoder、Composite Search
-- ❌ 全局衰减 Job、PII 管道
+- ✅ 阶段一：工程补强（工具结果持久化 + 三层代价递进 + 9 章节摘要 + LLM 缓存 + 手动压缩）
+- ❌ 阶段二：记忆演化（操作语义化 + 时间维度 + 动态链接）
+- ❌ 阶段三：Agent 自主压缩（CompactContext/RecallDetail + 代码骨架）
+
+### Phase 5：L3/L4 增强 — ❌
+
+- ❌ L3 Conflict UI、rerank、pgvector HNSW
+- ❌ L4 LLM 实体抽取、bi-temporal、Evolution 审核 UI
+- ❌ Neural Memory 神经记忆系统
 
 ---
 
@@ -129,17 +157,25 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 |---|------|-----|------|
 | T1 | `MemorySet` 迁至 runtime | 总 | ✅ |
 | T2 | L0 `SessionCompressor` | L0 | ✅ |
-| T3 | L1 表 + List API | L1 | ✅ |
-| T4 | L2 episode 归档 | L2 | ✅ |
-| T5 | L3 facts + conflicts 元数据 | L3 | 🟡 |
-| T6 | L4 图 + 注入 | L4 | ✅ |
+| T3 | L1 表 + List API + working_memory 工具 | L1 | ✅ |
+| T4 | L2 episode 归档 + Decay + Consolidate | L2 | ✅ |
+| T5 | L3 facts + conflicts + decay + quality_score | L3 | ✅ |
+| T6 | L4 图 + 注入 + Cascade Saga + Decay | L4 | ✅ |
 | T7 | TurnMemoryWorker | 总 | ✅ |
 | T8 | LLM 提取管道 | L2/L3/L4 | ✅ MVP |
-| T9 | CascadeProposal | L4 | ✅ |
-| T10 | Memory Center Tab | 总 | 🟡（+ Cascade Tab） |
+| T9 | CascadeProposal Saga | L4 | ✅ |
+| T10 | Memory Center Tab | 总 | 🟡（+ Cascade Tab ✅；Graph Tab 需 feature flag） |
 | T11 | pgvector 与 facts 收敛 | L3 | ✅ |
 | T12 | legacy trpc_memory backfill | L3 | ✅（2026-05-24 修复 SQLite 死锁；见 §7） |
 | T13 | Agent 设置 · Worker 模型 UI | 总 | ✅ |
+| T14 | L0 压缩优化阶段一（工程补强） | L0 | ✅ |
+| T15 | PII 检测 + Review API（MEM-OPT-04） | L3 | ✅ |
+| T16 | 提取协议结构化（MEM-OPT-05） | L3 | ✅ |
+| T17 | L0 压缩优化阶段二（记忆演化） | L0 | ❌ |
+| T18 | L0 压缩优化阶段三（Agent 自主压缩） | L0 | ❌ |
+| T19 | L4 LLM 实体/关系抽取 | L4 | ❌ |
+| T20 | L4 bi-temporal 边 | L4 | ❌ |
+| T21 | Neural Memory 神经记忆系统 | 总 | ❌ |
 
 ---
 

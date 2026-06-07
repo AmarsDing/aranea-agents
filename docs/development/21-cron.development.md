@@ -1,6 +1,6 @@
 # Cron 定时任务 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 核心完成（迭代 2 已交付手动触发 + 重试表单）
+> **版本**：2026-06-06 | **状态**：🟢 核心完成（迭代 2 已交付手动触发 + 重试表单）
 > **需求**：[21 cron.md](./21%20cron.md) · **设计**：[21 cron.design.md](./21%20cron.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-09
 
@@ -8,36 +8,37 @@
 
 ## 1. 模块定位
 
-Cron 定时任务：支持 Agent/Team 按计划自动执行，包括 cron 表达式 / 间隔 / 单次触发、执行历史、失败重试与死信机制。
+Cron 定时任务：支持 Agent/Team/ModelRegistrySync 按计划自动执行，包括 cron 表达式 / 间隔 / 单次触发、执行历史、失败重试与死信机制。
 
 **代码锚点**：
-- `api/kratos/cron/v1/cron.proto` — CronTask CRUD + ListCronTaskRuns + TriggerCronTask
+- `api/kratos/cron/v1/cron.proto` — CronTask CRUD + ListCronTaskRuns + TriggerCronTask + ResetCronTaskFailures
 - `internal/service/cron.go` — CronService（传输桥点）
 - `internal/biz/cron.go` — CronUsecase + CronTaskPatch + CronTaskRunInput
 - `internal/data/cron.go` — CronRepo（Ent）
 - `internal/data/ent/schema/cron_task.go` / `cron_task_run.go` — 表结构
 - `internal/cronrunner/runner.go` — 调度引擎（RunCronTurn、dispatchWithRetry、dead letter）
 - `internal/cronrunner/schedule.go` — config_json / metadata_json 解析与 next_run_at 计算
-- `web/src/pages/CronTasksPage.vue` / `CronRunsPage.vue` — 专用管理页
+- `web/src/pages/CronTasksPage.vue` — 专用管理页（含执行历史弹窗入口）
+- `web/src/components/cron/CronRunsDialog.vue` — 执行历史弹窗
 - `web/src/features/cron/api.ts` — 前端 API 与 wire 转换
 - `cmd/admin/main.go` — `CronRunner.Start`，间隔 `CRON_RUNNER_INTERVAL`（默认 1m）
 
 ---
 
-## 2. 现状评估（2026-05-21 代码审计）
+## 2. 现状评估（2026-06-06 代码审计）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
 | CronTask CRUD | ✅ | `CronService` Create/Update/Delete/Get/List |
 | 三种计划类型 | ✅ | `schedule.go` interval / cron / once + `next_run_at` |
 | 调度引擎 | ✅ | `runner.go` 轮询 + `metadata_json.next_run_at` 到期筛选 |
-| Agent / Team 执行 | ✅ | `RunCronTurn`（EP-RT-07）；HTTP fallback 保留 |
+| Agent / Team / ModelRegistrySync 执行 | ✅ | `RunCronTurn`（EP-RT-07）；HTTP fallback 保留；`model_registry_sync` 目标类型 |
 | 执行历史 | ✅ | `cron_task_run` + `GET /v1/cron-task-runs` |
 | 失败重试 | ✅ | `dispatchWithRetry` 指数退避 30s/2m/10m |
 | `retry_max_attempts` | ✅ | `config_json.retry_max_attempts`；未设置默认 3，0=禁用 |
 | 死信机制 | ✅ | 连续失败 ≥3 → `status=dead` + `cron.dead_letter` 事件 + Prometheus |
 | 前端管理页 | ✅ | `/cron` QTable + 搜索/状态筛选 + 失败 tooltip |
-| 执行历史页 | ✅ | `/cron/runs?cron_task_id=` 预填筛选 |
+| 执行历史弹窗 | ✅ | `CronRunsDialog` 弹窗，支持按任务/状态筛选 + 前端分页 |
 | 重置失败计数 | ✅ | `CronTasksPage` dead 任务 `restart_alt` 按钮 |
 | Wire / 启动 | ✅ | `cmd/admin/wire.go` → `provideCronRunner` |
 | 手动触发 | ✅ | 异步 `POST /v1/cron-tasks/{id}/trigger` → 立即返回 `pending` run |
@@ -67,7 +68,7 @@ Cron 定时任务：支持 Agent/Team 按计划自动执行，包括 cron 表达
 
 - **Phase 1（EP-BIZ-09）**：✅ 调度引擎 + RunCronTurn + Wire 启动
 - **Phase 2**：✅ 执行历史 + 失败重试 + 死信 + Prometheus
-- **Phase 3**：✅ 专用前端页（`/cron`、`/cron/runs`）+ dead 重置
+- **Phase 3**：✅ 专用前端页（`/cron`）+ 执行历史弹窗（`CronRunsDialog`）+ dead 重置
 - **Phase 4（迭代 2）**：✅ 手动触发 + retry 表单 + 重试默认值修复
 
 ---
@@ -81,7 +82,7 @@ Cron 定时任务：支持 Agent/Team 按计划自动执行，包括 cron 表达
 | 3 | 失败重试（30s/2m/10m）+ panic 恢复 | P3 | ✅ |
 | 4 | 死信（≥3 连续失败）+ 指标 + 事件 | P3 | ✅ |
 | 5 | Wire 注入 + `cmd/admin` 启动 | P1 | ✅ |
-| 6 | 前端 CronTasksPage + CronRunsPage | P2 | ✅ |
+| 6 | 前端 CronTasksPage + CronRunsDialog | P2 | ✅ |
 | 7 | CronTaskPatch 修复 Update 零值歧义 | P1 | ✅ |
 | 8 | dead 任务「重置失败计数」UI | P3 | ✅ |
 | 9 | `retry_max_attempts` 后端（默认 3 / 0 禁用） | P2 | ✅ |

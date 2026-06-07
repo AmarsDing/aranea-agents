@@ -2,18 +2,21 @@
 
 > 对标 `pkg/trpc-agent-go/runner` 包的网关能力，完善项目的会话管理和 API 网关。
 
-> **2026-05-21 现状对齐**：
+> **2026-06-06 现状对齐**：
 > - ✅ **RunRegistry / RunGateway**：`internal/runtime/run_registry.go` + `RunGateway` 接口；Chat / Team / Cron / Channel / WS 共用。
 > - ✅ **RunnerManager**：`internal/runtime/runner_manager.go` 统一 trpc Runner 构建。
+> - ✅ **ChatOrchestrator**：`internal/service/chat_orchestrator.go` 核心编排器，实现 `biz.TurnExecutor`；ChatService 为薄传输桥。
+> - ✅ **TurnPipeline**：`internal/service/turn_pipeline.go` 显式 Ingress → Service → Executor → Projector 管道。
+> - ✅ **AdmissionGate**：`internal/runtime/turn/admission_gate.go` + `chat_turn_admission.go` 准入控制。
 > - ✅ **并发控制**：会话级互斥，`HasActive` + placeholder 清理。
 > - ✅ **消息排队**：SteerableRunner `EnqueueUserMessage` 优先，不支持时降级 `PendingMessageQueue`（32 条/会话上限 + 可选磁盘快照）。
 > - ✅ **运行取消**：`StopGeneration` API + `RunRegistry.Cancel`（ManagedRunner / context cancel）。
 > - ✅ **RunStatus 查询**：`GetRunStatus` API，7 种状态 + 框架字段合并；前端 `useRunStatus` 轮询。
 > - ✅ **AwaitUserReply**：`AwaitUserReply` API + `makeAwaitReplyFunc`；`AwaitUserReplyRouting` 在注入 AwaitHook 时由 `RunnerManager` 启用。
 > - ✅ **WebSocket 网关**：`internal/server/ws.go` 挂入 Kratos HTTP。
-> - ✅ **认证中间件**：JWT（`pkg/auth/middleware.go`）+ Workspace 过滤（`internal/server/middleware/workspace.go`）。
+> - ✅ **认证中间件**：JWT（`pkg/auth/middleware.go`）+ Workspace 过滤（`internal/server/middleware/workspace.go`）+ Webhook 路径安全（EP-SEC-03）。
 > - ✅ **Biz 编排层**：`ChatUsecase` 已接入；`PendingMessageQueue` 位于 `internal/runtime`。
-> - ✅ **出站 Webhook**：`GatewayService` CRUD + `WebhookDispatcher` 终态回调（HMAC-SHA256）。
+> - ✅ **出站 Webhook**：`GatewayService` CRUD + `WebhookDispatcher` 终态回调（HMAC-SHA256），含 `graph_task_status` 事件类型。
 > - ❌ **API 版本管理策略**：`/v1/` 前缀已存在，无版本演进策略文档。
 > - ❌ **API 文档自动生成**：无 Swagger/OpenAPI。
 > - 进度真相以 `35-gateway-development.md` 与 `guides/execution-plan.md` 附录 A 为准。
@@ -29,14 +32,17 @@
 | 运行注册表 | `internal/runtime/run_registry.go` | 活跃运行、取消、状态、Steerable 入队 |
 | RunGateway 接口 | `internal/runtime/gateway.go` | Chat / Team / Cron / Channel / WS 共用 |
 | Runner 构建 | `internal/runtime/runner_manager.go` | 统一 TurnRunner 装配 + AwaitUserReplyRouting |
+| Turn 编排 | `internal/service/chat_orchestrator.go` | ChatOrchestrator 实现 `biz.TurnExecutor`，ChatService 为薄传输桥 |
+| Turn 管道 | `internal/service/turn_pipeline.go` | 显式 Ingress → Service → Executor → Projector 管道 |
+| 准入控制 | `internal/runtime/turn/admission_gate.go` | AdmissionGate：放行/入队/拒绝三路决策 |
 | Biz 编排 | `internal/biz/chat_usecase.go` | 入队/排队/状态/锁/await channel 编排 |
 | 消息排队 | `internal/runtime/pending_queue.go` | Follow-up Queue：Steerable 优先 + Pending FIFO（32 条/会话） |
 | 运行取消 | `StopGeneration` API | ManagedRunner.Cancel + context cancel |
 | 运行状态查询 | `GetRunStatus` API | 7 种状态 + trpc RunStatus 字段合并 |
 | 用户回复路由 | `AwaitUserReply` API | ServiceTool 暂停 + 跨重启 resume |
-| 出站 Webhook | `GatewayService` + `WebhookDispatcher` | CRUD + 终态回调（HMAC-SHA256） |
-| WebSocket 网关 | `internal/server/ws.go` | Chat / Monitor / Team 多通道 |
-| 认证 | `pkg/auth/middleware.go` | JWT + Webhook 路径白名单 |
+| 出站 Webhook | `GatewayService` + `WebhookDispatcher` | CRUD + 终态回调（HMAC-SHA256），事件含 `graph_task_status` |
+| WebSocket 网关 | `internal/server/ws.go` | Chat / Monitor / Team 多通道，双 bus + 三优先级队列 |
+| 认证 | `pkg/auth/middleware.go` | JWT + Webhook 路径安全（EP-SEC-03） |
 | Workspace 隔离 | `internal/server/middleware/workspace.go` | X-Workspace-ID header/query |
 
 ### 1.2 仍缺失或半成品
@@ -109,7 +115,7 @@ pkg/trpc-agent-go/runner/
 **用户故事**：作为系统管理员，我希望 Agent 运行完成后自动回调外部系统。
 
 **功能规格**：
-- 支持配置 Webhook URL 和事件类型（run.completed / run.failed / run.cancelled）
+- 支持配置 Webhook URL 和事件类型（run.completed / run.failed / run.cancelled / graph_task_status）
 - HMAC-SHA256 签名、自定义 Headers、启用/禁用
 
 **验收标准**：

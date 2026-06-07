@@ -18,31 +18,38 @@ Graph 工作流引擎：基于 trpc-agent-go `graph` 包，构建"LangGraph for 
 | 组件 | 文件 | 状态 |
 |------|------|------|
 | Graph 构建器 | `internal/graph/trpc/builder.go` | ✅ BuildStateGraph + GraphAgent + StateSchema/Reducer + 子图 + DAG |
+| 节点接线 | `internal/graph/trpc/node_wiring.go` | ✅ LLM/Tool/Agent/Function/Router/Task/Review 节点接线 + Mapper + RetryPolicy + CachePolicy + WithEndsMap |
 | 函数注册表 | `internal/graph/trpc/registry.go` | ✅ NodeFunc/CondFunc 注册表 |
 | Checkpoint 适配器 | `internal/graph/trpc/checkpoint.go` | ✅ InMemory + SQLite Saver |
-| 事件桥接器 | `internal/graph/trpc/event_bridge.go` | ✅ 9 种 ObjectType 映射 |
+| 事件桥接器 | `internal/graph/trpc/event_bridge.go` | ✅ 9 种 ObjectType 映射 + ExecutionSummary 集成 |
+| 执行摘要 | `internal/graph/trpc/execution_summary.go` | ✅ ExecutionSummaryTracker + NodeExecutionSummary |
 | 可视化解析 | `internal/graph/trpc/visualize.go` | ✅ DOT 解析 + 结构化 JSON |
 | 设计时校验 | `internal/graph/trpc/validator.go` | ✅ 拓扑/Agent引用/StateSchema/循环 |
 | 设计模式模板 | `internal/graph/trpc/templates.go` | ✅ 6 种内置模板 + TemplateToBuildConfig |
+| 版本管理 | `internal/biz/graph_version.go` | ✅ metadata._version_history 快照 + ListGraphVersions/RollbackGraphVersion |
 | 运行时适配器 | `internal/graph/adapter/runtime_adapter.go` | ✅ GraphBuilderFactory + BuildAndRun/Resume/Visualize/Validate |
-| 业务层 | `internal/biz/graph.go` | ✅ CRUD + Execute + Resume + Cancel + TimeTravel + Checkpoint + Visualize + Validate + Templates |
+| 业务层 | `internal/biz/graph.go` + `graph_definition_usecase.go` | ✅ CRUD + Execute + Resume + Cancel + TimeTravel + Checkpoint + Visualize + Validate + Templates + Export/Import + Versions + SaveAsTemplate |
 | 业务运行时 | `internal/biz/graph_runtime.go` | ✅ GraphRuntime 接口 + GraphBuilderFactory 接口 |
 | 任务系统 | `internal/biz/task.go` | ✅ TaskUsecase + 状态机 + Claim/Submit/Heartbeat/Review/Timeout |
+| 任务 Webhook | `internal/service/graph_task_runtime.go` | ✅ GraphTaskRuntime → dispatchGraphTaskWebhook |
 | 数据层 | `internal/data/graph.go` + `task.go` | ✅ GraphRepo + TaskRepo + Ent 持久化 |
-| 服务层 | `internal/service/graph.go` | ✅ 28 个 RPC 方法（含 Task API） |
-| Proto 定义 | `api/kratos/graph/v1/graph.proto` | ✅ 28 个 RPC 端点 |
-| 前端类型 | `web/src/features/graph/types.ts` | ✅ 完整类型定义（含 Task 类型） |
-| 前端 API | `web/src/features/graph/api.ts` | ✅ 完整 API 客户端（含 Task API） |
-| 前端组件 | `web/src/components/graph/` | ✅ Vue Flow 画布 + 节点面板 + 属性面板 + 右键菜单 + 搜索/筛选/排序 + 进度统计 |
+| 服务层 | `internal/service/graph_*.go` | ✅ 42 个方法（15 定义 + 9 执行 + 16 任务 + 2 异步） |
+| Proto 定义 | `api/kratos/graph/v1/graph.proto` | ✅ 32 个 RPC 端点 |
+| 前端类型 | `web/src/features/graph/types.ts` | ✅ 完整类型定义（含 Task/Version/ExecutionSummary 类型） |
+| 前端 API | `web/src/features/graph/api.ts` | ✅ 完整 API 客户端（含 Export/Import/Versions/SaveAsTemplate） |
+| 前端组件 | `web/src/components/graph/` | ✅ 22 个组件（Vue Flow 画布 + Run/HITL/Validation/Template/Checkpoint/TimeTravel/Kanban/Version） |
+| 前端运行态 | `web/src/features/graph/runtime/` | ✅ useGraphExecutionStream + useGraphTimeTravel + 投影逻辑 |
+| 前端编辑态 | `web/src/features/graph/editor/` | ✅ graphLayout 布局持久化 + dagre 自动布局 |
+| 前端资产 | `web/src/features/graph/useGraphEditorAssets.ts` | ✅ 导入/导出/版本/模板 composable |
 
 ### 1.3 本期设计目标
 
 | 维度 | 当前状态 | 目标 |
 |------|----------|------|
-| 图结构与混合控制 | ✅ Function/Agent/Router 节点已实现 | 补全 LLM/Tool 节点、Agent InputMapper/OutputMapper 接线 |
-| 动态拓扑与状态共享 | ✅ 条件路由/State Schema/校验已实现 | 补全 Command.GoTo/WithEndsMap 接线 |
-| 人机协同与可观测性 | ✅ HITL/Checkpoint/EventBridge/Task 已实现 | 补全 ExecutionSummary、前端执行监控增强 |
-| 设计辅助与资产复用 | ✅ 校验/模板已实现 | 补全用户自定义模板、版本管理、导入导出 |
+| 图结构与混合控制 | ✅ 全部节点类型已接线（LLM/Tool/Agent/Function/Router/Join） | 补全子图嵌套编辑器 UI |
+| 动态拓扑与状态共享 | ✅ 条件路由/State Schema/校验/Command.GoTo 已实现 | 补全动态任务节点插入（BabyAGI 模式） |
+| 人机协同与可观测性 | ✅ HITL/Checkpoint/EventBridge/Task/ExecutionSummary 已实现 | 补全 Token 用量追踪 |
+| 设计辅助与资产复用 | ✅ 校验/模板/版本管理/导入导出/用户自定义模板已实现 | 补全熔断策略接入 NodeDef |
 
 ---
 
@@ -95,9 +102,9 @@ Graph 工作流引擎：基于 trpc-agent-go `graph` 包，构建"LangGraph for 
 | 节点类型 | 框架 API | 必填属性 | 状态 |
 |----------|----------|----------|------|
 | Function | `AddNode(id, fn, opts...)` | FuncRef | ✅ 已实现 |
-| LLM | `AddLLMNode(id, instruction, model, opts...)` | Instruction + Model | ❌ 未接线 |
-| Tool | `AddToolNode(id, toolNames, opts...)` | ToolNames | ❌ 未接线 |
-| Agent | `AddNode(id, agent, opts...)` | AgentName | ✅ 基础已实现，❌ InputMapper/OutputMapper 未接线 |
+| LLM | `AddLLMNode(id, instruction, model, opts...)` | Instruction + Model | ✅ 已实现（`node_wiring.go`） |
+| Tool | `AddToolsNode(id, toolMap, opts...)` | ToolNames | ✅ 已实现（`node_wiring.go`） |
+| Agent | `AddNode(id, agent, opts...)` | AgentName | ✅ 已实现（含 InputMapper/OutputMapper，`node_wiring.go`） |
 | Router | `AddConditionalEdges(src, fn, pathMap)` | CondFuncRef + PathMap | ✅ 已实现 |
 | Join | BSP/DAG 引擎自动处理 | 无 | ✅ 已实现 |
 
@@ -150,8 +157,19 @@ message NodeDef {
   int32 timeout_seconds = 25;
   int32 heartbeat_interval_seconds = 26;
   bool enable_lease_extension = 27;
+
+  // 重试策略（扁平字段，非嵌套 message）
+  int32 retry_max_attempts = 20;   // > 0 时启用 WithSimpleRetry
+  string failure_action = 28;      // "skip"|"retry_then_block"|"fail_fast"
+  string fallback_agent = 29;
+
+  // 缓存策略（扁平字段）
+  bool cache_enabled = 23;
+  int32 cache_ttl_seconds = 24;
 }
 ```
+
+> **设计说明**：RetryPolicy 和 CachePolicy 在 Proto 中以扁平字段实现（`retry_max_attempts`/`failure_action`/`fallback_agent`/`cache_enabled`/`cache_ttl_seconds`），而非嵌套 message。Builder 层 `node_wiring.go` 读取这些字段并调用 `WithRetryPolicy`/`WithNodeCachePolicy`。
 
 ### 3.3 边类型
 
@@ -190,9 +208,9 @@ message NodeDef {
 
 Router 节点通过 `AddConditionalEdges` 定义条件路由，CondFuncRef 引用 Registry 中注册的条件函数，PathMap 定义分支映射。
 
-### 4.2 动态路由（Command.GoTo）（❌ 待接线）
+### 4.2 动态路由（Command.GoTo）（✅ 已实现）
 
-节点 `Destinations` 字段声明可能的动态路由目标，运行时通过 `Command.GoTo` 决定实际路径。Builder 中需接线 `WithEndsMap`。
+节点 `Destinations` 字段声明可能的动态路由目标，运行时通过 `Command.GoTo` 决定实际路径。`node_wiring.go` 中 `WithEndsMap` 已接线。
 
 ### 4.3 State Schema + Reducer（✅ 已实现）
 
@@ -238,26 +256,30 @@ Checkpoint Saver 支持 InMemory 和 SQLite 两种后端，通过 `checkpoint.go
 | `graph.state.update` | `state_delta` | 状态更新 |
 | `graph.execution`（done） | `graph_execution_done` | 执行完成 |
 
-### 5.4 ExecutionSummary（❌ 待实现）
+### 5.4 ExecutionSummary（✅ 已实现）
 
-Graph 执行完成后推送 `graph_execution_done` 事件，包含执行摘要：
+Graph 执行完成后推送 `graph_execution_done` 事件，包含执行摘要。实现位于 `execution_summary.go`（Go 结构体）+ `event_bridge.go`（WS 集成）。
 
-```protobuf
-message ExecutionSummary {
-  string execution_id = 1;
-  int32 total_steps = 2;
-  int64 total_duration_ns = 3;
-  int64 total_tokens = 4;
-  repeated NodeExecutionSummary nodes = 5;
+> **注意**：`ExecutionSummary`/`NodeExecutionSummary` 仅存在于 Go 代码中，未映射为 Proto message。前端通过 WS `graph_execution_done` 事件的 `metadata.execution_summary` JSON 字段消费。前端类型为 `GraphRunExecutionSummary` + `GraphRunNodeSummary`。
+
+```go
+// internal/graph/trpc/execution_summary.go
+type NodeExecutionSummary struct {
+    NodeID     string `json:"node_id"`
+    NodeType   string `json:"node_type"`
+    Status     string `json:"status"`
+    DurationMS int64  `json:"duration_ms"`
+    Error      string `json:"error,omitempty"`
+    StepNumber int    `json:"step_number,omitempty"`
 }
 
-message NodeExecutionSummary {
-  string node_id = 1;
-  string node_type = 2;
-  string status = 3;
-  int64 duration_ns = 4;
-  int64 token_count = 5;
-  string error = 6;
+type ExecutionSummary struct {
+    ExecutionID    string                 `json:"execution_id"`
+    GraphID        string                 `json:"graph_id"`
+    TotalSteps     int                    `json:"total_steps"`
+    DurationMS     int64                  `json:"duration_ms"`
+    Nodes          []NodeExecutionSummary `json:"nodes"`
+    FinalStateKeys int                    `json:"final_state_keys,omitempty"`
 }
 ```
 
@@ -296,13 +318,16 @@ message NodeExecutionSummary {
 | `dispatch` | 条件分发 | A→[路由]→B/C/D | 4 |
 | `nested_subgraph` | 子图嵌套 | A→[子工作流]→B | 3 |
 
-### 6.3 资产复用（❌ 待实现）
+### 6.3 资产复用（✅ 已实现）
 
-| 资产类型 | 实现方式 | 优先级 |
-|----------|----------|--------|
-| 用户自定义模板 | 将已有 Graph 保存为模板 | P2 |
-| Graph 版本管理 | 定义版本化，支持回滚 | P2 |
-| 导入/导出 | Graph 定义 JSON 导入导出 | P2 |
+| 资产类型 | 实现方式 | 状态 |
+|----------|----------|------|
+| 用户自定义模板 | `SaveGraphAsTemplate` RPC + `metadata.user_template` + `GraphTemplatePicker` | ✅ |
+| Graph 版本管理 | `metadata._version_history` 快照 + `ListGraphVersions/RollbackGraphVersion` RPC + `GraphVersionPanel` | ✅ |
+| 导入/导出 | `ExportGraph/ImportGraph` RPC + 编辑器 ⋮ 菜单 + `useGraphEditorAssets.ts` | ✅ |
+| 子图复用 | 后端 `SubgraphDef` 已支持，前端子图节点编辑器待补 | 🟡 |
+
+> **版本管理实现说明**：版本历史存储在 `GraphDefinition.metadata._version_history` JSON 字段中（最多 50 条），而非独立的数据库列。每次 `UpdateGraph` 时自动创建快照。Ent schema 中无 `version` 列——版本号和快照均通过 metadata 持久化。
 
 ---
 
@@ -396,8 +421,8 @@ pending ──(无匹配Agent)──▶ pending_assignment
 | `SubmitTaskResult` | ✅ | Agent 提交结果 |
 | `ReportBlocked` | ✅ | Agent 报告阻塞 |
 | `ReviewTask` | ✅ | 审核任务 |
-| Webhook 通知 | ❌ | 节点级 Webhook 配置 |
-| 熔断策略 | ❌ | CircuitBreakerPolicy |
+| Webhook 通知 | ✅ | `GraphTaskRuntime.dispatchGraphTaskWebhook` → `graph.task.status` |
+| 熔断策略 | 🟡 | Proto `CircuitBreakerPolicy` 已定义，未接入 NodeDef；biz 层 `tool/circuit_breaker.go` 已实现 Tool 级熔断 |
 
 ---
 
@@ -433,7 +458,12 @@ pending ──(无匹配Agent)──▶ pending_assignment
 | `execution_engine` | String | 执行引擎（bsp/dag） |
 | `interrupt_before` | JSON | 全局中断前节点列表 |
 | `interrupt_after` | JSON | 全局中断后节点列表 |
-| `metadata` | JSON | 扩展元数据 |
+| `metadata` | JSON | 扩展元数据（含 `_version`/`_version_history`/`user_template`/`layout`） |
+| `sort_order` | Int | 排序序号 |
+| `created_at` | Time | 创建时间 |
+| `updated_at` | Time | 更新时间 |
+
+> **版本管理存储**：版本号和快照历史存储在 `metadata._version`（int）和 `metadata._version_history`（GraphVersionEntry[] JSON）中，Ent schema 中无独立 `version` 列。
 
 ### 8.3 GraphExecution 核心字段
 
@@ -472,11 +502,15 @@ pending ──(无匹配Agent)──▶ pending_assignment
 | 模块 | 职责 | 不负责 |
 |------|------|--------|
 | `builder.go` | GraphBuildConfig → StateGraph → GraphAgent | 业务逻辑、持久化 |
+| `node_wiring.go` | 节点类型接线（LLM/Tool/Agent/Function/Router/Task/Review）+ Mapper + RetryPolicy + CachePolicy + WithEndsMap | 图构建、持久化 |
 | `registry.go` | NodeFunc/CondFunc 注册与解析 | 执行逻辑 |
 | `validator.go` | 设计时校验 | 运行时校验 |
 | `templates.go` | 内置模板定义与转换 | 用户模板管理 |
 | `checkpoint.go` | Checkpoint Saver 适配 | 检查点业务逻辑 |
-| `event_bridge.go` | Graph 事件 → EventBus 桥接 | 事件消费 |
+| `event_bridge.go` | Graph 事件 → EventBus 桥接 + ExecutionSummary 集成 | 事件消费 |
+| `execution_summary.go` | ExecutionSummary 追踪与快照 | 事件推送 |
 | `visualize.go` | DOT 解析 + 结构化 JSON | 画布渲染 |
+| `graph_version.go` | 版本快照、回滚、用户模板元数据 | 持久化 |
 | `GraphUsecase` | 图定义 CRUD + 执行编排 | 图构建细节 |
+| `GraphDefinitionUsecase` | 图定义 CRUD + 模板 + 版本 + 导入导出 | 执行逻辑 |
 | `TaskUsecase` | 任务生命周期管理 | 图执行逻辑 |

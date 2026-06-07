@@ -18,24 +18,31 @@ Channel 在 **Kratos 传输层** 负责外部 IM 平台连接：凭据管理、�
 3. **双入站路径** — Webhook（✅）+ Runtime 长连接（✅ scaffold，见 `internal/channel/runtime/`）
 4. **`internal/biz` 禁止 import trpc-agent-go** — Agent 调用仅在 `internal/service`
 
-**当前实现状态**（2026-05-22，P1 优化后）：
+**当前实现状态**（2026-06-06，Phase K+L 全部闭合）：
 
 | 能力 | 状态 |
 |------|------|
 | Proto CRUD + Catalog + Test + Credentials | ✅ |
-| Webhook 入站：feishu / dingtalk / wecom / slack / telegram / wechat / onebot | ✅ |
+| Webhook 入站：feishu / dingtalk / wecom / slack / telegram / wechat / onebot / line / mattermost / teams | ✅ |
 | 统一入站：`ProcessInbound` + `processInboundHTTP` | ✅ |
 | 异步 `channel_delivery` + Worker（3 次重试） | ✅ |
-| 长连接 Runtime（larkws / ding stream / socketmode / polling / discord gateway） | ✅ scaffold |
+| 长连接 Runtime（larkws / ding stream / socketmode / polling / discord gateway / mattermost websocket） | ✅ |
 | `Manager.Reload` 配置 fingerprint reconcile | ✅ |
-| 流式回复（edit-in-place） | ✅ MVP（Telegram / Feishu / Slack） |
+| 流式回复（edit-in-place） | ✅ MVP（Telegram / Feishu / Slack / LINE / Mattermost） |
 | 长任务：Webhook 同步阻塞 Turn | ✅ Phase E1（async execute） |
 | 长任务：入队 IM 反馈 | ✅ Phase E1-4 |
 | 长任务：ChannelTurnJob | ✅ Phase E3 + ListChannelTurnJobs API |
 | wechat 出站（被动 ReplyXML + 主动 API） | ✅ |
 | discord 出站 | ✅ |
 | personal_qq / onebot 出站 | ✅ |
-| qq 官方 botgo | ❌ |
+| qq 官方 botgo | ✅ |
+| LINE 出站 + 流式 | ✅ |
+| Mattermost 出站 + 流式 + WS 长连接 | ✅ |
+| Teams 出站（Bot Framework OAuth2） | ✅ |
+| safego 合规 | ✅ |
+| Service 层 kerrors 合规 | ✅ |
+| Proto 隔离合规 | ✅ |
+| Service 层无直接 Repo | ✅ |
 
 ---
 
@@ -48,13 +55,14 @@ Channel 在 **Kratos 传输层** 负责外部 IM 平台连接：凭据管理、�
 └────────────────────────────┬────────────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────────┐
-│ 入站 B：Runtime（已实现 scaffold）                                 │
+│ 入站 B：Runtime（已实现）                                         │
 │   ChannelRuntime.Start → Manager.Reload(reconcile)               │
 │     ├ feishu:   larkws.Client          [MuseBot lark.go]         │
 │     ├ dingtalk: StreamClient           [MuseBot ding.go]        │
 │     ├ slack:    socketmode.Client      [MuseBot slack.go]       │
 │     ├ telegram: GetUpdatesChan         [MuseBot telegram.go]    │
-│     └ discord:  discordgo.Session      [MuseBot discord.go]     │
+│     ├ discord:  discordgo.Session      [MuseBot discord.go]     │
+│     └ mattermost: gorilla/websocket    [自研]                    │
 └────────────────────────────┬────────────────────────────────────┘
                              │  NormalizedInbound { channelID, peerID, text, meta }
                              ▼
@@ -225,16 +233,19 @@ Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启
 
 | type | Aranea 包 | 当前 | MuseBot 文件 | MuseBot 连接 | 目标 SDK |
 |------|-----------|------|--------------|-------------|----------|
-| `feishu` | `lark/` | webhook ✅ | `lark.go` | larkws | `larksuite/oapi-sdk-go/v3` |
-| `dingtalk` | `dingtalk/` | webhook ✅ | `ding.go` | StreamClient | `open-dingtalk/dingtalk-stream-sdk-go` |
+| `feishu` | `lark/` | webhook ✅ · WS ✅ · 流式 ✅ | `lark.go` | larkws | `larksuite/oapi-sdk-go/v3` |
+| `dingtalk` | `dingtalk/` | webhook ✅ · stream ✅ | `ding.go` | StreamClient | `open-dingtalk/dingtalk-stream-sdk-go` |
 | `wecom` | `wecom/` | webhook ✅ | `comwechat.go` | HTTP `/com/wechat` | PowerWeChat work |
 | `wecom-app` | `wecom/` | webhook ✅ | 同上 | 同上 | 同上 |
-| `wechat` | — | ❌ | `wechat.go` | HTTP `/wechat` | PowerWeChat officialAccount |
-| `slack` | `slack/` | Events webhook ✅ | `slack.go` | Socket Mode | `slack-go/slack` + socketmode |
-| `telegram` | `telegram/` | webhook ✅ | `telegram.go` | Long polling | `go-telegram-bot-api/v5` |
-| `discord` | — | ❌ | `discord.go` | discordgo Open | `bwmarrin/discordgo` |
-| `qq` | — | ❌ | `qq.go` | webhook + botgo WS | `tencent-connect/botgo` |
-| `personal_qq` | — | ❌ | `personalqq.go` | OneBot POST `/onebot` | 自定义 + OneBot HTTP |
+| `wechat` | `wechat/` | webhook ✅ · outbound ✅ | `wechat.go` | HTTP `/wechat` | PowerWeChat officialAccount |
+| `slack` | `slack/` | Events webhook ✅ · socketmode ✅ · 流式 ✅ | `slack.go` | Socket Mode | `slack-go/slack` + socketmode |
+| `telegram` | `telegram/` | webhook ✅ · polling ✅ · 流式 ✅ | `telegram.go` | Long polling | `go-telegram-bot-api/v5` |
+| `discord` | `discord/` | gateway ✅ · outbound ✅ | `discord.go` | discordgo Open | `bwmarrin/discordgo` |
+| `qq` | `qq/` | webhook ✅ · outbound ✅ | `qq.go` | webhook + botgo WS | `tencent-connect/botgo` |
+| `personal_qq` | `onebot/` | webhook ✅ · outbound ✅ | `personalqq.go` | OneBot POST `/onebot` | 自定义 + OneBot HTTP |
+| `line` | `line/` | webhook ✅ · outbound ✅ · 流式 ✅ | — | — | `line-bot-sdk-go`（仅类型引用） |
+| `mattermost` | `mattermost/` | webhook ✅ · WS ✅ · outbound ✅ · 流式 ✅ | — | — | `gorilla/websocket` + REST API v4 |
+| `teams` | `teams/` | webhook ✅ · outbound ✅ | — | — | Bot Framework OAuth2 + REST API |
 
 ### 6.1 MuseBot HTTP 路由 → Aranea 映射
 
@@ -307,7 +318,7 @@ web/src/components/channels/
 |------|------|
 | `ChannelService` | gRPC/HTTP API |
 | `ChannelIngress` | Webhook |
-| `ChannelRuntimeManager` | 长连接（规划） |
+| `ChannelRuntimeManager` | 长连接 ✅ |
 | `ChannelDeliveryWorker` | cron 5s |
 
 | 环境变量 | 作用 |
@@ -330,12 +341,13 @@ web/src/components/channels/
 
 ---
 
-## 十一、新增平台优先级（MuseBot 顺序建议）
+## 十一、新增平台优先级（已完成）
 
-1. **P0 巩固**：现有 6 平台 Webhook 单测 + Runtime 骨架  
-2. **P1 连接升级**：飞书 larkws、钉钉 Stream、Slack Socket Mode、Telegram polling  
-3. **P1 国内补全**：微信公众号（PowerWeChat）  
-4. **P2 海外/QQ**：Discord、QQ 官方、OneBot  
+1. **P0 巩固** ✅：现有 10 平台 Webhook + Runtime  
+2. **P1 连接升级** ✅：飞书 larkws、钉钉 Stream、Slack Socket Mode、Telegram polling  
+3. **P1 国内补全** ✅：微信公众号（PowerWeChat）  
+4. **P1 海外扩展** ✅：LINE、Mattermost、Teams  
+5. **P2 海外/QQ** ✅：Discord、QQ 官方、OneBot  
 
 ---
 
@@ -872,6 +884,7 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 |------|------|------|
 | 1.0 | 2026-05-22 | §十二 长任务异步执行：Accept/Execute 分离、Job 模型、ProgressProjector、影响域 |
 | 1.1 | 2026-05-24 | §十四 Hermes Agent 对照：消息流转、飞书 WS/心跳/分批/Reaction、借鉴项 F-01–F-11 |
+| 1.2 | 2026-06-06 | §一 实现状态更新：13 平台全部 bundled ✅；§二 Runtime 补 mattermost；§六 平台矩阵 10→13 行，状态全部 ✅；§九 ChannelRuntimeManager ✅；§十一 优先级全部完成 |
 
 
 ---
