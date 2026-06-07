@@ -82,7 +82,7 @@
 
 **⚠️ 开发注意**：
 - 新增 Provider 类型时，需在 `trpc_llm.go` 的 `MapProviderType` 添加映射
-- HA 策略（Failover/Hedge）配置在 `LlmProviderModelUsecase` 的 CatalogConfig 中
+- HA 策略（Failover/Hedge）配置在 `LlmProviderModelUsecase` 的 ProviderModelConfig 中
 - Provider 连接问题不会导致编译错误，但会在运行时影响所有使用该 Provider 的 Agent
 
 ---

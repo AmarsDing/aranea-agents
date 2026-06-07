@@ -247,7 +247,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 		stmt, _ := row["statement"].(string)
 		details, _ := row["details_markdown"].(string)
 		imp := anyFloat(row, "importance")
-		_ = anyFloat(row, "confidence")
+		_ = anyFloat(row, "confidence") // confidence not used in L3 hybrid scoring
 		qScore := anyFloat(row, "quality_score")
 		updatedAt, _ := row["updated_at"].(string)
 

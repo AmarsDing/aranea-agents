@@ -288,19 +288,8 @@
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from 'quasar';
 import { useModelCatalogTab } from '../features/model-catalog/useModelCatalogTab';
 import JsonCodeViewer from '../components/common/JsonCodeViewer.vue';
-
-const $q = useQuasar();
-
-function onCopySuccess() {
-  $q.notify({ type: 'positive', message: '已复制', timeout: 1200 });
-}
-
-function onCopyError(message: string) {
-  $q.notify({ type: 'warning', message });
-}
 
 const {
   loading,
@@ -350,5 +339,7 @@ const {
   jsonSearchPrev,
   jsonSearchNext,
   t,
+  onCopySuccess,
+  onCopyError,
 } = useModelCatalogTab();
 </script>

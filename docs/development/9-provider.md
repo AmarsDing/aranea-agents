@@ -17,16 +17,16 @@
 > | 章节 | 需求描述 | 实现状态 | 代码证据 |
 > |------|---------|---------|---------|
 > | §8.1 | "当前仅支持 OpenAI Provider" | ✅ 已过时 | `trpc_llm.go` 已通过 `MapProviderType` + `trpcprovider.Model` 工厂支持 5 种原生 Provider + 4 种 Variant |
-> | §8.2 | 按 provider_type 分发构建 | ✅ 已实现 | `trpcModelFromCatalogConfig` → `MapProviderType` → `trpcprovider.Model` |
+> | §8.2 | 按 provider_type 分发构建 | ✅ 已实现 | `trpcModelFromProviderModelConfig` → `MapProviderType` → `trpcprovider.Model` |
 > | §8.3 | 各 Provider 构建逻辑 | ✅ 已实现 | `buildOpenAISpecificOptions` / `buildAnthropicSpecificOptions` / `buildGeminiSpecificOptions` / `buildOllamaSpecificOptions` / `buildHunyuanSpecificOptions` |
-> | §8.4 | CatalogConfig 扩展 | ✅ 已实现 | `catalog.go` CatalogConfig 含 Variant / SecretID / SecretKey / AWSRegion / HA 等全部字段 |
+> | §8.4 | ProviderModelConfig 扩展 | ✅ 已实现 | `catalog.go` ProviderModelConfig 含 Variant / SecretID / SecretKey / AWSRegion / HA 等全部字段 |
 > | §9.2 | Inspect 请求扩展字段 | ✅ 已实现 | Proto 含 variant / secret_id / secret_key / aws_region |
 > | §9.3 | Inspect 响应扩展字段 | ✅ 已实现 | Proto 含 variant / enable_token_tailoring / supports_cache / supports_thinking |
 > | §10.1 | providerPresets.ts 改造 | ✅ 已实现 | `providerType` 已对齐 trpc 枚举值；`variant` / `authType` 字段已添加；20 个预设 |
 > | §10.2 | ResourceManagerPage 四步表单 | ✅ 已实现 | QStepper 四步表单 + ProviderHAConfig |
 > | §10.3 | ProviderModelRow Variant/HA Chip | ✅ 已实现 | ProviderModelsTable 含 Variant Chip 和 HA Chip |
-> | §11.1 | catalog.go 扩展 | ✅ 已实现 | CatalogConfig 全字段 + MergeCatalogConfig 全字段合并 |
-> | §11.2 | trpc_llm.go 分发构建 | ✅ 已实现 | `trpcModelFromCatalogConfig` + `buildProviderOptions` + 5 种 Provider builder |
+> | §11.1 | catalog.go 扩展 | ✅ 已实现 | ProviderModelConfig 全字段 + MergeModelConfig 全字段合并 |
+> | §11.2 | trpc_llm.go 分发构建 | ✅ 已实现 | `trpcModelFromProviderModelConfig` + `buildProviderOptions` + 5 种 Provider builder |
 > | §11.3 | biz InspectMerge 扩展 | ✅ 已实现 | InspectMerge 含 variant / secret_id / secret_key / aws_region；`mergeInspectConfigJSON` 含 variant / secret_id / secret_key / aws_region |
 > | §11.4 | Proto 扩展 | ✅ 已实现 | Proto 已新增字段 + pricing_configured（field 16） |
 > | §12.1 | Failover 高可用 | ✅ 已实现 | `wrapFailover` + `trpcfailover.New` + `WithSwitchCallback` 事件 |
@@ -683,7 +683,7 @@ Tooltip 展示热度来源：近 30 天调用次数、Token、费用、最近一
 > **2026-06-06 现状对齐**：✅ 已实现。实际代码使用 `MapProviderType(cfg.ProviderType)` 映射为 trpc provider 名称，再通过 `trpcprovider.Model(providerName, name, opts...)` 工厂统一构建，而非 switch-case 直接调用各 Provider 的 `New()`。各 Provider 专属选项通过 `buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建。
 
 ```go
-func trpcModelFromCatalogConfig(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func trpcModelFromProviderModelConfig(cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     switch cfg.ProviderType {
     case "openai":
         return buildOpenAIModel(cfg, rt)
@@ -712,7 +712,7 @@ func trpcModelFromCatalogConfig(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Mod
 #### OpenAI
 
 ```go
-func buildOpenAIModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func buildOpenAIModel(cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     opts := []trpcopenai.Option{}
     if cfg.BaseURL != "" { opts = append(opts, trpcopenai.WithBaseURL(cfg.BaseURL)) }
     if cfg.APIKey != "" { opts = append(opts, trpcopenai.WithAPIKey(cfg.APIKey)) }
@@ -728,7 +728,7 @@ func buildOpenAIModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error)
 #### Anthropic
 
 ```go
-func buildAnthropicModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func buildAnthropicModel(cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     opts := []trpcanthropic.Option{}
     if cfg.BaseURL != "" { opts = append(opts, trpcanthropic.WithBaseURL(cfg.BaseURL)) }
     if cfg.APIKey != "" { opts = append(opts, trpcanthropic.WithAPIKey(cfg.APIKey)) }
@@ -743,7 +743,7 @@ func buildAnthropicModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, err
 #### Gemini
 
 ```go
-func buildGeminiModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func buildGeminiModel(cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     opts := []trpcgemini.Option{}
     if cfg.APIKey != "" { /* Gemini 通过 ClientConfig 传入 APIKey */ }
     if cfg.EnableTokenTailoring { opts = append(opts, trpcgemini.WithEnableTokenTailoring(true)) }
@@ -755,7 +755,7 @@ func buildGeminiModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error)
 #### Ollama
 
 ```go
-func buildOllamaModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func buildOllamaModel(cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     opts := []trpcollama.Option{}
     if cfg.BaseURL != "" { opts = append(opts, trpcollama.WithHost(cfg.BaseURL)) }
     if cfg.ContextWindow > 0 { opts = append(opts, trpcollama.WithContextWindow(cfg.ContextWindow)) }
@@ -767,7 +767,7 @@ func buildOllamaModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error)
 #### Hunyuan
 
 ```go
-func buildHunyuanModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func buildHunyuanModel(cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     opts := []trpchunyuan.Option{}
     if cfg.BaseURL != "" { opts = append(opts, trpchunyuan.WithHost(cfg.BaseURL)) }
     if cfg.SecretID != "" { opts = append(opts, trpchunyuan.WithSecretId(cfg.SecretID)) }
@@ -777,12 +777,12 @@ func buildHunyuanModel(cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error
 }
 ```
 
-### 8.4 CatalogConfig 扩展
+### 8.4 ProviderModelConfig 扩展
 
-> **2026-06-06 现状对齐**：✅ 已实现。`catalog.go` 中 `CatalogConfig` 已包含以下全部字段：ProviderType / Variant / BaseURL / APIKey / ModelAPI / SecretID / SecretKey / AWSRegion / EnableTokenTailoring / ContextWindow / MaxInputTokens / OptimizeForCache / ReasoningBackfill / ShowToolCallDelta / CacheSystemPrompt / CacheTools / CacheMessages / KeepAliveMinutes / ChannelBufferSize / HAMode / HACandidates / HAHedgeDelayMs。`MergeCatalogConfig` 已支持全部字段合并。注意：实际实现中 `CatalogConfig` 无 `OllamaOptions` / `ExtraHeaders` / `ExtraFields` 字段（这些在 config_json 中存在但未映射到 CatalogConfig）。
+> **2026-06-06 现状对齐**：✅ 已实现。`catalog.go` 中 `ProviderModelConfig` 已包含以下全部字段：ProviderType / Variant / BaseURL / APIKey / ModelAPI / SecretID / SecretKey / AWSRegion / EnableTokenTailoring / ContextWindow / MaxInputTokens / OptimizeForCache / ReasoningBackfill / ShowToolCallDelta / CacheSystemPrompt / CacheTools / CacheMessages / KeepAliveMinutes / ChannelBufferSize / HAMode / HACandidates / HAHedgeDelayMs。`MergeModelConfig` 已支持全部字段合并。注意：实际实现中 `ProviderModelConfig` 无 `OllamaOptions` / `ExtraHeaders` / `ExtraFields` 字段（这些在 config_json 中存在但未映射到 ProviderModelConfig）。
 
 ```go
-type CatalogConfig struct {
+type ProviderModelConfig struct {
     ProviderType           string
     Variant                string
     BaseURL                string
@@ -925,17 +925,17 @@ type CatalogConfig struct {
 
 ### 11.1 `internal/provider/catalog.go`
 
-> **2026-06-06 现状对齐**：✅ 已实现。`CatalogConfig` 已扩展全部字段（含 Variant / SecretID / SecretKey / AWSRegion / HA 配置等），`catalogConfigJSON` 已扩展解析新字段，`MergeCatalogConfig` 已支持全部字段覆盖。
+> **2026-06-06 现状对齐**：✅ 已实现。`ProviderModelConfig` 已扩展全部字段（含 Variant / SecretID / SecretKey / AWSRegion / HA 配置等），`catalogConfigJSON` 已扩展解析新字段，`MergeModelConfig` 已支持全部字段覆盖。
 
-- `CatalogConfig` 扩展（见 §8.4）
+- `ProviderModelConfig` 扩展（见 §8.4）
 - `catalogConfigJSON` 扩展以解析新字段
-- `MergeCatalogConfig` 支持新字段覆盖
+- `MergeModelConfig` 支持新字段覆盖
 
 ### 11.2 `internal/provider/trpc_llm.go`
 
-> **2026-06-06 现状对齐**：✅ 已实现。`trpcModelFromCatalogConfig` 通过 `MapProviderType` + `trpcprovider.Model` 工厂按 provider_type 分发构建；`buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建各 Provider 专属选项；`wrapHA` + `wrapFailover` / `wrapHedge` 实现 HA 包装（含 `WithSwitchCallback` 故障转移事件）。
+> **2026-06-06 现状对齐**：✅ 已实现。`trpcModelFromProviderModelConfig` 通过 `MapProviderType` + `trpcprovider.Model` 工厂按 provider_type 分发构建；`buildProviderOptions` + `buildXxxSpecificOptions` 系列函数构建各 Provider 专属选项；`wrapHA` + `wrapFailover` / `wrapHedge` 实现 HA 包装（含 `WithSwitchCallback` 故障转移事件）。
 
-- `trpcModelFromCatalogConfig` 按 `provider_type` 分发（见 §8.2）
+- `trpcModelFromProviderModelConfig` 按 `provider_type` 分发（见 §8.2）
 - 新增 `buildAnthropicModel`、`buildGeminiModel`、`buildOllamaModel`、`buildHunyuanModel` 等构建函数
 - `parseFailoverModels` / `parseHedgeModels` 从 `config_json` 解析 HA 配置
 

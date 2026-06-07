@@ -96,12 +96,12 @@ const monoLetters = computed(() => monoLettersForKey(props.company.key, props.co
 
   &:hover, &:focus-visible
     transform: translateY(-2px)
-    border-color: rgba(220, 160, 62, 0.45)
-    box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.45)
+    border-color: var(--color-accent-border)
+    box-shadow: var(--shadow-warm), var(--glass-inner-highlight)
 
   &.is-open
     border-color: var(--color-accent, #DCA03E)
-    box-shadow: 0 0 0 2px rgba(220, 160, 62, 0.18), 0 8px 24px rgba(93, 64, 55, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.45)
+    box-shadow: 0 0 0 2px var(--color-accent-soft), var(--shadow-warm), var(--glass-inner-highlight)
 
 .org-market-card__head
   display: flex
@@ -159,7 +159,7 @@ const monoLetters = computed(() => monoLettersForKey(props.company.key, props.co
     color: var(--color-accent-green, #2D6A4F)
 
   &.is-off
-    background: rgba(229, 92, 92, 0.1)
+    background: var(--color-danger-surface)
     color: var(--color-danger, #B13939)
 
 .org-market-card__status-dot
@@ -234,7 +234,7 @@ const monoLetters = computed(() => monoLettersForKey(props.company.key, props.co
     color: var(--color-warning, #8a6014)
 
     &:hover
-      background: rgba(220, 160, 62, 0.12)
+      background: var(--color-accent-hover-bg)
 
 .org-market-card__foot-spacer
   flex: 1

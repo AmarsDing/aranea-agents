@@ -32,29 +32,29 @@
     <q-tab-panels v-model="tab" animated>
       <q-tab-panel name="discover" class="q-pa-none">
         <A2ADiscoverPanel
-          v-model:workspace="discoverWorkspace"
-          v-model:capability="discoverCapability"
-          :agents="agents"
+          v-model:workspace="discover.discoverWorkspace"
+          v-model:capability="discover.discoverCapability"
+          :agents="discover.agents"
           :loading="loading"
-          :columns="cardColumns"
-          @discover="loadDiscover"
+          :columns="discover.cardColumns"
+          @discover="discover.loadDiscover"
         />
       </q-tab-panel>
       <q-tab-panel name="gateway" class="q-pa-none">
         <A2AGatewayPanel
-          v-model:workspace="gatewayWorkspace"
-          v-model:capability="gatewayCapability"
-          v-model:check-health="gatewayCheckHealth"
-          :entries="gatewayEntries"
-          :loading="gatewayLoading"
-          :columns="gatewayColumns"
-          @discover="loadGateway"
+          v-model:workspace="gateway.gatewayWorkspace"
+          v-model:capability="gateway.gatewayCapability"
+          v-model:check-health="gateway.gatewayCheckHealth"
+          :entries="gateway.gatewayEntries"
+          :loading="gateway.gatewayLoading"
+          :columns="gateway.gatewayColumns"
+          @discover="gateway.loadGateway"
         />
       </q-tab-panel>
       <q-tab-panel name="remote" class="q-pa-none q-gutter-md">
         <AppPageToolbar>
           <q-input
-            v-model="remoteWorkspace"
+            v-model="remote.remoteWorkspace"
             class="app-page-toolbar__field"
             dense
             outlined
@@ -62,22 +62,22 @@
             hint="留空列出全部"
           />
           <template #actions>
-            <q-btn outline no-caps color="primary" label="刷新列表" :loading="remoteLoading" @click="loadRemote" />
+            <q-btn outline no-caps color="primary" label="刷新列表" :loading="remote.remoteLoading" @click="remote.loadRemote" />
           </template>
         </AppPageToolbar>
         <A2ARemoteAgentPanel
           ref="remoteAgentPanelRef"
-          :loading="remoteRegisterLoading"
-          :discovering="remoteDiscoverLoading"
-          :preview="remotePreview"
+          :loading="remote.remoteRegisterLoading"
+          :discovering="remote.remoteDiscoverLoading"
+          :preview="remote.remotePreview"
           @register="onRemoteRegister"
-          @discover="previewRemote"
+          @discover="remote.previewRemote"
         />
         <AppRegistryTable
           row-key="id"
-          :rows="remoteAgents"
-          :columns="remoteColumns"
-          :loading="remoteLoading"
+          :rows="remote.remoteAgents"
+          :columns="remote.remoteColumns"
+          :loading="remote.remoteLoading"
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
           no-data-label="暂无远程注册"
@@ -121,7 +121,7 @@
                   color="negative"
                   icon="delete"
                   aria-label="删除"
-                  @click="confirmRemoveRemote(props.row.id, props.row.display_name)"
+                  @click="remote.confirmRemoveRemote(props.row.id, props.row.display_name)"
                 />
               </div>
             </q-td>
@@ -130,24 +130,24 @@
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
         <A2AAuditPanel
-          :rows="auditRows"
-          :total="auditTotal"
-          :loading="auditLoading"
-          :columns="auditColumns"
-          :status-color="auditStatusColor"
+          :rows="audit.auditRows"
+          :total="audit.auditTotal"
+          :loading="audit.auditLoading"
+          :columns="audit.auditColumns"
+          :status-color="audit.auditStatusColor"
         />
       </q-tab-panel>
       <q-tab-panel name="invoke" class="q-pa-none">
         <A2AInvokePanel
-          v-model:callee-agent-id="invokeForm.callee_agent_id"
-          v-model:capability="invokeForm.capability"
-          v-model:payload-json="invokeForm.payload_json"
-          v-model:timeout-seconds="invokeForm.timeout_seconds"
-          v-model:workspace="invokeForm.workspace"
-          :discovered-agents="agents"
-          :loading="invokeLoading"
-          :result="invokeResult"
-          @invoke="submitInvoke"
+          v-model:callee-agent-id="invoke.invokeForm.callee_agent_id"
+          v-model:capability="invoke.invokeForm.capability"
+          v-model:payload-json="invoke.invokeForm.payload_json"
+          v-model:timeout-seconds="invoke.invokeForm.timeout_seconds"
+          v-model:workspace="invoke.invokeForm.workspace"
+          :discovered-agents="discover.agents"
+          :loading="invoke.invokeLoading"
+          :result="invoke.invokeResult"
+          @invoke="invoke.submitInvoke"
         />
       </q-tab-panel>
     </q-tab-panels>
@@ -171,50 +171,14 @@ import { a2aAuthTypeLabel } from '../features/a2a/a2aTableUi';
 import type { RegisterRemoteAgentInput } from '../features/a2a/types';
 
 const {
-  agents,
-  auditRows,
-  auditTotal,
-  remoteAgents,
-  gatewayEntries,
-  loading,
-  tab,
-  auditLoading,
-  invokeLoading,
-  remoteLoading,
-  remoteDiscoverLoading,
-  remoteRegisterLoading,
-  gatewayLoading,
-  error,
-  invokeResult,
-  remotePreview,
-  discoverWorkspace,
-  discoverCapability,
-  remoteWorkspace,
-  gatewayWorkspace,
-  gatewayCapability,
-  gatewayCheckHealth,
-  invokeForm,
-  cardColumns,
-  remoteColumns,
-  auditColumns,
-  gatewayColumns,
-  auditStatusColor,
-  loadDiscover,
-  loadRemote,
-  submitInvoke,
-  submitRemoteRegister,
-  previewRemote,
-  removeRemote,
-  confirmRemoveRemote,
-  loadGateway,
-  reload,
-  runtimeConfig,
+  tab, error, loading, reload, runtimeConfig,
+  discover, invoke, audit, remote, gateway,
 } = useA2APage();
 
 const remoteAgentPanelRef = ref<InstanceType<typeof A2ARemoteAgentPanel> | null>(null);
 
 async function onRemoteRegister(input: RegisterRemoteAgentInput) {
-  await submitRemoteRegister(input);
+  await remote.submitRemoteRegister(input);
   remoteAgentPanelRef.value?.resetForm();
 }
 </script>

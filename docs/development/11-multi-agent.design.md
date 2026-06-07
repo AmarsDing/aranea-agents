@@ -386,7 +386,7 @@ Graph 路径要点：
 
 Native 应急（`trpc_build.go`）：
 
-- `BuildTRPCTeam(ctx, def, deps, catalogAgent)`：按 mode 分发
+- `BuildTRPCTeam(ctx, def, deps, lookupAgent)`：按 mode 分发
 - `buildSwarmOptions`：SwarmConfig + CrossRequestTransfer + SwarmHandoffInputBuilder
 - `buildCoordinatorOptions`：MemberToolConfig 映射
 - `buildEscalationFunc`：CriticLoop ScoreThreshold + approved 关键字

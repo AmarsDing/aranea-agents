@@ -1,9 +1,13 @@
 /**
- * Re-export barrel — the generic envelope stream composable has been lifted
- * to the shared realtime/ directory. This file re-exports for backward
- * compatibility and keeps Chat-specific stream helpers here.
+ * Chat-specific envelope stream helpers + backward-compatible re-exports.
  *
- * New code should import from "realtime/useEnvelopeStream" directly.
+ * - createChatStream / useChatStream: Chat session WS stream helpers
+ * - createTeamStream / useTeamStream: Team session WS stream helpers
+ * - useMonitorStream: Monitor/log stream helper
+ * - Re-exports from realtime/ for backward compatibility
+ *
+ * New code that only needs the generic stream should import from
+ * "realtime/useEnvelopeStream" directly.
  */
 
 export { createEnvelopeStream, useEnvelopeStream } from '../../realtime/useEnvelopeStream';

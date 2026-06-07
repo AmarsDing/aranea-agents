@@ -1,3 +1,5 @@
+// TECH-DEBT(FL5): composable 直接调用 orchestration/compileApi 而非通过 Store，
+// 因为编译预览是即时操作且不需要全局状态。如需持久化编译结果应迁入 Store。
 import { ref, watch, type MaybeRefOrGetter, toValue } from 'vue';
 import { compileTeamGraph, type CompileTeamGraphResult } from '../orchestration/compileApi';
 

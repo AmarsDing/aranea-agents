@@ -62,21 +62,6 @@ type TeamRunRepo interface {
 	TeamRunWriter
 }
 
-// TeamRepository is a composition interface for backward compatibility.
-// Deprecated: Consumers should depend on the narrow sub-interfaces
-// (TeamReader, TeamWriter, TeamRunReader, TeamRunWriter, OrchestrationStepRepo, TaskDeadLetterRepo)
-// instead of this aggregate. New code MUST NOT reference TeamRepository directly.
-// TODO(debt): migrate internal/team/runner.go and team_graph_run_coordinator.go to narrow
-// interfaces, then remove TeamRepository. Issue: #SPIRIT-REPO-MIGRATE
-type TeamRepository interface {
-	TeamReader
-	TeamWriter
-	TeamRunReader
-	TeamRunWriter
-	OrchestrationStepRepo
-	TaskDeadLetterRepo
-}
-
 type TeamUsecase struct {
 	reader       TeamReader
 	writer       TeamWriter

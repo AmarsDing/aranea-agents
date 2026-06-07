@@ -61,7 +61,9 @@ FROM ecosystem_products WHERE `+wsql+` ORDER BY install_count DESC, created_at D
 		if err != nil {
 			return biz.EcosystemListResult{}, err
 		}
-		p.Installed, _ = r.IsInstalled(ctx, p.ID)
+		if installed, err := r.IsInstalled(ctx, p.ID); err == nil {
+			p.Installed = installed
+		}
 		items = append(items, p)
 	}
 	return biz.EcosystemListResult{Items: items, Total: total}, rows.Err()

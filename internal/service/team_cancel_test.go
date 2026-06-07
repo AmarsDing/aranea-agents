@@ -13,19 +13,26 @@ import (
 )
 
 type cancelTeamRunRepo struct {
-	biz.TeamRepository
 	runs map[string]biz.TeamRun
 }
 
-func (r *cancelTeamRunRepo) ListTeams(_ context.Context) ([]biz.Team, error)          { return nil, nil }
-func (r *cancelTeamRunRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+// TeamReader stubs
+func (r *cancelTeamRunRepo) ListTeams(_ context.Context) ([]biz.Team, error)                     { return nil, nil }
+func (r *cancelTeamRunRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error)   { return nil, nil }
 func (r *cancelTeamRunRepo) GetTeamByID(_ context.Context, _ string) (biz.Team, error) {
 	return biz.Team{}, biz.ErrNotFound
 }
+func (r *cancelTeamRunRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error)          { return biz.Team{}, biz.ErrNotFound }
+func (r *cancelTeamRunRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+func (r *cancelTeamRunRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+
+// TeamWriter stubs
 func (r *cancelTeamRunRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
 func (r *cancelTeamRunRepo) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
 func (r *cancelTeamRunRepo) DeleteTeam(_ context.Context, _ string) error                 { return nil }
 func (r *cancelTeamRunRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
+
+// TeamRunReader
 func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -42,6 +49,9 @@ func (r *cancelTeamRunRepo) GetTeamRunByID(_ context.Context, id string) (biz.Te
 func (r *cancelTeamRunRepo) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamRunStep, error) {
 	return nil, nil
 }
+func (r *cancelTeamRunRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) { return false, nil }
+
+// TeamRunWriter stubs
 func (r *cancelTeamRunRepo) CreateTeamRun(_ context.Context, run biz.TeamRun) (biz.TeamRun, error) {
 	return run, nil
 }
@@ -52,24 +62,25 @@ func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRun) er
 func (r *cancelTeamRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (r *cancelTeamRunRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
+	return step, nil
+}
+
+// OrchestrationStepRepo stubs
 func (r *cancelTeamRunRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
 	return nil
 }
 func (r *cancelTeamRunRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
 	return nil, nil
 }
+
+// TaskDeadLetterRepo stubs
 func (r *cancelTeamRunRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
 func (r *cancelTeamRunRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
 	return nil, nil
 }
 func (r *cancelTeamRunRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
-}
-func (r *cancelTeamRunRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
-	return step, nil
-}
-func (r *cancelTeamRunRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
-	return nil, nil
 }
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {

@@ -22,7 +22,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 - `internal/data/ent/schema/model_pricing_rule.go` — 定价规则 Schema
 - `internal/provider/trpc_llm.go` — Provider → trpc Model 装配（含 HA + 预检 + 指标 + 故障切换回调）
 - `internal/provider/trpc_llm_options_test.go` — Provider 适配路径单测（37 用例）
-- `internal/provider/catalog.go` — CatalogConfig 解析与合并（使用 biz.ModelCapabilities）
+- `internal/provider/catalog.go` — ProviderModelConfig 解析与合并（使用 biz.ModelCapabilities）
 - `internal/provider/roundtrip.go` — HTTP Transport 注入
 - `internal/provider/stream_delta.go` — 流式 Delta 合并
 - `pkg/trpc-agent-go/model/failover/options.go` — failover WithSwitchCallback 选项
@@ -104,7 +104,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | O1 | Repo 接口拆分 | P1 | `LlmProviderModelRepo`(8方法) → 4 个子接口 + 1 个组合接口，红线 15 合规 |
 | O2 | ModelCapabilities 统一 | P1 | biz 层唯一定义 + json tags，provider 层引用 biz.ModelCapabilities，消除重复映射 |
 | O3 | HA 候选模型预检 + 指标 | P2 | `trpcModelFromCandidate` 增加 `outboundguard.ValidateURL` + `WrapModelWithMetrics` |
-| O4 | 清理 HuggingFace 空壳 | P2 | `buildHuggingFaceSpecificOptions` 从无效守卫改为 `_ CatalogConfig` 签名 |
+| O4 | 清理 HuggingFace 空壳 | P2 | `buildHuggingFaceSpecificOptions` 从无效守卫改为 `_ ProviderModelConfig` 签名 |
 | O5 | wrapHA 移除无用 ctx | P3 | `wrapHA` 签名从 `(ctx, primary, cfg, rt)` 简化为 `(primary, cfg, rt)` |
 | O6 | 前端类型统一 | P1 | `ProviderConfig`/`ModelCategory`/`CapabilityChip` 统一到 `types.ts` |
 | O7 | 前端 composable 拆分（第一轮） | P1 | `useResourceManagerPage`(1392→215行) + `useProviderList`(168行) + `useProviderWizard`(1123行) |

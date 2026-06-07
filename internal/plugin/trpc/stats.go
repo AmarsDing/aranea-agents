@@ -45,6 +45,9 @@ func (noopStatsRecorder) Record(context.Context, string, string, string) {}
 func (noopStatsRecorder) RecordEvent(context.Context, CallbackEvent)     {}
 func (noopStatsRecorder) Close()                                         {}
 
+// TECH-DEBT(BR1): RepoStatsRecorder 在 worker goroutine 中直接调用 repo 写库，
+// 未经过 EventBus 统一管道。当前已通过 channel+worker 批量异步化，
+// 但应迁移到 EventBus + consumer 模式以保持架构一致性。
 type RepoStatsRecorder struct {
 	repo         biz.PluginRepo
 	runs         biz.PluginRunRepo

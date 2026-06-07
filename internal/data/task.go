@@ -358,7 +358,7 @@ func (r *taskRepo) ListTaskEvents(ctx context.Context, executionID string, taskI
 		Order(ent.Desc(graphtaskevent.FieldTimestamp))
 	// NOTE: executionID is unused because graph_task_events has no execution_id column.
 	// Filtering by execution_id would require a JOIN on graph_tasks or a schema migration.
-	_ = executionID
+	_ = executionID // lint:ignore
 	if taskID != "" {
 		query = query.Where(graphtaskevent.TaskIDEQ(taskID))
 	}

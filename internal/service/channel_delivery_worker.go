@@ -252,6 +252,9 @@ func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx contex
 		lg.Warn("wechat app creds config json unmarshal failed", loggateway.StepID("channel.delivery.wechat_config"), loggateway.Err(err))
 	}
 	appID = strings.TrimSpace(env.Config.AppID)
-	appSecret, _ = resolveCredentialPlain(ctx, channels, creds, "app_secret", lg)
+	appSecret, credErr := resolveCredentialPlain(ctx, channels, creds, "app_secret", lg)
+	if credErr != nil {
+		lg.Warn("wechat app_secret 凭证解析失败", loggateway.StepID("channel.delivery.wechat_credential"), loggateway.Err(credErr))
+	}
 	return appID, strings.TrimSpace(appSecret)
 }

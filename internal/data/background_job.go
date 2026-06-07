@@ -220,7 +220,7 @@ func (r *backgroundJobRepo) Cancel(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("backgroundjob cancel %s: %w", id, err)
 	}
-	_ = n
+	_ = n // affected rows not needed
 	return nil
 }
 

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	stderrors "errors"
@@ -159,7 +160,7 @@ func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey s
 	if err == nil {
 		return false, "agent_key already in use", nil
 	}
-	if !stderrors.Is(err, shared.ErrNotFound) {
+	if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
 		return false, "", err
 	}
 	return true, "available", nil
@@ -197,7 +198,7 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
-		if stderrors.Is(err, shared.ErrNotFound) {
+		if stderrors.Is(err, shared.ErrNotFound) || stderrors.Is(err, sql.ErrNoRows) {
 			return DefaultAgentRuntimeSettings(), nil
 		}
 		return AgentRuntimeSettings{}, err
@@ -208,7 +209,7 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) {
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agent.ID)
 	if err != nil {
-		if !stderrors.Is(err, shared.ErrNotFound) {
+		if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, err
 		}
 		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
@@ -546,7 +547,7 @@ func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, er
 	}
 	a, err := u.repo.GetAgentByID(ctx, id)
 	if err != nil {
-		if stderrors.Is(err, shared.ErrNotFound) {
+		if stderrors.Is(err, shared.ErrNotFound) || stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, kerrors.NotFound("AGENT", "agent not found")
 		}
 		return Agent{}, err
@@ -646,7 +647,7 @@ func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, id)
 	if err != nil {
-		if !stderrors.Is(err, shared.ErrNotFound) {
+		if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
 			return "", err
 		}
 		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
@@ -749,7 +750,7 @@ func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, err
 		agent.ID = existing.ID
 		return u.Update(ctx, existing.ID, agent)
 	}
-	if !stderrors.Is(err, shared.ErrNotFound) {
+	if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
 		return Agent{}, err
 	}
 	// 不存在 → 创建

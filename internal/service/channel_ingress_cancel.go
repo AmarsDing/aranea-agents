@@ -52,7 +52,13 @@ func (h *ChannelIngress) resolveCancelInboundTurn(ctx context.Context, chRow biz
 	if cancelled {
 		reply = channelCancelReplyOK
 		if h.turnJobs != nil {
-			_ = h.turnJobs.CancelRunningForSession(ctx, chRow.ID, sessionID)
+			if err := h.turnJobs.CancelRunningForSession(ctx, chRow.ID, sessionID); err != nil {
+				h.logTurnFlow(ctx, sessionID, flowStepChannelTurnCancel, "TurnJob 取消失败",
+					err,
+					event.P("channel_id", chRow.ID),
+					event.P("session_id", sessionID),
+				)
+			}
 		}
 	}
 	h.logTurnFlow(ctx, sessionID, flowStepChannelTurnCancel, "Channel 入站取消",

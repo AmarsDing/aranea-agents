@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { useUsageStore } from '../../stores/usage';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro } from './moneyFormat';
+import { downloadBlob } from '../../composables/useFileDownload';
 
 export function useUsageEventsPage() {
   const $q = useQuasar();
@@ -44,12 +45,7 @@ export function useUsageEventsPage() {
   async function exportCsv() {
     const csv = await usageStore.exportEventsCsv(filters.value);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `usage-events-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `usage-events-${new Date().toISOString().slice(0, 10)}.csv`);
   }
 
   async function purgeEvents() {

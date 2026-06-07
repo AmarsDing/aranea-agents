@@ -12,7 +12,7 @@ LLM Provider/Model 管理：多厂商注册、模型目录、Failover/Hedge 高�
 **当前实现状态**（2026-06-06 现状对齐）：
 - ✅ Proto CRUD + Inspect + ValidatePair 已实现
 - ✅ `internal/provider/trpc_llm.go` 已实现按 `provider_type` 分发构建 `model.Model`（5 种原生 Provider + 4 种 Variant）
-- ✅ `internal/provider/catalog.go` 已实现 `CatalogConfig` 解析和合并（含所有 Provider 专属字段 + HA 配置）
+- ✅ `internal/provider/catalog.go` 已实现 `ProviderModelConfig` 解析和合并（含所有 Provider 专属字段 + HA 配置）
 - ✅ Failover/Hedge 包装已实现（`wrapHA` + `wrapFailover` / `wrapHedge`）
 - ✅ Provider 专属选项构建已实现（OpenAI/Anthropic/Gemini/Ollama/Hunyuan 各自 builder）
 - ✅ `internal/llminspect/inspect.go` 已实现 OpenRouter / OpenAI-Compatible / Anthropic 三条探测路径 + DeepSeek 路由
@@ -576,12 +576,12 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 
 ## 五、运行时层（Provider 桥接）
 
-### 5.1 CatalogConfig（当前实现）
+### 5.1 ProviderModelConfig（当前实现）
 
 文件：`internal/provider/catalog.go`
 
 ```go
-type CatalogConfig struct {
+type ProviderModelConfig struct {
     ProviderType         string
     Variant              string
     BaseURL              string
@@ -628,11 +628,11 @@ func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderMode
     if err != nil {
         return nil, err
     }
-    cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
-    return trpcModelFromCatalogConfig(ctx, cfg, rt)
+    cfg = MergeModelConfig(cfg, pm.ConfigJSON)
+    return trpcModelFromProviderModelConfig(ctx, cfg, rt)
 }
 
-func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     name := strings.TrimSpace(cfg.ModelAPI)
     providerName := MapProviderType(cfg.ProviderType)
     opts := buildProviderOptions(cfg, rt)
@@ -657,7 +657,7 @@ func MapProviderType(pt string) string {
 ### 5.3 Provider 专属选项构建（当前实现）
 
 ```go
-func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Option {
+func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
     var opts []trpcprovider.Option
     if apiKey := strings.TrimSpace(cfg.APIKey); apiKey != "" {
         opts = append(opts, trpcprovider.WithAPIKey(apiKey))
@@ -690,7 +690,7 @@ func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Optio
     return opts
 }
 
-func buildOpenAISpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildOpenAISpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
     var providerOpts []trpcopenai.Option
     if cfg.OptimizeForCache {
         providerOpts = append(providerOpts, trpcopenai.WithOptimizeForCache(true))
@@ -708,7 +708,7 @@ func buildOpenAISpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
     return []trpcprovider.Option{trpcprovider.WithOpenAIOption(providerOpts...)}
 }
 
-func buildAnthropicSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
     var providerOpts []trpcanthropic.Option
     if cfg.CacheSystemPrompt {
         providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPrompt(true))
@@ -726,7 +726,7 @@ func buildAnthropicSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
     return []trpcprovider.Option{trpcprovider.WithAnthropicOption(providerOpts...)}
 }
 
-func buildGeminiSpecificOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Option {
+func buildGeminiSpecificOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
     var providerOpts []trpcgemini.Option
     apiKey := strings.TrimSpace(cfg.APIKey)
     if apiKey != "" || (rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil) {
@@ -743,7 +743,7 @@ func buildGeminiSpecificOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider
     return []trpcprovider.Option{trpcprovider.WithGeminiOption(providerOpts...)}
 }
 
-func buildOllamaSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildOllamaSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
     var providerOpts []trpcollama.Option
     if cfg.KeepAliveMinutes > 0 {
         providerOpts = append(providerOpts, trpcollama.WithKeepAlive(time.Duration(cfg.KeepAliveMinutes)*time.Minute))
@@ -755,7 +755,7 @@ func buildOllamaSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
     return []trpcprovider.Option{trpcprovider.WithOllamaOption(providerOpts...)}
 }
 
-func buildHunyuanSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+func buildHunyuanSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
     var providerOpts []trpchunyuan.Option
     if secretID := strings.TrimSpace(cfg.SecretID); secretID != "" {
         providerOpts = append(providerOpts, trpchunyuan.WithSecretId(secretID))
@@ -774,7 +774,7 @@ func buildHunyuanSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 ### 5.4 Failover/Hedge 包装（当前实现）
 
 ```go
-func wrapHA(ctx context.Context, primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func wrapHA(ctx context.Context, primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
     switch strings.ToLower(strings.TrimSpace(cfg.HAMode)) {
     case "failover": return wrapFailover(cfg, rt, primary)
     case "hedge":    return wrapHedge(cfg, rt, primary)
@@ -782,7 +782,7 @@ func wrapHA(ctx context.Context, primary trpcmodel.Model, cfg CatalogConfig, rt 
     return primary, nil
 }
 
-func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
+func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
     candidates := []trpcmodel.Model{primary}
     for _, c := range cfg.HACandidates {
         m, err := trpcModelFromCandidate(c, rt)
@@ -795,7 +795,7 @@ func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (tr
     return fo, nil
 }
 
-func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
+func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
     candidates := []trpcmodel.Model{primary}
     for _, c := range cfg.HACandidates {
         m, err := trpcModelFromCandidate(c, rt)

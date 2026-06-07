@@ -73,6 +73,9 @@ var (
 	ErrMessageDuplicate    = stderrors.New("message duplicate constraint")
 )
 
+// TECH-DEBT(BE1): 以下错误直接使用 kerrors（传输层类型），
+// 违反依赖方向（biz 层不应依赖传输层）。应改为 stdlib sentinel errors，
+// 由 Service 层统一映射为 kerrors。迁移时需确保 HTTP status code 语义不变。
 var (
 	// Admin
 	ErrAdminNotFound = errors.NotFound("ADMIN", "admin not found")

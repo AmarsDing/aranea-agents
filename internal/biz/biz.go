@@ -106,8 +106,8 @@ func ProvideAgentListerByRole(repo AgentRepository) AgentListerByRole {
 	}
 }
 
-// ProvideDeptTeamLister provides a DeptTeamLister from the TeamRepository.
-func ProvideDeptTeamLister(repo TeamRepository) DeptTeamLister {
+// ProvideDeptTeamLister provides a DeptTeamLister from the TeamReader.
+func ProvideDeptTeamLister(repo TeamReader) DeptTeamLister {
 	return repo.(DeptTeamLister)
 }
 

@@ -19,15 +19,22 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-type teamRepo struct {
+type TeamRepo struct {
 	data *Data
 }
 
-var _ biz.TeamRepository = (*teamRepo)(nil)
+var (
+	_ biz.TeamReader            = (*TeamRepo)(nil)
+	_ biz.TeamWriter            = (*TeamRepo)(nil)
+	_ biz.TeamRunReader         = (*TeamRepo)(nil)
+	_ biz.TeamRunWriter         = (*TeamRepo)(nil)
+	_ biz.OrchestrationStepRepo = (*TeamRepo)(nil)
+	_ biz.TaskDeadLetterRepo    = (*TeamRepo)(nil)
+)
 
-// NewTeamRepo implements biz.TeamRepository.
-func NewTeamRepo(d *Data) biz.TeamRepository {
-	return &teamRepo{data: d}
+// NewTeamRepo creates a TeamRepo that satisfies all team-related narrow interfaces.
+func NewTeamRepo(d *Data) *TeamRepo {
+	return &TeamRepo{data: d}
 }
 
 func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
@@ -121,7 +128,7 @@ func entTeamRunStepToBiz(e *ent.TeamRunStep) biz.TeamRunStep {
 	}
 }
 
-func (r *teamRepo) ListTeamsByStatus(ctx context.Context, status string) ([]biz.Team, error) {
+func (r *TeamRepo) ListTeamsByStatus(ctx context.Context, status string) ([]biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	rows, err := c.Team.Query().Where(team.StatusEQ(status), team.DeletedAtEQ("")).
 		Order(team.ByCreatedAt(entsql.OrderDesc())).
@@ -136,7 +143,7 @@ func (r *teamRepo) ListTeamsByStatus(ctx context.Context, status string) ([]biz.
 	return out, nil
 }
 
-func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
+func (r *TeamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	rows, err := c.Team.Query().Where(team.DeletedAtEQ("")).
 		Order(team.ByIsDefault(entsql.OrderDesc()), team.ByCreatedAt(entsql.OrderDesc())).
@@ -151,7 +158,7 @@ func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	return out, nil
 }
 
-func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
+func (r *TeamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	row, err := c.Team.Query().Where(team.IDEQ(id), team.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
@@ -163,7 +170,7 @@ func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 	return entTeamToBiz(row, r.data.lg), nil
 }
 
-func (r *teamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error) {
+func (r *TeamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	row, err := c.Team.Query().Where(team.TeamKeyEQ(teamKey), team.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
@@ -175,7 +182,7 @@ func (r *teamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, 
 	return entTeamToBiz(row, r.data.lg), nil
 }
 
-func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
+func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.TeamKey == "" || t.DisplayName == "" {
 		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
 	}
@@ -224,7 +231,7 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	return r.GetTeamByID(ctx, t.ID)
 }
 
-func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
+func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.ID == "" || t.TeamKey == "" || t.DisplayName == "" {
 		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
 	}
@@ -267,7 +274,7 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	return r.GetTeamByID(ctx, t.ID)
 }
 
-func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
+func (r *TeamRepo) DeleteTeam(ctx context.Context, id string) error {
 	if id == "" {
 		return kerrors.BadRequest("TEAM", "id is required")
 	}
@@ -285,7 +292,7 @@ func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *teamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {
+func (r *TeamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -306,7 +313,7 @@ func (r *teamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, er
 }
 
 // ListTeamsByDepartmentID lists all teams belonging to a specific department.
-func (r *teamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]biz.Team, error) {
+func (r *TeamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]biz.Team, error) {
 	if deptID == "" {
 		return nil, nil
 	}
@@ -324,7 +331,7 @@ func (r *teamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) (
 	return out, nil
 }
 
-func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
+func (r *TeamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
 		return nil, nil
@@ -343,7 +350,7 @@ func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID st
 	return out, nil
 }
 
-func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) ([]biz.TeamRun, error) {
+func (r *TeamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) ([]biz.TeamRun, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -362,7 +369,7 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	return out, nil
 }
 
-func (r *teamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]biz.TeamRun, error) {
+func (r *TeamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]biz.TeamRun, error) {
 	if len(teamIDs) == 0 {
 		return nil, nil
 	}
@@ -382,7 +389,7 @@ func (r *teamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, 
 	return result, nil
 }
 
-func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
+func (r *TeamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
 	count, err := r.data.RW().Read(ctx).TeamRun.Query().
 		Where(
 			teamrun.TeamIDEQ(teamID),
@@ -396,7 +403,7 @@ func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 	return count > 0, nil
 }
 
-func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
+func (r *TeamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
 	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -407,7 +414,7 @@ func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, 
 	return entTeamRunToBiz(row), nil
 }
 
-func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.TeamRunStep, error) {
+func (r *TeamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.TeamRunStep, error) {
 	rows, err := r.data.RW().Read(ctx).TeamRunStep.Query().
 		Where(teamrunstep.RunIDEQ(runID)).
 		Order(teamrunstep.BySortOrder(entsql.OrderAsc()), teamrunstep.ByCreatedAt(entsql.OrderAsc())).
@@ -422,7 +429,7 @@ func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.Te
 	return out, nil
 }
 
-func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.TeamRun, error) {
 	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TeamID) == "" {
 		return biz.TeamRun{}, kerrors.BadRequest("TEAM_RUN", "team run id and team_id are required")
 	}
@@ -475,7 +482,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 	return entTeamRunToBiz(row), nil
 }
 
-func (r *teamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
+func (r *TeamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 	if strings.TrimSpace(run.ID) == "" {
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
@@ -495,7 +502,7 @@ func (r *teamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 	return err
 }
 
-func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
+func (r *TeamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.RunID) == "" {
 		return biz.TeamRunStep{}, kerrors.BadRequest("TEAM_RUN_STEP", "step id and run_id are required")
 	}
@@ -538,7 +545,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 	return entTeamRunStepToBiz(row), nil
 }
 
-func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
+func (r *TeamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
 	if strings.TrimSpace(runID) == "" {
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
@@ -549,7 +556,7 @@ func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 	return err
 }
 
-func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error {
+func (r *TeamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error {
 	if strings.TrimSpace(runID) == "" {
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
@@ -560,7 +567,7 @@ func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 	return err
 }
 
-func (r *teamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error {
+func (r *TeamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error {
 	if strings.TrimSpace(runID) == "" {
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
@@ -571,7 +578,7 @@ func (r *teamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID stri
 	return err
 }
 
-func (r *teamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []biz.OrchestrationStep) error {
+func (r *TeamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []biz.OrchestrationStep) error {
 	if len(steps) == 0 {
 		return nil
 	}
@@ -602,7 +609,7 @@ func (r *teamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []bi
 	return err
 }
 
-func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]biz.OrchestrationStep, error) {
+func (r *TeamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]biz.OrchestrationStep, error) {
 	teamRunID = strings.TrimSpace(teamRunID)
 	if teamRunID == "" {
 		return nil, kerrors.BadRequest("ORCHESTRATION_STEP", "team_run_id is required")
@@ -628,7 +635,7 @@ func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID
 	return out, nil
 }
 
-func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLetter) error {
+func (r *TeamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLetter) error {
 	if strings.TrimSpace(dl.ID) == "" {
 		return kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
@@ -653,7 +660,7 @@ func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLett
 	return err
 }
 
-func (r *teamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+func (r *TeamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
 	q := r.data.RW().Read(ctx).TaskDeadLetter.Query()
 	if sid := strings.TrimSpace(filter.SessionID); sid != "" {
 		q = q.Where(taskdeadletter.SessionIDEQ(sid))
@@ -682,7 +689,7 @@ func (r *teamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadL
 	return out, nil
 }
 
-func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
+func (r *TeamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")

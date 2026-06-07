@@ -132,6 +132,9 @@ type ChatOrchestrator struct {
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
 // Sub-aggregates (RuntimeTooling, TeamOrchestrationDeps, ChannelTurnJobDeps, ChannelNotifierDeps) reduce
 // the flat parameter count and make responsibility boundaries explicit.
+// TECH-DEBT(BL8): ChatOrchestratorDeps 含 20+ 字段，属于上帝对象。
+// 应进一步按职责域拆分为更小的功能性依赖组（如 ChatTurnDeps、ChatUsageDeps、ChatChannelDeps），
+// 通过 Wire 组合注入。拆分时需确保 ChatOrchestrator 的方法签名不变。
 type ChatOrchestratorDeps struct {
 	rt.TurnDeps
 	Runs            *rt.RunRegistry

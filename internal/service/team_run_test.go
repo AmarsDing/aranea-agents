@@ -11,11 +11,30 @@ import (
 )
 
 type summaryTeamRepo struct {
-	biz.TeamRepository
 	runs  map[string]biz.TeamRun
 	steps map[string][]biz.TeamRunStep
 }
 
+// TeamReader stubs
+func (r *summaryTeamRepo) ListTeams(_ context.Context) ([]biz.Team, error)                { return nil, nil }
+func (r *summaryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
+	if id == "t1" {
+		return biz.Team{ID: "t1"}, nil
+	}
+	return biz.Team{}, fmt.Errorf("not found")
+}
+func (r *summaryTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error)     { return biz.Team{}, fmt.Errorf("not found") }
+func (r *summaryTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+func (r *summaryTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error)     { return nil, nil }
+func (r *summaryTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+
+// TeamWriter stubs
+func (r *summaryTeamRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error)         { return t, nil }
+func (r *summaryTeamRepo) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, error)         { return t, nil }
+func (r *summaryTeamRepo) DeleteTeam(_ context.Context, _ string) error                       { return nil }
+func (r *summaryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error)       { return 0, nil }
+
+// TeamRunReader
 func (r *summaryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	run, ok := r.runs[id]
 	if !ok {
@@ -23,43 +42,42 @@ func (r *summaryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.Team
 	}
 	return run, nil
 }
-
 func (r *summaryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) ([]biz.TeamRunStep, error) {
 	return r.steps[runID], nil
 }
-
-func (r *summaryTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
-func (r *summaryTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
-	return nil
+func (r *summaryTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
+	return nil, nil
 }
-func (r *summaryTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error { return nil }
+func (r *summaryTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+	return nil, nil
+}
+func (r *summaryTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) { return false, nil }
+
+// TeamRunWriter stubs
+func (r *summaryTeamRepo) CreateTeamRun(_ context.Context, run biz.TeamRun) (biz.TeamRun, error) { return run, nil }
+func (r *summaryTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error                   { return nil }
+func (r *summaryTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error     { return nil }
+func (r *summaryTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error              { return nil }
+func (r *summaryTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error          { return nil }
+func (r *summaryTeamRepo) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
+	return s, nil
+}
+
+// OrchestrationStepRepo stubs
 func (r *summaryTeamRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
 	return nil
 }
 func (r *summaryTeamRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
 	return nil, nil
 }
-func (r *summaryTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error {
-	return nil
-}
+
+// TaskDeadLetterRepo stubs
+func (r *summaryTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
 func (r *summaryTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
 	return nil, nil
 }
 func (r *summaryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
-}
-
-func (r *summaryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
-	if id == "t1" {
-		return biz.Team{ID: "t1"}, nil
-	}
-	return biz.Team{}, fmt.Errorf("not found")
-}
-func (r *summaryTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
-	return nil, nil
-}
-func (r *summaryTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
-	return nil, nil
 }
 
 func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {

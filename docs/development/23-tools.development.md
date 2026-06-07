@@ -83,7 +83,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 6 | **P4** | Tool Cache | ✅ `internal/tools/cache` + Before/AfterTool hooks；`metadata_json.cache_enabled` / `cache_ttl_sec` |
 | 7 | **P2** | MCP 工程化 | ✅ 认证/重连/ Broker 自动发现；生产 `AllowAdHocHTTP` 需 `ARANEA_MCP_ALLOW_ADHOC_HTTP` |
 | 8 | **P2** | Proto `tool_id` 语义统一 | ✅ `ResolveToolKey` + `ListRunsForTool`；Override Upsert 写入 `tool_id` |
-| 9 | **P3** | `runtime_status` / `runtime_kind` 填充 | ✅ `EnrichToolCatalogRuntime`（Biz 层计算，List/Get 返回） |
+| 9 | **P3** | `runtime_status` / `runtime_kind` 填充 | ✅ `EnrichToolRuntimeFields`（Biz 层计算，List/Get 返回） |
 | 10 | **P3** | CreateTool 业务校验 | ✅ `validateToolUpsert` + `validateToolConfigFields`（gojsonschema） |
 | 11 | **P3** | TestTool 参数脱敏 | ✅ `RedactToolPreview` + `SanitizeToolInvocationWrite` |
 | 12 | **P3** | 工具调用审计 | ✅ 表 + API + 前端 `/tools/audits` + 90 天 cron |
@@ -103,7 +103,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 26 | **P1** | `claude_code` 默认工作区 | ✅ Phase 5 |
 | 27 | **P2** | `workspace_exec` 仅 CodeExecutor 就绪时装配 | ✅ Phase 5.2；见 [32-codeexecutor-development.md](./32-codeexecutor-development.md) |
 | 28 | **P1** | TestTool / prompt 与工作区口径同步 | ✅ Phase 5 |
-| 29 | **P1** | ToolRepo 接口拆分（红线 #15） | ✅ Phase 6：18 方法 → 8 子接口 + ToolCatalogReader |
+| 29 | **P1** | ToolRepo 接口拆分（红线 #15） | ✅ Phase 6：18 方法 → 8 子接口 + ToolRegistryReader |
 | 30 | **P1** | Assemble 函数重构 | ✅ Phase 6：170 行 → 12 子装配器 |
 | 31 | **P2** | ToolRegistration Tags 字段 | ✅ Phase 6：RegistryByTag / RegistryByCategory |
 | 32 | **P2** | kanban Bridge 接口拆分（红线 #15） | ✅ Phase 6：9 方法 → 3 子接口 |
@@ -277,8 +277,8 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 
 | ID | 任务 | 涉及文件 | 验收 |
 |----|------|----------|------|
-| TO-6-01 | ToolRepo 接口拆分 | `internal/biz/tool/tool.go` | ✅ 18 方法 → 8 子接口 + ToolCatalogReader 窄接口 |
-| TO-6-02 | 窄接口传播 | `agent_usecase.go` / `agent/prompt.go` / `team/runner.go` / `runtime/deps.go` / `wire.go` | ✅ ToolCatalogReader 全链路一致 |
+| TO-6-01 | ToolRepo 接口拆分 | `internal/biz/tool/tool.go` | ✅ 18 方法 → 8 子接口 + ToolRegistryReader 窄接口 |
+| TO-6-02 | 窄接口传播 | `agent_usecase.go` / `agent/prompt.go` / `team/runner.go` / `runtime/deps.go` / `wire.go` | ✅ ToolRegistryReader 全链路一致 |
 | TO-6-03 | Assemble 子装配器 | `internal/tools/toolset.go` | ✅ 170 行 → 12 个独立函数 |
 | TO-6-04 | ToolRegistration Tags | `internal/tools/tool.go` / `toolset.go` | ✅ Tags 字段 + RegistryByTag/RegistryByCategory |
 | TO-6-05 | kanban Bridge 拆分 | `internal/tools/kanban/bridge.go` | ✅ 9 方法 → BridgeReader/Writer/Lifecycle |
@@ -292,7 +292,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] `go test ./internal/tools/... ./internal/biz/tool/... -count=1` 全部通过（17 个包）
 - [x] aranea-review 技能审查通过，无阻断项
 - [x] ToolRepo / Bridge 子接口方法数均 ≤ 5（红线 #15 合规）
-- [x] ToolCatalogReader 窄接口从 biz → agent → team → runtime → wire 全链路传播
+- [x] ToolRegistryReader 窄接口从 biz → agent → team → runtime → wire 全链路传播
 
 ### Phase 7：质量加固（错误处理 + 可观测性 + 并发安全）
 
@@ -335,7 +335,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 9 | `edit_file` 别名迁移（可选） | P2 | 4 | #6 | ✅ → `diff_edit` |
 | 10 | 工作区统一（hostexec + schema + confirm） | **P0** | **5** | — | ✅ TW-5-01–5-10 |
 | 11 | `workspace_exec` / CodeExecutor 装配 | P2 | 5.2 | 10 | ✅ `toolset.go` registry nil |
-| 12 | ToolRepo 接口拆分 + 窄接口传播 | **P1** | **6** | — | ✅ 8 子接口 + ToolCatalogReader |
+| 12 | ToolRepo 接口拆分 + 窄接口传播 | **P1** | **6** | — | ✅ 8 子接口 + ToolRegistryReader |
 | 13 | Assemble 子装配器重构 | P1 | 6 | — | ✅ 12 个 assembleXxx 函数 |
 | 14 | ToolRegistration Tags + 查询 | P2 | 6 | — | ✅ RegistryByTag/RegistryByCategory |
 | 15 | kanban Bridge 接口拆分 | P2 | 6 | — | ✅ BridgeReader/Writer/Lifecycle |
@@ -392,7 +392,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 ### Phase 6（架构优化）
 
 - [x] ToolRepo 18 方法拆分为 8 子接口（红线 #15 合规）
-- [x] ToolCatalogReader 窄接口全链路传播
+- [x] ToolRegistryReader 窄接口全链路传播
 - [x] Assemble 170 行拆分为 12 子装配器
 - [x] ToolRegistration Tags 字段 + RegistryByTag/RegistryByCategory
 - [x] kanban Bridge 9 方法拆分为 3 子接口
@@ -458,7 +458,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 |---|------|------|
 | 1 | `buildMCPToolSet` / `buildMCPBrokerTools` 测试 | Assemble 子装配器中 MCP 路径无测试覆盖 |
 | 2 | Ent schema 重新生成 | `internal/data/` 编译错误（Visibility/FallbackConfigJSON/FileManifestJSON/MessageID/CompressVersion 字段缺失），需 `go generate` 重新生成 |
-| 3 | `provideChatServiceDeps` 中 `*biz.SkillUsecase` 具体类型 | 传入 `rt.Catalog.SkillUC`，需拆分 Catalog 依赖为窄接口 |
+| 3 | `provideChatServiceDeps` 中 `*biz.SkillUsecase` 具体类型 | 传入 `rt.TurnReadDeps.SkillUC`，需拆分 Catalog 依赖为窄接口 |
 
 ### P2（中优先级）
 

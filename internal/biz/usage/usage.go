@@ -39,6 +39,18 @@ const (
 // false negatives due to rounding.
 const floatCompareEpsilon = 1e-9
 
+// Usage query and operational constants.
+const (
+	defaultQueryRangeDays   = 30 // default date range for usage queries
+	anomalyQueryLimit      = 12 // max anomaly events per overview query
+	usageRecordTimeoutSec  = 45 // timeout for recording usage events
+	usageLinkTimeoutSec    = 10 // timeout for linking runner completion usage
+	csvExportMaxRows       = 5000
+	inefficientModelLimit  = 32 // max inefficient models to analyze
+	inefficientResultLimit = 8  // max inefficient model insights to return
+	usageCostMicroDivisor  = 1000
+)
+
 // ── Models ────────────────────────────────────────────────────────────────────
 
 // Query mirrors legacy model-usage GET params.
@@ -409,7 +421,7 @@ func (u *Usecase) normalizeQuery(query Query, now time.Time) Query {
 		return query
 	}
 	end := dateKey(now)
-	start := now.AddDate(0, 0, -29)
+	start := now.AddDate(0, 0, -(defaultQueryRangeDays - 1))
 	switch query.Range {
 	case "today":
 		start = now
@@ -418,9 +430,9 @@ func (u *Usecase) normalizeQuery(query Query, now time.Time) Query {
 	case "month":
 		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	case "30d", "":
-		start = now.AddDate(0, 0, -29)
+		start = now.AddDate(0, 0, -(defaultQueryRangeDays - 1))
 	default:
-		start = now.AddDate(0, 0, -29)
+		start = now.AddDate(0, 0, -(defaultQueryRangeDays - 1))
 	}
 	if query.StartDate == "" {
 		query.StartDate = dateKey(start)
@@ -472,7 +484,7 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 		quotaDash        QuotaDashboard
 		inefficient      []ModelInsight
 	)
-	anomalyQuery := withLimit(rangeQuery, 12)
+	anomalyQuery := withLimit(rangeQuery, anomalyQueryLimit)
 	anomalyQuery.Status = "abnormal"
 
 	eg, egCtx := errgroup.WithContext(ctx)
@@ -758,7 +770,7 @@ func usageCostMicro(tokens int, microPer1K int64, usdPer1M float64) int64 {
 		return modelregistry.CostMicroUSDFromUSDPer1M(tokens, usdPer1M)
 	}
 	if microPer1K > 0 {
-		return int64(tokens) * microPer1K / 1000
+		return int64(tokens) * microPer1K / usageCostMicroDivisor
 	}
 	return 0
 }
@@ -931,7 +943,7 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 	if in.RunID != "" {
 		ev.MessageID = in.RunID
 	}
-	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(usageRecordTimeoutSec)*time.Second)
 	defer cancel()
 	if _, err := u.RecordTokenUsageEvent(recCtx, ev); err != nil {
 		return err
@@ -950,7 +962,7 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 		u.envelopePub.PublishTokenUsageEnvelope(ctx, ev)
 	}
 	if u.completion != nil && strings.TrimSpace(in.SessionID) != "" && strings.TrimSpace(in.RunID) != "" {
-		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(usageLinkTimeoutSec)*time.Second)
 		defer linkCancel()
 		if err := u.completion.LinkRunnerCompletionUsage(linkCtx, in.SessionID, in.RunID, usageID, in.TraceID); err != nil {
 			u.lg.Warn("link runner completion usage failed", loggateway.Err(err), loggateway.Str("session_id", in.SessionID), loggateway.Str("run_id", in.RunID))
@@ -1115,7 +1127,7 @@ const (
 
 // InefficientModels returns top models in range that match high-cost + (low TPS or low success).
 func (u *Usecase) InefficientModels(ctx context.Context, query Query) ([]ModelInsight, error) {
-	q := withLimit(u.normalizeQuery(query, u.now()), 32)
+	q := withLimit(u.normalizeQuery(query, u.now()), inefficientModelLimit)
 	rows, err := u.repo.ListTopModelUsage(ctx, q)
 	if err != nil {
 		return nil, err
@@ -1150,7 +1162,7 @@ func (u *Usecase) InefficientModels(ctx context.Context, query Query) ([]ModelIn
 			SuccessRate:        r.SuccessRate,
 			Flags:              flags,
 		})
-		if len(out) >= 8 {
+		if len(out) >= inefficientResultLimit {
 			break
 		}
 	}
@@ -1161,7 +1173,6 @@ func (u *Usecase) InefficientModels(ctx context.Context, query Query) ([]ModelIn
 
 // ExportUsageEventsCSV returns CSV rows for usage events.
 func (u *Usecase) ExportUsageEventsCSV(ctx context.Context, query Query) (string, error) {
-	const csvExportMaxRows = 5000
 	if query.Limit <= 0 || query.Limit > csvExportMaxRows {
 		query.Limit = csvExportMaxRows
 	}

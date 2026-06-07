@@ -461,7 +461,7 @@ type AgentLookup interface {
 	GetAgentByID(ctx context.Context, id string) (struct{}, error)
 }
 
-// TeamLookup checks team existence (decoupled from biz.TeamRepository).
+// TeamLookup checks team existence (decoupled from biz.TeamReader).
 type TeamLookup interface {
 	GetTeamByID(ctx context.Context, id string) (struct{}, error)
 }

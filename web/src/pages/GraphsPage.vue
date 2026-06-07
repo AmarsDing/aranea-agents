@@ -58,7 +58,14 @@
 
         <q-inner-loading :showing="loading && rows.length === 0" />
 
+        <div v-if="!loading && rows.length === 0" class="graphs-page__empty column items-center justify-center q-pa-xl">
+          <q-icon name="hub" size="56px" color="grey-6" class="q-mb-md" />
+          <div class="text-h6 text-grey-7">暂无 Graph</div>
+          <div class="text-body2 text-grey-6 q-mt-sm">点击「新增 Graph」或「从模板创建」开始编排工作流</div>
+        </div>
+
         <draggable
+          v-else
           v-model="localGraphs"
           item-key="id"
           tag="section"

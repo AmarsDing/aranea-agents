@@ -11,7 +11,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// memTeamRepo is an in-memory TeamRepository.
+// memTeamRepo is an in-memory repo that satisfies all team-related narrow interfaces.
 type memTeamRepo struct {
 	teams map[string]biz.Team
 }
@@ -86,10 +86,10 @@ func (m *memTeamRepo) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamR
 func (m *memTeamRepo) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamRun, error) {
 	return r, nil
 }
-func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
-func (m *memTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error               { return nil }
+func (m *memTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error      { return nil }
 func (m *memTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
-func (m *memTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (m *memTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error          { return nil }
 func (m *memTeamRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
 	return nil
 }
@@ -110,6 +110,9 @@ func (m *memTeamRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error
 	return biz.Team{}, fmt.Errorf("team not found by key")
 }
 func (m *memTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
+func (m *memTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
 

@@ -163,7 +163,11 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 	}
 	cfg := monitor.ParseJSONMap(row.ConfigJSON, s.lg)
 	spans := monitor.TraceSpansRaw(cfg)
-	spansJSON, _ := json.Marshal(spans)
+	spansJSON, mErr := json.Marshal(spans)
+	if mErr != nil {
+		s.lg.Warn("spans 序列化失败", loggateway.StepID("monitor.trace.spans_marshal"), loggateway.Err(mErr))
+		spansJSON = []byte("[]")
+	}
 	cfgSanitized := monitor.SanitizeJSONString(row.ConfigJSON, s.lg)
 	metaSanitized := monitor.SanitizeJSONString(row.MetadataJSON, s.lg)
 	tr := bizMonitorRowToProto(row, s.lg)
@@ -302,12 +306,17 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 	if err != nil {
 		return nil, wrapInternalError(err)
 	}
-	manifestJSON, _ := json.Marshal(bundle.Manifest)
+	manifestJSON, mErr := json.Marshal(bundle.Manifest)
+	if mErr != nil {
+		manifestJSON = []byte("{}")
+	}
 	if len(bundle.RootCauses) > 0 {
 		var m map[string]any
 		if err := json.Unmarshal(manifestJSON, &m); err == nil {
 			m["root_causes"] = bundle.RootCauses
-			manifestJSON, _ = json.Marshal(m)
+			if mj, mErr := json.Marshal(m); mErr == nil {
+				manifestJSON = mj
+			}
 		}
 	}
 	return &v1.GenerateDiagnosticBundleResponse{
@@ -418,7 +427,10 @@ func bizSelfCheckReportToProto(r *monitor.SelfCheckReport) *v1.SelfCheckReportEn
 	}
 	results := make([]*v1.SelfCheckResultEntry, 0, len(r.CheckResults))
 	for _, cr := range r.CheckResults {
-		detailsJSON, _ := json.Marshal(cr.Details)
+		detailsJSON, dErr := json.Marshal(cr.Details)
+		if dErr != nil {
+			detailsJSON = []byte("{}")
+		}
 		results = append(results, &v1.SelfCheckResultEntry{
 			CheckId:    cr.CheckID,
 			Checker:    cr.Checker,

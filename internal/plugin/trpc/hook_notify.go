@@ -22,6 +22,10 @@ import (
 )
 
 // HookNotifier queues and delivers Hook notify webhooks.
+// TECH-DEBT(BR1): HookNotifier 在 safego.Go 回调中直接调用 repo 写库，
+// 未经过 EventBus 统一管道。当前已通过 safego.Go 异步化不阻塞回调热路径，
+// 但应迁移到 EventBus + consumer 模式以保持架构一致性。
+// 迁移时需确保 hook delivery 的重试语义和错误处理不变。
 const (
 	hookDefaultMaxAttempts = 3
 	hookDefaultTimeoutSec  = 8

@@ -147,7 +147,7 @@ const sourceChips = computed(() => [
 
   &:focus-within
     border-color: var(--color-accent, #DCA03E)
-    box-shadow: 0 0 0 3px rgba(220, 160, 62, 0.15)
+    box-shadow: var(--shadow-accent-focus)
 
 .org-market-toolbar__search-icon
   color: var(--color-icon-muted, #A89580)
@@ -210,11 +210,11 @@ const sourceChips = computed(() => [
   font-size: 11px
   padding: 0 5px
   border-radius: 6px
-  background: rgba(141, 110, 99, 0.1)
+  background: var(--color-warm-muted-surface)
   color: var(--color-text-secondary, #6B5B4D)
 
 .is-active .org-market-chip__count
-  background: rgba(220, 160, 62, 0.18)
+  background: var(--color-accent-soft)
   color: var(--color-warning, #8a6014)
 
 .org-market-toolbar__spacer

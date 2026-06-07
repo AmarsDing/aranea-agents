@@ -1,4 +1,4 @@
-import { onMounted, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import type { A2AAgentCard, A2AInvokeResult, RegisterRemoteAgentInput, DiscoverRemoteInput } from './types';
@@ -212,44 +212,65 @@ export function useA2APage() {
   });
 
   return {
-    agents,
-    auditRows,
-    auditTotal,
-    remoteAgents,
-    gatewayEntries,
-    loading,
+    // Shared
     tab,
-    auditLoading,
-    invokeLoading,
-    remoteLoading,
-    remoteDiscoverLoading,
-    remoteRegisterLoading,
-    gatewayLoading,
     error,
-    invokeResult,
-    remotePreview,
-    discoverWorkspace,
-    discoverCapability,
-    remoteWorkspace,
-    gatewayWorkspace,
-    gatewayCapability,
-    gatewayCheckHealth,
-    invokeForm,
-    cardColumns,
-    remoteColumns,
-    auditColumns,
-    gatewayColumns,
-    auditStatusColor,
-    loadDiscover,
-    loadRemote,
-    loadAudit,
-    submitInvoke,
-    submitRemoteRegister,
-    previewRemote,
-    removeRemote,
-    confirmRemoveRemote,
-    loadGateway,
+    loading,
     reload,
     runtimeConfig,
+
+    // Discover tab
+    discover: reactive({
+      agents,
+      discoverWorkspace,
+      discoverCapability,
+      cardColumns,
+      loadDiscover,
+    }),
+
+    // Invoke tab
+    invoke: reactive({
+      invokeForm,
+      invokeLoading,
+      invokeResult,
+      submitInvoke,
+    }),
+
+    // Audit tab
+    audit: reactive({
+      auditRows,
+      auditTotal,
+      auditLoading,
+      auditColumns,
+      auditStatusColor,
+      loadAudit,
+    }),
+
+    // Remote tab
+    remote: reactive({
+      remoteAgents,
+      remoteWorkspace,
+      remoteLoading,
+      remoteDiscoverLoading,
+      remoteRegisterLoading,
+      remotePreview,
+      remoteColumns,
+      loadRemote,
+      submitRemoteRegister,
+      previewRemote,
+      removeRemote,
+      confirmRemoveRemote,
+    }),
+
+    // Gateway tab
+    gateway: reactive({
+      gatewayEntries,
+      gatewayWorkspace,
+      gatewayCapability,
+      gatewayCheckHealth,
+      gatewayLoading,
+      gatewayColumns,
+      loadGateway,
+    }),
   };
 }

@@ -247,6 +247,7 @@ import {
   useEvolutionSuggestionListPage,
   statusOptions,
 } from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
+import { formatDate } from '../features/skillEvolutionSuggestions/formatUtils';
 import type { EvolutionSuggestionView } from '../features/skills/types';
 
 const {
@@ -287,12 +288,4 @@ function openDetailDialog(row: EvolutionSuggestionView) {
   detailDialogOpen.value = true;
 }
 
-function formatDate(ts: unknown): string {
-  if (!ts || typeof ts !== 'string') return '—';
-  try {
-    return new Date(ts).toLocaleString('zh-CN', { hour12: false });
-  } catch {
-    return ts;
-  }
-}
 </script>

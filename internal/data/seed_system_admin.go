@@ -36,7 +36,13 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
+		provider = excluded.provider,
+		model = excluded.model,
+		status = excluded.status,
 		agent_description = excluded.agent_description,
+		system_prompt_mode = excluded.system_prompt_mode,
+		config_json = excluded.config_json,
+		deleted_at = excluded.deleted_at,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
 		source = excluded.source,
@@ -70,7 +76,13 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
+		provider = excluded.provider,
+		model = excluded.model,
+		status = excluded.status,
 		agent_description = excluded.agent_description,
+		system_prompt_mode = excluded.system_prompt_mode,
+		config_json = excluded.config_json,
+		deleted_at = excluded.deleted_at,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
 		source = excluded.source,
@@ -148,7 +160,13 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		'memory', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
+		provider = excluded.provider,
+		model = excluded.model,
+		status = excluded.status,
 		agent_description = excluded.agent_description,
+		system_prompt_mode = excluded.system_prompt_mode,
+		config_json = excluded.config_json,
+		deleted_at = excluded.deleted_at,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
 		source = excluded.source,
@@ -182,7 +200,13 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		'skills', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
+		provider = excluded.provider,
+		model = excluded.model,
+		status = excluded.status,
 		agent_description = excluded.agent_description,
+		system_prompt_mode = excluded.system_prompt_mode,
+		config_json = excluded.config_json,
+		deleted_at = excluded.deleted_at,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
 		source = excluded.source,
@@ -386,7 +410,13 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 			?, 'dept_lead'
 		) ON CONFLICT(agent_key) DO UPDATE SET
 			display_name = excluded.display_name,
+			provider = excluded.provider,
+			model = excluded.model,
+			status = excluded.status,
 			agent_description = excluded.agent_description,
+			system_prompt_mode = excluded.system_prompt_mode,
+			config_json = excluded.config_json,
+			deleted_at = excluded.deleted_at,
 			readonly = excluded.readonly,
 			kind = excluded.kind,
 			source = excluded.source,

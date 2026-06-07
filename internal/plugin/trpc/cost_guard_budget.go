@@ -21,6 +21,9 @@ type costGuardPersistEntry struct {
 	delta int
 }
 
+// TECH-DEBT(BR1): CostGuardBudgetTracker 在 persistWorker 中直接调用 repo 写库，
+// 未经过 EventBus 统一管道。当前已通过 channel+worker 批量异步化，
+// 但应迁移到 EventBus + consumer 模式以保持架构一致性。
 type CostGuardBudgetTracker struct {
 	mu       sync.Mutex
 	day      string
@@ -298,7 +301,7 @@ func costGuardShouldBlock(baseMod string, cfg CostGuardConfig, estTokens int, tr
 	return true, reason
 }
 
-// TECH-DEBT: framework-internal-access — directly accesses inv.Session.EventMu/Events.
+// TECH-DEBT(BR14): framework-internal-access — directly accesses inv.Session.EventMu/Events.
 // Should use a framework public API for session token stats when available.
 func EstimateInvocationTokens(inv *trpcagent.Invocation) int {
 	if inv == nil {

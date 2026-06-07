@@ -39,7 +39,7 @@ Aranea 保留 MuseBot 验证过的 **SDK 与连接模式**，采用 Kratos 分�
 
 ## 2. 支持的平台（Catalog）
 
-Catalog 由 `ListChannelCatalog` 返回。
+Catalog 由 `ListChannelTypes` 返回。
 
 - **`bundled=true`**：本 binary 已实现 adapter，可创建并运行  
 - **`bundled=false`**：规格已定义，连接能力待实现（参考 MuseBot 同平台文件）

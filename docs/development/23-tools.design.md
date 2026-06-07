@@ -60,7 +60,7 @@ message Tool {
   string config_json = 16;              // 当前生效配置
   string default_config_json = 17;      // 出厂默认配置
   string metadata_json = 18;            // 扩展元数据
-  string runtime_status = 19;           // "available"/"catalog_only"/"disabled"
+  string runtime_status = 19;           // "available"/"registered_only"/"disabled"
   string runtime_kind = 20;             // "function"/"streaming"/"approval"
   int32 invoke_count = 21;
   int32 invoke_count_24h = 22;
@@ -416,7 +416,7 @@ type Tool struct {
     ConfigJSON           string              // 当前生效配置
     DefaultConfigJSON    string              // 出厂默认配置
     MetadataJSON         string              // 扩展元数据
-    RuntimeStatus        string              // "available"/"catalog_only"/"disabled"
+    RuntimeStatus        string              // "available"/"registered_only"/"disabled"
     RuntimeKind          string              // "function"/"streaming"/"approval"
     InvokeCount          int                 // 总调用次数
     InvokeCount24h       int                 // 24h 调用次数
@@ -1395,7 +1395,7 @@ export type Tool = {
   config_json: string;
   default_config_json: string;
   metadata_json: string;
-  runtime_status?: "available" | "catalog_only" | "disabled" | string;
+  runtime_status?: "available" | "registered_only" | "disabled" | string;
   runtime_kind?: "function" | "streaming" | "approval" | string;
   invoke_count: number;
   invoke_count_24h: number;
@@ -2270,7 +2270,7 @@ deny 列表 + ToolsEnabled=false → 覆盖一切
 
 计算公式（`computeEffectiveToolState`）：
 ```
-baseEnabled = ToolsEnabled && (catalogOpenByDefault || policyNamesKey)
+baseEnabled = ToolsEnabled && (toolOpenByDefault || policyNamesKey)
 enabled     = baseEnabled && state == "allowed"  // 未被 deny
 ```
 
@@ -2541,7 +2541,7 @@ type EffectiveAgentTool struct {
 | `ToolOverrideReader` | 2 | Agent 覆盖查询（ListOverrides, ListOverridesByAgent） |
 | `ToolOverrideWriter` | 2 | Agent 覆盖写入（UpsertOverride, DeleteOverride） |
 | `ToolSyncer` | 1 | 内置工具同步（SyncBuiltinTools） |
-| `ToolCatalogReader` | 4 | 只读窄接口（= ToolReader + ToolOverrideReader） |
+| `ToolRegistryReader` | 4 | 只读窄接口（= ToolReader + ToolOverrideReader） |
 
 `ToolRepo` 保留为组合接口（嵌入上述 8 个子接口），保持向后兼容。
 
@@ -2550,10 +2550,10 @@ type EffectiveAgentTool struct {
 | 消费者 | 依赖接口 | 说明 |
 |--------|----------|------|
 | `ToolUsecase` | `ToolRepo`（全量） | Usecase 需要全量访问 |
-| `AgentUsecase.tools` | `ToolCatalogReader` | 只需 SearchTools + Override 查询 |
-| `agent.Deps.ToolsCatalog` | `biz.ToolCatalogReader` | 只需读取工具目录 |
-| `team.Runner.toolsCatalog` | `biz.ToolCatalogReader` | 只需读取工具目录 |
-| `runtime.Catalog.Tools` | `biz.ToolCatalogReader` | 只需读取工具目录 |
+| `AgentUsecase.tools` | `ToolRegistryReader` | 只需 SearchTools + Override 查询 |
+| `agent.Deps.ToolRegistry` | `biz.ToolRegistryReader` | 只需读取工具目录 |
+| `team.Runner.toolRegistry` | `biz.ToolRegistryReader` | 只需读取工具目录 |
+| `runtime.TurnReadDeps.Tools` | `biz.ToolRegistryReader` | 只需读取工具目录 |
 
 ---
 
@@ -2619,7 +2619,7 @@ Wire provider 函数不得依赖跨模块具体类型（红线 #7）。已改造
 
 | Provider | 当前参数 | 目标 | 说明 |
 |----------|----------|------|------|
-| `provideChatServiceDeps` | `*biz.SkillUsecase` | 拆分 `rt.Catalog.SkillUC` 为窄接口 | 影响面大，后续迭代 |
+| `provideChatServiceDeps` | `*biz.SkillUsecase` | 拆分 `rt.TurnReadDeps.SkillUC` 为窄接口 | 影响面大，后续迭代 |
 
 ---
 

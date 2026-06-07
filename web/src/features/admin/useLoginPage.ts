@@ -1,3 +1,5 @@
+// TECH-DEBT(FL5): composable 直接调用 heartbeat/api 而非通过 Store，
+// 因为登录页的健康检查是一次性操作且不需要全局状态。
 import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';

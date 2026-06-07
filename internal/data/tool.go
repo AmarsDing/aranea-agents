@@ -174,7 +174,7 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 	if s.Calls24h > 0 {
 		s.FailureRate24h = float64(failed24h+blocked24h) / float64(s.Calls24h)
 	}
-	_ = success24h
+	_ = success24h // already accounted for in Calls24h
 	return s, nil
 }
 

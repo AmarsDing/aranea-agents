@@ -110,7 +110,13 @@ func (h *ChannelIngress) markTurnJobAsyncTarget(ctx context.Context, targetType,
 	if jobID == "" {
 		return
 	}
-	_ = h.turnJobs.UpdateAsyncTarget(ctx, jobID, targetType, targetID)
+	if err := h.turnJobs.UpdateAsyncTarget(ctx, jobID, targetType, targetID); err != nil {
+		h.lg.Warn("TurnJob 异步目标更新失败",
+			loggateway.StepID("channel.job.async_target_update_failed"),
+			loggateway.Str("job_id", jobID),
+			loggateway.Err(err),
+		)
+	}
 }
 
 func (h *ChannelIngress) publishBackgroundJobRefresh(ctx context.Context, jobID, sessionID, status string) {

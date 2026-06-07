@@ -183,7 +183,6 @@
 
 <script setup lang="ts">
 import { computed, toValue } from 'vue';
-import { useQuasar } from 'quasar';
 import AgentAvatarPicker from '../components/avatar/AgentAvatarPicker.vue';
 import AgentEvolutionPanel from '../components/agents/AgentEvolutionPanel.vue';
 import AgentLearningLoopPanel from '../components/agents/AgentLearningLoopPanel.vue';
@@ -200,12 +199,6 @@ import AgentSettingsA2ATab from '../components/agents/AgentSettingsA2ATab.vue';
 import AgentSettingsA2AEndpointTab from '../components/agents/AgentSettingsA2AEndpointTab.vue';
 import AgentUsageQuotaPanel from '../components/agents/AgentUsageQuotaPanel.vue';
 import { useAgentSettingsPage } from '../features/agents/useAgentSettingsPage';
-
-const $q = useQuasar();
-
-function onRefineError(message: string) {
-  $q.notify({ type: 'negative', message });
-}
 
 const {
   tab,
@@ -246,6 +239,7 @@ const {
   agentId,
   availableOptionalFiles,
   addOptionalFile,
+  onRefineError,
   activeFile,
   fileSplitter,
   files,

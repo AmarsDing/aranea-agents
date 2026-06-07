@@ -104,7 +104,7 @@ const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.i
     color: var(--color-accent-green, #2D6A4F)
 
   &.is-off
-    background: rgba(229, 92, 92, 0.1)
+    background: var(--color-danger-surface)
     color: var(--color-danger, #B13939)
 
 .industry-market-table-row__status-dot

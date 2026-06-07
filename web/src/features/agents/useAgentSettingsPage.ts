@@ -300,6 +300,9 @@ export function useAgentSettingsPage() {
     loadSkillSlugOptions,
     resetSkillRuntimeDefaults: () =>
       resetSkillRuntimeDefaults(config, (message) => $q.notify({ type: 'info', message })),
+    onRefineError: (message: string) => {
+      $q.notify({ type: 'negative', message });
+    },
     confirmResetSkillDefaults: () => {
       $q.dialog({
         title: '恢复默认',

@@ -344,5 +344,13 @@ export function useModelCatalogTab() {
 
     // i18n (needed by template)
     t,
+
+    // Notify helpers (FB4 fix: moved from Page to composable)
+    onCopySuccess: () => {
+      $q.notify({ type: 'positive', message: '已复制', timeout: 1200 });
+    },
+    onCopyError: (message: string) => {
+      $q.notify({ type: 'warning', message });
+    },
   };
 }

@@ -16,7 +16,7 @@ import (
 	rt "aranea-agents/internal/runtime"
 )
 
-// parityMemRepo captures team_run_steps and supports minimal TeamRepository for E2E harness.
+// parityMemRepo captures team_run_steps and supports minimal team narrow interfaces for E2E harness.
 type parityMemRepo struct {
 	steps []biz.TeamRunStep
 	runs  map[string]biz.TeamRun
@@ -93,6 +93,9 @@ func (m *parityMemRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]bi
 func (m *parityMemRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (m *parityMemRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
 	return biz.Team{}, nil
+}
+func (m *parityMemRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
 }
 
 type parityStubAgents struct {
