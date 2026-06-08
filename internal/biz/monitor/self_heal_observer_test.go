@@ -42,7 +42,7 @@ func (m *mockHealRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, old
 
 func newTestObserver(repo monitor.HealRecordRepo, notifier *AlertNotifierCapture) *monitor.SelfHealObserver {
 	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
-	o, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+	o, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 	if err != nil {
 		panic(err)
 	}
@@ -86,19 +86,19 @@ func TestNewSelfHealObserver_NilDeps(t *testing.T) {
 	notifier := &AlertNotifierCapture{}
 
 	// nil repo
-	_, err := monitor.NewSelfHealObserver(nil, engine, notifier, loggateway.NewNoop())
+	_, err := monitor.NewSelfHealObserver(nil, nil, engine, notifier, loggateway.NewNoop())
 	if err == nil {
 		t.Error("nil repo should return error")
 	}
 
 	// nil engine
-	_, err = monitor.NewSelfHealObserver(repo, nil, notifier, loggateway.NewNoop())
+	_, err = monitor.NewSelfHealObserver(nil, repo, nil, notifier, loggateway.NewNoop())
 	if err == nil {
 		t.Error("nil engine should return error")
 	}
 
 	// normal
-	o, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+	o, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("normal params should succeed, got: %v", err)
 	}

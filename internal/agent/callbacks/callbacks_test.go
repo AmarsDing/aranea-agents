@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -80,5 +81,73 @@ func TestToolRecorderCallback(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected AfterTool callback to have been called")
+	}
+}
+
+func TestNewChain_LayerOrdering(t *testing.T) {
+	staticHook := callbacks.NewBeforeModelHook(4, callbacks.LayerStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+	semiStaticHook := callbacks.NewBeforeModelHook(4, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+	dynamicHook := callbacks.NewBeforeModelHook(4, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+
+	// Register in reverse order
+	chain := callbacks.NewChain(dynamicHook, semiStaticHook, staticHook)
+
+	// Verify layer ordering
+	layers := []callbacks.SystemLayer{}
+	for _, cb := range chain.Entries() {
+		if lc, ok := cb.(callbacks.LayeredCallback); ok {
+			layers = append(layers, lc.Layer())
+		} else {
+			layers = append(layers, callbacks.LayerDynamic)
+		}
+	}
+
+	if len(layers) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(layers))
+	}
+	if layers[0] != callbacks.LayerStatic {
+		t.Errorf("entry 0: expected LayerStatic, got %v", layers[0])
+	}
+	if layers[1] != callbacks.LayerSemiStatic {
+		t.Errorf("entry 1: expected LayerSemiStatic, got %v", layers[1])
+	}
+	if layers[2] != callbacks.LayerDynamic {
+		t.Errorf("entry 2: expected LayerDynamic, got %v", layers[2])
+	}
+}
+
+func TestNewChain_LayerAndPriorityOrdering(t *testing.T) {
+	// Static priority 4, SemiStatic priority 3, Dynamic priority 1
+	// Expected order: Static(4), SemiStatic(3), Dynamic(1)
+	// Layer takes precedence over Priority
+	hook1 := callbacks.NewBeforeModelHook(4, callbacks.LayerStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+	hook2 := callbacks.NewBeforeModelHook(3, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+	hook3 := callbacks.NewBeforeModelHook(1, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+
+	chain := callbacks.NewChain(hook3, hook2, hook1)
+
+	layers := []callbacks.SystemLayer{}
+	for _, cb := range chain.Entries() {
+		if lc, ok := cb.(callbacks.LayeredCallback); ok {
+			layers = append(layers, lc.Layer())
+		} else {
+			layers = append(layers, callbacks.LayerDynamic)
+		}
+	}
+
+	if layers[0] != callbacks.LayerStatic || layers[1] != callbacks.LayerSemiStatic || layers[2] != callbacks.LayerDynamic {
+		t.Errorf("expected [Static, SemiStatic, Dynamic], got %v", layers)
 	}
 }

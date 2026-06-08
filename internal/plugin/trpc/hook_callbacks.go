@@ -55,7 +55,7 @@ func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRe
 			return &trpcagent.AfterAgentResult{Context: ctx}, nil
 		})
 	case "before_model":
-		return callbacks.NewBeforeModelHook(priority, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		return callbacks.NewBeforeModelHook(priority, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 			if err := executeHookAction(ctx, stats, notifier, rh, "before_model", agentID, agentKey, "", args, lg); err != nil {
 				return nil, err
 			}
@@ -180,7 +180,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		}
 		n := notifier
 		if n == nil {
-			n = NewHookNotifier(nil, lg)
+			n = NewHookNotifier(nil, nil, lg)
 		}
 		if enqueueErr := n.EnqueueNotify(ctx, rh, payload); enqueueErr != nil {
 			err = enqueueErr

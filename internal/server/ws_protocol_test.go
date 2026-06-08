@@ -17,7 +17,7 @@ func newTestWSServer(bus event.Bus, buf *event.Buffer, canceller RunCanceller, s
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: buf},
-		canceller, sender, nil, loggateway.NewNoop(),
+		canceller, sender, nil, nil, loggateway.NewNoop(),
 	)
 }
 
@@ -39,7 +39,7 @@ func TestWSUpstreamPingProducesPong(t *testing.T) {
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
 		send:     make(chan []byte, 4),
-		queues:   newConnQueues(),
+		queues:   newConnQueues(conf.RuntimeWSConfig{}),
 	}
 
 	raw, err := json.Marshal(wsUpstream{
@@ -252,6 +252,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		nil,
 		stubChatSender{},
 		stubTurnExecutor{err: errors.New("provider raw error")},
+		nil,
 		loggateway.NewNoop(),
 	)
 	wc := &wsConn{

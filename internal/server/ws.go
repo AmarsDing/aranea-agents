@@ -44,16 +44,6 @@ type WSTurnExecutor interface {
 
 var _ transport.Server = (*WSServer)(nil)
 
-const (
-	defaultWSReadLimit           = 1 << 20
-	defaultWSPongWait            = 60 * time.Second
-	defaultWSPingPeriod          = 30 * time.Second
-	defaultWSWriteWait           = 10 * time.Second
-	defaultWSTurnTimeout         = 5 * time.Minute
-	defaultMaxSessionConns       = 5
-	defaultMaxGlobalMonitorConns = 3
-)
-
 type RunCanceller interface {
 	CancelRun(ctx context.Context, sessionID string) bool
 }
@@ -80,6 +70,7 @@ type WSServer struct {
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
 	serverConf            *conf.Server
+	runtimeConf           *conf.Runtime
 	upgrader              websocket.Upgrader
 	closed                bool
 	maxSessionConns       int
@@ -93,11 +84,11 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		SessionBus: eventBus,
 		MonitorBus: eventBus,
 		Buffer:     eventBuffer,
-	}, canceller, sender, nil, nil)
+	}, canceller, sender, nil, nil, nil)
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, lg loggateway.Logger) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -108,6 +99,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 	if monitor == nil {
 		monitor = infra.SessionBus
 	}
+	wsCfg := runtimeConf.WSConfig()
 	return &WSServer{
 		store:                 newConnStore(),
 		eventBus:              infra.SessionBus,
@@ -117,8 +109,9 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		sender:                sender,
 		turnExecutor:          turnExecutor,
 		serverConf:            c,
-		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", defaultMaxSessionConns),
-		maxGlobalMonitorConns: envInt("WS_MAX_GLOBAL_MONITOR_CONNS", defaultMaxGlobalMonitorConns),
+		runtimeConf:           runtimeConf,
+		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", int(wsCfg.MaxSessionConns)),
+		maxGlobalMonitorConns: envInt("WS_MAX_GLOBAL_MONITOR_CONNS", int(wsCfg.MaxGlobalMonitorConns)),
 		lg:                    lg,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -130,6 +123,11 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 			},
 		},
 	}
+}
+
+// wsConfig returns the resolved WebSocket config from Runtime.
+func (s *WSServer) wsConfig() conf.RuntimeWSConfig {
+	return s.runtimeConf.WSConfig()
 }
 
 func (s *WSServer) Start(ctx context.Context) error {
@@ -274,14 +272,15 @@ func (s *WSServer) newWSConn(conn *websocket.Conn, sessionID, userID string, glo
 	filterKey := strings.TrimSpace(r.URL.Query().Get("filter_key"))
 
 	wcCtx, wcCancel := context.WithCancel(context.Background())
+	cfg := s.wsConfig()
 	return &wsConn{
 		conn:       conn,
 		sessionID:  sessionID,
 		userID:     userID,
 		channels:   wsBuildChannels(globalMode, probeMode),
 		filterKey:  filterKey,
-		send:       make(chan []byte, wsNormalCap),
-		queues:     newConnQueues(),
+		send:       make(chan []byte, cfg.NormalCap),
+		queues:     newConnQueues(cfg),
 		logEnabled: logEnabled,
 		globalMode: globalMode,
 		probeMode:  probeMode,

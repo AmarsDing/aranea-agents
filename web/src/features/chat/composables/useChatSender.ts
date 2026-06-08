@@ -15,6 +15,15 @@ import { createPlaceholderMessage } from '../streamHandlers';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 // TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
+import {
+  CHAT_SEND_DISPATCH_TIMEOUT_MS,
+  CHAT_TURN_ACK_TIMEOUT_MS,
+  CHAT_FIRST_BYTE_TIMEOUT_MS,
+  CHAT_RUN_STALL_TIMEOUT_MS,
+  CHAT_RUN_STALL_CHECK_INTERVAL_MS,
+  CHAT_STALL_NOTIFY_DURATION_MS,
+  CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
+} from '../../constants/timeouts';
 
 import type { RunStatusValue } from '../types';
 
@@ -77,22 +86,17 @@ export function useChatSender(deps: SenderDeps) {
 
   const sending = ref(false);
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
-  const SEND_DISPATCH_TIMEOUT_MS = 30_000;
 
   // 30-second client-side turn-ack timeout: if backend doesn't respond with
   // run.status=running/accepted within 30s, mark the placeholder user message
   // as failed so the user can retry immediately instead of waiting for the
   // (much longer) server-side 5min timeout.
   let turnAckTimeout: ReturnType<typeof setTimeout> | null = null;
-  const TURN_ACK_TIMEOUT_MS = 30_000;
   let pendingTurnAck: { sessionId: string; pendingUserId: string } | null = null;
 
   let firstByteTimeout: ReturnType<typeof setTimeout> | null = null;
-  const FIRST_BYTE_TIMEOUT_MS = 90_000;
 
   let lastRunEventAt = 0;
-  const RUN_STALL_TIMEOUT_MS = 180_000;
-  const RUN_STALL_CHECK_INTERVAL_MS = 30_000;
   let stallCheckInterval: ReturnType<typeof setInterval> | null = null;
 
   const failedPendingIds = reactive(new Map<string, string>());
@@ -112,7 +116,7 @@ export function useChatSender(deps: SenderDeps) {
         $q.notify({
           type: 'warning',
           message: t('chat.runStallWarning', '响应时间较长，请耐心等待或停止生成'),
-          timeout: 8000,
+          timeout: CHAT_STALL_NOTIFY_DURATION_MS,
         });
         clearStallCheck();
       }
@@ -195,7 +199,7 @@ export function useChatSender(deps: SenderDeps) {
         $q.notify({
           type: 'warning',
           message: t('chat.firstByteTimeout', '响应等待时间较长，模型可能正在思考中'),
-          timeout: 8000,
+          timeout: CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
         });
         clearFirstByteTimeout();
       }

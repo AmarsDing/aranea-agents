@@ -237,22 +237,25 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 // RecoverOrphanedRunningTeams transitions all running teams to interrupted
 // and their running runs to failed. Called on server startup to clean up
 // stale state from a previous crash.
-func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) error {
+func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) ([]Team, error) {
 	teams, err := u.ListTeamsByStatus(ctx, TeamStatusRunning)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(teams) == 0 {
-		return nil
+		return nil, nil
 	}
+	var recovered []Team
 	for i := range teams {
-		if _, err := u.TransitionStatus(ctx, teams[i].ID, TeamStatusInterrupted); err != nil {
+		team, err := u.TransitionStatusWithReason(ctx, teams[i].ID, TeamStatusInterrupted, "服务器重启")
+		if err != nil {
 			u.lg.Warn("recover orphaned teams: failed to transition team to interrupted",
 				loggateway.Str("team_id", teams[i].ID),
 				loggateway.Err(err),
 			)
 			continue
 		}
+		recovered = append(recovered, team)
 		orphanRecoveryMaxRuns := 10
 		runs, err := u.ListRuns(ctx, teams[i].ID, orphanRecoveryMaxRuns)
 		if err != nil {
@@ -275,7 +278,7 @@ func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) error {
 			}
 		}
 	}
-	return nil
+	return recovered, nil
 }
 
 func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
@@ -448,6 +451,27 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 		return Team{}, kerrors.BadRequest("TEAM", fmt.Sprintf("invalid team status transition: %s → %s", current.Status, newStatus))
 	}
 	current.Status = newStatus
+	return u.writer.UpdateTeam(ctx, current)
+}
+
+// TransitionStatusWithReason transitions the team status and sets an interrupt reason
+// when transitioning to interrupted status.
+func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string, newStatus string, reason string) (Team, error) {
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return Team{}, err
+	}
+	current, err := u.reader.GetTeamByID(ctx, id)
+	if err != nil {
+		return Team{}, err
+	}
+	if !ValidTeamStatusTransition(current.Status, newStatus) {
+		return Team{}, kerrors.BadRequest("TEAM", fmt.Sprintf("invalid team status transition: %s → %s", current.Status, newStatus))
+	}
+	current.Status = newStatus
+	if newStatus == TeamStatusInterrupted && reason != "" {
+		current.InterruptReason = reason
+	}
 	return u.writer.UpdateTeam(ctx, current)
 }
 

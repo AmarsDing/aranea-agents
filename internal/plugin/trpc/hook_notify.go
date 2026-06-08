@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/hook"
+	"aranea-agents/internal/conf"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundwebhook"
@@ -26,19 +27,16 @@ import (
 // 未经过 EventBus 统一管道。当前已通过 safego.Go 异步化不阻塞回调热路径，
 // 但应迁移到 EventBus + consumer 模式以保持架构一致性。
 // 迁移时需确保 hook delivery 的重试语义和错误处理不变。
-const (
-	hookDefaultMaxAttempts = 3
-	hookDefaultTimeoutSec  = 8
-	hookRetryBackoffBase   = 500 * time.Millisecond
-)
 
 type HookNotifier struct {
-	repo biz.HookDeliveryRepo
-	lg   loggateway.Logger
+	repo     biz.HookDeliveryRepo
+	lg       loggateway.Logger
+	hookConf conf.RuntimeHookConfig
 }
 
-func NewHookNotifier(repo biz.HookDeliveryRepo, lg loggateway.Logger) *HookNotifier {
-	return &HookNotifier{repo: repo, lg: lg}
+// NewHookNotifier creates a HookNotifier. // WIRE: needs *conf.Runtime
+func NewHookNotifier(runtimeConf *conf.Runtime, repo biz.HookDeliveryRepo, lg loggateway.Logger) *HookNotifier {
+	return &HookNotifier{repo: repo, lg: lg, hookConf: runtimeConf.HookConfig()}
 }
 
 // EnqueueNotify schedules a webhook delivery. Synchronous validation/marshal errors are returned;
@@ -82,9 +80,9 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 	safego.Go(ctx, "hook.notify.enqueue."+rh.Hook.Key, func() {
 		maxAttempts := opts.MaxAttempts
 		if maxAttempts <= 0 {
-			maxAttempts = hookDefaultMaxAttempts
+			maxAttempts = int(n.hookConf.DefaultMaxAttempts)
 		}
-		maxRetryDuration := time.Duration(maxAttempts)*hookRetryBackoffBase + time.Duration(opts.TimeoutSec)*time.Second + 5*time.Second
+		maxRetryDuration := time.Duration(maxAttempts)*n.hookConf.RetryBackoffBase + time.Duration(opts.TimeoutSec)*time.Second + 5*time.Second
 		bg, cancel := context.WithTimeout(context.Background(), maxRetryDuration)
 		defer cancel()
 		if err := n.repo.Insert(bg, d); err != nil {
@@ -115,7 +113,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 	}
 	max := d.MaxAttempts
 	if max <= 0 {
-		max = hookDefaultMaxAttempts
+		max = int(n.hookConf.DefaultMaxAttempts)
 	}
 	if startAttempt <= 0 {
 		startAttempt = 1
@@ -153,7 +151,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		}
 		if attempt < max {
 			select {
-			case <-time.After(time.Duration(attempt) * hookRetryBackoffBase):
+			case <-time.After(time.Duration(attempt) * n.hookConf.RetryBackoffBase):
 			case <-ctx.Done():
 				return
 			}
@@ -173,7 +171,7 @@ func deliverHookWebhook(url string, body []byte, secret string, timeoutSec int) 
 		return err
 	}
 	if timeoutSec <= 0 {
-		timeoutSec = hookDefaultTimeoutSec
+		timeoutSec = 8
 	}
 	client := webhookurl.NewOutboundHTTPClient(time.Duration(timeoutSec) * time.Second)
 	reqCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)

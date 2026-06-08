@@ -68,12 +68,7 @@ type (
 )
 
 const (
-	MessageListDefaultLimit = session.MessageListDefaultLimit
-	MessageListMaxLimit     = session.MessageListMaxLimit
-	TimelineMessageMaxFetch = session.TimelineMessageMaxFetch
-	CompressMessageMaxRows  = session.CompressMessageMaxRows
-	ActivityCancelScanLimit = session.ActivityCancelScanLimit
-	SessionBatchPageSize    = session.SessionBatchPageSize
+	SessionBatchPageSize = session.SessionBatchPageSize
 )
 
 var (

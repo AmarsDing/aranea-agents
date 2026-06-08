@@ -10,6 +10,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		SubagentsMaxChildrenPerAgent:      5,
 		SubagentsArchiveAfterMinutes:      60,
 		SubagentsMaxRetries:               2,
+		SubagentsStoredResultRunes:        4000,
+		SubagentsStoredSummaryRunes:       240,
 		ToolsEnabled:                      true,
 		ToolsProfile:                      "coding",
 		ToolsAllowJSON:                    "[]",
@@ -39,6 +41,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L0L3MaxChunks:                     5,
 		L0L4MaxPaths:                      3,
 		L0SnapshotMode:                    "on_warning",
+		L0SnapshotEnabled:                 true,
 		L1Enabled:                         true,
 		L1BudgetTokens:                    8192,
 		L1FieldMaxTokens:                  2048,
@@ -83,5 +86,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		ToolsRetryJitter:                  true,
 		ToolsParallelEnabled:              false,
 		ToolsStreamingEnabled:             false,
+		L4DecayIntervalHours:              168,
+		VerificationTruncateChars:         2000,
 	}
 }

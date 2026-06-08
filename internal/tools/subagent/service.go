@@ -71,6 +71,12 @@ type SpawnRequest struct {
 	ParentSessionID string
 	Task            string
 	TimeoutSeconds  int
+	// ResultRunes is the max rune count for stored subagent results.
+	// When <= 0, defaultStoredResultRunes (4000) is used.
+	ResultRunes int
+	// SummaryRunes is the max rune count for stored subagent summaries.
+	// When <= 0, defaultStoredSummaryRunes (240) is used.
+	SummaryRunes int
 }
 
 type Service struct {
@@ -78,6 +84,9 @@ type Service struct {
 	runner         trpcrunner.Runner
 	lg             loggateway.Logger
 	outboundRouter *outbound.Router // optional: for completion notifications
+
+	// sessionRunes stores per-session rune limits keyed by session ID.
+	sessionRunes sync.Map // map[string]runesConfig
 
 	clock func() time.Time
 
@@ -105,6 +114,12 @@ type runningRun struct {
 type runRecord struct {
 	trpcsubagent.Run
 	OwnerUserID string `json:"owner_user_id,omitempty"`
+	// resultRunes is the max rune count for stored subagent results.
+	// When <= 0, defaultStoredResultRunes is used.
+	ResultRunes int `json:"result_runes,omitempty"`
+	// summaryRunes is the max rune count for stored subagent summaries.
+	// When <= 0, defaultStoredSummaryRunes is used.
+	SummaryRunes int `json:"summary_runes,omitempty"`
 }
 
 type storeFile struct {
@@ -157,6 +172,41 @@ func (s *Service) WithOutboundRouter(router *outbound.Router) *Service {
 		s.outboundRouter = router
 	}
 	return s
+}
+
+// runesConfig holds per-session rune limits for subagent results.
+type runesConfig struct {
+	Result  int
+	Summary int
+}
+
+// SetSessionRunes registers per-session rune limits for subagent results.
+// This replaces the old SetStoredResultRunes/SetStoredSummaryRunes setters
+// which were unsafe on a singleton service (race condition across agents).
+func (s *Service) SetSessionRunes(sessionID string, resultRunes, summaryRunes int) {
+	if s != nil && sessionID != "" {
+		s.sessionRunes.Store(sessionID, runesConfig{Result: resultRunes, Summary: summaryRunes})
+	}
+}
+
+// RemoveSessionRunes removes per-session rune limits for a session.
+func (s *Service) RemoveSessionRunes(sessionID string) {
+	if s != nil && sessionID != "" {
+		s.sessionRunes.Delete(sessionID)
+	}
+}
+
+// getSessionRunes returns the per-session rune limits for a session.
+// Returns (0, 0) if no config is registered for the session.
+func (s *Service) getSessionRunes(sessionID string) (int, int) {
+	if s == nil || sessionID == "" {
+		return 0, 0
+	}
+	if v, ok := s.sessionRunes.Load(sessionID); ok {
+		cfg := v.(runesConfig)
+		return cfg.Result, cfg.Summary
+	}
+	return 0, 0
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -224,6 +274,25 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	}
 
 	now := s.clock()
+	// Resolve rune limits: prefer per-request values, then per-session config, then defaults.
+	resultRunes := req.ResultRunes
+	summaryRunes := req.SummaryRunes
+	if resultRunes <= 0 || summaryRunes <= 0 {
+		if sr, ssr := s.getSessionRunes(parentSessionID); sr > 0 || ssr > 0 {
+			if resultRunes <= 0 {
+				resultRunes = sr
+			}
+			if summaryRunes <= 0 {
+				summaryRunes = ssr
+			}
+		}
+	}
+	if resultRunes <= 0 {
+		resultRunes = defaultStoredResultRunes
+	}
+	if summaryRunes <= 0 {
+		summaryRunes = defaultStoredSummaryRunes
+	}
 	record := &runRecord{
 		Run: trpcsubagent.Run{
 			ID:              uuid.NewString(),
@@ -234,6 +303,8 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 			UpdatedAt:       now,
 		},
 		OwnerUserID: ownerUserID,
+		ResultRunes: resultRunes,
+		SummaryRunes: summaryRunes,
 	}
 
 	s.runs[record.ID] = record
@@ -311,7 +382,7 @@ func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run,
 	now := s.clock()
 	current.Status = trpcsubagent.StatusCanceled
 	current.Error = ""
-	current.Summary = summarizeResult("canceled")
+	current.Summary = summarizeResult("canceled", 0)
 	current.UpdatedAt = now
 	current.FinishedAt = cloneTime(now)
 
@@ -352,8 +423,8 @@ func (s *Service) execute(parent context.Context, runID string, timeoutSeconds i
 
 	result := replyAccumulator{}
 	runErr := s.runChild(runCtx, record, started, &result)
-	output := sanitizeStoredResult(result.text)
-	s.finishRun(runID, output, runErr)
+	output := sanitizeStoredResult(result.text, record.ResultRunes)
+	s.finishRun(runID, output, runErr, record.SummaryRunes)
 }
 
 func (s *Service) runChild(
@@ -462,7 +533,7 @@ func (s *Service) markRunning(
 		if current := s.runs[runID]; current != nil {
 			current.Status = trpcsubagent.StatusFailed
 			current.Error = err.Error()
-			current.Summary = summarizeResult(current.Error)
+			current.Summary = summarizeResult(current.Error, 0)
 			current.UpdatedAt = now
 			current.FinishedAt = cloneTime(now)
 		}
@@ -472,7 +543,7 @@ func (s *Service) markRunning(
 	return clone, runCtx, started, nil
 }
 
-func (s *Service) finishRun(runID string, output string, runErr error) {
+func (s *Service) finishRun(runID string, output string, runErr error, summaryRunes int) {
 	s.mu.Lock()
 	record := s.runs[runID]
 	if record == nil {
@@ -492,19 +563,19 @@ func (s *Service) finishRun(runID string, output string, runErr error) {
 	case running != nil && running.cancelRequested:
 		record.Status = trpcsubagent.StatusCanceled
 		record.Error = ""
-		record.Summary = summarizeResult("canceled")
+		record.Summary = summarizeResult("canceled", summaryRunes)
 	case errors.Is(runErr, context.Canceled):
 		record.Status = trpcsubagent.StatusCanceled
 		record.Error = ""
-		record.Summary = summarizeResult("canceled")
+		record.Summary = summarizeResult("canceled", summaryRunes)
 	case runErr != nil:
 		record.Status = trpcsubagent.StatusFailed
 		record.Error = runErr.Error()
-		record.Summary = summarizeResult(record.Error)
+		record.Summary = summarizeResult(record.Error, summaryRunes)
 	default:
 		record.Status = trpcsubagent.StatusCompleted
 		record.Error = ""
-		record.Summary = summarizeResult(output)
+		record.Summary = summarizeResult(output, summaryRunes)
 	}
 	s.mu.Unlock()
 
@@ -628,7 +699,7 @@ func normalizeLoadedRuns(runs map[string]*runRecord, now time.Time) bool {
 		if !r.Status.IsTerminal() {
 			r.Status = trpcsubagent.StatusFailed
 			r.Error = "interrupted"
-			r.Summary = summarizeResult("interrupted")
+			r.Summary = truncateRunes("interrupted", defaultStoredSummaryRunes)
 			r.UpdatedAt = now
 			r.FinishedAt = cloneTime(now)
 			changed = true
@@ -703,12 +774,18 @@ func newRequestID(runID string, now time.Time) string {
 	return fmt.Sprintf("%s%s:%d", subagentRequestPrefix, strings.TrimSpace(runID), now.UnixNano())
 }
 
-func sanitizeStoredResult(text string) string {
-	return truncateRunes(text, defaultStoredResultRunes)
+func sanitizeStoredResult(text string, maxRunes int) string {
+	if maxRunes <= 0 {
+		maxRunes = defaultStoredResultRunes
+	}
+	return truncateRunes(text, maxRunes)
 }
 
-func summarizeResult(text string) string {
-	return truncateRunes(text, defaultStoredSummaryRunes)
+func summarizeResult(text string, maxRunes int) string {
+	if maxRunes <= 0 {
+		maxRunes = defaultStoredSummaryRunes
+	}
+	return truncateRunes(text, maxRunes)
 }
 
 func truncateRunes(text string, limit int) string {
@@ -869,11 +946,16 @@ func (t *spawnTool) Call(ctx context.Context, args []byte) (any, error) {
 		return nil, err
 	}
 
+	// Resolve per-session rune limits from the service's session config.
+	resultRunes, summaryRunes := t.svc.getSessionRunes(sess.ID)
+
 	run, err := t.svc.Spawn(ctx, SpawnRequest{
 		OwnerUserID:     userID,
 		ParentSessionID: sess.ID,
 		Task:            in.Task,
 		TimeoutSeconds:  in.TimeoutSeconds,
+		ResultRunes:     resultRunes,
+		SummaryRunes:    summaryRunes,
 	})
 	if err != nil {
 		return nil, err

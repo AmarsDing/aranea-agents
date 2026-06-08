@@ -255,7 +255,7 @@ func (u *SpiritTeamUsecase) registerTeamTimeout(cfg ParallelConfig, teamID strin
 			return
 		}
 		safego.Go(context.Background(), "spirit-team-timeout", func() {
-			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), TimeoutHandlerContextTimeout)
+			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), cfg.TimeoutHandlerDBTimeout())
 			defer timeoutCancel()
 			team, err := u.teamUC.Get(timeoutCtx, teamID)
 			if err != nil {
@@ -400,7 +400,7 @@ func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSes
 	if u.agentUC == nil {
 		return DefaultParallelConfig()
 	}
-	agents, err := u.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: 1})
+	agents, err := u.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: SpiritAgentQueryLimit})
 	if err != nil {
 		u.lg.Warn("查询精灵 Agent 失败，使用默认并行配置",
 			loggateway.StepID("spirit.parallel_config"),
@@ -412,7 +412,9 @@ func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSes
 		return DefaultParallelConfig()
 	}
 	ag := agents.Items[0]
-	return ParseParallelConfig(ag.MetadataJSON, u.lg)
+	// Read parallel_config from ConfigJSON (stored as a top-level key).
+	// Previously attempted to read from MetadataJSON, but that field has no DB column.
+	return ParseParallelConfig(ag.ConfigJSON, u.lg)
 }
 
 func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error {
@@ -527,7 +529,7 @@ func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string
 		return "", "", nil
 	}
 	teamSession := result.Items[0]
-	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, DefaultRecentMessageCount)
+	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, SpiritRecentMessageCount)
 	if msgErr != nil {
 		u.lg.Warn("获取团队消息失败",
 			loggateway.StepID("spirit.extract_output.msg_err"),
@@ -609,7 +611,7 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 			tp.CurrentStep = "等待执行"
 		default:
 		}
-		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, DefaultRecentRunCount)
+		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, SpiritRecentRunCount)
 		if runErr == nil && len(runs) > 0 {
 			latestRun := runs[0]
 			tp.DurationMs = int64(latestRun.DurationMS)
@@ -650,15 +652,11 @@ const (
 
 	// TimeoutHandlerContextTimeout is the maximum duration for DB operations
 	// inside the timeout callback goroutine.
+	// Deprecated: use ParallelConfig.TimeoutHandlerDBTimeout() instead.
 	TimeoutHandlerContextTimeout = 30 * time.Second
 
 	// MaxKeyFindingsCount is the maximum number of key findings extracted.
 	MaxKeyFindingsCount = 5
-
-	// DefaultRecentMessageCount is the default number of recent messages to fetch.
-	DefaultRecentMessageCount = 10
-	// DefaultRecentRunCount is the default number of recent runs to fetch.
-	DefaultRecentRunCount = 10
 )
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
@@ -880,8 +878,10 @@ func (u *SpiritTeamUsecase) ScheduleDependentTeams(ctx context.Context, spiritSe
 
 // AllTeamsCompletedResult holds the result of checking if all teams are completed.
 type AllTeamsCompletedResult struct {
-	AllDone  bool
-	TeamIDs  []string
+	AllDone       bool
+	TeamIDs       []string
+	TotalTokenIn  int
+	TotalTokenOut int
 }
 
 // CheckAllTeamsCompleted checks whether all teams for a spirit session are in a terminal state.
@@ -911,7 +911,28 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 	for _, t := range teams {
 		teamIDs = append(teamIDs, t.ID)
 	}
-	return AllTeamsCompletedResult{AllDone: true, TeamIDs: teamIDs}
+	// Aggregate token usage from child sessions of the spirit session.
+	var totalTokenIn, totalTokenOut int
+	childSessions, sessErr := u.sessionUC.ListChildSessions(ctx, spiritSessionID)
+	if sessErr != nil {
+		u.lg.Warn("查询精灵会话子 session 失败，跳过 token 聚合",
+			loggateway.StepID("spirit.teams.token_agg_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(sessErr),
+		)
+	} else {
+		teamIDSet := make(map[string]struct{}, len(teamIDs))
+		for _, id := range teamIDs {
+			teamIDSet[id] = struct{}{}
+		}
+		for _, s := range childSessions {
+			if _, ok := teamIDSet[s.TeamID]; ok {
+				totalTokenIn += s.InputTokens
+				totalTokenOut += s.OutputTokens
+			}
+		}
+	}
+	return AllTeamsCompletedResult{AllDone: true, TeamIDs: teamIDs, TotalTokenIn: totalTokenIn, TotalTokenOut: totalTokenOut}
 }
 
 // containsString checks if a string slice contains a given string.
@@ -1047,12 +1068,21 @@ func (u *SpiritTeamUsecase) ExecuteVerificationGates(ctx context.Context, teamID
 		return true, nil, nil
 	}
 
+	// Resolve truncate chars from the Spirit agent's runtime settings.
+	truncateChars := 0
+	if u.agentUC != nil {
+		agents, listErr := u.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: SpiritAgentQueryLimit})
+		if listErr == nil && len(agents.Items) > 0 && agents.Items[0].Settings != nil {
+			truncateChars = agents.Items[0].Settings.VerificationTruncateChars
+		}
+	}
+
 	var allWarnings []string
 	for _, gate := range gates {
 		if gate.MaxRetries <= 0 {
 			gate.MaxRetries = 3
 		}
-		approved, reason, gateErr := u.gateExecutor.ExecuteGate(ctx, gate, teamOutput)
+		approved, reason, gateErr := u.gateExecutor.ExecuteGate(ctx, gate, teamOutput, truncateChars)
 		if gateErr != nil {
 			return false, allWarnings, gateErr
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -44,6 +45,8 @@ type GateResult struct {
 	Reason   string
 }
 
+const defaultTruncateChars = 2000
+
 // VerificationGateExecutor executes verification gates.
 // Initial implementation: direct LLM API call (Plan A).
 type VerificationGateExecutor struct {
@@ -57,22 +60,27 @@ func NewVerificationGateExecutor(deptLeadMgr *DeptLeadManager, llmCaller LLMCall
 }
 
 // ExecuteGate executes a single verification gate.
+// truncateChars is the max rune count for truncating team output in prompts.
+// When <= 0, defaultTruncateChars (2000) is used.
 // Returns (approved bool, reason string, err error)
-func (e *VerificationGateExecutor) ExecuteGate(ctx context.Context, gate VerificationGate, teamOutput string) (bool, string, error) {
+func (e *VerificationGateExecutor) ExecuteGate(ctx context.Context, gate VerificationGate, teamOutput string, truncateChars int) (bool, string, error) {
+	if truncateChars <= 0 {
+		truncateChars = defaultTruncateChars
+	}
 	switch gate.GateType {
 	case GateTypeDeptLeadApproval:
-		return e.executeDeptLeadApproval(ctx, gate, teamOutput)
+		return e.executeDeptLeadApproval(ctx, gate, teamOutput, truncateChars)
 	case GateTypeCrossDeptDelivery:
-		return e.executeCrossDeptDelivery(ctx, gate, teamOutput)
+		return e.executeCrossDeptDelivery(ctx, gate, teamOutput, truncateChars)
 	case GateTypeBorrowApproval:
-		return e.executeBorrowApproval(ctx, gate, teamOutput)
+		return e.executeBorrowApproval(ctx, gate, teamOutput, truncateChars)
 	default:
 		return false, "", kerrors.BadRequest("GATE", fmt.Sprintf("unknown gate type: %s", gate.GateType))
 	}
 }
 
 // executeDeptLeadApproval calls the dept lead LLM to evaluate team output quality.
-func (e *VerificationGateExecutor) executeDeptLeadApproval(ctx context.Context, gate VerificationGate, teamOutput string) (bool, string, error) {
+func (e *VerificationGateExecutor) executeDeptLeadApproval(ctx context.Context, gate VerificationGate, teamOutput string, truncateChars int) (bool, string, error) {
 	if gate.AgentID == "" {
 		return false, "", kerrors.BadRequest("GATE", "dept_lead_approval gate requires agent_id")
 	}
@@ -82,7 +90,7 @@ func (e *VerificationGateExecutor) executeDeptLeadApproval(ctx context.Context, 
 请以 JSON 格式回复：
 {"approved": true/false, "reason": "审批理由"}`
 
-	userPrompt := fmt.Sprintf("团队输出：\n%s\n\n请评估此输出是否通过质量审核。", truncateForPrompt(teamOutput, 2000))
+	userPrompt := fmt.Sprintf("团队输出：\n%s\n\n请评估此输出是否通过质量审核。", truncateForPrompt(teamOutput, truncateChars))
 
 	resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
 		Provider: "", // uses default
@@ -110,7 +118,7 @@ func (e *VerificationGateExecutor) executeDeptLeadApproval(ctx context.Context, 
 // 1. Output-side dept lead approval (quality check)
 // 2. Receiving-side dept lead approval (acceptance check)
 // Both must pass for the gate to pass.
-func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context, gate VerificationGate, teamOutput string) (bool, string, error) {
+func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context, gate VerificationGate, teamOutput string, truncateChars int) (bool, string, error) {
 	// Parse the CrossDeptDeliveryGate from the gate's Description field
 	// (since VerificationGate is the uniform type, extra fields are in Description as JSON)
 	var crossGate CrossDeptDeliveryGate
@@ -135,7 +143,7 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 {"approved": true/false, "reason": "审批理由"}`
 
 		userPrompt := fmt.Sprintf("交付物名称：%s\n团队输出：\n%s\n\n请评估此交付物是否通过质量审核。",
-			crossGate.DeliverableName, truncateForPrompt(teamOutput, 2000))
+			crossGate.DeliverableName, truncateForPrompt(teamOutput, truncateChars))
 
 		resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
 			Provider: "",
@@ -172,7 +180,7 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 {"approved": true/false, "reason": "审批理由"}`
 
 		userPrompt := fmt.Sprintf("交付物名称：%s\n团队输出：\n%s\n\n请评估此交付物是否满足本部门需求。",
-			crossGate.DeliverableName, truncateForPrompt(teamOutput, 2000))
+			crossGate.DeliverableName, truncateForPrompt(teamOutput, truncateChars))
 
 		resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
 			Provider: "",
@@ -201,14 +209,14 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 }
 
 // executeBorrowApproval handles borrow approval gates.
-func (e *VerificationGateExecutor) executeBorrowApproval(ctx context.Context, gate VerificationGate, teamOutput string) (bool, string, error) {
+func (e *VerificationGateExecutor) executeBorrowApproval(ctx context.Context, gate VerificationGate, teamOutput string, truncateChars int) (bool, string, error) {
 	// Plan A: simple LLM call to evaluate borrow request
 	systemPrompt := `你是一个部门主管，负责审批跨部门借调请求。请评估以下借调请求是否合理。
 
 请以 JSON 格式回复：
 {"approved": true/false, "reason": "审批理由"}`
 
-	userPrompt := fmt.Sprintf("借调请求：\n%s\n\n请评估此借调请求是否应该批准。", truncateForPrompt(teamOutput, 2000))
+	userPrompt := fmt.Sprintf("借调请求：\n%s\n\n请评估此借调请求是否应该批准。", truncateForPrompt(teamOutput, truncateChars))
 
 	resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
 		Provider: "",
@@ -275,9 +283,10 @@ func VerificationGatesToJSON(gates []VerificationGate) string {
 }
 
 // truncateForPrompt truncates content for inclusion in LLM prompts.
-func truncateForPrompt(s string, maxLen int) string {
-	if len(s) <= maxLen {
+func truncateForPrompt(s string, maxRunes int) string {
+	if utf8.RuneCountInString(s) <= maxRunes {
 		return s
 	}
-	return s[:maxLen] + "..."
+	runes := []rune(s)
+	return string(runes[:maxRunes]) + "..."
 }

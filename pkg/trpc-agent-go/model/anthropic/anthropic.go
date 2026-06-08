@@ -44,6 +44,7 @@ const (
 	claudeSonnet46         = "claude-sonnet-4-6"
 	claudeSonnet46Alias    = "claude-4.6-sonnet"
 	defaultThinkingDisplay = anthropic.ThinkingConfigAdaptiveDisplaySummarized
+	maxCacheBreakpoints    = 4
 )
 
 // Model implements the model.Model interface for Anthropic API.
@@ -71,10 +72,12 @@ type Model struct {
 	safetyMarginRatio      float64
 	maxInputTokensRatio    float64
 	// Prompt cache configuration
-	cacheSystemPrompt bool
-	cacheTools        bool
-	cacheMessages     bool
-	showToolCallDelta bool
+	cacheSystemPrompt                bool
+	cacheTools                       bool
+	cacheMessages                    bool
+	showToolCallDelta                bool
+	cacheSystemPromptDualBreakpoint  bool
+	cacheSystemPromptSecondBlockIndex int
 }
 
 // New creates a new Anthropic model adapter.
@@ -121,10 +124,12 @@ func New(name string, opts ...Option) *Model {
 		outputTokensFloor:          o.tokenTailoringConfig.OutputTokensFloor,
 		safetyMarginRatio:          o.tokenTailoringConfig.SafetyMarginRatio,
 		maxInputTokensRatio:        o.tokenTailoringConfig.MaxInputTokensRatio,
-		cacheSystemPrompt:          o.cacheSystemPrompt,
-		cacheTools:                 o.cacheTools,
-		cacheMessages:              o.cacheMessages,
-		showToolCallDelta:          o.showToolCallDelta,
+		cacheSystemPrompt:                o.cacheSystemPrompt,
+		cacheTools:                       o.cacheTools,
+		cacheMessages:                    o.cacheMessages,
+		showToolCallDelta:                o.showToolCallDelta,
+		cacheSystemPromptDualBreakpoint:  o.cacheSystemPromptDualBreakpoint,
+		cacheSystemPromptSecondBlockIndex: o.cacheSystemPromptSecondBlockIndex,
 	}
 }
 
@@ -407,26 +412,74 @@ func modelNameMatches(modelName string, targets ...string) bool {
 // system prompts and tools always benefit from caching, regardless of whether
 // message caching is also enabled.
 //
-// Breakpoints applied (each independent):
-//   - System prompt: always cached when cacheSystemPrompt is true (stable across turns)
-//   - Tools: always cached when cacheTools is true (stable across turns)
-//   - Last assistant message: cached when cacheMessages is true (opt-in, benefits multi-turn)
+// Breakpoint priority (highest to lowest):
+//   - P1 (must keep): system static layer — TextBlock[0] end
+//   - P2 (must keep): last tool definition
+//   - P3 (important): system semi-static layer end
+//   - P4 (optional): last assistant message
+//
+// If the total number of breakpoints exceeds maxCacheBreakpoints (4),
+// lowest-priority breakpoints are eliminated first (P4, then P3).
 func (m *Model) applyCacheControl(
 	systemPrompts []anthropic.TextBlockParam,
 	tools []anthropic.ToolUnionParam,
 	messages []anthropic.MessageParam,
 ) ([]anthropic.TextBlockParam, []anthropic.ToolUnionParam, []anthropic.MessageParam) {
-	if m.cacheSystemPrompt && len(systemPrompts) > 0 {
-		systemPrompts = m.applyCacheControlToSystem(systemPrompts)
+	// Count planned breakpoints and apply priority-based elimination if exceeding limit.
+	breakpointsUsed := 0
+	enableSystemBP := m.cacheSystemPrompt && len(systemPrompts) > 0
+	enableSystemDualBP := enableSystemBP && m.cacheSystemPromptDualBreakpoint && len(systemPrompts) > 1
+	enableToolsBP := m.cacheTools && len(tools) > 0
+	enableMessagesBP := m.cacheMessages && len(messages) > 1
+
+	// Count system breakpoints
+	if enableSystemBP {
+		if enableSystemDualBP {
+			breakpointsUsed += 2 // static + semi-static
+		} else {
+			breakpointsUsed += 1
+		}
 	}
-	if m.cacheTools && len(tools) > 0 {
+	if enableToolsBP {
+		breakpointsUsed += 1
+	}
+	if enableMessagesBP {
+		breakpointsUsed += 1
+	}
+
+	// If exceeding limit, eliminate from lowest priority (P4 > P3)
+	if breakpointsUsed > maxCacheBreakpoints {
+		// P4 (messages) is lowest priority - eliminate first
+		if enableMessagesBP {
+			enableMessagesBP = false
+			breakpointsUsed--
+		}
+	}
+	if breakpointsUsed > maxCacheBreakpoints {
+		// P3 (system semi-static) is next to eliminate
+		if enableSystemDualBP {
+			enableSystemDualBP = false
+			breakpointsUsed--
+		}
+	}
+
+	// Apply breakpoints
+	if enableSystemBP {
+		// Temporarily override dual mode if eliminated
+		origDual := m.cacheSystemPromptDualBreakpoint
+		m.cacheSystemPromptDualBreakpoint = enableSystemDualBP
+		systemPrompts = m.applyCacheControlToSystem(systemPrompts)
+		m.cacheSystemPromptDualBreakpoint = origDual
+	}
+	if enableToolsBP {
 		tools = m.applyCacheControlToTools(tools)
 	}
-	if m.cacheMessages && len(messages) > 1 {
+	if enableMessagesBP {
 		if idx := m.findLastAssistantMessageIndex(messages); idx >= 0 {
 			messages = m.applyCacheControlToMessages(messages, idx)
 		}
 	}
+
 	return systemPrompts, tools, messages
 }
 
@@ -490,18 +543,41 @@ func (m *Model) applyCacheControlToMessages(messages []anthropic.MessageParam, i
 	return result
 }
 
-// applyCacheControlToSystem adds cache control to the last system prompt block.
+// applyCacheControlToSystem adds cache control breakpoints to system prompt blocks.
+// In single-breakpoint mode (default), one breakpoint is placed at the last system block.
+// In dual-breakpoint mode, two breakpoints are placed:
+//   - Breakpoint 1: end of TextBlock[0] (static layer)
+//   - Breakpoint 2: end of TextBlock[secondBlockIndex] (semi-static layer)
 func (m *Model) applyCacheControlToSystem(systemPrompts []anthropic.TextBlockParam) []anthropic.TextBlockParam {
 	if len(systemPrompts) == 0 {
 		return systemPrompts
 	}
 
-	// Create a copy to avoid modifying the original slice elements.
 	result := make([]anthropic.TextBlockParam, len(systemPrompts))
 	copy(result, systemPrompts)
 
-	lastIdx := len(result) - 1
-	result[lastIdx].CacheControl = anthropic.NewCacheControlEphemeralParam()
+	if m.cacheSystemPromptDualBreakpoint && len(result) > 1 {
+		// Dual-breakpoint mode: place breakpoints at static and semi-static boundaries.
+		// Breakpoint 1: end of TextBlock[0] (static layer)
+		result[0].CacheControl = anthropic.NewCacheControlEphemeralParam()
+		// Breakpoint 2: end of TextBlock[secondBlockIndex] (semi-static layer)
+		secondIdx := m.cacheSystemPromptSecondBlockIndex
+		if secondIdx <= 0 {
+			secondIdx = 1
+		}
+		if secondIdx >= len(result) {
+			secondIdx = len(result) - 1
+		}
+		// If secondIdx == 0, both breakpoints would be on the same block;
+		// skip the second one to avoid redundancy.
+		if secondIdx > 0 {
+			result[secondIdx].CacheControl = anthropic.NewCacheControlEphemeralParam()
+		}
+	} else {
+		// Single-breakpoint mode: place breakpoint at the last system block.
+		lastIdx := len(result) - 1
+		result[lastIdx].CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
 
 	return result
 }

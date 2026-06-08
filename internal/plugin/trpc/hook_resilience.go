@@ -44,7 +44,7 @@ func wrapResilient(cb callbacks.Callback) callbacks.Callback {
 			return
 		})
 	case callbacks.BeforeModelHook:
-		return callbacks.NewBeforeModelHook(h.Priority(), func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (res *trpcmodel.BeforeModelResult, err error) {
+		return callbacks.NewBeforeModelHook(h.Priority(), callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (res *trpcmodel.BeforeModelResult, err error) {
 			defer func() { err = recoverHookPanic("before_model", recover(), err) }()
 			res, err = h.HandleBeforeModel(ctx, args)
 			err = resilientHookErr("before_model", err)

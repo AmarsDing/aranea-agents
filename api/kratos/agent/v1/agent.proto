@@ -51,6 +51,7 @@ message AgentRuntimeSettings {
   int32 l0_l3_max_chunks = 37;
   int32 l0_l4_max_paths = 38;
   string l0_snapshot_mode = 39;
+  bool l0_snapshot_enabled = 124;
   bool l1_enabled = 40;
   int32 l1_budget_tokens = 41;
   int32 l1_field_max_tokens = 42;
@@ -150,6 +151,12 @@ message AgentRuntimeSettings {
   int32 compress_llm_cache_max_entries = 119;
   // CompressLLMCacheTTLSec is the cache TTL in seconds (default 600).
   int32 compress_llm_cache_ttl_sec = 120;
+  // SubagentsStoredResultRunes is the max rune count for stored subagent results (default 4000).
+  int32 subagents_stored_result_runes = 125;
+  // SubagentsStoredSummaryRunes is the max rune count for stored subagent summaries (default 240).
+  int32 subagents_stored_summary_runes = 126;
+  // VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
+  int32 verification_truncate_chars = 127;
 }
 
 message AgentPromptFile {

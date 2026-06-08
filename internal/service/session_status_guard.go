@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	sessstatus "aranea-agents/internal/biz/session"
 	loggateway "aranea-agents/pkg/loggateway"
 )
@@ -12,11 +13,12 @@ type SessionStatusGuard struct {
 	uc              *biz.SessionUsecase
 	teamUC          *biz.TeamUsecase
 	orchestrator    biz.TaskOrchestratorPort
+	bus             event.Bus
 	lg              loggateway.Logger
 }
 
-func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *SessionStatusGuard {
-	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, lg: lg}
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus event.Bus, lg loggateway.Logger) *SessionStatusGuard {
+	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, lg: lg}
 }
 
 func (g *SessionStatusGuard) OnStartup(ctx context.Context) error {
@@ -59,9 +61,24 @@ func (g *SessionStatusGuard) recoverOrphanedRunningTeams(ctx context.Context) er
 		return nil
 	}
 	g.lg.Info("session status guard: recovering orphaned running teams", loggateway.Int("count", len(teams)))
-	if err := g.teamUC.RecoverOrphanedRunningTeams(ctx); err != nil {
+	recovered, err := g.teamUC.RecoverOrphanedRunningTeams(ctx)
+	if err != nil {
 		g.lg.Error("session status guard: failed to recover orphaned teams", loggateway.Err(err))
 		return err
+	}
+	// Publish spirit_team_interrupted events for each recovered team
+	if g.bus != nil {
+		for _, team := range recovered {
+			env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamInterrupted, "session-status-guard", team.SpiritSessionID)
+			env.TeamID = team.ID
+			env.Metadata = map[string]any{
+				"team_id":          team.ID,
+				"team_name":        team.DisplayName,
+				"status":           biz.TeamStatusInterrupted,
+				"interrupt_reason": team.InterruptReason,
+			}
+			g.bus.Publish(ctx, env)
+		}
 	}
 	g.lg.Info("session status guard: orphaned teams recovered", loggateway.Int("count", len(teams)))
 	return nil

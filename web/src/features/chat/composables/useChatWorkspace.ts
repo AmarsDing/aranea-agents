@@ -45,6 +45,8 @@ import { mapPreviewToReport, type PromptPreviewReport } from '../contextBreakdow
 import { useAgentDetailStore } from '../../../stores/agents/detail';
 import type { AgentPromptPreview } from '../../agents/types';
 import { useReasoningSidebar } from './useReasoningSidebar';
+import { useContextualLoadingMessage } from './useContextualLoadingMessage';
+import { useStatusPulse } from './useStatusPulse';
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -246,6 +248,9 @@ export function useChatWorkspace() {
     },
   });
 
+  const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
+  const statusPulse = useStatusPulse(streamManager.wsReplaying);
+
   const selectedAgentId = computed(() => appStore.selectedAgent?.id);
 
   watch(
@@ -375,6 +380,7 @@ export function useChatWorkspace() {
     selectedAgentId,
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
+    onSpiritEnvelope: contextualLoading.onSpiritEnvelope,
     isChatRoute: () => route.name === 'chat',
     shouldAutoFocusChannel: () => {
       // Default OFF: channel inbound messages no longer auto-focus the session
@@ -798,6 +804,9 @@ export function useChatWorkspace() {
         return sid ? runtimeStore.isWsConnected(sid) : false;
       }),
       wsReplaying: streamManager.wsReplaying,
+      spiritLoadingMessage: contextualLoading.loadingMessage,
+      spiritPulseStates: statusPulse.pulseStates,
+      spiritOnTeamStatusChanged: statusPulse.onTeamStatusChanged,
       jobsRefreshNonce,
       inboundHydrateError,
       sessionLoading,

@@ -3,17 +3,17 @@ package server
 // ws_priority.go — MON-OPT-04: WebSocket 三优先级 send queue.
 //
 // Replaces the single wc.send channel with three priority lanes:
-//   high   cap 64  — alert.notify, mcp health — NEVER silently dropped
-//   normal cap 128 — runner.completion, team_run_*, intent_pass, system msgs
-//   low    cap 256 — flow_log, log, usage.*
+//   high   — alert.notify, mcp health — NEVER silently dropped
+//   normal — runner.completion, team_run_*, intent_pass, system msgs
+//   low    — flow_log, log, usage.*
 //
 // writePump drains: all pending high → normal → low (round-robin low to avoid starvation).
 // Drop policy:
-//   high   block 5 s; if still full close connection so client reconnects
+//   high   block (configurable); if still full close connection so client reconnects
 //   normal DropNewest + increment dropNormal counter
 //   low    DropNewest + increment dropLow counter
 //
-// Every 10 s, if any drops occurred since last report, a "monitor.backpressure"
+// Every configurable interval, if any drops occurred since last report, a "monitor.backpressure"
 // JSON frame is injected into the normal queue (never into low, in case low is clogged).
 
 import (
@@ -21,18 +21,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
-)
-
-const (
-	wsHighCap   = 64
-	wsNormalCap = 128
-	wsLowCap    = 256
-
-	wsHighBlockTimeout     = 5 * time.Second
-	wsBackpressureInterval = 10 * time.Second
-	// max low-priority messages drained per writePump loop to prevent high/normal starvation
-	wsLowDrainPerLoop = 8
 )
 
 // wsPriority classifies an EnvelopeType into a send-queue priority.
@@ -69,18 +59,30 @@ type connQueues struct {
 	dropHigh   atomic.Uint64 // connection-close events; usually 0
 }
 
-func newConnQueues() *connQueues {
+func newConnQueues(cfg conf.RuntimeWSConfig) *connQueues {
+	highCap := cfg.HighCap
+	if highCap <= 0 {
+		highCap = 64
+	}
+	normalCap := cfg.NormalCap
+	if normalCap <= 0 {
+		normalCap = 128
+	}
+	lowCap := cfg.LowCap
+	if lowCap <= 0 {
+		lowCap = 256
+	}
 	return &connQueues{
-		high:   make(chan []byte, wsHighCap),
-		normal: make(chan []byte, wsNormalCap),
-		low:    make(chan []byte, wsLowCap),
+		high:   make(chan []byte, highCap),
+		normal: make(chan []byte, normalCap),
+		low:    make(chan []byte, lowCap),
 	}
 }
 
 // enqueue routes data to the correct priority lane.
-// For high priority: blocks up to wsHighBlockTimeout; returns false if the connection
+// For high priority: blocks up to cfg.HighBlockTimeout; returns false if the connection
 // should be closed (caller must close the channel to signal writePump to exit).
-func (q *connQueues) enqueue(priority wsPriority, data []byte) (ok bool) {
+func (q *connQueues) enqueue(cfg conf.RuntimeWSConfig, priority wsPriority, data []byte) (ok bool) {
 	switch priority {
 	case wsPriorityHigh:
 		select {
@@ -89,7 +91,7 @@ func (q *connQueues) enqueue(priority wsPriority, data []byte) (ok bool) {
 		default:
 		}
 		// high is full: block with timeout
-		timer := time.NewTimer(wsHighBlockTimeout)
+		timer := time.NewTimer(cfg.HighBlockTimeout)
 		defer timer.Stop()
 		select {
 		case q.high <- data:
@@ -125,7 +127,7 @@ func (q *connQueues) enqueueSystem(data []byte) {
 }
 
 // drainOnce returns the next message to send, prioritising high > normal > low.
-// It drains up to wsLowDrainPerLoop low-priority messages per outer loop iteration.
+// It drains up to cfg.LowDrainPerLoop low-priority messages per outer loop iteration.
 // Returns nil if all queues are empty.
 func (q *connQueues) drainSelect() (data []byte, priority wsPriority, ok bool) {
 	// Always drain high first.

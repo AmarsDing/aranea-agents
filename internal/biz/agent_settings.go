@@ -46,6 +46,7 @@ type MemoryCfg struct {
 	L0L3MaxChunks        int     `json:"l0_l3_max_chunks,omitempty"`
 	L0L4MaxPaths         int     `json:"l0_l4_max_paths,omitempty"`
 	L0SnapshotMode       string  `json:"l0_snapshot_mode,omitempty"`
+	L0SnapshotEnabled    bool    `json:"l0_snapshot_enabled,omitempty"`
 
 	// L1 working memory.
 	L1Enabled              bool   `json:"l1_enabled,omitempty"`
@@ -133,6 +134,8 @@ type EvolutionCfg struct {
 	SubagentsArchiveAfterMinutes      int     `json:"subagents_archive_after_minutes,omitempty"`
 	SubagentsMaxRetries               int     `json:"subagents_max_retries,omitempty"`
 	SubagentsModelOverride            string  `json:"subagents_model_override,omitempty"`
+	SubagentsStoredResultRunes        int     `json:"subagents_stored_result_runes,omitempty"`
+	SubagentsStoredSummaryRunes       int     `json:"subagents_stored_summary_runes,omitempty"`
 	SkillEvolve                       bool    `json:"evolution_skill_evolve,omitempty"`
 	MetricsEnabled                    bool    `json:"evolution_metrics_enabled,omitempty"`
 	SuggestionsEnabled                bool    `json:"evolution_suggestions_enabled,omitempty"`
@@ -163,6 +166,8 @@ type ContextCfg struct {
 	ModelSelector              string `json:"model_selector,omitempty"`
 	PlannerKind                string `json:"planner_kind,omitempty"`
 	PlannerConfigJSON          string `json:"planner_config_json,omitempty"`
+	// VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
+	VerificationTruncateChars int `json:"verification_truncate_chars,omitempty"`
 }
 
 func (s *AgentRuntimeSettings) ApplyIdentity(cfg IdentityCfg) {
@@ -202,6 +207,7 @@ func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
 	s.L0L3MaxChunks = cfg.L0L3MaxChunks
 	s.L0L4MaxPaths = cfg.L0L4MaxPaths
 	s.L0SnapshotMode = cfg.L0SnapshotMode
+	s.L0SnapshotEnabled = cfg.L0SnapshotEnabled
 	s.L1Enabled = cfg.L1Enabled
 	s.L1BudgetTokens = cfg.L1BudgetTokens
 	s.L1FieldMaxTokens = cfg.L1FieldMaxTokens
@@ -282,6 +288,8 @@ func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
 	s.SubagentsArchiveAfterMinutes = cfg.SubagentsArchiveAfterMinutes
 	s.SubagentsMaxRetries = cfg.SubagentsMaxRetries
 	s.SubagentsModelOverride = cfg.SubagentsModelOverride
+	s.SubagentsStoredResultRunes = cfg.SubagentsStoredResultRunes
+	s.SubagentsStoredSummaryRunes = cfg.SubagentsStoredSummaryRunes
 	s.EvolutionSkillEvolve = cfg.SkillEvolve
 	s.EvolutionMetricsEnabled = cfg.MetricsEnabled
 	s.EvolutionSuggestionsEnabled = cfg.SuggestionsEnabled
@@ -311,4 +319,5 @@ func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.ModelSelector = cfg.ModelSelector
 	s.PlannerKind = cfg.PlannerKind
 	s.PlannerConfigJSON = cfg.PlannerConfigJSON
+	s.VerificationTruncateChars = cfg.VerificationTruncateChars
 }

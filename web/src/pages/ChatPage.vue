@@ -14,6 +14,7 @@
       :selected-team-id="spiritStore.activeTeamId"
       :default-agent-id="entity.store.agents[0]?.id"
       :is-dark="layout.isDark"
+      :pulse-team-colors="pulseTeamColors"
       @select-spirit="onSelectSpirit()"
       @select-agent="entity.selectAgent($event)"
       @agent-settings="(id) => entity.openSettings('agent', id)"
@@ -62,6 +63,9 @@
         :await-kind="composer.awaitKind"
         :await-tool-key="composer.awaitToolKey"
         :ws-replaying="session.wsReplaying"
+        :spirit-loading-message="session.spiritLoadingMessage"
+        :spirit-status-bar="spiritStatusBar"
+        :spirit-max-concurrent-teams="spiritStore.maxConcurrentTeams"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"
@@ -117,6 +121,8 @@
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
         @compact="session.onCompactSession"
+        @cancel-team="spiritStore.cancelTeam"
+        @resume-team="spiritStore.resumeTeam"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -193,9 +199,11 @@ import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
+import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useSpiritTeamStore } from '../stores/spirit';
+import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
 import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
@@ -203,6 +211,60 @@ const SPIRIT_AGENT_KEY = '__spirit__';
 const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
 const router = useRouter();
+
+const spiritStatusBar = computed(() => {
+  const teams = spiritStore.teams;
+  if (!teams.length) return null;
+  const running = teams.filter((t) => t.status === 'running' || t.status === 'pending').length;
+  const interrupted = teams.filter((t) => t.status === 'interrupted').length;
+  const completedTeams = teams.filter((t) => t.status === 'completed');
+  const failedTeams = teams.filter((t) => t.status === 'failed');
+  // Aggregate token usage from all teams that have token data
+  const totalTokenIn = teams.reduce((sum, t) => sum + (t.tokenIn ?? 0), 0);
+  const totalTokenOut = teams.reduce((sum, t) => sum + (t.tokenOut ?? 0), 0);
+  return {
+    runningTeamCount: running,
+    interruptedTeamCount: interrupted,
+    quotaUsed: running,
+    quotaMax: spiritStore.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS,
+    tokenUsage: totalTokenIn > 0 || totalTokenOut > 0 ? { in: totalTokenIn, out: totalTokenOut } : null,
+    lastEvent:
+      completedTeams.length > 0 || failedTeams.length > 0
+        ? {
+            type: (completedTeams.length > 0 ? 'completed' : 'failed') as 'completed' | 'failed',
+            teamName: (completedTeams[0] ?? failedTeams[0])?.teamName ?? '',
+          }
+        : null,
+  };
+});
+
+const pulseTeamColors = computed(() => {
+  const map = new Map<string, string>();
+  for (const [teamId, state] of session.spiritPulseStates) {
+    map.set(teamId, state.color);
+  }
+  return map;
+});
+
+watch(
+  () => spiritStore.teams.map((t) => `${t.id}:${t.status}`),
+  (newVal, oldVal) => {
+    if (!oldVal) return;
+    const newEntries = newVal.map((s) => s.split(':'));
+    const oldMap = new Map(
+      oldVal.map((s) => {
+        const [id, status] = s.split(':');
+        return [id, status];
+      }),
+    );
+    for (const [id, status] of newEntries) {
+      const oldStatus = oldMap.get(id);
+      if (oldStatus && oldStatus !== status) {
+        session.spiritOnTeamStatusChanged(id, status);
+      }
+    }
+  },
+);
 
 function onSelectSpirit() {
   spiritStore.returnToSpirit();

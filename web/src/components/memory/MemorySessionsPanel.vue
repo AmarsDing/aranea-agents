@@ -99,7 +99,7 @@
           <template #body-cell-segments="props">
             <q-td :props="props">
               <q-chip dense square color="blue-grey" text-color="white"
-                >{{ parseSegments(props.row).length }} 段</q-chip
+                >{{ Object.keys(parseSegments(props.row)).length }} 段</q-chip
               >
               <q-chip v-if="parseWarnings(props.row).length" dense square color="warning" text-color="white"
                 >{{ parseWarnings(props.row).length }} warnings</q-chip
@@ -171,7 +171,7 @@
 import type { QTableProps } from 'quasar';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import type { Session } from '../../features/session/types';
-import type { L0AssemblySegment, L0AssemblySnapshot, L1Task } from '../../features/memory/types';
+import type { L0AssemblySegmentsMap, L0AssemblySnapshot, L1Task } from '../../features/memory/types';
 import { memorySessionStatusColor as statusColor } from '../../features/memory/memoryTableUi';
 
 defineProps<{
@@ -192,8 +192,8 @@ defineEmits<{
   openSnapshot: [snapshot: L0AssemblySnapshot];
 }>();
 
-function parseSegments(snapshot: L0AssemblySnapshot): L0AssemblySegment[] {
-  return parseJSON(snapshot.segments_json, []);
+function parseSegments(snapshot: L0AssemblySnapshot): L0AssemblySegmentsMap {
+  return parseJSON(snapshot.segments_json, {});
 }
 
 function parseWarnings(snapshot: L0AssemblySnapshot): string[] {

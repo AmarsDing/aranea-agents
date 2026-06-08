@@ -43,7 +43,7 @@ export function buildMemoryAssemblyTableColumns(formatDate: (value: string) => s
       { sortable: false },
     ),
     registryCol<L0AssemblySnapshot>('ratio', 'Used', 'used_ratio', 'left', REGISTRY_COL_W.status, { sortable: false }),
-    registryCol<L0AssemblySnapshot>('segments', '段落', 'segments_json', 'left', REGISTRY_COL_W.category, {
+    registryCol<L0AssemblySnapshot>('segments', '段落数', 'segments_json', 'left', REGISTRY_COL_W.category, {
       sortable: false,
     }),
     registryCol<L0AssemblySnapshot>('strategy', '裁剪策略', 'truncate_strategy', 'left', REGISTRY_COL_W.category, {

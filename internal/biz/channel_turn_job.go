@@ -17,8 +17,6 @@ const (
 	ChannelTurnJobStatusTimeout     = "timeout"
 	ChannelTurnJobStatusCancelled   = "cancelled"
 	ChannelTurnJobStatusAsyncQueued = "async_queued"
-	// MaxChannelTurnJobListLimit caps admin ListChannelTurnJobs page size.
-	MaxChannelTurnJobListLimit = 200
 	// ChannelAsyncJobWatchMax is the in-process async completion watch ceiling (CC-F-01 interim; durable worker pending).
 	ChannelAsyncJobWatchMax = 24 * time.Hour
 )

@@ -42,7 +42,7 @@ func TestTruncateRunes_TrimSpace(t *testing.T) {
 
 func TestSanitizeStoredResult(t *testing.T) {
 	long := strings.Repeat("x", 5000)
-	got := sanitizeStoredResult(long)
+	got := sanitizeStoredResult(long, defaultStoredResultRunes)
 	if len([]rune(got)) != defaultStoredResultRunes {
 		t.Fatalf("expected %d runes, got %d", defaultStoredResultRunes, len([]rune(got)))
 	}
@@ -50,7 +50,7 @@ func TestSanitizeStoredResult(t *testing.T) {
 
 func TestSummarizeResult(t *testing.T) {
 	long := strings.Repeat("y", 300)
-	got := summarizeResult(long)
+	got := summarizeResult(long, defaultStoredSummaryRunes)
 	if len([]rune(got)) != defaultStoredSummaryRunes {
 		t.Fatalf("expected %d runes, got %d", defaultStoredSummaryRunes, len([]rune(got)))
 	}

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { listSpiritTeams, cancelSpiritTeam } from '../../features/spirit/api';
+import { listSpiritTeams, cancelSpiritTeam, resumeSpiritTeam } from '../../features/spirit/api';
 import type {
   SpiritTeam,
   SpiritPanelMode,
@@ -60,6 +60,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   // Track the current spirit session ID for loadSpiritTeams and reset.
   const currentSpiritSessionId = ref<string | null>(null);
+
+  /** Max concurrent teams quota from backend ParallelConfig. */
+  const maxConcurrentTeams = ref<number | null>(null);
 
   const activeTeam = computed(() => teams.value.find((t) => t.id === activeTeamId.value) ?? null);
 
@@ -125,6 +128,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     lastCheckpoint.value = null;
     orchestrationInterrupted.value = null;
     currentSpiritSessionId.value = null;
+    maxConcurrentTeams.value = null;
   }
 
   function selectTeam(teamId: string) {
@@ -167,6 +171,15 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       }
     } catch {
       Notify.create({ type: 'warning', message: '取消团队请求可能未生效，请刷新确认', position: 'top' });
+    }
+  }
+
+  async function resumeTeam(teamId: string) {
+    try {
+      await resumeSpiritTeam(teamId);
+      updateTeamStatus(teamId, 'running');
+    } catch {
+      Notify.create({ type: 'warning', message: '恢复团队请求可能未生效，请刷新确认', position: 'top' });
     }
   }
 
@@ -228,6 +241,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             members: [],
             sharedAgentIds: [],
             dagNodeId: String(md.dag_node_id ?? ''),
+            graphExecutionId: '',
+            interruptReason: '',
             dependsOn: Array.isArray(md.depends_on) ? md.depends_on.map(String) : [],
             topologyReason: String(md.topology_reason ?? ''),
           });
@@ -241,6 +256,12 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
           if (completedTeam) {
             const dMs = Number(md.duration_ms ?? 0);
             if (dMs > 0) completedTeam.durationMs = dMs;
+            const tokenIn = Number(md.total_token_in ?? 0);
+            const tokenOut = Number(md.total_token_out ?? 0);
+            if (tokenIn > 0 || tokenOut > 0) {
+              completedTeam.tokenIn = tokenIn;
+              completedTeam.tokenOut = tokenOut;
+            }
           }
         }
         break;
@@ -265,6 +286,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'spirit_team_interrupted':
         if (teamId) {
           updateTeamStatus(teamId, 'interrupted');
+          const interruptedTeam = teams.value.find((t) => t.id === teamId);
+          if (interruptedTeam && md.interrupt_reason) {
+            interruptedTeam.interruptReason = String(md.interrupt_reason);
+          }
         }
         break;
 
@@ -358,6 +383,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         {
           const payload = md as unknown as SpiritOrchestrationStartedPayload;
           orchestrationStarted.value = payload;
+          // Persist the parallel quota from backend config.
+          if (payload.max_concurrent_teams && payload.max_concurrent_teams > 0) {
+            maxConcurrentTeams.value = payload.max_concurrent_teams;
+          }
         }
         break;
 
@@ -400,7 +429,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             updateTeamStatus(teamId, 'failed');
           }
           // Log the failure for debugging.
-          console.warn(`[spirit] Butler orchestration failed at phase: ${phase}`, errMsg);
+          // TECH-DEBT: replace with structured logger when available
         }
         break;
     }
@@ -423,6 +452,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     lastCheckpoint,
     orchestrationInterrupted,
     currentSpiritSessionId,
+    maxConcurrentTeams,
     activeTeam,
     activeTeams,
     completedTeams,
@@ -436,6 +466,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     returnToSpirit,
     toggleTeamExpand,
     cancelTeam,
+    resumeTeam,
     updateTeamProgress,
     updateTeamStatus,
     addTeam,

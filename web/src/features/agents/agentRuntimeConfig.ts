@@ -28,6 +28,8 @@ export function defaultAgentRuntimeConfig() {
       max_children_per_agent: 5,
       archive_after_minutes: 60,
       max_retries: 2,
+      stored_result_runes: 4000,
+      stored_summary_runes: 240,
       model_override: '',
     },
     tools: {
@@ -148,6 +150,15 @@ export function defaultAgentRuntimeConfig() {
     code_executor_type: 'local',
     intent_pass: {
       enabled: false,
+    },
+    spirit: {
+      max_concurrent_teams: 3,
+      max_team_concurrency: 2,
+      team_timeout_seconds: 600,
+      auto_archive_seconds: 3600,
+      max_session_depth: 2,
+      verification_truncate_chars: 2000,
+      timeout_handler_db_timeout_seconds: 30,
     },
   };
 }

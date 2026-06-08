@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -19,24 +20,15 @@ type SelfHealObserver struct {
 	engine   *RootCauseEngine
 	notifier AlertNotifier
 	lg       loggateway.Logger
+	healConf conf.RuntimeSelfHealConfig
 
 	mu         sync.Mutex
 	cooldowns  map[string]time.Time   // ruleID → last alert time
 	healEvents map[string][]time.Time // stepID → timestamps of recent heal events (sliding window)
 }
 
-// Sliding window circuit breaker constants.
-const (
-	// CircuitBreakerWindow is the time window for counting heal events.
-	CircuitBreakerWindow = 10 * time.Minute
-	// CircuitBreakerThreshold is the number of heal events within the window that triggers circuit open.
-	CircuitBreakerThreshold = 5
-	// CircuitBreakerResetAfter is the duration after which a circuit-open state auto-resets to half-open.
-	CircuitBreakerResetAfter = 30 * time.Minute
-)
-
-// NewSelfHealObserver creates a new SelfHealObserver.
-func NewSelfHealObserver(repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
+// NewSelfHealObserver creates a new SelfHealObserver. // WIRE: needs *conf.Runtime
+func NewSelfHealObserver(runtimeConf *conf.Runtime, repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
 	if repo == nil {
 		return nil, kerrors.InternalServer("MONITOR", "HealRecordRepo is required")
 	}
@@ -48,6 +40,7 @@ func NewSelfHealObserver(repo HealRecordRepo, engine *RootCauseEngine, notifier 
 		engine:      engine,
 		notifier:    notifier,
 		lg:          lg,
+		healConf:    runtimeConf.SelfHealConfig(),
 		cooldowns:   make(map[string]time.Time),
 		healEvents:  make(map[string][]time.Time),
 	}, nil
@@ -122,7 +115,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 			o.mu.Lock()
 			o.healEvents[stepID] = append(o.healEvents[stepID], now)
 			// Prune events outside the window
-			windowStart := now.Add(-CircuitBreakerWindow)
+			windowStart := now.Add(-o.healConf.CircuitBreakerWindow)
 			pruned := make([]time.Time, 0, len(o.healEvents[stepID]))
 			for _, t := range o.healEvents[stepID] {
 				if !t.Before(windowStart) {
@@ -137,7 +130,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 			countInWindow := len(pruned)
 			o.mu.Unlock()
 
-			if countInWindow >= CircuitBreakerThreshold {
+			if countInWindow >= int(o.healConf.CircuitBreakerThreshold) {
 				ruleID := "rc-repeated-auto-heal-failure"
 				if o.checkCooldown(ruleID, "critical") {
 					o.fireCircuitOpenAlert(ctx, ruleID, stepID, sessionID, "Runtime auto-heal has failed repeatedly in sliding window ("+healStrategy+")", "critical", meta)
@@ -175,7 +168,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 		Metadata:            meta,
 	})
 
-	if best.Confidence >= SelfHealMinConfidence {
+	if best.Confidence >= o.healConf.MinConfidence {
 		if o.checkCooldown(best.RuleID, best.Severity) {
 			o.fireAlert(ctx, best.RuleID, stepID, sessionID, best.RootCause, best.Severity, meta)
 		}
@@ -319,8 +312,8 @@ func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, ste
 		loggateway.Str("rule_id", ruleID),
 		loggateway.Str("step_id", stepID),
 		loggateway.Str("severity", severity),
-		loggateway.Int("threshold", CircuitBreakerThreshold),
-		loggateway.Int64("window_ms", CircuitBreakerWindow.Milliseconds()))
+		loggateway.Int("threshold", int(o.healConf.CircuitBreakerThreshold)),
+		loggateway.Int64("window_ms", o.healConf.CircuitBreakerWindow.Milliseconds()))
 
 	// Record circuit_open status
 	now := time.Now().UTC()
@@ -355,9 +348,9 @@ func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, ste
 			"root_cause":          rootCause,
 			"severity":            severity,
 			"circuit_breaker":     true,
-			"window":              CircuitBreakerWindow.String(),
-			"threshold":           CircuitBreakerThreshold,
-			"auto_reset_after":    CircuitBreakerResetAfter.String(),
+			"window":              o.healConf.CircuitBreakerWindow.String(),
+			"threshold":           o.healConf.CircuitBreakerThreshold,
+			"auto_reset_after":    o.healConf.CircuitBreakerResetAfter.String(),
 		})
 	}
 }
@@ -368,12 +361,27 @@ func (o *SelfHealObserver) checkCooldown(ruleID, severity string) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	cooldown := GetSeverityCooldown(severity)
+	cooldown := o.severityCooldown(severity)
 
 	if last, ok := o.cooldowns[ruleID]; ok {
 		return time.Since(last) > cooldown
 	}
 	return true
+}
+
+// severityCooldown returns the cooldown duration for the given severity level
+// using the observer's resolved config.
+func (o *SelfHealObserver) severityCooldown(severity string) time.Duration {
+	switch severity {
+	case "critical":
+		return o.healConf.SeverityCooldownCritical
+	case "high":
+		return o.healConf.SeverityCooldownHigh
+	case "low":
+		return o.healConf.SeverityCooldownLow
+	default:
+		return o.healConf.SeverityCooldownMedium
+	}
 }
 
 // DiagnoseAndObserve runs diagnose → root-cause analysis → observe cycle.
@@ -426,7 +434,7 @@ func (o *SelfHealObserver) DiagnoseAndObserve(ctx context.Context, traceID, sess
 
 	if best.RuntimeAutoHealed {
 		// Runtime already attempted auto-heal
-		if best.Confidence >= SelfHealMinConfidence {
+		if best.Confidence >= o.healConf.MinConfidence {
 			record.Status = string(HealStatusObservedHealed)
 			record.Reason = "runtime auto-heal observed, root cause identified"
 		} else {
@@ -439,7 +447,7 @@ func (o *SelfHealObserver) DiagnoseAndObserve(ctx context.Context, traceID, sess
 		record.Reason = best.RootCause
 
 		// Fire alert for unhealed error if confidence is high enough
-		if best.Confidence >= SelfHealMinConfidence {
+		if best.Confidence >= o.healConf.MinConfidence {
 			if o.checkCooldown(best.RuleID, best.Severity) {
 				o.fireAlert(ctx, best.RuleID, stepID, sessionID, best.RootCause, best.Severity, best.Metadata)
 			}

@@ -41,7 +41,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 	if biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
 		return newProgressiveSkillGuidanceHook(ag, deps)
 	}
-	return callbacks.NewBeforeModelHook(5, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return callbacks.NewBeforeModelHook(5, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -83,7 +83,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 }
 
 func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	return callbacks.NewBeforeModelHook(5, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return callbacks.NewBeforeModelHook(5, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}

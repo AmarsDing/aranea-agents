@@ -26,6 +26,23 @@ const (
 	PointOnError
 )
 
+// SystemLayer classifies a hook's content by change frequency.
+// Hooks in lower layers execute first, enabling prefix-based prompt caching.
+type SystemLayer int
+
+const (
+	LayerStatic    SystemLayer = iota // Layer 1: content unchanged within session
+	LayerSemiStatic                   // Layer 2: content changes on task/turn switch
+	LayerDynamic                      // Layer 3: content changes every turn
+)
+
+// LayeredCallback is optionally implemented by Callback entries that
+// declare which system layer their content belongs to.
+// Unimplemented callbacks default to LayerDynamic (backward compatible).
+type LayeredCallback interface {
+	Layer() SystemLayer
+}
+
 // Callback is a single entry in a Chain. Implement exactly one Handle* method
 // for the point(s) you care about; unused methods may be left as no-ops.
 type Callback interface {
@@ -89,15 +106,39 @@ type Chain struct {
 	entries []Callback
 }
 
-// NewChain creates a Chain sorted by Priority() then registration order.
+// NewChain creates a Chain sorted by Layer then Priority.
+// Hooks in lower layers (LayerStatic) execute first; within the same layer,
+// lower Priority values execute first. Equal layer+priority preserves
+// registration order via stable sort.
 func NewChain(cbs ...Callback) *Chain {
 	sorted := make([]Callback, len(cbs))
 	copy(sorted, cbs)
-	// stable sort preserves registration order for equal priorities.
 	sort.SliceStable(sorted, func(i, j int) bool {
+		li := layerOf(sorted[i])
+		lj := layerOf(sorted[j])
+		if li != lj {
+			return li < lj
+		}
 		return sorted[i].Priority() < sorted[j].Priority()
 	})
 	return &Chain{entries: sorted}
+}
+
+// layerOf returns the SystemLayer for a callback.
+// Defaults to LayerDynamic if the callback does not implement LayeredCallback.
+func layerOf(cb Callback) SystemLayer {
+	if lc, ok := cb.(LayeredCallback); ok {
+		return lc.Layer()
+	}
+	return LayerDynamic
+}
+
+// Entries returns the sorted list of callbacks in the chain.
+func (c *Chain) Entries() []Callback {
+	if c == nil {
+		return nil
+	}
+	return c.entries
 }
 
 // Append returns a new Chain with additional callbacks appended (and re-sorted).

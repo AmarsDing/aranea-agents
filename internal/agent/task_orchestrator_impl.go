@@ -958,7 +958,7 @@ func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, 
 
 	// New event: spirit_orchestration_started
 	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritOrchestrationStarted, "task-orchestrator", spiritSessionID)
-	env.Metadata = map[string]any{
+	meta := map[string]any{
 		"orchestration_id":  handle.ID,
 		"spirit_session_id": spiritSessionID,
 		"strategy":          string(handle.Strategy),
@@ -967,8 +967,14 @@ func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, 
 		"allocation_id":     handle.AllocationID,
 	}
 	if len(handle.TeamIDs) > 0 {
-		env.Metadata["team_ids"] = handle.TeamIDs
+		meta["team_ids"] = handle.TeamIDs
 	}
+	// Attach parallel config so the frontend knows the team quota.
+	pCfg := o.spiritUC.GetParallelConfig(ctx, spiritSessionID)
+	if pCfg.MaxConcurrentTeams > 0 {
+		meta["max_concurrent_teams"] = pCfg.MaxConcurrentTeams
+	}
+	env.Metadata = meta
 	o.bus.Publish(ctx, env)
 
 	// Dual consumption: also publish spirit_team_assembled (old equivalent).

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -23,9 +24,24 @@ import (
 
 const l0SnapshotByCallStateKey = "aranea:l0_snapshot_by_call"
 
+const l0SnapshotThrottleStateKey = "aranea:l0_snapshot_throttle"
+
+const (
+	// TODO(debt): make throttle params configurable via agent settings.
+	l0SnapshotMinIntervalSec = 300
+	l0SnapshotRatioDelta     = 0.10
+	l0SnapshotThresholdCross = 0.80
+	l0SnapshotLowRatioSkip   = 0.60
+)
+
 type l0SnapshotPending struct {
 	ID     string
 	Window int
+}
+
+type l0SnapshotThrottleState struct {
+	LastWriteAt time.Time
+	LastRatio   float64
 }
 
 func l0SnapshotForceDebug() bool {
@@ -37,7 +53,7 @@ func l0SnapshotHookActive(ag biz.Agent) bool {
 	if l0SnapshotForceDebug() {
 		return true
 	}
-	if ag.Settings == nil || !ag.Settings.EvolutionMetricsEnabled {
+	if ag.Settings == nil || !ag.Settings.L0SnapshotEnabled {
 		return false
 	}
 	mode := strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode))
@@ -104,6 +120,15 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		return
 	}
 
+	// Throttle check: skip if interval/ratio-delta conditions not met (unless forced).
+	snapshotMode := ""
+	if ag.Settings != nil {
+		snapshotMode = strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode))
+	}
+	if !l0SnapshotThrottleAllows(inv, usedRatio, force, snapshotMode) {
+		return
+	}
+
 	l1Fields, l1Tok := memorySectionStats(messages, "## L1 working memory")
 	l3Chunks, l3Tok := memorySectionStats(messages, "## L3 semantic memory", "## L2+L3 memory")
 	l4Paths, l4Tok := memorySectionStats(messages, "## L4 knowledge graph")
@@ -125,7 +150,7 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 
 	rt := memoryRuntimeContext(inv, ag)
 	metaJSON := l0SnapshotMetadataJSON(callIndex, inv.InvocationID)
-	segsJSON := buildL0SegmentsJSON(messages)
+	segsJSON := buildL0SegmentsSummaryJSON(messages)
 
 	in := biz.L0AssemblySnapshotInsert{
 		ID:                   uuid.NewString(),
@@ -165,6 +190,7 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		return
 	}
 	setL0SnapshotPendingForCall(inv, callIndex, in.ID, win)
+	l0SnapshotThrottleRecord(inv, usedRatio)
 	deps.Logger().Info("L0 快照已落库", loggateway.StepID("agent.l0.snapshot"), loggateway.Phase("done"),
 		loggateway.Str("snapshot_id", in.ID),
 		loggateway.Str("session_id", sessionID),
@@ -206,6 +232,70 @@ func l0NeedsWindowRecheck(settings *biz.AgentRuntimeSettings, gateRatio float64,
 	}
 	margin := llmcontext.ContextStatusWarningThreshold - 0.15
 	return gateRatio >= margin
+}
+
+// l0SnapshotThrottleAllows checks whether a snapshot write should proceed
+// based on throttling rules: minimum interval, ratio delta, and threshold crossing.
+// Force mode and "always" mode bypass throttling.
+func l0SnapshotThrottleAllows(inv *trpcagent.Invocation, usedRatio float64, force bool, snapshotMode string) bool {
+	if force {
+		return true
+	}
+	if inv == nil {
+		return true
+	}
+	if snapshotMode == "always" {
+		return true
+	}
+	// Low ratio: skip entirely
+	if usedRatio < l0SnapshotLowRatioSkip {
+		return false
+	}
+	state := l0SnapshotThrottleLoad(inv)
+	now := time.Now()
+	// Threshold crossing: force write when usedRatio crosses 0.80
+	if l0CrossedThreshold(state.LastRatio, usedRatio, l0SnapshotThresholdCross) {
+		return true
+	}
+	// Minimum interval check
+	if !state.LastWriteAt.IsZero() && now.Sub(state.LastWriteAt) < time.Duration(l0SnapshotMinIntervalSec)*time.Second {
+		return false
+	}
+	// Ratio delta check
+	if state.LastRatio > 0 && math.Abs(usedRatio-state.LastRatio) < l0SnapshotRatioDelta {
+		return false
+	}
+	return true
+}
+
+// l0CrossedThreshold returns true if the ratio crossed the threshold between
+// the last write and the current value (from below to above).
+func l0CrossedThreshold(lastRatio, usedRatio, threshold float64) bool {
+	return lastRatio < threshold && usedRatio >= threshold
+}
+
+// l0SnapshotThrottleRecord updates the throttle state after a successful write.
+func l0SnapshotThrottleRecord(inv *trpcagent.Invocation, usedRatio float64) {
+	if inv == nil {
+		return
+	}
+	inv.SetState(l0SnapshotThrottleStateKey, l0SnapshotThrottleState{
+		LastWriteAt: time.Now(),
+		LastRatio:   usedRatio,
+	})
+}
+
+// l0SnapshotThrottleLoad reads the current throttle state from the invocation.
+func l0SnapshotThrottleLoad(inv *trpcagent.Invocation) l0SnapshotThrottleState {
+	if inv == nil {
+		return l0SnapshotThrottleState{}
+	}
+	if v, ok := inv.GetState(l0SnapshotThrottleStateKey); ok {
+		if s, ok := v.(l0SnapshotThrottleState); ok {
+			return s
+		}
+	}
+	return l0SnapshotThrottleState{}
 }
 
 func setL0SnapshotPendingForCall(inv *trpcagent.Invocation, callIndex int, id string, win int) {
@@ -349,25 +439,83 @@ func countBulletLines(text, marker string) int {
 	return n
 }
 
-func buildL0SegmentsJSON(messages []trpcmodel.Message) string {
-	segs := make([]map[string]any, 0, len(messages))
+// buildL0SegmentsSummaryJSON produces aggregated segment statistics instead of
+// per-message details. This reduces data volume by 80%+ while preserving the
+// information needed for monitoring and diagnostics.
+func buildL0SegmentsSummaryJSON(messages []trpcmodel.Message) string {
+	type sectionAgg struct {
+		tokenEstimate int
+		messageCount  int
+		fieldCount    int // for memory sections
+		factCount     int // for L3
+		entityCount   int // for L4
+		fromTurn      int
+		toTurn        int
+	}
+	aggs := make(map[string]*sectionAgg)
+	turnIdx := 0
 	for _, m := range messages {
 		content := strings.TrimSpace(m.Content)
 		if content == "" {
 			continue
 		}
 		role := string(m.Role)
-		segs = append(segs, map[string]any{
-			"section": l0SegmentSection(content, role),
-			"role":    role,
-			"source":  l0SegmentSource(content, role),
-			"tokens":  estTokensFromChars(messageCharLen(m)),
-			"preview": l0Preview(content, 120),
-		})
+		section := l0SegmentSection(content, role)
+		tokens := estTokensFromChars(messageCharLen(m))
+		agg, ok := aggs[section]
+		if !ok {
+			agg = &sectionAgg{}
+			aggs[section] = agg
+		}
+		agg.tokenEstimate += tokens
+		agg.messageCount++
+		// Track turn range for history/user sections
+		if role == string(trpcmodel.RoleUser) || role == string(trpcmodel.RoleAssistant) {
+			turnIdx++
+			if agg.fromTurn == 0 {
+				agg.fromTurn = turnIdx
+			}
+			agg.toTurn = turnIdx
+		}
+		// Count bullets for memory sections
+		switch section {
+		case "memory.l1":
+			agg.fieldCount += countBulletLines(content, "## L1 working memory")
+		case "memory.l3", "memory.l2_l3":
+			marker := "## L3 semantic memory"
+			if section == "memory.l2_l3" {
+				marker = "## L2+L3 memory"
+			}
+			agg.factCount += countBulletLines(content, marker)
+		case "memory.l4":
+			agg.entityCount += countBulletLines(content, "## L4 knowledge graph")
+		}
 	}
-	b, err := json.Marshal(segs)
+	// Build output map
+	result := make(map[string]map[string]any, len(aggs))
+	for section, agg := range aggs {
+		entry := map[string]any{
+			"token_estimate": agg.tokenEstimate,
+			"message_count":  agg.messageCount,
+		}
+		if agg.fieldCount > 0 {
+			entry["field_count"] = agg.fieldCount
+		}
+		if agg.factCount > 0 {
+			entry["fact_count"] = agg.factCount
+		}
+		if agg.entityCount > 0 {
+			entry["entity_count"] = agg.entityCount
+		}
+		if agg.fromTurn > 0 {
+			entry["from_turn"] = agg.fromTurn
+			entry["to_turn"] = agg.toTurn
+		}
+		result[section] = entry
+	}
+	b, err := json.Marshal(result)
 	if err != nil {
-		return "[]"
+		return "{}"
 	}
 	return string(b)
 }
@@ -404,33 +552,6 @@ func l0SegmentSection(content, role string) string {
 	default:
 		return "system.other"
 	}
-}
-
-func l0SegmentSource(content, role string) string {
-	switch role {
-	case string(trpcmodel.RoleUser):
-		return "messages[current]"
-	case string(trpcmodel.RoleAssistant):
-		return "messages[assistant]"
-	case string(trpcmodel.RoleTool):
-		return "messages[tool]"
-	}
-	if sec := l0SegmentSection(content, role); strings.HasPrefix(sec, "memory.") {
-		return sec
-	}
-	return "agent.prompt"
-}
-
-func l0Preview(content string, maxRunes int) string {
-	content = strings.TrimSpace(strings.ReplaceAll(content, "\n", " "))
-	if content == "" {
-		return ""
-	}
-	runes := []rune(content)
-	if len(runes) <= maxRunes {
-		return content
-	}
-	return string(runes[:maxRunes]) + "…"
 }
 
 func promptSnapshotCurrentCallIndex(ctx context.Context) int {

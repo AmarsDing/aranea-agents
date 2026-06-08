@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 
+import { INBOUND_NOTIFICATION_MAX_ITEMS } from '../features/constants/queryLimits';
+
 export type InboundNotificationKind = 'running' | 'completed';
 
 export type InboundNotification = {
@@ -14,8 +16,6 @@ export type InboundNotification = {
   ts: number;
   read: boolean;
 };
-
-const MAX_ITEMS = 20;
 
 export const useInboundNotificationStore = defineStore('inboundNotifications', () => {
   const items = ref<InboundNotification[]>([]);
@@ -33,8 +33,8 @@ export const useInboundNotificationStore = defineStore('inboundNotifications', (
     } else {
       items.value.unshift(row);
     }
-    if (items.value.length > MAX_ITEMS) {
-      items.value = items.value.slice(0, MAX_ITEMS);
+    if (items.value.length > INBOUND_NOTIFICATION_MAX_ITEMS) {
+      items.value = items.value.slice(0, INBOUND_NOTIFICATION_MAX_ITEMS);
     }
   }
 

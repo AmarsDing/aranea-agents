@@ -175,6 +175,7 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 		L0L3MaxChunks:            e.L0L3MaxChunks,
 		L0L4MaxPaths:             e.L0L4MaxPaths,
 		L0SnapshotMode:           e.L0SnapshotMode,
+		L0SnapshotEnabled:        e.L0SnapshotEnabled,
 		L1Enabled:                e.L1Enabled,
 		L1BudgetTokens:           e.L1BudgetTokens,
 		L1FieldMaxTokens:         e.L1FieldMaxTokens,
@@ -249,6 +250,8 @@ func fromEntEvolution(e *ent.AgentRuntimeSetting) biz.EvolutionCfg {
 		SubagentsArchiveAfterMinutes:      e.SubagentsArchiveAfterMinutes,
 		SubagentsMaxRetries:               e.SubagentsMaxRetries,
 		SubagentsModelOverride:            e.SubagentsModelOverride,
+		SubagentsStoredResultRunes:        e.SubagentsStoredResultRunes,
+		SubagentsStoredSummaryRunes:       e.SubagentsStoredSummaryRunes,
 		SkillEvolve:                       e.EvolutionSkillEvolve,
 		MetricsEnabled:                    e.EvolutionMetricsEnabled,
 		SuggestionsEnabled:                e.EvolutionSuggestionsEnabled,
@@ -280,6 +283,7 @@ func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 		ModelSelector:              e.ModelSelector,
 		PlannerKind:                e.PlannerKind,
 		PlannerConfigJSON:          e.PlannerConfigJSON,
+		VerificationTruncateChars:  e.VerificationTruncateChars,
 	}
 }
 
@@ -307,6 +311,8 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetSubagentsArchiveAfterMinutes(v.SubagentsArchiveAfterMinutes).
 		SetSubagentsMaxRetries(v.SubagentsMaxRetries).
 		SetSubagentsModelOverride(v.SubagentsModelOverride).
+		SetSubagentsStoredResultRunes(v.SubagentsStoredResultRunes).
+		SetSubagentsStoredSummaryRunes(v.SubagentsStoredSummaryRunes).
 		SetToolsEnabled(v.ToolsEnabled).
 		SetToolsProfile(v.ToolsProfile).
 		SetToolsToolCallPrefix(v.ToolsToolCallPrefix).
@@ -342,6 +348,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL0L3MaxChunks(v.L0L3MaxChunks).
 		SetL0L4MaxPaths(v.L0L4MaxPaths).
 		SetL0SnapshotMode(v.L0SnapshotMode).
+		SetL0SnapshotEnabled(v.L0SnapshotEnabled).
 		SetL1Enabled(v.L1Enabled).
 		SetL1BudgetTokens(v.L1BudgetTokens).
 		SetL1FieldMaxTokens(v.L1FieldMaxTokens).
@@ -425,6 +432,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolsCircuitBreakerOverridesJSON(v.ToolsCircuitBreakerOverridesJSON).
 		SetToolsDeferredJSON(v.ToolsDeferredJSON).
 		SetToolsCommandSafetyEnabled(v.ToolsCommandSafetyEnabled).
+		SetVerificationTruncateChars(v.VerificationTruncateChars).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }

@@ -18,6 +18,10 @@ export async function cancelSpiritTeam(teamId: string): Promise<void> {
   await spiritService.cancelTeamRun(teamId);
 }
 
+export async function resumeSpiritTeam(teamId: string): Promise<void> {
+  await spiritService.resumeTeamRun(teamId);
+}
+
 function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
   const dependsOnRaw = raw.dependsOn ?? raw.depends_on;
   return {

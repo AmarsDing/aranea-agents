@@ -29,8 +29,10 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("subagents_archive_after_minutes").Default(60),
 		field.Int("subagents_max_retries").Default(2),
 		field.String("subagents_model_override").Default(""),
+		field.Int("subagents_stored_result_runes").Default(4000),
+		field.Int("subagents_stored_summary_runes").Default(240),
 		field.Bool("tools_enabled").Default(true),
-		field.String("tools_profile").Default("full"),
+		field.String("tools_profile").Default("coding"),
 		field.String("tools_tool_call_prefix").Default(""),
 		field.String("tools_allow_json").Default("[]"),
 		field.String("tools_deny_json").Default("[]"),
@@ -64,6 +66,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l0_l3_max_chunks").Default(5),
 		field.Int("l0_l4_max_paths").Default(3),
 		field.String("l0_snapshot_mode").Default("on_warning"),
+		field.Bool("l0_snapshot_enabled").Default(true),
 		field.Bool("l1_enabled").Default(true),
 		field.Int("l1_budget_tokens").Default(8192),
 		field.Int("l1_field_max_tokens").Default(2048),
@@ -105,7 +108,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		// JSON policy for narrow Skill toolset per agent: allowed_slugs, denied_slugs, allowed_tags, intent routing caps (see docs/需求/20 skill struct design.md 十三′).
 		field.String("skill_runtime_json").Default("{}"),
 		// Pre-main LLM pass to classify/refine user intent (extra latency/cost); persisted per agent; env ARANEA_INTENT_PASS can override.
-		field.Bool("intent_pass_enabled").Default(true),
+		field.Bool("intent_pass_enabled").Default(false),
 		field.String("channel_id").Default(""),
 		field.String("chat_id").Default(""),
 		field.String("workspace").Default(""),
@@ -152,6 +155,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("tool_weight_json").Default("{}"),
 		// DreamSnapshotJSON stores dream_cycle execution snapshots for rollback.
 		field.String("dream_snapshot_json").Default(""),
+		field.Int("verification_truncate_chars").Default(2000),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}

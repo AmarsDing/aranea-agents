@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/service"
 	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/auth"
@@ -88,7 +89,10 @@ func main() {
 	shutdownTelemetry := telemetry.Init(Name, Version, lg)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
-	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg, pipeline, loggingSinks)
+	// Initialize service-layer runtime configs before Wire construction.
+	service.InitWebhookRateLimitConfig(bc.Runtime)
+
+	out, cleanup, err := wireApp(bc.Server, bc.Data, bc.Runtime, nil, logger, lg, pipeline, loggingSinks)
 	if err != nil {
 		panic(err)
 	}

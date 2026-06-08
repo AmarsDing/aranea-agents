@@ -24,6 +24,8 @@ export type TurnBlockGroup = {
   assistant: Message | null;
   tools: Message[];
   members: Message[];
+  /** true when all tools completed and assistant message arrived — eligible for auto-collapse. */
+  isCompleted: boolean;
 };
 
 export function isTeamMemberStreamMessage(message: Message): boolean {
@@ -88,6 +90,7 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
         assistant: null,
         tools: [],
         members: [],
+        isCompleted: false,
       };
       blocks.push(current);
     }
@@ -104,7 +107,22 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
     }
   }
 
-  return consolidateOrphanToolBlocks(blocks);
+  const result = consolidateOrphanToolBlocks(blocks);
+  for (const block of result) {
+    block.isCompleted = computeBlockCompleted(block);
+  }
+  return result;
+}
+
+/** Check whether a block is completed — all tools done and assistant arrived. */
+function computeBlockCompleted(block: TurnBlockGroup): boolean {
+  if (!block.assistant || block.assistant.status === 'streaming') return false;
+  if (block.tools.length === 0) return true;
+  const completedStatuses: ReadonlySet<string> = new Set(['success', 'failed', 'cancelled']);
+  return block.tools.every((t) => {
+    const status = toolEventFromMessage(t)?.status;
+    return status != null && completedStatuses.has(status);
+  });
 }
 
 /** Merge tool-only blocks (no user, no assistant) into the previous user turn. */

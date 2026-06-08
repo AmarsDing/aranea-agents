@@ -71,18 +71,21 @@ func (h *AfterAgentHookFunc) HandleAfterAgent(ctx context.Context, args *trpcage
 // BeforeModelHookFunc wraps a plain function as a BeforeModelHook.
 type BeforeModelHookFunc struct {
 	priority int
+	layer    SystemLayer
 	fn       trpcmodel.BeforeModelCallbackStructured
 }
 
 var _ BeforeModelHook = (*BeforeModelHookFunc)(nil)
+var _ LayeredCallback = (*BeforeModelHookFunc)(nil)
 
-// NewBeforeModelHook creates a BeforeModelHookFunc with a given priority and handler.
-func NewBeforeModelHook(priority int, fn trpcmodel.BeforeModelCallbackStructured) *BeforeModelHookFunc {
-	return &BeforeModelHookFunc{priority: priority, fn: fn}
+// NewBeforeModelHook creates a BeforeModelHookFunc with a given priority, layer, and handler.
+func NewBeforeModelHook(priority int, layer SystemLayer, fn trpcmodel.BeforeModelCallbackStructured) *BeforeModelHookFunc {
+	return &BeforeModelHookFunc{priority: priority, layer: layer, fn: fn}
 }
 
-func (h *BeforeModelHookFunc) Point() CallbackPoint { return PointBeforeModel }
-func (h *BeforeModelHookFunc) Priority() int        { return h.priority }
+func (h *BeforeModelHookFunc) Point() CallbackPoint   { return PointBeforeModel }
+func (h *BeforeModelHookFunc) Priority() int           { return h.priority }
+func (h *BeforeModelHookFunc) Layer() SystemLayer      { return h.layer }
 func (h *BeforeModelHookFunc) HandleBeforeModel(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 	return h.fn(ctx, args)
 }

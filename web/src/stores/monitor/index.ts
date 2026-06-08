@@ -17,6 +17,11 @@ import {
 } from '../../features/monitor/api';
 import type { MonitorAlertRule, MonitorTrace, MonitorTraceDetail, SelfCheckReport } from '../../features/monitor/types';
 import { listChannels } from '../../features/channels/api';
+import {
+  MONITOR_TRACES_LIMIT,
+  MONITOR_RUNNER_WINDOW_MINUTES,
+  MONITOR_REPORTS_LIMIT,
+} from '../../features/constants/queryLimits';
 import type {
   AuditLog,
   PlatformResource,
@@ -73,7 +78,7 @@ export const useMonitorStore = defineStore('monitor', () => {
   }
 
   async function fetchTraceEvents(query: MonitorTracesQuery = {}): Promise<PaginatedResult<MonitorTrace>> {
-    return listMonitorTraces({ ...query, limit: query.limit ?? 100 });
+    return listMonitorTraces({ ...query, limit: query.limit ?? MONITOR_TRACES_LIMIT });
   }
 
   async function fetchTraceDetail(id: string): Promise<MonitorTraceDetail> {
@@ -84,7 +89,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     logSnapshot.value = await getMonitorLogs();
   }
 
-  async function loadRunnerMetrics(windowMinutes = 60) {
+  async function loadRunnerMetrics(windowMinutes = MONITOR_RUNNER_WINDOW_MINUTES) {
     runnerLoading.value = true;
     try {
       runnerMetrics.value = await getRunnerMetrics(windowMinutes);
@@ -177,7 +182,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     logSnapshot.value = null;
   }
 
-  async function loadSelfCheckReports(limit = 20, offset = 0) {
+  async function loadSelfCheckReports(limit = MONITOR_REPORTS_LIMIT, offset = 0) {
     selfCheckLoading.value = true;
     try {
       const result = await listSelfCheckReports(limit, offset);

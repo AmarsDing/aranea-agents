@@ -587,6 +587,14 @@ func convertMessage(msg model.Message) (*hunyuan.ChatCompletionMessageParam, err
 	// Convert content parts (multimodal content)
 	if len(msg.ContentParts) > 0 {
 		var contents []*hunyuan.ChatCompletionMessageContentParam
+		// If msg.Content is non-empty, prepend it as the first text part
+		// to avoid losing the main Content when ContentParts are present.
+		if msg.Content != "" {
+			contents = append(contents, &hunyuan.ChatCompletionMessageContentParam{
+				Type: "text",
+				Text: msg.Content,
+			})
+		}
 		for _, part := range msg.ContentParts {
 			switch part.Type {
 			case model.ContentTypeText:

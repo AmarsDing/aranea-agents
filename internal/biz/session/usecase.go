@@ -250,17 +250,6 @@ type TimelineEventRef struct {
 	OccurredAt string
 }
 
-const (
-	timelineDefaultInvLimit = 100
-	timelineMaxInvLimit     = 500
-
-	MessageListDefaultLimit = 100
-	MessageListMaxLimit     = 500
-	TimelineMessageMaxFetch = 2000
-	CompressMessageMaxRows  = 512
-	ActivityCancelScanLimit = 64
-)
-
 type SessionTurn struct {
 	ID                  string
 	SessionID           string

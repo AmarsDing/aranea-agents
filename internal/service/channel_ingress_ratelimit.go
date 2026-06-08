@@ -6,15 +6,29 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
 const (
-	defaultWebhookRateLimitPerMin   = 120
 	flowStepChannelWebhookRateLimit = "channel.webhook.rate_limit"
 )
+
+// webhookConf holds the resolved webhook config, initialized with defaults.
+// Call InitWebhookRateLimitConfig to override from *conf.Runtime.
+var webhookConf conf.RuntimeWebhookConfig
+
+func init() {
+	// Initialize with nil-safe defaults (same as what (*Runtime)(nil).WebhookConfig() returns).
+	webhookConf = conf.RuntimeWebhookConfig{RateLimitPerMin: 120, StaleThreshold: 5 * time.Minute}
+}
+
+// InitWebhookRateLimitConfig sets the webhook config from *conf.Runtime.
+func InitWebhookRateLimitConfig(r *conf.Runtime) {
+	webhookConf = r.WebhookConfig()
+}
 
 type webhookRateLimiter struct {
 	mu     sync.Mutex
@@ -41,7 +55,7 @@ func allowWebhookRequest(channelKey string, lg loggateway.Logger) bool {
 			cleanupStaleWebhookRateLimits()
 		})
 	}
-	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: defaultWebhookRateLimitPerMin})
+	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: int(webhookConf.RateLimitPerMin)})
 	rl := v.(*webhookRateLimiter)
 	now = time.Now()
 	rl.mu.Lock()
@@ -72,7 +86,7 @@ func cleanupStaleWebhookRateLimits() {
 			return true
 		}
 		rl.mu.Lock()
-		stale := !rl.window.IsZero() && now.Sub(rl.window) >= 5*time.Minute
+		stale := !rl.window.IsZero() && now.Sub(rl.window) >= webhookConf.StaleThreshold
 		rl.mu.Unlock()
 		if stale {
 			webhookRateLimits.Delete(key)

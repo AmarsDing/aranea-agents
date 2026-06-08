@@ -20,7 +20,7 @@ func TestHandleWS_AuthBypassWithoutToken(t *testing.T) {
 		SessionBus: event.NewBus(nil),
 		MonitorBus: event.NewBus(nil),
 		Buffer:     event.NewBuffer(),
-	}, nil, nil, nil, loggateway.NewNoop())
+	}, nil, nil, nil, nil, loggateway.NewNoop())
 	if srv == nil {
 		t.Fatal("expected WSServer")
 	}
@@ -51,7 +51,7 @@ func TestHandleWS_RequiresTokenWhenAuthOn(t *testing.T) {
 		SessionBus: event.NewBus(nil),
 		MonitorBus: event.NewBus(nil),
 		Buffer:     event.NewBuffer(),
-	}, nil, nil, nil, loggateway.NewNoop())
+	}, nil, nil, nil, nil, loggateway.NewNoop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/ws?session_id=s1", nil)
 	rec := httptest.NewRecorder()
 	srv.handleWS(rec, req)

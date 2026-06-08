@@ -35,8 +35,12 @@ export type SpiritTeam = {
   members: SpiritMember[];
   sharedAgentIds: string[];
   dagNodeId?: string;
+  graphExecutionId?: string;
   dependsOn?: string[];
   topologyReason?: string;
+  interruptReason?: string;
+  tokenIn?: number;
+  tokenOut?: number;
 };
 
 export type SpiritPanelMode = 'spirit' | 'team' | 'member';

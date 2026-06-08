@@ -39,6 +39,7 @@ export function hydrateRuntimeFromConfigJson(config: AgentRuntimeConfigForm, raw
       evolution_guardrails: { ...config.evolution_guardrails, ...(parsed.evolution_guardrails || {}) },
       skillRuntime: { ...config.skillRuntime, ...(parsed.skillRuntime || {}) },
       intent_pass: { ...config.intent_pass, ...(parsed.intent_pass || {}) },
+      spirit: { ...config.spirit, ...(parsed.parallel_config || {}) },
     });
     if (Array.isArray(parsed.files) && files) {
       for (const saved of parsed.files) {
@@ -78,6 +79,8 @@ export function hydrateRuntimeFromSettings(
       max_children_per_agent: settings.subagents_max_children_per_agent,
       archive_after_minutes: settings.subagents_archive_after_minutes,
       max_retries: settings.subagents_max_retries,
+      stored_result_runes: settings.subagents_stored_result_runes ?? config.subagents.stored_result_runes,
+      stored_summary_runes: settings.subagents_stored_summary_runes ?? config.subagents.stored_summary_runes,
       model_override: settings.subagents_model_override,
     },
     tools: {
@@ -193,6 +196,10 @@ export function hydrateRuntimeFromSettings(
     intent_pass: {
       enabled: settings.intent_pass_enabled ?? false,
     },
+    spirit: {
+      ...config.spirit,
+      verification_truncate_chars: settings.verification_truncate_chars ?? config.spirit.verification_truncate_chars,
+    },
   });
   config.evolution.self_evolve = config.self_evolve;
   hydrateAdvancedFromSettings(advanced, settings);
@@ -206,6 +213,18 @@ export function hydrateAgentRuntime(
 ) {
   if (agent.settings) {
     hydrateRuntimeFromSettings(config, advanced, agent.settings);
+    // Spirit parallel_config lives in config_json, not agent_runtime_settings.
+    // Supplement from config_json even when settings is the primary source.
+    if (agent.config_json) {
+      try {
+        const parsed = JSON.parse(agent.config_json);
+        if (parsed.parallel_config) {
+          config.spirit = { ...config.spirit, ...parsed.parallel_config };
+        }
+      } catch {
+        // ignore
+      }
+    }
     return 'settings' as const;
   }
   hydrateRuntimeFromConfigJson(config, agent.config_json, files);

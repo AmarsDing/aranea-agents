@@ -165,6 +165,7 @@ type RuntimeMemorySpec struct {
 	L0InjectL3           bool    `yaml:"l0_inject_l3,omitempty"`
 	L0InjectL4           bool    `yaml:"l0_inject_l4,omitempty"`
 	L0SnapshotMode       string  `yaml:"l0_snapshot_mode,omitempty"`
+	L0SnapshotEnabled    bool    `yaml:"l0_snapshot_enabled,omitempty"`
 	L1Enabled            bool    `yaml:"l1_enabled,omitempty"`
 	L1BudgetTokens       int     `yaml:"l1_budget_tokens,omitempty"`
 	L2EpisodeEnabled     bool    `yaml:"l2_episode_enabled,omitempty"`

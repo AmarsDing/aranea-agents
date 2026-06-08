@@ -65,6 +65,7 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 		Readonly:           e.Readonly,
 		Kind:               string(e.Kind),
 		Source:             string(e.Source),
+		InterruptReason:    e.InterruptReason,
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,
@@ -221,6 +222,7 @@ func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDependsOnJSON(formatDependsOnJSON(t.DependsOn)).
 		SetParallelConfigJSON(t.ParallelConfigJSON).
 		SetTopology(t.Topology).
+		SetInterruptReason(t.InterruptReason).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt).
 		SetDeletedAt(t.DeletedAt).
@@ -263,6 +265,7 @@ func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDependsOnJSON(formatDependsOnJSON(t.DependsOn)).
 		SetParallelConfigJSON(t.ParallelConfigJSON).
 		SetTopology(t.Topology).
+		SetInterruptReason(t.InterruptReason).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {

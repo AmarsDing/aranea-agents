@@ -74,6 +74,8 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     subagents_max_children_per_agent: pickNum(w, 'subagentsMaxChildrenPerAgent', 'subagents_max_children_per_agent', 5),
     subagents_archive_after_minutes: pickNum(w, 'subagentsArchiveAfterMinutes', 'subagents_archive_after_minutes', 60),
     subagents_max_retries: pickNum(w, 'subagentsMaxRetries', 'subagents_max_retries', 2),
+    subagents_stored_result_runes: pickNumOpt(w, 'subagentsStoredResultRunes', 'subagents_stored_result_runes'),
+    subagents_stored_summary_runes: pickNumOpt(w, 'subagentsStoredSummaryRunes', 'subagents_stored_summary_runes'),
     subagents_model_override: pickStr(w, 'subagentsModelOverride', 'subagents_model_override', ''),
     tools_enabled: pickBool(w, 'toolsEnabled', 'tools_enabled', true),
     tools_profile: pickStr(w, 'toolsProfile', 'tools_profile', 'coding'),
@@ -200,6 +202,7 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     compress_llm_cache_enabled: pickBoolOpt(w, 'compressLlmCacheEnabled', 'compress_llm_cache_enabled'),
     compress_llm_cache_max_entries: pickNumOpt(w, 'compressLlmCacheMaxEntries', 'compress_llm_cache_max_entries'),
     compress_llm_cache_ttl_sec: pickNumOpt(w, 'compressLlmCacheTtlSec', 'compress_llm_cache_ttl_sec'),
+    verification_truncate_chars: pickNumOpt(w, 'verificationTruncateChars', 'verification_truncate_chars'),
     created_at: pickStrOpt(w, 'createdAt', 'created_at'),
     updated_at: pickStrOpt(w, 'updatedAt', 'updated_at'),
   };
@@ -285,6 +288,8 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     subagentsMaxChildrenPerAgent: s.subagents_max_children_per_agent,
     subagentsArchiveAfterMinutes: s.subagents_archive_after_minutes,
     subagentsMaxRetries: s.subagents_max_retries,
+    subagentsStoredResultRunes: s.subagents_stored_result_runes,
+    subagentsStoredSummaryRunes: s.subagents_stored_summary_runes,
     subagentsModelOverride: s.subagents_model_override,
     toolsEnabled: s.tools_enabled,
     toolsProfile: s.tools_profile,
@@ -398,6 +403,7 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     compressLlmCacheEnabled: s.compress_llm_cache_enabled,
     compressLlmCacheMaxEntries: s.compress_llm_cache_max_entries,
     compressLlmCacheTtlSec: s.compress_llm_cache_ttl_sec,
+    verificationTruncateChars: s.verification_truncate_chars,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   };

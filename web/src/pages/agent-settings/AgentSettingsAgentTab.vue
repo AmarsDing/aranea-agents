@@ -190,6 +190,24 @@
             />
             <q-input v-model.number="config.subagents.max_retries" dense outlined type="number" label="最大重试次数" />
             <q-input
+              v-model.number="config.subagents.stored_result_runes"
+              dense
+              outlined
+              type="number"
+              min="100"
+              label="结果存储上限 (字符)"
+              hint="子 Agent 结果保存的最大字符数"
+            />
+            <q-input
+              v-model.number="config.subagents.stored_summary_runes"
+              dense
+              outlined
+              type="number"
+              min="50"
+              label="摘要存储上限 (字符)"
+              hint="子 Agent 摘要保存的最大字符数"
+            />
+            <q-input
               v-model="config.subagents.model_override"
               dense
               outlined
@@ -209,6 +227,80 @@
               </p>
             </div>
             <q-toggle v-model="config.intent_pass.enabled" />
+          </div>
+        </div>
+
+        <div v-if="form.agent_key === '__spirit__'" class="settings-subsection">
+          <div class="settings-subsection__head">
+            <div>
+              <div class="settings-subsection__title">精灵并行配置</div>
+              <p class="settings-subsection__hint">控制精灵模式下多团队并行编排的配额与超时。</p>
+            </div>
+          </div>
+          <div class="app-form-field-grid app-form-field-grid--2col">
+            <q-input
+              v-model.number="config.spirit.max_concurrent_teams"
+              dense
+              outlined
+              type="number"
+              min="1"
+              label="最大并行团队数"
+              hint="同时运行的最大团队数量"
+            />
+            <q-input
+              v-model.number="config.spirit.max_team_concurrency"
+              dense
+              outlined
+              type="number"
+              min="1"
+              label="单团队最大并发"
+              hint="单个团队内 Agent 的最大并发数"
+            />
+            <q-input
+              v-model.number="config.spirit.team_timeout_seconds"
+              dense
+              outlined
+              type="number"
+              min="60"
+              label="团队超时 (秒)"
+              hint="团队运行的最大时长"
+            />
+            <q-input
+              v-model.number="config.spirit.auto_archive_seconds"
+              dense
+              outlined
+              type="number"
+              min="0"
+              label="自动归档 (秒)"
+              hint="完成后自动归档的等待时间，0 表示不归档"
+            />
+            <q-input
+              v-model.number="config.spirit.max_session_depth"
+              dense
+              outlined
+              type="number"
+              min="1"
+              label="最大会话深度"
+              hint="精灵会话的最大嵌套深度"
+            />
+            <q-input
+              v-model.number="config.spirit.verification_truncate_chars"
+              dense
+              outlined
+              type="number"
+              min="500"
+              label="验证截断长度 (字符)"
+              hint="验证门 LLM 调用中截断团队输出的最大长度"
+            />
+            <q-input
+              v-model.number="config.spirit.timeout_handler_db_timeout_seconds"
+              dense
+              outlined
+              type="number"
+              min="5"
+              label="超时回调 DB 超时 (秒)"
+              hint="团队超时回调中 DB 操作的最大持续时间"
+            />
           </div>
         </div>
       </div>

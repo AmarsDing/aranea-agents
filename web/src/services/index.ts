@@ -224,5 +224,8 @@ export function createSpiritService() {
     cancelTeamRun(teamId: string) {
       return kratosApi.post(`${basePath}/teams/${encodeURIComponent(teamId)}/cancel`);
     },
+    resumeTeamRun(teamId: string) {
+      return kratosApi.post(`${basePath}/teams/${encodeURIComponent(teamId)}/resume`);
+    },
   };
 }

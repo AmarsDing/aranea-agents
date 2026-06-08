@@ -34,6 +34,7 @@ import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { projectConversationEnvelope } from '../conversationEventDispatcher';
 import { emitSessionMutation } from '../../../stores/sessionSync';
 import { useSpiritTeamStore } from '../../../stores/spirit';
+import { CHAT_HYDRATE_DEBOUNCE_MS } from '../../constants/timeouts';
 
 export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -42,6 +43,7 @@ export type ChatInboundSyncDeps = {
   selectedAgentId: Ref<string | undefined>;
   selectedSessionId: Ref<string | undefined>;
   wsReplaying?: Ref<boolean>;
+  onSpiritEnvelope?: (envelope: Envelope) => void;
   isChatRoute?: () => boolean;
   shouldAutoFocusChannel?: () => boolean;
   onTurnComplete?: (sessionId: string) => void;
@@ -51,8 +53,6 @@ export type ChatInboundSyncDeps = {
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
   loadTeamSessions?: (teamId: string) => Promise<void>;
 };
-
-const HYDRATE_DEBOUNCE_MS = 200;
 
 type TurnStreamSeal = { revision: number };
 
@@ -168,7 +168,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     hydrateTimer = setTimeout(() => {
       hydrateTimer = null;
       void hydrateCurrentSession(pendingHydrateSessionId, dropStaleInFlight, clearStreaming);
-    }, HYDRATE_DEBOUNCE_MS);
+    }, CHAT_HYDRATE_DEBOUNCE_MS);
   }
 
   async function hydrateCurrentSession(sessionId: string, dropStaleInFlight = false, clearStreaming = true) {
@@ -312,6 +312,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (env.type.startsWith('spirit_')) {
       const spiritStore = useSpiritTeamStore();
       spiritStore.handleSpiritEnvelope(env);
+      deps.onSpiritEnvelope?.(env);
     }
 
     // P1: Register default handlers for previously-unhandled event types
@@ -327,6 +328,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (env.type.startsWith('butler.orchestration.')) {
       const spiritStore = useSpiritTeamStore();
       spiritStore.handleSpiritEnvelope(env);
+      deps.onSpiritEnvelope?.(env);
     }
     if (env.type === 'skill.health_changed' || env.type === 'skill.evolution_proposed') {
       console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });

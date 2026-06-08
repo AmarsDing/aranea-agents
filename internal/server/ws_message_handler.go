@@ -127,7 +127,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			loggateway.Any("content_len", len(content)))
 		connCtx := wc.contextOrBackground()
 		safego.Go(appctx.Ctx(), "ws-user-message", func() {
-			ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
+			ctx, cancel := context.WithTimeout(connCtx, s.wsConfig().TurnTimeout)
 			defer cancel()
 			if err := s.turnExecutor.ExecuteTurn(ctx, input); err != nil {
 				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
@@ -167,7 +167,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	// the WebSocket also cancels in-flight agent turns for this connection.
 	connCtx := wc.contextOrBackground()
 	safego.Go(appctx.Ctx(), "ws-user-message", func() {
-		ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
+		ctx, cancel := context.WithTimeout(connCtx, s.wsConfig().TurnTimeout)
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
@@ -206,7 +206,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 
 	connCtxEq := wc.contextOrBackground()
 	safego.Go(appctx.Ctx(), "ws-enqueue-message", func() {
-		ctx, cancel := context.WithTimeout(connCtxEq, defaultWSTurnTimeout)
+		ctx, cancel := context.WithTimeout(connCtxEq, s.wsConfig().TurnTimeout)
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {

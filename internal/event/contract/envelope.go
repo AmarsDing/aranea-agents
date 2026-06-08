@@ -54,6 +54,7 @@ const (
 	EnvelopeTypeSpiritTeamAssembled         EnvelopeType = "spirit_team_assembled"
 	EnvelopeTypeSpiritTeamCompleted         EnvelopeType = "spirit_team_completed"
 	EnvelopeTypeSpiritTeamFailed            EnvelopeType = "spirit_team_failed"
+	EnvelopeTypeSpiritTeamInterrupted       EnvelopeType = "spirit_team_interrupted"
 	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
 	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
 	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
@@ -313,6 +314,7 @@ func init() {
 	RegisterChannelRoutes("chat",
 		EnvelopeTypeSessionStatusChanged, EnvelopeTypeMetricsUpdated,
 		EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed,
+		EnvelopeTypeSpiritTeamInterrupted,
 		EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted,
 		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated,
 		EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint,

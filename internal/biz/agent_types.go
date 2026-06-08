@@ -95,6 +95,8 @@ type AgentRuntimeSettings struct {
 	SubagentsArchiveAfterMinutes      int
 	SubagentsMaxRetries               int
 	SubagentsModelOverride            string
+	SubagentsStoredResultRunes        int
+	SubagentsStoredSummaryRunes       int
 	ToolsEnabled                      bool
 	ToolsProfile                      string
 	ToolsToolCallPrefix               string
@@ -133,6 +135,7 @@ type AgentRuntimeSettings struct {
 	L0L3MaxChunks             int
 	L0L4MaxPaths              int
 	L0SnapshotMode            string
+	L0SnapshotEnabled         bool
 	L1Enabled                 bool
 	L1BudgetTokens            int
 	L1FieldMaxTokens          int
@@ -243,6 +246,8 @@ type AgentRuntimeSettings struct {
 	ToolWeightJSON string `json:"tool_weight_json,omitempty"`
 	// DreamSnapshotJSON stores dream_cycle execution snapshots for rollback.
 	DreamSnapshotJSON string `json:"dream_snapshot_json,omitempty"`
+	// VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
+	VerificationTruncateChars int
 	CreatedAt   string
 	UpdatedAt   string
 }
@@ -291,6 +296,7 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L0L3MaxChunks:            s.L0L3MaxChunks,
 		L0L4MaxPaths:             s.L0L4MaxPaths,
 		L0SnapshotMode:           s.L0SnapshotMode,
+		L0SnapshotEnabled:        s.L0SnapshotEnabled,
 		L1Enabled:                s.L1Enabled,
 		L1BudgetTokens:           s.L1BudgetTokens,
 		L1FieldMaxTokens:         s.L1FieldMaxTokens,
@@ -384,6 +390,8 @@ func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
 		SubagentsArchiveAfterMinutes:      s.SubagentsArchiveAfterMinutes,
 		SubagentsMaxRetries:               s.SubagentsMaxRetries,
 		SubagentsModelOverride:            s.SubagentsModelOverride,
+		SubagentsStoredResultRunes:        s.SubagentsStoredResultRunes,
+		SubagentsStoredSummaryRunes:       s.SubagentsStoredSummaryRunes,
 		SkillEvolve:                       s.EvolutionSkillEvolve,
 		MetricsEnabled:                    s.EvolutionMetricsEnabled,
 		SuggestionsEnabled:                s.EvolutionSuggestionsEnabled,
@@ -416,6 +424,7 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		ModelSelector:              s.ModelSelector,
 		PlannerKind:                s.PlannerKind,
 		PlannerConfigJSON:          s.PlannerConfigJSON,
+		VerificationTruncateChars:  s.VerificationTruncateChars,
 	}
 }
 

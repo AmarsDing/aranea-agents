@@ -10,6 +10,12 @@
 
 import { buildWsUrl } from '../config/runtime';
 import type { Envelope, WsDownstream, WsUpstream } from './envelope';
+import {
+  WS_MAX_RECONNECT_DELAY_MS,
+  WS_MAX_RECONNECT_ATTEMPTS,
+  WS_HEARTBEAT_INTERVAL_MS,
+  WS_RECONNECT_BASE_DELAY_MS,
+} from '../features/constants/timeouts';
 
 export type WsTransportOptions = {
   sessionId: string;
@@ -48,9 +54,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempts = 0;
   let shutdownReceived = false;
-  const maxReconnectDelay = 30_000;
-  const maxReconnectAttempts = 10;
-  const heartbeatInterval = 25_000;
   const pendingQueue: WsUpstream[] = [];
 
   function connect(): void {
@@ -132,11 +135,11 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
   function scheduleReconnect(): void {
     if (reconnectTimer) return;
-    if (reconnectAttempts >= maxReconnectAttempts) {
+    if (reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
       opts.onReconnectFailed?.();
       return;
     }
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+    const delay = Math.min(WS_RECONNECT_BASE_DELAY_MS * Math.pow(2, reconnectAttempts), WS_MAX_RECONNECT_DELAY_MS);
     reconnectAttempts++;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -150,7 +153,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ping();
       }
-    }, heartbeatInterval);
+    }, WS_HEARTBEAT_INTERVAL_MS);
   }
 
   function stopHeartbeat(): void {

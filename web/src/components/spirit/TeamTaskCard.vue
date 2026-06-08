@@ -19,6 +19,10 @@
         <div class="team-task-card__name ellipsis">{{ team.teamName }}</div>
         <div class="team-task-card__summary ellipsis">{{ team.taskSummary }}</div>
       </div>
+      <span
+        class="team-task-card__status-dot"
+        :class="`team-task-card__status-dot--${teamStatusColor}`"
+      />
       <q-icon
         name="expand_more"
         size="16px"
@@ -31,6 +35,7 @@
     <div v-if="expanded" class="team-task-card__detail q-mt-sm">
       <div class="row items-center q-gutter-xs q-mb-xs">
         <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
+        <AgentStatusLabel :label="teamStatusLabel" />
         <q-chip v-if="team.mode" dense size="sm" outline :label="modeLabel" class="team-task-card__mode" />
       </div>
 
@@ -61,8 +66,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
+import AgentStatusLabel from './AgentStatusLabel.vue';
 import type { SpiritTeam } from '../../features/spirit/types';
-import { mapSpiritStatusToSession, spiritModeLabel } from '../../features/spirit/spiritUi';
+import { mapSpiritStatusToSession, spiritModeLabel, spiritTeamStatusToLabel, STATUS_LABEL_CONFIG } from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -78,6 +84,10 @@ defineEmits<{
 const mappedStatus = computed(() => mapSpiritStatusToSession(props.team.status));
 
 const modeLabel = computed(() => spiritModeLabel(props.team.mode));
+
+const teamStatusLabel = computed(() => spiritTeamStatusToLabel(props.team.status));
+
+const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.color ?? 'grey');
 </script>
 
 <style scoped lang="sass">
@@ -140,4 +150,22 @@ const modeLabel = computed(() => spiritModeLabel(props.team.mode));
 
 .team-task-card__progress
   margin-top: var(--space-1)
+
+.team-task-card__status-dot
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  flex-shrink: 0
+  background: var(--color-text-tertiary)
+
+.team-task-card__status-dot--grey
+  background: var(--color-text-tertiary)
+.team-task-card__status-dot--blue
+  background: var(--color-accent)
+.team-task-card__status-dot--orange
+  background: var(--color-warning)
+.team-task-card__status-dot--green
+  background: var(--color-success)
+.team-task-card__status-dot--red
+  background: var(--color-danger)
 </style>

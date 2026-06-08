@@ -13,7 +13,7 @@ func TestBeforeAfterModelHook(t *testing.T) {
 	beforeCalled := false
 	afterCalled := false
 	chain := callbacks.NewChain(
-		callbacks.NewBeforeModelHook(0, func(_ context.Context, _ *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		callbacks.NewBeforeModelHook(0, callbacks.LayerDynamic, func(_ context.Context, _ *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 			beforeCalled = true
 			return &trpcmodel.BeforeModelResult{}, nil
 		}),

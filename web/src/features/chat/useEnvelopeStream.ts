@@ -23,6 +23,7 @@ export type {
 
 import { ref } from 'vue';
 import { createEnvelopeStream, useEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import { CHAT_ENVELOPE_LOG_LOCAL_MAX } from '../constants/queryLimits';
 import type { UseEnvelopeStreamReturn } from '../../realtime/useEnvelopeStream';
 
 export type ChatStreamFactoryOpts = {
@@ -211,8 +212,8 @@ export function useMonitorStream(sessionId: string, opts?: { global?: boolean })
     const level = (env.metadata?.level as string) ?? 'INFO';
     const message = env.content?.text ?? '';
     logs.value.push({ level, message, timestamp: env.timestamp });
-    if (logs.value.length > 500) {
-      logs.value = logs.value.slice(-500);
+    if (logs.value.length > CHAT_ENVELOPE_LOG_LOCAL_MAX) {
+      logs.value = logs.value.slice(-CHAT_ENVELOPE_LOG_LOCAL_MAX);
     }
   });
 

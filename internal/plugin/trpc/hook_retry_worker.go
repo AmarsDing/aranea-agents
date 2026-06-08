@@ -5,16 +5,10 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-)
-
-const (
-	hookRetryPollInterval = 60 * time.Second
-	hookRetryStaleAfter   = 5 * time.Minute
-	hookRetryBatchSize    = 20
-	hookRetryQueryTimeout = 30 * time.Second
 )
 
 // HookDeliveryRetryWorker polls for stale pending hook deliveries and retries
@@ -28,16 +22,19 @@ type HookDeliveryRetryWorker struct {
 	repo     biz.HookDeliveryRepo
 	notifier *HookNotifier
 	lg       loggateway.Logger
+	hookConf conf.RuntimeHookConfig
 	stop     chan struct{}
 }
 
 // NewHookDeliveryRetryWorker creates a retry worker. notifier must be the same
 // HookNotifier used for new deliveries so that retry logic is identical.
-func NewHookDeliveryRetryWorker(repo biz.HookDeliveryRepo, notifier *HookNotifier, lg loggateway.Logger) *HookDeliveryRetryWorker {
+// // WIRE: needs *conf.Runtime
+func NewHookDeliveryRetryWorker(runtimeConf *conf.Runtime, repo biz.HookDeliveryRepo, notifier *HookNotifier, lg loggateway.Logger) *HookDeliveryRetryWorker {
 	return &HookDeliveryRetryWorker{
 		repo:     repo,
 		notifier: notifier,
 		lg:       lg,
+		hookConf: runtimeConf.HookConfig(),
 		stop:     make(chan struct{}),
 	}
 }
@@ -59,7 +56,7 @@ func (w *HookDeliveryRetryWorker) Stop() {
 }
 
 func (w *HookDeliveryRetryWorker) loop() {
-	ticker := time.NewTicker(hookRetryPollInterval)
+	ticker := time.NewTicker(w.hookConf.RetryPollInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -72,10 +69,10 @@ func (w *HookDeliveryRetryWorker) loop() {
 }
 
 func (w *HookDeliveryRetryWorker) retryStale() {
-	ctx, cancel := context.WithTimeout(context.Background(), hookRetryQueryTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), w.hookConf.RetryQueryTimeout)
 	defer cancel()
 
-	stale, err := w.repo.ListStalePending(ctx, time.Now().UTC().Add(-hookRetryStaleAfter), hookRetryBatchSize)
+	stale, err := w.repo.ListStalePending(ctx, time.Now().UTC().Add(-w.hookConf.RetryStaleAfter), int(w.hookConf.RetryBatchSize))
 	if err != nil {
 		if ctx.Err() != nil {
 			w.lg.Warn("hook.delivery.retry_worker: ListStalePending context timeout",
@@ -115,7 +112,7 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 
 	// Optimistic claim: only proceed if we atomically advance attempt_count.
 	// This prevents duplicate delivery when multiple pods race to retry the same record.
-	ctx, cancel := context.WithTimeout(context.Background(), hookRetryQueryTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), w.hookConf.RetryQueryTimeout)
 	defer cancel()
 
 	claimed, err := w.repo.TryClaimForRetry(ctx, d.ID, d.AttemptCount)

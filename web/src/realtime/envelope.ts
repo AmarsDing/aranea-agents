@@ -296,6 +296,7 @@ export type SpiritOrchestrationStartedPayload = {
   task_plan_id: string;
   allocation_id: string;
   team_ids?: string[];
+  max_concurrent_teams?: number;
 };
 
 export type SpiritOrchestrationCheckpointPayload = {

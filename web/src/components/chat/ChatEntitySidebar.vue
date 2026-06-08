@@ -63,15 +63,24 @@
             @update:collapsed="collapse.toggleSection('activeTeams')"
           />
           <template v-if="!collapse.sectionCollapsed.activeTeams">
-            <TeamTaskCard
+            <div
               v-for="team in activeTeamList"
               :key="team.id"
-              :team="team"
-              :expanded="expandedTeamIds.has(team.id)"
-              :active="selectedTeamId === team.id"
-              @click="$emit('select-spirit-team', team.id)"
-              @toggle-expand="$emit('toggle-team-expand', team.id)"
-            />
+              :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
+              :style="
+                pulseTeamColors?.has(team.id)
+                  ? { '--pulse-color': pulseTeamColors!.get(team.id)! }
+                  : undefined
+              "
+            >
+              <TeamTaskCard
+                :team="team"
+                :expanded="expandedTeamIds.has(team.id)"
+                :active="selectedTeamId === team.id"
+                @click="$emit('select-spirit-team', team.id)"
+                @toggle-expand="$emit('toggle-team-expand', team.id)"
+              />
+            </div>
             <div v-if="activeTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
               暂无进行中的团队
             </div>
@@ -87,15 +96,24 @@
             @update:collapsed="collapse.toggleSection('completedTeams')"
           />
           <template v-if="!collapse.sectionCollapsed.completedTeams">
-            <TeamTaskCard
+            <div
               v-for="team in completedTeamList"
               :key="team.id"
-              :team="team"
-              :expanded="expandedTeamIds.has(team.id)"
-              :active="selectedTeamId === team.id"
-              @click="$emit('select-spirit-team', team.id)"
-              @toggle-expand="$emit('toggle-team-expand', team.id)"
-            />
+              :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
+              :style="
+                pulseTeamColors?.has(team.id)
+                  ? { '--pulse-color': pulseTeamColors!.get(team.id)! }
+                  : undefined
+              "
+            >
+              <TeamTaskCard
+                :team="team"
+                :expanded="expandedTeamIds.has(team.id)"
+                :active="selectedTeamId === team.id"
+                @click="$emit('select-spirit-team', team.id)"
+                @toggle-expand="$emit('toggle-team-expand', team.id)"
+              />
+            </div>
             <div v-if="completedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
               暂无已完成的团队
             </div>
@@ -138,6 +156,8 @@ const props = defineProps<{
   selectedTeamId?: string | null;
   defaultAgentId?: string | null;
   isDark: boolean;
+  /** Map of teamId → pulse color name for active pulse animations. */
+  pulseTeamColors?: Map<string, string>;
 }>();
 
 const emit = defineEmits<{
@@ -227,8 +247,14 @@ function toEntityItems(agents: Agent[]): EntityItem[] {
 }
 
 // --- Team lists ---
-const activeTeamList = computed(() => props.spiritTeams.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived'));
-const completedTeamList = computed(() => props.spiritTeams.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'));
+const activeTeamList = computed(() =>
+  props.spiritTeams.filter(
+    (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
+  ),
+);
+const completedTeamList = computed(() =>
+  props.spiritTeams.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'),
+);
 
 // --- Agent selection ---
 function onSelectAgent(item: EntityItem) {
@@ -249,5 +275,20 @@ function onSelectAgent(item: EntityItem) {
 
 :global(.body--dark) .chat-side-hint {
   color: var(--chat-idle-meta);
+}
+
+.team-card-wrapper--pulse {
+  animation: status-pulse 1.5s ease-out;
+  border-left: 2px solid var(--pulse-color);
+  border-radius: 12px;
+}
+
+@keyframes status-pulse {
+  0% {
+    background-color: color-mix(in srgb, var(--pulse-color) 15%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 </style>

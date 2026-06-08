@@ -14,6 +14,7 @@ import {
   findActiveTeamRun,
 } from '../../features/teams/api';
 import { listAgents } from '../../features/agents/api';
+import { TEAM_AGENT_LIST_LIMIT, TEAM_RUNS_LIMIT, TEAM_RUNS_LOCAL_MAX } from '../../features/constants/queryLimits';
 import type { Agent } from '../../features/agents/types';
 import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from '../../features/teams/types';
 
@@ -97,13 +98,13 @@ export const useTeamsStore = defineStore('teams', () => {
   // ── Agents ──
 
   async function loadAgents() {
-    agents.value = await listAgents({ limit: 1000 });
+    agents.value = await listAgents({ limit: TEAM_AGENT_LIST_LIMIT });
     return agents.value;
   }
 
   // ── Runs (state written to Store) ──
 
-  async function loadRuns(teamId?: string, limit = 50) {
+  async function loadRuns(teamId?: string, limit = TEAM_RUNS_LIMIT) {
     runsLoading.value = true;
     runsError.value = '';
     try {
@@ -156,7 +157,7 @@ export const useTeamsStore = defineStore('teams', () => {
       runs.value = runs.value.map((item) => (item.id === run.id ? run : item));
       return;
     }
-    runs.value = [run, ...runs.value].slice(0, 30);
+    runs.value = [run, ...runs.value].slice(0, TEAM_RUNS_LOCAL_MAX);
   }
 
   function upsertRunStep(step: TeamRunStep) {

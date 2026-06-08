@@ -18,6 +18,8 @@ export function buildRuntimeSettingsPayload(
     subagents_max_children_per_agent: config.subagents.max_children_per_agent,
     subagents_archive_after_minutes: config.subagents.archive_after_minutes,
     subagents_max_retries: config.subagents.max_retries,
+    subagents_stored_result_runes: config.subagents.stored_result_runes,
+    subagents_stored_summary_runes: config.subagents.stored_summary_runes,
     subagents_model_override: config.subagents.model_override,
     tools_enabled: config.tools.enabled,
     tools_profile: config.tools.profile,
@@ -110,6 +112,7 @@ export function buildRuntimeSettingsPayload(
     reasoning_level: advanced.reasoning_level,
     context_compaction_enabled: advanced.context_compaction_enabled,
     session_summary_enabled: advanced.session_summary_enabled,
+    verification_truncate_chars: config.spirit.verification_truncate_chars,
     ...extras,
   };
 }
@@ -132,6 +135,7 @@ export function buildAgentConfigJson(config: AgentRuntimeConfigForm, files: Prom
     evolution_guardrails: config.evolution_guardrails,
     skillRuntime: config.skillRuntime,
     intent_pass: config.intent_pass,
+    parallel_config: config.spirit,
     files: files.map((file) => ({ name: file.name, body: file.body })),
   });
 }

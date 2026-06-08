@@ -24,6 +24,12 @@ import {
   listMemoryDeadLetters,
   updateMemoryPlatformSettings,
 } from '../../features/memory/api';
+import {
+  MEMORY_SNAPSHOT_LIMIT,
+  MEMORY_ENTITY_LIMIT,
+  MEMORY_EVOLUTION_LIMIT,
+  MEMORY_CASCADE_LIMIT,
+} from '../../features/constants/queryLimits';
 import type {
   L0AssemblySnapshot,
   L1Task,
@@ -63,7 +69,7 @@ export const useMemoryStore = defineStore('memory', () => {
   const loadingCascadePreview = ref(false);
   const loadingCascadeSaga = ref(false);
 
-  async function loadSnapshots(sessionID: string, limit = 20): Promise<L0AssemblySnapshot[]> {
+  async function loadSnapshots(sessionID: string, limit = MEMORY_SNAPSHOT_LIMIT): Promise<L0AssemblySnapshot[]> {
     loading.value = true;
     try {
       snapshots.value = await listL0Snapshots(sessionID, limit);
@@ -90,13 +96,15 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   async function loadEvolutionForAgent(agentID: string): Promise<MemoryEvolutionBundle> {
-    const entityQuery = agentID ? { scope_type: 'agent', scope_id: agentID, limit: 50 } : { limit: 50 };
+    const entityQuery = agentID
+      ? { scope_type: 'agent', scope_id: agentID, limit: MEMORY_ENTITY_LIMIT }
+      : { limit: MEMORY_ENTITY_LIMIT };
     const [entityResult, identity, strategy, proposals, events, metrics] = await Promise.all([
       listMemoryEntities(entityQuery),
       agentID ? getAgentIdentity(agentID).catch(() => null) : Promise.resolve(null),
       agentID ? getAgentStrategy(agentID).catch(() => null) : Promise.resolve(null),
-      agentID ? listEvolutionProposals(agentID, { status: 'pending', limit: 20 }).catch(() => []) : Promise.resolve([]),
-      agentID ? listEvolutionEvents(agentID, { limit: 20 }).catch(() => []) : Promise.resolve([]),
+      agentID ? listEvolutionProposals(agentID, { status: 'pending', limit: MEMORY_EVOLUTION_LIMIT }).catch(() => []) : Promise.resolve([]),
+      agentID ? listEvolutionEvents(agentID, { limit: MEMORY_EVOLUTION_LIMIT }).catch(() => []) : Promise.resolve([]),
       agentID ? getEvolutionMetrics(agentID).catch(() => null) : Promise.resolve(null),
     ]);
     entities.value = entityResult.items;
@@ -114,9 +122,9 @@ export const useMemoryStore = defineStore('memory', () => {
     loadingCascade.value = true;
     try {
       const [pending, partial, failed] = await Promise.all([
-        listCascadeProposals(agentID, { status: 'pending', limit: 30 }).catch(() => []),
-        listCascadeProposals(agentID, { status: 'partial', limit: 30 }).catch(() => []),
-        listCascadeProposals(agentID, { status: 'failed', limit: 30 }).catch(() => []),
+        listCascadeProposals(agentID, { status: 'pending', limit: MEMORY_CASCADE_LIMIT }).catch(() => []),
+        listCascadeProposals(agentID, { status: 'partial', limit: MEMORY_CASCADE_LIMIT }).catch(() => []),
+        listCascadeProposals(agentID, { status: 'failed', limit: MEMORY_CASCADE_LIMIT }).catch(() => []),
       ]);
       cascadeProposals.value = [...pending, ...partial, ...failed];
       return cascadeProposals.value;

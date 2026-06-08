@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import {
@@ -85,10 +85,19 @@ import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
 
-const props = defineProps<{
-  event: ToolUseEvent;
-  showMemberLabel?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    event: ToolUseEvent;
+    showMemberLabel?: boolean;
+    initialCollapsed?: boolean;
+    autoCollapse?: boolean;
+  }>(),
+  {
+    showMemberLabel: undefined,
+    initialCollapsed: false,
+    autoCollapse: true,
+  },
+);
 
 defineEmits<{
   'apply-diff': [payload: { toolName: string; fileName: string }];
@@ -97,7 +106,25 @@ defineEmits<{
 
 const { t } = useI18n();
 const $q = useQuasar();
-const expanded = ref(false);
+const expanded = ref(!props.initialCollapsed);
+/** Tracks whether the user manually expanded this card — prevents auto-collapse from overriding. */
+const userManuallyExpanded = ref(false);
+
+watch(
+  () => props.event.status,
+  (newStatus) => {
+    if (!props.autoCollapse) return;
+    if (newStatus === 'running') {
+      expanded.value = true;
+      userManuallyExpanded.value = false;
+    } else if (
+      (newStatus === 'success' || newStatus === 'failed' || newStatus === 'cancelled') &&
+      !userManuallyExpanded.value
+    ) {
+      expanded.value = false;
+    }
+  },
+);
 
 const isDark = computed(() => $q.dark.isActive);
 
@@ -161,10 +188,14 @@ const cardClass = computed(() => ({
   'chat-execution-card--running': status.value === 'running',
   'chat-execution-card--failed': isFailed.value,
   'chat-execution-card--cancelled': status.value === 'cancelled',
+  'chat-execution-card--collapsed-failed': !expanded.value && isFailed.value,
 }));
 
 function onExpanded(value: boolean) {
   expanded.value = value;
+  if (value) {
+    userManuallyExpanded.value = true;
+  }
 }
 
 function prettyJSON(value: unknown): string {
@@ -202,6 +233,10 @@ const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.e
 .chat-execution-card--cancelled
   border-color: color-mix(in srgb, var(--color-text-tertiary) 30%, transparent)
   opacity: 0.88
+
+.chat-execution-card--collapsed-failed
+  border-color: color-mix(in srgb, var(--color-danger) 50%, transparent)
+  background: color-mix(in srgb, var(--color-danger) 6%, transparent)
 
 .chat-execution-card__body
   padding: 0 var(--space-3) var(--space-3)

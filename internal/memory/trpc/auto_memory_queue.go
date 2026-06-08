@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -52,17 +53,6 @@ type AutoMemoryQueue interface {
 	Chan() <-chan AutoMemoryJobRequest
 }
 
-// MemoryJobQueue default capacities (MEM-OPT-03 priority lanes).
-const (
-	memQueueHighCap   = 64
-	memQueueNormalCap = 256
-	memQueueLowCap    = 128
-
-	// maxTenantNormalSlots is the max share of the normal queue any single tenant may hold.
-	// Jobs beyond this are written to dead-letter (quota_exceeded).
-	maxTenantNormalSlots = 128
-)
-
 // MemoryJobQueue is a three-priority memory job queue (MEM-OPT-03).
 // It replaces the previous single-channel implementation while keeping the
 // AutoMemoryQueue interface unchanged (Chan() returns a merged output channel).
@@ -81,6 +71,8 @@ type MemoryJobQueue struct {
 	mu             sync.Mutex
 	tenantInFlight map[string]int64
 
+	memConf conf.RuntimeMemoryQueueConfig
+
 	deadLetter MemoryDeadLetterSink
 
 	done chan struct{}
@@ -92,17 +84,20 @@ var _ AutoMemoryQueue = (*MemoryJobQueue)(nil)
 
 // NewMemoryJobQueue creates a priority-aware MemoryJobQueue.
 // size is ignored (kept for API compatibility); use the named-priority capacities instead.
-func NewMemoryJobQueue(size int, debounce time.Duration, lg loggateway.Logger) *MemoryJobQueue {
+// // WIRE: needs *conf.Runtime
+func NewMemoryJobQueue(runtimeConf *conf.Runtime, size int, debounce time.Duration, lg loggateway.Logger) *MemoryJobQueue {
+	memConf := runtimeConf.MemoryQueueConfig()
 	if debounce <= 0 {
-		debounce = 30 * time.Second
+		debounce = memConf.Debounce
 	}
 	q := &MemoryJobQueue{
-		high:           make(chan AutoMemoryJobRequest, memQueueHighCap),
-		normal:         make(chan AutoMemoryJobRequest, memQueueNormalCap),
-		low:            make(chan AutoMemoryJobRequest, memQueueLowCap),
-		out:            make(chan AutoMemoryJobRequest, memQueueNormalCap),
+		high:           make(chan AutoMemoryJobRequest, memConf.HighCap),
+		normal:         make(chan AutoMemoryJobRequest, memConf.NormalCap),
+		low:            make(chan AutoMemoryJobRequest, memConf.LowCap),
+		out:            make(chan AutoMemoryJobRequest, memConf.NormalCap),
 		debounce:       debounce,
 		tenantInFlight: make(map[string]int64),
+		memConf:        memConf,
 		done:           make(chan struct{}),
 		lg:             lg,
 	}
@@ -186,7 +181,7 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 		tid := q.tenantID(r)
 		q.mu.Lock()
 		inFlight := q.tenantInFlight[tid]
-		if inFlight >= maxTenantNormalSlots {
+		if inFlight >= int64(q.memConf.MaxTenantNormalSlots) {
 			q.mu.Unlock()
 			q.writeDeadLetter(r, DeadLetterReasonQuotaExceeded)
 			return
@@ -348,7 +343,7 @@ func (q *MemoryJobQueue) QueueStats() MemoryQueueStats {
 
 func (q *MemoryJobQueue) QueueLaneStats() (highLen, normalLen, lowLen int, highCap, normalCap, lowCap int, dropped, debounced int64) {
 	s := q.QueueStats()
-	return s.HighLen, s.NormalLen, s.LowLen, memQueueHighCap, memQueueNormalCap, memQueueLowCap, s.Dropped, s.Debounced
+	return s.HighLen, s.NormalLen, s.LowLen, int(q.memConf.HighCap), int(q.memConf.NormalCap), int(q.memConf.LowCap), s.Dropped, s.Debounced
 }
 
 // NewAutoMemoryEnqueuer adapts a wired queue to biz.AutoMemoryEnqueuer (normal priority).

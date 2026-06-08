@@ -43,6 +43,7 @@
       <TurnBlock
         v-if="useTurnBlockMode && item.kind === 'block'"
         :block="item.block"
+        :collapsed="props.isBlockCollapsed?.(item.block.key)"
         :focused="turnIsFocused(item.block.turnId, item.block.user?.id)"
         :all-messages="messages"
         :is-dark="isDark"
@@ -56,6 +57,7 @@
         @retry="(id) => $emit('retry', id)"
         @dismiss-failed="(id) => $emit('dismiss-failed', id)"
         @pin-reasoning="(id) => $emit('pin-reasoning-message', id)"
+        @toggle-collapse="$emit('toggle-block-collapse', item.block.key)"
       />
       <ChatMessageRow
         v-else
@@ -97,6 +99,7 @@
           v-for="block in turnBlocks"
           :key="block.turnId"
           :block="block"
+          :collapsed="props.isBlockCollapsed?.(block.key)"
           :focused="turnIsFocused(block.turnId, block.user?.id)"
           :all-messages="messages"
           :is-dark="isDark"
@@ -110,6 +113,7 @@
           @retry="(id) => $emit('retry', id)"
           @dismiss-failed="(id) => $emit('dismiss-failed', id)"
           @pin-reasoning="(id) => $emit('pin-reasoning-message', id)"
+          @toggle-collapse="$emit('toggle-block-collapse', block.key)"
         />
       </template>
       <ChatMessageRow
@@ -184,6 +188,7 @@ const props = defineProps<{
   virtualRowSize: number;
   showScrollBtn: boolean;
   turnIsFocused: (turnId: string, userId?: string) => boolean;
+  isBlockCollapsed?: (blockKey: number) => boolean;
 }>();
 
 defineEmits<{
@@ -200,6 +205,7 @@ defineEmits<{
   'pin-reasoning-message': [messageId: string];
   'cancel-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
+  'toggle-block-collapse': [blockKey: number];
 }>();
 
 const { t } = useI18n();

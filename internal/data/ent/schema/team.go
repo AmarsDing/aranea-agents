@@ -44,6 +44,7 @@ func (Team) Fields() []ent.Field {
 		field.String("dept_lead_agent_id").Default("").Optional().Comment("department lead Agent ID for this team (inherited from department by default)"),
 		field.Text("cross_dept_member_ids").Default("[]").Comment("cross-department member Agent ID list JSON"),
 		field.String("linked_graph_id").Default("").Optional().Comment("FK to graph_definitions(id); bidirectional reference with graph.team_id"),
+		field.String("interrupt_reason").Default("").MaxLen(1024).Optional().Comment("reason for team interruption (e.g. server restart, user cancel)"),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),

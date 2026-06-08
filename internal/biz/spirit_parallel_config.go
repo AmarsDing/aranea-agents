@@ -8,23 +8,27 @@ import (
 )
 
 type ParallelConfig struct {
-	MaxConcurrentTeams int           `json:"max_concurrent_teams"`
-	MaxTeamConcurrency int           `json:"max_team_concurrency"`
+	MaxConcurrentTeams int `json:"max_concurrent_teams"`
+	MaxTeamConcurrency int `json:"max_team_concurrency"`
 	// TeamTimeoutSeconds is the maximum duration a team is allowed to run
 	// before being timed out. Implemented via registerTeamTimeout in
 	// SpiritTeamUsecase (time.AfterFunc + sync.Map).
-	TeamTimeoutSeconds int           `json:"team_timeout_seconds"`
-	AutoArchiveSeconds int           `json:"auto_archive_seconds"`
-	MaxSessionDepth    int           `json:"max_session_depth"`
+	TeamTimeoutSeconds int `json:"team_timeout_seconds"`
+	AutoArchiveSeconds int `json:"auto_archive_seconds"`
+	MaxSessionDepth    int `json:"max_session_depth"`
+	// TimeoutHandlerDBTimeoutSec is the maximum duration for DB operations
+	// inside the timeout callback goroutine (default 30s).
+	TimeoutHandlerDBTimeoutSec int `json:"timeout_handler_db_timeout_sec"`
 }
 
 func DefaultParallelConfig() ParallelConfig {
 	return ParallelConfig{
-		MaxConcurrentTeams: 3,
-		MaxTeamConcurrency: 2,
-		TeamTimeoutSeconds: 600,
-		AutoArchiveSeconds: 3600,
-		MaxSessionDepth:    2,
+		MaxConcurrentTeams:         3,
+		MaxTeamConcurrency:         2,
+		TeamTimeoutSeconds:         600,
+		AutoArchiveSeconds:         3600,
+		MaxSessionDepth:            2,
+		TimeoutHandlerDBTimeoutSec: 30,
 	}
 }
 
@@ -56,6 +60,9 @@ func ParseParallelConfig(extraJSON string, lg loggateway.Logger) ParallelConfig 
 	if cfg.MaxSessionDepth <= 0 {
 		cfg.MaxSessionDepth = 2
 	}
+	if cfg.TimeoutHandlerDBTimeoutSec <= 0 {
+		cfg.TimeoutHandlerDBTimeoutSec = 30
+	}
 	return cfg
 }
 
@@ -65,4 +72,8 @@ func (c ParallelConfig) TeamTimeout() time.Duration {
 
 func (c ParallelConfig) AutoArchiveAfter() time.Duration {
 	return time.Duration(c.AutoArchiveSeconds) * time.Second
+}
+
+func (c ParallelConfig) TimeoutHandlerDBTimeout() time.Duration {
+	return time.Duration(c.TimeoutHandlerDBTimeoutSec) * time.Second
 }

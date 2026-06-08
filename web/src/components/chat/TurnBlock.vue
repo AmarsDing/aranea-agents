@@ -1,5 +1,16 @@
 <template>
-  <article class="turn-block" :class="{ 'turn-block--focused': focused }" :data-turn-id="block.turnId">
+  <!-- Collapsed summary view -->
+  <div v-if="collapsed && block.isCompleted" class="turn-block turn-block--collapsed" @click="emit('toggle-collapse')">
+    <div class="row items-center no-wrap q-gutter-xs">
+      <q-icon :name="collapsedIcon" size="16px" :color="collapsedIconColor" />
+      <span class="text-caption ellipsis">{{ collapsedSummary }}</span>
+      <q-space />
+      <span v-if="collapsedDuration" class="text-caption text-grey-7">{{ collapsedDuration }}</span>
+      <q-icon name="expand_more" size="14px" color="grey-6" />
+    </div>
+  </div>
+  <!-- Full content view -->
+  <article v-else class="turn-block" :class="{ 'turn-block--focused': focused }" :data-turn-id="block.turnId">
     <div v-if="turnSourceLabel" class="turn-block__channel-bar text-caption" :aria-label="turnSourceLabel">
       {{ turnSourceLabel }}
     </div>
@@ -70,7 +81,8 @@ import { useI18n } from 'vue-i18n';
 import ChatMessageRow from './ChatMessageRow.vue';
 import ToolStrip from './ToolStrip.vue';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
-import { filterToolsForToolStrip } from '../../features/chat/groupMessagesByTurn';
+import { filterToolsForToolStrip, toolStripSummary } from '../../features/chat/groupMessagesByTurn';
+import { toolEventFromMessage } from '../../features/chat/envelopeToolCall';
 import {
   messageSourceChipFallback,
   messageSourceChipKey,
@@ -79,16 +91,20 @@ import {
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { Message, ReactToolLinkIndex } from '../../features/chat/types';
 
-const props = defineProps<{
-  block: TurnBlockGroup;
-  allMessages: Message[];
-  isDark: boolean;
-  isTeamSession?: boolean;
-  plannerKind?: string;
-  reactToolLinkIndex: ReactToolLinkIndex;
-  focused?: boolean;
-  reasoningSidebarOpen?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    block: TurnBlockGroup;
+    allMessages: Message[];
+    isDark: boolean;
+    isTeamSession?: boolean;
+    plannerKind?: string;
+    reactToolLinkIndex: ReactToolLinkIndex;
+    focused?: boolean;
+    reasoningSidebarOpen?: boolean;
+    collapsed?: boolean;
+  }>(),
+  { collapsed: false },
+);
 
 const emit = defineEmits<{
   'a2ui-user-action': [payload: A2UIUserActionPayload];
@@ -97,6 +113,7 @@ const emit = defineEmits<{
   retry: [messageId: string];
   'dismiss-failed': [messageId: string];
   'pin-reasoning': [messageId: string];
+  'toggle-collapse': [];
 }>();
 
 const { t } = useI18n();
@@ -109,6 +126,41 @@ const turnSourceLabel = computed(() => {
 });
 
 const visibleTools = computed(() => filterToolsForToolStrip(props.block.tools, props.reactToolLinkIndex));
+
+const collapsedSummary = computed(() => {
+  const tools = props.block.tools;
+  const summary = toolStripSummary(tools);
+  if (tools.length === 0) {
+    return props.block.assistant?.content_markdown?.slice(0, 60) || '已完成';
+  }
+  if (tools.length === 1) {
+    const ev = toolEventFromMessage(tools[0]!);
+    const name = ev?.display_label || ev?.tool_name || '工具';
+    return `${name} · ${summary.failed > 0 ? '部分失败' : '完成'}`;
+  }
+  return `${tools.length} tools · ${summary.failed > 0 ? `${summary.failed} failed` : '完成'}`;
+});
+
+const collapsedIcon = computed(() => {
+  const summary = toolStripSummary(props.block.tools);
+  if (summary.failed > 0) return 'error';
+  return 'check_circle';
+});
+
+const collapsedIconColor = computed(() => {
+  const summary = toolStripSummary(props.block.tools);
+  if (summary.failed > 0) return 'negative';
+  return 'positive';
+});
+
+const collapsedDuration = computed(() => {
+  const summary = toolStripSummary(props.block.tools);
+  if (summary.totalMs > 0) {
+    const sec = Math.round(summary.totalMs / 1000);
+    return `${sec}s`;
+  }
+  return '';
+});
 </script>
 
 <style scoped lang="sass">
@@ -140,4 +192,16 @@ const visibleTools = computed(() => filterToolsForToolStrip(props.block.tools, p
   padding-top: var(--space-1)
   margin-top: var(--space-1)
   border-top: 1px solid color-mix(in srgb, var(--glass-border) 35%, transparent)
+
+.turn-block--collapsed
+  cursor: pointer
+  padding: var(--space-1) var(--space-2)
+  margin-bottom: var(--space-1)
+  border-radius: 8px
+  background: color-mix(in srgb, var(--glass-surface) 25%, transparent)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 30%, transparent)
+  transition: background 0.15s ease
+
+  &:hover
+    background: color-mix(in srgb, var(--glass-surface) 45%, transparent)
 </style>

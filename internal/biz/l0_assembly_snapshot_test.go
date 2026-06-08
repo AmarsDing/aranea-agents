@@ -8,8 +8,8 @@ import (
 
 func TestShouldWriteL0AssemblySnapshot(t *testing.T) {
 	settings := &AgentRuntimeSettings{
-		EvolutionMetricsEnabled: true,
-		L0SnapshotMode:          "on_warning",
+		L0SnapshotEnabled: true,
+		L0SnapshotMode:    "on_warning",
 	}
 	if ShouldWriteL0AssemblySnapshot(settings, 0.5, false) {
 		t.Fatal("expected skip below warning threshold")
@@ -28,8 +28,8 @@ func TestShouldWriteL0AssemblySnapshot(t *testing.T) {
 	if !ShouldWriteL0AssemblySnapshot(nil, 0.99, true) {
 		t.Fatal("expected force debug write")
 	}
-	if ShouldWriteL0AssemblySnapshot(&AgentRuntimeSettings{EvolutionMetricsEnabled: false}, 0.99, false) {
-		t.Fatal("expected metrics disabled skip")
+	if ShouldWriteL0AssemblySnapshot(&AgentRuntimeSettings{L0SnapshotEnabled: false}, 0.99, false) {
+		t.Fatal("expected snapshot disabled skip")
 	}
 }
 

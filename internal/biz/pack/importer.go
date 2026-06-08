@@ -891,6 +891,7 @@ func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz
 		s.L0InjectL3 = m.L0InjectL3
 		s.L0InjectL4 = m.L0InjectL4
 		s.L0SnapshotMode = m.L0SnapshotMode
+		s.L0SnapshotEnabled = m.L0SnapshotEnabled
 		s.L1Enabled = m.L1Enabled
 		s.L1BudgetTokens = m.L1BudgetTokens
 		s.L2EpisodeEnabled = m.L2EpisodeEnabled

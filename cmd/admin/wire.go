@@ -886,6 +886,7 @@ func provideArtifactSigner(lg loggateway.Logger) *artifact.Signer {
 
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
 func provideAutoMemoryWorker(
+	runtimeConf *conf.Runtime,
 	sessions *biz.SessionUsecase,
 	agents *biz.AgentUsecase,
 	writer biz.MemoryConsolidationWriter,
@@ -896,7 +897,7 @@ func provideAutoMemoryWorker(
 	queue memtrpc.AutoMemoryQueue,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
-	return jobs.NewAutoMemoryWorker(0, sessions, agents, writer, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue, lg)
+	return jobs.NewAutoMemoryWorker(runtimeConf, 0, sessions, agents, writer, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue, lg)
 }
 
 func provideL4GraphWriter(d *data.Data, cascade *biz.L4CascadeUsecase, lg loggateway.Logger) biz.L4GraphWriter {
@@ -1132,8 +1133,8 @@ func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger)
 	return biz.NewSelfHealUsecase(diag, nil, lg)
 }
 
-func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {
-	return monitor.NewSelfHealObserver(repo, engine, notifier, lg)
+func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo, engine *monitor.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {
+	return monitor.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
 
 func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
@@ -1238,11 +1239,17 @@ func providePatternMiningJob(uc *monitor.PatternMiningUsecase, lg loggateway.Log
 	return jobs.NewPatternMiningJob(0, uc, lg)
 }
 
-func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, lg loggateway.Logger) *biz.SpiritTeamUsecase {
+func provideVerificationGateExecutor(deptLeadMgr *biz.DeptLeadManager, caller biz.LLMCaller, lg loggateway.Logger) *biz.VerificationGateExecutor {
+	return biz.NewVerificationGateExecutor(deptLeadMgr, caller, lg)
+}
+
+func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUsecase, agentUC *biz.AgentUsecase, transactor biz.SpiritTransactor, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, gateExecutor *biz.VerificationGateExecutor, deptLeadMgr *biz.DeptLeadManager, lg loggateway.Logger) *biz.SpiritTeamUsecase {
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg,
 		biz.WithSpiritTransactor(transactor),
 		biz.WithOrchestrationCache(orchCache),
 		biz.WithEvolutionSuggestionRepo(evolutionSugg),
+		biz.WithVerificationGateExecutor(gateExecutor),
+		biz.WithDeptLeadMgr(deptLeadMgr),
 	)
 }
 
@@ -1591,7 +1598,7 @@ func provideEcosystemPresetClientProvider(d *data.Data) func() any {
 }
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -1779,6 +1786,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		providePatternMiningUsecase,
 		providePatternMiningJob,
 		provideSpiritTeamUsecase,
+		provideVerificationGateExecutor,
 		wire.Bind(new(monitor.FailurePatternReader), new(*data.FailurePatternReadWriter)),
 		wire.Bind(new(monitor.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
 		wire.Bind(new(monitor.RootCauseAnalyzer), new(*monitor.RootCauseEngine)),

@@ -44,7 +44,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	lg := deps.Logger()
 	entries = append(entries, productChainLifecycleMetrics()...)
 
-	if hook := newRuntimeCueBeforeHook(ag, deps); hook != nil {
+	if hook := newStaticRuntimeCueBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
+	if hook := newDynamicRuntimeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
 	if hook := newSkillGuidanceBeforeHook(ag, deps); hook != nil {

@@ -642,6 +642,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// Wire the runner into SubAgentService so subagent spawn can use it.
 	if o.subAgentService != nil {
 		o.subAgentService.SetRunner(runner)
+		// Register per-session rune limits from the agent's runtime settings.
+		if ag.Settings != nil {
+			o.subAgentService.SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
+		}
 	}
 	rollbackBoundary, rbErr := runnerMgr.MarkRollbackBoundary(ctx, sessionID, runID, "")
 	if rbErr != nil {

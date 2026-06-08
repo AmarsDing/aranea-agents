@@ -652,6 +652,7 @@ func buildRuntimePackSpec(s *biz.AgentRuntimeSettings) *AgentRuntimePackSpec {
 		L0InjectL3:             s.L0InjectL3,
 		L0InjectL4:             s.L0InjectL4,
 		L0SnapshotMode:         s.L0SnapshotMode,
+		L0SnapshotEnabled:      s.L0SnapshotEnabled,
 		L1Enabled:              s.L1Enabled,
 		L1BudgetTokens:         s.L1BudgetTokens,
 		L2EpisodeEnabled:       s.L2EpisodeEnabled,

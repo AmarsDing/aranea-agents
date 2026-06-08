@@ -25,7 +25,7 @@ func newPromptSnapshotBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 	if !promptSnapshotEnabled() && !l0SnapshotHookActive(ag) {
 		return nil
 	}
-	return callbacks.NewBeforeModelHook(10, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return callbacks.NewBeforeModelHook(10, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}

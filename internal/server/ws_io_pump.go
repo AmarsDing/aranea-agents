@@ -12,8 +12,9 @@ import (
 
 // writePump drains priority queues and writes messages to the WebSocket connection.
 func (s *WSServer) writePump(wc *wsConn) {
-	ticker := time.NewTicker(defaultWSPingPeriod)
-	bpTicker := time.NewTicker(wsBackpressureInterval) // MON-OPT-04 backpressure reporter
+	cfg := s.wsConfig()
+	ticker := time.NewTicker(cfg.PingPeriod)
+	bpTicker := time.NewTicker(cfg.BackpressureInterval) // MON-OPT-04 backpressure reporter
 	defer func() {
 		ticker.Stop()
 		bpTicker.Stop()
@@ -22,14 +23,14 @@ func (s *WSServer) writePump(wc *wsConn) {
 	for {
 		// H-02 + MON-OPT-04: drain priority queues (high → normal → low) before blocking.
 		// wc.queues is the sole write path; wc.send is only used for the close signal.
-		// M-02: drainSelect drains high/normal greedily and low at most wsLowDrainPerLoop
+		// M-02: drainSelect drains high/normal greedily and low at most cfg.LowDrainPerLoop
 		// times per outer iteration to prevent high/normal starvation.
 		for {
 			data, prio, ok := wc.queues.drainSelect()
 			if !ok {
 				break
 			}
-			wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+			wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 			if err := wc.conn.WriteMessage(websocket.TextMessage, data); err != nil {
 				return
 			}
@@ -37,12 +38,12 @@ func (s *WSServer) writePump(wc *wsConn) {
 			// loop iteration to allow high/normal items to be checked again.
 			if prio == wsPriorityLow {
 				lowCount := 1
-				for lowCount < wsLowDrainPerLoop {
+				for lowCount < int(cfg.LowDrainPerLoop) {
 					d, p, o := wc.queues.drainSelect()
 					if !o {
 						goto endDrain
 					}
-					wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+					wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 					if err := wc.conn.WriteMessage(websocket.TextMessage, d); err != nil {
 						return
 					}
@@ -62,19 +63,19 @@ func (s *WSServer) writePump(wc *wsConn) {
 		case _, ok := <-wc.send:
 			// wc.send closed = eventPump signalled a high-queue timeout → close.
 			if !ok {
-				wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+				wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 				wc.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 		case <-ticker.C:
-			wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+			wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 			if err := wc.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		case <-bpTicker.C:
 			// MON-OPT-04: inject backpressure notification if drops occurred.
-			if bp := wc.queues.backpressurePayload(int(wsBackpressureInterval.Seconds())); bp != nil {
-				wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+			if bp := wc.queues.backpressurePayload(int(cfg.BackpressureInterval.Seconds())); bp != nil {
+				wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 				_ = wc.conn.WriteMessage(websocket.TextMessage, bp)
 			}
 		}
@@ -83,16 +84,17 @@ func (s *WSServer) writePump(wc *wsConn) {
 
 // readPump reads messages from the WebSocket connection and dispatches them.
 func (s *WSServer) readPump(wc *wsConn) {
+	cfg := s.wsConfig()
 	defer func() {
 		// COR-03: cancel connection context so in-flight turns started by this
 		// connection are cancelled when the client disconnects.
 		s.removeConn(wc)
 		wc.close()
 	}()
-	wc.conn.SetReadLimit(defaultWSReadLimit)
-	wc.conn.SetReadDeadline(time.Now().Add(defaultWSPongWait))
+	wc.conn.SetReadLimit(cfg.ReadLimit)
+	wc.conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
 	wc.conn.SetPongHandler(func(string) error {
-		wc.conn.SetReadDeadline(time.Now().Add(defaultWSPongWait))
+		wc.conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
 		return nil
 	})
 	for {
@@ -109,6 +111,7 @@ func (s *WSServer) readPump(wc *wsConn) {
 
 // eventPump forwards events from the event bus channel to the connection's priority queues.
 func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
+	cfg := s.wsConfig()
 	if wc.replayDone != nil {
 		<-wc.replayDone
 	}
@@ -141,7 +144,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		}
 		// MON-OPT-04: route to priority queue; close connection on high-queue timeout.
 		prio := wsEnvelopePriority(env.Type)
-		if ok := wc.queues.enqueue(prio, data); !ok {
+		if ok := wc.queues.enqueue(cfg, prio, data); !ok {
 			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
 				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", env.Type))
 			wc.closeSend() // signal writePump to exit (safe: sync.Once protects)

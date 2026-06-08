@@ -33,7 +33,7 @@ func productChainLifecycleMetrics() []callbacks.Callback {
 			metrics.ObserveCallback("product_chain", "after_agent", start, cbErr)
 			return &trpcagent.AfterAgentResult{Context: ctx}, nil
 		}),
-		callbacks.NewBeforeModelHook(0, func(ctx context.Context, _ *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		callbacks.NewBeforeModelHook(0, callbacks.LayerDynamic, func(ctx context.Context, _ *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 			start := time.Now()
 			metrics.PluginInvokeTotal.WithLabelValues("product_chain", "before_model", "ok").Inc()
 			metrics.ObserveCallback("product_chain", "before_model", start, nil)

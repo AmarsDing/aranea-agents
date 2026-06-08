@@ -1,7 +1,9 @@
 # Research: Chat 精灵模式实施现状评估与可观测性 UX 方案
 
-> **日期**：2026-06-08 | **版本**：v1.0 | **作者**：AI 调研
+> **日期**：2026-06-08 | **版本**：v1.2 | **作者**：AI 调研
 > **关联**：[59-chat-spirit-mode.md](../development/59-chat-spirit-mode.md) · [59-chat-spirit-mode.design.md](../development/59-chat-spirit-mode.design.md)
+>
+> **v1.2 修订说明**：基于对 Agent 动作可观测性、任务中断恢复、历史消息持久化的三次深度验证，新增附录 B（可观测性现状矩阵）和附录 C（中断恢复机制评估），修正 S-02/S-04 方案的业务合理性评估。
 
 ---
 
@@ -80,7 +82,7 @@
 
 | # | 风险 | 严重度 | 说明 |
 |---|------|--------|------|
-| 1 | 后端 `/v1/spirit` HTTP 路由可能缺失 | 高 | 前端 `listSpiritTeams()`/`getSpiritTeamDetail()`/`cancelSpiritTeam()` 调用可能 404 |
+| 1 | 后端 Spirit HTTP 路由不存在 | — | 前端通过通用 `/v1/teams` API + `spirit_session_id` 字段过滤获取数据，核心操作通过 Agent Tool 机制完成，不存在独立的 `/v1/spirit` 路由。这不是 bug，而是架构设计：Spirit 交互以 WS 事件 + Tool 调用为主通道，HTTP API 仅做辅助查询 |
 | 2 | `spirit_team_usecase_test.go` 被 `//go:build ignore` 禁用 | 高 | 核心 usecase 无活跃测试 |
 | 3 | 前端 Spirit 组件零测试覆盖 | 中 | 所有 spirit 组件和 store 没有单元测试 |
 | 4 | 孤立组件增加维护负担 | 低 | ParallelTeamOverview 等组件存在但未使用，可能随 API 变更而失效 |
@@ -283,7 +285,7 @@ CHI 2025 论文《Assistance or Disruption?》通过 Codellaborator 设计探针
 | 当前活跃步骤 | 不折叠 | — | 完整展示 |
 
 **实现要点**：
-- 在 `groupMessagesByTurn` 分组基础上，对已完成分组自动折叠
+- `groupMessagesByTurn` 当前不区分"已完成"和"进行中"的 block（`TurnBlockGroup` 无状态字段），需要扩展：为每个 block 增加 `isCompleted: boolean` 计算属性（判断依据：block 内所有工具调用均 completed/failed，且 assistant 消息已到达）
 - 折叠态为单行摘要，点击可展开
 - 新消息到达时，前一个活跃步骤自动折叠
 - 提供"展开全部"按钮，方便回溯
@@ -308,34 +310,41 @@ CHI 2025 论文《Assistance or Disruption?》通过 Codellaborator 设计探针
 
 方案（语境加载消息）：
 ┌─────────────────────────────┐
-│ 🔍 正在分析任务复杂度...      │  ← Phase 1: Plan
+│ 🔄 正在处理任务…             │  ← butler.orchestration.started
 └─────────────────────────────┘
 ┌─────────────────────────────┐
-│ 👥 正在分配 Agent 角色...     │  ← Phase 2: Allocate
+│ 🔍 正在分析任务复杂度…       │  ← spirit_plan_created
 └─────────────────────────────┘
 ┌─────────────────────────────┐
-│ 🏗️ 正在编排执行流程...        │  ← Phase 3: Orchestrate
+│ 👥 正在分配 Agent 角色…      │  ← spirit_allocation_created
 └─────────────────────────────┘
 ┌─────────────────────────────┐
-│ ⚡ Golang 工程师正在编写代码... │  ← Agent 执行中
+│ 🏗️ 正在编排执行流程…         │  ← spirit_orchestration_started
 └─────────────────────────────┘
 ┌─────────────────────────────┐
-│ 🔍 代码审查员正在审查...       │  ← 下一个 Agent
+│ ⚡ 后端API开发团队 执行中… 40%│  ← spirit_team_progress
+└─────────────────────────────┘
+┌─────────────────────────────┐
+│ ✅ 后端API开发团队 任务完成   │  ← spirit_team_completed
 └─────────────────────────────┘
 ```
 
 **消息映射表**：
 
-| 事件 | 语境加载消息 | 图标 |
-|------|------------|------|
-| `butler.orchestration.started` (Plan) | "正在分析任务复杂度…" | 🔍 |
-| `butler.orchestration.started` (Allocate) | "正在分配 Agent 角色…" | 👥 |
-| `butler.orchestration.started` (Orchestrate) | "正在编排执行流程…" | 🏗️ |
-| `spirit_team_assembled` | "团队已组建，{team_name} 开始执行" | ⚡ |
-| `spirit_team_progress` (step_start) | "{agent_name} 正在{step_description}…" | Agent 头像 |
-| `spirit_team_progress` (step_complete) | "{agent_name} 完成，耗时 {duration}" | ✓ |
-| `spirit_team_completed` | "{team_name} 任务完成" | ✅ |
-| `spirit_team_failed` | "{team_name} 任务失败" | ✗ |
+| 事件 | 语境加载消息 | 图标 | 备注 |
+|------|------------|------|------|
+| `butler.orchestration.started` | "正在处理任务…" | 🔄 | 此事件在三阶段流程**开始前**一次性发布，仅携带 `task_prompt` 和 `mode`，无 `phase` 字段 |
+| `spirit_plan_created` | "正在分析任务复杂度…" | 🔍 | Phase 1 Plan 完成后发布，携带 `complexity_level`、`strategy`、`subtask_count` |
+| `spirit_allocation_created` | "正在分配 Agent 角色…" | 👥 | Phase 2 Allocate 完成后发布，携带 `allocation_count` |
+| `spirit_orchestration_started` | "正在编排执行流程…" | 🏗️ | Phase 3 Orchestrate 启动时发布，携带 `strategy`、`team_ids` |
+| `spirit_team_assembled` | "团队已组建，{team_name} 开始执行" | ⚡ | 团队组装完成，携带 `team_name`、`mode`、`total_steps` |
+| `spirit_team_progress` | "{team_name} 执行中… {progress_pct}%" | ⚡ | 团队级进度更新，携带 `status`、`progress_pct`、`duration_ms`。**注意**：此事件是扁平事件，无 `step_start`/`step_complete` 子类型，不携带具体 Agent 名称 |
+| `spirit_team_completed` | "{team_name} 任务完成" | ✅ | 携带 `duration_ms` |
+| `spirit_team_failed` | "{team_name} 任务失败" | ✗ | 携带 `error`（可选） |
+
+**v1.0 勘误**：v1.0 中将 `butler.orchestration.started` 误写为按阶段（Plan/Allocate/Orchestrate）发布，实际上该事件仅发布一次且无 `phase` 字段。三阶段的精确追踪应使用 `spirit_plan_created` → `spirit_allocation_created` → `spirit_orchestration_started` 事件链。此外，v1.0 中 `spirit_team_progress` 的 `step_start`/`step_complete` 子类型不存在，该事件是团队级进度更新，不携带 Agent 级步骤信息。
+
+**v1.2 补充**：虽然 `spirit_team_progress` 不携带 Agent 级信息，但 `tool_call` / `tool_result` Envelope 携带 `AgentKey`/`AgentName`/`AgentID` 字段，且 `ActivityKind` 区分 `skill`/`tool`/`mcp`/`subagent`/`memory`/`knowledge` 类型。因此，**Agent 级语境消息在技术上可行**——只需监听 `tool_call`/`tool_result` 事件，按 `AgentName` 过滤，即可展示"Golang 工程师正在读取文件…"等消息。这比扩展 `spirit_team_progress` payload 更轻量，且复用了现有事件流。
 
 **实现要点**：
 - 利用现有 WS 事件流，将事件类型映射为语境加载消息
@@ -369,18 +378,25 @@ CHI 2025 论文《Assistance or Disruption?》通过 Codellaborator 设计探针
 
 **状态标签定义**：
 
-| 状态 | 标签文案 | 颜色 | 图标 | 动画 |
-|------|---------|------|------|------|
-| idle | Idle | 绿色 | ✓ | 无 |
-| working | Executing | 蓝色 | ⚡ | 左边框呼吸动画 |
-| waiting | Waiting | 灰色 | ○ | 无 |
-| completed | Done | 绿色 | ✓ | 无 |
-| failed | Failed | 红色 | ✗ | 无 |
+后端 `AgentNodeStatus`（`orchestration_status.go`）定义了 17 种细粒度状态，前端需将其聚合为用户友好的展示标签：
+
+| 后端 AgentNodeStatus | 聚合展示标签 | 标签文案 | 颜色 | 图标 | 动画 |
+|---------------------|------------|---------|------|------|------|
+| idle, queued, scheduled | Queued | "排队中" | 灰色 | ○ | 无 |
+| running, thinking, tool_running, transferring, retrying | Active | "执行中" | 蓝色 | ⚡ | 左边框呼吸动画 |
+| waiting_input, waiting_review, waiting_assign, blocked | Suspended | "等待中" | 橙色 | ⏸ | 无 |
+| success | Done | "已完成" | 绿色 | ✓ | 无 |
+| failed, timed_out | Failed | "失败" | 红色 | ✗ | 无 |
+| skipped | Skipped | "已跳过" | 灰色 | ⊘ | 无 |
+| cancelled | Cancelled | "已取消" | 灰色 | ⊘ | 无 |
+
+**v1.0 勘误**：v1.0 中定义的 5 种状态（idle/working/waiting/completed/failed）与后端实际状态体系不符。后端 `AgentNodeStatus` 有 17 种细粒度状态，需通过 `DisplayStatus` 聚合函数映射为 7 种展示标签。此外，`SpiritMember.status` 类型为 `string`（非枚举），后端发送的典型值为 "idle"、"running"、"error"，与 `AgentNodeStatus` 的 17 种状态是两套体系——前者来自 `DefinitionJSON`，后者来自编排观察台。S-03 方案需明确使用哪套状态源。
 
 **实现要点**：
+- **状态源选择**：团队卡片（`TeamTaskCard`）使用 `SpiritMember.status`（简单 3 值：idle/running/error），任务执行面板使用 `AgentNodeStatus`（17 值聚合为 7 种标签）
 - 复用 `SessionStatusBadge` 组件的样式体系
 - 标签宽度固定（~80px），避免布局抖动
-- Executing 状态的呼吸动画使用 CSS `@keyframes`，不使用 JS 动画
+- Active 状态的呼吸动画使用 CSS `@keyframes`，不使用 JS 动画
 - 标签在团队卡片折叠态也可见（显示为紧凑模式：头像+状态色点）
 
 **对主内容影响**：每条目增加 ~20px 标签高度。
@@ -422,6 +438,7 @@ CHI 2025 论文《Assistance or Disruption?》通过 Codellaborator 设计探针
 - 字段按优先级排列，窄屏时自动隐藏低优先级字段
 - 颜色编码：running=蓝色、completed=绿色、failed=红色
 - 仅在精灵模式激活时显示
+- **Token 消耗数据源**：`TeamRunStep` 表有 `token_in`/`token_out` 字段，`spirit_team_completed` 事件可扩展携带 token 统计；当前事件 payload 不含 token 字段，需后端扩展或在 `spirit_team_completed`/`spirit_teams_all_completed` 事件中增加 `total_token_in`/`total_token_out`
 
 **对主内容影响**：固定 24px，不随内容滚动。
 
@@ -474,6 +491,8 @@ CHI 2025 论文《Assistance or Disruption?》通过 Codellaborator 设计探针
 
 **问题**：当前工具调用卡片（`ChatExecutionCard`）展开时占据大量空间，多个工具调用连续展示时严重影响对话可读性。
 
+**v1.0 勘误**：v1.0 声称需要"增加折叠/展开状态"，实际上 `ChatExecutionCard` 已使用 `<q-expansion-item>` 作为根元素，**已内置折叠/展开功能**。当前的问题是：(1) 默认全部展开，没有"完成后自动折叠"逻辑；(2) 折叠态的 header 仍然较宽，没有精简为单行摘要。
+
 **方案**：
 
 ```
@@ -503,9 +522,10 @@ CHI 2025 论文《Assistance or Disruption?》通过 Codellaborator 设计探针
 | failed | 折叠（红色高亮） | 工具名 + ✗ + 错误摘要 |
 
 **实现要点**：
-- 复用现有 `ChatExecutionCard` 组件，增加折叠/展开状态
-- 折叠态高度固定 32px（1 行），展开态自适应
-- 以 `tool_call_id` 为 upsert 键，避免重复卡片
+- **不需要新增折叠/展开功能**——`ChatExecutionCard` 已使用 `<q-expansion-item>` 实现折叠/展开
+- 需要新增的是**自动折叠逻辑**：监听工具状态变化，completed/failed 时自动折叠（设置 `expanded = false`）
+- 需要优化折叠态 header：当前 header 包含标题+摘要+状态图标+时长，信息密度已较高，但可进一步精简为单行
+- 以 `tool_call_id` 为 upsert 键（已实现，无需修改）
 - running 状态的工具调用始终展开，完成后自动折叠（配合 S-01）
 - 提供"展开全部工具调用"按钮
 
@@ -557,12 +577,11 @@ S-05 侧边栏状态脉冲 ─────→ 注意力引导（P1，独立）
 | # | 行动项 | 优先级 | 前置条件 |
 |---|--------|--------|---------|
 | 1 | 修正需求文档 SP-04、SP-12 状态标记 | 高 | 无 |
-| 2 | 验证后端 `/v1/spirit` HTTP 路由是否注册 | 高 | 无 |
-| 3 | 启用 `spirit_team_usecase_test.go`（移除 `//go:build ignore`） | 高 | 无 |
-| 4 | 实施 S-01 + S-02 + S-06 方案（核心折叠体验） | 高 | #2 验证通过 |
-| 5 | 实施 S-03 方案（Agent 状态标签） | 高 | #4 完成 |
-| 6 | 集成 ParallelTeamOverview 到 TaskExecutionPanel | 中 | #5 完成 |
-| 7 | 实施 S-04 + S-05 方案（全局感知增强） | 中 | #5 完成 |
+| 2 | 启用 `spirit_team_usecase_test.go`（移除 `//go:build ignore`） | 高 | 无 |
+| 3 | 实施 S-01 + S-02 + S-06 方案（核心折叠体验） | 高 | 无 |
+| 4 | 实施 S-03 方案（Agent 状态标签） | 高 | #3 完成 |
+| 5 | 集成 ParallelTeamOverview 到 TaskExecutionPanel | 中 | #4 完成 |
+| 6 | 实施 S-04 + S-05 方案（全局感知增强） | 中 | #4 完成 |
 
 ---
 
@@ -582,3 +601,144 @@ S-05 侧边栏状态脉冲 ─────→ 注意力引导（P1，独立）
 - [Trae @Agent 设计哲学](https://www.trae.ai/blog/product_thought_0421)
 - [Trae Changelog](https://www.trae.ai/changelog)
 - [CHI 2025: Assistance or Disruption?](http://arxiv.org/pdf/2502.18658)
+
+---
+
+## 附录 A：v1.0 勘误表
+
+基于对前后端代码的二次深度验证，v1.0 中存在以下事实错误，已在 v1.1 中修正：
+
+| # | 错误描述 | v1.0 原文 | 实际情况 | 影响方案 | 修正措施 |
+|---|---------|----------|---------|---------|---------|
+| E-01 | `butler.orchestration.started` 被描述为按阶段发布 | "Plan/Allocate/Orchestrate 三阶段分别发布" | 该事件仅在三阶段流程**开始前**发布一次，携带 `task_prompt` 和 `mode`，无 `phase` 字段 | S-02 语境加载消息 | 改用 `spirit_plan_created` → `spirit_allocation_created` → `spirit_orchestration_started` 事件链 |
+| E-02 | `spirit_team_progress` 被描述为有 `step_start`/`step_complete` 子类型 | "step_start: {agent_name} 正在… / step_complete: {agent_name} 完成" | 该事件是扁平事件，携带 `team_id`、`status`、`progress_pct`、`duration_ms`，无子类型，不携带 Agent 名称 | S-02 语境加载消息 | 改为团队级进度展示 "{team_name} 执行中… {progress_pct}%" |
+| E-03 | Agent 状态标签定义为 5 种 | "idle/working/waiting/completed/failed" | 后端 `AgentNodeStatus` 有 17 种细粒度状态，需聚合为 7 种展示标签；`SpiritMember.status` 是另一套简单体系（idle/running/error） | S-03 Agent 状态标签 | 重新定义 7 种聚合标签，明确两套状态源的使用场景 |
+| E-04 | `ChatExecutionCard` 被描述为需要增加折叠/展开功能 | "复用现有 ChatExecutionCard 组件，增加折叠/展开状态" | 该组件已使用 `<q-expansion-item>` 实现折叠/展开，实际需要的是"完成后自动折叠"逻辑 | S-06 可折叠工具输出 | 修正为实现要点：新增自动折叠逻辑，而非新增折叠功能 |
+| E-05 | 后端 `/v1/spirit` HTTP 路由被描述为"可能缺失" | "前端 API 调用可能 404" | Spirit 没有独立 HTTP 路由，这是架构设计：前端通过通用 `/v1/teams` API + `spirit_session_id` 过滤获取数据，核心操作通过 Agent Tool 机制完成 | 第一部分风险项 | 降级为"非风险"，修正为架构说明 |
+| E-06 | `groupMessagesByTurn` 被描述为可直接用于自动折叠 | "在 groupMessagesByTurn 分组基础上，对已完成分组自动折叠" | `TurnBlockGroup` 无状态字段，不区分"已完成"和"进行中"的 block | S-01 对话流自动折叠 | 需扩展 `TurnBlockGroup` 增加 `isCompleted` 计算属性 |
+
+### 业务合理性补充评估
+
+| 评估项 | 结论 | 说明 |
+|--------|------|------|
+| S-01 对话流自动折叠 | **合理** | 核心价值明确，但需注意 `TurnBlockGroup` 扩展的复杂度——需在 `groupMessagesByTurn.ts` 中增加状态判断逻辑，可能影响现有消息分组的性能 |
+| S-02 语境加载消息 | **合理，范围恢复** | v1.1 评估为"范围缩小"，但 v1.2 验证发现 `tool_call`/`tool_result` Envelope 已携带 `AgentName`/`ActivityKind` 字段，Agent 级语境消息**技术上可行**，无需后端扩展。只需前端监听 `tool_call` 事件并按 `AgentName` 过滤 |
+| S-03 Agent 状态标签 | **合理，但需明确状态源** | 两套状态体系（`SpiritMember.status` vs `AgentNodeStatus`）的使用场景需在实现时明确：侧边栏团队卡片用简单状态，任务执行面板用细粒度状态 |
+| S-04 底部状态栏 | **合理，Token 字段需后端扩展** | `TeamRunStep` 表有 token 字段，但 WS 事件 payload 不含 token 统计，需后端在 `spirit_team_completed`/`spirit_teams_all_completed` 事件中增加 token 字段 |
+| S-05 侧边栏状态脉冲 | **合理** | 纯前端实现，无后端依赖，风险最低 |
+| S-06 可折叠工具输出 | **合理，工作量低于预期** | `ChatExecutionCard` 已有折叠/展开功能，仅需增加"完成后自动折叠"逻辑，实现成本远低于 v1.0 估计 |
+
+### 中断恢复对方案的影响
+
+| 场景 | 当前恢复机制 | 对方案的影响 |
+|------|------------|------------|
+| 用户点击 Stop | WS cancel → CancelTeam API → 团队+子 session 标记 interrupted | S-01 折叠逻辑需处理 interrupted 状态的 block（应视为"已完成"并折叠） |
+| 软件崩溃/服务器重启 | SessionStatusGuard 将 running→interrupted；Orchestrator.Recover 从 checkpoint 恢复 | S-02 语境加载消息需在重连后重新加载团队状态；S-04 底部状态栏需显示 interrupted 团队数 |
+| WS 断线重连 | 指数退避 + lastEventId 事件回放 + reloadTeams | S-02 语境消息在回放期间应静默（避免重复闪烁）；S-05 脉冲在回放期间应禁用 |
+| 用户重新打开历史 session | loadMessages 从数据库加载历史消息 | S-01 折叠逻辑需在加载历史消息时正确判断 block 完成状态；S-06 工具卡片需从 OptionsJSON.tool_event 恢复折叠态 |
+
+---
+
+## 附录 B：Agent 动作可观测性现状矩阵
+
+### B.1 可观测性层级
+
+| 动作类型 | 实时 WS 事件 | 持久化 | UI 展示 | 粒度 |
+|---------|------------|--------|---------|------|
+| 工具调用 | `tool_call` / `tool_result` | `tool_invocations` 表 + `chat_messages` 表（`act-{tool_call_id}`） | `ChatExecutionCard`（含 DiffViewer） | per-tool-call |
+| Skill 调用 | 同上（`activity_kind=skill`） | `skill_invocations` 表 + `tool_invocations` 表 | `ChatExecutionCard`（Skill 图标） | per-invocation |
+| 文件读写 | 同上（`activity_kind=tool`） | 同上 | `ChatExecutionCard`（文件图标 + 路径摘要 + DiffViewer） | per-file-op |
+| MCP 调用 | 同上（`activity_kind=mcp`） | `tool_invocations` 表 | `ChatExecutionCard` | per-call |
+| 子 Agent 调用 | 同上（`activity_kind=subagent`） | `tool_invocations` 表 | `ChatExecutionCard` | per-call |
+| 成员消息 | `member_message_start` / `member_delta` / `member_message_done` | `chat_messages` 表（`OptionsJSON.team_member`） | 消息流（色条分栏 + memberLabel） | per-message |
+| 团队步骤 | `team_step_started` / `team_step_finished` | `team_run_steps` 表 | Observatory Timeline | per-step |
+| 编排状态 | `orchestration_agent_status` | `orchestration_steps` 表（500ms 批量写入） | Observatory Kanban + Graph Canvas | per-node |
+| Graph 执行 | `graph_node_start` / `graph_node_end` / `graph_step` / `graph_task_status` | `graph_executions` 表 | Observatory Graph Canvas | per-node |
+
+### B.2 关键发现
+
+1. **工具/Skill/文件操作已完全可观测**：每次工具调用都有完整的 WS 事件 + 数据库持久化 + UI 展示，粒度为 per-tool-call
+2. **`EnvelopeToolCall` 信息密度极高**：包含 `AgentKey`/`AgentName`/`ActivityKind`/`DisplayLabel`/`Summary`/`DurationMS`/`Status` 等字段，足以支撑 S-02 Agent 级语境消息
+3. **成员消息过滤已实现**：`OptionsJSON.team_member` 字段存在且可用，SP-06 成员只读面板的实现基础已具备
+4. **Observatory 页面功能完整但入口隐蔽**：`TeamRunObservatoryPage` 有 Graph Canvas + Kanban + Timeline + Summary + HITL，但用户需从团队详情页跳转，不在精灵对话面板内
+
+### B.3 可观测性缺口
+
+| 缺口 | 说明 | 建议 |
+|------|------|------|
+| 工具调用原始 `result_json` 不持久化到 Message 表 | 只有摘要，无结构化结果 | 当前设计合理（避免大 JSON 存储），通过 `tool_invocations` 表可查询 |
+| TeamRunStep 不含单个工具调用详情 | 只有 `ToolCallCount` | 通过 `tool_invocations` 表按 `session_id` 查询可补充 |
+| 无内置按成员过滤消息的 UI | `team_member` 字段存在但无 UI 过滤组件 | SP-06 实现时需新增过滤 UI |
+| Skill 调用无独立 WS 事件类型 | 通过 `activity_kind=skill` 区分 | 当前设计合理，无需独立事件 |
+| `ToolRegistered`/`ToolUpdated`/`ToolRemoved` 事件未实现 | 需求 2.10 定义但未实现 | P2 优先级 |
+
+---
+
+## 附录 C：中断恢复机制评估
+
+### C.1 恢复机制全景
+
+```
+┌─ 服务器启动 ─────────────────────────────────────────────┐
+│ SessionStatusGuard.OnStartup()                            │
+│  ├─ RecoverOrphanedRunningSessions → running→interrupted  │
+│  ├─ recoverOrphanedRunningTeams → running→interrupted     │
+│  └─ recoverInterruptedOrchestrations → checkpoint 恢复    │
+├─ 服务器关闭 ─────────────────────────────────────────────┤
+│ SessionStatusGuard.OnShutdown()                           │
+│  └─ running→interrupted (StatusReasonServerShutdown)      │
+├─ WS 断线 ───────────────────────────────────────────────┤
+│ ws-transport.ts: 指数退避重连 + lastEventId 事件回放      │
+│ spirit store: reloadTeams() 重新加载团队状态               │
+│ chat stream: loadMessages() 增量同步消息                   │
+├─ 用户取消 ──────────────────────────────────────────────┤
+│ WS cancel → CancelTeam → 团队+子session→interrupted       │
+├─ 团队超时 ──────────────────────────────────────────────┤
+│ 内存定时器 → TeamStatusFailed → HandleTeamTimeout         │
+│ ⚠️ 定时器不持久化，重启后丢失                              │
+└─ 恢复执行 ──────────────────────────────────────────────┘
+  ResumeTeamRunExecution API → 需要 graph_execution_id
+  Orchestrator.Recover → 需要 checkpoint_id
+  ⚠️ Phase 1/2 中断恢复未实现（TODO: DEV-07）
+```
+
+### C.2 恢复能力评估
+
+| 场景 | 恢复能力 | 数据丢失风险 | 说明 |
+|------|---------|------------|------|
+| 用户点击 Stop | **完全可恢复** | 无 | 团队标记 interrupted，Session/Message/TeamRun/TeamRunStep 全部保留 |
+| 服务器优雅关闭 | **完全可恢复** | 无 | OnShutdown 将 running→interrupted，所有数据已持久化 |
+| 服务器崩溃 | **部分可恢复** | 低 | running→interrupted（启动时恢复）；Orchestrator 可从 checkpoint 恢复；但 Phase 1/2 草稿（TaskPlan/AllocationPlan）不恢复 |
+| WS 断线 | **完全可恢复** | 无 | 事件回放 + 增量同步，无数据丢失 |
+| 超时定时器丢失 | **低风险** | 无 | 重启后 running team 会被标记 interrupted，不会永远卡住；但不会自动触发超时失败 |
+| 用户关闭浏览器 | **完全可恢复** | 无 | 重新打开后从数据库加载历史消息和团队状态 |
+
+### C.3 对方案的关键约束
+
+1. **S-01 对话流自动折叠**：需处理 interrupted 状态的 block——interrupted 应视为"已完成"并折叠，但需显示中断标记（而非 ✓）
+2. **S-02 语境加载消息**：WS 重连事件回放期间应静默（`onReplayState` 回调），避免回放历史事件时产生闪烁
+3. **S-04 底部状态栏**：需显示 interrupted 团队计数（如"⚡ 1 running │ ⏸ 1 interrupted"），让用户知道有中断的团队可恢复
+4. **S-05 侧边栏状态脉冲**：WS 回放期间应禁用脉冲动画，避免历史状态变化触发误脉冲
+5. **S-06 可折叠工具输出**：加载历史消息时，需从 `OptionsJSON.tool_event` 恢复工具卡片的折叠态（而非默认全部展开）
+
+### C.4 建议新增：S-07 中断恢复提示
+
+**问题**：当团队因崩溃/超时被标记为 interrupted 时，用户可能不知道可以恢复执行。
+
+**方案**：在任务执行面板中，interrupted 状态的团队显示恢复提示卡片：
+
+```
+┌─ ⏸ 团队已中断 ──────────────────────────────┐
+│ 后端 API 开发团队 因服务器重启而中断           │
+│ 已完成 3/5 步骤，可从断点恢复执行              │
+│ [恢复执行]  [取消团队]                         │
+└──────────────────────────────────────────────┘
+```
+
+**实现要点**：
+- 复用 `SessionStatusBadge` 的 interrupted 状态样式
+- "恢复执行"按钮调用 `ResumeTeamRunExecution` API（需 `graph_execution_id`）
+- 如果团队无 `graph_execution_id`，显示"此团队不支持断点恢复"
+- 恢复成功后发布 `spirit_team_progress` 事件（status=running），前端更新状态
+
+**对主内容影响**：仅 interrupted 状态时显示，正常执行时不可见。

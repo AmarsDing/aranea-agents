@@ -48,6 +48,7 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		EnvelopeTypeSpiritTeamAssembled,
 		EnvelopeTypeSpiritTeamCompleted,
 		EnvelopeTypeSpiritTeamFailed,
+		EnvelopeTypeSpiritTeamInterrupted,
 		EnvelopeTypeSpiritTeamProgress,
 		EnvelopeTypeSpiritTeamsAllCompleted,
 		EnvelopeTypeSpiritSynthesisCompleted,
@@ -76,7 +77,7 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		seen[v] = string(et)
 	}
 
-	expected := 57 // total number of EnvelopeType constants
+	expected := 58 // total number of EnvelopeType constants
 	if len(allTypes) != expected {
 		t.Errorf("expected %d EnvelopeType constants, got %d — update this test when adding new types", expected, len(allTypes))
 	}

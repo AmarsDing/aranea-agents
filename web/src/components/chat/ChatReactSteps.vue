@@ -7,7 +7,13 @@
       </div>
       <div v-if="step.body" class="chat-react-step__body text-body2" v-html="renderBody(step.body)" />
       <div v-if="step.kind === 'action' && step.linkedTools?.length" class="chat-react-step__tools q-mt-sm">
-        <ChatExecutionCard v-for="tool in step.linkedTools" :key="tool.id" :event="tool" class="q-mb-xs" />
+        <ChatExecutionCard
+          v-for="tool in step.linkedTools"
+          :key="tool.id"
+          :event="tool"
+          :initial-collapsed="isToolEventCompleted(tool)"
+          class="q-mb-xs"
+        />
       </div>
     </div>
   </div>
@@ -16,7 +22,7 @@
 <script setup lang="ts">
 import ChatExecutionCard from './ChatExecutionCard.vue';
 import type { ReactStepKind } from '../../features/chat/reactPlannerTypes';
-import type { ReactStepWithTools } from '../../features/chat/types';
+import type { ReactStepWithTools, ToolUseEvent } from '../../features/chat/types';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 
 defineProps<{
@@ -41,6 +47,11 @@ function iconFor(kind: ReactStepKind): string {
 
 function renderBody(body: string): string {
   return renderChatMarkdown(body.trim());
+}
+
+function isToolEventCompleted(event: ToolUseEvent): boolean {
+  const s = event.status;
+  return s === 'success' || s === 'failed' || s === 'cancelled';
 }
 </script>
 

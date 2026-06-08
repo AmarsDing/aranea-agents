@@ -42,4 +42,30 @@ logging:
   compress: true
   stdout_enabled: true
   hook_level: info
+# Runtime infrastructure tuning. All fields default to sensible values when
+# zero/empty, so this section is optional. Uncomment and adjust per deployment.
+# runtime:
+#   ws:
+#     pong_wait_ms: 60000           # wait for client pong (default 60 s)
+#     ping_period_ms: 30000         # server ping interval (default 30 s)
+#     write_wait_ms: 10000          # single write deadline (default 10 s)
+#     turn_timeout_ms: 300000       # WS-initiated turn timeout (default 5 min)
+#     max_session_conns: 5          # per-session WS limit
+#     max_global_monitor_conns: 3   # global monitor WS limit
+#   hook:
+#     default_max_attempts: 3       # max delivery attempts
+#     default_timeout_sec: 8        # HTTP request timeout
+#     retry_poll_interval_ms: 60000 # stale-poll interval
+#   self_heal:
+#     min_confidence: 0.7           # min confidence to fire alert
+#     circuit_breaker_threshold: 5  # events in window to trip breaker
+#   memory_queue:
+#     normal_cap: 256               # normal-priority lane capacity
+#   webhook:
+#     rate_limit_per_min: 120       # per-channel requests/min
+#   auto_memory:
+#     max_retries: 3                # extraction attempts per job
+#     max_messages: 40              # recent messages to analyze
+#   activity_flusher:
+#     batch_size: 10                # rows per flush
 

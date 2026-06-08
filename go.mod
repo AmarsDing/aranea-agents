@@ -7,6 +7,8 @@ replace trpc.group/trpc-go/trpc-agent-go => ./pkg/trpc-agent-go
 
 replace trpc.group/trpc-go/trpc-agent-go/model/hunyuan => ./pkg/trpc-agent-go/model/hunyuan
 
+replace trpc.group/trpc-go/trpc-agent-go/model/anthropic => ./pkg/trpc-agent-go/model/anthropic
+
 replace trpc.group/trpc-go/trpc-agent-go/model/bedrock => ./pkg/trpc-agent-go/model/bedrock
 
 replace trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf => ./pkg/trpc-agent-go/knowledge/document/reader/pdf

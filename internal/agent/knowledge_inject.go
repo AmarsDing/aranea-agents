@@ -25,7 +25,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
 		return nil
 	}
-	return callbacks.NewBeforeModelHook(6, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return callbacks.NewBeforeModelHook(6, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}

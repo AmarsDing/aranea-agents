@@ -9,16 +9,12 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
-)
-
-const (
-	activityFlushBatchSize = 10
-	activityFlushInterval  = 500 * time.Millisecond
 )
 
 // ActivityStepFlusher asynchronously persists orchestration activity rows.
@@ -30,20 +26,24 @@ type ActivityStepFlusher struct {
 	stop             chan struct{}
 	done             chan struct{}
 	once             sync.Once
+	flushConf        conf.RuntimeActivityFlusherConfig
 	lg               loggateway.Logger
 }
 
-func NewActivityStepFlusher(repo biz.OrchestrationStepRepo, runID, graphExecutionID string, lg loggateway.Logger) *ActivityStepFlusher {
+// NewActivityStepFlusher creates an ActivityStepFlusher. // WIRE: needs *conf.Runtime
+func NewActivityStepFlusher(runtimeConf *conf.Runtime, repo biz.OrchestrationStepRepo, runID, graphExecutionID string, lg loggateway.Logger) *ActivityStepFlusher {
 	if repo == nil || strings.TrimSpace(runID) == "" || !obsPersistEnabled() {
 		return nil
 	}
+	fc := runtimeConf.ActivityFlusherConfig()
 	f := &ActivityStepFlusher{
 		repo:             repo,
 		runID:            runID,
 		graphExecutionID: strings.TrimSpace(graphExecutionID),
-		ch:               make(chan biz.OrchestrationStep, 64),
+		ch:               make(chan biz.OrchestrationStep, fc.ChannelBuffer),
 		stop:             make(chan struct{}),
 		done:             make(chan struct{}),
+		flushConf:        fc,
 		lg:               lg,
 	}
 	safego.Go(appctx.Ctx(), "orchestration.activity.flusher", f.loop)
@@ -95,16 +95,16 @@ func (f *ActivityStepFlusher) Stop() {
 
 func (f *ActivityStepFlusher) loop() {
 	defer close(f.done)
-	ticker := time.NewTicker(activityFlushInterval)
+	ticker := time.NewTicker(f.flushConf.FlushInterval)
 	defer ticker.Stop()
-	pending := make([]biz.OrchestrationStep, 0, activityFlushBatchSize)
+	pending := make([]biz.OrchestrationStep, 0, f.flushConf.BatchSize)
 	flush := func() {
 		if len(pending) == 0 {
 			return
 		}
 		batch := append([]biz.OrchestrationStep(nil), pending...)
 		pending = pending[:0]
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), f.flushConf.DBTimeout)
 		if berr := f.repo.BatchCreateOrchestrationSteps(ctx, batch); berr != nil {
 			f.lg.Warn("BatchCreateOrchestrationSteps failed",
 				loggateway.StepID("team.step.batch_fail"),
@@ -127,7 +127,7 @@ func (f *ActivityStepFlusher) loop() {
 			}
 		case step := <-f.ch:
 			pending = append(pending, step)
-			if len(pending) >= activityFlushBatchSize {
+			if len(pending) >= int(f.flushConf.BatchSize) {
 				flush()
 			}
 		case <-ticker.C:

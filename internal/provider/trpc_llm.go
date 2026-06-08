@@ -311,6 +311,10 @@ func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Optio
 	var providerOpts []trpcanthropic.Option
 	if cfg.CacheSystemPrompt {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPrompt(true))
+		// Enable dual-breakpoint mode for system prompt caching.
+		// Breakpoint 1: end of TextBlock[0] (static layer: identity + instructions + skills + staticRuntimeCue)
+		// Breakpoint 2: end of TextBlock[2] (semi-static layer: dynamicRuntimeCue + SkillGuidance)
+		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPromptDualBreakpoint(2))
 	}
 	if cfg.CacheTools {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheTools(true))

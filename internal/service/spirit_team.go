@@ -148,6 +148,14 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		durationMs = int64(runs[0].DurationMS)
 	}
 
+	// Extract token usage from the team's session.
+	// Assumption: each team is associated with exactly one session; Limit:1 is sufficient.
+	var tokenIn, tokenOut int
+	if sessResult, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 1}); searchErr == nil && len(sessResult.Items) > 0 {
+		tokenIn = sessResult.Items[0].InputTokens
+		tokenOut = sessResult.Items[0].OutputTokens
+	}
+
 	var envType event.EnvelopeType
 	if status == biz.TeamStatusCompleted {
 		envType = event.EnvelopeTypeSpiritTeamCompleted
@@ -166,7 +174,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// has already transitioned the status to cancelled. Double-writing is
 		// unnecessary and wasteful.
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
-		result, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 10})
+		result, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: biz.SpiritCancelSessionLimit})
 		if searchErr == nil {
 			for _, sess := range result.Items {
 				if sess.Status == string(sessstatus.SessionStatusRunning) {
@@ -197,10 +205,12 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		env := event.NewEnvelope(envType, "spirit-lifecycle", spiritSessionID)
 		env.TeamID = teamID
 		meta := map[string]any{
-			"team_id":     teamID,
-			"team_name":   team.DisplayName,
-			"status":      status,
-			"duration_ms": durationMs,
+			"team_id":         teamID,
+			"team_name":       team.DisplayName,
+			"status":          status,
+			"duration_ms":     durationMs,
+			"total_token_in":  tokenIn,
+			"total_token_out": tokenOut,
 		}
 		if errMsg != "" {
 			meta["error"] = errMsg
@@ -327,6 +337,8 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		env.Metadata = map[string]any{
 			"spirit_session_id": spiritSessionID,
 			"team_ids":          result.TeamIDs,
+			"total_token_in":    result.TotalTokenIn,
+			"total_token_out":   result.TotalTokenOut,
 		}
 		s.bus.Publish(ctx, env)
 	}

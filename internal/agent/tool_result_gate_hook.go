@@ -15,7 +15,7 @@ import (
 
 func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg loggateway.Logger) callbacks.Callback {
 	enabled := toolResultGateEnabled(ag)
-	return callbacks.NewBeforeModelHook(3, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return callbacks.NewBeforeModelHook(3, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if !enabled || gate == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}

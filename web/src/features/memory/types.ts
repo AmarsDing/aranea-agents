@@ -1,13 +1,18 @@
 /** 记忆中心 UI / `memory/v1` 映射后的 snake_case 形状（与网关 JSON 对齐）。 */
 
-export type L0AssemblySegment = {
-  section: string;
-  role: string;
-  source: string;
-  tokens: number;
-  preview: string;
-  content?: string;
+export type L0AssemblySegmentStats = {
+  token_estimate: number;
+  message_count: number;
+  field_count?: number;
+  fact_count?: number;
+  entity_count?: number;
+  result_count?: number;
+  turn_count?: number;
+  from_turn?: number;
+  to_turn?: number;
 };
+
+export type L0AssemblySegmentsMap = Record<string, L0AssemblySegmentStats>;
 
 export type L0AssemblySnapshot = {
   id: string;

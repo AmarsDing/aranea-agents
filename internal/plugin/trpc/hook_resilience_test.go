@@ -67,7 +67,7 @@ func TestWrapResilient_BeforeToolPanic(t *testing.T) {
 }
 
 func TestWrapResilient_BeforeModelPanic(t *testing.T) {
-	panicking := callbacks.NewBeforeModelHook(10, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	panicking := callbacks.NewBeforeModelHook(10, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		panic("model hook panic!")
 	})
 	wrapped := wrapResilient(panicking)

@@ -4,6 +4,13 @@ import { getCurrentAdmin } from '../admin/api';
 import { useAuthStore } from '../../stores/auth';
 import { Notify } from 'quasar';
 import { getBackendOrigin, isWsSameOriginAsPage, readAccessTokenCookie } from '../../config/runtime';
+import {
+  HEARTBEAT_PING_INTERVAL_MS,
+  HEARTBEAT_PONG_TIMEOUT_MS,
+  HEARTBEAT_RECONNECT_BASE_DELAY_MS,
+  HEARTBEAT_RECONNECT_MAX_DELAY_MS,
+  HEARTBEAT_INITIAL_CONNECT_TIMEOUT_MS,
+} from '../constants/timeouts';
 
 export type ServerHeartbeatOptions = {
   pingInterval?: number;
@@ -12,12 +19,6 @@ export type ServerHeartbeatOptions = {
   reconnectMaxDelay?: number;
   initialConnectTimeout?: number;
 };
-
-const DEFAULT_PING_INTERVAL = 15_000;
-const DEFAULT_PONG_TIMEOUT = 90_000;
-const DEFAULT_RECONNECT_BASE_DELAY = 1_000;
-const DEFAULT_RECONNECT_MAX_DELAY = 30_000;
-const DEFAULT_INITIAL_CONNECT_TIMEOUT = 8_000;
 
 export type ServerHeartbeatState = {
   isAlive: boolean;
@@ -67,11 +68,11 @@ async function shouldForceLogout(shutdown: boolean): Promise<boolean> {
 }
 
 function createHeartbeat(options?: ServerHeartbeatOptions) {
-  const pingInterval = options?.pingInterval ?? DEFAULT_PING_INTERVAL;
-  const pongTimeout = options?.pongTimeout ?? DEFAULT_PONG_TIMEOUT;
-  const reconnectBaseDelay = options?.reconnectBaseDelay ?? DEFAULT_RECONNECT_BASE_DELAY;
-  const reconnectMaxDelay = options?.reconnectMaxDelay ?? DEFAULT_RECONNECT_MAX_DELAY;
-  const initialConnectTimeout = options?.initialConnectTimeout ?? DEFAULT_INITIAL_CONNECT_TIMEOUT;
+  const pingInterval = options?.pingInterval ?? HEARTBEAT_PING_INTERVAL_MS;
+  const pongTimeout = options?.pongTimeout ?? HEARTBEAT_PONG_TIMEOUT_MS;
+  const reconnectBaseDelay = options?.reconnectBaseDelay ?? HEARTBEAT_RECONNECT_BASE_DELAY_MS;
+  const reconnectMaxDelay = options?.reconnectMaxDelay ?? HEARTBEAT_RECONNECT_MAX_DELAY_MS;
+  const initialConnectTimeout = options?.initialConnectTimeout ?? HEARTBEAT_INITIAL_CONNECT_TIMEOUT_MS;
 
   let ws: WebSocket | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;

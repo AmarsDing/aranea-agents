@@ -50,7 +50,7 @@ func ShouldWriteL0AssemblySnapshot(settings *AgentRuntimeSettings, usedRatio flo
 	if settings == nil {
 		return false
 	}
-	if !settings.EvolutionMetricsEnabled {
+	if !settings.L0SnapshotEnabled {
 		return false
 	}
 	mode := strings.ToLower(strings.TrimSpace(settings.L0SnapshotMode))

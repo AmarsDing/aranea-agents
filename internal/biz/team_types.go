@@ -204,6 +204,7 @@ type Team struct {
 	Readonly            bool
 	Kind                string // user | system_builtin | ecosystem_preset | marketplace | certified (maps from DB kind column)
 	Source              string // user | system | imported
+	InterruptReason     string // reason for team interruption (e.g. server restart, user cancel)
 	CreatedAt           string
 	UpdatedAt           string
 	DeletedAt           string

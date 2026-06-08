@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	rt "aranea-agents/internal/runtime"
@@ -15,8 +16,8 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-func provideAutoMemoryQueue(lg loggateway.Logger) *memtrpc.MemoryJobQueue {
-	return memtrpc.NewMemoryJobQueue(256, 30*time.Second, lg)
+func provideAutoMemoryQueue(runtimeConf *conf.Runtime, lg loggateway.Logger) *memtrpc.MemoryJobQueue {
+	return memtrpc.NewMemoryJobQueue(runtimeConf, 256, 30*time.Second, lg)
 }
 
 func provideMemoryPolicyEngine(d *data.Data, sys biz.SystemSettingRepo) *biz.MemoryPolicyEngine {

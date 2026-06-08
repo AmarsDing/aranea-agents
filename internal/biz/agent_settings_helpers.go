@@ -54,6 +54,11 @@ func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	defaultInt(&v.L0L3MaxChunks, d.L0L3MaxChunks)
 	defaultInt(&v.L0L4MaxPaths, d.L0L4MaxPaths)
 	defaultString(&v.L0SnapshotMode, d.L0SnapshotMode)
+	// Backward compatibility: if L0SnapshotEnabled is not explicitly set but
+	// EvolutionMetricsEnabled is true (the old gate), inherit the old behavior.
+	if !v.L0SnapshotEnabled && v.EvolutionMetricsEnabled {
+		v.L0SnapshotEnabled = true
+	}
 	defaultInt(&v.L1BudgetTokens, d.L1BudgetTokens)
 	defaultInt(&v.L1FieldMaxTokens, d.L1FieldMaxTokens)
 	defaultInt(&v.L1HistoryKeepRevisions, d.L1HistoryKeepRevisions)
@@ -376,6 +381,7 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"l3_max_chunks":        settings.L0L3MaxChunks,
 			"l4_max_paths":         settings.L0L4MaxPaths,
 			"snapshot_mode":        settings.L0SnapshotMode,
+			"snapshot_enabled":     settings.L0SnapshotEnabled,
 		},
 		"memoryWorker": map[string]any{
 			"provider": settings.MemoryWorkerProvider,
@@ -459,6 +465,7 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"l3_max_chunks":        settings.L0L3MaxChunks,
 			"l4_max_paths":         settings.L0L4MaxPaths,
 			"snapshot_mode":        settings.L0SnapshotMode,
+			"snapshot_enabled":     settings.L0SnapshotEnabled,
 		},
 		"files": files,
 	}

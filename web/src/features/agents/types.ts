@@ -56,6 +56,8 @@ export type AgentRuntimeSettings = {
   subagents_max_children_per_agent: number;
   subagents_archive_after_minutes: number;
   subagents_max_retries: number;
+  subagents_stored_result_runes?: number;
+  subagents_stored_summary_runes?: number;
   subagents_model_override: string;
   tools_enabled: boolean;
   tools_profile: string;
@@ -169,6 +171,7 @@ export type AgentRuntimeSettings = {
   compress_llm_cache_enabled?: boolean;
   compress_llm_cache_max_entries?: number;
   compress_llm_cache_ttl_sec?: number;
+  verification_truncate_chars?: number;
   created_at?: string;
   updated_at?: string;
 };

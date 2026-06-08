@@ -11,18 +11,11 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 )
-
-// autoMemoryMaxRetries is the maximum number of extraction attempts per job.
-const autoMemoryMaxRetries = 3
-
-// autoMemoryMaxMessages is the maximum number of recent messages to analyze per job.
-const autoMemoryMaxMessages = 40
-
-const autoMemoryDrainBatchSize = 50
 
 // AutoMemoryWorker drains the global auto-memory queue every interval and runs
 // memory consolidation for each pending session.
@@ -40,10 +33,13 @@ type AutoMemoryWorker struct {
 	consolidator biz.MemoryConsolidator
 	feedback     biz.MemoryConsolidator
 	queue        memtrpc.AutoMemoryQueue
+	memConf      conf.RuntimeAutoMemoryConfig
 	lg           loggateway.Logger
 }
 
+// NewAutoMemoryWorker creates an AutoMemoryWorker. // WIRE: needs *conf.Runtime
 func NewAutoMemoryWorker(
+	runtimeConf *conf.Runtime,
 	interval time.Duration,
 	sessions *biz.SessionUsecase,
 	agents *biz.AgentUsecase,
@@ -75,6 +71,7 @@ func NewAutoMemoryWorker(
 		consolidator: consolidator,
 		feedback:     biz.NewFeedbackConsolidator(),
 		queue:        queue,
+		memConf:      runtimeConf.AutoMemoryConfig(),
 		lg:           lg,
 	}, nil
 }
@@ -97,7 +94,7 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 	if q == nil {
 		return
 	}
-	for i := 0; i < autoMemoryDrainBatchSize; i++ {
+	for i := 0; i < int(w.memConf.DrainBatchSize); i++ {
 		select {
 		case req := <-q.Chan():
 			if ctx.Err() != nil {
@@ -113,7 +110,7 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
 	backoffSchedule := []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
 	var lastErr error
-	for attempt := 0; attempt < autoMemoryMaxRetries; attempt++ {
+	for attempt := 0; attempt < int(w.memConf.MaxRetries); attempt++ {
 		if attempt > 0 {
 			delay := backoffSchedule[attempt-1]
 			select {
@@ -168,7 +165,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		return nil
 	}
 
-	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, autoMemoryMaxMessages)
+	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, int(w.memConf.MaxMessages))
 	if err != nil {
 		return err
 	}
@@ -341,7 +338,7 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if err != nil {
 		return err
 	}
-	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, autoMemoryMaxMessages)
+	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, int(w.memConf.MaxMessages))
 	if err != nil {
 		return err
 	}

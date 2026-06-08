@@ -155,18 +155,27 @@ func (p *TimeRequestProcessor) addTimeToSystemMessage(req *model.Request, timeCo
 
 	if systemMsgIndex >= 0 {
 		// There's already a system message, check if it contains time info.
-		if !containsTimeInfo(req.Messages[systemMsgIndex].Content, timeContent) {
-			// Append time info to existing system message.
-			if req.Messages[systemMsgIndex].Content == "" {
-				req.Messages[systemMsgIndex].Content = timeContent
-			} else {
-				req.Messages[systemMsgIndex].Content += "\n\n" +
-					timeContent
-			}
+		if !containsTimeInfo(req.Messages[systemMsgIndex].Content, timeContent) &&
+			!containsTimeInfoInParts(req.Messages[systemMsgIndex].ContentParts, timeContent) {
+			// Append time info as a ContentPart (separate TextBlock in Anthropic).
+			// This keeps the static/semi-static Content prefix intact for caching.
+			req.Messages[systemMsgIndex].ContentParts = append(
+				req.Messages[systemMsgIndex].ContentParts,
+				model.ContentPart{
+					Type: model.ContentTypeText,
+					Text: ptrToString(timeContent),
+				},
+			)
 		}
 	} else {
-		// No existing system message, create new one.
-		timeMsg := model.NewSystemMessage(timeContent)
+		// No existing system message, create new one with time in ContentParts.
+		timeMsg := model.NewSystemMessage("")
+		timeMsg.ContentParts = append(timeMsg.ContentParts,
+			model.ContentPart{
+				Type: model.ContentTypeText,
+				Text: ptrToString(timeContent),
+			},
+		)
 		req.Messages = append([]model.Message{timeMsg}, req.Messages...)
 	}
 }
@@ -176,4 +185,22 @@ func containsTimeInfo(content, timeInfo string) bool {
 	// Extract just the time part for comparison.
 	timePart := strings.TrimPrefix(timeInfo, "The current time is: ")
 	return strings.Contains(content, timePart)
+}
+
+// containsTimeInfoInParts checks if the given ContentParts already contain the time information.
+func containsTimeInfoInParts(parts []model.ContentPart, timeInfo string) bool {
+	timePart := strings.TrimPrefix(timeInfo, "The current time is: ")
+	for _, part := range parts {
+		if part.Type == model.ContentTypeText && part.Text != nil {
+			if strings.Contains(*part.Text, timePart) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ptrToString returns a pointer to the given string.
+func ptrToString(s string) *string {
+	return &s
 }

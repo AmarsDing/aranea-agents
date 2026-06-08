@@ -13,6 +13,23 @@
         <q-linear-progress :value="team.completedSteps / team.totalSteps" size="6px" rounded color="accent" />
         <div class="text-caption text-grey-6 q-mt-xs">{{ team.completedSteps }} / {{ team.totalSteps }} 步骤完成</div>
       </div>
+      <div v-if="team.members.length > 0" class="q-mt-sm">
+        <div class="text-caption text-weight-medium text-grey-7 q-mb-xs">成员状态</div>
+        <div class="row items-center q-gutter-xs">
+          <div
+            v-for="member in team.members"
+            :key="member.agentKey"
+            class="task-execution-panel__member row items-center q-gutter-xs"
+          >
+            <q-avatar size="20px">
+              <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
+              <q-icon v-else name="person" size="14px" color="grey-6" />
+            </q-avatar>
+            <span class="text-caption ellipsis" style="max-width: 80px">{{ member.displayName }}</span>
+            <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
+          </div>
+        </div>
+      </div>
       <q-btn
         flat
         dense
@@ -21,16 +38,47 @@
         label="返回精灵"
         color="accent"
         class="q-mt-sm"
-        @click="$emit('return-to-spirit')"
+        @click="emit('return-to-spirit')"
       />
     </div>
+
+    <!-- Parallel Team Overview (when multiple teams exist) -->
+    <template v-if="allTeams && allTeams.length > 1">
+      <q-separator />
+      <div class="q-pa-md">
+        <ParallelTeamOverview
+          :teams="allTeams"
+          :max-parallel="maxParallel ?? props.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS"
+          :all-completed="allTeamsCompleted ?? false"
+          :synthesis-result="synthesisResult"
+          @select-team="(teamId) => emit('select-team', teamId)"
+          @cancel-team="(teamId) => emit('cancel-team', teamId)"
+        />
+      </div>
+    </template>
+
+    <!-- Interrupted team recovery card (OBS-07) -->
+    <InterruptedTeamCard
+      v-if="team.status === 'interrupted'"
+      :team="team"
+      :can-resume="canResume"
+      :interrupt-reason="interruptReason"
+      @resume="(teamId) => emit('resume-team', teamId)"
+      @cancel="(teamId) => emit('cancel-team', teamId)"
+    />
 
     <q-separator />
 
     <div class="task-execution-panel__timeline col q-pa-md">
       <div class="text-caption text-weight-medium text-grey-7 q-mb-sm">执行时间线</div>
       <template v-if="messages.length > 0">
-        <ChatExecutionCard v-for="msg in toolMessages" :key="msg.id" :event="msg" :show-member-label="true" />
+        <ChatExecutionCard
+          v-for="msg in toolMessages"
+          :key="msg.id"
+          :event="msg"
+          :show-member-label="true"
+          :initial-collapsed="isToolEventCompleted(msg)"
+        />
       </template>
       <div v-else class="text-caption text-grey-6">暂无执行记录</div>
     </div>
@@ -60,18 +108,33 @@
 import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
-import type { SpiritTeam } from '../../features/spirit/types';
-import { mapSpiritStatusToSession } from '../../features/spirit/spiritUi';
+import ParallelTeamOverview from './ParallelTeamOverview.vue';
+import { mapSpiritStatusToSession, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
+import { DEFAULT_MAX_PARALLEL_TEAMS } from '../../features/spirit/observabilityConstants';
+import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
+import AgentStatusLabel from './AgentStatusLabel.vue';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
 
 const props = defineProps<{
   team: SpiritTeam;
   messages: Message[];
+  /** All teams in the current spirit session (for parallel overview). */
+  allTeams?: SpiritTeam[];
+  /** Max parallel teams config. */
+  maxParallel?: number;
+  /** Whether all teams have completed. */
+  allTeamsCompleted?: boolean;
+  /** Synthesis result for all teams. */
+  synthesisResult?: SynthesisOutput | null;
+  /** Max concurrent teams from store (for ParallelTeamOverview). */
+  maxConcurrentTeams?: number;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'return-to-spirit': [];
+  'select-team': [teamId: string];
+  'cancel-team': [teamId: string];
+  'resume-team': [teamId: string];
 }>();
 
 const toolMessages = computed<ToolUseEvent[]>(() => {
@@ -85,6 +148,17 @@ const assistantMessages = computed(() =>
 const outputLabel = computed(() => `对话输出 (${assistantMessages.value.length})`);
 
 const mappedStatus = computed(() => mapSpiritStatusToSession(props.team.status));
+
+const canResume = computed(() => Boolean(props.team.graphExecutionId || props.team.dagNodeId));
+
+const interruptReason = computed(() => {
+  return props.team.interruptReason || '执行中断';
+});
+
+function isToolEventCompleted(event: ToolUseEvent): boolean {
+  const s = event.status;
+  return s === 'success' || s === 'failed' || s === 'cancelled';
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -114,6 +188,11 @@ function formatTime(iso: string): string {
 .task-execution-panel__timeline
   overflow-y: auto
   min-height: 0
+
+.task-execution-panel__member
+  padding: 2px 6px
+  border-radius: 6px
+  background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
 
 .task-execution-panel__output-header
   font-size: var(--text-sm)

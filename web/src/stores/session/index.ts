@@ -30,6 +30,7 @@ import type {
   SessionBatchScope,
 } from '../../features/session/types';
 import { emitSessionMutation, onSessionMutation } from '../sessionSync';
+import { SESSION_LIST_LIMIT, SESSION_TURNS_LIMIT } from '../../features/constants/queryLimits';
 
 export const useSessionStore = defineStore('session', () => {
   const sessions = ref<Session[]>([]);
@@ -157,7 +158,7 @@ export const useSessionStore = defineStore('session', () => {
     return result;
   }
 
-  async function fetchTurns(sessionId: string, limit = 20, offset = 0) {
+  async function fetchTurns(sessionId: string, limit = SESSION_TURNS_LIMIT, offset = 0) {
     error.value = null;
     try {
       return await listSessionTurns(sessionId, limit, offset);
@@ -224,7 +225,7 @@ export const useSessionStore = defineStore('session', () => {
 
   async function fetchRuns(
     sessionId: string,
-    limit = 20,
+    limit = SESSION_LIST_LIMIT,
     offset = 0,
   ): Promise<{ items: SessionRunRecord[]; total: number }> {
     error.value = null;

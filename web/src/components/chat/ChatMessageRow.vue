@@ -86,6 +86,7 @@
           v-if="bundle.structuredToolEvent"
           :event="bundle.structuredToolEvent"
           :show-member-label="isTeamSession"
+          :initial-collapsed="isToolEventCompleted(bundle.structuredToolEvent)"
         />
         <details v-else-if="row.isCollapsibleToolDetail(message)" class="chat-tool-details">
           <summary class="chat-tool-details__summary">
@@ -266,7 +267,7 @@ import ChatA2UIPreview from './ChatA2UIPreview.vue';
 import ChatMessageAttachments from './ChatMessageAttachments.vue';
 import { buildMessagePresentation } from '../../features/chat/messagePlannerPresentation';
 import { parseMessageAttachments } from '../../features/chat/messageAttachments';
-import type { Message, ReactToolLinkIndex } from '../../features/chat/types';
+import type { Message, ReactToolLinkIndex, ToolUseEvent } from '../../features/chat/types';
 import { shouldRenderAgentAvatarImage } from '../../features/avatar/iconModel';
 import { formatMessageStamp, renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import {
@@ -343,6 +344,11 @@ function renderMarkdown(content: string) {
 
 function renderStreamingMarkdown(content: string) {
   return renderChatMarkdownForMessage(props.message.id, content, true);
+}
+
+function isToolEventCompleted(event: ToolUseEvent): boolean {
+  const s = event.status;
+  return s === 'success' || s === 'failed' || s === 'cancelled';
 }
 </script>
 
