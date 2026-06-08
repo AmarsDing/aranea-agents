@@ -196,6 +196,12 @@ type AgentRuntimeSettings struct {
 	CompressLLMCacheEnabled    bool
 	CompressLLMCacheMaxEntries int
 	CompressLLMCacheTTLSec     int
+	// CompressionBufferRatio is the fraction of contextWindow reserved as compression buffer (default 0.15, range 0.10–0.25).
+	CompressionBufferRatio float64
+	// SoftTriggerRatio is the fraction of effective_budget at which async compression triggers (default 0.70).
+	SoftTriggerRatio float64
+	// HardTriggerRatio is the fraction of effective_budget at which sync compression triggers (default 0.90).
+	HardTriggerRatio float64
 	// SessionSummaryEnabled enables session summary injection so new sessions can inherit old context.
 	SessionSummaryEnabled bool
 	// SkillLoadMode controls skill loading strategy: "auto" | "manual" | "none".
@@ -419,6 +425,9 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		CompressLLMCacheEnabled:    s.CompressLLMCacheEnabled,
 		CompressLLMCacheMaxEntries: s.CompressLLMCacheMaxEntries,
 		CompressLLMCacheTTLSec:     s.CompressLLMCacheTTLSec,
+		CompressionBufferRatio:     s.CompressionBufferRatio,
+		SoftTriggerRatio:           s.SoftTriggerRatio,
+		HardTriggerRatio:           s.HardTriggerRatio,
 		SessionSummaryEnabled:      s.SessionSummaryEnabled,
 		OutputSchemaJSON:           s.OutputSchemaJSON,
 		ModelSelector:              s.ModelSelector,

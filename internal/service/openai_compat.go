@@ -158,6 +158,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 		KnowledgeRetriever:    s.orch.rt.KnowledgeRetriever,
 		CodeExecFactory:       s.orch.rt.CodeExecFactory,
 		KanbanBridge:          s.orch.rt.KanbanBridge,
+		L0SnapshotForcer:      s.orch.td.SessionRT,
 	}
 	var plugins []trpcplugin.Plugin
 	if s.orch.rt.PluginManager != nil {

@@ -58,10 +58,53 @@
 
         <q-inner-loading :showing="loading && rows.length === 0" />
 
-        <div v-if="!loading && rows.length === 0" class="graphs-page__empty column items-center justify-center q-pa-xl">
-          <q-icon name="hub" size="56px" color="grey-6" class="q-mb-md" />
-          <div class="text-h6 text-grey-7">暂无 Graph</div>
-          <div class="text-body2 text-grey-6 q-mt-sm">点击「新增 Graph」或「从模板创建」开始编排工作流</div>
+        <div v-if="!loading && rows.length === 0" class="graphs-page__empty">
+          <div class="graphs-page__empty-head column items-center q-pb-lg">
+            <q-icon name="hub" size="48px" color="grey-6" class="q-mb-sm" />
+            <div class="text-h6 text-grey-7">暂无 Graph</div>
+            <div class="text-body2 text-grey-6 q-mt-xs">从下方模板快速开始，或点击「新增 Graph」从零创建</div>
+          </div>
+          <q-inner-loading :showing="templatesLoading" />
+          <div v-if="!templatesLoading && templates.length > 0" class="graphs-page__templates-grid">
+            <q-card
+              v-for="tpl in templates"
+              :key="tpl.id"
+              flat
+              class="template-example-card cursor-pointer"
+              :loading="templateCreating"
+              @click="quickCreateFromTemplate(tpl)"
+            >
+              <div class="template-example-card__inner">
+                <div class="row items-center no-wrap">
+                  <q-icon
+                    :name="TEMPLATE_CATEGORY_ICON[tpl.category] || 'dashboard'"
+                    size="20px"
+                    color="primary"
+                    class="q-mr-sm"
+                  />
+                  <div class="col min-width-0">
+                    <div class="template-example-card__name">{{ tpl.name }}</div>
+                  </div>
+                </div>
+                <div class="template-example-card__desc">{{ tpl.description }}</div>
+                <div class="template-example-card__meta">
+                  <span>{{ tpl.nodes?.length ?? 0 }} 节点</span>
+                  <span>{{ tpl.edges?.length ?? 0 }} 连线</span>
+                </div>
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  color="primary"
+                  icon="add_circle_outline"
+                  label="使用此模板"
+                  class="template-example-card__action"
+                  :loading="templateCreating"
+                  @click.stop="quickCreateFromTemplate(tpl)"
+                />
+              </div>
+            </q-card>
+          </div>
         </div>
 
         <draggable
@@ -213,7 +256,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
@@ -267,6 +310,8 @@ const {
   templatesLoading,
   templates,
   createFromTemplate,
+  quickCreateFromTemplate,
+  loadTemplates,
 } = useGraphsPage();
 
 const isDefaultSort = computed(() => sortKey.value === 'updatedAt' && sortOrder.value === 'desc');
@@ -280,6 +325,23 @@ watch(
   },
   { immediate: true },
 );
+
+// 空状态时自动加载模板
+const isEmpty = computed(() => !loading.value && rows.value.length === 0);
+watch(isEmpty, (empty) => {
+  if (empty && templates.value.length === 0) {
+    void loadTemplates();
+  }
+}, { immediate: true });
+
+const TEMPLATE_CATEGORY_ICON: Record<string, string> = {
+  pipeline: 'linear_scale',
+  approval: 'approval',
+  parallel: 'call_split',
+  loop: 'loop',
+  dispatch: 'alt_route',
+  nested: 'account_tree',
+};
 
 function onDragEnd() {
   const ids = localGraphs.value.map((g) => g.id);

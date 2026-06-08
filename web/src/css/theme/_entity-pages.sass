@@ -1258,7 +1258,7 @@ body.body--dark .app-entity-page--warm:not(.app-standard-page),
 
 .taxonomy-tree-node__actions
   flex-shrink: 0
-  opacity: 0.72
+  opacity: 0.85
   transition: opacity 160ms ease
 
 .taxonomy-tree-node:hover .taxonomy-tree-node__actions
@@ -1325,7 +1325,14 @@ body.body--dark .taxonomy-page .taxonomy-tree-panel .q-tree__node-header:hover
   background: color-mix(in srgb, var(--color-info-soft) 42%, var(--glass-surface))
 
 .position-card--disabled
-  opacity: 0.6
+  background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-page-tint))
+
+.position-card--disabled .position-card__title
+  color: var(--color-text-tertiary)
+
+.position-card--disabled .position-card__desc,
+.position-card--disabled .position-card__path
+  color: var(--color-text-tertiary)
 
 .position-card--disabled .position-card__accent
   background: linear-gradient(180deg, var(--color-text-tertiary), color-mix(in srgb, var(--color-text-tertiary) 40%, transparent))
@@ -1380,7 +1387,7 @@ body.body--dark .taxonomy-page .taxonomy-tree-panel .q-tree__node-header:hover
 .position-card__foot
   margin-top: auto
   padding-top: 2px
-  opacity: 0.76
+  opacity: 0.88
   transition: opacity 160ms ease
 
 .position-card:hover .position-card__foot

@@ -218,6 +218,8 @@ export interface CompactSessionResult {
   compression_level: string;
 }
 
+export type CompressStatus = 'normal' | 'optimizing' | 'optimized' | 'compressing';
+
 export type MessageSearchResult = {
   id: string;
   session_id: string;

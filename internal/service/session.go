@@ -20,11 +20,12 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc           *biz.SessionUsecase
-	mon          *biz.MonitorUsecase
-	runs         *biz.SessionRunUsecase
-	compress     biz.ManualCompressor
-	metricsCache biz.SessionMetricsReader
+	uc               *biz.SessionUsecase
+	mon              *biz.MonitorUsecase
+	runs             *biz.SessionRunUsecase
+	compress         biz.ManualCompressor
+	compressStatus   biz.CompressStatusReader
+	metricsCache     biz.SessionMetricsReader
 }
 
 func NewSessionService(
@@ -32,9 +33,10 @@ func NewSessionService(
 	mon *biz.MonitorUsecase,
 	runs *biz.SessionRunUsecase,
 	compress biz.ManualCompressor,
+	compressStatus biz.CompressStatusReader,
 	metricsCache biz.SessionMetricsReader,
 ) *SessionService {
-	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress, metricsCache: metricsCache}
+	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress, compressStatus: compressStatus, metricsCache: metricsCache}
 }
 
 func toProtoSession(s biz.Session, metrics *biz.SessionMetrics) *v1.Session {
@@ -498,4 +500,17 @@ func (s *SessionService) CompactSession(ctx context.Context, req *v1.CompactSess
 		EstimatedTokensAfter:  int32(result.EstimatedTokensAfter),
 		CompressionLevel:      result.CompressionLevel,
 	}, nil
+}
+
+// GetCompressStatus implements GET /api/v1/sessions/{session_id}/compress-status.
+func (s *SessionService) GetCompressStatus(ctx context.Context, req *v1.GetCompressStatusRequest) (*v1.GetCompressStatusReply, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "session_id is required")
+	}
+	status, err := s.compressStatus.CompressStatus(ctx, sessionID)
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	return &v1.GetCompressStatusReply{Status: status}, nil
 }

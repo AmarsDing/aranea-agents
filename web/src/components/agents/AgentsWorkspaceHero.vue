@@ -15,7 +15,7 @@
         disable
         @click="$emit('open-migration')"
       />
-      <q-btn outline rounded no-caps color="primary" icon="account_tree" label="管理分类" to="/settings/taxonomy" />
+      <q-btn outline rounded no-caps color="primary" icon="account_tree" label="管理组织" to="/settings/organization" />
       <q-btn color="primary" unelevated rounded no-caps icon="add" label="创建 Agent" @click="$emit('create')" />
     </template>
   </AppPageHero>

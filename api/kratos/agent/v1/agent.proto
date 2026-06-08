@@ -151,6 +151,12 @@ message AgentRuntimeSettings {
   int32 compress_llm_cache_max_entries = 119;
   // CompressLLMCacheTTLSec is the cache TTL in seconds (default 600).
   int32 compress_llm_cache_ttl_sec = 120;
+  // CompressionBufferRatio is the fraction of contextWindow reserved as compression buffer (default 0.15, range 0.10–0.25).
+  double compression_buffer_ratio = 128;
+  // SoftTriggerRatio is the fraction of effective_budget at which async compression triggers (default 0.70).
+  double soft_trigger_ratio = 129;
+  // HardTriggerRatio is the fraction of effective_budget at which sync compression triggers (default 0.90).
+  double hard_trigger_ratio = 130;
   // SubagentsStoredResultRunes is the max rune count for stored subagent results (default 4000).
   int32 subagents_stored_result_runes = 125;
   // SubagentsStoredSummaryRunes is the max rune count for stored subagent summaries (default 240).

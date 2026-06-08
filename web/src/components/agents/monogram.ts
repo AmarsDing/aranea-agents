@@ -1,9 +1,9 @@
 /**
- * 行业 monogram 工具函数
+ * Monogram 工具函数
  *
- * 取行业 key 的大写首字母作为"icon"视觉锚点，
- * 颜色由 key 字符的简单 hash 映射到行业色板。
- * 共享于 IndustryCard / IndustryDrawer / IndustryTableRow。
+ * 取 key 的大写首字母作为"icon"视觉锚点，
+ * 颜色由 key 字符的简单 hash 映射到色板。
+ * 共享于 TaxonomyIndustryCard 等组件。
  */
 
 const PALETTES = ['indigo', 'rose', 'sky', 'emerald', 'amber', 'violet'] as const;

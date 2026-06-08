@@ -4,6 +4,8 @@ import { useQuasar } from 'quasar';
 import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
+import type { CompressStatus } from '../../session/types';
+import { getCompressStatus } from '../../session/api';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -643,6 +645,56 @@ export function useChatWorkspace() {
     }
   }
 
+  // --- Compress status polling ---
+  const compressStatus = ref<CompressStatus>('normal');
+  let compressPollTimer: ReturnType<typeof setInterval> | null = null;
+  let compressNormalSince: number | null = null;
+  const COMPRESS_POLL_INTERVAL_MS = 5_000;
+  const COMPRESS_NORMAL_COOLDOWN_MS = 10_000;
+
+  async function pollCompressStatus() {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    try {
+      compressStatus.value = await getCompressStatus(sid);
+    } catch {
+      // Silently ignore polling errors
+    }
+  }
+
+  function startCompressPolling() {
+    stopCompressPolling();
+    void pollCompressStatus();
+    compressPollTimer = setInterval(() => {
+      void pollCompressStatus();
+    }, COMPRESS_POLL_INTERVAL_MS);
+  }
+
+  function stopCompressPolling() {
+    if (compressPollTimer) {
+      clearInterval(compressPollTimer);
+      compressPollTimer = null;
+    }
+    compressNormalSince = null;
+  }
+
+  watch(compressStatus, (status) => {
+    if (status === 'normal') {
+      if (!compressNormalSince) {
+        compressNormalSince = Date.now();
+      }
+      if (Date.now() - compressNormalSince >= COMPRESS_NORMAL_COOLDOWN_MS) {
+        stopCompressPolling();
+        compressStatus.value = 'normal';
+      }
+    } else {
+      compressNormalSince = null;
+      if (!compressPollTimer) {
+        startCompressPolling();
+      }
+    }
+  });
+
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function bindSessionView(sessionId: string, replace = true) {
@@ -682,6 +734,9 @@ export function useChatWorkspace() {
       }
       inputText.value = sessionDrafts.get(sid) || '';
       onSessionSwitch(sid);
+      compressStatus.value = 'normal';
+      stopCompressPolling();
+      startCompressPolling();
       if (sid !== prevSid) {
         sender.clearFailedPendingForSession(prevSid);
         void bindSessionView(sid, true);
@@ -707,6 +762,7 @@ export function useChatWorkspace() {
 
   onUnmounted(() => {
     if (visibleRefreshTimer) clearTimeout(visibleRefreshTimer);
+    stopCompressPolling();
     document.removeEventListener('visibilitychange', onPageVisible);
     sender.clearSendingTimeout();
     streamManager.disconnectAll();
@@ -720,6 +776,17 @@ export function useChatWorkspace() {
     defaultAgentId.value = appStore.agents[0]?.id ?? null;
     displayAgents.value = loadAgentOrder(appStore.agents, defaultAgentId.value);
     coreReady.value = true;
+
+    // Explicitly select the default agent to ensure full initialization
+    // (load sessions, set URL, hydrate session, etc.). The watch on
+    // selectedAgentId only loads sessions but skips URL sync and hydration.
+    const routeSession = typeof route.query.session === 'string' ? route.query.session.trim() : '';
+    const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
+    if (routeSession && routeAgent) {
+      void entityNav.focusSessionById(routeSession, routeAgent);
+    } else if (appStore.selectedAgent) {
+      void entityNav.selectAgent(appStore.selectedAgent, { sessionId: routeSession || undefined });
+    }
 
     void Promise.all([
       entityNav.loadTaxonomyTree(),
@@ -746,12 +813,6 @@ export function useChatWorkspace() {
         void entityNav.selectTeam(displayTeams.value[0]!);
       }
     });
-
-    const routeSession = typeof route.query.session === 'string' ? route.query.session.trim() : '';
-    if (routeSession) {
-      const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
-      void entityNav.focusSessionById(routeSession, routeAgent || undefined);
-    }
   });
 
   watch(
@@ -848,6 +909,7 @@ export function useChatWorkspace() {
       openSessionEvents,
       compactSessionAction: sessionStore.compactSessionAction,
       onCompactSession,
+      compressStatus,
     }),
     composer: reactive({
       inputText,

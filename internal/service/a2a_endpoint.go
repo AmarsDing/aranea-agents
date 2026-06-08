@@ -83,6 +83,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 		CodeExecFactory:        s.orch.rt.CodeExecFactory,
 		KanbanBridge:           s.orch.rt.KanbanBridge,
 		Organization:           s.orch.rt.OrganizationUC,
+		L0SnapshotForcer:       s.orch.td.SessionRT,
 	}
 	var plugins []trpcplugin.Plugin
 	if s.orch.rt.PluginManager != nil {

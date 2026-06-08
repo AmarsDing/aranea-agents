@@ -3,15 +3,15 @@
     <div class="row items-center no-wrap q-gutter-sm spirit-status-bar__inner">
       <div v-if="runningTeamCount > 0" class="spirit-status-bar__item">
         <q-icon name="bolt" size="14px" :style="{ color: 'var(--color-accent)' }" />
-        <span>{{ runningTeamCount }} running</span>
+        <span>{{ runningTeamCount }} 运行中</span>
       </div>
       <div v-if="interruptedTeamCount > 0" class="spirit-status-bar__item">
         <q-icon name="pause_circle" size="14px" :style="{ color: 'var(--color-warning)' }" />
-        <span>{{ interruptedTeamCount }} interrupted</span>
+        <span>{{ interruptedTeamCount }} 已中断</span>
       </div>
       <div v-if="quotaMax > 0" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="bar_chart" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
-        <span>{{ quotaUsed }}/{{ quotaMax }} quota</span>
+        <span>{{ quotaUsed }}/{{ quotaMax }} 配额</span>
       </div>
       <div v-if="tokenUsage" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="data_usage" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
@@ -46,7 +46,7 @@ const visible = computed(() => props.runningTeamCount > 0 || props.interruptedTe
 const tokenLabel = computed(() => {
   if (!props.tokenUsage) return '';
   const total = (props.tokenUsage.in + props.tokenUsage.out) / 1000;
-  return `${total.toFixed(1)}k tokens`;
+  return `${total.toFixed(1)}k Token`;
 });
 </script>
 

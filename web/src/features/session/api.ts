@@ -11,6 +11,7 @@ import { asRecord, pickStr } from '../../shared/wireJson';
 import type {
   BatchOperationResult,
   BatchPreviewResult,
+  CompressStatus,
   Session,
   SessionBatchScope,
   SessionListResult,
@@ -42,6 +43,7 @@ export type {
   BatchPreviewResult,
   BatchOperationResult,
   CompactSessionResult,
+  CompressStatus,
   MessageSearchResult,
 } from './types';
 
@@ -549,4 +551,9 @@ export async function listSessionTurns(
     items: (data.items ?? []).map(kratosSessionTurnToLegacy),
     total: data.total ?? 0,
   };
+}
+
+export async function getCompressStatus(sessionId: string): Promise<CompressStatus> {
+  const data = await sessionApi.GetCompressStatus({ sessionId });
+  return (data.status ?? 'normal') as CompressStatus;
 }

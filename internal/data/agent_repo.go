@@ -278,6 +278,9 @@ func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 		CompressLLMCacheEnabled:    e.CompressLlmCacheEnabled,
 		CompressLLMCacheMaxEntries: e.CompressLlmCacheMaxEntries,
 		CompressLLMCacheTTLSec:     e.CompressLlmCacheTTLSec,
+		CompressionBufferRatio:     e.CompressionBufferRatio,
+		SoftTriggerRatio:           e.SoftTriggerRatio,
+		HardTriggerRatio:           e.HardTriggerRatio,
 		SessionSummaryEnabled:      e.SessionSummaryEnabled,
 		OutputSchemaJSON:           e.OutputSchemaJSON,
 		ModelSelector:              e.ModelSelector,
@@ -406,6 +409,9 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetCompressLlmCacheEnabled(v.CompressLLMCacheEnabled).
 		SetCompressLlmCacheMaxEntries(v.CompressLLMCacheMaxEntries).
 		SetCompressLlmCacheTTLSec(v.CompressLLMCacheTTLSec).
+		SetCompressionBufferRatio(v.CompressionBufferRatio).
+		SetSoftTriggerRatio(v.SoftTriggerRatio).
+		SetHardTriggerRatio(v.HardTriggerRatio).
 		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
 		SetSkillLoadMode(v.SkillLoadMode).
 		SetCodeExecutorType(v.CodeExecutorType).

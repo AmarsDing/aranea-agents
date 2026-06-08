@@ -128,6 +128,9 @@ func TestEntRuntimeToBiz_FullRoundTrip(t *testing.T) {
 		CompressLlmCacheEnabled:          true,
 		CompressLlmCacheMaxEntries:       256,
 		CompressLlmCacheTTLSec:           600,
+		CompressionBufferRatio:           0.15,
+		SoftTriggerRatio:                 0.70,
+		HardTriggerRatio:                 0.90,
 		SessionSummaryEnabled:            true,
 		OutputSchemaJSON:                 `{"type":"object"}`,
 		ModelSelector:                    "auto",
@@ -400,6 +403,9 @@ func TestFromEntContext(t *testing.T) {
 		CompressLlmCacheEnabled:     true,
 		CompressLlmCacheMaxEntries:  128,
 		CompressLlmCacheTTLSec:      300,
+		CompressionBufferRatio:      0.20,
+		SoftTriggerRatio:            0.75,
+		HardTriggerRatio:            0.95,
 		SessionSummaryEnabled:       true,
 		OutputSchemaJSON:            `{"type":"object"}`,
 		ModelSelector:               "auto",
@@ -412,6 +418,9 @@ func TestFromEntContext(t *testing.T) {
 	}
 	if !got.CompressLLMCacheEnabled || got.CompressLLMCacheMaxEntries != 128 || got.CompressLLMCacheTTLSec != 300 {
 		t.Fatalf("context compress cache mismatch: %+v", got)
+	}
+	if got.CompressionBufferRatio != 0.20 || got.SoftTriggerRatio != 0.75 || got.HardTriggerRatio != 0.95 {
+		t.Fatalf("context compression ratios mismatch: %+v", got)
 	}
 	if got.PlannerKind != "react" || got.PlannerConfigJSON != `{"max_steps":5}` {
 		t.Fatalf("context planner mismatch: %+v", got)

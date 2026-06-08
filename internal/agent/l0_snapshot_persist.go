@@ -108,6 +108,11 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 	mod := strutil.FirstNonEmpty(deps.Model, ag.Model)
 	force := l0SnapshotForceDebug()
 
+	// Check if compression set a force-write flag for this session.
+	if !force && deps.L0SnapshotForcer != nil && deps.L0SnapshotForcer.ConsumeForceL0Snapshot(sessionID) {
+		force = true
+	}
+
 	gateWin := l0GateContextWindow(ag)
 	gateRatio := l0UsedRatio(report.EstTokens, gateWin)
 	if !biz.ShouldWriteL0AssemblySnapshot(ag.Settings, gateRatio, force) && !l0NeedsWindowRecheck(ag.Settings, gateRatio, force, gateWin) {

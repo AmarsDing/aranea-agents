@@ -151,6 +151,12 @@
             class="q-mx-md q-mb-sm"
           />
 
+          <ContextIndicator
+            v-if="compressStatus && compressStatus !== 'normal' && (!panelMode || panelMode === 'spirit')"
+            :status="compressStatus"
+            class="q-mx-md q-mb-sm"
+          />
+
           <ChatComposer
             v-if="!panelMode || panelMode === 'spirit'"
             :model-value="modelValue"
@@ -236,6 +242,7 @@ import ChatComposer from './ChatComposer.vue';
 import ChatHeaderUsagePanel from './ChatHeaderUsagePanel.vue';
 import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
+import ContextIndicator from '../sessions/ContextIndicator.vue';
 import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
@@ -318,6 +325,7 @@ const props = defineProps<{
   } | null;
   /** Max concurrent teams from store (for TaskExecutionPanel). */
   spiritMaxConcurrentTeams?: number;
+  compressStatus?: 'normal' | 'optimizing' | 'optimized' | 'compressing';
 }>();
 
 const emit = defineEmits<{

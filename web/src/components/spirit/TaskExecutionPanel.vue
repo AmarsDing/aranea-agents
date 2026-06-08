@@ -111,6 +111,7 @@ import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
 import ParallelTeamOverview from './ParallelTeamOverview.vue';
 import { mapSpiritStatusToSession, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../../features/spirit/observabilityConstants';
+import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
 import AgentStatusLabel from './AgentStatusLabel.vue';
 import type { Message, ToolUseEvent } from '../../features/chat/types';

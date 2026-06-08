@@ -841,6 +841,13 @@ func provideSessionMemoryResync(persist rt.PersistenceSet) araneasession.MemoryR
 	return persist.Memory.Admin
 }
 
+func provideL1AdminReader(admin biz.SessionAdminStore) biz.L1AdminReader {
+	if admin == nil {
+		return nil
+	}
+	return admin
+}
+
 func provideGraphCheckpointSaver(rawDB *sql.DB, lg loggateway.Logger) (*graphtrpc.SQLiteCheckpointSaver, error) {
 	return rt.NewGraphCheckpointSaver(rawDB, lg)
 }
@@ -1658,6 +1665,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 		providePersistenceSet,
 		provideSessionMemoryResync,
+		provideL1AdminReader,
 		provideEpisodeIndexSync,
 		providePluginStatsRecorder,
 		providePluginManager,

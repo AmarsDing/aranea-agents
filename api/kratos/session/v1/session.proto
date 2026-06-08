@@ -415,6 +415,14 @@ message CompactSessionResponse {
   string compression_level = 6;
 }
 
+message GetCompressStatusRequest {
+  string session_id = 1;
+}
+
+message GetCompressStatusReply {
+  string status = 1; // "normal" | "optimizing" | "optimized" | "compressing"
+}
+
 service SessionService {
   rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
@@ -508,5 +516,8 @@ service SessionService {
       post: "/v1/sessions:compact"
       body: "*"
     };
+  }
+  rpc GetCompressStatus(GetCompressStatusRequest) returns (GetCompressStatusReply) {
+    option (google.api.http) = {get: "/api/v1/sessions/{session_id}/compress-status"};
   }
 }

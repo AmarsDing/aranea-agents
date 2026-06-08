@@ -130,6 +130,10 @@ type TRPCBuilderDeps struct {
 	// SubAgentService enables subagent spawn/list/get/cancel tools.
 	// Optional: when nil, subagent tools are unavailable.
 	SubAgentService *subagenttool.Service
+	// L0SnapshotForcer allows the compression pipeline to signal that the next
+	// L0 snapshot write should bypass throttling. Optional: when nil, force
+	// flags are ignored and normal throttle rules apply.
+	L0SnapshotForcer biz.L0SnapshotForcer
 }
 
 // ModelCatalogGroup returns the model-catalog subset (for tests and future refactors).

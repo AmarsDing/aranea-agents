@@ -230,18 +230,22 @@ export function useGraphsPage() {
   const templatesLoading = ref(false);
   const templates = ref<GraphTemplateInfo[]>([]);
 
+  async function loadTemplates() {
+    templatesLoading.value = true;
+    try {
+      await graphStore.loadTemplates();
+      templates.value = graphStore.templates;
+    } catch {
+      $q.notify({ type: 'negative', message: '加载模板失败' });
+    } finally {
+      templatesLoading.value = false;
+    }
+  }
+
   watch(templateDialogOpen, async (open) => {
     if (open) {
       selectedTemplateId.value = '';
-      templatesLoading.value = true;
-      try {
-        await graphStore.loadTemplates();
-        templates.value = graphStore.templates;
-      } catch {
-        $q.notify({ type: 'negative', message: '加载模板失败' });
-      } finally {
-        templatesLoading.value = false;
-      }
+      await loadTemplates();
     }
   });
 
@@ -254,6 +258,19 @@ export function useGraphsPage() {
       const created = await graphStore.instantiateTemplate(selectedTemplateId.value, tpl.name, tpl.description ?? '');
       templateDialogOpen.value = false;
       $q.notify({ type: 'positive', message: 'Graph 已从模板创建' });
+      router.push({ name: 'graph-editor', params: { id: created.id } });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '从模板创建失败' });
+    } finally {
+      templateCreating.value = false;
+    }
+  }
+
+  async function quickCreateFromTemplate(tpl: GraphTemplateInfo) {
+    templateCreating.value = true;
+    try {
+      const created = await graphStore.instantiateTemplate(tpl.id, tpl.name, tpl.description ?? '');
+      $q.notify({ type: 'positive', message: `已从「${tpl.name}」模板创建 Graph` });
       router.push({ name: 'graph-editor', params: { id: created.id } });
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '从模板创建失败' });
@@ -307,5 +324,7 @@ export function useGraphsPage() {
     templatesLoading,
     templates,
     createFromTemplate,
+    quickCreateFromTemplate,
+    loadTemplates,
   };
 }

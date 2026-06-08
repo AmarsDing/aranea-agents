@@ -1,13 +1,13 @@
 <template>
-  <q-page :class="['app-standard-page app-entity-page app-entity-page--warm organization-page', { 'is-dark': isDark }]">
-    <section class="organization-page__hero" aria-label="组织架构管理">
+  <q-page :class="['app-standard-page app-entity-page app-entity-page--warm taxonomy-page', { 'is-dark': isDark }]">
+    <section class="taxonomy-page__hero" aria-label="组织架构管理">
       <AppPageHero
         kicker="Organization"
         title="组织架构"
         subtitle="按公司、部门、职位三层组织 Agent 业务画像。创建 Agent 时仅绑定职位叶子，列表筛选同源读取数据库。"
       >
         <template #actions>
-          <div class="organization-actions">
+          <div class="taxonomy-actions">
             <q-btn
               outline
               rounded
@@ -23,11 +23,11 @@
       </AppPageHero>
     </section>
 
-    <section class="organization-page__toolbar" aria-label="筛选与统计">
-      <AppPageToolbar variant="entity" offset class="organization-toolbar">
+    <section class="taxonomy-page__toolbar" aria-label="筛选与统计">
+      <AppPageToolbar variant="entity" offset class="taxonomy-toolbar">
         <q-input
           v-model="keyword"
-          class="app-page-toolbar__search organization-control"
+          class="app-page-toolbar__search taxonomy-control"
           dense
           outlined
           clearable
@@ -37,7 +37,7 @@
           <template #prepend><q-icon name="search" /></template>
         </q-input>
         <template #actions>
-          <div class="organization-stats">
+          <div class="taxonomy-stats">
             <div class="app-entity-stat">
               <strong>{{ stats.companies }}</strong
               ><span>公司</span>
@@ -53,7 +53,7 @@
           </div>
           <q-btn-toggle
             v-model="viewMode"
-            class="organization-view-toggle"
+            class="taxonomy-view-toggle"
             no-caps
             rounded
             dense
@@ -63,22 +63,22 @@
               { label: '卡片', value: 'card', icon: 'dashboard' },
             ]"
           />
-          <q-toggle v-model="onlyCustom" class="organization-toolbar__toggle" color="primary" label="仅看自建" />
+          <q-toggle v-model="onlyCustom" class="taxonomy-toolbar__toggle" color="primary" label="仅看自建" />
         </template>
       </AppPageToolbar>
     </section>
 
-    <section class="organization-page__content" aria-label="组织列表">
-      <q-card v-if="loading" flat bordered class="app-entity-glass-panel organization-tree-shell">
+    <section class="taxonomy-page__content" aria-label="组织列表">
+      <q-card v-if="loading" flat bordered class="app-entity-glass-panel taxonomy-tree-shell">
         <q-card-section>
           <q-skeleton type="text" width="32%" />
           <q-skeleton class="q-mt-md" height="240px" />
         </q-card-section>
       </q-card>
 
-      <q-card v-else-if="filteredTree.length === 0" flat bordered class="app-entity-glass-panel organization-empty">
+      <q-card v-else-if="filteredTree.length === 0" flat bordered class="app-entity-glass-panel taxonomy-empty">
         <q-card-section class="column items-center text-center">
-          <div class="organization-empty__visual"><q-icon name="account_tree" size="44px" color="primary" /></div>
+          <div class="taxonomy-empty__visual"><q-icon name="account_tree" size="44px" color="primary" /></div>
           <div class="text-h6 q-mt-md">暂无匹配组织</div>
           <div class="text-body2 text-grey-7 q-mt-sm">创建第一个公司，再添加部门与职位。</div>
           <q-btn
@@ -106,7 +106,7 @@
           @toggle-enabled="toggleNodeEnabled"
           @reorder-positions="onReorderPositions"
         />
-        <div v-else class="organization-card-grid">
+        <div v-else class="taxonomy-card-grid">
           <taxonomy-industry-card
             v-for="company in filteredTree"
             :key="company.id"

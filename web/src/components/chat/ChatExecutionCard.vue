@@ -1,11 +1,11 @@
 <template>
   <q-expansion-item
+    v-model="expanded"
     class="chat-execution-card"
     :class="cardClass"
     dense
     expand-separator
     header-class="chat-execution-card__header"
-    :aria-expanded="expanded"
     :aria-label="headerAriaLabel"
     @update:model-value="onExpanded"
   >
@@ -192,7 +192,6 @@ const cardClass = computed(() => ({
 }));
 
 function onExpanded(value: boolean) {
-  expanded.value = value;
   if (value) {
     userManuallyExpanded.value = true;
   }

@@ -10,7 +10,6 @@ import OverviewPage from '../pages/OverviewPage.vue';
 import UsageEventsPage from '../pages/UsageEventsPage.vue';
 import ResourceManagerPage from '../pages/ResourceManagerPage.vue';
 import EcosystemPage from '../pages/EcosystemPage.vue';
-import TaxonomyPage from '../pages/TaxonomyPage.vue';
 import OrganizationPage from '../pages/OrganizationPage.vue';
 import TeamsPage from '../pages/TeamsPage.vue';
 import SkillsPage from '../pages/SkillsPage.vue';
@@ -44,8 +43,6 @@ import GraphExecutionsPage from '../pages/GraphExecutionsPage.vue';
 import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
 import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
 import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
-import OrgMarketPage from '../pages/organization/OrgMarketPage.vue';
-import OrgDetailPage from '../pages/organization/OrgDetailPage.vue';
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -68,7 +65,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'sessions/:sessionId', name: 'session-detail', component: SessionDetailPage },
       { path: 'memory', name: 'memory', component: MemoryCenterPage },
       { path: 'agents', name: 'agents', component: AgentsPage },
-      { path: 'settings/taxonomy', name: 'taxonomy', component: TaxonomyPage },
+      { path: 'settings/taxonomy', redirect: '/settings/organization' },
       { path: 'settings/organization', name: 'organization', component: OrganizationPage },
       { path: 'agents/:id/settings', name: 'agent-settings', component: AgentSettingsPage },
       { path: 'team', name: 'team', component: TeamsPage },
@@ -205,10 +202,6 @@ export const routes: RouteRecordRaw[] = [
       },
       { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
       { path: 'shop', name: 'shop', component: EcosystemPage },
-      { path: 'industries', redirect: '/organization' },
-      { path: 'industries/:key', redirect: to => `/organization/${to.params.key}` },
-      { path: 'organization', name: 'org-market', component: OrgMarketPage },
-      { path: 'organization/:key', name: 'org-detail', component: OrgDetailPage },
       { path: 'settings', name: 'settings', component: SystemSettingsPage, meta: { titleKey: 'menu.settings' } },
       ...(import.meta.env.DEV
         ? [{ path: 'dev/theme-preview', name: 'theme-preview', component: ThemePreviewPage }]

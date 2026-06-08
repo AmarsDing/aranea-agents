@@ -88,5 +88,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		ToolsStreamingEnabled:             false,
 		L4DecayIntervalHours:              168,
 		VerificationTruncateChars:         2000,
+		CompressionBufferRatio:            0.15,
+		SoftTriggerRatio:                  0.70,
+		HardTriggerRatio:                  0.90,
 	}
 }

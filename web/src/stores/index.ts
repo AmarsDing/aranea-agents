@@ -45,6 +45,5 @@ export { useEventStore } from './event';
 export { useSpiritTeamStore } from './spirit';
 export { useLearningLoopStore } from './learningLoop';
 export { useModelCatalogStore } from './model-catalog';
-export { useIndustryStore } from './industry';
 export { useSkillIntelligenceStore } from './skillIntelligence';
 export { useSkillEvolutionSuggestionStore } from './skillEvolutionSuggestion';

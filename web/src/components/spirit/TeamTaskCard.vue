@@ -87,7 +87,7 @@ const modeLabel = computed(() => spiritModeLabel(props.team.mode));
 
 const teamStatusLabel = computed(() => spiritTeamStatusToLabel(props.team.status));
 
-const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.color ?? 'grey');
+const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.dotColor ?? 'grey');
 </script>
 
 <style scoped lang="sass">

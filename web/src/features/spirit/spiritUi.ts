@@ -76,15 +76,15 @@ export const AGENT_NODE_STATUS_MAP: Record<string, AgentNodeStatusLabel> = {
 /** Display config for each status label */
 export const STATUS_LABEL_CONFIG: Record<
   AgentNodeStatusLabel,
-  { text: string; color: string; icon: string; animated: boolean }
+  { text: string; color: string; icon: string; animated: boolean; dotColor: string }
 > = {
-  queued: { text: '排队中', color: 'var(--color-text-tertiary)', icon: 'circle', animated: false },
-  active: { text: '执行中', color: 'var(--color-accent)', icon: 'bolt', animated: true },
-  suspended: { text: '等待中', color: 'var(--color-warning)', icon: 'pause', animated: false },
-  done: { text: '已完成', color: 'var(--color-success)', icon: 'check_circle', animated: false },
-  failed: { text: '失败', color: 'var(--color-danger)', icon: 'error', animated: false },
-  skipped: { text: '已跳过', color: 'var(--color-text-tertiary)', icon: 'remove_circle', animated: false },
-  cancelled: { text: '已取消', color: 'var(--color-text-tertiary)', icon: 'cancel', animated: false },
+  queued: { text: '排队中', color: 'var(--color-text-tertiary)', icon: 'circle', animated: false, dotColor: 'grey' },
+  active: { text: '执行中', color: 'var(--color-accent)', icon: 'bolt', animated: true, dotColor: 'blue' },
+  suspended: { text: '等待中', color: 'var(--color-warning)', icon: 'pause', animated: false, dotColor: 'orange' },
+  done: { text: '已完成', color: 'var(--color-success)', icon: 'check_circle', animated: false, dotColor: 'green' },
+  failed: { text: '失败', color: 'var(--color-danger)', icon: 'error', animated: false, dotColor: 'red' },
+  skipped: { text: '已跳过', color: 'var(--color-text-tertiary)', icon: 'remove_circle', animated: false, dotColor: 'grey' },
+  cancelled: { text: '已取消', color: 'var(--color-text-tertiary)', icon: 'cancel', animated: false, dotColor: 'grey' },
 };
 
 /** Maps any AgentNode status string to an aggregate display label */

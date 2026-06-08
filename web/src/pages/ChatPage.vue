@@ -66,6 +66,7 @@
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
         :spirit-max-concurrent-teams="spiritStore.maxConcurrentTeams"
+        :compress-status="session.compressStatus"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"

@@ -154,18 +154,21 @@ type EvolutionCfg struct {
 
 // ContextCfg holds context-compaction, output-schema, model-selector, and planner settings.
 type ContextCfg struct {
-	CompactionEnabled          bool   `json:"context_compaction_enabled,omitempty"`
-	MicroCompactEnabled        bool   `json:"micro_compact_enabled,omitempty"`
-	MemoryCompactEnabled       bool   `json:"memory_compact_enabled,omitempty"`
-	ToolResultGateEnabled      bool   `json:"tool_result_gate_enabled,omitempty"`
-	CompressLLMCacheEnabled    bool   `json:"compress_llm_cache_enabled,omitempty"`
-	CompressLLMCacheMaxEntries int    `json:"compress_llm_cache_max_entries,omitempty"`
-	CompressLLMCacheTTLSec     int    `json:"compress_llm_cache_ttl_sec,omitempty"`
-	SessionSummaryEnabled      bool   `json:"session_summary_enabled,omitempty"`
-	OutputSchemaJSON           string `json:"output_schema_json,omitempty"`
-	ModelSelector              string `json:"model_selector,omitempty"`
-	PlannerKind                string `json:"planner_kind,omitempty"`
-	PlannerConfigJSON          string `json:"planner_config_json,omitempty"`
+	CompactionEnabled          bool    `json:"context_compaction_enabled,omitempty"`
+	MicroCompactEnabled        bool    `json:"micro_compact_enabled,omitempty"`
+	MemoryCompactEnabled       bool    `json:"memory_compact_enabled,omitempty"`
+	ToolResultGateEnabled      bool    `json:"tool_result_gate_enabled,omitempty"`
+	CompressLLMCacheEnabled    bool    `json:"compress_llm_cache_enabled,omitempty"`
+	CompressLLMCacheMaxEntries int     `json:"compress_llm_cache_max_entries,omitempty"`
+	CompressLLMCacheTTLSec     int     `json:"compress_llm_cache_ttl_sec,omitempty"`
+	CompressionBufferRatio     float64 `json:"compression_buffer_ratio,omitempty"`
+	SoftTriggerRatio           float64 `json:"soft_trigger_ratio,omitempty"`
+	HardTriggerRatio           float64 `json:"hard_trigger_ratio,omitempty"`
+	SessionSummaryEnabled      bool    `json:"session_summary_enabled,omitempty"`
+	OutputSchemaJSON           string  `json:"output_schema_json,omitempty"`
+	ModelSelector              string  `json:"model_selector,omitempty"`
+	PlannerKind                string  `json:"planner_kind,omitempty"`
+	PlannerConfigJSON          string  `json:"planner_config_json,omitempty"`
 	// VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
 	VerificationTruncateChars int `json:"verification_truncate_chars,omitempty"`
 }
@@ -314,6 +317,9 @@ func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.CompressLLMCacheEnabled = cfg.CompressLLMCacheEnabled
 	s.CompressLLMCacheMaxEntries = cfg.CompressLLMCacheMaxEntries
 	s.CompressLLMCacheTTLSec = cfg.CompressLLMCacheTTLSec
+	s.CompressionBufferRatio = cfg.CompressionBufferRatio
+	s.SoftTriggerRatio = cfg.SoftTriggerRatio
+	s.HardTriggerRatio = cfg.HardTriggerRatio
 	s.SessionSummaryEnabled = cfg.SessionSummaryEnabled
 	s.OutputSchemaJSON = cfg.OutputSchemaJSON
 	s.ModelSelector = cfg.ModelSelector

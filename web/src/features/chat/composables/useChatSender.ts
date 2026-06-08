@@ -292,7 +292,12 @@ export function useChatSender(deps: SenderDeps) {
     } else if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       await sendTeamMessage(content);
     } else {
-      // unsupported entity kind — no action
+      const reason = !deps.sessionStore.entityKind
+        ? t('chat.noEntitySelected', '请先选择一个 Agent 或团队')
+        : deps.sessionStore.entityKind === 'team'
+          ? t('chat.noTeamSelected', '请先选择一个团队')
+          : t('chat.unsupportedEntity', '不支持的实体类型');
+      $q.notify({ type: 'warning', message: reason });
     }
   }
 

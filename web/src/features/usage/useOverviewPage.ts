@@ -11,7 +11,6 @@ import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from './moneyFormat';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
 import { listTeams } from '../teams/api';
-import { listIndustries } from '../industries/api';
 
 const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
 
@@ -155,8 +154,8 @@ export function useOverviewPage() {
 
   async function loadCategoryCount() {
     try {
-      const { total } = await listIndustries();
-      categoryCount.value = total;
+      await platformStore.loadTaxonomyTree('organization');
+      categoryCount.value = platformStore.taxonomyTree.length;
     } catch {
       // silent
     }

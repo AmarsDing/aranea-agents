@@ -172,7 +172,7 @@ import {
   departmentPositions,
   type TaxonomyLevel,
 } from '../../features/platform/taxonomyTreeUtils';
-import { monoBgForKey, monoLettersForKey } from '../../features/industries/industryMonogram';
+import { monoBgForKey, monoLettersForKey } from './monogram';
 
 const props = defineProps<{
   industry: PlatformResourceTreeNode;
@@ -227,7 +227,19 @@ function positionNodes(dept: PlatformResourceTreeNode) {
     box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.45)
 
   &.is-disabled
-    opacity: 0.55
+    background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-page-tint, #FBFCFF))
+
+    .taxonomy-industry-card__name,
+    .taxonomy-industry-card__metric-value
+      color: var(--color-text-tertiary)
+
+    .taxonomy-industry-card__desc,
+    .taxonomy-industry-card__dept-name,
+    .taxonomy-industry-card__position
+      color: var(--color-text-tertiary)
+
+    .taxonomy-industry-card__mono
+      opacity: 0.6
 
 /* ── Header ── */
 .taxonomy-industry-card__head
@@ -369,7 +381,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
 .taxonomy-industry-card__dept
   border: 1px solid var(--glass-border)
   border-radius: 12px
-  background: color-mix(in srgb, var(--color-page-tint, #FEF3E4) 40%, var(--glass-surface))
+  background: color-mix(in srgb, var(--color-page-tint, #FEF3E4) 20%, var(--glass-surface))
   overflow: hidden
 
 .taxonomy-industry-card__dept-head

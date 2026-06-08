@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"strings"
+	"sync"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -12,15 +13,20 @@ import (
 )
 
 const (
-	stateKeyRunnerSnapshot    = "aranea:runner_snapshot"
-	stateKeyCompressedSummary = "aranea:compressed_summary"
-	stateKVPrefix             = "aranea:state:"
+	stateKeyRunnerSnapshot       = "aranea:runner_snapshot"
+	stateKeyCompressedSummary    = "aranea:compressed_summary"
+	stateKVPrefix                = "aranea:state:"
+	stateKeyForceL0Snapshot      = "aranea:force_l0_snapshot"
 )
 
 // Runtime wraps trpc session.Service with Aranea session-key conventions.
 type Runtime struct {
 	svc trpcsession.Service
 	lg  loggateway.Logger
+
+	// forceL0Snapshot tracks sessions that need an immediate L0 snapshot write
+	// (bypassing throttle). Set after compression; cleared after the next snapshot write.
+	forceL0Snapshot sync.Map
 }
 
 func NewRuntime(svc trpcsession.Service, lg loggateway.Logger) *Runtime {
@@ -97,6 +103,25 @@ func (r *Runtime) EnqueueFrameworkSummary(ctx context.Context, userID, sessionID
 		return err
 	}
 	return r.svc.EnqueueSummaryJob(ctx, sess, trpcsession.SummaryFilterKeyAllContents, force)
+}
+
+// MarkForceL0Snapshot flags a session for immediate L0 snapshot on the next model call,
+// bypassing the throttle interval. Called after successful compression.
+func (r *Runtime) MarkForceL0Snapshot(sessionID string) {
+	if r == nil {
+		return
+	}
+	r.forceL0Snapshot.Store(sessionID, true)
+}
+
+// ConsumeForceL0Snapshot checks and clears the force-write flag for a session.
+// Returns true if the next L0 snapshot should bypass throttling.
+func (r *Runtime) ConsumeForceL0Snapshot(sessionID string) bool {
+	if r == nil {
+		return false
+	}
+	_, loaded := r.forceL0Snapshot.LoadAndDelete(sessionID)
+	return loaded
 }
 
 func stateKVKey(path string) string {

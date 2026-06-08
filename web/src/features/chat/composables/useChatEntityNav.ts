@@ -337,7 +337,14 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       if (created) {
         deps.streamManager.ensureTeamStream(created.id);
       }
+      return;
     }
+
+    // No valid entity selected — notify the user instead of silently skipping
+    $q.notify({
+      type: 'warning',
+      message: deps.t('chat.noEntityForNewSession', '请先选择一个 Agent 或团队以创建会话'),
+    });
   }
 
   async function openSettings(kind: ChatEntityKind, id: string) {
