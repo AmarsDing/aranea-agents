@@ -13,7 +13,7 @@ import (
 	"aranea-agents/internal/data/vector"
 )
 
-// l2EpisodeRepo implements biz.L2EpisodeWriter + biz.L2ConsolidationStore + biz.L2RecallStore using direct Raw SQL.
+// l2EpisodeRepo implements biz.L2EpisodeWriter + biz.L2RecallStore using direct Raw SQL.
 type l2EpisodeRepo struct {
 	data        *Data
 	vectorStore vector.VectorStore
@@ -28,9 +28,8 @@ func newL2EpisodeRepo(data *Data, vs vector.VectorStore) *l2EpisodeRepo {
 
 // Compile-time interface checks.
 var (
-	_ biz.L2EpisodeWriter      = (*l2EpisodeRepo)(nil)
-	_ biz.L2ConsolidationStore = (*l2EpisodeRepo)(nil)
-	_ biz.L2RecallStore        = (*l2EpisodeRepo)(nil)
+	_ biz.L2EpisodeWriter = (*l2EpisodeRepo)(nil)
+	_ biz.L2RecallStore   = (*l2EpisodeRepo)(nil)
 )
 
 // --- L2EpisodeWriter ---
@@ -42,58 +41,74 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 	if title == "" {
 		title = "L1 Archive: " + in.TaskID
 	}
-	outcome := strings.TrimSpace(in.Status)
-	if outcome == "" {
-		outcome = "completed"
+	outcomeSummary := strings.TrimSpace(in.OutcomeSummary)
+	if outcomeSummary == "" {
+		outcomeSummary = strings.TrimSpace(in.Status)
 	}
+	if outcomeSummary == "" {
+		outcomeSummary = "completed"
+	}
+	goal := strings.TrimSpace(in.Goal)
+	outcome := strings.TrimSpace(in.Outcome)
+	if outcome == "" {
+		outcome = outcomeSummary
+	}
+	episodeKind := strings.TrimSpace(in.EpisodeKind)
+	if episodeKind == "" {
+		episodeKind = "l1_archive"
+	}
+	keyDecisionsJSON := strings.TrimSpace(in.KeyDecisionsJSON)
+	if keyDecisionsJSON == "" {
+		keyDecisionsJSON = "[]"
+	}
+	keyArtifactsJSON := strings.TrimSpace(in.KeyArtifactsJSON)
+	if keyArtifactsJSON == "" {
+		keyArtifactsJSON = "[]"
+	}
+	l1SnapshotJSON := strings.TrimSpace(in.L1SnapshotJSON)
+	if l1SnapshotJSON == "" {
+		l1SnapshotJSON = "{}"
+	}
+	importance := in.Importance
+	if importance <= 0 {
+		importance = 0.5
+	}
+	confidence := in.Confidence
+	if confidence <= 0 {
+		confidence = 0.6
+	}
+	consolidationStatus := "consolidated"
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_episodes (
-		id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
+		id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
+		outcome, outcome_summary, importance, confidence,
+		key_decisions_json, key_artifacts_json, l1_snapshot_json,
 		consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(session_id, title, agent_id) DO UPDATE SET
+		goal = excluded.goal, outcome = excluded.outcome,
 		outcome_summary = excluded.outcome_summary, importance = excluded.importance,
+		confidence = excluded.confidence,
+		key_decisions_json = excluded.key_decisions_json,
+		key_artifacts_json = excluded.key_artifacts_json,
+		l1_snapshot_json = excluded.l1_snapshot_json,
+		l1_task_id = excluded.l1_task_id,
+		episode_kind = excluded.episode_kind,
 		ended_at = excluded.ended_at`,
 		id,
 		strings.TrimSpace(in.SessionID),
 		strings.TrimSpace(in.AgentID),
-		"l1_archive",
+		strings.TrimSpace(in.TaskID),
+		episodeKind,
 		title,
+		goal,
 		outcome,
-		0.5,
-		"pending", 0, "{}", now, now,
-	)
-	return err
-}
-
-// --- L2ConsolidationStore ---
-
-func (r *l2EpisodeRepo) ListPendingConsolidationEpisodes(ctx context.Context, agentID string, limit int) ([][]byte, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		sqlEpisodeSelect+` WHERE consolidation_status = 'pending' AND agent_id = ? ORDER BY created_at ASC LIMIT ?`,
-		agentID, limit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out [][]byte
-	for rows.Next() {
-		b, err := scanEpisodeRowJSON(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, b)
-	}
-	return out, rows.Err()
-}
-
-func (r *l2EpisodeRepo) MarkEpisodeConsolidated(ctx context.Context, id string, l3Count, l4Count int) error {
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_episodes SET consolidation_status = 'done', consolidated_l3_count = ? WHERE id = ?`,
-		l3Count, id,
+		outcomeSummary,
+		importance,
+		confidence,
+		keyDecisionsJSON,
+		keyArtifactsJSON,
+		l1SnapshotJSON,
+		consolidationStatus, 0, "{}", now, now,
 	)
 	return err
 }

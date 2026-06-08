@@ -194,10 +194,79 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 }
 
 func (r *l3FactRepo) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
+	// Check fact count for brute-force threshold.
+	// When the number of active facts for the agent is below the threshold,
+	// use linear scan by importance instead of vector similarity search.
+	if r.shouldUseBruteForce(ctx, scopeType, scopeID, userID, queryEmbedding) {
+		return r.recallL3FactsBruteForce(ctx, scopeType, scopeID, userID, limit)
+	}
 	if r.vectorStore != nil && len(queryEmbedding) > 0 {
 		return r.recallL3WithVectorStore(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
 	return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
+}
+
+// shouldUseBruteForce checks whether the fact count is below the brute-force threshold.
+func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID, userID string, queryEmbedding []float32) bool {
+	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	args := []any{}
+	if scopeType != "" {
+		clauses = append(clauses, "scope_type = ?")
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		clauses = append(clauses, "scope_id = ?")
+		args = append(args, scopeID)
+	}
+	if userID != "" {
+		clauses = append(clauses, "user_id = ?")
+		args = append(args, userID)
+	}
+	where := " WHERE " + strings.Join(clauses, " AND ")
+	var count int
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+where, args, &count); err != nil {
+		return false
+	}
+	return count <= biz.DefaultFactBruteForceThreshold || len(queryEmbedding) == 0
+}
+
+// recallL3FactsBruteForce returns facts ordered by importance DESC without vector scoring.
+func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, scopeID, userID string, limit int32) ([][]byte, error) {
+	lim := int(limit)
+	if lim <= 0 {
+		lim = 10
+	}
+	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	args := []any{}
+	if scopeType != "" {
+		clauses = append(clauses, "scope_type = ?")
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		clauses = append(clauses, "scope_id = ?")
+		args = append(args, scopeID)
+	}
+	if userID != "" {
+		clauses = append(clauses, "user_id = ?")
+		args = append(args, userID)
+	}
+	where := " WHERE " + strings.Join(clauses, " AND ")
+	q := sqlFactSelect + where + ` ORDER BY importance DESC, updated_at DESC LIMIT ?`
+	args = append(args, lim)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }
 
 func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
@@ -429,7 +498,7 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	}
 	fp := strings.TrimSpace(in.Fingerprint)
 	if fp == "" {
-		fp = factFingerprint(in.Statement, in.ScopeType, in.ScopeID)
+		fp = biz.FactFingerprint(in.Statement, in.ScopeType, in.ScopeID)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	createdAt := strings.TrimSpace(in.CreatedAt)

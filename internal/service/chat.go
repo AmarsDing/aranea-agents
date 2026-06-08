@@ -282,6 +282,12 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 		resp.Status = snap.Status
 		resp.ErrorMessage = snap.ErrorMessage
 		resp.UpdatedAt = snap.UpdatedAt
+		// Use await fields from hydrated snapshot when available.
+		if strings.TrimSpace(snap.Status) == "awaiting_user" {
+			resp.AwaitKind = snap.AwaitKind
+			resp.AwaitToolKey = snap.AwaitToolKey
+			resp.AwaitToolCallId = snap.AwaitToolCallID
+		}
 	}
 	if runnerIface, _, active := s.orch.ActiveRunner(sessionID); active {
 		if runner, ok := runnerIface.(trpcrunner.Runner); ok {

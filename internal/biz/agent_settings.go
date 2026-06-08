@@ -53,6 +53,7 @@ type MemoryCfg struct {
 	L1BudgetTokens         int    `json:"l1_budget_tokens,omitempty"`
 	L1FieldMaxTokens       int    `json:"l1_field_max_tokens,omitempty"`
 	L1HistoryKeepRevisions int    `json:"l1_history_keep_revisions,omitempty"`
+	L1HistoryEnabled       bool   `json:"l1_history_enabled,omitempty"`
 	L1DefaultSchemaID      string `json:"l1_default_schema_id,omitempty"`
 	L1ArchiveOnIdleMinutes int    `json:"l1_archive_on_idle_minutes,omitempty"`
 
@@ -162,6 +163,7 @@ type ContextCfg struct {
 	CompressLLMCacheMaxEntries int     `json:"compress_llm_cache_max_entries,omitempty"`
 	CompressLLMCacheTTLSec     int     `json:"compress_llm_cache_ttl_sec,omitempty"`
 	CompressionBufferRatio     float64 `json:"compression_buffer_ratio,omitempty"`
+	CompressionBufferAdaptive  bool    `json:"compression_buffer_adaptive,omitempty"`
 	SoftTriggerRatio           float64 `json:"soft_trigger_ratio,omitempty"`
 	HardTriggerRatio           float64 `json:"hard_trigger_ratio,omitempty"`
 	SessionSummaryEnabled      bool    `json:"session_summary_enabled,omitempty"`
@@ -215,6 +217,7 @@ func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
 	s.L1BudgetTokens = cfg.L1BudgetTokens
 	s.L1FieldMaxTokens = cfg.L1FieldMaxTokens
 	s.L1HistoryKeepRevisions = cfg.L1HistoryKeepRevisions
+	s.L1HistoryEnabled = cfg.L1HistoryEnabled
 	s.L1DefaultSchemaID = cfg.L1DefaultSchemaID
 	s.L1ArchiveOnIdleMinutes = cfg.L1ArchiveOnIdleMinutes
 	s.L2EpisodeEnabled = cfg.L2EpisodeEnabled
@@ -318,6 +321,7 @@ func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.CompressLLMCacheMaxEntries = cfg.CompressLLMCacheMaxEntries
 	s.CompressLLMCacheTTLSec = cfg.CompressLLMCacheTTLSec
 	s.CompressionBufferRatio = cfg.CompressionBufferRatio
+	s.CompressionBufferAdaptive = cfg.CompressionBufferAdaptive
 	s.SoftTriggerRatio = cfg.SoftTriggerRatio
 	s.HardTriggerRatio = cfg.HardTriggerRatio
 	s.SessionSummaryEnabled = cfg.SessionSummaryEnabled

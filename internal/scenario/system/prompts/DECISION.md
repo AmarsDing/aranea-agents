@@ -43,7 +43,7 @@
 - 跳过 plan_and_execute 直接委派任务
 - 对 simple 级别任务委派给管家
 - 忽略评估结果自行决策
-- **在调用 plan_and_execute 前使用 todo_write 规划多 Agent 任务**（plan_and_execute 自带规划）
+- **在调用 plan_and_execute 前使用其他工具规划多 Agent 任务**（plan_and_execute 自带规划）
 - **在调用 plan_and_execute 后手动调用 subagents_spawn/list/get/cancel**（由编排引擎自动管理）
 - **混用 plan_and_execute 和手动 subagent 工具**（会导致双重编排、工具调用轮次爆炸、预算超时）
 

@@ -103,7 +103,7 @@ message UpdatePendingMessageResponse {
 message RunStatus {
   // run_id is the unique identifier of the current or most-recent run.
   string run_id = 1;
-  // status is one of: idle | pending | running | awaiting_user | completed | failed | cancelled.
+  // status is one of: idle | pending | running | awaiting_user | completed | failed | cancelled | sync.
   string status = 2;
   // error_message is only set when status == failed.
   string error_message = 3;

@@ -115,3 +115,35 @@ export function spiritTeamStatusToLabel(status: SpiritTeamStatus): AgentNodeStat
   };
   return mapping[status] ?? 'queued';
 }
+
+/** Complexity level display config */
+export const COMPLEXITY_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  simple: { label: '简单', icon: 'speed', color: 'var(--color-success)' },
+  moderate: { label: '中等', icon: 'tune', color: 'var(--color-warning)' },
+  complex: { label: '复杂', icon: 'account_tree', color: 'var(--color-accent)' },
+};
+
+/** Format duration in ms to human-readable string */
+export function formatDuration(ms: number | undefined): string {
+  if (!ms) return '';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const min = Math.floor(ms / 60_000);
+  const sec = Math.round((ms % 60_000) / 1000);
+  return `${min}m${sec > 0 ? ` ${sec}s` : ''}`;
+}
+
+/** Format token counts to human-readable string */
+export function formatTokenCount(tokenIn?: number, tokenOut?: number): string {
+  if (!tokenIn && !tokenOut) return '';
+  const total = ((tokenIn ?? 0) + (tokenOut ?? 0)) / 1000;
+  return `${total.toFixed(1)}k Token`;
+}
+
+/** Get DQ score color CSS variable based on score value */
+export function dqScoreColor(score: number | null | undefined): string {
+  if (score == null) return 'var(--color-text-tertiary)';
+  if (score > 0.7) return 'var(--color-success)';
+  if (score >= 0.5) return 'var(--color-warning)';
+  return 'var(--color-danger)';
+}

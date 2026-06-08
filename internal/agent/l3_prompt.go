@@ -10,7 +10,9 @@ import (
 )
 
 // L3MemoryCue formats active semantic facts for prompt injection via fused multi-scope recall.
-func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, rt biz.MemoryRuntimeContext, keyword string, limit int) string {
+// l1FieldValues contains pinned L1 field values for cross-layer dedup — facts whose normalized
+// statement matches any L1 value are filtered out to avoid redundancy.
+func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, rt biz.MemoryRuntimeContext, keyword string, limit int, l1FieldValues []string) string {
 	if l3 == nil || !policy.InjectL3 {
 		return ""
 	}
@@ -26,6 +28,12 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 		MinScorePassive: policy.L3MinScorePassive,
 	})
 	if err != nil || len(rows) == 0 {
+		return ""
+	}
+
+	// Cross-layer dedup: filter out L3 facts whose statement matches an L1 field value.
+	rows = biz.DedupL3WithL1(rows, l1FieldValues)
+	if len(rows) == 0 {
 		return ""
 	}
 

@@ -5,12 +5,12 @@ import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { CompressStatus } from '../../session/types';
-import { getCompressStatus } from '../../session/api';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
+import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../envelopeToolCall';
 import { runStatusFromEnvelope } from '../envelopeRunStatus';
 import type { Envelope } from '../envelope';
@@ -57,6 +57,7 @@ export function useChatWorkspace() {
   const appStore = useAppStore();
   const sessionStore = useChatSessionStore();
   const messageStore = useChatMessageStore();
+  const spiritStore = useSpiritTeamStore();
   const runtimeStore = useChatRuntimeStore();
   const conversationStore = useChatConversationStore();
   const agentDetailStore = useAgentDetailStore();
@@ -379,6 +380,7 @@ export function useChatWorkspace() {
     appStore,
     sessionStore,
     messageStore,
+    spiritStore,
     selectedAgentId,
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
@@ -575,6 +577,8 @@ export function useChatWorkspace() {
     try {
       const res = await runtimeStore.enqueue(sid, content.trim());
       if (res.accepted) {
+        // Clear input only after successful enqueue
+        inputText.value = '';
         $q.notify({
           type: 'positive',
           message: res.queued
@@ -646,7 +650,7 @@ export function useChatWorkspace() {
   }
 
   // --- Compress status polling ---
-  const compressStatus = ref<CompressStatus>('normal');
+  const compressStatus = computed<CompressStatus>(() => sessionStore.compressStatus);
   let compressPollTimer: ReturnType<typeof setInterval> | null = null;
   let compressNormalSince: number | null = null;
   const COMPRESS_POLL_INTERVAL_MS = 5_000;
@@ -655,11 +659,7 @@ export function useChatWorkspace() {
   async function pollCompressStatus() {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
-    try {
-      compressStatus.value = await getCompressStatus(sid);
-    } catch {
-      // Silently ignore polling errors
-    }
+    await sessionStore.fetchCompressStatus(sid);
   }
 
   function startCompressPolling() {
@@ -685,7 +685,6 @@ export function useChatWorkspace() {
       }
       if (Date.now() - compressNormalSince >= COMPRESS_NORMAL_COOLDOWN_MS) {
         stopCompressPolling();
-        compressStatus.value = 'normal';
       }
     } else {
       compressNormalSince = null;
@@ -734,7 +733,7 @@ export function useChatWorkspace() {
       }
       inputText.value = sessionDrafts.get(sid) || '';
       onSessionSwitch(sid);
-      compressStatus.value = 'normal';
+      sessionStore.resetCompressStatus();
       stopCompressPolling();
       startCompressPolling();
       if (sid !== prevSid) {

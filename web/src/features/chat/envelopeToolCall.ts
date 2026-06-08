@@ -20,7 +20,7 @@ function normalizeToolStatus(status: string): ToolUseEvent['status'] {
   if (s === 'calling' || s === 'running' || s === 'in_progress') return 'running';
   if (s === 'failed' || s === 'error') return 'failed';
   if (s === 'blocked') return 'blocked';
-  if (s === 'cancelled') return 'cancelled';
+  if (s === 'cancelled' || s === 'interrupted') return 'cancelled';
   return 'success';
 }
 

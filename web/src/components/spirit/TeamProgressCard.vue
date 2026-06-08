@@ -37,13 +37,38 @@
       >
         <q-tooltip>取消团队</q-tooltip>
       </q-btn>
+      <q-btn
+        v-if="canRetry"
+        flat
+        dense
+        round
+        icon="refresh"
+        size="xs"
+        class="team-progress-card__retry"
+        @click.stop="$emit('retry')"
+      >
+        <q-tooltip>重试团队</q-tooltip>
+      </q-btn>
+      <q-btn
+        v-if="canArchive"
+        flat
+        dense
+        round
+        icon="archive"
+        size="xs"
+        class="team-progress-card__archive"
+        @click.stop="$emit('archive')"
+      >
+        <q-tooltip>归档团队</q-tooltip>
+      </q-btn>
     </div>
 
-    <div v-if="isWaitingDeps" class="team-progress-card__deps q-mt-xs">
-      <q-icon name="schedule" size="12px" color="warning" class="q-mr-xs" />
-      <span class="text-caption">等待依赖完成</span>
-      <span v-if="team.dependsOn && team.dependsOn.length > 0" class="text-caption text-grey-6 q-ml-xs">
-        ({{ team.dependsOn.length }} 个前置任务)
+    <div v-if="team.status === 'pending'" class="team-progress-card__deps q-mt-xs">
+      <q-icon v-if="isWaitingDeps" name="schedule" size="12px" color="warning" class="q-mr-xs" />
+      <q-icon v-else name="hourglass_top" size="12px" color="grey-6" class="q-mr-xs" />
+      <span class="text-caption">{{ isWaitingDeps ? '等待依赖完成' : '等待调度' }}</span>
+      <span v-if="isWaitingDeps" class="text-caption text-grey-6 q-ml-xs">
+        ({{ team.dependsOn!.length }} 个前置任务)
       </span>
     </div>
 
@@ -81,6 +106,8 @@ const props = defineProps<{
 defineEmits<{
   click: [];
   cancel: [];
+  retry: [];
+  archive: [];
 }>();
 
 const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
@@ -99,9 +126,13 @@ const topology = computed(() => modeToTopology(props.team.mode));
 
 const isRunning = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
-const isWaitingDeps = computed(() => props.team.status === 'pending');
+const isWaitingDeps = computed(() => props.team.status === 'pending' && !!(props.team.dependsOn && props.team.dependsOn.length > 0));
 
 const canCancel = computed(() => props.team.status === 'running' || props.team.status === 'pending');
+
+const canRetry = computed(() => props.team.status === 'failed');
+
+const canArchive = computed(() => props.team.status === 'completed' || props.team.status === 'failed' || props.team.status === 'cancelled');
 
 const statusClass = computed(() => {
   switch (props.team.status) {
@@ -202,6 +233,20 @@ const durationText = computed(() => {
   &:hover
     opacity: 1
     color: var(--color-danger)
+
+.team-progress-card__retry
+  color: var(--color-text-tertiary)
+  opacity: 0.6
+  &:hover
+    opacity: 1
+    color: var(--color-accent)
+
+.team-progress-card__archive
+  color: var(--color-text-tertiary)
+  opacity: 0.6
+  &:hover
+    opacity: 1
+    color: var(--color-text-secondary)
 
 .team-progress-card__progress
   margin-left: 32px

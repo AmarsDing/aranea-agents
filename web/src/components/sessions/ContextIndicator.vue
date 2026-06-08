@@ -42,19 +42,22 @@ const statusLabel = computed(() => {
   border-radius: 4px;
   margin: 4px 0;
 
+  backdrop-filter: blur(var(--glass-blur-default, 8px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default, 8px));
+
   &--optimizing {
-    background: rgba(255, 193, 7, 0.1);
-    color: #f9a825;
+    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+    color: var(--color-warning);
   }
 
   &--compressing {
-    background: rgba(255, 152, 0, 0.1);
-    color: #ef6c00;
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+    color: var(--color-danger);
   }
 
   &--optimized {
-    background: rgba(33, 150, 243, 0.1);
-    color: #1565c0;
+    background: color-mix(in srgb, var(--color-info) 10%, transparent);
+    color: var(--color-info);
   }
 }
 </style>

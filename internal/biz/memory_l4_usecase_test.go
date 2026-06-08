@@ -143,3 +143,64 @@ func TestPreparePersonUpsert_noConflictSameName(t *testing.T) {
 		t.Fatal("unexpected conflict for same name")
 	}
 }
+
+// --- Bug fix tests (3E-1) ---
+
+func TestL4ChineseNamePattern_DoesNotMatchNonName(t *testing.T) {
+	// "我是学生" should NOT match — "我是" is no longer in the pattern
+	matches := l4ChineseNamePattern.FindStringSubmatch("我是学生")
+	if len(matches) > 1 {
+		t.Errorf("l4ChineseNamePattern should not match '我是学生', got %q", matches[1])
+	}
+	// "我是来帮忙的" should NOT match
+	matches = l4ChineseNamePattern.FindStringSubmatch("我是来帮忙的")
+	if len(matches) > 1 {
+		t.Errorf("l4ChineseNamePattern should not match '我是来帮忙的', got %q", matches[1])
+	}
+}
+
+func TestL4ChineseNamePattern_MatchesActualName(t *testing.T) {
+	tests := []struct {
+		input string
+		name  string
+	}{
+		{"我叫小明", "小明"},
+		{"我的名字是小红", "小红"},
+	}
+	for _, tt := range tests {
+		matches := l4ChineseNamePattern.FindStringSubmatch(tt.input)
+		if len(matches) < 2 || matches[1] != tt.name {
+			t.Errorf("l4ChineseNamePattern(%q) = %v, want name=%q", tt.input, matches, tt.name)
+		}
+	}
+}
+
+func TestL4DecayConfig_AlphaRetention(t *testing.T) {
+	cfg := DefaultL4DecayConfig()
+	// Alpha=0.15 means retention factor = 1 - 0.15 = 0.85
+	retention := 1.0 - cfg.Alpha
+	if retention != 0.85 {
+		t.Errorf("retention factor = %f, want 0.85", retention)
+	}
+	// A confidence of 0.8 after one decay period should be 0.8 * 0.85 = 0.68
+	conf := 0.8 * retention
+	if conf < 0.67 || conf > 0.69 {
+		t.Errorf("0.8 * retention = %f, want ~0.68", conf)
+	}
+}
+
+func TestL4ChinesePreferencePattern(t *testing.T) {
+	tests := []struct {
+		input string
+		pref  string
+	}{
+		{"我喜欢暗色模式", "暗色模式"},
+		{"我爱喝咖啡", "咖啡"},
+	}
+	for _, tt := range tests {
+		matches := l4ChinesePreferencePattern.FindStringSubmatch(tt.input)
+		if len(matches) < 2 || matches[1] != tt.pref {
+			t.Errorf("l4ChinesePreferencePattern(%q) = %v, want pref=%q", tt.input, matches, tt.pref)
+		}
+	}
+}

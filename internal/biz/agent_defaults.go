@@ -15,7 +15,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		ToolsEnabled:                      true,
 		ToolsProfile:                      "coding",
 		ToolsAllowJSON:                    "[]",
-		ToolsDenyJSON:                     "[]",
+		ToolsDenyJSON:                     DefaultToolsDenyFrameworkMemory,
 		ToolsConcurrentAllowJSON:          "[]",
 		MemoryEnabled:                     true,
 		MemoryMaxChunkLength:              1000,
@@ -46,6 +46,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L1BudgetTokens:                    8192,
 		L1FieldMaxTokens:                  2048,
 		L1HistoryKeepRevisions:            10,
+		L1HistoryEnabled:                  false,
 		L1ArchiveOnIdleMinutes:            60,
 		L2EpisodeEnabled:                  true,
 		L2EpisodeMinImportance:            0.3,
@@ -88,8 +89,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		ToolsStreamingEnabled:             false,
 		L4DecayIntervalHours:              168,
 		VerificationTruncateChars:         2000,
-		CompressionBufferRatio:            0.15,
-		SoftTriggerRatio:                  0.70,
-		HardTriggerRatio:                  0.90,
+		CompressionBufferRatio:            DefaultCompressionBufferRatio,
+		SoftTriggerRatio:                  DefaultSoftTriggerRatio,
+		HardTriggerRatio:                  DefaultHardTriggerRatio,
 	}
 }

@@ -878,10 +878,13 @@ func (u *SpiritTeamUsecase) ScheduleDependentTeams(ctx context.Context, spiritSe
 
 // AllTeamsCompletedResult holds the result of checking if all teams are completed.
 type AllTeamsCompletedResult struct {
-	AllDone       bool
-	TeamIDs       []string
-	TotalTokenIn  int
-	TotalTokenOut int
+	AllDone        bool
+	TeamIDs        []string
+	TotalTeams     int
+	CompletedTeams int
+	FailedTeams    int
+	TotalTokenIn   int
+	TotalTokenOut  int
 }
 
 // CheckAllTeamsCompleted checks whether all teams for a spirit session are in a terminal state.
@@ -908,8 +911,15 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 	}
 	// All teams are in a terminal state (completed, failed, cancelled, or archived).
 	var teamIDs []string
+	var completedTeams, failedTeams int
 	for _, t := range teams {
 		teamIDs = append(teamIDs, t.ID)
+		switch t.Status {
+		case TeamStatusCompleted:
+			completedTeams++
+		case TeamStatusFailed, TeamStatusCancelled:
+			failedTeams++
+		}
 	}
 	// Aggregate token usage from child sessions of the spirit session.
 	var totalTokenIn, totalTokenOut int
@@ -932,7 +942,15 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 			}
 		}
 	}
-	return AllTeamsCompletedResult{AllDone: true, TeamIDs: teamIDs, TotalTokenIn: totalTokenIn, TotalTokenOut: totalTokenOut}
+	return AllTeamsCompletedResult{
+		AllDone:        true,
+		TeamIDs:        teamIDs,
+		TotalTeams:     len(teams),
+		CompletedTeams: completedTeams,
+		FailedTeams:    failedTeams,
+		TotalTokenIn:   totalTokenIn,
+		TotalTokenOut:  totalTokenOut,
+	}
 }
 
 // containsString checks if a string slice contains a given string.

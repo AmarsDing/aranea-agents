@@ -10,6 +10,16 @@ const (
 	MemoryAgentKey      = "__memory__"
 	SkillsAgentKey      = "__skills__"
 	SystemAdminAgentKey = "__system_admin__"
+
+	// Default compression trigger ratios (single source of truth).
+	DefaultCompressionBufferRatio = 0.15
+	DefaultSoftTriggerRatio       = 0.70
+	DefaultHardTriggerRatio       = 0.90
+
+	// DefaultToolsDenyFrameworkMemory lists the framework memory tools that are denied
+	// by default for new agents (working_memory mode). Agents using "both" mode
+	// should clear these from their ToolsDenyJSON.
+	DefaultToolsDenyFrameworkMemory = `["memory_add","memory_update","memory_delete","memory_search","memory_load"]`
 )
 
 // Agent is the catalog agent aggregate (legacy agents table + hydrated runtime state).
@@ -141,7 +151,8 @@ type AgentRuntimeSettings struct {
 	L1FieldMaxTokens          int
 	L1HistoryKeepRevisions    int
 	L1DefaultSchemaID         string
-	L1ArchiveOnIdleMinutes    int
+	L1HistoryEnabled        bool
+	L1ArchiveOnIdleMinutes  int
 	L2EpisodeEnabled          bool
 	L2EpisodeMinImportance    float64
 	L2IndexEnabled            bool
@@ -198,6 +209,8 @@ type AgentRuntimeSettings struct {
 	CompressLLMCacheTTLSec     int
 	// CompressionBufferRatio is the fraction of contextWindow reserved as compression buffer (default 0.15, range 0.10–0.25).
 	CompressionBufferRatio float64
+	// CompressionBufferAdaptive enables adaptive buffer ratio adjustment based on token increment patterns (default true).
+	CompressionBufferAdaptive bool
 	// SoftTriggerRatio is the fraction of effective_budget at which async compression triggers (default 0.70).
 	SoftTriggerRatio float64
 	// HardTriggerRatio is the fraction of effective_budget at which sync compression triggers (default 0.90).
@@ -307,6 +320,7 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L1BudgetTokens:           s.L1BudgetTokens,
 		L1FieldMaxTokens:         s.L1FieldMaxTokens,
 		L1HistoryKeepRevisions:   s.L1HistoryKeepRevisions,
+		L1HistoryEnabled:         s.L1HistoryEnabled,
 		L1DefaultSchemaID:        s.L1DefaultSchemaID,
 		L1ArchiveOnIdleMinutes:   s.L1ArchiveOnIdleMinutes,
 		L2EpisodeEnabled:         s.L2EpisodeEnabled,
@@ -426,6 +440,7 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		CompressLLMCacheMaxEntries: s.CompressLLMCacheMaxEntries,
 		CompressLLMCacheTTLSec:     s.CompressLLMCacheTTLSec,
 		CompressionBufferRatio:     s.CompressionBufferRatio,
+		CompressionBufferAdaptive:  s.CompressionBufferAdaptive,
 		SoftTriggerRatio:           s.SoftTriggerRatio,
 		HardTriggerRatio:           s.HardTriggerRatio,
 		SessionSummaryEnabled:      s.SessionSummaryEnabled,

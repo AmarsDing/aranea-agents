@@ -305,13 +305,20 @@ func NewGraphifyImporter(l4Repo biz.L4GraphWriter, lg loggateway.Logger) *Graphi
     return &GraphifyImporter{l4Repo: l4Repo, lg: lg}
 }
 
-// Import 全量导入 graph.json 到 L4 表。
-// 先清除 scope_type="codebase" 的旧数据，再批量写入新数据。
+// Import 全量导入 graph.json 到 L4 表。三步执行：
+// 1. BatchUpsertEntities — 插入所有节点实体，获得 UUID
+// 2. 构建 ID 映射表 — graphNodeID → memoryEntityUUID
+// 3. BatchUpsertRelations — 用映射后的 UUID 构建关系并插入
+// 全量替换：先 DeleteCodebaseScope 清除旧数据，再执行上述三步。
 func (i *GraphifyImporter) Import(ctx context.Context, graphPath string, workspaceID string) error
 
 // ImportIncremental 增量导入（对比 graph.json 文件 hash，仅文件变更时才重新导入）。
 // 内部调用 Import() 全量替换，依赖 UpsertEntity 的 ON CONFLICT DO UPDATE 幂等性。
 func (i *GraphifyImporter) ImportIncremental(ctx context.Context, graphPath string, workspaceID string) error
+
+// resolveEntityIDs 在步骤 1 完成后，查询 memory_entities 构建 graphNodeID → entityUUID 映射。
+// 查询条件：scope_type="codebase" AND scope_id=workspaceID AND name IN (graphNodeIDs)
+func (i *GraphifyImporter) resolveEntityIDs(ctx context.Context, scopeID string, graphNodeIDs []string) (map[string]string, error)
 
 // codeEntityType 将 graphify 的 label 映射为带 code: 前缀的 entity_type。
 func codeEntityType(label string) string {
@@ -433,7 +440,7 @@ BatchUpsertRelations(ctx context.Context, relations []biz.L4RelationWrite) error
 DeleteCodebaseScope(ctx context.Context, scopeType, scopeID string) error
 ```
 
-**实现**（`internal/data/memory_l4.go`）：使用 SQLite 的 `INSERT OR REPLACE` 批量语句，单事务提交。`DeleteCodebaseScope` 在单事务中先删关系再删实体，保证数据一致性。
+**实现**（`internal/data/memory_l4.go`）：使用与单条方法相同的 `INSERT ... ON CONFLICT DO UPDATE` 语义（非 `INSERT OR REPLACE`），保留 `use_count`、`created_at` 等未传入字段。单事务提交。`DeleteCodebaseScope` 在单事务中先删关系再删实体，保证数据一致性。
 
 ### 3.7 与现有 L4 管道的关系
 
@@ -597,7 +604,7 @@ wire.NewSet(knowledge.NewGraphifyImporter)
 |------|------|------|
 | `internal/biz/memory_l4.go`（修改） | ~30 行 | L4EntityWrite/L4RelationWrite 新增 SourceKind/WorkspaceID 字段 + L4GraphWriter 批量方法签名 |
 | `internal/data/memory_l4.go`（修改） | ~80 行 | SourceKind/WorkspaceID 参数化 + UpsertRelation ON CONFLICT 修复 + 批量方法实现 |
-| `internal/data/knowledge/graphify_importer.go` | ~350 行 | 导入器核心逻辑（含批量写入） |
+| `internal/data/knowledge/graphify_importer.go` | ~380 行 | 导入器核心逻辑（含三步执行 + ID 解析 + 批量写入） |
 | `internal/data/knowledge/graphify_importer_test.go` | ~200 行 | 单元测试 |
 | `internal/agent/l4_code_prompt.go` | ~70 行 | L4CodeCue() 代码知识注入 |
 | `internal/data/memory_shim_l4.go`（修改） | ~15 行 | NeighborhoodJSON BFS 增加 scope_type 过滤 |
@@ -605,7 +612,7 @@ wire.NewSet(knowledge.NewGraphifyImporter)
 | `internal/agent/memory_inject.go`（修改） | ~15 行 | buildRuntimeMemoryCue 新增 L4CodeCue + GraphifyReportCue 调用 + hasDep 条件 |
 | `internal/agent/graphify_report_prompt.go`（新增） | ~25 行 | GraphifyReportCue 函数 |
 | `internal/data/sql/memory_chain.sql`（修改） | ~10 行 | ALTER TABLE 新增配置列 |
-| **合计** | **~855 行** | |
+| **合计** | **~885 行** | |
 
 ---
 
@@ -647,6 +654,7 @@ trpcmodel.NewSystemMessage(cue) → 前置注入到 messages
 ```go
 // GraphifyReportCue 读取 GRAPH_REPORT.md 并返回摘要文本，注入 Agent prompt。
 // 文件不存在时返回空字符串，零影响。
+// workspacePath 为文件系统路径（非 workspace ID），由调用方从 agent 配置或环境获取。
 func GraphifyReportCue(workspacePath string) string {
     if workspacePath == "" {
         return ""
@@ -674,12 +682,18 @@ func GraphifyReportCue(workspacePath string) string {
 ```go
 // internal/agent/memory_inject.go — buildRuntimeMemoryCue() 新增
 // 在 L4CodeCue 之后追加
-if reportCue := GraphifyReportCue(rt.Workspace); reportCue != "" {
+// workspacePath 需从 agent 配置或环境变量获取，而非 rt.Workspace（那是 ID 不是路径）
+// 降级方案：若无法获取路径，跳过 GRAPH_REPORT.md 注入
+if reportCue := GraphifyReportCue(deps.WorkspacePath); reportCue != "" {
     recallParts = append(recallParts, reportCue)
 }
 ```
 
-> **注意**：`rt`（`MemoryRuntimeContext`）的字段名为 `Workspace`（非 `WorkspacePath`），类型为 `string`。该值优先从 session state 的 `workspace` 键获取，回退到 `ag.Settings.Workspace`。
+> **`rt.Workspace` 语义说明**：`MemoryRuntimeContext.Workspace` 的值来源是 `sessionStateString(inv.Session.State, "workspace")`，回退到 `ag.Settings.Workspace`。此值在当前系统中为 workspace 标识符（非文件系统路径），因此：
+> - `L4CodeCue` 将其用作 `scope_id`（数据库查询键）— 语义匹配
+> - `GraphifyReportCue` 将其用作文件路径前缀 — **语义不匹配**，需额外处理
+>
+> **修复方案**：`GraphifyReportCue` 不使用 `rt.Workspace`，改为从 `ag.Settings` 的扩展配置中读取 workspace 路径，或使用约定的相对路径（如当前工作目录下的 `graphify-out/`）。具体实现待确认 `ag.Settings` 中是否有 workspace 路径字段，若无则降级为仅检查当前工作目录。
 
 **优势**：
 1. **复用已有管道**：与其他 memory cue 使用相同的注入路径，由 `newMemoryInjectBeforeHook` 统一管理
@@ -709,9 +723,9 @@ buildRuntimeMemoryCue() 自动使用新内容（每次请求实时读文件）
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| `internal/agent/graphify_report_prompt.go`（新增） | ~25 行 | GraphifyReportCue 函数 |
+| `internal/agent/graphify_report_prompt.go`（新增） | ~25 行 | GraphifyReportCue 函数（已计入 §3.12） |
 | `internal/agent/memory_inject.go`（修改） | ~4 行 | buildRuntimeMemoryCue 新增 GraphifyReportCue 调用（已计入 §3.12） |
-| **合计** | **~29 行** | |
+| **合计** | **~0 行**（已合并到 Phase 3） | |
 
 ---
 
@@ -721,10 +735,10 @@ buildRuntimeMemoryCue() 自动使用新内容（每次请求实时读文件）
 |-------|------------|---------------------------|-----------|
 | **Phase 1** | L0 简化 + Prompt Caching + Embedding 单写 | MCP 配置注册（管理后台操作） | **0 行** |
 | **Phase 2** | 三级压缩 + L1 选择性注入 + 结构化 Episode | 无额外任务 | **0 行** |
-| **Phase 3** | 单跳巩固 + L1/L3/L4 职责厘清 | + GraphifyImporter（graph.json → L4 codebase scope）+ NeighborhoodJSON scope 修复 + L4EntityWrite/L4RelationWrite SourceKind 参数化 + UpsertRelation ON CONFLICT 修复 | **~855 行** |
-| **Phase 4** | 多代理加密 + L2 Episode 分叉 + Embedding 增量重建 | + GraphifyReportCue → BeforeModel hook 注入 | **~0 行**（已合并到 Phase 3） |
+| **Phase 3** | 单跳巩固 + L1/L3/L4 职责厘清 | + GraphifyImporter（graph.json → L4 codebase scope）+ NeighborhoodJSON scope 修复 + L4EntityWrite/L4RelationWrite SourceKind 参数化 + UpsertRelation ON CONFLICT 修复 + GraphifyReportCue | **~885 行** |
+| **Phase 4** | 多代理加密 + L2 Episode 分叉 + Embedding 增量重建 | 无额外任务 | **0 行** |
 
-**总新增代码量：~855 行**，集中在 Phase 3。
+**总新增代码量：~885 行**，集中在 Phase 3。
 
 ---
 
@@ -742,6 +756,7 @@ buildRuntimeMemoryCue() 自动使用新内容（每次请求实时读文件）
 | `rt.Workspace` 为空 | L4CodeCue 无法获取 workspaceID | 降级处理：Workspace 为空时不注入代码知识，仅依赖 MCP 查询 |
 | UpsertRelation ON CONFLICT 3 列 vs 表 UNIQUE 5 列 | 跨 scope 写入时关系数据覆盖 | 已在 §3.5 修改 4 中修复：ON CONFLICT 改为 5 列匹配 |
 | AutoMemoryWorker 未传 SourceKind | 已有对话实体 source_kind 为空 | 向后兼容：空字符串等价于 `"extracted"`（表默认值）；后续迭代补传 |
+| `rt.Workspace` 是 ID 非路径 | GraphifyReportCue 无法定位文件 | `GraphifyReportCue` 改用 `deps.WorkspacePath`（独立字段），降级为检查当前工作目录 |
 
 ---
 

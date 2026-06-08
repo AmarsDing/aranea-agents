@@ -2,6 +2,7 @@ import type { QTableColumn } from 'quasar';
 import type { Agent } from '../../features/agents/types';
 import type { AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
+import { deriveMemoryToolMode } from './agentUi';
 
 /** AgentsListSection 列定义（taxonomyLabel 由 store computed 注入 field） */
 export function buildAgentTableColumns(
@@ -20,6 +21,13 @@ export function buildAgentTableColumns(
       REGISTRY_COL_W.category,
     ),
     registryCol<Agent>('ctx', '上下文', (row) => formatContext(row.context_window), 'left', REGISTRY_COL_W.status),
+    registryCol<Agent>(
+      'memory_mode',
+      '记忆模式',
+      (row) => deriveMemoryToolMode(row.settings?.tools_deny_json),
+      'left',
+      REGISTRY_COL_W.category,
+    ),
     registryColActions<Agent>(),
   ];
 }

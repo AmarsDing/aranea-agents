@@ -3,9 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -91,7 +89,7 @@ func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationW
 		attributes_json, evidence_json, status, source_kind,
 		metadata_json, valid_from, valid_to, created_at, updated_at
 	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	ON CONFLICT(source_id, target_id, relation_type) DO UPDATE SET
+	ON CONFLICT(scope_type, scope_id, source_id, target_id, relation_type) DO UPDATE SET
 		weight = excluded.weight, confidence = excluded.confidence,
 		updated_at = excluded.updated_at`,
 		id,
@@ -195,9 +193,16 @@ func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeTyp
 		return nil, nil
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format(time.RFC3339Nano)
+	// Query reinforcement counts for entities belonging to the given scope.
+	// Entity IDs follow the pattern "l4-{type}-{scopeID}-..." or "l4-user-{scopeID}".
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT target_id, COUNT(*) FROM memory_action_log WHERE target_kind = 'entity' AND action = 'REINFORCE' AND metadata_json LIKE ? AND created_at > ? GROUP BY target_id`,
-		fmt.Sprintf("%%scope_type:%s%%scope_id:%s%%", scopeType, scopeID), cutoff)
+		`SELECT a.target_id, COUNT(*) FROM memory_action_log a
+		 JOIN memory_entities e ON e.id = a.target_id
+		 WHERE a.target_kind = 'entity' AND a.action = 'REINFORCE'
+		   AND e.scope_type = ? AND e.scope_id = ?
+		   AND a.created_at > ?
+		 GROUP BY a.target_id`,
+		scopeType, scopeID, cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -219,8 +224,9 @@ func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeTyp
 		return 0, nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	// Use Alpha as the decay factor (0 < Alpha < 1 means confidence decays toward 0).
-	factor := cfg.Alpha
+	// Alpha is the decay rate per period (0 < Alpha < 1).
+	// Retention factor = 1 - Alpha, so Alpha=0.15 means 85% retention per period.
+	factor := 1.0 - cfg.Alpha
 	if factor <= 0 || factor >= 1 {
 		factor = 0.95
 	}
@@ -302,5 +308,4 @@ func NewL4GraphUsecaseFromData(data *Data, cascade *biz.L4CascadeUsecase, lg log
 	return uc
 }
 
-// ensure json is referenced
-var _ = json.Marshal
+

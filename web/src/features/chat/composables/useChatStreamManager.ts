@@ -228,6 +228,18 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           actions: [{ label: t('chat.refresh', '刷新页面'), color: 'white', handler: () => window.location.reload() }],
         });
       },
+      onServerShutdown: () => {
+        $q.notify({
+          type: 'warning',
+          message: t('chat.serverShutdown', '服务器已关闭，请重新登录'),
+          timeout: 0,
+          actions: [{ label: t('chat.relogin', '重新登录'), color: 'white', handler: () => {} }],
+        });
+        const auth = useAuthStore();
+        auth.user = null;
+        auth.sessionChecked = true;
+        router.push({ name: 'login' });
+      },
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
         void deps.refreshRunStatus(sessionId);

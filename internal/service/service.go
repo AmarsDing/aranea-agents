@@ -95,6 +95,8 @@ var ProviderSet = wire.NewSet(
 	NewSkillDBRepository,
 	NewMemoryLLMExtractor,
 	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
+	NewMemoryEnhancedExtractor,
+	wire.Bind(new(biz.EnhancedTextExtractor), new(*MemoryEnhancedExtractor)),
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
 	ProvideEnvelopeBuffer,

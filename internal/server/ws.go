@@ -32,10 +32,11 @@ type WSTurnInput struct {
 }
 
 type WSTurnOptions struct {
-	DialogMode    string
-	Provider      string
-	Model         string
-	AttachmentIDs []string
+	DialogMode     string
+	Provider       string
+	Model          string
+	AttachmentIDs  []string
+	KnowledgeBases []string
 }
 
 type WSTurnExecutor interface {

@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
@@ -596,12 +595,6 @@ func decodeJSONFloatMap(raw string, lg loggateway.Logger) map[string]float64 {
 		return map[string]float64{}
 	}
 	return out
-}
-
-func factFingerprint(statement, scopeType, scopeID string) string {
-	n := strings.ToLower(strings.TrimSpace(statement))
-	h := sha256.Sum256([]byte(n + "\x00" + strings.TrimSpace(scopeType) + "\x00" + strings.TrimSpace(scopeID)))
-	return fmt.Sprintf("%x", h[:])
 }
 
 func nameReplacePattern(oldName string) (*regexp.Regexp, error) {

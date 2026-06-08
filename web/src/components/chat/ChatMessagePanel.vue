@@ -1,13 +1,31 @@
 <template>
   <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0">
+    <!-- Breadcrumb navigation for team/member modes -->
+    <div v-if="panelMode === 'team' || panelMode === 'member'" class="row items-center q-px-md q-py-xs spirit-breadcrumb">
+      <q-btn flat dense no-caps icon="auto_awesome" label="精灵" color="accent" class="spirit-breadcrumb__item" @click="emit('return-to-spirit')" />
+      <template v-if="spiritTeam">
+        <q-icon name="chevron_right" size="16px" color="grey-6" class="q-mx-xs" />
+        <q-btn
+          v-if="panelMode === 'member'"
+          flat dense no-caps
+          :label="spiritTeam.teamName"
+          color="accent"
+          class="spirit-breadcrumb__item"
+          @click="emit('return-to-team')"
+        />
+        <span v-else class="text-body2 ellipsis spirit-breadcrumb__current">{{ spiritTeam.teamName }}</span>
+      </template>
+      <template v-if="panelMode === 'member' && activeMember">
+        <q-icon name="chevron_right" size="16px" color="grey-6" class="q-mx-xs" />
+        <span class="text-body2 ellipsis spirit-breadcrumb__current">{{ activeMember.displayName }}</span>
+      </template>
+    </div>
+
     <template v-if="panelMode === 'team' && spiritTeam">
-      <TaskExecutionPanel :team="spiritTeam" :messages="props.messages" :max-concurrent-teams="spiritMaxConcurrentTeams" @return-to-spirit="emit('return-to-spirit')" @cancel-team="(teamId) => emit('cancel-team', teamId)" @resume-team="(teamId) => emit('resume-team', teamId)" />
+      <TaskExecutionPanel :team="spiritTeam" :messages="props.messages" :max-concurrent-teams="spiritMaxConcurrentTeams" :completion-stats="spiritCompletionStats" @return-to-spirit="emit('return-to-spirit')" @cancel-team="(teamId) => emit('cancel-team', teamId)" @resume-team="(teamId) => emit('resume-team', teamId)" @retry-team="(teamId) => emit('retry-team', teamId)" @select-member="(memberId) => emit('select-member', memberId)" @archive-team="(teamId) => emit('archive-team', teamId)" />
     </template>
-    <template v-else-if="panelMode === 'member'">
-      <div class="col column flex-center text-grey-6" style="min-height: 200px">
-        <q-icon name="person" size="48px" class="q-mb-md" />
-        <div class="text-body2">成员详情面板（P1 实现）</div>
-      </div>
+    <template v-else-if="panelMode === 'member' && spiritTeam && activeMember">
+      <MemberReadOnlyPanel :member="activeMember" :team="spiritTeam" :messages="props.messages" :render-markdown="renderChatMarkdown" @return-to-team="emit('return-to-team')" />
     </template>
     <template v-else>
       <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
@@ -148,6 +166,8 @@
           <SynthesisResultCard
             v-if="synthesisResult && (!panelMode || panelMode === 'spirit')"
             :result="synthesisResult"
+            :rendered-content="renderChatMarkdown(synthesisResult.content)"
+            :evolution-suggestion="spiritEvolutionSuggestion"
             class="q-mx-md q-mb-sm"
           />
 
@@ -216,16 +236,23 @@
           :is-dark="isDark"
           @close="emit('close-reasoning-sidebar')"
         />
-        <SpiritStatusBar
-          v-if="spiritStatusBar && (!panelMode || panelMode === 'spirit')"
-          :running-team-count="spiritStatusBar.runningTeamCount"
-          :interrupted-team-count="spiritStatusBar.interruptedTeamCount"
-          :quota-used="spiritStatusBar.quotaUsed"
-          :quota-max="spiritStatusBar.quotaMax"
-          :token-usage="spiritStatusBar.tokenUsage"
-          :last-event="spiritStatusBar.lastEvent"
-        />
       </div>
+      <SpiritStatusBar
+        v-if="spiritStatusBar && (!panelMode || panelMode === 'spirit')"
+        :running-team-count="spiritStatusBar.runningTeamCount"
+        :interrupted-team-count="spiritStatusBar.interruptedTeamCount"
+        :quota-used="spiritStatusBar.quotaUsed"
+        :quota-max="spiritStatusBar.quotaMax"
+        :token-usage="spiritStatusBar.tokenUsage"
+        :last-event="spiritStatusBar.lastEvent"
+        :complexity-level="spiritStatusBar.complexityLevel"
+        :complexity-reason="spiritStatusBar.complexityReason"
+        :checkpoint-step="spiritStatusBar.checkpointStep"
+        :dq-score="spiritStatusBar.dqScore"
+        @click-running="emit('status-bar-click-running')"
+        @click-interrupted="emit('status-bar-click-interrupted')"
+        @click-last-event="emit('status-bar-click-last-event')"
+      />
     </template>
   </q-card>
 </template>
@@ -244,9 +271,12 @@ import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
+import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
+import type { CompressStatus } from '../../features/session/types';
+import type { EvolutionSuggestion } from '../../features/spirit/types';
 import { useChatTimeline, type TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import { CHAT_VIRTUAL_ROW_ESTIMATE, CHAT_VIRTUAL_SCROLL_THRESHOLD } from '../../features/chat/chatListVirtual';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
@@ -257,7 +287,8 @@ import type { ComposerUsageSnapshot } from '../../features/chat/composerUsageMet
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
-import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from '../../features/spirit/types';
+import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
 
@@ -266,6 +297,7 @@ type Option = { label: string; value: string; caption?: string };
 const props = defineProps<{
   panelMode?: 'spirit' | 'team' | 'member';
   spiritTeam?: SpiritTeam | null;
+  activeMember?: SpiritMember | null;
   synthesisResult?: SynthesisOutput | null;
   modelValue: string;
   messages: Message[];
@@ -322,10 +354,15 @@ const props = defineProps<{
     quotaMax: number;
     tokenUsage?: { in: number; out: number } | null;
     lastEvent?: { type: 'completed' | 'failed'; teamName: string } | null;
+    dqScore?: number | null;
   } | null;
   /** Max concurrent teams from store (for TaskExecutionPanel). */
   spiritMaxConcurrentTeams?: number;
-  compressStatus?: 'normal' | 'optimizing' | 'optimized' | 'compressing';
+  /** Evolution suggestion from DQ analysis (for SynthesisResultCard). */
+  spiritEvolutionSuggestion?: EvolutionSuggestion | null;
+  /** Team completion breakdown from spirit_teams_all_completed event. */
+  spiritCompletionStats?: CompletionStats | null;
+  compressStatus?: CompressStatus;
 }>();
 
 const emit = defineEmits<{
@@ -363,9 +400,16 @@ const emit = defineEmits<{
   'pin-reasoning-message': [messageId: string];
   'close-reasoning-sidebar': [];
   'return-to-spirit': [];
+  'return-to-team': [];
   'cancel-team': [teamId: string];
   'resume-team': [teamId: string];
+  'retry-team': [teamId: string];
+  'select-member': [memberId: string];
+  'archive-team': [teamId: string];
   compact: [sessionId: string];
+  'status-bar-click-running': [];
+  'status-bar-click-interrupted': [];
+  'status-bar-click-last-event': [];
 }>();
 
 const { t } = useI18n();
@@ -469,5 +513,21 @@ onMounted(() => {
   border-left: 3px solid var(--color-accent);
   backdrop-filter: blur(var(--glass-blur-default));
   -webkit-backdrop-filter: blur(var(--glass-blur-default));
+}
+
+.spirit-breadcrumb {
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-surface);
+  min-height: 32px;
+
+  &__item {
+    font-size: 12px;
+    padding: 2px 6px;
+  }
+
+  &__current {
+    color: var(--color-text-secondary);
+    max-width: 200px;
+  }
 }
 </style>

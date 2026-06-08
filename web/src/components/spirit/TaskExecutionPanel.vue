@@ -19,7 +19,8 @@
           <div
             v-for="member in team.members"
             :key="member.agentKey"
-            class="task-execution-panel__member row items-center q-gutter-xs"
+            class="task-execution-panel__member task-execution-panel__member--clickable row items-center q-gutter-xs"
+            @click="emit('select-member', member.agentId)"
           >
             <q-avatar size="20px">
               <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
@@ -50,9 +51,12 @@
           :teams="allTeams"
           :max-parallel="maxParallel ?? props.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS"
           :all-completed="allTeamsCompleted ?? false"
+          :completion-stats="completionStats"
           :synthesis-result="synthesisResult"
           @select-team="(teamId) => emit('select-team', teamId)"
           @cancel-team="(teamId) => emit('cancel-team', teamId)"
+          @retry-team="(teamId) => emit('retry-team', teamId)"
+          @archive-team="(teamId) => emit('archive-team', teamId)"
         />
       </div>
     </template>
@@ -112,7 +116,7 @@ import ParallelTeamOverview from './ParallelTeamOverview.vue';
 import { mapSpiritStatusToSession, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../../features/spirit/observabilityConstants';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
-import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
+import type { SpiritTeam, SynthesisOutput, CompletionStats } from '../../features/spirit/types';
 import AgentStatusLabel from './AgentStatusLabel.vue';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
 
@@ -127,6 +131,8 @@ const props = defineProps<{
   allTeamsCompleted?: boolean;
   /** Synthesis result for all teams. */
   synthesisResult?: SynthesisOutput | null;
+  /** Team completion breakdown from spirit_teams_all_completed event. */
+  completionStats?: CompletionStats | null;
   /** Max concurrent teams from store (for ParallelTeamOverview). */
   maxConcurrentTeams?: number;
 }>();
@@ -136,6 +142,9 @@ const emit = defineEmits<{
   'select-team': [teamId: string];
   'cancel-team': [teamId: string];
   'resume-team': [teamId: string];
+  'retry-team': [teamId: string];
+  'select-member': [memberId: string];
+  'archive-team': [teamId: string];
 }>();
 
 const toolMessages = computed<ToolUseEvent[]>(() => {
@@ -194,6 +203,13 @@ function formatTime(iso: string): string {
   padding: 2px 6px
   border-radius: 6px
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
+
+  &--clickable
+    cursor: pointer
+    transition: background 0.15s
+
+    &:hover
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
 
 .task-execution-panel__output-header
   font-size: var(--text-sm)

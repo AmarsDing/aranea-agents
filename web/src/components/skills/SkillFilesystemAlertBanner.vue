@@ -4,7 +4,7 @@
       <q-icon :name="icon" />
     </template>
     <div class="text-body2">{{ message }}</div>
-    <div v-if="health?.resolved_root" class="text-caption q-mt-xs text-grey-8">
+    <div v-if="health?.resolved_root" class="skill-fs-alert__path text-caption q-mt-xs">
       Skill 根目录：{{ health.resolved_root }}
     </div>
     <template #action>
@@ -49,9 +49,9 @@ const visible = computed(() => {
 
 const bannerClass = computed(() => {
   if (!props.health?.root_accessible || (props.health?.missing_count ?? 0) > 0) {
-    return 'bg-orange-2 text-orange-10';
+    return 'skill-fs-alert--warning';
   }
-  return 'bg-blue-1 text-blue-10';
+  return 'skill-fs-alert--info';
 });
 
 const icon = computed(() => {

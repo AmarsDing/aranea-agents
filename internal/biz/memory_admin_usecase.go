@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -12,11 +13,13 @@ import (
 )
 
 type MemoryAdminUsecase struct {
-	admin     SessionAdminStore
-	vec       *MemoryUsecase
-	indexSync MemoryFactIndexSyncer
-	factWriter L3FactWriter
-	lg        loggateway.Logger
+	admin          SessionAdminStore
+	vec            *MemoryUsecase
+	indexSync      MemoryFactIndexSyncer
+	factWriter     L3FactWriter
+	pathBExtractor *PathBExtractor
+	msgLister      RecentMessageLister
+	lg             loggateway.Logger
 }
 
 func NewMemoryAdminUsecase(admin SessionAdminStore, vec *MemoryUsecase, indexSync MemoryFactIndexSyncer, factWriter L3FactWriter, lg loggateway.Logger) *MemoryAdminUsecase {
@@ -24,6 +27,14 @@ func NewMemoryAdminUsecase(admin SessionAdminStore, vec *MemoryUsecase, indexSyn
 		return nil
 	}
 	return &MemoryAdminUsecase{admin: admin, vec: vec, indexSync: indexSync, factWriter: factWriter, lg: lg}
+}
+
+// SetPathBExtractor injects the Path B enhanced extractor and message lister after construction.
+func (uc *MemoryAdminUsecase) SetPathBExtractor(pe *PathBExtractor, msgLister RecentMessageLister) {
+	if uc != nil {
+		uc.pathBExtractor = pe
+		uc.msgLister = msgLister
+	}
 }
 
 func (uc *MemoryAdminUsecase) Vector() *MemoryUsecase { return uc.vec }
@@ -234,23 +245,205 @@ func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessi
 			loggateway.Err(err))
 		return
 	}
+
+	// Extract structured data from snapshot (Path A: zero-cost)
+	structured := ExtractStructuredEpisode(snapshot)
+
 	m, _ := jsonutil.ParseMap(endTaskRaw)
 	agentID := jsonutil.IfaceStr(m, "agent_id")
-	taskTitle := jsonutil.IfaceStr(m, "task_title")
-	status := jsonutil.IfaceStr(m, "status")
+
+	decisionsJSON, _ := json.Marshal(structured.KeyDecisions)
+	artifactsJSON, _ := json.Marshal(structured.KeyArtifacts)
+
 	if err := uc.admin.InsertL1ArchiveEpisode(ctx, L1ArchiveEpisodeInsert{
-		SessionID:      sessionID,
-		AgentID:        agentID,
-		TaskID:         taskID,
-		TaskTitle:      taskTitle,
-		Status:         status,
-		L1SnapshotJSON: string(snapshot),
+		SessionID:        sessionID,
+		AgentID:          agentID,
+		TaskID:           taskID,
+		TaskTitle:        structured.Title,
+		Status:           structured.OutcomeSummary,
+		L1SnapshotJSON:   string(snapshot),
+		Goal:             structured.Goal,
+		Outcome:          structured.Outcome,
+		OutcomeSummary:   structured.OutcomeSummary,
+		KeyDecisionsJSON: string(decisionsJSON),
+		KeyArtifactsJSON: string(artifactsJSON),
+		EpisodeKind:      structured.EpisodeKind,
+		Importance:       structured.Importance,
+		Confidence:       structured.Confidence,
 	}); err != nil {
 		uc.lg.Warn("L1 archive episode insert failed",
 			loggateway.StepID("memory.l1_archive_episode_fail"),
 			loggateway.Str("task_id", taskID),
 			loggateway.Err(err))
 	}
+
+	// Path B: Check if LLM-enhanced extraction should be triggered.
+	signals := extractEpisodeSignals(endTaskRaw, structured.Importance)
+	if ShouldTriggerPathB(signals) {
+		score := EpisodeScore(signals)
+		uc.lg.Info("Path B LLM-enhanced episode eligible",
+			loggateway.StepID("memory.path_b_eligible"),
+			loggateway.Str("task_id", taskID),
+			loggateway.Float64("importance", signals.Importance),
+			loggateway.Float64("critic_score", signals.CriticScore),
+			loggateway.Int("tool_call_count", signals.ToolCallCount),
+			loggateway.Int("duration_ms", signals.DurationMs),
+			loggateway.Str("user_mark", signals.UserMark),
+			loggateway.Float64("episode_score", score))
+		if uc.pathBExtractor != nil {
+			uc.runPathBExtraction(ctx, sessionID, agentID, taskID, structured.Title, snapshot, score)
+		}
+	}
+}
+
+// runPathBExtraction performs the Path B LLM-enhanced extraction as a best-effort enhancement.
+// If extraction fails, the Path A (zero-cost) episode is still used.
+// pathATitle is the title used by the Path A episode; Path B reuses it so the
+// ON CONFLICT(session_id, title, agent_id) clause updates the existing row instead
+// of inserting a duplicate.
+func (uc *MemoryAdminUsecase) runPathBExtraction(ctx context.Context, sessionID, agentID, taskID, pathATitle string, snapshot []byte, score float64) {
+	// Build ConsolidateInput from session messages (not L1 snapshot fields).
+	var input ConsolidateInput
+	input.SessionID = sessionID
+	input.AgentID = agentID
+	if uc.msgLister != nil {
+		msgs, err := uc.msgLister.ListRecentMessages(ctx, sessionID, 50)
+		if err != nil {
+			uc.lg.Warn("Path B: failed to list recent messages, falling back to snapshot",
+				loggateway.StepID("memory.path_b_msg_list_fail"),
+				loggateway.Str("task_id", taskID),
+				loggateway.Err(err))
+		} else if len(msgs) > 0 {
+			input.Messages = msgs
+		}
+	}
+	if len(input.Messages) == 0 {
+		// Fallback: build from L1 snapshot if no session messages available.
+		input = buildConsolidateInputFromSnapshot(snapshot, sessionID, agentID)
+	}
+
+	enhancedResult, err := uc.pathBExtractor.Extract(ctx, input)
+	if err != nil {
+		uc.lg.Warn("Path B enhanced extraction failed (best-effort, Path A episode preserved)",
+			loggateway.StepID("memory.path_b_extract_fail"),
+			loggateway.Str("task_id", taskID),
+			loggateway.Err(err))
+		return
+	}
+	if enhancedResult == nil {
+		uc.lg.Info("Path B enhanced extraction returned nil (no data worth extracting)",
+			loggateway.StepID("memory.path_b_extract_nil"),
+			loggateway.Str("task_id", taskID))
+		return
+	}
+
+	uc.lg.Info("Path B enhanced extraction succeeded",
+		loggateway.StepID("memory.path_b_extract_ok"),
+		loggateway.Str("task_id", taskID),
+		loggateway.Float64("importance", enhancedResult.Episode.Importance),
+		loggateway.Int("entities", len(enhancedResult.Entities)),
+		loggateway.Int("relations", len(enhancedResult.Relations)))
+
+	// Update the existing Path A episode with enhanced data.
+	// Reuse pathATitle so ON CONFLICT(session_id, title, agent_id) matches the
+	// Path A row and updates it in-place instead of creating a duplicate.
+	decisionsJSON, _ := json.Marshal(enhancedResult.Episode.KeyDecisions)
+	artifactsJSON, _ := json.Marshal(enhancedResult.Episode.KeyArtifacts)
+	if err := uc.admin.InsertL1ArchiveEpisode(ctx, L1ArchiveEpisodeInsert{
+		SessionID:        sessionID,
+		AgentID:          agentID,
+		TaskID:           taskID,
+		TaskTitle:        pathATitle,
+		Status:           enhancedResult.Episode.OutcomeSummary,
+		L1SnapshotJSON:   string(snapshot),
+		Goal:             enhancedResult.Episode.Goal,
+		Outcome:          enhancedResult.Episode.Outcome,
+		OutcomeSummary:   enhancedResult.Episode.OutcomeSummary,
+		KeyDecisionsJSON: string(decisionsJSON),
+		KeyArtifactsJSON: string(artifactsJSON),
+		EpisodeKind:      "l1_archive_path_b",
+		Importance:       enhancedResult.Episode.Importance,
+		Confidence:       enhancedResult.Episode.Confidence,
+	}); err != nil {
+		uc.lg.Warn("Path B episode update failed (best-effort)",
+			loggateway.StepID("memory.path_b_episode_update_fail"),
+			loggateway.Str("task_id", taskID),
+			loggateway.Err(err))
+	}
+
+	// Write extracted entities and relations to L4 graph.
+	uc.pathBExtractor.WriteEntities(ctx, agentID, input.UserID, enhancedResult)
+}
+
+// buildConsolidateInputFromSnapshot creates a ConsolidateInput from an L1 snapshot.
+func buildConsolidateInputFromSnapshot(snapshot []byte, sessionID, agentID string) ConsolidateInput {
+	input := ConsolidateInput{
+		SessionID: sessionID,
+		AgentID:   agentID,
+	}
+	var snap l1Snapshot
+	if json.Unmarshal(snapshot, &snap) == nil {
+		for _, f := range snap.Fields {
+			content := strVal(f, "value_text")
+			if content == "" {
+				continue
+			}
+			role := "user"
+			if strings.EqualFold(strVal(f, "source"), "assistant") {
+				role = "assistant"
+			}
+			input.Messages = append(input.Messages, ConsolidateMessage{
+				Role:      role,
+				Content:   content,
+				MessageID: strVal(f, "id"),
+			})
+		}
+		// Also include task-level fields as context.
+		if goal := strVal(snap.Task, "task_goal"); goal != "" {
+			input.Messages = append([]ConsolidateMessage{{Role: "user", Content: goal}}, input.Messages...)
+		}
+		if lastMsg := strVal(snap.Task, "last_assistant_message"); lastMsg != "" {
+			input.Messages = append(input.Messages, ConsolidateMessage{Role: "assistant", Content: lastMsg})
+		}
+	}
+	return input
+}
+
+// extractEpisodeSignals builds EpisodeSignals from the EndL1Task raw response and importance.
+func extractEpisodeSignals(endTaskRaw []byte, importance float64) EpisodeSignals {
+	m, _ := jsonutil.ParseMap(endTaskRaw)
+	signals := EpisodeSignals{
+		Importance: importance,
+	}
+	// critic_score: default -1 (missing)
+	if v, ok := m["critic_score"]; ok {
+		if f, ok := v.(float64); ok {
+			signals.CriticScore = f
+		}
+	} else {
+		signals.CriticScore = -1
+	}
+	// tool_call_count
+	if v, ok := m["tool_call_count"]; ok {
+		switch n := v.(type) {
+		case float64:
+			signals.ToolCallCount = int(n)
+		case int:
+			signals.ToolCallCount = n
+		}
+	}
+	// duration_ms
+	if v, ok := m["duration_ms"]; ok {
+		switch n := v.(type) {
+		case float64:
+			signals.DurationMs = int(n)
+		case int:
+			signals.DurationMs = n
+		}
+	}
+	// user_mark
+	signals.UserMark = jsonutil.IfaceStr(m, "user_mark")
+	return signals
 }
 
 func (uc *MemoryAdminUsecase) GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error) {
@@ -307,20 +500,6 @@ func (uc *MemoryAdminUsecase) InsertL1ArchiveEpisode(ctx context.Context, in L1A
 		return err
 	}
 	return uc.admin.InsertL1ArchiveEpisode(ctx, in)
-}
-
-func (uc *MemoryAdminUsecase) ListPendingConsolidationEpisodes(ctx context.Context, agentID string, limit int) ([][]byte, error) {
-	if err := uc.requireAdmin(); err != nil {
-		return nil, err
-	}
-	return uc.admin.ListPendingConsolidationEpisodes(ctx, agentID, limit)
-}
-
-func (uc *MemoryAdminUsecase) MarkEpisodeConsolidated(ctx context.Context, id string, l3Count, l4Count int) error {
-	if err := uc.requireAdmin(); err != nil {
-		return err
-	}
-	return uc.admin.MarkEpisodeConsolidated(ctx, id, l3Count, l4Count)
 }
 
 func (uc *MemoryAdminUsecase) IncrementConflictCount(ctx context.Context, factID string) (int32, error) {

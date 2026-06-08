@@ -69,7 +69,7 @@
               :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
               :style="
                 pulseTeamColors?.has(team.id)
-                  ? { '--pulse-color': pulseTeamColors!.get(team.id)! }
+                  ? { '--pulse-color': pulseTeamColors!.get(team.id)!.color, '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms` }
                   : undefined
               "
             >
@@ -102,7 +102,7 @@
               :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
               :style="
                 pulseTeamColors?.has(team.id)
-                  ? { '--pulse-color': pulseTeamColors!.get(team.id)! }
+                  ? { '--pulse-color': pulseTeamColors!.get(team.id)!.color, '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms` }
                   : undefined
               "
             >
@@ -156,8 +156,8 @@ const props = defineProps<{
   selectedTeamId?: string | null;
   defaultAgentId?: string | null;
   isDark: boolean;
-  /** Map of teamId → pulse color name for active pulse animations. */
-  pulseTeamColors?: Map<string, string>;
+  /** Map of teamId → pulse config for active pulse animations. */
+  pulseTeamColors?: Map<string, { color: string; durationMs: number }>;
 }>();
 
 const emit = defineEmits<{
@@ -200,27 +200,29 @@ const filteredAgents = computed(() => {
 
 // --- Agent grouping ---
 const agentGroups = computed((): AgentGroup[] => {
-  const agents = filteredAgents.value;
+  // Filter out system_builtin agents and the __spirit__ virtual agent
+  const agents = filteredAgents.value.filter(
+    (a) => a.kind !== 'system_builtin' && a.agent_key !== '__spirit__',
+  );
   if (agents.length === 0) return [];
 
   const defaultId = props.defaultAgentId;
-  const defaultAgent = defaultId ? agents.find((a) => a.id === defaultId) : null;
 
-  // Group 1: System/Default agents
-  const systemAgents = agents.filter((a) => a.is_default);
-  // Group 2: Custom agents (non-default)
+  // Group 1: Default agents (is_default=true)
+  const defaultAgents = agents.filter((a) => a.is_default);
+  // Group 2: Custom agents (non-default, user-created)
   const customAgents = agents.filter((a) => !a.is_default);
 
   const groups: AgentGroup[] = [];
 
-  if (systemAgents.length > 0) {
-    const items = toEntityItems(loadGroupOrder(systemAgents, 'system', defaultId));
+  if (defaultAgents.length > 0) {
+    const items = toEntityItems(loadGroupOrder(defaultAgents, 'system', defaultId));
     groups.push({
-      key: 'system',
-      label: '系统 Agent',
+      key: 'default',
+      label: '默认 Agent',
       icon: 'verified',
       items,
-      pinnedId: defaultId && systemAgents.some((a) => a.id === defaultId) ? defaultId : undefined,
+      pinnedId: defaultId && defaultAgents.some((a) => a.id === defaultId) ? defaultId : undefined,
     });
   }
 
@@ -228,7 +230,7 @@ const agentGroups = computed((): AgentGroup[] => {
     const items = toEntityItems(loadGroupOrder(customAgents, 'custom'));
     groups.push({
       key: 'custom',
-      label: '系统内置',
+      label: '自定义 Agent',
       icon: 'person',
       items,
     });
@@ -278,7 +280,7 @@ function onSelectAgent(item: EntityItem) {
 }
 
 .team-card-wrapper--pulse {
-  animation: status-pulse 1.5s ease-out;
+  animation: status-pulse var(--pulse-duration, 1.5s) ease-out;
   border-left: 2px solid var(--pulse-color);
   border-radius: 12px;
 }

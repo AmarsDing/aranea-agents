@@ -475,6 +475,24 @@ func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string,
 	return u.writer.UpdateTeam(ctx, current)
 }
 
+// RetryTeam resets a failed or cancelled team to pending so it can be re-started.
+// Only failed/cancelled teams are eligible; other states return BadRequest.
+func (u *TeamUsecase) RetryTeam(ctx context.Context, id string) (Team, error) {
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return Team{}, err
+	}
+	current, err := u.reader.GetTeamByID(ctx, id)
+	if err != nil {
+		return Team{}, err
+	}
+	if current.Status != TeamStatusFailed && current.Status != TeamStatusCancelled {
+		return Team{}, kerrors.BadRequest("TEAM", "only failed or cancelled teams can be retried")
+	}
+	current.Status = TeamStatusPending
+	return u.writer.UpdateTeam(ctx, current)
+}
+
 // BatchArchiveTeams archives multiple teams in a single DB operation.
 // It validates each team's current status allows archiving before proceeding.
 func (u *TeamUsecase) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {

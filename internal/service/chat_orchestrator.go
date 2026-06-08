@@ -114,6 +114,7 @@ type ChatOrchestrator struct {
 	spiritSynthesis *SpiritSynthesisService
 	orchCache       *biz.OrchestrationCache
 	teamStarter     biz.TeamStarterPort
+	graphExec       biz.GraphExecutor
 	turnTimeout     time.Duration
 	skillEvo        *biz.SkillEvolutionUsecase
 	evolution       *biz.EvolutionUsecase
@@ -153,6 +154,7 @@ type ChatOrchestratorDeps struct {
 	SpiritSynthesis *SpiritSynthesisService
 	OrchCache       *biz.OrchestrationCache
 	TeamStarter     biz.TeamStarterPort
+	GraphExec       biz.GraphExecutor
 	TurnTimeout     time.Duration
 	SkillEvo        *biz.SkillEvolutionUsecase
 	Evolution       *biz.EvolutionUsecase
@@ -199,6 +201,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		spiritSynthesis: deps.SpiritSynthesis,
 		orchCache:       deps.OrchCache,
 		teamStarter:     deps.TeamStarter,
+		graphExec:       deps.GraphExec,
 		turnTimeout:     deps.TurnTimeout,
 		skillEvo:        deps.SkillEvo,
 		evolution:       deps.Evolution,

@@ -163,6 +163,8 @@ message AgentRuntimeSettings {
   int32 subagents_stored_summary_runes = 126;
   // VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
   int32 verification_truncate_chars = 127;
+  // L1HistoryEnabled controls whether old field values are archived to memory_l1_field_history on upsert (default false).
+  bool l1_history_enabled = 131;
 }
 
 message AgentPromptFile {

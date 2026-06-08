@@ -154,15 +154,18 @@ export function lastAssistantTurnBlockIndex(blocks: TurnBlockGroup[]): number {
 export function toolStripSummary(tools: Message[]): {
   count: number;
   failed: number;
+  cancelled: number;
   totalMs: number;
 } {
   let failed = 0;
+  let cancelled = 0;
   let totalMs = 0;
   for (const t of tools) {
     if (t.status === 'tool_failed') failed++;
+    if (t.status === 'tool_cancelled') cancelled++;
     totalMs += t.latency_ms ?? 0;
   }
-  return { count: tools.length, failed, totalMs };
+  return { count: tools.length, failed, cancelled, totalMs };
 }
 
 /** CC-C-UX-03: omit tools already rendered under ReAct ACTION in the assistant row. */

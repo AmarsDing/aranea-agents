@@ -1,59 +1,147 @@
 <template>
-  <q-card flat bordered class="q-pa-md q-gutter-md" style="max-width: 640px">
-    <q-select
-      v-if="agentOptions.length"
-      v-model="calleeAgentId"
-      dense
-      outlined
-      emit-value
-      map-options
-      clearable
-      label="Callee Agent（Discover）"
-      :options="agentOptions"
-      hint="可从发现列表选择，或手动填写下方 ID"
-    />
-    <q-input v-model="calleeAgentId" dense outlined label="Callee Agent ID *" />
-    <q-select
-      v-if="capabilityOptions.length"
-      v-model="capability"
-      dense
-      outlined
-      emit-value
-      map-options
-      clearable
-      label="Capability"
-      :options="capabilityOptions"
-      hint="选择已注册能力或手动输入"
-    />
-    <q-input v-model="capability" dense outlined label="Capability *" />
-    <q-input
-      v-model="workspace"
-      dense
-      outlined
-      label="Workspace（跨工作区 Invoke）"
-      hint="Admin 路径：须与 X-Workspace-ID 及被调 Agent Card 一致"
-    />
-    <q-input
-      v-model="payloadJson"
-      dense
-      outlined
-      type="textarea"
-      rows="6"
-      label="Payload JSON"
-      hint='例如 {"message":"你好"}'
-    />
-    <q-input v-model.number="timeoutSeconds" dense outlined type="number" label="Timeout (秒)" />
-    <q-btn color="primary" unelevated icon="send" label="Invoke" :loading="loading" @click="$emit('invoke')" />
-    <q-card v-if="result" flat bordered class="q-pa-sm">
-      <div class="text-caption">invoke_id: {{ result.invoke_id }}</div>
-      <div class="text-caption">status: {{ result.status }} · {{ result.duration_ms }}ms</div>
-      <pre class="a2a-result">{{ result.result_json || result.error_message }}</pre>
-    </q-card>
-  </q-card>
+  <div class="app-form-wide a2a-invoke-form">
+    <!-- Header -->
+    <div class="a2a-form-header">
+      <q-icon name="send" size="sm" color="primary" />
+      <span class="a2a-form-header__title">Invoke 测试</span>
+    </div>
+
+    <div class="a2a-form-body">
+      <!-- Group: 目标 -->
+      <div class="a2a-form-group">
+        <div class="a2a-form-group__title">目标</div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">Callee Agent *</div>
+          <div class="a2a-form-row__control">
+            <q-select
+              v-if="agentOptions.length"
+              v-model="calleeAgentId"
+              dense
+              outlined
+              emit-value
+              map-options
+              use-input
+              input-debounce="0"
+              clearable
+              :options="filteredAgentOptions"
+              class="app-glass-control"
+              @filter="onFilterAgent"
+              @new-value="onNewAgentValue"
+            >
+              <template #no-option>
+                <q-item dense>
+                  <q-item-section class="text-grey-6">输入 Agent ID 后回车确认</q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+            <q-input
+              v-else
+              v-model="calleeAgentId"
+              dense
+              outlined
+              class="app-glass-control"
+            />
+          </div>
+        </div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">Capability *</div>
+          <div class="a2a-form-row__control">
+            <q-select
+              v-if="capabilityOptions.length"
+              v-model="capability"
+              dense
+              outlined
+              emit-value
+              map-options
+              use-input
+              input-debounce="0"
+              clearable
+              :options="filteredCapabilityOptions"
+              class="app-glass-control"
+              @filter="onFilterCapability"
+              @new-value="onNewCapabilityValue"
+            >
+              <template #no-option>
+                <q-item dense>
+                  <q-item-section class="text-grey-6">输入 Capability 后回车确认</q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+            <q-input
+              v-else
+              v-model="capability"
+              dense
+              outlined
+              class="app-glass-control"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Group: 参数 -->
+      <div class="a2a-form-group">
+        <div class="a2a-form-group__title">参数</div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">Workspace</div>
+          <div class="a2a-form-row__control">
+            <q-input v-model="workspace" dense outlined class="app-glass-control" />
+          </div>
+          <div class="a2a-form-row__hint">跨工作区 Invoke 时须与 X-Workspace-ID 及被调 Agent Card 一致</div>
+        </div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">Timeout</div>
+          <div class="a2a-form-row__control">
+            <q-input v-model.number="timeoutSeconds" dense outlined type="number" class="app-glass-control app-field-sm" />
+          </div>
+        </div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">Payload</div>
+          <div class="a2a-form-row__control">
+            <q-input
+              v-model="payloadJson"
+              dense
+              outlined
+              type="textarea"
+              rows="5"
+              class="app-glass-control"
+            />
+          </div>
+          <div class="a2a-form-row__hint">例如 {"message":"你好"}</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="a2a-form-actions">
+        <q-btn
+          color="primary"
+          unelevated
+          icon="send"
+          label="Invoke"
+          no-caps
+          :loading="loading"
+          @click="$emit('invoke')"
+        />
+      </div>
+
+      <!-- Result -->
+      <q-card v-if="result" flat bordered class="a2a-invoke-result app-glass-side-panel">
+        <div class="a2a-invoke-result__meta">
+          <span class="a2a-invoke-result__id">invoke_id: {{ result.invoke_id }}</span>
+          <span class="a2a-invoke-result__status">status: {{ result.status }} · {{ result.duration_ms }}ms</span>
+        </div>
+        <pre class="a2a-result">{{ result.result_json || result.error_message }}</pre>
+      </q-card>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { A2AAgentCard, A2AInvokeResult } from '../../features/a2a/types';
 
 const props = defineProps<{
@@ -91,4 +179,42 @@ const capabilityOptions = computed(() => {
   if (!agent) return [];
   return agent.capabilities.map((c) => ({ label: c.name, value: c.name }));
 });
+
+// Filtered options for q-select with use-input
+const filteredAgentOptions = ref(agentOptions.value);
+const filteredCapabilityOptions = ref(capabilityOptions.value);
+
+function onFilterAgent(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    const needle = val.toLowerCase();
+    filteredAgentOptions.value = agentOptions.value.filter(
+      (o) => o.label.toLowerCase().includes(needle) || o.value.toLowerCase().includes(needle),
+    );
+  });
+}
+
+function onNewAgentValue(val: string, done: (fn: () => void, opts?: { replace?: boolean }) => void) {
+  done(() => {
+    calleeAgentId.value = val;
+  });
+}
+
+function onFilterCapability(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    const needle = val.toLowerCase();
+    filteredCapabilityOptions.value = capabilityOptions.value.filter(
+      (o) => o.label.toLowerCase().includes(needle) || o.value.toLowerCase().includes(needle),
+    );
+  });
+}
+
+function onNewCapabilityValue(val: string, done: (fn: () => void, opts?: { replace?: boolean }) => void) {
+  done(() => {
+    capability.value = val;
+  });
+}
+
+// Sync filtered options when source options change
+watch(agentOptions, (opts) => { filteredAgentOptions.value = opts; });
+watch(capabilityOptions, (opts) => { filteredCapabilityOptions.value = opts; });
 </script>

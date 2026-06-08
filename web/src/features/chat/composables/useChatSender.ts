@@ -112,7 +112,7 @@ export function useChatSender(deps: SenderDeps) {
     clearStallCheck();
     stallCheckInterval = setInterval(() => {
       if (!sending.value || lastRunEventAt === 0) return;
-      if (Date.now() - lastRunEventAt > RUN_STALL_TIMEOUT_MS) {
+      if (Date.now() - lastRunEventAt > CHAT_RUN_STALL_TIMEOUT_MS) {
         $q.notify({
           type: 'warning',
           message: t('chat.runStallWarning', '响应时间较长，请耐心等待或停止生成'),
@@ -120,7 +120,7 @@ export function useChatSender(deps: SenderDeps) {
         });
         clearStallCheck();
       }
-    }, RUN_STALL_CHECK_INTERVAL_MS);
+    }, CHAT_RUN_STALL_CHECK_INTERVAL_MS);
   }
 
   function markSending(sessionId?: string) {
@@ -131,7 +131,7 @@ export function useChatSender(deps: SenderDeps) {
         sending.value = false;
         $q.notify({ type: 'warning', message: t('chat.sendDispatchTimeout', '消息发送超时，请检查网络连接') });
       }
-    }, SEND_DISPATCH_TIMEOUT_MS);
+    }, CHAT_SEND_DISPATCH_TIMEOUT_MS);
     startStallCheck();
   }
 
@@ -184,7 +184,7 @@ export function useChatSender(deps: SenderDeps) {
         type: 'negative',
         message: t('chat.sendTimeoutToast', '后端响应超时，消息已标记为失败，请重试'),
       });
-    }, TURN_ACK_TIMEOUT_MS);
+    }, CHAT_TURN_ACK_TIMEOUT_MS);
   }
 
   function onFirstByteArrived() {
@@ -203,7 +203,7 @@ export function useChatSender(deps: SenderDeps) {
         });
         clearFirstByteTimeout();
       }
-    }, FIRST_BYTE_TIMEOUT_MS);
+    }, CHAT_FIRST_BYTE_TIMEOUT_MS);
   }
 
   function touchRunActivity() {
@@ -354,13 +354,13 @@ export function useChatSender(deps: SenderDeps) {
       }
       dropPendingUserRow(sessionId, pendingUserId);
       deps.setRunStatus('idle');
-      await sendUserContent('agent', content);
+      await sendUserContent(deps.sessionStore.entityKind, content);
     } catch (err: unknown) {
       dropPendingUserRow(sessionId, pendingUserId);
       const errMessage = err instanceof Error ? err.message : '';
       if (errMessage.includes('CHAT_RUN_ENDED')) {
         deps.setRunStatus('idle');
-        await sendUserContent('agent', content);
+        await sendUserContent(deps.sessionStore.entityKind, content);
       } else if (errMessage.includes('CHAT_QUEUE_FULL')) {
         $q.notify({ type: 'warning', message: t('chat.enqueueQueueFull', '排队消息已满，请稍后再试') });
       } else {

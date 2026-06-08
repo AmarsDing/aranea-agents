@@ -17,11 +17,24 @@ type AgentAssignment struct {
 	DependsOn []string `json:"depends_on" jsonschema:"description=Agent keys this agent depends on"`
 }
 
+// ConditionalBranch defines a conditional routing branch from a source agent.
+type ConditionalBranch struct {
+	// SourceAgent is the agent whose output determines the branch.
+	SourceAgent string `json:"source_agent" jsonschema:"description=Agent key whose output determines the branch"`
+	// ConditionFunc is the function reference for evaluating the branch condition.
+	ConditionFunc string `json:"condition_func" jsonschema:"description=Condition function reference (e.g. check_result_type)"`
+	// PathMap maps condition result values to destination agent keys.
+	PathMap map[string]string `json:"path_map" jsonschema:"description=Map of condition result value to destination agent key"`
+	// DefaultPath is the fallback destination if no condition matches.
+	DefaultPath string `json:"default_path,omitempty" jsonschema:"description=Fallback destination agent key if no condition matches"`
+}
+
 // BuildOrchestrationGraphInput is the input for the build_orchestration_graph tool.
 type BuildOrchestrationGraphInput struct {
-	TaskDescription string            `json:"task_description" jsonschema:"description=Overall task description"`
-	Agents          []AgentAssignment `json:"agents" jsonschema:"description=Agent assignments for the graph"`
-	Mode            string            `json:"mode" jsonschema:"description=Graph mode: parallel|sequential|hybrid|coordinator"`
+	TaskDescription     string               `json:"task_description" jsonschema:"description=Overall task description"`
+	Agents              []AgentAssignment    `json:"agents" jsonschema:"description=Agent assignments for the graph"`
+	Mode                string               `json:"mode" jsonschema:"description=Graph mode: parallel|sequential|hybrid|coordinator"`
+	ConditionalBranches []ConditionalBranch  `json:"conditional_branches,omitempty" jsonschema:"description=Conditional routing branches (optional)"`
 }
 
 // BuildOrchestrationGraphOutput is the output for the build_orchestration_graph tool.
@@ -95,9 +108,14 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
 	nodes = append(nodes, biz.NodeDef{ID: finishNode, Type: biz.NodeTypeFunction})
 	edges = append(edges, biz.EdgeDef{From: mergeNode, To: finishNode})
 
+	// Build conditional edges from ConditionalBranches.
+	var conditionalEdges []biz.ConditionalEdgeDef
+	buildConditionalEdges(&conditionalEdges, &edges, input.ConditionalBranches, agentKeys, mergeNode)
+
 	return biz.GraphBuildConfig{
 		Nodes:            nodes,
 		Edges:            edges,
+		ConditionalEdges: conditionalEdges,
 		EntryPoint:       entryNode,
 		FinishPoint:      finishNode,
 		EnableCheckpoint: true,
@@ -215,4 +233,56 @@ func hasCycle(nodes []biz.NodeDef, edges []biz.EdgeDef) bool {
 		}
 	}
 	return false
+}
+
+// buildConditionalEdges generates ConditionalEdgeDef entries from ConditionalBranch specifications.
+// It also removes any static edges from the source agent to its conditional destinations,
+// since the conditional edge replaces them with dynamic routing.
+func buildConditionalEdges(
+	condEdges *[]biz.ConditionalEdgeDef,
+	edges *[]biz.EdgeDef,
+	branches []ConditionalBranch,
+	agentKeys map[string]bool,
+	mergeNode string,
+) {
+	for _, cb := range branches {
+		if !agentKeys[cb.SourceAgent] || cb.ConditionFunc == "" || len(cb.PathMap) == 0 {
+			continue
+		}
+
+		// Build the conditional edge definition.
+		pathMap := make(map[string]string, len(cb.PathMap))
+		condDestinations := make(map[string]bool, len(cb.PathMap)+1)
+		for result, dest := range cb.PathMap {
+			if agentKeys[dest] {
+				pathMap[result] = dest
+				condDestinations[dest] = true
+			}
+		}
+		if cb.DefaultPath != "" && agentKeys[cb.DefaultPath] {
+			pathMap["__default__"] = cb.DefaultPath
+			condDestinations[cb.DefaultPath] = true
+		}
+
+		if len(pathMap) == 0 {
+			continue
+		}
+
+		*condEdges = append(*condEdges, biz.ConditionalEdgeDef{
+			From:        cb.SourceAgent,
+			CondFuncRef: cb.ConditionFunc,
+			PathMap:     pathMap,
+		})
+
+		// Remove static edges from source to conditional destinations,
+		// since the conditional edge handles routing dynamically.
+		var filteredEdges []biz.EdgeDef
+		for _, e := range *edges {
+			if e.From == cb.SourceAgent && condDestinations[e.To] {
+				continue // skip static edge to conditional destination
+			}
+			filteredEdges = append(filteredEdges, e)
+		}
+		*edges = filteredEdges
+	}
 }

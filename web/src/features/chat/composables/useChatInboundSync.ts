@@ -40,6 +40,7 @@ export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
   sessionStore: ReturnType<typeof useChatSessionStore>;
   messageStore: ReturnType<typeof useChatMessageStore>;
+  spiritStore: ReturnType<typeof useSpiritTeamStore>;
   selectedAgentId: Ref<string | undefined>;
   selectedSessionId: Ref<string | undefined>;
   wsReplaying?: Ref<boolean>;
@@ -310,8 +311,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
 
     if (env.type.startsWith('spirit_')) {
-      const spiritStore = useSpiritTeamStore();
-      spiritStore.handleSpiritEnvelope(env);
+      deps.spiritStore.handleSpiritEnvelope(env);
       deps.onSpiritEnvelope?.(env);
     }
 
@@ -326,8 +326,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       console.warn('[envelope] alert.notify received', { sessionId, metadata: env.metadata });
     }
     if (env.type.startsWith('butler.orchestration.')) {
-      const spiritStore = useSpiritTeamStore();
-      spiritStore.handleSpiritEnvelope(env);
+      deps.spiritStore.handleSpiritEnvelope(env);
       deps.onSpiritEnvelope?.(env);
     }
     if (env.type === 'skill.health_changed' || env.type === 'skill.evolution_proposed') {
@@ -375,6 +374,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     const ownsEnvelope = isCurrent || entityMatch || (channelInbound && (isStreamEnvelopeType(env) || turnComplete));
 
     if (ownsEnvelope && patchChannelStreamEnvelope(sessionId, env, channelInbound)) {
+      // OBS-02: Route tool_call/tool_result to contextual loading message handler
+      // before returning, so agent-level loading messages are displayed.
+      if (env.type === 'tool_call' || env.type === 'tool_result') {
+        deps.onSpiritEnvelope?.(env);
+      }
       return;
     }
 

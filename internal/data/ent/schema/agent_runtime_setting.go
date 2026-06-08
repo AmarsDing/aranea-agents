@@ -71,6 +71,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l1_budget_tokens").Default(8192),
 		field.Int("l1_field_max_tokens").Default(2048),
 		field.Int("l1_history_keep_revisions").Default(10),
+		field.Bool("l1_history_enabled").Default(false),
 		field.String("l1_default_schema_id").Default(""),
 		field.Int("l1_archive_on_idle_minutes").Default(60),
 		field.Bool("l2_episode_enabled").Default(true),

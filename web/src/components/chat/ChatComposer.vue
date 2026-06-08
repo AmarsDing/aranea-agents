@@ -362,7 +362,7 @@ function onInputKeydown(event: KeyboardEvent) {
     const text = props.modelValue.trim();
     if (text) {
       emit('enqueue-message', text);
-      emit('update:modelValue', '');
+      // Don't clear input here — the consumer will clear it after successful enqueue
     }
   } else {
     emit('send');

@@ -8,6 +8,14 @@
         <div class="synthesis-result-card__title">综合结果</div>
       </div>
       <q-chip dense size="sm" outline :label="strategyLabel" class="synthesis-result-card__strategy" />
+      <q-chip
+        v-if="successRate !== null"
+        dense
+        size="sm"
+        :outline="successRate < 1"
+        :label="successRateLabel"
+        :class="successRateClass"
+      />
     </div>
 
     <div class="synthesis-result-card__content">
@@ -34,7 +42,6 @@
         <div
           v-if="tr.keyFindings"
           class="synthesis-result-card__team-findings text-caption q-ml-lg"
-          style="white-space: pre-line; max-height: 60px; overflow-y: auto"
         >
           {{ tr.keyFindings }}
         </div>
@@ -44,16 +51,38 @@
     <div class="synthesis-result-card__meta q-mt-sm">
       <span class="text-caption text-grey-6">{{ formattedTime }}</span>
     </div>
+
+    <div v-if="evolutionSuggestion" class="synthesis-result-card__evolution q-mt-sm">
+      <div class="synthesis-result-card__evolution-title text-caption text-weight-medium q-mb-xs">
+        <q-icon name="transform" size="14px" class="q-mr-xs" style="color: var(--color-warning)" />
+        进化建议
+      </div>
+      <div class="synthesis-result-card__evolution-body">
+        <div class="text-caption text-grey-6">
+          {{ evolutionSuggestion.currentTopology }} → {{ evolutionSuggestion.suggestedTopology }}
+        </div>
+        <div v-if="evolutionSuggestion.reason" class="text-caption text-grey-6 q-mt-xs">
+          {{ evolutionSuggestion.reason }}
+        </div>
+        <div class="text-caption q-mt-xs" :style="{ color: dqColor }">
+          DQ: {{ evolutionSuggestion.dqScore.toFixed(2) }}
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { SynthesisOutput, SynthesisStrategy } from '../../features/spirit/types';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
+import type { SynthesisOutput, SynthesisStrategy, EvolutionSuggestion } from '../../features/spirit/types';
+import { dqScoreColor } from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   result: SynthesisOutput;
+  /** Pre-rendered HTML content from parent (via renderChatMarkdown). */
+  renderedContent: string;
+  /** Evolution suggestion from DQ analysis. */
+  evolutionSuggestion?: EvolutionSuggestion | null;
 }>();
 
 const strategyLabel = computed(() => {
@@ -65,10 +94,6 @@ const strategyLabel = computed(() => {
   return labels[props.result.strategy] ?? props.result.strategy;
 });
 
-const renderedContent = computed(() => {
-  return renderChatMarkdown(props.result.content);
-});
-
 const formattedTime = computed(() => {
   if (!props.result.synthesizedAt) return '';
   try {
@@ -77,6 +102,27 @@ const formattedTime = computed(() => {
     return props.result.synthesizedAt;
   }
 });
+
+const successRate = computed(() => {
+  const teams = props.result.teamResults;
+  if (!teams.length) return null;
+  const completed = teams.filter((t) => t.status === 'completed').length;
+  return completed / teams.length;
+});
+
+const successRateLabel = computed(() => {
+  if (successRate.value === null) return '';
+  return `${Math.round(successRate.value * 100)}% 成功`;
+});
+
+const successRateClass = computed(() => {
+  if (successRate.value === null) return '';
+  if (successRate.value >= 1) return 'synthesis-result-card__rate--full';
+  if (successRate.value >= 0.5) return 'synthesis-result-card__rate--partial';
+  return 'synthesis-result-card__rate--low';
+});
+
+const dqColor = computed(() => dqScoreColor(props.evolutionSuggestion?.dqScore));
 </script>
 
 <style scoped lang="sass">
@@ -152,7 +198,36 @@ const formattedTime = computed(() => {
   font-size: 11px
   color: var(--color-text-tertiary)
   padding: 1px 0
+  white-space: pre-line
+  max-height: 60px
+  overflow-y: auto
 
 .synthesis-result-card__meta
   text-align: right
+
+.synthesis-result-card__rate--full
+  color: var(--color-success)
+  border-color: color-mix(in srgb, var(--color-success) 40%, var(--glass-border))
+
+.synthesis-result-card__rate--partial
+  color: var(--color-warning)
+  border-color: color-mix(in srgb, var(--color-warning) 40%, var(--glass-border))
+
+.synthesis-result-card__rate--low
+  color: var(--color-danger)
+  border-color: color-mix(in srgb, var(--color-danger) 40%, var(--glass-border))
+
+.synthesis-result-card__evolution
+  padding-top: var(--space-2)
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
+
+.synthesis-result-card__evolution-title
+  display: flex
+  align-items: center
+
+.synthesis-result-card__evolution-body
+  padding: var(--space-2)
+  border-radius: 8px
+  background: color-mix(in srgb, var(--color-warning) 5%, var(--glass-surface))
+  border: 1px solid color-mix(in srgb, var(--color-warning) 20%, var(--glass-border))
 </style>

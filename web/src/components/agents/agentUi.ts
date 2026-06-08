@@ -245,3 +245,45 @@ export function formatLastRunContext(agent: Agent) {
 export function isAgentEvolving(agent: Agent, pendingSuggestions = agent.pending_evolution_count ?? 0) {
   return selfEvolveEnabled(agent) && pendingSuggestions > 0;
 }
+
+/** 框架记忆工具（5 个） */
+const FRAMEWORK_MEMORY_TOOLS = new Set(['memory_add', 'memory_update', 'memory_delete', 'memory_search', 'memory_load']);
+
+/** 工作记忆工具（5 个） */
+const WORKING_MEMORY_TOOLS = new Set([
+  'working_memory_read',
+  'working_memory_list',
+  'working_memory_write',
+  'working_memory_patch',
+  'working_memory_delete',
+]);
+
+export type MemoryToolMode = 'working_memory' | 'framework_memory' | 'both';
+
+/** 根据 tools_deny_json 推导记忆工具模式：
+ * - 拒绝了全部 5 个框架记忆工具 → working_memory（仅工作记忆）
+ * - 拒绝了全部 5 个工作记忆工具 → framework_memory（仅框架记忆）
+ * - 其它 → both（双模式）
+ */
+export function deriveMemoryToolMode(toolsDenyJson?: string): MemoryToolMode {
+  if (!toolsDenyJson) return 'both';
+  let denied: string[];
+  try {
+    denied = JSON.parse(toolsDenyJson);
+  } catch {
+    return 'both';
+  }
+  if (!Array.isArray(denied)) return 'both';
+  const deniedSet = new Set(denied);
+  const frameworkDenied = [...FRAMEWORK_MEMORY_TOOLS].every((t) => deniedSet.has(t));
+  const workingDenied = [...WORKING_MEMORY_TOOLS].every((t) => deniedSet.has(t));
+  if (frameworkDenied && !workingDenied) return 'working_memory';
+  if (workingDenied && !frameworkDenied) return 'framework_memory';
+  return 'both';
+}
+
+export const MEMORY_TOOL_MODE_LABELS: Record<MemoryToolMode, string> = {
+  working_memory: '工作记忆',
+  framework_memory: '框架记忆',
+  both: '双模式',
+};

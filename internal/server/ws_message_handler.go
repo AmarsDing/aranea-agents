@@ -253,6 +253,13 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 			}
 		}
 	}
+	if kbs, ok := opts["knowledge_bases"].([]any); ok {
+		for _, kb := range kbs {
+			if s, ok := kb.(string); s != "" && ok {
+				result.KnowledgeBases = append(result.KnowledgeBases, s)
+			}
+		}
+	}
 	return result
 }
 
@@ -275,6 +282,13 @@ func buildWSTurnOptions(opts map[string]any) WSTurnOptions {
 				if id, _ := m["id"].(string); id != "" {
 					result.AttachmentIDs = append(result.AttachmentIDs, id)
 				}
+			}
+		}
+	}
+	if kbs, ok := opts["knowledge_bases"].([]any); ok {
+		for _, kb := range kbs {
+			if s, ok := kb.(string); s != "" && ok {
+				result.KnowledgeBases = append(result.KnowledgeBases, s)
 			}
 		}
 	}

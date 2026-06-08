@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS memory_episodes (
   embedding_dim INTEGER NOT NULL DEFAULT 0,
   embedding_blob BLOB,
   embedding_norm REAL NOT NULL DEFAULT 0,
-  consolidation_status TEXT NOT NULL DEFAULT 'pending',
+  consolidation_status TEXT NOT NULL DEFAULT 'consolidated',
   consolidated_at TEXT NOT NULL DEFAULT '',
   consolidated_l3_count INTEGER NOT NULL DEFAULT 0,
   consolidated_l4_count INTEGER NOT NULL DEFAULT 0,
@@ -203,24 +203,6 @@ CREATE TABLE IF NOT EXISTS memory_episodes (
   updated_at TEXT NOT NULL,
   archived_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT ''
-);
-
-CREATE TABLE IF NOT EXISTS memory_l2_index_meta (
-  id TEXT PRIMARY KEY,
-  episode_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  agent_id TEXT NOT NULL DEFAULT '',
-  text_kind TEXT NOT NULL DEFAULT 'episode',
-  text_preview TEXT NOT NULL DEFAULT '',
-  token_estimate INTEGER NOT NULL DEFAULT 0,
-  embedding_model TEXT NOT NULL DEFAULT '',
-  embedding_dim INTEGER NOT NULL DEFAULT 0,
-  embedding_blob BLOB,
-  embedding_norm REAL NOT NULL DEFAULT 0,
-  importance REAL NOT NULL DEFAULT 0.5,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE(episode_id, text_kind)
 );
 
 CREATE TABLE IF NOT EXISTS memory_event_marks (
@@ -244,8 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_episodes_agent ON memory_episodes(agent_id
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_consolidation ON memory_episodes(consolidation_status, importance DESC, ended_at);
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_kind ON memory_episodes(episode_kind, ended_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_l1_task ON memory_episodes(l1_task_id);
-CREATE INDEX IF NOT EXISTS idx_memory_l2_index_meta_episode ON memory_l2_index_meta(episode_id);
-CREATE INDEX IF NOT EXISTS idx_memory_l2_index_meta_session_kind ON memory_l2_index_meta(session_id, text_kind);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_episodes_session_title_agent ON memory_episodes(session_id, title, agent_id);
 CREATE INDEX IF NOT EXISTS idx_memory_event_marks_session ON memory_event_marks(session_id, mark_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_event_marks_episode ON memory_event_marks(episode_id);
 

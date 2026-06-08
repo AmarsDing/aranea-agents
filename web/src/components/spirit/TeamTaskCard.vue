@@ -12,12 +12,15 @@
     @keydown.space.prevent="$emit('click')"
   >
     <div class="row items-center no-wrap q-gutter-sm">
-      <div class="team-task-card__icon">
+      <div class="team-task-card__icon" :class="`team-task-card__icon--${teamStatusColor}`">
         <q-icon name="groups" size="18px" />
       </div>
       <div class="col min-width-0">
         <div class="team-task-card__name ellipsis">{{ team.teamName }}</div>
-        <div class="team-task-card__summary ellipsis">{{ team.taskSummary }}</div>
+        <div class="team-task-card__summary ellipsis">
+          <span :class="`team-task-card__status-text--${teamStatusColor}`">{{ teamStatusText }}</span>
+          <span v-if="team.taskSummary" class="q-ml-xs">· {{ team.taskSummary }}</span>
+        </div>
       </div>
       <span
         class="team-task-card__status-dot"
@@ -40,12 +43,12 @@
       </div>
 
       <div v-if="team.memberAvatars.length > 0" class="team-task-card__avatars row items-center q-gutter-xs q-mb-xs">
-        <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 5)" :key="idx" size="22px">
+        <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 4)" :key="idx" size="22px">
           <img v-if="url" :src="url" alt="" />
           <q-icon v-else name="person" size="14px" color="grey-6" />
         </q-avatar>
-        <span v-if="team.memberAvatars.length > 5" class="text-caption text-grey-6">
-          +{{ team.memberAvatars.length - 5 }}
+        <span v-if="team.memberAvatars.length > 4" class="text-caption text-grey-6">
+          +{{ team.memberAvatars.length - 4 }}
         </span>
       </div>
 
@@ -59,6 +62,24 @@
         />
         <div class="text-caption text-grey-6 q-mt-xs">{{ team.completedSteps }} / {{ team.totalSteps }} 步骤</div>
       </div>
+
+      <div v-if="team.dependsOn.length > 0" class="text-caption text-grey-6 q-mt-xs">
+        <q-icon name="account_tree" size="14px" class="q-mr-xs" />
+        {{ team.dependsOn.length }} 个前置任务
+      </div>
+
+      <div v-if="team.sharedAgentIds.length > 0" class="team-task-card__shared-agent text-caption q-mt-xs">
+        <q-icon name="share" size="14px" class="q-mr-xs" />
+        {{ team.sharedAgentIds.length }} 个共用 Agent
+      </div>
+
+      <TeamMemberTreeNode
+        v-if="team.members.length > 0"
+        :members="team.members"
+        :selectable="true"
+        class="q-mt-sm"
+        @select="(memberId) => $emit('select-member', memberId)"
+      />
     </div>
   </div>
 </template>
@@ -67,6 +88,7 @@
 import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import AgentStatusLabel from './AgentStatusLabel.vue';
+import TeamMemberTreeNode from './TeamMemberTreeNode.vue';
 import type { SpiritTeam } from '../../features/spirit/types';
 import { mapSpiritStatusToSession, spiritModeLabel, spiritTeamStatusToLabel, STATUS_LABEL_CONFIG } from '../../features/spirit/spiritUi';
 
@@ -79,6 +101,7 @@ const props = defineProps<{
 defineEmits<{
   click: [];
   'toggle-expand': [];
+  'select-member': [memberId: string];
 }>();
 
 const mappedStatus = computed(() => mapSpiritStatusToSession(props.team.status));
@@ -88,6 +111,8 @@ const modeLabel = computed(() => spiritModeLabel(props.team.mode));
 const teamStatusLabel = computed(() => spiritTeamStatusToLabel(props.team.status));
 
 const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.dotColor ?? 'grey');
+
+const teamStatusText = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.text ?? props.team.status);
 </script>
 
 <style scoped lang="sass">
@@ -117,6 +142,19 @@ const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value
   background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
   color: var(--color-accent)
   flex-shrink: 0
+
+.team-task-card__icon--blue
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--glass-surface))
+  color: var(--color-accent)
+.team-task-card__icon--green
+  background: color-mix(in srgb, var(--color-success) 15%, var(--glass-surface))
+  color: var(--color-success)
+.team-task-card__icon--red
+  background: color-mix(in srgb, var(--color-danger) 15%, var(--glass-surface))
+  color: var(--color-danger)
+.team-task-card__icon--orange
+  background: color-mix(in srgb, var(--color-warning) 15%, var(--glass-surface))
+  color: var(--color-warning)
 
 .team-task-card__name
   font-size: var(--text-sm)
@@ -168,4 +206,18 @@ const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value
   background: var(--color-success)
 .team-task-card__status-dot--red
   background: var(--color-danger)
+
+.team-task-card__status-text--grey
+  color: var(--color-text-tertiary)
+.team-task-card__status-text--blue
+  color: var(--color-accent)
+.team-task-card__status-text--orange
+  color: var(--color-warning)
+.team-task-card__status-text--green
+  color: var(--color-success)
+.team-task-card__status-text--red
+  color: var(--color-danger)
+
+.team-task-card__shared-agent
+  color: var(--color-warning)
 </style>

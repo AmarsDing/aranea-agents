@@ -51,7 +51,7 @@
           @discover="gateway.loadGateway"
         />
       </q-tab-panel>
-      <q-tab-panel name="remote" class="q-pa-none q-gutter-md">
+      <q-tab-panel name="remote" class="q-pa-none">
         <AppPageToolbar>
           <q-input
             v-model="remote.remoteWorkspace"
@@ -65,15 +65,16 @@
             <q-btn outline no-caps color="primary" label="刷新列表" :loading="remote.remoteLoading" @click="remote.loadRemote" />
           </template>
         </AppPageToolbar>
-        <A2ARemoteAgentPanel
-          ref="remoteAgentPanelRef"
-          :loading="remote.remoteRegisterLoading"
-          :discovering="remote.remoteDiscoverLoading"
-          :preview="remote.remotePreview"
-          @register="onRemoteRegister"
-          @discover="remote.previewRemote"
-        />
-        <AppRegistryTable
+        <div class="a2a-remote-split">
+          <A2ARemoteAgentPanel
+            ref="remoteAgentPanelRef"
+            :loading="remote.remoteRegisterLoading"
+            :discovering="remote.remoteDiscoverLoading"
+            :preview="remote.remotePreview"
+            @register="onRemoteRegister"
+            @discover="remote.previewRemote"
+          />
+          <AppRegistryTable
           row-key="id"
           :rows="remote.remoteAgents"
           :columns="remote.remoteColumns"
@@ -127,6 +128,7 @@
             </q-td>
           </template>
         </AppRegistryTable>
+        </div>
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
         <A2AAuditPanel

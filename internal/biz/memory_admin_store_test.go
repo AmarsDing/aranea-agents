@@ -1,14 +1,9 @@
 package biz
 
-import (
-	"testing"
-)
+import "testing"
 
-func TestWrapSessionAdminStoreNil(t *testing.T) {
-	// WrapSessionAdminStore has been removed; verify the interface is non-nil.
-	var _ SessionAdminStore = (SessionAdminStore)(nil)
-	// A nil SessionAdminStore should be nil.
-	if SessionAdminStore(nil) != nil {
-		t.Fatal("expected nil admin store")
+func TestDefaultFactBruteForceThreshold(t *testing.T) {
+	if DefaultFactBruteForceThreshold != 5000 {
+		t.Errorf("DefaultFactBruteForceThreshold = %d, want 5000", DefaultFactBruteForceThreshold)
 	}
 }

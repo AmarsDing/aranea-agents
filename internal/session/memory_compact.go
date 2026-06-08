@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -94,8 +95,20 @@ func tryMemoryCompact(ctx context.Context, body []biz.ChatMessage, reader biz.Me
 
 	// Build coverage from available memory facts.
 	coverage := buildCompactCoverage(facts, body)
+	md := buildStructuredSummary(facts, coverage)
 
-	// Build structured summary using ICS dimensions.
+	from := body[0].TurnNumber
+	to := body[len(body)-1].TurnNumber
+	return memoryCompactResult{
+		summaryMarkdown: md,
+		fromTurn:        from,
+		toTurn:          to,
+		didCompact:      true,
+	}
+}
+
+// buildStructuredSummary generates a Markdown summary organized by ICS dimensions.
+func buildStructuredSummary(facts []biz.MemoryFactEntry, coverage compactCoverage) string {
 	var sb strings.Builder
 	sb.WriteString("## Session Memory Summary\n")
 
@@ -157,14 +170,7 @@ func tryMemoryCompact(ctx context.Context, body []biz.ChatMessage, reader biz.Me
 		}
 	}
 
-	from := body[0].TurnNumber
-	to := body[len(body)-1].TurnNumber
-	return memoryCompactResult{
-		summaryMarkdown: sb.String(),
-		fromTurn:        from,
-		toTurn:          to,
-		didCompact:      true,
-	}
+	return sb.String()
 }
 
 // buildCompactCoverage builds an ICS coverage assessment from memory facts and messages.
@@ -241,16 +247,22 @@ func readL1Facts(ctx context.Context, l1Reader biz.L1AdminReader, sessionID stri
 			}
 			fieldPath, _ := fieldObj["field_path"].(string)
 			valueText, _ := fieldObj["value_text"].(string)
+			fieldKind, _ := fieldObj["field_kind"].(string)
 			if fieldPath == "" {
 				continue
 			}
 			statement := fieldPath
 			if valueText != "" {
-				statement = fieldPath + ": " + truncateFieldText(valueText, 200)
+				statement = fieldPath + ": " + truncateFieldText(valueText, maxFieldTextChars)
+			}
+			// Use field_kind value for scope mapping when available; fall back to path-based heuristics.
+			scope := mapFieldKindValueToScope(fieldKind)
+			if scope == "" {
+				scope = mapFieldKindToScope(fieldPath)
 			}
 			facts = append(facts, biz.MemoryFactEntry{
 				Statement: statement,
-				Scope:     mapFieldKindToScope(fieldPath),
+				Scope:     scope,
 			})
 		}
 	}
@@ -288,10 +300,29 @@ func mapFieldKindToScope(fieldPath string) string {
 	}
 }
 
-// truncateFieldText truncates text to maxLen characters with ellipsis.
+// mapFieldKindValueToScope maps field_kind enum values to ICS scope categories.
+// When a field has an explicit field_kind, it provides more accurate scope mapping
+// than path-based heuristics.
+func mapFieldKindValueToScope(fieldKind string) string {
+	switch strings.ToLower(strings.TrimSpace(fieldKind)) {
+	case "decision":
+		return "decision"
+	case "artifact":
+		return "file"
+	case "progress":
+		return "state"
+	case "constraint":
+		return "intent"
+	default:
+		return ""
+	}
+}
+
+// truncateFieldText truncates text to maxLen runes with ellipsis.
 func truncateFieldText(text string, maxLen int) string {
-	if len(text) <= maxLen {
+	if utf8.RuneCountInString(text) <= maxLen {
 		return text
 	}
-	return text[:maxLen] + "…"
+	runes := []rune(text)
+	return string(runes[:maxLen]) + "…"
 }

@@ -11,17 +11,26 @@
 | L0 Snapshot 写入 | ✅ 已限流 | 最小间隔 300s + ratio delta 0.10 + 阈值穿越 0.80 + 低 ratio 跳过 0.60 |
 | segments_json | ✅ 已精简 | 聚合统计替代逐条详情，数据量减少 80%+（字段名保留 segments_json，内容为 summary 格式） |
 | Prompt Cache | ❌ 完全失效 | 动态内容与静态内容混在一个 TextBlock |
-| 压缩预算 | ⚠️ 硬编码 | reserved_system 不随 Agent 配置变化 |
-| Level 1 MicroCompact | ⚠️ 死代码 | `micro_compact.go` 有测试无生产调用 |
-| Level 2 Memory Compact | ⚠️ 死代码 | `memory_compact.go` 有测试无生产调用 |
-| L1 token_estimate | ❌ 始终为 0 | 调用方从未设置该字段 |
-| L1 used_tokens | ❌ 始终为 0 | 聚合从未执行 |
-| L1 选择性注入 | ❌ 全量注入 | 无预算硬上限 |
-| Episode 结构化生成 | ❌ 全靠 LLM | 70%~90% 可零成本生成 |
-| consolidation_status | ⚠️ 三值不一致 | "pending"/"consolidated"/"done" |
-| L2ConsolidateWorker | ❌ 空转 | agentID="" bug |
+| 压缩预算 | ✅ 已动态化 | effective_budget = contextWindow - reserved_system - compression_buffer；三级阈值 soft/hard/emergency |
+| Level 1 MicroCompact | ✅ 已激活 | compressCascade Level 1，零成本压缩 |
+| Level 2 Memory Compact | ✅ 已激活 | compressCascade Level 2，ICS 评估 + L1 数据源增强 |
+| L1 token_estimate | ✅ 已计算 | UpsertL1Field 自动计算 runeCount/2 |
+| L1 used_tokens | ✅ 已聚合 | syncL1TaskUsedTokens 写后聚合更新 |
+| L1 选择性注入 | ✅ 三层过滤 | visibility → pin_to_prompt → 预算截断 |
+| Episode 结构化生成 | ✅ Path A 零成本 + Path B LLM 增强 | ExtractKeyDecisions/Artifacts + ShouldTriggerPathB + EpisodeScore |
+| consolidation_status | ✅ 统一为 "consolidated" | 删除 L2ConsolidateWorker + MarkEpisodeConsolidated |
+| L2ConsolidateWorker | ✅ 已删除 | 空转 worker 删除，DDL 默认值改为 consolidated |
 | HMAC 完整性保护 | ❌ ROI 偏低 | 密钥和签名在同一数据库 |
-| field_kind 枚举 | ⚠️ 无语义分类 | 缺少 decision/artifact/progress |
+| field_kind 枚举 | ✅ 10 值语义枚举 | decision/artifact/progress/constraint + Schema 约束可选启用 |
+| L1 vs Framework Memory | ✅ 职责厘清 | 新建 Agent 默认禁用 framework memory 工具 + 前端记忆模式列 |
+| L3 fingerprint 去重 | ✅ biz 层统一 | FactFingerprint + read-back 修复 + FactsDeduped 计数 |
+| L3 跨层去重 | ✅ L1↔L3 去重 | DedupL3WithL1 + L1CueResult.FieldValues |
+| L4 实体提取 bug 修复 | ✅ 4 项修复 | 正则过度匹配 + Alpha 衰减 + 无用参数 + 无效 SQL |
+| 统一巩固管道 | ✅ AutoMemory→Structured Episode | ExtractStructuredEpisodeFromMessages + EpisodeWrite 7 新字段 |
+| 自适应缓冲区 | ✅ 动态 ratio 调整 | AdaptiveBufferState + token 增量监控 + 编码/聊天模式偏移 |
+| 对话模式检测 | ✅ coding/chat/mixed | DetectConversationMode(tool_call_count/turn_count) |
+| Path B LLM 合并提取 | ✅ 单次 LLM 调用 | EnhancedExtractionResult(Episode+Entity+Relation) + PathBExtractor |
+| 实体关系推理 | ✅ 6 种关系类型 | depends_on/implements/references/contains/knows_as/prefers |
 
 ---
 
@@ -63,30 +72,30 @@
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 1C-1 | 实现 `calculateReservedSystem`（基于 prompt_snapshot section 字段） | 无 | ❌ |
-| 1C-2 | 实现 `profileBasedDefault`（ToolsProfile 分级默认值） | 无 | ❌ |
-| 1C-3 | 改造压缩触发逻辑，使用 effective_budget 计算三级阈值 | 1C-1 | ❌ |
-| 1C-4 | 配置项 `compression_buffer_ratio` 默认值改为 0.15 | 1C-3 | ❌ |
-| 1C-5 | 自适应缓冲区策略（监控 token 增量，自动调整 ratio） | 1C-4 | ❌ |
-| 1C-6 | 对话模式检测（tool_call_count/turn_count） | 1C-5 | ❌ |
-| 1C-7 | hard_trigger 时 UI 显示"正在优化上下文..." | 1C-3 | ❌ |
-| 1C-8 | 单元测试 | 1C-1~1C-7 | ❌ |
+| 1C-1 | 实现 `calculateReservedSystem`（基于 prompt_snapshot section 字段） | 无 | ✅ |
+| 1C-2 | 实现 `profileBasedDefault`（ToolsProfile 分级默认值） | 无 | ✅ |
+| 1C-3 | 改造压缩触发逻辑，使用 effective_budget 计算三级阈值 | 1C-1 | ✅ |
+| 1C-4 | 配置项 `compression_buffer_ratio` 默认值改为 0.15 | 1C-3 | ✅ |
+| 1C-5 | 自适应缓冲区策略（监控 token 增量，动态调整 ratio） | 1C-4 | ✅ |
+| 1C-6 | 对话模式检测（tool_call_count / turn_count） | 1C-5 | ✅ |
+| 1C-7 | hard_trigger 时 UI 显示"正在优化上下文..." | 1C-3 | ✅ |
+| 1C-8 | 单元测试 | 1C-1~1C-7 | ✅ |
 
 ### Sprint 1D：Level 2 Memory Compact 增强
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 1D-1 | 激活 Level 1 MicroCompact：接入 BeforeModel hook，补充清除逻辑 | 无 | ❌ |
-| 1D-2 | 激活 Level 2 Memory Compact Step 1：接入 runCompress，使用 MemoryFactReader | 无 | ❌ |
-| 1D-3 | Level 2 Step 2：Compressor 新增 `l1Reader`，Wire 注入更新 | 1D-2 | ❌ |
-| 1D-4 | 实现 ICS 评估（6 维分级评分 + 降级规则） | 1D-3 | ❌ |
-| 1D-5 | 重写 `tryMemoryCompact` 摘要生成（结构化模板 + L1+L3 数据源） | 1D-4 | ❌ |
-| 1D-6 | Level 2 失败后等待 hard_trigger（不立即升级） | 1D-5 | ❌ |
-| 1D-7 | 压缩后强制写入 L0 Snapshot（不受限流约束） | 1D-6, 1A-3 | ❌ |
-| 1D-8 | 事务安全增强（CAS-事务间隙幂等重入 + 补偿机制） | 1D-6 | ❌ |
-| 1D-9 | 压缩进行中标记 + 8 分钟超时自动释放 | 1D-6 | ❌ |
-| 1D-10 | 前端上下文指示器（正常/优化中/已优化/正在优化） | 1D-6 | ❌ |
-| 1D-11 | 单元测试 | 1D-1~1D-10 | ❌ |
+| 1D-1 | 激活 Level 1 MicroCompact：接入 BeforeModel hook，补充清除逻辑 | 无 | ✅ |
+| 1D-2 | 激活 Level 2 Memory Compact Step 1：接入 runCompress，使用 MemoryFactReader | 无 | ✅ |
+| 1D-3 | Level 2 Step 2：Compressor 新增 `l1Reader`，Wire 注入更新 | 1D-2 | ✅ |
+| 1D-4 | 实现 ICS 评估（6 维分级评分 + 降级规则） | 1D-3 | ✅ |
+| 1D-5 | 重写 `tryMemoryCompact` 摘要生成（结构化模板 + L1+L3 数据源） | 1D-4 | ✅ |
+| 1D-6 | Level 2 失败后等待 hard_trigger（不立即升级） | 1D-5 | ✅ |
+| 1D-7 | 压缩后强制写入 L0 Snapshot（不受限流约束） | 1D-6, 1A-3 | ✅ |
+| 1D-8 | 事务安全增强（CAS-事务间隙幂等重入 + 补偿机制） | 1D-6 | ✅ |
+| 1D-9 | 压缩进行中标记 + 8 分钟超时自动释放 | 1D-6 | ✅ |
+| 1D-10 | 前端上下文指示器（正常/优化中/已优化/正在优化） | 1D-6 | ✅ |
+| 1D-11 | 单元测试 | 1D-1~1D-10 | ✅ |
 
 ---
 
@@ -96,30 +105,30 @@
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 2A-1 | `UpsertL1Field` 时计算 `token_estimate` | 无 | ❌ |
-| 2A-2 | `used_tokens` 同步聚合 + DB 事务行锁 | 2A-1 | ❌ |
-| 2A-3 | 事务内预算检查，超预算回滚返回 `ErrL1Overflow` | 2A-2 | ❌ |
-| 2A-4 | 三层过滤链（visibility → pin_to_prompt → 相关性 → 预算） | 2A-3 | ❌ |
-| 2A-5 | Token 估算精度改进：短期 runeCount/2 | 2A-1 | ❌ |
-| 2A-6 | 单元测试 | 2A-1~2A-5 | ❌ |
+| 2A-1 | `UpsertL1Field` 时计算 `token_estimate` | 无 | ✅ |
+| 2A-2 | `used_tokens` 同步聚合 + DB 事务行锁 | 2A-1 | ✅ |
+| 2A-3 | 事务内预算检查，超预算回滚返回 `ErrL1Overflow` | 2A-2 | ✅ |
+| 2A-4 | 三层过滤链（visibility → pin_to_prompt → 相关性 → 预算） | 2A-3 | ✅ |
+| 2A-5 | Token 估算精度改进：短期 runeCount/2 | 2A-1 | ✅ |
+| 2A-6 | 单元测试 | 2A-1~2A-5 | ✅ |
 
 ### Sprint 2B：field_kind 枚举增强
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 2B-1 | `field_kind` 新增 decision/artifact/progress/constraint 枚举值 | 无 | ❌ |
-| 2B-2 | `working_memory.write` 工具增加 field_kind enum 约束 | 2B-1 | ❌ |
-| 2B-3 | Agent system prompt 加入推荐字段名列表 | 2B-2 | ❌ |
-| 2B-4 | Schema 约束可选启用（利用已有 memory_l1_schemas 表） | 2B-1 | ❌ |
-| 2B-5 | 单元测试 | 2B-1~2B-4 | ❌ |
+| 2B-1 | `field_kind` 新增 decision/artifact/progress/constraint 枚举值 | 无 | ✅ |
+| 2B-2 | `working_memory.write` 工具增加 field_kind enum 约束 | 2B-1 | ✅ |
+| 2B-3 | Agent system prompt 加入推荐字段名列表 | 2B-2 | ✅ |
+| 2B-4 | Schema 约束可选启用（利用已有 memory_l1_schemas 表） | 2B-1 | ✅ |
+| 2B-5 | 单元测试 | 2B-1~2B-4 | ✅ |
 
 ### Sprint 2C：L1 选择性注入
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 2C-1 | `memory_l1_field_history` 降为可选（`L1HistoryEnabled` 默认 false） | 无 | ❌ |
-| 2C-2 | `memory_l1_schemas` 降为可选（仅 Agent 配置 `L1DefaultSchemaID` 时激活） | 无 | ❌ |
-| 2C-3 | 单元测试 | 2C-1, 2C-2 | ❌ |
+| 2C-1 | `memory_l1_field_history` 降为可选（`L1HistoryEnabled` 默认 false） | 无 | ✅ |
+| 2C-2 | `memory_l1_schemas` 降为可选（仅 Agent 配置 `L1DefaultSchemaID` 时激活） | 无 | ✅ |
+| 2C-3 | 单元测试 | 2C-1, 2C-2 | ✅ |
 
 ---
 
@@ -129,54 +138,54 @@
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 3A-1 | 新增 `internal/biz/l1_field_extraction.go`（ExtractKeyDecisions / ExtractKeyArtifacts） | 2B-1 | ❌ |
-| 3A-2 | Path A 零成本 Episode 生成（L1 归档触发） | 3A-1 | ❌ |
-| 3A-3 | Path B LLM 增强路径（简化规则：满足任一条件即触发） | 3A-2 | ❌ |
-| 3A-4 | Path B 综合评分公式（P1） | 3A-3 | ❌ |
-| 3A-5 | 单元测试 | 3A-1~3A-4 | ❌ |
+| 3A-1 | 新增 `internal/biz/l1_field_extraction.go`（ExtractKeyDecisions / ExtractKeyArtifacts） | 2B-1 | ✅ |
+| 3A-2 | Path A 零成本 Episode 生成（L1 归档触发） | 3A-1 | ✅ |
+| 3A-3 | Path B LLM 增强路径（简化规则：满足任一条件即触发） | 3A-2 | ✅ |
+| 3A-4 | Path B 综合评分公式（P1） | 3A-3 | ✅ |
+| 3A-5 | 单元测试 | 3A-1~3A-4 | ✅ |
 
 ### Sprint 3B：consolidation_status 统一
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 3B-1 | 统一 `consolidation_status` 为 `"consolidated"`（修改 3 处 SQL） | 无 | ❌ |
-| 3B-2 | 删除 `MarkEpisodeConsolidated` 方法 | 3B-1 | ❌ |
-| 3B-3 | 删除 `memory_l2_consolidate.go` 全文件 + 移除注册 | 3B-2 | ❌ |
-| 3B-4 | 数据迁移脚本 | 3B-1 | ❌ |
-| 3B-5 | 删除 `memory_l2_index_meta` 表 | 3B-3 | ❌ |
-| 3B-5a | 实现暴力搜索阈值（默认 5000 条，低于阈值线性扫描） | 3B-5 | ❌ |
+| 3B-1 | 统一 `consolidation_status` 为 `"consolidated"`（修改 3 处 SQL） | 无 | ✅ |
+| 3B-2 | 删除 `MarkEpisodeConsolidated` 方法 | 3B-1 | ✅ |
+| 3B-3 | 删除 `memory_l2_consolidate.go` 全文件 + 移除注册 | 3B-2 | ✅ |
+| 3B-4 | 数据迁移脚本 | 3B-1 | ✅ |
+| 3B-5 | 删除 `memory_l2_index_meta` 表 | 3B-3 | ✅ |
+| 3B-5a | 实现暴力搜索阈值（默认 5000 条，低于阈值线性扫描） | 3B-5 | ✅ |
 | 3B-5b | pgvector 增量同步协议（写入时同步生成 embedding） | 3B-5 | ❌ |
 | 3B-5c | `memory_facts` 新增 `embedding_version` 字段 + 增量重建逻辑 | 3B-5b | ❌ |
-| 3B-6 | `memory_facts` 新增 `source_episode_id` 列 | 无 | ❌ |
-| 3B-7 | 统一巩固管道（AutoMemoryWorker 消费 → Extract → L3/L4 → Episode） | 3A-2, 3B-6 | ❌ |
-| 3B-8 | 单元测试 | 3B-1~3B-7 | ❌ |
+| 3B-6 | `memory_facts` 新增 `source_episode_id` 列 | 无 | ✅ |
+| 3B-7 | 统一巩固管道（AutoMemoryWorker 消费 → Extract → L3/L4 → Episode） | 3A-2, 3B-6 | ✅ |
+| 3B-8 | 单元测试 | 3B-1~3B-6 | ✅ |
 
 ### Sprint 3C：L1 与框架 Memory 职责厘清
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 3C-1 | Phase 1：文档引导（无代码变更） | 无 | ❌ |
-| 3C-2 | Phase 2：新建 Agent 默认禁用 framework memory 工具 | 3C-1 | ❌ |
-| 3C-3 | Phase 3：前端 Agent 列表增加"记忆工具模式"列 | 3C-2 | ❌ |
-| 3C-4 | 单元测试 | 3C-2 | ❌ |
+| 3C-1 | Phase 1：文档引导（无代码变更） | 无 | ✅ |
+| 3C-2 | Phase 2：新建 Agent 默认禁用 framework memory 工具 | 3C-1 | ✅ |
+| 3C-3 | Phase 3：前端 Agent 列表增加"记忆工具模式"列 | 3C-2 | ✅ |
+| 3C-4 | 单元测试 | 3C-2 | ✅ |
 
 ### Sprint 3D：L3 Recall 去重
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 3D-1 | fingerprint 去重（基于内容哈希） | 无 | ❌ |
+| 3D-1 | fingerprint 去重（基于内容哈希） | 无 | ✅ |
 | 3D-2 | 语义去重（embedding 余弦相似度 > 0.95） | 3B-5b | ❌ |
-| 3D-3 | 跨层去重（L3 recall 与 L1 已注入字段去重） | 3D-1 | ❌ |
-| 3D-4 | 单元测试 | 3D-1~3D-3 | ❌ |
+| 3D-3 | 跨层去重（L3 recall 与 L1 已注入字段去重） | 3D-1 | ✅ |
+| 3D-4 | 单元测试 | 3D-1~3D-3 | ✅ |
 
 ### Sprint 3E：L4 实体提取增强
 
 | # | 任务 | 依赖 | 状态 |
 |---|------|------|------|
-| 3E-1 | P0：修复现有实体提取 bug | 无 | ❌ |
-| 3E-2 | P1：与 Path B 合并执行（单次 LLM 调用同时提取实体和 Episode） | 3A-3, 3E-1 | ❌ |
-| 3E-3 | P2：实体关系推理（待定，后续迭代） | 3E-2 | ⏳ |
-| 3E-4 | 单元测试 | 3E-1, 3E-2 | ❌ |
+| 3E-1 | P0：修复现有实体提取 bug | 无 | ✅ |
+| 3E-2 | P1：与 Path B 合并执行（单次 LLM 调用同时提取实体和 Episode） | 3A-3, 3E-1 | ✅ |
+| 3E-3 | P2：实体关系推理（6 种关系类型） | 3E-2 | ✅ |
+| 3E-4 | 单元测试 | 3E-1, 3E-2 | ✅ |
 
 ---
 

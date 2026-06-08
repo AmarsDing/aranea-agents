@@ -707,6 +707,7 @@ func provideChatServiceDeps(
 	spiritSynthesis *service.SpiritSynthesisService,
 	orchCache *biz.OrchestrationCache,
 	teamStarter biz.TeamStarterPort,
+	graphExec biz.GraphExecutor,
 	skillEvo *biz.SkillEvolutionUsecase,
 	evolution *biz.EvolutionUsecase,
 	skillStats biz.SkillInvocationStatsReader,
@@ -744,6 +745,7 @@ func provideChatServiceDeps(
 		SpiritSynthesis: spiritSynthesis,
 		OrchCache:       orchCache,
 		TeamStarter:     teamStarter,
+		GraphExec:       graphExec,
 		SkillEvo:        skillEvo,
 		Evolution:       evolution,
 		SkillStats:      skillStats,
@@ -777,10 +779,11 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 		AgentKey:  input.AgentKey,
 		TeamID:    input.TeamID,
 		Options: biz.TurnOptions{
-			DialogMode:    input.Options.DialogMode,
-			Provider:      input.Options.Provider,
-			Model:         input.Options.Model,
-			AttachmentIDs: input.Options.AttachmentIDs,
+			DialogMode:     input.Options.DialogMode,
+			Provider:       input.Options.Provider,
+			Model:          input.Options.Model,
+			AttachmentIDs:  input.Options.AttachmentIDs,
+			KnowledgeBases: input.Options.KnowledgeBases,
 		},
 		EntryConfig: biz.TurnEntryPointConfig{
 			EntryPoint:  biz.EntryPointWS,
@@ -1003,13 +1006,6 @@ func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.Ag
 		return nil
 	}
 	return jobs.NewMemoryL2DecayWorker(0, decayer, agents, lg)
-}
-
-func provideMemoryL2ConsolidateWorker(admin *biz.MemoryAdminUsecase, lg loggateway.Logger) *jobs.MemoryL2ConsolidateWorker {
-	if jobs.MemoryL2ConsolidateDisabled() {
-		return nil
-	}
-	return jobs.NewMemoryL2ConsolidateWorker(0, admin, lg)
 }
 
 func provideSessionAdminStore(d *data.Data) biz.SessionAdminStore {
@@ -1364,7 +1360,6 @@ type wireOut struct {
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
 	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
 	MemoryL2Decay               *jobs.MemoryL2DecayWorker
-	MemoryL2Consolidate         *jobs.MemoryL2ConsolidateWorker
 	MemoryL1Archive             *jobs.MemoryL1ArchiveWorker
 	MemoryL3Decay               *jobs.MemoryL3DecayWorker
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
@@ -1383,6 +1378,7 @@ type wireOut struct {
 	PredictiveHealJob           *jobs.PredictiveHealJob
 	PatternMiningUsecase        *monitor.PatternMiningUsecase
 	PatternMiningJob            *jobs.PatternMiningJob
+	PathBExtractor              *biz.PathBExtractor
 }
 
 func provideWireOut(
@@ -1409,7 +1405,6 @@ func provideWireOut(
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
 	monitorTraceBackfillWorker *jobs.MonitorTraceBackfillWorker,
 	memoryL2Decay *jobs.MemoryL2DecayWorker,
-	memoryL2Consolidate *jobs.MemoryL2ConsolidateWorker,
 	memoryL1Archive *jobs.MemoryL1ArchiveWorker,
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
@@ -1431,6 +1426,7 @@ func provideWireOut(
 	predictiveHealJob *jobs.PredictiveHealJob,
 	patternMiningUsecase *monitor.PatternMiningUsecase,
 	patternMiningJob *jobs.PatternMiningJob,
+	pathBExtractor *biz.PathBExtractor,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -1440,7 +1436,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL2Consolidate: memoryL2Consolidate, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
 		MemoryDataMigration:       memoryDataMigration,
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
@@ -1458,7 +1454,8 @@ func provideWireOut(
 		PredictiveHealUsecase:     predictiveHealUsecase,
 		PredictiveHealJob:         predictiveHealJob,
 		PatternMiningUsecase:      patternMiningUsecase,
-		PatternMiningJob:          patternMiningJob,
+		PatternMiningJob:           patternMiningJob,
+		PathBExtractor:             pathBExtractor,
 	}
 }
 
@@ -1559,7 +1556,7 @@ func provideTaskOrchestrator(
 		Sys:          sys,
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
 }
 
 // provideEcosystemPresetSeedPackFn provides the SeedPackFunc for EcosystemPresetUsecase.
@@ -1692,8 +1689,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideSubAgentService,
 		provideEventStoreCleanup,
 		provideMemoryL2DecayWorker,
-		provideMemoryL2ConsolidateWorker,
 		provideMemoryAdminUsecase,
+		providePathBExtractor,
+		provideL4EntityWriter,
 		provideSessionAdminStore,
 		provideMemoryL1ArchiveWorker,
 		provideMemoryL3DecayWorker,
@@ -1752,7 +1750,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.ToolRegistryReader), new(biz.ToolRepo)),
 		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
-		wire.Bind(new(araneasession.CompressorDeps), new(biz.SessionRepo)),
+		wire.Bind(new(araneasession.CompressReadDeps), new(biz.SessionRepo)),
+		wire.Bind(new(araneasession.CompressWriteDeps), new(biz.SessionRepo)),
+		wire.Bind(new(araneasession.CompressTxDeps), new(biz.SessionRepo)),
 		wire.Bind(new(server.ReadinessProbe), new(*data.Data)),
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),

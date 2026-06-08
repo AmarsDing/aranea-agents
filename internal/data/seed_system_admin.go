@@ -71,7 +71,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 	) VALUES (
 		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
-		'', 'complete', 0, 0, '{"tools_profile":"spirit"}', '[]', 'system',
+		'', 'complete', 0, 0, '{"tools":{"profile":"spirit"}}', '[]', 'system',
 		?, ?, '', 1, 'system_builtin', 'system',
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET

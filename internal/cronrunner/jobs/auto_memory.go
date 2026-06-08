@@ -15,6 +15,8 @@ import (
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // AutoMemoryWorker drains the global auto-memory queue every interval and runs
@@ -206,6 +208,8 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 
 	lastUserMsgID := lastUserMessageID(msgs)
 	msgIDsWithL3 := make(map[string]struct{})
+	// Pre-generate episode ID so facts can reference it as source_episode_id.
+	episodeID := uuid.NewString()
 	var factInputs []biz.MemoryFactWrite
 	if memoryPolicy.WriteL3Facts {
 		for _, p := range proposals {
@@ -232,6 +236,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 				Confidence:      0.85,
 				Importance:      0.6,
 				SourceKind:      "auto_memory",
+				SourceEpisodeID: episodeID,
 				SourceSessionID: sid,
 				SourceMessageID: msgID,
 				Status:          "active",
@@ -242,19 +247,36 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 
 	var ep *biz.EpisodeWrite
 	if memoryPolicy.WriteL2Episode && len(factInputs) > 0 {
+		// Use structured episode extraction (unified pipeline with L1 archive path)
+		structured := biz.ExtractStructuredEpisodeFromMessages(in.Messages)
 		added := len(factInputs)
-		title := "Auto-memory consolidation"
-		if added == 1 {
-			title = previewText(factInputs[0].Statement, 120)
+		title := structured.Title
+		if title == "" {
+			title = "Auto-memory consolidation"
+			if added == 1 {
+				title = previewText(factInputs[0].Statement, 120)
+			}
 		}
-		summary := previewText(buildEpisodeSummary(proposals, added), 500)
+		summary := structured.OutcomeSummary
+		if summary == "" {
+			summary = previewText(buildEpisodeSummary(proposals, added), 500)
+		}
+		decisionsJSON, _ := json.Marshal(structured.KeyDecisions)
+		artifactsJSON, _ := json.Marshal(structured.KeyArtifacts)
 		ep = &biz.EpisodeWrite{
+			ID:                 episodeID,
 			SessionID:          sid,
 			AgentID:            agentID,
 			UserID:             userID,
 			Title:              title,
+			Goal:               structured.Goal,
+			Outcome:            structured.Outcome,
 			OutcomeSummary:     summary,
-			Importance:         0.55,
+			KeyDecisionsJSON:   string(decisionsJSON),
+			KeyArtifactsJSON:   string(artifactsJSON),
+			EpisodeKind:        structured.EpisodeKind,
+			Importance:         structured.Importance,
+			Confidence:         structured.Confidence,
 			MessageCount:       len(msgs),
 			ConsolidatedL3:     added,
 			ConsolidationStatus: "consolidated",

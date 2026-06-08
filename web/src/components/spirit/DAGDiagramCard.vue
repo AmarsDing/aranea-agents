@@ -1,5 +1,5 @@
 <template>
-  <div v-if="dagTeams.length > 0" class="dag-diagram-card">
+  <div v-if="dagTeams.length > 0 || verificationNodes.length > 0" class="dag-diagram-card">
     <div class="row items-center q-gutter-sm q-mb-sm">
       <div class="dag-diagram-card__icon">
         <q-icon name="account_tree" size="18px" />
@@ -17,19 +17,44 @@
           (依赖: {{ node.dependsOn.join(', ') }})
         </span>
       </div>
+      <div
+        v-for="vn in verificationNodes"
+        :key="vn.nodeId"
+        class="dag-diagram-card__node dag-diagram-card__node--verify"
+        :class="verifyNodeClass(vn)"
+      >
+        <span class="dag-diagram-card__prefix">{{ verifyIcon(vn) }}</span>
+        <span class="dag-diagram-card__name">{{ verifyLabel(vn) }}</span>
+        <span class="dag-diagram-card__deps text-caption text-grey-6">
+          ({{ vn.failureAction }})
+        </span>
+        <span v-if="vn.retryCount != null && vn.maxRetries != null" class="dag-diagram-card__retry text-caption text-grey-6">
+          重试 {{ vn.retryCount }}/{{ vn.maxRetries }}
+        </span>
+        <q-tooltip v-if="vn.status === 'failed' && vn.failureReason" :delay="300">
+          {{ vn.failureReason }}
+        </q-tooltip>
+        <q-tooltip v-else-if="vn.issues && vn.issues.length > 0" :delay="300">
+          {{ vn.issues.join('; ') }}
+        </q-tooltip>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { SpiritTeam } from '../../features/spirit/types';
+import type { SpiritTeam, VerificationNode } from '../../features/spirit/types';
 
 const props = defineProps<{
   teams: SpiritTeam[];
+  /** Verification gate nodes from the orchestration graph. */
+  verifications?: VerificationNode[];
 }>();
 
 const dagTeams = computed(() => props.teams.filter((t) => t.dagNodeId || (t.dependsOn && t.dependsOn.length > 0)));
+
+const verificationNodes = computed(() => props.verifications ?? []);
 
 const dagNodes = computed(() =>
   dagTeams.value.map((t) => ({
@@ -39,6 +64,35 @@ const dagNodes = computed(() =>
     dependsOn: t.dependsOn ?? [],
   })),
 );
+
+const verifyIcon = (vn: VerificationNode) => {
+  switch (vn.status) {
+    case 'passed': return '✓';
+    case 'failed': return '✗';
+    case 'pending': return '⏳';
+    case 'skipped': return '⊘';
+    default: return '🔍';
+  }
+};
+
+const verifyLabel = (vn: VerificationNode) => {
+  const labels: Record<string, string> = {
+    output_format: '格式验证',
+    task_completion: '完成度验证',
+    human_approval: '人工审批',
+  };
+  return vn.label ?? labels[vn.type] ?? vn.type;
+};
+
+const verifyNodeClass = (vn: VerificationNode) => {
+  switch (vn.status) {
+    case 'passed': return 'dag-diagram-card__node--passed';
+    case 'failed': return 'dag-diagram-card__node--failed';
+    case 'pending': return 'dag-diagram-card__node--pending';
+    case 'skipped': return 'dag-diagram-card__node--skipped';
+    default: return '';
+  }
+};
 </script>
 
 <style scoped lang="sass">
@@ -77,6 +131,9 @@ const dagNodes = computed(() =>
   gap: 6px
   font-size: var(--text-xs)
   color: var(--color-text-secondary)
+  padding: 2px 4px
+  border-radius: 4px
+  border: 1px solid transparent
 
 .dag-diagram-card__prefix
   flex-shrink: 0
@@ -89,4 +146,40 @@ const dagNodes = computed(() =>
   white-space: nowrap
   overflow: hidden
   text-overflow: ellipsis
+
+.dag-diagram-card__retry
+  white-space: nowrap
+
+.dag-diagram-card__node--verify
+  opacity: 0.85
+  font-style: italic
+
+.dag-diagram-card__node--passed
+  border-color: var(--color-success)
+  color: var(--color-success)
+
+  .dag-diagram-card__prefix
+    color: var(--color-success)
+
+.dag-diagram-card__node--failed
+  border-color: var(--color-danger)
+  color: var(--color-danger)
+
+  .dag-diagram-card__prefix
+    color: var(--color-danger)
+
+.dag-diagram-card__node--pending
+  border-style: dashed
+  border-color: var(--color-warning)
+  color: var(--color-warning)
+
+  .dag-diagram-card__prefix
+    color: var(--color-warning)
+
+.dag-diagram-card__node--skipped
+  border-color: var(--color-text-tertiary)
+  color: var(--color-text-tertiary)
+
+  .dag-diagram-card__prefix
+    color: var(--color-text-tertiary)
 </style>

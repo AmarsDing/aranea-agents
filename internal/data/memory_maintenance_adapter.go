@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -25,11 +26,12 @@ func NewMemoryConsolidationWriterAdapter(data *Data, lg loggateway.Logger) biz.M
 func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx context.Context, facts []biz.MemoryFactWrite, ep *biz.EpisodeWrite) (*biz.ConsolidationResult, error) {
 	var factRows [][]byte
 	factsWritten := 0
+	factsDeduped := 0
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
 	for _, f := range facts {
 		id := newUUIDString()
-		fp := factFingerprint(f.Statement, f.ScopeType, f.ScopeID)
+		fp := biz.FactFingerprint(f.Statement, f.ScopeType, f.ScopeID)
 		status := strings.TrimSpace(f.Status)
 		if status == "" {
 			status = "active"
@@ -75,7 +77,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			strings.TrimSpace(f.FactKind), tags,
 			f.Confidence, f.Importance, 0, 0,
 			0, 0, 0,
-			strings.TrimSpace(f.SourceKind), "",
+			strings.TrimSpace(f.SourceKind), strings.TrimSpace(f.SourceEpisodeID),
 			strings.TrimSpace(f.SourceSessionID),
 			strings.TrimSpace(f.SourceMessageID),
 			"",
@@ -87,13 +89,29 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			a.lg.Warn("consolidation fact upsert failed", loggateway.StepID("memory.consolidation_fact_fail"), loggateway.Err(err))
 			continue
 		}
-		// Read back
-		readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlFactSelect+` WHERE id = ?`, id)
-		if err == nil {
+		// Read back by fingerprint (works for both new inserts and ON CONFLICT upserts).
+		readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+			sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`,
+			strings.TrimSpace(f.ScopeType), strings.TrimSpace(f.ScopeID), fp)
+		if err != nil {
+			a.lg.Warn("consolidation fact read-back failed", loggateway.StepID("memory.consolidation_fact_readback_fail"), loggateway.Err(err))
+		} else {
 			if readRows.Next() {
 				if b, err := scanFactRowJSON(readRows); err == nil {
 					factRows = append(factRows, b)
-					factsWritten++
+					// Detect dedup: if the row's ID differs from our generated ID,
+					// ON CONFLICT fired (existing row was updated, not newly inserted).
+					var row map[string]any
+					if json.Unmarshal(b, &row) == nil {
+						existingID := strings.TrimSpace(fmt.Sprint(row["id"]))
+						if existingID != id {
+							factsDeduped++
+						} else {
+							factsWritten++
+						}
+					} else {
+						factsWritten++
+					}
 				}
 			}
 			readRows.Close()
@@ -102,21 +120,53 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 
 	var episodeRow []byte
 	if ep != nil {
-		epID := newUUIDString()
+		epID := strings.TrimSpace(ep.ID)
+		if epID == "" {
+			epID = newUUIDString()
+		}
+		episodeKind := strings.TrimSpace(ep.EpisodeKind)
+		if episodeKind == "" {
+			episodeKind = "consolidation"
+		}
+		keyDecisions := strings.TrimSpace(ep.KeyDecisionsJSON)
+		if keyDecisions == "" {
+			keyDecisions = "[]"
+		}
+		keyArtifacts := strings.TrimSpace(ep.KeyArtifactsJSON)
+		if keyArtifacts == "" {
+			keyArtifacts = "[]"
+		}
+		confidence := ep.Confidence
+		if confidence <= 0 {
+			confidence = 0.6
+		}
 		_, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_episodes (
-			id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
+			id, session_id, agent_id, episode_kind, title,
+			goal, outcome, outcome_summary,
+			key_decisions_json, key_artifacts_json,
+			importance, confidence,
 			consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(session_id, title, agent_id) DO UPDATE SET
-			outcome_summary = excluded.outcome_summary, importance = excluded.importance,
-			consolidation_status = excluded.consolidation_status, consolidated_l3_count = excluded.consolidated_l3_count`,
+			goal = excluded.goal, outcome = excluded.outcome,
+			outcome_summary = excluded.outcome_summary,
+			key_decisions_json = excluded.key_decisions_json,
+			key_artifacts_json = excluded.key_artifacts_json,
+			importance = excluded.importance, confidence = excluded.confidence,
+			consolidation_status = excluded.consolidation_status,
+			consolidated_l3_count = excluded.consolidated_l3_count`,
 			epID,
 			strings.TrimSpace(ep.SessionID),
 			strings.TrimSpace(ep.AgentID),
-			"consolidation",
+			episodeKind,
 			strings.TrimSpace(ep.Title),
+			strings.TrimSpace(ep.Goal),
+			strings.TrimSpace(ep.Outcome),
 			strings.TrimSpace(ep.OutcomeSummary),
+			keyDecisions,
+			keyArtifacts,
 			ep.Importance,
+			confidence,
 			strings.TrimSpace(ep.ConsolidationStatus),
 			ep.ConsolidatedL3,
 			strings.TrimSpace(ep.MetadataJSON),
@@ -125,8 +175,11 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 		if err != nil {
 			a.lg.Warn("consolidation episode upsert failed", loggateway.StepID("memory.consolidation_episode_fail"), loggateway.Err(err))
 		} else {
-			readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlEpisodeSelect+` WHERE id = ?`, epID)
-			if err == nil {
+			readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlEpisodeSelect+` WHERE session_id = ? AND agent_id = ? AND title = ?`,
+				strings.TrimSpace(ep.SessionID), strings.TrimSpace(ep.AgentID), strings.TrimSpace(ep.Title))
+			if err != nil {
+				a.lg.Warn("consolidation episode read-back failed", loggateway.StepID("memory.consolidation_episode_readback_fail"), loggateway.Err(err))
+			} else {
 				if readRows.Next() {
 					if b, err := scanEpisodeRowJSON(readRows); err == nil {
 						episodeRow = b
@@ -141,6 +194,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 		FactRows:     factRows,
 		EpisodeRow:   episodeRow,
 		FactsWritten: factsWritten,
+		FactsDeduped: factsDeduped,
 	}, nil
 }
 
@@ -208,7 +262,7 @@ func (a *memoryEpisodeDecayerAdapter) ApplyEpisodeImportanceDecay(ctx context.Co
 
 func (a *memoryEpisodeDecayerAdapter) PurgeEpisodesOlderThan(ctx context.Context, agentID, cutoffRFC3339 string) (int, error) {
 	res, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`DELETE FROM memory_episodes WHERE agent_id = ? AND ended_at != '' AND ended_at < ? AND consolidation_status = 'done'`,
+		`DELETE FROM memory_episodes WHERE agent_id = ? AND ended_at != '' AND ended_at < ? AND consolidation_status = 'consolidated'`,
 		agentID, cutoffRFC3339)
 	if err != nil {
 		return 0, err
@@ -277,7 +331,7 @@ func (a *memoryEpisodeBackfillReaderAdapter) ListEpisodesPendingEmbedding(ctx co
 		limit = 50
 	}
 	rows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, agent_id, title, outcome_summary FROM memory_episodes WHERE embedding_status IN ('pending','stale') AND consolidation_status = 'done' LIMIT ?`,
+		`SELECT id, agent_id, title, outcome_summary FROM memory_episodes WHERE embedding_status IN ('pending','stale') AND consolidation_status = 'consolidated' LIMIT ?`,
 		limit)
 	if err != nil {
 		return nil, err
@@ -324,5 +378,4 @@ var (
 	_ biz.MemoryEpisodeBackfillReader = (*memoryEpisodeBackfillReaderAdapter)(nil)
 )
 
-// ensure fmt is referenced
-var _ = fmt.Sprintf
+

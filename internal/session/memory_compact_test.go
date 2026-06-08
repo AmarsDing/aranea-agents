@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -415,4 +416,315 @@ func TestDecodeMap(t *testing.T) {
 			t.Errorf("non-object json = %v, want nil", m)
 		}
 	})
+}
+
+// --- stubL1AdminReader ---
+
+type stubL1AdminReader struct {
+	taskRows  [][]byte
+	taskErr   error
+	fieldRows map[string]struct {
+		rows [][]byte
+		err  error
+	}
+	// stubs for unused interface methods
+	getTaskRow  []byte
+	getTaskErr  error
+	getFieldRow []byte
+	getFieldErr error
+}
+
+func (s *stubL1AdminReader) ListL1TaskRows(_ context.Context, _ string, _ string, _ string, _ string) ([][]byte, error) {
+	return s.taskRows, s.taskErr
+}
+
+func (s *stubL1AdminReader) ListL1FieldRows(_ context.Context, taskID string, _ bool) ([][]byte, error) {
+	if s.fieldRows == nil {
+		return nil, nil
+	}
+	entry, ok := s.fieldRows[taskID]
+	if !ok {
+		return nil, nil
+	}
+	return entry.rows, entry.err
+}
+
+func (s *stubL1AdminReader) GetL1TaskRow(_ context.Context, _ string, _ string) ([]byte, error) {
+	return s.getTaskRow, s.getTaskErr
+}
+
+func (s *stubL1AdminReader) GetL1FieldRow(_ context.Context, _ string, _ string) ([]byte, error) {
+	return s.getFieldRow, s.getFieldErr
+}
+
+func mustMarshal(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("mustMarshal: %v", err)
+	}
+	return b
+}
+
+// --- TestReadL1Facts ---
+
+func TestReadL1Facts(t *testing.T) {
+	ctx := context.Background()
+	lg := loggateway.NewNoop()
+
+	t.Run("ListL1TaskRows_error", func(t *testing.T) {
+		r := &stubL1AdminReader{taskErr: errors.New("db down")}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if got != nil {
+			t.Fatalf("expected nil on task list error, got %v", got)
+		}
+	})
+
+	t.Run("ListL1TaskRows_empty", func(t *testing.T) {
+		r := &stubL1AdminReader{taskRows: nil}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if got != nil {
+			t.Fatalf("expected nil on empty task rows, got %v", got)
+		}
+	})
+
+	t.Run("task_no_id_skipped", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"task_title": "no id task", "status": "active"}),
+		}
+		r := &stubL1AdminReader{taskRows: taskRows}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 0 {
+			t.Fatalf("task without id should be skipped, got %d facts", len(got))
+		}
+	})
+
+	t.Run("task_empty_title_no_fact", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "", "status": "active"}),
+		}
+		r := &stubL1AdminReader{taskRows: taskRows}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 0 {
+			t.Fatalf("task with empty title should add no fact, got %d facts", len(got))
+		}
+	})
+
+	t.Run("task_active_status_intent", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "my task", "status": "active"}),
+		}
+		r := &stubL1AdminReader{taskRows: taskRows}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 fact, got %d", len(got))
+		}
+		if got[0].Scope != "intent" {
+			t.Errorf("active task scope = %q, want %q", got[0].Scope, "intent")
+		}
+		if got[0].Statement != "my task" {
+			t.Errorf("statement = %q, want %q", got[0].Statement, "my task")
+		}
+	})
+
+	t.Run("task_non_active_status_pending", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "pending task", "status": "completed"}),
+		}
+		r := &stubL1AdminReader{taskRows: taskRows}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 fact, got %d", len(got))
+		}
+		if got[0].Scope != "pending" {
+			t.Errorf("non-active task scope = %q, want %q", got[0].Scope, "pending")
+		}
+	})
+
+	t.Run("ListL1FieldRows_error_skipped", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "my task", "status": "active"}),
+		}
+		r := &stubL1AdminReader{
+			taskRows: taskRows,
+			fieldRows: map[string]struct {
+				rows [][]byte
+				err  error
+			}{
+				"t1": {err: errors.New("field db down")},
+			},
+		}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 fact (task only, fields skipped), got %d", len(got))
+		}
+		if got[0].Statement != "my task" {
+			t.Errorf("statement = %q, want %q", got[0].Statement, "my task")
+		}
+	})
+
+	t.Run("field_empty_path_skipped", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "my task", "status": "active"}),
+		}
+		fieldRows := [][]byte{
+			mustMarshal(t, map[string]any{"field_path": "", "value_text": "val"}),
+		}
+		r := &stubL1AdminReader{
+			taskRows: taskRows,
+			fieldRows: map[string]struct {
+				rows [][]byte
+				err  error
+			}{
+				"t1": {rows: fieldRows},
+			},
+		}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 fact (task only, empty-path field skipped), got %d", len(got))
+		}
+	})
+
+	t.Run("field_with_value_text_uses_mapFieldKindToScope", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "", "status": "active"}),
+		}
+		fieldRows := [][]byte{
+			mustMarshal(t, map[string]any{"field_path": "user_intent", "value_text": "build API"}),
+		}
+		r := &stubL1AdminReader{
+			taskRows: taskRows,
+			fieldRows: map[string]struct {
+				rows [][]byte
+				err  error
+			}{
+				"t1": {rows: fieldRows},
+			},
+		}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 fact, got %d", len(got))
+		}
+		if got[0].Scope != "intent" {
+			t.Errorf("scope = %q, want %q", got[0].Scope, "intent")
+		}
+		want := "user_intent: build API"
+		if got[0].Statement != want {
+			t.Errorf("statement = %q, want %q", got[0].Statement, want)
+		}
+	})
+
+	t.Run("field_without_value_text_uses_field_path", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "", "status": "active"}),
+		}
+		fieldRows := [][]byte{
+			mustMarshal(t, map[string]any{"field_path": "random_field", "value_text": ""}),
+		}
+		r := &stubL1AdminReader{
+			taskRows: taskRows,
+			fieldRows: map[string]struct {
+				rows [][]byte
+				err  error
+			}{
+				"t1": {rows: fieldRows},
+			},
+		}
+		got := readL1Facts(ctx, r, "s1", lg)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 fact, got %d", len(got))
+		}
+		if got[0].Statement != "random_field" {
+			t.Errorf("statement = %q, want %q", got[0].Statement, "random_field")
+		}
+	})
+}
+
+// --- TestTryMemoryCompact_withL1Reader ---
+
+func TestTryMemoryCompact_withL1Reader(t *testing.T) {
+	ctx := context.Background()
+	lg := loggateway.NewNoop()
+	body := []biz.ChatMessage{makeMsg("user", 1, "hello")}
+
+	t.Run("both_readers_nil", func(t *testing.T) {
+		r := tryMemoryCompact(ctx, body, nil, nil, "s1", lg)
+		if r.didCompact {
+			t.Fatal("both readers nil should not compact")
+		}
+	})
+
+	t.Run("only_l1Reader_provides_facts", func(t *testing.T) {
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "L1 task", "status": "active"}),
+		}
+		l1 := &stubL1AdminReader{taskRows: taskRows}
+		r := tryMemoryCompact(ctx, body, nil, l1, "s1", lg)
+		if !r.didCompact {
+			t.Fatal("l1Reader facts should compact")
+		}
+		if r.summaryMarkdown == "" {
+			t.Fatal("summary should not be empty")
+		}
+	})
+
+	t.Run("both_readers_provide_facts", func(t *testing.T) {
+		facts := []biz.MemoryFactEntry{
+			{Statement: "L3 fact", Scope: "static", Confidence: 0.9},
+		}
+		reader := &stubMemoryFactReader{facts: facts}
+		taskRows := [][]byte{
+			mustMarshal(t, map[string]any{"id": "t1", "task_title": "L1 task", "status": "active"}),
+		}
+		l1 := &stubL1AdminReader{taskRows: taskRows}
+		r := tryMemoryCompact(ctx, body, reader, l1, "s1", lg)
+		if !r.didCompact {
+			t.Fatal("both readers should compact")
+		}
+		if r.summaryMarkdown == "" {
+			t.Fatal("summary should not be empty")
+		}
+		// Verify both facts appear in the summary
+		if !containsStr(r.summaryMarkdown, "L3 fact") {
+			t.Error("summary should contain L3 fact")
+		}
+		if !containsStr(r.summaryMarkdown, "L1 task") {
+			t.Error("summary should contain L1 task")
+		}
+	})
+}
+
+func TestMapFieldKindValueToScope(t *testing.T) {
+	tests := []struct {
+		kind string
+		want string
+	}{
+		{"decision", "decision"},
+		{"artifact", "file"},
+		{"progress", "state"},
+		{"constraint", "intent"},
+		{"string", ""},
+		{"", ""},
+		{"unknown_kind", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.kind, func(t *testing.T) {
+			if got := mapFieldKindValueToScope(tt.kind); got != tt.want {
+				t.Errorf("mapFieldKindValueToScope(%q) = %q, want %q", tt.kind, got, tt.want)
+			}
+		})
+	}
+}
+
+func containsStr(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || containsSubstr(s, sub))
+}
+
+func containsSubstr(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

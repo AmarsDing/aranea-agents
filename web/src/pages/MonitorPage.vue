@@ -102,11 +102,10 @@
             :flow-lines="flowLines"
             :active-correlation="activeCorrelation"
             :detail="traceDetail"
-            :detail-open="traceDetailOpen"
+            v-model:detail-open="traceDetailOpen"
             @reload="loadTraces"
             @notify="notify"
             @open-trace="openTraceDetail"
-            @close-detail="stopFlowStream"
             @open-chat-session="openChatSession"
           />
         </q-tab-panel>

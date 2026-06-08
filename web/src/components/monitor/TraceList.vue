@@ -105,7 +105,7 @@
     </div>
   </q-card>
 
-  <q-dialog :model-value="detailOpen" maximized @update:model-value="$emit('closeDetail')">
+  <q-dialog :model-value="detailOpen" maximized @update:model-value="$emit('update:detailOpen', $event)">
     <q-card class="app-dialog-card app-glass-dialog monitor-trace-dialog">
       <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div>
@@ -247,6 +247,7 @@ const emit = defineEmits<{
   notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
   openTrace: [row: MonitorTrace];
   closeDetail: [];
+  'update:detailOpen': [value: boolean];
   openChatSession: [sessionId: string];
 }>();
 

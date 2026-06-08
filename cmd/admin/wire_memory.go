@@ -61,6 +61,24 @@ func provideMemoryAdminUsecase(admin biz.SessionAdminStore, vec *biz.MemoryUseca
 	return biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
 }
 
+// providePathBExtractor creates a PathBExtractor and injects it into MemoryAdminUsecase.
+// This breaks the dependency cycle: MemoryAdminUsecase → PathBExtractor → EnhancedTextExtractor → SessionUsecase → … → MemoryAdminUsecase.
+func providePathBExtractor(extractor biz.EnhancedTextExtractor, l4 biz.L4EntityWriter, adminUC *biz.MemoryAdminUsecase, d *data.Data, lg loggateway.Logger) *biz.PathBExtractor {
+	pe := biz.NewPathBExtractor(extractor, l4, lg)
+	if adminUC != nil {
+		adminUC.SetPathBExtractor(pe, data.NewRecentMessageLister(d))
+	}
+	return pe
+}
+
+// provideL4EntityWriter provides the L4EntityWriter from Data.
+func provideL4EntityWriter(d *data.Data) biz.L4EntityWriter {
+	if d == nil {
+		return nil
+	}
+	return data.NewL4GraphRepo(d)
+}
+
 func providePersistenceSet(
 	d *data.Data,
 	mcp *biz.AgentMCPTooling,

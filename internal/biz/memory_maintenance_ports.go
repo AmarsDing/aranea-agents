@@ -14,6 +14,7 @@ type MemoryFactWrite struct {
 	Confidence      float64
 	Importance      float64
 	SourceKind      string
+	SourceEpisodeID string
 	SourceSessionID string
 	SourceMessageID string
 	Status          string
@@ -21,22 +22,30 @@ type MemoryFactWrite struct {
 }
 
 type EpisodeWrite struct {
-	SessionID          string
-	AgentID            string
-	UserID             string
-	Title              string
-	OutcomeSummary     string
-	Importance         float64
-	MessageCount       int
-	ConsolidatedL3     int
+	ID                  string
+	SessionID           string
+	AgentID             string
+	UserID              string
+	Title               string
+	Goal                string
+	Outcome             string
+	OutcomeSummary      string
+	KeyDecisionsJSON    string
+	KeyArtifactsJSON    string
+	EpisodeKind         string
+	Importance          float64
+	Confidence          float64
+	MessageCount        int
+	ConsolidatedL3      int
 	ConsolidationStatus string
-	MetadataJSON       string
+	MetadataJSON        string
 }
 
 type ConsolidationResult struct {
 	FactRows     [][]byte
 	EpisodeRow   []byte
 	FactsWritten int
+	FactsDeduped int // facts that matched an existing fingerprint (ON CONFLICT upsert)
 }
 
 type EpisodeEmbedCandidate struct {

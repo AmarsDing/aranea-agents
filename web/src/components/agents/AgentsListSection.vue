@@ -148,6 +148,21 @@
           }}</q-badge>
         </q-td>
       </template>
+      <template #body-cell-memory_mode="props">
+        <q-td :props="props">
+          <q-badge
+            rounded
+            :color="
+              props.value === 'working_memory'
+                ? 'info'
+                : props.value === 'framework_memory'
+                  ? 'warning'
+                  : 'positive'
+            "
+            >{{ MEMORY_TOOL_MODE_LABELS[props.value] }}</q-badge
+          >
+        </q-td>
+      </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
           <div class="app-registry-cell-actions">
@@ -213,7 +228,7 @@ import type { Agent } from '../../features/agents/types';
 import AgentCard from './AgentCard.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import { formatLastRunContext, isAgentEvolving, statusLabel } from './agentUi';
+import { formatLastRunContext, isAgentEvolving, statusLabel, deriveMemoryToolMode, MEMORY_TOOL_MODE_LABELS } from './agentUi';
 
 type ViewMode = 'grid' | 'list';
 

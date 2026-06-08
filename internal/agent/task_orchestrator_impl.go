@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -18,14 +19,6 @@ import (
 
 var _ biz.TaskOrchestratorPort = (*TaskOrchestratorImpl)(nil)
 
-// SpiritTeamAssemblerPort is a local port for assembling and starting teams.
-// This avoids importing internal/service directly.
-type SpiritTeamAssemblerPort interface {
-	AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, error)
-	CancelTeam(ctx context.Context, teamID string) error
-	CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]biz.TeamProgress, error)
-}
-
 // SpiritSynthesisPort is a local port for synthesizing results.
 type SpiritSynthesisPort interface {
 	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
@@ -34,7 +27,8 @@ type SpiritSynthesisPort interface {
 // TaskOrchestratorImpl implements biz.TaskOrchestratorPort.
 type TaskOrchestratorImpl struct {
 	spiritUC        *biz.SpiritTeamUsecase
-	assembler       SpiritTeamAssemblerPort
+	assembler       tools.SpiritTeamAssemblerPort
+	controller      tools.SpiritTeamControllerPort
 	compiler        *DAGToGraphCompiler
 	repo            biz.OrchestrationRepository
 	matcher         biz.AgentMatcherPort
@@ -50,7 +44,8 @@ type TaskOrchestratorImpl struct {
 // NewTaskOrchestratorImpl creates a new TaskOrchestratorImpl.
 func NewTaskOrchestratorImpl(
 	spiritUC *biz.SpiritTeamUsecase,
-	assembler SpiritTeamAssemblerPort,
+	assembler tools.SpiritTeamAssemblerPort,
+	controller tools.SpiritTeamControllerPort,
 	compiler *DAGToGraphCompiler,
 	repo biz.OrchestrationRepository,
 	matcher biz.AgentMatcherPort,
@@ -65,6 +60,7 @@ func NewTaskOrchestratorImpl(
 	return &TaskOrchestratorImpl{
 		spiritUC:        spiritUC,
 		assembler:       assembler,
+		controller:      controller,
 		compiler:        compiler,
 		repo:            repo,
 		matcher:         matcher,
@@ -350,8 +346,8 @@ func (o *TaskOrchestratorImpl) CheckProgress(ctx context.Context, orchestrationI
 	}
 
 	// For team-based strategies, delegate to team progress checking.
-	if len(handle.TeamIDs) > 0 && o.assembler != nil {
-		teamProgresses, err := o.assembler.CheckTeamProgress(ctx, handle.SpiritSessionID)
+	if len(handle.TeamIDs) > 0 && o.controller != nil {
+		teamProgresses, err := o.controller.CheckTeamProgress(ctx, handle.SpiritSessionID)
 		if err != nil {
 			return nil, err
 		}
@@ -395,8 +391,8 @@ func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID strin
 
 	// Cancel all teams.
 	for _, teamID := range handle.TeamIDs {
-		if o.assembler != nil {
-			if cancelErr := o.assembler.CancelTeam(ctx, teamID); cancelErr != nil {
+		if o.controller != nil {
+			if cancelErr := o.controller.CancelTeam(ctx, teamID); cancelErr != nil {
 				o.lg.Warn("TaskOrchestrator: failed to cancel team",
 					loggateway.StepID(biz.SpiritStepOrchestratorExecute),
 					loggateway.Str("team_id", teamID),

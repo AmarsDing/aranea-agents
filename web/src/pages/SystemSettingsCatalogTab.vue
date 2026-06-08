@@ -2,34 +2,37 @@
   <div class="model-catalog-tab q-gutter-md">
     <q-banner v-if="error" rounded class="bg-negative text-white">{{ error }}</q-banner>
 
+    <!-- 紧凑状态栏 + 策略表单（默认展开） -->
     <section class="app-settings-section">
       <h2 class="app-settings-section__title">{{ t('catalogTab.catalogTitle') }}</h2>
       <p class="app-settings-section__hint">
         {{ t('catalogTab.catalogHint') }}
       </p>
 
-      <div v-if="status" class="catalog-status-grid q-mb-md">
-        <div class="catalog-stat">
-          <span class="catalog-stat__label">{{ t('catalogTab.statusLabel') }}</span>
-          <span class="catalog-stat__value">{{
+      <div v-if="status" class="catalog-status-bar q-mb-md">
+        <span class="catalog-status-bar__item">
+          <span class="catalog-status-bar__label">{{ t('catalogTab.statusLabel') }}</span>
+          <span class="catalog-status-bar__value">{{
             status.catalogLoaded ? t('catalogTab.loaded') : t('catalogTab.notLoaded')
           }}</span>
-        </div>
-        <div class="catalog-stat">
-          <span class="catalog-stat__label">Provider</span>
-          <span class="catalog-stat__value">{{ status.providerCount ?? 0 }}</span>
-        </div>
-        <div class="catalog-stat">
-          <span class="catalog-stat__label">Models</span>
-          <span class="catalog-stat__value">{{ status.modelCount ?? 0 }}</span>
-        </div>
-        <div class="catalog-stat">
-          <span class="catalog-stat__label">{{ t('catalogTab.lastSync') }}</span>
-          <span class="catalog-stat__value">{{ lastSyncLabel }}</span>
-        </div>
-        <div class="catalog-stat catalog-stat--wide">
-          <span class="catalog-stat__label">{{ t('catalogTab.localPath') }}</span>
-          <span class="catalog-stat__value text-caption">{{ status.localPath || '—' }}</span>
+        </span>
+        <span class="catalog-status-bar__sep">·</span>
+        <span class="catalog-status-bar__item">
+          <span class="catalog-status-bar__label">Provider</span>
+          <span class="catalog-status-bar__value">{{ status.providerCount ?? 0 }}</span>
+        </span>
+        <span class="catalog-status-bar__sep">·</span>
+        <span class="catalog-status-bar__item">
+          <span class="catalog-status-bar__label">Models</span>
+          <span class="catalog-status-bar__value">{{ status.modelCount ?? 0 }}</span>
+        </span>
+        <span class="catalog-status-bar__sep">·</span>
+        <span class="catalog-status-bar__item">
+          <span class="catalog-status-bar__label">{{ t('catalogTab.lastSync') }}</span>
+          <span class="catalog-status-bar__value">{{ lastSyncLabel }}</span>
+        </span>
+        <div v-if="status.localPath" class="catalog-status-bar__path">
+          {{ t('catalogTab.localPath') }}: <code>{{ status.localPath }}</code>
         </div>
       </div>
     </section>
@@ -96,9 +99,15 @@
       </div>
     </section>
 
-    <section class="app-settings-section">
-      <h2 class="app-settings-section__title">{{ t('catalogTab.migrationTitle') }}</h2>
-      <p class="app-settings-section__hint">
+    <!-- 可折叠面板：迁移 -->
+    <q-expansion-item
+      v-model="expandMigration"
+      class="catalog-section-expansion"
+      expand-separator
+      dense
+      :label="t('catalogTab.migrationTitle')"
+    >
+      <p class="app-settings-section__hint q-mb-sm">
         {{ t('catalogTab.migrationHint') }}
       </p>
       <div class="app-actions-bar app-actions-bar--start q-mb-md">
@@ -144,11 +153,17 @@
           </q-item-section>
         </q-item>
       </q-list>
-    </section>
+    </q-expansion-item>
 
-    <section class="app-settings-section">
-      <h2 class="app-settings-section__title">{{ t('catalogTab.browseTitle') }}</h2>
-      <p class="app-settings-section__hint">{{ t('catalogTab.browseHint') }}</p>
+    <!-- 可折叠面板：Provider 浏览 -->
+    <q-expansion-item
+      v-model="expandBrowse"
+      class="catalog-section-expansion"
+      expand-separator
+      dense
+      :label="t('catalogTab.browseTitle')"
+    >
+      <p class="app-settings-section__hint q-mb-sm">{{ t('catalogTab.browseHint') }}</p>
       <div class="row q-col-gutter-sm q-mb-md items-end">
         <div class="col-grow">
           <q-input
@@ -206,11 +221,17 @@
           })
         }}
       </div>
-    </section>
+    </q-expansion-item>
 
-    <section class="app-settings-section">
-      <h2 class="app-settings-section__title">{{ t('catalogTab.jsonBrowseTitle') }}</h2>
-      <p class="app-settings-section__hint">
+    <!-- 可折叠面板：JSON 浏览 -->
+    <q-expansion-item
+      v-model="expandJson"
+      class="catalog-section-expansion"
+      expand-separator
+      dense
+      :label="t('catalogTab.jsonBrowseTitle')"
+    >
+      <p class="app-settings-section__hint q-mb-sm">
         {{ t('catalogTab.jsonBrowseHint') }}
       </p>
       <q-input
@@ -267,10 +288,16 @@
       <div v-else class="text-caption text-grey-7 q-py-md">
         {{ jsonSearchError || (jsonSearchQuery ? t('catalogTab.noMatchResult') : t('catalogTab.noCatalogData')) }}
       </div>
-    </section>
+    </q-expansion-item>
 
-    <section class="app-settings-section">
-      <h2 class="app-settings-section__title">{{ t('catalogTab.syncLogsTitle') }}</h2>
+    <!-- 可折叠面板：同步日志 -->
+    <q-expansion-item
+      v-model="expandLogs"
+      class="catalog-section-expansion"
+      expand-separator
+      dense
+      :label="t('catalogTab.syncLogsTitle')"
+    >
       <q-list v-if="logs.length" bordered separator class="rounded-borders">
         <q-item v-for="entry in logs" :key="entry.id">
           <q-item-section>
@@ -283,13 +310,19 @@
         </q-item>
       </q-list>
       <div v-else class="text-caption text-grey-7">{{ t('catalogTab.noSyncLogs') }}</div>
-    </section>
+    </q-expansion-item>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import { useModelCatalogTab } from '../features/model-catalog/useModelCatalogTab';
 import JsonCodeViewer from '../components/common/JsonCodeViewer.vue';
+
+const expandMigration = ref(false);
+const expandBrowse = ref(false);
+const expandJson = ref(false);
+const expandLogs = ref(false);
 
 const {
   loading,

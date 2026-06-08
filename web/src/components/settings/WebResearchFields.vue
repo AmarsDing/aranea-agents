@@ -2,7 +2,7 @@
   <div class="app-form-field-grid app-form-field-grid--2col">
     <q-select
       v-model="form.provider"
-      class="app-field-sm"
+      class="app-glass-control app-field-sm"
       dense
       outlined
       :label="t('settingsPage.webResearch.provider')"
@@ -12,7 +12,7 @@
     />
     <q-select
       v-model="form.search_depth"
-      class="app-field-sm"
+      class="app-glass-control app-field-sm"
       dense
       outlined
       :label="t('settingsPage.webResearch.searchDepth')"
@@ -23,7 +23,7 @@
     />
     <q-input
       v-model="form.api_key"
-      class="app-grid-span-full app-field-long"
+      class="app-glass-control app-grid-span-full app-field-long"
       dense
       outlined
       :label="apiKeyLabel"
@@ -32,7 +32,7 @@
     />
     <q-input
       v-model.number="form.max_results"
-      class="app-field-sm"
+      class="app-glass-control app-field-sm"
       dense
       outlined
       type="number"
@@ -42,7 +42,7 @@
     />
     <q-input
       v-model.number="form.fetch_top"
-      class="app-field-sm"
+      class="app-glass-control app-field-sm"
       dense
       outlined
       type="number"
@@ -52,7 +52,7 @@
     />
     <q-input
       v-model.number="form.timeout_sec"
-      class="app-field-sm"
+      class="app-glass-control app-field-sm"
       dense
       outlined
       type="number"
@@ -62,7 +62,7 @@
     />
     <q-input
       v-model="form.http_proxy"
-      class="app-grid-span-full app-field-long"
+      class="app-glass-control app-grid-span-full app-field-long"
       dense
       outlined
       :label="t('settingsPage.webResearch.httpProxy')"

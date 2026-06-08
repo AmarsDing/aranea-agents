@@ -1,18 +1,21 @@
 import { ref } from 'vue';
 import { defineStore } from 'pinia';
 import {
+  archiveSession,
   clearAgentSessions,
   compactSession,
   createSession,
   deleteSession,
+  getCompressStatus,
   getSession,
   listSessions,
   listTeamSessions,
   pinSession,
+  restoreSession,
   unpinSession,
   updateSessionTitle,
 } from '../../features/session/api';
-import type { Session, CompactSessionResult } from '../../features/session/types';
+import type { Session, CompactSessionResult, CompressStatus } from '../../features/session/types';
 import type { SessionContextPatch } from '../../features/chat/sessionContextPatch';
 import { reconcilePatchFromServer } from '../../features/chat/sessionContextPatch';
 import { formatSessionTime } from '../../features/chat/composables/chatWorkspaceUtils';
@@ -459,6 +462,48 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     return result;
   }
 
+  // --- Compress status ---
+  const compressStatus = ref<CompressStatus>('normal');
+
+  async function fetchCompressStatus(sessionId: string): Promise<CompressStatus> {
+    try {
+      const status = await getCompressStatus(sessionId);
+      compressStatus.value = status;
+      return status;
+    } catch {
+      return compressStatus.value;
+    }
+  }
+
+  function resetCompressStatus() {
+    compressStatus.value = 'normal';
+  }
+
+  async function archiveSessionLocal(id: string) {
+    error.value = null;
+    try {
+      await archiveSession(id);
+      removeSessionById(id);
+      emitSessionMutation({ type: 'archive', id });
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
+  }
+
+  async function restoreSessionLocal(id: string) {
+    error.value = null;
+    try {
+      const updated = await restoreSession(id);
+      updateSessionById(id, updated);
+      emitSessionMutation({ type: 'update', id, session: updated });
+      return updated;
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
+  }
+
   return {
     entityKind,
     selectedTeamId,
@@ -491,5 +536,10 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     updateSessionById,
     refreshFromAdmin,
     compactSessionAction,
+    compressStatus,
+    fetchCompressStatus,
+    resetCompressStatus,
+    archiveSessionLocal,
+    restoreSessionLocal,
   };
 });

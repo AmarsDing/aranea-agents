@@ -423,6 +423,16 @@ message GetCompressStatusReply {
   string status = 1; // "normal" | "optimizing" | "optimized" | "compressing"
 }
 
+// ListChildSessions messages (B-2)
+
+message ListChildSessionsRequest {
+  string parent_session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListChildSessionsResponse {
+  repeated Session sessions = 1;
+}
+
 service SessionService {
   rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
@@ -518,6 +528,10 @@ service SessionService {
     };
   }
   rpc GetCompressStatus(GetCompressStatusRequest) returns (GetCompressStatusReply) {
-    option (google.api.http) = {get: "/api/v1/sessions/{session_id}/compress-status"};
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/compress-status"};
+  }
+  // ListChildSessions returns child sessions of a parent session (session tree model).
+  rpc ListChildSessions(ListChildSessionsRequest) returns (ListChildSessionsResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{parent_session_id}/children"};
   }
 }

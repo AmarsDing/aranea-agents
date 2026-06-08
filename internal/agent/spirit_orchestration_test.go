@@ -143,6 +143,7 @@ func TestCheckpointRestore_RebuildsGraphAgentState(t *testing.T) {
 	orch := &TaskOrchestratorImpl{
 		spiritUC:        nil,
 		assembler:       nil,
+		controller:      nil,
 		compiler:        nil,
 		repo:            repo,
 		matcher:         nil,
@@ -218,6 +219,7 @@ func TestCheckpointRestore_ValidatesCriticalFields(t *testing.T) {
 
 	orch := &TaskOrchestratorImpl{
 		repo:            repo,
+		controller:      nil,
 		checkpointSaver: ckptSaver,
 		lg:              lg,
 	}
@@ -270,6 +272,7 @@ func TestCheckpointRestore_RestoresStrategyFromCheckpoint(t *testing.T) {
 
 	orch := &TaskOrchestratorImpl{
 		repo:            repo,
+		controller:      nil,
 		checkpointSaver: ckptSaver,
 		lg:              lg,
 	}
@@ -320,6 +323,7 @@ func TestCheckpointRestore_NoCheckpointAvailable(t *testing.T) {
 
 	orch := &TaskOrchestratorImpl{
 		repo:            repo,
+		controller:      nil,
 		checkpointSaver: nil, // no checkpoint saver
 		lg:              lg,
 	}

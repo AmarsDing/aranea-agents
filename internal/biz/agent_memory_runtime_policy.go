@@ -45,6 +45,7 @@ type MemoryRuntimePolicy struct {
 	L0L3MaxChunks         int
 	L0L4MaxPaths          int
 	L1FieldMaxChars       int
+	L1BudgetTokens        int
 	L4PersonaMaxChars     int
 	L4GraphInjectNeighbors bool
 	L4GraphMaxNeighbors    int
@@ -94,6 +95,7 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		L0L3MaxChunks:          settings.L0L3MaxChunks,
 		L0L4MaxPaths:           settings.L0L4MaxPaths,
 		L1FieldMaxChars:        settings.L1FieldMaxTokens * 4,
+		L1BudgetTokens:         settings.L1BudgetTokens,
 		L4PersonaMaxChars:      settings.EvoPersonaMaxChars,
 		L4GraphInjectNeighbors: settings.L4GraphInjectNeighbors,
 		L4GraphMaxNeighbors:    settings.L4GraphMaxNeighbors,

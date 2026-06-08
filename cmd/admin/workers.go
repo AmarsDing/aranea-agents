@@ -47,7 +47,6 @@ type backgroundWorkersConfig struct {
 	PredictiveHealJob           BackgroundStarter
 	PatternMiningJob            BackgroundStarter
 	MemoryL2Decay               BackgroundStarter
-	MemoryL2Consolidate         BackgroundStarter
 	MemoryL1Archive             BackgroundStarter
 	MemoryL3Decay               BackgroundStarter
 	MemoryL4Decay               BackgroundStarter
@@ -228,11 +227,6 @@ func startBackgroundWorkers(
 	if cfg.MemoryL2Decay != nil {
 		goAfterReady("memory_l2_decay", func() { cfg.MemoryL2Decay.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker scheduled", "interval", "24h")
-	}
-
-	if cfg.MemoryL2Consolidate != nil {
-		goAfterReady("memory_l2_consolidate", func() { cfg.MemoryL2Consolidate.Start(ctx) })
-		logger.Log(log.LevelInfo, "msg", "memory l2 consolidate worker scheduled", "interval", "10m")
 	}
 
 	if cfg.MemoryL1Archive != nil {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { listSpiritTeams, cancelSpiritTeam, resumeSpiritTeam } from '../../features/spirit/api';
+import { listSpiritTeams, cancelSpiritTeam, resumeSpiritTeam, archiveSpiritTeam, retrySpiritTeam } from '../../features/spirit/api';
 import type {
   SpiritTeam,
   SpiritPanelMode,
@@ -8,6 +8,9 @@ import type {
   SpiritTeamStatus,
   TeamProgressView,
   SynthesisOutput,
+  DQScoreBreakdown,
+  EvolutionSuggestion,
+  CompletionStats,
 } from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
 import type {
@@ -51,6 +54,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const synthesisCompleted = ref(false);
   const synthesisResult = ref<SynthesisOutput | null>(null);
 
+  // Aggregated token usage from spirit_teams_all_completed event
+  const aggregatedTokenIn = ref(0);
+  const aggregatedTokenOut = ref(0);
+
   // Spirit Orchestration state (new envelope types)
   const planCreated = ref<SpiritPlanCreatedPayload | null>(null);
   const allocationCreated = ref<SpiritAllocationCreatedPayload | null>(null);
@@ -63,6 +70,14 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   /** Max concurrent teams quota from backend ParallelConfig. */
   const maxConcurrentTeams = ref<number | null>(null);
+
+  /** Last DQ score from spirit_team_completed event. */
+  const lastDqScore = ref<DQScoreBreakdown | null>(null);
+  /** Last evolution suggestion from spirit_team_completed event. */
+  const lastEvolutionSuggestion = ref<EvolutionSuggestion | null>(null);
+
+  /** Team completion breakdown from spirit_teams_all_completed event. */
+  const completionStats = ref<CompletionStats | null>(null);
 
   const activeTeam = computed(() => teams.value.find((t) => t.id === activeTeamId.value) ?? null);
 
@@ -122,6 +137,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     allTeamsCompleted.value = false;
     synthesisCompleted.value = false;
     synthesisResult.value = null;
+    aggregatedTokenIn.value = 0;
+    aggregatedTokenOut.value = 0;
     planCreated.value = null;
     allocationCreated.value = null;
     orchestrationStarted.value = null;
@@ -129,6 +146,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     orchestrationInterrupted.value = null;
     currentSpiritSessionId.value = null;
     maxConcurrentTeams.value = null;
+    lastDqScore.value = null;
+    lastEvolutionSuggestion.value = null;
+    completionStats.value = null;
   }
 
   function selectTeam(teamId: string) {
@@ -180,6 +200,25 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       updateTeamStatus(teamId, 'running');
     } catch {
       Notify.create({ type: 'warning', message: '恢复团队请求可能未生效，请刷新确认', position: 'top' });
+    }
+  }
+
+  async function archiveTeam(teamId: string) {
+    try {
+      await archiveSpiritTeam(teamId);
+      // Remove archived team from the list
+      teams.value = teams.value.filter((t) => t.id !== teamId);
+    } catch {
+      Notify.create({ type: 'warning', message: '归档团队请求可能未生效，请刷新确认', position: 'top' });
+    }
+  }
+
+  async function retryTeam(teamId: string) {
+    try {
+      await retrySpiritTeam(teamId);
+      updateTeamStatus(teamId, 'pending');
+    } catch {
+      Notify.create({ type: 'warning', message: '重试团队请求可能未生效，请刷新确认', position: 'top' });
     }
   }
 
@@ -262,17 +301,50 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
               completedTeam.tokenIn = tokenIn;
               completedTeam.tokenOut = tokenOut;
             }
+            // Extract DQ score if present
+            const dqRaw = md.dq_score as Record<string, number> | undefined;
+            if (dqRaw && typeof dqRaw.overall === 'number') {
+              const dqScore: DQScoreBreakdown = {
+                validity: dqRaw.validity ?? 0,
+                specificity: dqRaw.specificity ?? 0,
+                correctness: dqRaw.correctness ?? 0,
+                overall: dqRaw.overall,
+              };
+              completedTeam.dqScore = dqScore;
+              lastDqScore.value = dqScore;
+            }
+            // Extract evolution suggestion if present
+            const evoRaw = md.evolution_suggestion as Record<string, unknown> | undefined;
+            if (evoRaw && typeof evoRaw.suggestedTopology === 'string') {
+              const evo: EvolutionSuggestion = {
+                currentTopology: String(evoRaw.currentTopology ?? ''),
+                suggestedTopology: String(evoRaw.suggestedTopology),
+                reason: String(evoRaw.reason ?? ''),
+                dqScore: Number(evoRaw.dqScore ?? 0),
+              };
+              completedTeam.evolutionSuggestion = evo;
+              lastEvolutionSuggestion.value = evo;
+            }
           }
         }
         break;
 
       case 'spirit_team_failed':
         if (teamId) {
+          // Don't overwrite a user-initiated cancelled status with failed
+          const existingTeam = teams.value.find((t) => t.id === teamId);
+          if (existingTeam?.status === 'cancelled') break;
           updateTeamStatus(teamId, 'failed');
           const failedTeam = teams.value.find((t) => t.id === teamId);
           if (failedTeam) {
             const dMs = Number(md.duration_ms ?? 0);
             if (dMs > 0) failedTeam.durationMs = dMs;
+            const tkIn = Number(md.total_token_in ?? 0);
+            const tkOut = Number(md.total_token_out ?? 0);
+            if (tkIn > 0 || tkOut > 0) {
+              failedTeam.tokenIn = tkIn;
+              failedTeam.tokenOut = tkOut;
+            }
           }
         }
         break;
@@ -326,6 +398,24 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
       case 'spirit_teams_all_completed':
         allTeamsCompleted.value = true;
+        // Consume aggregated token data from backend for accuracy
+        {
+          const aggTokenIn = Number(md.total_token_in ?? 0);
+          const aggTokenOut = Number(md.total_token_out ?? 0);
+          if (aggTokenIn > 0 || aggTokenOut > 0) {
+            aggregatedTokenIn.value = aggTokenIn;
+            aggregatedTokenOut.value = aggTokenOut;
+          }
+          // Consume team completion breakdown
+          const total = Number(md.total_teams ?? 0);
+          if (total > 0) {
+            completionStats.value = {
+              totalTeams: total,
+              completedTeams: Number(md.completed_teams ?? 0),
+              failedTeams: Number(md.failed_teams ?? 0),
+            };
+          }
+        }
         break;
 
       case 'spirit_synthesis_completed':
@@ -446,6 +536,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     allTeamsCompleted,
     synthesisCompleted,
     synthesisResult,
+    aggregatedTokenIn,
+    aggregatedTokenOut,
     planCreated,
     allocationCreated,
     orchestrationStarted,
@@ -453,6 +545,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     orchestrationInterrupted,
     currentSpiritSessionId,
     maxConcurrentTeams,
+    lastDqScore,
+    lastEvolutionSuggestion,
+    completionStats,
     activeTeam,
     activeTeams,
     completedTeams,
@@ -467,6 +562,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     toggleTeamExpand,
     cancelTeam,
     resumeTeam,
+    archiveTeam,
+    retryTeam,
     updateTeamProgress,
     updateTeamStatus,
     addTeam,

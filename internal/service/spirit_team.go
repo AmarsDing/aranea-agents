@@ -337,6 +337,9 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		env.Metadata = map[string]any{
 			"spirit_session_id": spiritSessionID,
 			"team_ids":          result.TeamIDs,
+			"total_teams":       result.TotalTeams,
+			"completed_teams":   result.CompletedTeams,
+			"failed_teams":      result.FailedTeams,
 			"total_token_in":    result.TotalTokenIn,
 			"total_token_out":   result.TotalTokenOut,
 		}

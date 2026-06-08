@@ -76,11 +76,12 @@ describe('useAutoCollapse', () => {
     expect(isCollapsed(2)).toBe(false);
   });
 
-  it('collapseAll() collapses all completed blocks', () => {
+  it('collapseAll() collapses all completed blocks with tools/members', () => {
     const turnBlocks = ref<TurnBlockGroup[]>([
-      makeBlock({ key: 0, isCompleted: true }),
+      makeBlock({ key: 0, isCompleted: true, tools: [{} as any] }),
       makeBlock({ key: 1, isCompleted: false }),
-      makeBlock({ key: 2, isCompleted: true }),
+      makeBlock({ key: 2, isCompleted: true, members: [{} as any] }),
+      makeBlock({ key: 3, isCompleted: true }), // pure assistant reply
     ]);
     const { isCollapsed, collapseAll, expandAllActive } = useAutoCollapse(turnBlocks);
 
@@ -89,6 +90,7 @@ describe('useAutoCollapse', () => {
     expect(isCollapsed(0)).toBe(true);
     expect(isCollapsed(1)).toBe(false);
     expect(isCollapsed(2)).toBe(true);
+    expect(isCollapsed(3)).toBe(false); // pure assistant reply not collapsed
     expect(expandAllActive.value).toBe(false);
   });
 
@@ -108,17 +110,30 @@ describe('useAutoCollapse', () => {
 
   it('auto-collapses newly completed blocks via watcher', async () => {
     const turnBlocks = ref<TurnBlockGroup[]>([
-      makeBlock({ key: 0, isCompleted: false }),
+      makeBlock({ key: 0, isCompleted: false, tools: [{} as any] }),
     ]);
     const { isCollapsed } = useAutoCollapse(turnBlocks);
 
     expect(isCollapsed(0)).toBe(false);
 
     // Simulate block becoming completed
-    turnBlocks.value = [makeBlock({ key: 0, isCompleted: true })];
+    turnBlocks.value = [makeBlock({ key: 0, isCompleted: true, tools: [{} as any] })];
     await nextTick();
 
     expect(isCollapsed(0)).toBe(true);
+  });
+
+  it('does not auto-collapse pure assistant replies (no tools, no members)', async () => {
+    const turnBlocks = ref<TurnBlockGroup[]>([
+      makeBlock({ key: 0, isCompleted: false }),
+    ]);
+    const { isCollapsed } = useAutoCollapse(turnBlocks);
+
+    // Simulate block becoming completed with no tools/members
+    turnBlocks.value = [makeBlock({ key: 0, isCompleted: true })];
+    await nextTick();
+
+    expect(isCollapsed(0)).toBe(false);
   });
 
   it('does not auto-collapse when expandAllActive is true', async () => {

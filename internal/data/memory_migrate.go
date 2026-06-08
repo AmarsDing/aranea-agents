@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -114,7 +115,7 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 	var migrated int
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, r := range batch {
-		fp := factFingerprint(r.statement, r.scopeType, r.scopeID)
+		fp := biz.FactFingerprint(r.statement, r.scopeType, r.scopeID)
 		tags := "[]"
 		meta := strings.TrimSpace(r.metadataJSON)
 		if meta == "" {

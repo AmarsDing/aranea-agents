@@ -514,3 +514,23 @@ func (s *SessionService) GetCompressStatus(ctx context.Context, req *v1.GetCompr
 	}
 	return &v1.GetCompressStatusReply{Status: status}, nil
 }
+
+// ListChildSessions returns child sessions of a parent session (B-2).
+func (s *SessionService) ListChildSessions(ctx context.Context, req *v1.ListChildSessionsRequest) (*v1.ListChildSessionsResponse, error) {
+	if s == nil || s.uc == nil {
+		return nil, kerrors.InternalServer("SESSION", "session service not configured")
+	}
+	parentSessionID := strings.TrimSpace(req.GetParentSessionId())
+	if parentSessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "parent_session_id is required")
+	}
+	sessions, err := s.uc.ListChildSessions(ctx, parentSessionID)
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	out := make([]*v1.Session, 0, len(sessions))
+	for i := range sessions {
+		out = append(out, toProtoSession(sessions[i], nil))
+	}
+	return &v1.ListChildSessionsResponse{Sessions: out}, nil
+}

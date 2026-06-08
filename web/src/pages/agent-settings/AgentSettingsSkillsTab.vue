@@ -71,6 +71,7 @@
               outlined
               multiple
               use-chips
+              color="primary"
               use-input
               new-value-mode="add-unique"
               input-debounce="0"
@@ -88,6 +89,7 @@
               outlined
               multiple
               use-chips
+              color="primary"
               use-input
               new-value-mode="add-unique"
               input-debounce="0"
@@ -104,6 +106,7 @@
               outlined
               multiple
               use-chips
+              color="primary"
               use-input
               new-value-mode="add-unique"
               input-debounce="0"
@@ -156,6 +159,7 @@
             outlined
             multiple
             use-chips
+            color="primary"
             emit-value
             map-options
             label="允许"
@@ -168,6 +172,7 @@
             outlined
             multiple
             use-chips
+            color="primary"
             emit-value
             map-options
             label="拒绝"
@@ -180,6 +185,7 @@
             outlined
             multiple
             use-chips
+            color="primary"
             emit-value
             map-options
             label="并行白名单"

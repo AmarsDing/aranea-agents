@@ -3,9 +3,11 @@ package working_memory
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -18,6 +20,9 @@ type l1FieldWriterKey struct{}
 type l1ReaderKey struct{}
 type sessionIDKey struct{}
 type agentIDKey struct{}
+type l1HistoryEnabledKey struct{}
+type l1SchemaReaderKey struct{}
+type l1DefaultSchemaIDKey struct{}
 
 // WithL1TaskWriter injects L1TaskWriter into context for tool execution.
 func WithL1TaskWriter(ctx context.Context, w biz.L1TaskWriter) context.Context {
@@ -42,6 +47,21 @@ func WithSessionID(ctx context.Context, sid string) context.Context {
 // WithAgentID injects agent_id into context for tool execution.
 func WithAgentID(ctx context.Context, aid string) context.Context {
 	return context.WithValue(ctx, agentIDKey{}, aid)
+}
+
+// WithL1HistoryEnabled injects the L1 history archival flag into context for tool execution.
+func WithL1HistoryEnabled(ctx context.Context, enabled bool) context.Context {
+	return context.WithValue(ctx, l1HistoryEnabledKey{}, enabled)
+}
+
+// WithL1SchemaReader injects L1SchemaReader into context for tool execution.
+func WithL1SchemaReader(ctx context.Context, r biz.L1SchemaReader) context.Context {
+	return context.WithValue(ctx, l1SchemaReaderKey{}, r)
+}
+
+// WithL1DefaultSchemaID injects the default L1 schema ID into context for tool execution.
+func WithL1DefaultSchemaID(ctx context.Context, schemaID string) context.Context {
+	return context.WithValue(ctx, l1DefaultSchemaIDKey{}, schemaID)
 }
 
 // L1TaskWriterFromCtx extracts L1TaskWriter from context.
@@ -74,7 +94,92 @@ func AgentIDFromCtx(ctx context.Context) string {
 	return v
 }
 
+// L1HistoryEnabledFromCtx extracts the L1 history archival flag from context.
+func L1HistoryEnabledFromCtx(ctx context.Context) bool {
+	v, _ := ctx.Value(l1HistoryEnabledKey{}).(bool)
+	return v
+}
+
+// L1SchemaReaderFromCtx extracts L1SchemaReader from context.
+func L1SchemaReaderFromCtx(ctx context.Context) biz.L1SchemaReader {
+	v, _ := ctx.Value(l1SchemaReaderKey{}).(biz.L1SchemaReader)
+	return v
+}
+
+// L1DefaultSchemaIDFromCtx extracts the default L1 schema ID from context.
+func L1DefaultSchemaIDFromCtx(ctx context.Context) string {
+	v, _ := ctx.Value(l1DefaultSchemaIDKey{}).(string)
+	return v
+}
+
 // --- Helpers ---
+
+// sanitizeFieldKind returns the field_kind if valid, otherwise "string".
+func sanitizeFieldKind(kind string) string {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return "string"
+	}
+	for _, v := range biz.ValidFieldKinds {
+		if kind == v {
+			return kind
+		}
+	}
+	return "string"
+}
+
+// validateFieldAgainstSchema checks whether the given field_path is allowed by the schema.
+// The schema_json format is: {"fields": [{"path": "field_name", "kind": "string"}, ...]}.
+// If the schema has no "fields" key or it's empty, all fields are allowed (no constraint).
+func validateFieldAgainstSchema(schemaJSON []byte, fieldPath, fieldKind string) error {
+	if len(schemaJSON) == 0 {
+		return nil
+	}
+	m, err := jsonutil.ParseMap(schemaJSON)
+	if err != nil {
+		return nil // unparseable schema → soft constraint, allow
+	}
+	fieldsRaw, ok := m["fields"]
+	if !ok {
+		return nil // no fields key → no constraint
+	}
+	fieldsSlice, ok := fieldsRaw.([]any)
+	if !ok || len(fieldsSlice) == 0 {
+		return nil // empty or wrong type → no constraint
+	}
+	for _, f := range fieldsSlice {
+		fm, ok := f.(map[string]any)
+		if !ok {
+			continue
+		}
+		if jsonutil.IfaceStr(fm, "path") == fieldPath {
+			return nil // field found in schema → allowed
+		}
+	}
+	return kerrors.BadRequest("WORKING_MEMORY", fmt.Sprintf("field_path %q is not allowed by the schema", fieldPath))
+}
+
+// validateFieldWithSchema reads the schema from the reader and validates the field.
+// If the schema can't be read or parsed, the write is allowed (soft constraint).
+func validateFieldWithSchema(ctx context.Context, reader biz.L1SchemaReader, schemaID, fieldPath, fieldKind string) error {
+	if reader == nil || schemaID == "" {
+		return nil
+	}
+	schemaRow, err := reader.GetL1SchemaRow(ctx, schemaID)
+	if err != nil {
+		// Can't read schema → soft constraint, allow
+		return nil
+	}
+	rowMap, err := jsonutil.ParseMap(schemaRow)
+	if err != nil {
+		return nil
+	}
+	schemaJSONStr := jsonutil.IfaceStr(rowMap, "schema_json")
+	if schemaJSONStr == "" {
+		return nil
+	}
+	return validateFieldAgainstSchema([]byte(schemaJSONStr), fieldPath, fieldKind)
+}
 
 // findActiveTaskID finds the active task ID for the given session+agent.
 func findActiveTaskID(ctx context.Context, reader biz.L1AdminReader, sessID, agentID string) (string, error) {
@@ -134,7 +239,7 @@ func readExecute(ctx context.Context, input ReadInput) (ReadOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if taskWriter == nil || fieldWriter == nil || reader == nil || sessID == "" {
-		return ReadOutput{}, fmt.Errorf("working_memory not available")
+		return ReadOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {
@@ -183,7 +288,7 @@ func listExecute(ctx context.Context, input ListInput) (ListOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if reader == nil || sessID == "" {
-		return ListOutput{}, fmt.Errorf("working_memory not available")
+		return ListOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {
@@ -220,6 +325,7 @@ func NewListTool() trpctool.Tool {
 type WriteInput struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path to write to,required"`
 	Value     string `json:"value" jsonschema:"description=The value to store,required"`
+	FieldKind string `json:"field_kind" jsonschema:"description=The kind of field: string|number|boolean|json|reference|markdown|decision|artifact|progress|constraint"`
 	Pinned    bool   `json:"pinned" jsonschema:"description=Whether to pin this field to the prompt"`
 }
 
@@ -237,21 +343,33 @@ func writeExecute(ctx context.Context, input WriteInput) (WriteOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if taskWriter == nil || fieldWriter == nil || sessID == "" {
-		return WriteOutput{}, fmt.Errorf("working_memory not available")
+		return WriteOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
 	}
+	// Validate field_kind against known enum values.
+	input.FieldKind = sanitizeFieldKind(input.FieldKind)
 	taskID, err := ensureActiveTask(ctx, taskWriter, reader, sessID, agentID)
 	if err != nil {
 		return WriteOutput{}, err
 	}
+	// Schema validation (soft constraint: skip if schema unavailable)
+	if schemaID := L1DefaultSchemaIDFromCtx(ctx); schemaID != "" {
+		if schemaReader := L1SchemaReaderFromCtx(ctx); schemaReader != nil {
+			if err := validateFieldWithSchema(ctx, schemaReader, schemaID, input.FieldPath, input.FieldKind); err != nil {
+				return WriteOutput{}, err
+			}
+		}
+	}
 	raw, err := fieldWriter.UpsertL1Field(ctx, biz.L1FieldInsert{
-		TaskID:      taskID,
-		SessionID:   sessID,
-		AgentID:     agentID,
-		FieldPath:   input.FieldPath,
-		ValueText:   input.Value,
-		PinToPrompt: input.Pinned,
-		Source:      "agent",
-		ChangedBy:   "agent",
+		TaskID:         taskID,
+		SessionID:      sessID,
+		AgentID:        agentID,
+		FieldPath:      input.FieldPath,
+		FieldKind:      input.FieldKind,
+		ValueText:      input.Value,
+		PinToPrompt:    input.Pinned,
+		Source:         "agent",
+		ChangedBy:      "agent",
+		HistoryEnabled: L1HistoryEnabledFromCtx(ctx),
 	})
 	if err != nil {
 		return WriteOutput{}, err
@@ -268,7 +386,7 @@ func writeExecute(ctx context.Context, input WriteInput) (WriteOutput, error) {
 func NewWriteTool() trpctool.Tool {
 	return trpcfunction.NewFunctionTool(writeExecute,
 		trpcfunction.WithName("write"),
-		trpcfunction.WithDescription("Write a field value to the current working memory task. Creates the task if none exists. Pinned fields are included in the prompt for future turns."),
+		trpcfunction.WithDescription("Write a field value to the current working memory task. Creates the task if none exists. Pinned fields are included in the prompt for future turns.\n\nRecommended field names by kind:\n- decision: current_approach, chosen_option, architecture_decision\n- artifact: main_file, config_path, output_file\n- progress: current_step, completion_status, next_action\n- constraint: user_requirement, tech_limitation, deadline\n- string/number/boolean/json: any descriptive name (e.g., user_preference, retry_count, is_debug_mode, api_response)"),
 	)
 }
 
@@ -278,6 +396,7 @@ func NewWriteTool() trpctool.Tool {
 type PatchField struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path,required"`
 	Value     string `json:"value" jsonschema:"description=The value to store,required"`
+	FieldKind string `json:"field_kind" jsonschema:"description=The kind of field: string|number|boolean|json|reference|markdown|decision|artifact|progress|constraint"`
 	Pinned    bool   `json:"pinned" jsonschema:"description=Whether to pin this field to the prompt"`
 }
 
@@ -298,23 +417,37 @@ func patchExecute(ctx context.Context, input PatchInput) (PatchOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if taskWriter == nil || fieldWriter == nil || sessID == "" {
-		return PatchOutput{}, fmt.Errorf("working_memory not available")
+		return PatchOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
 	}
 	taskID, err := ensureActiveTask(ctx, taskWriter, reader, sessID, agentID)
 	if err != nil {
 		return PatchOutput{}, err
 	}
+	// Schema validation (soft constraint: skip if schema unavailable)
+	schemaID := L1DefaultSchemaIDFromCtx(ctx)
+	schemaReader := L1SchemaReaderFromCtx(ctx)
+	if schemaID != "" && schemaReader != nil {
+		for _, f := range input.Fields {
+			if err := validateFieldWithSchema(ctx, schemaReader, schemaID, f.FieldPath, f.FieldKind); err != nil {
+				return PatchOutput{}, err
+			}
+		}
+	}
 	fields := make([]biz.L1FieldInsert, 0, len(input.Fields))
+	historyEnabled := L1HistoryEnabledFromCtx(ctx)
 	for _, f := range input.Fields {
+		f.FieldKind = sanitizeFieldKind(f.FieldKind)
 		fields = append(fields, biz.L1FieldInsert{
-			TaskID:      taskID,
-			SessionID:   sessID,
-			AgentID:     agentID,
-			FieldPath:   f.FieldPath,
-			ValueText:   f.Value,
-			PinToPrompt: f.Pinned,
-			Source:      "agent",
-			ChangedBy:   "agent",
+			TaskID:         taskID,
+			SessionID:      sessID,
+			AgentID:        agentID,
+			FieldPath:      f.FieldPath,
+			ValueText:      f.Value,
+			FieldKind:      f.FieldKind,
+			PinToPrompt:    f.Pinned,
+			Source:         "agent",
+			ChangedBy:      "agent",
+			HistoryEnabled: historyEnabled,
 		})
 	}
 	_, err = fieldWriter.PatchL1Fields(ctx, fields)
@@ -350,7 +483,7 @@ func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if fieldWriter == nil || sessID == "" {
-		return DeleteOutput{}, fmt.Errorf("working_memory not available")
+		return DeleteOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {

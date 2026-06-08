@@ -140,10 +140,11 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	}
 
 	// Graph orchestration tool for complex multi-agent DAG execution.
-	// TODO(debt): wire GraphBuilderPort implementation for build_orchestration_graph.
-	// Currently the tool only generates Graph config without executing it.
-	// When GraphBuilderPort is wired, the tool will also execute the built graph.
-	out = append(out, orchtools.NewBuildOrchestrationGraphTool(nil))
+	var graphBuilder orchtools.GraphBuilderPort
+	if o.graphExec != nil {
+		graphBuilder = graphBuilderAdapter{exec: o.graphExec}
+	}
+	out = append(out, orchtools.NewBuildOrchestrationGraphTool(graphBuilder))
 
 	return out
 }
@@ -224,4 +225,24 @@ func cliAdminAPIToken() string {
 		}
 	}
 	return ""
+}
+
+// graphBuilderAdapter adapts biz.GraphExecutor to orchestrator.GraphBuilderPort.
+// This bridges the gap between the biz-level graph execution port and the
+// orchestrator tool's builder interface, enabling build_orchestration_graph
+// to both generate and execute Graph DAGs.
+type graphBuilderAdapter struct {
+	exec biz.GraphExecutor
+}
+
+var _ orchtools.GraphBuilderPort = graphBuilderAdapter{}
+
+func (a graphBuilderAdapter) BuildAndExecute(ctx context.Context, config biz.GraphBuildConfig, sessionID string) (string, error) {
+	// Generate a deterministic graph ID from the config for idempotency.
+	graphID := "spirit_graph_" + config.EntryPoint
+	execID, err := a.exec.ExecuteGraphBuildConfig(ctx, graphID, sessionID, config, nil)
+	if err != nil {
+		return "", err
+	}
+	return execID, nil
 }

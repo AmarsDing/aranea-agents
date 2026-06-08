@@ -13,6 +13,8 @@ export type PulseState = {
   color: string;
   /** Whether the pulse is currently active. */
   active: boolean;
+  /** Duration of the pulse animation in milliseconds. */
+  durationMs: number;
 };
 
 export function useStatusPulse(isReplaying: Ref<boolean>) {
@@ -41,7 +43,7 @@ export function useStatusPulse(isReplaying: Ref<boolean>) {
     }
 
     // Set the pulse state
-    pulseStates.value.set(teamId, { color: pulseColor, active: true });
+    pulseStates.value.set(teamId, { color: pulseColor, active: true, durationMs });
 
     // Auto-clear after duration
     const timeout = setTimeout(() => {

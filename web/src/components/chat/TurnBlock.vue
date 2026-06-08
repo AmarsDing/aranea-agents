@@ -10,7 +10,10 @@
     </div>
   </div>
   <!-- Full content view -->
-  <article v-else class="turn-block" :class="{ 'turn-block--focused': focused }" :data-turn-id="block.turnId">
+  <article v-else class="turn-block" :class="{ 'turn-block--focused': focused, 'turn-block--completed': block.isCompleted }" :data-turn-id="block.turnId">
+    <div v-if="block.isCompleted" class="turn-block__collapse-bar row items-center justify-end">
+      <q-btn flat dense no-caps icon="unfold_less" label="折叠" size="xs" :style="{ color: 'var(--color-text-tertiary)' }" @click="emit('toggle-collapse')" />
+    </div>
     <div v-if="turnSourceLabel" class="turn-block__channel-bar text-caption" :aria-label="turnSourceLabel">
       {{ turnSourceLabel }}
     </div>
@@ -129,27 +132,38 @@ const visibleTools = computed(() => filterToolsForToolStrip(props.block.tools, p
 
 const collapsedSummary = computed(() => {
   const tools = props.block.tools;
+  const members = props.block.members;
   const summary = toolStripSummary(tools);
+  // Team block with members: show team-specific summary
+  if (tools.length === 0 && members.length > 0) {
+    return `${members.length} 成员 · 已完成`;
+  }
   if (tools.length === 0) {
     return props.block.assistant?.content_markdown?.slice(0, 60) || '已完成';
   }
   if (tools.length === 1) {
     const ev = toolEventFromMessage(tools[0]!);
     const name = ev?.display_label || ev?.tool_name || '工具';
-    return `${name} · ${summary.failed > 0 ? '部分失败' : '完成'}`;
+    if (summary.failed > 0) return `${name} · 失败`;
+    if (summary.cancelled > 0) return `${name} · 已中断`;
+    return `${name} · 完成`;
   }
-  return `${tools.length} tools · ${summary.failed > 0 ? `${summary.failed} failed` : '完成'}`;
+  if (summary.failed > 0) return `${tools.length} tools · ${summary.failed} failed`;
+  if (summary.cancelled > 0) return `${tools.length} tools · ${summary.cancelled} 已中断`;
+  return `${tools.length} tools · 完成`;
 });
 
 const collapsedIcon = computed(() => {
   const summary = toolStripSummary(props.block.tools);
   if (summary.failed > 0) return 'error';
+  if (summary.cancelled > 0) return 'pause_circle';
   return 'check_circle';
 });
 
 const collapsedIconColor = computed(() => {
   const summary = toolStripSummary(props.block.tools);
   if (summary.failed > 0) return 'negative';
+  if (summary.cancelled > 0) return 'warning';
   return 'positive';
 });
 
@@ -192,6 +206,9 @@ const collapsedDuration = computed(() => {
   padding-top: var(--space-1)
   margin-top: var(--space-1)
   border-top: 1px solid color-mix(in srgb, var(--glass-border) 35%, transparent)
+
+.turn-block__collapse-bar
+  padding: 0 var(--space-1)
 
 .turn-block--collapsed
   cursor: pointer

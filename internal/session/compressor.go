@@ -28,14 +28,38 @@ type AgentKeyLookup interface {
 	GetAgentByID(ctx context.Context, id string) (biz.Agent, error)
 }
 
-type CompressorDeps interface {
+// CompressReadDeps groups read-only data access interfaces for compression.
+type CompressReadDeps interface {
 	biz.SessionReader
 	biz.MessageReader
-	biz.MessageWriter
 	biz.SummaryReader
+}
+
+// CompressWriteDeps groups write data access interfaces for compression.
+type CompressWriteDeps interface {
+	biz.MessageWriter
 	biz.SummaryWriter
 	biz.ContextUpdater
+}
+
+// CompressTxDeps provides transaction and CAS support for compression.
+type CompressTxDeps interface {
 	biz.CompressRepo
+}
+
+// CompressorConfig holds the dependencies for constructing a Compressor.
+type CompressorConfig struct {
+	ReadDeps     CompressReadDeps
+	WriteDeps    CompressWriteDeps
+	TxDeps       CompressTxDeps
+	Agents       AgentKeyLookup
+	Runtime      *Runtime
+	Memory       MemoryResync
+	Compress     compress.Compressor
+	EventBus     event.Bus
+	MemoryReader biz.MemoryFactReader
+	L1Reader     biz.L1AdminReader
+	Logger       loggateway.Logger
 }
 
 // compressLevel identifies which compression tier was used.
@@ -67,6 +91,8 @@ type Compressor struct {
 
 	inFlight sync.Map
 
+	adaptiveBuffer sync.Map // map[sessionID]*AdaptiveBufferState
+
 	compressing     atomic.Bool
 	compressStart   time.Time
 	compressMu      sync.Mutex
@@ -87,34 +113,24 @@ func containsMemoryCompactMarker(md string) bool {
 	return strings.Contains(md, "## Session Memory Summary")
 }
 
-func NewCompressor(
-	sessions CompressorDeps,
-	agents AgentKeyLookup,
-	runtime *Runtime,
-	memory MemoryResync,
-	comp compress.Compressor,
-	eventBus event.Bus,
-	memoryReader biz.MemoryFactReader,
-	l1Reader biz.L1AdminReader,
-	lg loggateway.Logger,
-) *Compressor {
+func NewCompressor(cfg CompressorConfig) *Compressor {
 	return &Compressor{
-		sessionReader:   sessions,
-		messageReader:   sessions,
-		messageWriter:   sessions,
-		summaryReader:   sessions,
-		summaryWriter:   sessions,
-		contextUpdater:  sessions,
-		compressRepo:    sessions,
-		agents:          agents,
-		Runtime:         runtime,
-		Memory:          memory,
-		Compress:        comp,
-		EventBus:        eventBus,
-		memoryReader:    memoryReader,
-		l1Reader:        l1Reader,
-		lg:              lg,
-		compressTimeout: 10 * time.Minute,
+		sessionReader:   cfg.ReadDeps,
+		messageReader:   cfg.ReadDeps,
+		summaryReader:   cfg.ReadDeps,
+		messageWriter:   cfg.WriteDeps,
+		summaryWriter:   cfg.WriteDeps,
+		contextUpdater:  cfg.WriteDeps,
+		compressRepo:    cfg.TxDeps,
+		agents:          cfg.Agents,
+		Runtime:         cfg.Runtime,
+		Memory:          cfg.Memory,
+		Compress:        cfg.Compress,
+		EventBus:        cfg.EventBus,
+		memoryReader:    cfg.MemoryReader,
+		l1Reader:        cfg.L1Reader,
+		lg:              cfg.Logger,
+		compressTimeout: defaultCompressTimeout,
 	}
 }
 
@@ -262,7 +278,7 @@ func (c *Compressor) CompressStatus(ctx context.Context, sessionID string) (stri
 	}
 	// Check if there's a recent summary
 	if ts, err := c.summaryReader.LatestSessionSummaryTime(ctx, sessionID); err == nil && ts != "" {
-		if t, err := time.Parse(time.RFC3339, ts); err == nil && time.Since(t) < 2*time.Minute {
+		if t, err := time.Parse(time.RFC3339, ts); err == nil && time.Since(t) < recentlyOptimizedWindow {
 			return "optimized", nil
 		}
 	}
@@ -280,6 +296,15 @@ func (c *Compressor) CompressStatus(ctx context.Context, sessionID string) (stri
 	return "normal", nil
 }
 
+// messagesPerTurn represents the typical number of message rows per turn (user + assistant).
+const messagesPerTurn = 2
+
+// recentlyOptimizedWindow is the time window after which a summary is no longer considered "recent".
+const recentlyOptimizedWindow = 2 * time.Minute
+
+// defaultCompressTimeout is the maximum duration a compression operation can take before auto-release.
+const defaultCompressTimeout = 10 * time.Minute
+
 func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID string, ag biz.Agent, skipMinGap bool) error {
 	if !sessionCompressEnabled(ag) {
 		return nil
@@ -294,10 +319,19 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		SessionDefaultWindow: sess.LastContextWindowTokens,
 		AgentWindow:          ag.ContextWindow,
 	})
-	softTok := softTriggerTokens(ag, window)
-	hardTok := hardTriggerTokens(ag, window)
 
 	usedTokens := sess.ContextUsedTokens
+
+	// Determine adaptive or static buffer ratio and compute trigger tokens.
+	var softTok, hardTok int
+	if adaptiveBufferEnabled(ag) {
+		ratio := c.getAdaptiveBufferRatio(sessionID, ag, usedTokens, window, sess.ToolCallCount, sess.RunCount)
+		softTok = softTriggerTokensWithRatio(ag, window, ratio)
+		hardTok = hardTriggerTokensWithRatio(ag, window, ratio)
+	} else {
+		softTok = softTriggerTokens(ag, window)
+		hardTok = hardTriggerTokens(ag, window)
+	}
 
 	// Below soft trigger: nothing to do.
 	if usedTokens < softTok {
@@ -321,24 +355,57 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 	defer c.finishCompress()
 
-	// Load messages for compression.
-	maxSummarized, err := c.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)
-	if err != nil {
+	body, cutoffTurn, err := c.loadCompressBody(ctx, sess, ag, sessionID)
+	if err != nil || len(body) == 0 {
 		return err
 	}
-	msgs, err := c.messageReader.ListMessagesAfterTurn(ctx, sessionID, maxSummarized)
-	if err != nil {
-		return err
-	}
-	timeline := timelineUserAssistant(msgs)
-	if len(timeline) == 0 {
+
+	// Three-level compression cascade: MicroCompact → MemoryCompact → LLM.
+	level, md := c.compressCascade(ctx, sess, ag, body, sessionID, cutoffTurn, usedTokens, hardTok)
+	if level == compressLevelNone || md == "" {
 		return nil
 	}
 
+	return c.executeCompression(ctx, sess, ag, body, md, sessionID, trpcUserID, cutoffTurn)
+}
+
+// getAdaptiveBufferRatio returns the adaptive buffer ratio for a session.
+// It gets or creates the AdaptiveBufferState, detects conversation mode,
+// and calls UpdateAdaptiveBuffer.
+func (c *Compressor) getAdaptiveBufferRatio(sessionID string, ag biz.Agent, usedTokens, contextWindow int, toolCallCount, turnCount int) float64 {
+	initialRatio := compressionBufferRatio(ag)
+	val, loaded := c.adaptiveBuffer.LoadOrStore(sessionID, NewAdaptiveBufferState(initialRatio))
+	state := val.(*AdaptiveBufferState)
+	if !loaded {
+		// First call for this session — seed LastUsedTokens so the first increment
+		// is measured from the current usedTokens rather than from zero.
+		state.LastUsedTokens = usedTokens
+		return state.CurrentRatio
+	}
+	mode := DetectConversationMode(toolCallCount, turnCount)
+	return state.UpdateAdaptiveBuffer(usedTokens, contextWindow, mode)
+}
+
+// loadCompressBody loads and splits messages for compression.
+// Returns the body messages and the cutoff turn number.
+func (c *Compressor) loadCompressBody(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID string) ([]biz.ChatMessage, int, error) {
+	maxSummarized, err := c.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)
+	if err != nil {
+		return nil, 0, err
+	}
+	msgs, err := c.messageReader.ListMessagesAfterTurn(ctx, sessionID, maxSummarized)
+	if err != nil {
+		return nil, 0, err
+	}
+	timeline := timelineUserAssistant(msgs)
+	if len(timeline) == 0 {
+		return nil, 0, nil
+	}
+
 	_, keepTurns := compressThresholdAndKeep(ag)
-	keepRows := 2 * max(1, keepTurns)
+	keepRows := messagesPerTurn * max(1, keepTurns)
 	if len(timeline) <= keepRows {
-		return nil
+		return nil, 0, nil
 	}
 	split := len(timeline) - keepRows
 	cutoffTurn := timeline[split-1].TurnNumber
@@ -349,16 +416,12 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			body = append(body, m)
 		}
 	}
-	if len(body) == 0 {
-		return nil
-	}
+	return body, cutoffTurn, nil
+}
 
-	// Three-level compression cascade: MicroCompact → MemoryCompact → LLM.
-	level, md := c.compressCascade(ctx, sess, ag, body, sessionID, cutoffTurn, usedTokens, hardTok)
-	if level == compressLevelNone || md == "" {
-		return nil
-	}
-
+// executeCompression performs the CAS-protected transaction to write the compression result,
+// syncs the runtime snapshot, and publishes the compression notice.
+func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, ag biz.Agent, body []biz.ChatMessage, md string, sessionID, trpcUserID string, cutoffTurn int) error {
 	fromTurn := body[0].TurnNumber
 	toTurn := body[len(body)-1].TurnNumber
 
@@ -382,10 +445,20 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	var txMerged string
-	var txTail []biz.ChatMessage
-	var txErr error
-	txErr = c.compressRepo.CompressSessionInTx(ctx, sessionID, func(txCtx context.Context) error {
+	txMerged, txTail, txErr := c.compressInTransaction(ctx, sessionID, ag, sess, body, md, fromTurn, toTurn, cutoffTurn)
+	if txErr != nil {
+		return txErr
+	}
+
+	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, txTail)
+	c.postCompressionSync(ctx, sessionID, ag, sess, fromTurn, toTurn, txMerged, txTail)
+
+	return nil
+}
+
+// compressInTransaction executes the database transaction for compression.
+func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, body []biz.ChatMessage, md string, fromTurn, toTurn, cutoffTurn int) (mergedSummary string, tailMsgs []biz.ChatMessage, err error) {
+	err = c.compressRepo.CompressSessionInTx(ctx, sessionID, func(txCtx context.Context) error {
 		row := biz.SessionSummary{
 			ID:              uuid.NewString(),
 			SessionID:       sessionID,
@@ -403,17 +476,17 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		if err != nil {
 			return err
 		}
-		txMerged = mergeSessionSummariesMarkdown(allRows)
+		mergedSummary = mergeSessionSummariesMarkdown(allRows)
 
-		for _, m := range timeline {
+		for _, m := range body {
 			if m.TurnNumber > cutoffTurn {
-				txTail = append(txTail, m)
+				tailMsgs = append(tailMsgs, m)
 			}
 		}
 
 		author := c.resolveAgentAuthor(txCtx, ag, sess.AgentID)
 
-		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
+		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, mergedSummary, tailMsgs, author)
 		if err != nil {
 			return err
 		}
@@ -425,12 +498,12 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			SessionDefaultWindow: sess.LastContextWindowTokens,
 			AgentWindow:          ag.ContextWindow,
 		})
-		est := estimateCompactedPromptTokens(txMerged, txTail)
+		est := estimateCompactedPromptTokens(mergedSummary, tailMsgs)
 		if err := c.contextUpdater.UpdateSessionContextAfterCompression(txCtx, sessionID, est, win); err != nil {
 			return err
 		}
 
-		preview := firstSummaryLine(txMerged)
+		preview := firstSummaryLine(mergedSummary)
 		if preview != "" {
 			if err := c.summaryWriter.UpdateSessionListSummary(txCtx, sessionID, preview); err != nil {
 				c.lg.Warn("update list summary failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
@@ -439,24 +512,29 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 		return nil
 	})
-	if txErr != nil {
-		return txErr
-	}
+	return mergedSummary, tailMsgs, err
+}
 
-	if c.Runtime != nil {
-		author := c.resolveAgentAuthor(ctx, ag, sess.AgentID)
-		raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
-		if snapErr == nil {
-			if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
-				c.lg.Warn("trpc 快照同步失败",
-					loggateway.StepID("session.compress"),
-					loggateway.SessionID(sessionID),
-					loggateway.Err(syncErr),
-					loggateway.Str("user_id", trpcUserID))
-			}
+// syncRuntimeSnapshot pushes the compressed snapshot to the trpc-agent-go runtime.
+func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID, trpcUserID, txMerged string, txTail []biz.ChatMessage) {
+	if c.Runtime == nil {
+		return
+	}
+	author := c.resolveAgentAuthor(ctx, ag, sess.AgentID)
+	raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
+	if snapErr == nil {
+		if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
+			c.lg.Warn("trpc 快照同步失败",
+				loggateway.StepID("session.compress"),
+				loggateway.SessionID(sessionID),
+				loggateway.Err(syncErr),
+				loggateway.Str("user_id", trpcUserID))
 		}
 	}
+}
 
+// postCompressionSync handles post-compression side effects: notice, memory resync, L0 force-snapshot.
+func (c *Compressor) postCompressionSync(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, fromTurn, toTurn int, txMerged string, txTail []biz.ChatMessage) {
 	win := llmcontext.ResolveWindow(llmcontext.ResolveInput{
 		SessionDefaultWindow: sess.LastContextWindowTokens,
 		AgentWindow:          ag.ContextWindow,
@@ -473,8 +551,6 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	if c.Runtime != nil {
 		c.Runtime.MarkForceL0Snapshot(sessionID)
 	}
-
-	return nil
 }
 
 // compressCascade tries compression levels in order: MicroCompact → MemoryCompact → LLM.
@@ -516,6 +592,11 @@ func (c *Compressor) compressCascade(ctx context.Context, sess biz.Session, ag b
 	}
 
 	// Level 3: LLM compression (full summarization via LLM call).
+	return c.llmCompress(ctx, sess, ag, body, sessionID)
+}
+
+// llmCompress performs Level 3 LLM-based compression.
+func (c *Compressor) llmCompress(ctx context.Context, sess biz.Session, ag biz.Agent, body []biz.ChatMessage, sessionID string) (compressLevel, string) {
 	strategy := truncateStrategy(ag)
 	filteredBody := filterMessagesForTruncateStrategy(body, strategy)
 

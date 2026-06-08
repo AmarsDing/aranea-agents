@@ -212,20 +212,26 @@ export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";
 
 // TODO: Replace createSpiritService with proto-generated client from spirit/v1
 // once the spirit proto definition is available.
+// Routes must match api/kratos/team/v1/team.proto HTTP annotations.
 export function createSpiritService() {
-  const basePath = "/v1/spirit";
   return {
     listTeams(spiritSessionId: string) {
-      return kratosApi.get(`${basePath}/${encodeURIComponent(spiritSessionId)}/teams`);
+      return kratosApi.get(`/v1/spirit/${encodeURIComponent(spiritSessionId)}/teams`);
     },
     getTeamDetail(teamId: string) {
-      return kratosApi.get(`${basePath}/teams/${encodeURIComponent(teamId)}`);
+      return kratosApi.get(`/v1/teams/${encodeURIComponent(teamId)}`);
     },
-    cancelTeamRun(teamId: string) {
-      return kratosApi.post(`${basePath}/teams/${encodeURIComponent(teamId)}/cancel`);
+    cancelTeamRun(teamRunId: string) {
+      return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/cancel`);
     },
-    resumeTeamRun(teamId: string) {
-      return kratosApi.post(`${basePath}/teams/${encodeURIComponent(teamId)}/resume`);
+    resumeTeamRun(teamRunId: string) {
+      return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/resume`);
+    },
+    archiveTeam(teamId: string) {
+      return kratosApi.post(`/v1/teams/${encodeURIComponent(teamId)}/archive`);
+    },
+    retryTeam(teamId: string) {
+      return kratosApi.post(`/v1/teams/${encodeURIComponent(teamId)}/retry`);
     },
   };
 }

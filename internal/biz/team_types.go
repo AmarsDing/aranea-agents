@@ -46,8 +46,8 @@ var teamStatusValidTransitions = map[string][]string{
 	TeamStatusRunning:     {TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted},
 	TeamStatusInterrupted: {TeamStatusRunning},
 	TeamStatusCompleted:   {TeamStatusArchived},
-	TeamStatusFailed:      {TeamStatusArchived},
-	TeamStatusCancelled:   {TeamStatusArchived},
+	TeamStatusFailed:      {TeamStatusArchived, TeamStatusPending},
+	TeamStatusCancelled:   {TeamStatusArchived, TeamStatusPending},
 }
 
 // IsTeamStatusActive returns true if the team status means the team is

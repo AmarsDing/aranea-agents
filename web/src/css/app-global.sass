@@ -147,6 +147,20 @@ body.body--dark
   .q-separator
     background: var(--glass-border) !important
 
+  // q-badge 暗色模式对比度修正：warning/grey 实心底在深色背景上字迹不清
+  .q-badge.bg-warning
+    background: var(--color-warning-soft) !important
+    color: var(--color-accent-amber) !important
+  .q-badge.bg-grey
+    background: color-mix(in srgb, var(--color-text-secondary) 18%, transparent) !important
+    color: var(--color-text-secondary) !important
+
+  // q-chip 暗色模式：bg-grey 默认色在深色背景上对比度差，改为半透明玻璃质感
+  .q-chip.bg-grey
+    background: color-mix(in srgb, var(--color-text-secondary) 16%, transparent) !important
+    color: var(--color-text-secondary) !important
+    border: 1px solid color-mix(in srgb, var(--color-text-secondary) 22%, transparent)
+
 .dark-header
   background: var(--nav-bg-dark) !important
   color: var(--color-text-primary) !important
@@ -188,6 +202,14 @@ body:not(.body--dark)
   .bg-primary
     background: var(--color-accent) !important
 
+  .q-chip.bg-primary
+    background: var(--color-accent) !important
+    color: var(--color-on-accent) !important
+
+  .q-chip--outline.text-primary
+    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent)
+    color: var(--color-accent)
+
   .q-toggle__track
     background: var(--toggle-track-off) !important
 
@@ -226,6 +248,10 @@ body.body--dark
     background: color-mix(in srgb, var(--color-accent) 22%, transparent) !important
     color: var(--color-accent) !important
     border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)
+
+  .q-chip--outline.text-primary
+    border-color: color-mix(in srgb, var(--color-accent) 40%, transparent)
+    color: var(--color-accent)
 
   .q-toggle__track
     background: var(--toggle-track-off) !important
@@ -1411,6 +1437,33 @@ body:not(.body--dark)
 
 body.body--dark .skill-import-dialog
   box-shadow: 0 0 28px color-mix(in srgb, var(--color-accent) 14%, transparent)
+
+// ── Skill filesystem alert banner ──
+.skill-fs-alert--info
+  background: color-mix(in srgb, #2196F3 10%, var(--glass-surface))
+  color: #1565C0
+  border: 1px solid color-mix(in srgb, #2196F3 25%, transparent)
+
+.skill-fs-alert--warning
+  background: color-mix(in srgb, #FF9800 10%, var(--glass-surface))
+  color: #E65100
+  border: 1px solid color-mix(in srgb, #FF9800 25%, transparent)
+
+.skill-fs-alert__path
+  color: var(--color-text-secondary)
+
+body.body--dark .skill-fs-alert--info
+  background: color-mix(in srgb, #00E5FF 12%, transparent)
+  color: #80F0FF
+  border-color: color-mix(in srgb, #00E5FF 30%, transparent)
+
+body.body--dark .skill-fs-alert--warning
+  background: color-mix(in srgb, #FFAF4D 14%, transparent)
+  color: #FFD180
+  border-color: color-mix(in srgb, #FFAF4D 35%, transparent)
+
+body.body--dark .skill-fs-alert__path
+  color: var(--color-text-secondary)
 
 body.body--dark
   .skills-page,

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
@@ -26,6 +27,7 @@ type turnStreamConsumer struct {
 	firstByteReceived *bool
 	received          bool
 	lg                loggateway.Logger
+	consumeStart      time.Time
 }
 
 func newTurnStreamConsumer(
@@ -60,6 +62,7 @@ func newTurnStreamConsumer(
 }
 
 func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStreamResult {
+	c.consumeStart = time.Now()
 	evIdx := 0
 	for ev := range events {
 		evIdx++
@@ -116,6 +119,28 @@ func (c *turnStreamConsumer) markFirstByte(ev *trpcevent.Event) {
 		return
 	}
 	c.received = true
+	ttft := time.Since(c.consumeStart)
+	evType := "unknown"
+	if ev.IsRunnerCompletion() {
+		evType = "runner_completion"
+	} else if ev.Response != nil && ev.Response.Error != nil {
+		evType = "response_error"
+	} else if ev.Response != nil {
+		evType = "response"
+		if len(ev.Response.Choices) > 0 {
+			ch := ev.Response.Choices[0]
+			if len(ch.Message.ToolCalls) > 0 || len(ch.Delta.ToolCalls) > 0 {
+				evType = "tool_call"
+			} else if ch.Message.Content != "" {
+				evType = "text_delta"
+			}
+		}
+	}
+	c.lg.With(loggateway.StepID("stream.first_byte")).Info("stream first byte received (TTFT)",
+		loggateway.Duration(ttft.Milliseconds()),
+		loggateway.Any("ttft_ms", ttft.Milliseconds()),
+		loggateway.Any("first_byte_type", evType),
+		loggateway.Any("author", ev.Author))
 	if c.firstByteReceived != nil {
 		*c.firstByteReceived = true
 	}

@@ -32,11 +32,14 @@
     <div v-if="allCompleted" class="parallel-team-overview__all-done q-mb-sm">
       <q-icon name="check_circle" size="16px" color="positive" class="q-mr-xs" />
       <span class="text-caption">所有团队已完成</span>
+      <span v-if="completionStats" class="text-caption text-grey-6 q-ml-sm">
+        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} 成功<span v-if="completionStats.failedTeams > 0">, {{ completionStats.failedTeams }} 失败</span>)
+      </span>
     </div>
 
     <DAGDiagramCard v-if="hasDagTeams" :teams="teams" class="q-mb-sm" />
 
-    <SynthesisResultCard v-if="synthesisResult" :result="synthesisResult" class="q-mb-sm" />
+    <SynthesisResultCard v-if="synthesisResult" :result="synthesisResult" :evolution-suggestion="evolutionSuggestion" class="q-mb-sm" />
 
     <div class="parallel-team-overview__cards">
       <TeamProgressCard
@@ -45,6 +48,8 @@
         :team="team"
         @click="$emit('select-team', team.id)"
         @cancel="$emit('cancel-team', team.id)"
+        @retry="$emit('retry-team', team.id)"
+        @archive="$emit('archive-team', team.id)"
       />
     </div>
   </div>
@@ -55,18 +60,22 @@ import { computed } from 'vue';
 import TeamProgressCard from './TeamProgressCard.vue';
 import SynthesisResultCard from './SynthesisResultCard.vue';
 import DAGDiagramCard from './DAGDiagramCard.vue';
-import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
+import type { SpiritTeam, SynthesisOutput, EvolutionSuggestion, CompletionStats } from '../../features/spirit/types';
 
 const props = defineProps<{
   teams: SpiritTeam[];
   maxParallel: number;
   allCompleted: boolean;
+  completionStats?: CompletionStats | null;
   synthesisResult?: SynthesisOutput | null;
+  evolutionSuggestion?: EvolutionSuggestion | null;
 }>();
 
 defineEmits<{
   'select-team': [teamId: string];
   'cancel-team': [teamId: string];
+  'retry-team': [teamId: string];
+  'archive-team': [teamId: string];
 }>();
 
 const activeCount = computed(

@@ -7,9 +7,9 @@
       v-model:search="layout.search"
       :open="layout.leftOpen"
       :agents="entity.displayAgents"
-      :spirit-teams="spiritStore.teams"
+      :spirit-teams="spiritStore.sortedTeams"
       :expanded-team-ids="spiritStore.expandedTeamIds"
-      :selected-kind="entity.selectedEntityKind"
+      :selected-kind="spiritStore.activePanelMode === 'spirit' ? 'spirit' : entity.selectedEntityKind"
       :selected-agent-id="entity.store.selectedAgent?.id"
       :selected-team-id="spiritStore.activeTeamId"
       :default-agent-id="entity.store.agents[0]?.id"
@@ -41,6 +41,7 @@
         v-model:model-provider="composer.modelProvider"
         :panel-mode="spiritStore.activePanelMode"
         :spirit-team="spiritStore.activeTeam"
+        :active-member="activeMember"
         :synthesis-result="spiritStore.synthesisResult"
         :messages="session.displayMessages"
         :attachments="composer.attachments"
@@ -66,6 +67,8 @@
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
         :spirit-max-concurrent-teams="spiritStore.maxConcurrentTeams"
+        :spirit-evolution-suggestion="spiritStore.lastEvolutionSuggestion"
+        :spirit-completion-stats="spiritStore.completionStats"
         :compress-status="session.compressStatus"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
@@ -124,6 +127,14 @@
         @compact="session.onCompactSession"
         @cancel-team="spiritStore.cancelTeam"
         @resume-team="spiritStore.resumeTeam"
+        @retry-team="spiritStore.retryTeam"
+        @archive-team="spiritStore.archiveTeam"
+        @select-member="spiritStore.selectMember"
+        @return-to-team="spiritStore.activeTeamId ? spiritStore.selectTeam(spiritStore.activeTeamId) : undefined"
+        @return-to-spirit="onSelectSpirit"
+        @status-bar-click-running="onStatusBarClickRunning"
+        @status-bar-click-interrupted="onStatusBarClickInterrupted"
+        @status-bar-click-last-event="onStatusBarClickLastEvent"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -213,6 +224,13 @@ const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useCh
 const spiritStore = useSpiritTeamStore();
 const router = useRouter();
 
+const activeMember = computed(() => {
+  const team = spiritStore.activeTeam;
+  const memberId = spiritStore.activeMemberId;
+  if (!team || !memberId) return null;
+  return team.members.find((m) => m.agentId === memberId) ?? null;
+});
+
 const spiritStatusBar = computed(() => {
   const teams = spiritStore.teams;
   if (!teams.length) return null;
@@ -234,15 +252,20 @@ const spiritStatusBar = computed(() => {
         ? {
             type: (completedTeams.length > 0 ? 'completed' : 'failed') as 'completed' | 'failed',
             teamName: (completedTeams[0] ?? failedTeams[0])?.teamName ?? '',
+            teamId: (completedTeams[0] ?? failedTeams[0])?.id ?? '',
           }
         : null,
+    complexityLevel: spiritStore.planCreated?.complexity_level ?? null,
+    complexityReason: spiritStore.planCreated?.strategy_reason ?? null,
+    checkpointStep: spiritStore.lastCheckpoint?.step ?? null,
+    dqScore: spiritStore.lastDqScore?.overall ?? null,
   };
 });
 
 const pulseTeamColors = computed(() => {
-  const map = new Map<string, string>();
+  const map = new Map<string, { color: string; durationMs: number }>();
   for (const [teamId, state] of session.spiritPulseStates) {
-    map.set(teamId, state.color);
+    map.set(teamId, { color: state.color, durationMs: state.durationMs });
   }
   return map;
 });
@@ -276,10 +299,40 @@ function onSelectSpirit() {
     if (needsReselect) {
       entity.selectAgent(spiritAgent);
     }
+  } else {
+    // Fallback: select the default/first agent if no spirit agent exists
+    const fallback = entity.store.agents[0];
+    if (fallback && (entity.store.selectedAgent?.id !== fallback.id || entity.selectedEntityKind !== 'agent')) {
+      entity.selectAgent(fallback);
+    }
   }
 }
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {
   router.push(route);
+}
+
+/** OBS-04: Status bar click handlers — navigate to the first matching team. */
+function onStatusBarClickRunning() {
+  const team = spiritStore.teams.find((t) => t.status === 'running');
+  if (team) spiritStore.selectTeam(team.id);
+}
+
+function onStatusBarClickInterrupted() {
+  const team = spiritStore.teams.find((t) => t.status === 'interrupted');
+  if (team) spiritStore.selectTeam(team.id);
+}
+
+function onStatusBarClickLastEvent() {
+  // Use the lastEvent teamId if available, otherwise find by name
+  const lastEvent = spiritStatusBar.value?.lastEvent;
+  if (lastEvent?.teamId) {
+    spiritStore.selectTeam(lastEvent.teamId);
+    return;
+  }
+  if (lastEvent?.teamName) {
+    const team = spiritStore.teams.find((t) => t.teamName === lastEvent.teamName);
+    if (team) spiritStore.selectTeam(team.id);
+  }
 }
 </script>

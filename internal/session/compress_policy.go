@@ -16,9 +16,14 @@ const (
 	forcedCompressThreshold  = 0.35
 	defaultKeepTurns         = 4
 
-	defaultCompressionBufferRatio = 0.15
-	defaultSoftTriggerRatio       = 0.70
-	defaultHardTriggerRatio       = 0.90
+	// Reserved system tokens by ToolsProfile.
+	reservedTokensCoding   = 15000
+	reservedTokensResearch = 12000
+	reservedTokensChatOnly = 4000
+	reservedTokensDefault  = 8000
+
+	// Max characters for L1 field value text in MemoryCompact.
+	maxFieldTextChars = 200
 )
 
 func compressThresholdAndKeep(ag biz.Agent) (threshold float64, keepTurns int) {
@@ -153,13 +158,13 @@ func atFullContextUsage(sess biz.Session) bool {
 func profileBasedDefault(profile string) int {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
 	case "coding", "full":
-		return 15000
+		return reservedTokensCoding
 	case "research":
-		return 12000
+		return reservedTokensResearch
 	case "chat_only", "minimal":
-		return 4000
+		return reservedTokensChatOnly
 	default:
-		return 8000
+		return reservedTokensDefault
 	}
 }
 
@@ -182,7 +187,7 @@ func compressionBufferRatio(ag biz.Agent) float64 {
 	if ag.Settings != nil && ag.Settings.CompressionBufferRatio > 0 {
 		return ag.Settings.CompressionBufferRatio
 	}
-	return defaultCompressionBufferRatio
+	return biz.DefaultCompressionBufferRatio
 }
 
 // effectiveBudget calculates the usable token budget for conversation content.
@@ -200,7 +205,7 @@ func effectiveBudget(contextWindow, reservedSystem int, bufferRatio float64) int
 func softTriggerTokens(ag biz.Agent, contextWindow int) int {
 	reserved := calculateReservedSystem(ag)
 	budget := effectiveBudget(contextWindow, reserved, compressionBufferRatio(ag))
-	ratio := defaultSoftTriggerRatio
+	ratio := biz.DefaultSoftTriggerRatio
 	if ag.Settings != nil && ag.Settings.SoftTriggerRatio > 0 {
 		ratio = ag.Settings.SoftTriggerRatio
 	}
@@ -211,11 +216,138 @@ func softTriggerTokens(ag biz.Agent, contextWindow int) int {
 func hardTriggerTokens(ag biz.Agent, contextWindow int) int {
 	reserved := calculateReservedSystem(ag)
 	budget := effectiveBudget(contextWindow, reserved, compressionBufferRatio(ag))
-	ratio := defaultHardTriggerRatio
+	ratio := biz.DefaultHardTriggerRatio
 	if ag.Settings != nil && ag.Settings.HardTriggerRatio > 0 {
 		ratio = ag.Settings.HardTriggerRatio
 	}
 	return reserved + int(float64(budget)*ratio) + int(float64(contextWindow)*compressionBufferRatio(ag))
+}
+
+// ConversationMode represents the detected conversation pattern.
+type ConversationMode int
+
+const (
+	ConversationModeMixed  ConversationMode = iota // 0.5 <= tool_call_count/turn_count <= 2.0
+	ConversationModeCoding                         // tool_call_count/turn_count > 2.0
+	ConversationModeChat                           // tool_call_count/turn_count < 0.5
+)
+
+// DetectConversationMode determines the conversation mode based on tool call density.
+func DetectConversationMode(toolCallCount, turnCount int) ConversationMode {
+	if turnCount <= 0 {
+		return ConversationModeMixed
+	}
+	density := float64(toolCallCount) / float64(turnCount)
+	if density > 2.0 {
+		return ConversationModeCoding
+	}
+	if density < 0.5 {
+		return ConversationModeChat
+	}
+	return ConversationModeMixed
+}
+
+// Adaptive buffer ratio bounds.
+const (
+	adaptiveBufferMinRatio = 0.10
+	adaptiveBufferMaxRatio = 0.25
+)
+
+// AdaptiveBufferState tracks token increments for adaptive buffer ratio adjustment.
+// Thread-safety: instances are stored in Compressor.adaptiveBuffer (sync.Map) and accessed
+// only within runCompress, which is serialized per-session by tryStartCompress CAS lock.
+// Therefore no additional mutex is needed on the state fields.
+type AdaptiveBufferState struct {
+	LastUsedTokens      int
+	ConsecutiveLowCount int
+	CurrentRatio        float64
+}
+
+// NewAdaptiveBufferState creates a new adaptive buffer state with the given initial ratio.
+func NewAdaptiveBufferState(initialRatio float64) *AdaptiveBufferState {
+	if initialRatio < adaptiveBufferMinRatio {
+		initialRatio = adaptiveBufferMinRatio
+	}
+	if initialRatio > adaptiveBufferMaxRatio {
+		initialRatio = adaptiveBufferMaxRatio
+	}
+	return &AdaptiveBufferState{CurrentRatio: initialRatio}
+}
+
+// UpdateAdaptiveBuffer adjusts the buffer ratio based on token increment and conversation mode.
+// Returns the new effective ratio (clamped to [0.10, 0.25]).
+func (s *AdaptiveBufferState) UpdateAdaptiveBuffer(usedTokens, contextWindow int, mode ConversationMode) float64 {
+	increment := usedTokens - s.LastUsedTokens
+	buffer := float64(contextWindow) * s.CurrentRatio
+
+	if increment > int(buffer*0.70) {
+		s.CurrentRatio += 0.02
+		s.ConsecutiveLowCount = 0
+	} else if increment < int(buffer*0.30) {
+		s.ConsecutiveLowCount++
+		if s.ConsecutiveLowCount >= 5 {
+			s.CurrentRatio -= 0.01
+			s.ConsecutiveLowCount = 0
+		}
+	} else {
+		s.ConsecutiveLowCount = 0
+	}
+
+	// Apply conversation mode bias.
+	// Coding mode: ensure minimum buffer for fast-growing contexts.
+	// Chat mode: cap buffer since contexts grow slowly (one-time adjustment, not cumulative).
+	switch mode {
+	case ConversationModeCoding:
+		if s.CurrentRatio < 0.18 {
+			s.CurrentRatio = 0.18
+		}
+	case ConversationModeChat:
+		if s.CurrentRatio > 0.12 {
+			s.CurrentRatio = 0.12
+		}
+	}
+
+	// Clamp ratio.
+	if s.CurrentRatio < adaptiveBufferMinRatio {
+		s.CurrentRatio = adaptiveBufferMinRatio
+	}
+	if s.CurrentRatio > adaptiveBufferMaxRatio {
+		s.CurrentRatio = adaptiveBufferMaxRatio
+	}
+
+	s.LastUsedTokens = usedTokens
+	return s.CurrentRatio
+}
+
+// softTriggerTokensWithRatio returns the soft trigger token count using an explicit buffer ratio.
+func softTriggerTokensWithRatio(ag biz.Agent, contextWindow int, bufferRatio float64) int {
+	reserved := calculateReservedSystem(ag)
+	budget := effectiveBudget(contextWindow, reserved, bufferRatio)
+	ratio := biz.DefaultSoftTriggerRatio
+	if ag.Settings != nil && ag.Settings.SoftTriggerRatio > 0 {
+		ratio = ag.Settings.SoftTriggerRatio
+	}
+	return reserved + int(float64(budget)*ratio) + int(float64(contextWindow)*bufferRatio)
+}
+
+// hardTriggerTokensWithRatio returns the hard trigger token count using an explicit buffer ratio.
+func hardTriggerTokensWithRatio(ag biz.Agent, contextWindow int, bufferRatio float64) int {
+	reserved := calculateReservedSystem(ag)
+	budget := effectiveBudget(contextWindow, reserved, bufferRatio)
+	ratio := biz.DefaultHardTriggerRatio
+	if ag.Settings != nil && ag.Settings.HardTriggerRatio > 0 {
+		ratio = ag.Settings.HardTriggerRatio
+	}
+	return reserved + int(float64(budget)*ratio) + int(float64(contextWindow)*bufferRatio)
+}
+
+// adaptiveBufferEnabled returns true if adaptive buffer adjustment is enabled for the agent.
+// Defaults to true when not explicitly disabled.
+func adaptiveBufferEnabled(ag biz.Agent) bool {
+	if ag.Settings == nil {
+		return true
+	}
+	return ag.Settings.CompressionBufferAdaptive
 }
 
 // effectiveBudgetRatio converts a token count to a ratio against contextWindow,

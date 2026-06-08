@@ -47,6 +47,14 @@ func newWorkingMemoryContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callb
 		ctx = working_memory.WithL1Reader(ctx, deps.MemoryAdmin)
 		ctx = working_memory.WithSessionID(ctx, sessID)
 		ctx = working_memory.WithAgentID(ctx, agentID)
+		ctx = working_memory.WithL1HistoryEnabled(ctx, ag.Settings != nil && ag.Settings.L1HistoryEnabled)
+		// Inject L1SchemaReader and L1DefaultSchemaID for schema validation
+		if schemaReader, ok := deps.MemoryAdmin.(biz.L1SchemaReader); ok {
+			ctx = working_memory.WithL1SchemaReader(ctx, schemaReader)
+		}
+		if ag.Settings != nil && ag.Settings.L1DefaultSchemaID != "" {
+			ctx = working_memory.WithL1DefaultSchemaID(ctx, ag.Settings.L1DefaultSchemaID)
+		}
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	})
 }

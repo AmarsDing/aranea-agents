@@ -31,6 +31,8 @@ export function useAutoCollapse(turnBlocks: { value: TurnBlockGroup[] }) {
       }
       for (const block of blocks) {
         if (!block.isCompleted) continue;
+        // OBS-01: Pure assistant replies (no tools, no members) are never auto-collapsed
+        if (block.tools.length === 0 && block.members.length === 0) continue;
         const prev = prevMap.get(block.key);
         if (!prev) {
           // New block that is already completed — auto-collapse
@@ -70,7 +72,8 @@ export function useAutoCollapse(turnBlocks: { value: TurnBlockGroup[] }) {
   function collapseAll(): void {
     expandAllActive.value = false;
     for (const block of turnBlocks.value) {
-      if (block.isCompleted) {
+      // OBS-01: Pure assistant replies (no tools, no members) are never collapsed
+      if (block.isCompleted && (block.tools.length > 0 || block.members.length > 0)) {
         collapsedBlockKeys.value.add(block.key);
       }
     }

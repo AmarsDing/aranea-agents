@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	sessionsess "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/conf"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/pkg/loggateway"
 )
@@ -149,8 +150,8 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
-	q := memtrpc.NewMemoryJobQueue(4, 0, loggateway.NewNoop())
-	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.Global())
+	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
+	w, err := NewAutoMemoryWorker(&conf.Runtime{}, 0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
 	}
@@ -192,8 +193,8 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
-	q := memtrpc.NewMemoryJobQueue(4, 0, loggateway.NewNoop())
-	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.Global())
+	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
+	w, err := NewAutoMemoryWorker(&conf.Runtime{}, 0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
 	}

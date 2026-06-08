@@ -2,7 +2,21 @@ package biz
 
 import (
 	"context"
+	"errors"
 )
+
+// DefaultFactBruteForceThreshold is the maximum number of facts below which
+// linear scan is used instead of vector similarity search.
+const DefaultFactBruteForceThreshold = 5000
+
+// ErrL1BudgetOverflow is returned when an L1 field upsert would exceed the task's budget_tokens.
+var ErrL1BudgetOverflow = errors.New("L1 budget overflow: field would exceed task budget_tokens")
+
+// ValidFieldKinds lists all valid field_kind enum values.
+var ValidFieldKinds = []string{
+	"string", "number", "boolean", "json", "reference", "markdown",
+	"decision", "artifact", "progress", "constraint",
+}
 
 // FactUpsert is the domain-level DTO for upserting memory facts.
 type FactUpsert struct {
@@ -83,24 +97,25 @@ type L1TaskInsert struct {
 
 // L1FieldInsert is the domain-level DTO for upserting L1 fields.
 type L1FieldInsert struct {
-	ID            string
-	TaskID        string
-	SessionID     string
-	AgentID       string
-	FieldPath     string
-	FieldKind     string
-	Visibility    string
-	PinToPrompt   bool
-	IsRequired    bool
-	ValueText     string
-	ValueJSON     string
-	ValueRef      string
-	Preview       string
-	TokenEstimate int
-	Source        string
-	SourceRef     string
-	TTLSeconds    int
-	ChangedBy     string
+	ID              string
+	TaskID          string
+	SessionID       string
+	AgentID         string
+	FieldPath       string
+	FieldKind       string
+	Visibility      string
+	PinToPrompt     bool
+	IsRequired      bool
+	ValueText       string
+	ValueJSON       string
+	ValueRef        string
+	Preview         string
+	TokenEstimate   int
+	Source          string
+	SourceRef       string
+	TTLSeconds      int
+	ChangedBy       string
+	HistoryEnabled  bool // whether to archive old value to field_history
 }
 
 // L1TaskWriter exposes L1 task write operations.
@@ -124,15 +139,20 @@ type L1IdleTaskReader interface {
 	ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error)
 }
 
+// L1SchemaReader reads L1 schema definitions from memory_l1_schemas.
+type L1SchemaReader interface {
+	GetL1SchemaRow(ctx context.Context, schemaID string) ([]byte, error)
+}
+
 // L2EpisodeWriter inserts L2 episodes (used by L1 archive hook).
 type L2EpisodeWriter interface {
 	InsertL1ArchiveEpisode(ctx context.Context, in L1ArchiveEpisodeInsert) error
 }
 
-// L2ConsolidationStore manages episode consolidation.
-type L2ConsolidationStore interface {
-	ListPendingConsolidationEpisodes(ctx context.Context, agentID string, limit int) ([][]byte, error)
-	MarkEpisodeConsolidated(ctx context.Context, id string, l3Count, l4Count int) error
+// RecentMessageLister lists recent messages for a session (used by Path B extraction).
+// Implementations convert from the storage-level message type to ConsolidateMessage.
+type RecentMessageLister interface {
+	ListRecentMessages(ctx context.Context, sessionID string, limit int) ([]ConsolidateMessage, error)
 }
 
 // L1ArchiveEpisodeInsert is the domain-level DTO for inserting an L2 episode from an L1 archive.
@@ -143,6 +163,15 @@ type L1ArchiveEpisodeInsert struct {
 	TaskTitle      string
 	Status         string
 	L1SnapshotJSON string
+	// Path A structured fields
+	Goal             string
+	Outcome          string
+	OutcomeSummary   string
+	KeyDecisionsJSON string
+	KeyArtifactsJSON string
+	EpisodeKind      string
+	Importance       float64
+	Confidence       float64
 }
 
 // L2RecallStore retrieves episodic (L2) memories for prompt injection and admin.
@@ -220,7 +249,6 @@ type SessionAdminStore interface {
 	L1IdleTaskReader
 	L2RecallStore
 	L2EpisodeWriter
-	L2ConsolidationStore
 	L3FactAdminStore
 	L3ConflictStore
 	PIIReviewStore

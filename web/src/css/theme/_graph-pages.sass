@@ -93,7 +93,7 @@ body.body--dark
   display: grid
   grid-template-columns: repeat(3, 1fr)
   gap: 14px
-  align-items: start
+  align-items: stretch
 
 .graph-card
   cursor: pointer
@@ -235,7 +235,6 @@ body:not(.body--dark) .graph-card__foot
   box-shadow: none
   backdrop-filter: none
   -webkit-backdrop-filter: none
-  min-height: 120px
   transition: border-color 160ms ease, background 160ms ease
 
 body:not(.body--dark) .graph-card--add
@@ -1465,6 +1464,29 @@ body:not(.body--dark) .template-example-card:hover
   font-size: 11px
   font-weight: 700
   padding: 2px 0
+
+.template-card
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease
+
+.template-card:hover
+  transform: translateY(-1px)
+  background: var(--glass-surface-hover)
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 8%, transparent), var(--shadow-entity-panel)
+
+body:not(.body--dark) .template-card:hover
+  background: rgba(255, 250, 238, 0.95)
+  border-color: rgba(220, 160, 62, 0.45)
+
+.template-card--selected
+  border-color: var(--color-accent) !important
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-surface)) !important
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 0 16px color-mix(in srgb, var(--color-accent) 12%, transparent), var(--shadow-entity-panel) !important
+
+body:not(.body--dark) .template-card--selected
+  border-color: rgba(220, 160, 62, 0.7) !important
+  background: rgba(220, 160, 62, 0.06) !important
+  box-shadow: 0 0 0 1px rgba(220, 160, 62, 0.25), 0 0 16px rgba(220, 160, 62, 0.1), 0 2px 8px rgba(93, 64, 55, 0.07) !important
 
 .graph-card--selected
   border-color: var(--color-accent) !important

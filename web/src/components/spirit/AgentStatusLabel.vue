@@ -32,13 +32,16 @@ const config = computed(() => STATUS_LABEL_CONFIG[props.label] ?? STATUS_LABEL_C
   font-size: var(--text-xs)
   padding: 2px 6px
   border-radius: 4px
+  border-left-width: 3px
 
 .agent-status-label--animated
   animation: agent-status-breathe 2s ease-in-out infinite
 
 @keyframes agent-status-breathe
   0%, 100%
-    opacity: 1
+    border-left-width: 3px
+    border-left-color: var(--color-accent)
   50%
-    opacity: 0.6
+    border-left-width: 1px
+    border-left-color: color-mix(in srgb, var(--color-accent) 40%, transparent)
 </style>

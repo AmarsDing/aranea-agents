@@ -499,6 +499,92 @@ message ResolveTaskDeadLetterResponse {
   TaskDeadLetter item = 1;
 }
 
+// Spirit team view messages (B-3)
+
+message SpiritMemberView {
+  string agent_id = 1;
+  string agent_key = 2;
+  string display_name = 3;
+  string role = 4;
+  string status = 5;
+  string avatar_url = 6;
+}
+
+message SpiritTeamView {
+  string id = 1;
+  string team_name = 2;
+  string task_summary = 3;
+  string status = 4;
+  string mode = 5;
+  repeated string member_avatars = 6;
+  int32 completed_steps = 7;
+  int32 total_steps = 8;
+  int64 duration_ms = 9;
+  string spirit_session_id = 10;
+  string team_session_id = 11;
+  repeated SpiritMemberView members = 12;
+  repeated string shared_agent_ids = 13;
+  string dag_node_id = 14;
+  string graph_execution_id = 15;
+  repeated string depends_on = 16;
+  string topology_reason = 17;
+  string interrupt_reason = 18;
+  int64 token_in = 19;
+  int64 token_out = 20;
+}
+
+// ListSpiritTeams messages (B-1)
+
+message ListSpiritTeamsRequest {
+  string spirit_session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListSpiritTeamsResponse {
+  repeated SpiritTeamView teams = 1;
+}
+
+// SynthesizeResults messages (B-4)
+
+message SynthesizeResultsRequest {
+  string spirit_session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string strategy = 2; // "template" | "prompt" | "hybrid" | "" (auto-infer)
+}
+
+message SynthesisTeamResult {
+  string team_id = 1;
+  string team_name = 2;
+  string status = 3;
+  string result_summary = 4;
+  repeated string key_findings = 5;
+}
+
+message SynthesizeResultsResponse {
+  string strategy = 1;
+  string unified_summary = 2;
+  repeated SynthesisTeamResult team_results = 3;
+  double success_rate = 4;
+  bool partial_failure = 5;
+  string cascade_note = 6;
+}
+
+message ArchiveTeamRequest {
+  string team_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ArchiveTeamResponse {
+  string team_id = 1;
+  string status = 2;
+}
+
+message RetryTeamRequest {
+  string team_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RetryTeamResponse {
+  string team_id = 1;
+  string status = 2;
+}
+
 service TeamService {
   rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse) {
     option (google.api.http) = {get: "/v1/teams"};
@@ -584,6 +670,31 @@ service TeamService {
   rpc ResolveTaskDeadLetter(ResolveTaskDeadLetterRequest) returns (ResolveTaskDeadLetterResponse) {
     option (google.api.http) = {
       post: "/v1/task-dead-letters/{id}/resolve"
+      body: "*"
+    };
+  }
+  // ListSpiritTeams returns teams belonging to a spirit session.
+  rpc ListSpiritTeams(ListSpiritTeamsRequest) returns (ListSpiritTeamsResponse) {
+    option (google.api.http) = {get: "/v1/spirit/{spirit_session_id}/teams"};
+  }
+  // SynthesizeResults merges results from multiple teams into a unified output.
+  rpc SynthesizeResults(SynthesizeResultsRequest) returns (SynthesizeResultsResponse) {
+    option (google.api.http) = {
+      post: "/v1/spirit/{spirit_session_id}/synthesize"
+      body: "*"
+    };
+  }
+  // ArchiveTeam archives a completed/failed/cancelled team.
+  rpc ArchiveTeam(ArchiveTeamRequest) returns (ArchiveTeamResponse) {
+    option (google.api.http) = {
+      post: "/v1/teams/{team_id}/archive"
+      body: "*"
+    };
+  }
+  // RetryTeam retries a failed/cancelled team by resetting its status and re-starting.
+  rpc RetryTeam(RetryTeamRequest) returns (RetryTeamResponse) {
+    option (google.api.http) = {
+      post: "/v1/teams/{team_id}/retry"
       body: "*"
     };
   }

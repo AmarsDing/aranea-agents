@@ -9,13 +9,12 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/strutil"
 )
 
 var (
 	l4NamePattern             = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9 _-]{0,48})`)
 	l4PreferencePattern       = regexp.MustCompile(`(?i)I\s+(?:prefer|like|love)\s+([^.!?\n]{2,120})`)
-	l4ChineseNamePattern      = regexp.MustCompile(`(?:我叫|我的名字是|我是)\s*([^\s,.，。!！?？]{1,20})`)
+	l4ChineseNamePattern      = regexp.MustCompile(`(?:我叫|我的名字是)\s*([^\s,.，。!！?？]{1,20})(?:[，。,.!！?？\s]|$)`)
 	l4ChinesePreferencePattern = regexp.MustCompile(`(?:我喜欢|我偏好|我偏爱|我爱吃|我爱喝|我爱看|我爱听)\s*([^.!?\n，。！？]{2,80})`)
 )
 
@@ -73,7 +72,6 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 	if text == "" {
 		return 0, nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	anchorID := userProfileEntityID(agentID)
 	written := 0
 
@@ -159,7 +157,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			}); err != nil {
 				uc.lg.Warn("L4Graph: failed to upsert knows_as relation", loggateway.StepID("memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 			}
-			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, profileName, name, conflict, now)
+			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, profileName, name, conflict)
 			if err := uc.repo.UpsertEntity(ctx, cascade); err != nil {
 				uc.lg.Warn("L4Graph: failed to upsert cascade profile", loggateway.StepID("memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
 			}
@@ -185,8 +183,8 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			ScopeID:        agentID,
 			UserID:         userID,
 			EntityType:     "preference",
-			Name:           strutil.TruncateBytes(pref, 80),
-		NameNormalized: strings.ToLower(strutil.TruncateBytes(pref, 80)),
+			Name:           truncateRunes(pref, 80),
+			NameNormalized: strings.ToLower(truncateRunes(pref, 80)),
 			Description:    text,
 			Importance:     l4PrefImportance,
 			Confidence:     l4PrefConfidence,
@@ -265,7 +263,7 @@ func (uc *L4GraphUsecase) preparePersonUpsert(existing L4EntitySnapshot, newName
 	}, conflict
 }
 
-func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personName, pendingName string, conflict bool, now string) L4EntityWrite {
+func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personName, pendingName string, conflict bool) L4EntityWrite {
 	desc := "Consolidated user knowledge for this agent"
 	if strings.TrimSpace(personName) != "" {
 		desc = "Profile includes: " + personName
@@ -275,7 +273,6 @@ func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personN
 		desc = fmt.Sprintf("Profile includes: %s (pending name change to %s)", personName, pendingName)
 		meta = `{"source":"auto_memory","cascade":true,"pending_name_review":true}`
 	}
-	_ = now
 	return L4EntityWrite{
 		ID:             anchorID,
 		ScopeType:      "agent",

@@ -180,6 +180,7 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 		L1BudgetTokens:           e.L1BudgetTokens,
 		L1FieldMaxTokens:         e.L1FieldMaxTokens,
 		L1HistoryKeepRevisions:   e.L1HistoryKeepRevisions,
+		L1HistoryEnabled:         e.L1HistoryEnabled,
 		L1DefaultSchemaID:        e.L1DefaultSchemaID,
 		L1ArchiveOnIdleMinutes:   e.L1ArchiveOnIdleMinutes,
 		L2EpisodeEnabled:         e.L2EpisodeEnabled,
@@ -356,6 +357,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL1BudgetTokens(v.L1BudgetTokens).
 		SetL1FieldMaxTokens(v.L1FieldMaxTokens).
 		SetL1HistoryKeepRevisions(v.L1HistoryKeepRevisions).
+		SetL1HistoryEnabled(v.L1HistoryEnabled).
 		SetL1DefaultSchemaID(v.L1DefaultSchemaID).
 		SetL1ArchiveOnIdleMinutes(v.L1ArchiveOnIdleMinutes).
 		SetL2EpisodeEnabled(v.L2EpisodeEnabled).

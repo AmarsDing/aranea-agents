@@ -1,40 +1,119 @@
 <template>
-  <q-card flat bordered class="q-pa-md q-gutter-md" style="max-width: 720px">
-    <div class="text-subtitle2">注册远程 A2A Agent</div>
-    <q-input v-model="form.workspace" dense outlined label="工作区" hint="留空则使用远程 Card 或 default" />
-    <q-input v-model.trim="form.remote_url" dense outlined label="远程 URL *" />
-    <q-input v-model.trim="form.display_name" dense outlined label="显示名称" />
-    <q-select
-      v-model="form.auth_type"
-      dense
-      outlined
-      emit-value
-      map-options
-      label="鉴权类型"
-      :options="authTypeOptions"
-    />
-    <q-input
-      v-if="form.auth_type === 'api_key' || form.auth_type === 'bearer'"
-      v-model="authSecret"
-      dense
-      outlined
-      :type="showSecret ? 'text' : 'password'"
-      :label="form.auth_type === 'bearer' ? 'Bearer Token' : 'API Key'"
-    />
-    <template v-if="form.auth_type === 'mtls'">
-      <q-input v-model="mtls.cert_file" dense outlined label="客户端证书路径 (cert_file)" />
-      <q-input v-model="mtls.key_file" dense outlined label="私钥路径 (key_file)" />
-      <q-input v-model="mtls.ca_file" dense outlined label="CA 路径 (ca_file，可选)" />
-    </template>
-    <div class="row q-gutter-sm">
-      <q-btn outline color="primary" label="预览 Discover" :loading="discovering" @click="onDiscover" />
-      <q-btn color="primary" unelevated label="注册" :loading="loading" @click="onRegister" />
+  <div class="app-form-wide a2a-register-form">
+    <!-- Header -->
+    <div class="a2a-form-header">
+      <q-icon name="cloud_upload" size="sm" color="primary" />
+      <span class="a2a-form-header__title">注册远程 A2A Agent</span>
     </div>
-    <q-card v-if="preview" flat bordered class="q-pa-sm">
-      <div class="text-caption">预览：{{ preview.display_name }} ({{ preview.agent_id }})</div>
-      <div class="text-caption">能力：{{ preview.capabilities.map((c) => c.name).join(', ') || '—' }}</div>
-    </q-card>
-  </q-card>
+
+    <div class="a2a-form-body">
+      <!-- Group: 连接 -->
+      <div class="a2a-form-group">
+        <div class="a2a-form-group__title">连接</div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">远程 URL *</div>
+          <div class="a2a-form-row__control">
+            <q-input v-model.trim="form.remote_url" dense outlined class="app-glass-control" />
+          </div>
+        </div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">显示名称</div>
+          <div class="a2a-form-row__control">
+            <q-input v-model.trim="form.display_name" dense outlined class="app-glass-control" />
+          </div>
+        </div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">工作区</div>
+          <div class="a2a-form-row__control">
+            <q-input v-model="form.workspace" dense outlined class="app-glass-control" />
+          </div>
+          <div class="a2a-form-row__hint">留空则使用远程 Card 或 default</div>
+        </div>
+      </div>
+
+      <!-- Group: 鉴权 -->
+      <div class="a2a-form-group">
+        <div class="a2a-form-group__title">鉴权</div>
+
+        <div class="a2a-form-row">
+          <div class="a2a-form-row__label">鉴权类型</div>
+          <div class="a2a-form-row__control">
+            <q-select
+              v-model="form.auth_type"
+              dense
+              outlined
+              emit-value
+              map-options
+              :options="authTypeOptions"
+              class="app-glass-control app-field-sm"
+            />
+          </div>
+        </div>
+
+        <!-- Auth: API Key / Bearer -->
+        <div v-if="form.auth_type === 'api_key' || form.auth_type === 'bearer'" class="a2a-form-row">
+          <div class="a2a-form-row__label">{{ form.auth_type === 'bearer' ? 'Bearer Token' : 'API Key' }}</div>
+          <div class="a2a-form-row__control">
+            <q-input
+              v-model="authSecret"
+              dense
+              outlined
+              :type="showSecret ? 'text' : 'password'"
+              class="app-glass-control"
+            >
+              <template #append>
+                <q-btn flat dense round :icon="showSecret ? 'visibility_off' : 'visibility'" @click="showSecret = !showSecret" />
+              </template>
+            </q-input>
+          </div>
+        </div>
+
+        <!-- Auth: mTLS -->
+        <template v-if="form.auth_type === 'mtls'">
+          <div class="a2a-form-row">
+            <div class="a2a-form-row__label">客户端证书</div>
+            <div class="a2a-form-row__control">
+              <q-input v-model="mtls.cert_file" dense outlined class="app-glass-control" />
+            </div>
+          </div>
+          <div class="a2a-form-row">
+            <div class="a2a-form-row__label">私钥路径</div>
+            <div class="a2a-form-row__control">
+              <q-input v-model="mtls.key_file" dense outlined class="app-glass-control" />
+            </div>
+          </div>
+          <div class="a2a-form-row">
+            <div class="a2a-form-row__label">CA 路径</div>
+            <div class="a2a-form-row__control">
+              <q-input v-model="mtls.ca_file" dense outlined class="app-glass-control" />
+            </div>
+            <div class="a2a-form-row__hint">可选，留空使用系统 CA</div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Actions -->
+      <div class="a2a-form-actions">
+        <q-btn outline no-caps color="primary" icon="search" label="预览 Discover" :loading="discovering" @click="onDiscover" />
+        <q-btn unelevated no-caps color="primary" icon="cloud_upload" label="注册" :loading="loading" @click="onRegister" />
+      </div>
+
+      <!-- Preview -->
+      <q-card v-if="preview" flat bordered class="a2a-register-preview app-glass-side-panel">
+        <div class="a2a-register-preview__meta">
+          <span class="a2a-register-preview__name">{{ preview.display_name }}</span>
+          <span class="a2a-register-preview__id">{{ preview.agent_id }}</span>
+        </div>
+        <div class="a2a-register-preview__caps">
+          <q-chip v-for="c in preview.capabilities" :key="c.name" dense outline size="sm">{{ c.name }}</q-chip>
+          <span v-if="!preview.capabilities.length" class="text-grey-6">无能力</span>
+        </div>
+      </q-card>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">

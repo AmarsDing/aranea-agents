@@ -26,8 +26,8 @@
             <q-card-section class="app-settings-shell__body">
               <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">{{ error }}</q-banner>
 
-              <div class="settings-grid">
-                <section class="settings-section">
+              <div class="settings-grid settings-grid--2col">
+                <section class="settings-section settings-section--span">
                   <div class="section-heading">
                     <div class="section-heading__main">
                       <div class="section-title">
@@ -37,17 +37,17 @@
                       <p class="settings-section__hint">{{ t('settingsPage.rootDirHint') }}</p>
                     </div>
                   </div>
-                  <div class="settings-field-stack">
+                  <div class="app-form-field-grid--2col">
                     <q-input
                       v-model="rootDir"
-                      class="app-field-long"
+                      class="app-glass-control"
                       :label="t('settingsPage.rootDir')"
                       outlined
                       dense
                     />
                     <q-input
                       v-model="workDir"
-                      class="app-field-long"
+                      class="app-glass-control"
                       :label="t('settingsPage.workDir')"
                       :hint="t('settingsPage.workDirHint')"
                       outlined
@@ -68,7 +68,7 @@
                   </div>
                   <q-input
                     v-model.trim="a2aPublicBaseUrl"
-                    class="app-field-long"
+                    class="app-glass-control"
                     :label="t('settingsPage.a2aPublicBaseUrl')"
                     :hint="effectiveA2AHint"
                     outlined
@@ -117,7 +117,7 @@
                   </div>
                   <q-input
                     v-model.number="globalMonthlyUsd"
-                    class="app-field-sm"
+                    class="app-glass-control app-field-sm"
                     :label="t('settingsPage.globalQuotaUsd')"
                     outlined
                     dense
@@ -128,7 +128,7 @@
                   />
                 </section>
 
-                <section class="settings-section">
+                <section class="settings-section settings-section--span">
                   <div class="section-heading">
                     <div class="section-heading__main">
                       <div class="section-title">
@@ -161,7 +161,7 @@
                   <q-toggle v-model="mcpAllowAdhocHttp" :label="t('settingsPage.mcpAdhocToggle')" />
                 </section>
 
-                <section class="settings-section">
+                <section class="settings-section settings-section--span">
                   <div class="section-heading">
                     <div class="section-heading__main">
                       <div class="section-title">
@@ -179,7 +179,7 @@
                   />
                 </section>
 
-                <section class="settings-section">
+                <section class="settings-section settings-section--span">
                   <div class="section-heading">
                     <div class="section-heading__main">
                       <div class="section-title">
@@ -192,24 +192,28 @@
                   <div class="app-form-field-grid app-form-field-grid--2col">
                     <q-input
                       v-model="evalLLMForm.simProvider"
+                      class="app-glass-control"
                       :label="t('settingsPage.evalLLM.simProvider')"
                       outlined
                       dense
                     />
                     <q-input
                       v-model="evalLLMForm.simModel"
+                      class="app-glass-control"
                       :label="t('settingsPage.evalLLM.simModel')"
                       outlined
                       dense
                     />
                     <q-input
                       v-model="evalLLMForm.judgeProvider"
+                      class="app-glass-control"
                       :label="t('settingsPage.evalLLM.judgeProvider')"
                       outlined
                       dense
                     />
                     <q-input
                       v-model="evalLLMForm.judgeModel"
+                      class="app-glass-control"
                       :label="t('settingsPage.evalLLM.judgeModel')"
                       outlined
                       dense
@@ -223,7 +227,7 @@
                   </q-banner>
                 </section>
 
-                <section class="settings-section">
+                <section class="settings-section settings-section--span">
                   <div class="section-heading">
                     <div class="section-heading__main">
                       <div class="section-title">
