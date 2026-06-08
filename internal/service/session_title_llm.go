@@ -69,8 +69,8 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	}
 
 	title := strings.TrimSpace(sb.String())
-	if len(title) > 50 {
-		title = title[:50]
+	if runes := []rune(title); len(runes) > 50 {
+		title = string(runes[:50])
 	}
 	return title, nil
 }
