@@ -235,7 +235,6 @@ github.com/google/pprof v0.0.0-20221118152302-e6195bd50e26 h1:Xim43kblpZXfIBQsbu
 github.com/google/pprof v0.0.0-20221118152302-e6195bd50e26/go.mod h1:dDKJzRmX4S37WGHujM7tX//fmj1uioxKzKxz3lo4HJo=
 github.com/google/s2a-go v0.1.9 h1:LGD7gtMgezd8a/Xak7mEWL0PjoTQFvpRudN895yqKW0=
 github.com/google/s2a-go v0.1.9/go.mod h1:YA0Ei2ZQL3acow2O62kdp9UlnvMmU7kA6Eutn0dXayM=
-github.com/google/subcommands v1.2.0 h1:vWQspBTo2nEqTUFita5/KeEWlUL8kQObDFbub/EN9oE=
 github.com/google/subcommands v1.2.0/go.mod h1:ZjhPrFU+Olkh9WazFPsl27BQ4UPiG37m3yTrtFlrHVk=
 github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
@@ -781,8 +780,6 @@ trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0 h1:uTiqJ+BS9mk+3jHQpa2oESV5F
 trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0/go.mod h1:R3BoHy4Z/LjlARwwOegzEASLb5PwO+t/5uGHgyIbrWs=
 trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0 h1:c6JhLHGDkVXgMcD4lunmSLJfDaYs98qOaAJ3zWQf4k4=
 trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0/go.mod h1:6iP6DwUl3v7JDe945TYlyCmyxZMrz7k5BP3iB05kdKs=
-trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0 h1:Nj5p3tzRY4llq8ZQWPjROm5eh3cWuykvtYq1y/yYfM8=
-trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0/go.mod h1:lmWmpdikxTwqN1C2q1rzEaP/52ajPP2Lo51AOdpkWt8=
 trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0 h1:5nN8uPLSf6lYZIyItQIqiKRRV5iJNrdLpEAE5LDsYls=
 trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0/go.mod h1:AKe0sobDAgFfnpdOU0sFm1B8tBrKk/PP1a8QDiqPNeg=
 trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0 h1:FBMTjwEIvKL56gIsBmHX8Qv8higyhJxoMaS6ruMAoto=
