@@ -18,7 +18,10 @@ const (
 
 // webhookConf holds the resolved webhook config, initialized with defaults.
 // Call InitWebhookRateLimitConfig to override from *conf.Runtime.
-var webhookConf conf.RuntimeWebhookConfig
+var (
+	webhookConf   conf.RuntimeWebhookConfig
+	webhookConfMu sync.RWMutex
+)
 
 func init() {
 	// Initialize with nil-safe defaults (same as what (*Runtime)(nil).WebhookConfig() returns).
@@ -27,7 +30,16 @@ func init() {
 
 // InitWebhookRateLimitConfig sets the webhook config from *conf.Runtime.
 func InitWebhookRateLimitConfig(r *conf.Runtime) {
+	webhookConfMu.Lock()
+	defer webhookConfMu.Unlock()
 	webhookConf = r.WebhookConfig()
+}
+
+// readWebhookConf returns a snapshot of the current webhook config.
+func readWebhookConf() conf.RuntimeWebhookConfig {
+	webhookConfMu.RLock()
+	defer webhookConfMu.RUnlock()
+	return webhookConf
 }
 
 type webhookRateLimiter struct {
@@ -55,7 +67,7 @@ func allowWebhookRequest(channelKey string, lg loggateway.Logger) bool {
 			cleanupStaleWebhookRateLimits()
 		})
 	}
-	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: int(webhookConf.RateLimitPerMin)})
+	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: int(readWebhookConf().RateLimitPerMin)})
 	rl := v.(*webhookRateLimiter)
 	now = time.Now()
 	rl.mu.Lock()
@@ -86,7 +98,7 @@ func cleanupStaleWebhookRateLimits() {
 			return true
 		}
 		rl.mu.Lock()
-		stale := !rl.window.IsZero() && now.Sub(rl.window) >= webhookConf.StaleThreshold
+		stale := !rl.window.IsZero() && now.Sub(rl.window) >= readWebhookConf().StaleThreshold
 		rl.mu.Unlock()
 		if stale {
 			webhookRateLimits.Delete(key)
