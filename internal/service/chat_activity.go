@@ -7,6 +7,6 @@ import (
 )
 
 // NewChatStreamConsumeOptions wires catalog lookup and activity persistence for a chat turn.
-func NewChatStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions *biz.SessionUsecase) *chatagent.StreamConsumeOptions {
+func NewChatStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort) *chatagent.StreamConsumeOptions {
 	return chatactivity.NewStreamConsumeOptions(tools, agents, sessions)
 }

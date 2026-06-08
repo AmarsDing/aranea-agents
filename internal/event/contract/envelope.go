@@ -259,43 +259,81 @@ func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 	}
 }
 
-// RouteChannel returns the logical channel name for routing an envelope.
-// TECH-DEBT: RouteChannel switch-case violates OCP. Consider per-domain routing tables
-// or attaching channel metadata to EnvelopeType definitions.
-func RouteChannel(env Envelope) string {
-	switch env.Type {
-	case EnvelopeTypeLog, EnvelopeTypeFlowLog:
-		return "monitor"
-	case EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
+// channelRegistry maps EnvelopeType to its logical channel name.
+// New event types should register via RegisterChannelRoute instead of
+// adding cases to RouteChannel.
+var channelRegistry map[EnvelopeType]string
+
+// RegisterChannelRoute registers the logical channel for an EnvelopeType.
+// This is the OCP-compliant way to define routing: each domain registers
+// its own event types at init time rather than modifying a central switch.
+func RegisterChannelRoute(typ EnvelopeType, channel string) {
+	if channelRegistry == nil {
+		channelRegistry = make(map[EnvelopeType]string)
+	}
+	channelRegistry[typ] = channel
+}
+
+// RegisterChannelRoutes bulk-registers channel routes for multiple EnvelopeTypes.
+func RegisterChannelRoutes(channel string, types ...EnvelopeType) {
+	for _, t := range types {
+		RegisterChannelRoute(t, channel)
+	}
+}
+
+func init() {
+	// Monitor channel: logs, flow logs, MCP health, alerts, self-healing
+	RegisterChannelRoutes("monitor",
+		EnvelopeTypeLog, EnvelopeTypeFlowLog,
+		EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert, EnvelopeTypeAlertNotify,
+		EnvelopeTypeMonitorAutoHealed, EnvelopeTypeMonitorSelfCheckCompleted,
+	)
+
+	// Team channel: member messages, team run lifecycle, orchestration status
+	RegisterChannelRoutes("team",
+		EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
 		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed, EnvelopeTypeTeamSummary,
-		EnvelopeTypeOrchestrationAgentStatus:
-		return "team"
-	case EnvelopeTypeGraphNodeStart, EnvelopeTypeGraphNodeEnd, EnvelopeTypeCheckpoint,
+		EnvelopeTypeOrchestrationAgentStatus,
+	)
+
+	// Graph channel: graph node lifecycle, checkpoints, execution
+	RegisterChannelRoutes("graph",
+		EnvelopeTypeGraphNodeStart, EnvelopeTypeGraphNodeEnd, EnvelopeTypeCheckpoint,
 		EnvelopeTypeGraphStep, EnvelopeTypeGraphExecutionDone, EnvelopeTypeGraphNodeError,
-		EnvelopeTypeGraphNodeCustom, EnvelopeTypeGraphTaskStatus:
-		return "graph"
-	case EnvelopeTypeKnowledgeIngest:
-		return "knowledge"
-	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert, EnvelopeTypeAlertNotify:
-		return "monitor"
-	case EnvelopeTypeSessionStatusChanged:
-		return "chat"
-	case EnvelopeTypeMetricsUpdated:
-		return "chat"
-	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted,
-		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated, EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint, EnvelopeTypeSpiritOrchestrationInterrupted,
-		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted, EnvelopeTypeButlerOrchestrationFailed,
-		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed:
-		return "chat"
-	case EnvelopeTypeMonitorAutoHealed, EnvelopeTypeMonitorSelfCheckCompleted:
-		return "monitor"
-	default:
-		if env.TeamID != "" {
-			return "team"
-		}
-		return "chat"
+		EnvelopeTypeGraphNodeCustom, EnvelopeTypeGraphTaskStatus,
+	)
+
+	// Knowledge channel: ingestion events
+	RegisterChannelRoutes("knowledge",
+		EnvelopeTypeKnowledgeIngest,
+	)
+
+	// Chat channel: session status, metrics, spirit orchestration, butler, skill evolution
+	RegisterChannelRoutes("chat",
+		EnvelopeTypeSessionStatusChanged, EnvelopeTypeMetricsUpdated,
+		EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed,
+		EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted,
+		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated,
+		EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint,
+		EnvelopeTypeSpiritOrchestrationInterrupted,
+		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted,
+		EnvelopeTypeButlerOrchestrationFailed,
+		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed,
+	)
+}
+
+// RouteChannel returns the logical channel name for routing an envelope.
+// Routes are resolved via the registry (populated by RegisterChannelRoute).
+// Unregistered types fall back to TeamID-based inference or "chat" as default.
+func RouteChannel(env Envelope) string {
+	if ch, ok := channelRegistry[env.Type]; ok {
+		return ch
 	}
+	if env.TeamID != "" {
+		return "team"
+	}
+	return "chat"
 }
 
 // MatchFilterKey checks if a subscriber's filter key matches an event's filter key.

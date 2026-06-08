@@ -227,7 +227,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AttachmentsCount: utOpts.attN,
 	}
 
-	if err := r.sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
+	if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
@@ -415,7 +415,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return userMsg, biz.ChatMessage{}, err
 	}
 
-	if err := r.sessions.AppendChatMessage(ctx, sess.ID, assistantMsg, true); err != nil {
+	if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, assistantMsg, true); err != nil {
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err

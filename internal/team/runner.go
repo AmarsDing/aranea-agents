@@ -4,13 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/http"
 	"strings"
 
 	"aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
@@ -33,7 +31,6 @@ type Runner struct {
 	stepRepo        biz.OrchestrationStepRepo
 	deadLetter      biz.TaskDeadLetterRepo
 	usage           biz.TeamUsageQuerier
-	sessions        biz.TeamSessionManager
 	td              rt.TurnDeps
 	skillDBRepo     trpcskill.Repository
 	codeExecFactory *localexec.Factory
@@ -68,31 +65,12 @@ func NewRunner(
 	stepRepo biz.OrchestrationStepRepo,
 	deadLetter biz.TaskDeadLetterRepo,
 	usage biz.TeamUsageQuerier,
-	sessions biz.TeamSessionManager,
-	agents biz.AgentRepository,
-	agentsUC biz.TeamAgentLookup,
-	toolRegistry biz.ToolRegistryReader,
-	toolUC biz.TeamToolLookup,
-	catalog biz.TeamModelCatalog,
-	eventBus event.Bus,
-	skillUC biz.TeamSkillLookup,
-	sys biz.SystemSettingRepo,
-	persist rt.PersistenceSet,
-	compress biz.NativeTurnCompressor,
+	td rt.TurnDeps,
 	skillDBRepo trpcskill.Repository,
 	codeExecFactory *localexec.Factory,
 	lg loggateway.Logger,
 	cfg RunnerConfig,
 ) *Runner {
-	// Type-assert sessions back to concrete type for rt.TurnDeps.Sessions,
-	// which is still *biz.SessionUsecase because the chat orchestrator needs
-	// the full API. TECH-DEBT: remove once SessionUsecase is split into
-	// narrower interfaces.
-	var sessUC *biz.SessionUsecase
-	if s, ok := sessions.(*biz.SessionUsecase); ok {
-		sessUC = s
-	}
-
 	return &Runner{
 		teamReader:      teamReader,
 		runReader:       runReader,
@@ -100,29 +78,11 @@ func NewRunner(
 		stepRepo:        stepRepo,
 		deadLetter:      deadLetter,
 		usage:           usage,
-		sessions:        sessions,
 		skillDBRepo:     skillDBRepo,
 		codeExecFactory: codeExecFactory,
 		cfg:             cfg,
 		lg:              lg,
-		td: rt.TurnDeps{
-			ReadDeps: rt.TurnReadDeps{
-				Agents:   agents,
-				AgentsUC: agentsUC,
-				Tools:    toolRegistry,
-				ToolUC:   toolUC,
-				LLM:      catalog,
-				SkillUC:  skillUC,
-				Settings: sys,
-			},
-			Persist:   persist,
-			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: event.NewBuffer()},
-			LLMHTTP:   &http.Client{Timeout: 0},
-			Sessions:  sessUC,
-			Compress:  compress,
-			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
-			Lg:        lg,
-		},
+		td:              td,
 	}
 }
 

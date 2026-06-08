@@ -99,15 +99,15 @@ func (r *catalogActivityMetaResolver) ResolveAgentID(ctx context.Context, agentK
 }
 
 type sessionActivityPersister struct {
-	sessions *biz.SessionUsecase
+	sessions biz.SessionTurnExtrasPort
 }
 
-func newSessionActivityPersister(sessions *biz.SessionUsecase) chatagent.ActivityPersister {
+func newSessionActivityPersister(sessions biz.SessionTurnExtrasPort) chatagent.ActivityPersister {
 	return &sessionActivityPersister{sessions: sessions}
 }
 
 func (p *sessionActivityPersister) UpsertActivity(ctx context.Context, meta chatagent.ProjectMeta, tc event.EnvelopeToolCall) error {
-	if p == nil || p.sessions == nil {
+	if p == nil || isNilInterface(p.sessions) {
 		return nil
 	}
 	sessionID := strings.TrimSpace(meta.SessionID)
@@ -125,7 +125,7 @@ func (p *sessionActivityPersister) UpsertActivity(ctx context.Context, meta chat
 }
 
 // NewStreamConsumeOptions wires catalog lookup and activity persistence for a chat turn.
-func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions *biz.SessionUsecase) *chatagent.StreamConsumeOptions {
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	var persister chatagent.ActivityPersister
 	if tools != nil || agents != nil {
@@ -147,7 +147,7 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 type StreamOptsFactoryAdapter struct {
 	Tools    biz.TeamToolLookup
 	Agents   biz.AgentRepository
-	Sessions *biz.SessionUsecase
+	Sessions biz.SessionTurnExtrasPort
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {

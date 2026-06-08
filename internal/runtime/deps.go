@@ -56,7 +56,7 @@ type TurnDeps struct {
 	Persist  PersistenceSet
 	Pipeline EventPipeline
 
-	Sessions  *biz.SessionUsecase
+	Sessions  biz.SessionTurnManager
 	SessionRT *araneasession.Runtime
 	LLMHTTP   *http.Client
 	Compress  biz.NativeTurnCompressor

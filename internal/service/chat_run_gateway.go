@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"time"
 
@@ -11,6 +12,16 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
+
+// isNilInterface checks whether an interface value is nil, including typed-nil
+// pointers (e.g. (*SessionUsecase)(nil) stored in an interface).
+func isNilInterface(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
+}
 
 type runGatewayAdapter struct {
 	*runtime.RunRegistry
@@ -89,7 +100,7 @@ func NewPendingQueueAdapter(q *runtime.PendingMessageQueue) biz.ChatPendingQueue
 }
 
 type chatRunStatusPersister struct {
-	sessions *biz.SessionUsecase
+	sessions biz.SessionStatePort
 	lg       loggateway.Logger
 }
 
@@ -105,7 +116,7 @@ func (p *chatRunStatusPersister) ClearAwaitingRunState(ctx context.Context, sess
 	clearAwaitingRunStateFromSession(p.sessions, ctx, sessionID, p.lg)
 }
 
-func NewChatRunStatusPersister(sessions *biz.SessionUsecase, lg loggateway.Logger) biz.ChatRunStatusPersister {
+func NewChatRunStatusPersister(sessions biz.SessionStatePort, lg loggateway.Logger) biz.ChatRunStatusPersister {
 	return &chatRunStatusPersister{sessions: sessions, lg: lg}
 }
 
@@ -131,7 +142,7 @@ func NewChatUsecaseFromDeps(
 	runs *runtime.RunRegistry,
 	pending *runtime.PendingMessageQueue,
 	locks *sessionLockManager,
-	sessions *biz.SessionUsecase,
+	sessions biz.SessionStatePort,
 	bus event.Bus,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
@@ -147,8 +158,8 @@ func NewChatUsecaseFromDeps(
 	return uc
 }
 
-func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID, status, errMsg string) error {
-	if sessions == nil {
+func persistRunStatusToSession(sessions biz.SessionStatePort, ctx context.Context, sessionID, runID, status, errMsg string) error {
+	if isNilInterface(sessions) {
 		return nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -172,8 +183,8 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 	)
 }
 
-func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool, lg loggateway.Logger) {
-	if sessions == nil {
+func persistAwaitMarkersToSession(sessions biz.SessionStatePort, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool, lg loggateway.Logger) {
+	if isNilInterface(sessions) {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -220,8 +231,8 @@ func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Cont
 	})
 }
 
-func clearAwaitingRunStateFromSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID string, lg loggateway.Logger) {
-	if sessions == nil {
+func clearAwaitingRunStateFromSession(sessions biz.SessionStatePort, ctx context.Context, sessionID string, lg loggateway.Logger) {
+	if isNilInterface(sessions) {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)

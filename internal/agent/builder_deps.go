@@ -26,7 +26,7 @@ type TRPCModelCatalogDeps struct {
 	AgentUC  biz.TeamAgentLookup
 	Agents   biz.AgentRepository
 	Sys      biz.SystemSettingRepo
-	Sessions *biz.SessionUsecase
+	Sessions biz.SessionTurnManager
 }
 
 // TRPCModelRouteDeps documents provider/model routing on TRPCBuilderDeps.
@@ -78,7 +78,7 @@ type TRPCBuilderDeps struct {
 	AgentUC  biz.TeamAgentLookup
 	Agents   biz.AgentRepository
 	Sys      biz.SystemSettingRepo
-	Sessions *biz.SessionUsecase
+	Sessions biz.SessionTurnManager
 	// TRPCModelRouteDeps
 	RT         *provider.RoundTrip
 	Provider   string

@@ -2,6 +2,7 @@ package chatactivity
 
 import (
 	"context"
+	"reflect"
 	"strings"
 
 	chatagent "aranea-agents/internal/agent"
@@ -9,9 +10,19 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// isNilInterface checks whether an interface value is nil, including typed-nil
+// pointers (e.g. (*SessionUsecase)(nil) stored in an interface).
+func isNilInterface(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
+}
+
 // CancelRunningActivityMessages marks in-flight tool_running cards as cancelled when the user stops generation.
-func CancelRunningActivityMessages(ctx context.Context, sessions *biz.SessionUsecase, sessionID string, lg loggateway.Logger) (int, error) {
-	if sessions == nil {
+func CancelRunningActivityMessages(ctx context.Context, sessions biz.SessionTurnExtrasPort, sessionID string, lg loggateway.Logger) (int, error) {
+	if isNilInterface(sessions) {
 		return 0, nil
 	}
 	sessionID = strings.TrimSpace(sessionID)

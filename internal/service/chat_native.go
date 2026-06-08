@@ -22,7 +22,7 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 	}
 }
 
-// RunNativeTurn implements biz.NativeTurnGateway — the biz-level turn entry point
+// RunNativeTurn implements biz.ChannelTurnGateway — the biz-level turn entry point
 // that avoids proto dependency. All internal callers (Channel, Cron, A2A) should
 // use this instead of proto-based methods.
 func (s *ChatService) RunNativeTurn(ctx context.Context, input biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
@@ -33,7 +33,7 @@ func (s *ChatService) RunNativeTurn(ctx context.Context, input biz.TurnInput) (b
 	return result.UserMsg, result.AssistantMsg, nil
 }
 
-// RunNativeTurnWithOutcome implements biz.NativeTurnGateway with explicit turn classification.
+// RunNativeTurnWithOutcome implements biz.ChannelTurnGateway with explicit turn classification.
 func (s *ChatService) RunNativeTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error) {
 	tr, err := s.ExecuteTurn(ctx, input)
 	return turnResultToNative(tr, err)

@@ -578,7 +578,7 @@ func provideRunnerConfig(
 	runs *rt.RunRegistry,
 	tools *biz.ToolUsecase,
 	agents biz.AgentRepository,
-	sessions *biz.SessionUsecase,
+	sessions biz.SessionTurnExtrasPort,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
 		PluginRT:      pluginRT,
@@ -605,6 +605,57 @@ func provideRunnerConfig(
 		cfg.TeamGraphTasks = team.NewTaskUsecaseGraphTaskCreator(tasks)
 	}
 	return cfg
+}
+
+// provideTurnReadDeps builds the shared TurnReadDeps used by both Chat and Team.
+// Extracted to avoid duplicating the 9-field construction across providers.
+func provideTurnReadDeps(
+	agents biz.AgentRepository,
+	agentsUC *biz.AgentUsecase,
+	toolRegistry biz.ToolRegistryReader,
+	toolUC *biz.ToolUsecase,
+	llmCatalog *biz.LlmProviderModelUsecase,
+	skillUC *biz.SkillUsecase,
+	sys biz.SystemSettingRepo,
+) rt.TurnReadDeps {
+	return rt.TurnReadDeps{
+		Agents:          agents,
+		AgentsUC:        agentsUC,
+		CLIAdminAgentUC: agentsUC,
+		Tools:           toolRegistry,
+		ToolUC:          toolUC,
+		LLM:             llmCatalog,
+		SkillUC:         skillUC,
+		CLIAdminSkillUC: skillUC,
+		Settings:        sys,
+	}
+}
+
+func provideTeamTurnDeps(
+	sessions *biz.SessionUsecase,
+	agents biz.AgentRepository,
+	agentsUC *biz.AgentUsecase,
+	toolRegistry biz.ToolRegistryReader,
+	toolUC *biz.ToolUsecase,
+	llmCatalog *biz.LlmProviderModelUsecase,
+	skillUC *biz.SkillUsecase,
+	sys biz.SystemSettingRepo,
+	persist rt.PersistenceSet,
+	compress biz.NativeTurnCompressor,
+	eventBus event.Bus,
+	eventBuffer *event.Buffer,
+	lg loggateway.Logger,
+) rt.TurnDeps {
+	return rt.TurnDeps{
+		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+		Persist:   persist,
+		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+		LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
+		Sessions:  sessions,
+		Compress:  compress,
+		RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
+		Lg:        lg,
+	}
 }
 
 func provideChannelTurnJobDeps(
@@ -666,17 +717,7 @@ func provideChatServiceDeps(
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
 		TurnDeps: rt.TurnDeps{
-			Catalog: rt.Catalog{
-				Agents:          agents,
-				AgentsUC:        agentsUC,
-				CLIAdminAgentUC: agentsUC,
-				Tools:           toolRegistry,
-				ToolUC:          toolUC,
-				LLM:             llmCatalog,
-				SkillUC:         skillUC,
-				CLIAdminSkillUC: skillUC,
-				Settings:        sys,
-			},
+			ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 			Persist:   persist,
 			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
 			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
@@ -817,12 +858,12 @@ func provideGraphBuildDeps(
 	}
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	builderDeps := chatagent.TRPCBuilderDeps{
-		Catalog: catalog,
-		AgentUC: agentUC,
-		Agents:  agents,
-		RT:      rtTrip,
-		ToolUC:  toolUC,
-		Sys:     sys,
+		ModelCatalog: catalog,
+		AgentUC:      agentUC,
+		Agents:       agents,
+		RT:           rtTrip,
+		ToolUC:       toolUC,
+		Sys:          sys,
 	}
 	return graphtrpc.GraphNodeResolverSet{
 		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
@@ -1496,12 +1537,12 @@ func provideTaskOrchestrator(
 ) biz.TaskOrchestratorPort {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog: catalog,
-		AgentUC: agentUC,
-		Agents:  agents,
-		RT:      rtTrip,
-		ToolUC:  toolUC,
-		Sys:     sys,
+		ModelCatalog: catalog,
+		AgentUC:      agentUC,
+		Agents:       agents,
+		RT:           rtTrip,
+		ToolUC:       toolUC,
+		Sys:          sys,
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
 	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
@@ -1596,6 +1637,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideRuntimeTooling,
 		provideTeamOrchestrationDeps,
 		provideRunnerConfig,
+		provideTeamTurnDeps,
 		provideChannelTurnJobDeps,
 		provideChannelNotifierDeps,
 		provideRunCanceller,
@@ -1721,11 +1763,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.ProviderModelPairValidator), new(*biz.LlmProviderModelUsecase)),
 		// Team-layer narrow interface bindings
 		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
-		wire.Bind(new(biz.TeamSessionManager), new(*biz.SessionUsecase)),
-		wire.Bind(new(biz.TeamAgentLookup), new(*biz.AgentUsecase)),
-		wire.Bind(new(biz.TeamToolLookup), new(*biz.ToolUsecase)),
-		wire.Bind(new(biz.TeamModelCatalog), new(*biz.LlmProviderModelUsecase)),
-		wire.Bind(new(biz.TeamSkillLookup), new(*biz.SkillUsecase)),
+		wire.Bind(new(biz.SessionTurnExtrasPort), new(*biz.SessionUsecase)),
 		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
 		// Self-check integration
 		provideSelfCheckScheduler,

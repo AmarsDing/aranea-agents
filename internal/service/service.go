@@ -21,7 +21,7 @@ import (
 // ProviderSet is service providers.
 var ProviderSet = wire.NewSet(
 	ProvideCompressor,
-	wire.Bind(new(biz.NativeTurnGateway), new(*ChatService)),
+	wire.Bind(new(biz.ChannelTurnGateway), new(*ChatService)),
 	wire.Bind(new(biz.TurnExecutorGateway), new(*ChatService)),
 	wire.Bind(new(biz.TurnRunControlGateway), new(*ChatService)),
 	wire.Bind(new(biz.TurnGateway), new(*ChatService)),

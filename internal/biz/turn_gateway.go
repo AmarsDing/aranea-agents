@@ -22,7 +22,7 @@ type TurnRunControlGateway interface {
 }
 
 // TurnGateway composes TurnExecutorGateway + TurnRunControlGateway for
-// consumers that need both execution and run control (e.g. NativeTurnGateway).
+// consumers that need both execution and run control (e.g. ChannelTurnGateway).
 type TurnGateway interface {
 	TurnExecutorGateway
 	TurnRunControlGateway

@@ -22,7 +22,7 @@ type persistentTurnStore interface {
 	UpdateTurn(context.Context, string, biz.SessionTurnUpdateFields) (biz.SessionTurn, error)
 }
 
-func NewPersistentTurnService(sessions *biz.SessionUsecase) *PersistentTurnService {
+func NewPersistentTurnService(sessions biz.SessionTurnWriterPort) *PersistentTurnService {
 	return &PersistentTurnService{Sessions: sessions}
 }
 

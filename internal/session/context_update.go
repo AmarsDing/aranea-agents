@@ -30,7 +30,7 @@ func ResolveContextWindowTokens(ctx context.Context, catalog ModelConfigCatalog,
 // PatchContextFromLLMUsage updates session context metrics and optionally triggers L0 compression.
 func PatchContextFromLLMUsage(
 	ctx context.Context,
-	sessions *biz.SessionUsecase,
+	sessions biz.SessionTurnExtrasPort,
 	compress biz.NativeTurnCompressor,
 	catalog ModelConfigCatalog,
 	sessionID string,

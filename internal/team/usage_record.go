@@ -84,8 +84,8 @@ func (r *Runner) recordMemberUsage(
 		)
 		return
 	}
-	if r.sessions != nil && strings.TrimSpace(run.SessionID) != "" {
-		r.sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
+	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
+		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
 			SessionID:        run.SessionID,
 			ModelCallCount:   ev.CallCount,
 			InputTokens:      int64(ev.InputTokens),
@@ -151,8 +151,8 @@ func (r *Runner) recordTeamRunUsage(
 		)
 		return
 	}
-	if r.sessions != nil && strings.TrimSpace(run.SessionID) != "" {
-		r.sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
+	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
+		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
 			SessionID:        run.SessionID,
 			ModelCallCount:   ev.CallCount,
 			InputTokens:      int64(ev.InputTokens),

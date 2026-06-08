@@ -134,12 +134,12 @@ func (s *ChatService) setRunStatus(ctx context.Context, sessionID, runID, status
 	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
-// SetRunStatus implements biz.NativeTurnGateway.
+// SetRunStatus implements biz.ChannelTurnGateway.
 func (s *ChatService) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
 	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
-// TryEnqueueUserMessage implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+// TryEnqueueUserMessage implements biz.ChannelTurnGateway — delegates to ChatOrchestrator.
 func (s *ChatService) TryEnqueueUserMessage(sessionID, content string) (bool, error) {
 	if s == nil || s.orch == nil {
 		return false, nil
@@ -148,7 +148,7 @@ func (s *ChatService) TryEnqueueUserMessage(sessionID, content string) (bool, er
 	return accepted, err
 }
 
-// SetSessionPendingMergeFollowup implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+// SetSessionPendingMergeFollowup implements biz.ChannelTurnGateway — delegates to ChatOrchestrator.
 func (s *ChatService) SetSessionPendingMergeFollowup(sessionID string, merge bool) {
 	if s == nil || s.orch == nil {
 		return

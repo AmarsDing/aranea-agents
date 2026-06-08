@@ -12,7 +12,12 @@ docs/reports/
 ├── 2026-05-31-analysis-competitive.md           # 竞品分析报告
 ├── 2026-05-31-requirements-competitive-gap.md   # 竞品差距需求清单
 ├── 2026-05-31-audit-frontend.md                 # 前端审计报告
-└── 2026-06-05-audit-archive-completion.md       # 归档完成度审计
+├── 2026-06-05-audit-archive-completion.md       # 归档完成度审计
+├── 2026-06-07-analysis-agency-agents-classification.md  # Agent 分类分析
+├── 2026-06-07-proposal-agency-agents-integration.md     # Agent 集成提案
+├── 2026-06-07-proposal-organization-redesign.md         # 组织重设计提案
+├── 2026-06-08-solution-memory-optimization.md           # 内存优化方案
+└── 2026-06-08-research-chat-observability-ux.md         # Chat 精灵模式可观测性 UX 调研
 ```
 
 ## AI 存放规则

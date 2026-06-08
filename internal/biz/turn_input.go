@@ -57,18 +57,19 @@ func (t TurnTimeouts) Resolved() TurnTimeouts {
 	return r
 }
 
-// NativeTurnGateway is the narrow Chat surface Channel ingress needs.
+// ChannelTurnGateway is the complete Chat surface that Channel ingress needs.
 // Channel only depends on this interface instead of the full ChatService,
 // ensuring it never imports proto types or reaches Chat internals.
-//
-// Deprecated: prefer composing TurnGateway + TurnControlGateway + PendingQueueGateway.
-// NativeTurnGateway is kept for backward compatibility until ChannelIngress is
-// refactored to accept the split interfaces directly (tracked in D-07 migration).
-type NativeTurnGateway interface {
+type ChannelTurnGateway interface {
 	TurnGateway
 	TurnControlGateway
 	PendingQueueGateway
 }
+
+// NativeTurnGateway is an alias for ChannelTurnGateway.
+//
+// Deprecated: use ChannelTurnGateway instead.
+type NativeTurnGateway = ChannelTurnGateway
 
 // PendingQueueGateway is the narrow interface for pending message queue operations.
 type PendingQueueGateway interface {

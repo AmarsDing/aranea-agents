@@ -21,7 +21,7 @@ type ChannelIngress struct {
 	channels        *biz.ChannelUsecase
 	turnJobs        *biz.ChannelTurnJobUsecase
 	sessions        *biz.SessionUsecase
-	chat            biz.NativeTurnGateway
+	chat            biz.ChannelTurnGateway
 	flowBuffer      *event.Buffer
 	graphs          biz.GraphExecutor
 	cron            biz.CronTriggerGateway
@@ -37,13 +37,13 @@ type ChannelIngress struct {
 
 // NewChannelIngress wires channel runtime ingress.
 // chat is the narrow turn gateway; flowBuffer is the event buffer for flow logging.
-// Accepts biz.NativeTurnGateway instead of *ChatService so Channel never depends on
+// Accepts biz.ChannelTurnGateway instead of *ChatService so Channel never depends on
 // Chat concrete internals (Phase B1: port-first).
 func NewChannelIngress(
 	channels *biz.ChannelUsecase,
 	turnJobs *biz.ChannelTurnJobUsecase,
 	sessions *biz.SessionUsecase,
-	chat biz.NativeTurnGateway,
+	chat biz.ChannelTurnGateway,
 	flowBuffer *event.Buffer,
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,

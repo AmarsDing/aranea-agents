@@ -19,10 +19,8 @@ type TeamUsageQuerier interface {
 }
 
 // TeamSessionManager captures the subset of SessionUsecase needed by the team Runner.
-// NOTE: rt.TurnDeps.Sessions still uses *SessionUsecase because the chat
-// orchestrator needs the full API. This interface is used for the Runner's
-// own session operations. TECH-DEBT: expand or replace once SessionUsecase
-// is split into narrower interfaces.
+// Superseded by SessionTurnWriterPort + SessionTurnExtrasPort in SessionTurnManager.
+// Kept for the Runner's own session field (non-TurnDeps path).
 type TeamSessionManager interface {
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 	AccumulateMetricsDelta(delta session.SessionMetricsDelta)

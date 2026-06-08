@@ -236,7 +236,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 // Compile-time interface assertions.
 var (
 	_ biz.TurnExecutor           = (*ChatOrchestrator)(nil)
-	_ biz.NativeTurnGateway      = (*ChatService)(nil)
+	_ biz.ChannelTurnGateway      = (*ChatService)(nil)
 	_ biz.TurnExecutorGateway    = (*ChatService)(nil)
 	_ biz.TurnRunControlGateway  = (*ChatService)(nil)
 	_ biz.TurnGateway            = (*ChatService)(nil)
