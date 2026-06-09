@@ -31,10 +31,16 @@
         <q-icon v-else-if="status === 'cancelled'" name="cancel" color="grey" size="18px" aria-hidden="true" />
         <q-icon v-else name="check_circle" color="positive" size="18px" aria-hidden="true" />
         <span class="text-caption" :class="statusTextClass">{{ statusText }}</span>
+        <span role="status" aria-live="polite" class="sr-only">{{ statusAnnouncement }}</span>
       </div>
     </template>
 
-    <div :id="bodyId" class="chat-execution-card__body">
+    <div
+      :id="bodyId"
+      role="region"
+      :aria-label="t('chat.activity.detailRegion', '执行详情')"
+      class="chat-execution-card__body"
+    >
       <ChatDiffViewer
         v-if="isFileEdit"
         :file-name="diffFileName"
@@ -47,16 +53,21 @@
         @reject="$emit('reject-diff', { toolName: event.tool_name, fileName: diffFileName })"
       />
       <template v-else>
-        <div v-if="hasArgs" class="chat-execution-card__section">
+        <div v-if="hasArgs" class="chat-execution-card__section" role="group" :aria-label="t('chat.toolArgs', '参数')">
           <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.toolArgs', '参数') }}</div>
           <pre class="chat-execution-card__pre">{{ argsText }}</pre>
         </div>
-        <div v-if="hasResult" class="chat-execution-card__section q-mt-sm">
+        <div
+          v-if="hasResult"
+          class="chat-execution-card__section q-mt-sm"
+          role="group"
+          :aria-label="t('chat.toolResult', '结果')"
+        >
           <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.toolResult', '结果') }}</div>
           <pre class="chat-execution-card__pre">{{ resultText }}</pre>
         </div>
       </template>
-      <div v-if="errorText" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
+      <div v-if="errorText" role="alert" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
       <div v-if="hasMetadata" class="chat-execution-card__section q-mt-sm">
         <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.activity.metadata', '元数据') }}</div>
         <div class="text-caption text-grey-7 column q-gutter-xs">
@@ -271,6 +282,16 @@ const headerAriaLabel = computed(() => {
   return base;
 });
 
+/** Screen-reader-only announcement for status transitions (running → completed/failed). */
+const statusAnnouncement = computed(() => {
+  if (status.value === 'success')
+    return t('chat.activity.completedAnnouncement', '{tool} 已完成', { tool: title.value });
+  if (isFailed.value) return t('chat.activity.failedAnnouncement', '{tool} 执行失败', { tool: title.value });
+  if (status.value === 'cancelled')
+    return t('chat.activity.cancelledAnnouncement', '{tool} 已取消', { tool: title.value });
+  return '';
+});
+
 const statusTextClass = computed(() => {
   if (status.value === 'running') return 'text-warning';
   if (isFailed.value) return 'text-negative';
@@ -354,4 +375,15 @@ body.body--dark .chat-execution-card__pre
   padding-top: var(--space-1)
   border-top: 1px dashed color-mix(in srgb, var(--glass-border) 60%, transparent)
   line-height: 1.4
+
+.sr-only
+  position: absolute
+  width: 1px
+  height: 1px
+  padding: 0
+  margin: -1px
+  overflow: hidden
+  clip: rect(0, 0, 0, 0)
+  white-space: nowrap
+  border: 0
 </style>

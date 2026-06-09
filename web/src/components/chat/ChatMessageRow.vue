@@ -93,7 +93,6 @@
           class="chat-tool-details"
           dense
           :default-opened="false"
-          expand-separator
           header-class="chat-tool-details__summary"
           :aria-label="row.toolCollapseSummary(message)"
         >

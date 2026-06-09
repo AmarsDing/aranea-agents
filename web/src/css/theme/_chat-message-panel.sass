@@ -774,15 +774,27 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   opacity: 0
   transform: translateY(8px) scale(0.92)
 
-// ===== 宸ュ叿璋冪敤缁撴灉锛氶粯璁ゆ姌鍙狅紝鐐瑰紑灞曞紑璇︽儏锛坮ead_file / shell 杈撳嚭绛夛級=====
+// ===== 工具调用结果：默认折叠，点开展开详情（read_file / shell 输出等）=====
 .chat-tool-details
   width: 100%
   min-width: 0
   margin-top: 2px
+  border: none
+  background: transparent
+  // Override q-expansion-item defaults for inline chat context
+  .q-expansion-item__content
+    padding: 0
+  .q-separator
+    display: none
+  &.q-expansion-item--collapsed
+    .chat-tool-details__summary
+      margin-bottom: 0
+  &.q-expansion-item--expanded
+    .chat-tool-details__summary
+      margin-bottom: 4px
 
 .chat-tool-details__summary
   cursor: pointer
-  list-style: none
   display: flex
   flex-wrap: wrap
   align-items: baseline
@@ -791,13 +803,8 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   border-radius: 10px
   user-select: none
   outline: none
-  &::-webkit-details-marker
-    display: none
   &:hover
     background: var(--chat-info-soft-bg)
-
-.chat-tool-details[open] > .chat-tool-details__summary
-  margin-bottom: 4px
 
 .chat-tool-details__summary-text
   flex: 1
@@ -807,16 +814,6 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   line-height: 1.45
   color: var(--color-text-primary)
 
-.chat-tool-details__hint
-  flex-shrink: 0
-  letter-spacing: 0.02em
-  &::after
-    content: "灞曞紑璇︽儏"
-    color: var(--chat-text-muted-strong)
-
-.chat-tool-details[open] .chat-tool-details__hint::after
-  content: "鏀惰捣"
-
 .chat-tool-details__body
   margin-top: 8px
   padding-top: 10px
@@ -824,9 +821,6 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
 
 .chat-message-bubble--dark .chat-tool-details__summary-text
   color: var(--color-text-primary)
-
-.chat-message-bubble--dark .chat-tool-details__hint::after
-  color: var(--chat-text-slate-92)
 
 .chat-message-bubble--dark .chat-tool-details__summary:hover
   background: var(--chat-info-soft-dark)
