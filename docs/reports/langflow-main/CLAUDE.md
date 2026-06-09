@@ -1,5 +1,0 @@
-# CLAUDE.md
-
-@AGENTS.md
-
-This project uses [AGENTS.md](https://agents.md/) as the standard for providing context to AI coding agents. The `@AGENTS.md` import above tells Claude Code to load `AGENTS.md` automatically; other tools that natively support `AGENTS.md` will pick it up directly.

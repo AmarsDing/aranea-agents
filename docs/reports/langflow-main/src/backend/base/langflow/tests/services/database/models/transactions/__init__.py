@@ -1,1 +1,0 @@
-"""Transaction models tests package."""
