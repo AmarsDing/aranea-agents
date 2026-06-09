@@ -3,44 +3,96 @@ import type { ActivityKind, ToolUseEvent } from './types';
 import type { Message } from './types';
 import { MESSAGE_STATUS } from '../../domain/types';
 import { classifyActivityKind } from './activityPresentation';
+import { canonicalToolStatus, messageStatusFromWire } from './lib/statusMap';
+import { activityMessageId } from './lib/activityMessageId';
+import { isToolUseEvent } from './lib/isToolUseEvent';
 import { toolEventToMessage } from './toolEventMarkdown';
+
+/**
+ * Maximum byte length for an individual `arguments_json` / `result_json` payload
+ * we will decode. Anything larger is truncated to a preview that mirrors the
+ * backend `biz.redactActivityJSON` (512 bytes) so the chat UI and the
+ * Observatory chrome stay consistent and a single LLM payload can't blow up
+ * the browser (SEC-04-style payload-bomb protection).
+ */
+const ACTIVITY_JSON_PREVIEW_LIMIT = 512;
+
+function truncatePreview(raw: string): string {
+  const trimmed = raw.length > ACTIVITY_JSON_PREVIEW_LIMIT
+    ? raw.slice(0, ACTIVITY_JSON_PREVIEW_LIMIT) + '…[truncated]'
+    : raw;
+  return trimmed;
+}
 
 function parseJSONRecord(raw: string | undefined): Record<string, unknown> {
   if (!raw?.trim()) return {};
+  const preview = truncatePreview(raw);
   try {
-    const v = JSON.parse(raw) as unknown;
-    return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : { value: v };
+    const v = JSON.parse(preview) as unknown;
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      return v as Record<string, unknown>;
+    }
+    // Preserve arrays and primitive JSON values verbatim under a known key so
+    // downstream consumers (Vue props, JSON.stringify in buildToolSection) keep
+    // their structure. Without this, LLM-emitted array arguments were collapsed
+    // to { value: [...] } and lost their shape in the UI.
+    if (Array.isArray(v)) return { __array: v };
+    if (v === null) return { __null: true };
+    return { __value: v };
   } catch {
-    return { raw };
+    return { __raw: preview };
   }
 }
 
+// Re-export the canonical implementation from ./lib/activityMessageId.
+export { activityMessageId };
+
+// Kept as a thin wrapper so existing call sites (and test mocks) that import
+// `normalizeToolStatus` continue to work. The single source of truth now lives
+// in ./lib/statusMap.
 function normalizeToolStatus(status: string): ToolUseEvent['status'] {
-  const s = status.toLowerCase();
-  if (s === 'calling' || s === 'running' || s === 'in_progress') return 'running';
-  if (s === 'failed' || s === 'error') return 'failed';
-  if (s === 'blocked') return 'blocked';
-  if (s === 'cancelled' || s === 'interrupted') return 'cancelled';
-  return 'success';
+  return canonicalToolStatus(status);
 }
 
-function activityMessageId(event: ToolUseEvent): string {
-  if (event.id?.trim()) return `act-${event.id.trim()}`;
-  return `tool-${event.agent_id || event.agent_key || 'agent'}-${event.tool_name}`;
+/** Strip the wrapper keys produced by {@link parseJSONRecord} so callers see the
+ *  original JSON value (array, null, primitive) instead of the synthetic object. */
+function unwrapParsed(record: Record<string, unknown>): unknown {
+  const keys = Object.keys(record);
+  if (keys.length === 1) {
+    if (keys[0] === '__array') return record.__array;
+    if (keys[0] === '__value') return record.__value;
+    if (keys[0] === '__null') return null;
+  }
+  return record;
 }
 
 /** Build a {@link ToolUseEvent} from a tool_call / tool_result Envelope. */
 export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): ToolUseEvent | null {
   const tc = env.tool_call;
   if (!tc?.name && !tc?.id) return null;
-  const args = parseJSONRecord(tc.arguments_json);
-  const result = parseJSONRecord(tc.result_json);
+  const args = unwrapParsed(parseJSONRecord(tc.arguments_json)) as ToolUseEvent['arguments'];
+  const resultRecord = parseJSONRecord(tc.result_json);
+  const result = unwrapParsed(resultRecord) as Record<string, unknown> | null | undefined;
   const toolName = tc.name || 'tool';
   const kind = (tc.activity_kind || classifyActivityKind(toolName)) as ActivityKind;
+  // Resolve the user-facing error message with the following precedence:
+  //   1) result.error (string body)            — most descriptive
+  //   2) error_code, but only if the tool actually failed
+  //   3) undefined
+  // The status check covers both 'failed' and 'error' (backend tool_invocation_recorder.go
+  // emits "error" — see internal/agent/tool_invocation_recorder.go:40). Without the
+  // multi-value check, the error_code fallback was unreachable and the user saw
+  // an empty error section.
+  const status = normalizeToolStatus(tc.status || (phase === 'before' ? 'running' : 'success'));
+  const isFailure = status === 'failed';
+  const resultErrorStr = typeof result === 'object' && result !== null && typeof (result as { error?: unknown }).error === 'string'
+    ? (result as { error: string }).error
+    : undefined;
+  const errorMessage = resultErrorStr ?? (isFailure && tc.error_code ? tc.error_code : undefined);
   return {
     id: tc.id || env.id,
     phase,
-    status: normalizeToolStatus(tc.status || (phase === 'before' ? 'running' : 'success')),
+    status,
     agent_id: tc.agent_id || '',
     agent_key: tc.agent_key || env.author || '',
     agent_name: tc.agent_name || env.author || 'Agent',
@@ -48,13 +100,8 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
     tool_name: toolName,
     tool_label: tc.display_label || tc.name,
     arguments: args,
-    result: phase === 'after' || Object.keys(result).length > 0 ? result : undefined,
-    error:
-      typeof result.error === 'string'
-        ? result.error
-        : tc.error_code && tc.status === 'failed'
-          ? tc.error_code
-          : undefined,
+    result: phase === 'after' || (result && typeof result === 'object' && Object.keys(result).length > 0) ? (result as Record<string, unknown>) : undefined,
+    error: errorMessage,
     occurred_at: tc.finished_at || tc.started_at || env.timestamp || new Date().toISOString(),
     duration_ms: tc.duration_ms,
     is_long_running: tc.is_long_running,
@@ -170,15 +217,18 @@ function patchOrphanToolMessages(
 }
 
 export function toolEventFromMessage(message: Message): ToolUseEvent | null {
-  if (message.tool_event && typeof message.tool_event === 'object') {
-    return message.tool_event as ToolUseEvent;
+  // `tool_event` is typed as `unknown` on the cross-domain Message facade.
+  // Run the candidate through isToolUseEvent so the cast is structural, not
+  // a blind `as ToolUseEvent` (regression: corrupted / partial objects were
+  // leaking through as "valid" tool events).
+  if (isToolUseEvent(message.tool_event)) {
+    return message.tool_event;
   }
   try {
-    const raw = JSON.parse(message.options_json || '{}') as { tool_event?: ToolUseEvent };
-    return raw.tool_event ?? null;
+    const raw = JSON.parse(message.options_json || '{}') as { tool_event?: unknown };
+    if (isToolUseEvent(raw.tool_event)) return raw.tool_event;
+    return null;
   } catch {
     return null;
   }
 }
-
-export { activityMessageId };

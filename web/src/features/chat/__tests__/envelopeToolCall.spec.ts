@@ -77,8 +77,8 @@ describe('envelopeToolCall', () => {
     const merged = mergeToolEvents(before, after);
     expect(merged.status).toBe('success');
     expect(merged.duration_ms).toBe(1200);
-    expect(merged.arguments?.path).toBe('/tmp/a.txt');
-    expect(merged.result?.content).toBe('hello');
+    expect((merged.arguments as { path?: string } | undefined)?.path).toBe('/tmp/a.txt');
+    expect((merged.result as { content?: string } | undefined)?.content).toBe('hello');
   });
 
   it('upserts by act-{id} without duplicates', () => {
@@ -147,5 +147,99 @@ describe('envelopeToolCall', () => {
     expect(cancelled[0].status).toBe('tool_cancelled');
     const opts = JSON.parse(cancelled[0].options_json) as { tool_event?: { status?: string } };
     expect(opts.tool_event?.status).toBe('cancelled');
+  });
+
+  it('preserves error_code on failed tool result (regression: tc.status === "error" must not break error fallback)', () => {
+    const env: Envelope = {
+      id: 'env-1',
+      type: 'tool_result',
+      author: 'agent-a',
+      session_id: 'sess-1',
+      timestamp: '2026-05-20T10:00:01Z',
+      version: 1,
+      tool_call: {
+        id: 'tc-err',
+        name: 'shell_exec',
+        arguments_json: '{"command":"ls"}',
+        result_json: '{}',
+        status: 'error',
+        error_code: 'tool_error',
+        duration_ms: 240,
+        finished_at: '2026-05-20T10:00:01Z',
+      },
+    };
+    const event = envelopeToToolEvent(env, 'after');
+    expect(event?.status).toBe('failed');
+    expect(event?.error_code).toBe('tool_error');
+    expect(event?.error).toBe('tool_error');
+  });
+
+  it('prefers result.error string over error_code', () => {
+    const env: Envelope = {
+      id: 'env-1',
+      type: 'tool_result',
+      author: 'agent-a',
+      session_id: 'sess-1',
+      timestamp: '2026-05-20T10:00:01Z',
+      version: 1,
+      tool_call: {
+        id: 'tc-err2',
+        name: 'shell_exec',
+        arguments_json: '{}',
+        result_json: '{"error":"exit code 1: file not found"}',
+        status: 'error',
+        error_code: 'tool_error',
+        duration_ms: 100,
+      },
+    };
+    const event = envelopeToToolEvent(env, 'after');
+    expect(event?.error).toBe('exit code 1: file not found');
+  });
+
+  it('preserves array arguments (regression: parseJSONRecord used to wrap arrays as {value: [...]})', () => {
+    const env: Envelope = {
+      id: 'env-1',
+      type: 'tool_call',
+      author: 'agent-a',
+      session_id: 'sess-1',
+      timestamp: '2026-05-20T10:00:00Z',
+      version: 1,
+      tool_call: {
+        id: 'tc-arr',
+        name: 'batch_task',
+        arguments_json: '[{"id":1},{"id":2}]',
+        status: 'calling',
+      },
+    };
+    const event = envelopeToToolEvent(env, 'before');
+    expect(Array.isArray(event?.arguments)).toBe(true);
+    expect((event?.arguments as unknown[]).length).toBe(2);
+  });
+
+  it('truncates oversized arguments_json to a safe preview (regression: SEC-04-style LLM payload bomb)', () => {
+    // A malicious or pathological LLM response might emit a giant arguments
+    // blob. The front end must not allocate the full string into the message
+    // store / Vue diffing layer without truncation. Mirrors backend
+    // biz.redactActivityJSON (512-byte limit).
+    const huge = 'a'.repeat(2000);
+    const env: Envelope = {
+      id: 'env-1',
+      type: 'tool_call',
+      author: 'agent-a',
+      session_id: 'sess-1',
+      timestamp: '2026-05-20T10:00:00Z',
+      version: 1,
+      tool_call: {
+        id: 'tc-huge',
+        name: 'read_file',
+        arguments_json: huge,
+        status: 'calling',
+      },
+    };
+    const event = envelopeToToolEvent(env, 'before');
+    const raw = (event?.arguments as { __raw?: string } | undefined)?.__raw;
+    expect(raw).toBeDefined();
+    expect(raw!.length).toBeLessThanOrEqual(600);
+    expect(raw).toContain('truncated');
   });
 });

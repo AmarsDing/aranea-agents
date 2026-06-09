@@ -12,7 +12,7 @@
       :selected-kind="spiritStore.activePanelMode === 'spirit' ? 'spirit' : entity.selectedEntityKind"
       :selected-agent-id="entity.store.selectedAgent?.id"
       :selected-team-id="spiritStore.activeTeamId"
-      :default-agent-id="entity.store.agents[0]?.id"
+      :default-agent-id="(entity.store.agents.find((a: Agent) => a.agent_key === '__spirit__') || entity.store.agents[0])?.id"
       :is-dark="layout.isDark"
       :pulse-team-colors="pulseTeamColors"
       @update:search="layout.search = $event"
@@ -305,8 +305,8 @@ function onSelectSpirit() {
       entity.selectAgent(spiritAgent);
     }
   } else {
-    // Fallback: select the default/first agent if no spirit agent exists
-    const fallback = entity.store.agents[0];
+    // Fallback: select the spirit/first agent if no spirit agent exists
+    const fallback = entity.store.agents.find((a: Agent) => a.agent_key === '__spirit__') || entity.store.agents[0];
     if (fallback && (entity.store.selectedAgent?.id !== fallback.id || entity.selectedEntityKind !== 'agent')) {
       entity.selectAgent(fallback);
     }

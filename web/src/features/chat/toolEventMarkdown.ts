@@ -1,4 +1,6 @@
 import type { Message, ToolUseEvent } from './types';
+import { canonicalToolStatus, messageStatusFromCanonical } from './lib/statusMap';
+import { activityMessageId } from './lib/activityMessageId';
 
 function truncateBlock(s: string, max: number): string {
   if (s.length <= max) return s;
@@ -108,9 +110,7 @@ export function formatToolEventMarkdown(event: ToolUseEvent): string {
 
 export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Message {
   const status = toolEventMessageStatus(event.status);
-  const messageId = event.id?.trim()
-    ? `act-${event.id.trim()}`
-    : `tool-${event.agent_id || event.agent_key || 'agent'}-${event.id || event.tool_name}`;
+  const messageId = activityMessageId(event);
   const agentRef = {
     id: event.agent_id || '',
     agent_key: event.agent_key || '',
@@ -151,17 +151,8 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
 }
 
 function toolEventMessageStatus(status: string): string {
-  switch (status) {
-    case 'running':
-      return 'tool_running';
-    case 'blocked':
-      return 'tool_blocked';
-    case 'cancelled':
-      return 'tool_cancelled';
-    case 'failed':
-    case 'error':
-      return 'tool_failed';
-    default:
-      return 'tool_success';
-  }
+  // Delegate to the shared statusMap so the wire→canonical→message mapping
+  // is owned by a single module. `status` here is the wire form (the upstream
+  // ToolUseEvent.status is still wire-form; canonicalToolStatus accepts either).
+  return messageStatusFromCanonical(canonicalToolStatus(status));
 }

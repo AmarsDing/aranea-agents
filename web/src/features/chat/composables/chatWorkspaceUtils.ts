@@ -60,7 +60,7 @@ export function applyStoredOrder<T extends { id: string }>(items: T[], key: stri
 
 export function loadAgentOrder(agents: Agent[], defaultId: string | null): Agent[] {
   if (agents.length === 0) return [];
-  const defaultResolved = defaultId && agents.some((agent) => agent.id === defaultId) ? defaultId : agents[0]!.id;
+  const defaultResolved = defaultId && agents.some((agent) => agent.id === defaultId) ? defaultId : (agents.find((a) => a.agent_key === '__spirit__')?.id || agents[0]!.id);
   const ordered = applyStoredOrder(agents, LS_AG_ORDER);
   const fixed = ordered.find((agent) => agent.id === defaultResolved) ?? ordered[0]!;
   return [fixed, ...ordered.filter((agent) => agent.id !== fixed.id)];

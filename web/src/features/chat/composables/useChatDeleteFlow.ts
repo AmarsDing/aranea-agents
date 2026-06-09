@@ -126,7 +126,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
         localStorage.removeItem(LS_AG_ORDER);
         await deps.appStore.removeAgentFromList(id);
         deps.displayAgents.value = deps.displayAgents.value.filter((agent) => agent.id !== id);
-        deps.defaultAgentId.value = deps.appStore.agents[0]?.id ?? null;
+        deps.defaultAgentId.value = (deps.appStore.agents.find((a) => a.agent_key === '__spirit__') || deps.appStore.agents[0])?.id ?? null;
         if (deps.sessionStore.entityKind === 'agent') {
           if (deps.appStore.selectedAgent) {
             await deps.sessionStore.loadAgentSessions(deps.appStore.selectedAgent.id);
