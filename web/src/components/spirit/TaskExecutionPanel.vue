@@ -9,9 +9,9 @@
         </div>
         <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
       </div>
-      <div v-if="team.totalSteps > 0" class="q-mt-sm">
-        <q-linear-progress :value="team.completedSteps / team.totalSteps" size="6px" rounded color="accent" />
-        <div class="text-caption text-grey-6 q-mt-xs">{{ team.completedSteps }} / {{ team.totalSteps }} 步骤完成</div>
+      <div v-if="team.progressPct > 0 || team.totalSteps > 0" class="q-mt-sm">
+        <q-linear-progress :value="team.progressPct > 0 ? team.progressPct / 100 : team.completedSteps / team.totalSteps" size="6px" rounded color="accent" />
+        <div class="text-caption text-grey-6 q-mt-xs">{{ team.progressPct > 0 ? `${Math.round(team.progressPct)}%` : `${team.completedSteps} / ${team.totalSteps} 步骤完成` }}</div>
       </div>
       <div v-if="team.members.length > 0" class="q-mt-sm">
         <div class="text-caption text-weight-medium text-grey-7 q-mb-xs">成员状态</div>
@@ -49,7 +49,7 @@
       <div class="q-pa-md">
         <ParallelTeamOverview
           :teams="allTeams"
-          :max-parallel="maxParallel ?? props.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS"
+          :max-parallel="maxParallel ?? DEFAULT_MAX_PARALLEL_TEAMS"
           :all-completed="allTeamsCompleted ?? false"
           :completion-stats="completionStats"
           :synthesis-result="synthesisResult"
@@ -125,7 +125,7 @@ const props = defineProps<{
   messages: Message[];
   /** All teams in the current spirit session (for parallel overview). */
   allTeams?: SpiritTeam[];
-  /** Max parallel teams config. */
+  /** Max parallel teams config from store (resolved by parent). */
   maxParallel?: number;
   /** Whether all teams have completed. */
   allTeamsCompleted?: boolean;
@@ -133,8 +133,6 @@ const props = defineProps<{
   synthesisResult?: SynthesisOutput | null;
   /** Team completion breakdown from spirit_teams_all_completed event. */
   completionStats?: CompletionStats | null;
-  /** Max concurrent teams from store (for ParallelTeamOverview). */
-  maxConcurrentTeams?: number;
 }>();
 
 const emit = defineEmits<{

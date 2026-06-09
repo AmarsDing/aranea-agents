@@ -83,8 +83,16 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 		CodeExecFactory:        s.orch.rt.CodeExecFactory,
 		KanbanBridge:           s.orch.rt.KanbanBridge,
 		Organization:           s.orch.rt.OrganizationUC,
+		ToolResultGate:         s.orch.rt.ToolResultGate,
+		SubAgentService:        s.orch.subAgentService,
 		L0SnapshotForcer:       s.orch.td.SessionRT,
 	}
+	// Inject CustomTools for built-in agents (Spirit, Skills Butler, Memory Butler, System Admin).
+	// Without this, agents accessed via A2A would silently lack their core tools.
+	deps.CustomTools = append(deps.CustomTools, s.orch.cliAdminTools(ctx, ag)...)
+	deps.CustomTools = append(deps.CustomTools, s.orch.spiritCustomTools(ag)...)
+	deps.CustomTools = append(deps.CustomTools, s.orch.skillsButlerTools(ctx, ag)...)
+	deps.CustomTools = append(deps.CustomTools, s.orch.memoryButlerTools(ctx, ag)...)
 	var plugins []trpcplugin.Plugin
 	if s.orch.rt.PluginManager != nil {
 		plugins = s.orch.rt.PluginManager.RunnerPluginsForAgent(ag.ID)

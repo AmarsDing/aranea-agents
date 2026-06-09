@@ -12,6 +12,19 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
+// conflictDetectMaxRows is the maximum number of facts scanned for conflict detection.
+// This limits the cost of per-upsert conflict scanning while covering the common case
+// where an agent has fewer than 100 facts in a single scope.
+const conflictDetectMaxRows = 100
+
+// negationPatterns lists prefixes that signal negation in both English and Chinese.
+// Used by DetectFactConflicts for clause-level negation matching.
+var negationPatterns = []string{
+	"not ", "don't ", "doesn't ", "didn't ", "never ", "no longer ", "won't ", "can't ", "isn't ", "aren't ",
+	"bans ", "prohibits ", "avoids ", "dislikes ", "forbids ", "disables ", "rejects ",
+	"不喜欢", "不需要", "不想", "不再", "没有", "禁止", "不用", "别", "切勿", "避免", "拒绝",
+}
+
 type MemoryAdminUsecase struct {
 	admin          SessionAdminStore
 	vec            *MemoryUsecase
@@ -67,11 +80,11 @@ func (uc *MemoryAdminUsecase) RejectPIIFact(ctx context.Context, factID string) 
 	return uc.admin.RejectPIIFact(ctx, factID)
 }
 
-func (uc *MemoryAdminUsecase) ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error) {
+func (uc *MemoryAdminUsecase) ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, err
 	}
-	return uc.admin.ListL0SnapshotRows(ctx, sessionID, limit)
+	return uc.admin.ListL0SnapshotRows(ctx, sessionID, agentID, limit)
 }
 
 func (uc *MemoryAdminUsecase) GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error) {
@@ -88,11 +101,11 @@ func (uc *MemoryAdminUsecase) ListL1TaskRows(ctx context.Context, sessionID, age
 	return uc.admin.ListL1TaskRows(ctx, sessionID, agentID, status, includeEnded)
 }
 
-func (uc *MemoryAdminUsecase) ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool) ([][]byte, error) {
+func (uc *MemoryAdminUsecase) ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool, requestingAgentID ...string) ([][]byte, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, err
 	}
-	return uc.admin.ListL1FieldRows(ctx, taskID, includeInternal)
+	return uc.admin.ListL1FieldRows(ctx, taskID, includeInternal, requestingAgentID...)
 }
 
 func (uc *MemoryAdminUsecase) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
@@ -517,16 +530,22 @@ func (uc *MemoryAdminUsecase) ListConflictingFacts(ctx context.Context, scopeTyp
 }
 
 // DetectFactConflicts checks if a new fact statement conflicts with existing facts in the same scope.
-// It uses simple keyword overlap to find potentially conflicting facts and increments their conflict_count.
+// It uses clause-level negation matching: extracts core noun phrases from both statements
+// and checks if one negates the other. Before conflict detection, it skips facts with
+// identical fingerprints (exact dedup handled by UpsertFactRow).
 func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType, scopeID, newStatement string) error {
 	if uc.admin == nil {
 		return nil
 	}
-	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", 100, 0)
+	newNorm := NormalizeForDedup(newStatement)
+	if newNorm == "" {
+		return nil
+	}
+	newFingerprint := FactFingerprint(newStatement, scopeType, scopeID)
+	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", conflictDetectMaxRows, 0)
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
-	negationPatterns := []string{"not ", "don't ", "doesn't ", "never ", "no longer ", "不喜欢", "不需要", "不想", "不再", "没有"}
 	for _, raw := range rows {
 		m, _ := jsonutil.ParseMap(raw)
 		if m == nil {
@@ -537,20 +556,70 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 		if existing == "" || id == "" {
 			continue
 		}
-		newLower := strings.ToLower(newStatement)
-		existingLower := strings.ToLower(existing)
-		for _, neg := range negationPatterns {
-			if strings.Contains(newLower, neg+existingLower) ||
-				strings.Contains(existingLower, neg+newLower) {
-				if _, err := uc.admin.IncrementConflictCount(ctx, id); err != nil {
-					uc.lg.Warn("IncrementConflictCount failed (best-effort)",
-						loggateway.StepID("memory.l3_conflict_increment_fail"),
-						loggateway.Str("fact_id", id),
-						loggateway.Err(err))
-				}
-				break
+		// Skip if fingerprint matches (exact dedup — no conflict, just duplicate).
+		existingFingerprint := FactFingerprint(existing, scopeType, scopeID)
+		if existingFingerprint == newFingerprint {
+			continue
+		}
+		existingNorm := NormalizeForDedup(existing)
+		if existingNorm == "" {
+			continue
+		}
+		if isNegationConflict(newNorm, existingNorm, negationPatterns) {
+			if _, err := uc.admin.IncrementConflictCount(ctx, id); err != nil {
+				uc.lg.Warn("IncrementConflictCount failed (best-effort)",
+					loggateway.StepID("memory.l3_conflict_increment_fail"),
+					loggateway.Str("fact_id", id),
+					loggateway.Err(err))
 			}
 		}
 	}
 	return nil
+}
+
+// isNegationConflict checks if two normalized statements form a negation conflict.
+// It uses clause-level matching: for each negation prefix, it checks if removing
+// the prefix from one statement yields a substring that appears in the other.
+func isNegationConflict(a, b string, negationPrefixes []string) bool {
+	aLower := " " + a + " "
+	bLower := " " + b + " "
+	for _, neg := range negationPrefixes {
+		negL := strings.ToLower(neg)
+		// Check if a = neg + X and b contains X (or vice versa).
+		if stripped, ok := stripPrefix(aLower, negL); ok {
+			if strings.Contains(bLower, stripped) || strings.Contains(stripped, bLower) {
+				return true
+			}
+		}
+		if stripped, ok := stripPrefix(bLower, negL); ok {
+			if strings.Contains(aLower, stripped) || strings.Contains(stripped, aLower) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// stripPrefix removes a negation prefix from the beginning of a statement (after
+// leading whitespace). Returns the stripped core clause and true if the prefix was found.
+func stripPrefix(s, prefix string) (string, bool) {
+	trimmed := strings.TrimLeft(s, " ")
+	if strings.HasPrefix(trimmed, prefix) {
+		core := strings.TrimSpace(trimmed[len(prefix):])
+		if core != "" {
+			return core, true
+		}
+	}
+	// Try matching after an auxiliary verb within the first 3 words.
+	// E.g. "he does not like X" → check if word[2] matches prefix.
+	words := strings.SplitN(trimmed, " ", 4)
+	for i := 1; i < len(words)-1 && i < 3; i++ {
+		if strings.EqualFold(words[i], strings.TrimSpace(prefix)) {
+			core := strings.TrimSpace(strings.Join(words[i+1:], " "))
+			if core != "" {
+				return core, true
+			}
+		}
+	}
+	return "", false
 }

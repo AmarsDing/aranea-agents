@@ -21,7 +21,7 @@
 | 批量写入 | ✅ | `internal/data/sessionmemory/store_consolidate_batch.go`（事务写入 facts + episode） |
 | Facts 唯一写路径 | ✅ | `internal/data/sessionmemory/store_writes.go`（统一通过 UpsertFactRow 写入，ON CONFLICT 幂等） |
 | pgvector 索引同步 | ✅ | `internal/data/memory_fact_index_sync.go` + `internal/cronrunner/jobs/memory_fact_index_reconciler.go`（6h reconciler） |
-| 冲突检测 | ✅ | `internal/biz/memory_admin_usecase.go`（DetectFactConflicts 启发式否定词检测 + IncrementConflictCount） |
+| 冲突检测 | ✅ | `internal/biz/memory_admin_usecase.go`（DetectFactConflicts 子句级否定匹配 + 指纹去重前置 + IncrementConflictCount） |
 | 冲突 API | ✅ | `api/kratos/memory/v1/memory.proto`（ListConflictingFacts RPC） |
 | quality_score 5维评分 | ✅ | `internal/data/memory_shim_l3.go`（keyword(0.25) + vector(0.30) + importance(0.20) + recency(0.15) + quality(0.10)） |
 | pgvector HNSW 索引 | ❌ | 仅有 B-tree 索引，无 HNSW 向量近似索引 |

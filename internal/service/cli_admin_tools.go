@@ -118,11 +118,9 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	}
 	var out []trpctool.Tool
 
-	// NOTE: Spirit mode selection is available via ResolveSpiritMode (chat_orchestrator_spirit.go).
-	// Currently, plan_and_execute performs LLM-driven routing. ResolveSpiritMode can be used
-	// as a programmatic override when the LLM's complexity assessment is ambiguous.
-	// Future integration: call ResolveSpiritMode(SpiritModeConfig{...}) before team construction
-	// to determine whether to use coordinator/swarm/direct mode.
+	// Spirit mode selection is handled by TaskPlanner.Plan() inside plan_and_execute.
+	// The planner uses ComplexityRuleEngine (rule-based) + LLM (task decomposition) hybrid approach,
+	// outputting OrchestrationStrategy (direct/single_agent/parallel/dag/coordinator).
 
 	// New three-phase orchestration tools.
 	planner := o.team.TaskPlanner

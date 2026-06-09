@@ -12,6 +12,7 @@ import type {
   EvolutionSuggestion,
   CompletionStats,
 } from '../../features/spirit/types';
+import { isValidTeamStatus } from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
 import type {
   SpiritPlanCreatedPayload,
@@ -21,20 +22,6 @@ import type {
   SpiritOrchestrationInterruptedPayload,
 } from '../../realtime/envelope';
 import { Notify } from 'quasar';
-
-const VALID_TEAM_STATUSES = new Set<string>([
-  'pending',
-  'running',
-  'completed',
-  'failed',
-  'cancelled',
-  'interrupted',
-  'archived',
-]);
-
-function isValidTeamStatus(s: string): s is SpiritTeamStatus {
-  return VALID_TEAM_STATUSES.has(s);
-}
 
 const VALID_STRATEGIES = new Set<string>(['template', 'prompt', 'hybrid']);
 
@@ -228,11 +215,11 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       const team = teams.value.find((t) => t.id === p.teamId);
       if (team) {
         team.status = p.status;
+        // Use progressPct directly instead of reverse-computing completedSteps
+        // from totalSteps (which is always 1 from the backend, making the
+        // computed progress permanently 0% or 100%).
         if (p.progressPct >= 0) {
-          if (team.totalSteps <= 0) {
-            team.totalSteps = 100;
-          }
-          team.completedSteps = Math.round((p.progressPct * team.totalSteps) / 100);
+          team.progressPct = p.progressPct;
         }
       }
     }
@@ -274,6 +261,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             memberAvatars: [],
             completedSteps: 0,
             totalSteps: Number(md.total_steps ?? 1),
+            progressPct: 0,
             durationMs: Number(md.duration_ms ?? 0),
             spiritSessionId: env.session_id ?? '',
             teamSessionId: String(md.session_id ?? ''),
@@ -386,8 +374,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
                 team.status = newStatus;
               }
             }
-            if (pct >= 0 && team.totalSteps > 0) {
-              team.completedSteps = Math.round((pct * team.totalSteps) / 100);
+            if (pct >= 0) {
+              team.progressPct = pct;
             }
             if (durationMs > 0) {
               team.durationMs = durationMs;

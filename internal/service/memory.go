@@ -48,7 +48,7 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	if sid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "session_id is required")
 	}
-	rows, err := s.admin.ListL0SnapshotRows(ctx, sid, req.GetLimit())
+	rows, err := s.admin.ListL0SnapshotRows(ctx, sid, strings.TrimSpace(req.GetAgentId()), req.GetLimit())
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,8 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 		return nil, kerrors.BadRequest("MEMORY", "task_id is required")
 	}
 	includeInternal := strings.TrimSpace(req.GetIncludeInternal()) == "true"
-	rows, err := s.admin.ListL1FieldRows(ctx, tid, includeInternal)
+	agentID := strings.TrimSpace(req.GetAgentId())
+	rows, err := s.admin.ListL1FieldRows(ctx, tid, includeInternal, agentID)
 	if err != nil {
 		return nil, err
 	}

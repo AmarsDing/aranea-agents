@@ -332,16 +332,35 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 	newName := jsonutil.IfaceStr(row, "new_value")
 
 	if !hasSaga {
+		// Save old name into UpsertEntity payload so compensation can restore it.
+		// Use a dedicated compensation payload with _old_name as a first-class field
+		// rather than injecting it into the entity snapshot — this ensures the
+		// compensation data survives payload mutations and is always recoverable.
 		entRaw, err := uc.reader.GetEntityRow(ctx, entityID)
 		if err != nil {
 			return nil, err
 		}
-		entJSON := string(entRaw)
+		var entForSnapshot map[string]any
+		if err := json.Unmarshal(entRaw, &entForSnapshot); err != nil {
+			uc.lg.Warn("解析 entity row 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+			return nil, err
+		}
+		// Build compensation payload with explicit _old_name field.
+		compPayload, _ := json.Marshal(map[string]any{
+			"entity_id":   entityID,
+			"scope_type":  jsonutil.IfaceStr(entForSnapshot, "scope_type"),
+			"scope_id":    jsonutil.IfaceStr(entForSnapshot, "scope_id"),
+			"user_id":     jsonutil.IfaceStr(entForSnapshot, "user_id"),
+			"entity_type": jsonutil.IfaceStr(entForSnapshot, "entity_type"),
+			"old_name":    oldName,
+			"description": jsonutil.IfaceStr(entForSnapshot, "description"),
+			"metadata":    jsonutil.IfaceStr(entForSnapshot, "metadata_json"),
+		})
 		affectedJSON := jsonutil.IfaceStr(row, "affected_json")
 		replacePayload, _ := json.Marshal(map[string]string{"agent_id": agentID, "old_name": oldName, "new_name": newName})
 		syncPayload, _ := json.Marshal(map[string]string{"agent_id": agentID})
 		steps := []CascadeSagaStep{
-			{StepName: SagaStepUpsertEntity, IsCritical: true, PayloadJSON: entJSON},
+			{StepName: SagaStepUpsertEntity, IsCritical: true, PayloadJSON: string(compPayload)},
 			{StepName: SagaStepTouchAffected, IsCritical: false, PayloadJSON: affectedJSON},
 			{StepName: SagaStepReplaceFacts, IsCritical: true, PayloadJSON: string(replacePayload)},
 			{StepName: SagaStepSyncIndex, IsCritical: false, PayloadJSON: string(syncPayload)},
@@ -371,6 +390,11 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 					uc.compensateCompletedSteps(ctx, sagaSteps[:i])
 					break
 				}
+				// Non-critical step failed: log and continue, mark as partial later.
+				uc.lg.Warn("saga non-critical step failed (continuing)",
+					loggateway.StepID("memory.saga_non_critical_fail"),
+					loggateway.Str("step", step.StepName),
+					loggateway.Err(err))
 			}
 		}
 	}
@@ -482,7 +506,9 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string
 	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
 	if err != nil {
 		uc.lg.Warn("Cascade: failed to get saga steps for replace facts", loggateway.StepID("memory.cascade_fail"), loggateway.Str("proposal_id", jsonutil.IfaceStr(row, "id")), loggateway.Err(err))
-		return nil
+		// Facts were replaced but saga result cannot be recorded — return error
+		// so the caller knows the step is in an inconsistent state.
+		return fmt.Errorf("replace_facts succeeded but saga state unavailable: %w", err)
 	}
 	for _, s := range sagaSteps {
 		if s.StepName == SagaStepReplaceFacts && s.State == "running" {
@@ -511,7 +537,7 @@ func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, row map[string]an
 	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
 	if err != nil {
 		uc.lg.Warn("Cascade: failed to get saga steps for sync index", loggateway.StepID("memory.cascade_fail"), loggateway.Str("proposal_id", jsonutil.IfaceStr(row, "id")), loggateway.Err(err))
-		return nil
+		return fmt.Errorf("sync_index succeeded but saga state unavailable: %w", err)
 	}
 	for _, s := range sagaSteps {
 		if s.StepName == SagaStepSyncIndex && s.State == "running" {
@@ -535,6 +561,8 @@ func (uc *L4CascadeUsecase) compensateCompletedSteps(ctx context.Context, steps 
 			uc.compensateReplaceFacts(ctx, s)
 		case SagaStepUpsertEntity:
 			uc.compensateUpsertEntity(ctx, s)
+		case SagaStepTouchAffected:
+			uc.compensateTouchAffected(ctx, s)
 		case SagaStepSyncIndex:
 			uc.compensateSyncIndex(ctx, s)
 		}
@@ -563,7 +591,87 @@ func (uc *L4CascadeUsecase) compensateReplaceFacts(ctx context.Context, step Cas
 }
 
 func (uc *L4CascadeUsecase) compensateUpsertEntity(ctx context.Context, step CascadeSagaStep) {
-	uc.lg.Warn("compensate_upsert_entity_skipped", loggateway.StepID("memory.l4"), loggateway.Str("step_id", fmt.Sprint(step.ID)))
+	// Restore the entity name to its pre-saga value.
+	// The payload is a dedicated compensation struct with explicit "old_name" field.
+	var payload struct {
+		EntityID   string `json:"entity_id"`
+		ScopeType  string `json:"scope_type"`
+		ScopeID    string `json:"scope_id"`
+		UserID     string `json:"user_id"`
+		EntityType string `json:"entity_type"`
+		OldName    string `json:"old_name"`
+		Desc       string `json:"description"`
+		Meta       string `json:"metadata"`
+	}
+	if err := json.Unmarshal([]byte(step.PayloadJSON), &payload); err != nil {
+		uc.lg.Warn("compensate_upsert_entity: failed to parse payload", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		return
+	}
+	if payload.OldName == "" || payload.EntityID == "" {
+		uc.lg.Warn("compensate_upsert_entity: missing old_name or entity_id in payload", loggateway.StepID("memory.cascade_fail"))
+		return
+	}
+	if err := uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
+		ID:             payload.EntityID,
+		ScopeType:      payload.ScopeType,
+		ScopeID:        payload.ScopeID,
+		UserID:         payload.UserID,
+		EntityType:     payload.EntityType,
+		Name:           payload.OldName,
+		NameNormalized: strings.ToLower(payload.OldName),
+		Description:    payload.Desc,
+		Importance:     l4CascadeEntImportance,
+		Confidence:     l4CascadeEntConfidence,
+		MetadataJSON:   payload.Meta,
+	}); err != nil {
+		uc.lg.Warn("compensate_upsert_entity: failed to restore old name", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", payload.EntityID), loggateway.Err(err))
+		return
+	}
+	uc.lg.Warn("compensate_upsert_entity: restored old name", loggateway.StepID("memory.l4"), loggateway.Str("entity_id", payload.EntityID), loggateway.Str("old_name", payload.OldName))
+}
+
+func (uc *L4CascadeUsecase) compensateTouchAffected(ctx context.Context, step CascadeSagaStep) {
+	// Remove cascade_linked_* metadata from affected entities that were touched.
+	var affected []CascadeAffectedEntity
+	if err := json.Unmarshal([]byte(step.PayloadJSON), &affected); err != nil || len(affected) == 0 {
+		uc.lg.Warn("compensate_touch_affected: no affected entities in payload", loggateway.StepID("memory.cascade_fail"))
+		return
+	}
+	for _, aff := range affected {
+		entRaw, err := uc.reader.GetEntityRow(ctx, aff.EntityID)
+		if err != nil {
+			uc.lg.Warn("compensate_touch_affected: failed to get entity", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", aff.EntityID), loggateway.Err(err))
+			continue
+		}
+		var ent map[string]any
+		if json.Unmarshal(entRaw, &ent) != nil {
+			continue
+		}
+		metaStr := jsonutil.IfaceStr(ent, "metadata_json")
+		var m map[string]any
+		if json.Unmarshal([]byte(metaStr), &m) == nil {
+			delete(m, "cascade_linked_trigger_id")
+			delete(m, "cascade_linked_name")
+			if newMeta, err := json.Marshal(m); err == nil {
+				if err := uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
+					ID:             aff.EntityID,
+					ScopeType:      "agent",
+					ScopeID:        jsonutil.IfaceStr(ent, "scope_id"),
+					UserID:         jsonutil.IfaceStr(ent, "user_id"),
+					EntityType:     jsonutil.IfaceStr(ent, "entity_type"),
+					Name:           jsonutil.IfaceStr(ent, "name"),
+					NameNormalized: jsonutil.IfaceStr(ent, "name_normalized"),
+					Description:    jsonutil.IfaceStr(ent, "description"),
+					Importance:     l4CascadeTouchImportance,
+					Confidence:     l4CascadeTouchConfidence,
+					MetadataJSON:   string(newMeta),
+				}); err != nil {
+					uc.lg.Warn("compensate_touch_affected: failed to upsert entity", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", aff.EntityID), loggateway.Err(err))
+				}
+			}
+		}
+	}
+	uc.lg.Warn("compensate_touch_affected: cleaned cascade_linked metadata", loggateway.StepID("memory.l4"), loggateway.Int("affected_count", len(affected)))
 }
 
 func (uc *L4CascadeUsecase) compensateSyncIndex(ctx context.Context, step CascadeSagaStep) {

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -311,12 +312,15 @@ func (c *OrchestrationCache) SuggestBestAlternativeTopology(taskDescription stri
 }
 
 func ExtractTaskPattern(desc string) string {
-	// Truncate by runes to avoid breaking multi-byte UTF-8 characters.
+	// Use a hash prefix + truncated description to avoid collisions
+	// between different tasks that share the same first N characters.
+	// The hash provides uniqueness while the prefix preserves readability.
+	prefix := fmt.Sprintf("%08x", sha1.Sum([]byte(desc)))[:8]
 	runes := []rune(desc)
 	if len(runes) > MaxTaskPatternLen {
-		return string(runes[:MaxTaskPatternLen])
+		return prefix + ":" + string(runes[:MaxTaskPatternLen])
 	}
-	return desc
+	return prefix + ":" + desc
 }
 
 func FormatTopologyReason(topology TopologyType, cached bool, dag *TaskDAG) string {

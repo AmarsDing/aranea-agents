@@ -234,6 +234,12 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	}
 
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
+
+	// Trigger auto-archive for completed/failed/cancelled teams that have
+	// exceeded the configured threshold. This is the primary call site for
+	// AutoArchiveCompletedTeams — it runs on every team lifecycle event so
+	// no separate worker/cron is needed.
+	s.team.SpiritUC.AutoArchiveCompletedTeams(ctx, spiritSessionID)
 }
 
 func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, durationMs int64) {

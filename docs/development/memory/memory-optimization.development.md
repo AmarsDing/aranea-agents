@@ -23,7 +23,7 @@
 | HMAC 完整性保护 | ❌ ROI 偏低 | 密钥和签名在同一数据库 |
 | field_kind 枚举 | ✅ 10 值语义枚举 | decision/artifact/progress/constraint + Schema 约束可选启用 |
 | L1 vs Framework Memory | ✅ 职责厘清 | 新建 Agent 默认禁用 framework memory 工具 + 前端记忆模式列 |
-| L3 fingerprint 去重 | ✅ biz 层统一 | FactFingerprint + read-back 修复 + FactsDeduped 计数 |
+| L3 fingerprint 去重 | ✅ biz 层统一 | FactFingerprint（使用 NormalizeForDedup 归一化，与跨层去重一致）+ read-back 修复 + FactsDeduped 计数 |
 | L3 跨层去重 | ✅ L1↔L3 去重 | DedupL3WithL1 + L1CueResult.FieldValues |
 | L4 实体提取 bug 修复 | ✅ 4 项修复 | 正则过度匹配 + Alpha 衰减 + 无用参数 + 无效 SQL |
 | 统一巩固管道 | ✅ AutoMemory→Structured Episode | ExtractStructuredEpisodeFromMessages + EpisodeWrite 7 新字段 |

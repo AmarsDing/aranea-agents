@@ -402,13 +402,18 @@ func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSes
 	}
 	agents, err := u.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: SpiritAgentQueryLimit})
 	if err != nil {
-		u.lg.Warn("查询精灵 Agent 失败，使用默认并行配置",
+		u.lg.Error("查询精灵 Agent 失败，使用默认并行配置（用户自定义配置将失效）",
 			loggateway.StepID("spirit.parallel_config"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
 			loggateway.Err(err),
 		)
 		return DefaultParallelConfig()
 	}
 	if len(agents.Items) == 0 {
+		u.lg.Error("精灵 Agent 不存在，使用默认并行配置（用户自定义配置将失效）",
+			loggateway.StepID("spirit.parallel_config"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
 		return DefaultParallelConfig()
 	}
 	ag := agents.Items[0]
@@ -449,14 +454,17 @@ func (u *SpiritTeamUsecase) AutoArchiveCompletedTeams(ctx context.Context, spiri
 		if t.Status != TeamStatusCompleted && t.Status != TeamStatusFailed && t.Status != TeamStatusCancelled {
 			continue
 		}
-		updatedAt, parseErr := time.Parse(time.RFC3339, t.UpdatedAt)
+		updatedAt, parseErr := parseTimeFlexible(t.UpdatedAt)
 		if parseErr != nil {
-			u.lg.Warn("解析团队更新时间失败，跳过归档",
+			u.lg.Warn("解析团队更新时间失败，使用兜底策略（视为可归档）",
 				loggateway.StepID("spirit.auto_archive.parse_err"),
 				loggateway.Str("team_id", t.ID),
+				loggateway.Str("updated_at", t.UpdatedAt),
 				loggateway.Err(parseErr),
 			)
-			continue
+			// Fallback: if we can't parse the time, treat the team as eligible
+			// for archiving rather than silently skipping it forever.
+			updatedAt = time.Now().Add(-cfg.AutoArchiveAfter())
 		}
 		if updatedAt.Before(threshold) {
 			archiveIDs = append(archiveIDs, t.ID)
@@ -953,6 +961,30 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 	}
 }
 
+// parseTimeFlexible tries multiple time formats to parse a timestamp string.
+// This handles the case where Ent may output timestamps in formats other than
+// strict RFC3339 (e.g., "2026-06-08 12:34:56.789+08:00").
+func parseTimeFlexible(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, kerrors.BadRequest("SPIRIT", "empty timestamp")
+	}
+	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999-07:00",
+		"2006-01-02 15:04:05.999 -0700",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02T15:04:05-07:00",
+		"2006-01-02 15:04:05Z07:00",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, kerrors.BadRequest("SPIRIT", fmt.Sprintf("unable to parse timestamp: %s", s))
+}
+
 // containsString checks if a string slice contains a given string.
 func containsString(slice []string, s string) bool {
 	for _, item := range slice {
@@ -1179,8 +1211,11 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 
 	// Persist the deliverable summary into the team record
 	// so InjectUpstreamDeliverables can read it.
-	// We store it in the team's metadata field (parallel_config_json)
-	// as a deliverable output cache.
+	// TECH-DEBT(#B-03): Using parallel_config_json as a deliverable output cache is a semantic mismatch.
+	// The deliverable_output_{dag_node_id} keys coexist with parallel config keys
+	// (max_concurrent_teams, etc.) without conflict, but a dedicated field would be clearer.
+	// Planned fix: add a deliverables_output_json column to the teams table via Ent schema migration,
+	// then move all deliverable_output_* keys to that field.
 	deliverableKey := fmt.Sprintf("deliverable_output_%s", t.DagNodeID)
 	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
 		t.ParallelConfigJSON = "{}"
@@ -1258,7 +1293,8 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 }
 
 // readDeliverableOutput reads the persisted deliverable output from a team's
-// parallel_config_json (written by WriteDeliverablesToSession).
+// parallel_config_json deliverable_output_{dag_node_id} keys (written by WriteDeliverablesToSession).
+// TECH-DEBT: See WriteDeliverablesToSession for field semantics concern.
 func (u *SpiritTeamUsecase) readDeliverableOutput(t Team) string {
 	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
 		return ""

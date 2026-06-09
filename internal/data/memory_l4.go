@@ -24,9 +24,11 @@ func NewL4GraphRepo(data *Data) biz.L4GraphRepo {
 	return &l4GraphRepo{data: data}
 }
 
+var errL4RepoNil = errors.New("l4 graph repo not initialized")
+
 func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite) error {
 	if r == nil {
-		return nil
+		return errL4RepoNil
 	}
 	id := strings.TrimSpace(params.ID)
 	if id == "" {
@@ -78,7 +80,7 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 
 func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationWrite) error {
 	if r == nil {
-		return nil
+		return errL4RepoNil
 	}
 	id := newUUIDString()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -109,7 +111,7 @@ func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationW
 
 func (r *l4GraphRepo) GetEntityByScopeKey(ctx context.Context, scopeType, scopeID, entityType, nameNormalized string) (biz.L4EntitySnapshot, bool, error) {
 	if r == nil {
-		return biz.L4EntitySnapshot{}, false, nil
+		return biz.L4EntitySnapshot{}, false, errL4RepoNil
 	}
 	var id, name, nnorm, meta, updatedAt string
 	var conf float64
@@ -133,7 +135,7 @@ func (r *l4GraphRepo) GetEntityByScopeKey(ctx context.Context, scopeType, scopeI
 
 func (r *l4GraphRepo) GetFirstEntityByType(ctx context.Context, scopeType, scopeID, entityType string) (biz.L4EntitySnapshot, bool, error) {
 	if r == nil {
-		return biz.L4EntitySnapshot{}, false, nil
+		return biz.L4EntitySnapshot{}, false, errL4RepoNil
 	}
 	var id, name, nnorm, meta, updatedAt string
 	var conf float64
@@ -157,7 +159,7 @@ func (r *l4GraphRepo) GetFirstEntityByType(ctx context.Context, scopeType, scope
 
 func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scopeID, olderThanRFC3339 string, factor float64) (int64, error) {
 	if r == nil {
-		return 0, nil
+		return 0, errL4RepoNil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -172,7 +174,7 @@ func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scope
 
 func (r *l4GraphRepo) RecordEntityReinforcement(ctx context.Context, entityID string, signal biz.ReinforcementSignal, source string) error {
 	if r == nil {
-		return nil
+		return errL4RepoNil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	delta := 0.0
@@ -190,7 +192,7 @@ func (r *l4GraphRepo) RecordEntityReinforcement(ctx context.Context, entityID st
 
 func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeType, scopeID string, windowDays int) (map[string]int, error) {
 	if r == nil {
-		return nil, nil
+		return nil, errL4RepoNil
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format(time.RFC3339Nano)
 	// Query reinforcement counts for entities belonging to the given scope.
@@ -221,7 +223,7 @@ func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeTyp
 
 func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeType, scopeID string, cfg biz.L4DecayConfig, nowUnixMs int64) (int64, error) {
 	if r == nil {
-		return 0, nil
+		return 0, errL4RepoNil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	// Alpha is the decay rate per period (0 < Alpha < 1).
@@ -230,8 +232,19 @@ func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeTyp
 	if factor <= 0 || factor >= 1 {
 		factor = 0.95
 	}
-	// Cutoff: entities older than 365 days are considered for decay.
-	cutoff := time.UnixMilli(nowUnixMs - 365*86400000).Format(time.RFC3339Nano)
+	// Cutoff: use the shortest half-life from config to determine when decay starts.
+	// Entities should begin decaying after at least one half-life has elapsed.
+	minHalfLifeDays := 365.0
+	for _, hl := range cfg.HalfLifeDays {
+		if hl > 0 && hl < minHalfLifeDays {
+			minHalfLifeDays = hl
+		}
+	}
+	cutoffMs := int64(minHalfLifeDays * 2 * 86400000) // 2x shortest half-life as decay onset
+	if cutoffMs <= 0 {
+		cutoffMs = 365 * 86400000
+	}
+	cutoff := time.UnixMilli(nowUnixMs - cutoffMs).Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ? AND confidence > 0.01`,
 		factor, now, scopeType, scopeID, cutoff)
@@ -244,7 +257,7 @@ func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeTyp
 
 func (r *l4GraphRepo) ArchiveLowConfidenceEntities(ctx context.Context, scopeType, scopeID string, threshold float64) (int64, error) {
 	if r == nil {
-		return 0, nil
+		return 0, errL4RepoNil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,

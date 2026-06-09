@@ -17,7 +17,8 @@ docs/reports/
 ├── 2026-06-07-proposal-agency-agents-integration.md     # Agent 集成提案
 ├── 2026-06-07-proposal-organization-redesign.md         # 组织重设计提案
 ├── 2026-06-08-solution-memory-optimization.md           # 内存优化方案
-└── 2026-06-08-research-chat-observability-ux.md         # Chat 精灵模式可观测性 UX 调研
+├── 2026-06-08-research-chat-observability-ux.md         # Chat 精灵模式可观测性 UX 调研
+└── 2026-06-09-research-langflow-ui-replication.md       # Langflow UI 复刻方案调研
 ```
 
 ## AI 存放规则

@@ -607,6 +607,67 @@ ToolStrip 折叠态从 `"N tools · Xs"` 增强为 `"3 file_read · 2.5s"` 或 `
 
 `ToolUseEvent.expanded` 字段存在于类型定义中但从未被消费，在 P1.5 阶段与折叠增强一起清理（SP-FE-31）。
 
+#### 6.8.6 边界场景处理
+
+| # | 场景 | 处理方式 |
+|---|------|----------|
+| 1 | TurnBlock 折叠时 ChatExecutionCard 不渲染，signal 无法到达 | 无需处理——TurnBlock 展开后 ChatExecutionCard 重新渲染，按自身 `initialCollapsed` + `autoCollapse` 逻辑决定状态 |
+| 2 | 运行中的工具收到 collapseAll signal | ChatExecutionCard 忽略（`status === 'running'` 时不折叠） |
+| 3 | 用户手动展开后收到 collapseAll signal | 允许折叠（collapseAll 是显式用户操作，覆盖手动展开意图） |
+| 4 | 多个 ChatExecutionCard 同时响应 signal | 各自独立响应，无竞态（signal 是只读 ref，无副作用） |
+| 5 | TaskExecutionPanel 中 ChatExecutionCard 不在 TurnBlock 内 | 自动 inject 同一 provide，行为一致 |
+| 6 | 会话切换 | `reset()` 重置 signal 计数器，ChatExecutionCard 因 v-if 销毁重建，状态自然重置 |
+| 7 | 虚拟滚动下 ChatExecutionCard 被回收 | 回收后 timer 清理（`onBeforeUnmount`），重新渲染时按 `startTime` 重新计算 elapsed |
+| 8 | `event.started_at` 为空 | 降级链：`started_at` → `occurred_at` → `Date.now()`（组件创建时间），始终启动 timer |
+
+#### 6.8.7 风险评估
+
+| 风险 | 概率 | 影响 | 缓解措施 |
+|------|------|------|----------|
+| provide/inject 在非 ChatMessagePanel 上下文中失效 | 低 | 中 | inject 有 fallback 默认值，无 signal 时行为不变 |
+| elapsed timer 在虚拟滚动回收后泄漏 | 低 | 中 | `onBeforeUnmount` 清理 timer |
+| collapseAll signal 与 autoCollapse watch 冲突 | 低 | 低 | collapseAll 显式设置 `userManuallyExpanded = false`，与 autoCollapse 逻辑一致 |
+| 全局展开/折叠按钮语义变化（从 TurnBlock 级变为两层） | 中 | 低 | 按钮行为更符合用户预期（"展开全部"应该展开所有内容） |
+
+#### 6.8.8 审核发现与修正记录
+
+| # | 发现 | 严重度 | 修正措施 |
+|---|------|--------|----------|
+| A-01 | provide/inject 使用字符串 key，无类型安全 | 中 | 改用 `InjectionKey<ExecutionCollapseControl>` 类型化 key 常量 `EXECUTION_COLLAPSE_CONTROL_KEY` |
+| A-02 | `ToolUseEvent.expanded` 字段为死代码 | 低 | P1.5 阶段与折叠增强一起清理（SP-FE-31） |
+| A-03 | `started_at` 为可选字段，原方案在为空时不启动 timer | 高 | 增加降级链：`started_at` → `occurred_at` → `Date.now()`，始终启动 timer |
+| A-04 | chat 组件目录下无 provide/inject 先例 | 中 | 使用 `InjectionKey` + `Symbol` 确保类型安全和隔离性；inject fallback 为 `null` |
+| A-05 | ToolStrip 未 import `toolEventFromMessage` | 低 | P1 阶段在 ToolStrip 中新增 import |
+| A-06 | ChatExecutionCard 无 `onBeforeUnmount` | 中 | 新增 `onBeforeUnmount` 清理 `setInterval` |
+| A-07 | 全局按钮无 `handleExpandAll`/`handleCollapseAll` 包装函数 | 低 | P2 阶段新增包装函数，同时操作两层 |
+
+**遗留风险**：
+
+| # | 风险 | 说明 | 处理建议 |
+|---|------|------|----------|
+| R-01 | `effectiveStartTime` 使用 `Date.now()` 降级时，组件在工具运行一段时间后才挂载（虚拟滚动），elapsed 从 0 开始 | 精度损失可接受：用户感知的是"这个工具已经运行了多久"，而非精确到毫秒的计时 | Phase 4 考虑从 Store 获取工具开始时间 |
+| R-02 | signal 递增计数器极端情况溢出 | JS 安全整数范围 2^53，每秒递增需 2.85 亿年 | 无需处理 |
+| R-03 | 多个 ChatExecutionCard 同时 watch 同一 signal 产生批量 DOM 更新 | Vue 响应式系统批量处理同一 tick 内更新 | 无需处理 |
+
+#### 6.8.9 方案演进对比
+
+| 维度 | 初始方案（已否决） | 优化方案（已否决） | 最终方案 |
+|------|-------------------|-------------------|----------|
+| 新增组件 | 2 | 0 | 0 |
+| 新增 composable | 1 | 0 | 0 |
+| Props 透传层级 | — | 4 层 | 0 层 |
+| 消息流结构变更 | 聚合打乱时序 | 不变 | 不变 |
+| 渲染管线变更 | 5 种 Block Type | 不变 | 不变 |
+| 折叠状态一致性 | 两套 composable | 统一到 useAutoCollapse | 各自独立 + signal 协调 |
+| 实施风险 | 高 | 中 | 低 |
+| 5s Elapsed Timer | 有 | 有 | 有 |
+| 同类聚合 | 组件级 | 摘要级 | 摘要级 |
+| Pin 按钮 | 有 | 无 | 无 |
+
+> **否决原因**：
+> - **初始方案**：引入 2 个新组件 + 1 个新 composable + 5 种 Block Type，改动范围大且打乱消息时序；Pin 按钮过度设计（YAGNI）
+> - **优化方案**：Props 透传链 4 层违反前端规范；`isEventCollapsed` 函数类型 prop 每次渲染创建新引用导致全链路重渲染；autoCollapse watch deep watch 遍历复杂度 O(T×K)；两层折叠状态协调逻辑复杂且脆弱
+
 ### 6.7 OBS-07 中断恢复提示
 
 组件 `InterruptedTeamCard.vue` 在团队 `status === 'interrupted'` 时显示，包含中断原因、已完成步骤数、恢复/取消按钮。`canResume` 基于 `team.graphExecutionId` 是否存在判断。

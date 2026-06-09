@@ -21,7 +21,8 @@
           {{ t('chat.toolLongRunning', '长任务') }}
         </q-chip>
         <q-space />
-        <span v-if="durationLabel" class="text-caption text-grey-7">{{ durationLabel }}</span>
+        <span v-if="showElapsed" class="text-caption" :style="{ color: elapsedColor }">{{ elapsedLabel }}</span>
+        <span v-else-if="durationLabel" class="text-caption text-grey-7">{{ durationLabel }}</span>
         <q-icon v-if="status === 'running'" name="hourglass_top" color="warning" size="18px" aria-hidden="true" />
         <q-icon v-else-if="isFailed" name="error" color="negative" size="18px" aria-hidden="true" />
         <q-icon v-else-if="status === 'blocked'" name="warning" color="warning" size="18px" aria-hidden="true" />
@@ -72,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import {
@@ -82,6 +83,10 @@ import {
   resolveDisplayLabel,
 } from '../../features/chat/activityPresentation';
 import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
+import {
+  EXECUTION_COLLAPSE_CONTROL_KEY,
+  generateSummaryFallback,
+} from '../../features/chat/executionCardHelpers';
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
 
@@ -110,6 +115,56 @@ const expanded = ref(!props.initialCollapsed);
 /** Tracks whether the user manually expanded this card — prevents auto-collapse from overriding. */
 const userManuallyExpanded = ref(false);
 
+// ── SP-FE-27: 5s elapsed timer ──
+const status = computed(() => props.event.status);
+const elapsedSeconds = ref(0);
+let elapsedInterval: ReturnType<typeof setInterval> | null = null;
+
+/** Resolve effective start time: started_at → occurred_at → Date.now() */
+function resolveEffectiveStartTime(): number {
+  const started = props.event.started_at;
+  if (started) return new Date(started).getTime();
+  const occurred = props.event.occurred_at;
+  if (occurred) return new Date(occurred).getTime();
+  return Date.now();
+}
+
+function startElapsedTimer() {
+  stopElapsedTimer();
+  const startMs = resolveEffectiveStartTime();
+  elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  elapsedInterval = setInterval(() => {
+    elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (elapsedInterval !== null) {
+    clearInterval(elapsedInterval);
+    elapsedInterval = null;
+  }
+}
+
+/** Show elapsed only when running AND ≥5s */
+const showElapsed = computed(() => status.value === 'running' && elapsedSeconds.value >= 5);
+
+/** Format elapsed: <60s → "Ns", ≥60s → "Nm Ns" */
+const elapsedLabel = computed(() => {
+  const s = elapsedSeconds.value;
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}m ${rem}s`;
+});
+
+/** Elapsed color: <60s → tertiary, ≥60s → warning */
+const elapsedColor = computed(() =>
+  elapsedSeconds.value >= 60 ? 'var(--color-warning)' : 'var(--color-text-tertiary)',
+);
+
+// ── SP-FE-30: Provide/Inject global control ──
+const collapseControl = inject(EXECUTION_COLLAPSE_CONTROL_KEY, null);
+
 watch(
   () => props.event.status,
   (newStatus) => {
@@ -117,14 +172,48 @@ watch(
     if (newStatus === 'running') {
       expanded.value = true;
       userManuallyExpanded.value = false;
+      startElapsedTimer();
     } else if (
       (newStatus === 'success' || newStatus === 'failed' || newStatus === 'cancelled') &&
       !userManuallyExpanded.value
     ) {
       expanded.value = false;
+      stopElapsedTimer();
+    } else {
+      stopElapsedTimer();
     }
   },
 );
+
+// Watch global expand/collapse signals
+if (collapseControl) {
+  watch(
+    () => collapseControl.expandAllSignal.value,
+    () => {
+      expanded.value = true;
+      userManuallyExpanded.value = true;
+    },
+  );
+  watch(
+    () => collapseControl.collapseAllSignal.value,
+    () => {
+      // Running tools are immune to collapseAll
+      if (status.value !== 'running') {
+        expanded.value = false;
+        userManuallyExpanded.value = false;
+      }
+    },
+  );
+}
+
+// Start timer if already running on mount
+if (props.event.status === 'running') {
+  startElapsedTimer();
+}
+
+onBeforeUnmount(() => {
+  stopElapsedTimer();
+});
 
 const isDark = computed(() => $q.dark.isActive);
 
@@ -137,10 +226,9 @@ const appliedCount = computed(() => {
 });
 const showDiffActions = computed(() => isFileEdit.value && props.event.status === 'success');
 
-const status = computed(() => props.event.status);
 const isLongRunning = computed(() => Boolean(props.event.is_long_running));
 const title = computed(() => resolveDisplayLabel(props.event));
-const summaryText = computed(() => props.event.summary?.trim() || '');
+const summaryText = computed(() => props.event.summary?.trim() || generateSummaryFallback(props.event));
 const memberLabel = computed(() => {
   if (props.showMemberLabel === false) return '';
   const key = props.event.agent_key?.trim();

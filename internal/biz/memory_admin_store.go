@@ -67,7 +67,7 @@ type EvolutionEventInsert struct {
 
 // L0AdminStore lists and persists L0 assembly snapshots.
 type L0AdminStore interface {
-	ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error)
+	ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error)
 	GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error)
 	InsertL0AssemblySnapshot(ctx context.Context, in L0AssemblySnapshotInsert) error
 	UpdateL0SnapshotActual(ctx context.Context, id string, actualPromptTokens, contextWindowTokens int) error
@@ -76,7 +76,7 @@ type L0AdminStore interface {
 // L1AdminReader lists L1 working-memory tasks and fields.
 type L1AdminReader interface {
 	ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error)
-	ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool) ([][]byte, error)
+	ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool, requestingAgentID ...string) ([][]byte, error)
 	GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error)
 	GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error)
 }
