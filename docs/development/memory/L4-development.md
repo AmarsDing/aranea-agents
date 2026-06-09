@@ -11,7 +11,7 @@
 |----|------|------|
 | 知识图谱存储 | ✅ | `internal/data/sessionmemory/entity.go` + `relation.go`（memory_entities + memory_relations） |
 | L4GraphUsecase | ✅ | `internal/biz/memory_l4_usecase.go`（WriteFromUserText 英文+中文 regex + RunDecayWithConfig） |
-| Cascade Saga | ✅ | `internal/biz/memory_l4_cascade.go`（4 步 Saga + 补偿回滚） |
+| Cascade Saga | ✅ | `internal/biz/memory_l4_cascade.go`（4 步 Saga + 完整补偿回滚：UpsertEntity 恢复旧名称 + TouchAffected 清理元数据 + ReplaceFacts 还原 + SyncIndex 重标记） |
 | Cascade 持久化 | ✅ | `internal/data/sessionmemory/store_cascade.go` + `store_cascade_saga.go`（Proposal + Saga Steps） |
 | Business Decay | ✅ | `internal/data/sessionmemory/entity_lookup.go`（指数衰减 + reinforcement + 归档） |
 | Decay Worker | ✅ | `internal/cronrunner/jobs/memory_l4_decay.go`（定期衰减） |

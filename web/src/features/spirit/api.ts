@@ -1,5 +1,6 @@
 import { createSpiritService } from '../../services';
 import type { SpiritTeam, SpiritMember, SpiritTeamStatus, SpiritTeamMode } from './types';
+import { isValidTeamStatus, isValidTeamMode } from './types';
 
 const spiritService = createSpiritService();
 
@@ -15,18 +16,34 @@ export async function getSpiritTeamDetail(teamId: string): Promise<SpiritTeam> {
 }
 
 // cancelSpiritTeam cancels the active run for a team.
-// NOTE: The backend CancelTeamRun RPC expects a team_run_id, but SpiritTeam
-// only exposes team_id. The route is correct per proto; the caller must resolve
-// the active run ID when available. For now we pass team_id as a best-effort
-// until SpiritTeamView includes an active_run_id field.
+// Resolves the active run_id from the team's run list before calling the
+// cancel RPC, since the backend expects a team_run_id, not a team_id.
 export async function cancelSpiritTeam(teamId: string): Promise<void> {
-  await spiritService.cancelTeamRun(teamId);
+  const runId = await resolveActiveRunId(teamId);
+  if (runId) {
+    await spiritService.cancelTeamRun(runId);
+  }
 }
 
 // resumeSpiritTeam resumes a paused team run.
-// NOTE: Same caveat as cancelSpiritTeam — backend expects run_id, we pass team_id.
+// Same resolution strategy as cancelSpiritTeam.
 export async function resumeSpiritTeam(teamId: string): Promise<void> {
-  await spiritService.resumeTeamRun(teamId);
+  const runId = await resolveActiveRunId(teamId);
+  if (runId) {
+    await spiritService.resumeTeamRun(runId);
+  }
+}
+
+// resolveActiveRunId fetches the latest run for a team and returns its ID.
+// Returns null if no runs exist, allowing the caller to skip the RPC gracefully.
+async function resolveActiveRunId(teamId: string): Promise<string | null> {
+  try {
+    const { data } = await spiritService.listTeamRuns(teamId);
+    const runs = Array.isArray(data?.items) ? (data.items as Array<{ id: string }>) : [];
+    return runs.length > 0 ? runs[0].id : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function archiveSpiritTeam(teamId: string): Promise<void> {
@@ -42,11 +59,12 @@ function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
     id: String(raw.id ?? ''),
     teamName: String(raw.teamName ?? ''),
     taskSummary: String(raw.taskSummary ?? ''),
-    status: String(raw.status ?? '') as SpiritTeamStatus,
-    mode: String(raw.mode ?? '') as SpiritTeamMode,
+    status: isValidTeamStatus(String(raw.status ?? '')) ? String(raw.status) as SpiritTeamStatus : 'pending',
+    mode: isValidTeamMode(String(raw.mode ?? '')) ? String(raw.mode) as SpiritTeamMode : 'coordinator',
     memberAvatars: Array.isArray(raw.memberAvatars) ? (raw.memberAvatars as string[]) : [],
     completedSteps: Number(raw.completedSteps ?? 0),
     totalSteps: Number(raw.totalSteps ?? 0),
+    progressPct: Number(raw.progressPct ?? 0),
     durationMs: Number(raw.durationMs ?? 0),
     spiritSessionId: String(raw.spiritSessionId ?? ''),
     teamSessionId: String(raw.teamSessionId ?? ''),

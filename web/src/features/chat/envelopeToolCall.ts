@@ -97,7 +97,6 @@ export function mergeToolEvents(existing: ToolUseEvent, incoming: ToolUseEvent):
     agent_id: incoming.agent_id || existing.agent_id,
     agent_name: incoming.agent_name || existing.agent_name,
     occurred_at: incoming.occurred_at || existing.occurred_at,
-    expanded: existing.expanded,
   };
 }
 

@@ -493,6 +493,25 @@ func (u *TeamUsecase) RetryTeam(ctx context.Context, id string) (Team, error) {
 	return u.writer.UpdateTeam(ctx, current)
 }
 
+// ResumeTeamIfInterrupted transitions an interrupted team to running.
+// This is a no-op if the team is not in interrupted status, allowing
+// safe call from service layer after graph execution resume.
+func (u *TeamUsecase) ResumeTeamIfInterrupted(ctx context.Context, id string) error {
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return err
+	}
+	current, err := u.reader.GetTeamByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current.Status != TeamStatusInterrupted {
+		return nil // not interrupted, no transition needed
+	}
+	_, err = u.TransitionStatus(ctx, id, TeamStatusRunning)
+	return err
+}
+
 // BatchArchiveTeams archives multiple teams in a single DB operation.
 // It validates each team's current status allows archiving before proceeding.
 func (u *TeamUsecase) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {

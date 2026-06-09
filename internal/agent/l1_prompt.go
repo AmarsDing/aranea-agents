@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
@@ -55,6 +56,9 @@ func L1MemoryCue(ctx context.Context, l1Reader biz.L1AdminReader, ag biz.Agent, 
 			continue
 		}
 		if !fieldPinnedToPrompt(row) {
+			continue
+		}
+		if fieldExpired(row) {
 			continue
 		}
 		path := strings.TrimSpace(fmt.Sprint(row["field_path"]))
@@ -166,4 +170,21 @@ func fieldTokenEstimate(row map[string]any) int {
 	default:
 		return 0
 	}
+}
+
+// fieldExpired returns true if the field has a non-empty expires_at that is in the past.
+func fieldExpired(row map[string]any) bool {
+	exp := strings.TrimSpace(fmt.Sprint(row["expires_at"]))
+	if exp == "" || exp == "<nil>" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, exp)
+	if err != nil {
+		// Try RFC3339Nano as fallback (SQLite stores with nanosecond precision).
+		t, err = time.Parse(time.RFC3339Nano, exp)
+		if err != nil {
+			return false
+		}
+	}
+	return time.Now().UTC().After(t)
 }

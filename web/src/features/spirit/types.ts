@@ -7,7 +7,37 @@ export type SpiritTeamStatus =
   | 'interrupted'
   | 'archived';
 
+/** Runtime type guard for SpiritTeamStatus — validates WS/API pushed values. */
+const VALID_TEAM_STATUSES: ReadonlySet<string> = new Set<string>([
+  'pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived',
+]);
+export function isValidTeamStatus(s: string): s is SpiritTeamStatus {
+  return VALID_TEAM_STATUSES.has(s);
+}
+
 export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'critic_loop' | 'swarm' | 'adaptive';
+
+/** Runtime type guard for SpiritTeamMode — validates WS/API pushed values. */
+const VALID_TEAM_MODES: ReadonlySet<string> = new Set<string>([
+  'coordinator', 'sequential', 'parallel', 'critic_loop', 'swarm', 'adaptive',
+]);
+export function isValidTeamMode(s: string): s is SpiritTeamMode {
+  return VALID_TEAM_MODES.has(s);
+}
+
+/** Spirit status bar data — shared between ChatMessagePanel and SpiritStatusBar. */
+export type SpiritStatusBarData = {
+  runningTeamCount: number;
+  interruptedTeamCount: number;
+  quotaUsed: number;
+  quotaMax: number;
+  tokenUsage?: { in: number; out: number } | null;
+  lastEvent?: { type: 'completed' | 'failed'; teamName: string; teamId?: string } | null;
+  complexityLevel?: string | null;
+  complexityReason?: string | null;
+  checkpointStep?: string | null;
+  dqScore?: number | null;
+};
 
 export type SpiritMember = {
   agentId: string;
@@ -29,6 +59,9 @@ export type SpiritTeam = {
   memberAvatars: string[];
   completedSteps: number;
   totalSteps: number;
+  /** Progress percentage from backend (0-100). Used directly for progress bar
+   *  rendering instead of reverse-computing from completedSteps/totalSteps. */
+  progressPct: number;
   durationMs: number;
   spiritSessionId: string;
   teamSessionId: string;

@@ -33,13 +33,21 @@
       <q-icon name="check_circle" size="16px" color="positive" class="q-mr-xs" />
       <span class="text-caption">所有团队已完成</span>
       <span v-if="completionStats" class="text-caption text-grey-6 q-ml-sm">
-        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} 成功<span v-if="completionStats.failedTeams > 0">, {{ completionStats.failedTeams }} 失败</span>)
+        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} 成功<span
+          v-if="completionStats.failedTeams > 0"
+          >, {{ completionStats.failedTeams }} 失败</span
+        >)
       </span>
     </div>
 
     <DAGDiagramCard v-if="hasDagTeams" :teams="teams" class="q-mb-sm" />
 
-    <SynthesisResultCard v-if="synthesisResult" :result="synthesisResult" :evolution-suggestion="evolutionSuggestion" class="q-mb-sm" />
+    <SynthesisResultCard
+      v-if="synthesisResult"
+      :result="synthesisResult"
+      :evolution-suggestion="evolutionSuggestion"
+      class="q-mb-sm"
+    />
 
     <div class="parallel-team-overview__cards">
       <TeamProgressCard
@@ -79,7 +87,10 @@ defineEmits<{
 }>();
 
 const activeCount = computed(
-  () => props.teams.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled').length,
+  () =>
+    props.teams.filter(
+      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
+    ).length,
 );
 
 const completedCount = computed(() => props.teams.filter((t) => t.status === 'completed').length);

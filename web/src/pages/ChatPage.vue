@@ -4,7 +4,7 @@
   </div>
   <ChatWorkspaceShell v-else>
     <ChatEntitySidebar
-      v-model:search="layout.search"
+      :search="layout.search"
       :open="layout.leftOpen"
       :agents="entity.displayAgents"
       :spirit-teams="spiritStore.sortedTeams"
@@ -15,10 +15,11 @@
       :default-agent-id="entity.store.agents[0]?.id"
       :is-dark="layout.isDark"
       :pulse-team-colors="pulseTeamColors"
+      @update:search="layout.search = $event"
       @select-spirit="onSelectSpirit()"
       @select-agent="entity.selectAgent($event)"
       @agent-settings="(id) => entity.openSettings('agent', id)"
-      @agent-delete="entity.openDelete"
+      @agent-delete="(id) => entity.openDelete('agent', id)"
       @agent-reorder="(payload) => entity.onGroupReorder(payload.groupKey, payload.ids)"
       @select-spirit-team="spiritStore.selectTeam($event)"
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
@@ -37,8 +38,8 @@
       </q-banner>
       <ChatMessagePanel
         v-model="composer.inputText"
-        v-model:dialog-mode="composer.dialogMode"
-        v-model:model-provider="composer.modelProvider"
+        :dialog-mode="composer.dialogMode"
+        :model-provider="composer.modelProvider"
         :panel-mode="spiritStore.activePanelMode"
         :spirit-team="spiritStore.activeTeam"
         :active-member="activeMember"
@@ -66,7 +67,7 @@
         :ws-replaying="session.wsReplaying"
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
-        :spirit-max-concurrent-teams="spiritStore.maxConcurrentTeams"
+        :spirit-max-concurrent-teams="spiritStore.maxConcurrentTeams ?? undefined"
         :spirit-evolution-suggestion="spiritStore.lastEvolutionSuggestion"
         :spirit-completion-stats="spiritStore.completionStats"
         :compress-status="session.compressStatus"
@@ -114,7 +115,7 @@
         @navigate="onNavigate"
         @cancel-job="composer.cancelBackgroundJob"
         @paste-unsupported="composer.onPasteUnsupported"
-        @new-session="session.addAgentSession"
+        @new-session="session.onNewSession"
         @focus-turn-cleared="session.clearFocusTurn"
         @toggle-reasoning-sidebar="session.toggleReasoningSidebar"
         @pin-reasoning-message="session.pinReasoningMessage"
@@ -168,19 +169,22 @@
     <template #dialogs>
       <ChatSettingsDialog
         v-model="dialogs.settingsOpen"
-        v-model:name="dialogs.editName"
-        v-model:provider="dialogs.editProvider"
-        v-model:model="dialogs.editModel"
+        :name="dialogs.editName"
+        :provider="dialogs.editProvider"
+        :model="dialogs.editModel"
         :title="dialogs.settingsTitle"
         :mode="dialogs.settingsMode"
         :agent-key="dialogs.editKey"
         :saving="dialogs.settingsSaving"
+        @update:name="dialogs.editName = $event"
+        @update:provider="dialogs.editProvider = $event"
+        @update:model="dialogs.editModel = $event"
         @save="dialogs.onSaveSettings"
       />
 
       <ChatDeleteDialog
         v-model="dialogs.deleteOpen"
-        v-model:name-input="dialogs.deleteNameInput"
+        :name-input="dialogs.deleteNameInput"
         :title="dialogs.deleteTitleText"
         :kind="dialogs.deleteKind"
         :expected-name="dialogs.expectedDeleteName"
@@ -188,6 +192,7 @@
         :can-confirm="dialogs.canConfirmDelete"
         :has-name-error="Boolean(dialogs.deleteNameError && dialogs.deleteNameInput)"
         :deleting="dialogs.deleting"
+        @update:name-input="dialogs.deleteNameInput = $event"
         @confirm="dialogs.onConfirmDelete"
       />
 

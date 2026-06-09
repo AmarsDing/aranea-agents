@@ -15,6 +15,7 @@ option java_package = "api.kratos.memory.v1";
 message ListL0SnapshotsRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 limit = 2;
+  string agent_id = 3; // optional: filter snapshots by agent (Team mode isolation)
 }
 
 message ListL0SnapshotsResponse {
@@ -93,6 +94,7 @@ message ListL1FieldsRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
   string task_id = 2 [(google.api.field_behavior) = REQUIRED];
   string include_internal = 3;
+  string agent_id = 4; // optional: filter fields by requesting agent (shared_with aware)
 }
 
 message ListL1FieldsResponse {

@@ -199,11 +199,16 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 	return built, nil
 }
 
+// LookupA2UIByAgentKey returns the cached A2UI result for the given agent key.
+// The agentKey must match the full cache key format produced by BuildCacheKey.
 func LookupA2UIByAgentKey(agentKey string) *planner.A2UIResult {
+	if agentKey == "" {
+		return nil
+	}
 	globalBuildCache.mu.Lock()
 	defer globalBuildCache.mu.Unlock()
-	for _, entry := range globalBuildCache.items {
-		if entry.a2ui != nil {
+	if entry, ok := globalBuildCache.items[agentKey]; ok {
+		if entry.a2ui != nil && !time.Now().After(entry.expiresAt) {
 			return entry.a2ui
 		}
 	}

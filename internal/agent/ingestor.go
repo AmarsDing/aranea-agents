@@ -10,9 +10,15 @@ import (
 )
 
 // BizSessionIngestor implements trpcsession.Ingestor for Aranea.
-// The runner also calls memory.Service.EnqueueAutoMemoryJob when MemoryService
-// is configured; this hook records ingest metadata for external backends (e.g. mem0)
-// without duplicating the auto-memory queue job.
+//
+// IMPORTANT: This hook is an extension point for external backends (e.g. mem0).
+// It does NOT perform auto-memory extraction — that path is handled by:
+//
+//	Runner.graphCompletion → memoryService.EnqueueAutoMemoryJob → AutoMemoryQueue → AutoMemoryWorker
+//
+// If you need to add memory ingestion logic, do NOT add it here — extend the
+// AutoMemoryWorker or add a new queue consumer instead. This hook exists solely
+// so that external backends can intercept session completion events.
 type BizSessionIngestor struct {
 	memory trpcmemory.Service
 	lg     loggateway.Logger

@@ -34,14 +34,14 @@ func ParsePIIPolicy(s string) PIIPolicy {
 
 var (
 	piiEmailRe      = regexp.MustCompile(`(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b`)
-	piiPhoneRe      = regexp.MustCompile(`(?:\+?\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}\b`)
+	piiPhoneRe      = regexp.MustCompile(`(?:\+?(?:86|1|44|81|82|91|49|33|61|7)\s?)?(?:\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4})\b`) // Require country code prefix or structured format
 	piiIDCardRe     = regexp.MustCompile(`\b\d{17}[\dXx]\b`)
-	piiCreditRe     = regexp.MustCompile(`\b(?:\d[ -]*?){12,18}\d\b`)
-	piiBankAcctRe   = regexp.MustCompile(`\b\d{8,20}\b`)
+	piiCreditRe     = regexp.MustCompile(`\b(?:\d[ -]*?){13,18}\d\b`) // 14-19 digits with optional spaces/dashes (Luhn-eligible)
+	piiBankAcctRe   = regexp.MustCompile(`\b62\d{14,17}\b`)           // UnionPay only: 62 prefix + 14-17 more digits (total 16-19)
 	piiSSNLikeRe    = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
 	piiMedicalRe    = regexp.MustCompile(`(?i)(?:medical record|patient id|mrn)\s*[:#]?\s*\S+`)
 	piiHomeAddrRe   = regexp.MustCompile(`(?i)\d+\s+[A-Z][a-zA-Z]+\s+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct)`)
-	piiSecretKeyRe  = regexp.MustCompile(`(?i)(?:api[_-]?key|secret[_-]?key|token|password|passwd|pwd)\s*[:=]\s*\S+`)
+	piiSecretKeyRe  = regexp.MustCompile(`(?i)(?:api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*["']?[A-Za-z0-9_\-]{8,}["']?`) // Exclude "password" to avoid blocking user preferences; require 8+ char value
 )
 
 type piiDetector struct {

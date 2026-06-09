@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestEnqueueNotify_rejectsPrivateURL(t *testing.T) {
-	n := NewHookNotifier(nil, loggateway.NewNoop())
+	n := NewHookNotifier((*conf.Runtime)(nil), nil, loggateway.NewNoop())
 	rh := biz.ResolvedHook{
 		Hook: biz.Hook{Key: "t"},
 		Rule: biz.HookConfig{
@@ -22,7 +23,7 @@ func TestEnqueueNotify_rejectsPrivateURL(t *testing.T) {
 }
 
 func TestEnqueueNotify_acceptsValidURL(t *testing.T) {
-	n := NewHookNotifier(nil, loggateway.NewNoop())
+	n := NewHookNotifier((*conf.Runtime)(nil), nil, loggateway.NewNoop())
 	rh := biz.ResolvedHook{
 		Hook: biz.Hook{Key: "t"},
 		Rule: biz.HookConfig{

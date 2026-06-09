@@ -88,11 +88,17 @@
           :show-member-label="isTeamSession"
           :initial-collapsed="isToolEventCompleted(bundle.structuredToolEvent)"
         />
-        <details v-else-if="row.isCollapsibleToolDetail(message)" class="chat-tool-details">
-          <summary class="chat-tool-details__summary">
+        <q-expansion-item
+          v-else-if="row.isCollapsibleToolDetail(message)"
+          class="chat-tool-details"
+          dense
+          :default-opened="false"
+          header-class="chat-tool-details__summary"
+          :aria-label="row.toolCollapseSummary(message)"
+        >
+          <template #header>
             <span class="chat-tool-details__summary-text">{{ row.toolCollapseSummary(message) }}</span>
-            <span class="chat-tool-details__hint text-caption" aria-hidden="true" />
-          </summary>
+          </template>
           <div
             class="chat-message-content chat-message-prose chat-tool-details__body"
             :class="{
@@ -101,7 +107,7 @@
             }"
             v-html="renderMarkdown(row.toolCollapseDetail(message))"
           />
-        </details>
+        </q-expansion-item>
         <template v-else>
           <ChatReasoningPeek
             v-if="!reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"

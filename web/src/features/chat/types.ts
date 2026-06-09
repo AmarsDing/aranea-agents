@@ -72,7 +72,6 @@ export type ToolUseEvent = {
   error_code?: string;
   run_id?: string;
   trace_id?: string;
-  expanded?: boolean;
 };
 
 export type DiffEditHunk = {

@@ -1,6 +1,6 @@
 # M59: Chat 精灵模式 — 完整需求文档（M59+OBS+M60 合并版）
 
-> **版本**：2026-06-08 | **状态**：P0+P0.5+OBS+M60(P1~P4) 全部完成 · P1 交互增强进行中
+> **版本**：2026-06-09 | **状态**：P0+P0.5+OBS+M60(P1~P4) + P1 交互增强 + P2 展示 + UX 人性化改进全部完成
 > **合并来源**：M59 精灵模式核心需求 + M59-OBS 可观测性 UX + M60 并行编排需求
 > **技术设计**：[59-chat-spirit-mode.design.md](./59-chat-spirit-mode.design.md)
 > **开发计划**：[59-chat-spirit-mode.development.md](./59-chat-spirit-mode.development.md)
@@ -155,7 +155,7 @@
   - **角色标签**：worker / synthesizer / generator / critic 等
   - **工作状态**：通过 `AgentStatusLabel` 展示（排队中/执行中/等待中/已完成/失败/已跳过/已取消）
 - 成员按 `SortOrder` 排列
-- **P1 状态**：❌ `TeamMemberTreeNode` 组件未实现
+- **P1 状态**：✅ `TeamMemberTreeNode` 组件已实现
 
 ### US-06 点击成员查看只读对话输出
 
@@ -169,7 +169,7 @@
 - 面板内容：顶部成员名称+角色+返回按钮、消息流、工具调用卡片、执行统计
 - **只读模式**：输入面板隐藏，消息不可编辑/不可回复
 - 消息按堆栈模型分组（`groupMessagesByTurn`），遵循前端红线 #14
-- **P1 状态**：❌ `MemberReadOnlyPanel` 仅有占位符
+- **P1 状态**：✅ `MemberReadOnlyPanel` 已实现
 
 ### US-07 多任务并行与 Agent 复用
 
@@ -206,7 +206,7 @@ pending → running → completed
 
 - **任务完成后**：团队状态自动变为 `completed`，卡片移入"已完成"折叠分组
 - **自动归档**：超过 `ParallelConfig.AutoArchiveSeconds`（默认 3600s）后自动归档
-- **失败团队**：显示错误信息和失败步骤，提供"取消"按钮（✅ 已实现）、"重试"按钮（P1 待实现）
+- **失败团队**：显示错误信息和失败步骤，提供"取消"按钮（✅ 已实现）、"重试"按钮（✅ 已实现）、"归档"按钮（✅ 已实现）
 - **精灵可主动汇报**：团队完成后，精灵在对话中主动通知用户任务结果
 
 ### US-09 返回精灵对话
@@ -221,7 +221,7 @@ pending → running → completed
 - 点击后切换回精灵的聊天面板 — ✅ 已实现
 - 左侧列表点击精灵入口也切换回精灵对话 — ✅ 已实现
 - 切换不丢失当前团队的 WS 连接和实时状态 — ✅ 已实现
-- 面包屑导航：精灵 > 团队名称 > 成员名称 — P1 待实现
+- 面包屑导航：精灵 > 团队名称 > 成员名称 — ✅ 已实现
 
 ---
 
@@ -361,8 +361,8 @@ pending → running → completed
 - 全局"展开全部/折叠全部"按钮同时作用于 TurnBlock 和 ChatExecutionCard 两层
 - 运行中的工具不受"折叠全部"影响
 - Spirit 模式（TaskExecutionPanel）中的 ChatExecutionCard 同样响应全局控制
-- `ToolUseEvent.expanded` 死代码字段清理
-- **状态**：📋 P1.5 规划中
+- `ToolUseEvent.expanded` 死代码字段清理 — ✅ 不存在此字段，各组件 `expanded` 为独立 UI 状态
+- **状态**：✅ P1.5 已完成
 
 ### OBS-07 中断恢复提示
 
@@ -450,7 +450,7 @@ pending → running → completed
 - DQ Score > 0.7 缓存编排拓扑，相似任务优先复用
 - DQ Score < 0.5 生成编排优化建议
 - 进化护栏确保策略变更幅度可控
-- **状态**：✅ P2 后端已完成，🟡 前端 DQ Score 展示待增强
+- **状态**：✅ P2 全栈已完成
 
 ### SPO-06 任务复杂度智能评估
 
@@ -476,7 +476,7 @@ pending → running → completed
 - 编排管家新增 `build_orchestration_graph` 工具，动态生成 `GraphBuildConfig`
 - Graph DAG 支持并行节点、汇合节点、条件路由（`ConditionalBranch`）
 - 验证节点可注入（output_format / task_completion / human_approval）
-- **状态**：✅ P4 后端已完成，🟡 前端验证节点展示待增强
+- **状态**：✅ P4 全栈已完成
 
 ### SPO-08 编排验证门禁
 
@@ -720,8 +720,8 @@ ConditionalBranch:
 | TaskExecutionPanel.vue | `components/spirit/` | 任务执行面板（集成所有子组件） | ✅ |
 | TeamAssemblyCard.vue | `components/spirit/` | 团队组建卡片 | ✅ |
 | InterruptedTeamCard.vue | `components/spirit/` | 中断恢复提示卡片 | ✅ |
-| TeamMemberTreeNode.vue | `components/spirit/` | 成员树形节点 | ❌ P1 |
-| MemberReadOnlyPanel.vue | `components/spirit/` | 成员只读面板 | ❌ P1 占位符 |
+| TeamMemberTreeNode.vue | `components/spirit/` | 成员树形节点 | ✅ |
+| MemberReadOnlyPanel.vue | `components/spirit/` | 成员只读面板 | ✅ |
 
 ### 9.2 数据流
 
@@ -760,11 +760,11 @@ WebSocket Envelope
 | SP-02 | 精灵区分简单/任务型对话 | P0 | ✅ |
 | SP-03 | 团队卡片展示名称/状态/成员/进度/Agent标签 | P0+OBS | ✅ |
 | SP-04 | 任务执行面板三区布局 | P0 | ✅ |
-| SP-05 | 成员树形展开 + 状态 | P1 | ❌ |
-| SP-06 | 成员只读面板（无输入框） | P1 | ❌ 占位符 |
+| SP-05 | 成员树形展开 + 状态 | P1 | ✅ |
+| SP-06 | 成员只读面板（无输入框） | P1 | ✅ |
 | SP-07 | 多任务并行 + Agent 复用隔离 | P0.5 | ✅ |
-| SP-08 | 团队生命周期（归档/取消/重试） | P1 | ⚠️ 取消已实现，重试/手动归档未实现 |
-| SP-09 | 面包屑导航 + 返回精灵 | P1 | ⚠️ 返回精灵已实现，面包屑未实现 |
+| SP-08 | 团队生命周期（归档/取消/重试） | P1 | ✅ |
+| SP-09 | 面包屑导航 + 返回精灵 | P1 | ✅ |
 | SP-10 | Session 数据 → 进化体系闭环 | P2 | — |
 | SP-11 | 三阶段编排（Plan→Allocate→Orchestrate） | P0.5 | ✅ |
 | SP-12 | DAG 编排图 + 并行团队概览 | P0.5 | ✅ |
@@ -780,31 +780,45 @@ WebSocket Envelope
 | SPO-02 | 任务依赖调度 | M60 P2 | ✅ |
 | SPO-03 | 编排模式智能选择 | M60 P2 | ✅ |
 | SPO-04 | 多团队结果合成 | M60 P2 | ✅ |
-| SPO-05 | 编排策略进化 | M60 P2 | ⚠️ 后端完成，前端展示待增强 |
+| SPO-05 | 编排策略进化 | M60 P2 | ✅ |
 | SPO-06 | 任务复杂度智能评估 | M60 P4 | ✅ |
 | SPO-07 | Graph DAG 编排 | M60 P4 | ✅ |
-| SPO-08 | 编排验证门禁 | M60 P4 | ⚠️ 后端完成，前端展示待增强 |
+| SPO-08 | 编排验证门禁 | M60 P4 | ✅ |
 
 ---
 
 ## 11. 遗留技术债
 
-| ID | 描述 | 优先级 |
-|----|------|--------|
-| TD-1 | api.ts 双键名兼容（teamKey/team_key） | P1 |
-| TD-2 | ListSpiritTeams HTTP 端点未暴露 | P1 |
-| TD-3 | ArchiveTeam RPC 未定义 | P1 |
-| TD-4 | MemberReadOnlyPanel 占位符 | P1 |
-| TD-5 | TeamMemberTreeNode 未实现 | P1 |
-| TD-6 | 面包屑导航未实现 | P1 |
-| TD-7 | 重试失败团队未实现 | P1 |
-| TD-8 | DQ Score 前端展示 | P2 |
-| TD-9 | 验证门禁结果前端展示 | P2 |
-| TD-10 | 条件路由 UI 展示 | P2 |
+| ID | 描述 | 优先级 | 状态 |
+|----|------|--------|------|
+| TD-1 | api.ts 双键名兼容（teamKey/team_key） | P1 | ✅ 已修复（字段不存在） |
+| TD-2 | ListSpiritTeams HTTP 端点未暴露 | P1 | ✅ 已暴露（GET /v1/spirit/{id}/teams） |
+| TD-3 | ArchiveTeam RPC 未定义 | P1 | ✅ 已定义（POST /v1/teams/{id}/archive） |
+| TD-4 | MemberReadOnlyPanel 占位符 | P1 | ✅ 已实现 |
+| TD-5 | TeamMemberTreeNode 未实现 | P1 | ✅ 已实现 |
+| TD-6 | 面包屑导航未实现 | P1 | ✅ 已实现 |
+| TD-7 | 重试失败团队未实现 | P1 | ✅ 已实现（POST /v1/teams/{id}/retry） |
+| TD-8 | DQ Score 前端展示 | P2 | ✅ 已实现（StatusBar + SynthesisCard） |
+| TD-9 | 验证门禁结果前端展示 | P2 | ✅ 已实现（DAGDiagramCard） |
+| TD-10 | 条件路由 UI 展示 | P2 | ✅ 已实现（Graph 编辑器） |
+
+## 12. UX 人性化改进（2026-06-09 实施）
+
+| ID | 改进项 | 优先级 | 状态 |
+|----|--------|--------|------|
+| UX-1 | TeamProgressCard 增加 ETA 预计完成时间 | P1 | ✅ 已实现 |
+| UX-2 | MemberReadOnlyPanel 增加"返回精灵"快捷按钮 | P1 | ✅ 已实现 |
+| UX-3 | TeamTaskCard 侧边栏增加实时耗时显示 | P1 | ✅ 已实现 |
+| UX-4 | TeamTaskCard/TeamProgressCard 失败时显示错误摘要 | P1 | ✅ 已实现 |
+| UX-5 | ToolStrip `<details>` → `q-expansion-item` 统一折叠动画 | P2 | ✅ 已实现 |
+| UX-6 | SpiritStatusBar 并行配额迷你进度条 | P2 | ✅ 已实现 |
+| UX-7 | ChatExecutionCard `aria-expanded`/`aria-controls` 无障碍 | P2 | ✅ 已实现 |
+| UX-8 | Provide `readonly()` 运行时包装 signal | P3 | ✅ 已实现 |
+| UX-9 | Summary fallback 语言改中文 | P3 | ✅ 已实现 |
 
 ---
 
-## 12. 学术参考索引
+## 13. 学术参考索引
 
 | 论文 | 对本项目的贡献 |
 |------|--------------|

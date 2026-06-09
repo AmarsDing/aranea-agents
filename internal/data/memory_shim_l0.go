@@ -26,7 +26,7 @@ func newL0SnapshotRepo(data *Data) *l0SnapshotRepo {
 // Compile-time interface check.
 var _ biz.L0AdminStore = (*l0SnapshotRepo)(nil)
 
-func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error) {
+func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error) {
 	if sessionID == "" {
 		return nil, errors.New("session id is required")
 	}
@@ -34,7 +34,15 @@ func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID strin
 	if lim <= 0 || lim > 100 {
 		lim = 20
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL0Select+` WHERE session_id = ? ORDER BY created_at DESC LIMIT ?`, sessionID, lim)
+	q := sqlL0Select + ` WHERE session_id = ?`
+	args := []any{sessionID}
+	if agentID != "" {
+		q += ` AND agent_id = ?`
+		args = append(args, agentID)
+	}
+	q += ` ORDER BY created_at DESC LIMIT ?`
+	args = append(args, lim)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

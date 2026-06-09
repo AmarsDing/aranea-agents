@@ -587,9 +587,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		SubAgentService:       o.subAgentService,
 		L0SnapshotForcer:      o.td.SessionRT,
 	}
-	// Spirit tools injection: plan_and_execute handles LLM-driven routing based on complexity.
-	// ResolveSpiritMode (chat_orchestrator_spirit.go) is available as a code-level override
-	// when the LLM's routing decision is ambiguous or needs programmatic enforcement.
+	// Spirit tools injection: plan_and_execute handles routing via TaskPlanner.Plan()
+	// which uses a rule engine (ComplexityRuleEngine) + LLM hybrid approach.
+	// Mode selection is determined by OrchestrationStrategy in task_planner_impl.go.
 	deps.CustomTools = append(deps.CustomTools, o.spiritCustomTools(ag)...)
 	deps.CustomTools = append(deps.CustomTools, o.skillsButlerTools(ctx, ag)...)
 	deps.CustomTools = append(deps.CustomTools, o.memoryButlerTools(ctx, ag)...)

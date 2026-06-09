@@ -7,6 +7,8 @@
     expand-separator
     header-class="chat-execution-card__header"
     :aria-label="headerAriaLabel"
+    :aria-expanded="expanded"
+    :aria-controls="bodyId"
     @update:model-value="onExpanded"
   >
     <template #header>
@@ -21,17 +23,24 @@
           {{ t('chat.toolLongRunning', '长任务') }}
         </q-chip>
         <q-space />
-        <span v-if="durationLabel" class="text-caption text-grey-7">{{ durationLabel }}</span>
+        <span v-if="showElapsed" class="text-caption" :style="{ color: elapsedColor }">{{ elapsedLabel }}</span>
+        <span v-else-if="durationLabel" class="text-caption text-grey-7">{{ durationLabel }}</span>
         <q-icon v-if="status === 'running'" name="hourglass_top" color="warning" size="18px" aria-hidden="true" />
         <q-icon v-else-if="isFailed" name="error" color="negative" size="18px" aria-hidden="true" />
         <q-icon v-else-if="status === 'blocked'" name="warning" color="warning" size="18px" aria-hidden="true" />
         <q-icon v-else-if="status === 'cancelled'" name="cancel" color="grey" size="18px" aria-hidden="true" />
         <q-icon v-else name="check_circle" color="positive" size="18px" aria-hidden="true" />
         <span class="text-caption" :class="statusTextClass">{{ statusText }}</span>
+        <span role="status" aria-live="polite" class="sr-only">{{ statusAnnouncement }}</span>
       </div>
     </template>
 
-    <div class="chat-execution-card__body">
+    <div
+      :id="bodyId"
+      role="region"
+      :aria-label="t('chat.activity.detailRegion', '执行详情')"
+      class="chat-execution-card__body"
+    >
       <ChatDiffViewer
         v-if="isFileEdit"
         :file-name="diffFileName"
@@ -44,16 +53,21 @@
         @reject="$emit('reject-diff', { toolName: event.tool_name, fileName: diffFileName })"
       />
       <template v-else>
-        <div v-if="hasArgs" class="chat-execution-card__section">
+        <div v-if="hasArgs" class="chat-execution-card__section" role="group" :aria-label="t('chat.toolArgs', '参数')">
           <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.toolArgs', '参数') }}</div>
           <pre class="chat-execution-card__pre">{{ argsText }}</pre>
         </div>
-        <div v-if="hasResult" class="chat-execution-card__section q-mt-sm">
+        <div
+          v-if="hasResult"
+          class="chat-execution-card__section q-mt-sm"
+          role="group"
+          :aria-label="t('chat.toolResult', '结果')"
+        >
           <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.toolResult', '结果') }}</div>
           <pre class="chat-execution-card__pre">{{ resultText }}</pre>
         </div>
       </template>
-      <div v-if="errorText" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
+      <div v-if="errorText" role="alert" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
       <div v-if="hasMetadata" class="chat-execution-card__section q-mt-sm">
         <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.activity.metadata', '元数据') }}</div>
         <div class="text-caption text-grey-7 column q-gutter-xs">
@@ -71,8 +85,13 @@
   </q-expansion-item>
 </template>
 
+<script lang="ts">
+/** Module-level counter for generating unique fallback IDs across ChatExecutionCard instances. */
+let _cardInstanceCounter = 0;
+</script>
+
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import {
@@ -82,6 +101,7 @@ import {
   resolveDisplayLabel,
 } from '../../features/chat/activityPresentation';
 import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
+import { EXECUTION_COLLAPSE_CONTROL_KEY, generateSummaryFallback } from '../../features/chat/executionCardHelpers';
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
 
@@ -107,8 +127,61 @@ defineEmits<{
 const { t } = useI18n();
 const $q = useQuasar();
 const expanded = ref(!props.initialCollapsed);
+/** Instance-level unique ID for aria-controls. Deterministic: prefers event.id, falls back to instance counter. */
+const _instanceSeq = ++_cardInstanceCounter;
+const bodyId = computed(() => `exec-card-body-${props.event.id ?? `gen-${_instanceSeq}`}`);
 /** Tracks whether the user manually expanded this card — prevents auto-collapse from overriding. */
 const userManuallyExpanded = ref(false);
+
+// ── SP-FE-27: 5s elapsed timer ──
+const status = computed(() => props.event.status);
+const elapsedSeconds = ref(0);
+let elapsedInterval: ReturnType<typeof setInterval> | null = null;
+
+/** Resolve effective start time: started_at → occurred_at → Date.now() */
+function resolveEffectiveStartTime(): number {
+  const started = props.event.started_at;
+  if (started) return new Date(started).getTime();
+  const occurred = props.event.occurred_at;
+  if (occurred) return new Date(occurred).getTime();
+  return Date.now();
+}
+
+function startElapsedTimer() {
+  stopElapsedTimer();
+  const startMs = resolveEffectiveStartTime();
+  elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  elapsedInterval = setInterval(() => {
+    elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (elapsedInterval !== null) {
+    clearInterval(elapsedInterval);
+    elapsedInterval = null;
+  }
+}
+
+/** Show elapsed only when running AND ≥5s */
+const showElapsed = computed(() => status.value === 'running' && elapsedSeconds.value >= 5);
+
+/** Format elapsed: <60s → "Ns", ≥60s → "Nm Ns" */
+const elapsedLabel = computed(() => {
+  const s = elapsedSeconds.value;
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}m ${rem}s`;
+});
+
+/** Elapsed color: <60s → tertiary, ≥60s → warning */
+const elapsedColor = computed(() =>
+  elapsedSeconds.value >= 60 ? 'var(--color-warning)' : 'var(--color-text-tertiary)',
+);
+
+// ── SP-FE-30: Provide/Inject global control ──
+const collapseControl = inject(EXECUTION_COLLAPSE_CONTROL_KEY, null);
 
 watch(
   () => props.event.status,
@@ -117,14 +190,48 @@ watch(
     if (newStatus === 'running') {
       expanded.value = true;
       userManuallyExpanded.value = false;
+      startElapsedTimer();
     } else if (
       (newStatus === 'success' || newStatus === 'failed' || newStatus === 'cancelled') &&
       !userManuallyExpanded.value
     ) {
       expanded.value = false;
+      stopElapsedTimer();
+    } else {
+      stopElapsedTimer();
     }
   },
 );
+
+// Watch global expand/collapse signals
+if (collapseControl) {
+  watch(
+    () => collapseControl.expandAllSignal.value,
+    () => {
+      expanded.value = true;
+      userManuallyExpanded.value = true;
+    },
+  );
+  watch(
+    () => collapseControl.collapseAllSignal.value,
+    () => {
+      // Running tools are immune to collapseAll
+      if (status.value !== 'running') {
+        expanded.value = false;
+        userManuallyExpanded.value = false;
+      }
+    },
+  );
+}
+
+// Start timer if already running on mount
+if (props.event.status === 'running') {
+  startElapsedTimer();
+}
+
+onBeforeUnmount(() => {
+  stopElapsedTimer();
+});
 
 const isDark = computed(() => $q.dark.isActive);
 
@@ -137,10 +244,9 @@ const appliedCount = computed(() => {
 });
 const showDiffActions = computed(() => isFileEdit.value && props.event.status === 'success');
 
-const status = computed(() => props.event.status);
 const isLongRunning = computed(() => Boolean(props.event.is_long_running));
 const title = computed(() => resolveDisplayLabel(props.event));
-const summaryText = computed(() => props.event.summary?.trim() || '');
+const summaryText = computed(() => props.event.summary?.trim() || generateSummaryFallback(props.event));
 const memberLabel = computed(() => {
   if (props.showMemberLabel === false) return '';
   const key = props.event.agent_key?.trim();
@@ -174,6 +280,16 @@ const headerAriaLabel = computed(() => {
   const base = title.value;
   if (statusText.value) return `${base} — ${statusText.value}`;
   return base;
+});
+
+/** Screen-reader-only announcement for status transitions (running → completed/failed). */
+const statusAnnouncement = computed(() => {
+  if (status.value === 'success')
+    return t('chat.activity.completedAnnouncement', '{tool} 已完成', { tool: title.value });
+  if (isFailed.value) return t('chat.activity.failedAnnouncement', '{tool} 执行失败', { tool: title.value });
+  if (status.value === 'cancelled')
+    return t('chat.activity.cancelledAnnouncement', '{tool} 已取消', { tool: title.value });
+  return '';
 });
 
 const statusTextClass = computed(() => {
@@ -259,4 +375,15 @@ body.body--dark .chat-execution-card__pre
   padding-top: var(--space-1)
   border-top: 1px dashed color-mix(in srgb, var(--glass-border) 60%, transparent)
   line-height: 1.4
+
+.sr-only
+  position: absolute
+  width: 1px
+  height: 1px
+  padding: 0
+  margin: -1px
+  overflow: hidden
+  clip: rect(0, 0, 0, 0)
+  white-space: nowrap
+  border: 0
 </style>

@@ -9,9 +9,20 @@
         </div>
         <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
       </div>
-      <div v-if="team.totalSteps > 0" class="q-mt-sm">
-        <q-linear-progress :value="team.completedSteps / team.totalSteps" size="6px" rounded color="accent" />
-        <div class="text-caption text-grey-6 q-mt-xs">{{ team.completedSteps }} / {{ team.totalSteps }} 步骤完成</div>
+      <div v-if="team.progressPct > 0 || team.totalSteps > 0" class="q-mt-sm">
+        <q-linear-progress
+          :value="team.progressPct > 0 ? team.progressPct / 100 : team.completedSteps / team.totalSteps"
+          size="6px"
+          rounded
+          color="accent"
+        />
+        <div class="text-caption text-grey-6 q-mt-xs">
+          {{
+            team.progressPct > 0
+              ? `${Math.round(team.progressPct)}%`
+              : `${team.completedSteps} / ${team.totalSteps} 步骤完成`
+          }}
+        </div>
       </div>
       <div v-if="team.members.length > 0" class="q-mt-sm">
         <div class="text-caption text-weight-medium text-grey-7 q-mb-xs">成员状态</div>
@@ -26,7 +37,7 @@
               <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
               <q-icon v-else name="person" size="14px" color="grey-6" />
             </q-avatar>
-            <span class="text-caption ellipsis" style="max-width: 80px">{{ member.displayName }}</span>
+            <span class="text-caption ellipsis task-execution-panel__member-name">{{ member.displayName }}</span>
             <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
           </div>
         </div>
@@ -49,7 +60,7 @@
       <div class="q-pa-md">
         <ParallelTeamOverview
           :teams="allTeams"
-          :max-parallel="maxParallel ?? props.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS"
+          :max-parallel="maxParallel ?? DEFAULT_MAX_PARALLEL_TEAMS"
           :all-completed="allTeamsCompleted ?? false"
           :completion-stats="completionStats"
           :synthesis-result="synthesisResult"
@@ -99,7 +110,7 @@
         <template v-if="assistantMessages.length > 0">
           <div v-for="msg in assistantMessages" :key="msg.id" class="task-execution-panel__output-item">
             <div class="text-caption text-grey-7 q-mb-xs">{{ formatTime(msg.created_at) }}</div>
-            <div class="chat-message-prose" v-html="renderChatMarkdown(msg.content_markdown)" />
+            <div class="chat-message-prose" v-html="props.renderMarkdown(msg.content_markdown)" />
           </div>
         </template>
         <div v-else class="text-caption text-grey-6">暂无对话输出</div>
@@ -115,7 +126,6 @@ import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
 import ParallelTeamOverview from './ParallelTeamOverview.vue';
 import { mapSpiritStatusToSession, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../../features/spirit/observabilityConstants';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { SpiritTeam, SynthesisOutput, CompletionStats } from '../../features/spirit/types';
 import AgentStatusLabel from './AgentStatusLabel.vue';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
@@ -125,7 +135,7 @@ const props = defineProps<{
   messages: Message[];
   /** All teams in the current spirit session (for parallel overview). */
   allTeams?: SpiritTeam[];
-  /** Max parallel teams config. */
+  /** Max parallel teams config from store (resolved by parent). */
   maxParallel?: number;
   /** Whether all teams have completed. */
   allTeamsCompleted?: boolean;
@@ -133,8 +143,8 @@ const props = defineProps<{
   synthesisResult?: SynthesisOutput | null;
   /** Team completion breakdown from spirit_teams_all_completed event. */
   completionStats?: CompletionStats | null;
-  /** Max concurrent teams from store (for ParallelTeamOverview). */
-  maxConcurrentTeams?: number;
+  /** Markdown render function injected by parent (avoids cross-domain import). */
+  renderMarkdown: (text: string) => string;
 }>();
 
 const emit = defineEmits<{
@@ -203,6 +213,9 @@ function formatTime(iso: string): string {
   padding: 2px 6px
   border-radius: 6px
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
+
+  &-name
+    max-width: 80px
 
   &--clickable
     cursor: pointer

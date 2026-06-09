@@ -22,10 +22,10 @@
     </div>
 
     <template v-if="panelMode === 'team' && spiritTeam">
-      <TaskExecutionPanel :team="spiritTeam" :messages="props.messages" :max-concurrent-teams="spiritMaxConcurrentTeams" :completion-stats="spiritCompletionStats" @return-to-spirit="emit('return-to-spirit')" @cancel-team="(teamId) => emit('cancel-team', teamId)" @resume-team="(teamId) => emit('resume-team', teamId)" @retry-team="(teamId) => emit('retry-team', teamId)" @select-member="(memberId) => emit('select-member', memberId)" @archive-team="(teamId) => emit('archive-team', teamId)" />
+      <TaskExecutionPanel :team="spiritTeam" :messages="props.messages" :max-parallel="spiritMaxConcurrentTeams" :completion-stats="spiritCompletionStats" :render-markdown="renderChatMarkdown" @return-to-spirit="emit('return-to-spirit')" @cancel-team="(teamId) => emit('cancel-team', teamId)" @resume-team="(teamId) => emit('resume-team', teamId)" @retry-team="(teamId) => emit('retry-team', teamId)" @select-member="(memberId) => emit('select-member', memberId)" @archive-team="(teamId) => emit('archive-team', teamId)" />
     </template>
     <template v-else-if="panelMode === 'member' && spiritTeam && activeMember">
-      <MemberReadOnlyPanel :member="activeMember" :team="spiritTeam" :messages="props.messages" :render-markdown="renderChatMarkdown" @return-to-team="emit('return-to-team')" />
+      <MemberReadOnlyPanel :member="activeMember" :team="spiritTeam" :messages="props.messages" :render-markdown="renderChatMarkdown" @return-to-team="emit('return-to-team')" @return-to-spirit="emit('return-to-spirit')" />
     </template>
     <template v-else>
       <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
@@ -124,7 +124,7 @@
           :label="expandAllActive ? t('chat.collapseAll', '折叠全部') : t('chat.expandAll', '展开全部')"
           class="text-caption"
           :style="{ color: 'var(--color-text-tertiary)' }"
-          @click="expandAllActive ? collapseAll() : expandAll()"
+          @click="expandAllActive ? handleCollapseAll() : handleExpandAll()"
         />
       </div>
       <div class="col row no-wrap chat-messages-area" style="min-height: 0">
@@ -259,7 +259,7 @@
 
 <script setup lang="ts">
 // Container: approved — orchestrates virtual scroll, TurnBlock grouping, scroll anchoring, and composable wiring
-import { computed, nextTick, onMounted, ref, toRef, watch } from 'vue';
+import { computed, nextTick, onMounted, provide, readonly, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { QVirtualScroll } from 'quasar';
 import ChatRunnerStatus from './ChatRunnerStatus.vue';
@@ -276,7 +276,7 @@ import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
-import type { EvolutionSuggestion } from '../../features/spirit/types';
+import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
 import { useChatTimeline, type TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import { CHAT_VIRTUAL_ROW_ESTIMATE, CHAT_VIRTUAL_SCROLL_THRESHOLD } from '../../features/chat/chatListVirtual';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
@@ -291,6 +291,7 @@ import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from 
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
+import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 
 type Option = { label: string; value: string; caption?: string };
 
@@ -347,15 +348,7 @@ const props = defineProps<{
   reasoningSidebarActive?: { messageId: string; reasoning: string; streaming: boolean } | null;
   spiritLoadingMessage?: ContextualMessage | null;
   /** Spirit status bar data. */
-  spiritStatusBar?: {
-    runningTeamCount: number;
-    interruptedTeamCount: number;
-    quotaUsed: number;
-    quotaMax: number;
-    tokenUsage?: { in: number; out: number } | null;
-    lastEvent?: { type: 'completed' | 'failed'; teamName: string } | null;
-    dqScore?: number | null;
-  } | null;
+  spiritStatusBar?: SpiritStatusBarData | null;
   /** Max concurrent teams from store (for TaskExecutionPanel). */
   spiritMaxConcurrentTeams?: number;
   /** Evolution suggestion from DQ analysis (for SynthesisResultCard). */
@@ -420,7 +413,33 @@ const { messageRow, teamMemberLanes, useTurnBlockMode, turnBlocks, timelineItems
   isTeamSession: props.isTeamSession,
 });
 
-const { collapsedBlockKeys, expandAllActive, isCollapsed: isBlockCollapsed, toggleBlock, expandAll, collapseAll, reset: resetAutoCollapse } = useAutoCollapse(turnBlocks);
+const {
+  collapsedBlockKeys,
+  expandAllActive,
+  isCollapsed: isBlockCollapsed,
+  toggleBlock,
+  expandAll,
+  collapseAll,
+  reset: resetAutoCollapse,
+} = useAutoCollapse(turnBlocks);
+
+// ── SP-FE-30: Provide/Inject global collapse control ──
+const expandAllSignal = ref(0);
+const collapseAllSignal = ref(0);
+provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
+  expandAllSignal: readonly(expandAllSignal),
+  collapseAllSignal: readonly(collapseAllSignal),
+});
+
+function handleExpandAll() {
+  expandAll();
+  expandAllSignal.value++;
+}
+
+function handleCollapseAll() {
+  collapseAll();
+  collapseAllSignal.value++;
+}
 
 const hasCollapsedBlocks = computed(() => collapsedBlockKeys.value.size > 0);
 
@@ -496,38 +515,33 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
-.ws-connected-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success);
-  opacity: 60%;
-}
+<style scoped lang="sass">
+.ws-connected-dot
+  display: inline-block
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  background: var(--color-success)
+  opacity: 60%
 
-.contextual-loading-bar {
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--glass-surface) 50%, transparent);
-  border-left: 3px solid var(--color-accent);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
+.contextual-loading-bar
+  padding: 6px 12px
+  border-radius: 8px
+  background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
+  border-left: 3px solid var(--color-accent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
-.spirit-breadcrumb {
-  border-bottom: 1px solid var(--glass-border);
-  background: var(--glass-surface);
-  min-height: 32px;
+.spirit-breadcrumb
+  border-bottom: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  min-height: 32px
 
-  &__item {
-    font-size: 12px;
-    padding: 2px 6px;
-  }
+  &__item
+    font-size: 12px
+    padding: 2px 6px
 
-  &__current {
-    color: var(--color-text-secondary);
-    max-width: 200px;
-  }
-}
+  &__current
+    color: var(--color-text-secondary)
+    max-width: 200px
 </style>

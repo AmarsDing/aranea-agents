@@ -118,7 +118,7 @@ func (m *memTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]bi
 
 func newTeamService() *service.TeamService {
 	repo := newMemTeamRepo()
-	return service.NewTeamService(biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop()), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	return service.NewTeamService(biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop()), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 }
 
 func TestTeamService_CreateListGetDelete(t *testing.T) {

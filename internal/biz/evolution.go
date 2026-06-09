@@ -208,7 +208,9 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 			}
 		}
 		if !applied && len(files) > 0 {
-			files[0].Body = s.Content
+			// No AGENTS*.md file found — refuse to apply rather than
+			// overwriting an unrelated file (SOUL.md, IDENTITY.md, etc.).
+			return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "no AGENTS*.md prompt file found; create one before applying prompt suggestions")
 		}
 		if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 			return EvolutionSuggestion{}, err

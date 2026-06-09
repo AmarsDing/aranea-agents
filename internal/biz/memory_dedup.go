@@ -11,8 +11,10 @@ import (
 // keyed by (normalized statement, scopeType, scopeID). This is the single
 // source of truth for fingerprint computation — the data layer must call
 // this function instead of maintaining a parallel implementation.
+// Uses NormalizeForDedup for statement normalization to ensure consistency
+// with cross-layer dedup comparisons.
 func FactFingerprint(statement, scopeType, scopeID string) string {
-	n := strings.ToLower(strings.TrimSpace(statement))
+	n := NormalizeForDedup(statement)
 	h := sha256.Sum256([]byte(n + "\x00" + strings.TrimSpace(scopeType) + "\x00" + strings.TrimSpace(scopeID)))
 	return fmt.Sprintf("%x", h[:])
 }

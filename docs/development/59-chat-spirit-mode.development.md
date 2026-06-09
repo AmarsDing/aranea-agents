@@ -1,6 +1,6 @@
 # M59: Chat 精灵模式 — 开发计划（M59+OBS+M60 合并版）
 
-> **版本**：2026-06-09 | **状态**：✅ P0/P0.5/OBS-P0/OBS-P1/M60-P1/M60-P2/M60-P4/P1 已完成 · 🔄 P1.5 规划中 · 📋 P2 规划中
+> **版本**：2026-06-09 | **状态**：✅ P0/P0.5/OBS-P0/OBS-P1/M60-P1/M60-P2/M60-P4/P1/P1.5 已完成 · 📋 P2 规划中
 > **需求**：[59-chat-spirit-mode.md](./59-chat-spirit-mode.md) · **设计**：[59-chat-spirit-mode.design.md](./59-chat-spirit-mode.design.md)
 
 ---
@@ -37,6 +37,7 @@ Chat 精灵模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 | Composable 脉冲 | `web/src/composables/chat/useStatusPulse.ts` | OBS-P1 |
 | Feature 可观测常量 | `web/src/features/spirit/observabilityConstants.ts` | OBS-P0 |
 | Feature 状态映射 | `web/src/features/spirit/spiritUi.ts` | OBS-P0 |
+| Feature 折叠控制 | `web/src/features/chat/executionCardHelpers.ts` | P1.5 |
 | 前端 Store | `web/src/stores/spirit/index.ts` | P0-P0.5 / M60-P1-P2 / OBS-P0-P1 |
 | 前端组件 | `web/src/components/spirit/` | P0-P1 / M60-P1-P2 / OBS-P0-P1 |
 | Proto | `api/kratos/session/v1/session.proto` | P0 |
@@ -301,19 +302,32 @@ Chat 精灵模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 ### Phase P1.5 — ChatExecutionCard 独立折叠增强
 
 > **目标**：5s 耗时守卫、折叠摘要增强、全局展开/折叠两层联动。
-> **状态**：📋 规划中
+> **状态**：✅ 已完成
 > **设计文档**：§6.8（权威） · [proposal](../../reports/2026-06-09-proposal-chat-execution-card-folding.md)（详细参考）
 > **分阶段交付**：SP-FE-27~29 可独立交付（Phase 1），SP-FE-30~31 为后续增强（Phase 2）
 
 | ID | 任务 | 影响域 | 验收 | 状态 |
 |----|------|--------|------|------|
-| SP-FE-27 | ChatExecutionCard 5s elapsed timer：running ≥5s 显示实时计时器，≥60s 警告色；`started_at` 为空时降级 `occurred_at` → `Date.now()`；`onBeforeUnmount` 清理 timer | `web/src/components/chat/ChatExecutionCard.vue` | OBS-08 验收1+2 | ❌ |
-| SP-FE-28 | ChatExecutionCard 折叠态摘要兜底：`event.summary` 为空时前端根据 `tool_name`+`arguments` 生成 | `web/src/components/chat/ChatExecutionCard.vue` | OBS-08 验收3 | ❌ |
-| SP-FE-29 | ToolStrip 折叠态摘要增强：显示工具类型分布（如"3 file_read · 2.5s"） | `web/src/components/chat/ToolStrip.vue` | OBS-08 验收4 | ❌ |
-| SP-FE-30 | Provide/Inject 全局控制：`ExecutionCollapseControl` 接口 + Signal；运行中工具不响应 collapseAll；Spirit 模式自动生效 | `web/src/features/chat/types.ts` + `ChatMessagePanel.vue` + `ChatExecutionCard.vue` | OBS-08 验收5-7 | ❌ |
-| SP-FE-31 | `ToolUseEvent.expanded` 死代码清理 | `web/src/features/chat/types.ts` | OBS-08 验收8 | ❌ |
+| SP-FE-27 | ChatExecutionCard 5s elapsed timer：running ≥5s 显示实时计时器，≥60s 警告色；`started_at` 为空时降级 `occurred_at` → `Date.now()`；`onBeforeUnmount` 清理 timer | `web/src/components/chat/ChatExecutionCard.vue` | OBS-08 验收1+2 | ✅ |
+| SP-FE-28 | ChatExecutionCard 折叠态摘要兜底：`event.summary` 为空时前端根据 `tool_name`+`arguments` 生成 | `web/src/components/chat/ChatExecutionCard.vue` + `web/src/features/chat/executionCardHelpers.ts` | OBS-08 验收3 | ✅ |
+| SP-FE-29 | ToolStrip 折叠态摘要增强：显示工具类型分布（如"3 file_read · 2.5s"） | `web/src/components/chat/ToolStrip.vue` | OBS-08 验收4 | ✅ |
+| SP-FE-30 | Provide/Inject 全局控制：`ExecutionCollapseControl` 接口 + Signal；运行中工具不响应 collapseAll；Spirit 模式自动生效 | `web/src/features/chat/executionCardHelpers.ts` + `ChatMessagePanel.vue` + `ChatExecutionCard.vue` | OBS-08 验收5-7 | ✅ |
+| SP-FE-31 | `ToolUseEvent.expanded` 死代码清理 | `web/src/features/chat/types.ts` + `envelopeToolCall.ts` | OBS-08 验收8 | ✅ |
 
-> **推迟到后续迭代**：ToolStrip `<details>` → `q-expansion-item` 统一折叠动画；`aria-expanded`/`aria-controls` 无障碍属性；虚拟滚动兼容验证
+> **推迟到后续迭代**：
+> - SP-FE-32：ToolStrip `<details>` → `q-expansion-item` 统一折叠动画（`web/src/components/chat/ToolStrip.vue`）
+> - SP-FE-33：ChatExecutionCard `aria-expanded` / `aria-controls` 无障碍属性（`web/src/components/chat/ChatExecutionCard.vue`）
+> - SP-FE-34：虚拟滚动兼容验证（确认回收/重建后 elapsed timer 和折叠状态正确恢复）
+
+### Phase P1.5-3 — Spirit 模式统一（自动生效）
+
+> **目标**：TaskExecutionPanel 中的 ChatExecutionCard 自动响应全局控制信号。
+> **状态**：✅ 已验证（无代码改动）
+> **说明**：由于 Provide/Inject 的作用域覆盖 ChatMessagePanel 下所有子组件，TaskExecutionPanel 中的 ChatExecutionCard 在 SP-FE-30 实现后自动 inject 控制信号，无需额外代码改动。此阶段仅做验证确认。
+
+| ID | 任务 | 影响域 | 验收 | 状态 |
+|----|------|--------|------|------|
+| SP-FE-30V | 验证 Spirit 模式（TaskExecutionPanel）中 ChatExecutionCard 响应全局展开/折叠信号 | 无代码改动，仅手动验证 | OBS-08 验收7 | ✅ |
 
 ---
 
@@ -542,11 +556,20 @@ Chat 精灵模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
-| 1 | SP-FE-27 | ChatExecutionCard 5s elapsed timer | ❌ |
-| 2 | SP-FE-28 | ChatExecutionCard 折叠态摘要兜底 | ❌ |
-| 3 | SP-FE-29 | ToolStrip 折叠态摘要增强 | ❌ |
-| 4 | SP-FE-30 | Provide/Inject 全局控制 | ❌ |
-| 5 | SP-FE-31 | ToolUseEvent.expanded 死代码清理 | ❌ |
+| 1 | SP-FE-27 | ChatExecutionCard 5s elapsed timer | ✅ |
+| 2 | SP-FE-28 | ChatExecutionCard 折叠态摘要兜底 | ✅ |
+| 3 | SP-FE-29 | ToolStrip 折叠态摘要增强 | ✅ |
+| 4 | SP-FE-30 | Provide/Inject 全局控制 | ✅ |
+| 5 | SP-FE-31 | ToolUseEvent.expanded 死代码清理 | ✅ |
+| 6 | SP-FE-30V | Spirit 模式 ChatExecutionCard 全局控制验证（无代码改动） | ✅ |
+
+**推迟项**：
+
+| 排序 | ID | 任务 | 说明 |
+|------|-----|------|------|
+| — | SP-FE-32 | ToolStrip `<details>` → `q-expansion-item` 统一折叠动画 | 后续迭代 |
+| — | SP-FE-33 | ChatExecutionCard `aria-expanded` / `aria-controls` 无障碍属性 | 后续迭代 |
+| — | SP-FE-34 | 虚拟滚动兼容验证 | 后续迭代 |
 
 ---
 
@@ -654,14 +677,14 @@ Chat 精灵模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 
 ### Phase P1.5
 
-- [ ] 工具运行 ≥5s 时显示实时计时器，≥60s 变为警告色（OBS-08 验收1）
-- [ ] `started_at` 为空时降级 `occurred_at` → `Date.now()`，始终启动计时器（OBS-08 验收2）
-- [ ] 折叠态摘要兜底：后端未提供 summary 时前端生成（OBS-08 验收3）
-- [ ] ToolStrip 折叠态显示工具类型分布（OBS-08 验收4）
-- [ ] 全局"展开全部/折叠全部"同时作用于 TurnBlock + ChatExecutionCard（OBS-08 验收5）
-- [ ] 运行中工具不受"折叠全部"影响（OBS-08 验收6）
-- [ ] Spirit 模式 ChatExecutionCard 同样响应全局控制（OBS-08 验收7）
-- [ ] ToolUseEvent.expanded 死代码清理（OBS-08 验收8）
+- [x] 工具运行 ≥5s 时显示实时计时器，≥60s 变为警告色（OBS-08 验收1）
+- [x] `started_at` 为空时降级 `occurred_at` → `Date.now()`，始终启动计时器（OBS-08 验收2）
+- [x] 折叠态摘要兜底：后端未提供 summary 时前端生成（OBS-08 验收3）
+- [x] ToolStrip 折叠态显示工具类型分布（OBS-08 验收4）
+- [x] 全局"展开全部/折叠全部"同时作用于 TurnBlock + ChatExecutionCard（OBS-08 验收5）
+- [x] 运行中工具不受"折叠全部"影响（OBS-08 验收6）
+- [x] Spirit 模式 ChatExecutionCard 同样响应全局控制（OBS-08 验收7）
+- [x] ToolUseEvent.expanded 死代码清理（OBS-08 验收8）
 
 ### Phase P2
 
@@ -808,8 +831,8 @@ Chat 精灵模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 | 编号 | 原因 |
 |------|------|
 | ~~TD-1~~ | ~~api.ts 双键名兼容需与后端对齐~~ ✅ 已清理为统一 camelCase |
-| TD-2 | ListSpiritTeams HTTP 端点未暴露（需后端新增 `/v1/spirit/{id}/teams` 路由） |
-| TD-3 | ArchiveTeam RPC 未定义（需后端 proto 定义） |
+| ~~TD-2~~ | ~~ListSpiritTeams HTTP 端点未暴露~~ ✅ SP-BE-24 已实现 Proto + Service + HTTP 路由 |
+| ~~TD-3~~ | ~~ArchiveTeam RPC 未定义~~ ✅ SP-BE-25 已实现 Proto + Service |
 | ~~TD-4~~ | ~~MemberReadOnlyPanel 仅有占位符~~ ✅ 已增强：执行统计 + assistant 消息展示 + renderMarkdown |
 | ~~TD-5~~ | ~~TeamMemberTreeNode 未实现~~ ✅ 已创建 TeamMemberTreeNode.vue + TeamTaskCard 集成 |
 | ~~TD-6~~ | ~~面包屑导航未实现~~ ✅ ChatMessagePanel 添加精灵 > 团队 > 成员面包屑 |
@@ -819,6 +842,90 @@ Chat 精灵模式：精灵为唯一对话入口，左侧列表重构为精灵 + 
 | ~~F-4~~ | ~~DQ Score 前端展示~~ ✅ SpiritStatusBar + SynthesisResultCard 展示 |
 | ~~F-5~~ | ~~验证门禁前端增强~~ ✅ DAGDiagramCard 验证节点状态渲染 |
 | L1-L9 | 轻微问题，后续迭代清理 |
+
+### 2026-06-09 审查修复记录
+
+> **修复范围**：死代码删除 + A2A/OpenAI 端点 Bug 修复 + 注释修正 + 前端类型安全增强
+
+| ID | 修复摘要 | 状态 |
+|----|---------|------|
+| REV-01 | 删除 `biz/spirit_mode.go` 死代码（SelectSpiritMode/ResolveSpiritMode 已被 TaskPlanner.Plan 替代） | ✅ |
+| REV-02 | 删除 `service/chat_orchestrator_spirit.go` 死代码别名层 | ✅ |
+| REV-03 | A2A 端点补齐 CustomTools 注入 + ToolResultGate/SubAgentService 字段 | ✅ |
+| REV-04 | OpenAI 兼容端点补齐 CustomTools 注入 + Organization/ToolResultGate/SubAgentService 字段 | ✅ |
+| REV-05 | `resolveVerificationGates` 注释修正 + TODO(debt) 标记 | ✅ |
+| REV-06 | `WriteDeliverablesToSession` 添加 TECH-DEBT 注释（ParallelConfigJSON 语义不匹配） | ✅ |
+| REV-07 | `chat_orchestrator_turn.go` + `cli_admin_tools.go` 注释更新（移除对已删除文件的引用） | ✅ |
+| REV-08 | 前端 `api.ts` 添加 isValidTeamStatus/isValidTeamMode 运行时校验 | ✅ |
+| REV-09 | 前端提取 `SpiritStatusBarData` 共享类型，消除 ChatMessagePanel 内联重复定义 | ✅ |
+| REV-10 | 前端 Store 中 isValidTeamStatus 改为从 types.ts 导入，消除重复定义 | ✅ |
+
+### 新增技术债（2026-06-09 审查发现）
+
+| 编号 | 描述 | 优先级 |
+|------|------|--------|
+| TD-11 | WriteDeliverablesToSession 使用 ParallelConfigJSON 存储交付物输出，语义不匹配（#B-03，已标记 TECH-DEBT） | P2 |
+| TD-12 | resolveVerificationGates 未实现 LinkedGraphID 查询路径 | P2 |
+| TD-13 | 废弃 Spirit 工具代码残留约 400 行（target: v0.4 移除） | P2 |
+| TD-14 | spiritSessionIDFromCtx 耦合 trpc-agent-go 运行时 API | P3 |
+| TD-15 | 借调逻辑 submitBorrowRequests 为 best-effort，无回调确认机制 | P3 |
+| TD-16 | 精灵 Prompt 决策规则（assess_complexity → plan_and_execute）无法 system-side 强制执行，纯 prompt 约束 | P3 |
+
+### 架构审查修复记录（2026-06-09）
+
+| 编号 | 修复内容 | 文件 |
+|------|----------|------|
+| FIX-01 | AutoArchiveCompletedTeams 添加调用方（HandleTeamTurnResult 末尾） | `internal/service/spirit_team.go` |
+| FIX-02 | AutoArchive 时间解析改为多格式尝试 + 兜底策略（不再静默跳过） | `internal/biz/spirit_team_usecase.go` |
+| FIX-03 | 前端进度展示改用 progressPct 直接渲染（修复进度永远 0% 问题） | `web/src/stores/spirit/index.ts` + `types.ts` + `api.ts` + `TaskExecutionPanel.vue` |
+| FIX-04 | cancel/resumeSpiritTeam 先解析 active run_id 再调 RPC | `web/src/features/spirit/api.ts` + `web/src/services/index.ts` |
+| FIX-05 | TaskExecutionPanel 移除 maxConcurrentTeams 双 prop，统一 maxParallel | `web/src/components/spirit/TaskExecutionPanel.vue` + `ChatMessagePanel.vue` |
+| FIX-06 | ResumeTeamRunExecution 添加 interrupted→running 状态转换 | `internal/service/team_resume.go` |
+| FIX-07 | resolveParallelConfig 精灵 Agent 不存在时改为 Error 级别日志 | `internal/biz/spirit_team_usecase.go` |
+| FIX-08 | ExtractTaskPattern 改为 hash+截断，避免不同任务前缀冲突 | `internal/biz/spirit_orchestration_cache.go` |
+
+### 架构决策记录（2026-06-09 审查）
+
+#### AD-01: Spirit 模式选择机制
+
+**决策**：删除 `biz/spirit_mode.go` 中的 `SelectSpiritMode` / `ResolveSpiritMode` 死代码。
+
+**原因**：
+- `SpiritTeamMode`（3 值：coordinator/swarm/direct）与 `OrchestrationStrategy`（5 值：direct/single_agent/parallel/dag/coordinator）类型系统冲突
+- 实际路由由 `TaskPlanner.Plan()`（`internal/agent/task_planner_impl.go`）执行，使用 6 维度加权评分 + LLM 混合方法
+- `ResolveSpiritMode` 从未被生产代码调用，是纯粹的死代码
+
+**影响**：如未来需要在 `plan_and_execute` 之前做预路由（如按用户权限/配额强制 direct 模式），应在 `TaskPlannerPort` 接口上增加 `PreRoute()` 方法，不要复活 `ResolveSpiritMode`。
+
+#### AD-02: A2A/OpenAI 端点 CustomTools 注入
+
+**决策**：为 A2A 和 OpenAI 兼容端点补齐 CustomTools 注入（spiritCustomTools / skillsButlerTools / memoryButlerTools / cliAdminTools）。
+
+**原因**：Spirit Agent 可通过 A2A（启用 A2A 卡片）或 OpenAI（配置 default_agent_key）端点被访问，缺少 CustomTools 会导致核心工具（plan_and_execute 等）静默不可用。
+
+**提示**：修改任何 Runner 构建路径时，必须确保 CustomTools 注入与 Chat 主流程一致。
+
+### 程序提示（2026-06-09 审查）
+
+#### 提示 1: 修改 Runner 构建路径时的检查清单
+
+当新增或修改任何 Runner 构建路径（Chat / A2A / OpenAI / Team）时，必须检查：
+
+1. CustomTools 注入是否完整（cliAdminTools + spiritCustomTools + skillsButlerTools + memoryButlerTools）
+2. `ToolResultGate` / `SubAgentService` / `Organization` 字段是否设置
+3. 与 `chat_orchestrator_turn.go` L583-595 的注入逻辑保持一致
+
+#### 提示 2: Spirit 事件发布完整性
+
+当前 15 种 Spirit EnvelopeType 中，5 种三阶段编排事件（SpiritPlanCreated / SpiritAllocationCreated / SpiritOrchestrationStarted / SpiritOrchestrationCheckpoint / SpiritOrchestrationInterrupted）由 `internal/agent/` 下的实现发布（task_planner_impl.go / agent_allocator_impl.go / task_orchestrator_impl.go），而非 Service 层。修改三阶段流程时，注意事件发布位置在 agent 层而非 service 层。
+
+#### 提示 3: 前端类型守卫使用
+
+`features/spirit/types.ts` 中提供了 `isValidTeamStatus` 和 `isValidTeamMode` 运行时类型守卫。所有从 WS/API 接收的状态值必须经过守卫校验后再断言为具体类型，不得直接 `as SpiritTeamStatus`。
+
+#### 提示 4: SpiritStatusBarData 共享类型
+
+`features/spirit/types.ts` 中定义了 `SpiritStatusBarData` 类型，`ChatMessagePanel.vue` 和 `SpiritStatusBar.vue` 应统一使用此类型，避免内联重复定义。
 
 ### P2 待实现（需后端配合）
 

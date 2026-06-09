@@ -221,6 +221,9 @@ export function createSpiritService() {
     getTeamDetail(teamId: string) {
       return kratosApi.get(`/v1/teams/${encodeURIComponent(teamId)}`);
     },
+    listTeamRuns(teamId: string) {
+      return kratosApi.get(`/v1/teams/${encodeURIComponent(teamId)}/runs?limit=1`);
+    },
     cancelTeamRun(teamRunId: string) {
       return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/cancel`);
     },

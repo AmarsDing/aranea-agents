@@ -438,7 +438,7 @@ func (s *stubL1AdminReader) ListL1TaskRows(_ context.Context, _ string, _ string
 	return s.taskRows, s.taskErr
 }
 
-func (s *stubL1AdminReader) ListL1FieldRows(_ context.Context, taskID string, _ bool) ([][]byte, error) {
+func (s *stubL1AdminReader) ListL1FieldRows(_ context.Context, taskID string, _ bool, _ ...string) ([][]byte, error) {
 	if s.fieldRows == nil {
 		return nil, nil
 	}

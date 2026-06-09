@@ -19,8 +19,6 @@ var (
 )
 
 const (
-	l4DecayAfter  = 30 * 24 * time.Hour
-	l4DecayFactor = 0.92
 	l4ConflictMeta = `{"source":"auto_memory","conflict":true}`
 	l4CascadeMeta  = `{"source":"auto_memory","cascade":true}`
 
@@ -91,14 +89,23 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 	}
 
 	// Extract name from English patterns first, then Chinese fallback.
-	name := ""
-	if m := l4NamePattern.FindStringSubmatch(text); len(m) > 1 {
-		name = strings.TrimSpace(m[1])
-	}
-	if name == "" {
-		if m := l4ChineseNamePattern.FindStringSubmatch(text); len(m) > 1 {
-			name = strings.TrimSpace(m[1])
+	// Collect all name matches so that multi-name expressions (e.g. "我叫张三，英文名 Tom")
+	// are captured. The first match becomes the primary person entity; additional
+	// matches are stored as alias entities linked to the anchor.
+	var nameMatches []string
+	for _, m := range l4NamePattern.FindAllStringSubmatch(text, -1) {
+		if v := strings.TrimSpace(m[1]); v != "" {
+			nameMatches = append(nameMatches, v)
 		}
+	}
+	for _, m := range l4ChineseNamePattern.FindAllStringSubmatch(text, -1) {
+		if v := strings.TrimSpace(m[1]); v != "" {
+			nameMatches = append(nameMatches, v)
+		}
+	}
+	name := ""
+	if len(nameMatches) > 0 {
+		name = nameMatches[0]
 	}
 	if name != "" {
 		nameNorm := strings.ToLower(name)
@@ -163,6 +170,38 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			}
 			written++
 		}
+		// Create alias entities for additional name matches (e.g. English name
+		// when the primary is Chinese, or vice versa).
+		for _, alias := range nameMatches[1:] {
+			aliasNorm := strings.ToLower(alias)
+			aliasID := fmt.Sprintf("l4-person-%s-%s", agentID, slugEntityName(alias))
+			if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
+				ID:             aliasID,
+				ScopeType:      "agent",
+				ScopeID:        agentID,
+				UserID:         userID,
+				EntityType:     "person",
+				Name:           alias,
+				NameNormalized: aliasNorm,
+				Description:    "Alias of " + name,
+				Importance:     l4PersonImportance,
+				Confidence:     l4PrefConfidence,
+				MetadataJSON:   `{"source":"auto_memory","alias_of":"` + name + `"}`,
+			}); err == nil {
+				if err := uc.repo.UpsertRelation(ctx, L4RelationWrite{
+					ScopeType:    "agent",
+					ScopeID:      agentID,
+					SourceID:     anchorID,
+					TargetID:     aliasID,
+					RelationType: "knows_as",
+					Weight:       0.8,
+					Confidence:   l4PrefConfidence,
+				}); err != nil {
+					uc.lg.Warn("L4Graph: failed to upsert alias relation", loggateway.StepID("memory.l4_fail"), loggateway.Str("alias_id", aliasID), loggateway.Err(err))
+				}
+				written++
+			}
+		}
 	}
 
 	// Extract preference from English patterns first, then Chinese fallback.
@@ -209,7 +248,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 }
 
 func (uc *L4GraphUsecase) RunDecay(ctx context.Context, agentID string) {
-	uc.runDecay(ctx, agentID)
+	uc.RunDecayWithConfig(ctx, agentID, DefaultL4DecayConfig())
 }
 
 func (uc *L4GraphUsecase) RunDecayWithConfig(ctx context.Context, agentID string, cfg L4DecayConfig) L4DecayResult {
@@ -285,16 +324,6 @@ func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personN
 		Importance:     l4AnchorImportance,
 		Confidence:     l4AnchorConfidence,
 		MetadataJSON:   meta,
-	}
-}
-
-func (uc *L4GraphUsecase) runDecay(ctx context.Context, agentID string) {
-	if uc == nil || uc.repo == nil {
-		return
-	}
-	cutoff := time.Now().UTC().Add(-l4DecayAfter).Format(time.RFC3339)
-	if _, err := uc.repo.ApplyConfidenceDecay(ctx, "agent", agentID, cutoff, l4DecayFactor); err != nil {
-		uc.lg.Warn("L4Graph: failed to apply confidence decay", loggateway.StepID("memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 	}
 }
 

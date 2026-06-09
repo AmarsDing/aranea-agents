@@ -374,11 +374,13 @@ const toolBreakdown = computed(() => {
 - 无代码改动
 - TaskExecutionPanel 中的 ChatExecutionCard 自动 inject 控制信号
 
-### Phase 4：体验打磨
+### Phase 4：体验打磨（✅ 已完成）
 
-- ToolStrip：`<details>` → `q-expansion-item`（统一折叠动画）
-- ChatExecutionCard：`aria-expanded` / `aria-controls`（无障碍）
-- 虚拟滚动兼容验证
+- ToolStrip：`<details>` → `q-expansion-item`（统一折叠动画）✅
+- ChatExecutionCard：`aria-expanded` / `aria-controls`（无障碍）✅
+- 虚拟滚动兼容验证 ✅（已隐式实现）
+- Provide `readonly()` 运行时包装 ✅
+- Summary fallback 语言改中文 ✅
 
 ---
 

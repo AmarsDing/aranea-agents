@@ -73,16 +73,38 @@ func (r *l1WorkingMemoryRepo) ListL1TaskRows(ctx context.Context, sessionID, age
 	return out, rows.Err()
 }
 
-func (r *l1WorkingMemoryRepo) ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool) ([][]byte, error) {
+func (r *l1WorkingMemoryRepo) ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool, requestingAgentID ...string) ([][]byte, error) {
+	return r.listL1FieldRows(ctx, taskID, includeInternal, false, requestingAgentID...)
+}
+
+// listL1FieldRowsInternal includes expired fields (used for snapshots/archives).
+func (r *l1WorkingMemoryRepo) listL1FieldRowsInternal(ctx context.Context, taskID string, includeInternal bool) ([][]byte, error) {
+	return r.listL1FieldRows(ctx, taskID, includeInternal, true)
+}
+
+func (r *l1WorkingMemoryRepo) listL1FieldRows(ctx context.Context, taskID string, includeInternal, includeExpired bool, requestingAgentID ...string) ([][]byte, error) {
 	if taskID == "" {
 		return nil, errors.New("task id is required")
 	}
 	q := sqlL1Field + ` WHERE task_id = ?`
+	args := []any{taskID}
 	if !includeInternal {
 		q += ` AND visibility != 'internal'`
 	}
+	// Filter out expired fields unless explicitly included (e.g. for snapshots).
+	if !includeExpired {
+		nowUTC := time.Now().UTC().Format(time.RFC3339)
+		q += ` AND (expires_at = '' OR expires_at > ?)`
+		args = append(args, nowUTC)
+	}
+	// Filter by requesting agent: if specified, only return fields owned by that agent
+	// or fields in tasks shared with that agent.
+	if len(requestingAgentID) > 0 && requestingAgentID[0] != "" {
+		q += ` AND (agent_id = ? OR agent_id = '' OR ? IN (SELECT value FROM json_each((SELECT shared_with_json FROM memory_l1_tasks WHERE id = ?))))`
+		args = append(args, requestingAgentID[0], requestingAgentID[0], taskID)
+	}
 	q += ` ORDER BY field_path ASC`
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, taskID)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +216,7 @@ func (r *l1WorkingMemoryRepo) buildL1TaskSnapshot(ctx context.Context, sessionID
 	if err != nil {
 		return nil, err
 	}
-	fieldsRaw, err := r.ListL1FieldRows(ctx, taskID, true)
+	fieldsRaw, err := r.listL1FieldRowsInternal(ctx, taskID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -312,6 +334,15 @@ func (r *l1WorkingMemoryRepo) archiveL1FieldHistory(ctx context.Context, taskID,
 
 // insertL1FieldRow executes the INSERT … ON CONFLICT DO UPDATE for a single field.
 func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, in biz.L1FieldInsert, fieldPath, fieldKind, visibility, now string) error {
+	// Calculate expires_at from ttl_seconds + creation time.
+	expiresAt := ""
+	if in.TTLSeconds > 0 {
+		t, _ := time.Parse(time.RFC3339Nano, now)
+		if t.IsZero() {
+			t = time.Now().UTC()
+		}
+		expiresAt = t.Add(time.Duration(in.TTLSeconds) * time.Second).Format(time.RFC3339Nano)
+	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_l1_fields (
 		id, task_id, session_id, agent_id, field_path, field_kind, visibility,
 		pin_to_prompt, is_required, value_text, value_json, value_ref, preview,
@@ -323,6 +354,7 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 		value_ref = excluded.value_ref, preview = excluded.preview,
 		token_estimate = excluded.token_estimate, visibility = excluded.visibility,
 		pin_to_prompt = excluded.pin_to_prompt, source = excluded.source,
+		ttl_seconds = excluded.ttl_seconds, expires_at = excluded.expires_at,
 		revision = revision + 1, updated_at = excluded.updated_at`,
 		id, strings.TrimSpace(in.TaskID),
 		strings.TrimSpace(in.SessionID),
@@ -336,7 +368,7 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 		in.TokenEstimate,
 		strings.TrimSpace(in.Source),
 		strings.TrimSpace(in.SourceRef),
-		in.TTLSeconds, "",
+		in.TTLSeconds, expiresAt,
 		1, "", 0, "{}", now, now,
 	)
 	return err
