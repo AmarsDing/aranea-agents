@@ -41,17 +41,17 @@ export function generateSummaryFallback(event: ToolUseEvent): string {
     case 'file_write': {
       const path = (args.path as string) || (args.file_name as string) || '';
       const filename = path.split('/').pop() || path;
-      return filename ? `Modify ${filename}` : '';
+      return filename ? `修改 ${filename}` : '';
     }
     case 'file_read': {
       const path = (args.path as string) || (args.file_name as string) || '';
       const filename = path.split('/').pop() || path;
-      return filename ? `Read ${filename}` : '';
+      return filename ? `读取 ${filename}` : '';
     }
     case 'grep':
     case 'search_files': {
       const pattern = (args.pattern as string) || (args.query as string) || '';
-      return pattern ? `Search "${truncate(pattern, 30)}"` : '';
+      return pattern ? `搜索 "${truncate(pattern, 30)}"` : '';
     }
     case 'bash': {
       const command = (args.command as string) || '';

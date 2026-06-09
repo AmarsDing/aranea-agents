@@ -7,6 +7,8 @@
     expand-separator
     header-class="chat-execution-card__header"
     :aria-label="headerAriaLabel"
+    :aria-expanded="expanded"
+    :aria-controls="bodyId"
     @update:model-value="onExpanded"
   >
     <template #header>
@@ -32,7 +34,7 @@
       </div>
     </template>
 
-    <div class="chat-execution-card__body">
+    <div :id="bodyId" class="chat-execution-card__body">
       <ChatDiffViewer
         v-if="isFileEdit"
         :file-name="diffFileName"
@@ -72,6 +74,11 @@
   </q-expansion-item>
 </template>
 
+<script lang="ts">
+/** Module-level counter for generating unique fallback IDs across ChatExecutionCard instances. */
+let _cardInstanceCounter = 0;
+</script>
+
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -83,10 +90,7 @@ import {
   resolveDisplayLabel,
 } from '../../features/chat/activityPresentation';
 import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
-import {
-  EXECUTION_COLLAPSE_CONTROL_KEY,
-  generateSummaryFallback,
-} from '../../features/chat/executionCardHelpers';
+import { EXECUTION_COLLAPSE_CONTROL_KEY, generateSummaryFallback } from '../../features/chat/executionCardHelpers';
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
 
@@ -112,6 +116,9 @@ defineEmits<{
 const { t } = useI18n();
 const $q = useQuasar();
 const expanded = ref(!props.initialCollapsed);
+/** Instance-level unique ID for aria-controls. Deterministic: prefers event.id, falls back to instance counter. */
+const _instanceSeq = ++_cardInstanceCounter;
+const bodyId = computed(() => `exec-card-body-${props.event.id ?? `gen-${_instanceSeq}`}`);
 /** Tracks whether the user manually expanded this card — prevents auto-collapse from overriding. */
 const userManuallyExpanded = ref(false);
 

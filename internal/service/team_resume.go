@@ -4,7 +4,6 @@ import (
 	"context"
 
 	v1 "aranea-agents/api/kratos/team/v1"
-	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -43,8 +42,8 @@ func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.Resume
 	}
 
 	return &v1.ResumeTeamRunExecutionResponse{
-		RunId:             run.ID,
-		GraphExecutionId:  execID,
-		Status:            exec.Status,
+		RunId:            run.ID,
+		GraphExecutionId: execID,
+		Status:           exec.Status,
 	}, nil
 }

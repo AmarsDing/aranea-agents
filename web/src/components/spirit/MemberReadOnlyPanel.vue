@@ -37,16 +37,16 @@
       <div class="text-caption text-weight-medium text-grey-7 q-mb-sm">执行统计</div>
       <div class="member-readonly-panel__stats row q-gutter-md">
         <div class="member-readonly-panel__stat">
-          <q-icon name="build" size="14px" class="q-mr-xs" style="color: var(--color-accent)" />
+          <q-icon name="build" size="14px" class="q-mr-xs member-readonly-panel__stat-icon--accent" />
           <span class="text-body2">{{ toolCallCount }}</span>
           <span class="text-caption text-grey-6 q-ml-xs">工具调用</span>
         </div>
         <div v-if="durationLabel" class="member-readonly-panel__stat">
-          <q-icon name="schedule" size="14px" class="q-mr-xs" style="color: var(--color-warning)" />
+          <q-icon name="schedule" size="14px" class="q-mr-xs member-readonly-panel__stat-icon--warning" />
           <span class="text-body2">{{ durationLabel }}</span>
         </div>
         <div v-if="tokenLabel" class="member-readonly-panel__stat">
-          <q-icon name="data_usage" size="14px" class="q-mr-xs" style="color: var(--color-text-tertiary)" />
+          <q-icon name="data_usage" size="14px" class="q-mr-xs member-readonly-panel__stat-icon--tertiary" />
           <span class="text-body2">{{ tokenLabel }}</span>
         </div>
       </div>
@@ -81,17 +81,10 @@
 
     <q-separator v-if="assistantMessages.length > 0" />
 
-    <!-- Back button -->
-    <div class="q-pa-md">
-      <q-btn
-        flat
-        dense
-        no-caps
-        icon="arrow_back"
-        label="返回团队"
-        color="accent"
-        @click="emit('return-to-team')"
-      />
+    <!-- Back buttons -->
+    <div class="q-pa-md row items-center q-gutter-sm">
+      <q-btn flat dense no-caps icon="arrow_back" label="返回团队" color="accent" @click="emit('return-to-team')" />
+      <q-btn flat dense no-caps icon="auto_awesome" label="返回精灵" color="accent" @click="emit('return-to-spirit')" />
     </div>
   </div>
 </template>
@@ -113,6 +106,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'return-to-team': [];
+  'return-to-spirit': [];
 }>();
 
 const statusLabel = computed(() => spiritMemberStatusToLabel(props.member.status));
@@ -125,7 +119,7 @@ const memberMessages = computed<ToolUseEvent[]>(() => {
     .filter((m) => {
       const evt = m.tool_event as ToolUseEvent;
       // Filter to only show this member's tool events
-      return evt.agentKey === props.member.agentKey || evt.agentId === props.member.agentId;
+      return evt.agent_key === props.member.agentKey || evt.agent_id === props.member.agentId;
     })
     .map((m) => m.tool_event as ToolUseEvent);
 });
@@ -170,6 +164,15 @@ function isCompleted(event: ToolUseEvent): boolean {
   &__stat
     display: flex
     align-items: center
+
+  &__stat-icon--accent
+    color: var(--color-accent)
+
+  &__stat-icon--warning
+    color: var(--color-warning)
+
+  &__stat-icon--tertiary
+    color: var(--color-text-tertiary)
 
   &__messages
     overflow-y: auto

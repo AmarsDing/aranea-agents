@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewMemoryJobQueue_DefaultDebounce(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	if q.debounce != 30*time.Second {
 		t.Fatalf("expected 30s default debounce, got %v", q.debounce)
@@ -18,7 +19,7 @@ func TestNewMemoryJobQueue_DefaultDebounce(t *testing.T) {
 }
 
 func TestNewMemoryJobQueue_CustomDebounce(t *testing.T) {
-	q := NewMemoryJobQueue(4, 5*time.Second, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 5*time.Second, loggateway.NewNoop())
 	defer q.Close()
 	if q.debounce != 5*time.Second {
 		t.Fatalf("expected 5s debounce, got %v", q.debounce)
@@ -26,7 +27,7 @@ func TestNewMemoryJobQueue_CustomDebounce(t *testing.T) {
 }
 
 func TestMemoryJobQueue_EnqueueHighPriority(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	q.Enqueue(AutoMemoryJobRequest{
 		AppName:    "app1",
@@ -45,7 +46,7 @@ func TestMemoryJobQueue_EnqueueHighPriority(t *testing.T) {
 }
 
 func TestMemoryJobQueue_EnqueueLowPriority(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	q.Enqueue(AutoMemoryJobRequest{
 		AppName:    "app2",
@@ -64,7 +65,7 @@ func TestMemoryJobQueue_EnqueueLowPriority(t *testing.T) {
 }
 
 func TestMemoryJobQueue_EnqueueNormalPriority(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	q.Enqueue(AutoMemoryJobRequest{
 		AppName:    "app3",
@@ -83,7 +84,7 @@ func TestMemoryJobQueue_EnqueueNormalPriority(t *testing.T) {
 }
 
 func TestMemoryJobQueue_DebounceNormal(t *testing.T) {
-	q := NewMemoryJobQueue(4, 10*time.Second, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 10*time.Second, loggateway.NewNoop())
 	defer q.Close()
 	q.Enqueue(AutoMemoryJobRequest{
 		AppName:    "app",
@@ -105,7 +106,7 @@ func TestMemoryJobQueue_DebounceNormal(t *testing.T) {
 }
 
 func TestMemoryJobQueue_AckDone(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	r := AutoMemoryJobRequest{
 		AppName:    "app",
@@ -125,7 +126,7 @@ func TestMemoryJobQueue_AckDone(t *testing.T) {
 }
 
 func TestMemoryJobQueue_AckDone_NonNormal(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	r := AutoMemoryJobRequest{Priority: MemoryJobPriorityHigh}
 	q.AckDone(r)
@@ -186,7 +187,7 @@ func TestTenantID(t *testing.T) {
 }
 
 func TestNewAutoMemoryEnqueuer(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	fn := NewAutoMemoryEnqueuer(q)
 	fn("app1", "sess1", time.Now())
@@ -206,7 +207,7 @@ func TestNewAutoMemoryEnqueuer_Nil(t *testing.T) {
 }
 
 func TestNewFeedbackMemoryEnqueuer(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	fn := NewFeedbackMemoryEnqueuer(q)
 	fn("sess1", "msg1", "positive", "great", time.Now())
@@ -258,7 +259,7 @@ func TestResolveMemoryToolSearchLimits_OptsMax(t *testing.T) {
 }
 
 func TestAutoMemoryJobRequest_EnqueuedAtDefault(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	r := AutoMemoryJobRequest{
 		AppName:   "app",
@@ -277,10 +278,10 @@ func TestAutoMemoryJobRequest_EnqueuedAtDefault(t *testing.T) {
 }
 
 func TestMemoryJobQueue_QueueLaneStats(t *testing.T) {
-	q := NewMemoryJobQueue(4, 0, loggateway.NewNoop())
+	q := NewMemoryJobQueue((*conf.Runtime)(nil), 4, 0, loggateway.NewNoop())
 	defer q.Close()
 	hl, nl, ll, hc, nc, lc, _, _ := q.QueueLaneStats()
-	if hc != memQueueHighCap || nc != memQueueNormalCap || lc != memQueueLowCap {
+	if hc != 64 || nc != 256 || lc != 128 {
 		t.Fatalf("caps: high=%d normal=%d low=%d", hc, nc, lc)
 	}
 	if hl != 0 || nl != 0 || ll != 0 {

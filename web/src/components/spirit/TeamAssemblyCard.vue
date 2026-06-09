@@ -16,11 +16,11 @@
 
     <div v-if="members.length > 0" class="team-assembly-card__members q-mt-sm">
       <div class="row items-center q-gutter-xs">
-        <q-avatar v-for="member in members.slice(0, 5)" :key="member.agentId" size="24px">
+        <q-avatar v-for="member in members.slice(0, 4)" :key="member.agentId" size="24px">
           <img v-if="member.avatarUrl" :src="member.avatarUrl" :alt="member.displayName" />
           <q-icon v-else name="person" size="14px" color="grey-6" />
         </q-avatar>
-        <span v-if="members.length > 5" class="text-caption text-grey-6"> +{{ members.length - 5 }} </span>
+        <span v-if="members.length > 4" class="text-caption text-grey-6"> +{{ members.length - 4 }} </span>
       </div>
       <div class="text-caption text-grey-6 q-mt-xs">
         {{ members.map((m) => m.displayName).join(' · ') }}

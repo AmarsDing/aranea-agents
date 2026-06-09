@@ -31,6 +31,7 @@ type SpiritTeamController interface {
 	ScheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam Team) []DependentTeamAction
 	CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult
 	GetParallelConfig(ctx context.Context, spiritSessionID string) ParallelConfig
+	AutoArchiveCompletedTeams(ctx context.Context, spiritSessionID string)
 }
 
 // TimeoutHandler is called when a team times out. Implemented by the service
@@ -207,7 +208,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	}
 
 	// Register team timeout callback if configured.
-	u.registerTeamTimeout(cfg, result.Team.ID)
+	u.registerTeamTimeout(ctx, cfg, result.Team.ID)
 
 	// Submit borrow requests for cross-department members (DL-09).
 	// These are processed outside the transaction to avoid long-held locks.
@@ -244,18 +245,20 @@ func (u *SpiritTeamUsecase) submitBorrowRequests(ctx context.Context, teamID, ho
 	}
 }
 
-func (u *SpiritTeamUsecase) registerTeamTimeout(cfg ParallelConfig, teamID string) {
+func (u *SpiritTeamUsecase) registerTeamTimeout(ctx context.Context, cfg ParallelConfig, teamID string) {
 	if cfg.TeamTimeoutSeconds <= 0 {
 		return
 	}
+	// Use WithoutCancel to preserve trace/log context while detaching from request lifecycle.
+	bgCtx := context.WithoutCancel(ctx)
 	timer := time.AfterFunc(cfg.TeamTimeout(), func() {
 		// If CancelTimeoutTimer already removed this entry, the team completed
 		// normally and we should not interfere.
 		if _, loaded := u.timeoutTimers.LoadAndDelete(teamID); !loaded {
 			return
 		}
-		safego.Go(context.Background(), "spirit-team-timeout", func() {
-			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), cfg.TimeoutHandlerDBTimeout())
+		safego.Go(bgCtx, "spirit-team-timeout", func() {
+			timeoutCtx, timeoutCancel := context.WithTimeout(bgCtx, cfg.TimeoutHandlerDBTimeout())
 			defer timeoutCancel()
 			team, err := u.teamUC.Get(timeoutCtx, teamID)
 			if err != nil {

@@ -19,13 +19,15 @@
         <div class="team-task-card__name ellipsis">{{ team.teamName }}</div>
         <div class="team-task-card__summary ellipsis">
           <span :class="`team-task-card__status-text--${teamStatusColor}`">{{ teamStatusText }}</span>
-          <span v-if="team.taskSummary" class="q-ml-xs">· {{ team.taskSummary }}</span>
+          <span v-if="durationText" class="q-ml-xs">· {{ durationText }}</span>
+          <span v-else-if="team.taskSummary" class="q-ml-xs">· {{ team.taskSummary }}</span>
         </div>
       </div>
-      <span
-        class="team-task-card__status-dot"
-        :class="`team-task-card__status-dot--${teamStatusColor}`"
-      />
+      <div v-if="failedSummary" class="team-task-card__error">
+        <q-icon name="error_outline" size="12px" class="q-mr-xs" />
+        <span class="ellipsis">{{ failedSummary }}</span>
+      </div>
+      <span class="team-task-card__status-dot" :class="`team-task-card__status-dot--${teamStatusColor}`" />
       <q-icon
         name="expand_more"
         size="16px"
@@ -39,7 +41,7 @@
       <div class="row items-center q-gutter-xs q-mb-xs">
         <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
         <AgentStatusLabel :label="teamStatusLabel" />
-        <q-chip v-if="team.mode" dense size="sm" outline :label="modeLabel" class="team-task-card__mode" />
+        <OrchestrationModeBadge v-if="team.mode" :topology="topologyFromMode" :reason="team.topologyReason" />
       </div>
 
       <div v-if="team.memberAvatars.length > 0" class="team-task-card__avatars row items-center q-gutter-xs q-mb-xs">
@@ -52,15 +54,21 @@
         </span>
       </div>
 
-      <div v-if="team.totalSteps > 0" class="team-task-card__progress">
+      <div v-if="team.progressPct > 0 || team.totalSteps > 0" class="team-task-card__progress">
         <q-linear-progress
-          :value="team.completedSteps / team.totalSteps"
+          :value="team.progressPct > 0 ? team.progressPct / 100 : team.completedSteps / team.totalSteps"
           size="4px"
           rounded
           color="accent"
           class="q-mt-xs"
         />
-        <div class="text-caption text-grey-6 q-mt-xs">{{ team.completedSteps }} / {{ team.totalSteps }} 步骤</div>
+        <div class="text-caption text-grey-6 q-mt-xs">
+          {{
+            team.progressPct > 0
+              ? `${Math.round(team.progressPct)}%`
+              : `${team.completedSteps} / ${team.totalSteps} 步骤`
+          }}
+        </div>
       </div>
 
       <div v-if="team.dependsOn.length > 0" class="text-caption text-grey-6 q-mt-xs">
@@ -88,9 +96,16 @@
 import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import AgentStatusLabel from './AgentStatusLabel.vue';
+import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
 import TeamMemberTreeNode from './TeamMemberTreeNode.vue';
 import type { SpiritTeam } from '../../features/spirit/types';
-import { mapSpiritStatusToSession, spiritModeLabel, spiritTeamStatusToLabel, STATUS_LABEL_CONFIG } from '../../features/spirit/spiritUi';
+import type { TopologyType } from '../../features/spirit/types';
+import {
+  mapSpiritStatusToSession,
+  spiritTeamStatusToLabel,
+  STATUS_LABEL_CONFIG,
+  formatDuration,
+} from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -106,13 +121,29 @@ defineEmits<{
 
 const mappedStatus = computed(() => mapSpiritStatusToSession(props.team.status));
 
-const modeLabel = computed(() => spiritModeLabel(props.team.mode));
+/** Map SpiritTeamMode to TopologyType for OrchestrationModeBadge. */
+const topologyFromMode = computed<TopologyType>(() => {
+  const mode = props.team.mode;
+  if (mode === 'coordinator' || mode === 'sequential' || mode === 'parallel') return mode;
+  if (mode === 'critic_loop') return 'sequential';
+  if (mode === 'swarm' || mode === 'adaptive') return 'hybrid';
+  return 'coordinator';
+});
 
 const teamStatusLabel = computed(() => spiritTeamStatusToLabel(props.team.status));
 
 const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.dotColor ?? 'grey');
 
 const teamStatusText = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.text ?? props.team.status);
+
+/** Show duration in sidebar when available (running/completed/failed). */
+const durationText = computed(() => formatDuration(props.team.durationMs));
+
+/** Show error summary when team failed. */
+const failedSummary = computed(() => {
+  if (props.team.status !== 'failed') return '';
+  return props.team.interruptReason || '执行失败';
+});
 </script>
 
 <style scoped lang="sass">
@@ -180,9 +211,6 @@ const teamStatusText = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]
   padding-top: var(--space-2)
   border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
 
-.team-task-card__mode
-  font-size: var(--text-xs)
-
 .team-task-card__avatars
   flex-wrap: nowrap
 
@@ -220,4 +248,12 @@ const teamStatusText = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]
 
 .team-task-card__shared-agent
   color: var(--color-warning)
+
+.team-task-card__error
+  display: flex
+  align-items: center
+  margin-top: 2px
+  font-size: var(--text-xs)
+  color: var(--color-danger)
+  max-width: 100%
 </style>

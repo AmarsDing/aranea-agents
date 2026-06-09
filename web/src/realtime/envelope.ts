@@ -49,6 +49,8 @@ export type EnvelopeType =
   | 'spirit_team_assembled'
   | 'spirit_team_completed'
   | 'spirit_team_failed'
+  | 'spirit_team_cancelled'
+  | 'spirit_team_interrupted'
   | 'spirit_team_progress'
   | 'spirit_teams_all_completed'
   | 'spirit_synthesis_completed'

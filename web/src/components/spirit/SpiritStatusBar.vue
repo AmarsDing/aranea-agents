@@ -21,6 +21,13 @@
       <div v-if="quotaMax > 0" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="bar_chart" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
         <span>{{ quotaUsed }}/{{ quotaMax }} 配额</span>
+        <q-linear-progress
+          :value="quotaUsed / quotaMax"
+          size="3px"
+          rounded
+          :color="quotaColor"
+          class="spirit-status-bar__quota-bar"
+        />
       </div>
       <div v-if="tokenUsage" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="data_usage" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
@@ -90,6 +97,12 @@ const complexityColor = computed(() => {
 });
 
 const dqScoreColor = computed(() => getDqScoreColor(props.dqScore));
+
+const quotaColor = computed(() => {
+  if (props.quotaUsed >= props.quotaMax) return 'negative';
+  if (props.quotaUsed >= props.quotaMax * 0.8) return 'warning';
+  return 'accent';
+});
 </script>
 
 <style scoped lang="sass">
@@ -131,4 +144,8 @@ const dqScoreColor = computed(() => getDqScoreColor(props.dqScore));
 .spirit-status-bar__item--hide-sm
   @media (max-width: 600px)
     display: none
+
+.spirit-status-bar__quota-bar
+  width: 32px
+  flex-shrink: 0
 </style>

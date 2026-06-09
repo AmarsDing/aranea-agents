@@ -5,7 +5,7 @@
       dense
       :icon="icon"
       color="primary"
-      :aria-label="ariaLabel"
+      v-bind="$attrs"
       class="chat-side__toggle-btn shadow-2"
       @click="$emit('toggle')"
     />
@@ -13,10 +13,11 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ inheritAttrs: false });
+
 defineProps<{
   open: boolean;
   icon: string;
-  ariaLabel: string;
 }>();
 
 defineEmits<{

@@ -76,10 +76,16 @@
       <q-linear-progress :value="progressValue" size="3px" rounded :color="progressColor" />
       <div class="row items-center justify-between q-mt-xs">
         <span class="text-caption text-grey-6"> {{ team.completedSteps }} / {{ team.totalSteps }} 步骤 </span>
-        <span v-if="durationText" class="text-caption text-grey-6">
-          {{ durationText }}
+        <span class="text-caption text-grey-6">
+          <template v-if="etaText">预计 {{ etaText }}</template>
+          <template v-else-if="durationText">{{ durationText }}</template>
         </span>
       </div>
+    </div>
+
+    <div v-if="failedSummary" class="team-progress-card__error q-mt-xs">
+      <q-icon name="error_outline" size="12px" class="q-mr-xs" />
+      <span class="text-caption ellipsis">{{ failedSummary }}</span>
     </div>
 
     <div v-if="team.memberAvatars.length > 0" class="team-progress-card__avatars row items-center q-gutter-xs q-mt-xs">
@@ -98,6 +104,7 @@
 import { computed } from 'vue';
 import type { SpiritTeam, TopologyType } from '../../features/spirit/types';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
+import { formatDuration } from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -161,12 +168,22 @@ const progressColor = computed(() => {
   return 'accent';
 });
 
-const durationText = computed(() => {
-  if (!props.team.durationMs) return '';
-  const seconds = Math.floor(props.team.durationMs / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${seconds % 60}s`;
+const durationText = computed(() => formatDuration(props.team.durationMs));
+
+/** ETA: estimate remaining time based on completed steps and elapsed duration. */
+const etaText = computed(() => {
+  const { completedSteps, totalSteps, durationMs } = props.team;
+  if (props.team.status !== 'running' || completedSteps <= 0 || totalSteps <= 0 || completedSteps >= totalSteps) return '';
+  if (durationMs <= 0) return '';
+  const msPerStep = durationMs / completedSteps;
+  const remainingMs = Math.round(msPerStep * (totalSteps - completedSteps));
+  return formatDuration(remainingMs);
+});
+
+/** Show error summary when team failed. */
+const failedSummary = computed(() => {
+  if (props.team.status !== 'failed') return '';
+  return props.team.interruptReason || '执行失败';
 });
 </script>
 
@@ -250,6 +267,15 @@ const durationText = computed(() => {
 
 .team-progress-card__progress
   margin-left: 32px
+
+.team-progress-card__error
+  display: flex
+  align-items: center
+  margin-left: 32px
+  padding: 2px 6px
+  border-radius: 4px
+  color: var(--color-danger)
+  background: color-mix(in srgb, var(--color-danger) 6%, transparent)
 
 .team-progress-card__avatars
   margin-left: 32px

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -28,7 +29,7 @@ func (m *memStepRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ i
 func TestActivityStepFlusher_BatchFlush(t *testing.T) {
 	t.Setenv("ARANEA_OBS_PERSIST", "1")
 	repo := &memStepRepo{}
-	flusher := NewActivityStepFlusher(repo, "run-1", "gex-1", loggateway.NewNoop())
+	flusher := NewActivityStepFlusher((*conf.Runtime)(nil), repo, "run-1", "gex-1", loggateway.NewNoop())
 	if flusher == nil {
 		t.Fatal("expected flusher")
 	}

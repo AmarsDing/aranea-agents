@@ -1,12 +1,19 @@
 <template>
-  <details class="turn-tool-strip" :open="expanded">
-    <summary class="turn-tool-strip__summary" :aria-label="summaryAria">
+  <q-expansion-item
+    v-model="expanded"
+    class="turn-tool-strip"
+    dense
+    expand-separator
+    header-class="turn-tool-strip__header"
+    :aria-label="summaryAria"
+  >
+    <template #header>
       <q-icon name="build_circle" size="16px" class="turn-tool-strip__icon" />
       <span class="turn-tool-strip__text">{{ summaryText }}</span>
       <q-badge v-if="summary.failed > 0" color="negative" rounded class="q-ml-xs">
         {{ summary.failed }}
       </q-badge>
-    </summary>
+    </template>
     <div class="turn-tool-strip__details">
       <ChatMessageRow
         v-for="(tool, idx) in tools"
@@ -21,7 +28,7 @@
         @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
       />
     </div>
-  </details>
+  </q-expansion-item>
 </template>
 
 <script setup lang="ts">
