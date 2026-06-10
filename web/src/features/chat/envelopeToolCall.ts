@@ -96,7 +96,6 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
     agent_id: tc.agent_id || '',
     agent_key: tc.agent_key || env.author || '',
     agent_name: tc.agent_name || env.author || 'Agent',
-    agent_icon: '',
     tool_name: toolName,
     tool_label: tc.display_label || tc.name,
     arguments: args,

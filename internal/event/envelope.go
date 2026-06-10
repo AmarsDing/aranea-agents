@@ -72,6 +72,7 @@ const (
 	EnvelopeTypeSpiritOrchestrationCheckpoint = contract.EnvelopeTypeSpiritOrchestrationCheckpoint
 	EnvelopeTypeSpiritOrchestrationInterrupted = contract.EnvelopeTypeSpiritOrchestrationInterrupted
 	EnvelopeTypeMetricsUpdated              = contract.EnvelopeTypeMetricsUpdated
+	EnvelopeTypeExecutionProgress           = contract.EnvelopeTypeExecutionProgress
 	EnvelopeTypeButlerOrchestrationStarted  = contract.EnvelopeTypeButlerOrchestrationStarted
 	EnvelopeTypeButlerOrchestrationCompleted = contract.EnvelopeTypeButlerOrchestrationCompleted
 	EnvelopeTypeButlerOrchestrationFailed   = contract.EnvelopeTypeButlerOrchestrationFailed

@@ -834,6 +834,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	})
 	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
+	// P0 (proposal-execution-progress-inline): publish a chat-visible progress
+	// envelope so the AgentTreeTimeline can show "调用语言模型…" during the
+	// 3-15s wait. Independent of flow_log which still goes to monitor bus.
+	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "start", "正在调用语言模型", "orchestration",
+		event.P("run_id", runID), event.P("provider", prov), event.P("model", mod))
 	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始构建 userMessage + 调用 LLM",
 		loggateway.StepID("chat.llm_invoke_start"),
 		loggateway.Any("provider", prov),
@@ -862,6 +867,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		turnErr = err
 		turnErrMsg = err.Error()
 		emitter.LogError("chat.llm.invoke", "语言模型调用失败", event.P("error", err.Error()))
+		// P0: surface LLM failure to the chat timeline.
+		emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "error", "语言模型调用失败", "orchestration",
+			event.P("run_id", runID), event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
 		o.setRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrLLMCallFailed, err.Error())
@@ -870,6 +878,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, te
 	}
 	emitter.LogDone("chat.llm.invoke", "模型已返回，开始处理输出流")
+	// P0: surface LLM completion to the chat timeline with measured duration.
+	// NOTE: provider/model are intentionally NOT re-emitted on done — the
+	// start envelope already carries them, and re-emitting would just add
+	// bandwidth without giving the frontend new information. The S10
+	// TestEmitProgress_OrchestratorCallsitePattern contract guards this.
+	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "done", "语言模型已返回", "orchestration",
+		event.P("run_id", runID))
 
 	contextWin := o.resolveContextWindowTokens(ctx, sess, ag, prov, mod)
 	projectMeta := chatagent.ProjectMeta{

@@ -710,9 +710,13 @@ func (m *Model) convertMessageContent(
 			// the FunctionResponse.Response field is always a valid JSON object.
 			result = map[string]any{"output": msg.Content}
 		}
+		toolName := msg.ToolName
+		if toolName == "" {
+			log.Warnf("gemini: tool result message has empty ToolName, tool_call_id=%s", msg.ToolID)
+		}
 		part := &genai.Part{
 			FunctionResponse: &genai.FunctionResponse{
-				Name:     msg.ToolName,
+				Name:     toolName,
 				Response: result,
 			},
 		}
@@ -755,7 +759,7 @@ func (m *Model) convertTools(tools map[string]tool.Tool) []*genai.Tool {
 		decl := t.Declaration()
 		funcDeclaration := &genai.FunctionDeclaration{
 			Description: decl.Description,
-			Name:        decl.Name,
+			Name:        tool.SanitizeToolName(decl.Name),
 		}
 		if decl.InputSchema != nil {
 			// Avoid sending `"parametersJsonSchema": null` to Gemini when a tool has no input schema.

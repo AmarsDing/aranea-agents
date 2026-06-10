@@ -66,6 +66,7 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		EnvelopeTypeSkillEvolutionProposed,
 		EnvelopeTypeMonitorAutoHealed,
 		EnvelopeTypeMonitorSelfCheckCompleted,
+		EnvelopeTypeExecutionProgress,
 	}
 
 	seen := make(map[string]string, len(allTypes))
@@ -77,7 +78,7 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		seen[v] = string(et)
 	}
 
-	expected := 58 // total number of EnvelopeType constants
+	expected := 59 // total number of EnvelopeType constants
 	if len(allTypes) != expected {
 		t.Errorf("expected %d EnvelopeType constants, got %d — update this test when adding new types", expected, len(allTypes))
 	}

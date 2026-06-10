@@ -3,11 +3,19 @@ import type { ActivityKind, ToolUseEvent } from './types';
 const builtinLabels: Record<string, string> = {
   read_file: '读取文件',
   save_file: '保存文件',
+  file_read_file: '读取文件',
+  file_edit: '编辑文件',
+  file_write: '写入文件',
   exec_command: '执行命令',
+  cli_admin_agent_get: '获取 Agent',
+  todo_write: '写入待办',
   skill_load: '加载 Skill',
   skill_run: '运行 Skill',
   mcp_call: 'MCP 调用',
   knowledge_search: '知识库检索',
+  grep: '搜索代码',
+  search_files: '搜索文件',
+  bash: '执行命令',
 };
 
 const kindIcons: Record<ActivityKind, string> = {
@@ -42,7 +50,7 @@ export function classifyActivityKind(toolName: string): ActivityKind {
   ) {
     return 'mcp';
   }
-  if (['transfer_to_agent', 'spawn_subagent', 'call_agent'].includes(name)) return 'subagent';
+  if (['transfer_to_agent', 'spawn_subagent', 'call_agent', 'subagents_spawn'].includes(name)) return 'subagent';
   if (['load_memory', 'preload_memory'].includes(name) || name.startsWith('memory_')) return 'memory';
   if (name === 'knowledge_search') return 'knowledge';
   if (name === 'await_user_reply') return 'session';

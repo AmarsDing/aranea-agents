@@ -58,7 +58,7 @@
 
 **问题**：工具卡片运行时无实时耗时（长任务无法判断是否卡死）、折叠态摘要信息不足（后端不总是提供 summary）、全局展开/折叠仅作用于 TurnBlock 不作用于 ChatExecutionCard、Spirit 模式折叠体验割裂。
 
-**设计**：`docs/development/59-chat-spirit-mode.design.md` §6.8 | 详细参考：`docs/reports/2026-06-09-proposal-chat-execution-card-folding.md`
+**设计**：`docs/development/59-chat-ui-optimization.design.md` §6.4.7（OBS-08） | 详细参考：`docs/reports/2026-06-09-proposal-chat-execution-card-folding.md`
 
 ### SP-FE-27: 5s Elapsed Timer
 

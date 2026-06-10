@@ -1076,15 +1076,23 @@ func convertTools(tools map[string]tool.Tool) []anthropic.ToolUnionParam {
 	var result []anthropic.ToolUnionParam
 	for _, t := range toolorder.SortedTools(tools) {
 		declaration := t.Declaration()
+		inputSchema := anthropic.ToolInputSchemaParam{
+			Type: constant.Object("object"),
+		}
+		if declaration.InputSchema != nil {
+			inputSchema.Type = constant.Object(declaration.InputSchema.Type)
+			if declaration.InputSchema.Properties != nil {
+				inputSchema.Properties = declaration.InputSchema.Properties
+			}
+			if len(declaration.InputSchema.Required) > 0 {
+				inputSchema.Required = declaration.InputSchema.Required
+			}
+		}
 		result = append(result, anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{
-				Name:        declaration.Name,
+				Name:        tool.SanitizeToolName(declaration.Name),
 				Description: anthropic.String(buildToolDescription(declaration)),
-				InputSchema: anthropic.ToolInputSchemaParam{
-					Type:       constant.Object(declaration.InputSchema.Type),
-					Properties: declaration.InputSchema.Properties,
-					Required:   declaration.InputSchema.Required,
-				},
+				InputSchema: inputSchema,
 			},
 		})
 	}

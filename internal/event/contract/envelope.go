@@ -54,6 +54,7 @@ const (
 	EnvelopeTypeSpiritTeamAssembled         EnvelopeType = "spirit_team_assembled"
 	EnvelopeTypeSpiritTeamCompleted         EnvelopeType = "spirit_team_completed"
 	EnvelopeTypeSpiritTeamFailed            EnvelopeType = "spirit_team_failed"
+	EnvelopeTypeSpiritTeamCancelled         EnvelopeType = "spirit_team_cancelled"
 	EnvelopeTypeSpiritTeamInterrupted       EnvelopeType = "spirit_team_interrupted"
 	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
 	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
@@ -65,6 +66,12 @@ const (
 	EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
 	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
 	EnvelopeTypeMetricsUpdated              EnvelopeType = "metrics_updated"
+
+	// EnvelopeTypeExecutionProgress carries a single orchestration step's start/done/error
+	// status. It is published to the chat channel so the AgentTreeTimeline can render
+	// an inline progress card during the long 5-15s wait (e.g. LLM first byte).
+	// See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+	EnvelopeTypeExecutionProgress EnvelopeType = "execution_progress"
 
 	// Butler orchestration events
 	EnvelopeTypeButlerOrchestrationStarted  EnvelopeType = "butler.orchestration.started"
@@ -322,6 +329,9 @@ func init() {
 		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted,
 		EnvelopeTypeButlerOrchestrationFailed,
 		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed,
+		// Chat-visible execution progress (LLM invoke, intent pass, tool dispatch, etc.)
+		// P0: covers the 5-15s silent wait. See proposal-execution-progress-inline.md.
+		EnvelopeTypeExecutionProgress,
 	)
 }
 

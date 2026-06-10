@@ -1,5 +1,9 @@
 /**
- * useAgentBlocks — Build AgentBlock tree from chat messages for Team mode.
+ * useAgentBlocks — Build AgentBlock tree from chat messages.
+ *
+ * As of P0 (proposal-execution-progress-inline), single agent sessions are
+ * also represented as an AgentBlock tree (root agent only, no sub-agents).
+ * Team/spirit sessions nest sub-agent blocks recursively.
  *
  * Algorithm:
  * 1. Group messages by user turn boundaries
@@ -11,10 +15,13 @@
  *    at their chronological position
  * 5. Extract orchestration plan from plan_and_execute / subagents_spawn tool calls
  * 6. Compute team status summary from sub-agent statuses
+ * 7. Merge execution_progress envelopes (if provided) as inline progress cards
+ *    in the timeline, ordered by startedAt relative to other entries.
  */
 import { computed, type ComputedRef } from 'vue';
 import type { Message } from '../types';
 import type { ToolUseEvent } from '../types';
+import type { Envelope } from '../../../realtime/envelope';
 import type {
   AgentBlock,
   TimelineEntry,
@@ -23,53 +30,54 @@ import type {
   OrchestrationPlan,
   PlanEntry,
   TeamStatusSummary,
+  ProgressSection,
 } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { toolEventFromMessage } from '../envelopeToolCall';
-import { resolveAssistantPresentation } from '../messagePlannerPresentation';
+import { resolveAssistantPresentation, type AssistantPresentation } from '../messagePlannerPresentation';
 import { resolveDisplayLabel } from '../activityPresentation';
 import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { useTurnBlockEnabled } from '../useTurnBlock';
 import { canonicalToolStatus } from '../lib/statusMap';
+import { mergeProgressEvents } from '../executionProgress';
 
 export function useAgentBlocks(deps: {
   messages: ComputedRef<Message[]>;
   isTeamSession?: boolean;
   plannerKind?: ComputedRef<string>;
+  /**
+   * Ordered execution_progress envelopes. Optional. When provided, each turn
+   * timeline gets inline progress cards merged in chronological order.
+   */
+  progressEnvelopes?: ComputedRef<readonly Envelope[]>;
 }) {
   const useTurnBlockMode = computed(() => useTurnBlockEnabled());
 
   /**
-   * Build AgentBlock tree from turn blocks.
-   * Active when isTeamSession is true OR when messages contain team activity
-   * (team_member messages, subagents_spawn calls, or plan_and_execute).
+   * Build AgentBlock tree from turn blocks. Active for all sessions in P0
+   * (single agent also gets the tree view). Returns an empty array only when
+   * turn block mode is disabled (legacy ChatMessageList path) or there are no
+   * messages at all.
    */
   const agentBlocks = computed((): AgentBlock[] => {
     if (!useTurnBlockMode.value) return [];
 
     const allMessages = deps.messages.value;
+    if (allMessages.length === 0) return [];
 
-    // Detect team activity: isTeamSession OR has team_member origin OR has team tools
-    const hasTeamActivity =
-      !!deps.isTeamSession ||
-      allMessages.some((m) => {
-        if (isTeamMemberOrigin(m.origin)) return true;
-        if (m.role === 'user') return false;
-        const ev = toolEventFromMessage(m);
-        if (ev && isTeamToolName(ev.tool_name)) return true;
-        return false;
-      });
-
-    if (!hasTeamActivity) return [];
-
+    // P0: drop the team-only gate. Single agent sessions still produce a root
+    // AgentBlock so they can use the unified tree timeline.
     const plannerKind = deps.plannerKind?.value ?? '';
+    const progressByStep = deps.progressEnvelopes?.value
+      ? mergeProgressEvents(deps.progressEnvelopes.value)
+      : new Map<string, ProgressSection>();
     const blocks: AgentBlock[] = [];
 
     // Find user messages as turn boundaries
     const userTurns = findUserTurns(allMessages);
 
     for (const turn of userTurns) {
-      const rootBlock = buildRootAgentBlock(turn, plannerKind);
+      const rootBlock = buildRootAgentBlock(turn, plannerKind, progressByStep);
       if (rootBlock) blocks.push(rootBlock);
     }
 
@@ -208,7 +216,11 @@ function classifyMessages(msgs: Message[]): TimestampedEvent[] {
 
 // ── Agent block building ──
 
-function buildRootAgentBlock(turn: UserTurn, plannerKind: string): AgentBlock | null {
+function buildRootAgentBlock(
+  turn: UserTurn,
+  plannerKind: string,
+  progressByStep: Map<string, ProgressSection>,
+): AgentBlock | null {
   const msgs = turn.messages;
   if (msgs.length === 0 && !turn.userMessage) return null;
 
@@ -235,65 +247,79 @@ function buildRootAgentBlock(turn: UserTurn, plannerKind: string): AgentBlock | 
   const planEntries: PlanEntry[] = [];
   let planStatus: OrchestrationPlan['status'] = 'planning';
 
-  // Presentation for root agent thinking
-  const presentation = assistant ? resolveAssistantPresentation(plannerKind, assistant) : null;
-
   // Process events in chronological order
   for (const event of events) {
     switch (event.type) {
       case 'root-thinking': {
-        // Root agent thinking from react steps or reasoning
-        if (event.message === assistant && presentation) {
-          const steps = presentation.reactSteps?.steps;
-          if (steps?.length) {
-            const seenIds = new Set<string>();
-            for (const step of steps) {
-              const isThinking = step.kind === 'planning' || step.kind === 'reasoning' || step.kind === 'replanning';
-              if (isThinking && step.body?.trim()) {
-                const bodyHash = step.body.slice(0, 32).replace(/\s+/g, '');
-                const stableId = `root-think-${assistant.id}-${step.kind}-${bodyHash}`;
-                if (seenIds.has(stableId)) continue;
-                seenIds.add(stableId);
+        // P1 (reply-chronological): each assistant message emits (a) thinking
+        // entries from ReAct steps / reasoning_markdown AND (b) one
+        // chronological reply entry from the message's final answer. Reply
+        // entries are pushed at the message's chronological position so the
+        // timeline becomes thinking → tool → reply → thinking → reply rather
+        // than 1:1-pairing paragraphs of a single collapsed result.
+        const messagePresentation = resolveAssistantPresentation(plannerKind, event.message);
+        const steps = messagePresentation.reactSteps?.steps;
 
-                timeline.push({
-                  kind: 'thinking',
-                  section: {
-                    id: stableId,
-                    content: step.body,
-                    durationMs: 0,
-                    collapsed: true,
-                    streaming: assistant.status === 'streaming',
-                  },
-                  sortKey: sortCounter++,
-                });
-              }
+        if (steps?.length) {
+          // ReAct mode: emit one thinking entry per thinking-kind step
+          const seenIds = new Set<string>();
+          for (const step of steps) {
+            const isThinking = step.kind === 'planning' || step.kind === 'reasoning' || step.kind === 'replanning';
+            if (isThinking && step.body?.trim()) {
+              const bodyHash = step.body.slice(0, 32).replace(/\s+/g, '');
+              const stableId = `root-think-${event.message.id}-${step.kind}-${bodyHash}`;
+              if (seenIds.has(stableId)) continue;
+              seenIds.add(stableId);
+
+              timeline.push({
+                kind: 'thinking',
+                section: {
+                  id: stableId,
+                  content: step.body,
+                  durationMs: 0,
+                  collapsed: true,
+                  streaming: event.message.status === 'streaming',
+                },
+                sortKey: sortCounter++,
+              });
             }
-          } else if (presentation.reasoning?.trim()) {
-            timeline.push({
-              kind: 'thinking',
-              section: {
-                id: `root-think-${assistant.id}`,
-                content: presentation.reasoning,
-                durationMs: 0,
-                collapsed: true,
-                streaming: assistant.status === 'streaming',
-              },
-              sortKey: sortCounter++,
-            });
           }
-        } else if (event.message.reasoning_markdown?.trim()) {
-          // Non-primary assistant thinking
+        } else if (messagePresentation.reasoning?.trim()) {
+          // Non-react mode: use reasoning_markdown as the thinking section
           timeline.push({
             kind: 'thinking',
             section: {
               id: `root-think-${event.message.id}`,
-              content: event.message.reasoning_markdown,
+              content: messagePresentation.reasoning,
               durationMs: 0,
               collapsed: true,
               streaming: event.message.status === 'streaming',
             },
             sortKey: sortCounter++,
           });
+        }
+
+        // Emit a reply entry from this message's final answer (in-place at
+        // this message's chronological position). Skip if the reply would
+        // duplicate the last thinking entry (avoids "thinking then echo the
+        // same content as reply" artifacts when the LLM only has reasoning
+        // and no final-answer tag).
+        const replyContent = resolveReplyContent(messagePresentation);
+        if (replyContent) {
+          const lastThinking = [...timeline].reverse().find((e) => e.kind === 'thinking');
+          const lastThinkingContent = lastThinking?.kind === 'thinking' ? lastThinking.section.content.trim() : '';
+          if (replyContent !== lastThinkingContent) {
+            timeline.push({
+              kind: 'reply',
+              section: {
+                id: `root-reply-${event.message.id}`,
+                content: replyContent,
+                durationMs: 0,
+                streaming: event.message.status === 'streaming',
+              },
+              sortKey: sortCounter++,
+            });
+          }
         }
         break;
       }
@@ -462,6 +488,35 @@ function buildRootAgentBlock(turn: UserTurn, plannerKind: string): AgentBlock | 
   // Sort timeline by sortKey to ensure correct order
   timeline.sort((a, b) => a.sortKey - b.sortKey);
 
+  // Merge execution_progress sections. Each ProgressSection is assigned a
+  // sortKey relative to its startedAt timestamp: convert epoch ms into a
+  // fractional sort key that lands before any tool/thinking at the same
+  // position. The mapping uses a reference start of the turn; since the
+  // backend emits progress in real time before any tool_call/thinking
+  // arrives, this naturally places progress nodes at the start of the
+  // turn's timeline when they pre-date the LLM streaming.
+  if (progressByStep.size > 0) {
+    const turnStartTs = turn.userMessage?.created_at
+      ? new Date(turn.userMessage.created_at).getTime()
+      : Date.now();
+    // Use a fractional sort key based on (startedAt - turnStartTs).
+    // Negative values land before existing entries; positive values land
+    // after. We bucket by millisecond and offset by 0.5 to keep
+    // stability between equal timestamps.
+    let progressSortBase = 0;
+    for (const section of progressByStep.values()) {
+      const offset = (section.startedAt - turnStartTs) / 1000; // seconds offset
+      const key = offset - 0.5 + progressSortBase * 1e-6;
+      progressSortBase += 1;
+      timeline.push({
+        kind: 'progress',
+        section,
+        sortKey: key,
+      });
+    }
+    timeline.sort((a, b) => a.sortKey - b.sortKey);
+  }
+
   // Determine status
   const isCompleted = !msgs.some(
     (m) => m.status === 'streaming' || m.status === 'tool_running' || m.status === 'tool_blocked',
@@ -477,19 +532,32 @@ function buildRootAgentBlock(turn: UserTurn, plannerKind: string): AgentBlock | 
   const durationMs = computeTurnDuration(turn);
 
   // Root agent result (final summary)
-  const result = presentation?.bodyMarkdown?.trim() || assistant?.content_markdown?.trim() || null;
+  // P1 (reply-chronological): each round emits its own reply entry in the
+  // timeline. The legacy `result` field is now the content of the LAST reply
+  // entry — it preserves the historical collapsed "root answer" affordance
+  // (e.g. for screenshots, accessibility readers, or code that still reads
+  // `block.result`) while no longer driving 1:1 pairing inside the timeline.
+  // If no reply entry was emitted, fall back to the last assistant's
+  // content_markdown so we never return null for a turn that did produce
+  // a non-empty assistant message.
+  let result: string | null = null;
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i];
+    if (entry && entry.kind === 'reply') {
+      result = entry.section.content?.trim() || null;
+      break;
+    }
+  }
+  if (!result) {
+    result = assistant?.content_markdown?.trim() || null;
+  }
 
   // Build orchestration plan
   const plan: OrchestrationPlan | null =
     planEntries.length > 0
       ? {
           entries: updatePlanEntryStatuses(planEntries, timeline),
-          status:
-            planStatus === 'executing' && status === 'completed'
-              ? 'completed'
-              : planStatus === 'executing' && status === 'failed'
-                ? 'failed'
-                : planStatus,
+          status: resolvePlanStatus(planStatus, status),
         }
       : null;
 
@@ -513,6 +581,30 @@ function buildRootAgentBlock(turn: UserTurn, plannerKind: string): AgentBlock | 
     startedAt: turn.userMessage?.created_at || assistant?.created_at || '',
     finishedAt: isCompleted ? assistant?.created_at || '' : null,
   };
+}
+
+/** Resolve the overall plan status based on planStatus and agent status.
+ *  Fixes: planStatus stuck at 'planning' when subagents_spawn (not plan_and_execute)
+ *  is used — in that case planEntries are added but planStatus never transitions
+ *  to 'executing', so PlanCard keeps spinning forever.
+ */
+function resolvePlanStatus(
+  planStatus: OrchestrationPlan['status'],
+  agentStatus: AgentBlockStatus,
+): OrchestrationPlan['status'] {
+  // Explicit transitions from executing
+  if (planStatus === 'executing') {
+    if (agentStatus === 'completed') return 'completed';
+    if (agentStatus === 'failed') return 'failed';
+    return 'executing';
+  }
+  // If planStatus is still 'planning' but agent is done, the plan must be done too.
+  // This happens when subagents_spawn creates plan entries but never sets planStatus
+  // to 'executing'.
+  if (planStatus === 'planning' && (agentStatus === 'completed' || agentStatus === 'failed')) {
+    return agentStatus;
+  }
+  return planStatus;
 }
 
 /** Update plan entry statuses based on sub-agent block statuses in timeline */
@@ -745,6 +837,32 @@ function safeStringify(value: unknown): string {
   }
 }
 
+// ── Reply content resolution ──
+
+/**
+ * Extract the user-visible "reply" content for a single assistant message.
+ *
+ * Rules (mirrors the legacy `result` field logic so the timeline reply entry
+ * matches the historical final answer):
+ * - ReAct mode: use the explicit `finalAnswer` only when the model wrote a
+ *   `FINAL_ANSWER` tag (i.e. `hasExplicitFinalAnswer` is true). Falling
+ *   back to the last step body would duplicate the last thinking entry and
+ *   produce a "thinking then echo the same content as reply" artifact.
+ * - A2UI / userAction / default mode: use `bodyMarkdown` (the assistant's
+ *   `content_markdown`).
+ *
+ * Returns null when there is no meaningful reply text (caller skips the
+ * timeline entry rather than rendering an empty card).
+ */
+function resolveReplyContent(presentation: AssistantPresentation): string | null {
+  if (presentation.mode === 'react' && presentation.reactSteps) {
+    if (!presentation.reactSteps.hasExplicitFinalAnswer) return null;
+    return presentation.reactSteps.finalAnswer?.trim() || null;
+  }
+  // a2ui / userAction / default: assistant content_markdown is the reply.
+  return presentation.bodyMarkdown?.trim() || null;
+}
+
 /** Coerce an unknown value (LLM-emitted JSON shape) into a plain object for
  *  safe property access. Returns {} for arrays, primitives, or null. */
 function asObject(value: unknown): Record<string, unknown> {
@@ -809,17 +927,24 @@ function computeAgentStatus(
     if (!ev) return false;
     return ev.status === 'running' || ev.status === 'blocked';
   });
-  const hasFailedTool = toolMsgs.some((t) => {
-    const ev = toolEventFromMessage(t);
-    return ev?.status === 'failed';
-  });
   if (isCompleted && !hasLiveTool) {
+    // Determine final status based on the assistant message, not individual tools.
+    // A team can have partial tool failures but still produce a successful result.
+    if (assistant?.status === 'failed') return 'failed';
+    // If there's a successful result (content_markdown), consider it completed
+    // even if some tools failed along the way.
+    const hasSuccessfulResult = assistant?.content_markdown?.trim() || assistant?.reasoning_markdown?.trim();
+    if (hasSuccessfulResult) return 'completed';
+    // No result at all — check if any tool failed
+    const hasFailedTool = toolMsgs.some((t) => {
+      const ev = toolEventFromMessage(t);
+      return ev?.status === 'failed';
+    });
     return hasFailedTool ? 'failed' : 'completed';
   }
   if (hasLiveTool) return 'running';
   if (assistant?.status === 'streaming') return 'running';
   if (memberMsgs.some((m) => m.status === 'streaming' || m.status === 'tool_running')) return 'running';
-  if (assistant?.status === 'failed') return 'failed';
   return 'running';
 }
 

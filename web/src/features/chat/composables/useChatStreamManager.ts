@@ -46,6 +46,40 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let lastErrorNotifyMessage = '';
   let lastErrorNotifyAt = 0;
 
+  /**
+   * Ordered execution_progress envelopes for the active chat / team stream.
+   * Implemented as a bounded ring buffer (S2 + S11):
+   *   - O(1) `pushProgress` append (the spread pattern was O(n) per insert)
+   *   - capped at MAX_PROGRESS_ENVELOPES to keep long sessions bounded
+   *   - cleared on stream re-create and on every new run-accepted
+   *
+   * The exposed ref shares the underlying array — Vue 3's reactive array
+   * tracking handles `push()` / `splice()` correctly, so we don't need to
+   * clone the buffer on every mutation. The TS type is `readonly Envelope[]`
+   * so consumers cannot accidentally mutate it.
+   *
+   * @see docs/reports/2026-06-10-proposal-execution-progress-inline.md
+   */
+  const MAX_PROGRESS_ENVELOPES = 200;
+  const progressBuffer: Envelope[] = [];
+  const executionProgress = ref<readonly Envelope[]>(progressBuffer);
+
+  function pushProgress(env: Envelope): void {
+    progressBuffer.push(env);
+    if (progressBuffer.length > MAX_PROGRESS_ENVELOPES) {
+      // Drop oldest envelopes to keep the buffer bounded. Amortized O(1)
+      // per push — `splice(0, n)` only runs when we overflow.
+      const overflow = progressBuffer.length - MAX_PROGRESS_ENVELOPES;
+      progressBuffer.splice(0, overflow);
+    }
+    // Vue 3's reactive ref tracks array mutations on `.push()`/`.splice()`
+    // automatically. We do NOT re-assign `.value` to avoid the spread cost.
+  }
+
+  function clearProgress(): void {
+    progressBuffer.length = 0;
+  }
+
   function notifyError(message: string) {
     const now = Date.now();
     if (message === lastErrorNotifyMessage && now - lastErrorNotifyAt < 5000) {
@@ -127,6 +161,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     }
     chatStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
+    // New stream: reset progress accumulator so we don't leak envelopes from
+    // a prior turn into the current one.
+    clearProgress();
 
     chatStream = createChatStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
@@ -171,7 +208,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
         markSendingDone: deps.markSendingDone,
         clearSendingTimeout: deps.clearSendingTimeout,
-        onRunAccepted: deps.onRunAccepted,
+        // Reset the progress accumulator when a new run is accepted so a new
+        // turn starts with a clean timeline (avoids leaking the previous
+        // turn's orchestration steps into the next one).
+        onRunAccepted: () => {
+          clearProgress();
+          deps.onRunAccepted();
+        },
         onRunStatus: deps.onRunStatus,
         onErrorNotify: notifyError,
         onOrchestrationNotice: notifyOrchestration,
@@ -196,6 +239,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         },
         onRunActivity: deps.touchRunActivity,
         onFirstByteArrived: deps.onFirstByteArrived,
+        onExecutionProgress: pushProgress,
       },
       { batched: true },
     );
@@ -215,6 +259,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     }
     teamStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
+    // New team stream: also reset progress accumulator so we don't leak
+    // envelopes from a prior turn (or a different session kind) into the
+    // current one.
+    clearProgress();
 
     teamStream = createTeamStream(sessionId, {
       onReplayState: (replaying) => {
@@ -254,7 +302,12 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
       markSendingDone: deps.markSendingDone,
       clearSendingTimeout: deps.clearSendingTimeout,
-      onRunAccepted: deps.onRunAccepted,
+      // Mirror chat stream: a new team run means a new turn — drop the
+      // progress accumulator to avoid cross-turn envelope leakage.
+      onRunAccepted: () => {
+        clearProgress();
+        deps.onRunAccepted();
+      },
       onRunStatus: deps.onRunStatus,
       onErrorNotify: notifyError,
       onOrchestrationNotice: notifyOrchestration,
@@ -266,6 +319,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       resolveMemberMeta: resolveTeamMemberMeta,
       onRunActivity: deps.touchRunActivity,
       onFirstByteArrived: deps.onFirstByteArrived,
+      // Spirit / team sessions must also accumulate execution_progress so the
+      // AgentTreeTimeline shows inline orchestration / team / tool step cards
+      // during the multi-agent fan-out. Mirrors the chat stream binding.
+      onExecutionProgress: pushProgress,
     });
 
     teamStream.connect();
@@ -329,6 +386,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   return {
     wsReplaying,
+    executionProgress,
     ensureChatStream,
     ensureTeamStream,
     subscribeSessionStream,

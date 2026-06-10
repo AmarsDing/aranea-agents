@@ -32,7 +32,6 @@ function toolMessage(id: string, toolName: string, createdAt: string): Message {
         agent_id: 'a1',
         agent_key: 'agent',
         agent_name: 'Agent',
-        agent_icon: '',
         tool_name: toolName,
         tool_label: toolName,
         occurred_at: createdAt,

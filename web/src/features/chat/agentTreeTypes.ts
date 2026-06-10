@@ -75,9 +75,86 @@ export interface TeamStatusSummary {
 
 // ── Timeline Entry (chronological) ──
 
+/**
+ * A reply is one of potentially multiple text-done blocks within a turn.
+ * The model may emit a thinking → tool → partial reply → tool → final reply
+ * sequence, and we want to preserve all reply chunks as distinct timeline
+ * entries rather than collapsing them into a single `result` field.
+ *
+ * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+ */
+export interface ReplySection {
+  id: string;
+  content: string;
+  durationMs: number | null;
+  streaming: boolean;
+}
+
+/**
+ * An orchestration progress step surfaced from a chat-visible
+ * `execution_progress` envelope. Renders as an inline spinner / checkmark
+ * card during the long 5-15s wait for LLM first byte.
+ *
+ * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+ */
+export type ProgressCategory = 'orchestration' | 'team' | 'tool' | 'thinking';
+
+export const PROGRESS_CATEGORIES: readonly ProgressCategory[] = [
+  'orchestration',
+  'team',
+  'tool',
+  'thinking',
+] as const;
+
+/**
+ * S8: Centralized glyph + label maps for the progress card UI.
+ * Kept in `agentTreeTypes.ts` (the `*Ui.ts` equivalent for the chat domain)
+ * so other surfaces (e.g. the plan panel, the team summary card) can reuse
+ * the same iconography without copy-pasting emoji literals.
+ *
+ * If you need to add a new category, update both `PROGRESS_CATEGORIES` and
+ * these two maps together — the union type will guide you.
+ */
+export const PROGRESS_GLYPHS: Readonly<Record<ProgressCategory, string>> = Object.freeze({
+  orchestration: '⚙️',
+  team: '👥',
+  tool: '🛠️',
+  thinking: '🧠',
+});
+
+export const PROGRESS_LABELS: Readonly<Record<ProgressCategory, string>> = Object.freeze({
+  orchestration: '编排',
+  team: '团队',
+  tool: '工具',
+  thinking: '思考',
+});
+
+/** Status icons used in the timeline card (S8 + T2). */
+export const PROGRESS_STATUS_GLYPHS: Readonly<Record<'running' | 'done' | 'failed' | 'timeout', string>> =
+  Object.freeze({
+    running: '⏳',
+    done: '✓',
+    failed: '⚠️',
+    timeout: '⚠️',
+  });
+
+export interface ProgressSection {
+  /** step_id, e.g. "chat.llm.invoke" */
+  id: string;
+  category: ProgressCategory;
+  /** User-facing Chinese short message, ≤ 24 chars */
+  message: string;
+  status: 'running' | 'done' | 'failed' | 'timeout';
+  durationMs: number | null;
+  /** Epoch ms when the step transitioned out of "running" (resolved_at). */
+  startedAt: number;
+}
+
 export type TimelineEntry =
   | { kind: 'thinking'; section: ThinkingSection; sortKey: number }
   | { kind: 'tool'; section: ToolSection; sortKey: number }
+  | { kind: 'reply'; section: ReplySection; sortKey: number }
+  | { kind: 'progress'; section: ProgressSection; sortKey: number }
   | { kind: 'subagent'; block: AgentBlock; sortKey: number };
 
 // ── Thinking Section ──

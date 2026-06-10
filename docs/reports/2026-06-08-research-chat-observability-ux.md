@@ -1,7 +1,7 @@
 # Research: Chat 精灵模式实施现状评估与可观测性 UX 方案
 
 > **日期**：2026-06-08 | **版本**：v1.2 | **作者**：AI 调研
-> **关联**：[59-chat-spirit-mode.md](../development/59-chat-spirit-mode.md) · [59-chat-spirit-mode.design.md](../development/59-chat-spirit-mode.design.md)
+> **关联**：[59-chat-ui-optimization.md](../development/59-chat-ui-optimization.md) · [59-chat-ui-optimization.design.md](../development/59-chat-ui-optimization.design.md)（合并自原 M59 + M69）
 >
 > **v1.2 修订说明**：基于对 Agent 动作可观测性、任务中断恢复、历史消息持久化的三次深度验证，新增附录 B（可观测性现状矩阵）和附录 C（中断恢复机制评估），修正 S-02/S-04 方案的业务合理性评估。
 
@@ -17,7 +17,7 @@
 
 ### 评估方法
 
-对前端 `web/src/components/spirit/`、`web/src/components/chat/`、`web/src/stores/` 和后端 `internal/biz/`、`internal/service/`、`internal/tools/` 逐项搜索组件、API、Store 状态和测试文件，与需求文档 [59-chat-spirit-mode.md](../development/59-chat-spirit-mode.md) §7 验收标准索引逐条对照。
+对前端 `web/src/components/spirit/`、`web/src/components/chat/`、`web/src/stores/` 和后端 `internal/biz/`、`internal/service/`、`internal/tools/` 逐项搜索组件、API、Store 状态和测试文件，与需求文档 [59-chat-ui-optimization.md](../development/59-chat-ui-optimization.md) §10 验收标准索引逐条对照。
 
 ### 评估结果
 

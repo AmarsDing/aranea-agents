@@ -209,7 +209,7 @@ func TestRouteChannel_AllTypes(t *testing.T) {
 		EnvelopeTypeGraphNodeError, EnvelopeTypeGraphNodeCustom, EnvelopeTypeGraphTaskStatus,
 		EnvelopeTypeKnowledgeIngest, EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert,
 		EnvelopeTypeAlertNotify, EnvelopeTypeOrchestrationAgentStatus, EnvelopeTypeUserFeedback,
-		EnvelopeTypeSessionStatusChanged,
+		EnvelopeTypeSessionStatusChanged, EnvelopeTypeExecutionProgress,
 	}
 	validChannels := map[string]bool{"chat": true, "monitor": true, "team": true, "graph": true, "knowledge": true}
 	for _, typ := range allTypes {

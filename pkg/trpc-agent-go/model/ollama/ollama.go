@@ -647,8 +647,23 @@ func convertMessage(msg model.Message) (api.Message, error) {
 	switch msg.Role {
 	case model.RoleSystem:
 		role = "system"
-	case model.RoleUser, model.RoleTool:
+	case model.RoleUser:
 		role = "user"
+	case model.RoleTool:
+		// Ollama does not support a dedicated "tool" role. We embed the
+		// tool result as a user message with a structured prefix so the
+		// model can correlate it with the originating tool call.
+		role = "user"
+		oMsg := api.Message{
+			Role:     role,
+			Thinking: msg.ReasoningContent,
+		}
+		if msg.ToolName != "" {
+			oMsg.Content = fmt.Sprintf("[Tool Result: %s (id: %s)]\n%s", msg.ToolName, msg.ToolID, msg.Content)
+		} else {
+			oMsg.Content = msg.Content
+		}
+		return oMsg, nil
 	case model.RoleAssistant:
 		role = "assistant"
 	default:
@@ -700,13 +715,16 @@ func convertTools(tools map[string]tool.Tool) []api.Tool {
 					Items:       prop.Items,
 					Enum:        prop.Enum,
 				})
-				required = append(required, prop.Required...)
 			}
+			// Use the top-level required field from InputSchema, not per-property Required.
+			// JSON Schema "required" lists which property names are mandatory at the
+			// object level; per-property Required is for nested object schemas only.
+			required = decl.InputSchema.Required
 		}
 		result = append(result, api.Tool{
 			Type: functionToolType,
 			Function: api.ToolFunction{
-				Name:        decl.Name,
+				Name:        tool.SanitizeToolName(decl.Name),
 				Description: buildToolDescription(decl),
 				Parameters: api.ToolFunctionParameters{
 					Type:       "object",

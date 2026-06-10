@@ -20,8 +20,27 @@
         <div class="team-task-card__summary ellipsis">
           <span :class="`team-task-card__status-text--${teamStatusColor}`">{{ teamStatusText }}</span>
           <span v-if="durationText" class="q-ml-xs">· {{ durationText }}</span>
-          <span v-else-if="team.taskSummary" class="q-ml-xs">· {{ team.taskSummary }}</span>
+          <span v-if="team.taskSummary" class="q-ml-xs">· {{ team.taskSummary }}</span>
         </div>
+        <!-- F-7: Mini progress bar in collapsed state -->
+        <q-linear-progress
+          v-if="team.progressPct > 0 || team.totalSteps > 0"
+          :value="team.progressPct > 0 ? team.progressPct / 100 : team.completedSteps / Math.max(team.totalSteps, 1)"
+          size="3px"
+          rounded
+          color="accent"
+          class="q-mt-xs"
+        />
+      </div>
+      <!-- F-7: Mini avatars in collapsed state -->
+      <div v-if="team.memberAvatars.length > 0" class="team-task-card__mini-avatars row items-center no-wrap">
+        <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 3)" :key="idx" size="18px">
+          <img v-if="url" :src="url" alt="" />
+          <q-icon v-else name="person" size="10px" color="grey-6" />
+        </q-avatar>
+        <span v-if="team.memberAvatars.length > 3" class="text-caption text-grey-6" style="font-size:10px">
+          +{{ team.memberAvatars.length - 3 }}
+        </span>
       </div>
       <div v-if="failedSummary" class="team-task-card__error">
         <q-icon name="error_outline" size="12px" class="q-mr-xs" />
@@ -71,7 +90,7 @@
         </div>
       </div>
 
-      <div v-if="team.dependsOn.length > 0" class="text-caption text-grey-6 q-mt-xs">
+      <div v-if="team.dependsOn && team.dependsOn.length > 0" class="text-caption text-grey-6 q-mt-xs">
         <q-icon name="account_tree" size="14px" class="q-mr-xs" />
         {{ team.dependsOn.length }} 个前置任务
       </div>
@@ -213,6 +232,10 @@ const failedSummary = computed(() => {
 
 .team-task-card__avatars
   flex-wrap: nowrap
+
+.team-task-card__mini-avatars
+  flex-shrink: 0
+  gap: 2px
 
 .team-task-card__progress
   margin-top: var(--space-1)
