@@ -56,8 +56,8 @@ export type ToolUseEvent = {
   agent_icon: string;
   tool_name: string;
   tool_label: string;
-  arguments?: Record<string, unknown>;
-  result?: Record<string, unknown>;
+  arguments?: unknown;
+  result?: unknown;
   error?: string;
   occurred_at: string;
   duration_ms?: number;

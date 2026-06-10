@@ -14,7 +14,7 @@ export const useAppStore = defineStore('app', {
       await deleteAgent(id);
       this.agents = this.agents.filter((a) => a.id !== id);
       if (this.selectedAgent?.id === id) {
-        this.selectedAgent = this.agents[0] ?? null;
+        this.selectedAgent = (this.agents.find((a) => a.agent_key === '__spirit__') || this.agents[0]) ?? null;
         emitSessionMutation({ type: 'agent_removed', agentId: id });
       }
     },
@@ -43,7 +43,7 @@ export const useAppStore = defineStore('app', {
     async loadAgents() {
       this.agents = await listAgents();
       if (!this.selectedAgent && this.agents.length > 0) {
-        this.selectedAgent = this.agents[0];
+        this.selectedAgent = this.agents.find((a) => a.agent_key === '__spirit__') || this.agents[0];
       }
     },
     async addAgent(payload: Parameters<typeof createAgent>[0]) {

@@ -5,6 +5,7 @@ import { reasoningMarkdown } from './streamContentPatch';
 import { MESSAGE_STATUS, isToolStatus } from '../../domain/types';
 import type { ToolUseEvent } from './types';
 import type { Message } from './types';
+import { isToolUseEvent } from './lib/isToolUseEvent';
 
 const AVATAR_PALETTE = [
   { name: 'indigo', varIdx: 0 },
@@ -80,12 +81,13 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function toolEventMeta(message: Message): ToolUseEvent | null {
-    if (message.tool_event && typeof message.tool_event === 'object') {
-      return message.tool_event as ToolUseEvent;
-    }
+    // Use the structural type guard so a corrupted tool_event doesn't leak
+    // through as a "valid" ToolUseEvent.
+    if (isToolUseEvent(message.tool_event)) return message.tool_event;
     try {
-      const raw = JSON.parse(message.options_json || '{}') as { tool_event?: ToolUseEvent };
-      return raw.tool_event ?? null;
+      const raw = JSON.parse(message.options_json || '{}') as { tool_event?: unknown };
+      if (isToolUseEvent(raw.tool_event)) return raw.tool_event;
+      return null;
     } catch {
       return null;
     }

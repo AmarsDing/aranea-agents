@@ -37,7 +37,12 @@ func invocationStatusFromAfter(args *trpctool.AfterToolArgs) (status, errCode, e
 		if strings.Contains(msg, errToolConfirmationRequired) {
 			return "blocked", "confirmation_required", truncateErr(msg)
 		}
-		return "error", "tool_error", truncateErr(msg)
+		// Use "failed" (not "error") for the runtime status. The wire contract uses
+		// {running, success, failed, blocked, cancelled} as the canonical set, and
+		// the frontend normalizeToolStatus collapses both "failed" and legacy
+		// "error" to a single canonical status. Emitting "error" here made the
+		// frontend's `error_code` fallback unreachable and erased error info.
+		return "failed", "tool_error", truncateErr(msg)
 	}
 	return "success", "", ""
 }
@@ -210,7 +215,10 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 	switch write.Status {
 	case "success":
 		outcome = "success"
-	case "error":
+	case "failed", "error":
+		// "failed" is the canonical runtime status (tool_invocation_recorder.go).
+		// "error" is accepted here for backward compatibility with rows written
+		// before the status was normalized.
 		outcome = "failure"
 	default:
 		outcome = "partial"

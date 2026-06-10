@@ -1,0 +1,172 @@
+<h2>思考块交互细节</h2>
+<p class="subtitle">验证流式→预览→折叠→展开的完整生命周期</p>
+
+<div class="mockup">
+  <div class="mockup-header">思考块生命周期（方案 A 时间线）</div>
+  <div class="mockup-body" style="padding:20px; background:#1a1a2e; font-family:system-ui,sans-serif;">
+
+    <!-- 阶段1：流式中 -->
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px; color:#FDCB6E; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">阶段 1：流式传输中</div>
+      <div style="margin-left:8px; border-left:2px solid rgba(255,255,255,0.12); padding-left:16px;">
+        <div style="position:relative; margin-bottom:12px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#8b8ba7; animation:pulse 1.5s infinite;"></div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 12px;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8b8ba7;">
+              <span>🧠</span>
+              <span style="font-weight:500;">思考</span>
+              <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#6C5CE7; animation:pulse 1s infinite;"></span>
+            </div>
+            <div style="font-size:12px; color:#888; margin-top:4px; line-height:1.5;">
+              需要组建一个包含市场研究、数据分析和文案撰写的团队，首先我应该...<span style="display:inline-block; width:2px; height:14px; background:#6C5CE7; animation:blink 0.8s infinite; vertical-align:middle;"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 阶段2：刚完成，自动折叠 -->
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px; color:#00B894; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">阶段 2：思考完成 → 自动折叠</div>
+      <div style="margin-left:8px; border-left:2px solid rgba(255,255,255,0.12); padding-left:16px;">
+        <div style="position:relative; margin-bottom:12px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#8b8ba7;"></div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 12px; cursor:pointer; transition:background 0.15s;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8b8ba7;">
+              <span>🧠</span>
+              <span style="font-weight:500;">思考</span>
+              <span style="color:#666; font-size:11px;">3s</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▶ 点击展开</span>
+            </div>
+            <div style="font-size:11px; color:#555; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              需要组建一个包含市场研究、数据分析和文案撰写的团队...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 阶段3：用户点击展开 -->
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px; color:#74B9FF; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">阶段 3：点击展开</div>
+      <div style="margin-left:8px; border-left:2px solid rgba(255,255,255,0.12); padding-left:16px;">
+        <div style="position:relative; margin-bottom:12px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#8b8ba7;"></div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 12px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8b8ba7;">
+              <span>🧠</span>
+              <span style="font-weight:500;">思考</span>
+              <span style="color:#666; font-size:11px;">3s</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▼ 点击折叠</span>
+            </div>
+            <div style="font-size:12px; color:#aaa; margin-top:6px; line-height:1.6; max-height:200px; overflow-y:auto;">
+              需要组建一个包含市场研究、数据分析和文案撰写的团队，首先我应该分析任务需求：
+              <br><br>
+              1. 市场研究 — 需要一个研究员来收集行业数据和竞品信息
+              <br>
+              2. 数据分析 — 需要一个分析师来建模和预测趋势
+              <br>
+              3. 文案撰写 — 需要一个文案师来撰写最终报告
+              <br><br>
+              我将使用组建团队工具来创建这个团队。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 完整场景：多个块穿插 -->
+    <div style="margin-bottom:8px;">
+      <div style="font-size:11px; color:#E17055; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">完整场景：多块穿插时间线</div>
+
+      <!-- 用户消息 -->
+      <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <div style="background:#6C5CE7; color:#fff; padding:10px 16px; border-radius:16px 16px 4px 16px; max-width:70%; font-size:14px;">
+          帮精灵助手组建一个团队来完成市场分析报告
+        </div>
+      </div>
+
+      <!-- 时间线 -->
+      <div style="margin-left:8px; border-left:2px solid rgba(255,255,255,0.12); padding-left:16px;">
+        <!-- 思考1：折叠态 -->
+        <div style="position:relative; margin-bottom:10px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#8b8ba7;"></div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:6px 12px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8b8ba7;">
+              <span>🧠 思考</span><span style="color:#666; font-size:11px;">3s</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▶</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 工具：折叠态 -->
+        <div style="position:relative; margin-bottom:10px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#6C5CE7;"></div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:6px 12px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px;">
+              <span style="color:#6C5CE7;">⚡ 组建团队</span>
+              <span style="color:#00B894; font-size:11px;">✓</span><span style="color:#666; font-size:11px;">1.2s</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▶</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 成员发言：展开态 -->
+        <div style="position:relative; margin-bottom:10px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#6C5CE7;"></div>
+          <div style="background:rgba(108,92,231,0.08); border:1px solid rgba(108,92,231,0.2); border-radius:8px; padding:8px 12px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px;">
+              <span style="background:#6C5CE7; color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:10px;">研</span>
+              <span style="font-weight:500; color:#6C5CE7;">研究员</span>
+              <span style="color:#666; font-size:11px;">发言</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▼</span>
+            </div>
+            <div style="font-size:12px; color:#aaa; margin-top:6px; line-height:1.6;">
+              我将负责收集市场数据和竞品分析，预计需要 2-3 小时完成初步调研。
+            </div>
+          </div>
+        </div>
+
+        <!-- 思考2：折叠态 -->
+        <div style="position:relative; margin-bottom:10px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#8b8ba7;"></div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:6px 12px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#8b8ba7;">
+              <span>🧠 思考</span><span style="color:#666; font-size:11px;">5s</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▶</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 成员2发言：折叠态 -->
+        <div style="position:relative; margin-bottom:10px;">
+          <div style="position:absolute; left:-21px; top:4px; width:10px; height:10px; border-radius:50%; background:#00B894;"></div>
+          <div style="background:rgba(0,184,148,0.08); border:1px solid rgba(0,184,148,0.2); border-radius:8px; padding:6px 12px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px;">
+              <span style="background:#00B894; color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:10px;">撰</span>
+              <span style="font-weight:500; color:#00B894;">文案师</span>
+              <span style="color:#666; font-size:11px;">发言</span>
+              <span style="margin-left:auto; color:#666; font-size:11px;">▶</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 最终回复 -->
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <div style="background:#6C5CE7; color:#fff; border-radius:50%; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">精</div>
+        <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:4px 16px 16px 16px; padding:12px 16px; max-width:85%; font-size:14px; line-height:1.6; color:#ddd;">
+          团队已组建完成！以下是成员分工：
+          <br><strong style="color:#6C5CE7;">研究员</strong> — 市场数据收集和竞品分析
+          <br><strong style="color:#FDCB6E;">分析师</strong> — 数据建模和趋势预测
+          <br><strong style="color:#00B894;">文案师</strong> — 报告撰写和执行摘要
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+</style>

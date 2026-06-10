@@ -300,10 +300,12 @@ export function bindStreamHandlers(
     // mergeSessionMessages will replace them with server-persisted rows.
     const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid)).filter((m) => {
       const id = m.id || '';
-      // Keep ws-stream rows that received text_done (status="ok") as fallback
-      // until server-persisted messages arrive via loadMessages.
+      // Remove all ws-stream rows — the server-persisted messages will arrive
+      // via onReloadAfterCompletion. Keeping them as fallback causes
+      // duplicates because ws-stream IDs differ from server message IDs,
+      // so mergeSessionMessages cannot deduplicate by ID.
       if (id.startsWith('ws-stream-') || id.startsWith('ws-team-stream-')) {
-        return m.status === 'ok';
+        return false;
       }
       return true;
     });

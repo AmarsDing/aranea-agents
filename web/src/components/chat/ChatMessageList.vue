@@ -27,7 +27,7 @@
       </div>
     </div>
     <q-virtual-scroll
-      v-else-if="useVirtual"
+      v-else-if="useVirtual && !agentBlocks?.length"
       ref="virtualScrollRef"
       v-slot="{ item, index }"
       class="col chat-messages__viewport"
@@ -94,7 +94,10 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <template v-if="useTurnBlockMode">
+      <template v-if="agentBlocks?.length">
+        <AgentTreeTimeline :agent-blocks="agentBlocks" />
+      </template>
+      <template v-else-if="useTurnBlockMode">
         <TurnBlock
           v-for="block in turnBlocks"
           :key="block.turnId"
@@ -171,6 +174,8 @@ import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import type { TimelineItem } from '../../features/chat/composables/useChatTimeline';
+import type { AgentBlock } from '../../features/chat/agentTreeTypes';
+import AgentTreeTimeline from './AgentTreeTimeline.vue';
 
 const props = defineProps<{
   sessionKey: string;
@@ -189,6 +194,7 @@ const props = defineProps<{
   showScrollBtn: boolean;
   turnIsFocused: (turnId: string, userId?: string) => boolean;
   isBlockCollapsed?: (blockKey: number) => boolean;
+  agentBlocks?: AgentBlock[];
 }>();
 
 defineEmits<{

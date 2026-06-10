@@ -147,6 +147,7 @@
             :show-scroll-btn="showScrollBtn"
             :turn-is-focused="turnIsFocused"
             :is-block-collapsed="isBlockCollapsed"
+            :agent-blocks="agentBlocks"
             @messages-click="handleMessagesClick"
             @scroll="onMessagesScrollWrapped"
             @scroll-to-bottom="scrollToBottom"
@@ -291,6 +292,7 @@ import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from 
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
+import { useAgentBlocks } from '../../features/chat/composables/useAgentBlocks';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 
 type Option = { label: string; value: string; caption?: string };
@@ -411,6 +413,12 @@ const messagesRef = computed(() => props.messages);
 const { messageRow, teamMemberLanes, useTurnBlockMode, turnBlocks, timelineItems } = useChatTimeline({
   messages: messagesRef,
   isTeamSession: props.isTeamSession,
+});
+
+const { agentBlocks } = useAgentBlocks({
+  messages: messagesRef,
+  isTeamSession: props.isTeamSession,
+  plannerKind: props.plannerKind,
 });
 
 const {

@@ -772,7 +772,8 @@ export function useChatWorkspace() {
 
     await Promise.all([loadChatOptions(), appStore.loadAgents()]);
 
-    defaultAgentId.value = appStore.agents[0]?.id ?? null;
+    const defaultAgent = appStore.agents.find((a) => a.agent_key === '__spirit__') || appStore.agents[0];
+    defaultAgentId.value = defaultAgent?.id ?? null;
     displayAgents.value = loadAgentOrder(appStore.agents, defaultAgentId.value);
     coreReady.value = true;
 
