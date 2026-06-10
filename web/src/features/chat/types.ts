@@ -4,10 +4,13 @@
  * compatibility and defines chat-specific types.
  */
 
+import type { ComputedRef, InjectionKey } from 'vue';
 import type { ReactStep } from './reactPlannerTypes';
 
 // Re-export shared domain types
 export type { Message, RunStatus, RunStatusValue } from '../../domain/types';
+
+export const TOOL_DISPLAY_KEY: InjectionKey<ComputedRef<{ showToolCalls: boolean }>> = Symbol('tool-display-key')
 
 export type ChatOption = {
   type: string;

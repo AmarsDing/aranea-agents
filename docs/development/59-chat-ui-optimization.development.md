@@ -168,7 +168,7 @@ Chat UI 优化：精灵为唯一对话入口，左侧列表重构为精灵 + 任
 ### Phase P1 — 交互增强
 
 > **目标**：成员树/只读面板、面包屑导航、重试失败团队、手动归档 UI。
-> **状态**：🔄 进行中
+> **状态**：✅ 已完成
 
 | ID | 任务 | 状态 |
 |----|------|------|
@@ -339,6 +339,10 @@ cd web && pnpm lint && pnpm test -- useAgentBlocks && pnpm build
 | **TK-FE-24** | i18n 键补齐：`uiConfig` / `codeBlock`（TK-04/05） | 📋 |
 | **TK-FE-25** | 关闭工具时降级单测（TK-04） | 📋 |
 | **TK-FE-26** | CodeBlock 组件单测（TK-05） | 📋 |
+| **TK-FE-27** | **ThinkingArea.vue 组件（脑纹SVG+流光+半透明span+折叠按钮，v7 US-24）** | 📋 |
+| **TK-FE-28** | **UnifiedExecutionPanel.vue 组件（任务拆解+依赖关系+团队进度 单卡片纵向分区，v7 US-25）** | 📋 |
+| **TK-FE-29** | **TaskExecutionPanel.vue 集成 ThinkingArea + UnifiedExecutionPanel（v7）** | 📋 |
+| **TK-FE-30** | **TeamProgressCard 恢复/取消按钮移到卡片头部（v7 US-04）** | 📋 |
 
 #### P1.6 验收标准
 
@@ -579,6 +583,16 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 - [ ] **TK-06** 思考节点流式态有脉冲边框 + 闪烁光标
 - [ ] **TK-06** 思考节点完成态自动折叠为 span，点击展开
 - [ ] **TK-06** 思考节点字体/字号/颜色与回复文本同字号但低一档亮度
+- [ ] **v7** 思考区域显示蓝色脑纹 SVG 图标 + 流光动画
+- [ ] **v7** 思考内容用半透明深色 span 显示，最多 2 行，实时刷新 + 闪烁光标
+- [ ] **v7** 无思考内容时自动折叠为小按钮
+- [ ] **v7** 统一面板为单卡片容器，任务拆解/依赖关系/团队进度纵向排列
+- [ ] **v7** 统一面板每个子区域可独立折叠/展开
+- [ ] **v7** 任务拆解区显示编号圆圈 + 任务名 + 团队标签 + 状态
+- [ ] **v7** 依赖关系区显示 DAG 流式节点图（完成半透明、运行高亮）
+- [ ] **v7** 团队进度区团队卡片可展开查看 Agent 详情
+- [ ] **v7** 中断团队卡片头部显示恢复/取消按钮（不触发展开/折叠）
+- [ ] **v7** 所有状态标签统一使用 primary 蓝色系
 - [ ] i18n zh-CN + en-US 翻译完整
 - [ ] 虚拟滚动回收后看板/时间线状态正确恢复
 - [ ] `cd web && pnpm lint && pnpm test && pnpm build` 通过
@@ -678,23 +692,29 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 | **28** | **TK-FE-24** | **i18n 键补齐（uiConfig/codeBlock，TK-04/05）** | 📋 |
 | **29** | **TK-FE-25** | **关闭工具降级单测（TK-04）** | 📋 |
 | **30** | **TK-FE-26** | **CodeBlock 组件单测（TK-05）** | 📋 |
+| **31** | **TK-FE-27** | **ThinkingArea.vue（脑纹SVG+流光+半透明span+折叠按钮，v7）** | 📋 |
+| **32** | **TK-FE-28** | **UnifiedExecutionPanel.vue（单卡片纵向分区，v7）** | 📋 |
+| **33** | **TK-FE-29** | **TaskExecutionPanel 集成 v7 组件** | 📋 |
+| **34** | **TK-FE-30** | **TeamProgressCard 恢复/取消按钮移到卡片头部（v7）** | 📋 |
 
 ### P1.6 任务分层（按依赖深度）
 
 #### 零依赖（可并行启动）
-- TK-FE-01（类型扩展）、TK-FE-08（isStuckTool）、TK-FE-18（useUiConfigStore）、TK-FE-20（detectCodeLanguage）、TK-FE-23（思考节点细化）
+- TK-FE-01（类型扩展）、TK-FE-08（isStuckTool）、TK-FE-18（useUiConfigStore）、TK-FE-20（detectCodeLanguage）、TK-FE-23（思考节点细化）、TK-FE-27（ThinkingArea v7）、TK-FE-28（UnifiedExecutionPanel v7）
 
 #### 一层依赖
 - TK-FE-02 (← TK-FE-01)
 - TK-FE-19 (← TK-FE-18)
 - TK-FE-21 (← TK-FE-20)
 - TK-FE-25 (← TK-FE-19)
+- TK-FE-30 (← TK-FE-28，TeamProgressCard 按钮移到头部)
 
 #### 二层依赖
 - TK-FE-03, TK-FE-04 (← TK-FE-01, TK-FE-02)
 - TK-FE-09, TK-FE-10 (← TK-FE-01, TK-FE-08)
 - TK-FE-22 (← TK-FE-21, TK-FE-24)
 - TK-FE-26 (← TK-FE-22, TK-FE-21)
+- TK-FE-29 (← TK-FE-27, TK-FE-28, TK-FE-30，TaskExecutionPanel 集成)
 
 #### 三层依赖（集成）
 - TK-FE-05 (← TK-FE-03, TK-FE-04)

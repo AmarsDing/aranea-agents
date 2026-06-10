@@ -32,6 +32,15 @@ Chat 页面当前面临**展示层 + 编排层 + 状态机层**三类问题，�
 | P3-5 | 部分工具失败被掩盖为 `completed` | 用户不知道结果好但中途有工具失败 | 低 | M69 |
 | P4-1 | `todo_write` 多次调用 stuck 失败 | 代办管理工具不可用 | 中 | M59 |
 | P4-2 | 长对话中工具调用堆叠难追踪 | 用户无法快速定位"先 A 后 B 再 C"顺序 | 中 | M59 |
+| P5-1 | 左侧面板团队列表始终无数据（API 响应字段名不匹配） | 用户看不到团队 | 致命 | M69 |
+| P5-2 | 工具名显示原始名称（未使用 resolveDisplayLabel） | 用户无法理解工具含义 | 高 | M69 |
+| P5-3 | `subagents_spawn` 不被识别为子代理 | 子代理执行过程缺失 | 高 | M69 |
+| P5-4 | 非 ReAct 模式下 thinking 不显示 | 用户看不到 Agent 推理过程 | 中 | M69 |
+| P5-5 | TeamTaskCard 折叠态缺少进度条和成员头像 | 折叠态信息不足 | 中 | M69 |
+| P5-6 | action 展开态缺少工具参数和结果 | 用户无法查看工具详情 | 中 | M69 |
+| P5-7 | error 元素从未被生成 | 错误信息不可见 | 中 | M69 |
+| P5-8 | InterruptedTeamCard 未导入 | 中断恢复提示不显示 | 中 | M69 |
+| P5-9 | 搜索框未对团队列表过滤 | 搜索功能失效 | 低 | M69 |
 
 **核心原则**：
 1. **用户不需要知道有哪些 Agent、如何编排**——只需与精灵对话，精灵负责调度一切
@@ -192,52 +201,76 @@ Chat 页面当前面临**展示层 + 编排层 + 状态机层**三类问题，�
 
 **验收**：
 - 点击团队卡片 → 中间区域切换为该团队的**任务执行面板**
-- 任务执行面板布局：
+- 任务执行面板布局（v7 定稿）：
 
 ```
 +----------------------------------------------------------+
 | [← 返回精灵]  团队名称    状态 Badge    编排模式标签      |
 +----------------------------------------------------------+
-|  ┌─ 并行团队概览 ────────────────────────────────────┐   |
-|  │ 进行中：2  已完成：1  并行配额：2/3               │   |
-|  │ ┌─ DAG 依赖图 ──────────────────────────────┐     │   |
-|  │ │ ▶ 任务A → ⏳ 任务B(依赖A) → ⏳ 任务C(依赖B)│     │   |
-|  │ └────────────────────────────────────────────┘     │   |
-|  └───────────────────────────────────────────────────┘   |
-|  ┌─ 团队进度卡片 ────────────────────────────────────┐   |
-|  │ 后端 API 开发团队    ⚡ running    2/5 步骤        │   |
-|  │ ████████░░░░░░░░░░░░ 40%    耗时 1m 20s           │   |
-|  │ 👤 Golang 工程师 · 代码审查员 · 测试工程师 +1     │   |
-|  └───────────────────────────────────────────────────┘   |
-|  ┌─ 中断恢复提示（条件显示）──────────────────────────┐   |
-|  │ ⏸ 团队已中断 — 因服务器重启而中断                  │   |
-|  │ 已完成 3/5 步骤  [恢复执行] [取消团队]             │   |
-|  └───────────────────────────────────────────────────┘   |
-|  ┌─ 综合结果 ────────────────────────────────────────┐   |
-|  │ 📋 混合合成    100% 成功    耗时 3m 20s            │   |
-|  │ 各团队结果摘要...                                  │   |
-|  └───────────────────────────────────────────────────┘   |
-|  ┌─ 执行看板（任务-思考-工具-回复 树形嵌套）─────────┐   |
-|  │ 📋 任务 A1                                       │   |
-|  │   🧠 思考：分析需求...                            │   |
-|  │   ⚡ 工具：read_file("main.go")                   │   |
-|  │   💬 回复：已读取文件                             │   |
-|  │ 📋 任务 A2                                       │   |
-|  │   🧠 思考：基于文件内容...                        │   │
-|  │   🗂️ 子任务看板：代码实现                         │   |
-|  │     📋 任务：编写代码                              │   |
-|  │     ⚡ 工具：file_write                            │   │
-|  │     💬 回复：代码已写入                            │   |
-|  │ ✅ 完成                                           │   |
-|  └───────────────────────────────────────────────────┘   |
+|                                                          |
+|  [用户消息气泡]                                           |
+|                                                          |
+|  🧠 [思考区域] ────────────────────────────────────────  |
+|  │ 蓝色脑纹 SVG + 流光动画                               |
+|  │ 半透明深色 span，最多 2 行，实时刷新 + 闪烁光标       |
+|  │ 无思考时折叠为小按钮                                  |
+|  └────────────────────────────────────────────────────── |
+|                                                          |
+|  ┌─ 统一面板（单卡片，纵向分区）──────────────────────┐  |
+|  │                                                     │  |
+|  │  📋 任务拆解  [5]  ▼                               │  |
+|  │  ─────────────────────────────────────────────      │  |
+|  │  ① 实现 JWT 认证中间件    Golang 工程师  ⚡运行中   │  |
+|  │  ② 代码审查和安全检查      代码审查员    等待中      │  |
+|  │  ③ 编写单元测试和集成测试  测试工程师    等待中      │  |
+|  │  ④ 实现登录页面            Vue 工程师    ⚡运行中   │  |
+|  │  ⑤ 用户行为数据分析        数据分析师    ✓已完成    │  |
+|  │                                                     │  |
+|  │  ─── 细分隔线 ──────────────────────────────        │  |
+|  │                                                     │  |
+|  │  🔀 依赖关系  ▼                                    │  |
+|  │  ─────────────────────────────────────────────      │  |
+|  │  ✓数据分析 → ⚡后端API → ⏳代码审查 → ⏳测试        │  |
+|  │                ⚡前端UI                              │  |
+|  │                                                     │  |
+|  │  ─── 细分隔线 ──────────────────────────────        │  |
+|  │                                                     │  |
+|  │  📊 团队进度  [4]  ▼                               │  |
+|  │  ─────────────────────────────────────────────      │  |
+|  │  ┌─ 后端 API 开发团队  ⚡运行中  ████░ 40%  1m42s ▼┐│  |
+|  │  │  Golang 工程师 ⚡                                ││  |
+|  │  │    🧠 基于 JWT 中间件设计…▍                      ││  |
+|  │  │    ⚡ file_read auth.go ✓ 0.3s                  ││  |
+|  │  │    ⚡ file_write jwt.go ⚡ 5s…                   ││  |
+|  │  │  代码审查员 ⏳ 等待中                             ││  |
+|  │  │  测试工程师 ⏳ 等待中                             ││  |
+|  │  └─────────────────────────────────────────────────┘│  |
+|  │  ┌─ 前端 UI 开发团队  ⚡运行中  ███░ 33%  0m55s ▼ ┐│  |
+|  │  │  Vue 工程师 ⚡                                   ││  |
+|  │  │    🧠 基于 API 文档设计登录表单…                  ││  |
+|  │  │    ⚡ file_write LoginPage.vue ⚡ 12s…           ││  |
+|  │  └─────────────────────────────────────────────────┘│  |
+|  │  ┌─ 数据分析团队  ✓已完成  ██████ 100%  3m20s ▶ ┐  │  |
+|  │  └─────────────────────────────────────────────────┘│  |
+|  │  ┌─ 部署团队  ⏸已中断  ███░ 50%  4m05s ▶        ┐  │  |
+|  │  │  [恢复] [取消]  ← 操作按钮在卡片头部右侧        │  │  |
+|  │  └─────────────────────────────────────────────────┘│  |
+|  └─────────────────────────────────────────────────────┘  |
+|                                                          |
+|  💬 精灵回复：已为你组建了 4 个团队…                      |
+|                                                          |
++----------------------------------------------------------+
+| ⚡ 2运行中  1已中断  2/3配额  12.5k Token  复杂度:中等   |
 +----------------------------------------------------------+
 ```
 
-- **并行团队概览区**（`ParallelTeamOverview`）：展示多团队并行状态、并行配额、DAG 依赖图
-- **团队进度卡片**（`TeamProgressCard`）：每个团队独立展示进度、状态、成员
-- **执行看板**（`TaskKanbanBoard`）：**任务-思考-工具-回复 树形嵌套**展示
-- **中断恢复提示**（`InterruptedTeamCard`）：interrupted 状态时显示恢复/取消按钮
-- **综合结果区**（`SynthesisResultCard`）：所有团队完成后展示合成结果
+- **思考区域**（`ThinkingArea`）：蓝色脑纹 SVG + 流光动画，半透明深色 span 显示内容（最多 2 行），实时刷新 + 闪烁光标；无思考时折叠为小按钮
+- **统一面板**（`UnifiedExecutionPanel`）：单卡片内纵向分区，三个子区域（任务拆解、依赖关系、团队进度）用细分隔线分开，每个子区域可独立折叠
+- **任务拆解区**：任务行列表（编号圆圈 + 任务名 + 负责团队 + 状态），编号圆圈使用 primary 蓝色
+- **依赖关系区**：DAG 流式节点图，完成节点半透明，运行节点高亮
+- **团队进度区**：团队卡片列表，可展开查看 Agent 工作详情；中断团队卡片头部显示恢复/取消按钮
+- **精灵回复**：统一面板下方，综合汇报各团队状态
+- **底部状态栏**（`SpiritStatusBar`）：固定在底部，显示运行数/中断数/配额/Token/复杂度
 
 ### US-05 任务看板树形嵌套展示（核心展示模型）
 
@@ -377,7 +410,7 @@ pending → running → completed
 | Skipped | "已跳过" | 灰色 | ⊘ | 无 |
 | Cancelled | "已取消" | 灰色 | ⊘ | 无 |
 
-- 侧边栏团队卡片使用 `SpiritMember.status`（简单 3 值：idle/running/error）
+- 侧边栏团队卡片使用 `SpiritMember.status`（5 值：idle / working / waiting / completed / failed）
 - 任务执行面板使用 `AgentNodeStatus`（17 值聚合为 7 种标签）
 - **新增 `tool_blocked` 显式状态**：UI 显示"🟡 等待您的输入"徽章（来自 M69 useAgentBlocks 修复）
 
@@ -525,17 +558,23 @@ pending → running → completed
 - **范围**：作用于所有 Agent 回复（不仅精灵），包括思考节点 `kind: 'thinking'` 中的代码块
 - **i18n 键**：`chat.codeBlock.copy` / `chat.codeBlock.copied` / `chat.codeBlock.expandLine` / `chat.codeBlock.collapseLine` / `chat.codeBlock.plaintext`
 
-### US-24 思考节点"UI 不喧宾夺主"细化（TK-06，M59 P1.5 增强）
+### US-24 思考节点"UI 不喧宾夺主"细化（TK-06，M59 P1.5 增强，v7 定稿）
 
 **作为** 用户
 **我希望** 思考节点在流式输出和已完成两种状态下的展示都"不喧宾夺主"
 **以便** 思考是辅助信息，回复才是主内容；无论思考是否完成，视觉权重都不应超过回复
 
 **验收**：
-- **流式输出中**：
-  - 思考内容在**固定宽度容器**（`max-width: var(--content-max-width)`）中**实时刷新**追加
+- **流式输出中（v7 定稿设计）**：
+  - 左侧显示蓝色脑纹 SVG 图标（18×18px），带流光动画（`flowLight`：从左到右扫过的半透明蓝色光晕，2s 循环）
+  - 右侧内容用半透明深色 span 显示（`background: rgba(22, 33, 62, 0.6)`，`border-radius: 4px`，`padding: 4px 10px`）
+  - 内容最多 2 行（`max-height: 3em`，`overflow: hidden`），实时刷新追加
+  - 末尾显示闪烁光标（`width: 2px; height: 12px; background: var(--color-primary); animation: blink 0.8s step-end infinite`）
   - 不使用 modal/popover，不阻塞用户滚动
-  - 当前活动思考节点有**细微脉冲边框**（`border-left: 2px solid var(--color-primary); animation: pulse 1.5s ease-in-out infinite`）
+  - 当前活动思考节点有细微脉冲边框（`border-left: 2px solid var(--color-primary); animation: pulse 1.5s ease-in-out infinite`）
+- **无思考内容时**：
+  - 自动折叠为小按钮（`padding: 4px 10px; font-size: 12px; background: rgba(22, 33, 62, 0.6)`），显示"思考内容"文案
+  - 点击按钮可展开查看
 - **完成后**：
   - **自动折叠为 1 行 span**，文案：`🧠 {firstSentence}`（截取第一个句号前的内容，超过 60 字加 `…`）
   - 点击 span 展开完整 reasoning
@@ -551,9 +590,64 @@ pending → running → completed
 - **范围**：适用于 `TaskBoardNode` 中所有 `kind: 'thinking'` 节点，包括嵌套子任务看板
 - **例外**：当 `reasoning` 长度 < 30 字符时，直接内联显示不折叠（信息密度过低，折叠反而干扰）
 
+**脑纹 SVG 图标规格**：
+```html
+<svg viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="1.5">
+  <path d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z"/>
+  <path d="M9 7c1-1 2-1 3 0s2 1 3 0" stroke-opacity="0.5"/>
+  <path d="M8 11c1-1 2.5-1 4 0s2.5 1 4 0" stroke-opacity="0.3"/>
+</svg>
+```
+
+**流光动画规格**：
+```css
+.flow-light {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(91,138,245,0.6), transparent);
+  animation: flowLight 2s ease-in-out infinite;
+  border-radius: 50%;
+}
+@keyframes flowLight {
+  0% { opacity: 0; transform: translateX(-8px); }
+  50% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(8px); }
+}
+```
+
 ---
 
 ## 4. 编排用户故事（M60 核心）
+
+### US-25 统一执行面板（v7 定稿）
+
+**作为** 用户
+**我希望** 任务拆解、依赖关系、团队进度在同一个面板卡片中纵向排列，而非独立分离的多个 section
+**以便** 我能在一个视觉窗体内看到完整的执行上下文，不会因为多块显示而感到割裂
+
+**验收**：
+- **统一面板**（`UnifiedExecutionPanel`）为单个卡片容器（`background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius)`）
+- 三个子区域纵向排列，子区域之间用细分隔线（`border-top: 1px solid var(--border)`）分开
+- 每个子区域有独立的可折叠头部（图标 + 标题 + 计数 + 折叠箭头），点击可折叠/展开
+- **子区域 1：任务拆解**（📋）
+  - 任务行列表，每行：编号圆圈（primary 蓝色背景 + 白色数字）+ 任务名 + 负责团队标签 + 状态
+  - 编号圆圈：`width: 18px; height: 18px; border-radius: 50%; background: rgba(91,138,245,0.12); color: var(--color-primary)`
+  - 团队标签：`font-size: 10px; background: var(--bg-surface); padding: 1px 6px; border-radius: 3px`
+  - 头部显示任务总数（如 `[5]`）
+- **子区域 2：依赖关系**（🔀）
+  - DAG 流式节点图，节点间用 `→` 箭头连接
+  - 节点样式：`padding: 3px 8px; border-radius: 4px; font-size: 10px`
+  - 完成节点：`opacity: 0.5`（半透明）
+  - 运行节点：`background: rgba(91,138,245,0.15); color: var(--color-primary)`（高亮）
+  - 等待节点：默认样式
+- **子区域 3：团队进度**（📊）
+  - 团队卡片列表，每张卡片包含：
+    - 头部：团队缩写头像 + 团队名 + 状态徽章 + 进度条 + 时长 + 折叠箭头
+    - 中断团队头部额外显示恢复/取消按钮（`onclick` 阻止冒泡，不触发展开/折叠）
+    - 展开体：Agent 工作详情列表
+  - 运行中团队默认展开，已完成/中断团队默认折叠
+  - 头部显示团队总数（如 `[4]`）
+- **颜色规范**：所有状态标签统一使用 primary 蓝色系，通过透明度区分状态（不使用绿/红/橙/青多色）
+- **不包含**：并行团队概览（`ParallelTeamOverview`）已移除，其信息合并到统一面板的依赖关系和团队进度区
 
 ### SPO-01 多团队并行执行
 
@@ -663,10 +757,10 @@ interface AgentBlock {
   /** Agent 标识 */
   agentKey: string
   agentName: string
-  /** 当前 turn 的根看板 */
-  rootBoard: TaskBoardNode[]
+  /** 当前 turn 的时间线条目（不含 progress，progress 在 progressSections 中） */
+  board: TaskBoardNode[]
   /** 子 agent 子任务看板（递归结构） */
-  childBoards: AgentBlock[]
+  childBlocks: AgentBlock[]
   /** 整体状态 */
   status: AgentBlockStatus
   /** 是否有工具失败但最终结果成功 */
@@ -715,10 +809,10 @@ type AgentBlockStatus =
 |---|------|------|
 | DP-1 | 环境可观测性优先 | 状态信息以颜色、图标、微动画呈现，不占用主内容区空间 |
 | DP-2 | 渐进式信息披露 | 默认只展示 L1，用户主动交互才展开 L2/L3 |
-| DP-3 | 完成即折叠 | 已完成的步骤/团队/工具调用自动收起，保持视觉焦点在活跃内容 |
+| DP-3 | 完成即折叠 | 已完成的步骤/工具/团队自动收起，保持视觉焦点在活跃内容 |
 | DP-4 | 状态即视觉 | 颜色、图标、动画三位一体传达状态 |
 | DP-5 | 证据后置 | 过程信息轻量展示，详细证据仅在用户主动查看时展开 |
-| DP-6 | **完成即展开** | 已完成回合的看板默认展开，让用户直达最终答案 |
+| DP-6 | **已完成回合默认展开** | 已完成回合的看板默认展开，让用户直达最终答案（与 DP-3 作用层级不同：DP-3 针对步骤/工具，DP-6 针对回合/看板） |
 | DP-7 | **树形嵌套** | 子 agent 子任务看板与父看板使用相同结构，递归可下钻 |
 
 ### 5.4 中间面板状态机
@@ -941,6 +1035,8 @@ ToolCallTimelineNode:
 
 | 组件 | 路径 | 职责 | 状态 |
 |------|------|------|------|
+| UnifiedExecutionPanel.vue | `components/spirit/` | 统一执行面板（任务拆解+依赖关系+团队进度 单卡片纵向分区） | 📋 v7 |
+| ThinkingArea.vue | `components/spirit/` | 思考区域（脑纹SVG+流光+半透明span+闪烁光标+折叠按钮） | 📋 v7 |
 | SpiritEntry.vue | `components/spirit/` | 精灵入口卡片 | ✅ |
 | SpiritStatusBar.vue | `components/spirit/` | 底部状态栏 | ✅ |
 | TeamTaskCard.vue | `components/spirit/` | 侧边栏团队卡片 | ✅ |
@@ -1062,7 +1158,7 @@ WebSocket Envelope
 | AC-19 | `resolvePlanStatus` 在 `planStatus === 'planning' && agentStatus === 'running' && planEntries.length > 0` 时必须返回 `'executing'` | P0 | `useAgentBlocks.ts` |
 | AC-20 | progress envelope 的 sortKey 不得小于 user 消息对应 sortKey；时钟漂移场景使用钳制（`Math.max(0, offset) - 0.5`） | P1 | `useAgentBlocks.ts` |
 | AC-21 | Reply 去重判断必须在 ReAct 模式下也走 `hasExplicitFinalAnswer` 判定（与 `resolveReplyContent` 语义对齐） | P1 | `useAgentBlocks.ts` |
-| AC-22 | `updatePlanEntryStatuses` 的 plan entry 与 sub-agent block 匹配改用 `agentKey` 而非 `agentName \|\| task` | P1 | `useAgentBlocks.ts` |
+| AC-22 | `updatePlanEntryStatuses` 的 plan entry 与 sub-agent block 匹配改用 `agentKey` 而非 `agentName || task` | P1 | `useAgentBlocks.ts` |
 | AC-23 | 已完成回合（`status === 'completed'`）的 `collapsed` 默认为 `false`（展开态），让用户直达最终答案 | P2 | `useAgentBlocks.ts` |
 | AC-24 | AgentBlock 暴露 `hasPartialFailure` 字段（`hasFailedTool && hasSuccessfulResult`），UI 在回合头显示"⚠️ 部分工具失败"徽章 | P2 | `useAgentBlocks.ts` |
 | AC-25 | progress section 整体移到 turn 头部（user 消息之后、第一条 timeline 条目之前），与 timeline 主线视觉分离 | P3 | `useAgentBlocks.ts` + `TimelineNode.vue` |
@@ -1088,6 +1184,9 @@ WebSocket Envelope
 | TD-11 | WriteDeliverablesToSession 使用 ParallelConfigJSON 存储交付物输出，语义不匹配 | P2 | ⚠️ 已标记 TECH-DEBT |
 | TD-12 | resolveVerificationGates 未实现 LinkedGraphID 查询路径 | P2 | ⚠️ |
 | TD-13 | 废弃 Spirit 工具代码残留约 400 行 | P2 | ⚠️ |
+| TD-14 | spiritSessionIDFromCtx 耦合 trpc-agent-go 运行时 API | P3 | ⚠️ |
+| TD-15 | 借调逻辑 submitBorrowRequests 为 best-effort，无回调确认机制 | P3 | ⚠️ |
+| TD-16 | 精灵 Prompt 决策规则无法 system-side 强制执行 | P3 | ⚠️ |
 | TD-TK-1 | `todo_write` 工具结果在前端展示为 `result` 字段嵌套 JSON | P1 | 📋 P1.6 |
 | TD-TK-2 | `stuckToolResultReason` 文案为 Go 常量硬编码，前端无法 i18n | P1 | 📋 P1.6 |
 | TD-TK-3 | `ChatExecutionCard` 与 `ToolCallTimeline` 在多工具时并存 | P2 | 📋 |
@@ -1154,7 +1253,7 @@ WebSocket Envelope
 | F-15 | **Bug** | 🟠 P1 | `resolvePlanStatus` 漏 `running` 转换分支，`subagents_spawn` 路径下 PlanCard 永远停在"规划中" |
 | F-16 | **Bug** | 🟠 P1 | progress sortKey 未钳制，时钟漂移导致 progress 卡片插到 user 消息之前 |
 | F-17 | **Bug** | 🟠 P1 | Reply 去重仅在非 ReAct 模式生效，与 `resolveReplyContent` 语义不一致 |
-| F-18 | **Bug** | 🟠 P1 | Plan entry ↔ sub-agent block 匹配用 `agentName \|\| task`，多子代理相似任务时错配 |
+| F-18 | **Bug** | 🟠 P1 | Plan entry ↔ sub-agent block 匹配用 `agentName || task`，多子代理相似任务时错配 |
 | F-19 | **UX** | 🟡 P2 | 已完成回合默认折叠，用户看不到 AI 最终答案 |
 | F-20 | **UX** | 🟡 P2 | 部分工具失败被掩盖为 `completed`，无可观测信号 |
 | F-21 | **UX** | 🟢 P3 | progress section 与 timeline 主线混排，破坏线性叙事 |

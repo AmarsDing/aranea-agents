@@ -216,3 +216,28 @@ export function agentColorFromKey(key: string): string {
 
 /** Root agent key constant — the orchestrator spirit agent */
 export const ROOT_AGENT_KEY = '__root__';
+
+// === TODO Board Types (P1.6 TK-01) ===
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoItem {
+  id: string
+  content: string
+  activeForm: string
+  status: TodoStatus
+  updatedAt: string
+}
+
+export interface TodoBoardState {
+  todos: TodoItem[]
+  lastUpdated: string
+  source: 'session_state' | 'tool_result' | 'merged'
+}
+
+export type TodoColumnKey = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoColumn {
+  key: TodoColumnKey
+  items: TodoItem[]
+}

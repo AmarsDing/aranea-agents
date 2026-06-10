@@ -1,6 +1,8 @@
 /** 时间线元素类型 */
 export type TimelineElementKind = 'user' | 'thinking' | 'action' | 'summary' | 'end' | 'error';
 
+import type { ToolUseEvent } from './types';
+
 /** 时间线元素 */
 export interface TimelineElement {
   kind: TimelineElementKind;
@@ -23,4 +25,18 @@ export interface TimelineElement {
   errorMessage?: string;
   /** 折叠状态 */
   collapsed: boolean;
+}
+
+// === Tool Call Timeline Types (P1.6 TK-02) ===
+
+export interface ToolCallTimelineNode {
+  event: ToolUseEvent
+  timestamp: string
+  statusPoint: { color: string; icon: string; animated: boolean }
+  summary: string
+  argsPreview?: string
+  resultPreview?: string
+  errorText?: string
+  durationLabel: string
+  isStuck: boolean
 }
