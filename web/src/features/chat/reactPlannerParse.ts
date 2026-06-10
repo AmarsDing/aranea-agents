@@ -50,6 +50,7 @@ export function parseReactPlannerContent(text: string): ReactParsedContent | nul
   const steps: ReactStep[] = [];
   let pos = 0;
   let finalAnswer = '';
+  let hasExplicitFinalAnswer = false;
   let sawTag = false;
 
   while (pos < raw.length) {
@@ -59,6 +60,7 @@ export function parseReactPlannerContent(text: string): ReactParsedContent | nul
     const contentStart = hit.index + hit.tag.length;
     if (hit.isFinal) {
       finalAnswer = raw.slice(contentStart).trim();
+      hasExplicitFinalAnswer = true;
       break;
     }
     const next = findEarliestTag(raw, contentStart);
@@ -82,6 +84,7 @@ export function parseReactPlannerContent(text: string): ReactParsedContent | nul
     steps,
     finalAnswer,
     fallbackMarkdown: raw,
+    hasExplicitFinalAnswer,
   };
 }
 

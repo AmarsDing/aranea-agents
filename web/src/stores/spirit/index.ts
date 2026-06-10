@@ -227,9 +227,25 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   function updateTeamStatus(teamId: string, status: SpiritTeamStatus) {
     const team = teams.value.find((t) => t.id === teamId);
-    if (team) {
-      team.status = status;
+    if (!team) return;
+
+    // Terminal state protection: completed/failed/cancelled cannot be overridden
+    // by lower-priority events. This prevents race conditions where
+    // spirit_team_failed arrives after spirit_team_completed.
+    const terminalStates: SpiritTeamStatus[] = ['completed', 'failed', 'cancelled'];
+    if (terminalStates.includes(team.status) && !terminalStates.includes(status)) {
+      return; // Block non-terminal → terminal regression
     }
+    // Same-level terminal override: only allow if new status has equal or higher priority
+    // Priority: completed > failed > cancelled (completed should not be overridden by failed)
+    const terminalPriority: Record<string, number> = { completed: 3, failed: 2, cancelled: 1 };
+    if (terminalStates.includes(team.status) && terminalStates.includes(status)) {
+      if ((terminalPriority[status] ?? 0) <= (terminalPriority[team.status] ?? 0)) {
+        return; // Don't downgrade terminal status (e.g. completed → failed)
+      }
+    }
+
+    team.status = status;
   }
 
   function addTeam(team: SpiritTeam) {
@@ -290,7 +306,13 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'butler.orchestration.completed':
         break;
       case 'butler.orchestration.failed':
-        if (teamId) updateTeamStatus(teamId, 'failed');
+        if (teamId) {
+          // Only set failed if team is not already in a terminal state
+          const existing = teams.value.find((t) => t.id === teamId);
+          if (existing && !['completed', 'failed', 'cancelled'].includes(existing.status)) {
+            updateTeamStatus(teamId, 'failed');
+          }
+        }
         break;
     }
   }
@@ -369,8 +391,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   function handleTeamFailed(teamId: string, md: Record<string, unknown>) {
     if (!teamId) return;
+    // Don't override completed/cancelled with failed (terminal state protection)
     const existing = teams.value.find((t) => t.id === teamId);
-    if (existing?.status === 'cancelled') return;
+    if (existing?.status === 'completed' || existing?.status === 'cancelled') return;
     updateTeamStatus(teamId, 'failed');
     const team = teams.value.find((t) => t.id === teamId);
     if (!team) return;
@@ -399,22 +422,13 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     const pct = Number(md.progress_pct ?? 0);
     const durationMs = Number(md.duration_ms ?? 0);
     const newStatus = String(md.status ?? 'running');
+    if (!isValidTeamStatus(newStatus)) return;
     const team = teams.value.find((t) => t.id === teamId);
     if (!team) return;
 
-    const regressions: Record<string, Set<string>> = {
-      running: new Set(['pending']),
-      completed: new Set(['pending', 'running']),
-      failed: new Set(['pending', 'running']),
-      cancelled: new Set(['pending', 'running']),
-      archived: new Set(['pending', 'running', 'completed', 'failed', 'cancelled']),
-    };
-    const blocked = regressions[team.status];
-    if (!blocked || !blocked.has(newStatus)) {
-      if (isValidTeamStatus(newStatus)) {
-        team.status = newStatus;
-      }
-    }
+    // Use updateTeamStatus for consistent terminal state protection
+    updateTeamStatus(teamId, newStatus as SpiritTeamStatus);
+
     if (pct >= 0) team.progressPct = pct;
     if (durationMs > 0) team.durationMs = durationMs;
   }

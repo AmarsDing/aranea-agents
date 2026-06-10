@@ -62,6 +62,45 @@
               :agent-color="block.agentColor"
             />
 
+            <!-- Reply section rendered as a chronological timeline entry.
+                 P1 (reply-chronological): useAgentBlocks now emits a
+                 `kind: 'reply'` entry at the assistant message's chronological
+                 position for every round, so each round of reply gets its
+                 own UI component (no more 1:1 pairing against thinking). -->
+            <div v-else-if="entry.kind === 'reply'" class="section section--reply" :data-round="replyRoundIndex(idx)">
+              <div class="section__label">
+                <q-icon name="article" size="14px" style="color: var(--color-success)" />
+                <span class="section__label-text">
+                  {{ totalReplyCount > 1 ? '回复 ' + replyRoundIndex(idx) : '回复' }}
+                </span>
+                <span v-if="entry.section.durationMs != null" class="section__label-duration">
+                  {{ formatDuration(entry.section.durationMs) }}
+                </span>
+                <span v-if="entry.section.streaming" class="pulse-dot" />
+              </div>
+              <div class="section__body">
+                <div class="section__body-inner">
+                  <div class="chat-message-prose" v-html="renderReplyContent(entry.section.content)" />
+                  <span v-if="entry.section.streaming" class="cursor-blink"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Execution progress step (orchestration / team / tool / thinking) -->
+            <div v-else-if="entry.kind === 'progress'" class="section section--progress" :class="progressClass(entry.section)">
+              <div class="section__label">
+                <span class="section__label-icon">{{ progressIcon(entry.section.category) }}</span>
+                <span class="section__label-text">{{ progressCategoryLabel(entry.section.category) }}</span>
+                <span class="section__label-message">{{ entry.section.message }}</span>
+                <span v-if="entry.section.durationMs != null" class="section__label-duration">
+                  {{ formatDuration(entry.section.durationMs) }}
+                </span>
+                <span v-else-if="entry.section.status === 'running'" class="pulse-dot" />
+                <span v-if="entry.section.status === 'failed'" class="section__label-icon" title="失败">{{ progressStatusGlyph('failed') }}</span>
+                <span v-else-if="entry.section.status === 'timeout'" class="section__label-icon" title="超时">{{ progressStatusGlyph('timeout') }}</span>
+              </div>
+            </div>
+
             <!-- Sub-agent entry with tree connector -->
             <div v-else-if="entry.kind === 'subagent'" class="sub-agent-timeline-entry">
               <!-- Tree connector: vertical line + node dot -->
@@ -83,19 +122,6 @@
             </div>
           </template>
         </div>
-
-        <!-- Result section -->
-        <div v-if="block.result" class="section section--result">
-          <div class="section__label">
-            <q-icon name="bar_chart" size="14px" style="color: var(--color-success)" />
-            <span class="section__label-text">{{ isRoot ? '最终结果' : '执行结果' }}</span>
-          </div>
-          <div class="section__body">
-            <div class="section__body-inner">
-              <div class="chat-message-prose" v-html="renderedResult" />
-            </div>
-          </div>
-        </div>
       </div>
     </transition>
   </div>
@@ -103,7 +129,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import type { AgentBlock as AgentBlockType, TimelineEntry } from '../../features/chat/agentTreeTypes';
+import {
+  PROGRESS_GLYPHS,
+  PROGRESS_LABELS,
+  PROGRESS_STATUS_GLYPHS,
+  type AgentBlock as AgentBlockType,
+  type TimelineEntry,
+} from '../../features/chat/agentTreeTypes';
 import AgentThinkingSection from './AgentThinkingSection.vue';
 import AgentToolSection from './AgentToolSection.vue';
 import PlanCard from './PlanCard.vue';
@@ -184,7 +216,24 @@ const avatarText = computed(() => {
   return name.charAt(0).toUpperCase();
 });
 
-const renderedResult = computed(() => renderChatMarkdown(props.block.result || ''));
+/**
+ * P1 (reply-chronological): total number of reply entries in the timeline.
+ * Used by the template to decide between "回复" and "回复 N" labels.
+ */
+const totalReplyCount = computed(() => props.block.timeline.filter((e) => e.kind === 'reply').length);
+
+/**
+ * P1 (reply-chronological): compute the 1-based round index for a reply
+ * entry based on its position among all reply entries in the timeline.
+ * Returns the round number (1, 2, 3, ...) the user sees in the UI label.
+ */
+function replyRoundIndex(timelineIdx: number): number {
+  let count = 0;
+  for (let i = 0; i <= timelineIdx && i < props.block.timeline.length; i++) {
+    if (props.block.timeline[i].kind === 'reply') count++;
+  }
+  return count;
+}
 
 /** Count of sub-agent entries in timeline */
 const subAgentCount = computed(() => props.block.timeline.filter((e) => e.kind === 'subagent').length);
@@ -204,9 +253,42 @@ function entryKey(entry: TimelineEntry): string {
       return `thinking-${entry.section.id}`;
     case 'tool':
       return `tool-${entry.section.id}`;
+    case 'reply':
+      return `reply-${entry.section.id}`;
+    case 'progress':
+      return `progress-${entry.section.id}`;
     case 'subagent':
       return `subagent-${entry.block.id}`;
   }
+}
+
+function renderReplyContent(content: string): string {
+  return renderChatMarkdown(content || '');
+}
+
+/** Map a ProgressCategory to a single-character / emoji glyph */
+function progressIcon(category: string): string {
+  return PROGRESS_GLYPHS[category as keyof typeof PROGRESS_GLYPHS] ?? '•';
+}
+
+/** Map a ProgressCategory to a Chinese display label */
+function progressCategoryLabel(category: string): string {
+  return PROGRESS_LABELS[category as keyof typeof PROGRESS_LABELS] ?? '进度';
+}
+
+/** Map ProgressSection.status to a CSS modifier class for color cues */
+function progressClass(section: { status: string }): Record<string, boolean> {
+  return {
+    'section--progress-running': section.status === 'running',
+    'section--progress-done': section.status === 'done',
+    'section--progress-failed': section.status === 'failed',
+    'section--progress-timeout': section.status === 'timeout',
+  };
+}
+
+/** Map ProgressSection.status to a status glyph (with accessible title). */
+function progressStatusGlyph(status: string): string {
+  return PROGRESS_STATUS_GLYPHS[status as keyof typeof PROGRESS_STATUS_GLYPHS] ?? '';
 }
 
 function toggleCollapse() {
@@ -449,6 +531,80 @@ onUnmounted(() => {
     border-radius: 0 6px 6px 0
     color: var(--color-text-primary)
     line-height: 1.6
+
+.section--reply
+  margin-top: 4px
+  margin-bottom: 12px
+
+  .section__label
+    color: var(--color-success)
+
+  .section__body-inner
+    background: color-mix(in srgb, var(--color-success) 6%, transparent)
+    border-left: 2px solid var(--color-success)
+    border-radius: 0 6px 6px 0
+    color: var(--color-text-primary)
+    line-height: 1.6
+
+// ── Progress section (orchestration / team / tool / thinking step) ──
+.section--progress
+  margin-bottom: 6px
+  padding: 4px 8px
+  border-radius: 6px
+  border-left: 2px solid var(--color-text-tertiary)
+  background: color-mix(in srgb, var(--color-text-primary) 3%, transparent)
+  transition: background 0.2s, border-color 0.2s
+
+  .section__label
+    color: var(--color-text-secondary)
+    font-size: 12px
+    text-transform: none
+    letter-spacing: 0
+    margin-bottom: 0
+    gap: 6px
+
+  .section__label-text
+    text-transform: uppercase
+    letter-spacing: 0.3px
+    color: var(--color-text-tertiary)
+    font-size: 10px
+    font-weight: 600
+
+  .section__label-message
+    flex: 1
+    color: var(--color-text-secondary)
+    font-size: 12px
+    font-weight: 500
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  .section__label-duration
+    color: var(--color-text-tertiary)
+    font-size: 10px
+
+.section--progress-running
+  border-left-color: var(--color-accent)
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent)
+
+  .section__label-message
+    color: var(--color-text-primary)
+
+.section--progress-done
+  border-left-color: var(--color-success)
+  background: color-mix(in srgb, var(--color-success) 5%, transparent)
+  opacity: 0.85
+
+  .section__label-message
+    color: var(--color-text-tertiary)
+
+.section--progress-failed
+  border-left-color: var(--color-danger)
+  background: color-mix(in srgb, var(--color-danger) 6%, transparent)
+
+.section--progress-timeout
+  border-left-color: var(--color-warning)
+  background: color-mix(in srgb, var(--color-warning) 6%, transparent)
 
 // ── Collapse transition ──
 .agent-collapse-enter-active,

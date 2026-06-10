@@ -254,6 +254,32 @@ export function useChatWorkspace() {
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
   const statusPulse = useStatusPulse(streamManager.wsReplaying);
 
+  // D1: Load spirit teams when a Spirit session is selected
+  watch(
+    () => ({
+      sessionId: sessionStore.selectedSession?.id,
+      agentKey: appStore.selectedAgent?.agent_key,
+    }),
+    ({ sessionId, agentKey }) => {
+      if (!sessionId) return;
+      if (agentKey === '__spirit__') {
+        spiritStore.loadSpiritTeams(sessionId);
+      } else {
+        if (spiritStore.teams.length > 0) {
+          spiritStore.reset();
+        }
+      }
+    },
+    { immediate: true },
+  );
+
+  // D1: Reload teams after WS reconnect
+  watch(streamManager.wsReplaying, (replaying, wasReplaying) => {
+    if (wasReplaying && !replaying && spiritStore.currentSpiritSessionId) {
+      spiritStore.reloadTeams();
+    }
+  });
+
   const selectedAgentId = computed(() => appStore.selectedAgent?.id);
 
   watch(
@@ -865,6 +891,7 @@ export function useChatWorkspace() {
         return sid ? runtimeStore.isWsConnected(sid) : false;
       }),
       wsReplaying: streamManager.wsReplaying,
+      executionProgress: streamManager.executionProgress,
       spiritLoadingMessage: contextualLoading.loadingMessage,
       spiritPulseStates: statusPulse.pulseStates,
       spiritOnTeamStatusChanged: statusPulse.onTeamStatusChanged,

@@ -115,7 +115,7 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
     id: event.agent_id || '',
     agent_key: event.agent_key || '',
     name: event.agent_name || event.agent_key || '',
-    icon: event.agent_icon || '',
+    icon: '',
   };
   return {
     id: messageId,
@@ -138,7 +138,7 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
         agent_id: event.agent_id,
         agent_key: event.agent_key,
         name: event.agent_name || event.agent_key,
-        icon: event.agent_icon || '',
+        icon: '',
       },
       tool_event: { ...event, is_long_running: event.is_long_running },
     }),

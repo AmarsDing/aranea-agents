@@ -1304,7 +1304,7 @@ func (p *FunctionCallResponseProcessor) executeToolCall(
 		}
 	}
 	if suppressDefaultToolMessage {
-		defaultMsg, err := buildDefaultToolMessage(toolCall.ID, result)
+		defaultMsg, err := buildDefaultToolMessage(toolCall.ID, toolCall.Function.Name, result)
 		if err != nil {
 			log.WarnfContext(
 				ctx,
@@ -1343,7 +1343,7 @@ func (p *FunctionCallResponseProcessor) executeToolCall(
 			skipSummarization, nil
 	}
 
-	defaultMsg, err := buildDefaultToolMessage(toolCall.ID, result)
+	defaultMsg, err := buildDefaultToolMessage(toolCall.ID, toolCall.Function.Name, result)
 	if err != nil {
 		// Marshal failures (for example, NaN in floats) do not
 		// affect the overall flow. Downgrade to warning to avoid
@@ -1976,6 +1976,7 @@ func extractResultError(result any) bool {
 
 func buildDefaultToolMessage(
 	toolCallID string,
+	toolName string,
 	result any,
 ) (model.Message, error) {
 	// Preserve legacy tool message serialization for default fallback content.
@@ -1984,9 +1985,10 @@ func buildDefaultToolMessage(
 		return model.Message{}, err
 	}
 	return model.Message{
-		Role:    model.RoleTool,
-		Content: string(resultBytes),
-		ToolID:  toolCallID,
+		Role:     model.RoleTool,
+		Content:  string(resultBytes),
+		ToolID:   toolCallID,
+		ToolName: toolName,
 	}, nil
 }
 

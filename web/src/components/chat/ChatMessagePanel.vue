@@ -115,7 +115,7 @@
           <span class="text-caption">{{ spiritLoadingMessage.text }}</span>
         </div>
       </div>
-      <div v-if="hasCollapsedBlocks && (!panelMode || panelMode === 'spirit')" class="row items-center q-px-md q-py-xs">
+      <div v-if="!panelMode || panelMode === 'spirit'" class="row items-center justify-end q-px-md q-py-xs">
         <q-btn
           flat
           dense
@@ -263,6 +263,7 @@
 import { computed, nextTick, onMounted, provide, readonly, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { QVirtualScroll } from 'quasar';
+import type { Envelope } from '../../realtime/envelope';
 import ChatRunnerStatus from './ChatRunnerStatus.vue';
 import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
 import ChatMessageList from './ChatMessageList.vue';
@@ -341,6 +342,14 @@ const props = defineProps<{
   focusTurnId?: string;
   sessionArtifacts?: ArtifactMeta[];
   sessionArtifactsLoading?: boolean;
+  /**
+   * Ordered execution_progress envelopes for the active stream. Surfaced by
+   * useChatStreamManager and consumed by useAgentBlocks to render inline
+   * orchestration / team / tool / thinking step cards in the timeline.
+   *
+   * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+   */
+  executionProgress?: readonly Envelope[];
   fileSupported?: boolean;
   fileAccept?: string;
   showBackgroundJobs?: boolean;
@@ -415,10 +424,13 @@ const { messageRow, teamMemberLanes, useTurnBlockMode, turnBlocks, timelineItems
   isTeamSession: props.isTeamSession,
 });
 
+const executionProgressRef = computed(() => props.executionProgress ?? []);
+
 const { agentBlocks } = useAgentBlocks({
   messages: messagesRef,
   isTeamSession: props.isTeamSession,
   plannerKind: props.plannerKind,
+  progressEnvelopes: executionProgressRef,
 });
 
 const {

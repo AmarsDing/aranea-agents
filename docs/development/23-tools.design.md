@@ -1353,6 +1353,74 @@ AssemblyConfig.SubAgentService
 
 ---
 
+## 七-B、LLM Provider Tool Calling 适配
+
+> **版本**：1.0 | **状态**：✅ 已修复（2026-06-10）
+> **定位**：trpc-agent-go 运行时中各 LLM Provider 对 `tool.Declaration` → API 请求格式的转换规范
+
+### 1. Provider 适配架构
+
+```
+tool.Declaration (InputSchema *Schema)
+  → 各 Provider 的 convertTools() 函数
+  → OpenAI:  tools[].function.parameters
+  → Anthropic: tools[].input_schema
+  → Gemini:   functionDeclarations[].parametersJsonSchema
+  → Ollama:   tools[].function.parameters
+```
+
+### 2. SanitizeToolName 统一规则
+
+所有 Provider 的 `convertTools()` 必须对 `declaration.Name` 调用 `tool.SanitizeToolName()`，将非法字符替换为下划线。此规则确保工具名在所有 LLM API 中兼容（`^[a-zA-Z0-9_-]+$`）。
+
+| Provider | 位置 | 状态 |
+|----------|------|------|
+| OpenAI | `model/openai/openai.go` | ✅ 已有 |
+| Anthropic | `model/anthropic/anthropic.go` | ✅ 已修复 |
+| Gemini | `model/gemini/gemini.go` | ✅ 已修复 |
+| Ollama | `model/ollama/ollama.go` | ✅ 已修复 |
+
+### 3. nil InputSchema 防护
+
+`tool.Declaration.InputSchema` 类型为 `*Schema`（指针），可以为 nil。无参数工具（如 `transfer_to_agent`）可能不设置 InputSchema。
+
+**规则**：所有 Provider 的 `convertTools()` 必须在访问 `InputSchema` 前做 nil 检查，nil 时提供默认空 object schema。
+
+| Provider | 防护状态 |
+|----------|---------|
+| OpenAI | ✅ 已有防护 |
+| Anthropic | ✅ 已修复（2026-06-10） |
+| Gemini | ✅ 已有（`if decl.InputSchema != nil`） |
+| Ollama | ✅ 已有（`if decl.InputSchema != nil`） |
+
+### 4. JSON Schema `required` 字段映射
+
+JSON Schema 中 `required` 是顶层字段（`InputSchema.Required`），列出哪些属性名是必填的。**不得**使用 `prop.Required`（嵌套对象的子级 required 列表）。
+
+| Provider | 映射方式 | 状态 |
+|----------|---------|------|
+| OpenAI | `declaration.InputSchema.Required` | ✅ 正确 |
+| Anthropic | `declaration.InputSchema.Required` | ✅ 正确 |
+| Gemini | `normalizeToolSchema` 整体序列化 | ✅ 正确 |
+| Ollama | `decl.InputSchema.Required` | ✅ 已修复（2026-06-10，原错误使用 `prop.Required`） |
+
+### 5. Tool Result 回传格式
+
+| Provider | 回传方式 | 注意事项 |
+|----------|---------|---------|
+| OpenAI | `role: "tool"`, `tool_call_id` 匹配 | 标准格式 |
+| Anthropic | `type: "tool_result"` block 嵌入 user 消息 | `tool_use_id` 匹配 |
+| Gemini | `FunctionResponse` part（role=user） | 按 Name + 位置匹配，需确保 ToolName 非空 |
+| Ollama | 降级为 `role: "user"` 消息 | 不支持 tool role，需嵌入 `[Tool Result: name (id: xxx)]` 前缀 |
+
+### 6. buildDefaultToolMessage 规范
+
+`buildDefaultToolMessage(toolCallID, toolName, result)` 必须同时填充 `ToolID` 和 `ToolName`，确保下游 Provider（特别是 Gemini）能正确构建 `FunctionResponse.Name`。
+
+**修复记录**（2026-06-10）：原签名缺少 `toolName` 参数，导致 Gemini `FunctionResponse.Name` 为空，可能触发 API 400 错误。
+
+---
+
 ## 八、Web 前端设计
 
 ### 8.1 文件结构
@@ -1538,6 +1606,71 @@ export async function listToolRunsForTool(id: string, query: ToolRunQuery = {}):
 export async function listToolRuns(query: ToolRunQuery = {}): Promise<PaginatedResponse<ToolInvocation>>
 export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffectiveTools>
 ```
+
+### 8.3-B Chat Tool 事件流与状态映射
+
+> **版本**：1.0 | **更新**：2026-06-10
+
+#### 数据流
+
+```
+后端 EventProjector.buildToolCallEnvelope()
+  → Envelope { type: "tool_call", tool_call: EnvelopeToolCall }
+  → WebSocket → 前端 streamHandlers
+  → envelopeToToolEvent(env, 'before') → ToolUseEvent { status: 'running' }
+  → AgentToolSection.vue 渲染
+
+后端 EventProjector.buildToolResultEnvelope()
+  → Envelope { type: "tool_result", tool_call: EnvelopeToolCall }
+  → WebSocket → 前端 streamHandlers
+  → envelopeToToolEvent(env, 'after') → ToolUseEvent { status: 'success'|'failed'|... }
+  → mergeToolEvents() 合并 before+after
+  → AgentToolSection.vue 更新
+```
+
+#### EnvelopeToolCall 字段映射
+
+后端 `EnvelopeToolCall`（Go）与前端 `EnvelopeToolCall`（TS）字段完全一致，JSON tag 统一使用 snake_case：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | 工具调用 ID |
+| `name` | string | 工具名 |
+| `arguments_json` | string | 参数 JSON |
+| `result_json` | string? | 结果 JSON |
+| `status` | string | wire 状态 |
+| `duration_ms` | number? | 耗时 |
+| `is_long_running` | boolean? | 长运行标记 |
+| `activity_kind` | string? | 活动分类 |
+| `display_label` | string? | 显示标签 |
+| `icon_key` | string? | 图标 key |
+| `summary` | string? | 摘要 |
+| `started_at` | string? | 开始时间 |
+| `finished_at` | string? | 结束时间 |
+| `error_code` | string? | 错误码 |
+| `agent_key` | string? | Agent key |
+| `agent_id` | string? | Agent ID |
+| `agent_name` | string? | Agent 名称 |
+| `run_id` | string? | 运行 ID |
+| `trace_id` | string? | 追踪 ID |
+
+#### Wire Status → Canonical Status 映射
+
+| Wire 值 | Canonical 值 | Message Status |
+|---------|-------------|----------------|
+| `calling` | `running` | `tool_running` |
+| `running` | `running` | `tool_running` |
+| `in_progress` | `running` | `tool_running` |
+| `success` | `success` | `tool_success` |
+| `failed` | `failed` | `tool_failed` |
+| `error` | `failed` | `tool_failed` |
+| `blocked` | `blocked` | `tool_blocked` |
+| `cancelled` | `cancelled` | `tool_cancelled` |
+| `interrupted` | `cancelled` | `tool_cancelled` |
+
+**ToolUseEvent.status 类型**：`'running' | 'success' | 'failed' | 'blocked' | 'cancelled' | string`
+
+> 注意：`'error'` 已从类型定义中移除（2026-06-10），canonicalToolStatus 将 wire `"error"` 映射为 `'failed'`。`'cancelled'` 已添加到类型定义中。
 
 ### 8.4 页面组件
 

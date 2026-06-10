@@ -15,7 +15,7 @@
   >
     <div class="chat-reasoning-peek__label text-caption text-weight-medium">
       {{ t('chat.reasoningTitle', '思考过程') }}
-      <span v-if="streaming" class="chat-reasoning-peek__live" aria-hidden="true">…</span>
+      <span v-if="streaming" class="chat-reasoning-peek__pulse" aria-hidden="true" />
     </div>
     <div v-if="thinkingOnly" class="chat-reasoning-peek__thinking chat-thinking-pulse text-caption text-grey-7">
       {{ t('chat.thinking', '正在思考…') }}
@@ -27,6 +27,7 @@
         :style="contentStyle"
         v-html="renderedHtml"
       />
+      <span v-if="streaming" class="chat-reasoning-peek__cursor" aria-hidden="true" />
     </div>
     <div v-if="expanded && canScroll && !followTail" class="chat-reasoning-peek__hint text-caption">
       {{ t('chat.reasoningScrollHint', '滚轮查看更多') }}
@@ -137,3 +138,36 @@ function onWheel(e: WheelEvent) {
   followTail.value = next >= maxScroll.value - 2;
 }
 </script>
+
+<style scoped lang="sass">
+.chat-reasoning-peek__pulse
+  display: inline-block
+  width: 6px
+  height: 6px
+  border-radius: 50%
+  background: var(--color-accent)
+  vertical-align: middle
+  margin-left: 4px
+  animation: peek-pulse 1s ease-in-out infinite
+
+.chat-reasoning-peek__cursor
+  display: inline-block
+  width: 2px
+  height: 14px
+  background: var(--color-accent)
+  vertical-align: middle
+  margin-left: 2px
+  animation: peek-blink 0.8s step-end infinite
+
+@keyframes peek-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.3
+
+@keyframes peek-blink
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0
+</style>

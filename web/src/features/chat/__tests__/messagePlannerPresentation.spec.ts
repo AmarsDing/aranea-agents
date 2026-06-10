@@ -48,7 +48,6 @@ function reactActionAndToolMessages(): Message[] {
           agent_id: 'a1',
           agent_key: 'agent',
           agent_name: 'Agent',
-          agent_icon: '',
           tool_name: 'search',
           tool_label: 'search',
           occurred_at: '2026-05-21T10:00:01Z',

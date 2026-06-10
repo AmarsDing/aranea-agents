@@ -45,6 +45,7 @@
     <SynthesisResultCard
       v-if="synthesisResult"
       :result="synthesisResult"
+      :rendered-content="renderChatMarkdown(synthesisResult.content)"
       :evolution-suggestion="evolutionSuggestion"
       class="q-mb-sm"
     />
@@ -68,6 +69,7 @@ import { computed } from 'vue';
 import TeamProgressCard from './TeamProgressCard.vue';
 import SynthesisResultCard from './SynthesisResultCard.vue';
 import DAGDiagramCard from './DAGDiagramCard.vue';
+import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { SpiritTeam, SynthesisOutput, EvolutionSuggestion, CompletionStats } from '../../features/spirit/types';
 
 const props = defineProps<{

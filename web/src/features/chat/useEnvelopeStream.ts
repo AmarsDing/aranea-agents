@@ -131,6 +131,7 @@ export function createTeamStream(
     onReplayState?: (replaying: boolean, count?: number) => void;
     onReconnectFailed?: () => void;
     onConnected?: () => void;
+    onServerShutdown?: (reason: string) => void;
   },
 ): UseEnvelopeStreamReturn {
   return createEnvelopeStream({
@@ -140,6 +141,7 @@ export function createTeamStream(
     onReplayState: streamOpts?.onReplayState,
     onReconnectFailed: streamOpts?.onReconnectFailed,
     onConnected: () => streamOpts?.onConnected?.(),
+    onServerShutdown: streamOpts?.onServerShutdown,
   });
 }
 

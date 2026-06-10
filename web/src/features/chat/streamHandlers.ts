@@ -60,6 +60,14 @@ export type StreamHandlerCtx = {
   onStreamingPatch?: (sessionId: string, patch: { reasoning?: string; partialText?: string; done?: boolean }) => void;
   onRunActivity?: () => void;
   onFirstByteArrived?: () => void;
+  /**
+   * Chat-visible execution progress event (orchestration / team / tool /
+   * thinking step). Consumers can accumulate these envelopes to drive inline
+   * progress cards in the AgentTreeTimeline.
+   *
+   * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+   */
+  onExecutionProgress?: (env: Envelope) => void;
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   streamIdPrefix?: string;
@@ -365,4 +373,13 @@ export function bindStreamHandlers(
     if (!from && !to) return;
     ctx.onOrchestrationNotice?.(`编排：正在转接 ${from || '?'} → ${to || '?'}`);
   });
+
+  if (ctx.onExecutionProgress) {
+    stream.onType(
+      'execution_progress',
+      withSessionFilter(ctx, (env) => {
+        ctx.onExecutionProgress?.(env);
+      }),
+    );
+  }
 }

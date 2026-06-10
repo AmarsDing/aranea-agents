@@ -1,7 +1,7 @@
 # Proposal: ChatExecutionCard 独立折叠设计
 
 > **日期**：2026-06-09 | **版本**：v1.1 | **作者**：AI 设计
-> **关联**：[59-chat-spirit-mode.md](../development/59-chat-spirit-mode.md) · [59-chat-spirit-mode.design.md](../development/59-chat-spirit-mode.design.md)
+> **关联**：[59-chat-ui-optimization.md](../development/59-chat-ui-optimization.md) · [59-chat-ui-optimization.design.md](../development/59-chat-ui-optimization.design.md)（合并自原 M59 + M69）
 > **竞品参考**：Fazm (Claude Code Desktop) · Harness Chat Mode · Gradio Agent UI · Cursor Thought Bubbles
 >
 > **v1.1 修订说明**：基于深度代码审核，发现 3 个方案缺陷并修正：(1) provide/inject 在 chat 组件目录中无先例，改用更轻量的 provide key 常量 + 类型安全 inject；(2) ToolUseEvent.expanded 字段为死代码需清理；(3) elapsed timer 的 `started_at` 可能为空需降级处理。新增附录 C（审核发现与修正记录）。

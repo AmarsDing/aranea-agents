@@ -23,7 +23,8 @@
           <!-- Spirit Entry -->
           <SpiritEntry :active="selectedKind === 'spirit'" @click="$emit('select-spirit')" />
 
-          <!-- Agent Section -->
+          <!-- Agent Section (hidden in spiritMode per D4) -->
+          <template v-if="!spiritMode">
           <ChatSectionHeader
             icon="smart_toy"
             :label="t('chat.groupAgents', 'Agent')"
@@ -51,6 +52,7 @@
             <div v-if="filteredAgents.length === 0" class="chat-side-hint text-caption text-cream-muted">
               暂无 Agent
             </div>
+          </template>
           </template>
 
           <!-- Active Teams Section -->
@@ -158,6 +160,8 @@ const props = defineProps<{
   isDark: boolean;
   /** Map of teamId → pulse config for active pulse animations. */
   pulseTeamColors?: Map<string, { color: string; durationMs: number }>;
+  /** D4: When true, hide Agent groups and only show Spirit entry + teams. */
+  spiritMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -248,15 +252,27 @@ function toEntityItems(agents: Agent[]): EntityItem[] {
   }));
 }
 
-// --- Team lists ---
-const activeTeamList = computed(() =>
-  props.spiritTeams.filter(
-    (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
-  ),
-);
-const completedTeamList = computed(() =>
-  props.spiritTeams.filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'),
-);
+// --- Team lists (F-12: search filters team name + taskSummary) ---
+const activeTeamList = computed(() => {
+  const q = props.search.trim().toLowerCase();
+  return props.spiritTeams
+    .filter(
+      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
+    )
+    .filter((t) => {
+      if (!q) return true;
+      return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);
+    });
+});
+const completedTeamList = computed(() => {
+  const q = props.search.trim().toLowerCase();
+  return props.spiritTeams
+    .filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+    .filter((t) => {
+      if (!q) return true;
+      return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);
+    });
+});
 
 // --- Agent selection ---
 function onSelectAgent(item: EntityItem) {

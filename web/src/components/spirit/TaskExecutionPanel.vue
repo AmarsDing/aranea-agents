@@ -82,6 +82,20 @@
       @cancel="(teamId) => emit('cancel-team', teamId)"
     />
 
+    <!-- D3: Team progress cards for all teams -->
+    <template v-if="allTeams && allTeams.length > 0">
+      <q-separator />
+      <div class="q-pa-md">
+        <div class="text-caption text-weight-medium text-grey-7 q-mb-sm">团队进度</div>
+        <TeamProgressCard
+          v-for="t in allTeams"
+          :key="t.id"
+          :team="t"
+          class="q-mb-sm"
+        />
+      </div>
+    </template>
+
     <q-separator />
 
     <div class="task-execution-panel__timeline col q-pa-md">
@@ -116,6 +130,14 @@
         <div v-else class="text-caption text-grey-6">暂无对话输出</div>
       </div>
     </q-expansion-item>
+
+    <!-- D3: Synthesis result card -->
+    <template v-if="synthesisResult">
+      <q-separator />
+      <div class="q-pa-md">
+        <SynthesisResultCard :result="synthesisResult" :render-markdown="props.renderMarkdown" />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -124,6 +146,9 @@ import { computed } from 'vue';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
 import ParallelTeamOverview from './ParallelTeamOverview.vue';
+import TeamProgressCard from './TeamProgressCard.vue';
+import SynthesisResultCard from './SynthesisResultCard.vue';
+import InterruptedTeamCard from './InterruptedTeamCard.vue';
 import { mapSpiritStatusToSession, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../../features/spirit/observabilityConstants';
 import type { SpiritTeam, SynthesisOutput, CompletionStats } from '../../features/spirit/types';

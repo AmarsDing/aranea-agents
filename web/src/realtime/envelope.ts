@@ -67,7 +67,11 @@ export type EnvelopeType =
   | 'skill.evolution_proposed'
   | 'monitor.auto_healed'
   | 'monitor.self_check_completed'
-  | 'metrics_updated';
+  | 'metrics_updated'
+  // Chat-visible execution progress. Published to chat channel by
+  // TraceEmitter.EmitProgress to drive the inline progress card in
+  // AgentTreeTimeline. See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+  | 'execution_progress';
 
 export type EnvelopeContent = {
   text: string;
@@ -192,6 +196,23 @@ export type EnvelopeTrace = {
   invocation_id: string;
   step_count: number;
   duration_ms?: number;
+};
+
+/**
+ * Metadata carried by execution_progress envelopes. Drives the inline
+ * progress card inside AgentTreeTimeline.
+ *
+ * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+ */
+export type EnvelopeExecutionProgressMetadata = {
+  step_id: string;
+  phase: 'start' | 'done' | 'error';
+  message: string;
+  category: 'orchestration' | 'team' | 'tool' | 'thinking';
+  duration_ms?: number;
+  agent_key?: string;
+  tool_name?: string;
+  error?: string;
 };
 
 export type Envelope = {

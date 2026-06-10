@@ -49,11 +49,10 @@ export type ActivityKind = 'tool' | 'skill' | 'mcp' | 'subagent' | 'memory' | 'k
 export type ToolUseEvent = {
   id: string;
   phase: 'before' | 'after' | string;
-  status: 'running' | 'success' | 'error' | 'failed' | 'blocked' | string;
+  status: 'running' | 'success' | 'failed' | 'blocked' | 'cancelled' | string;
   agent_id: string;
   agent_key: string;
   agent_name: string;
-  agent_icon: string;
   tool_name: string;
   tool_label: string;
   arguments?: unknown;
@@ -62,7 +61,6 @@ export type ToolUseEvent = {
   occurred_at: string;
   duration_ms?: number;
   is_long_running?: boolean;
-  message_hint?: string;
   activity_kind?: ActivityKind;
   display_label?: string;
   icon_key?: string;

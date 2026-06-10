@@ -6,7 +6,8 @@ const spiritService = createSpiritService();
 
 export async function listSpiritTeams(spiritSessionId: string): Promise<SpiritTeam[]> {
   const { data } = await spiritService.listTeams(spiritSessionId);
-  const items = Array.isArray(data?.items) ? (data.items as Record<string, unknown>[]) : [];
+  // Backend returns `teams` field (proto: repeated SpiritTeamView teams = 1)
+  const items = Array.isArray(data?.teams) ? (data.teams as Record<string, unknown>[]) : [];
   return items.map(mapSpiritTeam);
 }
 
