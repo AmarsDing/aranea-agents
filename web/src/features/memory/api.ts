@@ -61,6 +61,8 @@ import type {
   MemoryRecallHit,
   CompositeSearchHit,
   MemoryWorkerStatus,
+  MemoryWorkerQueueStats,
+  MemoryDeadLetterEntry,
   MemoryPlatformSettings,
 } from './types';
 import {
@@ -75,8 +77,6 @@ import {
   pickStr,
   pickStrArray,
 } from './wireJson';
-import { kratosApi } from '../../services/axiosHandler';
-import { memoryEndpoints } from './memoryEndpoints';
 
 const memory = createMemoryService();
 
@@ -246,6 +246,8 @@ function mapRelation(raw: unknown): MemoryRelation {
     weight: pickNum(r, 'weight', 'weight'),
     confidence: pickNum(r, 'confidence', 'confidence'),
     status: pickStr(r, 'status', 'status'),
+    valid_from: pickStr(r, 'valid_from', 'validFrom') || undefined,
+    valid_to: pickStr(r, 'valid_to', 'validTo') || undefined,
   };
 }
 
@@ -517,6 +519,10 @@ function mapCascadeProposal(raw: unknown): CascadeProposal {
     status: pickStr(p, 'status', 'status'),
     risk_level: pickStr(p, 'risk_level', 'riskLevel'),
     rationale: pickStr(p, 'rationale', 'rationale'),
+    workspace_id: pickStr(p, 'workspace_id', 'workspaceId'),
+    reviewed_by: pickStr(p, 'reviewed_by', 'reviewedBy'),
+    reviewed_at: pickStr(p, 'reviewed_at', 'reviewedAt'),
+    expires_at: pickStr(p, 'expires_at', 'expiresAt'),
     created_at: pickStr(p, 'created_at', 'createdAt'),
     updated_at: pickStr(p, 'updated_at', 'updatedAt'),
   };
@@ -526,91 +532,84 @@ export async function listCascadeProposals(
   agentID: string,
   params: { status?: string; limit?: number } = {},
 ): Promise<CascadeProposal[]> {
-  const res = await kratosApi.get(memoryEndpoints.listCascadeProposals(agentID), {
-    params: { status: params.status ?? 'pending', limit: params.limit ?? 20 },
-  });
-  const body = asRecord(res.data);
-  const items = body.items ?? body.Items;
+  const res = asRecord(
+    await memory.ListCascadeProposals({ agentId: agentID, status: params.status ?? 'pending', limit: params.limit ?? 20 }),
+  );
+  const items = res.items ?? res.Items;
   return Array.isArray(items) ? items.map(mapCascadeProposal) : [];
 }
 
 export async function approveCascadeProposal(id: string, reviewer = 'admin'): Promise<CascadeProposal> {
-  const res = await kratosApi.post(memoryEndpoints.approveCascadeProposal(id), { reviewer });
-  const body = asRecord(res.data);
-  return mapCascadeProposal(body.proposal ?? body.Proposal);
+  const res = asRecord(await memory.ApproveCascadeProposal({ id, reviewer }));
+  return mapCascadeProposal(res.proposal ?? res.Proposal);
 }
 
 export async function rejectCascadeProposal(id: string, reviewer = 'admin', reason = ''): Promise<CascadeProposal> {
-  const res = await kratosApi.post(memoryEndpoints.rejectCascadeProposal(id), { reviewer, reason });
-  const body = asRecord(res.data);
-  return mapCascadeProposal(body.proposal ?? body.Proposal);
+  const res = asRecord(await memory.RejectCascadeProposal({ id, reviewer, reason }));
+  return mapCascadeProposal(res.proposal ?? res.Proposal);
 }
 
 export async function previewCascadeApprove(id: string): Promise<CascadePreview> {
-  const res = await kratosApi.get(memoryEndpoints.previewCascadeApprove(id));
-  const body = asRecord(res.data);
-  const p = asRecord(body.preview ?? body.Preview);
+  const res = asRecord(await memory.PreviewCascadeApprove({ id }));
+  const p = asRecord(res.preview ?? res.Preview);
   const diffs: CascadeFactDiff[] = [];
   for (const d of arr(p.fact_diffs ?? p.FactDiffs ?? [])) {
     const r = asRecord(d);
     diffs.push({
-      fact_id: pickStr(r, 'fact_id'),
-      before_statement: pickStr(r, 'before_statement'),
-      after_statement: pickStr(r, 'after_statement'),
-      scope: pickStr(r, 'scope'),
+      fact_id: pickStr(r, 'fact_id', 'factId'),
+      before_statement: pickStr(r, 'before_statement', 'beforeStatement'),
+      after_statement: pickStr(r, 'after_statement', 'afterStatement'),
+      scope: pickStr(r, 'scope', 'scope'),
     });
   }
   const renames: CascadeEntityRename[] = [];
   for (const e of arr(p.entity_renames ?? p.EntityRenames ?? [])) {
     const r = asRecord(e);
     renames.push({
-      entity_id: pickStr(r, 'entity_id'),
-      entity_type: pickStr(r, 'entity_type'),
-      old_name: pickStr(r, 'old_name'),
-      new_name: pickStr(r, 'new_name'),
+      entity_id: pickStr(r, 'entity_id', 'entityId'),
+      entity_type: pickStr(r, 'entity_type', 'entityType'),
+      old_name: pickStr(r, 'old_name', 'oldName'),
+      new_name: pickStr(r, 'new_name', 'newName'),
     });
   }
   return {
-    affected_entities_count: pickNum(p, 'affected_entities_count'),
-    affected_facts_count: pickNum(p, 'affected_facts_count'),
+    affected_entities_count: pickNum(p, 'affected_entities_count', 'affectedEntitiesCount'),
+    affected_facts_count: pickNum(p, 'affected_facts_count', 'affectedFactsCount'),
     fact_diffs: diffs,
     entity_renames: renames,
   };
 }
 
 export async function getCascadeSagaSteps(proposalId: string): Promise<CascadeSagaStep[]> {
-  const res = await kratosApi.get(memoryEndpoints.getCascadeSagaSteps(proposalId));
-  const body = asRecord(res.data);
-  const raw = arr(body.steps ?? body.Steps ?? []);
+  const res = asRecord(await memory.GetCascadeSagaSteps({ proposalId }));
+  const raw = arr(res.steps ?? res.Steps ?? []);
   return raw.map((s: unknown) => {
     const r = asRecord(s);
     return {
-      id: pickI64(r, 'id'),
-      proposal_id: pickStr(r, 'proposal_id'),
-      step_index: pickNum(r, 'step_index'),
-      step_name: pickStr(r, 'step_name'),
-      state: pickStr(r, 'state'),
+      id: pickI64(r, 'id', 'id'),
+      proposal_id: pickStr(r, 'proposal_id', 'proposalId'),
+      step_index: pickNum(r, 'step_index', 'stepIndex'),
+      step_name: pickStr(r, 'step_name', 'stepName'),
+      state: pickStr(r, 'state', 'state'),
       is_critical: !!r.is_critical || !!r.IsCritical,
-      attempts: pickNum(r, 'attempts'),
-      started_at: pickStr(r, 'started_at'),
-      finished_at: pickStr(r, 'finished_at'),
-      payload_json: pickStr(r, 'payload_json'),
-      result_json: pickStr(r, 'result_json'),
-      error: pickStr(r, 'error'),
+      attempts: pickNum(r, 'attempts', 'attempts'),
+      started_at: pickStr(r, 'started_at', 'startedAt'),
+      finished_at: pickStr(r, 'finished_at', 'finishedAt'),
+      payload_json: pickStr(r, 'payload_json', 'payloadJson'),
+      result_json: pickStr(r, 'result_json', 'resultJson'),
+      error: pickStr(r, 'error', 'error'),
     };
   });
 }
 
 export async function retryCascadeApprove(id: string, reviewer = 'admin'): Promise<CascadeProposal> {
-  const res = await kratosApi.post(memoryEndpoints.retryCascadeApprove(id), { reviewer });
-  const body = asRecord(res.data);
-  return mapCascadeProposal(body.proposal ?? body.Proposal);
+  const res = asRecord(await memory.RetryCascadeApprove({ id, reviewer }));
+  return mapCascadeProposal(res.proposal ?? res.Proposal);
 }
 
 export async function compensateCascadeApprove(id: string, reviewer = 'admin'): Promise<CascadeProposal> {
-  const res = await kratosApi.post(memoryEndpoints.compensateCascadeApprove(id), { reviewer });
-  const body = asRecord(res.data);
-  return mapCascadeProposal(body.proposal ?? body.Proposal);
+  const res = asRecord(await memory.CompensateCascadeApprove({ id, reviewer }));
+  return mapCascadeProposal(res.proposal ?? res.Proposal);
 }
 
 function arr(v: unknown): unknown[] {
@@ -625,6 +624,7 @@ function mapRecallScores(raw: unknown) {
     importance: pickNum(s, 'importance', 'importance'),
     recency: pickNum(s, 'recency', 'recency'),
     cross_encoder: pickNum(s, 'cross_encoder', 'crossEncoder'),
+    quality_score: pickNum(s, 'quality_score', 'qualityScore'),
     total: pickNum(s, 'total', 'total'),
   };
 }
@@ -704,7 +704,7 @@ export async function getMemoryWorkerStatus(): Promise<MemoryWorkerStatus> {
     const obj = asRecord(raw[snakeKey] || raw[camelKey]);
     if (!obj || Object.keys(obj).length === 0) return undefined;
     return {
-      capacity: pickI32(obj, 'capacity'),
+      capacity: pickI32(obj, 'capacity', 'capacity'),
       in_flight: pickI32(obj, 'in_flight', 'inFlight'),
       dropped_total: pickI64(obj, 'dropped_total', 'droppedTotal'),
       debounced_total: pickI64(obj, 'debounced_total', 'debouncedTotal'),
@@ -719,11 +719,11 @@ export async function getMemoryWorkerStatus(): Promise<MemoryWorkerStatus> {
     queue_high: mapQueueStats('queue_high'),
     queue_normal: mapQueueStats('queue_normal'),
     queue_low: mapQueueStats('queue_low'),
-    index_active: pickI32(raw, 'index_active', 'indexActive'),
-    index_stale: pickI32(raw, 'index_stale', 'indexStale'),
-    index_disabled: pickI32(raw, 'index_disabled', 'indexDisabled'),
+    fact_index_stale_count: pickI32(raw, 'fact_index_stale_count', 'factIndexStaleCount'),
+    fact_index_disabled_count: pickI32(raw, 'fact_index_disabled_count', 'factIndexDisabledCount'),
     db_available: pickBool(raw, 'db_available', 'dbAvailable'),
     dead_letter_pending: pickI64(raw, 'dead_letter_pending', 'deadLetterPending'),
+    oldest_pending_age_ms: pickI64(raw, 'oldest_pending_age_ms', 'oldestPendingAgeMs'),
   };
 }
 
@@ -760,13 +760,13 @@ export async function updateMemoryPlatformSettings(input: {
 function mapDeadLetterEntry(raw: unknown): MemoryDeadLetterEntry {
   const e = asRecord(raw);
   return {
-    id: pickI64(e, 'id'),
+    id: pickI64(e, 'id', 'id'),
     session_id: pickStr(e, 'session_id', 'sessionId'),
     app_name: pickStr(e, 'app_name', 'appName'),
     drop_reason: pickStr(e, 'drop_reason', 'dropReason'),
-    priority: pickI32(e, 'priority'),
-    attempts: pickI32(e, 'attempts'),
-    state: pickStr(e, 'state'),
+    priority: pickI32(e, 'priority', 'priority'),
+    attempts: pickI32(e, 'attempts', 'attempts'),
+    state: pickStr(e, 'state', 'state'),
     last_error: pickStr(e, 'last_error', 'lastError'),
     enqueued_at: pickStr(e, 'enqueued_at', 'enqueuedAt'),
     failed_at: pickStr(e, 'failed_at', 'failedAt'),
@@ -786,29 +786,30 @@ export async function replayMemoryDeadLetter(id: number): Promise<MemoryDeadLett
   return mapDeadLetterEntry(resp.entry);
 }
 
-export async function abandonMemoryDeadLetter(id: number): Promise<MemoryDeadLetterEntry> {
-  const raw = await memory.AbandonMemoryDeadLetter({ id });
+export async function abandonMemoryDeadLetter(id: number, reason = ''): Promise<MemoryDeadLetterEntry> {
+  const raw = await memory.AbandonMemoryDeadLetter({ id, reason });
   const resp = asRecord(raw);
   return mapDeadLetterEntry(resp.entry);
 }
 
 // ── A-03 fix: add missing Memory PII RPC wrappers ──────────────────
 
-export async function listConflictingFacts(agentID: string, limit = 50): Promise<MemoryFact[]> {
-  const raw = await memory.ListConflictingFacts({ agentId: agentID, limit });
+export async function listConflictingFacts(scopeType: string, scopeId: string, limit = 50, offset = 0): Promise<MemoryFact[]> {
+  const raw = await memory.ListConflictingFacts({ scopeType, scopeId, limit, offset });
   const resp = asRecord(raw);
-  const items = resp.facts ?? resp.items ?? [];
+  const items = resp.items ?? [];
   return (Array.isArray(items) ? items : []).map(mapFact);
 }
 
-export async function listPIIFlaggedFacts(agentID: string, limit = 50): Promise<MemoryFact[]> {
-  const raw = await memory.ListPIIFlaggedFacts({ agentId: agentID, limit });
+export async function listPIIFlaggedFacts(scopeType: string, scopeId: string, limit = 50, offset = 0): Promise<MemoryFact[]> {
+  const raw = await memory.ListPIIFlaggedFacts({ scopeType, scopeId, limit, offset });
   const resp = asRecord(raw);
-  const items = resp.facts ?? resp.items ?? [];
+  const items = resp.items ?? [];
   return (Array.isArray(items) ? items : []).map(mapFact);
 }
 
-export async function reviewPIIFact(factID: string, action: 'confirm_pii' | 'clear_pii' | 'delete', reviewer = 'admin'): Promise<MemoryFact> {
-  const raw = await memory.ReviewPIIFact({ factId: factID, action, reviewer });
-  return mapFact(asRecord(raw));
+export async function reviewPIIFact(factID: string, action: 'approve' | 'reject'): Promise<MemoryFact> {
+  const raw = await memory.ReviewPIIFact({ factId: factID, action });
+  const res = asRecord(raw);
+  return mapFact(asRecord(res.fact ?? res.Fact));
 }

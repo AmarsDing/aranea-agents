@@ -88,6 +88,9 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
   const resultErrorStr = typeof result === 'object' && result !== null && typeof (result as { error?: unknown }).error === 'string'
     ? (result as { error: string }).error
     : undefined;
+  const resultI18nKey = typeof result === 'object' && result !== null && typeof (result as { i18n_key?: unknown }).i18n_key === 'string'
+    ? (result as { i18n_key: string }).i18n_key
+    : undefined;
   const errorMessage = resultErrorStr ?? (isFailure && tc.error_code ? tc.error_code : undefined);
   return {
     id: tc.id || env.id,
@@ -111,6 +114,7 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
     started_at: tc.started_at,
     finished_at: tc.finished_at,
     error_code: tc.error_code,
+    i18n_key: resultI18nKey,
     run_id: tc.run_id,
     trace_id: tc.trace_id,
   };
@@ -137,6 +141,7 @@ export function mergeToolEvents(existing: ToolUseEvent, incoming: ToolUseEvent):
     started_at: incoming.started_at || existing.started_at,
     finished_at: incoming.finished_at || existing.finished_at,
     error_code: incoming.error_code || existing.error_code,
+    i18n_key: incoming.i18n_key || existing.i18n_key,
     run_id: incoming.run_id || existing.run_id,
     trace_id: incoming.trace_id || existing.trace_id,
     agent_key: incoming.agent_key || existing.agent_key,

@@ -91,22 +91,8 @@ type MCPServerUsecase struct {
 	crypto   *CredentialCrypto
 }
 
-func NewMCPServerUsecase(repo MCPServerRepo, crypto *CredentialCrypto) *MCPServerUsecase {
-	return &MCPServerUsecase{repo: repo, crypto: crypto}
-}
-
-// SetProber injects the MCP probe implementation after construction.
-func (u *MCPServerUsecase) SetProber(prober MCPProber) {
-	if u != nil {
-		u.prober = prober
-	}
-}
-
-// SetMetadataEditor injects the MCP metadata editor after construction.
-func (u *MCPServerUsecase) SetMetadataEditor(editor MCPMetadataEditor) {
-	if u != nil {
-		u.metaEdit = editor
-	}
+func NewMCPServerUsecase(repo MCPServerRepo, prober MCPProber, metaEdit MCPMetadataEditor, crypto *CredentialCrypto) *MCPServerUsecase {
+	return &MCPServerUsecase{repo: repo, prober: prober, metaEdit: metaEdit, crypto: crypto}
 }
 
 func (u *MCPServerUsecase) List(ctx context.Context) ([]MCPServer, error) {

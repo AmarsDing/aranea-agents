@@ -2,8 +2,10 @@ import {
   createSkillService,
   createSkillIntelligenceService,
   createSkillEvolutionSuggestionService,
+  createSkillEvolutionService,
   kratosApi,
 } from '../../services';
+import axios from 'axios';
 import type {
   PaginatedResponse,
   Skill,
@@ -22,6 +24,8 @@ import type {
   ExperienceReportView,
   ExperienceReportListResult,
   EvolutionSuggestionView,
+  SkillEvolutionView,
+  EvolutionActionType,
 } from './types';
 
 // ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`** 由 **`cmd/admin`** 内挂载（multipart + JSON）。
@@ -524,4 +528,190 @@ export async function getSkillVersions(id: string, page = 1, pageSize = 20): Pro
 export async function rollbackSkillVersion(id: string, versionId: string): Promise<Skill> {
   const row = await createSkillService().RollbackSkillVersion({ id, versionId });
   return mapSkill(row);
+}
+
+// ── Unified Evolution API ──
+
+/** Check if an error is a 404 NOT_FOUND from Kratos (gRPC code 5 or HTTP 404). */
+function isNotFoundError(err: unknown): boolean {
+  if (axios.isAxiosError(err)) {
+    return err.response?.status === 404;
+  }
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    // Kratos gRPC-gateway error: code 5 = NOT_FOUND
+    if (e.code === 5 || e.code === '5') return true;
+    if (typeof e.message === 'string' && e.message.includes('NOT_FOUND')) return true;
+  }
+  return false;
+}
+
+export async function listUnifiedEvolutionSuggestions(params: {
+  targetType?: string;
+  targetId?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ items: SkillEvolutionView[]; total: number; skillTotal: number; agentTotal: number }> {
+  const items: SkillEvolutionView[] = [];
+  let skillTotal = 0;
+  let agentTotal = 0;
+
+  // When targetType is specified, only request that data source — pagination is correct.
+  // When targetType is unspecified, both sources are queried with the same page params;
+  // the combined total is approximate (sum of both totals) and pagination may be
+  // inconsistent across the merge boundary. Consumers should use skillTotal / agentTotal
+  // for display and prefer specifying targetType when accurate pagination is needed.
+  if (!params.targetType || params.targetType === 'skill') {
+    try {
+      const client = createSkillEvolutionSuggestionService();
+      const skillRes = await client.ListSkillEvolutionSuggestions({
+        skillId: params.targetId || undefined,
+        status: params.status || undefined,
+        page: params.page,
+        pageSize: params.pageSize,
+      });
+      for (const item of skillRes.items || []) {
+        items.push(mapProtoEvolutionSuggestionToView(item));
+      }
+      skillTotal = skillRes.total || 0;
+    } catch (err) {
+      // Service may not be available
+      console.warn('[listUnifiedEvolutionSuggestions] skill-level fetch failed:', err);
+    }
+  }
+
+  // Fetch from SkillEvolutionService (agent-level)
+  if (!params.targetType || params.targetType === 'agent') {
+    try {
+      const evoClient = createSkillEvolutionService();
+      const agentRes = await evoClient.ListSkillProposals({
+        agentId: params.targetId || undefined,
+        status: params.status || undefined,
+        page: params.page,
+        pageSize: params.pageSize,
+      });
+      for (const item of agentRes.items || []) {
+        items.push(mapProtoSkillProposalToView(item));
+      }
+      agentTotal = agentRes.total || (agentRes.items || []).length;
+    } catch (err) {
+      // Service may not be available
+      console.warn('[listUnifiedEvolutionSuggestions] agent-level fetch failed:', err);
+    }
+  }
+
+  return { items, total: skillTotal + agentTotal, skillTotal, agentTotal };
+}
+
+export async function approveUnifiedEvolutionSuggestion(id: string, approvedBy: string): Promise<void> {
+  // Try skill-level service first, then agent-level — but only fall through on 404 (NOT_FOUND).
+  // Real errors (500, 403, etc.) must propagate to the caller.
+  try {
+    const client = createSkillEvolutionSuggestionService();
+    await client.ApproveSkillEvolutionSuggestion({ id, approvedBy });
+    return;
+  } catch (err) {
+    if (!isNotFoundError(err)) throw err;
+    // Fall through to agent-level
+  }
+  const evoClient = createSkillEvolutionService();
+  await evoClient.ApproveSkillProposal({ id, approvedBy });
+}
+
+export async function rejectUnifiedEvolutionSuggestion(id: string, rejectedBy: string, reason: string): Promise<void> {
+  // Try skill-level service first, then agent-level — but only fall through on 404 (NOT_FOUND).
+  // Real errors (500, 403, etc.) must propagate to the caller.
+  try {
+    const client = createSkillEvolutionSuggestionService();
+    await client.RejectSkillEvolutionSuggestion({ id, rejectedBy, rejectionReason: reason });
+    return;
+  } catch (err) {
+    if (!isNotFoundError(err)) throw err;
+    // Fall through to agent-level
+  }
+  const evoClient = createSkillEvolutionService();
+  await evoClient.RejectSkillProposal({ id, rejectedBy });
+}
+
+export async function registerUnifiedEvolutionSuggestion(id: string): Promise<void> {
+  const evoClient = createSkillEvolutionService();
+  await evoClient.RegisterSkillProposal({ id });
+}
+
+// ── Proto-to-View mapping helpers ──
+
+function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): SkillEvolutionView {
+  const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
+  const rawSandboxPassed = item['sandbox_passed'] ?? item['sandboxPassed'];
+  const sandboxPassed: boolean = rawSandboxPassed === true;
+  const rawSandboxResult = item['sandbox_result'] ?? item['sandboxResult'];
+  const sandboxResult: Record<string, unknown> | null =
+    rawSandboxResult && typeof rawSandboxResult === 'object' && !Array.isArray(rawSandboxResult)
+      ? (rawSandboxResult as Record<string, unknown>)
+      : null;
+  const rawMetadata = item['metadata'] ?? item['Metadata'];
+  const metadata: Record<string, unknown> | null =
+    rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
+      ? (rawMetadata as Record<string, unknown>)
+      : null;
+  return {
+    id: s('id', 'id'),
+    targetType: 'skill',
+    targetId: s('skill_id', 'skillId'),
+    targetName: '', // TODO: backend SkillEvolutionSuggestionMsg lacks skill_name; frontend should resolve via skill list lookup
+    actionType: mapSuggestionTypeToAction(s('type', 'type')),
+    triggerSource: 'health',
+    triggerReason: s('trigger_reason', 'triggerReason'),
+    status: (s('status', 'status') || 'pending') as SkillEvolutionView['status'],
+    priority: s('type', 'type') === 'fix_failure' ? 2 : 1,
+    draftBody: s('draft_skill_body', 'draftSkillBody'),
+    draftName: '',
+    mergeTargetId: '',
+    lifecycleStatus: (s('lifecycle_status', 'lifecycleStatus') || 'draft') as SkillEvolutionView['lifecycleStatus'],
+    sandboxPassed,
+    sandboxResult,
+    metadata,
+    createdAt: s('created_at', 'createdAt'),
+    approvedBy: s('approved_by', 'approvedBy'),
+    appliedAt: null,
+  };
+}
+
+function mapProtoSkillProposalToView(item: Record<string, unknown>): SkillEvolutionView {
+  const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
+  return {
+    id: s('id', 'id'),
+    targetType: 'agent',
+    targetId: s('agent_id', 'agentId'),
+    targetName: s('agent_id', 'agentId'),
+    actionType: 'create_skill',
+    triggerSource: 'pattern', // TODO: backend SkillProposal lacks trigger_source; default to 'pattern' until field is added
+    triggerReason: s('pattern_desc', 'patternDesc'),
+    status: (s('status', 'status') || 'pending') as SkillEvolutionView['status'],
+    priority: 1,
+    draftBody: s('skill_md', 'skillMd'),
+    draftName: s('skill_name', 'skillName'),
+    mergeTargetId: '',
+    lifecycleStatus: 'draft',
+    sandboxPassed: false,
+    sandboxResult: null,
+    metadata: null,
+    createdAt: s('created_at', 'createdAt'),
+    approvedBy: s('approved_by', 'approvedBy'),
+    appliedAt: null,
+  };
+}
+
+function mapSuggestionTypeToAction(suggestionType: string): EvolutionActionType {
+  switch (suggestionType) {
+    case 'fix_failure':
+      return 'improve_skill';
+    case 'boost_efficiency':
+      return 'improve_skill';
+    case 'merge_duplicate':
+      return 'merge_skill';
+    default:
+      return 'improve_skill';
+  }
 }

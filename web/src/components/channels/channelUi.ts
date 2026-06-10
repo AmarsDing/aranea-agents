@@ -7,10 +7,11 @@ import type {
   ChannelRow,
 } from '../../features/channels/types';
 import {
+  parseJSON,
   buildChannelWebhookURL,
   isLocalhostOrigin,
   resolvePublicWebhookOrigin,
-} from '../../features/channels/publicWebhookOrigin';
+} from '../../domain/channel';
 import { deliveryStatusFromChannelStatus } from '../../domain/conversation';
 import { presentDeliveryStatus, toneToQuasarColor } from '../../domain/conversationPresentation';
 import {
@@ -20,14 +21,7 @@ import {
   registryColEnabled,
 } from '../../features/ui/registryTableColumns';
 
-export function parseJSON<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
+export { parseJSON };
 
 export function channelConfig(row: ChannelRow): ChannelConfig {
   return parseJSON<ChannelConfig>(row.config_json, {});

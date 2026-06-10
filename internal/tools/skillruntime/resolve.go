@@ -353,7 +353,10 @@ func buildRankCandidates(ctx context.Context, scored []slugScore, healthProvider
 	return candidates
 }
 
-// applyRankResults reorders scored candidates based on Rank results and updates reasons.
+// applyRankResults blends ranking scores with existing keyword+embedding scores
+// using a weighted fusion rather than replacing them entirely.
+// The rank score contributes 60% and the pre-existing score 40%, preserving
+// semantic and intent signals while still respecting historical performance.
 func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, reasons map[string]string) {
 	rankMap := make(map[string]skillrecommend.RankResult, len(ranked))
 	for _, r := range ranked {
@@ -361,7 +364,10 @@ func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, re
 	}
 	for i := range scored {
 		if r, ok := rankMap[scored[i].slug]; ok {
-			scored[i].score = int(r.Score * 10000)
+			rankScore := int(r.Score * 10000)
+			// Weighted fusion: 60% rank + 40% existing (keyword+embedding).
+			blended := int(float64(scored[i].score)*0.4 + float64(rankScore)*0.6)
+			scored[i].score = blended
 			scored[i].reason += " | " + skillrecommend.FormatSelectionReason(r)
 			reasons[scored[i].slug] = scored[i].reason
 		}

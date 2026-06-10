@@ -35,7 +35,7 @@
     </q-banner>
     <q-banner v-else-if="isAwaitingUser" rounded class="q-mb-sm app-banner-warning" dense>
       <template #avatar>
-        <q-icon name="hourglass_top" color="amber-9" />
+        <q-icon name="hourglass_top" color="warning" />
       </template>
       {{ t('chat.awaitingUserHint') }}
       <template #action>

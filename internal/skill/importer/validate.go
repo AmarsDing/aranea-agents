@@ -62,14 +62,14 @@ func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing 
 		candidate.Blocks = append(candidate.Blocks, biz.SkillImportIssue{Type: "invalid_format", Message: "SKILL.md must include a title/name and description"})
 	}
 	if hasShellScriptAsset(files) {
-		candidate.Warnings = append(candidate.Warnings, biz.SkillImportIssue{Type: "script_asset", Message: "?? .sh ????????? Skill ???????????"})
+		candidate.Warnings = append(candidate.Warnings, biz.SkillImportIssue{Type: "script_asset", Message: "包含 .sh 脚本文件，请确认该脚本在 Skill 运行时是否必要"})
 	}
 	if highRiskFiles := highRiskFileNames(files); len(highRiskFiles) > 0 {
 		candidate.ValidationStatus = "block"
 		candidate.StatusIcon = "security"
 		candidate.Blocks = append(candidate.Blocks, biz.SkillImportIssue{
 			Type:    "high_risk_file",
-			Message: "?????????????????????? Skill?" + strings.Join(highRiskFiles, ", "),
+			Message: "包含高风险文件，请确认是否允许导入该 Skill: " + strings.Join(highRiskFiles, ", "),
 		})
 	}
 	if !skipDuplicateCheck {

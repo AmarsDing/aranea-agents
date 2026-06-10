@@ -86,6 +86,57 @@ func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPII
 	return out, nil
 }
 
+func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListConflictingFactsRequest) (*v1.ListConflictingFactsResponse, error) {
+	if err := s.requireAdmin(); err != nil {
+		return nil, err
+	}
+	scopeType := strings.TrimSpace(req.GetScopeType())
+	if scopeType == "" {
+		return nil, kerrors.BadRequest("MEMORY", "scope_type is required")
+	}
+	rows, total, err := s.admin.ListConflictingFacts(ctx,
+		scopeType,
+		strings.TrimSpace(req.GetScopeId()),
+		req.GetLimit(),
+		req.GetOffset(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListConflictingFactsResponse{Total: total}
+	for _, raw := range rows {
+		f, e := pbMemoryFact(raw)
+		if e == nil && f != nil {
+			out.Items = append(out.Items, f)
+		}
+	}
+	return out, nil
+}
+
+func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFactRequest) (*v1.ReviewPIIFactResponse, error) {
+	if err := s.requireAdmin(); err != nil {
+		return nil, err
+	}
+	factID := strings.TrimSpace(req.GetFactId())
+	if factID == "" {
+		return nil, kerrors.BadRequest("MEMORY", "fact_id is required")
+	}
+	action := strings.TrimSpace(req.GetAction())
+	switch action {
+	case "approve":
+		if err := s.admin.ApprovePIIFact(ctx, factID); err != nil {
+			return nil, err
+		}
+	case "reject":
+		if err := s.admin.RejectPIIFact(ctx, factID); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, kerrors.BadRequest("MEMORY", "action must be 'approve' or 'reject'")
+	}
+	return &v1.ReviewPIIFactResponse{Fact: &v1.MemoryFact{Id: factID}}, nil
+}
+
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
 	if err := s.requireAdmin(); err != nil {
 		return nil, err

@@ -281,6 +281,24 @@ func (c ChannelLongTaskConfig) hasAsyncTarget() bool {
 	return c.AsyncGraphID != "" || c.AsyncTeamID != "" || c.AsyncCronTaskID != ""
 }
 
+// ChannelTypeFromConfig extracts the channel type from config JSON.
+func ChannelTypeFromConfig(configJSON string) string {
+	var env struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &env)
+	return strings.TrimSpace(strings.ToLower(env.Type))
+}
+
+// ChannelReceiveModeFromConfig extracts the receive_mode from config JSON.
+func ChannelReceiveModeFromConfig(configJSON string) string {
+	var env struct {
+		ReceiveMode string `json:"receive_mode"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &env)
+	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
+}
+
 func matchesChannelAsyncKeyword(text string, keywords []string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	for _, kw := range keywords {

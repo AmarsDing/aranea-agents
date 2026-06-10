@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -45,6 +46,14 @@ func (h *ChannelIngress) createChannelSession(
 	return created.ID, nil
 }
 
+// ensureChannelSession returns a session ID bound to the given channel+peer.
+//
+// Note: There is a known TOCTOU race between GetPeerSession and CreatePeerSession:
+// two concurrent requests may both observe no binding and each create a new session.
+// The first CreatePeerSession wins (unique constraint on channel_id+peer_key);
+// the second falls back to the first's binding. The second session becomes orphaned
+// but is harmless (will be garbage-collected if no peer binding references it).
+// This is acceptable for the channel ingress path where concurrency per peer is low.
 func (h *ChannelIngress) ensureChannelSession(
 	ctx context.Context,
 	chRow biz.Channel,
@@ -94,6 +103,14 @@ func (h *ChannelIngress) ensureChannelSession(
 	}); cerr != nil {
 		if existing, gerr := h.channels.GetPeerSession(ctx, chRow.ID, peerKey); gerr == nil && existing.SessionID != "" {
 			if _, verr := h.sessions.Get(ctx, existing.SessionID); verr == nil {
+				// TOCTOU: another request won the race; sessionID is now orphaned.
+				h.lg.Warn("ensureChannelSession: 并发创建 session 竞态，使用已有绑定",
+					loggateway.StepID("channel.session.concurrent_create"),
+					loggateway.Str("channel_id", chRow.ID),
+					loggateway.Str("peer_key", peerKey),
+					loggateway.Str("orphaned_session_id", sessionID),
+					loggateway.Str("existing_session_id", existing.SessionID),
+				)
 				return existing.SessionID, nil
 			}
 		}

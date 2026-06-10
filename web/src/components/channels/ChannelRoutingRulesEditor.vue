@@ -75,7 +75,7 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent } from '../../features/agents/types';
-import { channelAgentSelectOptions, channelTeamSelectOptions } from '../../features/channels/channelRoutingUtils';
+import { channelAgentSelectOptions, channelTeamSelectOptions } from '../../domain/channel';
 import type { Team } from '../../features/teams/types';
 
 export type ChannelRoutingRuleRow = {

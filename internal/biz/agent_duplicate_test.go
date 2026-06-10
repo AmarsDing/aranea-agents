@@ -81,7 +81,7 @@ func TestDuplicate_copiesFilesWithNewIDs(t *testing.T) {
 		Model:       "gpt-4",
 	}
 	repo := &duplicateAgentRepo{src: src}
-	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
 	got, err := uc.Duplicate(context.Background(), "src-1")
 	if err != nil {
 		t.Fatalf("Duplicate: %v", err)
@@ -104,7 +104,7 @@ func TestDuplicate_setsCreatedByFromContext(t *testing.T) {
 		CreatedBy:   "99",
 	}
 	repo := &duplicateAgentRepo{src: src}
-	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := auth.NewContext(context.Background(), &auth.Auth{UserID: 42})
 	if _, err := uc.Duplicate(ctx, "src-1"); err != nil {
 		t.Fatalf("Duplicate: %v", err)

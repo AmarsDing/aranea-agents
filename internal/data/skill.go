@@ -876,6 +876,12 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 	if in.TokenUsage != nil {
 		builder = builder.SetTokenUsage(in.TokenUsage)
 	}
+	if len(in.RoutedSlugs) > 0 {
+		builder = builder.SetRoutedSlugs(in.RoutedSlugs)
+	}
+	if strings.TrimSpace(in.LoadedSlug) != "" {
+		builder = builder.SetLoadedSlug(strings.TrimSpace(in.LoadedSlug))
+	}
 	_, err := builder.Save(ctx)
 	return err
 }

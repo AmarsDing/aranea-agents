@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -1295,6 +1296,8 @@ func (p *FunctionCallResponseProcessor) executeToolCall(
 		if _, ok := agent.AsStopError(err); ok {
 			return ctx, nil, modifiedArgs, false, skipSummarization, err
 		}
+		// Enhance JSON parse errors with schema hints so the LLM can self-correct.
+		err = enhanceJSONParseError(err, tl)
 		return ctx, nil, modifiedArgs, true, skipSummarization, err
 	}
 	//  allow to return nil not provide function response.
@@ -1402,6 +1405,27 @@ func (p *FunctionCallResponseProcessor) resolveToolCallTarget(
 ) (model.ToolCall, tool.Tool, bool, error) {
 	tl, exists := tools[toolCall.Function.Name]
 	if !exists {
+		// Fallback: the model may have returned a sanitized tool name when the
+		// original name contains characters outside ^[a-zA-Z0-9_-]+$. Try to
+		// resolve by matching the sanitized name against all registered tools.
+		matched, err := lookupBySanitizedName(toolCall.Function.Name, tools)
+		if err != nil {
+			// Sanitized name collision — cannot determine which tool was intended.
+			log.WarnfContext(ctx, "%v", err)
+		} else if matched != nil {
+			originalName := matched.Declaration().Name
+			log.DebugfContext(
+				ctx,
+				"Resolved sanitized tool name %q to original %q",
+				toolCall.Function.Name,
+				originalName,
+			)
+			toolCall.Function.Name = originalName
+			tl = matched
+			exists = true
+		}
+	}
+	if !exists {
 		// Compatibility: map sub-agent name calls to transfer_to_agent if present.
 		if mapped := findCompatibleTool(toolCall.Function.Name, tools, invocation); mapped != nil {
 			tl = mapped
@@ -1429,6 +1453,43 @@ func (p *FunctionCallResponseProcessor) resolveToolCallTarget(
 		}
 	}
 	return toolCall, tl, false, nil
+}
+
+// lookupBySanitizedName searches the tools map for a tool whose sanitized name
+// matches the requested name. This handles the case where LLM providers
+// sanitize tool names (e.g. replacing non-ASCII characters) before returning
+// them in tool_call responses.
+// It returns an error if multiple tools share the same sanitized name.
+// Uses a pre-built cache for O(1) lookup instead of linear scan.
+func lookupBySanitizedName(requested string, tools map[string]tool.Tool) (tool.Tool, error) {
+	cache := buildSanitizedNameCache(tools)
+	originalName, ok := cache[requested]
+	if !ok {
+		return nil, nil
+	}
+	tl, exists := tools[originalName]
+	if !exists {
+		return nil, nil
+	}
+	return tl, nil
+}
+
+// buildSanitizedNameCache builds a map from sanitized tool names to original
+// tool names for O(1) lookup. It logs a warning for any name collisions.
+func buildSanitizedNameCache(tools map[string]tool.Tool) map[string]string {
+	cache := make(map[string]string, len(tools))
+	for _, t := range tools {
+		originalName := t.Declaration().Name
+		sanitizedName := tool.SanitizeToolName(originalName)
+		if existing, ok := cache[sanitizedName]; ok && existing != originalName {
+			log.Warnf(
+				"sanitized tool name collision: both %q and %q sanitize to %q",
+				existing, originalName, sanitizedName,
+			)
+		}
+		cache[sanitizedName] = originalName
+	}
+	return cache
 }
 
 // applyToolResultMessagesCallback invokes the optional ToolResultMessages callback and
@@ -1972,6 +2033,56 @@ func extractResultError(result any) bool {
 		return false
 	}
 	return rg.RetryResultError()
+}
+
+// enhanceJSONParseError enriches JSON unmarshal errors with the tool's input
+// schema so the LLM receives actionable feedback and can self-correct on the
+// next turn. Non-JSON errors are returned unchanged.
+func enhanceJSONParseError(err error, tl tool.Tool) error {
+	if err == nil {
+		return err
+	}
+	// Only enhance JSON unmarshal errors.
+	if !isJSONParseError(err) {
+		return err
+	}
+	decl := tl.Declaration()
+	if decl == nil || decl.InputSchema == nil {
+		return err
+	}
+	schemaBytes, marshalErr := json.Marshal(decl.InputSchema)
+	if marshalErr != nil {
+		return err
+	}
+	return fmt.Errorf("%s\nExpected input schema: %s", err.Error(), string(schemaBytes))
+}
+
+// isJSONParseError checks whether an error indicates a JSON parsing failure.
+// It first tries type-based matching (json.SyntaxError, json.UnmarshalTypeError),
+// then falls back to message prefix matching for wrapped errors.
+func isJSONParseError(err error) bool {
+	// Type-based matching for standard library JSON errors.
+	var syntaxErr *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &syntaxErr) || errors.As(err, &typeErr) {
+		return true
+	}
+	// Fallback: message prefix matching for wrapped or non-standard JSON errors.
+	msg := err.Error()
+	for _, prefix := range jsonErrPrefixes {
+		if strings.HasPrefix(msg, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonErrPrefixes lists common error message prefixes from JSON parsing failures.
+var jsonErrPrefixes = []string{
+	"json:",
+	"invalid character",
+	"unexpected end of JSON",
+	"cannot unmarshal",
 }
 
 func buildDefaultToolMessage(

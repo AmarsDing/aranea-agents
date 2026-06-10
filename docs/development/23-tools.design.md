@@ -1419,6 +1419,58 @@ JSON Schema 中 `required` 是顶层字段（`InputSchema.Required`），列出�
 
 **修复记录**（2026-06-10）：原签名缺少 `toolName` 参数，导致 Gemini `FunctionResponse.Name` 为空，可能触发 API 400 错误。
 
+### 7. 工具调用成功率增强（2026-06-11）
+
+> **版本**：1.1 | **状态**：✅ 已实施
+> **定位**：基于竞品调研（Pydantic AI / Instructor / LangChain / Vercel AI SDK / Dify）的最优实践，提升 LLM 调用工具的成功率
+
+#### 7.1 JSON 参数修复默认开启
+
+**问题**：`ToolCallArgumentsJSONRepairEnabled` 默认关闭，小模型/开源模型频繁生成不合法 JSON 参数导致工具调用失败。
+
+**竞品参考**：CrewAI 内置 `ast.literal_eval` 兜底；Dify 内置容错解析器；Semantic Kernel 内置单引号替换。
+
+**方案**：将 `IsToolCallArgumentsJSONRepairEnabled` 默认值从 `false` 改为 `true`。`*bool` 三态设计（nil=默认启用, true=显式启用, false=显式禁用）保留用户完整控制权。
+
+| 文件 | 改动 |
+|------|------|
+| `agent/invocation.go` | 注释更新：nil → enabled by default |
+| `internal/jsonrepair/toolcall.go` | `enabled == nil || *enabled` 替代 `enabled != nil && *enabled` |
+
+#### 7.2 Ollama OutputSchema 描述格式统一
+
+**问题**：Ollama 的 `buildToolDescription` 缺少 `\n` 前缀，导致描述文本和 Output schema 粘连。
+
+**修复**：`desc += "Output schema: "` → `desc += "\nOutput schema: "`，与 OpenAI/Anthropic 保持一致。
+
+#### 7.3 Ollama Schema 约束迁移到描述
+
+**问题**：Ollama SDK 不支持 `additionalProperties`/`default`/嵌套 `required`/`$ref`，以及新增的约束字段（`minLength`/`maxLength`/`pattern`/`minimum`/`maximum`/`minItems`/`maxItems`），导致复杂 Schema 信息丢失。
+
+**竞品参考**：Pydantic AI 的 `JsonSchemaTransformer` 按 Provider 适配；LangChain 社区 `sanitize_for_openai_schema()` 将约束迁移到 description。
+
+**方案**：新增 `appendSchemaConstraintsToDescription` 函数，将 Ollama SDK 不支持的约束以自然语言追加到属性描述中。所有 hints 统一收集到单个括号块，格式一致。
+
+#### 7.4 JSON 解析错误增强反馈
+
+**问题**：工具执行时 JSON 解析失败，LLM 收到的错误信息缺少期望的 Schema 信息，无法自行纠正。
+
+**竞品参考**：Instructor 的 `max_retries` + 错误反馈模式；Pydantic AI 的 `ModelRetry`。
+
+**方案**：新增 `enhanceJSONParseError` 函数，在 JSON 解析错误时将 InputSchema 追加到错误消息中。使用类型化错误匹配（`json.SyntaxError`/`json.UnmarshalTypeError`）+ 字符串前缀兜底。
+
+#### 7.5 清洗名查找缓存优化
+
+**问题**：`lookupBySanitizedName` 使用 O(n) 线性扫描，`buildSanitizedNameCache` 已定义但未被调用。
+
+**方案**：`lookupBySanitizedName` 改为调用 `buildSanitizedNameCache` 构建 map 后 O(1) 查找。
+
+#### 7.6 tool.Schema 约束字段扩展
+
+**问题**：`tool.Schema` 不支持 `minLength`/`maxLength`/`pattern`/`minimum`/`maximum`/`minItems`/`maxItems` 等 JSON Schema 约束关键字。
+
+**方案**：扩展 `Schema` struct 新增 7 个约束字段（全部指针类型 + `omitempty`），更新 `ExtraFields()` 方法将约束字段纳入返回值，新增 `AppendConstraintsToDescription` 公开函数供 Provider 适配层使用。
+
 ---
 
 ## 八、Web 前端设计

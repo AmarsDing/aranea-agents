@@ -54,12 +54,14 @@ type SkillHealthAggregator interface {
 
 // SkillHealthMetrics holds aggregated health metrics for a single skill.
 type SkillHealthMetrics struct {
-	SkillID       string
+	SkillID         string
 	InvocationCount int
 	SuccessCount    int
 	SuccessRate     float64
 	AvgDurationMS   float64
 	P95DurationMS   int
+	AvgTokenUsage   int     // average token_usage.total across invocations; 0 = unavailable
+	FeedbackScore   float64 // heuristic feedback score 0-1; 0 = unavailable
 }
 
 // SkillFailureStats holds failure statistics for a single skill.

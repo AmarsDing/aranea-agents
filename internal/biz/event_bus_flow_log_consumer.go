@@ -52,12 +52,13 @@ func (c *flowLogPersistConsumer) Start(ctx context.Context) {
 		BufferSize: 512,
 		Reliable:   true,
 	}
+	offerOpts := OfferOption{FallbackSync: true, FallbackFn: c.handle}
 	for i, bus := range c.buses {
 		name := "event-bus-flow-log"
 		if len(c.buses) > 1 {
 			name = fmt.Sprintf("event-bus-flow-log-%d", i)
 		}
-		runTypedConsumer(ctx, name, bus, opts, c.handle, c.logger)
+		runTypedConsumerWithOpts(ctx, name, bus, opts, c.handle, offerOpts, c.logger)
 	}
 }
 

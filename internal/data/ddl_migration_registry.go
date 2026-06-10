@@ -78,6 +78,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260717, Name: "usage_events_schema", SQL: "sql/migrations/20260717_usage_events_schema.sql"},
 	{Version: 20260718, Name: "ecosystem_preset_schema", SQL: "sql/migrations/20260718_ecosystem_preset_schema.sql", Func: ddlEcosystemPresetDataMigration},
 	{Version: 20260719, Name: "agent_source_column", SQL: "sql/migrations/20260719_agent_source_column.sql", Func: ddlAgentSourceDataMigration},
+	{Version: 20260720, Name: "unified_evolution_schema", Func: ddlUnifiedEvolutionSchema},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -373,4 +374,8 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 		lg.Warn("ddl migration: fix over-broad team kind migration failed", loggateway.Err(err))
 	}
 	return tx.Commit()
+}
+
+func ddlUnifiedEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+	return EnsureUnifiedEvolutionSchema(ctx, entClient)
 }

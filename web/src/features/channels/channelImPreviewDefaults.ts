@@ -4,6 +4,8 @@
  */
 export const FEISHU_IM_PREVIEW_DEFAULTS: Record<string, string | number | boolean> = {
   streaming_enabled: true,
+  // TECH-DEBT(#channel-locale-defaults): 默认文案硬编码为中文。修复路径：从 i18n 获取默认值，
+  // 或在后端 ChannelType catalog 中提供 per-locale 默认文案，前端仅做 fallback。
   ack_message: '收到，正在处理…',
   im_render_mode: 'transcript',
   im_tool_detail: 'label_summary',
@@ -15,6 +17,8 @@ export const FEISHU_IM_PREVIEW_DEFAULTS: Record<string, string | number | boolea
   turn_timeout_sec: 600,
   first_byte_timeout_sec: 120,
   progress_quiet_sec: 30,
+  // TECH-DEBT(#channel-locale-defaults): 默认文案硬编码为中文。修复路径：从 i18n 获取默认值，
+  // 或在后端 ChannelType catalog 中提供 per-locale 默认文案，前端仅做 fallback。
   heartbeat_message: '仍在处理中… {{elapsed}}',
   execution_mode: 'sync',
   progress_mode: 'text',

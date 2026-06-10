@@ -347,6 +347,7 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L4StrategyInject:         s.L4StrategyInject,
 		L4DecayIntervalHours:     s.L4DecayIntervalHours,
 		L4DecayOverridesJSON:     s.L4DecayOverridesJSON,
+		ForgetConfigJSON:         s.ForgetConfigJSON,
 	}
 }
 
@@ -371,6 +372,7 @@ func (s *AgentRuntimeSettings) GetTools() ToolsCfg {
 		CircuitBreakerOverridesJSON: s.ToolsCircuitBreakerOverridesJSON,
 		DeferredJSON:          s.ToolsDeferredJSON,
 		CommandSafetyEnabled:  s.ToolsCommandSafetyEnabled,
+		ToolWeightJSON:        s.ToolWeightJSON,
 	}
 }
 
@@ -426,6 +428,7 @@ func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
 		EvoProposalTTLDays:                s.EvoProposalTTLDays,
 		EvoPersonaMaxChars:                s.EvoPersonaMaxChars,
 		EvoSystemPromptMaxAppends:         s.EvoSystemPromptMaxAppends,
+		DreamSnapshotJSON:                 s.DreamSnapshotJSON,
 	}
 }
 
@@ -449,6 +452,19 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		PlannerKind:                s.PlannerKind,
 		PlannerConfigJSON:          s.PlannerConfigJSON,
 		VerificationTruncateChars:  s.VerificationTruncateChars,
+	}
+}
+
+// GetRalphLoop returns the RalphLoop domain view.
+func (s *AgentRuntimeSettings) GetRalphLoop() RalphLoopCfg {
+	return RalphLoopCfg{
+		MaxIterations:        s.RalphLoopMaxIterations,
+		CompletionPromise:    s.RalphLoopCompletionPromise,
+		VerifyCommand:        s.RalphLoopVerifyCommand,
+		VerifyTimeoutSeconds: s.RalphLoopVerifyTimeoutSeconds,
+		PromiseTagOpen:       s.RalphLoopPromiseTagOpen,
+		PromiseTagClose:      s.RalphLoopPromiseTagClose,
+		VerifyWorkDir:        s.RalphLoopVerifyWorkDir,
 	}
 }
 

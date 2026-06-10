@@ -133,7 +133,7 @@ var (
 	TruncateForLog                = truncateForLog
 	OutboundRecipient             = outboundRecipient
 	AckIdempotencyKey             = ackIdempotencyKey
-	ChannelTypeFromConfig         = channelTypeFromConfig
+	ChannelTypeFromConfig         = biz.ChannelTypeFromConfig
 	FormatChannelTurnErrorMessage = formatChannelTurnErrorMessage
 	TurnErrorIsCanceled           = turnErrorIsCanceled
 	TurnErrorIsTimeout            = turnErrorIsTimeout

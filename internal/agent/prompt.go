@@ -134,7 +134,7 @@ func StaticRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) strin
 	}
 	uc := d.AgentUC
 	if uc == nil && d.Agents != nil && d.ToolRegistry != nil {
-		uc = biz.NewAgentUsecase(d.Agents, d.ToolRegistry, nil, nil)
+		uc = biz.NewAgentUsecase(d.Agents, d.ToolRegistry, nil, nil, nil, nil)
 	}
 	if uc != nil {
 		eff, err := uc.GetEffectiveTools(ctx, ag.ID)
@@ -178,7 +178,7 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	}
 	uc := d.AgentUC
 	if uc == nil && d.Agents != nil && d.ToolRegistry != nil {
-		uc = biz.NewAgentUsecase(d.Agents, d.ToolRegistry, nil, nil)
+		uc = biz.NewAgentUsecase(d.Agents, d.ToolRegistry, nil, nil, nil, nil)
 	}
 	if uc == nil {
 		return ""

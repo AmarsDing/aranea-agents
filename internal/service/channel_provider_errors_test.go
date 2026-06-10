@@ -4,54 +4,57 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"aranea-agents/internal/biz"
 )
 
 func TestClassifyChannelTurnError_nil(t *testing.T) {
 	got := classifyChannelTurnError(nil)
-	if got != channelTurnErrNone {
-		t.Errorf("classifyChannelTurnError(nil) = %q, want %q", got, channelTurnErrNone)
+	if got != biz.ChannelTurnErrNone {
+		t.Errorf("classifyChannelTurnError(nil) = %q, want %q", got, biz.ChannelTurnErrNone)
 	}
 }
 
 func TestClassifyChannelTurnError_canceled(t *testing.T) {
 	got := classifyChannelTurnError(context.Canceled)
-	if got != channelTurnErrNone {
-		t.Errorf("classifyChannelTurnError(Canceled) = %q, want %q", got, channelTurnErrNone)
+	if got != biz.ChannelTurnErrNone {
+		t.Errorf("classifyChannelTurnError(Canceled) = %q, want %q", got, biz.ChannelTurnErrNone)
 	}
 }
 
 func TestClassifyChannelTurnError_busy(t *testing.T) {
 	got := classifyChannelTurnError(turnBusyError())
-	if got != channelTurnErrBusy {
-		t.Errorf("classifyChannelTurnError(busy) = %q, want %q", got, channelTurnErrBusy)
+	if got != biz.ChannelTurnErrBusy {
+		t.Errorf("classifyChannelTurnError(busy) = %q, want %q", got, biz.ChannelTurnErrBusy)
 	}
 }
 
 func TestClassifyChannelTurnError_turnTimeout(t *testing.T) {
 	got := classifyChannelTurnError(TurnError(TurnErrTurnTimeout, "5m"))
-	if got != channelTurnErrTimeout {
-		t.Errorf("classifyChannelTurnError(TurnTimeout) = %q, want %q", got, channelTurnErrTimeout)
+	if got != biz.ChannelTurnErrTimeout {
+		t.Errorf("classifyChannelTurnError(TurnTimeout) = %q, want %q", got, biz.ChannelTurnErrTimeout)
 	}
 }
 
 func TestClassifyChannelTurnError_firstByteTimeout(t *testing.T) {
 	got := classifyChannelTurnError(TurnError(TurnErrFirstByteTimeout, "30s"))
-	if got != channelTurnErrTimeout {
-		t.Errorf("classifyChannelTurnError(FirstByteTimeout) = %q, want %q", got, channelTurnErrTimeout)
+	if got != biz.ChannelTurnErrTimeout {
+		t.Errorf("classifyChannelTurnError(FirstByteTimeout) = %q, want %q", got, biz.ChannelTurnErrTimeout)
 	}
 }
 
 func TestClassifyChannelTurnError_deadlineExceeded(t *testing.T) {
 	got := classifyChannelTurnError(context.DeadlineExceeded)
-	if got != channelTurnErrTimeout {
-		t.Errorf("classifyChannelTurnError(DeadlineExceeded) = %q, want %q", got, channelTurnErrTimeout)
+	if got != biz.ChannelTurnErrTimeout {
+		t.Errorf("classifyChannelTurnError(DeadlineExceeded) = %q, want %q", got, biz.ChannelTurnErrTimeout)
 	}
 }
 
 func TestClassifyChannelTurnError_timeoutString(t *testing.T) {
+	// String-based timeout detection removed; plain errors are now classified as generic.
 	got := classifyChannelTurnError(errors.New("connection timeout after 30s"))
-	if got != channelTurnErrTimeout {
-		t.Errorf("classifyChannelTurnError(timeout string) = %q, want %q", got, channelTurnErrTimeout)
+	if got != biz.ChannelTurnErrGeneric {
+		t.Errorf("classifyChannelTurnError(timeout string) = %q, want %q", got, biz.ChannelTurnErrGeneric)
 	}
 }
 
@@ -68,8 +71,8 @@ func TestClassifyChannelTurnError_rateLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := classifyChannelTurnError(tt.err)
-			if got != channelTurnErrRateLimit {
-				t.Errorf("classifyChannelTurnError() = %q, want %q", got, channelTurnErrRateLimit)
+			if got != biz.ChannelTurnErrRateLimit {
+				t.Errorf("classifyChannelTurnError() = %q, want %q", got, biz.ChannelTurnErrRateLimit)
 			}
 		})
 	}
@@ -89,8 +92,8 @@ func TestClassifyChannelTurnError_contextOverflow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := classifyChannelTurnError(tt.err)
-			if got != channelTurnErrContextOverflow {
-				t.Errorf("classifyChannelTurnError() = %q, want %q", got, channelTurnErrContextOverflow)
+			if got != biz.ChannelTurnErrContextOverflow {
+				t.Errorf("classifyChannelTurnError() = %q, want %q", got, biz.ChannelTurnErrContextOverflow)
 			}
 		})
 	}
@@ -98,15 +101,15 @@ func TestClassifyChannelTurnError_contextOverflow(t *testing.T) {
 
 func TestClassifyChannelTurnError_generic(t *testing.T) {
 	got := classifyChannelTurnError(errors.New("internal sql: connection refused"))
-	if got != channelTurnErrGeneric {
-		t.Errorf("classifyChannelTurnError(generic) = %q, want %q", got, channelTurnErrGeneric)
+	if got != biz.ChannelTurnErrGeneric {
+		t.Errorf("classifyChannelTurnError(generic) = %q, want %q", got, biz.ChannelTurnErrGeneric)
 	}
 }
 
 func TestClassifyChannelTurnError_rateLimitNotTimeout(t *testing.T) {
 	err := errors.New("rate limit exceeded")
 	got := classifyChannelTurnError(err)
-	if got != channelTurnErrRateLimit {
+	if got != biz.ChannelTurnErrRateLimit {
 		t.Errorf("rate limit should not be classified as timeout, got %q", got)
 	}
 }

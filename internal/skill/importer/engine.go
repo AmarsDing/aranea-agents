@@ -31,11 +31,20 @@ type llmLister interface {
 	GetByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error)
 }
 
+// SkillImportJobStore persists import job state to the database.
+type SkillImportJobStore interface {
+	Create(ctx context.Context, job biz.SkillImportJob) error
+	Get(ctx context.Context, jobID string) (*biz.SkillImportJob, error)
+	UpdateStatus(ctx context.Context, jobID string, status string, message string) error
+	UpdateCandidates(ctx context.Context, jobID string, candidates []biz.SkillImportCandidate, conflictGroups []biz.SkillConflictGroup) error
+}
+
 type Engine struct {
-	repo SkillImportRepo
-	llm  llmLister
-	sys  biz.SystemSettingRepo
-	lg   loggateway.Logger
+	repo   SkillImportRepo
+	llm    llmLister
+	sys    biz.SystemSettingRepo
+	lg     loggateway.Logger
+	store  SkillImportJobStore // DB persistence layer (nil = memory-only fallback)
 
 	jobsMu sync.RWMutex
 	jobs   map[string]*jobState
@@ -67,6 +76,13 @@ func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, l
 		jobs:   make(map[string]*jobState),
 		jobTTL: defaultJobTTL,
 	}
+}
+
+// SetStore sets the DB persistence layer. When set, import jobs are
+// persisted to the database so they survive server restarts.
+// NOTE: Must only be called during initialization, before any concurrent access.
+func (e *Engine) SetStore(store SkillImportJobStore) {
+	e.store = store
 }
 
 func ProvideLLMLister(uc *biz.LlmProviderModelUsecase) llmLister {
@@ -139,11 +155,24 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 	e.jobsMu.Lock()
 	e.jobs[job.public.JobID] = job
 	e.jobsMu.Unlock()
+
+	// Persist to DB so the job survives server restarts.
+	if e.store != nil {
+		if dbErr := e.store.Create(ctx, job.public); dbErr != nil {
+			e.lg.Warn("Import: DB persist failed, job only in memory",
+				loggateway.StepID("skill.import.db_persist"),
+				loggateway.Str("job_id", job.public.JobID),
+				loggateway.Err(dbErr))
+		}
+	}
+
 	return job.public, nil
 }
 
 func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
 	trimmed := strings.TrimSpace(jobID)
+
+	// Try in-memory cache first (fast path).
 	e.jobsMu.RLock()
 	job := e.jobs[trimmed]
 	expired := job != nil && time.Since(job.createdAt) > e.jobTTL
@@ -156,12 +185,27 @@ func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
 		job = nil
 	}
 
-	if job == nil {
-		return biz.SkillImportJob{}, ErrImportJobNotFound
+	if job != nil {
+		out := job.public
+		out.StorageRoot = e.resolveRoot(context.Background())
+		return out, nil
 	}
-	out := job.public
-	out.StorageRoot = e.resolveRoot(context.Background())
-	return out, nil
+
+	// Fallback to DB persistence (survives restarts).
+	if e.store != nil {
+		dbJob, dbErr := e.store.Get(context.Background(), trimmed)
+		if dbErr != nil {
+			e.lg.Warn("GetImportJob: DB lookup failed",
+				loggateway.StepID("skill.import.db_lookup"),
+				loggateway.Str("job_id", trimmed),
+				loggateway.Err(dbErr))
+		} else if dbJob != nil {
+			dbJob.StorageRoot = e.resolveRoot(context.Background())
+			return *dbJob, nil
+		}
+	}
+
+	return biz.SkillImportJob{}, ErrImportJobNotFound
 }
 
 func (e *Engine) evictExpiredLocked() {
@@ -312,6 +356,17 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		}
 	}
 	result.Message = "import completed"
+
+	// Update DB status to "applied".
+	if e.store != nil {
+		if dbErr := e.store.UpdateStatus(ctx, strings.TrimSpace(jobID), "applied", result.Message); dbErr != nil {
+			e.lg.Warn("ApplyImport: DB status update failed",
+				loggateway.StepID("skill.import.db_update"),
+				loggateway.Str("job_id", strings.TrimSpace(jobID)),
+				loggateway.Err(dbErr))
+		}
+	}
+
 	return result, nil
 }
 

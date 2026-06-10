@@ -23,6 +23,15 @@ import {
   getMemoryPlatformSettings,
   listMemoryDeadLetters,
   updateMemoryPlatformSettings,
+  getMemoryWorkerStatus,
+  replayMemoryDeadLetter,
+  abandonMemoryDeadLetter,
+  listL1Fields,
+  listConflictingFacts,
+  upsertMemoryFact,
+  appendEvolutionEvent,
+  listPIIFlaggedFacts,
+  reviewPIIFact,
 } from '../../features/memory/api';
 import {
   MEMORY_SNAPSHOT_LIMIT,
@@ -32,6 +41,7 @@ import {
 } from '../../features/constants/queryLimits';
 import type {
   L0AssemblySnapshot,
+  L1Field,
   L1Task,
   MemoryEntity,
   MemoryFact,
@@ -45,6 +55,8 @@ import type {
   CascadePreview,
   CascadeProposal,
   CascadeSagaStep,
+  MemoryWorkerStatus,
+  MemoryDeadLetterEntry,
 } from '../../features/memory/types';
 
 export type MemoryEvolutionBundle = {
@@ -68,6 +80,11 @@ export const useMemoryStore = defineStore('memory', () => {
   const loadingCascade = ref(false);
   const loadingCascadePreview = ref(false);
   const loadingCascadeSaga = ref(false);
+
+  const workerStatus = ref<MemoryWorkerStatus | null>(null);
+  const deadLetters = ref<MemoryDeadLetterEntry[]>([]);
+  const loadingWorkerStatus = ref(false);
+  const loadingDeadLetters = ref(false);
 
   async function loadSnapshots(sessionID: string, limit = MEMORY_SNAPSHOT_LIMIT): Promise<L0AssemblySnapshot[]> {
     loading.value = true;
@@ -103,7 +120,9 @@ export const useMemoryStore = defineStore('memory', () => {
       listMemoryEntities(entityQuery),
       agentID ? getAgentIdentity(agentID).catch(() => null) : Promise.resolve(null),
       agentID ? getAgentStrategy(agentID).catch(() => null) : Promise.resolve(null),
-      agentID ? listEvolutionProposals(agentID, { status: 'pending', limit: MEMORY_EVOLUTION_LIMIT }).catch(() => []) : Promise.resolve([]),
+      agentID
+        ? listEvolutionProposals(agentID, { status: 'pending', limit: MEMORY_EVOLUTION_LIMIT }).catch(() => [])
+        : Promise.resolve([]),
       agentID ? listEvolutionEvents(agentID, { limit: MEMORY_EVOLUTION_LIMIT }).catch(() => []) : Promise.resolve([]),
       agentID ? getEvolutionMetrics(agentID).catch(() => null) : Promise.resolve(null),
     ]);
@@ -210,6 +229,68 @@ export const useMemoryStore = defineStore('memory', () => {
     return updateMemoryPlatformSettings(input);
   }
 
+  async function loadWorkerStatus() {
+    loadingWorkerStatus.value = true;
+    try {
+      workerStatus.value = await getMemoryWorkerStatus();
+    } finally {
+      loadingWorkerStatus.value = false;
+    }
+  }
+
+  async function loadDeadLetters(status = 'pending') {
+    loadingDeadLetters.value = true;
+    try {
+      deadLetters.value = await listMemoryDeadLetters(status);
+    } finally {
+      loadingDeadLetters.value = false;
+    }
+  }
+
+  async function replayDeadLetter(id: number) {
+    await replayMemoryDeadLetter(id);
+    await loadDeadLetters();
+  }
+
+  async function abandonDeadLetter(id: number) {
+    await abandonMemoryDeadLetter(id);
+    await loadDeadLetters();
+  }
+
+  async function loadL1Fields(sessionID: string, taskID: string, includeInternal = true): Promise<L1Field[]> {
+    return listL1Fields(sessionID, taskID, includeInternal);
+  }
+
+  async function loadConflictingFacts(
+    scopeType: string,
+    scopeId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<MemoryFact[]> {
+    return listConflictingFacts(scopeType, scopeId, limit, offset);
+  }
+
+  async function upsertFact(fact: Parameters<typeof upsertMemoryFact>[0]): Promise<MemoryFact> {
+    return upsertMemoryFact(fact);
+  }
+
+  async function appendEvolution(req: Parameters<typeof appendEvolutionEvent>[0]): Promise<EvolutionEvent> {
+    return appendEvolutionEvent(req);
+  }
+
+  async function loadPIIFlaggedFacts(
+    scopeType: string,
+    scopeId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<MemoryFact[]> {
+    return listPIIFlaggedFacts(scopeType, scopeId, limit, offset);
+  }
+
+  async function reviewPII(factID: string, action: 'approve' | 'reject'): Promise<MemoryFact> {
+    return reviewPIIFact(factID, action);
+  }
+
   return {
     snapshots,
     facts,
@@ -243,5 +324,19 @@ export const useMemoryStore = defineStore('memory', () => {
     fetchPlatformSettings,
     fetchDeadLetters,
     savePlatformSettings,
+    workerStatus,
+    deadLetters,
+    loadingWorkerStatus,
+    loadingDeadLetters,
+    loadWorkerStatus,
+    loadDeadLetters,
+    replayDeadLetter,
+    abandonDeadLetter,
+    loadL1Fields,
+    loadConflictingFacts,
+    upsertFact,
+    appendEvolution,
+    loadPIIFlaggedFacts,
+    reviewPII,
   };
 });

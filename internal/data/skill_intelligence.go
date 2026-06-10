@@ -255,6 +255,8 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 	metrics := &biz.SkillHealthMetrics{SkillID: skillID}
 	var totalDuration int
 	var durations []int
+	var totalTokens int
+	tokensCounted := 0
 
 	for _, row := range rows {
 		metrics.InvocationCount++
@@ -263,14 +265,48 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 		}
 		totalDuration += row.DurationMs
 		durations = append(durations, row.DurationMs)
+
+		// Extract token_usage.total from JSON field.
+		if row.TokenUsage != nil {
+			if total, ok := extractTokenTotal(row.TokenUsage); ok && total > 0 {
+				totalTokens += total
+				tokensCounted++
+			}
+		}
 	}
 
 	if metrics.InvocationCount > 0 {
 		metrics.SuccessRate = float64(metrics.SuccessCount) / float64(metrics.InvocationCount)
 		metrics.AvgDurationMS = float64(totalDuration) / float64(metrics.InvocationCount)
 	}
+	if tokensCounted > 0 {
+		metrics.AvgTokenUsage = totalTokens / tokensCounted
+	}
 	metrics.P95DurationMS = types.P95(durations)
+	// FeedbackScore: not yet available from DB; will be computed heuristically in biz layer.
 	return metrics, nil
+}
+
+// extractTokenTotal extracts the "total" field from a token_usage JSON map.
+func extractTokenTotal(tokenUsage map[string]any) (int, bool) {
+	if tokenUsage == nil {
+		return 0, false
+	}
+	total, ok := tokenUsage["total"]
+	if !ok {
+		return 0, false
+	}
+	switch v := total.(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i), true
+		}
+	}
+	return 0, false
 }
 
 func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID string, since time.Time) (*biz.SkillFailureStats, error) {
@@ -452,5 +488,7 @@ func mapEntSkillInvocationToWrite(row *ent.SkillInvocation) biz.SkillInvocationW
 		SelectionReason: row.SelectionReason,
 		Outcome:         row.Outcome,
 		TokenUsage:      row.TokenUsage,
+		RoutedSlugs:     row.RoutedSlugs,
+		LoadedSlug:      row.LoadedSlug,
 	}
 }

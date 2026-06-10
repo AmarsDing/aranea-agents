@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ChannelFieldHelp } from '../../features/channels/channelPlatformFields';
+import type { ChannelFieldHelp } from '../../domain/channel';
 
 export type { ChannelFieldHelp };
 

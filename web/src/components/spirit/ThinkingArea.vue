@@ -33,7 +33,7 @@
         class="thinking-area__collapsed-btn"
         @click="expanded = true"
       >
-        思考内容
+        {{ t('chat.thinking.label') }}
       </q-btn>
     </template>
 
@@ -110,6 +110,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -172,7 +175,7 @@ const rootClasses = computed(() => ({
 .thinking-area__flow-light
   position: absolute
   inset: 0
-  background: linear-gradient(90deg, transparent, rgba(91, 138, 245, 0.6), transparent)
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-primary) 60%, transparent), transparent)
   animation: flowLight 2s ease-in-out infinite
   border-radius: 50%
 
@@ -195,25 +198,22 @@ const rootClasses = computed(() => ({
 
 .thinking-area__content--active
   font-size: 12px
-  background: rgba(22, 33, 62, 0.6)
-  border-radius: 6px
-  padding: 4px 8px
-  max-height: 3em
+  background: var(--glass-surface)
   overflow: hidden
   display: -webkit-box
   -webkit-line-clamp: 2
   -webkit-box-orient: vertical
 
 .thinking-area--active
-  border-left: 2px solid rgba(91, 138, 245, 0.4)
+  border-left: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent)
   padding-left: 6px
   animation: pulseBorder 2s ease-in-out infinite
 
 @keyframes pulseBorder
   0%, 100%
-    border-left-color: rgba(91, 138, 245, 0.25)
+    border-left-color: color-mix(in srgb, var(--color-primary) 25%, transparent)
   50%
-    border-left-color: rgba(91, 138, 245, 0.55)
+    border-left-color: color-mix(in srgb, var(--color-primary) 55%, transparent)
 
 .thinking-area__content--inline
   font-size: 12px
@@ -221,7 +221,7 @@ const rootClasses = computed(() => ({
 
 .thinking-area__content--expanded
   font-size: var(--text-base)
-  background: rgba(22, 33, 62, 0.8)
+  background: var(--glass-elevated)
   border-radius: 6px
   padding: 8px 10px
   max-height: 300px
@@ -247,14 +247,14 @@ const rootClasses = computed(() => ({
 .thinking-area__collapsed-btn
   font-size: 12px
   color: var(--color-text-secondary)
-  background: rgba(22, 33, 62, 0.6)
+  background: var(--glass-surface)
   border-radius: 6px
   padding: 2px 8px
   min-height: unset
   transition: background 0.15s ease
 
   &:hover
-    background: rgba(22, 33, 62, 0.8)
+    background: var(--glass-elevated)
 
 // ── Collapse toggle ──
 .thinking-area__collapse-btn

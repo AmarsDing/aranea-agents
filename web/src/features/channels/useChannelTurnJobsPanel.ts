@@ -26,7 +26,7 @@ export function useChannelTurnJobsPanel(channelId: () => string) {
         return 'warning';
       case 'async_queued':
       case 'queued':
-        return 'purple';
+        return 'accent';
       default:
         return 'grey';
     }

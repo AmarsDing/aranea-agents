@@ -244,12 +244,3 @@ func scanChannelTurnJobListRow(rows *sql.Rows) (biz.ChannelTurnJob, error) {
 	return j, err
 }
 
-func scanChannelTurnJobRows(rows *sql.Rows) (biz.ChannelTurnJob, error) {
-	var j biz.ChannelTurnJob
-	err := rows.Scan(
-		&j.ID, &j.ChannelID, &j.SessionID, &j.PeerID, &j.PeerKey, &j.IdempotencyKey, &j.Status,
-		&j.PreviewMessageID, &j.ContentPreview, &j.AsyncTargetType, &j.AsyncTargetID,
-		&j.ErrorMessage, &j.StartedAt, &j.FinishedAt, &j.CreatedAt, &j.UpdatedAt,
-	)
-	return j, err
-}

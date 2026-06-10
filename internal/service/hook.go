@@ -62,19 +62,19 @@ func toProtoHook(h biz.Hook) *v1.Hook {
 	}
 }
 
-func patchFromProtoHook(pb *v1.Hook) biz.Hook {
+func patchFromProtoHook(pb *v1.Hook) biz.HookPatch {
 	if pb == nil {
-		return biz.Hook{}
+		return biz.HookPatch{}
 	}
-	return biz.Hook{
-		Key:          pb.GetKey(),
-		Name:         pb.GetName(),
-		Description:  pb.GetDescription(),
-		Status:       pb.GetStatus(),
-		Enabled:      pb.GetEnabled(),
-		SortOrder:    int(pb.GetSortOrder()),
-		ConfigJSON:   pb.GetConfigJson(),
-		MetadataJSON: pb.GetMetadataJson(),
+	return biz.HookPatch{
+		Key:          biz.StrPtr(pb.GetKey()),
+		Name:         biz.StrPtr(pb.GetName()),
+		Description:  biz.StrPtr(pb.GetDescription()),
+		Status:       biz.StrPtr(pb.GetStatus()),
+		Enabled:      biz.BoolPtr(pb.GetEnabled()),
+		SortOrder:    biz.IntPtr(int(pb.GetSortOrder())),
+		ConfigJSON:   biz.StrPtr(pb.GetConfigJson()),
+		MetadataJSON: biz.StrPtr(pb.GetMetadataJson()),
 	}
 }
 

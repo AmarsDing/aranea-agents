@@ -27,8 +27,8 @@
               <q-item-section>
                 <q-item-label class="row items-center q-gutter-xs">
                   <q-chip dense outline size="sm">{{ ev.type }}</q-chip>
-                  <span class="text-caption text-grey-7">{{ ev.timestamp }}</span>
-                  <q-chip v-if="ev.tool_call?.is_long_running" dense color="orange" text-color="white" size="sm">
+                  <span class="text-caption text-grey">{{ ev.timestamp }}</span>
+                  <q-chip v-if="ev.tool_call?.is_long_running" dense color="warning" text-color="white" size="sm">
                     long-running
                   </q-chip>
                 </q-item-label>
@@ -36,14 +36,14 @@
                 <TransferBadge v-if="ev.transfer" :transfer="ev.transfer" class="q-mt-xs" />
                 <StateDeltaIndicator v-if="ev.state_delta" :delta="ev.state_delta" class="q-mt-xs" />
                 <div v-if="ev.tool_call" class="q-mt-xs text-caption">
-                  <q-chip dense size="sm" color="orange" text-color="white">{{ ev.tool_call.name }}</q-chip>
+                  <q-chip dense size="sm" color="warning" text-color="white">{{ ev.tool_call.name }}</q-chip>
                   {{ ev.tool_call.status }}
                 </div>
                 <div v-if="ev.content?.text" class="q-mt-xs text-body2 ellipsis-3-lines">{{ ev.content.text }}</div>
               </q-item-section>
             </q-item>
           </q-list>
-          <div v-if="!displayEvents.length" class="text-center text-grey-7 q-pa-lg">暂无事件</div>
+          <div v-if="!displayEvents.length" class="text-center text-grey q-pa-lg">暂无事件</div>
         </q-scroll-area>
       </div>
     </div>

@@ -114,7 +114,7 @@ import {
   channelRoutingTargetToggleOptions,
   channelTeamSelectOptions,
   type ChannelRoutingTargetType,
-} from '../../features/channels/channelRoutingUtils';
+} from '../../domain/channel';
 import type { Team } from '../../features/teams/types';
 
 const { t } = useI18n();
@@ -155,7 +155,7 @@ const agentOptions = computed(() => channelAgentSelectOptions(props.agents));
 const teamOptions = computed(() => channelTeamSelectOptions(props.teams));
 
 const routingAgentModelBannerClass = computed(() => {
-  if (props.routingAgentModelChecking) return 'bg-blue-grey-2 text-blue-grey-9';
+  if (props.routingAgentModelChecking) return 'bg-info text-white';
   if (props.routingAgentModelOk === true) return 'bg-positive text-white';
   if (props.routingAgentModelOk === false) return 'bg-negative text-white';
   return 'bg-grey-3';

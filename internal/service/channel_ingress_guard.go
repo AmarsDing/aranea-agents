@@ -17,7 +17,7 @@ func (h *ChannelIngress) shouldProcessInbound(ctx context.Context, chRow biz.Cha
 	if h == nil {
 		return false, "ingress not configured", nil
 	}
-	if viaWebhook && channelReceiveModeFromConfig(chRow.ConfigJSON, h.lg) == "websocket" {
+	if viaWebhook && biz.ChannelReceiveModeFromConfig(chRow.ConfigJSON) == "websocket" {
 		return false, "webhook_disabled_ws_mode", nil
 	}
 	if strings.TrimSpace(ev.IdempotencyKey) == "" {
@@ -25,7 +25,7 @@ func (h *ChannelIngress) shouldProcessInbound(ctx context.Context, chRow biz.Cha
 	}
 	platform := strings.TrimSpace(ev.PlatformType)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON, h.lg)
+		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
 	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
 	if !h.inboundInflight.tryAcquire(dedupKey) {
@@ -55,7 +55,7 @@ func (h *ChannelIngress) logInboundAccepted(ctx context.Context, chRow biz.Chann
 	}
 	platform := strings.TrimSpace(ev.PlatformType)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON, h.lg)
+		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
 	if issues := port.ValidateOutboundMeta(platform, ev.OutboundMeta); len(issues) > 0 {
 		h.lg.Info("Channel OutboundMeta 契约告警",

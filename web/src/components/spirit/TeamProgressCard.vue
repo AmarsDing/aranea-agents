@@ -4,15 +4,22 @@
     :class="`team-progress-card--${statusClass}`"
     role="button"
     tabindex="0"
-    @click="$emit('click')"
-    @keydown.enter="$emit('click')"
+    @click="toggleExpand"
+    @keydown.enter="toggleExpand"
   >
     <div class="row items-center no-wrap q-gutter-sm">
+      <q-icon
+        :name="expanded ? 'expand_more' : 'chevron_right'"
+        size="16px"
+        color="grey"
+        class="team-progress-card__chevron"
+      />
       <div class="team-progress-card__icon">
         <q-spinner v-if="isRunning" size="16px" color="accent" />
         <q-icon v-else-if="team.status === 'completed'" name="check_circle" size="16px" color="positive" />
         <q-icon v-else-if="team.status === 'failed'" name="error" size="16px" color="negative" />
-        <q-icon v-else-if="team.status === 'cancelled'" name="cancel" size="16px" color="grey-6" />
+        <q-icon v-else-if="team.status === 'cancelled'" name="cancel" size="16px" color="grey" />
+        <q-icon v-else-if="team.status === 'interrupted'" name="pause_circle" size="16px" color="warning" />
         <q-icon v-else-if="team.status === 'pending'" name="schedule" size="16px" color="warning" />
         <q-icon v-else name="groups" size="16px" color="accent" />
       </div>
@@ -25,6 +32,10 @@
         :topology="topology"
         :reason="team.topologyReason"
       />
+      <template v-if="team.status === 'interrupted'">
+        <button class="tp-action-btn resume" @click.stop="$emit('resume')">{{ t('spirit.resume') }}</button>
+        <button class="tp-action-btn cancel" @click.stop="$emit('cancel')">{{ t('spirit.cancel') }}</button>
+      </template>
       <q-btn
         v-if="canCancel"
         flat
@@ -35,7 +46,7 @@
         class="team-progress-card__cancel"
         @click.stop="$emit('cancel')"
       >
-        <q-tooltip>取消团队</q-tooltip>
+        <q-tooltip>{{ t('spirit.cancelTeam') }}</q-tooltip>
       </q-btn>
       <q-btn
         v-if="canRetry"
@@ -47,7 +58,7 @@
         class="team-progress-card__retry"
         @click.stop="$emit('retry')"
       >
-        <q-tooltip>重试团队</q-tooltip>
+        <q-tooltip>{{ t('spirit.retryTeam') }}</q-tooltip>
       </q-btn>
       <q-btn
         v-if="canArchive"
@@ -59,25 +70,25 @@
         class="team-progress-card__archive"
         @click.stop="$emit('archive')"
       >
-        <q-tooltip>归档团队</q-tooltip>
+        <q-tooltip>{{ t('spirit.archiveTeam') }}</q-tooltip>
       </q-btn>
     </div>
 
     <div v-if="team.status === 'pending'" class="team-progress-card__deps q-mt-xs">
       <q-icon v-if="isWaitingDeps" name="schedule" size="12px" color="warning" class="q-mr-xs" />
-      <q-icon v-else name="hourglass_top" size="12px" color="grey-6" class="q-mr-xs" />
-      <span class="text-caption">{{ isWaitingDeps ? '等待依赖完成' : '等待调度' }}</span>
-      <span v-if="isWaitingDeps" class="text-caption text-grey-6 q-ml-xs">
-        ({{ team.dependsOn!.length }} 个前置任务)
+      <q-icon v-else name="hourglass_top" size="12px" color="grey" class="q-mr-xs" />
+      <span class="text-caption">{{ isWaitingDeps ? t('spirit.waitingDeps') : t('spirit.waitingSchedule') }}</span>
+      <span v-if="isWaitingDeps" class="text-caption text-grey q-ml-xs">
+        ({{ t('spirit.prerequisiteTasks', { count: team.dependsOn!.length }) }})
       </span>
     </div>
 
     <div v-if="team.totalSteps > 0" class="team-progress-card__progress q-mt-xs">
       <q-linear-progress :value="progressValue" size="3px" rounded :color="progressColor" />
       <div class="row items-center justify-between q-mt-xs">
-        <span class="text-caption text-grey-6"> {{ team.completedSteps }} / {{ team.totalSteps }} 步骤 </span>
-        <span class="text-caption text-grey-6">
-          <template v-if="etaText">预计 {{ etaText }}</template>
+        <span class="text-caption text-grey"> {{ team.completedSteps }} / {{ team.totalSteps }} {{ t('spirit.steps') }} </span>
+        <span class="text-caption text-grey">
+          <template v-if="etaText">{{ t('spirit.estimated', { time: etaText }) }}</template>
           <template v-else-if="durationText">{{ durationText }}</template>
         </span>
       </div>
@@ -91,20 +102,46 @@
     <div v-if="team.memberAvatars.length > 0" class="team-progress-card__avatars row items-center q-gutter-xs q-mt-xs">
       <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 4)" :key="idx" size="18px">
         <img v-if="url" :src="url" alt="" />
-        <q-icon v-else name="person" size="12px" color="grey-6" />
+        <q-icon v-else name="person" size="12px" color="grey" />
       </q-avatar>
-      <span v-if="team.memberAvatars.length > 4" class="text-caption text-grey-6">
+      <span v-if="team.memberAvatars.length > 4" class="text-caption text-grey">
         +{{ team.memberAvatars.length - 4 }}
       </span>
     </div>
+
+    <!-- Expandable agent details body -->
+    <transition name="tp-expand">
+      <div v-if="expanded" class="team-progress-card__details q-mt-sm" @click.stop>
+        <div class="text-caption text-weight-medium text-grey q-mb-xs">{{ t('spirit.agentDetails') }}</div>
+        <template v-if="team.members.length > 0">
+          <div
+            v-for="member in team.members"
+            :key="member.agentKey"
+            class="team-progress-card__detail-item row items-center q-gutter-xs"
+          >
+            <q-avatar size="16px">
+              <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
+              <q-icon v-else name="person" size="12px" color="grey" />
+            </q-avatar>
+            <span class="text-caption col ellipsis">{{ member.displayName }}</span>
+            <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
+          </div>
+        </template>
+        <div v-else class="text-caption text-grey">{{ t('spirit.noAgentDetails') }}</div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SpiritTeam, TopologyType } from '../../features/spirit/types';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
-import { formatDuration } from '../../features/spirit/spiritUi';
+import AgentStatusLabel from './AgentStatusLabel.vue';
+import { formatDuration, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -114,8 +151,15 @@ defineEmits<{
   click: [];
   cancel: [];
   retry: [];
+  resume: [];
   archive: [];
 }>();
+
+const expanded = ref<boolean>(false);
+
+function toggleExpand(): void {
+  expanded.value = !expanded.value;
+}
 
 const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
   const mapping: Partial<Record<SpiritTeam['mode'], TopologyType>> = {
@@ -149,6 +193,8 @@ const statusClass = computed(() => {
       return 'failed';
     case 'cancelled':
       return 'cancelled';
+    case 'interrupted':
+      return 'interrupted';
     case 'pending':
       return 'waiting';
     case 'running':
@@ -180,10 +226,11 @@ const etaText = computed(() => {
   return formatDuration(remainingMs);
 });
 
-/** Show error summary when team failed. */
+/** Show error/interrupt summary when team failed or interrupted. */
 const failedSummary = computed(() => {
-  if (props.team.status !== 'failed') return '';
-  return props.team.interruptReason || '执行失败';
+  if (props.team.status === 'failed') return props.team.interruptReason || t('spirit.executionFailed');
+  if (props.team.status === 'interrupted') return props.team.interruptReason || t('spirit.interrupted');
+  return '';
 });
 </script>
 
@@ -214,6 +261,13 @@ const failedSummary = computed(() => {
 
 .team-progress-card--cancelled
   opacity: 0.6
+
+.team-progress-card--interrupted
+  border-left: 3px solid color-mix(in srgb, var(--color-warning) 50%, var(--glass-border))
+
+.team-progress-card__chevron
+  flex-shrink: 0
+  transition: transform 0.15s ease
 
 .team-progress-card__icon
   display: flex
@@ -280,4 +334,53 @@ const failedSummary = computed(() => {
 .team-progress-card__avatars
   margin-left: 32px
   flex-wrap: nowrap
+
+.team-progress-card__details
+  margin-left: 32px
+  padding: var(--space-2) var(--space-3)
+  border-radius: 6px
+  background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
+  border: 1px solid var(--glass-border)
+
+.team-progress-card__detail-item
+  padding: 2px 0
+
+.tp-action-btn
+  border: none
+  border-radius: 4px
+  padding: 2px 8px
+  font-size: 11px
+  font-weight: 600
+  line-height: 1.4
+  cursor: pointer
+  transition: opacity 0.15s ease
+  flex-shrink: 0
+  &:hover
+    opacity: 0.85
+
+.tp-action-btn.resume
+  background: var(--color-accent)
+  color: white
+
+.tp-action-btn.cancel
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-secondary)
+
+// Expand/collapse transition
+.tp-expand-enter-active,
+.tp-expand-leave-active
+  transition: all 0.2s ease
+  overflow: hidden
+
+.tp-expand-enter-from,
+.tp-expand-leave-to
+  opacity: 0
+  max-height: 0
+  margin-top: 0
+
+.tp-expand-enter-to,
+.tp-expand-leave-from
+  opacity: 1
+  max-height: 300px
 </style>

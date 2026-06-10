@@ -642,6 +642,10 @@ func convertTools(tools map[string]tool.Tool) []*hunyuan.ChatCompletionMessageTo
 	var result []*hunyuan.ChatCompletionMessageTool
 	for _, tl := range toolorder.SortedTools(tools) {
 		decl := tl.Declaration()
+		sanitizedName := tool.SanitizeToolName(decl.Name)
+		if sanitizedName != decl.Name {
+			log.Warnf("tool name %q sanitized to %q for LLM API compatibility", decl.Name, sanitizedName)
+		}
 
 		schemaBytes, err := json.Marshal(decl.InputSchema)
 		if err != nil {
@@ -652,7 +656,7 @@ func convertTools(tools map[string]tool.Tool) []*hunyuan.ChatCompletionMessageTo
 		result = append(result, &hunyuan.ChatCompletionMessageTool{
 			Type: functionToolType,
 			Function: &hunyuan.ChatCompletionMessageToolFunction{
-				Name:        decl.Name,
+				Name:        sanitizedName,
 				Parameters:  string(schemaBytes),
 				Description: buildToolDescription(decl),
 			},
@@ -673,7 +677,7 @@ func buildToolDescription(declaration *tool.Declaration) string {
 		log.Debugf("marshal output schema for tool %s: %v", declaration.Name, err)
 		return desc
 	}
-	desc += "Output schema: " + string(schemaJSON)
+	desc += "\nOutput schema: " + string(schemaJSON)
 	return desc
 }
 

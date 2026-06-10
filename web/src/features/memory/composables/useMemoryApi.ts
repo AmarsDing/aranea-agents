@@ -1,63 +1,67 @@
 // F-08 fix: route through Store instead of direct API calls.
 // S-09 fix: add loading state management for observability.
-import { ref } from 'vue';
+import { reactive } from 'vue';
 import { useMemoryStore } from '../../../stores/memory';
 
 export function useMemoryApi() {
   const store = useMemoryStore();
-  const loading = ref(false);
+  const loading = reactive<Record<string, boolean>>({});
+
+  function setLoading(key: string, value: boolean) {
+    loading[key] = value;
+  }
 
   async function compositeSearchMemories(params: Parameters<typeof store.searchMemoriesComposite>[0]) {
-    loading.value = true;
+    setLoading('compositeSearch', true);
     try {
       return await store.searchMemoriesComposite(params);
     } finally {
-      loading.value = false;
+      setLoading('compositeSearch', false);
     }
   }
 
   async function debugMemoryRecall(params: Parameters<typeof store.recallDebug>[0]) {
-    loading.value = true;
+    setLoading('debugRecall', true);
     try {
       return await store.recallDebug(params);
     } finally {
-      loading.value = false;
+      setLoading('debugRecall', false);
     }
   }
 
   async function getMemoryNeighborhood(centerID: string, params?: Parameters<typeof store.fetchNeighborhood>[1]) {
-    loading.value = true;
+    setLoading('neighborhood', true);
     try {
       return await store.fetchNeighborhood(centerID, params);
     } finally {
-      loading.value = false;
+      setLoading('neighborhood', false);
     }
   }
 
   async function getMemoryPlatformSettings() {
-    loading.value = true;
+    setLoading('platformSettings', true);
     try {
       return await store.fetchPlatformSettings();
     } finally {
-      loading.value = false;
+      setLoading('platformSettings', false);
     }
   }
 
   async function listMemoryDeadLetters(state?: string, limit?: number) {
-    loading.value = true;
+    setLoading('deadLetters', true);
     try {
       return await store.fetchDeadLetters(state, limit);
     } finally {
-      loading.value = false;
+      setLoading('deadLetters', false);
     }
   }
 
   async function updateMemoryPlatformSettings(input: Parameters<typeof store.savePlatformSettings>[0]) {
-    loading.value = true;
+    setLoading('updatePlatformSettings', true);
     try {
       return await store.savePlatformSettings(input);
     } finally {
-      loading.value = false;
+      setLoading('updatePlatformSettings', false);
     }
   }
 

@@ -1,6 +1,6 @@
 <template>
   <div class="state-delta-indicator row items-center q-gutter-xs q-py-xs">
-    <q-chip dense outline color="teal" size="sm">{{ delta.operation }}</q-chip>
+    <q-chip dense outline color="accent" size="sm">{{ delta.operation }}</q-chip>
     <code class="state-delta-indicator__path">{{ delta.path }}</code>
     <span v-if="delta.value_json" class="state-delta-indicator__value text-caption ellipsis">{{ previewValue }}</span>
   </div>

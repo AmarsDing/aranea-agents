@@ -2,9 +2,9 @@
   <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0">
     <!-- Breadcrumb navigation for team/member modes -->
     <div v-if="panelMode === 'team' || panelMode === 'member'" class="row items-center q-px-md q-py-xs spirit-breadcrumb">
-      <q-btn flat dense no-caps icon="auto_awesome" label="精灵" color="accent" class="spirit-breadcrumb__item" @click="emit('return-to-spirit')" />
+      <q-btn flat dense no-caps icon="auto_awesome" :label="t('chat.spiritLabel')" color="accent" class="spirit-breadcrumb__item" @click="emit('return-to-spirit')" />
       <template v-if="spiritTeam">
-        <q-icon name="chevron_right" size="16px" color="grey-6" class="q-mx-xs" />
+        <q-icon name="chevron_right" size="16px" class="spirit-breadcrumb__sep" />
         <q-btn
           v-if="panelMode === 'member'"
           flat dense no-caps
@@ -16,7 +16,7 @@
         <span v-else class="text-body2 ellipsis spirit-breadcrumb__current">{{ spiritTeam.teamName }}</span>
       </template>
       <template v-if="panelMode === 'member' && activeMember">
-        <q-icon name="chevron_right" size="16px" color="grey-6" class="q-mx-xs" />
+        <q-icon name="chevron_right" size="16px" class="spirit-breadcrumb__sep" />
         <span class="text-body2 ellipsis spirit-breadcrumb__current">{{ activeMember.displayName }}</span>
       </template>
     </div>
@@ -62,13 +62,13 @@
           <div class="chat-message-header__actions row items-center justify-end no-wrap">
             <template v-if="wsConnected === false">
               <q-icon name="wifi_off" size="18px" color="warning" class="q-mr-xs">
-                <q-tooltip>连接已断开</q-tooltip>
+                <q-tooltip>{{ t('chat.connectionDisconnected') }}</q-tooltip>
               </q-icon>
             </template>
             <template v-else-if="wsConnected === true">
               <span class="ws-connected-dot q-mr-xs">
-                <q-tooltip v-if="sessionRevision">同步完成 · rev {{ sessionRevision }}</q-tooltip>
-                <q-tooltip v-else>已连接</q-tooltip>
+                <q-tooltip v-if="sessionRevision">{{ t('chat.syncComplete') }} · rev {{ sessionRevision }}</q-tooltip>
+                <q-tooltip v-else>{{ t('chat.connected') }}</q-tooltip>
               </span>
             </template>
             <ChatRunnerStatus
@@ -86,8 +86,8 @@
               :event-count="runEventCount"
               @cancel="emit('stop')"
             />
-            <q-btn flat round dense icon="bolt" aria-label="Session events" @click="emit('open-events')">
-              <q-tooltip>会话事件</q-tooltip>
+            <q-btn flat round dense icon="bolt" :aria-label="t('chat.sessionEvents')" @click="emit('open-events')">
+              <q-tooltip>{{ t('chat.sessionEvents') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="reasoningSidebarActive"
@@ -96,10 +96,10 @@
               dense
               :icon="reasoningSidebarOpen ? 'psychology' : 'psychology_alt'"
               :color="reasoningSidebarOpen ? 'primary' : undefined"
-              aria-label="思考面板"
+              :aria-label="t('chat.thinkingPanel')"
               @click="emit('toggle-reasoning-sidebar')"
             >
-              <q-tooltip>思考面板</q-tooltip>
+              <q-tooltip>{{ t('chat.thinkingPanel') }}</q-tooltip>
             </q-btn>
           </div>
         </div>
@@ -116,6 +116,7 @@
         </div>
       </div>
       <div v-if="!panelMode || panelMode === 'spirit'" class="row items-center justify-end q-px-md q-py-xs">
+        <UiConfigToggle class="q-mr-sm" />
         <q-btn
           flat
           dense
@@ -129,6 +130,7 @@
       </div>
       <div class="col row no-wrap chat-messages-area" style="min-height: 0">
         <div class="col column no-wrap chat-messages-main" style="min-height: 0">
+          <TodoKanbanBoard v-if="!panelMode || panelMode === 'spirit'" :board-state="todoBoardState" />
           <ChatMessageList
             ref="messageListRef"
             :session-key="sessionKey"
@@ -271,14 +273,20 @@ import ChatComposer from './ChatComposer.vue';
 import ChatHeaderUsagePanel from './ChatHeaderUsagePanel.vue';
 import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
+import UiConfigToggle from './UiConfigToggle.vue';
+import TodoKanbanBoard from './TodoKanbanBoard.vue';
+import ToolCallTimeline from './ToolCallTimeline.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
 import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
+import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
 import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
+import { useUiConfigStore } from '../../stores/uiConfig';
+import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatTimeline, type TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import { CHAT_VIRTUAL_ROW_ESTIMATE, CHAT_VIRTUAL_SCROLL_THRESHOLD } from '../../features/chat/chatListVirtual';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
@@ -451,6 +459,15 @@ provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
   collapseAllSignal: readonly(collapseAllSignal),
 });
 
+// ── TK: Provide tool display config for child components ──
+const uiConfig = useUiConfigStore();
+provide(TOOL_DISPLAY_KEY, computed(() => ({
+  showToolCalls: uiConfig.showToolCalls,
+})));
+
+// ── TK: Todo board composable ──
+const { todoBoardState } = useTodoBoard(messagesRef);
+
 function handleExpandAll() {
   expandAll();
   expandAllSignal.value++;
@@ -564,4 +581,8 @@ onMounted(() => {
   &__current
     color: var(--color-text-secondary)
     max-width: 200px
+
+  &__sep
+    color: var(--color-text-tertiary)
+    margin: 0 4px
 </style>

@@ -98,7 +98,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 	case HybridDense:
 		fallthrough
 	default:
-		vec, err := h.embedder.Embed(ctx, q.Query)
+		vec, err := h.embedder.EmbedSingle(ctx, q.Query)
 		if err != nil {
 			return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever embed failed: "+err.Error())
 		}
@@ -138,7 +138,7 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 }
 
 func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
-	vec, err := h.embedder.Embed(ctx, q.Query)
+	vec, err := h.embedder.EmbedSingle(ctx, q.Query)
 	if err != nil {
 		return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever embed failed: "+err.Error())
 	}

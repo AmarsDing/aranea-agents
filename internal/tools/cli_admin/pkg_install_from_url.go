@@ -16,7 +16,7 @@ import (
 type pkgInstallInput struct {
 	URL      string `json:"url" jsonschema:"description=aranea package 的 Git 仓库 URL,required"`
 	Ref      string `json:"ref" jsonschema:"description=分支或 Tag"`
-	Decision string `json:"decision" jsonschema:"description=冲突策略：skip|keep|refine"`
+	Decision string `json:"decision" jsonschema:"description=Conflict resolution strategy: skip (keep existing, skip new), keep (overwrite existing with new), refine (merge new into existing)"`
 	DryRun   bool   `json:"dry_run" jsonschema:"description=仅预览不安装"`
 }
 
@@ -96,7 +96,7 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_pkg_install_from_url"),
-		function.WithDescription("从 Git 仓库 URL 安装完整的 aranea package（含 MCP 服务器/Skill/Agent/Team/Graph）。"),
+		function.WithDescription("从 Git 仓库 URL 安装完整的 aranea package（含 MCP 服务器/Skill/Agent/Team/Graph）。使用 decision 参数控制冲突策略。设置 dry_run=true 可预览安装步骤而不实际执行。"),
 	)
 }
 

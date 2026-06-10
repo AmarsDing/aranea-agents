@@ -143,8 +143,8 @@ func TestTurnErrorIsTimeout(t *testing.T) {
 		{"nil", nil, false},
 		{"canceled_not_timeout", context.Canceled, false},
 		{"deadline_exceeded", context.DeadlineExceeded, true},
-		{"timeout_string", errors.New("connection timeout"), true},
-		{"deadline_string", errors.New("context deadline exceeded"), true},
+		{"timeout_string", errors.New("connection timeout"), false},
+		{"deadline_string", errors.New("context deadline exceeded"), false},
 		{"generic", errors.New("validation failed"), false},
 	}
 

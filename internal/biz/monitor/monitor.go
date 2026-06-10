@@ -244,7 +244,14 @@ type FilesystemHealthReader interface {
 	FilesystemHealthStats(ctx context.Context) (missingCount int, pendingCount int, err error)
 }
 
-// Usecase implements monitor workflows.
+// Usecase orchestrates monitoring sub-domains.
+// TODO(debt): DEV-05 — Split into sub-packages by domain:
+//   - audit/   (AuditLog, AuditRecord)
+//   - trace/   (TraceProjector, FlowLogUtils)
+//   - alert/   (AlertEvalWorker, MetricRingBuffer, AlertMetricRegistry)
+//   - heal/    (SelfHealUsecase, SelfHealObserver, PredictiveHealUsecase)
+//   - rca/     (RootCauseEngine, RootCauseAnalyzer)
+//   - pattern/ (PatternMiningUsecase, FailurePatternRepo)
 type Usecase struct {
 	auditRepo        AuditRepo
 	eventRepo        EventRepo

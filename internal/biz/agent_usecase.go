@@ -100,16 +100,8 @@ type AgentUsecase struct {
 	lg                 loggateway.Logger
 }
 
-func NewAgentUsecase(repo AgentRepository, tools ToolRegistryReader, sys SystemSettingRepo, lg loggateway.Logger) *AgentUsecase {
-	return &AgentUsecase{repo: repo, tools: tools, sys: sys, lg: lg}
-}
-
-func (u *AgentUsecase) SetWebResearchChecker(checker WebResearchReadinessChecker) {
-	u.webResearchChecker = checker
-}
-
-func (u *AgentUsecase) SetProviderModelValidator(v ProviderModelPairValidator) {
-	u.providerValidator = v
+func NewAgentUsecase(repo AgentRepository, tools ToolRegistryReader, sys SystemSettingRepo, checker WebResearchReadinessChecker, validator ProviderModelPairValidator, lg loggateway.Logger) *AgentUsecase {
+	return &AgentUsecase{repo: repo, tools: tools, sys: sys, webResearchChecker: checker, providerValidator: validator, lg: lg}
 }
 
 // ListAgentCreators returns distinct creators for list filter options.
@@ -337,6 +329,10 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 		files[i].AgentID = in.ID
 	}
 	files = withFileDefaults(files)
+	// TODO(debt): DEV-10 — ConfigJSON should be a read-only projection of Settings + Files.
+	// Currently it participates in the write path, creating a risk of data inconsistency.
+	// Plan: After all consumers are migrated to read from Settings/Files directly,
+	// remove ConfigJSON from the write path and generate it on-demand for read-only use.
 	if strings.TrimSpace(in.ConfigJSON) == "" {
 		configJSON, configErr := configJSONFromSettings(settings, files)
 		if configErr != nil {

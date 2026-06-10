@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ChannelPlatformField, ChannelPlatformSection, ChannelFieldHelp } from './channelPlatformFields';
+import type { ChannelPlatformField, ChannelPlatformSection, ChannelFieldHelp } from '../../domain/channel';
 import type { ChannelTypeItem } from './types';
 
 export function useChannelEditorLabels(selectedCatalog: ComputedRef<ChannelTypeItem | null>) {

@@ -65,7 +65,7 @@ func newFetchDirectoryTool(deps Deps) *trpcfunction.FunctionTool[noArgs, fetchDi
 			return fetchDirectoryOutput{Status: "succeeded", Message: "model directory fetched"}, nil
 		},
 		trpcfunction.WithName("fetch_model_directory"),
-		trpcfunction.WithDescription("Fetch the latest model directory from models.dev"),
+		trpcfunction.WithDescription("Fetch the latest model directory from models.dev. Run this first to update the local model catalog before applying changes with apply_model_directory."),
 	)
 }
 
@@ -94,7 +94,7 @@ func newMigrateProvidersTool(deps Deps) *trpcfunction.FunctionTool[noArgs, migra
 			return migrateProvidersOutput{Status: "succeeded", Message: "provider bindings migrated"}, nil
 		},
 		trpcfunction.WithName("migrate_provider_bindings"),
-		trpcfunction.WithDescription("Migrate legacy provider bindings to current provider IDs"),
+		trpcfunction.WithDescription("Migrate legacy provider bindings to current provider IDs. Run this after upgrading when provider ID formats have changed."),
 	)
 }
 
@@ -162,6 +162,6 @@ func newSyncProviderLogosTool(deps Deps) *trpcfunction.FunctionTool[noArgs, sync
 			return syncProviderLogosOutput{Status: "succeeded", Message: "provider logos synced"}, nil
 		},
 		trpcfunction.WithName("sync_provider_logos"),
-		trpcfunction.WithDescription("Download and cache provider logos from models.dev"),
+		trpcfunction.WithDescription("Download and cache provider logos from models.dev. Run after apply_model_directory to sync visual assets."),
 	)
 }

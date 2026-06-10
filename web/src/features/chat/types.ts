@@ -71,6 +71,7 @@ export type ToolUseEvent = {
   started_at?: string;
   finished_at?: string;
   error_code?: string;
+  i18n_key?: string;
   run_id?: string;
   trace_id?: string;
 };

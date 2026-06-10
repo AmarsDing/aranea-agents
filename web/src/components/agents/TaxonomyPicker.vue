@@ -7,8 +7,6 @@
     stack-label
     :label="label"
     :disable="disable"
-    :clearable="clearable"
-    @clear="clearSelection"
   >
     <template #control>
       <div
@@ -21,6 +19,10 @@
       </div>
     </template>
 
+    <template #append>
+      <q-icon v-if="clearable && displayLabel" name="close" size="16px" class="cursor-pointer taxonomy-field__clear" @click.stop="clearSelection" />
+    </template>
+
     <q-menu v-model="menuOpen" anchor="bottom left" self="top left" fit :offset="[0, 6]" class="taxonomy-field-menu">
       <q-card flat class="taxonomy-field-menu__card">
         <q-card-section class="q-pb-sm">
@@ -30,7 +32,7 @@
             outlined
             clearable
             debounce="150"
-            placeholder="搜索行业、部门或职位..."
+            placeholder="搜索组织、部门或职位..."
             class="taxonomy-control"
           >
             <template #prepend><q-icon name="search" /></template>
@@ -100,8 +102,8 @@ const props = withDefaults(
     controlClass?: string;
   }>(),
   {
-    label: '业务分类',
-    placeholder: '选择行业 / 部门 / 职位',
+    label: '组织架构',
+    placeholder: '选择组织 / 部门 / 职位',
     disable: false,
     clearable: true,
     selectableLevel: 'position',

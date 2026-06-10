@@ -40,24 +40,34 @@ const (
 	ProviderHuggingFace = "huggingface"
 )
 
-// BatchEmbedder embeds multiple texts efficiently when supported by the backend.
-type BatchEmbedder interface {
-	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+// Embedder is the interface for text embedding providers.
+type Embedder interface {
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	Dim() int
 }
 
-// Embedder generates embeddings for text using a remote API.
-type Embedder struct {
+// EmbedderAdmin provides runtime configuration access for embedding providers.
+type EmbedderAdmin interface {
+	Config() (provider, baseURL, model string, dim int, configured bool, hasAPIKey bool)
+	Update(provider, baseURL, apiKey, model string, dim int)
+}
+
+// MultiProviderEmbedder generates embeddings for text using a remote API.
+type MultiProviderEmbedder struct {
 	mu       sync.RWMutex
 	Provider string
 	BaseURL  string
 	APIKey   string
 	Model    string
-	Dim      int
+	dim      int
 	lg       loggateway.Logger
 }
 
-// NewEmbedder creates an Embedder with the given configuration.
-func NewEmbedder(provider, baseURL, apiKey, model string, dim int, lg loggateway.Logger) *Embedder {
+var _ Embedder = (*MultiProviderEmbedder)(nil)
+var _ EmbedderAdmin = (*MultiProviderEmbedder)(nil)
+
+// NewMultiProviderEmbedder creates a MultiProviderEmbedder with the given configuration.
+func NewMultiProviderEmbedder(provider, baseURL, apiKey, model string, dim int, lg loggateway.Logger) *MultiProviderEmbedder {
 	if dim <= 0 {
 		dim = 1536
 	}
@@ -78,18 +88,18 @@ func NewEmbedder(provider, baseURL, apiKey, model string, dim int, lg loggateway
 	if provider == ProviderHuggingFace && baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	return &Embedder{
+	return &MultiProviderEmbedder{
 		Provider: provider,
 		BaseURL:  strings.TrimRight(baseURL, "/"),
 		APIKey:   apiKey,
 		Model:    model,
-		Dim:      dim,
+		dim:      dim,
 		lg:       lg,
 	}
 }
 
 // Config returns a redacted view of embedder settings (EP-KN-01).
-func (e *Embedder) Config() (provider, baseURL, model string, dim int, configured bool, hasAPIKey bool) {
+func (e *MultiProviderEmbedder) Config() (provider, baseURL, model string, dim int, configured bool, hasAPIKey bool) {
 	if e == nil {
 		return "", "", "", 0, false, false
 	}
@@ -104,11 +114,11 @@ func (e *Embedder) Config() (provider, baseURL, model string, dim int, configure
 	default:
 		configured = e.Provider != "" && hasAPIKey
 	}
-	return e.Provider, e.BaseURL, e.Model, e.Dim, configured, hasAPIKey
+	return e.Provider, e.BaseURL, e.Model, e.dim, configured, hasAPIKey
 }
 
 // Update applies runtime embedder settings from admin UI (EP-KN-01).
-func (e *Embedder) Update(provider, baseURL, apiKey, model string, dim int) {
+func (e *MultiProviderEmbedder) Update(provider, baseURL, apiKey, model string, dim int) {
 	if e == nil {
 		return
 	}
@@ -127,22 +137,29 @@ func (e *Embedder) Update(provider, baseURL, apiKey, model string, dim int) {
 		e.Model = m
 	}
 	if dim > 0 {
-		e.Dim = dim
+		e.dim = dim
 	}
 }
 
-func (e *Embedder) snapshot() (provider, baseURL, apiKey, model string, dim int) {
+func (e *MultiProviderEmbedder) snapshot() (provider, baseURL, apiKey, model string, dim int) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.Provider, e.BaseURL, e.APIKey, e.Model, e.Dim
+	return e.Provider, e.BaseURL, e.APIKey, e.Model, e.dim
 }
 
-// Embed returns a single embedding vector for the input text.
-func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
+// Dim returns the embedding dimension.
+func (e *MultiProviderEmbedder) Dim() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.dim
+}
+
+// EmbedSingle returns a single embedding vector for the input text.
+func (e *MultiProviderEmbedder) EmbedSingle(ctx context.Context, text string) ([]float32, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder: text is empty")
 	}
-	vecs, err := e.EmbedBatch(ctx, []string{text})
+	vecs, err := e.Embed(ctx, []string{text})
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +170,7 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 }
 
 // EmbedWithTaskType returns a single embedding with a task type hint (e.g. "RETRIEVAL_QUERY").
-func (e *Embedder) EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error) {
+func (e *MultiProviderEmbedder) EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder: text is empty")
 	}
@@ -167,14 +184,14 @@ func (e *Embedder) EmbedWithTaskType(ctx context.Context, text string, taskType 
 	return vecs[0], nil
 }
 
-// EmbedBatch returns embeddings for a slice of texts using provider batch APIs when available.
-func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+// Embed returns embeddings for a slice of texts using provider batch APIs when available.
+func (e *MultiProviderEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	return e.EmbedBatchWithTaskType(ctx, texts, "")
 }
 
 // EmbedBatchWithTaskType returns embeddings with an optional task type hint (e.g. "RETRIEVAL_QUERY").
 // Currently only Gemini uses task type; other providers ignore it.
-func (e *Embedder) EmbedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
+func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -191,7 +208,7 @@ func (e *Embedder) EmbedBatchWithTaskType(ctx context.Context, texts []string, t
 	}
 }
 
-func (e *Embedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model string, texts []string) ([][]float32, error) {
+func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model string, texts []string) ([][]float32, error) {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com"
 	}
@@ -246,7 +263,7 @@ func (e *Embedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model 
 	return out, nil
 }
 
-func (e *Embedder) embedOllamaBatch(ctx context.Context, baseURL, model string, texts []string) ([][]float32, error) {
+func (e *MultiProviderEmbedder) embedOllamaBatch(ctx context.Context, baseURL, model string, texts []string) ([][]float32, error) {
 	out := make([][]float32, 0, len(texts))
 	for _, text := range texts {
 		vec, err := e.embedOllamaWith(ctx, baseURL, model, text)
@@ -258,7 +275,7 @@ func (e *Embedder) embedOllamaBatch(ctx context.Context, baseURL, model string, 
 	return out, nil
 }
 
-func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string, taskType string) ([][]float32, error) {
+func (e *MultiProviderEmbedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string, taskType string) ([][]float32, error) {
 	if apiKey == "" {
 		e.lg.Error("knowledge embedder gemini API key required", loggateway.StepID("knowledge.embed_fail"))
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder gemini: API key required")
@@ -310,7 +327,7 @@ func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, d
 	return out, nil
 }
 
-func (e *Embedder) embedHuggingFaceBatch(ctx context.Context, baseURL string, dim int, texts []string) ([][]float32, error) {
+func (e *MultiProviderEmbedder) embedHuggingFaceBatch(ctx context.Context, baseURL string, dim int, texts []string) ([][]float32, error) {
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
@@ -352,7 +369,7 @@ func (e *Embedder) embedHuggingFaceBatch(ctx context.Context, baseURL string, di
 	return out, nil
 }
 
-func (e *Embedder) embedOllamaWith(ctx context.Context, baseURL, model, text string) ([]float32, error) {
+func (e *MultiProviderEmbedder) embedOllamaWith(ctx context.Context, baseURL, model, text string) ([]float32, error) {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
 	}

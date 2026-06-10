@@ -83,7 +83,7 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 	if err != nil {
 		return ChannelDelivery{}, err
 	}
-	return u.repo.AddDelivery(ctx, ChannelDelivery{
+	return u.deliveries.AddDelivery(ctx, ChannelDelivery{
 		ID:          uuid.NewString(),
 		ChannelID:   channelID,
 		Status:      ChannelDeliveryStatusPending,
@@ -92,33 +92,15 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 }
 
 func (u *ChannelUsecase) hasOutboundIdempotency(ctx context.Context, channelID, key string) (bool, error) {
-	items, err := u.repo.ListDeliveries(ctx, channelID, 100)
-	if err != nil {
-		return false, err
+	if strings.TrimSpace(key) == "" {
+		return false, nil
 	}
-	if len(items) >= 100 {
-		u.lg.Warn("hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", loggateway.StepID("channel.alert_channel_fail"), loggateway.Str("channel_id", channelID), loggateway.Str("key", key))
-	}
-	for _, item := range items {
-		if item.Status != ChannelDeliveryStatusPending &&
-			item.Status != ChannelDeliveryStatusRetry &&
-			item.Status != ChannelDeliveryStatusDelivered {
-			continue
-		}
-		var payload ChannelOutboundPayload
-		if json.Unmarshal([]byte(item.PayloadJSON), &payload) != nil {
-			continue
-		}
-		if payload.IdempotencyKey == key {
-			return true, nil
-		}
-	}
-	return false, nil
+	return u.deliveries.HasDeliveryByIdempotencyKey(ctx, channelID, key)
 }
 
 // ListPendingOutboundDeliveries returns queued outbound rows across channels.
 func (u *ChannelUsecase) ListPendingOutboundDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error) {
-	return u.repo.ListPendingDeliveries(ctx, limit)
+	return u.deliveries.ListPendingDeliveries(ctx, limit)
 }
 
 // MarkOutboundAttempt records send result and schedules retry when needed.
@@ -129,25 +111,33 @@ func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDel
 		return false, err
 	}
 	payload.Attempts++
-	row.PayloadJSON = mustMarshalJSON(payload)
+	if row.PayloadJSON, err = marshalOutboundPayload(payload); err != nil {
+		return false, err
+	}
 	row.ErrorMessage = ""
 	if sendErr == nil {
 		row.Status = ChannelDeliveryStatusDelivered
 		payload.NextRetryAt = ""
-		row.PayloadJSON = mustMarshalJSON(payload)
-		return false, u.repo.UpdateDelivery(ctx, row)
+		if row.PayloadJSON, err = marshalOutboundPayload(payload); err != nil {
+			return false, err
+		}
+		return false, u.deliveries.UpdateDelivery(ctx, row)
 	}
 	row.ErrorMessage = sendErr.Error()
 	if payload.Attempts >= MaxOutboundAttempts {
 		row.Status = ChannelDeliveryStatusError
 		payload.NextRetryAt = ""
-		row.PayloadJSON = mustMarshalJSON(payload)
-		return true, u.repo.UpdateDelivery(ctx, row)
+		if row.PayloadJSON, err = marshalOutboundPayload(payload); err != nil {
+			return false, err
+		}
+		return true, u.deliveries.UpdateDelivery(ctx, row)
 	}
 	row.Status = ChannelDeliveryStatusRetry
 	payload.NextRetryAt = time.Now().UTC().Add(outboundRetryDelay(payload.Attempts)).Format(time.RFC3339)
-	row.PayloadJSON = mustMarshalJSON(payload)
-	return false, u.repo.UpdateDelivery(ctx, row)
+	if row.PayloadJSON, err = marshalOutboundPayload(payload); err != nil {
+		return false, err
+	}
+	return false, u.deliveries.UpdateDelivery(ctx, row)
 }
 
 // IsOutboundDeliveryReady reports whether a pending/retry row may be attempted now.
@@ -183,7 +173,10 @@ func outboundRetryDelay(attempts int) time.Duration {
 	return delay
 }
 
-func mustMarshalJSON(v any) string {
-	raw, _ := json.Marshal(v)
-	return string(raw)
+func marshalOutboundPayload(payload ChannelOutboundPayload) (string, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", errors.InternalServer("CHANNEL", "failed to marshal outbound payload: "+err.Error())
+	}
+	return string(raw), nil
 }

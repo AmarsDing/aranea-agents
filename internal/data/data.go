@@ -55,6 +55,10 @@ var ProviderSet = wire.NewSet(
 	NewSessionRepo,
 	NewToolRepo,
 	NewChannelRepo,
+	wire.Bind(new(biz.ChannelReader), new(*channelRepo)),
+	wire.Bind(new(biz.ChannelWriter), new(*channelRepo)),
+	wire.Bind(new(biz.ChannelCredentialRepo), new(*channelRepo)),
+	wire.Bind(new(biz.ChannelDeliveryRepo), new(*channelRepo)),
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
 	NewChannelTurnJobRepo,
@@ -123,8 +127,10 @@ var ProviderSet = wire.NewSet(
 	NewHealRecordRepo,
 	NewSkillIntelligenceRepo,
 	NewSkillDedupRepo,
+	NewSkillMergeRepo,
 	NewSkillEvolutionSuggestionRepo,
 	NewFailurePatternRepo,
+	NewUnifiedEvolutionRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

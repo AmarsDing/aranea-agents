@@ -3,6 +3,8 @@ package cron
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/go-kratos/kratos/v2/errors"
 )
 
 func TestStrPtr(t *testing.T) {
@@ -118,6 +120,41 @@ func TestResetFailureMetadata(t *testing.T) {
 			}
 			if tt.check != nil {
 				tt.check(t, got)
+			}
+		})
+	}
+}
+
+func TestValidateTaskConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"empty string passes", "", false},
+		{"whitespace string passes", "   ", false},
+		{"valid json object passes", `{"target_type":"agent"}`, false},
+		{"valid json with multiple fields passes", `{"target_type":"team","cron_expression":"0 * * * *"}`, false},
+		{"valid json with model_registry_sync passes", `{"target_type":"model_registry_sync"}`, false},
+		{"invalid json rejected", "not-json", true},
+		{"invalid json with trailing comma rejected", `{"target_type":"agent",}`, true},
+		{"target_type not string rejected", `{"target_type":123}`, true},
+		{"target_type invalid value rejected", `{"target_type":"invalid"}`, true},
+		{"cron_expression not string rejected", `{"cron_expression":123}`, true},
+		{"cron_expression empty string rejected", `{"cron_expression":""}`, true},
+		{"cron_expression whitespace only rejected", `{"cron_expression":"  "}`, true},
+		{"valid cron_expression passes", `{"cron_expression":"*/5 * * * *"}`, false},
+		{"json without target_type or cron_expression passes", `{"other":"field"}`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTaskConfig(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateTaskConfig(%q) err = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if err != nil && !errors.IsBadRequest(err) {
+				t.Errorf("expected BadRequest error, got %v", err)
 			}
 		})
 	}

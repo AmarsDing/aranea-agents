@@ -61,17 +61,23 @@ type KnowledgeSearchDeps struct {
 type KnowledgeService struct {
 	v1.UnimplementedKnowledgeServiceServer
 	uc            *biz.KnowledgeUsecase
-	embedder      *knowledge.Embedder
+	embedder      knowledge.Embedder
+	embedderAdmin knowledge.EmbedderAdmin
 	search        KnowledgeSearchDeps
 	bus           event.Bus
 	systemSetting biz.SystemSettingRepo
 	lg            loggateway.Logger
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder *knowledge.Embedder, searchDeps KnowledgeSearchDeps, bus event.Bus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, bus event.Bus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+	var admin knowledge.EmbedderAdmin
+	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
+		admin = a
+	}
 	return &KnowledgeService{
 		uc:            uc,
 		embedder:      embedder,
+		embedderAdmin: admin,
 		search:        searchDeps,
 		bus:           bus,
 		systemSetting: systemSetting,
@@ -89,8 +95,8 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 	if model == "" {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedding_model is required")
 	}
-	if s.embedder != nil {
-		_, _, embedderModel, _, configured, _ := s.embedder.Config()
+	if s.embedderAdmin != nil {
+		_, _, embedderModel, _, configured, _ := s.embedderAdmin.Config()
 		if configured && embedderModel != "" && embedderModel != model {
 			return nil, kerrors.BadRequest("KNOWLEDGE", "embedding_model does not match current embedder model "+embedderModel)
 		}
@@ -354,7 +360,7 @@ func (s *KnowledgeService) GetEmbedderConfig(_ context.Context, _ *v1.GetEmbedde
 
 // UpdateEmbedderConfig applies runtime embedder settings from admin UI.
 func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.UpdateEmbedderConfigRequest) (*v1.UpdateEmbedderConfigResponse, error) {
-	if s.embedder == nil {
+	if s.embedderAdmin == nil {
 		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder not configured")
 	}
 	provider := strings.TrimSpace(req.GetProvider())
@@ -362,8 +368,8 @@ func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.Upd
 		provider != knowledge.ProviderGemini && provider != knowledge.ProviderHuggingFace {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "provider must be openai, ollama, gemini, or huggingface")
 	}
-	s.embedder.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
-	p, baseURL, model, dim, _, _ := s.embedder.Config()
+	s.embedderAdmin.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
+	p, baseURL, model, dim, _, _ := s.embedderAdmin.Config()
 	if err := PersistKnowledgeEmbed(ctx, s.systemSetting, p, baseURL, strings.TrimSpace(req.GetApiKey()), model, dim); err != nil {
 		s.lg.Warn("写入 system_settings 失败",
 			loggateway.StepID("knowledge.embedder.persist"),
@@ -374,10 +380,10 @@ func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.Upd
 }
 
 func (s *KnowledgeService) embedderConfigProto() *v1.EmbedderConfig {
-	if s.embedder == nil {
+	if s.embedderAdmin == nil {
 		return &v1.EmbedderConfig{}
 	}
-	provider, baseURL, model, dim, configured, hasAPIKey := s.embedder.Config()
+	provider, baseURL, model, dim, configured, hasAPIKey := s.embedderAdmin.Config()
 	return &v1.EmbedderConfig{
 		Provider:   provider,
 		BaseUrl:    baseURL,

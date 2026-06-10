@@ -7,6 +7,8 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+var _ biz.SessionL3ScoredRecallStore = (*L3ScoredRecallAdapter)(nil)
+
 // L3ScoredRecallAdapter exposes scored L3 recall as biz.RecallHit rows.
 type L3ScoredRecallAdapter struct {
 	data *Data

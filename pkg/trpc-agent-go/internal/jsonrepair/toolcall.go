@@ -20,12 +20,14 @@ import (
 )
 
 // IsToolCallArgumentsJSONRepairEnabled reports whether tool call arguments JSON repair is enabled.
+// JSON repair is enabled by default when the option is nil, as it significantly improves tool call
+// success rates with smaller/open-source models that frequently produce malformed JSON arguments.
 func IsToolCallArgumentsJSONRepairEnabled(invocation *agent.Invocation) bool {
 	if invocation == nil {
-		return false
+		return true
 	}
 	enabled := invocation.RunOptions.ToolCallArgumentsJSONRepairEnabled
-	return enabled != nil && *enabled
+	return enabled == nil || *enabled
 }
 
 // RepairToolCallArguments returns repaired tool call arguments when the input is not valid JSON.

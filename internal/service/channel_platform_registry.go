@@ -40,6 +40,8 @@ func registerPlatform(platform string, outbound outboundHandler, stream streamFa
 	}
 }
 
+// init registers all platform adapters. This is the idiomatic Go self-registration pattern;
+// the map is write-once during init and read-only thereafter, so no lock is needed.
 func init() {
 	registerPlatform("feishu", outboundFeishu, streamFeishu)
 	registerPlatform("dingtalk", outboundDingtalk, nil)
@@ -86,14 +88,23 @@ func outboundFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 }
 
 func outboundDingtalk(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	secret, _ := resolveCredentialPlain(ctx, h.channels, creds, "secret", h.lg)
-	webhookURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url", h.lg)
+	secret, err := resolveCredentialPlain(ctx, h.channels, creds, "secret", h.lg)
+	if err != nil {
+		return err
+	}
+	webhookURL, err := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url", h.lg)
+	if err != nil {
+		return err
+	}
 	target := payload.Extra["session_webhook"]
 	return (&dingtalk.TextSender{WebhookURL: webhookURL, Secret: secret, HTTP: h.http}).SendText(ctx, target, payload.Text)
 }
 
 func outboundWecom(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	webhookURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url", h.lg)
+	webhookURL, err := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url", h.lg)
+	if err != nil {
+		return err
+	}
 	target := payload.Extra["response_url"]
 	return (&wecom.TextSender{WebhookURL: webhookURL, HTTP: h.http}).SendText(ctx, target, payload.Text)
 }
@@ -123,7 +134,7 @@ func outboundDiscord(ctx context.Context, h *ChannelIngress, _ biz.Channel, cred
 }
 
 func outboundPersonalQQ(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	sendToken, _ := resolveCredentialPlain(ctx, h.channels, creds, "send_token", h.lg)
+	sendToken, _ := resolveCredentialPlain(ctx, h.channels, creds, "send_token", h.lg) // optional: onebot can work without send_token
 	httpServer := oneBotHTTPServer(chRow.ConfigJSON, h.lg)
 	return (&onebot.TextSender{
 		HTTPServer: httpServer,
@@ -203,7 +214,10 @@ func streamLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []b
 }
 
 func outboundMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	serverURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "server_url", h.lg)
+	serverURL, err := resolveCredentialPlain(ctx, h.channels, creds, "server_url", h.lg)
+	if err != nil {
+		return err
+	}
 	botToken, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token", h.lg)
 	if err != nil {
 		return err
@@ -212,7 +226,10 @@ func outboundMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channe
 }
 
 func streamMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
-	serverURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "server_url", h.lg)
+	serverURL, err := resolveCredentialPlain(ctx, h.channels, creds, "server_url", h.lg)
+	if err != nil {
+		return nil, err
+	}
 	botToken, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token", h.lg)
 	if err != nil {
 		return nil, err
@@ -221,7 +238,10 @@ func streamMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel,
 }
 
 func outboundTeams(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	appID, _ := resolveCredentialPlain(ctx, h.channels, creds, "app_id", h.lg)
+	appID, err := resolveCredentialPlain(ctx, h.channels, creds, "app_id", h.lg)
+	if err != nil {
+		return err
+	}
 	appSecret, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret", h.lg)
 	if err != nil {
 		return err

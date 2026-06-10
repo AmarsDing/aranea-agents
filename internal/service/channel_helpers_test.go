@@ -99,9 +99,9 @@ func TestChannelTypeFromConfig(t *testing.T) {
 		{`invalid`, ""},
 	}
 	for _, tc := range cases {
-		got := channelTypeFromConfig(tc.configJSON, loggateway.NewNoop())
+		got := biz.ChannelTypeFromConfig(tc.configJSON)
 		if got != tc.want {
-			t.Errorf("channelTypeFromConfig(%q) = %q, want %q", tc.configJSON, got, tc.want)
+			t.Errorf("ChannelTypeFromConfig(%q) = %q, want %q", tc.configJSON, got, tc.want)
 		}
 	}
 }
@@ -116,9 +116,9 @@ func TestChannelReceiveModeFromConfig(t *testing.T) {
 		{`{}`, ""},
 	}
 	for _, tc := range cases {
-		got := channelReceiveModeFromConfig(tc.configJSON, loggateway.NewNoop())
+		got := biz.ChannelReceiveModeFromConfig(tc.configJSON)
 		if got != tc.want {
-			t.Errorf("channelReceiveModeFromConfig(%q) = %q, want %q", tc.configJSON, got, tc.want)
+			t.Errorf("ChannelReceiveModeFromConfig(%q) = %q, want %q", tc.configJSON, got, tc.want)
 		}
 	}
 }

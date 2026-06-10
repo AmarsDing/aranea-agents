@@ -33,10 +33,12 @@ type SkillHealthDetail struct {
 	SuccessCount7d       int            `json:"success_count_7d"`
 	SuccessRate7d        float64        `json:"success_rate_7d"`
 	P95DurationMs7d      int            `json:"p95_duration_ms_7d"`
+	RouteHitRate7d       float64        `json:"route_hit_rate_7d"`
 	TotalInvocations30d  int            `json:"total_invocations_30d"`
 	SuccessCount30d      int            `json:"success_count_30d"`
 	SuccessRate30d       float64        `json:"success_rate_30d"`
 	P95DurationMs30d     int            `json:"p95_duration_ms_30d"`
+	RouteHitRate30d      float64        `json:"route_hit_rate_30d"`
 	DailyMetrics         []DailyMetric  `json:"daily_metrics,omitempty"`
 }
 
@@ -46,4 +48,6 @@ type DailyMetric struct {
 	Invocations  int     `json:"invocations"`
 	Successes    int     `json:"successes"`
 	AvgDurationMs float64 `json:"avg_duration_ms"`
+	RoutedCount  int     `json:"routed_count"`
+	LoadedCount  int     `json:"loaded_count"`
 }

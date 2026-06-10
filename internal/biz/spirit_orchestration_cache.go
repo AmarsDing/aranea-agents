@@ -28,11 +28,22 @@ type OrchestrationCacheRepo interface {
 	SaveCacheJSON(ctx context.Context, jsonStr string) error
 }
 
+// OrchestrationCacheTTL is the default time-to-live for cache entries.
+// Entries older than this are considered stale and will be evicted on access.
+const OrchestrationCacheTTL = 30 * 24 * time.Hour // 30 days
+
+type OrchestrationCacheStats struct {
+	Hits   uint64 `json:"hits"`
+	Misses uint64 `json:"misses"`
+	Size   int    `json:"size"`
+}
+
 type OrchestrationCache struct {
 	mu      sync.RWMutex
 	entries map[string]*OrchestrationCacheEntry
 	repo    OrchestrationCacheRepo
 	lg      loggateway.Logger
+	stats   OrchestrationCacheStats
 }
 
 func NewOrchestrationCache(lg loggateway.Logger, repo OrchestrationCacheRepo) *OrchestrationCache {
@@ -68,12 +79,71 @@ func (c *OrchestrationCache) InitFromRepo(ctx context.Context) {
 
 func (c *OrchestrationCache) Get(taskPattern string) (*OrchestrationCacheEntry, bool) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
 	entry, ok := c.entries[taskPattern]
 	if !ok {
+		c.mu.RUnlock()
+		c.mu.Lock()
+		c.stats.Misses++
+		c.mu.Unlock()
 		return nil, false
 	}
+	// Check TTL: evict stale entries
+	if isEntryStale(entry) {
+		c.mu.RUnlock()
+		c.mu.Lock()
+		delete(c.entries, taskPattern)
+		c.stats.Misses++
+		c.mu.Unlock()
+		return nil, false
+	}
+	c.mu.RUnlock()
+	c.mu.Lock()
+	c.stats.Hits++
+	c.mu.Unlock()
 	return entry, true
+}
+
+// GetStats returns a snapshot of cache hit/miss statistics.
+func (c *OrchestrationCache) GetStats() OrchestrationCacheStats {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return OrchestrationCacheStats{
+		Hits:   c.stats.Hits,
+		Misses: c.stats.Misses,
+		Size:   len(c.entries),
+	}
+}
+
+// EvictStale removes all entries older than OrchestrationCacheTTL.
+func (c *OrchestrationCache) EvictStale(ctx context.Context) int {
+	c.mu.Lock()
+	evicted := 0
+	for key, entry := range c.entries {
+		if isEntryStale(entry) {
+			delete(c.entries, key)
+			evicted++
+		}
+	}
+	c.mu.Unlock()
+	if evicted > 0 {
+		c.lg.Info("编排缓存过期清理",
+			loggateway.StepID("spirit.orchestration_cache.evict"),
+			loggateway.Int("evicted", evicted),
+		)
+		c.persistToRepo(ctx)
+	}
+	return evicted
+}
+
+func isEntryStale(entry *OrchestrationCacheEntry) bool {
+	if entry == nil {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, entry.UpdatedAt)
+	if err != nil {
+		return false // unparseable time → keep entry
+	}
+	return time.Since(t) > OrchestrationCacheTTL
 }
 
 // Put adds or replaces a cache entry directly.

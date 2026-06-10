@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ type TaskOrchestratorImpl struct {
 	checkpointSaver graph.CheckpointSaver
 	orchCache       *biz.OrchestrationCache
 	perfRepo        biz.AgentPerformanceRepository
+	evolutionSugg   biz.EvolutionSuggestionRepo
 	bus             contract.Bus
 	lg              loggateway.Logger
 }
@@ -54,6 +56,7 @@ func NewTaskOrchestratorImpl(
 	checkpointSaver graph.CheckpointSaver,
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
+	evolutionSugg biz.EvolutionSuggestionRepo,
 	bus contract.Bus,
 	lg loggateway.Logger,
 ) *TaskOrchestratorImpl {
@@ -69,6 +72,7 @@ func NewTaskOrchestratorImpl(
 		checkpointSaver: checkpointSaver,
 		orchCache:       orchCache,
 		perfRepo:        perfRepo,
+		evolutionSugg:   evolutionSugg,
 		bus:             bus,
 		lg:              lg,
 	}
@@ -221,6 +225,9 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 	if len(agentKeys) == 0 {
 		return kerrors.BadRequest("SPIRIT", "no agent keys in allocation plan")
 	}
+
+	// Sort agents by historical performance for this task type.
+	agentKeys = o.sortByPerformance(ctx, agentKeys, string(taskPlan.Strategy))
 
 	// Assemble the team via SpiritTeamAssembler.
 	params := biz.SpiritTeamParams{
@@ -689,17 +696,17 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 	)
 
 	// 1. Update OrchestrationCache with DQ score
+	topology := biz.TopologyCoordinator
+	switch handle.Strategy {
+	case biz.StrategyDirect:
+		topology = biz.TopologyDirect
+	case biz.StrategyParallel:
+		topology = biz.TopologyParallel
+	case biz.StrategyDAG:
+		topology = biz.TopologyHybrid
+	}
 	if o.orchCache != nil {
 		taskPattern := biz.ExtractTaskPattern(handle.ID) // Use orchestration ID as pattern key
-		topology := biz.TopologyCoordinator
-		switch handle.Strategy {
-		case biz.StrategyDirect:
-			topology = biz.TopologyDirect
-		case biz.StrategyParallel:
-			topology = biz.TopologyParallel
-		case biz.StrategyDAG:
-			topology = biz.TopologyHybrid
-		}
 		agentKeys := extractAgentKeysFromHandle(handle)
 		o.orchCache.RecordCompletionWithAgents(ctx, taskPattern, topology, dqScore, len(handle.TeamIDs), 0, agentKeys)
 		o.lg.Info("在线学习: 编排缓存已更新",
@@ -709,7 +716,12 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 		)
 	}
 
-	// 2. Update AgentPerformance for each agent in the orchestration
+	// 2. Generate evolution suggestion when DQ Score is low
+	if dqScore < biz.DQEvolutionThreshold && o.evolutionSugg != nil {
+		o.maybeCreateEvolutionSuggestion(ctx, handle, dqScore, topology)
+	}
+
+	// 3. Update AgentPerformance for each agent in the orchestration
 	if o.perfRepo != nil {
 		successCount := 0
 		if dqScore >= 0.5 {
@@ -756,6 +768,92 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 			loggateway.StepID(biz.SpiritStepOrchestratorLearn),
 			loggateway.Int("agent_count", len(agentKeys)),
 		)
+	}
+}
+
+// maybeCreateEvolutionSuggestion generates an orchestration_optimization evolution suggestion
+// when DQ Score is below the evolution threshold. It performs dedup by checking pending
+// suggestions for the same agentID + type + title combination.
+func (o *TaskOrchestratorImpl) maybeCreateEvolutionSuggestion(ctx context.Context, handle *biz.OrchestrationHandle, dqScore float64, topology biz.TopologyType) {
+	// Use SpiritSessionID as the evolution target — it represents the spirit session
+	// that owns this orchestration, enabling cross-orchestration dedup within the same session.
+	targetID := handle.SpiritSessionID
+	if targetID == "" {
+		targetID = handle.ID // fallback for legacy handles without SpiritSessionID
+	}
+	suggType := "orchestration_optimization"
+	title := fmt.Sprintf("编排优化建议: %s", biz.TruncateRunes(handle.ID, biz.MaxSuggestionTitleLen))
+
+	// Dedup: skip if a pending suggestion with same type+title already exists
+	pending, listErr := o.evolutionSugg.ListByAgent(ctx, targetID, "pending")
+	if listErr != nil {
+		o.lg.Warn("进化建议: 查询已有建议失败，跳过去重检查",
+			loggateway.StepID(biz.SpiritStepOrchestratorLearn),
+			loggateway.Str("target_id", targetID),
+			loggateway.Err(listErr),
+		)
+		// Continue to create — better to risk a duplicate than to miss a suggestion
+	} else {
+		for _, s := range pending {
+			if strings.EqualFold(strings.TrimSpace(s.Type), suggType) && strings.TrimSpace(s.Title) == title {
+				o.lg.Info("进化建议: 已存在相同待处理建议，跳过创建",
+					loggateway.StepID(biz.SpiritStepOrchestratorLearn),
+					loggateway.Str("target_id", targetID),
+					loggateway.Str("existing_id", s.ID),
+				)
+				return
+			}
+		}
+	}
+
+	content := fmt.Sprintf("编排 %q 的 DQ Score 为 %.2f（低于阈值 %.1f），当前拓扑 %s 执行效果不佳。", handle.ID, dqScore, biz.DQEvolutionThreshold, topology)
+	if o.orchCache != nil {
+		altTopology, altFound := o.orchCache.SuggestBestAlternativeTopology(handle.ID, topology)
+		if altFound {
+			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)
+		} else {
+			content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
+		}
+	} else {
+		content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
+	}
+
+	sugg, suggErr := o.evolutionSugg.Create(ctx, biz.EvolutionSuggestion{
+		ID:        fmt.Sprintf("evo-orch-%s", uuid.NewString()[:12]),
+		AgentID:   targetID,
+		Type:      suggType,
+		Title:     title,
+		Content:   content,
+		Status:    "pending",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+	if suggErr != nil {
+		o.lg.Warn("创建编排优化建议失败",
+			loggateway.StepID(biz.SpiritStepOrchestratorLearn),
+			loggateway.Str("orchestration_id", handle.ID),
+			loggateway.Err(suggErr),
+		)
+		return
+	}
+	// Emit orchestration evolution suggested event
+	if o.bus != nil {
+		o.bus.Publish(ctx, contract.Envelope{
+			ID:        fmt.Sprintf("evo-evt-%s", uuid.NewString()[:12]),
+			Type:      contract.EnvelopeTypeOrchestrationEvolutionSuggested,
+			SessionID: handle.SpiritSessionID,
+			Content: &contract.EnvelopeContent{
+				Text: content,
+			},
+			Metadata: map[string]any{
+				"orchestration_id": handle.ID,
+				"dq_score":         dqScore,
+				"topology":         string(topology),
+				"suggestion_id":    sugg.ID,
+			},
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Version:   1,
+			Source:    "task_orchestrator",
+		})
 	}
 }
 
@@ -1051,4 +1149,71 @@ func (o *TaskOrchestratorImpl) publishOrchestrationInterrupted(ctx context.Conte
 		}
 		o.bus.Publish(ctx, dualEnv)
 	}
+}
+
+// sortByPerformance reorders agent keys by their historical performance for the
+// given task type. Agents with performance data are sorted by success rate
+// (descending), then by average DQ score (descending) as a tiebreaker.
+// Agents without performance data retain their original relative order and
+// appear after agents with data. If no performance data exists at all, the
+// original order is preserved unchanged.
+func (o *TaskOrchestratorImpl) sortByPerformance(ctx context.Context, agentKeys []string, taskType string) []string {
+	if o.perfRepo == nil || len(agentKeys) <= 1 {
+		return agentKeys
+	}
+
+	bestPerfs, err := o.perfRepo.GetBestForTaskType(ctx, taskType, len(agentKeys))
+	if err != nil || len(bestPerfs) == 0 {
+		o.lg.Debug("无 Agent 性能数据，保持原始排序",
+			loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
+			loggateway.Str("task_type", taskType),
+		)
+		return agentKeys
+	}
+
+	// Build a map: agentKey → (successRate, avgDQScore)
+	type perfRank struct {
+		successRate float64
+		avgDQScore  float64
+	}
+	perfMap := make(map[string]perfRank, len(bestPerfs))
+	for _, p := range bestPerfs {
+		perfMap[p.AgentKey] = perfRank{
+			successRate: p.SuccessRate,
+			avgDQScore:  p.AvgDQScore,
+		}
+	}
+
+	// Separate into two groups: with-perf and without-perf.
+	var withPerf, withoutPerf []string
+	for _, key := range agentKeys {
+		if _, ok := perfMap[key]; ok {
+			withPerf = append(withPerf, key)
+		} else {
+			withoutPerf = append(withoutPerf, key)
+		}
+	}
+
+	// Sort withPerf group by success rate desc, then avgDQScore desc.
+	sort.Slice(withPerf, func(i, j int) bool {
+		pi := perfMap[withPerf[i]]
+		pj := perfMap[withPerf[j]]
+		if pi.successRate != pj.successRate {
+			return pi.successRate > pj.successRate
+		}
+		return pi.avgDQScore > pj.avgDQScore
+	})
+
+	result := make([]string, 0, len(agentKeys))
+	result = append(result, withPerf...)
+	result = append(result, withoutPerf...)
+
+	o.lg.Info("Agent 性能排序完成",
+		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
+		loggateway.Str("task_type", taskType),
+		loggateway.Int("with_perf_count", len(withPerf)),
+		loggateway.Int("without_perf_count", len(withoutPerf)),
+	)
+
+	return result
 }

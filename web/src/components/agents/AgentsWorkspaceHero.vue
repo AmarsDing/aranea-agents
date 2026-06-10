@@ -2,7 +2,7 @@
   <AppPageHero
     kicker="Agent workspace"
     title="Agent"
-    subtitle="管理您的 AI Agent，按模型、业务分类、进化状态快速筛选与维护。"
+    subtitle="管理您的 AI Agent，按模型、组织架构、进化状态快速筛选与维护。"
   >
     <template #actions>
       <q-btn

@@ -216,7 +216,7 @@ func TestUsecase_Update(t *testing.T) {
 		name     string
 		id       string
 		current  Hook
-		patch    Hook
+		patch    HookPatch
 		getErr   error
 		wantErr  bool
 		reason   string
@@ -227,15 +227,15 @@ func TestUsecase_Update(t *testing.T) {
 			name:    "merge patch fields into existing",
 			id:      "h1",
 			current: existingHook,
-			patch: Hook{
-				Key:          "new_key",
-				Name:         "New Name",
-				Status:       "inactive",
-				Description:  "new desc",
-				Enabled:      false,
-				SortOrder:    10,
-				ConfigJSON:   `{"callback_point":"after_agent"}`,
-				MetadataJSON: `{"new":true}`,
+			patch: HookPatch{
+				Key:          StrPtr("new_key"),
+				Name:         StrPtr("New Name"),
+				Status:       StrPtr("inactive"),
+				Description:  StrPtr("new desc"),
+				Enabled:      BoolPtr(false),
+				SortOrder:    IntPtr(10),
+				ConfigJSON:   StrPtr(`{"callback_point":"after_agent"}`),
+				MetadataJSON: StrPtr(`{"new":true}`),
 			},
 			wantErr: false,
 			assertFn: func(t *testing.T, merged Hook) {
@@ -266,14 +266,14 @@ func TestUsecase_Update(t *testing.T) {
 			},
 		},
 		{
-			name:    "preserve key name status when patch empty",
+			name:    "preserve key name status when patch nil",
 			id:      "h1",
 			current: existingHook,
-			patch: Hook{
-				Description: "updated desc",
-				Enabled:     false,
-				SortOrder:   0,
-				ConfigJSON:  `{"callback_point":"before_agent"}`,
+			patch: HookPatch{
+				Description: StrPtr("updated desc"),
+				Enabled:     BoolPtr(false),
+				SortOrder:   IntPtr(0),
+				ConfigJSON:  StrPtr(`{"callback_point":"before_agent"}`),
 			},
 			wantErr: false,
 			assertFn: func(t *testing.T, merged Hook) {
@@ -292,9 +292,9 @@ func TestUsecase_Update(t *testing.T) {
 			name:    "status change from active to inactive",
 			id:      "h1",
 			current: existingHook,
-			patch: Hook{
-				Status:     "inactive",
-				ConfigJSON: `{"callback_point":"before_agent"}`,
+			patch: HookPatch{
+				Status:     StrPtr("inactive"),
+				ConfigJSON: StrPtr(`{"callback_point":"before_agent"}`),
 			},
 			wantErr: false,
 			assertFn: func(t *testing.T, merged Hook) {
@@ -307,8 +307,8 @@ func TestUsecase_Update(t *testing.T) {
 			name:    "config_json replaced by patch",
 			id:      "h1",
 			current: existingHook,
-			patch: Hook{
-				ConfigJSON: `{"callback_point":"after_tool"}`,
+			patch: HookPatch{
+				ConfigJSON: StrPtr(`{"callback_point":"after_tool"}`),
 			},
 			wantErr: false,
 			assertFn: func(t *testing.T, merged Hook) {
@@ -318,15 +318,15 @@ func TestUsecase_Update(t *testing.T) {
 			},
 		},
 		{
-			name:    "always overwrite fields with zero values",
+			name:    "explicit zero values via pointer",
 			id:      "h1",
 			current: existingHook,
-			patch: Hook{
-				Description:  "",
-				Enabled:      false,
-				SortOrder:    0,
-				ConfigJSON:   "",
-				MetadataJSON: "",
+			patch: HookPatch{
+				Description:  StrPtr(""),
+				Enabled:      BoolPtr(false),
+				SortOrder:    IntPtr(0),
+				ConfigJSON:   StrPtr(""),
+				MetadataJSON: StrPtr(""),
 			},
 			wantErr: false,
 			assertFn: func(t *testing.T, merged Hook) {
@@ -344,6 +344,30 @@ func TestUsecase_Update(t *testing.T) {
 				}
 				if merged.MetadataJSON != "" {
 					t.Errorf("MetadataJSON = %q, want empty", merged.MetadataJSON)
+				}
+			},
+		},
+		{
+			name:    "nil fields preserve existing values",
+			id:      "h1",
+			current: existingHook,
+			patch:   HookPatch{},
+			wantErr: false,
+			assertFn: func(t *testing.T, merged Hook) {
+				if merged.Key != "old_key" {
+					t.Errorf("Key = %q, want %q (preserved)", merged.Key, "old_key")
+				}
+				if merged.Name != "Old Name" {
+					t.Errorf("Name = %q, want %q (preserved)", merged.Name, "Old Name")
+				}
+				if merged.Description != "old desc" {
+					t.Errorf("Description = %q, want %q (preserved)", merged.Description, "old desc")
+				}
+				if merged.Enabled != true {
+					t.Errorf("Enabled = %v, want true (preserved)", merged.Enabled)
+				}
+				if merged.SortOrder != 5 {
+					t.Errorf("SortOrder = %d, want 5 (preserved)", merged.SortOrder)
 				}
 			},
 		},
@@ -366,8 +390,8 @@ func TestUsecase_Update(t *testing.T) {
 			name:    "invalid merged config returns error",
 			id:      "h1",
 			current: existingHook,
-			patch: Hook{
-				ConfigJSON: "not-json",
+			patch: HookPatch{
+				ConfigJSON: StrPtr("not-json"),
 			},
 			wantErr: true,
 			reason:  "HOOK",

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -27,12 +28,14 @@ type SkillRegistrationPort interface {
 }
 
 type SkillEvolutionUsecase struct {
-	repo      SkillProposalReadWriter
-	patterns  PatternReader
-	agents    AgentRepository
-	creator   SkillAutoCreator
-	registrar SkillRegistrationPort
-	lg        loggateway.Logger
+	repo          SkillProposalReadWriter
+	patterns      PatternReader
+	agents        AgentRepository
+	creator       SkillAutoCreator
+	registrar     SkillRegistrationPort
+	coordinator   *EvolutionCoordinator
+	coordinatorOnce sync.Once
+	lg            loggateway.Logger
 }
 
 func NewSkillEvolutionUsecase(
@@ -53,6 +56,17 @@ func NewSkillEvolutionUsecase(
 	}
 }
 
+// SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
+// Must only be called once during initialization. Panics on repeated calls.
+func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
+	uc.coordinatorOnce.Do(func() {
+		uc.coordinator = c
+	})
+	if uc.coordinator != c {
+		panic("SkillEvolutionUsecase: SetCoordinator called more than once")
+	}
+}
+
 func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID string) ([]SkillProposal, error) {
 	agentID, err := requireNonEmpty(agentID, "SKILL_EVO", "agent_id")
 	if err != nil {
@@ -62,6 +76,16 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 		uc.lg.Warn("skill auto creator not configured, skill auto-creation disabled", loggateway.StepID("skill_evo.detect"))
 		return nil, nil
 	}
+
+	// Cross-pipeline dedup: skip if another pipeline already has a pending
+	// suggestion for this agent.
+	if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
+		uc.lg.Debug("DetectAndPropose: skipped, pending evolution already exists via another pipeline",
+			loggateway.StepID("skill_evo.detect"),
+			loggateway.Str("agent_id", agentID))
+		return nil, nil
+	}
+
 	patterns, err := uc.findSkillPatterns(ctx, agentID)
 	if err != nil {
 		return nil, err
@@ -80,7 +104,22 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 		if existing != nil {
 			continue
 		}
+		// Check if a skill with the same name already exists before
+		// spending an LLM call to generate SKILL.md.
 		toolHistory := uc.extractToolHistory(p)
+		suggestedName := uc.inferSkillName(p.Description)
+		if suggestedName != "" {
+			exists, existErr := uc.registrar.SkillExists(ctx, agentID, suggestedName)
+			if existErr != nil {
+				uc.lg.Warn("check skill existence before generation", loggateway.StepID("skill_evo.detect"), loggateway.Err(existErr))
+			} else if exists {
+				uc.lg.Info("skill already exists, skipping LLM generation",
+					loggateway.StepID("skill_evo.detect"),
+					loggateway.Str("agent_id", agentID),
+					loggateway.Str("name", suggestedName))
+				continue
+			}
+		}
 		name, content, genErr := uc.creator.GenerateSKILLMD(ctx, p.Description, toolHistory)
 		if genErr != nil {
 			uc.lg.Warn("generate SKILL.md", loggateway.StepID("skill_evo.detect"), loggateway.Err(genErr))
@@ -235,6 +274,29 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 	return nil
 }
 
+// ── Bridge: SkillProposal → SkillEvolutionSuggestion ─────────────────────────
+//
+// TODO(debt): DEV-04 — Transitional bridge function. Will be removed once
+// SkillProposal is deprecated in favor of SkillEvolutionSuggestion.
+
+// SuggestionFromProposal converts a SkillProposal into a
+// SkillEvolutionSuggestion for interoperability with the SkillIntelligenceUsecase pipeline.
+// Fields that have no direct equivalent are left at their zero values.
+func (uc *SkillEvolutionUsecase) SuggestionFromProposal(p SkillProposal) SkillEvolutionSuggestion {
+	return SkillEvolutionSuggestion{
+		ID:              p.ID,
+		SkillID:         "",                       // no equivalent; SkillProposal is agent-scoped
+		Type:            EvoSuggestionCreateSkill,  // SkillProposal is agent-scoped skill creation
+		Status:          ProposalStatusToSuggestion(p.Status),
+		TriggerReason:   p.PatternDesc,
+		DraftSkillBody:  p.SkillMD,
+		ApprovedBy:      p.ApprovedBy,
+		RejectedBy:      p.RejectedBy,
+		CreatedAt:       p.CreatedAt,
+		ResolvedAt:      p.ApprovedAt,
+	}
+}
+
 func (uc *SkillEvolutionUsecase) findSkillPatterns(ctx context.Context, agentID string) ([]Pattern, error) {
 	if uc.patterns == nil {
 		return nil, nil
@@ -258,11 +320,25 @@ func (uc *SkillEvolutionUsecase) extractToolHistory(p Pattern) []ToolCallRecord 
 	for _, name := range toolNames {
 		records = append(records, ToolCallRecord{
 			ToolName: name,
-			Success:  true,
+			Success:  p.Confidence >= skillPatternMinConfidence, // use pattern confidence as proxy
 			CalledAt: p.DetectedAt,
 		})
 	}
 	return records
+}
+
+// inferSkillName attempts to derive a concise skill name from the pattern
+// description (e.g. "web_search(query)" → "web_search").
+func (uc *SkillEvolutionUsecase) inferSkillName(desc string) string {
+	parts := strings.Split(desc, ",")
+	if len(parts) == 0 {
+		return ""
+	}
+	first := strings.TrimSpace(parts[0])
+	if idx := strings.Index(first, "("); idx > 0 {
+		return strings.TrimSpace(first[:idx])
+	}
+	return ""
 }
 
 func patternHash(desc string) string {

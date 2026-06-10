@@ -75,12 +75,16 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 
 	var cbRegistry *biztool.CircuitBreakerRegistry
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
+		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolArgsGuardBeforeHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {
 			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
 		}
+		// Capture skill_load/skill_run slug into invocation state BEFORE the
+		// tool recorder reads it (recorder runs at priority 50).
+		entries = append(entries, newSkillLoadCaptureAfterHook())
 		entries = append(entries, callbacks.NewToolRecorderCallback(50, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 			recordToolInvocationAfter(ctx, args, ag, deps)
 			return &trpctool.AfterToolResult{}, nil

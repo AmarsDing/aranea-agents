@@ -26,11 +26,11 @@ func (c *userFeedbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-user-feedback", c.bus, contract.SubscribeOptions{
+	runTypedConsumerWithOpts(ctx, "event-bus-user-feedback", c.bus, contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeUserFeedback},
 		BufferSize: 64,
 		Reliable:   true,
-	}, c.handle, c.logger)
+	}, c.handle, OfferOption{FallbackSync: true, FallbackFn: c.handle}, c.logger)
 }
 
 func (c *userFeedbackConsumer) handle(ctx context.Context, env contract.Envelope) {

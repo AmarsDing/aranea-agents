@@ -45,10 +45,6 @@ func provideMemoryL3Recall(d *data.Data, vec *biz.MemoryUsecase) biz.MemoryL3Rec
 	return biz.NewMemoryL3RecallUsecase(data.NewSessionL3RecallStore(d, d.VectorStore()), data.NewL3ScoredRecallAdapter(d), vec)
 }
 
-func provideAutoMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.AutoMemoryEnqueuer {
-	return biz.AutoMemoryEnqueuerFunc(memtrpc.NewAutoMemoryEnqueuer(q))
-}
-
 func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemoryEnqueuer {
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
@@ -95,6 +91,7 @@ func providePersistenceSet(
 	compositeRecall biz.MemoryCompositeRecaller,
 	adminUC *biz.MemoryAdminUsecase,
 	lg loggateway.Logger,
+	deadLetterRepo *data.MemoryJobDeadLetterRepo,
 ) rt.PersistenceSet {
 	var mem rt.MemorySet
 	if d != nil {
@@ -105,6 +102,10 @@ func providePersistenceSet(
 			L2Recall:        l2Recall,
 			L3Recall:        l3Recall,
 			CompositeRecall: compositeRecall,
+		}
+		// Connect dead-letter sink so queue overflow is persisted instead of silently dropped.
+		if queue, ok := q.(*memtrpc.MemoryJobQueue); ok && deadLetterRepo != nil {
+			queue.SetDeadLetterSink(deadLetterRepo)
 		}
 	}
 	var rollback rt.RunnerSessionRollbackStore

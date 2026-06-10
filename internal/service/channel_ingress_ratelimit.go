@@ -19,14 +19,9 @@ const (
 // webhookConf holds the resolved webhook config, initialized with defaults.
 // Call InitWebhookRateLimitConfig to override from *conf.Runtime.
 var (
-	webhookConf   conf.RuntimeWebhookConfig
+	webhookConf   = conf.RuntimeWebhookConfig{RateLimitPerMin: 120, StaleThreshold: 5 * time.Minute}
 	webhookConfMu sync.RWMutex
 )
-
-func init() {
-	// Initialize with nil-safe defaults (same as what (*Runtime)(nil).WebhookConfig() returns).
-	webhookConf = conf.RuntimeWebhookConfig{RateLimitPerMin: 120, StaleThreshold: 5 * time.Minute}
-}
 
 // InitWebhookRateLimitConfig sets the webhook config from *conf.Runtime.
 func InitWebhookRateLimitConfig(r *conf.Runtime) {

@@ -50,6 +50,9 @@ func (r *countingRepo) ListPendingDeliveries(_ context.Context, limit int) ([]bi
 	return nil, nil
 }
 func (r *countingRepo) UpdateDelivery(_ context.Context, d biz.ChannelDelivery) error { return nil }
+func (r *countingRepo) HasDeliveryByIdempotencyKey(_ context.Context, channelID, idempotencyKey string) (bool, error) {
+	return false, nil
+}
 func (r *countingRepo) ListCredentialsRaw(_ context.Context, channelID string) ([]biz.ChannelCredential, error) {
 	return nil, nil
 }
@@ -70,7 +73,7 @@ func TestSupervisorReconnectsAfterDisconnect(t *testing.T) {
 		Enabled:    true,
 		ConfigJSON: `{"type":"reconnplat","receive_mode":"polling"}`,
 	}}}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	mgr := runtime.NewManager(uc, reconnectHandler{}, func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return "token", nil
 	}, loggateway.NewNoop(), nil)

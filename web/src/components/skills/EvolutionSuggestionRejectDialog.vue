@@ -9,9 +9,9 @@
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
           <div v-if="target" class="text-body2">
-            <div class="q-mb-sm"><span class="text-grey-7">Skill ID：</span>{{ target.skillId || '—' }}</div>
+            <div class="q-mb-sm"><span class="text-grey-7">目标 ID：</span>{{ target.targetId || '—' }}</div>
             <div class="q-mb-sm">
-              <span class="text-grey-7">类型：</span>{{ evoSuggestionTypeLabel(target.type) }}
+              <span class="text-grey-7">操作类型：</span>{{ evoActionTypeLabel(target.actionType) }}
             </div>
             <div><span class="text-grey-7">触发原因：</span>{{ target.triggerReason || '—' }}</div>
           </div>
@@ -37,12 +37,12 @@
 </template>
 
 <script setup lang="ts">
-import type { EvolutionSuggestionView } from '../../features/skills/types';
-import { evoSuggestionTypeLabel } from './evolutionSuggestionTableUi';
+import type { SkillEvolutionView } from '../../features/skills/types';
+import { evoActionTypeLabel } from './evolutionSuggestionTableUi';
 
 defineProps<{
   open: boolean;
-  target: EvolutionSuggestionView | null;
+  target: SkillEvolutionView | null;
   reason: string;
   loading: boolean;
 }>();

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
@@ -60,16 +61,19 @@ type RootCauseAnalyzer interface {
 // SkillIntelligenceUsecase provides skill intelligence analysis: invocation
 // analysis, scoring, and experience report generation.
 type SkillIntelligenceUsecase struct {
-	writer           ExperienceReportWriter
-	reader           ExperienceReportReader
-	statsReader      ExperienceReportStatsReader
-	aggregator       SkillHealthAggregator
-	suggestionReader SkillEvolutionSuggestionReader
-	suggestionWriter SkillEvolutionSuggestionWriter
-	analyzer         RootCauseAnalyzer
-	unanalyzedReader SkillInvocationUnanalyzedReader
-	lg               loggateway.Logger
-	weights          ScoreWeights
+	writer              ExperienceReportWriter
+	reader              ExperienceReportReader
+	statsReader         ExperienceReportStatsReader
+	aggregator          SkillHealthAggregator
+	suggestionReader    SkillEvolutionSuggestionReader
+	suggestionWriter    SkillEvolutionSuggestionWriter
+	analyzer            RootCauseAnalyzer
+	unanalyzedReader    SkillInvocationUnanalyzedReader
+	unanalyzedReaderOnce sync.Once
+	coordinator         *EvolutionCoordinator
+	coordinatorOnce     sync.Once
+	lg                  loggateway.Logger
+	weights             ScoreWeights
 }
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
@@ -96,10 +100,26 @@ func NewSkillIntelligenceUsecase(
 	}
 }
 
+// SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
+// Must only be called once during initialization. Panics on repeated calls.
+func (uc *SkillIntelligenceUsecase) SetCoordinator(c *EvolutionCoordinator) {
+	uc.coordinatorOnce.Do(func() {
+		uc.coordinator = c
+	})
+	if uc.coordinator != c {
+		panic("SkillIntelligenceUsecase: SetCoordinator called more than once")
+	}
+}
+
 // SetUnanalyzedReader sets the unanalyzed invocation reader.
-// NOTE: Must only be called during initialization, before any concurrent access. Not goroutine-safe.
+// Must only be called once during initialization. Panics on repeated calls.
 func (uc *SkillIntelligenceUsecase) SetUnanalyzedReader(r SkillInvocationUnanalyzedReader) {
-	uc.unanalyzedReader = r
+	uc.unanalyzedReaderOnce.Do(func() {
+		uc.unanalyzedReader = r
+	})
+	if uc.unanalyzedReader != r {
+		panic("SkillIntelligenceUsecase: SetUnanalyzedReader called more than once")
+	}
 }
 
 // ExperienceReportListResult holds the result of a filtered experience report query,
@@ -203,20 +223,45 @@ func (uc *SkillIntelligenceUsecase) ScoreSkill(ctx context.Context, skillID stri
 		durationFactor = 0
 	}
 
-	// Token factor: not available from health metrics alone, use neutral.
-	tokenFactor := 0.5
-
-	// Feedback: not available yet, use neutral.
-	feedbackFactor := 0.5
-
-	// Redistribute feedback weight if no feedback data.
+	// Dynamic weight redistribution: omit weights for unavailable data
+	// instead of using neutral 0.5 which pulls the score toward the middle.
 	w := uc.weights
-	effectiveTokenW := w.Token
-	effectiveFeedbackW := w.Feedback
-	totalW := w.SuccessRate + w.Duration + effectiveTokenW + effectiveFeedbackW
+	effectiveSuccessW := w.SuccessRate
+	effectiveDurationW := w.Duration
+	effectiveTokenW := 0.0
+	effectiveFeedbackW := 0.0
 
-	score := (w.SuccessRate*successRateFactor +
-		w.Duration*durationFactor +
+	// Token factor: lower is better. Normalize against a 2000-token baseline.
+	var tokenFactor float64
+	if metrics.AvgTokenUsage > 0 {
+		effectiveTokenW = w.Token
+		tokenFactor = 1.0 - normalizeTokenUsage(metrics.AvgTokenUsage)
+		if tokenFactor < 0 {
+			tokenFactor = 0
+		}
+	}
+
+	// Feedback factor: use heuristic score if DB field not yet available.
+	var feedbackFactor float64
+	if metrics.FeedbackScore > 0 {
+		effectiveFeedbackW = w.Feedback
+		feedbackFactor = metrics.FeedbackScore
+	} else {
+		// TEMPORARY: heuristic feedback score until DB field is added.
+		heuristicScore := computeHeuristicFeedbackScore(metrics)
+		if heuristicScore > 0 {
+			effectiveFeedbackW = w.Feedback
+			feedbackFactor = heuristicScore
+		}
+	}
+
+	totalW := effectiveSuccessW + effectiveDurationW + effectiveTokenW + effectiveFeedbackW
+	if totalW == 0 {
+		return DefaultNeutralScore, nil
+	}
+
+	score := (effectiveSuccessW*successRateFactor +
+		effectiveDurationW*durationFactor +
 		effectiveTokenW*tokenFactor +
 		effectiveFeedbackW*feedbackFactor) / totalW
 
@@ -479,6 +524,15 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 		return nil, err
 	}
 
+	// Cross-pipeline dedup: skip if another pipeline already has a pending
+	// suggestion for this skill.
+	if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "skill", ID: skillID}) {
+		uc.lg.Debug("CheckEvolutionTriggers: skipped, pending evolution already exists via another pipeline",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID))
+		return nil, nil
+	}
+
 	// Check cooldown: if a recent suggestion exists within the cooldown period, skip.
 	latest, err := uc.suggestionReader.GetLatestBySkill(ctx, skillID)
 	if err != nil {
@@ -511,16 +565,17 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 		return nil, nil
 	}
 
-	// Determine trigger conditions.
-	var triggerType EvolutionSuggestionType
-	var triggerReason string
+	// Determine trigger conditions. Collect all matching types to avoid
+	// losing semantic information when multiple conditions fire.
+	var triggerTypes []EvolutionSuggestionType
+	var triggerReasons []string
 
 	// Condition 1: 30d failure rate > threshold.
 	failureRate := 1.0 - metrics.SuccessRate
 	if failureRate > EvoTriggerFailureRate {
-		triggerType = EvoSuggestionFixFailure
-		triggerReason = fmt.Sprintf("30d failure rate %.1f%% exceeds threshold %.1f%% (%d invocations)",
-			failureRate*100, EvoTriggerFailureRate*100, metrics.InvocationCount)
+		triggerTypes = append(triggerTypes, EvoSuggestionFixFailure)
+		triggerReasons = append(triggerReasons, fmt.Sprintf("30d failure rate %.1f%% exceeds threshold %.1f%% (%d invocations)",
+			failureRate*100, EvoTriggerFailureRate*100, metrics.InvocationCount))
 	}
 
 	// Condition 2: 7d success rate < 60%.
@@ -532,14 +587,9 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 			loggateway.Str("skill_id", skillID),
 			loggateway.Err(err7d))
 	} else if metrics7d.InvocationCount >= EvoTrigger7dMinInvocations && metrics7d.SuccessRate < EvoTrigger7dSuccessRate {
-		reason7d := fmt.Sprintf("7d success rate %.1f%% below threshold %.1f%% (%d invocations)",
-			metrics7d.SuccessRate*100, EvoTrigger7dSuccessRate*100, metrics7d.InvocationCount)
-		if triggerType == "" {
-			triggerType = EvoSuggestionFixFailure
-			triggerReason = reason7d
-		} else {
-			triggerReason += "; " + reason7d
-		}
+		triggerTypes = append(triggerTypes, EvoSuggestionFixFailure)
+		triggerReasons = append(triggerReasons, fmt.Sprintf("7d success rate %.1f%% below threshold %.1f%% (%d invocations)",
+			metrics7d.SuccessRate*100, EvoTrigger7dSuccessRate*100, metrics7d.InvocationCount))
 	}
 
 	// Condition 3: Same failure tag >= 5 times in 7d.
@@ -552,14 +602,9 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	} else {
 		for _, tc := range tagCounts {
 			if tc.Count >= EvoTriggerSameTagThreshold {
-				reasonTag := fmt.Sprintf("failure tag %q appears %d times in 7d (threshold %d)",
-					tc.Tag, tc.Count, EvoTriggerSameTagThreshold)
-				if triggerType == "" {
-					triggerType = EvoSuggestionFixFailure
-					triggerReason = reasonTag
-				} else {
-					triggerReason += "; " + reasonTag
-				}
+				triggerTypes = append(triggerTypes, EvoSuggestionFixFailure)
+				triggerReasons = append(triggerReasons, fmt.Sprintf("failure tag %q appears %d times in 7d (threshold %d)",
+					tc.Tag, tc.Count, EvoTriggerSameTagThreshold))
 				break // one matching tag is enough
 			}
 		}
@@ -568,17 +613,17 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	// Condition 4: Skill score < threshold.
 	score, scoreErr := uc.ScoreSkill(ctx, skillID)
 	if scoreErr == nil && score < EvoTriggerScoreThreshold {
-		if triggerType == "" {
-			triggerType = EvoSuggestionBoostEfficiency
-			triggerReason = fmt.Sprintf("Skill score %d below threshold %d", score, EvoTriggerScoreThreshold)
-		} else {
-			triggerReason += fmt.Sprintf("; skill score %d below threshold %d", score, EvoTriggerScoreThreshold)
-		}
+		triggerTypes = append(triggerTypes, EvoSuggestionBoostEfficiency)
+		triggerReasons = append(triggerReasons, fmt.Sprintf("Skill score %d below threshold %d", score, EvoTriggerScoreThreshold))
 	}
 
-	if triggerType == "" {
+	if len(triggerTypes) == 0 {
 		return nil, nil
 	}
+
+	// Pick the primary type (first triggered) and join all reasons.
+	triggerType := triggerTypes[0]
+	triggerReason := strings.Join(triggerReasons, "; ")
 
 	suggestion := &SkillEvolutionSuggestion{
 		ID:            uuid.New().String(),
@@ -669,10 +714,11 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 	suggestion.SandboxResult = resultJSON
 
 	// Step 5: Update lifecycle based on validation result.
+	// Rule-based template drafts are always marked as "draft" (needs human
+	// editing) rather than "ready", because they contain generic placeholder
+	// suggestions instead of skill-specific analysis. Only LLM-generated
+	// drafts should be promoted to "ready" after passing validation.
 	lifecycleStatus := EvoLifecycleDraft
-	if passed {
-		lifecycleStatus = EvoLifecycleReady
-	}
 	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestion.ID, lifecycleStatus); lcErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(final) failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
@@ -716,6 +762,14 @@ func (uc *SkillIntelligenceUsecase) generateRuleBasedDraft(suggestion *SkillEvol
 			"2. Unify parameter interfaces\n"+
 			"3. Merge description and instructions\n",
 			suggestion.SkillID, suggestion.TriggerReason)
+	case EvoSuggestionCreateSkill:
+		return fmt.Sprintf("# Skill Evolution Draft (create_skill)\n\n"+
+			"Trigger reason: %s\n\n"+
+			"## Suggested actions:\n"+
+			"1. Define skill scope and purpose\n"+
+			"2. Specify tool dependencies and parameters\n"+
+			"3. Write skill instructions and examples\n",
+			suggestion.TriggerReason)
 	default:
 		return fmt.Sprintf("# Skill Evolution Draft\n\nOriginal skill: %s\nTrigger: %s\n",
 			suggestion.SkillID, suggestion.TriggerReason)
@@ -840,6 +894,28 @@ func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, re
 	return uc.suggestionWriter.UpdateStatus(ctx, id, EvoSuggestionRejected, rejectedBy, reason)
 }
 
+// ── Bridge: SkillEvolutionSuggestion → SkillProposal ─────────────────────────
+//
+// TODO(debt): DEV-04 — Transitional bridge function. Will be removed once
+// SkillProposal is deprecated in favor of SkillEvolutionSuggestion.
+
+// ProposalFromSuggestion converts a SkillEvolutionSuggestion into a
+// SkillProposal for interoperability with the SkillEvolutionUsecase pipeline.
+// Fields that have no direct equivalent are left at their zero values.
+func (uc *SkillIntelligenceUsecase) ProposalFromSuggestion(s SkillEvolutionSuggestion) SkillProposal {
+	return SkillProposal{
+		ID:         s.ID,
+		AgentID:    "",                       // no equivalent; SkillEvolutionSuggestion is skill-scoped
+		SkillName:  "",                       // no direct equivalent; caller should populate from skill lookup
+		SkillMD:    s.DraftSkillBody,
+		Status:     SuggestionStatusToProposal(s.Status),
+		ApprovedBy: s.ApprovedBy,
+		RejectedBy: s.RejectedBy,
+		CreatedAt:  s.CreatedAt,
+		ApprovedAt: s.ResolvedAt,
+	}
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func normalizeDuration(avgMS float64) float64 {
@@ -853,6 +929,63 @@ func normalizeDuration(avgMS float64) float64 {
 		return 1
 	}
 	return ratio
+}
+
+// normalizeTokenUsage normalizes average token usage to a 0-1 range.
+// Lower is better: 0 tokens → 0, baselineTokens → 1, above baseline → 1.
+func normalizeTokenUsage(avgTokens int) float64 {
+	const baselineTokens = 2000
+	if avgTokens <= 0 {
+		return 0
+	}
+	ratio := float64(avgTokens) / baselineTokens
+	if ratio > 1 {
+		return 1
+	}
+	return ratio
+}
+
+// computeHeuristicFeedbackScore derives a provisional feedback score from
+// available health metrics. TEMPORARY: this will be replaced by a proper
+// feedback_score DB field in a future migration.
+//
+// Heuristic rules:
+//   - High success rate (>0.9) → bonus 0.2
+//   - Low avg duration (<5s) → bonus 0.1
+//   - Low token usage (<1000) → bonus 0.1
+//   - Clamped to [0, 1]
+func computeHeuristicFeedbackScore(m *SkillHealthMetrics) float64 {
+	if m == nil || m.InvocationCount == 0 {
+		return 0
+	}
+
+	var score float64
+
+	// Base: proportional to success rate (0-0.6 range).
+	score = m.SuccessRate * 0.6
+
+	// Bonus: high success rate.
+	if m.SuccessRate > 0.9 {
+		score += 0.2
+	}
+
+	// Bonus: low latency.
+	if m.AvgDurationMS > 0 && m.AvgDurationMS < 5000 {
+		score += 0.1
+	}
+
+	// Bonus: low token usage.
+	if m.AvgTokenUsage > 0 && m.AvgTokenUsage < 1000 {
+		score += 0.1
+	}
+
+	if score > 1 {
+		score = 1
+	}
+	if score < 0 {
+		score = 0
+	}
+	return score
 }
 
 func buildFlowSummary(inv SkillInvocationWrite, isSuccess bool, failureTags []string) string {

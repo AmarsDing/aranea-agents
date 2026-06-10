@@ -209,14 +209,14 @@ type mockEmbedder struct {
 	embedBatch func(ctx context.Context, texts []string) ([][]float32, error)
 }
 
-func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+func (m *mockEmbedder) EmbedSingle(ctx context.Context, text string) ([]float32, error) {
 	if m.embed == nil {
 		return []float32{0.1, 0.2, 0.3}, nil
 	}
 	return m.embed(ctx, text)
 }
 
-func (m *mockEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+func (m *mockEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	if m.embedBatch == nil {
 		result := make([][]float32, len(texts))
 		for i := range texts {

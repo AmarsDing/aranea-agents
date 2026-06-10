@@ -7,7 +7,7 @@ import (
 )
 
 // NewKnowledgeRetriever wires embedder, repo, and optional env-configured reranker (KN-01).
-func NewKnowledgeRetriever(emb *knowledge.Embedder, repo biz.KnowledgeRepo, lg loggateway.Logger) *knowledge.Retriever {
+func NewKnowledgeRetriever(emb knowledge.QueryEmbedder, repo biz.KnowledgeRepo, lg loggateway.Logger) *knowledge.Retriever {
 	if emb == nil || repo == nil {
 		return nil
 	}

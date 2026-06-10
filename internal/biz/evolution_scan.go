@@ -21,16 +21,24 @@ func (uc *EvolutionUsecase) ScanAll(ctx context.Context) error {
 	if uc == nil || uc.agents == nil {
 		return nil
 	}
-	page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: 500, Offset: 0, Status: "active"})
-	if err != nil {
-		return err
-	}
+	offset := 0
+	const batchSize = 500
 	var scanErrs []error
-	for i := range page.Items {
-		if err := uc.ScanAgent(ctx, page.Items[i].ID); err != nil {
-			scanErrs = append(scanErrs, kerrors.InternalServer("EVOLUTION", fmt.Sprintf("agent %s: %s", page.Items[i].ID, err.Error())))
-			continue
+	for {
+		page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: batchSize, Offset: offset, Status: "active"})
+		if err != nil {
+			return err
 		}
+		for i := range page.Items {
+			if err := uc.ScanAgent(ctx, page.Items[i].ID); err != nil {
+				scanErrs = append(scanErrs, kerrors.InternalServer("EVOLUTION", fmt.Sprintf("agent %s: %s", page.Items[i].ID, err.Error())))
+				continue
+			}
+		}
+		if len(page.Items) < batchSize {
+			break
+		}
+		offset += batchSize
 	}
 	if len(scanErrs) > 0 {
 		return errors.Join(scanErrs...)
@@ -44,6 +52,13 @@ func (uc *EvolutionUsecase) ScanAgent(ctx context.Context, agentID string) error
 	if agentID == "" {
 		return nil
 	}
+
+	// Cross-pipeline dedup: skip if another pipeline already has a pending
+	// suggestion for this agent.
+	if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
+		return nil
+	}
+
 	settings, err := uc.agents.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
 		return err

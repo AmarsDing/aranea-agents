@@ -177,7 +177,9 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 
 		// Cascade cleanup for each deleted agent (runtime_settings, prompt_files, sessions)
 		for agentID := range agentIDs {
-			cascadeDeleteByAgent(txCtx, r.data, agentID)
+			if err := cascadeDeleteByAgent(txCtx, r.data, agentID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -294,13 +296,18 @@ func (r *EcosystemPresetRepo) classifyTeamsByIndustry(ctx context.Context, delet
 func (r *EcosystemPresetRepo) softDeleteTeams(ctx context.Context, now string, ids []string) (int, error) {
 	deleted := 0
 	for _, id := range ids {
-		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE teams SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`,
-			now, now, id)
+		err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+			_, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+				`UPDATE teams SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`,
+				now, now, id)
+			if err != nil {
+				return err
+			}
+			return cascadeDeleteByTeam(txCtx, r.data, id)
+		})
 		if err != nil {
 			return deleted, err
 		}
-		cascadeDeleteByTeam(ctx, r.data, id)
 		deleted++
 	}
 	return deleted, nil

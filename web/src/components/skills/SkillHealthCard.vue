@@ -60,6 +60,31 @@
           </div>
         </div>
 
+        <q-separator class="q-my-md" />
+
+        <div class="row q-col-gutter-md">
+          <div class="col-6">
+            <div class="text-caption text-grey-7">7d 路由命中率</div>
+            <div v-if="health.route_hit_rate_7d > 0" class="text-h6" :class="hitRateColorClass(health.route_hit_rate_7d)">
+              {{ formatPercent(health.route_hit_rate_7d) }}
+            </div>
+            <div v-else class="text-h6 text-grey-6">-</div>
+            <div class="text-caption text-grey-7">
+              {{ health.route_hit_rate_7d > 0 ? '加载/路由' : '暂无路由数据' }}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="text-caption text-grey-7">30d 路由命中率</div>
+            <div v-if="health.route_hit_rate_30d > 0" class="text-h6" :class="hitRateColorClass(health.route_hit_rate_30d)">
+              {{ formatPercent(health.route_hit_rate_30d) }}
+            </div>
+            <div v-else class="text-h6 text-grey-6">-</div>
+            <div class="text-caption text-grey-7">
+              {{ health.route_hit_rate_30d > 0 ? '加载/路由' : '暂无路由数据' }}
+            </div>
+          </div>
+        </div>
+
         <div
           v-if="health.total_invocations_7d === 0 && health.total_invocations_30d === 0"
           class="text-caption text-grey-6 q-mt-md"
@@ -112,6 +137,12 @@ function rateColorClass(rate: number): string {
 function latencyColorClass(ms: number): string {
   if (ms <= 1000) return 'text-positive';
   if (ms <= 5000) return 'text-warning';
+  return 'text-negative';
+}
+
+function hitRateColorClass(rate: number): string {
+  if (rate >= 0.7) return 'text-positive';
+  if (rate >= 0.4) return 'text-warning';
   return 'text-negative';
 }
 

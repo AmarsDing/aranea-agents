@@ -7,7 +7,7 @@
       :selected-id="selectedId"
       @select="$emit('select', $event)"
     />
-    <div v-if="!nodes.length" class="text-caption text-grey-7 q-pa-sm">暂无调用树</div>
+    <div v-if="!nodes.length" class="text-caption text-grey q-pa-sm">暂无调用树</div>
   </q-list>
 </template>
 

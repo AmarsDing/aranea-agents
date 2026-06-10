@@ -13,7 +13,7 @@ type skillInstallInput struct {
 	URL      string `json:"url" jsonschema:"description=Skill Git 仓库 URL,required"`
 	Ref      string `json:"ref" jsonschema:"description=分支或 Tag（默认使用仓库默认分支）"`
 	Subpath  string `json:"subpath" jsonschema:"description=子目录路径"`
-	Decision string `json:"decision" jsonschema:"description=冲突策略：skip|keep|refine"`
+	Decision string `json:"decision" jsonschema:"description=Conflict resolution strategy: skip (keep existing, skip new), keep (overwrite existing with new), refine (merge new into existing)"`
 }
 
 type skillInstallOutput struct {
@@ -76,6 +76,6 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_skill_install_from_url"),
-		function.WithDescription("从 Git 仓库 URL 安装 Skill。触发导入流程并返回 job_id。"),
+		function.WithDescription("从 Git 仓库 URL 安装 Skill。触发导入流程并返回安装结果（含 created/updated/skipped 计数和步骤日志）。使用 subpath 指定仓库中的 Skill 子目录。"),
 	)
 }

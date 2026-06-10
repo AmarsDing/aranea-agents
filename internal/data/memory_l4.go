@@ -157,6 +157,108 @@ func (r *l4GraphRepo) GetFirstEntityByType(ctx context.Context, scopeType, scope
 	}, true, nil
 }
 
+func (r *l4GraphRepo) GetEntityRelations(ctx context.Context, entityID string) ([]biz.L4Relation, error) {
+	if r == nil {
+		return nil, errL4RepoNil
+	}
+	if strings.TrimSpace(entityID) == "" {
+		return nil, nil
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, metadata_json
+		 FROM memory_relations
+		 WHERE status = 'active' AND deleted_at = '' AND (source_id = ? OR target_id = ?)
+		 ORDER BY weight DESC`,
+		entityID, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []biz.L4Relation
+	for rows.Next() {
+		var rel biz.L4Relation
+		if err := rows.Scan(&rel.ID, &rel.ScopeType, &rel.ScopeID, &rel.SourceID, &rel.TargetID, &rel.RelationType, &rel.Weight, &rel.Confidence, &rel.MetadataJSON); err != nil {
+			r.data.lg.Warn("GetEntityRelations: scan row failed",
+				loggateway.StepID("data.l4.scan"),
+				loggateway.Err(err))
+			continue
+		}
+		result = append(result, rel)
+	}
+	return result, rows.Err()
+}
+
+func (r *l4GraphRepo) GetEntitiesByType(ctx context.Context, scope, entityType string) ([]biz.L4Entity, error) {
+	if r == nil {
+		return nil, errL4RepoNil
+	}
+	scope = strings.TrimSpace(scope)
+	entityType = strings.TrimSpace(entityType)
+	if scope == "" || entityType == "" {
+		return nil, nil
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
+		 FROM memory_entities
+		 WHERE scope_id = ? AND entity_type = ? AND status = 'active' AND deleted_at = ''
+		 ORDER BY importance DESC`,
+		scope, entityType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []biz.L4Entity
+	for rows.Next() {
+		var ent biz.L4Entity
+		if err := rows.Scan(&ent.ID, &ent.ScopeType, &ent.ScopeID, &ent.UserID, &ent.EntityType, &ent.Name, &ent.NameNormalized, &ent.Description, &ent.Importance, &ent.Confidence, &ent.MetadataJSON); err != nil {
+			r.data.lg.Warn("GetEntitiesByType: scan row failed",
+				loggateway.StepID("data.l4.scan"),
+				loggateway.Err(err))
+			continue
+		}
+		result = append(result, ent)
+	}
+	return result, rows.Err()
+}
+
+func (r *l4GraphRepo) SearchEntitiesByName(ctx context.Context, scope, nameQuery string, limit int) ([]biz.L4Entity, error) {
+	if r == nil {
+		return nil, errL4RepoNil
+	}
+	scope = strings.TrimSpace(scope)
+	nameQuery = strings.TrimSpace(nameQuery)
+	if scope == "" || nameQuery == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	pattern := "%" + strings.ToLower(nameQuery) + "%"
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
+		 FROM memory_entities
+		 WHERE scope_id = ? AND name_normalized LIKE ? AND status = 'active' AND deleted_at = ''
+		 ORDER BY importance DESC
+		 LIMIT ?`,
+		scope, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []biz.L4Entity
+	for rows.Next() {
+		var ent biz.L4Entity
+		if err := rows.Scan(&ent.ID, &ent.ScopeType, &ent.ScopeID, &ent.UserID, &ent.EntityType, &ent.Name, &ent.NameNormalized, &ent.Description, &ent.Importance, &ent.Confidence, &ent.MetadataJSON); err != nil {
+			r.data.lg.Warn("SearchEntitiesByName: scan row failed",
+				loggateway.StepID("data.l4.scan"),
+				loggateway.Err(err))
+			continue
+		}
+		result = append(result, ent)
+	}
+	return result, rows.Err()
+}
+
 func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scopeID, olderThanRFC3339 string, factor float64) (int64, error) {
 	if r == nil {
 		return 0, errL4RepoNil

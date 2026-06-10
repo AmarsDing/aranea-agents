@@ -409,7 +409,7 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 // TODO(embedding-upgrade): The project has an Embedder (internal/knowledge/embedder.go)
 // supporting OpenAI/Ollama/Gemini/HuggingFace backends, but it is not wired into the
 // allocator. To upgrade Layer 2 from TF-IDF to true embedding cosine similarity:
-//  1. Add knowledge.BatchEmbedder as a dependency of agentAllocatorImpl
+//  1. Add knowledge.Embedder as a dependency of agentAllocatorImpl
 //  2. Persist agent capability vectors (pre-computed embeddings of role/domain/tool/skill text)
 //  3. Replace this function with embedding cosine similarity via pgvector or in-memory comparison
 //

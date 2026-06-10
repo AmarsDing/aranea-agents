@@ -13,7 +13,7 @@ import (
 
 type emptyErrEmbedder struct{}
 
-func (emptyErrEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+func (emptyErrEmbedder) EmbedSingle(_ context.Context, text string) ([]float32, error) {
 	if text == "" {
 		return nil, fmt.Errorf("cannot embed empty query")
 	}

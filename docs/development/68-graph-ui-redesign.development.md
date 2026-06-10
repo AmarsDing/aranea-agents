@@ -450,6 +450,17 @@ function isValidConnection(connection: Connection): boolean {
 | 边重连行为（无效重连恢复原位） | 低 | `edgeUpdateEnd` 时检查新连接有效性，无效则恢复原边 |
 | 画布执行锁定 | 低 | 执行时 `nodesDraggable=false` + 禁用连接 + 显示执行横幅 |
 
+### 5.1 已修复 UX 问题（2026-06-10）
+
+| 问题 | 根因 | 修复 | 涉及文件 |
+|------|------|------|----------|
+| 拖拽连线时无视觉反馈 | `#connection-line` slot 被替换为空模板 | 恢复 `GraphConnectionLine` 组件渲染 | `GraphEditorCanvas.vue` |
+| Handle 点击目标太小（10px） | 可视尺寸仅 10px，实际可点击区域约 6px | 增大至 12px + `::before` 24px 热区 + hover scale | `_graph-pages.sass` |
+| 已连接的线删除困难 | 边 stroke-width 仅 1px 难以点击，无右键菜单 | 12px 透明交互路径 + 边右键菜单 + Delete 键支持 | `GraphFlowEdge.vue`、`GraphEditorCanvas.vue` |
+| 对齐辅助线只画线不吸附 | `useSnapGuide` 只计算辅助线不修正位置；`snap-to-grid` 16px 与对齐线冲突 | `computeSnapLines` 返回 `delta` 修正量，`onNodeDragStop` 应用吸附；关闭 `snap-to-grid` | `useSnapGuide.ts`、`GraphEditorCanvas.vue` |
+| 对齐辅助线严重错位 | SVG 放在 VueFlow 默认 slot 中，不随 viewport transform 缩放/平移，导致坐标不匹配 | 将 SVG 移入 `#zoom-pane` slot（在 Transform div 内部），坐标自动对齐；添加 `vector-effect: non-scaling-stroke` 保持线宽不变 | `GraphEditorCanvas.vue`、`_graph-pages.sass` |
+| `deleteEdgeById` 与 `onEdgesChange` 重复逻辑 | 两处独立实现边删除 | 提取 `deleteEdgeById` 共享函数，`onEdgesChange` 复用 | `GraphEditorCanvas.vue` |
+
 ## 6. 补充规范
 
 ### 6.1 Handle ID 编码方案

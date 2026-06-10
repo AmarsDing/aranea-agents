@@ -55,9 +55,9 @@
           <span class="compact-timeline__node-label" :class="`text-${replyColor(node.status)}`">
             {{ t('chat.turn.block.resultLabel', '回复') }}
           </span>
-          <span v-if="node.status === 'streaming'" class="compact-timeline__node-meta">· 正在生成</span>
-          <span v-else-if="node.status === 'failed'" class="compact-timeline__node-meta">· 失败</span>
-          <span v-else-if="node.status === 'cancelled'" class="compact-timeline__node-meta">· 已中断</span>
+          <span v-if="node.status === 'streaming'" class="compact-timeline__node-meta">· {{ t('chat.compactTimeline.generating') }}</span>
+          <span v-else-if="node.status === 'failed'" class="compact-timeline__node-meta">· {{ t('chat.turn.block.failed') }}</span>
+          <span v-else-if="node.status === 'cancelled'" class="compact-timeline__node-meta">· {{ t('chat.turn.block.cancelled') }}</span>
         </div>
         <div
           class="chat-message-content chat-message-prose"

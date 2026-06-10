@@ -60,6 +60,7 @@ type EvolutionUsecase struct {
 	metricsRepo    EvolutionMetricsRepo
 	suggestionRepo EvolutionSuggestionRepo
 	agents         AgentRepository
+	coordinator    *EvolutionCoordinator
 	lg             loggateway.Logger
 }
 
@@ -75,6 +76,12 @@ func NewEvolutionUsecase(
 		agents:         agents,
 		lg:             lg,
 	}
+}
+
+// SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
+// NOTE: Must only be called during initialization, before any concurrent access.
+func (uc *EvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
+	uc.coordinator = c
 }
 
 func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (EvolutionMetrics, error) {

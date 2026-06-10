@@ -26,6 +26,34 @@ type L4RelationWrite struct {
 	Confidence   float64
 }
 
+// L4Entity represents a full entity read from the knowledge graph.
+type L4Entity struct {
+	ID             string
+	ScopeType      string
+	ScopeID        string
+	UserID         string
+	EntityType     string
+	Name           string
+	NameNormalized string
+	Description    string
+	Importance     float64
+	Confidence     float64
+	MetadataJSON   string
+}
+
+// L4Relation represents a relation read from the knowledge graph.
+type L4Relation struct {
+	ID           string
+	ScopeType    string
+	ScopeID      string
+	SourceID     string
+	TargetID     string
+	RelationType string
+	Weight       float64
+	Confidence   float64
+	MetadataJSON string
+}
+
 type L4EntitySnapshot struct {
 	ID             string
 	Name           string
@@ -90,6 +118,9 @@ type L4GraphWriter interface {
 type L4EntityReader interface {
 	GetEntityByScopeKey(ctx context.Context, scopeType, scopeID, entityType, nameNormalized string) (L4EntitySnapshot, bool, error)
 	GetFirstEntityByType(ctx context.Context, scopeType, scopeID, entityType string) (L4EntitySnapshot, bool, error)
+	GetEntityRelations(ctx context.Context, entityID string) ([]L4Relation, error)
+	GetEntitiesByType(ctx context.Context, scope, entityType string) ([]L4Entity, error)
+	SearchEntitiesByName(ctx context.Context, scope, nameQuery string, limit int) ([]L4Entity, error)
 }
 
 type L4EntityWriter interface {

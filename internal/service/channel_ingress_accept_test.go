@@ -23,7 +23,7 @@ func (r *ingressChannelRepo) AddDelivery(_ context.Context, _ biz.ChannelDeliver
 
 func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
 		lg:       loggateway.NewNoop(),
@@ -53,7 +53,7 @@ func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 
 func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
 		lg:       loggateway.NewNoop(),
@@ -82,7 +82,7 @@ func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 
 func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
 		lg:       loggateway.NewNoop(),
@@ -109,7 +109,7 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 
 func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
 		lg:       loggateway.NewNoop(),
@@ -135,7 +135,7 @@ func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 
 func TestProcessInboundHTTPResponds200(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
 		lg:       loggateway.NewNoop(),

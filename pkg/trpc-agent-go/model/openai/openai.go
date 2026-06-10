@@ -1410,7 +1410,7 @@ func (m *Model) convertTools(tools map[string]tool.Tool) []openai.ChatCompletion
 		}
 		result = append(result, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        declaration.Name,
+				Name:        sanitizedName,
 				Description: openai.String(buildToolDescription(declaration)),
 				Parameters:  parameters,
 			},

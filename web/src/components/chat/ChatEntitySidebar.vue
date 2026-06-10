@@ -50,7 +50,7 @@
               @reorder="(ids) => $emit('agent-reorder', { groupKey: group.key, ids })"
             />
             <div v-if="filteredAgents.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              暂无 Agent
+              {{ t('chat.sidebar.noAgents') }}
             </div>
           </template>
           </template>
@@ -84,7 +84,7 @@
               />
             </div>
             <div v-if="activeTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              暂无进行中的团队
+              {{ t('chat.sidebar.noActiveTeams') }}
             </div>
           </template>
 
@@ -117,7 +117,7 @@
               />
             </div>
             <div v-if="completedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              暂无已完成的团队
+              {{ t('chat.sidebar.noCompletedTeams') }}
             </div>
           </template>
         </div>
@@ -223,7 +223,7 @@ const agentGroups = computed((): AgentGroup[] => {
     const items = toEntityItems(loadGroupOrder(defaultAgents, 'system', defaultId));
     groups.push({
       key: 'default',
-      label: '默认 Agent',
+      label: t('chat.sidebar.defaultAgent'),
       icon: 'verified',
       items,
       pinnedId: defaultId && defaultAgents.some((a) => a.id === defaultId) ? defaultId : undefined,
@@ -234,7 +234,7 @@ const agentGroups = computed((): AgentGroup[] => {
     const items = toEntityItems(loadGroupOrder(customAgents, 'custom'));
     groups.push({
       key: 'custom',
-      label: '自定义 Agent',
+      label: t('chat.sidebar.customAgent'),
       icon: 'person',
       items,
     });

@@ -105,6 +105,8 @@ func pbMemoryFact(raw []byte) (*v1.MemoryFact, error) {
 		Version:               jsonutil.IfaceI32(m, "version"),
 		Status:                jsonutil.IfaceStr(m, "status"),
 		PiiFlag:               jsonutil.IfaceBool(m, "pii_flag"),
+		QualityScore:          jsonutil.IfaceF64(m, "quality_score"),
+		PiiTypesJson:          jsonutil.IfaceStr(m, "pii_types"),
 		CreatedAt:             jsonutil.IfaceStr(m, "created_at"),
 		UpdatedAt:             jsonutil.IfaceStr(m, "updated_at"),
 	}, nil

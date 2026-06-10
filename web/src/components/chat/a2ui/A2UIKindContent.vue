@@ -15,7 +15,7 @@
     :surface="surface"
     @user-action="(p) => emit('user-action', p)"
   />
-  <div v-else class="text-caption text-grey-7">{{ kind || 'Unknown' }} ({{ componentId }})</div>
+  <div v-else class="text-caption text-grey">{{ kind || 'Unknown' }} ({{ componentId }})</div>
 </template>
 
 <script setup lang="ts">

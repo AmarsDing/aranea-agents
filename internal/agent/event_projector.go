@@ -395,7 +395,7 @@ func (p *EventProjector) buildToolResultEnvelope(ctx context.Context, ev *trpcev
 	var errMsg string
 	if ev.Response.Error != nil {
 		status = "failed"
-		errorCode = coalesceStr(ev.Response.Error.Type, "tool_error")
+		errorCode = coalesceStr(ev.Response.Error.Type, event.ErrorCodeToolError)
 		errMsg = ev.Response.Error.Message
 		if resultRaw == nil || string(resultRaw) == "null" || string(resultRaw) == `""` {
 			resultRaw, _ = json.Marshal(map[string]string{"error": errMsg})
@@ -412,6 +412,12 @@ func (p *EventProjector) buildToolResultEnvelope(ctx context.Context, ev *trpcev
 		if durationMS < 0 {
 			durationMS = 0
 		}
+	}
+
+	// Flatten todo_write result: add a human-readable summary so the
+	// ChatExecutionCard can display one line instead of raw nested JSON.
+	if toolName == "todo_write" {
+		resultJSON = flattenTodoWriteResult(resultJSON)
 	}
 
 	env.ToolCall = p.buildToolCallEnvelope(ctx, toolID, toolName, argsJSON, resultJSON, status, author, startedAt, &finishedAt, durationMS, errorCode, false)
@@ -443,7 +449,7 @@ func (p *EventProjector) buildToolCallEnvelope(
 		ErrorCode:     errorCode,
 	}, p.metaResolver)
 	agentName := firstNonEmptyStr(metaInput.AgentName, p.projectMeta.AgentDisplayName, author, metaInput.AgentKey)
-	return &event.EnvelopeToolCall{
+	tc := &event.EnvelopeToolCall{
 		ID:            id,
 		Name:          name,
 		ArgumentsJSON: metaInput.ArgumentsJSON,
@@ -464,6 +470,8 @@ func (p *EventProjector) buildToolCallEnvelope(
 		RunID:         strings.TrimSpace(p.projectMeta.RunID),
 		TraceID:       strings.TrimSpace(p.projectMeta.TraceID),
 	}
+	tc.ValidateErrorCode()
+	return tc
 }
 
 func (p *EventProjector) attachActivityMetadata(env *event.Envelope) {
@@ -511,6 +519,49 @@ func mergeToolErrorResult(resultJSON, errMsg string) string {
 	if _, ok := parsed["error"]; !ok && errMsg != "" {
 		parsed["error"] = errMsg
 	}
+	out, err := json.Marshal(parsed)
+	if err != nil {
+		return resultJSON
+	}
+	return string(out)
+}
+
+// flattenTodoWriteResult parses a todo_write tool result and injects a
+// "summary" field that the ChatExecutionCard can display as a one-liner
+// instead of dumping the entire nested JSON. The original fields (message,
+// todos, oldTodos) are preserved so useTodoBoard.ts continues to work.
+func flattenTodoWriteResult(resultJSON string) string {
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(resultJSON), &parsed); err != nil || parsed == nil {
+		return resultJSON
+	}
+	todosRaw, ok := parsed["todos"]
+	if !ok {
+		return resultJSON
+	}
+	todosArr, ok := todosRaw.([]any)
+	if !ok || len(todosArr) == 0 {
+		parsed["summary"] = "0 tasks"
+		out, err := json.Marshal(parsed)
+		if err != nil {
+			return resultJSON
+		}
+		return string(out)
+	}
+	counts := map[string]int{"pending": 0, "in_progress": 0, "completed": 0}
+	for _, item := range todosArr {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		statusVal, _ := m["status"].(string)
+		if _, valid := counts[statusVal]; valid {
+			counts[statusVal]++
+		}
+	}
+	summary := fmt.Sprintf("%d tasks: %d pending, %d in_progress, %d completed",
+		len(todosArr), counts["pending"], counts["in_progress"], counts["completed"])
+	parsed["summary"] = summary
 	out, err := json.Marshal(parsed)
 	if err != nil {
 		return resultJSON

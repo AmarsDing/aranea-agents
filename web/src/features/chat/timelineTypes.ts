@@ -37,6 +37,7 @@ export interface ToolCallTimelineNode {
   argsPreview?: string
   resultPreview?: string
   errorText?: string
+  i18nKey?: string
   durationLabel: string
   isStuck: boolean
 }

@@ -48,6 +48,14 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 
 	runID := uuid.NewString()
 	teamCtx, teamCancel := context.WithCancel(ctx)
+	// Apply default turn timeout if the parent context has no deadline.
+	// This mirrors the single-agent path in runSingleAgentViaTRPC.
+	if _, hasDeadline := teamCtx.Deadline(); !hasDeadline && o.turnTimeout > 0 {
+		var timeoutCancel context.CancelFunc
+		teamCtx, timeoutCancel = context.WithTimeout(teamCtx, o.turnTimeout)
+		origCancel := teamCancel
+		teamCancel = func() { timeoutCancel(); origCancel() }
+	}
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
 	o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")

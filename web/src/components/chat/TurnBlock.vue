@@ -2,30 +2,30 @@
   <!-- Collapsed summary view -->
   <div v-if="collapsed && block.isCompleted" class="turn-block turn-block--collapsed" @click="emit('toggle-collapse')">
     <div class="row items-center no-wrap q-gutter-xs">
-      <q-avatar v-if="agentInitials" :color="agentAvatarColor" text-color="white" size="22px" class="turn-block__avatar">
+      <q-avatar v-if="agentInitials" :style="{ backgroundColor: agentAvatarColor, color: 'var(--color-text-on-accent)' }" size="22px" class="turn-block__avatar">
         <span style="font-size:10px;font-weight:600;">{{ agentInitials }}</span>
       </q-avatar>
-      <q-icon v-else :name="collapsedIcon" size="16px" :color="collapsedIconColor" />
+      <q-icon v-else :name="collapsedIcon" size="16px" :style="{ color: collapsedIconColor }" />
       <span v-if="agentName" class="text-caption text-weight-medium" :style="{ color: agentAvatarColor }">{{ agentName }}</span>
       <span class="text-caption ellipsis">{{ collapsedSummary }}</span>
       <q-space />
-      <span v-if="collapsedDuration" class="text-caption text-grey-7">{{ collapsedDuration }}</span>
-      <q-icon name="expand_more" size="14px" color="grey-6" />
+      <span v-if="collapsedDuration" class="text-caption turn-block__text-tertiary">{{ collapsedDuration }}</span>
+      <q-icon name="expand_more" size="14px" class="turn-block__expand-icon" />
     </div>
   </div>
   <!-- Full content view -->
   <article v-else class="turn-block" :class="{ 'turn-block--focused': focused, 'turn-block--completed': block.isCompleted }" :data-turn-id="block.turnId">
     <!-- Agent Block Header -->
     <div class="turn-block__agent-header row items-center no-wrap q-gutter-xs" @click="block.isCompleted && emit('toggle-collapse')">
-      <q-avatar v-if="agentInitials" :color="agentAvatarColor" text-color="white" size="28px" class="turn-block__avatar">
+      <q-avatar v-if="agentInitials" :style="{ backgroundColor: agentAvatarColor, color: 'var(--color-on-accent)' }" size="28px" class="turn-block__avatar">
         <span style="font-size:13px;font-weight:600;">{{ agentInitials }}</span>
       </q-avatar>
       <span v-if="agentName" class="text-weight-medium" :style="{ color: agentAvatarColor, fontSize: 'var(--text-base)' }">{{ agentName }}</span>
       <span v-if="blockStatusText" class="turn-block__status-badge" :class="blockStatusClass">{{ blockStatusText }}</span>
-      <span v-if="blockDuration" class="text-caption text-grey-7">{{ blockDuration }}</span>
-      <span v-if="block.members.length" class="text-caption text-grey-7">· {{ block.members.length }} 个子任务</span>
+      <span v-if="blockDuration" class="text-caption turn-block__text-tertiary">{{ blockDuration }}</span>
+      <span v-if="block.members.length" class="text-caption turn-block__text-tertiary">· {{ block.members.length }} {{ t('chat.turn.block.memberCount', '个子任务') }}</span>
       <q-space />
-      <q-icon v-if="block.isCompleted" name="expand_less" size="14px" color="grey-6" class="turn-block__toggle" />
+      <q-icon v-if="block.isCompleted" name="expand_less" size="14px" class="turn-block__expand-icon turn-block__toggle" />
     </div>
     <div v-if="turnSourceLabel" class="turn-block__channel-bar text-caption" :aria-label="turnSourceLabel">
       {{ turnSourceLabel }}
@@ -54,7 +54,7 @@
         <!-- Thinking step (planning / reasoning / replanning) -->
         <div v-if="isThinkingStep(step)" class="turn-block__section turn-block__section--thinking">
           <div class="turn-block__section-label">
-            <q-icon :name="stepIcon(step.kind)" size="14px" color="accent" />
+            <q-icon :name="stepIcon(step.kind)" size="14px" :style="{ color: 'var(--color-accent)' }" />
             <span class="text-caption text-weight-medium" :style="{ color: 'var(--color-accent)' }">{{ stepTitle(step) }}</span>
           </div>
           <ChatReasoningPeek
@@ -68,18 +68,22 @@
         <!-- Action step: render linked tools inline -->
         <div v-if="step.kind === 'action'" class="turn-block__section turn-block__section--action">
           <div class="turn-block__section-label">
-            <q-icon name="build" size="14px" color="warning" />
-            <span class="text-caption text-weight-medium text-orange">{{ t('chat.turn.block.actionLabel', '动作') }}</span>
+            <q-icon name="build" size="14px" :style="{ color: 'var(--color-warning)' }" />
+            <span class="text-caption text-weight-medium turn-block__action-label">{{ t('chat.turn.block.actionLabel', '动作') }}</span>
           </div>
           <div v-if="step.body" class="text-body2 q-mb-xs" v-html="renderStepBody(step.body)" />
-          <ChatExecutionCard
-            v-for="tool in step.linkedTools"
-            :key="tool.id"
-            :event="tool"
-            :initial-collapsed="isToolEventCompleted(tool)"
-            class="q-mb-xs"
-            @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-          />
+          <template v-if="toolDisplay.showToolCalls">
+            <ToolCallTimeline v-if="step.linkedTools.length >= 2" :events="step.linkedTools" />
+            <ChatExecutionCard
+              v-else
+              v-for="tool in step.linkedTools"
+              :key="tool.id"
+              :event="tool"
+              :initial-collapsed="isToolEventCompleted(tool)"
+              class="q-mb-xs"
+              @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+            />
+          </template>
         </div>
       </div>
       <!-- Unlinked tools (not matched to any ReAct step) -->
@@ -96,8 +100,8 @@
       <template v-if="reactReplyRounds.length">
         <div v-for="(round, rIdx) in reactReplyRounds" :key="`react-reply-${rIdx}`" class="turn-block__section turn-block__section--reply">
           <div class="turn-block__section-label">
-            <q-icon name="article" size="14px" color="positive" />
-            <span class="text-caption text-weight-medium text-positive">
+            <q-icon name="article" size="14px" :style="{ color: 'var(--color-success)' }" />
+            <span class="text-caption text-weight-medium turn-block__reply-label">
               {{ reactReplyRounds.length > 1 ? t('chat.turn.block.resultLabelN', '回复') + ' ' + (rIdx + 1) : t('chat.turn.block.resultLabel', '回复') }}
             </span>
           </div>
@@ -121,15 +125,18 @@
         @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
       />
       <!-- Tools without any reasoning/reply -->
-      <ToolStrip
-        v-if="!compactNodes.length && visibleTools.length"
-        :tools="visibleTools"
-        :is-dark="isDark"
-        :is-team-session="isTeamSession"
-        :planner-kind="plannerKind"
-        :react-tool-link-index="reactToolLinkIndex"
-        @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-      />
+      <template v-if="!compactNodes.length && visibleTools.length && toolDisplay.showToolCalls">
+        <ToolCallTimeline v-if="toolEvents.length >= 2" :events="toolEvents" />
+        <ToolStrip
+          v-else
+          :tools="visibleTools"
+          :is-dark="isDark"
+          :is-team-session="isTeamSession"
+          :planner-kind="plannerKind"
+          :react-tool-link-index="reactToolLinkIndex"
+          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+        />
+      </template>
     </template>
 
     <!-- Sub-Agent nested section -->
@@ -156,11 +163,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatMessageRow from './ChatMessageRow.vue';
 import ChatReasoningPeek from './ChatReasoningPeek.vue';
 import ChatExecutionCard from './ChatExecutionCard.vue';
+import ToolCallTimeline from './ToolCallTimeline.vue';
 import CompactTimeline from './CompactTimeline.vue';
 import ToolStrip from './ToolStrip.vue';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
@@ -179,6 +187,7 @@ import { renderChatMarkdownForMessage, renderChatMarkdown } from '../../features
 import type { ReactStepKind } from '../../features/chat/reactPlannerTypes';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { Message, ReactStepWithTools, ReactToolLinkIndex, ToolUseEvent } from '../../features/chat/types';
+import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 
 const props = withDefaults(
   defineProps<{
@@ -207,6 +216,15 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+const toolDisplay = inject(TOOL_DISPLAY_KEY, computed(() => ({ showToolCalls: true })));
+
+// Extract ToolUseEvent[] from the block's tool messages
+const toolEvents = computed((): ToolUseEvent[] => {
+  return props.block.tools
+    .map((msg) => toolEventFromMessage(msg))
+    .filter((ev): ev is ToolUseEvent => ev != null);
+});
+
 // ── Agent identity from first tool event or assistant message ──
 const agentMeta = computed(() => {
   const firstTool = props.block.tools[0];
@@ -229,7 +247,7 @@ const agentInitials = computed(() => {
 });
 const agentAvatarColor = computed(() => {
   const key = agentMeta.value?.key || agentName.value || '';
-  const colors = ['#4DD8E8', '#6C5CE7', '#FDCB6E', '#3FE0A0', '#FF5E7A', '#A855F7'];
+  const colors = ['var(--avatar-color-1)', 'var(--avatar-color-2)', 'var(--avatar-color-3)', 'var(--avatar-color-4)', 'var(--avatar-color-5)', 'var(--avatar-color-6)'];
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
@@ -400,21 +418,21 @@ const collapsedSummary = computed(() => {
   const members = props.block.members;
   const summary = toolStripSummary(tools);
   if (tools.length === 0 && members.length > 0) {
-    return `${members.length} 成员 · 已完成`;
+    return `${members.length} ${t('chat.turn.block.memberCount', '个子任务')} · ${t('chat.turn.block.completed', '已完成')}`;
   }
   if (tools.length === 0) {
-    return props.block.assistant?.content_markdown?.slice(0, 60) || '已完成';
+    return props.block.assistant?.content_markdown?.slice(0, 60) || t('chat.turn.block.completed', '已完成');
   }
   if (tools.length === 1) {
     const ev = toolEventFromMessage(tools[0]!);
-    const name = ev?.display_label || ev?.tool_name || '工具';
-    if (summary.failed > 0) return `${name} · 失败`;
-    if (summary.cancelled > 0) return `${name} · 已中断`;
-    return `${name} · 完成`;
+    const name = ev?.display_label || ev?.tool_name || t('chat.turn.block.tool', '工具');
+    if (summary.failed > 0) return `${name} · ${t('chat.turn.block.failed', '失败')}`;
+    if (summary.cancelled > 0) return `${name} · ${t('chat.turn.block.cancelled', '已中断')}`;
+    return `${name} · ${t('chat.turn.block.completed', '已完成')}`;
   }
-  if (summary.failed > 0) return `${tools.length} tools · ${summary.failed} failed`;
-  if (summary.cancelled > 0) return `${tools.length} tools · ${summary.cancelled} 已中断`;
-  return `${tools.length} tools · 完成`;
+  if (summary.failed > 0) return `${t('chat.turn.block.toolsCount', { count: tools.length })} · ${summary.failed} ${t('chat.turn.block.failed', '失败')}`;
+  if (summary.cancelled > 0) return `${t('chat.turn.block.toolsCount', { count: tools.length })} · ${summary.cancelled} ${t('chat.turn.block.cancelled', '已中断')}`;
+  return `${t('chat.turn.block.toolsCount', { count: tools.length })} · ${t('chat.turn.block.completed', '已完成')}`;
 });
 
 const collapsedIcon = computed(() => {
@@ -426,9 +444,9 @@ const collapsedIcon = computed(() => {
 
 const collapsedIconColor = computed(() => {
   const summary = toolStripSummary(props.block.tools);
-  if (summary.failed > 0) return 'negative';
-  if (summary.cancelled > 0) return 'warning';
-  return 'positive';
+  if (summary.failed > 0) return 'var(--color-danger)';
+  if (summary.cancelled > 0) return 'var(--color-warning)';
+  return 'var(--color-success)';
 });
 
 const collapsedDuration = computed(() => {
@@ -488,6 +506,18 @@ const collapsedDuration = computed(() => {
 .turn-block__status-badge--cancelled
   background: color-mix(in srgb, var(--color-warning) 15%, transparent)
   color: var(--color-warning)
+
+.turn-block__expand-icon
+  color: var(--color-text-tertiary)
+
+.turn-block__text-tertiary
+  color: var(--color-text-tertiary)
+
+.turn-block__action-label
+  color: var(--color-warning)
+
+.turn-block__reply-label
+  color: var(--color-success)
 
 .turn-block__toggle
   transition: transform 0.2s ease

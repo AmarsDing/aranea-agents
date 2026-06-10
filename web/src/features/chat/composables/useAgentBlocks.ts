@@ -304,22 +304,25 @@ function buildRootAgentBlock(
         // duplicate the last thinking entry (avoids "thinking then echo the
         // same content as reply" artifacts when the LLM only has reasoning
         // and no final-answer tag).
+        // F-17: Only dedup in non-ReAct mode. In ReAct mode, thinking and
+        // reply are already correctly separated by hasExplicitFinalAnswer.
         const replyContent = resolveReplyContent(messagePresentation);
         if (replyContent) {
-          const lastThinking = [...timeline].reverse().find((e) => e.kind === 'thinking');
-          const lastThinkingContent = lastThinking?.kind === 'thinking' ? lastThinking.section.content.trim() : '';
-          if (replyContent !== lastThinkingContent) {
-            timeline.push({
-              kind: 'reply',
-              section: {
-                id: `root-reply-${event.message.id}`,
-                content: replyContent,
-                durationMs: 0,
-                streaming: event.message.status === 'streaming',
-              },
-              sortKey: sortCounter++,
-            });
+          if (messagePresentation.mode !== 'react') {
+            const lastThinking = [...timeline].reverse().find((e) => e.kind === 'thinking');
+            const lastThinkingContent = lastThinking?.kind === 'thinking' ? lastThinking.section.content.trim() : '';
+            if (replyContent === lastThinkingContent) break;
           }
+          timeline.push({
+            kind: 'reply',
+            section: {
+              id: `root-reply-${event.message.id}`,
+              content: replyContent,
+              durationMs: 0,
+              streaming: event.message.status === 'streaming',
+            },
+            sortKey: sortCounter++,
+          });
         }
         break;
       }
@@ -349,9 +352,11 @@ function buildRootAgentBlock(
             const t = asObject(tasks[i]);
             const task = String(t.task || t.description || t.prompt || `步骤 ${i + 1}`);
             const agentName = String(t.agent_name || t.agent || t.assignee || '');
+            const agentKey = String(t.agent_key || t.key || '');
             planEntries.push({
               id: `plan-${i}`,
               task,
+              agentKey: agentKey || null, // F-18
               agentName: agentName || null,
               agentIcon: agentName ? agentName.charAt(0) : null,
               agentColor: agentName ? agentColorFromKey(agentName) : null,
@@ -379,11 +384,12 @@ function buildRootAgentBlock(
               planEntries.push({
                 id: `plan-${planEntries.length}`,
                 task: subBlock.task || subBlock.agentName,
+                agentKey: subBlock.agentKey, // F-18
                 agentName: subBlock.agentName,
                 agentIcon: subBlock.agentIcon,
                 agentColor: subBlock.agentColor,
                 status:
-                  subBlock.status === 'completed' ? 'completed' : subBlock.status === 'failed' ? 'failed' : 'running',
+                  subBlock.status === 'completed' || subBlock.status === 'partial_failure' ? 'completed' : subBlock.status === 'failed' ? 'failed' : 'running',
               });
             }
 
@@ -423,7 +429,7 @@ function buildRootAgentBlock(
       case 'member-tool': {
         if (event.agentKey && event.toolEvent) {
           const builder = getOrCreateBuilder(subAgentBuilders, event.agentKey, event.message, event.position);
-          builder.addTool(event.toolEvent);
+          builder.addTool(event.toolEvent, event.message);
         }
         break;
       }
@@ -459,8 +465,10 @@ function buildRootAgentBlock(
         existingEntry.block.result = builtBlock.result || existingEntry.block.result;
         existingEntry.block.status = builtBlock.status;
         existingEntry.block.durationMs = builtBlock.durationMs;
-        existingEntry.block.collapsed = builtBlock.status === 'completed';
+        existingEntry.block.collapsed = false; // F-19: completed turns expanded by default
         existingEntry.block.finishedAt = builtBlock.finishedAt;
+        existingEntry.block.hasPartialFailure = builtBlock.hasPartialFailure;
+        existingEntry.block.progressSections = builtBlock.progressSections;
       }
       continue;
     }
@@ -472,10 +480,11 @@ function buildRootAgentBlock(
     planEntries.push({
       id: `plan-${planEntries.length}`,
       task: block.task || block.agentName,
+      agentKey: block.agentKey, // F-18
       agentName: block.agentName,
       agentIcon: block.agentIcon,
       agentColor: block.agentColor,
-      status: block.status === 'completed' ? 'completed' : block.status === 'failed' ? 'failed' : 'running',
+      status: block.status === 'completed' || block.status === 'partial_failure' ? 'completed' : block.status === 'failed' ? 'failed' : 'running',
     });
 
     timeline.push({
@@ -488,33 +497,21 @@ function buildRootAgentBlock(
   // Sort timeline by sortKey to ensure correct order
   timeline.sort((a, b) => a.sortKey - b.sortKey);
 
-  // Merge execution_progress sections. Each ProgressSection is assigned a
-  // sortKey relative to its startedAt timestamp: convert epoch ms into a
-  // fractional sort key that lands before any tool/thinking at the same
-  // position. The mapping uses a reference start of the turn; since the
-  // backend emits progress in real time before any tool_call/thinking
-  // arrives, this naturally places progress nodes at the start of the
-  // turn's timeline when they pre-date the LLM streaming.
+  // F-21: progressSections are now a separate field on AgentBlock, not mixed
+  // into the timeline array. This keeps timeline entries semantically pure
+  // (only thinking/tool/reply/subagent) while progress cards render at turn head.
+  const progressSections: ProgressSection[] = [];
   if (progressByStep.size > 0) {
     const turnStartTs = turn.userMessage?.created_at
       ? new Date(turn.userMessage.created_at).getTime()
       : Date.now();
-    // Use a fractional sort key based on (startedAt - turnStartTs).
-    // Negative values land before existing entries; positive values land
-    // after. We bucket by millisecond and offset by 0.5 to keep
-    // stability between equal timestamps.
-    let progressSortBase = 0;
     for (const section of progressByStep.values()) {
-      const offset = (section.startedAt - turnStartTs) / 1000; // seconds offset
-      const key = offset - 0.5 + progressSortBase * 1e-6;
-      progressSortBase += 1;
-      timeline.push({
-        kind: 'progress',
-        section,
-        sortKey: key,
-      });
+      // F-16: Clamp offset to non-negative to prevent negative sort keys
+      const offset = Math.max(0, (section.startedAt - turnStartTs) / 1000);
+      progressSections.push({ ...section, startedAt: turnStartTs + offset * 1000 });
     }
-    timeline.sort((a, b) => a.sortKey - b.sortKey);
+    // Sort by startedAt for consistent rendering
+    progressSections.sort((a, b) => a.startedAt - b.startedAt);
   }
 
   // Determine status
@@ -557,12 +554,17 @@ function buildRootAgentBlock(
     planEntries.length > 0
       ? {
           entries: updatePlanEntryStatuses(planEntries, timeline),
-          status: resolvePlanStatus(planStatus, status),
+          status: resolvePlanStatus(planStatus, status, planEntries.length),
         }
       : null;
 
   // Build team status summary
   const teamStatus = computeTeamStatus(timeline);
+
+  // F-20: Compute hasPartialFailure for root block
+  const hasPartialFailure = status === 'partial_failure' || timeline.some(
+    (t) => t.kind === 'subagent' && (t.block.status === 'partial_failure' || t.block.status === 'failed'),
+  );
 
   return {
     id: `root-${turn.userMessage?.id || 'no-user'}`,
@@ -572,10 +574,12 @@ function buildRootAgentBlock(
     agentColor: agentColorFromKey(agentKey),
     status,
     durationMs,
-    collapsed: status === 'completed',
+    collapsed: false, // F-19: completed turns expanded by default
     task: turn.userMessage?.content_markdown || null,
     timeline,
+    progressSections, // F-21: separate from timeline
     result,
+    hasPartialFailure, // F-20
     plan,
     teamStatus,
     startedAt: turn.userMessage?.created_at || assistant?.created_at || '',
@@ -591,18 +595,21 @@ function buildRootAgentBlock(
 function resolvePlanStatus(
   planStatus: OrchestrationPlan['status'],
   agentStatus: AgentBlockStatus,
+  planEntriesCount: number,
 ): OrchestrationPlan['status'] {
   // Explicit transitions from executing
   if (planStatus === 'executing') {
-    if (agentStatus === 'completed') return 'completed';
+    if (agentStatus === 'completed' || agentStatus === 'partial_failure') return 'completed';
     if (agentStatus === 'failed') return 'failed';
     return 'executing';
   }
   // If planStatus is still 'planning' but agent is done, the plan must be done too.
-  // This happens when subagents_spawn creates plan entries but never sets planStatus
-  // to 'executing'.
-  if (planStatus === 'planning' && (agentStatus === 'completed' || agentStatus === 'failed')) {
-    return agentStatus;
+  if (planStatus === 'planning' && (agentStatus === 'completed' || agentStatus === 'partial_failure' || agentStatus === 'failed')) {
+    return agentStatus === 'partial_failure' ? 'completed' : agentStatus;
+  }
+  // F-15: planning && running && planEntries > 0 → executing
+  if (planStatus === 'planning' && planEntriesCount > 0 && (agentStatus === 'running' || agentStatus === 'tool_running' || agentStatus === 'tool_blocked')) {
+    return 'executing';
   }
   return planStatus;
 }
@@ -610,16 +617,25 @@ function resolvePlanStatus(
 /** Update plan entry statuses based on sub-agent block statuses in timeline */
 function updatePlanEntryStatuses(entries: PlanEntry[], timeline: TimelineEntry[]): PlanEntry[] {
   return entries.map((entry) => {
-    // Find matching sub-agent block in timeline
-    const matchingBlock = timeline.find(
-      (t) => t.kind === 'subagent' && (t.block.agentName === entry.agentName || t.block.task === entry.task),
-    );
+    // F-18: Match by agentKey first (precise), fall back to agentName/task
+    let matchingBlock: TimelineEntry | undefined;
+    if (entry.agentKey) {
+      matchingBlock = timeline.find(
+        (t) => t.kind === 'subagent' && t.block.agentKey === entry.agentKey,
+      );
+    }
+    if (!matchingBlock) {
+      matchingBlock = timeline.find(
+        (t) => t.kind === 'subagent' && (t.block.agentName === entry.agentName || t.block.task === entry.task),
+      );
+    }
     if (matchingBlock && matchingBlock.kind === 'subagent') {
       const blockStatus = matchingBlock.block.status;
       return {
         ...entry,
+        agentKey: matchingBlock.block.agentKey,
         status:
-          blockStatus === 'completed'
+          blockStatus === 'completed' || blockStatus === 'partial_failure'
             ? ('completed' as const)
             : blockStatus === 'failed'
               ? ('failed' as const)
@@ -683,7 +699,8 @@ class SubAgentBuilder {
     }
   }
 
-  addTool(toolEv: ToolUseEvent): void {
+  addTool(toolEv: ToolUseEvent, msg: Message): void {
+    this.allToolMsgs.push(msg);
     this.entries.push({
       kind: 'tool',
       section: buildToolSection(toolEv, `sub-${this.agentKey}-tool`),
@@ -699,16 +716,36 @@ class SubAgentBuilder {
   build(): AgentBlock {
     // Determine status
     const isStreaming = this.allMemberMsgs.some((m) => m.status === 'streaming' || m.status === 'tool_running');
+    const hasBlockedTool = this.allToolMsgs.some((t) => {
+      const ev = toolEventFromMessage(t);
+      return ev?.status === 'blocked';
+    });
+    const hasRunningTool = this.allToolMsgs.some((t) => {
+      const ev = toolEventFromMessage(t);
+      return ev?.status === 'running';
+    });
     const allToolsDone = this.allToolMsgs.every((t) => {
       const ev = toolEventFromMessage(t);
       return !ev || ev.status === 'success' || ev.status === 'failed' || ev.status === 'cancelled';
     });
     const hasMemberContent = this.allMemberMsgs.some((m) => m.content_markdown?.trim());
-    const status: AgentBlockStatus = isStreaming
-      ? 'running'
-      : allToolsDone && hasMemberContent
-        ? 'completed'
-        : 'running';
+    const hasFailedTool = this.allToolMsgs.some((t) => {
+      const ev = toolEventFromMessage(t);
+      return ev?.status === 'failed';
+    });
+
+    let status: AgentBlockStatus;
+    if (hasBlockedTool) {
+      status = 'tool_blocked'; // F-14
+    } else if (hasRunningTool) {
+      status = 'tool_running'; // F-14
+    } else if (isStreaming) {
+      status = 'running';
+    } else if (allToolsDone && hasMemberContent) {
+      status = hasFailedTool ? 'partial_failure' : 'completed'; // F-20
+    } else {
+      status = 'running';
+    }
 
     // Result: last member message content
     const result =
@@ -728,14 +765,16 @@ class SubAgentBuilder {
       agentColor: agentColorFromKey(this.agentKey),
       status,
       durationMs,
-      collapsed: status === 'completed',
+      collapsed: false, // F-19: completed turns expanded by default
       task,
       timeline: this.entries,
+      progressSections: [], // F-21: sub-agents don't have separate progress sections
       result,
+      hasPartialFailure: status === 'partial_failure', // F-20
       plan: null,
       teamStatus: null,
       startedAt: this.firstMsg.created_at || '',
-      finishedAt: status === 'completed' ? this.allMemberMsgs.at(-1)?.created_at || '' : null,
+      finishedAt: status === 'completed' || status === 'partial_failure' || status === 'failed' ? this.allMemberMsgs.at(-1)?.created_at || '' : null,
     };
   }
 }
@@ -794,18 +833,20 @@ function buildSubAgentFromSpawn(toolEv: ToolUseEvent, allToolMsgs: Message[]): A
     agentColor: agentColorFromKey(spawnKey),
     status,
     durationMs: toolEv.duration_ms ?? null,
-    collapsed: status === 'completed',
+    collapsed: false, // F-19: completed turns expanded by default
     task,
     timeline,
+    progressSections: [], // F-21
     result: toolEv.result
       ? typeof toolEv.result === 'object'
         ? JSON.stringify(toolEv.result)
         : String(toolEv.result)
       : null,
+    hasPartialFailure: false, // F-20: spawn-based blocks don't track partial failure
     plan: null,
     teamStatus: null,
     startedAt: toolEv.started_at || toolEv.occurred_at || '',
-    finishedAt: status === 'completed' ? toolEv.finished_at || toolEv.occurred_at || '' : null,
+    finishedAt: status === 'completed' || status === 'failed' ? toolEv.finished_at || toolEv.occurred_at || '' : null,
   };
 }
 
@@ -918,23 +959,36 @@ function computeAgentStatus(
   memberMsgs: Message[],
   isCompleted: boolean,
 ): AgentBlockStatus {
-  // Even when the assistant has stopped streaming, tools in non-terminal states
-  // (running, blocked) mean the overall turn is NOT completed. Without this
-  // check, a tool waiting for user confirmation (`tool_blocked`) would mark the
-  // root agent as completed.
-  const hasLiveTool = toolMsgs.some((t) => {
+  // F-14: Explicit tool_blocked and tool_running states
+  const hasBlockedTool = toolMsgs.some((t) => {
     const ev = toolEventFromMessage(t);
     if (!ev) return false;
-    return ev.status === 'running' || ev.status === 'blocked';
+    return ev.status === 'blocked';
   });
-  if (isCompleted && !hasLiveTool) {
+  if (hasBlockedTool) return 'tool_blocked';
+
+  const hasRunningTool = toolMsgs.some((t) => {
+    const ev = toolEventFromMessage(t);
+    if (!ev) return false;
+    return ev.status === 'running';
+  });
+  if (hasRunningTool) return 'tool_running';
+
+  if (isCompleted) {
     // Determine final status based on the assistant message, not individual tools.
     // A team can have partial tool failures but still produce a successful result.
     if (assistant?.status === 'failed') return 'failed';
     // If there's a successful result (content_markdown), consider it completed
     // even if some tools failed along the way.
     const hasSuccessfulResult = assistant?.content_markdown?.trim() || assistant?.reasoning_markdown?.trim();
-    if (hasSuccessfulResult) return 'completed';
+    if (hasSuccessfulResult) {
+      // F-20: Check for partial failure (some sub-tasks failed but overall succeeded)
+      const hasFailedTool = toolMsgs.some((t) => {
+        const ev = toolEventFromMessage(t);
+        return ev?.status === 'failed';
+      });
+      return hasFailedTool ? 'partial_failure' : 'completed';
+    }
     // No result at all — check if any tool failed
     const hasFailedTool = toolMsgs.some((t) => {
       const ev = toolEventFromMessage(t);
@@ -942,7 +996,6 @@ function computeAgentStatus(
     });
     return hasFailedTool ? 'failed' : 'completed';
   }
-  if (hasLiveTool) return 'running';
   if (assistant?.status === 'streaming') return 'running';
   if (memberMsgs.some((m) => m.status === 'streaming' || m.status === 'tool_running')) return 'running';
   return 'running';

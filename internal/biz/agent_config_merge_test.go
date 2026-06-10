@@ -15,7 +15,7 @@ func TestMergeAgentConfigJSON_patchWins(t *testing.T) {
 }
 
 func TestCheckAgentKeyAvailability_format(t *testing.T) {
-	uc := NewAgentUsecase(nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
 	_, _, err := uc.CheckAgentKeyAvailability(context.Background(), "Bad Key")
 	if err == nil {
 		t.Fatal("expected format error")

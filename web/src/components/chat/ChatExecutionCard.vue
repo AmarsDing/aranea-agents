@@ -20,14 +20,14 @@
         <div class="col ellipsis">
           <div class="text-weight-medium ellipsis">{{ title }}</div>
           <div v-if="memberLabel" class="text-caption text-primary ellipsis">{{ memberLabel }}</div>
-          <div v-else-if="summaryText" class="text-caption text-grey-7 ellipsis">{{ summaryText }}</div>
+          <div v-else-if="summaryText" class="text-caption text-grey ellipsis">{{ summaryText }}</div>
         </div>
-        <q-chip v-if="isLongRunning" dense size="sm" color="orange" text-color="white" icon="schedule">
+        <q-chip v-if="isLongRunning" dense size="sm" color="warning" text-color="white" icon="schedule">
           {{ t('chat.toolLongRunning', '长任务') }}
         </q-chip>
         <q-space />
         <span v-if="showElapsed" class="text-caption" :style="{ color: elapsedColor }">{{ elapsedLabel }}</span>
-        <span v-else-if="durationLabel" class="text-caption text-grey-7">{{ durationLabel }}</span>
+        <span v-else-if="durationLabel" class="text-caption text-grey">{{ durationLabel }}</span>
         <q-icon v-if="status === 'running'" name="hourglass_top" color="warning" size="18px" aria-hidden="true" />
         <span v-if="status === 'running'" class="chat-execution-card__pulse" aria-hidden="true" />
         <q-icon v-else-if="isFailed" name="error" color="negative" size="18px" aria-hidden="true" />
@@ -74,14 +74,14 @@
       <div v-if="errorText" role="alert" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
       <div v-if="hasMetadata" class="chat-execution-card__section q-mt-sm">
         <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.activity.metadata', '元数据') }}</div>
-        <div class="text-caption text-grey-7 column q-gutter-xs">
+        <div class="text-caption text-grey column q-gutter-xs">
           <div v-if="event.run_id"><span class="text-weight-medium">run_id:</span> {{ event.run_id }}</div>
           <div v-if="event.trace_id"><span class="text-weight-medium">trace_id:</span> {{ event.trace_id }}</div>
         </div>
       </div>
       <div
         v-if="expanded && (hasArgs || hasResult)"
-        class="chat-execution-card__audit text-caption text-grey-6 q-mt-sm"
+        class="chat-execution-card__audit text-caption text-grey q-mt-sm"
       >
         {{ t('chat.activity.copyAuditHint', '复制内容可能包含敏感信息；完整审计请前往 Monitor → Traces。') }}
       </div>
@@ -263,7 +263,14 @@ const agentInitials = computed(() => {
 });
 const agentAvatarColor = computed(() => {
   const key = props.event.agent_key || props.event.agent_name || '';
-  const colors = ['#4DD8E8', '#6C5CE7', '#FDCB6E', '#3FE0A0', '#FF5E7A', '#A855F7'];
+  const colors = [
+    'var(--agent-palette-0)',
+    'var(--agent-palette-1)',
+    'var(--agent-palette-2)',
+    'var(--agent-palette-3)',
+    'var(--agent-palette-4)',
+    'var(--agent-palette-5)',
+  ];
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
@@ -318,8 +325,8 @@ const statusTextClass = computed(() => {
   if (status.value === 'running') return 'text-warning';
   if (isFailed.value) return 'text-negative';
   if (status.value === 'blocked') return 'text-warning';
-  if (status.value === 'cancelled') return 'text-grey-6';
-  return 'text-grey-7';
+  if (status.value === 'cancelled') return 'text-grey';
+  return 'text-grey';
 });
 
 const cardClass = computed(() => ({

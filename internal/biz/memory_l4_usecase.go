@@ -277,6 +277,27 @@ func (uc *L4GraphUsecase) RecordEntityReinforcement(ctx context.Context, entityI
 	return uc.repo.RecordEntityReinforcement(ctx, entityID, signal, source)
 }
 
+func (uc *L4GraphUsecase) GetEntityRelations(ctx context.Context, entityID string) ([]L4Relation, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, nil
+	}
+	return uc.repo.GetEntityRelations(ctx, entityID)
+}
+
+func (uc *L4GraphUsecase) GetEntitiesByType(ctx context.Context, scope, entityType string) ([]L4Entity, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, nil
+	}
+	return uc.repo.GetEntitiesByType(ctx, scope, entityType)
+}
+
+func (uc *L4GraphUsecase) SearchEntitiesByName(ctx context.Context, scope, nameQuery string, limit int) ([]L4Entity, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, nil
+	}
+	return uc.repo.SearchEntitiesByName(ctx, scope, nameQuery, limit)
+}
+
 func (uc *L4GraphUsecase) preparePersonUpsert(existing L4EntitySnapshot, newName, description string) (L4EntityWrite, bool) {
 	newName = strings.TrimSpace(newName)
 	nameNorm := strings.ToLower(newName)

@@ -23,7 +23,7 @@
       >
         <template v-if="showRaw || !row.ok">
           <template v-if="row.ok">
-            <q-chip dense size="sm" color="grey-7" text-color="white" class="q-mr-sm">{{ row.key }}</q-chip>
+            <q-chip dense size="sm" color="grey" text-color="white" class="q-mr-sm">{{ row.key }}</q-chip>
             <pre class="chat-a2ui-line__json">{{ formatPayload(row.payload) }}</pre>
           </template>
           <template v-else>

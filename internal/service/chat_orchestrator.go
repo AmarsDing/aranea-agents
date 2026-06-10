@@ -128,6 +128,11 @@ type ChatOrchestrator struct {
 	resumeInFlight       sync.Map
 	pendingMergeFollowup sync.Map
 	sweepStop            chan struct{}
+
+	// Extracted sub-managers (TECH-DEBT(BL8) resolution).
+	sessionStateMgr sessionStateTransitor
+	turnMetrics     turnRecorder
+	eventPublisher  turnEventPublisher
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -209,6 +214,9 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		outboundRouter:  deps.OutboundRouter,
 		subAgentService: deps.SubAgentService,
 		expAnalytics:    deps.ExpAnalytics,
+		sessionStateMgr: newChatSessionStateMgr(deps.Sessions, deps.LG),
+		turnMetrics:     newChatTurnMetrics(deps.Sessions, deps.Usage, deps.LG),
+		eventPublisher:  newChatTurnEventPublisher(deps.Sessions, deps.Pipeline.Bus, deps.LG),
 	}
 	if o.turnTimeout <= 0 {
 		o.turnTimeout = chatagent.DefaultTurnTimeout
@@ -375,22 +383,7 @@ func (o *ChatOrchestrator) ActiveRunner(sessionID string) (runner trpcrunner.Run
 }
 
 func (o *ChatOrchestrator) transitionSessionStatus(ctx context.Context, sessionID string, targetStatus sessstatus.SessionStatus, reason sessstatus.SessionStatusReason) {
-	if o == nil || o.td.Sessions == nil {
-		return
-	}
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return
-	}
-	if err := o.td.Sessions.TransitionStatus(ctx, sessionID, targetStatus, reason); err != nil {
-		o.lg.Warn("session status transition failed",
-			loggateway.StepID("chat.transition_status"),
-			loggateway.Str("session_id", sessionID),
-			loggateway.Str("target_status", string(targetStatus)),
-			loggateway.Str("reason", string(reason)),
-			loggateway.Err(err),
-		)
-	}
+	o.sessionStateMgr.TransitionStatus(ctx, sessionID, targetStatus, reason)
 }
 
 // cancelActiveRun cancels the active run for a session.

@@ -8,7 +8,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { TopologyType } from '../../features/spirit/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   topology: TopologyType;
@@ -17,10 +20,10 @@ const props = defineProps<{
 
 const topologyLabel = computed(() => {
   const labels: Record<TopologyType, string> = {
-    parallel: '并行',
-    sequential: '顺序',
-    hybrid: '混合',
-    coordinator: '协调',
+    parallel: t('spirit.topologyParallel'),
+    sequential: t('spirit.topologySequential'),
+    hybrid: t('spirit.topologyHybrid'),
+    coordinator: t('spirit.topologyCoordinator'),
   };
   return labels[props.topology] ?? props.topology;
 });

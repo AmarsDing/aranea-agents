@@ -430,52 +430,17 @@ func (o *ChatOrchestrator) checkTeamMemberQuotas(ctx context.Context, teamID str
 
 // bumpSessionRevisionAndPublish bumps revision after turn completion (status=completed).
 func (o *ChatOrchestrator) bumpSessionRevisionAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	if o == nil || o.td.Sessions == nil || o.td.Pipeline.Bus == nil {
-		return
-	}
-	event.BumpAndPublishSessionRevision(
-		ctx,
-		o.td.Sessions,
-		o.td.Pipeline.Bus,
-		sessionID,
-		runID,
-		turnID,
-		event.EnvelopeSourceFromContext(ctx),
-		o.lg,
-	)
+	o.eventPublisher.BumpSessionRevisionAndPublish(ctx, sessionID, runID, turnID)
 }
 
 // bumpSessionRevisionSyncAndPublish bumps revision after user message persist (status=sync).
 func (o *ChatOrchestrator) bumpSessionRevisionSyncAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	if o == nil || o.td.Sessions == nil || o.td.Pipeline.Bus == nil {
-		return
-	}
-	event.BumpAndPublishSessionRevisionSync(
-		ctx,
-		o.td.Sessions,
-		o.td.Pipeline.Bus,
-		sessionID,
-		runID,
-		turnID,
-		event.EnvelopeSourceFromContext(ctx),
-		o.lg,
-	)
+	o.eventPublisher.BumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, turnID)
 }
 
 // notifySessionRevisionSync notifies Web of the current revision without incrementing (durable resume).
 func (o *ChatOrchestrator) notifySessionRevisionSync(ctx context.Context, sessionID, runID, turnID string) {
-	if o == nil || o.td.Sessions == nil || o.td.Pipeline.Bus == nil {
-		return
-	}
-	event.NotifySessionRevisionSync(
-		ctx,
-		o.td.Sessions,
-		o.td.Pipeline.Bus,
-		sessionID,
-		runID,
-		turnID,
-		event.EnvelopeSourceFromContext(ctx),
-	)
+	o.eventPublisher.NotifySessionRevisionSync(ctx, sessionID, runID, turnID)
 }
 
 // buildUserMessage constructs a trpcmodel.Message from content and attachment IDs.
@@ -1118,102 +1083,34 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 
 // recordSessionTurn records a completed agent turn.
 func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
-	if o == nil || o.td.Sessions == nil {
-		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	preview := strutil.ProtoPreview(contentPreview, 200)
-	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {
-		_, err := o.td.Sessions.UpdateTurn(ctx, turnID, biz.SessionTurnUpdateFields{
-			Status:              ptrString("completed"),
-			EndedAt:             ptrString(now),
-			UserMessageID:       ptrString(userMsgID),
-			AssistantMessageID:  ptrString(assistantMsgID),
-			OwnerType:           ptrString("agent"),
-			AgentID:             ptrString(ag.ID),
-			InputTokens:         ptrInt(promptTok),
-			OutputTokens:        ptrInt(completionTok),
-			TotalTokens:         ptrInt(promptTok + completionTok),
-			ModelCallCount:      ptrInt(1),
-			FinalProvider:       ptrString(prov),
-			FinalModel:          ptrString(mod),
-			FinalContentPreview: ptrString(preview),
-		})
-		if err != nil {
-			o.lg.Warn("会话轮次更新失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Str("turn_id", turnID), loggateway.Err(err))
-		}
-		return
-	}
-	turn := biz.SessionTurn{
-		SessionID:           sessionID,
-		UserMessageID:       userMsgID,
-		AssistantMessageID:  assistantMsgID,
-		OwnerType:           "agent",
-		AgentID:             ag.ID,
-		Status:              "completed",
-		StartedAt:           now,
-		EndedAt:             now,
-		InputTokens:         promptTok,
-		OutputTokens:        completionTok,
-		TotalTokens:         promptTok + completionTok,
-		ModelCallCount:      1,
-		FinalProvider:       prov,
-		FinalModel:          mod,
-		FinalContentPreview: preview,
-	}
-	if _, err := o.td.Sessions.CreateTurn(ctx, turn); err != nil {
-		o.lg.Warn("会话轮次记录失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
-	}
+	o.turnMetrics.RecordSessionTurn(ctx, SessionTurnRecordParams{
+		SessionID:      sessionID,
+		OwnerType:      "agent",
+		OwnerID:        ag.ID,
+		UserMsgID:      userMsgID,
+		AssistantMsgID: assistantMsgID,
+		Provider:       prov,
+		Model:          mod,
+		PromptTok:      promptTok,
+		CompletionTok:  completionTok,
+		ContentPreview: contentPreview,
+	})
 }
 
 // recordTeamSessionTurn records a completed team turn.
 func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
-	if o == nil || o.td.Sessions == nil {
-		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	preview := strutil.ProtoPreview(contentPreview, 200)
-	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {
-		_, err := o.td.Sessions.UpdateTurn(ctx, turnID, biz.SessionTurnUpdateFields{
-			Status:              ptrString("completed"),
-			EndedAt:             ptrString(now),
-			UserMessageID:       ptrString(userMsgID),
-			AssistantMessageID:  ptrString(assistantMsgID),
-			OwnerType:           ptrString("team"),
-			TeamID:              ptrString(teamID),
-			InputTokens:         ptrInt(promptTok),
-			OutputTokens:        ptrInt(completionTok),
-			TotalTokens:         ptrInt(promptTok + completionTok),
-			ModelCallCount:      ptrInt(1),
-			FinalProvider:       ptrString(prov),
-			FinalModel:          ptrString(mod),
-			FinalContentPreview: ptrString(preview),
-		})
-		if err != nil {
-			o.lg.Warn("团队会话轮次更新失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Str("turn_id", turnID), loggateway.Err(err))
-		}
-		return
-	}
-	turn := biz.SessionTurn{
-		SessionID:           sessionID,
-		UserMessageID:       userMsgID,
-		AssistantMessageID:  assistantMsgID,
-		OwnerType:           "team",
-		TeamID:              teamID,
-		Status:              "completed",
-		StartedAt:           now,
-		EndedAt:             now,
-		InputTokens:         promptTok,
-		OutputTokens:        completionTok,
-		TotalTokens:         promptTok + completionTok,
-		ModelCallCount:      1,
-		FinalProvider:       prov,
-		FinalModel:          mod,
-		FinalContentPreview: preview,
-	}
-	if _, err := o.td.Sessions.CreateTurn(ctx, turn); err != nil {
-		o.lg.Warn("会话轮次记录失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
-	}
+	o.turnMetrics.RecordSessionTurn(ctx, SessionTurnRecordParams{
+		SessionID:      sessionID,
+		OwnerType:      "team",
+		OwnerID:        teamID,
+		UserMsgID:      userMsgID,
+		AssistantMsgID: assistantMsgID,
+		Provider:       prov,
+		Model:          mod,
+		PromptTok:      promptTok,
+		CompletionTok:  completionTok,
+		ContentPreview: contentPreview,
+	})
 }
 
 // recordTurnUsage records token usage for a turn.
@@ -1225,18 +1122,8 @@ func (o *ChatOrchestrator) recordTurnUsage(
 	latency time.Duration,
 	errMsg string,
 ) {
-	if o == nil || o.usage == nil {
-		return
-	}
-	meta := "{}"
-	if emitter != nil {
-		meta = emitter.MetadataJSON()
-	}
-	traceID := ""
-	if emitter != nil {
-		traceID = emitter.TraceID()
-	}
-	if err := o.usage.RecordTurnUsage(ctx, biz.TurnUsageInput{
+	o.turnMetrics.RecordTurnUsage(ctx, TurnUsageParams{
+		Emitter:       emitter,
 		SessionID:     sessionID,
 		RunID:         runID,
 		AgentKey:      agentKey,
@@ -1248,16 +1135,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 		CompletionTok: completionTok,
 		Latency:       latency,
 		ErrMsg:        errMsg,
-		MetadataJSON:  meta,
-		TraceID:       traceID,
-	}); err != nil && emitter != nil {
-		emitter.LogError("chat.usage_record", "用量落库失败",
-			event.P("error", err.Error()),
-			event.P("run_id", runID),
-			event.P("usage_kind", biz.UsageKindChatTurn),
-			event.P("status", status),
-		)
-	}
+	})
 }
 
 // patchSessionContextUsage updates session context usage after a turn.

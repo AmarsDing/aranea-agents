@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 
@@ -70,7 +71,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			ToolKey:      toolKey,
 			AgentID:      h.ag.ID,
 			Status:       "blocked",
-			ErrorCode:    "confirmation_denied",
+			ErrorCode:    event.ErrorCodeConfirmationDenied,
 			ErrorMessage: "user denied tool confirmation",
 			InputPreview: previewFromToolArgs(args.Arguments),
 			StartedAt:    time.Now().UTC().Format(time.RFC3339),
@@ -85,7 +86,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		ToolKey:      toolKey,
 		AgentID:      h.ag.ID,
 		Status:       "blocked",
-		ErrorCode:    "confirmation_required",
+		ErrorCode:    event.ErrorCodeConfirmationRequired,
 		ErrorMessage: "tool requires user confirmation before execution",
 		InputPreview: previewFromToolArgs(args.Arguments),
 		StartedAt:    time.Now().UTC().Format(time.RFC3339),

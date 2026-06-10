@@ -82,6 +82,10 @@ const (
 	EnvelopeTypeSkillHealthChanged          EnvelopeType = "skill.health_changed"
 	EnvelopeTypeSkillEvolutionProposed      EnvelopeType = "skill.evolution_proposed"
 
+	// Orchestration evolution events (DQ-score-driven closed loop)
+	EnvelopeTypeOrchestrationEvolutionSuggested EnvelopeType = "orchestration.evolution_suggested"
+	EnvelopeTypeOrchestrationCacheHit           EnvelopeType = "orchestration.cache_hit"
+
 	// Monitor self-healing events
 	EnvelopeTypeMonitorAutoHealed           EnvelopeType = "monitor.auto_healed"
 	EnvelopeTypeMonitorSelfCheckCompleted   EnvelopeType = "monitor.self_check_completed"
@@ -154,6 +158,30 @@ type EnvelopeToolCall struct {
 	AgentName    string `json:"agent_name,omitempty"`
 	RunID        string `json:"run_id,omitempty"`
 	TraceID      string `json:"trace_id,omitempty"`
+}
+
+// EnvelopeToolCall error_code constants.
+const (
+	ErrorCodeToolTimeout          = "tool_timeout"
+	ErrorCodeToolError            = "tool_error"
+	ErrorCodeConfirmationRequired = "confirmation_required"
+	ErrorCodeConfirmationDenied   = "confirmation_denied"
+)
+
+// ValidErrorCodes is the set of allowed error_code values for EnvelopeToolCall.
+var ValidErrorCodes = map[string]bool{
+	ErrorCodeToolTimeout:          true,
+	ErrorCodeToolError:            true,
+	ErrorCodeConfirmationRequired: true,
+	ErrorCodeConfirmationDenied:   true,
+}
+
+// ValidateErrorCode ensures ErrorCode is one of the known values.
+// Unknown codes are replaced with the generic ErrorCodeToolError fallback.
+func (e *EnvelopeToolCall) ValidateErrorCode() {
+	if e.ErrorCode != "" && !ValidErrorCodes[e.ErrorCode] {
+		e.ErrorCode = ErrorCodeToolError
+	}
 }
 
 type EnvelopeStateDelta struct {
@@ -329,6 +357,7 @@ func init() {
 		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted,
 		EnvelopeTypeButlerOrchestrationFailed,
 		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed,
+		EnvelopeTypeOrchestrationEvolutionSuggested, EnvelopeTypeOrchestrationCacheHit,
 		// Chat-visible execution progress (LLM invoke, intent pass, tool dispatch, etc.)
 		// P0: covers the 5-15s silent wait. See proposal-execution-progress-inline.md.
 		EnvelopeTypeExecutionProgress,

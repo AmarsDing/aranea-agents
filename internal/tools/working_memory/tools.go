@@ -325,7 +325,7 @@ func NewListTool() trpctool.Tool {
 type WriteInput struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path to write to,required"`
 	Value     string `json:"value" jsonschema:"description=The value to store,required"`
-	FieldKind string `json:"field_kind" jsonschema:"description=The kind of field: string|number|boolean|json|reference|markdown|decision|artifact|progress|constraint"`
+	FieldKind string `json:"field_kind" jsonschema:"description=The kind of field: string (plain text), number (numeric value), boolean (true/false), json (structured data), reference (pointer to another resource), markdown (rich text), decision (chosen option), artifact (file or output path), progress (completion status), constraint (requirement or limitation)"`
 	Pinned    bool   `json:"pinned" jsonschema:"description=Whether to pin this field to the prompt"`
 }
 
@@ -396,7 +396,7 @@ func NewWriteTool() trpctool.Tool {
 type PatchField struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path,required"`
 	Value     string `json:"value" jsonschema:"description=The value to store,required"`
-	FieldKind string `json:"field_kind" jsonschema:"description=The kind of field: string|number|boolean|json|reference|markdown|decision|artifact|progress|constraint"`
+	FieldKind string `json:"field_kind" jsonschema:"description=The kind of field: string (plain text), number (numeric value), boolean (true/false), json (structured data), reference (pointer to another resource), markdown (rich text), decision (chosen option), artifact (file or output path), progress (completion status), constraint (requirement or limitation)"`
 	Pinned    bool   `json:"pinned" jsonschema:"description=Whether to pin this field to the prompt"`
 }
 

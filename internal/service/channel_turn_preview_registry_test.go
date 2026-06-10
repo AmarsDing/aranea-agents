@@ -45,19 +45,19 @@ func TestTurnPreviewRegistry_SetRunID(t *testing.T) {
 }
 
 func TestClassifyChannelTurnError_taxonomy(t *testing.T) {
-	if classifyChannelTurnError(turnBusyError()) != channelTurnErrBusy {
+	if classifyChannelTurnError(turnBusyError()) != biz.ChannelTurnErrBusy {
 		t.Fatal("busy")
 	}
-	if classifyChannelTurnError(errors.New("429 Too Many Requests")) != channelTurnErrRateLimit {
+	if classifyChannelTurnError(errors.New("429 Too Many Requests")) != biz.ChannelTurnErrRateLimit {
 		t.Fatal("rate limit")
 	}
-	if classifyChannelTurnError(errors.New("maximum context length exceeded")) != channelTurnErrContextOverflow {
+	if classifyChannelTurnError(errors.New("maximum context length exceeded")) != biz.ChannelTurnErrContextOverflow {
 		t.Fatal("overflow")
 	}
-	if formatChannelTurnErrorMessage(errors.New("429 Too Many Requests")) != channelTurnErrorRateLimitMsg {
+	if formatChannelTurnErrorMessage(errors.New("429 Too Many Requests")) != biz.ChannelTurnErrorRateLimitMsg {
 		t.Fatal("rate limit message")
 	}
-	if formatChannelTurnErrorMessage(errors.New("maximum context length exceeded")) != channelTurnErrorContextOverflow {
+	if formatChannelTurnErrorMessage(errors.New("maximum context length exceeded")) != biz.ChannelTurnErrorContextOverflowMsg {
 		t.Fatal("overflow message")
 	}
 }

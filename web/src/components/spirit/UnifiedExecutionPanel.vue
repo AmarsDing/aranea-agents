@@ -4,7 +4,7 @@
     <div class="uep-section">
       <div class="uep-section__header" role="button" tabindex="0" @click="taskBreakdownOpen = !taskBreakdownOpen" @keydown.enter="taskBreakdownOpen = !taskBreakdownOpen">
         <q-icon name="format_list_numbered" size="16px" class="uep-section__icon" />
-        <span class="uep-section__title">任务拆解</span>
+        <span class="uep-section__title">{{ t('chat.execution.taskBreakdown') }}</span>
         <span v-if="taskRows.length > 0" class="uep-section__badge">{{ taskRows.length }}</span>
         <q-icon :name="taskBreakdownOpen ? 'expand_less' : 'expand_more'" size="16px" class="uep-section__arrow" />
       </div>
@@ -20,7 +20,7 @@
             </span>
           </div>
         </template>
-        <div v-else class="uep-empty">暂无任务</div>
+        <div v-else class="uep-empty">{{ t('chat.execution.noTasks') }}</div>
       </div>
     </div>
 
@@ -31,7 +31,7 @@
     <div class="uep-section">
       <div class="uep-section__header" role="button" tabindex="0" @click="dependenciesOpen = !dependenciesOpen" @keydown.enter="dependenciesOpen = !dependenciesOpen">
         <q-icon name="account_tree" size="16px" class="uep-section__icon" />
-        <span class="uep-section__title">依赖关系</span>
+        <span class="uep-section__title">{{ t('chat.execution.dependencies') }}</span>
         <q-icon :name="dependenciesOpen ? 'expand_less' : 'expand_more'" size="16px" class="uep-section__arrow" />
       </div>
       <div v-if="dependenciesOpen" class="uep-section__body">
@@ -46,7 +46,7 @@
             </div>
           </div>
         </template>
-        <div v-else class="uep-empty">无依赖关系</div>
+        <div v-else class="uep-empty">{{ t('chat.execution.noDependencies') }}</div>
       </div>
     </div>
 
@@ -57,7 +57,7 @@
     <div class="uep-section">
       <div class="uep-section__header" role="button" tabindex="0" @click="teamProgressOpen = !teamProgressOpen" @keydown.enter="teamProgressOpen = !teamProgressOpen">
         <q-icon name="groups" size="16px" class="uep-section__icon" />
-        <span class="uep-section__title">团队进度</span>
+        <span class="uep-section__title">{{ t('chat.execution.teamProgress') }}</span>
         <span v-if="teams.length > 0" class="uep-section__badge">{{ teams.length }}</span>
         <q-icon :name="teamProgressOpen ? 'expand_less' : 'expand_more'" size="16px" class="uep-section__arrow" />
       </div>
@@ -82,7 +82,7 @@
             </div>
           </div>
         </template>
-        <div v-else class="uep-empty">暂无团队</div>
+        <div v-else class="uep-empty">{{ t('chat.execution.noTeams') }}</div>
       </div>
     </div>
   </div>
@@ -90,10 +90,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SpiritTeam, TaskNode } from '../../features/spirit/types';
 import type { PlanEntry } from '../../features/chat/agentTreeTypes';
 import { spiritTeamStatusToLabel, STATUS_LABEL_CONFIG } from '../../features/spirit/spiritUi';
 import TeamProgressCard from './TeamProgressCard.vue';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   teams: SpiritTeam[];
@@ -170,7 +173,7 @@ const taskRows = computed<TaskRow[]>(() => {
         taskName: tn.taskName,
         teamLabel: team?.teamName ?? null,
         isRunning: team?.status === 'running',
-        statusText: team ? teamStatusLabel(team.status) : '等待中',
+        statusText: team ? teamStatusLabel(team.status) : t('chat.execution.statusPending'),
       };
     });
   }
@@ -180,17 +183,17 @@ const taskRows = computed<TaskRow[]>(() => {
 
 function planEntryStatusLabel(status: PlanEntry['status']): string {
   const labels: Record<string, string> = {
-    pending: '等待中',
-    running: '执行中',
-    completed: '已完成',
-    failed: '失败',
+    pending: t('chat.execution.statusPending'),
+    running: t('chat.execution.statusRunning'),
+    completed: t('chat.execution.statusCompleted'),
+    failed: t('chat.execution.statusFailed'),
   };
-  return labels[status] ?? '等待中';
+  return labels[status] ?? t('chat.execution.statusPending');
 }
 
 function teamStatusLabel(status: SpiritTeam['status']): string {
   const label = spiritTeamStatusToLabel(status);
-  return STATUS_LABEL_CONFIG[label]?.text ?? '等待中';
+  return STATUS_LABEL_CONFIG[label]?.text ?? t('chat.execution.statusPending');
 }
 
 // ── Section 2: Dependencies (DAG flow) ──
@@ -279,7 +282,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     align-items: center
     justify-content: center
     border-radius: 8px
-    background: rgba(91, 138, 245, 0.12)
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent)
     color: var(--color-primary)
     padding: 0 4px
 
@@ -312,7 +315,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     width: 18px
     height: 18px
     border-radius: 50%
-    background: rgba(91, 138, 245, 0.12)
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent)
     color: var(--color-primary)
     font-size: 10px
     font-weight: 600
@@ -385,7 +388,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     opacity: 0.5
 
   &--running
-    background: rgba(91, 138, 245, 0.06)
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent)
 
   &--waiting
     // default

@@ -8,11 +8,11 @@
       </div>
       <div v-if="runningTeamCount > 0" class="spirit-status-bar__item spirit-status-bar__item--clickable" @click="emit('click-running')">
         <q-icon name="bolt" size="14px" :style="{ color: 'var(--color-accent)' }" />
-        <span>{{ runningTeamCount }} 运行中</span>
+        <span>{{ t('spirit.runningCount', { count: runningTeamCount }) }}</span>
       </div>
       <div v-if="interruptedTeamCount > 0" class="spirit-status-bar__item spirit-status-bar__item--clickable" @click="emit('click-interrupted')">
         <q-icon name="pause_circle" size="14px" :style="{ color: 'var(--color-warning)' }" />
-        <span>{{ interruptedTeamCount }} 已中断</span>
+        <span>{{ t('spirit.interruptedCount', { count: interruptedTeamCount }) }}</span>
       </div>
       <div v-if="checkpointStep" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="flag" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
@@ -20,7 +20,7 @@
       </div>
       <div v-if="quotaMax > 0" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="bar_chart" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
-        <span>{{ quotaUsed }}/{{ quotaMax }} 配额</span>
+        <span>{{ t('spirit.quotaLabel', { used: quotaUsed, max: quotaMax }) }}</span>
         <q-linear-progress
           :value="quotaUsed / quotaMax"
           size="3px"
@@ -36,7 +36,7 @@
       <div v-if="dqScore != null" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
         <q-icon name="verified" size="14px" :style="{ color: dqScoreColor }" />
         <span :style="{ color: dqScoreColor }">DQ: {{ dqScore.toFixed(2) }}</span>
-        <q-tooltip :delay="300">部署质量评分</q-tooltip>
+        <q-tooltip :delay="300">{{ t('spirit.dqScoreTooltip') }}</q-tooltip>
       </div>
       <div v-if="lastEvent" class="spirit-status-bar__item spirit-status-bar__last-event spirit-status-bar__item--clickable" @click="emit('click-last-event')">
         <q-icon
@@ -52,7 +52,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { COMPLEXITY_CONFIG, dqScoreColor as getDqScoreColor, formatTokenCount } from '../../features/spirit/spiritUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   runningTeamCount: number;

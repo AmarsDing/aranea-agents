@@ -86,6 +86,9 @@ type MemoryCfg struct {
 	L4StrategyInject       bool   `json:"l4_strategy_inject,omitempty"`
 	L4DecayIntervalHours   int    `json:"l4_decay_interval_hours,omitempty"`
 	L4DecayOverridesJSON   string `json:"l4_decay_overrides_json,omitempty"`
+
+	// ForgetConfigJSON stores the memory butler's forget policy configuration.
+	ForgetConfigJSON string `json:"forget_config_json,omitempty"`
 }
 
 // ToolsCfg holds tool execution and retry settings.
@@ -108,6 +111,8 @@ type ToolsCfg struct {
 	CircuitBreakerOverridesJSON   string `json:"tools_circuit_breaker_overrides_json,omitempty"`
 	CommandSafetyEnabled          bool   `json:"tools_command_safety_enabled,omitempty"`
 	DeferredJSON                  string `json:"tools_deferred_json,omitempty"`
+	// ToolWeightJSON stores tool weight analysis results for prompt priority hints.
+	ToolWeightJSON string `json:"tool_weight_json,omitempty"`
 }
 
 // SkillsCfg holds skill loading and intent-pass settings.
@@ -120,6 +125,17 @@ type SkillsCfg struct {
 // CodeExecutorCfg holds per-agent code execution backend selection.
 type CodeExecutorCfg struct {
 	Type string `json:"code_executor_type,omitempty"` // local | docker | e2b | container
+}
+
+// RalphLoopCfg holds Ralph Loop verification-cycle settings.
+type RalphLoopCfg struct {
+	MaxIterations        int    `json:"ralph_loop_max_iterations,omitempty"`
+	CompletionPromise    string `json:"ralph_loop_completion_promise,omitempty"`
+	VerifyCommand        string `json:"ralph_loop_verify_command,omitempty"`
+	VerifyTimeoutSeconds int    `json:"ralph_loop_verify_timeout_seconds,omitempty"`
+	PromiseTagOpen       string `json:"ralph_loop_promise_tag_open,omitempty"`
+	PromiseTagClose      string `json:"ralph_loop_promise_tag_close,omitempty"`
+	VerifyWorkDir        string `json:"ralph_loop_verify_work_dir,omitempty"`
 }
 
 // PluginsCfg holds plugin runtime settings (reserved for future fields).
@@ -151,6 +167,8 @@ type EvolutionCfg struct {
 	EvoProposalTTLDays                int     `json:"evo_proposal_ttl_days,omitempty"`
 	EvoPersonaMaxChars                int     `json:"evo_persona_max_chars,omitempty"`
 	EvoSystemPromptMaxAppends         int     `json:"evo_system_prompt_max_appends,omitempty"`
+	// DreamSnapshotJSON stores dream_cycle execution snapshots for rollback.
+	DreamSnapshotJSON string `json:"dream_snapshot_json,omitempty"`
 }
 
 // ContextCfg holds context-compaction, output-schema, model-selector, and planner settings.
@@ -244,6 +262,7 @@ func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
 	s.L4StrategyInject = cfg.L4StrategyInject
 	s.L4DecayIntervalHours = cfg.L4DecayIntervalHours
 	s.L4DecayOverridesJSON = cfg.L4DecayOverridesJSON
+	s.ForgetConfigJSON = cfg.ForgetConfigJSON
 }
 
 func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {
@@ -265,6 +284,7 @@ func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {
 	s.ToolsCircuitBreakerOverridesJSON = cfg.CircuitBreakerOverridesJSON
 	s.ToolsDeferredJSON = cfg.DeferredJSON
 	s.ToolsCommandSafetyEnabled = cfg.CommandSafetyEnabled
+	s.ToolWeightJSON = cfg.ToolWeightJSON
 }
 
 func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
@@ -310,6 +330,7 @@ func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
 	s.EvoProposalTTLDays = cfg.EvoProposalTTLDays
 	s.EvoPersonaMaxChars = cfg.EvoPersonaMaxChars
 	s.EvoSystemPromptMaxAppends = cfg.EvoSystemPromptMaxAppends
+	s.DreamSnapshotJSON = cfg.DreamSnapshotJSON
 }
 
 func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
@@ -330,4 +351,79 @@ func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.PlannerKind = cfg.PlannerKind
 	s.PlannerConfigJSON = cfg.PlannerConfigJSON
 	s.VerificationTruncateChars = cfg.VerificationTruncateChars
+}
+
+func (s *AgentRuntimeSettings) ApplyRalphLoop(cfg RalphLoopCfg) {
+	s.RalphLoopMaxIterations = cfg.MaxIterations
+	s.RalphLoopCompletionPromise = cfg.CompletionPromise
+	s.RalphLoopVerifyCommand = cfg.VerifyCommand
+	s.RalphLoopVerifyTimeoutSeconds = cfg.VerifyTimeoutSeconds
+	s.RalphLoopPromiseTagOpen = cfg.PromiseTagOpen
+	s.RalphLoopPromiseTagClose = cfg.PromiseTagClose
+	s.RalphLoopVerifyWorkDir = cfg.VerifyWorkDir
+}
+
+// --- Sub-domain read interfaces ---
+// Consumers should depend on the smallest interface they need,
+// not the entire AgentRuntimeSettings struct.
+
+// IdentityReader provides read access to identity/routing settings.
+type IdentityReader interface {
+	GetIdentity() IdentityCfg
+}
+
+// ReasoningReader provides read access to reasoning strategy settings.
+type ReasoningReader interface {
+	GetReasoning() ReasoningCfg
+}
+
+// MemoryReader provides read access to memory (L0-L4) settings.
+type MemoryReader interface {
+	GetMemory() MemoryCfg
+}
+
+// ToolsReader provides read access to tool configuration settings.
+type ToolsReader interface {
+	GetTools() ToolsCfg
+}
+
+// SkillsReader provides read access to skill and code executor settings.
+type SkillsReader interface {
+	GetSkills() SkillsCfg
+	GetCodeExecutor() CodeExecutorCfg
+}
+
+// EvolutionReader provides read access to evolution, ralph loop, and dream settings.
+type EvolutionReader interface {
+	GetEvolution() EvolutionCfg
+	GetRalphLoop() RalphLoopCfg
+}
+
+// ContextReader provides read access to context compression and planner settings.
+type ContextReader interface {
+	GetContext() ContextCfg
+}
+
+// RuntimeSettingsReader is the aggregate read interface combining all sub-domains.
+// Use this when you need access to multiple sub-domains.
+type RuntimeSettingsReader interface {
+	IdentityReader
+	ReasoningReader
+	MemoryReader
+	ToolsReader
+	SkillsReader
+	EvolutionReader
+	ContextReader
+}
+
+// RuntimeSettingsWriter is the aggregate write interface for all sub-domains.
+type RuntimeSettingsWriter interface {
+	ApplyIdentity(IdentityCfg)
+	ApplyReasoning(ReasoningCfg)
+	ApplyMemory(MemoryCfg)
+	ApplyTools(ToolsCfg)
+	ApplySkills(SkillsCfg)
+	ApplyEvolution(EvolutionCfg)
+	ApplyRalphLoop(RalphLoopCfg)
+	ApplyContext(ContextCfg)
 }

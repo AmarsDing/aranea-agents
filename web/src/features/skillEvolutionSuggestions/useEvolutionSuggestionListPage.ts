@@ -1,3 +1,8 @@
+/**
+ * @deprecated Use `useSkillEvolutionStore` from `stores/skillEvolution` directly instead.
+ * This composable wraps the deprecated `useSkillEvolutionSuggestionStore` which only
+ * handles skill-level suggestions. The unified store supports both skill and agent types.
+ */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useSkillEvolutionSuggestionStore } from '../../stores/skillEvolutionSuggestion';
 import { useAuthStore } from '../../stores/auth';

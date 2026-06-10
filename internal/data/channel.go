@@ -2,8 +2,9 @@ package data
 
 import (
 	"context"
-	"errors"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -18,10 +19,15 @@ type channelRepo struct {
 	data *Data
 }
 
-var _ biz.ChannelRepo = (*channelRepo)(nil)
+var (
+	_ biz.ChannelReader         = (*channelRepo)(nil)
+	_ biz.ChannelWriter         = (*channelRepo)(nil)
+	_ biz.ChannelCredentialRepo = (*channelRepo)(nil)
+	_ biz.ChannelDeliveryRepo   = (*channelRepo)(nil)
+)
 
-// NewChannelRepo implements biz.ChannelRepo (legacy channels / channel_* tables).
-func NewChannelRepo(d *Data) biz.ChannelRepo {
+// NewChannelRepo implements channel sub-interfaces (legacy channels / channel_* tables).
+func NewChannelRepo(d *Data) *channelRepo {
 	return &channelRepo{data: d}
 }
 
@@ -61,7 +67,7 @@ func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
 func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Channel{}, errors.New("channel id is required")
+		return biz.Channel{}, kerrors.BadRequest("CHANNEL", "channel id is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(
@@ -78,7 +84,7 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return biz.Channel{}, errors.New("channel key is required")
+		return biz.Channel{}, kerrors.BadRequest("CHANNEL", "channel key is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(
@@ -137,18 +143,18 @@ func (r *channelRepo) Update(ctx context.Context, row biz.Channel) (biz.Channel,
 }
 
 func (r *channelRepo) Delete(ctx context.Context, id string) error {
-	now := nowRFC3339()
-	_, err := r.data.RW().Write(ctx).PlatformChannel.UpdateOneID(strings.TrimSpace(id)).
-		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetUpdatedAt(now).
-		Save(ctx)
-	if err != nil {
-		return err
-	}
-	// Cascade: clean up related records after successful soft-delete
-	cascadeDeleteByChannel(ctx, r.data, strings.TrimSpace(id))
-	return nil
+	cleanID := strings.TrimSpace(id)
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		now := nowRFC3339()
+		if _, err := r.data.RW().Write(txCtx).PlatformChannel.UpdateOneID(cleanID).
+			SetDeletedAt(now).
+			SetStatus("deleted").
+			SetUpdatedAt(now).
+			Save(txCtx); err != nil {
+			return err
+		}
+		return cascadeDeleteByChannel(txCtx, r.data, cleanID)
+	})
 }
 
 func credentialEntToBiz(e *ent.PlatformChannelCredential) biz.ChannelCredential {
@@ -187,14 +193,8 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 	cred.ChannelID = strings.TrimSpace(cred.ChannelID)
 	cred.CredentialKey = strings.TrimSpace(cred.CredentialKey)
 	if cred.ID == "" || cred.ChannelID == "" || cred.CredentialKey == "" {
-		return biz.ChannelCredential{}, errors.New("id, channel_id and credential_key are required")
+		return biz.ChannelCredential{}, kerrors.BadRequest("CHANNEL", "id, channel_id and credential_key are required")
 	}
-	existing, err := r.data.RW().Read(ctx).PlatformChannelCredential.Query().
-		Where(
-			platformchannelcredential.ChannelIDEQ(cred.ChannelID),
-			platformchannelcredential.CredentialKeyEQ(cred.CredentialKey),
-		).
-		Only(ctx)
 	now := nowRFC3339()
 	if cred.Status == "" {
 		cred.Status = "active"
@@ -202,37 +202,32 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 	if cred.MetadataJSON == "" {
 		cred.MetadataJSON = "{}"
 	}
-	if ent.IsNotFound(err) {
-		if cred.CreatedAt == "" {
-			cred.CreatedAt = now
-		}
-		cred.UpdatedAt = now
-		e, err := r.data.RW().Write(ctx).PlatformChannelCredential.Create().
-			SetID(cred.ID).
-			SetChannelID(cred.ChannelID).
-			SetCredentialKey(cred.CredentialKey).
-			SetStatus(cred.Status).
-			SetSecretRef(cred.SecretRef).
-			SetMetadataJSON(cred.MetadataJSON).
-			SetCreatedAt(cred.CreatedAt).
-			SetUpdatedAt(cred.UpdatedAt).
-			SetDeletedAt("").
-			Save(ctx)
-		if err != nil {
-			return biz.ChannelCredential{}, err
-		}
-		return credentialEntToBiz(e), nil
+	if cred.CreatedAt == "" {
+		cred.CreatedAt = now
 	}
-	if err != nil {
-		return biz.ChannelCredential{}, err
-	}
-	e, err := r.data.RW().Write(ctx).PlatformChannelCredential.UpdateOneID(existing.ID).
+	cred.UpdatedAt = now
+
+	id, err := r.data.RW().Write(ctx).PlatformChannelCredential.Create().
+		SetID(cred.ID).
+		SetChannelID(cred.ChannelID).
+		SetCredentialKey(cred.CredentialKey).
 		SetStatus(cred.Status).
 		SetSecretRef(cred.SecretRef).
 		SetMetadataJSON(cred.MetadataJSON).
-		SetUpdatedAt(now).
+		SetCreatedAt(cred.CreatedAt).
+		SetUpdatedAt(cred.UpdatedAt).
 		SetDeletedAt("").
-		Save(ctx)
+		OnConflictColumns(platformchannelcredential.FieldChannelID, platformchannelcredential.FieldCredentialKey).
+		UpdateNewValues().
+		Update(func(u *ent.PlatformChannelCredentialUpsert) {
+			u.SetIgnore(platformchannelcredential.FieldCreatedAt)
+		}).
+		ID(ctx)
+	if err != nil {
+		return biz.ChannelCredential{}, err
+	}
+	// Read back the upserted row to return consistent state
+	e, err := r.data.RW().Read(ctx).PlatformChannelCredential.Get(ctx, id)
 	if err != nil {
 		return biz.ChannelCredential{}, err
 	}
@@ -255,14 +250,15 @@ func (r *channelRepo) DeleteCredential(ctx context.Context, channelID, credentia
 
 func deliveryEntToBiz(e *ent.PlatformChannelDelivery) biz.ChannelDelivery {
 	return biz.ChannelDelivery{
-		ID:           e.ID,
-		ChannelID:    e.ChannelID,
-		AgentID:      e.AgentID,
-		Status:       e.Status,
-		PayloadJSON:  e.PayloadJSON,
-		ErrorMessage: e.ErrorMessage,
-		CreatedAt:    e.CreatedAt,
-		UpdatedAt:    e.UpdatedAt,
+		ID:             e.ID,
+		ChannelID:      e.ChannelID,
+		AgentID:        e.AgentID,
+		IdempotencyKey: e.IdempotencyKey,
+		Status:         e.Status,
+		PayloadJSON:    e.PayloadJSON,
+		ErrorMessage:   e.ErrorMessage,
+		CreatedAt:      e.CreatedAt,
+		UpdatedAt:      e.UpdatedAt,
 	}
 }
 
@@ -301,6 +297,7 @@ func (r *channelRepo) AddDelivery(ctx context.Context, d biz.ChannelDelivery) (b
 		SetID(d.ID).
 		SetChannelID(d.ChannelID).
 		SetAgentID(strings.TrimSpace(d.AgentID)).
+		SetIdempotencyKey(strings.TrimSpace(d.IdempotencyKey)).
 		SetStatus(d.Status).
 		SetPayloadJSON(d.PayloadJSON).
 		SetErrorMessage(d.ErrorMessage).
@@ -345,4 +342,18 @@ func (r *channelRepo) UpdateDelivery(ctx context.Context, d biz.ChannelDelivery)
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
 	return err
+}
+
+func (r *channelRepo) HasDeliveryByIdempotencyKey(ctx context.Context, channelID, idempotencyKey string) (bool, error) {
+	if strings.TrimSpace(idempotencyKey) == "" {
+		return false, nil
+	}
+	count, err := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
+		Where(platformchanneldelivery.ChannelID(channelID)).
+		Where(platformchanneldelivery.IdempotencyKey(idempotencyKey)).
+		Count(ctx)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

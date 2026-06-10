@@ -82,15 +82,14 @@ type stubIngestEmbedder struct {
 	dim int
 }
 
-func (s stubIngestEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
-	out := make([]float32, s.dim)
-	return out, nil
-}
-
-func (s stubIngestEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]float32, error) {
+func (s stubIngestEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i := range texts {
 		out[i] = make([]float32, s.dim)
 	}
 	return out, nil
+}
+
+func (s stubIngestEmbedder) Dim() int {
+	return s.dim
 }

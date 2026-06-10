@@ -185,6 +185,8 @@ message MemoryFact {
   bool pii_flag = 25;
   string created_at = 26;
   string updated_at = 27;
+  double quality_score = 28;
+  string pii_types_json = 29;  // JSON array of PII type tags
 }
 
 message ListMemoryEntitiesRequest {

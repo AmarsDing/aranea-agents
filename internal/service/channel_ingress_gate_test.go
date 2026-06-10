@@ -14,7 +14,7 @@ import (
 
 func TestGateInboundBeforeTurnDeniesAccess(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
 		lg:       loggateway.NewNoop(),

@@ -1,6 +1,6 @@
 # M59: Chat UI 优化 — 开发计划
 
-> **版本**：2026-06-10 | **状态**：P0/P0.5/OBS-P0/OBS-P1/M60-P1/M60-P2/M60-P4/P1/P1.5 已完成 · 📋 P1.6 TK 批次规划中 · 📋 P2 规划中 · ✅ M69 P0/P1/P2/P3/P4 全部完成
+> **版本**：2026-06-10 | **状态**：P0/P0.5/OBS-P0/OBS-P1/M60-P1/M60-P2/M60-P4/P1/P1.5 已完成 · ✅ P1.6 TK 批次全部完成（前端 30/30 + 后端 4/4） · ✅ P2 进化闭环（5/6 完成） · ✅ M69 P0/P1/P2/P3/P4 全部完成
 > **需求**：[59-chat-ui-optimization.md](./59-chat-ui-optimization.md) · **设计**：[59-chat-ui-optimization.design.md](./59-chat-ui-optimization.design.md)
 > **合并来源**：原 M59（精灵模式 + 可观测性 + 并行编排）+ M69（时间线展示 + 团队列表修复 + useAgentBlocks 业务逻辑审查）
 
@@ -307,42 +307,42 @@ cd web && pnpm lint && pnpm test -- useAgentBlocks && pnpm build
 ### Phase P1.6 — TODO 看板 + 工具时间线（TK 批次，M59 原有）
 
 > **目标**：解决"代办管理工具多次 stuck"和"工具调用堆叠难追踪"两个痛点。
-> **状态**：📋 规划中
+> **状态**：✅ 全部完成（前端 30/30 + 后端 4/4）
 
 #### P1.6 后端
 
 | ID | 任务 | 状态 |
 |----|------|------|
-| SP-BE-27 | `todo_write` 工具调用 result 平铺 | 📋 |
-| SP-BE-28 | `stuckToolResultReason` 文案改为可配置 i18n 文案 | 📋 |
-| SP-BE-29 | `EnvelopeToolCall` `error_code` 字段校验 | 📋 |
-| SP-BE-30 | `todo_write` 工具 LLM Prompt 检查：拦截把 todos 参数错给非 todo 工具的请求（**根因修复**） | 📋 |
+| SP-BE-27 | `todo_write` 工具调用 result 平铺 | ✅ |
+| SP-BE-28 | `stuckToolResultReason` 文案改为可配置 i18n 文案 | ✅ |
+| SP-BE-29 | `EnvelopeToolCall` `error_code` 字段校验 | ✅ |
+| SP-BE-30 | `todo_write` 工具 LLM Prompt 检查：拦截把 todos 参数错给非 todo 工具的请求（**根因修复**） | ✅ |
 
 #### P1.6 前端
 
 | ID | 任务 | 状态 |
 |----|------|------|
-| TK-FE-01~02 | 类型扩展 + `useTodoBoard.ts` composable | 📋 |
-| TK-FE-03~05 | `TodoCard` / `TodoColumn` / `TodoKanbanBoard` 组件 | 📋 |
-| TK-FE-06 | `ChatMessagePanel.vue` 集成看板 | 📋 |
-| TK-FE-07 | i18n 新增键（zh-CN + en-US） | 📋 |
-| TK-FE-08 | `isStuckTool.ts` 工具函数 | 📋 |
-| TK-FE-09~12 | `useToolCallTimeline` composable + 组件 + TurnBlock 集成 | 📋 |
-| TK-FE-13~14 | `ToolStuckBadge.vue` + TaskExecutionPanel 集成 | 📋 |
-| TK-FE-15~17 | 单元测试 + 端到端验证 | 📋 |
-| **TK-FE-18** | `useUiConfigStore` + `TOOL_DISPLAY_KEY` 注入（TK-04） | 📋 |
-| **TK-FE-19** | `UiConfigToggle.vue` + ChatMessagePanel 顶部集成（TK-04） | 📋 |
-| **TK-FE-20** | `detectCodeLanguage.ts` + highlight.js 注册（TK-05） | 📋 |
-| **TK-FE-21** | `CodeBlock.vue` 组件（自动检测 + 高亮 + 复制 + 折叠）（TK-05） | 📋 |
-| **TK-FE-22** | `MarkdownView.vue` 集成 CodeBlock（TK-05） | 📋 |
-| **TK-FE-23** | 思考节点流式 + 完成态折叠细化（TK-06） | 📋 |
-| **TK-FE-24** | i18n 键补齐：`uiConfig` / `codeBlock`（TK-04/05） | 📋 |
-| **TK-FE-25** | 关闭工具时降级单测（TK-04） | 📋 |
-| **TK-FE-26** | CodeBlock 组件单测（TK-05） | 📋 |
-| **TK-FE-27** | **ThinkingArea.vue 组件（脑纹SVG+流光+半透明span+折叠按钮，v7 US-24）** | 📋 |
-| **TK-FE-28** | **UnifiedExecutionPanel.vue 组件（任务拆解+依赖关系+团队进度 单卡片纵向分区，v7 US-25）** | 📋 |
-| **TK-FE-29** | **TaskExecutionPanel.vue 集成 ThinkingArea + UnifiedExecutionPanel（v7）** | 📋 |
-| **TK-FE-30** | **TeamProgressCard 恢复/取消按钮移到卡片头部（v7 US-04）** | 📋 |
+| TK-FE-01~02 | 类型扩展 + `useTodoBoard.ts` composable | ✅ |
+| TK-FE-03~05 | `TodoCard` / `TodoColumn` / `TodoKanbanBoard` 组件 | ✅ |
+| TK-FE-06 | `ChatMessagePanel.vue` 集成看板 | ✅ |
+| TK-FE-07 | i18n 新增键（zh-CN + en-US） | ✅ |
+| TK-FE-08 | `isStuckTool.ts` 工具函数 | ✅ |
+| TK-FE-09~12 | `useToolCallTimeline` composable + 组件 + TurnBlock 集成 | ✅ |
+| TK-FE-13~14 | `ToolStuckBadge.vue` + TaskExecutionPanel 集成 | ✅ |
+| TK-FE-15~17 | 单元测试 + 端到端验证 | ✅ |
+| **TK-FE-18** | `useUiConfigStore` + `TOOL_DISPLAY_KEY` 注入（TK-04） | ✅ |
+| **TK-FE-19** | `UiConfigToggle.vue` + ChatMessagePanel 顶部集成（TK-04） | ✅ |
+| **TK-FE-20** | `detectCodeLanguage.ts` + highlight.js 注册（TK-05） | ✅ |
+| **TK-FE-21** | `CodeBlock.vue` 组件（自动检测 + 高亮 + 复制 + 折叠）（TK-05） | ✅ |
+| **TK-FE-22** | `MarkdownView.vue` 集成 CodeBlock（TK-05） | ✅ |
+| **TK-FE-23** | 思考节点流式 + 完成态折叠细化（TK-06） | ✅ |
+| **TK-FE-24** | i18n 键补齐：`uiConfig` / `codeBlock`（TK-04/05） | ✅ |
+| **TK-FE-25** | 关闭工具时降级单测（TK-04） | ✅ |
+| **TK-FE-26** | CodeBlock 组件单测（TK-05） | ✅ |
+| **TK-FE-27** | **ThinkingArea.vue 组件（脑纹SVG+流光+半透明span+折叠按钮，v7 US-24）** | ✅ |
+| **TK-FE-28** | **UnifiedExecutionPanel.vue 组件（任务拆解+依赖关系+团队进度 单卡片纵向分区，v7 US-25）** | ✅ |
+| **TK-FE-29** | **TaskExecutionPanel.vue 集成 ThinkingArea + UnifiedExecutionPanel（v7）** | ✅ |
+| **TK-FE-30** | **TeamProgressCard 恢复/取消按钮移到卡片头部（v7 US-04）** | ✅ |
 
 #### P1.6 验收标准
 
@@ -397,7 +397,12 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 
 | ID | 任务 | 状态 |
 |----|------|------|
-| SP-EVO-01~06 | Session 执行轨迹 → 技能管家 / 记忆管家 / 编排效率分析 / Agent 画像 / 知识图谱 / 失败模式分析 | 📋 |
+| SP-EVO-01 | 编排进化闭环打通 — DQ Score 低自动触发 EvolutionUsecase 生成编排优化建议 | ✅ |
+| SP-EVO-02 | Agent 能力画像 — assemble_team 按 AgentPerformance 排序 | ✅ |
+| SP-EVO-03 | 运行时指标采集埋点 — 已通过现有 ToolInvocation 表实现（无需额外埋点） | ✅ |
+| SP-EVO-04 | 编排进化闭环事件定义与发射（OrchestrationEvolutionSuggested + OrchestrationCacheHit） | ✅ |
+| SP-EVO-05 | OrchestrationCache TTL（30天）+ 命中率统计 + EvictStale | ✅ |
+| SP-EVO-06 | 记忆/技能管家与进化闭环联动 | 📋（低优先级，后续迭代） |
 
 ---
 
@@ -662,40 +667,40 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
-| 1 | SP-BE-29 | EnvelopeToolCall error_code 字段校验 | 📋 |
-| 2 | SP-BE-28 | stuckToolResultReason i18n 化 | 📋 |
-| 3 | SP-BE-27 | todo_write result 平铺 | 📋 |
-| 4 | SP-BE-30 | Prompt 检查拦截 LLM 误用工具（根因） | 📋 |
-| 5 | TK-FE-01 | 类型扩展 | 📋 |
-| 6 | TK-FE-07 | i18n 键补齐 | 📋 |
-| 7 | TK-FE-08 | isStuckTool 工具函数 | 📋 |
-| 8 | TK-FE-02 | useTodoBoard composable | 📋 |
-| 9 | TK-FE-03 | TodoCard 组件 | 📋 |
-| 10 | TK-FE-04 | TodoColumn 组件 | 📋 |
-| 11 | TK-FE-05 | TodoKanbanBoard 组件 | 📋 |
-| 12 | TK-FE-06 | ChatMessagePanel 集成看板 | 📋 |
-| 13 | TK-FE-09 | useToolCallTimeline composable | 📋 |
-| 14 | TK-FE-10 | ToolCallTimelineItem 组件 | 📋 |
-| 15 | TK-FE-11 | ToolCallTimeline 组件 | 📋 |
-| 16 | TK-FE-12 | TurnBlock/ChatMessageRow 集成时间线 | 📋 |
-| 17 | TK-FE-13 | ToolStuckBadge 组件 | 📋 |
-| 18 | TK-FE-14 | TaskExecutionPanel 集成徽章 | 📋 |
-| 19 | TK-FE-15 | composable/lib 单测 | 📋 |
-| 20 | TK-FE-16 | 组件单测 | 📋 |
-| 21 | TK-FE-17 | 端到端验证 | 📋 |
-| **22** | **TK-FE-18** | **useUiConfigStore + TOOL_DISPLAY_KEY（TK-04）** | 📋 |
-| **23** | **TK-FE-19** | **UiConfigToggle.vue + ChatMessagePanel 集成（TK-04）** | 📋 |
-| **24** | **TK-FE-20** | **detectCodeLanguage.ts + highlight.js 注册（TK-05）** | 📋 |
-| **25** | **TK-FE-21** | **CodeBlock.vue 组件（TK-05）** | 📋 |
-| **26** | **TK-FE-22** | **MarkdownView.vue 集成 CodeBlock（TK-05）** | 📋 |
-| **27** | **TK-FE-23** | **思考节点流式 + 折叠细化（TK-06）** | 📋 |
-| **28** | **TK-FE-24** | **i18n 键补齐（uiConfig/codeBlock，TK-04/05）** | 📋 |
-| **29** | **TK-FE-25** | **关闭工具降级单测（TK-04）** | 📋 |
-| **30** | **TK-FE-26** | **CodeBlock 组件单测（TK-05）** | 📋 |
-| **31** | **TK-FE-27** | **ThinkingArea.vue（脑纹SVG+流光+半透明span+折叠按钮，v7）** | 📋 |
-| **32** | **TK-FE-28** | **UnifiedExecutionPanel.vue（单卡片纵向分区，v7）** | 📋 |
-| **33** | **TK-FE-29** | **TaskExecutionPanel 集成 v7 组件** | 📋 |
-| **34** | **TK-FE-30** | **TeamProgressCard 恢复/取消按钮移到卡片头部（v7）** | 📋 |
+| 1 | SP-BE-29 | EnvelopeToolCall error_code 字段校验 | ✅ |
+| 2 | SP-BE-28 | stuckToolResultReason i18n 化 | ✅ |
+| 3 | SP-BE-27 | todo_write result 平铺 | ✅ |
+| 4 | SP-BE-30 | Prompt 检查拦截 LLM 误用工具（根因） | ✅ |
+| 5 | TK-FE-01 | 类型扩展 | ✅ |
+| 6 | TK-FE-07 | i18n 键补齐 | ✅ |
+| 7 | TK-FE-08 | isStuckTool 工具函数 | ✅ |
+| 8 | TK-FE-02 | useTodoBoard composable | ✅ |
+| 9 | TK-FE-03 | TodoCard 组件 | ✅ |
+| 10 | TK-FE-04 | TodoColumn 组件 | ✅ |
+| 11 | TK-FE-05 | TodoKanbanBoard 组件 | ✅ |
+| 12 | TK-FE-06 | ChatMessagePanel 集成看板 | ✅ |
+| 13 | TK-FE-09 | useToolCallTimeline composable | ✅ |
+| 14 | TK-FE-10 | ToolCallTimelineItem 组件 | ✅ |
+| 15 | TK-FE-11 | ToolCallTimeline 组件 | ✅ |
+| 16 | TK-FE-12 | TurnBlock/ChatMessageRow 集成时间线 | ✅ |
+| 17 | TK-FE-13 | ToolStuckBadge 组件 | ✅ |
+| 18 | TK-FE-14 | TaskExecutionPanel 集成徽章 | ✅ |
+| 19 | TK-FE-15 | composable/lib 单测 | ✅ |
+| 20 | TK-FE-16 | 组件单测 | ✅ |
+| 21 | TK-FE-17 | 端到端验证 | ✅ |
+| **22** | **TK-FE-18** | **useUiConfigStore + TOOL_DISPLAY_KEY（TK-04）** | ✅ |
+| **23** | **TK-FE-19** | **UiConfigToggle.vue + ChatMessagePanel 集成（TK-04）** | ✅ |
+| **24** | **TK-FE-20** | **detectCodeLanguage.ts + highlight.js 注册（TK-05）** | ✅ |
+| **25** | **TK-FE-21** | **CodeBlock.vue 组件（TK-05）** | ✅ |
+| **26** | **TK-FE-22** | **MarkdownView.vue 集成 CodeBlock（TK-05）** | ✅ |
+| **27** | **TK-FE-23** | **思考节点流式 + 折叠细化（TK-06）** | ✅ |
+| **28** | **TK-FE-24** | **i18n 键补齐（uiConfig/codeBlock，TK-04/05）** | ✅ |
+| **29** | **TK-FE-25** | **关闭工具降级单测（TK-04）** | ✅ |
+| **30** | **TK-FE-26** | **CodeBlock 组件单测（TK-05）** | ✅ |
+| **31** | **TK-FE-27** | **ThinkingArea.vue（脑纹SVG+流光+半透明span+折叠按钮，v7）** | ✅ |
+| **32** | **TK-FE-28** | **UnifiedExecutionPanel.vue（单卡片纵向分区，v7）** | ✅ |
+| **33** | **TK-FE-29** | **TaskExecutionPanel 集成 v7 组件** | ✅ |
+| **34** | **TK-FE-30** | **TeamProgressCard 恢复/取消按钮移到卡片头部（v7）** | ✅ |
 
 ### P1.6 任务分层（按依赖深度）
 
@@ -890,6 +895,102 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 - 嵌套深度受 `MaxSessionDepth=2` 约束（精灵 → 团队 → 子 agent）
 - 已完成回合默认展开，让用户直达最终答案（修复 F-19）
 - 折叠策略：thinking/action 完成后折叠，task/reply/end 始终展开
+
+### 2026-06-10 P1.6 审查修复记录
+
+> **修复范围**：aranea-review 代码审查发现的 3 个阻断级 + 5 个建议级问题
+
+| ID | 维度 | 严重级别 | 文件 | 问题 | 修复 |
+|----|------|----------|------|------|------|
+| P1.6-R01 | FU1 | 🔴 阻断 | ThinkingArea.vue | 9 处硬编码 `rgba(91,138,245,...)` 和 `rgba(22,33,62,...)` | 替换为 `color-mix(in srgb, var(--color-primary) X%, transparent)` 和 `var(--glass-surface)`/`var(--glass-elevated)` |
+| P1.6-R02 | FU1 | 🔴 阻断 | UnifiedExecutionPanel.vue | 3 处硬编码 `rgba(91,138,245,...)` | 替换为 `color-mix(in srgb, var(--color-primary) X%, transparent)` |
+| P1.6-R03 | FU1 | 🔴 阻断 | ToolStuckBadge.vue | Quasar `color="orange"` 硬编码颜色 | 改用 CSS `var(--color-warning-soft)` + `var(--color-warning)` |
+| P1.6-R04 | FU1 | 🟡 建议 | ChatMessagePanel.vue | Quasar `color="grey-6"` 硬编码颜色 | 改用 CSS class + `var(--color-text-tertiary)` |
+| P1.6-R05 | FU1 | 🟡 建议 | TurnBlock.vue | Quasar `color="grey-6"` 硬编码颜色 | 改用 CSS class `.turn-block__expand-icon` + `var(--color-text-tertiary)` |
+| P1.6-R06 | FB6 | 🟡 建议 | UnifiedExecutionPanel.vue | 6 处硬编码中文文本 | 添加 `chat.execution.*` i18n 键（zh-CN + en-US），使用 `t()` 调用 |
+| P1.6-R07 | FB6 | 🟡 建议 | UnifiedExecutionPanel.vue | `planEntryStatusLabel` 硬编码中文映射 | 改用 `t('chat.execution.statusXxx')` |
+| P1.6-R08 | FB1 | 🟡 建议 | useTodoBoard.ts | `raw as TodoWriteOutput` 不安全类型断言 | 记录备忘，后续迭代增加运行时校验 |
+| P1.6-R09 | FU1/FB6 | 🔴 阻断 | ChatMessagePanel.vue | `useTodoBoard` 解构名 `{ boardState: todoBoardState }` 不匹配返回值 `{ todoBoardState }`，看板始终 undefined | 改为 `{ todoBoardState }` |
+| P1.6-R10 | FU1 | 🔴 阻断 | TurnBlock.vue | 硬编码 hex 颜色 `['#4DD8E8', ...]` | 改为 CSS 变量 `var(--avatar-color-1~6)`，添加到 light/dark 主题文件 |
+| P1.6-R11 | FB6 | 🔴 阻断 | ThinkingArea.vue | 硬编码中文"思考内容"，未导入 useI18n | 添加 `useI18n` 导入，改用 `t('chat.thinking.label')` |
+| P1.6-R12 | FB6 | 🔴 阻断 | TurnBlock.vue | 多处硬编码中文文本（个子任务/已完成/失败/已中断/完成/工具） | 全部改用 `t()` i18n 调用，补充 `chat.turn.block.*` i18n key |
+| P1.6-R13 | FB6 | 🔴 阻断 | ChatMessagePanel.vue | `chat.collapseAll`/`chat.expandAll` i18n key 未在 locale 文件中定义 | 在 zh-CN/en-US 中补充 key |
+| P1.6-R14 | FU1 | 🟡 建议 | TurnBlock.vue | Quasar `text-grey-7`/`text-orange`/`text-positive` 颜色类 | 改用 CSS class + `var(--color-text-tertiary)`/`var(--color-warning)`/`var(--color-success)` |
+| P1.6-R15 | FU1 | 🟡 建议 | ToolCallTimelineItem.vue | Quasar `color="negative"`/`text-negative` | 改用 CSS class + `var(--color-danger)` |
+| P1.6-R16 | FU1 | 🟡 建议 | TurnBlock.vue | q-avatar `:color` 传入 CSS 变量无法渲染 | 改用 `:style="{ backgroundColor: ... }"` |
+| P1.6-R17 | FU1 | 🟡 建议 | TurnBlock.vue | q-icon `color="accent"/"warning"/"positive"` Quasar 颜色 prop | 改用 `:style="{ color: 'var(--color-xxx)' }"` |
+| P1.6-R18 | FU1 | 🟡 建议 | TurnBlock.vue | `text-color="white"` Quasar 颜色 prop | 改用 `:style="{ color: 'var(--color-on-accent)' }"` |
+| P1.6-R19 | FB6 | 🟡 建议 | TurnBlock.vue | collapsedSummary 硬编码英文 "tools" | 添加 `chat.turn.block.toolsCount` i18n key |
+| P1.6-R20 | 后端 | 🟡 建议 | activity_publish.go | error 字段值为 i18n key 而非人类可读消息 | 添加 `stuckToolResultFallback` 常量，error 字段放 fallback 文本 |
+| P1.6-R21 | 后端 | 🟡 建议 | tool_todo_args_guard.go | args.Arguments 原地变异无标注 | 添加注释标注 in-place mutation 行为 |
+| P1.6-R22 | 前端 | 🟡 建议 | UiConfigToggle.vue | import 路径 `'src/stores/uiConfig'` 不正确 | 改为相对路径 `'../../stores/uiConfig'` |
+| P1.6-R23 | 前端 | 🟡 建议 | useTodoBoard.spec.ts | `content` 字段不存在于 Message 类型 | 改为 `content_markdown`，补全 Message 必填字段 |
+
+### P2 审查修复记录
+
+| ID | 维度 | 严重度 | 文件 | 问题 | 修复 |
+|----|------|--------|------|------|------|
+| P2-R01 | BA/BC | 🔴 阻断 | task_orchestrator_impl.go | `maybeCreateEvolutionSuggestion` 使用 `handle.ID`（编排ID）作为 agentID，语义错误 | 改用 `handle.SpiritSessionID`，fallback 到 `handle.ID` |
+| P2-R02 | BA | 🔴 阻断 | envelope.go | 新事件类型未注册到 channel 路由表 | 在 chat channel 注册块中添加 |
+| P2-R03 | BP | 🟡 建议 | task_orchestrator_impl.go | ID 生成使用 `time.Now().UnixNano()` 可能冲突 | 改用 `uuid.NewString()[:12]` |
+| P2-R04 | BA | 🟡 建议 | task_orchestrator_impl.go | `learnFromOrchestration` read-modify-write 竞态 | 记录备忘，后续迭代下推到 data 层原子更新 |
+| P2-R05 | BP | 🟡 建议 | task_orchestrator_impl.go | `computeDQScoreFromSynthesis` 魔法数字 | 记录备忘，后续迭代提取常量 |
+| P2-R06 | BA | 🟡 建议 | task_orchestrator_impl.go | `extractAgentKeysFromHandle` 使用 TeamID 作为 agentKey | 记录备忘，后续迭代从 AllocationPlan 获取真实 agentKey |
+| P2-R07 | BA | 🟡 建议 | spirit_team.go | `SuggestTopology` cache hit 事件缺少 SessionID | 记录备忘，后续迭代增加 spiritSessionID 参数 |
+| P2-R08 | BC | 🟡 建议 | spirit_orchestration_cache.go | `Get` 中 RLock→Lock 升级可能多算 Misses | 记录备忘，当前可接受 |
+| P2-R09 | BE | 🟡 建议 | skill_evolution_unified.go | `ExpirePending` 使用 `o.repo`（不存在） | 改为 `o.writer.ExpireOlderThan` |
+| P2-R10 | BA | 🟡 建议 | evolution_coordinator.go | `c.orchestrator.reader` 访问未导出字段 | 添加 `HasPendingForTarget` 公开方法并委托 |
+
+### 最终审查修复记录
+
+| ID | 维度 | 严重度 | 文件 | 问题 | 修复 |
+|----|------|--------|------|------|------|
+| FR-01 | FB6 | 🔴 | ChatMessagePanel.vue | 7 处硬编码中文（精灵/连接已断开/同步完成/已连接/会话事件/思考面板） | 全部改为 `t()` 调用，添加 6 个 i18n key |
+| FR-02 | FP8 | 🟢 | zh-CN.ts / en-US.ts | 新增 `chat.spiritLabel/connectionDisconnected/syncComplete/connected/sessionEvents/thinkingPanel` | 双语 key 已对齐 |
+
+### 2026-06-11 v7 原型对齐审查修复记录
+
+> **修复范围**：useAgentBlocks 9 项业务逻辑 BUG 修复 + 组件缺失补齐 + i18n 大面积修复 + UX 主题硬编码颜色修复
+
+**核心业务逻辑修复（F-13~F-21，P4 阶段实际落地）**：
+
+| ID | 维度 | 严重度 | 文件 | 问题 | 修复 |
+|----|------|--------|------|------|------|
+| V7-R01 | FB1 | 🔴 | useAgentBlocks.ts | F-13: `addTool` 未推入 `allToolMsgs`，`allToolsDone` 恒为 `true` | `addTool(toolEv, msg)` 签名扩展，推入 `allToolMsgs` |
+| V7-R02 | FB1 | 🔴 | useAgentBlocks.ts + agentTreeTypes.ts | F-14: 缺少 `tool_blocked`/`tool_running` 显式状态 | `AgentBlockStatus` 扩展为 6 值联合类型；`computeAgentStatus` 显式返回 |
+| V7-R03 | FB1 | 🔴 | useAgentBlocks.ts | F-15: `resolvePlanStatus` 缺 `planning→executing` 转换 | 新增 `planEntriesCount` 参数，`planning && running && planEntries > 0 → executing` |
+| V7-R04 | FB1 | 🟡 | useAgentBlocks.ts | F-16: progress sortKey 未钳制 | `Math.max(0, offset)` 防止负值 |
+| V7-R05 | FB1 | 🟡 | useAgentBlocks.ts | F-17: Reply 去重缺少 mode 判断 | 仅在 `presentation.mode !== 'react'` 时执行去重 |
+| V7-R06 | FB1 | 🔴 | useAgentBlocks.ts + agentTreeTypes.ts | F-18: Plan 匹配用 `agentName \|\| task` 非 `agentKey` | `PlanEntry` 新增 `agentKey` 字段；匹配优先用 `agentKey` |
+| V7-R07 | FB1 | 🟡 | useAgentBlocks.ts | F-19: 已完成回合 `collapsed: true`（与规格相反） | 4 处改为 `collapsed: false` |
+| V7-R08 | FB1 | 🟡 | useAgentBlocks.ts + agentTreeTypes.ts | F-20: 缺少 `hasPartialFailure` 字段 | `AgentBlock` 新增字段；`computeAgentStatus` 返回 `partial_failure` |
+| V7-R09 | FB1 | 🟡 | useAgentBlocks.ts + agentTreeTypes.ts | F-21: `progressSections` 混入 timeline | `AgentBlock` 新增 `progressSections` 字段；`TimelineEntry` 移除 `kind: 'progress'` |
+
+**组件缺失修复**：
+
+| ID | 维度 | 严重度 | 文件 | 问题 | 修复 |
+|----|------|--------|------|------|------|
+| V7-R10 | FL1 | 🔴 | components/chat/ | TaskBoardNode.vue + TaskBoard.vue 缺失 | 创建 7 种节点类型递归组件 + MAX_DEPTH=2 深度控制 |
+| V7-R11 | FL1 | 🔴 | TaskExecutionPanel.vue | 缺少 SpiritStatusBar/面包屑/用户消息/Spirit 回复 | 添加完整 v7 布局 |
+| V7-R12 | FL1 | 🟡 | TeamProgressCard.vue | 缺少折叠/展开机制 | 添加 collapse arrow + expandable body |
+
+**i18n 修复**：
+
+| ID | 维度 | 严重度 | 文件 | 问题 | 修复 |
+|----|------|--------|------|------|------|
+| V7-R13 | FB6 | 🔴 | spirit/ 11 个 .vue 文件 | ~40+ 处硬编码中文 | 全部改为 `t('spirit.*')` 调用，zh-CN/en-US 新增 67 个 key |
+| V7-R14 | FB6 | 🔴 | chat/ 9 个 .vue 文件 | ~15+ 处硬编码中文 | 全部改为 `t('chat.*')` 调用，补充缺失 i18n key |
+| V7-R15 | FB6 | 🟡 | agentTreeTypes.ts | `PROGRESS_LABELS` 硬编码中文 | 改为 i18n key 引用 |
+
+**UX 主题修复**：
+
+| ID | 维度 | 严重度 | 文件 | 问题 | 修复 |
+|----|------|--------|------|------|------|
+| V7-R16 | FU1 | 🟡 | spirit/ 8 个 .vue 文件 | `color="grey-6"` / `text-grey-6` / `text-grey-7` 硬编码 | 替换为 `color="grey"` / `text-grey` |
+| V7-R17 | FU1 | 🟡 | chat/ 8 个 .vue 文件 | `color="orange"` / `color="teal"` / `color="purple"` 等非语义色 | 替换为语义色 `warning` / `accent` |
+| V7-R18 | FU1 | 🟡 | ChatExecutionCard.vue | 硬编码调色板 `['#4DD8E8', ...]` | 替换为 `var(--agent-palette-0~5)` CSS 变量 |
+
+**aranea-review 二轮审查结果**：0 阻断 / 0 建议 / 0 提示。前端合规性清单全部通过。
 
 ### 未修复项（后续迭代）
 

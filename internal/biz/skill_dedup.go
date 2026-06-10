@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -11,7 +13,7 @@ import (
 )
 
 const (
-	dedupSimilarityThreshold = 0.2
+	dedupSimilarityThreshold = 0.3 // raised from 0.2 to reduce false positives
 	dedupBodyPreviewLen      = 500
 )
 
@@ -21,10 +23,13 @@ const (
 
 // SkillDuplicateGroup represents a group of similar skills that may be duplicates.
 type SkillDuplicateGroup struct {
-	GroupID      string
-	Skills       []SkillSummary
-	OverlapType  string  // "name_similarity" / "description_similarity" / "invocation_overlap"
-	OverlapScore float64 // 0-1, higher = more similar
+	GroupID        string
+	Skills         []SkillSummary
+	OverlapType    string            // "name_similarity" / "description_similarity" / "invocation_overlap"
+	OverlapScore   float64           // 0-1, higher = more similar
+	Dimensions     []DimensionScore  // 维度明细
+	ConflictRisk   string            // "low" / "medium" / "high"
+	Recommendation string            // "keep_separate" / "suggest_refine" / "block_duplicate"
 }
 
 // SkillSummary is a lightweight skill representation for dedup comparison.
@@ -34,6 +39,7 @@ type SkillSummary struct {
 	Slug        string
 	Description string
 	BodyPreview string // first 500 chars of skill body
+	Tags        []string
 }
 
 // ---------------------------------------------------------------------------
@@ -59,21 +65,37 @@ type SkillDedupWriter interface {
 type SkillDedupUsecase struct {
 	reader SkillDedupReader
 	writer SkillDedupWriter
+	engine *SkillSimilarityEngine
 	lg     loggateway.Logger
+
+	cacheMu      sync.RWMutex
+	cachedGroups []SkillDuplicateGroup
+	cachedAt     time.Time
+	cacheTTL     time.Duration
 }
 
 // NewSkillDedupUsecase creates a new SkillDedupUsecase.
-func NewSkillDedupUsecase(reader SkillDedupReader, writer SkillDedupWriter, lg loggateway.Logger) *SkillDedupUsecase {
+func NewSkillDedupUsecase(reader SkillDedupReader, writer SkillDedupWriter, engine *SkillSimilarityEngine, lg loggateway.Logger) *SkillDedupUsecase {
 	return &SkillDedupUsecase{
-		reader: reader,
-		writer: writer,
-		lg:     lg,
+		reader:   reader,
+		writer:   writer,
+		engine:   engine,
+		lg:       lg,
+		cacheTTL: 10 * time.Minute,
 	}
 }
 
-// DetectDuplicateGroups finds groups of similar skills.
-// Similarity threshold: description similarity >= 0.2
+// DetectDuplicateGroups finds groups of similar skills using the unified similarity engine.
 func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]SkillDuplicateGroup, error) {
+	// Check cache first.
+	uc.cacheMu.RLock()
+	if !uc.cachedAt.IsZero() && time.Since(uc.cachedAt) < uc.cacheTTL && uc.cachedGroups != nil {
+		cached := uc.cachedGroups
+		uc.cacheMu.RUnlock()
+		return cached, nil
+	}
+	uc.cacheMu.RUnlock()
+
 	summaries, err := uc.reader.ListAllSkillSummaries(ctx)
 	if err != nil {
 		return nil, err
@@ -82,29 +104,37 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 		return nil, nil
 	}
 
-	// Pairwise comparison using Jaccard similarity on description word sets.
+	// Convert SkillSummary to SkillDedupCandidate for the engine.
+	candidates := make([]SkillDedupCandidate, len(summaries))
+	for i, s := range summaries {
+		candidates[i] = SkillDedupCandidate{
+			ID:          s.ID,
+			Name:        s.Name,
+			Slug:        s.Slug,
+			Description: s.Description,
+			BodyPreview: s.BodyPreview,
+			Tags:        s.Tags,
+		}
+	}
+
+	// Pairwise comparison using the unified similarity engine.
 	type pair struct {
 		i, j       int
-		similarity float64
-		overlap    string
+		result     *SimilarityResult
 	}
 
 	var pairs []pair
-	for i := 0; i < len(summaries); i++ {
-		for j := i + 1; j < len(summaries); j++ {
-			a, b := summaries[i], summaries[j]
-
-			// Check name similarity first (higher priority).
-			nameSim := jaccardSimilarity(a.Name, b.Name)
-			if nameSim >= dedupSimilarityThreshold {
-				pairs = append(pairs, pair{i: i, j: j, similarity: nameSim, overlap: "name_similarity"})
+	for i := 0; i < len(candidates); i++ {
+		for j := i + 1; j < len(candidates); j++ {
+			res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
+			if err != nil {
+				uc.lg.Warn("skill_dedup: Compare failed",
+					loggateway.StepID("skill_dedup.compare"),
+					loggateway.Err(err))
 				continue
 			}
-
-			// Fall back to description similarity.
-			descSim := jaccardSimilarity(a.Description, b.Description)
-			if descSim >= dedupSimilarityThreshold {
-				pairs = append(pairs, pair{i: i, j: j, similarity: descSim, overlap: "description_similarity"})
+			if res.TotalScore >= dedupSimilarityThreshold {
+				pairs = append(pairs, pair{i: i, j: j, result: res})
 			}
 		}
 	}
@@ -114,7 +144,7 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	}
 
 	// Group connected pairs using union-find.
-	parent := make([]int, len(summaries))
+	parent := make([]int, len(candidates))
 	for i := range parent {
 		parent[i] = i
 	}
@@ -132,25 +162,41 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 		}
 	}
 
-	// Track best overlap info per group root.
+	// Track overlap info per group root — aggregate all overlap types.
 	type groupMeta struct {
-		overlapType  string
-		bestScore    float64
+		overlapTypes  map[string]bool
+		bestScore     float64
+		bestDims      []DimensionScore
+		bestRisk      string
+		bestRec       string
 	}
-	groupInfo := make(map[int]groupMeta)
+	groupInfo := make(map[int]*groupMeta)
 
 	for _, p := range pairs {
 		union(p.i, p.j)
 		root := find(p.i)
-		meta, ok := groupInfo[root]
-		if !ok || p.similarity > meta.bestScore {
-			groupInfo[root] = groupMeta{overlapType: p.overlap, bestScore: p.similarity}
+		meta := groupInfo[root]
+		if meta == nil {
+			meta = &groupMeta{overlapTypes: map[string]bool{}, bestScore: 0}
+			groupInfo[root] = meta
+		}
+		// Determine overlap type from dimensions.
+		for _, d := range p.result.Dimensions {
+			if d.Score >= dedupSimilarityThreshold {
+				meta.overlapTypes[string(d.Dimension)+"_similarity"] = true
+			}
+		}
+		if p.result.TotalScore > meta.bestScore {
+			meta.bestScore = p.result.TotalScore
+			meta.bestDims = p.result.Dimensions
+			meta.bestRisk = p.result.ConflictRisk
+			meta.bestRec = p.result.Recommendation
 		}
 	}
 
 	// Collect groups.
 	buckets := make(map[int][]int)
-	for i := range summaries {
+	for i := range candidates {
 		root := find(i)
 		buckets[root] = append(buckets[root], i)
 	}
@@ -166,11 +212,19 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 		for _, idx := range indices {
 			skills = append(skills, summaries[idx])
 		}
+		// Join all overlap types for the group.
+		overlapTypes := make([]string, 0, len(meta.overlapTypes))
+		for t := range meta.overlapTypes {
+			overlapTypes = append(overlapTypes, t)
+		}
 		groups = append(groups, SkillDuplicateGroup{
-			GroupID:      fmt.Sprintf("dedup-%03d", groupSeq),
-			Skills:       skills,
-			OverlapType:  meta.overlapType,
-			OverlapScore: meta.bestScore,
+			GroupID:        fmt.Sprintf("dedup-%03d", groupSeq),
+			Skills:         skills,
+			OverlapType:    strings.Join(overlapTypes, "+"),
+			OverlapScore:   meta.bestScore,
+			Dimensions:     meta.bestDims,
+			ConflictRisk:   meta.bestRisk,
+			Recommendation: meta.bestRec,
 		})
 		groupSeq++
 	}
@@ -179,11 +233,24 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 		loggateway.StepID("skill_dedup.detect"),
 		loggateway.Str("group_count", fmt.Sprintf("%d", len(groups))),
 	)
+
+	// Update cache.
+	uc.cacheMu.Lock()
+	uc.cachedGroups = groups
+	uc.cachedAt = time.Now()
+	uc.cacheMu.Unlock()
+
 	return groups, nil
 }
 
 // MergeSkills merges source skill into target skill.
 // Source skill is deprecated, invocations are transferred.
+// If deprecation fails after transfer, the transfer is NOT rolled back
+// (invocations remain on target) but an error is returned so the caller
+// knows the source is still active.
+//
+// Deprecated: Use SkillMergeUsecase.Merge instead. The new method provides
+// transactional ApplyMerge with content fusion and Gate validation.
 func (uc *SkillDedupUsecase) MergeSkills(ctx context.Context, sourceID string, targetID string) error {
 	sourceID, err := requireNonEmpty(sourceID, "SKILL_DEDUP", "source_id")
 	if err != nil {
@@ -205,6 +272,11 @@ func (uc *SkillDedupUsecase) MergeSkills(ctx context.Context, sourceID string, t
 	// Deprecate the source skill.
 	reason := fmt.Sprintf("merged into skill %s", targetID)
 	if dErr := uc.writer.DeprecateSkill(ctx, sourceID, reason); dErr != nil {
+		uc.lg.Warn("MergeSkills: TransferInvocations succeeded but DeprecateSkill failed; invocations remain on target",
+			loggateway.StepID("skill_dedup.merge"),
+			loggateway.Str("source_id", sourceID),
+			loggateway.Str("target_id", targetID),
+			loggateway.Err(dErr))
 		return dErr
 	}
 
@@ -214,6 +286,16 @@ func (uc *SkillDedupUsecase) MergeSkills(ctx context.Context, sourceID string, t
 		loggateway.Str("target_id", targetID),
 	)
 	return nil
+}
+
+// InvalidateDedupCache clears the cached duplicate groups so the next call
+// to DetectDuplicateGroups performs a fresh scan. Call this after skill
+// mutations (create, update, delete, merge) that may change dedup results.
+func (uc *SkillDedupUsecase) InvalidateDedupCache() {
+	uc.cacheMu.Lock()
+	uc.cachedGroups = nil
+	uc.cachedAt = time.Time{}
+	uc.cacheMu.Unlock()
 }
 
 // ---------------------------------------------------------------------------
@@ -239,11 +321,42 @@ func jaccardSimilarity(a, b string) float64 {
 	return float64(intersection) / float64(union)
 }
 
+// wordSet extracts a set of tokens from s for Jaccard similarity comparison.
+// For English text, it splits on whitespace. For Chinese text (CJK Unified
+// Ideographs), it uses bigram (consecutive character pair) tokenization so
+// that "数据库查询" produces {"数据", "据库", "库查", "查询"} instead of
+// treating the entire string as a single token.
 func wordSet(s string) map[string]bool {
-	words := strings.Fields(strings.ToLower(s))
-	set := make(map[string]bool, len(words))
-	for _, w := range words {
-		set[w] = true
+	set := make(map[string]bool)
+	lower := strings.ToLower(s)
+
+	// Extract English words (alphanumeric + underscore/dash).
+	var engBuf strings.Builder
+	for _, r := range lower {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			engBuf.WriteRune(r)
+		} else {
+			if engBuf.Len() > 1 {
+				set[engBuf.String()] = true
+			}
+			engBuf.Reset()
+		}
+	}
+	if engBuf.Len() > 1 {
+		set[engBuf.String()] = true
+	}
+
+	// Extract Chinese bigrams (CJK Unified Ideographs range).
+	var prev rune
+	for _, r := range lower {
+		if r >= 0x4e00 && r <= 0x9fff {
+			if prev >= 0x4e00 && prev <= 0x9fff {
+				set[string([]rune{prev, r})] = true
+			}
+			prev = r
+		} else {
+			prev = 0
+		}
 	}
 	return set
 }

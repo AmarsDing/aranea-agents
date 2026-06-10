@@ -3,14 +3,14 @@
     <div v-if="hint" class="skill-hint-bar q-px-md q-py-xs">
       <q-icon name="tips_and_updates" size="xs" class="q-mr-xs text-warning" />
       <span class="text-caption">
-        检测到可能需要 Skill: <strong>{{ hint.matched_skill }}</strong>
-        <span v-if="hint.trigger" class="text-grey-7">（匹配: {{ hint.trigger }}）</span>
+        {{ t('chat.skillHint.detected') }}: <strong>{{ hint.matched_skill }}</strong>
+        <span v-if="hint.trigger" class="text-grey">（{{ t('chat.skillHint.match') }}: {{ hint.trigger }}）</span>
       </span>
       <q-btn
         flat
         dense
         size="xs"
-        label="加载"
+        :label="t('chat.skillHint.load')"
         color="primary"
         class="q-ml-sm"
         @click="onLoad"
@@ -30,7 +30,10 @@
 
 <script setup lang="ts">
 import { watch, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SkillHint } from '../../features/skills/types';
+
+const { t } = useI18n();
 
 const HINT_AUTO_DISMISS_MS = 3000;
 

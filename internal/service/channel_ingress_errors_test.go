@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"aranea-agents/internal/biz"
 )
 
 func TestFormatChannelTurnErrorMessage(t *testing.T) {
@@ -15,19 +17,19 @@ func TestFormatChannelTurnErrorMessage(t *testing.T) {
 	}{
 		{"nil_error", nil, ""},
 		{"canceled", context.Canceled, ""},
-		{"busy", turnBusyError(), channelTurnErrorBusyMsg},
-		{"deadline_exceeded", context.DeadlineExceeded, channelTurnErrorSyncCapMsg},
-		{"turn_timeout_code", TurnError(TurnErrTurnTimeout, "5m"), channelTurnErrorSyncCapMsg},
-		{"first_byte_timeout_code", TurnError(TurnErrFirstByteTimeout, "30s"), channelTurnErrorSyncCapMsg},
-		{"timeout_string", errors.New("connection timeout after 30s"), channelTurnErrorSyncCapMsg},
-		{"rate_limit_string", errors.New("rate limit exceeded"), channelTurnErrorRateLimitMsg},
-		{"too_many_requests_string", errors.New("429 Too Many Requests"), channelTurnErrorRateLimitMsg},
-		{"context_length_string", errors.New("context length exceeded"), channelTurnErrorContextOverflow},
-		{"maximum_context_string", errors.New("maximum context size reached"), channelTurnErrorContextOverflow},
-		{"context_window_string", errors.New("context window exceeded"), channelTurnErrorContextOverflow},
-		{"prompt_too_long_string", errors.New("prompt is too long for model"), channelTurnErrorContextOverflow},
-		{"token_exceed_string", errors.New("token count exceed limit"), channelTurnErrorContextOverflow},
-		{"generic_error", errors.New("internal sql: connection refused"), channelTurnErrorGenericMsg},
+		{"busy", turnBusyError(), biz.ChannelTurnErrorBusyMsg},
+		{"deadline_exceeded", context.DeadlineExceeded, biz.ChannelTurnErrorSyncCapMsg},
+		{"turn_timeout_code", TurnError(TurnErrTurnTimeout, "5m"), biz.ChannelTurnErrorSyncCapMsg},
+		{"first_byte_timeout_code", TurnError(TurnErrFirstByteTimeout, "30s"), biz.ChannelTurnErrorSyncCapMsg},
+		{"timeout_string", errors.New("connection timeout after 30s"), biz.ChannelTurnErrorGenericMsg},
+		{"rate_limit_string", errors.New("rate limit exceeded"), biz.ChannelTurnErrorRateLimitMsg},
+		{"too_many_requests_string", errors.New("429 Too Many Requests"), biz.ChannelTurnErrorRateLimitMsg},
+		{"context_length_string", errors.New("context length exceeded"), biz.ChannelTurnErrorContextOverflowMsg},
+		{"maximum_context_string", errors.New("maximum context size reached"), biz.ChannelTurnErrorContextOverflowMsg},
+		{"context_window_string", errors.New("context window exceeded"), biz.ChannelTurnErrorContextOverflowMsg},
+		{"prompt_too_long_string", errors.New("prompt is too long for model"), biz.ChannelTurnErrorContextOverflowMsg},
+		{"token_exceed_string", errors.New("token count exceed limit"), biz.ChannelTurnErrorContextOverflowMsg},
+		{"generic_error", errors.New("internal sql: connection refused"), biz.ChannelTurnErrorGenericMsg},
 	}
 
 	for _, tt := range tests {
@@ -79,9 +81,6 @@ func TestTurnErrorIsTimeout(t *testing.T) {
 		{"canceled", context.Canceled, false},
 		{"deadline_exceeded", context.DeadlineExceeded, true},
 		{"deadline_exceeded_wrapped", errors.Join(context.DeadlineExceeded, errors.New("extra")), true},
-		{"timeout_string", errors.New("connection timeout after 30s"), true},
-		{"timeout_uppercase", errors.New("Connection TIMEOUT"), true},
-		{"deadline_exceeded_string", errors.New("context deadline exceeded"), true},
 		{"generic", errors.New("validation failed"), false},
 		{"rate_limit", errors.New("rate limit exceeded"), false},
 	}

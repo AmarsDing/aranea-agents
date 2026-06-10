@@ -17,7 +17,7 @@ const maxRerankOverfetch = 50
 
 // QueryEmbedder embeds search queries.
 type QueryEmbedder interface {
-	Embed(ctx context.Context, text string) ([]float32, error)
+	EmbedSingle(ctx context.Context, text string) ([]float32, error)
 }
 
 // TaskTypeEmbedder extends QueryEmbedder with task-type-aware embedding.
@@ -103,7 +103,7 @@ func (r *Retriever) embedQuery(ctx context.Context, query string) ([]float32, er
 	if te, ok := r.embedder.(TaskTypeEmbedder); ok {
 		return te.EmbedWithTaskType(ctx, query, "RETRIEVAL_QUERY")
 	}
-	return r.embedder.Embed(ctx, query)
+	return r.embedder.EmbedSingle(ctx, query)
 }
 
 func rerankCandidateLimit(q biz.KnowledgeSearchQuery, topK int) int {

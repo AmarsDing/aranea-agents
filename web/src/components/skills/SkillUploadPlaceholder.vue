@@ -216,12 +216,10 @@ const busy = computed(() => uploading.value || applying.value || refiningGroupId
 const canApply = computed(() => {
   if (!job.value) return false;
   const hasPass = job.value.candidates.some((candidate) => candidate.validation_status === 'pass');
-  return (
-    hasPass ||
-    !!refineResult.value ||
-    approvedRiskyCandidateIds.value.length > 0 ||
-    rejectedRiskyCandidateIds.value.length > 0
-  );
+  const hasPositiveAction =
+    hasPass || !!refineResult.value || approvedRiskyCandidateIds.value.length > 0;
+  // Pure-reject (no actual import) should not enable "apply".
+  return hasPositiveAction;
 });
 const allBlockMessages = computed(() => {
   if (!job.value) return '上传检查被阻塞';
@@ -362,10 +360,15 @@ function metricItems(metrics: SkillSimilarityMetrics) {
   ];
 }
 
-function firstRefinedGroup(groups: SkillConflictGroup[], candidateIds: string[]) {
+function firstRefinedGroup(groups: SkillConflictGroup[], candidateIds: string[], refineSourceGroupID?: string) {
+  // Prefer explicit group_id from refine result if available.
+  if (refineSourceGroupID) {
+    const found = groups.find((g) => g.group_id === refineSourceGroupID);
+    if (found) return found.group_id;
+  }
+  // Fallback: match by candidate IDs.
   return (
     groups.find((group) => group.candidate_ids.some((id) => candidateIds.includes(id)))?.group_id ??
-    groups[0]?.group_id ??
     ''
   );
 }

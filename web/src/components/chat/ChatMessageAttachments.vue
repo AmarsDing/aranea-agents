@@ -23,7 +23,7 @@
           <div class="text-subtitle1 ellipsis col">{{ previewMeta?.name }}</div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
-        <q-card-section v-if="previewMeta" class="q-pt-sm text-caption text-grey-7">
+        <q-card-section v-if="previewMeta" class="q-pt-sm text-caption text-grey">
           {{ previewMeta.mime_type }}
           <span v-if="previewMeta.size"> · {{ formatBytes(previewMeta.size) }}</span>
         </q-card-section>

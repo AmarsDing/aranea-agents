@@ -111,7 +111,10 @@ func (f *fileToolSet) saveFileTool() tool.CallableTool {
 		f.saveFile,
 		function.WithName("save_file"),
 		function.WithDescription(
-			"Write a text file under base_directory (optional overwrite).",
+			"Write a text file under base_directory. Creates parent directories automatically. "+
+				"Does not support workspace:// or artifact:// refs (use read_file for those). "+
+				"Set overwrite=true to replace an existing file; otherwise the write fails if the file already exists. "+
+				"For small targeted edits, prefer diff_edit or replace_content instead.",
 		),
 	)
 }

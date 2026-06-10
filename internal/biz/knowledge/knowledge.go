@@ -96,6 +96,24 @@ type SparseSearcher interface {
 	SearchChunksBM25(ctx context.Context, q SearchQuery) ([]Chunk, error)
 }
 
+// KnowledgeEmbedder generates text embeddings using a remote API and exposes
+// runtime configuration for the admin UI. The concrete HTTP implementation
+// lives in the data layer; biz depends only on this interface.
+type KnowledgeEmbedder interface {
+	// Embed returns a single embedding vector for the input text.
+	Embed(ctx context.Context, text string) ([]float32, error)
+	// EmbedWithTaskType returns a single embedding with a task type hint (e.g. "RETRIEVAL_QUERY").
+	EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error)
+	// EmbedBatch returns embeddings for a slice of texts using provider batch APIs when available.
+	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+	// EmbedBatchWithTaskType returns embeddings with an optional task type hint.
+	EmbedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error)
+	// Config returns a redacted view of embedder settings.
+	Config() (provider, baseURL, model string, dim int, configured bool, hasAPIKey bool)
+	// Update applies runtime embedder settings from admin UI.
+	Update(provider, baseURL, apiKey, model string, dim int)
+}
+
 // Domain errors for knowledge biz layer — the Service layer maps these to kerrors.
 var (
 	ErrUnavailable            = kerrors.InternalServer("KNOWLEDGE", "knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
