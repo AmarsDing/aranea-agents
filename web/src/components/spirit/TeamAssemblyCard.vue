@@ -18,11 +18,11 @@
       <div class="row items-center q-gutter-xs">
         <q-avatar v-for="member in members.slice(0, 4)" :key="member.agentId" size="24px">
           <img v-if="member.avatarUrl" :src="member.avatarUrl" :alt="member.displayName" />
-          <q-icon v-else name="person" size="14px" color="grey-6" />
+          <q-icon v-else name="person" size="14px" color="grey" />
         </q-avatar>
-        <span v-if="members.length > 4" class="text-caption text-grey-6"> +{{ members.length - 4 }} </span>
+        <span v-if="members.length > 4" class="text-caption text-grey"> +{{ members.length - 4 }} </span>
       </div>
-      <div class="text-caption text-grey-6 q-mt-xs">
+      <div class="text-caption text-grey q-mt-xs">
         {{ members.map((m) => m.displayName).join(' · ') }}
       </div>
     </div>

@@ -78,13 +78,23 @@ const (
 	EnvelopeTypeButlerOrchestrationFailed   = contract.EnvelopeTypeButlerOrchestrationFailed
 	EnvelopeTypeSkillHealthChanged          = contract.EnvelopeTypeSkillHealthChanged
 	EnvelopeTypeSkillEvolutionProposed      = contract.EnvelopeTypeSkillEvolutionProposed
+	EnvelopeTypeOrchestrationEvolutionSuggested = contract.EnvelopeTypeOrchestrationEvolutionSuggested
+	EnvelopeTypeOrchestrationCacheHit           = contract.EnvelopeTypeOrchestrationCacheHit
 	EnvelopeTypeMonitorAutoHealed           = contract.EnvelopeTypeMonitorAutoHealed
 	EnvelopeTypeMonitorSelfCheckCompleted   = contract.EnvelopeTypeMonitorSelfCheckCompleted
+	EnvelopeTypeTokenUsage                  = contract.EnvelopeTypeTokenUsage
+
+	// EnvelopeToolCall error_code constants
+	ErrorCodeToolTimeout          = contract.ErrorCodeToolTimeout
+	ErrorCodeToolError            = contract.ErrorCodeToolError
+	ErrorCodeConfirmationRequired = contract.ErrorCodeConfirmationRequired
+	ErrorCodeConfirmationDenied   = contract.ErrorCodeConfirmationDenied
 )
 
 // Re-export functions.
 var (
-	NewEnvelope    = contract.NewEnvelope
-	RouteChannel   = contract.RouteChannel
-	MatchFilterKey = contract.MatchFilterKey
+	NewEnvelope      = contract.NewEnvelope
+	RouteChannel     = contract.RouteChannel
+	MatchFilterKey   = contract.MatchFilterKey
+	ValidErrorCodes  = contract.ValidErrorCodes
 )

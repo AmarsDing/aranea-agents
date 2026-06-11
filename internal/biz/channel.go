@@ -76,14 +76,15 @@ type ChannelCredentialInput struct {
 }
 
 type ChannelDelivery struct {
-	ID           string
-	ChannelID    string
-	AgentID      string
-	Status       string
-	PayloadJSON  string
-	ErrorMessage string
-	CreatedAt    string
-	UpdatedAt    string
+	ID             string
+	ChannelID      string
+	AgentID        string
+	IdempotencyKey string
+	Status         string
+	PayloadJSON    string
+	ErrorMessage   string
+	CreatedAt      string
+	UpdatedAt      string
 }
 
 type ChannelTestResult struct {
@@ -130,27 +131,27 @@ type ChannelDeliveryRepo interface {
 	AddDelivery(ctx context.Context, d ChannelDelivery) (ChannelDelivery, error)
 	ListPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
 	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
-}
-
-type ChannelRepo interface {
-	ChannelReader
-	ChannelWriter
-	ChannelCredentialRepo
-	ChannelDeliveryRepo
+	HasDeliveryByIdempotencyKey(ctx context.Context, channelID, idempotencyKey string) (bool, error)
 }
 
 type ChannelUsecase struct {
-	repo             ChannelRepo
-	peers            ChannelPeerSessionRepo
-	inboundReceipts  ChannelInboundReceiptRepo
-	agents           AgentRepository
-	teams            TeamReader
-	crypto           *CredentialCrypto
-	lg               loggateway.Logger
+	reader          ChannelReader
+	writer          ChannelWriter
+	credentials     ChannelCredentialRepo
+	deliveries      ChannelDeliveryRepo
+	peers           ChannelPeerSessionRepo
+	inboundReceipts ChannelInboundReceiptRepo
+	agents          AgentRepository
+	teams           TeamReader
+	crypto          *CredentialCrypto
+	lg              loggateway.Logger
 }
 
 func NewChannelUsecase(
-	repo ChannelRepo,
+	reader ChannelReader,
+	writer ChannelWriter,
+	credentials ChannelCredentialRepo,
+	deliveries ChannelDeliveryRepo,
 	peers ChannelPeerSessionRepo,
 	inboundReceipts ChannelInboundReceiptRepo,
 	agents AgentRepository,
@@ -158,7 +159,7 @@ func NewChannelUsecase(
 	crypto *CredentialCrypto,
 	lg loggateway.Logger,
 ) *ChannelUsecase {
-	return &ChannelUsecase{repo: repo, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, lg: lg}
+	return &ChannelUsecase{reader: reader, writer: writer, credentials: credentials, deliveries: deliveries, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, lg: lg}
 }
 
 func (u *ChannelUsecase) ChannelTypes() []ChannelTypeItem {
@@ -166,7 +167,7 @@ func (u *ChannelUsecase) ChannelTypes() []ChannelTypeItem {
 }
 
 func (u *ChannelUsecase) List(ctx context.Context) ([]Channel, error) {
-	return u.repo.List(ctx)
+	return u.reader.List(ctx)
 }
 
 func (u *ChannelUsecase) DecryptSecretRef(ctx context.Context, ref string) (string, error) {
@@ -182,7 +183,7 @@ func (u *ChannelUsecase) Get(ctx context.Context, id string) (Channel, error) {
 	if err != nil {
 		return Channel{}, err
 	}
-	return u.repo.Get(ctx, id)
+	return u.reader.Get(ctx, id)
 }
 
 // GetByKey loads a channel by unique channel_key (webhook path segment).
@@ -191,7 +192,7 @@ func (u *ChannelUsecase) GetByKey(ctx context.Context, channelKey string) (Chann
 	if err != nil {
 		return Channel{}, err
 	}
-	return u.repo.GetByKey(ctx, channelKey)
+	return u.reader.GetByKey(ctx, channelKey)
 }
 
 func (u *ChannelUsecase) Create(ctx context.Context, row Channel, credentials []ChannelCredentialInput) (Channel, error) {
@@ -202,7 +203,7 @@ func (u *ChannelUsecase) Create(ctx context.Context, row Channel, credentials []
 	if err := normalizeChannel(&row); err != nil {
 		return Channel{}, err
 	}
-	created, err := u.repo.Create(ctx, row)
+	created, err := u.writer.Create(ctx, row)
 	if err != nil {
 		return Channel{}, err
 	}
@@ -217,7 +218,7 @@ func (u *ChannelUsecase) Update(ctx context.Context, id string, row Channel, cre
 	if id == "" {
 		return Channel{}, errors.BadRequest("CHANNEL", "id is required")
 	}
-	current, err := u.repo.Get(ctx, id)
+	current, err := u.reader.Get(ctx, id)
 	if err != nil {
 		return Channel{}, err
 	}
@@ -241,7 +242,7 @@ func (u *ChannelUsecase) Update(ctx context.Context, id string, row Channel, cre
 	if err := normalizeChannel(&row); err != nil {
 		return Channel{}, err
 	}
-	updated, err := u.repo.Update(ctx, row)
+	updated, err := u.writer.Update(ctx, row)
 	if err != nil {
 		return Channel{}, err
 	}
@@ -256,7 +257,7 @@ func (u *ChannelUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return u.repo.Delete(ctx, id)
+	return u.writer.Delete(ctx, id)
 }
 
 func (u *ChannelUsecase) Toggle(ctx context.Context, id string, enabled bool) (Channel, error) {
@@ -264,7 +265,7 @@ func (u *ChannelUsecase) Toggle(ctx context.Context, id string, enabled bool) (C
 	if err != nil {
 		return Channel{}, err
 	}
-	row, err := u.repo.Get(ctx, id)
+	row, err := u.reader.Get(ctx, id)
 	if err != nil {
 		return Channel{}, err
 	}
@@ -272,11 +273,11 @@ func (u *ChannelUsecase) Toggle(ctx context.Context, id string, enabled bool) (C
 	if row.Status == "" || row.Status == "deleted" {
 		row.Status = "active"
 	}
-	return u.repo.Update(ctx, row)
+	return u.writer.Update(ctx, row)
 }
 
 func (u *ChannelUsecase) ListCredentials(ctx context.Context, channelID string) ([]ChannelCredential, error) {
-	items, err := u.repo.ListCredentials(ctx, strings.TrimSpace(channelID))
+	items, err := u.credentials.ListCredentials(ctx, strings.TrimSpace(channelID))
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +286,7 @@ func (u *ChannelUsecase) ListCredentials(ctx context.Context, channelID string) 
 
 // ListCredentialsRaw returns credentials including secret_ref (for server-side runtime only).
 func (u *ChannelUsecase) ListCredentialsRaw(ctx context.Context, channelID string) ([]ChannelCredential, error) {
-	return u.repo.ListCredentials(ctx, strings.TrimSpace(channelID))
+	return u.credentials.ListCredentials(ctx, strings.TrimSpace(channelID))
 }
 
 func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string, inputs []ChannelCredentialInput) ([]ChannelCredential, error) {
@@ -322,7 +323,7 @@ func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string
 		if !json.Valid([]byte(metadata)) {
 			return nil, channelValidationError("credential %s metadata_json must be valid JSON", key)
 		}
-		created, err := u.repo.UpsertCredential(ctx, ChannelCredential{
+		created, err := u.credentials.UpsertCredential(ctx, ChannelCredential{
 			ID:            uuid.NewString(),
 			ChannelID:     channelID,
 			CredentialKey: key,
@@ -340,7 +341,7 @@ func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string
 
 // RunHealthChecks re-evaluates enabled channels and refreshes status/metadata.
 func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
-	items, err := u.repo.List(ctx)
+	items, err := u.reader.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -360,7 +361,7 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			writeCtx := context.WithoutCancel(ctx)
-			credentials, err := u.repo.ListCredentials(writeCtx, ch.ID)
+			credentials, err := u.credentials.ListCredentials(writeCtx, ch.ID)
 			if err != nil {
 				return
 			}
@@ -380,11 +381,11 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 }
 
 func (u *ChannelUsecase) DeleteCredential(ctx context.Context, channelID, key string) error {
-	return u.repo.DeleteCredential(ctx, strings.TrimSpace(channelID), strings.TrimSpace(key))
+	return u.credentials.DeleteCredential(ctx, strings.TrimSpace(channelID), strings.TrimSpace(key))
 }
 
 func (u *ChannelUsecase) ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error) {
-	return u.repo.ListDeliveries(ctx, strings.TrimSpace(channelID), limit)
+	return u.deliveries.ListDeliveries(ctx, strings.TrimSpace(channelID), limit)
 }
 
 // AddInboundDelivery records a runtime webhook/delivery row (payload must not contain message bodies).
@@ -393,7 +394,7 @@ func (u *ChannelUsecase) AddInboundDelivery(ctx context.Context, channelID, stat
 	if channelID == "" {
 		return errors.BadRequest("CHANNEL", "channel id is required")
 	}
-	_, err := u.repo.AddDelivery(ctx, ChannelDelivery{
+	_, err := u.deliveries.AddDelivery(ctx, ChannelDelivery{
 		ID:           uuid.NewString(),
 		ChannelID:    channelID,
 		Status:       strings.TrimSpace(status),
@@ -404,11 +405,11 @@ func (u *ChannelUsecase) AddInboundDelivery(ctx context.Context, channelID, stat
 }
 
 func (u *ChannelUsecase) Test(ctx context.Context, id string) (ChannelTestResult, error) {
-	row, err := u.repo.Get(ctx, strings.TrimSpace(id))
+	row, err := u.reader.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		return ChannelTestResult{}, err
 	}
-	credentials, err := u.repo.ListCredentials(ctx, row.ID)
+	credentials, err := u.credentials.ListCredentials(ctx, row.ID)
 	if err != nil {
 		return ChannelTestResult{}, err
 	}
@@ -431,7 +432,7 @@ func (u *ChannelUsecase) CommitChannelTest(ctx context.Context, row Channel, cre
 		"credential_ok": credentialCount(credentials),
 		"result_status": result.Status,
 	})
-	if _, err := u.repo.AddDelivery(ctx, ChannelDelivery{
+	if _, err := u.deliveries.AddDelivery(ctx, ChannelDelivery{
 		ID:           uuid.NewString(),
 		ChannelID:    row.ID,
 		Status:       result.Status,
@@ -465,7 +466,7 @@ func (u *ChannelUsecase) updateTestMetadata(ctx context.Context, row Channel, re
 		return result, err
 	}
 	row.MetadataJSON = string(raw)
-	_, err = u.repo.Update(ctx, row)
+	_, err = u.writer.Update(ctx, row)
 	return result, err
 }
 

@@ -1,5 +1,5 @@
 import type { QTableColumn } from 'quasar';
-import type { EvolutionSuggestionView } from '../../features/skills/types';
+import type { SkillEvolutionView } from '../../features/skills/types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
 
 // ── Evolution Suggestion Type ──────────────────────────────────────
@@ -29,6 +29,62 @@ export function evoSuggestionTypeColor(type?: string): string {
       return 'blue';
     case EVO_SUGGESTION_TYPE_MERGE_DUPLICATE:
       return 'purple';
+    default:
+      return 'grey';
+  }
+}
+
+// ── Evolution Target Type ──────────────────────────────────────────
+
+export function evoTargetTypeLabel(targetType?: string): string {
+  switch (targetType) {
+    case 'skill':
+      return 'Skill';
+    case 'agent':
+      return 'Agent';
+    default:
+      return targetType || '—';
+  }
+}
+
+export function evoTargetTypeColor(targetType?: string): string {
+  switch (targetType) {
+    case 'skill':
+      return 'teal';
+    case 'agent':
+      return 'deep-purple';
+    default:
+      return 'grey';
+  }
+}
+
+// ── Evolution Action Type ──────────────────────────────────────────
+
+export function evoActionTypeLabel(actionType?: string): string {
+  switch (actionType) {
+    case 'create_skill':
+      return '创建 Skill';
+    case 'improve_skill':
+      return '改进 Skill';
+    case 'merge_skill':
+      return '合并 Skill';
+    case 'evolve_agent':
+      return '进化 Agent';
+    default:
+      return actionType || '—';
+  }
+}
+
+export function evoActionTypeColor(actionType?: string): string {
+  switch (actionType) {
+    case 'create_skill':
+      return 'positive';
+    case 'improve_skill':
+      return 'blue';
+    case 'merge_skill':
+      return 'purple';
+    case 'evolve_agent':
+      return 'deep-purple';
     default:
       return 'grey';
   }
@@ -100,14 +156,15 @@ export function evoLifecycleStatusColor(status?: string): string {
 
 // ── Table Columns ──────────────────────────────────────────────────
 
-/** EvolutionSuggestionTable 列定义 */
-export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<EvolutionSuggestionView>[] = [
-  registryCol<EvolutionSuggestionView>('skillId', 'Skill ID', 'skillId', 'left', REGISTRY_COL_W.name),
-  registryCol<EvolutionSuggestionView>('type', '类型', 'type', 'left', REGISTRY_COL_W.category),
-  registryCol<EvolutionSuggestionView>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-  registryCol<EvolutionSuggestionView>('lifecycleStatus', '生命周期', 'lifecycleStatus', 'left', REGISTRY_COL_W.status),
-  registryCol<EvolutionSuggestionView>('triggerReason', '触发原因', 'triggerReason', 'left', REGISTRY_COL_W.desc),
-  registryCol<EvolutionSuggestionView>('sandboxPassed', '沙箱验证', 'sandboxPassed', 'center', REGISTRY_COL_W.metric),
-  registryCol<EvolutionSuggestionView>('createdAt', '创建时间', 'createdAt', 'left', REGISTRY_COL_W.timeWide),
-  registryColActions<EvolutionSuggestionView>(),
+/** Unified Evolution Table 列定义 */
+export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView>[] = [
+  registryCol<SkillEvolutionView>('targetType', '目标类型', 'targetType', 'left', REGISTRY_COL_W.category),
+  registryCol<SkillEvolutionView>('targetId', '目标 ID', 'targetId', 'left', REGISTRY_COL_W.name),
+  registryCol<SkillEvolutionView>('actionType', '操作类型', 'actionType', 'left', REGISTRY_COL_W.category),
+  registryCol<SkillEvolutionView>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
+  registryCol<SkillEvolutionView>('lifecycleStatus', '生命周期', 'lifecycleStatus', 'left', REGISTRY_COL_W.status),
+  registryCol<SkillEvolutionView>('triggerReason', '触发原因', 'triggerReason', 'left', REGISTRY_COL_W.desc),
+  registryCol<SkillEvolutionView>('sandboxPassed', '沙箱验证', 'sandboxPassed', 'center', REGISTRY_COL_W.metric),
+  registryCol<SkillEvolutionView>('createdAt', '创建时间', 'createdAt', 'left', REGISTRY_COL_W.timeWide),
+  registryColActions<SkillEvolutionView>(),
 ];

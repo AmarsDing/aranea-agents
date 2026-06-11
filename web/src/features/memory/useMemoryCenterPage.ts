@@ -1,29 +1,26 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useQuasar } from 'quasar';
 import type { Agent } from '../agents/types';
 import type { Session } from '../session/types';
 import type {
   AgentIdentity,
   AgentStrategyProfile,
-  CascadePreview,
   CascadeProposal,
-  CascadeSagaStep,
   EvolutionEvent,
   EvolutionMetricsReport,
   EvolutionProposal,
   L0AssemblySnapshot,
   L1Task,
-  MemoryEntity,
   MemoryFact,
-  MemoryWorkerStatus,
 } from './types';
 import { buildMemoryAssemblyTableColumns, buildMemoryFactTableColumns } from './memoryTableUi';
-import { replayMemoryDeadLetter, abandonMemoryDeadLetter, getMemoryWorkerStatus } from './api'; // TECH-DEBT: bypass store for dead-letter admin actions
 import { useAgentsCatalogStore } from '../../stores/agents/catalog';
 import { useSessionStore } from '../../stores/session';
 import { useMemoryStore } from '../../stores/memory';
 
 export function useMemoryCenterPage() {
+  const { notify } = useQuasar();
   const agentsCatalog = useAgentsCatalogStore();
   const sessionStore = useSessionStore();
   const memoryStore = useMemoryStore();
@@ -76,8 +73,8 @@ export function useMemoryCenterPage() {
   const cascadePreviewProposalId = ref<string | null>(null);
   const cascadeSagaProposalId = ref<string | null>(null);
   const error = ref('');
-  const workerStatus = ref<MemoryWorkerStatus | null>(null);
-  const loadingWorkerStatus = ref(false);
+  const workerStatus = computed(() => memoryStore.workerStatus);
+  const loadingWorkerStatus = computed(() => memoryStore.loadingWorkerStatus);
 
   const loading = computed(
     () =>
@@ -92,13 +89,6 @@ export function useMemoryCenterPage() {
   const agentOptions = computed(() =>
     agents.value.map((agent) => ({ label: agent.display_name || agent.agent_key, value: agent.id })),
   );
-  const sessionRows = computed(() => sessions.value);
-  const factRows = computed(() => facts.value);
-  const snapshotRows = computed(() => snapshots.value);
-  const taskRows = computed(() => tasks.value);
-
-  const cascadePreviewData = computed<CascadePreview | null>(() => cascadePreview.value);
-  const sagaSteps = computed<CascadeSagaStep[]>(() => cascadeSagaSteps.value);
 
   const overviewCards = computed(() => {
     const avgContext = sessions.value.length
@@ -357,6 +347,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.approveCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
+    } catch (e: any) {
+      notify({ type: 'negative', message: e?.message || 'Cascade 批准失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -367,6 +359,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.rejectCascade(row.id);
       await loadCascade();
+    } catch (e: any) {
+      notify({ type: 'negative', message: e?.message || 'Cascade 拒绝失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -390,6 +384,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.retryCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
+    } catch (e: any) {
+      notify({ type: 'negative', message: e?.message || 'Cascade 重试失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -400,6 +396,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.compensateCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
+    } catch (e: any) {
+      notify({ type: 'negative', message: e?.message || 'Cascade 补偿失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -530,22 +528,15 @@ export function useMemoryCenterPage() {
   }
 
   async function handleDeadLetterReplay(id: number) {
-    await replayMemoryDeadLetter(id);
+    await memoryStore.replayDeadLetter(id);
   }
 
   async function handleDeadLetterAbandon(id: number) {
-    await abandonMemoryDeadLetter(id);
+    await memoryStore.abandonDeadLetter(id);
   }
 
   async function loadWorkerStatus() {
-    loadingWorkerStatus.value = true;
-    try {
-      workerStatus.value = await getMemoryWorkerStatus();
-    } catch {
-      workerStatus.value = null;
-    } finally {
-      loadingWorkerStatus.value = false;
-    }
+    await memoryStore.loadWorkerStatus();
   }
 
   return {
@@ -566,10 +557,10 @@ export function useMemoryCenterPage() {
     loadingSnapshots,
     loadingTasks,
     agentOptions,
-    sessionRows,
-    factRows,
-    snapshotRows,
-    taskRows,
+    sessionRows: sessions,
+    factRows: facts,
+    snapshotRows: snapshots,
+    taskRows: tasks,
     overviewCards,
     actionItems,
     memoryLayers,
@@ -580,12 +571,12 @@ export function useMemoryCenterPage() {
     loadingCascade,
     cascadeActingId,
     cascadePreviewOpen,
-    cascadePreviewData,
+    cascadePreviewData: cascadePreview,
     cascadePreviewProposalId,
     loadingCascadePreview,
     cascadeSagaDrawerOpen,
     cascadeSagaProposalId,
-    sagaSteps,
+    sagaSteps: cascadeSagaSteps,
     loadingCascadeSaga,
     settingChecklist,
     scopeOptions,

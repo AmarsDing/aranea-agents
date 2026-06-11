@@ -14,23 +14,21 @@ import {
   visibleFields,
   type ChannelPlatformField,
   type ChannelPlatformSection,
-} from './channelPlatformFields';
-import {
   inferRoutingTargetType,
   isChannelRoutingValid,
   pickDefaultAgentId,
   resolveChannelAgentSelectValue,
   type ChannelRoutingTargetType,
-} from './channelRoutingUtils';
-import {
   applyLongTaskFormDefaults,
   CHANNEL_LONG_TASK_DEFAULTS,
   isLongTaskFormKey,
   LONG_TASK_NUMERIC_KEYS,
   type LongTaskFormKey,
-} from './channelLongTaskDefaults';
+  buildChannelWebhookURL,
+  isLocalhostOrigin,
+  parseJSON,
+} from '../../domain/channel';
 import { isImPreviewFormKey } from './channelImPreviewDefaults';
-import { buildChannelWebhookURL, isLocalhostOrigin } from './publicWebhookOrigin';
 import { useChannelsStore } from '../../stores/channels';
 import { useAgentModelValidation } from '../agents/useAgentModelValidation';
 import type {
@@ -651,13 +649,4 @@ function defaultConfigFor(item: ChannelTypeItem): Record<string, unknown> {
   else if (item.type === 'telegram') base.allowed_updates = ['message', 'callback_query'];
   else if (item.type === 'qq') base.protocol = 'onebot11';
   return base;
-}
-
-function parseJSON<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
 }

@@ -44,6 +44,9 @@ func (s *deliveryRepoStub) UpdateDelivery(_ context.Context, d ChannelDelivery) 
 	s.last = d
 	return nil
 }
+func (s *deliveryRepoStub) HasDeliveryByIdempotencyKey(_ context.Context, channelID, key string) (bool, error) {
+	return false, nil
+}
 
 func TestOutboundRetryDelay(t *testing.T) {
 	if outboundRetryDelay(1) != 5*time.Second {
@@ -84,7 +87,7 @@ func TestIsOutboundDeliveryReady(t *testing.T) {
 
 func TestMarkOutboundAttemptBackoffAndDeadLetter(t *testing.T) {
 	repo := &deliveryRepoStub{}
-	uc := &ChannelUsecase{repo: repo}
+	uc := &ChannelUsecase{deliveries: repo}
 	row := ChannelDelivery{
 		ID:          "d1",
 		ChannelID:   "c1",

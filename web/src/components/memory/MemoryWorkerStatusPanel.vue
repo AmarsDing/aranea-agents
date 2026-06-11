@@ -39,17 +39,14 @@
         </tbody>
       </q-markup-table>
     </q-card-section>
-    <q-card-section v-if="status && (status.index_stale || status.index_disabled)" class="q-pt-none">
+    <q-card-section v-if="status && (status.fact_index_stale_count || status.fact_index_disabled_count)" class="q-pt-none">
       <div class="text-caption text-grey-7 q-mb-xs">索引健康</div>
       <div class="row q-col-gutter-sm">
-        <div class="col-auto">
-          <q-badge color="positive">Active {{ status.index_active ?? 0 }}</q-badge>
+        <div v-if="status.fact_index_stale_count" class="col-auto">
+          <q-badge color="warning">Stale {{ status.fact_index_stale_count }}</q-badge>
         </div>
-        <div v-if="status.index_stale" class="col-auto">
-          <q-badge color="warning">Stale {{ status.index_stale }}</q-badge>
-        </div>
-        <div v-if="status.index_disabled" class="col-auto">
-          <q-badge color="negative">Disabled {{ status.index_disabled }}</q-badge>
+        <div v-if="status.fact_index_disabled_count" class="col-auto">
+          <q-badge color="negative">Disabled {{ status.fact_index_disabled_count }}</q-badge>
         </div>
       </div>
     </q-card-section>

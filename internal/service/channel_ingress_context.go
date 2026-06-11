@@ -35,5 +35,5 @@ func (h *ChannelIngress) rejectIfContextPressure(
 	}
 	recordIngressIntentMetric("context_pressure")
 	idempotency := ackIdempotencyKey(platform, ev, "context_pressure")
-	return true, h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorContextOverflow, ev.OutboundMeta, idempotency)
+	return true, h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), biz.ChannelTurnErrorContextOverflowMsg, ev.OutboundMeta, idempotency)
 }

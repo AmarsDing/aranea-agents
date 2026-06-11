@@ -155,7 +155,7 @@
         color="primary"
         icon="arrow_downward"
         class="chat-scroll-bottom"
-        aria-label="滚动到最新消息"
+        :aria-label="t('chat.scrollToLatest')"
         @click="$emit('scroll-to-bottom', true)"
       />
     </transition>

@@ -448,7 +448,7 @@ func TestChannelTypeFromConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := service.ChannelTypeFromConfig(tt.configJSON, loggateway.NewNoop()); got != tt.want {
+			if got := service.ChannelTypeFromConfig(tt.configJSON); got != tt.want {
 				t.Errorf("ChannelTypeFromConfig() = %q, want %q", got, tt.want)
 			}
 		})

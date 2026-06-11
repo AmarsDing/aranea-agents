@@ -12,14 +12,18 @@
       <q-icon name="auto_awesome" size="20px" />
     </div>
     <div class="spirit-entry__info col min-width-0">
-      <div class="spirit-entry__name ellipsis">精灵助手</div>
-      <div class="spirit-entry__status ellipsis">智能编排 · 多 Agent 协作</div>
+      <div class="spirit-entry__name ellipsis">{{ t('spirit.spiritAssistant') }}</div>
+      <div class="spirit-entry__status ellipsis">{{ t('spirit.spiritDescription') }}</div>
     </div>
     <div v-if="active" class="spirit-entry__indicator" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
+
 defineProps<{
   active: boolean;
 }>();

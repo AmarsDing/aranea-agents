@@ -33,6 +33,6 @@ func newSkillListTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_skill_list"),
-		function.WithDescription("列出系统中所有 Skill。支持关键词搜索和分页。"),
+		function.WithDescription("列出系统中所有 Skill。支持关键词搜索和分页。用于查找可用的 Skill 或确认 Skill 是否已安装。"),
 	)
 }

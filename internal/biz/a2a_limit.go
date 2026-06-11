@@ -5,29 +5,56 @@ import (
 	"time"
 )
 
-// A2AInvokeLimiter provides per-caller/callee rate limiting for A2A Invoke (Phase 4).
-type A2AInvokeLimiter struct {
+// A2ALimiter controls per-caller-callee invocation rate.
+// TODO(debt): DEV-08 — Replace in-memory implementation with Redis-backed
+// distributed limiter for multi-pod deployments.
+type A2ALimiter interface {
+	Allow(caller, callee string) bool
+}
+
+// A2ALimiterConfig holds configurable parameters for the in-memory sliding
+// window limiter. Future Redis-backed implementations may define their own
+// config structs.
+type A2ALimiterConfig struct {
+	WindowSize time.Duration
+	MaxInvokes int
+}
+
+// DefaultA2ALimiterConfig returns the current production defaults.
+func DefaultA2ALimiterConfig() A2ALimiterConfig {
+	return A2ALimiterConfig{
+		WindowSize: time.Minute,
+		MaxInvokes: 60,
+	}
+}
+
+// slidingWindowLimiter is an in-memory per-caller/callee rate limiter using a
+// sliding window algorithm. It implements A2ALimiter.
+type slidingWindowLimiter struct {
 	mu      sync.Mutex
 	window  time.Duration
 	max     int
 	buckets map[string][]time.Time
 }
 
-func NewA2AInvokeLimiter(maxPerWindow int, window time.Duration) *A2AInvokeLimiter {
-	if maxPerWindow <= 0 {
-		maxPerWindow = 60
+// NewSlidingWindowLimiter creates an in-memory A2ALimiter from cfg.
+func NewSlidingWindowLimiter(cfg A2ALimiterConfig) *slidingWindowLimiter {
+	max := cfg.MaxInvokes
+	if max <= 0 {
+		max = 60
 	}
+	window := cfg.WindowSize
 	if window <= 0 {
 		window = time.Minute
 	}
-	return &A2AInvokeLimiter{
+	return &slidingWindowLimiter{
 		window:  window,
-		max:     maxPerWindow,
+		max:     max,
 		buckets: make(map[string][]time.Time),
 	}
 }
 
-func (l *A2AInvokeLimiter) Allow(caller, callee string) bool {
+func (l *slidingWindowLimiter) Allow(caller, callee string) bool {
 	if l == nil {
 		return true
 	}
@@ -51,7 +78,19 @@ func (l *A2AInvokeLimiter) Allow(caller, callee string) bool {
 	return true
 }
 
-var defaultA2ALimiter = NewA2AInvokeLimiter(60, time.Minute)
+// A2AInvokeLimiter is kept for backward compatibility; it wraps
+// *slidingWindowLimiter and implements A2ALimiter.
+type A2AInvokeLimiter = slidingWindowLimiter
+
+// NewA2AInvokeLimiter is kept for backward compatibility.
+func NewA2AInvokeLimiter(maxPerWindow int, window time.Duration) *A2AInvokeLimiter {
+	return NewSlidingWindowLimiter(A2ALimiterConfig{
+		MaxInvokes: maxPerWindow,
+		WindowSize: window,
+	})
+}
+
+var defaultA2ALimiter = NewSlidingWindowLimiter(DefaultA2ALimiterConfig())
 
 // DefaultA2AInvokeLimiter returns the process-wide A2A invoke limiter.
 func DefaultA2AInvokeLimiter() *A2AInvokeLimiter { return defaultA2ALimiter }

@@ -7,6 +7,7 @@ import (
 // Re-export hook types from sub-package for backward compatibility.
 type (
 	Hook                    = hook.Hook
+	HookPatch               = hook.HookPatch
 	HookRepo                = hook.Repo
 	HookUsecase             = hook.Usecase
 	HookConfig              = hook.Config

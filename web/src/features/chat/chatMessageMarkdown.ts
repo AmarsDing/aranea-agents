@@ -1,5 +1,9 @@
+import 'highlight.js/styles/github-dark-dimmed.css';
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
+import { detectLanguage, highlight } from './lib/detectCodeLanguage';
+
+const COLLAPSE_THRESHOLD = 20;
 
 const markdown = new MarkdownIt({
   breaks: true,
@@ -8,23 +12,51 @@ const markdown = new MarkdownIt({
 });
 markdown.enable(['table', 'strikethrough']);
 
+let codeBlockIndex = 0;
+
 markdown.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx]!;
   const info = (token.info || '').trim();
-  const lang = info ? info.split(/\s+/)[0]! : '';
-  const langLabel = lang || 'code';
-  const safeCode = markdown.utils.escapeHtml(token.content);
-  const codeClass = lang ? ` class="language-${markdown.utils.escapeHtml(lang)}"` : '';
-  return `<div class="code-block">
-    <div class="code-block__header">
-      <span class="code-block__lang">${markdown.utils.escapeHtml(langLabel)}</span>
-      <button type="button" class="code-block__copy" aria-label="复制代码">
-        <span class="code-block__copy-icon" aria-hidden="true"></span>
-        <span class="code-block__copy-text">复制</span>
-      </button>
-    </div>
-    <pre><code${codeClass}>${safeCode}</code></pre>
-  </div>`;
+  const langHint = info ? info.split(/\s+/)[0]! : '';
+  const code = token.content;
+  const lang = detectLanguage(code, langHint || undefined);
+  const langLabel = lang === 'plaintext' ? 'code' : lang;
+  const highlighted = highlight(code, lang);
+  const lineCount = code.split('\n').length;
+  const collapsed = lineCount > COLLAPSE_THRESHOLD;
+  const index = codeBlockIndex++;
+
+  const langClass = `hljs language-${markdown.utils.escapeHtml(lang)}`;
+
+  if (collapsed) {
+    return `<div class="code-block code-block--collapsed" data-lang="${markdown.utils.escapeHtml(lang)}">
+  <div class="code-block__header">
+    <span class="code-block__lang">${markdown.utils.escapeHtml(langLabel)}</span>
+    <button type="button" class="code-block__copy" aria-label="复制代码">
+      <span class="code-block__copy-icon" aria-hidden="true"></span>
+      <span class="code-block__copy-text">复制</span>
+    </button>
+  </div>
+  <div class="code-block__collapsed-hint" data-code-index="${index}">▶ 展开代码 (${lineCount} 行)</div>
+  <div class="code-block__body" style="display:none">
+    <pre><code class="${langClass}">${highlighted}</code></pre>
+  </div>
+  <div class="code-block__collapse-hint" data-code-index="${index}" style="display:none">收起代码</div>
+</div>`;
+  }
+
+  return `<div class="code-block" data-lang="${markdown.utils.escapeHtml(lang)}">
+  <div class="code-block__header">
+    <span class="code-block__lang">${markdown.utils.escapeHtml(langLabel)}</span>
+    <button type="button" class="code-block__copy" aria-label="复制代码">
+      <span class="code-block__copy-icon" aria-hidden="true"></span>
+      <span class="code-block__copy-text">复制</span>
+    </button>
+  </div>
+  <div class="code-block__body">
+    <pre><code class="${langClass}">${highlighted}</code></pre>
+  </div>
+</div>`;
 };
 
 export function formatMessageStamp(iso: string): string {
@@ -58,7 +90,7 @@ export function formatMessageStamp(iso: string): string {
 export function renderChatMarkdown(content: string): string {
   return DOMPurify.sanitize(markdown.render(content || ''), {
     ADD_TAGS: ['button'],
-    ADD_ATTR: ['type', 'aria-label', 'aria-hidden'],
+    ADD_ATTR: ['type', 'aria-label', 'aria-hidden', 'data-lang', 'data-code-index'],
   });
 }
 

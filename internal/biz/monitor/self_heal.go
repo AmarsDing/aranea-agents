@@ -86,7 +86,9 @@ type RuleFailCount struct {
 	Count  int    `json:"count"`
 }
 
-// SelfHealUsecase orchestrates the diagnose → analyze → auto-fix loop.
+// SelfHealUsecase is the Phase 1 self-healing implementation.
+// TODO(debt): DEV-06 — Migrate execution logic to SelfHealObserver (Phase 2).
+// SelfHealUsecase will become a thin wrapper delegating to SelfHealObserver.
 //
 // Deprecated: Use SelfHealObserver instead. SelfHealUsecase is kept for backward
 // compatibility during the migration period. The observation role (tracking auto-heal

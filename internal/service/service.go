@@ -84,7 +84,7 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeEmbedder,
 	NewMemoryEmbeddingAdapter,
 	wire.Bind(new(biz.EmbeddingService), new(*MemoryEmbeddingAdapter)),
-	wire.Bind(new(biz.SkillEmbedder), new(*knowledge.Embedder)),
+	wire.Bind(new(biz.SkillEmbedder), new(*knowledge.MultiProviderEmbedder)),
 	NewKnowledgeRetriever,
 	NewKnowledgeHybridRetriever,
 	NewKnowledgeQueryRewriter,

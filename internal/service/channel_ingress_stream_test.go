@@ -12,7 +12,7 @@ import (
 
 func TestProcessInboundStreamingUnsupportedPlatformUnaryFallback(t *testing.T) {
 	repo := &streamChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{channels: uc, lg: loggateway.NewNoop()}
 	ch := biz.Channel{ID: "ch1", ConfigJSON: `{"type":"dingtalk","config":{"streaming_enabled":true}}`}
 	ev := port.InboundEvent{PlatformType: "dingtalk", PeerID: "p1", Text: "hi"}
@@ -65,3 +65,6 @@ func (r *streamChannelRepo) ListPendingDeliveries(context.Context, int) ([]biz.C
 	return nil, nil
 }
 func (r *streamChannelRepo) UpdateDelivery(context.Context, biz.ChannelDelivery) error { return nil }
+func (r *streamChannelRepo) HasDeliveryByIdempotencyKey(context.Context, string, string) (bool, error) {
+	return false, nil
+}

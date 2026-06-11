@@ -500,6 +500,15 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 			loggateway.StepID("spirit.suggest_topology"),
 			loggateway.Str("topology", string(topology)),
 		)
+		// Emit cache hit event
+		if a.bus != nil {
+			env := event.NewEnvelope(event.EnvelopeTypeOrchestrationCacheHit, "spirit-team-assembler", "")
+			env.Metadata = map[string]any{
+				"task_pattern": biz.ExtractTaskPattern(taskDescription),
+				"topology":     string(topology),
+			}
+			a.bus.Publish(ctx, env)
+		}
 	}
 	return string(topology), found
 }

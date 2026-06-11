@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -34,8 +35,10 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 
 	dailyBuckets := make(map[string]*dailyBucket)
 	var inv7d, succ7d int
+	var routed7d, loaded7d int
 	var durations7d []int
 	var inv30d, succ30d int
+	var routed30d, loaded30d int
 	var durations30d []int
 
 	for _, row := range rows {
@@ -51,10 +54,26 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 			b.successes++
 		}
 
+		// Track route hit rate.
+		hasRouted := len(row.RoutedSlugs) > 0
+		hasLoaded := strings.TrimSpace(row.LoadedSlug) != ""
+		if hasRouted {
+			b.routedCount++
+		}
+		if hasLoaded {
+			b.loadedCount++
+		}
+
 		// 30d window
 		inv30d++
 		if types.IsSuccess(row.Outcome, row.Status) {
 			succ30d++
+		}
+		if hasRouted {
+			routed30d++
+		}
+		if hasLoaded {
+			loaded30d++
 		}
 		durations30d = append(durations30d, row.DurationMs)
 
@@ -63,6 +82,12 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 			inv7d++
 			if types.IsSuccess(row.Outcome, row.Status) {
 				succ7d++
+			}
+			if hasRouted {
+				routed7d++
+			}
+			if hasLoaded {
+				loaded7d++
 			}
 			durations7d = append(durations7d, row.DurationMs)
 		}
@@ -79,6 +104,8 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 			Invocations:   b.count,
 			Successes:     b.successes,
 			AvgDurationMs: avgDur,
+			RoutedCount:   b.routedCount,
+			LoadedCount:   b.loadedCount,
 		})
 	}
 	sort.Slice(dailyMetrics, func(i, j int) bool { return dailyMetrics[i].Date < dailyMetrics[j].Date })
@@ -89,10 +116,12 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 		SuccessCount7d:      succ7d,
 		SuccessRate7d:       types.SafeRate(succ7d, inv7d),
 		P95DurationMs7d:     types.P95(durations7d),
+		RouteHitRate7d:      types.SafeRate(loaded7d, routed7d),
 		TotalInvocations30d: inv30d,
 		SuccessCount30d:     succ30d,
 		SuccessRate30d:      types.SafeRate(succ30d, inv30d),
 		P95DurationMs30d:    types.P95(durations30d),
+		RouteHitRate30d:     types.SafeRate(loaded30d, routed30d),
 		DailyMetrics:        dailyMetrics,
 	}
 	return result, nil
@@ -102,5 +131,7 @@ type dailyBucket struct {
 	count           int
 	successes       int
 	totalDurationMs int
+	routedCount     int
+	loadedCount     int
 }
 

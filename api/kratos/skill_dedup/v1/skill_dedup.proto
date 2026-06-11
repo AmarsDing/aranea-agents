@@ -7,12 +7,19 @@ import "google/api/field_behavior.proto";
 
 option go_package = "aranea-agents/api/kratos/skill_dedup/v1;v1";
 
+message DimensionScore {
+  string dimension = 1;
+  double score = 2;
+  string method = 3;
+}
+
 message SkillSummary {
   string id = 1;
   string name = 2;
   string slug = 3;
   string description = 4;
   string body_preview = 5;
+  repeated string tags = 6;
 }
 
 message SkillDuplicateGroup {
@@ -20,6 +27,9 @@ message SkillDuplicateGroup {
   repeated SkillSummary skills = 2;
   string overlap_type = 3;
   float overlap_score = 4;
+  repeated DimensionScore dimensions = 5;
+  string conflict_risk = 6;
+  string recommendation = 7;
 }
 
 message ListSkillDuplicateGroupsRequest {

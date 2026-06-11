@@ -1076,6 +1076,10 @@ func convertTools(tools map[string]tool.Tool) []anthropic.ToolUnionParam {
 	var result []anthropic.ToolUnionParam
 	for _, t := range toolorder.SortedTools(tools) {
 		declaration := t.Declaration()
+		sanitizedName := tool.SanitizeToolName(declaration.Name)
+		if sanitizedName != declaration.Name {
+			log.Warnf("tool name %q sanitized to %q for LLM API compatibility", declaration.Name, sanitizedName)
+		}
 		inputSchema := anthropic.ToolInputSchemaParam{
 			Type: constant.Object("object"),
 		}
@@ -1087,10 +1091,16 @@ func convertTools(tools map[string]tool.Tool) []anthropic.ToolUnionParam {
 			if len(declaration.InputSchema.Required) > 0 {
 				inputSchema.Required = declaration.InputSchema.Required
 			}
+			// Pass additional JSON Schema fields ($defs, additionalProperties,
+			// items, enum, default, $ref) through ExtraFields so that
+			// recursive types and advanced schema features are preserved.
+			if extraFields := declaration.InputSchema.ExtraFields(); len(extraFields) > 0 {
+				inputSchema.ExtraFields = extraFields
+			}
 		}
 		result = append(result, anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{
-				Name:        tool.SanitizeToolName(declaration.Name),
+				Name:        sanitizedName,
 				Description: anthropic.String(buildToolDescription(declaration)),
 				InputSchema: inputSchema,
 			},
@@ -1111,7 +1121,7 @@ func buildToolDescription(declaration *tool.Declaration) string {
 		log.Debugf("marshal output schema for tool %s: %v", declaration.Name, err)
 		return desc
 	}
-	desc += "Output schema: " + string(schemaJSON)
+	desc += "\nOutput schema: " + string(schemaJSON)
 	return desc
 }
 

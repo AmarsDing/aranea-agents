@@ -8,8 +8,7 @@
       :default-edge-options="defaultEdgeOptions"
       :connection-line-style="connectionLineStyle"
       :fit-view-on-init="true"
-      :snap-to-grid="true"
-      :snap-grid="[16, 16]"
+      :snap-to-grid="false"
       :min-zoom="0.2"
       :max-zoom="2"
       :nodes-draggable="!readOnly"
@@ -29,6 +28,7 @@
       @nodes-change="onNodesChange"
       @edges-change="onEdgesChange"
       @edge-update="onEdgeUpdate"
+      @edge-contextmenu="onEdgeContextMenu"
       @node-drag-start="onNodeDragStart"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
@@ -36,19 +36,23 @@
       <Background :gap="16" />
       <Controls />
       <MiniMap :node-color="miniMapNodeColor" />
-      <template #connection-line="{}" />
-      <svg v-if="snapLines.length > 0" class="snap-guide-layer">
-        <line
-          v-for="(line, idx) in snapLines"
-          :key="idx"
-          :x1="line.orientation === 'vertical' ? line.position : line.from"
-          :y1="line.orientation === 'horizontal' ? line.position : line.from"
-          :x2="line.orientation === 'vertical' ? line.position : line.to"
-          :y2="line.orientation === 'horizontal' ? line.position : line.to"
-          class="snap-guide-line"
-          :class="`snap-guide-line--${line.orientation}`"
-        />
-      </svg>
+      <template #connection-line="connectionLineProps">
+        <GraphConnectionLine v-bind="connectionLineProps" />
+      </template>
+      <template #zoom-pane>
+        <svg v-if="snapLines.length > 0" class="snap-guide-layer">
+          <line
+            v-for="(line, idx) in snapLines"
+            :key="idx"
+            :x1="line.orientation === 'vertical' ? line.position : line.from"
+            :y1="line.orientation === 'horizontal' ? line.position : line.from"
+            :x2="line.orientation === 'vertical' ? line.position : line.to"
+            :y2="line.orientation === 'horizontal' ? line.position : line.to"
+            class="snap-guide-line"
+            :class="`snap-guide-line--${line.orientation}`"
+          />
+        </svg>
+      </template>
     </VueFlow>
     <GraphContextMenu
       :visible="ctxMenuVisible"
@@ -65,6 +69,14 @@
       :items="paneMenuItems"
       @select="onPaneMenuSelect"
       @close="paneMenuVisible = false"
+    />
+    <GraphContextMenu
+      :visible="edgeMenuVisible"
+      :x="edgeMenuX"
+      :y="edgeMenuY"
+      :items="edgeMenuItems"
+      @select="onEdgeMenuSelect"
+      @close="onEdgeMenuClose"
     />
     <GraphNodeSearch
       :visible="searchVisible"
@@ -112,6 +124,7 @@ import '@vue-flow/minimap/dist/style.css';
 import GraphFlowNode from './GraphFlowNode.vue';
 import GraphFlowDiamond from './GraphFlowDiamond.vue';
 import GraphFlowEdge from './GraphFlowEdge.vue';
+import GraphConnectionLine from './GraphConnectionLine.vue';
 import GraphContextMenu from './GraphContextMenu.vue';
 import type { ContextMenuItem } from './GraphContextMenu.vue';
 import GraphNodeSearch from './GraphNodeSearch.vue';
@@ -174,6 +187,10 @@ const ctxMenuVisible = ref(false);
 const ctxMenuX = ref(0);
 const ctxMenuY = ref(0);
 const ctxMenuNodeId = ref<string | null>(null);
+const edgeMenuVisible = ref(false);
+const edgeMenuX = ref(0);
+const edgeMenuY = ref(0);
+const edgeMenuEdgeId = ref<string | null>(null);
 const paneMenuVisible = ref(false);
 const paneMenuX = ref(0);
 const paneMenuY = ref(0);
@@ -482,6 +499,7 @@ function onNodeClick({ node }: { node: Node }) {
 function onPaneClick() {
   emit('selectNode', null);
   ctxMenuVisible.value = false;
+  edgeMenuVisible.value = false;
   paneMenuVisible.value = false;
 }
 
@@ -591,6 +609,70 @@ function onCtxMenuSelect(action: string) {
 
 function onCtxMenuClose() {
   ctxMenuVisible.value = false;
+}
+
+const edgeMenuItems = computed<ContextMenuItem[]>(() => {
+  const items: ContextMenuItem[] = [];
+  if (!readOnly.value) {
+    items.push({ icon: '✕', label: '删除连线', shortcut: 'Del', danger: true, action: 'deleteEdge' });
+  }
+  return items;
+});
+
+function onEdgeContextMenu({ edge, event }: { edge: Edge; event: MouseEvent }) {
+  if (readOnly.value) return;
+  event.preventDefault();
+  ctxMenuVisible.value = false;
+  paneMenuVisible.value = false;
+  edgeMenuEdgeId.value = edge.id;
+  edgeMenuX.value = event.clientX;
+  edgeMenuY.value = event.clientY;
+  edgeMenuVisible.value = true;
+}
+
+function deleteEdgeById(edgeId: string) {
+  const resolved = resolveConditionalEdgeRemoval(edgeId);
+  if (resolved) {
+    const ce = props.graphDef.conditionalEdges[resolved.ceIdx];
+    const newPathMap = { ...ce.pathMap };
+    delete newPathMap[resolved.label];
+    if (Object.keys(newPathMap).length === 0) {
+      props.graphDef.conditionalEdges.splice(resolved.ceIdx, 1);
+    } else {
+      ce.pathMap = newPathMap;
+    }
+    if (props.undoRedo) {
+      props.undoRedo.pushDeleteConditionalEdge(ce, resolved.ceIdx, resolved.label);
+    } else {
+      emit('updateGraph');
+    }
+  } else {
+    const edgeIdx = props.graphDef.edges.findIndex(
+      (_, i) => `e-${props.graphDef.edges[i].from}-${props.graphDef.edges[i].to}` === edgeId,
+    );
+    if (edgeIdx >= 0) {
+      const edge = { ...props.graphDef.edges[edgeIdx] };
+      props.graphDef.edges.splice(edgeIdx, 1);
+      if (props.undoRedo) {
+        props.undoRedo.pushDeleteEdge(edge, edgeIdx);
+      } else {
+        emit('updateGraph');
+      }
+    }
+  }
+}
+
+function onEdgeMenuSelect(action: string) {
+  edgeMenuVisible.value = false;
+  const edgeId = edgeMenuEdgeId.value;
+  if (!edgeId) return;
+  if (action === 'deleteEdge') {
+    deleteEdgeById(edgeId);
+  }
+}
+
+function onEdgeMenuClose() {
+  edgeMenuVisible.value = false;
 }
 
 function onPaneMenuSelect(action: string) {
@@ -795,37 +877,7 @@ function onEdgesChange(changes: EdgeChange[]) {
   if (syncingFromProp || readOnly.value) return;
   for (const change of changes) {
     if (change.type === 'remove') {
-      const edgeId = change.id;
-      const resolved = resolveConditionalEdgeRemoval(edgeId);
-      if (resolved) {
-        const ce = props.graphDef.conditionalEdges[resolved.ceIdx];
-        const oldPathMap = { ...ce.pathMap };
-        const newPathMap = { ...ce.pathMap };
-        delete newPathMap[resolved.label];
-        if (Object.keys(newPathMap).length === 0) {
-          props.graphDef.conditionalEdges.splice(resolved.ceIdx, 1);
-        } else {
-          ce.pathMap = newPathMap;
-        }
-        if (props.undoRedo) {
-          props.undoRedo.pushDeleteConditionalEdge(ce, resolved.ceIdx, resolved.label);
-        } else {
-          emit('updateGraph');
-        }
-      } else {
-        const edgeIdx = props.graphDef.edges.findIndex(
-          (_, i) => `e-${props.graphDef.edges[i].from}-${props.graphDef.edges[i].to}` === edgeId,
-        );
-        if (edgeIdx >= 0) {
-          const edge = { ...props.graphDef.edges[edgeIdx] };
-          props.graphDef.edges.splice(edgeIdx, 1);
-          if (props.undoRedo) {
-            props.undoRedo.pushDeleteEdge(edge, edgeIdx);
-          } else {
-            emit('updateGraph');
-          }
-        }
-      }
+      deleteEdgeById(change.id);
     }
   }
 }
@@ -941,11 +993,24 @@ function onNodeDrag() {
 
 function onNodeDragStop({ node }: { node: Node }) {
   if (readOnly.value || !node.id) return;
+  const ids = new Set(dragStartPositions.keys());
+  // 拖拽结束时计算最终吸附修正
+  let snapDelta = { x: 0, y: 0 };
+  if (ids.size > 0) {
+    const result = computeSnapLines(ids);
+    snapDelta = result.delta;
+  }
   const moves: { nodeId: string; oldPos: { x: number; y: number }; newPos: { x: number; y: number } }[] = [];
   for (const [id, oldPos] of dragStartPositions) {
     const vfNode = internalNodes.value.find((n) => n.id === id);
     if (!vfNode) continue;
-    const newPos = { ...vfNode.position };
+    // 应用吸附修正
+    const newPos = {
+      x: vfNode.position.x + snapDelta.x,
+      y: vfNode.position.y + snapDelta.y,
+    };
+    vfNode.position.x = newPos.x;
+    vfNode.position.y = newPos.y;
     if (oldPos.x !== newPos.x || oldPos.y !== newPos.y) {
       moves.push({ nodeId: id, oldPos, newPos });
     }
@@ -983,11 +1048,22 @@ function onCanvasKeydown(e: KeyboardEvent) {
     return;
   }
   if (!readOnly.value && e.key === 'Delete') {
-    const selected = getSelectedNodes.value;
-    if (selected.length === 1) {
-      deleteNode(selected[0].id);
-    } else if (selected.length > 1) {
-      deleteSelectedNodes();
+    const selectedNodes = getSelectedNodes.value;
+    if (selectedNodes.length > 0) {
+      if (selectedNodes.length === 1) {
+        deleteNode(selectedNodes[0].id);
+      } else {
+        deleteSelectedNodes();
+      }
+      return;
+    }
+    // 删除选中的边
+    const selectedEdges = internalEdges.value.filter((edge) => edge.selected);
+    if (selectedEdges.length > 0) {
+      for (const edge of selectedEdges) {
+        deleteEdgeById(edge.id);
+      }
+      return;
     }
     return;
   }

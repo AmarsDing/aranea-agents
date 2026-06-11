@@ -176,7 +176,7 @@ func NewSearchTool() trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_search"),
-		function.WithDescription("Search a knowledge collection for relevant text chunks using semantic similarity. Supports hybrid search (dense + sparse) and adaptive routing when available."),
+		function.WithDescription("Search a knowledge collection for relevant text chunks using semantic similarity. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases. For multi-collection search or quality verification, use knowledge_reflect instead."),
 	)
 }
 

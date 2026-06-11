@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M59 Chat UI v6</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --bg-surface: #16213e;
+    --bg-elevated: #0f3460;
+    --text-primary: #e8e8f0;
+    --text-secondary: #a0a0b8;
+    --text-tertiary: #6a6a80;
+    --color-primary: #5b8af5;
+    --border: #2a2a4a;
+    --radius: 8px;
+    --font-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'Cascadia Code', 'Fira Code', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font-base); background: var(--bg); color: var(--text-primary); overflow: hidden; height: 100vh; }
+  .app { display: flex; height: 100vh; }
+
+  /* === Sidebar === */
+  .sidebar { width: 280px; background: var(--bg-surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-header h2 { font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .spirit-entry { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-elevated); border-radius: var(--radius); cursor: pointer; border: 2px solid var(--color-primary); }
+  .spirit-entry .avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #5b8af5, #7c4dff); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .spirit-entry .info { flex: 1; }
+  .spirit-entry .name { font-weight: 600; font-size: 14px; }
+  .spirit-entry .status { font-size: 11px; color: var(--text-secondary); }
+  .team-section { padding: 8px 16px; }
+  .team-section-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+  .team-section-header span { font-size: 12px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+  .team-section-header .count { background: var(--bg-elevated); padding: 2px 8px; border-radius: 10px; font-size: 11px; color: var(--text-secondary); }
+  .team-card { padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 6px; cursor: pointer; transition: all 0.2s; }
+  .team-card:hover { border-color: var(--color-primary); }
+  .team-card.active { border-color: var(--color-primary); background: rgba(91,138,245,0.1); }
+  .team-card .team-name { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .team-card .team-summary { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; }
+  .team-card .team-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .status-badge { padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; background: rgba(91,138,245,0.12); color: var(--color-primary); }
+  .status-badge.s-running { background: rgba(91,138,245,0.15); color: var(--color-primary); }
+  .status-badge.s-done { background: rgba(91,138,245,0.08); color: var(--text-secondary); }
+  .status-badge.s-fail { background: rgba(91,138,245,0.15); color: var(--color-primary); }
+  .team-card .avatars { display: flex; margin-left: auto; }
+  .team-card .avatars .mini-avatar { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--bg-surface); margin-left: -6px; font-size: 9px; display: flex; align-items: center; justify-content: center; background: var(--bg-elevated); color: var(--text-secondary); }
+  .team-card .progress-bar { height: 2px; background: var(--border); border-radius: 1px; margin-top: 6px; overflow: hidden; }
+  .team-card .progress-bar .fill { height: 100%; border-radius: 1px; background: var(--color-primary); transition: width 0.3s; }
+  .pulse-dot { width: 6px; height: 6px; border-radius: 50%; animation: pulse 1.5s ease-in-out infinite; display: inline-block; background: var(--color-primary); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* === Main === */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .main-header { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: var(--bg-surface); }
+  .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+  .breadcrumb .sep { color: var(--text-tertiary); }
+  .breadcrumb .current { color: var(--text-primary); font-weight: 500; }
+  .main-header .spacer { flex: 1; }
+  .header-btn { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+  .header-btn:hover { border-color: var(--color-primary); color: var(--text-primary); }
+
+  /* === Chat Content === */
+  .chat-content { flex: 1; overflow-y: auto; padding: 20px; }
+  .user-msg { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+  .user-msg .bubble { background: var(--color-primary); color: white; padding: 10px 16px; border-radius: 16px 16px 4px 16px; max-width: 70%; font-size: 14px; line-height: 1.5; }
+
+  /* Spirit block */
+  .spirit-block { border-left: 3px solid var(--color-primary); padding-left: 16px; }
+
+  /* === Thinking — redesigned === */
+  /* Brain icon with flowing light */
+  .brain-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; position: relative;
+  }
+  .brain-icon svg { width: 18px; height: 18px; }
+  .brain-icon .flow-light {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(91,138,245,0.6), transparent);
+    animation: flowLight 2s ease-in-out infinite;
+    border-radius: 50%;
+  }
+  @keyframes flowLight {
+    0% { opacity: 0; transform: translateX(-8px); }
+    50% { opacity: 1; transform: translateX(0); }
+    100% { opacity: 0; transform: translateX(8px); }
+  }
+
+  /* Thinking inline — subtle bg span */
+  .thinking-inline {
+    display: inline-block;
+    background: rgba(22, 33, 62, 0.6);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    max-width: 100%;
+    max-height: 3em; /* ~2 lines */
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+  .thinking-inline.active {
+    background: rgba(22, 33, 62, 0.8);
+  }
+  .thinking-inline .cursor {
+    display: inline-block;
+    width: 2px; height: 12px;
+    background: var(--color-primary);
+    animation: blink 0.8s step-end infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* Collapsed thinking button */
+  .thinking-collapsed-btn {
+    display: inline-block;
+    background: rgba(22, 33, 62, 0.5);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .thinking-collapsed-btn:hover { border-color: var(--color-primary); color: var(--text-secondary); }
+
+  /* === Unified Panel — task board + DAG + team progress in one card === */
+  .unified-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  /* Panel tabs */
+  .panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: rgba(15, 52, 96, 0.3);
+  }
+  .panel-tab {
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .panel-tab:hover { color: var(--text-secondary); }
+  .panel-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+  }
+  .panel-tab .tab-count {
+    background: rgba(91,138,245,0.12);
+    padding: 0 5px;
+    border-radius: 8px;
+    font-size: 10px;
+    margin-left: 4px;
+    color: var(--color-primary);
+  }
+
+  /* Panel content */
+  .panel-content { padding: 12px; }
+  .panel-content.hidden { display: none; }
+
+  /* Task Item Board */
+  .task-board { padding: 0; }
+  .task-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; font-size: 12px; }
+  .task-row:last-child { margin-bottom: 0; }
+  .task-row .tr-num { width: 20px; height: 20px; border-radius: 50%; background: rgba(91,138,245,0.12); color: var(--color-primary); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+  .task-row .tr-name { flex: 1; }
+  .task-row .tr-team { font-size: 11px; color: var(--text-tertiary); background: var(--bg-surface); padding: 2px 8px; border-radius: 4px; }
+  .task-row .tr-status { font-size: 10px; color: var(--text-tertiary); }
+
+  /* DAG */
+  .dag { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+  .dag-node { padding: 4px 10px; border-radius: 4px; font-size: 11px; background: rgba(91,138,245,0.1); color: var(--text-secondary); }
+  .dag-node.done { opacity: 0.5; }
+  .dag-node.running { background: rgba(91,138,245,0.15); color: var(--color-primary); }
+  .dag-arrow { color: var(--text-tertiary); font-size: 14px; }
+
+  /* Team Progress (v2 style, expandable) */
+  .team-prog { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; }
+  .team-prog:last-child { margin-bottom: 0; }
+  .team-prog-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; }
+  .team-prog-header:hover { background: var(--bg-elevated); border-radius: 6px; }
+  .team-prog-header .tp-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
+  .team-prog-header .tp-name { font-size: 12px; font-weight: 500; flex: 1; }
+  .team-prog-header .tp-bar { width: 60px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .team-prog-header .tp-bar .fill { height: 100%; border-radius: 2px; background: var(--color-primary); }
+  .team-prog-header .tp-duration { font-size: 10px; color: var(--text-tertiary); }
+  .team-prog-header .tp-arrow { color: var(--text-tertiary); font-size: 10px; transition: transform 0.2s; }
+  .team-prog-header .tp-arrow.collapsed { transform: rotate(-90deg); }
+  .team-prog-body { border-top: 1px solid var(--border); padding: 8px 10px; }
+  .team-prog-body.collapsed { display: none; }
+
+  /* Agent detail */
+  .agent-detail { margin-bottom: 6px; }
+  .agent-detail:last-child { margin-bottom: 0; }
+  .agent-detail-header { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 3px 0; }
+  .agent-detail-header .ad-avatar { width: 18px; height: 18px; border-radius: 50%; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; font-size: 9px; }
+  .agent-detail-header .ad-name { font-weight: 500; flex: 1; }
+  .agent-detail-header .ad-status { font-size: 10px; color: var(--text-tertiary); }
+  .agent-detail-body { padding: 3px 0 3px 24px; font-size: 11px; color: var(--text-secondary); }
+  .agent-detail-body .tool-line { display: flex; align-items: center; gap: 5px; padding: 1px 0; }
+  .tool-line .tl-icon { color: var(--color-primary); font-size: 10px; }
+  .tool-line .tl-name { font-family: var(--font-mono); font-size: 10px; color: var(--color-primary); }
+  .tool-line .tl-args { font-family: var(--font-mono); font-size: 9px; color: var(--text-tertiary); flex: 1; }
+  .tool-line .tl-status { font-size: 9px; color: var(--text-tertiary); }
+  .tool-line .tl-dur { font-size: 9px; color: var(--text-tertiary); }
+  .thinking-line { padding: 3px 0; color: var(--text-secondary); font-style: italic; font-size: 11px; opacity: 0.7; border-left: 2px solid var(--color-primary); padding-left: 6px; margin-left: 2px; }
+  .reply-line { padding: 3px 0; font-size: 11px; line-height: 1.4; }
+
+  /* Action buttons on team card */
+  .team-prog-actions { display: flex; gap: 4px; margin-left: 4px; }
+  .tp-action-btn { padding: 1px 6px; border-radius: 3px; font-size: 9px; cursor: pointer; border: none; }
+  .tp-action-btn.resume { background: var(--color-primary); color: white; }
+  .tp-action-btn.cancel { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); }
+
+  /* Spirit reply */
+  .spirit-reply { margin-top: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.6; color: var(--text-primary); background: var(--bg-surface); border-radius: var(--radius); border: 1px solid var(--border); }
+  .spirit-reply p { margin-bottom: 6px; }
+  .spirit-reply p:last-child { margin-bottom: 0; }
+
+  /* Status bar */
+  .status-bar { height: 28px; background: var(--bg-surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 16px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+  .status-bar .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--color-primary); }
+
+  /* Input */
+  .input-area { padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg-surface); display: flex; gap: 8px; }
+  .input-area input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 8px 16px; color: var(--text-primary); font-size: 14px; outline: none; }
+  .input-area input:focus { border-color: var(--color-primary); }
+  .input-area button { background: var(--color-primary); color: white; border: none; border-radius: 20px; padding: 8px 20px; cursor: pointer; font-size: 13px; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header"><h2>Chat</h2></div>
+    <div style="padding: 8px 16px;">
+      <div class="spirit-entry">
+        <div class="avatar">🧚</div>
+        <div class="info">
+          <div class="name">精灵助手</div>
+          <div class="status"><span class="pulse-dot"></span> 在线</div>
+        </div>
+      </div>
+    </div>
+    <div class="team-section">
+      <div class="team-section-header"><span>运行中</span><span class="count">2</span></div>
+      <div class="team-card active">
+        <div class="team-name">后端 API 开发团队</div>
+        <div class="team-summary">实现用户认证和权限管理 API</div>
+        <div class="team-meta">
+          <span class="status-badge s-running"><span class="pulse-dot"></span> 运行中</span>
+          <span style="color:var(--text-tertiary)">2/5 步骤</span>
+          <div class="avatars">
+            <div class="mini-avatar">G</div>
+            <div class="mini-avatar">R</div>
+            <div class="mini-avatar">T</div>
+          </div>
+        </div>
+        <div class="progress-bar"><div class="fill" style="width:40%;"></div></div>
+      </div>
+      <div class="team-card">
+        <div class="team-name">前端 UI 开发团队</div>
+        <div class="team-summary">实现登录页面和权限管理界面</div>
+        <div class="team-meta">
+          <span class="status-badge s-running"><span class="pulse-dot"></span> 运行中</span>
+          <span style="color:var(--text-tertiary)">1/3 步骤</span>
+          <div class="avatars">
+            <div class="mini-avatar">V</div>
+            <div class="mini-avatar">D</div>
+          </div>
+        </div>
+        <div class="progress-bar"><div class="fill" style="width:33%;"></div></div>
+      </div>
+    </div>
+    <div class="team-section">
+      <div class="team-section-header"><span>已完成</span><span class="count">1</span></div>
+      <div class="team-card">
+        <div class="team-name">数据分析团队</div>
+        <div class="team-summary">用户行为数据分析和报告生成</div>
+        <div class="team-meta">
+          <span class="status-badge s-done">✓ 已完成</span>
+          <span style="color:var(--text-tertiary)">3/3 步骤</span>
+        </div>
+        <div class="progress-bar"><div class="fill" style="width:100%;"></div></div>
+      </div>
+    </div>
+    <div class="team-section">
+      <div class="team-section-header"><span>中断</span><span class="count">1</span></div>
+      <div class="team-card">
+        <div class="team-name">部署团队</div>
+        <div class="team-summary">Docker 镜像构建和部署</div>
+        <div class="team-meta">
+          <span class="status-badge s-fail">⏸ 已中断</span>
+          <span style="color:var(--text-tertiary)">2/4 步骤</span>
+        </div>
+        <div class="progress-bar"><div class="fill" style="width:50%;"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="main-header">
+      <div class="breadcrumb">
+        <span style="cursor:pointer;color:var(--color-primary);">🧚 精灵助手</span>
+        <span class="sep">›</span>
+        <span class="current">后端 API 开发团队</span>
+      </div>
+      <span class="status-badge" style="font-size:11px;">sequential</span>
+      <div class="spacer"></div>
+    </div>
+
+    <div class="chat-content">
+
+      <!-- User message -->
+      <div class="user-msg">
+        <div class="bubble">帮我开发用户认证和权限管理的后端 API</div>
+      </div>
+
+      <!-- Spirit Block -->
+      <div class="spirit-block">
+
+        <!-- Thinking — inline subtle span -->
+        <div style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 8px;">
+          <span class="brain-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#5b8af5" stroke-width="1.5">
+              <path d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z"/>
+              <path d="M9 7c1-1 2-1 3 0s2 1 3 0" stroke-opacity="0.5"/>
+              <path d="M8 11c1-1 2.5-1 4 0s2.5 1 4 0" stroke-opacity="0.3"/>
+            </svg>
+            <span class="flow-light"></span>
+          </span>
+          <div class="thinking-inline active" id="thinkingArea">
+            用户需要认证和权限管理 API，涉及 JWT token 签发、RBAC 权限模型、HTTP 中间件拦截。需要拆分为后端 API 实现、代码审查、测试编写三个子任务…<span class="cursor"></span>
+          </div>
+        </div>
+
+        <!-- Unified Panel: Task Board + DAG + Team Progress -->
+        <div class="unified-panel">
+          <!-- Tabs -->
+          <div class="panel-tabs">
+            <div class="panel-tab active" onclick="switchTab(this, 'tab-tasks')">
+              📋 任务拆解 <span class="tab-count">5</span>
+            </div>
+            <div class="panel-tab" onclick="switchTab(this, 'tab-dag')">
+              🔀 依赖关系
+            </div>
+            <div class="panel-tab" onclick="switchTab(this, 'tab-progress')">
+              📊 团队进度 <span class="tab-count">4</span>
+            </div>
+          </div>
+
+          <!-- Tab: Tasks -->
+          <div class="panel-content" id="tab-tasks">
+            <div class="task-board">
+              <div class="task-row">
+                <div class="tr-num">1</div>
+                <div class="tr-name">实现 JWT 认证中间件和 RBAC 权限模型</div>
+                <div class="tr-team">Golang 工程师</div>
+                <div class="tr-status"><span class="pulse-dot"></span> 运行中</div>
+              </div>
+              <div class="task-row">
+                <div class="tr-num">2</div>
+                <div class="tr-name">代码审查和安全检查</div>
+                <div class="tr-team">代码审查员</div>
+                <div class="tr-status">等待中</div>
+              </div>
+              <div class="task-row">
+                <div class="tr-num">3</div>
+                <div class="tr-name">编写单元测试和集成测试</div>
+                <div class="tr-team">测试工程师</div>
+                <div class="tr-status">等待中</div>
+              </div>
+              <div class="task-row">
+                <div class="tr-num">4</div>
+                <div class="tr-name">实现登录页面和权限管理界面</div>
+                <div class="tr-team">Vue 工程师</div>
+                <div class="tr-status"><span class="pulse-dot"></span> 运行中</div>
+              </div>
+              <div class="task-row">
+                <div class="tr-num">5</div>
+                <div class="tr-name">用户行为数据分析</div>
+                <div class="tr-team">数据分析师</div>
+                <div class="tr-status">✓ 已完成</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab: DAG -->
+          <div class="panel-content hidden" id="tab-dag">
+            <div class="dag">
+              <span class="dag-node done">✓ 数据分析</span>
+              <span class="dag-arrow">→</span>
+              <span class="dag-node running">⚡ 后端 API</span>
+              <span class="dag-arrow">→</span>
+              <span class="dag-node">⏳ 代码审查</span>
+              <span class="dag-arrow">→</span>
+              <span class="dag-node">⏳ 测试</span>
+              <span style="margin:0 4px;color:var(--text-tertiary)">|</span>
+              <span class="dag-node running">⚡ 前端 UI</span>
+            </div>
+          </div>
+
+          <!-- Tab: Team Progress -->
+          <div class="panel-content hidden" id="tab-progress">
+            <!-- Team 1: Running -->
+            <div class="team-prog">
+              <div class="team-prog-header" onclick="toggleTeamProg(this)">
+                <div class="tp-avatar">API</div>
+                <div class="tp-name">后端 API 开发团队</div>
+                <span class="status-badge s-running"><span class="pulse-dot"></span> 运行中</span>
+                <div class="tp-bar"><div class="fill" style="width:40%"></div></div>
+                <span class="tp-duration">1m 42s</span>
+                <span class="tp-arrow">▼</span>
+              </div>
+              <div class="team-prog-body">
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">G</div>
+                    <div class="ad-name">Golang 工程师</div>
+                    <span class="ad-status"><span class="pulse-dot"></span> 运行中</span>
+                  </div>
+                  <div class="agent-detail-body">
+                    <div class="thinking-line">基于需求设计 JWT 中间件和 RBAC 模型…<span style="animation:pulse 1s infinite;">▍</span></div>
+                    <div class="tool-line">
+                      <span class="tl-icon">⚡</span>
+                      <span class="tl-name">file_read</span>
+                      <span class="tl-args">internal/middleware/auth.go</span>
+                      <span class="tl-status">✓</span>
+                      <span class="tl-dur">0.3s</span>
+                    </div>
+                    <div class="tool-line">
+                      <span class="tl-icon">⚡</span>
+                      <span class="tl-name">file_write</span>
+                      <span class="tl-args">internal/middleware/jwt.go</span>
+                      <span class="tl-status"><span class="pulse-dot"></span></span>
+                      <span class="tl-dur">5s…</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">R</div>
+                    <div class="ad-name">代码审查员</div>
+                    <span class="ad-status">⏳ 等待中</span>
+                  </div>
+                  <div class="agent-detail-body" style="color:var(--text-tertiary);font-size:10px;">等待 Golang 工程师完成…</div>
+                </div>
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">T</div>
+                    <div class="ad-name">测试工程师</div>
+                    <span class="ad-status">⏳ 等待中</span>
+                  </div>
+                  <div class="agent-detail-body" style="color:var(--text-tertiary);font-size:10px;">等待代码审查通过…</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Team 2: Running -->
+            <div class="team-prog">
+              <div class="team-prog-header" onclick="toggleTeamProg(this)">
+                <div class="tp-avatar">UI</div>
+                <div class="tp-name">前端 UI 开发团队</div>
+                <span class="status-badge s-running"><span class="pulse-dot"></span> 运行中</span>
+                <div class="tp-bar"><div class="fill" style="width:33%"></div></div>
+                <span class="tp-duration">0m 55s</span>
+                <span class="tp-arrow">▼</span>
+              </div>
+              <div class="team-prog-body">
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">V</div>
+                    <div class="ad-name">Vue 工程师</div>
+                    <span class="ad-status"><span class="pulse-dot"></span> 运行中</span>
+                  </div>
+                  <div class="agent-detail-body">
+                    <div class="thinking-line">基于 API 文档设计登录表单组件…</div>
+                    <div class="tool-line">
+                      <span class="tl-icon">⚡</span>
+                      <span class="tl-name">file_write</span>
+                      <span class="tl-args">src/pages/LoginPage.vue</span>
+                      <span class="tl-status"><span class="pulse-dot"></span></span>
+                      <span class="tl-dur">12s…</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">D</div>
+                    <div class="ad-name">设计师</div>
+                    <span class="ad-status">⏳ 等待中</span>
+                  </div>
+                  <div class="agent-detail-body" style="color:var(--text-tertiary);font-size:10px;">等待 Vue 工程师完成…</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Team 3: Completed -->
+            <div class="team-prog">
+              <div class="team-prog-header" onclick="toggleTeamProg(this)">
+                <div class="tp-avatar">DA</div>
+                <div class="tp-name">数据分析团队</div>
+                <span class="status-badge s-done">✓ 已完成</span>
+                <div class="tp-bar"><div class="fill" style="width:100%"></div></div>
+                <span class="tp-duration">3m 20s</span>
+                <span class="tp-arrow collapsed">▼</span>
+              </div>
+              <div class="team-prog-body collapsed">
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">D</div>
+                    <div class="ad-name">数据分析师</div>
+                    <span class="ad-status">✓ 已完成</span>
+                  </div>
+                  <div class="agent-detail-body">
+                    <div class="reply-line">已完成数据提取和清洗，共处理 12,847 条用户行为记录。</div>
+                  </div>
+                </div>
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">M</div>
+                    <div class="ad-name">ML 工程师</div>
+                    <span class="ad-status">✓ 已完成</span>
+                  </div>
+                  <div class="agent-detail-body">
+                    <div class="reply-line">完成统计建模，用户留存率 68%。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Team 4: Interrupted -->
+            <div class="team-prog">
+              <div class="team-prog-header" onclick="toggleTeamProg(this)">
+                <div class="tp-avatar">OP</div>
+                <div class="tp-name">部署团队</div>
+                <span class="status-badge s-fail">⏸ 已中断</span>
+                <div class="tp-bar"><div class="fill" style="width:50%"></div></div>
+                <span class="tp-duration">4m 05s</span>
+                <div class="team-prog-actions" onclick="event.stopPropagation()">
+                  <button class="tp-action-btn resume">恢复</button>
+                  <button class="tp-action-btn cancel">取消</button>
+                </div>
+                <span class="tp-arrow collapsed">▼</span>
+              </div>
+              <div class="team-prog-body collapsed">
+                <div class="agent-detail">
+                  <div class="agent-detail-header">
+                    <div class="ad-avatar">D</div>
+                    <div class="ad-name">DevOps 工程师</div>
+                    <span class="ad-status" style="color:var(--color-primary)">⏸ 已中断</span>
+                  </div>
+                  <div class="agent-detail-body">
+                    <div class="tool-line">
+                      <span class="tl-icon">⚡</span>
+                      <span class="tl-name">bash</span>
+                      <span class="tl-args">docker build -t api:latest .</span>
+                      <span class="tl-status">✓</span>
+                      <span class="tl-dur">45s</span>
+                    </div>
+                    <div class="tool-line">
+                      <span class="tl-icon">⚡</span>
+                      <span class="tl-name">bash</span>
+                      <span class="tl-args">docker push registry…/api:latest</span>
+                      <span class="tl-status" style="color:var(--color-primary)">✗</span>
+                      <span class="tl-dur">2m 03s</span>
+                    </div>
+                    <div style="font-size:10px;color:var(--color-primary);padding:3px 0;">❌ Docker registry 认证错误</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- /unified-panel -->
+
+        <!-- Spirit reply -->
+        <div class="spirit-reply">
+          <p>已为你组建了 4 个团队，正在并行执行：</p>
+          <p>1. <strong>后端 API 开发团队</strong> — Golang 工程师正在实现 JWT 中间件</p>
+          <p>2. <strong>前端 UI 开发团队</strong> — Vue 工程师正在实现登录页面</p>
+          <p>3. <strong>数据分析团队</strong> — ✅ 已完成</p>
+          <p>4. <strong>部署团队</strong> — ⏸ 已中断，可点击恢复继续执行</p>
+        </div>
+
+      </div><!-- /spirit-block -->
+    </div><!-- /chat-content -->
+
+    <div class="status-bar">
+      <span class="dot"></span>
+      <span>2 运行中</span>
+      <span>1 已中断</span>
+      <span>2/3 配额</span>
+      <span>12.5k Token</span>
+      <span style="margin-left:auto;">复杂度: 中等</span>
+    </div>
+
+    <div class="input-area">
+      <input type="text" placeholder="与精灵助手对话…" />
+      <button>发送</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(tab, contentId) {
+  // Deactivate all tabs
+  tab.parentElement.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  // Hide all content
+  const panel = tab.closest('.unified-panel');
+  panel.querySelectorAll('.panel-content').forEach(c => c.classList.add('hidden'));
+  // Show selected
+  document.getElementById(contentId).classList.remove('hidden');
+}
+
+function toggleTeamProg(header) {
+  const body = header.nextElementSibling;
+  if (body && body.classList.contains('team-prog-body')) {
+    body.classList.toggle('collapsed');
+    const arrow = header.querySelector('.tp-arrow');
+    if (arrow) arrow.classList.toggle('collapsed', body.classList.contains('collapsed'));
+  }
+}
+
+// Simulate thinking content update
+const thinkingTexts = [
+  '用户需要认证和权限管理 API，涉及 JWT token 签发、RBAC 权限模型、HTTP 中间件拦截。需要拆分为后端 API 实现、代码审查、测试编写三个子任务…',
+  '分析依赖关系：代码审查依赖 API 实现完成，测试依赖代码审查通过。前端 UI 可并行处理，数据分析独立执行…',
+  '建议使用 sequential 编排模式处理有依赖的任务链，parallel 模式处理独立的团队。预估总耗时约 8 分钟…',
+];
+let thinkingIdx = 0;
+const thinkingArea = document.getElementById('thinkingArea');
+
+setInterval(() => {
+  thinkingIdx = (thinkingIdx + 1) % thinkingTexts.length;
+  thinkingArea.innerHTML = thinkingTexts[thinkingIdx] + '<span class="cursor"></span>';
+}, 3000);
+</script>
+</body>
+</html>

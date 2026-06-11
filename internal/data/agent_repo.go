@@ -111,17 +111,9 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		return biz.AgentRuntimeSettings{}
 	}
 	s := &biz.AgentRuntimeSettings{
-		AgentID:                       e.ID,
-		CodeExecutorType:              e.CodeExecutorType,
-		RalphLoopMaxIterations:        e.RalphLoopMaxIterations,
-		RalphLoopCompletionPromise:    e.RalphLoopCompletionPromise,
-		RalphLoopVerifyCommand:        e.RalphLoopVerifyCommand,
-		RalphLoopVerifyTimeoutSeconds: e.RalphLoopVerifyTimeoutSeconds,
-		RalphLoopPromiseTagOpen:       e.RalphLoopPromiseTagOpen,
-		RalphLoopPromiseTagClose:      e.RalphLoopPromiseTagClose,
-		RalphLoopVerifyWorkDir:        e.RalphLoopVerifyWorkDir,
-		CreatedAt:                     e.CreatedAt,
-		UpdatedAt:                     e.UpdatedAt,
+		AgentID:    e.ID,
+		CreatedAt:  e.CreatedAt,
+		UpdatedAt:  e.UpdatedAt,
 	}
 	s.ApplyIdentity(fromEntIdentity(e))
 	s.ApplyReasoning(fromEntReasoning(e))
@@ -130,9 +122,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	s.ApplySkills(fromEntSkills(e))
 	s.ApplyEvolution(fromEntEvolution(e))
 	s.ApplyContext(fromEntContext(e))
-	s.ForgetConfigJSON = e.ForgetPolicyJSON
-	s.ToolWeightJSON = e.ToolWeightJSON
-	s.DreamSnapshotJSON = e.DreamSnapshotJSON
+	s.ApplyRalphLoop(fromEntRalphLoop(e))
 	return *s
 }
 
@@ -207,6 +197,7 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 		L4StrategyInject:         e.L4StrategyInject,
 		L4DecayIntervalHours:     e.L4DecayIntervalHours,
 		L4DecayOverridesJSON:     e.L4DecayOverridesJSON,
+		ForgetConfigJSON:         e.ForgetPolicyJSON,
 	}
 }
 
@@ -230,6 +221,7 @@ func fromEntTools(e *ent.AgentRuntimeSetting) biz.ToolsCfg {
 		CircuitBreakerOverridesJSON: e.ToolsCircuitBreakerOverridesJSON,
 		DeferredJSON:                e.ToolsDeferredJSON,
 		CommandSafetyEnabled:        e.ToolsCommandSafetyEnabled,
+		ToolWeightJSON:              e.ToolWeightJSON,
 	}
 }
 
@@ -267,6 +259,7 @@ func fromEntEvolution(e *ent.AgentRuntimeSetting) biz.EvolutionCfg {
 		EvoProposalTTLDays:                e.EvoProposalTTLDays,
 		EvoPersonaMaxChars:                e.EvoPersonaMaxChars,
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
+		DreamSnapshotJSON:                 e.DreamSnapshotJSON,
 	}
 }
 
@@ -288,6 +281,18 @@ func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 		PlannerKind:                e.PlannerKind,
 		PlannerConfigJSON:          e.PlannerConfigJSON,
 		VerificationTruncateChars:  e.VerificationTruncateChars,
+	}
+}
+
+func fromEntRalphLoop(e *ent.AgentRuntimeSetting) biz.RalphLoopCfg {
+	return biz.RalphLoopCfg{
+		MaxIterations:        e.RalphLoopMaxIterations,
+		CompletionPromise:    e.RalphLoopCompletionPromise,
+		VerifyCommand:        e.RalphLoopVerifyCommand,
+		VerifyTimeoutSeconds: e.RalphLoopVerifyTimeoutSeconds,
+		PromiseTagOpen:       e.RalphLoopPromiseTagOpen,
+		PromiseTagClose:      e.RalphLoopPromiseTagClose,
+		VerifyWorkDir:        e.RalphLoopVerifyWorkDir,
 	}
 }
 
@@ -765,18 +770,17 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 	if id == "" {
 		return kerrors.BadRequest("AGENT", "id is required")
 	}
-	now := nowRFC3339()
-	_, err := r.data.RW().Write(ctx).Agent.UpdateOneID(id).
-		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetUpdatedAt(now).
-		Save(ctx)
-	if err != nil {
-		return err
-	}
-	// Cascade: clean up related records after successful soft-delete
-	cascadeDeleteByAgent(ctx, r.data, id)
-	return nil
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		now := nowRFC3339()
+		if _, err := r.data.RW().Write(txCtx).Agent.UpdateOneID(id).
+			SetDeletedAt(now).
+			SetStatus("deleted").
+			SetUpdatedAt(now).
+			Save(txCtx); err != nil {
+			return err
+		}
+		return cascadeDeleteByAgent(txCtx, r.data, id)
+	})
 }
 
 func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {

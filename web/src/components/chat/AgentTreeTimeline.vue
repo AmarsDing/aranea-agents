@@ -2,8 +2,8 @@
   <div class="agent-tree-timeline">
     <!-- Global expand/collapse controls -->
     <div v-if="agentBlocks.length > 0" class="agent-tree-timeline__toolbar">
-      <button class="toolbar-btn" @click="expandAll">展开全部</button>
-      <button class="toolbar-btn" @click="collapseAll">折叠全部</button>
+      <button class="toolbar-btn" @click="expandAll">{{ t('chat.expandAll') }}</button>
+      <button class="toolbar-btn" @click="collapseAll">{{ t('chat.collapseAll') }}</button>
     </div>
 
     <div v-for="block in agentBlocks" :key="block.id" class="agent-tree-timeline__turn">
@@ -23,8 +23,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { AgentBlock as AgentBlockType } from '../../features/chat/agentTreeTypes';
 import AgentBlock from './AgentBlock.vue';
+
+const { t } = useI18n();
 
 defineProps<{
   agentBlocks: AgentBlockType[];

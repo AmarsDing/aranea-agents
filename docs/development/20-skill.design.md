@@ -258,6 +258,189 @@ type SkillImportApplyRequest struct {
 }
 ```
 
+### 3.6 SkillSimilarityEngine — 统一相似度引擎
+
+文件：`internal/biz/skill_similarity.go`
+
+统一平台级去重与导入流程的相似度计算，替代原先仅用 Name/Description 2 维 Jaccard 的简单算法。
+
+**4 维相似度计算**：
+
+| 维度 | 权重 | 说明 |
+|------|------|------|
+| Name | 0.4 | 名称 Jaccard 相似度 |
+| Description | 0.25 | 描述 Jaccard 相似度 |
+| Body | 0.25 | 正文段落标题 Jaccard 相似度 |
+| Tag | 0.1 | 标签 Jaccard 相似度 |
+
+**可选 Embedding 增强**：当注入 `DedupEmbedder` 时，将 Jaccard 分数与 Embedding 余弦相似度按 `embeddingBlendWeight=0.5` 混合。
+
+**阈值常量**：
+
+| 常量 | 值 | 用途 |
+|------|-----|------|
+| `similarityHighThreshold` | 0.8 | 总分 ≥ 此值 → `high` 风险，建议合并 |
+| `similarityNameHighThreshold` | 0.9 | 名称分 ≥ 此值 → 极可能重复 |
+| `similarityMediumThreshold` | 0.5 | 总分 ≥ 此值 → `medium` 风险，建议审查 |
+| `embeddingBlendWeight` | 0.5 | Embedding 与 Jaccard 混合权重 |
+
+**核心类型**：
+
+```go
+type SkillSimilarityEngine struct {
+    embedder DedupEmbedder  // 可选，nil 时纯 Jaccard
+    logger   loggateway.Logger
+}
+
+type SimilarityResult struct {
+    TotalScore    float64
+    NameScore     float64
+    Dimensions    []DimensionScore
+    ConflictRisk  string   // "high" / "medium" / "low"
+    Recommendation string  // "merge" / "review" / "distinct"
+}
+
+func (e *SkillSimilarityEngine) Compare(ctx, target, candidate SkillDedupCandidate) (SimilarityResult, error)
+```
+
+**与导入流程的关系**：导入流程的 `SkillSimilarityMetrics`（6 维）仍独立运行于导入引擎中；平台级去重通过 `SkillSimilarityEngine` 统一为 4 维 + 可选 Embedding 增强。两套体系共享 Jaccard 核心算法，维度差异源于场景不同（导入需要更精细的来源/结构比对，平台级关注内容语义重叠）。
+
+### 3.7 SkillMergeUsecase — 三阶段合并
+
+文件：`internal/biz/skill_merge.go`、`internal/biz/skill_merge_ai_fuser.go`
+
+替代原先 `SkillDedupUsecase.MergeSkills` 的粗暴合并（仅转移调用 + 废弃源 Skill），实现真正的三阶段合并流程。
+
+**三阶段流程**：
+
+```
+阶段1: 内容融合 → 阶段2: Gate 验证 → 阶段3: 事务应用
+```
+
+**阶段 1 — 内容融合**（`SkillContentFuser` 接口）：
+
+| 策略 | 说明 |
+|------|------|
+| `append` | 以 target body 为主体，从 source body 提取 target 没有的 `##` 段落追加 |
+| `ai_fuse` | 预留 AI 融合扩展点（当前 fallback 到 append） |
+| `manual_pick` | 手动选择保留哪一方内容 |
+
+当前实现：`RuleBasedContentFuser`，基于 `##` 段落标题去重合并。
+
+**阶段 2 — Gate 验证**：融合后的内容需通过校验（如非空、长度限制等），验证失败则拒绝合并。
+
+**阶段 3 — 事务应用**（`SkillMergeWriter` 接口）：
+
+在单个事务内执行 4 步操作：
+1. 为 target Skill 创建新版本（含融合后 body）
+2. 更新 target Skill 的 metadata/tags
+3. 转移 source Skill 的调用记录到 target
+4. 废弃源 Skill（状态 → `deprecated`）
+
+**核心类型**：
+
+```go
+type SkillMergeUsecase struct {
+    fuser  SkillContentFuser
+    reader SkillMergeReader
+    writer SkillMergeWriter
+    logger loggateway.Logger
+}
+
+type SkillMergeRequest struct {
+    TargetID  string
+    SourceID  string
+    Strategy  MergeStrategy  // append / ai_fuse / manual_pick
+}
+
+func (uc *SkillMergeUsecase) Merge(ctx, req SkillMergeRequest) (*SkillMergeResult, error)
+```
+
+**Data 层实现**：`internal/data/skill_merge.go` — `SkillMergeRepo` 实现 `SkillMergeReader` + `SkillMergeWriter`，事务内 4 步操作。
+
+### 3.8 SkillEvolutionOrchestrator — 统一进化编排
+
+文件：`internal/biz/skill_evolution_unified.go`、`internal/biz/skill_evolution_triggers.go`
+
+统一原先三条进化管线（`SkillEvolutionUsecase` / `SkillIntelligenceUsecase` / `EvolutionUsecase`），解决 `EvolutionCoordinator` 的 TOCTOU 竞态问题。
+
+**EvolutionTrigger 接口**（策略模式）：
+
+| Trigger | 来源 | 检测逻辑 |
+|---------|------|----------|
+| `PatternTrigger` | 工具调用 Pattern | 从高频工具调用组合中检测新 Skill 需求，**返回所有匹配 pattern**（非仅第一个） |
+| `HealthTrigger` | 健康指标 | 检测 30d 失败率 > 30% 或 score < 60；依赖 `SkillScorer` 窄接口（非具体类型） |
+| `AgentConfigTrigger` | Agent 配置 | 预留扩展点（当前返回 nil），保留注册以支持未来扩展 |
+
+**SkillEvolutionOrchestrator**：
+
+- `RegisterTrigger`：**线程安全**（`sync.RWMutex` 保护 `triggers` 切片）
+- `CheckAndCreate`：原子化检查 + 创建，解决 TOCTOU 竞态
+  - 先调用 `UnifiedEvolutionReader.HasPendingForTarget` 检查
+  - 遍历触发器时使用 **快照读取**（`RLock` → copy → `RUnlock`），避免长持锁
+  - 每个 trigger 返回 `[]UnifiedEvolutionSuggestion`（支持多 pattern 同时触发）
+  - 不存在则创建，DB UNIQUE 约束兜底（多实例并发安全）
+  - 重复创建时返回 `nil, nil`（幂等）
+- `Approve` / `Reject`：审批/拒绝进化建议，使用 `kerrors.BadRequest` 返回业务错误
+- `ExpirePending`：**已实现**，调用 `UnifiedEvolutionWriter.ExpireOlderThan` 批量过期超过 7 天的 pending 建议
+
+**接口拆分**（符合"接口方法 ≤ 5"规范）：
+
+- `UnifiedEvolutionReader`（6 方法）：`HasPendingForTarget` / `GetLatestByTarget` / `ListByTarget` / `CountByTarget` / `GetByID` / `ListAllPending`
+- `UnifiedEvolutionWriter`（6 方法）：`Create` / `UpdateStatus` / `UpdateDraftBody` / `UpdateLifecycleStatus` / `UpdateSandboxResult` / `ExpireOlderThan`
+
+**Data 层实现**：`internal/data/unified_evolution.go` — `UnifiedEvolutionRepo` 同时实现 Reader + Writer，使用 raw SQL + 读写分离（与 `skill_evolution.go` 保持一致，待 Ent schema 补齐后迁移）。
+
+**UnifiedEvolutionSuggestion**（统一数据模型）：
+
+```go
+type UnifiedEvolutionSuggestion struct {
+    ID               string
+    TargetType       string          // "skill" / "agent"
+    TargetID         string
+    ActionType       string          // "create" / "merge" / "evolve" / "deprecate"
+    TriggerSource    string          // "pattern" / "health" / "agent_config"
+    SuggestedName    string
+    SuggestedBody    string
+    Status           string          // "pending" / "approved" / "rejected" / "applied" / "expired"
+    Metadata         json.RawMessage // 不同 ActionType 的扩展数据
+    CreatedAt        time.Time
+}
+```
+
+**EvolutionCoordinator 状态**：已标记 `deprecated`，`HasPendingEvolution` 优先委托 `SkillEvolutionOrchestrator`，失败时 fallback 到 legacy 逻辑。`SetCoordinator` 使用 `sync.Once` 保护，多次调用 panic。
+
+**SkillDedupUsecase.MergeSkills**：已标记 `Deprecated`，应使用 `SkillMergeUsecase.Merge`（三阶段事务性合并）。Service 层不再回退到旧合并。
+
+**SkillDedupUsecase.DetectDuplicateGroups**：添加 **10 分钟 TTL 内存缓存**，避免每次 API 调用全量 O(n²) 扫描。外部可通过 `InvalidateDedupCache()` 手动失效。
+
+### 3.9 ScoreSkill 四维权重修复
+
+文件：`internal/biz/skill_intelligence.go`
+
+原先 `ScoreSkill` 的 4 维权重中 Token(0.2) 和 Feedback(0.15) 永远为 0，实际只有 SuccessRate(0.4) + Duration(0.25) 生效。
+
+**修复后逻辑**：
+
+| 维度 | 权重 | 启用条件 |
+|------|------|----------|
+| SuccessRate | 0.4 | 始终启用 |
+| Duration | 0.25 | 始终启用 |
+| Token | 0.2 | `AvgTokenUsage > 0` 时启用 |
+| Feedback | 0.15 | `FeedbackScore > 0` 时启用 |
+
+**Token 归一化**：`normalizeTokenUsage(avgTokenUsage)` — 以 `baselineTokens=2000` 为基准，计算 `1 - avg/baseline`，值域 [0, 1]。
+
+**Feedback 启发式计算**（标注 `TEMPORARY`，待接入真实用户反馈）：
+
+```go
+func computeHeuristicFeedbackScore(successRate float64, avgDuration float64, avgTokenUsage int) float64
+```
+
+基于 SuccessRate/Duration/TokenUsage 启发式估算，作为真实 Feedback 数据缺失时的过渡方案。
+
+**SkillHealthMetrics 扩展**：新增 `AvgTokenUsage int` 和 `FeedbackScore float64` 字段，Data 层从 `token_usage` JSON 中提取 `total` 字段计算平均值。
+
 ---
 
 ## 四、Data 层
@@ -1084,6 +1267,7 @@ type SkillRuntimePolicy struct {
 | **P3** | 版本历史/回滚；RBAC（`requireAdminAccess` + `applySkillPermission`）；Ent 字段补齐（`visibility`/`default_config_json`/`file_manifest_json`/`message_id`） | ✅ 已完成 |
 | **P4** | Prompt 注入（方式 C）；embedding 语义精排；Preview 选中原因；manifest/render 包 | ✅ 已完成 |
 | **P4+** | Budget 中间件；Skill 依赖/冲突表；自动负熵报告；`SkillBackend` 多 kind 差异化；Context 目录迁移 | ❌ 待实现 |
+| **P5** | 统一去重引擎（`SkillSimilarityEngine` 4 维 + 可选 Embedding）；三阶段合并（`SkillMergeUsecase` 内容融合→Gate→事务应用）；统一进化编排（`SkillEvolutionOrchestrator` + `EvolutionTrigger` 策略模式，DB UNIQUE 兜底 TOCTOU）；ScoreSkill 四维权重修复（Token/Feedback 条件启用 + 启发式 Feedback）；`EvolutionCoordinator` 标记 deprecated | ✅ 已完成 |
 
 ---
 
@@ -1190,7 +1374,20 @@ internal/service/skill_import_http.go    → multipart POST /v1/skills/import
 internal/biz/skill/skill.go              → 用例与 SkillReader/SkillWriter/Repo 端口
 internal/biz/skill/skill_import.go       → 导入 DTO
 internal/biz/skill/skill_runtime.go      → 运行时策略
+internal/biz/skill_similarity.go         → 统一相似度引擎（4 维 + 可选 Embedding）
+internal/biz/skill_merge.go              → 三阶段合并 Usecase
+internal/biz/skill_merge_ai_fuser.go     → 基于规则的内容融合器
+internal/biz/skill_evolution_unified.go  → 统一进化编排器 + UnifiedEvolutionSuggestion + UnifiedEvolutionReader/Writer 接口
+internal/biz/skill_evolution_triggers.go → EvolutionTrigger 策略（Pattern/Health/AgentConfig）+ SkillScorer 窄接口
+internal/biz/skill_intelligence.go       → ScoreSkill 四维权重（含 Token/Feedback 条件启用）；SetCoordinator sync.Once 保护
+internal/biz/skill_evolution.go          → SkillEvolutionUsecase；SetCoordinator sync.Once 保护；SuggestionFromProposal 使用 EvoSuggestionCreateSkill
+internal/biz/skill_dedup.go              → SkillDedupUsecase（DetectDuplicateGroups 带 10min TTL 缓存 + InvalidateDedupCache）；MergeSkills Deprecated
+internal/biz/evolution_coordinator.go    → [deprecated] 旧进化协调器，委托 orchestrator
 internal/data/skill.go                   → Ent 仓储与聚合
+internal/data/skill_merge.go             → 合并 Data 层（事务内 4 步操作）
+internal/data/skill_dedup.go             → 去重 Data 层（含 SkillSimilarityEngine 集成）
+internal/data/skill_intelligence.go      → 健康指标聚合（含 AvgTokenUsage/FeedbackScore）
+internal/data/unified_evolution.go       → 统一进化 Data 层（raw SQL + 读写分离，实现 UnifiedEvolutionReader + Writer）
 internal/skill/importer/*                → ZIP 导入领域实现
 internal/skill/watch/*                   → 磁盘监听与幂等 upsert
 internal/skill/manifest/*                → frontmatter 解析与校验
@@ -1249,4 +1446,4 @@ ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL D
 
 ---
 
-*文档版本：4.3 — P3/P4 全部对齐代码现状；20 RPC；RBAC/Embedding/manifest/render 已实现（2026-06-06）。*
+*文档版本：4.5 — P5 对齐代码现状；统一去重引擎/三阶段合并/统一进化编排/ScoreSkill 四维权重修复；并发安全修复（RegisterTrigger RWMutex / SetCoordinator sync.Once / DedupCache TTL）；ExpirePending 实现；接口拆分（Reader/Writer）；SkillScorer 窄接口；PatternTrigger 多返回值；前端统一进化 API 错误区分与分页修复（2026-06-11）。*

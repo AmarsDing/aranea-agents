@@ -7,16 +7,16 @@
       <span class="agent-header__status" :class="statusClass">{{ statusLabel }}</span>
       <span v-if="formattedDuration" class="agent-header__duration">{{ formattedDuration }}</span>
       <!-- Sub-task count for root agent -->
-      <span v-if="isRoot && subAgentCount > 0" class="agent-header__meta"> · {{ subAgentCount }} 个子任务 </span>
+      <span v-if="isRoot && subAgentCount > 0" class="agent-header__meta"> · {{ subAgentCount }} {{ t('chat.turn.block.memberCount') }} </span>
       <!-- Team status summary for root agent -->
       <span v-if="isRoot && block.teamStatus" class="agent-header__team-status">
         <span v-if="block.teamStatus.running > 0" class="team-status-running">
-          {{ block.teamStatus.running }} 运行中
+          {{ block.teamStatus.running }} {{ t('chat.turn.block.running') }}
         </span>
         <span v-if="block.teamStatus.completed > 0" class="team-status-completed">
-          {{ block.teamStatus.completed }} 已完成
+          {{ block.teamStatus.completed }} {{ t('chat.turn.block.completed') }}
         </span>
-        <span v-if="block.teamStatus.failed > 0" class="team-status-failed"> {{ block.teamStatus.failed }} 失败 </span>
+        <span v-if="block.teamStatus.failed > 0" class="team-status-failed"> {{ block.teamStatus.failed }} {{ t('chat.turn.block.failed') }} </span>
       </span>
       <q-icon
         class="agent-header__toggle"
@@ -33,7 +33,7 @@
         <div v-if="block.task" class="section section--task">
           <div class="section__label">
             <q-icon name="assignment" size="14px" style="color: var(--color-warning)" />
-            <span class="section__label-text">接收任务</span>
+            <span class="section__label-text">{{ t('chat.agentBlock.receiveTask') }}</span>
           </div>
           <div class="section__body">
             <div class="section__body-inner">
@@ -71,7 +71,7 @@
               <div class="section__label">
                 <q-icon name="article" size="14px" style="color: var(--color-success)" />
                 <span class="section__label-text">
-                  {{ totalReplyCount > 1 ? '回复 ' + replyRoundIndex(idx) : '回复' }}
+                  {{ totalReplyCount > 1 ? t('chat.turn.block.resultLabelN') + ' ' + replyRoundIndex(idx) : t('chat.turn.block.resultLabel') }}
                 </span>
                 <span v-if="entry.section.durationMs != null" class="section__label-duration">
                   {{ formatDuration(entry.section.durationMs) }}
@@ -96,8 +96,8 @@
                   {{ formatDuration(entry.section.durationMs) }}
                 </span>
                 <span v-else-if="entry.section.status === 'running'" class="pulse-dot" />
-                <span v-if="entry.section.status === 'failed'" class="section__label-icon" title="失败">{{ progressStatusGlyph('failed') }}</span>
-                <span v-else-if="entry.section.status === 'timeout'" class="section__label-icon" title="超时">{{ progressStatusGlyph('timeout') }}</span>
+                <span v-if="entry.section.status === 'failed'" class="section__label-icon" :title="t('chat.turn.block.failed')">{{ progressStatusGlyph('failed') }}</span>
+                <span v-else-if="entry.section.status === 'timeout'" class="section__label-icon" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
               </div>
             </div>
 
@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   PROGRESS_GLYPHS,
   PROGRESS_LABELS,
@@ -141,6 +142,8 @@ import AgentToolSection from './AgentToolSection.vue';
 import PlanCard from './PlanCard.vue';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   block: AgentBlockType;
@@ -187,11 +190,11 @@ const statusClass = computed(() => ({
 const statusLabel = computed(() => {
   switch (props.block.status) {
     case 'running':
-      return '运行中';
+      return t('chat.turn.block.running');
     case 'completed':
-      return '已完成';
+      return t('chat.turn.block.completed');
     case 'failed':
-      return '失败';
+      return t('chat.turn.block.failed');
     default:
       return '';
   }
@@ -271,9 +274,10 @@ function progressIcon(category: string): string {
   return PROGRESS_GLYPHS[category as keyof typeof PROGRESS_GLYPHS] ?? '•';
 }
 
-/** Map a ProgressCategory to a Chinese display label */
+/** Map a ProgressCategory to a display label via i18n */
 function progressCategoryLabel(category: string): string {
-  return PROGRESS_LABELS[category as keyof typeof PROGRESS_LABELS] ?? '进度';
+  const key = PROGRESS_LABELS[category as keyof typeof PROGRESS_LABELS];
+  return key ? t(key) : t('chat.agentBlock.progress');
 }
 
 /** Map ProgressSection.status to a CSS modifier class for color cues */

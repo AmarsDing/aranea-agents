@@ -5,7 +5,7 @@
         <q-icon name="auto_awesome" size="18px" />
       </div>
       <div class="col min-width-0">
-        <div class="synthesis-result-card__title">综合结果</div>
+        <div class="synthesis-result-card__title">{{ t('spirit.synthesisResult') }}</div>
       </div>
       <q-chip dense size="sm" outline :label="strategyLabel" class="synthesis-result-card__strategy" />
       <q-chip
@@ -23,8 +23,8 @@
     </div>
 
     <div v-if="result.teamResults.length > 0" class="synthesis-result-card__teams q-mt-sm">
-      <div class="synthesis-result-card__teams-title text-caption text-grey-6 q-mb-xs">
-        团队结果 ({{ result.teamResults.length }})
+      <div class="synthesis-result-card__teams-title text-caption text-grey q-mb-xs">
+        {{ t('spirit.teamResults', { count: result.teamResults.length }) }}
       </div>
       <div v-for="tr in result.teamResults" :key="tr.teamId" class="synthesis-result-card__team-item">
         <div class="synthesis-result-card__team-row row items-center q-gutter-sm">
@@ -34,9 +34,9 @@
             :color="tr.status === 'completed' ? 'positive' : 'negative'"
           />
           <span class="synthesis-result-card__team-name ellipsis col">{{ tr.teamName }}</span>
-          <span class="synthesis-result-card__team-task text-caption text-grey-6 ellipsis">{{ tr.taskName }}</span>
+          <span class="synthesis-result-card__team-task text-caption text-grey ellipsis">{{ tr.taskName }}</span>
         </div>
-        <div v-if="tr.summary" class="synthesis-result-card__team-summary text-caption text-grey-6 q-ml-lg">
+        <div v-if="tr.summary" class="synthesis-result-card__team-summary text-caption text-grey q-ml-lg">
           {{ tr.summary }}
         </div>
         <div
@@ -49,19 +49,19 @@
     </div>
 
     <div class="synthesis-result-card__meta q-mt-sm">
-      <span class="text-caption text-grey-6">{{ formattedTime }}</span>
+      <span class="text-caption text-grey">{{ formattedTime }}</span>
     </div>
 
     <div v-if="evolutionSuggestion" class="synthesis-result-card__evolution q-mt-sm">
       <div class="synthesis-result-card__evolution-title text-caption text-weight-medium q-mb-xs">
         <q-icon name="transform" size="14px" class="q-mr-xs" style="color: var(--color-warning)" />
-        进化建议
+        {{ t('spirit.evolutionSuggestion') }}
       </div>
       <div class="synthesis-result-card__evolution-body">
-        <div class="text-caption text-grey-6">
+        <div class="text-caption text-grey">
           {{ evolutionSuggestion.currentTopology }} → {{ evolutionSuggestion.suggestedTopology }}
         </div>
-        <div v-if="evolutionSuggestion.reason" class="text-caption text-grey-6 q-mt-xs">
+        <div v-if="evolutionSuggestion.reason" class="text-caption text-grey q-mt-xs">
           {{ evolutionSuggestion.reason }}
         </div>
         <div class="text-caption q-mt-xs" :style="{ color: dqColor }">
@@ -74,8 +74,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SynthesisOutput, SynthesisStrategy, EvolutionSuggestion } from '../../features/spirit/types';
 import { dqScoreColor } from '../../features/spirit/spiritUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   result: SynthesisOutput;
@@ -87,9 +90,9 @@ const props = defineProps<{
 
 const strategyLabel = computed(() => {
   const labels: Record<SynthesisStrategy, string> = {
-    template: '模板合成',
-    prompt: 'Prompt 合成',
-    hybrid: '混合合成',
+    template: t('spirit.strategyTemplate'),
+    prompt: t('spirit.strategyPrompt'),
+    hybrid: t('spirit.strategyHybrid'),
   };
   return labels[props.result.strategy] ?? props.result.strategy;
 });
@@ -112,7 +115,7 @@ const successRate = computed(() => {
 
 const successRateLabel = computed(() => {
   if (successRate.value === null) return '';
-  return `${Math.round(successRate.value * 100)}% 成功`;
+  return t('spirit.successRate', { rate: Math.round(successRate.value * 100) });
 });
 
 const successRateClass = computed(() => {

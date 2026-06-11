@@ -316,7 +316,7 @@
 <script setup lang="ts">
 import { toRef, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import ChannelCatalogPicker from './ChannelCatalogPicker.vue';
+import ChannelCatalogPicker from '../../components/channels/ChannelCatalogPicker.vue';
 import ChannelConfigRow from '../../components/channels/ChannelConfigRow.vue';
 import ChannelRoutingFields from '../../components/channels/ChannelRoutingFields.vue';
 import ChannelPlatformAvatar from '../../components/channels/ChannelPlatformAvatar.vue';

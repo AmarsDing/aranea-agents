@@ -14,7 +14,7 @@ type mockQueryEmbedder struct {
 	embedFn func(ctx context.Context, text string) ([]float32, error)
 }
 
-func (m *mockQueryEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+func (m *mockQueryEmbedder) EmbedSingle(ctx context.Context, text string) ([]float32, error) {
 	if m.embedFn != nil {
 		return m.embedFn(ctx, text)
 	}

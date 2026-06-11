@@ -591,13 +591,15 @@ function buildAgentBlock(turn: TurnBlock, plannerKind: string): AgentBlock {
       :depth="depth"
     />
 
-    <!-- 嵌套子 agent 子任务看板 -->
-    <TaskBoard
-      v-for="child in block.childBlocks"
-      :key="child.id"
-      :block="child"
-      :depth="depth + 1"
-    />
+    <!-- 嵌套子 agent 子任务看板（深度守卫） -->
+    <template v-if="depth < MAX_DEPTH">
+      <TaskBoard
+        v-for="child in block.childBlocks"
+        :key="child.id"
+        :block="child"
+        :depth="depth + 1"
+      />
+    </template>
   </div>
 </template>
 
@@ -616,9 +618,8 @@ const MAX_DEPTH = 2
 ```typescript
 function computeAgentStatus(block: AgentBlock): AgentBlockStatus {
   if (block.board.some(n => n.status === 'tool_blocked')) return 'tool_blocked'
-  if (block.board.some(n => n.status === 'tool_running' || n.status === 'running')) {
-    return 'running'
-  }
+  if (block.board.some(n => n.status === 'tool_running')) return 'tool_running'
+  if (block.board.some(n => n.status === 'running')) return 'running'
   if (block.board.every(n => n.status === 'completed' || n.kind === 'end')) {
     return block.hasPartialFailure ? 'partial_failure' : 'completed'
   }
@@ -631,21 +632,32 @@ function computeAgentStatus(block: AgentBlock): AgentBlockStatus {
 
 **修复 F-13~F-21**（见 §D5 详细设计）
 
-### 6.3 任务执行面板三区布局
+### 6.3 任务执行面板布局（v7 定稿）
 
 **变更文件**：`web/src/components/spirit/TaskExecutionPanel.vue`
 
 ```
 TaskExecutionPanel
   ├── 顶部导航栏（返回精灵 + 团队名称 + 状态 Badge + 编排模式标签）
-  ├── ParallelTeamOverview     ← 已有组件
-  │     ├── DAGDiagramCard
-  │     └── 并行配额进度条
-  ├── TeamProgressCard (×N)    ← 已有组件
-  ├── InterruptedTeamCard      ← 已有组件（条件显示）
-  ├── 执行看板（TaskBoard）   ← 新增树形嵌套展示
-  └── SynthesisResultCard      ← 已有组件（条件显示）
+  ├── 用户消息气泡
+  ├── ThinkingArea              ← v7 新增：脑纹SVG + 流光 + 半透明span
+  ├── UnifiedExecutionPanel     ← v7 新增：统一面板（替代原 ParallelTeamOverview + 独立 section）
+  │     ├── PanelSection: 任务拆解（📋）
+  │     │     └── TaskRow (×N)：编号圆圈 + 任务名 + 团队标签 + 状态
+  │     ├── PanelSection: 依赖关系（🔀）
+  │     │     └── DAGDiagramCard（流式节点图）
+  │     └── PanelSection: 团队进度（📊）
+  │           └── TeamProgressCard (×N)：可展开 + 恢复/取消按钮
+  ├── 精灵回复（综合汇报）
+  └── SpiritStatusBar           ← 已有组件
 ```
+
+**关键变更（v7 vs 原设计）**：
+1. **移除 `ParallelTeamOverview`**：其信息（DAG + 并行配额）合并到统一面板的依赖关系区
+2. **新增 `ThinkingArea`**：替代原 `ChatReasoningPeek`，使用脑纹 SVG + 流光动画 + 半透明 span
+3. **新增 `UnifiedExecutionPanel`**：单卡片容器，三个子区域纵向排列，细分隔线分开
+4. **恢复/取消按钮移到团队卡片头部**：中断团队的 `TeamProgressCard` 头部右侧显示操作按钮
+5. **精灵回复**：统一面板下方，综合汇报各团队状态
 
 ### 6.4 可观测性 UX 设计
 
@@ -1040,19 +1052,13 @@ async function onCopy() {
 // web/src/components/chat/MarkdownView.vue
 import CodeBlock from './CodeBlock.vue'
 
-// 使用 markdown-it 的 renderer override
-const md = new MarkdownIt({
-  highlight: (str, lang) => {
-    // 交给 CodeBlock 组件处理，markdown-it 不做高亮
-    return `<pre class="code-pending" data-lang="${lang ?? ''}">${escapeHtml(str)}</pre>`
-  },
-})
+// ~~方案 A（已否决）：markdown-it renderer override~~
+// 问题：v-html 渲染后无法挂载 Vue 组件，只能做静态高亮
 
-// 渲染后用 v-html + 动态替换：实际由 CodeBlock 组件挂载接管
-// 或：在 MarkdownView 的 render 函数中用正则匹配 <pre> 替换为 CodeBlock 组件
+// 方案 B（采纳）：自定义组件渲染
+// 在 MarkdownView 的 render 函数中，识别 <pre><code class="language-xxx"> 后
+// 挂载 <CodeBlock> 组件替代默认的 <pre><code> 渲染
 ```
-
-更优方案：在 MarkdownView 中使用**自定义组件渲染**，识别 `<pre><code class="language-xxx">` 后挂载 `<CodeBlock>` 组件。
 
 #### 6.7.5 视觉规范
 
@@ -1068,41 +1074,97 @@ const md = new MarkdownIt({
 
 不引入新 token，遵循 `UX 规范` 中的「代码块」既有定义（如有）。
 
-### 6.8 思考节点 UI 不喧宾夺主（TK-06）
+### 6.8 思考节点 UI 不喧宾夺主（TK-06，v7 定稿）
 
-#### 6.8.1 流式状态展示
+#### 6.8.1 流式状态展示（v7 定稿）
 
 ```vue
-<!-- TaskBoardNode.vue - kind === 'thinking' 流式态 -->
+<!-- ThinkingArea.vue - 流式态 -->
 <template>
-  <div
-    v-if="isStreaming"
-    class="thinking-node thinking-node--streaming"
-    :style="{ maxWidth: 'var(--content-max-width)' }"
-  >
-    <span class="thinking-node__label">🧠</span>
-    <span class="thinking-node__content">{{ node.reasoning }}<span class="cursor-blink">▍</span></span>
+  <div class="thinking-area" style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 8px;">
+    <!-- 脑纹 SVG 图标 + 流光 -->
+    <span class="brain-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="1.5">
+        <path d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z"/>
+        <path d="M9 7c1-1 2-1 3 0s2 1 3 0" stroke-opacity="0.5"/>
+        <path d="M8 11c1-1 2.5-1 4 0s2.5 1 4 0" stroke-opacity="0.3"/>
+      </svg>
+      <span class="flow-light"></span>
+    </span>
+    <!-- 思考内容 -->
+    <div class="thinking-inline active">
+      {{ reasoningContent }}<span class="cursor"></span>
+    </div>
   </div>
 </template>
 
 <style>
-.thinking-node--streaming {
-  border-left: 2px solid var(--color-primary);
-  animation: pulse 1.5s ease-in-out infinite;
-  padding: 4px 12px;
-  font-family: var(--font-family-base);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-base);
-  line-height: var(--line-height-base);
+.brain-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; position: relative; flex-shrink: 0;
 }
-.cursor-blink {
-  animation: blink 1s steps(2) infinite;
-  color: var(--color-primary);
+.brain-icon svg { width: 18px; height: 18px; }
+.brain-icon .flow-light {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(91,138,245,0.6), transparent);
+  animation: flowLight 2s ease-in-out infinite;
+  border-radius: 50%;
+}
+@keyframes flowLight {
+  0% { opacity: 0; transform: translateX(-8px); }
+  50% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(8px); }
+}
+.thinking-inline {
+  display: inline-block;
+  background: rgba(22, 33, 62, 0.6);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  max-width: 100%;
+  max-height: 3em;
+  overflow: hidden;
+  transition: all 0.3s;
+}
+.thinking-inline.active {
+  background: rgba(22, 33, 62, 0.8);
+}
+.thinking-inline .cursor {
+  display: inline-block; width: 2px; height: 12px;
+  background: var(--color-primary);
+  animation: blink 0.8s step-end infinite;
+  vertical-align: middle; margin-left: 2px;
+}
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+</style>
+```
+
+#### 6.8.2 无思考内容时折叠
+
+```vue
+<!-- ThinkingArea.vue - 折叠态（无思考内容） -->
+<template>
+  <div class="thinking-area thinking-area--collapsed" @click="toggle">
+    <span class="brain-icon"><!-- 同上 SVG --></span>
+    <span class="thinking-collapsed-btn">思考内容</span>
+  </div>
+</template>
+
+<style>
+.thinking-collapsed-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: rgba(22, 33, 62, 0.6);
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
 }
 </style>
 ```
 
-#### 6.8.2 完成态折叠
+#### 6.8.3 完成态折叠
 
 ```vue
 <!-- TaskBoardNode.vue - kind === 'thinking' 完成态 -->
@@ -1146,14 +1208,20 @@ const summary = computed(() => {
 </style>
 ```
 
-#### 6.8.3 关键约束
+#### 6.8.4 关键约束
 
 | 约束 | 取值 | 理由 |
 |------|------|------|
+| 脑纹图标尺寸 | 18×18px | 与行内文字对齐，不喧宾夺主 |
+| 流光动画周期 | 2s ease-in-out | 柔和提示，不刺眼 |
+| 内容容器背景 | `rgba(22, 33, 62, 0.6)` | 与背景色相近但略深，视觉融合 |
+| 内容最大行数 | 2 行（`max-height: 3em`） | 不占据过多空间 |
+| 光标闪烁周期 | 0.8s step-end | 标准终端光标节奏 |
+| 折叠按钮背景 | 同内容容器 | 视觉一致性 |
 | 字体 | `var(--font-family-base)` | 思考是辅助信息，混用 mono 会喧宾夺主 |
 | 字号 | `var(--font-size-base)` | 与回复文本一致，不放大 |
 | 颜色 | `var(--color-text-secondary)` | 比回复低一档亮度 |
-| 背景 | `transparent` | 区别于 ChatExecutionCard 的卡片样式 |
+| 背景 | `transparent`（完成态） | 区别于 ChatExecutionCard 的卡片样式 |
 | 折叠阈值 | `< 30` 字符不折叠 | 信息密度过低，折叠反而干扰 |
 | Summary 长度 | `≤ 60` 字 + `…` | 1 行内可读 |
 
@@ -1193,11 +1261,10 @@ web/src/composables/chat/
   useContextualLoadingMessage.ts ← OBS-02 语境加载消息
   useStatusPulse.ts           ← OBS-05 侧边栏脉冲
 
-web/src/stores/spirit/
-  index.ts                    ← useSpiritTeamStore
-
 web/src/components/spirit/
   SpiritEntry.vue             ← 精灵入口卡片
+  ThinkingArea.vue            ← v7 思考区域（脑纹SVG+流光+半透明span+折叠按钮）
+  UnifiedExecutionPanel.vue   ← v7 统一执行面板（任务拆解+依赖关系+团队进度 单卡片纵向分区）
   TeamTaskCard.vue            ← 团队任务卡片
   TeamProgressCard.vue        ← 团队进度卡片
   TeamAssemblyCard.vue        ← 团队组建卡片
@@ -1563,7 +1630,7 @@ ChatMessageList
 | F-15 | `subagents_spawn` 路径下 PlanCard 永远停在"规划中" | `resolvePlanStatus` 漏 `running` 转换分支 | 补 `(planning && running && planEntries > 0)` → `'executing'` | `useAgentBlocks.ts` |
 | F-16 | progress 卡片可能插到 user 消息之前 | `sortKey = offset - 0.5` 时钟漂移为负 | 钳制 `Math.max(0, offset) - 0.5` | `useAgentBlocks.ts` |
 | F-17 | ReAct 模式下 reply 与最后 thinking 内容重复 | reply 去重仅在非 ReAct 模式生效 | 改为基于 `presentation.mode` 条件去重 | `useAgentBlocks.ts` |
-| F-18 | 多子代理相似任务时 PlanCard 状态错配 | 匹配用 `agentName \|\| task` | 改用 `agentKey` 强键 | `useAgentBlocks.ts` + `agentTreeTypes.ts` |
+| F-18 | 多子代理相似任务时 PlanCard 状态错配 | 匹配用 `agentName || task` | 改用 `agentKey` 强键 | `useAgentBlocks.ts` + `agentTreeTypes.ts` |
 | F-19 | 已完成回合默认折叠，最终答案不可达 | `collapsed: status === 'completed'` | 改为 `collapsed: false` | `useAgentBlocks.ts` |
 | F-20 | 部分工具失败被掩盖为 `completed` | 无信号输出 | AgentBlock 新增 `hasPartialFailure` 字段 | `useAgentBlocks.ts` + `agentTreeTypes.ts` + `TurnBlock.vue` |
 | F-21 | progress section 与 timeline 主线混排 | progress 走 `timeline.sort()` 插入任意位置 | 拆出 `progressSections` 独立字段 | `useAgentBlocks.ts` + `agentTreeTypes.ts` + `ChatMessageList.vue` |

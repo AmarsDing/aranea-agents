@@ -131,7 +131,7 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 		recordIngressIntentMetric("concurrent_limit")
 		h.inboundInflight.release(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
-		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
+		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), biz.ChannelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
 				loggateway.Err(err),
@@ -163,7 +163,7 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 		recordIngressIntentMetric("concurrent_limit")
 		h.inboundInflight.release(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
-		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
+		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), biz.ChannelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
 				loggateway.Err(err),
@@ -248,7 +248,7 @@ func ackIdempotencyKey(platform string, ev port.InboundEvent, suffix string) str
 func inboundPlatform(chRow biz.Channel, ev port.InboundEvent, lg loggateway.Logger) string {
 	platform := strings.TrimSpace(ev.PlatformType)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON, lg)
+		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
 	return platform
 }

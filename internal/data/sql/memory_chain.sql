@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS memory_action_log (
   target_id TEXT NOT NULL,
   reason TEXT NOT NULL DEFAULT '',
   policy_version TEXT NOT NULL DEFAULT 'consolidate_v1',
+  turn_id TEXT NOT NULL DEFAULT '',
   source_event_ids_json TEXT NOT NULL DEFAULT '[]',
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
@@ -314,6 +315,8 @@ CREATE TABLE IF NOT EXISTS memory_facts (
   last_used_at TEXT NOT NULL DEFAULT '',
   expires_at TEXT NOT NULL DEFAULT '',
   metadata_json TEXT NOT NULL DEFAULT '{}',
+  quality_score REAL NOT NULL DEFAULT 0,
+  pii_types TEXT NOT NULL DEFAULT '',
   -- MEM-OPT-01 Phase 0: external vector index (pgvector / embedding_blob) consistency tracking
   index_status TEXT NOT NULL DEFAULT 'fresh',
   index_synced_at INTEGER NOT NULL DEFAULT 0,
@@ -482,7 +485,7 @@ CREATE TABLE IF NOT EXISTS memory_entity_versions (
   UNIQUE(entity_id, version)
 );
 
--- RESERVED: Not yet implemented
+-- Implemented: agent identity storage
 CREATE TABLE IF NOT EXISTS agent_identity (
   agent_id TEXT PRIMARY KEY,
   persona TEXT NOT NULL DEFAULT '',
@@ -497,7 +500,7 @@ CREATE TABLE IF NOT EXISTS agent_identity (
   updated_at TEXT NOT NULL
 );
 
--- RESERVED: Not yet implemented
+-- Implemented: agent strategy profile storage
 CREATE TABLE IF NOT EXISTS agent_strategy_profile (
   agent_id TEXT PRIMARY KEY,
   exploration REAL NOT NULL DEFAULT 0.5,
@@ -562,7 +565,7 @@ CREATE TABLE IF NOT EXISTS agent_evolution_proposals (
   updated_at TEXT NOT NULL
 );
 
--- RESERVED: Not yet implemented
+-- Agent skill statistics (implemented)
 CREATE TABLE IF NOT EXISTS agent_skill_stats (
   agent_id TEXT NOT NULL,
   scope TEXT NOT NULL DEFAULT 'overall',

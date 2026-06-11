@@ -8,15 +8,15 @@ import (
 )
 
 type MemoryEmbeddingAdapter struct {
-	embedder *knowledge.Embedder
+	embedder knowledge.QueryEmbedder
 }
 
 var _ biz.EmbeddingService = (*MemoryEmbeddingAdapter)(nil)
 
-func NewMemoryEmbeddingAdapter(embedder *knowledge.Embedder) *MemoryEmbeddingAdapter {
+func NewMemoryEmbeddingAdapter(embedder knowledge.QueryEmbedder) *MemoryEmbeddingAdapter {
 	return &MemoryEmbeddingAdapter{embedder: embedder}
 }
 
 func (a *MemoryEmbeddingAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
-	return a.embedder.Embed(ctx, text)
+	return a.embedder.EmbedSingle(ctx, text)
 }

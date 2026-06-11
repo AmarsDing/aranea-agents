@@ -51,7 +51,7 @@ func NormalizeMetadataJSON(raw string) (string, error) {
 }
 
 // BuildIndexedChunks splits text, embeds each chunk, and returns rows ready for persistence.
-func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestParams) ([]biz.KnowledgeChunk, error) {
+func BuildIndexedChunks(ctx context.Context, embedder Embedder, p IngestParams) ([]biz.KnowledgeChunk, error) {
 	if embedder == nil {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "ingest: embedder is nil")
 	}
@@ -72,7 +72,7 @@ func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestPar
 	for i, ch := range chunks {
 		texts[i] = ch.Content
 	}
-	vecs, err := embedTexts(ctx, embedder, texts)
+	vecs, err := embedder.Embed(ctx, texts)
 	if err != nil {
 		return nil, err
 	}
@@ -88,21 +88,6 @@ func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestPar
 			MetadataJSON: meta,
 			ChunkIndex:   ch.ChunkIndex,
 		})
-	}
-	return out, nil
-}
-
-func embedTexts(ctx context.Context, embedder QueryEmbedder, texts []string) ([][]float32, error) {
-	if batch, ok := embedder.(BatchEmbedder); ok {
-		return batch.EmbedBatch(ctx, texts)
-	}
-	out := make([][]float32, len(texts))
-	for i, t := range texts {
-		vec, err := embedder.Embed(ctx, t)
-		if err != nil {
-			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embed chunk %d failed: %s", i, err.Error()))
-		}
-		out[i] = vec
 	}
 	return out, nil
 }

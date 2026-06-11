@@ -59,6 +59,8 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
       im_split_overflow: true,
       im_max_preview_chars: 8000,
       progress_quiet_sec: 45,
+      // TECH-DEBT(#channel-locale-defaults): 默认文案硬编码为中文。修复路径：从 i18n 获取默认值，
+      // 或在后端 ChannelType catalog 中提供 per-locale 默认文案，前端仅做 fallback。
       heartbeat_message: '仍在处理中… {{elapsed}}',
     },
   },
@@ -76,6 +78,8 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
     config: {
       require_mention: true,
       streaming_enabled: true,
+      // TECH-DEBT(#channel-locale-defaults): 默认文案硬编码为中文。修复路径：从 i18n 获取默认值，
+      // 或在后端 ChannelType catalog 中提供 per-locale 默认文案，前端仅做 fallback。
       ack_message: '收到，Team 正在协作处理…',
       im_render_mode: 'transcript',
       im_tool_detail: 'label_summary',
@@ -84,6 +88,8 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
       turn_timeout_sec: 900,
       first_byte_timeout_sec: 120,
       progress_quiet_sec: 20,
+      // TECH-DEBT(#channel-locale-defaults): 默认文案硬编码为中文。修复路径：从 i18n 获取默认值，
+      // 或在后端 ChannelType catalog 中提供 per-locale 默认文案，前端仅做 fallback。
       heartbeat_message: '仍在处理中… {{elapsed}}',
       execution_mode: 'sync',
     },
@@ -93,6 +99,8 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
     label: 'channelEditor.longTaskPresets.asyncBackground',
     description: 'channelEditor.longTaskPresets.asyncBackgroundDesc',
     config: {
+      // TECH-DEBT(#channel-locale-defaults): 默认文案硬编码为中文。修复路径：从 i18n 获取默认值，
+      // 或在后端 ChannelType catalog 中提供 per-locale 默认文案，前端仅做 fallback。
       ack_message: '收到，已提交后台任务…',
       execution_mode: 'async',
       im_render_mode: 'reply_only',

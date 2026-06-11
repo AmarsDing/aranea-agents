@@ -14,7 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import ResolvedAvatarImg from '../avatar/ResolvedAvatarImg.vue';
-import { defaultChannelAvatarKey } from '../../features/channels/channelIconUi';
+import { defaultChannelAvatarKey } from '../../domain/channel';
 import type { ChannelMetadata } from '../../features/channels/types';
 
 const props = withDefaults(

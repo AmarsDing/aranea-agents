@@ -432,11 +432,27 @@ body:not(.body--dark) .graph-card--add:hover
   color: var(--color-text-tertiary)
 
 .graph-flow-node__handle
-  width: 10px
-  height: 10px
+  position: relative
+  width: 12px
+  height: 12px
   border: 2px solid var(--node-accent, var(--color-accent))
   background: var(--glass-elevated)
   box-shadow: 0 0 4px color-mix(in srgb, var(--node-accent, var(--color-accent)) 20%, transparent)
+  transition: transform 0.15s, box-shadow 0.15s
+  // 扩大点击热区
+  &::before
+    content: ''
+    position: absolute
+    top: 50%
+    left: 50%
+    transform: translate(-50%, -50%)
+    width: 24px
+    height: 24px
+    border-radius: 50%
+    pointer-events: all
+  &:hover
+    transform: scale(1.4)
+    box-shadow: 0 0 8px color-mix(in srgb, var(--node-accent, var(--color-accent)) 50%, transparent)
 
 .graph-flow-node--selected
   border-color: var(--node-accent, var(--color-accent))
@@ -1040,16 +1056,18 @@ body:not(.body--dark) .graph-card--add:hover
   position: absolute
   top: 0
   left: 0
-  width: 100%
-  height: 100%
+  width: 1px
+  height: 1px
   pointer-events: none
   z-index: 4
+  overflow: visible
 
 .snap-guide-line
   stroke: var(--color-accent)
   stroke-width: 1
   stroke-dasharray: 4 3
   opacity: 0.6
+  vector-effect: non-scaling-stroke
 
 .snap-guide-line--horizontal
   stroke-dasharray: 6 4

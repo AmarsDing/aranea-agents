@@ -1,3 +1,9 @@
+/**
+ * @deprecated Use `useSkillEvolutionStore` from `stores/skillEvolution` instead.
+ * This store only handles skill-level evolution suggestions (SkillEvolutionSuggestionService).
+ * The unified store (`stores/skillEvolution`) handles both skill-level and agent-level
+ * evolution suggestions via the unified API adapter.
+ */
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {

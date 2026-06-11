@@ -281,18 +281,17 @@ func (r *TeamRepo) DeleteTeam(ctx context.Context, id string) error {
 	if id == "" {
 		return kerrors.BadRequest("TEAM", "id is required")
 	}
-	now := nowRFC3339()
-	_, err := r.data.RW().Write(ctx).Team.UpdateOneID(id).
-		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetUpdatedAt(now).
-		Save(ctx)
-	if err != nil {
-		return err
-	}
-	// Cascade: clean up related records after successful soft-delete
-	cascadeDeleteByTeam(ctx, r.data, id)
-	return nil
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		now := nowRFC3339()
+		if _, err := r.data.RW().Write(txCtx).Team.UpdateOneID(id).
+			SetDeletedAt(now).
+			SetStatus("deleted").
+			SetUpdatedAt(now).
+			Save(txCtx); err != nil {
+			return err
+		}
+		return cascadeDeleteByTeam(txCtx, r.data, id)
+	})
 }
 
 func (r *TeamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, error) {

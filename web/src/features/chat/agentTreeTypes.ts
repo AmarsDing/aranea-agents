@@ -11,7 +11,7 @@
 
 // ── Agent Block ──
 
-export type AgentBlockStatus = 'running' | 'completed' | 'failed';
+export type AgentBlockStatus = 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'partial_failure' | 'failed';
 
 export interface AgentBlock {
   id: string;
@@ -28,8 +28,12 @@ export interface AgentBlock {
   task: string | null;
   /** Chronologically ordered timeline entries (thinking, tool, subagent) */
   timeline: TimelineEntry[];
+  /** Execution progress sections, separate from timeline (F-21) */
+  progressSections: ProgressSection[];
   /** Execution result text */
   result: string | null;
+  /** Whether some sub-tasks failed while overall result succeeded (F-20) */
+  hasPartialFailure: boolean;
 
   /** Orchestration plan (root agent only): task cards showing what will be done */
   plan: OrchestrationPlan | null;
@@ -54,6 +58,8 @@ export interface PlanEntry {
   id: string;
   /** Task description */
   task: string;
+  /** Agent key for precise matching (F-18) */
+  agentKey: string | null;
   /** Assigned agent name (if known) */
   agentName: string | null;
   /** Agent icon */
@@ -123,10 +129,10 @@ export const PROGRESS_GLYPHS: Readonly<Record<ProgressCategory, string>> = Objec
 });
 
 export const PROGRESS_LABELS: Readonly<Record<ProgressCategory, string>> = Object.freeze({
-  orchestration: '编排',
-  team: '团队',
-  tool: '工具',
-  thinking: '思考',
+  orchestration: 'chat.progress.orchestration',
+  team: 'chat.progress.team',
+  tool: 'chat.progress.tool',
+  thinking: 'chat.progress.thinking',
 });
 
 /** Status icons used in the timeline card (S8 + T2). */
@@ -154,7 +160,6 @@ export type TimelineEntry =
   | { kind: 'thinking'; section: ThinkingSection; sortKey: number }
   | { kind: 'tool'; section: ToolSection; sortKey: number }
   | { kind: 'reply'; section: ReplySection; sortKey: number }
-  | { kind: 'progress'; section: ProgressSection; sortKey: number }
   | { kind: 'subagent'; block: AgentBlock; sortKey: number };
 
 // ── Thinking Section ──
@@ -216,3 +221,28 @@ export function agentColorFromKey(key: string): string {
 
 /** Root agent key constant — the orchestrator spirit agent */
 export const ROOT_AGENT_KEY = '__root__';
+
+// === TODO Board Types (P1.6 TK-01) ===
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoItem {
+  id: string
+  content: string
+  activeForm: string
+  status: TodoStatus
+  updatedAt: string
+}
+
+export interface TodoBoardState {
+  todos: TodoItem[]
+  lastUpdated: string
+  source: 'session_state' | 'tool_result' | 'merged'
+}
+
+export type TodoColumnKey = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoColumn {
+  key: TodoColumnKey
+  items: TodoItem[]
+}

@@ -67,8 +67,8 @@
             :model-value="form.taxonomy_position_id || null"
             class="app-field-long"
             :tree="taxonomyTree"
-            label="业务分类"
-            placeholder="选择行业 / 部门 / 职位"
+            label="组织架构"
+            placeholder="选择组织 / 部门 / 职位"
             @update:model-value="onCategoryPick"
           />
           <template v-if="isA2AProxy">

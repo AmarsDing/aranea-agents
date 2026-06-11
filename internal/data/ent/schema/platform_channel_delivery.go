@@ -24,6 +24,7 @@ func (PlatformChannelDelivery) Fields() []ent.Field {
 		field.String("id").Immutable().Unique().MaxLen(256),
 		field.String("channel_id").MaxLen(256).NotEmpty(),
 		field.String("agent_id").Default(""),
+		field.String("idempotency_key").Default(""),
 		field.String("status").Default("pending"),
 		field.Text("payload_json").Default("{}"),
 		field.Text("error_message").Default(""),
@@ -35,5 +36,6 @@ func (PlatformChannelDelivery) Fields() []ent.Field {
 func (PlatformChannelDelivery) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("channel_id", "created_at").StorageKey("idx_channel_delivery_channel"),
+		index.Fields("channel_id", "idempotency_key").StorageKey("idx_channel_delivery_idem").Unique(),
 	}
 }

@@ -24,7 +24,7 @@ func newSkillGetTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_skill_get"),
-		function.WithDescription("获取指定 Skill 的详细信息。"),
+		function.WithDescription("获取指定 Skill 的详细信息，包含名称、描述、配置和关联的 Agent 列表。"),
 	)
 }
 
@@ -56,7 +56,7 @@ func newAgentListTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_agent_list"),
-		function.WithDescription("列出系统中所有 Agent。支持关键词搜索和分页。"),
+		function.WithDescription("列出系统中所有 Agent。支持关键词搜索和分页。用于查找可用的 Agent 或确认 Agent 是否存在。"),
 	)
 }
 
@@ -85,6 +85,6 @@ func newAgentGetTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("cli_admin_agent_get"),
-		function.WithDescription("获取指定 Agent 的详细信息。"),
+		function.WithDescription("获取指定 Agent 的详细信息。支持按 ID 或 agent_key 查找，自动回退到 agent_key 查询。"),
 	)
 }

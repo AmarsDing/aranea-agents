@@ -18,7 +18,7 @@ Channel 在 **Kratos 传输层** 负责外部 IM 平台连接：凭据管理、�
 3. **双入站路径** — Webhook（✅）+ Runtime 长连接（✅ scaffold，见 `internal/channel/runtime/`）
 4. **`internal/biz` 禁止 import trpc-agent-go** — Agent 调用仅在 `internal/service`
 
-**当前实现状态**（2026-06-06，Phase K+L 全部闭合）：
+**当前实现状态**（2026-06-11，Phase M 深度审查修复完成）：
 
 | 能力 | 状态 |
 |------|------|
@@ -43,6 +43,10 @@ Channel 在 **Kratos 传输层** 负责外部 IM 平台连接：凭据管理、�
 | Service 层 kerrors 合规 | ✅ |
 | Proto 隔离合规 | ✅ |
 | Service 层无直接 Repo | ✅ |
+| 凭据 upsert 原子操作 | ✅ Phase M（OnConflictColumns + UpdateNewValues） |
+| 错误分类类型安全 | ✅ Phase M（ChannelTurnErrorKind 下沉 biz 层） |
+| 超时检测类型安全 | ✅ Phase M（errors.Is 替代字符串匹配） |
+| 出站 payload 序列化错误处理 | ✅ Phase M（marshalOutboundPayload 替代 mustMarshalJSON） |
 
 ---
 

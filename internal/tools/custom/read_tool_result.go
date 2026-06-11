@@ -10,7 +10,7 @@ import (
 )
 
 type readToolResultInput struct {
-	BlobID string `json:"blob_id" description:"The blob ID of the persisted tool result to retrieve"`
+	BlobID string `json:"blob_id" jsonschema:"description=The blob ID of the persisted tool result to retrieve,required"`
 }
 
 type readToolResultOutput struct {

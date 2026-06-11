@@ -2,7 +2,7 @@
   <div class="section section--thinking">
     <div class="section__label" @click="toggleCollapse">
       <span class="section__label-icon">🧠</span>
-      <span class="section__label-text">思考</span>
+      <span class="section__label-text">{{ t('chat.thinking.summary') }}</span>
       <span v-if="section.streaming" class="pulse-dot"></span>
       <span v-if="section.durationMs" class="section__label-duration">{{ formattedDuration }}</span>
       <span class="section__label-toggle">{{ localCollapsed ? '▶' : '▼' }}</span>
@@ -19,9 +19,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ThinkingSection } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   section: ThinkingSection;

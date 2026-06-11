@@ -77,10 +77,10 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | trpc memory.Service | ✅ |
 | TurnMemoryWorker 入队 | ✅ |
 | LLM 提取管道 | ✅ MVP（LLM→启发式链 + fallback 指标） |
-| AutoMemoryQueue 优先级 / Dead-Letter（MEM-OPT-03） | ✅ 三优先级 + 租户配额 + Dead-Letter 持久化 + Replay RPC + 自动重放 cron |
+| AutoMemoryQueue 优先级 / Dead-Letter（MEM-OPT-03） | ✅ 三优先级 + 租户配额 + Dead-Letter 持久化 + Replay RPC + 自动重放 cron + Wire Sink 连通 |
 | Auto-memory upsert 失败重试 | ✅ 任一 fact 失败 fail job |
 | SessionAdminStore 子接口拆分 | 🟡 L0–L4 接口已拆；typed RecallHit 渐进 |
-| Memory Center 前端 | 🟡（Cascade Tab ✅；Knowledge/Session/Debug 已接入；Graph Tab 需 feature flag） |
+| Memory Center 前端 | ✅ Cascade Tab + Knowledge/Session/Debug/WorkerStatus/DeadLetter/PlatformSettings 已接入；Graph Tab 需 feature flag；Store action 全覆盖（31 RPC → Store 封装）；前后端契约对齐（types.ts + api.ts wire key = proto snake_case） |
 | 存储三写收敛 | ✅ facts 权威 + legacy backfill + pgvector 索引 |
 | L0 压缩优化（阶段二/三） | ❌ 记忆演化 + Agent 自主压缩 |
 | L4 LLM 实体抽取 | ❌ |
@@ -135,7 +135,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 - ✅ Memory Center Cascade Tab
 - ✅ PII 检测 + Review API（MEM-OPT-04）
 - ✅ 提取协议结构化（MEM-OPT-05）
-- 🟡 Action Log（Upsert/Delete/Clear/Entity/Cascade；turn_id 经 source_message_id）
+- ✅ Action Log（Upsert/Delete/Clear/Entity/Cascade；turn_id 列已添加）
 
 ### Phase 4：L0 压缩优化 — 🟡 阶段一完成
 

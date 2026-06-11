@@ -243,6 +243,8 @@ type InvocationWrite struct {
 	SelectionReason map[string]any // routing path, candidate slugs, scoring factors
 	Outcome         string         // success / failure / partial / cancelled
 	TokenUsage      map[string]any // {prompt, completion, total}
+	RoutedSlugs     []string       // slugs routed by Layer A+B for this turn
+	LoadedSlug      string         // slug actually loaded via skill_load/skill_run
 }
 
 // DiskSyncOutcome describes side effects of a filesystem upsert.
@@ -316,8 +318,8 @@ type SkillFilesystem interface {
 // SkillEmbedder generates text embeddings for semantic skill scoring.
 // Defined here to avoid circular import with parent biz package.
 type SkillEmbedder interface {
-	Embed(ctx context.Context, text string) ([]float32, error)
-	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+	EmbedSingle(ctx context.Context, text string) ([]float32, error)
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
 }
 
 // Usecase implements skill CRUD workflows.
@@ -678,6 +680,7 @@ type ImportJob struct {
 	Candidates       []ImportCandidate `json:"candidates"`
 	ConflictGroups   []ConflictGroup   `json:"conflict_groups"`
 	Message          string            `json:"message,omitempty"`
+	TempDir          string            `json:"temp_dir,omitempty"` // path to temp directory for file content (DB-persisted jobs)
 }
 
 type ImportCandidate struct {
@@ -904,7 +907,7 @@ func (u *Usecase) ScoreByEmbedding(ctx context.Context, query string, candidates
 	if err := u.refreshEmbedCache(ctx, candidates); err != nil {
 		return nil, err
 	}
-	queryEmb, err := u.embedder.Embed(ctx, query)
+	queryEmb, err := u.embedder.EmbedSingle(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -942,7 +945,7 @@ func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCan
 	for i, idx := range missing {
 		texts[i] = skillCorpusText(candidates[idx])
 	}
-	embeddings, err := u.embedder.EmbedBatch(ctx, texts)
+	embeddings, err := u.embedder.Embed(ctx, texts)
 	if err != nil {
 		return err
 	}

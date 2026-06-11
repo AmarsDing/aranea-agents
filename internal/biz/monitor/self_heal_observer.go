@@ -12,7 +12,10 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// SelfHealObserver observes FlowLog events, tracks auto-heal outcomes,
+// SelfHealObserver is the Phase 2 self-healing implementation with circuit breaker.
+// TODO(debt): DEV-06 — After migration, SelfHealObserver will be the sole heal orchestrator.
+//
+// It observes FlowLog events, tracks auto-heal outcomes,
 // fires alerts for repeated failures, and persists HealRecords.
 // It replaces SelfHealUsecase for the observation role (Phase 2 migration).
 type SelfHealObserver struct {

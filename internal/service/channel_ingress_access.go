@@ -49,7 +49,7 @@ func (h *ChannelIngress) checkInboundAccess(ctx context.Context, chRow biz.Chann
 func (h *ChannelIngress) rejectInboundAccess(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, reason string) error {
 	platform := strings.TrimSpace(ev.PlatformType)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON, h.lg)
+		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
 	recipient := strings.TrimSpace(ev.OutboundMeta["recipient"])
 	if recipient == "" {

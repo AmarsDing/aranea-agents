@@ -1,5 +1,7 @@
 <template>
   <g>
+    <!-- 不可见宽交互路径，增大边的点击热区 -->
+    <path :d="path" fill="none" stroke="transparent" stroke-width="12" class="vue-flow__edge-interaction" />
     <path
       :id="edgeId"
       :d="path"

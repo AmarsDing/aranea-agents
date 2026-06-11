@@ -62,8 +62,8 @@ func TestToProtoHook_DeletedAt(t *testing.T) {
 
 func TestPatchFromProtoHook_Nil(t *testing.T) {
 	got := service.PatchFromProtoHook(nil)
-	if got.Key != "" || got.Name != "" {
-		t.Fatalf("expected zero-value Hook, got %+v", got)
+	if got.Key != nil || got.Name != nil {
+		t.Fatalf("expected zero-value HookPatch, got %+v", got)
 	}
 }
 
@@ -79,20 +79,20 @@ func TestPatchFromProtoHook(t *testing.T) {
 		MetadataJson: `{"source":"user"}`,
 	}
 	h := service.PatchFromProtoHook(pb)
-	if h.Key != "on_error" || h.Name != "Error Hook" {
-		t.Fatalf("key/name mismatch: key=%q name=%q", h.Key, h.Name)
+	if *h.Key != "on_error" || *h.Name != "Error Hook" {
+		t.Fatalf("key/name mismatch: key=%q name=%q", *h.Key, *h.Name)
 	}
-	if h.Description != "Fires on error" || h.Status != "active" {
-		t.Fatalf("desc/status mismatch: desc=%q status=%q", h.Description, h.Status)
+	if *h.Description != "Fires on error" || *h.Status != "active" {
+		t.Fatalf("desc/status mismatch: desc=%q status=%q", *h.Description, *h.Status)
 	}
-	if !h.Enabled || h.SortOrder != 5 {
-		t.Fatalf("enabled/sort mismatch: enabled=%v sort=%d", h.Enabled, h.SortOrder)
+	if !*h.Enabled || *h.SortOrder != 5 {
+		t.Fatalf("enabled/sort mismatch: enabled=%v sort=%d", *h.Enabled, *h.SortOrder)
 	}
-	if h.ConfigJSON != `{"url":"https://err.example.com"}` {
-		t.Fatalf("config mismatch: %q", h.ConfigJSON)
+	if *h.ConfigJSON != `{"url":"https://err.example.com"}` {
+		t.Fatalf("config mismatch: %q", *h.ConfigJSON)
 	}
-	if h.MetadataJSON != `{"source":"user"}` {
-		t.Fatalf("metadata mismatch: %q", h.MetadataJSON)
+	if *h.MetadataJSON != `{"source":"user"}` {
+		t.Fatalf("metadata mismatch: %q", *h.MetadataJSON)
 	}
 }
 
@@ -102,12 +102,8 @@ func TestPatchFromProtoHook_NoID(t *testing.T) {
 		Name: "Test",
 	}
 	h := service.PatchFromProtoHook(pb)
-	if h.ID != "" {
-		t.Fatalf("patch should not set ID, got %q", h.ID)
-	}
-	if h.CreatedAt != "" || h.UpdatedAt != "" || h.DeletedAt != "" {
-		t.Fatalf("patch should not set timestamps: created=%q updated=%q deleted=%q", h.CreatedAt, h.UpdatedAt, h.DeletedAt)
-	}
+	// HookPatch does not have ID or timestamp fields at all
+	_ = h
 }
 
 func TestToProtoHookDelivery(t *testing.T) {
@@ -216,7 +212,7 @@ func TestPatchFromProtoHook_Disabled(t *testing.T) {
 		Enabled: false,
 	}
 	h := service.PatchFromProtoHook(pb)
-	if h.Enabled {
+	if *h.Enabled {
 		t.Fatal("expected enabled=false")
 	}
 }

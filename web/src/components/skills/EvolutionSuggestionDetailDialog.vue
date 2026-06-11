@@ -11,12 +11,18 @@
           <template v-if="suggestion">
             <div class="row q-col-gutter-sm text-body2">
               <div class="col-6">
-                <span class="text-weight-medium text-grey-7">Skill ID：</span>{{ suggestion.skillId || '—' }}
+                <span class="text-weight-medium text-grey-7">目标类型：</span>
+                <q-chip dense square :color="evoTargetTypeColor(suggestion.targetType)" text-color="white">
+                  {{ evoTargetTypeLabel(suggestion.targetType) }}
+                </q-chip>
               </div>
               <div class="col-6">
-                <span class="text-weight-medium text-grey-7">类型：</span>
-                <q-chip dense square :color="evoSuggestionTypeColor(suggestion.type)" text-color="white">
-                  {{ evoSuggestionTypeLabel(suggestion.type) }}
+                <span class="text-weight-medium text-grey-7">目标 ID：</span>{{ suggestion.targetId || '—' }}
+              </div>
+              <div class="col-6">
+                <span class="text-weight-medium text-grey-7">操作类型：</span>
+                <q-chip dense square :color="evoActionTypeColor(suggestion.actionType)" text-color="white">
+                  {{ evoActionTypeLabel(suggestion.actionType) }}
                 </q-chip>
               </div>
               <div class="col-6">
@@ -41,35 +47,21 @@
                 </template>
                 <template v-else>—</template>
               </div>
-              <div class="col-6">
-                <span class="text-weight-medium text-grey-7">父版本：</span>{{ suggestion.parentVersionId || '—' }}
-              </div>
             </div>
 
             <div v-if="suggestion.triggerReason" class="text-body2">
               <span class="text-weight-medium text-grey-7">触发原因：</span>{{ suggestion.triggerReason }}
             </div>
 
-            <div v-if="suggestion.evolutionReason" class="text-body2">
-              <span class="text-weight-medium text-grey-7">进化原因：</span>{{ suggestion.evolutionReason }}
-            </div>
-
-            <div v-if="suggestion.sourceReportIds && suggestion.sourceReportIds.length" class="text-body2">
-              <span class="text-weight-medium text-grey-7">来源报告：</span>
-              <q-chip v-for="rid in suggestion.sourceReportIds" :key="rid" dense size="sm" outline>
-                {{ rid }}
-              </q-chip>
-            </div>
-
             <q-expansion-item
-              v-if="suggestion.draftSkillBody"
+              v-if="suggestion.draftBody"
               dense-toggle
               default-opened
-              label="Draft Skill Body"
+              label="Draft Body"
               class="evolution-detail-section"
             >
               <div class="q-pa-sm">
-                <pre class="evolution-detail-pre">{{ suggestion.draftSkillBody }}</pre>
+                <pre class="evolution-detail-pre">{{ suggestion.draftBody }}</pre>
               </div>
             </q-expansion-item>
 
@@ -84,21 +76,6 @@
                 <pre class="evolution-detail-pre">{{ formatJson(suggestion.sandboxResult) }}</pre>
               </div>
             </q-expansion-item>
-
-            <q-expansion-item
-              v-if="suggestion.preVerifyResult && hasKeys(suggestion.preVerifyResult)"
-              dense-toggle
-              label="预验证结果"
-              class="evolution-detail-section"
-            >
-              <div class="q-pa-sm">
-                <pre class="evolution-detail-pre">{{ formatJson(suggestion.preVerifyResult) }}</pre>
-              </div>
-            </q-expansion-item>
-
-            <div v-if="suggestion.rejectionReason" class="text-body2">
-              <span class="text-weight-medium text-grey-7">拒绝原因：</span>{{ suggestion.rejectionReason }}
-            </div>
           </template>
         </q-card-section>
       </div>
@@ -111,19 +88,21 @@
 </template>
 
 <script setup lang="ts">
-import type { EvolutionSuggestionView } from '../../features/skills/types';
+import type { SkillEvolutionView } from '../../features/skills/types';
 import {
-  evoSuggestionTypeColor,
-  evoSuggestionTypeLabel,
   evoSuggestionStatusColor,
   evoSuggestionStatusLabel,
   evoLifecycleStatusColor,
   evoLifecycleStatusLabel,
+  evoTargetTypeColor,
+  evoTargetTypeLabel,
+  evoActionTypeColor,
+  evoActionTypeLabel,
 } from './evolutionSuggestionTableUi';
 
 defineProps<{
   open: boolean;
-  suggestion: EvolutionSuggestionView | null;
+  suggestion: SkillEvolutionView | null;
 }>();
 
 defineEmits<{

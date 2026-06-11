@@ -351,7 +351,7 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil)
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
+		channels: biz.NewChannelUsecase(nil, nil, nil, nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
 		lg:       loggateway.NewNoop(),
 	}
@@ -405,7 +405,7 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil)
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
+		channels: biz.NewChannelUsecase(nil, nil, nil, nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
 		lg:       loggateway.NewNoop(),
 	}

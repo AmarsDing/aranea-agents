@@ -149,6 +149,9 @@ func (u *Usecase) CreateTask(ctx context.Context, in Task) (Task, error) {
 	if in.Status == "" {
 		in.Status = "active"
 	}
+	if err := ValidateTaskConfig(in.ConfigJSON); err != nil {
+		return Task{}, err
+	}
 	return u.repo.CreateCronTask(ctx, in)
 }
 
@@ -197,6 +200,9 @@ func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (T
 	}
 	if merged.Status == "" {
 		merged.Status = cur.Status
+	}
+	if err := ValidateTaskConfig(merged.ConfigJSON); err != nil {
+		return Task{}, err
 	}
 	return u.repo.UpdateCronTask(ctx, merged)
 }
@@ -271,6 +277,42 @@ func ResetFailureMetadata(raw string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
+}
+
+// ValidateTaskConfig checks that config_json is valid JSON and contains required fields.
+func ValidateTaskConfig(configJSON string) error {
+	raw := strings.TrimSpace(configJSON)
+	if raw == "" {
+		return nil // empty config is allowed
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return errors.BadRequest("CRON", "invalid config_json: "+err.Error())
+	}
+	// Validate target_type field if present
+	if targetType, ok := cfg["target_type"]; ok {
+		s, ok := targetType.(string)
+		if !ok {
+			return errors.BadRequest("CRON", "config_json target_type must be a string")
+		}
+		switch s {
+		case "agent", "team", "model_registry_sync":
+			// valid
+		default:
+			return errors.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync")
+		}
+	}
+	// Validate cron_expression field if present
+	if cronExpr, ok := cfg["cron_expression"]; ok {
+		s, ok := cronExpr.(string)
+		if !ok {
+			return errors.BadRequest("CRON", "config_json cron_expression must be a string")
+		}
+		if strings.TrimSpace(s) == "" {
+			return errors.BadRequest("CRON", "config_json cron_expression cannot be empty")
+		}
+	}
+	return nil
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────

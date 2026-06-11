@@ -8,9 +8,9 @@
       <span
         v-if="section.isLongRunning && section.status === 'running'"
         class="tool-pill tool-pill--long-running"
-        title="工具仍在执行，LLM 尚未收到最终结果"
+        :title="t('chat.agentTool.longRunningTitle')"
       >
-        等待中
+        {{ t('chat.execution.statusPending') }}
       </span>
       <span v-if="section.status === 'success'" class="tool-status tool-status--success">✓</span>
       <span v-else-if="section.status === 'failed'" class="tool-status tool-status--failed">✗</span>
@@ -21,15 +21,15 @@
     <div class="section__body" :class="{ 'section__body--collapsed': localCollapsed }">
       <div class="section__body-inner">
         <div v-if="section.arguments" class="tool-args">
-          <div class="tool-args__label">参数</div>
+          <div class="tool-args__label">{{ t('chat.toolArgs') }}</div>
           <pre>{{ section.arguments }}</pre>
         </div>
         <div v-if="section.result" class="tool-result">
-          <div class="tool-result__label">结果</div>
+          <div class="tool-result__label">{{ t('chat.toolResult') }}</div>
           <pre>{{ section.result }}</pre>
         </div>
         <div v-if="section.error" class="tool-error">
-          <div class="tool-result__label">错误</div>
+          <div class="tool-result__label">{{ t('chat.agentTool.error') }}</div>
           <pre>{{ section.error }}</pre>
         </div>
       </div>
@@ -39,8 +39,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ToolSection } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   section: ToolSection;

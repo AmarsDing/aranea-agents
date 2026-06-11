@@ -12,6 +12,7 @@ package tool
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -87,6 +88,132 @@ type Schema struct {
 	Ref string `json:"$ref,omitempty"`
 	// Defs contains reusable schema definitions
 	Defs map[string]*Schema `json:"$defs,omitempty"`
+
+	// Constraint fields for enhanced parameter validation.
+	// These follow JSON Schema specification and help LLMs generate
+	// compliant arguments. Providers that don't support these natively
+	// should migrate them to property descriptions (see appendConstraintsToDescription).
+
+	// MinLength constrains the minimum length of a string value.
+	MinLength *int `json:"minLength,omitempty"`
+	// MaxLength constrains the maximum length of a string value.
+	MaxLength *int `json:"maxLength,omitempty"`
+	// Pattern constrains a string value to match a regular expression.
+	Pattern string `json:"pattern,omitempty"`
+	// Minimum constrains the minimum value of a number.
+	Minimum *float64 `json:"minimum,omitempty"`
+	// Maximum constrains the maximum value of a number.
+	Maximum *float64 `json:"maximum,omitempty"`
+	// MinItems constrains the minimum number of items in an array.
+	MinItems *int `json:"minItems,omitempty"`
+	// MaxItems constrains the maximum number of items in an array.
+	MaxItems *int `json:"maxItems,omitempty"`
+}
+
+// ExtraFields returns a map of JSON Schema fields not covered by the explicit
+// Schema struct fields (Type, Description, Required, Properties, Items,
+// AdditionalProperties, Default, Enum, Ref, Defs). This is useful for LLM
+// provider adapters whose SDK types only expose a subset of JSON Schema
+// fields natively but accept additional fields via an "extra fields" or
+// "additional properties" mechanism (e.g. Anthropic ToolInputSchemaParam.ExtraFields).
+//
+// The returned map may contain: "$defs", "additionalProperties", "items",
+// "enum", "default", "$ref", "minLength", "maxLength", "pattern",
+// "minimum", "maximum", "minItems", "maxItems".
+// Returns nil if no extra fields are present.
+func (s *Schema) ExtraFields() map[string]any {
+	if s == nil {
+		return nil
+	}
+	extra := make(map[string]any)
+	if s.Defs != nil {
+		extra["$defs"] = s.Defs
+	}
+	if s.AdditionalProperties != nil {
+		extra["additionalProperties"] = s.AdditionalProperties
+	}
+	if s.Items != nil {
+		extra["items"] = s.Items
+	}
+	if len(s.Enum) > 0 {
+		extra["enum"] = s.Enum
+	}
+	if s.Default != nil {
+		extra["default"] = s.Default
+	}
+	if s.Ref != "" {
+		extra["$ref"] = s.Ref
+	}
+	if s.MinLength != nil {
+		extra["minLength"] = *s.MinLength
+	}
+	if s.MaxLength != nil {
+		extra["maxLength"] = *s.MaxLength
+	}
+	if s.Pattern != "" {
+		extra["pattern"] = s.Pattern
+	}
+	if s.Minimum != nil {
+		extra["minimum"] = *s.Minimum
+	}
+	if s.Maximum != nil {
+		extra["maximum"] = *s.Maximum
+	}
+	if s.MinItems != nil {
+		extra["minItems"] = *s.MinItems
+	}
+	if s.MaxItems != nil {
+		extra["maxItems"] = *s.MaxItems
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	return extra
+}
+
+// AppendConstraintsToDescription appends JSON Schema constraint keywords
+// (minLength, maxLength, pattern, minimum, maximum, minItems, maxItems)
+// to the description string as natural language hints. This is the standard
+// fallback for LLM providers whose SDK types do not natively support these
+// constraint fields (e.g. Ollama api.ToolProperty).
+//
+// If no constraints are present, the description is returned unchanged.
+func AppendConstraintsToDescription(desc string, schema *Schema) string {
+	if schema == nil {
+		return desc
+	}
+	var hints []string
+
+	if schema.MinLength != nil {
+		hints = append(hints, fmt.Sprintf("minLength: %d", *schema.MinLength))
+	}
+	if schema.MaxLength != nil {
+		hints = append(hints, fmt.Sprintf("maxLength: %d", *schema.MaxLength))
+	}
+	if schema.Pattern != "" {
+		hints = append(hints, fmt.Sprintf("pattern: %s", schema.Pattern))
+	}
+	if schema.Minimum != nil {
+		hints = append(hints, fmt.Sprintf("minimum: %v", *schema.Minimum))
+	}
+	if schema.Maximum != nil {
+		hints = append(hints, fmt.Sprintf("maximum: %v", *schema.Maximum))
+	}
+	if schema.MinItems != nil {
+		hints = append(hints, fmt.Sprintf("minItems: %d", *schema.MinItems))
+	}
+	if schema.MaxItems != nil {
+		hints = append(hints, fmt.Sprintf("maxItems: %d", *schema.MaxItems))
+	}
+
+	if len(hints) == 0 {
+		return desc
+	}
+	if desc != "" {
+		desc += " "
+	}
+	desc += "(" + strings.Join(hints, ", ") + ")"
+	return desc
 }
 
 // SanitizeToolName converts a tool name into a form compatible with LLM

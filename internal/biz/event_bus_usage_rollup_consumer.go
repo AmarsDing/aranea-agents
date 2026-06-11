@@ -23,10 +23,11 @@ func (c *usageRollupConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-usage-rollup", c.bus, contract.SubscribeOptions{
+	runTypedConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus, contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeTokenUsage},
 		BufferSize: 256,
-	}, c.handle, c.logger)
+		Reliable:   true,
+	}, c.handle, OfferOption{FallbackSync: true, FallbackFn: c.handle}, c.logger)
 }
 
 func (c *usageRollupConsumer) handle(ctx context.Context, env contract.Envelope) {

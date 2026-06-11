@@ -10,7 +10,11 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-const stuckToolResultReason = "turn completed without tool result"
+const stuckToolResultI18nKey = "chat.tool.stuckTimeout"
+
+// stuckToolResultFallback is the human-readable fallback message for the error field.
+// The i18n_key field takes priority on the frontend; this fallback is shown when i18n is unavailable.
+const stuckToolResultFallback = "Tool execution timed out without result"
 
 func toolCallIDValid(tc *event.EnvelopeToolCall) bool {
 	return tc != nil && strings.TrimSpace(tc.ID) != ""
@@ -49,10 +53,10 @@ func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister A
 }
 
 func stuckToolCallPatch(tc event.EnvelopeToolCall) event.EnvelopeToolCall {
-	errPayload, _ := json.Marshal(map[string]string{"error": stuckToolResultReason})
+	errPayload, _ := json.Marshal(map[string]string{"error": stuckToolResultFallback, "i18n_key": stuckToolResultI18nKey})
 	stuck := tc
 	stuck.Status = "failed"
-	stuck.ErrorCode = "tool_timeout"
+	stuck.ErrorCode = event.ErrorCodeToolTimeout
 	stuck.ResultJSON = string(errPayload)
 	if strings.TrimSpace(stuck.FinishedAt) == "" {
 		stuck.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)

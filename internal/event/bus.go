@@ -64,7 +64,12 @@ var criticalTypeSet = map[EnvelopeType]struct{}{
 	EnvelopeTypeGraphNodeEnd:         {},
 	EnvelopeTypeTeamRunFinished:      {},
 	EnvelopeTypeTeamRunFailed:        {},
-	EnvelopeTypeSessionStatusChanged: {}, // R-07 fix: session status loss causes frontend state inconsistency
+	EnvelopeTypeSessionStatusChanged: {},
+	EnvelopeTypeStateDelta:           {}, // Agent 状态机一致性
+	EnvelopeTypeTokenUsage:           {}, // 用量计费数据
+	EnvelopeTypeRunStatus:            {}, // Webhook 回调 / 运行状态
+	EnvelopeTypeUserFeedback:         {}, // 用户反馈 / 偏好记忆
+	EnvelopeTypeCheckpoint:           {}, // 检查点可恢复性
 }
 
 func (b *bus) Publish(ctx context.Context, env Envelope) {

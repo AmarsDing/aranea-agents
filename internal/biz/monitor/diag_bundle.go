@@ -23,6 +23,9 @@ type DiagBundle struct {
 	Total       int
 }
 
+// DiagBundleGenerator generates diagnostic bundles for self-heal and RCA.
+// TODO(debt): DEV-07 — DiagBundleGenerator should receive RootCauseEngine via constructor injection
+// instead of creating it internally (violates DI principle).
 type DiagBundleGenerator struct {
 	eventRepo     EventRepo
 	traceRepo     TraceRepo

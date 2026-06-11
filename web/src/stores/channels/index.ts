@@ -24,10 +24,10 @@ import type { Agent } from '../../features/agents/types';
 import type { Team } from '../../features/teams/types';
 import { listAgents } from '../../features/agents/api';
 import { listTeams } from '../../features/teams/api';
-// TECH-DEBT: channels Store 直接调用 agents/teams api 而非通过对应 Store，
-// 因为 agents/teams Store 是页面级 Store（agentsPage/teams），不适合在此注入。
-// 未来应考虑创建轻量级 agentsCatalog/teamsCatalog Store 来解耦。
-// See: FD8 review finding
+// TECH-DEBT(#channel-store-catalog): channels Store 直接调用 agents/teams api 而非通过对应 Store。
+// 根因：agents/teams Store 是页面级 Store（agentsPage/teams），不适合在此注入。
+// 修复路径：创建轻量级 catalog Store（useAgentCatalogStore / useTeamCatalogStore），
+// 仅提供 id/name/key 只读目录数据，channels Store 和其他需要目录数据的 Store 均通过 catalog Store 获取。
 
 export const useChannelsStore = defineStore('channels', () => {
   const channels = ref<ChannelRow[]>([]);

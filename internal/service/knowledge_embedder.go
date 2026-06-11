@@ -15,14 +15,14 @@ import (
 // NewKnowledgeEmbedder builds the knowledge embedder from env, then system_settings (EP-KN-01).
 //
 // Priority: KRATOS_KNOWLEDGE_EMBED_* env > system_settings.knowledge_embed_* > provider key env fallbacks.
-func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, lg loggateway.Logger) *knowledge.Embedder {
+func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, lg loggateway.Logger) *knowledge.MultiProviderEmbedder {
 	cfg := loadKnowledgeEmbedFromEnv(c)
 	if sys != nil {
 		if stored, err := sys.GetKnowledgeEmbed(context.Background()); err == nil {
 			cfg = mergeKnowledgeEmbedConfig(cfg, stored)
 		}
 	}
-	return knowledge.NewEmbedder(cfg.provider, cfg.baseURL, cfg.apiKey, cfg.model, cfg.dim, lg)
+	return knowledge.NewMultiProviderEmbedder(cfg.provider, cfg.baseURL, cfg.apiKey, cfg.model, cfg.dim, lg)
 }
 
 type knowledgeEmbedConfig struct {

@@ -15,7 +15,7 @@ export function buildAgentTableColumns(
     registryCol<Agent>('model', '模型', (row) => `${row.provider} / ${row.model}`, 'left', REGISTRY_COL_W.stats),
     registryCol<Agent>(
       'category',
-      '业务分类',
+      '组织架构',
       (row) => taxonomyLabel(row.taxonomy_position_id),
       'left',
       REGISTRY_COL_W.category,

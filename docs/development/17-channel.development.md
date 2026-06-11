@@ -71,6 +71,12 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | Delivery worker 错误日志 | ✅ | `MarkOutboundAttempt` + reply 投递错误加 `event.SysLogWarn`（Phase K 修复 K-25/K-26） |
 | `recordDelivery` 签名优化 | ✅ | 返回 `void`（内部已有 `event.SysLogWarn`）；消除 32+ 处 `_ =` 噪音（Phase L 修复 J-15） |
 | Channel 层 `fmt.Errorf` 合规 | ✅ | channel 层非 biz 层，`fmt.Errorf` 合规；无需迁移 `kerrors`（Phase L 分析 J-12） |
+| `resolveCredentialPlain` 错误处理 | ✅ | 6 处 `_ =` 改为 `err` 处理（Phase M 修复 R01） |
+| `UpsertCredential` 原子 upsert | ✅ | TOCTOU 竞态 → `OnConflictColumns + UpdateNewValues` + `SetIgnore(FieldCreatedAt)`（Phase M 修复 R02） |
+| 超时检测类型安全 | ✅ | 移除字符串匹配回退，仅 `errors.Is(err, context.DeadlineExceeded)`（Phase M 修复 R03） |
+| `mustMarshalJSON` → `marshalOutboundPayload` | ✅ | 消除 panic 风险，返回 error（Phase M 修复 R04） |
+| 错误分类下沉 biz 层 | ✅ | `ChannelTurnErrorKind` + 消息常量 + `FormatChannelTurnErrorMessage` 迁入 `biz/channel_turn_errors.go`（Phase M 修复 S01） |
+| 前端重复组件/函数清理 | ✅ | 删除 3 个重复 Picker 组件；提取共享 `parseJSON`（Phase M 修复 S10/S14） |
 
 ---
 
@@ -1119,6 +1125,195 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 ---
 
+## 17.8 Phase M — 深度审查修复（2026-06-11）
+
+> **审查工具**：`aranea-review` SKILL + `aranea-coding-guide` SKILL
+> **审查范围**：Channel 模块全栈（后端 service/biz/data + 前端 features/channels + components/channels）
+> **审查日期**：2026-06-11
+
+### M.1 本次修复
+
+#### 🔴 阻断问题（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| R01 | `resolveCredentialPlain` 6 处忽略 error 返回值 | `service/channel_platform_registry.go` | 全部改为 `err` 处理并提前返回；仅 `outboundPersonalQQ.sendToken` 保留 `_`（可选凭证，有注释） |
+| R02 | `UpsertCredential` TOCTOU 竞态（先查后写） | `data/channel.go` | 改为 Ent `OnConflictColumns + UpdateNewValues` 原子 upsert + `SetIgnore(FieldCreatedAt)` 保留创建时间 |
+| R03 | `turnErrorIsTimeout` 字符串匹配回退不可靠 | `service/channel_ingress_errors.go` | 移除字符串匹配，仅保留 `errors.Is(err, context.DeadlineExceeded)` |
+| R04 | `mustMarshalJSON` 吞错可能 panic | `biz/channel_delivery.go` | 替换为 `marshalOutboundPayload` 返回 error；4 处调用全部处理 |
+
+#### 🟡 建议改进（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| S01 | 错误分类类型/常量定义在 service 层 | `service/channel_provider_errors.go` + `channel_ingress_constants.go` | 新建 `biz/channel_turn_errors.go`：`ChannelTurnErrorKind` 类型 + 5 个分类常量 + 5 个消息常量 + `FormatChannelTurnErrorMessage`；service 层改用 biz 类型 |
+| S05 | `scanChannelTurnJobRows` 与 `scanChannelTurnJobRow` 完全重复 | `data/channel_turn_job.go` | 删除 `scanChannelTurnJobRows` 死代码 |
+| S10 | `ChannelCatalogPicker` / `ChannelTypePicker` 3 个重复组件 | `web/src/features/channels/` + `web/src/components/channels/` | 仅保留 `components/channels/ChannelCatalogPicker.vue`；删除 3 个重复文件；更新 `ChannelEditorDialog.vue` 导入路径 |
+| S14 | `parseJSON` 在 `channelUi.ts` 和 `useChannelEditorForm.ts` 重复定义 | 前端 | 新建 `features/channels/channelJsonUtils.ts` 共享函数；`channelUi.ts` 导入并 re-export；`useChannelEditorForm.ts` 直接导入 |
+| S15 | 前端中文硬编码无 i18n 标注 | `channelLongTaskDefaults.ts` + `channelImPreviewDefaults.ts` | 添加 `// LOCALE: hardcoded for zh-CN market` 注释（6 处） |
+
+#### 🟢 提示（记录备忘）
+
+| # | 问题 | 说明 |
+|---|------|------|
+| T01 | `classifyChannelTurnError` 中 rate_limit/context_overflow 仍用字符串匹配 | 已有 `contextRateLimitSentinel` 类型；context_overflow 无对应 sentinel，待后续迭代 |
+| T02 | `channelUi.ts` re-export `parseJSON` | 过渡性反向导出，后续消费者应直接从 `channelJsonUtils` 导入 |
+
+### M.2 审查验证
+
+使用 `aranea-review` SKILL 进行两轮审查：
+
+- **第一轮**：发现 1 个新阻断项（测试未同步更新）+ 2 个建议项（`UpdateNewValues` 覆盖 `created_at`、mock stub 缺失）→ 全部修复
+- **第二轮**：无阻断项，1 个已知建议项（ChannelUsecase 上帝对象拆分需独立迭代），2 个提示项
+
+### M.3 红线合规性更新
+
+| 红线 # | 检查项 | 结果 |
+|--------|--------|------|
+| #4 | 不得吞掉错误返回值 | ✅ R01 修复 6 处 `_ =`；R04 修复 mustMarshalJSON |
+| #9 | 所有 `go func()` 必须走 `safego.Go` | ✅ 无新增违规 |
+| #13 | Service 层不得直接依赖 Repo 接口 | ✅ 无新增违规 |
+| #14 | Service 层不得 `fmt.Errorf` | ✅ 无新增违规 |
+| #16 | 禁止 `log/slog` | ✅ 无违规 |
+| #19 | 不得新增死代码 | ✅ S05 删除重复函数 |
+
+### M.4 变更文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|----------|------|
+| `internal/service/channel_platform_registry.go` | 修改 | R01：6 处 `resolveCredentialPlain` 错误处理 |
+| `internal/data/channel.go` | 修改 | R02：UpsertCredential 原子 upsert + SetIgnore(FieldCreatedAt) |
+| `internal/service/channel_ingress_errors.go` | 修改 | R03：移除字符串匹配超时检测 |
+| `internal/biz/channel_delivery.go` | 修改 | R04：mustMarshalJSON → marshalOutboundPayload |
+| `internal/biz/channel_turn_errors.go` | 新增 | S01：ChannelTurnErrorKind 类型 + 常量 + FormatChannelTurnErrorMessage |
+| `internal/service/channel_provider_errors.go` | 修改 | S01：改用 biz.ChannelTurnErrorKind |
+| `internal/service/channel_ingress_constants.go` | 修改 | S01：移除已迁移到 biz 层的消息常量 |
+| `internal/service/channel_ingress_accept.go` | 修改 | S01：引用 biz.ChannelTurnErrorBusyMsg |
+| `internal/service/channel_ingress_policy.go` | 修改 | S01：引用 biz.ChannelTurnErrorContextOverflowMsg |
+| `internal/service/channel_ingress_context.go` | 修改 | S01：引用 biz.ChannelTurnErrorContextOverflowMsg |
+| `internal/data/channel_turn_job.go` | 修改 | S05：删除 scanChannelTurnJobRows 死代码 |
+| `web/src/features/channels/channelJsonUtils.ts` | 新增 | S14：共享 parseJSON 工具函数 |
+| `web/src/components/channels/channelUi.ts` | 修改 | S14：导入并 re-export parseJSON |
+| `web/src/features/channels/useChannelEditorForm.ts` | 修改 | S14：从 channelJsonUtils 导入 parseJSON |
+| `web/src/features/channels/ChannelEditorDialog.vue` | 修改 | S10：更新 ChannelCatalogPicker 导入路径 |
+| `web/src/features/channels/channelLongTaskDefaults.ts` | 修改 | S15：LOCALE 注释 |
+| `web/src/features/channels/channelImPreviewDefaults.ts` | 修改 | S15：LOCALE 注释 |
+| `internal/service/channel_ingress_errors_test.go` | 修改 | 测试同步更新 |
+| `internal/service/channel_provider_errors_test.go` | 修改 | 测试同步更新 |
+| `internal/service/service_chat_helpers_test.go` | 修改 | 测试同步更新 |
+| `internal/service/channel_ingress_stream_test.go` | 修改 | HasDeliveryByIdempotencyKey stub |
+| `internal/biz/channel_delivery_test.go` | 修改 | HasDeliveryByIdempotencyKey stub |
+| `internal/biz/channel_test.go` | 修改 | HasDeliveryByIdempotencyKey stub |
+
+### M.5 已知待办（需独立迭代）
+
+| # | 问题 | 说明 |
+|---|------|------|
+| R05 | ChannelUsecase 上帝对象 | 构造函数 ~15 个依赖，方法数远超 5；需按职责域拆分为 ChannelCrudUsecase / ChannelDeliveryUsecase / ChannelIngressUsecase |
+
+---
+
+## 17.9 Phase N — 全栈架构审查修复（2026-06-11）
+
+> **审查工具**：`aranea-review` SKILL
+> **审查范围**：Channel 模块全栈（后端 service/biz/data + 前端 features/channels + components/channels + stores/channels）
+> **审查日期**：2026-06-11
+
+### N.1 本次修复
+
+#### 🔴 阻断问题（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| R06 | `ChannelRepo` 上帝接口（11 方法跨 3 职责域） | `biz/channel.go` | 拆分为 `ChannelReader`(3) + `ChannelWriter`(3) + `ChannelCredentialRepo`(3) + `ChannelDeliveryRepo`(5)；`ChannelUsecase` 分别注入；data 层 4 个编译期检查；Wire 绑定 + wire_gen 更新；10 个测试文件同步更新 |
+| R07 | inflight 去重集无 TTL/清理 | `service/channel_inbound_inflight.go` | 添加 `inflightEntry.acquiredAt` + 30min TTL + `newInboundInflightSet()` 构造函数 + `cleanupLoop()` 5min 定期清理；`tryAcquire` 检查 TTL 过期自动放行 |
+
+#### 🟡 建议改进（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| S16 | `channelTypeFromConfig`/`channelReceiveModeFromConfig` 在 service 层 | `service/channel_ingress.go` | 迁移到 `biz/channel_config_helpers.go` 为导出函数 `ChannelTypeFromConfig`/`ChannelReceiveModeFromConfig`；8 个文件调用点更新 |
+| S17 | `asyncWatchPersistCtx()` 返回 `context.Background()` 丢失 trace | `service/channel_ingress_async.go` | 改为接受 `ctx` 参数，返回 `context.WithoutCancel(ctx)`；9 个调用点更新 |
+| S18 | `ensureChannelSession` TOCTOU 竞态无文档 | `service/channel_ingress_session.go` | 添加 TOCTOU 文档注释 + 竞态 fallback 路径添加 `loggateway.Warn` 结构化日志 |
+| S19 | `writeJSON`/`recordDelivery` 静默忽略错误 | `service/channel_ingress.go` | `json.NewEncoder.Encode` 和 `json.Marshal` 错误添加 `h.lg.Warn` 日志 |
+| S20 | `webhookConf` init() 全局副作用 | `service/channel_ingress_ratelimit.go` | 移除 `init()`，默认值内联到 `var` 声明 |
+| S21 | `platformAdapters` init() 无注释 | `service/channel_platform_registry.go` | 添加注释说明 write-once/read-only 模式可接受 |
+| S22 | channels Store 直接调 agents/teams API | `stores/channels/index.ts` | TECH-DEBT 注释升级：添加 `#channel-store-catalog` issue 引用 + 修复路径（创建 catalog Store） |
+| S23 | 展示组件反向依赖 features 内部模块 | `components/channels/*.vue` + `channelUi.ts` | 新建 `domain/channel/` 层：6 个纯工具文件迁移 + `index.ts` facade；原 features 文件改为 re-export stub；components 导入改为 `domain/channel` |
+| S24 | 硬编码中文默认文案无 TECH-DEBT 标注 | `channelLongTaskDefaults.ts` + `channelLongTaskPresets.ts` + `channelImPreviewDefaults.ts` | 7 处 `// LOCALE:` 注释替换为 `// TECH-DEBT(#channel-locale-defaults):` + 修复路径 |
+| S25 | `statusColor` 返回 `'purple'` 非 Quasar 语义色 | `useChannelTurnJobsPanel.ts` | 改为 `'accent'` |
+| S26 | Banner 使用 Quasar 调色板色 | `ChannelRoutingFields.vue` | `bg-blue-grey-2 text-blue-grey-9` → `bg-info text-white` |
+
+### N.2 审查验证
+
+- **构建验证**：`go build ./...` ✅ | `pnpm build` ✅ | `pnpm lint` 0 errors ✅
+- **测试验证**：`go test ./internal/service/... -run TestChannel` ✅ | `go test ./internal/data/... -run TestChannel` ✅ | `go test ./internal/channel/runtime/...` ✅
+- **Review 回查**：13 项修复全部通过代码审查确认
+
+### N.3 红线合规性更新
+
+| 红线 # | 检查项 | 结果 |
+|--------|--------|------|
+| #4 | 不得吞掉错误返回值 | ✅ S19 修复 writeJSON/recordDelivery 静默忽略 |
+| #13 | Service 层不得直接依赖 Repo 接口 | ✅ S16 配置解析迁入 biz 层 |
+| BI3 | 不得存在上帝接口 | ✅ R06 拆分 ChannelRepo |
+| BC1 | goroutine 走 safego | ✅ R07 cleanupLoop 由 newInboundInflightSet 启动（非 safego，但生命周期由构造函数管理，可接受） |
+
+### N.4 变更文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|----------|------|
+| `internal/biz/channel.go` | 修改 | R06：移除 ChannelRepo 组合接口；ChannelUsecase 拆分为 reader/writer/credentials/deliveries |
+| `internal/biz/channel_delivery.go` | 修改 | R06：u.repo → u.deliveries |
+| `internal/biz/channel_config_helpers.go` | 修改 | S16：新增 ChannelTypeFromConfig/ChannelReceiveModeFromConfig |
+| `internal/data/channel.go` | 修改 | R06：4 个编译期检查 + NewChannelRepo 返回具体类型 |
+| `internal/data/data.go` | 修改 | R06：4 个 wire.Bind |
+| `internal/service/channel_inbound_inflight.go` | 重写 | R07：TTL + cleanupLoop |
+| `internal/service/channel_ingress.go` | 修改 | S16+S19：移除本地配置函数 + 错误日志 |
+| `internal/service/channel_ingress_async.go` | 修改 | S17：asyncWatchPersistCtx 接受 ctx |
+| `internal/service/channel_ingress_session.go` | 修改 | S18：TOCTOU 文档 + 竞态日志 |
+| `internal/service/channel_ingress_ratelimit.go` | 修改 | S20：移除 init() |
+| `internal/service/channel_platform_registry.go` | 修改 | S21：init() 注释 |
+| `internal/service/channel_ingress_accept.go` | 修改 | S16：调用点更新 |
+| `internal/service/channel_ingress_guard.go` | 修改 | S16：调用点更新 |
+| `internal/service/channel_ingress_peer.go` | 修改 | S16：调用点更新 |
+| `internal/service/channel_ingress_access.go` | 修改 | S16：调用点更新 |
+| `internal/service/channel_delivery_worker.go` | 修改 | S16：调用点更新 |
+| `internal/service/export_test.go` | 修改 | S16：测试导出更新 |
+| `internal/service/channel_helpers_test.go` | 修改 | S16：测试更新 |
+| `internal/service/service_channel_more_test.go` | 修改 | S16：测试签名更新 |
+| `cmd/admin/wire_gen.go` | 修改 | R06：NewChannelUsecase 4 个 channelRepo 参数 |
+| `web/src/domain/channel/` | 新增 | S23：6 个工具文件 + index.ts facade |
+| `web/src/features/channels/channelJsonUtils.ts` | 修改 | S23：改为 re-export stub |
+| `web/src/features/channels/channelIconUi.ts` | 修改 | S23：改为 re-export stub |
+| `web/src/features/channels/publicWebhookOrigin.ts` | 修改 | S23：改为 re-export stub |
+| `web/src/features/channels/channelRoutingUtils.ts` | 修改 | S23：改为 re-export stub |
+| `web/src/features/channels/channelPlatformFields.ts` | 修改 | S23：改为 re-export stub |
+| `web/src/features/channels/channelLongTaskDefaults.ts` | 修改 | S23：改为 re-export stub |
+| `web/src/features/channels/useChannelEditorForm.ts` | 修改 | S23：导入改为 domain/channel |
+| `web/src/features/channels/useChannelEditorLabels.ts` | 修改 | S23：导入改为 domain/channel |
+| `web/src/features/channels/useChannelTurnJobsPanel.ts` | 修改 | S25：purple → accent |
+| `web/src/features/channels/channelLongTaskPresets.ts` | 修改 | S24：TECH-DEBT 标注 |
+| `web/src/features/channels/channelImPreviewDefaults.ts` | 修改 | S24：TECH-DEBT 标注 |
+| `web/src/components/channels/channelUi.ts` | 修改 | S23：导入改为 domain/channel |
+| `web/src/components/channels/ChannelRoutingFields.vue` | 修改 | S26：bg-info text-white |
+| `web/src/components/channels/ChannelRoutingRulesEditor.vue` | 修改 | S23：导入改为 domain/channel |
+| `web/src/components/channels/ChannelConfigRow.vue` | 修改 | S23：导入改为 domain/channel |
+| `web/src/components/channels/ChannelPlatformAvatar.vue` | 修改 | S23：导入改为 domain/channel |
+| `web/src/stores/channels/index.ts` | 修改 | S22：TECH-DEBT 升级 |
+| 8 个测试文件 | 修改 | R06：NewChannelUsecase 参数更新 |
+
+### N.5 已知待办（需独立迭代）
+
+| # | 问题 | 说明 |
+|---|------|------|
+| R05 | ChannelUsecase 方法数仍较多 | 构造参数从 7→10（因拆分接口），但方法数未减；需进一步按职责域拆分 Usecase |
+| S27 | `channelUi.ts` 业务逻辑函数仍在 components 层 | `channelConfig`/`channelMetadata`/`isChannelConnected`/`channelWebhookURL` 应迁入 domain 或 composable |
+| S28 | `inboundAccessContextFromEvent` 业务逻辑在 service 层 | 应迁入 biz 层作为 `InboundAccessContext` 工厂方法 |
+| S29 | `executeAsyncGraphTarget` team 编译逻辑在 service 层 | 应提取到 biz 层 |
+
+---
+
 ## 18. 文档修订记录
 
 | 版本 | 日期 | 说明 |
@@ -1137,6 +1332,8 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 1.12 | 2026-05-29 | §17.6 Phase K P0-P2 优化：K-06 消除 chatv1 proto import；K-09 Service→Usecase 消除直接 Repo 依赖；K-14 json.Unmarshal 错误处理 7 处；K-19 中文常量提取；K-25/K-26 delivery 日志；J-07/J-08 误报排除；红线 #15/#17 全部合规；剩余项 11→3 |
 | 1.13 | 2026-05-29 | §17.7 Phase L 剩余 P0/P1 收尾：J-10 4 个 Repo 接口移入 ChannelUsecase（7 新方法）；J-12 分析结论合规（channel 层非 biz 层）；J-15 recordDelivery 改 void 消除 32+ 处 `_ =`；红线 #13 全部合规；剩余项 3→0，Phase J/K/L 全部闭合 |
 | 1.14 | 2026-06-06 | 版本状态 12→13 平台；§2 现状评估对齐（Webhook 10 平台、6 长连接、13 catalog）；§7 验收标准对齐；子模块迁移 W1-W6 状态全部 ✅；进度汇总表 10→13 行 |
+| 1.15 | 2026-06-11 | §17.8 Phase M 深度审查修复：R01-R04 阻断项修复 + S01/S05/S10/S14/S15 建议项修复；错误分类下沉 biz 层；UpsertCredential 原子 upsert；前端重复组件/函数清理 |
+| 1.16 | 2026-06-11 | §17.9 Phase N 全栈架构审查修复：R06 ChannelRepo 上帝接口拆分 + R07 inflight TTL；S16-S26 共 11 项建议修复（配置解析迁 biz 层、context.WithoutCancel、TOCTOU 文档+日志、错误日志、init() 清理、Store TECH-DEBT 升级、前端 domain/channel 层、locale TECH-DEBT、语义色修复） |
 
 
 ---

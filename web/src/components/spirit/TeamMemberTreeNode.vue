@@ -9,7 +9,7 @@
     >
       <q-avatar size="24px">
         <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
-        <q-icon v-else name="person" size="14px" color="grey-6" />
+        <q-icon v-else name="person" size="14px" color="grey" />
       </q-avatar>
       <span class="team-member-tree-node__name ellipsis">{{ member.displayName }}</span>
       <q-chip dense size="sm" outline :label="member.role" class="team-member-tree-node__role" />

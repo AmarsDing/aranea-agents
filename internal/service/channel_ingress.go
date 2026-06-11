@@ -27,7 +27,7 @@ type ChannelIngress struct {
 	cron            biz.CronTriggerGateway
 	eventBus        event.Bus
 	http            *http.Client
-	inboundInflight inboundInflightSet
+	inboundInflight *inboundInflightSet
 	messageDedupe   *ingressMessageDedupe
 	peerDebouncer   *ingressPeerDebouncer
 	previewRegistry *turnPreviewRegistry
@@ -61,6 +61,7 @@ func NewChannelIngress(
 		eventBus:        eventBus,
 		lg:              lg,
 		http:            lark.DefaultHTTPClient(),
+		inboundInflight: newInboundInflightSet(),
 		messageDedupe:   newIngressMessageDedupe(defaultMessageDedupeTTL),
 		peerDebouncer:   newIngressPeerDebouncer(defaultIngressDebounce, lg),
 		previewRegistry: newTurnPreviewRegistry(),
@@ -71,7 +72,9 @@ func NewChannelIngress(
 func (h *ChannelIngress) writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		h.lg.Warn("writeJSON encode failed", loggateway.StepID("channel.ingress.json_encode"), loggateway.Err(err))
+	}
 }
 
 // FeishuWebhookHTTP returns a handler for POST /webhooks/{channel_key}.
@@ -100,7 +103,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "channel disabled", http.StatusForbidden)
 			return nil
 		}
-		channelType := channelTypeFromConfig(chRow.ConfigJSON, h.lg)
+		channelType := biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 		switch channelType {
 		case "dingtalk":
 			if err := h.handleDingTalkWebhook(w, r, chRow); err != nil {
@@ -261,7 +264,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
-		if channelReceiveModeFromConfig(chRow.ConfigJSON, h.lg) == "websocket" {
+		if biz.ChannelReceiveModeFromConfig(chRow.ConfigJSON) == "websocket" {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
@@ -280,34 +283,11 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 	}
 }
 
-func channelTypeFromConfig(configJSON string, lg loggateway.Logger) string {
-	var env struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
-		lg.Warn("渠道配置 JSON 解析失败",
-			loggateway.StepID("channel.config.parse_failed"),
-			loggateway.Err(err),
-		)
-	}
-	return strings.TrimSpace(strings.ToLower(env.Type))
-}
-
-func channelReceiveModeFromConfig(configJSON string, lg loggateway.Logger) string {
-	var env struct {
-		ReceiveMode string `json:"receive_mode"`
-	}
-	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
-		lg.Warn("渠道配置 JSON 解析失败",
-			loggateway.StepID("channel.config.parse_failed"),
-			loggateway.Err(err),
-		)
-	}
-	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
-}
-
 func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) {
-	b, _ := json.Marshal(payload)
+	b, err := json.Marshal(payload)
+	if err != nil {
+		h.lg.Warn("recordDelivery marshal failed", loggateway.StepID("channel.ingress.delivery_marshal"), loggateway.Err(err))
+	}
 	if err := h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg); err != nil {
 		h.lg.Warn("recordDelivery failed",
 			loggateway.StepID("monitor.alert_channel_fail"),

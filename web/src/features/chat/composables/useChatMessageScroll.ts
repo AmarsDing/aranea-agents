@@ -251,6 +251,37 @@ export function useChatCodeCopy() {
   function handleMessagesClick(event: MouseEvent) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+
+    // Handle collapse/expand hints
+    const collapseHint = target.closest<HTMLElement>('.code-block__collapsed-hint');
+    if (collapseHint) {
+      event.preventDefault();
+      const block = collapseHint.closest<HTMLElement>('.code-block');
+      if (!block) return;
+      const body = block.querySelector<HTMLElement>('.code-block__body');
+      const collapseHintEl = block.querySelector<HTMLElement>('.code-block__collapse-hint');
+      if (body) body.style.display = '';
+      if (collapseHint) collapseHint.style.display = 'none';
+      if (collapseHintEl) collapseHintEl.style.display = '';
+      block.classList.remove('code-block--collapsed');
+      return;
+    }
+
+    const expandHint = target.closest<HTMLElement>('.code-block__collapse-hint');
+    if (expandHint) {
+      event.preventDefault();
+      const block = expandHint.closest<HTMLElement>('.code-block');
+      if (!block) return;
+      const body = block.querySelector<HTMLElement>('.code-block__body');
+      const collapsedHint = block.querySelector<HTMLElement>('.code-block__collapsed-hint');
+      if (body) body.style.display = 'none';
+      if (expandHint) expandHint.style.display = 'none';
+      if (collapsedHint) collapsedHint.style.display = '';
+      block.classList.add('code-block--collapsed');
+      return;
+    }
+
+    // Handle copy button
     const btn = target.closest<HTMLButtonElement>('.code-block__copy');
     if (!btn) return;
     event.preventDefault();

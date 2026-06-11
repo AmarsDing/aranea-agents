@@ -13,6 +13,6 @@ export type ReactParsedContent = {
   finalAnswer: string;
   /** Body when no structured tags matched */
   fallbackMarkdown: string;
-  /** True when `/*FINAL_ANSWER*/` tag was found; false when finalAnswer is a fallback from last step */
+  /** True when FINAL_ANSWER tag was found; false when finalAnswer is a fallback from last step */
   hasExplicitFinalAnswer: boolean;
 };

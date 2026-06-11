@@ -2,8 +2,8 @@
   <taxonomy-picker
     :model-value="modelValue"
     :tree="tree"
-    label="业务分类"
-    placeholder="全部业务分类"
+    label="组织架构"
+    placeholder="全部组织架构"
     selectable-level="any"
     caption-mode="level"
     icon="filter_alt"

@@ -325,10 +325,7 @@ func provideBizWebResearchReadinessChecker() biz.WebResearchReadinessChecker {
 }
 
 func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistryReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, providerValidator biz.ProviderModelPairValidator, lg loggateway.Logger) *biz.AgentUsecase {
-	uc := biz.NewAgentUsecase(repo, tools, sys, lg)
-	uc.SetWebResearchChecker(checker)
-	uc.SetProviderModelValidator(providerValidator)
-	return uc
+	return biz.NewAgentUsecase(repo, tools, sys, checker, providerValidator, lg)
 }
 
 // toolTesterAdapter wraps internal/tools/testexec to implement biztool.ToolTester.
@@ -377,12 +374,9 @@ func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, 
 	return uc
 }
 
-// provideMCPServerUsecaseWithDeps injects prober and metadata editor after Wire construction.
+// provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
 func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor, crypto *biz.CredentialCrypto) *biz.MCPServerUsecase {
-	uc := biz.NewMCPServerUsecase(repo, crypto)
-	uc.SetProber(prober)
-	uc.SetMetadataEditor(metaEdit)
-	return uc
+	return biz.NewMCPServerUsecase(repo, prober, metaEdit, crypto)
 }
 
 func provideRunRegistry() *rt.RunRegistry {
@@ -1543,6 +1537,7 @@ func provideTaskOrchestrator(
 	checkpointSaver trpcgraph.CheckpointSaver,
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
+	evolutionSugg biz.EvolutionSuggestionRepo,
 	bus contract.Bus,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
@@ -1556,7 +1551,7 @@ func provideTaskOrchestrator(
 		Sys:          sys,
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, lg)
 }
 
 // provideEcosystemPresetSeedPackFn provides the SeedPackFunc for EcosystemPresetUsecase.
@@ -1761,6 +1756,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.SkillIntelligenceRepo), new(*data.SkillIntelligenceRepo)),
 		wire.Bind(new(biz.SkillDedupReader), new(*data.SkillDedupRepo)),
 		wire.Bind(new(biz.SkillDedupWriter), new(*data.SkillDedupRepo)),
+		wire.Bind(new(biz.SkillMergeReader), new(*data.SkillMergeRepo)),
+		wire.Bind(new(biz.SkillMergeWriter), new(*data.SkillMergeRepo)),
+		wire.Bind(new(biz.SkillContentFuser), new(*biz.RuleBasedContentFuser)),
 		wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.SessionReader), new(biz.SessionRepo)),
 		wire.Bind(new(biztool.ToolInvocationReader), new(biz.ToolRepo)),

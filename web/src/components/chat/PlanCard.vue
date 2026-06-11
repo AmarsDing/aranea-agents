@@ -6,7 +6,7 @@
         <q-icon v-else-if="plan.status === 'completed'" name="check_circle" size="16px" color="positive" />
         <q-icon v-else name="error" size="16px" color="negative" />
       </div>
-      <span class="plan-card__title">任务计划</span>
+      <span class="plan-card__title">{{ t('chat.planCard.title') }}</span>
       <span class="plan-card__count">{{ completedCount }}/{{ plan.entries.length }}</span>
       <span class="plan-card__toggle">{{ localCollapsed ? '▶' : '▼' }}</span>
     </div>
@@ -37,7 +37,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { OrchestrationPlan } from '../../features/chat/agentTreeTypes';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   plan: OrchestrationPlan;

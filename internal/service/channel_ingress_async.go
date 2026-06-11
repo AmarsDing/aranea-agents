@@ -25,8 +25,8 @@ const (
 	asyncCronPollInterval = 5 * time.Second
 )
 
-func asyncWatchPersistCtx() context.Context {
-	return context.Background()
+func asyncWatchPersistCtx(ctx context.Context) context.Context {
+	return context.WithoutCancel(ctx)
 }
 
 func (h *ChannelIngress) dispatchAsyncInbound(
@@ -134,14 +134,14 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 		for {
 			select {
 			case <-watchCtx.Done():
-				h.finishAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, execID, "graph", watchCtx.Err())
+				h.finishAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", watchCtx.Err())
 				return
 			case env, ok := <-ch:
 				if !ok {
 					return
 				}
 				if env.Type == event.EnvelopeTypeGraphNodeError {
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, execID, "graph", graphNodeErrorMessage(env))
+					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", graphNodeErrorMessage(env))
 					return
 				}
 				if env.Type != event.EnvelopeTypeGraphExecutionDone {
@@ -152,14 +152,14 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 					continue
 				}
 				if failed, errMsg := graphExecutionSummaryFailed(env, h.lg); failed {
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
+					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
 					return
 				}
 				summary := channelAsyncGraphDoneSummary
 				if env.Content != nil && strings.TrimSpace(env.Content.Text) != "" {
 					summary = strings.TrimSpace(env.Content.Text)
 				}
-				h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, summary)
+				h.completeAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, summary)
 				return
 			}
 		}
@@ -181,27 +181,27 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 		for {
 			select {
 			case <-watchCtx.Done():
-				h.finishAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, runID, "cron", watchCtx.Err())
+				h.finishAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, runID, "cron", watchCtx.Err())
 				return
 			case <-ticker.C:
-				run, err := h.cron.GetTaskRun(asyncWatchPersistCtx(), runID)
+				run, err := h.cron.GetTaskRun(asyncWatchPersistCtx(ctx), runID)
 				if err != nil {
 					continue
 				}
 				switch strings.ToLower(strings.TrimSpace(run.Status)) {
 				case "success":
 					summary := biz.RenderChannelTemplate(defaultAsyncCronDoneTemplate, map[string]string{"target_id": runID})
-					h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, summary)
+					h.completeAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, summary)
 					return
 				case "failure", "failed":
 					watchErr := errors.New(strings.TrimSpace(run.ErrorMessage))
 					if watchErr.Error() == "" {
 						watchErr = errors.New("cron task failed")
 					}
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, runID, "cron", watchErr)
+					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, runID, "cron", watchErr)
 					return
 				case "skipped":
-					h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, channelAsyncCronSkippedSummary)
+					h.completeAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, channelAsyncCronSkippedSummary)
 					return
 				}
 			}

@@ -69,8 +69,7 @@ func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 		Key:          "my-server",
 		MetadataJSON: `{"reconnect_count":2}`,
 	}}}
-	uc := NewMCPServerUsecase(repo, NewCredentialCrypto(nil, loggateway.NewNoop()))
-	uc.SetMetadataEditor(testMCPMetadataEditor{})
+	uc := NewMCPServerUsecase(repo, nil, testMCPMetadataEditor{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
 	at := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	if err := uc.RecordReconnectMetadata(context.Background(), "my-server", at); err != nil {
 		t.Fatal(err)

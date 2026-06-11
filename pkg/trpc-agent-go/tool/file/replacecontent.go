@@ -117,7 +117,10 @@ func (f *fileToolSet) replaceContentTool() tool.CallableTool {
 		function.WithName("replace_content"),
 		function.WithDescription(
 			"Replace a string in a file under base_directory. "+
-				"Supports multi-line old_string/new_string.",
+				"Supports multi-line old_string/new_string. "+
+				"num_replacements: 0 (default) replaces the first match, a positive number replaces up to that many matches, negative replaces all matches. "+
+				"Does not support workspace:// or artifact:// refs. "+
+				"For precise line-range edits, prefer diff_edit instead.",
 		),
 	)
 }

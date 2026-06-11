@@ -62,6 +62,8 @@ func newApp(
 		kratos.Server(srv...),
 		kratos.BeforeStart(func(ctx context.Context) error {
 			// Inject service-layer timeout handler into biz layer (breaks circular dep).
+			// SetTimeoutHandler is a justified exception like L4GraphUsecase.SetCascade:
+			// SpiritTeamUsecase → TimeoutHandler → TeamStarter → SpiritTeamController → SpiritTeamUsecase
 			if spiritUC != nil && teamStarter != nil {
 				spiritUC.SetTimeoutHandler(teamStarter)
 			}

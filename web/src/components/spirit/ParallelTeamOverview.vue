@@ -5,16 +5,16 @@
         <q-icon name="hub" size="18px" />
       </div>
       <div class="col min-width-0">
-        <div class="parallel-team-overview__title">并行团队</div>
+        <div class="parallel-team-overview__title">{{ t('spirit.parallelTeams') }}</div>
       </div>
       <div class="parallel-team-overview__stats row items-center q-gutter-md">
         <span class="parallel-team-overview__stat">
           <span class="parallel-team-overview__stat-value">{{ activeCount }}</span>
-          <span class="parallel-team-overview__stat-label">进行中</span>
+          <span class="parallel-team-overview__stat-label">{{ t('spirit.inProgress') }}</span>
         </span>
         <span class="parallel-team-overview__stat">
           <span class="parallel-team-overview__stat-value">{{ completedCount }}</span>
-          <span class="parallel-team-overview__stat-label">已完成</span>
+          <span class="parallel-team-overview__stat-label">{{ t('spirit.completed') }}</span>
         </span>
       </div>
     </div>
@@ -24,18 +24,17 @@
         :value="activeCount / maxParallel"
         size="4px"
         rounded
-        :color="activeCount >= maxParallel ? 'negative' : 'accent'"
-      />
-      <div class="text-caption text-grey-6 q-mt-xs">{{ activeCount }} / {{ maxParallel }} 并行配额</div>
+        :color="activeCount >= maxParallel ? 'negative' : 'accent'"      />
+      <div class="text-caption text-grey q-mt-xs">{{ t('spirit.parallelQuota', { active: activeCount, max: maxParallel }) }}</div>
     </div>
 
     <div v-if="allCompleted" class="parallel-team-overview__all-done q-mb-sm">
       <q-icon name="check_circle" size="16px" color="positive" class="q-mr-xs" />
-      <span class="text-caption">所有团队已完成</span>
-      <span v-if="completionStats" class="text-caption text-grey-6 q-ml-sm">
-        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} 成功<span
+      <span class="text-caption">{{ t('spirit.allTeamsCompleted') }}</span>
+      <span v-if="completionStats" class="text-caption text-grey q-ml-sm">
+        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} {{ t('spirit.success') }}<span
           v-if="completionStats.failedTeams > 0"
-          >, {{ completionStats.failedTeams }} 失败</span
+          >, {{ completionStats.failedTeams }} {{ t('spirit.failed') }}</span
         >)
       </span>
     </div>
@@ -66,11 +65,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import TeamProgressCard from './TeamProgressCard.vue';
 import SynthesisResultCard from './SynthesisResultCard.vue';
 import DAGDiagramCard from './DAGDiagramCard.vue';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { SpiritTeam, SynthesisOutput, EvolutionSuggestion, CompletionStats } from '../../features/spirit/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   teams: SpiritTeam[];

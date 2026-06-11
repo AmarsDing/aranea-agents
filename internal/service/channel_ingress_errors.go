@@ -37,18 +37,7 @@ func formatChannelTurnErrorMessage(err error) string {
 	if err == nil || turnErrorIsCanceled(err) {
 		return ""
 	}
-	switch classifyChannelTurnError(err) {
-	case channelTurnErrBusy:
-		return channelTurnErrorBusyMsg
-	case channelTurnErrTimeout:
-		return channelTurnErrorSyncCapMsg
-	case channelTurnErrRateLimit:
-		return channelTurnErrorRateLimitMsg
-	case channelTurnErrContextOverflow:
-		return channelTurnErrorContextOverflow
-	default:
-		return channelTurnErrorGenericMsg
-	}
+	return biz.FormatChannelTurnErrorMessage(classifyChannelTurnError(err))
 }
 
 func turnErrorIsCanceled(err error) bool {
@@ -59,9 +48,5 @@ func turnErrorIsTimeout(err error) bool {
 	if err == nil || turnErrorIsCanceled(err) {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
+	return errors.Is(err, context.DeadlineExceeded)
 }

@@ -32,6 +32,27 @@ func newHookID() string {
 
 // ── Hook model ────────────────────────────────────────────────────────────────
 
+// HookPatch is a partial update for a hook; nil fields are left unchanged.
+type HookPatch struct {
+	Key          *string
+	Name         *string
+	Description  *string
+	Status       *string
+	Enabled      *bool
+	SortOrder    *int
+	ConfigJSON   *string
+	MetadataJSON *string
+}
+
+// StrPtr returns a pointer to the given string.
+func StrPtr(s string) *string { return &s }
+
+// BoolPtr returns a pointer to the given bool.
+func BoolPtr(b bool) *bool { return &b }
+
+// IntPtr returns a pointer to the given int.
+func IntPtr(i int) *int { return &i }
+
 // Hook is one row of hooks (legacy "hooks" platform resource).
 type Hook struct {
 	ID           string
@@ -101,7 +122,7 @@ func (u *Usecase) Create(ctx context.Context, in Hook) (Hook, error) {
 }
 
 // Update patches an existing hook.
-func (u *Usecase) Update(ctx context.Context, id string, patch Hook) (Hook, error) {
+func (u *Usecase) Update(ctx context.Context, id string, patch HookPatch) (Hook, error) {
 	if strings.TrimSpace(id) == "" {
 		return Hook{}, errors.BadRequest("HOOK", "id is required")
 	}
@@ -110,28 +131,29 @@ func (u *Usecase) Update(ctx context.Context, id string, patch Hook) (Hook, erro
 		return Hook{}, err
 	}
 	merged := cur
-	if patch.Key != "" {
-		merged.Key = patch.Key
+	if patch.Key != nil && *patch.Key != "" {
+		merged.Key = *patch.Key
 	}
-	if patch.Name != "" {
-		merged.Name = patch.Name
+	if patch.Name != nil && *patch.Name != "" {
+		merged.Name = *patch.Name
 	}
-	if patch.Status != "" {
-		merged.Status = patch.Status
+	if patch.Status != nil && *patch.Status != "" {
+		merged.Status = *patch.Status
 	}
-	merged.Description = patch.Description
-	merged.Enabled = patch.Enabled
-	merged.SortOrder = patch.SortOrder
-	merged.ConfigJSON = patch.ConfigJSON
-	merged.MetadataJSON = patch.MetadataJSON
-	if merged.Key == "" {
-		merged.Key = cur.Key
+	if patch.Description != nil {
+		merged.Description = *patch.Description
 	}
-	if merged.Name == "" {
-		merged.Name = cur.Name
+	if patch.Enabled != nil {
+		merged.Enabled = *patch.Enabled
 	}
-	if merged.Status == "" {
-		merged.Status = cur.Status
+	if patch.SortOrder != nil {
+		merged.SortOrder = *patch.SortOrder
+	}
+	if patch.ConfigJSON != nil {
+		merged.ConfigJSON = *patch.ConfigJSON
+	}
+	if patch.MetadataJSON != nil {
+		merged.MetadataJSON = *patch.MetadataJSON
 	}
 	if err := ValidateConfigForSave(merged.ConfigJSON, u.lg); err != nil {
 		return Hook{}, err

@@ -2,8 +2,8 @@
   <div v-if="visible" class="chat-runner-status row items-center no-wrap q-gutter-x-sm">
     <q-badge :color="badgeColor" :label="statusLabel" class="chat-runner-status__badge" />
     <span v-if="agentName" class="text-caption ellipsis chat-runner-status__agent">{{ agentName }}</span>
-    <span v-if="elapsedLabel" class="text-caption text-grey-7">{{ elapsedLabel }}</span>
-    <span v-if="eventCount != null && eventCount > 0" class="text-caption text-grey-7"> {{ eventCount }} 个事件 </span>
+    <span v-if="elapsedLabel" class="text-caption text-grey">{{ elapsedLabel }}</span>
+    <span v-if="eventCount != null && eventCount > 0" class="text-caption text-grey"> {{ eventCount }} 个事件 </span>
     <q-btn
       v-if="showCancel"
       flat

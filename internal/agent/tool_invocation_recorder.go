@@ -35,14 +35,14 @@ func invocationStatusFromAfter(args *trpctool.AfterToolArgs) (status, errCode, e
 	if args.Error != nil {
 		msg := args.Error.Error()
 		if strings.Contains(msg, errToolConfirmationRequired) {
-			return "blocked", "confirmation_required", truncateErr(msg)
+			return "blocked", event.ErrorCodeConfirmationRequired, truncateErr(msg)
 		}
 		// Use "failed" (not "error") for the runtime status. The wire contract uses
 		// {running, success, failed, blocked, cancelled} as the canonical set, and
 		// the frontend normalizeToolStatus collapses both "failed" and legacy
 		// "error" to a single canonical status. Emitting "error" here made the
 		// frontend's `error_code` fallback unreachable and erased error info.
-		return "failed", "tool_error", truncateErr(msg)
+		return "failed", event.ErrorCodeToolError, truncateErr(msg)
 	}
 	return "success", "", ""
 }
@@ -64,7 +64,7 @@ func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs
 		durationMS = int(ended.Sub(t).Milliseconds())
 	}
 	status, errCode, errMsg := invocationStatusFromAfter(args)
-	if status == "blocked" && errCode == "confirmation_required" {
+	if status == "blocked" && errCode == event.ErrorCodeConfirmationRequired {
 		return
 	}
 	var streaming bool
@@ -251,6 +251,26 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 		}
 	}
 
+	// Read routed_slugs from invocation state.
+	var routedSlugs []string
+	if inv, ok := trpcagent.InvocationFromContext(origCtx); ok {
+		if raw, ok2 := inv.GetState(skillRoutedSlugsStateKey); ok2 {
+			if slugs, ok3 := raw.([]string); ok3 {
+				routedSlugs = slugs
+			}
+		}
+	}
+
+	// Read loaded_slug from invocation state (set by newSkillLoadCaptureAfterHook).
+	loadedSlug := ""
+	if inv, ok := trpcagent.InvocationFromContext(origCtx); ok {
+		if raw, ok2 := inv.GetState(skillLoadedSlugStateKey); ok2 {
+			if s, ok3 := raw.(string); ok3 {
+				loadedSlug = s
+			}
+		}
+	}
+
 	// Resolve skill_id from tool_key (slug).
 	skillID := ""
 	slug := strings.TrimPrefix(write.ToolKey, "use_skill_")
@@ -282,6 +302,8 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 		SelectionReason: selectionReason,
 		Outcome:         outcome,
 		TokenUsage:      tokenUsage,
+		RoutedSlugs:     routedSlugs,
+		LoadedSlug:      loadedSlug,
 	}
 	if err := deps.SkillUC.RecordInvocation(bg, skillWrite); err != nil {
 		lg.Warn("skill invocation 记录失败", loggateway.StepID("agent.skill.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))

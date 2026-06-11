@@ -1126,7 +1126,8 @@ type RunOptions struct {
 	// externally and later provide tool results (RoleTool messages).
 	ToolExecutionFilter tool.FilterFunc
 	// ToolCallArgumentsJSONRepairEnabled enables best-effort JSON repair for tool call arguments.
-	// When nil, JSON repair is disabled by default.
+	// When nil, JSON repair is enabled by default (recommended for improved tool call success rates,
+	// especially with smaller/open-source models that frequently produce malformed JSON).
 	ToolCallArgumentsJSONRepairEnabled *bool
 
 	// runControlConfig stores internal event and buffering controls.

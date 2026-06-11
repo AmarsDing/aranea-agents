@@ -379,22 +379,26 @@ func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error
 }
 
 func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error) {
-	c := r.data.RW().Write(ctx)
-	now := nowRFC3339()
-	n, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
-		SetDeletedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if n == 0 {
-		return 0, nil
-	}
-	// Cascade: clean up related records after successful soft-delete
-	cascadeDeleteBySession(ctx, r.data, id)
-	return n, nil
+	var n int
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		c := r.data.RW().Write(txCtx)
+		now := nowRFC3339()
+		affected, err := c.Session.Update().
+			Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
+			SetDeletedAt(now).
+			SetUpdatedAt(now).
+			Save(txCtx)
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			n = 0
+			return nil
+		}
+		n = affected
+		return cascadeDeleteBySession(txCtx, r.data, id)
+	})
+	return n, err
 }
 
 func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {

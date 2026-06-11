@@ -239,7 +239,7 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm,
  pii_flag, redacted_statement,
  ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
- metadata_json, quality_score, created_at, updated_at, archived_at, deleted_at
+ metadata_json, quality_score, pii_types, created_at, updated_at, archived_at, deleted_at
  FROM memory_facts`
 
 const sqlEpisodeSelect = `SELECT id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
@@ -395,6 +395,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		nextD, lastU, exp                  string
 		meta, ca, ua, arch, del            string
 		qScore                             float64
+		piiTypes                           string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -406,7 +407,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		&embSt, &embModel, &embDim, &embBlob, &embNorm,
 		&pii, &redacted,
 		&ttlD, &decay, &nextD, &lastU, &exp,
-		&meta, &qScore, &ca, &ua, &arch, &del,
+		&meta, &qScore, &piiTypes, &ca, &ua, &arch, &del,
 	); err != nil {
 		return nil, err
 	}
@@ -427,7 +428,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"redacted_statement": redacted,
 		"ttl_days":           ttlD, "decay_factor": decay,
 		"next_decay_at": nextD, "last_used_at": lastU, "expires_at": exp,
-		"metadata_json": meta, "quality_score": qScore, "created_at": ca, "updated_at": ua,
+		"metadata_json": meta, "quality_score": qScore, "pii_types": piiTypes, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 	}
 	return json.Marshal(m)

@@ -386,7 +386,7 @@ func (v *GateVerifier) verifyFunctional(ctx context.Context, skillID string, dra
 		return GateCheckResult{Name: "functional", Passed: true}
 	}
 
-	// Rule-based fallback: non-empty draft body with valid skill ID
+	// Rule-based fallback: basic structure and content quality checks
 	if draftBody == "" {
 		return GateCheckResult{
 			Name:   "functional",
@@ -399,6 +399,30 @@ func (v *GateVerifier) verifyFunctional(ctx context.Context, skillID string, dra
 			Name:   "functional",
 			Passed: false,
 			Reason: "skill ID is empty",
+		}
+	}
+	// Draft must contain at least one actionable section (## heading with content).
+	lines := strings.Split(draftBody, "\n")
+	hasHeading := false
+	hasContentAfterHeading := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "## ") {
+			hasHeading = true
+			// Check if there is non-empty content within the next few lines.
+			for j := i + 1; j < len(lines) && j < i+5; j++ {
+				trimmed := strings.TrimSpace(lines[j])
+				if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+					hasContentAfterHeading = true
+					break
+				}
+			}
+		}
+	}
+	if !hasHeading || !hasContentAfterHeading {
+		return GateCheckResult{
+			Name:   "functional",
+			Passed: false,
+			Reason: "draft body must contain at least one heading with actionable content",
 		}
 	}
 	return GateCheckResult{Name: "functional", Passed: true}

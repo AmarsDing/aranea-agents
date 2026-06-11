@@ -175,6 +175,8 @@ export type MemoryRelation = {
   weight: number;
   confidence: number;
   status: string;
+  valid_from?: string;
+  valid_to?: string;
 };
 
 export type GraphNeighborhood = {
@@ -182,6 +184,7 @@ export type GraphNeighborhood = {
   hops: number;
   entities: MemoryEntity[];
   relations: MemoryRelation[];
+  query_at?: string;
 };
 
 export type AgentIdentity = {
@@ -252,6 +255,10 @@ export type CascadeProposal = {
   status: string;
   risk_level: string;
   rationale: string;
+  workspace_id?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  expires_at?: string;
   created_at: string;
   updated_at?: string;
 };
@@ -316,6 +323,7 @@ export type MemoryRecallScoreBreakdown = {
   importance: number;
   recency: number;
   cross_encoder: number;
+  quality_score: number;
   total: number;
 };
 
@@ -344,11 +352,11 @@ export type MemoryWorkerStatus = {
   queue_high?: MemoryWorkerQueueStats;
   queue_normal?: MemoryWorkerQueueStats;
   queue_low?: MemoryWorkerQueueStats;
-  index_active?: number;
-  index_stale?: number;
-  index_disabled?: number;
+  fact_index_stale_count?: number;
+  fact_index_disabled_count?: number;
   db_available?: boolean;
   dead_letter_pending?: number;
+  oldest_pending_age_ms?: number;
 };
 
 export type MemoryWorkerQueueStats = {

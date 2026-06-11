@@ -28,7 +28,7 @@ func (h *ChannelIngress) runChatTurn(
 	ev := port.InboundEvent{PeerID: peerID, PeerKey: peerKey, Text: content}
 	platform := strings.TrimSpace(titlePrefix)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON, h.lg)
+		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
 	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
 	if err != nil {

@@ -48,6 +48,8 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.JSON("token_usage", map[string]any{}).Optional(),
 		field.String("deleted_at").Default("").Optional(),
 		field.String("analyzed_at").Default("").Optional(),
+		field.JSON("routed_slugs", []string{}).Optional(),
+		field.String("loaded_slug").Default("").Optional().MaxLen(256),
 	}
 }
 

@@ -14,12 +14,21 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 const maxSkillGuidanceChars = 4000
 
 // skillSelectionReasonStateKey is the invocation state key for skill selection reasons.
 const skillSelectionReasonStateKey = "aranea.skill_selection_reasons"
+
+// skillRoutedSlugsStateKey is the invocation state key for routed skill slugs.
+const skillRoutedSlugsStateKey = "aranea.skill_routed_slugs"
+
+// skillLoadedSlugStateKey is the invocation state key for the slug loaded by
+// skill_load or skill_run. Set by the after-tool hook so the invocation
+// recorder can persist it.
+const skillLoadedSlugStateKey = "aranea.skill_loaded_slug"
 
 // skillTokenUsageStateKey is the invocation state key for accumulated token usage.
 const skillTokenUsageStateKey = "aranea.skill_token_usage"
@@ -54,12 +63,12 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		var b strings.Builder
-		b.WriteString("## Available Skills\n\nThe following skills are available for this turn. Use the skill_run tool to invoke them.\n\n")
+		b.WriteString("## Available Skills\n\nThe following skills are routed for this turn. Use the skill_run tool to invoke them, or skill_load to load additional skills.\n\n")
 		totalChars := 0
 		written := 0
 		for _, e := range entries {
 			m := manifest.Parse(e.Guidance)
-			guidance := render.SkillGuidance(m, render.RenderOptions{})
+			guidance := render.SkillGuidance(m, render.RenderOptions{Mode: render.ModeAIOptimized})
 			entry := fmt.Sprintf("### %s\n%s\n\n", e.Slug, guidance)
 			if totalChars+len(entry) > maxSkillGuidanceChars {
 				remaining := len(entries) - written
@@ -74,6 +83,9 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		}
 		if written == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		if written < len(entries) {
+			b.WriteString("\n> Other available skills can be loaded on demand using the skill_load tool.\n")
 		}
 		cue := b.String()
 		sys := trpcmodel.NewSystemMessage(cue)
@@ -110,8 +122,13 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 		return result
 	}
 	if progressive {
+		// RoutedSkillsStateKey is read by trpc-agent-go's SkillsRequestProcessor
+		// to mark skills as [routed] in the overview. skillRoutedSlugsStateKey is
+		// read by the invocation recorder to persist routed_slugs for health metrics.
+		// Both store the same data but serve different consumers.
 		inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)
 	}
+	inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
 	inv.SetState(skillSelectionReasonStateKey, result.Reasons)
 	return result
 }
@@ -140,4 +157,62 @@ func newTokenUsageAccumulatorAfterHook() callbacks.Callback {
 		inv.SetState(skillTokenUsageStateKey, snap)
 		return &trpcmodel.AfterModelResult{Context: ctx}, nil
 	})
+}
+
+// newSkillLoadCaptureAfterHook returns an AfterTool hook that captures the slug
+// from skill_load/skill_run tool calls and writes it to invocation state.
+// The invocation recorder reads this state to populate the loaded_slug field.
+func newSkillLoadCaptureAfterHook() callbacks.AfterToolHook {
+	return callbacks.NewAfterToolHook(0, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
+		if args == nil {
+			return &trpctool.AfterToolResult{}, nil
+		}
+		toolName := strings.ToLower(strings.TrimSpace(args.ToolName))
+		if toolName != "skill_load" && toolName != "skill_run" {
+			return &trpctool.AfterToolResult{}, nil
+		}
+		// Extract slug from tool arguments (JSON: {"slug": "xxx"} or {"skill_slug": "xxx"}).
+		slug := extractSlugFromArgs(args.Arguments)
+		if slug == "" {
+			return &trpctool.AfterToolResult{}, nil
+		}
+		inv, ok := trpcagent.InvocationFromContext(ctx)
+		if !ok || inv == nil {
+			return &trpctool.AfterToolResult{}, nil
+		}
+		inv.SetState(skillLoadedSlugStateKey, slug)
+		return &trpctool.AfterToolResult{}, nil
+	})
+}
+
+// extractSlugFromArgs parses tool arguments to extract the skill slug.
+func extractSlugFromArgs(args []byte) string {
+	if len(args) == 0 {
+		return ""
+	}
+	// Simple JSON key extraction without full unmarshal.
+	s := string(args)
+	// Try "slug" key first, then "skill_slug".
+	for _, key := range []string{`"slug"`, `"skill_slug"`} {
+		idx := strings.Index(s, key)
+		if idx < 0 {
+			continue
+		}
+		// Find the value after the key.
+		rest := s[idx+len(key):]
+		// Skip whitespace and colon.
+		rest = strings.TrimLeft(rest, " \t\n\r:")
+		// Skip opening quote.
+		rest = strings.TrimLeft(rest, " \t\n\r")
+		if len(rest) == 0 || rest[0] != '"' {
+			continue
+		}
+		rest = rest[1:]
+		end := strings.IndexByte(rest, '"')
+		if end < 0 {
+			continue
+		}
+		return rest[:end]
+	}
+	return ""
 }

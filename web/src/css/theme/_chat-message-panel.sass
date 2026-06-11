@@ -463,24 +463,31 @@ body.body--dark .chat-message-bubble--sent::after
   font-size: 13px
   opacity: 0.92
 
+// ===== Reasoning peek (TK-06 v7: UI 不喧宾夺主) =====
 .chat-reasoning-peek
-  margin-bottom: 10px
-  padding: 10px 12px
-  border-radius: 10px
-  border: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent)
-  background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
+  margin-bottom: 8px
+  padding: 0
+  border-radius: 0
+  border: none
+  border-left: 2px solid transparent
+  background: transparent
   cursor: pointer
   outline: none
   overflow: hidden
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease
+  transition: border-left-color 0.2s ease
 
 .chat-reasoning-peek--streaming
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
-  background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-surface))
+  border-left: 2px solid var(--color-accent)
+  padding-left: 10px
+  animation: pulse-border 1.5s ease-in-out infinite
 
-.chat-reasoning-peek--selected
-  border-color: var(--color-accent)
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent)
+.chat-reasoning-peek--expanded
+  padding-left: 10px
+  border-left: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
+
+.chat-reasoning-peek--short
+  padding-left: 10px
+  border-left: 2px solid color-mix(in srgb, var(--color-accent) 25%, transparent)
 
 .chat-reasoning-peek__label
   color: var(--color-text-secondary)
@@ -494,29 +501,20 @@ body.body--dark .chat-message-bubble--sent::after
   letter-spacing: 0.02em
   text-transform: uppercase
 
-.chat-reasoning-peek__live
-  opacity: 0.7
-  animation: chat-reasoning-live 1.2s ease-in-out infinite
-
-@keyframes chat-reasoning-live
-  0%, 100%
-    opacity: 0.35
-  50%
-    opacity: 1
-
 .chat-reasoning-peek__viewport
   overflow: hidden
   position: relative
-  height: calc(1.45em * 2)
-  font-size: 12px
+  height: calc(1.5em * 2)
+  font-size: 14px
+  transition: height 0.2s ease
 
 .chat-reasoning-peek--expanded .chat-reasoning-peek__viewport
-  height: calc(1.45em * 8)
+  height: calc(1.5em * 8)
 
 .chat-reasoning-peek__content
-  font-size: 12px
-  line-height: 1.45
-  opacity: 0.88
+  font-size: 14px
+  font-family: inherit
+  line-height: 1.5
   color: var(--color-text-secondary)
   pointer-events: none
   will-change: transform
@@ -528,8 +526,15 @@ body.body--dark .chat-message-bubble--sent::after
 
 .chat-reasoning-peek__hint
   margin-top: 4px
+  font-size: 11px
   color: var(--color-text-tertiary)
   opacity: 0.85
+
+@keyframes pulse-border
+  0%, 100%
+    border-left-color: var(--color-accent)
+  50%
+    border-left-color: color-mix(in srgb, var(--color-accent) 30%, transparent)
 
 .chat-formal-body__label
   color: var(--color-text-secondary)
@@ -727,23 +732,6 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   to
     opacity: 1
     transform: translateY(0)
-
-// ===== Reasoning streaming spinner =====
-.chat-reasoning-peek--streaming .chat-reasoning-peek__label::after
-  content: ""
-  display: inline-block
-  width: 12px
-  height: 12px
-  margin-left: 6px
-  vertical-align: middle
-  border: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
-  border-top-color: var(--color-accent)
-  border-radius: 50%
-  animation: chat-reasoning-spin 0.8s linear infinite
-
-@keyframes chat-reasoning-spin
-  to
-    transform: rotate(360deg)
 
 // ===== Scroll-to-bottom button =====
 .chat-scroll-bottom
@@ -998,6 +986,25 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
     font-size: 13.5px
     overflow-x: auto
     white-space: pre
+
+  .code-block__collapsed-hint,
+  .code-block__collapse-hint
+    padding: 8px 12px
+    cursor: pointer
+    color: var(--color-text-secondary)
+    user-select: none
+    text-align: center
+    font-size: 12px
+    font-weight: 500
+    transition: color 0.15s ease, background 0.15s ease
+
+  .code-block__collapsed-hint:hover,
+  .code-block__collapse-hint:hover
+    color: var(--color-text-primary)
+    background: var(--glass-surface-hover)
+
+  .code-block__collapse-hint
+    border-top: 1px solid var(--chat-border-muted)
 
   // 鍏滃簳锛氫竾涓€鏈蛋 fence renderer 鐨?<pre>
   pre

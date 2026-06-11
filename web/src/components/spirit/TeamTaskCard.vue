@@ -36,9 +36,9 @@
       <div v-if="team.memberAvatars.length > 0" class="team-task-card__mini-avatars row items-center no-wrap">
         <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 3)" :key="idx" size="18px">
           <img v-if="url" :src="url" alt="" />
-          <q-icon v-else name="person" size="10px" color="grey-6" />
+          <q-icon v-else name="person" size="10px" color="grey" />
         </q-avatar>
-        <span v-if="team.memberAvatars.length > 3" class="text-caption text-grey-6" style="font-size:10px">
+        <span v-if="team.memberAvatars.length > 3" class="text-caption text-grey" style="font-size:10px">
           +{{ team.memberAvatars.length - 3 }}
         </span>
       </div>
@@ -66,9 +66,9 @@
       <div v-if="team.memberAvatars.length > 0" class="team-task-card__avatars row items-center q-gutter-xs q-mb-xs">
         <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 4)" :key="idx" size="22px">
           <img v-if="url" :src="url" alt="" />
-          <q-icon v-else name="person" size="14px" color="grey-6" />
+          <q-icon v-else name="person" size="14px" color="grey" />
         </q-avatar>
-        <span v-if="team.memberAvatars.length > 4" class="text-caption text-grey-6">
+        <span v-if="team.memberAvatars.length > 4" class="text-caption text-grey">
           +{{ team.memberAvatars.length - 4 }}
         </span>
       </div>
@@ -81,23 +81,23 @@
           color="accent"
           class="q-mt-xs"
         />
-        <div class="text-caption text-grey-6 q-mt-xs">
+        <div class="text-caption text-grey q-mt-xs">
           {{
             team.progressPct > 0
               ? `${Math.round(team.progressPct)}%`
-              : `${team.completedSteps} / ${team.totalSteps} 步骤`
+              : `${team.completedSteps} / ${team.totalSteps} ${t('spirit.steps')}`
           }}
         </div>
       </div>
 
-      <div v-if="team.dependsOn && team.dependsOn.length > 0" class="text-caption text-grey-6 q-mt-xs">
+      <div v-if="team.dependsOn && team.dependsOn.length > 0" class="text-caption text-grey q-mt-xs">
         <q-icon name="account_tree" size="14px" class="q-mr-xs" />
-        {{ team.dependsOn.length }} 个前置任务
+        {{ t('spirit.prerequisiteTasks', { count: team.dependsOn.length }) }}
       </div>
 
       <div v-if="team.sharedAgentIds.length > 0" class="team-task-card__shared-agent text-caption q-mt-xs">
         <q-icon name="share" size="14px" class="q-mr-xs" />
-        {{ team.sharedAgentIds.length }} 个共用 Agent
+        {{ t('spirit.sharedAgents', { count: team.sharedAgentIds.length }) }}
       </div>
 
       <TeamMemberTreeNode
@@ -113,6 +113,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
 import AgentStatusLabel from './AgentStatusLabel.vue';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
@@ -125,6 +126,8 @@ import {
   STATUS_LABEL_CONFIG,
   formatDuration,
 } from '../../features/spirit/spiritUi';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -161,7 +164,7 @@ const durationText = computed(() => formatDuration(props.team.durationMs));
 /** Show error summary when team failed. */
 const failedSummary = computed(() => {
   if (props.team.status !== 'failed') return '';
-  return props.team.interruptReason || '执行失败';
+  return props.team.interruptReason || t('spirit.executionFailed');
 });
 </script>
 

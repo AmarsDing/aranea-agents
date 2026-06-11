@@ -81,9 +81,36 @@ func (r *sessionRepo) ArchiveSessionsByIDs(ctx context.Context, ids []string) (i
 }
 
 func (r *sessionRepo) DeleteSessionsByIDs(ctx context.Context, ids []string) (int, []string, error) {
-	return r.batchUpdateSessions(ctx, ids, "delete", func(upd *ent.SessionUpdate, now string) *ent.SessionUpdate {
+	processed, failed, err := r.batchUpdateSessions(ctx, ids, "delete", func(upd *ent.SessionUpdate, now string) *ent.SessionUpdate {
 		return upd.SetDeletedAt(now).SetUpdatedAt(now)
 	})
+	if err != nil {
+		return processed, failed, err
+	}
+
+	// Cascade: clean up related records for successfully deleted sessions
+	failedSet := make(map[string]struct{}, len(failed))
+	for _, f := range failed {
+		failedSet[f] = struct{}{}
+	}
+	var cascadeFailed []string
+	for _, id := range ids {
+		if _, ok := failedSet[id]; ok {
+			continue
+		}
+		if err := cascadeDeleteBySession(ctx, r.data, id); err != nil {
+			r.data.lg.Warn("cascade: delete session related records failed",
+				loggateway.StepID("data.session.batch"),
+				loggateway.Err(err),
+				loggateway.Str("session_id", id))
+			cascadeFailed = append(cascadeFailed, id)
+		}
+	}
+	if len(cascadeFailed) > 0 {
+		failed = append(failed, cascadeFailed...)
+	}
+
+	return processed, failed, nil
 }
 
 func batchUpdateWheres(mode string, chunk []string) []predicate.Session {

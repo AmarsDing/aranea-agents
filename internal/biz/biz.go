@@ -59,6 +59,10 @@ var ProviderSet = wire.NewSet(
 	NewAgentTemplateUsecase,
 	NewLearningLoopUsecase,
 	NewSkillEvolutionUsecase,
+	NewSkillEvolutionOrchestrator,
+	NewPatternTrigger,
+	NewHealthTrigger,
+	NewAgentConfigTrigger,
 	NewOrganizationUsecase,
 	ProvideDeptTeamLister,
 	ProvideDeptAgentPositionClearer,
@@ -68,6 +72,12 @@ var ProviderSet = wire.NewSet(
 	NewExperienceAnalyticsUsecase,
 	NewSkillHealthUsecase,
 	NewSkillDedupUsecase,
+	NewSkillSimilarityEngine,
+	NewSkillMergeUsecase,
+	NewRuleBasedContentFuser,
+	ProvideSkillMergeGateVerifier,
+	ProvideSkillEmbedder,
+	ProvideDefaultDedupWeights,
 	NewDefaultKnowledgeProvider,
 	NewDefaultPluginProvider,
 	monitor.WireProviderSet,
@@ -165,6 +175,18 @@ func ProvideA2AAgentLookup(repo AgentRepository) A2AAgentLookup {
 		return ag.DisplayName, ws, nil
 	})
 }
+
+// ProvideSkillEmbedder returns nil embedder (embedding is optional).
+// When an embedding provider is available, replace this provider.
+func ProvideSkillEmbedder() DedupEmbedder { return nil }
+
+// ProvideDefaultDedupWeights returns default dedup similarity weights.
+func ProvideDefaultDedupWeights() SimilarityWeights { return DefaultDedupWeights() }
+
+// ProvideSkillMergeGateVerifier returns nil gate verifier for skill merge.
+// When GateVerifier is wired (with SandboxRunner and SkillLintChecker),
+// replace this provider with NewGateVerifier.
+func ProvideSkillMergeGateVerifier() SkillGateVerifier { return nil }
 
 func requireNonEmpty(val, domain, field string) (string, error) {
 	val = strings.TrimSpace(val)

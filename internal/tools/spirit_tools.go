@@ -25,7 +25,7 @@ import (
 // PlanAndExecuteInput is the input for the plan_and_execute tool.
 type PlanAndExecuteInput struct {
 	TaskPrompt string `json:"task_prompt" jsonschema:"description=The task to plan and execute"`
-	Mode       string `json:"mode,omitempty" jsonschema:"description=Execution mode: auto|direct|single|parallel|dag|coordinator (default: auto)"`
+	Mode       string `json:"mode,omitempty" jsonschema:"description=Execution mode: auto (system decides), direct (answer directly, no team), single (one agent), parallel (agents run concurrently), dag (dependency graph with verification gates), coordinator (lead agent delegates). Default: auto"`
 }
 
 // SubTaskSummary is a summary of a subtask in the plan.
@@ -331,7 +331,7 @@ func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg
 			}, nil
 		},
 		trpcfunction.WithName("check_progress"),
-		trpcfunction.WithDescription("查询编排执行进度。替代 check_team_progress，基于 orchestration_id 查询。"),
+		trpcfunction.WithDescription("查询编排执行进度。替代 check_team_progress，基于 orchestration_id 查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
 	)
 }
 

@@ -96,6 +96,17 @@ func WithDeptLeadMgr(m *DeptLeadManager) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.deptLeadMgr = m }
 }
 
+func WithTimeoutHandler(h TimeoutHandler) SpiritTeamUsecaseOption {
+	return func(u *SpiritTeamUsecase) { u.timeoutHandler = h }
+}
+
+// SpiritTeamUsecase manages Spirit team lifecycle.
+// TODO(debt): DEV-09 — Split into three sub-Usecases:
+//   - SpiritTeamAssemblyUsecase: assembly + creation (AssembleTeam, InjectDeptLeadIntoTeam, UpdateTeamDefinitionJSON, etc.)
+//   - SpiritTeamOrchestrationUsecase: DAG scheduling + timeout + completion (ScheduleDependentTeams, registerTeamTimeout, RecordTeamCompletion, etc.)
+//   - SpiritTeamDeliveryUsecase: deliverable passing + verification gate (WriteDeliverablesToSession, ExecuteVerificationGates, etc.)
+// Current plan: Define interfaces first, then gradually move methods to sub-Usecases
+// while keeping SpiritTeamUsecase as a facade during migration.
 type SpiritTeamUsecase struct {
 	_                SpiritTeamController // interface assertion
 	teamUC           *TeamUsecase
@@ -126,7 +137,9 @@ func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentU
 }
 
 // SetTimeoutHandler injects the service-layer timeout handler.
-// Called after construction to break the circular dependency.
+// Called after construction to break the circular dependency:
+// SpiritTeamUsecase → TimeoutHandler → TeamStarter → SpiritTeamController → SpiritTeamUsecase.
+// This is a justified exception like L4GraphUsecase.SetCascade.
 // Uses sync.Once to ensure the handler is set exactly once.
 func (u *SpiritTeamUsecase) SetTimeoutHandler(h TimeoutHandler) {
 	u.timeoutOnce.Do(func() {
@@ -134,6 +147,7 @@ func (u *SpiritTeamUsecase) SetTimeoutHandler(h TimeoutHandler) {
 	})
 }
 
+// Domain: Assembly — team creation and composition.
 func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamParams) (SpiritTeamResult, error) {
 	spiritSessionID := strings.TrimSpace(params.SpiritSessionID)
 	if spiritSessionID == "" {
@@ -221,6 +235,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 
 // submitBorrowRequests creates borrow requests for cross-department members.
 // This is a best-effort operation: failures are logged but do not fail team creation.
+// Domain: Assembly — cross-department borrow request submission.
 func (u *SpiritTeamUsecase) submitBorrowRequests(ctx context.Context, teamID, homeDeptID string, crossDeptAgentIDs []string) {
 	for _, agentID := range crossDeptAgentIDs {
 		fromDeptID, err := u.deptLeadMgr.agentDepartment(ctx, agentID)
@@ -245,6 +260,7 @@ func (u *SpiritTeamUsecase) submitBorrowRequests(ctx context.Context, teamID, ho
 	}
 }
 
+// Domain: Orchestration — timeout registration for team execution.
 func (u *SpiritTeamUsecase) registerTeamTimeout(ctx context.Context, cfg ParallelConfig, teamID string) {
 	if cfg.TeamTimeoutSeconds <= 0 {
 		return
@@ -425,6 +441,7 @@ func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSes
 	return ParseParallelConfig(ag.ConfigJSON, u.lg)
 }
 
+// Domain: Orchestration — cancel team and its timeout timer.
 func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error {
 	if strings.TrimSpace(teamID) == "" {
 		return kerrors.BadRequest("SPIRIT", "team_id is required")
@@ -437,6 +454,7 @@ func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error
 	return nil
 }
 
+// Domain: Orchestration — auto-archive completed/failed teams past threshold.
 func (u *SpiritTeamUsecase) AutoArchiveCompletedTeams(ctx context.Context, spiritSessionID string) {
 	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
 	if cfg.AutoArchiveSeconds <= 0 {
@@ -739,6 +757,7 @@ func (u *SpiritTeamUsecase) GetSpiritQuery(ctx context.Context, spiritSessionID 
 
 // UpdateTeamDefinitionJSON replaces the team's DefinitionJSON with the provided value
 // and persists the change. Used by TaskOrchestrator to write DAG-compiled definitions.
+// Domain: Assembly — update team definition JSON (used by TaskOrchestrator for DAG-compiled definitions).
 func (u *SpiritTeamUsecase) UpdateTeamDefinitionJSON(ctx context.Context, teamID string, definitionJSON string) error {
 	_, err := u.teamUC.Update(ctx, teamID, Team{DefinitionJSON: definitionJSON})
 	if err != nil {
@@ -749,6 +768,7 @@ func (u *SpiritTeamUsecase) UpdateTeamDefinitionJSON(ctx context.Context, teamID
 
 // RecordTeamCompletion records DQ Score, infers topology, and creates evolution suggestions
 // for a completed team. Returns the computed DQ Score and inferred topology.
+// Domain: Orchestration — record DQ score and create evolution suggestions on team completion.
 func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team, durationMs int64) (dqScore float64, topology TopologyType) {
 	// Cancel timeout timer since team has completed.
 	u.CancelTimeoutTimer(team.ID)
@@ -813,6 +833,7 @@ type DependentTeamAction struct {
 // It returns a list of actions to take (activate or fail dependent teams).
 // The caller (Service layer) is responsible for executing the actions
 // (starting runners, publishing events, etc.).
+// Domain: Orchestration — DAG dependency resolution and scheduling.
 func (u *SpiritTeamUsecase) ScheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam Team) []DependentTeamAction {
 	if completedTeam.DagNodeID == "" {
 		return nil
@@ -901,6 +922,7 @@ type AllTeamsCompletedResult struct {
 // CheckAllTeamsCompleted checks whether all teams for a spirit session are in a terminal state.
 // Returns a result indicating if all teams are done and the list of team IDs.
 // A team is considered "done" if it is in completed, failed, or cancelled state.
+// Domain: Orchestration — check if all teams reached terminal state.
 func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult {
 	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
@@ -1005,6 +1027,7 @@ func containsString(slice []string, s string) bool {
 // ValidateDeliverableContracts validates deliverable contracts between
 // upstream and downstream teams in the DAG. Returns a list of warnings
 // for contract mismatches. Called after Team DAG is built.
+// Domain: Delivery — validate deliverable contracts between upstream and downstream teams.
 func (u *SpiritTeamUsecase) ValidateDeliverableContracts(ctx context.Context, spiritSessionID string) []string {
 	if u.contractValidator == nil {
 		return nil
@@ -1067,6 +1090,7 @@ func (u *SpiritTeamUsecase) ValidateDeliverableContracts(ctx context.Context, sp
 
 // InjectDeptLeadIntoTeam adds the department lead agent to a team's definition.
 // Called during team assembly for cross-department collaboration.
+// Domain: Assembly — dept lead injection into team definition.
 func (u *SpiritTeamUsecase) InjectDeptLeadIntoTeam(ctx context.Context, teamID string) error {
 	if u.deptLeadMgr == nil {
 		return nil
@@ -1106,6 +1130,7 @@ func (u *SpiritTeamUsecase) InjectDeptLeadIntoTeam(ctx context.Context, teamID s
 // ExecuteVerificationGates runs all verification gates for a team's output.
 // Returns (approved bool, warnings []string, err error).
 // If any gate rejects, the whole verification fails.
+// Domain: Delivery — execute verification gates on team output.
 func (u *SpiritTeamUsecase) ExecuteVerificationGates(ctx context.Context, teamID string, teamOutput string) (bool, []string, error) {
 	if u.gateExecutor == nil {
 		return true, nil, nil
@@ -1149,6 +1174,7 @@ func (u *SpiritTeamUsecase) ExecuteVerificationGates(ctx context.Context, teamID
 }
 
 // resolveVerificationGates finds verification gates for a team.
+// Domain: Delivery — resolve verification gates from team definition.
 func (u *SpiritTeamUsecase) resolveVerificationGates(ctx context.Context, t Team) ([]VerificationGate, error) {
 	// Check if the team has verification gates in its definition JSON
 	// or if the linked graph has verification gates
@@ -1171,6 +1197,7 @@ func (u *SpiritTeamUsecase) resolveVerificationGates(ctx context.Context, t Team
 // Team's deliverables field so downstream teams can access them.
 // The deliverable content is extracted from the team output and stored
 // in the team record for downstream consumption.
+// Domain: Delivery — write upstream team deliverables to team record for downstream consumption.
 func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, teamID string) error {
 	t, err := u.teamUC.Get(ctx, teamID)
 	if err != nil {
@@ -1214,11 +1241,11 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 
 	// Persist the deliverable summary into the team record
 	// so InjectUpstreamDeliverables can read it.
-	// TECH-DEBT(#B-03): Using parallel_config_json as a deliverable output cache is a semantic mismatch.
-	// The deliverable_output_{dag_node_id} keys coexist with parallel config keys
-	// (max_concurrent_teams, etc.) without conflict, but a dedicated field would be clearer.
-	// Planned fix: add a deliverables_output_json column to the teams table via Ent schema migration,
-	// then move all deliverable_output_* keys to that field.
+	// TODO(debt): TECH-DEBT(#B-03) — Deliverable outputs should be stored in a dedicated
+	// field or table, not in ParallelConfigJSON. Current approach overloads the semantics
+	// of this field and makes it harder to query deliverables independently.
+	// Planned fix: add a deliverables_output_json column to the teams table via Ent schema
+	// migration, then move all deliverable_output_* keys to that field.
 	deliverableKey := fmt.Sprintf("deliverable_output_%s", t.DagNodeID)
 	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
 		t.ParallelConfigJSON = "{}"
@@ -1251,6 +1278,7 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 // It first tries to read from the persisted deliverable output cache
 // (written by WriteDeliverablesToSession), then falls back to
 // extracting from the team output directly.
+// Domain: Delivery — collect and format upstream deliverables for downstream team input.
 func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, downstreamTeam Team) string {
 	if len(downstreamTeam.DependsOn) == 0 {
 		return ""
@@ -1297,7 +1325,8 @@ func (u *SpiritTeamUsecase) InjectUpstreamDeliverables(ctx context.Context, down
 
 // readDeliverableOutput reads the persisted deliverable output from a team's
 // parallel_config_json deliverable_output_{dag_node_id} keys (written by WriteDeliverablesToSession).
-// TECH-DEBT: See WriteDeliverablesToSession for field semantics concern.
+// TODO(debt): TECH-DEBT(#B-03) — See WriteDeliverablesToSession for field semantics concern.
+// Domain: Delivery — read persisted deliverable output from team's parallel_config_json cache.
 func (u *SpiritTeamUsecase) readDeliverableOutput(t Team) string {
 	if t.ParallelConfigJSON == "" || t.ParallelConfigJSON == "{}" {
 		return ""
@@ -1325,6 +1354,7 @@ func (u *SpiritTeamUsecase) readDeliverableOutput(t Team) string {
 // EscalateToSpirit escalates a team that has exceeded max retries to the
 // Spirit assistant. This creates a system message in the Spirit session
 // notifying the user that human intervention may be needed.
+// Domain: Orchestration — escalation to Spirit assistant on max retries.
 func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string, tracker ReworkTracker) error {
 	t, err := u.teamUC.Get(ctx, teamID)
 	if err != nil {
@@ -1352,6 +1382,7 @@ func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string,
 // If the team can retry, it marks the team for rework and transitions
 // its status back to pending for re-execution; otherwise it escalates
 // to the Spirit assistant.
+// Domain: Orchestration — handle verification gate rejection with retry/escalation logic.
 func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID string, tracker ReworkTracker, reason string) (*ReworkTracker, error) {
 	tracker.LastReason = reason
 
@@ -1384,3 +1415,19 @@ func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID stri
 	)
 	return &tracker, nil
 }
+
+// ---------------------------------------------------------------------------
+// Sub-domain port interfaces (DEV-09 migration scaffolding)
+// ---------------------------------------------------------------------------
+
+// SpiritTeamAssemblyPort defines the assembly sub-domain interface.
+// TODO(debt): DEV-09 — Will be implemented by SpiritTeamAssemblyUsecase.
+type SpiritTeamAssemblyPort interface{}
+
+// SpiritTeamOrchestrationPort defines the orchestration sub-domain interface.
+// TODO(debt): DEV-09 — Will be implemented by SpiritTeamOrchestrationUsecase.
+type SpiritTeamOrchestrationPort interface{}
+
+// SpiritTeamDeliveryPort defines the delivery sub-domain interface.
+// TODO(debt): DEV-09 — Will be implemented by SpiritTeamDeliveryUsecase.
+type SpiritTeamDeliveryPort interface{}

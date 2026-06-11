@@ -2,8 +2,8 @@
   <q-page class="app-standard-page app-registry-page evolution-suggestion-page">
     <AppPageHero
       kicker="Skill intelligence"
-      title="Skill 进化建议"
-      subtitle="审批或拒绝由技能管家生成的 Skill 进化建议，查看沙箱验证结果与触发原因。"
+      title="进化建议"
+      subtitle="审批或拒绝由技能管家和 Agent 进化系统生成的进化建议，查看沙箱验证结果与触发原因。"
     >
       <template #actions>
         <q-btn
@@ -14,21 +14,29 @@
           icon="auto_fix_high"
           label="触发 Curator"
           :loading="triggeringCurator"
-          @click="handleTriggerCurator(skillId)"
+          @click="handleTriggerCurator(targetId)"
         />
         <q-btn unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
+      <q-btn-toggle
+        v-model="targetType"
+        rounded
+        unelevated
+        toggle-color="primary"
+        :options="targetTypeOptions"
+        class="q-mr-sm"
+      />
       <q-input
-        v-model="skillId"
+        v-model="targetId"
         class="app-page-toolbar__search"
         dense
         outlined
         clearable
         debounce="300"
-        label="Skill ID"
+        :label="targetType === 'agent' ? 'Agent ID' : 'Skill ID'"
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
@@ -59,7 +67,7 @@
     <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="auto_fix_high" />
-        <div class="text-h6 q-mt-md">{{ skillId || status ? '没有匹配的进化建议' : '暂无进化建议' }}</div>
+        <div class="text-h6 q-mt-md">{{ targetId || status ? '没有匹配的进化建议' : '暂无进化建议' }}</div>
         <div class="text-body2 text-grey-7 q-mt-sm">技能管家将基于使用数据自动生成进化建议，待审批后生效。</div>
       </q-card-section>
     </q-card>
@@ -72,22 +80,30 @@
         :loading="loading"
         column-persist-key="evolution-suggestion"
       >
-        <template #body-cell-skillId="props">
+        <template #body-cell-targetType="props">
+          <q-td :props="props">
+            <q-chip dense square :color="evoTargetTypeColor(props.row.targetType)" text-color="white">
+              {{ evoTargetTypeLabel(props.row.targetType) }}
+            </q-chip>
+          </q-td>
+        </template>
+
+        <template #body-cell-targetId="props">
           <q-td :props="props">
             <span
               class="app-registry-cell-primary ellipsis cursor-pointer"
-              :title="props.row.skillId ?? ''"
+              :title="props.row.targetId ?? ''"
               @click="openDetailDialog(props.row)"
             >
-              {{ props.row.skillId || '—' }}
+              {{ props.row.targetId || '—' }}
             </span>
           </q-td>
         </template>
 
-        <template #body-cell-type="props">
+        <template #body-cell-actionType="props">
           <q-td :props="props">
-            <q-chip dense square :color="evoSuggestionTypeColor(props.row.type)" text-color="white">
-              {{ evoSuggestionTypeLabel(props.row.type) }}
+            <q-chip dense square :color="evoActionTypeColor(props.row.actionType)" text-color="white">
+              {{ evoActionTypeLabel(props.row.actionType) }}
             </q-chip>
           </q-td>
         </template>
@@ -227,7 +243,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -236,56 +252,162 @@ import EvolutionSuggestionDetailDialog from '../components/skills/EvolutionSugge
 import EvolutionSuggestionRejectDialog from '../components/skills/EvolutionSuggestionRejectDialog.vue';
 import {
   EVOLUTION_SUGGESTION_TABLE_COLUMNS,
-  evoSuggestionTypeColor,
-  evoSuggestionTypeLabel,
   evoSuggestionStatusColor,
   evoSuggestionStatusLabel,
   evoLifecycleStatusColor,
   evoLifecycleStatusLabel,
+  evoTargetTypeColor,
+  evoTargetTypeLabel,
+  evoActionTypeColor,
+  evoActionTypeLabel,
 } from '../components/skills/evolutionSuggestionTableUi';
-import {
-  useEvolutionSuggestionListPage,
-  statusOptions,
-} from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
+import { useSkillEvolutionStore } from '../stores/skillEvolution';
+import { useAuthStore } from '../stores/auth';
 import { formatDate } from '../features/skillEvolutionSuggestions/formatUtils';
-import type { EvolutionSuggestionView } from '../features/skills/types';
+import type { SkillEvolutionView, EvolutionTargetType } from '../features/skills/types';
 
-const {
-  skillId,
-  status,
-  page,
-  pageSize,
-  rows,
-  total,
-  loading,
-  error,
-  pageMax,
-  approvingId,
-  rejectDialogOpen,
-  rejectTarget,
-  rejectionReason,
-  rejecting,
-  curatorSkillId,
-  curatorDialogOpen,
-  triggeringCurator,
-  loadRows,
-  approveSuggestion,
-  openRejectDialog,
-  confirmReject,
-  handleTriggerCurator,
-  confirmTriggerCurator,
-  resetFilters,
-  triggerCuratorFlow,
-} = useEvolutionSuggestionListPage();
+const store = useSkillEvolutionStore();
+const auth = useAuthStore();
+
+const statusOptions = [
+  { label: '全部', value: '' },
+  { label: '待审批', value: 'pending' },
+  { label: '已批准', value: 'approved' },
+  { label: '已拒绝', value: 'rejected' },
+  { label: '已应用', value: 'applied' },
+];
+
+const targetTypeOptions = [
+  { label: '全部', value: '' },
+  { label: 'Skill', value: 'skill' },
+  { label: 'Agent', value: 'agent' },
+];
+
+const targetType = ref<EvolutionTargetType | ''>('');
+const status = ref('');
+const targetId = ref('');
+const page = ref(1);
+const pageSize = ref(20);
+
+const rows = computed(() => store.suggestions);
+const total = computed(() => store.total);
+const loading = computed(() => store.loading);
+const error = computed(() => store.error ?? '');
+
+const rejectDialogOpen = ref(false);
+const rejectTarget = ref<SkillEvolutionView | null>(null);
+const rejectionReason = ref('');
+const rejecting = ref(false);
+
+const approvingId = ref('');
+
+const curatorSkillId = ref('');
+const curatorDialogOpen = ref(false);
+const triggeringCurator = ref(false);
+
+const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+
+async function loadRows() {
+  try {
+    await store.loadSuggestions({
+      targetType: targetType.value || undefined,
+      targetId: targetId.value?.trim() || undefined,
+      status: status.value?.trim() || undefined,
+      page: page.value,
+      pageSize: pageSize.value,
+    });
+  } catch {
+    // error is already captured in store.error
+  }
+}
+
+async function approveSuggestion(item: SkillEvolutionView) {
+  if (!item.id) return;
+  approvingId.value = item.id;
+  try {
+    await store.approveSuggestion(item.id, auth.displayLabel || 'unknown');
+    setTimeout(() => void loadRows(), 500);
+  } catch {
+    // error is already captured in store.error
+  } finally {
+    approvingId.value = '';
+  }
+}
+
+function openRejectDialog(item: SkillEvolutionView) {
+  rejectTarget.value = item;
+  rejectionReason.value = '';
+  rejectDialogOpen.value = true;
+}
+
+async function confirmReject() {
+  if (!rejectTarget.value?.id) return;
+  rejecting.value = true;
+  try {
+    await store.rejectSuggestion(
+      rejectTarget.value.id,
+      auth.displayLabel || 'unknown',
+      rejectionReason.value?.trim() || '',
+    );
+    rejectDialogOpen.value = false;
+    rejectTarget.value = null;
+    rejectionReason.value = '';
+    void loadRows();
+  } catch {
+    // error is already captured in store.error
+  } finally {
+    rejecting.value = false;
+  }
+}
+
+function handleTriggerCurator(currentSkillId: string) {
+  curatorSkillId.value = currentSkillId || '';
+  curatorDialogOpen.value = true;
+}
+
+async function confirmTriggerCurator() {
+  const id = curatorSkillId.value.trim();
+  if (!id) return;
+  triggeringCurator.value = true;
+  try {
+    await store.runCuratorFlow(id);
+    curatorDialogOpen.value = false;
+    curatorSkillId.value = '';
+    void loadRows();
+  } catch {
+    // error handled in composable
+  } finally {
+    triggeringCurator.value = false;
+  }
+}
+
+function resetFilters() {
+  targetType.value = '';
+  status.value = '';
+  targetId.value = '';
+  page.value = 1;
+  void loadRows();
+}
+
+watch([targetType, status, targetId], () => {
+  page.value = 1;
+  void loadRows();
+});
+watch([page, pageSize], () => {
+  void loadRows();
+});
+
+onMounted(() => {
+  void loadRows();
+});
 
 const columns = EVOLUTION_SUGGESTION_TABLE_COLUMNS;
 
 const detailDialogOpen = ref(false);
-const detailTarget = ref<EvolutionSuggestionView | null>(null);
+const detailTarget = ref<SkillEvolutionView | null>(null);
 
-function openDetailDialog(row: EvolutionSuggestionView) {
+function openDetailDialog(row: SkillEvolutionView) {
   detailTarget.value = row;
   detailDialogOpen.value = true;
 }
-
 </script>

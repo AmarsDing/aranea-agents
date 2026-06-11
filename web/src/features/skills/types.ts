@@ -200,6 +200,8 @@ export type SkillHealthDailyMetric = {
   invocations: number;
   successes: number;
   avg_duration_ms: number;
+  routed_count: number;
+  loaded_count: number;
 };
 
 export type SkillHealthMetric = {
@@ -212,6 +214,8 @@ export type SkillHealthMetric = {
   success_count_30d: number;
   success_rate_30d: number;
   p95_duration_ms_30d: number;
+  route_hit_rate_7d: number;
+  route_hit_rate_30d: number;
   daily_metrics: SkillHealthDailyMetric[];
 };
 
@@ -280,3 +284,51 @@ export type EvolutionSuggestionView = {
   resolvedAt: string;
   createdAt: string;
 };
+
+// ── Skill Catalog (Chat Integration) ────────────────────────────
+
+export type SkillCatalogEntry = {
+  slug: string;
+  name: string;
+  description: string;
+  tags: string[];
+};
+
+export type SkillHint = {
+  matched_skill: string;
+  trigger: string;
+  confidence: number;
+};
+
+// ── Unified Evolution Types ──
+
+export type EvolutionTargetType = 'skill' | 'agent';
+export type EvolutionActionType = 'create_skill' | 'improve_skill' | 'merge_skill' | 'evolve_agent';
+
+export type SkillEvolutionView = {
+  id: string;
+  targetType: EvolutionTargetType;
+  targetId: string;
+  targetName: string;
+  actionType: EvolutionActionType;
+  triggerSource: string;
+  triggerReason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'applied' | 'expired';
+  priority: number;
+
+  draftBody: string;
+  draftName: string;
+  mergeTargetId: string;
+
+  lifecycleStatus: 'draft' | 'validating' | 'ready';
+  sandboxPassed: boolean;
+  sandboxResult: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+
+  createdAt: string;
+  approvedBy: string;
+  appliedAt: string | null;
+};
+
+/** @deprecated Use SkillEvolutionView instead. Kept for backward compatibility. */
+export type UnifiedEvolutionSuggestion = SkillEvolutionView;

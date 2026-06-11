@@ -157,11 +157,11 @@
         <q-item v-for="s in suggestions" :key="s.id" class="app-glass-list__item--lg">
           <q-item-section>
             <q-item-label class="text-weight-medium">
-              <q-badge :color="suggestionTypeColor(s.type)" class="q-mr-sm" :label="s.type" />
-              {{ s.title }}
+              <q-badge :color="evoActionTypeColor(s.actionType)" class="q-mr-sm" :label="evoActionTypeLabel(s.actionType)" />
+              {{ s.targetName || s.targetId }}
             </q-item-label>
-            <q-item-label caption class="q-mt-xs">{{ s.content }}</q-item-label>
-            <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(s.created_at) }}</q-item-label>
+            <q-item-label caption class="q-mt-xs">{{ s.triggerReason || s.draftBody?.slice(0, 120) }}</q-item-label>
+            <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(s.createdAt) }}</q-item-label>
           </q-item-section>
           <q-item-section side>
             <div v-if="s.status === 'pending'" class="row q-gutter-xs">
@@ -238,6 +238,7 @@ import { computed, ref } from 'vue';
 import type { EvolutionKey } from './agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
+import { evoActionTypeColor, evoActionTypeLabel } from '../skills/evolutionSuggestionTableUi';
 
 const props = defineProps<{
   agentId: string;
@@ -284,19 +285,6 @@ function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString();
   } catch {
     return iso;
-  }
-}
-
-function suggestionTypeColor(type: string): string {
-  switch (type) {
-    case 'persona':
-      return 'purple';
-    case 'prompt':
-      return 'blue';
-    case 'skill':
-      return 'teal';
-    default:
-      return 'grey';
   }
 }
 

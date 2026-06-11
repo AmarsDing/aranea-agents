@@ -34,11 +34,11 @@ func (c *callbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-callback", c.bus, contract.SubscribeOptions{
+	runTypedConsumerWithOpts(ctx, "event-bus-callback", c.bus, contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeRunStatus},
 		BufferSize: 128,
 		Reliable:   true,
-	}, c.handle, c.logger)
+	}, c.handle, OfferOption{FallbackSync: true, FallbackFn: c.handle}, c.logger)
 }
 
 func (c *callbackConsumer) handle(ctx context.Context, env contract.Envelope) {

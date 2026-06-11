@@ -20,7 +20,7 @@ func (h *ChannelIngress) inboundPeerKey(chRow biz.Channel, ev port.InboundEvent)
 	if err != nil {
 		return "", err
 	}
-	if channelTypeFromConfig(chRow.ConfigJSON, h.lg) == "feishu" {
+	if biz.ChannelTypeFromConfig(chRow.ConfigJSON) == "feishu" {
 		fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)
 		threadID, chatID := "", ""
 		if ev.OutboundMeta != nil {
@@ -65,7 +65,7 @@ func (h *ChannelIngress) applyFeishuOutboundMeta(chRow biz.Channel, extra map[st
 	if extra == nil {
 		extra = map[string]string{}
 	}
-	if channelTypeFromConfig(chRow.ConfigJSON, h.lg) != "feishu" {
+	if biz.ChannelTypeFromConfig(chRow.ConfigJSON) != "feishu" {
 		return extra
 	}
 	fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)
@@ -76,7 +76,7 @@ func (h *ChannelIngress) applyFeishuOutboundMeta(chRow biz.Channel, extra map[st
 }
 
 func (h *ChannelIngress) startFeishuProcessingReaction(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) func() {
-	if channelTypeFromConfig(chRow.ConfigJSON, h.lg) != "feishu" {
+	if biz.ChannelTypeFromConfig(chRow.ConfigJSON) != "feishu" {
 		return func() {}
 	}
 	fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)

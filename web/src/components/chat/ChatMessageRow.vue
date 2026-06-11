@@ -236,8 +236,7 @@
             flat
             dense
             no-caps
-            color="grey"
-            size="sm"
+            color="grey"            size="sm"
             icon="close"
             :label="t('chat.dismiss', '移除')"
             @click="emit('dismiss-failed', message.id)"

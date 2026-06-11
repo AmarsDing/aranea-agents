@@ -5,7 +5,7 @@
         <q-icon name="account_tree" size="18px" />
       </div>
       <div class="col min-width-0">
-        <div class="dag-diagram-card__title">任务依赖图</div>
+        <div class="dag-diagram-card__title">{{ t('spirit.taskDependencyGraph') }}</div>
       </div>
     </div>
 
@@ -13,8 +13,8 @@
       <div v-for="node in dagNodes" :key="node.teamId" class="dag-diagram-card__node">
         <span class="dag-diagram-card__prefix">{{ node.prefix }}</span>
         <span class="dag-diagram-card__name">{{ node.teamName }}</span>
-        <span v-if="node.dependsOn.length > 0" class="dag-diagram-card__deps text-caption text-grey-6">
-          (依赖: {{ node.dependsOn.join(', ') }})
+        <span v-if="node.dependsOn.length > 0" class="dag-diagram-card__deps text-caption text-grey">
+          ({{ t('spirit.dependsOn') }}: {{ node.dependsOn.join(', ') }})
         </span>
       </div>
       <div
@@ -25,11 +25,11 @@
       >
         <span class="dag-diagram-card__prefix">{{ verifyIcon(vn) }}</span>
         <span class="dag-diagram-card__name">{{ verifyLabel(vn) }}</span>
-        <span class="dag-diagram-card__deps text-caption text-grey-6">
+        <span class="dag-diagram-card__deps text-caption text-grey">
           ({{ vn.failureAction }})
         </span>
-        <span v-if="vn.retryCount != null && vn.maxRetries != null" class="dag-diagram-card__retry text-caption text-grey-6">
-          重试 {{ vn.retryCount }}/{{ vn.maxRetries }}
+        <span v-if="vn.retryCount != null && vn.maxRetries != null" class="dag-diagram-card__retry text-caption text-grey">
+          {{ t('spirit.retryCount', { current: vn.retryCount, max: vn.maxRetries }) }}
         </span>
         <q-tooltip v-if="vn.status === 'failed' && vn.failureReason" :delay="300">
           {{ vn.failureReason }}
@@ -44,7 +44,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SpiritTeam, VerificationNode } from '../../features/spirit/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   teams: SpiritTeam[];
@@ -77,9 +80,9 @@ const verifyIcon = (vn: VerificationNode) => {
 
 const verifyLabel = (vn: VerificationNode) => {
   const labels: Record<string, string> = {
-    output_format: '格式验证',
-    task_completion: '完成度验证',
-    human_approval: '人工审批',
+    output_format: t('spirit.verifyOutputFormat'),
+    task_completion: t('spirit.verifyTaskCompletion'),
+    human_approval: t('spirit.verifyHumanApproval'),
   };
   return vn.label ?? labels[vn.type] ?? vn.type;
 };

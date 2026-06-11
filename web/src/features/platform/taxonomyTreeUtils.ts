@@ -1,6 +1,6 @@
 import type { PlatformResourceTreeNode } from './types';
 
-export type TaxonomyLevel = 'company' | 'department' | 'position';
+export type TaxonomyLevel = 'industry' | 'company' | 'department' | 'position';
 
 export type TaxonomyQTreeNode = {
   id: string;
@@ -14,12 +14,14 @@ export type TaxonomyQTreeNode = {
 };
 
 const LEVEL_ICONS: Record<TaxonomyLevel, string> = {
+  industry: 'domain',
   company: 'business',
   department: 'lan',
   position: 'badge',
 };
 
 const LEVEL_LABELS: Record<TaxonomyLevel, string> = {
+  industry: '行业',
   company: '公司',
   department: '部门',
   position: '职位',
@@ -229,10 +231,10 @@ function patchTaxonomyTreeNodeInner(
 
 export function collectDefaultExpandedIds(tree: PlatformResourceTreeNode[]) {
   const ids = new Set<string>();
-  for (const company of tree) {
-    ids.add(company.id);
-    for (const department of company.children ?? []) {
-      if (department.level === 'department') ids.add(department.id);
+  for (const root of tree) {
+    ids.add(root.id);
+    for (const child of root.children ?? []) {
+      if (child.level === 'department' || child.level === 'company') ids.add(child.id);
     }
   }
   return ids;

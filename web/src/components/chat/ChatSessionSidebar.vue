@@ -27,7 +27,7 @@
                   <q-badge v-if="inbox.unreadCount > 0" rounded color="negative" :label="inbox.unreadCount" />
                 </div>
                 <div class="chat-session-meta-row row items-center no-wrap">
-                  <q-badge dense outline color="teal" :label="sourceLabel(inbox.source)" />
+                  <q-badge dense outline color="accent" :label="sourceLabel(inbox.source)" />
                   <q-badge
                     v-if="inbox.lastTurn"
                     dense
@@ -85,7 +85,7 @@
                     v-if="isFavorite(session.id)"
                     class="chat-session-fav col-auto"
                     name="star"
-                    color="amber-7"
+                    color="warning"
                     size="16px"
                   />
                 </div>
@@ -94,8 +94,7 @@
                     v-if="sessionChannelLabel(session)"
                     dense
                     outline
-                    color="teal"
-                    class="q-mr-xs chat-session-channel-badge"
+                    color="accent"                    class="q-mr-xs chat-session-channel-badge"
                     :label="sessionChannelLabel(session)"
                   />
                   <q-badge class="chat-session-time-badge" rounded :label="shortTime(session)" />
@@ -192,7 +191,7 @@
           :label="t('chat.newSession')"
           @click="$emit('new-session')"
         />
-        <q-btn flat dense color="grey-7" no-caps :label="t('chat.clearAllSession')" @click="confirmClearAll" />
+        <q-btn flat dense color="grey" no-caps :label="t('chat.clearAllSession')" @click="confirmClearAll" />
       </div>
     </aside>
   </transition>

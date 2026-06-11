@@ -51,7 +51,7 @@ func (s *stubKnowledgeRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearc
 
 type stubEmbedder struct{}
 
-func (stubEmbedder) Embed(context.Context, string) ([]float32, error) {
+func (stubEmbedder) EmbedSingle(context.Context, string) ([]float32, error) {
 	return []float32{0.1, 0.2}, nil
 }
 
