@@ -16,10 +16,8 @@ import (
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
 	araneasession "aranea-agents/internal/session"
-	"aranea-agents/internal/team"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
-	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -33,6 +31,16 @@ const (
 	orchMapMaxIdle     = 30 * time.Minute
 	orchMapSweepPeriod = 5 * time.Minute
 )
+
+// sessionStateTransitor is the interface for session status transitions.
+// *biz.TurnLifecycleUsecase satisfies this interface, allowing the service
+// layer to delegate session state management to the biz layer.
+type sessionStateTransitor interface {
+	TransitionStatus(ctx context.Context, sessionID string, targetStatus sessstatus.SessionStatus, reason sessstatus.SessionStatusReason)
+}
+
+// Compile-time check: *biz.TurnLifecycleUsecase satisfies sessionStateTransitor.
+var _ sessionStateTransitor = (*biz.TurnLifecycleUsecase)(nil)
 
 // RuntimeTooling groups plugin, skill, knowledge, and code-execution dependencies
 // that are injected into every agent turn build. Moving these out of the flat
@@ -61,12 +69,12 @@ type RuntimeTooling struct {
 // is triggered from the chat orchestrator.
 type TeamOrchestrationDeps struct {
 	TeamUC           *biz.TeamUsecase
-	TeamsNative      *team.Runner
+	TeamsNative      biz.TeamRunnerWirePort
 	GraphFactory     biz.GraphBuilderFactory
 	Graphs           *biz.GraphUsecase
 	Tasks            *biz.TaskUsecase
-	TeamGraphCoord   *team.TeamGraphRunCoordinator
-	TeamMediator     *team.TeamRunMediator
+	TeamGraphCoord   biz.TeamGraphCoordPort
+	TeamMediator     biz.TeamMediatorPort
 	SpiritUC         biz.SpiritTeamController
 	TaskPlanner      biz.TaskPlannerPort
 	AgentAllocator   biz.AgentAllocatorPort
@@ -172,7 +180,8 @@ type ChatEvolutionDeps struct {
 }
 
 // ChatInfraDeps groups cross-cutting infrastructure dependencies: logging,
-// orchestration cache, A2A, MCP, outbound routing, and sub-agent service.
+// orchestration cache, A2A, MCP, outbound routing, sub-agent service, and
+// the biz-layer turn lifecycle usecase.
 type ChatInfraDeps struct {
 	LG              loggateway.Logger
 	OrchCache       *biz.OrchestrationCache
@@ -180,6 +189,7 @@ type ChatInfraDeps struct {
 	MCPServers      *biz.MCPServerUsecase
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
+	TurnLifecycle   *biz.TurnLifecycleUsecase
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -212,7 +222,7 @@ func coalescePendingQueue(q *rt.PendingMessageQueue) *rt.PendingMessageQueue {
 func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
-	sessionLocks := NewSessionLockManager()
+	sessionLocks := biz.NewSessionLockManager()
 
 	o := &ChatOrchestrator{
 		td:              deps.Turn.TurnDeps,
@@ -241,7 +251,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		outboundRouter:  deps.Infra.OutboundRouter,
 		subAgentService: deps.Infra.SubAgentService,
 		expAnalytics:    deps.Usage.ExpAnalytics,
-		sessionStateMgr: newChatSessionStateMgr(deps.Turn.Sessions, deps.Infra.LG),
+		sessionStateMgr: deps.Infra.TurnLifecycle,
 		turnMetrics:     newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG),
 		eventPublisher:  newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG),
 		runStatus:       newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG),
@@ -285,15 +295,25 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	}
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.pendingQ.SessionPendingMergeFollowup)
 
+	// Wire the threshold resolver so that TurnAdmissionUsecase.EvaluateContextPressure
+	// uses the orchestrator's channel-aware threshold lookup policy.
+	if o.admission != nil {
+		o.admission.SetThresholdResolver(biz.ThresholdResolverFunc(o.resolveContextAdmissionThresholdForSession))
+		// Wire the channel config resolver so channel entry points use the
+		// long-task config threshold directly instead of the agent L0 threshold.
+		if o.sessionRunLC != nil {
+			o.admission.SetChannelConfigResolver(biz.ChannelLongTaskConfigResolverFunc(o.sessionRunLC.ResolveChannelLongTaskConfig))
+		}
+	}
+
 	if deps.Team.Team.TeamsNative != nil {
-		deps.Team.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
+		deps.Team.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) biz.AwaitReplyFunc {
 			return o.awaitCoord.MakeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
 		if deps.Team.Team.TeamMediator != nil {
 			deps.Team.Team.TeamsNative.SetMediator(deps.Team.Team.TeamMediator)
 			deps.Team.Team.TeamMediator.SetFinisher(deps.Team.Team.TeamsNative)
 			if deps.Team.Team.TeamGraphCoord != nil {
-				deps.Team.Team.TeamMediator.SetCoordinator(deps.Team.Team.TeamGraphCoord)
 				deps.Team.Team.TeamGraphCoord.SetFinisher(deps.Team.Team.TeamMediator)
 				deps.Team.Team.TeamGraphCoord.RecoverSessions(context.Background())
 			}
@@ -454,6 +474,15 @@ func (o *ChatOrchestrator) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHoo
 		return
 	}
 	o.td.AfterTurn = hook
+}
+
+// SetTaskOrchestrator sets the TaskOrchestratorPort on the TeamOrchestrationDeps.
+// This breaks the Wire injection cycle: TaskOrchestrator → SpiritTeamAssembler → TeamStarterPort → ChatService.
+func (o *ChatOrchestrator) SetTaskOrchestrator(orch biz.TaskOrchestratorPort) {
+	if o == nil {
+		return
+	}
+	o.team.TaskOrchestrator = orch
 }
 
 // AwaitChannel operations delegate to awaitCoord.

@@ -29,7 +29,7 @@ func (s *SkillService) GetSkillImportJob(ctx context.Context, req *v1.GetSkillIm
 	if err != nil {
 		return nil, err
 	}
-	job, err := eng.GetImportJob(req.GetJobId())
+	job, err := eng.GetImportJob(ctx, req.GetJobId())
 	if err != nil {
 		if errors.Is(err, importer.ErrImportJobNotFound) {
 			return nil, apierror.NotFound("SKILL_IMPORT", err.Error())

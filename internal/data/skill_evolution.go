@@ -32,7 +32,7 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return nil, entErrToBizErr(err, "SKILL_EVO")
 	}
 	defer rows.Close()
 	var result []biz.SkillProposal
@@ -41,17 +41,17 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 		var createdAt string
 		var approvedAt *string
 		if err := rows.Scan(&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt); err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+			return nil, entErrToBizErr(err, "SKILL_EVO")
 		}
 		t, err := time.Parse(time.RFC3339, createdAt)
 		if err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+			return nil, entErrToBizErr(err, "SKILL_EVO")
 		}
 		p.CreatedAt = t
 		if approvedAt != nil && *approvedAt != "" {
 			at, err := time.Parse(time.RFC3339, *approvedAt)
 			if err != nil {
-				return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+				return nil, entErrToBizErr(err, "SKILL_EVO")
 			}
 			p.ApprovedAt = &at
 		}
@@ -73,13 +73,13 @@ func (r *skillProposalRepo) GetByID(ctx context.Context, id string) (biz.SkillPr
 	}
 	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
-		return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 	p.CreatedAt = t
 	if approvedAt != nil && *approvedAt != "" {
 		at, err := time.Parse(time.RFC3339, *approvedAt)
 		if err != nil {
-			return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+			return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 		}
 		p.ApprovedAt = &at
 	}
@@ -98,17 +98,17 @@ func (r *skillProposalRepo) GetByPatternHash(ctx context.Context, agentID string
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return nil, entErrToBizErr(err, "SKILL_EVO")
 	}
 	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return nil, entErrToBizErr(err, "SKILL_EVO")
 	}
 	p.CreatedAt = t
 	if approvedAt != nil && *approvedAt != "" {
 		at, err := time.Parse(time.RFC3339, *approvedAt)
 		if err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+			return nil, entErrToBizErr(err, "SKILL_EVO")
 		}
 		p.ApprovedAt = &at
 	}
@@ -129,7 +129,7 @@ func (r *skillProposalRepo) Create(ctx context.Context, p biz.SkillProposal) (bi
 		p.CreatedAt.UTC().Format(time.RFC3339), approvedAt,
 	)
 	if err != nil {
-		return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 	return p, nil
 }
@@ -152,12 +152,12 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	writeDB := r.data.RWDB().WriteHandle()
 	tx, txErr := writeDB.BeginTx(ctx, nil)
 	if txErr != nil {
-		return biz.SkillProposal{}, apierror.Wrap(txErr, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(txErr, "SKILL_EVO")
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.ExecContext(ctx, q, args...); err != nil {
-		return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 
 	var p biz.SkillProposal
@@ -165,21 +165,21 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	var approvedAt *string
 	selectQ := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at FROM skill_proposals WHERE id = ?`
 	if err := tx.QueryRowContext(ctx, selectQ, id).Scan(&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt); err != nil {
-		return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 	if err := tx.Commit(); err != nil {
-		return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 
 	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
-		return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 	p.CreatedAt = t
 	if approvedAt != nil && *approvedAt != "" {
 		at, err := time.Parse(time.RFC3339, *approvedAt)
 		if err != nil {
-			return biz.SkillProposal{}, apierror.Wrap(err, apierror.CodeInternal, "SKILL_EVO")
+			return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 		}
 		p.ApprovedAt = &at
 	}

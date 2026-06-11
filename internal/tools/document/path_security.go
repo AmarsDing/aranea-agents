@@ -16,17 +16,41 @@ const (
 
 // ValidatePath cleans and resolves the given path, then verifies it is within
 // baseDir (if baseDir is non-empty). It rejects paths that contain ".."
-// components after cleaning. Returns the cleaned absolute path on success.
+// components after cleaning, UNC paths, and paths that escape baseDir via
+// symlinks. Returns the cleaned absolute path on success.
 func ValidatePath(path string, baseDir string) (string, error) {
 	cleaned := filepath.Clean(path)
+
+	// Reject UNC paths (\\?\, \\server\share) on all platforms.
+	if len(cleaned) >= 2 && cleaned[0] == '\\' && cleaned[1] == '\\' {
+		return "", kerrors.BadRequest("PATH_SECURITY", "UNC paths are not allowed")
+	}
+
 	absPath, err := filepath.Abs(cleaned)
 	if err != nil {
 		return "", kerrors.BadRequest("PATH_SECURITY", "resolve absolute path: "+err.Error())
 	}
 
+	// Resolve symlinks to prevent traversal via symbolic links.
+	// If the path exists, EvalSymlinks must succeed; failure on an existing
+	// path is treated as a security error to prevent TOCTOU attacks where an
+	// attacker creates a symlink between requests.
+	evaluated, err := filepath.EvalSymlinks(absPath)
+	if err == nil && evaluated != "" {
+		absPath = evaluated
+	} else if err != nil {
+		// EvalSymlinks fails when the path does not exist (acceptable for
+		// new-file writes) but fails on existing paths with permission issues
+		// or broken symlinks. Only allow the fallback for non-existent paths.
+		if _, statErr := os.Lstat(absPath); statErr == nil {
+			// Path exists but EvalSymlinks failed — treat as security error.
+			return "", kerrors.InternalServer("PATH_SECURITY", "cannot resolve symlinks for existing path")
+		}
+		// Path does not exist yet (e.g. write to new file); fall through
+		// with the unresolved absPath. The baseDir check below still applies.
+	}
+
 	// Reject paths containing ".." components after cleaning.
-	// filepath.Clean already resolves ".." but a leading ".." that escapes
-	// the cwd would still be present as a prefix.
 	for _, component := range strings.Split(absPath, string(filepath.Separator)) {
 		if component == ".." {
 			return "", kerrors.BadRequest("PATH_SECURITY", "path contains '..' component")
@@ -38,8 +62,11 @@ func ValidatePath(path string, baseDir string) (string, error) {
 		if err != nil {
 			return "", kerrors.InternalServer("PATH_SECURITY", "resolve base dir: "+err.Error())
 		}
-		// Ensure the base dir ends with separator for prefix matching
-		// so /data/app does not match /data/app2.
+		// Resolve symlinks for base dir too
+		evalBase, err := filepath.EvalSymlinks(cleanBase)
+		if err == nil && evalBase != "" {
+			cleanBase = evalBase
+		}
 		if !strings.HasSuffix(cleanBase, string(filepath.Separator)) {
 			cleanBase += string(filepath.Separator)
 		}
@@ -47,12 +74,22 @@ func ValidatePath(path string, baseDir string) (string, error) {
 		if !strings.HasSuffix(checkPath, string(filepath.Separator)) {
 			checkPath += string(filepath.Separator)
 		}
-		if !strings.HasPrefix(checkPath, cleanBase) {
+		// Use case-insensitive comparison on Windows for path prefix matching.
+		if !pathHasPrefix(checkPath, cleanBase) {
 			return "", kerrors.Forbidden("PATH_SECURITY", "path is outside base directory")
 		}
 	}
 
 	return absPath, nil
+}
+
+// pathHasPrefix checks if path starts with prefix, using case-insensitive
+// comparison on Windows where the filesystem is case-insensitive.
+func pathHasPrefix(path, prefix string) bool {
+	if filepath.Separator == '\\' {
+		return strings.HasPrefix(strings.ToLower(path), strings.ToLower(prefix))
+	}
+	return strings.HasPrefix(path, prefix)
 }
 
 // ValidateFileSize checks that the file at the given path does not exceed

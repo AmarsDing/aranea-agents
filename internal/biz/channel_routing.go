@@ -136,5 +136,14 @@ func isNotFound(err error) bool {
 	if ae, ok := apierror.From(err); ok {
 		return ae.Code == apierror.CodeNotFound
 	}
-	return stderrors.Is(err, &apierror.Error{Code: apierror.CodeNotFound})
+	// Check for kratos 404 errors (not apierror).
+	var ke interface{ Error() string; GRPCStatus() }
+	if stderrors.As(err, &ke) {
+		// Kratos errors carry HTTP status in their Code field.
+		type statusCoder interface{ Code() int32 }
+		if sc, ok := err.(statusCoder); ok && sc.Code() == 404 {
+			return true
+		}
+	}
+	return false
 }

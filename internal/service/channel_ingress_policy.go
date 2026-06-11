@@ -38,7 +38,7 @@ func (h *ChannelIngress) applyPreTurnIngressPolicy(
 	hasActive := h.chat.HasActiveRun(sessionID)
 	hasRunner := h.channelHasActiveRunner(sessionID)
 	allowQueue := channelAllowQueueFromConfig(chRow.ConfigJSON)
-	contextPressure := h.sessionContextPressure(ctx, sessionID, ltCfg)
+	contextPressure := h.sessionContextPressure(ctx, sessionID)
 	policy := EvaluateIngressPolicy(channelIngressPolicyInput(ev.Text, ltCfg, allowQueue, hasActive, hasRunner, contextPressure))
 	recordIngressIntentMetric(policy.Intent)
 

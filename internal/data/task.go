@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -49,7 +48,7 @@ func (r *taskRepo) SaveTask(ctx context.Context, task *biz.GraphTask) error {
 	}
 	_, err := builder.Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task repo save: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -61,7 +60,7 @@ func (r *taskRepo) GetTask(ctx context.Context, taskID string) (*biz.GraphTask, 
 		if ent.IsNotFound(err) {
 			return nil, apierror.NotFound("TASK", "task not found")
 		}
-		return nil, fmt.Errorf("task repo get: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	return entTaskToBiz(row), nil
 }
@@ -75,7 +74,7 @@ func (r *taskRepo) GetTasksByIDs(ctx context.Context, taskIDs []string) ([]*biz.
 		Where(graphtask.IDIn(taskIDs...)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task repo get by ids: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	result := make([]*biz.GraphTask, len(rows))
 	for i, row := range rows {
@@ -101,7 +100,7 @@ func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID
 		if ent.IsNotFound(err) {
 			return nil, apierror.NotFound("TASK", "task not found")
 		}
-		return nil, fmt.Errorf("task repo get active: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	return entTaskToBiz(row), nil
 }
@@ -123,7 +122,7 @@ func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskS
 	}
 	rows, err := query.All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task repo list statuses: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	result := make([]*biz.GraphTask, len(rows))
 	for i, row := range rows {
@@ -149,7 +148,7 @@ func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string,
 	}
 	rows, err := query.All(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("task repo list: %w", err)
+		return nil, "", entErrToBizErr(err, "TASK")
 	}
 	var nextToken string
 	if len(rows) > pageSize {
@@ -182,7 +181,7 @@ func (r *taskRepo) UpdateTask(ctx context.Context, task *biz.GraphTask) error {
 		if ent.IsNotFound(err) {
 			return apierror.NotFound("TASK", "task not found")
 		}
-		return fmt.Errorf("task repo update: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -197,7 +196,7 @@ func (r *taskRepo) BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, 
 		SetStatus(string(status)).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task repo batch update status: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -213,7 +212,7 @@ func (r *taskRepo) SaveTaskComment(ctx context.Context, comment *biz.TaskComment
 		SetCreatedAt(comment.CreatedAt).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task comment repo save: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -225,7 +224,7 @@ func (r *taskRepo) ListTaskComments(ctx context.Context, taskID string) ([]*biz.
 		Order(ent.Asc(graphtaskcomment.FieldCreatedAt)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task comment repo list: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	result := make([]*biz.TaskComment, len(rows))
 	for i, row := range rows {
@@ -252,7 +251,7 @@ func (r *taskRepo) SaveTaskLog(ctx context.Context, log *biz.TaskLog) error {
 		SetTimestamp(log.Timestamp).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task log repo save: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -274,7 +273,7 @@ func (r *taskRepo) ListTaskLogs(ctx context.Context, taskID string, stream strin
 	query = query.Limit(pageSize)
 	rows, err := query.All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task log repo list: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	result := make([]*biz.TaskLog, len(rows))
 	for i, row := range rows {
@@ -303,7 +302,7 @@ func (r *taskRepo) SaveTaskRun(ctx context.Context, run *biz.TaskRun) error {
 	}
 	_, err := builder.Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task run repo save: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -315,7 +314,7 @@ func (r *taskRepo) ListTaskRuns(ctx context.Context, taskID string) ([]*biz.Task
 		Order(ent.Desc(graphtaskrun.FieldStartedAt)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task run repo list: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	result := make([]*biz.TaskRun, len(rows))
 	for i, row := range rows {
@@ -346,7 +345,7 @@ func (r *taskRepo) SaveTaskEvent(ctx context.Context, event *biz.TaskEvent) erro
 		SetTimestamp(event.Timestamp).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task event repo save: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -370,7 +369,7 @@ func (r *taskRepo) ListTaskEvents(ctx context.Context, executionID string, taskI
 	query = query.Limit(pageSize)
 	rows, err := query.All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task event repo list: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	result := make([]*biz.TaskEvent, len(rows))
 	for i, row := range rows {

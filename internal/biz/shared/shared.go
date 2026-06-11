@@ -4,7 +4,6 @@ package shared
 
 import (
 	"encoding/json"
-	stderrors "errors"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
@@ -65,32 +64,35 @@ func ListLimit(limit int) ListOption {
 
 // ── Error sentinels ───────────────────────────────────────────────────────────
 
-// Data-layer sentinels (stdlib); mapped to apierror in Usecase.
+// Cross-aggregate error sentinels (apierror). All new sentinels must use
+// apierror constructors so that APIToKratos middleware can translate them
+// automatically without mapXxxError functions in the service layer.
 var (
-	ErrUsageScopeRequired  = stderrors.New("usage scope required")
-	ErrBudgetAlertNotFound = stderrors.New("budget alert not found after upsert")
-	ErrQuotaNotFound       = stderrors.New("usage quota not configured")
-	ErrMessageDuplicate    = stderrors.New("message duplicate constraint")
-	ErrAgentKeyConflict    = stderrors.New("agent_key unique constraint violation")
+	// Usage / Quota
+	ErrUsageScopeRequired  = apierror.BadRequest(apierror.DomainUsageQuota, "usage scope required")
+	ErrBudgetAlertNotFound = apierror.NotFound(apierror.DomainUsageQuota, "budget alert not found after upsert")
+	ErrQuotaNotFound       = apierror.NotFound(apierror.DomainUsageQuota, "usage quota not configured")
+
+	// Data constraints
+	ErrMessageDuplicate = apierror.Conflict(apierror.DomainData, "message duplicate constraint")
+	ErrAgentKeyConflict = apierror.Conflict(apierror.DomainAgent, "agent_key unique constraint violation")
 )
 
-// TECH-DEBT(BE1): 以下错误已从 kerrors 迁移到 apierror，
-// 由 APIToKratos 中间件统一映射为 kerrors。HTTP status code 语义不变。
 var (
 	// Admin
-	ErrAdminNotFound = apierror.NotFound("ADMIN", "admin not found")
+	ErrAdminNotFound = apierror.NotFound(apierror.DomainAdmin, "admin not found")
 
 	// General
-	ErrNotFound = apierror.NotFound("NOT_FOUND", "resource not found")
+	ErrNotFound = apierror.NotFound(apierror.DomainShared, "resource not found")
 
 	// Graph
-	ErrGraphSaveRun          = apierror.Internal("GRAPH", "graph execute save run failed")
-	ErrGraphInvalidStatus    = apierror.BadRequest("GRAPH", "cannot cancel execution in current status")
-	ErrGraphResume           = apierror.Internal("GRAPH", "graph resume failed")
-	ErrGraphTemplateNotFound = apierror.NotFound("GRAPH_TEMPLATE", "graph template not found")
+	ErrGraphSaveRun          = apierror.Internal(apierror.DomainGraph, "graph execute save run failed")
+	ErrGraphInvalidStatus    = apierror.BadRequest(apierror.DomainGraph, "cannot cancel execution in current status")
+	ErrGraphResume           = apierror.Internal(apierror.DomainGraph, "graph resume failed")
+	ErrGraphTemplateNotFound = apierror.NotFound(apierror.DomainGraphTemplate, "graph template not found")
 
 	// Usage / Quota
-	ErrQuotaUnsupportedScope = apierror.BadRequest("USAGE_QUOTA", "unsupported quota scope_type")
+	ErrQuotaUnsupportedScope = apierror.BadRequest(apierror.DomainUsageQuota, "unsupported quota scope_type")
 )
 
 // ── JSON helpers ──────────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ func newMemoryEnabledAgentsUC(ids ...string) *biz.AgentUsecase {
 	for _, id := range ids {
 		repo.ids[id] = struct{}{}
 	}
-	return biz.NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	return biz.NewAgentUsecase(biz.AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 }
 
 func (r *memoryTestAgentRepo) SearchAgents(context.Context, biz.AgentListQuery) (biz.AgentListResult, error) {
@@ -96,6 +96,9 @@ func (r *memoryTestAgentRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, 
 }
 func (r *memoryTestAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
 	return a, nil
+}
+func (r *memoryTestAgentRepo) ToggleFavorite(context.Context, string) (biz.Agent, error) {
+	return biz.Agent{}, nil
 }
 
 type fakeConsolidationWriter struct {

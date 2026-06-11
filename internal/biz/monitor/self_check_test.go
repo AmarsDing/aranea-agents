@@ -279,6 +279,9 @@ func TestSelfCheckUnhealthyCountMetric(t *testing.T) {
 	scheduler := monitor.NewSelfCheckScheduler(checkers, nil, &mockSelfCheckRepo{}, nil, loggateway.NewNoop())
 	metric := monitor.NewSelfCheckUnhealthyCountMetric(scheduler)
 
+	// RunOnce populates the cached unhealthy count
+	scheduler.RunOnce(context.Background())
+
 	val, err := metric.Evaluate(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

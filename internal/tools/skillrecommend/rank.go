@@ -149,12 +149,11 @@ const (
 //     redistribute to W1 (semantic similarity), preventing "rich get richer"
 //     for failing skills while giving semantic relevance more say.
 //   - No data or provider nil: return default static factors.
-func DynamicRankFactors(provider HealthMetricsProvider, candidates []Candidate) RankFactors {
+func DynamicRankFactors(ctx context.Context, provider HealthMetricsProvider, candidates []Candidate) RankFactors {
 	if provider == nil || len(candidates) == 0 {
 		return DefaultRankFactors()
 	}
 
-	ctx := context.Background()
 	factors := DefaultRankFactors()
 
 	hasData := false

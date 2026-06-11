@@ -2,7 +2,8 @@ package biz
 
 import (
 	"context"
-	"errors"
+
+	"aranea-agents/pkg/apierror"
 )
 
 // DefaultFactBruteForceThreshold is the maximum number of facts below which
@@ -10,7 +11,7 @@ import (
 const DefaultFactBruteForceThreshold = 5000
 
 // ErrL1BudgetOverflow is returned when an L1 field upsert would exceed the task's budget_tokens.
-var ErrL1BudgetOverflow = errors.New("L1 budget overflow: field would exceed task budget_tokens")
+var ErrL1BudgetOverflow = apierror.BadRequest(apierror.DomainMemory, "L1 budget overflow: field would exceed task budget_tokens")
 
 // ValidFieldKinds lists all valid field_kind enum values.
 var ValidFieldKinds = []string{

@@ -12,6 +12,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
+
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/gorilla/mux"
 )
@@ -31,7 +32,7 @@ type ChannelIngress struct {
 	peerDebouncer  biz.PeerDebouncer
 	previewManager biz.TurnPreviewManager
 	concurrentGate biz.ConcurrencyGate
-	dedupeCleanup  func() // stops inflight cleanup goroutine
+	admission      *biz.TurnAdmissionUsecase
 	lg             loggateway.Logger
 }
 
@@ -39,6 +40,9 @@ type ChannelIngress struct {
 // chat is the narrow turn gateway; flowBuffer is the event buffer for flow logging.
 // Accepts biz.ChannelTurnGateway instead of *ChatService so Channel never depends on
 // Chat concrete internals (Phase B1: port-first).
+// deduplicator, peerDebouncer, previewManager, and concurrentGate are injected
+// biz-layer components rather than constructed inline, keeping the service layer
+// free of biz factory calls and enabling test doubles.
 func NewChannelIngress(
 	channels *biz.ChannelUsecase,
 	turnJobs *biz.ChannelTurnJobUsecase,
@@ -48,13 +52,13 @@ func NewChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
+	deduplicator biz.IngressDeduplicator,
+	peerDebouncer biz.PeerDebouncer,
+	previewManager biz.TurnPreviewManager,
+	concurrentGate biz.ConcurrencyGate,
+	admission *biz.TurnAdmissionUsecase,
 	lg loggateway.Logger,
 ) *ChannelIngress {
-	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
-	debouncer := newIngressPeerDebouncer(defaultIngressDebounce, lg)
-	registry := newTurnPreviewRegistry()
-	gate := newChannelConcurrentGate()
-
 	return &ChannelIngress{
 		channels:       channels,
 		turnJobs:       turnJobs,
@@ -66,11 +70,11 @@ func NewChannelIngress(
 		eventBus:       eventBus,
 		lg:             lg,
 		http:           lark.DefaultHTTPClient(),
-		deduplicator:   dedupe,
-		peerDebouncer:  debouncer,
-		previewManager: registry,
-		concurrentGate: gate,
-		dedupeCleanup:  dedupe.stopInflight,
+		deduplicator:   deduplicator,
+		peerDebouncer:  peerDebouncer,
+		previewManager: previewManager,
+		concurrentGate: concurrentGate,
+		admission:      admission,
 	}
 }
 
@@ -328,8 +332,8 @@ func (h *ChannelIngress) Close() {
 	if h.concurrentGate != nil {
 		h.concurrentGate.Close()
 	}
-	if h.dedupeCleanup != nil {
-		h.dedupeCleanup()
+	if h.deduplicator != nil {
+		h.deduplicator.Stop()
 	}
 }
 

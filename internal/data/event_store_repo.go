@@ -38,7 +38,7 @@ func (r *eventStoreRepo) Insert(ctx context.Context, rec biz.EventStoreRecord) e
 		if ent.IsConstraintError(err) {
 			return nil
 		}
-		return apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
+		return entErrToBizErr(err, "EVENT_STORE")
 	}
 	return nil
 }
@@ -61,7 +61,7 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
-		return biz.EventStoreListResult{}, apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
+		return biz.EventStoreListResult{}, entErrToBizErr(err, "EVENT_STORE")
 	}
 	rows, err := query.
 		Order(ent.Asc(eventstore.FieldCreatedAt)).
@@ -69,7 +69,7 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.EventStoreListResult{}, apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
+		return biz.EventStoreListResult{}, entErrToBizErr(err, "EVENT_STORE")
 	}
 	items := make([]biz.EventStoreRecord, 0, len(rows))
 	for _, row := range rows {
@@ -94,7 +94,7 @@ func (r *eventStoreRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) 
 		Where(eventstore.CreatedAtLT(cutoff)).
 		Exec(ctx)
 	if err != nil {
-		return 0, apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
+		return 0, entErrToBizErr(err, "EVENT_STORE")
 	}
 	return int64(n), nil
 }

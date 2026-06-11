@@ -198,7 +198,7 @@ func (e *GraphExecution) SetEvicted() {
 	e.execMu.Unlock()
 }
 
-// SnapshotForPersist returns a shallow copy of the execution safe for
+// SnapshotForPersist returns a deep copy of the execution safe for
 // out-of-lock DB writes. Caller must hold execMu (or RLock) while calling.
 func (e *GraphExecution) SnapshotForPersist() *GraphExecution {
 	snap := &GraphExecution{
@@ -214,10 +214,51 @@ func (e *GraphExecution) SnapshotForPersist() *GraphExecution {
 	}
 	if e.Steps != nil {
 		snap.Steps = make([]GraphStepSnapshot, len(e.Steps))
-		copy(snap.Steps, e.Steps)
+		for i, s := range e.Steps {
+			snap.Steps[i] = GraphStepSnapshot{
+				NodeID:      s.NodeID,
+				StepIndex:   s.StepIndex,
+				InputState:  deepCopyMap(s.InputState),
+				OutputState: deepCopyMap(s.OutputState),
+				Status:      s.Status,
+				Error:       s.Error,
+				Timestamp:   s.Timestamp,
+			}
+		}
 	}
 	snap.InterruptNode = e.InterruptNode
+	if e.CurrentState != nil {
+		snap.CurrentState = deepCopyMap(e.CurrentState)
+	}
 	return snap
+}
+
+// deepCopyMap creates a deep copy of a map[string]any by round-tripping through
+// JSON. This ensures that reference-typed values (slices, nested maps) are not
+// shared between the original and the copy, preventing data races when the
+// snapshot is used for out-of-lock DB writes.
+func deepCopyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	raw, err := json.Marshal(src)
+	if err != nil {
+		// Fallback to shallow copy if serialization fails — better than crashing.
+		out := make(map[string]any, len(src))
+		for k, v := range src {
+			out[k] = v
+		}
+		return out
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		out = make(map[string]any, len(src))
+		for k, v := range src {
+			out[k] = v
+		}
+		return out
+	}
+	return out
 }
 
 func (e *GraphExecution) IsInterrupted() bool {
@@ -242,7 +283,8 @@ type GraphStepSnapshot struct {
 	Timestamp   time.Time
 }
 
-// GraphReader provides read-only access to graph definitions.
+// GraphReader provides read access to graph definitions.
+// Stability:stable
 type GraphReader interface {
 	GetDefinition(ctx context.Context, id string) (*GraphDefinition, error)
 	GetDefinitionByName(ctx context.Context, name string) (*GraphDefinition, error)
@@ -251,6 +293,7 @@ type GraphReader interface {
 }
 
 // GraphWriter provides write access to graph definitions.
+// Stability:stable
 type GraphWriter interface {
 	SaveDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	UpdateDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
@@ -260,6 +303,7 @@ type GraphWriter interface {
 
 // GraphRepo is the composite interface combining read and write operations.
 // Kept for backward compatibility; new code should depend on GraphReader or GraphWriter.
+// Stability:stable
 type GraphRepo interface {
 	GraphReader
 	GraphWriter
@@ -277,6 +321,18 @@ type GraphRunListOption struct {
 	StartedAfter *time.Time
 }
 
+// GraphUsecaseDeps groups the dependencies for GraphUsecase construction.
+// Using a deps struct avoids long parameter lists (CS-B7).
+type GraphUsecaseDeps struct {
+	Repo           GraphRepo
+	RunRepo        GraphRunRepo
+	Factory        GraphBuilderFactory
+	Observer       GraphExecutionObserver
+	CompiledTeam   CompiledTeamRepo
+	Lg             loggateway.Logger
+	GCConfig       GraphGCConfig
+}
+
 // GraphUsecase is the facade that composes definition, execution, and cache
 // sub-usecases. It preserves the original public API for backward compatibility
 // while delegating internally to specialized components.
@@ -286,10 +342,14 @@ type GraphUsecase struct {
 	cacheMgr *GraphCacheManager
 }
 
-func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, compiledTeamRepo CompiledTeamRepo, lg loggateway.Logger) *GraphUsecase {
-	defUC := NewGraphDefinitionUsecase(repo, factory, lg)
-	cacheMgr := NewGraphCacheManager(compiledTeamRepo, defUC, lg)
-	execUC := NewGraphExecutionUsecase(runRepo, factory, observer, cacheMgr, defUC, lg)
+func NewGraphUsecase(d GraphUsecaseDeps) *GraphUsecase {
+	cfg := d.GCConfig
+	if cfg.Interval <= 0 || cfg.ExecutionMaxAge <= 0 || cfg.MaxExecutions <= 0 {
+		cfg = DefaultGraphGCConfig()
+	}
+	defUC := NewGraphDefinitionUsecase(d.Repo, d.Factory, d.Factory, d.Lg)
+	cacheMgr := NewGraphCacheManager(d.CompiledTeam, defUC, d.Lg)
+	execUC := NewGraphExecutionUsecase(d.RunRepo, d.Factory, d.Observer, cacheMgr, defUC, d.Lg, cfg)
 	return &GraphUsecase{
 		defUC:   defUC,
 		execUC:  execUC,
@@ -347,9 +407,21 @@ func ShouldCreateTeamGraphTaskNode(node *NodeDef) bool {
 	}
 }
 
-const gcInterval = 5 * time.Minute
-const executionMaxAge = 30 * time.Minute
-const maxExecutions = 500 // per-node execution cache limit; estimated at ~1KB per execution, ~500KB per node
+// GraphGCConfig controls the graph execution garbage collector.
+type GraphGCConfig struct {
+	Interval        time.Duration
+	ExecutionMaxAge time.Duration
+	MaxExecutions   int
+}
+
+// DefaultGraphGCConfig returns the default GC configuration.
+func DefaultGraphGCConfig() GraphGCConfig {
+	return GraphGCConfig{
+		Interval:        5 * time.Minute,
+		ExecutionMaxAge: 30 * time.Minute,
+		MaxExecutions:   500,
+	}
+}
 
 func (uc *GraphUsecase) CreateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	return uc.defUC.CreateGraph(ctx, def)

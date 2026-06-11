@@ -58,7 +58,7 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID, sessionID 
 	}
 	configJSON, err := json.Marshal(ct)
 	if err != nil {
-		return fmt.Errorf("compiled_team repo save: marshal: %w", err)
+		return entErrToBizErr(err, "COMPILED_TEAM")
 	}
 	id := compiledTeamRowID(teamID, graphID)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -68,7 +68,7 @@ ON CONFLICT(id) DO UPDATE SET team_id = excluded.team_id, graph_id = excluded.gr
 		id, teamID, graphID, sessionID, string(configJSON), now, now,
 	)
 	if err != nil {
-		return fmt.Errorf("compiled_team repo save: %w", err)
+		return entErrToBizErr(err, "COMPILED_TEAM")
 	}
 	return nil
 }
@@ -87,11 +87,11 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apierror.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
 		}
-		return nil, fmt.Errorf("compiled_team repo load: %w", err)
+		return nil, entErrToBizErr(err, "COMPILED_TEAM")
 	}
 	var ct biz.CompiledTeam
 	if err := json.Unmarshal([]byte(configJSON), &ct); err != nil {
-		return nil, fmt.Errorf("compiled_team repo load: unmarshal: %w", err)
+		return nil, entErrToBizErr(err, "COMPILED_TEAM")
 	}
 	return &ct, nil
 }
@@ -124,7 +124,7 @@ func (r *compiledTeamRepo) Delete(ctx context.Context, teamID, graphID string) e
 	id := compiledTeamRowID(strings.TrimSpace(teamID), strings.TrimSpace(graphID))
 	_, err := db.ExecContext(ctx, `DELETE FROM compiled_teams WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("compiled_team repo delete: %w", err)
+		return entErrToBizErr(err, "COMPILED_TEAM")
 	}
 	return nil
 }

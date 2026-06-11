@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/apierror"
 )
 
 type skillInvocationStatsRepo struct {
@@ -30,7 +29,7 @@ WHERE si.agent_id = ? AND COALESCE(NULLIF(si.started_at, ''), si.created_at) >= 
 GROUP BY ps.skill_key`
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, agentID, since.Format(time.RFC3339))
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_STATS")
+		return nil, entErrToBizErr(err, "SKILL_STATS")
 	}
 	defer rows.Close()
 
@@ -41,7 +40,7 @@ GROUP BY ps.skill_key`
 		var successCount int
 		var totalDurationMs int64
 		if err := rows.Scan(&name, &count, &successCount, &totalDurationMs); err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_STATS")
+			return nil, entErrToBizErr(err, "SKILL_STATS")
 		}
 		rate := 0.0
 		if count > 0 {
@@ -59,7 +58,7 @@ GROUP BY ps.skill_key`
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_STATS")
+		return nil, entErrToBizErr(err, "SKILL_STATS")
 	}
 	return result, nil
 }

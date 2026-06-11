@@ -44,14 +44,6 @@ func NewRunGatewayAdapter(r *runtime.RunRegistry) biz.ChatRunGateway {
 	return &runGatewayAdapter{RunRegistry: r}
 }
 
-type sessionLockerAdapter struct {
-	*sessionLockManager
-}
-
-func NewSessionLockerAdapter(m *sessionLockManager) biz.ChatSessionLocker {
-	return &sessionLockerAdapter{sessionLockManager: m}
-}
-
 type pendingQueueAdapter struct {
 	*runtime.PendingMessageQueue
 }
@@ -141,14 +133,14 @@ func NewChatEventPublisher(bus event.Bus) biz.ChatEventPublisher {
 func NewChatUsecaseFromDeps(
 	runs *runtime.RunRegistry,
 	pending *runtime.PendingMessageQueue,
-	locks *sessionLockManager,
+	locks *biz.SessionLockManager,
 	sessions biz.SessionStatePort,
 	bus event.Bus,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
 	uc := biz.NewChatUsecase(
 		NewRunGatewayAdapter(runs),
-		NewSessionLockerAdapter(locks),
+		locks,
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions, lg),
 		NewChatEventPublisher(bus),

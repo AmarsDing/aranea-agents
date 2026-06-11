@@ -40,7 +40,7 @@ func (r *allocationPlanRepo) Create(ctx context.Context, plan *biz.AllocationPla
 
 	allocationsJSON, err := json.Marshal(plan.Allocations)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "ALLOCATION_PLAN")
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
@@ -87,7 +87,7 @@ func (r *allocationPlanRepo) Update(ctx context.Context, plan *biz.AllocationPla
 
 	allocationsJSON, err := json.Marshal(plan.Allocations)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "ALLOCATION_PLAN")
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,

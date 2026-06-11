@@ -32,6 +32,8 @@ const (
 	EngineDAG = biz.EngineDAG
 )
 
+const maxSubgraphDepth = 10
+
 type StateFieldDef = biz.StateFieldDef
 
 type EdgeDef = biz.EdgeDef
@@ -132,12 +134,12 @@ func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildCon
 	} else {
 		rbc = resolvedBuildConfigFromCfg(local)
 	}
-	return buildFromResolved(ctx, rbc, deps, lg)
+	return buildFromResolved(ctx, rbc, deps, lg, 0)
 }
 
 func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	rbc := resolvedBuildConfigFromCfg(cfg)
-	return buildFromResolved(ctx, rbc, deps, lg)
+	return buildFromResolved(ctx, rbc, deps, lg, 0)
 }
 
 // resolvedBuildConfigFromCfg wraps biz-layer defs into trpc-layer defs without resolving
@@ -162,10 +164,13 @@ func resolvedBuildConfigFromCfg(cfg GraphBuildConfig) *resolvedBuildConfig {
 // BuildFromResolved builds a graph from a pre-resolved config.
 // This is the public entry point for callers that construct resolvedBuildConfig directly.
 func BuildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
-	return buildFromResolved(ctx, rbc, deps, lg)
+	return buildFromResolved(ctx, rbc, deps, lg, 0)
 }
 
-func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger, depth int) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	if depth >= maxSubgraphDepth {
+		return nil, nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: subgraph nesting depth exceeds limit (%d)", maxSubgraphDepth))
+	}
 	cfg := rbc.cfg
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -216,7 +221,7 @@ func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 
 	for _, sub := range rbc.subs {
 		subRbc := rbc.subRbcs[sub.ID]
-		subGraph, subAgents, err := buildFromResolved(ctx, subRbc, deps, lg)
+		subGraph, subAgents, err := buildFromResolved(ctx, subRbc, deps, lg, depth+1)
 		if err != nil {
 			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}

@@ -11,39 +11,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func TestTurnPreviewRegistry_replacesPreviousSessionPreview(t *testing.T) {
-	reg := newTurnPreviewRegistry()
-	firstStopped := false
-	secondStopped := false
-	coord1 := &TurnPreviewCoordinator{}
-	coord2 := &TurnPreviewCoordinator{}
-	_ = reg.registerWithCoord("sess-1", coord1, func() { firstStopped = true })
-	stop2 := reg.registerWithCoord("sess-1", coord2, func() { secondStopped = true })
-	if !firstStopped {
-		t.Fatal("previous preview should stop when replaced")
-	}
-	stop2()
-	if !secondStopped {
-		t.Fatal("second stop should run")
-	}
-}
-
-func TestTurnPreviewRegistry_SetRunID(t *testing.T) {
-	reg := newTurnPreviewRegistry()
-	coord := &TurnPreviewCoordinator{}
-	reg.registerWithCoord("sess-1", coord, func() {})
-	reg.SetRunID("sess-1", "run-a")
-	if got := reg.ActiveRunID("sess-1"); got != "run-a" {
-		t.Fatalf("runID=%q", got)
-	}
-	coord.mu.Lock()
-	got := coord.activeRunID
-	coord.mu.Unlock()
-	if got != "run-a" {
-		t.Fatalf("coord runID=%q", got)
-	}
-}
-
 func TestClassifyChannelTurnError_taxonomy(t *testing.T) {
 	if classifyChannelTurnError(turnBusyError()) != biz.ChannelTurnErrBusy {
 		t.Fatal("busy")

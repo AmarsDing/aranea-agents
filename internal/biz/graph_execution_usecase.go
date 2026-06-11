@@ -19,12 +19,13 @@ import (
 type GraphExecutionUsecase struct {
 	cacheMgr     *GraphCacheManager
 	runRepo      GraphRunRepo
-	factory      GraphBuilderFactory
+	factory      GraphRunnerFactory
 	execObserver GraphExecutionObserver
 	taskCoord    GraphTaskCoordinator
 	defProvider  GraphDefinitionProvider
 	mu           sync.RWMutex
 	executions   map[string]*GraphExecution
+	gcConfig     GraphGCConfig
 	gcCancel     chan struct{}
 	lg           loggateway.Logger
 }
@@ -32,12 +33,16 @@ type GraphExecutionUsecase struct {
 // NewGraphExecutionUsecase creates an execution usecase with in-memory execution cache.
 func NewGraphExecutionUsecase(
 	runRepo GraphRunRepo,
-	factory GraphBuilderFactory,
+	factory GraphRunnerFactory,
 	observer GraphExecutionObserver,
 	cacheMgr *GraphCacheManager,
 	defProvider GraphDefinitionProvider,
 	lg loggateway.Logger,
+	gcConfig GraphGCConfig,
 ) *GraphExecutionUsecase {
+	if gcConfig.Interval <= 0 || gcConfig.ExecutionMaxAge <= 0 || gcConfig.MaxExecutions <= 0 {
+		gcConfig = DefaultGraphGCConfig()
+	}
 	uc := &GraphExecutionUsecase{
 		runRepo:      runRepo,
 		factory:      factory,
@@ -45,6 +50,7 @@ func NewGraphExecutionUsecase(
 		cacheMgr:     cacheMgr,
 		defProvider:  defProvider,
 		executions:   make(map[string]*GraphExecution),
+		gcConfig:     gcConfig,
 		lg:           lg,
 	}
 	uc.gcCancel = make(chan struct{})
@@ -71,10 +77,10 @@ func (uc *GraphExecutionUsecase) notifyExecComplete(exec *GraphExecution) {
 	uc.execObserver.OnGraphExecutionComplete(exec)
 }
 
-// evictIfNeeded removes the oldest finished execution if the executions map exceeds maxExecutions.
+// evictIfNeeded removes the oldest finished execution if the executions map exceeds MaxExecutions.
 // Caller must hold uc.mu (write lock). This method reads exec fields under execMu protection.
 func (uc *GraphExecutionUsecase) evictIfNeeded() {
-	if len(uc.executions) < maxExecutions {
+	if len(uc.executions) < uc.gcConfig.MaxExecutions {
 		return
 	}
 	var oldestID string
@@ -124,8 +130,12 @@ func (uc *GraphExecutionUsecase) loadExecution(ctx context.Context, executionID 
 		return nil, ErrNotFound
 	}
 	uc.mu.Lock()
-	uc.evictIfNeeded()
 	uc.executions[executionID] = persisted
+	// Evict after inserting so the newly loaded execution is considered in
+	// the eviction ranking. evictIfNeeded skips Running/WaitingHuman, so
+	// active executions are safe. Terminal executions may be evicted, but
+	// they can always be reloaded from the repo on next access.
+	uc.evictIfNeeded()
 	uc.mu.Unlock()
 	return persisted, nil
 }
@@ -285,7 +295,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		return nil, err
 	}
 	exec.execMu.Lock()
-	if exec.Status != "waiting_human" && exec.Status != "running" {
+	if !ValidateGraphExecTransition(exec.Status, GraphExecStatusRunning) {
 		exec.execMu.Unlock()
 		return nil, ErrGraphInvalidStatus
 	}
@@ -296,20 +306,36 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		exec.LineageID = lineageID
 	}
 
-	if exec.runtime != nil {
-		if err := exec.runtime.Cancel(); err != nil {
+	// Cancel old runtime while still holding the lock to prevent concurrent
+	// Resume from observing a non-terminal status and racing to build a new one.
+	oldRuntime := exec.runtime
+	// Transition status immediately to block concurrent Resume calls.
+	// If BuildAndResume fails below, we roll back to WaitingHuman.
+	exec.Status = GraphExecStatusRunning
+	exec.ctx = context.WithoutCancel(ctx)
+	exec.execMu.Unlock()
+
+	if oldRuntime != nil {
+		if err := oldRuntime.Cancel(); err != nil {
 			uc.lg.Warn("cancel graph runtime on resume", loggateway.Err(err))
 		}
 	}
-	exec.execMu.Unlock()
 
 	ct, err := uc.cacheMgr.BuildConfigForExecution(ctx, exec)
 	if err != nil {
+		// Roll back status on failure.
+		exec.execMu.Lock()
+		exec.Status = GraphExecStatusWaitingHuman
+		exec.execMu.Unlock()
 		return nil, err
 	}
 
 	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
+		// Roll back status on failure.
+		exec.execMu.Lock()
+		exec.Status = GraphExecStatusWaitingHuman
+		exec.execMu.Unlock()
 		e := apierror.Internal("GRAPH", "graph resume failed")
 		e.Cause = err
 		return nil, e
@@ -317,8 +343,6 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 
 	exec.execMu.Lock()
 	exec.runtime = runtime
-	exec.Status = "running"
-	exec.ctx = context.WithoutCancel(ctx)
 	exec.execMu.Unlock()
 	exec.interruptMu.Lock()
 	exec.interrupted = false
@@ -421,14 +445,22 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	}
 
 	var persistSnap *GraphExecution
+	var wasEvicted bool
+	var persistCtx context.Context
 	exec.execMu.Lock()
-	if exec.Status == "running" {
-		exec.Status = "completed"
+	// Only mark as completed if still running and not already in a terminal state
+	// (e.g., cancelled by GC eviction, failed by node error, or interrupted).
+	// If the execution was evicted (GC cancelled the runtime), the channel closes
+	// prematurely and Status may still be "running" — we must not override that
+	// to "completed" since the execution was actually cancelled.
+	if exec.Status == GraphExecStatusRunning && !exec.evicted {
+		exec.Status = GraphExecStatusCompleted
 		now := time.Now()
 		exec.FinishedAt = &now
 	}
 	persistSnap = exec.SnapshotForPersist()
-	wasEvicted := exec.evicted
+	wasEvicted = exec.evicted
+	persistCtx = exec.ctx
 	exec.execMu.Unlock()
 
 	if !wasEvicted {
@@ -437,7 +469,10 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 		uc.executions[execID] = exec
 		uc.mu.Unlock()
 	}
-	if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
+	if persistCtx == nil {
+		persistCtx = context.Background()
+	}
+	if err := uc.runRepo.UpdateRun(persistCtx, persistSnap); err != nil {
 		uc.lg.Warn("consumeRuntimeEvents: UpdateRun failed", loggateway.StepID("graph.record_fail"), loggateway.Str("exec_id", execID), loggateway.Err(err))
 	}
 
@@ -584,7 +619,7 @@ func (uc *GraphExecutionUsecase) EditState(ctx context.Context, executionID stri
 // ---------------------------------------------------------------------------
 
 func (uc *GraphExecutionUsecase) gcLoop() {
-	ticker := time.NewTicker(gcInterval)
+	ticker := time.NewTicker(uc.gcConfig.Interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -628,11 +663,11 @@ func (uc *GraphExecutionUsecase) gc() {
 		if status == "running" || status == "waiting_human" {
 			continue
 		}
-		if finishedAt != nil && now.Sub(*finishedAt) > executionMaxAge {
+		if finishedAt != nil && now.Sub(*finishedAt) > uc.gcConfig.ExecutionMaxAge {
 			exec.SetEvicted()
 			delete(uc.executions, id)
 			uc.cacheMgr.RemoveBuildConfig(id)
-		} else if finishedAt == nil && now.Sub(startedAt) > executionMaxAge {
+		} else if finishedAt == nil && now.Sub(startedAt) > uc.gcConfig.ExecutionMaxAge {
 			if rt != nil {
 				if err := rt.Cancel(); err != nil {
 					uc.lg.Warn("cancel graph runtime on gc eviction", loggateway.Err(err))

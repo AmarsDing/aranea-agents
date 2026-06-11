@@ -36,8 +36,18 @@ type OrchestrationMember struct {
 	Role       string `json:"role"`
 	Name       string `json:"name"`
 	TaskPrompt string `json:"task_prompt,omitempty"`
-	Enabled    bool   `json:"enabled"`
-	SortOrder  int    `json:"sort_order"`
+	// EnabledPtr is the raw JSON value: nil means "not set" (defaults to true
+	// after normalization). Use Enabled() to get the resolved boolean.
+	EnabledPtr *bool `json:"enabled"`
+	SortOrder  int   `json:"sort_order"`
+}
+
+// Enabled returns the resolved enabled state. When EnabledPtr is nil (field
+// absent from JSON), the member is considered enabled by default — this
+// preserves backward compatibility with the *bool semantics used by the
+// original teamDefinition and definitionForUpdate structs.
+func (m OrchestrationMember) Enabled() bool {
+	return m.EnabledPtr == nil || *m.EnabledPtr
 }
 
 type EmbeddedGraphSpec struct {
@@ -151,16 +161,12 @@ func NormalizeOrchestrationSpec(spec *OrchestrationSpec) {
 	if len(spec.Members) == 0 && spec.Graph != nil && len(spec.Graph.Nodes) > 0 {
 		for _, n := range spec.Graph.Nodes {
 			if n.Type == "agent" && strings.TrimSpace(n.AgentID) != "" {
-				enabled := true
-				if n.Enabled != nil {
-					enabled = *n.Enabled
-				}
 				spec.Members = append(spec.Members, OrchestrationMember{
 					AgentID:    n.AgentID,
 					Role:       firstNonEmpty(strings.TrimSpace(n.Role), RoleWorker),
 					Name:       firstNonEmpty(strings.TrimSpace(n.Label), "Agent"),
 					TaskPrompt: strings.TrimSpace(n.TaskPrompt),
-					Enabled:    enabled,
+					EnabledPtr: n.Enabled,
 					SortOrder:  len(spec.Members) + 1,
 				})
 			}

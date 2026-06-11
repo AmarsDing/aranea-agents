@@ -33,7 +33,7 @@ func toProtoOrchestrationSpec(raw string) *v1.OrchestrationSpec {
 			Role:       m.Role,
 			Name:       m.Name,
 			TaskPrompt: m.TaskPrompt,
-			Enabled:    m.Enabled,
+			Enabled:    m.Enabled(),
 			SortOrder:  int32(m.SortOrder),
 		})
 	}
@@ -130,7 +130,7 @@ func fromProtoOrchestrationSpec(pb *v1.OrchestrationSpec) biz.OrchestrationSpec 
 			Role:       m.GetRole(),
 			Name:       m.GetName(),
 			TaskPrompt: m.GetTaskPrompt(),
-			Enabled:    m.GetEnabled(),
+			EnabledPtr: boolPtr(m.GetEnabled()),
 			SortOrder:  int(m.GetSortOrder()),
 		})
 	}

@@ -49,23 +49,25 @@ func TestUpsertGraphStep(t *testing.T) {
 }
 
 func TestEvictIfNeeded(t *testing.T) {
+	cfg := DefaultGraphGCConfig()
 	execUC := &GraphExecutionUsecase{
 		executions: make(map[string]*GraphExecution),
 		cacheMgr:   &GraphCacheManager{teamBuildConfigs: make(map[string]*CompiledTeam)},
+		gcConfig:   cfg,
 	}
 
-	for i := 0; i < maxExecutions; i++ {
+	for i := 0; i < cfg.MaxExecutions; i++ {
 		execUC.executions[string(rune('a'+i%26))+string(rune('0'+i/26))] = &GraphExecution{
 			ID:     string(rune('a' + i%26)),
 			Status: "completed",
 		}
 	}
-	if len(execUC.executions) < maxExecutions {
-		t.Fatalf("setup: expected at least %d executions, got %d", maxExecutions, len(execUC.executions))
+	if len(execUC.executions) < cfg.MaxExecutions {
+		t.Fatalf("setup: expected at least %d executions, got %d", cfg.MaxExecutions, len(execUC.executions))
 	}
 
 	execUC.evictIfNeeded()
-	if len(execUC.executions) >= maxExecutions {
+	if len(execUC.executions) >= cfg.MaxExecutions {
 		t.Fatalf("expected eviction, still have %d executions", len(execUC.executions))
 	}
 }
@@ -74,6 +76,7 @@ func TestEvictIfNeeded_skipsRunning(t *testing.T) {
 	execUC := &GraphExecutionUsecase{
 		executions: make(map[string]*GraphExecution),
 		cacheMgr:   &GraphCacheManager{teamBuildConfigs: make(map[string]*CompiledTeam)},
+		gcConfig:   DefaultGraphGCConfig(),
 	}
 
 	execUC.executions["running-1"] = &GraphExecution{ID: "running-1", Status: "running"}

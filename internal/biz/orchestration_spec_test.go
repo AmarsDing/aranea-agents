@@ -94,8 +94,8 @@ func TestNormalizeBackfillPreservesTaskPromptAndEnabled(t *testing.T) {
 	if spec.Members[0].TaskPrompt != "请审查代码" {
 		t.Fatalf("member.TaskPrompt=%q, want 请审查代码", spec.Members[0].TaskPrompt)
 	}
-	if spec.Members[0].Enabled != false {
-		t.Fatalf("member.Enabled=%v, want false", spec.Members[0].Enabled)
+	if spec.Members[0].Enabled() != false {
+		t.Fatalf("member.Enabled()=%v, want false", spec.Members[0].Enabled())
 	}
 }
 

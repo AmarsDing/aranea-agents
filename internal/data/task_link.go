@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -20,7 +19,7 @@ func (r *taskRepo) SaveLink(ctx context.Context, link *biz.TaskLink) error {
 		SetCreatedAt(link.CreatedAt).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("task link save: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -34,7 +33,7 @@ func (r *taskRepo) DeleteLink(ctx context.Context, parentTaskID, childTaskID str
 		).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("task link delete: %w", err)
+		return entErrToBizErr(err, "TASK")
 	}
 	return nil
 }
@@ -45,7 +44,7 @@ func (r *taskRepo) ListParentLinks(ctx context.Context, childTaskID string) ([]*
 		Where(graphtasklink.ChildTaskIDEQ(childTaskID)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task link list parents: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	return entLinksToBiz(rows), nil
 }
@@ -59,7 +58,7 @@ func (r *taskRepo) ListParentLinksByChildren(ctx context.Context, childTaskIDs [
 		Where(graphtasklink.ChildTaskIDIn(childTaskIDs...)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task link list parents by children: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	return entLinksToBiz(rows), nil
 }
@@ -70,7 +69,7 @@ func (r *taskRepo) ListChildLinks(ctx context.Context, parentTaskID string) ([]*
 		Where(graphtasklink.ParentTaskIDEQ(parentTaskID)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task link list children: %w", err)
+		return nil, entErrToBizErr(err, "TASK")
 	}
 	return entLinksToBiz(rows), nil
 }

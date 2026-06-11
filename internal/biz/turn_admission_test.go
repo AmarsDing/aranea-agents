@@ -97,9 +97,9 @@ func TestTurnAdmissionUsecase_EnforceChatTurnQuotas_firstFailingScope(t *testing
 func TestTurnAdmissionUsecase_EnforceChatTurnQuotas_globalFailure(t *testing.T) {
 	q := &stubQuotaEnforcer{
 		quotaResults: map[string]usage.QuotaCheck{
-			"agent:agent-1":   {Allowed: true},
-			"user:user-1":     {Allowed: true},
-			"global:global":   {Allowed: false, Reason: "global quota exceeded"},
+			"agent:agent-1": {Allowed: true},
+			"user:user-1":   {Allowed: true},
+			"global:global": {Allowed: false, Reason: "global quota exceeded"},
 		},
 	}
 	u := NewTurnAdmissionUsecase(TurnAdmissionUsecaseConfig{Quota: q})
@@ -145,14 +145,14 @@ func TestTurnAdmissionUsecase_EnforceTeamMemberQuotas(t *testing.T) {
 
 func TestTurnAdmissionUsecase_EvaluateContextPressure_nilUsecase(t *testing.T) {
 	var u *TurnAdmissionUsecase
-	if got := u.EvaluateContextPressure(context.Background(), Session{ID: "s"}); got.Pressure {
+	if got := u.EvaluateContextPressure(context.Background(), Session{ID: "s"}, EntryPointWeb); got.Pressure {
 		t.Fatal("nil usecase should not signal pressure")
 	}
 }
 
 func TestTurnAdmissionUsecase_EvaluateContextPressure_emptySession(t *testing.T) {
 	u := NewTurnAdmissionUsecase(TurnAdmissionUsecaseConfig{})
-	if got := u.EvaluateContextPressure(context.Background(), Session{}); got.Pressure {
+	if got := u.EvaluateContextPressure(context.Background(), Session{}, EntryPointWeb); got.Pressure {
 		t.Fatal("empty session should not signal pressure")
 	}
 }
@@ -161,7 +161,7 @@ func TestTurnAdmissionUsecase_EvaluateContextPressure_defaultThreshold(t *testin
 	// No threshold resolver → falls back to DefaultContextAdmissionThreshold.
 	u := NewTurnAdmissionUsecase(TurnAdmissionUsecaseConfig{})
 	sess := Session{ID: "s", AgentID: "a-1", ContextUsedRatio: 0.7}
-	got := u.EvaluateContextPressure(context.Background(), sess)
+	got := u.EvaluateContextPressure(context.Background(), sess, EntryPointWeb)
 	if !got.Pressure {
 		t.Fatalf("ratio 0.7 >= default 0.6, expected pressure=true, got %+v", got)
 	}
@@ -173,7 +173,7 @@ func TestTurnAdmissionUsecase_EvaluateContextPressure_defaultThreshold(t *testin
 func TestTurnAdmissionUsecase_EvaluateContextPressure_belowThreshold(t *testing.T) {
 	u := NewTurnAdmissionUsecase(TurnAdmissionUsecaseConfig{})
 	sess := Session{ID: "s", AgentID: "a-1", ContextUsedRatio: 0.3}
-	got := u.EvaluateContextPressure(context.Background(), sess)
+	got := u.EvaluateContextPressure(context.Background(), sess, EntryPointWeb)
 	if got.Pressure {
 		t.Fatalf("ratio 0.3 below default 0.6, expected pressure=false, got %+v", got)
 	}

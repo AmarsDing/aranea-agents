@@ -50,6 +50,14 @@ func (s *turnJobRepoStub) UpdateAsyncTarget(_ context.Context, id, targetType, t
 func (s *turnJobRepoStub) GetByIdempotency(_ context.Context, channelID, idempotencyKey string) (ChannelTurnJob, error) {
 	return s.jobs[channelID+":"+idempotencyKey], nil
 }
+func (s *turnJobRepoStub) GetByID(_ context.Context, id string) (ChannelTurnJob, error) {
+	for _, job := range s.jobs {
+		if job.ID == id {
+			return job, nil
+		}
+	}
+	return ChannelTurnJob{}, nil
+}
 
 func (s *turnJobRepoStub) ListByChannel(_ context.Context, channelID string, limit int) ([]ChannelTurnJob, error) {
 	limit = NormalizeChannelTurnJobListLimit(limit)

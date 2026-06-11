@@ -2,19 +2,20 @@ package artifact
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 )
 
-// Domain errors for attachment resolution — the Service layer maps these to apierror.
+// Domain errors for attachment resolution.
 var (
 	// ErrArtifactServiceRequired is returned when attachment IDs are provided but the artifact service is nil.
-	ErrArtifactServiceRequired = errors.New("artifact: attachments require artifact service")
+	ErrArtifactServiceRequired = apierror.BadRequest(apierror.DomainArtifact, "artifact: attachments require artifact service")
 	// ErrAttachmentLoadFailed is returned when an attachment ID cannot be loaded.
-	ErrAttachmentLoadFailed = errors.New("artifact: attachment load failed")
+	ErrAttachmentLoadFailed = apierror.BadRequest(apierror.DomainArtifact, "artifact: attachment load failed")
 	// ErrAttachmentWrongSession is returned when an attachment belongs to a different session.
-	ErrAttachmentWrongSession = errors.New("artifact: attachment belongs to another session")
+	ErrAttachmentWrongSession = apierror.BadRequest(apierror.DomainArtifact, "artifact: attachment belongs to another session")
 )
 
 // NormalizeAttachmentIDs trims and drops empty IDs while preserving order.

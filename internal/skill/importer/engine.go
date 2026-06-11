@@ -21,6 +21,10 @@ import (
 
 const MaxZipBytes = 20 * 1024 * 1024
 
+// maxSkillFileBytes caps individual file extraction within a ZIP.
+// Files exceeding this limit are rejected to prevent unbounded memory use.
+const maxSkillFileBytes = 2 * 1024 * 1024
+
 type SkillImportRepo interface {
 	CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error)
 	DeleteSkill(ctx context.Context, id string) error
@@ -37,6 +41,9 @@ type SkillImportJobStore interface {
 	Create(ctx context.Context, job biz.SkillImportJob) error
 	Get(ctx context.Context, jobID string) (*biz.SkillImportJob, error)
 	UpdateStatus(ctx context.Context, jobID string, status string, message string) error
+	// CompareAndSwapStatus atomically transitions a job from expectedStatus to newStatus.
+	// Returns true if the swap succeeded, false if the current status didn't match expectedStatus.
+	CompareAndSwapStatus(ctx context.Context, jobID string, expectedStatus string, newStatus string, message string) (bool, error)
 	UpdateCandidates(ctx context.Context, jobID string, candidates []biz.SkillImportCandidate, conflictGroups []biz.SkillConflictGroup) error
 }
 
@@ -47,9 +54,10 @@ type Engine struct {
 	lg     loggateway.Logger
 	store  SkillImportJobStore // DB persistence layer (nil = memory-only fallback)
 
-	jobsMu sync.RWMutex
-	jobs   map[string]*jobState
-	jobTTL time.Duration
+	jobsMu   sync.RWMutex
+	jobs     map[string]*jobState
+	jobTTL   time.Duration
+	storeOnce sync.Once // protects SetStore from concurrent/late calls
 }
 
 const defaultJobTTL = 2 * time.Hour
@@ -86,9 +94,11 @@ func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, l
 
 // SetStore sets the DB persistence layer. When set, import jobs are
 // persisted to the database so they survive server restarts.
-// NOTE: Must only be called during initialization, before any concurrent access.
+// Protected by sync.Once — second calls are silently ignored.
 func (e *Engine) SetStore(store SkillImportJobStore) {
-	e.store = store
+	e.storeOnce.Do(func() {
+		e.store = store
+	})
 }
 
 func ProvideLLMLister(uc *biz.LlmProviderModelUsecase) llmLister {
@@ -196,7 +206,7 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 	return job.public, nil
 }
 
-func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
+func (e *Engine) GetImportJob(ctx context.Context, jobID string) (biz.SkillImportJob, error) {
 	trimmed := strings.TrimSpace(jobID)
 
 	// Try in-memory cache first (fast path).
@@ -214,20 +224,20 @@ func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
 
 	if job != nil {
 		out := job.public
-		out.StorageRoot = e.resolveRoot(context.Background())
+		out.StorageRoot = e.resolveRoot(ctx)
 		return out, nil
 	}
 
 	// Fallback to DB persistence (survives restarts).
 	if e.store != nil {
-		dbJob, dbErr := e.store.Get(context.Background(), trimmed)
+		dbJob, dbErr := e.store.Get(ctx, trimmed)
 		if dbErr != nil {
 			e.lg.Warn("GetImportJob: DB lookup failed",
 				loggateway.StepID("skill.import.db_lookup"),
 				loggateway.Str("job_id", trimmed),
 				loggateway.Err(dbErr))
 		} else if dbJob != nil {
-			dbJob.StorageRoot = e.resolveRoot(context.Background())
+			dbJob.StorageRoot = e.resolveRoot(ctx)
 			return *dbJob, nil
 		}
 	}
@@ -316,47 +326,79 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	}
 	e.jobsMu.Unlock()
 
+	// When the job is in memory AND persisted to DB, keep both in sync.
+	// Without this, a crash after the in-memory transition but before DB
+	// update would leave the DB at "completed", allowing a duplicate apply.
+	if job != nil && e.store != nil {
+		swapped, casErr := e.store.CompareAndSwapStatus(ctx, trimmed, "completed", "applying", "")
+		if casErr != nil {
+			e.lg.Warn("ApplyImport: DB CAS sync failed, rolling back in-memory state",
+				loggateway.StepID("skill.import.db_cas"),
+				loggateway.Str("job_id", trimmed),
+				loggateway.Err(casErr))
+			// Roll back in-memory state since DB didn't transition.
+			e.jobsMu.Lock()
+			if j, ok := e.jobs[trimmed]; ok {
+				j.public.Status = "completed"
+			}
+			e.jobsMu.Unlock()
+			return biz.SkillImportApplyResult{}, casErr
+		}
+		if !swapped {
+			// DB status is not "completed" — another process already applied it.
+			e.jobsMu.Lock()
+			if j, ok := e.jobs[trimmed]; ok {
+				j.public.Status = "completed" // roll back in-memory
+			}
+			e.jobsMu.Unlock()
+			return biz.SkillImportApplyResult{}, validationError("import job status changed in DB, cannot apply")
+		}
+	}
+
 	if job == nil {
 		// Fallback to DB persistence (job may have survived a restart).
+		// Use CompareAndSwapStatus for atomic CAS — prevents concurrent ApplyImport
+		// calls from both proceeding when the job is only in the DB.
 		if e.store != nil {
-			dbJob, dbErr := e.store.Get(ctx, trimmed)
-			if dbErr != nil {
-				e.lg.Warn("ApplyImport: DB lookup failed",
-					loggateway.StepID("skill.import.db_lookup"),
+			swapped, casErr := e.store.CompareAndSwapStatus(ctx, trimmed, "completed", "applying", "")
+			if casErr != nil {
+				e.lg.Warn("ApplyImport: DB CAS failed",
+					loggateway.StepID("skill.import.db_cas"),
 					loggateway.Str("job_id", trimmed),
-					loggateway.Err(dbErr))
-			} else if dbJob != nil {
-				if dbJob.Status == "applied" {
+					loggateway.Err(casErr))
+				return biz.SkillImportApplyResult{}, casErr
+			}
+			if !swapped {
+				// CAS failed — status is not "completed". Read actual status for error message.
+				dbJob, dbErr := e.store.Get(ctx, trimmed)
+				if dbErr != nil || dbJob == nil {
+					return biz.SkillImportApplyResult{}, ErrImportJobNotFound
+				}
+				switch dbJob.Status {
+				case "applied":
 					return biz.SkillImportApplyResult{}, validationError("import job already applied")
-				}
-				if dbJob.Status == "applying" {
+				case "applying":
 					return biz.SkillImportApplyResult{}, validationError("import job is currently being applied")
+				default:
+					return biz.SkillImportApplyResult{}, validationError("import job is not completed (status: " + dbJob.Status + ")")
 				}
-				if dbJob.Status != "completed" {
-					return biz.SkillImportApplyResult{}, validationError("import job is not completed")
+			}
+			// CAS succeeded — load the full job for processing.
+			dbJob, dbErr := e.store.Get(ctx, trimmed)
+			if dbErr != nil || dbJob == nil {
+				return biz.SkillImportApplyResult{}, ErrImportJobNotFound
+			}
+			job = &jobState{
+				public:     *dbJob,
+				candidates: make(map[string]candidateState),
+				createdAt:  time.Now(),
+			}
+			for _, c := range dbJob.Candidates {
+				cs := candidateState{public: c}
+				if dbJob.TempDir != "" {
+					e.restoreCandidateFiles(dbJob.TempDir, c.CandidateID, &cs)
 				}
-				// CAS in DB: mark as "applying" before proceeding.
-				if casErr := e.store.UpdateStatus(ctx, trimmed, "applying", ""); casErr != nil {
-					return biz.SkillImportApplyResult{}, casErr
-				}
-				// Reconstruct jobState from DB data.
-				job = &jobState{
-					public:     *dbJob,
-					candidates: make(map[string]candidateState),
-					createdAt:  time.Now(),
-				}
-				for _, c := range dbJob.Candidates {
-					cs := candidateState{public: c}
-					// Restore body/files/tags from TempDir if available.
-					// Without this, ApplyImport would create broken/empty skills.
-					if dbJob.TempDir != "" {
-						e.restoreCandidateFiles(dbJob.TempDir, c.CandidateID, &cs)
-					}
-					job.candidates[c.CandidateID] = cs
-				}
-				// If TempDir is missing and candidates lack body/files, the apply
-				// will fail when trying to create skills — which is correct behavior
-				// (fail loudly rather than silently creating broken skills).
+				job.candidates[c.CandidateID] = cs
 			}
 		}
 	}
@@ -400,7 +442,14 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		}
 		e.jobsMu.Unlock()
 		if e.store != nil {
-			_ = e.store.UpdateStatus(context.Background(), trimmed, "completed", "apply failed: "+err.Error())
+			// Use context.Background() so caller cancellation cannot abort the
+			// status rollback — same rationale as compensate() above.
+			if dbErr := e.store.UpdateStatus(context.Background(), trimmed, "completed", "apply failed: "+err.Error()); dbErr != nil {
+				e.lg.Warn("skill.import.partial_err_db_rollback_fail",
+					loggateway.StepID("skill.import.apply"),
+					loggateway.Str("job_id", trimmed),
+					loggateway.Err(dbErr))
+			}
 		}
 		// Return with zero created IDs (compensated away) but preserve skips for diagnostics.
 		return biz.SkillImportApplyResult{
@@ -439,8 +488,10 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	e.jobsMu.Unlock()
 
 	// Update DB status to "applied".
+	// Use context.Background() so caller cancellation cannot leave the DB
+	// stuck at "applying" after all skills have been successfully created.
 	if e.store != nil {
-		if dbErr := e.store.UpdateStatus(ctx, trimmed, "applied", result.Message); dbErr != nil {
+		if dbErr := e.store.UpdateStatus(context.Background(), trimmed, "applied", result.Message); dbErr != nil {
 			e.lg.Warn("ApplyImport: DB status update failed",
 				loggateway.StepID("skill.import.db_update"),
 				loggateway.Str("job_id", trimmed),
@@ -624,12 +675,15 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 		if err != nil {
 			return err
 		}
-		content, err := io.ReadAll(io.LimitReader(rc, 2*1024*1024+1))
-		_ = rc.Close()
+		content, err := io.ReadAll(io.LimitReader(rc, maxSkillFileBytes+1))
+		closeErr := rc.Close()
 		if err != nil {
 			return err
 		}
-		if len(content) > 2*1024*1024 {
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(content) > maxSkillFileBytes {
 			return detailErr(ErrSkillFileTooLarge, "skill file too large: "+name)
 		}
 		dir, relativeName := skillZipGroupPath(name)
@@ -662,7 +716,14 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 	return e.inspectSimilarity(ctx, job, existing)
 }
 
+// maxSimilarityLLMCalls caps the number of LLM similarity comparisons per import.
 const maxSimilarityLLMCalls = 50
+
+// similarityThreshold is the minimum similarity score to flag a conflict group.
+// Scores below this threshold are considered not similar enough to warrant
+// user intervention. The value 0.2 was calibrated against embedding model baselines
+// where unrelated skills typically score 0.0–0.15.
+const similarityThreshold = 0.2
 
 func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing []biz.SkillSimilaritySource) error {
 	if len(existing) == 0 {
@@ -700,7 +761,7 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 			if err != nil {
 				continue
 			}
-			if metrics.SimilarityScore >= 0.2 {
+			if metrics.SimilarityScore >= similarityThreshold {
 				group := biz.SkillConflictGroup{
 					GroupID:                newID(),
 					HighestSimilarityScore: metrics.SimilarityScore,
@@ -763,6 +824,14 @@ func (e *Engine) persistCandidateFiles(job *jobState) {
 	}
 	for cid, cs := range job.candidates {
 		candidateDir := filepath.Join(tempDir, cid)
+		absCandidateDir, err := filepath.Abs(candidateDir)
+		if err != nil {
+			e.lg.Warn("Import: failed to resolve candidate temp dir path",
+				loggateway.StepID("skill.import.temp_dir"),
+				loggateway.Str("candidate_id", cid),
+				loggateway.Err(err))
+			continue
+		}
 		if err := os.MkdirAll(candidateDir, 0o755); err != nil {
 			e.lg.Warn("Import: failed to create candidate temp dir",
 				loggateway.StepID("skill.import.temp_dir"),
@@ -772,6 +841,15 @@ func (e *Engine) persistCandidateFiles(job *jobState) {
 		}
 		// Write all files from the zip.
 		for fname, data := range cs.files {
+			// Zipslip defense: verify the file path stays within candidateDir.
+			if err := ensurePathWithin(absCandidateDir, fname); err != nil {
+				e.lg.Warn("Import: unsafe file path in candidate, skipping",
+					loggateway.StepID("skill.import.temp_dir"),
+					loggateway.Str("candidate_id", cid),
+					loggateway.Str("file", fname),
+					loggateway.Err(err))
+				continue
+			}
 			fpath := filepath.Join(candidateDir, filepath.Clean(fname))
 			if err := os.MkdirAll(filepath.Dir(fpath), 0o755); err != nil {
 				e.lg.Warn("Import: failed to create file parent dir in temp",

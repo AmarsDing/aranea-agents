@@ -67,9 +67,22 @@ type AgentAtomicWriter interface {
 	UpdateAgentAtomic(ctx context.Context, a Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error)
 }
 
-// TODO(debt): AgentRepository has 14+ methods and should be split into narrow sub-interfaces
-// per consumer need (e.g., AgentPositionClearer, AgentCreatorLister, AgentReorderRepo).
-// Current consumers should depend on the minimal sub-interface they need.
+// AgentPositionRepo manages agent ordering and position within departments.
+// Stability:stable
+type AgentPositionRepo interface {
+	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
+	ReorderAgents(ctx context.Context, ids []string) error
+	ClearPositionByDepartment(ctx context.Context, deptID string) (int, error)
+}
+
+// AgentTxRepo provides transactional execution for multi-step agent operations.
+// Stability:stable
+type AgentTxRepo interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// AgentRepository is the composite interface aggregating all narrow agent sub-interfaces.
+// Stability:stable
 type AgentRepository interface {
 	AgentReader
 	AgentWriter
@@ -77,10 +90,8 @@ type AgentRepository interface {
 	AgentRuntimeSettingsRepo
 	AgentPromptFileRepo
 	AgentReferenceChecker
-	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
-	ReorderAgents(ctx context.Context, ids []string) error
-	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
-	ClearPositionByDepartment(ctx context.Context, deptID string) (int, error)
+	AgentPositionRepo
+	AgentTxRepo
 }
 
 // ProviderModelPairValidator validates that a provider+model pair exists in the catalog.
@@ -88,9 +99,31 @@ type ProviderModelPairValidator interface {
 	ValidatePair(ctx context.Context, provider, model string) (bool, string, error)
 }
 
+// AgentUsecaseDeps groups the narrow interface dependencies for AgentUsecase.
+// Using a deps struct avoids long parameter lists (CS-B7) while keeping
+// each dependency as a narrow interface for testability.
+type AgentUsecaseDeps struct {
+	Reader             AgentReader
+	Writer             AgentWriter
+	Settings           AgentRuntimeSettingsRepo
+	Files              AgentPromptFileRepo
+	Position           AgentPositionRepo
+	Tx                 AgentTxRepo
+	Tools              ToolRegistryReader
+	Sys                SystemSettingRepo
+	WebResearchChecker WebResearchReadinessChecker
+	ProviderValidator  ProviderModelPairValidator
+	Lg                 loggateway.Logger
+}
+
 // AgentUsecase is catalog agent CRUD + prompt preview.
 type AgentUsecase struct {
-	repo               AgentRepository
+	reader             AgentReader
+	writer             AgentWriter
+	settings           AgentRuntimeSettingsRepo
+	files              AgentPromptFileRepo
+	position           AgentPositionRepo
+	tx                 AgentTxRepo
 	tools              ToolRegistryReader
 	sys                SystemSettingRepo
 	webResearchChecker WebResearchReadinessChecker
@@ -98,21 +131,25 @@ type AgentUsecase struct {
 	lg                 loggateway.Logger
 }
 
-func NewAgentUsecase(repo AgentRepository, tools ToolRegistryReader, sys SystemSettingRepo, checker WebResearchReadinessChecker, validator ProviderModelPairValidator, lg loggateway.Logger) *AgentUsecase {
-	return &AgentUsecase{repo: repo, tools: tools, sys: sys, webResearchChecker: checker, providerValidator: validator, lg: lg}
+func NewAgentUsecase(d AgentUsecaseDeps) *AgentUsecase {
+	return &AgentUsecase{
+		reader: d.Reader, writer: d.Writer, settings: d.Settings, files: d.Files,
+		position: d.Position, tx: d.Tx, tools: d.Tools, sys: d.Sys,
+		webResearchChecker: d.WebResearchChecker, providerValidator: d.ProviderValidator, lg: d.Lg,
+	}
 }
 
 // ListAgentCreators returns distinct creators for list filter options.
 func (u *AgentUsecase) ListAgentCreators(ctx context.Context) ([]AgentCreator, error) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.position == nil {
 		return nil, nil
 	}
-	return u.repo.ListAgentCreators(ctx)
+	return u.position.ListAgentCreators(ctx)
 }
 
 // List returns a page of agents without per-row hydration (settings/files).
 func (u *AgentUsecase) List(ctx context.Context, q AgentListQuery) (AgentListResult, error) {
-	page, err := u.repo.SearchAgents(ctx, q)
+	page, err := u.reader.SearchAgents(ctx, q)
 	if err != nil {
 		return AgentListResult{}, err
 	}
@@ -123,7 +160,7 @@ func (u *AgentUsecase) List(ctx context.Context, q AgentListQuery) (AgentListRes
 	for i := range page.Items {
 		ids = append(ids, page.Items[i].ID)
 	}
-	extras, err := u.repo.ListExtrasForAgents(ctx, ids)
+	extras, err := u.reader.ListExtrasForAgents(ctx, ids)
 	if err != nil {
 		return AgentListResult{}, err
 	}
@@ -146,7 +183,7 @@ func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey s
 	if !agentKeyPattern.MatchString(agentKey) {
 		return false, "invalid agent_key format", apierror.BadRequest("AGENT_KEY_INVALID", "agent_key must be lowercase letters, digits, and hyphens")
 	}
-	_, err = u.repo.GetAgentByAgentKey(ctx, agentKey)
+	_, err = u.reader.GetAgentByAgentKey(ctx, agentKey)
 	if err == nil {
 		return false, "agent_key already in use", nil
 	}
@@ -162,7 +199,7 @@ func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
 	if err != nil {
 		return Agent{}, err
 	}
-	a, err := u.repo.GetAgentByID(ctx, id)
+	a, err := u.reader.GetAgentByID(ctx, id)
 	if err != nil {
 		if stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, shared.ErrNotFound
@@ -177,7 +214,7 @@ func (u *AgentUsecase) GetByAgentKey(ctx context.Context, agentKey string) (Agen
 	if err != nil {
 		return Agent{}, err
 	}
-	a, err := u.repo.GetAgentByAgentKey(ctx, agentKey)
+	a, err := u.reader.GetAgentByAgentKey(ctx, agentKey)
 	if err != nil {
 		if stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, shared.ErrNotFound
@@ -192,7 +229,7 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 	if agentID == "" {
 		return AgentRuntimeSettings{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
-	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
+	settings, err := u.settings.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
 		if stderrors.Is(err, shared.ErrNotFound) {
 			return DefaultAgentRuntimeSettings(), nil
@@ -210,7 +247,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 // When skipExtras is true, the ListExtrasForAgents query is skipped (suitable for
 // orchestration/build paths that only need settings + files, not list-display fields).
 func (u *AgentUsecase) hydrateWithExtras(ctx context.Context, agent Agent, skipExtras bool) (Agent, error) {
-	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agent.ID)
+	settings, err := u.settings.GetAgentRuntimeSettings(ctx, agent.ID)
 	if err != nil {
 		if !stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, err
@@ -218,7 +255,7 @@ func (u *AgentUsecase) hydrateWithExtras(ctx context.Context, agent Agent, skipE
 		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
 		settings = u.migrateLegacySettings(ctx, agent)
 	}
-	files, err := u.repo.ListAgentPromptFiles(ctx, agent.ID)
+	files, err := u.files.ListAgentPromptFiles(ctx, agent.ID)
 	if err != nil {
 		return Agent{}, err
 	}
@@ -236,7 +273,7 @@ func (u *AgentUsecase) hydrateWithExtras(ctx context.Context, agent Agent, skipE
 	computed = EmbedAgentKindInConfigJSON(computed, agent.AgentKind, agent.A2AProxy, u.lg)
 	agent.ConfigJSON = mergeEvaluationFromLegacy(computed, agent.ConfigJSON, u.lg)
 	if !skipExtras {
-		if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err != nil {
+		if extras, err := u.reader.ListExtrasForAgents(ctx, []string{agent.ID}); err != nil {
 			u.lg.Warn("agent extras query failed, skipping enrichment",
 				loggateway.StepID("agent.hydrate_extras"),
 				loggateway.Str("agent_id", agent.ID),
@@ -271,7 +308,7 @@ func (u *AgentUsecase) BatchHydrateForBuild(ctx context.Context, agents []Agent)
 func (u *AgentUsecase) migrateLegacySettings(ctx context.Context, agent Agent) AgentRuntimeSettings {
 	settings := withSettingDefaults(settingsFromLegacyConfig(agent.ConfigJSON))
 	settings.AgentID = agent.ID
-	migrated, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings)
+	migrated, err := u.settings.UpsertAgentRuntimeSettings(ctx, settings)
 	if err != nil {
 		return settings
 	}
@@ -286,7 +323,7 @@ func (u *AgentUsecase) migrateLegacyFiles(ctx context.Context, agent Agent) []Ag
 	for i := range files {
 		files[i].AgentID = agent.ID
 	}
-	migrated, err := u.repo.ReplaceAgentPromptFiles(ctx, agent.ID, withFileDefaults(files))
+	migrated, err := u.files.ReplaceAgentPromptFiles(ctx, agent.ID, withFileDefaults(files))
 	if err != nil {
 		return withFileDefaults(files)
 	}
@@ -399,22 +436,24 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	in.ConfigJSON = ""
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
-		in.Status = "active"
+		in.Status = string(AgentStatusActive)
+	} else if err := ValidateAgentStatus(in.Status); err != nil {
+		return Agent{}, err
 	}
 	if strings.TrimSpace(in.CreatedBy) == "" {
 		in.CreatedBy = AgentCreatedByFromContext(ctx)
 	}
-	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
-		if _, err := u.repo.CreateAgent(txCtx, in); err != nil {
+	if err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.writer.CreateAgent(txCtx, in); err != nil {
 			if isAgentKeyDuplicate(err) {
 				return apierror.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
 			}
 			return err
 		}
-		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
+		if _, err := u.settings.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
 			return err
 		}
-		if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, in.ID, files); err != nil {
+		if _, err := u.files.ReplaceAgentPromptFiles(txCtx, in.ID, files); err != nil {
 			return err
 		}
 		return nil
@@ -466,14 +505,14 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	HydrateAgentKind(&merged)
 	// DEV-10 FIXED: ConfigJSON is no longer written; cleared before persisting.
 	merged.ConfigJSON = ""
-	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
-		if _, err := u.repo.UpdateAgent(txCtx, merged); err != nil {
+	if err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.writer.UpdateAgent(txCtx, merged); err != nil {
 			return err
 		}
-		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
+		if _, err := u.settings.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
 			return err
 		}
-		if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, id, files); err != nil {
+		if _, err := u.files.ReplaceAgentPromptFiles(txCtx, id, files); err != nil {
 			return err
 		}
 		return nil
@@ -505,7 +544,7 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	if err := canDeleteAgent(current); err != nil {
 		return err
 	}
-	return u.repo.DeleteAgent(ctx, id)
+	return u.writer.DeleteAgent(ctx, id)
 }
 
 // canDeleteAgent is the unified delete-permission check used by both
@@ -534,7 +573,7 @@ func (u *AgentUsecase) ForceDelete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return u.repo.DeleteAgent(ctx, id)
+	return u.writer.DeleteAgent(ctx, id)
 }
 
 // ToggleFavorite flips the is_favorite flag on an agent.
@@ -544,7 +583,7 @@ func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, er
 	if err != nil {
 		return Agent{}, err
 	}
-	updated, err := u.repo.ToggleFavorite(ctx, id)
+	updated, err := u.writer.ToggleFavorite(ctx, id)
 	if err != nil {
 		if stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, apierror.NotFound("AGENT", "agent not found")
@@ -577,7 +616,7 @@ func (u *AgentUsecase) CreatePromptFile(ctx context.Context, f AgentPromptFile) 
 	if _, err := u.Get(ctx, f.AgentID); err != nil {
 		return AgentPromptFile{}, err
 	}
-	created, err := u.repo.CreateAgentPromptFile(ctx, f)
+	created, err := u.files.CreateAgentPromptFile(ctx, f)
 	if err != nil {
 		return AgentPromptFile{}, err
 	}
@@ -594,7 +633,7 @@ func (u *AgentUsecase) UpdatePromptFile(ctx context.Context, f AgentPromptFile) 
 	if _, err := u.Get(ctx, f.AgentID); err != nil {
 		return AgentPromptFile{}, err
 	}
-	updated, err := u.repo.UpdateAgentPromptFile(ctx, f)
+	updated, err := u.files.UpdateAgentPromptFile(ctx, f)
 	if err != nil {
 		return AgentPromptFile{}, err
 	}
@@ -611,14 +650,14 @@ func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string)
 	if _, err := u.Get(ctx, agentID); err != nil {
 		return err
 	}
-	if err := u.repo.DeleteAgentPromptFile(ctx, agentID, id); err != nil {
+	if err := u.files.DeleteAgentPromptFile(ctx, agentID, id); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (u *AgentUsecase) ReorderAgents(ctx context.Context, ids []string) error {
-	return u.repo.ReorderAgents(ctx, ids)
+	return u.position.ReorderAgents(ctx, ids)
 }
 
 // EstimateTokens returns an approximate token count for all prompt files of an agent.
@@ -635,11 +674,11 @@ func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (File
 }
 
 func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string, error) {
-	a, err := u.repo.GetAgentByID(ctx, id)
+	a, err := u.reader.GetAgentByID(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	settings, err := u.repo.GetAgentRuntimeSettings(ctx, id)
+	settings, err := u.settings.GetAgentRuntimeSettings(ctx, id)
 	if err != nil {
 		if !stderrors.Is(err, shared.ErrNotFound) {
 			return "", err
@@ -647,7 +686,7 @@ func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string
 		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
 		settings.AgentID = id
 	}
-	files, err := u.repo.ListAgentPromptFiles(ctx, id)
+	files, err := u.files.ListAgentPromptFiles(ctx, id)
 	if err != nil {
 		return "", err
 	}
@@ -752,7 +791,7 @@ func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, err
 	if agent.AgentKey == "" {
 		return Agent{}, apierror.BadRequest("AGENT", "agent_key is required for upsert")
 	}
-	existing, err := u.repo.GetAgentByAgentKey(ctx, agent.AgentKey)
+	existing, err := u.reader.GetAgentByAgentKey(ctx, agent.AgentKey)
 	if err == nil {
 		// 已存在 → 更新
 		agent.ID = existing.ID
@@ -782,7 +821,9 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 		agent.ID = newAgentCatalogID()
 	}
 	if agent.Status == "" {
-		agent.Status = "active"
+		agent.Status = string(AgentStatusActive)
+	} else if err := ValidateAgentStatus(agent.Status); err != nil {
+		return Agent{}, err
 	}
 
 	// Settings
@@ -810,18 +851,18 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 	// DEV-10 FIXED: ConfigJSON is no longer written; cleared before persisting.
 	agent.ConfigJSON = ""
 
-	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
-		if _, err := u.repo.CreateAgent(txCtx, agent); err != nil {
+	if err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.writer.CreateAgent(txCtx, agent); err != nil {
 			if isAgentKeyDuplicate(err) {
 				return apierror.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
 			}
 			return err
 		}
-		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, s); err != nil {
+		if _, err := u.settings.UpsertAgentRuntimeSettings(txCtx, s); err != nil {
 			return err
 		}
 		if len(files) > 0 {
-			if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, agent.ID, files); err != nil {
+			if _, err := u.files.ReplaceAgentPromptFiles(txCtx, agent.ID, files); err != nil {
 				return err
 			}
 		}
@@ -845,11 +886,16 @@ type AgentBatchUpdateInput struct {
 
 // BatchUpdateAgents applies status changes or deletes for many agents inside a transaction.
 func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdateInput) (int, error) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.tx == nil {
 		return 0, apierror.Internal("AGENT", "agent repository not configured")
 	}
+	if st := strings.TrimSpace(in.Status); st != "" {
+		if err := ValidateAgentStatus(st); err != nil {
+			return 0, err
+		}
+	}
 	var n int
-	err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
+	err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
 		for _, id := range in.IDs {
 			id = strings.TrimSpace(id)
 			if id == "" {
@@ -857,26 +903,26 @@ func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdat
 			}
 			if in.Delete {
 				// Permission check: unified with single Delete via canDeleteAgent
-				a, err := u.repo.GetAgentByID(txCtx, id)
+				a, err := u.reader.GetAgentByID(txCtx, id)
 				if err != nil {
 					return err
 				}
 				if err := canDeleteAgent(a); err != nil {
 					return err
 				}
-				if err := u.repo.DeleteAgent(txCtx, id); err != nil {
+				if err := u.writer.DeleteAgent(txCtx, id); err != nil {
 					return err
 				}
 				n++
 				continue
 			}
 			if st := strings.TrimSpace(in.Status); st != "" {
-				a, err := u.repo.GetAgentByID(txCtx, id)
+				a, err := u.reader.GetAgentByID(txCtx, id)
 				if err != nil {
 					return err
 				}
 				a.Status = st
-				if _, err := u.repo.UpdateAgent(txCtx, a); err != nil {
+				if _, err := u.writer.UpdateAgent(txCtx, a); err != nil {
 					return err
 				}
 				n++

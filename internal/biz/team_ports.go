@@ -41,6 +41,50 @@ type TeamTurnResult struct {
 // internal/service imported concrete types from internal/team and
 // internal/runtime. Service layer must depend only on biz interfaces.
 
+// AwaitReplyFunc is the biz-level signature for the await-hook callback.
+// It mirrors tools/serviceawaitreply.ReplyFunc without importing that package.
+type AwaitReplyFunc func(ctx context.Context) (reply string, err error)
+
+// AwaitHookProvider creates an AwaitReplyFunc for a given session/run pair.
+type AwaitHookProvider func(runCtx context.Context, sessionID, runID string) AwaitReplyFunc
+
+// TeamMediatorPort is the biz-level port for the team run mediator.
+// It abstracts the circular-dependency-breaking mediator between Runner
+// and TeamGraphRunCoordinator, without importing internal/team types.
+//
+// Stability:evolving
+type TeamMediatorPort interface {
+	// SetFinisher wires the finisher that persists graph run steps and
+	// finalizes team runs. The finisher is typically *team.Runner.
+	SetFinisher(finisher TeamGraphRunFinisherPort)
+}
+
+// TeamGraphRunFinisherPort is the biz-level port for the graph run finisher.
+// It abstracts the step persistence and team run finalization logic that
+// team.Runner provides to the coordinator via the mediator.
+//
+// Stability:evolving
+type TeamGraphRunFinisherPort interface {
+	// SetMediator wires the mediator that breaks the circular dependency
+	// between Runner and TeamGraphRunCoordinator.
+	SetMediator(mediator TeamMediatorPort)
+
+	// SetAwaitHookProvider wires the await-hook callback factory.
+	SetAwaitHookProvider(fn AwaitHookProvider)
+}
+
+// TeamGraphCoordPort is the biz-level port for the team graph run coordinator.
+// It abstracts the coordinator that manages graph execution steps.
+//
+// Stability:evolving
+type TeamGraphCoordPort interface {
+	// SetFinisher wires the finisher (typically the mediator) to the coordinator.
+	SetFinisher(finisher TeamMediatorPort)
+
+	// RecoverSessions recovers in-flight graph executions after restart.
+	RecoverSessions(ctx context.Context)
+}
+
 // TeamTurnRunnerPort is the biz-level port for the team turn runner.
 // TeamService depends on this instead of *team.Runner.
 //
@@ -48,6 +92,16 @@ type TeamTurnResult struct {
 type TeamTurnRunnerPort interface {
 	// RunTurnFromInput executes one user turn for a team session.
 	RunTurnFromInput(ctx context.Context, sess Session, input TurnInput) (ChatMessage, ChatMessage, error)
+}
+
+// TeamRunnerWirePort combines TeamTurnRunnerPort with runtime wiring methods.
+// ChatOrchestrator depends on this instead of *team.Runner, breaking the
+// direct dependency on the concrete team.Runner type.
+//
+// Stability:evolving
+type TeamRunnerWirePort interface {
+	TeamTurnRunnerPort
+	TeamGraphRunFinisherPort
 }
 
 // RunRegistryPort is the biz-level port for the runtime run registry.

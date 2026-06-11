@@ -3,10 +3,10 @@ package data
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 type channelTurnJobRepo struct {
@@ -53,7 +53,7 @@ func queryChannelTurnJob(ctx context.Context, db execer, where string, args ...a
 func (r *channelTurnJobRepo) Create(ctx context.Context, job biz.ChannelTurnJob) (string, error) {
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return "", errors.New("channel turn job: repository unavailable")
+		return "", apierror.Internal("CHANNEL_TURN_JOB", "repository unavailable")
 	}
 	channelID := strings.TrimSpace(job.ChannelID)
 	idempotency := strings.TrimSpace(job.IdempotencyKey)
@@ -109,7 +109,7 @@ ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
 func (r *channelTurnJobRepo) UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return errors.New("channel turn job: repository unavailable")
+		return apierror.Internal("CHANNEL_TURN_JOB", "repository unavailable")
 	}
 	if strings.TrimSpace(id) == "" {
 		return nil
@@ -142,7 +142,7 @@ WHERE id=?`,
 func (r *channelTurnJobRepo) UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error {
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return errors.New("channel turn job: repository unavailable")
+		return apierror.Internal("CHANNEL_TURN_JOB", "repository unavailable")
 	}
 	if strings.TrimSpace(id) == "" {
 		return nil
@@ -172,6 +172,17 @@ func (r *channelTurnJobRepo) GetByIdempotency(ctx context.Context, channelID, id
 	}
 	return queryChannelTurnJob(ctx, db, `WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`,
 		strings.TrimSpace(channelID), strings.TrimSpace(idempotencyKey))
+}
+
+func (r *channelTurnJobRepo) GetByID(ctx context.Context, id string) (biz.ChannelTurnJob, error) {
+	if r == nil || r.data == nil {
+		return biz.ChannelTurnJob{}, sql.ErrNoRows
+	}
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return biz.ChannelTurnJob{}, sql.ErrNoRows
+	}
+	return queryChannelTurnJob(ctx, db, `WHERE id = ? LIMIT 1`, strings.TrimSpace(id))
 }
 
 func (r *channelTurnJobRepo) ListByChannel(ctx context.Context, channelID string, limit int) ([]biz.ChannelTurnJob, error) {

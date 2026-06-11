@@ -44,6 +44,7 @@ type BuildOrchestrationGraphOutput struct {
 	NodeCount         int                  `json:"node_count"`
 	EdgeCount         int                  `json:"edge_count"`
 	VerificationNodes []string             `json:"verification_nodes"`
+	Warnings          []string             `json:"warnings,omitempty"`
 }
 
 // GraphBuilderPort defines the interface for executing built graphs.
@@ -60,7 +61,7 @@ func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.Func
 				return BuildOrchestrationGraphOutput{}, kerrors.BadRequest("ORCHESTRATOR", "at least one agent is required")
 			}
 
-			config := BuildGraphConfig(input)
+			config, warnings := BuildGraphConfig(input)
 			verificationNodes := injectVerificationNodes(&config, input.Mode)
 
 			out := BuildOrchestrationGraphOutput{
@@ -68,6 +69,7 @@ func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.Func
 				NodeCount:         len(config.Nodes),
 				EdgeCount:         len(config.Edges),
 				VerificationNodes: verificationNodes,
+				Warnings:          warnings,
 			}
 
 			// Only execute the graph if a builder implementation is available.
@@ -87,9 +89,11 @@ func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.Func
 }
 
 // BuildGraphConfig generates a GraphBuildConfig from the input specification.
-func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
+// It returns the config and a list of warnings (e.g., cycle detection fallback).
+func BuildGraphConfig(input BuildOrchestrationGraphInput) (biz.GraphBuildConfig, []string) {
 	var nodes []biz.NodeDef
 	var edges []biz.EdgeDef
+	var warnings []string
 
 	entryNode := "entry"
 	nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: biz.NodeTypeFunction})
@@ -97,6 +101,7 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
 	buildDependencyEdges(&edges, entryNode, input.Agents, agentKeys)
 
 	if hasCycle(nodes, edges) {
+		warnings = append(warnings, "cycle detected in dependency graph; falling back to sequential chain")
 		buildSequentialChainEdges(&edges, entryNode, input.Agents)
 	}
 
@@ -124,7 +129,7 @@ func BuildGraphConfig(input BuildOrchestrationGraphInput) biz.GraphBuildConfig {
 			{Name: "task_description", Reducer: biz.ReducerDefault},
 			{Name: "agent_results", Reducer: biz.ReducerMerge},
 		},
-	}
+	}, warnings
 }
 
 // buildAgentNodes creates agent nodes and returns the set of valid agent keys.

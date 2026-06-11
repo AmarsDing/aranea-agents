@@ -91,7 +91,7 @@ func (r *Runner) lookupAgent(ctx context.Context, id string) (biz.Agent, error) 
 		return r.td.ReadDeps.AgentsUC.Get(ctx, id)
 	}
 	if r.td.ReadDeps.Agents != nil && r.td.ReadDeps.Tools != nil {
-		return biz.NewAgentUsecase(r.td.ReadDeps.Agents, r.td.ReadDeps.Tools, nil, nil, nil, nil).Get(ctx, id)
+		return biz.NewAgentUsecase(biz.AgentUsecaseDeps{Reader: r.td.ReadDeps.Agents, Writer: r.td.ReadDeps.Agents, Settings: r.td.ReadDeps.Agents, Files: r.td.ReadDeps.Agents, Position: r.td.ReadDeps.Agents, Tx: r.td.ReadDeps.Agents, Tools: r.td.ReadDeps.Tools}).Get(ctx, id)
 	}
 	return r.td.ReadDeps.Agents.GetAgentByID(ctx, id)
 }

@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/modelpricingrule"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -211,7 +211,7 @@ func (r *llmProviderModelRepo) UpdateProviderModelStatus(ctx context.Context, id
 
 func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule biz.ModelPricingRule) error {
 	if strings.TrimSpace(rule.ProviderCode) == "" || strings.TrimSpace(rule.ModelAPIID) == "" {
-		return errors.New("provider_code and model_api_id are required")
+		return apierror.BadRequest("LLM_PROVIDER_MODEL", "provider_code and model_api_id are required")
 	}
 	now := nowRFC3339()
 	if rule.Currency == "" {

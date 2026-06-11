@@ -21,6 +21,21 @@ const (
 	ChannelAsyncJobWatchMax = 24 * time.Hour
 )
 
+// ChannelTurnJob transition events.
+const (
+	JobEventStart       = "start"       // accepted -> running
+	JobEventQueue       = "queue"       // accepted -> queued
+	JobEventDequeue     = "dequeue"     // queued -> running
+	JobEventComplete    = "complete"    // running -> completed
+	JobEventFail        = "fail"        // running -> failed
+	JobEventTimeout     = "timeout"     // running -> timeout
+	JobEventCancel      = "cancel"      // accepted/running/queued -> cancelled
+	JobEventAsyncQueue  = "async_queue" // accepted/running -> async_queued
+	JobEventAsyncStart  = "async_start" // async_queued -> running
+	JobEventAsyncFail   = "async_fail"  // async_queued -> failed
+	JobEventAsyncCancel = "async_cancel" // async_queued -> cancelled
+)
+
 // ChannelTurnJob tracks a single Channel inbound turn lifecycle (LT-07).
 type ChannelTurnJob struct {
 	ID               string
@@ -45,12 +60,14 @@ type ChannelTurnJob struct {
 }
 
 // ChannelTurnJobRepo persists channel turn jobs.
+// Stability:evolving
 type ChannelTurnJobRepo interface {
 	Create(ctx context.Context, job ChannelTurnJob) (string, error)
 	UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error
 	UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error
+	GetByID(ctx context.Context, id string) (ChannelTurnJob, error)
 	GetByIdempotency(ctx context.Context, channelID, idempotencyKey string) (ChannelTurnJob, error)
-  ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error)
+	ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error)
 	ListFiltered(ctx context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error)
 }
 

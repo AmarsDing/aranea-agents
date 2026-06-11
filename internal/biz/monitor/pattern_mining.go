@@ -73,24 +73,37 @@ func (uc *PatternMiningUsecase) Mine(ctx context.Context) (PatternMiningResult, 
 		return PatternMiningResult{}, apierror.Internal("MONITOR", "PatternMiningUsecase is nil")
 	}
 
-	// Step 1: Read applied heal records
-	result, err := uc.healRepo.ListHealRecords(ctx, HealRecordQuery{
-		Status: string(HealStatusApplied),
-		Limit:  1000,
-	})
+	// Step 1: Read ALL applied and failed heal records via pagination.
+	// Using pagination instead of a fixed Limit ensures accurate counts —
+	// a fixed Limit:1000 would silently truncate records, causing
+	// SuccessCount/FailCount to be understated and auto-disable logic to be unreliable.
+	appliedRecords, err := uc.fetchAllHealRecords(ctx, HealStatusApplied)
 	if err != nil {
-		uc.lg.Error("PatternMining: failed to list heal records",
+		uc.lg.Error("PatternMining: failed to list applied heal records",
 			loggateway.StepID("monitor.pattern_mining_list_fail"),
 			loggateway.Err(err))
 		return PatternMiningResult{}, err
 	}
 
-	if len(result.Items) == 0 {
+	failedRecords, err := uc.fetchAllHealRecords(ctx, HealStatusFailed)
+	if err != nil {
+		uc.lg.Error("PatternMining: failed to list failed heal records",
+			loggateway.StepID("monitor.pattern_mining_list_fail"),
+			loggateway.Err(err))
+		return PatternMiningResult{}, err
+	}
+
+	// Merge applied and failed records for clustering
+	allRecords := make([]HealRecord, 0, len(appliedRecords)+len(failedRecords))
+	allRecords = append(allRecords, appliedRecords...)
+	allRecords = append(allRecords, failedRecords...)
+
+	if len(allRecords) == 0 {
 		return PatternMiningResult{}, nil
 	}
 
 	// Step 2: Cluster by error_code + normalized stack_trace
-	clusters := uc.clusterRecords(result.Items)
+	clusters := uc.clusterRecords(allRecords)
 
 	// Step 3: Process each cluster
 	var miningResult PatternMiningResult
@@ -145,13 +158,39 @@ func (uc *PatternMiningUsecase) Mine(ctx context.Context) (PatternMiningResult, 
 
 	uc.lg.Info("PatternMining: mining cycle complete",
 		loggateway.StepID("monitor.pattern_mining_done"),
-		loggateway.Int("records_analyzed", len(result.Items)),
+		loggateway.Int("records_analyzed", len(allRecords)),
 		loggateway.Int("clusters", miningResult.ClustersAnalyzed),
 		loggateway.Int("created", miningResult.PatternsCreated),
 		loggateway.Int("updated", miningResult.PatternsUpdated),
 		loggateway.Int("deactivated", miningResult.PatternsDeactivated))
 
 	return miningResult, nil
+}
+
+// fetchAllHealRecords paginates through all heal records of a given status.
+// This avoids count inaccuracy from Limit truncation — a single query with
+// Limit:1000 silently drops records beyond 1000, causing SuccessCount/FailCount
+// to be understated and auto-disable logic to be unreliable.
+func (uc *PatternMiningUsecase) fetchAllHealRecords(ctx context.Context, status HealStatus) ([]HealRecord, error) {
+	const pageSize = 500
+	var allRecords []HealRecord
+	offset := 0
+	for {
+		result, err := uc.healRepo.ListHealRecords(ctx, HealRecordQuery{
+			Status: string(status),
+			Limit:  pageSize,
+			Offset: offset,
+		})
+		if err != nil {
+			return allRecords, err
+		}
+		allRecords = append(allRecords, result.Items...)
+		if len(result.Items) < pageSize {
+			break
+		}
+		offset += pageSize
+	}
+	return allRecords, nil
 }
 
 // failureCluster groups HealRecords by error_code and normalized stack trace.
@@ -221,10 +260,15 @@ func (uc *PatternMiningUsecase) createNewPattern(cluster *failureCluster, hash s
 }
 
 // updateExistingPattern updates an existing FailurePattern with new cluster data.
+//
+// IMPORTANT: The cluster contains ALL matching records (not just new ones), so we
+// REPLACE the counts rather than accumulate. The previous implementation incorrectly
+// added cluster counts on top of existing counts, causing counts to grow unboundedly
+// with each mining cycle (same records counted multiple times).
 func (uc *PatternMiningUsecase) updateExistingPattern(existing *FailurePattern, cluster *failureCluster) FailurePattern {
 	updated := *existing
-	updated.SuccessCount = existing.SuccessCount + len(cluster.appliedRecords)
-	updated.FailCount = existing.FailCount + len(cluster.failedRecords)
+	updated.SuccessCount = len(cluster.appliedRecords)
+	updated.FailCount = len(cluster.failedRecords)
 	updated.Version = existing.Version + 1
 	updated.UpdatedAt = time.Now().UTC()
 
@@ -234,7 +278,6 @@ func (uc *PatternMiningUsecase) updateExistingPattern(existing *FailurePattern, 
 	}
 
 	// Auto-disable: fail_count > success_count * 2
-	// This checks the total (existing + new) counts
 	if updated.FailCount > updated.SuccessCount*PatternMiningAutoDisableRatio {
 		updated.IsActive = false
 	}

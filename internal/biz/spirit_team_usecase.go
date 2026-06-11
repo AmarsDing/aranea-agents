@@ -56,8 +56,6 @@ type SpiritTeamParams struct {
 	CrossDeptMemberAgentIDs []string // agent IDs from other departments requiring borrow approval
 }
 
-var ErrNoCompletedTeams = apierror.BadRequest("SPIRIT", "no completed teams to synthesize")
-
 type SpiritTeamResult struct {
 	Team    Team
 	Session Session

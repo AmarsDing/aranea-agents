@@ -77,7 +77,7 @@ func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	repo := &stubAgentRepo{
 		agent: Agent{ID: "agent-1", Kind: "system_builtin"},
 	}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "agent-1")
 	if err == nil {
 		t.Fatal("expected error when deleting system_builtin agent")
@@ -99,7 +99,7 @@ func TestAgentUsecase_DeleteAllowsUserAgent(t *testing.T) {
 	repo := &stubAgentRepo{
 		agent: Agent{ID: "agent-2", Source: "user"},
 	}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "agent-2")
 	if err != nil {
 		t.Fatalf("expected no error when deleting user agent, got %v", err)
@@ -111,7 +111,7 @@ func TestAgentUsecase_DeleteAllowsEcosystemPresetAgent(t *testing.T) {
 	repo := &stubAgentRepo{
 		agent: Agent{ID: "agent-3", Kind: "ecosystem_preset"},
 	}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "agent-3")
 	if err != nil {
 		t.Fatalf("expected no error when deleting ecosystem_preset agent, got %v", err)
@@ -123,7 +123,7 @@ func TestAgentUsecase_DeleteRejectsReadonlyAgent(t *testing.T) {
 	repo := &stubAgentRepo{
 		agent: Agent{ID: "agent-4", Kind: "ecosystem_preset", Readonly: true},
 	}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "agent-4")
 	if err == nil {
 		t.Fatal("expected error when deleting readonly agent")
@@ -147,7 +147,7 @@ func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 			ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil, loggateway.NewNoop()),
 		},
 	}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	_, err := uc.Update(context.Background(), "agent-1", Agent{AgentKind: AgentKindA2AProxy})
 	if err == nil {
 		t.Fatal("expected error")

@@ -668,16 +668,12 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		if err != nil {
 			return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_MEMBER", "Team %s 成员 %s 的 agent_key 未找到: %s", spec.Key, m.AgentKey, err.Error())
 		}
-		enabled := true
-		if m.Enabled != nil {
-			enabled = *m.Enabled
-		}
 		ospec.Members = append(ospec.Members, biz.OrchestrationMember{
 			AgentID:    agentID,
 			Role:       m.Role,
 			Name:       m.Name,
 			TaskPrompt: m.TaskPrompt,
-			Enabled:    enabled,
+			EnabledPtr: m.Enabled,
 			SortOrder:  m.SortOrder,
 		})
 	}
@@ -727,16 +723,12 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	if len(ospec.Members) == 0 && ospec.Graph != nil && len(ospec.Graph.Nodes) > 0 {
 		for _, n := range ospec.Graph.Nodes {
 			if n.Type == "agent" && strings.TrimSpace(n.AgentID) != "" {
-				enabled := true
-				if n.Enabled != nil {
-					enabled = *n.Enabled
-				}
 				ospec.Members = append(ospec.Members, biz.OrchestrationMember{
 					AgentID:    n.AgentID,
 					Role:       firstNonEmpty(strings.TrimSpace(n.Role), biz.RoleWorker),
 					Name:       firstNonEmpty(strings.TrimSpace(n.Label), "Agent"),
 					TaskPrompt: strings.TrimSpace(n.TaskPrompt),
-					Enabled:    enabled,
+					EnabledPtr: n.Enabled,
 					SortOrder:  len(ospec.Members) + 1,
 				})
 			}

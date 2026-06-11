@@ -68,7 +68,7 @@ func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID strin
 func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeApplyParams) (*biz.SkillMergeResult, error) {
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
+		return nil, entErrToBizErr(err, "SKILL")
 	}
 	defer func() {
 		if err != nil {
@@ -98,7 +98,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 		SetUpdatedAt(now).
 		Save(ctx)
 	if vErr != nil {
-		return nil, fmt.Errorf("create version: %w", vErr)
+		return nil, entErrToBizErr(vErr, "SKILL")
 	}
 
 	// 2. 更新目标 Skill 的 metadata（tags）
@@ -107,13 +107,13 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 		Where(platformskill.IDEQ(params.TargetID)).
 		Only(ctx)
 	if tErr != nil {
-		return nil, fmt.Errorf("query target: %w", tErr)
+		return nil, entErrToBizErr(tErr, "SKILL")
 	}
 	md := parseSkillMetadata(r.lg, target.MetadataJSON)
 	md.Tags = stringSliceToSkillTags(params.FusedTags)
 	metaJSON, jErr := json.Marshal(md)
 	if jErr != nil {
-		return nil, fmt.Errorf("marshal metadata: %w", jErr)
+		return nil, entErrToBizErr(jErr, "SKILL")
 	}
 
 	_, uErr := tx.PlatformSkill.UpdateOneID(params.TargetID).
@@ -121,7 +121,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 		SetUpdatedAt(now).
 		Save(ctx)
 	if uErr != nil {
-		return nil, fmt.Errorf("update target metadata: %w", uErr)
+		return nil, entErrToBizErr(uErr, "SKILL")
 	}
 
 	// 3. 转移调用记录
@@ -130,7 +130,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 		SetSkillID(params.TargetID).
 		Save(ctx)
 	if trErr != nil {
-		return nil, fmt.Errorf("transfer invocations: %w", trErr)
+		return nil, entErrToBizErr(trErr, "SKILL")
 	}
 
 	// 4. 废弃源 Skill
@@ -140,11 +140,11 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 		SetUpdatedAt(now).
 		Save(ctx)
 	if dErr != nil {
-		return nil, fmt.Errorf("deprecate source: %w", dErr)
+		return nil, entErrToBizErr(dErr, "SKILL")
 	}
 
 	if cErr := tx.Commit(); cErr != nil {
-		return nil, fmt.Errorf("commit: %w", cErr)
+		return nil, entErrToBizErr(cErr, "SKILL")
 	}
 
 	return &biz.SkillMergeResult{

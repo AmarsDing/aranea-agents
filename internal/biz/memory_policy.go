@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"errors"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 )
 
-var ErrMemoryPolicyAudit = errors.New("memory: policy audit write failed")
+var ErrMemoryPolicyAudit = apierror.Internal(apierror.DomainMemory, "memory: policy audit write failed")
 
 const (
 	PolicyVersionConsolidateV1 = "consolidate_v1"

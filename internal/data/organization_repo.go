@@ -276,7 +276,7 @@ func (r *organizationRepo) ReorderOrgNodes(ctx context.Context, ids []string) er
 			SetSortOrder((i + 1) * 10).
 			Save(ctx)
 		if err != nil {
-			return apierror.Wrap(err, apierror.CodeInternal, "ORGANIZATION")
+			return entErrToBizErr(err, "ORGANIZATION")
 		}
 	}
 	return nil

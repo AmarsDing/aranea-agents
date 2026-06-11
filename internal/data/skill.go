@@ -19,6 +19,7 @@ import (
 	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -501,7 +502,7 @@ func (r *skillRepo) GetSkillByID(ctx context.Context, id string) (biz.Skill, err
 
 func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled bool) (biz.Skill, error) {
 	if id == "" {
-		return biz.Skill{}, errors.New("skill id is required")
+		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	err := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).
 		SetEnabled(enabled).
@@ -712,7 +713,7 @@ func (r *skillRepo) GetSkillStorageDir(ctx context.Context, id string) (string, 
 		return "", err
 	}
 	if strings.TrimSpace(metadata.StorageDir) == "" {
-		return "", errors.New("skill storage directory is not configured")
+		return "", apierror.Internal("SKILL", "skill storage directory is not configured")
 	}
 	return metadata.StorageDir, nil
 }
@@ -784,7 +785,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 	in.Description = strings.TrimSpace(in.Description)
 	in.Body = strings.TrimSpace(in.Body)
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
-		return biz.Skill{}, errors.New("skill name, slug and body are required")
+		return biz.Skill{}, apierror.BadRequest("SKILL", "skill name, slug and body are required")
 	}
 	skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
 	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
@@ -837,7 +838,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (biz.Skill, error) {
 	skillKey = strings.TrimSpace(skillKey)
 	if skillKey == "" {
-		return biz.Skill{}, errors.New("skill key is required")
+		return biz.Skill{}, apierror.BadRequest("SKILL", "skill key is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.SkillKeyEQ(skillKey), platformskill.DeletedAtEQ("")).
@@ -1040,7 +1041,7 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error) {
 	skillID = strings.TrimSpace(skillID)
 	if skillID == "" {
-		return "", errors.New("skill id is required")
+		return "", apierror.BadRequest("SKILL", "skill id is required")
 	}
 	sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillID)).
@@ -1129,7 +1130,7 @@ func parseSkillMetadata(lg loggateway.Logger, raw string) skillMetadataEnvelope 
 func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUpdateDraft) (biz.Skill, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Skill{}, errors.New("skill id is required")
+		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
@@ -1201,7 +1202,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		md := parseSkillMetadata(r.data.lg, fresh.MetadataJSON)
 		storageDir = strings.TrimSpace(md.StorageDir)
 		if storageDir == "" {
-			return biz.Skill{}, errors.New("skill storage directory is not configured")
+			return biz.Skill{}, apierror.Internal("SKILL", "skill storage directory is not configured")
 		}
 		path := filepath.Join(storageDir, "SKILL.md")
 		if writeErr := os.WriteFile(path, []byte(body), 0o644); writeErr != nil {
@@ -1272,7 +1273,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Skill{}, errors.New("skill id is required")
+		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	now := nowRFC3339()
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
@@ -1312,7 +1313,7 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, err
 func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		return errors.New("skill slug is required")
+		return apierror.BadRequest("SKILL", "skill slug is required")
 	}
 	n, err := r.data.RW().Write(ctx).PlatformSkill.Update().
 		Where(platformskill.SkillKeyEQ(slug), platformskill.DeletedAtEQ("")).

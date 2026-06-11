@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/skillinvocation"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -203,7 +204,7 @@ func (r *SkillIntelligenceRepo) reportToCreateBuilder(ctx context.Context, repor
 	if report.SelectionSnapshot != nil {
 		var snap map[string]any
 		if err := json.Unmarshal(report.SelectionSnapshot, &snap); err != nil {
-			return nil, fmt.Errorf("invalid selection_snapshot JSON for report %s: %w", report.ID, err)
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		builder.SetSelectionSnapshot(snap)
 	}
@@ -534,7 +535,7 @@ func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID s
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("skill invocation with activation_id %s not found", activationID)
+		return apierror.NotFound("SKILL_INTELLIGENCE", fmt.Sprintf("skill invocation with activation_id %s not found", activationID))
 	}
 	return nil
 }

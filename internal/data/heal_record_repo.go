@@ -71,12 +71,12 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 
 	var total int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args[:len(args)-2], &total); err != nil {
-		return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
+		return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, args...)
 	if err != nil {
-		return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
+		return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 	}
 	defer rows.Close()
 
@@ -91,7 +91,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 		)
 		if err := rows.Scan(&id, &ruleID, &triggerType, &traceID, &sessionID, &stepID,
 			&fixActionType, &confidence, &status, &runtimeAutoHealed, &runtimeHealAttempts, &reason, &createdAt); err != nil {
-			return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
+			return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 		}
 		items = append(items, bizmonitor.HealRecord{
 			ID: id, RuleID: ruleID, TriggerType: triggerType,
@@ -106,7 +106,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
+		return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 	}
 
 	return bizmonitor.HealRecordListResult{Items: items, Total: total}, nil
@@ -121,7 +121,7 @@ func (r *healRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderTh
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`DELETE FROM heal_records WHERE created_at < ?`, cutoff)
 	if err != nil {
-		return 0, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
+		return 0, entErrToBizErr(err, "HEAL_RECORD")
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil

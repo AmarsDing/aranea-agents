@@ -12,6 +12,8 @@ type IngressDeduplicator interface {
 	TryAcquireInflight(dedupKey string) bool
 	// ReleaseInflight marks a dedup key as no longer in-flight.
 	ReleaseInflight(dedupKey string)
+	// Stop terminates background cleanup goroutines.
+	Stop()
 }
 
 // PeerDebouncer merges rapid sequential messages from the same peer

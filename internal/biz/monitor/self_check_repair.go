@@ -15,7 +15,8 @@ const (
 )
 
 // SelfCheckRepairDispatcher routes check results to appropriate repairers
-// with cooldown enforcement.
+// with cooldown enforcement. The repairers slice is immutable after construction
+// to avoid data races between RegisterRepairer and concurrent Repair calls.
 type SelfCheckRepairDispatcher struct {
 	repairers []SelfCheckRepairer
 	cooldowns map[string]time.Time // checkName → last repair time
@@ -24,20 +25,13 @@ type SelfCheckRepairDispatcher struct {
 }
 
 // NewSelfCheckRepairDispatcher creates a new repair dispatcher.
+// The repairers slice is fixed at construction time to prevent data races.
 func NewSelfCheckRepairDispatcher(repairers []SelfCheckRepairer, lg loggateway.Logger) *SelfCheckRepairDispatcher {
 	return &SelfCheckRepairDispatcher{
 		repairers: repairers,
 		cooldowns: make(map[string]time.Time),
 		lg:        lg,
 	}
-}
-
-// RegisterRepairer adds a repairer.
-func (d *SelfCheckRepairDispatcher) RegisterRepairer(r SelfCheckRepairer) {
-	if d == nil || r == nil {
-		return
-	}
-	d.repairers = append(d.repairers, r)
 }
 
 // CanRepair checks if any registered repairer can handle the given check.
@@ -58,6 +52,9 @@ func (d *SelfCheckRepairDispatcher) Repair(ctx context.Context, result types.Sel
 	if d == nil {
 		return RepairOutcome{Success: false, Action: "none", Message: "dispatcher is nil"}
 	}
+
+	// Prune stale cooldowns before processing to prevent unbounded map growth.
+	d.pruneStaleCooldowns()
 
 	// Check cooldown
 	if !d.checkCooldown(result.Checker) {
@@ -94,6 +91,22 @@ func (d *SelfCheckRepairDispatcher) setCooldown(checkName string, t time.Time) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.cooldowns[checkName] = t
+}
+
+// pruneStaleCooldowns removes cooldown entries that expired more than twice
+// the cooldown duration ago, preventing unbounded map growth.
+func (d *SelfCheckRepairDispatcher) pruneStaleCooldowns() {
+	if d == nil {
+		return
+	}
+	now := time.Now().UTC()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for checkName, lastTime := range d.cooldowns {
+		if now.Sub(lastTime) > RepairCooldownSec*time.Second*2 {
+			delete(d.cooldowns, checkName)
+		}
+	}
 }
 
 // FlowFileRepairer attempts to free disk space by cleaning up old compressed files.

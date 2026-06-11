@@ -65,7 +65,6 @@ var ProviderSet = wire.NewSet(
 	NewMonitorService,
 	NewSystemSettingService,
 	NewModelCatalogService,
-	NewChannelIngress,
 	ProvideChatService,
 	ProvideEvaluationRunner,
 	NewGraphExecutionTelemetry,
@@ -101,6 +100,10 @@ var ProviderSet = wire.NewSet(
 	// Dependency inversion: bind concrete types to biz ports for TeamService
 	wire.Bind(new(biz.TeamTurnRunnerPort), new(*team.Runner)),
 	ProvideRunRegistryPort,
+	// Dependency inversion: adapt team runtime types to biz ports for ChatOrchestrator
+	ProvideTeamRunnerWirePort,
+	ProvideTeamMediatorPort,
+	ProvideTeamGraphCoordPort,
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
 	ProvideEnvelopeBuffer,
 	ProvideSessionLogWriter,

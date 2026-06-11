@@ -358,7 +358,7 @@ func (uc *LearningLoopUsecase) RunLoopAll(ctx context.Context) error {
 	if uc.agents == nil {
 		return nil
 	}
-	page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: 500, Offset: 0, Status: "active"})
+	page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: 500, Offset: 0, Status: string(AgentStatusActive)})
 	if err != nil {
 		return err
 	}

@@ -10,16 +10,21 @@ import (
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
-	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
+
+// ProcessLogEnabledProvider abstracts the process-log-on/off flag so that
+// MonitorService does not depend on *conf.Server directly.
+type ProcessLogEnabledProvider interface {
+	ProcessLogEnabled() bool
+}
 
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
 	uc     *biz.MonitorUsecase
-	server *conf.Server
+	processLogEnabled ProcessLogEnabledProvider
 	diag   *biz.DiagBundleGenerator
 	selfHeal *biz.SelfHealUsecase
 	selfHealObserver *biz.SelfHealObserver
@@ -31,8 +36,8 @@ type MonitorService struct {
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfHealObserver *biz.SelfHealObserver, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfHealObserver: selfHealObserver, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
+func NewMonitorService(uc *biz.MonitorUsecase, processLogEnabled ProcessLogEnabledProvider, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfHealObserver *biz.SelfHealObserver, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, processLogEnabled: processLogEnabled, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfHealObserver: selfHealObserver, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -266,8 +271,8 @@ func (s *MonitorService) ListFlowLogs(ctx context.Context, in *v1.ListFlowLogsRe
 func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsRequest) (*v1.GetMonitorLogsResponse, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	enabled := true
-	if s.server != nil {
-		enabled = s.server.ProcessLogEnabled()
+	if s.processLogEnabled != nil {
+		enabled = s.processLogEnabled.ProcessLogEnabled()
 	}
 	msg := "Process logs disabled in server.monitor.process_log_enabled."
 	if enabled {

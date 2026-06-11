@@ -12,6 +12,8 @@ import (
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
+const maxSubgraphResolveDepth = 10
+
 type NodeFuncFactory func() (trpcgraph.NodeFunc, error)
 
 type CondFuncFactory func() (any, error)
@@ -116,6 +118,13 @@ func (r *Registry) ResolveConditionalEdgeDef(ce biz.ConditionalEdgeDef) (Conditi
 }
 
 func (r *Registry) ResolveBuildConfig(cfg GraphBuildConfig) (*resolvedBuildConfig, error) {
+	return r.resolveBuildConfig(cfg, 0)
+}
+
+func (r *Registry) resolveBuildConfig(cfg GraphBuildConfig, depth int) (*resolvedBuildConfig, error) {
+	if depth >= maxSubgraphResolveDepth {
+		return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph registry: subgraph nesting depth exceeds limit (%d)", maxSubgraphResolveDepth))
+	}
 	rbc := &resolvedBuildConfig{
 		cfg:       cfg,
 		nodes:     make([]NodeDef, len(cfg.Nodes)),
@@ -142,7 +151,7 @@ func (r *Registry) ResolveBuildConfig(cfg GraphBuildConfig) (*resolvedBuildConfi
 
 	for i, s := range cfg.Subgraphs {
 		rbc.subs[i] = SubgraphDef{SubgraphDef: s}
-		subRbc, err := r.ResolveBuildConfig(s.BuildConfig)
+		subRbc, err := r.resolveBuildConfig(s.BuildConfig, depth+1)
 		if err != nil {
 			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: subgraph %q: %v", s.ID, err))
 		}

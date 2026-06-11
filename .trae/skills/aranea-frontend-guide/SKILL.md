@@ -13,7 +13,7 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 
 ## 目录
 
-- [第一章：14 条红线](#第一章14-条红线)
+- [第一章：15 条红线](#第一章15-条红线)
 - [第二章：决策树](#第二章决策树)
 - [第三章：数据流与分层](#第三章数据流与分层)
 - [第四章：各层编码规范](#第四章各层编码规范)
@@ -29,7 +29,7 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 
 ---
 
-## 第一章：14 条红线
+## 第一章：15 条红线
 
 > 违反即停，不可绕过。
 
@@ -49,6 +49,7 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 | 12 | 展示组件从 `features/<域>/api.ts` **引类型**（含 re-export） | 共享类型放在 **`features/<域>/types.ts`**，组件只 import types |
 | 13 | 单页 `*Page.vue` 的 `<script setup>` 不宜长期超过 **~200 行**（不含 import）→ **编程规范 CS-F3** | 拆 **Dialog 组件** + **域内 composable** + **子面板组件** |
 | 14 | 前端禁止使用 `turn_index` 做消息分组，聊天消息分组必须使用堆栈模型 | `groupMessagesByTurn` 按 `role=user` 边界 + 时间顺序 |
+| 15 | 禁止过度设计：单一场景不预抽 Composable/Store/类型层级；未请求的配置项/扩展点不添加；不为假设需求预留空组件/占位 Props/泛型参数 | YAGNI：需求出现时再抽象；三处复用前不提取公共函数 |
 
 > **降级说明**：红线 #6（Store 导出）→ CS-F1、#8（UX 视觉）→ CS-F2、#13（Page 行数）→ CS-F3 已降级为编程规范（见第十三章），因可通过 linter/编码约定约束，不属于架构边界违反。红线编号不变，但违反级别从"阻断"降为"建议"。
 
@@ -722,6 +723,7 @@ registryColActions<Row>();
 - [ ] 展示组件是否直接调用 API / Store？若有 → 已上收或已备案例外
 - [ ] **Page** 是否直接 `import` `features/*/api`？若有 → 迁入 Store + composable
 - [ ] 新网络请求是否只出现在 `features/*/api.ts` 或 `services/`，且由 Store action 触发？
+- [ ] 是否存在过度设计：单一场景预抽 Composable/Store、未请求的配置项/扩展点、为假设需求预留空组件（红线 #15）？
 - [ ] 同一数据是否在多组件重复 fetch？若是 → 已合并到 Store 单一数据源
 - [ ] Page 是否仅组合 composable + 传参，无大段业务 if/else？**脚本是否 ≤~200 行**？
 - [ ] 多 Dialog / 多 Tab 是否已拆为 `components/<域>/*Dialog.vue`、`*Panel.vue`？

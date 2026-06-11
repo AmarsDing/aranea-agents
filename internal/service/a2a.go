@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/a2a/v1"
 	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
@@ -40,16 +41,18 @@ type A2AService struct {
 	agents      biz.AgentRepository
 	endpoints          *a2atrpc.EndpointRegistry
 	publicBaseStore    *a2apkg.PublicBaseURLStore
+	limiter            a2abiz.Limiter
 	lg                 loggateway.Logger
 }
 
-func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository, endpoints *a2atrpc.EndpointRegistry, publicBaseStore *a2apkg.PublicBaseURLStore, lg loggateway.Logger) *A2AService {
+func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository, endpoints *a2atrpc.EndpointRegistry, publicBaseStore *a2apkg.PublicBaseURLStore, limiter a2abiz.Limiter, lg loggateway.Logger) *A2AService {
 	return &A2AService{
 		uc:              uc,
 		runner:          runner,
 		agents:          agents,
 		endpoints:       endpoints,
 		publicBaseStore: publicBaseStore,
+		limiter:         limiter,
 		lg:              lg,
 	}
 }
@@ -137,7 +140,16 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 	if callerKey == "" {
 		callerKey = "admin"
 	}
-	if !biz.DefaultA2AInvokeLimiter().Allow(callerKey, calleeID) {
+	if allowed, err := s.limiter.Allow(ctx, callerKey, calleeID); err != nil {
+		s.lg.Warn("A2A limiter error, failing closed",
+			loggateway.StepID("a2a.invoke.limiter_error"),
+			loggateway.Err(err),
+			loggateway.Str("caller", callerKey),
+			loggateway.Str("callee", calleeID),
+		)
+		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "rate_limited").Inc()
+		return nil, apierror.RateLimit("A2A", "invoke rate limit exceeded")
+	} else if !allowed {
 		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "rate_limited").Inc()
 		return nil, apierror.RateLimit("A2A", "invoke rate limit exceeded")
 	}

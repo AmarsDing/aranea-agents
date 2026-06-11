@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	trpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/scenario/loader"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -23,7 +24,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 	if !skipVersionCheck {
 		applied, err := isMigrationApplied(ctx, client, SeedPackBuiltinV1, lg)
 		if err != nil {
-			return fmt.Errorf("check seed pack builtin v1: %w", err)
+			return entErrToBizErr(err, "SEED")
 		}
 		if applied {
 			return nil
@@ -35,14 +36,14 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 	fsys := os.DirFS(filepath.Join(scenarioDir, ".."))
 	p, readErr := pack.ReadPackFromFS(fsys, "scenario/packs/builtin-templates")
 	if readErr != nil {
-		return fmt.Errorf("read builtin-templates pack: %w", readErr)
+		return entErrToBizErr(readErr, "SEED")
 	}
 
 	// 创建 Importer 并导入
 	importer := newPackImporter(client, lg)
 	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride("ecosystem_preset"))
 	if importErr != nil {
-		return fmt.Errorf("import builtin-templates pack: %w", importErr)
+		return entErrToBizErr(importErr, "SEED")
 	}
 
 	lg.Info("builtin-templates pack seed completed",
@@ -60,7 +61,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 
 	// 记录版本
 	if recordErr := recordMigrationApplied(ctx, client, SeedPackBuiltinV1, "pack_builtin_v1", lg); recordErr != nil {
-		return fmt.Errorf("record pack builtin v1: %w", recordErr)
+		return entErrToBizErr(recordErr, "SEED")
 	}
 
 	return nil
@@ -71,7 +72,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
 	applied, err := isMigrationApplied(ctx, client, SeedPackBuiltinV2, lg)
 	if err != nil {
-		return fmt.Errorf("check seed pack builtin v2: %w", err)
+		return entErrToBizErr(err, "SEED")
 	}
 	if applied {
 		return nil
@@ -80,13 +81,13 @@ func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenari
 	fsys := os.DirFS(filepath.Join(scenarioDir, ".."))
 	p, readErr := pack.ReadPackFromFS(fsys, "scenario/packs/builtin-templates")
 	if readErr != nil {
-		return fmt.Errorf("read builtin-templates pack: %w", readErr)
+		return entErrToBizErr(readErr, "SEED")
 	}
 
 	importer := newPackImporter(client, lg)
 	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride("ecosystem_preset"))
 	if importErr != nil {
-		return fmt.Errorf("import builtin-templates pack v2: %w", importErr)
+		return entErrToBizErr(importErr, "SEED")
 	}
 
 	lg.Info("builtin-templates pack v2 seed completed",
@@ -97,10 +98,25 @@ func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenari
 		loggateway.Int("failures", len(result.Failures)))
 
 	if recordErr := recordMigrationApplied(ctx, client, SeedPackBuiltinV2, "pack_builtin_v2", lg); recordErr != nil {
-		return fmt.Errorf("record pack builtin v2: %w", recordErr)
+		return entErrToBizErr(recordErr, "SEED")
 	}
 
 	return nil
+}
+
+// PackSeeder adapts the package-level SeedPackIndustry function to the biz.PackSeeder interface.
+type PackSeeder struct {
+	data *Data
+}
+
+// NewPackSeeder creates a new PackSeeder.
+func NewPackSeeder(d *Data) *PackSeeder {
+	return &PackSeeder{data: d}
+}
+
+// SeedPackIndustry implements biz.PackSeeder.
+func (s *PackSeeder) SeedPackIndustry(ctx context.Context, scenarioDir, industryKey, kindOverride string) (int, int, error) {
+	return SeedPackIndustry(ctx, s.data.Ent(), scenarioDir, industryKey, kindOverride, s.data.lg)
 }
 
 // SeedPackIndustry 使用 Pack 引擎加载行业数据。
@@ -110,13 +126,13 @@ func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, indu
 	// 从现有 agents.yaml 加载并转换为 Pack 格式
 	spec, loadErr := loader.LoadCompanySpec(scenarioDir, industryKey)
 	if loadErr != nil {
-		return 0, 0, fmt.Errorf("load industry spec %s: %w", industryKey, loadErr)
+		return 0, 0, entErrToBizErr(loadErr, "SEED")
 	}
 
 	// TODO(debt): pack.ConvertCompanySpecToPack is not yet implemented.
 	// Uncomment when the function is available.
 	_ = spec
-	return 0, 0, fmt.Errorf("pack.ConvertCompanySpecToPack not yet implemented for industry %s", industryKey)
+	return 0, 0, apierror.BadRequest("SEED", fmt.Sprintf("pack.ConvertCompanySpecToPack not yet implemented for industry %s", industryKey))
 }
 
 // seedGraphTemplatesCompat 写入 graph_definitions 表。

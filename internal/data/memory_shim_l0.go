@@ -2,11 +2,11 @@ package data
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 
 	"github.com/google/uuid"
 )
@@ -28,7 +28,7 @@ var _ biz.L0AdminStore = (*l0SnapshotRepo)(nil)
 
 func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error) {
 	if sessionID == "" {
-		return nil, errors.New("session id is required")
+		return nil, apierror.BadRequest("MEMORY", "session id is required")
 	}
 	lim := int(limit)
 	if lim <= 0 || lim > 100 {
@@ -61,11 +61,11 @@ func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID, agen
 func (r *l0SnapshotRepo) GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, errors.New("session id is required")
+		return nil, apierror.BadRequest("MEMORY", "session id is required")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return nil, errors.New("snapshot id is required")
+		return nil, apierror.BadRequest("MEMORY", "snapshot id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL0Select+` WHERE id = ? AND session_id = ?`, id, sessionID)
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *l0SnapshotRepo) GetL0SnapshotRow(ctx context.Context, sessionID, id str
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, errors.New("l0 snapshot not found")
+		return nil, apierror.NotFound("MEMORY", "l0 snapshot not found")
 	}
 	return scanL0SnapshotRow(rows)
 }
@@ -85,7 +85,7 @@ func (r *l0SnapshotRepo) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0
 	}
 	sessID := strings.TrimSpace(in.SessionID)
 	if sessID == "" {
-		return errors.New("session id is required")
+		return apierror.BadRequest("MEMORY", "session id is required")
 	}
 	segs := strings.TrimSpace(in.SegmentsJSON)
 	if segs == "" {
@@ -138,11 +138,11 @@ func (r *l0SnapshotRepo) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0
 func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id, sessionID string, actualPromptTokens, contextWindowTokens int) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return errors.New("snapshot id is required")
+		return apierror.BadRequest("MEMORY", "snapshot id is required")
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return errors.New("session id is required")
+		return apierror.BadRequest("MEMORY", "session id is required")
 	}
 	if actualPromptTokens < 0 {
 		actualPromptTokens = 0

@@ -332,99 +332,130 @@ func validateLoopExits(def *GraphBuildConfig, result *ValidationResult) {
 		}
 	}
 
-	visited := make(map[string]color)
-	inStack := make(map[string]bool)
+	// Find all strongly connected components (Tarjan's algorithm).
+	// Nodes in SCCs of size > 1 are cycle nodes; single-node SCCs with a
+	// self-loop are also cycle nodes.
+	index := 0
+	stack := make([]string, 0)
+	onStack := make(map[string]bool)
+	nodeIndex := make(map[string]int)
+	nodeLowlink := make(map[string]int)
+	cycleNodes := make(map[string]bool)
 
-	var dfs func(nodeID string) bool
-	dfs = func(nodeID string) bool {
-		visited[nodeID] = colorGray
-		inStack[nodeID] = true
+	var strongconnect func(v string)
+	strongconnect = func(v string) {
+		nodeIndex[v] = index
+		nodeLowlink[v] = index
+		index++
+		stack = append(stack, v)
+		onStack[v] = true
 
-		for _, next := range adj[nodeID] {
-			if inStack[next] {
-				return true
-			}
-			if visited[next] == colorWhite {
-				if dfs(next) {
-					return true
+		for _, w := range adj[v] {
+			if _, visited := nodeIndex[w]; !visited {
+				strongconnect(w)
+				if nodeLowlink[w] < nodeLowlink[v] {
+					nodeLowlink[v] = nodeLowlink[w]
+				}
+			} else if onStack[w] {
+				if nodeIndex[w] < nodeLowlink[v] {
+					nodeLowlink[v] = nodeIndex[w]
 				}
 			}
 		}
 
-		inStack[nodeID] = false
-		visited[nodeID] = colorBlack
-		return false
-	}
-
-	for _, n := range def.Nodes {
-		if visited[n.ID] == colorWhite {
-			if dfs(n.ID) {
-				hasExit := false
-				for _, ce := range def.ConditionalEdges {
-					if ce.From == n.ID || isInPath(ce.From, n.ID, adj) {
-						hasExit = true
-						break
-					}
+		if nodeLowlink[v] == nodeIndex[v] {
+			// Pop SCC from stack.
+			scc := make(map[string]bool)
+			for {
+				w := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				onStack[w] = false
+				scc[w] = true
+				if w == v {
+					break
 				}
-				if !hasExit {
-					for _, e := range def.Edges {
-						if e.From == n.ID {
-							nexts := adj[n.ID]
-							for _, next := range nexts {
-								if next != n.ID && canReachEnd(next, adj) {
-									hasExit = true
-									break
-								}
-							}
-							if hasExit {
-								break
-							}
+			}
+			// Mark nodes in non-trivial SCCs as cycle nodes.
+			if len(scc) > 1 {
+				for n := range scc {
+					cycleNodes[n] = true
+				}
+			} else if len(scc) == 1 {
+				// Single-node SCC: cycle only if self-loop exists.
+				for n := range scc {
+					for _, next := range adj[n] {
+						if next == n {
+							cycleNodes[n] = true
+							break
 						}
 					}
 				}
-				if !hasExit {
-					result.AddWarning(ValidationErrLoopNoExit, n.ID, "",
-						fmt.Sprintf("节点 %q 可能处于无退出条件的循环中", n.ID))
+			}
+		}
+	}
+
+	for _, n := range def.Nodes {
+		if _, visited := nodeIndex[n.ID]; !visited {
+			strongconnect(n.ID)
+		}
+	}
+
+	if len(cycleNodes) == 0 {
+		return
+	}
+
+	finishPoint := def.FinishPoint
+
+	// For each cycle node, check whether it has an exit path out of the cycle.
+	for _, n := range def.Nodes {
+		if !cycleNodes[n.ID] {
+			continue
+		}
+		hasExit := false
+
+		// Check conditional edges from this node that lead outside the cycle
+		// and can reach the finish point.
+		for _, ce := range def.ConditionalEdges {
+			if ce.From != n.ID {
+				continue
+			}
+			for _, target := range ce.PathMap {
+				if !cycleNodes[target] && canReachFinish(target, finishPoint, adj) {
+					hasExit = true
+					break
+				}
+			}
+			if hasExit {
+				break
+			}
+		}
+
+		// Check regular edges from this node that lead outside the cycle
+		// and can reach the finish point.
+		if !hasExit {
+			for _, next := range adj[n.ID] {
+				if !cycleNodes[next] && canReachFinish(next, finishPoint, adj) {
+					hasExit = true
+					break
 				}
 			}
 		}
+
+		if !hasExit {
+			result.AddWarning(ValidationErrLoopNoExit, n.ID, "",
+				fmt.Sprintf("节点 %q 可能处于无退出条件的循环中", n.ID))
+		}
 	}
 }
 
-const (
-	colorWhite color = 0
-	colorGray  color = 1
-	colorBlack color = 2
-)
-
-type color int
-
-func isInPath(from, target string, adj map[string][]string) bool {
-	visited := make(map[string]bool)
-	var dfs func(nodeID string) bool
-	dfs = func(nodeID string) bool {
-		if nodeID == target {
-			return true
-		}
-		if visited[nodeID] {
-			return false
-		}
-		visited[nodeID] = true
-		for _, next := range adj[nodeID] {
-			if dfs(next) {
-				return true
-			}
-		}
-		return false
-	}
-	return dfs(from)
-}
-
-func canReachEnd(nodeID string, adj map[string][]string) bool {
+// canReachFinish checks whether a path exists from nodeID to the finish point.
+// A node with no outgoing edges (sink) is also considered reachable since it
+// represents a terminal state in the graph.
+func canReachFinish(nodeID, finishPoint string, adj map[string][]string) bool {
 	visited := make(map[string]bool)
 	var dfs func(id string) bool
 	dfs = func(id string) bool {
-		if id == "__end__" || id == "" {
+		if id == finishPoint || id == "" {
 			return true
 		}
 		if visited[id] {
@@ -433,6 +464,7 @@ func canReachEnd(nodeID string, adj map[string][]string) bool {
 		visited[id] = true
 		nexts := adj[id]
 		if len(nexts) == 0 {
+			// Sink node with no outgoing edges — treated as terminal.
 			return true
 		}
 		for _, next := range nexts {

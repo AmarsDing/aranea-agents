@@ -327,7 +327,7 @@ func TestPatternMiningUsecase_AutoDisable(t *testing.T) {
 		FixAction:    fixAction,
 		Confidence:   0.5,
 		SuccessCount: 1,
-		FailCount:    10, // 10 > (1+3) * 2 = 8
+		FailCount:    10,
 		Version:      1,
 		IsActive:     true,
 		CreatedAt:    time.Now().Add(-24 * time.Hour),
@@ -339,6 +339,13 @@ func TestPatternMiningUsecase_AutoDisable(t *testing.T) {
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:103", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:104", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:105", fixAction),
+			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:106", fixAction),
 		},
 	}
 	reader := &mockPatternMiningPatternReader{

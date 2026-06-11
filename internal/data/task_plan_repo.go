@@ -40,17 +40,17 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 
 	dimensionsJSON, err := json.Marshal(plan.Dimensions)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	subTasksJSON, err := json.Marshal(plan.SubTasks)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	dagJSON := "{}"
 	if plan.TaskDAG != nil {
 		b, err := json.Marshal(plan.TaskDAG)
 		if err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+			return nil, entErrToBizErr(err, "TASK_PLAN")
 		}
 		dagJSON = string(b)
 	}
@@ -58,7 +58,7 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	if plan.MemoryHit != nil {
 		b, err := json.Marshal(plan.MemoryHit)
 		if err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+			return nil, entErrToBizErr(err, "TASK_PLAN")
 		}
 		memoryHitJSON = string(b)
 	}
@@ -117,17 +117,17 @@ func (r *taskPlanRepo) Update(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 
 	dimensionsJSON, err := json.Marshal(plan.Dimensions)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	subTasksJSON, err := json.Marshal(plan.SubTasks)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	dagJSON := "{}"
 	if plan.TaskDAG != nil {
 		b, err := json.Marshal(plan.TaskDAG)
 		if err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+			return nil, entErrToBizErr(err, "TASK_PLAN")
 		}
 		dagJSON = string(b)
 	}
@@ -135,7 +135,7 @@ func (r *taskPlanRepo) Update(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	if plan.MemoryHit != nil {
 		b, err := json.Marshal(plan.MemoryHit)
 		if err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
+			return nil, entErrToBizErr(err, "TASK_PLAN")
 		}
 		memoryHitJSON = string(b)
 	}

@@ -3,11 +3,11 @@ package data
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 type channelRuntimeLeaseRepo struct {
@@ -45,16 +45,16 @@ CREATE INDEX IF NOT EXISTS idx_channel_runtime_lease_expires
 
 func (r *channelRuntimeLeaseRepo) TryAcquireRuntimeLease(ctx context.Context, lease biz.RuntimeLease) (bool, error) {
 	if r == nil || r.data == nil {
-		return false, errors.New("channel runtime lease: repository unavailable")
+		return false, apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
 	if !lease.Valid() {
-		return false, errors.New("channel runtime lease: invalid lease")
+		return false, apierror.BadRequest("CHANNEL_RUNTIME_LEASE", "invalid lease")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	exp := lease.ExpiresAt.UTC().Format(time.RFC3339Nano)
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return false, errors.New("channel runtime lease: repository unavailable")
+		return false, apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
 	res, err := db.ExecContext(ctx, `
 INSERT INTO channel_runtime_lease (key, channel_id, platform, owner_id, expires_at, created_at, updated_at)
@@ -78,17 +78,17 @@ WHERE (channel_runtime_lease.owner_id = excluded.owner_id AND channel_runtime_le
 
 func (r *channelRuntimeLeaseRepo) RenewRuntimeLease(ctx context.Context, key, ownerID string, expiresAt time.Time) (bool, error) {
 	if r == nil || r.data == nil {
-		return false, errors.New("channel runtime lease: repository unavailable")
+		return false, apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
 	key = strings.TrimSpace(key)
 	ownerID = strings.TrimSpace(ownerID)
 	if key == "" || ownerID == "" || expiresAt.IsZero() {
-		return false, errors.New("channel runtime lease: key, owner_id and expires_at are required")
+		return false, apierror.BadRequest("CHANNEL_RUNTIME_LEASE", "key, owner_id and expires_at are required")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return false, errors.New("channel runtime lease: repository unavailable")
+		return false, apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
 	res, err := db.ExecContext(ctx, `
 UPDATE channel_runtime_lease
@@ -106,16 +106,16 @@ WHERE key = ? AND owner_id = ? AND expires_at > ?`,
 
 func (r *channelRuntimeLeaseRepo) ReleaseRuntimeLease(ctx context.Context, key, ownerID string) error {
 	if r == nil || r.data == nil {
-		return errors.New("channel runtime lease: repository unavailable")
+		return apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
 	key = strings.TrimSpace(key)
 	ownerID = strings.TrimSpace(ownerID)
 	if key == "" || ownerID == "" {
-		return errors.New("channel runtime lease: key and owner_id are required")
+		return apierror.BadRequest("CHANNEL_RUNTIME_LEASE", "key and owner_id are required")
 	}
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return errors.New("channel runtime lease: repository unavailable")
+		return apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
 	_, err := db.ExecContext(ctx, `DELETE FROM channel_runtime_lease WHERE key = ? AND owner_id = ?`, key, ownerID)
 	return err

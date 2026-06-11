@@ -3,7 +3,6 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"sort"
 	"strings"
 	"time"
 
@@ -306,15 +305,14 @@ func (u *TeamUsecase) EnabledMemberAgentIDs(ctx context.Context, teamID string) 
 	if err != nil {
 		return nil, err
 	}
-	def, err := parseTeamDefinition(t.DefinitionJSON)
+	spec, err := ParseOrchestrationSpec(t.DefinitionJSON)
 	if err != nil {
 		return nil, nil
 	}
-	members := enabledTeamMembers(def)
-	ids := make([]string, 0, len(members))
-	for _, m := range members {
-		if aid := strings.TrimSpace(m.AgentID); aid != "" {
-			ids = append(ids, aid)
+	ids := make([]string, 0, len(spec.Members))
+	for _, m := range spec.Members {
+		if m.Enabled() && strings.TrimSpace(m.AgentID) != "" {
+			ids = append(ids, strings.TrimSpace(m.AgentID))
 		}
 	}
 	return ids, nil
@@ -699,11 +697,11 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	if err != nil {
 		return false, err
 	}
-	def, err := parseDefinitionForUpdate(t.DefinitionJSON)
+	spec, err := ParseOrchestrationSpec(t.DefinitionJSON)
 	if err != nil {
 		return false, apierror.BadRequest("TEAM", "invalid definition_json")
 	}
-	mode := strings.ToLower(strings.TrimSpace(def.Mode))
+	mode := strings.ToLower(strings.TrimSpace(spec.Mode))
 	if mode != TeamModeSwarm && mode != TeamModeAdaptive {
 		return false, apierror.BadRequest("TEAM", "swarm member management only applies to swarm or adaptive mode")
 	}
@@ -711,8 +709,8 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	for _, id := range removeIDs {
 		removeSet[strings.TrimSpace(id)] = true
 	}
-	var filtered []teamMemberEntry
-	for _, m := range def.Members {
+	var filtered []OrchestrationMember
+	for _, m := range spec.Members {
 		if removeSet[strings.TrimSpace(m.AgentID)] {
 			continue
 		}
@@ -723,14 +721,14 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 		if aid == "" {
 			continue
 		}
-		filtered = append(filtered, teamMemberEntry{AgentID: aid, Role: RoleWorker, Enabled: boolPtr(true)})
+		filtered = append(filtered, OrchestrationMember{AgentID: aid, Role: RoleWorker, EnabledPtr: boolPtr(true)})
 	}
-	def.Members = filtered
-	updatedJSON, err := json.Marshal(def)
+	spec.Members = filtered
+	updatedJSON, err := OrchestrationSpecToDefinitionJSON(spec)
 	if err != nil {
 		return false, apierror.Internal("TEAM", "failed to marshal updated definition")
 	}
-	t.DefinitionJSON = string(updatedJSON)
+	t.DefinitionJSON = updatedJSON
 	if err := validateTeamDefinition(t.DefinitionJSON); err != nil {
 		return false, err
 	}
@@ -750,76 +748,47 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 	if err != nil {
 		return nil, err
 	}
-	def, err := parseDefinitionForUpdate(t.DefinitionJSON)
+	spec, err := ParseOrchestrationSpec(t.DefinitionJSON)
 	if err != nil {
 		return nil, apierror.BadRequest("TEAM", "invalid definition_json")
 	}
-	mode := strings.ToLower(strings.TrimSpace(def.Mode))
+	mode := strings.ToLower(strings.TrimSpace(spec.Mode))
 	snapshot := &TeamStructureSnapshot{
 		EntryNodeID: "team-" + t.TeamKey,
 		Nodes:       []StructureNode{{NodeID: "team-" + t.TeamKey, Kind: "team", Name: t.DisplayName}},
 	}
 	switch mode {
 	case TeamModeCoordinator:
-		for i, m := range def.Members {
+		for i, m := range spec.Members {
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
 			if i == 0 {
 				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-" + t.TeamKey, ToNodeID: nid})
 			} else {
-				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: def.Members[0].AgentID, ToNodeID: nid})
+				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: spec.Members[0].AgentID, ToNodeID: nid})
 			}
 		}
 	case TeamModeSwarm, TeamModeAdaptive:
-		for i, m := range def.Members {
+		for i, m := range spec.Members {
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
 			if i == 0 {
 				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-" + t.TeamKey, ToNodeID: nid})
 			}
-			for j, other := range def.Members {
+			for j, other := range spec.Members {
 				if i != j {
 					snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: nid, ToNodeID: other.AgentID})
 				}
 			}
 		}
 	default:
-		for _, m := range def.Members {
+		for _, m := range spec.Members {
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
 			snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-" + t.TeamKey, ToNodeID: nid})
 		}
 	}
 	return snapshot, nil
-}
-
-type teamMemberEntry struct {
-	AgentID   string `json:"agent_id"`
-	Role      string `json:"role"`
-	Enabled   *bool  `json:"enabled"`
-	SortOrder int    `json:"sort_order"`
-	Name      string `json:"name"`
-}
-
-type definitionForUpdate struct {
-	Version            int               `json:"version"`
-	Mode               string            `json:"mode"`
-	SynthesizerAgentID string            `json:"synthesizer_agent_id"`
-	Members            []teamMemberEntry `json:"members"`
-	MaxConcurrency     int               `json:"max_concurrency"`
-	TimeoutSeconds     int               `json:"timeout_seconds"`
-}
-
-func parseDefinitionForUpdate(raw string) (*definitionForUpdate, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return &definitionForUpdate{Version: 1, Mode: TeamModeSequential}, nil
-	}
-	var d definitionForUpdate
-	if err := json.Unmarshal([]byte(raw), &d); err != nil {
-		return nil, err
-	}
-	return &d, nil
 }
 
 func (uc *TeamUsecase) ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error) {
@@ -841,15 +810,14 @@ func boolPtr(v bool) *bool { return &v }
 // extractEnabledMemberIDs parses the team definition JSON and returns the
 // agent IDs of all enabled members.
 func (u *TeamUsecase) extractEnabledMemberIDs(definitionJSON string) []string {
-	def, err := parseTeamDefinition(definitionJSON)
+	spec, err := ParseOrchestrationSpec(definitionJSON)
 	if err != nil {
 		return nil
 	}
-	members := enabledTeamMembers(def)
-	ids := make([]string, 0, len(members))
-	for _, m := range members {
-		if aid := strings.TrimSpace(m.AgentID); aid != "" {
-			ids = append(ids, aid)
+	ids := make([]string, 0, len(spec.Members))
+	for _, m := range spec.Members {
+		if m.Enabled() && strings.TrimSpace(m.AgentID) != "" {
+			ids = append(ids, strings.TrimSpace(m.AgentID))
 		}
 	}
 	return ids
@@ -948,80 +916,6 @@ func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDM
 		return Team{}, err
 	}
 	return u.writer.CreateTeam(ctx, team)
-}
-
-// teamMemberDef mirrors team.MemberDef to avoid import cycle (biz → team → biz).
-type teamMemberDef struct {
-	AgentID    string `json:"agent_id"`
-	Role       string `json:"role"`
-	Enabled    *bool  `json:"enabled"`
-	SortOrder  int    `json:"sort_order"`
-	Name       string `json:"name"`
-	TaskPrompt string `json:"task_prompt,omitempty"`
-}
-
-// teamDefinition mirrors team.Definition (subset needed for EnabledMemberAgentIDs).
-type teamDefinition struct {
-	Version            int             `json:"version"`
-	Mode               string          `json:"mode"`
-	SynthesizerAgentID string          `json:"synthesizer_agent_id"`
-	Members            []teamMemberDef `json:"members"`
-	MaxConcurrency     int             `json:"max_concurrency"`
-	TimeoutSeconds     int             `json:"timeout_seconds"`
-}
-
-// parseTeamDefinition unmarshals team JSON; empty string yields default.
-func parseTeamDefinition(raw string) (teamDefinition, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return teamDefinition{Version: 1, Mode: TeamModeSequential}, nil
-	}
-	var d teamDefinition
-	if err := json.Unmarshal([]byte(raw), &d); err != nil {
-		return teamDefinition{}, err
-	}
-	if strings.TrimSpace(d.Mode) == "" {
-		d.Mode = TeamModeSequential
-	}
-	return d, nil
-}
-
-func teamMemberEnabled(m teamMemberDef) bool {
-	return m.Enabled == nil || *m.Enabled
-}
-
-type teamMemberWithIndex struct {
-	m teamMemberDef
-	i int
-}
-
-// enabledTeamMembers returns enabled members with non-empty agent_id, ordered by sort_order.
-func enabledTeamMembers(d teamDefinition) []teamMemberDef {
-	var pairs []teamMemberWithIndex
-	for i, m := range d.Members {
-		if !teamMemberEnabled(m) || strings.TrimSpace(m.AgentID) == "" {
-			continue
-		}
-		pairs = append(pairs, teamMemberWithIndex{m: m, i: i})
-	}
-	sort.SliceStable(pairs, func(a, b int) bool {
-		sa, sb := pairs[a].m.SortOrder, pairs[b].m.SortOrder
-		switch {
-		case sa > 0 && sb > 0 && sa != sb:
-			return sa < sb
-		case sa > 0 && sb <= 0:
-			return true
-		case sa <= 0 && sb > 0:
-			return false
-		default:
-			return pairs[a].i < pairs[b].i
-		}
-	})
-	out := make([]teamMemberDef, len(pairs))
-	for i, p := range pairs {
-		out[i] = p.m
-	}
-	return out
 }
 
 // syncGraphTeamID updates Graph.team_id when Team.linked_graph_id changes.

@@ -374,7 +374,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	if agentID == "" {
 		return AgentEffectiveTools{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
-	if _, err := u.repo.GetAgentByID(ctx, agentID); err != nil {
+	if _, err := u.reader.GetAgentByID(ctx, agentID); err != nil {
 		return AgentEffectiveTools{}, err
 	}
 	settings, err := u.runtimeSettingsForEffective(ctx, agentID)
@@ -400,7 +400,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 }
 
 func (u *AgentUsecase) runtimeSettingsForEffective(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
-	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
+	settings, err := u.settings.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, shared.ErrNotFound) {
 			s := DefaultAgentRuntimeSettings()
@@ -418,7 +418,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	if agentID == "" {
 		return AgentEffectiveTools{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
-	if _, err := u.repo.GetAgentByID(ctx, agentID); err != nil {
+	if _, err := u.reader.GetAgentByID(ctx, agentID); err != nil {
 		return AgentEffectiveTools{}, err
 	}
 	settings, err := u.runtimeSettingsForEffective(ctx, agentID)
@@ -433,14 +433,14 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	denyJSON, _ := json.Marshal(in.Deny)
 	settings.ToolsAllowJSON = string(allowJSON)
 	settings.ToolsDenyJSON = string(denyJSON)
-	if _, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
+	if _, err := u.settings.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
 		return AgentEffectiveTools{}, err
 	}
 	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	settings, err = u.repo.GetAgentRuntimeSettings(ctx, agentID)
+	settings, err = u.settings.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}

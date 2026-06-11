@@ -36,7 +36,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		}
 		return err
 	}
-	h.markTurnJob(ctx, biz.ChannelTurnJobStatusRunning, "", "", "")
+	h.markTurnJobByEvent(ctx, biz.JobEventStart, "", "", "")
 	if jobID != "" {
 		arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, biz.ChannelTurnJobStatusRunning).Inc()
 	}
@@ -55,11 +55,12 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	var execErr error
 	var contentPreview string
 	var previewMsgID string
-	terminalStatus := biz.ChannelTurnJobStatusCompleted
+	terminalEvent := biz.JobEventComplete
 	defer func() {
 		arametrics.ChannelTurnDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
 		if execErr == nil {
-			h.markTurnJob(ctx, terminalStatus, "", previewMsgID, contentPreview)
+			h.markTurnJobByEvent(ctx, terminalEvent, "", previewMsgID, contentPreview)
+			terminalStatus := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
 			if jobID != "" {
 				arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, terminalStatus).Inc()
 			}
@@ -72,15 +73,16 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 				event.P("channel_id", chRow.ID), event.P("job_id", jobID), event.P("status", terminalStatus))
 			return
 		}
-		status := biz.ChannelTurnJobStatusFailed
+		failEvent := biz.JobEventFail
 		step := flowStepChannelTurnDone
 		if turnErrorIsTimeout(execErr) {
-			status = biz.ChannelTurnJobStatusTimeout
+			failEvent = biz.JobEventTimeout
 			step = flowStepChannelTurnTimeout
 		}
-		h.markTurnJob(ctx, status, execErr.Error(), "", "")
+		h.markTurnJobByEvent(ctx, failEvent, execErr.Error(), "", "")
+		failStatus := biz.ChannelTurnJobStatusFromEvent(failEvent)
 		if jobID != "" {
-			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, status).Inc()
+			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, failStatus).Inc()
 		}
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
@@ -93,9 +95,9 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		h.publishChannelTurnRunStatus(ctx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()
 
-	if handled, perr := h.rejectIfContextPressure(ctx, chRow, ev, platform, sessionID, ltCfg); handled {
+	if handled, perr := h.rejectIfContextPressure(ctx, chRow, ev, platform, sessionID); handled {
 		if perr == nil {
-			terminalStatus = biz.ChannelTurnJobStatusCompleted
+			terminalEvent = biz.JobEventComplete
 		} else {
 			execErr = perr
 		}
@@ -104,7 +106,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 
 	if handled, perr := h.applyPreTurnIngressPolicy(ctx, chRow, ev, platform, sessionID, ltCfg); handled {
 		if perr == nil {
-			terminalStatus = biz.ChannelTurnJobStatusQueued
+			terminalEvent = biz.JobEventQueue
 		} else {
 			execErr = perr
 		}
@@ -120,7 +122,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		contentPreview, previewMsgID, turnQueued, execErr = h.processInboundUnaryWithOutcome(ctx, chRow, ev, platform, ltCfg, sessionID)
 	}
 	if execErr == nil && turnQueued {
-		terminalStatus = biz.ChannelTurnJobStatusQueued
+		terminalEvent = biz.JobEventQueue
 	}
 	return execErr
 }

@@ -83,14 +83,14 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 ### 3.2 不合理的方面
 
-| 问题 | 严重度 | 影响 |
-|------|--------|------|
-| **ChatOrchestrator 上帝对象**：20+ 依赖字段，同时承担传输适配和业务编排 | 严重 | service 层业务逻辑泄漏，难以测试和维护 |
-| **4套进化体系重叠**：Evolution / SkillEvolution / SkillIntelligence / LearningLoop | 中等 | 概念重叠，维护成本高，开发者困惑 |
-| **Hook vs Webhook 概念重叠**：两个模块功能高度相似 | 中等 | 重复实现，投递重试策略不一致 |
-| **provider 与 modelregistry 职责重叠**：模型解析逻辑分散在两处 | 中等 | 边界模糊，修改需同步两处 |
-| **safego 反向依赖**：pkg/safego 依赖 internal/metrics | 轻微 | 违反 pkg 不依赖 internal 的分层原则 |
-| **outboundguard 与 webhookurl 逻辑重复**：IP 私有地址检查逻辑重复 | 轻微 | 维护时需同步修改 |
+| 问题 | 严重度 | 影响 | 状态 |
+|------|--------|------|------|
+| **ChatOrchestrator 上帝对象**：20+ 依赖字段，同时承担传输适配和业务编排 | 严重 | service 层业务逻辑泄漏，难以测试和维护 | 🟡 部分修复：deps 分组+子管理器提取+TurnAdmissionUsecase/TurnLifecycleUsecase 下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，但 ChatOrchestrator 仍有 36 字段 |
+| **4套进化体系重叠**：Evolution / SkillEvolution / SkillIntelligence / LearningLoop | 中等 | 概念重叠，维护成本高，开发者困惑 | 🟡 部分修复：SkillEvolutionOrchestrator 统一编排器已建，EvolutionCoordinator 已 deprecated，但 DEV-04 未关闭 |
+| **Hook vs Webhook 概念重叠**：两个模块功能高度相似 | 中等 | 重复实现，投递重试策略不一致 | 🟡 无需合并：职责已分化（Hook=平台内部回调，Webhook=外部HTTP通知），领域模型和接口完全不同 |
+| **provider 与 modelregistry 职责重叠**：模型解析逻辑分散在两处 | 中等 | 边界模糊，修改需同步两处 | 🟡 无需合并：职责已分化（LlmProviderModel=DB配置管理，ModelRegistry=文件系统策略管理），无直接接口重叠 |
+| ~~**safego 反向依赖**：pkg/safego 依赖 internal/metrics~~ | ~~轻微~~ | ~~违反 pkg 不依赖 internal 的分层原则~~ | ✅ 已修复 |
+| ~~**outboundguard 与 webhookurl 逻辑重复**：IP 私有地址检查逻辑重复~~ | ~~轻微~~ | ~~维护时需同步修改~~ | ✅ 已修复：webhookurl 委托 outboundguard |
 
 ---
 
@@ -114,8 +114,8 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 - **完善度**：85%
 - **优势**：7 域子结构体拆分清晰（Identity/Reasoning/Memory/Tools/Skills/Evolution/Context）；AgentRuntimeSettings 扁平结构 + 域视图访问器设计合理；遗留 ConfigJSON 迁移逻辑健壮
 - **关键缺失**：
-  1. ConfigJSON 写路径遗留：Settings + Files → ConfigJSON 的投影应改为只读，消除双向写入不一致风险（代码中 TODO DEV-10 标注）
-  2. AgentRepository 胖接口（14+ 方法）未拆分为窄接口
+  1. ConfigJSON 写路径遗留：Settings + Files → ConfigJSON 的投影应改为只读，消除双向写入不一致风险（代码中 TODO DEV-10 标注） ✅ 已修复：DEV-10 FIXED
+  2. ~~AgentRepository 胖接口（14+ 方法）未拆分为窄接口~~ ✅ 已修复：拆为 8 个窄接口
   3. AgentCapability.Capacity 未使用（TODO DEV-03 标注），无冲突检测/负载均衡
   4. 缺少 Agent 状态机：Status 字段为自由字符串，无状态转换约束
 
@@ -145,8 +145,8 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 - **完善度**：90%
 - **优势**：GraphUsecase 门面模式拆分为 DefinitionUsecase + ExecutionUsecase + CacheManager；GraphBuildConfig 类型丰富（Node/Edge/ConditionalEdge/Subgraph/StateField）
 - **关键缺失**：
-  1. GraphExecution 的 runtime 字段为 interface{}，缺少类型安全
-  2. GC 参数硬编码（gcInterval / executionMaxAge / maxExecutions），应支持配置覆盖
+  1. ~~GraphExecution 的 runtime 字段为 interface{}，缺少类型安全~~ ✅ 已修复：已类型化为 `GraphRuntime` 接口（组合 GraphExecutionControl + GraphCheckpoint）
+  2. ~~GC 参数硬编码（gcInterval / executionMaxAge / maxExecutions），应支持配置覆盖~~ ✅ 已修复：通过环境变量 GRAPH_GC_* 注入
   3. SubgraphDef 嵌套深度无限制，可能递归过深导致栈溢出
 
 #### Memory 相关
@@ -172,18 +172,18 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 #### A2A 相关
 
 - **核心职责**：Agent-to-Agent 协议（AgentCard/Invocation/Audit）、远程代理发现与注册、调用限流
-- **完善度**：70%
+- **完善度**：80%
 - **关键缺失**：
-  1. 限流器为内存实现，多 Pod 部署无法共享状态（TODO DEV-08 标注）
+  1. ~~限流器为内存实现，多 Pod 部署无法共享状态（TODO DEV-08 标注）~~ ✅ 已修复：Redis 分布式限流器已实现并接入 Wire，旧内存限流器已删除
   2. 缺少 A2A 调用的超时/重试策略
   3. AuthType/AuthConfigJSON 定义了但 biz 层无验证逻辑
 
 #### Channel 相关
 
 - **核心职责**：IM 渠道管理（30+ 平台）、凭证加密存储、路由规则匹配、出站投递（含重试/死信）、对等会话绑定
-- **完善度**：85%
+- **完善度**：88%
 - **关键缺失**：
-  1. ChannelRepo 胖接口（Reader + Writer + Credential + Delivery）未拆分
+  1. ~~ChannelRepo 胖接口（Reader + Writer + Credential + Delivery）未拆分~~ ✅ 已修复：拆为 ChannelReader/Writer + 独立子 Repo
   2. 健康检查并发度硬编码为 8
   3. 渠道类型 catalog 为硬编码列表，应支持动态注册
 
@@ -211,31 +211,37 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 ### 5.2 service 层核心问题
 
-#### ChatOrchestrator 上帝对象（严重）
+#### ChatOrchestrator 上帝对象（严重，持续改善中）
 
 ChatOrchestrator 及其 ChatOrchestratorDeps 是项目最大的架构债务：
 
 1. ChatOrchestratorDeps 含 20+ 字段，代码注释自身标注了 `TECH-DEBT(BL8)`
-2. 直接持有 15+ 个 biz Usecase 引用
-3. `RunNativeAgentTurnWithOutcome` 方法长达数百行，包含 turn 准入检查、上下文压力计算、session 状态转换、事件发布、指标记录等——这些逻辑应在 biz 层
-4. `sessionLockManager` 属于并发控制基础设施，放在 service 层不合适
-5. `enforceQuota` / `enforceChatTurnQuotas` 是业务规则，应下沉到 biz 层
+2. ~~直接持有 15+ 个 biz Usecase 引用~~ → 当前持有 10 个直接 biz Usecase 引用，已部分收敛
+3. ~~`RunNativeAgentTurnWithOutcome` 方法长达数百行，包含 turn 准入检查、上下文压力计算、session 状态转换、事件发布、指标记录等——这些逻辑应在 biz 层~~ → turn 准入已下沉到 TurnAdmissionUsecase，session 状态转换已下沉到 TurnLifecycleUsecase，sessionContextPressure 已完全委托 biz 层（含 channel 入口点分支）
+4. ~~`sessionLockManager` 属于并发控制基础设施，放在 service 层不合适~~ → 已删除
+5. ~~`enforceQuota` / `enforceChatTurnQuotas` 是业务规则，应下沉到 biz 层~~ → 已下沉到 TurnAdmissionUsecase.EnforceChatTurnQuotas
 
-#### Channel 子系统业务逻辑泄漏（中等）
+**剩余问题**：ChatOrchestrator 仍有 36 字段（AS-COG-01 上限 15），需继续提取子管理器。
 
-ChannelIngress 包含消息去重（ingressMessageDedupe）、对等端防抖（ingressPeerDebouncer）、并发门控（channelConcurrentGate）、预览注册（turnPreviewRegistry）——这些并发控制和业务策略逻辑应在 biz 层。
+#### Channel 子系统业务逻辑泄漏（已修复）
+
+~~ChannelIngress 包含消息去重（ingressMessageDedupe）、对等端防抖（ingressPeerDebouncer）、并发门控（channelConcurrentGate）、预览注册（turnPreviewRegistry）——这些并发控制和业务策略逻辑应在 biz 层。~~
+
+✅ 已修复：实现已下沉 biz 层（biz.IngressDeduplicator/biz.PeerDebouncer/biz.ConcurrencyGate/biz.TurnPreviewManager），ChannelIngress 改为构造函数注入 biz 接口，sessionContextPressure 通过 TurnAdmissionUsecase 委托 biz 层。
 
 #### 其他 service 层问题
 
-- SpiritSynthesisService 包含活跃团队检查和级联阻塞逻辑——业务逻辑泄漏
-- TeamService 持有 `team.Runner`（具体类型）和 `rt.RunRegistry`——违反依赖倒置原则
-- Monitor 持有 `conf.Server` 配置引用——service 层不应依赖配置
+- ~~SpiritSynthesisService 包含活跃团队检查和级联阻塞逻辑——业务逻辑泄漏~~ ✅ 已修复：仅薄适配层，业务逻辑在 biz.SynthesisUsecase
+- ~~TeamService 持有 `team.Runner`（具体类型）和 `rt.RunRegistry`——违反依赖倒置原则~~ ✅ 已修复：改用 biz.TeamTurnRunnerPort 和 biz.RunRegistryPort 接口
+- ~~Monitor 持有 `conf.Server` 配置引用——service 层不应依赖配置~~ ✅ 已修复：替换为 ProcessLogEnabledProvider 接口
 
 ### 5.3 data 层核心问题
 
-#### kerrors 分层违规（中等）
+#### kerrors 分层违规（已修复）
 
-data 层有 267 处 `kerrors.` 调用。data 层使用 HTTP/gRPC 错误码是分层违规，应返回 `sql.ErrNoRows` 等标准错误或自定义领域错误，由 service/biz 层翻译为传输错误。
+~~data 层有 267 处 `kerrors.` 调用。data 层使用 HTTP/gRPC 错误码是分层违规，应返回 `sql.ErrNoRows` 等标准错误或自定义领域错误，由 service/biz 层翻译为传输错误。~~
+
+✅ 已修复：data 层 0 处 kerrors 调用。
 
 #### 双轨 Schema 管理（轻微）
 
@@ -282,7 +288,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 - **优势**：导入管线完整（含补偿式事务）；双渲染模式（full/ai_optimized）；文件系统对账
 - **关键缺失**：
   1. 相似度检测每次导入最多 50 次 LLM 调用，应引入向量嵌入预筛
-  2. 文件系统监控为 5 分钟轮询，应引入 fsnotify 事件驱动
+  2. ~~文件系统监控为 5 分钟轮询，应引入 fsnotify 事件驱动~~ ✅ 已修复：已使用 fsnotify 事件驱动
   3. 存储后端仅支持本地文件系统，缺乏 S3/OSS 支持
 
 ### 5.5 前端详细分析
@@ -310,8 +316,8 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
   3. auth 包安全考量周全（JWT + Cookie + Bypass 双保险 + Webhook 签名头校验）
   4. outboundguard + webhookurl 双层 SSRF 防护，语义分工明确
 - **关键缺失**：
-  1. safego 违反分层：pkg/safego 依赖 internal/metrics，造成 pkg → internal 反向依赖
-  2. outboundguard 与 webhookurl 逻辑重复：IP 私有地址检查逻辑重复
+  1. ~~safego 违反分层：pkg/safego 依赖 internal/metrics，造成 pkg → internal 反向依赖~~ ✅ 已修复
+  2. ~~outboundguard 与 webhookurl 逻辑重复：IP 私有地址检查逻辑重复~~ ✅ 已修复：webhookurl 委托 outboundguard
   3. auth 仅支持 HS256 对称签名，生产环境应支持 RS256/ES256
   4. jsonutil/strutil 功能偏少
   5. logpipeline 断路器参数硬编码，Pipeline Stats 无运行时暴露
@@ -322,44 +328,44 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 ### P0 — 架构健康度（必须解决）
 
-| # | 建议 | 预期收益 |
-|---|------|----------|
-| 1 | **拆分 ChatOrchestrator**：将 turn 准入、配额检查、session 状态转换提取到 biz 层 TurnAdmissionUsecase / TurnLifecycleUsecase | 消除 service 层最大业务逻辑泄漏，提升可测试性 |
-| 2 | **ConfigJSON 写路径改为只读投影**：Settings + Files → ConfigJSON 仅做读投影，消除双向写入不一致风险 | 消除数据一致性隐患（TODO DEV-10） |
-| 3 | **A2ALimiter 替换为 Redis 分布式实现** | 多 Pod 部署可用（TODO DEV-08） |
+| # | 建议 | 预期收益 | 状态 |
+|---|------|----------|------|
+| 1 | **拆分 ChatOrchestrator**：将 turn 准入、配额检查、session 状态转换提取到 biz 层 TurnAdmissionUsecase / TurnLifecycleUsecase | 消除 service 层最大业务逻辑泄漏，提升可测试性 | 🟡 部分完成：TurnAdmissionUsecase/TurnLifecycleUsecase 已下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，但 ChatOrchestrator 仍有 36 字段 |
+| 2 | **ConfigJSON 写路径改为只读投影**：Settings + Files → ConfigJSON 仅做读投影，消除双向写入不一致风险 | 消除数据一致性隐患（TODO DEV-10） | ✅ 已完成：DEV-10 FIXED |
+| 3 | **A2ALimiter 替换为 Redis 分布式实现** | 多 Pod 部署可用（TODO DEV-08） | ✅ 已完成：Redis 实现已就绪并接入 Wire，service 层已使用注入的 a2a.Limiter，旧 a2a_limit.go 已删除 |
 
 ### P1 — 分层合规与概念统一
 
-| # | 建议 | 预期收益 |
-|---|------|----------|
-| 4 | **Channel 业务逻辑下沉**：消息去重/防抖/并发门控从 ChannelIngress 提取到 biz 层 | service 层职责纯化 |
-| 5 | **消除 data 层 kerrors**：统一返回领域错误或标准错误，由上层翻译 | 分层合规（267处违规） |
-| 6 | **统一进化体系**：废弃 SkillProposal，统一到 SkillEvolutionSuggestion；合并 LearningLoop 到 Evolution | 消除4套体系重叠 |
-| 7 | **AgentRepository / ChannelRepo 拆分为窄接口** | 降低变更影响面 |
-| 8 | **Team 运行时入口统一**：收敛 Runner turn 执行到 1-2 个核心方法，减少5-6层间接委托 | 可读性和可维护性 |
+| # | 建议 | 预期收益 | 状态 |
+|---|------|----------|------|
+| 4 | **Channel 业务逻辑下沉**：消息去重/防抖/并发门控从 ChannelIngress 提取到 biz 层 | service 层职责纯化 | ✅ 已完成：实现已下沉 biz 层，接口已定义，ChannelIngress 改为构造函数注入 biz 接口，sessionContextPressure 通过 TurnAdmissionUsecase 委托 biz 层 |
+| 5 | **消除 data 层 kerrors**：统一返回领域错误或标准错误，由上层翻译 | 分层合规（267处违规） | ✅ 已完成：data 层 0 处 kerrors 调用 |
+| 6 | **统一进化体系**：废弃 SkillProposal，统一到 SkillEvolutionSuggestion；合并 LearningLoop 到 Evolution | 消除4套体系重叠 | 🟡 部分完成：SkillEvolutionOrchestrator 已建，EvolutionCoordinator 已 deprecated，但 DEV-04 未关闭 |
+| 7 | **AgentRepository / ChannelRepo 拆分为窄接口** | 降低变更影响面 | ✅ 已完成：AgentRepository 拆为 8 个窄接口，Channel 侧拆为 8+ 窄接口 |
+| 8 | **Team 运行时入口统一**：收敛 Runner turn 执行到 1-2 个核心方法，减少5-6层间接委托 | 可读性和可维护性 | 未修复：5层委托链仍在但有架构理由（Mediator 打破循环依赖） |
 
 ### P2 — 功能完善度提升
 
-| # | 建议 | 预期收益 |
-|---|------|----------|
-| 9 | **Memory Reranker 接入真实 Cross-Encoder** | 记忆召回质量提升（当前仅为 bigram Jaccard 代理） |
-| 10 | **PII 检测增加 LLM 辅助** | 语义级 PII 检测（当前仅正则匹配） |
-| 11 | **Skill 导入引入向量预筛** | 将 LLM 相似度调用从 50 次降至 ~5 次 |
-| 12 | **provider/RoundTrip 增加重试/限流/熔断** | LLM 调用弹性 |
-| 13 | **auth 支持 RS256/ES256 非对称签名** | 生产环境安全性 |
-| 14 | **前端基础组件库扩充** | 消除通用 UI 模式散落 |
-| 15 | **前端 E2E 测试覆盖** | 核心流程质量保障（当前仅3个spec） |
+| # | 建议 | 预期收益 | 状态 |
+|---|------|----------|------|
+| 9 | **Memory Reranker 接入真实 Cross-Encoder** | 记忆召回质量提升（当前仅为 bigram Jaccard 代理） | 未修复 |
+| 10 | **PII 检测增加 LLM 辅助** | 语义级 PII 检测（当前仅正则匹配） | 未修复 |
+| 11 | **Skill 导入引入向量预筛** | 将 LLM 相似度调用从 50 次降至 ~5 次 | 未修复 |
+| 12 | **provider/RoundTrip 增加重试/限流/熔断** | LLM 调用弹性 | 未修复 |
+| 13 | **auth 支持 RS256/ES256 非对称签名** | 生产环境安全性 | 未修复 |
+| 14 | **前端基础组件库扩充** | 消除通用 UI 模式散落 | 未修复 |
+| 15 | **前端 E2E 测试覆盖** | 核心流程质量保障（当前仅3个spec） | 未修复 |
 
 ### P3 — 长期演进
 
-| # | 建议 | 预期收益 |
-|---|------|----------|
-| 16 | **Hook + Webhook 合并** | 消除概念重叠 |
-| 17 | **统一模型路由**：provider 模型解析迁移到 modelregistry | 职责清晰 |
-| 18 | **Skill 文件系统监控改用 fsnotify** | 实时性从5分钟提升到秒级 |
-| 19 | **evaluation 持久化存储** | 评估结果跨运行对比 |
-| 20 | **渠道类型插件化** | 可扩展性 |
-| 21 | **Graph GC 参数可配置化** | 生产环境灵活性 |
+| # | 建议 | 预期收益 | 状态 |
+|---|------|----------|------|
+| 16 | **Hook + Webhook 合并** | 消除概念重叠 | 🟡 无需合并：职责已分化（Hook=平台内部回调，Webhook=外部HTTP通知） |
+| 17 | **统一模型路由**：provider 模型解析迁移到 modelregistry | 职责清晰 | 🟡 无需合并：职责已分化（LlmProviderModel=DB配置，ModelRegistry=文件策略） |
+| 18 | **Skill 文件系统监控改用 fsnotify** | 实时性从5分钟提升到秒级 | ✅ 已完成：已使用 fsnotify 事件驱动 |
+| 19 | **evaluation 持久化存储** | 评估结果跨运行对比 | 未修复 |
+| 20 | **渠道类型插件化** | 可扩展性 | 未修复 |
+| 21 | **Graph GC 参数可配置化** | 生产环境灵活性 | ✅ 已完成：通过环境变量 GRAPH_GC_* 注入，Wire provider 传递 GCConfig |
 
 ---
 
@@ -377,9 +383,9 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 ### 核心架构债务
 
-1. **ChatOrchestrator 上帝对象**——同时承担传输适配和业务编排
-2. **4 套进化体系重叠**——Evolution / SkillEvolution / SkillIntelligence / LearningLoop
-3. **Team 运行时执行路径碎片化**——5-6层间接委托
+1. **ChatOrchestrator 上帝对象**——36 字段仍超标（AS-COG-01 上限 15），但业务逻辑已大幅下沉 biz 层
+2. **4 套进化体系重叠**——DEV-04 未关闭，SkillProposal 与 SkillEvolutionSuggestion 并存（需 proto API 变更）
+3. **Team 运行时执行路径碎片化**——4 层委托链（Runner→Mediator→Coordinator→Finisher），有架构理由（Mediator 打破循环依赖）
 
 ### 提升方向
 

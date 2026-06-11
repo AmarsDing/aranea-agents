@@ -52,6 +52,29 @@ func (u *ChannelTurnJobUsecase) CreateAccepted(ctx context.Context, job ChannelT
 	return u.jobs.Create(ctx, job)
 }
 
+// TransitionByEvent validates the state transition via the state machine and updates the job.
+// This is the preferred way to change job status — callers specify the event, not the target status.
+func (u *ChannelTurnJobUsecase) TransitionByEvent(ctx context.Context, id, event, errMsg, previewMsgID, contentPreview string) error {
+	if u == nil || u.jobs == nil {
+		return errChannelTurnJobNotInit
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	job, err := u.jobs.GetByID(ctx, id)
+	if err != nil {
+		return apierror.NotFound("CHANNEL_TURN_JOB", "job not found: "+id)
+	}
+	newStatus, err := TransitionChannelTurnJob(job.Status, event)
+	if err != nil {
+		return err
+	}
+	return u.jobs.UpdateStatus(ctx, id, newStatus, errMsg, previewMsgID, contentPreview)
+}
+
+// UpdateStatus updates the job status directly without state machine validation.
+// Internal/admin path only — production code should use TransitionByEvent.
 func (u *ChannelTurnJobUsecase) UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
 	if u == nil || u.jobs == nil {
 		return errChannelTurnJobNotInit
@@ -72,6 +95,8 @@ func (u *ChannelTurnJobUsecase) UpdateAsyncTarget(ctx context.Context, id, targe
 	return u.jobs.UpdateAsyncTarget(ctx, id, targetType, targetID)
 }
 
+// CancelRunningForSession cancels all active (non-terminal) jobs for a given session.
+// Uses the state machine to determine which statuses are cancellable.
 func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, channelID, sessionID string) error {
 	if u == nil || u.jobs == nil {
 		return errChannelTurnJobNotInit
@@ -90,8 +115,7 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 		if sessionID != "" && strings.TrimSpace(job.SessionID) != sessionID {
 			continue
 		}
-		switch NormalizeChannelTurnJobStatus(job.Status) {
-		case ChannelTurnJobStatusRunning, ChannelTurnJobStatusAccepted:
+		if CanTransitionChannelTurnJob(job.Status, JobEventCancel) {
 			if err := u.jobs.UpdateStatus(ctx, job.ID, ChannelTurnJobStatusCancelled, "", "", ""); err != nil && firstErr == nil {
 				firstErr = err
 			}
@@ -100,6 +124,7 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 	return firstErr
 }
 
+// Cancel cancels a specific job by ID using the state machine.
 func (u *ChannelTurnJobUsecase) Cancel(ctx context.Context, id string) error {
 	if u == nil || u.jobs == nil {
 		return errChannelTurnJobNotInit
@@ -107,6 +132,13 @@ func (u *ChannelTurnJobUsecase) Cancel(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil
+	}
+	job, err := u.jobs.GetByID(ctx, id)
+	if err != nil {
+		return apierror.NotFound("CHANNEL_TURN_JOB", "job not found: "+id)
+	}
+	if !CanTransitionChannelTurnJob(job.Status, JobEventCancel) {
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "cannot cancel job in status: "+job.Status)
 	}
 	return u.jobs.UpdateStatus(ctx, id, ChannelTurnJobStatusCancelled, "cancelled by user", "", "")
 }

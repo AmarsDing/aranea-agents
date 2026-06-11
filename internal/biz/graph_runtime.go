@@ -117,6 +117,7 @@ type GraphRuntimeEvent struct {
 }
 
 // GraphExecutionControl provides execution lifecycle methods for a graph runtime.
+// Stability:stable
 type GraphExecutionControl interface {
 	Run(ctx context.Context, initialState map[string]any) (<-chan GraphRuntimeEvent, error)
 	Resume(ctx context.Context, lineageID string, resumeValue map[string]any) (<-chan GraphRuntimeEvent, error)
@@ -125,6 +126,7 @@ type GraphExecutionControl interface {
 }
 
 // GraphCheckpoint provides checkpoint and time-travel inspection methods for a graph runtime.
+// Stability:stable
 type GraphCheckpoint interface {
 	TimeTravelGetState(ctx context.Context, lineageID, checkpointID, namespace string) (*GraphCheckpointState, error)
 	TimeTravelHistory(ctx context.Context, lineageID, namespace string, limit int) (GraphCheckpointList, error)
@@ -135,40 +137,63 @@ type GraphCheckpoint interface {
 // GraphRuntime is the composite interface combining execution control and checkpoint access.
 // It is kept for backward compatibility; consumers that only need one aspect should depend
 // on the narrower GraphExecutionControl or GraphCheckpoint instead.
+// Stability:stable
 type GraphRuntime interface {
 	GraphExecutionControl
 	GraphCheckpoint
 }
 
+// GraphRunnerFactory builds graph runtimes for execution.
+// Stability:evolving
 type GraphRunnerFactory interface {
 	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildRuntime(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string) (GraphRuntime, error)
 }
 
+// GraphVisualizer renders graph topology for display.
+// Stability:stable
 type GraphVisualizer interface {
 	Visualize(ctx context.Context, cfg GraphBuildConfig) (*GraphVisualization, error)
 }
 
+// GraphValidator validates graph build configurations.
+// Stability:stable
 type GraphValidator interface {
 	Validate(ctx context.Context, cfg GraphBuildConfig) (*GraphValidationResult, error)
 }
 
+// GraphTemplateProvider provides built-in graph templates.
+// Stability:stable
 type GraphTemplateProvider interface {
 	ListTemplates() []GraphTemplateRef
 	GetTemplate(templateID string) (GraphTemplateRef, bool)
 	TemplateToDef(template GraphTemplateRef, name, description string) *GraphDefinition
 }
 
+// GraphNodeInfoProvider resolves node metadata for graph definitions.
+// Stability:evolving
 type GraphNodeInfoProvider interface {
 	AgentExists(ctx context.Context, agentID string) bool
 	FindNodeDef(cfg GraphBuildConfig, taskMeta map[string]NodeTaskMeta, nodeID string) *NodeTaskMeta
 }
 
-type GraphBuilderFactory interface {
-	GraphRunnerFactory
+// GraphDefinitionFactory groups definition-related runtime capabilities:
+// visualization, validation, and template management.
+// Stability:evolving
+type GraphDefinitionFactory interface {
 	GraphVisualizer
 	GraphValidator
 	GraphTemplateProvider
+}
+
+// GraphBuilderFactory is a convenience composition for Wire providers that need
+// all graph runtime capabilities. Consumers should prefer depending on the
+// narrower sub-interfaces (GraphRunnerFactory, GraphDefinitionFactory,
+// GraphNodeInfoProvider) when possible.
+// Stability:evolving
+type GraphBuilderFactory interface {
+	GraphRunnerFactory
+	GraphDefinitionFactory
 	GraphNodeInfoProvider
 }

@@ -237,7 +237,7 @@ func TestDynamicRankFactors_HighSuccessRate(t *testing.T) {
 		{Slug: "high-success-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
 	}
 
-	factors := DynamicRankFactors(provider, candidates)
+	factors := DynamicRankFactors(context.Background(), provider, candidates)
 	defaults := DefaultRankFactors()
 
 	// With high success rate, W2 should decrease and W1 should increase.
@@ -260,7 +260,7 @@ func TestDynamicRankFactors_LowSuccessRate(t *testing.T) {
 		{Slug: "low-success-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
 	}
 
-	factors := DynamicRankFactors(provider, candidates)
+	factors := DynamicRankFactors(context.Background(), provider, candidates)
 	defaults := DefaultRankFactors()
 
 	// With low success rate, W2 should decrease and W1 should increase.
@@ -281,7 +281,7 @@ func TestDynamicRankFactors_NoData(t *testing.T) {
 		{Slug: "no-data-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
 	}
 
-	factors := DynamicRankFactors(provider, candidates)
+	factors := DynamicRankFactors(context.Background(), provider, candidates)
 	defaultFactors := DefaultRankFactors()
 
 	// Without data, factors should equal default.
@@ -296,7 +296,7 @@ func TestDynamicRankFactors_NilProvider(t *testing.T) {
 		{Slug: "test-skill", SemanticSimilarity: 0.5, HistoricalSuccess: 0.5, LatencyInverse: 0.5, UserPreference: 0.5},
 	}
 
-	factors := DynamicRankFactors(nil, candidates)
+	factors := DynamicRankFactors(context.Background(), nil, candidates)
 	defaultFactors := DefaultRankFactors()
 
 	if factors != defaultFactors {

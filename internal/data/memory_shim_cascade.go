@@ -274,7 +274,7 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 	writeDB := r.data.RWDB().WriteHandle()
 	tx, err := writeDB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, 0, fmt.Errorf("ReplaceNameInAgentFacts: begin tx: %w", err)
+		return nil, 0, entErrToBizErr(err, "MEMORY")
 	}
 	committed := false
 	defer func() {
@@ -287,11 +287,11 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 			`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = ?, updated_at = ? WHERE id = ?`,
 			u.NewStmt, strings.ToLower(u.NewStmt), u.NewMeta, now, u.ID,
 		); err != nil {
-			return nil, 0, fmt.Errorf("ReplaceNameInAgentFacts: UPDATE fact %s: %w", u.ID, err)
+			return nil, 0, entErrToBizErr(err, "MEMORY")
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, 0, fmt.Errorf("ReplaceNameInAgentFacts: commit tx: %w", err)
+		return nil, 0, entErrToBizErr(err, "MEMORY")
 	}
 	committed = true
 
@@ -389,7 +389,7 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 	writeDB := r.data.RWDB().WriteHandle()
 	tx, err := writeDB.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("RevertCascadeFactStatements: begin tx: %w", err)
+		return 0, entErrToBizErr(err, "MEMORY")
 	}
 	committed := false
 	defer func() {
@@ -403,12 +403,12 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 			`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = json_remove(metadata_json, '$.cascade_original_statement', '$.cascade_original_name', '$.cascade_saved_at'), updated_at = ? WHERE id = ?`,
 			item.OrigStmt, strings.ToLower(item.OrigStmt), now, item.ID,
 		); err != nil {
-			return 0, fmt.Errorf("RevertCascadeFactStatements: UPDATE fact %s: %w", item.ID, err)
+			return 0, entErrToBizErr(err, "MEMORY")
 		}
 		reverted++
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("RevertCascadeFactStatements: commit tx: %w", err)
+		return 0, entErrToBizErr(err, "MEMORY")
 	}
 	committed = true
 	return reverted, nil
@@ -490,7 +490,7 @@ func (r *cascadeRepo) InitCascadeSagaSteps(ctx context.Context, proposalID strin
 	writeDB := r.data.RWDB().WriteHandle()
 	tx, err := writeDB.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("InitCascadeSagaSteps: begin tx: %w", err)
+		return entErrToBizErr(err, "MEMORY")
 	}
 	committed := false
 	defer func() {
@@ -511,11 +511,11 @@ func (r *cascadeRepo) InitCascadeSagaSteps(ctx context.Context, proposalID strin
 			id, proposalID, i, s.StepName, s.State, memBoolToInt(s.IsCritical), s.Attempts,
 			s.StartedAt, s.FinishedAt, payload, "", "", now,
 		); err != nil {
-			return fmt.Errorf("InitCascadeSagaSteps: INSERT step %d: %w", i, err)
+			return entErrToBizErr(err, "MEMORY")
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("InitCascadeSagaSteps: commit tx: %w", err)
+		return entErrToBizErr(err, "MEMORY")
 	}
 	committed = true
 	return nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -38,7 +37,7 @@ func (r *EcosystemPresetRepo) GetEcosystemLoaded(ctx context.Context) (biz.Ecosy
 	}
 	var status biz.EcosystemLoadedStatus
 	if err := json.Unmarshal([]byte(raw), &status); err != nil {
-		return nil, fmt.Errorf("parse ecosystem_loaded: %w", err)
+		return nil, entErrToBizErr(err, "ECOSYSTEM")
 	}
 	return status, nil
 }
@@ -46,7 +45,7 @@ func (r *EcosystemPresetRepo) GetEcosystemLoaded(ctx context.Context) (biz.Ecosy
 func (r *EcosystemPresetRepo) SetEcosystemLoaded(ctx context.Context, status biz.EcosystemLoadedStatus) error {
 	raw, err := json.Marshal(status)
 	if err != nil {
-		return fmt.Errorf("marshal ecosystem_loaded: %w", err)
+		return entErrToBizErr(err, "ECOSYSTEM")
 	}
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE system_settings SET ecosystem_loaded = ? WHERE id = 1`, string(raw))
@@ -284,7 +283,7 @@ func (r *EcosystemPresetRepo) classifyTeamsByIndustry(ctx context.Context, delet
 		} else if anyBelongsToIndustry {
 			newDefJSON, err := removeMembersFromDefinition(defJSON, deletedAgentIDs)
 			if err != nil {
-				return nil, nil, fmt.Errorf("modify team %s definition: %w", id, err)
+				return nil, nil, entErrToBizErr(err, "ECOSYSTEM")
 			}
 			teamsToModify = append(teamsToModify, teamModifyEntry{id: id, newDefJSON: newDefJSON})
 		}

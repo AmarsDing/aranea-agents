@@ -23,6 +23,7 @@ import (
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/monitor"
 	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
@@ -57,6 +58,7 @@ import (
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/tools/testexec"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
@@ -66,6 +68,7 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -324,7 +327,11 @@ func provideBizWebResearchReadinessChecker() biz.WebResearchReadinessChecker {
 }
 
 func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistryReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, providerValidator biz.ProviderModelPairValidator, lg loggateway.Logger) *biz.AgentUsecase {
-	return biz.NewAgentUsecase(repo, tools, sys, checker, providerValidator, lg)
+	return biz.NewAgentUsecase(biz.AgentUsecaseDeps{
+		Reader: repo, Writer: repo, Settings: repo, Files: repo,
+		Position: repo, Tx: repo, Tools: tools, Sys: sys,
+		WebResearchChecker: checker, ProviderValidator: providerValidator, Lg: lg,
+	})
 }
 
 // toolTesterAdapter wraps internal/tools/testexec to implement biztool.ToolTester.
@@ -427,6 +434,23 @@ func provideFilesystemHealthReader(skillUC *biz.SkillUsecase) biz.FilesystemHeal
 	return monitorSkillHealthAdapter{skills: skillUC}
 }
 
+// provideProcessLogEnabled binds *conf.Server as a ProcessLogEnabledProvider
+// so that MonitorService no longer depends on *conf.Server directly.
+func provideProcessLogEnabled(server *conf.Server) service.ProcessLogEnabledProvider {
+	return server
+}
+
+func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
+	return data.NewRedisClient(c, lg)
+}
+
+func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
+	return biz.NewTurnLifecycleUsecase(biz.TurnLifecycleUsecaseConfig{
+		Sessions: sessions,
+		Logger:   lg,
+	})
+}
+
 func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, bus contract.Bus, lg loggateway.Logger) *biz.UsageUsecase {
 	uc := biz.NewUsageUsecase(repo, lg)
 	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
@@ -512,8 +536,10 @@ func provideRuntimeTooling(
 	knowledgeEvaluator *knowledge.RetrievalEvaluator,
 	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *localexec.Factory,
-	kanbanBridge *service.KanbanToolBridge,
+	kanbanBridge kanbanpkg.Bridge,
 	debugRecorder *debug.RecorderFactory,
+	orgUC *biz.OrganizationUsecase,
+	toolResultGate *biz.ToolResultGate,
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 ) service.RuntimeTooling {
@@ -529,23 +555,27 @@ func provideRuntimeTooling(
 		CodeExecFactory:             codeExecFactory,
 		KanbanBridge:                kanbanBridge,
 		DebugRecorder:               debugRecorder,
+		OrganizationUC:              orgUC,
+		ToolResultGate:              toolResultGate,
 		OutboundRouter:              outboundRouter,
 		SubAgentService:             subAgentSvc,
 	}
 }
 
 func provideTeamOrchestrationDeps(
-	teamsNative *team.Runner,
+	teamUC *biz.TeamUsecase,
+	teamsNative biz.TeamRunnerWirePort,
 	graphFactory biz.GraphBuilderFactory,
 	graphs *biz.GraphUsecase,
 	tasks *biz.TaskUsecase,
-	teamGraphCoord *team.TeamGraphRunCoordinator,
-	mediator *team.TeamRunMediator,
+	teamGraphCoord biz.TeamGraphCoordPort,
+	mediator biz.TeamMediatorPort,
 	spiritUC biz.SpiritTeamController,
 	taskPlanner biz.TaskPlannerPort,
 	agentAllocator biz.AgentAllocatorPort,
 ) service.TeamOrchestrationDeps {
 	return service.TeamOrchestrationDeps{
+		TeamUC:         teamUC,
 		TeamsNative:    teamsNative,
 		GraphFactory:   graphFactory,
 		Graphs:         graphs,
@@ -707,6 +737,7 @@ func provideChatServiceDeps(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	expAnalytics *biz.ExperienceAnalyticsUsecase,
+	turnLifecycle *biz.TurnLifecycleUsecase,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -727,7 +758,7 @@ func provideChatServiceDeps(
 			PendingQueue: pendingQueue,
 			RT:           rtDeps,
 			TurnTimeout:  0,
-			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agentsUC}),
+			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
 		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,
@@ -758,6 +789,7 @@ func provideChatServiceDeps(
 			MCPServers:      mcpUC,
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
+			TurnLifecycle:   turnLifecycle,
 		},
 	}
 }
@@ -989,6 +1021,48 @@ func provideChannelHealthScanner(uc *biz.ChannelUsecase, logger log.Logger) *job
 		return nil
 	}
 	return jobs.NewChannelHealthScanner(0, uc, logger)
+}
+
+func provideChannelIngress(
+	channels *biz.ChannelUsecase,
+	turnJobs *biz.ChannelTurnJobUsecase,
+	sessions *biz.SessionUsecase,
+	chat biz.ChannelTurnGateway,
+	flowBuffer *event.Buffer,
+	graphs biz.GraphExecutor,
+	cron biz.CronTriggerGateway,
+	eventBus event.Bus,
+	admission *biz.TurnAdmissionUsecase,
+	lg loggateway.Logger,
+) *service.ChannelIngress {
+	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
+	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
+	registry := biz.NewTurnPreviewRegistry()
+	gate := biz.NewChannelConcurrentGate()
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, flowBuffer, graphs, cron, eventBus, dedupe, debouncer, registry, gate, admission, lg)
+}
+
+func provideChannelIngressAdmission(
+	usage *biz.UsageUsecase,
+	agents biz.AgentRepository,
+	channels *biz.ChannelUsecase,
+) *biz.TurnAdmissionUsecase {
+	uc := biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{
+		Quota:   usage,
+		Agents:  agents,
+		ChannelConfigResolver: biz.ChannelLongTaskConfigResolverFunc(func(ctx context.Context, sess biz.Session) biz.ChannelLongTaskConfig {
+			meta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON)
+			if !ok || strings.TrimSpace(meta.ChannelID) == "" {
+				return biz.ChannelLongTaskConfig{}
+			}
+			ch, err := channels.Get(ctx, meta.ChannelID)
+			if err != nil {
+				return biz.ChannelLongTaskConfig{}
+			}
+			return biz.ParseChannelLongTaskConfig(ch.ConfigJSON)
+		}),
+	})
+	return uc
 }
 
 func provideChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *service.ChannelIngress, lg loggateway.Logger) *service.ChannelDeliveryWorker {
@@ -1466,8 +1540,8 @@ func provideWireOut(
 		PredictiveHealUsecase:     predictiveHealUsecase,
 		PredictiveHealJob:         predictiveHealJob,
 		PatternMiningUsecase:      patternMiningUsecase,
-		PatternMiningJob:           patternMiningJob,
-		PathBExtractor:             pathBExtractor,
+		PatternMiningJob:          patternMiningJob,
+		PathBExtractor:            pathBExtractor,
 	}
 }
 
@@ -1512,15 +1586,24 @@ func provideA2APublicBaseReloader(store *a2apkg.PublicBaseURLStore, reg *a2atrpc
 	return service.NewA2APublicBaseReloader(store, reg, input)
 }
 
+func provideA2ALimiter(rdb *data.RedisClient, lg loggateway.Logger) a2abiz.Limiter {
+	var client *redis.Client
+	if rdb != nil && rdb.IsEnabled() {
+		client = rdb.Client
+	}
+	return a2abiz.NewLimiter(a2abiz.DefaultLimiterConfig(), client, lg)
+}
+
 func provideA2AService(
 	uc *biz.A2AUsecase,
 	chat *service.ChatService,
 	agents biz.AgentRepository,
 	reg *a2atrpc.EndpointRegistry,
 	store *a2apkg.PublicBaseURLStore,
+	limiter a2abiz.Limiter,
 	lg loggateway.Logger,
 ) *service.A2AService {
-	return service.NewA2AService(uc, chat, agents, reg, store, lg)
+	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
 func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, bus contract.Bus, lg loggateway.Logger) biz.TaskPlannerPort {
@@ -1678,6 +1761,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
+		provideChannelIngress,
+		provideChannelIngressAdmission,
 		provideChannelDeliveryWorker,
 		provideChannelDeliveryScanner,
 		provideChannelRuntime,
@@ -1720,6 +1805,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideChannelRunEscalationNotifier,
 		provideSessionRunDurableWorker,
 		provideFilesystemHealthReader,
+		provideProcessLogEnabled,
+		provideRedisClient,
+		provideTurnLifecycleUsecase,
 		provideMonitorUsecase,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,
@@ -1731,6 +1819,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePublicBaseURLStore,
 		provideA2AEndpointRegistry,
 		provideA2APublicBaseReloader,
+		provideA2ALimiter,
 		provideA2AService,
 		provideEventService,
 		provideTaskPlanner,
@@ -1797,9 +1886,21 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(monitor.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
 		wire.Bind(new(monitor.RootCauseAnalyzer), new(*monitor.RootCauseEngine)),
 		provideWSTurnExecutor,
+		// Kanban bridge binding
+		wire.Bind(new(kanbanpkg.Bridge), new(*service.KanbanToolBridge)),
+		// ToolResultGate bindings
+		wire.Bind(new(biz.ToolResultBlobReader), new(*data.ToolResultBlobRepo)),
+		wire.Bind(new(biz.ToolResultBlobWriter), new(*data.ToolResultBlobRepo)),
+		wire.Bind(new(biz.ToolResultReplacementWriter), new(*data.ToolResultReplacementRepo)),
+		// Knowledge embedder bindings
+		wire.Bind(new(knowledge.QueryEmbedder), new(*knowledge.MultiProviderEmbedder)),
+		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
+		// DynamicLLMCaller dependency bindings
+		wire.Bind(new(chatagent.LLMCredentialResolver), new(*biz.LlmProviderModelUsecase)),
+		wire.Bind(new(chatagent.LLMRefineConfigResolver), new(*biz.SystemSettingUsecase)),
 		// Ecosystem preset: bind repo and provide usecase deps
 		wire.Bind(new(biz.EcosystemPresetRepo), new(*data.EcosystemPresetRepo)),
-		wire.Bind(new(biz.PackSeeder), new(*data.packSeeder)),
+		wire.Bind(new(biz.PackSeeder), new(*data.PackSeeder)),
 		provideEcosystemPresetScenarioDir,
 		wire.Bind(new(biz.DeptLeadTeamGetter), new(*data.TeamRepo)),
 		provideDeptLeadManager,

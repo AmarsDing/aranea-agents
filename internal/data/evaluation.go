@@ -8,7 +8,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizevaluation "aranea-agents/internal/biz/evaluation"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -90,7 +89,7 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return apierror.Wrap(err, apierror.CodeInternal, "EVAL")
+			return entErrToBizErr(err, "EVAL")
 		}
 	}
 	migrations := []string{

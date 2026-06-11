@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/jsonutil"
 	"aranea-agents/pkg/loggateway"
 )
@@ -41,7 +41,7 @@ func newL1WorkingMemoryRepo(data *Data) *l1WorkingMemoryRepo {
 
 func (r *l1WorkingMemoryRepo) ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error) {
 	if sessionID == "" {
-		return nil, errors.New("session id is required")
+		return nil, apierror.BadRequest("MEMORY", "session id is required")
 	}
 	clauses := []string{"session_id = ?"}
 	args := []any{sessionID}
@@ -84,7 +84,7 @@ func (r *l1WorkingMemoryRepo) listL1FieldRowsInternal(ctx context.Context, taskI
 
 func (r *l1WorkingMemoryRepo) listL1FieldRows(ctx context.Context, taskID string, includeInternal, includeExpired bool, requestingAgentID ...string) ([][]byte, error) {
 	if taskID == "" {
-		return nil, errors.New("task id is required")
+		return nil, apierror.BadRequest("MEMORY", "task id is required")
 	}
 	q := sqlL1Field + ` WHERE task_id = ?`
 	args := []any{taskID}
@@ -149,7 +149,7 @@ func (r *l1WorkingMemoryRepo) GetL1FieldRow(ctx context.Context, taskID, fieldPa
 func (r *l1WorkingMemoryRepo) StartL1Task(ctx context.Context, in biz.L1TaskInsert) ([]byte, error) {
 	sessID := strings.TrimSpace(in.SessionID)
 	if sessID == "" {
-		return nil, errors.New("session_id is required")
+		return nil, apierror.BadRequest("MEMORY", "session_id is required")
 	}
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
@@ -248,11 +248,11 @@ func (r *l1WorkingMemoryRepo) buildL1TaskSnapshot(ctx context.Context, sessionID
 func (r *l1WorkingMemoryRepo) UpsertL1Field(ctx context.Context, in biz.L1FieldInsert) ([]byte, error) {
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
-		return nil, errors.New("task_id is required")
+		return nil, apierror.BadRequest("MEMORY", "task_id is required")
 	}
 	fieldPath := strings.TrimSpace(in.FieldPath)
 	if fieldPath == "" {
-		return nil, errors.New("field_path is required")
+		return nil, apierror.BadRequest("MEMORY", "field_path is required")
 	}
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
@@ -498,7 +498,7 @@ func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339
 
 func (r *l1WorkingMemoryRepo) GetL1SchemaRow(ctx context.Context, schemaID string) ([]byte, error) {
 	if schemaID == "" {
-		return nil, errors.New("schema id is required")
+		return nil, apierror.BadRequest("MEMORY", "schema id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, scope_type, scope_id, schema_key, schema_version, schema_json, description, enabled, metadata_json, created_at FROM memory_l1_schemas WHERE id = ?`,

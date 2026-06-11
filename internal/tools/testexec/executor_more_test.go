@@ -362,8 +362,8 @@ func TestAssemblyForCatalogKey_claudeCodeDir(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if cfg.ClaudeCodeDir != "/my/dir" {
-		t.Fatalf("ClaudeCodeDir=%q want /my/dir", cfg.ClaudeCodeDir)
+	if cfg.ClaudeCode.Dir != "/my/dir" {
+		t.Fatalf("ClaudeCode.Dir=%q want /my/dir", cfg.ClaudeCode.Dir)
 	}
 }
 
@@ -424,8 +424,8 @@ func TestAssemblyForCatalogKey_shellExecDir(t *testing.T) {
 			if !ok {
 				t.Fatal("expected ok")
 			}
-			if cfg.ShellExecDir != tt.wantDir {
-				t.Fatalf("ShellExecDir=%q want %q", cfg.ShellExecDir, tt.wantDir)
+			if cfg.ShellExec.Dir != tt.wantDir {
+				t.Fatalf("ShellExec.Dir=%q want %q", cfg.ShellExec.Dir, tt.wantDir)
 			}
 		})
 	}
@@ -579,8 +579,8 @@ func TestAssemblyForCatalogKey_claudeCodeAlternativeDirKeys(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if cfg.ClaudeCodeDir != "/alt/dir" {
-		t.Fatalf("ClaudeCodeDir=%q want /alt/dir", cfg.ClaudeCodeDir)
+	if cfg.ClaudeCode.Dir != "/alt/dir" {
+		t.Fatalf("ClaudeCode.Dir=%q want /alt/dir", cfg.ClaudeCode.Dir)
 	}
 }
 

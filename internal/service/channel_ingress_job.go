@@ -91,6 +91,8 @@ func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previe
 	if jobID == "" {
 		return
 	}
+	// Internal/admin path: directly sets target status without state machine validation.
+	// Production code should use markTurnJobByEvent instead.
 	if err := h.turnJobs.UpdateStatus(ctx, jobID, status, errMsg, previewID, preview); err != nil {
 		h.lg.Warn("TurnJob 状态更新失败",
 			loggateway.StepID("channel.job.status_update_failed"),
@@ -99,6 +101,30 @@ func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previe
 			loggateway.Err(err),
 		)
 	}
+	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)
+}
+
+// markTurnJobByEvent transitions a turn job via the state machine event.
+// This is the preferred production path — callers specify the event, not the target status.
+func (h *ChannelIngress) markTurnJobByEvent(ctx context.Context, event, errMsg, previewID, preview string) {
+	if h == nil || h.turnJobs == nil {
+		return
+	}
+	jobID, sessionID := channelTurnJobFromContext(ctx)
+	if jobID == "" {
+		return
+	}
+	if err := h.turnJobs.TransitionByEvent(ctx, jobID, event, errMsg, previewID, preview); err != nil {
+		h.lg.Warn("TurnJob 状态转换失败",
+			loggateway.StepID("channel.job.transition_failed"),
+			loggateway.Str("job_id", jobID),
+			loggateway.Str("event", event),
+			loggateway.Err(err),
+		)
+		return
+	}
+	// Derive the target status for the refresh event from the event name.
+	status := biz.ChannelTurnJobStatusFromEvent(event)
 	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)
 }
 

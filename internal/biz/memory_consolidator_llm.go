@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"errors"
+
+	"aranea-agents/pkg/apierror"
 )
 
 // ErrLLMExtractorUnavailable indicates no LLM-backed extractor is wired.
-var ErrLLMExtractorUnavailable = errors.New("memory: llm extractor not configured")
+var ErrLLMExtractorUnavailable = apierror.Unavailable(apierror.DomainMemory, "memory: llm extractor not configured")
 
 // MemoryTextExtractor turns recent messages into memory proposals via an LLM call.
 type MemoryTextExtractor interface {

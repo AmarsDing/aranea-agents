@@ -22,22 +22,24 @@ type GraphDefinitionProvider interface {
 // GraphDefinitionUsecase handles graph definition CRUD, templates, and versioning.
 // Separated from execution lifecycle to isolate concerns and enable independent testing.
 type GraphDefinitionUsecase struct {
-	reader  GraphReader
-	writer  GraphWriter
-	factory GraphBuilderFactory
-	mu      sync.RWMutex
-	defs    map[string]*GraphDefinition
-	lg      loggateway.Logger
+	reader    GraphReader
+	writer    GraphWriter
+	factory   GraphDefinitionFactory
+	nodeInfo  GraphNodeInfoProvider
+	mu        sync.RWMutex
+	defs      map[string]*GraphDefinition
+	lg        loggateway.Logger
 }
 
 // NewGraphDefinitionUsecase creates a definition usecase with in-memory definition cache.
-func NewGraphDefinitionUsecase(repo GraphRepo, factory GraphBuilderFactory, lg loggateway.Logger) *GraphDefinitionUsecase {
+func NewGraphDefinitionUsecase(repo GraphRepo, factory GraphDefinitionFactory, nodeInfo GraphNodeInfoProvider, lg loggateway.Logger) *GraphDefinitionUsecase {
 	return &GraphDefinitionUsecase{
-		reader:  repo,
-		writer:  repo,
-		factory: factory,
-		defs:    make(map[string]*GraphDefinition),
-		lg:      lg,
+		reader:   repo,
+		writer:   repo,
+		factory:  factory,
+		nodeInfo: nodeInfo,
+		defs:     make(map[string]*GraphDefinition),
+		lg:       lg,
 	}
 }
 
@@ -276,7 +278,7 @@ func (uc *GraphDefinitionUsecase) FindNodeDef(ctx context.Context, graphID strin
 		return nil
 	}
 	cfg := defToBuildConfig(def)
-	return uc.factory.FindNodeDef(cfg, nil, nodeID)
+	return uc.nodeInfo.FindNodeDef(cfg, nil, nodeID)
 }
 
 func (uc *GraphDefinitionUsecase) FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef {

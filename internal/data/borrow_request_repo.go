@@ -179,7 +179,7 @@ func (r *borrowRequestRepo) CancelBorrowRequestsByFromDept(ctx context.Context, 
 		cancelled++
 	}
 	if len(failedIDs) > 0 {
-		return cancelled, fmt.Errorf("failed to cancel %d borrow requests: %v", len(failedIDs), failedIDs)
+		return cancelled, apierror.Internal("BORROW_REQUEST", fmt.Sprintf("failed to cancel %d borrow requests: %v", len(failedIDs), failedIDs))
 	}
 	return cancelled, nil
 }

@@ -1,30 +1,56 @@
 package data
 
 import (
+	"database/sql"
+	"errors"
+
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/apierror"
 )
 
-// entErrToBizErr translates an Ent error into a domain error (apierror.Error).
-// It preserves the original error via the Cause field so the error chain is not lost.
+// entErrToBizErr translates a data-layer error (Ent, raw SQL, or biz sentinel)
+// into a domain error (apierror.Error). It preserves the original error via the
+// Cause field so the error chain is not lost.
+//
+// This is the single entry point for error translation in all repo methods.
+// Use this instead of apierror.Wrap(err, apierror.CodeInternal, domain) to
+// preserve error semantics automatically.
 //
 // Translation rules:
-//   - NotFound        → apierror.CodeNotFound
-//   - ConstraintError → apierror.CodeConflict
-//   - NotLoaded       → apierror.CodeBadRequest (eager-loaded edge missing)
-//   - default         → apierror.CodeInternal
+//   - *apierror.Error (already)     → pass through
+//   - Ent NotFound / sql.ErrNoRows  → apierror.CodeNotFound
+//   - Ent ConstraintError           → apierror.CodeConflict
+//   - shared.ErrMessageDuplicate    → apierror.CodeConflict
+//   - shared.ErrAgentKeyConflict    → apierror.CodeConflict
+//   - Ent NotLoaded                 → apierror.CodeBadRequest
+//   - default                       → apierror.CodeInternal
 func entErrToBizErr(err error, domain string) error {
 	if err == nil {
 		return nil
 	}
-	switch {
-	case ent.IsNotFound(err):
-		return apierror.Wrap(err, apierror.CodeNotFound, domain)
-	case ent.IsConstraintError(err):
-		return apierror.Wrap(err, apierror.CodeConflict, domain)
-	case ent.IsNotLoaded(err):
-		return apierror.Wrap(err, apierror.CodeBadRequest, domain)
-	default:
-		return apierror.Wrap(err, apierror.CodeInternal, domain)
+	// Already an apierror — pass through.
+	if ae, ok := apierror.From(err); ok {
+		return ae
 	}
+	// Known biz sentinels that map to specific codes.
+	if errors.Is(err, shared.ErrMessageDuplicate) || errors.Is(err, shared.ErrAgentKeyConflict) {
+		return apierror.Wrap(err, apierror.CodeConflict, domain)
+	}
+	// Ent errors.
+	if ent.IsNotFound(err) {
+		return apierror.Wrap(err, apierror.CodeNotFound, domain)
+	}
+	if ent.IsConstraintError(err) {
+		return apierror.Wrap(err, apierror.CodeConflict, domain)
+	}
+	if ent.IsNotLoaded(err) {
+		return apierror.Wrap(err, apierror.CodeBadRequest, domain)
+	}
+	// Raw SQL errors.
+	if errors.Is(err, sql.ErrNoRows) {
+		return apierror.Wrap(err, apierror.CodeNotFound, domain)
+	}
+	// Default — internal.
+	return apierror.Wrap(err, apierror.CodeInternal, domain)
 }

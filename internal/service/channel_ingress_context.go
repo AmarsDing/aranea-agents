@@ -5,21 +5,23 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
-func (h *ChannelIngress) sessionContextPressure(ctx context.Context, sessionID string, ltCfg biz.ChannelLongTaskConfig) bool {
-	if h == nil || h.sessions == nil || sessionID == "" {
-		return false
-	}
-	threshold := ltCfg.ContextAdmissionThreshold
-	if threshold <= 0 {
+func (h *ChannelIngress) sessionContextPressure(ctx context.Context, sessionID string) bool {
+	if h == nil || h.admission == nil || sessionID == "" {
 		return false
 	}
 	sess, err := h.sessions.Get(ctx, sessionID)
 	if err != nil {
+		h.lg.Warn("session lookup failed in channel context pressure check, skipping",
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
 		return false
 	}
-	return biz.ContextPressureActive(sess.ContextUsedRatio, threshold)
+	result := h.admission.EvaluateContextPressure(ctx, sess, biz.EntryPointChannel)
+	return result.Pressure
 }
 
 // rejectIfContextPressure blocks new channel turns when session context is near capacity (CH-BOR-11).
@@ -28,9 +30,8 @@ func (h *ChannelIngress) rejectIfContextPressure(
 	chRow biz.Channel,
 	ev port.InboundEvent,
 	platform, sessionID string,
-	ltCfg biz.ChannelLongTaskConfig,
 ) (blocked bool, err error) {
-	if !h.sessionContextPressure(ctx, sessionID, ltCfg) {
+	if !h.sessionContextPressure(ctx, sessionID) {
 		return false, nil
 	}
 	recordIngressIntentMetric("context_pressure")

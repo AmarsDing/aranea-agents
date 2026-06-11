@@ -1,4 +1,4 @@
-package service
+package biz
 
 import (
 	"sync"
@@ -18,17 +18,20 @@ type channelConcurrentEntry struct {
 	lastAcq time.Time
 }
 
-const gateCleanupInterval = 5 * time.Minute
-const gateEntryMaxAge = 30 * time.Minute
+const GateCleanupInterval = 5 * time.Minute
+const GateEntryMaxAge = 30 * time.Minute
 
-type channelConcurrentGate struct {
+// ChannelConcurrentGate limits the number of concurrent inbound turns per channel+peer.
+type ChannelConcurrentGate struct {
 	mu     sync.Mutex
 	active map[channelConcurrentKey]*channelConcurrentEntry
 	done   chan struct{}
+	closeO sync.Once
 }
 
-func newChannelConcurrentGate() *channelConcurrentGate {
-	g := &channelConcurrentGate{
+// NewChannelConcurrentGate creates a new concurrency gate.
+func NewChannelConcurrentGate() *ChannelConcurrentGate {
+	g := &ChannelConcurrentGate{
 		active: make(map[channelConcurrentKey]*channelConcurrentEntry),
 		done:   make(chan struct{}),
 	}
@@ -36,8 +39,8 @@ func newChannelConcurrentGate() *channelConcurrentGate {
 	return g
 }
 
-func (g *channelConcurrentGate) startCleanup() {
-	ticker := time.NewTicker(gateCleanupInterval)
+func (g *ChannelConcurrentGate) startCleanup() {
+	ticker := time.NewTicker(GateCleanupInterval)
 	safego.Go(nil, "channel_concurrent_gate.cleanup", func() {
 		for {
 			select {
@@ -51,27 +54,28 @@ func (g *channelConcurrentGate) startCleanup() {
 	})
 }
 
-func (g *channelConcurrentGate) cleanupExpired() {
+func (g *ChannelConcurrentGate) cleanupExpired() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := time.Now()
 	for key, entry := range g.active {
-		if entry.count == 0 && now.Sub(entry.lastAcq) > gateEntryMaxAge {
+		if entry.count == 0 && now.Sub(entry.lastAcq) > GateEntryMaxAge {
 			delete(g.active, key)
 		}
 	}
 }
 
-// Close implements biz.ConcurrencyGate.
-func (g *channelConcurrentGate) Close() {
+// Close implements ConcurrencyGate.
+// Safe to call multiple times.
+func (g *ChannelConcurrentGate) Close() {
 	if g != nil && g.done != nil {
-		close(g.done)
+		g.closeO.Do(func() { close(g.done) })
 	}
 }
 
-// TryAcquire implements biz.ConcurrencyGate.
+// TryAcquire implements ConcurrencyGate.
 // It returns a release function on success, nil on failure.
-func (g *channelConcurrentGate) TryAcquire(channelID, peerID string, isGroup bool, limit int) (release func(), ok bool) {
+func (g *ChannelConcurrentGate) TryAcquire(channelID, peerID string, isGroup bool, limit int) (release func(), ok bool) {
 	if g == nil || limit <= 0 {
 		return func() {}, true
 	}
@@ -91,7 +95,7 @@ func (g *channelConcurrentGate) TryAcquire(channelID, peerID string, isGroup boo
 	return func() { g.release(channelID, peerID, isGroup) }, true
 }
 
-func (g *channelConcurrentGate) release(channelID, peerID string, isGroup bool) {
+func (g *ChannelConcurrentGate) release(channelID, peerID string, isGroup bool) {
 	if g == nil {
 		return
 	}

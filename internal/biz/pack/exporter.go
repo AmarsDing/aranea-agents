@@ -298,7 +298,7 @@ func (e *Exporter) buildTeamSpec(ctx context.Context, team biz.Team) (TeamPackSp
 			Role:       m.Role,
 			Name:       m.Name,
 			TaskPrompt: m.TaskPrompt,
-			Enabled:    boolPtr(m.Enabled),
+			Enabled:    m.EnabledPtr,
 			SortOrder:  m.SortOrder,
 		}
 		// 解析 agent_key

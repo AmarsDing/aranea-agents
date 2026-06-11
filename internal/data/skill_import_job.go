@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -28,11 +27,11 @@ func NewSkillImportJobRepo(data *Data, lg loggateway.Logger) *SkillImportJobRepo
 func (r *SkillImportJobRepo) Create(ctx context.Context, job biz.SkillImportJob) error {
 	candidatesJSON, err := json.Marshal(job.Candidates)
 	if err != nil {
-		return fmt.Errorf("marshal candidates: %w", err)
+		return entErrToBizErr(err, "SKILL_IMPORT")
 	}
 	conflictGroupsJSON, err := json.Marshal(job.ConflictGroups)
 	if err != nil {
-		return fmt.Errorf("marshal conflict_groups: %w", err)
+		return entErrToBizErr(err, "SKILL_IMPORT")
 	}
 	builder := r.data.RW().Write(ctx).SkillImportJob.Create().
 		SetID(job.JobID).
@@ -80,11 +79,11 @@ func (r *SkillImportJobRepo) UpdateStatus(ctx context.Context, jobID string, sta
 func (r *SkillImportJobRepo) UpdateCandidates(ctx context.Context, jobID string, candidates []biz.SkillImportCandidate, conflictGroups []biz.SkillConflictGroup) error {
 	candidatesJSON, err := json.Marshal(candidates)
 	if err != nil {
-		return fmt.Errorf("marshal candidates: %w", err)
+		return entErrToBizErr(err, "SKILL_IMPORT")
 	}
 	conflictGroupsJSON, err := json.Marshal(conflictGroups)
 	if err != nil {
-		return fmt.Errorf("marshal conflict_groups: %w", err)
+		return entErrToBizErr(err, "SKILL_IMPORT")
 	}
 	_, err = r.data.RW().Write(ctx).SkillImportJob.UpdateOneID(jobID).
 		SetCandidatesJSON(rawToMap(candidatesJSON)).

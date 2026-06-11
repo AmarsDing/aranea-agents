@@ -21,18 +21,18 @@ type AgentMemoryMaintenanceTarget struct {
 
 // ListMemoryMaintenanceTargets returns agents with memory master gate enabled and decay/retention settings resolved.
 func (u *AgentUsecase) ListMemoryMaintenanceTargets(ctx context.Context) ([]AgentMemoryMaintenanceTarget, error) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.reader == nil {
 		return nil, nil
 	}
 	const pageSize = 100
 	var out []AgentMemoryMaintenanceTarget
 	for offset := 0; ; offset += pageSize {
-		page, err := u.repo.SearchAgents(ctx, AgentListQuery{Limit: pageSize, Offset: offset})
+		page, err := u.reader.SearchAgents(ctx, AgentListQuery{Limit: pageSize, Offset: offset})
 		if err != nil {
 			return nil, err
 		}
 		for _, ag := range page.Items {
-			settings, err := u.repo.GetAgentRuntimeSettings(ctx, ag.ID)
+			settings, err := u.settings.GetAgentRuntimeSettings(ctx, ag.ID)
 			if err != nil {
 				if !stderrors.Is(err, shared.ErrNotFound) {
 					return nil, err

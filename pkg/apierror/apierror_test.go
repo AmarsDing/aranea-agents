@@ -66,14 +66,15 @@ func TestToKratos(t *testing.T) {
 	cases := []struct {
 		apiErr *apierror.Error
 		status int
+		reason string
 	}{
-		{apierror.NotFound("x", "x"), http.StatusNotFound},
-		{apierror.BadRequest("x", "x"), http.StatusBadRequest},
-		{apierror.Unauthorized("x", "x"), http.StatusUnauthorized},
-		{apierror.Forbidden("x", "x"), http.StatusForbidden},
-		{apierror.Conflict("x", "x"), http.StatusConflict},
-		{apierror.Unavailable("x", "x"), http.StatusServiceUnavailable},
-		{apierror.Internal("x", "x"), http.StatusInternalServerError},
+		{apierror.NotFound("AGENT", "not found"), http.StatusNotFound, "AGENT_NOT_FOUND"},
+		{apierror.BadRequest("CHAT", "bad"), http.StatusBadRequest, "CHAT_BAD_REQUEST"},
+		{apierror.Unauthorized("AUTH", "unauth"), http.StatusUnauthorized, "AUTH_UNAUTHORIZED"},
+		{apierror.Forbidden("ADMIN", "forbid"), http.StatusForbidden, "ADMIN_FORBIDDEN"},
+		{apierror.Conflict("SESSION", "conflict"), http.StatusConflict, "SESSION_CONFLICT"},
+		{apierror.Unavailable("DATA", "unavailable"), http.StatusServiceUnavailable, "DATA_UNAVAILABLE"},
+		{apierror.Internal("BIZ", "internal details"), http.StatusInternalServerError, "BIZ_INTERNAL"},
 	}
 	for _, c := range cases {
 		ke := apierror.ToKratos(c.apiErr)
@@ -85,6 +86,24 @@ func TestToKratos(t *testing.T) {
 		if int(kerr.Code) != c.status {
 			t.Errorf("code %s: expected HTTP %d, got %d", c.apiErr.Code, c.status, kerr.Code)
 		}
+		if kerr.Reason != c.reason {
+			t.Errorf("code %s: expected reason %q, got %q", c.apiErr.Code, c.reason, kerr.Reason)
+		}
+	}
+}
+
+func TestToKratosInternalSanitizes(t *testing.T) {
+	ae := apierror.Internal("AGENT", "sensitive db error: connection refused")
+	ke := apierror.ToKratos(ae)
+	var kerr *kerrors.Error
+	if !errors.As(ke, &kerr) {
+		t.Fatal("ToKratos did not return *kerrors.Error")
+	}
+	if kerr.Message != "internal error" {
+		t.Errorf("CodeInternal should sanitize message, got %q", kerr.Message)
+	}
+	if kerr.Reason != "AGENT_INTERNAL" {
+		t.Errorf("expected reason AGENT_INTERNAL, got %q", kerr.Reason)
 	}
 }
 
@@ -102,6 +121,18 @@ func TestToKratosPassthrough(t *testing.T) {
 	}
 }
 
+func TestToKratosFallbackSanitizes(t *testing.T) {
+	// Unknown error type should become 500 with sanitized message.
+	ke := apierror.ToKratos(errors.New("some internal detail"))
+	var kerr *kerrors.Error
+	if !errors.As(ke, &kerr) {
+		t.Fatal("ToKratos did not return *kerrors.Error for unknown error")
+	}
+	if kerr.Message != "internal error" {
+		t.Errorf("fallback should sanitize message, got %q", kerr.Message)
+	}
+}
+
 func TestWithMeta(t *testing.T) {
 	orig := apierror.NotFound("agent", "missing")
 	with := orig.WithMeta("id", "abc").WithMeta("tenant", "t1")
@@ -110,5 +141,39 @@ func TestWithMeta(t *testing.T) {
 	}
 	if orig.Meta != nil {
 		t.Error("WithMeta should not mutate original")
+	}
+}
+
+func TestIsComparesCodeAndDomain(t *testing.T) {
+	agentNotFound := apierror.NotFound("AGENT", "agent not found")
+	sessionNotFound := apierror.NotFound("SESSION", "session not found")
+	agentBadRequest := apierror.BadRequest("AGENT", "bad input")
+	agentConflict := apierror.Conflict("AGENT", "key conflict")
+	dataConflict := apierror.Conflict("DATA", "duplicate")
+
+	// Same Code, different Domain → Is returns false
+	if errors.Is(agentNotFound, sessionNotFound) {
+		t.Error("Is should NOT match errors with same Code but different Domain")
+	}
+
+	// Same Code AND Domain → Is returns true
+	agentNotFound2 := apierror.NotFound("AGENT", "another agent not found")
+	if !errors.Is(agentNotFound, agentNotFound2) {
+		t.Error("Is should match errors with same Code and Domain")
+	}
+
+	// Different Code → Is returns false
+	if errors.Is(agentNotFound, agentBadRequest) {
+		t.Error("Is should not match errors with different Code")
+	}
+
+	// Same Code (Conflict), different Domain → Is returns false
+	if errors.Is(agentConflict, dataConflict) {
+		t.Error("Is should NOT match errors with same Code but different Domain (Conflict)")
+	}
+
+	// Not an apierror → Is returns false
+	if errors.Is(agentNotFound, errors.New("plain")) {
+		t.Error("Is should not match non-apierror targets")
 	}
 }

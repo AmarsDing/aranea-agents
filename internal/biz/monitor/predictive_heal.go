@@ -72,6 +72,9 @@ func (uc *PredictiveHealUsecase) PredictAndHeal(ctx context.Context) ([]HealReco
 		return nil, apierror.Internal("MONITOR", "PredictiveHealUsecase is nil")
 	}
 
+	// Prune stale cooldowns before processing
+	uc.pruneStaleCooldowns()
+
 	metrics, err := uc.metricsReader.ReadSystemMetrics(ctx)
 	if err != nil {
 		return nil, err
@@ -231,5 +234,21 @@ func (uc *PredictiveHealUsecase) persistRecord(ctx context.Context, record HealR
 			loggateway.StepID("monitor.predictive_heal_persist_fail"),
 			loggateway.Str("rule_id", record.RuleID),
 			loggateway.Err(err))
+	}
+}
+
+// pruneStaleCooldowns removes cooldown entries that expired more than twice
+// the cooldown duration ago, preventing unbounded map growth.
+func (uc *PredictiveHealUsecase) pruneStaleCooldowns() {
+	if uc == nil {
+		return
+	}
+	now := time.Now().UTC()
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	for actionType, lastTime := range uc.cooldowns {
+		if now.Sub(lastTime) > PredictiveHealCooldown*2 {
+			delete(uc.cooldowns, actionType)
+		}
 	}
 }

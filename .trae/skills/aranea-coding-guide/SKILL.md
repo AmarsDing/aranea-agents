@@ -14,7 +14,7 @@ description: "Aranea-Agents 项目统一编码指南。当在本项目编写 Go 
 ## 目录
 
 - [第一章：架构总纲](#第一章架构总纲)
-- [第二章：19 条红线](#第二章19-条红线)
+- [第二章：20 条红线](#第二章20-条红线)
 - [第三章：代码探索约束](#第三章代码探索约束)
 - [第四章：决策树](#第四章决策树)
 - [第五章：分层编码规范](#第五章分层编码规范)
@@ -94,7 +94,7 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 
 ---
 
-## 第二章：19 条红线
+## 第二章：20 条红线
 
 > 违反即停，不可绕过。
 
@@ -113,12 +113,13 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 | 11 | 不得修改工具生成的代码（protoc/wire/Ent 等） | 改源头 → 重新生成 → 提交生成物 |
 | 12 | 不得在 Server 层写业务路由或手写 `HandleFunc` | 只做 `Register*HTTPServer`/`Register*ServiceServer` |
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
-| 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
+| 14 | 不得在 biz 层使用 `fmt.Errorf` 或 `errors.New` 返回业务错误 | 统一使用 `apierror.BadRequest/NotFound/Internal/...`（见 §7.1） |
 | 15 | 非 Service 层不得 import `api/*/v1` proto 包 | proto 映射只在 Service 层；biz 定义端口接口 |
 | 16 | 禁止使用 `log/slog` 记录日志 → **编程规范 CS-B1** | 统一使用 `pkg/loggateway.Logger`（`lg.Info/Warn/Error` + `loggateway.StepID/Err/Str`）；`event.SysLog*` / `event.SessionSysLog*` 已废弃 |
 | 17 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
 | 18 | Graph 运行时类型不得泄漏到 biz | biz 暴露 `GraphBuildConfig`/`GraphRuntime`/`GraphExecutor` 端口 |
 | 19 | 不得新增已无调用者的 deprecated 方法 → **编程规范 CS-B2** | 死代码即删，不保留 Deprecated 标记 |
+| 20 | 禁止过度设计：单一实现不预抽接口/适配层；未请求的配置项/扩展点/策略模式不添加；不为假设需求预留空方法/占位类型/泛型参数 | YAGNI：需求出现时再抽象；三处复用前不提取公共函数 |
 
 > **降级说明**：红线 #16（log/slog）→ CS-B1、#19（deprecated 方法）→ CS-B2 已降级为编程规范（见第十四章），因可通过 linter/静态分析约束，不属于架构边界违反。红线编号不变，但违反级别从"阻断"降为"建议"。
 
@@ -220,7 +221,7 @@ func NewXxxService(uc *biz.XxxUsecase) *XxxService {
 | 嵌入 Unimplemented | `v1.UnimplementedXxxServiceServer` | 不嵌入，手写所有方法 |
 | 构造函数 | `NewXxxService(uc *biz.XxxUsecase)` | `NewXxxService(uc, repo, db, runner)` |
 | 类型转换命名 | `toProtoXxx`（biz→proto）、`fromProtoXxx`（proto→biz） | 在方法内内联转换逻辑 |
-| 错误映射 | `kerrors.FromError(err)` 或 `kerrors.BadRequest/InternalServer` | `fmt.Errorf("...")` 返回 |
+| 错误映射 | biz 错误直接透传（APIToKratos 中间件翻译） | `fmt.Errorf("...")` 返回、`mapXxxError` 二次映射 |
 | 业务逻辑 | 调 `uc.XxxMethod()` | 在 Service 中写 if/for 业务判断 |
 
 **Runner 装配规则**：
@@ -244,7 +245,7 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 1. **模型定义**：纯 Go struct，字段用基本类型，不用 proto 类型
 2. **Repo 接口定义在 biz**，data 层实现
 3. **Usecase 结构**：只接收接口或具体依赖，不接收"上帝对象"
-4. **错误处理**：统一使用 `kerrors`，禁止 `fmt.Errorf`
+4. **错误处理**：统一使用 `apierror`，禁止 `fmt.Errorf` 和 `errors.New` 作为最终返回值（见 §7.1）
 5. **分页**：统一使用 `biz.ListOption` + `pagination.go`
 6. **禁止 import**：`api/*/v1`、`pkg/trpc-agent-go` 任何包
 
@@ -575,31 +576,103 @@ type Service interface {
 
 ### 7.1 错误处理（项目约束）
 
+**核心原则**：`apierror.Error` 是项目唯一的内部错误模型，`kerrors` 仅在传输层（middleware）出现。
+
+#### 7.1.1 分层规则
+
+| 层 | 规则 | 禁止 |
+|---|------|------|
+| **Data** | 所有 repo 方法错误必须经过 `entErrToBizErr(err, domain)` 返回 | 直接 `apierror.*` 构造、`fmt.Errorf` 返回、`errors.New` 返回 |
+| **Biz** | 哨兵定义为 `var ErrXxx = apierror.Xxx(domain, msg)`；Usecase 返回哨兵或 `apierror.Wrap` | `errors.New` 哨兵、`fmt.Errorf` 作为最终返回值 |
+| **Service** | biz 错误直接透传（APIToKratos 中间件翻译）；框架运行时错误用 `TurnError` 包装 | `errors.Is(err, sql.ErrNoRows)` 判断、`mapXxxError` 二次映射 |
+| **Middleware** | `APIToKratos` 统一翻译 apierror → kerrors | — |
+
+#### 7.1.2 各层示例
+
+**Data 层**（唯一出口 `entErrToBizErr`）：
+
 ```go
-if id == "" {
-    return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+func (r *agentRepo) Get(ctx context.Context, id string) (*biz.Agent, error) {
+    entAgent, err := r.data.readClient(ctx).Agent.Get(ctx, id)
+    if err != nil {
+        return nil, entErrToBizErr(err, apierror.DomainAgent)
+    }
+    return entAgentToBiz(entAgent), nil
 }
-if stderrors.Is(err, sql.ErrNoRows) {
-    return Agent{}, kerrors.NotFound("AGENT", "agent not found")
-}
-return Agent{}, kerrors.InternalServer("AGENT", err.Error())
 ```
 
-| 场景 | 使用 |
-|------|------|
-| 参数校验失败 | `kerrors.BadRequest` |
-| 记录不存在 | `kerrors.NotFound` |
-| 内部错误 | `kerrors.InternalServer` |
-| 框架返回的 error | `kerrors.FromError(err)` |
-
-Biz 层错误变量：
+**Biz 层**（哨兵 + Wrap）：
 
 ```go
 var (
-    ErrNotFound     = kerrors.NotFound("AGENT", "agent not found")
-    ErrInvalidInput = kerrors.BadRequest("AGENT", "invalid input")
+    ErrNotFound     = apierror.NotFound(apierror.DomainAgent, "agent not found")
+    ErrInvalidInput = apierror.BadRequest(apierror.DomainAgent, "invalid input")
+    ErrKeyConflict  = apierror.Conflict(apierror.DomainAgent, "agent key already exists")
 )
+
+func (uc *AgentUsecase) GetAgent(ctx context.Context, id string) (*Agent, error) {
+    agent, err := uc.repo.Get(ctx, id)
+    if err != nil {
+        return nil, err  // data 层已翻译，直接透传
+    }
+    return agent, nil
+}
 ```
+
+**Service 层**（透传 + 框架错误包装）：
+
+```go
+func (s *ChatService) GetAgent(ctx context.Context, req *v1.GetAgentRequest) (*v1.GetAgentReply, error) {
+    agent, err := s.uc.GetAgent(ctx, req.Id)
+    if err != nil {
+        return nil, err  // APIToKratos 中间件自动翻译
+    }
+    return toProtoAgentReply(agent), nil
+}
+
+// 框架运行时错误 → TurnError 包装
+eventCh, err := runner.Run(ctx, userID, sessionID, message)
+if err != nil {
+    return nil, TurnError(TurnErrAgentBuildFailed, err.Error())
+}
+```
+
+#### 7.1.3 apierror.Error 设计规则
+
+| 规则 | 说明 |
+|------|------|
+| `Is()` 比较 Code + Domain | 精确匹配，避免不同子系统的同 Code 错误互相匹配；Code-only 匹配用 `apierror.From + ae.Code` |
+| `Wrap()` 不覆盖已有 apierror | 已是 apierror 则透传，不改变 Code/Domain |
+| `ToKratos()` reason = `Domain + "_" + Code` | 如 `"AGENT_NOT_FOUND"`，前端可按 reason 精确分支 |
+| `CodeInternal` 类型的 Message 不暴露给客户端 | ToKratos 时替换为通用消息，原始信息只写日志 |
+| Domain 使用 `apierror.DomainXxx` 常量 | 禁止硬编码字符串 |
+
+#### 7.1.4 两条错误通道
+
+| 通道 | 错误模型 | 前端消费方式 |
+|------|---------|------------|
+| HTTP CRUD | apierror → APIToKratos → HTTP status + reason + message | axiosHandler.ts 按 status 分流，kratosError.ts 按 reason 分支 |
+| WebSocket Chat | TurnError → EnvelopeError → WS push | errorCodeHints.ts 按 error_code 分流 |
+
+#### 7.1.5 错误码速查
+
+| 场景 | apierror Code | HTTP Status |
+|------|--------------|-------------|
+| 参数校验失败 | `CodeBadRequest` | 400 |
+| 未认证 | `CodeUnauthorized` | 401 |
+| 无权限 | `CodeForbidden` | 403 |
+| 记录不存在 | `CodeNotFound` | 404 |
+| 唯一约束冲突 | `CodeConflict` | 409 |
+| 限流 | `CodeRateLimit` | 429 |
+| 服务不可用 | `CodeUnavailable` | 503 |
+| 内部错误 | `CodeInternal` | 500 |
+
+#### 7.1.6 迁移纪律
+
+- 红线 #14 更新为：**不得在 biz 层使用 `fmt.Errorf` 或 `errors.New` 返回业务错误**，统一使用 `apierror.*`
+- 已有 `TECH-DEBT(BE1)` 标记的 `errors.New` 哨兵需逐步迁移为 `apierror.*`
+- 迁移后同步删除 service 层对应的 `mapXxxError` 函数
+- `kerrors` 直接使用仅在 `internal/tools/`、`internal/graph/`、`internal/team/`、`internal/channel/` 迁移完成前允许，新代码禁止
 
 ### 7.2 依赖注入（项目约束）
 
@@ -819,7 +892,7 @@ cmd/admin/wire.go                         ← Wire 注入
 ### 改动中（行为自检 — Karpathy 原则）
 
 - [ ] **假设显式化**：实现前已声明关键假设；存在多种理解时已呈现而非静默选择；困惑时已停下来提问
-- [ ] **最小实现**：未添加未请求的功能/抽象/灵活性/可配置性；未处理不可能场景的错误；200 行能 50 行完成则已重写
+- [ ] **最小实现**：未添加未请求的功能/抽象/灵活性/可配置性；未处理不可能场景的错误；200 行能 50 行完成则已重写；单一实现未预抽接口（红线 #20）
 - [ ] **外科手术式修改**：未"顺手改善"相邻代码/注释/格式；匹配现有风格；发现无关死代码只提不删；每行改动可追溯到用户请求
 
 ### 改动中（逐层检查）
@@ -836,7 +909,7 @@ cmd/admin/wire.go                         ← Wire 注入
 - [ ] **流式工具**：实现 `StreamableTool` 接口，必须发送 `FinalResultChunk`
 - [ ] **记忆工具**：通过 `memory.Service.Tools()` 注入，不手动构造
 - [ ] **MCP Broker**：`AllowAdHocHTTP` 默认 false，安全边界明确
-- [ ] **错误处理**：使用 `kerrors`，不用 `fmt.Errorf`
+- [ ] **错误处理**：使用 `apierror`，不用 `fmt.Errorf`/`errors.New`/`kerrors`（见 §7.1）
 - [ ] **日志**：使用 `loggateway.Logger`，不用 `log/slog`，不用 `event.SysLog*`
 - [ ] **goroutine**：走 `pkg/safego`，无裸 `go func()`
 - [ ] **OOP 合规**：见 `go-oop-guide` SKILL（接口方法 ≤ 5、接口定义在使用方、返回具体类型参数接收接口、无上帝对象注入）

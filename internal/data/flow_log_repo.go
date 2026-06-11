@@ -46,7 +46,7 @@ func (r *flowLogRepo) Insert(ctx context.Context, rec biz.FlowLogRecord) error {
 		if ent.IsConstraintError(err) {
 			return nil
 		}
-		return apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
+		return entErrToBizErr(err, "FLOW_LOG")
 	}
 	return nil
 }
@@ -80,7 +80,7 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
-		return biz.FlowLogListResult{}, apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
+		return biz.FlowLogListResult{}, entErrToBizErr(err, "FLOW_LOG")
 	}
 	rows, err := query.
 		Order(ent.Asc(flowlogevent.FieldCreatedAt)).
@@ -88,7 +88,7 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.FlowLogListResult{}, apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
+		return biz.FlowLogListResult{}, entErrToBizErr(err, "FLOW_LOG")
 	}
 	items := make([]biz.FlowLogRecord, 0, len(rows))
 	for _, row := range rows {
@@ -120,7 +120,7 @@ func (r *flowLogRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (in
 		Where(flowlogevent.CreatedAtLT(cutoff)).
 		Exec(ctx)
 	if err != nil {
-		return 0, apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
+		return 0, entErrToBizErr(err, "FLOW_LOG")
 	}
 	return int64(n), nil
 }

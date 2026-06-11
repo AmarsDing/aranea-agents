@@ -77,28 +77,22 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		},
 	}
 
+	// Query runner.completion and alert events with EventType filter to avoid full table scan.
 	var flowEntries []map[string]any
 	var alertEntries []map[string]any
 	var triggerMetadata map[string]any
 	total := 0
 
 	if sessionID != "" || traceID != "" {
-		events, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
-			Limit:  500,
-			Offset: 0,
-			Status: "",
+		// Fetch runner.completion events
+		completionEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
+			Limit:     500,
+			Offset:    0,
+			EventType: "runner.completion",
 		})
-		if err == nil && events.Items != nil {
-			for _, row := range events.Items {
-				mj := row.MetadataJSON
-				matched := false
-				if traceID != "" && strings.Contains(mj, traceID) {
-					matched = true
-				}
-				if !matched && sessionID != "" && strings.Contains(mj, sessionID) {
-					matched = true
-				}
-				if !matched {
+		if err == nil && completionEvents.Items != nil {
+			for _, row := range completionEvents.Items {
+				if !metadataMatchesID(row.MetadataJSON, traceID, sessionID) {
 					continue
 				}
 				m := map[string]any{
@@ -107,15 +101,32 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 				}
 				flowEntries = append(flowEntries, m)
 				total++
-				if strings.HasPrefix(row.Key, "alert.") {
-					alertEntries = append(alertEntries, m)
-				}
 				if triggerMetadata == nil && stepID != "" && strings.Contains(row.Key, stepID) {
 					var parsed map[string]any
-					if json.Unmarshal([]byte(mj), &parsed) == nil {
+					if json.Unmarshal([]byte(row.MetadataJSON), &parsed) == nil {
 						triggerMetadata = parsed
 					}
 				}
+			}
+		}
+		// Fetch alert events
+		alertEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
+			Limit:     200,
+			Offset:    0,
+			EventType: "alert",
+		})
+		if err == nil && alertEvents.Items != nil {
+			for _, row := range alertEvents.Items {
+				if !metadataMatchesID(row.MetadataJSON, traceID, sessionID) {
+					continue
+				}
+				m := map[string]any{
+					"id": row.ID, "name": row.Name, "status": row.Status,
+					"created_at": row.CreatedAt, "metadata_json": row.MetadataJSON,
+				}
+				alertEntries = append(alertEntries, m)
+				flowEntries = append(flowEntries, m)
+				total++
 			}
 		}
 	}
@@ -146,24 +157,23 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	var usageData map[string]any
 	var usageRows []map[string]any
 	usageEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
-		Limit:  50,
-		Offset: 0,
-		Status: "",
+		Limit:     50,
+		Offset:    0,
+		EventType: "usage",
 	})
 	if err == nil && usageEvents.Items != nil {
 		for _, row := range usageEvents.Items {
 			if !strings.HasPrefix(row.Key, "usage") {
 				continue
 			}
-			mj := row.MetadataJSON
-			if traceID != "" && !strings.Contains(mj, traceID) {
-				if sessionID != "" && !strings.Contains(mj, sessionID) {
+			if traceID != "" || sessionID != "" {
+				if !metadataMatchesID(row.MetadataJSON, traceID, sessionID) {
 					continue
 				}
 			}
 			usageRows = append(usageRows, map[string]any{
 				"id": row.ID, "name": row.Name, "status": row.Status,
-				"created_at": row.CreatedAt, "metadata_json": mj,
+				"created_at": row.CreatedAt, "metadata_json": row.MetadataJSON,
 			})
 		}
 		if len(usageRows) > 0 {
@@ -246,6 +256,33 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		RootCauses:  rootCauseResults,
 		Total:       total,
 	}, nil
+}
+
+// metadataMatchesID checks if a JSON metadata string contains an exact match
+// for the given traceID or sessionID in the corresponding JSON fields.
+// Returns true if at least one specified ID matches its field exactly.
+// Returns false if both IDs are empty (no filter criteria).
+// This avoids false positives from strings.Contains which could match partial
+// strings in unrelated JSON fields (e.g., traceID "abc" matching "xyz_abc_field").
+func metadataMatchesID(metadataJSON, traceID, sessionID string) bool {
+	if traceID == "" && sessionID == "" {
+		return false
+	}
+	parsed := parseMetadataJSON(metadataJSON)
+	if parsed == nil {
+		return false
+	}
+	if traceID != "" {
+		if v, ok := parsed["trace_id"].(string); ok && v == traceID {
+			return true
+		}
+	}
+	if sessionID != "" {
+		if v, ok := parsed["session_id"].(string); ok && v == sessionID {
+			return true
+		}
+	}
+	return false
 }
 
 func parseMetadataJSON(raw string) map[string]any {

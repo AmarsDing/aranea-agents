@@ -182,7 +182,7 @@ func (b *coordGraphBackend) GetExecution(ctx context.Context, executionID string
 
 func newCoordTestBackend() *coordGraphBackend {
 	repo := &memGraphRunRepoCoord{runs: map[string]*biz.GraphExecution{}}
-	return &coordGraphBackend{repo: repo, uc: biz.NewGraphUsecase(nil, repo, nil, nil, nil, loggateway.NewNoop())}
+	return &coordGraphBackend{repo: repo, uc: biz.NewGraphUsecase(biz.GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})}
 }
 
 func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {

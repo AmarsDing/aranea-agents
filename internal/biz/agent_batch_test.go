@@ -90,7 +90,7 @@ func (r *batchAgentRepo) ToggleFavorite(_ context.Context, id string) (Agent, er
 
 func TestBatchUpdateAgents_Status(t *testing.T) {
 	repo := &batchAgentRepo{agents: map[string]Agent{"a1": {ID: "a1", Status: "active"}}}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	n, err := uc.BatchUpdateAgents(context.Background(), AgentBatchUpdateInput{IDs: []string{"a1"}, Status: "inactive"})
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)

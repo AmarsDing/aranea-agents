@@ -46,8 +46,8 @@ func TestErrNotFound(t *testing.T) {
 	if !ok {
 		t.Fatal("expected apierror.Error")
 	}
-	if e.Domain != "NOT_FOUND" {
-		t.Fatalf("expected domain NOT_FOUND, got %q", e.Domain)
+	if e.Domain != apierror.DomainShared {
+		t.Fatalf("expected domain %s, got %q", apierror.DomainShared, e.Domain)
 	}
 }
 

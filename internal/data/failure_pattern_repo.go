@@ -36,7 +36,7 @@ func (r *failurePatternRepo) Create(ctx context.Context, pattern bizmonitor.Fail
 
 	fixActionJSON, err := json.Marshal(pattern.FixAction)
 	if err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
+		return entErrToBizErr(err, "FAILURE_PATTERN")
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -67,7 +67,7 @@ func (r *failurePatternRepo) Update(ctx context.Context, pattern bizmonitor.Fail
 
 	fixActionJSON, err := json.Marshal(pattern.FixAction)
 	if err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
+		return entErrToBizErr(err, "FAILURE_PATTERN")
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -102,7 +102,7 @@ func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor
 		string(source),
 	)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
+		return nil, entErrToBizErr(err, "FAILURE_PATTERN")
 	}
 	defer rows.Close()
 
@@ -121,7 +121,7 @@ func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) 
 		hash,
 	)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
+		return nil, entErrToBizErr(err, "FAILURE_PATTERN")
 	}
 	defer rows.Close()
 
@@ -146,7 +146,7 @@ func (r *failurePatternRepo) ListActive(ctx context.Context) ([]bizmonitor.Failu
 		 FROM failure_pattern WHERE is_active = 1 ORDER BY confidence DESC`,
 	)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
+		return nil, entErrToBizErr(err, "FAILURE_PATTERN")
 	}
 	defer rows.Close()
 
@@ -206,7 +206,7 @@ func scanFailurePatterns(rows interface {
 		)
 		if err := rows.Scan(&id, &source, &fpType, &patternHash, &patternRegex, &fixActionJSON,
 			&confidence, &successCount, &failCount, &version, &isActive, &createdAtStr, &updatedAtStr); err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
+			return nil, entErrToBizErr(err, "FAILURE_PATTERN")
 		}
 
 		var fixAction bizmonitor.FixAction

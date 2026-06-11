@@ -253,7 +253,7 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: defaultScanAgentLimit, Offset: offset, Status: "active"})
+		page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: defaultScanAgentLimit, Offset: offset, Status: string(AgentStatusActive)})
 		if err != nil {
 			return err
 		}

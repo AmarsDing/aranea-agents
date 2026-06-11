@@ -40,11 +40,11 @@ func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.Orchestratio
 
 	teamIDsJSON, err := json.Marshal(handle.TeamIDs)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	agentKeysJSON, err := json.Marshal(handle.AgentKeys)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	synthesisResultJSON := handle.SynthesisResultJSON
 	if synthesisResultJSON == "" {
@@ -98,11 +98,11 @@ func (r *orchestrationRepo) Update(ctx context.Context, handle *biz.Orchestratio
 
 	teamIDsJSON, err := json.Marshal(handle.TeamIDs)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	agentKeysJSON, err := json.Marshal(handle.AgentKeys)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	synthesisResultJSON := handle.SynthesisResultJSON
 	if synthesisResultJSON == "" {

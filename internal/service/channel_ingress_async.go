@@ -44,12 +44,12 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
-		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
+		h.markTurnJobByEvent(ctx, biz.JobEventFail, err.Error(), "", "")
 		return err
 	}
 	turnInput, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
-		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
+		h.markTurnJobByEvent(ctx, biz.JobEventFail, err.Error(), "", "")
 		return err
 	}
 	sessionID := strings.TrimSpace(turnInput.SessionID)
@@ -69,7 +69,7 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 			"platform": platform,
 		})
 		if err != nil {
-			h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
+			h.markTurnJobByEvent(ctx, biz.JobEventFail, err.Error(), "", "")
 			return err
 		}
 	case ltCfg.AsyncCronTaskID != "" && h.cron != nil:
@@ -77,16 +77,16 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		targetID = ltCfg.AsyncCronTaskID
 		run, cerr := h.cron.TriggerCronTask(ctx, targetID)
 		if cerr != nil {
-			h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, cerr.Error(), "", "")
+			h.markTurnJobByEvent(ctx, biz.JobEventFail, cerr.Error(), "", "")
 			return cerr
 		}
 		asyncID = strings.TrimSpace(run.ID)
 	default:
-		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, "async target not configured", "", "")
+		h.markTurnJobByEvent(ctx, biz.JobEventFail, "async target not configured", "", "")
 		return apierror.BadRequest("CHANNEL", "no graph_id or cron_task_id configured")
 	}
 
-	h.markTurnJob(ctx, biz.ChannelTurnJobStatusAsyncQueued, "", "", "")
+	h.markTurnJobByEvent(ctx, biz.JobEventAsyncQueue, "", "", "")
 	h.markTurnJobAsyncTarget(ctx, targetType, asyncID)
 	msg := biz.RenderChannelTemplate(defaultAsyncAckTemplate, map[string]string{
 		"target_type": targetType,
@@ -214,7 +214,7 @@ func (h *ChannelIngress) completeAsyncTargetWatch(ctx context.Context, chRow biz
 		return
 	}
 	if jobID != "" && h.turnJobs != nil {
-		if err := h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusCompleted, "", "", truncateForLog(summary, 200)); err != nil {
+		if err := h.turnJobs.TransitionByEvent(ctx, jobID, biz.JobEventComplete, "", "", truncateForLog(summary, 200)); err != nil {
 			h.lg.Warn("异步任务状态更新失败",
 				loggateway.StepID("channel.async.job_status_update_failed"),
 				loggateway.Str("job_id", jobID),
@@ -235,7 +235,7 @@ func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Cha
 		return
 	}
 	if jobID != "" && h.turnJobs != nil {
-		if err := h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusFailed, truncateForLog(cause.Error(), 200), "", ""); err != nil {
+		if err := h.turnJobs.TransitionByEvent(ctx, jobID, biz.JobEventFail, truncateForLog(cause.Error(), 200), "", ""); err != nil {
 			h.lg.Warn("异步任务状态更新失败",
 				loggateway.StepID("channel.async.job_status_update_failed"),
 				loggateway.Str("job_id", jobID),
@@ -265,14 +265,14 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 	if errors.Is(cause, context.Canceled) {
 		return
 	}
-	status := biz.ChannelTurnJobStatusFailed
+	watchEvent := biz.JobEventFail
 	watchErr := cause
 	if errors.Is(cause, context.DeadlineExceeded) {
-		status = biz.ChannelTurnJobStatusTimeout
+		watchEvent = biz.JobEventTimeout
 		watchErr = context.DeadlineExceeded
 	}
 	if jobID != "" && h.turnJobs != nil {
-		if err := h.turnJobs.UpdateStatus(ctx, jobID, status, truncateForLog(cause.Error(), 200), "", ""); err != nil {
+		if err := h.turnJobs.TransitionByEvent(ctx, jobID, watchEvent, truncateForLog(cause.Error(), 200), "", ""); err != nil {
 			h.lg.Warn("异步任务状态更新失败",
 				loggateway.StepID("channel.async.job_status_update_failed"),
 				loggateway.Str("job_id", jobID),

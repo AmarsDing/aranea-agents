@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -12,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/vector"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -710,9 +710,9 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	defer rows.Close()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("fact row read-back failed: %w", err)
+			return nil, entErrToBizErr(err, "MEMORY")
 		}
-		return nil, errors.New("fact row not found after upsert")
+		return nil, apierror.NotFound("MEMORY", "fact row not found after upsert")
 	}
 	return scanFactRowJSON(rows)
 }

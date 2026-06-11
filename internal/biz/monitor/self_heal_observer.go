@@ -179,6 +179,21 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 
 // StartEventDrivenObservation subscribes to FlowLog error events and observes them.
 func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, ch <-chan Envelope) {
+	// Periodic cleanup of stale cooldowns and heal events to prevent unbounded map growth.
+	safego.Go(ctx, "self-heal-observer-cleanup", func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				o.pruneStaleCooldowns()
+				o.pruneStaleHealEvents()
+			}
+		}
+	})
+
 	safego.Go(ctx, "self-heal-observer-event-driven", func() {
 		for {
 			select {
@@ -195,35 +210,55 @@ func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, ch <
 }
 
 // GetHealStats returns aggregated heal statistics.
+// Uses pagination to iterate all records, ensuring accurate rates even when
+// total records exceed a single page. The previous implementation used
+// Limit:1000 which caused SuccessRate to be understated when TotalHeals > 1000
+// (successCount was from truncated Items but TotalHeals reflected the full count).
 func (o *SelfHealObserver) GetHealStats(ctx context.Context) (HealStats, error) {
 	if o == nil || o.repo == nil {
 		return HealStats{}, nil
 	}
 
-	// Query all recent records for stats
-	result, err := o.repo.ListHealRecords(ctx, HealRecordQuery{Limit: 1000})
-	if err != nil {
-		return HealStats{}, err
-	}
-
-	stats := HealStats{TotalHeals: result.Total}
-	if result.Total == 0 {
-		return stats, nil
-	}
-
+	const pageSize = 500
+	var stats HealStats
 	successCount := 0
 	failByRule := make(map[string]int)
-	for _, r := range result.Items {
-		if r.Status == string(HealStatusObservedHealed) || r.Status == string(HealStatusApplied) {
-			successCount++
+	offset := 0
+
+	for {
+		result, err := o.repo.ListHealRecords(ctx, HealRecordQuery{
+			Limit:  pageSize,
+			Offset: offset,
+		})
+		if err != nil {
+			return HealStats{}, err
 		}
-		if r.Status == string(HealStatusObservedFailed) || r.Status == string(HealStatusFailed) {
-			if r.RuleID != "" {
-				failByRule[r.RuleID]++
+
+		// Set total from the first page (repo returns actual total count)
+		if offset == 0 {
+			stats.TotalHeals = result.Total
+		}
+
+		for _, r := range result.Items {
+			if r.Status == string(HealStatusObservedHealed) || r.Status == string(HealStatusApplied) {
+				successCount++
+			}
+			if r.Status == string(HealStatusObservedFailed) || r.Status == string(HealStatusFailed) {
+				if r.RuleID != "" {
+					failByRule[r.RuleID]++
+				}
 			}
 		}
+
+		if len(result.Items) < pageSize {
+			break
+		}
+		offset += pageSize
 	}
-	stats.SuccessRate = float64(successCount) / float64(result.Total)
+
+	if stats.TotalHeals > 0 {
+		stats.SuccessRate = float64(successCount) / float64(stats.TotalHeals)
+	}
 
 	// Top 5 failing rules
 	for ruleID, count := range failByRule {
@@ -469,4 +504,49 @@ func (o *SelfHealObserver) pickBestCause(causes []RootCauseResult) *RootCauseRes
 		}
 	}
 	return best
+}
+
+// pruneStaleCooldowns removes cooldown entries that have expired more than
+// twice the maximum cooldown duration (critical=30min), preventing unbounded
+// map growth while ensuring no active cooldown is prematurely deleted.
+func (o *SelfHealObserver) pruneStaleCooldowns() {
+	if o == nil {
+		return
+	}
+	now := time.Now().UTC()
+	// Use the longest cooldown (critical) as the threshold to avoid
+	// prematurely deleting active cooldowns for higher-severity rules.
+	maxCooldown := o.severityCooldown("critical")
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for ruleID, lastTime := range o.cooldowns {
+		if now.Sub(lastTime) > maxCooldown*2 {
+			delete(o.cooldowns, ruleID)
+		}
+	}
+}
+
+// pruneStaleHealEvents removes heal event timestamps outside the circuit
+// breaker window and deletes empty stepID keys.
+func (o *SelfHealObserver) pruneStaleHealEvents() {
+	if o == nil {
+		return
+	}
+	now := time.Now().UTC()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	windowStart := now.Add(-o.healConf.CircuitBreakerWindow)
+	for stepID, events := range o.healEvents {
+		pruned := make([]time.Time, 0, len(events))
+		for _, t := range events {
+			if !t.Before(windowStart) {
+				pruned = append(pruned, t)
+			}
+		}
+		if len(pruned) == 0 {
+			delete(o.healEvents, stepID)
+		} else {
+			o.healEvents[stepID] = pruned
+		}
+	}
 }

@@ -263,7 +263,7 @@ func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]s
 			Role:       m.Role,
 			Name:       m.Name,
 			TaskPrompt: m.TaskPrompt,
-			Enabled:    true,
+			EnabledPtr: boolPtr(true),
 			SortOrder:  m.SortOrder,
 		})
 	}
@@ -369,3 +369,5 @@ func skillRuntimeJSON(allow ...string) string {
 	b, _ := json.Marshal(map[string]any{"allowed_slugs": allow})
 	return string(b)
 }
+
+func boolPtr(b bool) *bool { return &b }

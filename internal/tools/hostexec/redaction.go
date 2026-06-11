@@ -99,19 +99,56 @@ func redactSensitiveValues(output string, values []sensitiveValue) string {
 // or within structured contexts (quotes, assignments), avoiding partial matches
 // in unrelated text.
 func replaceValueWithBoundary(output, value, replacement string) string {
-	// Try word-boundary replacement first for values that look like tokens/keys.
-	// For short or common values, fall back to ReplaceAll to avoid missing structured contexts.
 	if len(value) >= minSensitiveValueLength {
-		// Use regexp with word boundaries for longer, more specific values
-		pattern := regexp.QuoteMeta(value)
-		re := regexp.MustCompile(`\b` + pattern + `\b`)
-		result := re.ReplaceAllString(output, replacement)
-		// Also replace in quoted/structured contexts (no word boundary before quote)
-		reQuoted := regexp.MustCompile(`["'` + "`" + `]` + pattern + `["'` + "`" + `]`)
-		result = reQuoted.ReplaceAllString(result, `"`+replacement+`"`)
-		return result
+		return replaceWithWordBoundary(output, value, replacement)
 	}
 	return strings.ReplaceAll(output, value, replacement)
+}
+
+// replaceWithWordBoundary replaces value occurrences that appear as whole words
+// or within quoted contexts, without using regexp to avoid runtime compilation cost.
+func replaceWithWordBoundary(output, value, replacement string) string {
+	var b strings.Builder
+	b.Grow(len(output))
+	i := 0
+	for {
+		idx := strings.Index(output[i:], value)
+		if idx < 0 {
+			b.WriteString(output[i:])
+			break
+		}
+		pos := i + idx
+		beforeOK := pos == 0 || !isWordChar(output[pos-1])
+		afterPos := pos + len(value)
+		afterOK := afterPos >= len(output) || !isWordChar(output[afterPos])
+
+		if beforeOK && afterOK {
+			b.WriteString(output[i:pos])
+			b.WriteString(replacement)
+		} else {
+			// Check for quoted context: "value" or 'value' or `value`
+			inQuotes := false
+			if pos > 0 && afterPos < len(output) {
+				q := output[pos-1]
+				if (q == '"' || q == '\'' || q == '`') && output[afterPos] == q {
+					inQuotes = true
+				}
+			}
+			if inQuotes {
+				b.WriteString(output[i : pos-1])
+				b.WriteString(replacement)
+				i = afterPos + 1
+				continue
+			}
+			b.WriteString(output[i : pos+len(value)])
+		}
+		i = pos + len(value)
+	}
+	return b.String()
+}
+
+func isWordChar(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
 func redactSensitiveKeyValueLines(output string) string {

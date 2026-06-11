@@ -72,9 +72,16 @@ func (w *AlertEvalWorker) rebuildFromDB(ctx context.Context) {
 		rebuilt := w.usecase.RebuildRingBuffer(ctx, w.buffer)
 		if rebuilt > 0 {
 			w.ready.Store(true)
+			w.lg.Info("AlertEvalWorker: ring buffer rebuilt from DB",
+				loggateway.StepID("monitor.alert_eval_rebuild_ok"),
+				loggateway.Int("buckets", rebuilt))
 		} else {
-			w.lg.Warn("AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will retry on next tick", loggateway.StepID("monitor.alert_eval_rebuild_fail"))
+			// 0 buckets rebuilt — DB may be empty on first run.
+			// Mark ready anyway so incremental updates can flow in;
+			// the evaluator will simply see zero counts until data arrives.
 			w.ready.Store(true)
+			w.lg.Warn("AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will rely on incremental updates",
+				loggateway.StepID("monitor.alert_eval_rebuild_empty"))
 		}
 	})
 }

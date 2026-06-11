@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz/monitor"
@@ -85,6 +86,37 @@ func TestNonEmpty_Values(t *testing.T) {
 	}
 }
 
+func TestMetadataMatchesID(t *testing.T) {
+	tests := []struct {
+		name         string
+		metadataJSON string
+		traceID      string
+		sessionID    string
+		want         bool
+	}{
+		{"both_empty", `{"trace_id":"abc"}`, "", "", false},
+		{"trace_id_exact_match", `{"trace_id":"trace-1","session_id":"sess-2"}`, "trace-1", "", true},
+		{"session_id_exact_match", `{"trace_id":"trace-1","session_id":"sess-2"}`, "", "sess-2", true},
+		{"trace_id_no_match", `{"trace_id":"trace-other"}`, "trace-1", "", false},
+		{"session_id_no_match", `{"session_id":"sess-other"}`, "", "sess-1", false},
+		{"partial_match_rejected", `{"trace_id":"trace-1-extra"}`, "trace-1", "", false},
+		{"substring_in_other_field_rejected", `{"other":"trace-1","session_id":"sess-2"}`, "trace-1", "", false},
+		{"both_match_trace_wins", `{"trace_id":"trace-1","session_id":"sess-1"}`, "trace-1", "sess-1", true},
+		{"invalid_json", `{not json}`, "trace-1", "", false},
+		{"empty_json", `{}`, "trace-1", "", false},
+		{"nil_fields", `{"trace_id":null,"session_id":null}`, "trace-1", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := monitor.MetadataMatchesID(tt.metadataJSON, tt.traceID, tt.sessionID)
+			if got != tt.want {
+				t.Errorf("MetadataMatchesID() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNewDiagBundleGenerator_NilRepo(t *testing.T) {
 	g := monitor.NewDiagBundleGenerator(nil, nil, loggateway.NewNoop())
 	if g != nil {
@@ -138,14 +170,20 @@ func TestDiagBundleGenerator_Generate_NegativeContextMinutes(t *testing.T) {
 func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
 	repo := &mockRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
-			return monitor.ListResult{
-				Items: []monitor.PlatformRow{
-					{ID: "e1", Key: "runner.completion", Name: "test", Status: "success", MetadataJSON: `{"session_id":"sess-1"}`},
-					{ID: "e2", Key: "alert.fired", Name: "alert", Status: "firing", MetadataJSON: `{"session_id":"sess-1"}`},
-					{ID: "e3", Key: "other", Name: "no-match", Status: "ok", MetadataJSON: `{"session_id":"other"}`},
-				},
-				Total: 3,
-			}, nil
+			// Simulate EventType filtering like the data layer does
+			allItems := []monitor.PlatformRow{
+				{ID: "e1", Key: "runner.completion", Name: "test", Status: "success", MetadataJSON: `{"session_id":"sess-1"}`},
+				{ID: "e2", Key: "alert.fired", Name: "alert", Status: "firing", MetadataJSON: `{"session_id":"sess-1"}`},
+				{ID: "e3", Key: "other", Name: "no-match", Status: "ok", MetadataJSON: `{"session_id":"other"}`},
+			}
+			var filtered []monitor.PlatformRow
+			for _, item := range allItems {
+				if query.EventType != "" && !strings.HasPrefix(item.Key, query.EventType) {
+					continue
+				}
+				filtered = append(filtered, item)
+			}
+			return monitor.ListResult{Items: filtered, Total: int32(len(filtered))}, nil
 		},
 	}
 	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())

@@ -1,0 +1,33 @@
+package apierror
+
+// Domain constants identify the subsystem that produced an error.
+// Use these instead of hard-coded strings so that reason values in
+// Kratos HTTP responses are stable and machine-parseable.
+const (
+	DomainAgent         = "AGENT"
+	DomainSession       = "SESSION"
+	DomainTool          = "TOOL"
+	DomainGraph         = "GRAPH"
+	DomainTeam          = "TEAM"
+	DomainChannel       = "CHANNEL"
+	DomainMemory        = "MEMORY"
+	DomainCron          = "CRON"
+	DomainKnowledge     = "KNOWLEDGE"
+	DomainArtifact      = "ARTIFACT"
+	DomainAdmin         = "ADMIN"
+	DomainUsageQuota    = "USAGE_QUOTA"
+	DomainProvider      = "PROVIDER"
+	DomainChat          = "CHAT"
+	DomainSkill         = "SKILL"
+	DomainMCP           = "MCP"
+	DomainOrg           = "ORG"
+	DomainHook          = "HOOK"
+	DomainBackgroundJob = "BACKGROUND_JOB"
+	DomainAuth          = "AUTH"
+	DomainData          = "DATA"
+	DomainShared        = "SHARED"
+	DomainSpirit        = "SPIRIT"
+	DomainCompress      = "COMPRESS"
+	DomainLLMProvider   = "LLM_PROVIDER_MODEL"
+	DomainGraphTemplate = "GRAPH_TEMPLATE"
+)

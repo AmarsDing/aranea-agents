@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz/types"
@@ -38,10 +39,11 @@ type SelfCheckScheduler struct {
 	registry  *AlertMetricRegistry
 	lg        loggateway.Logger
 
-	mu         sync.Mutex
-	running    bool
-	interval   time.Duration
-	checkersMu sync.RWMutex // protects checkers and repairers slices
+	mu                 sync.Mutex
+	running            bool
+	interval           time.Duration
+	lastUnhealthyCount atomic.Int32 // cached count from most recent RunOnce (thread-safe)
+	checkersMu         sync.RWMutex // protects checkers and repairers slices
 }
 
 // NewSelfCheckScheduler creates a new scheduler with the given checkers, repairers, and report repo.
@@ -211,8 +213,16 @@ func (s *SelfCheckScheduler) RunOnce(ctx context.Context) *SelfCheckReport {
 		}
 	}
 
-	// Update alert metric
+	// Update alert metric and cache unhealthy count
 	s.updateMetric(overallCtx, results)
+	unhealthyCount := 0
+	for _, r := range results {
+		if r.Status != types.SelfCheckStatusPassed {
+			unhealthyCount++
+		}
+	}
+	// Update cached count directly — we already hold s.mu from TryLock at the top of RunOnce.
+	s.lastUnhealthyCount.Store(int32(unhealthyCount))
 
 	s.lg.Info("SelfCheckScheduler: self-check completed",
 		loggateway.StepID("monitor.self_check_done"),
@@ -277,6 +287,8 @@ func (s *SelfCheckScheduler) updateMetric(ctx context.Context, results []types.S
 
 // SelfCheckUnhealthyCountMetric is an AlertMetric that reports the count of
 // unhealthy self-check results from the most recent check cycle.
+// It caches the latest unhealthy count from RunOnce instead of re-running
+// all checkers on every Evaluate call.
 type SelfCheckUnhealthyCountMetric struct {
 	scheduler *SelfCheckScheduler
 }
@@ -292,17 +304,7 @@ func (m *SelfCheckUnhealthyCountMetric) Evaluate(ctx context.Context, _ time.Dur
 	if m.scheduler == nil {
 		return 0, nil
 	}
-	// Count current unhealthy checkers
-	count := 0
-	m.scheduler.checkersMu.RLock()
-	checkersCopy := make([]SelfChecker, len(m.scheduler.checkers))
-	copy(checkersCopy, m.scheduler.checkers)
-	m.scheduler.checkersMu.RUnlock()
-	for _, c := range checkersCopy {
-		result := c.Check(ctx)
-		if result.Status != types.SelfCheckStatusPassed {
-			count++
-		}
-	}
-	return float64(count), nil
+	// Return the cached unhealthy count from the most recent RunOnce cycle.
+	// Uses atomic load for thread-safe access without locking.
+	return float64(m.scheduler.lastUnhealthyCount.Load()), nil
 }

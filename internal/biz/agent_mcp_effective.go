@@ -170,7 +170,7 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 		if !row.Enabled || strings.TrimSpace(row.DeletedAt) != "" {
 			continue
 		}
-		if st := strings.ToLower(strings.TrimSpace(row.Status)); st != "" && st != "active" {
+		if st := strings.ToLower(strings.TrimSpace(row.Status)); st != "" && st != string(AgentStatusActive) {
 			continue
 		}
 		out = append(out, EffectiveMCPServer{

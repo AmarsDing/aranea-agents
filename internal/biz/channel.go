@@ -114,6 +114,7 @@ type ChannelReader interface {
 	GetByKey(ctx context.Context, channelKey string) (Channel, error)
 }
 
+// Stability:evolving
 type ChannelWriter interface {
 	Create(ctx context.Context, row Channel) (Channel, error)
 	Update(ctx context.Context, row Channel) (Channel, error)

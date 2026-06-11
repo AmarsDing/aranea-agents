@@ -115,7 +115,7 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	if opts != nil && opts.HealthProvider != nil {
 		candidates := buildRankCandidates(ctx, scored, opts.HealthProvider, lg)
 		if len(candidates) > 0 {
-			factors := skillrecommend.DynamicRankFactors(opts.HealthProvider, candidates)
+			factors := skillrecommend.DynamicRankFactors(ctx, opts.HealthProvider, candidates)
 			ranked := skillrecommend.Rank(candidates, factors)
 			applyRankResults(scored, ranked, reasons)
 		}

@@ -677,9 +677,9 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		Save(ctx)
 	if err != nil {
 		if sqlgraph.IsConstraintError(err) {
-			return biz.Agent{}, fmt.Errorf("%w: %w", shared.ErrAgentKeyConflict, err)
+			return biz.Agent{}, shared.ErrAgentKeyConflict
 		}
-		return biz.Agent{}, err
+		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	return r.GetAgentByID(ctx, a.ID)
 }
@@ -889,15 +889,15 @@ func (r *agentRepo) CreateAgentAtomic(ctx context.Context, a biz.Agent, files []
 		var err error
 		created, err = r.CreateAgent(txCtx, a)
 		if err != nil {
-			return fmt.Errorf("create agent: %w", err)
+			return entErrToBizErr(err, "AGENT")
 		}
 		settings.AgentID = created.ID
 		if _, err = r.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
-			return fmt.Errorf("upsert runtime settings: %w", err)
+			return entErrToBizErr(err, "AGENT")
 		}
 		if len(files) > 0 {
 			if _, err = r.ReplaceAgentPromptFiles(txCtx, created.ID, files); err != nil {
-				return fmt.Errorf("replace prompt files: %w", err)
+				return entErrToBizErr(err, "AGENT")
 			}
 		}
 		return nil
@@ -914,16 +914,16 @@ func (r *agentRepo) UpdateAgentAtomic(ctx context.Context, a biz.Agent, files []
 		var err error
 		updated, err = r.UpdateAgent(txCtx, a)
 		if err != nil {
-			return fmt.Errorf("update agent: %w", err)
+			return entErrToBizErr(err, "AGENT")
 		}
 		if settings != nil {
 			if _, err = r.UpsertAgentRuntimeSettings(txCtx, *settings); err != nil {
-				return fmt.Errorf("upsert runtime settings: %w", err)
+				return entErrToBizErr(err, "AGENT")
 			}
 		}
 		if files != nil {
 			if _, err = r.ReplaceAgentPromptFiles(txCtx, updated.ID, files); err != nil {
-				return fmt.Errorf("replace prompt files: %w", err)
+				return entErrToBizErr(err, "AGENT")
 			}
 		}
 		return nil

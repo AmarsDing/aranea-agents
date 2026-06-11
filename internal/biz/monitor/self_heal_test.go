@@ -204,7 +204,7 @@ func TestSelfHealUsecase_ListHealRecords(t *testing.T) {
 	// Generate a record
 	uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "", "manual", 5)
 
-	records, total := uc.ListHealRecords(10, 0)
+	records, total := uc.ListHealRecords(context.Background(), 10, 0)
 	if total != 1 {
 		t.Errorf("total = %d, want 1", total)
 	}

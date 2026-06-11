@@ -584,7 +584,7 @@ func TestDeleteRun(t *testing.T) {
 			id:   "run-1",
 			setup: func(r *fnMockRepo) {
 				r.deleteRunFn = func(_ context.Context, _ string) error {
-					return errors.New("db error")
+					return apierror.Internal("EVAL", "db error")
 				}
 			},
 			wantErr: true,
@@ -1102,7 +1102,7 @@ func TestGetAgentEvalTrend(t *testing.T) {
 			limit:   10,
 			setup: func(r *fnMockRepo) {
 				r.listTrendPointsFn = func(_ context.Context, _, _ string, _ int) ([]TrendPoint, error) {
-					return nil, errors.New("db error")
+					return nil, apierror.Internal("EVAL", "db error")
 				}
 			},
 			wantErr: true,

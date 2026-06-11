@@ -28,11 +28,11 @@ func (r *selfCheckReportRepo) InsertSelfCheckReport(ctx context.Context, report 
 
 	checkResultsJSON, err := json.Marshal(report.CheckResults)
 	if err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+		return entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}
 	repairActionsJSON, err := json.Marshal(report.RepairActions)
 	if err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+		return entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -69,7 +69,7 @@ func (r *selfCheckReportRepo) ListSelfCheckReports(ctx context.Context, limit, o
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		`SELECT COUNT(*) FROM self_check_reports`, nil, &total)
 	if err != nil {
-		return nil, 0, apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+		return nil, 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
@@ -77,7 +77,7 @@ func (r *selfCheckReportRepo) ListSelfCheckReports(ctx context.Context, limit, o
 		 FROM self_check_reports ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		limit, offset)
 	if err != nil {
-		return nil, 0, apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+		return nil, 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}
 	defer rows.Close()
 
@@ -92,7 +92,7 @@ func (r *selfCheckReportRepo) ListSelfCheckReports(ctx context.Context, limit, o
 			durationMs          int64
 		)
 		if err := rows.Scan(&id, &checkResultsJSON, &overallStatus, &repairActionsJSON, &startedAtStr, &finishedAtStr, &durationMs); err != nil {
-			return nil, 0, apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+			return nil, 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
 		}
 
 		var checkResults []types.SelfCheckResult
@@ -119,7 +119,7 @@ func (r *selfCheckReportRepo) ListSelfCheckReports(ctx context.Context, limit, o
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+		return nil, 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}
 
 	return reports, total, nil
@@ -134,7 +134,7 @@ func (r *selfCheckReportRepo) DeleteSelfCheckReportsOlderThan(ctx context.Contex
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`DELETE FROM self_check_reports WHERE created_at < ?`, cutoff)
 	if err != nil {
-		return 0, apierror.Wrap(err, apierror.CodeInternal, "SELF_CHECK_REPORT")
+		return 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil

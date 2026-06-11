@@ -19,6 +19,10 @@ func NonEmpty(ss ...string) []string {
 	return nonEmpty(ss...)
 }
 
+func MetadataMatchesID(metadataJSON, traceID, sessionID string) bool {
+	return metadataMatchesID(metadataJSON, traceID, sessionID)
+}
+
 func MatchStepID(pattern, stepID string) bool {
 	return matchStepID(pattern, stepID)
 }

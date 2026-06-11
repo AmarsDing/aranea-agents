@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -77,7 +76,7 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 		SetUpdatedAt(updatedAt).
 		Save(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("graph repo save: %w", err)
+		return nil, entErrToBizErr(err, "GRAPH")
 	}
 	return entGraphToBiz(saved, r.data.lg), nil
 }
@@ -89,7 +88,7 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 		if ent.IsNotFound(err) {
 			return nil, apierror.NotFound("GRAPH", "graph definition not found")
 		}
-		return nil, fmt.Errorf("graph repo get: %w", err)
+		return nil, entErrToBizErr(err, "GRAPH")
 	}
 	return entGraphToBiz(row, r.data.lg), nil
 }
@@ -103,7 +102,7 @@ func (r *graphRepo) GetDefinitionByName(ctx context.Context, name string) (*biz.
 		if ent.IsNotFound(err) {
 			return nil, apierror.NotFound("GRAPH", "graph definition not found")
 		}
-		return nil, fmt.Errorf("graph repo get by name: %w", err)
+		return nil, entErrToBizErr(err, "GRAPH")
 	}
 	return entGraphToBiz(row, r.data.lg), nil
 }
@@ -120,7 +119,7 @@ func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken
 	}
 	rows, err := query.All(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("graph repo list: %w", err)
+		return nil, "", entErrToBizErr(err, "GRAPH")
 	}
 	var nextToken string
 	if len(rows) > pageSize {
@@ -152,7 +151,7 @@ func (r *graphRepo) DeleteDefinition(ctx context.Context, id string) error {
 	client := r.data.RW().Write(ctx)
 	err := client.GraphDefinition.DeleteOneID(id).Exec(ctx)
 	if err != nil && !ent.IsNotFound(err) {
-		return fmt.Errorf("graph repo delete: %w", err)
+		return entErrToBizErr(err, "GRAPH")
 	}
 	return nil
 }
@@ -193,7 +192,7 @@ func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefiniti
 		if ent.IsNotFound(err) {
 			return nil, apierror.NotFound("GRAPH", "graph definition not found")
 		}
-		return nil, fmt.Errorf("graph repo update: %w", err)
+		return nil, entErrToBizErr(err, "GRAPH")
 	}
 	return entGraphToBiz(saved, r.data.lg), nil
 }
@@ -249,7 +248,7 @@ func (r *graphRepo) ReorderGraphs(ctx context.Context, ids []string) error {
 			SetSortOrder(i + 1).
 			Save(ctx)
 		if err != nil {
-			return fmt.Errorf("graph repo reorder [%s]: %w", id, err)
+			return entErrToBizErr(err, "GRAPH")
 		}
 	}
 	return nil
@@ -285,7 +284,7 @@ func (r *graphRunRepo) SaveRun(ctx context.Context, exec *biz.GraphExecution) er
 	}
 	_, err := builder.Save(ctx)
 	if err != nil {
-		return fmt.Errorf("graph run repo save: %w", err)
+		return entErrToBizErr(err, "GRAPH_RUN")
 	}
 	return nil
 }
@@ -297,7 +296,7 @@ func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecuti
 		if ent.IsNotFound(err) {
 			return nil, apierror.NotFound("GRAPH_RUN", "graph execution not found")
 		}
-		return nil, fmt.Errorf("graph run repo get: %w", err)
+		return nil, entErrToBizErr(err, "GRAPH_RUN")
 	}
 	return entGraphRunToBiz(row, r.data.lg), nil
 }
@@ -329,7 +328,7 @@ func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, page
 
 	rows, err := query.All(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("graph run repo list: %w", err)
+		return nil, "", entErrToBizErr(err, "GRAPH_RUN")
 	}
 	var nextToken string
 	if len(rows) > pageSize {
@@ -364,7 +363,7 @@ func (r *graphRunRepo) UpdateRun(ctx context.Context, exec *biz.GraphExecution) 
 		if ent.IsNotFound(err) {
 			return apierror.NotFound("GRAPH_RUN", "graph execution not found")
 		}
-		return fmt.Errorf("graph run repo update: %w", err)
+		return entErrToBizErr(err, "GRAPH_RUN")
 	}
 	return nil
 }

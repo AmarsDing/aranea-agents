@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 type SynthesisStrategy string
@@ -35,11 +36,104 @@ type TeamSynthesisResult struct {
 }
 
 type SynthesisOutput struct {
-	Content     string                `json:"content"`
-	Strategy    SynthesisStrategy     `json:"strategy"`
-	TeamResults []TeamSynthesisResult `json:"team_results"`
-	SynthesizedAt string              `json:"synthesized_at"`
+	Content       string                `json:"content"`
+	Strategy      SynthesisStrategy     `json:"strategy"`
+	TeamResults   []TeamSynthesisResult `json:"team_results"`
+	SynthesizedAt string                `json:"synthesized_at"`
 }
+
+// SynthesisEventPublisher is a biz-level port for publishing synthesis completion
+// events. Implemented by the service layer to bridge to event.Bus without
+// importing the event package in biz.
+//
+// Stability:evolving
+type SynthesisEventPublisher interface {
+	PublishSynthesisCompleted(ctx context.Context, spiritSessionID string, output *SynthesisOutput)
+}
+
+// SynthesisUsecase orchestrates the full synthesis workflow: active team check,
+// completed/failed team collection, cascade blocking, input assembly, engine
+// execution, and event publishing. This consolidates business logic that was
+// previously scattered across the service layer.
+//
+// Stability:evolving
+type SynthesisUsecase struct {
+	spiritUC *SpiritTeamUsecase
+	engine   *SynthesisEngine
+	pub      SynthesisEventPublisher
+	lg       loggateway.Logger
+}
+
+var (
+	ErrActiveTeamsExist = apierror.Conflict(apierror.DomainSpirit, "cannot synthesize: active teams still running")
+	ErrNoCompletedTeams = apierror.BadRequest(apierror.DomainSpirit, "no completed or failed teams to synthesize")
+	ErrNoTeamResults    = apierror.BadRequest(apierror.DomainSpirit, "no team results to synthesize")
+	ErrUnknownStrategy  = apierror.BadRequest(apierror.DomainSpirit, "unknown synthesis strategy")
+)
+
+func NewSynthesisUsecase(
+	spiritUC *SpiritTeamUsecase,
+	engine *SynthesisEngine,
+	pub SynthesisEventPublisher,
+	lg loggateway.Logger,
+) *SynthesisUsecase {
+	return &SynthesisUsecase{
+		spiritUC: spiritUC,
+		engine:   engine,
+		pub:      pub,
+		lg:       lg,
+	}
+}
+
+// SynthesizeResults executes the full synthesis workflow for a spirit session.
+// It checks for active teams, collects completed/failed results, assembles the
+// synthesis input, runs the engine, and publishes the completion event.
+func (u *SynthesisUsecase) SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*SynthesisOutput, error) {
+	// Step 1: Check for active teams — synthesis is only allowed when all teams are done.
+	activeTeams, activeErr := u.spiritUC.ListActiveTeams(ctx, spiritSessionID)
+	if activeErr != nil {
+		u.lg.Warn("查询活跃团队失败，跳过活跃检查",
+			loggateway.StepID("spirit.synthesis.active_check_err"),
+			loggateway.Err(activeErr),
+		)
+	} else if len(activeTeams) > 0 {
+		return nil, ErrActiveTeamsExist
+	}
+
+	// Step 2: Collect completed and failed teams.
+	teams, err := u.spiritUC.ListCompletedAndFailedTeams(ctx, spiritSessionID)
+	if err != nil {
+		return nil, err
+	}
+	teamResults := u.spiritUC.BuildCascadeBlockedResults(ctx, teams)
+	if len(teamResults) == 0 {
+		return nil, ErrNoCompletedTeams
+	}
+
+	// Step 3: Assemble synthesis input.
+	input := SynthesisInput{
+		TeamResults: teamResults,
+		Strategy:    SynthesisStrategy(strategy),
+		SpiritQuery: u.spiritUC.GetSpiritQuery(ctx, spiritSessionID),
+	}
+
+	// Step 4: Execute synthesis engine.
+	output, err := u.engine.Synthesize(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 5: Publish completion event via port.
+	if u.pub != nil {
+		u.pub.PublishSynthesisCompleted(ctx, spiritSessionID, output)
+	}
+
+	return output, nil
+}
+
+// ---------------------------------------------------------------------------
+// SynthesisEngine — pure synthesis logic (no I/O, no external deps)
+// ---------------------------------------------------------------------------
 
 type SynthesisEngine struct{}
 
@@ -49,7 +143,7 @@ func NewSynthesisEngine() *SynthesisEngine {
 
 func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) (*SynthesisOutput, error) {
 	if len(input.TeamResults) == 0 {
-		return nil, apierror.BadRequest("SPIRIT", "no team results to synthesize")
+		return nil, ErrNoTeamResults
 	}
 	strategy := input.Strategy
 	if strategy == "" {
@@ -68,8 +162,7 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) 
 			content += "\n\n---\n\n" + e.synthesizePrompt(input)
 		}
 	default:
-		return nil, apierror.BadRequest("SPIRIT",
-			fmt.Sprintf("unknown synthesis strategy: %s", strategy))
+		return nil, ErrUnknownStrategy
 	}
 	if err != nil {
 		return nil, err

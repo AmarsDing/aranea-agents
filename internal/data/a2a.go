@@ -94,7 +94,7 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return apierror.Wrap(err, apierror.CodeInternal, "A2A")
+			return entErrToBizErr(err, "A2A")
 		}
 	}
 	// TECH-DEBT(debt): DEV-10 — A2A schema migration should move to a proper migration framework (e.g. golang-migrate).
@@ -109,7 +109,7 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
 		// but returns an error in others. Ignore "duplicate column" errors.
 		if _, err := db.ExecContext(ctx, m); err != nil {
 			if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-				return apierror.Wrap(err, apierror.CodeInternal, "A2A")
+				return entErrToBizErr(err, "A2A")
 			}
 		}
 	}
@@ -315,7 +315,7 @@ func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgen
 	if agent.ID == "" {
 		id, err := biz.NewA2AID()
 		if err != nil {
-			return biz.A2ARemoteAgent{}, apierror.Wrap(err, apierror.CodeInternal, "A2A")
+			return biz.A2ARemoteAgent{}, entErrToBizErr(err, "A2A")
 		}
 		agent.ID = id
 	}

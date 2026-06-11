@@ -131,6 +131,7 @@ var ProviderSet = wire.NewSet(
 	NewSkillEvolutionSuggestionRepo,
 	NewFailurePatternRepo,
 	NewUnifiedEvolutionRepo,
+	NewPackSeeder,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

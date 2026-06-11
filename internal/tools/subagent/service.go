@@ -93,7 +93,7 @@ type Service struct {
 
 	clock func() time.Time
 
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	runs    map[string]*runRecord
 	running map[string]*runningRun
 
@@ -378,8 +378,8 @@ func (s *Service) ListForUser(userID string, filter trpcsubagent.ListFilter) []t
 	userID = strings.TrimSpace(userID)
 	parentSessionID := strings.TrimSpace(filter.ParentSessionID)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	runs := make([]trpcsubagent.Run, 0, len(s.runs))
 	for _, item := range s.runs {
@@ -669,8 +669,8 @@ func (s *Service) doNotifyCompletion(router *outbound.Router, record *runRecord)
 }
 
 func (s *Service) runForUser(userID string, runID string) (*runRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	record := s.runs[strings.TrimSpace(runID)]
 	if record == nil || record.OwnerUserID != strings.TrimSpace(userID) {

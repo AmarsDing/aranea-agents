@@ -3,6 +3,8 @@ package biz
 import (
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -21,6 +23,44 @@ const (
 	// should clear these from their ToolsDenyJSON.
 	DefaultToolsDenyFrameworkMemory = `["memory_add","memory_update","memory_delete","memory_search","memory_load"]`
 )
+
+// AgentStatus enumerates the valid lifecycle statuses for a catalog agent.
+// Using typed constants instead of free-form strings prevents invalid status values.
+type AgentStatus string
+
+const (
+	AgentStatusActive   AgentStatus = "active"
+	AgentStatusInactive AgentStatus = "inactive"
+)
+
+// ValidAgentStatuses is the set of all valid agent statuses.
+var ValidAgentStatuses = map[AgentStatus]bool{
+	AgentStatusActive:   true,
+	AgentStatusInactive: true,
+}
+
+// ValidateAgentStatus returns an error if the given status string is not a valid AgentStatus.
+func ValidateAgentStatus(status string) error {
+	if status == "" {
+		return nil // empty is allowed (defaults to active on creation)
+	}
+	if ValidAgentStatuses[AgentStatus(status)] {
+		return nil
+	}
+	return apierror.BadRequest("AGENT", "invalid agent status: "+status)
+}
+
+// NormalizeAgentStatus returns the normalized AgentStatus, defaulting to active for empty.
+func NormalizeAgentStatus(status string) AgentStatus {
+	s := AgentStatus(strings.TrimSpace(strings.ToLower(status)))
+	if s == "" {
+		return AgentStatusActive
+	}
+	if ValidAgentStatuses[s] {
+		return s
+	}
+	return AgentStatusActive
+}
 
 // BoolVal dereferences a *bool, returning false for nil.
 func BoolVal(p *bool) bool { return p != nil && *p }

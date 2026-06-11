@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -98,7 +99,7 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 
 func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error) {
 	if centerID == "" {
-		return nil, fmt.Errorf("center_id is required")
+		return nil, apierror.BadRequest("MEMORY", "center_id is required")
 	}
 	maxH := int(hops)
 	if maxH <= 0 {
@@ -233,7 +234,7 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 
 func (r *l4EntityRepo) AgentIdentityJSON(ctx context.Context, agentID string) ([]byte, error) {
 	if agentID == "" {
-		return nil, fmt.Errorf("agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT agent_id, persona, values_json, tone, domains_json, user_expectations,
@@ -269,7 +270,7 @@ func (r *l4EntityRepo) AgentIdentityJSON(ctx context.Context, agentID string) ([
 
 func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([]byte, error) {
 	if agentID == "" {
-		return nil, fmt.Errorf("agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT agent_id, exploration, conciseness, caution, delegation,
@@ -489,7 +490,7 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, fmt.Errorf("evolution event not found after insert")
+		return nil, apierror.NotFound("MEMORY", "evolution event not found after insert")
 	}
 	var rowID, aid, wid, ek, tf, reason, tk, ts, m, ca string
 	var reverted int

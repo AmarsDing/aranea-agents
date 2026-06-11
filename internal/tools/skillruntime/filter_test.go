@@ -104,8 +104,8 @@ func TestFilterCache_Stats(t *testing.T) {
 	if hits != 2 {
 		t.Errorf("hits = %d, want 2", hits)
 	}
-	if misses != 2 {
-		t.Errorf("misses = %d, want 2", misses)
+	if misses != 1 {
+		t.Errorf("misses = %d, want 1", misses)
 	}
 	if evicts != 0 {
 		t.Errorf("evicts = %d, want 0", evicts)

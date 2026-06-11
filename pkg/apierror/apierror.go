@@ -52,13 +52,16 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error { return e.Cause }
 
-// Is satisfies errors.Is when target is *Error with the same Code.
+// Is satisfies errors.Is when target is *Error with the same Code AND Domain.
+// Both fields must match so that errors.Is(err, ErrAgentKeyConflict) does not
+// accidentally match ErrMessageDuplicate (both are CodeConflict but different
+// Domain). For Code-only matching, use apierror.From + explicit field comparison.
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
 	if !ok {
 		return false
 	}
-	return e.Code == t.Code
+	return e.Code == t.Code && e.Domain == t.Domain
 }
 
 // WithMeta returns a shallow copy of the error with additional metadata.
@@ -151,6 +154,13 @@ func From(err error) (*Error, bool) {
 // If err is already a kerrors.Error it is returned unchanged.
 // If err is *apierror.Error it is mapped to the appropriate HTTP status.
 // All other errors become 500 Internal Server Error.
+//
+// Mapping rules:
+//   - reason = Domain + "_" + Code (e.g. "AGENT_NOT_FOUND") so the frontend can
+//     distinguish errors from different subsystems.
+//   - CodeInternal errors: Message is replaced with a generic string to avoid
+//     leaking internal details (SQL, file paths, etc.) to the client. The
+//     original message is preserved in the kerrors metadata for server-side logs.
 func ToKratos(err error) error {
 	if err == nil {
 		return nil
@@ -163,26 +173,34 @@ func ToKratos(err error) error {
 
 	ae, ok := From(err)
 	if !ok {
-		return kerrors.InternalServer("INTERNAL", err.Error())
+		return kerrors.InternalServer("INTERNAL", "internal error")
 	}
+
+	reason := ae.Domain + "_" + string(ae.Code)
 	msg := ae.Message
+
+	// Sanitize internal errors: never expose raw internal messages to clients.
+	if ae.Code == CodeInternal {
+		msg = "internal error"
+	}
+
 	switch ae.Code {
 	case CodeNotFound:
-		return kerrors.NotFound(string(ae.Code), msg)
+		return kerrors.NotFound(reason, msg)
 	case CodeBadRequest:
-		return kerrors.BadRequest(string(ae.Code), msg)
+		return kerrors.BadRequest(reason, msg)
 	case CodeUnauthorized:
-		return kerrors.New(http.StatusUnauthorized, string(ae.Code), msg)
+		return kerrors.New(http.StatusUnauthorized, reason, msg)
 	case CodeForbidden:
-		return kerrors.Forbidden(string(ae.Code), msg)
+		return kerrors.Forbidden(reason, msg)
 	case CodeConflict:
-		return kerrors.New(http.StatusConflict, string(ae.Code), msg)
+		return kerrors.New(http.StatusConflict, reason, msg)
 	case CodeUnavailable:
-		return kerrors.ServiceUnavailable(string(ae.Code), msg)
+		return kerrors.ServiceUnavailable(reason, msg)
 	case CodeRateLimit:
-		return kerrors.New(http.StatusTooManyRequests, string(ae.Code), msg)
+		return kerrors.New(http.StatusTooManyRequests, reason, msg)
 	case CodeInternal:
-		return kerrors.InternalServer(string(ae.Code), msg)
+		return kerrors.InternalServer(reason, msg)
 	default:
 		return kerrors.InternalServer("UNKNOWN_CODE", msg)
 	}

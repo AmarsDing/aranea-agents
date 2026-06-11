@@ -71,6 +71,7 @@ func (r *duplicateAgentRepo) ExecInTx(ctx context.Context, fn func(context.Conte
 	return fn(ctx)
 }
 func (r *duplicateAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (r *duplicateAgentRepo) ToggleFavorite(context.Context, string) (Agent, error) { return Agent{}, nil }
 
 func TestDuplicate_copiesFilesWithNewIDs(t *testing.T) {
 	src := Agent{
@@ -81,7 +82,7 @@ func TestDuplicate_copiesFilesWithNewIDs(t *testing.T) {
 		Model:       "gpt-4",
 	}
 	repo := &duplicateAgentRepo{src: src}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	got, err := uc.Duplicate(context.Background(), "src-1")
 	if err != nil {
 		t.Fatalf("Duplicate: %v", err)
@@ -104,7 +105,7 @@ func TestDuplicate_setsCreatedByFromContext(t *testing.T) {
 		CreatedBy:   "99",
 	}
 	repo := &duplicateAgentRepo{src: src}
-	uc := NewAgentUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	ctx := auth.NewContext(context.Background(), &auth.Auth{UserID: 42})
 	if _, err := uc.Duplicate(ctx, "src-1"); err != nil {
 		t.Fatalf("Duplicate: %v", err)

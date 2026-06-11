@@ -3,11 +3,11 @@ package data
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 type channelInboundReceiptRepo struct {
@@ -31,7 +31,7 @@ func (r *channelInboundReceiptRepo) TryClaim(ctx context.Context, channelID, ide
 	}
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return false, errors.New("channel inbound receipt: repository unavailable")
+		return false, apierror.Internal("CHANNEL_INBOUND_RECEIPT", "repository unavailable")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.ExecContext(ctx, `

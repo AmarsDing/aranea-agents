@@ -415,7 +415,7 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (S
 	if err != nil {
 		return Skill{}, err
 	}
-	u.InvalidateEmbedCache()
+	u.InvalidateEmbedCacheForSlug(s.Slug)
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -431,7 +431,8 @@ func (u *Usecase) Duplicate(ctx context.Context, id string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
-	u.InvalidateEmbedCache()
+	// Duplicate creates a new slug, so invalidate the new entry.
+	u.InvalidateEmbedCacheForSlug(s.Slug)
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -443,11 +444,16 @@ func (u *Usecase) Delete(ctx context.Context, id string) error {
 	if err := requireAdminAccess(ctx); err != nil {
 		return err
 	}
-	err := u.repo.DeleteSkill(ctx, id)
+	// Fetch the skill first to get its slug for targeted cache invalidation.
+	s, err := u.repo.GetSkillByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	u.InvalidateEmbedCache()
+	err = u.repo.DeleteSkill(ctx, id)
+	if err != nil {
+		return err
+	}
+	u.InvalidateEmbedCacheForSlug(s.Slug)
 	return nil
 }
 
@@ -576,7 +582,7 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
-	u.InvalidateEmbedCache()
+	u.InvalidateEmbedCacheForSlug(s.Slug)
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -971,6 +977,18 @@ func (u *Usecase) InvalidateEmbedCache() {
 	u.embedCache = make(map[string]embedEntry)
 }
 
+// InvalidateEmbedCacheForSlug removes a single skill's embedding from cache.
+// Prefer this over InvalidateEmbedCache when only one skill changes.
+func (u *Usecase) InvalidateEmbedCacheForSlug(slug string) {
+	slug = NormalizeSlug(slug)
+	if slug == "" {
+		return
+	}
+	u.embedMu.Lock()
+	defer u.embedMu.Unlock()
+	delete(u.embedCache, slug)
+}
+
 func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCandidate) error {
 	u.embedMu.RLock()
 	missing := make([]int, 0, len(candidates))
@@ -996,9 +1014,7 @@ func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCan
 	defer u.embedMu.Unlock()
 	for i, idx := range missing {
 		if i < len(embeddings) {
-			if _, exists := u.embedCache[candidates[idx].Slug]; !exists {
-				u.embedCache[candidates[idx].Slug] = embedEntry{vector: embeddings[i], cachedAt: time.Now()}
-			}
+			u.embedCache[candidates[idx].Slug] = embedEntry{vector: embeddings[i], cachedAt: time.Now()}
 		}
 	}
 	return nil
