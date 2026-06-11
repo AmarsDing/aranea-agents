@@ -14,7 +14,7 @@
     <q-btn
       flat
       dense
-      color="primary"
+      color="accent"
       icon="playlist_add"
       :disable="disabled || !draft.trim()"
       :aria-label="t('chat.enqueueSend', 'Enqueue message')"

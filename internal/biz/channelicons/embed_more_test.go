@@ -4,16 +4,20 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/channelicons"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
 
 func TestLoadPNG_EmptyKey(t *testing.T) {
 	_, err := channelicons.LoadPNG("")
 	if err == nil {
 		t.Fatal("expected error for empty key, got nil")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("expected BadRequest error, got %v", err)
 	}
 }

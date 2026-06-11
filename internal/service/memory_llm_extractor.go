@@ -127,9 +127,6 @@ func convertFactsToProposals(facts []compress.MemoryExtractFact, messages []biz.
 			ExtractionQuality: quality,
 			IsPIISensitive:    f.IsPIISensitive,
 		}
-		if f.Confidence > 0 {
-			p.Topics = append(p.Topics, f.SubjectType)
-		}
 		out = append(out, p)
 	}
 	return out

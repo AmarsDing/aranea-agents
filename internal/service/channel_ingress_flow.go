@@ -8,7 +8,10 @@ import (
 )
 
 func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, message string, err error, pairs ...event.Pair) {
-	if sessionID == "" || h == nil {
+	if h == nil {
+		return
+	}
+	if sessionID == "" {
 		if err != nil {
 			h.lg.Warn(message,
 				loggateway.StepID(step),

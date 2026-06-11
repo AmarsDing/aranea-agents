@@ -14,7 +14,7 @@ func TestAssemblyForCatalogKey(t *testing.T) {
 		t.Fatalf("read_file cfg=%+v ok=%v", cfg, ok)
 	}
 	cfg, ok = AssemblyForCatalogKey("shell_exec", map[string]any{"base_dir": "/tmp/ws"}, nil, noop)
-	if !ok || cfg.EnabledTools[0] != "hostexec" || cfg.ShellExecDir != "/tmp/ws" {
+	if !ok || cfg.EnabledTools[0] != "hostexec" || cfg.ShellExec.Dir != "/tmp/ws" {
 		t.Fatalf("shell_exec cfg=%+v ok=%v", cfg, ok)
 	}
 	cfg, ok = AssemblyForCatalogKey("diff_edit", map[string]any{"filesystem_dir": "/tmp/proj"}, nil, noop)
@@ -39,7 +39,7 @@ func TestAssemblyForCatalogKey_webResearchPlatform(t *testing.T) {
 	}
 	platform := &webresearchpkg.PlatformFields{HasAPIKey: true, APIKey: "k", Provider: "tavily"}
 	cfg, ok := AssemblyForCatalogKey("web_research", map[string]any{"provider": "tavily"}, platform, noop)
-	if !ok || len(cfg.CustomTools) != 1 {
+	if !ok || len(cfg.Session.CustomTools) != 1 {
 		t.Fatalf("cfg=%+v ok=%v", cfg, ok)
 	}
 }

@@ -9,8 +9,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -116,7 +115,7 @@ func (s *MCPServerService) GetMCPServer(ctx context.Context, req *v1.GetMCPServe
 	m, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("MCP_SERVER", "mcp server not found")
+			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
 	}
@@ -125,7 +124,7 @@ func (s *MCPServerService) GetMCPServer(ctx context.Context, req *v1.GetMCPServe
 
 func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMCPServerRequest) (*v1.MCPServer, error) {
 	if req.GetMcpServer() == nil {
-		return nil, kerrors.BadRequest("MCP_SERVER", "mcp_server body is required")
+		return nil, apierror.BadRequest("MCP_SERVER", "mcp_server body is required")
 	}
 	// Fetch current server to resolve proto3 zero-value ambiguity for bool/int fields.
 	// Proto3 cannot distinguish "field not set" from "set to zero value" (false/0),
@@ -134,7 +133,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 	current, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("MCP_SERVER", "mcp server not found")
+			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
 	}
@@ -142,7 +141,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("MCP_SERVER", "mcp server not found")
+			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
 	}
@@ -180,7 +179,7 @@ func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPSer
 	res, err := s.uc.TestMCPServer(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("MCP_SERVER", "mcp server not found")
+			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
 	}

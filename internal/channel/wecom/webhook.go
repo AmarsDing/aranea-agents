@@ -3,6 +3,7 @@ package wecom
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -10,8 +11,11 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // InboundMessage is parsed from a WeCom (企业微信) bot / intelligent robot callback.
@@ -50,11 +54,11 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 		msgType = strings.TrimSpace(body.MsgTypeAlt)
 	}
 	if !strings.EqualFold(msgType, "text") {
-		return InboundMessage{}, fmt.Errorf("wecom: unsupported msgtype %q", msgType)
+		return InboundMessage{}, wecomUnsupportedMsgTypeError(msgType)
 	}
 	text := strings.TrimSpace(body.Text.Content)
 	if text == "" {
-		return InboundMessage{}, fmt.Errorf("wecom: empty text")
+		return InboundMessage{}, errEmptyText
 	}
 	msgID := strings.TrimSpace(body.MsgID)
 	if msgID == "" {
@@ -83,11 +87,24 @@ func SignFor(token, timestamp, nonce string) string {
 func VerifySignature(token, timestamp, nonce, signature string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
+	}
+	// Validate timestamp freshness (5-minute window)
+	ts := strings.TrimSpace(timestamp)
+	if ts == "" {
+		return errMissingTimestamp
+	}
+	tsInt, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return errBadTimestamp
+	}
+	now := time.Now().Unix()
+	if now-tsInt > port.WebhookTimestampToleranceSec || tsInt-now > port.WebhookTimestampToleranceSec {
+		return errTimestampOutOfRange
 	}
 	want := SignFor(token, timestamp, nonce)
-	if !strings.EqualFold(want, strings.TrimSpace(signature)) {
-		return fmt.Errorf("wecom: bad signature")
+	if !hmac.Equal([]byte(want), []byte(strings.TrimSpace(signature))) {
+		return errBadSignature
 	}
 	return nil
 }
@@ -109,7 +126,7 @@ func (s *TextSender) SendText(ctx context.Context, responseURL, text string) err
 		target = strings.TrimSpace(s.WebhookURL)
 	}
 	if target == "" {
-		return fmt.Errorf("wecom outbound: webhook url required")
+		return errWebhookURLRequired
 	}
 	body, _ := json.Marshal(map[string]any{
 		"msgtype": "text",
@@ -131,7 +148,7 @@ func (s *TextSender) SendText(ctx context.Context, responseURL, text string) err
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("wecom outbound: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return wecomAPIError("wecom outbound", fmt.Sprintf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
 	}
 	return nil
 }

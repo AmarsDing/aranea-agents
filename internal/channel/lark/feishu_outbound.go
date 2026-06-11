@@ -2,9 +2,10 @@ package lark
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // FeishuTextSender performs Feishu/Lark outbound IM text delivery (receive_id_type=open_id).
@@ -45,7 +46,7 @@ func (s *FeishuTextSender) SendTextWithMeta(ctx context.Context, recipientOpenID
 	appID := strings.TrimSpace(s.AppID)
 	secret := strings.TrimSpace(s.AppSecret)
 	if appID == "" || secret == "" {
-		return fmt.Errorf("feishu outbound: app_id and app_secret required")
+		return errAppCredentialsRequired
 	}
 	tok, _, err := FetchTenantAccessToken(ctx, client, region, appID, secret)
 	if err != nil {
@@ -53,8 +54,8 @@ func (s *FeishuTextSender) SendTextWithMeta(ctx context.Context, recipientOpenID
 	}
 	receiveType := s.effectiveReceiveIDType()
 	receiveID := recipientOpenID
-	if meta != nil && strings.EqualFold(strings.TrimSpace(meta["reply_in_thread"]), "true") {
-		if tid := strings.TrimSpace(meta["thread_id"]); tid != "" {
+	if meta != nil && strings.EqualFold(strings.TrimSpace(meta[port.MetaReplyInThread]), "true") {
+		if tid := strings.TrimSpace(meta[port.MetaThreadID]); tid != "" {
 			receiveID = tid
 			receiveType = "thread_id"
 		}
@@ -63,5 +64,5 @@ func (s *FeishuTextSender) SendTextWithMeta(ctx context.Context, recipientOpenID
 }
 
 func (s *FeishuTextSender) effectiveReceiveIDType() string {
-	return ReceiveIDTypeFromMeta(map[string]string{"receive_id_type": s.ReceiveIDType})
+	return ReceiveIDTypeFromMeta(map[string]string{port.MetaReceiveIDType: s.ReceiveIDType})
 }

@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // L2MemoryCue formats episodic memories for prompt injection (keyword/vector rerank when query set).
-func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, sessionID, query string, limit int) string {
+func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, sessionID, query string, limit int, lg loggateway.Logger) string {
 	if l2 == nil || !policy.RecallL2 {
 		return ""
 	}
@@ -33,7 +34,11 @@ func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, pol
 		Query:     strings.TrimSpace(query),
 		Limit:     int32(limit),
 	})
-	if err != nil || len(rows) == 0 {
+	if err != nil {
+		lg.Warn("L2 memory query failed", loggateway.StepID("agent.memory_query_fail"), loggateway.Err(err))
+		return ""
+	}
+	if len(rows) == 0 {
 		return ""
 	}
 	var b strings.Builder

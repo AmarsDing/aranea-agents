@@ -2,9 +2,11 @@ package line
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type TextSender struct {
@@ -23,7 +25,7 @@ func (s *TextSender) SendText(ctx context.Context, recipient, text string) error
 	}
 	token := strings.TrimSpace(s.ChannelToken)
 	if token == "" {
-		return fmt.Errorf("line outbound: channel_token required")
+		return kerrors.BadRequest("LINE_CONFIG", "line outbound: channel_token required")
 	}
 	body, _ := marshalMessages(recipient, []map[string]any{textMessage(text)})
 	_, err := doPost(ctx, s.HTTP, token, "https://api.line.me/v2/bot/message/push", body)
@@ -38,13 +40,13 @@ func (s *TextSender) ReplyText(ctx context.Context, replyToken, text string) err
 	}
 	token := strings.TrimSpace(s.ChannelToken)
 	if token == "" {
-		return fmt.Errorf("line reply: channel_token required")
+		return kerrors.BadRequest("LINE_CONFIG", "line reply: channel_token required")
 	}
 	payload := map[string]any{
 		"replyToken": replyToken,
 		"messages":   []map[string]any{textMessage(text)},
 	}
-	body, _ := marshalJSON(payload)
+	body, _ := json.Marshal(payload)
 	_, err := doPost(ctx, s.HTTP, token, "https://api.line.me/v2/bot/message/reply", body)
 	return err
 }

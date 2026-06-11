@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 
 	"aranea-agents/internal/pkginstall"
+	"aranea-agents/pkg/outboundguard"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -119,14 +119,8 @@ func validateRepoURL(raw string) error {
 		if host == "" {
 			return fmt.Errorf("host is empty")
 		}
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return fmt.Errorf("lookup host %q: %w", host, err)
-		}
-		for _, ip := range ips {
-			if isPrivateIP(ip) {
-				return fmt.Errorf("host %q resolves to private/internal IP %s; not allowed", host, ip)
-			}
+		if err := outboundguard.ValidatePublicHost(host); err != nil {
+			return fmt.Errorf("host %q: %w", host, err)
 		}
 		return nil
 	case "file":
@@ -141,14 +135,8 @@ func validateRepoURL(raw string) error {
 		if host == "" {
 			return fmt.Errorf("cannot determine host from URL %q", raw)
 		}
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return fmt.Errorf("lookup host %q: %w", host, err)
-		}
-		for _, ip := range ips {
-			if isPrivateIP(ip) {
-				return fmt.Errorf("host %q resolves to private/internal IP %s; not allowed", host, ip)
-			}
+		if err := outboundguard.ValidatePublicHost(host); err != nil {
+			return fmt.Errorf("host %q: %w", host, err)
 		}
 		return nil
 	default:
@@ -158,23 +146,4 @@ func validateRepoURL(raw string) error {
 
 func isAlpha(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-}
-
-func isPrivateIP(ip net.IP) bool {
-	privateNets := []net.IPNet{
-		{IP: net.ParseIP("10.0.0.0"), Mask: net.CIDRMask(8, 32)},
-		{IP: net.ParseIP("172.16.0.0"), Mask: net.CIDRMask(12, 32)},
-		{IP: net.ParseIP("192.168.0.0"), Mask: net.CIDRMask(16, 32)},
-		{IP: net.ParseIP("127.0.0.0"), Mask: net.CIDRMask(8, 32)},
-		{IP: net.ParseIP("169.254.0.0"), Mask: net.CIDRMask(16, 32)},
-		{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)},
-		{IP: net.ParseIP("fc00::"), Mask: net.CIDRMask(7, 128)},
-		{IP: net.ParseIP("fe80::"), Mask: net.CIDRMask(10, 128)},
-	}
-	for _, n := range privateNets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return ip.IsUnspecified()
 }

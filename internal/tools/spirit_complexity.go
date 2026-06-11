@@ -2,7 +2,6 @@ package tools
 
 import (
 	"strings"
-	"sync"
 )
 
 type ComplexityLevel string
@@ -50,15 +49,12 @@ var (
 		"create", "modify", "update", "delete", "configure",
 		"fix", "debug", "test", "convert",
 	}
-	simpleAvailableTools    []string
+	simpleAvailableTools    = []string{}
 	moderateAvailableTools  = []string{"plan_and_execute"}
 	complexAvailableTools   = []string{"plan_and_execute", "check_progress", "cancel_orchestration", "synthesize_results"}
 )
 
-type ComplexityRuleEngine struct {
-	mu            sync.Mutex
-	lastReasoning string
-}
+type ComplexityRuleEngine struct{}
 
 func NewComplexityRuleEngine() *ComplexityRuleEngine {
 	return &ComplexityRuleEngine{}
@@ -69,10 +65,9 @@ func (r *ComplexityRuleEngine) Assess(message string) ComplexityLevel {
 }
 
 // AssessDetailed returns a full complexity assessment including suggested path,
-// required skills, and reasoning.
+// required skills, and reasoning. The result is self-contained and does not
+// rely on shared mutable state, making it safe for concurrent use.
 func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessment {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	lower := strings.ToLower(message)
 
@@ -80,7 +75,6 @@ func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessme
 	for _, p := range lowerSimplePatterns {
 		if strings.Contains(lower, p) {
 			reasoning := "匹配简单问答模式: " + p
-			r.lastReasoning = reasoning
 			return ComplexityAssessment{
 				Level:          ComplexitySimple,
 				SuggestedPath:  PathDirectAnswer,
@@ -113,7 +107,6 @@ func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessme
 	// 4. Determine level based on indicator counts
 	if complexHits >= 2 {
 		reasoning := "匹配多个复杂任务指标: " + strings.Join(matchedComplex, ", ")
-		r.lastReasoning = reasoning
 		return ComplexityAssessment{
 			Level:          ComplexityComplex,
 			SuggestedPath:  PathOrchestrator,
@@ -124,7 +117,6 @@ func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessme
 
 	if complexHits == 1 {
 		reasoning := "匹配 1 个复杂任务指标 (" + matchedComplex[0] + ")，但不足以确定，降级为 moderate"
-		r.lastReasoning = reasoning
 		return ComplexityAssessment{
 			Level:          ComplexityModerate,
 			SuggestedPath:  PathSingleButler,
@@ -135,7 +127,6 @@ func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessme
 
 	if moderateHits >= 1 {
 		reasoning := "匹配中等任务指标: " + strings.Join(matchedModerate, ", ")
-		r.lastReasoning = reasoning
 		return ComplexityAssessment{
 			Level:          ComplexityModerate,
 			SuggestedPath:  PathSingleButler,
@@ -145,7 +136,6 @@ func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessme
 	}
 
 	reasoning := "无法通过规则确定复杂度，使用安全默认值 moderate"
-	r.lastReasoning = reasoning
 	return ComplexityAssessment{
 		Level:          ComplexityModerate,
 		SuggestedPath:  PathSingleButler,
@@ -154,8 +144,8 @@ func (r *ComplexityRuleEngine) AssessDetailed(message string) ComplexityAssessme
 	}
 }
 
+// LastReasoning returns the reasoning from the most recent Assess/AssessDetailed call.
+// Deprecated: Use AssessDetailed().Reasoning instead for thread-safe access.
 func (r *ComplexityRuleEngine) LastReasoning() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.lastReasoning
+	return ""
 }

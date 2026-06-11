@@ -9,9 +9,8 @@ import (
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func TestBizAuditToProto(t *testing.T) {
@@ -492,12 +491,15 @@ func TestNotFoundMonitor(t *testing.T) {
 				if got == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(got)
-				if ke.Reason != "MONITOR_NOT_FOUND" {
-					t.Errorf("Reason = %q, want %q", ke.Reason, "MONITOR_NOT_FOUND")
+				ae, ok := apierror.From(got)
+				if !ok {
+					t.Fatalf("expected apierror, got %T: %v", got, got)
 				}
-				if ke.Code != 404 {
-					t.Errorf("Code = %d, want 404", ke.Code)
+				if ae.Domain != "MONITOR_NOT_FOUND" {
+					t.Errorf("Domain = %q, want %q", ae.Domain, "MONITOR_NOT_FOUND")
+				}
+				if ae.Code != apierror.CodeNotFound {
+					t.Errorf("Code = %v, want NOT_FOUND", ae.Code)
 				}
 				return
 			}

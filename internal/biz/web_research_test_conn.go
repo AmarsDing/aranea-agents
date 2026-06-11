@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // WebResearchTestConfig holds the configuration for a web research test probe.
@@ -42,7 +42,7 @@ type WebResearchTester interface {
 // TestWebResearch probes Tavily/SerpAPI using form values, falling back to stored settings and env.
 func (u *SystemSettingUsecase) TestWebResearch(ctx context.Context, patch WebResearchSetting, formAPIKey string) (WebResearchTestResult, error) {
 	if u.webResearchTester == nil {
-		return WebResearchTestResult{}, kerrors.BadRequest("WEB_RESEARCH", "web research tester not configured")
+		return WebResearchTestResult{}, apierror.BadRequest("WEB_RESEARCH", "web research tester not configured")
 	}
 	stored, err := u.repo.GetWebResearch(ctx)
 	if err != nil {
@@ -63,7 +63,7 @@ func (u *SystemSettingUsecase) TestWebResearch(ctx context.Context, patch WebRes
 		merged.HTTPProxy,
 	)
 	if !u.webResearchTester.IsReady(cfg) {
-		return WebResearchTestResult{}, kerrors.BadRequest("WEB_RESEARCH", "API key is required; save one in system settings or enter it in the test form")
+		return WebResearchTestResult{}, apierror.BadRequest("WEB_RESEARCH", "API key is required; save one in system settings or enter it in the test form")
 	}
 	raw, err := u.webResearchTester.TestConnection(ctx, cfg)
 	out := WebResearchTestResult{

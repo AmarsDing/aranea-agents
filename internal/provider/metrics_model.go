@@ -41,6 +41,14 @@ func (m *metricsModel) GenerateContent(ctx context.Context, request *trpcmodel.R
 		metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
+	// BUG-6 fix: inner model returning (nil, nil) violates the framework
+	// contract and would cause a goroutine leak (range on nil channel blocks
+	// forever). Surface the violation as an explicit error.
+	if ch == nil {
+		metrics.ProviderRequestTotal.WithLabelValues(m.provider, m.model, "error").Inc()
+		metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
+		return nil, ErrModelNilChannel
+	}
 	out := make(chan *trpcmodel.Response, 16)
 	safego.Go(ctx, "metrics-model-stream", func() {
 		defer close(out)

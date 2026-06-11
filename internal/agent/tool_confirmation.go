@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -53,7 +54,13 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 
 	if fn := serviceawaitreply.ReplyFuncFromContext(ctx); fn != nil {
 		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-			_ = trpcagent.MarkAwaitingUserReply(inv)
+			if markErr := trpcagent.MarkAwaitingUserReply(inv); markErr != nil {
+				// Non-fatal: the confirmation flow can still proceed, but
+				// the UI may not show the "awaiting reply" indicator.
+				h.deps.Logger().Warn("MarkAwaitingUserReply failed",
+					loggateway.StepID("agent.tool_confirm"),
+					loggateway.Err(markErr))
+			}
 		}
 		confirmCtx := serviceawaitreply.WithToolConfirmRequest(ctx, serviceawaitreply.ToolConfirmRequest{
 			ToolKey:    toolKey,
@@ -97,6 +104,23 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 	return nil, fmt.Errorf("%s: tool %s requires user confirmation", errToolConfirmationRequired, toolKey)
 }
 
+// toolConfirmationBypass reports whether tool confirmation should be
+// skipped entirely. This is a development-only escape hatch.
+//
+// Security model: the bypass requires ARANEA_DEV_MODE to be set (only
+// in local/docker-compose dev environments). In production, where
+// ARANEA_DEV_MODE is never set, the bypass is impossible regardless
+// of any other environment variable.
+//
+// The legacy KRATOS_TOOL_AUTO_APPROVE env var is also gated by
+// ARANEA_DEV_MODE for backward compatibility.
 func toolConfirmationBypass() bool {
-	return strings.TrimSpace(os.Getenv("KRATOS_TOOL_AUTO_APPROVE")) == "1"
+	if strings.TrimSpace(os.Getenv("ARANEA_DEV_MODE")) == "" {
+		return false
+	}
+	// Both the legacy and new env vars are accepted when in dev mode.
+	if strings.TrimSpace(os.Getenv("KRATOS_TOOL_AUTO_APPROVE")) == "1" {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv("ARANEA_TOOL_AUTO_APPROVE")) == "1"
 }

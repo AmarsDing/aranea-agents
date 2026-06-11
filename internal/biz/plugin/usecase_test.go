@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestUsecase_List_DefaultLimit(t *testing.T) {
@@ -64,7 +64,7 @@ func TestUsecase_ToggleEnabled_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -75,7 +75,7 @@ func TestUsecase_GetByKey_EmptyKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -86,7 +86,7 @@ func TestUsecase_Create_EmptyKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -132,7 +132,7 @@ func TestUsecase_Create_InvalidConfigJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -169,7 +169,7 @@ func TestUsecase_Create_ValidatesSchema(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected schema validation error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -180,7 +180,7 @@ func TestUsecase_UpdateConfig_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -211,7 +211,7 @@ func TestUsecase_UpdateConfig_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -222,7 +222,7 @@ func TestUsecase_UpdateSortOrder_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -233,7 +233,7 @@ func TestUsecase_UpdateScope_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }

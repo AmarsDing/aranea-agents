@@ -5,8 +5,7 @@ import (
 	"time"
 
 	bizmonitor "aranea-agents/internal/biz/monitor"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type healRecordRepo struct {
@@ -22,7 +21,7 @@ func NewHealRecordRepo(d *Data) bizmonitor.HealRecordRepo {
 
 func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor.HealRecord) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("HEAL_RECORD", "database not configured")
+		return apierror.Internal("HEAL_RECORD", "database not configured")
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -48,7 +47,7 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor
 
 func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.HealRecordQuery) (bizmonitor.HealRecordListResult, error) {
 	if r == nil || r.data == nil {
-		return bizmonitor.HealRecordListResult{}, kerrors.InternalServer("HEAL_RECORD", "database not configured")
+		return bizmonitor.HealRecordListResult{}, apierror.Internal("HEAL_RECORD", "database not configured")
 	}
 
 	limit := query.Limit
@@ -72,12 +71,12 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 
 	var total int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args[:len(args)-2], &total); err != nil {
-		return bizmonitor.HealRecordListResult{}, kerrors.InternalServer("HEAL_RECORD", "count failed").WithCause(err)
+		return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, args...)
 	if err != nil {
-		return bizmonitor.HealRecordListResult{}, kerrors.InternalServer("HEAL_RECORD", "query failed").WithCause(err)
+		return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
 	}
 	defer rows.Close()
 
@@ -92,7 +91,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 		)
 		if err := rows.Scan(&id, &ruleID, &triggerType, &traceID, &sessionID, &stepID,
 			&fixActionType, &confidence, &status, &runtimeAutoHealed, &runtimeHealAttempts, &reason, &createdAt); err != nil {
-			return bizmonitor.HealRecordListResult{}, kerrors.InternalServer("HEAL_RECORD", "scan failed").WithCause(err)
+			return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
 		}
 		items = append(items, bizmonitor.HealRecord{
 			ID: id, RuleID: ruleID, TriggerType: triggerType,
@@ -107,7 +106,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return bizmonitor.HealRecordListResult{}, kerrors.InternalServer("HEAL_RECORD", "rows error").WithCause(err)
+		return bizmonitor.HealRecordListResult{}, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
 	}
 
 	return bizmonitor.HealRecordListResult{Items: items, Total: total}, nil
@@ -115,14 +114,14 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 
 func (r *healRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
 	if r == nil || r.data == nil {
-		return 0, kerrors.InternalServer("HEAL_RECORD", "database not configured")
+		return 0, apierror.Internal("HEAL_RECORD", "database not configured")
 	}
 
 	cutoff := olderThan.Format(time.RFC3339)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`DELETE FROM heal_records WHERE created_at < ?`, cutoff)
 	if err != nil {
-		return 0, kerrors.InternalServer("HEAL_RECORD", "delete failed").WithCause(err)
+		return 0, apierror.Wrap(err, apierror.CodeInternal, "HEAL_RECORD")
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil

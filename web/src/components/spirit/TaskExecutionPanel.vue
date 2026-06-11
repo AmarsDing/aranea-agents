@@ -1,11 +1,15 @@
 <template>
   <div class="task-execution-panel column no-wrap">
     <!-- v7: Breadcrumb navigation -->
-    <div class="task-execution-panel__breadcrumb q-px-md q-py-sm">
+    <div class="task-execution-panel__nav q-px-md q-py-sm row items-center no-wrap q-gutter-sm">
       <q-breadcrumbs dense separator="chevron_right" active-color="accent">
         <q-breadcrumbs-el :label="t('spirit.breadcrumbSpirit')" icon="auto_awesome" />
         <q-breadcrumbs-el :label="team.teamName" />
       </q-breadcrumbs>
+      <OrchestrationModeBadge v-if="topology && topology !== 'coordinator'" :topology="topology" :reason="team.topologyReason" />
+      <q-space />
+      <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
+      <ToolStuckBadge :count="stuckToolCount" />
     </div>
 
     <!-- v7: User message bubble -->
@@ -14,68 +18,11 @@
       <div class="task-execution-panel__user-bubble-content">{{ userMessage }}</div>
     </div>
 
-    <div class="task-execution-panel__overview">
-      <div class="row items-center q-gutter-sm">
-        <q-icon name="groups" size="20px" color="accent" />
-        <div class="col min-width-0">
-          <div class="task-execution-panel__title ellipsis">{{ team.teamName }}</div>
-          <div class="task-execution-panel__summary ellipsis">{{ team.taskSummary }}</div>
-        </div>
-        <ToolStuckBadge :count="stuckToolCount" />
-        <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
-      </div>
-      <div v-if="team.progressPct > 0 || team.totalSteps > 0" class="q-mt-sm">
-        <q-linear-progress
-          :value="team.progressPct > 0 ? team.progressPct / 100 : team.completedSteps / team.totalSteps"
-          size="6px"
-          rounded
-          color="accent"
-        />
-        <div class="text-caption text-grey q-mt-xs">
-          {{
-            team.progressPct > 0
-              ? `${Math.round(team.progressPct)}%`
-              : t('spirit.stepsComplete', { completed: team.completedSteps, total: team.totalSteps })
-          }}
-        </div>
-      </div>
-      <div v-if="team.members.length > 0" class="q-mt-sm">
-        <div class="text-caption text-weight-medium text-grey q-mb-xs">{{ t('spirit.memberStatus') }}</div>
-        <div class="row items-center q-gutter-xs">
-          <div
-            v-for="member in team.members"
-            :key="member.agentKey"
-            class="task-execution-panel__member task-execution-panel__member--clickable row items-center q-gutter-xs"
-            @click="emit('select-member', member.agentId)"
-          >
-            <q-avatar size="20px">
-              <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
-              <q-icon v-else name="person" size="14px" color="grey" />
-            </q-avatar>
-            <span class="text-caption ellipsis task-execution-panel__member-name">{{ member.displayName }}</span>
-            <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
-          </div>
-        </div>
-      </div>
-      <q-btn
-        flat
-        dense
-        no-caps
-        icon="arrow_back"
-        :label="t('spirit.backToSpirit')"
-        color="accent"
-        class="q-mt-sm"
-        @click="emit('return-to-spirit')"
-      />
-    </div>
-
     <!-- v7: ThinkingArea — reasoning/thinking display -->
-    <template v-if="thinkingContent">
-      <q-separator />
-      <div class="q-pa-md">
-        <ThinkingArea :content="thinkingContent" :is-active="isThinkingActive" :collapsed="!isThinkingActive" />
-      </div>
-    </template>
+    <q-separator />
+    <div class="q-pa-md">
+      <ThinkingArea :content="thinkingContent" :is-active="isThinkingActive" :collapsed="!isThinkingActive" />
+    </div>
 
     <!-- Interrupted team recovery card (OBS-07) -->
     <InterruptedTeamCard
@@ -138,7 +85,7 @@
     <template v-if="synthesisResult">
       <q-separator />
       <div class="q-pa-md">
-        <SynthesisResultCard :result="synthesisResult" :render-markdown="props.renderMarkdown" />
+        <SynthesisResultCard :result="synthesisResult" :rendered-content="props.renderMarkdown(synthesisResult.content)" />
       </div>
     </template>
 
@@ -173,11 +120,12 @@ import ToolStuckBadge from './ToolStuckBadge.vue';
 import SynthesisResultCard from './SynthesisResultCard.vue';
 import InterruptedTeamCard from './InterruptedTeamCard.vue';
 import SpiritStatusBar from './SpiritStatusBar.vue';
-import { mapSpiritStatusToSession, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
+import { mapSpiritStatusToSession, modeToTopology } from '../../features/spirit/spiritUi';
 import type { SpiritTeam, SynthesisOutput, CompletionStats, TaskNode, SpiritStatusBarData } from '../../features/spirit/types';
 import type { PlanEntry } from '../../features/chat/agentTreeTypes';
-import AgentStatusLabel from './AgentStatusLabel.vue';
+import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
+import type { TopologyType } from '../../features/spirit/types';
 
 const { t } = useI18n();
 
@@ -239,6 +187,8 @@ const interruptReason = computed(() => {
   return props.team.interruptReason || t('spirit.executionInterrupted');
 });
 
+const topology = computed<TopologyType>(() => modeToTopology(props.team.mode));
+
 // ── v7: ThinkingArea computed ──
 const thinkingContent = computed(() => {
   const reasoningMsgs = props.messages.filter(
@@ -274,9 +224,9 @@ function formatTime(iso: string): string {
 <style scoped lang="sass">
 .task-execution-panel
   height: 100%
-  overflow: hidden
+  overflow-y: auto
 
-.task-execution-panel__breadcrumb
+.task-execution-panel__nav
   border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
   background: color-mix(in srgb, var(--glass-surface) 30%, transparent)
   flex-shrink: 0
@@ -297,37 +247,8 @@ function formatTime(iso: string): string {
   line-height: 1.5
   word-break: break-word
 
-.task-execution-panel__overview
-  padding: var(--space-4)
-  flex-shrink: 0
-
-.task-execution-panel__title
-  font-size: var(--text-base)
-  font-weight: 700
-  color: var(--color-text-primary)
-
-.task-execution-panel__summary
-  font-size: var(--text-sm)
-  color: var(--color-text-tertiary)
-
 .task-execution-panel__timeline
-  overflow-y: auto
   min-height: 0
-
-.task-execution-panel__member
-  padding: 2px 6px
-  border-radius: 6px
-  background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
-
-  &-name
-    max-width: 80px
-
-  &--clickable
-    cursor: pointer
-    transition: background 0.15s
-
-    &:hover
-      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
 
 .task-execution-panel__output-header
   font-size: var(--text-sm)

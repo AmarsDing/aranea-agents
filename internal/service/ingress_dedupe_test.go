@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 	"time"
+
+	"aranea-agents/internal/biz"
 )
 
 func TestIngressMessageDedupeKey(t *testing.T) {
@@ -17,9 +19,9 @@ func TestIngressMessageDedupeKey(t *testing.T) {
 		{"", "", ""},
 	}
 	for _, tc := range cases {
-		got := ingressMessageDedupeKey(tc.channelID, tc.messageID)
+		got := biz.IngressMessageDedupeKey(tc.channelID, tc.messageID)
 		if got != tc.want {
-			t.Errorf("ingressMessageDedupeKey(%q, %q) = %q, want %q", tc.channelID, tc.messageID, got, tc.want)
+			t.Errorf("IngressMessageDedupeKey(%q, %q) = %q, want %q", tc.channelID, tc.messageID, got, tc.want)
 		}
 	}
 }
@@ -89,9 +91,9 @@ func TestIngressDebounceEnabled(t *testing.T) {
 		{"", true},
 	}
 	for _, tc := range cases {
-		got := ingressDebounceEnabled(tc.platform)
+		got := biz.IngressDebounceEnabled(tc.platform)
 		if got != tc.want {
-			t.Errorf("ingressDebounceEnabled(%q) = %v, want %v", tc.platform, got, tc.want)
+			t.Errorf("IngressDebounceEnabled(%q) = %v, want %v", tc.platform, got, tc.want)
 		}
 	}
 }

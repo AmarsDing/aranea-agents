@@ -15,7 +15,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/metrics"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -36,17 +36,17 @@ func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer) *Artif
 // UploadArtifact stores a base64-encoded artifact and returns its metadata.
 func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArtifactRequest) (*v1.ArtifactMeta, error) {
 	if strings.TrimSpace(req.GetSessionId()) == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "session_id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "session_id is required")
 	}
 	if strings.TrimSpace(req.GetName()) == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "name is required")
+		return nil, apierror.BadRequest("ARTIFACT", "name is required")
 	}
 	data, err := base64.StdEncoding.DecodeString(req.GetDataBase64())
 	if err != nil {
-		return nil, kerrors.BadRequest("ARTIFACT", "data_base64 is not valid base64: "+err.Error())
+		return nil, apierror.BadRequest("ARTIFACT", "data_base64 is not valid base64: "+err.Error())
 	}
 	if len(data) > artifactbiz.MaxUploadBytes {
-		return nil, kerrors.BadRequest("ARTIFACT", "单个制品最大支持 10 MB，当前文件过大暂不支持上传")
+		return nil, apierror.BadRequest("ARTIFACT", "单个制品最大支持 10 MB，当前文件过大暂不支持上传")
 	}
 	mime := strings.TrimSpace(req.GetMimeType())
 	if mime == "" {
@@ -65,13 +65,13 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRequest) (*v1.ArtifactData, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	version := int(req.GetVersion())
 	meta, data, err := s.uc.Load(ctx, id, version)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+			return nil, apierror.NotFound("ARTIFACT", err.Error())
 		}
 		return nil, err
 	}
@@ -109,12 +109,12 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.ListArtifactVersionsRequest) (*v1.ListArtifactVersionsResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	meta, _, err := s.uc.Load(ctx, id, 0)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+			return nil, apierror.NotFound("ARTIFACT", err.Error())
 		}
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.List
 func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArtifactRequest) (*emptypb.Empty, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	if err := s.uc.Delete(ctx, id); err != nil {
 		return nil, mapArtifactBizError(err)
@@ -146,15 +146,15 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.DeleteArtifactVersionRequest) (*emptypb.Empty, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	version := int(req.GetVersion())
 	if version <= 0 {
-		return nil, kerrors.BadRequest("ARTIFACT", "version must be > 0")
+		return nil, apierror.BadRequest("ARTIFACT", "version must be > 0")
 	}
 	if err := s.uc.DeleteVersion(ctx, id, version); err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+			return nil, apierror.NotFound("ARTIFACT", err.Error())
 		}
 		return nil, mapArtifactBizError(err)
 	}
@@ -166,13 +166,13 @@ func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.Del
 func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewArtifactRequest) (*v1.PreviewArtifactResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	version := int(req.GetVersion())
 	result, err := s.uc.Preview(ctx, id, version)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+			return nil, apierror.NotFound("ARTIFACT", err.Error())
 		}
 		return nil, err
 	}
@@ -197,12 +197,12 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownloadUrlRequest) (*v1.SignDownloadUrlResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	version := int(req.GetVersion())
 	if _, _, err := s.uc.Load(ctx, id, version); err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+			return nil, apierror.NotFound("ARTIFACT", err.Error())
 		}
 		return nil, err
 	}
@@ -218,7 +218,7 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 	if err != nil {
 		// OUT-05 / ART-02: prod environments without a configured key must
 		// fail closed; never hand out a forgeable URL signed with the dev key.
-		return nil, kerrors.ServiceUnavailable("ARTIFACT", err.Error())
+		return nil, apierror.Unavailable("ARTIFACT", err.Error())
 	}
 	q := fmt.Sprintf("/v1/artifacts/download?id=%s&version=%d&expires=%d&token=%s",
 		id, version, expires.Unix(), token)

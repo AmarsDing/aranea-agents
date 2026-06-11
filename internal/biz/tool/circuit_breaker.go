@@ -92,7 +92,10 @@ func (cb *CircuitBreaker) Allow() (bool, CircuitState) {
 		}
 		return false, cb.state
 	case CircuitHalfOpen:
+		// Reserve a probe slot atomically: increment successes as a probe
+		// counter so that concurrent Allow() calls cannot exceed HalfOpenMaxProbe.
 		if cb.successes < cb.config.HalfOpenMaxProbe {
+			cb.successes++
 			return true, cb.state
 		}
 		return false, cb.state

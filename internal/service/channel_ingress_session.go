@@ -163,7 +163,7 @@ func recordStreamUpdate(platform, phase string, err error) {
 }
 
 func (h *ChannelIngress) resolveInboundSessionID(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string) string {
-	if sid := strings.TrimSpace(ev.OutboundMeta["session_id"]); sid != "" {
+	if sid := strings.TrimSpace(ev.OutboundMeta[port.MetaSessionID]); sid != "" {
 		return sid
 	}
 	peerKey, err := h.inboundPeerKey(chRow, ev)

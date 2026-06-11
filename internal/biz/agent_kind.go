@@ -114,8 +114,13 @@ func EmbedAgentKindInConfigJSON(configJSON, kind string, proxy *A2AProxyConfig, 
 	var m map[string]any
 	if strings.TrimSpace(configJSON) != "" {
 		if err := json.Unmarshal([]byte(configJSON), &m); err != nil {
-		lg.Warn("解析 config_json 失败", loggateway.StepID("agent_kind.embed"), loggateway.Err(err))
-	}
+			// Preserve the original config_json on parse failure instead of
+			// discarding it. Return the original with agent_kind appended as
+			// a best-effort fallback, or just return the original if we can't
+			// even do that.
+			lg.Warn("解析 config_json 失败，保留原始内容", loggateway.StepID("agent_kind.embed"), loggateway.Err(err))
+			return configJSON
+		}
 	}
 	if m == nil {
 		m = map[string]any{}

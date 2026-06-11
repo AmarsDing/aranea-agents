@@ -1,11 +1,10 @@
 package pack
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
-	kratos "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // BuildOrgKey 从 company/department/position key 组合构建 org_key 路径。
@@ -33,7 +32,7 @@ func ParseOrgKeyPath(path string) (company, dept, pos string, err error) {
 	case 3:
 		return parts[0], parts[1], parts[2], nil
 	default:
-		return "", "", "", kratos.BadRequest("PACK_ORG_KEY_INVALID", fmt.Sprintf("无效的 org_key 路径: %s", path))
+		return "", "", "", apierror.BadRequest("PACK_ORG_KEY_INVALID", "无效的 org_key 路径: %s", path)
 	}
 }
 
@@ -123,7 +122,7 @@ func (m *KeyMapper) ResolveAgentKey(agentKey string) (string, error) {
 	defer m.mu.RUnlock()
 	id, ok := m.agentKeyToID[agentKey]
 	if !ok {
-		return "", kratos.BadRequest("PACK_AGENT_KEY_NOT_FOUND", fmt.Sprintf("agent_key %q 未在映射表中找到", agentKey))
+		return "", apierror.BadRequest("PACK_AGENT_KEY_NOT_FOUND", "agent_key %q 未在映射表中找到", agentKey)
 	}
 	return id, nil
 }
@@ -134,7 +133,7 @@ func (m *KeyMapper) ResolvePositionKey(positionKey string) (string, error) {
 	defer m.mu.RUnlock()
 	id, ok := m.orgKeyToID[positionKey]
 	if !ok {
-		return "", kratos.BadRequest("PACK_POSITION_KEY_NOT_FOUND", fmt.Sprintf("position_key %q 未在映射表中找到", positionKey))
+		return "", apierror.BadRequest("PACK_POSITION_KEY_NOT_FOUND", "position_key %q 未在映射表中找到", positionKey)
 	}
 	return id, nil
 }

@@ -5,10 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // InboundMessage is a normalized Slack event callback message.
@@ -47,7 +48,7 @@ func ParseInbound(raw []byte) (challenge string, msg *InboundMessage, err error)
 	case "url_verification":
 		ch := strings.TrimSpace(top.Challenge)
 		if ch == "" {
-			return "", nil, fmt.Errorf("slack: empty challenge")
+			return "", nil, errEmptyChallenge
 		}
 		return ch, nil, nil
 	case "event_callback":
@@ -56,14 +57,14 @@ func ParseInbound(raw []byte) (challenge string, msg *InboundMessage, err error)
 			return "", nil, err
 		}
 		if strings.TrimSpace(ev.Type) != "message" {
-			return "", nil, fmt.Errorf("slack: unsupported event type")
+			return "", nil, errUnsupportedEventType
 		}
 		if strings.TrimSpace(ev.Subtype) != "" || strings.TrimSpace(ev.BotID) != "" {
-			return "", nil, fmt.Errorf("slack: ignored message subtype")
+			return "", nil, errIgnoredMessageSubtype
 		}
 		text := strings.TrimSpace(ev.Text)
 		if text == "" {
-			return "", nil, fmt.Errorf("slack: empty message")
+			return "", nil, errEmptyMessage
 		}
 		return "", &InboundMessage{
 			Text:      text,
@@ -73,7 +74,7 @@ func ParseInbound(raw []byte) (challenge string, msg *InboundMessage, err error)
 			TeamID:    strings.TrimSpace(ev.Team),
 		}, nil
 	default:
-		return "", nil, fmt.Errorf("slack: unsupported payload type")
+		return "", nil, errUnsupportedPayloadType
 	}
 }
 
@@ -81,27 +82,27 @@ func ParseInbound(raw []byte) (challenge string, msg *InboundMessage, err error)
 func VerifyRequest(timestamp, signature, signingSecret string, rawBody []byte) error {
 	signingSecret = strings.TrimSpace(signingSecret)
 	if signingSecret == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
 	ts := strings.TrimSpace(timestamp)
 	sig := strings.TrimSpace(signature)
 	if ts == "" || sig == "" {
-		return fmt.Errorf("slack: missing signature headers")
+		return errMissingSignature
 	}
 	sec, err := strconv.ParseInt(ts, 10, 64)
 	if err != nil {
-		return fmt.Errorf("slack: bad timestamp")
+		return errBadTimestamp
 	}
 	now := time.Now().Unix()
-	if sec < now-300 || sec > now+300 {
-		return fmt.Errorf("slack: timestamp out of range")
+	if sec < now-port.WebhookTimestampToleranceSec || sec > now+port.WebhookTimestampToleranceSec {
+		return errTimestampOutOfRange
 	}
 	base := "v0:" + ts + ":" + string(rawBody)
 	mac := hmac.New(sha256.New, []byte(signingSecret))
 	_, _ = mac.Write([]byte(base))
 	want := "v0=" + hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(want), []byte(sig)) {
-		return fmt.Errorf("slack: bad signature")
+		return errBadSignature
 	}
 	return nil
 }

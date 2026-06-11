@@ -4,7 +4,7 @@
       round
       dense
       :icon="icon"
-      color="primary"
+      color="accent"
       v-bind="$attrs"
       class="chat-side__toggle-btn shadow-2"
       @click="$emit('toggle')"

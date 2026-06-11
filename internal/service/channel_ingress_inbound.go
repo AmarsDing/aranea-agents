@@ -58,8 +58,15 @@ func (h *ChannelIngress) processWeChatPassiveInbound(ctx context.Context, chRow 
 // ProcessInbound runs accept + synchronous execute (runtime WS path).
 func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
 	platform := inboundPlatform(chRow, ev, h.lg)
-	if ingressDebounceEnabled(platform) && h.peerDebouncer != nil {
-		h.peerDebouncer.submit(ctx, chRow, ev, h.processInboundNow)
+	if biz.IngressDebounceEnabled(platform) && h.peerDebouncer != nil {
+		peerKey := strings.TrimSpace(ev.PeerKey)
+		if peerKey == "" {
+			peerKey = strings.TrimSpace(ev.PeerID)
+		}
+		run := func(ctx context.Context) error {
+			return h.processInboundNow(ctx, chRow, ev)
+		}
+		h.peerDebouncer.Submit(ctx, chRow.ID, ev.PeerID, peerKey, ev.Text, ev.IdempotencyKey, run)
 		return nil
 	}
 	return h.processInboundNow(ctx, chRow, ev)

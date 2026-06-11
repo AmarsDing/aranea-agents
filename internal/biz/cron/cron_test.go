@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestStrPtr(t *testing.T) {
@@ -153,9 +153,14 @@ func TestValidateTaskConfig(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("ValidateTaskConfig(%q) err = %v, wantErr %v", tt.input, err, tt.wantErr)
 			}
-			if err != nil && !errors.IsBadRequest(err) {
+			if err != nil && !isAPIErrorCode(err, apierror.CodeBadRequest) {
 				t.Errorf("expected BadRequest error, got %v", err)
 			}
 		})
 	}
+}
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
 }

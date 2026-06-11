@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -28,16 +27,19 @@ func (s *TextSender) ID() string { return "telegram" }
 func (s *TextSender) SendText(ctx context.Context, chatID, text string) error {
 	chatID = strings.TrimSpace(chatID)
 	text = strings.TrimSpace(text)
-	if chatID == "" || text == "" {
+	if chatID == "" {
+		return errBadChatID
+	}
+	if text == "" {
 		return nil
 	}
 	token := strings.TrimSpace(s.BotToken)
 	if token == "" {
-		return fmt.Errorf("telegram outbound: bot_token required")
+		return errBotTokenRequired
 	}
 	id, err := strconv.ParseInt(chatID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("telegram outbound: bad chat id")
+		return errBadChatID
 	}
 	body, _ := json.Marshal(map[string]any{
 		"chat_id": id,
@@ -71,7 +73,7 @@ func (s *TextSender) SendText(ctx context.Context, chatID, text string) error {
 		if msg == "" {
 			msg = strings.TrimSpace(string(raw))
 		}
-		return fmt.Errorf("telegram outbound: %s", msg)
+		return telegramAPIError("telegram outbound", msg)
 	}
 	return nil
 }
@@ -80,7 +82,7 @@ func (s *TextSender) SendText(ctx context.Context, chatID, text string) error {
 func GetMe(ctx context.Context, client *http.Client, botToken string, lg loggateway.Logger) error {
 	botToken = strings.TrimSpace(botToken)
 	if botToken == "" {
-		return fmt.Errorf("telegram: bot_token required")
+		return errBotTokenRequired
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
@@ -105,9 +107,9 @@ func GetMe(ctx context.Context, client *http.Client, botToken string, lg loggate
 	}
 	if !out.OK {
 		if out.Description != "" {
-			return fmt.Errorf("telegram getMe: %s", out.Description)
+			return telegramAPIError("telegram getMe", out.Description)
 		}
-		return fmt.Errorf("telegram getMe failed")
+		return telegramAPIError("telegram getMe", "failed")
 	}
 	return nil
 }

@@ -40,7 +40,7 @@ func TestL3MemoryCue_DisabledWhenInjectOff(t *testing.T) {
 		L0InjectL3:    false,
 	})
 	ag := biz.Agent{ID: "ag1", Settings: &biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true, L0InjectL3: false}}
-	if got := L3MemoryCue(context.Background(), l3, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"}, "", 5, nil); got != "" {
+	if got := L3MemoryCue(context.Background(), l3, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"}, "", 5, nil, nil); got != "" {
 		t.Fatalf("expected empty cue, got %q", got)
 	}
 }
@@ -54,7 +54,7 @@ func TestL3MemoryCue_FormatsFacts(t *testing.T) {
 		L3RecallTopK:  5,
 	})
 	ag := biz.Agent{ID: "ag1", Settings: &biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true, L0InjectL3: true}}
-	got := L3MemoryCue(context.Background(), l3, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"}, "", 5, nil)
+	got := L3MemoryCue(context.Background(), l3, ag, policy, biz.MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"}, "", 5, nil, nil)
 	if got == "" || !containsAll(got, "L3 semantic memory", "I prefer tea") {
 		t.Fatalf("unexpected cue: %q", got)
 	}
@@ -68,7 +68,7 @@ func TestL2MemoryCue_FormatsEpisodes(t *testing.T) {
 		L2RecallMax:     2,
 	})
 	ag := biz.Agent{ID: "ag1"}
-	got := L2MemoryCue(context.Background(), l2, ag, policy, "sess-1", "", 0)
+	got := L2MemoryCue(context.Background(), l2, ag, policy, "sess-1", "", 0, nil)
 	if got == "" || !containsAll(got, "L2 episodic memory", "Auto-memory consolidation") {
 		t.Fatalf("unexpected cue: %q", got)
 	}
@@ -101,7 +101,7 @@ func TestL3MemoryCue_CrossLayerDedup(t *testing.T) {
 
 	// L1 field "User prefers dark mode" should filter out the matching L3 fact
 	l1Values := []string{"User prefers dark mode"}
-	got := L3MemoryCue(context.Background(), l3, ag, policy, rt, "", 10, l1Values)
+	got := L3MemoryCue(context.Background(), l3, ag, policy, rt, "", 10, l1Values, nil)
 	if got == "" {
 		t.Fatal("expected non-empty cue")
 	}
@@ -127,7 +127,7 @@ func TestL3MemoryCue_CrossLayerDedup_CaseInsensitive(t *testing.T) {
 	rt := biz.MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"}
 
 	l1Values := []string{"user prefers dark mode"}
-	got := L3MemoryCue(context.Background(), l3, ag, policy, rt, "", 10, l1Values)
+	got := L3MemoryCue(context.Background(), l3, ag, policy, rt, "", 10, l1Values, nil)
 	if got != "" {
 		t.Errorf("expected empty cue after case-insensitive dedup, got %q", got)
 	}

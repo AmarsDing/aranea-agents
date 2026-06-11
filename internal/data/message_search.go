@@ -7,21 +7,20 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (r *sessionRepo) SearchMessages(ctx context.Context, q biz.MessageSearchQuery) (biz.MessageSearchResult, error) {
 	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
-		return biz.MessageSearchResult{}, kerrors.InternalServer("SESSION", "database not configured")
+		return biz.MessageSearchResult{}, apierror.Internal("SESSION", "database not configured")
 	}
 	if strings.TrimSpace(q.SessionID) == "" {
-		return biz.MessageSearchResult{}, kerrors.BadRequest("SESSION", "session_id is required")
+		return biz.MessageSearchResult{}, apierror.BadRequest("SESSION", "session_id is required")
 	}
 	keyword := strings.TrimSpace(q.Keyword)
 	if keyword == "" {
-		return biz.MessageSearchResult{}, kerrors.BadRequest("SESSION", "keyword is required")
+		return biz.MessageSearchResult{}, apierror.BadRequest("SESSION", "keyword is required")
 	}
 	limit := q.Limit
 	if limit <= 0 {

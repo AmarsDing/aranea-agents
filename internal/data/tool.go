@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -14,6 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -181,7 +181,7 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.ToolListResult, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return biz.ToolListResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return biz.ToolListResult{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	where, args := toolWhereClause(q)
@@ -225,7 +225,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return biz.Tool{}, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return biz.Tool{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`, cutoff, idOrKey, idOrKey)
@@ -238,7 +238,7 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 		return biz.Tool{}, err
 	}
 	if len(items) == 0 {
-		return biz.Tool{}, kerrors.NotFound("TOOL", "tool not found")
+		return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 	}
 	return items[0], nil
 }
@@ -275,7 +275,7 @@ func applyBuiltinToolDefaults(in *biz.ToolUpsertInput) {
 
 func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.Tool, error) {
 	if strings.TrimSpace(in.Key) == "" {
-		return biz.Tool{}, kerrors.BadRequest("TOOL", "tool key is required")
+		return biz.Tool{}, apierror.BadRequest("TOOL", "tool key is required")
 	}
 	applyBuiltinToolDefaults(&in)
 	id := strings.TrimSpace(in.ID)
@@ -328,7 +328,7 @@ func (r *toolRepo) UpdateTool(ctx context.Context, idOrKey string, in biz.ToolUp
 	ex, err := r.toolByIDOrKey(ctx, idOrKey)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Tool{}, kerrors.NotFound("TOOL", "tool not found")
+			return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 		}
 		return biz.Tool{}, err
 	}
@@ -369,7 +369,7 @@ func (r *toolRepo) DeleteTool(ctx context.Context, idOrKey string) error {
 	ex, err := r.toolByIDOrKey(ctx, idOrKey)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return kerrors.NotFound("TOOL", "tool not found")
+			return apierror.NotFound("TOOL", "tool not found")
 		}
 		return err
 	}
@@ -385,7 +385,7 @@ func (r *toolRepo) UpdateToolEnabled(ctx context.Context, idOrKey string, enable
 	ex, err := r.toolByIDOrKey(ctx, idOrKey)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Tool{}, kerrors.NotFound("TOOL", "tool not found")
+			return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 		}
 		return biz.Tool{}, err
 	}
@@ -403,7 +403,7 @@ func (r *toolRepo) UpdateToolConfig(ctx context.Context, idOrKey string, configJ
 	ex, err := r.toolByIDOrKey(ctx, idOrKey)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Tool{}, kerrors.NotFound("TOOL", "tool not found")
+			return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 		}
 		return biz.Tool{}, err
 	}
@@ -420,7 +420,7 @@ func (r *toolRepo) UpdateToolConfig(ctx context.Context, idOrKey string, configJ
 func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery) (biz.ToolRunResult, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return biz.ToolRunResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return biz.ToolRunResult{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	where := []string{"1 = 1"}
 	args := []any{}
@@ -508,7 +508,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocationWrite) error {
 	client := r.data.RW().Write(ctx)
 	if client == nil {
-		return kerrors.InternalServer("TOOL", "ent client unavailable")
+		return apierror.Internal("TOOL", "ent client unavailable")
 	}
 	now := nowRFC3339()
 	started := strings.TrimSpace(in.StartedAt)
@@ -577,28 +577,23 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		r.data.lg.Error("tool invocation write failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
 		return err
 	}
-	_, err = client.ToolInvocation.UpdateOneID(id).
-		SetToolKey(strings.TrimSpace(in.ToolKey)).
-		SetAgentID(strings.TrimSpace(in.AgentID)).
-		SetAgentKey(strings.TrimSpace(in.AgentKey)).
-		SetSessionID(strings.TrimSpace(in.SessionID)).
-		SetUserID(strings.TrimSpace(in.UserID)).
-		SetSource(source).
-		SetStatus(status).
-		SetStartedAt(started).
+	// Constraint error: same tool_call_id already exists (streaming chunk
+	// update). Only update mutable fields — do NOT overwrite identity
+	// fields (tool_key, agent_id, session_id, input) to preserve the
+	// original invocation record.
+	update := client.ToolInvocation.UpdateOneID(id).
 		SetEndedAt(ended).
 		SetDurationMs(in.DurationMS).
-		SetInputPreview(inputPreview).
-		SetInputHash(hashTrim(in.InputHash, in.InputPreview)).
 		SetOutputPreview(outputPreview).
 		SetOutputHash(hashTrim(in.OutputHash, in.OutputPreview)).
-		SetErrorCode(strings.TrimSpace(in.ErrorCode)).
-		SetErrorMessage(strings.TrimSpace(in.ErrorMessage)).
-		SetRedactionApplied(true).
-		SetStreaming(in.Streaming).
 		SetChunkCount(in.ChunkCount).
-		SetMetadataJSON(invocationMetaJSON(in)).
-		Save(ctx)
+		SetStatus(status).
+		SetMetadataJSON(invocationMetaJSON(in))
+	if in.ErrorMessage != "" {
+		update = update.SetErrorCode(strings.TrimSpace(in.ErrorCode)).
+			SetErrorMessage(strings.TrimSpace(in.ErrorMessage))
+	}
+	_, err = update.Save(ctx)
 	if err != nil {
 		r.data.lg.Error("tool invocation fallback update failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
 	}
@@ -645,7 +640,7 @@ func (r *toolRepo) SyncBuiltinTools(ctx context.Context) error {
 func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]biz.ToolAgentOverride, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return nil, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return nil, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
@@ -666,7 +661,7 @@ func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID st
 func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) ([]biz.ToolAgentOverride, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return nil, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return nil, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	rows, err := client.QueryContext(ctx, `
 		SELECT id, COALESCE(tool_id, ''), tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at
@@ -699,7 +694,7 @@ func scanToolAgentOverrides(rows *sql.Rows) ([]biz.ToolAgentOverride, error) {
 func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgentOverrideInput, toolID string) (biz.ToolAgentOverride, error) {
 	client := r.data.RW().Write(ctx)
 	if client == nil {
-		return biz.ToolAgentOverride{}, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return biz.ToolAgentOverride{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	now := nowRFC3339()
 	toolID = strings.TrimSpace(toolID)
@@ -738,7 +733,7 @@ func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgent
 func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error {
 	client := r.data.RW().Write(ctx)
 	if client == nil {
-		return kerrors.InternalServer("TOOL", "ent client unavailable")
+		return apierror.Internal("TOOL", "ent client unavailable")
 	}
 	now := nowRFC3339()
 	_, err := client.ExecContext(ctx, `
@@ -752,7 +747,7 @@ func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, 
 func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID string) (biz.ToolInvocationParam, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return biz.ToolInvocationParam{}, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return biz.ToolInvocationParam{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	rows, err := client.QueryContext(ctx, `
 		SELECT id, invocation_id, tool_key, params_json, redaction_applied, created_at
@@ -764,7 +759,7 @@ func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID str
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.ToolInvocationParam{}, kerrors.NotFound("TOOL", "tool not found")
+		return biz.ToolInvocationParam{}, apierror.NotFound("TOOL", "tool not found")
 	}
 	var p biz.ToolInvocationParam
 	var redaction int

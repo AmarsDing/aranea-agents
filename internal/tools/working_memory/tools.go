@@ -247,6 +247,9 @@ func readExecute(ctx context.Context, input ReadInput) (ReadOutput, error) {
 	}
 	raw, err := reader.GetL1FieldRow(ctx, taskID, input.FieldPath)
 	if err != nil {
+		return ReadOutput{}, kerrors.InternalServer("WORKING_MEMORY", "read field: "+err.Error())
+	}
+	if len(raw) == 0 {
 		return ReadOutput{FieldPath: input.FieldPath, Found: false}, nil
 	}
 	m, _ := jsonutil.ParseMap(raw)
@@ -296,7 +299,7 @@ func listExecute(ctx context.Context, input ListInput) (ListOutput, error) {
 	}
 	rows, err := reader.ListL1FieldRows(ctx, taskID, false)
 	if err != nil {
-		return ListOutput{}, nil
+		return ListOutput{}, kerrors.InternalServer("WORKING_MEMORY", "list fields: "+err.Error())
 	}
 	fields := make([]FieldEntry, 0, len(rows))
 	for _, raw := range rows {
@@ -491,7 +494,7 @@ func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error)
 	}
 	err = fieldWriter.DeleteL1Field(ctx, taskID, input.FieldPath)
 	if err != nil {
-		return DeleteOutput{Deleted: false}, nil
+		return DeleteOutput{}, kerrors.InternalServer("WORKING_MEMORY", "delete field: "+err.Error())
 	}
 	return DeleteOutput{Deleted: true}, nil
 }

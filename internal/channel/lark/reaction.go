@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -62,10 +61,10 @@ func (r *ReactionController) Add(ctx context.Context, messageID string) (reactio
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("feishu reaction add: bad json: %w", err)
+		return "", feishuParseError("feishu reaction add", err)
 	}
 	if out.Code != 0 {
-		return "", fmt.Errorf("feishu reaction add: code=%d msg=%s", out.Code, out.Msg)
+		return "", feishuAPIError("feishu reaction add", out.Code, out.Msg)
 	}
 	return strings.TrimSpace(out.Data.ReactionID), nil
 }
@@ -98,10 +97,10 @@ func (r *ReactionController) Remove(ctx context.Context, messageID, reactionID s
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("feishu reaction remove: parse response: %w", err)
+		return feishuParseError("feishu reaction remove", err)
 	}
 	if out.Code != 0 {
-		return fmt.Errorf("feishu reaction remove: code=%d msg=%s", out.Code, out.Msg)
+		return feishuAPIError("feishu reaction remove", out.Code, out.Msg)
 	}
 	return nil
 }
@@ -118,7 +117,7 @@ func (r *ReactionController) auth(ctx context.Context) (token string, client *ht
 	appID := strings.TrimSpace(r.AppID)
 	secret := strings.TrimSpace(r.AppSecret)
 	if appID == "" || secret == "" {
-		return "", client, region, fmt.Errorf("feishu reaction: app credentials required")
+		return "", client, region, errAppCredentialsRequired
 	}
 	tok, _, err := FetchTenantAccessToken(ctx, client, region, appID, secret)
 	if err != nil {

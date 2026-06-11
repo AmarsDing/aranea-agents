@@ -11,8 +11,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtaskevent"
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
-
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type taskRepo struct {
@@ -60,7 +59,7 @@ func (r *taskRepo) GetTask(ctx context.Context, taskID string) (*biz.GraphTask, 
 	row, err := client.GraphTask.Get(ctx, taskID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.NotFound("TASK", "task not found")
+			return nil, apierror.NotFound("TASK", "task not found")
 		}
 		return nil, fmt.Errorf("task repo get: %w", err)
 	}
@@ -100,7 +99,7 @@ func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID
 		First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.NotFound("TASK", "task not found")
+			return nil, apierror.NotFound("TASK", "task not found")
 		}
 		return nil, fmt.Errorf("task repo get active: %w", err)
 	}
@@ -181,7 +180,7 @@ func (r *taskRepo) UpdateTask(ctx context.Context, task *biz.GraphTask) error {
 	_, err := builder.Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return errors.NotFound("TASK", "task not found")
+			return apierror.NotFound("TASK", "task not found")
 		}
 		return fmt.Errorf("task repo update: %w", err)
 	}

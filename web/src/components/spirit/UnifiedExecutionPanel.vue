@@ -2,7 +2,13 @@
   <div class="unified-execution-panel">
     <!-- Section 1: Task Breakdown -->
     <div class="uep-section">
-      <div class="uep-section__header" role="button" tabindex="0" @click="taskBreakdownOpen = !taskBreakdownOpen" @keydown.enter="taskBreakdownOpen = !taskBreakdownOpen">
+      <div
+        class="uep-section__header"
+        role="button"
+        tabindex="0"
+        @click="taskBreakdownOpen = !taskBreakdownOpen"
+        @keydown.enter="taskBreakdownOpen = !taskBreakdownOpen"
+      >
         <q-icon name="format_list_numbered" size="16px" class="uep-section__icon" />
         <span class="uep-section__title">{{ t('chat.execution.taskBreakdown') }}</span>
         <span v-if="taskRows.length > 0" class="uep-section__badge">{{ taskRows.length }}</span>
@@ -27,22 +33,37 @@
     <!-- Divider -->
     <div class="uep-divider" />
 
-    <!-- Section 2: Dependencies -->
+    <!-- Section 2: Dependencies (DAG flow with arrows) -->
     <div class="uep-section">
-      <div class="uep-section__header" role="button" tabindex="0" @click="dependenciesOpen = !dependenciesOpen" @keydown.enter="dependenciesOpen = !dependenciesOpen">
+      <div
+        class="uep-section__header"
+        role="button"
+        tabindex="0"
+        @click="dependenciesOpen = !dependenciesOpen"
+        @keydown.enter="dependenciesOpen = !dependenciesOpen"
+      >
         <q-icon name="account_tree" size="16px" class="uep-section__icon" />
         <span class="uep-section__title">{{ t('chat.execution.dependencies') }}</span>
         <q-icon :name="dependenciesOpen ? 'expand_less' : 'expand_more'" size="16px" class="uep-section__arrow" />
       </div>
       <div v-if="dependenciesOpen" class="uep-section__body">
         <template v-if="hasDependencies">
-          <div class="uep-dag-flow">
-            <div v-for="node in dagFlowNodes" :key="node.id" class="uep-dag-node" :class="`uep-dag-node--${node.state}`">
-              <span class="uep-dag-node__dot" :class="`uep-dag-node__dot--${node.state}`" />
-              <span class="uep-dag-node__name">{{ node.name }}</span>
-              <span v-if="node.depLabels.length > 0" class="uep-dag-node__deps">
-                ← {{ node.depLabels.join(', ') }}
-              </span>
+          <div class="uep-dag-layers">
+            <div v-for="(layer, layerIdx) in dagLayers" :key="layerIdx" class="uep-dag-layer">
+              <div class="uep-dag-layer__nodes row items-center q-gutter-sm">
+                <span
+                  v-for="node in layer.nodes"
+                  :key="node.id"
+                  class="uep-dag-node"
+                  :class="`uep-dag-node--${node.state}`"
+                >
+                  <span class="uep-dag-node__dot" :class="`uep-dag-node__dot--${node.state}`" />
+                  {{ node.name }}
+                </span>
+              </div>
+              <div v-if="layerIdx < dagLayers.length - 1" class="uep-dag-layer__arrow row justify-center">
+                <q-icon name="arrow_downward" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
+              </div>
             </div>
           </div>
         </template>
@@ -53,9 +74,15 @@
     <!-- Divider -->
     <div class="uep-divider" />
 
-    <!-- Section 3: Team Progress -->
+    <!-- Section 3: Team Progress (with rich headers) -->
     <div class="uep-section">
-      <div class="uep-section__header" role="button" tabindex="0" @click="teamProgressOpen = !teamProgressOpen" @keydown.enter="teamProgressOpen = !teamProgressOpen">
+      <div
+        class="uep-section__header"
+        role="button"
+        tabindex="0"
+        @click="teamProgressOpen = !teamProgressOpen"
+        @keydown.enter="teamProgressOpen = !teamProgressOpen"
+      >
         <q-icon name="groups" size="16px" class="uep-section__icon" />
         <span class="uep-section__title">{{ t('chat.execution.teamProgress') }}</span>
         <span v-if="teams.length > 0" class="uep-section__badge">{{ teams.length }}</span>
@@ -72,9 +99,39 @@
                 @click="toggleTeamExpand(team.id)"
                 @keydown.enter="toggleTeamExpand(team.id)"
               >
+                <div class="uep-team-item__avatar">{{ teamInitial(team) }}</div>
                 <span class="uep-team-item__name">{{ team.teamName }}</span>
-                <span class="uep-team-item__pct">{{ team.progressPct }}%</span>
-                <q-icon :name="isTeamExpanded(team.id) ? 'expand_less' : 'expand_more'" size="14px" class="uep-section__arrow" />
+                <span
+                  class="uep-team-item__status-badge"
+                  :class="`uep-team-item__status-badge--${teamStatusColor(team)}`"
+                >
+                  <span v-if="team.status === 'running'" class="uep-pulse-dot" />
+                  <q-icon :name="teamStatusIcon(team)" size="11px" class="q-mr-xs" />
+                  {{ teamStatusText(team) }}
+                </span>
+                <div class="uep-team-item__bar">
+                  <div class="uep-team-item__bar-fill" :style="{ width: `${team.progressPct}%` }" />
+                </div>
+                <span class="uep-team-item__duration">{{ formatDuration(team.durationMs) }}</span>
+                <template v-if="team.status === 'interrupted'">
+                  <button
+                    class="uep-team-item__action uep-team-item__action--resume"
+                    @click.stop="$emit('resume-team', team.id)"
+                  >
+                    {{ t('spirit.resume') }}
+                  </button>
+                  <button
+                    class="uep-team-item__action uep-team-item__action--cancel"
+                    @click.stop="$emit('cancel-team', team.id)"
+                  >
+                    {{ t('spirit.cancel') }}
+                  </button>
+                </template>
+                <q-icon
+                  :name="isTeamExpanded(team.id) ? 'expand_less' : 'expand_more'"
+                  size="14px"
+                  class="uep-section__arrow"
+                />
               </div>
               <div v-if="isTeamExpanded(team.id)" class="uep-team-item__card">
                 <TeamProgressCard :team="team" @click="$emit('teamClick', team.id)" />
@@ -89,11 +146,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { SpiritTeam, TaskNode } from '../../features/spirit/types';
+import type { SpiritTeam, TaskRow, DagFlowNode } from '../../features/spirit/types';
+import type { TaskNode } from '../../features/spirit/types';
 import type { PlanEntry } from '../../features/chat/agentTreeTypes';
-import { spiritTeamStatusToLabel, STATUS_LABEL_CONFIG } from '../../features/spirit/spiritUi';
+import {
+  spiritTeamStatusToLabel,
+  STATUS_LABEL_CONFIG,
+  formatDuration,
+  planEntryStatusLabel,
+  nameInitial,
+} from '../../features/spirit/spiritUi';
+import type { AgentNodeStatusLabel } from '../../features/spirit/spiritUi';
 import TeamProgressCard from './TeamProgressCard.vue';
 
 const { t } = useI18n();
@@ -106,6 +171,8 @@ const props = defineProps<{
 
 defineEmits<{
   teamClick: [teamId: string];
+  'resume-team': [teamId: string];
+  'cancel-team': [teamId: string];
 }>();
 
 // ── Collapsible state ──
@@ -116,19 +183,21 @@ const teamProgressOpen = ref(true);
 // ── Team expand/collapse state ──
 const expandedTeamIds = ref<Set<string>>(new Set());
 
-// Running teams default expanded, completed/interrupted default collapsed
-function initTeamExpandState() {
-  const ids = new Set<string>();
-  for (const team of props.teams) {
-    if (team.status === 'running' || team.status === 'pending') {
-      ids.add(team.id);
+// Running/pending teams default expanded; completed/interrupted/cancelled default collapsed.
+// Re-evaluate when teams list changes to handle new teams appearing.
+watch(
+  () => props.teams,
+  (teams) => {
+    const next = new Set(expandedTeamIds.value);
+    for (const team of teams) {
+      if ((team.status === 'running' || team.status === 'pending') && !next.has(team.id)) {
+        next.add(team.id);
+      }
     }
-  }
-  expandedTeamIds.value = ids;
-}
-
-// Initialize on creation
-initTeamExpandState();
+    expandedTeamIds.value = next;
+  },
+  { immediate: true },
+);
 
 function toggleTeamExpand(teamId: string) {
   const next = new Set(expandedTeamIds.value);
@@ -144,36 +213,53 @@ function isTeamExpanded(teamId: string): boolean {
   return expandedTeamIds.value.has(teamId);
 }
 
-// ── Section 1: Task Breakdown rows ──
-type TaskRow = {
-  id: string;
-  taskName: string;
-  teamLabel: string | null;
-  isRunning: boolean;
-  statusText: string;
-};
+// ── Team header helpers ──
+function teamInitial(team: SpiritTeam): string {
+  return nameInitial(team.teamName);
+}
 
+function teamStatusLabelKey(status: SpiritTeam['status']): AgentNodeStatusLabel {
+  return spiritTeamStatusToLabel(status);
+}
+
+function teamStatusColor(team: SpiritTeam): string {
+  return STATUS_LABEL_CONFIG[teamStatusLabelKey(team.status)]?.dotColor ?? 'grey';
+}
+
+function teamStatusText(team: SpiritTeam): string {
+  return STATUS_LABEL_CONFIG[teamStatusLabelKey(team.status)]?.text ?? team.status;
+}
+
+function teamStatusIcon(team: SpiritTeam): string {
+  return STATUS_LABEL_CONFIG[teamStatusLabelKey(team.status)]?.icon ?? 'circle';
+}
+
+// ── Section 1: Task Breakdown rows ──
 const taskRows = computed<TaskRow[]>(() => {
-  // Prefer planEntries (from useAgentBlocks), fall back to taskNodes
   if (props.planEntries && props.planEntries.length > 0) {
     return props.planEntries.map((pe) => ({
       id: pe.id,
       taskName: pe.task,
       teamLabel: pe.agentName,
       isRunning: pe.status === 'running',
-      statusText: planEntryStatusLabel(pe.status),
+      statusText: t(planEntryStatusLabel(pe.status)),
     }));
   }
 
   if (props.taskNodes && props.taskNodes.length > 0) {
+    const teamByDagNode = new Map<string, SpiritTeam>();
+    for (const tm of props.teams) {
+      if (tm.dagNodeId) teamByDagNode.set(tm.dagNodeId, tm);
+    }
+
     return props.taskNodes.map((tn) => {
-      const team = props.teams.find((t) => t.dagNodeId === tn.id);
+      const team = teamByDagNode.get(tn.id);
       return {
         id: tn.id,
         taskName: tn.taskName,
         teamLabel: team?.teamName ?? null,
         isRunning: team?.status === 'running',
-        statusText: team ? teamStatusLabel(team.status) : t('chat.execution.statusPending'),
+        statusText: team ? teamStatusText(team) : t('chat.execution.statusPending'),
       };
     });
   }
@@ -181,35 +267,17 @@ const taskRows = computed<TaskRow[]>(() => {
   return [];
 });
 
-function planEntryStatusLabel(status: PlanEntry['status']): string {
-  const labels: Record<string, string> = {
-    pending: t('chat.execution.statusPending'),
-    running: t('chat.execution.statusRunning'),
-    completed: t('chat.execution.statusCompleted'),
-    failed: t('chat.execution.statusFailed'),
-  };
-  return labels[status] ?? t('chat.execution.statusPending');
-}
-
-function teamStatusLabel(status: SpiritTeam['status']): string {
-  const label = spiritTeamStatusToLabel(status);
-  return STATUS_LABEL_CONFIG[label]?.text ?? t('chat.execution.statusPending');
-}
-
 // ── Section 2: Dependencies (DAG flow) ──
-type DagFlowNode = {
-  id: string;
-  name: string;
-  state: 'done' | 'running' | 'waiting';
-  depLabels: string[];
-};
-
 const hasDependencies = computed(() => {
   if (!props.taskNodes || props.taskNodes.length === 0) return false;
   return props.taskNodes.some((tn) => tn.dependsOn.length > 0);
 });
 
-const dagFlowNodes = computed<DagFlowNode[]>(() => {
+interface DagLayer {
+  nodes: DagFlowNode[];
+}
+
+const dagLayers = computed<DagLayer[]>(() => {
   if (!props.taskNodes || props.taskNodes.length === 0) return [];
 
   const nodeMap = new Map<string, TaskNode>();
@@ -217,30 +285,95 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     nodeMap.set(tn.id, tn);
   }
 
-  return props.taskNodes.map((tn) => {
-    const team = props.teams.find((t) => t.dagNodeId === tn.id);
-    let state: DagFlowNode['state'] = 'waiting';
-    if (team) {
-      if (team.status === 'completed' || team.status === 'archived') {
-        state = 'done';
-      } else if (team.status === 'running') {
-        state = 'running';
+  const teamByDagNode = new Map<string, SpiritTeam>();
+  for (const tm of props.teams) {
+    if (tm.dagNodeId) teamByDagNode.set(tm.dagNodeId, tm);
+  }
+
+  // Kahn's algorithm: topological sort with cycle detection
+  // Build adjacency list (parent → children) and in-degree map
+  const childrenOf = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  for (const tn of props.taskNodes) {
+    childrenOf.set(tn.id, []);
+    inDegree.set(tn.id, tn.dependsOn.length);
+    for (const depId of tn.dependsOn) {
+      const children = childrenOf.get(depId);
+      if (children) children.push(tn.id);
+    }
+  }
+
+  // Enqueue root nodes (in-degree 0)
+  const queue: string[] = [];
+  for (const [id, deg] of inDegree) {
+    if (deg === 0) queue.push(id);
+  }
+
+  // Process in BFS order, assigning layers
+  const depths = new Map<string, number>();
+  let visitedCount = 0;
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    const parentDepth = depths.get(nodeId) ?? 0;
+    visitedCount++;
+
+    for (const childId of childrenOf.get(nodeId) ?? []) {
+      const childDepth = parentDepth + 1;
+      const existing = depths.get(childId) ?? 0;
+      depths.set(childId, Math.max(existing, childDepth));
+
+      const deg = (inDegree.get(childId) ?? 1) - 1;
+      inDegree.set(childId, deg);
+      if (deg === 0) {
+        queue.push(childId);
       }
     }
+  }
 
-    const depLabels = tn.dependsOn
-      .map((depId) => {
-        const depNode = nodeMap.get(depId);
-        return depNode?.taskName ?? depId;
+  // Cycle detection: if not all nodes visited, assign remaining to depth 0
+  if (visitedCount < props.taskNodes.length) {
+    for (const tn of props.taskNodes) {
+      if (!depths.has(tn.id)) {
+        depths.set(tn.id, 0);
+      }
+    }
+  }
+
+  // Group by depth
+  const maxDepth = Math.max(...Array.from(depths.values()), 0);
+  const layers: DagLayer[] = [];
+
+  for (let d = 0; d <= maxDepth; d++) {
+    const layerNodes = props.taskNodes
+      .filter((tn) => depths.get(tn.id) === d)
+      .map((tn) => {
+        const team = teamByDagNode.get(tn.id);
+        let state: DagFlowNode['state'] = 'waiting';
+        if (team) {
+          if (team.status === 'completed' || team.status === 'archived') {
+            state = 'done';
+          } else if (team.status === 'running' || team.status === 'pending') {
+            state = 'running';
+          } else if (team.status === 'failed' || team.status === 'cancelled') {
+            state = 'failed';
+          } else if (team.status === 'interrupted') {
+            state = 'interrupted';
+          }
+        }
+        return {
+          id: tn.id,
+          name: tn.taskName,
+          state,
+          depLabels: tn.dependsOn.map((depId) => nodeMap.get(depId)?.taskName ?? depId),
+        };
       });
+    if (layerNodes.length > 0) {
+      layers.push({ nodes: layerNodes });
+    }
+  }
 
-    return {
-      id: tn.id,
-      name: tn.taskName,
-      state,
-      depLabels,
-    };
-  });
+  return layers;
 });
 </script>
 
@@ -273,7 +406,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     flex: 1
 
   &__badge
-    font-size: 10px
+    font-size: var(--text-xs)
     font-weight: 600
     line-height: 1
     min-width: 16px
@@ -317,7 +450,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     border-radius: 50%
     background: color-mix(in srgb, var(--color-primary) 12%, transparent)
     color: var(--color-primary)
-    font-size: 10px
+    font-size: var(--text-xs)
     font-weight: 600
     display: inline-flex
     align-items: center
@@ -334,7 +467,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     white-space: nowrap
 
   &__team
-    font-size: 10px
+    font-size: var(--text-xs)
     background: var(--glass-surface)
     padding: 1px 6px
     border-radius: 3px
@@ -346,7 +479,7 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     white-space: nowrap
 
   &__status
-    font-size: 10px
+    font-size: var(--text-xs)
     color: var(--color-text-tertiary)
     flex-shrink: 0
     display: inline-flex
@@ -370,28 +503,47 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
   50%
     opacity: 0.3
 
-// ── DAG Flow ──
-.uep-dag-flow
+// ── DAG Layers (topological with branch/merge) ──
+.uep-dag-layers
   display: flex
   flex-direction: column
-  gap: 4px
+  gap: 2px
+
+.uep-dag-layer
+  &__nodes
+    justify-content: center
+
+  &__arrow
+    padding: 1px 0
+    color: var(--color-text-tertiary)
 
 .uep-dag-node
-  display: flex
+  display: inline-flex
   align-items: center
-  gap: 6px
-  padding: 3px 6px
+  gap: 4px
+  padding: 3px 8px
   border-radius: 4px
   font-size: var(--text-xs)
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent)
+  color: var(--color-text-secondary)
 
   &--done
     opacity: 0.5
 
   &--running
-    background: color-mix(in srgb, var(--color-primary) 6%, transparent)
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent)
+    color: var(--color-primary)
 
   &--waiting
     // default
+
+  &--failed
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent)
+    color: var(--color-danger)
+
+  &--interrupted
+    background: color-mix(in srgb, var(--color-warning) 10%, transparent)
+    color: var(--color-warning)
 
   &__dot
     width: 6px
@@ -411,16 +563,11 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
       background: var(--color-text-tertiary)
       opacity: 0.4
 
-  &__name
-    font-weight: 500
-    color: var(--color-text-primary)
+    &--failed
+      background: var(--color-danger)
 
-  &__deps
-    font-size: 10px
-    color: var(--color-text-tertiary)
-    white-space: nowrap
-    overflow: hidden
-    text-overflow: ellipsis
+    &--interrupted
+      background: var(--color-warning)
 
 // ── Team Progress List ──
 .uep-team-list
@@ -433,11 +580,25 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     display: flex
     align-items: center
     gap: 6px
-    padding: 4px 6px
-    border-radius: 4px
+    padding: 6px 8px
+    border-radius: 6px
     cursor: pointer
+    user-select: none
     &:hover
       background: color-mix(in srgb, var(--color-primary) 4%, transparent)
+
+  &__avatar
+    width: 20px
+    height: 20px
+    border-radius: 50%
+    background: var(--glass-elevated, var(--glass-surface))
+    display: flex
+    align-items: center
+    justify-content: center
+    font-size: 9px
+    font-weight: 600
+    color: var(--color-text-secondary)
+    flex-shrink: 0
 
   &__name
     font-size: var(--text-xs)
@@ -449,11 +610,75 @@ const dagFlowNodes = computed<DagFlowNode[]>(() => {
     text-overflow: ellipsis
     white-space: nowrap
 
-  &__pct
-    font-size: 10px
-    color: var(--color-primary)
-    font-weight: 600
+  &__status-badge
+    padding: 1px 6px
+    border-radius: 4px
+    font-size: var(--text-xs)
+    font-weight: 500
+    display: inline-flex
+    align-items: center
+    gap: 4px
     flex-shrink: 0
+
+    &--blue
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+
+    &--green
+      background: color-mix(in srgb, var(--color-success) 12%, transparent)
+      color: var(--color-success)
+
+    &--red
+      background: color-mix(in srgb, var(--color-danger) 12%, transparent)
+      color: var(--color-danger)
+
+    &--orange
+      background: color-mix(in srgb, var(--color-warning) 12%, transparent)
+      color: var(--color-warning)
+
+    &--grey
+      background: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent)
+      color: var(--color-text-tertiary)
+
+  &__bar
+    width: 50px
+    height: 3px
+    background: var(--glass-border, var(--color-border))
+    border-radius: 2px
+    overflow: hidden
+    flex-shrink: 0
+
+  &__bar-fill
+    height: 100%
+    border-radius: 2px
+    background: var(--color-primary)
+    transition: width 0.3s
+
+  &__duration
+    font-size: var(--text-xs)
+    color: var(--color-text-tertiary)
+    flex-shrink: 0
+
+  &__action
+    border: none
+    border-radius: 3px
+    padding: 1px 5px
+    font-size: var(--text-xs)
+    cursor: pointer
+    flex-shrink: 0
+    transition: opacity 0.15s ease
+
+    &:hover
+      opacity: 0.85
+
+    &--resume
+      background: var(--color-accent)
+      color: var(--color-on-accent, white)
+
+    &--cancel
+      background: var(--glass-elevated, var(--glass-surface))
+      border: 1px solid var(--glass-border, var(--color-border))
+      color: var(--color-text-secondary)
 
   &__card
     margin-top: 4px

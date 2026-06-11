@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var _ biz.AllocationPlanRepository = (*allocationPlanRepo)(nil)
@@ -28,7 +27,7 @@ func NewAllocationPlanRepo(d *Data, lg loggateway.Logger) biz.AllocationPlanRepo
 
 func (r *allocationPlanRepo) Create(ctx context.Context, plan *biz.AllocationPlan) (*biz.AllocationPlan, error) {
 	if plan == nil || strings.TrimSpace(plan.ID) == "" {
-		return nil, kerrors.BadRequest("ALLOCATION_PLAN", "plan id is required")
+		return nil, apierror.BadRequest("ALLOCATION_PLAN", "plan id is required")
 	}
 	now := time.Now().UTC()
 	if plan.CreatedAt == "" {
@@ -41,7 +40,7 @@ func (r *allocationPlanRepo) Create(ctx context.Context, plan *biz.AllocationPla
 
 	allocationsJSON, err := json.Marshal(plan.Allocations)
 	if err != nil {
-		return nil, kerrors.InternalServer("ALLOCATION_PLAN", "marshal allocations: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "ALLOCATION_PLAN")
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
@@ -60,7 +59,7 @@ func (r *allocationPlanRepo) Create(ctx context.Context, plan *biz.AllocationPla
 func (r *allocationPlanRepo) GetByID(ctx context.Context, id string) (*biz.AllocationPlan, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return nil, kerrors.BadRequest("ALLOCATION_PLAN", "id is required")
+		return nil, apierror.BadRequest("ALLOCATION_PLAN", "id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, task_plan_id, spirit_session_id, trace_id, allocations_json,
@@ -82,13 +81,13 @@ func (r *allocationPlanRepo) GetByID(ctx context.Context, id string) (*biz.Alloc
 
 func (r *allocationPlanRepo) Update(ctx context.Context, plan *biz.AllocationPlan) (*biz.AllocationPlan, error) {
 	if plan == nil || strings.TrimSpace(plan.ID) == "" {
-		return nil, kerrors.BadRequest("ALLOCATION_PLAN", "plan id is required")
+		return nil, apierror.BadRequest("ALLOCATION_PLAN", "plan id is required")
 	}
 	plan.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
 	allocationsJSON, err := json.Marshal(plan.Allocations)
 	if err != nil {
-		return nil, kerrors.InternalServer("ALLOCATION_PLAN", "marshal allocations: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "ALLOCATION_PLAN")
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,

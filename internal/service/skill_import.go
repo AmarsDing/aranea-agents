@@ -7,21 +7,21 @@ import (
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
+	"aranea-agents/pkg/apierror"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (s *SkillService) importEngine() (*importer.Engine, error) {
 	if s.import_ == nil {
-		return nil, kerrors.InternalServer("SKILL_IMPORT", "skill import engine is not configured")
+		return nil, apierror.Internal("SKILL_IMPORT", "skill import engine is not configured")
 	}
 	return s.import_, nil
 }
 
 // ImportSkillZip is not bound to HTTP (multipart upload uses RegisterSkillImportMultipart).
 func (s *SkillService) ImportSkillZip(context.Context, *emptypb.Empty) (*v1.ImportSkillZipResponse, error) {
-	return nil, kerrors.NotFound("SKILL_IMPORT", "use POST /v1/skills/import with multipart file field")
+	return nil, apierror.NotFound("SKILL_IMPORT", "use POST /v1/skills/import with multipart file field")
 }
 
 func (s *SkillService) GetSkillImportJob(ctx context.Context, req *v1.GetSkillImportJobRequest) (*v1.SkillImportJob, error) {
@@ -32,9 +32,9 @@ func (s *SkillService) GetSkillImportJob(ctx context.Context, req *v1.GetSkillIm
 	job, err := eng.GetImportJob(req.GetJobId())
 	if err != nil {
 		if errors.Is(err, importer.ErrImportJobNotFound) {
-			return nil, kerrors.NotFound("SKILL_IMPORT", err.Error())
+			return nil, apierror.NotFound("SKILL_IMPORT", err.Error())
 		}
-		return nil, kerrors.BadRequest("SKILL_IMPORT", err.Error())
+		return nil, apierror.BadRequest("SKILL_IMPORT", err.Error())
 	}
 	return skillImportJobToProto(job), nil
 }
@@ -47,9 +47,9 @@ func (s *SkillService) ApplySkillImport(ctx context.Context, req *v1.ApplySkillI
 	result, err := eng.ApplyImport(ctx, req.GetJobId(), skillImportApplyFromProto(req))
 	if err != nil {
 		if errors.Is(err, importer.ErrImportJobNotFound) {
-			return nil, kerrors.NotFound("SKILL_IMPORT", err.Error())
+			return nil, apierror.NotFound("SKILL_IMPORT", err.Error())
 		}
-		return nil, kerrors.BadRequest("SKILL_IMPORT", err.Error())
+		return nil, apierror.BadRequest("SKILL_IMPORT", err.Error())
 	}
 	return skillImportApplyResultToProto(result), nil
 }
@@ -66,9 +66,9 @@ func (s *SkillService) RefineSkillImportConflict(ctx context.Context, req *v1.Re
 	})
 	if err != nil {
 		if errors.Is(err, importer.ErrImportJobNotFound) || errors.Is(err, importer.ErrConflictGroupNotFound) {
-			return nil, kerrors.NotFound("SKILL_IMPORT", err.Error())
+			return nil, apierror.NotFound("SKILL_IMPORT", err.Error())
 		}
-		return nil, kerrors.BadRequest("SKILL_IMPORT", err.Error())
+		return nil, apierror.BadRequest("SKILL_IMPORT", err.Error())
 	}
 	return skillRefineResultToProto(result), nil
 }
@@ -125,10 +125,10 @@ func skillConflictGroupToProto(g biz.SkillConflictGroup) *v1.SkillConflictGroup 
 			Recommendation:        g.Metrics.Recommendation,
 			Confidence:            g.Metrics.Confidence,
 		},
-		Reason:        g.Reason,
-		Evidence:      append([]string(nil), g.Evidence...),
-		CandidateIds:  append([]string(nil), g.CandidateIDs...),
-		CanRefine:     g.CanRefine,
+		Reason:       g.Reason,
+		Evidence:     append([]string(nil), g.Evidence...),
+		CandidateIds: append([]string(nil), g.CandidateIDs...),
+		CanRefine:    g.CanRefine,
 	}
 	for _, e := range g.ExistingSkills {
 		out.ExistingSkills = append(out.ExistingSkills, &v1.SkillSimilaritySource{

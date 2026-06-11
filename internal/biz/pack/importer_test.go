@@ -52,13 +52,6 @@ func (r *stubImporterRepo) GetAgentByAgentKey(_ context.Context, agentKey string
 	}
 	return a, nil
 }
-func (r *stubImporterRepo) CreateAgent(_ context.Context, a biz.Agent) (biz.Agent, error) {
-	if a.ID == "" {
-		a.ID = "agent-" + a.AgentKey
-	}
-	r.agents[a.AgentKey] = a
-	return a, nil
-}
 func (r *stubImporterRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, files []biz.AgentPromptFile, settings biz.AgentRuntimeSettings) (biz.Agent, error) {
 	if a.ID == "" {
 		a.ID = "agent-" + a.AgentKey
@@ -69,22 +62,9 @@ func (r *stubImporterRepo) CreateAgentAtomic(_ context.Context, a biz.Agent, fil
 	}
 	return a, nil
 }
-func (r *stubImporterRepo) UpdateAgent(_ context.Context, a biz.Agent) (biz.Agent, error) {
-	r.agents[a.AgentKey] = a
-	return a, nil
-}
 func (r *stubImporterRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []biz.AgentPromptFile, _ *biz.AgentRuntimeSettings) (biz.Agent, error) {
 	r.agents[a.AgentKey] = a
 	return a, nil
-}
-func (r *stubImporterRepo) DeleteAgent(_ context.Context, id string) error {
-	return nil
-}
-func (r *stubImporterRepo) GetAgentRuntimeSettings(_ context.Context, agentID string) (biz.AgentRuntimeSettings, error) {
-	return biz.AgentRuntimeSettings{}, shared.ErrNotFound
-}
-func (r *stubImporterRepo) UpsertAgentRuntimeSettings(_ context.Context, v biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
-	return v, nil
 }
 func (r *stubImporterRepo) ReplaceAgentPromptFiles(_ context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error) {
 	return files, nil

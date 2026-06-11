@@ -3,7 +3,6 @@ package lark
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -19,11 +18,11 @@ func AppAndRegionFromConfig(configJSON string) (region, appID string, err error)
 		} `json:"config"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(configJSON)), &cfg); err != nil {
-		return "", "", fmt.Errorf("feishu config: %w", err)
+		return "", "", feishuParseError("feishu config", err)
 	}
 	appID = strings.TrimSpace(cfg.Config.AppID)
 	if appID == "" {
-		return "", "", fmt.Errorf("feishu config_json.config.app_id is required")
+		return "", "", errAppIDRequired
 	}
 	region = strings.TrimSpace(strings.ToLower(cfg.Config.Region))
 	if region == "" {
@@ -72,7 +71,7 @@ func WSAppCredentials(
 	appSecret, err = lookup(ctx, creds, "app_secret")
 	appSecret = strings.TrimSpace(appSecret)
 	if appSecret == "" {
-		return "", "", fmt.Errorf("feishu websocket: app_secret required")
+		return "", "", errAppSecretRequired
 	}
 	return appID, appSecret, nil
 }

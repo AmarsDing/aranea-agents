@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // DiagnoseAndHealResult is the unified result from either observer or legacy usecase.
@@ -58,7 +58,7 @@ func (u *Usecase) DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserve
 			triggerType, contextMinutes,
 		)
 		if err != nil {
-			return nil, kerrors.New(500, "INTERNAL", err.Error())
+			return nil, apierror.Internal("MONITOR", err.Error())
 		}
 		return &DiagnoseAndHealResult{
 			HealID:              rec.ID,
@@ -75,14 +75,14 @@ func (u *Usecase) DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserve
 
 	// Deprecated fallback: SelfHealUsecase
 	if legacy == nil {
-		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal service not available")
+		return nil, apierror.Unavailable("MONITOR", "self-heal service not available")
 	}
 	rec, err := legacy.DiagnoseAndHeal(ctx,
 		traceID, sessionID, runID, stepID,
 		triggerType, contextMinutes,
 	)
 	if err != nil {
-		return nil, kerrors.New(500, "INTERNAL", err.Error())
+		return nil, apierror.Internal("MONITOR", err.Error())
 	}
 
 	result := &DiagnoseAndHealResult{

@@ -7,11 +7,13 @@ import (
 	"os"
 
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/auth"
 	loggateway "aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/env"
@@ -85,6 +87,9 @@ func main() {
 
 	// Inject logger into auth package (replaces Global() calls)
 	auth.SetLogger(lg)
+
+	// Register safego panic hook so recovered panics are counted in Prometheus.
+	safego.RegisterPanicHook(metrics.SafegoPanicHook())
 
 	shutdownTelemetry := telemetry.Init(Name, Version, lg)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()

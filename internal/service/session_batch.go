@@ -7,8 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func batchScopeFromProto(s *v1.SessionBatchScope) biz.SessionBatchScope {
@@ -28,10 +27,10 @@ func batchScopeFromProto(s *v1.SessionBatchScope) biz.SessionBatchScope {
 
 func validateBatchHTTPRequest(ids []string, olderThanDays int32) error {
 	if len(ids) == 0 && olderThanDays < 1 {
-		return kerrors.BadRequest("SESSION", "ids or older_than_days >= 1 is required")
+		return apierror.BadRequest("SESSION", "ids or older_than_days >= 1 is required")
 	}
 	if olderThanDays < 0 {
-		return kerrors.BadRequest("SESSION", "older_than_days must be >= 0")
+		return apierror.BadRequest("SESSION", "older_than_days must be >= 0")
 	}
 	return nil
 }
@@ -59,7 +58,7 @@ func toProtoBatchResult(r biz.SessionBatchResult) *v1.BatchSessionsResponse {
 
 func (s *SessionService) BatchPreviewSessions(ctx context.Context, req *v1.BatchPreviewSessionsRequest) (*v1.BatchPreviewSessionsResponse, error) {
 	if strings.TrimSpace(req.GetMode()) == "" {
-		return nil, kerrors.BadRequest("SESSION", "mode is required")
+		return nil, apierror.BadRequest("SESSION", "mode is required")
 	}
 	if err := validateBatchHTTPRequest(req.GetIds(), req.GetOlderThanDays()); err != nil {
 		return nil, err

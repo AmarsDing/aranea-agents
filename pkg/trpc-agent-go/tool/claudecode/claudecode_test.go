@@ -2485,6 +2485,41 @@ func strconvString(value int) string {
 	return strconv.Itoa(value)
 }
 
+func TestTruncateCommandOutput(t *testing.T) {
+	t.Parallel()
+
+	// Short string is not truncated.
+	require.Equal(t, "short", truncateCommandOutput("short", 100))
+
+	// Long string is truncated with head+tail+marker.
+	input := strings.Repeat("x", 500)
+	truncated := truncateCommandOutput(input, 200)
+	require.Contains(t, truncated, "[... 300 characters truncated ...]")
+	require.LessOrEqual(t, len([]rune(truncated)), 200,
+		"output must not exceed maxChars")
+	require.True(t, strings.HasPrefix(truncated, "xxx"),
+		"head must be preserved")
+	require.True(t, strings.HasSuffix(truncated, "xxx"),
+		"tail must be preserved")
+
+	// Zero maxChars returns input unchanged.
+	require.Equal(t, "hello", truncateCommandOutput("hello", 0))
+
+	// Negative maxChars returns input unchanged.
+	require.Equal(t, "hello", truncateCommandOutput("hello", -1))
+
+	// Very small maxChars falls back to head-only.
+	tiny := truncateCommandOutput("ABCDEFGHIJ0123456789", 10)
+	require.Equal(t, "ABCDEFGHIJ", tiny,
+		"when marker is too large, fall back to head-only truncation")
+
+	// Unicode is handled correctly by rune count.
+	unicode := strings.Repeat("你好", 100) // 200 runes
+	truncatedUnicode := truncateCommandOutput(unicode, 100)
+	require.LessOrEqual(t, len([]rune(truncatedUnicode)), 100)
+	require.Contains(t, truncatedUnicode, "characters truncated")
+}
+
 func withRipgrepForTest(lookPath func(string) (string, error)) func() {
 	ripgrepTestMu.Lock()
 	oldLookPath := ripgrepLookPath

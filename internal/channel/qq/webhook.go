@@ -2,13 +2,14 @@ package qq
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/tencent-connect/botgo/dto"
 	"github.com/tencent-connect/botgo/interaction/signature"
 	qqwebhook "github.com/tencent-connect/botgo/interaction/webhook"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // InboundMessage is a normalized QQ official bot text event.
@@ -33,14 +34,14 @@ type WebhookResult struct {
 func VerifyRequest(appSecret string, header http.Header, body []byte) error {
 	appSecret = strings.TrimSpace(appSecret)
 	if appSecret == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
 	ok, err := signature.Verify(appSecret, header, body)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("qq: bad signature")
+		return errBadSignature
 	}
 	return nil
 }
@@ -56,12 +57,12 @@ func ParseWebhook(body []byte, header http.Header, appSecret string) (*WebhookRe
 	case dto.HTTPCallbackValidation:
 		data, ok := payload.Data.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("qq: invalid validation payload")
+			return nil, errInvalidValidationPayload
 		}
 		plainToken, _ := data["plain_token"].(string)
 		eventTs, _ := data["event_ts"].(string)
 		if plainToken == "" || eventTs == "" {
-			return nil, fmt.Errorf("qq: missing validation fields")
+			return nil, errMissingValidationFields
 		}
 		req := &dto.WHValidationReq{PlainToken: plainToken, EventTs: eventTs}
 		res.ValidationBody = qqwebhook.GenValidationACK(req, header, appSecret)
@@ -103,14 +104,14 @@ func parseDispatch(payload *dto.WSPayload) (*InboundMessage, error) {
 		}
 		return messageFromData(dto.Message(msg), payload.EventID)
 	default:
-		return nil, fmt.Errorf("qq: unsupported event %s", payload.Type)
+		return nil, qqUnsupportedEventError(string(payload.Type))
 	}
 }
 
 func messageFromData(msg dto.Message, eventID string) (*InboundMessage, error) {
 	text := strings.TrimSpace(msg.Content)
 	if text == "" {
-		return nil, fmt.Errorf("qq: empty content")
+		return nil, errEmptyContent
 	}
 	userID := ""
 	if msg.Author != nil {

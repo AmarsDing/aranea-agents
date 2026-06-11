@@ -295,6 +295,11 @@ func (d *Data) SeedLazy(ctx context.Context, name string) error {
 
 const defaultVectorDim = 1536
 
+// sqliteWALAutoCheckpoint controls how frequently SQLite checkpoints the WAL file.
+// 500 pages ≈ 2 MB of WAL before auto-checkpoint, balancing write throughput
+// against WAL file growth for long-running sessions.
+const sqliteWALAutoCheckpoint = 500
+
 func vectorDimFromConf(c *conf.Data) int {
 	dim := defaultVectorDim
 	if c != nil && c.GetPostgres() != nil {
@@ -636,12 +641,14 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	entClient := ent.NewClient(ent.Driver(drv), ent.Log(entLogAdapter(lg)))
 
 	if driverName == dialect.SQLite {
-		for _, pragma := range []string{
+		sqlitePragmas := []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
 			"PRAGMA busy_timeout=30000",
 			"PRAGMA synchronous=NORMAL",
-		} {
+			fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", sqliteWALAutoCheckpoint),
+		}
+		for _, pragma := range sqlitePragmas {
 			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
 				rawDB.Close()
 				lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "pragma"), loggateway.Str("pragma", pragma), loggateway.Err(pragmaErr))
@@ -678,12 +685,14 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	readDB.SetMaxIdleConns(2)
 	readDB.SetConnMaxIdleTime(5 * time.Minute)
 	if driverName == dialect.SQLite {
-		for _, pragma := range []string{
+		sqliteReadPragmas := []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
 			"PRAGMA busy_timeout=30000",
 			"PRAGMA synchronous=NORMAL",
-		} {
+			fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", sqliteWALAutoCheckpoint),
+		}
+		for _, pragma := range sqliteReadPragmas {
 			if _, pragmaErr := readDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
 				rawDB.Close()
 				readDB.Close()

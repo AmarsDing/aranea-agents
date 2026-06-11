@@ -1,6 +1,7 @@
 <template>
   <div v-if="visible" class="spirit-status-bar">
     <div class="row items-center no-wrap q-gutter-sm spirit-status-bar__inner">
+      <span class="spirit-status-bar__dot" />
       <div v-if="complexityLevel" class="spirit-status-bar__item">
         <q-icon :name="complexityIcon" size="14px" :style="{ color: complexityColor }" />
         <span>{{ complexityLabel }}</span>
@@ -110,19 +111,29 @@ const quotaColor = computed(() => {
 
 <style scoped lang="sass">
 .spirit-status-bar
-  height: 24px
+  height: 28px
   flex-shrink: 0
+  position: sticky
+  bottom: 0
+  z-index: 10
   border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .spirit-status-bar__inner
-  height: 24px
+  height: 28px
   padding: 0 var(--space-3)
   font-size: 11px
   color: var(--color-text-secondary)
   overflow: hidden
+
+.spirit-status-bar__dot
+  width: 5px
+  height: 5px
+  border-radius: 50%
+  background: var(--color-primary)
+  flex-shrink: 0
 
 .spirit-status-bar__item
   display: flex

@@ -7,9 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // PatternMiningMinSuccesses is the minimum number of successful fixes required
@@ -71,7 +70,7 @@ func NewPatternMiningUsecase(
 // generates or updates mined failure patterns.
 func (uc *PatternMiningUsecase) Mine(ctx context.Context) (PatternMiningResult, error) {
 	if uc == nil {
-		return PatternMiningResult{}, kerrors.InternalServer("MONITOR", "PatternMiningUsecase is nil")
+		return PatternMiningResult{}, apierror.Internal("MONITOR", "PatternMiningUsecase is nil")
 	}
 
 	// Step 1: Read applied heal records

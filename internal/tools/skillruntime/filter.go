@@ -24,19 +24,24 @@ type RuntimeSettings interface {
 	GetSkillRuntimeJSON() string
 }
 
-const filterCacheMaxEntries = 512
+const (
+	filterCacheMaxEntries = 512
+	filterCacheTTL        = 2 * time.Minute
+)
 
 type cacheEntry struct {
 	value      map[string]bool
 	accessedAt time.Time
+	createdAt  time.Time
 }
 
 type filterCache struct {
-	mu       sync.RWMutex
-	entries  map[string]*cacheEntry
-	hits     atomic.Int64
-	misses   atomic.Int64
+	mu        sync.RWMutex
+	entries   map[string]*cacheEntry
+	hits      atomic.Int64
+	misses    atomic.Int64
 	evictions atomic.Int64
+	ttl       time.Duration
 }
 
 func (c *filterCache) Load(key string) (map[string]bool, bool) {
@@ -48,6 +53,28 @@ func (c *filterCache) Load(key string) (map[string]bool, bool) {
 		return nil, false
 	}
 	c.mu.RUnlock()
+
+	if c.ttl > 0 && time.Since(e.createdAt) > c.ttl {
+		// Re-check under write lock to avoid TOCTOU: another goroutine may have
+		// stored a fresh entry between our RLock and this Lock.
+		c.mu.Lock()
+		fresh, exists := c.entries[key]
+		if !exists {
+			c.mu.Unlock()
+			c.misses.Add(1)
+			return nil, false
+		}
+		if time.Since(fresh.createdAt) > c.ttl {
+			delete(c.entries, key)
+			c.mu.Unlock()
+			c.misses.Add(1)
+			return nil, false
+		}
+		// Fresh entry was stored by another goroutine; use it.
+		e = fresh
+		c.mu.Unlock()
+	}
+
 	c.mu.Lock()
 	e.accessedAt = time.Now()
 	c.mu.Unlock()
@@ -73,12 +100,17 @@ func (c *filterCache) Store(key string, val map[string]bool) {
 		delete(c.entries, oldest)
 		c.evictions.Add(1)
 	}
-	c.entries[key] = &cacheEntry{value: val, accessedAt: time.Now()}
-	c.misses.Add(1)
+	c.entries[key] = &cacheEntry{value: val, accessedAt: time.Now(), createdAt: time.Now()}
 }
 
 func (c *filterCache) Stats() (hits, misses, evicts int64) {
 	return c.hits.Load(), c.misses.Load(), c.evictions.Load()
+}
+
+func (c *filterCache) InvalidateAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]*cacheEntry, filterCacheMaxEntries)
 }
 
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B
@@ -95,8 +127,12 @@ func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings, lg
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime, lg: lg, agentKey: agentKey}
+	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime, cache: filterCache{ttl: filterCacheTTL}, lg: lg, agentKey: agentKey}
 	return f.allow
+}
+
+func (f *AgentVisibilityFilter) InvalidateCache() {
+	f.cache.InvalidateAll()
 }
 
 func (f *AgentVisibilityFilter) allow(ctx context.Context, summary trpcskill.Summary) bool {

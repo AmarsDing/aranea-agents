@@ -61,11 +61,11 @@ func (h *ChannelIngress) handleQQWebhook(w http.ResponseWriter, r *http.Request,
 	}
 	msg := parsed.Message
 	meta := map[string]string{
-		"recipient": msg.UserID,
-		"group_id":  msg.GroupID,
+		port.MetaRecipient: msg.UserID,
+		"group_id":         msg.GroupID,
 	}
 	if msg.GroupID != "" {
-		meta["recipient"] = msg.GroupID
+		meta[port.MetaRecipient] = msg.GroupID
 	}
 	idem := "qq:" + strings.TrimSpace(msg.MessageID)
 	if idem == "qq:" {

@@ -70,6 +70,7 @@ export default {
     groupTeams: 'Team',
     groupActiveTeams: '进行中的团队',
     groupCompletedTeams: '已完成的团队',
+    groupInterruptedTeams: '中断',
     workIdle: '空闲',
     workBusy: '运行中',
     settings: '设置',
@@ -307,6 +308,7 @@ export default {
       noAgents: '暂无 Agent',
       noActiveTeams: '暂无进行中的团队',
       noCompletedTeams: '暂无已完成的团队',
+      noInterruptedTeams: '暂无中断的团队',
       defaultAgent: '默认 Agent',
       customAgent: '自定义 Agent',
     },
@@ -1183,6 +1185,8 @@ export default {
     spiritReply: '综合汇报',
     agentDetails: '成员详情',
     noAgentDetails: '暂无成员详情',
+    online: '在线',
+    waitingForPredecessor: '等待前置任务完成…',
   },
 
 };

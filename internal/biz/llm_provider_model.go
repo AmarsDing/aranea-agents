@@ -5,7 +5,6 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -14,15 +13,16 @@ import (
 	"time"
 
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/errors"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var llmRandFallback uint64
+
+// ErrProviderModelNotFound is returned when a provider-model row does not exist.
+var ErrProviderModelNotFound = apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 
 func newLLMID() string {
 	buf := make([]byte, 12)
@@ -249,7 +249,7 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 	in.Key = strings.TrimSpace(in.Key)
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Key == "" || in.Name == "" {
-		return ProviderModel{}, errors.BadRequest("LLM_PROVIDER_MODEL", "key and name are required")
+		return ProviderModel{}, apierror.BadRequest("LLM_PROVIDER_MODEL", "key and name are required")
 	}
 	if in.ID == "" {
 		in.ID = newLLMID()
@@ -352,7 +352,7 @@ func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
 				loggateway.StepID("llm_provider_model.agent_ref_check"),
 				loggateway.Err(refErr))
 		} else if count > 0 {
-			return kerrors.Conflict("LLM_PROVIDER_MODEL", fmt.Sprintf("cannot delete provider model referenced by %d agent(s); reassign agents first", count))
+			return apierror.Conflict("LLM_PROVIDER_MODEL", "cannot delete provider model referenced by %d agent(s); reassign agents first", count)
 		}
 	}
 	return u.writer.DeleteProviderModel(ctx, id)
@@ -412,7 +412,7 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 	}
 
 	if u.inspector == nil {
-		return LLMInspectResult{}, errors.New(500, "LLM_INSPECT", "llm inspector not configured")
+		return LLMInspectResult{}, apierror.Internal("LLM_INSPECT", "llm inspector not configured")
 	}
 	return u.inspector.Run(in)
 }

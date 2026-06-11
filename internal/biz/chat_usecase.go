@@ -23,6 +23,7 @@ type AwaitChannel = chan AwaitReplyMsg
 
 type awaitChanEntry struct {
 	ch        AwaitChannel
+	done      chan struct{}
 	createdAt time.Time
 }
 
@@ -96,7 +97,8 @@ type ChatUsecase struct {
 	pending    ChatPendingQueue
 	persist    ChatRunStatusPersister
 	publisher  ChatEventPublisher
-	awaitChans sync.Map
+	mu         sync.RWMutex
+	awaitChans map[string]awaitChanEntry
 	bgCancel   context.CancelFunc
 	lg         loggateway.Logger
 }
@@ -110,12 +112,13 @@ func NewChatUsecase(
 	lg loggateway.Logger,
 ) *ChatUsecase {
 	return &ChatUsecase{
-		runs:      runs,
-		locker:    locker,
-		pending:   pending,
-		persist:   persist,
-		publisher: publisher,
-		lg:        lg,
+		runs:       runs,
+		locker:     locker,
+		pending:    pending,
+		persist:    persist,
+		publisher:  publisher,
+		awaitChans: make(map[string]awaitChanEntry),
+		lg:         lg,
 	}
 }
 
@@ -194,23 +197,64 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollow
 }
 
 func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch AwaitChannel) {
-	uc.awaitChans.Store(sessionID, awaitChanEntry{ch: ch, createdAt: time.Now()})
+	uc.mu.Lock()
+	if old, ok := uc.awaitChans[sessionID]; ok {
+		close(old.done)
+	}
+	uc.awaitChans[sessionID] = awaitChanEntry{ch: ch, done: make(chan struct{}), createdAt: time.Now()}
+	uc.mu.Unlock()
 }
 
 func (uc *ChatUsecase) DeleteAwaitChannel(sessionID string) {
-	uc.awaitChans.Delete(sessionID)
+	uc.mu.Lock()
+	if entry, ok := uc.awaitChans[sessionID]; ok {
+		close(entry.done)
+		delete(uc.awaitChans, sessionID)
+	}
+	uc.mu.Unlock()
 }
 
 func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (AwaitChannel, bool) {
-	val, ok := uc.awaitChans.Load(sessionID)
+	uc.mu.RLock()
+	entry, ok := uc.awaitChans[sessionID]
+	uc.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}
-	entry, ok := val.(awaitChanEntry)
-	if !ok {
+	// Entry has been logically deleted (done closed) but not yet removed from map.
+	select {
+	case <-entry.done:
 		return nil, false
+	default:
+		return entry.ch, true
 	}
-	return entry.ch, true
+}
+
+// TrySendAwaitChannel attempts to send msg to the await channel for sessionID.
+// It holds a read lock while checking the entry and sending, which prevents
+// the GC goroutine from closing the done channel concurrently.
+func (uc *ChatUsecase) TrySendAwaitChannel(sessionID string, msg AwaitReplyMsg) bool {
+	uc.mu.RLock()
+	entry, ok := uc.awaitChans[sessionID]
+	if !ok {
+		uc.mu.RUnlock()
+		return false
+	}
+	// If done is already closed, the entry has been logically deleted.
+	select {
+	case <-entry.done:
+		uc.mu.RUnlock()
+		return false
+	default:
+	}
+	select {
+	case entry.ch <- msg:
+		uc.mu.RUnlock()
+		return true
+	default:
+		uc.mu.RUnlock()
+		return false
+	}
 }
 
 func (uc *ChatUsecase) PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta ChatAwaitMeta) {
@@ -232,29 +276,29 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 	ctx, cancel := context.WithCancel(context.Background())
 	uc.bgCancel = cancel
 	safego.Go(ctx, "chat-usecase-gc", func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				now := time.Now()
-				uc.awaitChans.Range(func(key, val any) bool {
-					sid, ok := key.(string)
-					if !ok || strings.TrimSpace(sid) == "" {
-						uc.awaitChans.Delete(key)
-						return true
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					now := time.Now()
+					uc.mu.Lock()
+					for sid, entry := range uc.awaitChans {
+						if strings.TrimSpace(sid) == "" {
+							close(entry.done)
+							delete(uc.awaitChans, sid)
+							continue
+						}
+						if now.Sub(entry.createdAt) > awaitChanMaxAge {
+							uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
+							close(entry.done)
+							delete(uc.awaitChans, sid)
+						}
 					}
-					entry, ok := val.(awaitChanEntry)
-					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
-						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
-						close(entry.ch)
-						uc.awaitChans.Delete(key)
-					}
-					return true
-				})
+					uc.mu.Unlock()
+				}
 			}
-		}
-	})
+		})
 }

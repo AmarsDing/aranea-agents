@@ -10,9 +10,8 @@ import (
 	"io"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 const envCredentialKey = "ARANEA_CREDENTIAL_KEY"
@@ -28,7 +27,7 @@ func parseProviderConfigJSON(cfg string) (map[string]any, error) {
 	}
 	var m map[string]any
 	if err := json.Unmarshal([]byte(cfg), &m); err != nil || m == nil {
-		return nil, errors.BadRequest("LLM_PROVIDER_MODEL", invalidProviderConfigJSONMsg)
+		return nil, apierror.BadRequest("LLM_PROVIDER_MODEL", invalidProviderConfigJSONMsg)
 	}
 	return m, nil
 }
@@ -222,7 +221,7 @@ func (c *CredentialCrypto) RevealCredentialsFromConfig(ctx context.Context, cfg 
 		return ProviderCredentialsReveal{}, nil
 	}
 	if err := json.Unmarshal([]byte(decrypted), &cr); err != nil {
-		return ProviderCredentialsReveal{}, errors.BadRequest("LLM_PROVIDER_MODEL", invalidProviderConfigJSONMsg)
+		return ProviderCredentialsReveal{}, apierror.BadRequest("LLM_PROVIDER_MODEL", invalidProviderConfigJSONMsg)
 	}
 	out := ProviderCredentialsReveal{
 		APIKey:       strings.TrimSpace(cr.APIKey),
@@ -279,7 +278,7 @@ func (c *CredentialCrypto) RequireKeyForPlaintext(ctx context.Context, cfg strin
 		return nil
 	}
 	if configJSONHasPlaintextSecrets(m) {
-		return errors.BadRequest("LLM_PROVIDER_MODEL", credentialKeyRequiredMsg)
+		return apierror.BadRequest("LLM_PROVIDER_MODEL", credentialKeyRequiredMsg)
 	}
 	return nil
 }
@@ -298,7 +297,7 @@ func (c *CredentialCrypto) ProcessConfigJSONForStorage(ctx context.Context, cfg 
 	}
 	if len(key) != 32 {
 		if configJSONHasPlaintextSecrets(m) {
-			return "", errors.BadRequest("LLM_PROVIDER_MODEL", credentialKeyRequiredMsg)
+			return "", apierror.BadRequest("LLM_PROVIDER_MODEL", credentialKeyRequiredMsg)
 		}
 		out, err := json.Marshal(m)
 		return string(out), err

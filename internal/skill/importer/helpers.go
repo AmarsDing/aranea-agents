@@ -16,6 +16,10 @@ import (
 
 var fallbackIDCounter uint64
 
+// slugNormalizeRe matches any character that is not a lowercase letter, digit,
+// hyphen, or underscore. Used by slugify to produce URL-safe slugs.
+var slugNormalizeRe = regexp.MustCompile(`[^a-z0-9\-_]+`)
+
 func newID() string {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil {
@@ -27,7 +31,7 @@ func newID() string {
 
 func slugify(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	value = regexp.MustCompile(`[^a-z0-9\-_]+`).ReplaceAllString(value, "-")
+	value = slugNormalizeRe.ReplaceAllString(value, "-")
 	value = strings.Trim(value, "-_")
 	if value == "" {
 		value = "skill-" + newID()[:8]
@@ -35,8 +39,11 @@ func slugify(value string) string {
 	return value
 }
 
-// CanonicalSlug normalizes directory or parsed skill names to slug tokens.
-func CanonicalSlug(value string) string {
+// SlugifyOrRandom normalizes a value to a slug, generating a random suffix
+// if the result would be empty. Use this when creating new slugs (e.g., from
+// directory names or parsed skill names). For matching existing slugs, use
+// biz.NormalizeSkillSlug instead (returns empty for empty input).
+func SlugifyOrRandom(value string) string {
 	return slugify(value)
 }
 

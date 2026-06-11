@@ -5,9 +5,8 @@ import (
 	"crypto/subtle"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 // Admin is a Admin model.
@@ -60,7 +59,7 @@ func NewAdminUsecase(reader AdminReader, writer AdminWriter, lg loggateway.Logge
 
 // ErrInvalidCredentials is the unified error for both user-not-found and
 // wrong-password cases, preventing timing attacks that reveal user existence.
-var ErrInvalidCredentials = errors.Unauthorized("AUTH", "invalid credentials")
+var ErrInvalidCredentials = apierror.Unauthorized("AUTH", "invalid credentials")
 
 // LoginByUsername logs in a user by username and password.
 // B-01/B-02 fix: constant-time comparison + unified error to prevent timing attacks.

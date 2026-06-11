@@ -30,13 +30,13 @@
     <template v-else>
       <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
         <template #avatar>
-          <q-spinner-dots color="primary" size="20px" />
+          <q-spinner-dots color="accent" size="20px" />
         </template>
         {{ t('chat.wsReplaying', '正在同步历史事件…') }}
       </q-banner>
       <q-banner v-else-if="sessionLoading" dense rounded class="q-mx-md q-mt-sm app-info-banner">
         <template #avatar>
-          <q-spinner-dots color="primary" size="20px" />
+          <q-spinner-dots color="accent" size="20px" />
         </template>
         {{ t('chat.sessionLoading', '正在加载会话…') }}
       </q-banner>
@@ -95,7 +95,7 @@
               round
               dense
               :icon="reasoningSidebarOpen ? 'psychology' : 'psychology_alt'"
-              :color="reasoningSidebarOpen ? 'primary' : undefined"
+              :color="reasoningSidebarOpen ? 'accent' : undefined"
               :aria-label="t('chat.thinkingPanel')"
               @click="emit('toggle-reasoning-sidebar')"
             >
@@ -116,7 +116,7 @@
         </div>
       </div>
       <div v-if="!panelMode || panelMode === 'spirit'" class="row items-center justify-end q-px-md q-py-xs">
-        <UiConfigToggle class="q-mr-sm" />
+        <UiConfigToggle class="q-mr-sm" :show-tool-calls="showToolCalls ?? true" @toggle="emit('toggle-tool-calls')" />
         <q-btn
           flat
           dense
@@ -262,7 +262,7 @@
 
 <script setup lang="ts">
 // Container: approved — orchestrates virtual scroll, TurnBlock grouping, scroll anchoring, and composable wiring
-import { computed, nextTick, onMounted, provide, readonly, ref, toRef, watch } from 'vue';
+import { computed, nextTick, onMounted, provide, readonly, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { QVirtualScroll } from 'quasar';
 import type { Envelope } from '../../realtime/envelope';
@@ -275,7 +275,6 @@ import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import UiConfigToggle from './UiConfigToggle.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
-import ToolCallTimeline from './ToolCallTimeline.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
 import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
@@ -285,7 +284,7 @@ import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
 import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
-import { useUiConfigStore } from '../../stores/uiConfig';
+
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatTimeline, type TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import { CHAT_VIRTUAL_ROW_ESTIMATE, CHAT_VIRTUAL_SCROLL_THRESHOLD } from '../../features/chat/chatListVirtual';
@@ -375,6 +374,7 @@ const props = defineProps<{
   /** Team completion breakdown from spirit_teams_all_completed event. */
   spiritCompletionStats?: CompletionStats | null;
   compressStatus?: CompressStatus;
+  showToolCalls?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -422,6 +422,7 @@ const emit = defineEmits<{
   'status-bar-click-running': [];
   'status-bar-click-interrupted': [];
   'status-bar-click-last-event': [];
+  'toggle-tool-calls': [];
 }>();
 
 const { t } = useI18n();
@@ -460,9 +461,8 @@ provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
 });
 
 // ── TK: Provide tool display config for child components ──
-const uiConfig = useUiConfigStore();
 provide(TOOL_DISPLAY_KEY, computed(() => ({
-  showToolCalls: uiConfig.showToolCalls,
+  showToolCalls: props.showToolCalls ?? true,
 })));
 
 // ── TK: Todo board composable ──
@@ -478,7 +478,6 @@ function handleCollapseAll() {
   collapseAllSignal.value++;
 }
 
-const hasCollapsedBlocks = computed(() => collapsedBlockKeys.value.size > 0);
 
 const useVirtualMessageList = computed(() => timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;

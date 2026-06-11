@@ -35,8 +35,9 @@ const (
 )
 
 type l0SnapshotPending struct {
-	ID     string
-	Window int
+	ID        string
+	SessionID string
+	Window    int
 }
 
 type l0SnapshotThrottleState struct {
@@ -78,7 +79,7 @@ func newL0SnapshotAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 		if args != nil && args.Response != nil && args.Response.Usage != nil {
 			actual = args.Response.Usage.PromptTokens
 		}
-		if err := deps.MemoryAdmin.UpdateL0SnapshotActual(ctx, pending.ID, actual, pending.Window); err != nil {
+		if err := deps.MemoryAdmin.UpdateL0SnapshotActual(ctx, pending.ID, pending.SessionID, actual, pending.Window); err != nil {
 			deps.Logger().Warn("L0 快照 actual 更新失败",
 				loggateway.StepID("agent.l0.snapshot"),
 				loggateway.Str("snapshot_id", pending.ID),
@@ -194,7 +195,7 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		)
 		return
 	}
-	setL0SnapshotPendingForCall(inv, callIndex, in.ID, win)
+	setL0SnapshotPendingForCall(inv, callIndex, in.ID, in.SessionID, win)
 	l0SnapshotThrottleRecord(inv, usedRatio)
 	deps.Logger().Info("L0 快照已落库", loggateway.StepID("agent.l0.snapshot"), loggateway.Phase("done"),
 		loggateway.Str("snapshot_id", in.ID),
@@ -303,12 +304,12 @@ func l0SnapshotThrottleLoad(inv *trpcagent.Invocation) l0SnapshotThrottleState {
 	return l0SnapshotThrottleState{}
 }
 
-func setL0SnapshotPendingForCall(inv *trpcagent.Invocation, callIndex int, id string, win int) {
+func setL0SnapshotPendingForCall(inv *trpcagent.Invocation, callIndex int, id, sessionID string, win int) {
 	if inv == nil || callIndex <= 0 || strings.TrimSpace(id) == "" {
 		return
 	}
 	m := l0SnapshotPendingMap(inv)
-	m[callIndex] = l0SnapshotPending{ID: id, Window: win}
+	m[callIndex] = l0SnapshotPending{ID: id, SessionID: sessionID, Window: win}
 	inv.SetState(l0SnapshotByCallStateKey, m)
 }
 

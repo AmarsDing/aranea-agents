@@ -11,9 +11,8 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/graphdefinition"
 	"aranea-agents/internal/data/ent/graphexecution"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 type graphRepo struct {
@@ -88,7 +87,7 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 	row, err := client.GraphDefinition.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.NotFound("GRAPH", "graph definition not found")
+			return nil, apierror.NotFound("GRAPH", "graph definition not found")
 		}
 		return nil, fmt.Errorf("graph repo get: %w", err)
 	}
@@ -102,7 +101,7 @@ func (r *graphRepo) GetDefinitionByName(ctx context.Context, name string) (*biz.
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.NotFound("GRAPH", "graph definition not found")
+			return nil, apierror.NotFound("GRAPH", "graph definition not found")
 		}
 		return nil, fmt.Errorf("graph repo get by name: %w", err)
 	}
@@ -192,7 +191,7 @@ func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefiniti
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.NotFound("GRAPH", "graph definition not found")
+			return nil, apierror.NotFound("GRAPH", "graph definition not found")
 		}
 		return nil, fmt.Errorf("graph repo update: %w", err)
 	}
@@ -296,7 +295,7 @@ func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecuti
 	row, err := client.GraphExecution.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.NotFound("GRAPH_RUN", "graph execution not found")
+			return nil, apierror.NotFound("GRAPH_RUN", "graph execution not found")
 		}
 		return nil, fmt.Errorf("graph run repo get: %w", err)
 	}
@@ -363,7 +362,7 @@ func (r *graphRunRepo) UpdateRun(ctx context.Context, exec *biz.GraphExecution) 
 	_, err := builder.Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return errors.NotFound("GRAPH_RUN", "graph execution not found")
+			return apierror.NotFound("GRAPH_RUN", "graph execution not found")
 		}
 		return fmt.Errorf("graph run repo update: %w", err)
 	}

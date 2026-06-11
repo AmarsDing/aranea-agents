@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestMapCronError(t *testing.T) {
@@ -14,16 +13,16 @@ func TestMapCronError(t *testing.T) {
 		name       string
 		err        error
 		wantNil    bool
-		wantCode   int32
-		wantReason string
+		wantCode   apierror.Code
+		wantDomain string
 	}{
-		{"nil", nil, true, 0, ""},
-		{"cron_not_found", biz.ErrCronNotFound, false, 404, "CRON"},
-		{"runner_disabled", biz.ErrCronRunnerDisabled, false, 503, "CRON"},
-		{"task_deleted", biz.ErrCronTaskDeleted, false, 404, "CRON"},
-		{"session_busy", biz.ErrCronSessionBusy, false, 409, "CRON_SESSION_BUSY"},
-		{"required_string", errors.New("field is required"), false, 400, "CRON"},
-		{"invalid_string", errors.New("invalid parameter"), false, 400, "CRON"},
+		{"nil", nil, true, "", ""},
+		{"cron_not_found", biz.ErrCronNotFound, false, apierror.CodeNotFound, "CRON"},
+		{"runner_disabled", biz.ErrCronRunnerDisabled, false, apierror.CodeUnavailable, "CRON"},
+		{"task_deleted", biz.ErrCronTaskDeleted, false, apierror.CodeNotFound, "CRON"},
+		{"session_busy", biz.ErrCronSessionBusy, false, apierror.CodeConflict, "CRON_SESSION_BUSY"},
+		{"required_string", errors.New("field is required"), false, apierror.CodeBadRequest, "CRON"},
+		{"invalid_string", errors.New("invalid parameter"), false, apierror.CodeBadRequest, "CRON"},
 	}
 
 	for _, tt := range tests {
@@ -38,25 +37,25 @@ func TestMapCronError(t *testing.T) {
 			if got == nil {
 				t.Fatal("expected non-nil error")
 			}
-			ke, ok := got.(*kerrors.Error)
+			ae, ok := apierror.From(got)
 			if !ok {
-				t.Fatalf("expected *kerrors.Error, got %T: %v", got, got)
+				t.Fatalf("expected *apierror.Error, got %T: %v", got, got)
 			}
-			if ke.Code != tt.wantCode {
-				t.Errorf("code = %d, want %d", ke.Code, tt.wantCode)
+			if ae.Code != tt.wantCode {
+				t.Errorf("code = %v, want %v", ae.Code, tt.wantCode)
 			}
-			if ke.Reason != tt.wantReason {
-				t.Errorf("reason = %q, want %q", ke.Reason, tt.wantReason)
+			if ae.Domain != tt.wantDomain {
+				t.Errorf("domain = %q, want %q", ae.Domain, tt.wantDomain)
 			}
 		})
 	}
 }
 
-func TestMapCronError_KratosErrorPassthrough(t *testing.T) {
-	original := kerrors.BadRequest("CRON", "bad input")
+func TestMapCronError_ApiErrorPassthrough(t *testing.T) {
+	original := apierror.BadRequest("CRON", "bad input")
 	got := mapCronError(original)
 	if got != original {
-		t.Errorf("kerrors should pass through, got %v", got)
+		t.Errorf("apierror should pass through, got %v", got)
 	}
 }
 

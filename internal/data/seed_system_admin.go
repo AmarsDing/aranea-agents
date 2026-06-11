@@ -9,9 +9,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const systemAdminAgentKey = biz.SystemAdminAgentKey
@@ -51,7 +50,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, systemAdminAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
-		return kerrors.InternalServer("SEED", "seed system admin agent: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 	}
 	return nil
 }
@@ -91,7 +90,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, biz.SpiritAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
-		return kerrors.InternalServer("SEED", "seed spirit agent: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 	}
 	return nil
 }
@@ -128,12 +127,12 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 		data, err := os.ReadFile(filepath.Join(promptDir, e.Name()))
 		if err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file", e.Name()), loggateway.Err(err))
-			return kerrors.InternalServer("SEED", "read spirit prompt file "+e.Name()+": "+err.Error())
+			return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 		}
 		id := "apf_spirit_" + fileName
 		if _, err := client.ExecContext(ctx, q, id, agentID, fileName, string(data), sortOrder, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
-			return kerrors.InternalServer("SEED", "seed spirit prompt file "+fileName+": "+err.Error())
+			return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 		}
 		sortOrder++
 	}
@@ -175,7 +174,7 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, biz.MemoryAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.memory_agent"), loggateway.Err(err))
-		return kerrors.InternalServer("SEED", "seed memory agent: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 	}
 	return nil
 }
@@ -215,7 +214,7 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, biz.SkillsAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.skills_agent"), loggateway.Err(err))
-		return kerrors.InternalServer("SEED", "seed skills agent: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 	}
 	return nil
 }
@@ -261,12 +260,12 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 			data, err := os.ReadFile(filepath.Join(promptDir, e.Name()))
 			if err != nil {
 				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file", e.Name()), loggateway.Err(err))
-				return kerrors.InternalServer("SEED", "read butler prompt file "+e.Name()+": "+err.Error())
+				return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 			}
 			id := b.prefix + fileName
 			if _, err := client.ExecContext(ctx, q, id, b.agentID, fileName, string(data), sortOrder, now, now); err != nil {
 				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
-				return kerrors.InternalServer("SEED", "seed butler prompt file "+fileName+": "+err.Error())
+				return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 			}
 			sortOrder++
 		}
@@ -320,7 +319,7 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, lg loggateway.Logger
 	for _, t := range tasks {
 		if _, err := client.ExecContext(ctx, q, t.id, t.taskKey, t.name, t.description, t.agentID, t.configJSON, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Str("task_key", t.taskKey), loggateway.Err(err))
-			return kerrors.InternalServer("SEED", "seed cron task "+t.taskKey+": "+err.Error())
+			return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 		}
 	}
 	return nil
@@ -360,7 +359,7 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggat
 		id := "tool_" + t.key
 		if _, err := client.ExecContext(ctx, q, id, t.key, t.name, t.desc, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Str("tool_key", t.key), loggateway.Err(err))
-			return kerrors.InternalServer("SEED", "seed cli_admin tool "+t.key+": "+err.Error())
+			return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 		}
 	}
 	return nil
@@ -376,7 +375,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 	rows, err := client.QueryContext(ctx, `SELECT id, org_key, name, description FROM organizations WHERE level = 'department' AND deleted_at = ''`)
 	if err != nil {
 		lg.Warn("seed step failed: query departments", loggateway.StepID("data.seed.dept_lead_agents"), loggateway.Err(err))
-		return kerrors.InternalServer("SEED", "query departments: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 	}
 	defer rows.Close()
 
@@ -462,7 +461,7 @@ func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, scenarioDi
 	rows, err := client.QueryContext(ctx, `SELECT id, agent_key FROM agents WHERE agent_variant = 'dept_lead' AND deleted_at = ''`)
 	if err != nil {
 		lg.Warn("seed step failed: query dept lead agents", loggateway.StepID("data.seed.dept_lead_prompt_files"), loggateway.Err(err))
-		return kerrors.InternalServer("SEED", "query dept lead agents: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "SEED")
 	}
 	defer rows.Close()
 

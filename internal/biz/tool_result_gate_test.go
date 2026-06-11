@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type stubBlobReader struct {
@@ -159,5 +160,45 @@ func TestFreezePreview_ExactlyAtThreshold(t *testing.T) {
 	result := freezePreview(content, "blob1")
 	if result != content {
 		t.Fatal("content exactly at preview size should not be truncated")
+	}
+}
+
+func TestFreezePreview_MultibyteUTF8(t *testing.T) {
+	// Each CJK character is 3 bytes in UTF-8. Create content where the
+	// byte-length exceeds ToolResultPreviewSize but rune count is exactly
+	// at the threshold, and verify no invalid UTF-8 is produced.
+	cjkChar := "中" // 3 bytes per rune
+	content := strings.Repeat(cjkChar, ToolResultPreviewSize)
+	result := freezePreview(content, "blob-cjk")
+	// Content is exactly at preview size in runes → should not be truncated.
+	if result != content {
+		t.Fatal("content at preview size (in runes) should not be truncated")
+	}
+
+	// Now exceed the threshold by one rune.
+	contentLong := content + cjkChar
+	resultLong := freezePreview(contentLong, "blob-cjk-long")
+	if !strings.Contains(resultLong, "truncated") {
+		t.Fatal("long content should indicate truncation")
+	}
+	// Verify the preview head is valid UTF-8.
+	headRunes := []rune(resultLong)
+	if len(headRunes) < ToolResultPreviewSize {
+		t.Fatalf("preview head should have at least %d runes, got %d", ToolResultPreviewSize, len(headRunes))
+	}
+	// Verify no invalid UTF-8 by round-tripping.
+	if !utf8.ValidString(resultLong) {
+		t.Fatal("preview should be valid UTF-8")
+	}
+}
+
+func TestFreezePreview_PaginationHint(t *testing.T) {
+	content := makeLongContent(ToolResultSizeThreshold + 1)
+	result := freezePreview(content, "blob-pag")
+	if !strings.Contains(result, "read_tool_result") {
+		t.Fatal("preview should mention read_tool_result for pagination")
+	}
+	if !strings.Contains(result, "offset=") {
+		t.Fatal("preview should mention offset parameter")
 	}
 }

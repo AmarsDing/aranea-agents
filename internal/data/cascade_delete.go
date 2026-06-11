@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 
+	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/session"
 )
@@ -14,9 +15,12 @@ func cascadeDeleteByAgent(ctx context.Context, d *Data, agentID string) error {
 		return nil
 	}
 
-	// Delete agent_runtime_settings (1:1 with agent, PK = agent_id)
+	// Delete agent_runtime_settings (1:1 with agent, PK = agent_id).
+	// The record is optional — agents created via non-atomic paths may lack it.
 	if err := d.RW().Write(ctx).AgentRuntimeSetting.DeleteOneID(agentID).Exec(ctx); err != nil {
-		return err
+		if !ent.IsNotFound(err) {
+			return err
+		}
 	}
 
 	// Delete agent_prompt_files

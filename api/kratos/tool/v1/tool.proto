@@ -129,7 +129,10 @@ message DeleteToolRequest {
 message ToggleToolEnabledRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   bool enabled = 2;
-  string confirm_key = 3;
+  // confirm_intent must be "I_UNDERSTAND_RISK" when enabling high/critical
+  // risk tools. Replaces the old confirm_key which matched the tool key
+  // (a guessable value that provided no real security).
+  string confirm_intent = 3;
 }
 
 message ToolInvocation {

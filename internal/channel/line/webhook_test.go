@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"testing"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestParseInbound_TextMessage(t *testing.T) {
@@ -89,9 +91,9 @@ func TestParseInbound_NonMessageIgnored(t *testing.T) {
 
 func TestVerifySignature(t *testing.T) {
 	secret := "test_secret"
-	body := "hello world"
+	body := []byte("hello world")
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(body))
+	mac.Write(body)
 	sig := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
 	if err := VerifySignature(secret, body, sig); err != nil {
@@ -100,7 +102,12 @@ func TestVerifySignature(t *testing.T) {
 	if err := VerifySignature(secret, body, "bad_sig"); err == nil {
 		t.Fatal("expected error for bad signature")
 	}
-	if err := VerifySignature("", body, sig); err != nil {
-		t.Fatal("empty secret should skip verification")
+}
+
+func TestVerifySignatureEmptySecretRejects(t *testing.T) {
+	if err := VerifySignature("", []byte("body"), "sig"); err == nil {
+		t.Fatal("empty secret should reject with ErrCredentialsNotConfigured")
+	} else if err != port.ErrCredentialsNotConfigured {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got: %v", err)
 	}
 }

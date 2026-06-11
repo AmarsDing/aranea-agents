@@ -9,7 +9,7 @@ import (
 )
 
 func TestToolArgsGuard_stripsSystemFields(t *testing.T) {
-	hook := newToolArgsGuardBeforeHook()
+	hook := newToolArgsGuardBeforeHook(nil)
 	args, _ := json.Marshal(map[string]any{
 		"query":      "hello",
 		"agent_id":   "should-remove",

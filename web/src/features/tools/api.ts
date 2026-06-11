@@ -206,8 +206,8 @@ export async function deleteTool(id: string): Promise<void> {
   await toolApi.DeleteTool({ id });
 }
 
-export async function toggleToolEnabled(id: string, enabled: boolean, confirmKey?: string): Promise<Tool> {
-  const data = await toolApi.ToggleToolEnabled({ id, enabled, confirmKey });
+export async function toggleToolEnabled(id: string, enabled: boolean, confirmIntent?: string): Promise<Tool> {
+  const data = await toolApi.ToggleToolEnabled({ id, enabled, confirmIntent });
   return kratosToolToLegacy(data);
 }
 

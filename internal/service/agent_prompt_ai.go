@@ -8,9 +8,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -21,13 +21,13 @@ func mapPromptFileAIError(err error) error {
 	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "not configured"), strings.Contains(msg, "instruction is required"):
-		return kerrors.BadRequest("AGENT_FILE", "prompt file AI editor is not ready")
+		return apierror.BadRequest("AGENT_FILE", "prompt file AI editor is not ready")
 	case strings.Contains(msg, "no matching model"), strings.Contains(msg, "catalog"):
-		return kerrors.BadRequest("AGENT_FILE", "no model available for AI edit; configure provider catalog")
+		return apierror.BadRequest("AGENT_FILE", "no model available for AI edit; configure provider catalog")
 	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline"):
-		return kerrors.InternalServer("AGENT_FILE", "AI edit timed out; try again")
+		return apierror.Internal("AGENT_FILE", "AI edit timed out; try again")
 	default:
-		return kerrors.InternalServer("AGENT_FILE", "AI edit failed; try again")
+		return apierror.Internal("AGENT_FILE", "AI edit failed; try again")
 	}
 }
 
@@ -47,11 +47,11 @@ func NewPromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, rt *provider.Ro
 
 func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName, fileName, currentBody, instruction string) (string, error) {
 	if e == nil || e.catalog == nil || e.rt == nil {
-		return "", kerrors.InternalServer("AGENT_FILE", "prompt file ai editor not configured")
+		return "", apierror.Internal("AGENT_FILE", "prompt file ai editor not configured")
 	}
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
-		return "", kerrors.BadRequest("AGENT_FILE", "instruction is required")
+		return "", apierror.BadRequest("AGENT_FILE", "instruction is required")
 	}
 	m, err := e.resolveModel(ctx, providerName, modelName)
 	if err != nil {
@@ -68,12 +68,12 @@ func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName
 	}
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", kerrors.InternalServer("AGENT_FILE", "prompt file ai: "+err.Error())
+		return "", apierror.Internal("AGENT_FILE", "prompt file ai: %v", err)
 	}
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
-			return "", kerrors.InternalServer("AGENT_FILE", "prompt file ai: "+resp.Error.Message)
+			return "", apierror.Internal("AGENT_FILE", "prompt file ai: %s", resp.Error.Message)
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -114,7 +114,7 @@ func (e *PromptFileAIEditor) resolveModel(ctx context.Context, providerName, mod
 		picked = models[0]
 	}
 	if picked.Provider == "" {
-		return nil, kerrors.BadRequest("AGENT_FILE", "no matching model in catalog")
+		return nil, apierror.BadRequest("AGENT_FILE", "no matching model in catalog")
 	}
 	return provider.TRPCModelForProviderModel(ctx, e.catalog, e.rt, picked.Provider, picked.Model, e.lg)
 }

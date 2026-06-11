@@ -1,10 +1,9 @@
 package session
 
 import (
-	"fmt"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 var validTransitions = map[SessionStatus][]SessionStatus{
@@ -31,7 +30,7 @@ func NewSessionStatusMachine(status SessionStatus, reason SessionStatusReason, c
 
 func (m *SessionStatusMachine) TransitionTo(target SessionStatus, reason SessionStatusReason) error {
 	if !m.CanTransitionTo(target) {
-		return kerrors.Conflict("SESSION", fmt.Sprintf("cannot transition session status from %s to %s", m.status, target))
+		return apierror.Conflict("SESSION", "cannot transition session status from %s to %s", m.status, target)
 	}
 	m.status = target
 	m.statusReason = reason

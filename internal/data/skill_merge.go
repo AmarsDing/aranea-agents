@@ -32,7 +32,7 @@ func NewSkillMergeRepo(data *Data, lg loggateway.Logger) *SkillMergeRepo {
 // GetFullSkillForMerge 获取合并所需的完整 Skill 数据
 func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID string) (*biz.SkillMergeSource, error) {
 	skill, err := r.data.RW().Read(ctx).PlatformSkill.Query().
-		Where(platformskill.IDEQ(skillID)).
+		Where(platformskill.IDEQ(skillID), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
 		return nil, err
@@ -76,13 +76,21 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 		}
 	}()
 
-	// 1. 创建新版本（fused 内容）
+	// 1. 创建新版本（fused 内容）— version 从目标最新版本递增
 	now := nowRFC3339()
 	newVersionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
+	latestVer, lvErr := tx.SkillVersion.Query().
+		Where(skillversion.SkillIDEQ(params.TargetID)).
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		First(ctx)
+	nextVer := "1.0.0"
+	if lvErr == nil && latestVer != nil {
+		nextVer = incrementVersion(latestVer.Version)
+	}
 	newVersion, vErr := tx.SkillVersion.Create().
 		SetID(newVersionID).
 		SetSkillID(params.TargetID).
-		SetVersion("1.0.0").
+		SetVersion(nextVer).
 		SetContentMarkdown(params.FusedBody).
 		SetStatus("published").
 		SetEvolutionReason(params.MergeReason).

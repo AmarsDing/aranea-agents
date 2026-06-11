@@ -11,10 +11,10 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -90,15 +90,15 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 	name := strings.TrimSpace(req.GetName())
 	model := strings.TrimSpace(req.GetEmbeddingModel())
 	if name == "" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "name is required")
+		return nil, apierror.BadRequest("KNOWLEDGE", "name is required")
 	}
 	if model == "" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "embedding_model is required")
+		return nil, apierror.BadRequest("KNOWLEDGE", "embedding_model is required")
 	}
 	if s.embedderAdmin != nil {
 		_, _, embedderModel, _, configured, _ := s.embedderAdmin.Config()
 		if configured && embedderModel != "" && embedderModel != model {
-			return nil, kerrors.BadRequest("KNOWLEDGE", "embedding_model does not match current embedder model "+embedderModel)
+			return nil, apierror.BadRequest("KNOWLEDGE", "embedding_model does not match current embedder model "+embedderModel)
 		}
 	}
 	c, err := s.uc.CreateCollection(ctx, biz.KnowledgeCollection{
@@ -144,17 +144,17 @@ func (s *KnowledgeService) DeleteCollection(ctx context.Context, req *v1.DeleteC
 func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDocumentRequest) (*v1.KnowledgeDocument, error) {
 	raw, err := base64.StdEncoding.DecodeString(req.GetContentBase64())
 	if err != nil {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "content_base64 is not valid base64")
+		return nil, apierror.BadRequest("KNOWLEDGE", "content_base64 is not valid base64")
 	}
 	if len(raw) == 0 {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "content is empty")
+		return nil, apierror.BadRequest("KNOWLEDGE", "content is empty")
 	}
 	if len(raw) > maxIngestBytes {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "file too large: max 32MB")
+		return nil, apierror.BadRequest("KNOWLEDGE", "file too large: max 32MB")
 	}
 	detected := http.DetectContentType(raw[:min(512, len(raw))])
 	if !isAllowedIngestMIME(detected) {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "unsupported content type: "+detected)
+		return nil, apierror.BadRequest("KNOWLEDGE", "unsupported content type: "+detected)
 	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
@@ -172,15 +172,15 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 
 	metaJSON, err := knowledge.NormalizeMetadataJSON(req.GetMetadataJson())
 	if err != nil {
-		return nil, kerrors.BadRequest("KNOWLEDGE", err.Error())
+		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
 	}
 
 	text, err := knowledge.ExtractDocumentText(raw, req.GetSource(), req.GetMimeType())
 	if err != nil {
-		return nil, kerrors.BadRequest("KNOWLEDGE", err.Error())
+		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
 	}
 	if strings.TrimSpace(text) == "" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "document contains no extractable text")
+		return nil, apierror.BadRequest("KNOWLEDGE", "document contains no extractable text")
 	}
 
 	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
@@ -281,11 +281,11 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 
 	query := strings.TrimSpace(req.GetQuery())
 	if query == "" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "query is required")
+		return nil, apierror.BadRequest("KNOWLEDGE", "query is required")
 	}
 
 	if s.search.Retriever == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "knowledge retriever not configured")
+		return nil, apierror.Unavailable("KNOWLEDGE", "knowledge retriever not configured")
 	}
 	q := biz.KnowledgeSearchQuery{
 		CollectionID:     req.GetCollectionId(),
@@ -326,7 +326,7 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		chunks, err = s.search.Retriever.Search(ctx, q)
 	}
 	if err != nil {
-		return nil, kerrors.FromError(err)
+		return nil, err
 	}
 
 	var assessor knowledge.ChunkAssessor
@@ -335,7 +335,7 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	}
 	chunks, err = knowledge.SearchWithEvaluation(ctx, s.search.Retriever, assessor, query, q, chunks, s.lg)
 	if err != nil {
-		return nil, kerrors.FromError(err)
+		return nil, err
 	}
 
 	out := make([]*v1.KnowledgeChunk, 0, len(chunks))
@@ -361,12 +361,12 @@ func (s *KnowledgeService) GetEmbedderConfig(_ context.Context, _ *v1.GetEmbedde
 // UpdateEmbedderConfig applies runtime embedder settings from admin UI.
 func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.UpdateEmbedderConfigRequest) (*v1.UpdateEmbedderConfigResponse, error) {
 	if s.embedderAdmin == nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder not configured")
+		return nil, apierror.Internal("KNOWLEDGE", "embedder not configured")
 	}
 	provider := strings.TrimSpace(req.GetProvider())
 	if provider != "" && provider != knowledge.ProviderOpenAI && provider != knowledge.ProviderOllama &&
 		provider != knowledge.ProviderGemini && provider != knowledge.ProviderHuggingFace {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "provider must be openai, ollama, gemini, or huggingface")
+		return nil, apierror.BadRequest("KNOWLEDGE", "provider must be openai, ollama, gemini, or huggingface")
 	}
 	s.embedderAdmin.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
 	p, baseURL, model, dim, _, _ := s.embedderAdmin.Config()
@@ -410,16 +410,16 @@ func (s *KnowledgeService) publishKnowledgeIngest(collectionID, docID, status, e
 	s.bus.Publish(context.Background(), env)
 }
 
-// mapKnowledgeBizError converts biz-layer domain errors to kerrors for the transport layer.
+// mapKnowledgeBizError converts biz-layer domain errors to apierror for the transport layer.
 func mapKnowledgeBizError(err error) error {
 	if errors.Is(err, biz.ErrKnowledgeUnavailable) {
-		return kerrors.ServiceUnavailable("KNOWLEDGE", err.Error())
+		return apierror.Unavailable("KNOWLEDGE", err.Error())
 	}
 	if errors.Is(err, biz.ErrKnowledgeNameRequired) || errors.Is(err, biz.ErrKnowledgeIDRequired) ||
 		errors.Is(err, biz.ErrKnowledgeEmbeddingModelRequired) || errors.Is(err, biz.ErrKnowledgeCollectionIDRequired) ||
 		errors.Is(err, biz.ErrKnowledgeSourceRequired) || errors.Is(err, biz.ErrKnowledgeQueryRequired) ||
 		errors.Is(err, biz.ErrKnowledgeDimensionMismatch) || errors.Is(err, biz.ErrKnowledgeEmbeddingEmpty) {
-		return kerrors.BadRequest("KNOWLEDGE", err.Error())
+		return apierror.BadRequest("KNOWLEDGE", err.Error())
 	}
 	return err
 }

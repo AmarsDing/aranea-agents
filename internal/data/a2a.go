@@ -11,7 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	biza2a "aranea-agents/internal/biz/a2a"
 	a2apkg "aranea-agents/internal/a2a"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -85,13 +85,32 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
 			auth_config_json TEXT NOT NULL DEFAULT '',
 			enabled          INTEGER NOT NULL DEFAULT 1,
 			card_json        TEXT NOT NULL DEFAULT '{}',
+			last_health_at   TEXT NOT NULL DEFAULT '',
+			last_health_ok   INTEGER NOT NULL DEFAULT 0,
+			last_health_error TEXT NOT NULL DEFAULT '',
 			created_at       TEXT NOT NULL,
 			updated_at       TEXT NOT NULL
 		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return kerrors.InternalServer("A2A", "a2a schema: "+err.Error())
+			return apierror.Wrap(err, apierror.CodeInternal, "A2A")
+		}
+	}
+	// TECH-DEBT(debt): DEV-10 — A2A schema migration should move to a proper migration framework (e.g. golang-migrate).
+	// Current approach: raw ALTER TABLE with duplicate-column error swallowing is fragile and not versioned.
+	migrations := []string{
+		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_ok INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_error TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, m := range migrations {
+		// SQLite ALTER TABLE ADD COLUMN fails silently if column already exists in some drivers,
+		// but returns an error in others. Ignore "duplicate column" errors.
+		if _, err := db.ExecContext(ctx, m); err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+				return apierror.Wrap(err, apierror.CodeInternal, "A2A")
+			}
 		}
 	}
 	return nil
@@ -291,10 +310,14 @@ func (r *a2aRepo) DiscoverRemoteCard(ctx context.Context, in biz.RemoteCardDisco
 
 func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgent) (biz.A2ARemoteAgent, error) {
 	if r == nil || r.data == nil {
-		return biz.A2ARemoteAgent{}, kerrors.InternalServer("A2A", "a2a db nil")
+		return biz.A2ARemoteAgent{}, apierror.Internal("A2A", "a2a db nil")
 	}
 	if agent.ID == "" {
-		agent.ID = biz.NewA2AID()
+		id, err := biz.NewA2AID()
+		if err != nil {
+			return biz.A2ARemoteAgent{}, apierror.Wrap(err, apierror.CodeInternal, "A2A")
+		}
+		agent.ID = id
 	}
 	cardJSON, err := json.Marshal(agent.DiscoveredCard)
 	if err != nil {
@@ -350,7 +373,7 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 
 func (r *a2aRepo) DeleteRemoteAgent(ctx context.Context, id string) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("A2A", "a2a db nil")
+		return apierror.Internal("A2A", "a2a db nil")
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `DELETE FROM a2a_remote_agents WHERE id=?`, id)
 	return err
@@ -358,7 +381,7 @@ func (r *a2aRepo) DeleteRemoteAgent(ctx context.Context, id string) error {
 
 func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteAgent, error) {
 	if r == nil || r.data == nil {
-		return biz.A2ARemoteAgent{}, kerrors.InternalServer("A2A", "a2a db nil")
+		return biz.A2ARemoteAgent{}, apierror.Internal("A2A", "a2a db nil")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -384,11 +407,11 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 
 func (r *a2aRepo) UpdateRemoteAgentHealth(ctx context.Context, id string, ok bool, errMsg string) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("A2A", "a2a db nil")
+		return apierror.Internal("A2A", "a2a db nil")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return kerrors.BadRequest("A2A", "id is required")
+		return apierror.BadRequest("A2A", "id is required")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	okInt := 0

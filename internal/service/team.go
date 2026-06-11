@@ -11,11 +11,9 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -27,8 +25,8 @@ type TeamService struct {
 	graphUC     *biz.GraphUsecase
 	agents      *biz.AgentUsecase
 	sessions    *biz.SessionUsecase
-	teamRunner  *team.Runner
-	runs        *rt.RunRegistry
+	teamRunner  biz.TeamTurnRunnerPort
+	runs        biz.RunRegistryPort
 	eventBus    event.Bus
 	lg          loggateway.Logger
 	synthesis   *SpiritSynthesisService
@@ -39,8 +37,8 @@ func NewTeamService(
 	graphUC *biz.GraphUsecase,
 	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
-	teamRunner *team.Runner,
-	runs *rt.RunRegistry,
+	teamRunner biz.TeamTurnRunnerPort,
+	runs biz.RunRegistryPort,
 	eventBus event.Bus,
 	lg loggateway.Logger,
 	synthesis *SpiritSynthesisService,
@@ -200,7 +198,7 @@ func mapTeamErr(err error) error {
 		return nil
 	}
 	if stderrors.Is(err, sql.ErrNoRows) {
-		return kerrors.NotFound("TEAM", "team not found")
+		return apierror.NotFound("TEAM", "team not found")
 	}
 	return err
 }
@@ -257,7 +255,7 @@ func (s *TeamService) GetTeam(ctx context.Context, req *v1.GetTeamRequest) (*v1.
 
 func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest) (*v1.Team, error) {
 	if req.GetTeam() == nil {
-		return nil, kerrors.BadRequest("TEAM", "team body is required")
+		return nil, apierror.BadRequest("TEAM", "team body is required")
 	}
 	patch := teamFromProto(req.GetTeam())
 	if pb := req.GetTeam(); pb != nil {
@@ -270,7 +268,7 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 			base = current.DefinitionJSON
 		}
 		if merged, err := mergeTeamDefinitionFromRequest(base, pb); err != nil {
-			return nil, kerrors.BadRequest("TEAM", "invalid orchestration_spec: "+err.Error())
+			return nil, apierror.BadRequest("TEAM", "invalid orchestration_spec: "+err.Error())
 		} else {
 			patch.DefinitionJSON = merged
 		}
@@ -338,10 +336,10 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestRequest) (*v1.RunTeamTestResponse, error) {
 	teamID := strings.TrimSpace(req.GetId())
 	if teamID == "" {
-		return nil, kerrors.BadRequest("TEAM", "team id is required")
+		return nil, apierror.BadRequest("TEAM", "team id is required")
 	}
 	if s.teamRunner == nil || s.sessions == nil {
-		return nil, kerrors.InternalServer("TEAM", "team test runtime is not configured")
+		return nil, apierror.Internal("TEAM", "team test runtime is not configured")
 	}
 	if _, err := s.uc.Get(ctx, teamID); err != nil {
 		return nil, mapTeamErr(err)
@@ -351,7 +349,7 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 		return nil, mapTeamErr(err)
 	}
 	if active {
-		return nil, kerrors.Conflict("TEAM", "team has an active run; test is not allowed until the run finishes")
+		return nil, apierror.Conflict("TEAM", "team has an active run; test is not allowed until the run finishes")
 	}
 
 	content := strings.TrimSpace(req.GetContent())

@@ -5,8 +5,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestValidateBatchHTTPRequest(t *testing.T) {
@@ -71,9 +70,9 @@ func TestValidateBatchHTTPRequest(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-				if ke == nil || ke.Message != tc.wantMsg {
-					t.Fatalf("message = %q, want %q", ke.Message, tc.wantMsg)
+				ae, ok := apierror.From(err)
+				if !ok || ae.Message != tc.wantMsg {
+					t.Fatalf("message = %q, want %q", ae.Message, tc.wantMsg)
 				}
 			} else {
 				if err != nil {

@@ -70,6 +70,7 @@ export default {
     groupTeams: 'Teams',
     groupActiveTeams: 'Active teams',
     groupCompletedTeams: 'Completed teams',
+    groupInterruptedTeams: 'Interrupted',
     hintWrite: 'Help me write…',
     hintAnalyze: 'Help me analyze…',
     hintTranslate: 'Help me translate…',
@@ -309,6 +310,7 @@ export default {
       noAgents: 'No agents',
       noActiveTeams: 'No active teams',
       noCompletedTeams: 'No completed teams',
+      noInterruptedTeams: 'No interrupted teams',
       defaultAgent: 'Default Agent',
       customAgent: 'Custom Agent',
     },
@@ -1195,6 +1197,8 @@ export default {
     spiritReply: 'Spirit Summary',
     agentDetails: 'Agent Details',
     noAgentDetails: 'No agent details',
+    online: 'Online',
+    waitingForPredecessor: 'Waiting for predecessor to complete…',
   },
 
 };

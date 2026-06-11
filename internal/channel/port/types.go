@@ -1,6 +1,19 @@
 // Package port defines transport-neutral channel message types (MuseBot robot/* adapted).
 package port
 
+import (
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+)
+
+// ErrCredentialsNotConfigured is returned when a webhook verification is attempted
+// but the required credentials (token, secret, key, etc.) are not configured.
+var ErrCredentialsNotConfigured = kerrors.BadRequest("CHANNEL_CREDENTIAL", "webhook: credentials not configured")
+
+// WebhookTimestampToleranceSec is the maximum allowed clock skew (in seconds)
+// between the webhook's timestamp and the server's current time.
+// Used by all platform adapters for replay-attack prevention.
+const WebhookTimestampToleranceSec int64 = 300 // 5 minutes
+
 // InboundEvent is normalized ingress from any platform adapter.
 type InboundEvent struct {
 	PlatformType   string

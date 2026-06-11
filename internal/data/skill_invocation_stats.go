@@ -5,11 +5,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
-
-const toolInvocationStatusSuccess = "success"
 
 type skillInvocationStatsRepo struct {
 	data *Data
@@ -22,10 +19,18 @@ func NewSkillInvocationStatsRepo(data *Data) biz.SkillInvocationStatsReader {
 }
 
 func (r *skillInvocationStatsRepo) GetSkillInvocationStats(ctx context.Context, agentID string, since time.Time) ([]biz.SkillInvocationStat, error) {
-	q := `SELECT tool_key, COUNT(*) as cnt, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as success_cnt, COALESCE(SUM(duration_ms), 0) as total_dur FROM tool_invocations WHERE agent_id = ? AND created_at >= ? GROUP BY tool_key`
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, toolInvocationStatusSuccess, agentID, since.Format(time.RFC3339))
+	// Query skill_invocation (not tool_invocations) and join platform_skill
+	// to resolve skill_key as the human-readable identifier.
+	const q = `SELECT ps.skill_key, COUNT(*) as cnt,
+       SUM(CASE WHEN si.status = 'success' THEN 1 ELSE 0 END) as success_cnt,
+       COALESCE(SUM(si.duration_ms), 0) as total_dur
+FROM skill_invocation si
+JOIN platform_skill ps ON ps.id = si.skill_id
+WHERE si.agent_id = ? AND COALESCE(NULLIF(si.started_at, ''), si.created_at) >= ?
+GROUP BY ps.skill_key`
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, agentID, since.Format(time.RFC3339))
 	if err != nil {
-		return nil, kerrors.InternalServer("SKILL_STATS", "query skill invocation stats: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_STATS")
 	}
 	defer rows.Close()
 
@@ -36,7 +41,7 @@ func (r *skillInvocationStatsRepo) GetSkillInvocationStats(ctx context.Context, 
 		var successCount int
 		var totalDurationMs int64
 		if err := rows.Scan(&name, &count, &successCount, &totalDurationMs); err != nil {
-			return nil, kerrors.InternalServer("SKILL_STATS", "scan skill invocation stat: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_STATS")
 		}
 		rate := 0.0
 		if count > 0 {
@@ -52,6 +57,9 @@ func (r *skillInvocationStatsRepo) GetSkillInvocationStats(ctx context.Context, 
 			SuccessRate:   rate,
 			AvgDurationMs: avgMs,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_STATS")
 	}
 	return result, nil
 }

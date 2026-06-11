@@ -204,114 +204,256 @@ func mergeTaxonomyPaths(lg loggateway.Logger, meta, cfg string) []string {
 	return out
 }
 
-func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (biz.Skill, error) {
+// invStats holds aggregated invocation statistics for a single skill.
+type invStats struct {
+	Total       int
+	Success     int
+	Failure     int
+	Usage7d     int
+	AvgDuration *float64
+}
+
+// lastInv holds the last invocation info for a single skill.
+type lastInv struct {
+	AgentID    string
+	InvokedAt  string
+	DurationMs *int
+}
+
+func (r *skillRepo) batchEnrichSkills(ctx context.Context, rows []*dataent.PlatformSkill) ([]biz.Skill, error) {
+	if len(rows) == 0 {
+		return []biz.Skill{}, nil
+	}
+
 	c := r.data.RW().Read(ctx)
-	id := e.ID
-	item := biz.Skill{
-		ID:                e.ID,
-		Slug:              e.SkillKey,
-		Name:              e.Name,
-		Description:       e.Description,
-		Status:            normalizeSkillStatus(e.Status),
-		Enabled:           e.Enabled,
-		FilesystemMissing: e.FilesystemMissing,
-		SyncOrigin:        parseSkillMetadata(r.data.lg, e.MetadataJSON).SyncOrigin,
-		Visibility:        e.Visibility,
-		DefaultConfigJSON: e.FallbackConfigJSON,
-		ParentVersionID:   e.ParentVersionID,
-		EvolutionReason:   e.EvolutionReason,
-		LifecycleStatus:   e.LifecycleStatus,
-		CreatedAt:         e.CreatedAt,
-		UpdatedAt:         e.UpdatedAt,
-		Permissions:       biz.SkillPermissions{},
-	}
-	item.Tags = parseSkillTags(e.MetadataJSON)
-	if len(item.Tags) == 0 {
-		item.Tags = parseSkillTags(e.ConfigJSON)
+	skillIDs := make([]string, 0, len(rows))
+	for _, e := range rows {
+		skillIDs = append(skillIDs, e.ID)
 	}
 
-	totalInv, err := c.SkillInvocation.Query().Where(skillinvocation.SkillIDEQ(id)).Count(ctx)
-	if err != nil {
-		return biz.Skill{}, err
-	}
-	success, err := c.SkillInvocation.Query().Where(skillinvocation.SkillIDEQ(id), skillinvocation.StatusEQ("success")).Count(ctx)
-	if err != nil {
-		return biz.Skill{}, err
-	}
-	failure, err := c.SkillInvocation.Query().Where(skillinvocation.SkillIDEQ(id), skillinvocation.StatusEQ("failure")).Count(ctx)
-	if err != nil {
-		return biz.Skill{}, err
-	}
+	statsMap := r.batchInvocationStats(ctx, c, skillIDs)
+	versionMap := r.batchLatestVersions(ctx, c, skillIDs)
+	lastInvMap, agentNames := r.batchLastInvocations(ctx, c, skillIDs)
+
+	return r.assembleSkills(rows, statsMap, versionMap, lastInvMap, agentNames), nil
+}
+
+// batchInvocationStats queries invocation counts (total, success, failure, 7d, avg_duration)
+// grouped by skill_id using a single SQL aggregation.
+func (r *skillRepo) batchInvocationStats(ctx context.Context, c *dataent.Client, skillIDs []string) map[string]*invStats {
+	statsMap := make(map[string]*invStats, len(skillIDs))
 	threshold := time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339)
-	usage7d, err := c.SkillInvocation.Query().Where(skillinvocation.SkillIDEQ(id), invocationTimeGTE(threshold)).Count(ctx)
-	if err != nil {
-		return biz.Skill{}, err
+	placeholders := make([]string, len(skillIDs))
+	args := make([]any, 1, 1+len(skillIDs))
+	args[0] = threshold
+	for i, id := range skillIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
 	}
-	item.InvokeCount = totalInv
-	item.SuccessCount = success
-	item.FailureCount = failure
-	item.UsageCount7d = usage7d
-
-	durs, err := c.SkillInvocation.Query().
-		Where(skillinvocation.SkillIDEQ(id), skillinvocation.DurationMsGT(0)).
-		Limit(5000).
-		All(ctx)
+	statsSQL := fmt.Sprintf(
+		`SELECT skill_id,
+			COUNT(*) as total,
+			SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+			SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) as failure_count,
+			SUM(CASE WHEN COALESCE(NULLIF(started_at, ''), created_at) >= ? THEN 1 ELSE 0 END) as usage_7d,
+			AVG(CASE WHEN duration_ms > 0 THEN duration_ms ELSE NULL END) as avg_duration
+		 FROM skill_invocation
+		 WHERE skill_id IN (%s)
+		 GROUP BY skill_id`,
+		strings.Join(placeholders, ","),
+	)
+	statsRows, err := c.QueryContext(ctx, statsSQL, args...)
 	if err != nil {
-		return biz.Skill{}, err
+		r.data.lg.Warn("batch invocation stats query failed", loggateway.StepID("data.skill"), loggateway.Err(err))
+		return statsMap
 	}
-	if len(durs) > 0 {
-		var sum int64
-		for _, row := range durs {
-			sum += int64(row.DurationMs)
+	defer statsRows.Close()
+	for statsRows.Next() {
+		var sid string
+		var total, success, failure, usage7d int
+		var avgDur sql.NullFloat64
+		if scanErr := statsRows.Scan(&sid, &total, &success, &failure, &usage7d, &avgDur); scanErr != nil {
+			continue
 		}
-		avg := float64(sum) / float64(len(durs))
-		item.AvgDurationMS = &avg
+		s := &invStats{Total: total, Success: success, Failure: failure, Usage7d: usage7d}
+		if avgDur.Valid {
+			v := avgDur.Float64
+			s.AvgDuration = &v
+		}
+		statsMap[sid] = s
 	}
+	return statsMap
+}
 
-	sv, err := c.SkillVersion.Query().
-		Where(skillversion.SkillIDEQ(id)).
+// batchLatestVersions queries the latest SkillVersion per skill using Ent with
+// desc order, then picks the first per skill_id in Go.
+func (r *skillRepo) batchLatestVersions(ctx context.Context, c *dataent.Client, skillIDs []string) map[string]*dataent.SkillVersion {
+	versionMap := make(map[string]*dataent.SkillVersion, len(skillIDs))
+	versions, vErr := c.SkillVersion.Query().
+		Where(skillversion.SkillIDIn(skillIDs...)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
-		First(ctx)
-	if err == nil && sv != nil {
-		st := sv.Status
-		if st == "" || st == "active" {
-			st = "pass"
-		}
-		pubAt := sv.CreatedAt
-		if strings.TrimSpace(sv.PublishedAt) != "" {
-			pubAt = sv.PublishedAt
-		}
-		vstat := strings.TrimSpace(sv.ValidationStatus)
-		if vstat == "" {
-			vstat = st
-		}
-		item.CurrentVersion = &biz.SkillVersionSummary{
-			ID:               sv.ID,
-			Version:          sv.Version,
-			ValidationStatus: vstat,
-			PublishedAt:      pubAt,
+		All(ctx)
+	if vErr != nil {
+		r.data.lg.Warn("batch skill version query failed", loggateway.StepID("data.skill"), loggateway.Err(vErr))
+		return versionMap
+	}
+	for _, v := range versions {
+		if _, exists := versionMap[v.SkillID]; !exists {
+			versionMap[v.SkillID] = v
 		}
 	}
+	return versionMap
+}
 
-	last, err := c.SkillInvocation.Query().
-		Where(skillinvocation.SkillIDEQ(id)).
-		Order(skillinvocation.ByCreatedAt(entsql.OrderDesc())).
-		First(ctx)
-	if err == nil && last != nil {
-		item.LastAgentID = last.AgentID
-		item.LastInvokedAt = coalesceTime(last.StartedAt, last.CreatedAt)
-		if last.DurationMs > 0 {
-			d := last.DurationMs
-			item.LastDurationMS = &d
+// batchLastInvocations queries the last invocation per skill and resolves agent
+// display names in two batch queries.
+func (r *skillRepo) batchLastInvocations(ctx context.Context, c *dataent.Client, skillIDs []string) (map[string]*lastInv, map[string]string) {
+	lastInvMap := make(map[string]*lastInv, len(skillIDs))
+	placeholders := make([]string, len(skillIDs))
+	args := make([]any, 0, len(skillIDs))
+	for i, id := range skillIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	lastSQL := fmt.Sprintf(
+		`SELECT si.skill_id, si.agent_id,
+			COALESCE(NULLIF(si.started_at, ''), si.created_at) as invoked_at,
+			si.duration_ms
+		 FROM skill_invocation si
+		 INNER JOIN (
+			SELECT skill_id, MAX(COALESCE(NULLIF(started_at, ''), created_at)) as max_time
+			FROM skill_invocation
+			WHERE skill_id IN (%s)
+			GROUP BY skill_id
+		 ) latest ON si.skill_id = latest.skill_id
+			AND COALESCE(NULLIF(si.started_at, ''), si.created_at) = latest.max_time`,
+		strings.Join(placeholders, ","),
+	)
+	lastRows, lErr := c.QueryContext(ctx, lastSQL, args...)
+	if lErr != nil {
+		r.data.lg.Warn("batch last invocation query failed", loggateway.StepID("data.skill"), loggateway.Err(lErr))
+		return lastInvMap, map[string]string{}
+	}
+	defer lastRows.Close()
+	for lastRows.Next() {
+		var sid, agentID, invokedAt string
+		var durMs sql.NullInt64
+		if scanErr := lastRows.Scan(&sid, &agentID, &invokedAt, &durMs); scanErr != nil {
+			continue
 		}
-		if strings.TrimSpace(last.AgentID) != "" {
-			a, aerr := c.Agent.Query().Where(agent.IDEQ(last.AgentID)).Only(ctx)
-			if aerr == nil && a != nil {
-				item.LastAgentDisplayName = a.DisplayName
+		li := &lastInv{AgentID: agentID, InvokedAt: invokedAt}
+		if durMs.Valid {
+			d := int(durMs.Int64)
+			li.DurationMs = &d
+		}
+		lastInvMap[sid] = li
+	}
+
+	// Batch Agent display names.
+	agentIDs := make([]string, 0)
+	seen := map[string]bool{}
+	for _, li := range lastInvMap {
+		if li.AgentID != "" && !seen[li.AgentID] {
+			seen[li.AgentID] = true
+			agentIDs = append(agentIDs, li.AgentID)
+		}
+	}
+	agentNames := map[string]string{}
+	if len(agentIDs) > 0 {
+		agents, aErr := c.Agent.Query().Where(agent.IDIn(agentIDs...)).All(ctx)
+		if aErr != nil {
+			r.data.lg.Warn("batch agent names query failed", loggateway.StepID("data.skill"), loggateway.Err(aErr))
+		} else {
+			for _, a := range agents {
+				agentNames[a.ID] = a.DisplayName
 			}
 		}
 	}
-	return item, nil
+	return lastInvMap, agentNames
+}
+
+// assembleSkills maps Ent PlatformSkill rows to biz.Skill with preloaded enrichment data.
+func (r *skillRepo) assembleSkills(
+	rows []*dataent.PlatformSkill,
+	statsMap map[string]*invStats,
+	versionMap map[string]*dataent.SkillVersion,
+	lastInvMap map[string]*lastInv,
+	agentNames map[string]string,
+) []biz.Skill {
+	items := make([]biz.Skill, 0, len(rows))
+	for _, e := range rows {
+		item := biz.Skill{
+			ID:                e.ID,
+			Slug:              e.SkillKey,
+			Name:              e.Name,
+			Description:       e.Description,
+			Status:            normalizeSkillStatus(e.Status),
+			Enabled:           e.Enabled,
+			FilesystemMissing: e.FilesystemMissing,
+			SyncOrigin:        parseSkillMetadata(r.data.lg, e.MetadataJSON).SyncOrigin,
+			Visibility:        e.Visibility,
+			DefaultConfigJSON: e.FallbackConfigJSON,
+			ParentVersionID:   e.ParentVersionID,
+			EvolutionReason:   e.EvolutionReason,
+			LifecycleStatus:   e.LifecycleStatus,
+			CreatedAt:         e.CreatedAt,
+			UpdatedAt:         e.UpdatedAt,
+			Permissions:       biz.SkillPermissions{},
+		}
+		item.Tags = parseSkillTags(e.MetadataJSON)
+		if len(item.Tags) == 0 {
+			item.Tags = parseSkillTags(e.ConfigJSON)
+		}
+
+		if st, ok := statsMap[e.ID]; ok {
+			item.InvokeCount = st.Total
+			item.SuccessCount = st.Success
+			item.FailureCount = st.Failure
+			item.UsageCount7d = st.Usage7d
+			item.AvgDurationMS = st.AvgDuration
+		}
+
+		if sv, ok := versionMap[e.ID]; ok {
+			st := sv.Status
+			if st == "" || st == "active" {
+				st = "pass"
+			}
+			pubAt := sv.CreatedAt
+			if strings.TrimSpace(sv.PublishedAt) != "" {
+				pubAt = sv.PublishedAt
+			}
+			vstat := strings.TrimSpace(sv.ValidationStatus)
+			if vstat == "" {
+				vstat = st
+			}
+			item.CurrentVersion = &biz.SkillVersionSummary{
+				ID:               sv.ID,
+				Version:          sv.Version,
+				ValidationStatus: vstat,
+				PublishedAt:      pubAt,
+			}
+		}
+
+		if li, ok := lastInvMap[e.ID]; ok {
+			item.LastAgentID = li.AgentID
+			item.LastInvokedAt = li.InvokedAt
+			item.LastDurationMS = li.DurationMs
+			if li.AgentID != "" {
+				item.LastAgentDisplayName = agentNames[li.AgentID]
+			}
+		}
+
+		items = append(items, item)
+	}
+	return items
+}
+
+func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (biz.Skill, error) {
+	results, err := r.batchEnrichSkills(ctx, []*dataent.PlatformSkill{e})
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	return results[0], nil
 }
 
 func coalesceTime(startedAt, createdAt string) string {
@@ -337,13 +479,9 @@ func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz
 	if err != nil {
 		return biz.SkillListResult{}, err
 	}
-	items := make([]biz.Skill, 0, len(rows))
-	for _, e := range rows {
-		sk, err := r.enrichSkill(ctx, e)
-		if err != nil {
-			return biz.SkillListResult{}, err
-		}
-		items = append(items, sk)
+	items, err := r.batchEnrichSkills(ctx, rows)
+	if err != nil {
+		return biz.SkillListResult{}, err
 	}
 	return biz.SkillListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
@@ -600,6 +738,28 @@ func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.Skill
 	if err != nil {
 		return nil, err
 	}
+
+	// Batch-fetch latest SkillVersion per skill to avoid N+1.
+	skillIDs := make([]string, 0, len(rows))
+	for _, s := range rows {
+		skillIDs = append(skillIDs, s.ID)
+	}
+	versionMap := make(map[string]*dataent.SkillVersion, len(skillIDs))
+	if len(skillIDs) > 0 {
+		versions, vErr := c.SkillVersion.Query().
+			Where(skillversion.SkillIDIn(skillIDs...)).
+			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+			All(ctx)
+		if vErr != nil {
+			return nil, vErr
+		}
+		for _, v := range versions {
+			if _, exists := versionMap[v.SkillID]; !exists {
+				versionMap[v.SkillID] = v
+			}
+		}
+	}
+
 	out := make([]biz.SkillSimilaritySource, 0, len(rows))
 	for _, s := range rows {
 		item := biz.SkillSimilaritySource{
@@ -608,20 +768,11 @@ func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.Skill
 			Slug:        s.SkillKey,
 			Description: s.Description,
 		}
-		sv, err := c.SkillVersion.Query().
-			Where(skillversion.SkillIDEQ(s.ID)).
-			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
-			First(ctx)
-		if err != nil {
-			if dataent.IsNotFound(err) {
-				out = append(out, item)
-				continue
-			}
-			return nil, err
+		if sv, ok := versionMap[s.ID]; ok {
+			item.Version = sv.Version
+			item.Body = sv.ContentMarkdown
+			item.BodyPreview = previewSkillBody(item.Body, 240)
 		}
-		item.Version = sv.Version
-		item.Body = sv.ContentMarkdown
-		item.BodyPreview = previewSkillBody(item.Body, 240)
 		out = append(out, item)
 	}
 	return out, nil
@@ -909,7 +1060,7 @@ func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []st
 		return map[string]string{}, nil
 	}
 	skills, err := r.data.RW().Read(ctx).PlatformSkill.Query().
-		Where(platformskill.SkillKeyIn(slugs...)).
+		Where(platformskill.SkillKeyIn(slugs...), platformskill.DeletedAtEQ("")).
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -990,40 +1141,57 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		return biz.Skill{}, err
 	}
 	now := nowRFC3339()
-	upd := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
-	if patch.HasName {
-		upd.SetName(strings.TrimSpace(patch.Name))
-	}
-	if patch.HasDescription {
-		upd.SetDescription(strings.TrimSpace(patch.Description))
-	}
-	if patch.HasTags {
-		md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
-		md.Tags = normalizeSkillTags(patch.Tags)
-		metaJSON, jerr := json.Marshal(md)
-		if jerr != nil {
-			return biz.Skill{}, jerr
-		}
-		upd.SetMetadataJSON(string(metaJSON))
-	}
-	if err := upd.Exec(ctx); err != nil {
-		return biz.Skill{}, err
-	}
+
+	// Wrap PlatformSkill + SkillVersion updates in a transaction.
+	// Filesystem write remains outside the transaction (best-effort, not rollback-coordinated).
+	var storageDir string
 	if patch.HasBody {
+		tx, txErr := r.data.RW().Write(ctx).Tx(ctx)
+		if txErr != nil {
+			return biz.Skill{}, txErr
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		upd := tx.PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
+		if patch.HasName {
+			upd.SetName(strings.TrimSpace(patch.Name))
+		}
+		if patch.HasDescription {
+			upd.SetDescription(strings.TrimSpace(patch.Description))
+		}
+		if patch.HasTags {
+			md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
+			md.Tags = normalizeSkillTags(patch.Tags)
+			metaJSON, jerr := json.Marshal(md)
+			if jerr != nil {
+				return biz.Skill{}, jerr
+			}
+			upd.SetMetadataJSON(string(metaJSON))
+		}
+		if err := upd.Exec(ctx); err != nil {
+			return biz.Skill{}, err
+		}
+
 		body := strings.TrimSpace(patch.Body)
-		sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
+		sv, err := tx.SkillVersion.Query().
 			Where(skillversion.SkillIDEQ(id)).
 			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 			First(ctx)
 		if err != nil {
 			return biz.Skill{}, err
 		}
-		if _, err := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
+		oldBody := sv.ContentMarkdown
+		if _, err := tx.SkillVersion.UpdateOneID(sv.ID).
 			SetContentMarkdown(body).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
 			return biz.Skill{}, err
 		}
+		if err = tx.Commit(); err != nil {
+			return biz.Skill{}, err
+		}
+
+		// Filesystem write — outside the transaction.
 		fresh, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 			Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 			Only(ctx)
@@ -1031,12 +1199,70 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 			return biz.Skill{}, err
 		}
 		md := parseSkillMetadata(r.data.lg, fresh.MetadataJSON)
-		dir := strings.TrimSpace(md.StorageDir)
-		if dir == "" {
+		storageDir = strings.TrimSpace(md.StorageDir)
+		if storageDir == "" {
 			return biz.Skill{}, errors.New("skill storage directory is not configured")
 		}
-		path := filepath.Join(dir, "SKILL.md")
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		path := filepath.Join(storageDir, "SKILL.md")
+		if writeErr := os.WriteFile(path, []byte(body), 0o644); writeErr != nil {
+			// Compensation: revert both SkillVersion content and PlatformSkill metadata.
+			// The transaction already committed, so we must manually undo both changes.
+			revertOk := true
+			if revertErr := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
+				SetContentMarkdown(oldBody).
+				SetUpdatedAt(now).
+				Exec(ctx); revertErr != nil {
+				revertOk = false
+				r.data.lg.Error("PatchSkill: filesystem write failed AND SkillVersion revert failed",
+					loggateway.StepID("data.skill"),
+					loggateway.Str("skill_id", id),
+					loggateway.Err(writeErr),
+					loggateway.Str("revert_err", revertErr.Error()))
+			}
+			// Revert PlatformSkill metadata (name/description/tags) if they were changed.
+			if patch.HasName || patch.HasDescription || patch.HasTags {
+				metaUpd := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
+				if patch.HasName {
+					metaUpd.SetName(e.Name) // e is the pre-transaction snapshot
+				}
+				if patch.HasDescription {
+					metaUpd.SetDescription(e.Description)
+				}
+				if patch.HasTags {
+					metaUpd.SetMetadataJSON(e.MetadataJSON)
+				}
+				if metaRevertErr := metaUpd.Exec(ctx); metaRevertErr != nil {
+					revertOk = false
+					r.data.lg.Error("PatchSkill: filesystem write failed AND PlatformSkill metadata revert failed",
+						loggateway.StepID("data.skill"),
+						loggateway.Str("skill_id", id),
+						loggateway.Err(metaRevertErr))
+				}
+			}
+			if revertOk {
+				return biz.Skill{}, fmt.Errorf("filesystem write failed, DB changes reverted: %w", writeErr)
+			}
+			return biz.Skill{}, fmt.Errorf("filesystem write failed AND DB revert incomplete, manual intervention required: %w", writeErr)
+		}
+	} else {
+		// No body change — single update, no transaction needed.
+		upd := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
+		if patch.HasName {
+			upd.SetName(strings.TrimSpace(patch.Name))
+		}
+		if patch.HasDescription {
+			upd.SetDescription(strings.TrimSpace(patch.Description))
+		}
+		if patch.HasTags {
+			md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
+			md.Tags = normalizeSkillTags(patch.Tags)
+			metaJSON, jerr := json.Marshal(md)
+			if jerr != nil {
+				return biz.Skill{}, jerr
+			}
+			upd.SetMetadataJSON(string(metaJSON))
+		}
+		if err := upd.Exec(ctx); err != nil {
 			return biz.Skill{}, err
 		}
 	}

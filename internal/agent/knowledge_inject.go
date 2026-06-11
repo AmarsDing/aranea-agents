@@ -78,8 +78,8 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 		fmt.Fprintf(&b, "- **%s** (ID: `%s`)", col.Name, col.ID)
 		if col.Description != "" {
 			desc := col.Description
-			if len(desc) > 120 {
-				desc = desc[:120] + "..."
+			if len([]rune(desc)) > 120 {
+				desc = string([]rune(desc)[:120]) + "..."
 			}
 			fmt.Fprintf(&b, ": %s", desc)
 		}
@@ -93,8 +93,8 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	b.WriteString("- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
 
 	result := b.String()
-	if len(result) > knowledgeCueMaxChars {
-		result = result[:knowledgeCueMaxChars] + "..."
+	if len([]rune(result)) > knowledgeCueMaxChars {
+		result = string([]rune(result)[:knowledgeCueMaxChars]) + "..."
 	}
 	return result
 }

@@ -152,3 +152,61 @@ func (testMCPMetadataEditor) MarkHealthAlert(m map[string]any, at time.Time) {
 	}
 	m["last_health_alert_at"] = at.UTC().Format(time.RFC3339)
 }
+
+func TestValidateMCPConfigURLs(t *testing.T) {
+	cases := []struct {
+		name    string
+		json    string
+		wantErr bool
+	}{
+		{"empty allowed", "", false},
+		{"empty object allowed", "{}", false},
+		{"stdio allowed", `{"transport":"stdio","command":"npx"}`, false},
+		{"public URL allowed", `{"transport":"sse","url":"https://mcp.example.com/sse"}`, false},
+		{"localhost blocked", `{"transport":"sse","url":"http://localhost:8080/sse"}`, true},
+		{"private IP blocked", `{"transport":"streamable_http","url":"http://10.0.0.1/mcp"}`, true},
+		{"loopback blocked", `{"transport":"sse","url":"http://127.0.0.1/sse"}`, true},
+		{"cloud metadata blocked", `{"transport":"sse","url":"http://169.254.169.254/meta"}`, true},
+		{"invalid scheme blocked", `{"transport":"sse","url":"ftp://evil.com/payload"}`, true},
+		{"invalid JSON", `{bad`, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateMCPConfigURLs(tc.json)
+			if tc.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestMCPServerUsecase_Create_SSRFBlock(t *testing.T) {
+	repo := &stubMCPRepo{}
+	uc := NewMCPServerUsecase(repo, nil, testMCPMetadataEditor{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
+	_, err := uc.Create(context.Background(), MCPServer{
+		Key:        "ssrf-test",
+		Name:       "SSRF Test",
+		ConfigJSON: `{"transport":"sse","url":"http://127.0.0.1:3000/sse"}`,
+	})
+	if err == nil {
+		t.Fatal("expected SSRF error on Create with localhost URL")
+	}
+}
+
+func TestMCPServerUsecase_Update_SSRFBlock(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID:        "m1",
+		Key:       "my-server",
+		Name:      "My Server",
+		ConfigJSON: `{"transport":"stdio","command":"npx"}`,
+	}}}
+	uc := NewMCPServerUsecase(repo, nil, testMCPMetadataEditor{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
+	ssrfURL := `{"transport":"sse","url":"http://192.168.1.1/mcp"}`
+	_, err := uc.Update(context.Background(), "m1", MCPServerUpdate{ConfigJSON: &ssrfURL})
+	if err == nil {
+		t.Fatal("expected SSRF error on Update with private IP URL")
+	}
+}

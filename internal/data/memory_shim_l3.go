@@ -52,6 +52,35 @@ func NewL3FactReaderForUser(data *Data) biz.L3FactReader {
 	return newL3FactRepo(data, nil)
 }
 
+// factConsistencyAdapter implements internal/memory/trpc.factConsistencyChecker via raw SQL.
+// Note: no compile-time var _ check because data cannot import memory/trpc (reverse dependency).
+// Wire binding in cmd/admin/wire_memory.go ensures type compatibility at injection time.
+type factConsistencyAdapter struct {
+	data *Data
+}
+
+// NewFactConsistencyAdapter creates a factConsistencyChecker backed by data.
+func NewFactConsistencyAdapter(data *Data) *factConsistencyAdapter {
+	if data == nil {
+		return nil
+	}
+	return &factConsistencyAdapter{data: data}
+}
+
+func (a *factConsistencyAdapter) GetFactConsistencyRow(ctx context.Context, factID string) (status, indexStatus, statement string, err error) {
+	err = QueryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
+		`SELECT status, embedding_status, statement FROM memory_facts WHERE id = ?`,
+		[]any{factID}, &status, &indexStatus, &statement)
+	return
+}
+
+func (a *factConsistencyAdapter) GetFactResyncRow(ctx context.Context, factID string) (agentID, userID, statement string, err error) {
+	err = QueryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
+		`SELECT COALESCE(agent_id, scope_id), user_id, statement FROM memory_facts WHERE id = ?`,
+		[]any{factID}, &agentID, &userID, &statement)
+	return
+}
+
 // --- L3FactReader ---
 
 func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
@@ -85,39 +114,81 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	if len(clauses) > 0 {
 		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
-	// Count total
+	// Count total (without status filter) for the same scope/kind/keyword.
 	var total int32
-	countArgs := make([]any, len(args))
-	copy(countArgs, args)
-	countQ := "SELECT COUNT(*) FROM memory_facts" + where
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countQ, countArgs, &total); err != nil {
+	totalClauses := []string{}
+	totalArgs := []any{}
+	if scopeType != "" {
+		totalClauses = append(totalClauses, "scope_type = ?")
+		totalArgs = append(totalArgs, scopeType)
+	}
+	if scopeID != "" {
+		totalClauses = append(totalClauses, "scope_id = ?")
+		totalArgs = append(totalArgs, scopeID)
+	}
+	if kind != "" {
+		totalClauses = append(totalClauses, "fact_kind = ?")
+		totalArgs = append(totalArgs, kind)
+	}
+	if keyword != "" {
+		totalClauses = append(totalClauses, "statement_normalized LIKE ?")
+		totalArgs = append(totalArgs, "%"+strings.ToLower(keyword)+"%")
+	}
+	totalClauses = append(totalClauses, "deleted_at = ''")
+	totalWhere := ""
+	if len(totalClauses) > 0 {
+		totalWhere = " WHERE " + strings.Join(totalClauses, " AND ")
+	}
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+totalWhere, totalArgs, &total); err != nil {
 		return nil, 0, 0, 0, err
 	}
-	// Count active
+	// Count active (with status = 'active' filter).
 	var active int32
-	activeArgs := make([]any, len(args))
-	copy(activeArgs, args)
-	activeQ := "SELECT COUNT(*) FROM memory_facts" + where
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), activeQ, activeArgs, &active); err != nil {
+	activeClauses := []string{"status = 'active'"}
+	activeArgs := []any{}
+	if scopeType != "" {
+		activeClauses = append(activeClauses, "scope_type = ?")
+		activeArgs = append(activeArgs, scopeType)
+	}
+	if scopeID != "" {
+		activeClauses = append(activeClauses, "scope_id = ?")
+		activeArgs = append(activeArgs, scopeID)
+	}
+	if kind != "" {
+		activeClauses = append(activeClauses, "fact_kind = ?")
+		activeArgs = append(activeArgs, kind)
+	}
+	if keyword != "" {
+		activeClauses = append(activeClauses, "statement_normalized LIKE ?")
+		activeArgs = append(activeArgs, "%"+strings.ToLower(keyword)+"%")
+	}
+	activeClauses = append(activeClauses, "deleted_at = ''")
+	activeWhere := " WHERE " + strings.Join(activeClauses, " AND ")
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+activeWhere, activeArgs, &active); err != nil {
 		active = total
 	}
-	// Count archived
+	// Count archived (with status = 'archived' filter, same scope/kind/keyword as main query).
 	var archived int32
-	archQ := "SELECT COUNT(*) FROM memory_facts WHERE status = 'archived' AND deleted_at = ''"
+	archivedClauses := []string{"status = 'archived'", "deleted_at = ''"}
+	archivedArgs := []any{}
 	if scopeType != "" {
-		archQ += " AND scope_type = ?"
+		archivedClauses = append(archivedClauses, "scope_type = ?")
+		archivedArgs = append(archivedArgs, scopeType)
 	}
 	if scopeID != "" {
-		archQ += " AND scope_id = ?"
+		archivedClauses = append(archivedClauses, "scope_id = ?")
+		archivedArgs = append(archivedArgs, scopeID)
 	}
-	archArgs := []any{}
-	if scopeType != "" {
-		archArgs = append(archArgs, scopeType)
+	if kind != "" {
+		archivedClauses = append(archivedClauses, "fact_kind = ?")
+		archivedArgs = append(archivedArgs, kind)
 	}
-	if scopeID != "" {
-		archArgs = append(archArgs, scopeID)
+	if keyword != "" {
+		archivedClauses = append(archivedClauses, "statement_normalized LIKE ?")
+		archivedArgs = append(archivedArgs, "%"+strings.ToLower(keyword)+"%")
 	}
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), archQ, archArgs, &archived); err != nil {
+	archivedWhere := " WHERE " + strings.Join(archivedClauses, " AND ")
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+archivedWhere, archivedArgs, &archived); err != nil {
 		archived = 0
 	}
 
@@ -177,6 +248,34 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 	}
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([][]byte, error) {
+	if len(factIDs) == 0 {
+		return nil, nil
+	}
+	// Build parameterized IN clause to avoid SQL injection.
+	placeholders := make([]string, len(factIDs))
+	args := make([]any, len(factIDs))
+	for i, id := range factIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	q := sqlFactSelect + " WHERE id IN (" + strings.Join(placeholders, ",") + ") AND status = 'active' AND deleted_at = ''"
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -323,7 +422,15 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 		kwScore := keywordOverlapScore(tokens, stmt+" "+details)
 		var vecScore float64
 		if len(queryEmbedding) > 0 {
-			embBlob, _ := row["embedding_blob"].([]byte)
+			// JSON unmarshal produces string (not []byte) for binary columns,
+			// so we must handle both types.
+			var embBlob []byte
+			switch v := row["embedding_blob"].(type) {
+			case []byte:
+				embBlob = v
+			case string:
+				embBlob = []byte(v)
+			}
 			if embNorm, ok := row["embedding_norm"].(float64); ok && embNorm > 0 && len(embBlob) > 0 {
 				emb := decodeFloat32Blob(embBlob)
 				if len(emb) == len(queryEmbedding) {
@@ -523,6 +630,22 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	}
 	details := strings.TrimSpace(in.DetailsMarkdown)
 	pii := memBoolToInt(in.PIIFlag)
+	// redacted_statement stores the ORIGINAL text when PII is flagged,
+	// so that ApprovePIIFact can restore it. It is NOT the redacted version.
+	redacted := ""
+	if pii != 0 {
+		if in.OriginalStatement != "" {
+			redacted = in.OriginalStatement
+		} else if details != "" {
+			redacted = details
+		}
+	}
+	piiTypesJSON := "[]"
+	if len(in.PIITypes) > 0 {
+		if b, err := json.Marshal(in.PIITypes); err == nil {
+			piiTypesJSON = string(b)
+		}
+	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_facts (
 		id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
@@ -533,22 +656,22 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		source_kind, source_episode_id, source_session_id, source_message_id, source_external,
 		version, status, superseded_by,
 		pii_flag, redacted_statement,
-		quality_score, metadata_json, created_at, updated_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		quality_score, pii_types, metadata_json, created_at, updated_at
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
 		confidence = excluded.confidence, importance = excluded.importance,
-		use_count = excluded.use_count, hit_count = excluded.hit_count,
-		positive_feedback_count = excluded.positive_feedback_count,
-		negative_feedback_count = excluded.negative_feedback_count,
-		conflict_count = excluded.conflict_count,
+		use_count = use_count + excluded.use_count, hit_count = hit_count + excluded.hit_count,
+		positive_feedback_count = positive_feedback_count + excluded.positive_feedback_count,
+		negative_feedback_count = negative_feedback_count + excluded.negative_feedback_count,
+		conflict_count = conflict_count + excluded.conflict_count,
 		fact_kind = excluded.fact_kind, tags_json = excluded.tags_json,
 		source_kind = excluded.source_kind, source_episode_id = excluded.source_episode_id,
 		source_session_id = excluded.source_session_id, source_message_id = excluded.source_message_id,
 		source_external = excluded.source_external,
 		version = version + 1, status = excluded.status,
 		pii_flag = excluded.pii_flag, redacted_statement = excluded.redacted_statement,
-		quality_score = excluded.quality_score, metadata_json = excluded.metadata_json,
+		quality_score = excluded.quality_score, pii_types = excluded.pii_types, metadata_json = excluded.metadata_json,
 		updated_at = excluded.updated_at`,
 		id,
 		strings.TrimSpace(in.ScopeType),
@@ -569,19 +692,26 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		strings.TrimSpace(in.SourceMessageID),
 		strings.TrimSpace(in.SourceExternal),
 		in.Version, status, "",
-		pii, "",
-		0.5, meta, createdAt, updatedAt,
+		pii, redacted,
+		defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
-	// Read back the row — use fingerprint since ON CONFLICT may keep the original id
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlFactSelect+` WHERE fingerprint = ?`, fp)
+	// Read back the row using the unique constraint (scope_type, scope_id, fingerprint)
+	// rather than fingerprint alone. The triple is the actual unique key, so this
+	// is deterministic even under concurrent writes.
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`,
+		strings.TrimSpace(in.ScopeType), strings.TrimSpace(in.ScopeID), fp)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("fact row read-back failed: %w", err)
+		}
 		return nil, errors.New("fact row not found after upsert")
 	}
 	return scanFactRowJSON(rows)
@@ -625,7 +755,66 @@ func (r *l3FactRepo) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) 
 		return 0, err
 	}
 	n, _ := res.RowsAffected()
+	// Cascade: remove pgvector embeddings so deleted facts are not recalled.
+	if r.vectorStore != nil {
+		for _, fid := range factIDs {
+			if delErr := r.vectorStore.Delete(ctx, fid); delErr != nil {
+				r.data.lg.Warn("cascade: delete fact vector failed (best-effort)",
+					loggateway.StepID("memory.l3.vector_delete_batch"),
+					loggateway.Str("fact_id", fid),
+					loggateway.Err(delErr))
+			}
+		}
+	}
 	return int(n), nil
+}
+
+func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, userID string) ([]string, error) {
+	// 1. Collect all active fact IDs before soft-deleting them.
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id FROM memory_facts WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+		scopeType, scopeID, userID)
+	if err != nil {
+		return nil, err
+	}
+	var factIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		factIDs = append(factIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(factIDs) == 0 {
+		return nil, nil
+	}
+
+	// 2. Soft-delete in SQLite.
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+		now, scopeType, scopeID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Cascade: remove pgvector embeddings so deleted facts are not recalled.
+	if r.vectorStore != nil {
+		for _, fid := range factIDs {
+			if delErr := r.vectorStore.Delete(ctx, fid); delErr != nil {
+				r.data.lg.Warn("cascade: clear fact vector failed (best-effort)",
+					loggateway.StepID("memory.l3.vector_clear"),
+					loggateway.Str("fact_id", fid),
+					loggateway.Err(delErr))
+			}
+		}
+	}
+	return factIDs, nil
 }
 
 // --- L3ConflictStore ---
@@ -732,7 +921,7 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 
 func (r *l3FactRepo) ApprovePIIFact(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET pii_flag = 0, redacted_statement = '', updated_at = ? WHERE id = ?`,
+		`UPDATE memory_facts SET pii_flag = 0, statement = COALESCE(NULLIF(redacted_statement, ''), statement), redacted_statement = '', pii_types = '[]', updated_at = ? WHERE id = ?`,
 		time.Now().UTC().Format(time.RFC3339Nano), factID)
 	return err
 }

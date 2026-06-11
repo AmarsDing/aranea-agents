@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -28,7 +30,7 @@ func getToolGroups() map[string][]string {
 }
 
 func ApplyDisambiguationHints(tools []trpctool.Tool) {
-	for _, t := range tools {
+	for i, t := range tools {
 		decl := t.Declaration()
 		if decl == nil {
 			continue
@@ -37,9 +39,17 @@ func ApplyDisambiguationHints(tools []trpctool.Tool) {
 			if reg.Name != decl.Name {
 				continue
 			}
+			// Clone Declaration to avoid mutating shared objects.
+			// TECH-DEBT: If Declaration gains additional reference-type fields
+			// beyond InputSchema, update this deep-copy logic accordingly.
+			clone := *decl
+			if decl.InputSchema != nil {
+				schemaCopy := *decl.InputSchema
+				clone.InputSchema = &schemaCopy
+			}
 			if len(reg.Examples) > 0 {
 				var sb strings.Builder
-				sb.WriteString(decl.Description)
+				sb.WriteString(clone.Description)
 				sb.WriteString("\n\nExamples of when to use this tool:")
 				for i, ex := range reg.Examples {
 					if i >= 3 {
@@ -54,16 +64,44 @@ func ApplyDisambiguationHints(tools []trpctool.Tool) {
 						sb.WriteString(")")
 					}
 				}
-				decl.Description = sb.String()
+				clone.Description = sb.String()
 			}
 			if reg.Group != "" {
 				if peers, ok := getToolGroups()[reg.Group]; ok && len(peers) > 1 {
-					decl.Description += "\n\nNote: This tool is in the \"" + reg.Group + "\" group. Alternatives: " + strings.Join(filterNames(peers, decl.Name), ", ") + "."
+					clone.Description += "\n\nNote: This tool is in the \"" + reg.Group + "\" group. Alternatives: " + strings.Join(filterNames(peers, clone.Name), ", ") + "."
 				}
 			}
+			// Wrap the tool with a decorator that returns the cloned Declaration
+			// instead of mutating the shared Declaration object.
+			tools[i] = &disambiguatedTool{inner: t, decl: &clone}
 			break
 		}
 	}
+}
+
+// disambiguatedTool wraps a Tool to return a modified Declaration without
+// mutating the original shared Declaration object.
+type disambiguatedTool struct {
+	inner trpctool.Tool
+	decl  *trpctool.Declaration
+}
+
+func (d *disambiguatedTool) Declaration() *trpctool.Declaration {
+	return d.decl
+}
+
+func (d *disambiguatedTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+	if ct, ok := d.inner.(trpctool.CallableTool); ok {
+		return ct.Call(ctx, jsonArgs)
+	}
+	return nil, fmt.Errorf("tool %q is not callable", d.decl.Name)
+}
+
+func (d *disambiguatedTool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
+	if st, ok := d.inner.(trpctool.StreamableTool); ok {
+		return st.StreamableCall(ctx, jsonArgs)
+	}
+	return nil, fmt.Errorf("tool %q is not streamable", d.decl.Name)
 }
 
 func filterNames(names []string, exclude string) []string {

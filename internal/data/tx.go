@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type txClientKey struct{}
@@ -134,11 +133,11 @@ type execer = Execer
 
 func (d *Data) PostgresExecInTx(ctx context.Context, fn func(ctx context.Context, tx *sql.Tx) error) error {
 	if d == nil {
-		return kerrors.InternalServer("DATA", "data not initialized")
+		return apierror.Internal("DATA", "data not initialized")
 	}
 	pg := d.Postgres()
 	if pg == nil {
-		return kerrors.InternalServer("DATA", "postgres not configured")
+		return apierror.Internal("DATA", "postgres not configured")
 	}
 	tx, err := pg.BeginTx(ctx, nil)
 	if err != nil {

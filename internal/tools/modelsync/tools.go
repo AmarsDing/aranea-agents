@@ -2,9 +2,9 @@ package modelsync
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/modelregistry"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -44,11 +44,11 @@ func newFetchDirectoryTool(deps Deps) *trpcfunction.FunctionTool[noArgs, fetchDi
 		func(ctx context.Context, _ noArgs) (fetchDirectoryOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return fetchDirectoryOutput{}, fmt.Errorf("store error: %w", err)
+				return fetchDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return fetchDirectoryOutput{}, fmt.Errorf("load policy: %w", policyErr)
+				return fetchDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:     ctx,
@@ -74,11 +74,11 @@ func newMigrateProvidersTool(deps Deps) *trpcfunction.FunctionTool[noArgs, migra
 		func(ctx context.Context, _ noArgs) (migrateProvidersOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return migrateProvidersOutput{}, fmt.Errorf("store error: %w", err)
+				return migrateProvidersOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return migrateProvidersOutput{}, fmt.Errorf("load policy: %w", policyErr)
+				return migrateProvidersOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:      ctx,
@@ -103,15 +103,15 @@ func newApplyDirectoryTool(deps Deps) *trpcfunction.FunctionTool[noArgs, applyDi
 		func(ctx context.Context, _ noArgs) (applyDirectoryOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return applyDirectoryOutput{}, fmt.Errorf("store error: %w", err)
+				return applyDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return applyDirectoryOutput{}, fmt.Errorf("load policy: %w", policyErr)
+				return applyDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
 			}
 			dir, _, dirErr := store.LoadDirectory()
 			if dirErr != nil {
-				return applyDirectoryOutput{}, fmt.Errorf("load directory: %w", dirErr)
+				return applyDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "load directory: "+dirErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:       ctx,
@@ -138,15 +138,15 @@ func newSyncProviderLogosTool(deps Deps) *trpcfunction.FunctionTool[noArgs, sync
 		func(ctx context.Context, _ noArgs) (syncProviderLogosOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return syncProviderLogosOutput{}, fmt.Errorf("store error: %w", err)
+				return syncProviderLogosOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return syncProviderLogosOutput{}, fmt.Errorf("load policy: %w", policyErr)
+				return syncProviderLogosOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
 			}
 			dir, _, dirErr := store.LoadDirectory()
 			if dirErr != nil {
-				return syncProviderLogosOutput{}, fmt.Errorf("load directory: %w", dirErr)
+				return syncProviderLogosOutput{}, kerrors.InternalServer("MODEL_SYNC", "load directory: "+dirErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:       ctx,

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -46,7 +45,7 @@ func (s *StreamSender) Update(ctx context.Context, channelID, text string, force
 		return nil
 	}
 	if channelID == "" {
-		return fmt.Errorf("slack stream: channel required")
+		return errStreamChannelRequired
 	}
 	if len(text) > slackStreamTextLimit {
 		text = text[:slackStreamTextLimit]
@@ -83,7 +82,7 @@ func (s *StreamSender) Update(ctx context.Context, channelID, text string, force
 func (s *StreamSender) postMessageLocked(ctx context.Context, channelID, text string) (string, error) {
 	token := strings.TrimSpace(s.BotToken)
 	if token == "" {
-		return "", fmt.Errorf("slack stream: bot_token required")
+		return "", errStreamBotTokenRequired
 	}
 	body, _ := json.Marshal(map[string]any{
 		"channel": channelID,
@@ -103,11 +102,11 @@ func (s *StreamSender) postMessageLocked(ctx context.Context, channelID, text st
 		if msg == "" {
 			msg = strings.TrimSpace(string(raw))
 		}
-		return "", fmt.Errorf("slack stream post: %s", msg)
+		return "", slackAPIError("slack stream post", msg)
 	}
 	ts := strings.TrimSpace(out.TS)
 	if ts == "" {
-		return "", fmt.Errorf("slack stream post: empty ts")
+		return "", slackAPIError("slack stream post", "empty ts")
 	}
 	return ts, nil
 }
@@ -128,7 +127,7 @@ func (s *StreamSender) updateMessageLocked(ctx context.Context, channelID, ts, t
 		Error string `json:"error"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("slack stream update: parse response: %w", err)
+		return slackParseError("slack stream update", err)
 	}
 	if !out.OK {
 		desc := strings.ToLower(strings.TrimSpace(out.Error))
@@ -136,9 +135,9 @@ func (s *StreamSender) updateMessageLocked(ctx context.Context, channelID, ts, t
 			return nil
 		}
 		if out.Error != "" {
-			return fmt.Errorf("slack stream update: %s", out.Error)
+			return slackAPIError("slack stream update", out.Error)
 		}
-		return fmt.Errorf("slack stream update failed")
+		return slackAPIError("slack stream update", "failed")
 	}
 	return nil
 }

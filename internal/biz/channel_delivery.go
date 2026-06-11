@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -41,7 +41,7 @@ type ChannelOutboundPayload struct {
 func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID string, payload ChannelOutboundPayload) (ChannelDelivery, error) {
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return ChannelDelivery{}, errors.BadRequest("CHANNEL", "channel id is required")
+		return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "channel id is required")
 	}
 	payload.Platform = strings.TrimSpace(payload.Platform)
 	payload.Recipient = strings.TrimSpace(payload.Recipient)
@@ -56,16 +56,16 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 		}
 	}
 	if payload.Platform == "" || payload.Recipient == "" {
-		return ChannelDelivery{}, errors.BadRequest("CHANNEL", "platform and recipient are required")
+		return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "platform and recipient are required")
 	}
 	switch payload.Kind {
 	case ChannelOutboundCardKind:
 		if payload.CardJSON == "" && payload.Text == "" {
-			return ChannelDelivery{}, errors.BadRequest("CHANNEL", "card_json or text is required")
+			return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "card_json or text is required")
 		}
 	default:
 		if payload.Text == "" {
-			return ChannelDelivery{}, errors.BadRequest("CHANNEL", "text is required")
+			return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "text is required")
 		}
 		payload.Kind = ChannelOutboundTextKind
 	}
@@ -176,7 +176,7 @@ func outboundRetryDelay(attempts int) time.Duration {
 func marshalOutboundPayload(payload ChannelOutboundPayload) (string, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return "", errors.InternalServer("CHANNEL", "failed to marshal outbound payload: "+err.Error())
+		return "", apierror.Internal("CHANNEL", "failed to marshal outbound payload: %s", err.Error())
 	}
 	return string(raw), nil
 }

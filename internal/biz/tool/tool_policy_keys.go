@@ -8,6 +8,7 @@ import "strings"
 // Keep naming aligned with internal/tools/registry (see ApplyEffectiveAliases).
 var toolPolicyKeyAliases = map[string]string{
 	"shell":            "shell_exec",
+	"shell_exec":       "exec_command",
 	"web_search":       ToolKeyWebResearch,
 	"write_file":       "save_file",
 	"edit_file":        "diff_edit",
@@ -34,22 +35,35 @@ func NormalizeToolPolicyKey(key string) string {
 }
 
 // PropagateAllowAliases copies alias flags to canonical keys (e.g. shell -> shell_exec).
+// Repeats until stable to handle chained aliases (shell -> shell_exec -> exec_command).
 func PropagateAllowAliases(m map[string]bool) {
-	for alias, canon := range toolPolicyKeyAliases {
-		if m[alias] {
-			m[canon] = true
+	changed := true
+	for changed {
+		changed = false
+		for alias, canon := range toolPolicyKeyAliases {
+			if m[alias] && !m[canon] {
+				m[canon] = true
+				changed = true
+			}
 		}
 	}
 }
 
 // PropagateDenyAliases ensures denying either alias or canonical blocks both.
+// Repeats until stable to handle chained aliases (shell -> shell_exec -> exec_command).
 func PropagateDenyAliases(m map[string]bool) {
-	for alias, canon := range toolPolicyKeyAliases {
-		if m[alias] {
-			m[canon] = true
-		}
-		if m[canon] {
-			m[alias] = true
+	changed := true
+	for changed {
+		changed = false
+		for alias, canon := range toolPolicyKeyAliases {
+			if m[alias] && !m[canon] {
+				m[canon] = true
+				changed = true
+			}
+			if m[canon] && !m[alias] {
+				m[alias] = true
+				changed = true
+			}
 		}
 	}
 }

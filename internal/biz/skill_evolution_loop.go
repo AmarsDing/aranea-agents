@@ -7,9 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ── Evolution Loop Stage Constants ────────────────────────────────────────────
@@ -279,35 +278,35 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 
 func (l *SkillEvolutionLoop) solve(ctx context.Context, skillID string, task string) (*SkillTaskResult, error) {
 	if l.runner == nil {
-		return nil, kerrors.BadRequest("EVO_LOOP", "skill task runner not configured")
+		return nil, apierror.BadRequest("EVO_LOOP", "skill task runner not configured")
 	}
 	return l.runner.RunTask(ctx, skillID, task)
 }
 
 func (l *SkillEvolutionLoop) observe(ctx context.Context, skillID string, result *SkillTaskResult) (*EvolutionObservationReport, error) {
 	if l.observer == nil {
-		return nil, kerrors.BadRequest("EVO_LOOP", "skill observer not configured")
+		return nil, apierror.BadRequest("EVO_LOOP", "skill observer not configured")
 	}
 	return l.observer.Observe(ctx, skillID, result)
 }
 
 func (l *SkillEvolutionLoop) evolve(ctx context.Context, skillID string, report *EvolutionObservationReport) (string, error) {
 	if l.evolver == nil {
-		return "", kerrors.BadRequest("EVO_LOOP", "skill evolver not configured")
+		return "", apierror.BadRequest("EVO_LOOP", "skill evolver not configured")
 	}
 	return l.evolver.Evolve(ctx, skillID, report)
 }
 
 func (l *SkillEvolutionLoop) gateVerify(ctx context.Context, skillID string, draftBody string, observation *EvolutionObservationReport) (*GateVerificationResult, error) {
 	if l.gate == nil {
-		return nil, kerrors.BadRequest("EVO_LOOP", "skill gate verifier not configured")
+		return nil, apierror.BadRequest("EVO_LOOP", "skill gate verifier not configured")
 	}
 	return l.gate.Verify(ctx, skillID, draftBody, observation)
 }
 
 func (l *SkillEvolutionLoop) reload(ctx context.Context, skillID string, draftBody string, parentVersionID string, evolutionReason string) error {
 	if l.reloader == nil {
-		return kerrors.BadRequest("EVO_LOOP", "skill reloader not configured")
+		return apierror.BadRequest("EVO_LOOP", "skill reloader not configured")
 	}
 	return l.reloader.Reload(ctx, skillID, draftBody, parentVersionID, evolutionReason)
 }
@@ -485,6 +484,12 @@ func (v *GateVerifier) verifyPerformance(observation *EvolutionObservationReport
 					observation.BaselineDurationMS, observation.AvgDurationMS),
 			}
 		}
+	} else if observation.BaselineDurationMS == 0 && observation.AvgDurationMS > 60000 {
+		return GateCheckResult{
+			Name:   "performance",
+			Passed: false,
+			Reason: fmt.Sprintf("insufficient baseline data: avg duration %dms exceeds absolute threshold 60000ms", observation.AvgDurationMS),
+		}
 	}
 
 	// Check token usage degradation
@@ -498,6 +503,12 @@ func (v *GateVerifier) verifyPerformance(observation *EvolutionObservationReport
 					tokenDegradation*100, GatePerformanceDegradationThreshold*100,
 					observation.BaselineTokenUsage, observation.AvgTokenUsage),
 			}
+		}
+	} else if observation.BaselineTokenUsage == 0 && observation.AvgTokenUsage > 10000 {
+		return GateCheckResult{
+			Name:   "performance",
+			Passed: false,
+			Reason: fmt.Sprintf("insufficient baseline data: avg token usage %d exceeds absolute threshold 10000", observation.AvgTokenUsage),
 		}
 	}
 

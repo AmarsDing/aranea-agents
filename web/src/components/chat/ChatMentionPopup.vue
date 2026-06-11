@@ -1,6 +1,7 @@
 <template>
   <q-popup-proxy
-    v-model="open"
+    :model-value="open"
+    @update:model-value="emit('update:open', $event)"
     anchor="bottom left"
     self="top left"
     :offset="[0, 4]"
@@ -12,6 +13,7 @@
         {{ t('chat.mentionTitle', '引用上下文') }}
       </div>
       <q-input
+        ref="searchInput"
         v-model="filter"
         dense
         outlined
@@ -47,8 +49,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { QInput } from 'quasar';
 import type { ContextRefItem } from '../../features/chat/types';
 
 const props = withDefaults(
@@ -67,6 +70,14 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const filter = ref('');
+const searchInput = ref<QInput | null>(null);
+
+watch(
+  () => props.open,
+  (val) => {
+    if (val) nextTick(() => searchInput.value?.focus());
+  },
+);
 
 const filteredItems = computed(() => {
   const q = filter.value.trim().toLowerCase();

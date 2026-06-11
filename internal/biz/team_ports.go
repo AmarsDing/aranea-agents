@@ -1,6 +1,9 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // TeamTurnRuntime is the biz-level port for executing a team turn.
 // Consumers (ChatOrchestrator, Channel) depend on this instead of
@@ -29,6 +32,43 @@ type TeamTurnResult struct {
 	UserMsg      ChatMessage
 	AssistantMsg ChatMessage
 	TeamRunID    string
+}
+
+// ---------------------------------------------------------------------------
+// Service-layer dependency ports
+// ---------------------------------------------------------------------------
+// These interfaces break the dependency inversion violation where
+// internal/service imported concrete types from internal/team and
+// internal/runtime. Service layer must depend only on biz interfaces.
+
+// TeamTurnRunnerPort is the biz-level port for the team turn runner.
+// TeamService depends on this instead of *team.Runner.
+//
+// Stability:evolving
+type TeamTurnRunnerPort interface {
+	// RunTurnFromInput executes one user turn for a team session.
+	RunTurnFromInput(ctx context.Context, sess Session, input TurnInput) (ChatMessage, ChatMessage, error)
+}
+
+// RunRegistryPort is the biz-level port for the runtime run registry.
+// TeamService depends on this instead of *rt.RunRegistry.
+//
+// Stability:evolving
+type RunRegistryPort interface {
+	// Cancel cancels the active run for the given session.
+	Cancel(sessionID string) (bool, string)
+
+	// GetStatus returns the current status entry for the given session.
+	GetStatus(sessionID string) (RunStatusEntry, bool)
+}
+
+// RunStatusEntry is the biz-level representation of a runtime run status.
+// It mirrors rt.RunStatusEntry without importing internal/runtime.
+type RunStatusEntry struct {
+	RunID     string
+	Status    string
+	ErrMsg    string
+	UpdatedAt time.Time
 }
 
 // TeamRunObserver is the biz-level port for observing team run lifecycle events.

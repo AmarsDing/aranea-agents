@@ -2,7 +2,7 @@
   <div class="chat-section-header" @click="$emit('update:collapsed', !collapsed)">
     <q-icon :name="icon" size="14px" />
     <span class="chat-section-header__label">{{ label }}</span>
-    <q-badge v-if="count > 0" rounded color="primary" :label="count" />
+    <q-badge v-if="count > 0" rounded color="accent" :label="count" />
     <q-icon
       name="expand_more"
       size="16px"

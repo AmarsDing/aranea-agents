@@ -7,9 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 type CredentialKeyResolver func(ctx context.Context) ([]byte, error)
@@ -54,7 +53,7 @@ func ResolveCredentialAESKey(ctx context.Context, sys SystemSettingCredentialKey
 			return nil, err
 		}
 		if len(key) != 32 {
-			return nil, errors.BadRequest("CREDENTIAL_KEY", invalidCredentialKeyMsg)
+			return nil, apierror.BadRequest("CREDENTIAL_KEY", invalidCredentialKeyMsg)
 		}
 		return key, nil
 	}
@@ -67,10 +66,10 @@ func ResolveCredentialAESKey(ctx context.Context, sys SystemSettingCredentialKey
 	}
 	key, err := parseCredentialKeyMaterial(hexKey)
 	if err != nil {
-		return nil, errors.InternalServer("CREDENTIAL_KEY", "stored credential_encryption_key is invalid")
+		return nil, apierror.Internal("CREDENTIAL_KEY", "stored credential_encryption_key is invalid")
 	}
 	if len(key) != 32 {
-		return nil, errors.InternalServer("CREDENTIAL_KEY", "stored credential_encryption_key is invalid")
+		return nil, apierror.Internal("CREDENTIAL_KEY", "stored credential_encryption_key is invalid")
 	}
 	return key, nil
 }
@@ -86,5 +85,5 @@ func parseCredentialKeyMaterial(raw string) ([]byte, error) {
 	if key, err := base64.StdEncoding.DecodeString(raw); err == nil && len(key) == 32 {
 		return key, nil
 	}
-	return nil, errors.BadRequest("CREDENTIAL_KEY", invalidCredentialKeyMsg)
+	return nil, apierror.BadRequest("CREDENTIAL_KEY", invalidCredentialKeyMsg)
 }

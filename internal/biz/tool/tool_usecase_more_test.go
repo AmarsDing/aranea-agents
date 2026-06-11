@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockSettingRepo struct {
@@ -73,7 +73,7 @@ func TestUpdateToolConfig(t *testing.T) {
 			configJSON: `{"key":"val"}`,
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -118,9 +118,12 @@ func TestUpdateToolConfig(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -163,7 +166,7 @@ func TestUpsertToolAgentOverride(t *testing.T) {
 			},
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.BadRequest("TOOL", "id is required")
+					return Tool{}, apierror.BadRequest("TOOL", "id is required")
 				},
 			},
 			wantErr: true,
@@ -177,7 +180,7 @@ func TestUpsertToolAgentOverride(t *testing.T) {
 			},
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -244,7 +247,7 @@ func TestUpsertToolAgentOverride(t *testing.T) {
 					return Tool{ID: "tool_1", Key: "test_tool"}, nil
 				},
 				upsertToolAgentOverride: func(_ context.Context, _ ToolAgentOverrideInput, _ string) (ToolAgentOverride, error) {
-					return ToolAgentOverride{}, kerrors.InternalServer("TOOL", "db error")
+					return ToolAgentOverride{}, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -261,9 +264,12 @@ func TestUpsertToolAgentOverride(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -300,7 +306,7 @@ func TestDeleteToolAgentOverride(t *testing.T) {
 			agentID:     "agent_1",
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -334,7 +340,7 @@ func TestDeleteToolAgentOverride(t *testing.T) {
 					return Tool{ID: "tool_1", Key: "test_tool"}, nil
 				},
 				deleteToolAgentOverride: func(_ context.Context, _ string, _ string) error {
-					return kerrors.InternalServer("TOOL", "db error")
+					return apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -351,9 +357,12 @@ func TestDeleteToolAgentOverride(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -381,7 +390,7 @@ func TestListToolAgentOverrides(t *testing.T) {
 			toolIDOrKey: "missing",
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -414,7 +423,7 @@ func TestListToolAgentOverrides(t *testing.T) {
 					return Tool{ID: "tool_1", Key: "test_tool"}, nil
 				},
 				listToolAgentOverrides: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
-					return nil, kerrors.InternalServer("TOOL", "db error")
+					return nil, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -431,9 +440,12 @@ func TestListToolAgentOverrides(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -486,7 +498,7 @@ func TestListToolAgentOverridesByAgent(t *testing.T) {
 			agentID: "agent_1",
 			repo: &mockRepo{
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
-					return nil, kerrors.InternalServer("TOOL", "db error")
+					return nil, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -503,9 +515,12 @@ func TestListToolAgentOverridesByAgent(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -557,7 +572,7 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 			toolKey: "missing_tool",
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantResult: false,
@@ -647,7 +662,7 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 					return Tool{ID: "t1", Key: "shell_exec", RequiresConfirmation: true}, nil
 				},
 				listToolAgentOverridesByAgent: func(_ context.Context, _ string) ([]ToolAgentOverride, error) {
-					return nil, kerrors.InternalServer("TOOL", "db error")
+					return nil, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantResult: true,
@@ -740,7 +755,7 @@ func TestListRuns(t *testing.T) {
 			query: ToolRunQuery{Limit: 10},
 			repo: &mockRepo{
 				searchToolInvocations: func(_ context.Context, _ ToolRunQuery) (ToolRunResult, error) {
-					return ToolRunResult{}, kerrors.InternalServer("TOOL", "db error")
+					return ToolRunResult{}, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -788,7 +803,7 @@ func TestListRunsForTool(t *testing.T) {
 			query:       ToolRunQuery{Limit: 10},
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -844,9 +859,12 @@ func TestListRunsForTool(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -896,7 +914,7 @@ func TestRecordToolInvocationAudit(t *testing.T) {
 			},
 			repo: &mockRepo{
 				recordToolInvocationAudit: func(_ context.Context, _ ToolInvocationAuditWrite) error {
-					return kerrors.InternalServer("TOOL", "db error")
+					return apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -994,7 +1012,7 @@ func TestListInvocationAudits(t *testing.T) {
 			query: ToolAuditQuery{Limit: 10},
 			repo: &mockRepo{
 				searchToolInvocationAudits: func(_ context.Context, _ ToolAuditQuery) (ToolAuditResult, error) {
-					return ToolAuditResult{}, kerrors.InternalServer("TOOL", "db error")
+					return ToolAuditResult{}, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -1059,7 +1077,7 @@ func TestPurgeOldInvocationAudits(t *testing.T) {
 			name: "repo error",
 			repo: &mockRepo{
 				purgeToolInvocationAuditsBefore: func(_ context.Context, _ string) (int64, error) {
-					return 0, kerrors.InternalServer("TOOL", "db error")
+					return 0, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -1076,9 +1094,12 @@ func TestPurgeOldInvocationAudits(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -1134,7 +1155,7 @@ func TestGetToolInvocationParams(t *testing.T) {
 			invocationID: "inv_missing",
 			repo: &mockRepo{
 				getToolInvocationParams: func(_ context.Context, _ string) (ToolInvocationParam, error) {
-					return ToolInvocationParam{}, kerrors.NotFound("TOOL", "invocation not found")
+					return ToolInvocationParam{}, apierror.NotFound("TOOL", "invocation not found")
 				},
 			},
 			wantErr: true,
@@ -1151,9 +1172,12 @@ func TestGetToolInvocationParams(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -1210,7 +1234,7 @@ func TestRecordToolInvocation(t *testing.T) {
 			},
 			repo: &mockRepo{
 				recordToolInvocation: func(_ context.Context, _ ToolInvocationWrite) error {
-					return kerrors.InternalServer("TOOL", "db error")
+					return apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -1271,7 +1295,7 @@ func TestSyncBuiltinTools(t *testing.T) {
 			name: "repo error",
 			repo: &mockRepo{
 				syncBuiltinTools: func(_ context.Context) error {
-					return kerrors.InternalServer("TOOL", "sync failed")
+					return apierror.Internal("TOOL", "sync failed")
 				},
 			},
 			wantErr: true,
@@ -1288,9 +1312,12 @@ func TestSyncBuiltinTools(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					ke := kerrors.FromError(err)
-					if ke.Message != tt.wantMsg {
-						t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+					ae, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if ae.Message != tt.wantMsg {
+						t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 					}
 				}
 				return
@@ -1332,7 +1359,7 @@ func TestTestTool(t *testing.T) {
 			argumentsJSON: `{"cmd":"ls"}`,
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr:  true,
@@ -1402,7 +1429,7 @@ func TestTestTool(t *testing.T) {
 			},
 			tester: &mockToolTester{
 				execute: func(_ context.Context, _ ToolTestInput, _ string, _ int, _ *WebResearchPlatformFields) (ToolTestResult, error) {
-					return ToolTestResult{}, kerrors.InternalServer("TOOL", "execution timeout")
+					return ToolTestResult{}, apierror.Internal("TOOL", "execution timeout")
 				},
 			},
 			wantErr:  true,
@@ -1418,7 +1445,7 @@ func TestTestTool(t *testing.T) {
 					return Tool{ID: "tool_1", Key: "shell_exec", Source: "builtin", ConfigJSON: "{}", DefaultConfigJSON: "{}", MetadataJSON: ""}, nil
 				},
 				recordToolInvocation: func(_ context.Context, _ ToolInvocationWrite) error {
-					return kerrors.InternalServer("TOOL", "db write failed")
+					return apierror.Internal("TOOL", "db write failed")
 				},
 			},
 			tester: &mockToolTester{
@@ -1441,12 +1468,28 @@ func TestTestTool(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-				if tt.wantCode != 0 && ke.Code != tt.wantCode {
-					t.Fatalf("expected code %d, got %d", tt.wantCode, ke.Code)
+				ae, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
 				}
-				if tt.wantMsg != "" && ke.Message != tt.wantMsg {
-					t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+				if tt.wantCode != 0 {
+					var wantCode apierror.Code
+					switch tt.wantCode {
+					case 400:
+						wantCode = apierror.CodeBadRequest
+					case 404:
+						wantCode = apierror.CodeNotFound
+					case 500:
+						wantCode = apierror.CodeInternal
+					default:
+						wantCode = apierror.Code(tt.wantCode)
+					}
+					if ae.Code != wantCode {
+						t.Fatalf("expected code %d, got %s", tt.wantCode, ae.Code)
+					}
+				}
+				if tt.wantMsg != "" && ae.Message != tt.wantMsg {
+					t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 				}
 				return
 			}

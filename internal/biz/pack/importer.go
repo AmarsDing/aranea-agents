@@ -8,48 +8,77 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
-// ImporterRepo 导入引擎所需的写入仓库接口。
-type ImporterRepo interface {
-	// Organization
+// OrganizationImporterRepo provides organization node write operations for Pack import.
+type OrganizationImporterRepo interface {
 	CreateOrganizationNode(ctx context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error)
 	UpdateOrganizationNode(ctx context.Context, node biz.OrganizationNode) (biz.OrganizationNode, error)
 	GetOrganizationNodeByKey(ctx context.Context, key string) (biz.OrganizationNode, error)
 	GetOrganizationNodeByKeyAnyState(ctx context.Context, key string) (biz.OrganizationNode, error)
+}
+
+// OrganizationLookupRepo provides organization read operations for Pack import.
+type OrganizationLookupRepo interface {
 	ListOrganizationNodesByParentID(ctx context.Context, parentID string) ([]biz.OrganizationNode, error)
 	ListOrganizationNodesByLevel(ctx context.Context, level string) ([]biz.OrganizationNode, error)
+}
 
-	// Agent
+// AgentImporterRepo provides agent write operations for Pack import.
+type AgentImporterRepo interface {
 	GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error)
 	// CreateAgentAtomic / UpdateAgentAtomic 在同一个 ExecInTx 中完成
 	// "agent + prompt files + runtime settings" 的三步写入。
 	// Pack 场景必须使用这两个方法以保证 partial failure 安全。
 	CreateAgentAtomic(ctx context.Context, a biz.Agent, files []biz.AgentPromptFile, settings biz.AgentRuntimeSettings) (biz.Agent, error)
 	UpdateAgentAtomic(ctx context.Context, a biz.Agent, files []biz.AgentPromptFile, settings *biz.AgentRuntimeSettings) (biz.Agent, error)
+}
+
+// AgentExtraRepo provides agent CRUD operations used by other Usecases (not Pack Importer).
+// PackRepoAdapter implements this interface, but the Importer itself does not use these methods.
+type AgentExtraRepo interface {
 	DeleteAgent(ctx context.Context, id string) error
-	// 以下三个保留以供其他 Usecase 单步调用，Pack Importer 不应直接使用。
 	CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error)
 	UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error)
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error)
 	UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error)
-	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error)
+}
 
-	// Team
+// AgentFileRepo provides agent file and prompt operations for Pack import.
+type AgentFileRepo interface {
+	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error)
+}
+
+// TeamImporterRepo provides team write operations for Pack import.
+type TeamImporterRepo interface {
 	GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 	GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error)
 	CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
+}
 
-	// Graph
+// GraphImporterRepo provides graph write operations for Pack import.
+type GraphImporterRepo interface {
 	GetGraphDefinitionByName(ctx context.Context, name string) (*biz.GraphDefinition, error)
 	SaveGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error)
 	UpdateGraphDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error)
+}
 
-	// Transaction
+// TxProvider provides transaction support for Pack import.
+type TxProvider interface {
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// ImporterRepo composes all sub-interfaces needed by the Pack import engine.
+type ImporterRepo interface {
+	OrganizationImporterRepo
+	OrganizationLookupRepo
+	AgentImporterRepo
+	AgentFileRepo
+	TeamImporterRepo
+	GraphImporterRepo
+	TxProvider
 }
 
 // importConfig holds optional configuration for an Import call.
@@ -101,7 +130,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 			return err
 		})
 		if orgErr != nil {
-			return result, kerrors.BadRequest("PACK_ORGANIZATION_IMPORT", fmt.Sprintf("pack import: Phase 1 (Organization) 失败: %s", orgErr.Error()))
+			return result, apierror.BadRequest("PACK_ORGANIZATION_IMPORT", "pack import: Phase 1 (Organization) 失败: %s", orgErr.Error())
 		}
 		result.OrgNodes = count
 		result.Warnings = append(result.Warnings, warns...)
@@ -144,7 +173,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 		return nil
 	})
 	if graphErr != nil {
-		return result, kerrors.BadRequest("PACK_GRAPH_IMPORT", fmt.Sprintf("pack import: Phase 3 (Graphs) 失败: %s", graphErr.Error()))
+		return result, apierror.BadRequest("PACK_GRAPH_IMPORT", "pack import: Phase 3 (Graphs) 失败: %s", graphErr.Error())
 	}
 
 	// Phase 4: Teams (wrapped in transaction for atomicity)
@@ -167,7 +196,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 		return nil
 	})
 	if teamErr != nil {
-		return result, kerrors.BadRequest("PACK_TEAM_IMPORT", fmt.Sprintf("pack import: Phase 4 (Teams) 失败: %s", teamErr.Error()))
+		return result, apierror.BadRequest("PACK_TEAM_IMPORT", "pack import: Phase 4 (Teams) 失败: %s", teamErr.Error())
 	}
 
 	return result, nil
@@ -229,7 +258,7 @@ func (im *Importer) importOrganization(ctx context.Context, spec *OrganizationPa
 			IsSystem:    isSystem,
 		}, strategy)
 		if err != nil {
-			return count, warns, kerrors.BadRequest("PACK_COMPANY_IMPORT", fmt.Sprintf("导入公司 %s 失败: %s", comp.Key, err.Error()))
+			return count, warns, apierror.BadRequest("PACK_COMPANY_IMPORT", "导入公司 %s 失败: %s", comp.Key, err.Error())
 		}
 		mapper.RegisterOrg(comp.Key, compNode.ID)
 		count++
@@ -411,7 +440,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		}
 		updatedAgent, err := im.repo.UpdateAgentAtomic(ctx, agent, promptFiles, settingsPtr)
 		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_UPDATE", fmt.Sprintf("更新 Agent %s 失败: %s", spec.Key, err.Error()))
+			return 0, 0, 0, warns, apierror.BadRequest("PACK_AGENT_UPDATE", "更新 Agent %s 失败: %s", spec.Key, err.Error())
 		}
 		agentID = updatedAgent.ID
 		updated = 1
@@ -419,7 +448,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		// 创建路径：promptFiles / settings 为 nil 时 atomic 内部跳过对应步骤
 		createdAgent, err := im.repo.CreateAgentAtomic(ctx, agent, promptFiles, settings)
 		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_AGENT_CREATE", fmt.Sprintf("创建 Agent %s 失败: %s", spec.Key, err.Error()))
+			return 0, 0, 0, warns, apierror.BadRequest("PACK_AGENT_CREATE", "创建 Agent %s 失败: %s", spec.Key, err.Error())
 		}
 		agentID = createdAgent.ID
 		created = 1
@@ -461,7 +490,7 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strateg
 		def.ID = existing.ID
 		saved, updateErr := im.repo.UpdateGraphDefinition(ctx, def)
 		if updateErr != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_GRAPH_UPDATE", fmt.Sprintf("更新 Graph %s 失败: %s", spec.ID, updateErr.Error()))
+			return 0, 0, 0, warns, apierror.BadRequest("PACK_GRAPH_UPDATE", "更新 Graph %s 失败: %s", spec.ID, updateErr.Error())
 		}
 		mapper.RegisterGraph(spec.ID, saved.ID)
 		return 0, 1, 0, warns, nil
@@ -470,7 +499,7 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, strateg
 	// 创建
 	saved, saveErr := im.repo.SaveGraphDefinition(ctx, def)
 	if saveErr != nil {
-		return 0, 0, 0, warns, kerrors.BadRequest("PACK_GRAPH_CREATE", fmt.Sprintf("创建 Graph %s 失败: %s", spec.ID, saveErr.Error()))
+		return 0, 0, 0, warns, apierror.BadRequest("PACK_GRAPH_CREATE", "创建 Graph %s 失败: %s", spec.ID, saveErr.Error())
 	}
 
 	mapper.RegisterGraph(spec.ID, saved.ID)
@@ -637,7 +666,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	for _, m := range spec.Members {
 		agentID, err := mapper.ResolveAgentKey(m.AgentKey)
 		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_MEMBER", fmt.Sprintf("Team %s 成员 %s 的 agent_key 未找到: %s", spec.Key, m.AgentKey, err.Error()))
+			return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_MEMBER", "Team %s 成员 %s 的 agent_key 未找到: %s", spec.Key, m.AgentKey, err.Error())
 		}
 		enabled := true
 		if m.Enabled != nil {
@@ -659,18 +688,16 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	if spec.IntentAnchorKey != "" {
 		id, err := mapper.ResolveAgentKey(spec.IntentAnchorKey)
 		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_INTENT_ANCHOR",
-				fmt.Sprintf("Team %s intent_anchor_key=%q 未找到: %s",
-					spec.Key, spec.IntentAnchorKey, err.Error()))
+			return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_INTENT_ANCHOR",
+				"Team %s intent_anchor_key=%q 未找到: %s", spec.Key, spec.IntentAnchorKey, err.Error())
 		}
 		ospec.IntentAnchorAgentID = id
 	}
 	if spec.SynthesizerKey != "" {
 		id, err := mapper.ResolveAgentKey(spec.SynthesizerKey)
 		if err != nil {
-			return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_SYNTHESIZER",
-				fmt.Sprintf("Team %s synthesizer_key=%q 未找到: %s",
-					spec.Key, spec.SynthesizerKey, err.Error()))
+			return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_SYNTHESIZER",
+				"Team %s synthesizer_key=%q 未找到: %s", spec.Key, spec.SynthesizerKey, err.Error())
 		}
 		ospec.SynthesizerAgentID = id
 	}
@@ -758,7 +785,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	// 序列化 definition_json
 	defJSON, err := biz.OrchestrationSpecToDefinitionJSON(ospec)
 	if err != nil {
-		return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
+		return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_DEFINITION", "序列化 Team %s definition_json 失败: %s", spec.Key, err.Error())
 	}
 
 	// Kind = ownership classification (user | system_builtin | ecosystem_preset | ...)
@@ -805,7 +832,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 			team.Kind = existing.Kind
 			team.Source = existing.Source
 			if _, err := im.repo.UpdateTeam(ctx, team); err != nil {
-				return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_UPDATE", fmt.Sprintf("更新 Team %s 失败: %s", spec.Key, err.Error()))
+				return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_UPDATE", "更新 Team %s 失败: %s", spec.Key, err.Error())
 			}
 			return 0, 1, 0, warns, nil
 		case ConflictDuplicate:
@@ -823,7 +850,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	}
 
 	if _, err := im.repo.CreateTeam(ctx, team); err != nil {
-		return 0, 0, 0, warns, kerrors.BadRequest("PACK_TEAM_CREATE", fmt.Sprintf("创建 Team %s 失败: %s", spec.Key, err.Error()))
+		return 0, 0, 0, warns, apierror.BadRequest("PACK_TEAM_CREATE", "创建 Team %s 失败: %s", spec.Key, err.Error())
 	}
 
 	return 1, 0, 0, warns, nil
@@ -851,9 +878,8 @@ func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMappe
 		if n.AgentKey != "" {
 			id, err := mapper.ResolveAgentKey(n.AgentKey)
 			if err != nil {
-				return nil, kerrors.BadRequest("PACK_TEAM_GRAPH_NODE",
-					fmt.Sprintf("Team Graph 节点 %s agent_key=%q 未找到: %s",
-						n.ID, n.AgentKey, err.Error()))
+				return nil, apierror.BadRequest("PACK_TEAM_GRAPH_NODE",
+					"Team Graph 节点 %s agent_key=%q 未找到: %s", n.ID, n.AgentKey, err.Error())
 			}
 			nodeSpec.AgentID = id
 		}

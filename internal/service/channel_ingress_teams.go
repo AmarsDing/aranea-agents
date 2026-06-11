@@ -44,10 +44,10 @@ func (h *ChannelIngress) handleTeamsWebhook(w http.ResponseWriter, r *http.Reque
 		Text:           parsed.Text,
 		IdempotencyKey: "teams:" + parsed.ActivityID,
 		OutboundMeta: map[string]string{
-			"recipient":        parsed.ConversationID,
-			"chat_id":          parsed.ConversationID,
-			"service_url":      parsed.ServiceURL,
-			"conversation_id":  parsed.ConversationID,
+			port.MetaRecipient:      parsed.ConversationID,
+			port.MetaChatID:         parsed.ConversationID,
+			port.MetaServiceURL:     parsed.ServiceURL,
+			port.MetaConversationID: parsed.ConversationID,
 		},
 	}))
 	return nil

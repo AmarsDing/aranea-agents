@@ -163,7 +163,7 @@ func (r *l1WorkingMemoryRepo) StartL1Task(ctx context.Context, in biz.L1TaskInse
 	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(session_id, task_key, agent_id) DO UPDATE SET
 		task_title = excluded.task_title, task_goal = excluded.task_goal,
-		status = excluded.status, updated_at = excluded.updated_at`,
+		status = excluded.status, ended_at = '', updated_at = excluded.updated_at`,
 		id, sessID,
 		strings.TrimSpace(in.RunID),
 		strings.TrimSpace(in.TeamID),
@@ -205,6 +205,15 @@ func (r *l1WorkingMemoryRepo) ArchiveL1Task(ctx context.Context, sessionID, task
 		return nil, err
 	}
 	return r.buildL1TaskSnapshot(ctx, sessionID, taskID)
+}
+
+func (r *l1WorkingMemoryRepo) UnarchiveL1Task(ctx context.Context, sessionID, taskID string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_l1_tasks SET archived_at = '', updated_at = ? WHERE id = ? AND session_id = ?`,
+		now, taskID, sessionID,
+	)
+	return err
 }
 
 func (r *l1WorkingMemoryRepo) buildL1TaskSnapshot(ctx context.Context, sessionID, taskID string) ([]byte, error) {

@@ -9,7 +9,13 @@ export type SpiritTeamStatus =
 
 /** Runtime type guard for SpiritTeamStatus — validates WS/API pushed values. */
 const VALID_TEAM_STATUSES: ReadonlySet<string> = new Set<string>([
-  'pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'archived',
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'archived',
 ]);
 export function isValidTeamStatus(s: string): s is SpiritTeamStatus {
   return VALID_TEAM_STATUSES.has(s);
@@ -19,7 +25,12 @@ export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'critic
 
 /** Runtime type guard for SpiritTeamMode — validates WS/API pushed values. */
 const VALID_TEAM_MODES: ReadonlySet<string> = new Set<string>([
-  'coordinator', 'sequential', 'parallel', 'critic_loop', 'swarm', 'adaptive',
+  'coordinator',
+  'sequential',
+  'parallel',
+  'critic_loop',
+  'swarm',
+  'adaptive',
 ]);
 export function isValidTeamMode(s: string): s is SpiritTeamMode {
   return VALID_TEAM_MODES.has(s);
@@ -167,3 +178,20 @@ export interface CompletionStats {
   completedTeams: number;
   failedTeams: number;
 }
+
+/** Task row data for UnifiedExecutionPanel task breakdown section. */
+export type TaskRow = {
+  id: string;
+  taskName: string;
+  teamLabel: string | null;
+  isRunning: boolean;
+  statusText: string;
+};
+
+/** DAG flow node data for UnifiedExecutionPanel dependencies section. */
+export type DagFlowNode = {
+  id: string;
+  name: string;
+  state: 'done' | 'running' | 'waiting' | 'failed' | 'interrupted';
+  depLabels: string[];
+};

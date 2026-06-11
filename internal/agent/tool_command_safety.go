@@ -32,6 +32,9 @@ func (h *commandSafetyBeforeHook) Point() callbacks.CallbackPoint { return callb
 func (h *commandSafetyBeforeHook) Priority() int                   { return 4 }
 
 func (h *commandSafetyBeforeHook) HandleBeforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
+	if args == nil {
+		return &trpctool.BeforeToolResult{}, nil
+	}
 	violation := h.policy.Evaluate(args.ToolName, args.Arguments)
 	if violation != nil {
 		h.lg.Warn("command safety policy blocked tool call",

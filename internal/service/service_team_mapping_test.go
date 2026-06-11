@@ -8,8 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestToProtoTeam(t *testing.T) {
@@ -416,12 +415,12 @@ func TestMapTeamErr(t *testing.T) {
 				if got == nil {
 					t.Fatal("got nil, want NotFound error")
 				}
-				var ke *kerrors.Error
-				if !errors.As(got, &ke) {
-					t.Fatalf("got = %v, want kerrors.Error", got)
+				ae, ok := apierror.From(got)
+				if !ok {
+					t.Fatalf("got = %v, want apierror.Error", got)
 				}
-				if ke.Reason != "TEAM" {
-					t.Errorf("Reason = %q, want %q", ke.Reason, "TEAM")
+				if ae.Domain != "TEAM" {
+					t.Errorf("Domain = %q, want %q", ae.Domain, "TEAM")
 				}
 			}
 		})

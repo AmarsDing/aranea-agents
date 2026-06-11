@@ -25,7 +25,7 @@ func (o *ChatOrchestrator) sessionContextPressure(ctx context.Context, input biz
 
 func (o *ChatOrchestrator) resolveContextAdmissionThreshold(ctx context.Context, sess biz.Session, input biz.TurnInput) float64 {
 	if input.EntryConfig.EntryPoint == biz.EntryPointChannel {
-		lt := o.resolveChannelLongTaskConfig(ctx, sess)
+		lt := o.sessionRunLC.ResolveChannelLongTaskConfig(ctx, sess)
 		return lt.ContextAdmissionThreshold
 	}
 	threshold := biz.DefaultContextAdmissionThreshold

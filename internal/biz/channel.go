@@ -3,16 +3,16 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 
 	"aranea-agents/internal/biz/shared"
-
-	"github.com/go-kratos/kratos/v2/errors"
-	"github.com/google/uuid"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
 )
 
 // Channel mirrors legacy PlatformResource for resource "channels".
@@ -216,7 +216,7 @@ func (u *ChannelUsecase) Create(ctx context.Context, row Channel, credentials []
 func (u *ChannelUsecase) Update(ctx context.Context, id string, row Channel, credentials []ChannelCredentialInput) (Channel, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return Channel{}, errors.BadRequest("CHANNEL", "id is required")
+		return Channel{}, apierror.BadRequest("CHANNEL", "id is required")
 	}
 	current, err := u.reader.Get(ctx, id)
 	if err != nil {
@@ -292,7 +292,7 @@ func (u *ChannelUsecase) ListCredentialsRaw(ctx context.Context, channelID strin
 func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string, inputs []ChannelCredentialInput) ([]ChannelCredential, error) {
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return nil, errors.BadRequest("CHANNEL", "channel id is required")
+		return nil, apierror.BadRequest("CHANNEL", "channel id is required")
 	}
 	var result []ChannelCredential
 	for _, input := range inputs {
@@ -348,7 +348,6 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 	// Limit concurrency to avoid resource exhaustion with many channels.
 	const maxConcurrent = 8
 	sem := make(chan struct{}, maxConcurrent)
-	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, row := range items {
 		if !row.Enabled {
@@ -363,17 +362,17 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 			writeCtx := context.WithoutCancel(ctx)
 			credentials, err := u.credentials.ListCredentials(writeCtx, ch.ID)
 			if err != nil {
+				u.lg.Warn("list credentials for health check failed", loggateway.Err(err), loggateway.Str("channel_id", ch.ID))
 				return
 			}
 			result, err := EvaluateChannelTest(ch, credentials)
 			if err != nil {
+				u.lg.Warn("evaluate channel test for health check failed", loggateway.Err(err), loggateway.Str("channel_id", ch.ID))
 				return
 			}
-			mu.Lock()
 			if _, err := u.updateTestMetadata(writeCtx, ch, result); err != nil {
 				u.lg.Warn("update channel test metadata failed", loggateway.Err(err), loggateway.Str("channel_id", ch.ID))
 			}
-			mu.Unlock()
 		})
 	}
 	wg.Wait()
@@ -392,7 +391,7 @@ func (u *ChannelUsecase) ListDeliveries(ctx context.Context, channelID string, l
 func (u *ChannelUsecase) AddInboundDelivery(ctx context.Context, channelID, status, payloadJSON, errMsg string) error {
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return errors.BadRequest("CHANNEL", "channel id is required")
+		return apierror.BadRequest("CHANNEL", "channel id is required")
 	}
 	_, err := u.deliveries.AddDelivery(ctx, ChannelDelivery{
 		ID:           uuid.NewString(),
@@ -490,14 +489,14 @@ func (u *ChannelUsecase) GetPeerSession(ctx context.Context, channelID, peerKey 
 
 func (u *ChannelUsecase) CreatePeerSession(ctx context.Context, row ChannelPeerSession) (ChannelPeerSession, error) {
 	if u.peers == nil {
-		return ChannelPeerSession{}, nil
+		return ChannelPeerSession{}, fmt.Errorf("channel: peer session repository not configured")
 	}
 	return u.peers.Create(ctx, row)
 }
 
 func (u *ChannelUsecase) UpdatePeerSessionID(ctx context.Context, channelID, peerKey, sessionID string) (ChannelPeerSession, error) {
 	if u.peers == nil {
-		return ChannelPeerSession{}, nil
+		return ChannelPeerSession{}, fmt.Errorf("channel: peer session repository not configured")
 	}
 	return u.peers.UpdateSessionID(ctx, channelID, peerKey, sessionID)
 }
@@ -512,7 +511,7 @@ func (u *ChannelUsecase) ResolveChannelTarget(ctx context.Context, routing Chann
 
 func (u *ChannelUsecase) GetTeamByID(ctx context.Context, teamID string) (Team, error) {
 	if u.teams == nil {
-		return Team{}, errors.InternalServer("CHANNEL", "team repository not configured")
+		return Team{}, apierror.Internal("CHANNEL", "team repository not configured")
 	}
 	return u.teams.GetTeamByID(ctx, teamID)
 }

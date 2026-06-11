@@ -5,8 +5,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -35,14 +34,14 @@ type ToolTester interface {
 func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string, timeoutSec int) (ToolTestResult, error) {
 	toolID = strings.TrimSpace(toolID)
 	if toolID == "" {
-		return ToolTestResult{}, kerrors.BadRequest("TOOL", "tool id is required")
+		return ToolTestResult{}, apierror.BadRequest("TOOL", "tool id is required")
 	}
 	tool, err := u.GetTool(ctx, toolID)
 	if err != nil {
 		return ToolTestResult{}, err
 	}
 	if u.tester == nil {
-		return ToolTestResult{}, kerrors.New(500, "TOOL", "tool tester not configured")
+		return ToolTestResult{}, apierror.Internal("TOOL", "tool tester not configured")
 	}
 	var pf *WebResearchPlatformFields
 	if platform := LoadWebResearchPlatform(ctx, u.sys); platform != nil {

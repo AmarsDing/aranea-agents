@@ -119,6 +119,59 @@ function findServerMatchForPending(
   return null;
 }
 
+/** Whether this row is a local streaming placeholder (ws-stream-* prefix). */
+function isStreamingPlaceholder(message: Message): boolean {
+  return isStreamingOrigin(message.origin);
+}
+
+/** Build a map from (sessionId, role=assistant, content) → server message for fast lookup. */
+function buildServerAssistantContentMap(server: Message[]): Map<string, Message[]> {
+  const map = new Map<string, Message[]>();
+  for (const m of server) {
+    if (m.role !== 'assistant') continue;
+    const key = `${m.session_id}::${(m.content_markdown ?? '').trim()}`;
+    const arr = map.get(key) ?? [];
+    arr.push(m);
+    map.set(key, arr);
+  }
+  return map;
+}
+
+function findServerMatchForStreaming(
+  streaming: Message,
+  serverMap: Map<string, Message[]>,
+  matched: Set<string>,
+): Message | null {
+  const content = (streaming.content_markdown ?? '').trim();
+  if (!content) return null;
+  // Try exact match first
+  const key = `${streaming.session_id}::${content}`;
+  const candidates = serverMap.get(key);
+  if (candidates) {
+    for (const c of candidates) {
+      if (!matched.has(c.id)) {
+        matched.add(c.id);
+        return c;
+      }
+    }
+  }
+  // Try prefix match — server content may be longer (includes reasoning, etc.)
+  for (const [mapKey, msgs] of serverMap) {
+    const prefix = `${streaming.session_id}::`;
+    if (!mapKey.startsWith(prefix)) continue;
+    const serverContent = mapKey.slice(prefix.length);
+    if (serverContent.startsWith(content) || content.startsWith(serverContent)) {
+      for (const c of msgs) {
+        if (!matched.has(c.id)) {
+          matched.add(c.id);
+          return c;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /** Merge server history with in-flight WS rows (streaming text, running tool cards). */
 export function mergeSessionMessages(
   server: Message[],
@@ -129,6 +182,7 @@ export function mergeSessionMessages(
   if (local.length === 0) return normalizedServer;
   const serverById = new Map(normalizedServer.map((m) => [m.id, m]));
   const serverUserByContent = buildServerUserContentMap(normalizedServer);
+  const serverAssistantByContent = buildServerAssistantContentMap(normalizedServer);
 
   const pendingReplacedBy = new Map<string, Message>();
   const matchedServerIDs = new Set<string>();
@@ -136,6 +190,14 @@ export function mergeSessionMessages(
     if (!isPendingUserOrigin(row.origin) || row.role !== 'user') continue;
     if (row.status === 'failed') continue;
     const serverMatch = findServerMatchForPending(row, serverUserByContent, matchedServerIDs);
+    if (serverMatch) {
+      pendingReplacedBy.set(row.id, serverMatch);
+    }
+  }
+  // Also match ws-stream assistant placeholders to server-persisted assistant messages.
+  for (const row of local) {
+    if (!isStreamingPlaceholder(row) || row.role !== 'assistant') continue;
+    const serverMatch = findServerMatchForStreaming(row, serverAssistantByContent, matchedServerIDs);
     if (serverMatch) {
       pendingReplacedBy.set(row.id, serverMatch);
     }

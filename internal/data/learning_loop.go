@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type obsRepo struct{ data *Data }
@@ -39,7 +38,7 @@ func (r *obsRepo) ListByAgent(ctx context.Context, agentID string, since time.Ti
 	       FROM learning_observations WHERE agent_id = ? AND observed_at >= ? ORDER BY observed_at ASC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, agentID, since.UTC().Format(time.RFC3339))
 	if err != nil {
-		return nil, kerrors.InternalServer("LEARNING", "query observations: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	defer rows.Close()
 	var result []biz.Observation
@@ -47,11 +46,11 @@ func (r *obsRepo) ListByAgent(ctx context.Context, agentID string, since time.Ti
 		var o biz.Observation
 		var observedAt string
 		if err := rows.Scan(&o.ID, &o.AgentID, &o.SessionID, &o.Kind, &o.Content, &o.Metadata, &observedAt); err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "scan observation: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		t, err := time.Parse(time.RFC3339, observedAt)
 		if err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "parse observed_at: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		o.ObservedAt = t
 		result = append(result, o)
@@ -64,7 +63,7 @@ func (r *obsRepo) CountByAgent(ctx context.Context, agentID string, since time.T
 	var count int64
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{agentID, since.UTC().Format(time.RFC3339)}, &count)
 	if err != nil {
-		return 0, kerrors.InternalServer("LEARNING", "count observations: "+err.Error())
+		return 0, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	return count, nil
 }
@@ -77,7 +76,7 @@ func (r *obsRepo) Create(ctx context.Context, obs biz.Observation) (biz.Observat
 		obs.ObservedAt.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return biz.Observation{}, kerrors.InternalServer("LEARNING", "insert observation: "+err.Error())
+		return biz.Observation{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	return obs, nil
 }
@@ -96,7 +95,7 @@ func (r *obsRepo) BatchCreate(ctx context.Context, obs []biz.Observation) error 
 				o.ObservedAt.UTC().Format(time.RFC3339),
 			)
 			if err != nil {
-				return kerrors.InternalServer("LEARNING", "batch insert observation: "+err.Error())
+				return apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 			}
 		}
 		return nil
@@ -114,7 +113,7 @@ func (r *patternRepo) ListByAgent(ctx context.Context, agentID string, status st
 	q += ` ORDER BY detected_at DESC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, kerrors.InternalServer("LEARNING", "query patterns: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	defer rows.Close()
 	var result []biz.Pattern
@@ -122,11 +121,11 @@ func (r *patternRepo) ListByAgent(ctx context.Context, agentID string, status st
 		var p biz.Pattern
 		var detectedAt string
 		if err := rows.Scan(&p.ID, &p.AgentID, &p.Kind, &p.Description, &p.Frequency, &p.Confidence, &p.Evidence, &p.Status, &detectedAt); err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "scan pattern: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		t, err := time.Parse(time.RFC3339, detectedAt)
 		if err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "parse detected_at: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		p.DetectedAt = t
 		result = append(result, p)
@@ -142,11 +141,11 @@ func (r *patternRepo) GetByID(ctx context.Context, id string) (biz.Pattern, erro
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{id},
 		&p.ID, &p.AgentID, &p.Kind, &p.Description, &p.Frequency, &p.Confidence, &p.Evidence, &p.Status, &detectedAt)
 	if err != nil {
-		return biz.Pattern{}, kerrors.NotFound("LEARNING", "pattern not found")
+		return biz.Pattern{}, apierror.NotFound("LEARNING", "pattern not found")
 	}
 	t, err := time.Parse(time.RFC3339, detectedAt)
 	if err != nil {
-		return biz.Pattern{}, kerrors.InternalServer("LEARNING", "parse detected_at: "+err.Error())
+		return biz.Pattern{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	p.DetectedAt = t
 	return p, nil
@@ -155,7 +154,7 @@ func (r *patternRepo) GetByID(ctx context.Context, id string) (biz.Pattern, erro
 func (r *patternRepo) Create(ctx context.Context, p biz.Pattern) (biz.Pattern, error) {
 	evidenceJSON, err := json.Marshal(p.Evidence)
 	if err != nil {
-		return biz.Pattern{}, kerrors.InternalServer("LEARNING", "marshal evidence: "+err.Error())
+		return biz.Pattern{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	q := `INSERT INTO learning_patterns (id, agent_id, kind, description, frequency, confidence, evidence, status, detected_at)
 	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -164,7 +163,7 @@ func (r *patternRepo) Create(ctx context.Context, p biz.Pattern) (biz.Pattern, e
 		string(p.Status), p.DetectedAt.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return biz.Pattern{}, kerrors.InternalServer("LEARNING", "insert pattern: "+err.Error())
+		return biz.Pattern{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	return p, nil
 }
@@ -173,7 +172,7 @@ func (r *patternRepo) UpdateStatus(ctx context.Context, id string, status biz.Pa
 	q := `UPDATE learning_patterns SET status = ? WHERE id = ?`
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, string(status), id)
 	if err != nil {
-		return biz.Pattern{}, kerrors.InternalServer("LEARNING", "update pattern status: "+err.Error())
+		return biz.Pattern{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	return r.GetByID(ctx, id)
 }
@@ -189,7 +188,7 @@ func (r *proposalRepo) ListByAgent(ctx context.Context, agentID string, status s
 	q += ` ORDER BY created_at DESC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, kerrors.InternalServer("LEARNING", "query proposals: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	defer rows.Close()
 	var result []biz.KnowledgeProposal
@@ -197,23 +196,23 @@ func (r *proposalRepo) ListByAgent(ctx context.Context, agentID string, status s
 		var p biz.KnowledgeProposal
 		var validatedAt, createdAt, updatedAt string
 		if err := rows.Scan(&p.ID, &p.AgentID, &p.PatternID, &p.Title, &p.Content, &p.Kind, &p.Status, &validatedAt, &p.ApprovedBy, &createdAt, &updatedAt); err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "scan proposal: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		if validatedAt != "" {
 			t, err := time.Parse(time.RFC3339, validatedAt)
 			if err != nil {
-				return nil, kerrors.InternalServer("LEARNING", "parse validated_at: "+err.Error())
+				return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 			}
 			p.ValidatedAt = &t
 		}
 		cat, err := time.Parse(time.RFC3339, createdAt)
 		if err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "parse created_at: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		p.CreatedAt = cat
 		uat, err := time.Parse(time.RFC3339, updatedAt)
 		if err != nil {
-			return nil, kerrors.InternalServer("LEARNING", "parse updated_at: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		p.UpdatedAt = uat
 		result = append(result, p)
@@ -230,23 +229,23 @@ func (r *proposalRepo) GetByID(ctx context.Context, id string) (biz.KnowledgePro
 		&p.ID, &p.AgentID, &p.PatternID, &p.Title, &p.Content, &p.Kind, &p.Status,
 		&validatedAt, &p.ApprovedBy, &createdAt, &updatedAt)
 	if err != nil {
-		return biz.KnowledgeProposal{}, kerrors.NotFound("LEARNING", "proposal not found")
+		return biz.KnowledgeProposal{}, apierror.NotFound("LEARNING", "proposal not found")
 	}
 	if validatedAt != "" {
 		t, err := time.Parse(time.RFC3339, validatedAt)
 		if err != nil {
-			return biz.KnowledgeProposal{}, kerrors.InternalServer("LEARNING", "parse validated_at: "+err.Error())
+			return biz.KnowledgeProposal{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 		}
 		p.ValidatedAt = &t
 	}
 	cat, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
-		return biz.KnowledgeProposal{}, kerrors.InternalServer("LEARNING", "parse created_at: "+err.Error())
+		return biz.KnowledgeProposal{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	p.CreatedAt = cat
 	uat, err := time.Parse(time.RFC3339, updatedAt)
 	if err != nil {
-		return biz.KnowledgeProposal{}, kerrors.InternalServer("LEARNING", "parse updated_at: "+err.Error())
+		return biz.KnowledgeProposal{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	p.UpdatedAt = uat
 	return p, nil
@@ -266,7 +265,7 @@ func (r *proposalRepo) Create(ctx context.Context, p biz.KnowledgeProposal) (biz
 		p.CreatedAt.UTC().Format(time.RFC3339), p.UpdatedAt.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return biz.KnowledgeProposal{}, kerrors.InternalServer("LEARNING", "insert proposal: "+err.Error())
+		return biz.KnowledgeProposal{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	return p, nil
 }
@@ -283,7 +282,7 @@ func (r *proposalRepo) UpdateStatus(ctx context.Context, id string, status biz.P
 	args = append(args, id)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
-		return biz.KnowledgeProposal{}, kerrors.InternalServer("LEARNING", "update proposal status: "+err.Error())
+		return biz.KnowledgeProposal{}, apierror.Wrap(err, apierror.CodeInternal, "LEARNING")
 	}
 	return r.GetByID(ctx, id)
 }

@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,7 +85,7 @@ func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) 
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.ProviderModel{}, sql.ErrNoRows
+			return biz.ProviderModel{}, biz.ErrProviderModelNotFound
 		}
 		return biz.ProviderModel{}, err
 	}
@@ -104,7 +103,7 @@ func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Co
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.ProviderModel{}, sql.ErrNoRows
+			return biz.ProviderModel{}, biz.ErrProviderModelNotFound
 		}
 		return biz.ProviderModel{}, err
 	}

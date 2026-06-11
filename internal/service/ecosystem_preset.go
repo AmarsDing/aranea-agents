@@ -13,13 +13,11 @@ import (
 // EcosystemPresetService handles ecosystem preset load/unload/status HTTP endpoints.
 type EcosystemPresetService struct {
 	uc *biz.EcosystemPresetUsecase
-	// clientProvider lazily provides the ent.Client for seed operations.
-	clientProvider func() any
 }
 
 // NewEcosystemPresetService creates an EcosystemPresetService.
-func NewEcosystemPresetService(uc *biz.EcosystemPresetUsecase, clientProvider func() any) *EcosystemPresetService {
-	return &EcosystemPresetService{uc: uc, clientProvider: clientProvider}
+func NewEcosystemPresetService(uc *biz.EcosystemPresetUsecase) *EcosystemPresetService {
+	return &EcosystemPresetService{uc: uc}
 }
 
 // ecosystemPresetLoadRequest is the request body for the load endpoint.
@@ -47,12 +45,7 @@ func (s *EcosystemPresetService) HandleLoad() func(ctx kratoshttp.Context) error
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		}
 
-		client := s.clientProvider()
-		if client == nil {
-			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "database client not available"})
-		}
-
-		resp, err := s.uc.LoadEcosystemPreset(ctx, req.Industries, req.Force, client)
+		resp, err := s.uc.LoadEcosystemPreset(ctx, req.Industries, req.Force)
 		if err != nil {
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

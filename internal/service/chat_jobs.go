@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/strutil"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ListChatBackgroundJobs aggregates session_runs + channel_turn_job rows (M55 CC-D-01 · CC-R-04).
@@ -26,7 +24,7 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 		q.Status = strings.TrimSpace(*req.Status)
 	}
 	if q.SessionID == "" && q.AgentID == "" {
-		return nil, kerrors.BadRequest("CHAT_JOBS", "session_id or agent_id is required")
+		return nil, apierror.BadRequest("CHAT_JOBS", "session_id or agent_id is required")
 	}
 
 	out := make([]*chatv1.ChatBackgroundJob, 0)
@@ -115,38 +113,38 @@ func bizTurnJobToChatBackgroundJob(j biz.ChannelTurnJob) *chatv1.ChatBackgroundJ
 func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.CancelChatBackgroundJobRequest) (*chatv1.CancelChatBackgroundJobResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("CHAT_JOBS", "id is required")
+		return nil, apierror.BadRequest("CHAT_JOBS", "id is required")
 	}
 	source := strings.TrimSpace(req.GetSource())
 
 	switch source {
 	case "session_run":
 		if s == nil || s.orch.chJobs.SessionRuns == nil {
-			return nil, kerrors.NotFound("CHAT_JOBS", "session run service not available")
+			return nil, apierror.NotFound("CHAT_JOBS", "session run service not available")
 		}
 		run, err := s.orch.chJobs.SessionRuns.Get(ctx, id)
 		if err != nil {
-			return nil, kerrors.NotFound("CHAT_JOBS", fmt.Sprintf("session run %s not found", id))
+			return nil, apierror.NotFound("CHAT_JOBS", "session run %s not found", id)
 		}
 		// Only allow cancelling active runs
 		if run.FinishedAt != "" {
 			return &chatv1.CancelChatBackgroundJobResponse{Cancelled: false}, nil
 		}
 		if err := s.orch.chJobs.SessionRuns.Fail(ctx, id, "cancelled by user"); err != nil {
-			return nil, kerrors.New(http.StatusInternalServerError, "CHAT_JOBS", fmt.Sprintf("cancel session run failed: %v", err))
+			return nil, apierror.Internal("CHAT_JOBS", "cancel session run failed: %v", err)
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 
 	case "channel":
 		if s == nil || s.orch.chJobs.TurnJobs == nil {
-			return nil, kerrors.NotFound("CHAT_JOBS", "turn job service not available")
+			return nil, apierror.NotFound("CHAT_JOBS", "turn job service not available")
 		}
 		if err := s.orch.chJobs.TurnJobs.Cancel(ctx, id); err != nil {
-			return nil, kerrors.New(http.StatusInternalServerError, "CHAT_JOBS", fmt.Sprintf("cancel turn job failed: %v", err))
+			return nil, apierror.Internal("CHAT_JOBS", "cancel turn job failed: %v", err)
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 
 	default:
-		return nil, kerrors.BadRequest("CHAT_JOBS", fmt.Sprintf("unsupported source: %s (expected 'session_run' or 'channel')", source))
+		return nil, apierror.BadRequest("CHAT_JOBS", "unsupported source: %s (expected 'session_run' or 'channel')", source)
 	}
 }

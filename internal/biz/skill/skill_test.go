@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	authpkg "aranea-agents/pkg/auth"
 )
@@ -441,12 +442,12 @@ func TestToggleEnabled_EmbedCacheInvalidation(t *testing.T) {
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
 	u := NewUsecase(r, emb)
-	u.embedCache = map[string][]float32{"test": {0.1, 0.2}}
+	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	_, err := u.ToggleEnabled(adminCtx(), "s1", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if u.embedCache != nil {
+	if len(u.embedCache) != 0 {
 		t.Error("expected embed cache to be invalidated")
 	}
 }
@@ -474,12 +475,12 @@ func TestDuplicate_EmbedCacheInvalidation(t *testing.T) {
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
 	u := NewUsecase(r, emb)
-	u.embedCache = map[string][]float32{"test": {0.1, 0.2}}
+	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	_, err := u.Duplicate(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if u.embedCache != nil {
+	if len(u.embedCache) != 0 {
 		t.Error("expected embed cache to be invalidated")
 	}
 }
@@ -507,12 +508,12 @@ func TestDelete_EmbedCacheInvalidation(t *testing.T) {
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
 	u := NewUsecase(r, emb)
-	u.embedCache = map[string][]float32{"test": {0.1, 0.2}}
+	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	err := u.Delete(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if u.embedCache != nil {
+	if len(u.embedCache) != 0 {
 		t.Error("expected embed cache to be invalidated")
 	}
 }
@@ -571,7 +572,7 @@ func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
 	u := NewUsecase(r, emb)
-	u.embedCache = map[string][]float32{"test": {0.1, 0.2}}
+	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	s, err := u.Publish(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -579,7 +580,7 @@ func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 	if s.Status != "published" {
 		t.Errorf("expected status published, got %s", s.Status)
 	}
-	if u.embedCache != nil {
+	if len(u.embedCache) != 0 {
 		t.Error("expected embed cache to be invalidated")
 	}
 }

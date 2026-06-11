@@ -9,9 +9,9 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/organization"
+	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -235,12 +235,12 @@ func (r *organizationRepo) ensureNodeCanDelete(ctx context.Context, id string) e
 	node, err := r.data.RW().Read(ctx).Organization.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return kerrors.NotFound("ORGANIZATION", "node not found")
+			return apierror.NotFound("ORGANIZATION", "node not found")
 		}
 		return err
 	}
 	if node.IsSystem {
-		return kerrors.BadRequest("ORGANIZATION", "system preset category cannot be deleted")
+		return apierror.BadRequest("ORGANIZATION", "system preset category cannot be deleted")
 	}
 	n, err := r.data.RW().Read(ctx).Organization.Query().
 		Where(
@@ -252,7 +252,7 @@ func (r *organizationRepo) ensureNodeCanDelete(ctx context.Context, id string) e
 		return err
 	}
 	if n > 0 {
-		return kerrors.BadRequest("ORGANIZATION", fmt.Sprintf("node has %d child nodes", n))
+		return apierror.BadRequest("ORGANIZATION", fmt.Sprintf("node has %d child nodes", n))
 	}
 	nAgents, err := r.data.RW().Read(ctx).Agent.Query().
 		Where(
@@ -264,7 +264,7 @@ func (r *organizationRepo) ensureNodeCanDelete(ctx context.Context, id string) e
 		return err
 	}
 	if nAgents > 0 {
-		return kerrors.BadRequest("ORGANIZATION", fmt.Sprintf("node is used by %d agents", nAgents))
+		return apierror.BadRequest("ORGANIZATION", fmt.Sprintf("node is used by %d agents", nAgents))
 	}
 	return nil
 }
@@ -276,7 +276,7 @@ func (r *organizationRepo) ReorderOrgNodes(ctx context.Context, ids []string) er
 			SetSortOrder((i + 1) * 10).
 			Save(ctx)
 		if err != nil {
-			return kerrors.InternalServer("ORGANIZATION", fmt.Sprintf("organization repo reorder [%s]: %s", id, err.Error()))
+			return apierror.Wrap(err, apierror.CodeInternal, "ORGANIZATION")
 		}
 	}
 	return nil

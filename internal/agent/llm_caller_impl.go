@@ -65,6 +65,16 @@ var _ biz.LLMCaller = (*OpenAICompatLLMCaller)(nil)
 
 // ─── DynamicLLMCaller ────────────────────────────────────────────────────────
 
+// LLMCredentialResolver resolves provider credentials for LLM calls.
+type LLMCredentialResolver interface {
+	List(ctx context.Context) ([]biz.ProviderModel, error)
+}
+
+// LLMRefineConfigResolver resolves the default refine LLM config.
+type LLMRefineConfigResolver interface {
+	GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error)
+}
+
 // DynamicLLMCaller implements biz.LLMCaller by resolving BaseURL + APIKey at
 // call time, given the (Provider, Model) decision made by PromptRefiner.
 // Credentials come from SystemSetting.DefaultRefineLLM or the model catalog.
@@ -74,15 +84,15 @@ var _ biz.LLMCaller = (*OpenAICompatLLMCaller)(nil)
 // Now the caller honors the request's (Provider, Model) and only resolves
 // credentials.
 type DynamicLLMCaller struct {
-	sys     *biz.SystemSettingUsecase
-	catalog *biz.LlmProviderModelUsecase
+	catalog LLMCredentialResolver
+	sys     LLMRefineConfigResolver
 	hc      *http.Client
 }
 
 // NewDynamicLLMCaller wires a DynamicLLMCaller for use in Wire.
 // The RoundTrip provides the centralized HTTP client; timeout is configured
 // by the Wire provider rather than created ad-hoc here.
-func NewDynamicLLMCaller(sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) *DynamicLLMCaller {
+func NewDynamicLLMCaller(sys LLMRefineConfigResolver, catalog LLMCredentialResolver, rt *provider.RoundTrip) *DynamicLLMCaller {
 	return &DynamicLLMCaller{
 		sys:     sys,
 		catalog: catalog,
@@ -147,6 +157,21 @@ func (c *DynamicLLMCaller) resolveCredentials(ctx context.Context, provider, mod
 	if c.sys != nil {
 		rl, err := c.sys.GetRefineLLM(ctx)
 		if err == nil && strings.TrimSpace(rl.BaseURL) != "" {
+			// Strategy 2: SystemSetting Provider matches the requested provider.
+			if strings.TrimSpace(rl.Provider) == provider {
+				cfg := ProviderAPIConfig{
+					ProviderType: provider,
+					APIBaseURL:   rl.BaseURL,
+					APIKey:       rl.APIKey,
+				}
+				return cfg, nil
+			}
+			// Strategy 3: Provider mismatch — use as last-resort fallback,
+			// but warn because the BaseURL may be wrong for this provider.
+			if provider != "" && strings.TrimSpace(rl.Provider) != "" && strings.TrimSpace(rl.Provider) != provider {
+				// Log a warning but still allow the fallback for backward compatibility.
+				// The caller should check if the resulting config makes sense.
+			}
 			cfg := ProviderAPIConfig{
 				ProviderType: provider,
 				APIBaseURL:   rl.BaseURL,

@@ -9,8 +9,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/tool/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -149,7 +149,7 @@ func (s *ToolService) GetTool(ctx context.Context, req *v1.GetToolRequest) (*v1.
 	t, err := s.uc.GetTool(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "tool not found")
+			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 	t, err := s.uc.Update(ctx, req.GetId(), in)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "tool not found")
+			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
@@ -219,7 +219,7 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 	err := s.uc.Delete(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "tool not found")
+			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
@@ -228,10 +228,10 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 }
 
 func (s *ToolService) ToggleToolEnabled(ctx context.Context, req *v1.ToggleToolEnabledRequest) (*v1.Tool, error) {
-	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled(), req.GetConfirmKey())
+	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled(), req.GetConfirmIntent())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "tool not found")
+			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
@@ -371,7 +371,7 @@ func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetTo
 	p, err := s.uc.GetToolInvocationParams(ctx, req.GetInvocationId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "invocation params not found")
+			return nil, apierror.NotFound("TOOL", "invocation params not found")
 		}
 		return nil, err
 	}
@@ -389,7 +389,7 @@ func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolCo
 	t, err := s.uc.UpdateToolConfig(ctx, req.GetId(), req.GetConfigJson())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "tool not found")
+			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v
 	res, err := s.uc.TestTool(ctx, req.GetId(), req.GetArgumentsJson(), int(req.GetTimeoutSec()))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TOOL", "tool not found")
+			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}

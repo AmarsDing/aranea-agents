@@ -1,9 +1,11 @@
 package telegram
 
 import (
+	"crypto/hmac"
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // InboundMessage is a normalized Telegram Bot API update.
@@ -37,17 +39,17 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 		return InboundMessage{}, err
 	}
 	if top.Message == nil {
-		return InboundMessage{}, fmt.Errorf("telegram: no message")
+		return InboundMessage{}, errNoMessage
 	}
 	if top.Message.From != nil && top.Message.From.IsBot {
-		return InboundMessage{}, fmt.Errorf("telegram: bot message ignored")
+		return InboundMessage{}, errBotMessageIgnored
 	}
 	text := strings.TrimSpace(top.Message.Text)
 	if text == "" {
-		return InboundMessage{}, fmt.Errorf("telegram: empty text")
+		return InboundMessage{}, errEmptyText
 	}
 	if top.Message.Chat == nil || top.Message.Chat.ID == 0 {
-		return InboundMessage{}, fmt.Errorf("telegram: missing chat id")
+		return InboundMessage{}, errMissingChatID
 	}
 	username := ""
 	if top.Message.From != nil {
@@ -66,10 +68,10 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 func VerifySecretToken(headerValue, configured string) error {
 	configured = strings.TrimSpace(configured)
 	if configured == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
-	if strings.TrimSpace(headerValue) != configured {
-		return fmt.Errorf("telegram: secret token mismatch")
+	if !hmac.Equal([]byte(strings.TrimSpace(headerValue)), []byte(configured)) {
+		return errSecretTokenMismatch
 	}
 	return nil
 }

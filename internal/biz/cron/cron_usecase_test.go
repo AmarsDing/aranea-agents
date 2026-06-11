@@ -2,9 +2,10 @@ package cron
 
 import (
 	"context"
+	"errors"
 	"testing"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type mockRepo struct {
@@ -97,8 +98,8 @@ func TestUsecase_GetTask(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 		})
@@ -190,8 +191,8 @@ func TestUsecase_CreateTask(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 			if tt.check != nil {
@@ -236,7 +237,7 @@ func TestUsecase_UpdateTask(t *testing.T) {
 			"task-1",
 			TaskPatch{},
 			func(_ context.Context, _ string) (Task, error) {
-				return Task{}, errors.NotFound("CRON", "not found")
+				return Task{}, apierror.NotFound("CRON", "not found")
 			},
 			true, "CRON", nil,
 		},
@@ -434,8 +435,8 @@ func TestUsecase_UpdateTask(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 			if tt.check != nil {
@@ -465,8 +466,8 @@ func TestUsecase_DeleteTask(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 		})
@@ -526,7 +527,7 @@ func TestUsecase_ResetTaskFailures(t *testing.T) {
 			"get task error",
 			"task-1",
 			func(_ context.Context, _ string) (Task, error) {
-				return Task{}, errors.NotFound("CRON", "not found")
+				return Task{}, apierror.NotFound("CRON", "not found")
 			},
 			true, "CRON", nil,
 		},
@@ -591,8 +592,8 @@ func TestUsecase_ResetTaskFailures(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 			if tt.check != nil {

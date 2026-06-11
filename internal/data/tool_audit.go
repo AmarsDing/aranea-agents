@@ -2,21 +2,21 @@ package data
 
 import (
 	"context"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
 func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInvocationAuditWrite) error {
 	client := r.data.RW().Write(ctx)
 	if client == nil {
-		return kerrors.InternalServer("TOOL", "ent client unavailable")
+		return apierror.Internal("TOOL", "ent client unavailable")
 	}
 	toolKey := strings.TrimSpace(in.ToolKey)
 	if toolKey == "" {
-		return nil
+		return apierror.BadRequest("TOOL", "tool_key is required for audit record")
 	}
 	now := nowRFC3339()
 	id := uniqueToolID("taud")
@@ -54,7 +54,7 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAuditQuery) (biz.ToolAuditResult, error) {
 	client := r.data.RW().Read(ctx)
 	if client == nil {
-		return biz.ToolAuditResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return biz.ToolAuditResult{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	where := []string{"1 = 1"}
 	args := []any{}
@@ -121,7 +121,7 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 func (r *toolRepo) PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error) {
 	client := r.data.RW().Write(ctx)
 	if client == nil {
-		return 0, kerrors.InternalServer("TOOL", "ent client unavailable")
+		return 0, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	cutoffRFC3339 = strings.TrimSpace(cutoffRFC3339)
 	if cutoffRFC3339 == "" {

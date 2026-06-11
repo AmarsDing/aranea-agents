@@ -5,16 +5,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
-// Domain errors — the Service layer maps these to kerrors.
+// Domain errors — the Service layer maps these to apierror.
 var (
 	// ErrIDRequired is returned when a required artifact ID is empty.
-	ErrIDRequired = kerrors.BadRequest("ARTIFACT", "id is required")
+	ErrIDRequired = apierror.BadRequest("ARTIFACT", "id is required")
 )
 
 // Artifact represents a stored binary artifact associated with a session.
@@ -165,7 +165,7 @@ func (uc *Usecase) DeleteVersion(ctx context.Context, id string, version int) er
 		return ErrIDRequired
 	}
 	if version <= 0 {
-		return kerrors.BadRequest("ARTIFACT", "version must be > 0")
+		return apierror.BadRequest("ARTIFACT", "version must be > 0")
 	}
 	meta, _, err := uc.repo.Load(ctx, id, 0)
 	if err != nil {

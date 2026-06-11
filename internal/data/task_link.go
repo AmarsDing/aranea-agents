@@ -7,8 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/graphtasklink"
-
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (r *taskRepo) SaveLink(ctx context.Context, link *biz.TaskLink) error {
@@ -95,7 +94,7 @@ var _ biz.TaskLinkRepo = (*taskRepo)(nil)
 
 func (r *taskRepo) SaveLinkGuard(ctx context.Context, link *biz.TaskLink) error {
 	if link == nil {
-		return errors.BadRequest("TASK", "link required")
+		return apierror.BadRequest("TASK", "link required")
 	}
 	return r.SaveLink(ctx, link)
 }

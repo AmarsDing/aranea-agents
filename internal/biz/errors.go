@@ -9,10 +9,11 @@ var (
 	ErrQuotaNotFound         = shared.ErrQuotaNotFound
 	ErrMessageDuplicate      = shared.ErrMessageDuplicate
 	ErrAdminNotFound         = shared.ErrAdminNotFound
-	ErrNotFound            = shared.ErrNotFound
-	ErrGraphSaveRun        = shared.ErrGraphSaveRun
-	ErrGraphInvalidStatus  = shared.ErrGraphInvalidStatus
-	ErrGraphResume         = shared.ErrGraphResume
+	ErrNotFound              = shared.ErrNotFound
+	ErrGraphSaveRun          = shared.ErrGraphSaveRun
+	ErrGraphInvalidStatus    = shared.ErrGraphInvalidStatus
+	ErrGraphResume           = shared.ErrGraphResume
 	ErrGraphTemplateNotFound = shared.ErrGraphTemplateNotFound
 	ErrQuotaUnsupportedScope = shared.ErrQuotaUnsupportedScope
+	ErrAgentKeyConflict      = shared.ErrAgentKeyConflict
 )

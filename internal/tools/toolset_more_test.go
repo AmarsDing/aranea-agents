@@ -77,7 +77,7 @@ func TestAssemble_awaitUserReplyEnabled(t *testing.T) {
 
 func TestAssemble_memoryEnabled(t *testing.T) {
 	out, err := Assemble(context.Background(), AssemblyConfig{
-		MemoryEnabled: true,
+		Session: SessionConfig{MemoryEnabled: true},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -100,7 +100,7 @@ func TestAssemble_memoryEnabled(t *testing.T) {
 func TestAssemble_customTools(t *testing.T) {
 	custom := &mockToolForAlias{decl: &Declaration{Name: "my_custom_tool"}}
 	out, err := Assemble(context.Background(), AssemblyConfig{
-		CustomTools: []Tool{custom},
+		Session: SessionConfig{CustomTools: []Tool{custom}},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

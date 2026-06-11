@@ -4,9 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // --- stubs for TeamUsecase Delete tests ---
@@ -92,12 +91,15 @@ func TestTeamUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when deleting system_builtin team")
 	}
-	e := kerrors.FromError(err)
-	if e.Code != 403 {
-		t.Fatalf("expected code 403, got %d", e.Code)
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
 	}
-	if e.Reason != "TEAM" {
-		t.Fatalf("expected reason TEAM, got %s", e.Reason)
+	if e.Code != apierror.CodeForbidden {
+		t.Fatalf("expected code %s, got %s", apierror.CodeForbidden, e.Code)
+	}
+	if e.Domain != "TEAM" {
+		t.Fatalf("expected domain TEAM, got %s", e.Domain)
 	}
 	if writer.deletedID != "" {
 		t.Fatal("expected team not to be deleted")

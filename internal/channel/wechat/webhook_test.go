@@ -6,6 +6,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func signWeChat(token, timestamp, nonce string) string {
@@ -17,7 +20,7 @@ func signWeChat(token, timestamp, nonce string) string {
 
 func TestVerifyURL(t *testing.T) {
 	token := "wechat-token"
-	ts := "1710000000"
+	ts := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := "nonce1"
 	echo := "echostr123"
 	sig := signWeChat(token, ts, nonce)
@@ -33,7 +36,7 @@ func TestVerifyURL(t *testing.T) {
 
 func TestVerifyPOST(t *testing.T) {
 	token := "wechat-token"
-	ts := "1710000000"
+	ts := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := "nonce1"
 	sig := signWeChat(token, ts, nonce)
 	if err := VerifyPOST(token, ts, nonce, sig); err != nil {
@@ -44,9 +47,27 @@ func TestVerifyPOST(t *testing.T) {
 	}
 }
 
-func TestVerifySkipsEmptyToken(t *testing.T) {
-	if _, err := VerifyURL("", "1", "n", "echo", "anything"); err != nil {
-		t.Fatalf("empty token should skip verify: %v", err)
+func TestVerifyEmptyTokenRejects(t *testing.T) {
+	if _, err := VerifyURL("", "1", "n", "echo", "anything"); err == nil {
+		t.Fatal("empty token should reject with ErrCredentialsNotConfigured")
+	} else if err != port.ErrCredentialsNotConfigured {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got: %v", err)
+	}
+	if err := VerifyPOST("", "1", "n", "anything"); err == nil {
+		t.Fatal("empty token should reject with ErrCredentialsNotConfigured")
+	} else if err != port.ErrCredentialsNotConfigured {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got: %v", err)
+	}
+}
+
+func TestVerifyExpiredTimestamp(t *testing.T) {
+	token := "wechat-token"
+	// Timestamp 10 minutes in the past
+	ts := fmt.Sprintf("%d", time.Now().Unix()-600)
+	nonce := "nonce1"
+	sig := signWeChat(token, ts, nonce)
+	if err := VerifyPOST(token, ts, nonce, sig); err == nil {
+		t.Fatal("expired timestamp should be rejected")
 	}
 }
 

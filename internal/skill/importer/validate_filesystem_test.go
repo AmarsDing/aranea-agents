@@ -11,8 +11,8 @@ func TestDirectorySlugMismatch(t *testing.T) {
 	}
 }
 
-func TestCanonicalSlug(t *testing.T) {
-	if got := CanonicalSlug("Daily Report"); got != "daily-report" {
+func TestSlugifyOrRandom(t *testing.T) {
+	if got := SlugifyOrRandom("Daily Report"); got != "daily-report" {
 		t.Fatalf("got %q", got)
 	}
 }

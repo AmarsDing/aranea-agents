@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -97,6 +98,8 @@ type Compressor struct {
 	compressStart   time.Time
 	compressMu      sync.Mutex
 	compressTimeout time.Duration
+
+	gcCancel chan struct{}
 }
 
 var _ biz.NativeTurnCompressor  = (*Compressor)(nil)
@@ -114,7 +117,7 @@ func containsMemoryCompactMarker(md string) bool {
 }
 
 func NewCompressor(cfg CompressorConfig) *Compressor {
-	return &Compressor{
+	c := &Compressor{
 		sessionReader:   cfg.ReadDeps,
 		messageReader:   cfg.ReadDeps,
 		summaryReader:   cfg.ReadDeps,
@@ -131,7 +134,10 @@ func NewCompressor(cfg CompressorConfig) *Compressor {
 		l1Reader:        cfg.L1Reader,
 		lg:              cfg.Logger,
 		compressTimeout: defaultCompressTimeout,
+		gcCancel:        make(chan struct{}),
 	}
+	safego.Go(appctx.Ctx(), "compressor-gc", c.gcLoop)
+	return c
 }
 
 func (c *Compressor) AfterNativeTurn(ctx context.Context, sessionID string, ag biz.Agent) {
@@ -384,6 +390,57 @@ func (c *Compressor) getAdaptiveBufferRatio(sessionID string, ag biz.Agent, used
 	}
 	mode := DetectConversationMode(toolCallCount, turnCount)
 	return state.UpdateAdaptiveBuffer(usedTokens, contextWindow, mode)
+}
+
+// RemoveSessionState cleans up per-session in-memory state when a session ends.
+// This prevents unbounded growth of adaptiveBuffer entries over long-running sessions.
+func (c *Compressor) RemoveSessionState(sessionID string) {
+	if c == nil {
+		return
+	}
+	c.adaptiveBuffer.Delete(sessionID)
+}
+
+// Close stops the background GC goroutine.
+func (c *Compressor) Close() {
+	if c == nil {
+		return
+	}
+	select {
+	case <-c.gcCancel:
+	default:
+		close(c.gcCancel)
+	}
+}
+
+const (
+	adaptiveBufferGCInterval = 10 * time.Minute
+	adaptiveBufferMaxAge     = 30 * time.Minute
+)
+
+func (c *Compressor) gcLoop() {
+	ticker := time.NewTicker(adaptiveBufferGCInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.gcCancel:
+			return
+		case <-ticker.C:
+			c.gcAdaptiveBuffer()
+		}
+	}
+}
+
+func (c *Compressor) gcAdaptiveBuffer() {
+	now := time.Now()
+	c.adaptiveBuffer.Range(func(key, value any) bool {
+		if state, ok := value.(*AdaptiveBufferState); ok {
+			if now.Sub(state.LastAccessed()) > adaptiveBufferMaxAge {
+				c.adaptiveBuffer.Delete(key)
+			}
+		}
+		return true
+	})
 }
 
 // loadCompressBody loads and splits messages for compression.

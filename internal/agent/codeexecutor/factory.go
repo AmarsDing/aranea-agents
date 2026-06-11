@@ -114,6 +114,8 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 	f.warnLocalInProd(ctx, typ)
 
 	switch typ {
+	case TypeDisabled:
+		return nil
 	case TypeDocker:
 		lg := f.lg
 		if lg == nil {
@@ -146,6 +148,12 @@ func (f *Factory) logger() loggateway.Logger {
 
 func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) string {
 	if typ == TypeDocker && !DockerAvailable() {
+		if isProductionEnv() && !f.env.AllowLocalInProd {
+			f.logger().Error("生产环境 Docker 不可用且未允许 local 执行器，拒绝代码执行",
+				loggateway.StepID("codeexec.docker_unavailable_prod"),
+				loggateway.Str("requested", TypeDocker))
+			return TypeDisabled
+		}
 		f.logger().Warn("Docker 不可用，回退到 local 执行器",
 			loggateway.StepID("codeexec.docker_fallback"),
 			loggateway.Str("requested", TypeDocker))

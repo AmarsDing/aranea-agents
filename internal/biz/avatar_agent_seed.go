@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	"aranea-agents/internal/biz/agenticons"
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 )
 
 func EnsureAgentAvatars(ctx context.Context, repo AvatarRepo) error {
@@ -18,7 +17,7 @@ func EnsureAgentAvatars(ctx context.Context, repo AvatarRepo) error {
 	}
 	for _, spec := range AgentAvatarSpecs() {
 		if err := ensureOneAgentAvatar(ctx, repo, spec); err != nil {
-			return kerrors.InternalServer("AVATAR", fmt.Sprintf("agent avatar %s: %s", spec.AssetKey, err.Error()))
+			return apierror.Internal("AVATAR", "agent avatar %s: %s", spec.AssetKey, err.Error())
 		}
 	}
 	return nil

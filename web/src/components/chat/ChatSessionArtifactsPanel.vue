@@ -4,13 +4,13 @@
       dense
       unelevated
       outline
-      color="primary"
+      color="accent"
       class="chat-toolbar-btn chat-toolbar-btn--outline"
       :aria-label="triggerLabel"
       @click="dialogOpen = true"
     >
       <q-icon name="inventory_2" size="20px" />
-      <q-badge v-if="items.length" color="primary" floating transparent>{{ items.length }}</q-badge>
+      <q-badge v-if="items.length" color="accent" floating transparent>{{ items.length }}</q-badge>
       <q-tooltip>{{ triggerLabel }}</q-tooltip>
     </q-btn>
 

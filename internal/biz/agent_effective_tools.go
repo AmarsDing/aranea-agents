@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // EffectiveAgentTool is one row in the agent effective tools matrix (legacy JSON shape).
@@ -39,6 +38,10 @@ type AgentToolPolicyInput struct {
 	Allow        []string
 	Deny         []string
 }
+
+// searchToolsAllLimit is the page size used when fetching all tools for effective-tools computation.
+// Must be large enough to cover the full tool catalog in a single page.
+const searchToolsAllLimit = 5000
 
 func jsonStringList(raw string, lg loggateway.Logger) []string {
 	list, err := JSONStringList(raw)
@@ -194,7 +197,9 @@ var toolProfiles = map[string][]string{
 func canonicalToolProfile(profile string) string {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
 	case "":
-		return ""
+		// Empty profile falls back to "coding" (the default in DefaultAgentRuntimeSettings).
+		// Treating empty as "full" would bypass profile restrictions entirely.
+		return "coding"
 	case "chat_only", "minimal":
 		return "chat_only"
 	case "read_only", "safe":
@@ -267,7 +272,7 @@ func computeEffectiveToolState(settings AgentRuntimeSettings, tool Tool, prof st
 	toolOpenByDefault := tool.Enabled
 	policyNamesKey := allowed[tool.Key]
 	baseEnabled := settings.ToolsEnabled && (toolOpenByDefault || policyNamesKey)
-	if baseEnabled && (prof == "" || prof == "full" || allowed[tool.Key]) {
+	if baseEnabled && (prof == "full" || allowed[tool.Key]) {
 		state = "allowed"
 		reason = "profile:" + settings.ToolsProfile
 	}
@@ -367,7 +372,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg 
 func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (AgentEffectiveTools, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return AgentEffectiveTools{}, kerrors.BadRequest("AGENT", "agent id is required")
+		return AgentEffectiveTools{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
 	if _, err := u.repo.GetAgentByID(ctx, agentID); err != nil {
 		return AgentEffectiveTools{}, err
@@ -376,7 +381,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: 1000, Offset: 0})
+	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
@@ -411,7 +416,7 @@ func (u *AgentUsecase) runtimeSettingsForEffective(ctx context.Context, agentID 
 func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string, in AgentToolPolicyInput) (AgentEffectiveTools, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return AgentEffectiveTools{}, kerrors.BadRequest("AGENT", "agent id is required")
+		return AgentEffectiveTools{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
 	if _, err := u.repo.GetAgentByID(ctx, agentID); err != nil {
 		return AgentEffectiveTools{}, err
@@ -431,7 +436,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	if _, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: 1000, Offset: 0})
+	all, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}

@@ -9,8 +9,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/avatar"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type mockAvatarRepo struct {
@@ -172,9 +171,12 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for empty data")
 		}
-		ke := kerrors.FromError(err)
-		if ke.Reason != "AVATAR" {
-			t.Fatalf("reason=%q, want AVATAR", ke.Reason)
+		ae, ok := apierror.From(err)
+		if !ok {
+			t.Fatalf("expected apierror, got %T", err)
+		}
+		if ae.Domain != "AVATAR" {
+			t.Fatalf("domain=%q, want AVATAR", ae.Domain)
 		}
 	})
 
@@ -185,9 +187,12 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for oversized upload")
 		}
-		ke := kerrors.FromError(err)
-		if ke.Reason != "AVATAR" {
-			t.Fatalf("reason=%q, want AVATAR", ke.Reason)
+		ae, ok := apierror.From(err)
+		if !ok {
+			t.Fatalf("expected apierror, got %T", err)
+		}
+		if ae.Domain != "AVATAR" {
+			t.Fatalf("domain=%q, want AVATAR", ae.Domain)
 		}
 	})
 
@@ -198,9 +203,12 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for unsupported type")
 		}
-		ke := kerrors.FromError(err)
-		if ke.Reason != "AVATAR" {
-			t.Fatalf("reason=%q, want AVATAR", ke.Reason)
+		ae, ok := apierror.From(err)
+		if !ok {
+			t.Fatalf("expected apierror, got %T", err)
+		}
+		if ae.Domain != "AVATAR" {
+			t.Fatalf("domain=%q, want AVATAR", ae.Domain)
 		}
 	})
 
@@ -304,9 +312,12 @@ func TestUsecase_DeleteAvatarAsset(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for empty id")
 		}
-		ke := kerrors.FromError(err)
-		if ke.Reason != "AVATAR" {
-			t.Fatalf("reason=%q, want AVATAR", ke.Reason)
+		ae, ok := apierror.From(err)
+		if !ok {
+			t.Fatalf("expected apierror, got %T", err)
+		}
+		if ae.Domain != "AVATAR" {
+			t.Fatalf("domain=%q, want AVATAR", ae.Domain)
 		}
 	})
 

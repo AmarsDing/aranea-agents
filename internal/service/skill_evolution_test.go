@@ -7,9 +7,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill_evolution/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type stubProposalRepo struct {
@@ -29,7 +28,7 @@ func (s *stubProposalRepo) Create(_ context.Context, p biz.SkillProposal) (biz.S
 func (s *stubProposalRepo) GetByID(_ context.Context, id string) (biz.SkillProposal, error) {
 	p, ok := s.proposals[id]
 	if !ok {
-		return biz.SkillProposal{}, kerrors.NotFound("SKILL_EVO", "not found")
+		return biz.SkillProposal{}, apierror.NotFound("SKILL_EVO", "not found")
 	}
 	return p, nil
 }
@@ -56,7 +55,7 @@ func (s *stubProposalRepo) ListByAgent(_ context.Context, agentID string, status
 func (s *stubProposalRepo) UpdateStatus(_ context.Context, id string, status biz.SkillProposalStatus, operator string) (biz.SkillProposal, error) {
 	p, ok := s.proposals[id]
 	if !ok {
-		return biz.SkillProposal{}, kerrors.NotFound("SKILL_EVO", "not found")
+		return biz.SkillProposal{}, apierror.NotFound("SKILL_EVO", "not found")
 	}
 	p.Status = status
 	if status == biz.SkillProposalStatusApproved {

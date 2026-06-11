@@ -19,7 +19,7 @@
         <q-icon v-else :name="activityIcon" :color="statusIconColor" size="20px" />
         <div class="col ellipsis">
           <div class="text-weight-medium ellipsis">{{ title }}</div>
-          <div v-if="memberLabel" class="text-caption text-primary ellipsis">{{ memberLabel }}</div>
+          <div v-if="memberLabel" class="text-caption text-accent ellipsis">{{ memberLabel }}</div>
           <div v-else-if="summaryText" class="text-caption text-grey ellipsis">{{ summaryText }}</div>
         </div>
         <q-chip v-if="isLongRunning" dense size="sm" color="warning" text-color="white" icon="schedule">
@@ -292,7 +292,7 @@ const statusIconColor = computed(() => {
   if (status.value === 'running' || status.value === 'blocked') return 'warning';
   if (isFailed.value) return 'negative';
   if (status.value === 'cancelled') return 'grey';
-  return 'primary';
+  return 'accent';
 });
 
 const durationLabel = computed(() => formatDurationLabel(props.event.duration_ms));

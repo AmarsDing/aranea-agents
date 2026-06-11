@@ -3,13 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	v1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -65,7 +64,7 @@ func (s *SkillEvolutionSuggestionService) GetSkillEvolutionSuggestion(ctx contex
 		return nil, err
 	}
 	if suggestion == nil {
-		return nil, kerrors.NotFound("SKILL_EVO_SUGGESTION", fmt.Sprintf("suggestion %s not found", req.GetId()))
+		return nil, apierror.NotFound("SKILL_EVO_SUGGESTION", "suggestion %s not found", req.GetId())
 	}
 	return &v1.GetSkillEvolutionSuggestionResponse{
 		Suggestion: toProtoEvolutionSuggestion(*suggestion),
@@ -110,7 +109,7 @@ func (s *SkillEvolutionSuggestionService) RejectSkillEvolutionSuggestion(ctx con
 // pipeline for a skill: trigger detection → draft generation → sandbox verification.
 func (s *SkillEvolutionSuggestionService) TriggerCuratorFlow(ctx context.Context, req *v1.TriggerCuratorFlowRequest) (*v1.TriggerCuratorFlowResponse, error) {
 	if s.curator == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_EVO_SUGGESTION", "curator service not available")
+		return nil, apierror.Unavailable("SKILL_EVO_SUGGESTION", "curator service not available")
 	}
 
 	suggestion, err := s.curator.RunCuratorFlow(ctx, req.GetSkillId())

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -52,11 +53,14 @@ func queryChannelTurnJob(ctx context.Context, db execer, where string, args ...a
 func (r *channelTurnJobRepo) Create(ctx context.Context, job biz.ChannelTurnJob) (string, error) {
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
-		return strings.TrimSpace(job.ID), nil
+		return "", errors.New("channel turn job: repository unavailable")
 	}
 	channelID := strings.TrimSpace(job.ChannelID)
 	idempotency := strings.TrimSpace(job.IdempotencyKey)
-	_, err := db.ExecContext(ctx, `
+	var actualID string
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
+		_, execErr := e.ExecContext(txCtx, `
 INSERT INTO channel_turn_job (
   id, channel_id, session_id, peer_id, peer_key, idempotency_key, status,
   preview_message_id, content_preview, async_target_type, async_target_id,
@@ -64,40 +68,50 @@ INSERT INTO channel_turn_job (
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
   updated_at=excluded.updated_at,
-  status=CASE WHEN channel_turn_job.status IN ('completed','failed','timeout','cancelled','queued','async_queued')
+  status=CASE WHEN channel_turn_job.status IN ('completed','failed','timeout','cancelled','queued','async_queued','running')
     THEN channel_turn_job.status ELSE excluded.status END`,
-		strings.TrimSpace(job.ID),
-		channelID,
-		strings.TrimSpace(job.SessionID),
-		strings.TrimSpace(job.PeerID),
-		strings.TrimSpace(job.PeerKey),
-		idempotency,
-		biz.NormalizeChannelTurnJobStatus(job.Status),
-		strings.TrimSpace(job.PreviewMessageID),
-		strings.TrimSpace(job.ContentPreview),
-		strings.TrimSpace(job.AsyncTargetType),
-		strings.TrimSpace(job.AsyncTargetID),
-		strings.TrimSpace(job.ErrorMessage),
-		strings.TrimSpace(job.StartedAt),
-		strings.TrimSpace(job.FinishedAt),
-		strings.TrimSpace(job.CreatedAt),
-		strings.TrimSpace(job.UpdatedAt),
-	)
+			strings.TrimSpace(job.ID),
+			channelID,
+			strings.TrimSpace(job.SessionID),
+			strings.TrimSpace(job.PeerID),
+			strings.TrimSpace(job.PeerKey),
+			idempotency,
+			biz.NormalizeChannelTurnJobStatus(job.Status),
+			strings.TrimSpace(job.PreviewMessageID),
+			strings.TrimSpace(job.ContentPreview),
+			strings.TrimSpace(job.AsyncTargetType),
+			strings.TrimSpace(job.AsyncTargetID),
+			strings.TrimSpace(job.ErrorMessage),
+			strings.TrimSpace(job.StartedAt),
+			strings.TrimSpace(job.FinishedAt),
+			strings.TrimSpace(job.CreatedAt),
+			strings.TrimSpace(job.UpdatedAt),
+		)
+		if execErr != nil {
+			return execErr
+		}
+		row, queryErr := queryChannelTurnJob(txCtx, e, `WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`,
+			channelID, idempotency)
+		if queryErr != nil {
+			return queryErr
+		}
+		actualID = strings.TrimSpace(row.ID)
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
-	row, err := r.GetByIdempotency(ctx, channelID, idempotency)
-	if err != nil {
-		return strings.TrimSpace(job.ID), err
-	}
-	return strings.TrimSpace(row.ID), nil
+	return actualID, nil
 }
 
 // UpdateStatus uses Raw SQL because it relies on conditional CASE expressions
 // for setting started_at/finished_at based on status, not expressible via Ent's Update API.
 func (r *channelTurnJobRepo) UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
 	db := r.data.RWDB().WriteDB(ctx)
-	if db == nil || strings.TrimSpace(id) == "" {
+	if db == nil {
+		return errors.New("channel turn job: repository unavailable")
+	}
+	if strings.TrimSpace(id) == "" {
 		return nil
 	}
 	now := biz.ChannelTurnJobNow()
@@ -127,7 +141,10 @@ WHERE id=?`,
 // UpdateAsyncTarget uses Raw SQL because it relies on conditional CASE expressions.
 func (r *channelTurnJobRepo) UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error {
 	db := r.data.RWDB().WriteDB(ctx)
-	if db == nil || strings.TrimSpace(id) == "" {
+	if db == nil {
+		return errors.New("channel turn job: repository unavailable")
+	}
+	if strings.TrimSpace(id) == "" {
 		return nil
 	}
 	now := biz.ChannelTurnJobNow()

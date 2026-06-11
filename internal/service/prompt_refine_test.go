@@ -7,9 +7,8 @@ import (
 
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func TestUserIDFromCtx(t *testing.T) {
@@ -127,12 +126,12 @@ func TestRefineRateLimiter_ErrorIsKratosError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	ke := kerrors.FromError(err)
-	if ke == nil {
-		t.Fatalf("expected kratos error, got %T", err)
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
 	}
-	if ke.Code != 429 {
-		t.Errorf("Code = %d, want 429", ke.Code)
+	if ae.Code != apierror.CodeRateLimit {
+		t.Errorf("Code = %v, want RATE_LIMITED", ae.Code)
 	}
 }
 
@@ -146,9 +145,12 @@ func TestRefineRateLimiter_GlobalBurstReasonCode(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for global burst exceeded")
 	}
-	ke := kerrors.FromError(err)
-	if ke.Reason != refineReasonRateLimit {
-		t.Errorf("Reason = %q, want %q", ke.Reason, refineReasonRateLimit)
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
+	}
+	if ae.Domain != refineReasonRateLimit {
+		t.Errorf("Domain = %q, want %q", ae.Domain, refineReasonRateLimit)
 	}
 }
 
@@ -162,8 +164,11 @@ func TestRefineRateLimiter_PerUserReasonCode(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for per-user limit")
 	}
-	ke := kerrors.FromError(err)
-	if ke.Reason != refineReasonRateLimitUser {
-		t.Errorf("Reason = %q, want %q", ke.Reason, refineReasonRateLimitUser)
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
+	}
+	if ae.Domain != refineReasonRateLimitUser {
+		t.Errorf("Domain = %q, want %q", ae.Domain, refineReasonRateLimitUser)
 	}
 }

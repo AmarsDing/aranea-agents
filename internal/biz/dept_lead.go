@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // DeptLeadAgentKeyPrefix is the prefix for department lead agent keys.
@@ -64,7 +63,7 @@ func NewDeptLeadManager(opts DeptLeadManagerOpts) *DeptLeadManager {
 // Called automatically when a new department is created.
 func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode OrganizationNode) (*Agent, error) {
 	if deptNode.Level != "department" {
-		return nil, kerrors.BadRequest("DEPT_LEAD", "can only create lead for department level nodes")
+		return nil, apierror.BadRequest("DEPT_LEAD", "can only create lead for department level nodes")
 	}
 
 	agentKey := fmt.Sprintf("__dept_lead_%s__", deptNode.Key)
@@ -116,7 +115,7 @@ func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode Organizat
 	// Build config_json from settings
 	configJSON, cfgErr := configJSONFromSettings(settings, agent.Files)
 	if cfgErr != nil {
-		return nil, kerrors.InternalServer("DEPT_LEAD", "failed to build dept lead config: "+cfgErr.Error())
+		return nil, apierror.Internal("DEPT_LEAD", "failed to build dept lead config: %s", cfgErr)
 	}
 	agent.ConfigJSON = EmbedAgentKindInConfigJSON(configJSON, AgentKindLLM, nil, m.lg)
 
@@ -169,7 +168,7 @@ func (m *DeptLeadManager) GetDeptLeadForTeam(ctx context.Context, deptID string)
 		return nil, err
 	}
 	if node.DeptLeadAgentID == "" {
-		return nil, kerrors.NotFound("DEPT_LEAD", "department has no lead agent")
+		return nil, apierror.NotFound("DEPT_LEAD", "department has no lead agent")
 	}
 	a, err := m.agentUC.Get(ctx, node.DeptLeadAgentID)
 	if err != nil {
@@ -258,19 +257,19 @@ type BorrowRequestRepo interface {
 // SubmitBorrowRequest creates a new borrow request for cross-department agent usage.
 func (m *DeptLeadManager) SubmitBorrowRequest(ctx context.Context, r BorrowRequest) (BorrowRequest, error) {
 	if r.TeamID == "" {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "team_id is required")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "team_id is required")
 	}
 	if r.AgentID == "" {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "agent_id is required")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "agent_id is required")
 	}
 	if r.FromDeptID == "" {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "from_dept_id is required")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "from_dept_id is required")
 	}
 	if r.ToDeptID == "" {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "to_dept_id is required")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "to_dept_id is required")
 	}
 	if r.FromDeptID == r.ToDeptID {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "from_dept_id and to_dept_id must be different")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "from_dept_id and to_dept_id must be different")
 	}
 	if r.ID == "" {
 		r.ID = newAgentCatalogID()
@@ -289,7 +288,7 @@ func (m *DeptLeadManager) ApproveBorrowRequest(ctx context.Context, id string, r
 		return BorrowRequest{}, err
 	}
 	if r.Status != BorrowRequestPending {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "only pending requests can be approved")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "only pending requests can be approved")
 	}
 	r.Status = BorrowRequestApproved
 	r.ReviewedBy = reviewerAgentID
@@ -310,7 +309,7 @@ func (m *DeptLeadManager) RejectBorrowRequest(ctx context.Context, id string, re
 		return BorrowRequest{}, err
 	}
 	if r.Status != BorrowRequestPending {
-		return BorrowRequest{}, kerrors.BadRequest("BORROW", "only pending requests can be rejected")
+		return BorrowRequest{}, apierror.BadRequest("BORROW", "only pending requests can be rejected")
 	}
 	r.Status = BorrowRequestRejected
 	r.ReviewedBy = reviewerAgentID
@@ -389,9 +388,7 @@ func (m *DeptLeadManager) ValidateBorrowRatio(ctx context.Context, deptID string
 	}
 	// S-09 fix: use float comparison for accurate 50% threshold
 	if float64(crossDept) > float64(total)*maxCrossDeptRatio {
-		return kerrors.BadRequest("BORROW_RATIO", fmt.Sprintf(
-			"cross-department members (%d) exceed 50%% of total members (%d)",
-			crossDept, total))
+		return apierror.BadRequest("BORROW_RATIO", "cross-department members (%d) exceed 50%% of total members (%d)", crossDept, total)
 	}
 	return nil
 }

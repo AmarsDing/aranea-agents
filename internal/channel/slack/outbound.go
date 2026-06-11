@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -27,12 +26,15 @@ func (s *TextSender) ID() string { return "slack" }
 func (s *TextSender) SendText(ctx context.Context, channelID, text string) error {
 	channelID = strings.TrimSpace(channelID)
 	text = strings.TrimSpace(text)
-	if channelID == "" || text == "" {
+	if channelID == "" {
+		return errStreamChannelRequired
+	}
+	if text == "" {
 		return nil
 	}
 	token := strings.TrimSpace(s.BotToken)
 	if token == "" {
-		return fmt.Errorf("slack outbound: bot_token required")
+		return errBotTokenRequired
 	}
 	body, _ := json.Marshal(map[string]any{
 		"channel": channelID,
@@ -66,7 +68,7 @@ func (s *TextSender) SendText(ctx context.Context, channelID, text string) error
 		if msg == "" {
 			msg = strings.TrimSpace(string(raw))
 		}
-		return fmt.Errorf("slack outbound: %s", msg)
+		return slackAPIError("slack outbound", msg)
 	}
 	return nil
 }
@@ -75,7 +77,7 @@ func (s *TextSender) SendText(ctx context.Context, channelID, text string) error
 func AuthTest(ctx context.Context, client *http.Client, botToken string, lg loggateway.Logger) error {
 	botToken = strings.TrimSpace(botToken)
 	if botToken == "" {
-		return fmt.Errorf("slack: bot_token required")
+		return errBotTokenRequired
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
@@ -100,9 +102,9 @@ func AuthTest(ctx context.Context, client *http.Client, botToken string, lg logg
 	}
 	if !out.OK {
 		if out.Error != "" {
-			return fmt.Errorf("slack auth.test: %s", out.Error)
+			return slackAPIError("slack auth.test", out.Error)
 		}
-		return fmt.Errorf("slack auth.test failed")
+		return slackAPIError("slack auth.test", "failed")
 	}
 	return nil
 }

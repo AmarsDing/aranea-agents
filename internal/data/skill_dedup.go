@@ -7,7 +7,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent/platformskill"
-	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
 	"aranea-agents/pkg/loggateway"
 )
@@ -21,7 +20,6 @@ type SkillDedupRepo struct {
 
 var (
 	_ biz.SkillDedupReader = (*SkillDedupRepo)(nil)
-	_ biz.SkillDedupWriter = (*SkillDedupRepo)(nil)
 )
 
 func NewSkillDedupRepo(data *Data, lg loggateway.Logger) *SkillDedupRepo {
@@ -97,22 +95,4 @@ func extractTagNames(tags []biz.SkillTag) []string {
 		}
 	}
 	return names
-}
-
-// DeprecateSkill marks a skill as disabled with the given reason.
-func (r *SkillDedupRepo) DeprecateSkill(ctx context.Context, skillID string, reason string) error {
-	_, err := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(skillID).
-		SetEnabled(false).
-		SetStatus("deprecated").
-		Save(ctx)
-	return err
-}
-
-// TransferInvocations updates skill_invocation records from one skill to another.
-func (r *SkillDedupRepo) TransferInvocations(ctx context.Context, fromSkillID string, toSkillID string) error {
-	_, err := r.data.RW().Write(ctx).SkillInvocation.Update().
-		Where(skillinvocation.SkillIDEQ(fromSkillID)).
-		SetSkillID(toSkillID).
-		Save(ctx)
-	return err
 }

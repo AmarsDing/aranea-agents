@@ -3,7 +3,6 @@ package mattermost
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,11 +27,7 @@ func doPost(ctx context.Context, client *http.Client, token, url string, body []
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("mattermost: status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, mattermostAPIError("mattermost", fmt.Sprintf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw))))
 	}
 	return raw, nil
-}
-
-func marshalJSON(v any) ([]byte, error) {
-	return json.Marshal(v)
 }

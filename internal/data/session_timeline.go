@@ -11,14 +11,13 @@ import (
 	"aranea-agents/internal/data/ent/message"
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (r *sessionRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q biz.TimelineQuery) ([]biz.TimelineEventRef, int, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, 0, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, 0, apierror.BadRequest("SESSION", "session id is required")
 	}
 	unionSQL, args := buildTimelineUnionSQL(sessionID, q.KindFilter)
 	if unionSQL == "" {

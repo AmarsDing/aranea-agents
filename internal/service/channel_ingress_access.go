@@ -15,17 +15,17 @@ func inboundAccessContextFromEvent(ev port.InboundEvent) biz.InboundAccessContex
 	}
 	userIDs := uniqueNonEmptyStrings(
 		ev.PeerID,
-		meta["sender_open_id"],
-		meta["sender_user_id"],
+		meta[port.MetaSenderOpenID],
+		meta[port.MetaSenderUserID],
 		meta["user_id"],
 	)
-	groupID := strings.TrimSpace(meta["chat_id"])
-	isGroup := strings.EqualFold(strings.TrimSpace(meta["chat_type"]), "group") ||
+	groupID := strings.TrimSpace(meta[port.MetaChatID])
+	isGroup := strings.EqualFold(strings.TrimSpace(meta[port.MetaChatType]), "group") ||
 		strings.EqualFold(strings.TrimSpace(meta["conversation_type"]), "group")
 	if isGroup && groupID == "" {
 		groupID = strings.TrimSpace(ev.PeerID)
 	}
-	mentioned := metaBool(meta["mentioned"]) || metaBool(meta["bot_mentioned"])
+	mentioned := metaBool(meta[port.MetaMentioned]) || metaBool(meta["bot_mentioned"])
 	if isGroup && strings.TrimSpace(meta["mentions"]) != "" {
 		mentioned = true
 	}
@@ -51,7 +51,7 @@ func (h *ChannelIngress) rejectInboundAccess(ctx context.Context, chRow biz.Chan
 	if platform == "" {
 		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
-	recipient := strings.TrimSpace(ev.OutboundMeta["recipient"])
+	recipient := strings.TrimSpace(ev.OutboundMeta[port.MetaRecipient])
 	if recipient == "" {
 		recipient = ev.PeerID
 	}

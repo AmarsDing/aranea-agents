@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -51,20 +49,13 @@ type SkillDedupReader interface {
 	ListAllSkillSummaries(ctx context.Context) ([]SkillSummary, error)
 }
 
-// SkillDedupWriter writes dedup results.
-type SkillDedupWriter interface {
-	DeprecateSkill(ctx context.Context, skillID string, reason string) error
-	TransferInvocations(ctx context.Context, fromSkillID string, toSkillID string) error
-}
-
 // ---------------------------------------------------------------------------
 // Usecase
 // ---------------------------------------------------------------------------
 
-// SkillDedupUsecase detects and merges duplicate skills.
+// SkillDedupUsecase detects duplicate skills.
 type SkillDedupUsecase struct {
 	reader SkillDedupReader
-	writer SkillDedupWriter
 	engine *SkillSimilarityEngine
 	lg     loggateway.Logger
 
@@ -75,10 +66,9 @@ type SkillDedupUsecase struct {
 }
 
 // NewSkillDedupUsecase creates a new SkillDedupUsecase.
-func NewSkillDedupUsecase(reader SkillDedupReader, writer SkillDedupWriter, engine *SkillSimilarityEngine, lg loggateway.Logger) *SkillDedupUsecase {
+func NewSkillDedupUsecase(reader SkillDedupReader, engine *SkillSimilarityEngine, lg loggateway.Logger) *SkillDedupUsecase {
 	return &SkillDedupUsecase{
 		reader:   reader,
-		writer:   writer,
 		engine:   engine,
 		lg:       lg,
 		cacheTTL: 10 * time.Minute,
@@ -126,6 +116,11 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	var pairs []pair
 	for i := 0; i < len(candidates); i++ {
 		for j := i + 1; j < len(candidates); j++ {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
 			if err != nil {
 				uc.lg.Warn("skill_dedup: Compare failed",
@@ -243,51 +238,6 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	return groups, nil
 }
 
-// MergeSkills merges source skill into target skill.
-// Source skill is deprecated, invocations are transferred.
-// If deprecation fails after transfer, the transfer is NOT rolled back
-// (invocations remain on target) but an error is returned so the caller
-// knows the source is still active.
-//
-// Deprecated: Use SkillMergeUsecase.Merge instead. The new method provides
-// transactional ApplyMerge with content fusion and Gate validation.
-func (uc *SkillDedupUsecase) MergeSkills(ctx context.Context, sourceID string, targetID string) error {
-	sourceID, err := requireNonEmpty(sourceID, "SKILL_DEDUP", "source_id")
-	if err != nil {
-		return err
-	}
-	targetID, err = requireNonEmpty(targetID, "SKILL_DEDUP", "target_id")
-	if err != nil {
-		return err
-	}
-	if sourceID == targetID {
-		return kerrors.BadRequest("SKILL_DEDUP", "source and target must be different skills")
-	}
-
-	// Transfer invocations from source to target.
-	if tErr := uc.writer.TransferInvocations(ctx, sourceID, targetID); tErr != nil {
-		return tErr
-	}
-
-	// Deprecate the source skill.
-	reason := fmt.Sprintf("merged into skill %s", targetID)
-	if dErr := uc.writer.DeprecateSkill(ctx, sourceID, reason); dErr != nil {
-		uc.lg.Warn("MergeSkills: TransferInvocations succeeded but DeprecateSkill failed; invocations remain on target",
-			loggateway.StepID("skill_dedup.merge"),
-			loggateway.Str("source_id", sourceID),
-			loggateway.Str("target_id", targetID),
-			loggateway.Err(dErr))
-		return dErr
-	}
-
-	uc.lg.Info("skill merged",
-		loggateway.StepID("skill_dedup.merge"),
-		loggateway.Str("source_id", sourceID),
-		loggateway.Str("target_id", targetID),
-	)
-	return nil
-}
-
 // InvalidateDedupCache clears the cached duplicate groups so the next call
 // to DetectDuplicateGroups performs a fresh scan. Call this after skill
 // mutations (create, update, delete, merge) that may change dedup results.
@@ -306,7 +256,7 @@ func jaccardSimilarity(a, b string) float64 {
 	setA := wordSet(a)
 	setB := wordSet(b)
 	if len(setA) == 0 && len(setB) == 0 {
-		return 1.0
+		return 0.0
 	}
 	intersection := 0
 	for w := range setA {

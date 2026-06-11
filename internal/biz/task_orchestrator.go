@@ -23,6 +23,7 @@ type OrchestrationHandle struct {
 	Strategy            OrchestrationStrategy
 	GraphExecutionID    string
 	TeamIDs             []string
+	AgentKeys           []string // Real agent keys from AllocationPlan, used for performance tracking
 	Status              OrchestrationStatus
 	CheckpointID        string
 	SynthesisResultJSON string

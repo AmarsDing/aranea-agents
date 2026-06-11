@@ -55,8 +55,8 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		Text:           parsed.Text,
 		IdempotencyKey: idempotency,
 		OutboundMeta: map[string]string{
-			"recipient":       parsed.SessionWebhook,
-			"session_webhook": parsed.SessionWebhook,
+			port.MetaRecipient:      parsed.SessionWebhook,
+			port.MetaSessionWebhook: parsed.SessionWebhook,
 		},
 	}))
 	return nil

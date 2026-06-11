@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -14,7 +15,7 @@ const (
 	l4CueTentativeThreshold = 0.6
 )
 
-func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent, policy biz.MemoryRuntimePolicy, query string) string {
+func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent, policy biz.MemoryRuntimePolicy, query string, lg loggateway.Logger) string {
 	if admin == nil || !policy.InjectL4 {
 		return ""
 	}
@@ -38,6 +39,9 @@ func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent,
 	}
 
 	rows, _, err := admin.ListEntityRows(ctx, "agent", ag.ID, "", "", "", "active", query, int32(maxPaths+4), 0)
+	if err != nil {
+		lg.Warn("L4 memory query failed", loggateway.StepID("agent.memory_query_fail"), loggateway.Err(err))
+	}
 	if err == nil && len(rows) > 0 {
 		var b strings.Builder
 		b.WriteString("## L4 knowledge graph (session memory)\n")

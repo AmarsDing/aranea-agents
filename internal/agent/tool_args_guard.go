@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -16,13 +17,27 @@ var systemOnlyToolArgKeys = map[string]struct{}{
 	"session_id": {}, "request_id": {}, "user_id": {},
 }
 
-func newToolArgsGuardBeforeHook() callbacks.BeforeToolHook {
+func newToolArgsGuardBeforeHook(lg loggateway.Logger) callbacks.BeforeToolHook {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	logger := lg
 	return callbacks.NewBeforeToolHook(3, func(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 		if args == nil || len(args.Arguments) == 0 {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		var payload map[string]any
-		if json.Unmarshal(args.Arguments, &payload) != nil {
+		if err := json.Unmarshal(args.Arguments, &payload); err != nil {
+			// Non-JSON arguments: log a warning rather than silently
+			// passing them through, since system-only keys could be present
+			// in non-standard formats that bypass the guard.
+			toolName := ""
+			if args != nil {
+				toolName = args.ToolName
+			}
+			logger.Warn("tool args guard: non-JSON arguments, cannot strip system keys",
+				loggateway.StepID("tool.args_guard"),
+				loggateway.Str("tool", toolName))
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		changed := false
@@ -37,6 +52,9 @@ func newToolArgsGuardBeforeHook() callbacks.BeforeToolHook {
 		}
 		b, err := json.Marshal(payload)
 		if err != nil {
+			logger.Warn("tool args guard: failed to re-marshal cleaned args",
+				loggateway.StepID("tool.args_guard"),
+				loggateway.Err(err))
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		args.Arguments = b

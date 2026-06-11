@@ -8,8 +8,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/gateway/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -107,7 +107,7 @@ func (s *GatewayService) ListWebhooks(ctx context.Context, _ *emptypb.Empty) (*v
 
 func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhookRequest) (*v1.Webhook, error) {
 	if req == nil {
-		return nil, kerrors.BadRequest("GATEWAY", "request is required")
+		return nil, apierror.BadRequest("GATEWAY", "request is required")
 	}
 	patch := biz.WebhookUpdatePatch{
 		ID:             req.GetId(),
@@ -124,7 +124,7 @@ func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhoo
 	w, err := s.wh.Update(ctx, patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("GATEWAY", "webhook not found")
+			return nil, apierror.NotFound("GATEWAY", "webhook not found")
 		}
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhoo
 func (s *GatewayService) DeleteWebhook(ctx context.Context, req *v1.DeleteWebhookRequest) (*emptypb.Empty, error) {
 	if err := s.wh.Delete(ctx, req.GetId()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("GATEWAY", "webhook not found")
+			return nil, apierror.NotFound("GATEWAY", "webhook not found")
 		}
 		return nil, err
 	}

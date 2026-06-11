@@ -47,8 +47,8 @@ func CompositeMemoryCue(ctx context.Context, composite biz.MemoryCompositeRecall
 		if line == "" {
 			continue
 		}
-		if policy.InjectL3 && policy.L3MaxPerRecallChars > 0 && len(line) > policy.L3MaxPerRecallChars {
-			line = line[:policy.L3MaxPerRecallChars] + "…"
+		if policy.InjectL3 && policy.L3MaxPerRecallChars > 0 && len([]rune(line)) > policy.L3MaxPerRecallChars {
+			line = string([]rune(line)[:policy.L3MaxPerRecallChars]) + "…"
 		}
 		prefix := strings.ToUpper(strings.TrimSpace(hit.Layer))
 		if prefix == "" {

@@ -6,8 +6,7 @@ import (
 	"math"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/internal/biz/shared"
 )
 
@@ -213,17 +212,17 @@ func TestMapRepoErr(t *testing.T) {
 		wantNil     bool
 		wantReason  string
 		wantMessage string
-		wantCode    int32
-		wantKratos  bool
+		wantCode    apierror.Code
+		wantAPIErr  bool
 	}{
-		{"nil_returns_nil", nil, true, "", "", 0, false},
+		{"nil_returns_nil", nil, true, "", "", "", false},
 		{
 			"usage_scope_required",
 			shared.ErrUsageScopeRequired,
 			false,
 			"USAGE",
 			"scope_type and scope_id are required",
-			400,
+			apierror.CodeBadRequest,
 			true,
 		},
 		{
@@ -232,7 +231,7 @@ func TestMapRepoErr(t *testing.T) {
 			false,
 			"USAGE_ALERT",
 			"budget alert not found",
-			404,
+			apierror.CodeNotFound,
 			true,
 		},
 		{
@@ -241,7 +240,7 @@ func TestMapRepoErr(t *testing.T) {
 			false,
 			"",
 			"something broke",
-			0,
+			"",
 			false,
 		},
 	}
@@ -258,15 +257,15 @@ func TestMapRepoErr(t *testing.T) {
 			if got == nil {
 				t.Fatalf("MapRepoErr(%v) = nil, want non-nil", tt.input)
 			}
-			if se := kerrors.FromError(got); se != nil && tt.wantKratos {
-				if se.Reason != tt.wantReason {
-					t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+			if se, ok := apierror.From(got); ok && tt.wantAPIErr {
+				if se.Domain != tt.wantReason {
+					t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 				}
 				if se.Message != tt.wantMessage {
 					t.Errorf("message = %q, want %q", se.Message, tt.wantMessage)
 				}
 				if se.Code != tt.wantCode {
-					t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					t.Errorf("code = %s, want %s", se.Code, tt.wantCode)
 				}
 			} else if got.Error() != tt.wantMessage {
 				t.Errorf("error message = %q, want %q", got.Error(), tt.wantMessage)
@@ -280,15 +279,15 @@ func TestMapRepoErr(t *testing.T) {
 		if got == nil {
 			t.Fatal("MapRepoErr(wrapped) = nil, want non-nil")
 		}
-		se := kerrors.FromError(got)
-		if se == nil {
-			t.Fatalf("expected kratos error, got %T", got)
+		se, ok := apierror.From(got)
+		if !ok {
+			t.Fatalf("expected apierror, got %T", got)
 		}
-		if se.Reason != "USAGE" {
-			t.Errorf("reason = %q, want %q", se.Reason, "USAGE")
+		if se.Domain != "USAGE" {
+			t.Errorf("domain = %q, want %q", se.Domain, "USAGE")
 		}
-		if se.Code != 400 {
-			t.Errorf("code = %d, want 400", se.Code)
+		if se.Code != apierror.CodeBadRequest {
+			t.Errorf("code = %s, want %s", se.Code, apierror.CodeBadRequest)
 		}
 	})
 }

@@ -4,9 +4,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestParseInboundURLVerification(t *testing.T) {
@@ -44,5 +47,8 @@ func TestVerifyRequest(t *testing.T) {
 	stale := strconv.FormatInt(time.Now().Unix()-600, 10)
 	if err := VerifyRequest(stale, sig, secret, body); err == nil {
 		t.Fatal("expected stale timestamp")
+	}
+	if err := VerifyRequest(ts, sig, "", body); !errors.Is(err, port.ErrCredentialsNotConfigured) {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
 	}
 }

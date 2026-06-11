@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -33,10 +32,10 @@ func NewTaskDAG(nodes []TaskNode) (*TaskDAG, error) {
 	for i := range nodes {
 		id := nodes[i].ID
 		if id == "" {
-			return nil, kerrors.BadRequest("SPIRIT", "task node id is required")
+			return nil, apierror.BadRequest("SPIRIT", "task node id is required")
 		}
 		if _, exists := dag.Nodes[id]; exists {
-			return nil, kerrors.BadRequest("SPIRIT", fmt.Sprintf("duplicate task node id: %s", id))
+			return nil, apierror.BadRequest("SPIRIT", "duplicate task node id: %s", id)
 		}
 		dag.Nodes[id] = &nodes[i]
 	}
@@ -57,7 +56,7 @@ func ParseTaskDAG(jsonStr string, lg loggateway.Logger) (*TaskDAG, error) {
 	var nodes []TaskNode
 	if err := json.Unmarshal([]byte(jsonStr), &nodes); err != nil {
 		lg.Warn("解析 task dag json 失败", loggateway.StepID("spirit.task_dag"), loggateway.Err(err))
-		return nil, kerrors.BadRequest("SPIRIT", "invalid task dag json: "+err.Error())
+		return nil, apierror.BadRequest("SPIRIT", "invalid task dag json: %s", err.Error())
 	}
 	return NewTaskDAG(nodes)
 }
@@ -69,7 +68,7 @@ func (d *TaskDAG) ToJSON() (string, error) {
 	nodes := d.OrderedNodes()
 	b, err := json.Marshal(nodes)
 	if err != nil {
-		return "", kerrors.InternalServer("SPIRIT", "marshal task dag: "+err.Error())
+		return "", apierror.Internal("SPIRIT", "marshal task dag: %s", err.Error())
 	}
 	return string(b), nil
 }
@@ -107,7 +106,7 @@ func (d *TaskDAG) validateDependencies() error {
 	for id, node := range d.Nodes {
 		for _, depID := range node.DependsOn {
 			if _, exists := d.Nodes[depID]; !exists {
-				return kerrors.BadRequest("SPIRIT",
+				return apierror.BadRequest("SPIRIT",
 					fmt.Sprintf("task %s depends on non-existent task %s", id, depID))
 			}
 		}
@@ -132,7 +131,7 @@ func (d *TaskDAG) detectCycles() error {
 		for _, depID := range node.DependsOn {
 			switch colors[depID] {
 			case gray:
-				return kerrors.BadRequest("SPIRIT",
+				return apierror.BadRequest("SPIRIT",
 					fmt.Sprintf("cycle detected: task %s → %s", id, depID))
 			case white:
 				if err := dfs(depID); err != nil {

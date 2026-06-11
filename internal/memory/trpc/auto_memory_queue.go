@@ -48,9 +48,20 @@ type AutoMemoryJobRequest struct {
 }
 
 // AutoMemoryQueue abstracts the job queue consumed by AutoMemoryWorker and sqlite memory service.
+// The contract requires consumers to call AckDone after processing each job so that
+// per-tenant in-flight quotas are released. Failure to call AckDone causes tenant
+// slots to leak, eventually blocking all Normal-priority jobs for that tenant.
 type AutoMemoryQueue interface {
+	// Enqueue adds a job to the queue. Normal-priority jobs are subject to
+	// per-tenant quota; exceeding the quota dead-letters the job.
 	Enqueue(r AutoMemoryJobRequest)
+	// Chan returns the merged output channel consumed by workers.
 	Chan() <-chan AutoMemoryJobRequest
+	// AckDone must be called by the consumer after it finishes processing a
+	// job (whether successfully or not). It decrements the per-tenant in-flight
+	// counter that was reserved at Enqueue time. Calls for non-Normal-priority
+	// jobs are no-ops.
+	AckDone(r AutoMemoryJobRequest)
 }
 
 // MemoryJobQueue is a three-priority memory job queue (MEM-OPT-03).
@@ -235,21 +246,38 @@ func (q *MemoryJobQueue) AckDone(r AutoMemoryJobRequest) {
 }
 
 // drain merges the three priority channels into q.out in priority order.
-// Respects q.done for graceful shutdown (H-03).
+// Respects q.done for graceful shutdown (H-03). Every send to q.out uses
+// a select on q.done so that a full output channel cannot block shutdown.
 func (q *MemoryJobQueue) drain() {
+	defer close(q.out)
 	const lowBatchMax = 4
+	// sendOut writes to q.out while respecting q.done for graceful shutdown.
+	// Returns false if shutdown was signalled.
+	sendOut := func(r AutoMemoryJobRequest) bool {
+		select {
+		case q.out <- r:
+			return true
+		case <-q.done:
+			return false
+		}
+	}
+
 	for {
 		// Always drain high first (non-blocking).
 		select {
 		case r := <-q.high:
-			q.out <- r
+			if !sendOut(r) {
+				return
+			}
 			continue
 		default:
 		}
 		// Then normal (non-blocking).
 		select {
 		case r := <-q.normal:
-			q.out <- r
+			if !sendOut(r) {
+				return
+			}
 			continue
 		default:
 		}
@@ -258,7 +286,9 @@ func (q *MemoryJobQueue) drain() {
 		for drained < lowBatchMax {
 			select {
 			case r := <-q.low:
-				q.out <- r
+				if !sendOut(r) {
+					return
+				}
 				drained++
 			default:
 				goto block
@@ -271,11 +301,17 @@ func (q *MemoryJobQueue) drain() {
 		case <-q.done:
 			return
 		case r := <-q.high:
-			q.out <- r
+			if !sendOut(r) {
+				return
+			}
 		case r := <-q.normal:
-			q.out <- r
+			if !sendOut(r) {
+				return
+			}
 		case r := <-q.low:
-			q.out <- r
+			if !sendOut(r) {
+				return
+			}
 		}
 	}
 }
@@ -363,6 +399,10 @@ func NewAutoMemoryEnqueuer(q AutoMemoryQueue) func(appName, sessionID string, en
 }
 
 // NewFeedbackMemoryEnqueuer adapts a wired queue to biz.FeedbackMemoryEnqueuer (high priority).
+// Feedback jobs are high priority and do not carry appName/userID at enqueue time
+// (the caller only knows sessionID + messageID). The extractFeedback worker resolves
+// these from the session at processing time. TenantID is left empty so that
+// high-priority jobs bypass the per-tenant normal-slot quota.
 func NewFeedbackMemoryEnqueuer(q AutoMemoryQueue) func(sessionID, messageID, rating, comment string, enqueuedAt time.Time) {
 	return func(sessionID, messageID, rating, comment string, enqueuedAt time.Time) {
 		if q == nil {

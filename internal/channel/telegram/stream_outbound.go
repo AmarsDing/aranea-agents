@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -78,11 +77,11 @@ func (s *StreamSender) Update(ctx context.Context, chatID, text string, force bo
 func (s *StreamSender) sendMessage(ctx context.Context, chatID, text string) (int64, error) {
 	token := strings.TrimSpace(s.BotToken)
 	if token == "" {
-		return 0, fmt.Errorf("telegram stream: bot_token required")
+		return 0, errBotTokenRequired
 	}
 	id, err := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("telegram stream: bad chat id")
+		return 0, errBadChatID
 	}
 	body, _ := json.Marshal(map[string]any{"chat_id": id, "text": text})
 	raw, err := s.post(ctx, token, "sendMessage", body)
@@ -101,7 +100,7 @@ func (s *StreamSender) sendMessage(ctx context.Context, chatID, text string) (in
 		if msg == "" {
 			msg = string(raw)
 		}
-		return 0, fmt.Errorf("telegram stream send: %s", msg)
+		return 0, telegramAPIError("telegram stream send", msg)
 	}
 	return out.Result.MessageID, nil
 }
@@ -110,7 +109,7 @@ func (s *StreamSender) editMessage(ctx context.Context, chatID string, messageID
 	token := strings.TrimSpace(s.BotToken)
 	id, err := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64)
 	if err != nil {
-		return err
+		return errBadChatID
 	}
 	body, _ := json.Marshal(map[string]any{
 		"chat_id":    id,
@@ -126,14 +125,14 @@ func (s *StreamSender) editMessage(ctx context.Context, chatID string, messageID
 		Description string `json:"description"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("telegram stream edit: parse response: %w", err)
+		return telegramParseError("telegram stream edit", err)
 	}
 	if !out.OK {
 		desc := strings.ToLower(out.Description)
 		if strings.Contains(desc, "message is not modified") {
 			return nil
 		}
-		return fmt.Errorf("telegram stream edit: %s", out.Description)
+		return telegramAPIError("telegram stream edit", out.Description)
 	}
 	return nil
 }

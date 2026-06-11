@@ -6,8 +6,7 @@ import (
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/testutil"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
@@ -65,7 +64,7 @@ func TestTurnErrorCodeFromErr_kratos(t *testing.T) {
 	if TurnErrorCodeFromErr(err) != TurnErrTurnTimeout {
 		t.Fatalf("expected TURN_TIMEOUT")
 	}
-	generic := kerrors.InternalServer("X", "something else")
+	generic := apierror.Internal("X", "something else")
 	if TurnErrorCodeFromErr(generic) != "" {
 		t.Fatal("expected empty code for unmapped error")
 	}

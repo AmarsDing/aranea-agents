@@ -1,4 +1,4 @@
-import type { SpiritTeamStatus, SpiritTeamMode } from './types';
+import type { SpiritTeamStatus, SpiritTeamMode, TopologyType } from './types';
 import type { SessionStatus } from '../session/types';
 
 /**
@@ -35,17 +35,18 @@ export function spiritModeLabel(mode: SpiritTeamMode | string): string {
   return labels[mode] ?? mode;
 }
 
-/** 7 aggregate display labels for AgentNode status */
+/** 8 aggregate display labels for AgentNode status */
 export type AgentNodeStatusLabel =
   | 'queued'
   | 'active'
   | 'suspended'
+  | 'interrupted'
   | 'done'
   | 'failed'
   | 'skipped'
   | 'cancelled';
 
-/** Maps 17 backend AgentNodeStatus values to 7 display labels */
+/** Maps 17 backend AgentNodeStatus values to 8 display labels */
 export const AGENT_NODE_STATUS_MAP: Record<string, AgentNodeStatusLabel> = {
   // Queued
   idle: 'queued',
@@ -57,11 +58,13 @@ export const AGENT_NODE_STATUS_MAP: Record<string, AgentNodeStatusLabel> = {
   tool_running: 'active',
   transferring: 'active',
   retrying: 'active',
-  // Suspended
+  // Suspended (waiting for resource/dependency)
   waiting_input: 'suspended',
   waiting_review: 'suspended',
   waiting_assign: 'suspended',
   blocked: 'suspended',
+  // Interrupted (requires user intervention to resume)
+  interrupted: 'interrupted',
   // Done
   success: 'done',
   // Failed
@@ -80,10 +83,29 @@ export const STATUS_LABEL_CONFIG: Record<
 > = {
   queued: { text: '排队中', color: 'var(--color-text-tertiary)', icon: 'circle', animated: false, dotColor: 'grey' },
   active: { text: '执行中', color: 'var(--color-accent)', icon: 'bolt', animated: true, dotColor: 'blue' },
-  suspended: { text: '等待中', color: 'var(--color-warning)', icon: 'pause', animated: false, dotColor: 'orange' },
+  suspended: {
+    text: '等待中',
+    color: 'var(--color-warning)',
+    icon: 'hourglass_top',
+    animated: false,
+    dotColor: 'orange',
+  },
+  interrupted: {
+    text: '已中断',
+    color: 'var(--color-warning)',
+    icon: 'pause_circle',
+    animated: false,
+    dotColor: 'orange',
+  },
   done: { text: '已完成', color: 'var(--color-success)', icon: 'check_circle', animated: false, dotColor: 'green' },
   failed: { text: '失败', color: 'var(--color-danger)', icon: 'error', animated: false, dotColor: 'red' },
-  skipped: { text: '已跳过', color: 'var(--color-text-tertiary)', icon: 'remove_circle', animated: false, dotColor: 'grey' },
+  skipped: {
+    text: '已跳过',
+    color: 'var(--color-text-tertiary)',
+    icon: 'remove_circle',
+    animated: false,
+    dotColor: 'grey',
+  },
   cancelled: { text: '已取消', color: 'var(--color-text-tertiary)', icon: 'cancel', animated: false, dotColor: 'grey' },
 };
 
@@ -110,7 +132,7 @@ export function spiritTeamStatusToLabel(status: SpiritTeamStatus): AgentNodeStat
     completed: 'done',
     failed: 'failed',
     cancelled: 'cancelled',
-    interrupted: 'suspended',
+    interrupted: 'interrupted',
     archived: 'done',
   };
   return mapping[status] ?? 'queued';
@@ -146,4 +168,30 @@ export function dqScoreColor(score: number | null | undefined): string {
   if (score > 0.7) return 'var(--color-success)';
   if (score >= 0.5) return 'var(--color-warning)';
   return 'var(--color-danger)';
+}
+
+/** Maps PlanEntry status to display label key (i18n key prefix: chat.execution.status*). */
+export function planEntryStatusLabel(status: string): string {
+  const mapping: Record<string, string> = {
+    pending: 'chat.execution.statusPending',
+    running: 'chat.execution.statusRunning',
+    completed: 'chat.execution.statusCompleted',
+    failed: 'chat.execution.statusFailed',
+  };
+  return mapping[status] ?? 'chat.execution.statusPending';
+}
+
+/** Extract first-letter initial from a name string, for avatar fallback. */
+export function nameInitial(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '?';
+  return trimmed[0].toUpperCase();
+}
+
+/** Maps SpiritTeamMode to TopologyType for OrchestrationModeBadge display. */
+export function modeToTopology(mode: SpiritTeamMode): TopologyType {
+  if (mode === 'coordinator' || mode === 'sequential' || mode === 'parallel') return mode;
+  if (mode === 'critic_loop') return 'sequential';
+  if (mode === 'swarm' || mode === 'adaptive') return 'hybrid';
+  return 'coordinator';
 }

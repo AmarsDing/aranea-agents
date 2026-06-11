@@ -10,10 +10,10 @@ import (
 	"aranea-agents/internal/data/ent/message"
 	entsession "aranea-agents/internal/data/ent/session"
 	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -33,7 +33,7 @@ func entMessageToBiz(m *ent.Message) biz.ChatMessage {
 func (r *sessionRepo) CountMessagesBySession(ctx context.Context, sessionID string) (int, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return 0, kerrors.BadRequest("SESSION", "session id is required")
+		return 0, apierror.BadRequest("SESSION", "session id is required")
 	}
 	return r.data.RW().Read(ctx).Message.Query().Where(message.SessionIDEQ(sessionID)).Count(ctx)
 }
@@ -41,7 +41,7 @@ func (r *sessionRepo) CountMessagesBySession(ctx context.Context, sessionID stri
 func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]biz.ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	if limit <= 0 {
 		limit = biz.MessageListDefaultLimit
@@ -66,7 +66,7 @@ func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID strin
 func (r *sessionRepo) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]biz.ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	turnIDs, err := r.data.RW().Read(ctx).SessionTurn.Query().
 		Where(entsessionturn.SessionIDEQ(sessionID), entsessionturn.TurnNumberGT(afterTurn)).
@@ -97,7 +97,7 @@ func (r *sessionRepo) ListMessagesAfterTurn(ctx context.Context, sessionID strin
 func (r *sessionRepo) ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]biz.ChatMessage, error) {
 	sessionID, status = strings.TrimSpace(sessionID), strings.TrimSpace(status)
 	if sessionID == "" || status == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id and status are required")
+		return nil, apierror.BadRequest("SESSION", "session id and status are required")
 	}
 	if limit <= 0 || limit > biz.ActivityCancelScanLimit {
 		limit = biz.ActivityCancelScanLimit
@@ -119,7 +119,7 @@ func (r *sessionRepo) ListMessagesByStatus(ctx context.Context, sessionID, statu
 func (r *sessionRepo) ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]biz.ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	if limit <= 0 || limit > biz.TimelineMessageMaxFetch {
 		limit = biz.TimelineMessageMaxFetch
@@ -242,7 +242,7 @@ func (r *sessionRepo) createMessageOnClient(ctx context.Context, c *ent.Client, 
 func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		c := r.data.RW().Write(txCtx)
@@ -289,11 +289,11 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg biz.ChatMessage) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return false, kerrors.BadRequest("SESSION", "session id is required")
+		return false, apierror.BadRequest("SESSION", "session id is required")
 	}
 	msg.ID = strings.TrimSpace(msg.ID)
 	if msg.ID == "" {
-		return false, kerrors.BadRequest("SESSION", "message id is required")
+		return false, apierror.BadRequest("SESSION", "message id is required")
 	}
 	var created bool
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
@@ -353,7 +353,7 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	start := time.Now()
 	lg := r.data.lg
@@ -405,10 +405,10 @@ func (r *sessionRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, me
 	messageID = strings.TrimSpace(messageID)
 	status = strings.TrimSpace(status)
 	if sessionID == "" || messageID == "" {
-		return kerrors.BadRequest("SESSION", "session_id and message_id are required")
+		return apierror.BadRequest("SESSION", "session_id and message_id are required")
 	}
 	if status == "" {
-		return kerrors.BadRequest("SESSION", "status is required")
+		return apierror.BadRequest("SESSION", "status is required")
 	}
 	_, err := r.data.RW().Write(ctx).Message.Update().
 		Where(message.IDEQ(messageID), message.SessionIDEQ(sessionID)).

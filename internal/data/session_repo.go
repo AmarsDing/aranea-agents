@@ -16,37 +16,37 @@ import (
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type sessionRepo struct {
-	data         *Data
-	metricsWriter biz.SessionMetricsWriter  // writes to session_metrics table
-	metricsCache  *SessionMetricsCache      // optional LRU cache for session_metrics reads
+	data          *Data
+	metricsWriter biz.SessionMetricsWriter // writes to session_metrics table
+	metricsCache  *SessionMetricsCache     // optional LRU cache for session_metrics reads
 }
 
 var (
-	_ biz.SessionReader        = (*sessionRepo)(nil)
-	_ biz.SessionWriter        = (*sessionRepo)(nil)
-	_ biz.SessionMutator       = (*sessionRepo)(nil)
-	_ biz.SessionBatchMutator  = (*sessionRepo)(nil)
-	_ session.SessionTreeReader    = (*sessionRepo)(nil)
-	_ biz.MessageReader        = (*sessionRepo)(nil)
-	_ biz.MessageSearchReader  = (*sessionRepo)(nil)
-	_ biz.MessageWriter        = (*sessionRepo)(nil)
-	_ biz.MessageStatusWriter  = (*sessionRepo)(nil)
-	_ biz.TimelineReader       = (*sessionRepo)(nil)
-	_ biz.InvocationReader     = (*sessionRepo)(nil)
-	_ biz.SummaryReader        = (*sessionRepo)(nil)
-	_ biz.SummaryWriter        = (*sessionRepo)(nil)
-	_ biz.StateRepo            = (*sessionRepo)(nil)
-	_ biz.TurnRepo             = (*sessionRepo)(nil)
-	_ biz.ContextUpdater       = (*sessionRepo)(nil)
-	_ biz.CompressRepo         = (*sessionRepo)(nil)
-	_ biz.SessionRepo          = (*sessionRepo)(nil)
+	_ biz.SessionReader         = (*sessionRepo)(nil)
+	_ biz.SessionWriter         = (*sessionRepo)(nil)
+	_ biz.SessionMutator        = (*sessionRepo)(nil)
+	_ biz.SessionBatchMutator   = (*sessionRepo)(nil)
+	_ session.SessionTreeReader = (*sessionRepo)(nil)
+	_ biz.MessageReader         = (*sessionRepo)(nil)
+	_ biz.MessageSearchReader   = (*sessionRepo)(nil)
+	_ biz.MessageWriter         = (*sessionRepo)(nil)
+	_ biz.MessageStatusWriter   = (*sessionRepo)(nil)
+	_ biz.TimelineReader        = (*sessionRepo)(nil)
+	_ biz.InvocationReader      = (*sessionRepo)(nil)
+	_ biz.SummaryReader         = (*sessionRepo)(nil)
+	_ biz.SummaryWriter         = (*sessionRepo)(nil)
+	_ biz.StateRepo             = (*sessionRepo)(nil)
+	_ biz.TurnRepo              = (*sessionRepo)(nil)
+	_ biz.ContextUpdater        = (*sessionRepo)(nil)
+	_ biz.CompressRepo          = (*sessionRepo)(nil)
+	_ biz.SessionRepo           = (*sessionRepo)(nil)
 )
 
 func NewSessionRepo(d *Data, metricsWriter biz.SessionMetricsWriter, metricsCache *SessionMetricsCache) biz.SessionRepo {
@@ -165,7 +165,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Session, error) {
 	c := r.data.RW().Write(ctx)
 	if strings.TrimSpace(in.ID) == "" || strings.TrimSpace(in.Title) == "" {
-		return biz.Session{}, kerrors.BadRequest("SESSION", "missing required fields")
+		return biz.Session{}, apierror.BadRequest("SESSION", "missing required fields")
 	}
 	if in.OwnerType == "" {
 		in.OwnerType = "agent"
@@ -333,7 +333,7 @@ func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Sessio
 func (r *sessionRepo) PinSession(ctx context.Context, id string) (biz.Session, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
+		return biz.Session{}, apierror.BadRequest("SESSION", "session id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).Session.Update().
@@ -350,7 +350,7 @@ func (r *sessionRepo) PinSession(ctx context.Context, id string) (biz.Session, e
 func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
+		return biz.Session{}, apierror.BadRequest("SESSION", "session id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).Session.Update().
@@ -580,7 +580,7 @@ func dedupeStrings(in []string) []string {
 func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
@@ -596,7 +596,7 @@ func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID st
 func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, _ int, contextWindow int) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	ratio := 0.0
 	if contextWindow > 0 && promptTokens > 0 {
@@ -626,9 +626,9 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	if conf.DAOSessionDualWrite() || conf.DAOSessionMetricsTable() {
 		if r.metricsWriter != nil {
 			delta := &session.SessionMetricsDelta{
-				SessionID:          sessionID,
-				ContextUsedTokens:  promptTokens,
-				ContextUsedRatio:   ratio,
+				SessionID:           sessionID,
+				ContextUsedTokens:   promptTokens,
+				ContextUsedRatio:    ratio,
 				MaxContextUsedRatio: ratio,
 			}
 			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil {
@@ -653,7 +653,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	if contextWindow <= 0 {
 		contextWindow = 128000
@@ -824,7 +824,7 @@ func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID s
 func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string) (int64, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return 0, kerrors.BadRequest("SESSION", "session id is required")
+		return 0, apierror.BadRequest("SESSION", "session id is required")
 	}
 	var rev int64
 	err := entQueryRowScan(r.data.RW().Write(ctx), ctx,
@@ -842,7 +842,7 @@ func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string)
 func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) (int64, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return 0, kerrors.BadRequest("SESSION", "session id is required")
+		return 0, apierror.BadRequest("SESSION", "session id is required")
 	}
 	row, err := r.data.RW().Read(ctx).Session.Query().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
@@ -856,7 +856,7 @@ func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) 
 func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID string) (int64, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return 0, kerrors.BadRequest("SESSION", "session id is required")
+		return 0, apierror.BadRequest("SESSION", "session id is required")
 	}
 	var old int64
 	err := entQueryRowScan(r.data.RW().Write(ctx), ctx,
@@ -875,7 +875,7 @@ func (r *sessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func
 func (r *sessionRepo) ListByParentSessionID(ctx context.Context, parentSessionID string) ([]biz.Session, error) {
 	parentSessionID = strings.TrimSpace(parentSessionID)
 	if parentSessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "parent_session_id is required")
+		return nil, apierror.BadRequest("SESSION", "parent_session_id is required")
 	}
 	c := r.data.RW().Read(ctx)
 	rows, err := c.Session.Query().

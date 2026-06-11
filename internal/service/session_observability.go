@@ -6,14 +6,13 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ExportSession implements GET /v1/sessions/{id}/export.
 func (s *SessionService) ExportSession(ctx context.Context, req *v1.ExportSessionRequest) (*v1.ExportSessionResponse, error) {
 	if s.uc == nil {
-		return nil, kerrors.InternalServer("SESSION", "session usecase unavailable")
+		return nil, apierror.Internal("SESSION", "session usecase unavailable")
 	}
 	content, filename, contentType, err := s.uc.Export(ctx, req.GetId(), req.GetFormat())
 	if err != nil {
@@ -33,7 +32,7 @@ func (s *SessionService) ListSessionRuns(ctx context.Context, req *v1.ListSessio
 	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session_id is required")
+		return nil, apierror.BadRequest("SESSION", "session_id is required")
 	}
 	items, total, err := s.runs.ListBySession(ctx, sessionID, int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
@@ -53,7 +52,7 @@ func (s *SessionService) ListSessionParticipants(ctx context.Context, req *v1.Li
 	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session_id is required")
+		return nil, apierror.BadRequest("SESSION", "session_id is required")
 	}
 	rows, err := s.uc.ListParticipants(ctx, sessionID)
 	if err != nil {

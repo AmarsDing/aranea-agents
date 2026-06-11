@@ -198,6 +198,13 @@ func (o *TaskOrchestratorImpl) orchestrateSingleAgent(ctx context.Context, taskP
 
 	// For now, mark as running. The actual tool invocation happens in the Spirit turn.
 	handle.Status = biz.OrchestrationStatusRunning
+	// Extract agent key from allocation for performance tracking.
+	if len(allocPlan.Allocations) > 0 {
+		key := strings.TrimSpace(allocPlan.Allocations[0].AssignedKey)
+		if key != "" {
+			handle.AgentKeys = []string{key}
+		}
+	}
 	o.lg.Info("TaskOrchestrator: agent-as-tool built successfully",
 		loggateway.StepID(biz.SpiritStepOrchestratorStrategy),
 		loggateway.Str("orchestration_id", handle.ID),
@@ -244,6 +251,7 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 	}
 
 	handle.TeamIDs = []string{team.ID}
+	handle.AgentKeys = agentKeys
 	handle.Status = biz.OrchestrationStatusRunning
 
 	o.lg.Info("TaskOrchestrator: team assembled and started",
@@ -333,6 +341,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 		// just without the DAG-compiled structure. Log and continue.
 	}
 	handle.TeamIDs = []string{team.ID}
+	handle.AgentKeys = agentKeys
 	handle.GraphExecutionID = team.ID // Team ID serves as the graph execution ID.
 	handle.Status = biz.OrchestrationStatusRunning
 
@@ -905,12 +914,15 @@ func computeDQScoreFromSynthesis(synthesis *biz.SynthesisOutput) float64 {
 }
 
 // extractAgentKeysFromHandle extracts agent keys from the orchestration handle.
-// Since the handle stores TeamIDs rather than agent keys directly, we use
-// the strategy as a fallback task type indicator.
+// It prefers handle.AgentKeys (real agent identifiers from AllocationPlan) over
+// handle.TeamIDs (team identifiers) because TeamIDs and AgentKeys are different
+// semantic entities — using TeamIDs as AgentKeys corrupts performance data.
 func extractAgentKeysFromHandle(handle *biz.OrchestrationHandle) []string {
-	// The handle doesn't directly store agent keys; they're in the AllocationPlan.
-	// For the learning loop, we extract what we can from the handle.
-	// If TeamIDs are present, we use them as proxy identifiers.
+	// Prefer real agent keys from the allocation plan.
+	if len(handle.AgentKeys) > 0 {
+		return handle.AgentKeys
+	}
+	// Fallback: use TeamIDs as proxy for backward compatibility.
 	var keys []string
 	for _, teamID := range handle.TeamIDs {
 		keys = append(keys, teamID)

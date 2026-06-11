@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	entsession "aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/data/ent/sessionruntime"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -124,7 +124,7 @@ func (r *sessionRuntimeRepo) TransitionSessionStatus(ctx context.Context, sessio
 	}
 	if n == 0 {
 		r.data.lg.Warn("transition session status: no rows affected (status already changed?)", loggateway.StepID("data.session_runtime.transition_status_noop"), loggateway.Str("session_id", sessionID), loggateway.Str("current_status", currentStatus), loggateway.Str("new_status", newStatus))
-		return kerrors.Conflict("SESSION", "session status was concurrently modified")
+		return apierror.Conflict("SESSION", "session status was concurrently modified")
 	}
 	return nil
 }

@@ -43,8 +43,8 @@ func (c *Client) GetTool(ctx context.Context, id string) (*toolv1.Tool, error) {
 }
 
 // ToggleToolEnabled calls PATCH /v1/tools/{id}/enabled.
-func (c *Client) ToggleToolEnabled(ctx context.Context, id string, enabled bool, confirmKey string) (*toolv1.Tool, error) {
-	req := &toolv1.ToggleToolEnabledRequest{Id: id, Enabled: enabled, ConfirmKey: confirmKey}
+func (c *Client) ToggleToolEnabled(ctx context.Context, id string, enabled bool, confirmIntent string) (*toolv1.Tool, error) {
+	req := &toolv1.ToggleToolEnabledRequest{Id: id, Enabled: enabled, ConfirmIntent: confirmIntent}
 	resp := &toolv1.Tool{}
 	b, err := marshalOpts.Marshal(req)
 	if err != nil {

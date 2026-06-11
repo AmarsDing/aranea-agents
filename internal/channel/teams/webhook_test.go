@@ -1,7 +1,11 @@
 package teams
 
 import (
+	"errors"
+	"net/http"
 	"testing"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestParseInbound_MessageActivity(t *testing.T) {
@@ -71,5 +75,14 @@ func TestTextSenderID(t *testing.T) {
 	s := &TextSender{}
 	if s.ID() != "teams" {
 		t.Fatalf("id: got %q", s.ID())
+	}
+}
+
+func TestVerifyRequest_EmptyCredentials(t *testing.T) {
+	h := http.Header{}
+	h.Set("Authorization", "Bearer some-token")
+	err := VerifyRequest("", "", h, nil)
+	if !errors.Is(err, port.ErrCredentialsNotConfigured) {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
 	}
 }

@@ -7,9 +7,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/apierror"
 
 	"github.com/google/uuid"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ExecuteGraphBuildConfig executes a graph from a build config and returns the execution ID.
@@ -56,7 +56,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 	initialState map[string]any,
 ) (targetType, targetID, asyncID string, err error) {
 	if h == nil || h.graphs == nil {
-		return "", "", "", kerrors.BadRequest("CHANNEL", "graph service not configured")
+		return "", "", "", apierror.BadRequest("CHANNEL", "graph service not configured")
 	}
 	switch target.TargetType {
 	case "graph":
@@ -89,7 +89,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		}
 		return "team_graph", graphID, strings.TrimSpace(execID), nil
 	default:
-		return "", "", "", kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported target type %q", target.TargetType))
+		return "", "", "", apierror.BadRequest("CHANNEL", fmt.Sprintf("unsupported target type %q", target.TargetType))
 	}
 }
 

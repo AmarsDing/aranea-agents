@@ -45,6 +45,21 @@
         <!-- Orchestration Plan Card (root agent only) -->
         <PlanCard v-if="isRoot && block.plan" :plan="block.plan" />
 
+        <!-- Progress sections (orchestration / team / tool / thinking steps) -->
+        <template v-if="block.progressSections?.length">
+          <div v-for="(ps, psi) in block.progressSections" :key="'ps-' + psi" class="section section--progress" :class="progressClass(ps)">
+            <div class="section__label">
+              <span class="section__label-icon">{{ progressIcon(ps.category) }}</span>
+              <span class="section__label-text">{{ progressCategoryLabel(ps.category) }}</span>
+              <span class="section__label-message">{{ ps.message }}</span>
+              <span v-if="ps.durationMs != null" class="section__label-duration">{{ formatDuration(ps.durationMs) }}</span>
+              <span v-else-if="ps.status === 'running'" class="pulse-dot" />
+              <span v-if="ps.status === 'failed'" class="section__label-icon" :title="t('chat.turn.block.failed')">{{ progressStatusGlyph('failed') }}</span>
+              <span v-else-if="ps.status === 'timeout'" class="section__label-icon" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
+            </div>
+          </div>
+        </template>
+
         <!-- Timeline entries in chronological order -->
         <div class="agent-timeline">
           <template v-for="(entry, idx) in block.timeline" :key="entryKey(entry)">
@@ -83,21 +98,6 @@
                   <div class="chat-message-prose" v-html="renderReplyContent(entry.section.content)" />
                   <span v-if="entry.section.streaming" class="cursor-blink"></span>
                 </div>
-              </div>
-            </div>
-
-            <!-- Execution progress step (orchestration / team / tool / thinking) -->
-            <div v-else-if="entry.kind === 'progress'" class="section section--progress" :class="progressClass(entry.section)">
-              <div class="section__label">
-                <span class="section__label-icon">{{ progressIcon(entry.section.category) }}</span>
-                <span class="section__label-text">{{ progressCategoryLabel(entry.section.category) }}</span>
-                <span class="section__label-message">{{ entry.section.message }}</span>
-                <span v-if="entry.section.durationMs != null" class="section__label-duration">
-                  {{ formatDuration(entry.section.durationMs) }}
-                </span>
-                <span v-else-if="entry.section.status === 'running'" class="pulse-dot" />
-                <span v-if="entry.section.status === 'failed'" class="section__label-icon" :title="t('chat.turn.block.failed')">{{ progressStatusGlyph('failed') }}</span>
-                <span v-else-if="entry.section.status === 'timeout'" class="section__label-icon" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
               </div>
             </div>
 
@@ -159,6 +159,9 @@ const emit = defineEmits<{
  * Watches for status changes to auto-collapse when agent completes.
  */
 const localCollapsed = ref<boolean>(props.block.collapsed);
+
+// Sync localCollapsed when the parent changes the prop
+watch(() => props.block.collapsed, (val) => { localCollapsed.value = val; });
 
 // Auto-collapse when status transitions to completed
 watch(
@@ -258,8 +261,6 @@ function entryKey(entry: TimelineEntry): string {
       return `tool-${entry.section.id}`;
     case 'reply':
       return `reply-${entry.section.id}`;
-    case 'progress':
-      return `progress-${entry.section.id}`;
     case 'subagent':
       return `subagent-${entry.block.id}`;
   }
@@ -622,6 +623,10 @@ onUnmounted(() => {
   opacity: 0
   padding-top: 0
   padding-bottom: 0
+
+.agent-collapse-enter-to,
+.agent-collapse-leave-from
+  max-height: 2000px
 
 // ── Animations ──
 @keyframes fade-in

@@ -14,10 +14,3 @@ func (rt *RoundTrip) Client() *http.Client {
 	}
 	return rt.HTTP
 }
-
-func roundOrNil(rt *RoundTrip) *RoundTrip {
-	if rt == nil {
-		return &RoundTrip{}
-	}
-	return rt
-}

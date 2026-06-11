@@ -11,7 +11,7 @@
         dense
         size="xs"
         :label="t('chat.skillHint.load')"
-        color="primary"
+        color="accent"
         class="q-ml-sm"
         @click="onLoad"
       />

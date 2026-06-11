@@ -2,6 +2,7 @@ package biz
 
 import (
 	"strings"
+	"sync"
 
 	"aranea-agents/internal/event/contract"
 )
@@ -138,6 +139,7 @@ type AgentNodeState struct {
 
 // OrchestrationStatusStore holds per-run node states keyed by node_id.
 type OrchestrationStatusStore struct {
+	mu    sync.RWMutex
 	Nodes map[string]*AgentNodeState
 }
 
@@ -162,6 +164,8 @@ func (s *OrchestrationStatusStore) ApplyEnvelope(env contract.Envelope, reg Orch
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var changed []*AgentNodeState
 	switch env.Type {
 	case contract.EnvelopeTypeTeamStepStarted:
@@ -228,6 +232,20 @@ func (s *OrchestrationStatusStore) ApplyEnvelope(env contract.Envelope, reg Orch
 		}
 	}
 	return changed
+}
+
+// GetNode returns a snapshot of the node state for read-only external access (e.g., WebSocket handlers).
+func (s *OrchestrationStatusStore) GetNode(nodeID string) (*AgentNodeState, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st, ok := s.Nodes[nodeID]
+	if !ok {
+		return nil, false
+	}
+	return cloneNodeState(st), true
 }
 
 func (s *OrchestrationStatusStore) applyToResolved(

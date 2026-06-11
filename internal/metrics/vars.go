@@ -226,3 +226,12 @@ var (
 		Help: "Number of panics recovered by safego, labelled by goroutine name.",
 	}, []string{"name"})
 )
+
+// SafegoPanicHook returns a PanicHook function that increments the
+// SafegoPanicRecovered Prometheus counter. Register it via
+// safego.RegisterPanicHook(metrics.SafegoPanicHook()) during startup.
+func SafegoPanicHook() func(name string, r interface{}, stack []byte) {
+	return func(name string, _ interface{}, _ []byte) {
+		SafegoPanicRecovered.WithLabelValues(name).Inc()
+	}
+}

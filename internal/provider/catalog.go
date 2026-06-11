@@ -82,99 +82,15 @@ func ResolveModelConfig(in ModelCatalogInput) (ProviderModelConfig, error) {
 	if base == "" {
 		return ProviderModelConfig{}, fmt.Errorf("provider model: empty model id")
 	}
-	var c catalogConfigJSON
-	_ = json.Unmarshal([]byte(strings.TrimSpace(in.ConfigJSON)), &c)
-	return catalogConfigToConfig(c, base), nil
-}
-
-func ModelConfigFromEndpoints(providerType, baseURL, apiKey string) ProviderModelConfig {
-	return ProviderModelConfig{
-		ProviderType: strings.TrimSpace(providerType),
-		BaseURL:      strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		APIKey:       strings.TrimSpace(apiKey),
-	}
-}
-
-func MergeModelConfig(cfg ProviderModelConfig, configJSON string) ProviderModelConfig {
-	raw := strings.TrimSpace(configJSON)
+	raw := strings.TrimSpace(in.ConfigJSON)
 	if raw == "" {
-		return cfg
+		return ProviderModelConfig{ModelAPI: base}, nil
 	}
 	var c catalogConfigJSON
-	if json.Unmarshal([]byte(strings.TrimSpace(configJSON)), &c) != nil {
-		return cfg
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		return ProviderModelConfig{}, fmt.Errorf("%w: %w", ErrInvalidConfigJSON, err)
 	}
-	merged := cfg
-	if merged.ProviderType == "" {
-		merged.ProviderType = strings.TrimSpace(c.ProviderType)
-	}
-	if merged.Variant == "" {
-		merged.Variant = strings.TrimSpace(c.Variant)
-	}
-	if merged.BaseURL == "" {
-		merged.BaseURL = strings.TrimRight(strings.TrimSpace(c.APIBaseURL), "/")
-	}
-	if merged.APIKey == "" {
-		merged.APIKey = strings.TrimSpace(c.APIKey)
-	}
-	if merged.SecretID == "" {
-		merged.SecretID = strings.TrimSpace(c.SecretID)
-	}
-	if merged.SecretKey == "" {
-		merged.SecretKey = strings.TrimSpace(c.SecretKey)
-	}
-	if merged.AWSRegion == "" {
-		merged.AWSRegion = strings.TrimSpace(c.AWSRegion)
-	}
-	if !merged.EnableTokenTailoring && c.EnableTokenTailoring != nil {
-		merged.EnableTokenTailoring = *c.EnableTokenTailoring
-	}
-	if merged.ContextWindow == 0 && c.ContextWindowK > 0 {
-		merged.ContextWindow = c.ContextWindowK * 1000
-	}
-	if merged.MaxInputTokens == 0 && c.MaxInputTokens > 0 {
-		merged.MaxInputTokens = c.MaxInputTokens
-	}
-	if !merged.OptimizeForCache && c.OptimizeForCache != nil {
-		merged.OptimizeForCache = *c.OptimizeForCache
-	}
-	if !merged.ReasoningBackfill && c.ReasoningBackfill != nil {
-		merged.ReasoningBackfill = *c.ReasoningBackfill
-	}
-	if !merged.ShowToolCallDelta && c.ShowToolCallDelta != nil {
-		merged.ShowToolCallDelta = *c.ShowToolCallDelta
-	}
-	if !merged.CacheSystemPrompt && c.CacheSystemPrompt != nil {
-		merged.CacheSystemPrompt = *c.CacheSystemPrompt
-	}
-	if !merged.CacheTools && c.CacheTools != nil {
-		merged.CacheTools = *c.CacheTools
-	}
-	if !merged.CacheMessages && c.CacheMessages != nil {
-		merged.CacheMessages = *c.CacheMessages
-	}
-	if merged.KeepAliveMinutes == 0 && c.KeepAliveMinutes > 0 {
-		merged.KeepAliveMinutes = c.KeepAliveMinutes
-	}
-	if merged.ChannelBufferSize == 0 && c.ChannelBufferSize > 0 {
-		merged.ChannelBufferSize = c.ChannelBufferSize
-	}
-	if merged.HAMode == "" {
-		merged.HAMode = strings.TrimSpace(c.HAMode)
-	}
-	if len(merged.HACandidates) == 0 && len(c.HACandidates) > 0 {
-		merged.HACandidates = c.HACandidates
-	}
-	if merged.HAHedgeDelayMs == 0 && c.HAHedgeDelayMs > 0 {
-		merged.HAHedgeDelayMs = c.HAHedgeDelayMs
-	}
-	if merged.RateLimitRPM == 0 && c.RateLimitRPM > 0 {
-		merged.RateLimitRPM = c.RateLimitRPM
-	}
-	if hasExplicitCapabilities(c.Capabilities) {
-		merged.Capabilities = mergeCapabilities(merged.Capabilities, c.Capabilities)
-	}
-	return merged
+	return catalogConfigToConfig(c, base), nil
 }
 
 func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelConfig {
@@ -225,32 +141,4 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 
 func hasExplicitCapabilities(c biz.ModelCapabilities) bool {
 	return c.Text || c.Vision || c.Audio || c.File || c.ToolCall || c.Cache || c.Thinking || c.TextOnly
-}
-
-func mergeCapabilities(base, override biz.ModelCapabilities) biz.ModelCapabilities {
-	if override.Text {
-		base.Text = true
-	}
-	if override.Vision {
-		base.Vision = true
-	}
-	if override.Audio {
-		base.Audio = true
-	}
-	if override.File {
-		base.File = true
-	}
-	if override.ToolCall {
-		base.ToolCall = true
-	}
-	if override.Cache {
-		base.Cache = true
-	}
-	if override.Thinking {
-		base.Thinking = true
-	}
-	if override.TextOnly {
-		base.TextOnly = true
-	}
-	return base
 }

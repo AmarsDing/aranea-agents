@@ -66,8 +66,6 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
 	ActivityPersister ActivityPersister
-	// OnReplyDelta is deprecated: IM channels use TurnPreviewCoordinator + EventBus instead.
-	OnReplyDelta func(accumulated string) error
 }
 
 func ConsumeEventStream(
@@ -100,7 +98,7 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 		return
 	}
 	if promptTok > result.PromptTok {
-		result.CompletionTok += completionTok
+		result.CompletionTok = completionTok
 		result.PromptTok = promptTok
 	} else if promptTok == result.PromptTok && completionTok > result.CompletionTok {
 		result.CompletionTok = completionTok
@@ -119,7 +117,7 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	if promptTok > prev.PromptTokens {
 		result.MemberUsage[key] = MemberTokenUsage{
 			PromptTokens:     promptTok,
-			CompletionTokens: prev.CompletionTokens + completionTok,
+			CompletionTokens: completionTok,
 		}
 	} else if promptTok == prev.PromptTokens && completionTok > prev.CompletionTokens {
 		result.MemberUsage[key] = MemberTokenUsage{

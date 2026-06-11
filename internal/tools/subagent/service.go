@@ -44,6 +44,10 @@ const (
 
 	defaultMaxConcurrentSubAgents = 5
 
+	// Notification limits for outbound completion messages.
+	notifyMaxSummaryRunes = 200
+	notifyTimeoutSec     = 5
+
 	toolSubagentsSpawn  = "subagents_spawn"
 	toolSubagentsList   = "subagents_list"
 	toolSubagentsGet    = "subagents_get"
@@ -85,8 +89,7 @@ type Service struct {
 	lg             loggateway.Logger
 	outboundRouter *outbound.Router // optional: for completion notifications
 
-	// sessionRunes stores per-session rune limits keyed by session ID.
-	sessionRunes sync.Map // map[string]runesConfig
+	runes *runesManager
 
 	clock func() time.Time
 
@@ -100,6 +103,39 @@ type Service struct {
 	baseCtx   context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
+}
+
+// runesManager manages per-session rune limits for subagent results.
+// Extracted from Service to reduce cognitive complexity (AS-COG-02).
+type runesManager struct {
+	store sync.Map // map[string]runesConfig
+}
+
+func newRunesManager() *runesManager {
+	return &runesManager{}
+}
+
+func (rm *runesManager) Set(sessionID string, resultRunes, summaryRunes int) {
+	if sessionID != "" {
+		rm.store.Store(sessionID, runesConfig{Result: resultRunes, Summary: summaryRunes})
+	}
+}
+
+func (rm *runesManager) Remove(sessionID string) {
+	if sessionID != "" {
+		rm.store.Delete(sessionID)
+	}
+}
+
+func (rm *runesManager) Get(sessionID string) (int, int) {
+	if sessionID == "" {
+		return 0, 0
+	}
+	if v, ok := rm.store.Load(sessionID); ok {
+		cfg := v.(runesConfig)
+		return cfg.Result, cfg.Summary
+	}
+	return 0, 0
 }
 
 type runningRun struct {
@@ -146,6 +182,7 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 		path:    path,
 		runner:  r,
 		lg:      lg,
+		runes:   newRunesManager(),
 		clock:   time.Now,
 		runs:    runs,
 		running: make(map[string]*runningRun),
@@ -162,14 +199,19 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 // runner initialization when the runner cannot be provided at construction time.
 func (s *Service) SetRunner(r trpcrunner.Runner) {
 	if s != nil {
+		s.mu.Lock()
 		s.runner = r
+		s.mu.Unlock()
 	}
 }
 
 // WithOutboundRouter sets the outbound router for completion notifications.
+// Must be called before Start(); not safe for concurrent use after startup.
 func (s *Service) WithOutboundRouter(router *outbound.Router) *Service {
 	if s != nil {
+		s.mu.Lock()
 		s.outboundRouter = router
+		s.mu.Unlock()
 	}
 	return s
 }
@@ -184,29 +226,25 @@ type runesConfig struct {
 // This replaces the old SetStoredResultRunes/SetStoredSummaryRunes setters
 // which were unsafe on a singleton service (race condition across agents).
 func (s *Service) SetSessionRunes(sessionID string, resultRunes, summaryRunes int) {
-	if s != nil && sessionID != "" {
-		s.sessionRunes.Store(sessionID, runesConfig{Result: resultRunes, Summary: summaryRunes})
+	if s != nil {
+		s.runes.Set(sessionID, resultRunes, summaryRunes)
 	}
 }
 
 // RemoveSessionRunes removes per-session rune limits for a session.
 func (s *Service) RemoveSessionRunes(sessionID string) {
-	if s != nil && sessionID != "" {
-		s.sessionRunes.Delete(sessionID)
+	if s != nil {
+		s.runes.Remove(sessionID)
 	}
 }
 
 // getSessionRunes returns the per-session rune limits for a session.
 // Returns (0, 0) if no config is registered for the session.
 func (s *Service) getSessionRunes(sessionID string) (int, int) {
-	if s == nil || sessionID == "" {
+	if s == nil {
 		return 0, 0
 	}
-	if v, ok := s.sessionRunes.Load(sessionID); ok {
-		cfg := v.(runesConfig)
-		return cfg.Result, cfg.Summary
-	}
-	return 0, 0
+	return s.runes.Get(sessionID)
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -240,75 +278,32 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	if s.baseCtx == nil {
 		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "not started")
 	}
-	if s.runner == nil {
-		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "runner not configured")
-	}
 
 	nested, _ := trpcagent.GetRuntimeStateValueFromContext[bool](ctx, runtimeStateSubagentRun)
 	if nested {
 		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "nested subagent spawn is not allowed")
 	}
 
-	// Concurrency limit: prevent too many concurrent sub-agents.
-	// Check and reserve slot atomically to avoid TOCTOU race.
+	// Concurrency limit: check and reserve slot atomically to avoid TOCTOU race.
 	s.mu.Lock()
+	if s.runner == nil {
+		s.mu.Unlock()
+		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "runner not configured")
+	}
 	if len(s.running) >= defaultMaxConcurrentSubAgents {
 		s.mu.Unlock()
 		return trpcsubagent.Run{}, kerrors.New(429, "SUBAGENT", fmt.Sprintf("too many concurrent sub-agents (limit: %d)", defaultMaxConcurrentSubAgents))
 	}
 
-	ownerUserID := strings.TrimSpace(req.OwnerUserID)
-	parentSessionID := strings.TrimSpace(req.ParentSessionID)
-	task := strings.TrimSpace(req.Task)
-	if ownerUserID == "" {
+	if err := validateSpawnRequest(req); err != nil {
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "empty owner")
-	}
-	if parentSessionID == "" {
-		s.mu.Unlock()
-		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "empty parent session id")
-	}
-	if task == "" {
-		s.mu.Unlock()
-		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "empty task")
+		return trpcsubagent.Run{}, err
 	}
 
-	now := s.clock()
-	// Resolve rune limits: prefer per-request values, then per-session config, then defaults.
-	resultRunes := req.ResultRunes
-	summaryRunes := req.SummaryRunes
-	if resultRunes <= 0 || summaryRunes <= 0 {
-		if sr, ssr := s.getSessionRunes(parentSessionID); sr > 0 || ssr > 0 {
-			if resultRunes <= 0 {
-				resultRunes = sr
-			}
-			if summaryRunes <= 0 {
-				summaryRunes = ssr
-			}
-		}
-	}
-	if resultRunes <= 0 {
-		resultRunes = defaultStoredResultRunes
-	}
-	if summaryRunes <= 0 {
-		summaryRunes = defaultStoredSummaryRunes
-	}
-	record := &runRecord{
-		Run: trpcsubagent.Run{
-			ID:              uuid.NewString(),
-			ParentSessionID: parentSessionID,
-			Task:            task,
-			Status:          trpcsubagent.StatusQueued,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		},
-		OwnerUserID: ownerUserID,
-		ResultRunes: resultRunes,
-		SummaryRunes: summaryRunes,
-	}
-
+	record := s.newRunRecord(req)
 	s.runs[record.ID] = record
 	s.mu.Unlock()
+
 	if err := s.persist(); err != nil {
 		s.mu.Lock()
 		delete(s.runs, record.ID)
@@ -324,6 +319,56 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	})
 
 	return view, nil
+}
+
+// validateSpawnRequest checks required fields in a spawn request.
+func validateSpawnRequest(req SpawnRequest) error {
+	if strings.TrimSpace(req.OwnerUserID) == "" {
+		return kerrors.BadRequest("SUBAGENT", "empty owner")
+	}
+	if strings.TrimSpace(req.ParentSessionID) == "" {
+		return kerrors.BadRequest("SUBAGENT", "empty parent session id")
+	}
+	if strings.TrimSpace(req.Task) == "" {
+		return kerrors.BadRequest("SUBAGENT", "empty task")
+	}
+	return nil
+}
+
+// newRunRecord creates a runRecord from a spawn request with resolved rune limits.
+func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
+	now := s.clock()
+	resultRunes := req.ResultRunes
+	summaryRunes := req.SummaryRunes
+	if resultRunes <= 0 || summaryRunes <= 0 {
+		if sr, ssr := s.getSessionRunes(strings.TrimSpace(req.ParentSessionID)); sr > 0 || ssr > 0 {
+			if resultRunes <= 0 {
+				resultRunes = sr
+			}
+			if summaryRunes <= 0 {
+				summaryRunes = ssr
+			}
+		}
+	}
+	if resultRunes <= 0 {
+		resultRunes = defaultStoredResultRunes
+	}
+	if summaryRunes <= 0 {
+		summaryRunes = defaultStoredSummaryRunes
+	}
+	return &runRecord{
+		Run: trpcsubagent.Run{
+			ID:              uuid.NewString(),
+			ParentSessionID: strings.TrimSpace(req.ParentSessionID),
+			Task:            strings.TrimSpace(req.Task),
+			Status:          trpcsubagent.StatusQueued,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		OwnerUserID: strings.TrimSpace(req.OwnerUserID),
+		ResultRunes: resultRunes,
+		SummaryRunes: summaryRunes,
+	}
 }
 
 func (s *Service) ListForUser(userID string, filter trpcsubagent.ListFilter) []trpcsubagent.Run {
@@ -587,23 +632,23 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 	}
 
 	// Notify via outbound router if configured
-	if s.outboundRouter != nil && record.Status == trpcsubagent.StatusCompleted {
-		s.notifyCompletion(record)
+	s.mu.Lock()
+	router := s.outboundRouter
+	s.mu.Unlock()
+	if router != nil && record.Status == trpcsubagent.StatusCompleted {
+		s.doNotifyCompletion(router, record)
 	}
 }
 
-func (s *Service) notifyCompletion(record *runRecord) {
-	if s.outboundRouter == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (s *Service) doNotifyCompletion(router *outbound.Router, record *runRecord) {
+	ctx, cancel := context.WithTimeout(context.Background(), notifyTimeoutSec*time.Second)
 	defer cancel()
 	summary := record.Summary
 	if summary == "" {
 		summary = record.Result
 	}
-	if len(summary) > 200 {
-		summary = summary[:200] + "..."
+	if len(summary) > notifyMaxSummaryRunes {
+		summary = truncateRunes(summary, notifyMaxSummaryRunes) + "..."
 	}
 	text := fmt.Sprintf("子 Agent 任务完成: %s\n摘要: %s", record.Task, summary)
 	// Try to resolve target from parent session
@@ -614,7 +659,7 @@ func (s *Service) notifyCompletion(record *runRecord) {
 	if target.Channel == "" {
 		return // no delivery target, skip notification
 	}
-	if err := s.outboundRouter.SendText(ctx, target, text); err != nil {
+	if err := router.SendText(ctx, target, text); err != nil {
 		s.lg.Warn("SubAgent completion notification failed",
 			loggateway.StepID("subagent.notify.fail"),
 			loggateway.Str("run_id", record.ID),
@@ -692,7 +737,7 @@ func (r *runRecord) publicView() trpcsubagent.Run {
 
 func normalizeLoadedRuns(runs map[string]*runRecord, now time.Time) bool {
 	changed := false
-	for id, r := range runs {
+	for _, r := range runs {
 		if r == nil {
 			continue
 		}
@@ -712,7 +757,6 @@ func normalizeLoadedRuns(runs map[string]*runRecord, now time.Time) bool {
 			r.UpdatedAt = now
 			changed = true
 		}
-		_ = id
 	}
 	return changed
 }
@@ -763,7 +807,7 @@ func saveRuns(path string, runs map[string]*runRecord) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func newChildSessionID(runID string, now time.Time) string {

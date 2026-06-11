@@ -4,9 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockRepo struct {
@@ -156,20 +155,23 @@ func (m *mockRepo) SyncBuiltinTools(ctx context.Context) error {
 	return nil
 }
 
-func assertBadRequest(t *testing.T, err error, wantReason, wantMsg string) {
+func assertBadRequest(t *testing.T, err error, wantDomain, wantMsg string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	ke := kerrors.FromError(err)
-	if ke.Code != 400 {
-		t.Fatalf("expected code 400, got %d", ke.Code)
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror.Error, got %T", err)
 	}
-	if ke.Reason != wantReason {
-		t.Fatalf("expected reason %q, got %q", wantReason, ke.Reason)
+	if ae.Code != apierror.CodeBadRequest {
+		t.Fatalf("expected code BAD_REQUEST, got %s", ae.Code)
 	}
-	if wantMsg != "" && ke.Message != wantMsg {
-		t.Fatalf("expected message %q, got %q", wantMsg, ke.Message)
+	if ae.Domain != wantDomain {
+		t.Fatalf("expected domain %q, got %q", wantDomain, ae.Domain)
+	}
+	if wantMsg != "" && ae.Message != wantMsg {
+		t.Fatalf("expected message %q, got %q", wantMsg, ae.Message)
 	}
 }
 
@@ -222,7 +224,7 @@ func TestCreate(t *testing.T) {
 			input: validInput,
 			repo: &mockRepo{
 				createTool: func(_ context.Context, _ ToolUpsertInput) (Tool, error) {
-					return Tool{}, kerrors.InternalServer("TOOL", "db write failed")
+					return Tool{}, apierror.Internal("TOOL", "db write failed")
 				},
 			},
 			wantErr: true,
@@ -238,7 +240,10 @@ func TestCreate(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
+				ke, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
+				}
 				if tt.wantMsg != "" && ke.Message != tt.wantMsg {
 					t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
 				}
@@ -310,7 +315,7 @@ func TestUpdate(t *testing.T) {
 			input: validInput,
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -337,9 +342,12 @@ func TestUpdate(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-				if tt.wantMsg != "" && ke.Message != tt.wantMsg {
-					t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+				ae, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
+				}
+				if tt.wantMsg != "" && ae.Message != tt.wantMsg {
+					t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 				}
 				return
 			}
@@ -391,7 +399,7 @@ func TestDelete(t *testing.T) {
 			id:   "tool_missing",
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
@@ -414,9 +422,12 @@ func TestDelete(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-				if tt.wantMsg != "" && ke.Message != tt.wantMsg {
-					t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+				ae, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
+				}
+				if tt.wantMsg != "" && ae.Message != tt.wantMsg {
+					t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 				}
 				return
 			}
@@ -431,13 +442,13 @@ func TestToggleEnabled(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name       string
-		id         string
-		enabled    bool
-		confirmKey []string
-		repo       *mockRepo
-		wantErr    bool
-		wantMsg    string
+		name          string
+		id            string
+		enabled       bool
+		confirmIntent []string
+		repo          *mockRepo
+		wantErr       bool
+		wantMsg       string
 	}{
 		{
 			name:    "toggle on low risk",
@@ -468,43 +479,43 @@ func TestToggleEnabled(t *testing.T) {
 			enabled: true,
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
 			wantMsg: "tool not found",
 		},
 		{
-			name:       "high risk toggle on without confirm key",
-			id:         "tool_shell_exec",
-			enabled:    true,
-			confirmKey: nil,
+			name:          "high risk toggle on without confirm intent",
+			id:            "tool_shell_exec",
+			enabled:       true,
+			confirmIntent: nil,
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
 					return Tool{ID: "tool_shell_exec", Key: "shell_exec", RiskLevel: "high"}, nil
 				},
 			},
 			wantErr: true,
-			wantMsg: "confirm_key is required and must match tool key for high/critical risk tools",
+			wantMsg: "confirm_intent is required and must be I_UNDERSTAND_RISK for high/critical risk tools",
 		},
 		{
-			name:       "high risk toggle on with wrong confirm key",
-			id:         "tool_shell_exec",
-			enabled:    true,
-			confirmKey: []string{"wrong_key"},
+			name:          "high risk toggle on with wrong confirm intent",
+			id:            "tool_shell_exec",
+			enabled:       true,
+			confirmIntent: []string{"shell_exec"},
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
 					return Tool{ID: "tool_shell_exec", Key: "shell_exec", RiskLevel: "high"}, nil
 				},
 			},
 			wantErr: true,
-			wantMsg: "confirm_key is required and must match tool key for high/critical risk tools",
+			wantMsg: "confirm_intent is required and must be I_UNDERSTAND_RISK for high/critical risk tools",
 		},
 		{
-			name:       "high risk toggle on with correct confirm key",
-			id:         "tool_shell_exec",
-			enabled:    true,
-			confirmKey: []string{"shell_exec"},
+			name:          "high risk toggle on with correct confirm intent",
+			id:            "tool_shell_exec",
+			enabled:       true,
+			confirmIntent: []string{ConfirmIntentValue},
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
 					return Tool{ID: "tool_shell_exec", Key: "shell_exec", RiskLevel: "high"}, nil
@@ -515,10 +526,10 @@ func TestToggleEnabled(t *testing.T) {
 			},
 		},
 		{
-			name:       "critical risk toggle on with correct confirm key",
-			id:         "tool_critical",
-			enabled:    true,
-			confirmKey: []string{"critical_tool"},
+			name:          "critical risk toggle on with correct confirm intent",
+			id:            "tool_critical",
+			enabled:       true,
+			confirmIntent: []string{ConfirmIntentValue},
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
 					return Tool{ID: "tool_critical", Key: "critical_tool", RiskLevel: "critical"}, nil
@@ -541,14 +552,17 @@ func TestToggleEnabled(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
-			got, err := uc.ToggleEnabled(ctx, tt.id, tt.enabled, tt.confirmKey...)
+			got, err := uc.ToggleEnabled(ctx, tt.id, tt.enabled, tt.confirmIntent...)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-				if tt.wantMsg != "" && ke.Message != tt.wantMsg {
-					t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+				ae, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
+				}
+				if tt.wantMsg != "" && ae.Message != tt.wantMsg {
+					t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 				}
 				return
 			}
@@ -606,7 +620,7 @@ func TestListTools(t *testing.T) {
 			query: ToolListQuery{Limit: 10},
 			repo: &mockRepo{
 				searchTools: func(_ context.Context, _ ToolListQuery) (ToolListResult, error) {
-					return ToolListResult{}, kerrors.InternalServer("TOOL", "db error")
+					return ToolListResult{}, apierror.Internal("TOOL", "db error")
 				},
 			},
 			wantErr: true,
@@ -674,7 +688,7 @@ func TestGetTool(t *testing.T) {
 		wantKey  string
 		wantErr  bool
 		wantMsg  string
-		wantCode int
+		wantCode apierror.Code
 	}{
 		{
 			name: "returns tool",
@@ -691,12 +705,12 @@ func TestGetTool(t *testing.T) {
 			id:   "tool_missing",
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{}, kerrors.NotFound("TOOL", "tool not found")
+					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
 			wantErr: true,
 			wantMsg: "tool not found",
-			wantCode: 404,
+			wantCode: apierror.CodeNotFound,
 		},
 		{
 			name:    "empty id",
@@ -704,7 +718,7 @@ func TestGetTool(t *testing.T) {
 			repo:    &mockRepo{},
 			wantErr: true,
 			wantMsg: "id is required",
-			wantCode: 400,
+			wantCode: apierror.CodeBadRequest,
 		},
 		{
 			name: "resolve by key",
@@ -726,12 +740,17 @@ func TestGetTool(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-				if tt.wantCode != 0 && ke.Code != int32(tt.wantCode) {
-					t.Fatalf("expected code %d, got %d", tt.wantCode, ke.Code)
+				ae, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
 				}
-				if tt.wantMsg != "" && ke.Message != tt.wantMsg {
-					t.Fatalf("expected message %q, got %q", tt.wantMsg, ke.Message)
+				if tt.wantCode != "" {
+					if ae.Code != tt.wantCode {
+						t.Fatalf("expected code %s, got %s", tt.wantCode, ae.Code)
+					}
+				}
+				if tt.wantMsg != "" && ae.Message != tt.wantMsg {
+					t.Fatalf("expected message %q, got %q", tt.wantMsg, ae.Message)
 				}
 				return
 			}

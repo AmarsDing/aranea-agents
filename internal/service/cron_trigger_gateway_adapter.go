@@ -4,8 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type cronTriggerGatewayAdapter struct {
@@ -18,7 +17,7 @@ func NewCronTriggerGatewayAdapter(svc *CronService) biz.CronTriggerGateway {
 
 func (a cronTriggerGatewayAdapter) TriggerCronTask(ctx context.Context, taskID string) (biz.CronTaskRun, error) {
 	if a.svc == nil || a.svc.uc == nil {
-		return biz.CronTaskRun{}, kerrors.InternalServer("CRON", "cron service not configured")
+		return biz.CronTaskRun{}, apierror.Internal("CRON", "cron service not configured")
 	}
 	return a.svc.uc.TriggerTask(ctx, taskID)
 }

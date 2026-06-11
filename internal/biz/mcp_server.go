@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/outboundguard"
 )
 
 var mcpIDRand uint64
@@ -101,7 +103,7 @@ func (u *MCPServerUsecase) List(ctx context.Context) ([]MCPServer, error) {
 
 func (u *MCPServerUsecase) Get(ctx context.Context, id string) (MCPServer, error) {
 	if strings.TrimSpace(id) == "" {
-		return MCPServer{}, errors.BadRequest("MCP_SERVER", "id is required")
+		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "id is required")
 	}
 	return u.repo.GetMCPServer(ctx, id)
 }
@@ -110,7 +112,10 @@ func (u *MCPServerUsecase) Create(ctx context.Context, in MCPServer) (MCPServer,
 	in.Key = strings.TrimSpace(in.Key)
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Key == "" || in.Name == "" {
-		return MCPServer{}, errors.BadRequest("MCP_SERVER", "key and name are required")
+		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "key and name are required")
+	}
+	if err := validateMCPConfigURLs(in.ConfigJSON); err != nil {
+		return MCPServer{}, err
 	}
 	if in.ID == "" {
 		in.ID = newMCPServerID()
@@ -137,7 +142,7 @@ type MCPServerUpdate struct {
 
 func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServerUpdate) (MCPServer, error) {
 	if strings.TrimSpace(id) == "" {
-		return MCPServer{}, errors.BadRequest("MCP_SERVER", "id is required")
+		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "id is required")
 	}
 	cur, err := u.repo.GetMCPServer(ctx, id)
 	if err != nil {
@@ -169,17 +174,20 @@ func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServe
 		merged.MetadataJSON = *patch.MetadataJSON
 	}
 	if strings.TrimSpace(merged.Key) == "" {
-		return MCPServer{}, errors.BadRequest("MCP_SERVER", "key cannot be empty")
+		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "key cannot be empty")
 	}
 	if strings.TrimSpace(merged.Name) == "" {
-		return MCPServer{}, errors.BadRequest("MCP_SERVER", "name cannot be empty")
+		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "name cannot be empty")
+	}
+	if err := validateMCPConfigURLs(merged.ConfigJSON); err != nil {
+		return MCPServer{}, err
 	}
 	return u.repo.UpdateMCPServer(ctx, merged)
 }
 
 func (u *MCPServerUsecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("MCP_SERVER", "id is required")
+		return apierror.BadRequest("MCP_SERVER", "id is required")
 	}
 	return u.repo.DeleteMCPServer(ctx, id)
 }
@@ -191,7 +199,7 @@ func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (MCPTes
 		return MCPTestResult{}, err
 	}
 	if u.prober == nil {
-		return MCPTestResult{}, errors.InternalServer("MCP_SERVER", "mcp prober not configured")
+		return MCPTestResult{}, apierror.Internal("MCP_SERVER", "mcp prober not configured")
 	}
 	result := u.prober.Evaluate(ctx, row.Enabled, row.ConfigJSON)
 	if err := u.persistHealth(ctx, &row, result); err != nil {
@@ -214,7 +222,7 @@ func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKe
 		return err
 	}
 	if u.metaEdit == nil {
-		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
+		return apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
 	u.metaEdit.ApplyReconnect(meta, at)
@@ -232,7 +240,7 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 		return err
 	}
 	if u.metaEdit == nil {
-		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
+		return apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
 	u.metaEdit.MarkHealthAlert(meta, at)
@@ -253,7 +261,7 @@ func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, enabled bool, con
 
 func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) error {
 	if u.metaEdit == nil {
-		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
+		return apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
 	at := time.Now().UTC()
@@ -263,4 +271,31 @@ func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, re
 		return err
 	}
 	return u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, status)
+}
+
+// validateMCPConfigURLs parses configJSON and validates that any HTTP
+// transport URL passes SSRF checks. This prevents saving MCP server
+// configurations that target internal/private networks.
+func validateMCPConfigURLs(configJSON string) error {
+	raw := strings.TrimSpace(configJSON)
+	if raw == "" || raw == "{}" {
+		return nil
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return apierror.BadRequest("MCP_SERVER", "config_json must be a valid JSON object")
+	}
+	transport, _ := cfg["transport"].(string)
+	transport = strings.ToLower(strings.TrimSpace(transport))
+	switch transport {
+	case "sse", "streamable", "streamable_http":
+		url, _ := cfg["url"].(string)
+		if strings.TrimSpace(url) == "" {
+			return apierror.BadRequest("MCP_SERVER", "mcp "+transport+" transport requires url")
+		}
+		if err := outboundguard.ValidateURL(url); err != nil {
+			return apierror.BadRequest("MCP_SERVER", "mcp url failed SSRF check: "+err.Error())
+		}
+	}
+	return nil
 }

@@ -6,9 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type fnMockRepo struct {
@@ -350,12 +349,15 @@ func TestGetRun(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.name == "empty_id_bad_request_reason" || tt.name == "empty_id_returns_error" || tt.name == "whitespace_id_returns_error" {
-					se := kerrors.FromError(err)
-					if se.Reason != "EVAL" {
-						t.Fatalf("expected reason 'EVAL', got %q", se.Reason)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror, got %T", err)
 					}
-					if se.Code != 400 {
-						t.Fatalf("expected code 400, got %d", se.Code)
+					if se.Domain != "EVAL" {
+						t.Fatalf("expected domain 'EVAL', got %q", se.Domain)
+					}
+					if se.Code != apierror.CodeBadRequest {
+						t.Fatalf("expected code %s, got %s", apierror.CodeBadRequest, se.Code)
 					}
 				}
 				return
@@ -602,13 +604,16 @@ func TestDeleteRun(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				se := kerrors.FromError(err)
+				se, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror, got %T", err)
+				}
 				if tt.id == "" || tt.id == "   " {
-					if se.Reason != "EVAL" {
-						t.Fatalf("expected reason 'EVAL', got %q", se.Reason)
+					if se.Domain != "EVAL" {
+						t.Fatalf("expected domain 'EVAL', got %q", se.Domain)
 					}
-					if se.Code != 400 {
-						t.Fatalf("expected code 400, got %d", se.Code)
+					if se.Code != apierror.CodeBadRequest {
+						t.Fatalf("expected code %s, got %s", apierror.CodeBadRequest, se.Code)
 					}
 				}
 				return
@@ -898,12 +903,15 @@ func TestAnnotateCaseResult(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if strings.TrimSpace(tt.runID) == "" || strings.TrimSpace(tt.resultID) == "" {
-					se := kerrors.FromError(err)
-					if se.Reason != "EVAL" {
-						t.Fatalf("expected reason 'EVAL', got %q", se.Reason)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror, got %T", err)
 					}
-					if se.Code != 400 {
-						t.Fatalf("expected code 400, got %d", se.Code)
+					if se.Domain != "EVAL" {
+						t.Fatalf("expected domain 'EVAL', got %q", se.Domain)
+					}
+					if se.Code != apierror.CodeBadRequest {
+						t.Fatalf("expected code %s, got %s", apierror.CodeBadRequest, se.Code)
 					}
 				}
 				return
@@ -1114,13 +1122,16 @@ func TestGetAgentEvalTrend(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				se := kerrors.FromError(err)
+				se, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror, got %T", err)
+				}
 				if tt.agentID == "" || tt.agentID == "   " {
-					if se.Reason != "EVAL" {
-						t.Fatalf("expected reason 'EVAL', got %q", se.Reason)
+					if se.Domain != "EVAL" {
+						t.Fatalf("expected domain 'EVAL', got %q", se.Domain)
 					}
-					if se.Code != 400 {
-						t.Fatalf("expected code 400, got %d", se.Code)
+					if se.Code != apierror.CodeBadRequest {
+						t.Fatalf("expected code %s, got %s", apierror.CodeBadRequest, se.Code)
 					}
 				}
 				return

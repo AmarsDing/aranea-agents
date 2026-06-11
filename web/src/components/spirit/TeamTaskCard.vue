@@ -31,22 +31,27 @@
           color="accent"
           class="q-mt-xs"
         />
+        <span v-if="team.totalSteps > 0" class="team-task-card__step-count">
+          {{ team.completedSteps }}/{{ team.totalSteps }}
+        </span>
+        <span v-if="modeTag" class="team-task-card__mode-tag">{{ modeTag }}</span>
       </div>
       <!-- F-7: Mini avatars in collapsed state -->
-      <div v-if="team.memberAvatars.length > 0" class="team-task-card__mini-avatars row items-center no-wrap">
-        <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 3)" :key="idx" size="18px">
-          <img v-if="url" :src="url" alt="" />
-          <q-icon v-else name="person" size="10px" color="grey" />
-        </q-avatar>
-        <span v-if="team.memberAvatars.length > 3" class="text-caption text-grey" style="font-size:10px">
-          +{{ team.memberAvatars.length - 3 }}
-        </span>
+      <div v-if="team.members.length > 0" class="team-task-card__mini-avatars row items-center no-wrap">
+        <div v-for="(initial, idx) in memberInitials.slice(0, 3)" :key="idx" class="team-task-card__mini-initial">
+          {{ initial }}
+        </div>
+        <span v-if="team.members.length > 3" class="team-task-card__mini-more"> +{{ team.members.length - 3 }} </span>
       </div>
       <div v-if="failedSummary" class="team-task-card__error">
         <q-icon name="error_outline" size="12px" class="q-mr-xs" />
         <span class="ellipsis">{{ failedSummary }}</span>
       </div>
-      <span class="team-task-card__status-dot" :class="`team-task-card__status-dot--${teamStatusColor}`" />
+      <span class="team-task-card__status-badge" :class="`team-task-card__status-badge--${teamStatusColor}`">
+        <span v-if="teamStatusColor === 'blue'" class="team-task-card__status-pulse" />
+        <q-icon :name="teamStatusIcon" size="11px" class="q-mr-xs" />
+        {{ teamStatusText }}
+      </span>
       <q-icon
         name="expand_more"
         size="16px"
@@ -125,6 +130,8 @@ import {
   spiritTeamStatusToLabel,
   STATUS_LABEL_CONFIG,
   formatDuration,
+  nameInitial,
+  modeToTopology,
 } from '../../features/spirit/spiritUi';
 
 const { t } = useI18n();
@@ -144,19 +151,30 @@ defineEmits<{
 const mappedStatus = computed(() => mapSpiritStatusToSession(props.team.status));
 
 /** Map SpiritTeamMode to TopologyType for OrchestrationModeBadge. */
-const topologyFromMode = computed<TopologyType>(() => {
-  const mode = props.team.mode;
-  if (mode === 'coordinator' || mode === 'sequential' || mode === 'parallel') return mode;
-  if (mode === 'critic_loop') return 'sequential';
-  if (mode === 'swarm' || mode === 'adaptive') return 'hybrid';
-  return 'coordinator';
-});
+const topologyFromMode = computed<TopologyType>(() => modeToTopology(props.team.mode));
 
 const teamStatusLabel = computed(() => spiritTeamStatusToLabel(props.team.status));
 
 const teamStatusColor = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.dotColor ?? 'grey');
 
 const teamStatusText = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.text ?? props.team.status);
+
+/** Status icon from STATUS_LABEL_CONFIG for badge rendering. */
+const teamStatusIcon = computed(() => STATUS_LABEL_CONFIG[teamStatusLabel.value]?.icon ?? 'circle');
+
+/** Short mode tag for collapsed state: seq/par/hyb/crit/swm/adt */
+const modeTag = computed(() => {
+  const mode = props.team.mode;
+  if (!mode || mode === 'coordinator') return '';
+  const tags: Record<string, string> = {
+    sequential: 'seq',
+    parallel: 'par',
+    critic_loop: 'crit',
+    swarm: 'swm',
+    adaptive: 'adt',
+  };
+  return tags[mode] ?? '';
+});
 
 /** Show duration in sidebar when available (running/completed/failed). */
 const durationText = computed(() => formatDuration(props.team.durationMs));
@@ -166,6 +184,8 @@ const failedSummary = computed(() => {
   if (props.team.status !== 'failed') return '';
   return props.team.interruptReason || t('spirit.executionFailed');
 });
+
+const memberInitials = computed(() => props.team.members.map((m) => nameInitial(m.displayName)));
 </script>
 
 <style scoped lang="sass">
@@ -240,26 +260,91 @@ const failedSummary = computed(() => {
   flex-shrink: 0
   gap: 2px
 
+.team-task-card__mini-initial
+  width: 20px
+  height: 20px
+  border-radius: 50%
+  border: 1px solid var(--glass-border)
+  margin-left: -6px
+  font-size: 9px
+  display: flex
+  align-items: center
+  justify-content: center
+  background: var(--glass-elevated, var(--glass-surface))
+  color: var(--color-text-secondary)
+  flex-shrink: 0
+
+  &:first-child
+    margin-left: 0
+
+.team-task-card__mini-more
+  font-size: var(--text-xs)
+  color: var(--color-text-tertiary)
+  margin-left: 2px
+
+.team-task-card__avatar-initial
+  width: 22px
+  height: 22px
+  border-radius: 50%
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+  color: var(--color-accent)
+  font-size: 10px
+  font-weight: 600
+  display: flex
+  align-items: center
+  justify-content: center
+
 .team-task-card__progress
   margin-top: var(--space-1)
 
-.team-task-card__status-dot
-  width: 8px
-  height: 8px
-  border-radius: 50%
+.team-task-card__status-badge
+  padding: 1px 6px
+  border-radius: 4px
+  font-size: 10px
+  font-weight: 600
+  display: inline-flex
+  align-items: center
+  gap: 3px
   flex-shrink: 0
-  background: var(--color-text-tertiary)
 
-.team-task-card__status-dot--grey
-  background: var(--color-text-tertiary)
-.team-task-card__status-dot--blue
-  background: var(--color-accent)
-.team-task-card__status-dot--orange
-  background: var(--color-warning)
-.team-task-card__status-dot--green
-  background: var(--color-success)
-.team-task-card__status-dot--red
-  background: var(--color-danger)
+.team-task-card__status-badge--grey
+  background: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent)
+  color: var(--color-text-tertiary)
+.team-task-card__status-badge--blue
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+  color: var(--color-accent)
+.team-task-card__status-badge--orange
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent)
+  color: var(--color-warning)
+.team-task-card__status-badge--green
+  background: color-mix(in srgb, var(--color-success) 12%, transparent)
+  color: var(--color-success)
+.team-task-card__status-badge--red
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent)
+  color: var(--color-danger)
+
+.team-task-card__status-pulse
+  width: 5px
+  height: 5px
+  border-radius: 50%
+  background: currentColor
+  animation: ttc-pulse 1.5s ease-in-out infinite
+
+.team-task-card__step-count
+  font-size: 10px
+  color: var(--color-text-tertiary)
+  flex-shrink: 0
+  margin-left: 4px
+
+.team-task-card__mode-tag
+  font-size: 10px
+  font-weight: 600
+  color: var(--color-text-tertiary)
+  background: var(--glass-surface)
+  padding: 0 4px
+  border-radius: 3px
+  flex-shrink: 0
+  margin-left: 2px
 
 .team-task-card__status-text--grey
   color: var(--color-text-tertiary)
@@ -282,4 +367,10 @@ const failedSummary = computed(() => {
   font-size: var(--text-xs)
   color: var(--color-danger)
   max-width: 100%
+
+@keyframes ttc-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.3
 </style>

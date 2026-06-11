@@ -1,16 +1,15 @@
 package biz
 
 import (
+	"errors"
 	"strings"
-
-	"entgo.io/ent/dialect/sql/sqlgraph"
 )
 
 func isAgentKeyDuplicate(err error) bool {
 	if err == nil {
 		return false
 	}
-	if sqlgraph.IsConstraintError(err) {
+	if errors.Is(err, ErrAgentKeyConflict) {
 		return true
 	}
 	msg := strings.ToLower(err.Error())

@@ -9,8 +9,7 @@ import (
 	stderrors "errors"
 
 	"aranea-agents/internal/biz/shared"
-
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ChannelRouting is parsed from config_json.routing.
@@ -104,11 +103,11 @@ func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams Tea
 	teamID = strings.TrimSpace(rt)
 	if teamID != "" {
 		if teams == nil {
-			return "", "", "", errors.InternalServer("CHANNEL", "team repository not configured")
+			return "", "", "", apierror.Internal("CHANNEL", "team repository not configured")
 		}
 		if _, e := teams.GetTeamByID(ctx, teamID); e != nil {
-			if errors.IsNotFound(e) || stderrors.Is(e, shared.ErrNotFound) {
-				return "", "", "", errors.NotFound("TEAM", "routing team not found")
+			if isNotFound(e) || stderrors.Is(e, shared.ErrNotFound) {
+				return "", "", "", apierror.NotFound("TEAM", "routing team not found")
 			}
 			return "", "", "", e
 		}
@@ -116,13 +115,26 @@ func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams Tea
 	}
 	agentRef := strings.TrimSpace(ra)
 	if agentRef == "" {
-		return "", "", "", errors.BadRequest("CHANNEL", "routing has no default_agent_id or team for this peer")
+		return "", "", "", apierror.BadRequest("CHANNEL", "routing has no default_agent_id or team for this peer")
 	}
-	if ag, e := agents.GetAgentByID(ctx, agentRef); e == nil && strings.TrimSpace(ag.ID) != "" {
-		return "agent", ag.ID, "", nil
+	ag, e := agents.GetAgentByID(ctx, agentRef)
+	if e != nil {
+		if !isNotFound(e) && !stderrors.Is(e, shared.ErrNotFound) {
+			return "", "", "", e
+		}
+		// Fallback to key lookup only on not-found
+		ag, e = agents.GetAgentByAgentKey(ctx, agentRef)
 	}
-	if ag, e := agents.GetAgentByAgentKey(ctx, agentRef); e == nil && strings.TrimSpace(ag.ID) != "" {
-		return "agent", ag.ID, "", nil
+	if e != nil || strings.TrimSpace(ag.ID) == "" {
+		return "", "", "", apierror.NotFound("AGENT", "routing target agent not found")
 	}
-	return "", "", "", errors.NotFound("AGENT", "routing target agent not found")
+	return "agent", ag.ID, "", nil
+}
+
+// isNotFound returns true if the error is a NOT_FOUND apierror or a kratos 404 error.
+func isNotFound(err error) bool {
+	if ae, ok := apierror.From(err); ok {
+		return ae.Code == apierror.CodeNotFound
+	}
+	return stderrors.Is(err, &apierror.Error{Code: apierror.CodeNotFound})
 }

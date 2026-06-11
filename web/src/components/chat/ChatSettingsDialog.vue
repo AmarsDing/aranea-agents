@@ -1,5 +1,5 @@
 <template>
-  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
+  <q-dialog :model-value="modelValue" :persistent="saving" @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="text-h6">{{ title }}</q-card-section>
       <q-card-section v-if="mode === 'agent'" class="app-dialog-body q-gutter-y-sm q-pt-none">
@@ -41,7 +41,7 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn v-close-popup flat no-caps :label="t('chat.cancel')" :disable="saving" />
-        <q-btn unelevated no-caps color="primary" :label="t('chat.save')" :loading="saving" @click="$emit('save')" />
+        <q-btn unelevated no-caps color="accent" :label="t('chat.save')" :loading="saving" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
   </q-dialog>

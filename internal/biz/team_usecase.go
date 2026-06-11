@@ -3,14 +3,12 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type TeamReader interface {
@@ -126,13 +124,13 @@ func validateTeamDefinition(raw string) error {
 		} `json:"members"`
 	}
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		return kerrors.BadRequest("TEAM", "definition_json must be valid JSON")
+		return apierror.BadRequest("TEAM", "definition_json must be valid JSON")
 	}
 	mode := firstNonEmpty(body.Mode, TeamModeSequential)
 	switch mode {
 	case TeamModeSequential, TeamModeParallel, TeamModeCoordinator, TeamModeCriticLoop, TeamModeSwarm, TeamModeAdaptive:
 	default:
-		return kerrors.BadRequest("TEAM", "unsupported team orchestration mode")
+		return apierror.BadRequest("TEAM", "unsupported team orchestration mode")
 	}
 	if len(body.Members) == 0 {
 		return nil
@@ -144,7 +142,7 @@ func validateTeamDefinition(raw string) error {
 	hasCoordinator := false
 	for _, member := range body.Members {
 		if strings.TrimSpace(member.AgentID) == "" {
-			return kerrors.BadRequest("TEAM", "team member agent_id is required")
+			return apierror.BadRequest("TEAM", "team member agent_id is required")
 		}
 		if member.Enabled == nil || *member.Enabled {
 			enabledCount++
@@ -168,20 +166,20 @@ func validateTeamDefinition(raw string) error {
 			continue
 		}
 		if validRoles != nil && !validRoles[role] {
-			return kerrors.BadRequest("TEAM", "role "+role+" is not compatible with mode "+mode)
+			return apierror.BadRequest("TEAM", "role %s is not compatible with mode %s", role, mode)
 		}
 	}
 	if enabledCount == 0 {
-		return kerrors.BadRequest("TEAM", "team must have at least one enabled member")
+		return apierror.BadRequest("TEAM", "team must have at least one enabled member")
 	}
 	if mode == TeamModeParallel && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" && enabledCount > 1 {
-		return kerrors.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")
+		return apierror.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")
 	}
 	if mode == TeamModeCoordinator && !hasSynthesizer && !hasCoordinator && strings.TrimSpace(body.SynthesizerAgent) == "" {
-		return kerrors.BadRequest("TEAM", "coordinator mode requires a synthesizer or coordinator member, or synthesizer_agent_id")
+		return apierror.BadRequest("TEAM", "coordinator mode requires a synthesizer or coordinator member, or synthesizer_agent_id")
 	}
 	if mode == TeamModeCriticLoop && (!hasGenerator || !hasCritic) {
-		return kerrors.BadRequest("TEAM", "critic_loop mode requires generator and critic members")
+		return apierror.BadRequest("TEAM", "critic_loop mode requires generator and critic members")
 	}
 	return nil
 }
@@ -218,7 +216,7 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		} `json:"members"`
 	}
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		return kerrors.BadRequest("TEAM", "invalid team definition JSON: "+err.Error())
+		return apierror.BadRequest("TEAM", "invalid team definition JSON: %s", err.Error())
 	}
 	for _, member := range body.Members {
 		aid := strings.TrimSpace(member.AgentID)
@@ -226,7 +224,7 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 			continue
 		}
 		if !u.agentChecker.AgentExistsByID(ctx, aid) {
-			return kerrors.BadRequest("TEAM", "team member agent "+aid+" does not exist")
+			return apierror.BadRequest("TEAM", "team member agent %s does not exist", aid)
 		}
 		// NOTE: AgentIDExistenceChecker only checks existence, not active status.
 		// Adding AgentIsActiveByID would require interface changes across multiple packages.
@@ -326,7 +324,7 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 	in.TeamKey = strings.TrimSpace(in.TeamKey)
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	if in.TeamKey == "" || in.DisplayName == "" {
-		return Team{}, kerrors.BadRequest("TEAM", "team_key and display_name are required")
+		return Team{}, apierror.BadRequest("TEAM", "team_key and display_name are required")
 	}
 	if in.ID == "" {
 		in.ID = newAgentCatalogID()
@@ -402,7 +400,7 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 		return Team{}, err
 	}
 	if active {
-		return Team{}, kerrors.Conflict("TEAM", "team has an active run; orchestration is read-only until the run finishes")
+		return Team{}, apierror.Conflict("TEAM", "team has an active run; orchestration is read-only until the run finishes")
 	}
 	current, err := u.reader.GetTeamByID(ctx, id)
 	if err != nil {
@@ -448,7 +446,7 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 		return Team{}, err
 	}
 	if !ValidTeamStatusTransition(current.Status, newStatus) {
-		return Team{}, kerrors.BadRequest("TEAM", fmt.Sprintf("invalid team status transition: %s → %s", current.Status, newStatus))
+		return Team{}, apierror.BadRequest("TEAM", "invalid team status transition: %s → %s", current.Status, newStatus)
 	}
 	current.Status = newStatus
 	return u.writer.UpdateTeam(ctx, current)
@@ -466,7 +464,7 @@ func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string,
 		return Team{}, err
 	}
 	if !ValidTeamStatusTransition(current.Status, newStatus) {
-		return Team{}, kerrors.BadRequest("TEAM", fmt.Sprintf("invalid team status transition: %s → %s", current.Status, newStatus))
+		return Team{}, apierror.BadRequest("TEAM", "invalid team status transition: %s → %s", current.Status, newStatus)
 	}
 	current.Status = newStatus
 	if newStatus == TeamStatusInterrupted && reason != "" {
@@ -487,7 +485,7 @@ func (u *TeamUsecase) RetryTeam(ctx context.Context, id string) (Team, error) {
 		return Team{}, err
 	}
 	if current.Status != TeamStatusFailed && current.Status != TeamStatusCancelled {
-		return Team{}, kerrors.BadRequest("TEAM", "only failed or cancelled teams can be retried")
+		return Team{}, apierror.BadRequest("TEAM", "only failed or cancelled teams can be retried")
 	}
 	current.Status = TeamStatusPending
 	return u.writer.UpdateTeam(ctx, current)
@@ -531,24 +529,24 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	if team.Kind == "system_builtin" {
-		return kerrors.Forbidden("TEAM", "cannot delete system_builtin team")
+		return apierror.Forbidden("TEAM", "cannot delete system_builtin team")
 	}
 	// ecosystem_preset teams must be deleted via industry unload to keep ecosystem_loaded status consistent.
 	if team.Kind == "ecosystem_preset" {
-		return kerrors.Forbidden("TEAM", "cannot delete ecosystem_preset team directly; use industry unload instead")
+		return apierror.Forbidden("TEAM", "cannot delete ecosystem_preset team directly; use industry unload instead")
 	}
 	if team.IsDefault {
-		return kerrors.Conflict("TEAM", "default team cannot be deleted")
+		return apierror.Conflict("TEAM", "default team cannot be deleted")
 	}
 	if team.Readonly {
-		return kerrors.Forbidden("TEAM", "cannot delete a readonly team")
+		return apierror.Forbidden("TEAM", "cannot delete a readonly team")
 	}
 	active, err := u.HasActiveRun(ctx, id)
 	if err != nil {
 		return err
 	}
 	if active {
-		return kerrors.Conflict("TEAM", "team has an active run; delete is not allowed until the run finishes")
+		return apierror.Conflict("TEAM", "team has an active run; delete is not allowed until the run finishes")
 	}
 
 	// ORG-11c: Clean up Graph association on team deletion
@@ -610,7 +608,7 @@ func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {
 
 func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 	if strings.TrimSpace(r.ID) == "" {
-		return kerrors.BadRequest("TEAM", "run id is required")
+		return apierror.BadRequest("TEAM", "run id is required")
 	}
 	return u.runWriter.UpdateTeamRun(ctx, r)
 }
@@ -623,7 +621,7 @@ func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, err
 		return TeamRun{}, err
 	}
 	if r.Status != TeamRunStatusRunning && r.Status != TeamRunStatusPending {
-		return TeamRun{}, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
+		return TeamRun{}, apierror.BadRequest("TEAM", "only running or pending team runs can be cancelled")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	r.Status = TeamRunStatusCancelled
@@ -637,7 +635,7 @@ func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, err
 
 func (u *TeamUsecase) UpdateRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
 	if strings.TrimSpace(runID) == "" {
-		return kerrors.BadRequest("TEAM", "run id is required")
+		return apierror.BadRequest("TEAM", "run id is required")
 	}
 	return u.runWriter.UpdateTeamRunSummaryJSON(ctx, runID, summaryJSON)
 }
@@ -688,14 +686,14 @@ func (u *TeamUsecase) GetRunSummary(ctx context.Context, runID string) (TeamRunS
 func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, addIDs []string, removeIDs []string) (bool, error) {
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
-		return false, kerrors.BadRequest("TEAM", "team_id is required")
+		return false, apierror.BadRequest("TEAM", "team_id is required")
 	}
 	active, err := u.HasActiveRun(ctx, teamID)
 	if err != nil {
 		return false, err
 	}
 	if active {
-		return false, kerrors.BadRequest("TEAM", "cannot update members while team has active run")
+		return false, apierror.BadRequest("TEAM", "cannot update members while team has active run")
 	}
 	t, err := u.reader.GetTeamByID(ctx, teamID)
 	if err != nil {
@@ -703,11 +701,11 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	}
 	def, err := parseDefinitionForUpdate(t.DefinitionJSON)
 	if err != nil {
-		return false, kerrors.BadRequest("TEAM", "invalid definition_json")
+		return false, apierror.BadRequest("TEAM", "invalid definition_json")
 	}
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
 	if mode != TeamModeSwarm && mode != TeamModeAdaptive {
-		return false, kerrors.BadRequest("TEAM", "swarm member management only applies to swarm or adaptive mode")
+		return false, apierror.BadRequest("TEAM", "swarm member management only applies to swarm or adaptive mode")
 	}
 	removeSet := make(map[string]bool, len(removeIDs))
 	for _, id := range removeIDs {
@@ -730,7 +728,7 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	def.Members = filtered
 	updatedJSON, err := json.Marshal(def)
 	if err != nil {
-		return false, kerrors.InternalServer("TEAM", "failed to marshal updated definition")
+		return false, apierror.Internal("TEAM", "failed to marshal updated definition")
 	}
 	t.DefinitionJSON = string(updatedJSON)
 	if err := validateTeamDefinition(t.DefinitionJSON); err != nil {
@@ -746,7 +744,7 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*TeamStructureSnapshot, error) {
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
-		return nil, kerrors.BadRequest("TEAM", "team_id is required")
+		return nil, apierror.BadRequest("TEAM", "team_id is required")
 	}
 	t, err := u.reader.GetTeamByID(ctx, teamID)
 	if err != nil {
@@ -754,7 +752,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 	}
 	def, err := parseDefinitionForUpdate(t.DefinitionJSON)
 	if err != nil {
-		return nil, kerrors.BadRequest("TEAM", "invalid definition_json")
+		return nil, apierror.BadRequest("TEAM", "invalid definition_json")
 	}
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
 	snapshot := &TeamStructureSnapshot{
@@ -866,7 +864,7 @@ func (u *TeamUsecase) ResolveMemberAgentKeys(ctx context.Context, raw string, ag
 	}
 	spec, err := ParseOrchestrationSpec(raw)
 	if err != nil {
-		return "", kerrors.BadRequest("TEAM", "invalid definition_json: "+err.Error())
+		return "", apierror.BadRequest("TEAM", "invalid definition_json: %s", err.Error())
 	}
 	for i := range spec.Members {
 		m := &spec.Members[i]
@@ -877,7 +875,7 @@ func (u *TeamUsecase) ResolveMemberAgentKeys(ctx context.Context, raw string, ag
 		if !isHexID(m.AgentID) {
 			resolved, err := agentKeyResolver(m.AgentID)
 			if err != nil {
-				return "", kerrors.BadRequest("TEAM", "agent_key "+m.AgentID+" 解析失败: "+err.Error())
+				return "", apierror.BadRequest("TEAM", "agent_key %s 解析失败: %s", m.AgentID, err.Error())
 			}
 			m.AgentID = resolved
 		}
@@ -917,7 +915,7 @@ func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDM
 	team.TeamKey = strings.TrimSpace(team.TeamKey)
 	team.DisplayName = strings.TrimSpace(team.DisplayName)
 	if team.TeamKey == "" || team.DisplayName == "" {
-		return Team{}, kerrors.BadRequest("TEAM", "team_key and display_name are required")
+		return Team{}, apierror.BadRequest("TEAM", "team_key and display_name are required")
 	}
 
 	// 处理 linked_graph_id 映射

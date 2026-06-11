@@ -8,9 +8,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ── Stub repo for SkillIntelligenceUsecase ──────────────────────────────────
@@ -46,7 +45,7 @@ func (s *stubExperienceReportReader) ListBySkill(_ context.Context, skillID stri
 func (s *stubExperienceReportReader) GetByID(_ context.Context, id string) (*biz.ExperienceReport, error) {
 	r, ok := s.byID[id]
 	if !ok {
-		return nil, kerrors.NotFound("SKILL_INTELLIGENCE", "experience report not found")
+		return nil, apierror.NotFound("SKILL_INTELLIGENCE", "experience report not found")
 	}
 	return r, nil
 }

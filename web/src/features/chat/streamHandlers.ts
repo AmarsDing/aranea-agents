@@ -303,20 +303,14 @@ export function bindStreamHandlers(
     writer?.flushSync();
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
     if (!sid) return;
-    // Keep pending-user placeholders so the user message stays visible while
-    // loadMessages fetches the persisted version.  The merge logic in
-    // mergeSessionMessages will replace them with server-persisted rows.
-    const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid)).filter((m) => {
-      const id = m.id || '';
-      // Remove all ws-stream rows — the server-persisted messages will arrive
-      // via onReloadAfterCompletion. Keeping them as fallback causes
-      // duplicates because ws-stream IDs differ from server message IDs,
-      // so mergeSessionMessages cannot deduplicate by ID.
-      if (id.startsWith('ws-stream-') || id.startsWith('ws-team-stream-')) {
-        return false;
-      }
-      return true;
-    });
+    // Finalize orphan tool messages but keep ws-stream rows as fallback until
+    // the server-persisted messages arrive via onReloadAfterCompletion.
+    // The merge logic in mergeSessionMessages will deduplicate ws-stream rows
+    // against server messages by matching content + role + session_id, so there
+    // is no visible duplication. This prevents the brief flicker where the
+    // assistant reply disappears between removing ws-stream rows and loading
+    // the persisted version.
+    const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid));
     ctx.setMessages(sid, finalized);
     applySessionContextPatch(sid, env);
     if (shouldSessionWsSkipEnvelope(env)) {

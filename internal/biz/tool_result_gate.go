@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"unicode/utf8"
+
+	"aranea-agents/pkg/apierror"
 
 	"github.com/google/uuid"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const (
@@ -43,7 +45,8 @@ func (g *ToolResultGate) BlobReader() ToolResultBlobReader {
 }
 
 func (g *ToolResultGate) Check(ctx context.Context, sessionID, messageID, toolName, toolArgsSummary, fullContent string, turnNumber int) (ToolResultGateResult, error) {
-	if len(fullContent) <= ToolResultSizeThreshold {
+	runeCount := utf8.RuneCountInString(fullContent)
+	if runeCount <= ToolResultSizeThreshold {
 		return ToolResultGateResult{}, nil
 	}
 
@@ -54,12 +57,12 @@ func (g *ToolResultGate) Check(ctx context.Context, sessionID, messageID, toolNa
 		ToolName:         toolName,
 		ToolArgsSummary:  toolArgsSummary,
 		FullContent:      fullContent,
-		ContentSizeChars: len(fullContent),
+		ContentSizeChars: runeCount,
 		CreatedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
 
 	if err := g.blobWriter.SaveBlob(ctx, blob); err != nil {
-		return ToolResultGateResult{}, kerrors.InternalServer("TOOL_RESULT", fmt.Sprintf("save blob: %v", err))
+		return ToolResultGateResult{}, apierror.Internal("TOOL_RESULT", "save blob: %v", err)
 	}
 
 	preview := freezePreview(fullContent, blob.ID)
@@ -74,7 +77,7 @@ func (g *ToolResultGate) Check(ctx context.Context, sessionID, messageID, toolNa
 	}
 
 	if err := g.replacementWriter.SaveReplacement(ctx, rep); err != nil {
-		return ToolResultGateResult{}, kerrors.InternalServer("TOOL_RESULT", fmt.Sprintf("save replacement: %v", err))
+		return ToolResultGateResult{}, apierror.Internal("TOOL_RESULT", "save replacement: %v", err)
 	}
 
 	return ToolResultGateResult{
@@ -85,13 +88,15 @@ func (g *ToolResultGate) Check(ctx context.Context, sessionID, messageID, toolNa
 }
 
 func freezePreview(fullContent, blobID string) string {
-	head := fullContent
-	if len(head) > ToolResultPreviewSize {
-		head = head[:ToolResultPreviewSize]
+	runeCount := utf8.RuneCountInString(fullContent)
+	if runeCount <= ToolResultPreviewSize {
+		return fullContent
 	}
-	truncated := ""
-	if len(fullContent) > ToolResultPreviewSize {
-		truncated = fmt.Sprintf("\n\n... [truncated %d → %d chars, blob_id=%s] ...", len(fullContent), ToolResultPreviewSize, blobID)
-	}
+	runes := []rune(fullContent)
+	head := string(runes[:ToolResultPreviewSize])
+	truncated := fmt.Sprintf(
+		"\n\n... [truncated %d → %d chars, blob_id=%s. Use read_tool_result with blob_id, offset=%d to read more] ...",
+		runeCount, ToolResultPreviewSize, blobID, ToolResultPreviewSize,
+	)
 	return head + truncated
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
@@ -28,12 +27,12 @@ func (h *ChannelIngress) shouldProcessInbound(ctx context.Context, chRow biz.Cha
 		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
 	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
-	if !h.inboundInflight.tryAcquire(dedupKey) {
+	if !h.deduplicator.TryAcquireInflight(dedupKey) {
 		return false, "duplicate_inflight", nil
 	}
-	msgKey := ingressMessageDedupeKey(chRow.ID, strings.TrimSpace(ev.IdempotencyKey))
-	if msgKey != "" && h.messageDedupe != nil && !h.messageDedupe.claim(msgKey, time.Now()) {
-		h.inboundInflight.release(dedupKey)
+	msgKey := biz.IngressMessageDedupeKey(chRow.ID, strings.TrimSpace(ev.IdempotencyKey))
+	if msgKey != "" && !h.deduplicator.ClaimMessage(chRow.ID, strings.TrimSpace(ev.IdempotencyKey)) {
+		h.deduplicator.ReleaseInflight(dedupKey)
 		recordIngressIntentMetric("dedupe")
 		return false, "duplicate_message_ttl", nil
 	}
@@ -42,14 +41,14 @@ func (h *ChannelIngress) shouldProcessInbound(ctx context.Context, chRow biz.Cha
 		return false, "", err
 	}
 	if !claimed {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		return false, "duplicate_inbound", nil
 	}
 	return true, "", nil
 }
 
 func (h *ChannelIngress) logInboundAccepted(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, viaWebhook string) {
-	source := strings.TrimSpace(ev.OutboundMeta["ingress_source"])
+	source := strings.TrimSpace(ev.OutboundMeta[port.MetaIngressSource])
 	if source == "" {
 		source = viaWebhook
 	}

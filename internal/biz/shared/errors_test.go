@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestErrUsageScopeRequired(t *testing.T) {
@@ -32,72 +32,72 @@ func TestErrMessageDuplicate(t *testing.T) {
 }
 
 func TestErrAdminNotFound(t *testing.T) {
-	e := kerrors.FromError(ErrAdminNotFound)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrAdminNotFound)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "ADMIN" {
-		t.Fatalf("expected reason ADMIN, got %q", e.Reason)
+	if e.Domain != "ADMIN" {
+		t.Fatalf("expected domain ADMIN, got %q", e.Domain)
 	}
 }
 
 func TestErrNotFound(t *testing.T) {
-	e := kerrors.FromError(ErrNotFound)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrNotFound)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "NOT_FOUND" {
-		t.Fatalf("expected reason NOT_FOUND, got %q", e.Reason)
+	if e.Domain != "NOT_FOUND" {
+		t.Fatalf("expected domain NOT_FOUND, got %q", e.Domain)
 	}
 }
 
 func TestErrGraphSaveRun(t *testing.T) {
-	e := kerrors.FromError(ErrGraphSaveRun)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrGraphSaveRun)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "GRAPH" {
-		t.Fatalf("expected reason GRAPH, got %q", e.Reason)
+	if e.Domain != "GRAPH" {
+		t.Fatalf("expected domain GRAPH, got %q", e.Domain)
 	}
 }
 
 func TestErrGraphInvalidStatus(t *testing.T) {
-	e := kerrors.FromError(ErrGraphInvalidStatus)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrGraphInvalidStatus)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "GRAPH" {
-		t.Fatalf("expected reason GRAPH, got %q", e.Reason)
+	if e.Domain != "GRAPH" {
+		t.Fatalf("expected domain GRAPH, got %q", e.Domain)
 	}
 }
 
 func TestErrGraphResume(t *testing.T) {
-	e := kerrors.FromError(ErrGraphResume)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrGraphResume)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "GRAPH" {
-		t.Fatalf("expected reason GRAPH, got %q", e.Reason)
+	if e.Domain != "GRAPH" {
+		t.Fatalf("expected domain GRAPH, got %q", e.Domain)
 	}
 }
 
 func TestErrGraphTemplateNotFound(t *testing.T) {
-	e := kerrors.FromError(ErrGraphTemplateNotFound)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrGraphTemplateNotFound)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "GRAPH_TEMPLATE" {
-		t.Fatalf("expected reason GRAPH_TEMPLATE, got %q", e.Reason)
+	if e.Domain != "GRAPH_TEMPLATE" {
+		t.Fatalf("expected domain GRAPH_TEMPLATE, got %q", e.Domain)
 	}
 }
 
 func TestErrQuotaUnsupportedScope(t *testing.T) {
-	e := kerrors.FromError(ErrQuotaUnsupportedScope)
-	if e == nil {
-		t.Fatal("expected kratos error")
+	e, ok := apierror.From(ErrQuotaUnsupportedScope)
+	if !ok {
+		t.Fatal("expected apierror.Error")
 	}
-	if e.Reason != "USAGE_QUOTA" {
-		t.Fatalf("expected reason USAGE_QUOTA, got %q", e.Reason)
+	if e.Domain != "USAGE_QUOTA" {
+		t.Fatalf("expected domain USAGE_QUOTA, got %q", e.Domain)
 	}
 }
 

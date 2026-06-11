@@ -2,10 +2,8 @@ package biz
 
 import (
 	"context"
-	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -109,7 +107,7 @@ func (c *EvolutionCoordinator) hasPendingForSkill(ctx context.Context, skillID s
 // hard-block duplicate creation rather than silently skip.
 func (c *EvolutionCoordinator) RequireNoPendingEvolution(ctx context.Context, target EvolutionTarget) error {
 	if c.HasPendingEvolution(ctx, target) {
-		return kerrors.BadRequest("EVO_COORDINATOR", fmt.Sprintf("pending evolution already exists for %s %s", target.Type, target.ID))
+		return apierror.BadRequest("EVO_COORDINATOR", "pending evolution already exists for %s %s", target.Type, target.ID)
 	}
 	return nil
 }

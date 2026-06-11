@@ -198,11 +198,9 @@ func (m *Manager) Reload(ctx context.Context) error {
 		st, _ := lookupStarter(cfg.Type, mode)
 		platform := cfg.Type
 		if !m.acquireLease(ctx, chCopy.ID, platform) {
+			cancel()
 			m.mu.Lock()
-			if inst, ok := m.running[chCopy.ID]; ok && inst.fingerprint == fp {
-				inst.cancel()
-				delete(m.running, chCopy.ID)
-			}
+			delete(m.running, chCopy.ID)
 			m.mu.Unlock()
 			close(done)
 			continue
@@ -282,13 +280,18 @@ func (m *Manager) remove(id string) {
 	delete(m.running, id)
 }
 
-// StopAll cancels every running connector.
+// StopAll cancels every running connector and waits for them to exit.
 func (m *Manager) StopAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	instances := make([]runningInstance, 0, len(m.running))
 	for id, inst := range m.running {
 		inst.cancel()
+		instances = append(instances, inst)
 		delete(m.running, id)
+	}
+	m.mu.Unlock()
+	for _, inst := range instances {
+		waitRuntimeInstanceDone(inst.done, runtimeReplaceShutdownWait, m.lg)
 	}
 }
 

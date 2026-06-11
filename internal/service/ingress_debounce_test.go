@@ -33,16 +33,16 @@ func TestIngressMessageDedupe_claimAfterTTL(t *testing.T) {
 
 func TestShouldSkipRecentDuplicate(t *testing.T) {
 	now := time.Now()
-	if !shouldSkipRecentDuplicate(now.Add(-30*time.Second), time.Minute, now) {
+	if !biz.ShouldSkipRecentDuplicate(now.Add(-30*time.Second), time.Minute, now) {
 		t.Fatal("expected skip within TTL")
 	}
-	if shouldSkipRecentDuplicate(now.Add(-2*time.Minute), time.Minute, now) {
+	if biz.ShouldSkipRecentDuplicate(now.Add(-2*time.Minute), time.Minute, now) {
 		t.Fatal("expected allow after TTL")
 	}
 }
 
 func TestMergeIngressIdempotencyKeys(t *testing.T) {
-	got := mergeIngressIdempotencyKeys([]string{"a", "b"})
+	got := biz.MergeIngressIdempotencyKeys([]string{"a", "b"})
 	if got != "a+b" {
 		t.Fatalf("got %q", got)
 	}

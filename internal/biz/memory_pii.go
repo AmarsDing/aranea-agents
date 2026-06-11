@@ -4,10 +4,10 @@ import (
 	"regexp"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
-var ErrPIIBlocked = kerrors.Forbidden("MEMORY", "fact blocked by PII policy")
+var ErrPIIBlocked = apierror.Forbidden("MEMORY", "fact blocked by PII policy")
 
 type PIIPolicy string
 
@@ -42,6 +42,12 @@ var (
 	piiMedicalRe    = regexp.MustCompile(`(?i)(?:medical record|patient id|mrn)\s*[:#]?\s*\S+`)
 	piiHomeAddrRe   = regexp.MustCompile(`(?i)\d+\s+[A-Z][a-zA-Z]+\s+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct)`)
 	piiSecretKeyRe  = regexp.MustCompile(`(?i)(?:api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*["']?[A-Za-z0-9_\-]{8,}["']?`) // Exclude "password" to avoid blocking user preferences; require 8+ char value
+	// piiLongNumberRe catches long digit sequences that look like financial
+	// identifiers but are NOT already matched by piiBankAcctRe (UnionPay 62-prefix).
+	// This covers Visa (4), Mastercard (5), Amex (3) ranges for 13-19 digit numbers
+	// with optional spaces/dashes. The leading digit constraint reduces false positives
+	// on generic long numbers like order IDs or ISBNs.
+	piiLongNumberRe = regexp.MustCompile(`\b[345]\d[ -]*?(?:\d[ -]*?){11,17}\d\b`)
 )
 
 type piiDetector struct {
@@ -54,8 +60,9 @@ var piiDetectors = []piiDetector{
 	{piiEmailRe, "[email]", "email"},
 	{piiPhoneRe, "[phone]", "phone"},
 	{piiIDCardRe, "[id]", "id_card"},
-	{piiCreditRe, "[card]", "credit_card"},
 	{piiBankAcctRe, "[bank_account]", "bank_account"},
+	{piiLongNumberRe, "[card]", "credit_card"},
+	{piiCreditRe, "[card]", "credit_card"},
 	{piiSSNLikeRe, "[ssn]", "ssn"},
 	{piiMedicalRe, "[medical]", "medical_record"},
 	{piiHomeAddrRe, "[address]", "home_address"},

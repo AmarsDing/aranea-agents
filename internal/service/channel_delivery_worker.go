@@ -12,9 +12,8 @@ import (
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/preview"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func (h *ChannelIngress) runChatTurn(
@@ -166,7 +165,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		}
 		if payload.Kind != "" && payload.Kind != biz.ChannelOutboundTextKind && payload.Kind != biz.ChannelOutboundCardKind {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind))); markErr != nil {
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, apierror.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind))); markErr != nil {
 				w.lg.Warn("标记投递尝试失败",
 					loggateway.StepID("channel.delivery.mark_attempt_failed"),
 					loggateway.Err(markErr),
@@ -176,7 +175,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		}
 		if payload.Kind == biz.ChannelOutboundCardKind && strings.TrimSpace(payload.CardJSON) == "" && strings.TrimSpace(payload.Text) == "" {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json")); markErr != nil {
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, apierror.BadRequest("CHANNEL", "outbound_card missing card_json")); markErr != nil {
 				w.lg.Warn("标记投递尝试失败",
 					loggateway.StepID("channel.delivery.mark_attempt_failed"),
 					loggateway.Err(markErr),
@@ -187,7 +186,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		if payload.Kind == "" || payload.Kind == biz.ChannelOutboundTextKind {
 			if strings.TrimSpace(payload.Text) == "" {
 				arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-				if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text")); markErr != nil {
+				if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, apierror.BadRequest("CHANNEL", "outbound_text missing text")); markErr != nil {
 					w.lg.Warn("标记投递尝试失败",
 						loggateway.StepID("channel.delivery.mark_attempt_failed"),
 						loggateway.Err(markErr),

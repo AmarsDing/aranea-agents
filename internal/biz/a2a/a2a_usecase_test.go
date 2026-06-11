@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type mockUsecaseRepo struct {
@@ -478,15 +478,15 @@ func TestUpdateAgentCard(t *testing.T) {
 					t.Fatal("UpdateAgentCard() expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Reason != tt.wantReason {
-						t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+					if se.Domain != tt.wantReason {
+						t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return

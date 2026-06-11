@@ -12,11 +12,10 @@ import (
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools/mcpobserve"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ChatService is the thin transport bridge between proto/HTTP/WS and the
@@ -32,21 +31,21 @@ type ChatService struct {
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
-	svc := &ChatService{orch: orch, lg: deps.LG}
-	if deps.Sessions != nil {
+	svc := &ChatService{orch: orch, lg: deps.Infra.LG}
+	if deps.Turn.Sessions != nil {
 		svc.turnPipeline = &TurnPipeline{
-			Service:  NewPersistentTurnService(deps.Sessions),
+			Service:  NewPersistentTurnService(deps.Turn.Sessions),
 			Executor: chatTurnExecutor{orch: orch},
-			Lg:       deps.LG,
+			Lg:       deps.Infra.LG,
 		}
 	}
 	// Register session resolver for outbound target resolution.
 	// When an agent calls the message tool without explicit channel/target,
 	// the resolver looks up the session's channel metadata to infer the target.
-	if deps.RT.OutboundRouter != nil && deps.Sessions != nil {
+	if deps.Turn.RT.OutboundRouter != nil && deps.Turn.Sessions != nil {
 		outbound.RegisterSessionResolver(func(sessionID string) (outbound.DeliveryTarget, bool) {
 			ctx := context.Background()
-			session, err := deps.Sessions.Get(ctx, sessionID)
+			session, err := deps.Turn.Sessions.Get(ctx, sessionID)
 			if err != nil {
 				return outbound.DeliveryTarget{}, false
 			}
@@ -61,8 +60,8 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 		})
 	}
 	// Start SubAgentService lifecycle.
-	if deps.RT.SubAgentService != nil {
-		deps.RT.SubAgentService.Start(context.Background())
+	if deps.Turn.RT.SubAgentService != nil {
+		deps.Turn.RT.SubAgentService.Start(context.Background())
 	}
 	return svc
 }
@@ -118,7 +117,7 @@ func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOpt
 func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenerationRequest) (*chatv1.StopGenerationResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	stopped := s.orch.CancelRun(ctx, sessionID)
 	return &chatv1.StopGenerationResponse{Stopped: stopped}, nil
@@ -190,7 +189,7 @@ func (s *ChatService) LastPendingMessageID(sessionID string) string {
 func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPendingMessagesRequest) (*chatv1.GetPendingMessagesResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	entries := s.orch.GetPendingMessages(sessionID)
 	items := make([]*chatv1.PendingMessage, 0, len(entries))
@@ -208,11 +207,11 @@ func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPen
 func (s *ChatService) CancelPendingMessage(ctx context.Context, req *chatv1.CancelPendingMessageRequest) (*chatv1.CancelPendingMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
-		return nil, kerrors.BadRequest("CHAT", "pending_id is required")
+		return nil, apierror.BadRequest("CHAT", "pending_id is required")
 	}
 	cancelled := s.orch.CancelPendingMessage(sessionID, pendingID)
 	return &chatv1.CancelPendingMessageResponse{Cancelled: cancelled}, nil
@@ -221,15 +220,15 @@ func (s *ChatService) CancelPendingMessage(ctx context.Context, req *chatv1.Canc
 func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.UpdatePendingMessageRequest) (*chatv1.UpdatePendingMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
-		return nil, kerrors.BadRequest("CHAT", "pending_id is required")
+		return nil, apierror.BadRequest("CHAT", "pending_id is required")
 	}
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
-		return nil, kerrors.BadRequest("CHAT", "content is required")
+		return nil, apierror.BadRequest("CHAT", "content is required")
 	}
 	updated := s.orch.UpdatePendingMessage(sessionID, pendingID, content)
 	return &chatv1.UpdatePendingMessageResponse{Updated: updated}, nil
@@ -238,11 +237,11 @@ func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.Upda
 func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
-		return nil, kerrors.BadRequest("CHAT", "content is required")
+		return nil, apierror.BadRequest("CHAT", "content is required")
 	}
 
 	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessage(sessionID, content)
@@ -254,7 +253,7 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 	}
 	if queued {
 		if pendingID == "" {
-			return nil, kerrors.BadRequest("CHAT", enqueueRejectMessage(rejectReason))
+			return nil, apierror.BadRequest("CHAT", enqueueRejectMessage(rejectReason))
 		}
 		return &chatv1.EnqueueUserMessageResponse{
 			Accepted:  true,
@@ -269,7 +268,7 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatusRequest) (*chatv1.RunStatus, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	resp := &chatv1.RunStatus{Status: "idle"}
 	if runID, status, errMsg, updatedAt, ok := s.orch.GetRunStatus(ctx, sessionID); ok {
@@ -325,20 +324,28 @@ func applyFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, r
 func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserReplyRequest) (*chatv1.AwaitUserReplyResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
 	}
 	reply := strings.TrimSpace(req.GetReply())
 	if reply == "" {
-		return nil, kerrors.BadRequest("CHAT", "reply is required")
+		return nil, apierror.BadRequest("CHAT", "reply is required")
 	}
-	ch, ok := s.orch.LoadAwaitChannel(sessionID)
-	if !ok {
-		runID, canResume := s.orch.canResumeAwait(ctx, sessionID)
+	runID := ""
+	if req.RunId != nil {
+		runID = *req.RunId
+	}
+	if s.orch.TrySendAwaitChannel(sessionID, biz.AwaitReplyMsg{RunID: runID, Reply: reply}) {
+		return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
+	}
+	// Send failed: channel may be full (normal) or closed by GC (race).
+	// If the entry no longer exists in the map, it was cleaned up — try resume.
+	if _, stillExists := s.orch.LoadAwaitChannel(sessionID); !stillExists {
+		runID2, canResume := s.orch.canResumeAwait(ctx, sessionID)
 		if canResume {
 			if req.RunId != nil && strings.TrimSpace(*req.RunId) != "" {
-				runID = strings.TrimSpace(*req.RunId)
+				runID2 = strings.TrimSpace(*req.RunId)
 			}
-			if err := s.orch.resumeAwaitAfterRestart(ctx, sessionID, reply, runID); err != nil {
+			if err := s.orch.resumeAwaitAfterRestart(ctx, sessionID, reply, runID2); err != nil {
 				if errors.Is(err, errResumeInFlight) {
 					return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
 				}
@@ -346,16 +353,6 @@ func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserR
 			}
 			return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
 		}
-		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
 	}
-	runID := ""
-	if req.RunId != nil {
-		runID = *req.RunId
-	}
-	select {
-	case ch <- biz.AwaitReplyMsg{RunID: runID, Reply: reply}:
-		return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
-	default:
-		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
-	}
+	return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
 }

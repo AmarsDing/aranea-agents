@@ -18,7 +18,9 @@ docs/reports/
 ├── 2026-06-07-proposal-organization-redesign.md         # 组织重设计提案
 ├── 2026-06-08-solution-memory-optimization.md           # 内存优化方案
 ├── 2026-06-08-research-chat-observability-ux.md         # Chat 精灵模式可观测性 UX 调研
-└── 2026-06-09-research-langflow-ui-replication.md       # Langflow UI 复刻方案调研
+├── 2026-06-09-research-langflow-ui-replication.md       # Langflow UI 复刻方案调研
+├── 2026-06-11-review-architecture-runtime-pain-points.md # 业务运行时架构痛点评审与优化方案
+└── 2026-06-11-research-skill-production-readiness.md     # Skill 模块生产就绪性评估与竞品对比
 ```
 
 ## AI 存放规则

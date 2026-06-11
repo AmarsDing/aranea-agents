@@ -71,6 +71,11 @@ func (c *DAGToGraphCompiler) Compile(dag *biz.PlanTaskDAG, allocPlan *biz.Alloca
 		subTaskByID[dag.Nodes[i].ID] = &dag.Nodes[i]
 	}
 
+	// Validate: detect cycles in the DAG before proceeding.
+	if err := validateDAGNoCycle(dag); err != nil {
+		return "{}", err // already kerrors.BadRequest
+	}
+
 	// Add worker members from allocations.
 	for i := range allocPlan.Allocations {
 		alloc := &allocPlan.Allocations[i]
@@ -105,7 +110,44 @@ func (c *DAGToGraphCompiler) Compile(dag *biz.PlanTaskDAG, allocPlan *biz.Alloca
 
 	out, err := json.Marshal(def)
 	if err != nil {
-		return "{}", fmt.Errorf("marshal definition: %w", err)
+		return "{}", kerrors.InternalServer("SPIRIT", "marshal definition: "+err.Error())
 	}
 	return string(out), nil
+}
+
+// validateDAGNoCycle checks that the DAG has no cycles using topological sort.
+func validateDAGNoCycle(dag *biz.PlanTaskDAG) error {
+	if dag == nil || len(dag.Nodes) == 0 {
+		return nil
+	}
+	inDegree := make(map[string]int, len(dag.Nodes))
+	for _, n := range dag.Nodes {
+		inDegree[n.ID] = len(n.DependsOn)
+	}
+	var queue []string
+	for _, n := range dag.Nodes {
+		if inDegree[n.ID] == 0 {
+			queue = append(queue, n.ID)
+		}
+	}
+	visited := 0
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		visited++
+		for _, n := range dag.Nodes {
+			for _, dep := range n.DependsOn {
+				if dep == id {
+					inDegree[n.ID]--
+					if inDegree[n.ID] == 0 {
+						queue = append(queue, n.ID)
+					}
+				}
+			}
+		}
+	}
+	if visited != len(dag.Nodes) {
+		return kerrors.BadRequest("SPIRIT", fmt.Sprintf("DAG cycle detected: not all nodes reachable (%d/%d)", visited, len(dag.Nodes)))
+	}
+	return nil
 }

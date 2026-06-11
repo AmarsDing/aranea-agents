@@ -91,7 +91,17 @@ func (o *ChatOrchestrator) durableSessionRunLifecycle(
 		}
 		return ctx, d.spec.SessionRunID, stopBudget
 	}
-	return o.beginSessionRunLifecycle(ctx, emitter, sess, ag, userMsg.ID, d.runID, userContent, d.dialogMode, d.provider, d.model)
+	return o.sessionRunLC.BeginSessionRunLifecycle(ctx, SessionRunStartParams{
+		Emitter:      emitter,
+		Session:      sess,
+		Agent:        ag,
+		TurnID:       userMsg.ID,
+		RuntimeRunID: d.runID,
+		UserContent:  userContent,
+		DialogMode:   d.dialogMode,
+		Provider:     d.provider,
+		Model:        d.model,
+	})
 }
 
 func durableResumeRunOpts(active bool, base []trpcagent.RunOption) []trpcagent.RunOption {

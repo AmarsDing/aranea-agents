@@ -45,6 +45,8 @@ message ListSkillDuplicateGroupsResponse {
 message MergeSkillsRequest {
   string source_skill_id = 1 [(google.api.field_behavior) = REQUIRED];
   string target_skill_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string strategy = 3;           // append (default) | ai_fuse | manual_pick
+  string manual_body = 4;        // required when strategy = manual_pick
 }
 
 message MergeSkillsResponse {

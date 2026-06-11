@@ -4,7 +4,7 @@
       <span class="section__label-icon">🧠</span>
       <span class="section__label-text">{{ t('chat.thinking.summary') }}</span>
       <span v-if="section.streaming" class="pulse-dot"></span>
-      <span v-if="section.durationMs" class="section__label-duration">{{ formattedDuration }}</span>
+      <span v-if="section.durationMs != null" class="section__label-duration">{{ formattedDuration }}</span>
       <span class="section__label-toggle">{{ localCollapsed ? '▶' : '▼' }}</span>
     </div>
     <div class="section__body" :class="{ 'section__body--collapsed': localCollapsed }">

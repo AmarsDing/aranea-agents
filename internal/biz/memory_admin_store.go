@@ -47,6 +47,8 @@ type FactUpsert struct {
 	Version               int32
 	Status                string
 	PIIFlag               bool
+	PIITypes              []string
+	OriginalStatement     string // preserved original when PII redaction replaces Statement
 	MetadataJSON          string
 	CreatedAt             string
 	UpdatedAt             string
@@ -70,7 +72,7 @@ type L0AdminStore interface {
 	ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error)
 	GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error)
 	InsertL0AssemblySnapshot(ctx context.Context, in L0AssemblySnapshotInsert) error
-	UpdateL0SnapshotActual(ctx context.Context, id string, actualPromptTokens, contextWindowTokens int) error
+	UpdateL0SnapshotActual(ctx context.Context, id, sessionID string, actualPromptTokens, contextWindowTokens int) error
 }
 
 // L1AdminReader lists L1 working-memory tasks and fields.
@@ -124,6 +126,7 @@ type L1TaskWriter interface {
 	EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error)
 	GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error)
 	ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error)
+	UnarchiveL1Task(ctx context.Context, sessionID, taskID string) error
 }
 
 // L1FieldWriter exposes L1 field write operations.
@@ -184,6 +187,7 @@ type L2RecallStore interface {
 type L3FactReader interface {
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)
 	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
+	GetFactRowsByIDs(ctx context.Context, factIDs []string) ([][]byte, error)
 	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error)
 }
 
@@ -192,6 +196,10 @@ type L3FactWriter interface {
 	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
 	DeleteFactRow(ctx context.Context, factID string) error
 	DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error)
+	// ClearFactsByScope soft-deletes all active facts matching the given scope
+	// and cascades the deletion to the pgvector index. It returns the IDs of
+	// the deleted facts so callers can perform additional cleanup if needed.
+	ClearFactsByScope(ctx context.Context, scopeType, scopeID, userID string) ([]string, error)
 }
 
 // L3FactAdminStore manages semantic facts and L3 recall.

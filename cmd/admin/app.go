@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/provider"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -61,6 +62,11 @@ func newApp(
 		kratos.Logger(logger),
 		kratos.Server(srv...),
 		kratos.BeforeStart(func(ctx context.Context) error {
+			// Register extra LLM providers (huggingface, bedrock) with the
+			// trpc-agent-go provider registry. Was previously in init();
+			// moved here for explicit lifecycle control.
+			provider.RegisterExtraProviders()
+
 			// Inject service-layer timeout handler into biz layer (breaks circular dep).
 			// SetTimeoutHandler is a justified exception like L4GraphUsecase.SetCascade:
 			// SpiritTeamUsecase → TimeoutHandler → TeamStarter → SpiritTeamController → SpiritTeamUsecase

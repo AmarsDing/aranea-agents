@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type compiledTeamRepo struct {
@@ -55,7 +54,7 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID, sessionID 
 	graphID = strings.TrimSpace(graphID)
 	sessionID = strings.TrimSpace(sessionID)
 	if teamID == "" || graphID == "" {
-		return kerrors.BadRequest("COMPILED_TEAM", "team_id and graph_id required")
+		return apierror.BadRequest("COMPILED_TEAM", "team_id and graph_id required")
 	}
 	configJSON, err := json.Marshal(ct)
 	if err != nil {
@@ -86,7 +85,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
+			return nil, apierror.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
 		}
 		return nil, fmt.Errorf("compiled_team repo load: %w", err)
 	}
@@ -101,7 +100,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 // via SessionRuntimeRepo. Returns the compiled team only if the session exists.
 func (r *compiledTeamRepo) LoadForSession(ctx context.Context, teamID, graphID, sessionID string) (*biz.CompiledTeam, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, kerrors.BadRequest("COMPILED_TEAM", "session id required for LoadForSession")
+		return nil, apierror.BadRequest("COMPILED_TEAM", "session id required for LoadForSession")
 	}
 	ct, err := r.Load(ctx, teamID, graphID)
 	if err != nil {
@@ -111,7 +110,7 @@ func (r *compiledTeamRepo) LoadForSession(ctx context.Context, teamID, graphID, 
 	if sessionID != "" && r.runtimeReader != nil {
 		rt, err := r.runtimeReader.GetSessionRuntime(ctx, sessionID)
 		if err != nil || rt == nil {
-			return nil, kerrors.New(412, "COMPILED_TEAM", fmt.Sprintf("session %s not active", sessionID))
+			return nil, apierror.BadRequest("COMPILED_TEAM", fmt.Sprintf("session %s not active", sessionID))
 		}
 	}
 	return ct, nil

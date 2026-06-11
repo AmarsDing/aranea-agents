@@ -11,28 +11,28 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/gorilla/mux"
 )
 
 // ChannelIngress bridges external channel webhooks to in-process chat turns.
 type ChannelIngress struct {
-	channels        *biz.ChannelUsecase
-	turnJobs        *biz.ChannelTurnJobUsecase
-	sessions        *biz.SessionUsecase
-	chat            biz.ChannelTurnGateway
-	flowBuffer      *event.Buffer
-	graphs          biz.GraphExecutor
-	cron            biz.CronTriggerGateway
-	eventBus        event.Bus
-	http            *http.Client
-	inboundInflight *inboundInflightSet
-	messageDedupe   *ingressMessageDedupe
-	peerDebouncer   *ingressPeerDebouncer
-	previewRegistry *turnPreviewRegistry
-	concurrentGate  *channelConcurrentGate
-	lg              loggateway.Logger
+	channels       *biz.ChannelUsecase
+	turnJobs       *biz.ChannelTurnJobUsecase
+	sessions       *biz.SessionUsecase
+	chat           biz.ChannelTurnGateway
+	flowBuffer     *event.Buffer
+	graphs         biz.GraphExecutor
+	cron           biz.CronTriggerGateway
+	eventBus       event.Bus
+	http           *http.Client
+	deduplicator   biz.IngressDeduplicator
+	peerDebouncer  biz.PeerDebouncer
+	previewManager biz.TurnPreviewManager
+	concurrentGate biz.ConcurrencyGate
+	dedupeCleanup  func() // stops inflight cleanup goroutine
+	lg             loggateway.Logger
 }
 
 // NewChannelIngress wires channel runtime ingress.
@@ -50,22 +50,27 @@ func NewChannelIngress(
 	eventBus event.Bus,
 	lg loggateway.Logger,
 ) *ChannelIngress {
+	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
+	debouncer := newIngressPeerDebouncer(defaultIngressDebounce, lg)
+	registry := newTurnPreviewRegistry()
+	gate := newChannelConcurrentGate()
+
 	return &ChannelIngress{
-		channels:        channels,
-		turnJobs:        turnJobs,
-		sessions:        sessions,
-		chat:            chat,
-		flowBuffer:      flowBuffer,
-		graphs:          graphs,
-		cron:            cron,
-		eventBus:        eventBus,
-		lg:              lg,
-		http:            lark.DefaultHTTPClient(),
-		inboundInflight: newInboundInflightSet(),
-		messageDedupe:   newIngressMessageDedupe(defaultMessageDedupeTTL),
-		peerDebouncer:   newIngressPeerDebouncer(defaultIngressDebounce, lg),
-		previewRegistry: newTurnPreviewRegistry(),
-		concurrentGate:  newChannelConcurrentGate(),
+		channels:       channels,
+		turnJobs:       turnJobs,
+		sessions:       sessions,
+		chat:           chat,
+		flowBuffer:     flowBuffer,
+		graphs:         graphs,
+		cron:           cron,
+		eventBus:       eventBus,
+		lg:             lg,
+		http:           lark.DefaultHTTPClient(),
+		deduplicator:   dedupe,
+		peerDebouncer:  debouncer,
+		previewManager: registry,
+		concurrentGate: gate,
+		dedupeCleanup:  dedupe.stopInflight,
 	}
 }
 
@@ -81,7 +86,7 @@ func (h *ChannelIngress) writeJSON(w http.ResponseWriter, status int, v any) {
 func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 	return func(kctx khttp.Context) error {
 		if h == nil || h.channels == nil || h.chat == nil || h.sessions == nil {
-			return kerrors.InternalServer("CHANNEL", "ingress not configured")
+			return apierror.Internal("CHANNEL", "ingress not configured")
 		}
 		r := kctx.Request()
 		w := kctx.Response()
@@ -220,6 +225,14 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 				loggateway.Err(encErr),
 			)
 		}
+		if strings.TrimSpace(encryptKey) == "" {
+			h.lg.Warn("飞书 Webhook 未配置 encrypt_key，拒绝请求",
+				loggateway.StepID("channel.feishu.webhook.no_encrypt_key"),
+				loggateway.Str("channel_id", chRow.ID),
+			)
+			http.Error(w, "forbidden: encrypt_key not configured", http.StatusForbidden)
+			return nil
+		}
 		raw, err = lark.UnwrapEncryptedWebhookBody(encryptKey, raw)
 		if err != nil {
 			http.Error(w, "decrypt failed", http.StatusBadRequest)
@@ -305,6 +318,19 @@ func ingressFirstNonEmpty(parts ...string) string {
 		}
 	}
 	return ""
+}
+
+// Close releases long-lived resources owned by ChannelIngress.
+func (h *ChannelIngress) Close() {
+	if h == nil {
+		return
+	}
+	if h.concurrentGate != nil {
+		h.concurrentGate.Close()
+	}
+	if h.dedupeCleanup != nil {
+		h.dedupeCleanup()
+	}
 }
 
 func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, creds []biz.ChannelCredential, key string, lg loggateway.Logger) (string, error) {

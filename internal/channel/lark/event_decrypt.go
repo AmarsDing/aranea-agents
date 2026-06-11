@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -15,11 +14,11 @@ func DecryptEvent(encryptKey, cipherTextB64 string) ([]byte, error) {
 	encryptKey = strings.TrimSpace(encryptKey)
 	cipherTextB64 = strings.TrimSpace(cipherTextB64)
 	if encryptKey == "" || cipherTextB64 == "" {
-		return nil, fmt.Errorf("lark decrypt: empty key or cipher")
+		return nil, errDecryptEmptyKeyOrCipher
 	}
 	cipherBytes, err := base64.StdEncoding.DecodeString(cipherTextB64)
 	if err != nil {
-		return nil, fmt.Errorf("lark decrypt: base64: %w", err)
+		return nil, errDecryptBase64
 	}
 	key := sha256.Sum256([]byte(encryptKey))
 	block, err := aes.NewCipher(key[:])
@@ -27,12 +26,12 @@ func DecryptEvent(encryptKey, cipherTextB64 string) ([]byte, error) {
 		return nil, err
 	}
 	if len(cipherBytes) < aes.BlockSize {
-		return nil, fmt.Errorf("lark decrypt: cipher too short")
+		return nil, errCipherTooShort
 	}
 	iv := cipherBytes[:aes.BlockSize]
 	data := cipherBytes[aes.BlockSize:]
 	if len(data)%aes.BlockSize != 0 {
-		return nil, fmt.Errorf("lark decrypt: invalid block size")
+		return nil, errDecryptInvalidBlockSize
 	}
 	mode := cipher.NewCBCDecrypter(block, iv)
 	plain := make([]byte, len(data))
@@ -46,15 +45,15 @@ func DecryptEvent(encryptKey, cipherTextB64 string) ([]byte, error) {
 
 func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
 	if len(data) == 0 || len(data)%blockSize != 0 {
-		return nil, fmt.Errorf("lark decrypt: invalid padding size")
+		return nil, errDecryptInvalidPadding
 	}
 	pad := int(data[len(data)-1])
 	if pad <= 0 || pad > blockSize || pad > len(data) {
-		return nil, fmt.Errorf("lark decrypt: invalid padding")
+		return nil, errDecryptInvalidPadding
 	}
 	for i := 0; i < pad; i++ {
 		if data[len(data)-1-i] != byte(pad) {
-			return nil, fmt.Errorf("lark decrypt: invalid padding bytes")
+			return nil, errDecryptInvalidPadding
 		}
 	}
 	return data[:len(data)-pad], nil
@@ -72,7 +71,7 @@ func UnwrapEncryptedWebhookBody(encryptKey string, raw []byte) ([]byte, error) {
 		return raw, nil
 	}
 	if strings.TrimSpace(encryptKey) == "" {
-		return nil, fmt.Errorf("lark webhook: encrypted payload but encrypt_key missing")
+		return nil, errEncryptKeyMissing
 	}
 	return DecryptEvent(encryptKey, wrap.Encrypt)
 }

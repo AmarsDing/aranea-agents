@@ -3,6 +3,7 @@ package service
 import (
 	"io"
 	"net/http"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/mattermost"
@@ -21,15 +22,40 @@ func (h *ChannelIngress) handleMattermostWebhook(w http.ResponseWriter, r *http.
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token", h.lg)
-	if err := mattermost.VerifyToken(receiveToken, r.URL.Query().Get("token")); err != nil {
-		h.lg.Warn("Mattermost Webhook 签名验证失败",
-			loggateway.StepID("channel.mattermost.webhook.verify_fail"),
-			loggateway.Str("channel_id", chRow.ID),
-			loggateway.Err(err),
-		)
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return nil
+	// Prefer HMAC signature verification; fallback to token verification only when
+	// signing_secret is not configured. If signing_secret IS configured but the
+	// X-Signature header is missing, reject the request to prevent downgrade attacks.
+	signingSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "signing_secret", h.lg)
+	if strings.TrimSpace(signingSecret) != "" {
+		sigHeader := r.Header.Get("X-Signature")
+		if strings.TrimSpace(sigHeader) == "" {
+			h.lg.Warn("Mattermost Webhook 缺少签名头",
+				loggateway.StepID("channel.mattermost.webhook.missing_signature"),
+				loggateway.Str("channel_id", chRow.ID),
+			)
+			http.Error(w, "forbidden: missing signature", http.StatusForbidden)
+			return nil
+		}
+		if err := mattermost.VerifySignature(signingSecret, raw, sigHeader); err != nil {
+			h.lg.Warn("Mattermost Webhook HMAC 签名验证失败",
+				loggateway.StepID("channel.mattermost.webhook.verify_fail"),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Err(err),
+			)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return nil
+		}
+	} else {
+		receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token", h.lg)
+		if err := mattermost.VerifyToken(receiveToken, r.URL.Query().Get("token")); err != nil {
+			h.lg.Warn("Mattermost Webhook token 验证失败",
+				loggateway.StepID("channel.mattermost.webhook.verify_fail"),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Err(err),
+			)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return nil
+		}
 	}
 	parsed, err := mattermost.ParseInbound(raw)
 	if err != nil {
@@ -43,8 +69,8 @@ func (h *ChannelIngress) handleMattermostWebhook(w http.ResponseWriter, r *http.
 		Text:           parsed.Text,
 		IdempotencyKey: "mattermost:" + parsed.PostID,
 		OutboundMeta: map[string]string{
-			"recipient": parsed.ChannelID,
-			"chat_id":   parsed.ChannelID,
+			port.MetaRecipient: parsed.ChannelID,
+			port.MetaChatID:    parsed.ChannelID,
 		},
 	}))
 	return nil

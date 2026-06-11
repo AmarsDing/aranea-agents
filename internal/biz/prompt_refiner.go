@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // Refine error reasons (B-6). Each maps to a distinct front-end UX branch.
@@ -102,7 +102,7 @@ func (r *PromptRefiner) Refine(ctx context.Context, req RefineRequest) (*RefineR
 		User:     user,
 	})
 	if err != nil {
-		return nil, errors.InternalServer(refineReasonLLMFailed, "llm call failed").WithCause(err)
+		return nil, apierror.Internal(refineReasonLLMFailed, "llm call failed").WithCause(err)
 	}
 	refined = strings.TrimSpace(refined)
 	// Spec extraction may wrap YAML in ``` fences; strip them.
@@ -369,15 +369,15 @@ func ErrRefineUnknownScope(scope, fileName string) error {
 	if fileName != "" {
 		key += "/" + fileName
 	}
-	return errors.BadRequest(refineReasonUnknownScope, "unknown scope: "+key)
+	return apierror.BadRequest(refineReasonUnknownScope, "unknown scope: "+key)
 }
 
 // ErrRefineNoLLMAvailable maps to 503 with reason REFINE_NO_LLM.
 func ErrRefineNoLLMAvailable() error {
-	return errors.ServiceUnavailable(refineReasonNoLLM, "no LLM available for refinement; configure DefaultRefineLLM in system settings")
+	return apierror.Unavailable(refineReasonNoLLM, "no LLM available for refinement; configure DefaultRefineLLM in system settings")
 }
 
 // ErrRefineTooLong maps to 400 with reason REFINE_INPUT_TOO_LONG.
 func ErrRefineTooLong(limit int) error {
-	return errors.BadRequest(refineReasonTooLong, fmt.Sprintf("original_text exceeds %d character limit", limit))
+	return apierror.BadRequest(refineReasonTooLong, "original_text exceeds %d character limit", limit)
 }

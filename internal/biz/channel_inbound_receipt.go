@@ -21,10 +21,11 @@ func InboundIdempotencyKey(_, messageKey, _, _ string) string {
 
 func inboundTextPreview(text string) string {
 	text = strings.TrimSpace(text)
-	if len(text) <= 120 {
+	runes := []rune(text)
+	if len(runes) <= 120 {
 		return text
 	}
-	return text[:120] + "…"
+	return string(runes[:120]) + "…"
 }
 
 // TryClaimInbound records idempotency before running an agent turn.

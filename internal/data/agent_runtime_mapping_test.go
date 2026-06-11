@@ -333,7 +333,7 @@ func TestEntAgentToBiz_BasicFields(t *testing.T) {
 	if got.DisplayName != "Test Agent" || got.Provider != "openai" || got.Model != "gpt-4o" {
 		t.Fatalf("agent display/provider/model mismatch: %+v", got)
 	}
-	if got.Status != "active" || !got.IsDefault || got.IsFavorite {
+	if got.Status != "active" || !biz.BoolVal(got.IsDefault) || biz.BoolVal(got.IsFavorite) {
 		t.Fatalf("agent status/favorite mismatch: %+v", got)
 	}
 	if got.PositionID != "pos1" || got.PositionKey != "pk1" {

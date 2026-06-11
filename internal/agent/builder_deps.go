@@ -149,3 +149,17 @@ func (d TRPCBuilderDeps) Logger() loggateway.Logger {
 	}
 	return loggateway.NewNoop()
 }
+
+// WithDeferredManager returns a copy of deps with DeferredManager set.
+// Use this instead of mutating deps in-place to avoid side effects on
+// the caller's copy.
+func (d TRPCBuilderDeps) WithDeferredManager(dm *deferred.DeferredToolManager) TRPCBuilderDeps {
+	d.DeferredManager = dm
+	return d
+}
+
+// WithCircuitBreakerRegistry returns a copy of deps with CircuitBreakerRegistry set.
+func (d TRPCBuilderDeps) WithCircuitBreakerRegistry(r *biztool.CircuitBreakerRegistry) TRPCBuilderDeps {
+	d.CircuitBreakerRegistry = r
+	return d
+}

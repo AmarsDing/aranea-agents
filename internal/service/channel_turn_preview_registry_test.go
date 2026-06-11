@@ -17,8 +17,8 @@ func TestTurnPreviewRegistry_replacesPreviousSessionPreview(t *testing.T) {
 	secondStopped := false
 	coord1 := &TurnPreviewCoordinator{}
 	coord2 := &TurnPreviewCoordinator{}
-	_ = reg.Register("sess-1", coord1, func() { firstStopped = true })
-	stop2 := reg.Register("sess-1", coord2, func() { secondStopped = true })
+	_ = reg.registerWithCoord("sess-1", coord1, func() { firstStopped = true })
+	stop2 := reg.registerWithCoord("sess-1", coord2, func() { secondStopped = true })
 	if !firstStopped {
 		t.Fatal("previous preview should stop when replaced")
 	}
@@ -31,7 +31,7 @@ func TestTurnPreviewRegistry_replacesPreviousSessionPreview(t *testing.T) {
 func TestTurnPreviewRegistry_SetRunID(t *testing.T) {
 	reg := newTurnPreviewRegistry()
 	coord := &TurnPreviewCoordinator{}
-	reg.Register("sess-1", coord, func() {})
+	reg.registerWithCoord("sess-1", coord, func() {})
 	reg.SetRunID("sess-1", "run-a")
 	if got := reg.ActiveRunID("sess-1"); got != "run-a" {
 		t.Fatalf("runID=%q", got)

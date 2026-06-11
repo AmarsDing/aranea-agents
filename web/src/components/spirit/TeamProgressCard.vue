@@ -14,14 +14,11 @@
         color="grey"
         class="team-progress-card__chevron"
       />
-      <div class="team-progress-card__icon">
-        <q-spinner v-if="isRunning" size="16px" color="accent" />
-        <q-icon v-else-if="team.status === 'completed'" name="check_circle" size="16px" color="positive" />
-        <q-icon v-else-if="team.status === 'failed'" name="error" size="16px" color="negative" />
-        <q-icon v-else-if="team.status === 'cancelled'" name="cancel" size="16px" color="grey" />
-        <q-icon v-else-if="team.status === 'interrupted'" name="pause_circle" size="16px" color="warning" />
-        <q-icon v-else-if="team.status === 'pending'" name="schedule" size="16px" color="warning" />
-        <q-icon v-else name="groups" size="16px" color="accent" />
+      <div class="team-progress-card__avatar-wrap">
+        <div class="team-progress-card__avatar">{{ teamInitial }}</div>
+        <span class="team-progress-card__avatar-status" :class="`team-progress-card__avatar-status--${statusClass}`">
+          <q-spinner v-if="isRunning" size="8px" color="accent" />
+        </span>
       </div>
       <div class="col min-width-0">
         <div class="team-progress-card__name ellipsis">{{ team.teamName }}</div>
@@ -99,13 +96,12 @@
       <span class="text-caption ellipsis">{{ failedSummary }}</span>
     </div>
 
-    <div v-if="team.memberAvatars.length > 0" class="team-progress-card__avatars row items-center q-gutter-xs q-mt-xs">
-      <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 4)" :key="idx" size="18px">
-        <img v-if="url" :src="url" alt="" />
-        <q-icon v-else name="person" size="12px" color="grey" />
-      </q-avatar>
-      <span v-if="team.memberAvatars.length > 4" class="text-caption text-grey">
-        +{{ team.memberAvatars.length - 4 }}
+    <div v-if="team.members.length > 0" class="team-progress-card__avatars row items-center q-gutter-xs q-mt-xs">
+      <div v-for="(m, idx) in team.members.slice(0, 4)" :key="idx" class="team-progress-card__avatar-initial">
+        {{ nameInitial(m.displayName) }}
+      </div>
+      <span v-if="team.members.length > 4" class="text-caption text-grey">
+        +{{ team.members.length - 4 }}
       </span>
     </div>
 
@@ -119,12 +115,14 @@
             :key="member.agentKey"
             class="team-progress-card__detail-item row items-center q-gutter-xs"
           >
-            <q-avatar size="16px">
-              <img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" />
-              <q-icon v-else name="person" size="12px" color="grey" />
-            </q-avatar>
-            <span class="text-caption col ellipsis">{{ member.displayName }}</span>
-            <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
+            <div class="team-progress-card__detail-avatar">{{ memberInitial(member) }}</div>
+            <div class="team-progress-card__detail-body col min-width-0">
+              <span class="text-caption ellipsis">{{ member.displayName }}</span>
+              <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
+              <div v-if="member.status === 'idle' && team.status === 'running'" class="team-progress-card__detail-waiting">
+                {{ t('spirit.waitingForPredecessor') }}
+              </div>
+            </div>
           </div>
         </template>
         <div v-else class="text-caption text-grey">{{ t('spirit.noAgentDetails') }}</div>
@@ -136,10 +134,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { SpiritTeam, TopologyType } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritMember, TopologyType } from '../../features/spirit/types';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
 import AgentStatusLabel from './AgentStatusLabel.vue';
-import { formatDuration, spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
+import { formatDuration, spiritMemberStatusToLabel, nameInitial, modeToTopology } from '../../features/spirit/spiritUi';
 
 const { t } = useI18n();
 
@@ -161,19 +159,13 @@ function toggleExpand(): void {
   expanded.value = !expanded.value;
 }
 
-const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
-  const mapping: Partial<Record<SpiritTeam['mode'], TopologyType>> = {
-    parallel: 'parallel',
-    sequential: 'sequential',
-    coordinator: 'coordinator',
-    critic_loop: 'hybrid',
-    swarm: 'hybrid',
-    adaptive: 'hybrid',
-  };
-  return mapping[mode] ?? null;
-};
+function memberInitial(member: SpiritMember): string {
+  return nameInitial(member.displayName);
+}
 
 const topology = computed(() => modeToTopology(props.team.mode));
+
+const teamInitial = computed(() => nameInitial(props.team.teamName));
 
 const isRunning = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
@@ -269,15 +261,48 @@ const failedSummary = computed(() => {
   flex-shrink: 0
   transition: transform 0.15s ease
 
-.team-progress-card__icon
+.team-progress-card__avatar-wrap
+  position: relative
+  flex-shrink: 0
+
+.team-progress-card__avatar
+  width: 24px
+  height: 24px
+  border-radius: 50%
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+  color: var(--color-accent)
+  font-size: 10px
+  font-weight: 600
   display: flex
   align-items: center
   justify-content: center
-  width: 24px
-  height: 24px
-  border-radius: 6px
-  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
-  flex-shrink: 0
+
+.team-progress-card__avatar-status
+  position: absolute
+  bottom: -1px
+  right: -1px
+  width: 10px
+  height: 10px
+  border-radius: 50%
+  border: 1.5px solid var(--canvas-base)
+  display: flex
+  align-items: center
+  justify-content: center
+
+.team-progress-card__avatar-status--running
+  background: var(--color-accent)
+.team-progress-card__avatar-status--completed
+  background: var(--color-success)
+.team-progress-card__avatar-status--failed
+  background: var(--color-danger)
+.team-progress-card__avatar-status--interrupted
+  background: var(--color-warning)
+.team-progress-card__avatar-status--waiting
+  background: var(--color-warning)
+.team-progress-card__avatar-status--cancelled
+  background: var(--color-text-tertiary)
+.team-progress-card__avatar-status--idle
+  background: var(--color-text-tertiary)
 
 .team-progress-card__name
   font-size: var(--text-xs)
@@ -345,6 +370,42 @@ const failedSummary = computed(() => {
 .team-progress-card__detail-item
   padding: 2px 0
 
+.team-progress-card__detail-avatar
+  width: 16px
+  height: 16px
+  border-radius: 50%
+  background: var(--glass-elevated, var(--glass-surface))
+  display: flex
+  align-items: center
+  justify-content: center
+  font-size: 8px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  flex-shrink: 0
+
+.team-progress-card__detail-body
+  display: flex
+  align-items: center
+  gap: 4px
+  min-width: 0
+
+.team-progress-card__detail-waiting
+  font-size: var(--text-xs)
+  color: var(--color-text-tertiary)
+  font-style: italic
+
+.team-progress-card__avatar-initial
+  width: 18px
+  height: 18px
+  border-radius: 50%
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+  color: var(--color-accent)
+  font-size: 9px
+  font-weight: 600
+  display: flex
+  align-items: center
+  justify-content: center
+
 .tp-action-btn
   border: none
   border-radius: 4px
@@ -360,7 +421,7 @@ const failedSummary = computed(() => {
 
 .tp-action-btn.resume
   background: var(--color-accent)
-  color: white
+  color: var(--color-on-accent, white)
 
 .tp-action-btn.cancel
   background: var(--glass-surface)

@@ -28,6 +28,18 @@ func (m *mockL4GraphRepo) GetEntityByScopeKey(_ context.Context, _, _, _, _ stri
 	return m.entitySnap, m.entityOk, nil
 }
 
+func (m *mockL4GraphRepo) GetEntitiesByType(_ context.Context, _, _ string) ([]L4Entity, error) {
+	return nil, nil
+}
+
+func (m *mockL4GraphRepo) GetEntityRelations(_ context.Context, _ string) ([]L4Relation, error) {
+	return nil, nil
+}
+
+func (m *mockL4GraphRepo) SearchEntitiesByName(_ context.Context, _, _ string, _ int) ([]L4Entity, error) {
+	return nil, nil
+}
+
 func (m *mockL4GraphRepo) GetFirstEntityByType(_ context.Context, _, _, _ string) (L4EntitySnapshot, bool, error) {
 	return m.entitySnap, m.entityOk, nil
 }
@@ -87,7 +99,7 @@ func TestL4GraphUsecase_WriteFromUserText_NameConflictGate(t *testing.T) {
 		entityOk:   true,
 	}
 	uc := NewL4GraphUsecase(repo, loggateway.NewNoop())
-	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, nil, loggateway.NewNoop()))
+	uc.SetCascade(NewL4CascadeUsecase(L4CascadeDeps{Proposals: &cascadeGraphStoreMock{}, Reader: &cascadeGraphStoreMock{}, Mutator: &cascadeGraphStoreMock{}, Saga: &cascadeGraphStoreMock{}, LG: loggateway.NewNoop()}))
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Bob")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

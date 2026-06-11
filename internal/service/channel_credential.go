@@ -4,8 +4,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ChannelCredentialSecretRef returns secret_ref for a credential key (runtime / tests).
@@ -15,10 +14,10 @@ func ChannelCredentialSecretRef(creds []biz.ChannelCredential, key string) (stri
 		if strings.EqualFold(strings.TrimSpace(c.CredentialKey), key) {
 			ref := strings.TrimSpace(c.SecretRef)
 			if ref == "" {
-				return "", kerrors.BadRequest("CHANNEL", "credential "+key+" missing secret_ref")
+				return "", apierror.BadRequest("CHANNEL", "credential %s missing secret_ref", key)
 			}
 			return ref, nil
 		}
 	}
-	return "", kerrors.BadRequest("CHANNEL", "credential "+key+" not configured")
+	return "", apierror.BadRequest("CHANNEL", "credential %s not configured", key)
 }

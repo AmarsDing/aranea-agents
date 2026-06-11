@@ -8,15 +8,14 @@ import (
 	"strings"
 
 	entsession "aranea-agents/internal/data/ent/session"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	row, err := r.data.RW().Read(ctx).Session.Get(ctx, sessionID)
 	if err != nil {
@@ -41,7 +40,7 @@ func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (ma
 func (r *sessionRepo) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	raw, err := json.Marshal(state)
 	if err != nil {
@@ -58,7 +57,7 @@ func (r *sessionRepo) SaveSessionState(ctx context.Context, sessionID string, st
 func (r *sessionRepo) PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	if len(sets) == 0 && len(deletes) == 0 {
 		return nil

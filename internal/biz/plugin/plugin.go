@@ -4,9 +4,10 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/biz/shared"
 )
@@ -163,7 +164,7 @@ func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
 // ToggleEnabled enables or disables a plugin.
 func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (Plugin, error) {
 	if strings.TrimSpace(id) == "" {
-		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "id is required")
 	}
 	return u.repo.UpdatePluginEnabled(ctx, id, enabled)
 }
@@ -172,7 +173,7 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (P
 func (u *Usecase) GetByKey(ctx context.Context, key string) (Plugin, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return Plugin{}, errors.BadRequest("PLUGIN", "key is required")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "key is required")
 	}
 	p, err := u.repo.GetByKey(ctx, key)
 	if err != nil {
@@ -188,7 +189,7 @@ func (u *Usecase) GetByKey(ctx context.Context, key string) (Plugin, error) {
 func (u *Usecase) Create(ctx context.Context, p Plugin) (Plugin, error) {
 	p.Key = strings.TrimSpace(p.Key)
 	if p.Key == "" {
-		return Plugin{}, errors.BadRequest("PLUGIN", "key is required")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "key is required")
 	}
 	if strings.TrimSpace(p.ID) == "" {
 		p.ID = "builtin-" + p.Key
@@ -197,7 +198,7 @@ func (u *Usecase) Create(ctx context.Context, p Plugin) (Plugin, error) {
 		p.ConfigJSON = "{}"
 	}
 	if !json.Valid([]byte(p.ConfigJSON)) {
-		return Plugin{}, errors.BadRequest("PLUGIN", "config_json must be valid JSON")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "config_json must be valid JSON")
 	}
 	if schema := strings.TrimSpace(p.ConfigSchemaJSON); schema != "" && schema != "{}" {
 		if err := ValidateJSONSchema(schema, p.ConfigJSON); err != nil {
@@ -213,13 +214,13 @@ func (u *Usecase) Create(ctx context.Context, p Plugin) (Plugin, error) {
 // UpdateConfig updates a plugin's configuration.
 func (u *Usecase) UpdateConfig(ctx context.Context, id string, configJSON string) (Plugin, error) {
 	if strings.TrimSpace(id) == "" {
-		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "id is required")
 	}
 	if strings.TrimSpace(configJSON) == "" {
 		configJSON = "{}"
 	}
 	if !json.Valid([]byte(configJSON)) {
-		return Plugin{}, errors.BadRequest("PLUGIN", "config_json must be valid JSON")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "config_json must be valid JSON")
 	}
 	p, err := u.repo.GetPlugin(ctx, id)
 	if err != nil {
@@ -236,7 +237,7 @@ func (u *Usecase) UpdateConfig(ctx context.Context, id string, configJSON string
 // UpdateSortOrder updates a plugin's sort order.
 func (u *Usecase) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error) {
 	if strings.TrimSpace(id) == "" {
-		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "id is required")
 	}
 	return u.repo.UpdateSortOrder(ctx, id, sortOrder)
 }
@@ -244,7 +245,7 @@ func (u *Usecase) UpdateSortOrder(ctx context.Context, id string, sortOrder int)
 // UpdateScope updates a plugin's scope.
 func (u *Usecase) UpdateScope(ctx context.Context, id string, scope string) (Plugin, error) {
 	if strings.TrimSpace(id) == "" {
-		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
+		return Plugin{}, apierror.BadRequest("PLUGIN", "id is required")
 	}
 	scope = strings.TrimSpace(scope)
 	if scope == "" {
@@ -253,7 +254,7 @@ func (u *Usecase) UpdateScope(ctx context.Context, id string, scope string) (Plu
 	if !strings.EqualFold(scope, "global") && u.agents != nil {
 		if err := u.agents.AgentExists(ctx, scope); err != nil {
 			if errors.Is(err, shared.ErrNotFound) {
-				return Plugin{}, errors.BadRequest("PLUGIN", "scope agent not found")
+				return Plugin{}, apierror.BadRequest("PLUGIN", "scope agent not found")
 			}
 			return Plugin{}, err
 		}

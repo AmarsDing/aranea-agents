@@ -5,7 +5,7 @@ import (
 	"aranea-agents/internal/biz/shared"
 	"testing"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type mockRepo struct {
@@ -150,8 +150,8 @@ func TestUsecase_ToggleEnabled(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 		})
@@ -196,7 +196,7 @@ func TestUsecase_GetByKey(t *testing.T) {
 			"other repo error",
 			"bad",
 			func(_ context.Context, _ string) (Plugin, error) {
-				return Plugin{}, errors.InternalServer("PLUGIN", "db error")
+				return Plugin{}, apierror.Internal("PLUGIN", "db error")
 			},
 			true, "PLUGIN",
 		},
@@ -214,8 +214,8 @@ func TestUsecase_GetByKey(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 		})
@@ -323,8 +323,8 @@ func TestUsecase_Create(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 			if tt.check != nil {
@@ -368,7 +368,7 @@ func TestUsecase_UpdateConfig(t *testing.T) {
 			"get plugin error",
 			"p-1", `{"x":1}`,
 			func(_ context.Context, _ string) (Plugin, error) {
-				return Plugin{}, errors.NotFound("PLUGIN", "not found")
+				return Plugin{}, apierror.NotFound("PLUGIN", "not found")
 			},
 			true, "PLUGIN",
 		},
@@ -410,8 +410,8 @@ func TestUsecase_UpdateConfig(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 		})
@@ -466,7 +466,7 @@ func TestUsecase_UpdateScope(t *testing.T) {
 		{
 			"agent scope with other error",
 			"p-1", "agent-1",
-			func(_ context.Context, _ string) error { return errors.InternalServer("AGENT", "db error") },
+			func(_ context.Context, _ string) error { return apierror.Internal("AGENT", "db error") },
 			true, "AGENT",
 		},
 		{
@@ -492,10 +492,15 @@ func TestUsecase_UpdateScope(t *testing.T) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil && e.Reason != tt.errReason {
-					t.Errorf("reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok && e.Domain != tt.errReason {
+					t.Errorf("reason = %q, want %q", e.Domain, tt.errReason)
 				}
 			}
 		})
 	}
+}
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
 }

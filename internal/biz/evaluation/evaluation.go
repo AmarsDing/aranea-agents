@@ -8,9 +8,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 // Dataset holds a set of evaluation test cases.
@@ -172,7 +171,7 @@ func newEvalID() string {
 func (u *Usecase) CreateDataset(ctx context.Context, in Dataset) (Dataset, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
-		return Dataset{}, errors.BadRequest("EVAL", "name is required")
+		return Dataset{}, apierror.BadRequest("EVAL", "name is required")
 	}
 	if in.ID == "" {
 		in.ID = newEvalID()
@@ -183,7 +182,7 @@ func (u *Usecase) CreateDataset(ctx context.Context, in Dataset) (Dataset, error
 // GetDataset returns one dataset.
 func (u *Usecase) GetDataset(ctx context.Context, id string) (Dataset, error) {
 	if strings.TrimSpace(id) == "" {
-		return Dataset{}, errors.BadRequest("EVAL", "id is required")
+		return Dataset{}, apierror.BadRequest("EVAL", "id is required")
 	}
 	return u.repo.GetDataset(ctx, id)
 }
@@ -199,7 +198,7 @@ func (u *Usecase) ListDatasets(ctx context.Context, workspace string, limit, off
 // DeleteDataset removes a dataset and its cases.
 func (u *Usecase) DeleteDataset(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("EVAL", "id is required")
+		return apierror.BadRequest("EVAL", "id is required")
 	}
 	return u.repo.DeleteDataset(ctx, id)
 }
@@ -208,11 +207,11 @@ func (u *Usecase) DeleteDataset(ctx context.Context, id string) error {
 func (u *Usecase) UpdateDataset(ctx context.Context, id, name, description string) (Dataset, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return Dataset{}, errors.BadRequest("EVAL", "id is required")
+		return Dataset{}, apierror.BadRequest("EVAL", "id is required")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Dataset{}, errors.BadRequest("EVAL", "name is required")
+		return Dataset{}, apierror.BadRequest("EVAL", "name is required")
 	}
 	return u.repo.UpdateDataset(ctx, id, name, description)
 }
@@ -221,14 +220,14 @@ func (u *Usecase) UpdateDataset(ctx context.Context, id, name, description strin
 func (u *Usecase) UploadCases(ctx context.Context, datasetID, casesJSON string) (int, error) {
 	datasetID = strings.TrimSpace(datasetID)
 	if datasetID == "" {
-		return 0, errors.BadRequest("EVAL", "dataset_id is required")
+		return 0, apierror.BadRequest("EVAL", "dataset_id is required")
 	}
 	var uploads []CaseUpload
 	if err := json.Unmarshal([]byte(casesJSON), &uploads); err != nil {
-		return 0, errors.BadRequest("EVAL", "cases_json must be a valid JSON array: "+err.Error())
+		return 0, apierror.BadRequest("EVAL", "cases_json must be a valid JSON array: "+err.Error())
 	}
 	if len(uploads) == 0 {
-		return 0, errors.BadRequest("EVAL", "cases_json array is empty")
+		return 0, apierror.BadRequest("EVAL", "cases_json array is empty")
 	}
 	cases := make([]Case, 0, len(uploads))
 	for _, up := range uploads {
@@ -257,10 +256,10 @@ func (u *Usecase) CreateRun(ctx context.Context, in Run) (Run, error) {
 	in.DatasetID = strings.TrimSpace(in.DatasetID)
 	in.AgentID = strings.TrimSpace(in.AgentID)
 	if in.DatasetID == "" {
-		return Run{}, errors.BadRequest("EVAL", "dataset_id is required")
+		return Run{}, apierror.BadRequest("EVAL", "dataset_id is required")
 	}
 	if in.AgentID == "" {
-		return Run{}, errors.BadRequest("EVAL", "agent_id is required")
+		return Run{}, apierror.BadRequest("EVAL", "agent_id is required")
 	}
 	if in.ID == "" {
 		in.ID = newEvalID()
@@ -280,7 +279,7 @@ func (u *Usecase) CreateRun(ctx context.Context, in Run) (Run, error) {
 // GetRun returns one run.
 func (u *Usecase) GetRun(ctx context.Context, id string) (Run, error) {
 	if strings.TrimSpace(id) == "" {
-		return Run{}, errors.BadRequest("EVAL", "id is required")
+		return Run{}, apierror.BadRequest("EVAL", "id is required")
 	}
 	return u.repo.GetRun(ctx, id)
 }
@@ -301,7 +300,7 @@ func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
 // DeleteRun removes a run and its case results.
 func (u *Usecase) DeleteRun(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("EVAL", "id is required")
+		return apierror.BadRequest("EVAL", "id is required")
 	}
 	return u.repo.DeleteRun(ctx, id)
 }
@@ -322,7 +321,7 @@ func (u *Usecase) InsertCaseResult(ctx context.Context, r CaseResult) error {
 // AnnotateCaseResult updates human review fields for one case result.
 func (u *Usecase) AnnotateCaseResult(ctx context.Context, runID, resultID string, patch CaseResultAnnotation) (CaseResult, error) {
 	if strings.TrimSpace(runID) == "" || strings.TrimSpace(resultID) == "" {
-		return CaseResult{}, errors.BadRequest("EVAL", "run_id and result_id are required")
+		return CaseResult{}, apierror.BadRequest("EVAL", "run_id and result_id are required")
 	}
 	if strings.TrimSpace(patch.AnnotatedBy) == "" {
 		patch.AnnotatedBy = "system"
@@ -339,7 +338,7 @@ func (u *Usecase) ListCases(ctx context.Context, datasetID string) ([]Case, erro
 func (u *Usecase) GetAgentEvalTrend(ctx context.Context, agentID, datasetID string, limit int) ([]TrendPoint, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return nil, errors.BadRequest("EVAL", "agent_id is required")
+		return nil, apierror.BadRequest("EVAL", "agent_id is required")
 	}
 	if limit <= 0 {
 		limit = 30
@@ -350,14 +349,14 @@ func (u *Usecase) GetAgentEvalTrend(ctx context.Context, agentID, datasetID stri
 // CompareEvalRuns loads runs by ID and computes metric deltas vs the first run (baseline).
 func (u *Usecase) CompareEvalRuns(ctx context.Context, runIDs []string) ([]RunComparison, error) {
 	if len(runIDs) < 2 {
-		return nil, errors.BadRequest("EVAL", "at least two run_ids are required")
+		return nil, apierror.BadRequest("EVAL", "at least two run_ids are required")
 	}
 	runs, err := u.repo.GetRunsByIDs(ctx, runIDs)
 	if err != nil {
 		return nil, err
 	}
 	if len(runs) < 2 {
-		return nil, errors.BadRequest("EVAL", "could not load at least two runs")
+		return nil, apierror.BadRequest("EVAL", "could not load at least two runs")
 	}
 	base := runs[0]
 	out := make([]RunComparison, 0, len(runs))

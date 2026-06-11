@@ -40,8 +40,13 @@ func TestFieldTokenEstimate(t *testing.T) {
 			want: 0,
 		},
 		{
-			name: "string value returns 0",
+			name: "string value parsed as int",
 			row:  map[string]any{"token_estimate": "5"},
+			want: 5,
+		},
+		{
+			name: "non-numeric string returns 0",
+			row:  map[string]any{"token_estimate": "abc"},
 			want: 0,
 		},
 		{

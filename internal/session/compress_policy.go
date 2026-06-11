@@ -2,6 +2,7 @@ package session
 
 import (
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -254,13 +255,30 @@ const (
 )
 
 // AdaptiveBufferState tracks token increments for adaptive buffer ratio adjustment.
-// Thread-safety: instances are stored in Compressor.adaptiveBuffer (sync.Map) and accessed
-// only within runCompress, which is serialized per-session by tryStartCompress CAS lock.
-// Therefore no additional mutex is needed on the state fields.
+// Thread-safety: instances are stored in Compressor.adaptiveBuffer (sync.Map).
+// LastAccessed is accessed atomically to avoid data races between the compress
+// goroutine (writer) and the GC goroutine (reader). All other fields are only
+// accessed within runCompress, which is serialized per-session by tryStartCompress
+// CAS lock, so no additional mutex is needed for those.
 type AdaptiveBufferState struct {
 	LastUsedTokens      int
 	ConsecutiveLowCount int
 	CurrentRatio        float64
+	lastAccessedUnix    atomic.Int64
+}
+
+// LastAccessed returns the last access time of this state.
+func (s *AdaptiveBufferState) LastAccessed() time.Time {
+	unix := s.lastAccessedUnix.Load()
+	if unix == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, unix)
+}
+
+// touchLastAccessed updates the last access time to now.
+func (s *AdaptiveBufferState) touchLastAccessed() {
+	s.lastAccessedUnix.Store(time.Now().UnixNano())
 }
 
 // NewAdaptiveBufferState creates a new adaptive buffer state with the given initial ratio.
@@ -271,7 +289,9 @@ func NewAdaptiveBufferState(initialRatio float64) *AdaptiveBufferState {
 	if initialRatio > adaptiveBufferMaxRatio {
 		initialRatio = adaptiveBufferMaxRatio
 	}
-	return &AdaptiveBufferState{CurrentRatio: initialRatio}
+	s := &AdaptiveBufferState{CurrentRatio: initialRatio}
+	s.touchLastAccessed()
+	return s
 }
 
 // UpdateAdaptiveBuffer adjusts the buffer ratio based on token increment and conversation mode.
@@ -316,6 +336,7 @@ func (s *AdaptiveBufferState) UpdateAdaptiveBuffer(usedTokens, contextWindow int
 	}
 
 	s.LastUsedTokens = usedTokens
+	s.touchLastAccessed()
 	return s.CurrentRatio
 }
 

@@ -8,7 +8,7 @@ import (
 
 // ProvideChatService constructs ChatService with a noop AfterTurn hook (real hook attached by ProvideEvaluationRunner).
 func ProvideChatService(deps ChatOrchestratorDeps) *ChatService {
-	deps.AfterTurn = biz.NoopNativeTurnAfter{}
+	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	return NewChatService(deps)
 }
 

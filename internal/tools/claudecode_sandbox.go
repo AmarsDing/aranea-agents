@@ -3,8 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -72,7 +73,7 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(args, &input); err != nil {
-		return w.inner.Call(ctx, args)
+		return nil, kerrors.BadRequest("BASH", "failed to parse command arguments: "+err.Error())
 	}
 	cmd := strings.TrimSpace(input.Command)
 	if cmd == "" {
@@ -80,7 +81,10 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 	}
 	// Extract the first token (command name) for allowlist matching.
 	// This prevents prefix-based bypasses like "gitrm" matching "git".
-	cmdName := firstCommandToken(cmd)
+	cmdName, safe := firstCommandToken(cmd)
+	if !safe {
+		return nil, kerrors.Forbidden("BASH", "command contains shell metacharacters, chaining is not allowed: "+truncate(cmd, 64))
+	}
 	allowed := false
 	for _, entry := range w.allowList {
 		if strings.TrimSpace(entry) == cmdName {
@@ -89,22 +93,68 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 		}
 	}
 	if !allowed {
-		return nil, fmt.Errorf("bash: command not in allowlist: %s", truncate(cmd, 64))
+		return nil, kerrors.Forbidden("BASH", "command not in allowlist: "+truncate(cmd, 64))
 	}
 	return w.inner.Call(ctx, args)
 }
 
+// shellMetacharacters lists characters that enable command chaining,
+// substitution, or redirection. Any command containing these is rejected
+// because the allowlist only validates the first token — a chained command
+// like "git status && rm -rf /" would pass the first-token check but execute
+// the second command unrestricted.
+var shellMetacharacters = []string{
+	";", "&&", "||", "|", "&",
+	"$(", "`", "${", ">", "<",
+	"\n", "\r", "#",
+}
+
 // firstCommandToken extracts the first token of a shell command,
 // handling common shell operators and pipes.
-func firstCommandToken(cmd string) string {
-	// Strip leading shell operators/whitespace
-	cmd = strings.TrimLeft(cmd, "|&;<>() \t\n")
+// Returns the command name and true if the command is safe (no shell
+// metacharacters), or empty string and false if injection is detected.
+func firstCommandToken(cmd string) (string, bool) {
+	// Trim whitespace first; an empty/whitespace-only command is safe.
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return "", true
+	}
+	// Reject commands containing shell metacharacters that enable chaining
+	// or substitution. This prevents bypass via "git status && rm -rf /"
+	// or similar injection patterns.
+	for _, meta := range shellMetacharacters {
+		if strings.Contains(cmd, meta) {
+			return "", false
+		}
+	}
+	// Strip leading shell operators by repeatedly trimming known
+	// multi-character and single-character prefixes. Unlike TrimLeft,
+	// this does not strip arbitrary characters from the cutset — only
+	// exact prefix matches are removed, so "||git" becomes "git" not "it".
+	for {
+		trimmed := false
+		for _, prefix := range []string{"||", "&&", "|", "&", ";", "(", ")", "<", ">"} {
+			if strings.HasPrefix(cmd, prefix) {
+				cmd = strings.TrimPrefix(cmd, prefix)
+				trimmed = true
+				break
+			}
+		}
+		// Also skip leading whitespace between operators and the command.
+		if after := strings.TrimLeft(cmd, " \t"); after != cmd {
+			cmd = after
+			continue
+		}
+		if !trimmed {
+			break
+		}
+	}
 	// Split by whitespace to get the command name
 	fields := strings.Fields(cmd)
 	if len(fields) == 0 {
-		return ""
+		return "", true
 	}
-	return fields[0]
+	return fields[0], true
 }
 
 func truncate(s string, n int) string {

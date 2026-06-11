@@ -2,9 +2,10 @@ package cron
 
 import (
 	"context"
+	"errors"
 	"testing"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestNewCronTaskID_NonEmpty(t *testing.T) {
@@ -21,19 +22,19 @@ func TestNewCronTaskID_NonEmpty(t *testing.T) {
 }
 
 func TestErrRunnerDisabled(t *testing.T) {
-	if !errors.IsServiceUnavailable(ErrRunnerDisabled) {
+	if !isAPIErrorCode(ErrRunnerDisabled, apierror.CodeUnavailable) {
 		t.Errorf("ErrRunnerDisabled should be ServiceUnavailable, got %v", ErrRunnerDisabled)
 	}
 }
 
 func TestErrTaskDeleted(t *testing.T) {
-	if !errors.IsNotFound(ErrTaskDeleted) {
+	if !isAPIErrorCode(ErrTaskDeleted, apierror.CodeNotFound) {
 		t.Errorf("ErrTaskDeleted should be NotFound, got %v", ErrTaskDeleted)
 	}
 }
 
 func TestErrSessionBusy(t *testing.T) {
-	if !errors.IsConflict(ErrSessionBusy) {
+	if !isAPIErrorCode(ErrSessionBusy, apierror.CodeConflict) {
 		t.Errorf("ErrSessionBusy should be Conflict, got %v", ErrSessionBusy)
 	}
 }
@@ -44,7 +45,7 @@ func TestUsecase_GetTask_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -74,7 +75,7 @@ func TestUsecase_CreateTask_EmptyKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -85,7 +86,7 @@ func TestUsecase_CreateTask_EmptyName(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -150,7 +151,7 @@ func TestUsecase_UpdateTask_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -223,7 +224,7 @@ func TestUsecase_DeleteTask_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -234,7 +235,7 @@ func TestUsecase_GetTaskRun_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -253,7 +254,7 @@ func TestUsecase_TriggerTask_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -264,7 +265,7 @@ func TestUsecase_ResetTaskFailures_EmptyID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }

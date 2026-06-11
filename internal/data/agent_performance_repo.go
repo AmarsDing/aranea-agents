@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var _ biz.AgentPerformanceRepository = (*agentPerformanceRepo)(nil)
@@ -28,7 +27,7 @@ func (r *agentPerformanceRepo) Get(ctx context.Context, agentKey, taskType strin
 	agentKey = strings.TrimSpace(agentKey)
 	taskType = strings.TrimSpace(taskType)
 	if agentKey == "" || taskType == "" {
-		return nil, kerrors.BadRequest("AGENT_PERF", "agent_key and task_type are required")
+		return nil, apierror.BadRequest("AGENT_PERF", "agent_key and task_type are required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, agent_key, task_type, total_runs, success_runs, success_rate,
@@ -84,7 +83,7 @@ func (r *agentPerformanceRepo) Upsert(ctx context.Context, perf *biz.AgentPerfor
 	perf.AgentKey = strings.TrimSpace(perf.AgentKey)
 	perf.TaskType = strings.TrimSpace(perf.TaskType)
 	if perf.AgentKey == "" || perf.TaskType == "" {
-		return kerrors.BadRequest("AGENT_PERF", "agent_key and task_type are required")
+		return apierror.BadRequest("AGENT_PERF", "agent_key and task_type are required")
 	}
 	id := perf.AgentKey + "_" + perf.TaskType
 

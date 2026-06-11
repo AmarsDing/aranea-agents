@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +25,7 @@ type GraphExecutionUsecase struct {
 	defProvider  GraphDefinitionProvider
 	mu           sync.RWMutex
 	executions   map[string]*GraphExecution
+	gcCancel     chan struct{}
 	lg           loggateway.Logger
 }
 
@@ -46,6 +47,7 @@ func NewGraphExecutionUsecase(
 		executions:   make(map[string]*GraphExecution),
 		lg:           lg,
 	}
+	uc.gcCancel = make(chan struct{})
 	safego.Go(appctx.Ctx(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
 }
@@ -182,7 +184,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		exec.Status = "failed"
 		exec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(exec)
-		return nil, kerrors.FromError(ErrGraphSaveRun).WithCause(err)
+		e := apierror.Internal("GRAPH", "graph execute save run failed")
+		e.Cause = err
+		return nil, e
 	}
 
 	safego.Go(appctx.Ctx(), "graph.consumeEvents", func() {
@@ -223,7 +227,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		exec.Status = "failed"
 		exec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(exec)
-		return nil, kerrors.FromError(ErrGraphSaveRun).WithCause(err)
+		e := apierror.Internal("GRAPH", "graph execute save run failed")
+		e.Cause = err
+		return nil, e
 	}
 
 	safego.Go(appctx.Ctx(), "graph.consumeEvents", func() {
@@ -304,7 +310,9 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 
 	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
-		return nil, kerrors.FromError(ErrGraphResume).WithCause(err)
+		e := apierror.Internal("GRAPH", "graph resume failed")
+		e.Cause = err
+		return nil, e
 	}
 
 	exec.execMu.Lock()
@@ -326,7 +334,9 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	persistSnap = exec.SnapshotForPersist()
 	exec.execMu.Unlock()
 	if err := uc.runRepo.UpdateRun(ctx, persistSnap); err != nil {
-		return nil, kerrors.InternalServer("GRAPH", "update run after resume").WithCause(err)
+		e := apierror.Internal("GRAPH", "update run after resume")
+		e.Cause = err
+		return nil, e
 	}
 	return exec, nil
 }
@@ -343,11 +353,11 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 	}
 	execID = strings.TrimSpace(execID)
 	if execID == "" {
-		return kerrors.BadRequest("GRAPH", "graph execution id required")
+		return apierror.BadRequest("GRAPH", "graph execution id required")
 	}
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
-		return kerrors.BadRequest("GRAPH", "team id required")
+		return apierror.BadRequest("GRAPH", "team id required")
 	}
 	graphID := GraphIDTeamPrefix + teamID
 	if teamRunID != "" {
@@ -576,8 +586,26 @@ func (uc *GraphExecutionUsecase) EditState(ctx context.Context, executionID stri
 func (uc *GraphExecutionUsecase) gcLoop() {
 	ticker := time.NewTicker(gcInterval)
 	defer ticker.Stop()
-	for range ticker.C {
-		uc.gc()
+	for {
+		select {
+		case <-uc.gcCancel:
+			return
+		case <-ticker.C:
+			uc.gc()
+		}
+	}
+}
+
+// Close stops the GC goroutine and releases in-memory execution state.
+func (uc *GraphExecutionUsecase) Close() {
+	if uc == nil {
+		return
+	}
+	select {
+	case <-uc.gcCancel:
+		// Already closed
+	default:
+		close(uc.gcCancel)
 	}
 }
 

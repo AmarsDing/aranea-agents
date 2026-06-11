@@ -2,7 +2,6 @@ package a2ui
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
 
@@ -55,7 +54,7 @@ func (c *PlanToGraphConverter) Convert(ctx context.Context, plan *Plan) (*biz.Gr
 	depGraph := buildDependencyGraph(plan)
 	order, err := topologicalSort(depGraph, stepIDs)
 	if err != nil {
-		return nil, kerrors.BadRequest("A2UI", "plan dependency cycle: "+err.Error())
+		return nil, err // already kerrors.BadRequest
 	}
 
 	if len(order) > 0 {
@@ -94,8 +93,20 @@ func buildDependencyGraph(plan *Plan) map[string][]string {
 }
 
 func topologicalSort(depGraph map[string][]string, allIDs []string) ([]string, error) {
-	inDegree := make(map[string]int, len(allIDs))
+	// Build the full set of node IDs: explicit steps + any IDs that appear
+	// only in Dependencies but not in Steps (ghost nodes from plan.Dependencies).
+	allNodeSet := make(map[string]struct{}, len(allIDs))
 	for _, id := range allIDs {
+		allNodeSet[id] = struct{}{}
+	}
+	for id := range depGraph {
+		if _, ok := allNodeSet[id]; !ok {
+			allNodeSet[id] = struct{}{}
+		}
+	}
+
+	inDegree := make(map[string]int, len(allNodeSet))
+	for id := range allNodeSet {
 		inDegree[id] = 0
 	}
 	for id, deps := range depGraph {
@@ -103,7 +114,7 @@ func topologicalSort(depGraph map[string][]string, allIDs []string) ([]string, e
 	}
 
 	var queue []string
-	for _, id := range allIDs {
+	for id := range allNodeSet {
 		if inDegree[id] == 0 {
 			queue = append(queue, id)
 		}
@@ -127,8 +138,8 @@ func topologicalSort(depGraph map[string][]string, allIDs []string) ([]string, e
 		}
 	}
 
-	if len(order) != len(allIDs) {
-		return nil, fmt.Errorf("cycle detected")
+	if len(order) != len(allNodeSet) {
+		return nil, kerrors.BadRequest("SPIRIT", "cycle detected in UI node dependencies")
 	}
 	return order, nil
 }

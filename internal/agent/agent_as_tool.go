@@ -13,13 +13,35 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+const maxAgentDelegationDepth = 3
+
+type delegationDepthKey struct{}
+
+// withDelegationDepth stores the current delegation depth in context.
+func withDelegationDepth(ctx context.Context, depth int) context.Context {
+	return context.WithValue(ctx, delegationDepthKey{}, depth)
+}
+
+// delegationDepthFromCtx returns the current delegation depth (0 if unset).
+func delegationDepthFromCtx(ctx context.Context) int {
+	if v, ok := ctx.Value(delegationDepthKey{}).(int); ok {
+		return v
+	}
+	return 0
+}
+
 // BuildAgentAsTool creates an Agent-as-Tool for the moderate (single-agent) path.
 // It uses the matcher to find the best agent, builds it via TRPCBuilderDeps,
 // and wraps it with agenttool.NewTool so Spirit can invoke it directly.
 func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TRPCBuilderDeps, lg loggateway.Logger, taskDesc string, capabilities []string) (trpctool.Tool, error) {
+	depth := delegationDepthFromCtx(ctx)
+	if depth >= maxAgentDelegationDepth {
+		return nil, kerrors.BadRequest("SPIRIT", fmt.Sprintf("agent delegation depth %d exceeds limit %d, refusing recursive delegation", depth, maxAgentDelegationDepth))
+	}
+
 	match, err := matcher.MatchAgent(ctx, taskDesc, capabilities)
 	if err != nil {
-		return nil, fmt.Errorf("agent matching failed: %w", err)
+		return nil, kerrors.InternalServer("SPIRIT", "agent matching failed: "+err.Error())
 	}
 	if match == nil {
 		return nil, kerrors.NotFound("SPIRIT", "no matching agent found for: "+taskDesc)
@@ -27,12 +49,14 @@ func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TR
 
 	bizAg, err := resolveBizAgentByKey(ctx, deps, match.AgentKey)
 	if err != nil {
-		return nil, fmt.Errorf("resolve agent %s: %w", match.AgentKey, err)
+		return nil, kerrors.NotFound("SPIRIT", fmt.Sprintf("resolve agent %s: %s", match.AgentKey, err.Error()))
 	}
 
-	ag, err := BuildTRPCAgentCached(ctx, bizAg, deps, lg)
+	// Increment delegation depth so nested agent-as-tool calls are bounded.
+	buildCtx := withDelegationDepth(ctx, depth+1)
+	ag, err := BuildTRPCAgentCached(buildCtx, bizAg, deps, lg)
 	if err != nil {
-		return nil, fmt.Errorf("build agent %s: %w", match.AgentKey, err)
+		return nil, kerrors.InternalServer("SPIRIT", fmt.Sprintf("build agent %s: %s", match.AgentKey, err.Error()))
 	}
 
 	tool := agenttool.NewTool(
@@ -49,7 +73,7 @@ func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TR
 func ResolveAndBuildAgent(ctx context.Context, agentKey string, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	bizAg, err := resolveBizAgentByKey(ctx, deps, agentKey)
 	if err != nil {
-		return nil, fmt.Errorf("resolve agent %s: %w", agentKey, err)
+		return nil, kerrors.NotFound("SPIRIT", fmt.Sprintf("resolve agent %s: %s", agentKey, err.Error()))
 	}
 	return BuildTRPCAgentCached(ctx, bizAg, deps, lg)
 }

@@ -5,9 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockRepo struct {
@@ -61,15 +60,15 @@ func (m *mockRepo) IsInstalled(ctx context.Context, productID string) (bool, err
 	return false, nil
 }
 
-func isKerrorReason(err error, reason string) bool {
+func isAPIErrorDomain(err error, domain string) bool {
 	if err == nil {
 		return false
 	}
-	ke, ok := err.(*kerrors.Error)
+	ae, ok := apierror.From(err)
 	if !ok {
 		return false
 	}
-	return ke.Reason == reason
+	return ae.Domain == domain
 }
 
 func TestNewUsecase(t *testing.T) {
@@ -231,7 +230,7 @@ func TestUsecase_Get(t *testing.T) {
 				t.Fatalf("Get() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr && tt.reason != "" {
-				if !isKerrorReason(err, tt.reason) {
+				if !isAPIErrorDomain(err, tt.reason) {
 					t.Fatalf("expected kerror reason %s, got %v", tt.reason, err)
 				}
 			}
@@ -368,7 +367,7 @@ func TestUsecase_Publish(t *testing.T) {
 				t.Fatalf("Publish() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr && tt.reason != "" {
-				if !isKerrorReason(err, tt.reason) {
+				if !isAPIErrorDomain(err, tt.reason) {
 					t.Fatalf("expected kerror reason %s, got %v", tt.reason, err)
 				}
 			}
@@ -469,7 +468,7 @@ func TestUsecase_Install(t *testing.T) {
 				t.Fatalf("Install() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr && tt.reason != "" {
-				if !isKerrorReason(err, tt.reason) {
+				if !isAPIErrorDomain(err, tt.reason) {
 					t.Fatalf("expected kerror reason %s, got %v", tt.reason, err)
 				}
 			}
@@ -535,7 +534,7 @@ func TestUsecase_Uninstall(t *testing.T) {
 				t.Fatalf("Uninstall() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr && tt.reason != "" {
-				if !isKerrorReason(err, tt.reason) {
+				if !isAPIErrorDomain(err, tt.reason) {
 					t.Fatalf("expected kerror reason %s, got %v", tt.reason, err)
 				}
 			}

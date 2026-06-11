@@ -7,6 +7,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // agentMatcherImpl implements biz.AgentMatcherPort using the agent catalog.
@@ -23,30 +25,39 @@ func NewAgentMatcher(agents biz.AgentReader, lg loggateway.Logger) biz.AgentMatc
 func (m *agentMatcherImpl) MatchAgent(ctx context.Context, taskDesc string, capabilities []string) (*biz.AgentMatch, error) {
 	result, err := m.agents.SearchAgents(ctx, biz.AgentListQuery{Limit: 200})
 	if err != nil {
-		return nil, fmt.Errorf("search agents: %w", err)
+		return nil, kerrors.InternalServer("AGENT", "search agents: "+err.Error())
 	}
 
 	var bestMatch *biz.AgentMatch
 	var bestScore float64
+
+	taskTokens := NewUnicodeTokenizer(DefaultTokenizerOptions()).Tokenize(strings.ToLower(taskDesc))
+	weights := DefaultMatchScoreWeights()
 
 	for i := range result.Items {
 		ag := &result.Items[i]
 		if ag.AgentKey == biz.SpiritAgentKey {
 			continue
 		}
-		score := calculateMatchScore(*ag, capabilities, taskDesc)
+		capScore := JaccardCapability(capabilities, ag.Roles)
+		agentTokens := NewUnicodeTokenizer(DefaultTokenizerOptions()).Tokenize(strings.ToLower(ag.AgentDescription))
+		semScore := TFSemantic(taskTokens, agentTokens)
+		score := BlendMatchScore(capScore, semScore, weights)
 		if score > bestScore {
 			bestScore = score
 			bestMatch = &biz.AgentMatch{
 				AgentKey:    ag.AgentKey,
 				DisplayName: ag.DisplayName,
 				Score:       score,
-				MatchReason: fmt.Sprintf("Role/capability match score: %.2f", score),
+				MatchReason: fmt.Sprintf("Capability=%.2f Semantic=%.2f Blended=%.2f", capScore, semScore, score),
 			}
 		}
 	}
 
-	if bestMatch != nil && bestScore > 0.3 {
+	// Minimum score threshold for a valid match.
+	const minMatchScore = 0.3
+
+	if bestMatch != nil && bestScore > minMatchScore {
 		m.lg.Info("Agent 匹配成功",
 			loggateway.StepID("agent.match"),
 			loggateway.Str("matched_agent", bestMatch.AgentKey),
@@ -80,60 +91,3 @@ func (m *agentMatcherImpl) MatchAgent(ctx context.Context, taskDesc string, capa
 	return nil, nil
 }
 
-// calculateMatchScore scores an agent against required capabilities and task description.
-// It checks overlap between the agent's Roles and the required capabilities,
-// and also checks if the task description keywords appear in the agent's description.
-func calculateMatchScore(ag biz.Agent, capabilities []string, taskDesc string) float64 {
-	var totalScore float64
-	var maxScore float64
-
-	// Dimension 1: Role/capability overlap
-	if len(capabilities) > 0 && len(ag.Roles) > 0 {
-		maxScore += 1.0
-		roleSet := make(map[string]bool, len(ag.Roles))
-		for _, r := range ag.Roles {
-			roleSet[strings.ToLower(r)] = true
-		}
-		matches := 0
-		for _, cap := range capabilities {
-			if roleSet[strings.ToLower(cap)] {
-				matches++
-			}
-		}
-		totalScore += float64(matches) / float64(len(capabilities))
-	}
-
-	// Dimension 2: Task description keyword overlap with agent description
-	if taskDesc != "" && ag.AgentDescription != "" {
-		maxScore += 0.5
-		descLower := strings.ToLower(ag.AgentDescription)
-		taskWords := tokenize(strings.ToLower(taskDesc))
-		if len(taskWords) > 0 {
-			hits := 0
-			for _, w := range taskWords {
-				if strings.Contains(descLower, w) {
-					hits++
-				}
-			}
-			totalScore += 0.5 * float64(hits) / float64(len(taskWords))
-		}
-	}
-
-	if maxScore == 0 {
-		return 0
-	}
-	return totalScore / maxScore
-}
-
-// tokenize splits a string into lowercase word tokens for matching.
-func tokenize(s string) []string {
-	fields := strings.Fields(s)
-	var tokens []string
-	for _, f := range fields {
-		f = strings.Trim(f, ".,;:!?()[]{}\"'")
-		if len(f) >= 2 {
-			tokens = append(tokens, f)
-		}
-	}
-	return tokens
-}

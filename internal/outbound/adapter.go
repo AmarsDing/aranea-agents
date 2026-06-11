@@ -23,6 +23,9 @@ type outboundTextAdapter struct {
 }
 
 func WrapOutboundText(inner ch.OutboundText) TextSender {
+	if inner == nil {
+		return nil
+	}
 	return &outboundTextAdapter{inner: inner}
 }
 

@@ -13,10 +13,10 @@ import (
 	"aranea-agents/internal/data/ent/team"
 	"aranea-agents/internal/data/ent/teamrun"
 	"aranea-agents/internal/data/ent/teamrunstep"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type TeamRepo struct {
@@ -185,7 +185,7 @@ func (r *TeamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, 
 
 func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.TeamKey == "" || t.DisplayName == "" {
-		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
+		return biz.Team{}, apierror.BadRequest("TEAM", "missing required fields")
 	}
 	if t.ID == "" {
 		t.ID = generateCatalogID()
@@ -235,7 +235,7 @@ func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 
 func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.ID == "" || t.TeamKey == "" || t.DisplayName == "" {
-		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
+		return biz.Team{}, apierror.BadRequest("TEAM", "missing required fields")
 	}
 	now := nowRFC3339()
 	t.UpdatedAt = now
@@ -279,7 +279,7 @@ func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 
 func (r *TeamRepo) DeleteTeam(ctx context.Context, id string) error {
 	if id == "" {
-		return kerrors.BadRequest("TEAM", "id is required")
+		return apierror.BadRequest("TEAM", "id is required")
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		now := nowRFC3339()
@@ -336,7 +336,7 @@ func (r *TeamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) (
 func (r *TeamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
-		return nil, kerrors.BadRequest("TEAM", "spirit_session_id is required")
+		return nil, apierror.BadRequest("TEAM", "spirit_session_id is required")
 	}
 	rows, err := r.data.RW().Read(ctx).Team.Query().
 		Where(team.SpiritSessionIDEQ(spiritSessionID), team.DeletedAtEQ("")).
@@ -433,7 +433,7 @@ func (r *TeamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.Te
 
 func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.TeamRun, error) {
 	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TeamID) == "" {
-		return biz.TeamRun{}, kerrors.BadRequest("TEAM_RUN", "team run id and team_id are required")
+		return biz.TeamRun{}, apierror.BadRequest("TEAM_RUN", "team run id and team_id are required")
 	}
 	now := nowRFC3339()
 	if run.CreatedAt == "" {
@@ -486,7 +486,7 @@ func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 
 func (r *TeamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 	if strings.TrimSpace(run.ID) == "" {
-		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
+		return apierror.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).TeamRun.UpdateOneID(run.ID).
@@ -506,7 +506,7 @@ func (r *TeamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 
 func (r *TeamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.RunID) == "" {
-		return biz.TeamRunStep{}, kerrors.BadRequest("TEAM_RUN_STEP", "step id and run_id are required")
+		return biz.TeamRunStep{}, apierror.BadRequest("TEAM_RUN_STEP", "step id and run_id are required")
 	}
 	now := nowRFC3339()
 	if step.CreatedAt == "" {
@@ -549,7 +549,7 @@ func (r *TeamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 
 func (r *TeamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
 	if strings.TrimSpace(runID) == "" {
-		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
+		return apierror.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
@@ -560,7 +560,7 @@ func (r *TeamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 
 func (r *TeamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error {
 	if strings.TrimSpace(runID) == "" {
-		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
+		return apierror.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
@@ -571,7 +571,7 @@ func (r *TeamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 
 func (r *TeamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error {
 	if strings.TrimSpace(runID) == "" {
-		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
+		return apierror.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
@@ -614,7 +614,7 @@ func (r *TeamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []bi
 func (r *TeamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]biz.OrchestrationStep, error) {
 	teamRunID = strings.TrimSpace(teamRunID)
 	if teamRunID == "" {
-		return nil, kerrors.BadRequest("ORCHESTRATION_STEP", "team_run_id is required")
+		return nil, apierror.BadRequest("ORCHESTRATION_STEP", "team_run_id is required")
 	}
 	if limit <= 0 {
 		limit = 100
@@ -639,7 +639,7 @@ func (r *TeamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID
 
 func (r *TeamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLetter) error {
 	if strings.TrimSpace(dl.ID) == "" {
-		return kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
+		return apierror.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
 	payload := strings.TrimSpace(dl.PayloadJSON)
 	if payload == "" {
@@ -694,7 +694,7 @@ func (r *TeamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadL
 func (r *TeamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
+		return biz.TaskDeadLetter{}, apierror.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
 	existing, err := r.data.RW().Read(ctx).TaskDeadLetter.Get(ctx, id)
 	if err != nil {
@@ -704,7 +704,7 @@ func (r *TeamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 		return entTaskDeadLetterToBiz(existing), nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(existing.Status), biz.TaskDeadLetterStatusPending) {
-		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter "+id+" is not pending")
+		return biz.TaskDeadLetter{}, apierror.BadRequest("TASK_DEAD_LETTER", "task dead letter "+id+" is not pending")
 	}
 	now := nowRFC3339()
 	row, err := r.data.RW().Write(ctx).TaskDeadLetter.UpdateOneID(id).

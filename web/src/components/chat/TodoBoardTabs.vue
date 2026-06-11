@@ -1,0 +1,133 @@
+<template>
+  <div v-if="boards.length > 0" class="todo-kanban-tabs">
+    <!-- Tab strip (only when more than one agent has a board) -->
+    <div v-if="boards.length > 1" class="todo-kanban-tabs__tabs" role="tablist">
+      <button
+        v-for="entry in boards"
+        :key="entry.agentKey"
+        type="button"
+        role="tab"
+        :aria-selected="entry.agentKey === activeKey"
+        class="todo-kanban-tabs__tab"
+        :class="{ 'todo-kanban-tabs__tab--active': entry.agentKey === activeKey }"
+        @click="activeKey = entry.agentKey"
+      >
+        <q-icon
+          :name="entry.agentKey === ROOT_AGENT_KEY ? 'auto_awesome' : 'person'"
+          size="14px"
+          class="todo-kanban-tabs__tab-icon"
+        />
+        <span class="todo-kanban-tabs__tab-label ellipsis">{{ entry.agentName }}</span>
+        <span class="todo-kanban-tabs__tab-count">{{ entry.board.todos.length }}</span>
+      </button>
+    </div>
+    <!-- Active board -->
+    <TodoKanbanBoard
+      v-if="activeBoard"
+      :board-state="activeBoard"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { ROOT_AGENT_KEY, type TodoBoardState } from '../../features/chat/agentTreeTypes';
+import type { TodoBoardEntry } from '../../features/chat/composables/useTodoBoard';
+import TodoKanbanBoard from './TodoKanbanBoard.vue';
+
+/**
+ * TD-TK-5: Multi-agent Todo Board tabs.
+ *
+ * Renders a tab strip when more than one agent has emitted a
+ * `todo_write` event, and a single (legacy) kanban board when there is
+ * only one. The active tab defaults to the most-recent writer and
+ * follows changes to the `boards` prop automatically.
+ */
+const props = defineProps<{
+  boards: readonly TodoBoardEntry[];
+}>();
+
+const activeKey = ref<string | null>(props.boards[0]?.agentKey ?? null);
+
+watch(
+  () => props.boards,
+  (next) => {
+    // Re-anchor on prop change: keep the current tab if still present,
+    // otherwise fall back to the most-recent writer.
+    if (next.length === 0) {
+      activeKey.value = null;
+      return;
+    }
+    const stillThere = next.some((b) => b.agentKey === activeKey.value);
+    if (!stillThere) {
+      activeKey.value = next[0]!.agentKey;
+    }
+  },
+);
+
+const activeBoard = computed<TodoBoardState | null>(() => {
+  if (!activeKey.value) return null;
+  const entry = props.boards.find((b) => b.agentKey === activeKey.value);
+  return entry?.board ?? null;
+});
+</script>
+
+<style scoped lang="sass">
+.todo-kanban-tabs
+  margin-bottom: 12px
+
+.todo-kanban-tabs__tabs
+  display: flex
+  align-items: center
+  gap: 4px
+  padding: 4px 6px
+  margin-bottom: 4px
+  border-radius: 8px
+  background: color-mix(in srgb, var(--glass-surface) 35%, transparent)
+  border: 1px solid var(--glass-border)
+  overflow-x: auto
+
+.todo-kanban-tabs__tab
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  padding: 4px 10px
+  border: 1px solid transparent
+  border-radius: 6px
+  background: transparent
+  font-size: 12px
+  color: var(--color-text-secondary)
+  cursor: pointer
+  user-select: none
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease
+  white-space: nowrap
+  flex-shrink: 0
+
+  &:hover
+    background: color-mix(in srgb, var(--color-text-primary) 5%, transparent)
+    color: var(--color-text-primary)
+
+.todo-kanban-tabs__tab--active
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent)
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent)
+  color: var(--color-text-primary)
+
+.todo-kanban-tabs__tab-icon
+  flex-shrink: 0
+  color: var(--color-text-tertiary)
+
+.todo-kanban-tabs__tab--active .todo-kanban-tabs__tab-icon
+  color: var(--color-primary)
+
+.todo-kanban-tabs__tab-label
+  max-width: 120px
+  font-weight: 500
+
+.todo-kanban-tabs__tab-count
+  font-size: 10px
+  color: var(--color-text-tertiary)
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+  border-radius: 8px
+  padding: 0 5px
+  line-height: 16px
+</style>

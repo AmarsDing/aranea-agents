@@ -7,8 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/skills_butler"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type skillsButlerSkillUsecaseAdapter struct {
@@ -206,7 +205,10 @@ func (a skillsButlerRegistrationAdapter) SkillExists(ctx context.Context, agentI
 	}
 	_, err := a.uc.GetBySlug(ctx, name)
 	if err != nil {
-		if errors.Is(err, biz.ErrNotFound) || kerrors.IsNotFound(err) {
+		if errors.Is(err, biz.ErrNotFound) {
+			return false, nil
+		}
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return false, nil
 		}
 		return false, err

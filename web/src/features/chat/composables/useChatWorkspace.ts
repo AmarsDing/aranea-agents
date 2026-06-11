@@ -516,8 +516,18 @@ export function useChatWorkspace() {
   } = settingsDialog;
 
   const traceAndArtifacts = useChatTraceDialog(toRef(sessionStore, 'entityKind'), displaySessions, streamManager);
-  const { traceOpen, traceSessionId, traceSessionTitle, traceInitialTab, traceStreamDeps, openSessionTrace } =
-    traceAndArtifacts;
+  const {
+    traceOpen,
+    traceSessionId,
+    traceSessionTitle,
+    traceInitialTab,
+    traceStreamDeps,
+    openSessionTrace,
+    timeline: traceTimeline,
+    timelineLoading: traceTimelineLoading,
+    timelineError: traceTimelineError,
+    reloadTimeline: reloadTraceTimeline,
+  } = traceAndArtifacts;
 
   const {
     sessionArtifacts,
@@ -986,6 +996,10 @@ export function useChatWorkspace() {
       traceSessionTitle,
       traceInitialTab,
       traceStreamDeps,
+      timeline: traceTimeline,
+      timelineLoading: traceTimelineLoading,
+      timelineError: traceTimelineError,
+      reloadTimeline: reloadTraceTimeline,
       selectedProviderModel,
       fileSupported,
       onSaveSettings,

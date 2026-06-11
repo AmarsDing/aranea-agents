@@ -3,7 +3,6 @@ package mattermost
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -67,9 +66,9 @@ func (s *StreamSender) createPost(ctx context.Context, channelID, text string) (
 	token := strings.TrimSpace(s.BotToken)
 	base := strings.TrimRight(strings.TrimSpace(s.ServerURL), "/")
 	if token == "" || base == "" {
-		return "", fmt.Errorf("mattermost stream: bot_token and server_url required")
+		return "", errServerURLAndBotTokenRequired
 	}
-	body, _ := marshalJSON(map[string]any{
+	body, _ := json.Marshal(map[string]any{
 		"channel_id": channelID,
 		"message":    text,
 	})
@@ -81,10 +80,10 @@ func (s *StreamSender) createPost(ctx context.Context, channelID, text string) (
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("mattermost stream: parse response: %w", err)
+		return "", mattermostParseError("mattermost stream", err)
 	}
 	if strings.TrimSpace(out.ID) == "" {
-		return "", fmt.Errorf("mattermost stream: empty post id")
+		return "", errEmptyPostID
 	}
 	return out.ID, nil
 }
@@ -93,9 +92,9 @@ func (s *StreamSender) updatePost(ctx context.Context, postID, text string) erro
 	token := strings.TrimSpace(s.BotToken)
 	base := strings.TrimRight(strings.TrimSpace(s.ServerURL), "/")
 	if token == "" || base == "" {
-		return fmt.Errorf("mattermost stream: bot_token and server_url required")
+		return errServerURLAndBotTokenRequired
 	}
-	body, _ := marshalJSON(map[string]any{
+	body, _ := json.Marshal(map[string]any{
 		"message": text,
 	})
 	_, err := doPost(ctx, s.HTTP, token, base+"/api/v4/posts/"+postID+"/patch", body)

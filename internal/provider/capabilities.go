@@ -5,22 +5,23 @@ import (
 	"fmt"
 	"strings"
 
-	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ValidateAttachmentCapabilities checks whether the given provider/model supports
 // the attachment types present in refs. Returns nil when there are no attachments
 // or when all attachment types are supported.
-func ValidateAttachmentCapabilities(ctx context.Context, catalog biz.TeamModelCatalog, prov, mod string, refs []artifactbiz.Ref) error {
+func ValidateAttachmentCapabilities(ctx context.Context, catalog biz.TeamModelCatalog, prov, mod string, refs []artifactbiz.Ref, lg loggateway.Logger) error {
 	if len(refs) == 0 {
 		return nil
 	}
-	if HasImageAttachment(refs) && !ModelSupportsImageAttachments(ctx, catalog, prov, mod) {
-		return fmt.Errorf("%s/%s does not support image attachments", strings.TrimSpace(prov), strings.TrimSpace(mod))
+	if HasImageAttachment(refs) && !ModelSupportsImageAttachments(ctx, catalog, prov, mod, lg) {
+		return fmt.Errorf("%s/%s: %w", strings.TrimSpace(prov), strings.TrimSpace(mod), ErrImageNotSupported)
 	}
-	if HasFileAttachment(refs) && !ModelSupportsFileAttachments(ctx, catalog, prov, mod) {
-		return fmt.Errorf("%s/%s does not support file attachments", strings.TrimSpace(prov), strings.TrimSpace(mod))
+	if HasFileAttachment(refs) && !ModelSupportsFileAttachments(ctx, catalog, prov, mod, lg) {
+		return fmt.Errorf("%s/%s: %w", strings.TrimSpace(prov), strings.TrimSpace(mod), ErrFileNotSupported)
 	}
 	return nil
 }

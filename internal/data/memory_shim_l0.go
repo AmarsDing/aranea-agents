@@ -135,10 +135,14 @@ func (r *l0SnapshotRepo) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0
 	return err
 }
 
-func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id string, actualPromptTokens, contextWindowTokens int) error {
+func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id, sessionID string, actualPromptTokens, contextWindowTokens int) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("snapshot id is required")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session id is required")
 	}
 	if actualPromptTokens < 0 {
 		actualPromptTokens = 0
@@ -150,8 +154,8 @@ func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id string, 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE memory_l0_assembly_snapshots
 		 SET prompt_token_actual = ?, used_ratio = ?, warning_codes_json = ?
-		 WHERE id = ?`,
-		actualPromptTokens, usedRatio, biz.L0WarningCodesJSON(biz.L0WarningCodesFromRatio(usedRatio)), id,
+		 WHERE id = ? AND session_id = ?`,
+		actualPromptTokens, usedRatio, biz.L0WarningCodesJSON(biz.L0WarningCodesFromRatio(usedRatio)), id, sessionID,
 	)
 	return err
 }

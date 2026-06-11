@@ -9,7 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type queueStatsProvider interface {
@@ -35,7 +35,7 @@ func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUseca
 
 func (s *MemoryService) requireAdmin() error {
 	if s.admin == nil {
-		return kerrors.InternalServer("MEMORY", "memory admin usecase not wired")
+		return apierror.Internal("MEMORY", "memory admin usecase not wired")
 	}
 	return nil
 }
@@ -46,7 +46,7 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	}
 	sid := strings.TrimSpace(req.GetSessionId())
 	if sid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "session_id is required")
+		return nil, apierror.BadRequest("MEMORY", "session_id is required")
 	}
 	rows, err := s.admin.ListL0SnapshotRows(ctx, sid, strings.TrimSpace(req.GetAgentId()), req.GetLimit())
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListCo
 	}
 	scopeType := strings.TrimSpace(req.GetScopeType())
 	if scopeType == "" {
-		return nil, kerrors.BadRequest("MEMORY", "scope_type is required")
+		return nil, apierror.BadRequest("MEMORY", "scope_type is required")
 	}
 	rows, total, err := s.admin.ListConflictingFacts(ctx,
 		scopeType,
@@ -119,7 +119,7 @@ func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFact
 	}
 	factID := strings.TrimSpace(req.GetFactId())
 	if factID == "" {
-		return nil, kerrors.BadRequest("MEMORY", "fact_id is required")
+		return nil, apierror.BadRequest("MEMORY", "fact_id is required")
 	}
 	action := strings.TrimSpace(req.GetAction())
 	switch action {
@@ -132,7 +132,7 @@ func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFact
 			return nil, err
 		}
 	default:
-		return nil, kerrors.BadRequest("MEMORY", "action must be 'approve' or 'reject'")
+		return nil, apierror.BadRequest("MEMORY", "action must be 'approve' or 'reject'")
 	}
 	return &v1.ReviewPIIFactResponse{Fact: &v1.MemoryFact{Id: factID}}, nil
 }
@@ -143,7 +143,7 @@ func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequ
 	}
 	sid := strings.TrimSpace(req.GetSessionId())
 	if sid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "session_id is required")
+		return nil, apierror.BadRequest("MEMORY", "session_id is required")
 	}
 	rows, err := s.admin.ListL1TaskRows(ctx, sid,
 		strings.TrimSpace(req.GetAgentId()),
@@ -168,7 +168,7 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 	}
 	tid := strings.TrimSpace(req.GetTaskId())
 	if tid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "task_id is required")
+		return nil, apierror.BadRequest("MEMORY", "task_id is required")
 	}
 	includeInternal := strings.TrimSpace(req.GetIncludeInternal()) == "true"
 	agentID := strings.TrimSpace(req.GetAgentId())
@@ -269,7 +269,7 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 	}
 	cid := strings.TrimSpace(req.GetCenterId())
 	if cid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "center_id is required")
+		return nil, apierror.BadRequest("MEMORY", "center_id is required")
 	}
 	body, err := s.admin.NeighborhoodJSON(ctx, cid, req.GetHops(), req.GetMaxNodes(), strings.TrimSpace(req.GetQueryAt()))
 	if err != nil {
@@ -310,11 +310,11 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 
 func (s *MemoryService) ListCascadeProposals(ctx context.Context, req *v1.ListCascadeProposalsRequest) (*v1.ListCascadeProposalsResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := s.cascade.ListRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
 	if err != nil {
@@ -332,11 +332,11 @@ func (s *MemoryService) ListCascadeProposals(ctx context.Context, req *v1.ListCa
 
 func (s *MemoryService) ApproveCascadeProposal(ctx context.Context, req *v1.ApproveCascadeProposalRequest) (*v1.ApproveCascadeProposalResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	raw, err := s.cascade.Approve(ctx, id, strings.TrimSpace(req.GetReviewer()))
 	if err != nil {
@@ -344,18 +344,18 @@ func (s *MemoryService) ApproveCascadeProposal(ctx context.Context, req *v1.Appr
 	}
 	p, err := pbCascadeProposal(raw)
 	if err != nil || p == nil {
-		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+		return nil, apierror.Internal("MEMORY", "failed to hydrate cascade proposal")
 	}
 	return &v1.ApproveCascadeProposalResponse{Proposal: p}, nil
 }
 
 func (s *MemoryService) RejectCascadeProposal(ctx context.Context, req *v1.RejectCascadeProposalRequest) (*v1.RejectCascadeProposalResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	raw, err := s.cascade.Reject(ctx, id, strings.TrimSpace(req.GetReviewer()), strings.TrimSpace(req.GetReason()))
 	if err != nil {
@@ -363,18 +363,18 @@ func (s *MemoryService) RejectCascadeProposal(ctx context.Context, req *v1.Rejec
 	}
 	p, err := pbCascadeProposal(raw)
 	if err != nil || p == nil {
-		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+		return nil, apierror.Internal("MEMORY", "failed to hydrate cascade proposal")
 	}
 	return &v1.RejectCascadeProposalResponse{Proposal: p}, nil
 }
 
 func (s *MemoryService) PreviewCascadeApprove(ctx context.Context, req *v1.PreviewCascadeApproveRequest) (*v1.PreviewCascadeApproveResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	preview, err := s.cascade.Preview(ctx, id)
 	if err != nil {
@@ -405,11 +405,11 @@ func (s *MemoryService) PreviewCascadeApprove(ctx context.Context, req *v1.Previ
 
 func (s *MemoryService) GetCascadeSagaSteps(ctx context.Context, req *v1.GetCascadeSagaStepsRequest) (*v1.GetCascadeSagaStepsResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	proposalID := strings.TrimSpace(req.GetProposalId())
 	if proposalID == "" {
-		return nil, kerrors.BadRequest("MEMORY", "proposal_id is required")
+		return nil, apierror.BadRequest("MEMORY", "proposal_id is required")
 	}
 	steps, err := s.cascade.GetSagaSteps(ctx, proposalID)
 	if err != nil {
@@ -437,11 +437,11 @@ func (s *MemoryService) GetCascadeSagaSteps(ctx context.Context, req *v1.GetCasc
 
 func (s *MemoryService) RetryCascadeApprove(ctx context.Context, req *v1.RetryCascadeApproveRequest) (*v1.RetryCascadeApproveResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	raw, err := s.cascade.Retry(ctx, id, strings.TrimSpace(req.GetReviewer()))
 	if err != nil {
@@ -449,18 +449,18 @@ func (s *MemoryService) RetryCascadeApprove(ctx context.Context, req *v1.RetryCa
 	}
 	p, err := pbCascadeProposal(raw)
 	if err != nil || p == nil {
-		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+		return nil, apierror.Internal("MEMORY", "failed to hydrate cascade proposal")
 	}
 	return &v1.RetryCascadeApproveResponse{Proposal: p}, nil
 }
 
 func (s *MemoryService) CompensateCascadeApprove(ctx context.Context, req *v1.CompensateCascadeApproveRequest) (*v1.CompensateCascadeApproveResponse, error) {
 	if s.cascade == nil {
-		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+		return nil, apierror.Internal("MEMORY", "cascade store not wired")
 	}
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	raw, err := s.cascade.Compensate(ctx, id, strings.TrimSpace(req.GetReviewer()))
 	if err != nil {
@@ -468,7 +468,7 @@ func (s *MemoryService) CompensateCascadeApprove(ctx context.Context, req *v1.Co
 	}
 	p, err := pbCascadeProposal(raw)
 	if err != nil || p == nil {
-		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+		return nil, apierror.Internal("MEMORY", "failed to hydrate cascade proposal")
 	}
 	return &v1.CompensateCascadeApproveResponse{Proposal: p}, nil
 }
@@ -520,7 +520,7 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	body, err := s.admin.AgentIdentityJSON(ctx, aid)
 	if err != nil {
@@ -564,7 +564,7 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	body, err := s.admin.AgentStrategyJSON(ctx, aid)
 	if err != nil {
@@ -610,7 +610,7 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := s.admin.EvolutionProposalRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
 	if err != nil {
@@ -641,7 +641,7 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := s.admin.EvolutionEventRows(ctx, aid, req.GetLimit())
 	if err != nil {
@@ -670,7 +670,7 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	_ = strings.TrimSpace(req.GetRange())
 
@@ -724,7 +724,7 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 	}
 	f := req.GetFact()
 	if f == nil {
-		return nil, kerrors.BadRequest("MEMORY", "fact is required")
+		return nil, apierror.BadRequest("MEMORY", "fact is required")
 	}
 	raw, err := s.admin.UpsertFactRow(ctx, biz.FactUpsert{
 		ID:                    strings.TrimSpace(f.GetId()),
@@ -760,7 +760,7 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 	}
 	pb, err := pbMemoryFact(raw)
 	if err != nil || pb == nil {
-		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate fact after upsert")
+		return nil, apierror.Internal("MEMORY", "failed to hydrate fact after upsert")
 	}
 	return &v1.UpsertMemoryFactResponse{Fact: pb}, nil
 }
@@ -771,7 +771,7 @@ func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.Append
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
 	if aid == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	raw, err := s.admin.InsertEvolutionEventRow(ctx, biz.EvolutionEventInsert{
 		AgentID:       aid,

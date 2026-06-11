@@ -14,6 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/channel/port"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // InboundMessage is parsed from a DingTalk custom robot callback.
@@ -50,7 +54,7 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 	}
 	text := strings.TrimSpace(body.Text.Content)
 	if text == "" || strings.ToLower(strings.TrimSpace(body.MsgType)) != "text" {
-		return InboundMessage{}, fmt.Errorf("dingtalk: unsupported or empty message")
+		return InboundMessage{}, kerrors.BadRequest("DINGTALK_PROTOCOL", "dingtalk: unsupported or empty message")
 	}
 	return InboundMessage{
 		Text:           text,
@@ -68,19 +72,19 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 func VerifySign(timestamp, sign, secret string) error {
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
 	ts, err := strconv.ParseInt(strings.TrimSpace(timestamp), 10, 64)
 	if err != nil {
-		return fmt.Errorf("dingtalk: bad timestamp")
+		return kerrors.BadRequest("DINGTALK_PROTOCOL", "dingtalk: bad timestamp")
 	}
 	now := time.Now().UnixMilli()
-	if ts < now-3600_000 || ts > now+3600_000 {
-		return fmt.Errorf("dingtalk: timestamp out of range")
+	if ts < now-port.WebhookTimestampToleranceSec*1000 || ts > now+port.WebhookTimestampToleranceSec*1000 {
+		return kerrors.BadRequest("DINGTALK_PROTOCOL", "dingtalk: timestamp out of range")
 	}
 	want := signFor(secret, timestamp)
 	if !hmac.Equal([]byte(want), []byte(strings.TrimSpace(sign))) {
-		return fmt.Errorf("dingtalk: bad sign")
+		return kerrors.BadRequest("DINGTALK_PROTOCOL", "dingtalk: bad sign")
 	}
 	return nil
 }
@@ -109,7 +113,7 @@ func (s *TextSender) SendText(ctx context.Context, sessionWebhook, text string) 
 		target = strings.TrimSpace(s.WebhookURL)
 	}
 	if target == "" {
-		return fmt.Errorf("dingtalk outbound: webhook url required")
+		return kerrors.BadRequest("DINGTALK_CONFIG", "dingtalk outbound: webhook url required")
 	}
 	target, err := signedURL(target, s.Secret)
 	if err != nil {
@@ -135,7 +139,7 @@ func (s *TextSender) SendText(ctx context.Context, sessionWebhook, text string) 
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("dingtalk outbound: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return kerrors.InternalServer("DINGTALK_PROTOCOL", fmt.Sprintf("dingtalk outbound: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
 	}
 	return nil
 }

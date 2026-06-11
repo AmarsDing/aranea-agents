@@ -329,7 +329,7 @@ func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 			if !tt.wantOK {
 				return
 			}
-			if len(cfg.EnabledTools) == 0 && len(cfg.CustomTools) == 0 {
+			if len(cfg.EnabledTools) == 0 && len(cfg.Session.CustomTools) == 0 {
 				t.Fatal("expected at least one enabled tool or custom tool")
 			}
 			if tt.wantTool != "" && len(cfg.EnabledTools) > 0 && cfg.EnabledTools[0] != tt.wantTool {
@@ -347,11 +347,11 @@ func TestAssemblyForCatalogKey_googleSearchKeys(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if cfg.GoogleAPIKey != "gkey" {
-		t.Fatalf("GoogleAPIKey=%q want gkey", cfg.GoogleAPIKey)
+	if cfg.Search.GoogleAPIKey != "gkey" {
+		t.Fatalf("GoogleAPIKey=%q want gkey", cfg.Search.GoogleAPIKey)
 	}
-	if cfg.GoogleCX != "scx" {
-		t.Fatalf("GoogleCX=%q want scx", cfg.GoogleCX)
+	if cfg.Search.GoogleCX != "scx" {
+		t.Fatalf("GoogleCX=%q want scx", cfg.Search.GoogleCX)
 	}
 }
 
@@ -374,8 +374,8 @@ func TestAssemblyForCatalogKey_geminiModel(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if cfg.GeminiModel != "gemini-pro" {
-		t.Fatalf("GeminiModel=%q want gemini-pro", cfg.GeminiModel)
+	if cfg.Search.GeminiModel != "gemini-pro" {
+		t.Fatalf("GeminiModel=%q want gemini-pro", cfg.Search.GeminiModel)
 	}
 }
 
@@ -550,11 +550,11 @@ func TestAssemblyForCatalogKey_googleSearchAlternativeKeys(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if cfg.GoogleAPIKey != "ak" {
-		t.Fatalf("GoogleAPIKey=%q want ak", cfg.GoogleAPIKey)
+	if cfg.Search.GoogleAPIKey != "ak" {
+		t.Fatalf("GoogleAPIKey=%q want ak", cfg.Search.GoogleAPIKey)
 	}
-	if cfg.GoogleCX != "ei" {
-		t.Fatalf("GoogleCX=%q want ei (engine_id has priority)", cfg.GoogleCX)
+	if cfg.Search.GoogleCX != "ei" {
+		t.Fatalf("GoogleCX=%q want ei (engine_id has priority)", cfg.Search.GoogleCX)
 	}
 }
 

@@ -7,8 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // FlowLogService handles FlowLog RPC delegation from MonitorService (SRP split).
@@ -27,7 +26,7 @@ func (s *FlowLogService) ListFlowLogs(ctx context.Context, in *v1.ListFlowLogsRe
 	}
 	since, until, err := monitor.ParseFlowLogTimeBounds(in.GetSince(), in.GetUntil())
 	if err != nil {
-		return nil, kerrors.BadRequest("MONITOR", err.Error())
+		return nil, apierror.BadRequest("MONITOR", err.Error())
 	}
 	result, err := s.flowLogs.List(ctx, biz.FlowLogQuery{
 		TraceID:   in.GetTraceId(),

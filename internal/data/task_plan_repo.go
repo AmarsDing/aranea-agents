@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var _ biz.TaskPlanRepository = (*taskPlanRepo)(nil)
@@ -28,7 +27,7 @@ func NewTaskPlanRepo(d *Data, lg loggateway.Logger) biz.TaskPlanRepository {
 
 func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.TaskPlan, error) {
 	if plan == nil || strings.TrimSpace(plan.ID) == "" {
-		return nil, kerrors.BadRequest("TASK_PLAN", "plan id is required")
+		return nil, apierror.BadRequest("TASK_PLAN", "plan id is required")
 	}
 	now := time.Now().UTC()
 	if plan.CreatedAt.IsZero() {
@@ -41,17 +40,17 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 
 	dimensionsJSON, err := json.Marshal(plan.Dimensions)
 	if err != nil {
-		return nil, kerrors.InternalServer("TASK_PLAN", "marshal dimensions: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 	}
 	subTasksJSON, err := json.Marshal(plan.SubTasks)
 	if err != nil {
-		return nil, kerrors.InternalServer("TASK_PLAN", "marshal sub_tasks: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 	}
 	dagJSON := "{}"
 	if plan.TaskDAG != nil {
 		b, err := json.Marshal(plan.TaskDAG)
 		if err != nil {
-			return nil, kerrors.InternalServer("TASK_PLAN", "marshal dag: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 		}
 		dagJSON = string(b)
 	}
@@ -59,7 +58,7 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	if plan.MemoryHit != nil {
 		b, err := json.Marshal(plan.MemoryHit)
 		if err != nil {
-			return nil, kerrors.InternalServer("TASK_PLAN", "marshal memory_hit: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 		}
 		memoryHitJSON = string(b)
 	}
@@ -88,7 +87,7 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return nil, kerrors.BadRequest("TASK_PLAN", "id is required")
+		return nil, apierror.BadRequest("TASK_PLAN", "id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
@@ -112,23 +111,23 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 
 func (r *taskPlanRepo) Update(ctx context.Context, plan *biz.TaskPlan) (*biz.TaskPlan, error) {
 	if plan == nil || strings.TrimSpace(plan.ID) == "" {
-		return nil, kerrors.BadRequest("TASK_PLAN", "plan id is required")
+		return nil, apierror.BadRequest("TASK_PLAN", "plan id is required")
 	}
 	plan.UpdatedAt = time.Now().UTC()
 
 	dimensionsJSON, err := json.Marshal(plan.Dimensions)
 	if err != nil {
-		return nil, kerrors.InternalServer("TASK_PLAN", "marshal dimensions: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 	}
 	subTasksJSON, err := json.Marshal(plan.SubTasks)
 	if err != nil {
-		return nil, kerrors.InternalServer("TASK_PLAN", "marshal sub_tasks: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 	}
 	dagJSON := "{}"
 	if plan.TaskDAG != nil {
 		b, err := json.Marshal(plan.TaskDAG)
 		if err != nil {
-			return nil, kerrors.InternalServer("TASK_PLAN", "marshal dag: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 		}
 		dagJSON = string(b)
 	}
@@ -136,7 +135,7 @@ func (r *taskPlanRepo) Update(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	if plan.MemoryHit != nil {
 		b, err := json.Marshal(plan.MemoryHit)
 		if err != nil {
-			return nil, kerrors.InternalServer("TASK_PLAN", "marshal memory_hit: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "TASK_PLAN")
 		}
 		memoryHitJSON = string(b)
 	}

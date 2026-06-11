@@ -7,7 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/ecosystem/v1"
 	"aranea-agents/internal/biz"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -62,7 +62,7 @@ func (s *EcosystemService) GetProduct(ctx context.Context, req *v1.GetProductReq
 	p, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return nil, errors.NotFound("ECOSYSTEM_NOT_FOUND", err.Error())
+			return nil, apierror.NotFound("ECOSYSTEM_NOT_FOUND", err.Error())
 		}
 		return nil, err
 	}

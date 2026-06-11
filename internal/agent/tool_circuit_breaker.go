@@ -46,19 +46,42 @@ func buildCircuitBreakerRegistry(s *biz.AgentRuntimeSettings, lg loggateway.Logg
 }
 
 var (
-	categoryCache map[string]string
-	categoryOnce  sync.Once
+	categoryCache   map[string]string
+	categoryCacheMu sync.RWMutex
 )
 
 func categoryForTool(toolName string) string {
-	categoryOnce.Do(func() {
+	categoryCacheMu.RLock()
+	if categoryCache != nil {
+		if cat, ok := categoryCache[toolName]; ok {
+			categoryCacheMu.RUnlock()
+			return cat
+		}
+	}
+	categoryCacheMu.RUnlock()
+
+	// Lazy-build the cache on first miss.
+	categoryCacheMu.Lock()
+	defer categoryCacheMu.Unlock()
+	if categoryCache == nil {
 		regs := tools.Registry()
 		categoryCache = make(map[string]string, len(regs))
 		for _, reg := range regs {
 			categoryCache[reg.Name] = reg.Category
 		}
-	})
-	return categoryCache[toolName]
+		if cat, ok := categoryCache[toolName]; ok {
+			return cat
+		}
+	}
+	return ""
+}
+
+// InvalidateCategoryCache clears the category cache so that newly
+// registered tools (e.g. MCP tools) are picked up on the next lookup.
+func InvalidateCategoryCache() {
+	categoryCacheMu.Lock()
+	categoryCache = nil
+	categoryCacheMu.Unlock()
 }
 
 func newCircuitBreakerBeforeHook(registry *biztool.CircuitBreakerRegistry, lg loggateway.Logger) *circuitBreakerBeforeHook {

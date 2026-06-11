@@ -60,8 +60,8 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 		Text:           parsed.Content,
 		IdempotencyKey: fmt.Sprintf("wechat:%d", parsed.MsgID),
 		OutboundMeta: map[string]string{
-			"recipient": parsed.FromUser,
-			"to_user":   parsed.ToUser,
+			port.MetaRecipient: parsed.FromUser,
+			"to_user":         parsed.ToUser,
 		},
 	}
 	if wechat.ActiveModeFromConfig(chRow.ConfigJSON, h.lg) {
@@ -109,11 +109,11 @@ func (h *ChannelIngress) handleOneBotWebhook(w http.ResponseWriter, r *http.Requ
 		return nil
 	}
 	meta := map[string]string{
-		"recipient": parsed.UserID,
-		"group_id":  parsed.GroupID,
+		port.MetaRecipient: parsed.UserID,
+		"group_id":         parsed.GroupID,
 	}
 	if parsed.GroupID != "" {
-		meta["recipient"] = parsed.GroupID
+		meta[port.MetaRecipient] = parsed.GroupID
 	}
 	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "personal_qq",

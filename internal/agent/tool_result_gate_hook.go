@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -36,7 +37,7 @@ func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg logg
 				continue
 			}
 			content := extractTextContent(msg)
-			if len(content) <= biz.ToolResultSizeThreshold {
+			if utf8.RuneCountInString(content) <= biz.ToolResultSizeThreshold {
 				continue
 			}
 
@@ -89,7 +90,10 @@ func extractTextContent(msg *trpcmodel.Message) string {
 			return *p.Text
 		}
 	}
-	b, _ := json.Marshal(msg.ContentParts)
+	b, err := json.Marshal(msg.ContentParts)
+	if err != nil {
+		return fmt.Sprintf("[unserializable content parts: %v]", msg.ContentParts)
+	}
 	return string(b)
 }
 
@@ -104,8 +108,9 @@ func estimateTurnNumber(messages []trpcmodel.Message) int {
 }
 
 func truncateContent(content string) string {
-	if len(content) <= biz.ToolResultPreviewSize {
+	runeCount := utf8.RuneCountInString(content)
+	if runeCount <= biz.ToolResultPreviewSize {
 		return content
 	}
-	return content[:biz.ToolResultPreviewSize] + fmt.Sprintf("\n\n... [truncated %d → %d chars, persist failed] ...", len(content), biz.ToolResultPreviewSize)
+	return safeTruncate(content, biz.ToolResultPreviewSize) + fmt.Sprintf("\n\n... [truncated %d → %d chars, persist failed] ...", runeCount, biz.ToolResultPreviewSize)
 }

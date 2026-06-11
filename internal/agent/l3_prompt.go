@@ -7,12 +7,13 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // L3MemoryCue formats active semantic facts for prompt injection via fused multi-scope recall.
 // l1FieldValues contains pinned L1 field values for cross-layer dedup — facts whose normalized
 // statement matches any L1 value are filtered out to avoid redundancy.
-func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, rt biz.MemoryRuntimeContext, keyword string, limit int, l1FieldValues []string) string {
+func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, rt biz.MemoryRuntimeContext, keyword string, limit int, l1FieldValues []string, lg loggateway.Logger) string {
 	if l3 == nil || !policy.InjectL3 {
 		return ""
 	}
@@ -27,7 +28,11 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 		MinScoreQuery:   policy.L3MinScoreQuery,
 		MinScorePassive: policy.L3MinScorePassive,
 	})
-	if err != nil || len(rows) == 0 {
+	if err != nil {
+		lg.Warn("L3 memory query failed", loggateway.StepID("agent.memory_query_fail"), loggateway.Err(err))
+		return ""
+	}
+	if len(rows) == 0 {
 		return ""
 	}
 

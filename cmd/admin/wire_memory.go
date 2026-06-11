@@ -96,7 +96,7 @@ func providePersistenceSet(
 	var mem rt.MemorySet
 	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:            memtrpc.NewSQLiteMemoryService(d, data.NewL3FactWriterAdapter(d, d.VectorStore()), factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC), lg),
+			TRPC:            memtrpc.NewSQLiteMemoryService(data.NewL3FactReaderForUser(d), data.NewL3FactWriterAdapter(d, d.VectorStore()), factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC), data.NewFactConsistencyAdapter(d), lg),
 			Admin:           data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
 			AdminUsecase:    adminUC,
 			L2Recall:        l2Recall,

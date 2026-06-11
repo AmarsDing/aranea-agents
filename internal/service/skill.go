@@ -12,9 +12,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -159,7 +159,7 @@ func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSki
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("SKILL", "skill not found")
+			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (s *SkillService) DuplicateSkill(ctx context.Context, req *v1.DuplicateSkil
 	out, err := s.uc.Duplicate(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("SKILL", "skill not found")
+			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
@@ -187,11 +187,11 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFilesRequest) (*v1.ListSkillFilesResponse, error) {
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	entries, err := s.fs.ListFiles(dir)
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	items := make([]*v1.SkillFile, 0, len(entries))
 	for _, e := range entries {
@@ -205,11 +205,11 @@ func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFile
 func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileRequest) (*v1.SkillFileContent, error) {
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	content, err := s.fs.ReadFile(dir, req.GetPath())
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	return &v1.SkillFileContent{Path: content.Path, Content: content.Content, Language: content.Language}, nil
 }
@@ -217,10 +217,10 @@ func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileReq
 func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillFileRequest) (*v1.SkillFileContent, error) {
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	if err := s.fs.WriteFile(dir, req.GetPath(), req.GetContent()); err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	return s.GetSkillFile(ctx, &v1.GetSkillFileRequest{Id: req.GetId(), Path: req.GetPath()})
 }
@@ -229,7 +229,7 @@ func (s *SkillService) GetSkill(ctx context.Context, req *v1.GetSkillRequest) (*
 	sk, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("SKILL", "skill not found")
+			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
@@ -244,12 +244,12 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 	name := strings.TrimSpace(req.GetName())
 	slug := strings.TrimSpace(req.GetSlug())
 	if slug != "" && (strings.ContainsAny(slug, `/\`) || strings.Contains(slug, "..")) {
-		return nil, kerrors.BadRequest("SKILL", "invalid slug")
+		return nil, apierror.BadRequest("SKILL", "invalid slug")
 	}
 	body := strings.TrimSpace(req.GetBodyMarkdown())
 	dir, err := s.fs.CreateSkillDir(slug, body)
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	tags := make([]biz.SkillTag, 0, len(req.GetTags()))
 	for _, t := range req.GetTags() {
@@ -264,7 +264,7 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 		StorageDir:  dir,
 	})
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	return toProtoSkill(out), nil
 }
@@ -292,9 +292,9 @@ func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillReque
 	out, err := s.uc.Patch(ctx, req.GetId(), patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("SKILL", "skill not found")
+			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	return toProtoSkill(out), nil
 }
@@ -303,7 +303,7 @@ func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillReq
 	out, err := s.uc.Publish(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("SKILL", "skill not found")
+			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
@@ -313,17 +313,17 @@ func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillReq
 func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillFileRequest) (*emptypb.Empty, error) {
 	rel := strings.TrimSpace(req.GetPath())
 	if rel == "" {
-		return nil, kerrors.BadRequest("SKILL", "path is required")
+		return nil, apierror.BadRequest("SKILL", "path is required")
 	}
 	if strings.EqualFold(filepath.ToSlash(rel), "SKILL.md") || strings.EqualFold(filepath.ToSlash(rel), "skill.md") {
-		return nil, kerrors.BadRequest("SKILL", "cannot delete primary SKILL.md via DeleteSkillFile")
+		return nil, apierror.BadRequest("SKILL", "cannot delete primary SKILL.md via DeleteSkillFile")
 	}
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	if err := s.fs.DeleteFile(dir, rel); err != nil {
-		return nil, kerrors.BadRequest("SKILL", err.Error())
+		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -411,7 +411,7 @@ func (s *SkillService) RollbackSkillVersion(ctx context.Context, req *v1.Rollbac
 	out, err := s.uc.RollbackVersion(ctx, req.GetSkillId(), req.GetVersionId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("SKILL", "skill or version not found")
+			return nil, apierror.NotFound("SKILL", "skill or version not found")
 		}
 		return nil, err
 	}
@@ -435,10 +435,10 @@ func toProtoVersionDetail(v biz.SkillVersionDetail) *v1.SkillVersionDetail {
 func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealthRequest) (*v1.SkillHealthMetric, error) {
 	skillID := strings.TrimSpace(req.GetSkillId())
 	if skillID == "" {
-		return nil, kerrors.BadRequest("SKILL_INTELLIGENCE", "skill_id is required")
+		return nil, apierror.BadRequest("SKILL_INTELLIGENCE", "skill_id is required")
 	}
 	if s.healthUC == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "skill health usecase not available")
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "skill health usecase not available")
 	}
 	detail, err := s.healthUC.GetSkillHealth(ctx, skillID)
 	if err != nil {

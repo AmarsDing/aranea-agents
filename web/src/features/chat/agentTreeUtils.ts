@@ -11,3 +11,17 @@ export function formatDuration(ms: number): string {
   const rem = sec % 60;
   return `${m}m ${rem}s`;
 }
+
+/**
+ * Extract the first sentence from text and truncate for collapsed thinking summary.
+ * Matches the first sentence boundary (。.!?！？\n) and caps at maxLength chars.
+ */
+export function truncateThinkingSummary(text: string, maxLength = 60): string {
+  if (!text) return '';
+  const match = text.match(/^(.+?)([。.!?！？\n])/);
+  if (match) {
+    const first = match[1] + match[2];
+    return first.length > maxLength ? first.slice(0, maxLength) + '…' : first;
+  }
+  return text.length > maxLength ? text.slice(0, maxLength) + '…' : text;
+}

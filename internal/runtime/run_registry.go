@@ -144,6 +144,8 @@ func (r *RunRegistry) Finish(sessionID string) {
 		return
 	}
 	r.activeRuns.delete(sessionID)
+	r.runStatuses.delete(sessionID)
+	r.pendingCancels.delete(sessionID)
 }
 
 func (r *RunRegistry) SetPendingCancel(sessionID string, cancel context.CancelFunc) {

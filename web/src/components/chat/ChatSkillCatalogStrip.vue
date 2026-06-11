@@ -113,7 +113,7 @@ const emit = defineEmits<{
 }
 
 .skill-catalog-strip__card--loaded {
-  border-color: var(--color-success, #4caf50);
+  border-color: var(--color-success);
 }
 
 .skill-catalog-strip__card-header {

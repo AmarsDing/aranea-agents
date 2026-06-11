@@ -66,6 +66,7 @@ const (
 )
 
 var (
-	NewSkillUsecase      = skill.NewUsecase
+	NewSkillUsecase        = skill.NewUsecase
 	ParseSkillRuntimePolicy = skill.ParseRuntimePolicy
+	NormalizeSkillSlug      = skill.NormalizeSlug
 )

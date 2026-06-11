@@ -44,7 +44,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		if err != nil {
 			return tools.AssemblyConfig{}, false
 		}
-		return tools.AssemblyConfig{CustomTools: []tools.Tool{t}}, true
+		return tools.AssemblyConfig{Session: tools.SessionConfig{CustomTools: []tools.Tool{t}}}, true
 	case "web_fetch":
 		return tools.AssemblyConfig{EnabledTools: []string{"httpfetch"}}, true
 	case "duckduckgo_search":
@@ -52,16 +52,16 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 	case "gemini_web_fetch":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"geminifetch"}}
 		if v := tools.ConfigString(merged, "model", "gemini_model"); v != "" {
-			cfg.GeminiModel = v
+			cfg.Search.GeminiModel = v
 		}
 		return cfg, true
 	case "google_search":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"google_search"}}
 		if v := tools.ConfigString(merged, "api_key", "google_api_key"); v != "" {
-			cfg.GoogleAPIKey = v
+			cfg.Search.GoogleAPIKey = v
 		}
 		if v := tools.ConfigString(merged, "cx", "engine_id", "google_cx", "search_engine_id"); v != "" {
-			cfg.GoogleCX = v
+			cfg.Search.GoogleCX = v
 		}
 		return cfg, true
 	case "arxiv_search":
@@ -79,7 +79,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 	case "claude_code":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"claudecode"}}
 		if v := tools.ConfigString(merged, "base_dir", "claude_code_dir", "working_dir"); v != "" {
-			cfg.ClaudeCodeDir = v
+			cfg.ClaudeCode.Dir = v
 		}
 		return cfg, true
 	case "workspace_exec":
@@ -101,6 +101,6 @@ func applyFilesystemDir(cfg *tools.AssemblyConfig, m map[string]any) {
 
 func applyShellExecDir(cfg *tools.AssemblyConfig, m map[string]any) {
 	if v := tools.ConfigString(m, "base_dir", "shell_root", "filesystem_dir", "working_dir", "root_dir"); v != "" {
-		cfg.ShellExecDir = v
+		cfg.ShellExec.Dir = v
 	}
 }

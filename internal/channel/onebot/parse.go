@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/channel/port"
@@ -46,13 +45,13 @@ type senderInfo struct {
 func VerifySignature(receiveToken string, body []byte, signature string) error {
 	receiveToken = strings.TrimSpace(receiveToken)
 	if receiveToken == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
 	mac := hmac.New(sha1.New, []byte(receiveToken))
 	_, _ = mac.Write(body)
 	expected := "sha1=" + hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(expected), []byte(strings.TrimSpace(signature))) {
-		return fmt.Errorf("onebot: bad signature")
+		return errBadSignature
 	}
 	return nil
 }
@@ -73,7 +72,7 @@ func ParseInbound(raw []byte) (*InboundMessage, error) {
 		}
 	}
 	if text == "" {
-		return nil, fmt.Errorf("onebot: empty message")
+		return nil, errEmptyMessage
 	}
 	userID := port.FirstNonEmpty(msg.UserID, msg.Sender.UserID)
 	peerID := userID

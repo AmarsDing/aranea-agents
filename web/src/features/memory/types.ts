@@ -285,7 +285,7 @@ export type CascadePreview = {
 };
 
 export type CascadeSagaStep = {
-  id: number;
+  id: string;
   proposal_id: string;
   step_index: number;
   step_name: string;

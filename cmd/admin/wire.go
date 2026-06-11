@@ -33,7 +33,6 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
-	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -711,41 +710,55 @@ func provideChatServiceDeps(
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
-		TurnDeps: rt.TurnDeps{
-			ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
-			Persist:   persist,
-			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
-			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
-			Sessions:  sessions,
-			SessionRT: sessionRT,
-			Compress:  compress,
-			AfterTurn: biz.NoopNativeTurnAfter{},
-			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
-			Lg:        lg,
+		Turn: service.ChatTurnDeps{
+			TurnDeps: rt.TurnDeps{
+				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+				Persist:   persist,
+				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+				LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
+				Sessions:  sessions,
+				SessionRT: sessionRT,
+				Compress:  compress,
+				AfterTurn: biz.NoopNativeTurnAfter{},
+				RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
+				Lg:        lg,
+			},
+			Runs:         runs,
+			PendingQueue: pendingQueue,
+			RT:           rtDeps,
+			TurnTimeout:  0,
+			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agentsUC}),
 		},
-		Runs:            runs,
-		PendingQueue:    pendingQueue,
-		RT:              rtDeps,
-		Team:            teamDeps,
-		ChJobs:          chJobs,
-		ChNotify:        chNotify,
-		Usage:           usage,
-		Monitor:         mon,
-		Artifacts:       artifacts,
-		A2AUC:           a2aUC,
-		MCPServers:      mcpUC,
-		LG:              lg,
-		SpiritAssembler: spiritAssembler,
-		SpiritSynthesis: spiritSynthesis,
-		OrchCache:       orchCache,
-		TeamStarter:     teamStarter,
-		GraphExec:       graphExec,
-		SkillEvo:        skillEvo,
-		Evolution:       evolution,
-		SkillStats:      skillStats,
-		OutboundRouter:  outboundRouter,
-		SubAgentService: subAgentSvc,
-		ExpAnalytics:    expAnalytics,
+		Usage: service.ChatUsageDeps{
+			Usage:        usage,
+			Monitor:      mon,
+			Artifacts:    artifacts,
+			SkillStats:   skillStats,
+			ExpAnalytics: expAnalytics,
+		},
+		Channel: service.ChatChannelDeps{
+			ChJobs:   chJobs,
+			ChNotify: chNotify,
+		},
+		Team: service.ChatTeamDeps{
+			Team:            teamDeps,
+			TeamStarter:     teamStarter,
+			GraphExec:       graphExec,
+			SpiritAssembler: spiritAssembler,
+			SpiritSynthesis: spiritSynthesis,
+		},
+		Evolution: service.ChatEvolutionDeps{
+			SkillEvo:  skillEvo,
+			Evolution: evolution,
+		},
+		Infra: service.ChatInfraDeps{
+			LG:              lg,
+			OrchCache:       orchCache,
+			A2AUC:           a2aUC,
+			MCPServers:      mcpUC,
+			OutboundRouter:  outboundRouter,
+			SubAgentService: subAgentSvc,
+		},
 	}
 }
 
@@ -816,11 +829,15 @@ func provideL4CascadeUsecase(d *data.Data, factSync biz.MemoryFactIndexSyncer, l
 	}
 	repo := data.NewL4GraphRepo(d)
 	cascade := data.NewCascadeRepo(d)
-	uc := biz.NewL4CascadeUsecase(cascade, cascade, cascade, cascade, repo, lg)
-	if uc != nil {
-		uc.SetIndexSync(factSync)
-	}
-	return uc
+	return biz.NewL4CascadeUsecase(biz.L4CascadeDeps{
+		Proposals:    cascade,
+		Reader:       cascade,
+		Mutator:      cascade,
+		Saga:         cascade,
+		EntityWriter: repo,
+		IndexSync:    factSync,
+		LG:           lg,
+	})
 }
 
 func provideSQLiteRawDB(d *data.Data) *sql.DB {
@@ -1136,8 +1153,9 @@ func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo,
 
 func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	analyzer := &skillIntelligenceRCAAdapter{inner: rca}
-	uc := biz.NewSkillIntelligenceUsecase(repo, repo, repo, repo, suggestionRepo, suggestionRepo, analyzer, lg)
-	uc.SetUnanalyzedReader(repo)
+	uc := biz.NewSkillIntelligenceUsecase(repo, repo, repo, repo, suggestionRepo, suggestionRepo, analyzer, lg,
+		biz.SkillIntelligenceConfig{UnanalyzedReader: repo},
+	)
 	return uc
 }
 
@@ -1554,7 +1572,6 @@ func provideTaskOrchestrator(
 	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, lg)
 }
 
-// provideEcosystemPresetSeedPackFn provides the SeedPackFunc for EcosystemPresetUsecase.
 func provideDeptLeadManager(
 	orgRepo biz.OrganizationRepo,
 	borrowRepo biz.BorrowRequestRepo,
@@ -1575,25 +1592,9 @@ func provideDeptLeadManager(
 	})
 }
 
-func provideEcosystemPresetSeedPackFn() biz.SeedPackFunc {
-	return func(ctx context.Context, client any, scenarioDir string, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error) {
-		return data.SeedPackIndustry(ctx, client.(*ent.Client), scenarioDir, industryKey, kindOverride, lg)
-	}
-}
-
 // provideEcosystemPresetScenarioDir provides the scenario directory for EcosystemPresetUsecase.
 func provideEcosystemPresetScenarioDir() string {
 	return biz.ScenarioDir()
-}
-
-// provideEcosystemPresetClientProvider provides a function that returns the ent.Client.
-func provideEcosystemPresetClientProvider(d *data.Data) func() any {
-	return func() any {
-		if d == nil {
-			return nil
-		}
-		return d.Ent()
-	}
 }
 
 // wireApp init kratos application.
@@ -1755,7 +1756,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(bizskill.SkillQueryReader), new(biz.SkillRepo)),
 		wire.Bind(new(biz.SkillIntelligenceRepo), new(*data.SkillIntelligenceRepo)),
 		wire.Bind(new(biz.SkillDedupReader), new(*data.SkillDedupRepo)),
-		wire.Bind(new(biz.SkillDedupWriter), new(*data.SkillDedupRepo)),
 		wire.Bind(new(biz.SkillMergeReader), new(*data.SkillMergeRepo)),
 		wire.Bind(new(biz.SkillMergeWriter), new(*data.SkillMergeRepo)),
 		wire.Bind(new(biz.SkillContentFuser), new(*biz.RuleBasedContentFuser)),
@@ -1799,9 +1799,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideWSTurnExecutor,
 		// Ecosystem preset: bind repo and provide usecase deps
 		wire.Bind(new(biz.EcosystemPresetRepo), new(*data.EcosystemPresetRepo)),
-		provideEcosystemPresetSeedPackFn,
+		wire.Bind(new(biz.PackSeeder), new(*data.packSeeder)),
 		provideEcosystemPresetScenarioDir,
-		provideEcosystemPresetClientProvider,
 		wire.Bind(new(biz.DeptLeadTeamGetter), new(*data.TeamRepo)),
 		provideDeptLeadManager,
 		newApp,

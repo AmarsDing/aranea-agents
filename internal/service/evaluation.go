@@ -10,9 +10,9 @@ import (
 	v1 "aranea-agents/api/kratos/evaluation/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/evaluation"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -32,7 +32,7 @@ func NewEvaluationService(uc *biz.EvalUsecase, runner *evaluation.Runner) *Evalu
 
 func (s *EvaluationService) CreateDataset(ctx context.Context, req *v1.CreateDatasetRequest) (*v1.EvalDataset, error) {
 	if strings.TrimSpace(req.GetName()) == "" {
-		return nil, kerrors.BadRequest("EVAL", "name is required")
+		return nil, apierror.BadRequest("EVAL", "name is required")
 	}
 	d, err := s.uc.CreateDataset(ctx, biz.EvalDataset{
 		Name:        req.GetName(),
@@ -78,10 +78,10 @@ func (s *EvaluationService) UpdateDataset(ctx context.Context, req *v1.UpdateDat
 
 func (s *EvaluationService) UploadCases(ctx context.Context, req *v1.UploadCasesRequest) (*v1.UploadCasesResponse, error) {
 	if strings.TrimSpace(req.GetDatasetId()) == "" {
-		return nil, kerrors.BadRequest("EVAL", "dataset_id is required")
+		return nil, apierror.BadRequest("EVAL", "dataset_id is required")
 	}
 	if strings.TrimSpace(req.GetCasesJson()) == "" {
-		return nil, kerrors.BadRequest("EVAL", "cases_json is required")
+		return nil, apierror.BadRequest("EVAL", "cases_json is required")
 	}
 	n, err := s.uc.UploadCases(ctx, req.GetDatasetId(), req.GetCasesJson())
 	if err != nil {
@@ -94,10 +94,10 @@ func (s *EvaluationService) UploadCases(ctx context.Context, req *v1.UploadCases
 
 func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvaluationRequest) (*v1.EvalRun, error) {
 	if strings.TrimSpace(req.GetDatasetId()) == "" {
-		return nil, kerrors.BadRequest("EVAL", "dataset_id is required")
+		return nil, apierror.BadRequest("EVAL", "dataset_id is required")
 	}
 	if strings.TrimSpace(req.GetAgentId()) == "" {
-		return nil, kerrors.BadRequest("EVAL", "agent_id is required")
+		return nil, apierror.BadRequest("EVAL", "agent_id is required")
 	}
 	run, err := s.uc.CreateRun(ctx, biz.EvalRun{
 		DatasetID: req.GetDatasetId(),
@@ -157,7 +157,7 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 	runID := strings.TrimSpace(req.GetRunId())
 	resultID := strings.TrimSpace(req.GetResultId())
 	if runID == "" || resultID == "" {
-		return nil, kerrors.BadRequest("EVAL", "run_id and result_id are required")
+		return nil, apierror.BadRequest("EVAL", "run_id and result_id are required")
 	}
 	by := "system"
 	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
@@ -179,7 +179,7 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 	res, err := s.uc.AnnotateCaseResult(ctx, runID, resultID, patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("EVAL_NOT_FOUND", "case result not found")
+			return nil, apierror.NotFound("EVAL_NOT_FOUND", "case result not found")
 		}
 		return nil, err
 	}

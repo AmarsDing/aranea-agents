@@ -9,6 +9,8 @@ import (
 
 	ch "aranea-agents/internal/channel"
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type DeliveryTarget struct {
@@ -102,11 +104,11 @@ func (r *Router) SendText(ctx context.Context, target DeliveryTarget, text strin
 
 func (r *Router) SendMessage(ctx context.Context, target DeliveryTarget, msg OutboundMessage) error {
 	if r == nil {
-		return fmt.Errorf("outbound: nil router")
+		return kerrors.InternalServer("OUTBOUND", "outbound: nil router")
 	}
 	channelID := strings.TrimSpace(target.Channel)
 	if channelID == "" {
-		return fmt.Errorf("outbound: empty channel")
+		return kerrors.BadRequest("OUTBOUND", "outbound: empty channel")
 	}
 
 	r.lg.Info("Outbound send message", loggateway.StepID("outbound.send"), loggateway.Str("channel", channelID), loggateway.Str("target", target.Target))
@@ -124,10 +126,10 @@ func (r *Router) SendMessage(ctx context.Context, target DeliveryTarget, msg Out
 	}
 	if textSender == nil {
 		r.lg.Warn("Outbound unsupported channel", loggateway.StepID("outbound.send.unsupported"), loggateway.Str("channel", channelID))
-		return fmt.Errorf("outbound: unsupported channel: %s", channelID)
+		return kerrors.NotFound("OUTBOUND", fmt.Sprintf("outbound: unsupported channel: %s", channelID))
 	}
 	if len(msg.Files) > 0 {
-		return fmt.Errorf("outbound: channel does not support file delivery: %s", channelID)
+		return kerrors.BadRequest("OUTBOUND", fmt.Sprintf("outbound: channel does not support file delivery: %s", channelID))
 	}
 	if err := textSender.SendText(ctx, target.Target, msg.Text); err != nil {
 		r.lg.Error("Outbound text send failed", loggateway.StepID("outbound.send.fail"), loggateway.Str("channel", channelID), loggateway.Str("target", target.Target), loggateway.Err(err))

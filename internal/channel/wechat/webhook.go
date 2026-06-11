@@ -1,13 +1,18 @@
 package wechat
 
 import (
+	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // TextInbound is a parsed WeChat official account text message.
@@ -30,12 +35,16 @@ type textMessageXML struct {
 
 // VerifyURL handles GET echostr verification (passive mode).
 func VerifyURL(token, timestamp, nonce, echostr, signature string) (string, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", port.ErrCredentialsNotConfigured
+	}
 	if !checkSignature(token, timestamp, nonce, signature) {
-		return "", fmt.Errorf("wechat: bad signature")
+		return "", errBadSignature
 	}
 	echostr = strings.TrimSpace(echostr)
 	if echostr == "" {
-		return "", fmt.Errorf("wechat: empty echostr")
+		return "", errEmptyEchostr
 	}
 	return echostr, nil
 }
@@ -47,11 +56,11 @@ func ParseTextInbound(raw []byte) (*TextInbound, error) {
 		return nil, err
 	}
 	if strings.TrimSpace(strings.ToLower(msg.MsgType)) != "text" {
-		return nil, fmt.Errorf("wechat: unsupported msg type")
+		return nil, errUnsupportedMsgType
 	}
 	text := strings.TrimSpace(msg.Content)
 	if text == "" {
-		return nil, fmt.Errorf("wechat: empty content")
+		return nil, errEmptyContent
 	}
 	return &TextInbound{
 		FromUser: strings.TrimSpace(msg.FromUserName),
@@ -63,22 +72,39 @@ func ParseTextInbound(raw []byte) (*TextInbound, error) {
 
 // VerifyPOST validates signature on inbound POST.
 func VerifyPOST(token, timestamp, nonce, signature string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return port.ErrCredentialsNotConfigured
+	}
 	if checkSignature(token, timestamp, nonce, signature) {
 		return nil
 	}
-	return fmt.Errorf("wechat: bad signature")
+	return errBadSignature
 }
 
 func checkSignature(token, timestamp, nonce, signature string) bool {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return true
+		return false
+	}
+	// Validate timestamp freshness (5-minute window) to prevent replay attacks.
+	ts := strings.TrimSpace(timestamp)
+	if ts == "" {
+		return false
+	}
+	tsInt, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return false
+	}
+	now := time.Now().Unix()
+	if now-tsInt > port.WebhookTimestampToleranceSec || tsInt-now > port.WebhookTimestampToleranceSec {
+		return false
 	}
 	parts := []string{token, strings.TrimSpace(timestamp), strings.TrimSpace(nonce)}
 	sort.Strings(parts)
 	sum := sha1.Sum([]byte(strings.Join(parts, "")))
 	got := fmt.Sprintf("%x", sum)
-	return got == strings.TrimSpace(signature)
+	return hmac.Equal([]byte(got), []byte(strings.TrimSpace(signature)))
 }
 
 // ReadBody reads request body with size limit.

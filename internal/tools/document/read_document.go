@@ -2,12 +2,13 @@ package document
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	pdfpkg "github.com/ledongthuc/pdf"
 	docreader "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader"
 	docxreader "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/docx"
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	toolReadDocument        = "read_document"
+	toolReadDocument         = "read_document"
 	defaultReadDocumentChars = 6000
 )
 
@@ -36,25 +37,33 @@ type readDocumentOutput struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
-func NewReadDocumentTool() trpctool.Tool {
+func NewReadDocumentTool(baseDir string) trpctool.Tool {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, in readDocumentInput) (readDocumentOutput, error) {
 			if strings.TrimSpace(in.Path) == "" {
-				return readDocumentOutput{}, errors.New("path is required")
+				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_PATH_REQUIRED", "path is required")
 			}
 
-			path := strings.TrimSpace(in.Path)
+			path, err := ValidatePath(strings.TrimSpace(in.Path), baseDir)
+			if err != nil {
+				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_PATH_INVALID", err.Error())
+			}
+
 			kind := documentKindFromPath(path)
 			if kind == "" {
-				return readDocumentOutput{}, fmt.Errorf("unsupported document type: %s", filepath.Ext(path))
+				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_UNSUPPORTED_TYPE", fmt.Sprintf("unsupported document type: %s", filepath.Ext(path)))
+			}
+
+			if err := ValidateFileSize(path); err != nil {
+				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_FILE_TOO_LARGE", err.Error())
 			}
 
 			info, err := os.Stat(path)
 			if err != nil {
-				return readDocumentOutput{}, fmt.Errorf("stat path: %w", err)
+				return readDocumentOutput{}, kerrors.InternalServer("READ_DOCUMENT_STAT_ERROR", fmt.Sprintf("stat path: %v", err))
 			}
 			if info.IsDir() {
-				return readDocumentOutput{}, fmt.Errorf("path is a directory: %s", path)
+				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_PATH_IS_DIR", fmt.Sprintf("path is a directory: %s", path))
 			}
 
 			maxChars := defaultReadDocumentChars
@@ -138,43 +147,43 @@ func readDocumentText(path string, kind string, page *int) (string, int, error) 
 		return readPDFText(path, page)
 	case "docx":
 		if normalizedPositive(page) != nil {
-			return "", 0, errors.New("page is only supported for PDF files")
+			return "", 0, kerrors.BadRequest("READ_DOCUMENT_PAGE_UNSUPPORTED", "page is only supported for PDF files")
 		}
 		text, err := readDOCXText(path)
 		return text, 0, err
 	case "text":
 		if normalizedPositive(page) != nil {
-			return "", 0, errors.New("page is only supported for PDF files")
+			return "", 0, kerrors.BadRequest("READ_DOCUMENT_PAGE_UNSUPPORTED", "page is only supported for PDF files")
 		}
 		text, err := readTextFile(path)
 		return text, 0, err
 	default:
-		return "", 0, fmt.Errorf("unsupported document kind: %s", kind)
+		return "", 0, kerrors.BadRequest("READ_DOCUMENT_UNSUPPORTED_KIND", fmt.Sprintf("unsupported document kind: %s", kind))
 	}
 }
 
 func readPDFText(path string, page *int) (string, int, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", 0, fmt.Errorf("open pdf: %w", err)
+		return "", 0, kerrors.InternalServer("READ_DOCUMENT_OPEN_PDF_ERROR", fmt.Sprintf("open pdf: %v", err))
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return "", 0, fmt.Errorf("stat pdf: %w", err)
+		return "", 0, kerrors.InternalServer("READ_DOCUMENT_STAT_PDF_ERROR", fmt.Sprintf("stat pdf: %v", err))
 	}
 
 	reader, err := pdfpkg.NewReader(file, info.Size())
 	if err != nil {
-		return "", 0, fmt.Errorf("read pdf: %w", err)
+		return "", 0, kerrors.InternalServer("READ_DOCUMENT_READ_PDF_ERROR", fmt.Sprintf("read pdf: %v", err))
 	}
 
 	pageCount := reader.NumPage()
 	selectedPage := normalizedPositive(page)
 	if selectedPage != nil {
 		if *selectedPage > pageCount {
-			return "", 0, fmt.Errorf("page %d exceeds page count %d", *selectedPage, pageCount)
+			return "", 0, kerrors.BadRequest("READ_DOCUMENT_PAGE_EXCEEDS", fmt.Sprintf("page %d exceeds page count %d", *selectedPage, pageCount))
 		}
 		return pdfPageText(reader, *selectedPage), pageCount, nil
 	}
@@ -203,6 +212,8 @@ func pdfPageText(reader *pdfpkg.Reader, pageIndex int) string {
 	}
 	text, err := page.GetPlainText(nil)
 	if err != nil {
+		// PDF page extraction errors are common (scanned pages, encrypted content).
+		// Return empty string rather than failing the entire document read.
 		return ""
 	}
 	return text
@@ -212,7 +223,7 @@ func readDOCXText(path string) (string, error) {
 	rdr := docxreader.New(docreader.WithChunk(false))
 	docs, err := rdr.ReadFromFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read docx: %w", err)
+		return "", kerrors.InternalServer("READ_DOCUMENT_READ_DOCX_ERROR", fmt.Sprintf("read docx: %v", err))
 	}
 
 	parts := make([]string, 0, len(docs))
@@ -230,9 +241,15 @@ func readDOCXText(path string) (string, error) {
 }
 
 func readTextFile(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("read file: %w", err)
+		return "", kerrors.InternalServer("READ_DOCUMENT_OPEN_FILE_ERROR", fmt.Sprintf("read file: %v", err))
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxFileSize))
+	if err != nil {
+		return "", kerrors.InternalServer("READ_DOCUMENT_READ_FILE_ERROR", fmt.Sprintf("read file: %v", err))
 	}
 	return string(data), nil
 }

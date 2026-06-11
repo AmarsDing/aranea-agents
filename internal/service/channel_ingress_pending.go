@@ -27,11 +27,8 @@ func (h *ChannelIngress) tryAcquireChannelConcurrent(chRow biz.Channel, ev port.
 	if h == nil || h.concurrentGate == nil {
 		return func() {}, true
 	}
-	isGroup := inboundEventIsGroup(ev)
+	isGroup := biz.InboundEventIsGroup(ev.OutboundMeta)
 	peerID := strings.TrimSpace(ev.PeerID)
 	limit := ltCfg.MaxConcurrentInbound(isGroup)
-	if !h.concurrentGate.TryAcquire(chRow.ID, peerID, isGroup, limit) {
-		return nil, false
-	}
-	return func() { h.concurrentGate.Release(chRow.ID, peerID, isGroup) }, true
+	return h.concurrentGate.TryAcquire(chRow.ID, peerID, isGroup, limit)
 }

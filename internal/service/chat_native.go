@@ -8,9 +8,8 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // nativeDialogModeChatOptions returns the dialog mode options for native chat.
@@ -180,7 +179,7 @@ func (a chatServiceGatewayAdapter) CancelPendingMessage(ctx context.Context, ses
 	if a.svc.orch.CancelPendingMessage(sessionID, pendingID) {
 		return nil
 	}
-	return kerrors.NotFound("CHAT", "pending message not found")
+	return apierror.NotFound("CHAT", "pending message not found")
 }
 
 // UpdatePendingMessage implements biz.PendingMessageGateway.
@@ -188,7 +187,7 @@ func (a chatServiceGatewayAdapter) UpdatePendingMessage(ctx context.Context, ses
 	if a.svc.orch.UpdatePendingMessage(sessionID, pendingID, content) {
 		return nil
 	}
-	return kerrors.NotFound("CHAT", "pending message not found")
+	return apierror.NotFound("CHAT", "pending message not found")
 }
 
 // GetPendingMessages implements biz.PendingMessageGateway.

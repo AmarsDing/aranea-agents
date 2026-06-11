@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
+
 	"github.com/google/uuid"
 )
 
@@ -27,7 +28,7 @@ type TaskLinkRepo interface {
 
 func (uc *TaskUsecase) LinkTasks(ctx context.Context, parentTaskID, childTaskID string) error {
 	if uc.linkRepo == nil {
-		return kerrors.InternalServer("TASK", "task link repo not configured")
+		return apierror.Internal("TASK", "task link repo not configured")
 	}
 	parent, err := uc.reader.GetTask(ctx, parentTaskID)
 	if err != nil {
@@ -38,7 +39,7 @@ func (uc *TaskUsecase) LinkTasks(ctx context.Context, parentTaskID, childTaskID 
 		return err
 	}
 	if parent.ExecutionID != child.ExecutionID {
-		return kerrors.BadRequest("TASK", "tasks must belong to the same execution")
+		return apierror.BadRequest("TASK", "tasks must belong to the same execution")
 	}
 	link := &TaskLink{
 		ID:           uuid.New().String(),
@@ -56,7 +57,7 @@ func (uc *TaskUsecase) LinkTasks(ctx context.Context, parentTaskID, childTaskID 
 
 func (uc *TaskUsecase) UnlinkTasks(ctx context.Context, parentTaskID, childTaskID string) error {
 	if uc.linkRepo == nil {
-		return kerrors.InternalServer("TASK", "task link repo not configured")
+		return apierror.Internal("TASK", "task link repo not configured")
 	}
 	if err := uc.linkRepo.DeleteLink(ctx, parentTaskID, childTaskID); err != nil {
 		return err

@@ -289,7 +289,7 @@ func (p *EventProjector) buildRunnerCompletionEnvelope(ev *trpcevent.Event, meta
 			if meta.ContextWindow > 0 {
 				u.MaxTokens = meta.ContextWindow
 			}
-			if meta.TurnPromptTokens > 0 || meta.TurnCompletionTok > 0 {
+			if meta.TurnPromptTokens > 0 && meta.TurnCompletionTok > 0 {
 				u.PromptTokens = meta.TurnPromptTokens
 				u.CompletionTokens = meta.TurnCompletionTok
 				u.TotalTokens = meta.TurnPromptTokens + meta.TurnCompletionTok

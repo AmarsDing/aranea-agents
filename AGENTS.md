@@ -63,6 +63,19 @@
 | 架构蓝图 | `openspec/specs/architecture-blueprint.md` | 了解项目全貌和每个模块的静态职责 |
 | 模块交叉参考 | `openspec/specs/module-cross-reference-full.md` | **每次开发前必读**——查找目标模块的所有上游依赖、下游影响、共享契约、事件、数据库、前端对应 |
 
+## 架构评判标准（AS 系列）
+
+> 建设性指引，补充"禁止性红线"的不足。详细方案见 `docs/reports/2026-06-11-review-architecture-runtime-pain-points.md`。
+
+| 编号 | 标准 | 核心要求 |
+|------|------|---------|
+| AS-ADR-01 | 架构决策记录 | 跨模块决策必须记录 ADR（背景/决策/后果/替代方案） |
+| AS-COG-01 | 认知复杂度量化 | struct 字段 ≤15、biz 依赖 ≤8、sync.Map = 0（应提取） |
+| AS-FSM-01 | 状态机显式化 | >3 种状态的实体必须定义显式状态机 |
+| AS-STA-01 | 接口稳定性分级 | biz port 接口标注 Stable/Evolving/Internal |
+| AS-FIT-01 | 架构 Fitness Function | 依赖方向/分层隔离/接口窄化/状态机覆盖自动验证 |
+| AS-EVT-01 | 事件可靠性分级 | Critical=WBPF+重试（ToolResult/Error/RunnerCompletion/Checkpoint）、Important=BlockUpTo+异步持久化（StateDelta/TokenUsage/RunStatus/SessionStatusChanged/GraphNodeEnd/TeamRunFinished）、Informational=尽力而为 |
+
 ## 任务执行
 
 - **新变更必须走 sddflow 流程**：`/sddflow brainstorming` → `/sddflow spec` → `/sddflow build` → `/sddflow close`

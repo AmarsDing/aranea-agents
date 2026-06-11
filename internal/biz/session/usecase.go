@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -597,7 +597,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		}
 		if _, err := uc.teams.GetTeamByID(ctx, in.TeamID); err != nil {
 			if errors.Is(err, shared.ErrNotFound) {
-				return Session{}, kerrors.NotFound("SESSION", "team not found")
+				return Session{}, apierror.NotFound("SESSION", "team not found")
 			}
 			return Session{}, err
 		}
@@ -607,7 +607,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		}
 		if _, err := uc.agents.GetAgentByID(ctx, in.AgentID); err != nil {
 			if errors.Is(err, shared.ErrNotFound) {
-				return Session{}, kerrors.NotFound("SESSION", "agent not found")
+				return Session{}, apierror.NotFound("SESSION", "agent not found")
 			}
 			return Session{}, err
 		}
@@ -657,11 +657,11 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 		return err
 	}
 	if IsProtectedStatus(SessionStatus(sess.Status)) {
-		return kerrors.Conflict("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
+		return apierror.Conflict("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
 	}
 	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
 	if n == 0 {
-		return kerrors.NotFound("SESSION", id)
+		return apierror.NotFound("SESSION", id)
 	}
 	return err
 }
@@ -676,11 +676,11 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	if IsProtectedStatus(SessionStatus(sess.Status)) {
-		return kerrors.Conflict("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
+		return apierror.Conflict("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
 	}
 	n, err := uc.sessionMutator.DeleteSession(ctx, id)
 	if n == 0 {
-		return kerrors.NotFound("SESSION", id)
+		return apierror.NotFound("SESSION", id)
 	}
 	return err
 }

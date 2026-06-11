@@ -6,17 +6,16 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemoryRecallRequest) (*v1.DebugMemoryRecallResponse, error) {
 	if s.debugRecaller == nil {
-		return nil, kerrors.InternalServer("MEMORY", "session memory debug recaller not wired")
+		return nil, apierror.Internal("MEMORY", "session memory debug recaller not wired")
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
 	if agentID == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	l2lim := req.GetL2Limit()
 	if l2lim <= 0 {
@@ -46,12 +45,12 @@ func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemo
 
 func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.CompositeSearchMemoriesRequest) (*v1.CompositeSearchMemoriesResponse, error) {
 	if s.debugRecaller == nil {
-		return nil, kerrors.InternalServer("MEMORY", "session memory debug recaller not wired")
+		return nil, apierror.Internal("MEMORY", "session memory debug recaller not wired")
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
 	query := strings.TrimSpace(req.GetQuery())
 	if agentID == "" || query == "" {
-		return nil, kerrors.BadRequest("MEMORY", "agent_id and query are required")
+		return nil, apierror.BadRequest("MEMORY", "agent_id and query are required")
 	}
 	lim := req.GetLimit()
 	if lim <= 0 {

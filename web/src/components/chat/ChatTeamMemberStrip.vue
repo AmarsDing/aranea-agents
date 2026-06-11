@@ -8,7 +8,7 @@
       :key="member.key"
       dense
       square
-      :color="member.streaming ? 'primary' : 'grey-3'"
+      :color="member.streaming ? 'accent' : 'grey-3'"
       :text-color="member.streaming ? 'white' : 'dark'"
       :icon="member.streaming ? 'sync' : 'smart_toy'"
     >

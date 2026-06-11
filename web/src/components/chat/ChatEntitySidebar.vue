@@ -27,7 +27,7 @@
           <template v-if="!spiritMode">
           <ChatSectionHeader
             icon="smart_toy"
-            :label="t('chat.groupAgents', 'Agent')"
+            :label="t('chat.groupAgents')"
             :count="filteredAgents.length"
             :collapsed="collapse.sectionCollapsed.agents"
             class="q-pt-md"
@@ -58,7 +58,7 @@
           <!-- Active Teams Section -->
           <ChatSectionHeader
             icon="groups"
-            :label="t('chat.groupActiveTeams', '进行中')"
+            :label="t('chat.groupActiveTeams')"
             :count="activeTeamList.length"
             :collapsed="collapse.sectionCollapsed.activeTeams"
             class="q-pt-md"
@@ -91,7 +91,7 @@
           <!-- Completed Teams Section -->
           <ChatSectionHeader
             icon="check_circle"
-            :label="t('chat.groupCompletedTeams', '已完成')"
+            :label="t('chat.groupCompletedTeams')"
             :count="completedTeamList.length"
             :collapsed="collapse.sectionCollapsed.completedTeams"
             class="q-pt-md"
@@ -118,6 +118,39 @@
             </div>
             <div v-if="completedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
               {{ t('chat.sidebar.noCompletedTeams') }}
+            </div>
+          </template>
+
+          <!-- Interrupted Teams Section -->
+          <ChatSectionHeader
+            icon="pause_circle"
+            :label="t('chat.groupInterruptedTeams')"
+            :count="interruptedTeamList.length"
+            :collapsed="collapse.sectionCollapsed.interruptedTeams"
+            class="q-pt-md"
+            @update:collapsed="collapse.toggleSection('interruptedTeams')"
+          />
+          <template v-if="!collapse.sectionCollapsed.interruptedTeams">
+            <div
+              v-for="team in interruptedTeamList"
+              :key="team.id"
+              :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
+              :style="
+                pulseTeamColors?.has(team.id)
+                  ? { '--pulse-color': pulseTeamColors!.get(team.id)!.color, '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms` }
+                  : undefined
+              "
+            >
+              <TeamTaskCard
+                :team="team"
+                :expanded="expandedTeamIds.has(team.id)"
+                :active="selectedTeamId === team.id"
+                @click="$emit('select-spirit-team', team.id)"
+                @toggle-expand="$emit('toggle-team-expand', team.id)"
+              />
+            </div>
+            <div v-if="interruptedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
+              {{ t('chat.sidebar.noInterruptedTeams') }}
             </div>
           </template>
         </div>
@@ -257,7 +290,7 @@ const activeTeamList = computed(() => {
   const q = props.search.trim().toLowerCase();
   return props.spiritTeams
     .filter(
-      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived',
+      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived' && t.status !== 'interrupted',
     )
     .filter((t) => {
       if (!q) return true;
@@ -267,7 +300,16 @@ const activeTeamList = computed(() => {
 const completedTeamList = computed(() => {
   const q = props.search.trim().toLowerCase();
   return props.spiritTeams
-    .filter((t) => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+    .filter((t) => t.status === 'completed' || t.status === 'archived')
+    .filter((t) => {
+      if (!q) return true;
+      return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);
+    });
+});
+const interruptedTeamList = computed(() => {
+  const q = props.search.trim().toLowerCase();
+  return props.spiritTeams
+    .filter((t) => t.status === 'interrupted' || t.status === 'failed' || t.status === 'cancelled')
     .filter((t) => {
       if (!q) return true;
       return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);

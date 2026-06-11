@@ -6,8 +6,7 @@ import (
 	"time"
 
 	bizmonitor "aranea-agents/internal/biz/monitor"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type failurePatternRepo struct {
@@ -32,12 +31,12 @@ func NewFailurePatternRepo(d *Data) *FailurePatternReadWriter {
 
 func (r *failurePatternRepo) Create(ctx context.Context, pattern bizmonitor.FailurePattern) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	fixActionJSON, err := json.Marshal(pattern.FixAction)
 	if err != nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "marshal fix_action failed").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -63,12 +62,12 @@ func (r *failurePatternRepo) Create(ctx context.Context, pattern bizmonitor.Fail
 
 func (r *failurePatternRepo) Update(ctx context.Context, pattern bizmonitor.FailurePattern) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	fixActionJSON, err := json.Marshal(pattern.FixAction)
 	if err != nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "marshal fix_action failed").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -93,7 +92,7 @@ func (r *failurePatternRepo) Update(ctx context.Context, pattern bizmonitor.Fail
 
 func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor.FailurePatternSource) ([]bizmonitor.FailurePattern, error) {
 	if r == nil || r.data == nil {
-		return nil, kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return nil, apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
@@ -103,7 +102,7 @@ func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor
 		string(source),
 	)
 	if err != nil {
-		return nil, kerrors.InternalServer("FAILURE_PATTERN", "query failed").WithCause(err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
 	}
 	defer rows.Close()
 
@@ -112,7 +111,7 @@ func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor
 
 func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) (*bizmonitor.FailurePattern, error) {
 	if r == nil || r.data == nil {
-		return nil, kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return nil, apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
@@ -122,7 +121,7 @@ func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) 
 		hash,
 	)
 	if err != nil {
-		return nil, kerrors.InternalServer("FAILURE_PATTERN", "query failed").WithCause(err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
 	}
 	defer rows.Close()
 
@@ -138,7 +137,7 @@ func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) 
 
 func (r *failurePatternRepo) ListActive(ctx context.Context) ([]bizmonitor.FailurePattern, error) {
 	if r == nil || r.data == nil {
-		return nil, kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return nil, apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
@@ -147,7 +146,7 @@ func (r *failurePatternRepo) ListActive(ctx context.Context) ([]bizmonitor.Failu
 		 FROM failure_pattern WHERE is_active = 1 ORDER BY confidence DESC`,
 	)
 	if err != nil {
-		return nil, kerrors.InternalServer("FAILURE_PATTERN", "query failed").WithCause(err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
 	}
 	defer rows.Close()
 
@@ -156,7 +155,7 @@ func (r *failurePatternRepo) ListActive(ctx context.Context) ([]bizmonitor.Failu
 
 func (r *failurePatternRepo) IncrementSuccess(ctx context.Context, id string) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -168,7 +167,7 @@ func (r *failurePatternRepo) IncrementSuccess(ctx context.Context, id string) er
 
 func (r *failurePatternRepo) IncrementFail(ctx context.Context, id string) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -180,7 +179,7 @@ func (r *failurePatternRepo) IncrementFail(ctx context.Context, id string) error
 
 func (r *failurePatternRepo) Deactivate(ctx context.Context, id string) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("FAILURE_PATTERN", "database not configured")
+		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -207,7 +206,7 @@ func scanFailurePatterns(rows interface {
 		)
 		if err := rows.Scan(&id, &source, &fpType, &patternHash, &patternRegex, &fixActionJSON,
 			&confidence, &successCount, &failCount, &version, &isActive, &createdAtStr, &updatedAtStr); err != nil {
-			return nil, kerrors.InternalServer("FAILURE_PATTERN", "scan failed").WithCause(err)
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "FAILURE_PATTERN")
 		}
 
 		var fixAction bizmonitor.FixAction

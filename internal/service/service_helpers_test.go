@@ -8,8 +8,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestFirstNonEmptyString(t *testing.T) {
@@ -253,12 +252,12 @@ func TestGraphExecutionFinishErr(t *testing.T) {
 			if err == nil {
 				t.Fatalf("graphExecutionFinishErr() = nil, want error with message %q", tt.wantMsg)
 			}
-			ke, ok := err.(*kerrors.Error)
+			ae, ok := apierror.From(err)
 			if !ok {
-				t.Fatalf("graphExecutionFinishErr() = %T, want *kerrors.Error", err)
+				t.Fatalf("graphExecutionFinishErr() = %T, want *apierror.Error", err)
 			}
-			if ke.Message != tt.wantMsg {
-				t.Errorf("graphExecutionFinishErr() message = %q, want %q", ke.Message, tt.wantMsg)
+			if ae.Message != tt.wantMsg {
+				t.Errorf("graphExecutionFinishErr() message = %q, want %q", ae.Message, tt.wantMsg)
 			}
 		})
 	}

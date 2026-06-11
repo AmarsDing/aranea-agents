@@ -12,18 +12,13 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
     if (value && (tool.risk_level === 'high' || tool.risk_level === 'critical')) {
       $q.dialog({
         title: '高风险工具确认',
-        message: `即将启用高风险工具「${tool.display_name}」（风险等级：${tool.risk_level}）。请输入工具 Key 以确认：${tool.key}`,
-        prompt: { model: '', type: 'text', label: '请输入 Tool Key' },
+        message: `即将启用高风险工具「${tool.display_name}」（风险等级：${tool.risk_level}）。此操作可能带来安全风险，请确认您已了解相关风险。`,
         cancel: true,
         persistent: true,
-      }).onOk(async (inputKey: string) => {
-        if (inputKey !== tool.key) {
-          $q.notify({ type: 'negative', message: '输入的 Key 不匹配，操作已取消' });
-          return;
-        }
+      }).onOk(async () => {
         busyId.value = tool.id;
         try {
-          await toolsStore.toggle(tool.id || tool.key, value, tool.key);
+          await toolsStore.toggle(tool.id || tool.key, value, 'I_UNDERSTAND_RISK');
           await onChanged();
         } catch (err) {
           $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '操作失败' });

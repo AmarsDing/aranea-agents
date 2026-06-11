@@ -242,47 +242,105 @@ func (r *SkillIntelligenceRepo) BatchCreate(ctx context.Context, reports []biz.E
 
 func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID string, since time.Time) (*biz.SkillHealthMetrics, error) {
 	sinceStr := since.UTC().Format(time.RFC3339)
-	rows, err := r.data.RW().Read(ctx).SkillInvocation.Query().
-		Where(
-			skillinvocation.SkillIDEQ(skillID),
-			skillinvocation.CreatedAtGTE(sinceStr),
-		).
-		All(ctx)
+
+	// Main aggregation query — computes count, success_count, avg_duration, avg_token_usage in SQL.
+	const aggQuery = `SELECT
+  COUNT(*) as invocation_count,
+  SUM(CASE WHEN outcome = 'success' OR (outcome = '' AND (status = 'completed' OR status = 'success')) THEN 1 ELSE 0 END) as success_count,
+  AVG(CASE WHEN duration_ms > 0 THEN duration_ms END) as avg_duration_ms,
+  COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN json_extract(token_usage, '$.total') END), 0) as avg_token_usage
+FROM skill_invocation
+WHERE skill_id = ? AND created_at >= ?`
+
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, aggQuery, skillID, sinceStr)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	metrics := &biz.SkillHealthMetrics{SkillID: skillID}
-	var totalDuration int
-	var durations []int
-	var totalTokens int
-	tokensCounted := 0
-
-	for _, row := range rows {
-		metrics.InvocationCount++
-		if types.IsSuccess(row.Outcome, row.Status) {
-			metrics.SuccessCount++
+	if rows.Next() {
+		var invocationCount, successCount int
+		var avgDurationMS, avgTokenUsage float64
+		if err := rows.Scan(&invocationCount, &successCount, &avgDurationMS, &avgTokenUsage); err != nil {
+			return nil, err
 		}
-		totalDuration += row.DurationMs
-		durations = append(durations, row.DurationMs)
+		metrics.InvocationCount = invocationCount
+		metrics.SuccessCount = successCount
+		metrics.AvgDurationMS = avgDurationMS
+		metrics.AvgTokenUsage = int(avgTokenUsage)
+		if invocationCount > 0 {
+			metrics.SuccessRate = float64(successCount) / float64(invocationCount)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-		// Extract token_usage.total from JSON field.
-		if row.TokenUsage != nil {
-			if total, ok := extractTokenTotal(row.TokenUsage); ok && total > 0 {
-				totalTokens += total
-				tokensCounted++
+	// P95: for small row counts (<20), load durations and compute in Go;
+	// for larger sets, use SQL ORDER BY + OFFSET approach.
+	const countQuery = `SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0`
+	var durCount int
+	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, countQuery, skillID, sinceStr)
+	if err != nil {
+		return nil, err
+	}
+	defer cRows.Close()
+	if cRows.Next() {
+		if err := cRows.Scan(&durCount); err != nil {
+			return nil, err
+		}
+	}
+	if err := cRows.Err(); err != nil {
+		return nil, err
+	}
+
+	if durCount == 0 {
+		metrics.P95DurationMS = 0
+	} else if durCount < 20 {
+		// Small set: load all durations and compute P95 in Go.
+		const durQuery = `SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC`
+		dRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, durQuery, skillID, sinceStr)
+		if err != nil {
+			return nil, err
+		}
+		defer dRows.Close()
+		var durations []int
+		for dRows.Next() {
+			var d int
+			if err := dRows.Scan(&d); err != nil {
+				return nil, err
+			}
+			durations = append(durations, d)
+		}
+		if err := dRows.Err(); err != nil {
+			return nil, err
+		}
+		metrics.P95DurationMS = types.P95(durations)
+	} else {
+		// Large set: use SQL OFFSET to pick the 95th percentile row.
+		offset := durCount * 95 / 100
+		if offset >= durCount {
+			offset = durCount - 1
+		}
+		const p95Query = `SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC LIMIT 1 OFFSET ?`
+		var p95 int
+		pRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, p95Query, skillID, sinceStr, offset)
+		if err != nil {
+			return nil, err
+		}
+		defer pRows.Close()
+		if pRows.Next() {
+			if err := pRows.Scan(&p95); err != nil {
+				return nil, err
 			}
 		}
+		if err := pRows.Err(); err != nil {
+			return nil, err
+		}
+		metrics.P95DurationMS = p95
 	}
 
-	if metrics.InvocationCount > 0 {
-		metrics.SuccessRate = float64(metrics.SuccessCount) / float64(metrics.InvocationCount)
-		metrics.AvgDurationMS = float64(totalDuration) / float64(metrics.InvocationCount)
-	}
-	if tokensCounted > 0 {
-		metrics.AvgTokenUsage = totalTokens / tokensCounted
-	}
-	metrics.P95DurationMS = types.P95(durations)
 	// FeedbackScore: not yet available from DB; will be computed heuristically in biz layer.
 	return metrics, nil
 }
@@ -311,39 +369,57 @@ func extractTokenTotal(tokenUsage map[string]any) (int, bool) {
 
 func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID string, since time.Time) (*biz.SkillFailureStats, error) {
 	sinceStr := since.UTC().Format(time.RFC3339)
-	rows, err := r.data.RW().Read(ctx).SkillInvocation.Query().
-		Where(
-			skillinvocation.SkillIDEQ(skillID),
-			skillinvocation.CreatedAtGTE(sinceStr),
-		).
-		All(ctx)
+
+	// Count total failures.
+	const failCountQuery = `SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`
+	var failureCount int
+	fRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, failCountQuery, skillID, sinceStr)
 	if err != nil {
 		return nil, err
 	}
-
-	stats := &biz.SkillFailureStats{SkillID: skillID}
-	codeCount := make(map[string]int)
-	for _, row := range rows {
-		if !types.IsSuccess(row.Outcome, row.Status) {
-			stats.FailureCount++
-			code := row.ErrorCode
-			if code == "" {
-				code = "unknown"
-			}
-			codeCount[code]++
+	defer fRows.Close()
+	if fRows.Next() {
+		if err := fRows.Scan(&failureCount); err != nil {
+			return nil, err
 		}
 	}
+	if err := fRows.Err(); err != nil {
+		return nil, err
+	}
 
-	for code, count := range codeCount {
-		stats.TopErrorCodes = append(stats.TopErrorCodes, biz.ErrorCodeCount{ErrorCode: code, Count: count})
+	// Top error codes via SQL GROUP BY.
+	const topCodesQuery = `SELECT
+  COALESCE(error_code, 'unknown') as error_code,
+  COUNT(*) as count
+FROM skill_invocation
+WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))
+GROUP BY error_code
+ORDER BY count DESC
+LIMIT 5`
+	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, topCodesQuery, skillID, sinceStr)
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(stats.TopErrorCodes, func(i, j int) bool {
-		return stats.TopErrorCodes[i].Count > stats.TopErrorCodes[j].Count
-	})
-	if len(stats.TopErrorCodes) > 5 {
-		stats.TopErrorCodes = stats.TopErrorCodes[:5]
+	defer cRows.Close()
+
+	var topCodes []biz.ErrorCodeCount
+	for cRows.Next() {
+		var code string
+		var count int
+		if err := cRows.Scan(&code, &count); err != nil {
+			return nil, err
+		}
+		topCodes = append(topCodes, biz.ErrorCodeCount{ErrorCode: code, Count: count})
 	}
-	return stats, nil
+	if err := cRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &biz.SkillFailureStats{
+		SkillID:       skillID,
+		FailureCount:  failureCount,
+		TopErrorCodes: topCodes,
+	}, nil
 }
 
 // GetFailureTagCounts returns failure tag counts for a skill over the given
@@ -449,21 +525,18 @@ func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID s
 	if activationID == "" {
 		return nil
 	}
-	// Find by activation_id and update analyzed_at.
-	rows, err := r.data.RW().Read(ctx).SkillInvocation.Query().
+	// Single UPDATE with WHERE activation_id — avoids two-step read-then-write.
+	n, err := r.data.RW().Write(ctx).SkillInvocation.Update().
 		Where(skillinvocation.ActivationIDEQ(activationID)).
-		Limit(1).
-		All(ctx)
+		SetAnalyzedAt(time.Now().UTC().Format(time.RFC3339)).
+		Save(ctx)
 	if err != nil {
 		return err
 	}
-	if len(rows) == 0 {
+	if n == 0 {
 		return fmt.Errorf("skill invocation with activation_id %s not found", activationID)
 	}
-	_, err = r.data.RW().Write(ctx).SkillInvocation.UpdateOneID(rows[0].ID).
-		SetAnalyzedAt(time.Now().UTC().Format(time.RFC3339)).
-		Save(ctx)
-	return err
+	return nil
 }
 
 func mapEntSkillInvocationToWrite(row *ent.SkillInvocation) biz.SkillInvocationWrite {

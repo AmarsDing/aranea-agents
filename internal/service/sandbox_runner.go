@@ -8,8 +8,8 @@ import (
 
 	"aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
 
@@ -44,7 +44,7 @@ func (s *SandboxRunner) ValidateSuggestion(ctx context.Context, suggestionID str
 		return false, nil, err
 	}
 	if suggestion == nil {
-		return false, nil, kerrors.NotFound("SANDBOX_RUNNER", fmt.Sprintf("suggestion not found: %s", suggestionID))
+		return false, nil, apierror.NotFound("SANDBOX_RUNNER", "suggestion not found: %s", suggestionID)
 	}
 
 	// Update lifecycle status to validating

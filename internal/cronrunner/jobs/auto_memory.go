@@ -100,6 +100,10 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 		select {
 		case req := <-q.Chan():
 			if ctx.Err() != nil {
+				// AckDone here because we return before entering processWithRetry
+				// which has its own defer AckDone — without this, the tenant
+				// in-flight counter would permanently leak.
+				w.queue.AckDone(req)
 				return
 			}
 			w.processWithRetry(ctx, req)
@@ -110,15 +114,20 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 }
 
 func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.AutoMemoryJobRequest) {
+	defer w.queue.AckDone(req)
+
 	backoffSchedule := []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
 	var lastErr error
 	for attempt := 0; attempt < int(w.memConf.MaxRetries); attempt++ {
 		if attempt > 0 {
-			delay := backoffSchedule[attempt-1]
+			bo := backoffSchedule[len(backoffSchedule)-1]
+			if attempt-1 < len(backoffSchedule) {
+				bo = backoffSchedule[attempt-1]
+			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(delay):
+			case <-time.After(bo):
 			}
 		}
 		t0 := time.Now()
@@ -207,7 +216,6 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	}
 
 	lastUserMsgID := lastUserMessageID(msgs)
-	msgIDsWithL3 := make(map[string]struct{})
 	// Pre-generate episode ID so facts can reference it as source_episode_id.
 	episodeID := uuid.NewString()
 	var factInputs []biz.MemoryFactWrite
@@ -220,9 +228,6 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			msgID := strings.TrimSpace(p.SourceMessageID)
 			if msgID == "" {
 				msgID = lastUserMsgID
-			}
-			if msgID != "" {
-				msgIDsWithL3[msgID] = struct{}{}
 			}
 			factInputs = append(factInputs, biz.MemoryFactWrite{
 				ScopeType:       "agent",
@@ -315,9 +320,6 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	if memoryPolicy.WriteL4Graph && w.l4 != nil && agentID != "" {
 		for _, msg := range msgs {
 			if msg.Role != "user" {
-				continue
-			}
-			if _, skip := msgIDsWithL3[msg.ID]; skip {
 				continue
 			}
 			text := strings.TrimSpace(msg.ContentMarkdown)

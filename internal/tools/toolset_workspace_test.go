@@ -13,7 +13,7 @@ func TestAssemble_hostexecUsesShellExecDir(t *testing.T) {
 	root := t.TempDir()
 	ts, err := Assemble(context.Background(), AssemblyConfig{
 		EnabledTools: []string{"hostexec"},
-		ShellExecDir: root,
+		ShellExec:    ShellExecConfig{Dir: root},
 	})
 	if err != nil {
 		t.Fatal(err)

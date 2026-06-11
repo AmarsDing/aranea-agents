@@ -7,9 +7,13 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
 
 type chatJobsRepoStub struct {
 	jobs []biz.ChannelTurnJob
@@ -45,12 +49,14 @@ func (s *chatJobsRepoStub) ListFiltered(_ context.Context, q biz.ChannelTurnJobL
 
 func TestChatService_ListChatBackgroundJobs_validation(t *testing.T) {
 	svc := service.NewChatService(service.ChatOrchestratorDeps{
-		ChJobs: service.ChannelTurnJobDeps{
-			TurnJobs: biz.NewChannelTurnJobUsecase(nil, &chatJobsRepoStub{}),
+		Channel: service.ChatChannelDeps{
+			ChJobs: service.ChannelTurnJobDeps{
+				TurnJobs: biz.NewChannelTurnJobUsecase(nil, &chatJobsRepoStub{}),
+			},
 		},
 	})
 	_, err := svc.ListChatBackgroundJobs(context.Background(), &chatv1.ListChatBackgroundJobsRequest{})
-	if err == nil || !kerrors.IsBadRequest(err) {
+	if err == nil || !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("expected bad request, got %v", err)
 	}
 }
@@ -69,8 +75,10 @@ func TestChatService_ListChatBackgroundJobs_bySession(t *testing.T) {
 		},
 	}}
 	svc := service.NewChatService(service.ChatOrchestratorDeps{
-		ChJobs: service.ChannelTurnJobDeps{
-			TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+		Channel: service.ChatChannelDeps{
+			ChJobs: service.ChannelTurnJobDeps{
+				TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+			},
 		},
 	})
 	sessionID := "sess-1"
@@ -105,8 +113,10 @@ func TestChatService_ListChatBackgroundJobs_sanitizesInvalidUTF8Summary(t *testi
 		},
 	}}
 	svc := service.NewChatService(service.ChatOrchestratorDeps{
-		ChJobs: service.ChannelTurnJobDeps{
-			TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+		Channel: service.ChatChannelDeps{
+			ChJobs: service.ChannelTurnJobDeps{
+				TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+			},
 		},
 	})
 	sessionID := "sess-1"

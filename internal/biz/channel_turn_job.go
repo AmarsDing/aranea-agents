@@ -82,7 +82,7 @@ func NormalizeChannelTurnJobListLimit(limit int) int {
 
 func NormalizeChannelTurnJobStatus(status string) string {
 	switch strings.TrimSpace(strings.ToLower(status)) {
-	case ChannelTurnJobStatusRunning, ChannelTurnJobStatusQueued, ChannelTurnJobStatusCompleted,
+	case ChannelTurnJobStatusAccepted, ChannelTurnJobStatusRunning, ChannelTurnJobStatusQueued, ChannelTurnJobStatusCompleted,
 		ChannelTurnJobStatusFailed, ChannelTurnJobStatusTimeout, ChannelTurnJobStatusCancelled,
 		ChannelTurnJobStatusAsyncQueued:
 		return strings.TrimSpace(strings.ToLower(status))

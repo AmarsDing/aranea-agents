@@ -1,7 +1,10 @@
 package mattermost
 
 import (
+	"errors"
 	"testing"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestParseInbound_TextMessage(t *testing.T) {
@@ -47,8 +50,8 @@ func TestVerifyToken(t *testing.T) {
 	if err := VerifyToken("secret", "wrong"); err == nil {
 		t.Fatal("expected error for wrong token")
 	}
-	if err := VerifyToken("", "any"); err != nil {
-		t.Fatal("empty token should skip verification")
+	if err := VerifyToken("", "any"); !errors.Is(err, port.ErrCredentialsNotConfigured) {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
 	}
 }
 

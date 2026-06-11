@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/types"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // SkillHealthReader aggregates skill invocation data to compute health metrics.
@@ -31,7 +30,7 @@ func NewSkillHealthUsecase(repo SkillHealthReader, lg loggateway.Logger) *SkillH
 func (uc *SkillHealthUsecase) GetSkillHealth(ctx context.Context, skillID string) (*types.SkillHealthDetail, error) {
 	skillID = strings.TrimSpace(skillID)
 	if skillID == "" {
-		return nil, kerrors.BadRequest("SKILL_INTELLIGENCE", "skill_id is required")
+		return nil, apierror.BadRequest("SKILL_INTELLIGENCE", "skill_id is required")
 	}
 	now := time.Now().UTC()
 	since7d := now.Add(-7 * 24 * time.Hour)

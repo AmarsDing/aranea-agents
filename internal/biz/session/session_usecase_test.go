@@ -3,10 +3,9 @@ package session
 import (
 	"context"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"errors"
 	"testing"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockSessionRepo struct {
@@ -301,12 +300,15 @@ func assertBadRequest(t *testing.T, err error, wantMsg string) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	e := kerrors.FromError(err)
-	if e.Code != 400 {
-		t.Fatalf("expected code 400, got %d", e.Code)
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
 	}
-	if e.Reason != "SESSION" {
-		t.Fatalf("expected reason SESSION, got %s", e.Reason)
+	if e.Code != apierror.CodeBadRequest {
+		t.Fatalf("expected code %s, got %s", apierror.CodeBadRequest, e.Code)
+	}
+	if e.Domain != "SESSION" {
+		t.Fatalf("expected domain SESSION, got %s", e.Domain)
 	}
 	if wantMsg != "" && e.Message != wantMsg {
 		t.Fatalf("expected message %q, got %q", wantMsg, e.Message)
@@ -318,12 +320,15 @@ func assertConflict(t *testing.T, err error, wantMsg string) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	e := kerrors.FromError(err)
-	if e.Code != 409 {
-		t.Fatalf("expected code 409, got %d", e.Code)
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
 	}
-	if e.Reason != "SESSION" {
-		t.Fatalf("expected reason SESSION, got %s", e.Reason)
+	if e.Code != apierror.CodeConflict {
+		t.Fatalf("expected code %s, got %s", apierror.CodeConflict, e.Code)
+	}
+	if e.Domain != "SESSION" {
+		t.Fatalf("expected domain SESSION, got %s", e.Domain)
 	}
 	if wantMsg != "" && e.Message != wantMsg {
 		t.Fatalf("expected message %q, got %q", wantMsg, e.Message)
@@ -335,12 +340,15 @@ func assertNotFound(t *testing.T, err error, wantMsg string) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	e := kerrors.FromError(err)
-	if e.Code != 404 {
-		t.Fatalf("expected code 404, got %d", e.Code)
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
 	}
-	if e.Reason != "SESSION" {
-		t.Fatalf("expected reason SESSION, got %s", e.Reason)
+	if e.Code != apierror.CodeNotFound {
+		t.Fatalf("expected code %s, got %s", apierror.CodeNotFound, e.Code)
+	}
+	if e.Domain != "SESSION" {
+		t.Fatalf("expected domain SESSION, got %s", e.Domain)
 	}
 	if wantMsg != "" && e.Message != wantMsg {
 		t.Fatalf("expected message %q, got %q", wantMsg, e.Message)
@@ -355,7 +363,7 @@ func TestCreate(t *testing.T) {
 		teamFn     func(ctx context.Context, id string) (struct{}, error)
 		createFn   func(ctx context.Context, s Session) (Session, error)
 		wantErr    bool
-		wantStatus int32
+		wantCode   apierror.Code
 		wantMsg    string
 		checkResult func(t *testing.T, got Session)
 	}{
@@ -404,7 +412,7 @@ func TestCreate(t *testing.T) {
 				AgentID:   "",
 			},
 			wantErr:    true,
-			wantStatus: 400,
+			wantCode:   apierror.CodeBadRequest,
 			wantMsg:    "agent_id is required",
 		},
 		{
@@ -450,7 +458,7 @@ func TestCreate(t *testing.T) {
 				OwnerType: "invalid",
 			},
 			wantErr:    true,
-			wantStatus: 400,
+			wantCode:   apierror.CodeBadRequest,
 			wantMsg:    "owner_type must be agent or team",
 		},
 		{
@@ -463,7 +471,7 @@ func TestCreate(t *testing.T) {
 				return struct{}{}, shared.ErrNotFound
 			},
 			wantErr:    true,
-			wantStatus: 404,
+			wantCode:   apierror.CodeNotFound,
 			wantMsg:    "agent not found",
 		},
 		{
@@ -499,7 +507,7 @@ func TestCreate(t *testing.T) {
 				TeamID:    "",
 			},
 			wantErr:    true,
-			wantStatus: 400,
+			wantCode:   apierror.CodeBadRequest,
 			wantMsg:    "team_id is required",
 		},
 	}
@@ -517,9 +525,12 @@ func TestCreate(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				e := kerrors.FromError(err)
-				if e.Code != tt.wantStatus {
-					t.Fatalf("expected status %d, got %d", tt.wantStatus, e.Code)
+				e, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror, got %T", err)
+				}
+				if e.Code != tt.wantCode {
+					t.Fatalf("expected code %s, got %s", tt.wantCode, e.Code)
 				}
 				if e.Message != tt.wantMsg {
 					t.Fatalf("expected message %q, got %q", tt.wantMsg, e.Message)

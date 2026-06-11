@@ -2,7 +2,6 @@ package discord
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -23,12 +22,15 @@ func (s *TextSender) ID() string { return "discord" }
 func (s *TextSender) SendText(ctx context.Context, channelID, text string) error {
 	channelID = strings.TrimSpace(channelID)
 	text = strings.TrimSpace(text)
-	if channelID == "" || text == "" {
+	if channelID == "" {
+		return errChannelIDRequired
+	}
+	if text == "" {
 		return nil
 	}
 	token := strings.TrimSpace(s.BotToken)
 	if token == "" {
-		return fmt.Errorf("discord outbound: bot_token required")
+		return errBotTokenRequired
 	}
 	sess, err := s.sessionOnce(token)
 	if err != nil {
@@ -58,7 +60,7 @@ func (s *TextSender) sessionOnce(token string) (*discordgo.Session, error) {
 		return nil, err
 	}
 	if err := sess.Open(); err != nil {
-		return nil, fmt.Errorf("discord outbound: open session: %w", err)
+		return nil, discordGatewayError("discord outbound: open session", err)
 	}
 	s.session = sess
 	return sess, nil

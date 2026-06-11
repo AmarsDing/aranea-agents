@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockRepo struct {
@@ -51,26 +51,26 @@ func (m *mockRepo) DeleteHook(ctx context.Context, id string) error {
 	return nil
 }
 
-func isKerror(err error, reason, message string) bool {
+func isAPIError(err error, domain, message string) bool {
 	if err == nil {
 		return false
 	}
-	ke, ok := err.(*kerrors.Error)
+	ae, ok := apierror.From(err)
 	if !ok {
 		return false
 	}
-	return ke.Reason == reason && ke.Message == message
+	return ae.Domain == domain && ae.Message == message
 }
 
-func isKerrorReason(err error, reason string) bool {
+func isAPIErrorDomain(err error, domain string) bool {
 	if err == nil {
 		return false
 	}
-	ke, ok := err.(*kerrors.Error)
+	ae, ok := apierror.From(err)
 	if !ok {
 		return false
 	}
-	return ke.Reason == reason
+	return ae.Domain == domain
 }
 
 func TestUsecase_Create(t *testing.T) {
@@ -179,13 +179,13 @@ func TestUsecase_Create(t *testing.T) {
 					t.Fatalf("expected error, got nil")
 				}
 				if tt.message != "" {
-					if !isKerror(err, tt.reason, tt.message) {
-						ke, _ := err.(*kerrors.Error)
-						t.Fatalf("expected kerror reason=%q message=%q, got reason=%q message=%q", tt.reason, tt.message, ke.Reason, ke.Message)
+					if !isAPIError(err, tt.reason, tt.message) {
+						ae, _ := apierror.From(err)
+						t.Fatalf("expected apierror domain=%q message=%q, got domain=%q message=%q", tt.reason, tt.message, ae.Domain, ae.Message)
 					}
-				} else if !isKerrorReason(err, tt.reason) {
-					ke, _ := err.(*kerrors.Error)
-					t.Fatalf("expected kerror reason=%q, got reason=%q", tt.reason, ke.Reason)
+				} else if !isAPIErrorDomain(err, tt.reason) {
+					ae, _ := apierror.From(err)
+					t.Fatalf("expected apierror domain=%q, got domain=%q", tt.reason, ae.Domain)
 				}
 				return
 			}
@@ -374,7 +374,7 @@ func TestUsecase_Update(t *testing.T) {
 		{
 			name:     "non-existent hook returns error from repo",
 			id:       "missing",
-			getErr:   kerrors.NotFound("HOOK", "hook not found"),
+			getErr:   apierror.NotFound("HOOK", "hook not found"),
 			wantErr:  true,
 			reason:   "HOOK",
 			message:  "hook not found",
@@ -420,13 +420,13 @@ func TestUsecase_Update(t *testing.T) {
 					t.Fatalf("expected error, got nil")
 				}
 				if tt.message != "" {
-					if !isKerror(err, tt.reason, tt.message) {
-						ke, _ := err.(*kerrors.Error)
-						t.Fatalf("expected kerror reason=%q message=%q, got reason=%q message=%q", tt.reason, tt.message, ke.Reason, ke.Message)
+					if !isAPIError(err, tt.reason, tt.message) {
+						ae, _ := apierror.From(err)
+						t.Fatalf("expected apierror domain=%q message=%q, got domain=%q message=%q", tt.reason, tt.message, ae.Domain, ae.Message)
 					}
-				} else if !isKerrorReason(err, tt.reason) {
-					ke, _ := err.(*kerrors.Error)
-					t.Fatalf("expected kerror reason=%q, got reason=%q", tt.reason, ke.Reason)
+				} else if !isAPIErrorDomain(err, tt.reason) {
+					ae, _ := apierror.From(err)
+					t.Fatalf("expected apierror domain=%q, got domain=%q", tt.reason, ae.Domain)
 				}
 				return
 			}

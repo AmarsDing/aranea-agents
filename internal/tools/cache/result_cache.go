@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const defaultCacheTTLSec = 300
+
 type entry struct {
 	result    any
 	expiresAt time.Time
@@ -37,6 +39,8 @@ func (c *ResultCache) Get(toolName string, args []byte) (any, bool) {
 		return nil, false
 	}
 	k := c.key(toolName, args)
+
+	// Fast path: read-only check under RLock.
 	c.mu.RLock()
 	e, ok := c.items[k]
 	c.mu.RUnlock()
@@ -45,18 +49,20 @@ func (c *ResultCache) Get(toolName string, args []byte) (any, bool) {
 	}
 	now := time.Now()
 	if now.After(e.expiresAt) {
+		// Slow path: expired entry needs deletion under write lock.
 		c.mu.Lock()
-		e2, ok2 := c.items[k]
-		if ok2 && now.After(e2.expiresAt) {
+		// Re-check after acquiring write lock (another goroutine may have evicted it).
+		if e2, ok2 := c.items[k]; ok2 && now.After(e2.expiresAt) {
 			delete(c.items, k)
 		}
 		c.mu.Unlock()
 		return nil, false
 	}
+	// Update accessedAt under write lock for LRU tracking.
 	c.mu.Lock()
-	if e3, ok3 := c.items[k]; ok3 {
-		e3.accessedAt = now
-		c.items[k] = e3
+	if e2, ok2 := c.items[k]; ok2 {
+		e2.accessedAt = now
+		c.items[k] = e2
 	}
 	c.mu.Unlock()
 	return e.result, true
@@ -132,7 +138,7 @@ func policyFromObject(raw string) CachePolicy {
 		return CachePolicy{}
 	}
 	if ttlSec <= 0 {
-		ttlSec = 300
+		ttlSec = defaultCacheTTLSec
 	}
 	if !enabled {
 		enabled = ttlSec > 0

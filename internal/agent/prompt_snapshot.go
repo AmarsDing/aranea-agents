@@ -131,11 +131,14 @@ func estTokensFromChars(chars int) int {
 	if chars <= 0 {
 		return 0
 	}
-	t := chars / 4
-	if t == 0 {
+	// For CJK text, 1 character ≈ 1-2 tokens; for Latin text, ~4 chars per token.
+	// We use a blended ratio of 2.5 chars/token as a reasonable middle ground
+	// that avoids severe underestimation for CJK-dominant content.
+	it := int(float64(chars) / 2.5)
+	if it == 0 {
 		return 1
 	}
-	return t
+	return it
 }
 
 func classifySystemSections(text string) map[string]int {

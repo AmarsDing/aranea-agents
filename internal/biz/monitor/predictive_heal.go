@@ -5,9 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // PredictiveHealMinConfidence is the confidence threshold above which preventive
@@ -70,7 +69,7 @@ func NewPredictiveHealUsecase(
 // All actions (applied, skipped, failed) are recorded as HealRecords for audit.
 func (uc *PredictiveHealUsecase) PredictAndHeal(ctx context.Context) ([]HealRecord, error) {
 	if uc == nil {
-		return nil, kerrors.InternalServer("MONITOR", "PredictiveHealUsecase is nil")
+		return nil, apierror.Internal("MONITOR", "PredictiveHealUsecase is nil")
 	}
 
 	metrics, err := uc.metricsReader.ReadSystemMetrics(ctx)

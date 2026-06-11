@@ -34,6 +34,11 @@ func (m *cascadeGraphStoreMock) UpdateCascadeProposalStatus(context.Context, str
 	return nil, nil
 }
 
+func (m *cascadeGraphStoreMock) CompareAndSwapProposalStatus(_ context.Context, _ string, _ []string, toStatus, _, _ string) ([]byte, bool, error) {
+	b, _ := json.Marshal(map[string]any{"id": "cp-1", "status": toStatus})
+	return b, true, nil
+}
+
 func (m *cascadeGraphStoreMock) NeighborhoodJSON(context.Context, string, int32, int32, string) ([]byte, error) {
 	if len(m.nbJSON) == 0 {
 		return []byte(`{"entities":[{"id":"e2","name":"Bob","entity_type":"person"}],"relations":[{"target_id":"e2","relation_type":"knows_as"}]}`), nil
@@ -57,11 +62,11 @@ func (m *cascadeGraphStoreMock) GetCascadeSagaSteps(_ context.Context, _ string)
 	return nil, nil
 }
 
-func (m *cascadeGraphStoreMock) UpdateSagaStepState(_ context.Context, _ int64, _, _ string) error {
+func (m *cascadeGraphStoreMock) UpdateSagaStepState(_ context.Context, _ string, _, _ string) error {
 	return nil
 }
 
-func (m *cascadeGraphStoreMock) UpdateSagaStepResult(_ context.Context, _ int64, _ string) error {
+func (m *cascadeGraphStoreMock) UpdateSagaStepResult(_ context.Context, _ string, _ string) error {
 	return nil
 }
 
@@ -87,7 +92,7 @@ func (m *cascadeGraphStoreMock) MarkFactsIndexStaleByAgent(_ context.Context, _ 
 
 func TestL4CascadeUsecase_ProposeNameConflict(t *testing.T) {
 	store := &cascadeGraphStoreMock{}
-	uc := NewL4CascadeUsecase(store, store, store, store, nil, loggateway.NewNoop())
+	uc := NewL4CascadeUsecase(L4CascadeDeps{Proposals: store, Reader: store, Mutator: store, Saga: store, LG: loggateway.NewNoop()})
 	if err := uc.ProposeNameConflict(context.Background(), "ag1", "ent1", "Alice", "Bob"); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +110,7 @@ func TestL4CascadeUsecase_ProposeNameConflict(t *testing.T) {
 
 func TestL4CascadeUsecase_ProposeNameConflict_SkipSameName(t *testing.T) {
 	store := &cascadeGraphStoreMock{}
-	uc := NewL4CascadeUsecase(store, store, store, store, nil, loggateway.NewNoop())
+	uc := NewL4CascadeUsecase(L4CascadeDeps{Proposals: store, Reader: store, Mutator: store, Saga: store, LG: loggateway.NewNoop()})
 	if err := uc.ProposeNameConflict(context.Background(), "ag1", "ent1", "Alice", "alice"); err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +142,21 @@ func (m *cascadeApproveStore) UpdateCascadeProposalStatus(_ context.Context, id,
 	return json.Marshal(map[string]any{"id": id, "status": status, "reviewed_by": reviewer, "review_note": note})
 }
 
+func (m *cascadeApproveStore) CompareAndSwapProposalStatus(_ context.Context, _ string, _ []string, toStatus, _, _ string) ([]byte, bool, error) {
+	// Return the full proposal row (with all fields) so that Approve can
+	// extract trigger_entity_id, new_value, etc. after CAS succeeds.
+	b, _ := json.Marshal(map[string]any{
+		"id":                "cp1",
+		"agent_id":          "ag1",
+		"status":            toStatus,
+		"trigger_entity_id": "ent1",
+		"old_value":         "Alice",
+		"new_value":         "Bob",
+		"affected_json":     `[{"entity_id":"n1","entity_name":"Neighbor","entity_type":"person","relation_type":"knows_as","hops":1}]`,
+	})
+	return b, true, nil
+}
+
 func (m *cascadeApproveStore) HasCascadeSaga(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }
@@ -147,10 +167,10 @@ func (m *cascadeApproveStore) InitCascadeSagaSteps(_ context.Context, _ string, 
 
 func (m *cascadeApproveStore) GetCascadeSagaSteps(_ context.Context, proposalID string) ([]CascadeSagaStep, error) {
 	return []CascadeSagaStep{
-		{ID: 1, ProposalID: proposalID, StepIndex: 0, StepName: SagaStepUpsertEntity, State: "pending", IsCritical: true},
-		{ID: 2, ProposalID: proposalID, StepIndex: 1, StepName: SagaStepTouchAffected, State: "pending", IsCritical: false},
-		{ID: 3, ProposalID: proposalID, StepIndex: 2, StepName: SagaStepReplaceFacts, State: "pending", IsCritical: true},
-		{ID: 4, ProposalID: proposalID, StepIndex: 3, StepName: SagaStepSyncIndex, State: "pending", IsCritical: false},
+		{ID: "step-1", ProposalID: proposalID, StepIndex: 0, StepName: SagaStepUpsertEntity, State: "pending", IsCritical: true},
+		{ID: "step-2", ProposalID: proposalID, StepIndex: 1, StepName: SagaStepTouchAffected, State: "pending", IsCritical: false},
+		{ID: "step-3", ProposalID: proposalID, StepIndex: 2, StepName: SagaStepReplaceFacts, State: "pending", IsCritical: true},
+		{ID: "step-4", ProposalID: proposalID, StepIndex: 3, StepName: SagaStepSyncIndex, State: "pending", IsCritical: false},
 	}, nil
 }
 
@@ -166,11 +186,11 @@ func (m *cascadeApproveStore) SaveCascadeOriginalStatements(_ context.Context, _
 	return nil
 }
 
-func (m *cascadeApproveStore) UpdateSagaStepState(_ context.Context, _ int64, _, _ string) error {
+func (m *cascadeApproveStore) UpdateSagaStepState(_ context.Context, _ string, _, _ string) error {
 	return nil
 }
 
-func (m *cascadeApproveStore) UpdateSagaStepResult(_ context.Context, _ int64, _ string) error {
+func (m *cascadeApproveStore) UpdateSagaStepResult(_ context.Context, _ string, _ string) error {
 	return nil
 }
 
@@ -191,7 +211,7 @@ func TestL4CascadeUsecase_Approve(t *testing.T) {
 			"affected_json":"[{\"entity_id\":\"n1\",\"entity_name\":\"Neighbor\",\"entity_type\":\"person\",\"relation_type\":\"knows_as\",\"hops\":1}]"
 		}`),
 	}
-	uc := NewL4CascadeUsecase(store, store, store, store, repo, loggateway.NewNoop())
+	uc := NewL4CascadeUsecase(L4CascadeDeps{Proposals: store, Reader: store, Mutator: store, Saga: store, EntityWriter: repo, LG: loggateway.NewNoop()})
 	raw, err := uc.Approve(context.Background(), "cp1", "reviewer-1")
 	if err != nil {
 		t.Fatal(err)

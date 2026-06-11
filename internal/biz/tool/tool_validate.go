@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 var (
@@ -19,19 +19,19 @@ var (
 func validateToolUpsert(in ToolUpsertInput) error {
 	key := strings.TrimSpace(in.Key)
 	if key == "" {
-		return kerrors.BadRequest("TOOL", "tool key is required")
+		return apierror.BadRequest("TOOL", "tool key is required")
 	}
 	if strings.TrimSpace(in.DisplayName) == "" {
-		return kerrors.BadRequest("TOOL", "display name is required")
+		return apierror.BadRequest("TOOL", "display name is required")
 	}
 	if in.RiskLevel != "" {
 		if _, ok := validToolRiskLevels[strings.ToLower(in.RiskLevel)]; !ok {
-			return kerrors.BadRequest("TOOL", "invalid risk_level")
+			return apierror.BadRequest("TOOL", "invalid risk_level")
 		}
 	}
 	if in.Source != "" {
 		if _, ok := validToolSources[strings.ToLower(in.Source)]; !ok {
-			return kerrors.BadRequest("TOOL", "invalid source")
+			return apierror.BadRequest("TOOL", "invalid source")
 		}
 	}
 	for _, pair := range []struct {
@@ -58,10 +58,10 @@ func requireJSONObject(field, raw string) error {
 	}
 	var v any
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return kerrors.BadRequest("TOOL", field+" must be valid JSON")
+		return apierror.BadRequest("TOOL", "%s must be valid JSON", field)
 	}
 	if _, ok := v.(map[string]any); !ok && raw != "[]" {
-		return kerrors.BadRequest("TOOL", field+" must be a JSON object")
+		return apierror.BadRequest("TOOL", "%s must be a JSON object", field)
 	}
 	return nil
 }
@@ -71,17 +71,17 @@ func assertToolMutable(existing Tool, in ToolUpsertInput) error {
 		return nil
 	}
 	if strings.TrimSpace(in.Key) != existing.Key {
-		return kerrors.BadRequest("TOOL", "readonly tool key cannot change")
+		return apierror.BadRequest("TOOL", "readonly tool key cannot change")
 	}
 	if in.Source != "" && !strings.EqualFold(in.Source, existing.Source) {
-		return kerrors.BadRequest("TOOL", "readonly tool source cannot change")
+		return apierror.BadRequest("TOOL", "readonly tool source cannot change")
 	}
 	return nil
 }
 
 func assertToolDeletable(t Tool) error {
 	if t.Readonly {
-		return kerrors.BadRequest("TOOL", "readonly tool cannot be deleted")
+		return apierror.BadRequest("TOOL", "readonly tool cannot be deleted")
 	}
 	return nil
 }

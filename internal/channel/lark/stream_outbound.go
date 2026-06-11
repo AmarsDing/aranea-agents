@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -56,7 +55,7 @@ func (s *StreamSender) Update(ctx context.Context, receiveOpenID, text string, f
 	text = preview.TruncateRunes(text, FeishuStreamTextLimit)
 	receiveOpenID = strings.TrimSpace(receiveOpenID)
 	if receiveOpenID == "" {
-		return fmt.Errorf("feishu stream: receive_id required")
+		return errReceiveIDRequired
 	}
 
 	s.mu.Lock()
@@ -111,7 +110,7 @@ func (s *StreamSender) tenantTokenLocked(ctx context.Context) (string, error) {
 	appID := strings.TrimSpace(s.AppID)
 	secret := strings.TrimSpace(s.AppSecret)
 	if appID == "" || secret == "" {
-		return "", fmt.Errorf("feishu stream: app_id and app_secret required")
+		return "", errAppCredentialsRequired
 	}
 	tok, expireSec, err := FetchTenantAccessToken(ctx, client, region, appID, secret)
 	if err != nil {
@@ -173,14 +172,14 @@ func (s *StreamSender) sendTextLocked(ctx context.Context, openID, text string) 
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("feishu stream send: bad json: %w", err)
+		return "", feishuParseError("feishu stream send", err)
 	}
 	if out.Code != 0 {
-		return "", fmt.Errorf("feishu stream send: code=%d msg=%s", out.Code, out.Msg)
+		return "", feishuAPIError("feishu stream send", out.Code, out.Msg)
 	}
 	id := strings.TrimSpace(out.Data.MessageID)
 	if id == "" {
-		return "", fmt.Errorf("feishu stream send: empty message_id")
+		return "", errEmptyMessageID
 	}
 	return id, nil
 }
@@ -222,14 +221,14 @@ func (s *StreamSender) patchTextLocked(ctx context.Context, messageID, text stri
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("feishu stream edit: parse response: %w", err)
+		return feishuParseError("feishu stream edit", err)
 	}
 	if out.Code != 0 {
 		desc := strings.ToLower(out.Msg)
 		if strings.Contains(desc, "not modified") || strings.Contains(desc, "same content") {
 			return nil
 		}
-		return fmt.Errorf("feishu stream edit: code=%d msg=%s", out.Code, out.Msg)
+		return feishuAPIError("feishu stream edit", out.Code, out.Msg)
 	}
 	return nil
 }

@@ -8,7 +8,7 @@
     >
       <div class="chat-empty-state column items-center justify-center">
         <div class="chat-empty-state__halo">
-          <q-icon name="auto_awesome" size="36px" color="primary" />
+          <q-icon name="auto_awesome" size="36px" color="accent" />
         </div>
         <div class="chat-empty-state__title q-mt-md">{{ t('chat.emptyMessages') }}</div>
         <div class="chat-empty-state__hint text-caption q-mt-xs">{{ t('chat.inputLabel') }}</div>
@@ -18,7 +18,7 @@
             :key="i"
             clickable
             outline
-            color="primary"
+            color="accent"
             class="chat-empty-state__chip"
             :icon="s.icon"
             :label="s.text"
@@ -123,7 +123,7 @@
         v-for="(message, idx) in messages"
         v-else
         :key="message.id"
-        v-memo="[message.id, message.content_markdown, message.status, message.options_json, isDark, plannerKind]"
+        v-memo="[message.id, message.content_markdown, message.status, message.options_json, isDark, plannerKind, reactToolLinkIndex, reasoningSidebarOpen]"
         :message="message"
         :index="idx"
         :messages="messages"
@@ -152,7 +152,7 @@
         v-if="showScrollBtn"
         round
         unelevated
-        color="primary"
+        color="accent"
         icon="arrow_downward"
         class="chat-scroll-bottom"
         :aria-label="t('chat.scrollToLatest')"

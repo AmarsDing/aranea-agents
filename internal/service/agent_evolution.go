@@ -60,6 +60,9 @@ func (s *AgentService) ApplyEvolutionSuggestion(ctx context.Context, req *v1.App
 	if err != nil {
 		return nil, err
 	}
+	// ApplySuggestion modifies agent prompt files or settings, so the cached
+	// build must be invalidated to avoid serving stale agent instances.
+	invalidateAgentBuildCache(req.GetAgentId())
 	return toProtoSuggestion(result), nil
 }
 

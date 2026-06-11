@@ -235,7 +235,7 @@ func TestGateVerification_AllDimensionsPass(t *testing.T) {
 		InvocationCount: 20,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill\n\nNo sensitive data.", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nNo sensitive data.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestGateVerification_PerformanceDegradation(t *testing.T) {
 		BaselineTokenUsage: 500,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -356,7 +356,7 @@ func TestGateVerification_PerformanceWithinThreshold(t *testing.T) {
 		BaselineTokenUsage: 500,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestGateVerification_WithSandboxRunner(t *testing.T) {
 		InvocationCount: 20,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -657,7 +657,7 @@ func TestGateVerification_SandboxRunnerFails(t *testing.T) {
 		InvocationCount: 20,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -806,7 +806,7 @@ func TestGateVerification_TokenOnlyDegradation(t *testing.T) {
 		BaselineTokenUsage: 500,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -879,7 +879,7 @@ func TestGateVerification_WithLintChecker_Pass(t *testing.T) {
 		InvocationCount: 20,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -971,7 +971,7 @@ func TestGateVerification_SandboxRunnerError(t *testing.T) {
 		InvocationCount: 20,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1000,7 +1000,7 @@ func TestGateVerification_SandboxRunnerError(t *testing.T) {
 func TestGateVerification_NilObservation_PerformancePasses(t *testing.T) {
 	verifier := NewGateVerifier(nil, nil)
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", nil)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1123,7 +1123,7 @@ func TestGateVerification_FunctionalCheck_EmptySkillID(t *testing.T) {
 func TestGateVerification_Performance_ZeroBaseline(t *testing.T) {
 	verifier := NewGateVerifier(nil, nil)
 
-	// Zero baseline means no comparison possible → should pass
+	// Zero baseline with reasonable current values → should pass (below absolute thresholds)
 	observation := &EvolutionObservationReport{
 		SuccessRate:        0.9,
 		AvgDurationMS:      1500,
@@ -1133,11 +1133,55 @@ func TestGateVerification_Performance_ZeroBaseline(t *testing.T) {
 		BaselineTokenUsage: 0,
 	}
 
-	result, err := verifier.Verify(context.Background(), "skill-1", "# Clean Skill", observation)
+	result, err := verifier.Verify(context.Background(), "skill-1", "## Clean Skill\n\nSome content here.", observation)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !result.Passed {
-		t.Error("expected performance check to pass with zero baseline (no comparison)")
+		t.Error("expected performance check to pass with zero baseline and reasonable current values")
+	}
+}
+
+func TestGateVerification_Performance_ZeroBaseline_HighDuration(t *testing.T) {
+	verifier := NewGateVerifier(nil, nil)
+
+	// Zero baseline but very high current duration → should fail (absolute threshold)
+	observation := &EvolutionObservationReport{
+		SuccessRate:        0.9,
+		AvgDurationMS:      90000,
+		AvgTokenUsage:      500,
+		InvocationCount:    20,
+		BaselineDurationMS: 0,
+		BaselineTokenUsage: 0,
+	}
+
+	perfResult := verifier.verifyPerformance(observation)
+	if perfResult.Passed {
+		t.Error("expected performance check to fail with zero baseline and high duration (90000ms > 60000ms)")
+	}
+	if !strings.Contains(perfResult.Reason, "insufficient baseline data") {
+		t.Errorf("expected reason to mention insufficient baseline data, got %q", perfResult.Reason)
+	}
+}
+
+func TestGateVerification_Performance_ZeroBaseline_HighTokenUsage(t *testing.T) {
+	verifier := NewGateVerifier(nil, nil)
+
+	// Zero baseline but very high token usage → should fail (absolute threshold)
+	observation := &EvolutionObservationReport{
+		SuccessRate:        0.9,
+		AvgDurationMS:      1500,
+		AvgTokenUsage:      15000,
+		InvocationCount:    20,
+		BaselineDurationMS: 0,
+		BaselineTokenUsage: 0,
+	}
+
+	perfResult := verifier.verifyPerformance(observation)
+	if perfResult.Passed {
+		t.Error("expected performance check to fail with zero baseline and high token usage (15000 > 10000)")
+	}
+	if !strings.Contains(perfResult.Reason, "insufficient baseline data") {
+		t.Errorf("expected reason to mention insufficient baseline data, got %q", perfResult.Reason)
 	}
 }

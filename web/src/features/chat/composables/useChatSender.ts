@@ -496,7 +496,7 @@ export function useChatSender(deps: SenderDeps) {
     if (!followUp) {
       markSending();
     }
-    let clearAttachments = true;
+    let clearAttachments = false;
     try {
       await strategy.ensureSession(deps.makeSessionTitle(text));
       const sessionId = strategy.resolveSessionId();
@@ -525,7 +525,6 @@ export function useChatSender(deps: SenderDeps) {
         deps.attachments.value,
       );
       if (blockReason) {
-        clearAttachments = false;
         if (blockReason === 'ATTACHMENT_UNSUPPORTED') {
           $q.notify({
             type: 'warning',
@@ -554,6 +553,10 @@ export function useChatSender(deps: SenderDeps) {
         const stream = strategy.ensureStream(sessionId);
         deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
         startTurnAckTimeout(sessionId, pendingUserId);
+        // Clear attachments only after WS send is dispatched successfully.
+        // If the backend fails, the error envelope will arrive later and
+        // the user can retry with the same attachments still attached.
+        clearAttachments = true;
       } catch (wsError) {
         $q.notify({ type: 'info', message: t('chat.wsFallbackHttp', 'WebSocket 不可用，正在通过 HTTP 发送…') });
         try {
@@ -572,6 +575,7 @@ export function useChatSender(deps: SenderDeps) {
           );
           dropPendingUserRow(sessionId, pendingUserId);
           await deps.messageStore.loadMessages({ sessionId });
+          clearAttachments = true;
         } catch (httpError) {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();

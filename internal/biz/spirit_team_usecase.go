@@ -10,10 +10,10 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -56,7 +56,7 @@ type SpiritTeamParams struct {
 	CrossDeptMemberAgentIDs []string // agent IDs from other departments requiring borrow approval
 }
 
-var ErrNoCompletedTeams = kerrors.BadRequest("SPIRIT", "no completed teams to synthesize")
+var ErrNoCompletedTeams = apierror.BadRequest("SPIRIT", "no completed teams to synthesize")
 
 type SpiritTeamResult struct {
 	Team    Team
@@ -151,11 +151,11 @@ func (u *SpiritTeamUsecase) SetTimeoutHandler(h TimeoutHandler) {
 func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamParams) (SpiritTeamResult, error) {
 	spiritSessionID := strings.TrimSpace(params.SpiritSessionID)
 	if spiritSessionID == "" {
-		return SpiritTeamResult{}, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
 	taskDesc := strings.TrimSpace(params.TaskDescription)
 	if taskDesc == "" {
-		return SpiritTeamResult{}, kerrors.BadRequest("SPIRIT", "task_description is required")
+		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT", "task_description is required")
 	}
 	mode := strings.TrimSpace(params.Mode)
 	if mode == "" {
@@ -168,11 +168,11 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
 	parentSession, err := u.sessionUC.Get(ctx, spiritSessionID)
 	if err != nil {
-		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "get spirit session").WithCause(err)
+		return SpiritTeamResult{}, apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
 	if parentSession.AgentDepth >= cfg.MaxSessionDepth {
-		return SpiritTeamResult{}, kerrors.BadRequest("SPIRIT",
-			fmt.Sprintf("session tree depth (%d) exceeds max (%d)", parentSession.AgentDepth, cfg.MaxSessionDepth))
+		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT",
+			"session tree depth (%d) exceeds max (%d)", parentSession.AgentDepth, cfg.MaxSessionDepth)
 	}
 	childDepth := parentSession.AgentDepth + 1
 
@@ -199,7 +199,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			DepartmentID:      params.DepartmentID,
 		})
 		if err != nil {
-			return kerrors.InternalServer("SPIRIT", "create team").WithCause(err)
+			return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 		}
 
 		teamSession, err := u.sessionUC.Create(txCtx, Session{
@@ -211,7 +211,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			Title:           TruncateRunes(taskDesc, MaxTeamTitleLen),
 		})
 		if err != nil {
-			return kerrors.InternalServer("SPIRIT", "create team session").WithCause(err)
+			return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 		}
 
 		result = SpiritTeamResult{Team: team, Session: teamSession}
@@ -313,7 +313,7 @@ func (u *SpiritTeamUsecase) GetTeam(ctx context.Context, teamID string) (Team, e
 func (u *SpiritTeamUsecase) ListActiveTeams(ctx context.Context, spiritSessionID string) ([]Team, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
-		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+		return nil, apierror.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
 	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
@@ -332,7 +332,7 @@ func (u *SpiritTeamUsecase) ListActiveTeams(ctx context.Context, spiritSessionID
 func (u *SpiritTeamUsecase) ListAllTeams(ctx context.Context, spiritSessionID string) ([]Team, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
-		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+		return nil, apierror.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
 	return u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 }
@@ -340,7 +340,7 @@ func (u *SpiritTeamUsecase) ListAllTeams(ctx context.Context, spiritSessionID st
 func (u *SpiritTeamUsecase) ListCompletedAndFailedTeams(ctx context.Context, spiritSessionID string) ([]Team, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
-		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+		return nil, apierror.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
 	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
@@ -444,7 +444,7 @@ func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSes
 // Domain: Orchestration — cancel team and its timeout timer.
 func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error {
 	if strings.TrimSpace(teamID) == "" {
-		return kerrors.BadRequest("SPIRIT", "team_id is required")
+		return apierror.BadRequest("SPIRIT", "team_id is required")
 	}
 	u.CancelTimeoutTimer(teamID)
 	_, err := u.teamUC.TransitionStatus(ctx, teamID, TeamStatusCancelled)
@@ -612,7 +612,7 @@ func isNumberedListItem(s string) bool {
 func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]TeamProgress, error) {
 	spiritSessionID = strings.TrimSpace(spiritSessionID)
 	if spiritSessionID == "" {
-		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+		return nil, apierror.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
 	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
@@ -761,7 +761,7 @@ func (u *SpiritTeamUsecase) GetSpiritQuery(ctx context.Context, spiritSessionID 
 func (u *SpiritTeamUsecase) UpdateTeamDefinitionJSON(ctx context.Context, teamID string, definitionJSON string) error {
 	_, err := u.teamUC.Update(ctx, teamID, Team{DefinitionJSON: definitionJSON})
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "update team definition").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
 	return nil
 }
@@ -991,7 +991,7 @@ func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSe
 // strict RFC3339 (e.g., "2026-06-08 12:34:56.789+08:00").
 func parseTimeFlexible(s string) (time.Time, error) {
 	if s == "" {
-		return time.Time{}, kerrors.BadRequest("SPIRIT", "empty timestamp")
+		return time.Time{}, apierror.BadRequest("SPIRIT", "empty timestamp")
 	}
 	formats := []string{
 		time.RFC3339,
@@ -1007,7 +1007,7 @@ func parseTimeFlexible(s string) (time.Time, error) {
 			return t, nil
 		}
 	}
-	return time.Time{}, kerrors.BadRequest("SPIRIT", fmt.Sprintf("unable to parse timestamp: %s", s))
+	return time.Time{}, apierror.BadRequest("SPIRIT", "unable to parse timestamp: %s", s)
 }
 
 // containsString checks if a string slice contains a given string.
@@ -1116,7 +1116,7 @@ func (u *SpiritTeamUsecase) InjectDeptLeadIntoTeam(ctx context.Context, teamID s
 	// Update the team's DeptLeadAgentID
 	_, err = u.teamUC.Update(ctx, teamID, Team{DeptLeadAgentID: lead.ID})
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "update team dept lead").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
 
 	u.lg.Info("注入部门主管到团队",
@@ -1372,7 +1372,7 @@ func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string,
 	// Transition team to failed status with escalation reason
 	_, err = u.teamUC.TransitionStatus(ctx, teamID, TeamStatusFailed)
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "escalation status transition failed").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
 
 	return nil

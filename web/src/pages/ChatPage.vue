@@ -1,6 +1,6 @@
 <template>
   <div v-if="!coreReady" class="flex flex-center" style="height: 100vh">
-    <q-spinner-dots size="40px" color="primary" />
+    <q-spinner-dots size="40px" color="accent" />
   </div>
   <ChatWorkspaceShell v-else>
     <ChatEntitySidebar
@@ -73,6 +73,7 @@
         :spirit-evolution-suggestion="spiritStore.lastEvolutionSuggestion"
         :spirit-completion-stats="spiritStore.completionStats"
         :compress-status="session.compressStatus"
+        :show-tool-calls="uiConfig.showToolCalls"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"
@@ -128,6 +129,7 @@
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
         @compact="session.onCompactSession"
+        @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
         @cancel-team="spiritStore.cancelTeam"
         @resume-team="spiritStore.resumeTeam"
         @retry-team="spiritStore.retryTeam"
@@ -204,6 +206,10 @@
         :session-title="dialogs.traceSessionTitle"
         :initial-tab="dialogs.traceInitialTab"
         :stream-deps="dialogs.traceStreamDeps"
+        :timeline="dialogs.timeline"
+        :timeline-loading="dialogs.timelineLoading"
+        :timeline-error="dialogs.timelineError"
+        @refresh-trace="dialogs.reloadTimeline()"
       />
     </template>
   </ChatWorkspaceShell>
@@ -222,6 +228,7 @@ import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useSpiritTeamStore } from '../stores/spirit';
+import { useUiConfigStore } from '../stores/uiConfig';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
 import type { Agent } from '../features/agents/types';
 
@@ -229,6 +236,7 @@ const SPIRIT_AGENT_KEY = '__spirit__';
 
 const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
+const uiConfig = useUiConfigStore();
 const router = useRouter();
 
 const activeMember = computed(() => {

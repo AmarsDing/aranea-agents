@@ -5,8 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/internal/biz/shared"
 )
 
@@ -157,7 +156,7 @@ func TestSetQuota(t *testing.T) {
 		setup      func(*mockUsageRepo)
 		wantErr    bool
 		wantReason string
-		wantCode   int32
+		wantCode   apierror.Code
 		check      func(t *testing.T, got Quota)
 	}{
 		{
@@ -190,7 +189,7 @@ func TestSetQuota(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ Quota) {},
 		},
 		{
@@ -202,7 +201,7 @@ func TestSetQuota(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ Quota) {},
 		},
 		{
@@ -214,7 +213,7 @@ func TestSetQuota(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ Quota) {},
 		},
 		{
@@ -231,7 +230,7 @@ func TestSetQuota(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ Quota) {},
 		},
 	}
@@ -249,12 +248,15 @@ func TestSetQuota(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se.Reason != tt.wantReason {
-						t.Fatalf("expected reason %q, got %q", tt.wantReason, se.Reason)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror, got %T", err)
+					}
+					if se.Domain != tt.wantReason {
+						t.Fatalf("expected domain %q, got %q", tt.wantReason, se.Domain)
 					}
 					if se.Code != tt.wantCode {
-						t.Fatalf("expected code %d, got %d", tt.wantCode, se.Code)
+						t.Fatalf("expected code %s, got %s", tt.wantCode, se.Code)
 					}
 				}
 				return
@@ -362,7 +364,7 @@ func TestSetBudgetAlert(t *testing.T) {
 		setup      func(*mockUsageRepo)
 		wantErr    bool
 		wantReason string
-		wantCode   int32
+		wantCode   apierror.Code
 		check      func(t *testing.T, got BudgetAlert)
 	}{
 		{
@@ -397,7 +399,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
@@ -409,7 +411,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
@@ -421,7 +423,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
@@ -433,7 +435,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
@@ -445,7 +447,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
@@ -480,7 +482,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
-			wantCode:   404,
+			wantCode:   apierror.CodeNotFound,
 			check: func(t *testing.T, _ BudgetAlert) {},
 		},
 	}
@@ -498,12 +500,15 @@ func TestSetBudgetAlert(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se.Reason != tt.wantReason {
-						t.Fatalf("expected reason %q, got %q", tt.wantReason, se.Reason)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror, got %T", err)
+					}
+					if se.Domain != tt.wantReason {
+						t.Fatalf("expected domain %q, got %q", tt.wantReason, se.Domain)
 					}
 					if se.Code != tt.wantCode {
-						t.Fatalf("expected code %d, got %d", tt.wantCode, se.Code)
+						t.Fatalf("expected code %s, got %s", tt.wantCode, se.Code)
 					}
 				}
 				return

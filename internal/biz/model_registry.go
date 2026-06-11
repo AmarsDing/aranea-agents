@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type ModelRegistryRootResolver interface {
@@ -184,7 +183,7 @@ func (u *ModelRegistryUsecase) Sync(ctx context.Context, dryRun bool) (modelregi
 	if loadErr != nil {
 		out.ApplyFailed = true
 		out.Log.Errors = append(out.Log.Errors, "load directory after sync: "+loadErr.Error())
-		return u.finalizeSyncOutput(out, kerrors.InternalServer("MODEL_REGISTRY", fmt.Sprintf("load directory after sync: %s", loadErr.Error())))
+		return u.finalizeSyncOutput(out, apierror.Internal("MODEL_REGISTRY", "load directory after sync: %s", loadErr.Error()))
 	}
 	applier := modelregistry.NewApplier(u.applyBackend, u.lg)
 	applyRes := applier.ApplyWithMigration(ctx, dir, out.Policy.AutoApply)
@@ -216,7 +215,7 @@ func (u *ModelRegistryUsecase) finalizeSyncOutput(out modelregistry.SyncOutput, 
 			applyRes.Migration.Agents, applyRes.Migration.Sessions, applyRes.Migration.Eval)
 	}
 	if out.ApplyFailed {
-		return out, kerrors.InternalServer("MODEL_REGISTRY", fmt.Sprintf("directory apply failed: %s", strings.Join(out.Log.Errors, "; ")))
+		return out, apierror.Internal("MODEL_REGISTRY", "directory apply failed: %s", strings.Join(out.Log.Errors, "; "))
 	}
 	return out, nil
 }
@@ -246,7 +245,7 @@ func (u *ModelRegistryUsecase) ApplyProviderMigration(ctx context.Context) (mode
 	}
 	stats, errs := modelregistry.RunProviderMigrations(ctx, u.applyBackend)
 	if len(errs) > 0 {
-		return stats, errs, kerrors.InternalServer("MODEL_REGISTRY", fmt.Sprintf("provider migration failed: %s", strings.Join(errs, "; ")))
+		return stats, errs, apierror.Internal("MODEL_REGISTRY", "provider migration failed: %s", strings.Join(errs, "; "))
 	}
 	st, err := u.store(ctx)
 	if err != nil {

@@ -52,14 +52,18 @@ func (m *mockEcosystemPresetRepo) DeleteTeamsByIndustry(ctx context.Context, ind
 	return 0, 0, nil
 }
 
-// mockSeedPackFn returns a SeedPackFunc that records calls.
-func mockSeedPackFn(results map[string][3]interface{}) SeedPackFunc {
-	return func(ctx context.Context, client any, scenarioDir string, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error) {
-		if r, ok := results[industryKey]; ok {
+// mockPackSeeder implements PackSeeder for testing.
+type mockPackSeeder struct {
+	results map[string][3]interface{} // industryKey → {agents, teams, error}
+}
+
+func (m *mockPackSeeder) SeedPackIndustry(ctx context.Context, scenarioDir, industryKey, kindOverride string) (int, int, error) {
+	if m.results != nil {
+		if r, ok := m.results[industryKey]; ok {
 			return r[0].(int), r[1].(int), r[2].(error)
 		}
-		return 5, 1, nil // default: 5 agents, 1 team
 	}
+	return 5, 1, nil // default: 5 agents, 1 team
 }
 
 func newTestLogger() loggateway.Logger {
@@ -67,7 +71,7 @@ func newTestLogger() loggateway.Logger {
 }
 
 func TestNewEcosystemPresetUsecase(t *testing.T) {
-	uc := NewEcosystemPresetUsecase(&mockEcosystemPresetRepo{}, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
+	uc := NewEcosystemPresetUsecase(&mockEcosystemPresetRepo{}, &mockPackSeeder{}, "internal/scenario", newTestLogger())
 	if uc == nil {
 		t.Fatal("expected non-nil EcosystemPresetUsecase")
 	}
@@ -90,8 +94,8 @@ func TestEcosystemPresetUsecase_LoadEcosystemPreset_DefaultIndustries(t *testing
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
-	resp, err := uc.LoadEcosystemPreset(context.Background(), nil, false, nil)
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
+	resp, err := uc.LoadEcosystemPreset(context.Background(), nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,8 +119,8 @@ func TestEcosystemPresetUsecase_LoadEcosystemPreset_AlreadyLoaded(t *testing.T) 
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
-	resp, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, false, nil)
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
+	resp, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -140,8 +144,8 @@ func TestEcosystemPresetUsecase_LoadEcosystemPreset_ForceReload(t *testing.T) {
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
-	resp, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, true, nil)
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
+	resp, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,9 +158,11 @@ func TestEcosystemPresetUsecase_LoadEcosystemPreset_ForceReload(t *testing.T) {
 }
 
 func TestEcosystemPresetUsecase_LoadEcosystemPreset_SeedError(t *testing.T) {
-	seedFn := mockSeedPackFn(map[string][3]interface{}{
-		"finance": {0, 0, errors.New("seed failed")},
-	})
+	seeder := &mockPackSeeder{
+		results: map[string][3]interface{}{
+			"finance": {0, 0, errors.New("seed failed")},
+		},
+	}
 	repo := &mockEcosystemPresetRepo{
 		getEcosystemLoaded: func(ctx context.Context) (EcosystemLoadedStatus, error) {
 			return make(EcosystemLoadedStatus), nil
@@ -166,8 +172,8 @@ func TestEcosystemPresetUsecase_LoadEcosystemPreset_SeedError(t *testing.T) {
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, seedFn, "internal/scenario", newTestLogger())
-	resp, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, false, nil)
+	uc := NewEcosystemPresetUsecase(repo, seeder, "internal/scenario", newTestLogger())
+	resp, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,8 +192,8 @@ func TestEcosystemPresetUsecase_LoadEcosystemPreset_GetStatusError(t *testing.T)
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
-	_, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, false, nil)
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
+	_, err := uc.LoadEcosystemPreset(context.Background(), []string{"finance"}, false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -218,7 +224,7 @@ func TestEcosystemPresetUsecase_UnloadEcosystemPreset_Success(t *testing.T) {
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
 	resp, err := uc.UnloadEcosystemPreset(context.Background(), []string{"finance"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -245,7 +251,7 @@ func TestEcosystemPresetUsecase_UnloadEcosystemPreset_NotLoaded(t *testing.T) {
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
 	resp, err := uc.UnloadEcosystemPreset(context.Background(), []string{"finance"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -256,7 +262,7 @@ func TestEcosystemPresetUsecase_UnloadEcosystemPreset_NotLoaded(t *testing.T) {
 }
 
 func TestEcosystemPresetUsecase_UnloadEcosystemPreset_EmptyIndustries(t *testing.T) {
-	uc := NewEcosystemPresetUsecase(&mockEcosystemPresetRepo{}, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
+	uc := NewEcosystemPresetUsecase(&mockEcosystemPresetRepo{}, &mockPackSeeder{}, "internal/scenario", newTestLogger())
 	_, err := uc.UnloadEcosystemPreset(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for empty industries")
@@ -273,7 +279,7 @@ func TestEcosystemPresetUsecase_GetEcosystemStatus(t *testing.T) {
 		},
 	}
 
-	uc := NewEcosystemPresetUsecase(repo, mockSeedPackFn(nil), "internal/scenario", newTestLogger())
+	uc := NewEcosystemPresetUsecase(repo, &mockPackSeeder{}, "internal/scenario", newTestLogger())
 	status, err := uc.GetEcosystemStatus(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

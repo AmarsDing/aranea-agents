@@ -7,8 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/event/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type EventService struct {
@@ -23,14 +22,14 @@ func NewEventService(store *biz.EventStoreUsecase, sessions *biz.SessionUsecase)
 
 func (s *EventService) ListEvents(ctx context.Context, req *v1.ListEventsRequest) (*v1.ListEventsResponse, error) {
 	if s == nil || s.store == nil {
-		return nil, kerrors.InternalServer("EVENT", "event store not configured")
+		return nil, apierror.Internal("EVENT", "event store not configured")
 	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("EVENT", "session_id is required")
+		return nil, apierror.BadRequest("EVENT", "session_id is required")
 	}
 	if s.sessions == nil {
-		return nil, kerrors.InternalServer("EVENT", "session service not configured")
+		return nil, apierror.Internal("EVENT", "session service not configured")
 	}
 	if _, err := s.sessions.Get(ctx, sessionID); err != nil {
 		return nil, mapSessionErr(err)
@@ -44,14 +43,14 @@ func (s *EventService) ListEvents(ctx context.Context, req *v1.ListEventsRequest
 	if since := strings.TrimSpace(req.GetSince()); since != "" {
 		t, err := parseEventTime(since)
 		if err != nil {
-			return nil, kerrors.BadRequest("EVENT", "invalid since: "+err.Error())
+			return nil, apierror.BadRequest("EVENT", "invalid since: "+err.Error())
 		}
 		q.Since = t
 	}
 	if until := strings.TrimSpace(req.GetUntil()); until != "" {
 		t, err := parseEventTime(until)
 		if err != nil {
-			return nil, kerrors.BadRequest("EVENT", "invalid until: "+err.Error())
+			return nil, apierror.BadRequest("EVENT", "invalid until: "+err.Error())
 		}
 		q.Until = t
 	}

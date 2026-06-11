@@ -128,7 +128,7 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 	// L1: session summary (changes after compression rebuild)
 	var l1FieldValues []string
 	if policy.InjectL1 {
-		if l1 := L1MemoryCue(ctx, deps.MemoryAdmin, ag, policy, sessionID); l1 != nil {
+		if l1 := L1MemoryCue(ctx, deps.MemoryAdmin, ag, policy, sessionID, deps.LG); l1 != nil {
 			result.L1Cue = l1.Cue
 			l1FieldValues = l1.FieldValues
 		}
@@ -142,18 +142,18 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		}
 	} else {
 		if policy.RecallL2 {
-			if l2 := L2MemoryCue(ctx, deps.MemoryL2Recall, ag, policy, sessionID, keyword, 0); l2 != "" {
+			if l2 := L2MemoryCue(ctx, deps.MemoryL2Recall, ag, policy, sessionID, keyword, 0, deps.LG); l2 != "" {
 				recallParts = append(recallParts, l2)
 			}
 		}
 		if policy.InjectL3 {
-			if l3 := L3MemoryCue(ctx, deps.MemoryL3Recall, ag, policy, rt, keyword, 0, l1FieldValues); l3 != "" {
+			if l3 := L3MemoryCue(ctx, deps.MemoryL3Recall, ag, policy, rt, keyword, 0, l1FieldValues, deps.LG); l3 != "" {
 				recallParts = append(recallParts, l3)
 			}
 		}
 	}
 	if policy.InjectL4 {
-		if l4 := L4MemoryCue(ctx, deps.MemoryAdmin, ag, policy, keyword); l4 != "" {
+		if l4 := L4MemoryCue(ctx, deps.MemoryAdmin, ag, policy, keyword, deps.LG); l4 != "" {
 			recallParts = append(recallParts, l4)
 		}
 	}

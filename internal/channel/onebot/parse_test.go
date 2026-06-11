@@ -5,6 +5,8 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"testing"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func signOneBot(token string, body []byte) string {
@@ -25,9 +27,11 @@ func TestVerifySignature(t *testing.T) {
 	}
 }
 
-func TestVerifySignatureSkipsEmptyToken(t *testing.T) {
-	if err := VerifySignature("", []byte("{}"), ""); err != nil {
-		t.Fatal(err)
+func TestVerifySignatureEmptyTokenRejects(t *testing.T) {
+	if err := VerifySignature("", []byte("{}"), ""); err == nil {
+		t.Fatal("empty token should reject with ErrCredentialsNotConfigured")
+	} else if err != port.ErrCredentialsNotConfigured {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got: %v", err)
 	}
 }
 

@@ -37,6 +37,7 @@ import (
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
+	servermw "aranea-agents/internal/server/middleware"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/validate"
@@ -55,6 +56,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 			tracing.Server(),
 			auth.GRPCMiddleware(lg),
 			recovery.Recovery(),
+			servermw.APIToKratos(),
 			validate.Middleware(),
 		),
 	}

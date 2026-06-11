@@ -14,7 +14,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -83,7 +83,7 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		asyncID = strings.TrimSpace(run.ID)
 	default:
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, "async target not configured", "", "")
-		return kerrors.BadRequest("CHANNEL", "no graph_id or cron_task_id configured")
+		return apierror.BadRequest("CHANNEL", "no graph_id or cron_task_id configured")
 	}
 
 	h.markTurnJob(ctx, biz.ChannelTurnJobStatusAsyncQueued, "", "", "")

@@ -6,13 +6,12 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (s *MemoryService) ListMemoryDeadLetters(ctx context.Context, req *v1.ListMemoryDeadLettersRequest) (*v1.ListMemoryDeadLettersResponse, error) {
 	if s.deadLetterRepo == nil {
-		return nil, kerrors.InternalServer("MEMORY", "dead-letter repo not wired")
+		return nil, apierror.Internal("MEMORY", "dead-letter repo not wired")
 	}
 	lim := int(req.GetLimit())
 	if lim <= 0 {
@@ -31,11 +30,11 @@ func (s *MemoryService) ListMemoryDeadLetters(ctx context.Context, req *v1.ListM
 
 func (s *MemoryService) ReplayMemoryDeadLetter(ctx context.Context, req *v1.ReplayMemoryDeadLetterRequest) (*v1.ReplayMemoryDeadLetterResponse, error) {
 	if s.deadLetterRepo == nil {
-		return nil, kerrors.InternalServer("MEMORY", "dead-letter repo not wired")
+		return nil, apierror.Internal("MEMORY", "dead-letter repo not wired")
 	}
 	id := req.GetId()
 	if id <= 0 {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	if s.deadLetterEnqueue != nil {
 		if err := s.deadLetterEnqueue(ctx, id); err != nil {
@@ -55,11 +54,11 @@ func (s *MemoryService) ReplayMemoryDeadLetter(ctx context.Context, req *v1.Repl
 
 func (s *MemoryService) AbandonMemoryDeadLetter(ctx context.Context, req *v1.AbandonMemoryDeadLetterRequest) (*v1.AbandonMemoryDeadLetterResponse, error) {
 	if s.deadLetterRepo == nil {
-		return nil, kerrors.InternalServer("MEMORY", "dead-letter repo not wired")
+		return nil, apierror.Internal("MEMORY", "dead-letter repo not wired")
 	}
 	id := req.GetId()
 	if id <= 0 {
-		return nil, kerrors.BadRequest("MEMORY", "id is required")
+		return nil, apierror.BadRequest("MEMORY", "id is required")
 	}
 	if err := s.deadLetterRepo.MarkDeadLetterAbandoned(ctx, id, req.GetReason()); err != nil {
 		return nil, err

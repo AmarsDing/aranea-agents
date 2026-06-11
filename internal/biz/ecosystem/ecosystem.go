@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -102,7 +102,7 @@ func (u *Usecase) List(ctx context.Context, q Query) (ListResult, error) {
 // Get returns a single ecosystem product.
 func (u *Usecase) Get(ctx context.Context, id string) (Product, error) {
 	if strings.TrimSpace(id) == "" {
-		return Product{}, errors.BadRequest("ECOSYSTEM", "id is required")
+		return Product{}, apierror.BadRequest("ECOSYSTEM", "id is required")
 	}
 	p, err := u.repo.GetProduct(ctx, id)
 	if err != nil {
@@ -122,7 +122,7 @@ func (u *Usecase) Get(ctx context.Context, id string) (Product, error) {
 func (u *Usecase) Publish(ctx context.Context, in Product) (Product, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
-		return Product{}, errors.BadRequest("ECOSYSTEM", "name is required")
+		return Product{}, apierror.BadRequest("ECOSYSTEM", "name is required")
 	}
 	if in.ID == "" {
 		in.ID = newEcosystemID()
@@ -152,7 +152,7 @@ func (u *Usecase) Publish(ctx context.Context, in Product) (Product, error) {
 func (u *Usecase) Install(ctx context.Context, productID string) (InstallResult, error) {
 	productID = strings.TrimSpace(productID)
 	if productID == "" {
-		return InstallResult{}, errors.BadRequest("ECOSYSTEM", "product id is required")
+		return InstallResult{}, apierror.BadRequest("ECOSYSTEM", "product id is required")
 	}
 	p, err := u.repo.GetProduct(ctx, productID)
 	if err != nil {
@@ -173,7 +173,7 @@ func (u *Usecase) Install(ctx context.Context, productID string) (InstallResult,
 func (u *Usecase) Uninstall(ctx context.Context, productID string) error {
 	productID = strings.TrimSpace(productID)
 	if productID == "" {
-		return errors.BadRequest("ECOSYSTEM", "product id is required")
+		return apierror.BadRequest("ECOSYSTEM", "product id is required")
 	}
 	return u.repo.RemoveInstall(ctx, productID)
 }

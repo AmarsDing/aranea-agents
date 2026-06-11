@@ -7,10 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // HealStatus represents the outcome of a self-heal action.
@@ -123,7 +122,7 @@ func NewSelfHealUsecase(diag *DiagBundleGenerator, handler HealActionHandler, lg
 // the highest-confidence fix action if it exceeds the confidence threshold.
 func (uc *SelfHealUsecase) DiagnoseAndHeal(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*HealRecord, error) {
 	if uc == nil {
-		return nil, kerrors.InternalServer("MONITOR", "SelfHealUsecase is nil")
+		return nil, apierror.Internal("MONITOR", "SelfHealUsecase is nil")
 	}
 
 	// Step 1: Generate diagnostic bundle (includes root cause analysis)

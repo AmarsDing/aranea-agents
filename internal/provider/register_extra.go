@@ -11,7 +11,10 @@ import (
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
 )
 
-func init() {
+// RegisterExtraProviders registers non-built-in provider constructors
+// (huggingface, bedrock) with the trpc-agent-go provider registry.
+// Must be called once during application startup (Wire provider).
+func RegisterExtraProviders() {
 	trpcprovider.Register("huggingface", huggingfaceProvider)
 	trpcprovider.Register("bedrock", bedrockProvider)
 }

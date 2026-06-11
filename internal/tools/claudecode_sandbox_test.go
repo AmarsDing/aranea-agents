@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -35,31 +36,39 @@ func (m *mockToolSet) Close() error                            { return nil }
 
 func TestFirstCommandToken(t *testing.T) {
 	tests := []struct {
-		name string
-		cmd  string
-		want string
+		name    string
+		cmd     string
+		want    string
+		wantOK  bool
 	}{
-		{"simple command", "git status", "git"},
-		{"command with args", "ls -la /tmp", "ls"},
-		{"piped commands", "cat file.txt | grep foo", "cat"},
-		{"shell operator and", "echo hello && ls", "echo"},
-		{"shell operator or", "echo hello || ls", "echo"},
-		{"semicolon", "echo hello; ls", "echo"},
-		{"redirect", "echo hello > file.txt", "echo"},
-		{"subshell", "(cd /tmp && ls)", "cd"},
-		{"empty string", "", ""},
-		{"whitespace only", "   \t\n  ", ""},
-		{"leading pipe", "| grep foo", "grep"},
-		{"leading ampersand", "&& echo hi", "echo"},
-		{"single command no args", "git", "git"},
-		{"command with equals", "VAR=1 command", "VAR=1"},
+		{"simple command", "git status", "git", true},
+		{"command with args", "ls -la /tmp", "ls", true},
+		{"piped commands", "cat file.txt | grep foo", "", false},
+		{"shell operator and", "echo hello && ls", "", false},
+		{"shell operator or", "echo hello || ls", "", false},
+		{"semicolon", "echo hello; ls", "", false},
+		{"redirect", "echo hello > file.txt", "", false},
+		{"input redirect", "sort < /etc/passwd", "", false},
+		{"subshell with chaining", "(cd /tmp && ls)", "", false},
+		{"subshell simple", "(cd /tmp)", "cd", true},
+		{"empty string", "", "", true},
+		{"whitespace only", "   \t\n  ", "", true},
+		{"leading pipe", "| grep foo", "", false},
+		{"leading ampersand", "&& echo hi", "", false},
+		{"single command no args", "git", "git", true},
+		{"command with equals", "VAR=1 command", "VAR=1", true},
+		{"command substitution", "echo $(whoami)", "", false},
+		{"backtick substitution", "echo `whoami`", "", false},
+		{"newline injection", "git status\nrm -rf /", "", false},
+		{"carriage return injection", "git status\rrm -rf /", "", false},
+		{"background operator", "sleep 10 &", "", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := firstCommandToken(tt.cmd)
-			if got != tt.want {
-				t.Errorf("firstCommandToken(%q) = %q, want %q", tt.cmd, got, tt.want)
+			got, ok := firstCommandToken(tt.cmd)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("firstCommandToken(%q) = (%q, %v), want (%q, %v)", tt.cmd, got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}
@@ -149,6 +158,15 @@ func TestWhitelistedBashTool_Call_Disallowed(t *testing.T) {
 		{"disallowed command curl", "curl http://evil.com"},
 		{"prefix bypass gitrm", "gitrm"},
 		{"prefix bypass gitx", "gitx something"},
+		{"chaining bypass with &&", "git status && rm -rf /"},
+		{"chaining bypass with ||", "git status || curl evil.com"},
+		{"chaining bypass with ;", "git status; rm -rf /"},
+		{"pipe bypass", "git status | tee /tmp/out"},
+		{"substitution bypass", "echo $(rm -rf /)"},
+		{"backtick bypass", "echo `rm -rf /`"},
+		{"newline bypass", "git status\nrm -rf /"},
+		{"redirect bypass", "git status > /etc/passwd"},
+		{"input redirect bypass", "git status < /etc/shadow"},
 	}
 
 	for _, tt := range tests {
@@ -197,11 +215,10 @@ func TestWhitelistedBashTool_Call_EdgeCases(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid JSON passes through to inner", func(t *testing.T) {
+	t.Run("invalid JSON returns error", func(t *testing.T) {
 		_, err := w.Call(context.Background(), []byte("not json"))
-		// inner returns "executed" for any call, so no error expected
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+		if err == nil {
+			t.Error("expected error for invalid JSON, got nil")
 		}
 	})
 
@@ -339,9 +356,12 @@ func TestWhitelistedBashTool_TruncateInError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for disallowed command")
 	}
-	// Error message should contain truncated command
+	// Error message should contain truncated command.
+	// kerrors adds structured metadata (code, reason, etc.) so the total
+	// message is longer than the raw truncated command — just verify the
+	// truncated command fragment is present.
 	errMsg := err.Error()
-	if len(errMsg) > 100 {
-		t.Errorf("error message seems too long (not truncated?): %q", errMsg)
+	if !strings.Contains(errMsg, "curl xxx") {
+		t.Errorf("error message should contain truncated command, got: %q", errMsg)
 	}
 }

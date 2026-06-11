@@ -64,12 +64,16 @@ func newTurnStreamConsumer(
 func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStreamResult {
 	c.consumeStart = time.Now()
 	evIdx := 0
+	canceled := false
 	for ev := range events {
 		evIdx++
-		if c.turnCtx.Err() != nil {
-			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: turnCtx canceled",
+		if !canceled && c.turnCtx.Err() != nil {
+			canceled = true
+			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: turnCtx canceled, draining critical events",
 				loggateway.Any("ev_count", evIdx))
-			return c.result
+			// Do NOT return immediately — continue draining to ensure
+			// Critical events (ToolResult, RunnerCompletion, StateDelta)
+			// are projected and published before exiting.
 		}
 		if ev == nil {
 			continue
@@ -97,11 +101,28 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 			loggateway.Any("author", ev.Author))
 		c.markFirstByte(ev)
 		if c.firstByteCtx.Err() != nil && !c.received {
-			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout",
+			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout, draining critical events",
 				loggateway.Any("ev_count", evIdx))
-			return c.result
+			// Do NOT return immediately — drain critical events (ToolResult, RunnerCompletion,
+			// StateDelta) just like the turnCtx cancel path, to prevent resource leaks and
+			// ensure the frontend receives terminal signals.
+			canceled = true
 		}
 		if !c.handleEvent(ev) {
+			return c.result
+		}
+		// After first-byte timeout or context cancellation, stop once we see
+		// RunnerCompletion (the terminal event) to avoid draining indefinitely.
+		if canceled && ev.IsRunnerCompletion() {
+			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: drained to RunnerCompletion",
+				loggateway.Any("ev_count", evIdx),
+				loggateway.Any("reason", func() string {
+					if c.turnCtx.Err() != nil {
+						return "turnCtx_canceled"
+					}
+					return "firstByte_timeout"
+				}()))
+			c.finalize()
 			return c.result
 		}
 	}
@@ -203,17 +224,9 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		}
 	}
 
-	var onDelta func(string) error
-	if c.opts != nil {
-		onDelta = c.opts.OnReplyDelta
-	}
 	partial := ev.Response.IsPartial
 	for _, choice := range ev.Response.Choices {
-		if err := accumulateChoiceStream(&c.result, choice, partial, onDelta); err != nil {
-			c.result.HasError = true
-			c.result.LastError = err.Error()
-			return false
-		}
+		accumulateChoiceStream(&c.result, choice, partial)
 	}
 	return true
 }
@@ -311,25 +324,19 @@ func (c *turnStreamConsumer) finalize() {
 	}
 }
 
-func accumulateChoiceStream(result *EventStreamResult, choice trpcmodel.Choice, partial bool, onReplyDelta func(string) error) error {
+func accumulateChoiceStream(result *EventStreamResult, choice trpcmodel.Choice, partial bool) {
 	if result == nil {
-		return nil
+		return
 	}
 	text, reasoning := ChoiceStreamContent(choice, partial)
 	if text != "" {
 		_ = provider.VisibleStreamingDelta(&result.Reply, text)
 		result.HasContent = true
-		if onReplyDelta != nil {
-			if err := onReplyDelta(result.Reply.String()); err != nil {
-				return err
-			}
-		}
 	}
 	if reasoning != "" {
 		_ = provider.VisibleStreamingDelta(&result.Reasoning, reasoning)
 		result.HasContent = true
 	}
-	return nil
 }
 
 func isChatCompletionStreamObject(objType string) bool {

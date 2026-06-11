@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // SystemSetting is the singleton platform configuration row.
@@ -79,11 +79,11 @@ func (u *SystemSettingUsecase) Get(ctx context.Context) (SystemSetting, error) {
 
 func (u *SystemSettingUsecase) Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64, a2aPublicBaseURL string, mcpAllowAdHocHTTP bool) (SystemSetting, error) {
 	if globalMonthlyMicroUSD < 0 {
-		return SystemSetting{}, errors.BadRequest("SYSTEM_SETTING", "global_monthly_micro_usd must be >= 0")
+		return SystemSetting{}, apierror.BadRequest("SYSTEM_SETTING", "global_monthly_micro_usd must be >= 0")
 	}
 	a2aPublicBaseURL = strings.TrimRight(strings.TrimSpace(a2aPublicBaseURL), "/")
 	if a2aPublicBaseURL != "" && !strings.HasPrefix(a2aPublicBaseURL, "http://") && !strings.HasPrefix(a2aPublicBaseURL, "https://") {
-		return SystemSetting{}, errors.BadRequest("SYSTEM_SETTING", "a2a_public_base_url must start with http:// or https://")
+		return SystemSetting{}, apierror.BadRequest("SYSTEM_SETTING", "a2a_public_base_url must start with http:// or https://")
 	}
 	s, err := u.repo.Update(ctx, rootDir, workDir, globalMonthlyMicroUSD, a2aPublicBaseURL, mcpAllowAdHocHTTP)
 	if err != nil {

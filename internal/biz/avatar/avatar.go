@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // Asset is a catalog row without raw image payload (list API).
@@ -88,15 +88,15 @@ func newAvatarID() string {
 // UploadAvatar processes and stores an uploaded avatar image.
 func (uc *Usecase) UploadAvatar(ctx context.Context, data []byte, filename string, workspaceID, ownerUserID string) (Asset, error) {
 	if len(data) == 0 {
-		return Asset{}, errors.BadRequest("AVATAR", "avatar file is required")
+		return Asset{}, apierror.BadRequest("AVATAR", "avatar file is required")
 	}
 	const max = 2 * 1024 * 1024
 	if len(data) > max {
-		return Asset{}, errors.BadRequest("AVATAR", "avatar file must be <= 2MB")
+		return Asset{}, apierror.BadRequest("AVATAR", "avatar file must be <= 2MB")
 	}
 	mt := http.DetectContentType(data)
 	if mt != "image/png" && mt != "image/jpeg" && mt != "image/webp" && mt != "image/gif" {
-		return Asset{}, errors.BadRequest("AVATAR", "unsupported avatar type")
+		return Asset{}, apierror.BadRequest("AVATAR", "unsupported avatar type")
 	}
 	mainData, thumbData, width, height, outMime, procErr := ProcessAvatarUpload(data, mt)
 	if procErr != nil {
@@ -145,7 +145,7 @@ func (uc *Usecase) RefreshChannelPlatformIcons(ctx context.Context) (*RefreshCha
 // DeleteAvatarAsset soft-deletes an avatar asset.
 func (uc *Usecase) DeleteAvatarAsset(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("AVATAR", "avatar id is required")
+		return apierror.BadRequest("AVATAR", "avatar id is required")
 	}
 	return uc.repo.SoftDeleteAvatarAsset(ctx, id)
 }

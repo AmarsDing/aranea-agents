@@ -7,9 +7,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -33,7 +33,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	m, err := g.resolveModel(ctx)
 	if err != nil {
 		g.lg.Warn("session title: resolve model failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
-		return "", kerrors.InternalServer("SESSION", "session title: resolve model: "+err.Error())
+		return "", apierror.Internal("SESSION", "session title: resolve model: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -49,14 +49,14 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
 		g.lg.Warn("session title: llm call failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
-		return "", kerrors.InternalServer("SESSION", "session title: llm call: "+err.Error())
+		return "", apierror.Internal("SESSION", "session title: llm call: %v", err)
 	}
 
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
 			g.lg.Warn("session title: llm error", loggateway.StepID("session.title_fail"), loggateway.Str("error", resp.Error.Message))
-			return "", kerrors.InternalServer("SESSION", "session title: llm error: "+resp.Error.Message)
+			return "", apierror.Internal("SESSION", "session title: llm error: %s", resp.Error.Message)
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -81,7 +81,7 @@ func (g *LLMSessionTitleGenerator) resolveModel(ctx context.Context) (trpcmodel.
 		return nil, err
 	}
 	if len(models) == 0 {
-		return nil, kerrors.NotFound("SESSION", "no models in catalog")
+		return nil, apierror.NotFound("SESSION", "no models in catalog")
 	}
 
 	pm := biz.PickTitleModel(models)

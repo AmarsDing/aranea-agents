@@ -8,9 +8,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ---------------------------------------------------------------------------
@@ -185,7 +184,7 @@ func (m *memSpiritSessionRepo) ListByParentSessionID(_ context.Context, _ string
 
 func (m *memSpiritSessionRepo) CreateSession(_ context.Context, in Session) (Session, error) {
 	if m.failAll {
-		return Session{}, kerrors.InternalServer("SESSION", "simulated failure")
+		return Session{}, apierror.Internal("SESSION", "simulated failure")
 	}
 	if in.ID == "" {
 		in.ID = fmt.Sprintf("sess-%d", len(m.items)+1)

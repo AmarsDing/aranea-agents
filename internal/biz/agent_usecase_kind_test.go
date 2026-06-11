@@ -5,9 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type stubAgentRepo struct {
@@ -69,6 +68,9 @@ func (s *stubAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []AgentP
 	return a, nil
 }
 func (s *stubAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (s *stubAgentRepo) ToggleFavorite(_ context.Context, id string) (Agent, error) {
+	return Agent{ID: id}, nil
+}
 
 func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	t.Parallel()
@@ -80,12 +82,15 @@ func TestAgentUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when deleting system_builtin agent")
 	}
-	e := kerrors.FromError(err)
-	if e.Code != 403 {
-		t.Fatalf("expected code 403, got %d", e.Code)
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
 	}
-	if e.Reason != "AGENT" {
-		t.Fatalf("expected reason AGENT, got %s", e.Reason)
+	if e.Code != apierror.CodeForbidden {
+		t.Fatalf("expected code %s, got %s", apierror.CodeForbidden, e.Code)
+	}
+	if e.Domain != "AGENT" {
+		t.Fatalf("expected domain AGENT, got %s", e.Domain)
 	}
 }
 
@@ -123,9 +128,12 @@ func TestAgentUsecase_DeleteRejectsReadonlyAgent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when deleting readonly agent")
 	}
-	e := kerrors.FromError(err)
-	if e.Code != 403 {
-		t.Fatalf("expected code 403, got %d", e.Code)
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
+	}
+	if e.Code != apierror.CodeForbidden {
+		t.Fatalf("expected code %s, got %s", apierror.CodeForbidden, e.Code)
 	}
 }
 

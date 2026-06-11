@@ -6,8 +6,14 @@
   >
     <!-- Node header -->
     <div class="tb-node__header" @click="toggleCollapse">
-      <q-icon :name="nodeIcon" size="16px" :style="{ color: 'var(--node-color)' }" />
+      <span v-if="nodeIconText" class="tb-node__icon-text" :style="{ color: 'var(--node-color)' }">{{ nodeIconText }}</span>
+      <q-icon v-else :name="nodeIcon" size="16px" :style="{ color: 'var(--node-color)' }" />
       <span class="tb-node__label">{{ nodeLabel }}</span>
+
+      <!-- Thinking collapsed summary -->
+      <template v-if="node.kind === 'thinking' && localCollapsed && thinkingSummary">
+        <span class="tb-node__thinking-summary">🧠 {{ thinkingSummary }}</span>
+      </template>
 
       <!-- Action collapsed summary -->
       <template v-if="node.kind === 'action' && localCollapsed">
@@ -85,28 +91,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { TimelineEntry } from '../../features/chat/agentTreeTypes';
-import { formatDuration } from '../../features/chat/agentTreeUtils';
+import type { TaskBoardNodeData } from '../../features/chat/agentTreeTypes';
+import { TASK_BOARD_NODE_ICON_TEXT } from '../../features/chat/agentTreeTypes';
+import { formatDuration, truncateThinkingSummary } from '../../features/chat/agentTreeUtils';
 import TaskBoard from './TaskBoard.vue';
 
 const { t } = useI18n();
-
-/**
- * Extended TimelineEntry for task board rendering.
- * The task board uses a richer node model with additional fields
- * that are mapped from the base TimelineEntry in the composable layer.
- */
-interface TaskBoardNodeData {
-  kind: 'task' | 'thinking' | 'action' | 'reply' | 'sub_task_board' | 'end' | 'error';
-  content?: string;
-  children?: TimelineEntry[];
-  durationMs?: number | null;
-  streaming?: boolean;
-  toolName?: string;
-  toolStatus?: 'running' | 'success' | 'failed' | 'blocked' | 'cancelled';
-  arguments?: string | null;
-  result?: string | null;
-}
 
 const props = withDefaults(
   defineProps<{
@@ -131,6 +121,20 @@ watch(
   () => props.node.streaming,
   (streaming, oldStreaming) => {
     if (oldStreaming === true && streaming === false && props.node.kind === 'thinking') {
+      localCollapsed.value = true;
+    }
+  },
+);
+
+// Auto-collapse action when toolStatus transitions from running to terminal state
+watch(
+  () => props.node.toolStatus,
+  (newStatus, oldStatus) => {
+    if (
+      props.node.kind === 'action' &&
+      oldStatus === 'running' &&
+      (newStatus === 'success' || newStatus === 'failed' || newStatus === 'cancelled')
+    ) {
       localCollapsed.value = true;
     }
   },
@@ -169,6 +173,8 @@ const nodeColor = computed(() => {
       return 'var(--color-text-tertiary, grey)';
   }
 });
+
+const nodeIconText = computed(() => TASK_BOARD_NODE_ICON_TEXT[props.node.kind] ?? '');
 
 const nodeIcon = computed(() => {
   switch (props.node.kind) {
@@ -215,6 +221,11 @@ const nodeLabel = computed(() => {
 const formattedDuration = computed(() => {
   const ms = props.node.durationMs;
   return ms != null ? formatDuration(ms) : '';
+});
+
+const thinkingSummary = computed(() => {
+  if (props.node.kind !== 'thinking' || !props.node.content) return '';
+  return truncateThinkingSummary(props.node.content);
 });
 
 const actionSummary = computed(() => {
@@ -282,6 +293,20 @@ function actionStatusDot(status: string): string {
   text-transform: uppercase
   letter-spacing: 0.3px
   color: var(--node-color)
+
+.tb-node__icon-text
+  font-size: 14px
+  line-height: 1
+  flex-shrink: 0
+
+.tb-node__thinking-summary
+  font-size: 11px
+  color: var(--color-text-secondary)
+  flex: 1
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-style: italic
 
 .tb-node__action-summary
   font-size: 11px

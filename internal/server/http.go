@@ -71,6 +71,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 		kratoshttp.Middleware(
 			tracing.Server(),
 			recovery.Recovery(),
+			servermw.APIToKratos(),
 			validate.Middleware(),
 		),
 		// Ensure all JSON responses declare charset=utf-8 to prevent

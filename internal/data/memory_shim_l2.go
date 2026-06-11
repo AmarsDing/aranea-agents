@@ -120,7 +120,7 @@ func (r *l2EpisodeRepo) ListEpisodeRowsForRecall(ctx context.Context, agentID, s
 	if lim <= 0 {
 		lim = 50
 	}
-	q := sqlEpisodeSelect + ` WHERE agent_id = ?`
+	q := sqlEpisodeSelect + ` WHERE agent_id = ? AND deleted_at = ''`
 	args := []any{agentID}
 	if sessionID != "" {
 		q += ` AND session_id = ?`
@@ -185,7 +185,15 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 		kwScore := keywordOverlapScore(tokens, title+" "+summary)
 		var vecScore float64
 		if len(queryEmbedding) > 0 {
-			embBlob, _ := row["embedding_blob"].([]byte)
+			// JSON unmarshal produces string (not []byte) for binary columns,
+			// so we must handle both types (same pattern as L3 BUG-7 fix).
+			var embBlob []byte
+			switch v := row["embedding_blob"].(type) {
+			case []byte:
+				embBlob = v
+			case string:
+				embBlob = []byte(v)
+			}
 			if embNorm, ok := row["embedding_norm"].(float64); ok && embNorm > 0 && len(embBlob) > 0 {
 				emb := decodeFloat32Blob(embBlob)
 				if len(emb) == len(queryEmbedding) {

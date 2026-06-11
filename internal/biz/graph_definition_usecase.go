@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -186,7 +186,7 @@ func (uc *GraphDefinitionUsecase) ExportGraph(ctx context.Context, graphID strin
 func (uc *GraphDefinitionUsecase) ImportGraph(ctx context.Context, raw []byte, name, description string) (*GraphDefinition, error) {
 	var def GraphDefinition
 	if err := json.Unmarshal(raw, &def); err != nil {
-		return nil, errors.BadRequest("GRAPH", "invalid graph json")
+		return nil, apierror.BadRequest("GRAPH", "invalid graph json")
 	}
 	def.ID = ""
 	if strings.TrimSpace(name) != "" {
@@ -212,7 +212,7 @@ func (uc *GraphDefinitionUsecase) ensureValidBuildConfig(ctx context.Context, cf
 		return err
 	}
 	if result != nil && result.HasErrors() {
-		return errors.BadRequest("GRAPH", "graph failed validation")
+		return apierror.BadRequest("GRAPH", "graph failed validation")
 	}
 	return nil
 }
@@ -232,7 +232,7 @@ func (uc *GraphDefinitionUsecase) RollbackGraphVersion(ctx context.Context, grap
 	}
 	snapshot := FindGraphVersionSnapshot(current, version, uc.lg)
 	if snapshot == nil {
-		return nil, errors.NotFound("GRAPH", "graph version not found")
+		return nil, apierror.NotFound("GRAPH", "graph version not found")
 	}
 	restored := cloneGraphDefinition(snapshot, uc.lg)
 	restored.ID = graphID

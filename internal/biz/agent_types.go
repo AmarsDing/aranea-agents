@@ -22,7 +22,15 @@ const (
 	DefaultToolsDenyFrameworkMemory = `["memory_add","memory_update","memory_delete","memory_search","memory_load"]`
 )
 
-// Agent is the catalog agent aggregate (legacy agents table + hydrated runtime state).
+// BoolVal dereferences a *bool, returning false for nil.
+func BoolVal(p *bool) bool { return p != nil && *p }
+
+// BoolEqual reports whether two *bool values are semantically equal.
+// nil and false are treated as equivalent (both mean "not set / false").
+func BoolEqual(a, b *bool) bool {
+	return BoolVal(a) == BoolVal(b)
+}
+
 type Agent struct {
 	ID                 string
 	AgentKey           string
@@ -30,8 +38,8 @@ type Agent struct {
 	Provider           string
 	Model              string
 	Status             string
-	IsDefault          bool
-	IsFavorite         bool
+	IsDefault          *bool // nil = not set (Proto3 zero-value ambiguity); explicit true/false for merge
+	IsFavorite         *bool // nil = not set (Proto3 zero-value ambiguity); explicit true/false for merge
 	Icon               string
 	AgentDescription   string
 	PositionID string

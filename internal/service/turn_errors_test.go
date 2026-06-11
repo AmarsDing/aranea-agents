@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestTurnError_withDetail(t *testing.T) {
@@ -12,12 +12,12 @@ func TestTurnError_withDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil error")
 	}
-	ke := kerrors.FromError(err)
-	if ke == nil {
-		t.Fatal("expected kratos error")
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatal("expected apierror")
 	}
-	if ke.Reason != "CHAT_AGENT" {
-		t.Errorf("Reason = %q, want CHAT_AGENT", ke.Reason)
+	if ae.Domain != "CHAT_AGENT" {
+		t.Errorf("Domain = %q, want CHAT_AGENT", ae.Domain)
 	}
 }
 
@@ -26,20 +26,20 @@ func TestTurnError_withoutDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil error")
 	}
-	ke := kerrors.FromError(err)
-	if ke == nil {
-		t.Fatal("expected kratos error")
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatal("expected apierror")
 	}
 }
 
 func TestTurnError_forbiddenCode(t *testing.T) {
 	err := TurnError(TurnErrAgentForbidden, "agent-1")
-	ke := kerrors.FromError(err)
-	if ke == nil {
-		t.Fatal("expected kratos error")
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatal("expected apierror")
 	}
-	if ke.Code != 403 {
-		t.Errorf("Code = %d, want 403 for forbidden", ke.Code)
+	if ae.Code != apierror.CodeForbidden {
+		t.Errorf("Code = %v, want FORBIDDEN for forbidden", ae.Code)
 	}
 }
 
@@ -54,12 +54,12 @@ func TestTurnError_badRequestCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := TurnError(tt.code, "")
-			ke := kerrors.FromError(err)
-			if ke == nil {
-				t.Fatal("expected kratos error")
+			ae, ok := apierror.From(err)
+			if !ok {
+				t.Fatal("expected apierror")
 			}
-			if ke.Code != 400 {
-				t.Errorf("Code = %d, want 400 for bad request", ke.Code)
+			if ae.Code != apierror.CodeBadRequest {
+				t.Errorf("Code = %v, want BAD_REQUEST for bad request", ae.Code)
 			}
 		})
 	}
@@ -80,12 +80,12 @@ func TestTurnError_internalServerCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := TurnError(tt.code, "")
-			ke := kerrors.FromError(err)
-			if ke == nil {
-				t.Fatal("expected kratos error")
+			ae, ok := apierror.From(err)
+			if !ok {
+				t.Fatal("expected apierror")
 			}
-			if ke.Code != 500 {
-				t.Errorf("Code = %d, want 500 for internal server error", ke.Code)
+			if ae.Code != apierror.CodeInternal {
+				t.Errorf("Code = %v, want INTERNAL for internal server error", ae.Code)
 			}
 		})
 	}
@@ -123,7 +123,7 @@ func TestTurnErrorCodeFromErr_nonKratosError(t *testing.T) {
 }
 
 func TestTurnErrorCodeFromErr_unmatchedKratosError(t *testing.T) {
-	err := kerrors.InternalServer("OTHER", "unrelated error")
+	err := apierror.Internal("OTHER", "unrelated error")
 	got := TurnErrorCodeFromErr(err)
 	if got != "" {
 		t.Errorf("TurnErrorCodeFromErr(unmatched) = %q, want empty", got)

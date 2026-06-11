@@ -27,7 +27,6 @@ import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 
 defineProps<{
   steps: ReactStepWithTools[];
-  isDark?: boolean;
 }>();
 
 function iconFor(kind: ReactStepKind): string {

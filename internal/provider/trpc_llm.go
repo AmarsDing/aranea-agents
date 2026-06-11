@@ -2,14 +2,15 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
-	"strings"
-	"time"
 
 	"google.golang.org/genai"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -37,7 +38,6 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 		lg.Error("模型目录配置解析失败", loggateway.StepID("provider.catalog_parse_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
-	cfg = MergeModelConfig(cfg, pm.ConfigJSON)
 	lg.Info("模型配置已解析", loggateway.StepID("provider.config_resolved"), loggateway.Phase("done"),
 		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HAMode))
 	return trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
@@ -46,28 +46,32 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	name := strings.TrimSpace(cfg.ModelAPI)
 	if name == "" {
-		return nil, ErrNilLlmCatalog
+		return nil, ErrEmptyModelAPI
 	}
 
 	// Preflight connectivity check: verify the LLM API endpoint is reachable
-	// before constructing the full model, so the user gets a fast failure
-	// instead of a hanging request.
+	// before constructing the full model. This is a best-effort check — a
+	// failure is logged as a warning but does NOT block model construction,
+	// because a temporary network glitch should not prevent the user from
+	// sending a message. The URL validation (security) is still fatal.
 	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
 		if err := outboundguard.ValidateURL(baseURL); err != nil {
 			return nil, fmt.Errorf("LLM API URL blocked: %w", err)
 		}
-		probeCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		probeReq, err := http.NewRequestWithContext(probeCtx, http.MethodHead, baseURL, nil)
 		if err == nil {
-			client := outboundguard.NewClient(15 * time.Second)
-			resp, err := client.Do(probeReq)
-			if err != nil {
-				lg.Error("模型 API 预检失败", loggateway.StepID("provider.preflight_fail"), loggateway.Str("url", baseURL), loggateway.Err(err))
-				return nil, fmt.Errorf("LLM API unreachable (%s): %w", baseURL, err)
+			client := outboundguard.NewClient(10 * time.Second)
+			resp, probeErr := client.Do(probeReq)
+			if probeErr != nil {
+				lg.Warn("模型 API 预检失败（不阻塞）", loggateway.StepID("provider.preflight_warn"), loggateway.Str("url", baseURL), loggateway.Err(probeErr))
+			} else {
+				// Drain and close body for proper connection reuse.
+				_, _ = resp.Body.Read(make([]byte, 1))
+				resp.Body.Close()
+				lg.Info("模型 API 预检通过", loggateway.StepID("provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
 			}
-			resp.Body.Close()
-			lg.Info("模型 API 预检通过", loggateway.StepID("provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
 		}
 	}
 
@@ -137,57 +141,63 @@ func mapVariantFromBaseURL(baseURL string) string {
 	return ""
 }
 
-func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string) bool {
-	if catalog == nil {
-		return !looksLikeDeepSeek(prov, model)
-	}
-	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(model))
+// ModelSupportsImageAttachments tells the caller whether the model can ingest
+// image attachments. Honours explicit CapabilitiesExplicit first, then derives
+// from config_json, then falls back to a name-based heuristic.
+// When the catalog is unavailable, it falls back to a conservative heuristic
+// (allow all except DeepSeek-like models). When the catalog returns a real
+// error (DB failure, parse error), it logs a warning before falling back.
+func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string, lg loggateway.Logger) bool {
+	cfg, err := resolveCapabilities(ctx, catalog, prov, model)
 	if err != nil {
+		lg.Warn("resolve capabilities failed, falling back to heuristic",
+			loggateway.StepID("provider.capability_fallback"),
+			loggateway.Str("provider", prov),
+			loggateway.Str("model", model),
+			loggateway.Err(err))
 		return !looksLikeDeepSeek(prov, model)
 	}
-	if pm.CapabilitiesExplicit {
-		return pm.Capabilities.Vision && !pm.Capabilities.TextOnly
+	if cfg == nil {
+		return !looksLikeDeepSeek(prov, model)
 	}
-	cfg, err := ResolveModelConfig(ModelCatalogInput{
-		Model:      pm.Model,
-		ConfigJSON: pm.ConfigJSON,
-	})
-	if err == nil {
-		cfg = MergeModelConfig(cfg, pm.ConfigJSON)
-		if hasExplicitCapabilities(cfg.Capabilities) {
-			return cfg.Capabilities.Vision && !cfg.Capabilities.TextOnly
-		}
-		if InferVariant(cfg) == "deepseek" {
-			return false
-		}
+	if hasExplicitCapabilities(cfg.Capabilities) {
+		return cfg.Capabilities.Vision && !cfg.Capabilities.TextOnly
 	}
-	return !looksLikeDeepSeek(pm.Provider, pm.Model)
+	if InferVariant(*cfg) == "deepseek" {
+		return false
+	}
+	return !looksLikeDeepSeek(prov, model)
 }
 
-func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string) bool {
-	if catalog == nil {
-		return true
-	}
-	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(model))
+// ModelSupportsFileAttachments tells the caller whether the model can ingest
+// arbitrary file attachments.
+// When the catalog is unavailable, it defaults to true (conservative: allow
+// file attachments unless explicitly disabled). When the catalog returns a
+// real error, it logs a warning before falling back.
+func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string, lg loggateway.Logger) bool {
+	cfg, err := resolveCapabilities(ctx, catalog, prov, model)
 	if err != nil {
+		lg.Warn("resolve capabilities failed, falling back to heuristic",
+			loggateway.StepID("provider.capability_fallback"),
+			loggateway.Str("provider", prov),
+			loggateway.Str("model", model),
+			loggateway.Err(err))
 		return true
 	}
-	if pm.CapabilitiesExplicit {
-		return pm.Capabilities.File
+	if cfg == nil {
+		return true
 	}
-	cfg, err := ResolveModelConfig(ModelCatalogInput{
-		Model:      pm.Model,
-		ConfigJSON: pm.ConfigJSON,
-	})
-	if err == nil {
-		cfg = MergeModelConfig(cfg, pm.ConfigJSON)
-		if hasExplicitCapabilities(cfg.Capabilities) {
-			return cfg.Capabilities.File
-		}
+	if hasExplicitCapabilities(cfg.Capabilities) {
+		return cfg.Capabilities.File
 	}
 	return true
 }
 
+// CapabilitiesForProviderModel returns the effective capability set for a
+// provider-model row. Explicit values win; otherwise we derive from the
+// variant (DeepSeek forces TextOnly) and from caching/thinking flags.
+// When config_json parsing fails, it returns a conservative default
+// (Text + File + ToolCall).
 func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities {
 	if pm.CapabilitiesExplicit {
 		return pm.Capabilities
@@ -196,8 +206,10 @@ func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities {
 		Model:      pm.Model,
 		ConfigJSON: pm.ConfigJSON,
 	})
-	if err == nil {
-		cfg = MergeModelConfig(cfg, pm.ConfigJSON)
+	if err != nil {
+		// Config parsing failed — return conservative defaults rather than
+		// silently producing a wrong capability set.
+		return biz.ModelCapabilities{Text: true, File: true, ToolCall: true}
 	}
 	caps := cfg.Capabilities
 	if !hasExplicitCapabilities(caps) {
@@ -218,6 +230,36 @@ func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities {
 		caps.Thinking = true
 	}
 	return caps
+}
+
+// resolveCapabilities is the shared helper used by ModelSupports{Image,File}Attachments.
+// It returns nil config when the model is not found in the catalog (a legitimate
+// "not found" case), and returns a non-nil error for database or parsing failures
+// that the caller should know about.
+func resolveCapabilities(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string) (*ProviderModelConfig, error) {
+	if catalog == nil {
+		return nil, nil
+	}
+	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(model))
+	if err != nil {
+		// Distinguish "not found" from real errors.
+		if errors.Is(err, biz.ErrProviderModelNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("provider: resolve capabilities: %w", err)
+	}
+	if pm.CapabilitiesExplicit {
+		cfg := ProviderModelConfig{Capabilities: pm.Capabilities}
+		return &cfg, nil
+	}
+	cfg, err := ResolveModelConfig(ModelCatalogInput{
+		Model:      pm.Model,
+		ConfigJSON: pm.ConfigJSON,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("provider: resolve capabilities: %w", err)
+	}
+	return &cfg, nil
 }
 
 func looksLikeDeepSeek(parts ...string) bool {
@@ -250,14 +292,18 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider
 	if cfg.MaxInputTokens > 0 {
 		opts = append(opts, trpcprovider.WithMaxInputTokens(cfg.MaxInputTokens))
 	}
+	// Only set a custom transport when we have a reason to override the
+	// framework default: either the caller provides one (outboundguard,
+	// custom TLS) or we need to wrap it with rate-limiting.
 	transport := http.DefaultTransport
-	if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
+	hasCustomTransport := rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil
+	if hasCustomTransport {
 		transport = rt.HTTP.Transport
 	}
 	if cfg.RateLimitRPM > 0 {
 		transport = wrapRateLimitTransport(transport, cfg.RateLimitRPM)
 	}
-	if transport != nil {
+	if hasCustomTransport || cfg.RateLimitRPM > 0 {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(transport))
 	}
 
@@ -335,9 +381,11 @@ func buildGeminiSpecificOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcpr
 	var providerOpts []trpcgemini.Option
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey != "" || (rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil) {
+		// API-key auth must use GeminiAPI backend; VertexAI requires ADC.
+		backend := genai.BackendGeminiAPI
 		gcc := &genai.ClientConfig{
 			APIKey:  apiKey,
-			Backend: genai.BackendVertexAI,
+			Backend: backend,
 		}
 		if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
 			gcc.HTTPClient = &http.Client{Transport: rt.HTTP.Transport}
@@ -468,21 +516,21 @@ func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip, lg loggateway.Lo
 			return nil, fmt.Errorf("HA candidate URL blocked: %w", err)
 		}
 	}
-	providerName := MapProviderType(c.ProviderType)
-	opts := []trpcprovider.Option{}
-	if apiKey := strings.TrimSpace(c.APIKey); apiKey != "" {
-		opts = append(opts, trpcprovider.WithAPIKey(apiKey))
+	// Build a ProviderModelConfig from the candidate so it flows through the
+	// same buildProviderOptions pipeline as the primary model (rate-limit,
+	// variant, provider-specific options, etc.).
+	cfg := ProviderModelConfig{
+		ProviderType: strings.TrimSpace(c.ProviderType),
+		BaseURL:      strings.TrimSpace(c.BaseURL),
+		APIKey:       strings.TrimSpace(c.APIKey),
+		ModelAPI:     strings.TrimSpace(c.Name),
 	}
-	if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
-		opts = append(opts, trpcprovider.WithBaseURL(baseURL))
-	}
-	if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
-		opts = append(opts, trpcprovider.WithHTTPClientTransport(rt.HTTP.Transport))
-	}
-	m, err := trpcprovider.Model(providerName, c.Name, opts...)
+	providerName := MapProviderType(cfg.ProviderType)
+	opts := buildProviderOptions(cfg, rt)
+	m, err := trpcprovider.Model(providerName, cfg.ModelAPI, opts...)
 	if err != nil {
-		lg.Error("HA candidate model 构建失败", loggateway.StepID("provider.ha_candidate_build_fail"), loggateway.Str("provider", providerName), loggateway.Str("model", c.Name), loggateway.Err(err))
+		lg.Error("HA candidate model 构建失败", loggateway.StepID("provider.ha_candidate_build_fail"), loggateway.Str("provider", providerName), loggateway.Str("model", cfg.ModelAPI), loggateway.Err(err))
 		return nil, err
 	}
-	return WrapModelWithMetrics(m, strings.TrimSpace(c.ProviderType), c.Name), nil
+	return WrapModelWithMetrics(m, cfg.ProviderType, cfg.ModelAPI), nil
 }

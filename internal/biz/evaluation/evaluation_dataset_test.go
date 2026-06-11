@@ -5,9 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type dsMockRepo struct {
@@ -296,7 +295,7 @@ func TestUpdateDataset(t *testing.T) {
 		setup       func(*dsMockRepo)
 		wantErr     bool
 		wantReason  string
-		wantCode    int32
+		wantCode    apierror.Code
 		check       func(t *testing.T, got Dataset)
 	}{
 		{
@@ -327,7 +326,7 @@ func TestUpdateDataset(t *testing.T) {
 			updateName: "name",
 			wantErr:    true,
 			wantReason: "EVAL",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ Dataset) {},
 		},
 		{
@@ -336,7 +335,7 @@ func TestUpdateDataset(t *testing.T) {
 			updateName: "",
 			wantErr:    true,
 			wantReason: "EVAL",
-			wantCode:   400,
+			wantCode:   apierror.CodeBadRequest,
 			check: func(t *testing.T, _ Dataset) {},
 		},
 		{
@@ -366,12 +365,15 @@ func TestUpdateDataset(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se.Reason != tt.wantReason {
-						t.Fatalf("expected reason %q, got %q", tt.wantReason, se.Reason)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror, got %T", err)
+					}
+					if se.Domain != tt.wantReason {
+						t.Fatalf("expected domain %q, got %q", tt.wantReason, se.Domain)
 					}
 					if se.Code != tt.wantCode {
-						t.Fatalf("expected code %d, got %d", tt.wantCode, se.Code)
+						t.Fatalf("expected code %s, got %s", tt.wantCode, se.Code)
 					}
 				}
 				return

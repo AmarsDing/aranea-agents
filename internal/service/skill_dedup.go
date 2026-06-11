@@ -6,9 +6,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill_dedup/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type SkillDedupService struct {
@@ -62,12 +61,14 @@ func (s *SkillDedupService) ListSkillDuplicateGroups(ctx context.Context, req *v
 
 func (s *SkillDedupService) MergeSkills(ctx context.Context, req *v1.MergeSkillsRequest) (*v1.MergeSkillsResponse, error) {
 	if s.merge == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_DEDUP", "skill merge usecase not available: transactional merge is required")
+		return nil, apierror.Unavailable("SKILL_DEDUP", "skill merge usecase not available: transactional merge is required")
 	}
+	strategy := mapMergeStrategy(req.GetStrategy())
 	result, err := s.merge.Merge(ctx, biz.SkillMergeRequest{
-		SourceID: req.GetSourceSkillId(),
-		TargetID: req.GetTargetSkillId(),
-		Strategy: biz.MergeStrategyAppend,
+		SourceID:   req.GetSourceSkillId(),
+		TargetID:   req.GetTargetSkillId(),
+		Strategy:   strategy,
+		ManualBody: req.GetManualBody(),
 	})
 	if err != nil {
 		return nil, err
@@ -75,6 +76,19 @@ func (s *SkillDedupService) MergeSkills(ctx context.Context, req *v1.MergeSkills
 	return &v1.MergeSkillsResponse{
 		Message: fmt.Sprintf("skills merged successfully (new version: %s, transferred: %d)", result.NewVersionID, result.TransferredCount),
 	}, nil
+}
+
+// mapMergeStrategy maps a proto strategy string to a biz MergeStrategy.
+// Empty or "append" defaults to MergeStrategyAppend.
+func mapMergeStrategy(s string) biz.MergeStrategy {
+	switch s {
+	case "ai_fuse":
+		return biz.MergeStrategyAIFuse
+	case "manual_pick":
+		return biz.MergeStrategyManualPick
+	default:
+		return biz.MergeStrategyAppend
+	}
 }
 
 func toProtoSkillDuplicateGroup(g biz.SkillDuplicateGroup) *v1.SkillDuplicateGroup {

@@ -11,9 +11,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/conf"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type MonitorService struct {
@@ -78,18 +77,18 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.
 
 func notFoundMonitor(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
-		return kerrors.NotFound("MONITOR_NOT_FOUND", err.Error())
+		return apierror.NotFound("MONITOR_NOT_FOUND", err.Error())
 	}
 	return err
 }
 
-// wrapInternalError preserves the error chain: if err is already a *kerrors.Error
-// it is returned directly; otherwise it is wrapped as a 500 INTERNAL error.
+// wrapInternalError preserves the error chain: if err is already an *apierror.Error
+// it is returned directly; otherwise it is wrapped as an INTERNAL error.
 func wrapInternalError(err error) error {
-	if ke := kerrors.FromError(err); ke != nil {
-		return ke
+	if ae, ok := apierror.From(err); ok {
+		return ae
 	}
-	return kerrors.New(500, "INTERNAL", err.Error())
+	return apierror.Internal("INTERNAL", err.Error())
 }
 
 func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogsRequest) (*v1.ListAuditLogsResponse, error) {
@@ -297,7 +296,7 @@ func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, in *v1
 
 func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.GenerateDiagnosticBundleRequest) (*v1.GenerateDiagnosticBundleResponse, error) {
 	if s == nil || s.diag == nil {
-		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "diagnostic bundle generator not available")
+		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "diagnostic bundle generator not available")
 	}
 	bundle, err := s.diag.Generate(ctx,
 		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
@@ -392,11 +391,11 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 
 func (s *MonitorService) TriggerSelfCheck(ctx context.Context, _ *v1.TriggerSelfCheckRequest) (*v1.TriggerSelfCheckResponse, error) {
 	if s == nil || s.selfCheckScheduler == nil {
-		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-check scheduler not available")
+		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "self-check scheduler not available")
 	}
 	report := s.selfCheckScheduler.RunOnce(ctx)
 	if report == nil {
-		return nil, kerrors.New(500, "INTERNAL", "self-check returned no report")
+		return nil, apierror.Internal("INTERNAL", "self-check returned no report")
 	}
 	return &v1.TriggerSelfCheckResponse{
 		Report: bizSelfCheckReportToProto(report),
@@ -461,7 +460,7 @@ func bizSelfCheckReportToProto(r *monitor.SelfCheckReport) *v1.SelfCheckReportEn
 
 func (s *MonitorService) GetHealStats(ctx context.Context, _ *v1.HealStatsRequest) (*v1.HealStatsResponse, error) {
 	if s == nil || s.selfHealObserver == nil {
-		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal observer not available")
+		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "self-heal observer not available")
 	}
 	stats, err := s.selfHealObserver.GetHealStats(ctx)
 	if err != nil {
@@ -482,7 +481,7 @@ func (s *MonitorService) GetHealStats(ctx context.Context, _ *v1.HealStatsReques
 
 func (s *MonitorService) ListHealRecords(ctx context.Context, in *v1.ListHealRecordsRequest) (*v1.ListHealRecordsResponse, error) {
 	if s == nil || s.selfHealObserver == nil {
-		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal observer not available")
+		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "self-heal observer not available")
 	}
 	result, err := s.selfHealObserver.ListHealRecords(ctx, biz.HealRecordQuery{
 		Limit:     int(in.GetLimit()),

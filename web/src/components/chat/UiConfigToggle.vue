@@ -10,16 +10,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useUiConfigStore } from '../../stores/uiConfig'
+
+const props = defineProps<{
+  showToolCalls: boolean;
+}>();
+
+const emit = defineEmits<{
+  toggle: [];
+}>();
 
 const { t } = useI18n()
-const uiConfig = useUiConfigStore()
-
-const showToolCalls = computed(() => uiConfig.showToolCalls)
 
 function toggle() {
-  uiConfig.setShowToolCalls(!uiConfig.showToolCalls)
+  emit('toggle')
 }
 </script>

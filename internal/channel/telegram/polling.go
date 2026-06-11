@@ -41,11 +41,11 @@ func RunPolling(
 	}
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return fmt.Errorf("telegram polling: bot_token required")
+		return errBotTokenRequired
 	}
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		return fmt.Errorf("telegram polling: new bot: %w", err)
+		return telegramAPIError("telegram polling: new bot", err.Error())
 	}
 
 	u := tgbotapi.NewUpdate(0)
@@ -91,8 +91,8 @@ func parsePollingUpdate(update tgbotapi.Update) (port.InboundEvent, bool) {
 		Text:           text,
 		IdempotencyKey: fmt.Sprintf("telegram:%d", msg.MessageID),
 		OutboundMeta: map[string]string{
-			"recipient": chatID,
-			"chat_id":   chatID,
+			port.MetaRecipient: chatID,
+			port.MetaChatID:    chatID,
 		},
 	}, true
 }

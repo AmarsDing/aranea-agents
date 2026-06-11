@@ -3,15 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // Rate-limit reasons (B-6). Front-end branches on these distinct codes.
@@ -136,7 +134,7 @@ func (r *refineRateLimiter) allow(_ context.Context, userID string) error {
 	}
 	r.globalCount++
 	if r.globalCount > r.globalBurst {
-		return kerrors.New(http.StatusTooManyRequests, refineReasonRateLimit, "system refine rate limit exceeded; retry in 1s")
+		return apierror.RateLimit(refineReasonRateLimit, "system refine rate limit exceeded; retry in 1s")
 	}
 
 	if userID != "" {
@@ -147,7 +145,7 @@ func (r *refineRateLimiter) allow(_ context.Context, userID string) error {
 		}
 		uw.count++
 		if uw.count > r.perUserMax {
-			return kerrors.New(http.StatusTooManyRequests, refineReasonRateLimitUser, "personal refine limit reached; try again later")
+			return apierror.RateLimit(refineReasonRateLimitUser, "personal refine limit reached; try again later")
 		}
 	}
 	return nil

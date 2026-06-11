@@ -1,6 +1,10 @@
 package lark
 
-import "strings"
+import (
+	"strings"
+
+	"aranea-agents/internal/channel/port"
+)
 
 const (
 	ReceiveIDTypeOpenID = "open_id"
@@ -32,7 +36,7 @@ func ReceiveIDTypeFromMeta(meta map[string]string) string {
 	if meta == nil {
 		return ReceiveIDTypeOpenID
 	}
-	switch strings.ToLower(strings.TrimSpace(meta["receive_id_type"])) {
+	switch strings.ToLower(strings.TrimSpace(meta[port.MetaReceiveIDType])) {
 	case ReceiveIDTypeUserID:
 		return ReceiveIDTypeUserID
 	case ReceiveIDTypeChatID:

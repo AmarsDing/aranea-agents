@@ -4,8 +4,7 @@ import (
 	"errors"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ErrTurnMessageQueued indicates the user message was accepted into steer or pending
@@ -17,7 +16,7 @@ func isTurnMessageQueued(err error) bool {
 }
 
 func turnBusyError() error {
-	return kerrors.Conflict("CHAT_TURN_BUSY", "session turn is starting; retry in a moment or use enqueue")
+	return apierror.Conflict("CHAT_TURN_BUSY", "session turn is starting; retry in a moment or use enqueue")
 }
 
 // isTurnBusyError reports admission conflict while a run is starting (no runner yet).
@@ -25,8 +24,8 @@ func isTurnBusyError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if ke := kerrors.FromError(err); ke != nil {
-		return ke.Reason == "CHAT_TURN_BUSY"
+	if ae, ok := apierror.From(err); ok {
+		return ae.Code == apierror.CodeConflict && ae.Domain == "CHAT_TURN_BUSY"
 	}
 	return false
 }

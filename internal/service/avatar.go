@@ -7,8 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/avatar/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -85,7 +84,7 @@ func (s *AvatarService) blobResponse(ctx context.Context, id string, thumbnail b
 	img, err := s.uc.GetAvatarImage(ctx, id, thumbnail)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("AVATAR", "avatar not found")
+			return nil, apierror.NotFound("AVATAR", "avatar not found")
 		}
 		return nil, err
 	}
@@ -97,7 +96,7 @@ func (s *AvatarService) DeleteAvatarAsset(ctx context.Context, req *v1.DeleteAva
 	err := s.uc.DeleteAvatarAsset(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("AVATAR", "avatar not found")
+			return nil, apierror.NotFound("AVATAR", "avatar not found")
 		}
 		return nil, err
 	}

@@ -8,11 +8,10 @@ import (
 
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/pkg/safego"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // PluginService implements kratos plugin.v1.
@@ -154,7 +153,7 @@ func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.ToggleP
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("PLUGIN", "plugin not found")
+			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
 	}
@@ -166,7 +165,7 @@ func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePl
 	out, err := s.uc.UpdateConfig(ctx, req.GetId(), req.GetConfigJson())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("PLUGIN", "plugin not found")
+			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
 	}
@@ -178,7 +177,7 @@ func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.Updat
 	out, err := s.uc.UpdateSortOrder(ctx, req.GetId(), int(req.GetSortOrder()))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("PLUGIN", "plugin not found")
+			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
 	}
@@ -190,7 +189,7 @@ func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePlu
 	out, err := s.uc.UpdateScope(ctx, req.GetId(), req.GetScope())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("PLUGIN", "plugin not found")
+			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
 	}

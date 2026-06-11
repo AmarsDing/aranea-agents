@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type SynthesisStrategy string
@@ -49,7 +49,7 @@ func NewSynthesisEngine() *SynthesisEngine {
 
 func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) (*SynthesisOutput, error) {
 	if len(input.TeamResults) == 0 {
-		return nil, kerrors.BadRequest("SPIRIT", "no team results to synthesize")
+		return nil, apierror.BadRequest("SPIRIT", "no team results to synthesize")
 	}
 	strategy := input.Strategy
 	if strategy == "" {
@@ -68,7 +68,7 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) 
 			content += "\n\n---\n\n" + e.synthesizePrompt(input)
 		}
 	default:
-		return nil, kerrors.BadRequest("SPIRIT",
+		return nil, apierror.BadRequest("SPIRIT",
 			fmt.Sprintf("unknown synthesis strategy: %s", strategy))
 	}
 	if err != nil {

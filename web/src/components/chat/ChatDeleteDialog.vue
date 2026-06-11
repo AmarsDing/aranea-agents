@@ -1,5 +1,5 @@
 <template>
-  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
+  <q-dialog :model-value="modelValue" :persistent="deleting" @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="text-h6 text-negative">{{ title }}</q-card-section>
       <q-card-section class="app-dialog-body q-pt-none">

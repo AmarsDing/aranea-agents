@@ -42,6 +42,8 @@ func NormalizeForDedup(s string) string {
 
 // DedupL3WithL1 filters L3 fact rows whose normalized statement matches any
 // L1 field value. Both l3Rows and the returned slice contain raw JSON bytes.
+// Rows that fail JSON parsing are retained but checked via raw string search
+// as a best-effort fallback so they are not silently excluded from dedup.
 func DedupL3WithL1(l3Rows [][]byte, l1FieldValues []string) [][]byte {
 	if len(l1FieldValues) == 0 || len(l3Rows) == 0 {
 		return l3Rows
@@ -60,7 +62,19 @@ func DedupL3WithL1(l3Rows [][]byte, l1FieldValues []string) [][]byte {
 	for _, raw := range l3Rows {
 		var row map[string]any
 		if json.Unmarshal(raw, &row) != nil {
-			out = append(out, raw)
+			// JSON parse failed: check raw bytes for any L1 value as fallback.
+			// Use NormalizeForDedup to compress whitespace consistently with l1Set keys.
+			rawNorm := NormalizeForDedup(string(raw))
+			dup := false
+			for l1key := range l1Set {
+				if strings.Contains(rawNorm, l1key) {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				out = append(out, raw)
+			}
 			continue
 		}
 		stmt := NormalizeForDedup(fmt.Sprint(row["statement"]))

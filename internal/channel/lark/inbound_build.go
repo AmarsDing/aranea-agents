@@ -22,19 +22,19 @@ func BuildFeishuInboundEvent(p FeishuInboundParams) (port.InboundEvent, bool, st
 	}
 	recipient, receiveType := ResolveReceiveTarget(openID, userID, chatID)
 	meta := map[string]string{
-		"recipient":          recipient,
-		"receive_id_type":    receiveType,
-		"chat_id":            chatID,
-		"chat_type":          chatType,
-		"sender_open_id":     openID,
-		"sender_user_id":     userID,
-		"sender_type":        strings.TrimSpace(p.SenderType),
-		"mentioned":          boolMeta(p.Mentioned),
-		"ingress_source":     strings.TrimSpace(p.IngressSource),
-		"inbound_message_id": msgID,
+		port.MetaRecipient:      recipient,
+		port.MetaReceiveIDType:  receiveType,
+		port.MetaChatID:         chatID,
+		port.MetaChatType:       chatType,
+		port.MetaSenderOpenID:   openID,
+		port.MetaSenderUserID:   userID,
+		port.MetaSenderType:     strings.TrimSpace(p.SenderType),
+		port.MetaMentioned:      boolMeta(p.Mentioned),
+		port.MetaIngressSource:  strings.TrimSpace(p.IngressSource),
+		port.MetaInboundMessageID: msgID,
 	}
 	if tid := strings.TrimSpace(p.ThreadID); tid != "" {
-		meta["thread_id"] = tid
+		meta[port.MetaThreadID] = tid
 	}
 	return port.InboundEvent{
 		PlatformType:   "feishu",

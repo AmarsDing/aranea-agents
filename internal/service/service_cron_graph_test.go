@@ -10,9 +10,8 @@ import (
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func TestToProtoCronTask(t *testing.T) {
@@ -131,7 +130,7 @@ func TestMapCronError(t *testing.T) {
 		{name: "runner_disabled", in: biz.ErrCronRunnerDisabled, want503: true},
 		{name: "task_deleted", in: biz.ErrCronTaskDeleted, want404: true},
 		{name: "session_busy", in: biz.ErrCronSessionBusy, want409: true},
-		{name: "kratos_error", in: kerrors.BadRequest("CRON", "bad"), want400: true},
+		{name: "kratos_error", in: apierror.BadRequest("CRON", "bad"), want400: true},
 		{name: "required_msg", in: errors.New("name is required"), want400: true},
 		{name: "invalid_msg", in: errors.New("invalid config"), want400: true},
 		{name: "generic_error", in: errors.New("something went wrong")},
@@ -148,26 +147,25 @@ func TestMapCronError(t *testing.T) {
 			if got == nil {
 				t.Fatalf("expected non-nil error")
 			}
-			var ke *kerrors.Error
-			isKratos := errors.As(got, &ke)
+			ae, ok := apierror.From(got)
 			if tt.want404 {
-				if !isKratos || ke.Code != 404 {
-					t.Errorf("expected 404 kratos error, got %v", got)
+				if !ok || ae.Code != apierror.CodeNotFound {
+					t.Errorf("expected NOT_FOUND apierror, got %v", got)
 				}
 			}
 			if tt.want503 {
-				if !isKratos || ke.Code != 503 {
-					t.Errorf("expected 503 kratos error, got %v", got)
+				if !ok || ae.Code != apierror.CodeUnavailable {
+					t.Errorf("expected UNAVAILABLE apierror, got %v", got)
 				}
 			}
 			if tt.want400 {
-				if !isKratos || ke.Code != 400 {
-					t.Errorf("expected 400 kratos error, got %v", got)
+				if !ok || ae.Code != apierror.CodeBadRequest {
+					t.Errorf("expected BAD_REQUEST apierror, got %v", got)
 				}
 			}
 			if tt.want409 {
-				if !isKratos || ke.Code != 409 {
-					t.Errorf("expected 409 kratos error, got %v", got)
+				if !ok || ae.Code != apierror.CodeConflict {
+					t.Errorf("expected CONFLICT apierror, got %v", got)
 				}
 			}
 		})

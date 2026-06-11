@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQuery) (SessionTimeline, error) {
@@ -111,5 +111,5 @@ func sessionTimelineSummary(sess Session, pageItems []SessionTimelineItem) Sessi
 }
 
 func validationErr(msg string) error {
-	return kerrors.BadRequest("SESSION", msg)
+	return apierror.BadRequest("SESSION", msg)
 }

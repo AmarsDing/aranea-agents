@@ -1,11 +1,9 @@
 package service
 
 import (
-	"strings"
 	"sync"
 	"time"
 
-	"aranea-agents/internal/channel/port"
 	"aranea-agents/pkg/safego"
 )
 
@@ -16,8 +14,8 @@ type channelConcurrentKey struct {
 }
 
 type channelConcurrentEntry struct {
-	count    int
-	lastAcq  time.Time
+	count   int
+	lastAcq time.Time
 }
 
 const gateCleanupInterval = 5 * time.Minute
@@ -58,39 +56,42 @@ func (g *channelConcurrentGate) cleanupExpired() {
 	defer g.mu.Unlock()
 	now := time.Now()
 	for key, entry := range g.active {
-		if now.Sub(entry.lastAcq) > gateEntryMaxAge {
+		if entry.count == 0 && now.Sub(entry.lastAcq) > gateEntryMaxAge {
 			delete(g.active, key)
 		}
 	}
 }
 
+// Close implements biz.ConcurrencyGate.
 func (g *channelConcurrentGate) Close() {
 	if g != nil && g.done != nil {
 		close(g.done)
 	}
 }
 
-func (g *channelConcurrentGate) TryAcquire(channelID, peerID string, isGroup bool, limit int) bool {
+// TryAcquire implements biz.ConcurrencyGate.
+// It returns a release function on success, nil on failure.
+func (g *channelConcurrentGate) TryAcquire(channelID, peerID string, isGroup bool, limit int) (release func(), ok bool) {
 	if g == nil || limit <= 0 {
-		return true
+		return func() {}, true
 	}
 	key := channelConcurrentKey{channelID: channelID, peerID: peerID, group: isGroup}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	entry, ok := g.active[key]
-	if !ok {
+	entry, exists := g.active[key]
+	if !exists {
 		entry = &channelConcurrentEntry{count: 0, lastAcq: time.Now()}
 		g.active[key] = entry
 	}
 	if entry.count >= limit {
-		return false
+		return nil, false
 	}
 	entry.count++
 	entry.lastAcq = time.Now()
-	return true
+	return func() { g.release(channelID, peerID, isGroup) }, true
 }
 
-func (g *channelConcurrentGate) Release(channelID, peerID string, isGroup bool) {
+func (g *channelConcurrentGate) release(channelID, peerID string, isGroup bool) {
 	if g == nil {
 		return
 	}
@@ -106,17 +107,4 @@ func (g *channelConcurrentGate) Release(channelID, peerID string, isGroup bool) 
 		return
 	}
 	entry.count--
-}
-
-func inboundEventIsGroup(ev port.InboundEvent) bool {
-	if ev.OutboundMeta == nil {
-		return false
-	}
-	meta := ev.OutboundMeta
-	switch strings.ToLower(strings.TrimSpace(meta["chat_type"])) {
-	case "group", "supergroup":
-		return true
-	default:
-		return strings.TrimSpace(meta["group_id"]) != ""
-	}
 }

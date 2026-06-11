@@ -2526,15 +2526,33 @@ func collectMergedChoices(es []*event.Event) []model.Choice {
 }
 
 // collectStateDelta collects the state delta from all events.
+// When multiple parallel tools modify the same state key, a conflict is detected
+// and the key is omitted from the merged delta with a warning log, since neither
+// last-writer-wins nor first-writer-wins is semantically correct for arbitrary state.
+// The caller should ensure parallel tools operate on disjoint state keys, or use
+// sequential execution for conflicting tools.
 func collectStateDelta(es []*event.Event) map[string][]byte {
 	mergedDelta := map[string][]byte{}
-	for _, e := range es {
+	// Track which key was set by which event index to detect conflicts.
+	keyOrigin := map[string]int{}
+	conflictKeys := map[string]bool{}
+	for i, e := range es {
 		if e == nil || len(e.StateDelta) == 0 {
 			continue
 		}
 		for k, v := range e.StateDelta {
+			if prevIdx, exists := keyOrigin[k]; exists && prevIdx != i {
+				// Two different events modify the same key — conflict.
+				conflictKeys[k] = true
+			}
+			keyOrigin[k] = i
 			mergedDelta[k] = v
 		}
+	}
+	// Remove conflicting keys — no safe merge strategy exists for arbitrary []byte state.
+	for k := range conflictKeys {
+		log.Warnf("collectStateDelta: conflicting state key %q modified by multiple parallel tools, dropping", k)
+		delete(mergedDelta, k)
 	}
 	return mergedDelta
 }

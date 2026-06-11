@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"go.einride.tech/aip/fieldmask"
 	"go.einride.tech/aip/filtering"
@@ -86,7 +86,7 @@ func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Adm
 	default:
 		s.lg.Warn("admin login failed: unsupported identity type",
 			loggateway.StepID("admin.login_failed"))
-		return nil, errors.BadRequest("AUTH", "unsupported identity type")
+		return nil, apierror.BadRequest("AUTH", "unsupported identity type")
 	}
 	if err := auth.SetCookie(ctx, admin.ID, admin.Access, time.Now().Add(7*24*time.Hour)); err != nil {
 		s.lg.Warn("admin login: set cookie failed",

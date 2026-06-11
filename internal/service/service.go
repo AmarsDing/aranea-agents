@@ -98,6 +98,9 @@ var ProviderSet = wire.NewSet(
 	NewMemoryEnhancedExtractor,
 	wire.Bind(new(biz.EnhancedTextExtractor), new(*MemoryEnhancedExtractor)),
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
+	// Dependency inversion: bind concrete types to biz ports for TeamService
+	wire.Bind(new(biz.TeamTurnRunnerPort), new(*team.Runner)),
+	ProvideRunRegistryPort,
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
 	ProvideEnvelopeBuffer,
 	ProvideSessionLogWriter,

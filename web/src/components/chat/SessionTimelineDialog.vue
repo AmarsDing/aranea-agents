@@ -5,7 +5,7 @@
         <div class="col min-width-0">
           <div class="app-glass-dialog__subtitle">Session Inspector</div>
           <div class="app-glass-dialog__title">{{ sessionTitle || 'Untitled session' }}</div>
-          <q-tabs v-model="activeTab" dense align="left" class="q-mt-sm" active-color="primary">
+          <q-tabs v-model="activeTab" dense align="left" class="q-mt-sm" active-color="accent">
             <q-tab name="trace" label="历史 Trace" />
             <q-tab name="events" label="实时 Envelope" />
           </q-tabs>
@@ -22,12 +22,12 @@
           </q-card-section>
           <q-separator class="sessions-sep" />
           <q-card-section class="app-dialog-body app-glass-dialog__body session-timeline">
-            <div v-if="loading" class="session-timeline__state column items-center justify-center">
-              <q-spinner color="primary" size="32px" />
+            <div v-if="timelineLoading" class="session-timeline__state column items-center justify-center">
+              <q-spinner color="accent" size="32px" />
               <div class="q-mt-sm sessions-muted">Loading session trace…</div>
             </div>
-            <div v-else-if="error" class="session-timeline__state session-timeline__state--error">
-              {{ error }}
+            <div v-else-if="timelineError" class="session-timeline__state session-timeline__state--error">
+              {{ timelineError }}
             </div>
             <div v-else-if="!timeline?.items.length" class="session-timeline__state">
               <q-icon name="timeline" size="36px" class="sessions-muted" />
@@ -53,9 +53,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { ChatEventInspectorStreamDeps } from '../../features/chat/composables/useChatEventInspector';
-import { useSessionTimelineInspector } from '../../features/session/useSessionTimelineInspector';
+import type { SessionTimeline } from '../../features/session/types';
 import { buildTimelineStats } from '../../features/session/timelineHelpers';
 import SessionEventInspectorPanel from './SessionEventInspectorPanel.vue';
 import SessionTimelineEntry from '../sessions/SessionTimelineEntry.vue';
@@ -69,10 +69,14 @@ const props = defineProps<{
   sessionTitle?: string;
   initialTab?: SessionInspectorTab;
   streamDeps?: ChatEventInspectorStreamDeps;
+  timeline?: SessionTimeline | null;
+  timelineLoading?: boolean;
+  timelineError?: string;
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
+  'refresh-trace': [];
 }>();
 
 const activeTab = ref<SessionInspectorTab>(props.initialTab ?? 'trace');
@@ -82,13 +86,7 @@ const dialogOpen = computed({
   set: (value: boolean) => emit('update:modelValue', value),
 });
 
-const { timeline, loading, error } = useSessionTimelineInspector({
-  open: dialogOpen,
-  sessionId: toRef(() => props.sessionId),
-  traceTabActive: computed(() => activeTab.value === 'trace'),
-});
-
-const stats = computed(() => buildTimelineStats(timeline.value?.summary));
+const stats = computed(() => buildTimelineStats(props.timeline?.summary));
 
 watch(
   () => props.initialTab,

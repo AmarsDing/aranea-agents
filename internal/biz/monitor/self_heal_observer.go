@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/conf"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // SelfHealObserver is the Phase 2 self-healing implementation with circuit breaker.
@@ -33,10 +32,10 @@ type SelfHealObserver struct {
 // NewSelfHealObserver creates a new SelfHealObserver. // WIRE: needs *conf.Runtime
 func NewSelfHealObserver(runtimeConf *conf.Runtime, repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
 	if repo == nil {
-		return nil, kerrors.InternalServer("MONITOR", "HealRecordRepo is required")
+		return nil, apierror.Internal("MONITOR", "HealRecordRepo is required")
 	}
 	if engine == nil {
-		return nil, kerrors.InternalServer("MONITOR", "RootCauseEngine is required")
+		return nil, apierror.Internal("MONITOR", "RootCauseEngine is required")
 	}
 	return &SelfHealObserver{
 		repo:        repo,
@@ -393,7 +392,7 @@ func (o *SelfHealObserver) severityCooldown(severity string) time.Duration {
 // the outcome and fires alerts for unhealed errors.
 func (o *SelfHealObserver) DiagnoseAndObserve(ctx context.Context, traceID, sessionID, stepID, triggerType string, contextMinutes int32) (*HealRecord, error) {
 	if o == nil {
-		return nil, kerrors.InternalServer("MONITOR", "SelfHealObserver is nil")
+		return nil, apierror.Internal("MONITOR", "SelfHealObserver is nil")
 	}
 
 	// Run root cause analysis using the engine

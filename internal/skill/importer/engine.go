@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -52,6 +53,11 @@ type Engine struct {
 }
 
 const defaultJobTTL = 2 * time.Hour
+
+// maxInMemoryJobs caps the in-memory job store to prevent unbounded growth.
+// When exceeded, the oldest expired jobs are evicted; if no expired jobs exist,
+// the oldest job is evicted regardless (LRU-style).
+const maxInMemoryJobs = 200
 
 type jobState struct {
 	public     biz.SkillImportJob
@@ -153,11 +159,32 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 		}
 	}
 	e.jobsMu.Lock()
+	e.evictExpiredLocked()
+	// Enforce max cap: if still over limit after eviction, remove oldest job.
+	if len(e.jobs) >= maxInMemoryJobs {
+		var oldestID string
+		var oldestTime time.Time
+		for id, j := range e.jobs {
+			if oldestID == "" || j.createdAt.Before(oldestTime) {
+				oldestID = id
+				oldestTime = j.createdAt
+			}
+		}
+		delete(e.jobs, oldestID)
+	}
 	e.jobs[job.public.JobID] = job
 	e.jobsMu.Unlock()
 
-	// Persist to DB so the job survives server restarts.
+	// Persist candidate files to a temp directory so ApplyImport can work
+	// after a server restart. This implements the TempDir mechanism that was
+	// designed but never wired up — without it, the DB fallback in ApplyImport
+	// creates candidateState objects missing body/files/tags, silently producing
+	// broken/empty skills.
+	// Only persist files for completed jobs; failed jobs have no candidates to apply.
 	if e.store != nil {
+		if job.public.Status == "completed" {
+			e.persistCandidateFiles(job)
+		}
 		if dbErr := e.store.Create(ctx, job.public); dbErr != nil {
 			e.lg.Warn("Import: DB persist failed, job only in memory",
 				loggateway.StepID("skill.import.db_persist"),
@@ -248,6 +275,16 @@ type createdSkillRecord struct {
 	storageDir string
 }
 
+// skillCreateParams groups the parameters for creating an imported skill.
+type skillCreateParams struct {
+	name        string
+	slug        string
+	description string
+	body        string
+	tags        []biz.SkillTag
+	files       map[string][]byte
+}
+
 // ApplyImport executes the user-approved import decisions.
 //
 // TPM-P1-08: each createImportedSkill writes to disk AND inserts a DB row. If any step fails
@@ -255,14 +292,76 @@ type createdSkillRecord struct {
 // disk directory). This makes the operation effectively atomic from the caller's perspective —
 // either all succeed or all are cleaned up. (Full two-phase Saga is deferred to Wave 2 / TPM-D-S1.)
 func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImportApplyRequest) (biz.SkillImportApplyResult, error) {
-	e.jobsMu.RLock()
-	job := e.jobs[strings.TrimSpace(jobID)]
-	e.jobsMu.RUnlock()
+	trimmed := strings.TrimSpace(jobID)
+
+	// CAS-style status transition: atomically check "completed" and set "applying"
+	// under a write lock to prevent concurrent ApplyImport calls from both proceeding.
+	var job *jobState
+	e.jobsMu.Lock()
+	job = e.jobs[trimmed]
+	if job != nil {
+		if job.public.Status == "applied" {
+			e.jobsMu.Unlock()
+			return biz.SkillImportApplyResult{}, validationError("import job already applied")
+		}
+		if job.public.Status == "applying" {
+			e.jobsMu.Unlock()
+			return biz.SkillImportApplyResult{}, validationError("import job is currently being applied")
+		}
+		if job.public.Status != "completed" {
+			e.jobsMu.Unlock()
+			return biz.SkillImportApplyResult{}, validationError("import job is not completed")
+		}
+		job.public.Status = "applying"
+	}
+	e.jobsMu.Unlock()
+
+	if job == nil {
+		// Fallback to DB persistence (job may have survived a restart).
+		if e.store != nil {
+			dbJob, dbErr := e.store.Get(ctx, trimmed)
+			if dbErr != nil {
+				e.lg.Warn("ApplyImport: DB lookup failed",
+					loggateway.StepID("skill.import.db_lookup"),
+					loggateway.Str("job_id", trimmed),
+					loggateway.Err(dbErr))
+			} else if dbJob != nil {
+				if dbJob.Status == "applied" {
+					return biz.SkillImportApplyResult{}, validationError("import job already applied")
+				}
+				if dbJob.Status == "applying" {
+					return biz.SkillImportApplyResult{}, validationError("import job is currently being applied")
+				}
+				if dbJob.Status != "completed" {
+					return biz.SkillImportApplyResult{}, validationError("import job is not completed")
+				}
+				// CAS in DB: mark as "applying" before proceeding.
+				if casErr := e.store.UpdateStatus(ctx, trimmed, "applying", ""); casErr != nil {
+					return biz.SkillImportApplyResult{}, casErr
+				}
+				// Reconstruct jobState from DB data.
+				job = &jobState{
+					public:     *dbJob,
+					candidates: make(map[string]candidateState),
+					createdAt:  time.Now(),
+				}
+				for _, c := range dbJob.Candidates {
+					cs := candidateState{public: c}
+					// Restore body/files/tags from TempDir if available.
+					// Without this, ApplyImport would create broken/empty skills.
+					if dbJob.TempDir != "" {
+						e.restoreCandidateFiles(dbJob.TempDir, c.CandidateID, &cs)
+					}
+					job.candidates[c.CandidateID] = cs
+				}
+				// If TempDir is missing and candidates lack body/files, the apply
+				// will fail when trying to create skills — which is correct behavior
+				// (fail loudly rather than silently creating broken skills).
+			}
+		}
+	}
 	if job == nil {
 		return biz.SkillImportApplyResult{}, ErrImportJobNotFound
-	}
-	if job.public.Status != "completed" {
-		return biz.SkillImportApplyResult{}, validationError("import job is not completed")
 	}
 
 	var committed []createdSkillRecord
@@ -289,9 +388,20 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 
 	// partialErr returns a result that preserves any skip decisions already processed
 	// before the failure, so the caller knows what was skipped vs what failed.
+	// It also rolls back the job status from "applying" to "completed" so the job
+	// can be retried.
 	result := biz.SkillImportApplyResult{CreatedSkillIDs: []string{}, SkippedCandidateIDs: []string{}}
 	partialErr := func(err error) (biz.SkillImportApplyResult, error) {
 		compensate()
+		// Roll back status to "completed" so the job can be retried.
+		e.jobsMu.Lock()
+		if j, ok := e.jobs[trimmed]; ok {
+			j.public.Status = "completed"
+		}
+		e.jobsMu.Unlock()
+		if e.store != nil {
+			_ = e.store.UpdateStatus(context.Background(), trimmed, "completed", "apply failed: "+err.Error())
+		}
 		// Return with zero created IDs (compensated away) but preserve skips for diagnostics.
 		return biz.SkillImportApplyResult{
 			CreatedSkillIDs:     []string{},
@@ -301,69 +411,50 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	}
 
 	for _, decision := range in.Decisions {
-		switch decision.Action {
-		case "import_passed":
-			candidate, ok := job.candidates[decision.CandidateID]
-			if !ok {
-				return partialErr(detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found"))
-			}
-			if candidate.public.ValidationStatus != "pass" {
-				return partialErr(detailErr(ErrCandidateNotPass, "candidate "+decision.CandidateID+" is not pass"))
-			}
-			created, dir, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
-			if err != nil {
-				return partialErr(err)
-			}
-			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
-			result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
-		case "approve_risky_import":
-			candidate, ok := job.candidates[decision.CandidateID]
-			if !ok {
-				return partialErr(detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found"))
-			}
-			if !candidateRequiresRiskApproval(candidate.public) {
-				return partialErr(detailErr(ErrRiskApprovalRequired, "candidate "+decision.CandidateID+" does not require high risk approval"))
-			}
-			created, dir, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
-			if err != nil {
-				return partialErr(err)
-			}
-			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
-			result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
-		case "reject_risky_upload":
-			if strings.TrimSpace(decision.CandidateID) == "" {
-				return partialErr(validationError("candidate_id is required"))
-			}
-			result.SkippedCandidateIDs = append(result.SkippedCandidateIDs, decision.CandidateID)
-		case "merge_group_with_ai":
-			if strings.TrimSpace(decision.MergedBody) == "" {
-				return partialErr(validationError("merged_body is required"))
-			}
-			slug := slugify(decision.MergedName)
-			files := map[string][]byte{"SKILL.md": []byte(decision.MergedBody)}
-			created, dir, err := e.createImportedSkill(ctx, decision.MergedName, slug, decision.MergedDescription, decision.MergedBody, decision.MergedTags, files)
-			if err != nil {
-				return partialErr(err)
-			}
-			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
-			result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
-		case "skip_group":
-			for _, id := range candidateIDsForGroup(job.public.ConflictGroups, decision.GroupID) {
-				result.SkippedCandidateIDs = append(result.SkippedCandidateIDs, id)
-			}
-		default:
+		params, skipIDs, err := e.resolveDecision(job, decision)
+		if err != nil {
+			return partialErr(err)
+		}
+		if len(skipIDs) > 0 {
+			result.SkippedCandidateIDs = append(result.SkippedCandidateIDs, skipIDs...)
+			continue
+		}
+		if params == nil {
 			return partialErr(detailErr(ErrUnsupportedAction, "unsupported import action: "+decision.Action))
 		}
+		created, dir, err := e.createImportedSkill(ctx, *params)
+		if err != nil {
+			return partialErr(err)
+		}
+		committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
+		result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
 	}
 	result.Message = "import completed"
 
+	// Transition in-memory job status from "applying" to "applied".
+	e.jobsMu.Lock()
+	if j, ok := e.jobs[trimmed]; ok {
+		j.public.Status = "applied"
+	}
+	e.jobsMu.Unlock()
+
 	// Update DB status to "applied".
 	if e.store != nil {
-		if dbErr := e.store.UpdateStatus(ctx, strings.TrimSpace(jobID), "applied", result.Message); dbErr != nil {
+		if dbErr := e.store.UpdateStatus(ctx, trimmed, "applied", result.Message); dbErr != nil {
 			e.lg.Warn("ApplyImport: DB status update failed",
 				loggateway.StepID("skill.import.db_update"),
-				loggateway.Str("job_id", strings.TrimSpace(jobID)),
+				loggateway.Str("job_id", trimmed),
 				loggateway.Err(dbErr))
+		}
+	}
+
+	// Clean up temp directory — files have been written to their final locations.
+	if job.public.TempDir != "" {
+		if err := os.RemoveAll(job.public.TempDir); err != nil {
+			e.lg.Warn("ApplyImport: temp dir cleanup failed",
+				loggateway.StepID("skill.import.temp_cleanup"),
+				loggateway.Str("temp_dir", job.public.TempDir),
+				loggateway.Err(err))
 		}
 	}
 
@@ -392,13 +483,70 @@ func (e *Engine) conflictGroupContext(jobID string, groupID string) (*jobState, 
 	return nil, biz.SkillConflictGroup{}, nil, ErrConflictGroupNotFound
 }
 
+// resolveDecision maps an import decision to either a skillCreateParams (to create
+// a skill), a list of skipped candidate IDs, or an error. Returns (nil, nil, nil)
+// for unsupported actions so the caller can report the error.
+func (e *Engine) resolveDecision(job *jobState, decision biz.SkillImportDecision) (*skillCreateParams, []string, error) {
+	switch decision.Action {
+	case "import_passed":
+		candidate, ok := job.candidates[decision.CandidateID]
+		if !ok {
+			return nil, nil, detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found")
+		}
+		if candidate.public.ValidationStatus != "pass" {
+			return nil, nil, detailErr(ErrCandidateNotPass, "candidate "+decision.CandidateID+" is not pass")
+		}
+		return &skillCreateParams{
+			name: candidate.public.Name, slug: candidate.public.Slug,
+			description: candidate.public.Description, body: candidate.body,
+			tags: candidate.tags, files: candidate.files,
+		}, nil, nil
+	case "approve_risky_import":
+		candidate, ok := job.candidates[decision.CandidateID]
+		if !ok {
+			return nil, nil, detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found")
+		}
+		if !candidateRequiresRiskApproval(candidate.public) {
+			return nil, nil, detailErr(ErrRiskApprovalRequired, "candidate "+decision.CandidateID+" does not require high risk approval")
+		}
+		return &skillCreateParams{
+			name: candidate.public.Name, slug: candidate.public.Slug,
+			description: candidate.public.Description, body: candidate.body,
+			tags: candidate.tags, files: candidate.files,
+		}, nil, nil
+	case "reject_risky_upload":
+		if strings.TrimSpace(decision.CandidateID) == "" {
+			return nil, nil, validationError("candidate_id is required")
+		}
+		return nil, []string{decision.CandidateID}, nil
+	case "merge_group_with_ai":
+		if strings.TrimSpace(decision.MergedName) == "" {
+			return nil, nil, validationError("merged_name is required")
+		}
+		if strings.TrimSpace(decision.MergedBody) == "" {
+			return nil, nil, validationError("merged_body is required")
+		}
+		slug := slugify(decision.MergedName)
+		files := map[string][]byte{"SKILL.md": []byte(decision.MergedBody)}
+		return &skillCreateParams{
+			name: decision.MergedName, slug: slug,
+			description: decision.MergedDescription, body: decision.MergedBody,
+			tags: decision.MergedTags, files: files,
+		}, nil, nil
+	case "skip_group":
+		return nil, candidateIDsForGroup(job.public.ConflictGroups, decision.GroupID), nil
+	default:
+		return nil, nil, nil
+	}
+}
+
 // createImportedSkill writes skill files to disk and inserts the DB row.
 // It returns the created Skill and the absolute storage directory so the caller
 // can compensate (delete) on failure without an extra DB round-trip.
-func (e *Engine) createImportedSkill(ctx context.Context, name string, slug string, description string, body string, tags []biz.SkillTag, files map[string][]byte) (biz.Skill, string, error) {
-	slug = slugify(slug)
+func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (biz.Skill, string, error) {
+	slug := slugify(p.slug)
 	if slug == "" {
-		slug = slugify(name)
+		slug = slugify(p.name)
 	}
 	targetDir := filepath.Join(e.resolveRoot(ctx), slug)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -409,7 +557,7 @@ func (e *Engine) createImportedSkill(ctx context.Context, name string, slug stri
 	if err != nil {
 		return biz.Skill{}, "", detailErr(ErrResolveTargetDir, err.Error())
 	}
-	for fname, data := range files {
+	for fname, data := range p.files {
 		if err := ensurePathWithin(absTarget, fname); err != nil {
 			return biz.Skill{}, "", err
 		}
@@ -422,7 +570,7 @@ func (e *Engine) createImportedSkill(ctx context.Context, name string, slug stri
 			return biz.Skill{}, "", err
 		}
 	}
-	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: name, Slug: slug, Description: description, Body: body, Tags: tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
+	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: p.name, Slug: slug, Description: p.description, Body: p.body, Tags: p.tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
 	if err != nil {
 		return biz.Skill{}, "", err
 	}
@@ -599,4 +747,123 @@ func (e *Engine) modelSimilarity(ctx context.Context, cfg chatModelCfg, candidat
 		out.ConflictRisk = "medium"
 	}
 	return out.SkillSimilarityMetrics, out.Reason, out.Evidence, nil
+}
+
+// persistCandidateFiles writes each candidate's body, files, and tags to a temp
+// directory under the storage root. The temp directory path is stored in
+// job.public.TempDir so the DB-persisted job can restore the data after a
+// server restart.
+func (e *Engine) persistCandidateFiles(job *jobState) {
+	tempDir := filepath.Join(job.public.StorageRoot, ".import-tmp", job.public.JobID)
+	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+		e.lg.Warn("Import: failed to create temp dir for candidate files",
+			loggateway.StepID("skill.import.temp_dir"),
+			loggateway.Err(err))
+		return
+	}
+	for cid, cs := range job.candidates {
+		candidateDir := filepath.Join(tempDir, cid)
+		if err := os.MkdirAll(candidateDir, 0o755); err != nil {
+			e.lg.Warn("Import: failed to create candidate temp dir",
+				loggateway.StepID("skill.import.temp_dir"),
+				loggateway.Str("candidate_id", cid),
+				loggateway.Err(err))
+			continue
+		}
+		// Write all files from the zip.
+		for fname, data := range cs.files {
+			fpath := filepath.Join(candidateDir, filepath.Clean(fname))
+			if err := os.MkdirAll(filepath.Dir(fpath), 0o755); err != nil {
+				e.lg.Warn("Import: failed to create file parent dir in temp",
+					loggateway.StepID("skill.import.temp_dir"),
+					loggateway.Str("candidate_id", cid),
+					loggateway.Str("file", fname),
+					loggateway.Err(err))
+				continue
+			}
+			if err := os.WriteFile(fpath, data, 0o644); err != nil {
+				e.lg.Warn("Import: failed to write candidate file to temp",
+					loggateway.StepID("skill.import.temp_dir"),
+					loggateway.Str("candidate_id", cid),
+					loggateway.Str("file", fname),
+					loggateway.Err(err))
+			}
+		}
+		// Write body as SKILL.md if not already in files.
+		if cs.body != "" {
+			if _, ok := cs.files["SKILL.md"]; !ok {
+				if err := os.WriteFile(filepath.Join(candidateDir, "SKILL.md"), []byte(cs.body), 0o644); err != nil {
+					e.lg.Warn("Import: failed to write SKILL.md to temp",
+						loggateway.StepID("skill.import.temp_dir"),
+						loggateway.Str("candidate_id", cid),
+						loggateway.Err(err))
+				}
+			}
+		}
+		// Write tags as _tags.json for restoration.
+		if len(cs.tags) > 0 {
+			if tagsJSON, err := json.Marshal(cs.tags); err == nil {
+				if err := os.WriteFile(filepath.Join(candidateDir, "_tags.json"), tagsJSON, 0o644); err != nil {
+					e.lg.Warn("Import: failed to write _tags.json to temp",
+						loggateway.StepID("skill.import.temp_dir"),
+						loggateway.Str("candidate_id", cid),
+						loggateway.Err(err))
+				}
+			}
+		}
+	}
+	job.public.TempDir = tempDir
+}
+
+// restoreCandidateFiles reads body, files, and tags from the temp directory
+// back into a candidateState. If the temp directory is missing or incomplete,
+// the candidateState retains its zero-valued fields — ApplyImport will then
+// fail explicitly when trying to create a skill without body/files, which is
+// correct behavior (fail loudly rather than silently creating broken skills).
+func (e *Engine) restoreCandidateFiles(tempDir, candidateID string, cs *candidateState) {
+	candidateDir := filepath.Join(tempDir, candidateID)
+	info, err := os.Stat(candidateDir)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	// Read all files from the candidate directory.
+	files := make(map[string][]byte)
+	_ = filepath.Walk(candidateDir, func(path string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(candidateDir, path)
+		if err != nil {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		// Skip metadata files — they're restored separately below.
+		if rel == "_tags.json" {
+			return nil
+		}
+		// Normalize to forward slashes to match the original files map keys
+		// (which come from filepath.ToSlash in inspectSkillZip).
+		files[filepath.ToSlash(rel)] = data
+		return nil
+	})
+	cs.files = files
+
+	// Restore body from SKILL.md.
+	if body, ok := files["SKILL.md"]; ok {
+		cs.body = string(body)
+	}
+
+	// Restore tags from _tags.json.
+	tagsPath := filepath.Join(candidateDir, "_tags.json")
+	if tagsData, err := os.ReadFile(tagsPath); err == nil {
+		if unmarshalErr := json.Unmarshal(tagsData, &cs.tags); unmarshalErr != nil {
+			e.lg.Warn("restoreCandidateFiles: corrupted _tags.json, tags will be empty",
+				loggateway.StepID("skill.import.restore"),
+				loggateway.Str("candidate_id", candidateID),
+				loggateway.Err(unmarshalErr))
+		}
+	}
 }

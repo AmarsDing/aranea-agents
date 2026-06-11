@@ -38,7 +38,7 @@ func (s *ChatService) EscalateActiveSessionRun(ctx context.Context, sessionID st
 	if run.Phase == biz.SessionRunPhaseDurable {
 		return true, channelBackgroundReplyAlready, nil
 	}
-	s.orch.escalateSessionRunToDurable(ctx, sessionID, run.ID)
+	s.orch.sessionRunLC.EscalateSessionRunToDurable(ctx, sessionID, run.ID)
 	return true, channelBackgroundReplyOK, nil
 }
 
@@ -72,6 +72,6 @@ func (s *ChatService) EscalateSessionRun(ctx context.Context, sessionRunID, expe
 	if run.Phase == biz.SessionRunPhaseCompleted || run.Phase == biz.SessionRunPhaseFailed {
 		return channelBackgroundReplyNoActiveRun, nil
 	}
-	s.orch.escalateSessionRunToDurable(ctx, run.SessionID, run.ID)
+	s.orch.sessionRunLC.EscalateSessionRunToDurable(ctx, run.SessionID, run.ID)
 	return channelBackgroundReplyOK, nil
 }

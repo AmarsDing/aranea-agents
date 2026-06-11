@@ -2,8 +2,7 @@ package service
 
 import (
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func enqueueRejectMessage(reason string) string {
@@ -20,10 +19,10 @@ func enqueueRejectMessage(reason string) string {
 func enqueueRejectError(reason string) error {
 	switch reason {
 	case biz.ChatEnqueueRejectQueueFull:
-		return kerrors.BadRequest("CHAT_QUEUE_FULL", enqueueRejectMessage(reason))
+		return apierror.BadRequest("CHAT_QUEUE_FULL", enqueueRejectMessage(reason))
 	case biz.ChatEnqueueRejectNoActiveRun:
-		return kerrors.Conflict("CHAT_RUN_ENDED", enqueueRejectMessage(reason))
+		return apierror.Conflict("CHAT_RUN_ENDED", enqueueRejectMessage(reason))
 	default:
-		return kerrors.BadRequest("CHAT_ENQUEUE_REJECTED", enqueueRejectMessage(reason))
+		return apierror.BadRequest("CHAT_ENQUEUE_REJECTED", enqueueRejectMessage(reason))
 	}
 }

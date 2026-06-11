@@ -72,6 +72,21 @@ func (r *batchAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []Agent
 	return a, nil
 }
 func (r *batchAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (r *batchAgentRepo) ToggleFavorite(_ context.Context, id string) (Agent, error) {
+	a, ok := r.agents[id]
+	if !ok {
+		return Agent{}, ErrNotFound
+	}
+	if a.IsFavorite != nil {
+		v := !*a.IsFavorite
+		a.IsFavorite = &v
+	} else {
+		t := true
+		a.IsFavorite = &t
+	}
+	r.agents[id] = a
+	return a, nil
+}
 
 func TestBatchUpdateAgents_Status(t *testing.T) {
 	repo := &batchAgentRepo{agents: map[string]Agent{"a1": {ID: "a1", Status: "active"}}}

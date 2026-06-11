@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/channelicons"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 )
 
 // EnsureChannelPlatformAvatars upserts built-in channel platform icons from embedded PNGs.
@@ -19,7 +18,7 @@ func EnsureChannelPlatformAvatars(ctx context.Context, repo AvatarRepo) error {
 	}
 	for _, spec := range ChannelPlatformAvatarSpecs() {
 		if err := ensureOneChannelPlatformAvatar(ctx, repo, spec); err != nil {
-			return kerrors.InternalServer("AVATAR", fmt.Sprintf("channel avatar %s: %s", spec.AssetKey, err.Error()))
+			return apierror.Internal("AVATAR", "channel avatar %s: %s", spec.AssetKey, err.Error())
 		}
 	}
 	return nil

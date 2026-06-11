@@ -7,9 +7,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
@@ -43,7 +42,7 @@ func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSe
 			loggateway.Err(activeErr),
 		)
 	} else if len(activeTeams) > 0 {
-		return nil, kerrors.BadRequest("SPIRIT",
+		return nil, apierror.BadRequest("SPIRIT",
 			fmt.Sprintf("cannot synthesize: %d team(s) still running/active, wait for completion", len(activeTeams)))
 	}
 

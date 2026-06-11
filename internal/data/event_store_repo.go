@@ -8,8 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/eventstore"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type eventStoreRepo struct {
@@ -24,7 +23,7 @@ func NewEventStoreRepo(d *Data) biz.EventStoreRepo {
 
 func (r *eventStoreRepo) Insert(ctx context.Context, rec biz.EventStoreRecord) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("EVENT_STORE", "database not configured")
+		return apierror.Internal("EVENT_STORE", "database not configured")
 	}
 	_, err := r.data.RW().Write(ctx).EventStore.Create().
 		SetID(rec.ID).
@@ -39,14 +38,14 @@ func (r *eventStoreRepo) Insert(ctx context.Context, rec biz.EventStoreRecord) e
 		if ent.IsConstraintError(err) {
 			return nil
 		}
-		return kerrors.InternalServer("EVENT_STORE", "insert event_store failed").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
 	}
 	return nil
 }
 
 func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.EventStoreListResult, error) {
 	if r == nil || r.data == nil {
-		return biz.EventStoreListResult{}, kerrors.InternalServer("EVENT_STORE", "database not configured")
+		return biz.EventStoreListResult{}, apierror.Internal("EVENT_STORE", "database not configured")
 	}
 	client := r.data.RW().Read(ctx)
 	query := client.EventStore.Query().
@@ -62,7 +61,7 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
-		return biz.EventStoreListResult{}, kerrors.InternalServer("EVENT_STORE", "count event_store failed").WithCause(err)
+		return biz.EventStoreListResult{}, apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
 	}
 	rows, err := query.
 		Order(ent.Asc(eventstore.FieldCreatedAt)).
@@ -70,7 +69,7 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.EventStoreListResult{}, kerrors.InternalServer("EVENT_STORE", "list event_store failed").WithCause(err)
+		return biz.EventStoreListResult{}, apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
 	}
 	items := make([]biz.EventStoreRecord, 0, len(rows))
 	for _, row := range rows {
@@ -89,13 +88,13 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 
 func (r *eventStoreRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	if r == nil || r.data == nil {
-		return 0, kerrors.InternalServer("EVENT_STORE", "database not configured")
+		return 0, apierror.Internal("EVENT_STORE", "database not configured")
 	}
 	n, err := r.data.RW().Write(ctx).EventStore.Delete().
 		Where(eventstore.CreatedAtLT(cutoff)).
 		Exec(ctx)
 	if err != nil {
-		return 0, kerrors.InternalServer("EVENT_STORE", "delete event_store failed").WithCause(err)
+		return 0, apierror.Wrap(err, apierror.CodeInternal, "EVENT_STORE")
 	}
 	return int64(n), nil
 }

@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
@@ -97,7 +97,7 @@ func (u *Usecase) List(ctx context.Context) ([]Hook, error) {
 // Get returns one hook by ID.
 func (u *Usecase) Get(ctx context.Context, id string) (Hook, error) {
 	if strings.TrimSpace(id) == "" {
-		return Hook{}, errors.BadRequest("HOOK", "id is required")
+		return Hook{}, apierror.BadRequest("HOOK", "id is required")
 	}
 	return u.repo.GetHook(ctx, id)
 }
@@ -107,7 +107,7 @@ func (u *Usecase) Create(ctx context.Context, in Hook) (Hook, error) {
 	in.Key = strings.TrimSpace(in.Key)
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Key == "" || in.Name == "" {
-		return Hook{}, errors.BadRequest("HOOK", "key and name are required")
+		return Hook{}, apierror.BadRequest("HOOK", "key and name are required")
 	}
 	if in.ID == "" {
 		in.ID = newHookID()
@@ -124,7 +124,7 @@ func (u *Usecase) Create(ctx context.Context, in Hook) (Hook, error) {
 // Update patches an existing hook.
 func (u *Usecase) Update(ctx context.Context, id string, patch HookPatch) (Hook, error) {
 	if strings.TrimSpace(id) == "" {
-		return Hook{}, errors.BadRequest("HOOK", "id is required")
+		return Hook{}, apierror.BadRequest("HOOK", "id is required")
 	}
 	cur, err := u.repo.GetHook(ctx, id)
 	if err != nil {
@@ -164,7 +164,7 @@ func (u *Usecase) Update(ctx context.Context, id string, patch HookPatch) (Hook,
 // Delete removes a hook.
 func (u *Usecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("HOOK", "id is required")
+		return apierror.BadRequest("HOOK", "id is required")
 	}
 	return u.repo.DeleteHook(ctx, id)
 }
@@ -288,7 +288,7 @@ func AppliesToTool(cond Condition, toolName string) bool {
 func ValidateConfigForSave(configJSON string, lg loggateway.Logger) error {
 	cfg, err := ParseConfig(configJSON, lg)
 	if err != nil {
-		return errors.BadRequest("HOOK", "invalid config_json: "+err.Error())
+		return apierror.BadRequest("HOOK", "invalid config_json: "+err.Error())
 	}
 	action := strings.ToLower(strings.TrimSpace(cfg.Action.Type))
 	if action != "notify" {
@@ -296,10 +296,10 @@ func ValidateConfigForSave(configJSON string, lg loggateway.Logger) error {
 	}
 	url := strings.TrimSpace(cfg.Action.WebhookURL)
 	if url == "" {
-		return errors.BadRequest("HOOK", "webhook_url required for notify action")
+		return apierror.BadRequest("HOOK", "webhook_url required for notify action")
 	}
 	if err := webhookurl.ValidateNotifyURL(url); err != nil {
-		return errors.BadRequest("HOOK", err.Error())
+		return apierror.BadRequest("HOOK", err.Error())
 	}
 	return nil
 }

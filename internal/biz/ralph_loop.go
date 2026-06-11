@@ -3,7 +3,7 @@ package biz
 import (
 	"strings"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // RalphLoopConfigured reports whether any Ralph Loop field is set on runtime settings.
@@ -25,13 +25,13 @@ func ValidateRalphLoopSettings(s *AgentRuntimeSettings) error {
 	promise := strings.TrimSpace(s.RalphLoopCompletionPromise)
 	verify := strings.TrimSpace(s.RalphLoopVerifyCommand)
 	if promise == "" && verify == "" {
-		return errors.BadRequest("AGENT", "ralph loop requires completion_promise or verify_command when enabled")
+		return apierror.BadRequest("AGENT", "ralph loop requires completion_promise or verify_command when enabled")
 	}
 	if s.RalphLoopMaxIterations < 1 {
-		return errors.BadRequest("AGENT", "ralph_loop_max_iterations must be >= 1")
+		return apierror.BadRequest("AGENT", "ralph_loop_max_iterations must be >= 1")
 	}
 	if s.RalphLoopVerifyTimeoutSeconds < 0 {
-		return errors.BadRequest("AGENT", "ralph_loop_verify_timeout_seconds must be >= 0")
+		return apierror.BadRequest("AGENT", "ralph_loop_verify_timeout_seconds must be >= 0")
 	}
 	return nil
 }

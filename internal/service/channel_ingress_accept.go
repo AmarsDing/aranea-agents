@@ -50,7 +50,7 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 	if prePolicy.Decision == IngressRouteBackground {
 		recordIngressIntentMetric(prePolicy.Intent)
 		_, berr := h.tryBackgroundInboundTurn(ctx, chRow, ev, platform)
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		return noop, berr
 	}
 
@@ -65,15 +65,15 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey, viaLabel string) (proceed bool, err error) {
 	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaLabel == "webhook")
 	if err != nil {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		return false, err
 	}
 	if !ok {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		h.recordDelivery(ctx, chRow.ID, "skipped_"+skipReason, map[string]any{
 			"peer_id":         ev.PeerID,
 			"idempotency_key": ev.IdempotencyKey,
-			"ingress_source":  strings.TrimSpace(ev.OutboundMeta["ingress_source"]),
+			"ingress_source":  strings.TrimSpace(ev.OutboundMeta[port.MetaIngressSource]),
 			"via":             viaLabel,
 			"text_preview":    truncateForLog(ev.Text, 80),
 		}, "")
@@ -82,16 +82,16 @@ func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Chann
 	h.logInboundAccepted(ctx, chRow, ev, viaLabel)
 	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
 	if err != nil {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
 		return false, err
 	}
 	if !allowed {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		return false, h.rejectInboundAccess(ctx, chRow, ev, reason)
 	}
 	if handled, cerr := h.tryCancelInboundTurn(ctx, chRow, ev, platform); handled || cerr != nil {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		return false, cerr
 	}
 	return true, nil
@@ -129,7 +129,7 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 	release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
 	if !ok {
 		recordIngressIntentMetric("concurrent_limit")
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
 		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), biz.ChannelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
 			h.lg.Warn("异步回复投递失败",
@@ -142,7 +142,7 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 	if !isPureAsyncExecutionMode(ltCfg) {
 		if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
 			release()
-			h.inboundInflight.release(dedupKey)
+			h.deduplicator.ReleaseInflight(dedupKey)
 			h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 			return noop, err
 		}
@@ -161,7 +161,7 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 	release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
 	if !ok {
 		recordIngressIntentMetric("concurrent_limit")
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
 		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), biz.ChannelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
 			h.lg.Warn("异步回复投递失败",
@@ -173,7 +173,7 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 	}
 	if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
 		release()
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 		return noop, err
 	}
@@ -199,7 +199,7 @@ func (h *ChannelIngress) releaseInboundInflight(ev port.InboundEvent, platform s
 		platform = "unknown"
 	}
 	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
-	h.inboundInflight.release(dedupKey)
+	h.deduplicator.ReleaseInflight(dedupKey)
 }
 
 func (h *ChannelIngress) sendInboundAckIfNeeded(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig) error {
@@ -231,7 +231,7 @@ func (h *ChannelIngress) sendInboundQueuedAck(ctx context.Context, chRow biz.Cha
 }
 
 func outboundRecipient(ev port.InboundEvent) string {
-	if r := strings.TrimSpace(ev.OutboundMeta["recipient"]); r != "" {
+	if r := strings.TrimSpace(ev.OutboundMeta[port.MetaRecipient]); r != "" {
 		return r
 	}
 	return ev.PeerID

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/webhookurl"
 
-	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -78,7 +78,7 @@ func NewWebhookUsecase(reader WebhookReader, writer WebhookWriter) *WebhookUseca
 
 func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookConfig, error) {
 	if uc == nil || uc.writer == nil {
-		return WebhookConfig{}, errors.InternalServer("GATEWAY", "webhook repository not configured")
+		return WebhookConfig{}, apierror.Internal("GATEWAY", "webhook repository not configured")
 	}
 	if err := validateWebhookConfig(w); err != nil {
 		return WebhookConfig{}, err
@@ -100,24 +100,24 @@ func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookC
 
 func (uc *WebhookUsecase) Get(ctx context.Context, id string) (WebhookConfig, error) {
 	if strings.TrimSpace(id) == "" {
-		return WebhookConfig{}, errors.BadRequest("GATEWAY", "id is required")
+		return WebhookConfig{}, apierror.BadRequest("GATEWAY", "id is required")
 	}
 	return uc.reader.Get(ctx, id)
 }
 
 func (uc *WebhookUsecase) List(ctx context.Context) ([]WebhookConfig, error) {
 	if uc == nil || uc.reader == nil {
-		return nil, errors.InternalServer("GATEWAY", "webhook repository not configured")
+		return nil, apierror.Internal("GATEWAY", "webhook repository not configured")
 	}
 	return uc.reader.List(ctx)
 }
 
 func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) (WebhookConfig, error) {
 	if uc == nil || uc.writer == nil {
-		return WebhookConfig{}, errors.InternalServer("GATEWAY", "webhook repository not configured")
+		return WebhookConfig{}, apierror.Internal("GATEWAY", "webhook repository not configured")
 	}
 	if strings.TrimSpace(patch.ID) == "" {
-		return WebhookConfig{}, errors.BadRequest("GATEWAY", "id is required")
+		return WebhookConfig{}, apierror.BadRequest("GATEWAY", "id is required")
 	}
 	cur, err := uc.reader.Get(ctx, patch.ID)
 	if err != nil {
@@ -133,7 +133,7 @@ func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) 
 
 func (uc *WebhookUsecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("GATEWAY", "id is required")
+		return apierror.BadRequest("GATEWAY", "id is required")
 	}
 	return uc.writer.Delete(ctx, id)
 }
@@ -163,20 +163,20 @@ func mergeWebhookPatch(cur WebhookConfig, patch WebhookUpdatePatch) WebhookConfi
 
 func validateWebhookConfig(w WebhookConfig) error {
 	if strings.TrimSpace(w.Name) == "" {
-		return errors.BadRequest("GATEWAY", "name is required")
+		return apierror.BadRequest("GATEWAY", "name is required")
 	}
 	rawURL := strings.TrimSpace(w.URL)
 	if rawURL == "" {
-		return errors.BadRequest("GATEWAY", "url is required")
+		return apierror.BadRequest("GATEWAY", "url is required")
 	}
 	if err := webhookurl.ValidateNotifyURL(rawURL); err != nil {
-		return errors.BadRequest("GATEWAY", err.Error())
+		return apierror.BadRequest("GATEWAY", err.Error())
 	}
 	// S-08 fix: removed unused requireSecret parameter; secret is optional.
 	if v := strings.TrimSpace(w.EventTypesJSON); v != "" {
 		var types []string
 		if err := json.Unmarshal([]byte(v), &types); err != nil {
-			return errors.BadRequest("GATEWAY", "event_types_json must be a JSON string array")
+			return apierror.BadRequest("GATEWAY", "event_types_json must be a JSON string array")
 		}
 	}
 	return nil

@@ -9,8 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type batchSessionRepo struct {
@@ -197,6 +196,11 @@ func (m *batchSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([
 	return nil, nil
 }
 
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
+
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil)
@@ -205,12 +209,12 @@ func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("expected bad request, got %v", err)
 	}
 
 	_, err = svc.BatchArchiveSessions(context.Background(), &v1.BatchArchiveSessionsRequest{})
-	if err == nil || !kerrors.IsBadRequest(err) {
+	if err == nil || !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("expected bad request for archive, got %v", err)
 	}
 }

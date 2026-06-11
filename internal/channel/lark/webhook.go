@@ -4,6 +4,7 @@ package lark
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,10 +12,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/channel/port"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const (
@@ -54,7 +58,7 @@ func VerifyEventSignature(timestamp, nonce, encryptKey string, rawBody []byte, h
 	if want == "" || got == "" {
 		return false
 	}
-	return want == got
+	return hmac.Equal([]byte(want), []byte(got))
 }
 
 // WebhookParseResult is a normalized inbound event (plain JSON only in MVP).
@@ -118,11 +122,11 @@ type imMessageEvent struct {
 func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult, error) {
 	var top genericEvent
 	if err := json.Unmarshal(raw, &top); err != nil {
-		return nil, fmt.Errorf("lark webhook: invalid json: %w", err)
+		return nil, feishuInboundParseError("lark webhook: invalid json", err)
 	}
 	if top.Type == "url_verification" {
 		if verificationToken != "" && top.Token != verificationToken {
-			return nil, fmt.Errorf("lark webhook: verification token mismatch")
+			return nil, errVerificationTokenMismatch
 		}
 		return &WebhookParseResult{IsURLVerification: true, Challenge: top.Challenge}, nil
 	}
@@ -139,7 +143,7 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 			Event imMessageEvent `json:"event"`
 		}
 		if err := json.Unmarshal(raw, &wrap); err != nil {
-			return nil, fmt.Errorf("lark webhook: im.message.receive_v1: %w", err)
+			return nil, feishuInboundParseError("lark webhook: im.message.receive_v1", err)
 		}
 		res.MessageID = strings.TrimSpace(wrap.Event.Message.MessageID)
 		res.ChatID = strings.TrimSpace(wrap.Event.Message.ChatID)
@@ -156,7 +160,7 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 		res.Text = extractTextFromIMContent(strings.TrimSpace(wrap.Event.Message.Content), res.MessageType)
 	case "card.action.trigger", "card.action.trigger_v1":
 		if err := fillCardActionFromWebhook(raw, res); err != nil {
-			return nil, fmt.Errorf("lark webhook: %s: %w", res.EventType, err)
+			return nil, feishuInboundParseError(fmt.Sprintf("lark webhook: %s", res.EventType), err)
 		}
 	default:
 		if fillCardActionFromWebhook(raw, res) == nil {
@@ -184,7 +188,7 @@ type cardActionWebhookBody struct {
 
 func fillCardActionFromWebhook(raw []byte, res *WebhookParseResult) error {
 	if res == nil {
-		return fmt.Errorf("missing result")
+		return kerrors.BadRequest(protocolReason, "missing result")
 	}
 	var wrap struct {
 		Event cardActionWebhookBody `json:"event"`
@@ -201,7 +205,7 @@ func fillCardActionFromWebhook(raw []byte, res *WebhookParseResult) error {
 		body = flat
 	}
 	if len(body.Action.Value) == 0 {
-		return fmt.Errorf("empty card action value")
+		return errEmptyCardActionValue
 	}
 	if res.EventType == "" {
 		res.EventType = "card.action.trigger_v1"
@@ -235,17 +239,29 @@ func extractTextFromIMContent(raw, msgType string) string {
 // VerifyHTTPRequest checks Feishu signature headers when encryptKey is non-empty.
 func VerifyHTTPRequest(r *http.Request, encryptKey string, rawBody []byte) error {
 	encryptKey = strings.TrimSpace(encryptKey)
-	if encryptKey == "" || r == nil {
-		return nil
+	if encryptKey == "" {
+		return port.ErrCredentialsNotConfigured
+	}
+	if r == nil {
+		return errNilRequest
 	}
 	ts := strings.TrimSpace(r.Header.Get("X-Lark-Request-Timestamp"))
 	nonce := strings.TrimSpace(r.Header.Get("X-Lark-Request-Nonce"))
 	sig := strings.TrimSpace(r.Header.Get("X-Lark-Signature"))
 	if ts == "" || nonce == "" || sig == "" {
-		return fmt.Errorf("lark webhook: missing signature headers")
+		return errSignatureMissing
+	}
+	// Validate timestamp freshness (5-minute window) to prevent replay attacks.
+	tsInt, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return errBadTimestamp
+	}
+	now := time.Now().Unix()
+	if now-tsInt > port.WebhookTimestampToleranceSec || tsInt-now > port.WebhookTimestampToleranceSec {
+		return errTimestampOutOfRange
 	}
 	if !VerifyEventSignature(ts, nonce, encryptKey, rawBody, sig) {
-		return fmt.Errorf("lark webhook: signature mismatch")
+		return errSignatureMismatch
 	}
 	return nil
 }
@@ -253,7 +269,7 @@ func VerifyHTTPRequest(r *http.Request, encryptKey string, rawBody []byte) error
 // ReadBodyDrain reads the body and restores r.Body for downstream use.
 func ReadBodyDrain(r *http.Request) ([]byte, error) {
 	if r == nil || r.Body == nil {
-		return nil, fmt.Errorf("lark webhook: nil request")
+		return nil, errNilRequest
 	}
 	raw, err := io.ReadAll(r.Body)
 	_ = r.Body.Close()
@@ -273,7 +289,7 @@ func FetchTenantAccessToken(ctx context.Context, httpClient *http.Client, region
 	appID = strings.TrimSpace(appID)
 	appSecret = strings.TrimSpace(appSecret)
 	if appID == "" || appSecret == "" {
-		return "", 0, fmt.Errorf("lark: app_id and app_secret required")
+		return "", 0, errAppCredentialsRequired
 	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -297,13 +313,13 @@ func FetchTenantAccessToken(ctx context.Context, httpClient *http.Client, region
 	}
 	var out tenantTokenJSON
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", 0, fmt.Errorf("lark token: bad json: %w", err)
+		return "", 0, feishuParseError("lark token", err)
 	}
 	if out.Code != 0 {
-		return "", 0, fmt.Errorf("lark token: code=%d msg=%s", out.Code, out.Msg)
+		return "", 0, feishuAPIError("lark token", out.Code, out.Msg)
 	}
 	if strings.TrimSpace(out.TenantAccessToken) == "" {
-		return "", 0, fmt.Errorf("lark token: empty tenant_access_token")
+		return "", 0, errEmptyTenantToken
 	}
 	return out.TenantAccessToken, out.Expire, nil
 }
@@ -324,7 +340,7 @@ func SendTextMessage(ctx context.Context, httpClient *http.Client, region, tenan
 	receiveID = strings.TrimSpace(receiveID)
 	text = strings.TrimSpace(text)
 	if receiveID == "" || text == "" {
-		return fmt.Errorf("lark send: receive_id and text required")
+		return errReceiveIDAndTextRequired
 	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -366,10 +382,10 @@ func SendTextMessage(ctx context.Context, httpClient *http.Client, region, tenan
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("lark send: bad json: %w", err)
+		return feishuParseError("lark send", err)
 	}
 	if out.Code != 0 {
-		return fmt.Errorf("lark send: code=%d msg=%s body=%s", out.Code, out.Msg, string(raw))
+		return feishuAPIError("lark send", out.Code, out.Msg)
 	}
 	return nil
 }

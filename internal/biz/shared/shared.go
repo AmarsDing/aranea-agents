@@ -7,7 +7,7 @@ import (
 	stderrors "errors"
 	"strings"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"github.com/xeipuuv/gojsonschema"
 	"go.einride.tech/aip/filtering"
 	"go.einride.tech/aip/ordering"
@@ -65,32 +65,32 @@ func ListLimit(limit int) ListOption {
 
 // ── Error sentinels ───────────────────────────────────────────────────────────
 
-// Data-layer sentinels (stdlib); mapped to kerrors in Usecase.
+// Data-layer sentinels (stdlib); mapped to apierror in Usecase.
 var (
 	ErrUsageScopeRequired  = stderrors.New("usage scope required")
 	ErrBudgetAlertNotFound = stderrors.New("budget alert not found after upsert")
 	ErrQuotaNotFound       = stderrors.New("usage quota not configured")
 	ErrMessageDuplicate    = stderrors.New("message duplicate constraint")
+	ErrAgentKeyConflict    = stderrors.New("agent_key unique constraint violation")
 )
 
-// TECH-DEBT(BE1): 以下错误直接使用 kerrors（传输层类型），
-// 违反依赖方向（biz 层不应依赖传输层）。应改为 stdlib sentinel errors，
-// 由 Service 层统一映射为 kerrors。迁移时需确保 HTTP status code 语义不变。
+// TECH-DEBT(BE1): 以下错误已从 kerrors 迁移到 apierror，
+// 由 APIToKratos 中间件统一映射为 kerrors。HTTP status code 语义不变。
 var (
 	// Admin
-	ErrAdminNotFound = errors.NotFound("ADMIN", "admin not found")
+	ErrAdminNotFound = apierror.NotFound("ADMIN", "admin not found")
 
 	// General
-	ErrNotFound = errors.NotFound("NOT_FOUND", "resource not found")
+	ErrNotFound = apierror.NotFound("NOT_FOUND", "resource not found")
 
 	// Graph
-	ErrGraphSaveRun          = errors.InternalServer("GRAPH", "graph execute save run failed")
-	ErrGraphInvalidStatus    = errors.BadRequest("GRAPH", "cannot cancel execution in current status")
-	ErrGraphResume           = errors.InternalServer("GRAPH", "graph resume failed")
-	ErrGraphTemplateNotFound = errors.NotFound("GRAPH_TEMPLATE", "graph template not found")
+	ErrGraphSaveRun          = apierror.Internal("GRAPH", "graph execute save run failed")
+	ErrGraphInvalidStatus    = apierror.BadRequest("GRAPH", "cannot cancel execution in current status")
+	ErrGraphResume           = apierror.Internal("GRAPH", "graph resume failed")
+	ErrGraphTemplateNotFound = apierror.NotFound("GRAPH_TEMPLATE", "graph template not found")
 
 	// Usage / Quota
-	ErrQuotaUnsupportedScope = errors.BadRequest("USAGE_QUOTA", "unsupported quota scope_type")
+	ErrQuotaUnsupportedScope = apierror.BadRequest("USAGE_QUOTA", "unsupported quota scope_type")
 )
 
 // ── JSON helpers ──────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ func JSONStringList(raw string) ([]string, error) {
 	}
 	var list []string
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
-		return nil, errors.BadRequest("SHARED", "json string list parse: "+err.Error())
+		return nil, apierror.BadRequest("SHARED", "json string list parse: "+err.Error())
 	}
 	return list, nil
 }
@@ -123,7 +123,7 @@ func ValidateDocumentAgainstSchema(module, schemaJSON, docJSON string) error {
 		gojsonschema.NewStringLoader(docJSON),
 	)
 	if err != nil {
-		return errors.InternalServer(module, "schema validation error: "+err.Error())
+		return apierror.Internal(module, "schema validation error: "+err.Error())
 	}
 	if result.Valid() {
 		return nil
@@ -132,5 +132,5 @@ func ValidateDocumentAgainstSchema(module, schemaJSON, docJSON string) error {
 	for _, desc := range result.Errors() {
 		msgs = append(msgs, desc.String())
 	}
-	return errors.BadRequest(module, "config does not match schema: "+strings.Join(msgs, "; "))
+	return apierror.BadRequest(module, "config does not match schema: "+strings.Join(msgs, "; "))
 }

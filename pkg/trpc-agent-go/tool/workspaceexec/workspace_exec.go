@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -35,6 +36,12 @@ import (
 const (
 	defaultWorkspaceExecTimeout = 5 * time.Minute
 	defaultWorkspaceWriteYield  = 200
+
+	// defaultMaxExecOutputChars limits the total character count returned
+	// by a workspace_exec call. Outputs exceeding this limit are truncated
+	// with a head+tail preservation strategy so the model can still see
+	// the beginning (structure/headers) and end (exit info/errors).
+	defaultMaxExecOutputChars = 1_000_000
 )
 
 // ExecTool executes shell commands in the shared executor workspace.
@@ -528,7 +535,7 @@ func runOneShot(
 	}
 	return execOutput{
 		Status:     codeexecutor.ProgramStatusExited,
-		Output:     combineOutput(rr.Stdout, rr.Stderr),
+		Output:     truncateExecOutput(combineOutput(rr.Stdout, rr.Stderr)),
 		ExitCode:   intPtrValue(rr.ExitCode),
 		Offset:     0,
 		NextOffset: 0,
@@ -771,6 +778,7 @@ func (t *ExecTool) cleanupExpiredLocked() {
 		return
 	}
 	now := t.clock()
+	var toClose []codeexecutor.ProgramSession
 	for id, sess := range t.sessions {
 		sess.mu.Lock()
 		if sess.exitedAt.IsZero() {
@@ -783,10 +791,14 @@ func (t *ExecTool) cleanupExpiredLocked() {
 			now.Sub(sess.exitedAt) >= t.ttl
 		sess.mu.Unlock()
 		if expired {
-			if err := sess.proc.Close(); err == nil {
-				delete(t.sessions, id)
-			}
+			delete(t.sessions, id)
+			toClose = append(toClose, sess.proc)
 		}
+	}
+	// Close processes outside the lock — proc.Close() may block waiting
+	// for I/O goroutines and must not hold up other session operations.
+	for _, proc := range toClose {
+		_ = proc.Close()
 	}
 }
 
@@ -876,7 +888,7 @@ func execOutputSchema(desc string) *tool.Schema {
 func pollOutput(sessionID string, poll codeexecutor.ProgramPoll) execOutput {
 	out := execOutput{
 		Status:     poll.Status,
-		Output:     poll.Output,
+		Output:     truncateExecOutput(poll.Output),
 		ExitCode:   poll.ExitCode,
 		Offset:     poll.Offset,
 		NextOffset: poll.NextOffset,
@@ -885,6 +897,38 @@ func pollOutput(sessionID string, poll codeexecutor.ProgramPoll) execOutput {
 		out.SessionID = sessionID
 	}
 	return out
+}
+
+// truncateExecOutput truncates s to at most maxChars runes, keeping the head
+// and tail with a truncation marker in between. This preserves the beginning
+// (usually contains structure/headers) and end (usually contains exit info
+// and errors) of command output. When maxChars is too small for head+tail+
+// marker, it falls back to head-only truncation.
+func truncateExecOutput(s string) string {
+	return truncateRunes(s, defaultMaxExecOutputChars)
+}
+
+func truncateRunes(s string, maxChars int) string {
+	if maxChars <= 0 {
+		return s
+	}
+	runeCount := utf8.RuneCountInString(s)
+	if runeCount <= maxChars {
+		return s
+	}
+	removed := runeCount - maxChars
+	marker := fmt.Sprintf("\n\n[... %d characters truncated ...]\n\n", removed)
+	markerLen := utf8.RuneCountInString(marker)
+	available := maxChars - markerLen
+	if available < 2 {
+		runes := []rune(s)
+		return string(runes[:maxChars])
+	}
+	halfBudget := available / 2
+	runes := []rune(s)
+	head := string(runes[:halfBudget])
+	tail := string(runes[runeCount-halfBudget:])
+	return head + marker + tail
 }
 
 func hasGlobMeta(s string) bool {

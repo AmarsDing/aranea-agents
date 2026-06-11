@@ -23,6 +23,16 @@ var _ pack.ExporterRepo = (*PackRepoAdapter)(nil)
 var _ pack.ImporterRepo = (*PackRepoAdapter)(nil)
 var _ pack.ValidatorRepo = (*PackRepoAdapter)(nil)
 
+// Sub-interface compile-time checks (ISP / CS-B4 compliance).
+var _ pack.OrganizationImporterRepo = (*PackRepoAdapter)(nil)
+var _ pack.OrganizationLookupRepo = (*PackRepoAdapter)(nil)
+var _ pack.AgentImporterRepo = (*PackRepoAdapter)(nil)
+var _ pack.AgentExtraRepo = (*PackRepoAdapter)(nil)
+var _ pack.AgentFileRepo = (*PackRepoAdapter)(nil)
+var _ pack.TeamImporterRepo = (*PackRepoAdapter)(nil)
+var _ pack.GraphImporterRepo = (*PackRepoAdapter)(nil)
+var _ pack.TxProvider = (*PackRepoAdapter)(nil)
+
 // NewPackRepoAdapter creates a composite adapter from existing repos.
 func NewPackRepoAdapter(
 	agents biz.AgentRepository,

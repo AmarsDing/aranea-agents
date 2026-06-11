@@ -6,8 +6,30 @@ import (
 	"strings"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
+
+func codeFromInt(code int32) apierror.Code {
+	switch code {
+	case 400:
+		return apierror.CodeBadRequest
+	case 404:
+		return apierror.CodeNotFound
+	case 403:
+		return apierror.CodeForbidden
+	case 409:
+		return apierror.CodeConflict
+	case 500:
+		return apierror.CodeInternal
+	default:
+		return apierror.Code(code)
+	}
+}
 
 func TestListRemoteAgents(t *testing.T) {
 	tests := []struct {
@@ -87,12 +109,12 @@ func TestListRemoteAgents(t *testing.T) {
 				if err == nil {
 					t.Fatal("ListRemoteAgents() expected error, got nil")
 				}
-				se := kerrors.FromError(err)
-				if se == nil {
-					t.Fatalf("expected kratos error, got %T", err)
+				se, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
 				}
-				if se.Code != tt.wantCode {
-					t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+				if se.Code != codeFromInt(tt.wantCode) {
+					t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 				}
 				if tt.check != nil {
 					tt.check(t, agents)
@@ -174,12 +196,12 @@ func TestDeleteRemoteAgent(t *testing.T) {
 					t.Fatal("DeleteRemoteAgent() expected error, got nil")
 				}
 				if tt.wantCode != 0 {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return
@@ -284,12 +306,12 @@ func TestPersistRemoteHealth(t *testing.T) {
 					t.Fatal("PersistRemoteHealth() expected error, got nil")
 				}
 				if tt.wantCode != 0 {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return
@@ -571,12 +593,12 @@ func TestGetRemoteAgent(t *testing.T) {
 					t.Fatal("GetRemoteAgent() expected error, got nil")
 				}
 				if tt.wantCode != 0 {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return

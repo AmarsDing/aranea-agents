@@ -1,9 +1,12 @@
 package dingtalk
 
 import (
+	"errors"
 	"strconv"
 	"testing"
 	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestParseInbound(t *testing.T) {
@@ -26,5 +29,8 @@ func TestVerifySign(t *testing.T) {
 	}
 	if err := VerifySign(ts, "bad-sign", secret); err == nil {
 		t.Fatal("expected bad signature")
+	}
+	if err := VerifySign(ts, "sign", ""); !errors.Is(err, port.ErrCredentialsNotConfigured) {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
 	}
 }

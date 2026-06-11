@@ -8,8 +8,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformchannelpeersession"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type channelPeerSessionRepo struct {
@@ -61,28 +61,45 @@ func (r *channelPeerSessionRepo) UpdateSessionID(ctx context.Context, channelID,
 	channelID = strings.TrimSpace(channelID)
 	sessionID = strings.TrimSpace(sessionID)
 	if channelID == "" || sessionID == "" {
-		return biz.ChannelPeerSession{}, kerrors.BadRequest("CHANNEL_PEER_SESSION", "missing channel_id or session_id")
+		return biz.ChannelPeerSession{}, apierror.BadRequest("CHANNEL_PEER_SESSION", "missing channel_id or session_id")
 	}
-	n, err := r.data.RW().Write(ctx).PlatformChannelPeerSession.Update().
-		Where(
-			platformchannelpeersession.ChannelIDEQ(channelID),
-			platformchannelpeersession.PeerKeyEQ(peerKey),
-		).
-		SetSessionID(sessionID).
-		SetUpdatedAt(nowRFC3339()).
-		Save(ctx)
+	var result biz.ChannelPeerSession
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		n, err := r.data.RW().Write(txCtx).PlatformChannelPeerSession.Update().
+			Where(
+				platformchannelpeersession.ChannelIDEQ(channelID),
+				platformchannelpeersession.PeerKeyEQ(peerKey),
+			).
+			SetSessionID(sessionID).
+			SetUpdatedAt(nowRFC3339()).
+			Save(txCtx)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		e, err := r.data.RW().Read(txCtx).PlatformChannelPeerSession.Query().
+			Where(
+				platformchannelpeersession.ChannelIDEQ(channelID),
+				platformchannelpeersession.PeerKeyEQ(peerKey),
+			).
+			Only(txCtx)
+		if err != nil {
+			return err
+		}
+		result = entPeerToBiz(e)
+		return nil
+	})
 	if err != nil {
 		return biz.ChannelPeerSession{}, err
 	}
-	if n == 0 {
-		return biz.ChannelPeerSession{}, sql.ErrNoRows
-	}
-	return r.GetByChannelAndPeer(ctx, channelID, peerKey)
+	return result, nil
 }
 
 func (r *channelPeerSessionRepo) Create(ctx context.Context, row biz.ChannelPeerSession) (biz.ChannelPeerSession, error) {
 	if strings.TrimSpace(row.ID) == "" || strings.TrimSpace(row.ChannelID) == "" || strings.TrimSpace(row.SessionID) == "" {
-		return biz.ChannelPeerSession{}, kerrors.BadRequest("CHANNEL_PEER_SESSION", "missing id, channel_id, or session_id")
+		return biz.ChannelPeerSession{}, apierror.BadRequest("CHANNEL_PEER_SESSION", "missing id, channel_id, or session_id")
 	}
 	now := nowRFC3339()
 	if row.CreatedAt == "" {

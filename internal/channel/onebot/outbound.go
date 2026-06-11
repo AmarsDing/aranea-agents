@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -25,12 +24,15 @@ func (s *TextSender) ID() string { return "personal_qq" }
 func (s *TextSender) SendText(ctx context.Context, recipient, text string, groupID string) error {
 	recipient = strings.TrimSpace(recipient)
 	text = strings.TrimSpace(text)
-	if recipient == "" || text == "" {
+	if recipient == "" {
+		return errRecipientRequired
+	}
+	if text == "" {
 		return nil
 	}
 	base := strings.TrimRight(strings.TrimSpace(s.HTTPServer), "/")
 	if base == "" {
-		return fmt.Errorf("onebot outbound: http_server required")
+		return errHTTPServerRequired
 	}
 	action := "send_private_msg"
 	params := map[string]any{
@@ -67,7 +69,7 @@ func (s *TextSender) SendText(ctx context.Context, recipient, text string, group
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("onebot outbound: %s", strings.TrimSpace(string(raw)))
+		return onebotAPIError("onebot outbound", strings.TrimSpace(string(raw)))
 	}
 	return nil
 }

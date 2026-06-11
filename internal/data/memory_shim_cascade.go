@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -121,7 +122,7 @@ func (r *cascadeRepo) GetCascadeProposalRow(ctx context.Context, id string) ([]b
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, fmt.Errorf("cascade proposal not found: %s", id)
+		return nil, apierror.NotFound("MEMORY", "cascade proposal not found: %s", id)
 	}
 	return scanCascadeProposalJSON(rows)
 }
@@ -148,6 +149,44 @@ func (r *cascadeRepo) UpdateCascadeProposalStatus(ctx context.Context, id, statu
 	return r.GetCascadeProposalRow(ctx, id)
 }
 
+func (r *cascadeRepo) CompareAndSwapProposalStatus(ctx context.Context, id string, fromStatuses []string, toStatus, reviewedBy, reviewNote string) ([]byte, bool, error) {
+	if r == nil {
+		return nil, false, biz.ErrCascadeUnavailable
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	// Merge review note into metadata
+	var meta string
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `SELECT metadata_json FROM memory_cascade_proposals WHERE id = ?`, []any{id}, &meta); err != nil {
+		return nil, false, err
+	}
+	lg := r.data.lg
+	meta = mergeCascadeReviewNote(meta, toStatus, reviewNote, lg)
+	// Build WHERE clause with status IN (fromStatuses) for atomic CAS.
+	placeholders := make([]string, len(fromStatuses))
+	args := make([]any, 0, len(fromStatuses)+5)
+	for i, s := range fromStatuses {
+		placeholders[i] = "?"
+		args = append(args, s)
+	}
+	args = append(args, toStatus, reviewedBy, now, meta, now, id)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		fmt.Sprintf(`UPDATE memory_cascade_proposals SET status = ?, reviewed_by = ?, reviewed_at = ?, metadata_json = ?, updated_at = ? WHERE id = ? AND status IN (%s)`,
+			strings.Join(placeholders, ",")),
+		args...,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		// CAS failed: status was already changed by another process.
+		current, err := r.GetCascadeProposalRow(ctx, id)
+		return current, false, err
+	}
+	current, err := r.GetCascadeProposalRow(ctx, id)
+	return current, true, err
+}
+
 // --- CascadeGraphReader ---
 
 func (r *cascadeRepo) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error) {
@@ -171,7 +210,7 @@ func (r *cascadeRepo) GetEntityRow(ctx context.Context, id string) ([]byte, erro
 	defer rows.Close()
 	lg := r.data.lg
 	if !rows.Next() {
-		return nil, fmt.Errorf("entity not found: %s", id)
+		return nil, apierror.NotFound("MEMORY", "entity not found: %s", id)
 	}
 	return scanEntityRowJSON(rows, lg)
 }
@@ -192,15 +231,26 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var updated [][]byte
+
+	// Phase 1: Collect all matching facts (CS-B10: no per-row writes in loop).
+	type factUpdate struct {
+		ID       string
+		NewStmt  string
+		NewMeta  string
+	}
+	var updates []factUpdate
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	lg := r.data.lg
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
 			continue
 		}
 		var row map[string]any
-		if json.Unmarshal(b, &row) != nil {
+		if err := json.Unmarshal(b, &row); err != nil {
+			lg.Warn("ReplaceNameInAgentFacts: unmarshal failed",
+				loggateway.StepID("memory.cascade_fact_unmarshal_fail"),
+				loggateway.Err(err))
 			continue
 		}
 		stmt, _ := row["statement"].(string)
@@ -210,26 +260,62 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		newStmt := replaceNameWordBoundary(stmt, re, newName)
 		id, _ := row["id"].(string)
 		meta, _ := row["metadata_json"].(string)
-		lg := r.data.lg
 		newMeta := mergeCascadeFactMeta(meta, oldName, newName, lg)
-		_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		updates = append(updates, factUpdate{ID: id, NewStmt: newStmt, NewMeta: newMeta})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if len(updates) == 0 {
+		return nil, 0, nil
+	}
+
+	// Phase 2: Batch UPDATE all matching facts in a single transaction.
+	writeDB := r.data.RWDB().WriteHandle()
+	tx, err := writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ReplaceNameInAgentFacts: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+	for _, u := range updates {
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = ?, updated_at = ? WHERE id = ?`,
-			newStmt, strings.ToLower(newStmt), newMeta, now, id,
-		)
-		if err != nil {
-			continue
+			u.NewStmt, strings.ToLower(u.NewStmt), u.NewMeta, now, u.ID,
+		); err != nil {
+			return nil, 0, fmt.Errorf("ReplaceNameInAgentFacts: UPDATE fact %s: %w", u.ID, err)
 		}
-		// Read back
-		readRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlFactSelect+` WHERE id = ?`, id)
-		if err != nil {
-			continue
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, fmt.Errorf("ReplaceNameInAgentFacts: commit tx: %w", err)
+	}
+	committed = true
+
+	// Phase 3: Batch read-back updated rows.
+	ids := make([]any, len(updates))
+	for i, u := range updates {
+		ids[i] = u.ID
+	}
+	placeholders := make([]string, len(ids))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	readRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		fmt.Sprintf("%s WHERE id IN (%s)", sqlFactSelect, strings.Join(placeholders, ",")),
+		ids...)
+	if err != nil {
+		return nil, len(updates), nil
+	}
+	defer readRows.Close()
+	var updated [][]byte
+	for readRows.Next() {
+		if b, err := scanFactRowJSON(readRows); err == nil {
+			updated = append(updated, b)
 		}
-		if readRows.Next() {
-			if b2, err := scanFactRowJSON(readRows); err == nil {
-				updated = append(updated, b2)
-			}
-		}
-		readRows.Close()
 	}
 	return updated, len(updated), nil
 }
@@ -267,7 +353,13 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 		return 0, err
 	}
 	defer rows.Close()
-	var reverted int
+
+	// Phase 1: Collect all facts to revert (CS-B10: no per-row writes in loop).
+	type revertItem struct {
+		ID       string
+		OrigStmt string
+	}
+	var items []revertItem
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
@@ -281,17 +373,44 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 		meta, _ := row["metadata_json"].(string)
 		metaMap := decodeJSONObject(meta, r.data.lg)
 		origStmt := anyStr(metaMap["cascade_original_statement"])
-		if origStmt == "" {
+		if origStmt == "" || id == "" {
 			continue
 		}
-		_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = json_remove(metadata_json, '$.cascade_original_statement', '$.cascade_original_name', '$.cascade_saved_at'), updated_at = ? WHERE id = ?`,
-			origStmt, strings.ToLower(origStmt), now, id,
-		)
-		if err == nil {
-			reverted++
-		}
+		items = append(items, revertItem{ID: id, OrigStmt: origStmt})
 	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+
+	// Phase 2: Batch UPDATE in a single transaction.
+	writeDB := r.data.RWDB().WriteHandle()
+	tx, err := writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("RevertCascadeFactStatements: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+	var reverted int
+	for _, item := range items {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = json_remove(metadata_json, '$.cascade_original_statement', '$.cascade_original_name', '$.cascade_saved_at'), updated_at = ? WHERE id = ?`,
+			item.OrigStmt, strings.ToLower(item.OrigStmt), now, item.ID,
+		); err != nil {
+			return 0, fmt.Errorf("RevertCascadeFactStatements: UPDATE fact %s: %w", item.ID, err)
+		}
+		reverted++
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("RevertCascadeFactStatements: commit tx: %w", err)
+	}
+	committed = true
 	return reverted, nil
 }
 
@@ -324,10 +443,17 @@ func (r *cascadeRepo) ListCascadeFactDiffs(ctx context.Context, agentID, oldName
 			continue
 		}
 		newStmt := replaceNameWordBoundary(stmt, re, newName)
+		scopeType, _ := row["scope_type"].(string)
+		scopeID, _ := row["scope_id"].(string)
+		scope := scopeType
+		if scopeID != "" {
+			scope = scopeType + ":" + scopeID
+		}
 		diffs = append(diffs, map[string]any{
-			"fact_id":       row["id"],
-			"old_statement": stmt,
-			"new_statement": newStmt,
+			"fact_id":          row["id"],
+			"before_statement": stmt,
+			"after_statement":  newStmt,
+			"scope":            scope,
 		})
 		if len(diffs) >= limit {
 			break
@@ -355,24 +481,43 @@ func (r *cascadeRepo) InitCascadeSagaSteps(ctx context.Context, proposalID strin
 	if r == nil {
 		return biz.ErrCascadeUnavailable
 	}
+	if len(steps) == 0 {
+		return nil
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	// Batch INSERT in a single transaction (CS-B10).
+	writeDB := r.data.RWDB().WriteHandle()
+	tx, err := writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("InitCascadeSagaSteps: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 	for i, s := range steps {
 		id := newUUIDString()
 		payload := strings.TrimSpace(s.PayloadJSON)
 		if payload == "" {
 			payload = "{}"
 		}
-		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_cascade_saga_steps (
+		if _, err := tx.ExecContext(ctx, `INSERT INTO memory_cascade_saga_steps (
 			id, proposal_id, step_index, step_name, state, is_critical, attempts,
 			started_at, finished_at, payload_json, result_json, error, created_at
 		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			id, proposalID, i, s.StepName, s.State, memBoolToInt(s.IsCritical), s.Attempts,
 			s.StartedAt, s.FinishedAt, payload, "", "", now,
-		)
-		if err != nil {
-			return err
+		); err != nil {
+			return fmt.Errorf("InitCascadeSagaSteps: INSERT step %d: %w", i, err)
 		}
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("InitCascadeSagaSteps: commit tx: %w", err)
+	}
+	committed = true
 	return nil
 }
 
@@ -399,7 +544,7 @@ func (r *cascadeRepo) GetCascadeSagaSteps(ctx context.Context, proposalID string
 	return steps, rows.Err()
 }
 
-func (r *cascadeRepo) UpdateSagaStepState(ctx context.Context, stepID int64, state, errMsg string) error {
+func (r *cascadeRepo) UpdateSagaStepState(ctx context.Context, stepID string, state, errMsg string) error {
 	if r == nil {
 		return biz.ErrCascadeUnavailable
 	}
@@ -422,7 +567,7 @@ func (r *cascadeRepo) UpdateSagaStepState(ctx context.Context, stepID int64, sta
 	return err
 }
 
-func (r *cascadeRepo) UpdateSagaStepResult(ctx context.Context, stepID int64, resultJSON string) error {
+func (r *cascadeRepo) UpdateSagaStepResult(ctx context.Context, stepID string, resultJSON string) error {
 	if r == nil {
 		return biz.ErrCascadeUnavailable
 	}

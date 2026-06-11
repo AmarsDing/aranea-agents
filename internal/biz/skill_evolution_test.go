@@ -5,10 +5,14 @@ import (
 	"testing"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
 
 type mockProposalRepo struct {
 	SkillProposalReadWriter
@@ -37,7 +41,7 @@ func (m *mockProposalRepo) Create(_ context.Context, p SkillProposal) (SkillProp
 func (m *mockProposalRepo) GetByID(_ context.Context, id string) (SkillProposal, error) {
 	p, ok := m.proposals[id]
 	if !ok {
-		return SkillProposal{}, kerrors.NotFound("SKILL_EVO", "proposal not found")
+		return SkillProposal{}, apierror.NotFound("SKILL_EVO", "proposal not found")
 	}
 	return p, nil
 }
@@ -63,7 +67,7 @@ func (m *mockProposalRepo) ListByAgent(_ context.Context, agentID string, status
 func (m *mockProposalRepo) UpdateStatus(_ context.Context, id string, status SkillProposalStatus, operator string) (SkillProposal, error) {
 	p, ok := m.proposals[id]
 	if !ok {
-		return SkillProposal{}, kerrors.NotFound("SKILL_EVO", "proposal not found")
+		return SkillProposal{}, apierror.NotFound("SKILL_EVO", "proposal not found")
 	}
 	p.Status = status
 	if status == SkillProposalStatusApproved {
@@ -148,7 +152,7 @@ func TestSkillEvolutionUsecase_RegisterApproved_EmptyMD(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty SkillMD")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -211,7 +215,7 @@ func TestSkillEvolutionUsecase_ApproveProposal_NotPending(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-pending proposal")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }
@@ -281,7 +285,7 @@ func TestSkillEvolutionUsecase_RegisterApproved_Conflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
-	if !kerrors.IsConflict(err) {
+	if !isAPIErrorCode(err, apierror.CodeConflict) {
 		t.Errorf("expected Conflict, got %v", err)
 	}
 }
@@ -299,7 +303,7 @@ func TestSkillEvolutionUsecase_RegisterApproved_NotApproved(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-approved proposal")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }

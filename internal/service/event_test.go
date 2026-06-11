@@ -8,9 +8,13 @@ import (
 	eventv1 "aranea-agents/api/kratos/event/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
+
+func isAPIErrorCode(err error, code apierror.Code) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == code
+}
 
 type memEventStoreRepo struct {
 	records []biz.EventStoreRecord
@@ -65,7 +69,7 @@ func TestEventService_ListEvents_RequiresExistingSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing session")
 	}
-	if !kerrors.IsNotFound(err) {
+	if !isAPIErrorCode(err, apierror.CodeNotFound) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 
@@ -73,7 +77,7 @@ func TestEventService_ListEvents_RequiresExistingSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty session_id")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
 		t.Fatalf("expected bad request, got %v", err)
 	}
 }

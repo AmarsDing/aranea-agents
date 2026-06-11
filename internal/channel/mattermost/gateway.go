@@ -55,12 +55,12 @@ func RunWebSocket(
 	serverURL = strings.TrimSpace(serverURL)
 	botToken = strings.TrimSpace(botToken)
 	if serverURL == "" || botToken == "" {
-		return fmt.Errorf("mattermost websocket: server_url and bot_token required")
+		return errServerURLAndBotTokenRequired
 	}
 
 	botUserID, err := fetchBotUserID(ctx, serverURL, botToken, lg)
 	if err != nil {
-		return fmt.Errorf("mattermost websocket: get user: %w", err)
+		return mattermostAPIError("mattermost websocket: get user", err.Error())
 	}
 
 	wsURL := buildWSURL(serverURL)
@@ -69,7 +69,7 @@ func RunWebSocket(
 
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, header)
 	if err != nil {
-		return fmt.Errorf("mattermost websocket: dial: %w", err)
+		return mattermostAPIError("mattermost websocket: dial", err.Error())
 	}
 	defer conn.Close()
 	lg.Info("Mattermost WebSocket 连接成功",
@@ -110,10 +110,10 @@ func RunWebSocket(
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-readErr:
-			return fmt.Errorf("mattermost websocket: read failed: %w", err)
+			return mattermostAPIError("mattermost websocket: read failed", err.Error())
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"seq":0,"action":"ping"}`)); err != nil {
-				return fmt.Errorf("mattermost websocket: ping failed: %w", err)
+				return mattermostAPIError("mattermost websocket: ping failed", err.Error())
 			}
 		}
 	}
@@ -134,13 +134,16 @@ func fetchBotUserID(ctx context.Context, serverURL, token string, lg loggateway.
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return "", mattermostAPIError("mattermost websocket", fmt.Sprintf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw))))
 	}
 	var user struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &user); err != nil {
-		lg.Warn("解析 mattermost user id 失败", loggateway.StepID("channel.mattermost.fetch_bot_user"), loggateway.Err(err))
+		return "", mattermostParseError("mattermost websocket: parse user response", err)
+	}
+	if strings.TrimSpace(user.ID) == "" {
+		return "", mattermostAPIError("mattermost websocket", "empty bot user id")
 	}
 	return strings.TrimSpace(user.ID), nil
 }
@@ -197,8 +200,8 @@ func parseWSMessage(raw []byte, botUserID string) (port.InboundEvent, bool) {
 		Text:           text,
 		IdempotencyKey: "mattermost:" + strings.TrimSpace(post.ID),
 		OutboundMeta: map[string]string{
-			"recipient": channelID,
-			"chat_id":   channelID,
+			port.MetaRecipient: channelID,
+			port.MetaChatID:    channelID,
 		},
 	}, true
 }

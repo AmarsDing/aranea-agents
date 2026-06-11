@@ -27,7 +27,7 @@
           flat
           dense
           no-caps
-          color="primary"
+          color="accent"
           :label="t('chat.toolConfirmApprove')"
           @click="$emit('submit-tool-confirm', true)"
         />
@@ -43,7 +43,7 @@
           flat
           dense
           no-caps
-          color="primary"
+          color="accent"
           :label="t('chat.submitAwaitReply')"
           @click="$emit('submit-await-reply')"
         />
@@ -60,7 +60,7 @@
           flat
           dense
           no-caps
-          color="primary"
+          color="accent"
           :label="t('chat.contextPressureNewSession', '新会话')"
           @click="$emit('new-session')"
         />
@@ -81,10 +81,10 @@
             :value="file.progress * 100"
             size="28px"
             :thickness="0.2"
-            color="primary"
+            color="accent"
             class="q-mr-xs"
           />
-          <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="primary" />
+          <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="accent" />
           <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span
           ><q-tooltip>{{ file.name }}</q-tooltip>
           <q-btn
@@ -199,7 +199,7 @@
             dense
             unelevated
             outline
-            color="primary"
+            color="accent"
             :disable="fileSupported === false"
             :aria-label="t('chat.fileImport')"
             class="chat-toolbar-btn chat-toolbar-btn--outline"
@@ -218,7 +218,7 @@
             dense
             unelevated
             outline
-            color="primary"
+            color="accent"
             :aria-label="t('chat.voiceInput')"
             class="chat-toolbar-btn chat-toolbar-btn--outline"
             @click="$emit('voice')"
@@ -240,7 +240,7 @@
             v-else
             dense
             unelevated
-            color="primary"
+            color="accent"
             :disable="!modelValue.trim()"
             :aria-label="t('chat.send')"
             class="chat-toolbar-btn chat-toolbar-btn--filled"
@@ -343,7 +343,7 @@ function handlePaste(event: ClipboardEvent) {
       if (!file) continue;
       const isImage =
         file.type?.toLowerCase().startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/i.test(file.name);
-      if (props.fileAccept && isImage) {
+      if (props.fileAccept && isImage && !props.fileAccept.includes('image/') && !props.fileAccept.includes('*')) {
         event.preventDefault();
         emit('paste-unsupported');
         return;

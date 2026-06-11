@@ -3,18 +3,18 @@ package tool
 import (
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
-func isKerror(err error, reason, message string) bool {
+func isAPIError(err error, domain, message string) bool {
 	if err == nil {
 		return false
 	}
-	ke, ok := err.(*kerrors.Error)
+	ae, ok := apierror.From(err)
 	if !ok {
 		return false
 	}
-	return ke.Reason == reason && ke.Message == message
+	return ae.Domain == domain && ae.Message == message
 }
 
 func TestValidateToolUpsert(t *testing.T) {
@@ -149,8 +149,8 @@ func TestValidateToolUpsert(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				if !isKerror(err, tt.reason, tt.message) {
-					t.Fatalf("expected kerror reason=%q message=%q, got %v", tt.reason, tt.message, err)
+				if !isAPIError(err, tt.reason, tt.message) {
+					t.Fatalf("expected apierror domain=%q message=%q, got %v", tt.reason, tt.message, err)
 				}
 			} else {
 				if err != nil {
@@ -225,8 +225,8 @@ func TestAssertToolMutable(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				if !isKerror(err, tt.reason, tt.message) {
-					t.Fatalf("expected kerror reason=%q message=%q, got %v", tt.reason, tt.message, err)
+				if !isAPIError(err, tt.reason, tt.message) {
+					t.Fatalf("expected apierror domain=%q message=%q, got %v", tt.reason, tt.message, err)
 				}
 			} else {
 				if err != nil {
@@ -278,8 +278,8 @@ func TestAssertToolDeletable(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				if !isKerror(err, tt.reason, tt.message) {
-					t.Fatalf("expected kerror reason=%q message=%q, got %v", tt.reason, tt.message, err)
+				if !isAPIError(err, tt.reason, tt.message) {
+					t.Fatalf("expected apierror domain=%q message=%q, got %v", tt.reason, tt.message, err)
 				}
 			} else {
 				if err != nil {
@@ -392,8 +392,8 @@ func TestRequireJSONObject(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				if !isKerror(err, tt.reason, tt.message) {
-					t.Fatalf("expected kerror reason=%q message=%q, got %v", tt.reason, tt.message, err)
+				if !isAPIError(err, tt.reason, tt.message) {
+					t.Fatalf("expected apierror domain=%q message=%q, got %v", tt.reason, tt.message, err)
 				}
 			} else {
 				if err != nil {

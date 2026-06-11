@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type UnifiedEvolutionRepo struct {
@@ -76,7 +75,7 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 		appliedAt,
 	)
 	if err != nil {
-		return kerrors.InternalServer("UNIFIED_EVO", "insert unified evolution suggestion: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return nil
 }
@@ -87,7 +86,7 @@ func (r *UnifiedEvolutionRepo) HasPendingForTarget(ctx context.Context, targetTy
 	var count int
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{targetType, targetID}, &count)
 	if err != nil {
-		return false, kerrors.InternalServer("UNIFIED_EVO", "check pending: "+err.Error())
+		return false, apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return count > 0, nil
 }
@@ -127,7 +126,7 @@ func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType stri
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, kerrors.InternalServer("UNIFIED_EVO", "list by target: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	defer rows.Close()
 
@@ -135,7 +134,7 @@ func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType stri
 	for rows.Next() {
 		s, err := scanUnifiedEvolutionRow(rows)
 		if err != nil {
-			return nil, kerrors.InternalServer("UNIFIED_EVO", "scan row: "+err.Error())
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 		}
 		result = append(result, *s)
 	}
@@ -153,7 +152,7 @@ func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType str
 	var count int
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args, &count)
 	if err != nil {
-		return 0, kerrors.InternalServer("UNIFIED_EVO", "count by target: "+err.Error())
+		return 0, apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return count, nil
 }
@@ -191,7 +190,7 @@ func (r *UnifiedEvolutionRepo) UpdateStatus(ctx context.Context, id string, stat
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
-		return kerrors.InternalServer("UNIFIED_EVO", "update status: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return nil
 }
@@ -200,7 +199,7 @@ func (r *UnifiedEvolutionRepo) UpdateDraftBody(ctx context.Context, id string, d
 	q := `UPDATE unified_evolution_suggestions SET draft_body = ? WHERE id = ?`
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, draftBody, id)
 	if err != nil {
-		return kerrors.InternalServer("UNIFIED_EVO", "update draft body: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return nil
 }
@@ -209,7 +208,7 @@ func (r *UnifiedEvolutionRepo) UpdateLifecycleStatus(ctx context.Context, id str
 	q := `UPDATE unified_evolution_suggestions SET lifecycle_status = ? WHERE id = ?`
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, lifecycleStatus, id)
 	if err != nil {
-		return kerrors.InternalServer("UNIFIED_EVO", "update lifecycle status: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return nil
 }
@@ -227,7 +226,7 @@ func (r *UnifiedEvolutionRepo) UpdateSandboxResult(ctx context.Context, id strin
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, sandboxPassed, resultStr, id)
 	if err != nil {
-		return kerrors.InternalServer("UNIFIED_EVO", "update sandbox result: "+err.Error())
+		return apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return nil
 }
@@ -237,7 +236,7 @@ func (r *UnifiedEvolutionRepo) ExpireOlderThan(ctx context.Context, cutoff time.
 	      WHERE status = 'pending' AND created_at < ?`
 	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, cutoff.UTC().Format(time.RFC3339))
 	if err != nil {
-		return 0, kerrors.InternalServer("UNIFIED_EVO", "expire older than: "+err.Error())
+		return 0, apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
@@ -254,7 +253,7 @@ func (r *UnifiedEvolutionRepo) ExpireOlderThan(ctx context.Context, cutoff time.
 func (r *UnifiedEvolutionRepo) scanOne(ctx context.Context, q string, args ...any) (*biz.UnifiedEvolutionSuggestion, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, kerrors.InternalServer("UNIFIED_EVO", "query: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -262,7 +261,7 @@ func (r *UnifiedEvolutionRepo) scanOne(ctx context.Context, q string, args ...an
 	}
 	s, scanErr := scanUnifiedEvolutionRow(rows)
 	if scanErr != nil {
-		return nil, kerrors.InternalServer("UNIFIED_EVO", "scan: "+scanErr.Error())
+		return nil, apierror.Wrap(scanErr, apierror.CodeInternal, "UNIFIED_EVO")
 	}
 	return s, nil
 }

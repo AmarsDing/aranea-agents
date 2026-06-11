@@ -3,19 +3,16 @@ package biz
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	stderrors "errors"
 	"regexp"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var (
@@ -46,6 +43,7 @@ type AgentWriter interface {
 	CreateAgent(ctx context.Context, a Agent) (Agent, error)
 	UpdateAgent(ctx context.Context, a Agent) (Agent, error)
 	DeleteAgent(ctx context.Context, id string) error
+	ToggleFavorite(ctx context.Context, id string) (Agent, error)
 }
 
 type AgentRuntimeSettingsRepo interface {
@@ -143,16 +141,16 @@ func (u *AgentUsecase) List(ctx context.Context, q AgentListQuery) (AgentListRes
 func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey string) (available bool, message string, err error) {
 	agentKey = strings.TrimSpace(agentKey)
 	if agentKey == "" {
-		return false, "agent_key is required", kerrors.BadRequest("AGENT", "agent_key is required")
+		return false, "agent_key is required", apierror.BadRequest("AGENT", "agent_key is required")
 	}
 	if !agentKeyPattern.MatchString(agentKey) {
-		return false, "invalid agent_key format", kerrors.BadRequest("AGENT_KEY_INVALID", "agent_key must be lowercase letters, digits, and hyphens")
+		return false, "invalid agent_key format", apierror.BadRequest("AGENT_KEY_INVALID", "agent_key must be lowercase letters, digits, and hyphens")
 	}
 	_, err = u.repo.GetAgentByAgentKey(ctx, agentKey)
 	if err == nil {
 		return false, "agent_key already in use", nil
 	}
-	if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
+	if !stderrors.Is(err, shared.ErrNotFound) {
 		return false, "", err
 	}
 	return true, "available", nil
@@ -166,6 +164,9 @@ func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
 	}
 	a, err := u.repo.GetAgentByID(ctx, id)
 	if err != nil {
+		if stderrors.Is(err, shared.ErrNotFound) {
+			return Agent{}, shared.ErrNotFound
+		}
 		return Agent{}, err
 	}
 	return u.hydrate(ctx, a)
@@ -178,6 +179,9 @@ func (u *AgentUsecase) GetByAgentKey(ctx context.Context, agentKey string) (Agen
 	}
 	a, err := u.repo.GetAgentByAgentKey(ctx, agentKey)
 	if err != nil {
+		if stderrors.Is(err, shared.ErrNotFound) {
+			return Agent{}, shared.ErrNotFound
+		}
 		return Agent{}, err
 	}
 	return u.hydrate(ctx, a)
@@ -186,11 +190,11 @@ func (u *AgentUsecase) GetByAgentKey(ctx context.Context, agentKey string) (Agen
 func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return AgentRuntimeSettings{}, kerrors.BadRequest("AGENT", "agent id is required")
+		return AgentRuntimeSettings{}, apierror.BadRequest("AGENT", "agent id is required")
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
 	if err != nil {
-		if stderrors.Is(err, shared.ErrNotFound) || stderrors.Is(err, sql.ErrNoRows) {
+		if stderrors.Is(err, shared.ErrNotFound) {
 			return DefaultAgentRuntimeSettings(), nil
 		}
 		return AgentRuntimeSettings{}, err
@@ -199,9 +203,16 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 }
 
 func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) {
+	return u.hydrateWithExtras(ctx, agent, false)
+}
+
+// hydrateWithExtras hydrates an agent with settings, files, and optionally extras.
+// When skipExtras is true, the ListExtrasForAgents query is skipped (suitable for
+// orchestration/build paths that only need settings + files, not list-display fields).
+func (u *AgentUsecase) hydrateWithExtras(ctx context.Context, agent Agent, skipExtras bool) (Agent, error) {
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agent.ID)
 	if err != nil {
-		if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
+		if !stderrors.Is(err, shared.ErrNotFound) {
 			return Agent{}, err
 		}
 		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
@@ -224,14 +235,37 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	}
 	computed = EmbedAgentKindInConfigJSON(computed, agent.AgentKind, agent.A2AProxy, u.lg)
 	agent.ConfigJSON = mergeEvaluationFromLegacy(computed, agent.ConfigJSON, u.lg)
-	if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err == nil {
-		if ex, ok := extras[agent.ID]; ok {
+	if !skipExtras {
+		if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err != nil {
+			u.lg.Warn("agent extras query failed, skipping enrichment",
+				loggateway.StepID("agent.hydrate_extras"),
+				loggateway.Str("agent_id", agent.ID),
+				loggateway.Err(err))
+		} else if ex, ok := extras[agent.ID]; ok {
 			agent.LastRunStatus = ex.LastRunStatus
 			agent.LastRunAt = ex.LastRunAt
 			agent.PendingEvolutionCount = ex.PendingEvolutionCount
 		}
 	}
 	return agent, nil
+}
+
+// BatchHydrateForBuild hydrates multiple agents in bulk for orchestration/build paths.
+// Unlike calling Get() in a loop, this method:
+//  1. Skips the ListExtrasForAgents query (not needed for runtime builds).
+//  2. Batches the extras query when needed (future optimization point).
+//
+// This avoids the N+1 query pattern that would result from calling Get() per agent.
+func (u *AgentUsecase) BatchHydrateForBuild(ctx context.Context, agents []Agent) ([]Agent, error) {
+	out := make([]Agent, len(agents))
+	for i, a := range agents {
+		h, err := u.hydrateWithExtras(ctx, a, true)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = h
+	}
+	return out, nil
 }
 
 func (u *AgentUsecase) migrateLegacySettings(ctx context.Context, agent Agent) AgentRuntimeSettings {
@@ -259,6 +293,77 @@ func (u *AgentUsecase) migrateLegacyFiles(ctx context.Context, agent Agent) []Ag
 	return migrated
 }
 
+// validateAgentCreate performs common validation for agent creation.
+// It mutates settings for A2A Proxy agents (force-disables certain features).
+func validateAgentCreate(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings) error {
+	switch agent.AgentKind {
+	case AgentKindA2AProxy:
+		if agent.A2AProxy == nil || strings.TrimSpace(agent.A2AProxy.RemoteURL) == "" {
+			return apierror.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		}
+		if agent.Provider == "" {
+			agent.Provider = "a2a"
+		}
+		if agent.Model == "" {
+			agent.Model = "proxy"
+		}
+	default:
+		if agent.Provider == "" || agent.Model == "" {
+			return apierror.BadRequest("AGENT", "provider and model are required")
+		}
+	}
+	return validateAgentSettings(ctx, u, agent, settings, "agent.create.provider_validate")
+}
+
+// validateAgentUpdate performs validation for agent updates.
+// Unlike create, provider/model are already set on the merged agent;
+// this validates the pair and all settings fields.
+func validateAgentUpdate(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings) error {
+	if IsA2AProxyAgent(*agent) {
+		if agent.A2AProxy == nil || strings.TrimSpace(agent.A2AProxy.RemoteURL) == "" {
+			return apierror.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		}
+	}
+	return validateAgentSettings(ctx, u, agent, settings, "agent.update.provider_validate")
+}
+
+// validateAgentSettings is the shared validation logic for both Create and Update paths.
+// It validates provider/model pairs, settings fields, and force-disables A2A-incompatible features.
+func validateAgentSettings(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings, logStepID string) error {
+	// Validate that the provider+model pair exists in the catalog (non-A2A agents only).
+	if u.providerValidator != nil && !IsA2AProxyAgent(*agent) {
+		ok, msg, valErr := u.providerValidator.ValidatePair(ctx, agent.Provider, agent.Model)
+		if valErr != nil {
+			u.lg.Warn("provider model validation failed, proceeding",
+				loggateway.StepID(logStepID),
+				loggateway.Str("provider", agent.Provider),
+				loggateway.Str("model", agent.Model),
+				loggateway.Err(valErr))
+		} else if !ok {
+			return apierror.BadRequest("AGENT", "provider/model is not enabled: "+msg)
+		}
+	}
+	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
+		return err
+	}
+	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
+		return err
+	}
+	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
+		return err
+	}
+	if err := ValidateRalphLoopSettings(settings); err != nil {
+		return err
+	}
+	if IsA2AProxyAgent(*agent) {
+		settings.IntentPassEnabled = false
+		settings.ToolsEnabled = false
+		settings.MemoryEnabled = false
+		settings.SelfEvolve = false
+	}
+	return nil
+}
+
 // Create inserts an agent and persists settings + prompt files.
 func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	in.AgentKey = strings.TrimSpace(in.AgentKey)
@@ -269,78 +374,29 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	HydrateAgentKind(&in)
 
 	if in.AgentKey == "" || in.DisplayName == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key and display_name are required")
-	}
-	switch in.AgentKind {
-	case AgentKindA2AProxy:
-		if in.A2AProxy == nil || strings.TrimSpace(in.A2AProxy.RemoteURL) == "" {
-			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
-		}
-		if in.Provider == "" {
-			in.Provider = "a2a"
-		}
-		if in.Model == "" {
-			in.Model = "proxy"
-		}
-	default:
-		if in.Provider == "" || in.Model == "" {
-			return Agent{}, kerrors.BadRequest("AGENT", "provider and model are required")
-		}
-		in.AgentKind = AgentKindLLM
-	}
-	// Validate that the provider+model pair exists in the catalog (non-A2A agents only).
-	if u.providerValidator != nil && in.AgentKind != AgentKindA2AProxy {
-		ok, msg, valErr := u.providerValidator.ValidatePair(ctx, in.Provider, in.Model)
-		if valErr != nil {
-			u.lg.Warn("provider model validation failed, proceeding with create",
-				loggateway.StepID("agent.create.provider_validate"),
-				loggateway.Str("provider", in.Provider),
-				loggateway.Str("model", in.Model),
-				loggateway.Err(valErr))
-		} else if !ok {
-			return Agent{}, kerrors.BadRequest("AGENT", "provider/model is not enabled: "+msg)
-		}
+		return Agent{}, apierror.BadRequest("AGENT", "agent_key and display_name are required")
 	}
 	if in.ID == "" {
 		in.ID = newAgentCatalogID()
 	}
 	settings := withSettingDefaults(settingsFromAgentInput(in))
 	settings.AgentID = in.ID
-	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
+	if err := validateAgentCreate(ctx, u, &in, &settings); err != nil {
 		return Agent{}, err
 	}
-	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
-		return Agent{}, err
-	}
-	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
-		return Agent{}, err
-	}
-	if err := ValidateRalphLoopSettings(&settings); err != nil {
-		return Agent{}, err
-	}
-	if in.AgentKind == AgentKindA2AProxy {
-		settings.IntentPassEnabled = false
-		settings.ToolsEnabled = false
-		settings.MemoryEnabled = false
-		settings.SelfEvolve = false
+	if in.AgentKind != AgentKindA2AProxy {
+		in.AgentKind = AgentKindLLM
 	}
 	files := filesFromAgentInput(in)
 	for i := range files {
 		files[i].AgentID = in.ID
 	}
 	files = withFileDefaults(files)
-	// TODO(debt): DEV-10 — ConfigJSON should be a read-only projection of Settings + Files.
-	// Currently it participates in the write path, creating a risk of data inconsistency.
-	// Plan: After all consumers are migrated to read from Settings/Files directly,
-	// remove ConfigJSON from the write path and generate it on-demand for read-only use.
-	if strings.TrimSpace(in.ConfigJSON) == "" {
-		configJSON, configErr := configJSONFromSettings(settings, files)
-		if configErr != nil {
-			return Agent{}, configErr
-		}
-		in.ConfigJSON = configJSON
-	}
-	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.AgentKind, in.A2AProxy, u.lg)
+	// DEV-10 FIXED: ConfigJSON is now a read-only projection of Settings + Files.
+	// It is no longer written to the database; computeConfigJSON / hydrate
+	// generates it on-demand for read paths. The in.ConfigJSON field is
+	// intentionally left empty so the data layer stores no stale snapshot.
+	in.ConfigJSON = ""
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = "active"
@@ -351,7 +407,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
 		if _, err := u.repo.CreateAgent(txCtx, in); err != nil {
 			if isAgentKeyDuplicate(err) {
-				return kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+				return apierror.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
 			}
 			return err
 		}
@@ -374,51 +430,26 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 
 // Update merges patch into the stored agent, then rewrites settings, files, and config_json.
 func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agent, error) {
-	// #region debug-point agent.update.trace
-	// DEBUG ONLY: timing trace to identify the SQL call that hangs in AgentUsecase.Update.
-	// Remove this block once root-cause is fixed.
-	// NOTE: uses Info (not Debug) because smoke.yaml logging.level=info filters Debug.
-	traceStart := time.Now()
-	traceTrace := u.lg.With(loggateway.StepID("agent.update.trace"), loggateway.Str("agent_id", id))
-	traceTrace.Info("enter Update", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-	defer func() {
-		traceTrace.Info("exit Update", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-	}()
-	// #endregion debug-point
 	id, err := requireNonEmpty(id, "AGENT", "id")
 	if err != nil {
 		return Agent{}, err
 	}
 	current, err := u.Get(ctx, id)
-	// #region debug-point agent.update.trace
-	traceTrace.Info("after Get#1 (hydrate)", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-	// #endregion debug-point
 	if err != nil {
 		return Agent{}, err
 	}
 	HydrateAgentKind(&patch)
 	HydrateAgentKind(&current)
 	if strings.TrimSpace(patch.AgentKey) != "" && strings.TrimSpace(patch.AgentKey) != strings.TrimSpace(current.AgentKey) {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key is immutable")
+		return Agent{}, apierror.BadRequest("AGENT", "agent_key is immutable")
 	}
 	if strings.TrimSpace(patch.AgentKind) != "" && NormalizeAgentKind(patch.AgentKind) != NormalizeAgentKind(current.AgentKind) {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_kind is immutable")
+		return Agent{}, apierror.BadRequest("AGENT", "agent_kind is immutable")
 	}
 	merged := mergeAgentCatalog(current, patch)
-	merged.AgentKey = current.AgentKey
-	merged.AgentKind = current.AgentKind
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
-	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
-		return Agent{}, err
-	}
-	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
-		return Agent{}, err
-	}
-	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
-		return Agent{}, err
-	}
-	if err := ValidateRalphLoopSettings(&settings); err != nil {
+	if err := validateAgentUpdate(ctx, u, &merged, &settings); err != nil {
 		return Agent{}, err
 	}
 	files := merged.Files
@@ -433,56 +464,22 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	merged.Settings = &settings
 	merged.Files = files
 	HydrateAgentKind(&merged)
-	if IsA2AProxyAgent(merged) {
-		if merged.A2AProxy == nil || strings.TrimSpace(merged.A2AProxy.RemoteURL) == "" {
-			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
-		}
-	}
-	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.AgentKind, merged.A2AProxy, u.lg)
-	// #region debug-point agent.update.trace
-	traceTrace.Info("before ExecInTx", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Int("files_len", len(files)))
-	// #endregion debug-point
+	// DEV-10 FIXED: ConfigJSON is no longer written; cleared before persisting.
+	merged.ConfigJSON = ""
 	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
-		// #region debug-point agent.update.trace
-		traceTrace.Info("tx-body: start", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-		// #endregion debug-point
-		// #region debug-point agent.update.trace
-		s1 := time.Now()
-		traceTrace.Info("tx-body: before UpdateAgent", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-		// #endregion debug-point
 		if _, err := u.repo.UpdateAgent(txCtx, merged); err != nil {
 			return err
 		}
-		// #region debug-point agent.update.trace
-		traceTrace.Info("tx-body: after UpdateAgent", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s1).Milliseconds()))
-		// #endregion debug-point
-		// #region debug-point agent.update.trace
-		s2 := time.Now()
-		traceTrace.Info("tx-body: before UpsertAgentRuntimeSettings", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-		// #endregion debug-point
 		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
 			return err
 		}
-		// #region debug-point agent.update.trace
-		traceTrace.Info("tx-body: after UpsertAgentRuntimeSettings", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s2).Milliseconds()))
-		// #endregion debug-point
-		// #region debug-point agent.update.trace
-		s3 := time.Now()
-		traceTrace.Info("tx-body: before ReplaceAgentPromptFiles", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-		// #endregion debug-point
 		if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, id, files); err != nil {
 			return err
 		}
-		// #region debug-point agent.update.trace
-		traceTrace.Info("tx-body: after ReplaceAgentPromptFiles", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s3).Milliseconds()))
-		// #endregion debug-point
 		return nil
 	}); err != nil {
 		return Agent{}, err
 	}
-	// #region debug-point agent.update.trace
-	traceTrace.Info("after ExecInTx", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-	// #endregion debug-point
 	// Use a detached context for the final read: the transaction has already
 	// committed, but the HTTP request context may have been cancelled while
 	// waiting for a SQLite write lock.  The caller still needs the updated
@@ -491,14 +488,7 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if ctx.Err() != nil {
 		readCtx = context.Background()
 	}
-	// #region debug-point agent.update.trace
-	s4 := time.Now()
-	traceTrace.Info("before Get#2 (final hydrate)", loggateway.Duration(time.Since(traceStart).Milliseconds()))
-	// #endregion debug-point
 	out, err := u.Get(readCtx, id)
-	// #region debug-point agent.update.trace
-	traceTrace.Info("after Get#2 (final hydrate)", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s4).Milliseconds()))
-	// #endregion debug-point
 	return out, err
 }
 
@@ -512,17 +502,29 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	// Kind is the ownership classification (user | system_builtin | ecosystem_preset | ...).
-	if current.Kind == "system_builtin" {
-		if strings.HasPrefix(current.AgentKey, "__dept_lead_") {
-			return kerrors.Forbidden("AGENT", "cannot delete department lead agent; delete the department instead")
-		}
-		return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
-	}
-	if current.Readonly {
-		return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
+	if err := canDeleteAgent(current); err != nil {
+		return err
 	}
 	return u.repo.DeleteAgent(ctx, id)
+}
+
+// canDeleteAgent is the unified delete-permission check used by both
+// single Delete and BatchUpdateAgents to ensure consistent authorization.
+func canDeleteAgent(a Agent) error {
+	// Kind is the ownership classification (user | system_builtin | ecosystem_preset | ...).
+	if a.Kind == "system_builtin" {
+		if strings.HasPrefix(a.AgentKey, "__dept_lead_") {
+			return apierror.Forbidden("AGENT", "cannot delete department lead agent; delete the department instead")
+		}
+		return apierror.Forbidden("AGENT", "cannot delete system_builtin agent")
+	}
+	if a.Kind == "ecosystem_preset" {
+		return apierror.Forbidden("AGENT", "cannot delete ecosystem_preset agent directly; use industry unload instead")
+	}
+	if a.Readonly {
+		return apierror.Forbidden("AGENT", "cannot delete a readonly agent")
+	}
+	return nil
 }
 
 // ForceDelete soft-deletes the agent bypassing kind/readonly permission checks.
@@ -536,21 +538,17 @@ func (u *AgentUsecase) ForceDelete(ctx context.Context, id string) error {
 }
 
 // ToggleFavorite flips the is_favorite flag on an agent.
+// Delegates to repo for atomic SQL toggle to avoid read-then-write race condition.
 func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, error) {
 	id, err := requireNonEmpty(id, "AGENT", "id")
 	if err != nil {
 		return Agent{}, err
 	}
-	a, err := u.repo.GetAgentByID(ctx, id)
+	updated, err := u.repo.ToggleFavorite(ctx, id)
 	if err != nil {
-		if stderrors.Is(err, shared.ErrNotFound) || stderrors.Is(err, sql.ErrNoRows) {
-			return Agent{}, kerrors.NotFound("AGENT", "agent not found")
+		if stderrors.Is(err, shared.ErrNotFound) {
+			return Agent{}, apierror.NotFound("AGENT", "agent not found")
 		}
-		return Agent{}, err
-	}
-	a.IsFavorite = !a.IsFavorite
-	updated, err := u.repo.UpdateAgent(ctx, a)
-	if err != nil {
 		return Agent{}, err
 	}
 	return u.hydrate(ctx, updated)
@@ -574,7 +572,7 @@ func (u *AgentUsecase) CreatePromptFile(ctx context.Context, f AgentPromptFile) 
 	f.AgentID = strings.TrimSpace(f.AgentID)
 	f.Name = strings.TrimSpace(f.Name)
 	if f.AgentID == "" || f.Name == "" {
-		return AgentPromptFile{}, kerrors.BadRequest("AGENT_FILE", "agent_id and name are required")
+		return AgentPromptFile{}, apierror.BadRequest("AGENT_FILE", "agent_id and name are required")
 	}
 	if _, err := u.Get(ctx, f.AgentID); err != nil {
 		return AgentPromptFile{}, err
@@ -591,7 +589,7 @@ func (u *AgentUsecase) UpdatePromptFile(ctx context.Context, f AgentPromptFile) 
 	f.AgentID = strings.TrimSpace(f.AgentID)
 	f.ID = strings.TrimSpace(f.ID)
 	if f.AgentID == "" || f.ID == "" {
-		return AgentPromptFile{}, kerrors.BadRequest("AGENT_FILE", "agent_id and id are required")
+		return AgentPromptFile{}, apierror.BadRequest("AGENT_FILE", "agent_id and id are required")
 	}
 	if _, err := u.Get(ctx, f.AgentID); err != nil {
 		return AgentPromptFile{}, err
@@ -608,7 +606,7 @@ func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string)
 	agentID = strings.TrimSpace(agentID)
 	id = strings.TrimSpace(id)
 	if agentID == "" || id == "" {
-		return kerrors.BadRequest("AGENT_FILE", "agent_id and id are required")
+		return apierror.BadRequest("AGENT_FILE", "agent_id and id are required")
 	}
 	if _, err := u.Get(ctx, agentID); err != nil {
 		return err
@@ -627,7 +625,7 @@ func (u *AgentUsecase) ReorderAgents(ctx context.Context, ids []string) error {
 func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (FileTokenEstimates, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return FileTokenEstimates{}, kerrors.BadRequest("AGENT_FILE", "agent_id is required")
+		return FileTokenEstimates{}, apierror.BadRequest("AGENT_FILE", "agent_id is required")
 	}
 	a, err := u.Get(ctx, agentID)
 	if err != nil {
@@ -643,7 +641,7 @@ func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, id)
 	if err != nil {
-		if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
+		if !stderrors.Is(err, shared.ErrNotFound) {
 			return "", err
 		}
 		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
@@ -696,22 +694,36 @@ func mergeEvaluationFromLegacy(computed, legacy string, lg loggateway.Logger) st
 
 func mergeAgentCatalog(current, patch Agent) Agent {
 	out := current
-	out.AgentKey = firstNonEmpty(patch.AgentKey, current.AgentKey)
+	// Immutable fields: AgentKey and AgentKind are never merged from patch.
+	// They are validated as immutable in Update() before this function is called.
+	// Skipping them here prevents accidental overwrite if patch carries a stale value.
+	// out.AgentKey remains current.AgentKey
+	// out.AgentKind remains current.AgentKind
 	out.DisplayName = firstNonEmpty(patch.DisplayName, current.DisplayName)
 	out.Provider = firstNonEmpty(patch.Provider, current.Provider)
 	out.Model = firstNonEmpty(patch.Model, current.Model)
 	out.Status = firstNonEmpty(patch.Status, current.Status)
-	out.IsDefault = patch.IsDefault
-	out.IsFavorite = patch.IsFavorite
-	out.Icon = patch.Icon
-	out.AgentDescription = patch.AgentDescription
-	out.PositionID = patch.PositionID
-	out.SystemPromptMode = patch.SystemPromptMode
-	out.ContextWindow = patch.ContextWindow
-	out.BudgetMonthlyCents = patch.BudgetMonthlyCents
-	if strings.TrimSpace(patch.ConfigJSON) != "" {
-		out.ConfigJSON = MergeAgentConfigJSON(current.ConfigJSON, patch.ConfigJSON)
+	// Boolean fields: *bool semantics — nil means "not set" (skip), non-nil
+	// means "explicitly set" (overwrite). This solves the Proto3 zero-value
+	// ambiguity where false and "not set" are indistinguishable.
+	if patch.IsDefault != nil {
+		out.IsDefault = patch.IsDefault
 	}
+	if patch.IsFavorite != nil {
+		out.IsFavorite = patch.IsFavorite
+	}
+	out.Icon = firstNonEmpty(patch.Icon, current.Icon)
+	out.AgentDescription = firstNonEmpty(patch.AgentDescription, current.AgentDescription)
+	out.PositionID = firstNonEmpty(patch.PositionID, current.PositionID)
+	out.SystemPromptMode = firstNonEmpty(patch.SystemPromptMode, current.SystemPromptMode)
+	if patch.ContextWindow != 0 {
+		out.ContextWindow = patch.ContextWindow
+	}
+	if patch.BudgetMonthlyCents != 0 {
+		out.BudgetMonthlyCents = patch.BudgetMonthlyCents
+	}
+	// DEV-10 FIXED: ConfigJSON is no longer merged/written; it is computed on read.
+	// out.ConfigJSON is intentionally left from current (will be cleared before persist).
 	if patch.Settings != nil {
 		out.Settings = patch.Settings
 	}
@@ -738,7 +750,7 @@ func firstNonEmpty(a, b string) string {
 func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, error) {
 	agent.AgentKey = strings.TrimSpace(agent.AgentKey)
 	if agent.AgentKey == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key is required for upsert")
+		return Agent{}, apierror.BadRequest("AGENT", "agent_key is required for upsert")
 	}
 	existing, err := u.repo.GetAgentByAgentKey(ctx, agent.AgentKey)
 	if err == nil {
@@ -746,7 +758,7 @@ func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, err
 		agent.ID = existing.ID
 		return u.Update(ctx, existing.ID, agent)
 	}
-	if !stderrors.Is(err, shared.ErrNotFound) && !stderrors.Is(err, sql.ErrNoRows) {
+	if !stderrors.Is(err, shared.ErrNotFound) {
 		return Agent{}, err
 	}
 	// 不存在 → 创建
@@ -758,11 +770,13 @@ func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, err
 func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error) {
 	agent.AgentKey = strings.TrimSpace(agent.AgentKey)
 	agent.DisplayName = strings.TrimSpace(agent.DisplayName)
+	agent.Provider = strings.TrimSpace(agent.Provider)
+	agent.Model = strings.TrimSpace(agent.Model)
 	agent.AgentKind = NormalizeAgentKind(agent.AgentKind)
 	HydrateAgentKind(&agent)
 
 	if agent.AgentKey == "" || agent.DisplayName == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key and display_name are required")
+		return Agent{}, apierror.BadRequest("AGENT", "agent_key and display_name are required")
 	}
 	if agent.ID == "" {
 		agent.ID = newAgentCatalogID()
@@ -780,26 +794,26 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 	}
 	s.AgentID = agent.ID
 
+	if err := validateAgentCreate(ctx, u, &agent, &s); err != nil {
+		return Agent{}, err
+	}
+	if agent.AgentKind != AgentKindA2AProxy {
+		agent.AgentKind = AgentKindLLM
+	}
+
 	// Files
 	for i := range files {
 		files[i].AgentID = agent.ID
 	}
 	files = withFileDefaults(files)
 
-	// ConfigJSON
-	if strings.TrimSpace(agent.ConfigJSON) == "" {
-		cj, err := configJSONFromSettings(s, files)
-		if err != nil {
-			return Agent{}, err
-		}
-		agent.ConfigJSON = cj
-	}
-	agent.ConfigJSON = EmbedAgentKindInConfigJSON(agent.ConfigJSON, agent.AgentKind, agent.A2AProxy, u.lg)
+	// DEV-10 FIXED: ConfigJSON is no longer written; cleared before persisting.
+	agent.ConfigJSON = ""
 
 	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
 		if _, err := u.repo.CreateAgent(txCtx, agent); err != nil {
 			if isAgentKeyDuplicate(err) {
-				return kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+				return apierror.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
 			}
 			return err
 		}
@@ -832,7 +846,7 @@ type AgentBatchUpdateInput struct {
 // BatchUpdateAgents applies status changes or deletes for many agents inside a transaction.
 func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdateInput) (int, error) {
 	if u == nil || u.repo == nil {
-		return 0, kerrors.InternalServer("AGENT", "agent repository not configured")
+		return 0, apierror.Internal("AGENT", "agent repository not configured")
 	}
 	var n int
 	err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
@@ -842,19 +856,13 @@ func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdat
 				continue
 			}
 			if in.Delete {
-				// Permission check: same as single Delete
+				// Permission check: unified with single Delete via canDeleteAgent
 				a, err := u.repo.GetAgentByID(txCtx, id)
 				if err != nil {
 					return err
 				}
-				if a.Kind == "system_builtin" {
-					return kerrors.Forbidden("AGENT", "cannot delete system_builtin agent")
-				}
-				if a.Kind == "ecosystem_preset" {
-					return kerrors.Forbidden("AGENT", "cannot delete ecosystem_preset agent directly; use industry unload instead")
-				}
-				if a.Readonly {
-					return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
+				if err := canDeleteAgent(a); err != nil {
+					return err
 				}
 				if err := u.repo.DeleteAgent(txCtx, id); err != nil {
 					return err

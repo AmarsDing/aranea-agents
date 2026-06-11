@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var _ biz.OrchestrationRepository = (*orchestrationRepo)(nil)
@@ -28,7 +27,7 @@ func NewOrchestrationRepo(d *Data, lg loggateway.Logger) biz.OrchestrationReposi
 
 func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.OrchestrationHandle) (*biz.OrchestrationHandle, error) {
 	if handle == nil || strings.TrimSpace(handle.ID) == "" {
-		return nil, kerrors.BadRequest("ORCHESTRATION", "orchestration id is required")
+		return nil, apierror.BadRequest("ORCHESTRATION", "orchestration id is required")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if handle.CreatedAt == "" {
@@ -41,7 +40,11 @@ func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.Orchestratio
 
 	teamIDsJSON, err := json.Marshal(handle.TeamIDs)
 	if err != nil {
-		return nil, kerrors.InternalServer("ORCHESTRATION", "marshal team_ids: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
+	}
+	agentKeysJSON, err := json.Marshal(handle.AgentKeys)
+	if err != nil {
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
 	}
 	synthesisResultJSON := handle.SynthesisResultJSON
 	if synthesisResultJSON == "" {
@@ -50,11 +53,11 @@ func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.Orchestratio
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
 		`INSERT INTO orchestrations (id, task_plan_id, allocation_id, spirit_session_id, trace_id,
-			strategy, graph_execution_id, team_ids_json, status, checkpoint_id,
+			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		handle.ID, handle.TaskPlanID, handle.AllocationID, handle.SpiritSessionID, handle.TraceID,
-		string(handle.Strategy), handle.GraphExecutionID, string(teamIDsJSON), string(handle.Status), handle.CheckpointID,
+		string(handle.Strategy), handle.GraphExecutionID, string(teamIDsJSON), string(agentKeysJSON), string(handle.Status), handle.CheckpointID,
 		synthesisResultJSON, handle.CreatedAt, handle.UpdatedAt,
 	)
 	if err != nil {
@@ -66,11 +69,11 @@ func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.Orchestratio
 func (r *orchestrationRepo) GetByID(ctx context.Context, id string) (*biz.OrchestrationHandle, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return nil, kerrors.BadRequest("ORCHESTRATION", "id is required")
+		return nil, apierror.BadRequest("ORCHESTRATION", "id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
-			strategy, graph_execution_id, team_ids_json, status, checkpoint_id,
+			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at
 		 FROM orchestrations WHERE id = ?`, id)
 	if err != nil {
@@ -89,13 +92,17 @@ func (r *orchestrationRepo) GetByID(ctx context.Context, id string) (*biz.Orches
 
 func (r *orchestrationRepo) Update(ctx context.Context, handle *biz.OrchestrationHandle) (*biz.OrchestrationHandle, error) {
 	if handle == nil || strings.TrimSpace(handle.ID) == "" {
-		return nil, kerrors.BadRequest("ORCHESTRATION", "orchestration id is required")
+		return nil, apierror.BadRequest("ORCHESTRATION", "orchestration id is required")
 	}
 	handle.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
 	teamIDsJSON, err := json.Marshal(handle.TeamIDs)
 	if err != nil {
-		return nil, kerrors.InternalServer("ORCHESTRATION", "marshal team_ids: "+err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
+	}
+	agentKeysJSON, err := json.Marshal(handle.AgentKeys)
+	if err != nil {
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "ORCHESTRATION")
 	}
 	synthesisResultJSON := handle.SynthesisResultJSON
 	if synthesisResultJSON == "" {
@@ -105,11 +112,11 @@ func (r *orchestrationRepo) Update(ctx context.Context, handle *biz.Orchestratio
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE orchestrations SET
 			task_plan_id=?, allocation_id=?, spirit_session_id=?, trace_id=?,
-			strategy=?, graph_execution_id=?, team_ids_json=?, status=?, checkpoint_id=?,
+			strategy=?, graph_execution_id=?, team_ids_json=?, agent_keys_json=?, status=?, checkpoint_id=?,
 			synthesis_result_json=?, updated_at=?
 		 WHERE id = ?`,
 		handle.TaskPlanID, handle.AllocationID, handle.SpiritSessionID, handle.TraceID,
-		string(handle.Strategy), handle.GraphExecutionID, string(teamIDsJSON), string(handle.Status), handle.CheckpointID,
+		string(handle.Strategy), handle.GraphExecutionID, string(teamIDsJSON), string(agentKeysJSON), string(handle.Status), handle.CheckpointID,
 		synthesisResultJSON, handle.UpdatedAt,
 		handle.ID,
 	)
@@ -126,7 +133,7 @@ func (r *orchestrationRepo) ListBySpiritSessionID(ctx context.Context, spiritSes
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
-			strategy, graph_execution_id, team_ids_json, status, checkpoint_id,
+			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at
 		 FROM orchestrations WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
 	if err != nil {
@@ -147,7 +154,7 @@ func (r *orchestrationRepo) ListBySpiritSessionID(ctx context.Context, spiritSes
 func (r *orchestrationRepo) ListByStatus(ctx context.Context, status biz.OrchestrationStatus) ([]*biz.OrchestrationHandle, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
-			strategy, graph_execution_id, team_ids_json, status, checkpoint_id,
+			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at
 		 FROM orchestrations WHERE status = ? ORDER BY created_at DESC`, string(status))
 	if err != nil {
@@ -168,11 +175,11 @@ func (r *orchestrationRepo) ListByStatus(ctx context.Context, status biz.Orchest
 func scanOrchestrationFromRows(rows *sql.Rows) (*biz.OrchestrationHandle, error) {
 	var handle biz.OrchestrationHandle
 	var strategy, status string
-	var teamIDsJSON, synthesisResultJSON string
+	var teamIDsJSON, agentKeysJSON, synthesisResultJSON string
 
 	err := rows.Scan(
 		&handle.ID, &handle.TaskPlanID, &handle.AllocationID, &handle.SpiritSessionID, &handle.TraceID,
-		&strategy, &handle.GraphExecutionID, &teamIDsJSON, &status, &handle.CheckpointID,
+		&strategy, &handle.GraphExecutionID, &teamIDsJSON, &agentKeysJSON, &status, &handle.CheckpointID,
 		&synthesisResultJSON, &handle.CreatedAt, &handle.UpdatedAt,
 	)
 	if err != nil {
@@ -184,6 +191,9 @@ func scanOrchestrationFromRows(rows *sql.Rows) (*biz.OrchestrationHandle, error)
 
 	if err := json.Unmarshal([]byte(teamIDsJSON), &handle.TeamIDs); err != nil {
 		handle.TeamIDs = nil
+	}
+	if err := json.Unmarshal([]byte(agentKeysJSON), &handle.AgentKeys); err != nil {
+		handle.AgentKeys = nil
 	}
 	handle.SynthesisResultJSON = synthesisResultJSON
 
@@ -205,6 +215,7 @@ func EnsureOrchestrationSchema(ctx context.Context, db *sql.DB, lg loggateway.Lo
 		strategy TEXT DEFAULT 'direct',
 		graph_execution_id TEXT DEFAULT '',
 		team_ids_json TEXT DEFAULT '[]',
+		agent_keys_json TEXT DEFAULT '[]',
 		status TEXT DEFAULT 'pending',
 		checkpoint_id TEXT DEFAULT '',
 		synthesis_result_json TEXT DEFAULT '{}',
@@ -216,6 +227,13 @@ func EnsureOrchestrationSchema(ctx context.Context, db *sql.DB, lg loggateway.Lo
 	}
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_orchestrations_spirit_session_id ON orchestrations(spirit_session_id)`); err != nil {
 		return fmt.Errorf("create orchestrations index: %w", err)
+	}
+	// Migration: add agent_keys_json column. SQLite ALTER TABLE ADD COLUMN
+	// fails if the column already exists; we catch and ignore that error.
+	if _, err := db.ExecContext(ctx, `ALTER TABLE orchestrations ADD COLUMN agent_keys_json TEXT DEFAULT '[]'`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return fmt.Errorf("alter orchestrations add agent_keys_json: %w", err)
+		}
 	}
 	return nil
 }

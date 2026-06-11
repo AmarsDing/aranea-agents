@@ -9,8 +9,7 @@ import (
 	bizflowlog "aranea-agents/internal/biz/flowlog"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/flowlogevent"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type flowLogRepo struct {
@@ -25,7 +24,7 @@ func NewFlowLogRepo(d *Data) biz.FlowLogRepo {
 
 func (r *flowLogRepo) Insert(ctx context.Context, rec biz.FlowLogRecord) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("FLOW_LOG", "database not configured")
+		return apierror.Internal("FLOW_LOG", "database not configured")
 	}
 	_, err := r.data.RW().Write(ctx).FlowLogEvent.Create().
 		SetID(rec.ID).
@@ -47,14 +46,14 @@ func (r *flowLogRepo) Insert(ctx context.Context, rec biz.FlowLogRecord) error {
 		if ent.IsConstraintError(err) {
 			return nil
 		}
-		return kerrors.InternalServer("FLOW_LOG", "insert flow_log failed").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
 	}
 	return nil
 }
 
 func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLogListResult, error) {
 	if r == nil || r.data == nil {
-		return biz.FlowLogListResult{}, kerrors.InternalServer("FLOW_LOG", "database not configured")
+		return biz.FlowLogListResult{}, apierror.Internal("FLOW_LOG", "database not configured")
 	}
 	client := r.data.RW().Read(ctx)
 	query := client.FlowLogEvent.Query()
@@ -81,7 +80,7 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
-		return biz.FlowLogListResult{}, kerrors.InternalServer("FLOW_LOG", "count flow_log failed").WithCause(err)
+		return biz.FlowLogListResult{}, apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
 	}
 	rows, err := query.
 		Order(ent.Asc(flowlogevent.FieldCreatedAt)).
@@ -89,7 +88,7 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.FlowLogListResult{}, kerrors.InternalServer("FLOW_LOG", "list flow_log failed").WithCause(err)
+		return biz.FlowLogListResult{}, apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
 	}
 	items := make([]biz.FlowLogRecord, 0, len(rows))
 	for _, row := range rows {
@@ -115,13 +114,13 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 
 func (r *flowLogRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	if r == nil || r.data == nil {
-		return 0, kerrors.InternalServer("FLOW_LOG", "database not configured")
+		return 0, apierror.Internal("FLOW_LOG", "database not configured")
 	}
 	n, err := r.data.RW().Write(ctx).FlowLogEvent.Delete().
 		Where(flowlogevent.CreatedAtLT(cutoff)).
 		Exec(ctx)
 	if err != nil {
-		return 0, kerrors.InternalServer("FLOW_LOG", "delete flow_log failed").WithCause(err)
+		return 0, apierror.Wrap(err, apierror.CodeInternal, "FLOW_LOG")
 	}
 	return int64(n), nil
 }

@@ -5,8 +5,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/cron/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -114,7 +113,7 @@ func (s *CronService) GetCronTask(ctx context.Context, req *v1.GetCronTaskReques
 
 func (s *CronService) UpdateCronTask(ctx context.Context, req *v1.UpdateCronTaskRequest) (*v1.CronTask, error) {
 	if req.GetTask() == nil {
-		return nil, kerrors.BadRequest("CRON", "task body is required")
+		return nil, apierror.BadRequest("CRON", "task body is required")
 	}
 	out, err := s.uc.UpdateTask(ctx, req.GetId(), patchFromProtoCronTask(req.GetTask()))
 	if err != nil {
@@ -158,7 +157,7 @@ func (s *CronService) TriggerCronTask(ctx context.Context, req *v1.TriggerCronTa
 // GetTaskRun returns a cron task run row for internal async completion watchers.
 func (s *CronService) GetTaskRun(ctx context.Context, id string) (biz.CronTaskRun, error) {
 	if s == nil || s.uc == nil {
-		return biz.CronTaskRun{}, kerrors.InternalServer("CRON", "cron service not configured")
+		return biz.CronTaskRun{}, apierror.Internal("CRON", "cron service not configured")
 	}
 	return s.uc.GetTaskRun(ctx, id)
 }

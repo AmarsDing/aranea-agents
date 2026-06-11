@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
-var errChannelTurnJobNotInit = errors.InternalServer("CHANNEL_TURN_JOB", "usecase not initialized")
+var errChannelTurnJobNotInit = apierror.Internal("CHANNEL_TURN_JOB", "usecase not initialized")
 
 type ChannelTurnJobUsecase struct {
 	channels *ChannelUsecase
@@ -24,7 +24,7 @@ func (u *ChannelTurnJobUsecase) ListByChannel(ctx context.Context, channelID str
 	}
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return nil, errors.BadRequest("CHANNEL_TURN_JOB", "channel_id is required")
+		return nil, apierror.BadRequest("CHANNEL_TURN_JOB", "channel_id is required")
 	}
 	if u.channels != nil {
 		if _, err := u.channels.Get(ctx, channelID); err != nil {
@@ -81,20 +81,23 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 	if channelID == "" {
 		return nil
 	}
-	jobs, err := u.jobs.ListByChannel(ctx, channelID, 20)
+	jobs, err := u.jobs.ListByChannel(ctx, channelID, MaxChannelTurnJobListLimit)
 	if err != nil {
 		return err
 	}
+	var firstErr error
 	for _, job := range jobs {
 		if sessionID != "" && strings.TrimSpace(job.SessionID) != sessionID {
 			continue
 		}
 		switch NormalizeChannelTurnJobStatus(job.Status) {
 		case ChannelTurnJobStatusRunning, ChannelTurnJobStatusAccepted:
-			return u.jobs.UpdateStatus(ctx, job.ID, ChannelTurnJobStatusCancelled, "", "", "")
+			if err := u.jobs.UpdateStatus(ctx, job.ID, ChannelTurnJobStatusCancelled, "", "", ""); err != nil && firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
-	return nil
+	return firstErr
 }
 
 func (u *ChannelTurnJobUsecase) Cancel(ctx context.Context, id string) error {

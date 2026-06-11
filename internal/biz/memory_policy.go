@@ -63,8 +63,12 @@ func NewMemoryPolicyEngineStatic(writer MemoryActionLogWriter, strict bool) *Mem
 	return &MemoryPolicyEngine{writer: writer, strict: strict}
 }
 
+// Strict reports whether the engine has any strict mode source configured.
+// Note: this does NOT evaluate strictFn (which requires a context); use
+// StrictEnabled(ctx) for the actual runtime check. Strict is kept for
+// legacy callers that need a quick static hint.
 func (e *MemoryPolicyEngine) Strict() bool {
-	return e != nil && (e.strict || e.strictFn != nil)
+	return e != nil && e.strict
 }
 
 func (e *MemoryPolicyEngine) strictEnabled(ctx context.Context) bool {

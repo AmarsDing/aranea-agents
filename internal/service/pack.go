@@ -7,7 +7,7 @@ import (
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	"aranea-agents/internal/biz/pack"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // PackService implements packv1.PackServiceServer.
@@ -41,7 +41,7 @@ func (s *PackService) ExportPack(ctx context.Context, req *packv1.ExportPackRequ
 	kind := req.GetKind()
 	ref := req.GetRef()
 	if kind == "" || ref == "" {
-		return nil, kerrors.BadRequest("PACK", "kind and ref are required")
+		return nil, apierror.BadRequest("PACK", "kind and ref are required")
 	}
 
 	var p *pack.Pack
@@ -55,16 +55,16 @@ func (s *PackService) ExportPack(ctx context.Context, req *packv1.ExportPackRequ
 	case "industry":
 		p, err = s.exporter.ExportIndustry(ctx, ref)
 	default:
-		return nil, kerrors.BadRequest("PACK", "unsupported kind: "+kind)
+		return nil, apierror.BadRequest("PACK", "unsupported kind: "+kind)
 	}
 	if err != nil {
-		return nil, kerrors.InternalServer("PACK", "export failed: "+err.Error())
+		return nil, apierror.Internal("PACK", "export failed: "+err.Error())
 	}
 
 	// Serialize to tar.gz
 	var buf bytes.Buffer
 	if err := pack.WritePack(p, &buf); err != nil {
-		return nil, kerrors.InternalServer("PACK", "serialize failed: "+err.Error())
+		return nil, apierror.Internal("PACK", "serialize failed: "+err.Error())
 	}
 
 	return &packv1.ExportPackResponse{
@@ -78,17 +78,17 @@ func (s *PackService) ExportPack(ctx context.Context, req *packv1.ExportPackRequ
 func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequest) (*packv1.ImportPackResponse, error) {
 	data := req.GetData()
 	if len(data) == 0 {
-		return nil, kerrors.BadRequest("PACK", "data is required")
+		return nil, apierror.BadRequest("PACK", "data is required")
 	}
 	// 限制上传 Pack 大小
 	if len(data) > pack.MaxPackSize {
-		return nil, kerrors.BadRequest("PACK", "pack file exceeds size limit")
+		return nil, apierror.BadRequest("PACK", "pack file exceeds size limit")
 	}
 
 	// Parse pack
 	p, err := pack.ReadPack(bytes.NewReader(data))
 	if err != nil {
-		return nil, kerrors.BadRequest("PACK", "invalid pack file: "+err.Error())
+		return nil, apierror.BadRequest("PACK", "invalid pack file: "+err.Error())
 	}
 
 	// Determine conflict strategy
@@ -103,7 +103,7 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 	// Import
 	result, err := s.importer.Import(ctx, p, strategy)
 	if err != nil {
-		return nil, kerrors.InternalServer("PACK", "import failed: "+err.Error())
+		return nil, apierror.Internal("PACK", "import failed: "+err.Error())
 	}
 
 	resp := &packv1.ImportPackResponse{
@@ -131,23 +131,23 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 func (s *PackService) ValidatePack(ctx context.Context, req *packv1.ValidatePackRequest) (*packv1.ValidatePackResponse, error) {
 	data := req.GetData()
 	if len(data) == 0 {
-		return nil, kerrors.BadRequest("PACK", "data is required")
+		return nil, apierror.BadRequest("PACK", "data is required")
 	}
 	// 限制上传 Pack 大小
 	if len(data) > pack.MaxPackSize {
-		return nil, kerrors.BadRequest("PACK", "pack file exceeds size limit")
+		return nil, apierror.BadRequest("PACK", "pack file exceeds size limit")
 	}
 
 	// Parse pack
 	p, err := pack.ReadPack(bytes.NewReader(data))
 	if err != nil {
-		return nil, kerrors.BadRequest("PACK", "invalid pack file: "+err.Error())
+		return nil, apierror.BadRequest("PACK", "invalid pack file: "+err.Error())
 	}
 
 	// Validate
 	result, err := pack.Validate(ctx, p, s.validatorRepo)
 	if err != nil {
-		return nil, kerrors.InternalServer("PACK", "validation failed: "+err.Error())
+		return nil, apierror.Internal("PACK", "validation failed: "+err.Error())
 	}
 
 	resp := &packv1.ValidatePackResponse{

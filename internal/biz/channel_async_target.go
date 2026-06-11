@@ -3,7 +3,7 @@ package biz
 import (
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ChannelAsyncGraphTarget resolves a channel long-task async graph execution target.
@@ -24,5 +24,5 @@ func ResolveChannelAsyncGraphTarget(cfg ChannelLongTaskConfig) (ChannelAsyncGrap
 	if graphID != "" {
 		return ChannelAsyncGraphTarget{TargetType: "graph", GraphID: graphID}, nil
 	}
-	return ChannelAsyncGraphTarget{}, kerrors.BadRequest("CHANNEL", "channel async: no async_graph_id or async_team_id configured")
+	return ChannelAsyncGraphTarget{}, apierror.BadRequest("CHANNEL", "channel async: no async_graph_id or async_team_id configured")
 }

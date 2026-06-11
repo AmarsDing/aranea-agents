@@ -4,9 +4,8 @@ import (
 	"context"
 
 	v1 "aranea-agents/api/kratos/team/v1"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.ResumeTeamRunExecutionRequest) (*v1.ResumeTeamRunExecutionResponse, error) {
@@ -16,10 +15,10 @@ func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.Resume
 	}
 	execID := run.GraphExecutionID
 	if execID == "" {
-		return nil, kerrors.BadRequest("TEAM", "team run has no graph_execution_id; resume requires Graph runtime")
+		return nil, apierror.BadRequest("TEAM", "team run has no graph_execution_id; resume requires Graph runtime")
 	}
 	if s.graphUC == nil {
-		return nil, kerrors.InternalServer("TEAM", "graph runtime unavailable")
+		return nil, apierror.Internal("TEAM", "graph runtime unavailable")
 	}
 	var resume map[string]any
 	if req.GetResumeValue() != nil {

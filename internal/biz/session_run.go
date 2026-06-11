@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const (
@@ -125,7 +125,7 @@ func sessionRunNow() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-var errSessionRunNotInit = kerrors.InternalServer("SESSION_RUN", "SessionRunUsecase: not initialized")
+var errSessionRunNotInit = apierror.Internal("SESSION_RUN", "SessionRunUsecase: not initialized")
 
 func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, turnID, runtimeRunID, source, agentID string, budget SessionRunBudget) (SessionRun, error) {
 	if u == nil || u.repo == nil {
@@ -134,7 +134,7 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 	sessionID = strings.TrimSpace(sessionID)
 	turnID = strings.TrimSpace(turnID)
 	if sessionID == "" || turnID == "" {
-		return SessionRun{}, kerrors.BadRequest("SESSION_RUN", "sessionID and turnID are required")
+		return SessionRun{}, apierror.BadRequest("SESSION_RUN", "sessionID and turnID are required")
 	}
 	if budget.SoftBudgetSec <= 0 {
 		budget = DefaultSessionRunBudget()
@@ -171,7 +171,7 @@ func (u *SessionRunUsecase) MarkPhase(ctx context.Context, id, phase string) err
 		return errSessionRunNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return kerrors.BadRequest("SESSION_RUN", "id is required")
+		return apierror.BadRequest("SESSION_RUN", "id is required")
 	}
 	return u.repo.UpdatePhase(ctx, id, NormalizeSessionRunPhase(phase))
 }
@@ -181,7 +181,7 @@ func (u *SessionRunUsecase) Complete(ctx context.Context, id string) error {
 		return errSessionRunNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return kerrors.BadRequest("SESSION_RUN", "id is required")
+		return apierror.BadRequest("SESSION_RUN", "id is required")
 	}
 	return u.repo.MarkTerminal(ctx, id, SessionRunPhaseCompleted, "")
 }
@@ -192,7 +192,7 @@ func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return kerrors.BadRequest("SESSION_RUN", "id is required")
+		return apierror.BadRequest("SESSION_RUN", "id is required")
 	}
 	if err := u.repo.MarkTerminal(ctx, id, SessionRunPhaseFailed, strings.TrimSpace(errMsg)); err != nil {
 		return err
@@ -209,7 +209,7 @@ func (u *SessionRunUsecase) TryClaimDurableResume(ctx context.Context, id string
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return false, kerrors.BadRequest("SESSION_RUN", "id is required")
+		return false, apierror.BadRequest("SESSION_RUN", "id is required")
 	}
 	staleBefore := time.Now().UTC().Add(-time.Duration(DefaultDurableResumeClaimStaleSec) * time.Second).Format(time.RFC3339)
 	return u.repo.TryClaimDurableResume(ctx, id, staleBefore)

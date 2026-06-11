@@ -8,8 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestToProtoSession(t *testing.T) {
@@ -460,12 +459,12 @@ func TestMapSessionErr(t *testing.T) {
 				if got == nil {
 					t.Fatal("got nil, want NotFound error")
 				}
-				var ke *kerrors.Error
-				if !errors.As(got, &ke) {
-					t.Fatalf("got = %v, want kerrors.Error", got)
+				ae, ok := apierror.From(got)
+				if !ok {
+					t.Fatalf("got = %v, want apierror.Error", got)
 				}
-				if ke.Reason != "SESSION" {
-					t.Errorf("Reason = %q, want %q", ke.Reason, "SESSION")
+				if ae.Domain != "SESSION" {
+					t.Errorf("Domain = %q, want %q", ae.Domain, "SESSION")
 				}
 			}
 		})

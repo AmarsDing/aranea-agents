@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestRegisterRemoteAgent(t *testing.T) {
@@ -204,12 +204,15 @@ func TestRegisterRemoteAgent(t *testing.T) {
 				if err == nil {
 					t.Fatal("nil Usecase expected error, got nil")
 				}
-				se := kerrors.FromError(err)
-				if se.Reason != "A2A" {
-					t.Errorf("reason = %q, want %q", se.Reason, "A2A")
+				se, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
 				}
-				if se.Code != 500 {
-					t.Errorf("code = %d, want %d", se.Code, 500)
+				if se.Domain != "A2A" {
+					t.Errorf("domain = %q, want %q", se.Domain, "A2A")
+				}
+				if se.Code != apierror.CodeInternal {
+					t.Errorf("code = %s, want INTERNAL", se.Code)
 				}
 			},
 		},
@@ -228,15 +231,15 @@ func TestRegisterRemoteAgent(t *testing.T) {
 					t.Fatal("RegisterRemoteAgent() expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Reason != tt.wantReason {
-						t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+					if se.Domain != tt.wantReason {
+						t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return
@@ -330,7 +333,7 @@ func TestDiscoverRemoteAgent(t *testing.T) {
 			},
 			setup: func(r *mockUsecaseRepo) {
 				r.discoverRemoteCardFn = func(_ context.Context, _ RemoteCardDiscoverInput) (AgentCard, error) {
-					return AgentCard{}, kerrors.Forbidden("A2A", "access denied")
+					return AgentCard{}, apierror.Forbidden("A2A", "access denied")
 				}
 			},
 			wantErr:    true,
@@ -350,12 +353,15 @@ func TestDiscoverRemoteAgent(t *testing.T) {
 				if err == nil {
 					t.Fatal("nil Usecase expected error, got nil")
 				}
-				se := kerrors.FromError(err)
-				if se.Reason != "A2A" {
-					t.Errorf("reason = %q, want %q", se.Reason, "A2A")
+				se, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror.Error, got %T", err)
 				}
-				if se.Code != 500 {
-					t.Errorf("code = %d, want %d", se.Code, 500)
+				if se.Domain != "A2A" {
+					t.Errorf("domain = %q, want %q", se.Domain, "A2A")
+				}
+				if se.Code != apierror.CodeInternal {
+					t.Errorf("code = %s, want INTERNAL", se.Code)
 				}
 			},
 		},
@@ -374,15 +380,15 @@ func TestDiscoverRemoteAgent(t *testing.T) {
 					t.Fatal("DiscoverRemoteAgent() expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Reason != tt.wantReason {
-						t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+					if se.Domain != tt.wantReason {
+						t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return
@@ -471,7 +477,7 @@ func TestUpdateAgentCard_EdgeCases(t *testing.T) {
 			},
 			setup: func(r *mockUsecaseRepo) {
 				r.upsertAgentCardFn = func(_ context.Context, _ AgentCard) (AgentCard, error) {
-					return AgentCard{}, kerrors.InternalServer("A2A", "db error")
+					return AgentCard{}, apierror.Internal("A2A", "db error")
 				}
 			},
 			wantErr:    true,
@@ -493,15 +499,15 @@ func TestUpdateAgentCard_EdgeCases(t *testing.T) {
 					t.Fatal("UpdateAgentCard() expected error, got nil")
 				}
 				if tt.wantReason != "" {
-					se := kerrors.FromError(err)
-					if se == nil {
-						t.Fatalf("expected kratos error, got %T", err)
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
 					}
-					if se.Reason != tt.wantReason {
-						t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+					if se.Domain != tt.wantReason {
+						t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 					}
-					if se.Code != tt.wantCode {
-						t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
 					}
 				}
 				return

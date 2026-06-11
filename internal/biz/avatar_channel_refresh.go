@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -12,13 +11,13 @@ import (
 	"net/http"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-	"github.com/srwiley/oksvg"
-	"github.com/srwiley/rasterx"
-
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/biz/channelicons"
+	"aranea-agents/pkg/apierror"
+
+	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
 )
 
 const (
@@ -74,7 +73,7 @@ func NewChannelIconRefresher() avatar.ChannelIconRefresher {
 // RefreshChannelPlatformIcons fetches channel icons from Iconify and upserts them.
 func (r *channelIconRefresher) RefreshChannelPlatformIcons(ctx context.Context, repo avatar.Repo) (*avatar.RefreshChannelPlatformIconsResult, error) {
 	if repo == nil {
-		return nil, kerrors.BadRequest("AVATAR", "avatar repo is required")
+		return nil, apierror.BadRequest("AVATAR", "avatar repo is required")
 	}
 	client := &http.Client{Timeout: iconHTTPTimeout}
 	result := &avatar.RefreshChannelPlatformIconsResult{}
@@ -133,7 +132,7 @@ func downloadIconifySVG(ctx context.Context, client *http.Client, slug string) (
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, kerrors.New(502, "AVATAR", fmt.Sprintf("iconify API returned %d for %s", resp.StatusCode, u))
+		return nil, apierror.Unavailable("AVATAR", "iconify API returned %d for %s", resp.StatusCode, u)
 	}
 	return io.ReadAll(resp.Body)
 }

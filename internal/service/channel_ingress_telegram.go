@@ -45,8 +45,8 @@ func (h *ChannelIngress) handleTelegramWebhook(w http.ResponseWriter, r *http.Re
 		Text:           parsed.Text,
 		IdempotencyKey: "telegram:" + strconv.FormatInt(parsed.UpdateID, 10),
 		OutboundMeta: map[string]string{
-			"recipient": recipient,
-			"chat_id":   recipient,
+			port.MetaRecipient: recipient,
+			port.MetaChatID:    recipient,
 		},
 	}))
 	return nil

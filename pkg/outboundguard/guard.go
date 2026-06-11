@@ -12,19 +12,12 @@
 // re-validates every redirect hop, but the initial connection's DNS is only checked
 // once. For stronger protection the caller should use a custom net.Dialer that checks
 // the resolved IP at connect time (future work).
-//
-// # Relationship to pkg/webhookurl
-//
-// pkg/webhookurl provides a stricter SSRF guard specifically for webhook POST targets
-// (blocks all redirects via http.ErrUseLastResponse, uses net/netip for IP literals,
-// and explicitly blocks cloud metadata hosts). outboundguard is for general LLM/API
-// endpoint probing where controlled redirects are acceptable. Do not merge the two
-// unless the semantics are explicitly reconciled.
 package outboundguard
 
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/http"
 	"net/url"
 	"strings"
@@ -56,7 +49,62 @@ func ValidateURL(rawURL string) error {
 	if parsed.Host == "" {
 		return fmt.Errorf("outboundguard: URL has no host")
 	}
-	return validatePublicHost(parsed.Hostname())
+	return ValidatePublicHost(parsed.Hostname())
+}
+
+// ValidatePublicHost checks that a hostname resolves to a public IP address.
+// It blocks:
+//   - localhost and *.localhost
+//   - cloud metadata hosts (*.internal, metadata.google.internal)
+//   - loopback, private, link-local, and unspecified IP addresses
+//
+// This is the single source of truth for SSRF host validation across the project.
+// Other packages (webhookurl, modelregistry, cli_admin) should call this function
+// instead of implementing their own IP checks.
+func ValidatePublicHost(host string) error {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return fmt.Errorf("outboundguard: host is required")
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return fmt.Errorf("outboundguard: localhost is not allowed")
+	}
+	// Block cloud metadata hosts (e.g. GCP metadata.google.internal,
+	// AWS/Azure *.internal) to prevent SSRF via cloud metadata endpoints.
+	if host == "metadata.google.internal" || strings.HasSuffix(host, ".internal") {
+		return fmt.Errorf("outboundguard: cloud metadata host %q is not allowed", host)
+	}
+	// Fast path: if host is a literal IP, check directly without DNS lookup.
+	if addr, err := netip.ParseAddr(host); err == nil {
+		if isBlockedAddr(addr) {
+			return fmt.Errorf("outboundguard: private or local address %s is not allowed", addr)
+		}
+		return nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("outboundguard: host lookup failed: %w", err)
+	}
+	for _, ip := range ips {
+		addr, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			continue
+		}
+		if isBlockedAddr(addr) {
+			return fmt.Errorf("outboundguard: private or local address %s is not allowed", ip)
+		}
+	}
+	return nil
+}
+
+// isBlockedAddr reports whether the address is loopback, private, link-local,
+// or unspecified — all of which indicate a non-public IP that should be blocked
+// for SSRF prevention.
+func isBlockedAddr(addr netip.Addr) bool {
+	if !addr.IsValid() {
+		return true
+	}
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified()
 }
 
 // NewClient returns an *http.Client whose CheckRedirect validates every
@@ -81,30 +129,8 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 		return fmt.Errorf("outboundguard: redirect to scheme %q is not allowed", req.URL.Scheme)
 	}
-	if err := validatePublicHost(req.URL.Hostname()); err != nil {
+	if err := ValidatePublicHost(req.URL.Hostname()); err != nil {
 		return fmt.Errorf("outboundguard: redirect blocked: %w", err)
-	}
-	return nil
-}
-
-// validatePublicHost resolves host and rejects loopback, private, link-local,
-// and unspecified addresses to prevent SSRF.
-func validatePublicHost(host string) error {
-	host = strings.TrimSpace(strings.ToLower(host))
-	if host == "" {
-		return fmt.Errorf("outboundguard: host is required")
-	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return fmt.Errorf("outboundguard: localhost is not allowed")
-	}
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return err
-	}
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("outboundguard: private or local address %s is not allowed", ip)
-		}
 	}
 	return nil
 }

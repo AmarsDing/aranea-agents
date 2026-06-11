@@ -6,7 +6,7 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 )
@@ -19,16 +19,16 @@ const (
 // ProcessAvatarUpload decodes, center-crops square, and emits main + thumbnail payloads.
 func ProcessAvatarUpload(data []byte, mime string) (main []byte, thumb []byte, width, height int, outMime string, err error) {
 	if len(data) == 0 {
-		return nil, nil, 0, 0, "", errors.BadRequest("AVATAR", "avatar file is required")
+		return nil, nil, 0, 0, "", apierror.BadRequest("AVATAR", "avatar file is required")
 	}
 	img, _, decErr := image.Decode(bytes.NewReader(data))
 	if decErr != nil {
-		return nil, nil, 0, 0, "", errors.BadRequest("AVATAR", "invalid avatar image")
+		return nil, nil, 0, 0, "", apierror.BadRequest("AVATAR", "invalid avatar image")
 	}
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 {
-		return nil, nil, 0, 0, "", errors.BadRequest("AVATAR", "invalid avatar dimensions")
+		return nil, nil, 0, 0, "", apierror.BadRequest("AVATAR", "invalid avatar dimensions")
 	}
 	side := w
 	if h < side {
@@ -72,7 +72,7 @@ func resizeSquare(src image.Image, maxEdge int) *image.RGBA {
 func encodeJPEG(img image.Image, quality int) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
-		return nil, errors.InternalServer("AVATAR", "encode avatar jpeg failed")
+		return nil, apierror.Internal("AVATAR", "encode avatar jpeg failed")
 	}
 	return buf.Bytes(), nil
 }

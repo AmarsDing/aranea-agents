@@ -8,9 +8,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/borrowrequest"
+	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -75,7 +75,7 @@ func (r *borrowRequestRepo) GetBorrowRequest(ctx context.Context, id string) (bi
 	row, err := r.data.RW().Read(ctx).BorrowRequest.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.BorrowRequest{}, kerrors.NotFound("BORROW_REQUEST", "borrow request not found")
+			return biz.BorrowRequest{}, apierror.NotFound("BORROW_REQUEST", "borrow request not found")
 		}
 		return biz.BorrowRequest{}, err
 	}

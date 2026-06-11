@@ -34,10 +34,11 @@ type DeferredToolEntry struct {
 }
 
 type DeferredToolManager struct {
-	mu         sync.RWMutex
-	catalog    []DeferredToolEntry
-	discovered map[string]bool
-	activated  map[string]trpctool.Tool
+	mu            sync.RWMutex
+	catalog       []DeferredToolEntry
+	catalogIndex  map[string]int // name → index into catalog for O(1) lookup
+	discovered    map[string]bool
+	activated     map[string]trpctool.Tool
 	activateCount map[string]int
 	categoryIndex map[string][]string
 }
@@ -45,12 +46,21 @@ type DeferredToolManager struct {
 func NewDeferredToolManager(catalog []DeferredToolEntry) *DeferredToolManager {
 	m := &DeferredToolManager{
 		catalog:       catalog,
+		catalogIndex:  buildCatalogIndex(catalog),
 		discovered:    make(map[string]bool),
 		activated:     make(map[string]trpctool.Tool),
 		activateCount: make(map[string]int),
 	}
 	m.categoryIndex = buildCategoryIndex(catalog)
 	return m
+}
+
+func buildCatalogIndex(catalog []DeferredToolEntry) map[string]int {
+	idx := make(map[string]int, len(catalog))
+	for i, entry := range catalog {
+		idx[entry.Name] = i
+	}
+	return idx
 }
 
 func buildCategoryIndex(catalog []DeferredToolEntry) map[string][]string {
@@ -70,21 +80,21 @@ func (m *DeferredToolManager) Activate(ctx context.Context, toolName string) (tr
 	if t, ok := m.activated[toolName]; ok {
 		return t, nil
 	}
-	for _, entry := range m.catalog {
-		if entry.Name == toolName {
-			if entry.Factory == nil {
-				return nil, fmt.Errorf("deferred tool %q has no factory", toolName)
-			}
-			t, err := entry.Factory(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("deferred tool factory failed for %q: %w", toolName, err)
-			}
-			m.activated[toolName] = t
-			m.activateCount[toolName]++
-			return t, nil
-		}
+	idx, ok := m.catalogIndex[toolName]
+	if !ok {
+		return nil, fmt.Errorf("deferred tool %q not found in catalog", toolName)
 	}
-	return nil, fmt.Errorf("deferred tool %q not found in catalog", toolName)
+	entry := m.catalog[idx]
+	if entry.Factory == nil {
+		return nil, fmt.Errorf("deferred tool %q has no factory", toolName)
+	}
+	t, err := entry.Factory(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("deferred tool factory failed for %q: %w", toolName, err)
+	}
+	m.activated[toolName] = t
+	m.activateCount[toolName]++
+	return t, nil
 }
 
 func (m *DeferredToolManager) Discover(toolName string) {

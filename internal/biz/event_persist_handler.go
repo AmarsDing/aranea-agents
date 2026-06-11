@@ -53,6 +53,22 @@ func (h *eventPersistHandler) Start(ctx context.Context) {
 	})
 }
 
+// isCriticalEnvelopeType returns true for event types that must never be silently
+// dropped (AS-EVT-01 Critical tier: WBPF — Write-Before-Process-Forward).
+func isCriticalEnvelopeType(t contract.EnvelopeType) bool {
+	switch t {
+	case contract.EnvelopeTypeToolResult,
+		contract.EnvelopeTypeError,
+		contract.EnvelopeTypeRunnerCompletion,
+		contract.EnvelopeTypeStateDelta,
+		contract.EnvelopeTypeTokenUsage,
+		contract.EnvelopeTypeCheckpoint:
+		return true
+	default:
+		return false
+	}
+}
+
 func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope) {
 	if h == nil || h.store == nil || !shouldPersistEnvelope(env) {
 		return
@@ -65,12 +81,34 @@ func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope)
 		}
 		return
 	}
+
+	// Try non-blocking send first.
 	select {
 	case h.jobs <- rec:
+		return
 	default:
+	}
+
+	// Queue is full. For critical events (AS-EVT-01), fall back to synchronous
+	// write so they are never silently dropped. Non-critical events are dropped.
+	if !isCriticalEnvelopeType(env.Type) {
 		if h.logger != nil {
 			h.logger.LogSessionWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，丢弃事件",
 				LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+		}
+		return
+	}
+
+	// Synchronous fallback for critical events — use Background context to
+	// avoid cancellation from the request context.
+	if h.logger != nil {
+		h.logger.LogSessionWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，关键事件同步写入",
+			LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+	}
+	if err := h.store.SaveRecord(context.Background(), rec); err != nil {
+		if h.logger != nil {
+			h.logger.LogSessionWarn(context.Background(), rec.SessionID, "event_store.persist", "关键事件同步写入失败",
+				LogPair{Key: "type", Value: rec.Type}, LogPair{Key: "id", Value: rec.ID}, LogPair{Key: "error", Value: err})
 		}
 	}
 }

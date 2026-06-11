@@ -113,29 +113,10 @@ func SeedPackIndustry(ctx context.Context, client *ent.Client, scenarioDir, indu
 		return 0, 0, fmt.Errorf("load industry spec %s: %w", industryKey, loadErr)
 	}
 
-	p, convertErr := pack.ConvertCompanySpecToPack(spec)
-	if convertErr != nil {
-		return 0, 0, fmt.Errorf("convert industry spec %s to pack: %w", industryKey, convertErr)
-	}
-
-	// 创建 Importer 并导入
-	importer := newPackImporter(client, lg)
-	result, importErr := importer.Import(ctx, p, pack.ConflictOverwrite, pack.WithKindOverride(kindOverride))
-	if importErr != nil {
-		return 0, 0, fmt.Errorf("import %s pack: %w", industryKey, importErr)
-	}
-
-	lg.Info(fmt.Sprintf("%s pack seed completed", industryKey),
-		loggateway.StepID("data.seed.pack_industry"),
-		loggateway.Str("industry", industryKey),
-		loggateway.Int("agents_created", result.AgentsCreated),
-		loggateway.Int("agents_updated", result.AgentsUpdated),
-		loggateway.Int("agents_skipped", result.AgentsSkipped),
-		loggateway.Int("teams_created", result.TeamsCreated),
-		loggateway.Int("teams_updated", result.TeamsUpdated),
-		loggateway.Int("failures", len(result.Failures)))
-
-	return result.AgentsCreated, result.TeamsCreated, nil
+	// TODO(debt): pack.ConvertCompanySpecToPack is not yet implemented.
+	// Uncomment when the function is available.
+	_ = spec
+	return 0, 0, fmt.Errorf("pack.ConvertCompanySpecToPack not yet implemented for industry %s", industryKey)
 }
 
 // seedGraphTemplatesCompat 写入 graph_definitions 表。

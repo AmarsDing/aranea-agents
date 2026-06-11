@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -60,15 +61,35 @@ func BuildParallelAgent(ctx context.Context, name string, subAgentKeys []string,
 }
 
 func buildSubAgents(ctx context.Context, keys []string, deps TRPCBuilderDeps) ([]trpcagent.Agent, error) {
-	subs := make([]trpcagent.Agent, 0, len(keys))
+	// Phase 1: Resolve all agent keys to bare catalog rows (single query per key).
+	bareAgents := make([]biz.Agent, 0, len(keys))
 	for _, key := range keys {
 		ag, err := deps.Agents.GetAgentByAgentKey(ctx, key)
 		if err != nil {
 			return nil, kerrors.NotFound("AGENT", "sub agent "+key+" not found: "+err.Error())
 		}
+		bareAgents = append(bareAgents, ag)
+	}
+	// Phase 2: Batch hydrate all agents (settings + files, no extras).
+	// This avoids the N+1 query pattern of calling Get() per agent.
+	var hydrated []biz.Agent
+	if deps.AgentUC != nil {
+		var err error
+		hydrated, err = deps.AgentUC.BatchHydrateForBuild(ctx, bareAgents)
+		if err != nil {
+			return nil, kerrors.NotFound("AGENT", "sub agent batch hydration failed: "+err.Error())
+		}
+	} else {
+		deps.Logger().Warn("AgentUC not injected, sub agents will not be hydrated; runtime errors may occur",
+			loggateway.StepID("agent.orchestration"))
+		hydrated = bareAgents
+	}
+	// Phase 3: Build each hydrated agent into a trpc-agent-go Agent.
+	subs := make([]trpcagent.Agent, 0, len(hydrated))
+	for i, ag := range hydrated {
 		built, err := BuildTRPCLLMAgentCached(ctx, ag, deps, deps.Logger())
 		if err != nil {
-			return nil, kerrors.NotFound("AGENT", "sub agent "+key+" build failed: "+err.Error())
+			return nil, kerrors.NotFound("AGENT", "sub agent "+keys[i]+" build failed: "+err.Error())
 		}
 		subs = append(subs, built)
 	}

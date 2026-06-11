@@ -46,6 +46,25 @@ func newIngressPeerDebouncer(delay time.Duration, lg loggateway.Logger) *ingress
 
 type ingressProcessFunc func(context.Context, biz.Channel, port.InboundEvent) error
 
+// Submit implements biz.PeerDebouncer.
+// It translates biz-level string parameters into concrete types for the internal debouncer.
+func (b *ingressPeerDebouncer) Submit(ctx context.Context, channelID, peerID, peerKey, text, idempotencyKey string, run biz.InboundProcessFunc) {
+	if b == nil || run == nil {
+		return
+	}
+	ch := biz.Channel{ID: channelID}
+	ev := port.InboundEvent{
+		PeerID:         peerID,
+		PeerKey:        peerKey,
+		Text:           text,
+		IdempotencyKey: idempotencyKey,
+	}
+	processFunc := func(ctx context.Context, _ biz.Channel, _ port.InboundEvent) error {
+		return run(ctx)
+	}
+	b.submit(ctx, ch, ev, processFunc)
+}
+
 func (b *ingressPeerDebouncer) submit(ctx context.Context, ch biz.Channel, ev port.InboundEvent, run ingressProcessFunc) {
 	if b == nil || run == nil {
 		return
@@ -69,7 +88,7 @@ func (b *ingressPeerDebouncer) submit(ctx context.Context, ch biz.Channel, ev po
 		parts := []string{strings.TrimSpace(cur.ev.Text), text}
 		cur.ev.Text = strings.TrimSpace(strings.Join(parts, "\n"))
 		cur.keys = append(cur.keys, strings.TrimSpace(ev.IdempotencyKey))
-		cur.ev.IdempotencyKey = mergeIngressIdempotencyKeys(cur.keys)
+		cur.ev.IdempotencyKey = biz.MergeIngressIdempotencyKeys(cur.keys)
 		if cur.timer != nil {
 			cur.timer.Stop()
 		}
@@ -81,7 +100,7 @@ func (b *ingressPeerDebouncer) submit(ctx context.Context, ch biz.Channel, ev po
 	evCopy := ev
 	evCopy.Text = text
 	keys := []string{strings.TrimSpace(ev.IdempotencyKey)}
-	evCopy.IdempotencyKey = mergeIngressIdempotencyKeys(keys)
+	evCopy.IdempotencyKey = biz.MergeIngressIdempotencyKeys(keys)
 	entry := &ingressPeerBatch{ch: ch, ev: evCopy, keys: keys}
 	entry.timer = time.AfterFunc(b.delay, func() {
 		b.flush(context.WithoutCancel(ctx), key, run)
@@ -104,31 +123,5 @@ func (b *ingressPeerDebouncer) flush(ctx context.Context, key ingressPeerKey, ru
 	b.mu.Unlock()
 	if err := run(ctx, ch, ev); err != nil {
 		b.lg.Warn("ingress debounce flush run failed", loggateway.StepID("ingress.debounce.flush"), loggateway.Err(err))
-	}
-}
-
-func mergeIngressIdempotencyKeys(keys []string) string {
-	var parts []string
-	for _, k := range keys {
-		k = strings.TrimSpace(k)
-		if k != "" {
-			parts = append(parts, k)
-		}
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	if len(parts) == 1 {
-		return parts[0]
-	}
-	return strings.Join(parts, "+")
-}
-
-func ingressDebounceEnabled(platform string) bool {
-	switch strings.ToLower(strings.TrimSpace(platform)) {
-	case "feishu", "lark":
-		return false
-	default:
-		return true
 	}
 }

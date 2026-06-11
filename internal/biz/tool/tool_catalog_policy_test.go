@@ -146,12 +146,12 @@ func TestPropagateDenyAliases(t *testing.T) {
 		{
 			name: "deny alias propagates to canonical",
 			m:    map[string]bool{"shell": true},
-			want: map[string]bool{"shell": true, "shell_exec": true},
+			want: map[string]bool{"shell": true, "shell_exec": true, "exec_command": true},
 		},
 		{
 			name: "deny canonical propagates to alias",
 			m:    map[string]bool{"shell_exec": true},
-			want: map[string]bool{"shell_exec": true, "shell": true},
+			want: map[string]bool{"shell_exec": true, "shell": true, "exec_command": true},
 		},
 		{
 			name: "deny web_search alias propagates to web_research",
@@ -176,7 +176,7 @@ func TestPropagateDenyAliases(t *testing.T) {
 		{
 			name: "multiple denies propagate bidirectionally",
 			m:    map[string]bool{"shell": true, "email": true},
-			want: map[string]bool{"shell": true, "shell_exec": true, "email": true, "send_email": true},
+			want: map[string]bool{"shell": true, "shell_exec": true, "exec_command": true, "email": true, "send_email": true},
 		},
 	}
 

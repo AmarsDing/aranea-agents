@@ -8,8 +8,8 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/apierror"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -24,12 +24,12 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		if unlock != nil {
 			unlock()
 		}
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Internal("CHAT_TEAM_NATIVE", "team runner not wired")
 	}
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
 
-	if qerr := enforceChatTurnQuotas(ctx, o.usage, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
+	if qerr := o.admission.EnforceChatTurnQuotas(ctx, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
 		if unlock != nil {
 			unlock()
 		}
@@ -57,7 +57,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		teamCancel = func() { timeoutCancel(); origCancel() }
 	}
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
-	o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
+	o.runStatus.SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	if unlock != nil {
 		unlock()
@@ -69,7 +69,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 
 	userMsg, assistantMsg, err = o.team.TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
-		o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
+		o.runStatus.SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
@@ -78,7 +78,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		return userMsg, assistantMsg, err
 	}
 
-	o.setRunStatus(ctx, sessionID, runID, "completed", "")
+	o.runStatus.SetRunStatus(ctx, sessionID, runID, "completed", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
 		o.teamStarter.HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "")

@@ -8,8 +8,7 @@ import (
 	"sync"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -155,7 +154,7 @@ func (uc *SkillEvolutionUsecase) ApproveProposal(ctx context.Context, id string,
 		return SkillProposal{}, err
 	}
 	if p.Status != SkillProposalStatusPending {
-		return SkillProposal{}, kerrors.BadRequest("SKILL_EVO", "only pending proposals can be approved")
+		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be approved")
 	}
 	return uc.repo.UpdateStatus(ctx, id, SkillProposalStatusApproved, approvedBy)
 }
@@ -170,7 +169,7 @@ func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, 
 		return SkillProposal{}, err
 	}
 	if p.Status != SkillProposalStatusPending {
-		return SkillProposal{}, kerrors.BadRequest("SKILL_EVO", "only pending proposals can be rejected")
+		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be rejected")
 	}
 	return uc.repo.UpdateStatus(ctx, id, SkillProposalStatusRejected, rejectedBy)
 }
@@ -185,21 +184,21 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 		return SkillProposal{}, err
 	}
 	if p.Status != SkillProposalStatusApproved {
-		return SkillProposal{}, kerrors.BadRequest("SKILL_EVO", "only approved proposals can be registered")
+		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only approved proposals can be registered")
 	}
 	if uc.registrar == nil {
 		uc.lg.Warn("skill registrar not configured, registration skipped", loggateway.StepID("skill_evo.register"))
 		return SkillProposal{}, nil
 	}
 	if strings.TrimSpace(p.SkillMD) == "" {
-		return SkillProposal{}, kerrors.BadRequest("SKILL_EVO", "cannot register proposal with empty skill content")
+		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "cannot register proposal with empty skill content")
 	}
 	exists, exErr := uc.registrar.SkillExists(ctx, p.AgentID, p.SkillName)
 	if exErr != nil {
 		return SkillProposal{}, exErr
 	}
 	if exists {
-		return SkillProposal{}, kerrors.Conflict("SKILL_EVO", fmt.Sprintf("skill %q already exists for agent %s", p.SkillName, p.AgentID))
+		return SkillProposal{}, apierror.Conflict("SKILL_EVO", "skill %q already exists for agent %s", p.SkillName, p.AgentID)
 	}
 	if regErr := uc.registrar.RegisterSkill(ctx, p.AgentID, p.SkillName, p.SkillMD); regErr != nil {
 		return SkillProposal{}, regErr
@@ -246,6 +245,14 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 	var errs []error
 	offset := 0
 	for {
+		select {
+		case <-ctx.Done():
+			if len(errs) > 0 {
+				return apierror.Internal("SKILL_EVO", "skill evolution: %d agents failed (cancelled)", len(errs))
+			}
+			return ctx.Err()
+		default:
+		}
 		page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: defaultScanAgentLimit, Offset: offset, Status: "active"})
 		if err != nil {
 			return err
@@ -269,7 +276,7 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 		offset += defaultScanAgentLimit
 	}
 	if len(errs) > 0 {
-		return kerrors.InternalServer("SKILL_EVO", fmt.Sprintf("skill evolution: %d agents failed", len(errs)))
+		return apierror.Internal("SKILL_EVO", "skill evolution: %d agents failed", len(errs))
 	}
 	return nil
 }

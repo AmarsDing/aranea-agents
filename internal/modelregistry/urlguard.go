@@ -2,9 +2,10 @@ package modelregistry
 
 import (
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
+
+	"aranea-agents/pkg/outboundguard"
 )
 
 var allowedCatalogHosts = map[string]struct{}{
@@ -35,14 +36,8 @@ func ValidateDirectorySourceURL(raw string) error {
 		}
 		return fmt.Errorf("source_url on models.dev must be /api.json")
 	}
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return fmt.Errorf("source_url host lookup failed: %w", err)
-	}
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return fmt.Errorf("source_url must not resolve to private or local addresses")
-		}
+	if err := outboundguard.ValidatePublicHost(host); err != nil {
+		return fmt.Errorf("source_url: %w", err)
 	}
 	return nil
 }

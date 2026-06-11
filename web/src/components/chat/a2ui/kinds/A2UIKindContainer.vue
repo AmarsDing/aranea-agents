@@ -11,7 +11,7 @@
     </q-card>
   </template>
   <template v-else-if="kind === 'Modal'">
-    <div class="a2ui-modal-entry" @click="ctx.modalOpen = true">
+    <div class="a2ui-modal-entry" @click="emit('update:modalOpen', true)">
       <A2UIComponentNode
         v-if="ctx.modalEntryId"
         :component-id="ctx.modalEntryId"
@@ -19,7 +19,7 @@
         @user-action="(p) => emit('user-action', p)"
       />
     </div>
-    <q-dialog v-model="ctx.modalOpen">
+    <q-dialog :model-value="ctx.modalOpen" @update:model-value="emit('update:modalOpen', $event)">
       <q-card class="a2ui-modal-card app-dialog-card">
         <q-card-section>
           <A2UIComponentNode
@@ -30,16 +30,16 @@
           />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat :label="closeLabel" @click="ctx.modalOpen = false" />
+          <q-btn flat :label="closeLabel" @click="emit('update:modalOpen', false)" />
         </q-card-actions>
       </q-card>
     </q-dialog>
   </template>
   <template v-else-if="kind === 'Tabs'">
-    <q-tabs v-model="ctx.activeTab" dense class="text-primary" active-color="primary" indicator-color="primary">
+    <q-tabs :model-value="ctx.activeTab" @update:model-value="emit('update:activeTab', Number($event))" dense class="text-grey-7" active-color="accent" indicator-color="accent">
       <q-tab v-for="(tab, idx) in ctx.tabItems" :key="idx" :name="idx" :label="tab.label" />
     </q-tabs>
-    <q-tab-panels v-model="ctx.activeTab" animated>
+    <q-tab-panels :model-value="ctx.activeTab" @update:model-value="emit('update:activeTab', Number($event))" animated>
       <q-tab-panel v-for="(tab, idx) in ctx.tabItems" :key="idx" :name="idx">
         <A2UIComponentNode
           v-if="tab.childId"
@@ -68,6 +68,8 @@ defineProps<{
 
 const emit = defineEmits<{
   'user-action': [payload: A2UIUserActionPayload];
+  'update:modalOpen': [value: boolean];
+  'update:activeTab': [value: number];
 }>();
 
 const { t } = useI18n();

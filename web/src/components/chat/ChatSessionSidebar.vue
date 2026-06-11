@@ -78,7 +78,7 @@
                     v-if="isPinned(session)"
                     class="chat-session-pin col-auto"
                     name="push_pin"
-                    color="primary"
+                    color="accent"
                     size="16px"
                   />
                   <q-icon
@@ -186,7 +186,7 @@
           unelevated
           dense
           class="chat-primary-btn"
-          color="primary"
+          color="accent"
           no-caps
           :label="t('chat.newSession')"
           @click="$emit('new-session')"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type ObservationReadWriter interface {
@@ -149,7 +149,7 @@ func (uc *LearningLoopUsecase) DetectPatterns(ctx context.Context, agentID strin
 		}
 		evidenceJSON, merr := json.Marshal(evidence)
 		if merr != nil {
-			return nil, kerrors.InternalServer("LEARNING", "marshal evidence: "+merr.Error())
+			return nil, apierror.Internal("LEARNING", "marshal evidence: %s", merr)
 		}
 		p := Pattern{
 			ID:          newAgentCatalogID(),
@@ -218,7 +218,7 @@ func (uc *LearningLoopUsecase) ValidateProposal(ctx context.Context, proposalID 
 		return KnowledgeProposal{}, err
 	}
 	if p.Status != ProposalStatusDraft {
-		return KnowledgeProposal{}, kerrors.BadRequest("LEARNING", "only draft proposals can be validated")
+		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only draft proposals can be validated")
 	}
 	existing, err := uc.proposals.ListByAgent(ctx, p.AgentID, string(ProposalStatusApproved))
 	if err != nil {
@@ -250,7 +250,7 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 		return KnowledgeProposal{}, err
 	}
 	if p.Status != ProposalStatusValidated && p.Status != ProposalStatusApproved {
-		return KnowledgeProposal{}, kerrors.BadRequest("LEARNING", "proposal must be validated or approved before registration")
+		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "proposal must be validated or approved before registration")
 	}
 	if uc.evolution != nil && p.Kind == "prompt" {
 		suggestions, sErr := uc.evolution.GetEvolutionSuggestions(ctx, p.AgentID, "pending")
@@ -285,7 +285,7 @@ func (uc *LearningLoopUsecase) ApproveProposal(ctx context.Context, proposalID s
 		return KnowledgeProposal{}, err
 	}
 	if p.Status != ProposalStatusValidated {
-		return KnowledgeProposal{}, kerrors.BadRequest("LEARNING", "only validated proposals can be approved")
+		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only validated proposals can be approved")
 	}
 	return uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusApproved, approvedBy)
 }
@@ -300,7 +300,7 @@ func (uc *LearningLoopUsecase) RejectProposal(ctx context.Context, proposalID st
 		return KnowledgeProposal{}, err
 	}
 	if p.Status != ProposalStatusDraft && p.Status != ProposalStatusValidated {
-		return KnowledgeProposal{}, kerrors.BadRequest("LEARNING", "only draft or validated proposals can be rejected")
+		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "only draft or validated proposals can be rejected")
 	}
 	return uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusRejected, "")
 }
@@ -328,14 +328,14 @@ func (uc *LearningLoopUsecase) RunLoop(ctx context.Context, agentID string) erro
 	}
 	patterns, err := uc.DetectPatterns(ctx, agentID)
 	if err != nil {
-		return kerrors.InternalServer("LEARNING", "detect patterns: "+err.Error())
+		return apierror.Internal("LEARNING", "detect patterns: %s", err)
 	}
 	if len(patterns) == 0 {
 		return nil
 	}
 	proposals, err := uc.GenerateProposals(ctx, agentID, patterns)
 	if err != nil {
-		return kerrors.InternalServer("LEARNING", "generate proposals: "+err.Error())
+		return apierror.Internal("LEARNING", "generate proposals: %s", err)
 	}
 	for _, prop := range proposals {
 		if _, err := uc.ValidateProposal(ctx, prop.ID); err != nil {
@@ -376,7 +376,7 @@ func (uc *LearningLoopUsecase) RunLoopAll(ctx context.Context) error {
 		}
 	}
 	if len(errs) > 0 {
-		return kerrors.InternalServer("LEARNING", fmt.Sprintf("learning loop: %d agents failed", len(errs)))
+		return apierror.Internal("LEARNING", "learning loop: %d agents failed", len(errs))
 	}
 	return nil
 }

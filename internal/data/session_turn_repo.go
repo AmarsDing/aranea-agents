@@ -7,8 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
@@ -172,7 +171,7 @@ func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields b
 func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (biz.SessionTurnListResult, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return biz.SessionTurnListResult{}, kerrors.BadRequest("SESSION_TURN", "session_id is required")
+		return biz.SessionTurnListResult{}, apierror.BadRequest("SESSION_TURN", "session_id is required")
 	}
 	c := r.data.RW().Read(ctx)
 	where := entsessionturn.SessionIDEQ(sessionID)

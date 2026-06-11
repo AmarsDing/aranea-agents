@@ -65,9 +65,9 @@ ON CONFLICT(key) DO UPDATE SET
   owner_id = excluded.owner_id,
   expires_at = excluded.expires_at,
   updated_at = excluded.updated_at
-WHERE channel_runtime_lease.owner_id = excluded.owner_id
+WHERE (channel_runtime_lease.owner_id = excluded.owner_id AND channel_runtime_lease.expires_at > ?)
    OR channel_runtime_lease.expires_at <= ?`,
-		lease.Key, lease.ChannelID, lease.Platform, lease.OwnerID, exp, now, now, now,
+		lease.Key, lease.ChannelID, lease.Platform, lease.OwnerID, exp, now, now, now, now,
 	)
 	if err != nil {
 		return false, err

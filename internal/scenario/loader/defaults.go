@@ -1,10 +1,24 @@
 package loader
 
-import (
-	"strings"
+import "gopkg.in/yaml.v3"
 
-	"gopkg.in/yaml.v3"
+// 默认值常量集中在此处，为 loader 包和 data/pack_convert.go 的唯一真相源。
+// data/pack_convert.go 直接引用这些常量，避免在 biz/pack 层重复定义。
+const (
+	DefaultProvider         = "openrouter"
+	DefaultFastModel        = "gpt-4.1-mini"
+	DefaultStrongModel      = "gpt-4.1"
+	DefaultSystemPromptMode = "file"
+	DefaultContextWindow    = 64000
+	DefaultCodeExecutor     = "local"
+	DefaultVariant          = "general"
+	DefaultModelTier        = "fast"
+	DefaultToolsProfile     = "general"
 )
+
+// DefaultToolsDeny 是 AgentDefaults 缺省拒绝的工具集。
+// 出于"安全默认"考虑，文件 / shell / bash 类工具在没显式 allow 时一律 deny。
+var DefaultToolsDeny = []string{"workspace_exec", "filesystem", "shell", "bash"}
 
 func yamlUnmarshal(data []byte, v any) error {
 	return yaml.Unmarshal(data, v)
@@ -13,58 +27,36 @@ func yamlUnmarshal(data []byte, v any) error {
 func fillDefaults(spec *CompanySpec) {
 	d := &spec.Defaults
 	if d.Provider == "" {
-		d.Provider = "openrouter"
+		d.Provider = DefaultProvider
 	}
 	if d.FastModel == "" {
-		d.FastModel = "gpt-4.1-mini"
+		d.FastModel = DefaultFastModel
 	}
 	if d.StrongModel == "" {
-		d.StrongModel = "gpt-4.1"
+		d.StrongModel = DefaultStrongModel
 	}
 	if d.SystemPromptMode == "" {
-		d.SystemPromptMode = "file"
+		d.SystemPromptMode = DefaultSystemPromptMode
 	}
 	if d.ContextWindow == 0 {
-		d.ContextWindow = 64000
+		d.ContextWindow = DefaultContextWindow
 	}
 	if d.CodeExecutor == "" {
-		d.CodeExecutor = "local"
+		d.CodeExecutor = DefaultCodeExecutor
 	}
 	if len(d.ToolsDeny) == 0 {
-		d.ToolsDeny = []string{"workspace_exec", "filesystem", "shell", "bash"}
+		d.ToolsDeny = append([]string(nil), DefaultToolsDeny...)
 	}
 	for i := range spec.Agents {
 		a := &spec.Agents[i]
 		if a.Variant == "" {
-			a.Variant = "general"
+			a.Variant = DefaultVariant
 		}
 		if a.ModelTier == "" {
-			a.ModelTier = "fast"
+			a.ModelTier = DefaultModelTier
 		}
 		if a.ToolsProfile == "" {
-			if len(a.ToolsAllow) > 0 {
-				a.ToolsProfile = deriveToolsProfile(a.PositionKey)
-			} else {
-				a.ToolsProfile = "general"
-			}
+			a.ToolsProfile = DefaultToolsProfile
 		}
-	}
-}
-
-func deriveToolsProfile(positionKey string) string {
-	pk := strings.ToLower(positionKey)
-	switch {
-	case strings.Contains(pk, "analyst") || strings.Contains(pk, "research"):
-		return "analyst"
-	case strings.Contains(pk, "engineer") || strings.Contains(pk, "developer") || strings.Contains(pk, "programmer"):
-		return "general"
-	case strings.Contains(pk, "coordinator") || strings.Contains(pk, "manager") || strings.Contains(pk, "director"):
-		return "coordinator"
-	case strings.Contains(pk, "writer") || strings.Contains(pk, "editor"):
-		return "writer"
-	case strings.Contains(pk, "designer") || strings.Contains(pk, "artist"):
-		return "creative"
-	default:
-		return "general"
 	}
 }

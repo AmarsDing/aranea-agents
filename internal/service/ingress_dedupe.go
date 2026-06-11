@@ -1,34 +1,70 @@
 package service
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/safego"
 )
 
 const (
 	defaultIngressDebounce     = 800 * time.Millisecond
 	defaultMessageDedupeTTL    = 5 * time.Minute
+	inflightEntryTTL           = 30 * time.Minute
 )
 
 // ingressMessageDedupe suppresses duplicate platform message ids within a TTL window (CH-BOR-06).
+// It embeds an inboundInflightSet to fully implement biz.IngressDeduplicator.
 type ingressMessageDedupe struct {
 	mu   sync.Mutex
 	seen map[string]time.Time
 	ttl  time.Duration
+	inflightSet
+}
+
+// inflightSet tracks in-flight dedup keys with TTL-based cleanup.
+type inflightSet struct {
+	mu   sync.Mutex
+	m    map[string]inflightEntry
+	done chan struct{}
+}
+
+type inflightEntry struct {
+	acquiredAt time.Time
 }
 
 func newIngressMessageDedupe(ttl time.Duration) *ingressMessageDedupe {
 	if ttl <= 0 {
 		ttl = defaultMessageDedupeTTL
 	}
-	return &ingressMessageDedupe{seen: make(map[string]time.Time), ttl: ttl}
+	is := &inflightSet{m: make(map[string]inflightEntry), done: make(chan struct{})}
+	safego.Go(context.Background(), "inflightSet.cleanupLoop", is.cleanupLoop)
+	return &ingressMessageDedupe{seen: make(map[string]time.Time), ttl: ttl, inflightSet: *is}
 }
 
-func ingressMessageDedupeKey(channelID, messageID string) string {
-	if channelID == "" || messageID == "" {
-		return ""
-	}
-	return channelID + ":" + messageID
+// ClaimMessage implements biz.IngressDeduplicator.
+// Returns false when the message was already seen within TTL.
+func (d *ingressMessageDedupe) ClaimMessage(channelID, messageID string) bool {
+	key := biz.IngressMessageDedupeKey(channelID, messageID)
+	return d.claim(key, time.Now())
+}
+
+// TryAcquireInflight implements biz.IngressDeduplicator.
+// Returns false when the dedup key is already being processed.
+func (d *ingressMessageDedupe) TryAcquireInflight(dedupKey string) bool {
+	return d.inflightSet.tryAcquire(dedupKey)
+}
+
+// ReleaseInflight implements biz.IngressDeduplicator.
+func (d *ingressMessageDedupe) ReleaseInflight(dedupKey string) {
+	d.inflightSet.release(dedupKey)
+}
+
+// stopInflight terminates the background cleanup goroutine of the inflight set.
+func (d *ingressMessageDedupe) stopInflight() {
+	d.inflightSet.Stop()
 }
 
 // claim returns false when the message id was seen within TTL.
@@ -57,9 +93,58 @@ func (d *ingressMessageDedupe) purgeLocked(now time.Time) {
 	}
 }
 
-func shouldSkipRecentDuplicate(lastSeen time.Time, ttl time.Duration, now time.Time) bool {
-	if lastSeen.IsZero() || ttl <= 0 {
+func (s *inflightSet) tryAcquire(key string) bool {
+	if s == nil {
+		return true
+	}
+	if key == "" {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if entry, ok := s.m[key]; ok && now.Sub(entry.acquiredAt) < inflightEntryTTL {
 		return false
 	}
-	return now.Sub(lastSeen) < ttl
+	s.m[key] = inflightEntry{acquiredAt: now}
+	return true
+}
+
+func (s *inflightSet) release(key string) {
+	if s == nil {
+		return
+	}
+	if key == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.m, key)
+}
+
+func (s *inflightSet) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.mu.Lock()
+			now := time.Now()
+			for k, v := range s.m {
+				if now.Sub(v.acquiredAt) >= inflightEntryTTL {
+					delete(s.m, k)
+				}
+			}
+			s.mu.Unlock()
+		case <-s.done:
+			return
+		}
+	}
+}
+
+// Stop terminates the background cleanup goroutine.
+func (s *inflightSet) Stop() {
+	if s != nil && s.done != nil {
+		close(s.done)
+	}
 }

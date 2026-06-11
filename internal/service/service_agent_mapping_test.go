@@ -610,8 +610,8 @@ func TestToProtoAgent_BasicFields(t *testing.T) {
 		Provider:           "openrouter",
 		Model:              "gpt-4o",
 		Status:             "active",
-		IsDefault:          true,
-		IsFavorite:         false,
+		IsDefault:          biz.BoolPtr(true),
+		IsFavorite:         biz.BoolPtr(false),
 		Icon:               "pets",
 		AgentDescription:   "desc",
 		PositionID:         "cat-1",
@@ -712,8 +712,8 @@ func TestFromProtoAgent_ToProtoAgent_RoundTrip(t *testing.T) {
 	if b.DisplayName != "Dev" || b.Provider != "openai" {
 		t.Fatalf("name/provider mismatch: name=%q provider=%q", b.DisplayName, b.Provider)
 	}
-	if !b.IsFavorite || b.IsDefault {
-		t.Fatalf("favorite/default mismatch: fav=%v def=%v", b.IsFavorite, b.IsDefault)
+	if !biz.BoolVal(b.IsFavorite) || biz.BoolVal(b.IsDefault) {
+		t.Fatalf("favorite/default mismatch: fav=%v def=%v", biz.BoolVal(b.IsFavorite), biz.BoolVal(b.IsDefault))
 	}
 	if len(b.Files) != 1 || b.Files[0].Name != "system.md" {
 		t.Fatalf("files mismatch: len=%d", len(b.Files))

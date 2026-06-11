@@ -24,8 +24,8 @@ func (h *ChannelIngress) inboundPeerKey(chRow biz.Channel, ev port.InboundEvent)
 		fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)
 		threadID, chatID := "", ""
 		if ev.OutboundMeta != nil {
-			threadID = strings.TrimSpace(ev.OutboundMeta["thread_id"])
-			chatID = strings.TrimSpace(ev.OutboundMeta["chat_id"])
+			threadID = strings.TrimSpace(ev.OutboundMeta[port.MetaThreadID])
+			chatID = strings.TrimSpace(ev.OutboundMeta[port.MetaChatID])
 		}
 		if fc.ThreadSessionsPerUser && threadID != "" && chatID != "" {
 			return chatID + ":" + threadID, nil
@@ -83,7 +83,7 @@ func (h *ChannelIngress) startFeishuProcessingReaction(ctx context.Context, chRo
 	if !fc.ProcessingReaction || ev.OutboundMeta == nil {
 		return func() {}
 	}
-	msgID := strings.TrimSpace(ev.OutboundMeta["inbound_message_id"])
+	msgID := strings.TrimSpace(ev.OutboundMeta[port.MetaInboundMessageID])
 	if msgID == "" {
 		return func() {}
 	}

@@ -2,7 +2,7 @@ package biz
 
 import (
 	"context"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"strings"
 	"time"
 )
@@ -32,7 +32,7 @@ type EmbeddingService interface {
 }
 
 // ErrMemoryUnavailable when postgres vector backing is disabled or unreachable.
-var ErrMemoryUnavailable = kerrors.InternalServer("MEMORY", "postgres vector store not available")
+var ErrMemoryUnavailable = apierror.Internal("MEMORY", "postgres vector store not available")
 
 // MemoryUsecase coordinates embedding + vector repository.
 type MemoryUsecase struct {

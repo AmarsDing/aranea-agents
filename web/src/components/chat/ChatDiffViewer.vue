@@ -7,7 +7,7 @@
     </div>
 
     <div class="chat-diff-viewer__hunks">
-      <div v-for="(hunk, idx) in hunks" :key="idx" class="chat-diff-viewer__hunk">
+      <div v-for="(hunk, idx) in displayHunks" :key="idx" class="chat-diff-viewer__hunk">
         <div v-if="hunk.searchLines.length" class="chat-diff-viewer__section chat-diff-viewer__section--old">
           <div
             v-for="(line, li) in hunk.searchLines"
@@ -49,7 +49,7 @@
         :label="t('chat.apply', '应用')"
         color="positive"
         size="11px"
-        @click="$emit('apply', { toolName, fileName })"
+        @click="emit('apply', { toolName, fileName })"
       />
     </div>
   </div>
@@ -72,12 +72,19 @@ const props = withDefaults(
   { appliedCount: 0, isDark: false, showActions: false },
 );
 
-defineEmits<{
+const emit = defineEmits<{
   apply: [payload: { toolName: string; fileName: string }];
   reject: [payload: { toolName: string; fileName: string }];
 }>();
 
 const { t } = useI18n();
+
+const displayHunks = computed(() =>
+  props.hunks.map((h) => ({
+    searchLines: h.search.split('\n'),
+    replaceLines: h.replace.split('\n'),
+  })),
+);
 
 const summary = computed(() => {
   const total = props.hunks.length;

@@ -7,8 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/organization/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -149,7 +148,7 @@ func (s *OrganizationService) GetOrganization(ctx context.Context, req *v1.GetOr
 	c, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("ORGANIZATION", "node not found")
+			return nil, apierror.NotFound("ORGANIZATION", "node not found")
 		}
 		return nil, err
 	}
@@ -158,13 +157,13 @@ func (s *OrganizationService) GetOrganization(ctx context.Context, req *v1.GetOr
 
 func (s *OrganizationService) UpdateOrganization(ctx context.Context, req *v1.UpdateOrganizationRequest) (*v1.OrganizationNode, error) {
 	if req.GetNode() == nil {
-		return nil, kerrors.BadRequest("ORGANIZATION", "node body is required")
+		return nil, apierror.BadRequest("ORGANIZATION", "node body is required")
 	}
 	patch := fromProtoOrganization(req.GetNode())
 	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("ORGANIZATION", "node not found")
+			return nil, apierror.NotFound("ORGANIZATION", "node not found")
 		}
 		return nil, err
 	}

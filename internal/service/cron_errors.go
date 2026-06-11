@@ -5,8 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func mapCronError(err error) error {
@@ -14,24 +13,23 @@ func mapCronError(err error) error {
 		return nil
 	}
 	if errors.Is(err, biz.ErrCronNotFound) {
-		return kerrors.NotFound("CRON", "cron task not found")
+		return apierror.NotFound("CRON", "cron task not found")
 	}
 	if errors.Is(err, biz.ErrCronRunnerDisabled) {
-		return kerrors.ServiceUnavailable("CRON", "cron runner is disabled")
+		return apierror.Unavailable("CRON", "cron runner is disabled")
 	}
 	if errors.Is(err, biz.ErrCronTaskDeleted) {
-		return kerrors.NotFound("CRON", "cron task deleted")
+		return apierror.NotFound("CRON", "cron task deleted")
 	}
 	if errors.Is(err, biz.ErrCronSessionBusy) {
-		return kerrors.New(409, "CRON_SESSION_BUSY", err.Error())
+		return apierror.Conflict("CRON", err.Error())
 	}
-	var ke *kerrors.Error
-	if errors.As(err, &ke) {
-		return err
+	if ae, ok := apierror.From(err); ok {
+		return ae
 	}
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "required") || strings.Contains(msg, "invalid") {
-		return kerrors.BadRequest("CRON", err.Error())
+		return apierror.BadRequest("CRON", err.Error())
 	}
 	return err
 }

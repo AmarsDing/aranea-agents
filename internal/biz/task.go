@@ -1,14 +1,13 @@
 package biz
 
 import (
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -223,7 +222,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionI
 	}
 
 	if err := uc.writer.SaveTask(ctx, task); err != nil {
-		return nil, kerrors.InternalServer("TASK", fmt.Sprintf("task usecase create: %s", err.Error()))
+		return nil, apierror.Internal("TASK", "task usecase create: %s", err)
 	}
 
 	uc.recordTaskEvent(ctx, task.TaskID, "task_created", nodeID, "task created")
@@ -259,11 +258,11 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 		return nil, err
 	}
 	if task.Status != TaskStatusPending && task.Status != TaskStatusPendingAssignment {
-		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s cannot be claimed in status %s", taskID, task.Status))
+		return nil, apierror.BadRequest("TASK", "task %s cannot be claimed in status %s", taskID, task.Status)
 	}
 	if task.AssignmentMode == "dynamic" && task.RequiredRole != "" {
 		if uc.roleChecker != nil && !uc.roleChecker(ctx, agentKey, task.RequiredRole) {
-			return nil, kerrors.Forbidden("TASK", fmt.Sprintf("agent %s does not have required role %s", agentKey, task.RequiredRole))
+			return nil, apierror.Forbidden("TASK", "agent %s does not have required role %s", agentKey, task.RequiredRole)
 		}
 	}
 	now := time.Now()
@@ -288,7 +287,7 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 		return nil, err
 	}
 	if task.Status != TaskStatusClaimed && task.Status != TaskStatusReviewRequired {
-		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s cannot submit result in status %s", taskID, task.Status))
+		return nil, apierror.BadRequest("TASK", "task %s cannot submit result in status %s", taskID, task.Status)
 	}
 	now := time.Now()
 	task.Output = output
@@ -316,10 +315,10 @@ func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey st
 		return false, 0, err
 	}
 	if task.Status != TaskStatusClaimed {
-		return false, 0, kerrors.BadRequest("TASK", fmt.Sprintf("task %s not in claimed status", taskID))
+		return false, 0, apierror.BadRequest("TASK", "task %s not in claimed status", taskID)
 	}
 	if task.Assignee != agentKey {
-		return false, 0, kerrors.Forbidden("TASK", fmt.Sprintf("agent %s is not the assignee of task %s", agentKey, taskID))
+		return false, 0, apierror.Forbidden("TASK", "agent %s is not the assignee of task %s", agentKey, taskID)
 	}
 	now := time.Now()
 	uc.mu.Lock()
@@ -342,7 +341,7 @@ func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason 
 		return nil, err
 	}
 	if task.Status != TaskStatusClaimed {
-		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s cannot be blocked in status %s", taskID, task.Status))
+		return nil, apierror.BadRequest("TASK", "task %s cannot be blocked in status %s", taskID, task.Status)
 	}
 	task.Status = TaskStatusBlocked
 	task.Metadata = metadata
@@ -360,7 +359,7 @@ func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment s
 		return nil, err
 	}
 	if task.Status != TaskStatusBlocked {
-		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s is not blocked", taskID))
+		return nil, apierror.BadRequest("TASK", "task %s is not blocked", taskID)
 	}
 	task.Status = TaskStatusPending
 	task.Assignee = ""
@@ -437,7 +436,7 @@ func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAg
 		return nil, err
 	}
 	if task.Status != TaskStatusReviewRequired {
-		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s is not in review_required status", taskID))
+		return nil, apierror.BadRequest("TASK", "task %s is not in review_required status", taskID)
 	}
 	if approved {
 		task.Status = TaskStatusComplete

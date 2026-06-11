@@ -3,7 +3,7 @@ package shared
 import (
 	"testing"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"go.einride.tech/aip/filtering"
 	"go.einride.tech/aip/ordering"
 )
@@ -202,12 +202,12 @@ func TestValidateDocumentAgainstSchema(t *testing.T) {
 				return
 			}
 			if err != nil && tt.errReason != "" {
-				if e := errors.FromError(err); e != nil {
-					if e.Reason != tt.errReason {
-						t.Errorf("err reason = %q, want %q", e.Reason, tt.errReason)
+				if e, ok := apierror.From(err); ok {
+					if e.Domain != tt.errReason {
+						t.Errorf("err reason = %q, want %q", e.Domain, tt.errReason)
 					}
 				} else {
-					t.Errorf("expected kratos error, got %T", err)
+					t.Errorf("expected apierror, got %T", err)
 				}
 			}
 		})

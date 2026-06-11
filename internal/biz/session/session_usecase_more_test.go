@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type testRepo struct {
@@ -326,7 +326,7 @@ func TestArchive(t *testing.T) {
 			name: "get session error propagated",
 			id:   "sess-1",
 			getFn: func(_ context.Context, _ string) (Session, error) {
-				return Session{}, kerrors.NotFound("SESSION", "session not found")
+				return Session{}, apierror.NotFound("SESSION", "session not found")
 			},
 			wantErr: true,
 		},
@@ -496,7 +496,7 @@ func TestDelete(t *testing.T) {
 			name: "get session error propagated",
 			id:   "sess-1",
 			getFn: func(_ context.Context, _ string) (Session, error) {
-				return Session{}, kerrors.NotFound("SESSION", "session not found")
+				return Session{}, apierror.NotFound("SESSION", "session not found")
 			},
 			wantErr: true,
 		},
@@ -662,7 +662,7 @@ func TestGet(t *testing.T) {
 			name: "repo error propagated",
 			id:   "sess-1",
 			getFn: func(_ context.Context, _ string) (Session, error) {
-				return Session{}, kerrors.NotFound("SESSION", "session not found")
+				return Session{}, apierror.NotFound("SESSION", "session not found")
 			},
 			wantErr: true,
 		},

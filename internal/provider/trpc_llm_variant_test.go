@@ -34,10 +34,11 @@ func TestInferVariantFromDeepSeekBaseURL(t *testing.T) {
 }
 
 func TestModelSupportsImageAttachments_blocksLikelyDeepSeekWithoutCatalog(t *testing.T) {
-	if ModelSupportsImageAttachments(t.Context(), nil, "deepseek", "deepseek-chat") {
+	lg := noopLogger()
+	if ModelSupportsImageAttachments(t.Context(), nil, "deepseek", "deepseek-chat", lg) {
 		t.Fatal("expected DeepSeek-like model to be treated as text-only for images")
 	}
-	if !ModelSupportsImageAttachments(t.Context(), nil, "openai", "gpt-4o") {
+	if !ModelSupportsImageAttachments(t.Context(), nil, "openai", "gpt-4o", lg) {
 		t.Fatal("expected non-DeepSeek model to allow images when catalog is unavailable")
 	}
 }

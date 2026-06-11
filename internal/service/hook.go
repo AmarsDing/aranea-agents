@@ -5,14 +5,13 @@ import (
 	"database/sql"
 	"errors"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	v1 "aranea-agents/api/kratos/hook/v1"
 	"aranea-agents/internal/biz"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/pkg/safego"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -113,7 +112,7 @@ func (s *HookService) GetHook(ctx context.Context, req *v1.GetHookRequest) (*v1.
 	h, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("HOOK", "hook not found")
+			return nil, apierror.NotFound("HOOK", "hook not found")
 		}
 		return nil, err
 	}
@@ -122,12 +121,12 @@ func (s *HookService) GetHook(ctx context.Context, req *v1.GetHookRequest) (*v1.
 
 func (s *HookService) UpdateHook(ctx context.Context, req *v1.UpdateHookRequest) (*v1.Hook, error) {
 	if req.GetHook() == nil {
-		return nil, kerrors.BadRequest("HOOK", "hook body is required")
+		return nil, apierror.BadRequest("HOOK", "hook body is required")
 	}
 	out, err := s.uc.Update(ctx, req.GetId(), patchFromProtoHook(req.GetHook()))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("HOOK", "hook not found")
+			return nil, apierror.NotFound("HOOK", "hook not found")
 		}
 		return nil, err
 	}

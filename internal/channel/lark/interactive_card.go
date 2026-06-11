@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // SendInteractiveMessage posts an interactive card IM message and returns message_id.
@@ -16,7 +17,7 @@ func SendInteractiveMessage(ctx context.Context, httpClient *http.Client, region
 	receiveID = strings.TrimSpace(receiveID)
 	cardJSON = strings.TrimSpace(cardJSON)
 	if receiveID == "" || cardJSON == "" {
-		return "", fmt.Errorf("lark interactive: receive_id and card required")
+		return "", errCardOrReceiveIDRequired
 	}
 	if httpClient == nil {
 		httpClient = DefaultHTTPClient()
@@ -60,14 +61,14 @@ func SendInteractiveMessage(ctx context.Context, httpClient *http.Client, region
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("lark interactive: bad json: %w", err)
+		return "", feishuParseError("lark interactive", err)
 	}
 	if out.Code != 0 {
-		return "", fmt.Errorf("lark interactive: code=%d msg=%s", out.Code, out.Msg)
+		return "", feishuAPIError("lark interactive", out.Code, out.Msg)
 	}
 	id := strings.TrimSpace(out.Data.MessageID)
 	if id == "" {
-		return "", fmt.Errorf("lark interactive: empty message_id")
+		return "", errEmptyMessageID
 	}
 	return id, nil
 }
@@ -77,7 +78,7 @@ func UpdateInteractiveMessage(ctx context.Context, httpClient *http.Client, regi
 	messageID = strings.TrimSpace(messageID)
 	cardJSON = strings.TrimSpace(cardJSON)
 	if messageID == "" || cardJSON == "" {
-		return fmt.Errorf("lark interactive update: message_id and card required")
+		return errMessageIDAndCardRequired
 	}
 	if httpClient == nil {
 		httpClient = DefaultHTTPClient()
@@ -114,14 +115,14 @@ func UpdateInteractiveMessage(ctx context.Context, httpClient *http.Client, regi
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("lark interactive update: bad json: %w", err)
+		return feishuParseError("lark interactive update", err)
 	}
 	if out.Code != 0 {
 		desc := strings.ToLower(out.Msg)
 		if strings.Contains(desc, "not modified") || strings.Contains(desc, "same content") {
 			return nil
 		}
-		return fmt.Errorf("lark interactive update: code=%d msg=%s", out.Code, out.Msg)
+		return feishuAPIError("lark interactive update", out.Code, out.Msg)
 	}
 	return nil
 }
@@ -154,7 +155,7 @@ func (s *CardSender) UpsertToolCard(ctx context.Context, recipient, messageID, c
 	if err != nil {
 		return "", err
 	}
-	ridType := ReceiveIDTypeFromMeta(map[string]string{"receive_id_type": s.ReceiveIDType})
+	ridType := ReceiveIDTypeFromMeta(map[string]string{port.MetaReceiveIDType: s.ReceiveIDType})
 	if id := strings.TrimSpace(messageID); id != "" {
 		if err := UpdateInteractiveMessage(ctx, client, region, tok, id, cardJSON); err != nil {
 			return "", err

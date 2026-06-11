@@ -92,6 +92,7 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | docs 文档命名/存放规范 | `aranea-docs-guide` |
 | 模块文档三件套格式 | `aranea-docs-guide` §2 |
 | 子模块合并规则 | `aranea-docs-guide` §2.3 |
+| 架构评判标准 AS-ADR~AS-EVT | `project_rules.md` §八 + `docs/reports/2026-06-11-review-architecture-runtime-pain-points.md` |
 
 ---
 
@@ -209,7 +210,96 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 ---
 
-## 七、模块关联强制读取（违反即停）
+## 八、建设性架构评判标准（AS 系列）
+
+> 当前项目已有"禁止性红线"（19 条）和"编程规范"（CS-B1~B17），但缺少**建设性指引**——告诉开发者"应该怎样做"而非仅"不能做什么"。
+> 以下 6 项标准（AS = Architecture Standard）补充此空白，详细方案见 `docs/reports/2026-06-11-review-architecture-runtime-pain-points.md`。
+
+### AS-ADR-01：架构决策记录
+
+**要求**：每个影响跨模块的架构决策必须记录 ADR。
+
+**触发条件**：新增模块/包、修改依赖方向、引入新框架/库、修改核心数据结构、性能关键路径的权衡决策。
+
+**格式**：
+```markdown
+# ADR-NN: <标题>
+## 状态：提议 | 已接受 | 已废弃 | 已替代
+## 背景：<为什么需要做决策>
+## 决策：<做了什么决策>
+## 后果：<正面和负面影响>
+## 替代方案：<考虑过但未选择的方案及原因>
+```
+
+**存放**：`docs/reports/YYYY-MM-DD-review-adr-<topic>.md`
+
+### AS-COG-01：认知复杂度量化
+
+**要求**：以下指标不得超过上限，超标必须拆分并标记 `// TECH-DEBT(COG): <指标>=<当前值>, 上限=<上限>`。
+
+| 指标 | 上限 | 检测方式 |
+|------|------|---------|
+| struct 注入字段数 | 15 | 代码审查 |
+| 单方法行数 | 80 | linter（CS-B5） |
+| 单方法圈复杂度 | 15 | linter（CS-B6） |
+| biz 层依赖数（单 struct） | 8 | 代码审查 |
+| sync.Map 数（单 struct） | 0（应提取为子管理器） | 代码审查 |
+| 文件总行数 | 500 | linter |
+| 包级导出类型数 | 20 | 代码审查 |
+
+**超标处理**：标记 TECH-DEBT → 下一迭代安排拆分 → 不阻断当前开发但禁止继续堆叠。
+
+### AS-FSM-01：状态机显式化要求
+
+**要求**：任何实体拥有 >3 种状态时，必须定义显式状态机。
+
+**定义位置**：与实体同包，文件名 `*_state_machine.go`
+
+**必须包含**：状态枚举（const）+ 合法转换表（var transitions）+ 转换校验函数（`Transition(from, event) (to, error)`）+ 可选守卫条件（`Guard func(ctx) bool`）。
+
+**现有实体需补全**：Run（5 种状态）、Session（已有，需统一接口）、TeamRun（6 种状态）、GraphExecution（5 种状态）。
+
+### AS-STA-01：接口稳定性分级
+
+**要求**：biz 层 port 接口必须标注稳定性等级。
+
+| 等级 | 标注 | 含义 | 变更规则 |
+|------|------|------|---------|
+| Stable | `// Stability:stable` | 生产依赖，不可破坏兼容 | 只能新增方法，不能修改/删除 |
+| Evolving | `// Stability:evolving` | 活跃开发中，可能变 | 可修改，但需 ADR 记录 |
+| Internal | `// Stability:internal` | 包内使用，不对外 | 自由变更 |
+
+**检查方式**：代码审查时校验 `Stable` 接口变更是否有 ADR。
+
+### AS-FIT-01：架构 Fitness Function
+
+**要求**：以下架构不变量必须通过自动化测试验证。
+
+| Fitness Function | 验证内容 | 实现方式 |
+|-----------------|---------|---------|
+| 依赖方向 | biz 不依赖 pkg/trpc-agent-go | `go vet` + 自定义 linter |
+| 分层隔离 | service 不直接访问 data | import 检查脚本 |
+| 接口窄化 | biz port 接口方法 ≤ 5 | 静态分析 |
+| 状态机覆盖 | >3 状态实体有显式状态机 | 测试枚举 |
+| 认知复杂度 | struct 字段 ≤ 15 | 静态分析 |
+
+**实现路径**：短期 `make archlint` → 中期集成 CI → 长期 `golangci-lint` 自定义规则。
+
+### AS-EVT-01：事件可靠性分级
+
+**要求**：事件按业务关键性分级，不同级别有不同的可靠性保证。
+
+| 级别 | 事件类型 | 可靠性保证 | 持久化 |
+|------|---------|-----------|--------|
+| Critical | ToolResult / Error / RunnerCompletion / Checkpoint | WBPF（先写后发）+ 重试 | SQLite WAL |
+| Important | StateDelta / TokenUsage / RunStatus / SessionStatusChanged / GraphNodeEnd / TeamRunFinished | BlockUpTo + 异步持久化 | SQLite EventStore |
+| Informational | TextDelta / FlowLog / Log / MemberDelta | 尽力而为 | 不持久化 |
+
+**检测方式**：代码审查时校验新增事件类型的分级是否正确。
+
+---
+
+## 九、模块关联强制读取（违反即停）
 
 > **任何模块开发前必须先读关联文档。** 模块不是孤岛，改一处必知影响面。
 

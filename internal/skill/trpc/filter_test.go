@@ -11,11 +11,19 @@ func TestCanonicalSlug(t *testing.T) {
 	if got := canonicalSlug("My-Skill"); got != "my-skill" {
 		t.Fatalf("expected my-skill, got %q", got)
 	}
-	if got := canonicalSlug("  Hello World  "); got != "hello world" {
-		t.Fatalf("expected 'hello world', got %q", got)
+	// NormalizeSlug replaces spaces with hyphens for consistent slug matching.
+	if got := canonicalSlug("  Hello World  "); got != "hello-world" {
+		t.Fatalf("expected 'hello-world', got %q", got)
 	}
 	if got := canonicalSlug(""); got != "" {
 		t.Fatalf("expected empty, got %q", got)
+	}
+	// Verify that non-slug inputs are properly normalized.
+	if got := canonicalSlug("My Skill"); got != "my-skill" {
+		t.Fatalf("expected 'my-skill', got %q", got)
+	}
+	if got := canonicalSlug("MY_SKILL"); got != "my_skill" {
+		t.Fatalf("expected 'my_skill', got %q", got)
 	}
 }
 

@@ -819,6 +819,7 @@ const (
 
 	defaultEpisodeConfidence   = 0.75
 	defaultL1ArchiveImportance = 0.6
+	defaultFactQualityScore    = 0.5
 )
 
 type recallScoreBreakdown struct {

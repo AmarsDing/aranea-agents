@@ -22,7 +22,7 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 		return nil
 	}
 	channelSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "channel_secret", h.lg)
-	if err := line.VerifySignature(channelSecret, string(raw), r.Header.Get("X-Line-Signature")); err != nil {
+	if err := line.VerifySignature(channelSecret, raw, r.Header.Get("X-Line-Signature")); err != nil {
 		h.lg.Warn("LINE Webhook 签名验证失败",
 			loggateway.StepID("channel.line.webhook.verify_fail"),
 			loggateway.Str("channel_id", chRow.ID),
@@ -40,9 +40,9 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 		peerID := ingressFirstNonEmpty(m.UserID, m.GroupID, m.RoomID)
 		recipient := ingressFirstNonEmpty(m.GroupID, m.RoomID, m.UserID)
 		meta := map[string]string{
-			"recipient":   recipient,
-			"chat_id":     recipient,
-			"reply_token": m.ReplyToken,
+			port.MetaRecipient:  recipient,
+			port.MetaChatID:     recipient,
+			port.MetaReplyToken: m.ReplyToken,
 		}
 		writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 			PlatformType:   "line",

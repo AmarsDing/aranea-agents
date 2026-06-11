@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	usage "aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -1353,8 +1352,8 @@ func TestCheckQuota_EmptyScope(t *testing.T) {
 		name      string
 		scopeType string
 		scopeID   string
-		wantErr   bool
-		wantCode  int32
+		wantErr    bool
+		wantCode   apierror.Code
 		wantReason string
 	}{
 		{
@@ -1362,7 +1361,7 @@ func TestCheckQuota_EmptyScope(t *testing.T) {
 			scopeType: "",
 			scopeID:   "agent-1",
 			wantErr:   true,
-			wantCode:  400,
+			wantCode:  apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 		{
@@ -1370,7 +1369,7 @@ func TestCheckQuota_EmptyScope(t *testing.T) {
 			scopeType: "agent",
 			scopeID:   "",
 			wantErr:   true,
-			wantCode:  400,
+			wantCode:  apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 		{
@@ -1378,7 +1377,7 @@ func TestCheckQuota_EmptyScope(t *testing.T) {
 			scopeType: "  ",
 			scopeID:   "agent-1",
 			wantErr:   true,
-			wantCode:  400,
+			wantCode:  apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 		{
@@ -1386,7 +1385,7 @@ func TestCheckQuota_EmptyScope(t *testing.T) {
 			scopeType: "agent",
 			scopeID:   "  ",
 			wantErr:   true,
-			wantCode:  400,
+			wantCode:  apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 	}
@@ -1405,15 +1404,15 @@ func TestCheckQuota_EmptyScope(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			se := kerrors.FromError(err)
-			if se == nil {
-				t.Fatalf("expected kratos error, got %T", err)
+			se, ok := apierror.From(err)
+			if !ok {
+				t.Fatalf("expected apierror, got %T", err)
 			}
 			if se.Code != tt.wantCode {
-				t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+				t.Errorf("code = %s, want %s", se.Code, tt.wantCode)
 			}
-			if se.Reason != tt.wantReason {
-				t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+			if se.Domain != tt.wantReason {
+				t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 			}
 		})
 	}

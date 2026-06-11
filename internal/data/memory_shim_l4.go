@@ -120,8 +120,7 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 		var nextFrontier []string
 		// Collect unvisited neighbors via relations
 		ph := make([]string, len(frontier))
-		args := make([]any, 0, len(frontier)+1)
-		args = append(args, qt)
+		args := make([]any, 0, len(frontier))
 		for i, id := range frontier {
 			ph[i] = "?"
 			args = append(args, id)
@@ -129,8 +128,8 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 		relQ := fmt.Sprintf(`SELECT%s FROM memory_relations WHERE (source_id IN (%s) OR target_id IN (%s)) AND status = 'active' AND deleted_at = ''`,
 			sqlRelationCols, strings.Join(ph, ","), strings.Join(ph, ","))
 		// Duplicate args for second IN clause
-		args2 := make([]any, len(args)-1)
-		copy(args2, args[1:])
+		args2 := make([]any, len(args))
+		copy(args2, args)
 		args = append(args, args2...)
 		rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, relQ, args...)
 		if err != nil {

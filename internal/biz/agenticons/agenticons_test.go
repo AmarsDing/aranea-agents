@@ -3,7 +3,7 @@ package agenticons
 import (
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestLoadPNG_EmptyKey(t *testing.T) {
@@ -11,8 +11,12 @@ func TestLoadPNG_EmptyKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty key")
 	}
-	if kerrors.FromError(err).Reason != "AGENT_ICONS" {
-		t.Fatalf("reason = %q, want %q", kerrors.FromError(err).Reason, "AGENT_ICONS")
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
+	}
+	if ae.Domain != "AGENT_ICONS" {
+		t.Fatalf("domain = %q, want %q", ae.Domain, "AGENT_ICONS")
 	}
 }
 

@@ -5,9 +5,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"fmt"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 )
 
 // Collection is a named vector store.
@@ -114,17 +115,17 @@ type KnowledgeEmbedder interface {
 	Update(provider, baseURL, apiKey, model string, dim int)
 }
 
-// Domain errors for knowledge biz layer — the Service layer maps these to kerrors.
+// Domain errors for knowledge biz layer — the Service layer maps these to apierror.
 var (
-	ErrUnavailable            = kerrors.InternalServer("KNOWLEDGE", "knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
-	ErrNameRequired           = kerrors.BadRequest("KNOWLEDGE", "name is required")
-	ErrEmbeddingModelRequired = kerrors.BadRequest("KNOWLEDGE", "embedding_model is required")
-	ErrIDRequired             = kerrors.BadRequest("KNOWLEDGE", "id is required")
-	ErrCollectionIDRequired   = kerrors.BadRequest("KNOWLEDGE", "collection_id is required")
-	ErrSourceRequired         = kerrors.BadRequest("KNOWLEDGE", "source is required")
-	ErrQueryRequired          = kerrors.BadRequest("KNOWLEDGE", "query is required")
-	ErrDimensionMismatch      = kerrors.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
-	ErrEmbeddingEmpty         = kerrors.BadRequest("KNOWLEDGE", "embedding is empty")
+	ErrUnavailable            = apierror.Internal("KNOWLEDGE", "knowledge base requires PostgreSQL with pgvector; configure data.postgres.source")
+	ErrNameRequired           = apierror.BadRequest("KNOWLEDGE", "name is required")
+	ErrEmbeddingModelRequired = apierror.BadRequest("KNOWLEDGE", "embedding_model is required")
+	ErrIDRequired             = apierror.BadRequest("KNOWLEDGE", "id is required")
+	ErrCollectionIDRequired   = apierror.BadRequest("KNOWLEDGE", "collection_id is required")
+	ErrSourceRequired         = apierror.BadRequest("KNOWLEDGE", "source is required")
+	ErrQueryRequired          = apierror.BadRequest("KNOWLEDGE", "query is required")
+	ErrDimensionMismatch      = apierror.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
+	ErrEmbeddingEmpty         = apierror.BadRequest("KNOWLEDGE", "embedding is empty")
 )
 
 // Usecase implements collection/document/search operations.

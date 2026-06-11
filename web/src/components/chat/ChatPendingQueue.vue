@@ -47,7 +47,7 @@
             round
             size="sm"
             icon="edit"
-            color="primary"
+            color="accent"
             class="chat-pending-item__edit-btn"
             :aria-label="t('chat.editPending')"
             @click="startEdit(pm)"

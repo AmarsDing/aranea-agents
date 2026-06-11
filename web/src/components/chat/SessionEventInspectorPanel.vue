@@ -10,7 +10,7 @@
     </div>
 
     <div v-if="loading" class="column items-center q-py-lg">
-      <q-spinner color="primary" size="28px" />
+      <q-spinner color="accent" size="28px" />
     </div>
     <div v-else-if="error" class="text-negative q-pa-md">{{ error }}</div>
 

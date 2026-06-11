@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type DiagBundle struct {
@@ -49,7 +49,7 @@ func (g *DiagBundleGenerator) SetSelfCheckRepo(repo SelfCheckReportRepo) {
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {
 	if g == nil {
-		return nil, kerrors.InternalServer("MONITOR", "DiagBundleGenerator is nil")
+		return nil, apierror.Internal("MONITOR", "DiagBundleGenerator is nil")
 	}
 	if contextMinutes <= 0 {
 		contextMinutes = 5

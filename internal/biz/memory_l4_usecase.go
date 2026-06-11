@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	l4NamePattern             = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9 _-]{0,48})`)
+	l4NamePattern             = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9_-]*(?:\s+[A-Za-z][A-Za-z0-9_-]*)?)`)
 	l4PreferencePattern       = regexp.MustCompile(`(?i)I\s+(?:prefer|like|love)\s+([^.!?\n]{2,120})`)
 	l4ChineseNamePattern      = regexp.MustCompile(`(?:我叫|我的名字是)\s*([^\s,.，。!！?？]{1,20})(?:[，。,.!！?？\s]|$)`)
 	l4ChinesePreferencePattern = regexp.MustCompile(`(?:我喜欢|我偏好|我偏爱|我爱吃|我爱喝|我爱看|我爱听)\s*([^.!?\n，。！？]{2,80})`)
@@ -37,6 +37,10 @@ const (
 	l4CascadeEntConfidence = 0.8
 	l4CascadeTouchImportance = 0.5
 	l4CascadeTouchConfidence = 0.7
+
+	// Match caps prevent entity/relation write storms from pathological input.
+	maxNameMatches = 5
+	maxPrefMatches = 20
 )
 
 type L4GraphUsecase struct {
@@ -93,12 +97,12 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 	// are captured. The first match becomes the primary person entity; additional
 	// matches are stored as alias entities linked to the anchor.
 	var nameMatches []string
-	for _, m := range l4NamePattern.FindAllStringSubmatch(text, -1) {
+	for _, m := range l4NamePattern.FindAllStringSubmatch(text, maxNameMatches) {
 		if v := strings.TrimSpace(m[1]); v != "" {
 			nameMatches = append(nameMatches, v)
 		}
 	}
-	for _, m := range l4ChineseNamePattern.FindAllStringSubmatch(text, -1) {
+	for _, m := range l4ChineseNamePattern.FindAllStringSubmatch(text, maxNameMatches) {
 		if v := strings.TrimSpace(m[1]); v != "" {
 			nameMatches = append(nameMatches, v)
 		}
@@ -175,6 +179,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		for _, alias := range nameMatches[1:] {
 			aliasNorm := strings.ToLower(alias)
 			aliasID := fmt.Sprintf("l4-person-%s-%s", agentID, slugEntityName(alias))
+			aliasMeta, _ := json.Marshal(map[string]string{"source": "auto_memory", "alias_of": name})
 			if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 				ID:             aliasID,
 				ScopeType:      "agent",
@@ -186,7 +191,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				Description:    "Alias of " + name,
 				Importance:     l4PersonImportance,
 				Confidence:     l4PrefConfidence,
-				MetadataJSON:   `{"source":"auto_memory","alias_of":"` + name + `"}`,
+				MetadataJSON:   string(aliasMeta),
 			}); err == nil {
 				if err := uc.repo.UpsertRelation(ctx, L4RelationWrite{
 					ScopeType:    "agent",
@@ -204,17 +209,21 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		}
 	}
 
-	// Extract preference from English patterns first, then Chinese fallback.
-	pref := ""
-	if m := l4PreferencePattern.FindStringSubmatch(text); len(m) > 1 {
-		pref = strings.TrimSpace(m[1])
-	}
-	if pref == "" {
-		if m := l4ChinesePreferencePattern.FindStringSubmatch(text); len(m) > 1 {
-			pref = strings.TrimSpace(m[1])
+	// Extract preferences from English patterns first, then Chinese fallback.
+	// Collect all preference matches (consistent with name extraction which
+	// captures all matches). Each match becomes a separate preference entity.
+	var prefMatches []string
+	for _, m := range l4PreferencePattern.FindAllStringSubmatch(text, maxPrefMatches) {
+		if v := strings.TrimSpace(m[1]); v != "" {
+			prefMatches = append(prefMatches, v)
 		}
 	}
-	if pref != "" {
+	for _, m := range l4ChinesePreferencePattern.FindAllStringSubmatch(text, maxPrefMatches) {
+		if v := strings.TrimSpace(m[1]); v != "" {
+			prefMatches = append(prefMatches, v)
+		}
+	}
+	for _, pref := range prefMatches {
 		entID := fmt.Sprintf("l4-pref-%s-%s", agentID, slugEntityName(pref))
 		if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 			ID:             entID,
@@ -353,12 +362,28 @@ func userProfileEntityID(agentID string) string {
 }
 
 func slugEntityName(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, " ", "-")
-	if len(s) > 48 {
-		s = s[:48]
+	// Truncate by rune count to avoid splitting multi-byte characters.
+	const maxRunes = 48
+	runes := []rune(s)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes]
 	}
-	return s
+	s = string(runes)
+	s = strings.ToLower(s)
+	// Encode non-ASCII and special chars so the slug is safe for entity IDs.
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			fmt.Fprintf(&b, "_%04x", r)
+		}
+	}
+	return b.String()
 }
 
 func mergeConflictMetadata(base string, conflict bool, priorName, pendingName string, lg loggateway.Logger) string {

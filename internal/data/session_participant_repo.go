@@ -9,9 +9,9 @@ import (
 	bizsess "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/sessionparticipant"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -217,7 +217,7 @@ func (r *sessionParticipantRepo) ListBySession(ctx context.Context, sessionID st
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	items, err := client.SessionParticipant.Query().
 		Where(sessionparticipant.SessionIDEQ(sessionID)).

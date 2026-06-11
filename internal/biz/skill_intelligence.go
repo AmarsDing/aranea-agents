@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -61,19 +60,23 @@ type RootCauseAnalyzer interface {
 // SkillIntelligenceUsecase provides skill intelligence analysis: invocation
 // analysis, scoring, and experience report generation.
 type SkillIntelligenceUsecase struct {
-	writer              ExperienceReportWriter
-	reader              ExperienceReportReader
-	statsReader         ExperienceReportStatsReader
-	aggregator          SkillHealthAggregator
-	suggestionReader    SkillEvolutionSuggestionReader
-	suggestionWriter    SkillEvolutionSuggestionWriter
-	analyzer            RootCauseAnalyzer
-	unanalyzedReader    SkillInvocationUnanalyzedReader
-	unanalyzedReaderOnce sync.Once
-	coordinator         *EvolutionCoordinator
-	coordinatorOnce     sync.Once
-	lg                  loggateway.Logger
-	weights             ScoreWeights
+	writer           ExperienceReportWriter
+	reader           ExperienceReportReader
+	statsReader      ExperienceReportStatsReader
+	aggregator       SkillHealthAggregator
+	suggestionReader SkillEvolutionSuggestionReader
+	suggestionWriter SkillEvolutionSuggestionWriter
+	analyzer         RootCauseAnalyzer
+	unanalyzedReader SkillInvocationUnanalyzedReader
+	coordinator      *EvolutionCoordinator
+	lg               loggateway.Logger
+	weights          ScoreWeights
+}
+
+// SkillIntelligenceConfig holds optional dependencies for SkillIntelligenceUsecase.
+type SkillIntelligenceConfig struct {
+	Coordinator      *EvolutionCoordinator
+	UnanalyzedReader SkillInvocationUnanalyzedReader
 }
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
@@ -86,8 +89,9 @@ func NewSkillIntelligenceUsecase(
 	suggestionWriter SkillEvolutionSuggestionWriter,
 	analyzer RootCauseAnalyzer,
 	lg loggateway.Logger,
+	opts ...SkillIntelligenceConfig,
 ) *SkillIntelligenceUsecase {
-	return &SkillIntelligenceUsecase{
+	uc := &SkillIntelligenceUsecase{
 		writer:           writer,
 		reader:           reader,
 		statsReader:      statsReader,
@@ -98,28 +102,15 @@ func NewSkillIntelligenceUsecase(
 		lg:               lg,
 		weights:          DefaultScoreWeights(),
 	}
-}
-
-// SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
-// Must only be called once during initialization. Panics on repeated calls.
-func (uc *SkillIntelligenceUsecase) SetCoordinator(c *EvolutionCoordinator) {
-	uc.coordinatorOnce.Do(func() {
-		uc.coordinator = c
-	})
-	if uc.coordinator != c {
-		panic("SkillIntelligenceUsecase: SetCoordinator called more than once")
+	for _, opt := range opts {
+		if opt.Coordinator != nil {
+			uc.coordinator = opt.Coordinator
+		}
+		if opt.UnanalyzedReader != nil {
+			uc.unanalyzedReader = opt.UnanalyzedReader
+		}
 	}
-}
-
-// SetUnanalyzedReader sets the unanalyzed invocation reader.
-// Must only be called once during initialization. Panics on repeated calls.
-func (uc *SkillIntelligenceUsecase) SetUnanalyzedReader(r SkillInvocationUnanalyzedReader) {
-	uc.unanalyzedReaderOnce.Do(func() {
-		uc.unanalyzedReader = r
-	})
-	if uc.unanalyzedReader != r {
-		panic("SkillIntelligenceUsecase: SetUnanalyzedReader called more than once")
-	}
+	return uc
 }
 
 // ExperienceReportListResult holds the result of a filtered experience report query,
@@ -217,19 +208,23 @@ func (uc *SkillIntelligenceUsecase) ScoreSkill(ctx context.Context, skillID stri
 	// Normalize factors.
 	successRateFactor := metrics.SuccessRate // already 0-1
 
-	// Duration factor: lower is better. Normalize against a 30s baseline.
-	durationFactor := 1.0 - normalizeDuration(metrics.AvgDurationMS)
-	if durationFactor < 0 {
-		durationFactor = 0
-	}
-
 	// Dynamic weight redistribution: omit weights for unavailable data
 	// instead of using neutral 0.5 which pulls the score toward the middle.
 	w := uc.weights
 	effectiveSuccessW := w.SuccessRate
-	effectiveDurationW := w.Duration
+	effectiveDurationW := 0.0
 	effectiveTokenW := 0.0
 	effectiveFeedbackW := 0.0
+
+	// Duration factor: lower is better. Normalize against a 30s baseline.
+	var durationFactor float64
+	if metrics.AvgDurationMS > 0 {
+		effectiveDurationW = w.Duration
+		durationFactor = 1.0 - normalizeDuration(metrics.AvgDurationMS)
+		if durationFactor < 0 {
+			durationFactor = 0
+		}
+	}
 
 	// Token factor: lower is better. Normalize against a 2000-token baseline.
 	var tokenFactor float64
@@ -351,7 +346,7 @@ func (uc *SkillIntelligenceUsecase) GenerateReport(ctx context.Context, inv Skil
 // GetExperienceReports lists experience reports for a skill.
 func (uc *SkillIntelligenceUsecase) GetExperienceReports(ctx context.Context, skillID string, limit, offset int) ([]ExperienceReport, error) {
 	if uc.reader == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "reader not available")
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "reader not available")
 	}
 	return uc.reader.ListBySkill(ctx, skillID, limit, offset)
 }
@@ -362,7 +357,7 @@ func (uc *SkillIntelligenceUsecase) GetExperienceReports(ctx context.Context, sk
 // skillID empty = no skill filter; startTime/endTime nil = no time boundary.
 func (uc *SkillIntelligenceUsecase) GetExperienceReportsFiltered(ctx context.Context, skillID string, startTime, endTime *time.Time, limit, offset int) (*ExperienceReportListResult, error) {
 	if uc.reader == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "reader not available")
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "reader not available")
 	}
 
 	reports, totalCount, err := uc.reader.ListFiltered(ctx, skillID, startTime, endTime, limit, offset)
@@ -408,7 +403,7 @@ func (uc *SkillIntelligenceUsecase) GetExperienceReportsFiltered(ctx context.Con
 // GetExperienceReport returns a single experience report by ID.
 func (uc *SkillIntelligenceUsecase) GetExperienceReport(ctx context.Context, id string) (*ExperienceReport, error) {
 	if uc.reader == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "reader not available")
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "reader not available")
 	}
 	return uc.reader.GetByID(ctx, id)
 }
@@ -432,6 +427,11 @@ func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context
 	var expired []SkillEvolutionSuggestion
 
 	for _, sug := range pending {
+		select {
+		case <-ctx.Done():
+			return expired, ctx.Err()
+		default:
+		}
 		if sug.Status != EvoSuggestionPending {
 			continue
 		}
@@ -484,6 +484,11 @@ func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) 
 		loggateway.Int("count", len(invs)))
 
 	for _, inv := range invs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		// GenerateReport handles AnalyzeInvocation + ScoreSkill + RCA internally.
 		if _, genErr := uc.GenerateReport(ctx, inv); genErr != nil {
 			uc.lg.Warn("SkillIntelligenceWorker: GenerateReport failed for invocation",
@@ -492,7 +497,7 @@ func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) 
 				loggateway.Err(genErr))
 			continue
 		}
-		// Mark as analyzed regardless of report generation success.
+		// Only mark as analyzed when report generation succeeded.
 		if markErr := uc.unanalyzedReader.MarkAnalyzed(ctx, inv.ActivationID); markErr != nil {
 			uc.lg.Warn("SkillIntelligenceWorker: MarkAnalyzed failed",
 				loggateway.StepID("skill_intelligence.scan"),
@@ -675,7 +680,7 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 			loggateway.StepID("skill_intelligence.curator_flow"),
 			loggateway.Str("suggestion_id", suggestion.ID),
 			loggateway.Err(err))
-		return nil, kerrors.InternalServer("SKILL_INTELLIGENCE", fmt.Sprintf("failed to persist draft body for suggestion %s: %s", suggestion.ID, err.Error()))
+		return nil, apierror.Internal("SKILL_INTELLIGENCE", "failed to persist draft body for suggestion %s: %s", suggestion.ID, err.Error())
 	}
 	suggestion.DraftSkillBody = draft
 
@@ -799,7 +804,7 @@ func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Conte
 		return "", err
 	}
 	if suggestion == nil {
-		return "", kerrors.NotFound("SKILL_INTELLIGENCE", fmt.Sprintf("suggestion not found: %s", suggestionID))
+		return "", apierror.NotFound("SKILL_INTELLIGENCE", "suggestion not found: %s", suggestionID)
 	}
 
 	draft := uc.generateRuleBasedDraft(suggestion)
@@ -825,7 +830,7 @@ func (uc *SkillIntelligenceUsecase) GenerateDraftForSuggestion(ctx context.Conte
 // CreateSuggestion delegates to the suggestion writer.
 func (uc *SkillIntelligenceUsecase) CreateSuggestion(ctx context.Context, suggestion SkillEvolutionSuggestion) error {
 	if uc.suggestionWriter == nil {
-		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.Create(ctx, suggestion)
 }
@@ -833,7 +838,7 @@ func (uc *SkillIntelligenceUsecase) CreateSuggestion(ctx context.Context, sugges
 // GetEvolutionSuggestion returns a single evolution suggestion by ID.
 func (uc *SkillIntelligenceUsecase) GetEvolutionSuggestion(ctx context.Context, id string) (*SkillEvolutionSuggestion, error) {
 	if uc.suggestionReader == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
 	return uc.suggestionReader.GetByID(ctx, id)
 }
@@ -841,7 +846,7 @@ func (uc *SkillIntelligenceUsecase) GetEvolutionSuggestion(ctx context.Context, 
 // UpdateSuggestionDraftBody updates the draft skill body of an evolution suggestion.
 func (uc *SkillIntelligenceUsecase) UpdateSuggestionDraftBody(ctx context.Context, id string, draftBody string) error {
 	if uc.suggestionWriter == nil {
-		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.UpdateDraftBody(ctx, id, draftBody)
 }
@@ -849,7 +854,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionDraftBody(ctx context.Contex
 // UpdateSuggestionSandboxResult updates the sandbox validation result of an evolution suggestion.
 func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
 	if uc.suggestionWriter == nil {
-		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.UpdateSandboxResult(ctx, id, passed, result)
 }
@@ -857,7 +862,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Co
 // UpdateSuggestionLifecycleStatus updates the lifecycle status of an evolution suggestion.
 func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus EvolutionLifecycleStatus) error {
 	if uc.suggestionWriter == nil {
-		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.UpdateLifecycleStatus(ctx, id, lifecycleStatus)
 }
@@ -865,7 +870,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.
 // ListEvolutionSuggestions lists evolution suggestions for a skill, optionally filtered by status.
 func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error) {
 	if uc.suggestionReader == nil {
-		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
+		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
 	return uc.suggestionReader.ListBySkill(ctx, skillID, status, limit, offset)
 }
@@ -873,7 +878,7 @@ func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context
 // CountEvolutionSuggestions returns the total count of evolution suggestions for a skill, optionally filtered by status.
 func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error) {
 	if uc.suggestionReader == nil {
-		return 0, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
+		return 0, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
 	return uc.suggestionReader.CountBySkill(ctx, skillID, status)
 }
@@ -881,7 +886,7 @@ func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Contex
 // ApproveSuggestion approves a pending evolution suggestion.
 func (uc *SkillIntelligenceUsecase) ApproveSuggestion(ctx context.Context, id, approvedBy string) error {
 	if uc.suggestionWriter == nil {
-		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.UpdateStatus(ctx, id, EvoSuggestionApproved, approvedBy, "")
 }
@@ -889,7 +894,7 @@ func (uc *SkillIntelligenceUsecase) ApproveSuggestion(ctx context.Context, id, a
 // RejectSuggestion rejects a pending evolution suggestion.
 func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, rejectedBy, reason string) error {
 	if uc.suggestionWriter == nil {
-		return kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
+		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
 	return uc.suggestionWriter.UpdateStatus(ctx, id, EvoSuggestionRejected, rejectedBy, reason)
 }

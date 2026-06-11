@@ -21,17 +21,6 @@ type ProviderAPIConfig = llmcompat.ProviderAPIConfig
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
 var MergeProviderConfigJSON = llmcompat.MergeProviderConfigJSON
 
-// IsLikelyAnthropicNativeAPI is true when the configured base URL targets Anthropic's
-// Messages API host. OpenAI-compatible /chat/completions proxies may still use
-// provider_type "anthropic" for labeling — those must NOT be blocked here.
-func IsLikelyAnthropicNativeAPI(baseURL, _ string) bool {
-	b := strings.ToLower(strings.TrimSpace(baseURL))
-	if strings.Contains(b, "openrouter") {
-		return false
-	}
-	return strings.Contains(b, "api.anthropic.com")
-}
-
 // TeamMemberAnchor is embedded into message options_json for team timelines.
 type TeamMemberAnchor struct {
 	AgentID string `json:"agent_id"`

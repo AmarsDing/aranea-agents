@@ -4,13 +4,12 @@ import (
 	"context"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformchannel"
 	"aranea-agents/internal/data/ent/platformchannelcredential"
 	"aranea-agents/internal/data/ent/platformchanneldelivery"
+	"aranea-agents/pkg/apierror"
 
 	"entgo.io/ent/dialect/sql"
 )
@@ -67,7 +66,7 @@ func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
 func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Channel{}, kerrors.BadRequest("CHANNEL", "channel id is required")
+		return biz.Channel{}, apierror.BadRequest("CHANNEL", "channel id is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(
@@ -84,7 +83,7 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return biz.Channel{}, kerrors.BadRequest("CHANNEL", "channel key is required")
+		return biz.Channel{}, apierror.BadRequest("CHANNEL", "channel key is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(
@@ -193,7 +192,7 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 	cred.ChannelID = strings.TrimSpace(cred.ChannelID)
 	cred.CredentialKey = strings.TrimSpace(cred.CredentialKey)
 	if cred.ID == "" || cred.ChannelID == "" || cred.CredentialKey == "" {
-		return biz.ChannelCredential{}, kerrors.BadRequest("CHANNEL", "id, channel_id and credential_key are required")
+		return biz.ChannelCredential{}, apierror.BadRequest("CHANNEL", "id, channel_id and credential_key are required")
 	}
 	now := nowRFC3339()
 	if cred.Status == "" {

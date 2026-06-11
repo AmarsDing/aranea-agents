@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -31,7 +31,7 @@ func (uc *EvolutionUsecase) ScanAll(ctx context.Context) error {
 		}
 		for i := range page.Items {
 			if err := uc.ScanAgent(ctx, page.Items[i].ID); err != nil {
-				scanErrs = append(scanErrs, kerrors.InternalServer("EVOLUTION", fmt.Sprintf("agent %s: %s", page.Items[i].ID, err.Error())))
+				scanErrs = append(scanErrs, apierror.Internal("EVOLUTION", "agent %s: %s", page.Items[i].ID, err.Error()))
 				continue
 			}
 		}

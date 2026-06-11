@@ -51,8 +51,8 @@ func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Reque
 		Text:           parsed.Text,
 		IdempotencyKey: idempotency,
 		OutboundMeta: map[string]string{
-			"recipient":    parsed.ResponseURL,
-			"response_url": parsed.ResponseURL,
+			port.MetaRecipient:   parsed.ResponseURL,
+			port.MetaResponseURL: parsed.ResponseURL,
 		},
 	}))
 	return nil

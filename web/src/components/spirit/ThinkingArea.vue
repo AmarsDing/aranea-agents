@@ -10,14 +10,13 @@
           stroke="var(--color-accent)"
           stroke-width="1.5"
         >
-          <path
-            d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z"
-          />
+          <path d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z" />
           <path d="M9 7c1-1 2-1 3 0s2 1 3 0" stroke-opacity="0.5" />
           <path d="M8 11c1-1 2.5-1 4 0s2.5 1 4 0" stroke-opacity="0.3" />
         </svg>
         <span class="thinking-area__flow-light" />
       </div>
+      <span class="thinking-area__timer" :class="timerClass">{{ timerText }}</span>
       <span class="thinking-area__content thinking-area__content--active">
         {{ content }}
         <span class="thinking-area__cursor" />
@@ -26,13 +25,7 @@
 
     <!-- No content (collapsed) state -->
     <template v-else-if="!content">
-      <q-btn
-        flat
-        dense
-        no-caps
-        class="thinking-area__collapsed-btn"
-        @click="expanded = true"
-      >
+      <q-btn flat dense no-caps class="thinking-area__collapsed-btn" @click="expanded = true">
         {{ t('chat.thinking.label') }}
       </q-btn>
     </template>
@@ -63,13 +56,7 @@
 
       <!-- Collapsed summary -->
       <template v-else-if="!expanded">
-        <q-btn
-          flat
-          dense
-          no-caps
-          class="thinking-area__collapsed-btn"
-          @click="expanded = true"
-        >
+        <q-btn flat dense no-caps class="thinking-area__collapsed-btn" @click="expanded = true">
           🧠 {{ summaryText }}
         </q-btn>
       </template>
@@ -109,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
@@ -127,6 +114,50 @@ const props = withDefaults(
 );
 
 const expanded = ref(!props.collapsed);
+
+// ── Thinking timer ──
+const elapsedMs = ref(0);
+let timerInterval: ReturnType<typeof setInterval> | null = null;
+
+watch(
+  () => props.isActive,
+  (active) => {
+    if (active) {
+      elapsedMs.value = 0;
+      timerInterval = setInterval(() => {
+        elapsedMs.value += 1000;
+      }, 1000);
+    } else {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+});
+
+const timerText = computed(() => {
+  const sec = Math.floor(elapsedMs.value / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const remainSec = sec % 60;
+  return `${min}m${remainSec > 0 ? ` ${remainSec}s` : ''}`;
+});
+
+const timerClass = computed(() => {
+  const sec = elapsedMs.value / 1000;
+  if (sec >= 60) return 'thinking-area__timer--danger';
+  if (sec >= 30) return 'thinking-area__timer--warning';
+  return '';
+});
 
 const summaryText = computed(() => {
   const text = props.content || '';
@@ -171,6 +202,21 @@ const rootClasses = computed(() => ({
   .thinking-area__brain
     stroke-opacity: 0.7
 
+// ── Thinking timer ──
+.thinking-area__timer
+  font-size: var(--text-xs)
+  font-weight: 600
+  color: var(--color-accent)
+  flex-shrink: 0
+  font-variant-numeric: tabular-nums
+  transition: color 0.3s ease
+
+.thinking-area__timer--warning
+  color: var(--color-warning)
+
+.thinking-area__timer--danger
+  color: var(--color-danger)
+
 // ── Flow light animation ──
 .thinking-area__flow-light
   position: absolute
@@ -197,12 +243,14 @@ const rootClasses = computed(() => ({
   transition: max-height 200ms ease, opacity 200ms ease
 
 .thinking-area__content--active
-  font-size: 12px
+  font-size: var(--text-xs)
   background: var(--glass-surface)
   overflow: hidden
   display: -webkit-box
   -webkit-line-clamp: 2
   -webkit-box-orient: vertical
+  border-radius: 4px
+  padding: 4px 10px
 
 .thinking-area--active
   border-left: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent)
@@ -216,7 +264,7 @@ const rootClasses = computed(() => ({
     border-left-color: color-mix(in srgb, var(--color-primary) 55%, transparent)
 
 .thinking-area__content--inline
-  font-size: 12px
+  font-size: var(--text-xs)
   background: transparent
 
 .thinking-area__content--expanded
@@ -232,7 +280,7 @@ const rootClasses = computed(() => ({
   display: inline-block
   width: 2px
   height: 12px
-  background: var(--color-accent)
+  background: var(--color-primary)
   animation: blink 0.8s step-end infinite
   vertical-align: middle
   margin-left: 2px
@@ -245,7 +293,7 @@ const rootClasses = computed(() => ({
 
 // ── Collapsed button ──
 .thinking-area__collapsed-btn
-  font-size: 12px
+  font-size: var(--text-xs)
   color: var(--color-text-secondary)
   background: var(--glass-surface)
   border-radius: 6px

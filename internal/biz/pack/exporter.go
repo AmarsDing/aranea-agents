@@ -3,12 +3,10 @@ package pack
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ExporterRepo 导出引擎所需的只读仓库接口。
@@ -46,7 +44,7 @@ func NewExporter(repo ExporterRepo) *Exporter {
 func (e *Exporter) ExportAgent(ctx context.Context, agentID string) (*Pack, error) {
 	agent, err := e.repo.GetAgent(ctx, agentID)
 	if err != nil {
-		return nil, kerrors.BadRequest("PACK_AGENT_GET", fmt.Sprintf("pack export: 获取 Agent %s 失败: %s", agentID, err.Error()))
+		return nil, apierror.BadRequest("PACK_AGENT_GET", "pack export: 获取 Agent %s 失败: %s", agentID, err.Error())
 	}
 
 	agentSpec, agentFiles, err := e.buildAgentSpec(ctx, agent)
@@ -79,7 +77,7 @@ func (e *Exporter) ExportAgent(ctx context.Context, agentID string) (*Pack, erro
 func (e *Exporter) ExportTeam(ctx context.Context, teamID string) (*Pack, error) {
 	team, err := e.repo.GetTeam(ctx, teamID)
 	if err != nil {
-		return nil, kerrors.BadRequest("PACK_TEAM_GET", fmt.Sprintf("pack export: 获取 Team %s 失败: %s", teamID, err.Error()))
+		return nil, apierror.BadRequest("PACK_TEAM_GET", "pack export: 获取 Team %s 失败: %s", teamID, err.Error())
 	}
 
 	teamSpec, err := e.buildTeamSpec(ctx, team)
@@ -122,7 +120,7 @@ func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pac
 		// 尝试通过 key 查找
 		nodes, err2 := e.listIndustryNodes(ctx)
 		if err2 != nil {
-			return nil, kerrors.BadRequest("PACK_INDUSTRY_NOT_FOUND", fmt.Sprintf("pack export: 查找行业 %s 失败: %s", industryKey, err.Error()))
+			return nil, apierror.BadRequest("PACK_INDUSTRY_NOT_FOUND", "pack export: 查找行业 %s 失败: %s", industryKey, err.Error())
 		}
 		found := false
 		for _, n := range nodes {
@@ -133,7 +131,7 @@ func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pac
 			}
 		}
 		if !found {
-			return nil, kerrors.BadRequest("PACK_INDUSTRY_NOT_FOUND", fmt.Sprintf("pack export: 行业 %s 不存在", industryKey))
+			return nil, apierror.BadRequest("PACK_INDUSTRY_NOT_FOUND", "pack export: 行业 %s 不存在", industryKey)
 		}
 	}
 
@@ -274,7 +272,7 @@ func (e *Exporter) buildTeamSpec(ctx context.Context, team biz.Team) (TeamPackSp
 	// 解析 definition_json
 	ospec, err := biz.ParseOrchestrationSpec(team.DefinitionJSON)
 	if err != nil {
-		return spec, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("pack export: 解析 Team %s 的 definition_json 失败: %s", team.TeamKey, err.Error()))
+		return spec, apierror.BadRequest("PACK_TEAM_DEFINITION", "pack export: 解析 Team %s 的 definition_json 失败: %s", team.TeamKey, err.Error())
 	}
 
 	spec.Mode = ospec.Mode
@@ -516,7 +514,7 @@ func (e *Exporter) collectIndustryTeamSpecs(ctx context.Context, companyNode biz
 func (e *Exporter) collectTeamAgentSpecs(ctx context.Context, team biz.Team) ([]AgentPackSpec, map[string]map[string]string, error) {
 	ospec, err := biz.ParseOrchestrationSpec(team.DefinitionJSON)
 	if err != nil {
-		return nil, nil, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("pack export: 解析 Team definition_json 失败: %s", err.Error()))
+		return nil, nil, apierror.BadRequest("PACK_TEAM_DEFINITION", "pack export: 解析 Team definition_json 失败: %s", err.Error())
 	}
 
 	var specs []AgentPackSpec

@@ -10,7 +10,6 @@
     :sent="message.role === 'user'"
     bg-color="transparent"
     text-color="inherit"
-    size="grow"
   >
     <template #avatar>
       <q-avatar
@@ -63,7 +62,7 @@
         >
           {{ userSourceLabel }}
         </q-chip>
-        <q-chip v-if="row.teamMemberMeta(message)?.role" dense size="sm" outline color="primary" class="q-ml-xs">
+        <q-chip v-if="row.teamMemberMeta(message)?.role" dense size="sm" outline color="accent" class="q-ml-xs">
           {{ row.teamMemberMeta(message)?.role }}
         </q-chip>
         <span class="message-stamp">{{ formatStamp(message.created_at) }}</span>
@@ -172,7 +171,7 @@
             flat
             dense
             no-caps
-            color="primary"
+            color="accent"
             size="sm"
             icon="refresh"
             :label="t('chat.regenerate', '重新生成')"
@@ -189,7 +188,7 @@
             round
             size="sm"
             :icon="userFeedback === 'positive' ? 'thumb_up' : 'thumb_up_off_alt'"
-            :color="userFeedback === 'positive' ? 'primary' : undefined"
+            :color="userFeedback === 'positive' ? 'accent' : undefined"
             :aria-label="row.t('chat.feedbackPositive')"
             @click="
               userFeedback = 'positive';
@@ -226,7 +225,7 @@
             flat
             dense
             no-caps
-            color="primary"
+            color="accent"
             size="sm"
             icon="refresh"
             :label="t('chat.retry', '重试')"
@@ -255,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ResolvedAvatarImg from '../avatar/ResolvedAvatarImg.vue';
 import {
@@ -271,7 +270,6 @@ import ChatReactSteps from './ChatReactSteps.vue';
 import ChatA2UIPreview from './ChatA2UIPreview.vue';
 import ChatMessageAttachments from './ChatMessageAttachments.vue';
 import { buildMessagePresentation } from '../../features/chat/messagePlannerPresentation';
-import { parseMessageAttachments } from '../../features/chat/messageAttachments';
 import type { Message, ReactToolLinkIndex, ToolUseEvent } from '../../features/chat/types';
 import { shouldRenderAgentAvatarImage } from '../../features/avatar/iconModel';
 import { formatMessageStamp, renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';

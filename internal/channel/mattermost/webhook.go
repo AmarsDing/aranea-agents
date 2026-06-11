@@ -5,8 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	"aranea-agents/internal/channel/port"
 )
 
 type InboundMessage struct {
@@ -40,7 +41,7 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 	}
 	text := strings.TrimSpace(payload.Text)
 	if text == "" {
-		return InboundMessage{}, fmt.Errorf("mattermost: empty text")
+		return InboundMessage{}, errEmptyText
 	}
 	return InboundMessage{
 		Text:        text,
@@ -55,10 +56,10 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 func VerifyToken(receiveToken, payloadToken string) error {
 	receiveToken = strings.TrimSpace(receiveToken)
 	if receiveToken == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
-	if strings.TrimSpace(payloadToken) != receiveToken {
-		return fmt.Errorf("mattermost: bad token")
+	if !hmac.Equal([]byte(strings.TrimSpace(payloadToken)), []byte(receiveToken)) {
+		return errBadToken
 	}
 	return nil
 }
@@ -66,17 +67,17 @@ func VerifyToken(receiveToken, payloadToken string) error {
 func VerifySignature(signingSecret string, body []byte, signature string) error {
 	signingSecret = strings.TrimSpace(signingSecret)
 	if signingSecret == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
 	sig := strings.TrimSpace(signature)
 	if sig == "" {
-		return fmt.Errorf("mattermost: missing signature")
+		return errMissingSignature
 	}
 	mac := hmac.New(sha256.New, []byte(signingSecret))
 	_, _ = mac.Write(body)
-	want := "v1=" + hex.EncodeToString(mac.Sum(nil))
+	want := hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(want), []byte(sig)) {
-		return fmt.Errorf("mattermost: bad signature")
+		return errBadSignature
 	}
 	return nil
 }

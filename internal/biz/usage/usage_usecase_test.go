@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/loggateway"
 )
@@ -530,7 +529,7 @@ func TestGetQuota(t *testing.T) {
 		setup      func(*mockUsageRepo)
 		wantErr    bool
 		wantReason string
-		wantCode   int32
+		wantCode   apierror.Code
 		check      func(t *testing.T, q Quota)
 	}{
 		{
@@ -568,7 +567,7 @@ func TestGetQuota(t *testing.T) {
 			},
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
-			wantCode:   404,
+			wantCode:   apierror.CodeNotFound,
 		},
 	}
 
@@ -582,15 +581,15 @@ func TestGetQuota(t *testing.T) {
 				if err == nil {
 					t.Fatal("GetQuota() expected error, got nil")
 				}
-				se := kerrors.FromError(err)
-				if se == nil {
-					t.Fatalf("expected kratos error, got %T", err)
+				se, ok := apierror.From(err)
+				if !ok {
+					t.Fatalf("expected apierror, got %T", err)
 				}
-				if se.Reason != tt.wantReason {
-					t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+				if se.Domain != tt.wantReason {
+					t.Errorf("domain = %q, want %q", se.Domain, tt.wantReason)
 				}
 				if se.Code != tt.wantCode {
-					t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+					t.Errorf("code = %s, want %s", se.Code, tt.wantCode)
 				}
 				return
 			}

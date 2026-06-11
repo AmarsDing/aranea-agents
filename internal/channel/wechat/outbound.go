@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,10 @@ func (s *TextSender) ID() string { return "wechat" }
 func (s *TextSender) SendText(ctx context.Context, openID, text string) error {
 	openID = strings.TrimSpace(openID)
 	text = strings.TrimSpace(text)
-	if openID == "" || text == "" {
+	if openID == "" {
+		return errOpenIDRequired
+	}
+	if text == "" {
 		return nil
 	}
 	token, err := s.accessToken(ctx)
@@ -52,7 +56,7 @@ func (s *TextSender) SendText(ctx context.Context, openID, text string) error {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	url := "https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=" + token
+	url := "https://api.weixin.qq.com/cgi-bin/message/custom/send?" + url.Values{"access_token": {token}}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -69,10 +73,10 @@ func (s *TextSender) SendText(ctx context.Context, openID, text string) error {
 		ErrMsg  string `json:"errmsg"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return fmt.Errorf("wechat outbound: parse response: %w", err)
+		return wechatParseError("wechat outbound", err)
 	}
 	if out.ErrCode != 0 {
-		return fmt.Errorf("wechat outbound: %s", strings.TrimSpace(out.ErrMsg))
+		return wechatAPIError("wechat outbound", strings.TrimSpace(out.ErrMsg))
 	}
 	return nil
 }
@@ -86,17 +90,18 @@ func (s *TextSender) accessToken(ctx context.Context) (string, error) {
 	appID := strings.TrimSpace(s.AppID)
 	secret := strings.TrimSpace(s.AppSecret)
 	if appID == "" || secret == "" {
-		return "", fmt.Errorf("wechat: app_id and app_secret required")
+		return "", errAppCredentialsRequired
 	}
 	client := s.HTTP
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
-	url := fmt.Sprintf(
-		"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
-		appID, secret,
-	)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	q := url.Values{}
+	q.Set("grant_type", "client_credential")
+	q.Set("appid", appID)
+	q.Set("secret", secret)
+	u := "https://api.weixin.qq.com/cgi-bin/token?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", err
 	}
@@ -116,7 +121,7 @@ func (s *TextSender) accessToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if out.AccessToken == "" {
-		return "", fmt.Errorf("wechat token: %s", strings.TrimSpace(out.ErrMsg))
+		return "", wechatAPIError("wechat token", strings.TrimSpace(out.ErrMsg))
 	}
 	s.token = out.AccessToken
 	ttl := time.Duration(out.ExpiresIn) * time.Second

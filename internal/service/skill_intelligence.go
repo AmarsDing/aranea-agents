@@ -7,9 +7,9 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -104,18 +104,18 @@ func toProtoExperienceReport(r biz.ExperienceReport) *v1.ExperienceReport {
 	return pb
 }
 
-// mapSkillIntelligenceError converts biz-layer errors to kerrors for the transport layer.
-// If the error is already a kerrors error (e.g. from biz layer), it passes through.
+// mapSkillIntelligenceError converts biz-layer errors to apierror for the transport layer.
+// If the error is already an apierror (e.g. from biz layer), it passes through.
 func mapSkillIntelligenceError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Already a kratos error — pass through.
-	if ke := kerrors.FromError(err); ke != nil {
+	// Already an apierror — pass through.
+	if _, ok := apierror.From(err); ok {
 		return err
 	}
 	// Wrap unknown errors as Internal.
-	return kerrors.InternalServer("SKILL_INTELLIGENCE", err.Error())
+	return apierror.Internal("SKILL_INTELLIGENCE", err.Error())
 }
 
 // toProtoFailureTagCount converts a biz FailureTagCount to proto.

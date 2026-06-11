@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	authpkg "aranea-agents/pkg/auth"
-
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // SkillTag mirrors admin JSON.
@@ -322,17 +323,24 @@ type SkillEmbedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 }
 
+// embedEntry pairs a cached embedding vector with its cache timestamp.
+type embedEntry struct {
+	vector   []float32
+	cachedAt time.Time
+}
+
 // Usecase implements skill CRUD workflows.
 type Usecase struct {
 	repo       Repo
 	embedder   SkillEmbedder
 	embedMu    sync.RWMutex
-	embedCache map[string][]float32
+	embedCache map[string]embedEntry
+	embedTTL   time.Duration
 }
 
 // NewUsecase constructs a SkillUsecase.
 func NewUsecase(repo Repo, embedder SkillEmbedder) *Usecase {
-	return &Usecase{repo: repo, embedder: embedder}
+	return &Usecase{repo: repo, embedder: embedder, embedCache: make(map[string]embedEntry), embedTTL: 30 * time.Minute}
 }
 
 func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
@@ -347,11 +355,11 @@ func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
 	}
 	q.Enabled = strings.TrimSpace(q.Enabled)
 	if q.Enabled != "" && q.Enabled != "true" && q.Enabled != "false" {
-		return ListResult{}, errors.BadRequest("SKILL", "enabled must be true or false")
+		return ListResult{}, apierror.BadRequest("SKILL", "enabled must be true or false")
 	}
 	q.Status = strings.TrimSpace(q.Status)
 	if q.Status != "" && q.Status != "draft" && q.Status != "published" && q.Status != "archived" {
-		return ListResult{}, errors.BadRequest("SKILL", "unsupported skill status")
+		return ListResult{}, apierror.BadRequest("SKILL", "unsupported skill status")
 	}
 	result, err := u.repo.SearchSkills(ctx, q)
 	if err != nil {
@@ -363,7 +371,7 @@ func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
 
 func (u *Usecase) Get(ctx context.Context, id string) (Skill, error) {
 	if strings.TrimSpace(id) == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	s, err := u.repo.GetSkillByID(ctx, id)
 	if err != nil {
@@ -383,10 +391,10 @@ func (u *Usecase) Create(ctx context.Context, in CreateInput) (Skill, error) {
 	in.Body = strings.TrimSpace(in.Body)
 	in.StorageDir = strings.TrimSpace(in.StorageDir)
 	if in.Name == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill name is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill name is required")
 	}
 	if in.Slug == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill slug is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill slug is required")
 	}
 	s, err := u.repo.CreateSkillWithVersion(ctx, in)
 	if err != nil {
@@ -401,7 +409,7 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (S
 		return Skill{}, err
 	}
 	if strings.TrimSpace(id) == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	s, err := u.repo.UpdateSkillEnabled(ctx, id, enabled)
 	if err != nil {
@@ -417,7 +425,7 @@ func (u *Usecase) Duplicate(ctx context.Context, id string) (Skill, error) {
 		return Skill{}, err
 	}
 	if strings.TrimSpace(id) == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	s, err := u.repo.DuplicateSkill(ctx, id)
 	if err != nil {
@@ -430,7 +438,7 @@ func (u *Usecase) Duplicate(ctx context.Context, id string) (Skill, error) {
 
 func (u *Usecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("SKILL", "skill id is required")
+		return apierror.BadRequest("SKILL", "skill id is required")
 	}
 	if err := requireAdminAccess(ctx); err != nil {
 		return err
@@ -455,7 +463,7 @@ func (u *Usecase) SearchRuns(ctx context.Context, q RunQuery) (RunResult, error)
 	}
 	q.Status = strings.TrimSpace(q.Status)
 	if q.Status != "" && q.Status != "success" && q.Status != "failure" && q.Status != "pending" {
-		return RunResult{}, errors.BadRequest("SKILL", "unsupported run status")
+		return RunResult{}, apierror.BadRequest("SKILL", "unsupported run status")
 	}
 	result, err := u.repo.SearchSkillInvocations(ctx, q)
 	if err != nil {
@@ -472,7 +480,7 @@ func (u *Usecase) GetStorageDir(ctx context.Context, id string) (string, error) 
 func (u *Usecase) GetBySkillKey(ctx context.Context, skillKey string) (Skill, error) {
 	skillKey = strings.TrimSpace(skillKey)
 	if skillKey == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill key is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill key is required")
 	}
 	s, err := u.repo.GetSkillBySkillKey(ctx, skillKey)
 	if err != nil {
@@ -513,7 +521,7 @@ func (u *Usecase) RecordInvocation(ctx context.Context, in InvocationWrite) erro
 
 func (u *Usecase) GetLatestMarkdown(ctx context.Context, id string) (string, error) {
 	if strings.TrimSpace(id) == "" {
-		return "", errors.BadRequest("SKILL", "skill id is required")
+		return "", apierror.BadRequest("SKILL", "skill id is required")
 	}
 	return u.repo.GetLatestSkillMarkdown(ctx, id)
 }
@@ -547,7 +555,7 @@ func (u *Usecase) Patch(ctx context.Context, id string, patch UpdateDraft) (Skil
 		return Skill{}, err
 	}
 	if strings.TrimSpace(id) == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	s, err := u.repo.PatchSkill(ctx, id, patch)
 	if err != nil {
@@ -559,7 +567,7 @@ func (u *Usecase) Patch(ctx context.Context, id string, patch UpdateDraft) (Skil
 
 func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	if strings.TrimSpace(id) == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	if err := requireAdminAccess(ctx); err != nil {
 		return Skill{}, err
@@ -576,7 +584,7 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 func (u *Usecase) MarkFilesystemMissing(ctx context.Context, slug string, missing bool) error {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		return errors.BadRequest("SKILL", "skill slug is required")
+		return apierror.BadRequest("SKILL", "skill slug is required")
 	}
 	return u.repo.MarkSkillFilesystemMissing(ctx, slug, missing)
 }
@@ -588,7 +596,7 @@ func (u *Usecase) FilesystemHealthStats(ctx context.Context) (FilesystemHealthSt
 func (u *Usecase) ListVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error) {
 	q.SkillID = strings.TrimSpace(q.SkillID)
 	if q.SkillID == "" {
-		return VersionListResult{}, errors.BadRequest("SKILL", "skill id is required")
+		return VersionListResult{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	if q.Limit <= 0 {
 		q.Limit = 20
@@ -606,10 +614,10 @@ func (u *Usecase) RollbackVersion(ctx context.Context, skillID string, versionID
 	skillID = strings.TrimSpace(skillID)
 	versionID = strings.TrimSpace(versionID)
 	if skillID == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
 	if versionID == "" {
-		return Skill{}, errors.BadRequest("SKILL", "version id is required")
+		return Skill{}, apierror.BadRequest("SKILL", "version id is required")
 	}
 	if err := requireAdminAccess(ctx); err != nil {
 		return Skill{}, err
@@ -625,7 +633,7 @@ func (u *Usecase) RollbackVersion(ctx context.Context, skillID string, versionID
 func (u *Usecase) GetBySlug(ctx context.Context, slug string) (Skill, error) {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		return Skill{}, errors.BadRequest("SKILL", "skill slug is required")
+		return Skill{}, apierror.BadRequest("SKILL", "skill slug is required")
 	}
 	s, err := u.repo.GetSkillBySkillKey(ctx, slug)
 	if err != nil {
@@ -843,12 +851,46 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 	if p.EmbeddingScoreWeight > 1 {
 		p.EmbeddingScoreWeight = 1
 	}
-	normalizeLowerSlice(&p.AllowedSlugs)
-	normalizeLowerSlice(&p.DeniedSlugs)
+	normalizeSlugSlice(&p.AllowedSlugs)
+	normalizeSlugSlice(&p.DeniedSlugs)
 	normalizeLowerSlice(&p.AllowedTags)
 	return p
 }
 
+// NormalizeSlug normalizes a skill slug for consistent matching across all layers.
+// It applies the same rules as the importer's slugify (lowercase, replace
+// non-alphanumeric with hyphens, trim separators) so that lookups and filter
+// comparisons are consistent regardless of input format.
+// Unlike slugify, it does NOT generate a random fallback for empty results.
+func NormalizeSlug(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = slugNormalizeRe.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-_")
+	return s
+}
+
+var slugNormalizeRe = regexp.MustCompile(`[^a-z0-9\-_]+`)
+
+// normalizeSlugSlice normalizes a slice of slug strings using NormalizeSlug.
+// Used for AllowedSlugs/DeniedSlugs which must match the slugified format
+// stored in the database (e.g., "my-skill" not "My Skill").
+func normalizeSlugSlice(s *[]string) {
+	out := make([]string, 0, len(*s))
+	seen := map[string]bool{}
+	for _, x := range *s {
+		x = NormalizeSlug(x)
+		if x == "" || seen[x] {
+			continue
+		}
+		seen[x] = true
+		out = append(out, x)
+	}
+	*s = out
+}
+
+// normalizeLowerSlice lowercases and trims a slice of strings.
+// Used for tags which have their own naming convention (e.g., "file_type:xlsx")
+// and should NOT be slug-normalized.
 func normalizeLowerSlice(s *[]string) {
 	out := make([]string, 0, len(*s))
 	seen := map[string]bool{}
@@ -885,7 +927,7 @@ func applySkillPermission(ctx context.Context, s *Skill) {
 func requireAdminAccess(ctx context.Context) error {
 	a, ok := authpkg.FromContext(ctx)
 	if !ok || a == nil || !a.HasAdminAccess() {
-		return errors.Forbidden("SKILL", "admin access required")
+		return apierror.Forbidden("SKILL", "admin access required")
 	}
 	return nil
 }
@@ -915,8 +957,8 @@ func (u *Usecase) ScoreByEmbedding(ctx context.Context, query string, candidates
 	defer u.embedMu.RUnlock()
 	scores := make(map[string]float64, len(candidates))
 	for _, c := range candidates {
-		if emb, ok := u.embedCache[c.Slug]; ok {
-			scores[c.Slug] = cosineSimilarity32(queryEmb, emb)
+		if entry, ok := u.embedCache[c.Slug]; ok && time.Since(entry.cachedAt) <= u.embedTTL {
+			scores[c.Slug] = cosineSimilarity32(queryEmb, entry.vector)
 		}
 	}
 	return scores, nil
@@ -926,14 +968,15 @@ func (u *Usecase) ScoreByEmbedding(ctx context.Context, query string, candidates
 func (u *Usecase) InvalidateEmbedCache() {
 	u.embedMu.Lock()
 	defer u.embedMu.Unlock()
-	u.embedCache = nil
+	u.embedCache = make(map[string]embedEntry)
 }
 
 func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCandidate) error {
 	u.embedMu.RLock()
 	missing := make([]int, 0, len(candidates))
+	now := time.Now()
 	for i, c := range candidates {
-		if _, ok := u.embedCache[c.Slug]; !ok {
+		if entry, ok := u.embedCache[c.Slug]; !ok || now.Sub(entry.cachedAt) > u.embedTTL {
 			missing = append(missing, i)
 		}
 	}
@@ -951,13 +994,10 @@ func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCan
 	}
 	u.embedMu.Lock()
 	defer u.embedMu.Unlock()
-	if u.embedCache == nil {
-		u.embedCache = make(map[string][]float32, len(candidates))
-	}
 	for i, idx := range missing {
 		if i < len(embeddings) {
 			if _, exists := u.embedCache[candidates[idx].Slug]; !exists {
-				u.embedCache[candidates[idx].Slug] = embeddings[i]
+				u.embedCache[candidates[idx].Slug] = embedEntry{vector: embeddings[i], cachedAt: time.Now()}
 			}
 		}
 	}

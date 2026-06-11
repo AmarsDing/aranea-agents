@@ -31,6 +31,9 @@ type TeamSessionManager interface {
 type TeamAgentLookup interface {
 	Get(ctx context.Context, id string) (Agent, error)
 	GetEffectiveTools(ctx context.Context, agentID string) (AgentEffectiveTools, error)
+	// BatchHydrateForBuild hydrates multiple agents for orchestration/build paths,
+	// skipping extras queries that are only needed for list display.
+	BatchHydrateForBuild(ctx context.Context, agents []Agent) ([]Agent, error)
 }
 
 // TeamToolLookup captures the subset of ToolUsecase needed by the team Runner

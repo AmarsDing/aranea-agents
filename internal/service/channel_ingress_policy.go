@@ -8,8 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -91,7 +90,7 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 		return "", err
 	}
 	if !accepted {
-		return "", kerrors.BadRequest("CHANNEL", "steer rejected")
+		return "", apierror.BadRequest("CHANNEL", "steer rejected")
 	}
 	pendingID := h.chat.LastPendingMessageID(sessionID)
 	if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {

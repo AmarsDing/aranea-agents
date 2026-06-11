@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -11,45 +10,41 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/internal/outbound"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/tools/browser"
-	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
-	documentpkg "aranea-agents/internal/tools/document"
-	hostexecpkg "aranea-agents/internal/tools/hostexec"
 	"aranea-agents/internal/tools/mcpobserve"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpcarxivsearch "trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch"
 	trpcawaitreply "trpc.group/trpc-go/trpc-agent-go/tool/awaitreply"
-	trpcclaudecode "trpc.group/trpc-go/trpc-agent-go/tool/claudecode"
 	trpcduckduckgo "trpc.group/trpc-go/trpc-agent-go/tool/duckduckgo"
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
-	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
-	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
 
-	memorytool "aranea-agents/internal/tools/memory"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	workingmemory "aranea-agents/internal/tools/working_memory"
 
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
-	trpcopenapi "trpc.group/trpc-go/trpc-agent-go/tool/openapi"
 	trpctodo "trpc.group/trpc-go/trpc-agent-go/tool/todo"
-	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
 	trpchttpfetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch"
 	trpcwikipedia "trpc.group/trpc-go/trpc-agent-go/tool/wikipedia"
 )
 
 type filesystemDirKey struct{}
 
+// FilesystemDirWithDir is DEPRECATED. Use AssemblyConfig.ClaudeCodeDir or
+// AssemblyConfig.FilesystemDir instead. Kept only for backward compatibility;
+// will be removed in a future release.
 func FilesystemDirWithDir(dir string) context.Context {
 	return context.WithValue(context.Background(), filesystemDirKey{}, dir)
 }
 
+// FilesystemDirFromContext is DEPRECATED. Use AssemblyConfig fields instead.
 func FilesystemDirFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(filesystemDirKey{}).(string); ok {
 		return v
@@ -71,8 +66,11 @@ func Registry() []*ToolRegistration {
 				Category:    "filesystem",
 				Tags:        []string{"filesystem", "read", "write", "search"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-				return nil, nil
-			},
+					// Placeholder: actual assembly happens in assembleBuiltinToolsets()
+					// which applies FilesystemDir config. Returning nil,nil signals
+					// assembleFromRegistry to skip this entry.
+					return nil, nil
+				},
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
 				SupportsConcurrency: true,
@@ -88,6 +86,7 @@ func Registry() []*ToolRegistration {
 				Category:    "execution",
 				Tags:        []string{"shell", "exec", "command"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					// Placeholder: actual assembly happens in assembleBuiltinToolsets().
 					return nil, nil
 				},
 				EnabledByDefault:     false,
@@ -236,12 +235,9 @@ func Registry() []*ToolRegistration {
 				Category:    "coding",
 				Tags:        []string{"coding", "ide", "claude"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					dir := FilesystemDirFromContext(ctx)
-					var opts []trpcclaudecode.Option
-					if dir != "" {
-						opts = append(opts, trpcclaudecode.WithBaseDir(dir))
-					}
-					return trpcclaudecode.NewToolSet(opts...)
+					// Actual assembly happens in assembleClaudeCodeToolset() which
+					// applies config overrides (base dir, readonly, sandbox, etc.).
+					return nil, nil
 				},
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -269,7 +265,7 @@ func Registry() []*ToolRegistration {
 				Category:    "integration",
 				Tags:        []string{"api", "rest", "openapi"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return nil, fmt.Errorf("openapi requires spec configuration")
+					return nil, kerrors.BadRequest("TOOL_ASSEMBLY", "openapi requires spec configuration")
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
@@ -355,9 +351,6 @@ func Registry() []*ToolRegistration {
 				Description: "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
 				Category:    "media",
 				Tags:        []string{"document", "pdf", "docx", "read"},
-				Factory: func(ctx context.Context) (Tool, error) {
-					return documentpkg.NewReadDocumentTool(), nil
-				},
 				EnabledByDefault: true,
 				RiskLevel:        "medium",
 				SupportsConcurrency: true,
@@ -367,9 +360,6 @@ func Registry() []*ToolRegistration {
 				Description: "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
 				Category:    "media",
 				Tags:        []string{"spreadsheet", "xlsx", "csv", "read"},
-				Factory: func(ctx context.Context) (Tool, error) {
-					return documentpkg.NewReadSpreadsheetTool(), nil
-				},
 				EnabledByDefault: true,
 				RiskLevel:        "medium",
 				SupportsConcurrency: true,
@@ -397,7 +387,10 @@ func Registry() []*ToolRegistration {
 			},
 		}
 	})
-	return registry
+	// Return a defensive copy so callers cannot mutate the global registry.
+	out := make([]*ToolRegistration, len(registry))
+	copy(out, registry)
+	return out
 }
 
 type AgentToolConfig struct {
@@ -451,36 +444,61 @@ func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
 	}
 }
 
+// ShellExecConfig holds configuration for shell execution tools.
+type ShellExecConfig struct {
+	Dir string
+	Env map[string]string
+}
+
+// SearchConfig holds configuration for search-related tools (geminifetch, google_search).
+type SearchConfig struct {
+	GeminiModel  string
+	GoogleAPIKey string
+	GoogleCX     string
+}
+
+// ClaudeCodeConfig holds configuration for the claudecode toolset.
+type ClaudeCodeConfig struct {
+	Dir              string
+	ReadOnly         bool
+	MaxFileSize      int64
+	WebFetch         *WebFetchConfig
+	WebSearch        *WebSearchConfig
+	CommandAllowList []string
+}
+
+// MCPConfig holds configuration for MCP server and broker tools.
+type MCPConfig struct {
+	Servers []MCPServerConfig
+	Broker  *MCPBrokerConfig
+}
+
+// SessionConfig holds configuration for session-scoped tools (memory, custom, message, subagent, blob).
+type SessionConfig struct {
+	MemoryEnabled    bool
+	MemoryTools      []Tool
+	CustomTools      []Tool
+	OutboundRouter   *outbound.Router
+	SubAgentService  *subagenttool.Service
+	BlobReader       biz.ToolResultBlobReader
+}
+
+// AssemblyConfig holds all configuration for tool assembly.
+// Sub-configs group related fields to keep the top-level field count within
+// the AS-COG-01 limit of 15.
 type AssemblyConfig struct {
-	EnabledTools   []string
-	DeferredTools  []string
-	FilesystemDir  string
-	ShellExecDir   string
-	ShellExecEnv   map[string]string
-	GeminiModel    string
-	GoogleAPIKey   string
-	GoogleCX       string
-	ClaudeCodeDir         string
-	ClaudeCodeReadOnly    bool
-	ClaudeCodeMaxFileSize int64
-	ClaudeCodeMode        string
-	ClaudeCodeBin         string
-	ClaudeCodeWorkDir     string
-	ClaudeCodeWebFetch           *WebFetchConfig
-	ClaudeCodeWebSearch          *WebSearchConfig
-	ClaudeCodeCommandAllowList   []string
-	OpenAPISpecs          []OpenAPISpecConfig
-	AgentTools            []AgentToolConfig
-	MCPServers            []MCPServerConfig
-	MCPBroker             *MCPBrokerConfig
-	MemoryEnabled         bool
-	MemoryTools           []Tool
-	CustomTools           []Tool
-	OutboundRouter *outbound.Router
-	SubAgentService *subagenttool.Service
-	Browser         *browser.PlaywrightMCPConfig
-	BlobReader      biz.ToolResultBlobReader
-	Lg              loggateway.Logger
+	EnabledTools  []string
+	DeferredTools []string
+	FilesystemDir string
+	ShellExec     ShellExecConfig
+	Search        SearchConfig
+	ClaudeCode    ClaudeCodeConfig
+	OpenAPISpecs  []OpenAPISpecConfig
+	AgentTools    []AgentToolConfig
+	MCP           MCPConfig
+	Session       SessionConfig
+	Browser       *browser.PlaywrightMCPConfig
+	Lg            loggateway.Logger
 }
 
 type OpenAPISpecConfig struct {
@@ -521,9 +539,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		loggateway.Int("deferred_tools", len(cfg.DeferredTools)),
 	)
 	if err := ValidateRuntimeAliasesAgainstPolicy(); err != nil {
-		return nil, fmt.Errorf("tools.Assemble: %w", err)
+		return nil, kerrors.InternalServer("TOOL_ASSEMBLY", "alias validation: "+err.Error())
 	}
-	out := &AssembledToolsets{}
+
 	enabled := make(map[string]bool, len(cfg.EnabledTools))
 	for _, name := range cfg.EnabledTools {
 		enabled[name] = true
@@ -533,330 +551,64 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		deferredSet[name] = true
 	}
 
-	for _, reg := range Registry() {
-		if !enabled[reg.Name] {
-			continue
-		}
-		if deferredSet[reg.Name] {
-			continue
-		}
-		if reg.ToolSetFactory != nil {
-			ts, err := reg.ToolSetFactory(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("tool %s: %w", reg.Name, err)
-			}
-			if ts != nil {
-				out.ToolSets = append(out.ToolSets, ts)
-			} else {
-				lg.Warn("tools.assemble.factory_nil",
-					loggateway.StepID("tool.assemble.factory_nil"),
-					loggateway.Str("tool", reg.Name),
-					loggateway.Str("reason", "factory returned nil without error"))
-			}
-		} else if reg.Factory != nil {
-			t, err := reg.Factory(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("tool %s: %w", reg.Name, err)
-			}
-			if t != nil {
-				out.Tools = append(out.Tools, t)
-			} else {
-				lg.Warn("tools.assemble.factory_nil",
-					loggateway.StepID("tool.assemble.factory_nil"),
-					loggateway.Str("tool", reg.Name),
-					loggateway.Str("reason", "factory returned nil without error"))
-			}
-		}
+	ac := &assembleContext{
+		ctx:         ctx,
+		cfg:         cfg,
+		out:         &AssembledToolsets{},
+		enabled:     enabled,
+		deferredSet: deferredSet,
+		lg:          lg,
 	}
 
-	if enabled["file"] {
-		var opts []trpcfile.Option
-		if cfg.FilesystemDir != "" {
-			opts = append(opts, trpcfile.WithBaseDir(cfg.FilesystemDir))
-		}
-		ts, err := trpcfile.NewToolSet(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("file toolset: %w", err)
-		}
-		out.ToolSets = append(out.ToolSets, ts)
+	// Phase 1: registry factories
+	if err := ac.assembleFromRegistry(); err != nil {
+		return nil, err
+	}
+	// Phase 2: builtin toolsets (file, hostexec, document, spreadsheet)
+	if err := ac.assembleBuiltinToolsets(); err != nil {
+		return nil, err
+	}
+	// Phase 3: search tools (geminifetch, google_search)
+	if err := ac.assembleSearchTools(); err != nil {
+		return nil, err
+	}
+	// Phase 4: claudecode with sandbox
+	if err := ac.assembleClaudeCodeToolset(); err != nil {
+		return nil, err
+	}
+	// Phase 5: OpenAPI toolsets
+	if err := ac.assembleOpenAPIToolsets(); err != nil {
+		return nil, err
+	}
+	// Phase 6: agent-as-tool
+	ac.assembleAgentTools()
+	// Phase 7: MCP server and broker
+	if err := ac.assembleMCPTools(); err != nil {
+		return nil, err
+	}
+	// Phase 8: session-scoped tools (memory, custom, message, subagent)
+	ac.assembleSessionTools()
+	// Phase 9: browser
+	if err := ac.assembleBrowserToolset(); err != nil {
+		return nil, err
+	}
+	// Phase 10: blob reader and deferred tools
+	if err := ac.assembleBlobAndResultTools(); err != nil {
+		return nil, err
 	}
 
-	if enabled["hostexec"] {
-		ts, err := hostexecpkg.BuildHostexecToolSet(cfg.ShellExecDir, cfg.ShellExecEnv)
-		if err != nil {
-			return nil, fmt.Errorf("hostexec toolset: %w", err)
-		}
-		out.ToolSets = append(out.ToolSets, ts)
-	}
-
-	if enabled["geminifetch"] {
-		if model := strings.TrimSpace(cfg.GeminiModel); model != "" {
-			t, err := trpcgeminifetch.NewTool(model)
-			if err != nil {
-				return nil, fmt.Errorf("geminifetch: %w", err)
-			}
-			out.Tools = append(out.Tools, t)
-		} else {
-			lg.Warn("tools.assemble.geminifetch_no_model",
-				loggateway.StepID("tool.assemble.geminifetch_no_model"),
-				loggateway.Str("reason", "gemini_model config is empty"))
-		}
-	}
-
-	if enabled["google_search"] {
-		apiKey := strings.TrimSpace(cfg.GoogleAPIKey)
-		cx := strings.TrimSpace(cfg.GoogleCX)
-		if apiKey != "" && cx != "" {
-			ts, err := trpcgooglesearch.NewToolSet(ctx,
-				trpcgooglesearch.WithAPIKey(apiKey),
-				trpcgooglesearch.WithEngineID(cx),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("google search: %w", err)
-			}
-			out.ToolSets = append(out.ToolSets, ts)
-		} else {
-			lg.Warn("tools.assemble.google_search_no_config",
-				loggateway.StepID("tool.assemble.google_search_no_config"),
-				loggateway.Str("reason", "api_key or cx is empty"))
-		}
-	}
-
-	if enabled["claudecode"] {
-		var opts []trpcclaudecode.Option
-		if cfg.ClaudeCodeDir != "" {
-			opts = append(opts, trpcclaudecode.WithBaseDir(cfg.ClaudeCodeDir))
-		}
-		if cfg.ClaudeCodeReadOnly {
-			opts = append(opts, trpcclaudecode.WithReadOnly(true))
-		}
-		if cfg.ClaudeCodeMaxFileSize > 0 {
-			opts = append(opts, trpcclaudecode.WithMaxFileSize(cfg.ClaudeCodeMaxFileSize))
-		}
-		if cfg.ClaudeCodeWebFetch != nil {
-			opts = append(opts, trpcclaudecode.WithWebFetchOptions(trpcclaudecode.WebFetchOptions{
-				AllowAll:         cfg.ClaudeCodeWebFetch.AllowAll,
-				AllowedDomains:   cfg.ClaudeCodeWebFetch.AllowedDomains,
-				BlockedDomains:   cfg.ClaudeCodeWebFetch.BlockedDomains,
-				Timeout:          cfg.ClaudeCodeWebFetch.Timeout,
-				MaxContentLength: cfg.ClaudeCodeWebFetch.MaxContentLength,
-			}))
-		}
-		if cfg.ClaudeCodeWebSearch != nil {
-			opts = append(opts, trpcclaudecode.WithWebSearchOptions(trpcclaudecode.WebSearchOptions{
-				Provider: cfg.ClaudeCodeWebSearch.Provider,
-				BaseURL:  cfg.ClaudeCodeWebSearch.BaseURL,
-				APIKey:   cfg.ClaudeCodeWebSearch.APIKey,
-				EngineID: cfg.ClaudeCodeWebSearch.EngineID,
-			}))
-		}
-		ts, err := trpcclaudecode.NewToolSet(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("claudecode: %w", err)
-		}
-		if len(cfg.ClaudeCodeCommandAllowList) > 0 {
-			ts = SandboxedToolSet(ts, ClaudeCodeSandboxConfig{
-				CommandAllowList: cfg.ClaudeCodeCommandAllowList,
-			})
-		}
-		out.ToolSets = append(out.ToolSets, ts)
-	}
-
-	for _, spec := range cfg.OpenAPISpecs {
-		var specLoader trpcopenapi.Loader
-		var err error
-		if len(spec.SpecData) > 0 {
-			specLoader, err = trpcopenapi.NewDataLoader(spec.SpecData)
-		} else if spec.SpecURL != "" {
-			specLoader, err = trpcopenapi.NewURILoader(spec.SpecURL)
-		}
-		// TPM-P2-02: log loader failures so misconfigurations are visible instead
-		// of silently disappearing. We continue rather than aborting all assembly
-		// so a bad spec doesn't block unrelated toolsets.
-		if err != nil {
-			lg.Warn("tools.assemble.openapi_loader_failed",
-				loggateway.StepID("tool.assemble.openapi_loader_fail"),
-				loggateway.Str("spec_name", spec.Name),
-				loggateway.Str("spec_url", spec.SpecURL),
-				loggateway.Err(err))
-			continue
-		}
-		if specLoader == nil {
-			continue
-		}
-		ts, err := trpcopenapi.NewToolSet(ctx,
-			trpcopenapi.WithSpecLoader(specLoader),
-			trpcopenapi.WithName(spec.Name),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("openapi %s: %w", spec.Name, err)
-		}
-		out.ToolSets = append(out.ToolSets, ts)
-	}
-
-	for _, atCfg := range cfg.AgentTools {
-		opts := []trpcagenttool.Option{
-			trpcagenttool.WithSkipSummarization(atCfg.SkipSummarization),
-			trpcagenttool.WithStreamInner(atCfg.StreamInner),
-		}
-		if atCfg.Description != "" {
-			opts = append(opts, trpcagenttool.WithDescription(atCfg.Description))
-		}
-		if atCfg.HistoryScope > 0 {
-			opts = append(opts, trpcagenttool.WithHistoryScope(atCfg.HistoryScope))
-		}
-		if atCfg.ResponseMode > 0 {
-			opts = append(opts, trpcagenttool.WithResponseMode(atCfg.ResponseMode))
-		}
-		t := trpcagenttool.NewTool(atCfg.Agent, opts...)
-		out.Tools = append(out.Tools, t)
-	}
-
-	for _, mcpCfg := range cfg.MCPServers {
-		ts, err := buildMCPToolSet(mcpCfg)
-		if err != nil {
-			return nil, fmt.Errorf("mcp %s: %w", mcpCfg.Name, err)
-		}
-		if ts != nil {
-			out.ToolSets = append(out.ToolSets, ts)
-		}
-	}
-
-	if enabled["mcpbroker"] && cfg.MCPBroker != nil {
-		brokerTools, err := buildMCPBrokerTools(*cfg.MCPBroker)
-		if err != nil {
-			return nil, fmt.Errorf("mcpbroker: %w", err)
-		}
-		out.Tools = append(out.Tools, brokerTools...)
-	}
-
-	if len(cfg.MemoryTools) > 0 {
-		out.Tools = append(out.Tools, cfg.MemoryTools...)
-	} else if cfg.MemoryEnabled {
-		out.Tools = append(out.Tools, memorytool.DefaultTools()...)
-	}
-
-	out.Tools = append(out.Tools, cfg.CustomTools...)
-
-	if enabled["message"] && cfg.OutboundRouter != nil {
-		mt := outbound.NewMessageTool(cfg.OutboundRouter)
-		out.Tools = append(out.Tools, mt)
-	}
-
-	if cfg.SubAgentService != nil {
-		anySubagent := enabled["subagents_spawn"] || enabled["subagents_list"] || enabled["subagents_get"] || enabled["subagents_cancel"]
-		if anySubagent {
-			for _, t := range cfg.SubAgentService.FrameworkTools() {
-				if t == nil || t.Declaration() == nil {
-					continue
-				}
-				if !enabled[t.Declaration().Name] {
-					continue
-				}
-				out.Tools = append(out.Tools, t)
-			}
-		}
-	}
-
-	if enabled["browser"] && cfg.Browser != nil {
-		bcfg := cfg.Browser
-		mcpCfg := MCPServerConfig{
-			Name:       "browser",
-			Transport:  bcfg.Transport,
-			ServerURL:  bcfg.ServerURL,
-			Command:    bcfg.Command,
-			Args:       bcfg.BuildArgs(),
-			TimeoutSec: bcfg.TimeoutSec,
-		}
-		ts, err := buildMCPToolSet(mcpCfg)
-		if err != nil {
-			return nil, fmt.Errorf("browser mcp: %w", err)
-		}
-		if ts != nil {
-			out.ToolSets = append(out.ToolSets, ts)
-		}
-	}
-
-	if cfg.BlobReader != nil && enabled["read_tool_result"] {
-		rt := custom.NewReadToolResultTool(cfg.BlobReader)
-		out.Tools = append(out.Tools, rt)
-	}
-
-	if len(cfg.DeferredTools) > 0 {
-		var catalog []deferred.DeferredToolEntry
-		registryEntries := Registry()
-		regByName := make(map[string]*ToolRegistration, len(registryEntries))
-		for _, reg := range registryEntries {
-			regByName[reg.Name] = reg
-		}
-		for _, name := range cfg.DeferredTools {
-			reg, ok := regByName[name]
-			if !ok {
-				lg.Warn("tools.assemble.deferred_not_found",
-					loggateway.StepID("tool.assemble.deferred_not_found"),
-					loggateway.Str("tool", name),
-					loggateway.Str("reason", "deferred tool not in registry"))
-				continue
-			}
-			entry := deferred.DeferredToolEntry{
-				Name:        reg.Name,
-				Description: reg.Description,
-				Category:    reg.Category,
-			}
-			if reg.Factory != nil {
-				entry.Factory = reg.Factory
-			} else if reg.ToolSetFactory != nil {
-				entry.Factory = func(ctx context.Context) (trpctool.Tool, error) {
-					ts, err := reg.ToolSetFactory(ctx)
-					if err != nil {
-						return nil, err
-					}
-					if ts == nil {
-						return nil, fmt.Errorf("toolset %q returned nil", reg.Name)
-					}
-					tools := ts.Tools(ctx)
-					if len(tools) == 0 {
-						return nil, fmt.Errorf("toolset %q returned no tools", reg.Name)
-					}
-					return tools[0], nil
-				}
-			}
-			catalog = append(catalog, entry)
-		}
-		if len(catalog) > 0 {
-			searchTool := deferred.NewToolSearchTool(catalog)
-			out.Tools = append(out.Tools, searchTool)
-			out.DeferredManager = searchTool.Manager()
-			for _, entry := range catalog {
-				if entry.Factory == nil {
-					continue
-				}
-				dt := deferred.NewDeferredCallableTool(
-					&trpctool.Declaration{
-						Name:        entry.Name,
-						Description: entry.Description,
-					},
-					entry.Factory,
-					lg,
-				)
-				out.Tools = append(out.Tools, dt)
-			}
-		}
-	}
-
-	ApplyDisambiguationHints(out.Tools)
-
-	for _, ts := range out.ToolSets {
+	ApplyDisambiguationHints(ac.out.Tools)
+	for _, ts := range ac.out.ToolSets {
 		ApplyDisambiguationHints(ts.Tools(ctx))
 	}
 
 	lg.Info("tools.Assemble completed",
 		loggateway.StepID("tool.assemble.complete"),
-		loggateway.Int("toolsets", len(out.ToolSets)),
-		loggateway.Int("tools", len(out.Tools)),
+		loggateway.Int("toolsets", len(ac.out.ToolSets)),
+		loggateway.Int("tools", len(ac.out.Tools)),
 	)
 
-	return out, nil
+	return ac.out, nil
 }
 
 // DefaultMCPServerTimeoutSec is applied when config_json.timeout_sec is unset.

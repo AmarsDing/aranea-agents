@@ -3,7 +3,7 @@ package biz
 import (
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestTeamOrchestrationModesAccepted(t *testing.T) {
@@ -30,8 +30,12 @@ func TestTeamOrchestrationModeRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid mode")
 	}
-	if kerrors.FromError(err).Reason != "TEAM" {
-		t.Fatalf("unexpected reason: %v", err)
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
+	}
+	if ae.Domain != "TEAM" {
+		t.Fatalf("unexpected domain: %v", ae.Domain)
 	}
 }
 

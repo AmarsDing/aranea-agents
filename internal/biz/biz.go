@@ -7,7 +7,7 @@ import (
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/session"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"github.com/google/wire"
 )
 
@@ -191,7 +191,7 @@ func ProvideSkillMergeGateVerifier() SkillGateVerifier { return nil }
 func requireNonEmpty(val, domain, field string) (string, error) {
 	val = strings.TrimSpace(val)
 	if val == "" {
-		return "", kerrors.BadRequest(domain, field+" is required")
+		return "", apierror.BadRequest(domain, field+" is required")
 	}
 	return val, nil
 }

@@ -94,11 +94,16 @@ func (sess *Session) Clone() *Session {
 		CreatedAt: sess.CreatedAt, // Add missing CreatedAt field.
 		Hash:      sess.Hash,
 	}
-	// Copy events.
-	copy(copiedSess.Events, sess.Events)
+	// Copy events — use Event.Clone() for deep copy to prevent shared
+	// references to *model.Response, StateDelta, and Extensions maps
+	// between the original and cloned Session.
+	copiedSess.Events = make([]event.Event, len(sess.Events))
+	for i, e := range sess.Events {
+		copiedSess.Events[i] = *e.Clone()
+	}
 	sess.EventMu.RUnlock()
 
-	// Copy track events.
+	// Copy track events — deep copy Payload bytes to prevent shared array.
 	sess.TracksMu.RLock()
 	if len(sess.Tracks) > 0 {
 		copiedSess.Tracks = make(map[Track]*TrackEvents, len(sess.Tracks))
@@ -108,7 +113,13 @@ func (sess *Session) Clone() *Session {
 			}
 			if len(events.Events) > 0 {
 				history.Events = make([]TrackEvent, len(events.Events))
-				copy(history.Events, events.Events)
+				for i, te := range events.Events {
+					history.Events[i] = te
+					if len(te.Payload) > 0 {
+						history.Events[i].Payload = make([]byte, len(te.Payload))
+						copy(history.Events[i].Payload, te.Payload)
+					}
+				}
 			}
 			copiedSess.Tracks[track] = history
 		}
@@ -130,7 +141,7 @@ func (sess *Session) Clone() *Session {
 	}
 	sess.stateMu.RUnlock()
 
-	// Copy summaries.
+	// Copy summaries — deep copy Topics slice to prevent shared array.
 	sess.SummariesMu.RLock()
 	if sess.Summaries != nil {
 		copiedSess.Summaries = make(map[string]*Summary, len(sess.Summaries))
@@ -138,8 +149,11 @@ func (sess *Session) Clone() *Session {
 			if sum == nil {
 				continue
 			}
-			// Shallow copy is fine since Summary is immutable after write.
 			copied := *sum
+			if len(sum.Topics) > 0 {
+				copied.Topics = make([]string, len(sum.Topics))
+				copy(copied.Topics, sum.Topics)
+			}
 			copiedSess.Summaries[b] = &copied
 		}
 	}

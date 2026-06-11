@@ -2,7 +2,6 @@ package qq
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -24,13 +23,16 @@ func (s *TextSender) ID() string { return "qq" }
 func (s *TextSender) SendText(ctx context.Context, recipient, text string, extra map[string]string) error {
 	recipient = strings.TrimSpace(recipient)
 	text = strings.TrimSpace(text)
-	if recipient == "" || text == "" {
+	if recipient == "" {
+		return errRecipientRequired
+	}
+	if text == "" {
 		return nil
 	}
 	appID := strings.TrimSpace(s.AppID)
 	appSecret := strings.TrimSpace(s.AppSecret)
 	if appID == "" || appSecret == "" {
-		return fmt.Errorf("qq outbound: app_id and app_secret required")
+		return errAppCredentialsRequired
 	}
 	ts := token.NewQQBotTokenSource(&token.QQBotCredentials{AppID: appID, AppSecret: appSecret})
 	api := botgo.NewOpenAPI(appID, ts).WithTimeout(15 * time.Second)

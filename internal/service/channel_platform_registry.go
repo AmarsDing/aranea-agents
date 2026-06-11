@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -19,7 +18,7 @@ import (
 	"aranea-agents/internal/channel/wechat"
 	"aranea-agents/internal/channel/wecom"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type outboundHandler func(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error
@@ -279,7 +278,7 @@ func (h *ChannelIngress) sendOutboundPayload(ctx context.Context, channelID stri
 	}
 	adap, ok := platformAdapters[strings.ToLower(strings.TrimSpace(payload.Platform))]
 	if !ok || adap.outbound == nil {
-		return kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported outbound platform %q", payload.Platform))
+		return apierror.BadRequest("CHANNEL", "unsupported outbound platform %q", payload.Platform)
 	}
 	return adap.outbound(ctx, h, chRow, creds, payload)
 }

@@ -466,7 +466,7 @@ message PreviewCascadeApproveResponse {
 }
 
 message CascadeSagaStep {
-  int64 id = 1;
+  string id = 1;
   string proposal_id = 2;
   int32 step_index = 3;
   string step_name = 4;

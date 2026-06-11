@@ -10,14 +10,13 @@ import (
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/team"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (s *TeamService) CompileTeamGraph(ctx context.Context, req *v1.CompileTeamGraphRequest) (*v1.CompileTeamGraphResponse, error) {
 	teamID := strings.TrimSpace(req.GetTeamId())
 	if teamID == "" {
-		return nil, kerrors.BadRequest("TEAM", "team_id is required")
+		return nil, apierror.BadRequest("TEAM", "team_id is required")
 	}
 	rawDef := strings.TrimSpace(req.GetDefinitionJson())
 	if rawDef == "" {
@@ -29,7 +28,7 @@ func (s *TeamService) CompileTeamGraph(ctx context.Context, req *v1.CompileTeamG
 	}
 	def, err := team.ParseDefinition(rawDef)
 	if err != nil {
-		return nil, kerrors.BadRequest("TEAM", "invalid definition_json")
+		return nil, apierror.BadRequest("TEAM", "invalid definition_json")
 	}
 	return s.buildCompileTeamGraphResponse(ctx, def, rawDef)
 }
@@ -120,7 +119,7 @@ func (s *TeamService) exportStructureViaCompiler(ctx context.Context, teamID str
 	}
 	def, err := team.ParseDefinition(t.DefinitionJSON)
 	if err != nil {
-		return nil, kerrors.BadRequest("TEAM", "invalid definition_json")
+		return nil, apierror.BadRequest("TEAM", "invalid definition_json")
 	}
 	return team.ExportStructureSnapshot(t.TeamKey, t.DisplayName, def, s.compileAgentKeyResolver(ctx), s.lg)
 }

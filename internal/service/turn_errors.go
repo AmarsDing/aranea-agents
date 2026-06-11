@@ -1,7 +1,7 @@
 package service
 
 import (
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type TurnErrorCode string
@@ -37,11 +37,11 @@ func TurnError(code TurnErrorCode, detail string) error {
 	}
 	switch code {
 	case TurnErrAgentForbidden:
-		return kerrors.Forbidden("CHAT_AGENT", msg)
+		return apierror.Forbidden("CHAT_AGENT", msg)
 	case TurnErrAttachmentFailed, TurnErrAttachmentUnsupported:
-		return kerrors.BadRequest("CHAT_AGENT", msg)
+		return apierror.BadRequest("CHAT_AGENT", msg)
 	default:
-		return kerrors.InternalServer("CHAT_AGENT", msg)
+		return apierror.Internal("CHAT_AGENT", msg)
 	}
 }
 
@@ -49,9 +49,9 @@ func TurnErrorCodeFromErr(err error) TurnErrorCode {
 	if err == nil {
 		return ""
 	}
-	if ke, ok := err.(*kerrors.Error); ok {
+	if ae, ok := apierror.From(err); ok {
 		for code, msg := range turnErrorMessages {
-			if ke.Message == msg || len(ke.Message) > len(msg) && ke.Message[:len(msg)] == msg {
+			if ae.Message == msg || len(ae.Message) > len(msg) && ae.Message[:len(msg)] == msg {
 				return code
 			}
 		}

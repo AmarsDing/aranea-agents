@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Domain errors for attachment resolution — the Service layer maps these to kerrors.
+// Domain errors for attachment resolution — the Service layer maps these to apierror.
 var (
 	// ErrArtifactServiceRequired is returned when attachment IDs are provided but the artifact service is nil.
 	ErrArtifactServiceRequired = errors.New("artifact: attachments require artifact service")

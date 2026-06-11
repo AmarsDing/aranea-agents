@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (r *testRepo) CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error {
@@ -548,7 +548,7 @@ func TestUpsertChatActivityMessage(t *testing.T) {
 			"session not found returns error",
 			"sess-1", ChatMessage{ID: "msg-1"},
 			func(_ context.Context, _ string) (Session, error) {
-				return Session{}, kerrors.NotFound("SESSION", "not found")
+				return Session{}, apierror.NotFound("SESSION", "not found")
 			}, nil, true, "",
 		},
 		{
@@ -630,7 +630,7 @@ func TestListMessagesAfterRevision(t *testing.T) {
 			"session not found returns error",
 			"sess-1",
 			func(_ context.Context, _ string) (Session, error) {
-				return Session{}, kerrors.NotFound("SESSION", "not found")
+				return Session{}, apierror.NotFound("SESSION", "not found")
 			}, nil, true, "", nil,
 		},
 		{

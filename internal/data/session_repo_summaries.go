@@ -9,17 +9,17 @@ import (
 	"aranea-agents/internal/biz"
 
 	entsession "aranea-agents/internal/data/ent/session"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (r *sessionRepo) InsertSessionSummary(ctx context.Context, row biz.SessionSummary) error {
 	if r == nil || r.data == nil {
-		return kerrors.InternalServer("SESSION", "session repo unavailable")
+		return apierror.Internal("SESSION", "session repo unavailable")
 	}
 	row.ID = strings.TrimSpace(row.ID)
 	row.SessionID = strings.TrimSpace(row.SessionID)
 	if row.ID == "" || row.SessionID == "" {
-		return kerrors.BadRequest("SESSION", "session summary id and session_id required")
+		return apierror.BadRequest("SESSION", "session summary id and session_id required")
 	}
 	row.CreatedAt = strings.TrimSpace(row.CreatedAt)
 	if row.CreatedAt == "" {
@@ -35,7 +35,7 @@ VALUES (?,?,?,?,?,?,?)`
 func (r *sessionRepo) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return 0, kerrors.BadRequest("SESSION", "session id is required")
+		return 0, apierror.BadRequest("SESSION", "session id is required")
 	}
 	var max int
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
@@ -49,7 +49,7 @@ func (r *sessionRepo) MaxSessionSummaryToTurn(ctx context.Context, sessionID str
 func (r *sessionRepo) ListSessionSummaries(ctx context.Context, sessionID string) ([]biz.SessionSummary, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at
@@ -72,7 +72,7 @@ FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
 func (r *sessionRepo) LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return "", kerrors.BadRequest("SESSION", "session id is required")
+		return "", apierror.BadRequest("SESSION", "session id is required")
 	}
 	var created string
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
@@ -89,7 +89,7 @@ func (r *sessionRepo) LatestSessionSummaryTime(ctx context.Context, sessionID st
 func (r *sessionRepo) UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return apierror.BadRequest("SESSION", "session id is required")
 	}
 	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
@@ -102,7 +102,7 @@ func (r *sessionRepo) UpdateSessionListSummary(ctx context.Context, sessionID, s
 func (r *sessionRepo) SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return false, kerrors.BadRequest("SESSION", "session id is required")
+		return false, apierror.BadRequest("SESSION", "session id is required")
 	}
 	var cnt int
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,

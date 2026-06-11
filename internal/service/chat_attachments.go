@@ -8,8 +8,8 @@ import (
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/apierror"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -48,22 +48,22 @@ func (o *ChatOrchestrator) resolveUserAttachmentRefs(ctx context.Context, sessio
 	return refs, nil
 }
 
-// mapArtifactBizError converts biz-layer domain errors to kerrors for the transport layer.
+// mapArtifactBizError converts biz-layer domain errors to apierror for the transport layer.
 func mapArtifactBizError(err error) error {
 	if errors.Is(err, biz.ErrSizeExceeded) {
-		return kerrors.BadRequest("ARTIFACT", err.Error())
+		return apierror.BadRequest("ARTIFACT", err.Error())
 	}
 	if errors.Is(err, biz.ErrIDRequired) {
-		return kerrors.BadRequest("ARTIFACT", err.Error())
+		return apierror.BadRequest("ARTIFACT", err.Error())
 	}
 	if errors.Is(err, biz.ErrArtifactServiceRequired) {
-		return kerrors.BadRequest("ARTIFACT", err.Error())
+		return apierror.BadRequest("ARTIFACT", err.Error())
 	}
 	if errors.Is(err, biz.ErrAttachmentLoadFailed) {
-		return kerrors.BadRequest("ARTIFACT", err.Error())
+		return apierror.BadRequest("ARTIFACT", err.Error())
 	}
 	if errors.Is(err, biz.ErrAttachmentWrongSession) {
-		return kerrors.BadRequest("ARTIFACT", err.Error())
+		return apierror.BadRequest("ARTIFACT", err.Error())
 	}
 	return err
 }
@@ -80,7 +80,7 @@ func (o *ChatOrchestrator) validateTurnAttachmentCapabilities(ctx context.Contex
 	if len(refs) == 0 || o == nil {
 		return nil
 	}
-	if err := provider.ValidateAttachmentCapabilities(ctx, o.td.ReadDeps.LLM, prov, mod, refs); err != nil {
+	if err := provider.ValidateAttachmentCapabilities(ctx, o.td.ReadDeps.LLM, prov, mod, refs, o.lg); err != nil {
 		return TurnError(TurnErrAttachmentUnsupported, err.Error())
 	}
 	return nil

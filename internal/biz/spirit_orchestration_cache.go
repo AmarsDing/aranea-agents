@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type OrchestrationCacheEntry struct {
@@ -43,7 +43,8 @@ type OrchestrationCache struct {
 	entries map[string]*OrchestrationCacheEntry
 	repo    OrchestrationCacheRepo
 	lg      loggateway.Logger
-	stats   OrchestrationCacheStats
+	hits    atomic.Uint64
+	misses  atomic.Uint64
 }
 
 func NewOrchestrationCache(lg loggateway.Logger, repo OrchestrationCacheRepo) *OrchestrationCache {
@@ -82,9 +83,7 @@ func (c *OrchestrationCache) Get(taskPattern string) (*OrchestrationCacheEntry, 
 	entry, ok := c.entries[taskPattern]
 	if !ok {
 		c.mu.RUnlock()
-		c.mu.Lock()
-		c.stats.Misses++
-		c.mu.Unlock()
+		c.misses.Add(1)
 		return nil, false
 	}
 	// Check TTL: evict stale entries
@@ -92,14 +91,12 @@ func (c *OrchestrationCache) Get(taskPattern string) (*OrchestrationCacheEntry, 
 		c.mu.RUnlock()
 		c.mu.Lock()
 		delete(c.entries, taskPattern)
-		c.stats.Misses++
 		c.mu.Unlock()
+		c.misses.Add(1)
 		return nil, false
 	}
 	c.mu.RUnlock()
-	c.mu.Lock()
-	c.stats.Hits++
-	c.mu.Unlock()
+	c.hits.Add(1)
 	return entry, true
 }
 
@@ -108,8 +105,8 @@ func (c *OrchestrationCache) GetStats() OrchestrationCacheStats {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return OrchestrationCacheStats{
-		Hits:   c.stats.Hits,
-		Misses: c.stats.Misses,
+		Hits:   c.hits.Load(),
+		Misses: c.misses.Load(),
 		Size:   len(c.entries),
 	}
 }
@@ -183,7 +180,7 @@ func (c *OrchestrationCache) LoadFromJSON(jsonStr string) error {
 	var entries []OrchestrationCacheEntry
 	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
 		c.lg.Warn("加载 orchestration cache 失败", loggateway.StepID("spirit.orchestration_cache"), loggateway.Err(err))
-		return kerrors.InternalServer("SPIRIT", "load orchestration cache").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -199,7 +196,7 @@ func (c *OrchestrationCache) ToJSON() (string, error) {
 	entries := c.listLocked()
 	b, err := json.Marshal(entries)
 	if err != nil {
-		return "", kerrors.InternalServer("SPIRIT", "marshal orchestration cache").WithCause(err)
+		return "", apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
 	return string(b), nil
 }

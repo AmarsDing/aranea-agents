@@ -57,6 +57,14 @@ func (d *DeferredCallableTool) resolve(ctx context.Context) error {
 		)
 		return d.resolveErr
 	}
+	if d.tool == nil {
+		d.resolveErr = fmt.Errorf("deferred tool %q: factory returned nil without error", d.decl.Name)
+		d.lg.Warn("deferred tool factory returned nil",
+			loggateway.StepID("tool.deferred.factory_nil"),
+			loggateway.Str("tool", d.decl.Name),
+		)
+		return d.resolveErr
+	}
 	d.resolved = true
 	return nil
 }

@@ -7,8 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestEnqueueRejectMessage(t *testing.T) {
@@ -52,25 +51,25 @@ func TestEnqueueRejectError(t *testing.T) {
 	tests := []struct {
 		name        string
 		reason      string
-		wantReason  int32
+		wantCode    apierror.Code
 		wantMessage string
 	}{
 		{
 			name:        "queue_full_bad_request",
 			reason:      biz.ChatEnqueueRejectQueueFull,
-			wantReason:  400,
+			wantCode:    apierror.CodeBadRequest,
 			wantMessage: "pending queue is full for this session",
 		},
 		{
 			name:        "no_active_run_conflict",
 			reason:      biz.ChatEnqueueRejectNoActiveRun,
-			wantReason:  409,
+			wantCode:    apierror.CodeConflict,
 			wantMessage: "agent run has ended; send your message again to start a new turn",
 		},
 		{
 			name:        "unknown_reason_bad_request",
 			reason:      "unknown",
-			wantReason:  400,
+			wantCode:    apierror.CodeBadRequest,
 			wantMessage: "message could not be queued",
 		},
 	}
@@ -81,12 +80,15 @@ func TestEnqueueRejectError(t *testing.T) {
 			if got == nil {
 				t.Fatal("EnqueueRejectError() returned nil")
 			}
-			ke := kerrors.FromError(got)
-			if ke.Code != tt.wantReason {
-				t.Errorf("code = %d, want %d", ke.Code, tt.wantReason)
+			ae, ok := apierror.From(got)
+			if !ok {
+				t.Fatalf("expected apierror.Error, got %T", got)
 			}
-			if ke.Message != tt.wantMessage {
-				t.Errorf("message = %q, want %q", ke.Message, tt.wantMessage)
+			if ae.Code != tt.wantCode {
+				t.Errorf("code = %v, want %v", ae.Code, tt.wantCode)
+			}
+			if ae.Message != tt.wantMessage {
+				t.Errorf("message = %q, want %q", ae.Message, tt.wantMessage)
 			}
 		})
 	}

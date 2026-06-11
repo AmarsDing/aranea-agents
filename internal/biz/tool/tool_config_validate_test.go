@@ -40,3 +40,58 @@ func TestValidateMCPServerConfigJSON_sse(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateMCPServerConfigJSON_ssrf(t *testing.T) {
+	cases := []struct {
+		name    string
+		json    string
+		wantErr bool
+	}{
+		{
+			name:    "localhost blocked",
+			json:    `{"transport":"sse","url":"http://localhost:8080/sse"}`,
+			wantErr: true,
+		},
+		{
+			name:    "private IP blocked",
+			json:    `{"transport":"streamable_http","url":"http://192.168.1.1/mcp"}`,
+			wantErr: true,
+		},
+		{
+			name:    "loopback IP blocked",
+			json:    `{"transport":"sse","url":"http://127.0.0.1:3000/sse"}`,
+			wantErr: true,
+		},
+		{
+			name:    "cloud metadata blocked",
+			json:    `{"transport":"sse","url":"http://169.254.169.254/latest/meta-data/"}`,
+			wantErr: true,
+		},
+		{
+			name:    "ftp scheme blocked",
+			json:    `{"transport":"sse","url":"ftp://evil.com/payload"}`,
+			wantErr: true,
+		},
+		{
+			name:    "public URL allowed",
+			json:    `{"transport":"streamable_http","url":"https://mcp.example.com/api"}`,
+			wantErr: false,
+		},
+		{
+			name:    "stdio not affected by SSRF check",
+			json:    `{"transport":"stdio","command":"npx"}`,
+			wantErr: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateMCPServerConfigJSON(tc.json)
+			if tc.wantErr && err == nil {
+				t.Error("expected SSRF error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}

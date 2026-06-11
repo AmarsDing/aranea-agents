@@ -243,6 +243,7 @@ func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope
 			}
 		}
 		rendered := preview.RenderPlainText(c.transcript, c.policy)
+		segmentsCount := len(c.transcript.Segments())
 		c.mu.Unlock()
 		if sendCard {
 			tid := toolID
@@ -255,7 +256,7 @@ func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope
 		}
 		if c.updater != nil {
 			patchText := preview.FormatRenderedTranscriptForIM(c.platform, rendered)
-			if strings.TrimSpace(patchText) == "" && len(c.transcript.Segments()) > 0 {
+			if strings.TrimSpace(patchText) == "" && segmentsCount > 0 {
 				patchText = channelPreviewThinkingHint
 			}
 			if strings.TrimSpace(patchText) != "" {
@@ -514,8 +515,8 @@ func (h *ChannelIngress) startTurnPreview(
 		Lg: h.lg,
 	})
 	cancel := coord.Start(ctx, sessionID)
-	if h != nil && h.previewRegistry != nil {
-		cancel = h.previewRegistry.Register(sessionID, coord, cancel)
+	if h != nil && h.previewManager != nil {
+		cancel = h.previewManager.Register(sessionID, cancel)
 	}
 	return coord, cancel
 }
@@ -535,8 +536,8 @@ func (h *ChannelIngress) startTurnPreviewAccumulate(
 		Lg:       h.lg,
 	})
 	cancel := coord.Start(ctx, sessionID)
-	if h != nil && h.previewRegistry != nil {
-		cancel = h.previewRegistry.Register(sessionID, coord, cancel)
+	if h != nil && h.previewManager != nil {
+		cancel = h.previewManager.Register(sessionID, cancel)
 	}
 	return coord, cancel
 }

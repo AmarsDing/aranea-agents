@@ -4,8 +4,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestEnqueueRejectMessage(t *testing.T) {
@@ -34,13 +33,13 @@ func TestEnqueueRejectError(t *testing.T) {
 	tests := []struct {
 		name        string
 		reason      string
-		wantCode    int32
+		wantCode    apierror.Code
 		wantBizCode string
 	}{
-		{"queue_full", biz.ChatEnqueueRejectQueueFull, 400, "CHAT_QUEUE_FULL"},
-		{"no_active_run", biz.ChatEnqueueRejectNoActiveRun, 409, "CHAT_RUN_ENDED"},
-		{"unknown", "unknown_reason", 400, "CHAT_ENQUEUE_REJECTED"},
-		{"empty", "", 400, "CHAT_ENQUEUE_REJECTED"},
+		{"queue_full", biz.ChatEnqueueRejectQueueFull, apierror.CodeBadRequest, "CHAT_QUEUE_FULL"},
+		{"no_active_run", biz.ChatEnqueueRejectNoActiveRun, apierror.CodeConflict, "CHAT_RUN_ENDED"},
+		{"unknown", "unknown_reason", apierror.CodeBadRequest, "CHAT_ENQUEUE_REJECTED"},
+		{"empty", "", apierror.CodeBadRequest, "CHAT_ENQUEUE_REJECTED"},
 	}
 
 	for _, tt := range tests {
@@ -49,15 +48,15 @@ func TestEnqueueRejectError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected non-nil error")
 			}
-			ke, ok := err.(*kerrors.Error)
+			ae, ok := apierror.From(err)
 			if !ok {
-				t.Fatalf("expected *kerrors.Error, got %T", err)
+				t.Fatalf("expected *apierror.Error, got %T", err)
 			}
-			if ke.Code != tt.wantCode {
-				t.Errorf("code = %d, want %d", ke.Code, tt.wantCode)
+			if ae.Code != tt.wantCode {
+				t.Errorf("code = %v, want %v", ae.Code, tt.wantCode)
 			}
-			if ke.Reason != tt.wantBizCode {
-				t.Errorf("reason = %q, want %q", ke.Reason, tt.wantBizCode)
+			if ae.Domain != tt.wantBizCode {
+				t.Errorf("domain = %q, want %q", ae.Domain, tt.wantBizCode)
 			}
 		})
 	}

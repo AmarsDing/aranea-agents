@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -53,12 +54,24 @@ func runForegroundCommand(ctx context.Context, runtime *runtime, in bashInput) (
 	}
 	stdout := string(result.Stdout)
 	stderr := string(result.Stderr)
+
+	// Truncate individual streams first so each field stays bounded.
+	stdout = truncateCommandOutput(stdout, maxBashOutputChars/2)
+	stderr = truncateCommandOutput(stderr, maxBashOutputChars/2)
+
+	// Join and truncate the combined output to the overall limit.
+	// This prevents the combined Output field from exceeding
+	// maxBashOutputChars (previously stdout+stderr could each be
+	// maxBashOutputChars, yielding a 2× overflow after joining).
+	combined := joinOutput(stdout, stderr)
+	combined = truncateCommandOutput(combined, maxBashOutputChars)
+
 	return bashOutput{
 		Command:    in.Command,
 		ExitCode:   exitCode,
 		Stdout:     stdout,
 		Stderr:     stderr,
-		Output:     joinOutput(stdout, stderr),
+		Output:     combined,
 		DurationMs: durationMs,
 		TimedOut:   timedOut,
 	}, nil
@@ -152,6 +165,34 @@ func backgroundTaskExitCode(waitErr error, state *os.ProcessState) int {
 
 func errorsIsDeadlineExceeded(err error) bool {
 	return err == context.DeadlineExceeded
+}
+
+// truncateCommandOutput truncates s to at most maxChars runes, keeping the
+// head and tail with a truncation marker in between. This preserves the
+// beginning (usually contains structure/headers) and end (usually contains
+// exit info and errors) of command output. When maxChars is too small for
+// head+tail+marker, it falls back to head-only truncation.
+func truncateCommandOutput(s string, maxChars int) string {
+	if maxChars <= 0 {
+		return s
+	}
+	runeCount := utf8.RuneCountInString(s)
+	if runeCount <= maxChars {
+		return s
+	}
+	removed := runeCount - maxChars
+	marker := fmt.Sprintf("\n\n[... %d characters truncated ...]\n\n", removed)
+	markerLen := utf8.RuneCountInString(marker)
+	available := maxChars - markerLen
+	if available < 2 {
+		runes := []rune(s)
+		return string(runes[:maxChars])
+	}
+	halfBudget := available / 2
+	runes := []rune(s)
+	head := string(runes[:halfBudget])
+	tail := string(runes[runeCount-halfBudget:])
+	return head + marker + tail
 }
 
 func bashDescription() string {

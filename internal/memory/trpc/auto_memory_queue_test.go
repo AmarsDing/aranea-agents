@@ -241,20 +241,58 @@ func TestNewAgentRuntimeSettingsLoader_NilLoader(t *testing.T) {
 	}
 }
 
-func TestResolveMemoryToolSearchLimits_Defaults(t *testing.T) {
+func TestResolveMemoryToolSearchLimits_DisabledWhenNoSettings(t *testing.T) {
 	topK, minScore := resolveMemoryToolSearchLimits(context.Background(), nil, "", 0)
+	if topK != 0 {
+		t.Fatalf("expected topK=0 when no settings (memory disabled), got %d", topK)
+	}
+	if minScore != 1 {
+		t.Fatalf("expected minScore=1 when no settings (memory disabled), got %f", minScore)
+	}
+}
+
+func TestResolveMemoryToolSearchLimits_OptsMaxDisabledWhenNoSettings(t *testing.T) {
+	topK, _ := resolveMemoryToolSearchLimits(context.Background(), nil, "", 5)
+	if topK != 0 {
+		t.Fatalf("expected topK=0 when no settings (optsMax cannot override disabled), got %d", topK)
+	}
+}
+
+type mockSettingsLoader struct {
+	settings *biz.AgentRuntimeSettings
+}
+
+func (m *mockSettingsLoader) GetAgentRuntimeSettings(_ context.Context, _ string) (*biz.AgentRuntimeSettings, error) {
+	return m.settings, nil
+}
+
+func TestResolveMemoryToolSearchLimits_EnabledDefaults(t *testing.T) {
+	loader := &mockSettingsLoader{settings: &biz.AgentRuntimeSettings{MemoryEnabled: true}}
+	topK, minScore := resolveMemoryToolSearchLimits(context.Background(), loader, "a1", 0)
 	if topK <= 0 {
-		t.Fatalf("expected positive topK, got %d", topK)
+		t.Fatalf("expected positive topK when enabled, got %d", topK)
 	}
 	if minScore < 0 || minScore > 1 {
 		t.Fatalf("expected 0<=minScore<=1, got %f", minScore)
 	}
 }
 
-func TestResolveMemoryToolSearchLimits_OptsMax(t *testing.T) {
-	topK, _ := resolveMemoryToolSearchLimits(context.Background(), nil, "", 5)
+func TestResolveMemoryToolSearchLimits_EnabledOptsMax(t *testing.T) {
+	loader := &mockSettingsLoader{settings: &biz.AgentRuntimeSettings{MemoryEnabled: true}}
+	topK, _ := resolveMemoryToolSearchLimits(context.Background(), loader, "a1", 5)
 	if topK != 5 {
 		t.Fatalf("expected topK=5, got %d", topK)
+	}
+}
+
+func TestResolveMemoryToolSearchLimits_EnabledOptsMaxCannotExceedPolicy(t *testing.T) {
+	loader := &mockSettingsLoader{settings: &biz.AgentRuntimeSettings{
+		MemoryEnabled:    true,
+		MemoryMaxResults: 3,
+	}}
+	topK, _ := resolveMemoryToolSearchLimits(context.Background(), loader, "a1", 10)
+	if topK != 3 {
+		t.Fatalf("expected topK=3 (policy cap), got %d", topK)
 	}
 }
 

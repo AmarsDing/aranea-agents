@@ -2,10 +2,9 @@ package biz
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type PlanStatus string
@@ -58,10 +57,10 @@ func NewPlanUsecase(repo PlanRepository) *PlanUsecase {
 
 func (uc *PlanUsecase) CreatePlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	if plan.Goal == "" {
-		return nil, kerrors.BadRequest("PLAN", "goal is required")
+		return nil, apierror.BadRequest("PLAN", "goal is required")
 	}
 	if len(plan.Steps) == 0 {
-		return nil, kerrors.BadRequest("PLAN", "at least one step is required")
+		return nil, apierror.BadRequest("PLAN", "at least one step is required")
 	}
 	plan.Status = PlanStatusDraft
 	plan.CreatedAt = time.Now()
@@ -71,11 +70,11 @@ func (uc *PlanUsecase) CreatePlan(ctx context.Context, plan *Plan) (*Plan, error
 
 func (uc *PlanUsecase) GetPlan(ctx context.Context, id string) (*Plan, error) {
 	if id == "" {
-		return nil, kerrors.BadRequest("PLAN", "id is required")
+		return nil, apierror.BadRequest("PLAN", "id is required")
 	}
 	plan, err := uc.repo.Get(ctx, id)
 	if err != nil {
-		return nil, kerrors.NotFound("PLAN", "plan not found")
+		return nil, apierror.NotFound("PLAN", "plan not found")
 	}
 	return plan, nil
 }
@@ -87,7 +86,7 @@ func (uc *PlanUsecase) ApprovePlan(ctx context.Context, id string) (*Plan, error
 	}
 	// S-01 fix: use state machine instead of hardcoded status check
 	if !canTransitionPlan(plan.Status, PlanStatusApproved) {
-		return nil, kerrors.BadRequest("PLAN", fmt.Sprintf("plan cannot transition from %s to approved", string(plan.Status)))
+		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to approved", string(plan.Status))
 	}
 	plan.Status = PlanStatusApproved
 	plan.UpdatedAt = time.Now()
@@ -124,7 +123,7 @@ func (uc *PlanUsecase) MarkExecuting(ctx context.Context, id string) (*Plan, err
 		return nil, err
 	}
 	if !canTransitionPlan(plan.Status, PlanStatusExecuting) {
-		return nil, kerrors.BadRequest("PLAN", fmt.Sprintf("plan cannot transition from %s to executing", string(plan.Status)))
+		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to executing", string(plan.Status))
 	}
 	plan.Status = PlanStatusExecuting
 	plan.UpdatedAt = time.Now()
@@ -137,7 +136,7 @@ func (uc *PlanUsecase) MarkCompleted(ctx context.Context, id string) (*Plan, err
 		return nil, err
 	}
 	if !canTransitionPlan(plan.Status, PlanStatusCompleted) {
-		return nil, kerrors.BadRequest("PLAN", fmt.Sprintf("plan cannot transition from %s to completed", string(plan.Status)))
+		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to completed", string(plan.Status))
 	}
 	plan.Status = PlanStatusCompleted
 	plan.UpdatedAt = time.Now()
@@ -150,7 +149,7 @@ func (uc *PlanUsecase) MarkFailed(ctx context.Context, id string) (*Plan, error)
 		return nil, err
 	}
 	if !canTransitionPlan(plan.Status, PlanStatusFailed) {
-		return nil, kerrors.BadRequest("PLAN", fmt.Sprintf("plan cannot transition from %s to failed", string(plan.Status)))
+		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to failed", string(plan.Status))
 	}
 	plan.Status = PlanStatusFailed
 	plan.UpdatedAt = time.Now()

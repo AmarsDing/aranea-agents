@@ -1,10 +1,15 @@
 package teams
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
+	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 type InboundMessage struct {
@@ -48,11 +53,11 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 		return InboundMessage{}, err
 	}
 	if strings.TrimSpace(strings.ToLower(act.Type)) != "message" {
-		return InboundMessage{}, fmt.Errorf("teams: unsupported activity type %q", act.Type)
+		return InboundMessage{}, teamsUnsupportedActivityTypeError(act.Type)
 	}
 	text := strings.TrimSpace(act.Text)
 	if text == "" {
-		return InboundMessage{}, fmt.Errorf("teams: empty text")
+		return InboundMessage{}, errEmptyText
 	}
 	return InboundMessage{
 		Text:           text,
@@ -69,10 +74,10 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 func VerifyRequest(appID, appSecret string, header http.Header, body []byte) error {
 	authHeader := strings.TrimSpace(header.Get("Authorization"))
 	if authHeader == "" {
-		return fmt.Errorf("teams: missing authorization header")
+		return errMissingAuthHeader
 	}
 	if appID == "" || appSecret == "" {
-		return nil
+		return port.ErrCredentialsNotConfigured
 	}
 	return verifyBotFrameworkToken(authHeader, appID, appSecret)
 }
@@ -80,7 +85,98 @@ func VerifyRequest(appID, appSecret string, header http.Header, body []byte) err
 func verifyBotFrameworkToken(authHeader, appID, appSecret string) error {
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return fmt.Errorf("teams: invalid authorization scheme")
+		return errInvalidAuthScheme
+	}
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return errEmptyBearerToken
+	}
+	// Validate JWT structure (header.payload.signature)
+	segments := strings.Split(token, ".")
+	if len(segments) != 3 {
+		return errInvalidJWTFormat
+	}
+	// Decode and validate header — reject "none" algorithm
+	headerBytes, err := base64urlDecode(segments[0])
+	if err != nil {
+		return teamsJWTHeaderError(err)
+	}
+	var jwtHeader struct {
+		Alg string `json:"alg"`
+		Typ string `json:"typ"`
+	}
+	if err := json.Unmarshal(headerBytes, &jwtHeader); err != nil {
+		return teamsJWTHeaderJSONError(err)
+	}
+	alg := strings.TrimSpace(strings.ToUpper(jwtHeader.Alg))
+	if alg == "" || alg == "NONE" {
+		return teamsAlgNotAllowedError(jwtHeader.Alg)
+	}
+	// Decode and validate payload claims
+	payload, err := base64urlDecode(segments[1])
+	if err != nil {
+		return teamsJWTPayloadError(err)
+	}
+	var claims struct {
+		Aud string  `json:"aud"`
+		Exp float64 `json:"exp"`
+		Iat float64 `json:"iat"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return teamsJWTClaimsError(err)
+	}
+	// Check expiration
+	now := time.Now().Unix()
+	if int64(claims.Exp) < now-port.WebhookTimestampToleranceSec {
+		return errTokenExpired
+	}
+	// Check audience matches appID
+	if !strings.EqualFold(strings.TrimSpace(claims.Aud), strings.TrimSpace(appID)) {
+		return errAudienceMismatch
+	}
+	// Verify signature based on algorithm
+	switch alg {
+	case "RS256":
+		// TODO(debt): Full RS256 verification requires fetching Microsoft OpenID metadata
+		// and validating against their public keys via a JWKS client.
+		// Until implemented, we reject RS256 tokens to prevent forgery.
+		return errRS256NotImplemented
+	case "HS256":
+		// HMAC-SHA256 verification (used by some Bot Framework configurations)
+		signingInput := segments[0] + "." + segments[1]
+		key := deriveSigningKey(appID, appSecret)
+		mac := hmac.New(sha256.New, key)
+		mac.Write([]byte(signingInput))
+		expectedSig := base64urlEncode(mac.Sum(nil))
+		if !hmac.Equal([]byte(expectedSig), []byte(segments[2])) {
+			return errSignatureFailed
+		}
+	default:
+		return teamsUnsupportedJWTAlgError(jwtHeader.Alg)
 	}
 	return nil
+}
+
+func deriveSigningKey(appID, appSecret string) []byte {
+	// Microsoft Bot Framework uses the appSecret directly or base64-decoded
+	secret := strings.TrimSpace(appSecret)
+	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil && len(decoded) > 0 {
+		return decoded
+	}
+	return []byte(secret)
+}
+
+func base64urlDecode(s string) ([]byte, error) {
+	// Add padding if needed
+	switch len(s) % 4 {
+	case 2:
+		s += "=="
+	case 3:
+		s += "="
+	}
+	return base64.URLEncoding.DecodeString(s)
+}
+
+func base64urlEncode(b []byte) string {
+	return base64.RawURLEncoding.EncodeToString(b)
 }

@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -110,12 +109,12 @@ func TestParseFlowLogTimeBounds(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				ke := kerrors.FromError(err)
-			if ke == nil {
-				t.Fatalf("expected kerrors, got %T: %v", err, err)
+				ae, ok := apierror.From(err)
+			if !ok {
+				t.Fatalf("expected apierror, got %T: %v", err, err)
 			}
-			if tc.errMsg != "" && !containsSubstr(ke.Message, tc.errMsg) {
-				t.Fatalf("message = %q, want containing %q", ke.Message, tc.errMsg)
+			if tc.errMsg != "" && !containsSubstr(ae.Message, tc.errMsg) {
+				t.Fatalf("message = %q, want containing %q", ae.Message, tc.errMsg)
 			}
 				return
 			}

@@ -21,10 +21,13 @@ const (
 func buildToolFilter(s *biz.AgentRuntimeSettings, dm *deferred.DeferredToolManager, lg loggateway.Logger) trpctool.FilterFunc {
 	var filters []trpctool.FilterFunc
 	if denyList, err := biz.JSONStringList(s.ToolsDenyJSON); err != nil {
-		lg.Warn("tools deny list JSON parse failed; deny list will NOT be enforced",
+		// Fail-closed: when deny list JSON is malformed, block ALL tools
+		// rather than silently allowing denied tools to be used.
+		lg.Error("tools deny list JSON parse failed; FAILING CLOSED — all tools blocked",
 			loggateway.StepID("agent.tool_build"),
 			loggateway.Err(err),
 		)
+		filters = append(filters, func(_ context.Context, _ trpctool.Tool) bool { return false })
 	} else if len(denyList) > 0 {
 		filters = append(filters, trpctool.NewExcludeToolNamesFilter(denyList...))
 	}
@@ -49,7 +52,7 @@ func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy {
 		return nil
 	}
 	maxAttempts := s.ToolsRetryMaxAttempts
-	if maxAttempts < defaultRetryMaxAttempts {
+	if maxAttempts <= 0 {
 		maxAttempts = defaultRetryMaxAttempts
 	}
 	initialMs := s.ToolsRetryInitialIntervalMs

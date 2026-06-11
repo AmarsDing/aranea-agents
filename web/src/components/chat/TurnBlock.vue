@@ -317,12 +317,6 @@ const reactFinalAnswer = computed(() => {
   return reactParsed.value?.finalAnswer?.trim() || '';
 });
 
-const renderedFinalAnswer = computed(() => {
-  if (!reactFinalAnswer.value) return '';
-  const msgId = props.block.assistant?.id ?? '';
-  return renderChatMarkdownForMessage(msgId, reactFinalAnswer.value, isAssistantStreaming.value);
-});
-
 // Split ReAct final answer into reply rounds by paragraph breaks.
 const reactReplyRounds = computed((): string[] => {
   const raw = reactFinalAnswer.value;

@@ -4,6 +4,7 @@ import type { useChatDeleteFlow } from './useChatDeleteFlow';
 import type { useChatSettingsDialog } from './useChatSettingsDialog';
 import type { ChatEventInspectorStreamDeps } from './useChatEventInspector';
 import type { SessionInspectorTab } from '../../../components/chat/SessionTimelineDialog.vue';
+import type { SessionTimeline } from '../../session/types';
 import type { PlatformResource } from '../../platform/types';
 
 export interface ChatDialogsDeps {
@@ -14,6 +15,10 @@ export interface ChatDialogsDeps {
   traceSessionTitle: Ref<string>;
   traceInitialTab: Ref<SessionInspectorTab>;
   traceStreamDeps: ComputedRef<ChatEventInspectorStreamDeps>;
+  timeline: Ref<SessionTimeline | null>;
+  timelineLoading: Ref<boolean>;
+  timelineError: Ref<string>;
+  reloadTimeline: () => Promise<void>;
   selectedProviderModel: ComputedRef<PlatformResource | undefined>;
   fileSupported: ComputedRef<boolean>;
   onSaveSettings: () => Promise<void>;
@@ -50,6 +55,10 @@ export function useChatDialogs(deps: ChatDialogsDeps) {
     traceSessionTitle: deps.traceSessionTitle,
     traceInitialTab: deps.traceInitialTab,
     traceStreamDeps: deps.traceStreamDeps,
+    timeline: deps.timeline,
+    timelineLoading: deps.timelineLoading,
+    timelineError: deps.timelineError,
+    reloadTimeline: deps.reloadTimeline,
     selectedProviderModel: deps.selectedProviderModel,
     fileSupported: deps.fileSupported,
   });

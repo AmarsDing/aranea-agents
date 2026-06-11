@@ -11,6 +11,8 @@ import (
 	"aranea-agents/internal/channel/runtime"
 	"aranea-agents/pkg/loggateway"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 	dingUtils "github.com/open-dingtalk/dingtalk-stream-sdk-go/utils"
@@ -72,7 +74,7 @@ func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCre
 		} `json:"config"`
 	}
 	if err := json.Unmarshal([]byte(ch.ConfigJSON), &cfg); err != nil {
-		lg.Warn("解析 dingtalk config 失败", loggateway.StepID("channel.dingtalk.creds"), loggateway.Err(err))
+		return "", "", kerrors.BadRequest("DINGTALK_CONFIG", fmt.Sprintf("dingtalk stream: parse config: %s", err.Error()))
 	}
 	clientID := strings.TrimSpace(cfg.Config.ClientID)
 	if clientID == "" {
@@ -82,7 +84,7 @@ func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCre
 	secret, err := lookup(ctx, creds, "client_secret")
 	secret = strings.TrimSpace(secret)
 	if clientID == "" || secret == "" {
-		return "", "", fmt.Errorf("dingtalk stream: client_id and client_secret required")
+		return "", "", kerrors.BadRequest("DINGTALK_CONFIG", "dingtalk stream: client_id and client_secret required")
 	}
 	return clientID, secret, err
 }
@@ -113,8 +115,8 @@ func parseStreamMessage(message *chatbot.BotCallbackDataModel, lg loggateway.Log
 		Text:           text,
 		IdempotencyKey: "dingtalk:" + generic.ConversationId,
 		OutboundMeta: map[string]string{
-			"session_webhook": generic.SessionWebhook,
-			"recipient":       generic.SessionWebhook,
+			port.MetaSessionWebhook: generic.SessionWebhook,
+			port.MetaRecipient:      generic.SessionWebhook,
 		},
 	}, true
 }

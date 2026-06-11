@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func (r *testRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error) {
@@ -268,7 +268,7 @@ func TestTimeline(t *testing.T) {
 			id:    "sess-1",
 			query: TimelineQuery{KindFilter: "message"},
 			getFn: func(_ context.Context, _ string) (Session, error) {
-				return Session{}, kerrors.NotFound("SESSION", "session not found")
+				return Session{}, apierror.NotFound("SESSION", "session not found")
 			},
 			wantErr: true,
 		},

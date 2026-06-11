@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -321,12 +321,12 @@ func (u *OrganizationUsecase) cascadeBlockActiveTeams(ctx context.Context, dept 
 	}
 	teams, err := u.teamLister.ListTeamsByDepartmentID(ctx, dept.ID)
 	if err != nil {
-		return kerrors.InternalServer("ORG", "failed to list department teams").WithCause(err)
+		return apierror.Wrap(err, apierror.CodeInternal, "ORG")
 	}
 	for _, t := range teams {
 		if t.Status == TeamStatusRunning || t.Status == TeamStatusPending {
-			return kerrors.BadRequest("ORG",
-				fmt.Sprintf("cannot delete department with active team '%s' (status: %s); please archive or cancel it first", t.DisplayName, t.Status))
+			return apierror.BadRequest("ORG",
+				"cannot delete department with active team '%s' (status: %s); please archive or cancel it first", t.DisplayName, t.Status)
 		}
 	}
 	return nil
@@ -450,14 +450,14 @@ func (u *OrganizationUsecase) Reorder(ctx context.Context, ids []string) error {
 
 func (u *OrganizationUsecase) GetAncestors(ctx context.Context, positionID string) (OrgAncestors, error) {
 	if strings.TrimSpace(positionID) == "" {
-		return OrgAncestors{}, kerrors.BadRequest("ORG", "position_id is required")
+		return OrgAncestors{}, apierror.BadRequest("ORG", "position_id is required")
 	}
 	pos, err := u.repo.GetOrgNode(ctx, positionID)
 	if err != nil {
 		return OrgAncestors{}, err
 	}
 	if pos.Level != "position" {
-		return OrgAncestors{}, kerrors.BadRequest("ORG", "node is not a position")
+		return OrgAncestors{}, apierror.BadRequest("ORG", "node is not a position")
 	}
 	var dept OrganizationNode
 	if pos.ParentID != "" {
@@ -482,22 +482,22 @@ func (u *OrganizationUsecase) GetAncestors(ctx context.Context, positionID strin
 
 func (u *OrganizationUsecase) GetPositionPrompt(ctx context.Context, companyKey, positionKey, variant string) (PositionPromptResult, error) {
 	if companyKey == "" {
-		return PositionPromptResult{}, kerrors.BadRequest("ORG", "company_key is required")
+		return PositionPromptResult{}, apierror.BadRequest("ORG", "company_key is required")
 	}
 	if !pathSegmentSafeRe.MatchString(companyKey) {
-		return PositionPromptResult{}, kerrors.BadRequest("ORG", "company_key contains invalid characters")
+		return PositionPromptResult{}, apierror.BadRequest("ORG", "company_key contains invalid characters")
 	}
 	if positionKey == "" {
-		return PositionPromptResult{}, kerrors.BadRequest("POSITION", "position_key is required")
+		return PositionPromptResult{}, apierror.BadRequest("POSITION", "position_key is required")
 	}
 	if !pathSegmentSafeRe.MatchString(positionKey) {
-		return PositionPromptResult{}, kerrors.BadRequest("ORG", "position_key contains invalid characters")
+		return PositionPromptResult{}, apierror.BadRequest("ORG", "position_key contains invalid characters")
 	}
 	if variant == "" {
 		variant = "general"
 	}
 	if !variantSafeRe.MatchString(variant) {
-		return PositionPromptResult{}, kerrors.BadRequest("ORG", "variant contains invalid characters")
+		return PositionPromptResult{}, apierror.BadRequest("ORG", "variant contains invalid characters")
 	}
 
 	pos, err := u.repo.GetOrgNodeByKey(ctx, positionKey)
@@ -509,7 +509,7 @@ func (u *OrganizationUsecase) GetPositionPrompt(ctx context.Context, companyKey,
 		return PositionPromptResult{}, err
 	}
 	if anc.Company.Key != companyKey {
-		return PositionPromptResult{}, kerrors.NotFound("POSITION", "position not found in specified company")
+		return PositionPromptResult{}, apierror.NotFound("POSITION", "position not found in specified company")
 	}
 
 	scenarioDir := ScenarioDir()
@@ -557,13 +557,13 @@ func (u *OrganizationUsecase) GetPositionPrompt(ctx context.Context, companyKey,
 
 func (u *OrganizationUsecase) ListPositionVariants(ctx context.Context, companyKey, positionKey string) ([]VariantInfo, error) {
 	if companyKey == "" || positionKey == "" {
-		return nil, kerrors.BadRequest("ORG", "company_key and position_key are required")
+		return nil, apierror.BadRequest("ORG", "company_key and position_key are required")
 	}
 	if !pathSegmentSafeRe.MatchString(companyKey) {
-		return nil, kerrors.BadRequest("ORG", "company_key contains invalid characters")
+		return nil, apierror.BadRequest("ORG", "company_key contains invalid characters")
 	}
 	if !pathSegmentSafeRe.MatchString(positionKey) {
-		return nil, kerrors.BadRequest("ORG", "position_key contains invalid characters")
+		return nil, apierror.BadRequest("ORG", "position_key contains invalid characters")
 	}
 	scenarioDir := ScenarioDir()
 	dir := filepath.Join(scenarioDir, companyKey, "prompts", "positions", positionKey)
@@ -677,7 +677,7 @@ func ScenarioDir() string {
 }
 
 func ErrOrgBadRequest(msg string) error {
-	return kerrors.BadRequest("ORG", msg)
+	return apierror.BadRequest("ORG", msg)
 }
 
 func isErrNoRows(err error) bool {

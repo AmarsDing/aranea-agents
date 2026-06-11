@@ -29,7 +29,13 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg = tooltrpc.ToolsetConfigFromEffectiveKeys(eff)
 
-		mcpServers, _ := resolveMCPServers(ctx, deps, ag.ID, deps.Logger())
+		mcpServers, mcpErr := resolveMCPServers(ctx, deps, ag.ID, deps.Logger())
+		if mcpErr != nil {
+			lg.Warn("MCP 服务器解析失败，部分工具可能不可用",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Err(mcpErr))
+		}
 		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
 		if eff[biz.ToolKeyMCPToolSet] && len(mcpServers) > 0 {
 			cfg.MCPServers = mcpServers
@@ -390,6 +396,13 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 			}
 			return headers
 		}
+		// User credential resolution failed: do NOT fall through to static auth.
+		// Returning headers without auth is safer than using low-privilege static
+		// credentials when user-level auth was explicitly required.
+		deps.Logger().Warn("MCP auth: RequireUserCredentials resolution failed, skipping static auth fallback",
+			loggateway.StepID("agent.tool_build"),
+			loggateway.Str("server_key", serverKey))
+		return headers
 	}
 	authType := strings.ToLower(strings.TrimSpace(sc.Auth.Type))
 	key := strings.TrimSpace(sc.Auth.APIKey)
@@ -417,6 +430,13 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 	default:
 		if headerName != "" {
 			headers[headerName] = key
+		} else {
+			// Unknown auth type with no header_name: log a warning rather than
+			// silently discarding the credential, which would cause auth bypass.
+			deps.Logger().Warn("MCP auth: unknown auth type with empty header_name, credential not applied",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("server_key", serverKey),
+				loggateway.Str("auth_type", authType))
 		}
 	}
 	return headers

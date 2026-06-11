@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const defaultEventStoreTTLDays = 7
@@ -63,7 +63,7 @@ func (uc *EventStoreUsecase) SaveRecord(ctx context.Context, rec EventStoreRecor
 		return nil
 	}
 	if strings.TrimSpace(rec.ID) == "" {
-		return kerrors.BadRequest("EVENT_STORE", "id is required")
+		return apierror.BadRequest("EVENT_STORE", "id is required")
 	}
 	if rec.CreatedAt.IsZero() {
 		rec.CreatedAt = time.Now().UTC()
@@ -73,10 +73,10 @@ func (uc *EventStoreUsecase) SaveRecord(ctx context.Context, rec EventStoreRecor
 
 func (uc *EventStoreUsecase) List(ctx context.Context, q EventStoreQuery) (EventStoreListResult, error) {
 	if uc == nil || uc.repo == nil {
-		return EventStoreListResult{}, kerrors.InternalServer("EVENT_STORE", "event store not configured")
+		return EventStoreListResult{}, apierror.Internal("EVENT_STORE", "event store not configured")
 	}
 	if strings.TrimSpace(q.SessionID) == "" {
-		return EventStoreListResult{}, kerrors.BadRequest("EVENT_STORE", "session_id is required")
+		return EventStoreListResult{}, apierror.BadRequest("EVENT_STORE", "session_id is required")
 	}
 	if q.Limit <= 0 {
 		q.Limit = 100

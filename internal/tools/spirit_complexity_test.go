@@ -72,10 +72,9 @@ func TestComplexityRuleEngine_SingleComplexIndicator(t *testing.T) {
 
 func TestComplexityRuleEngine_Reasoning(t *testing.T) {
 	engine := NewComplexityRuleEngine()
-	_ = engine.Assess("什么是 Agent？")
-	reasoning := engine.LastReasoning()
-	if reasoning == "" {
-		t.Error("LastReasoning() should not be empty after Assess()")
+	result := engine.AssessDetailed("什么是 Agent？")
+	if result.Reasoning == "" {
+		t.Error("AssessDetailed().Reasoning should not be empty")
 	}
 }
 

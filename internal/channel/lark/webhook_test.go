@@ -2,8 +2,12 @@ package lark
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestEventSignature(t *testing.T) {
@@ -33,7 +37,7 @@ func TestParseURLVerification(t *testing.T) {
 
 func TestVerifyHTTPRequest(t *testing.T) {
 	body := []byte(`{"type":"event_callback"}`)
-	ts := "1710000000"
+	ts := fmt.Sprintf("%d", time.Now().Unix())
 	nonce := "n1"
 	key := "encrypt-key"
 	sig := EventSignature(ts, nonce, key, body)
@@ -51,7 +55,28 @@ func TestVerifyHTTPRequest(t *testing.T) {
 	if err := VerifyHTTPRequest(req, key, body); err == nil {
 		t.Fatal("expected signature mismatch")
 	}
-	if err := VerifyHTTPRequest(req, "", body); err != nil {
-		t.Fatal("empty encrypt key should skip verify")
+	if err := VerifyHTTPRequest(req, "", body); err == nil {
+		t.Fatal("empty encrypt key should reject with ErrCredentialsNotConfigured")
+	} else if err != port.ErrCredentialsNotConfigured {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got: %v", err)
+	}
+}
+
+func TestVerifyHTTPRequestExpiredTimestamp(t *testing.T) {
+	body := []byte(`{"type":"event_callback"}`)
+	// Timestamp 10 minutes in the past
+	ts := fmt.Sprintf("%d", time.Now().Unix()-600)
+	nonce := "n1"
+	key := "encrypt-key"
+	sig := EventSignature(ts, nonce, key, body)
+	req, err := http.NewRequest(http.MethodPost, "http://example/webhook", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Lark-Request-Timestamp", ts)
+	req.Header.Set("X-Lark-Request-Nonce", nonce)
+	req.Header.Set("X-Lark-Signature", sig)
+	if err := VerifyHTTPRequest(req, key, body); err == nil {
+		t.Fatal("expired timestamp should be rejected")
 	}
 }

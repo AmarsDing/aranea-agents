@@ -12,7 +12,7 @@ import (
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -93,10 +93,10 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 	calleeID := strings.TrimSpace(req.GetCalleeAgentId())
 	capability := strings.TrimSpace(req.GetCapability())
 	if calleeID == "" {
-		return nil, kerrors.BadRequest("A2A", "callee_agent_id is required")
+		return nil, apierror.BadRequest("A2A", "callee_agent_id is required")
 	}
 	if capability == "" {
-		return nil, kerrors.BadRequest("A2A", "capability is required")
+		return nil, apierror.BadRequest("A2A", "capability is required")
 	}
 
 	target, err := a2apkg.ResolveInvokeTarget(ctx, s.uc, calleeID)
@@ -126,7 +126,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		}
 	default:
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
-		return nil, kerrors.InternalServer("A2A", "unknown invoke target")
+		return nil, apierror.Internal("A2A", "unknown invoke target")
 	}
 	if err := a2apkg.ValidateAdminInvokeWorkspace(ctx, req.GetWorkspace(), card); err != nil {
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
@@ -139,7 +139,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 	}
 	if !biz.DefaultA2AInvokeLimiter().Allow(callerKey, calleeID) {
 		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "rate_limited").Inc()
-		return nil, kerrors.New(429, "A2A", "invoke rate limit exceeded")
+		return nil, apierror.RateLimit("A2A", "invoke rate limit exceeded")
 	}
 
 	timeoutSec := int(req.GetTimeoutSeconds())
@@ -206,7 +206,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 // UpdateAgentCard sets or updates the A2A capabilities of an agent.
 func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCardRequest) (*v1.A2AAgentCard, error) {
 	if strings.TrimSpace(req.GetAgentId()) == "" {
-		return nil, kerrors.BadRequest("A2A", "agent_id is required")
+		return nil, apierror.BadRequest("A2A", "agent_id is required")
 	}
 	caps := make([]biz.A2ACapability, 0, len(req.GetCapabilities()))
 	for _, c := range req.GetCapabilities() {
@@ -362,10 +362,10 @@ func (s *A2AService) GetA2AConfig(context.Context, *emptypb.Empty) (*v1.A2ARunti
 func requireA2AAdmin(ctx context.Context) error {
 	a, ok := auth.FromContext(ctx)
 	if !ok || a == nil {
-		return kerrors.Unauthorized("A2A", "authentication required")
+		return apierror.Unauthorized("A2A", "authentication required")
 	}
 	if !a.HasAdminAccess() {
-		return kerrors.Forbidden("A2A", "admin access required for invoke")
+		return apierror.Forbidden("A2A", "admin access required for invoke")
 	}
 	return nil
 }

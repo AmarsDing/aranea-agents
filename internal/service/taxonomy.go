@@ -7,8 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/taxonomy/v1"
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -143,7 +142,7 @@ func (s *TaxonomyService) GetTaxonomy(ctx context.Context, req *v1.GetTaxonomyRe
 	c, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TAXONOMY", "node not found")
+			return nil, apierror.NotFound("TAXONOMY", "node not found")
 		}
 		return nil, err
 	}
@@ -152,13 +151,13 @@ func (s *TaxonomyService) GetTaxonomy(ctx context.Context, req *v1.GetTaxonomyRe
 
 func (s *TaxonomyService) UpdateTaxonomy(ctx context.Context, req *v1.UpdateTaxonomyRequest) (*v1.TaxonomyNode, error) {
 	if req.GetNode() == nil {
-		return nil, kerrors.BadRequest("TAXONOMY", "node body is required")
+		return nil, apierror.BadRequest("TAXONOMY", "node body is required")
 	}
 	patch := fromProtoTaxonomy(req.GetNode())
 	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("TAXONOMY", "node not found")
+			return nil, apierror.NotFound("TAXONOMY", "node not found")
 		}
 		return nil, err
 	}

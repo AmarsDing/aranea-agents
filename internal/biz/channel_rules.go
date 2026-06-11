@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type ChannelConfig struct {
@@ -21,7 +21,7 @@ type ChannelConfig struct {
 }
 
 func channelValidationError(format string, args ...any) error {
-	return errors.BadRequest("CHANNEL", fmt.Sprintf(format, args...))
+	return apierror.BadRequest("CHANNEL", format, args...)
 }
 
 func catalogHasType(channelType string) bool {

@@ -24,9 +24,11 @@ func (r *ingressChannelRepo) AddDelivery(_ context.Context, _ biz.ChannelDeliver
 func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 	repo := &ingressChannelRepo{}
 	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
 	h := &ChannelIngress{
-		channels: uc,
-		lg:       loggateway.NewNoop(),
+		channels:     uc,
+		lg:           loggateway.NewNoop(),
+		deduplicator: dedupe,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -54,9 +56,11 @@ func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 	repo := &ingressChannelRepo{}
 	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
 	h := &ChannelIngress{
-		channels: uc,
-		lg:       loggateway.NewNoop(),
+		channels:     uc,
+		lg:           loggateway.NewNoop(),
+		deduplicator: dedupe,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -83,9 +87,11 @@ func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 	repo := &ingressChannelRepo{}
 	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
 	h := &ChannelIngress{
-		channels: uc,
-		lg:       loggateway.NewNoop(),
+		channels:     uc,
+		lg:           loggateway.NewNoop(),
+		deduplicator: dedupe,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -110,9 +116,11 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 	repo := &ingressChannelRepo{}
 	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
 	h := &ChannelIngress{
-		channels: uc,
-		lg:       loggateway.NewNoop(),
+		channels:     uc,
+		lg:           loggateway.NewNoop(),
+		deduplicator: dedupe,
 	}
 	ch := biz.Channel{ID: "ch-1", ConfigJSON: `{"type":"feishu","config":{}}`}
 	ev := port.InboundEvent{
@@ -136,9 +144,11 @@ func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 func TestProcessInboundHTTPResponds200(t *testing.T) {
 	repo := &ingressChannelRepo{}
 	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	dedupe := newIngressMessageDedupe(defaultMessageDedupeTTL)
 	h := &ChannelIngress{
-		channels: uc,
-		lg:       loggateway.NewNoop(),
+		channels:     uc,
+		lg:           loggateway.NewNoop(),
+		deduplicator: dedupe,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",

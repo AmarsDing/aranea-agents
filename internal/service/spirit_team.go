@@ -8,10 +8,9 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var (
@@ -35,11 +34,11 @@ func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bu
 
 func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, content string) error {
 	if s.team.TeamsNative == nil {
-		return kerrors.InternalServer("SPIRIT", "team runner not available")
+		return apierror.Internal("SPIRIT", "team runner not available")
 	}
 	sess, err := s.sessions.Get(ctx, sessionID)
 	if err != nil {
-		return kerrors.NotFound("SPIRIT", "team session not found")
+		return apierror.NotFound("SPIRIT", "team session not found")
 	}
 	if sess.Status == string(sessstatus.SessionStatusRunning) {
 		s.lg.Info("团队 session 已在运行中，跳过重复启动",

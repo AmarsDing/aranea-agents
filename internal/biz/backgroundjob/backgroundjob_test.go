@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestJob_IsDone(t *testing.T) {
@@ -99,7 +99,11 @@ func TestErrNotFound(t *testing.T) {
 	if !errors.Is(ErrNotFound, ErrNotFound) {
 		t.Fatal("ErrNotFound should match itself via errors.Is")
 	}
-	if !kerrors.IsNotFound(ErrNotFound) {
-		t.Fatalf("ErrNotFound should be NotFound kerror, got %v", ErrNotFound)
+	ae, ok := apierror.From(ErrNotFound)
+	if !ok {
+		t.Fatalf("ErrNotFound should be apierror, got %T", ErrNotFound)
+	}
+	if ae.Code != apierror.CodeNotFound {
+		t.Fatalf("ErrNotFound should be NotFound apierror, got %v", ErrNotFound)
 	}
 }

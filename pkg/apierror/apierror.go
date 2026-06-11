@@ -26,6 +26,7 @@ const (
 	CodeConflict     Code = "CONFLICT"
 	CodeInternal     Code = "INTERNAL"
 	CodeUnavailable  Code = "UNAVAILABLE"
+	CodeRateLimit    Code = "RATE_LIMITED"
 )
 
 // Error is the canonical error type for all Aranea product-layer errors.
@@ -71,6 +72,13 @@ func (e *Error) WithMeta(key, value string) *Error {
 	return &cp
 }
 
+// WithCause returns a shallow copy of the error with the given cause.
+func (e *Error) WithCause(cause error) *Error {
+	cp := *e
+	cp.Cause = cause
+	return &cp
+}
+
 // ---- Constructors ----
 
 func newf(code Code, domain, msg string, args ...any) *Error {
@@ -106,6 +114,10 @@ func Internal(domain, msg string, args ...any) *Error {
 
 func Unavailable(domain, msg string, args ...any) *Error {
 	return newf(CodeUnavailable, domain, msg, args...)
+}
+
+func RateLimit(domain, msg string, args ...any) *Error {
+	return newf(CodeRateLimit, domain, msg, args...)
 }
 
 // Wrap wraps a foreign error (e.g. Ent, SQL) with the given code and domain.
@@ -167,7 +179,11 @@ func ToKratos(err error) error {
 		return kerrors.New(http.StatusConflict, string(ae.Code), msg)
 	case CodeUnavailable:
 		return kerrors.ServiceUnavailable(string(ae.Code), msg)
-	default:
+	case CodeRateLimit:
+		return kerrors.New(http.StatusTooManyRequests, string(ae.Code), msg)
+	case CodeInternal:
 		return kerrors.InternalServer(string(ae.Code), msg)
+	default:
+		return kerrors.InternalServer("UNKNOWN_CODE", msg)
 	}
 }

@@ -14,7 +14,6 @@
 
       <!-- Root Agent Block -->
       <AgentBlock
-        :ref="(el: InstanceType<typeof AgentBlock> | null) => setBlockRef(block.id, el)"
         :block="block"
         :is-root="true"
       />
@@ -32,17 +31,6 @@ const { t } = useI18n();
 defineProps<{
   agentBlocks: AgentBlockType[];
 }>();
-
-// Track block component refs for expand/collapse all
-const blockRefs = new Map<string, InstanceType<typeof AgentBlock>>();
-
-function setBlockRef(id: string, el: InstanceType<typeof AgentBlock> | null) {
-  if (el) {
-    blockRefs.set(id, el);
-  } else {
-    blockRefs.delete(id);
-  }
-}
 
 function expandAll() {
   // Dispatch custom event that AgentBlock components can listen to

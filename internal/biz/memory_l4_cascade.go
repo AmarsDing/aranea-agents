@@ -5,25 +5,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/jsonutil"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-var ErrCascadeUnavailable = kerrors.BadRequest("MEMORY", "cascade store not available")
+var ErrCascadeUnavailable = apierror.BadRequest("MEMORY", "cascade store not available")
 
-var ErrCascadeSagaInProgress = kerrors.Conflict("MEMORY", "cascade saga already in progress")
+var ErrCascadeSagaInProgress = apierror.Conflict("MEMORY", "cascade saga already in progress")
 
 type CascadeProposalStore interface {
 	InsertCascadeProposal(ctx context.Context, in CascadeProposalInsert) ([]byte, error)
 	ListCascadeProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
 	GetCascadeProposalRow(ctx context.Context, id string) ([]byte, error)
 	UpdateCascadeProposalStatus(ctx context.Context, id, status, reviewedBy, reviewNote string) ([]byte, error)
+	// CompareAndSwapProposalStatus atomically transitions a proposal from one of the
+	// expected statuses to the target status. Returns the updated row and true on
+	// success, or the current row and false if the current status doesn't match.
+	CompareAndSwapProposalStatus(ctx context.Context, id string, fromStatuses []string, toStatus, reviewedBy, reviewNote string) ([]byte, bool, error)
 }
 
 type CascadeGraphReader interface {
@@ -42,27 +44,41 @@ type CascadeFactMutator interface {
 type CascadeSagaStore interface {
 	InitCascadeSagaSteps(ctx context.Context, proposalID string, steps []CascadeSagaStep) error
 	GetCascadeSagaSteps(ctx context.Context, proposalID string) ([]CascadeSagaStep, error)
-	UpdateSagaStepState(ctx context.Context, stepID int64, state, errMsg string) error
-	UpdateSagaStepResult(ctx context.Context, stepID int64, resultJSON string) error
+	UpdateSagaStepState(ctx context.Context, stepID string, state, errMsg string) error
+	UpdateSagaStepResult(ctx context.Context, stepID string, resultJSON string) error
 	HasCascadeSaga(ctx context.Context, proposalID string) (bool, error)
 }
 
-func NewL4CascadeUsecase(proposals CascadeProposalStore, reader CascadeGraphReader, mutator CascadeFactMutator, saga CascadeSagaStore, entityWriter L4EntityWriter, lg loggateway.Logger) *L4CascadeUsecase {
-	if proposals == nil {
+// L4CascadeDeps aggregates the dependencies for L4CascadeUsecase, keeping the
+// constructor parameter count within the CS-B7 limit (≤5) while allowing all
+// required dependencies to be injected at construction time.
+type L4CascadeDeps struct {
+	Proposals    CascadeProposalStore
+	Reader       CascadeGraphReader
+	Mutator      CascadeFactMutator
+	Saga         CascadeSagaStore
+	EntityWriter L4EntityWriter
+	IndexSync    MemoryFactIndexSyncer
+	LG           loggateway.Logger
+}
+
+func NewL4CascadeUsecase(deps L4CascadeDeps) *L4CascadeUsecase {
+	if deps.Proposals == nil {
 		return nil
 	}
 	return &L4CascadeUsecase{
-		proposals:    proposals,
-		reader:       reader,
-		mutator:      mutator,
-		saga:         saga,
-		entityWriter: entityWriter,
-		lg:           lg,
+		proposals:    deps.Proposals,
+		reader:       deps.Reader,
+		mutator:      deps.Mutator,
+		saga:         deps.Saga,
+		entityWriter: deps.EntityWriter,
+		indexSync:    deps.IndexSync,
+		lg:           deps.LG,
 	}
 }
 
 type CascadeSagaStep struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	ProposalID  string `json:"proposal_id"`
 	StepIndex   int    `json:"step_index"`
 	StepName    string `json:"step_name"`
@@ -135,15 +151,6 @@ type L4CascadeUsecase struct {
 	entityWriter L4EntityWriter
 	lg           loggateway.Logger
 	indexSync    MemoryFactIndexSyncer
-	indexMu      sync.RWMutex
-}
-
-func (uc *L4CascadeUsecase) SetIndexSync(sync MemoryFactIndexSyncer) {
-	if uc != nil {
-		uc.indexMu.Lock()
-		uc.indexSync = sync
-		uc.indexMu.Unlock()
-	}
 }
 
 func (uc *L4CascadeUsecase) ProposeNameConflict(ctx context.Context, agentID, entityID, oldName, newName string) error {
@@ -317,8 +324,29 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 	if status == "applied" {
 		return raw, nil
 	}
+	if status == "running" {
+		return nil, ErrCascadeSagaInProgress
+	}
 	if status != "pending" && status != "partial" && status != "failed" {
 		return raw, nil
+	}
+
+	// Guard against concurrent Approve calls: atomically transition to "running"
+	// using Compare-And-Swap. Only proceeds if the current status is one of the
+	// expected values (pending/partial/failed). If another process already moved
+	// it to "running", the CAS fails and we return ErrCascadeSagaInProgress.
+	raw, swapped, err := uc.proposals.CompareAndSwapProposalStatus(ctx, id,
+		[]string{"pending", "partial", "failed"}, "running", reviewer, "saga execution started")
+	if err != nil {
+		return nil, err
+	}
+	if !swapped {
+		return nil, ErrCascadeSagaInProgress
+	}
+	row = nil
+	if err := json.Unmarshal(raw, &row); err != nil {
+		uc.lg.Warn("解析 cascade proposal row 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		return nil, err
 	}
 
 	hasSaga, err := uc.saga.HasCascadeSaga(ctx, id)
@@ -355,6 +383,8 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 			"old_name":    oldName,
 			"description": jsonutil.IfaceStr(entForSnapshot, "description"),
 			"metadata":    jsonutil.IfaceStr(entForSnapshot, "metadata_json"),
+			"importance":  anyFloatRaw(entForSnapshot, "importance", l4CascadeEntImportance),
+			"confidence":  anyFloatRaw(entForSnapshot, "confidence", l4CascadeEntConfidence),
 		})
 		affectedJSON := jsonutil.IfaceStr(row, "affected_json")
 		replacePayload, _ := json.Marshal(map[string]string{"agent_id": agentID, "old_name": oldName, "new_name": newName})
@@ -382,7 +412,8 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 		if step.State == "succeeded" || step.State == "skipped" {
 			continue
 		}
-		if step.State == "failed" || step.State == "pending" || step.State == "running" {
+		if step.State == "failed" || step.State == "pending" || step.State == "running" ||
+			step.State == "compensated" || step.State == "compensate_failed" {
 			if err := uc.executeSagaStep(ctx, step, row); err != nil {
 				allSucceeded = false
 				anyFailed = true
@@ -424,11 +455,11 @@ func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSa
 	case SagaStepTouchAffected:
 		execErr = uc.execTouchAffected(ctx, row)
 	case SagaStepReplaceFacts:
-		execErr = uc.execReplaceFacts(ctx, row)
+		execErr = uc.execReplaceFacts(ctx, step, row)
 	case SagaStepSyncIndex:
-		execErr = uc.execSyncIndex(ctx, row)
+		execErr = uc.execSyncIndex(ctx, step, row)
 	default:
-		execErr = kerrors.BadRequest("MEMORY", "unknown saga step")
+		execErr = apierror.BadRequest("MEMORY", "unknown saga step")
 	}
 
 	if execErr != nil {
@@ -454,6 +485,13 @@ func (uc *L4CascadeUsecase) execUpsertEntity(ctx context.Context, row map[string
 		uc.lg.Warn("解析 entity row 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
 		return err
 	}
+	// Preserve original importance/confidence from the entity row so the
+	// cascade approval only changes the name without corrupting other fields.
+	// Use anyFloatRaw (not anyFloatOr) to preserve zero values — an entity
+	// with importance=0 or confidence=0 should keep that value, not be
+	// overwritten with the fallback.
+	importance := anyFloatRaw(ent, "importance", l4CascadeEntImportance)
+	confidence := anyFloatRaw(ent, "confidence", l4CascadeEntConfidence)
 	return uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
 		ID:             entityID,
 		ScopeType:      "agent",
@@ -463,8 +501,8 @@ func (uc *L4CascadeUsecase) execUpsertEntity(ctx context.Context, row map[string
 		Name:           newName,
 		NameNormalized: strings.ToLower(newName),
 		Description:    jsonutil.IfaceStr(ent, "description"),
-		Importance:     l4CascadeEntImportance,
-		Confidence:     l4CascadeEntConfidence,
+		Importance:     importance,
+		Confidence:     confidence,
 		MetadataJSON:   mergeCascadeAppliedMeta(jsonutil.IfaceStr(ent, "metadata_json"), newName, uc.lg),
 	})
 }
@@ -475,7 +513,7 @@ func (uc *L4CascadeUsecase) execTouchAffected(ctx context.Context, row map[strin
 	return uc.touchAffectedEntities(ctx, row, entityID, newName)
 }
 
-func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string]any) error {
+func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, step *CascadeSagaStep, row map[string]any) error {
 	agentID := jsonutil.IfaceStr(row, "agent_id")
 	oldName := jsonutil.IfaceStr(row, "old_value")
 	newName := jsonutil.IfaceStr(row, "new_value")
@@ -496,36 +534,22 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string
 		}
 	}
 	if err := uc.mutator.SaveCascadeOriginalStatements(ctx, agentID, oldName, factIDs); err != nil {
-		uc.lg.Warn("save_cascade_original_statements_failed", loggateway.StepID("memory.l4_fail"), loggateway.Err(err))
+		return apierror.Internal("MEMORY", "save_cascade_original_statements: %s", err.Error())
 	}
 	updatedRows, _, err := uc.mutator.ReplaceNameInAgentFacts(ctx, agentID, oldName, newName)
 	if err != nil {
 		return err
 	}
 	resultJSON, _ := json.Marshal(map[string]any{"updated_count": len(updatedRows)})
-	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
-	if err != nil {
-		uc.lg.Warn("Cascade: failed to get saga steps for replace facts", loggateway.StepID("memory.cascade_fail"), loggateway.Str("proposal_id", jsonutil.IfaceStr(row, "id")), loggateway.Err(err))
-		// Facts were replaced but saga result cannot be recorded — return error
-		// so the caller knows the step is in an inconsistent state.
-		return fmt.Errorf("replace_facts succeeded but saga state unavailable: %w", err)
-	}
-	for _, s := range sagaSteps {
-		if s.StepName == SagaStepReplaceFacts && s.State == "running" {
-			if err := uc.saga.UpdateSagaStepResult(ctx, s.ID, string(resultJSON)); err != nil {
-				uc.lg.Warn("Cascade: failed to update saga step result", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(s.ID)), loggateway.Err(err))
-			}
-			break
-		}
+	if err := uc.saga.UpdateSagaStepResult(ctx, step.ID, string(resultJSON)); err != nil {
+		uc.lg.Warn("Cascade: failed to update saga step result", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(step.ID)), loggateway.Err(err))
 	}
 	return nil
 }
 
-func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, row map[string]any) error {
+func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, step *CascadeSagaStep, row map[string]any) error {
 	agentID := jsonutil.IfaceStr(row, "agent_id")
-	uc.indexMu.RLock()
 	syncer := uc.indexSync
-	uc.indexMu.RUnlock()
 	if agentID == "" || syncer == nil {
 		return nil
 	}
@@ -534,18 +558,8 @@ func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, row map[string]an
 		return err
 	}
 	resultJSON, _ := json.Marshal(map[string]any{"stale_marked": marked})
-	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
-	if err != nil {
-		uc.lg.Warn("Cascade: failed to get saga steps for sync index", loggateway.StepID("memory.cascade_fail"), loggateway.Str("proposal_id", jsonutil.IfaceStr(row, "id")), loggateway.Err(err))
-		return fmt.Errorf("sync_index succeeded but saga state unavailable: %w", err)
-	}
-	for _, s := range sagaSteps {
-		if s.StepName == SagaStepSyncIndex && s.State == "running" {
-			if err := uc.saga.UpdateSagaStepResult(ctx, s.ID, string(resultJSON)); err != nil {
-				uc.lg.Warn("Cascade: failed to update saga step result for sync index", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(s.ID)), loggateway.Err(err))
-			}
-			break
-		}
+	if err := uc.saga.UpdateSagaStepResult(ctx, step.ID, string(resultJSON)); err != nil {
+		uc.lg.Warn("Cascade: failed to update saga step result for sync index", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(step.ID)), loggateway.Err(err))
 	}
 	return nil
 }
@@ -556,23 +570,28 @@ func (uc *L4CascadeUsecase) compensateCompletedSteps(ctx context.Context, steps 
 		if s.State != "succeeded" {
 			continue
 		}
+		compOK := true
 		switch s.StepName {
 		case SagaStepReplaceFacts:
-			uc.compensateReplaceFacts(ctx, s)
+			compOK = uc.compensateReplaceFacts(ctx, s)
 		case SagaStepUpsertEntity:
-			uc.compensateUpsertEntity(ctx, s)
+			compOK = uc.compensateUpsertEntity(ctx, s)
 		case SagaStepTouchAffected:
-			uc.compensateTouchAffected(ctx, s)
+			compOK = uc.compensateTouchAffected(ctx, s)
 		case SagaStepSyncIndex:
-			uc.compensateSyncIndex(ctx, s)
+			compOK = uc.compensateSyncIndex(ctx, s)
 		}
-		if err := uc.saga.UpdateSagaStepState(ctx, s.ID, "compensated", ""); err != nil {
-			uc.lg.Warn("Cascade: failed to update saga step state to compensated", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(s.ID)), loggateway.Err(err))
+		newState := "compensated"
+		if !compOK {
+			newState = "compensate_failed"
+		}
+		if err := uc.saga.UpdateSagaStepState(ctx, s.ID, newState, ""); err != nil {
+			uc.lg.Warn("Cascade: failed to update saga step state", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(s.ID)), loggateway.Str("new_state", newState), loggateway.Err(err))
 		}
 	}
 }
 
-func (uc *L4CascadeUsecase) compensateReplaceFacts(ctx context.Context, step CascadeSagaStep) {
+func (uc *L4CascadeUsecase) compensateReplaceFacts(ctx context.Context, step CascadeSagaStep) bool {
 	var payload struct {
 		AgentID string `json:"agent_id"`
 	}
@@ -580,36 +599,51 @@ func (uc *L4CascadeUsecase) compensateReplaceFacts(ctx context.Context, step Cas
 		if err != nil {
 			uc.lg.Warn("解析 compensate_replace_facts payload 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
 		}
-		return
+		return false
 	}
 	reverted, err := uc.mutator.RevertCascadeFactStatements(ctx, payload.AgentID)
 	if err != nil {
 		uc.lg.Warn("compensate_replace_facts_failed", loggateway.StepID("memory.l4_fail"), loggateway.Err(err))
-		return
+		return false
 	}
 	uc.lg.Warn("compensate_replace_facts_reverted", loggateway.StepID("memory.l4"), loggateway.Int("reverted", reverted))
+	return true
 }
 
-func (uc *L4CascadeUsecase) compensateUpsertEntity(ctx context.Context, step CascadeSagaStep) {
+func (uc *L4CascadeUsecase) compensateUpsertEntity(ctx context.Context, step CascadeSagaStep) bool {
 	// Restore the entity name to its pre-saga value.
 	// The payload is a dedicated compensation struct with explicit "old_name" field.
 	var payload struct {
-		EntityID   string `json:"entity_id"`
-		ScopeType  string `json:"scope_type"`
-		ScopeID    string `json:"scope_id"`
-		UserID     string `json:"user_id"`
-		EntityType string `json:"entity_type"`
-		OldName    string `json:"old_name"`
-		Desc       string `json:"description"`
-		Meta       string `json:"metadata"`
+		EntityID   string   `json:"entity_id"`
+		ScopeType  string   `json:"scope_type"`
+		ScopeID    string   `json:"scope_id"`
+		UserID     string   `json:"user_id"`
+		EntityType string   `json:"entity_type"`
+		OldName    string   `json:"old_name"`
+		Desc       string   `json:"description"`
+		Meta       string   `json:"metadata"`
+		Importance *float64 `json:"importance"`
+		Confidence *float64 `json:"confidence"`
 	}
 	if err := json.Unmarshal([]byte(step.PayloadJSON), &payload); err != nil {
 		uc.lg.Warn("compensate_upsert_entity: failed to parse payload", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
-		return
+		return false
 	}
 	if payload.OldName == "" || payload.EntityID == "" {
 		uc.lg.Warn("compensate_upsert_entity: missing old_name or entity_id in payload", loggateway.StepID("memory.cascade_fail"))
-		return
+		return false
+	}
+	// Use importance/confidence from the compensation payload (captured at
+	// saga init time from the pre-saga entity snapshot). *float64 pointers
+	// distinguish "field absent in old payload" (nil → use fallback) from
+	// "field present with value 0" (non-nil → preserve zero).
+	importance := l4CascadeEntImportance
+	if payload.Importance != nil {
+		importance = *payload.Importance
+	}
+	confidence := l4CascadeEntConfidence
+	if payload.Confidence != nil {
+		confidence = *payload.Confidence
 	}
 	if err := uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
 		ID:             payload.EntityID,
@@ -620,31 +654,40 @@ func (uc *L4CascadeUsecase) compensateUpsertEntity(ctx context.Context, step Cas
 		Name:           payload.OldName,
 		NameNormalized: strings.ToLower(payload.OldName),
 		Description:    payload.Desc,
-		Importance:     l4CascadeEntImportance,
-		Confidence:     l4CascadeEntConfidence,
+		Importance:     importance,
+		Confidence:     confidence,
 		MetadataJSON:   payload.Meta,
 	}); err != nil {
 		uc.lg.Warn("compensate_upsert_entity: failed to restore old name", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", payload.EntityID), loggateway.Err(err))
-		return
+		return false
 	}
 	uc.lg.Warn("compensate_upsert_entity: restored old name", loggateway.StepID("memory.l4"), loggateway.Str("entity_id", payload.EntityID), loggateway.Str("old_name", payload.OldName))
+	return true
 }
 
-func (uc *L4CascadeUsecase) compensateTouchAffected(ctx context.Context, step CascadeSagaStep) {
+func (uc *L4CascadeUsecase) compensateTouchAffected(ctx context.Context, step CascadeSagaStep) bool {
 	// Remove cascade_linked_* metadata from affected entities that were touched.
 	var affected []CascadeAffectedEntity
-	if err := json.Unmarshal([]byte(step.PayloadJSON), &affected); err != nil || len(affected) == 0 {
-		uc.lg.Warn("compensate_touch_affected: no affected entities in payload", loggateway.StepID("memory.cascade_fail"))
-		return
+	if err := json.Unmarshal([]byte(step.PayloadJSON), &affected); err != nil {
+		uc.lg.Warn("compensate_touch_affected: failed to parse payload", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		return false
 	}
+	if len(affected) == 0 {
+		uc.lg.Warn("compensate_touch_affected: no affected entities in payload", loggateway.StepID("memory.cascade_fail"))
+		return false
+	}
+	allOK := true
 	for _, aff := range affected {
 		entRaw, err := uc.reader.GetEntityRow(ctx, aff.EntityID)
 		if err != nil {
 			uc.lg.Warn("compensate_touch_affected: failed to get entity", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", aff.EntityID), loggateway.Err(err))
+			allOK = false
 			continue
 		}
 		var ent map[string]any
-		if json.Unmarshal(entRaw, &ent) != nil {
+		if err := json.Unmarshal(entRaw, &ent); err != nil {
+			uc.lg.Warn("compensate_touch_affected: failed to parse entity row", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", aff.EntityID), loggateway.Err(err))
+			allOK = false
 			continue
 		}
 		metaStr := jsonutil.IfaceStr(ent, "metadata_json")
@@ -653,6 +696,12 @@ func (uc *L4CascadeUsecase) compensateTouchAffected(ctx context.Context, step Ca
 			delete(m, "cascade_linked_trigger_id")
 			delete(m, "cascade_linked_name")
 			if newMeta, err := json.Marshal(m); err == nil {
+				// Preserve original importance/confidence from the entity row
+				// so compensation only removes cascade metadata without
+				// corrupting the entity's intrinsic quality scores.
+				// Use anyFloatRaw to preserve zero values.
+				importance := anyFloatRaw(ent, "importance", l4CascadeTouchImportance)
+				confidence := anyFloatRaw(ent, "confidence", l4CascadeTouchConfidence)
 				if err := uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
 					ID:             aff.EntityID,
 					ScopeType:      "agent",
@@ -662,19 +711,21 @@ func (uc *L4CascadeUsecase) compensateTouchAffected(ctx context.Context, step Ca
 					Name:           jsonutil.IfaceStr(ent, "name"),
 					NameNormalized: jsonutil.IfaceStr(ent, "name_normalized"),
 					Description:    jsonutil.IfaceStr(ent, "description"),
-					Importance:     l4CascadeTouchImportance,
-					Confidence:     l4CascadeTouchConfidence,
+					Importance:     importance,
+					Confidence:     confidence,
 					MetadataJSON:   string(newMeta),
 				}); err != nil {
 					uc.lg.Warn("compensate_touch_affected: failed to upsert entity", loggateway.StepID("memory.cascade_fail"), loggateway.Str("entity_id", aff.EntityID), loggateway.Err(err))
+					allOK = false
 				}
 			}
 		}
 	}
 	uc.lg.Warn("compensate_touch_affected: cleaned cascade_linked metadata", loggateway.StepID("memory.l4"), loggateway.Int("affected_count", len(affected)))
+	return allOK
 }
 
-func (uc *L4CascadeUsecase) compensateSyncIndex(ctx context.Context, step CascadeSagaStep) {
+func (uc *L4CascadeUsecase) compensateSyncIndex(ctx context.Context, step CascadeSagaStep) bool {
 	var payload struct {
 		AgentID string `json:"agent_id"`
 	}
@@ -682,14 +733,15 @@ func (uc *L4CascadeUsecase) compensateSyncIndex(ctx context.Context, step Cascad
 		if err != nil {
 			uc.lg.Warn("解析 compensate_sync_index payload 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
 		}
-		return
+		return false
 	}
 	marked, err := uc.mutator.MarkFactsIndexStaleByAgent(ctx, payload.AgentID)
 	if err != nil {
 		uc.lg.Warn("compensate_sync_index_failed", loggateway.StepID("memory.l4_fail"), loggateway.Err(err))
-		return
+		return false
 	}
 	uc.lg.Warn("compensate_sync_index_marked_stale", loggateway.StepID("memory.l4"), loggateway.Str("marked", fmt.Sprint(marked)))
+	return true
 }
 
 func (uc *L4CascadeUsecase) GetSagaSteps(ctx context.Context, proposalID string) ([]CascadeSagaStep, error) {
@@ -757,8 +809,8 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 			Name:           jsonutil.IfaceStr(ent, "name"),
 			NameNormalized: jsonutil.IfaceStr(ent, "name_normalized"),
 			Description:    jsonutil.IfaceStr(ent, "description"),
-			Importance:     l4CascadeTouchImportance,
-			Confidence:     l4CascadeTouchConfidence,
+			Importance:     anyFloatRaw(ent, "importance", l4CascadeTouchImportance),
+			Confidence:     anyFloatRaw(ent, "confidence", l4CascadeTouchConfidence),
 			MetadataJSON:   mergeCascadeLinkedMeta(jsonutil.IfaceStr(ent, "metadata_json"), triggerID, newName, uc.lg),
 		}); err != nil {
 			failedIDs = append(failedIDs, id)
@@ -814,4 +866,26 @@ func (uc *L4CascadeUsecase) Reject(ctx context.Context, id, reviewer, reason str
 
 func cascadeNowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+// anyFloatRaw extracts a float64 from a map value, returning the fallback
+// only if the key is missing or the value is not a numeric type.
+// It preserves zero and negative values — used for compensation payloads
+// where the original value must be restored exactly.
+func anyFloatRaw(m map[string]any, key string, fallback float64) float64 {
+	v, ok := m[key]
+	if !ok {
+		return fallback
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	}
+	return fallback
 }

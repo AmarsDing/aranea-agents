@@ -357,7 +357,7 @@ func (r *Runner) resolveCronAgent(ctx context.Context, task biz.CronTask) (biz.A
 		return biz.Agent{}, err
 	}
 	for _, agent := range res.Items {
-		if agent.IsDefault {
+		if biz.BoolVal(agent.IsDefault) {
 			return agent, nil
 		}
 	}

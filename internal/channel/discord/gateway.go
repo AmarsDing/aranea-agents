@@ -2,7 +2,6 @@ package discord
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -40,12 +39,12 @@ func RunGateway(
 	}
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return fmt.Errorf("discord gateway: bot_token required")
+		return errBotTokenRequired
 	}
 
 	session, err := discordgo.New("Bot " + token)
 	if err != nil {
-		return fmt.Errorf("discord gateway: new session: %w", err)
+		return discordGatewayError("discord gateway: new session", err)
 	}
 
 	chRow := ch
@@ -70,8 +69,8 @@ func RunGateway(
 			Text:           text,
 			IdempotencyKey: "discord:" + m.ID,
 			OutboundMeta: map[string]string{
-				"recipient": channelID,
-				"channel":   channelID,
+				port.MetaRecipient: channelID,
+				port.MetaChannel:   channelID,
 			},
 		}
 		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
@@ -83,7 +82,7 @@ func RunGateway(
 	})
 
 	if err := session.Open(); err != nil {
-		return fmt.Errorf("discord gateway: open: %w", err)
+		return discordGatewayError("discord gateway: open", err)
 	}
 	defer session.Close()
 

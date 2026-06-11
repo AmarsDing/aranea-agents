@@ -8,7 +8,6 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -83,14 +82,37 @@ func (r *cancelTeamRunRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (
 	return biz.TaskDeadLetter{}, nil
 }
 
+// testRunRegistry is a minimal stub implementing biz.RunRegistryPort for tests.
+type testRunRegistry struct {
+	statuses  map[string]biz.RunStatusEntry
+	cancelled map[string]bool
+}
+
+func (t *testRunRegistry) Cancel(sessionID string) (bool, string) {
+	entry, ok := t.statuses[sessionID]
+	if !ok {
+		return false, ""
+	}
+	t.cancelled[sessionID] = true
+	return true, entry.RunID
+}
+
+func (t *testRunRegistry) GetStatus(sessionID string) (biz.RunStatusEntry, bool) {
+	entry, ok := t.statuses[sessionID]
+	return entry, ok
+}
+
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 4})
 	defer unsub()
 
-	reg := rt.NewRunRegistry()
-	reg.SetStatus("sess-team-1", "run-team-1", biz.TeamRunStatusRunning, "")
-	reg.StoreCancelable("sess-team-1", "run-team-1", func() {})
+	reg := &testRunRegistry{
+		statuses: map[string]biz.RunStatusEntry{
+			"sess-team-1": {RunID: "run-team-1", Status: biz.TeamRunStatusRunning},
+		},
+		cancelled: map[string]bool{},
+	}
 
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},

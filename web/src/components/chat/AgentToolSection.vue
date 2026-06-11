@@ -149,6 +149,7 @@ const categoryIcon = computed(() => {
   border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)
 
 .section__body
+  max-height: 600px
   overflow: hidden
   transition: max-height 0.25s ease, opacity 0.15s ease
 

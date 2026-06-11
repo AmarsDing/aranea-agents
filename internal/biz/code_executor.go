@@ -1,10 +1,9 @@
 package biz
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -35,5 +34,5 @@ func ValidateCodeExecutorType(raw string) error {
 			return nil
 		}
 	}
-	return errors.BadRequest("AGENT", fmt.Sprintf("invalid code_executor_type %q; allowed: local, docker, e2b, container", raw))
+	return apierror.BadRequest("AGENT", "invalid code_executor_type %q; allowed: local, docker, e2b, container", raw)
 }

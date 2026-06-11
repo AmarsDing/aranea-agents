@@ -1,7 +1,7 @@
 <template>
   <template v-if="kind === 'Button'">
     <q-btn
-      :color="ctx.buttonPrimary ? 'primary' : undefined"
+      :color="ctx.buttonPrimary ? 'accent' : undefined"
       :outline="!ctx.buttonPrimary"
       unelevated
       rounded

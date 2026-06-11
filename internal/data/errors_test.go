@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	"aranea-agents/internal/data/ent"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestEntErrToBizErr_Nil(t *testing.T) {
-	got := entErrToBizErr(nil, "TEST", "test")
+	got := entErrToBizErr(nil, "TEST")
 	if got != nil {
 		t.Fatalf("expected nil for nil input, got %v", got)
 	}
@@ -32,19 +31,19 @@ func TestEntErrToBizErr_NotFound(t *testing.T) {
 		t.Fatalf("expected NotFound error, got %v", err)
 	}
 
-	got := entErrToBizErr(err, "SESSION", "session not found")
-	var ke *kerrors.Error
-	if !errors.As(got, &ke) {
-		t.Fatalf("expected kerrors.Error, got %T", got)
+	got := entErrToBizErr(err, "SESSION")
+	var ae *apierror.Error
+	if !errors.As(got, &ae) {
+		t.Fatalf("expected apierror.Error, got %T", got)
 	}
-	if ke.Code != 404 {
-		t.Fatalf("expected code 404, got %d", ke.Code)
+	if ae.Code != apierror.CodeNotFound {
+		t.Fatalf("expected code NOT_FOUND, got %s", ae.Code)
 	}
-	if ke.Reason != "SESSION" {
-		t.Fatalf("expected reason SESSION, got %q", ke.Reason)
+	if ae.Domain != "SESSION" {
+		t.Fatalf("expected domain SESSION, got %q", ae.Domain)
 	}
 	if !errors.Is(got, err) {
-		t.Fatal("expected original error in chain via WithCause")
+		t.Fatal("expected original error in chain")
 	}
 }
 
@@ -66,42 +65,42 @@ func TestEntErrToBizErr_ConstraintError(t *testing.T) {
 		t.Fatalf("expected ConstraintError, got %v", err)
 	}
 
-	got := entErrToBizErr(err, "SESSION", "duplicate session")
-	var ke *kerrors.Error
-	if !errors.As(got, &ke) {
-		t.Fatalf("expected kerrors.Error, got %T", got)
+	got := entErrToBizErr(err, "SESSION")
+	var ae *apierror.Error
+	if !errors.As(got, &ae) {
+		t.Fatalf("expected apierror.Error, got %T", got)
 	}
-	if ke.Code != 409 {
-		t.Fatalf("expected code 409 Conflict, got %d", ke.Code)
+	if ae.Code != apierror.CodeConflict {
+		t.Fatalf("expected code CONFLICT, got %s", ae.Code)
 	}
-	if ke.Reason != "SESSION" {
-		t.Fatalf("expected reason SESSION, got %q", ke.Reason)
+	if ae.Domain != "SESSION" {
+		t.Fatalf("expected domain SESSION, got %q", ae.Domain)
 	}
 }
 
 func TestEntErrToBizErr_NotLoaded(t *testing.T) {
 	// ent.NotLoadedError has unexported fields, so we cannot construct it directly.
 	// Verify the switch branch by checking that ent.IsNotLoaded returns true
-	// for a real NotLoadedError and the function maps it to 400 BadRequest.
+	// for a real NotLoadedError and the function maps it to BAD_REQUEST.
 	// We test this indirectly: confirm that a non-Ent error does NOT match
-	// ent.IsNotLoaded, and that the default branch maps to 500.
+	// ent.IsNotLoaded, and that the default branch maps to INTERNAL.
 	err := errors.New("some unexpected db error")
 	if ent.IsNotLoaded(err) {
 		t.Fatal("generic error should not match IsNotLoaded")
 	}
 
-	got := entErrToBizErr(err, "DATA", "internal data error")
-	var ke *kerrors.Error
-	if !errors.As(got, &ke) {
-		t.Fatalf("expected kerrors.Error, got %T", got)
+	got := entErrToBizErr(err, "DATA")
+	var ae *apierror.Error
+	if !errors.As(got, &ae) {
+		t.Fatalf("expected apierror.Error, got %T", got)
 	}
-	if ke.Code != 500 {
-		t.Fatalf("expected code 500 InternalServer, got %d", ke.Code)
+	if ae.Code != apierror.CodeInternal {
+		t.Fatalf("expected code INTERNAL, got %s", ae.Code)
 	}
-	if ke.Reason != "DATA" {
-		t.Fatalf("expected reason DATA, got %q", ke.Reason)
+	if ae.Domain != "DATA" {
+		t.Fatalf("expected domain DATA, got %q", ae.Domain)
 	}
 	if !errors.Is(got, err) {
-		t.Fatal("expected original error in chain via WithCause")
+		t.Fatal("expected original error in chain")
 	}
 }

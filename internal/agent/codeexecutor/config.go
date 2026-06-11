@@ -11,6 +11,7 @@ const (
 	TypeDocker    = "docker"
 	TypeE2B       = "e2b"
 	TypeContainer = "container"
+	TypeDisabled  = "disabled" // code execution refused (e.g. production without sandbox)
 )
 
 // EnvConfig holds process-level code executor settings from environment variables.
@@ -45,6 +46,8 @@ func LoadEnvConfig() EnvConfig {
 }
 
 // ValidTypes lists supported executor backend identifiers.
+// TypeDisabled is intentionally excluded: it represents a fallback state
+// (e.g. production without sandbox) rather than a user-configurable backend.
 func ValidTypes() []string {
 	return []string{TypeLocal, TypeDocker, TypeE2B, TypeContainer}
 }

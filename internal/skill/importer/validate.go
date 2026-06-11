@@ -14,7 +14,7 @@ import (
 
 // DirectorySlugMismatch reports when a folder name does not match parsed slug.
 func DirectorySlugMismatch(dirSlug, candidateSlug string) *biz.SkillImportIssue {
-	if CanonicalSlug(dirSlug) != CanonicalSlug(candidateSlug) {
+	if SlugifyOrRandom(dirSlug) != SlugifyOrRandom(candidateSlug) {
 		return &biz.SkillImportIssue{
 			Type:    "directory_slug_mismatch",
 			Message: fmt.Sprintf("directory name %q must match skill slug %q", dirSlug, candidateSlug),

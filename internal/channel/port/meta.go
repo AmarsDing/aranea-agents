@@ -25,6 +25,7 @@ const (
 	MetaServiceURL        = "service_url"
 	MetaConversationID    = "conversation_id"
 	MetaReplyToken        = "reply_token"
+	MetaChannel           = "channel"
 )
 
 var knownOutboundMetaKeys = map[string]struct{}{
@@ -44,8 +45,9 @@ var knownOutboundMetaKeys = map[string]struct{}{
 	MetaSessionWebhook:   {},
 	MetaResponseURL:      {},
 	MetaServiceURL:       {},
-	MetaConversationID:   {},
-	MetaReplyToken:       {},
+	MetaConversationID: {},
+	MetaReplyToken:     {},
+	MetaChannel:        {},
 }
 
 var platformRequiredOutboundMeta = map[string][]string{

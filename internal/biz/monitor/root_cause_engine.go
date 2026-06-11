@@ -3,14 +3,11 @@ package monitor
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
-
 	"aranea-agents/internal/biz/types"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type RootCauseRule struct {
@@ -222,19 +219,19 @@ func (e *RootCauseEngine) AddRules(rules []RootCauseRule) error {
 	}
 	for i := range rules {
 		if strings.TrimSpace(rules[i].ID) == "" {
-			return kerrors.BadRequest("RCA_RULE_INVALID", fmt.Sprintf("rule at index %d has empty ID", i))
+			return apierror.BadRequest("RCA_RULE_INVALID", "rule at index %d has empty ID", i)
 		}
 		if strings.TrimSpace(rules[i].Name) == "" {
-			return kerrors.BadRequest("RCA_RULE_INVALID", fmt.Sprintf("rule %q has empty Name", rules[i].ID))
+			return apierror.BadRequest("RCA_RULE_INVALID", "rule %q has empty Name", rules[i].ID)
 		}
 		if _, dup := existing[rules[i].ID]; dup {
-			return kerrors.BadRequest("RCA_RULE_DUPLICATE", fmt.Sprintf("rule %q has duplicate ID", rules[i].ID))
+			return apierror.BadRequest("RCA_RULE_DUPLICATE", "rule %q has duplicate ID", rules[i].ID)
 		}
 		if p := rules[i].Condition.Pattern; p != "" {
 			if re, err := regexp.Compile(p); err == nil {
 				rules[i].Condition.compiledPattern = re
 			} else {
-				return kerrors.BadRequest("RCA_RULE_REGEX", fmt.Sprintf("rule %q has invalid regex %q: %s", rules[i].ID, p, err.Error()))
+				return apierror.BadRequest("RCA_RULE_REGEX", "rule %q has invalid regex %q: %s", rules[i].ID, p, err.Error())
 			}
 		}
 		e.rules = append(e.rules, rules[i])

@@ -9,9 +9,8 @@ import (
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/strutil"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -163,7 +162,7 @@ func mapSessionErr(err error) error {
 		return nil
 	}
 	if stderrors.Is(err, sql.ErrNoRows) {
-		return kerrors.NotFound("SESSION", "session not found")
+		return apierror.NotFound("SESSION", "session not found")
 	}
 	return err
 }
@@ -365,7 +364,7 @@ func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {
 func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSessionMessagesRequest) (*v1.ListSessionMessagesResponse, error) {
 	sessionID := strings.TrimSpace(req.GetId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session id is required")
+		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	currentRev, err := s.uc.GetSessionRevision(ctx, sessionID)
 	if err != nil {
@@ -483,7 +482,7 @@ func (s *SessionService) ListSessionTurns(ctx context.Context, req *v1.ListSessi
 
 func (s *SessionService) CompactSession(ctx context.Context, req *v1.CompactSessionRequest) (*v1.CompactSessionResponse, error) {
 	if req.GetSessionId() == "" {
-		return nil, kerrors.BadRequest("SESSION", "session_id is required")
+		return nil, apierror.BadRequest("SESSION", "session_id is required")
 	}
 	result, err := s.compress.CompactSession(ctx, req.GetSessionId(), req.GetPreserveInstruction())
 	if err != nil {
@@ -506,7 +505,7 @@ func (s *SessionService) CompactSession(ctx context.Context, req *v1.CompactSess
 func (s *SessionService) GetCompressStatus(ctx context.Context, req *v1.GetCompressStatusRequest) (*v1.GetCompressStatusReply, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "session_id is required")
+		return nil, apierror.BadRequest("SESSION", "session_id is required")
 	}
 	status, err := s.compressStatus.CompressStatus(ctx, sessionID)
 	if err != nil {
@@ -518,11 +517,11 @@ func (s *SessionService) GetCompressStatus(ctx context.Context, req *v1.GetCompr
 // ListChildSessions returns child sessions of a parent session (B-2).
 func (s *SessionService) ListChildSessions(ctx context.Context, req *v1.ListChildSessionsRequest) (*v1.ListChildSessionsResponse, error) {
 	if s == nil || s.uc == nil {
-		return nil, kerrors.InternalServer("SESSION", "session service not configured")
+		return nil, apierror.Internal("SESSION", "session service not configured")
 	}
 	parentSessionID := strings.TrimSpace(req.GetParentSessionId())
 	if parentSessionID == "" {
-		return nil, kerrors.BadRequest("SESSION", "parent_session_id is required")
+		return nil, apierror.BadRequest("SESSION", "parent_session_id is required")
 	}
 	sessions, err := s.uc.ListChildSessions(ctx, parentSessionID)
 	if err != nil {

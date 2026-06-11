@@ -4,11 +4,12 @@ const LS_SECTION_COLLAPSED = 'chat:collapsed:sections';
 const LS_GROUP_COLLAPSED = 'chat:collapsed:groups';
 
 export function useChatEntityCollapse() {
-  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; completedTeams: boolean }>(
+  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; interruptedTeams: boolean; completedTeams: boolean }>(
     {
       agents: false,
       teams: false,
       activeTeams: false,
+      interruptedTeams: false,
       completedTeams: true,
     },
   );
@@ -25,11 +26,13 @@ export function useChatEntityCollapse() {
           agents?: boolean;
           teams?: boolean;
           activeTeams?: boolean;
+          interruptedTeams?: boolean;
           completedTeams?: boolean;
         };
         if (typeof parsed.agents === 'boolean') sectionCollapsed.agents = parsed.agents;
         if (typeof parsed.teams === 'boolean') sectionCollapsed.teams = parsed.teams;
         if (typeof parsed.activeTeams === 'boolean') sectionCollapsed.activeTeams = parsed.activeTeams;
+        if (typeof parsed.interruptedTeams === 'boolean') sectionCollapsed.interruptedTeams = parsed.interruptedTeams;
         if (typeof parsed.completedTeams === 'boolean') sectionCollapsed.completedTeams = parsed.completedTeams;
       }
     } catch {
@@ -64,7 +67,7 @@ export function useChatEntityCollapse() {
     }
   }
 
-  function toggleSection(section: 'agents' | 'teams' | 'activeTeams' | 'completedTeams') {
+  function toggleSection(section: 'agents' | 'teams' | 'activeTeams' | 'interruptedTeams' | 'completedTeams') {
     sectionCollapsed[section] = !sectionCollapsed[section];
     saveSections();
   }

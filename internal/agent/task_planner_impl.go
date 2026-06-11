@@ -657,7 +657,7 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 	}
 
 	if err := json.Unmarshal([]byte(text), &rawTasks); err != nil {
-		return nil, fmt.Errorf("json unmarshal: %w", err)
+		return nil, kerrors.InternalServer("TASK_PLANNER", "json unmarshal: "+err.Error())
 	}
 
 	subTasks := make([]biz.SubTask, 0, len(rawTasks))
@@ -702,7 +702,7 @@ func validateSubTaskDAG(tasks []biz.SubTask) error {
 	for _, t := range tasks {
 		for _, depID := range t.DependsOn {
 			if !idSet[depID] {
-				return fmt.Errorf("subtask %s depends on non-existent subtask %s", t.ID, depID)
+				return kerrors.BadRequest("TASK_PLANNER", fmt.Sprintf("subtask %s depends on non-existent subtask %s", t.ID, depID))
 			}
 		}
 	}
@@ -731,7 +731,7 @@ func validateSubTaskDAG(tasks []biz.SubTask) error {
 			for _, depID := range t.DependsOn {
 				switch colors[depID] {
 				case gray:
-					return fmt.Errorf("cycle detected: %s → %s", id, depID)
+					return kerrors.BadRequest("TASK_PLANNER", fmt.Sprintf("cycle detected: %s → %s", id, depID))
 				case white:
 					if err := dfs(depID); err != nil {
 						return err

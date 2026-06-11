@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const defaultLineStreamEditInterval = 2 * time.Second
@@ -58,9 +60,12 @@ func (s *StreamSender) Update(ctx context.Context, recipient, text string, force
 	if !force && time.Since(s.lastEdit) < interval {
 		return nil
 	}
-	if err := s.updateMessage(ctx, s.messageID, text); err != nil {
+	// LINE does not support editing sent messages; send a new push message instead.
+	id, err := s.pushMessage(ctx, recipient, text)
+	if err != nil {
 		return err
 	}
+	s.messageID = id
 	s.lastEdit = time.Now()
 	return nil
 }
@@ -68,7 +73,7 @@ func (s *StreamSender) Update(ctx context.Context, recipient, text string, force
 func (s *StreamSender) pushMessage(ctx context.Context, recipient, text string) (string, error) {
 	token := strings.TrimSpace(s.ChannelToken)
 	if token == "" {
-		return "", fmt.Errorf("line stream: channel_token required")
+		return "", kerrors.BadRequest("LINE_CONFIG", "line stream: channel_token required")
 	}
 	body, _ := marshalMessages(recipient, []map[string]any{textMessage(text)})
 	raw, err := doPost(ctx, s.HTTP, token, "https://api.line.me/v2/bot/message/push", body)
@@ -81,24 +86,12 @@ func (s *StreamSender) pushMessage(ctx context.Context, recipient, text string) 
 		} `json:"sentMessages"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("line stream: parse response: %w", err)
+		return "", kerrors.InternalServer("LINE_PROTOCOL", fmt.Sprintf("line stream: parse response: %s", err.Error()))
 	}
 	if len(out.SentMessages) > 0 {
 		return strings.TrimSpace(out.SentMessages[0].ID), nil
 	}
-	return "", fmt.Errorf("line stream: push succeeded but no message id returned")
+	return "", kerrors.InternalServer("LINE_PROTOCOL", "line stream: push succeeded but no message id returned")
 }
 
-func (s *StreamSender) updateMessage(ctx context.Context, messageID, text string) error {
-	token := strings.TrimSpace(s.ChannelToken)
-	if token == "" {
-		return fmt.Errorf("line stream: channel_token required")
-	}
-	payload := map[string]any{
-		"messageId": messageID,
-		"message":   textMessage(text),
-	}
-	body, _ := marshalJSON(payload)
-	_, err := doPost(ctx, s.HTTP, token, "https://api.line.me/v2/bot/message/update", body)
-	return err
-}
+

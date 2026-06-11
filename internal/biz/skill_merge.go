@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -103,7 +102,7 @@ func NewSkillMergeUsecase(
 // Merge 执行三阶段合并
 func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (*SkillMergeResult, error) {
 	if req.SourceID == req.TargetID {
-		return nil, kerrors.BadRequest("SKILL_MERGE", "source and target must be different skills")
+		return nil, apierror.BadRequest("SKILL_MERGE", "source and target must be different skills")
 	}
 
 	// 获取完整数据
@@ -121,13 +120,16 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 	switch req.Strategy {
 	case MergeStrategyAIFuse:
 		if uc.fuser == nil {
-			return nil, kerrors.BadRequest("SKILL_MERGE", "AI fusion not available, use manual_pick or append strategy")
+			return nil, apierror.BadRequest("SKILL_MERGE", "AI fusion not available, use manual_pick or append strategy")
 		}
 		fused, err = uc.fuser.Fuse(ctx, *target, *source)
 		if err != nil {
 			return nil, fmt.Errorf("AI fusion failed: %w", err)
 		}
 	case MergeStrategyManualPick:
+		if strings.TrimSpace(req.ManualBody) == "" {
+			return nil, apierror.BadRequest("SKILL_MERGE", "manual_body is required for manual_pick strategy")
+		}
 		fused = &FusedContent{
 			Body: req.ManualBody,
 			Tags: mergeStringSets(target.Tags, source.Tags),
@@ -138,7 +140,7 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 			Tags: mergeStringSets(target.Tags, source.Tags),
 		}
 	default:
-		return nil, kerrors.BadRequest("SKILL_MERGE", fmt.Sprintf("unknown merge strategy: %s", req.Strategy))
+		return nil, apierror.BadRequest("SKILL_MERGE", "unknown merge strategy: %s", req.Strategy)
 	}
 
 	// Stage 2: Gate 验证（安全检查 + 结构检查）
@@ -148,7 +150,7 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 			return nil, fmt.Errorf("gate verification error: %w", gateErr)
 		}
 		if gateResult != nil && !gateResult.Passed {
-			return nil, kerrors.BadRequest("SKILL_MERGE", fmt.Sprintf("gate verification failed: %s", formatGateFailures(gateResult)))
+			return nil, apierror.BadRequest("SKILL_MERGE", "gate verification failed: %s", formatGateFailures(gateResult))
 		}
 	}
 

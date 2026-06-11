@@ -1,7 +1,12 @@
 package wecom
 
 import (
+	"errors"
+	"strconv"
 	"testing"
+	"time"
+
+	"aranea-agents/internal/channel/port"
 )
 
 func TestParseInbound(t *testing.T) {
@@ -20,7 +25,7 @@ func TestParseInbound(t *testing.T) {
 
 func TestVerifySignature(t *testing.T) {
 	token := "tok"
-	ts := "1409659589"
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	nonce := "xxxxxx"
 	sig := SignFor(token, ts, nonce)
 	if err := VerifySignature(token, ts, nonce, sig); err != nil {
@@ -28,5 +33,8 @@ func TestVerifySignature(t *testing.T) {
 	}
 	if err := VerifySignature(token, ts, nonce, "bad"); err == nil {
 		t.Fatal("expected bad signature error")
+	}
+	if err := VerifySignature("", ts, nonce, "sig"); !errors.Is(err, port.ErrCredentialsNotConfigured) {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
 	}
 }

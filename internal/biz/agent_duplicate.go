@@ -4,14 +4,14 @@ import (
 	"context"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // Duplicate clones an agent with settings and prompt files (AGT-10).
 func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+		return Agent{}, apierror.BadRequest("AGENT", "id is required")
 	}
 	src, err := u.Get(ctx, id)
 	if err != nil {
@@ -25,8 +25,8 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 	copy.ID = ""
 	copy.AgentKey = strings.TrimSpace(src.AgentKey) + "-copy-" + suffix
 	copy.DisplayName = strings.TrimSpace(src.DisplayName) + " Copy"
-	copy.IsDefault = false
-	copy.IsFavorite = false
+	copy.IsDefault = BoolPtr(false)
+	copy.IsFavorite = BoolPtr(false)
 	copy.CreatedAt = ""
 	copy.UpdatedAt = ""
 	copy.DeletedAt = ""
@@ -57,7 +57,7 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 			break
 		}
 		if attempt == 4 {
-			return Agent{}, kerrors.BadRequest("AGENT_KEY_INVALID", msg)
+			return Agent{}, apierror.BadRequest("AGENT_KEY_INVALID", msg)
 		}
 		copy.AgentKey = strings.TrimSpace(src.AgentKey) + "-copy-" + strings.ToLower(newAgentCatalogID()[:6])
 	}

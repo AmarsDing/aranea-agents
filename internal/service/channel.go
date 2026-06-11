@@ -374,6 +374,7 @@ func (s *ChannelService) DeleteChannelCredential(ctx context.Context, req *v1.De
 	if err := s.uc.DeleteCredential(ctx, req.GetChannelId(), req.GetCredentialKey()); err != nil {
 		return nil, err
 	}
+	s.reloadRuntime(ctx)
 	return &emptypb.Empty{}, nil
 }
 

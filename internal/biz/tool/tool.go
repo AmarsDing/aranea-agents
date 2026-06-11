@@ -5,9 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 // Tool key constants (mirrored from biz for subpackage independence).
@@ -374,7 +373,7 @@ func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListR
 
 func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error) {
 	if strings.TrimSpace(id) == "" {
-		return Tool{}, errors.BadRequest("TOOL", "id is required")
+		return Tool{}, apierror.BadRequest("TOOL", "id is required")
 	}
 	t, err := u.repo.GetTool(ctx, id)
 	if err != nil {
@@ -398,7 +397,7 @@ func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, err
 
 func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput) (Tool, error) {
 	if strings.TrimSpace(id) == "" {
-		return Tool{}, errors.BadRequest("TOOL", "id is required")
+		return Tool{}, apierror.BadRequest("TOOL", "id is required")
 	}
 	if err := validateToolUpsert(in); err != nil {
 		return Tool{}, err
@@ -420,7 +419,7 @@ func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput)
 
 func (u *ToolUsecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("TOOL", "id is required")
+		return apierror.BadRequest("TOOL", "id is required")
 	}
 	existing, err := u.repo.GetTool(ctx, id)
 	if err != nil {
@@ -432,9 +431,14 @@ func (u *ToolUsecase) Delete(ctx context.Context, id string) error {
 	return u.repo.DeleteTool(ctx, id)
 }
 
-func (u *ToolUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool, confirmKey ...string) (Tool, error) {
+// ConfirmIntentValue is the required value for the confirm_intent parameter
+// when enabling high/critical risk tools. This ensures the caller explicitly
+// acknowledges the risk rather than matching a guessable key.
+const ConfirmIntentValue = "I_UNDERSTAND_RISK"
+
+func (u *ToolUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool, confirmIntent ...string) (Tool, error) {
 	if strings.TrimSpace(id) == "" {
-		return Tool{}, errors.BadRequest("TOOL", "id is required")
+		return Tool{}, apierror.BadRequest("TOOL", "id is required")
 	}
 	if enabled {
 		t, err := u.repo.GetTool(ctx, id)
@@ -442,8 +446,8 @@ func (u *ToolUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool
 			return Tool{}, err
 		}
 		if t.RiskLevel == "high" || t.RiskLevel == "critical" {
-			if len(confirmKey) == 0 || confirmKey[0] != t.Key {
-				return Tool{}, errors.BadRequest("TOOL", "confirm_key is required and must match tool key for high/critical risk tools")
+			if len(confirmIntent) == 0 || confirmIntent[0] != ConfirmIntentValue {
+				return Tool{}, apierror.BadRequest("TOOL", "confirm_intent is required and must be I_UNDERSTAND_RISK for high/critical risk tools")
 			}
 		}
 	}
@@ -452,7 +456,7 @@ func (u *ToolUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool
 
 func (u *ToolUsecase) UpdateToolConfig(ctx context.Context, id string, configJSON string) (Tool, error) {
 	if strings.TrimSpace(id) == "" {
-		return Tool{}, errors.BadRequest("TOOL", "id is required")
+		return Tool{}, apierror.BadRequest("TOOL", "id is required")
 	}
 	if configJSON == "" {
 		configJSON = "{}"
@@ -521,7 +525,7 @@ func (u *ToolUsecase) SyncBuiltinTools(ctx context.Context) error {
 
 func (u *ToolUsecase) GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error) {
 	if strings.TrimSpace(invocationID) == "" {
-		return ToolInvocationParam{}, errors.BadRequest("TOOL", "invocation id is required")
+		return ToolInvocationParam{}, apierror.BadRequest("TOOL", "invocation id is required")
 	}
 	return u.repo.GetToolInvocationParams(ctx, invocationID)
 }
@@ -537,14 +541,14 @@ func (u *ToolUsecase) ListToolAgentOverrides(ctx context.Context, toolIDOrKey st
 func (u *ToolUsecase) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return nil, errors.BadRequest("TOOL", "agent id is required")
+		return nil, apierror.BadRequest("TOOL", "agent id is required")
 	}
 	return u.repo.ListToolAgentOverridesByAgent(ctx, agentID)
 }
 
 func (u *ToolUsecase) UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error) {
 	if strings.TrimSpace(in.AgentID) == "" {
-		return ToolAgentOverride{}, errors.BadRequest("TOOL", "agent id is required")
+		return ToolAgentOverride{}, apierror.BadRequest("TOOL", "agent id is required")
 	}
 	tool, err := u.GetTool(ctx, in.ToolKey)
 	if err != nil {
@@ -562,7 +566,7 @@ func (u *ToolUsecase) UpsertToolAgentOverride(ctx context.Context, in ToolAgentO
 
 func (u *ToolUsecase) DeleteToolAgentOverride(ctx context.Context, toolIDOrKey string, agentID string) error {
 	if strings.TrimSpace(agentID) == "" {
-		return errors.BadRequest("TOOL", "agent id is required")
+		return apierror.BadRequest("TOOL", "agent id is required")
 	}
 	key, err := u.ResolveToolKey(ctx, toolIDOrKey)
 	if err != nil {

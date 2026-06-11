@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/tools/alias"
 )
@@ -288,7 +289,16 @@ func truncateJSONString(raw string, maxBytes int) string {
 	if maxBytes <= 0 || len(raw) <= maxBytes {
 		return raw
 	}
-	return raw[:maxBytes] + "…"
+	// Walk backward from maxBytes to find a valid UTF-8 boundary
+	// so we never split a multi-byte character.
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(raw[end]) {
+		end--
+	}
+	if end == 0 {
+		end = maxBytes // fallback: no valid boundary found
+	}
+	return raw[:end] + "…"
 }
 
 func parseJSONObject(raw []byte) map[string]any {

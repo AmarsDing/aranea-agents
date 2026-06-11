@@ -64,11 +64,15 @@ func (l *slidingWindowLimiter) Allow(caller, callee string) bool {
 	defer l.mu.Unlock()
 	cutoff := now.Add(-l.window)
 	entries := l.buckets[key]
-	kept := entries[:0]
+	kept := make([]time.Time, 0, len(entries))
 	for _, ts := range entries {
 		if ts.After(cutoff) {
 			kept = append(kept, ts)
 		}
+	}
+	// Clean up stale buckets to prevent unbounded memory growth.
+	if len(kept) == 0 {
+		delete(l.buckets, key)
 	}
 	if len(kept) >= l.max {
 		l.buckets[key] = kept

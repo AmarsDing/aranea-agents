@@ -2,7 +2,7 @@ package mattermost
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"strings"
 )
@@ -18,18 +18,21 @@ func (s *TextSender) ID() string { return "mattermost" }
 func (s *TextSender) SendText(ctx context.Context, channelID, text string) error {
 	channelID = strings.TrimSpace(channelID)
 	text = strings.TrimSpace(text)
-	if channelID == "" || text == "" {
+	if channelID == "" {
+		return errChannelIDRequired
+	}
+	if text == "" {
 		return nil
 	}
 	token := strings.TrimSpace(s.BotToken)
 	if token == "" {
-		return fmt.Errorf("mattermost outbound: bot_token required")
+		return errBotTokenRequired
 	}
 	base := strings.TrimRight(strings.TrimSpace(s.ServerURL), "/")
 	if base == "" {
-		return fmt.Errorf("mattermost outbound: server_url required")
+		return errServerURLRequired
 	}
-	body, _ := marshalJSON(map[string]any{
+	body, _ := json.Marshal(map[string]any{
 		"channel_id": channelID,
 		"message":    text,
 	})

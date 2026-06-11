@@ -6,23 +6,22 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func ResolveSecretRef(ctx context.Context, channels *biz.ChannelUsecase, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return "", kerrors.BadRequest("SECRET", "empty secret_ref")
+		return "", apierror.BadRequest("SECRET", "empty secret_ref")
 	}
 	if strings.HasPrefix(ref, "env:") {
 		name := strings.TrimSpace(strings.TrimPrefix(ref, "env:"))
 		if name == "" {
-			return "", kerrors.BadRequest("SECRET", "env: variable name is empty")
+			return "", apierror.BadRequest("SECRET", "env: variable name is empty")
 		}
 		v := os.Getenv(name)
 		if v == "" {
-			return "", kerrors.NotFound("SECRET", "environment variable "+name+" is not set")
+			return "", apierror.NotFound("SECRET", "environment variable "+name+" is not set")
 		}
 		return v, nil
 	}
@@ -34,7 +33,7 @@ func ResolveSecretRef(ctx context.Context, channels *biz.ChannelUsecase, ref str
 		return plain, nil
 	}
 	if strings.HasPrefix(ref, "local:") {
-		return "", kerrors.BadRequest("SECRET", "local: secret_ref is deprecated; re-save credentials or use env:VAR_NAME")
+		return "", apierror.BadRequest("SECRET", "local: secret_ref is deprecated; re-save credentials or use env:VAR_NAME")
 	}
-	return "", kerrors.BadRequest("SECRET", "unsupported secret_ref (use env:NAME or enc:)")
+	return "", apierror.BadRequest("SECRET", "unsupported secret_ref (use env:NAME or enc:)")
 }

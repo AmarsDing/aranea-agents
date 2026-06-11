@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/pkg/loggateway"
 )
 
 type toolConfirmGate struct {
@@ -44,7 +45,25 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 	}
 	overrides, err := deps.ToolUC.ListToolAgentOverridesByAgent(ctx, ag.ID)
 	if err != nil {
+		// Fail-closed: when DB is unavailable, assume all enabled tools require
+		// confirmation rather than silently skipping the security gate.
+		lg := deps.Logger()
+		lg.Warn("tool confirm gate: DB query for overrides failed, using fail-closed policy",
+			loggateway.StepID("agent.tool_build"),
+			loggateway.Str("agent_id", ag.ID),
+			loggateway.Err(err))
 		overrides = nil
+		// Build a conservative catalog: all enabled tools require confirmation.
+		out := make(map[string]bool, len(eff))
+		for key, enabled := range eff {
+			if enabled {
+				out[key] = true
+				for _, alias := range runtimeConfirmAliases(key) {
+					out[alias] = true
+				}
+			}
+		}
+		return out
 	}
 	overrideByKey := make(map[string]biz.ToolAgentOverride, len(overrides))
 	for _, o := range overrides {
@@ -57,6 +76,12 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 		}
 		tool, err := deps.ToolUC.GetTool(ctx, key)
 		if err != nil {
+			// Fail-closed: when DB is unavailable for a specific tool,
+			// assume it requires confirmation to be safe.
+			out[key] = true
+			for _, alias := range runtimeConfirmAliases(key) {
+				out[alias] = true
+			}
 			continue
 		}
 		ov, hasOV := overrideByKey[key]

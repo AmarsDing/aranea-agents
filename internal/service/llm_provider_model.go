@@ -8,9 +8,8 @@ import (
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -144,7 +143,7 @@ func (s *LlmProviderModelService) GetProviderModel(ctx context.Context, req *v1.
 	m, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
+			return nil, apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
 	}
@@ -158,7 +157,7 @@ func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Con
 	if err != nil {
 		logRevealCredentialsDenied(ctx, resourceID, err, s.lg)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
+			return nil, apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
 	}
@@ -187,12 +186,12 @@ func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Con
 // UpdateProviderModel PATCH /v1/llm-provider-models/{id}.
 func (s *LlmProviderModelService) UpdateProviderModel(ctx context.Context, req *v1.UpdateProviderModelRequest) (*v1.ProviderModel, error) {
 	if req.GetProviderModel() == nil {
-		return nil, kerrors.BadRequest("LLM_PROVIDER_MODEL", "provider_model body is required")
+		return nil, apierror.BadRequest("LLM_PROVIDER_MODEL", "provider_model body is required")
 	}
 	out, err := s.uc.Update(ctx, req.GetId(), patchFromProto(req.GetProviderModel()))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
+			return nil, apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
 	}
@@ -263,11 +262,11 @@ func logRevealCredentialsDenied(ctx context.Context, resourceID string, err erro
 	case errors.Is(err, sql.ErrNoRows):
 		reason = "not_found"
 	default:
-		if se := kerrors.FromError(err); se != nil {
+		if se, ok := apierror.From(err); ok {
 			switch se.Code {
-			case 400:
+			case apierror.CodeBadRequest:
 				reason = "bad_request"
-			case 404:
+			case apierror.CodeNotFound:
 				reason = "not_found"
 			}
 		}

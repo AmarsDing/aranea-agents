@@ -45,18 +45,19 @@ func resolveMemoryToolSearchLimits(ctx context.Context, loader AgentRuntimeSetti
 			policy = biz.ResolveMemoryRuntimePolicy(settings)
 		}
 	}
-	if policy.MasterEnabled {
-		if policy.MemoryToolMaxResults > 0 {
-			topK = int32(policy.MemoryToolMaxResults)
-		}
-		if policy.MemoryToolMinScore > 0 {
-			minScore = policy.MemoryToolMinScore
-		}
-	} else {
-		topK = 0
-		minScore = 1
+	if !policy.MasterEnabled {
+		// MasterEnabled=false: return sentinel values that callers must respect.
+		// optsMax cannot override this — policy takes absolute precedence.
+		return 0, 1
 	}
-	if optsMax > 0 {
+	if policy.MemoryToolMaxResults > 0 {
+		topK = int32(policy.MemoryToolMaxResults)
+	}
+	if policy.MemoryToolMinScore > 0 {
+		minScore = policy.MemoryToolMinScore
+	}
+	// optsMax may further reduce topK but cannot exceed the policy ceiling.
+	if optsMax > 0 && optsMax < topK {
 		topK = optsMax
 	}
 	if topK <= 0 {

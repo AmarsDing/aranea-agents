@@ -5,8 +5,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -150,17 +149,17 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 	agentID = strings.TrimSpace(agentID)
 	suggestionID = strings.TrimSpace(suggestionID)
 	if agentID == "" || suggestionID == "" {
-		return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
+		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
 	}
 	s, err := uc.suggestionRepo.GetByID(ctx, suggestionID)
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
 	if s.AgentID != agentID {
-		return EvolutionSuggestion{}, kerrors.NotFound("EVOLUTION", "suggestion not found for this agent")
+		return EvolutionSuggestion{}, apierror.NotFound("EVOLUTION", "suggestion not found for this agent")
 	}
 	if s.Status != "pending" {
-		return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "only pending suggestions can be applied")
+		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "only pending suggestions can be applied")
 	}
 	switch s.Type {
 	case "persona":
@@ -217,7 +216,7 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 		if !applied && len(files) > 0 {
 			// No AGENTS*.md file found — refuse to apply rather than
 			// overwriting an unrelated file (SOUL.md, IDENTITY.md, etc.).
-			return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "no AGENTS*.md prompt file found; create one before applying prompt suggestions")
+			return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "no AGENTS*.md prompt file found; create one before applying prompt suggestions")
 		}
 		if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 			return EvolutionSuggestion{}, err
@@ -234,17 +233,17 @@ func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string
 	agentID = strings.TrimSpace(agentID)
 	suggestionID = strings.TrimSpace(suggestionID)
 	if agentID == "" || suggestionID == "" {
-		return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
+		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
 	}
 	s, err := uc.suggestionRepo.GetByID(ctx, suggestionID)
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
 	if s.AgentID != agentID {
-		return EvolutionSuggestion{}, kerrors.NotFound("EVOLUTION", "suggestion not found for this agent")
+		return EvolutionSuggestion{}, apierror.NotFound("EVOLUTION", "suggestion not found for this agent")
 	}
 	if s.Status != "pending" {
-		return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "only pending suggestions can be rejected")
+		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "only pending suggestions can be rejected")
 	}
 	return uc.suggestionRepo.UpdateStatus(ctx, suggestionID, "rejected")
 }

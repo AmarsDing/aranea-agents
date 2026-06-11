@@ -76,7 +76,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	var cbRegistry *biztool.CircuitBreakerRegistry
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
 		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
-		entries = append(entries, newToolArgsGuardBeforeHook())
+		entries = append(entries, newToolArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolResultCacheBeforeHook(deps))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {

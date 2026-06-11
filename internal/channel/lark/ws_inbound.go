@@ -60,7 +60,7 @@ func notifyFeishuInboundError(
 	if err == nil {
 		return
 	}
-	recipient := strings.TrimSpace(ev.OutboundMeta["recipient"])
+	recipient := strings.TrimSpace(ev.OutboundMeta[port.MetaRecipient])
 	if recipient == "" {
 		return
 	}

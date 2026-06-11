@@ -19,11 +19,11 @@ func (h *ChannelIngress) gateInboundBeforeTurn(ctx context.Context, chRow biz.Ch
 
 	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaWebhook)
 	if err != nil {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		return false, "", err
 	}
 	if !ok {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		h.recordDelivery(ctx, chRow.ID, "skipped_"+skipReason, map[string]any{
 			"peer_id":         ev.PeerID,
 			"idempotency_key": ev.IdempotencyKey,
@@ -35,12 +35,12 @@ func (h *ChannelIngress) gateInboundBeforeTurn(ctx context.Context, chRow biz.Ch
 
 	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
 	if err != nil {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
 		return false, "", err
 	}
 	if !allowed {
-		h.inboundInflight.release(dedupKey)
+		h.deduplicator.ReleaseInflight(dedupKey)
 		h.recordDelivery(ctx, chRow.ID, "access_denied", map[string]any{
 			"peer_id": ev.PeerID,
 			"reason":  reason,

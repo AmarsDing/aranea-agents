@@ -7,8 +7,7 @@ import (
 	"sync"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -198,7 +197,7 @@ func (o *SkillEvolutionOrchestrator) Approve(ctx context.Context, id string, app
 		return err
 	}
 	if s.Status != "pending" {
-		return kerrors.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be approved, current status: "+s.Status)
+		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be approved, current status: "+s.Status)
 	}
 	return o.writer.UpdateStatus(ctx, id, "approved", approvedBy, "")
 }
@@ -210,7 +209,7 @@ func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, reje
 		return err
 	}
 	if s.Status != "pending" {
-		return kerrors.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be rejected, current status: "+s.Status)
+		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be rejected, current status: "+s.Status)
 	}
 	return o.writer.UpdateStatus(ctx, id, "rejected", rejectedBy, reason)
 }

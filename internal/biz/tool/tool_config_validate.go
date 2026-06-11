@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/shared"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/outboundguard"
 )
 
 func validateToolConfigFields(in ToolUpsertInput) error {
@@ -60,7 +60,7 @@ func validateMCPServerConfigJSON(raw string) error {
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return kerrors.BadRequest("TOOL", "mcp config_json must be a JSON object")
+		return apierror.BadRequest("TOOL", "mcp config_json must be a JSON object")
 	}
 	transport, _ := cfg["transport"].(string)
 	if transport == "" {
@@ -70,15 +70,18 @@ func validateMCPServerConfigJSON(raw string) error {
 	case "stdio":
 		cmd, _ := cfg["command"].(string)
 		if strings.TrimSpace(cmd) == "" {
-			return kerrors.BadRequest("TOOL", "mcp stdio transport requires command")
+			return apierror.BadRequest("TOOL", "mcp stdio transport requires command")
 		}
 	case "sse", "streamable", "streamable_http":
 		url, _ := cfg["url"].(string)
 		if strings.TrimSpace(url) == "" {
-			return kerrors.BadRequest("TOOL", "mcp "+transport+" transport requires url")
+			return apierror.BadRequest("TOOL", "mcp "+transport+" transport requires url")
+		}
+		if err := outboundguard.ValidateURL(url); err != nil {
+			return apierror.BadRequest("TOOL", "mcp url failed SSRF check: "+err.Error())
 		}
 	default:
-		return kerrors.BadRequest("TOOL", "mcp transport must be stdio, sse, or streamable_http")
+		return apierror.BadRequest("TOOL", "mcp transport must be stdio, sse, or streamable_http")
 	}
 	return nil
 }

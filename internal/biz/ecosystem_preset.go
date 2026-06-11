@@ -6,9 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // EcosystemLoadedStatus tracks per-industry load state.
@@ -60,30 +59,31 @@ type EcosystemPresetRepo interface {
 	DeleteTeamsByIndustry(ctx context.Context, industryKey string) (deleted int, modified int, err error)
 }
 
-// SeedPackFunc matches the signature of data.SeedPackIndustry.
-// The client parameter is typed as any to avoid import cycles (actual type: *ent.Client).
-type SeedPackFunc func(ctx context.Context, client any, scenarioDir string, industryKey string, kindOverride string, lg loggateway.Logger) (int, int, error)
+// PackSeeder abstracts the pack seeding operation for an industry.
+// Implemented by data layer, removing the need for *ent.Client to leak into biz.
+type PackSeeder interface {
+	SeedPackIndustry(ctx context.Context, scenarioDir, industryKey, kindOverride string) (agentsCreated int, teamsCreated int, err error)
+}
 
 // EcosystemPresetUsecase manages ecosystem preset load/unload operations.
 type EcosystemPresetUsecase struct {
 	repo        EcosystemPresetRepo
-	seedPack    SeedPackFunc
+	packSeeder  PackSeeder
 	lg          loggateway.Logger
 	scenarioDir string
 	mu          sync.Mutex // protects load/unload from concurrent execution
 }
 
 // NewEcosystemPresetUsecase constructs an EcosystemPresetUsecase.
-func NewEcosystemPresetUsecase(repo EcosystemPresetRepo, seedFn SeedPackFunc, scenarioDir string, lg loggateway.Logger) *EcosystemPresetUsecase {
-	return &EcosystemPresetUsecase{repo: repo, seedPack: seedFn, scenarioDir: scenarioDir, lg: lg}
+func NewEcosystemPresetUsecase(repo EcosystemPresetRepo, seeder PackSeeder, scenarioDir string, lg loggateway.Logger) *EcosystemPresetUsecase {
+	return &EcosystemPresetUsecase{repo: repo, packSeeder: seeder, scenarioDir: scenarioDir, lg: lg}
 }
 
 // DefaultIndustries lists the default industry keys for ecosystem presets.
 var DefaultIndustries = []string{"finance", "selfmedia", "softwaredev"}
 
 // LoadEcosystemPreset loads ecosystem preset data for the specified industries.
-// The client parameter is the ent.Client (typed as any to avoid import cycles).
-func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, industries []string, force bool, client any) (*EcosystemLoadResponse, error) {
+func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, industries []string, force bool) (*EcosystemLoadResponse, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
@@ -93,7 +93,7 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 
 	status, err := uc.repo.GetEcosystemLoaded(ctx)
 	if err != nil {
-		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("read ecosystem status: %s", err.Error()))
+		return nil, apierror.Internal("ECOSYSTEM", "read ecosystem status: %s", err.Error())
 	}
 	if status == nil {
 		status = make(EcosystemLoadedStatus)
@@ -112,7 +112,7 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 			continue
 		}
 
-		agents, teams, err := uc.seedPack(ctx, client, uc.scenarioDir, ind, "ecosystem_preset", uc.lg)
+		agents, teams, err := uc.packSeeder.SeedPackIndustry(ctx, uc.scenarioDir, ind, "ecosystem_preset")
 		if err != nil {
 			resp.Errors[ind] = err.Error()
 			uc.lg.Error("failed to load industry preset",
@@ -132,7 +132,7 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 	}
 
 	if err := uc.repo.SetEcosystemLoaded(ctx, status); err != nil {
-		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("save ecosystem status: %s", err.Error()))
+		return nil, apierror.Internal("ECOSYSTEM", "save ecosystem status: %s", err.Error())
 	}
 
 	return resp, nil
@@ -144,12 +144,12 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 	defer uc.mu.Unlock()
 
 	if len(industries) == 0 {
-		return nil, kerrors.BadRequest("ECOSYSTEM", "industries list is required")
+		return nil, apierror.BadRequest("ECOSYSTEM", "industries list is required")
 	}
 
 	status, err := uc.repo.GetEcosystemLoaded(ctx)
 	if err != nil {
-		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("read ecosystem status: %s", err.Error()))
+		return nil, apierror.Internal("ECOSYSTEM", "read ecosystem status: %s", err.Error())
 	}
 	if status == nil {
 		status = make(EcosystemLoadedStatus)
@@ -219,7 +219,7 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 	}
 
 	if err := uc.repo.SetEcosystemLoaded(ctx, status); err != nil {
-		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("save ecosystem status: %s", err.Error()))
+		return nil, apierror.Internal("ECOSYSTEM", "save ecosystem status: %s", err.Error())
 	}
 
 	return resp, nil

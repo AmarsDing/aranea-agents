@@ -8,11 +8,50 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"golang.org/x/sync/singleflight"
 )
+
+// oauth2TokenCache caches OAuth2 access tokens keyed by (tokenURL, clientID).
+// This prevents thundering-herd token requests when multiple MCP tools in the
+// same agent share the same OAuth2 credential.
+var (
+	oauth2Cache   map[string]*oauth2CachedToken
+	oauth2CacheMu sync.RWMutex
+	oauth2Flight  singleflight.Group
+)
+
+const oauth2TokenEarlyRefresh = 30 * time.Second
+
+// oauth2CacheMaxEntries limits the cache size to prevent unbounded memory
+// growth in multi-tenant scenarios with many distinct OAuth2 credentials.
+const oauth2CacheMaxEntries = 256
+
+type oauth2CachedToken struct {
+	AccessToken  string
+	RefreshToken string // non-empty when obtained via refresh_token grant
+	ExpiresAt    time.Time
+}
+
+func init() {
+	oauth2Cache = make(map[string]*oauth2CachedToken)
+}
+
+// oauth2HTTPClient is a shared HTTP client for all OAuth2 token requests.
+// Reusing a single client ensures TCP connection pooling and avoids
+// TIME_WAIT exhaustion under high concurrency.
+var oauth2HTTPClient = &http.Client{
+	Timeout: time.Duration(mcpdefaults.DefaultOAuth2TimeoutSec) * time.Second,
+}
+
+func oauth2CacheKey(tokenURL, clientID string) string {
+	return tokenURL + "|" + clientID
+}
 
 func ResolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 	authType := strings.ToLower(strings.TrimSpace(auth.Type))
@@ -22,7 +61,17 @@ func ResolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string
 	case "oauth2_refresh":
 		return fetchOAuth2RefreshToken(ctx, auth)
 	case "oauth2_static":
-		return strings.TrimSpace(auth.AccessToken), nil
+		token := strings.TrimSpace(auth.AccessToken)
+		if token == "" {
+			return "", kerrors.BadRequest("MCP_OAUTH", "oauth2_static: access_token is required")
+		}
+		// Check expiry: if ExpiresAt is set and the token has expired,
+		// return an error so the caller can rebuild the agent with a
+		// fresh token rather than silently using an expired one.
+		if !auth.ExpiresAt.IsZero() && time.Now().After(auth.ExpiresAt) {
+			return "", kerrors.BadRequest("MCP_OAUTH", fmt.Sprintf("oauth2_static: access_token expired at %s", auth.ExpiresAt.Format(time.RFC3339)))
+		}
+		return token, nil
 	default:
 		return strings.TrimSpace(auth.APIKey), nil
 	}
@@ -36,58 +85,268 @@ func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpconfig.AuthConfig
 	clientID := strings.TrimSpace(auth.ClientID)
 	clientSecret := strings.TrimSpace(auth.ClientSecret)
 	if tokenURL == "" || clientID == "" {
-		return "", fmt.Errorf("oauth2: token_url and client_id are required")
+		return "", kerrors.BadRequest("MCP_OAUTH", "oauth2: token_url and client_id are required")
 	}
-	form := url.Values{}
-	form.Set("grant_type", "client_credentials")
-	if scope := strings.TrimSpace(auth.Scope); scope != "" {
-		form.Set("scope", scope)
+
+	// Check cache first.
+	cacheKey := oauth2CacheKey(tokenURL, clientID)
+	oauth2CacheMu.RLock()
+	if cached, ok := oauth2Cache[cacheKey]; ok && time.Now().Before(cached.ExpiresAt) {
+		oauth2CacheMu.RUnlock()
+		return cached.AccessToken, nil
 	}
-	return postOAuth2Token(ctx, tokenURL, form, clientID, clientSecret)
+	oauth2CacheMu.RUnlock()
+
+	// Collapse concurrent requests for the same credential via singleflight.
+	v, err, _ := oauth2Flight.Do(cacheKey, func() (any, error) {
+		// Re-check cache inside the flight slot.
+		oauth2CacheMu.RLock()
+		if cached, ok := oauth2Cache[cacheKey]; ok && time.Now().Before(cached.ExpiresAt) {
+			oauth2CacheMu.RUnlock()
+			return cached.AccessToken, nil
+		}
+		oauth2CacheMu.RUnlock()
+
+		form := url.Values{}
+		form.Set("grant_type", "client_credentials")
+		if scope := strings.TrimSpace(auth.Scope); scope != "" {
+			form.Set("scope", scope)
+		}
+		token, expiresIn, fetchErr := postOAuth2TokenWithExpiry(ctx, tokenURL, form, clientID, clientSecret)
+		if fetchErr != nil {
+			return nil, fetchErr
+		}
+		expiresAt := time.Now().Add(time.Duration(expiresIn)*time.Second - oauth2TokenEarlyRefresh)
+		if expiresIn <= 0 {
+			expiresAt = time.Now().Add(5*time.Minute - oauth2TokenEarlyRefresh)
+		}
+		oauth2CacheMu.Lock()
+		oauth2Cache[cacheKey] = &oauth2CachedToken{
+			AccessToken: token,
+			ExpiresAt:   expiresAt,
+		}
+		evictExpiredOAuth2CacheLocked()
+		evictOverflowOAuth2CacheLocked()
+		oauth2CacheMu.Unlock()
+		return token, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return v.(string), nil
 }
 
 func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 	tokenURL := strings.TrimSpace(auth.TokenURL)
-	refresh := strings.TrimSpace(auth.RefreshToken)
-	if tokenURL == "" || refresh == "" {
-		return "", fmt.Errorf("oauth2_refresh: token_url and refresh_token are required")
+	clientID := strings.TrimSpace(auth.ClientID)
+	if tokenURL == "" || strings.TrimSpace(auth.RefreshToken) == "" {
+		return "", kerrors.BadRequest("MCP_OAUTH", "oauth2_refresh: token_url and refresh_token are required")
 	}
-	form := url.Values{}
-	form.Set("grant_type", "refresh_token")
-	form.Set("refresh_token", refresh)
-	if scope := strings.TrimSpace(auth.Scope); scope != "" {
-		form.Set("scope", scope)
-	}
-	return postOAuth2Token(ctx, tokenURL, form, strings.TrimSpace(auth.ClientID), strings.TrimSpace(auth.ClientSecret))
-}
 
-func postOAuth2Token(ctx context.Context, tokenURL string, form url.Values, clientID, clientSecret string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	// Check cache first — reuse a valid token if we have one.
+	cacheKey := oauth2CacheKey(tokenURL, clientID)
+	oauth2CacheMu.RLock()
+	if cached, ok := oauth2Cache[cacheKey]; ok && time.Now().Before(cached.ExpiresAt) {
+		oauth2CacheMu.RUnlock()
+		return cached.AccessToken, nil
+	}
+	oauth2CacheMu.RUnlock()
+
+	// Collapse concurrent refresh requests via singleflight.
+	// All state reads (rotated refresh token, cache) happen inside the
+	// singleflight callback to avoid closure capture races.
+	v, err, _ := oauth2Flight.Do(cacheKey+":refresh", func() (any, error) {
+		// Re-check inside flight slot.
+		oauth2CacheMu.RLock()
+		if cached, ok := oauth2Cache[cacheKey]; ok && time.Now().Before(cached.ExpiresAt) {
+			oauth2CacheMu.RUnlock()
+			return cached.AccessToken, nil
+		}
+		oauth2CacheMu.RUnlock()
+
+		// Determine the refresh token to use: prefer a previously
+		// cached rotated token over the original config value.
+		refresh := strings.TrimSpace(auth.RefreshToken)
+		oauth2CacheMu.RLock()
+		if cached, ok := oauth2Cache[cacheKey]; ok && cached.RefreshToken != "" {
+			refresh = cached.RefreshToken
+		}
+		oauth2CacheMu.RUnlock()
+
+		form := url.Values{}
+		form.Set("grant_type", "refresh_token")
+		form.Set("refresh_token", refresh)
+		if scope := strings.TrimSpace(auth.Scope); scope != "" {
+			form.Set("scope", scope)
+		}
+		token, expiresIn, newRefresh, fetchErr := postOAuth2RefreshWithRotation(ctx, tokenURL, form, clientID, strings.TrimSpace(auth.ClientSecret))
+		if fetchErr != nil {
+			// Refresh failed: clear the cache entry to prevent a dead loop
+			// where a rotated-but-revoked refresh token is reused forever.
+			oauth2CacheMu.Lock()
+			delete(oauth2Cache, cacheKey)
+			oauth2CacheMu.Unlock()
+			return nil, fetchErr
+		}
+		expiresAt := time.Now().Add(time.Duration(expiresIn)*time.Second - oauth2TokenEarlyRefresh)
+		if expiresIn <= 0 {
+			expiresAt = time.Now().Add(5*time.Minute - oauth2TokenEarlyRefresh)
+		}
+		oauth2CacheMu.Lock()
+		cached := &oauth2CachedToken{
+			AccessToken: token,
+			ExpiresAt:   expiresAt,
+		}
+		// Only update RefreshToken when the provider returns a new one
+		// (token rotation). If newRefresh is empty, the provider does
+		// not support rotation — preserve the existing refresh token.
+		if newRefresh != "" {
+			cached.RefreshToken = newRefresh
+		} else if old, ok := oauth2Cache[cacheKey]; ok && old.RefreshToken != "" {
+			cached.RefreshToken = old.RefreshToken
+		}
+		oauth2Cache[cacheKey] = cached
+		evictExpiredOAuth2CacheLocked()
+		evictOverflowOAuth2CacheLocked()
+		oauth2CacheMu.Unlock()
+		return token, nil
+	})
 	if err != nil {
 		return "", err
+	}
+	return v.(string), nil
+}
+
+// postOAuth2RefreshWithRotation is like postOAuth2TokenWithExpiry but also
+// captures the new refresh_token returned by the authorization server
+// during token rotation (RFC 6749 §6).
+func postOAuth2RefreshWithRotation(ctx context.Context, tokenURL string, form url.Values, clientID, clientSecret string) (accessToken string, expiresIn int, newRefreshToken string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", 0, "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if clientID != "" && clientSecret != "" {
 		req.SetBasicAuth(clientID, clientSecret)
 	}
-	client := &http.Client{Timeout: time.Duration(mcpdefaults.DefaultOAuth2TimeoutSec) * time.Second}
-	resp, err := client.Do(req)
+	resp, err := oauth2HTTPClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", 0, "", err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", "oauth2 token: read body: "+err.Error())
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("oauth2 token: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		sanitized := sanitizeOAuth2Error(body)
+		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", fmt.Sprintf("oauth2 token: HTTP %d: %s", resp.StatusCode, sanitized))
+	}
+	var parsed struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", "oauth2 token: parse response: "+err.Error())
+	}
+	if strings.TrimSpace(parsed.AccessToken) == "" {
+		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", "oauth2 token: empty access_token")
+	}
+	return parsed.AccessToken, parsed.ExpiresIn, parsed.RefreshToken, nil
+}
+
+// postOAuth2TokenWithExpiry posts to the token endpoint and returns the
+// access token along with its expires_in value for caching.
+func postOAuth2TokenWithExpiry(ctx context.Context, tokenURL string, form url.Values, clientID, clientSecret string) (accessToken string, expiresIn int, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if clientID != "" && clientSecret != "" {
+		req.SetBasicAuth(clientID, clientSecret)
+	}
+	resp, err := oauth2HTTPClient.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", 0, kerrors.InternalServer("MCP_OAUTH", "oauth2 token: read body: "+err.Error())
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		sanitized := sanitizeOAuth2Error(body)
+		return "", 0, kerrors.InternalServer("MCP_OAUTH", fmt.Sprintf("oauth2 token: HTTP %d: %s", resp.StatusCode, sanitized))
 	}
 	var parsed struct {
 		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", err
+		return "", 0, kerrors.InternalServer("MCP_OAUTH", "oauth2 token: parse response: "+err.Error())
 	}
 	if strings.TrimSpace(parsed.AccessToken) == "" {
-		return "", fmt.Errorf("oauth2 token: empty access_token")
+		return "", 0, kerrors.InternalServer("MCP_OAUTH", "oauth2 token: empty access_token")
 	}
-	return parsed.AccessToken, nil
+	return parsed.AccessToken, parsed.ExpiresIn, nil
+}
+
+// sanitizeOAuth2Error extracts only the OAuth2 error and error_description
+// fields from a token endpoint error response, avoiding leakage of
+// client_id, redirect_uri, or other sensitive fields.
+func sanitizeOAuth2Error(body []byte) string {
+	var partial struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &partial); err == nil {
+		msg := partial.Error
+		if partial.ErrorDescription != "" {
+			msg += ": " + partial.ErrorDescription
+		}
+		if msg != "" {
+			return msg
+		}
+	}
+	raw := string(body)
+	if len(raw) > 128 {
+		raw = raw[:128] + "..."
+	}
+	return strings.TrimSpace(raw)
+}
+
+// evictExpiredOAuth2CacheLocked removes expired entries from the cache.
+// Must be called with oauth2CacheMu held for writing.
+func evictExpiredOAuth2CacheLocked() {
+	now := time.Now()
+	for k, v := range oauth2Cache {
+		if now.After(v.ExpiresAt) {
+			delete(oauth2Cache, k)
+		}
+	}
+}
+
+// evictOverflowOAuth2CacheLocked evicts the oldest entries when the cache
+// exceeds oauth2CacheMaxEntries. Must be called with oauth2CacheMu held for writing.
+func evictOverflowOAuth2CacheLocked() {
+	for len(oauth2Cache) > oauth2CacheMaxEntries {
+		// Evict the entry with the earliest ExpiresAt (oldest/most stale).
+		var oldestKey string
+		var oldestTime time.Time
+		first := true
+		for k, v := range oauth2Cache {
+			if first || v.ExpiresAt.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = v.ExpiresAt
+				first = false
+			}
+		}
+		if oldestKey != "" {
+			delete(oauth2Cache, oldestKey)
+		} else {
+			break
+		}
+	}
 }

@@ -28,7 +28,10 @@ func (s *TextSender) ID() string { return "teams" }
 func (s *TextSender) SendText(ctx context.Context, recipient, text string) error {
 	recipient = strings.TrimSpace(recipient)
 	text = strings.TrimSpace(text)
-	if recipient == "" || text == "" {
+	if recipient == "" {
+		return errRecipientRequired
+	}
+	if text == "" {
 		return nil
 	}
 	token, err := s.accessToken(ctx)
@@ -42,7 +45,13 @@ func SendToConversation(ctx context.Context, httpClient *http.Client, token, ser
 	serviceURL = strings.TrimSpace(serviceURL)
 	conversationID = strings.TrimSpace(conversationID)
 	text = strings.TrimSpace(text)
-	if serviceURL == "" || conversationID == "" || text == "" {
+	if serviceURL == "" {
+		return errServiceURLRequired
+	}
+	if conversationID == "" {
+		return errConversationIDRequired
+	}
+	if text == "" {
 		return nil
 	}
 	body, _ := json.Marshal(map[string]any{
@@ -68,7 +77,7 @@ func SendToConversation(ctx context.Context, httpClient *http.Client, token, ser
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("teams outbound: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return teamsAPIError("teams outbound", fmt.Sprintf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
 	}
 	return nil
 }
@@ -86,7 +95,7 @@ func (s *TextSender) accessToken(ctx context.Context) (string, error) {
 	appID := strings.TrimSpace(s.AppID)
 	appSecret := strings.TrimSpace(s.AppSecret)
 	if appID == "" || appSecret == "" {
-		return "", fmt.Errorf("teams: app_id and app_secret required")
+		return "", errAppCredentialsRequired
 	}
 	client := s.HTTP
 	if client == nil {
@@ -118,7 +127,7 @@ func (s *TextSender) accessToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if out.AccessToken == "" {
-		return "", fmt.Errorf("teams token: %s", strings.TrimSpace(out.Description))
+		return "", teamsAPIError("teams token", strings.TrimSpace(out.Description))
 	}
 	s.token = out.AccessToken
 	ttl := time.Duration(out.ExpiresIn) * time.Second

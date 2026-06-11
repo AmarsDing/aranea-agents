@@ -57,7 +57,11 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	// and the agent has a position associated (PositionID != "").
 	var catResp string
 	if shouldInjectCategoryResponsibility(ag) && deps.Organization != nil {
-		catResp, _ = deps.Organization.BuildResponsibility(ctx, ag.PositionID, ag.SystemPromptMode)
+		if resp, err := deps.Organization.BuildResponsibility(ctx, ag.PositionID, ag.SystemPromptMode); err != nil {
+			lg.Warn("岗位职责注入失败", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
+		} else {
+			catResp = resp
+		}
 	}
 	if indCtx := BuildIndustryContext(ctx, Deps{
 		Agents: deps.Agents, AgentUC: deps.AgentUC,
@@ -142,7 +146,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 
 	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err != nil {
 		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, fmt.Errorf("tool build failed: %w", err)
+		return nil, kerrors.InternalServer("AGENT", "tool build failed: "+err.Error())
 	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
@@ -151,7 +155,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
 		}
 		if ts.DeferredManager != nil {
-			deps.DeferredManager = ts.DeferredManager
+			deps = deps.WithDeferredManager(ts.DeferredManager)
 		}
 	}
 
@@ -166,7 +170,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps); len(chainOpts) > 0 {
 		opts = append(opts, chainOpts...)
 		if cbRegistry != nil {
-			deps.CircuitBreakerRegistry = cbRegistry
+			deps = deps.WithCircuitBreakerRegistry(cbRegistry)
 		}
 	}
 
@@ -275,6 +279,11 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 		if keepRecent > 0 {
 			opts = append(opts, trpcllmagent.WithContextCompactionKeepRecentRequests(keepRecent))
 		}
+		// Pass 2: truncate oversized tool results (including current request)
+		// to prevent large command outputs from overflowing the LLM context window.
+		// Uses the framework's recommended 8192-token threshold, which preserves
+		// head+tail of the output so the model can see both structure and results.
+		opts = append(opts, trpcllmagent.WithContextCompactionOversizedToolResultMaxTokens(8192))
 	}
 
 	if s.SessionSummaryEnabled {
@@ -313,7 +322,12 @@ func buildModelSelector(selector string) trpcagent.ModelSelector {
 			return nil, nil
 		}
 	default:
-		return nil
+		// Unknown selector values are treated as "auto" (defer to framework default).
+		// This preserves forward-compatibility: if a new selector name is introduced
+		// in the settings UI before this switch is updated, the agent still works.
+		return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
+			return nil, nil
+		}
 	}
 }
 

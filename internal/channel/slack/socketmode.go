@@ -2,7 +2,6 @@ package slack
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -53,7 +52,7 @@ func RunSocketMode(
 	botToken = strings.TrimSpace(botToken)
 	appToken = strings.TrimSpace(appToken)
 	if botToken == "" || appToken == "" {
-		return fmt.Errorf("slack socket_mode: bot_token and app_token required")
+		return errBotTokenAndAppRequired
 	}
 
 	client := slack.New(
@@ -117,8 +116,8 @@ func messageEventToInbound(ev *slackevents.MessageEvent) (port.InboundEvent, boo
 		Text:           text,
 		IdempotencyKey: "slack:" + strings.TrimSpace(ev.TimeStamp),
 		OutboundMeta: map[string]string{
-			"recipient": channelID,
-			"channel":   channelID,
+			port.MetaRecipient: channelID,
+			port.MetaChannel:   channelID,
 		},
 	}, true
 }

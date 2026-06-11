@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"github.com/google/uuid"
 
 	"aranea-agents/internal/biz/shared"
@@ -448,10 +448,10 @@ func MapRepoErr(err error) error {
 		return nil
 	}
 	if stderrors.Is(err, shared.ErrUsageScopeRequired) {
-		return errors.BadRequest("USAGE", "scope_type and scope_id are required")
+		return apierror.BadRequest("USAGE", "scope_type and scope_id are required")
 	}
 	if stderrors.Is(err, shared.ErrBudgetAlertNotFound) {
-		return errors.NotFound("USAGE_ALERT", "budget alert not found")
+		return apierror.NotFound("USAGE_ALERT", "budget alert not found")
 	}
 	return err
 }
@@ -593,7 +593,7 @@ func (u *Usecase) Events(ctx context.Context, query Query) ([]TokenUsageEvent, e
 // PurgeEvents deletes usage events older than retainDays and returns the count of deleted rows.
 func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error) {
 	if retainDays < 1 {
-		return 0, errors.BadRequest("USAGE", "retain_days must be >= 1")
+		return 0, apierror.BadRequest("USAGE", "retain_days must be >= 1")
 	}
 	return u.repo.PurgeUsageEventsOlderThan(ctx, retainDays)
 }
@@ -601,7 +601,7 @@ func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error
 // RecordTokenUsageEvent inserts one usage row (events INSERT only; session aggregate and daily/hourly rollup are handled separately).
 func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
 	if strings.TrimSpace(e.ID) == "" {
-		return TokenUsageEvent{}, errors.BadRequest("USAGE", "id is required")
+		return TokenUsageEvent{}, apierror.BadRequest("USAGE", "id is required")
 	}
 	e = normalizeTokenUsageEventForInsert(e, u.now())
 	u.enrichPricing(ctx, &e)
@@ -782,7 +782,7 @@ func (u *Usecase) GetQuota(ctx context.Context, scopeType, scopeID string) (Quot
 	q, err := u.repo.GetQuota(ctx, scopeType, scopeID)
 	if err != nil {
 		if stderrors.Is(err, shared.ErrQuotaNotFound) {
-			return Quota{}, errors.NotFound("USAGE_QUOTA", "quota not configured")
+			return Quota{}, apierror.NotFound("USAGE_QUOTA", "quota not configured")
 		}
 		return Quota{}, MapRepoErr(err)
 	}
@@ -792,10 +792,10 @@ func (u *Usecase) GetQuota(ctx context.Context, scopeType, scopeID string) (Quot
 // SetQuota creates or updates a quota.
 func (u *Usecase) SetQuota(ctx context.Context, quota Quota) (Quota, error) {
 	if strings.TrimSpace(quota.ScopeType) == "" || strings.TrimSpace(quota.ScopeID) == "" {
-		return Quota{}, errors.BadRequest("USAGE_QUOTA", "scope_type and scope_id are required")
+		return Quota{}, apierror.BadRequest("USAGE_QUOTA", "scope_type and scope_id are required")
 	}
 	if quota.MonthlyMicroUSD < 0 {
-		return Quota{}, errors.BadRequest("USAGE_QUOTA", "monthly_micro_usd must be >= 0")
+		return Quota{}, apierror.BadRequest("USAGE_QUOTA", "monthly_micro_usd must be >= 0")
 	}
 	q, err := u.repo.SetQuota(ctx, quota)
 	return q, MapRepoErr(err)
@@ -806,7 +806,7 @@ func (u *Usecase) CheckQuota(ctx context.Context, scopeType, scopeID string) (Qu
 	scopeType = strings.TrimSpace(scopeType)
 	scopeID = strings.TrimSpace(scopeID)
 	if scopeType == "" || scopeID == "" {
-		return QuotaCheck{}, errors.BadRequest("USAGE_QUOTA", "scope_type and scope_id are required")
+		return QuotaCheck{}, apierror.BadRequest("USAGE_QUOTA", "scope_type and scope_id are required")
 	}
 	q, err := u.repo.GetQuota(ctx, scopeType, scopeID)
 	if err != nil {
@@ -885,7 +885,7 @@ func (u *Usecase) enforceQuota(ctx context.Context, scopeType, scopeID string) e
 		return err
 	}
 	if !check.Allowed {
-		return errors.Forbidden("USAGE_QUOTA", check.Reason)
+		return apierror.Forbidden("USAGE_QUOTA", check.Reason)
 	}
 	return nil
 }
@@ -1071,10 +1071,10 @@ func (u *Usecase) ListBudgetAlerts(ctx context.Context, scopeType, scopeID strin
 // SetBudgetAlert creates or updates a budget alert.
 func (u *Usecase) SetBudgetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error) {
 	if strings.TrimSpace(alert.ScopeType) == "" || strings.TrimSpace(alert.ScopeID) == "" {
-		return BudgetAlert{}, errors.BadRequest("USAGE_ALERT", "scope_type and scope_id are required")
+		return BudgetAlert{}, apierror.BadRequest("USAGE_ALERT", "scope_type and scope_id are required")
 	}
 	if alert.AlertRatio <= 0 || alert.AlertRatio > 1 {
-		return BudgetAlert{}, errors.BadRequest("USAGE_ALERT", "alert_ratio must be in (0,1]")
+		return BudgetAlert{}, apierror.BadRequest("USAGE_ALERT", "alert_ratio must be in (0,1]")
 	}
 	a, err := u.repo.SetBudgetAlert(ctx, alert)
 	return a, MapRepoErr(err)

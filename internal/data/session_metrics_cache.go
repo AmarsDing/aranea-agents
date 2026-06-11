@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 type metricsCacheEntry struct {
@@ -21,16 +23,55 @@ type SessionMetricsCache struct {
 	ttl      time.Duration
 	capacity int
 	lg       loggateway.Logger
+	gcCancel chan struct{}
 }
 
 var _ biz.SessionMetricsReader = (*SessionMetricsCache)(nil)
 
 func NewSessionMetricsCache(reader biz.SessionMetricsReader, lg loggateway.Logger) *SessionMetricsCache {
-	return &SessionMetricsCache{
+	c := &SessionMetricsCache{
 		reader:   reader,
 		ttl:      30 * time.Second,
 		capacity: 500,
 		lg:       lg,
+		gcCancel: make(chan struct{}),
+	}
+	safego.Go(appctx.Ctx(), "metrics-cache-gc", c.gcLoop)
+	return c
+}
+
+func (c *SessionMetricsCache) gcLoop() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.gcCancel:
+			return
+		case <-ticker.C:
+			c.evictExpired()
+		}
+	}
+}
+
+func (c *SessionMetricsCache) evictExpired() {
+	now := time.Now()
+	c.entries.Range(func(key, value any) bool {
+		if entry, ok := value.(*metricsCacheEntry); ok && now.After(entry.expireAt) {
+			c.entries.Delete(key)
+		}
+		return true
+	})
+}
+
+// Close stops the background GC goroutine.
+func (c *SessionMetricsCache) Close() {
+	if c == nil {
+		return
+	}
+	select {
+	case <-c.gcCancel:
+	default:
+		close(c.gcCancel)
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 var cronIDRand uint64
@@ -131,7 +131,7 @@ func (u *Usecase) ListTasks(ctx context.Context) ([]Task, error) {
 // GetTask returns one cron task by ID.
 func (u *Usecase) GetTask(ctx context.Context, id string) (Task, error) {
 	if strings.TrimSpace(id) == "" {
-		return Task{}, errors.BadRequest("CRON", "id is required")
+		return Task{}, apierror.BadRequest("CRON", "id is required")
 	}
 	return u.repo.GetCronTask(ctx, id)
 }
@@ -141,7 +141,7 @@ func (u *Usecase) CreateTask(ctx context.Context, in Task) (Task, error) {
 	in.TaskKey = strings.TrimSpace(in.TaskKey)
 	in.Name = strings.TrimSpace(in.Name)
 	if in.TaskKey == "" || in.Name == "" {
-		return Task{}, errors.BadRequest("CRON", "task_key and name are required")
+		return Task{}, apierror.BadRequest("CRON", "task_key and name are required")
 	}
 	if in.ID == "" {
 		in.ID = newCronTaskID()
@@ -158,7 +158,7 @@ func (u *Usecase) CreateTask(ctx context.Context, in Task) (Task, error) {
 // UpdateTask patches an existing cron task.
 func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (Task, error) {
 	if strings.TrimSpace(id) == "" {
-		return Task{}, errors.BadRequest("CRON", "id is required")
+		return Task{}, apierror.BadRequest("CRON", "id is required")
 	}
 	cur, err := u.repo.GetCronTask(ctx, id)
 	if err != nil {
@@ -210,7 +210,7 @@ func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (T
 // DeleteTask removes a cron task.
 func (u *Usecase) DeleteTask(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.BadRequest("CRON", "id is required")
+		return apierror.BadRequest("CRON", "id is required")
 	}
 	return u.repo.DeleteCronTask(ctx, id)
 }
@@ -223,7 +223,7 @@ func (u *Usecase) ListTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, 
 // GetTaskRun returns one task run by ID.
 func (u *Usecase) GetTaskRun(ctx context.Context, id string) (TaskRun, error) {
 	if strings.TrimSpace(id) == "" {
-		return TaskRun{}, errors.BadRequest("CRON", "run id is required")
+		return TaskRun{}, apierror.BadRequest("CRON", "run id is required")
 	}
 	return u.repo.GetCronTaskRun(ctx, id)
 }
@@ -234,7 +234,7 @@ func (u *Usecase) TriggerTask(ctx context.Context, id string) (TaskRun, error) {
 		return TaskRun{}, ErrRunnerDisabled
 	}
 	if strings.TrimSpace(id) == "" {
-		return TaskRun{}, errors.BadRequest("CRON", "id is required")
+		return TaskRun{}, apierror.BadRequest("CRON", "id is required")
 	}
 	return u.trigger.TriggerTask(ctx, id)
 }
@@ -242,7 +242,7 @@ func (u *Usecase) TriggerTask(ctx context.Context, id string) (TaskRun, error) {
 // ResetTaskFailures clears failure metadata and re-enables a task.
 func (u *Usecase) ResetTaskFailures(ctx context.Context, id string) (Task, error) {
 	if strings.TrimSpace(id) == "" {
-		return Task{}, errors.BadRequest("CRON", "id is required")
+		return Task{}, apierror.BadRequest("CRON", "id is required")
 	}
 	cur, err := u.repo.GetCronTask(ctx, id)
 	if err != nil {
@@ -250,7 +250,7 @@ func (u *Usecase) ResetTaskFailures(ctx context.Context, id string) (Task, error
 	}
 	metaJSON, err := ResetFailureMetadata(cur.MetadataJSON)
 	if err != nil {
-		return Task{}, errors.BadRequest("CRON", "invalid metadata_json")
+		return Task{}, apierror.BadRequest("CRON", "invalid metadata_json")
 	}
 	enabled := true
 	status := "active"
@@ -287,29 +287,29 @@ func ValidateTaskConfig(configJSON string) error {
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return errors.BadRequest("CRON", "invalid config_json: "+err.Error())
+		return apierror.BadRequest("CRON", "invalid config_json: "+err.Error())
 	}
 	// Validate target_type field if present
 	if targetType, ok := cfg["target_type"]; ok {
 		s, ok := targetType.(string)
 		if !ok {
-			return errors.BadRequest("CRON", "config_json target_type must be a string")
+			return apierror.BadRequest("CRON", "config_json target_type must be a string")
 		}
 		switch s {
 		case "agent", "team", "model_registry_sync":
 			// valid
 		default:
-			return errors.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync")
+			return apierror.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync")
 		}
 	}
 	// Validate cron_expression field if present
 	if cronExpr, ok := cfg["cron_expression"]; ok {
 		s, ok := cronExpr.(string)
 		if !ok {
-			return errors.BadRequest("CRON", "config_json cron_expression must be a string")
+			return apierror.BadRequest("CRON", "config_json cron_expression must be a string")
 		}
 		if strings.TrimSpace(s) == "" {
-			return errors.BadRequest("CRON", "config_json cron_expression cannot be empty")
+			return apierror.BadRequest("CRON", "config_json cron_expression cannot be empty")
 		}
 	}
 	return nil
@@ -318,8 +318,8 @@ func ValidateTaskConfig(configJSON string) error {
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 var (
-	ErrRunnerDisabled = errors.ServiceUnavailable("CRON", "cron runner disabled")
-	ErrTaskDeleted    = errors.NotFound("CRON", "cron task deleted")
-	ErrSessionBusy    = errors.Conflict("CRON", "cron session has active run")
-	ErrNotFound       = errors.NotFound("CRON", "cron task not found")
+	ErrRunnerDisabled = apierror.Unavailable("CRON", "cron runner disabled")
+	ErrTaskDeleted    = apierror.NotFound("CRON", "cron task deleted")
+	ErrSessionBusy    = apierror.Conflict("CRON", "cron session has active run")
+	ErrNotFound       = apierror.NotFound("CRON", "cron task not found")
 )

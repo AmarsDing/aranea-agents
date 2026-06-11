@@ -2,13 +2,13 @@
 package a2a
 
 import (
+	"aranea-agents/pkg/apierror"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 // Capability describes one callable capability on an agent.
@@ -62,20 +62,20 @@ type AuditEntry struct {
 
 // RemoteAgent registers an external A2A service in a workspace catalog.
 type RemoteAgent struct {
-	ID             string
-	Workspace      string
-	DisplayName    string
-	RemoteURL      string
-	AgentCardURL   string
-	AuthType       string
-	AuthConfigJSON string
-	Enabled        bool
-	DiscoveredCard AgentCard
-	LastHealthAt   string
-	LastHealthOK   bool
+	ID              string
+	Workspace       string
+	DisplayName     string
+	RemoteURL       string
+	AgentCardURL    string
+	AuthType        string
+	AuthConfigJSON  string
+	Enabled         bool
+	DiscoveredCard  AgentCard
+	LastHealthAt    string
+	LastHealthOK    bool
 	LastHealthError string
-	CreatedAt      string
-	UpdatedAt      string
+	CreatedAt       string
+	UpdatedAt       string
 }
 
 // RegisterRemoteAgentInput is the create payload for remote registry entries.
@@ -184,18 +184,19 @@ func NewUsecase(card CardRepo, invocation InvocationRepo, audit AuditRepo, remot
 }
 
 // NewID generates a random A2A entity ID.
-func NewID() string {
+// Returns an error if crypto/rand fails (extremely rare on healthy systems).
+func NewID() (string, error) {
 	buf := make([]byte, 10)
 	if _, err := rand.Read(buf); err != nil {
-		return "a2a-fallback"
+		return "", errors.New("a2a: crypto/rand.Read failed: " + err.Error())
 	}
-	return "a2a-" + hex.EncodeToString(buf)
+	return "a2a-" + hex.EncodeToString(buf), nil
 }
 
 // UpdateAgentCard sets or updates the A2A card for an agent.
 func (u *Usecase) UpdateAgentCard(ctx context.Context, card AgentCard) (AgentCard, error) {
 	if strings.TrimSpace(card.AgentID) == "" {
-		return AgentCard{}, errors.BadRequest("A2A", "agent_id is required")
+		return AgentCard{}, apierror.BadRequest("A2A", "agent_id is required")
 	}
 	// Fill workspace/displayName from agent metadata when not provided.
 	if u.agents != nil && (strings.TrimSpace(card.Workspace) == "" || strings.TrimSpace(card.DisplayName) == "") {
@@ -214,7 +215,7 @@ func (u *Usecase) UpdateAgentCard(ctx context.Context, card AgentCard) (AgentCar
 // GetAgentCard returns the A2A card for one agent.
 func (u *Usecase) GetAgentCard(ctx context.Context, agentID string) (AgentCard, error) {
 	if strings.TrimSpace(agentID) == "" {
-		return AgentCard{}, errors.BadRequest("A2A", "agent_id is required")
+		return AgentCard{}, apierror.BadRequest("A2A", "agent_id is required")
 	}
 	return u.cardRepo.GetAgentCard(ctx, agentID)
 }
@@ -271,7 +272,7 @@ func (u *Usecase) Discover(ctx context.Context, workspace, capability string) ([
 // ensureRemoteRepo checks that the remote repo is available.
 func (u *Usecase) ensureRemoteRepo() error {
 	if u == nil || u.remoteRepo == nil {
-		return errors.InternalServer("A2A", "a2a repo not configured")
+		return apierror.Internal("A2A", "a2a repo not configured")
 	}
 	return nil
 }
@@ -283,7 +284,7 @@ func (u *Usecase) GetRemoteAgent(ctx context.Context, id string) (RemoteAgent, e
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return RemoteAgent{}, errors.BadRequest("A2A", "id is required")
+		return RemoteAgent{}, apierror.BadRequest("A2A", "id is required")
 	}
 	agent, err := u.remoteRepo.GetRemoteAgent(ctx, id)
 	if err != nil {
@@ -298,16 +299,20 @@ func (u *Usecase) StartInvocation(ctx context.Context, inv Invocation) (Invocati
 	inv.CalleeAgentID = strings.TrimSpace(inv.CalleeAgentID)
 	inv.Capability = strings.TrimSpace(inv.Capability)
 	if inv.CalleeAgentID == "" {
-		return Invocation{}, errors.BadRequest("A2A", "callee_agent_id is required")
+		return Invocation{}, apierror.BadRequest("A2A", "callee_agent_id is required")
 	}
 	if inv.Capability == "" {
-		return Invocation{}, errors.BadRequest("A2A", "capability is required")
+		return Invocation{}, apierror.BadRequest("A2A", "capability is required")
 	}
 	if inv.PayloadJSON == "" {
 		inv.PayloadJSON = "{}"
 	}
 	if inv.ID == "" {
-		inv.ID = NewID()
+		id, err := NewID()
+		if err != nil {
+			return Invocation{}, err
+		}
+		inv.ID = id
 	}
 	if inv.Status == "" {
 		inv.Status = "pending"
@@ -326,7 +331,11 @@ func (u *Usecase) FinishInvocation(ctx context.Context, inv Invocation) error {
 // AppendAudit writes one audit log record.
 func (u *Usecase) AppendAudit(ctx context.Context, entry AuditEntry) error {
 	if entry.ID == "" {
-		entry.ID = NewID()
+		id, err := NewID()
+		if err != nil {
+			return err
+		}
+		entry.ID = id
 	}
 	return u.auditRepo.InsertAudit(ctx, entry)
 }
@@ -354,7 +363,7 @@ func (u *Usecase) RegisterRemoteAgent(ctx context.Context, in RegisterRemoteAgen
 	}
 	remoteURL := strings.TrimSpace(in.RemoteURL)
 	if remoteURL == "" {
-		return RemoteAgent{}, errors.BadRequest("A2A", "remote_url is required")
+		return RemoteAgent{}, apierror.BadRequest("A2A", "remote_url is required")
 	}
 	card, err := u.remoteRepo.DiscoverRemoteCard(ctx, RemoteCardDiscoverInput{
 		RemoteURL:      remoteURL,
@@ -403,7 +412,7 @@ func (u *Usecase) DeleteRemoteAgent(ctx context.Context, id string) error {
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return errors.BadRequest("A2A", "id is required")
+		return apierror.BadRequest("A2A", "id is required")
 	}
 	return u.remoteRepo.DeleteRemoteAgent(ctx, id)
 }
@@ -414,7 +423,7 @@ func (u *Usecase) DiscoverRemoteAgent(ctx context.Context, in RemoteCardDiscover
 		return AgentCard{}, err
 	}
 	if strings.TrimSpace(in.RemoteURL) == "" {
-		return AgentCard{}, errors.BadRequest("A2A", "remote_url is required")
+		return AgentCard{}, apierror.BadRequest("A2A", "remote_url is required")
 	}
 	return u.remoteRepo.DiscoverRemoteCard(ctx, in)
 }
@@ -426,7 +435,7 @@ func (u *Usecase) PersistRemoteHealth(ctx context.Context, id string, ok bool, e
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return errors.BadRequest("A2A", "id is required")
+		return apierror.BadRequest("A2A", "id is required")
 	}
 	return u.remoteRepo.UpdateRemoteAgentHealth(ctx, id, ok, errMsg)
 }

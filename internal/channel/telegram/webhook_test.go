@@ -1,6 +1,11 @@
 package telegram
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"aranea-agents/internal/channel/port"
+)
 
 func TestParseInbound(t *testing.T) {
 	raw := []byte(`{"update_id":9,"message":{"message_id":2,"text":" hello ","chat":{"id":12345},"from":{"username":"alice"}}}`)
@@ -19,5 +24,8 @@ func TestVerifySecretToken(t *testing.T) {
 	}
 	if err := VerifySecretToken("bad", "tok"); err == nil {
 		t.Fatal("expected mismatch")
+	}
+	if err := VerifySecretToken("any", ""); !errors.Is(err, port.ErrCredentialsNotConfigured) {
+		t.Fatalf("expected ErrCredentialsNotConfigured, got %v", err)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"github.com/google/uuid"
 )
 
@@ -68,10 +68,10 @@ func (u *MCPServerUsecase) UpsertUserCredential(ctx context.Context, mcpServerID
 	key := strings.TrimSpace(in.CredentialKey)
 	secret := strings.TrimSpace(in.Secret)
 	if mcpServerID == "" || userID == "" || key == "" {
-		return MCPServerUserCredential{}, errors.BadRequest("MCP_SERVER", "mcp_server_id, user_id and credential_key are required")
+		return MCPServerUserCredential{}, apierror.BadRequest("MCP_SERVER", "mcp_server_id, user_id and credential_key are required")
 	}
 	if secret == "" {
-		return MCPServerUserCredential{}, errors.BadRequest("MCP_SERVER", "secret is required")
+		return MCPServerUserCredential{}, apierror.BadRequest("MCP_SERVER", "secret is required")
 	}
 	secretRef, err := u.crypto.EncryptChannelSecretRef(ctx, secret)
 	if err != nil {
@@ -115,7 +115,7 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 	}
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
-		return headers, errors.BadRequest("MCP_SERVER", "user credentials required but session user_id is empty")
+		return headers, apierror.BadRequest("MCP_SERVER", "user credentials required but session user_id is empty")
 	}
 	repo, err := u.userCredRepo()
 	if err != nil {
@@ -152,7 +152,7 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 		}
 	}
 	if picked == nil {
-		return headers, errors.Forbidden("MCP_SERVER", "no user credential configured for this MCP server")
+		return headers, apierror.Forbidden("MCP_SERVER", "no user credential configured for this MCP server")
 	}
 	plain, err := u.crypto.DecryptChannelSecretRef(ctx, picked.SecretRef)
 	if err != nil {
@@ -180,11 +180,11 @@ func (u *MCPServerUsecase) findServerByKey(ctx context.Context, serverKey string
 
 func (u *MCPServerUsecase) userCredRepo() (MCPServerUserCredentialRepo, error) {
 	if u == nil {
-		return nil, errors.InternalServer("MCP_SERVER", "mcp usecase not configured")
+		return nil, apierror.Internal("MCP_SERVER", "mcp usecase not configured")
 	}
 	repo, ok := u.repo.(MCPServerUserCredentialRepo)
 	if !ok || repo == nil {
-		return nil, errors.InternalServer("MCP_SERVER", "mcp user credential repo not configured")
+		return nil, apierror.Internal("MCP_SERVER", "mcp user credential repo not configured")
 	}
 	return repo, nil
 }

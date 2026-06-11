@@ -4,7 +4,7 @@
       dense
       unelevated
       outline
-      color="primary"
+      color="accent"
       class="chat-toolbar-btn chat-toolbar-btn--outline"
       :aria-label="panelLabel"
       @click="openDialog"
@@ -24,7 +24,7 @@
           <q-btn v-close-popup flat round dense icon="close" :aria-label="t('chat.cancel')" />
         </q-card-section>
         <q-card-section class="app-dialog-body q-pt-sm">
-          <q-tabs v-model="tab" dense align="left" class="q-mb-sm" active-color="primary">
+          <q-tabs v-model="tab" dense align="left" class="q-mb-sm" active-color="accent">
             <q-tab name="jobs" :label="jobsTabLabel" />
             <q-tab name="deadLetters" :label="deadLettersTabLabel" />
           </q-tabs>
@@ -32,7 +32,7 @@
           <q-tab-panels v-model="tab" animated>
             <q-tab-panel name="jobs" class="q-pa-none">
               <div v-if="jobsLoading" class="row items-center q-gutter-sm q-pa-sm">
-                <q-spinner size="20px" color="primary" />
+                <q-spinner size="20px" color="accent" />
                 <span class="text-caption">{{ t('chat.job.loading', '加载后台任务…') }}</span>
               </div>
               <q-banner v-else-if="jobsError" dense rounded class="app-banner-warning q-mb-sm">{{
@@ -96,7 +96,7 @@
 
             <q-tab-panel name="deadLetters" class="q-pa-none">
               <div v-if="dlLoading" class="row items-center q-gutter-sm q-pa-sm">
-                <q-spinner size="20px" color="primary" />
+                <q-spinner size="20px" color="accent" />
                 <span class="text-caption">{{ t('chat.deadLetter.loading', '加载死信…') }}</span>
               </div>
               <q-banner v-else-if="dlError" dense rounded class="app-banner-warning q-mb-sm">{{ dlError }}</q-banner>
@@ -139,7 +139,7 @@
                           dense
                           no-caps
                           size="sm"
-                          color="primary"
+                          color="accent"
                           :label="t('chat.deadLetter.resolve', '标记已处理')"
                           @click.stop="emit('resolve-dead-letter', row.id)"
                         />
@@ -173,6 +173,10 @@
 </template>
 
 <script setup lang="ts">
+// Container: approved because this is a self-contained feature component that encapsulates
+// background job polling, WS subscription, and dead-letter management. The composables
+// useChatBackgroundJobs and useTaskDeadLetters manage their own lifecycle (mount/unmount)
+// and cannot be meaningfully lifted to the parent without breaking encapsulation.
 import { computed, ref, toRef, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';

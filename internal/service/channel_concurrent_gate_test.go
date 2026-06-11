@@ -3,6 +3,7 @@ package service
 import (
 	"testing"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 )
 
@@ -22,9 +23,9 @@ func TestInboundEventIsGroup(t *testing.T) {
 		{port.InboundEvent{}, false},
 	}
 	for _, tc := range cases {
-		got := inboundEventIsGroup(tc.ev)
+		got := biz.InboundEventIsGroup(tc.ev.OutboundMeta)
 		if got != tc.want {
-			t.Errorf("inboundEventIsGroup(%+v) = %v, want %v", tc.ev, got, tc.want)
+			t.Errorf("InboundEventIsGroup(%+v) = %v, want %v", tc.ev.OutboundMeta, got, tc.want)
 		}
 	}
 }
@@ -33,37 +34,37 @@ func TestChannelConcurrentGate_TryAcquireRelease(t *testing.T) {
 	g := newChannelConcurrentGate()
 	defer g.Close()
 
-	if !g.TryAcquire("ch1", "peer1", false, 2) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 2); !ok {
 		t.Fatal("first acquire should succeed")
 	}
-	if !g.TryAcquire("ch1", "peer1", false, 2) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 2); !ok {
 		t.Fatal("second acquire should succeed (limit=2)")
 	}
-	if g.TryAcquire("ch1", "peer1", false, 2) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 2); ok {
 		t.Fatal("third acquire should fail (limit=2)")
 	}
 
-	g.Release("ch1", "peer1", false)
-	if !g.TryAcquire("ch1", "peer1", false, 2) {
+	g.release("ch1", "peer1", false)
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 2); !ok {
 		t.Fatal("acquire after release should succeed")
 	}
 }
 
 func TestChannelConcurrentGate_NilReceiver(t *testing.T) {
 	var g *channelConcurrentGate
-	if !g.TryAcquire("ch1", "peer1", false, 1) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 1); !ok {
 		t.Fatal("nil gate should always allow")
 	}
-	g.Release("ch1", "peer1", false)
+	g.release("ch1", "peer1", false)
 }
 
 func TestChannelConcurrentGate_ZeroLimit(t *testing.T) {
 	g := newChannelConcurrentGate()
 	defer g.Close()
-	if !g.TryAcquire("ch1", "peer1", false, 0) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 0); !ok {
 		t.Fatal("zero limit should always allow")
 	}
-	if !g.TryAcquire("ch1", "peer1", false, -1) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, -1); !ok {
 		t.Fatal("negative limit should always allow")
 	}
 }
@@ -71,10 +72,10 @@ func TestChannelConcurrentGate_ZeroLimit(t *testing.T) {
 func TestChannelConcurrentGate_DifferentPeers(t *testing.T) {
 	g := newChannelConcurrentGate()
 	defer g.Close()
-	if !g.TryAcquire("ch1", "peer1", false, 1) {
+	if _, ok := g.TryAcquire("ch1", "peer1", false, 1); !ok {
 		t.Fatal("peer1 should acquire")
 	}
-	if !g.TryAcquire("ch1", "peer2", false, 1) {
+	if _, ok := g.TryAcquire("ch1", "peer2", false, 1); !ok {
 		t.Fatal("peer2 should acquire independently")
 	}
 }
@@ -82,5 +83,5 @@ func TestChannelConcurrentGate_DifferentPeers(t *testing.T) {
 func TestChannelConcurrentGate_ReleaseNonExistent(t *testing.T) {
 	g := newChannelConcurrentGate()
 	defer g.Close()
-	g.Release("nonexistent", "peer", false)
+	g.release("nonexistent", "peer", false)
 }

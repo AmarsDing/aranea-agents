@@ -2,7 +2,6 @@ package team
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -59,7 +58,7 @@ func (r *Runner) resolveAnchorAndAttachments(
 	}
 	firstAg, err := r.lookupAgent(ctx, anchorMem.AgentID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if kerrors.IsNotFound(err) {
 			err = kerrors.NotFound("AGENT", "team member agent not found")
 		}
 		turnStatus = biz.TeamMemberStepStatusError
@@ -79,13 +78,13 @@ func (r *Runner) resolveAnchorAndAttachments(
 			return
 		}
 		attN = len(attachmentRefs)
-		if refsContainImageAttachment(attachmentRefs) && !provider.ModelSupportsImageAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0) {
+		if refsContainImageAttachment(attachmentRefs) && !provider.ModelSupportsImageAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0, r.lg) {
 			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support image attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, run, t0, err.Error())
 			return
 		}
-		if refsContainFileAttachment(attachmentRefs) && !provider.ModelSupportsFileAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0) {
+		if refsContainFileAttachment(attachmentRefs) && !provider.ModelSupportsFileAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0, r.lg) {
 			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support file attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, run, t0, err.Error())

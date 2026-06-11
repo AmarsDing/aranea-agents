@@ -90,8 +90,8 @@ export const useToolsStore = defineStore('tools', () => {
     return updated;
   }
 
-  async function toggle(id: string, enabled: boolean, confirmKey?: string) {
-    const updated = await toggleToolEnabled(id, enabled, confirmKey);
+  async function toggle(id: string, enabled: boolean, confirmIntent?: string) {
+    const updated = await toggleToolEnabled(id, enabled, confirmIntent);
     tools.value = tools.value.map((t) => (t.id === id ? updated : t));
     return updated;
   }
