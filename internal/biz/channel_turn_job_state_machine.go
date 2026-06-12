@@ -186,3 +186,28 @@ func ChannelTurnJobStatusFromEvent(event string) (string, error) {
 		return "", apierror.BadRequest("CHANNEL_TURN_JOB", "unknown event: "+event)
 	}
 }
+
+// ChannelTurnJobEventFromStatus derives the canonical state machine event that leads
+// to the given target status. Used by markTurnJob to route through the state machine
+// even when callers specify a target status rather than an event.
+// Returns an error for ambiguous or unknown statuses.
+func ChannelTurnJobEventFromStatus(status string) (string, error) {
+	switch NormalizeChannelTurnJobStatus(status) {
+	case ChannelTurnJobStatusRunning:
+		return JobEventStart, nil
+	case ChannelTurnJobStatusQueued:
+		return JobEventQueue, nil
+	case ChannelTurnJobStatusCompleted:
+		return JobEventComplete, nil
+	case ChannelTurnJobStatusFailed:
+		return JobEventFail, nil
+	case ChannelTurnJobStatusTimeout:
+		return JobEventTimeout, nil
+	case ChannelTurnJobStatusCancelled:
+		return JobEventCancel, nil
+	case ChannelTurnJobStatusAsyncQueued:
+		return JobEventAsyncQueue, nil
+	default:
+		return "", apierror.BadRequest("CHANNEL_TURN_JOB", "cannot derive event from status: "+status)
+	}
+}

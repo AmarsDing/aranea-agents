@@ -927,7 +927,8 @@ func applySkillPermission(ctx context.Context, s *Skill) {
 		s.Permissions = SkillPermissions{CanEdit: true, CanDelete: true, CanToggleEnabled: true, CanDuplicate: true}
 		return
 	}
-	s.Permissions = SkillPermissions{CanEdit: true, CanDelete: false, CanToggleEnabled: true, CanDuplicate: true}
+	// Non-admin: read-only permissions (mutation methods require admin)
+	s.Permissions = SkillPermissions{CanEdit: false, CanDelete: false, CanToggleEnabled: false, CanDuplicate: false}
 }
 
 func requireAdminAccess(ctx context.Context) error {

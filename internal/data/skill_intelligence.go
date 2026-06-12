@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -261,13 +262,16 @@ WHERE skill_id = ? AND created_at >= ?`
 	metrics := &biz.SkillHealthMetrics{SkillID: skillID}
 	if rows.Next() {
 		var invocationCount, successCount int
-		var avgDurationMS, avgTokenUsage float64
+		var avgDurationMS sql.NullFloat64
+		var avgTokenUsage float64
 		if err := rows.Scan(&invocationCount, &successCount, &avgDurationMS, &avgTokenUsage); err != nil {
 			return nil, err
 		}
 		metrics.InvocationCount = invocationCount
 		metrics.SuccessCount = successCount
-		metrics.AvgDurationMS = avgDurationMS
+		if avgDurationMS.Valid {
+			metrics.AvgDurationMS = avgDurationMS.Float64
+		}
 		metrics.AvgTokenUsage = int(avgTokenUsage)
 		if invocationCount > 0 {
 			metrics.SuccessRate = float64(successCount) / float64(invocationCount)

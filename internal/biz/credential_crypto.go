@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
@@ -86,7 +87,7 @@ func (c *CredentialCrypto) decryptCredential(ctx context.Context, enc string) (s
 	}
 	nonceSize := gcm.NonceSize()
 	if len(raw) < nonceSize {
-		return "", err
+		return "", fmt.Errorf("ciphertext too short: %d < %d", len(raw), nonceSize)
 	}
 	plain, err := gcm.Open(nil, raw[:nonceSize], raw[nonceSize:], nil)
 	if err != nil {
@@ -389,6 +390,7 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 	if enc, ok := m["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 		if plain, err := c.decryptCredential(ctx, enc); err != nil {
 			c.lg.Warn("api_key 解密失败", loggateway.StepID("credential.decrypt"), loggateway.Err(err))
+			m["api_key_decrypt_failed"] = true
 		} else if plain != "" {
 			m["api_key"] = plain
 		}
@@ -396,6 +398,7 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 	if enc, ok := m["secret_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 		if plain, err := c.decryptCredential(ctx, enc); err != nil {
 			c.lg.Warn("secret_key 解密失败", loggateway.StepID("credential.decrypt"), loggateway.Err(err))
+			m["secret_key_decrypt_failed"] = true
 		} else if plain != "" {
 			m["secret_key"] = plain
 		}
@@ -409,6 +412,7 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 			if enc, ok := cm["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 				if plain, err := c.decryptCredential(ctx, enc); err != nil {
 					c.lg.Warn("ha_candidate api_key 解密失败", loggateway.StepID("credential.decrypt"), loggateway.Err(err))
+					cm["api_key_decrypt_failed"] = true
 				} else if plain != "" {
 					cm["api_key"] = plain
 				}

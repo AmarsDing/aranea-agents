@@ -38,10 +38,12 @@ type ChannelOutboundPayload struct {
 }
 
 // EnqueueOutboundDelivery queues an outbound message for the delivery worker.
-func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID string, payload ChannelOutboundPayload) (ChannelDelivery, error) {
+// Returns (delivery, inserted, error). When inserted=false, the idempotency_key
+// already existed and the existing delivery row is returned instead.
+func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID string, payload ChannelOutboundPayload) (ChannelDelivery, bool, error) {
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "channel id is required")
+		return ChannelDelivery{}, false, apierror.BadRequest("CHANNEL", "channel id is required")
 	}
 	payload.Platform = strings.TrimSpace(payload.Platform)
 	payload.Recipient = strings.TrimSpace(payload.Recipient)
@@ -56,16 +58,16 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 		}
 	}
 	if payload.Platform == "" || payload.Recipient == "" {
-		return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "platform and recipient are required")
+		return ChannelDelivery{}, false, apierror.BadRequest("CHANNEL", "platform and recipient are required")
 	}
 	switch payload.Kind {
 	case ChannelOutboundCardKind:
 		if payload.CardJSON == "" && payload.Text == "" {
-			return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "card_json or text is required")
+			return ChannelDelivery{}, false, apierror.BadRequest("CHANNEL", "card_json or text is required")
 		}
 	default:
 		if payload.Text == "" {
-			return ChannelDelivery{}, apierror.BadRequest("CHANNEL", "text is required")
+			return ChannelDelivery{}, false, apierror.BadRequest("CHANNEL", "text is required")
 		}
 		payload.Kind = ChannelOutboundTextKind
 	}
@@ -74,7 +76,7 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return ChannelDelivery{}, err
+		return ChannelDelivery{}, false, err
 	}
 	delivery := ChannelDelivery{
 		ID:             uuid.NewString(),
@@ -86,13 +88,20 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 	// Atomic upsert: when idempotency_key is set, use AddDeliveryIfNotExists
 	// to prevent duplicate deliveries under concurrent requests.
 	if strings.TrimSpace(payload.IdempotencyKey) != "" {
-		result, _, err := u.deliveries.AddDeliveryIfNotExists(ctx, delivery)
+		result, inserted, err := u.deliveries.AddDeliveryIfNotExists(ctx, delivery)
 		if err != nil {
-			return ChannelDelivery{}, err
+			return ChannelDelivery{}, false, err
 		}
-		return result, nil
+		if !inserted {
+			u.lg.Debug("投递幂等命中，跳过重复入队",
+				loggateway.Str("channel_id", channelID),
+				loggateway.Str("idempotency_key", payload.IdempotencyKey),
+			)
+		}
+		return result, inserted, nil
 	}
-	return u.deliveries.AddDelivery(ctx, delivery)
+	result, err := u.deliveries.AddDelivery(ctx, delivery)
+	return result, true, err
 }
 
 // ListPendingOutboundDeliveries returns queued outbound rows across channels.

@@ -70,7 +70,7 @@ func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string
 		ErrorMessage:  res.ErrorMessage,
 		Source:        "tool_test",
 	}
-	recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	recordCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := u.RecordToolInvocation(recordCtx, write); err != nil {
 		u.lg.Warn("tools.test.record_invocation_failed",

@@ -18,11 +18,30 @@ func TestApplyOverrideToEffectiveItem_allow(t *testing.T) {
 	}
 }
 
-func TestApplyOverrideToEffectiveItem_inheritDisabled(t *testing.T) {
-	item := EffectiveAgentTool{ToolKey: "web_fetch", Enabled: true, EffectiveState: "allowed"}
+func TestApplyOverrideToEffectiveItem_inheritPreservesAllowed(t *testing.T) {
+	// Inherit mode should preserve the original computed state regardless of o.Enabled.
+	item := EffectiveAgentTool{ToolKey: "web_fetch", Enabled: true, EffectiveState: "allowed", Reason: "profile:coding"}
 	applyOverrideToEffectiveItem(&item, ToolAgentOverride{Mode: "inherit", Enabled: false}, true)
-	if item.Enabled {
-		t.Fatalf("inherit disabled: expected off, got enabled")
+	if !item.Enabled || item.EffectiveState != "allowed" || item.Reason != "profile:coding" {
+		t.Fatalf("inherit should preserve original state: enabled=%v state=%q reason=%q", item.Enabled, item.EffectiveState, item.Reason)
+	}
+}
+
+func TestApplyOverrideToEffectiveItem_inheritPreservesDenied(t *testing.T) {
+	// Inherit mode should preserve the original denied state regardless of o.Enabled=true.
+	item := EffectiveAgentTool{ToolKey: "shell_exec", Enabled: false, EffectiveState: "denied", Reason: "catalog_off"}
+	applyOverrideToEffectiveItem(&item, ToolAgentOverride{Mode: "inherit", Enabled: true}, true)
+	if item.Enabled || item.EffectiveState != "denied" || item.Reason != "catalog_off" {
+		t.Fatalf("inherit should preserve original denied state: enabled=%v state=%q reason=%q", item.Enabled, item.EffectiveState, item.Reason)
+	}
+}
+
+func TestApplyOverrideToEffectiveItem_inheritEmptyMode(t *testing.T) {
+	// Empty mode defaults to inherit — should also preserve original state.
+	item := EffectiveAgentTool{ToolKey: "read_file", Enabled: true, EffectiveState: "allowed", Reason: "profile:coding"}
+	applyOverrideToEffectiveItem(&item, ToolAgentOverride{Mode: "", Enabled: false}, true)
+	if !item.Enabled || item.EffectiveState != "allowed" || item.Reason != "profile:coding" {
+		t.Fatalf("empty mode (inherit) should preserve original state: enabled=%v state=%q reason=%q", item.Enabled, item.EffectiveState, item.Reason)
 	}
 }
 

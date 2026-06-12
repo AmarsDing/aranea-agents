@@ -31,11 +31,28 @@ func (f *skillFilesystem) CreateSkillDir(slug string, body string) (string, erro
 	if slug == "" {
 		return "", apierror.BadRequest(apierror.DomainSkill, "slug is required for skill directory creation")
 	}
-	if strings.Contains(slug, "..") || strings.HasPrefix(slug, "/") {
+	// Reject path traversal attempts (Unix and Windows).
+	if strings.Contains(slug, "..") || strings.Contains(slug, "/") || strings.Contains(slug, "\\") {
+		return "", apierror.BadRequest(apierror.DomainSkill, "slug contains unsafe path characters")
+	}
+	// Reject Windows drive prefixes (e.g. "C:").
+	if len(slug) >= 2 && slug[1] == ':' {
 		return "", apierror.BadRequest(apierror.DomainSkill, "slug contains unsafe path characters")
 	}
 	root := f.resolveRootFn(context.Background())
 	dir := filepath.Join(root, slug)
+	// Verify the resolved path is within root.
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", apierror.BadRequest(apierror.DomainSkill, "invalid skill slug")
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", apierror.BadRequest(apierror.DomainSkill, "invalid skill root")
+	}
+	if absDir != absRoot && !strings.HasPrefix(absDir, absRoot+string(os.PathSeparator)) {
+		return "", apierror.BadRequest(apierror.DomainSkill, "slug escapes root directory")
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -143,7 +160,12 @@ func (f *skillFilesystem) SafeFilePath(dir string, relPath string) (string, stri
 	if err != nil {
 		return "", "", err
 	}
-	if absPath != absRoot && !strings.HasPrefix(absPath, absRoot+string(os.PathSeparator)) {
+	// Use filepath.Rel for robust containment check (Windows-compatible).
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", "", errors.New("skill file path escapes skill directory")
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", "", errors.New("skill file path escapes skill directory")
 	}
 	return absRoot, absPath, nil

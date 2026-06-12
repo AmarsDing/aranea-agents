@@ -92,8 +92,8 @@ func (s *channelRepoStub) ListPendingDeliveries(_ context.Context, limit int) ([
 func (s *channelRepoStub) UpdateDelivery(_ context.Context, d ChannelDelivery) error {
 	return nil
 }
-func (s *channelRepoStub) HasDeliveryByIdempotencyKey(_ context.Context, channelID, key string) (bool, error) {
-	return false, nil
+func (s *channelRepoStub) AddDeliveryIfNotExists(_ context.Context, d ChannelDelivery) (ChannelDelivery, bool, error) {
+	return d, true, nil
 }
 
 func TestChannelCredentialEncryptRoundTrip(t *testing.T) {
@@ -139,7 +139,7 @@ func TestChannelUpsertCredentialsStoresEncryptedRef(t *testing.T) {
 			ConfigJSON: `{"type":"feishu","receive_mode":"webhook","config":{"app_id":"cli_test"},"webhook":{"path":"/webhooks/feishu-demo"}}`,
 		}},
 	}
-	uc := NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
+	uc := NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	items, err := uc.UpsertCredentials(context.Background(), "ch-1", []ChannelCredentialInput{{
 		CredentialKey: "app_secret",
 		Secret:        "super-secret",
@@ -218,7 +218,7 @@ func TestChannelRunHealthChecksUpdatesStatus(t *testing.T) {
 			}},
 		},
 	}
-	uc := NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
+	uc := NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	if err := uc.RunHealthChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}

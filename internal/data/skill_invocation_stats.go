@@ -24,7 +24,7 @@ func (r *skillInvocationStatsRepo) GetSkillInvocationStats(ctx context.Context, 
        SUM(CASE WHEN si.status = 'success' THEN 1 ELSE 0 END) as success_cnt,
        COALESCE(SUM(si.duration_ms), 0) as total_dur
 FROM skill_invocation si
-JOIN platform_skill ps ON ps.id = si.skill_id
+JOIN platform_skill ps ON ps.id = si.skill_id AND ps.deleted_at = ''
 WHERE si.agent_id = ? AND COALESCE(NULLIF(si.started_at, ''), si.created_at) >= ?
 GROUP BY ps.skill_key`
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, agentID, since.Format(time.RFC3339))

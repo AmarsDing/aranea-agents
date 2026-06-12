@@ -324,10 +324,12 @@ func TestRequireJSONObject(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "JSON array allowed",
+			name:    "JSON empty array rejected",
 			field:   "config_json",
 			raw:     `[]`,
-			wantErr: false,
+			wantErr: true,
+			reason:  "TOOL",
+			message: "config_json must be a JSON object",
 		},
 		{
 			name:    "JSON array with items rejected",

@@ -50,8 +50,8 @@ func (r *countingRepo) ListPendingDeliveries(_ context.Context, limit int) ([]bi
 	return nil, nil
 }
 func (r *countingRepo) UpdateDelivery(_ context.Context, d biz.ChannelDelivery) error { return nil }
-func (r *countingRepo) HasDeliveryByIdempotencyKey(_ context.Context, channelID, idempotencyKey string) (bool, error) {
-	return false, nil
+func (r *countingRepo) AddDeliveryIfNotExists(_ context.Context, d biz.ChannelDelivery) (biz.ChannelDelivery, bool, error) {
+	return d, true, nil
 }
 func (r *countingRepo) ListCredentialsRaw(_ context.Context, channelID string) ([]biz.ChannelCredential, error) {
 	return nil, nil

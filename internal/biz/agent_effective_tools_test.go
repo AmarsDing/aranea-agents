@@ -91,6 +91,44 @@ func TestBuildAgentEffectiveTools_catalogDisableBlocksDefaultEnabledTool(t *test
 	t.Fatal("gemini_web_fetch missing from effective items")
 }
 
+func TestEffectiveToolState_fullProfileDenyOverridesAllow(t *testing.T) {
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "full"}
+	// read_file is open-by-default and in the full profile allow set.
+	trow := Tool{Key: "read_file", Enabled: true}
+	allowed := profileAllowSet("full", nil)
+	deny := map[string]bool{"read_file": true}
+
+	state, reason, en := computeEffectiveToolState(settings, trow, "full", allowed, deny)
+	if en {
+		t.Fatalf("read_file must be denied when in deny set, even under full profile; got enabled=%v", en)
+	}
+	if state != "denied" {
+		t.Fatalf("want state=denied, got %q", state)
+	}
+	if reason != "agent_deny" {
+		t.Fatalf("want reason=agent_deny, got %q", reason)
+	}
+}
+
+func TestEffectiveToolState_fullProfileDenyOverridesOptIn(t *testing.T) {
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "full"}
+	// shell_exec is opt-in only (Enabled=false) but in the full profile allow set.
+	trow := Tool{Key: "shell_exec", Enabled: false}
+	allowed := profileAllowSet("full", nil)
+	deny := map[string]bool{"shell_exec": true}
+
+	state, reason, en := computeEffectiveToolState(settings, trow, "full", allowed, deny)
+	if en {
+		t.Fatalf("shell_exec must be denied when in deny set, even under full profile; got enabled=%v", en)
+	}
+	if state != "denied" {
+		t.Fatalf("want state=denied, got %q", state)
+	}
+	if reason != "agent_deny" {
+		t.Fatalf("want reason=agent_deny, got %q", reason)
+	}
+}
+
 func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}
 	cat := []Tool{{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true}}

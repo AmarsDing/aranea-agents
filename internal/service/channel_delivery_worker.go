@@ -108,7 +108,7 @@ func (h *ChannelIngress) enqueueOutboundText(
 		if len(pages) > 1 {
 			key = fmt.Sprintf("%s:page:%d", idempotencyKey, i+1)
 		}
-		if _, err := h.channels.EnqueueOutboundDelivery(ctx, chRow.ID, biz.ChannelOutboundPayload{
+		if _, _, err := h.channels.EnqueueOutboundDelivery(ctx, chRow.ID, biz.ChannelOutboundPayload{
 			Platform:       platform,
 			Recipient:      recipient,
 			Text:           page,

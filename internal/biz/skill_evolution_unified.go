@@ -130,22 +130,25 @@ type EvolutionTrigger interface {
 
 // SkillEvolutionOrchestrator 统一进化编排器
 type SkillEvolutionOrchestrator struct {
-	reader   UnifiedEvolutionReader
-	writer   UnifiedEvolutionWriter
-	triggers []EvolutionTrigger
-	triggersMu  sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
-	lg          loggateway.Logger
+	checkReader  UnifiedEvolutionCheckReader
+	queryReader  UnifiedEvolutionQueryReader
+	writer       UnifiedEvolutionWriter
+	triggers     []EvolutionTrigger
+	triggersMu   sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
+	lg           loggateway.Logger
 }
 
 func NewSkillEvolutionOrchestrator(
-	reader UnifiedEvolutionReader,
+	checkReader UnifiedEvolutionCheckReader,
+	queryReader UnifiedEvolutionQueryReader,
 	writer UnifiedEvolutionWriter,
 	lg loggateway.Logger,
 ) *SkillEvolutionOrchestrator {
 	return &SkillEvolutionOrchestrator{
-		reader: reader,
-		writer: writer,
-		lg:     lg,
+		checkReader: checkReader,
+		queryReader: queryReader,
+		writer:      writer,
+		lg:          lg,
 	}
 }
 
@@ -158,9 +161,9 @@ func (o *SkillEvolutionOrchestrator) RegisterTrigger(trigger EvolutionTrigger) {
 }
 
 // HasPendingForTarget checks whether a pending suggestion exists for the given target.
-// Delegates to the internal reader.
+// Delegates to the internal checkReader.
 func (o *SkillEvolutionOrchestrator) HasPendingForTarget(ctx context.Context, targetType, targetID string) (bool, error) {
-	return o.reader.HasPendingForTarget(ctx, targetType, targetID)
+	return o.checkReader.HasPendingForTarget(ctx, targetType, targetID)
 }
 
 // CheckAndCreate 原子化检查+创建
@@ -170,7 +173,7 @@ func (o *SkillEvolutionOrchestrator) HasPendingForTarget(ctx context.Context, ta
 // DB UNIQUE 约束兜底防止并发重复创建
 func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetType EvolutionTargetType, targetID string) ([]UnifiedEvolutionSuggestion, error) {
 	// 1. 检查是否已有 pending 建议
-	hasPending, err := o.reader.HasPendingForTarget(ctx, string(targetType), targetID)
+	hasPending, err := o.checkReader.HasPendingForTarget(ctx, string(targetType), targetID)
 	if err != nil {
 		o.lg.Warn("orchestrator: check pending failed",
 			loggateway.StepID("evo_orchestrator.check"),
@@ -181,7 +184,7 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 	}
 
 	// 2. 检查冷却期（7 天）
-	latest, err := o.reader.GetLatestByTarget(ctx, string(targetType), targetID)
+	latest, err := o.checkReader.GetLatestByTarget(ctx, string(targetType), targetID)
 	if err == nil && latest != nil {
 		cooldownEnd := latest.CreatedAt.Add(evoCooldownDuration)
 		if time.Now().UTC().Before(cooldownEnd) {
@@ -216,7 +219,7 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 		for _, suggestion := range suggestions {
 			// Per-action-type cooldown check: each (targetType, targetID, actionType)
 			// triple has its own independent cooldown period.
-			latestByAction, lbErr := o.reader.GetLatestByTargetAndAction(ctx, string(suggestion.TargetType), suggestion.TargetID, string(suggestion.ActionType))
+			latestByAction, lbErr := o.checkReader.GetLatestByTargetAndAction(ctx, string(suggestion.TargetType), suggestion.TargetID, string(suggestion.ActionType))
 			if lbErr == nil && latestByAction != nil {
 				cooldownEnd := latestByAction.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
 				if time.Now().UTC().Before(cooldownEnd) {
@@ -251,7 +254,7 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 
 // Approve 审批建议
 func (o *SkillEvolutionOrchestrator) Approve(ctx context.Context, id string, approvedBy string) error {
-	s, err := o.reader.GetByID(ctx, id)
+	s, err := o.queryReader.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -263,7 +266,7 @@ func (o *SkillEvolutionOrchestrator) Approve(ctx context.Context, id string, app
 
 // Reject 拒绝建议
 func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, rejectedBy string, reason string) error {
-	s, err := o.reader.GetByID(ctx, id)
+	s, err := o.queryReader.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}

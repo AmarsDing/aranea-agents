@@ -1400,6 +1400,7 @@ func (p *SkillsRequestProcessor) getLoadedSkills(
 	var names []string
 	prefix := skill.LoadedPrefix(inv.AgentName)
 	state := inv.Session.SnapshotState()
+	seen := make(map[string]bool)
 	for k, v := range state {
 		if !strings.HasPrefix(k, prefix) {
 			continue
@@ -1407,7 +1408,11 @@ func (p *SkillsRequestProcessor) getLoadedSkills(
 		if len(v) == 0 {
 			continue
 		}
-		name := strings.TrimPrefix(k, prefix)
+		name := strings.TrimSpace(strings.TrimPrefix(k, prefix))
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
 		names = append(names, name)
 	}
 	return names

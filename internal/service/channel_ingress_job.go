@@ -52,7 +52,7 @@ func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, e
 	}
 	idempotency := strings.TrimSpace(ev.IdempotencyKey)
 	if idempotency == "" {
-		idempotency = biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+		idempotency = biz.InboundIdempotencyKey(platform, ev.IdempotencyKey)
 	}
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
@@ -91,13 +91,22 @@ func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previe
 	if jobID == "" {
 		return
 	}
-	// Internal/admin path: directly sets target status without state machine validation.
-	// Production code should use markTurnJobByEvent instead.
-	if err := h.turnJobs.UpdateStatus(ctx, jobID, status, errMsg, previewID, preview); err != nil {
-		h.lg.Warn("TurnJob 状态更新失败",
-			loggateway.StepID("channel.job.status_update_failed"),
+	// Derive the state machine event from the target status for safe transitions.
+	event, eventErr := biz.ChannelTurnJobEventFromStatus(status)
+	if eventErr != nil {
+		h.lg.Warn("markTurnJob: 无法推导状态机事件，跳过",
+			loggateway.StepID("channel.job.status_derive_failed"),
 			loggateway.Str("job_id", jobID),
 			loggateway.Str("status", status),
+			loggateway.Err(eventErr),
+		)
+		return
+	}
+	if err := h.turnJobs.TransitionByEvent(ctx, jobID, event, errMsg, previewID, preview); err != nil {
+		h.lg.Warn("TurnJob 状态转换失败",
+			loggateway.StepID("channel.job.status_update_failed"),
+			loggateway.Str("job_id", jobID),
+			loggateway.Str("event", event),
 			loggateway.Err(err),
 		)
 	}

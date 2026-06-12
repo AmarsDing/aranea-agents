@@ -44,6 +44,7 @@ type CircuitBreaker struct {
 	state           CircuitState
 	failures        int
 	successes       int
+	halfOpenProbes  int
 	lastFailureTime time.Time
 	config          CircuitBreakerConfig
 	onStateChange   func(name string, from, to CircuitState)
@@ -87,15 +88,18 @@ func (cb *CircuitBreaker) Allow() (bool, CircuitState) {
 			cb.state = CircuitHalfOpen
 			cb.successes = 0
 			cb.failures = 0
+			cb.halfOpenProbes = 1
 			cb.emitStateChange(prev, cb.state)
 			return true, cb.state
 		}
 		return false, cb.state
 	case CircuitHalfOpen:
-		// Reserve a probe slot atomically: increment successes as a probe
-		// counter so that concurrent Allow() calls cannot exceed HalfOpenMaxProbe.
-		if cb.successes < cb.config.HalfOpenMaxProbe {
-			cb.successes++
+		// Reserve a probe slot atomically: increment halfOpenProbes as a
+		// dedicated probe counter so that concurrent Allow() calls cannot
+		// exceed HalfOpenMaxProbe. This is separate from successes to avoid
+		// RecordSuccess() polluting the probe slot counter.
+		if cb.halfOpenProbes < cb.config.HalfOpenMaxProbe {
+			cb.halfOpenProbes++
 			return true, cb.state
 		}
 		return false, cb.state
@@ -120,6 +124,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 			cb.state = CircuitClosed
 			cb.failures = 0
 			cb.successes = 0
+			cb.halfOpenProbes = 0
 			cb.emitStateChange(prev, cb.state)
 		}
 	case CircuitClosed:
@@ -140,6 +145,7 @@ func (cb *CircuitBreaker) RecordFailure() {
 		prev := cb.state
 		cb.state = CircuitOpen
 		cb.successes = 0
+		cb.halfOpenProbes = 0
 		cb.emitStateChange(prev, cb.state)
 	case CircuitClosed:
 		if cb.failures >= cb.config.FailureThreshold {
@@ -163,6 +169,7 @@ func (cb *CircuitBreaker) Reset() {
 	cb.state = CircuitClosed
 	cb.failures = 0
 	cb.successes = 0
+	cb.halfOpenProbes = 0
 	if prev != CircuitClosed {
 		cb.emitStateChange(prev, cb.state)
 	}
@@ -204,6 +211,7 @@ func (cb *CircuitBreaker) snapshotEntry() CircuitBreakerStateEntry {
 		State:           string(cb.state),
 		FailureCount:    cb.failures,
 		SuccessCount:    cb.successes,
+		HalfOpenProbes:  cb.halfOpenProbes,
 		LastFailureTime: cb.lastFailureTime,
 		UpdatedAt:       time.Now(),
 	}
@@ -218,6 +226,7 @@ func (cb *CircuitBreaker) restoreFromEntry(entry CircuitBreakerStateEntry) {
 	cb.state = CircuitState(entry.State)
 	cb.failures = entry.FailureCount
 	cb.successes = entry.SuccessCount
+	cb.halfOpenProbes = entry.HalfOpenProbes
 	cb.lastFailureTime = entry.LastFailureTime
 }
 

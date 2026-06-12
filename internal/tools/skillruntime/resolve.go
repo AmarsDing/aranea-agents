@@ -253,7 +253,7 @@ func skillMatchesPath(c biz.SkillRuntimeCandidate, path string) bool {
 			continue
 		}
 		tpl := strings.ToLower(tp)
-		if tpl == pathLower || strings.Contains(tpl, pathLower) || strings.Contains(pathLower, tpl) {
+		if tpl == pathLower || strings.Contains(tpl, pathLower) {
 			return true
 		}
 	}
@@ -296,7 +296,7 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 				if tpl == pl {
 					sc += 1000
 					matchDetail = "exact taxonomy path match"
-				} else if strings.Contains(tpl, pl) || strings.Contains(pl, tpl) {
+				} else if strings.Contains(tpl, pl) {
 					sc += 400
 					matchDetail = "partial taxonomy path match"
 				}

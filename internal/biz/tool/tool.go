@@ -351,16 +351,22 @@ type ToolUsecase struct {
 	lg            loggateway.Logger
 }
 
-func NewToolUsecase(repo ToolRepo, sys SettingRepo, lg loggateway.Logger) *ToolUsecase {
-	return &ToolUsecase{repo: repo, sys: sys, lg: lg}
+type ToolUsecaseOption func(*ToolUsecase)
+
+func WithToolTester(tester ToolTester) ToolUsecaseOption {
+	return func(u *ToolUsecase) { u.tester = tester }
 }
 
-func (u *ToolUsecase) SetToolTester(tester ToolTester) {
-	u.tester = tester
+func WithWebResearchChecker(checker WebResearchReadinessChecker) ToolUsecaseOption {
+	return func(u *ToolUsecase) { u.webResChecker = checker }
 }
 
-func (u *ToolUsecase) SetWebResearchChecker(checker WebResearchReadinessChecker) {
-	u.webResChecker = checker
+func NewToolUsecase(repo ToolRepo, sys SettingRepo, lg loggateway.Logger, opts ...ToolUsecaseOption) *ToolUsecase {
+	uc := &ToolUsecase{repo: repo, sys: sys, lg: lg}
+	for _, opt := range opts {
+		opt(uc)
+	}
+	return uc
 }
 
 func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListResult, error) {

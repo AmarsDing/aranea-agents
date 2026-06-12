@@ -173,7 +173,7 @@ func webResearchToolReady(agentMap map[string]any, platform *WebResearchPlatform
 	if v, ok := agentMap["api_key"].(string); ok && strings.TrimSpace(v) != "" {
 		return true
 	}
-	return platform != nil && platform.HasAPIKey
+	return false
 }
 
 func hasOpenAPIMetadata(raw string) bool {

@@ -20,6 +20,7 @@ func buildCircuitBreakerRegistry(s *biz.AgentRuntimeSettings, lg loggateway.Logg
 		return nil
 	}
 	registry := biztool.NewCircuitBreakerRegistry(
+		biztool.WithLogger(lg),
 		biztool.WithRegistryOnStateChange(func(name string, from, to biztool.CircuitState) {
 			lg.Info("circuit breaker state changed",
 				loggateway.StepID("tool.circuit_breaker.state_change"),

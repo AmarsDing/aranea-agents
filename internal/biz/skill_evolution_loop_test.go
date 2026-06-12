@@ -408,7 +408,7 @@ func TestGateVerification_StyleCheck_DraftTooLong(t *testing.T) {
 
 func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionWriter{} // kept for future write-verification tests
 
 	// Create a suggestion that is 8 days old (past 7-day expiration)
 	oldTime := time.Now().UTC().Add(-8 * 24 * time.Hour)
@@ -447,7 +447,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
 
 func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionWriter{} // kept for future write-verification tests
 
 	// All suggestions are recent
 	sugReader.suggestions = []SkillEvolutionSuggestion{

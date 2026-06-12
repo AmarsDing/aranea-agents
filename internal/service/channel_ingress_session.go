@@ -103,6 +103,14 @@ func (h *ChannelIngress) ensureChannelSession(
 		if existing, gerr := h.channels.GetPeerSession(ctx, chRow.ID, peerKey); gerr == nil && existing.SessionID != "" {
 			if _, verr := h.sessions.Get(ctx, existing.SessionID); verr == nil {
 				// TOCTOU: another request won the race; sessionID is now orphaned.
+				// Clean up the orphaned session to prevent accumulation.
+				if derr := h.sessions.Delete(ctx, sessionID); derr != nil {
+					h.lg.Warn("ensureChannelSession: 清理孤儿 session 失败",
+						loggateway.StepID("channel.session.orphan_cleanup_failed"),
+						loggateway.Str("orphaned_session_id", sessionID),
+						loggateway.Err(derr),
+					)
+				}
 				h.lg.Warn("ensureChannelSession: 并发创建 session 竞态，使用已有绑定",
 					loggateway.StepID("channel.session.concurrent_create"),
 					loggateway.Str("channel_id", chRow.ID),

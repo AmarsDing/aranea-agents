@@ -374,10 +374,7 @@ func (a toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInp
 func provideToolTester(lg loggateway.Logger) biztool.ToolTester { return toolTesterAdapter{lg: lg} }
 
 func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, lg loggateway.Logger) *biztool.ToolUsecase {
-	uc := biztool.NewToolUsecase(repo, sys, lg)
-	uc.SetToolTester(tester)
-	uc.SetWebResearchChecker(checker)
-	return uc
+	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -1244,9 +1241,7 @@ func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo,
 	return monitor.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
 
-func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
-	analyzer := &skillIntelligenceRCAAdapter{inner: rca}
-	_ = analyzer // analyzer is used by reporter which is now Wire-injected
+func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, _ monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	reporter.SetUnanalyzedReader(unanalyzedReader)
 	bridge := data.NewEvolutionStoreBridge(unifiedRepo, suggestionRepo, lg)
 	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, bridge, aggregator, lg,

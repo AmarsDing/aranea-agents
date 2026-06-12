@@ -122,4 +122,6 @@ func (g *ChannelConcurrentGate) release(channelID, peerID string, isGroup bool) 
 		return
 	}
 	entry.count--
+	entry.lastAcq = time.Now() // refresh to prevent stale detection from evicting active entries
+	g.active[key] = entry
 }

@@ -31,6 +31,15 @@ func (s *stubBlobWriter) SaveBlob(_ context.Context, blob *ToolResultBlob) error
 	return s.err
 }
 
+type stubReplacementReader struct {
+	result *ToolResultReplacement
+	err    error
+}
+
+func (s *stubReplacementReader) GetReplacementByMessage(_ context.Context, _, _ string) (*ToolResultReplacement, error) {
+	return s.result, s.err
+}
+
 type stubReplacementWriter struct {
 	saved *ToolResultReplacement
 	err   error
@@ -46,7 +55,7 @@ func makeLongContent(n int) string {
 }
 
 func TestToolResultGate_Check_BelowThreshold(t *testing.T) {
-	gate := NewToolResultGate(&stubBlobReader{}, &stubBlobWriter{}, &stubReplacementWriter{})
+	gate := NewToolResultGate(&stubBlobReader{}, &stubBlobWriter{}, &stubReplacementReader{}, &stubReplacementWriter{})
 	result, err := gate.Check(context.Background(), "sess1", "msg1", "tool1", "", "short content", 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -62,7 +71,7 @@ func TestToolResultGate_Check_BelowThreshold(t *testing.T) {
 func TestToolResultGate_Check_AboveThreshold(t *testing.T) {
 	bw := &stubBlobWriter{}
 	rw := &stubReplacementWriter{}
-	gate := NewToolResultGate(&stubBlobReader{}, bw, rw)
+	gate := NewToolResultGate(&stubBlobReader{}, bw, &stubReplacementReader{}, rw)
 
 	longContent := makeLongContent(ToolResultSizeThreshold + 1)
 	result, err := gate.Check(context.Background(), "sess1", "msg1", "read_file", "path=/foo", longContent, 3)
@@ -103,7 +112,7 @@ func TestToolResultGate_Check_AboveThreshold(t *testing.T) {
 
 func TestToolResultGate_Check_BlobSaveError(t *testing.T) {
 	bw := &stubBlobWriter{err: ErrNotFound}
-	gate := NewToolResultGate(&stubBlobReader{}, bw, &stubReplacementWriter{})
+	gate := NewToolResultGate(&stubBlobReader{}, bw, &stubReplacementReader{}, &stubReplacementWriter{})
 
 	_, err := gate.Check(context.Background(), "sess1", "msg1", "tool1", "", makeLongContent(ToolResultSizeThreshold+1), 1)
 	if err == nil {
@@ -113,7 +122,7 @@ func TestToolResultGate_Check_BlobSaveError(t *testing.T) {
 
 func TestToolResultGate_Check_ReplacementSaveError(t *testing.T) {
 	rw := &stubReplacementWriter{err: ErrNotFound}
-	gate := NewToolResultGate(&stubBlobReader{}, &stubBlobWriter{}, rw)
+	gate := NewToolResultGate(&stubBlobReader{}, &stubBlobWriter{}, &stubReplacementReader{}, rw)
 
 	_, err := gate.Check(context.Background(), "sess1", "msg1", "tool1", "", makeLongContent(ToolResultSizeThreshold+1), 1)
 	if err == nil {
@@ -123,9 +132,45 @@ func TestToolResultGate_Check_ReplacementSaveError(t *testing.T) {
 
 func TestToolResultGate_BlobReader(t *testing.T) {
 	br := &stubBlobReader{}
-	gate := NewToolResultGate(br, &stubBlobWriter{}, &stubReplacementWriter{})
+	gate := NewToolResultGate(br, &stubBlobWriter{}, &stubReplacementReader{}, &stubReplacementWriter{})
 	if gate.BlobReader() != br {
 		t.Fatal("BlobReader should return the injected reader")
+	}
+}
+
+func TestToolResultGate_Check_Idempotent(t *testing.T) {
+	// If a replacement already exists for (sessionID, messageID), Check should
+	// return the existing result without creating new blob/replacement records.
+	existing := &ToolResultReplacement{
+		ID:           "existing-rep-id",
+		SessionID:    "sess1",
+		MessageID:    "msg1",
+		ResultBlobID: "existing-blob-id",
+		PreviewText:  "existing preview",
+	}
+	rr := &stubReplacementReader{result: existing}
+	bw := &stubBlobWriter{}
+	rw := &stubReplacementWriter{}
+	gate := NewToolResultGate(&stubBlobReader{}, bw, rr, rw)
+
+	result, err := gate.Check(context.Background(), "sess1", "msg1", "tool1", "", makeLongContent(ToolResultSizeThreshold+1), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.BlobID != "existing-blob-id" {
+		t.Fatalf("BlobID = %q, want existing-blob-id", result.BlobID)
+	}
+	if result.PreviewText != "existing preview" {
+		t.Fatalf("PreviewText = %q, want existing preview", result.PreviewText)
+	}
+	if !result.DidPersist {
+		t.Fatal("DidPersist should be true for existing replacement")
+	}
+	if bw.saved != nil {
+		t.Fatal("should not save new blob when replacement already exists")
+	}
+	if rw.saved != nil {
+		t.Fatal("should not save new replacement when replacement already exists")
 	}
 }
 

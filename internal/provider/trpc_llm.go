@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -69,7 +70,7 @@ func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConf
 				lg.Warn("模型 API 预检失败（不阻塞）", loggateway.StepID("provider.preflight_warn"), loggateway.Str("url", baseURL), loggateway.Err(probeErr))
 			} else {
 				// Drain and close body for proper connection reuse.
-				_, _ = resp.Body.Read(make([]byte, 1))
+				io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 				lg.Info("模型 API 预检通过", loggateway.StepID("provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
 			}

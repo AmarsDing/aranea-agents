@@ -44,8 +44,9 @@ func (s *deliveryRepoStub) UpdateDelivery(_ context.Context, d ChannelDelivery) 
 	s.last = d
 	return nil
 }
-func (s *deliveryRepoStub) HasDeliveryByIdempotencyKey(_ context.Context, channelID, key string) (bool, error) {
-	return false, nil
+func (s *deliveryRepoStub) AddDeliveryIfNotExists(_ context.Context, d ChannelDelivery) (ChannelDelivery, bool, error) {
+	s.last = d
+	return d, true, nil
 }
 
 func TestOutboundRetryDelay(t *testing.T) {

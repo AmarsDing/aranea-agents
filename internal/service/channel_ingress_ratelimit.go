@@ -122,9 +122,11 @@ func cleanupStaleWebhookRateLimits() {
 			return true
 		}
 		if !snap.windowStart.IsZero() && now.Sub(snap.windowStart) >= staleThreshold {
-			webhookRateLimits.CompareAndSwap(key, snap, nil)
-			// If CAS failed (concurrent update), the entry is still live — skip.
-			webhookRateLimits.Delete(key)
+			// Only delete if CAS succeeds — if it failed, another goroutine
+			// updated the entry (it is still live) and we must not remove it.
+			if webhookRateLimits.CompareAndSwap(key, snap, nil) {
+				webhookRateLimits.Delete(key)
+			}
 		}
 		return true
 	})

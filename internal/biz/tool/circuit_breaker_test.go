@@ -80,6 +80,106 @@ func TestCircuitBreaker_HalfOpenFailsBackToOpen(t *testing.T) {
 	}
 }
 
+func TestCircuitBreaker_HalfOpenMultipleProbes(t *testing.T) {
+	cb := NewCircuitBreaker("test", CircuitBreakerConfig{
+		FailureThreshold:   2,
+		RecoveryTimeoutSec: 1,
+		HalfOpenMaxProbe:   3,
+	})
+	// Trip the breaker to Open.
+	cb.RecordFailure()
+	cb.RecordFailure()
+	if cb.State() != CircuitOpen {
+		t.Fatalf("expected open, got %s", cb.State())
+	}
+
+	// Wait for recovery timeout to transition to HalfOpen.
+	time.Sleep(1100 * time.Millisecond)
+
+	// First probe should be allowed.
+	allowed, state := cb.Allow()
+	if !allowed || state != CircuitHalfOpen {
+		t.Fatalf("expected half_open probe 1 allowed, allowed=%v state=%s", allowed, state)
+	}
+
+	// Second probe should be allowed.
+	allowed, state = cb.Allow()
+	if !allowed || state != CircuitHalfOpen {
+		t.Fatalf("expected half_open probe 2 allowed, allowed=%v state=%s", allowed, state)
+	}
+
+	// Third probe should be allowed (reaches HalfOpenMaxProbe).
+	allowed, state = cb.Allow()
+	if !allowed || state != CircuitHalfOpen {
+		t.Fatalf("expected half_open probe 3 allowed, allowed=%v state=%s", allowed, state)
+	}
+
+	// Fourth probe should be blocked (exceeds HalfOpenMaxProbe=3).
+	allowed, _ = cb.Allow()
+	if allowed {
+		t.Fatal("expected probe 4 to be blocked (exceeds HalfOpenMaxProbe)")
+	}
+
+	// Record 2 successes — not enough to close yet.
+	cb.RecordSuccess()
+	cb.RecordSuccess()
+	if cb.State() != CircuitHalfOpen {
+		t.Fatalf("expected still half_open after 2 successes (need 3), got %s", cb.State())
+	}
+
+	// Third success should transition to Closed.
+	cb.RecordSuccess()
+	if cb.State() != CircuitClosed {
+		t.Fatalf("expected closed after 3 probe successes, got %s", cb.State())
+	}
+}
+
+func TestCircuitBreaker_HalfOpenMultipleProbes_FailureResets(t *testing.T) {
+	cb := NewCircuitBreaker("test", CircuitBreakerConfig{
+		FailureThreshold:   2,
+		RecoveryTimeoutSec: 1,
+		HalfOpenMaxProbe:   3,
+	})
+	// Trip the breaker to Open.
+	cb.RecordFailure()
+	cb.RecordFailure()
+	time.Sleep(1100 * time.Millisecond)
+
+	// Allow 2 probes.
+	cb.Allow()
+	cb.Allow()
+
+	// One success recorded.
+	cb.RecordSuccess()
+
+	// Now a failure during HalfOpen should transition back to Open and reset counters.
+	cb.RecordFailure()
+	if cb.State() != CircuitOpen {
+		t.Fatalf("expected open after half-open failure, got %s", cb.State())
+	}
+
+	// Wait again for recovery timeout.
+	time.Sleep(1100 * time.Millisecond)
+
+	// Should be able to get all 3 probe slots again (halfOpenProbes was reset).
+	allowed, state := cb.Allow()
+	if !allowed || state != CircuitHalfOpen {
+		t.Fatalf("expected half_open after second recovery, allowed=%v state=%s", allowed, state)
+	}
+	allowed, _ = cb.Allow()
+	if !allowed {
+		t.Fatal("expected probe 2 allowed after recovery")
+	}
+	allowed, _ = cb.Allow()
+	if !allowed {
+		t.Fatal("expected probe 3 allowed after recovery")
+	}
+	allowed, _ = cb.Allow()
+	if allowed {
+		t.Fatal("expected probe 4 blocked (exceeds HalfOpenMaxProbe)")
+	}
+}
+
 func TestCircuitBreaker_SuccessResetsFailures(t *testing.T) {
 	cb := NewCircuitBreaker("test", CircuitBreakerConfig{
 		FailureThreshold:   3,

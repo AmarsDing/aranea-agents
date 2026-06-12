@@ -281,6 +281,6 @@ func (n *channelRunEscalationNotifier) enqueueForSession(
 		payload.Kind = biz.ChannelOutboundCardKind
 		payload.CardJSON = cardJSON
 	}
-	_, err = n.channels.EnqueueOutboundDelivery(ctx, meta.ChannelID, payload)
+	_, _, err = n.channels.EnqueueOutboundDelivery(ctx, meta.ChannelID, payload)
 	return err
 }

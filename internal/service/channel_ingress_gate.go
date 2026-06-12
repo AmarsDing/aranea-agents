@@ -15,7 +15,7 @@ func (h *ChannelIngress) gateInboundBeforeTurn(ctx context.Context, chRow biz.Ch
 		return false, "", nil
 	}
 	platform := inboundPlatform(chRow, ev, h.lg)
-	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey)
 
 	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaWebhook)
 	if err != nil {

@@ -24,7 +24,7 @@ func TestInboundIdempotencyKey(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := biz.InboundIdempotencyKey(tc.platform, tc.messageKey, tc.peerID, tc.text)
+			got := biz.InboundIdempotencyKey(tc.platform, tc.messageKey)
 			if got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}

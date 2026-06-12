@@ -60,7 +60,7 @@ func requireJSONObject(field, raw string) error {
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
 		return apierror.BadRequest("TOOL", "%s must be valid JSON", field)
 	}
-	if _, ok := v.(map[string]any); !ok && raw != "[]" {
+	if _, ok := v.(map[string]any); !ok {
 		return apierror.BadRequest("TOOL", "%s must be a JSON object", field)
 	}
 	return nil

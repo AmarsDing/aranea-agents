@@ -1,12 +1,11 @@
 package biz
 
 import (
-	"encoding/json"
 	"strings"
 )
 
 // ApplyAgentToolOverrides adjusts effective tool rows using per-agent overrides.
-// Priority: override (deny / allow / inherit+enabled) wins over profile/catalog policy.
+// Priority: override (deny / allow) wins over profile/catalog policy; inherit preserves original state.
 func ApplyAgentToolOverrides(eff *AgentEffectiveTools, catalog []Tool, overrides []ToolAgentOverride) {
 	if eff == nil || len(overrides) == 0 {
 		return
@@ -73,43 +72,14 @@ func applyOverrideToEffectiveItem(item *EffectiveAgentTool, o ToolAgentOverride,
 		item.EffectiveState = "allowed"
 		item.Reason = "override_allow"
 		return
-	default:
-		if !toolsEnabled {
-			item.Enabled = false
-			item.EffectiveState = "denied"
-			item.Reason = "agent_tools_disabled"
-			return
-		}
-		if o.Enabled {
-			item.Enabled = true
-			item.EffectiveState = "allowed"
-			item.Reason = "override_enabled"
-		} else {
-			item.Enabled = false
-			item.EffectiveState = "denied"
-			item.Reason = "override_disabled"
-		}
+	default: // "inherit" mode — preserve original computed state
+		// Inherit means "keep what was computed by profile/catalog policy".
+		// Do not change Enabled, EffectiveState, or Reason.
+		return
 	}
 }
 
 // MergeToolConfigJSON merges catalog/default config with an agent override object (override wins).
 func MergeToolConfigJSON(baseJSON, overrideJSON string) map[string]any {
-	out := map[string]any{}
-	mergeJSONMap(out, baseJSON)
-	mergeJSONMap(out, overrideJSON)
-	return out
-}
-
-func mergeJSONMap(dst map[string]any, raw string) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "{}" {
-		return
-	}
-	var patch map[string]any
-	if json.Unmarshal([]byte(raw), &patch) != nil {
-		return
-	}
-	for k, v := range patch {
-		dst[k] = v
-	}
+	return MergeToolConfigMaps(baseJSON, overrideJSON)
 }

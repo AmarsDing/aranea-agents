@@ -241,11 +241,8 @@ func normalizeTokenUsage(avgTokens int) float64 {
 // available health metrics. TEMPORARY: this will be replaced by a proper
 // feedback_score DB field in a future migration.
 //
-// Heuristic rules:
-//   - High success rate (>0.9) → bonus 0.2
-//   - Low avg duration (<5s) → bonus 0.1
-//   - Low token usage (<1000) → bonus 0.1
-//   - Clamped to [0, 1]
+// Focuses on efficiency and consistency signals only — NOT success rate,
+// which is already captured by successRateFactor in ScoreSkill.
 func computeHeuristicFeedbackScore(m *SkillHealthMetrics) float64 {
 	if m == nil || m.InvocationCount == 0 {
 		return 0
@@ -253,22 +250,26 @@ func computeHeuristicFeedbackScore(m *SkillHealthMetrics) float64 {
 
 	var score float64
 
-	// Base: proportional to success rate (0-0.6 range).
-	score = m.SuccessRate * 0.6
-
-	// Bonus: high success rate.
-	if m.SuccessRate > 0.9 {
-		score += 0.2
-	}
-
-	// Bonus: low latency.
+	// Duration efficiency: fast skills get bonus (max 0.2).
 	if m.AvgDurationMS > 0 && m.AvgDurationMS < 5000 {
+		score += 0.2
+	} else if m.AvgDurationMS > 0 && m.AvgDurationMS < 15000 {
 		score += 0.1
 	}
 
-	// Bonus: low token usage.
+	// Token efficiency: low token usage gets bonus (max 0.15).
 	if m.AvgTokenUsage > 0 && m.AvgTokenUsage < 1000 {
-		score += 0.1
+		score += 0.15
+	} else if m.AvgTokenUsage > 0 && m.AvgTokenUsage < 3000 {
+		score += 0.05
+	}
+
+	// Consistency: high invocation count with good P95 indicates stable skill (max 0.3).
+	if m.InvocationCount >= 10 && m.P95DurationMS > 0 && m.P95DurationMS < 10000 {
+		score += 0.15
+	}
+	if m.InvocationCount >= 50 {
+		score += 0.15
 	}
 
 	if score > 1 {

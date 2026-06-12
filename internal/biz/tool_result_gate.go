@@ -25,17 +25,20 @@ type ToolResultGateResult struct {
 type ToolResultGate struct {
 	blobReader        ToolResultBlobReader
 	blobWriter        ToolResultBlobWriter
+	replacementReader ToolResultReplacementReader
 	replacementWriter ToolResultReplacementWriter
 }
 
 func NewToolResultGate(
 	blobReader ToolResultBlobReader,
 	blobWriter ToolResultBlobWriter,
+	replacementReader ToolResultReplacementReader,
 	replacementWriter ToolResultReplacementWriter,
 ) *ToolResultGate {
 	return &ToolResultGate{
 		blobReader:        blobReader,
 		blobWriter:        blobWriter,
+		replacementReader: replacementReader,
 		replacementWriter: replacementWriter,
 	}
 }
@@ -48,6 +51,17 @@ func (g *ToolResultGate) Check(ctx context.Context, sessionID, messageID, toolNa
 	runeCount := utf8.RuneCountInString(fullContent)
 	if runeCount <= ToolResultSizeThreshold {
 		return ToolResultGateResult{}, nil
+	}
+
+	// Idempotency: if a replacement already exists for this (sessionID, messageID),
+	// return the existing result instead of creating duplicates.
+	existing, err := g.replacementReader.GetReplacementByMessage(ctx, sessionID, messageID)
+	if err == nil && existing != nil {
+		return ToolResultGateResult{
+			BlobID:      existing.ResultBlobID,
+			PreviewText: existing.PreviewText,
+			DidPersist:  true,
+		}, nil
 	}
 
 	blob := &ToolResultBlob{

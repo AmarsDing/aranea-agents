@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -190,29 +191,17 @@ func extractSlugFromArgs(args []byte) string {
 	if len(args) == 0 {
 		return ""
 	}
-	// Simple JSON key extraction without full unmarshal.
-	s := string(args)
-	// Try "slug" key first, then "skill_slug".
-	for _, key := range []string{`"slug"`, `"skill_slug"`} {
-		idx := strings.Index(s, key)
-		if idx < 0 {
-			continue
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(args, &obj); err != nil {
+		return ""
+	}
+	for _, key := range []string{"slug", "skill_slug"} {
+		if raw, ok := obj[key]; ok {
+			var s string
+			if err := json.Unmarshal(raw, &s); err == nil {
+				return s
+			}
 		}
-		// Find the value after the key.
-		rest := s[idx+len(key):]
-		// Skip whitespace and colon.
-		rest = strings.TrimLeft(rest, " \t\n\r:")
-		// Skip opening quote.
-		rest = strings.TrimLeft(rest, " \t\n\r")
-		if len(rest) == 0 || rest[0] != '"' {
-			continue
-		}
-		rest = rest[1:]
-		end := strings.IndexByte(rest, '"')
-		if end < 0 {
-			continue
-		}
-		return rest[:end]
 	}
 	return ""
 }

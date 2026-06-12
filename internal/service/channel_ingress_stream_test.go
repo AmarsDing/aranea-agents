@@ -65,6 +65,6 @@ func (r *streamChannelRepo) ListPendingDeliveries(context.Context, int) ([]biz.C
 	return nil, nil
 }
 func (r *streamChannelRepo) UpdateDelivery(context.Context, biz.ChannelDelivery) error { return nil }
-func (r *streamChannelRepo) HasDeliveryByIdempotencyKey(context.Context, string, string) (bool, error) {
-	return false, nil
+func (r *streamChannelRepo) AddDeliveryIfNotExists(_ context.Context, d biz.ChannelDelivery) (biz.ChannelDelivery, bool, error) {
+	return d, true, nil
 }

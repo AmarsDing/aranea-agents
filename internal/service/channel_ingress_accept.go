@@ -27,7 +27,7 @@ func (o inboundAcceptOutcome) needsBackgroundWork() bool {
 func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, viaWebhook bool) (inboundAcceptOutcome, error) {
 	var noop inboundAcceptOutcome
 	platform := inboundPlatform(chRow, ev, h.lg)
-	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey)
 	viaLabel := "runtime"
 	if viaWebhook {
 		viaLabel = "webhook"
@@ -198,7 +198,7 @@ func (h *ChannelIngress) releaseInboundInflight(ev port.InboundEvent, platform s
 	if platform == "" {
 		platform = "unknown"
 	}
-	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey)
 	h.deduplicator.ReleaseInflight(dedupKey)
 }
 

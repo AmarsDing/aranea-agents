@@ -59,16 +59,24 @@ type ChannelTurnJob struct {
 	GraphID string
 }
 
-// ChannelTurnJobRepo persists channel turn jobs.
+// ChannelTurnJobReader provides read-only access to channel turn jobs.
 // Stability:evolving
-type ChannelTurnJobRepo interface {
-	Create(ctx context.Context, job ChannelTurnJob) (string, error)
-	UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error
-	UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error
+type ChannelTurnJobReader interface {
 	GetByID(ctx context.Context, id string) (ChannelTurnJob, error)
 	GetByIdempotency(ctx context.Context, channelID, idempotencyKey string) (ChannelTurnJob, error)
 	ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error)
 	ListFiltered(ctx context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error)
+	ListActiveBySession(ctx context.Context, channelID, sessionID string) ([]ChannelTurnJob, error)
+}
+
+// ChannelTurnJobRepo persists channel turn jobs.
+// Embeds ChannelTurnJobReader for convenience.
+// Stability:evolving
+type ChannelTurnJobRepo interface {
+	ChannelTurnJobReader
+	Create(ctx context.Context, job ChannelTurnJob) (string, error)
+	UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error
+	UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error
 }
 
 // ChannelTurnJobListQuery filters jobs for chat background panel (M55 CC-D-01).
@@ -128,4 +136,25 @@ func IsChannelTurnJobIdempotentLockedStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// ChannelTurnJobIdempotentLockedStatuses returns the list of statuses that must not be
+// overwritten by the Create upsert. Exported so the data layer can build SQL IN clauses
+// without hardcoding the status list, keeping it in sync with the biz layer.
+var ChannelTurnJobIdempotentLockedStatuses = []string{
+	ChannelTurnJobStatusCompleted,
+	ChannelTurnJobStatusFailed,
+	ChannelTurnJobStatusTimeout,
+	ChannelTurnJobStatusCancelled,
+	ChannelTurnJobStatusQueued,
+	ChannelTurnJobStatusAsyncQueued,
+}
+
+// ChannelTurnJobTerminalStatuses returns the list of terminal statuses.
+// Exported for data layer SQL queries that need to filter out completed jobs.
+var ChannelTurnJobTerminalStatuses = []string{
+	ChannelTurnJobStatusCompleted,
+	ChannelTurnJobStatusFailed,
+	ChannelTurnJobStatusTimeout,
+	ChannelTurnJobStatusCancelled,
 }

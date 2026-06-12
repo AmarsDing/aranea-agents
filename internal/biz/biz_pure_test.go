@@ -38,19 +38,17 @@ func TestInboundIdempotencyKey(t *testing.T) {
 	cases := []struct {
 		platform   string
 		messageKey string
-		peerID     string
-		text       string
 		want       string
 	}{
-		{"feishu", "om_123", "ou_x", "hello", "om_123"},
-		{"feishu", "  om_456  ", "ou_x", "hello", "om_456"},
-		{"feishu", "", "ou_x", "hello", ""},
+		{"feishu", "om_123", "om_123"},
+		{"feishu", "  om_456  ", "om_456"},
+		{"feishu", "", ""},
 	}
 	for _, tc := range cases {
-		got := InboundIdempotencyKey(tc.platform, tc.messageKey, tc.peerID, tc.text)
+		got := InboundIdempotencyKey(tc.platform, tc.messageKey)
 		if got != tc.want {
-			t.Errorf("InboundIdempotencyKey(%q, %q, %q, %q) = %q, want %q",
-				tc.platform, tc.messageKey, tc.peerID, tc.text, got, tc.want)
+			t.Errorf("InboundIdempotencyKey(%q, %q) = %q, want %q",
+				tc.platform, tc.messageKey, got, tc.want)
 		}
 	}
 }

@@ -3,17 +3,31 @@ package data
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 )
 
+// buildSQLInClause builds a comma-separated, quoted SQL IN clause from a string slice.
+// E.g. ["completed","failed"] → "'completed','failed'"
+func buildSQLInClause(statuses []string) string {
+	parts := make([]string, len(statuses))
+	for i, s := range statuses {
+		parts[i] = "'" + s + "'"
+	}
+	return strings.Join(parts, ",")
+}
+
 type channelTurnJobRepo struct {
 	data *Data
 }
 
-var _ biz.ChannelTurnJobRepo = (*channelTurnJobRepo)(nil)
+var (
+	_ biz.ChannelTurnJobRepo   = (*channelTurnJobRepo)(nil)
+	_ biz.ChannelTurnJobReader = (*channelTurnJobRepo)(nil)
+)
 
 // NewChannelTurnJobRepo implements biz.ChannelTurnJobRepo.
 func NewChannelTurnJobRepo(d *Data) biz.ChannelTurnJobRepo {
@@ -60,7 +74,8 @@ func (r *channelTurnJobRepo) Create(ctx context.Context, job biz.ChannelTurnJob)
 	var actualID string
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
-		_, execErr := e.ExecContext(txCtx, `
+		lockedStatusInClause := buildSQLInClause(biz.ChannelTurnJobIdempotentLockedStatuses)
+		_, execErr := e.ExecContext(txCtx, fmt.Sprintf(`
 INSERT INTO channel_turn_job (
   id, channel_id, session_id, peer_id, peer_key, idempotency_key, status,
   preview_message_id, content_preview, async_target_type, async_target_id,
@@ -68,8 +83,8 @@ INSERT INTO channel_turn_job (
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
   updated_at=excluded.updated_at,
-  status=CASE WHEN channel_turn_job.status IN ('completed','failed','timeout','cancelled','queued','async_queued','running')
-    THEN channel_turn_job.status ELSE excluded.status END`,
+  status=CASE WHEN channel_turn_job.status IN (%s)
+    THEN channel_turn_job.status ELSE excluded.status END`, lockedStatusInClause),
 			strings.TrimSpace(job.ID),
 			channelID,
 			strings.TrimSpace(job.SessionID),
@@ -270,5 +285,40 @@ func scanChannelTurnJobListRow(rows *sql.Rows) (biz.ChannelTurnJob, error) {
 		&j.AgentID, &j.GraphID,
 	)
 	return j, err
+}
+
+// ListActiveBySession returns non-terminal jobs for a specific session within a channel.
+// Filters at the SQL level for efficiency — avoids loading all channel jobs into memory.
+func (r *channelTurnJobRepo) ListActiveBySession(ctx context.Context, channelID, sessionID string) ([]biz.ChannelTurnJob, error) {
+	if r == nil || r.data == nil {
+		return nil, nil
+	}
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return nil, nil
+	}
+	channelID = strings.TrimSpace(channelID)
+	sessionID = strings.TrimSpace(sessionID)
+	if channelID == "" {
+		return nil, nil
+	}
+	terminalStatusInClause := buildSQLInClause(biz.ChannelTurnJobTerminalStatuses)
+	rows, err := db.QueryContext(ctx, channelTurnJobSelectSQL+fmt.Sprintf(`
+WHERE channel_id = ? AND session_id = ? AND status NOT IN (%s)
+ORDER BY created_at DESC`, terminalStatusInClause),
+		channelID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.ChannelTurnJob
+	for rows.Next() {
+		j, err := scanChannelTurnJobRow(rows)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, j)
+	}
+	return out, nil
 }
 

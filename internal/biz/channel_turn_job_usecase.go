@@ -73,9 +73,10 @@ func (u *ChannelTurnJobUsecase) TransitionByEvent(ctx context.Context, id, event
 	return u.jobs.UpdateStatus(ctx, id, newStatus, errMsg, previewMsgID, contentPreview)
 }
 
-// UpdateStatus updates the job status directly without state machine validation.
+// updateStatus updates the job status directly without state machine validation.
 // Internal/admin path only — production code should use TransitionByEvent.
-func (u *ChannelTurnJobUsecase) UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
+// Unexported to prevent callers from bypassing the state machine.
+func (u *ChannelTurnJobUsecase) updateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
 	if u == nil || u.jobs == nil {
 		return errChannelTurnJobNotInit
 	}
@@ -106,15 +107,12 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 	if channelID == "" {
 		return nil
 	}
-	jobs, err := u.jobs.ListByChannel(ctx, channelID, MaxChannelTurnJobListLimit)
+	jobs, err := u.jobs.ListActiveBySession(ctx, channelID, sessionID)
 	if err != nil {
 		return err
 	}
 	var firstErr error
 	for _, job := range jobs {
-		if sessionID != "" && strings.TrimSpace(job.SessionID) != sessionID {
-			continue
-		}
 		if err := u.TransitionByEvent(ctx, job.ID, JobEventCancel, "cancelled by session cleanup", "", ""); err != nil && firstErr == nil {
 			firstErr = err
 		}

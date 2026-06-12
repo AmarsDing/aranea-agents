@@ -1459,10 +1459,11 @@ func TestTestTool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
+			var opts []ToolUsecaseOption
 			if tt.tester != nil {
-				uc.SetToolTester(tt.tester)
+				opts = append(opts, WithToolTester(tt.tester))
 			}
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop(), opts...)
 			got, err := uc.TestTool(ctx, tt.toolID, tt.argumentsJSON, tt.timeoutSec)
 			if tt.wantErr {
 				if err == nil {

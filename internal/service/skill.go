@@ -188,11 +188,11 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFilesRequest) (*v1.ListSkillFilesResponse, error) {
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	entries, err := s.fs.ListFiles(dir)
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	items := make([]*v1.SkillFile, 0, len(entries))
 	for _, e := range entries {
@@ -206,11 +206,11 @@ func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFile
 func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileRequest) (*v1.SkillFileContent, error) {
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	content, err := s.fs.ReadFile(dir, req.GetPath())
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	return &v1.SkillFileContent{Path: content.Path, Content: content.Content, Language: content.Language}, nil
 }
@@ -218,10 +218,10 @@ func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileReq
 func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillFileRequest) (*v1.SkillFileContent, error) {
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	if err := s.fs.WriteFile(dir, req.GetPath(), req.GetContent()); err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	return s.GetSkillFile(ctx, &v1.GetSkillFileRequest{Id: req.GetId(), Path: req.GetPath()})
 }
@@ -250,7 +250,7 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 	body := strings.TrimSpace(req.GetBodyMarkdown())
 	dir, err := s.fs.CreateSkillDir(slug, body)
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	tags := make([]biz.SkillTag, 0, len(req.GetTags()))
 	for _, t := range req.GetTags() {
@@ -265,7 +265,7 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 		StorageDir:  dir,
 	})
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
@@ -296,7 +296,7 @@ func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillReque
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
@@ -324,10 +324,10 @@ func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillF
 	}
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	if err := s.fs.DeleteFile(dir, rel); err != nil {
-		return nil, apierror.BadRequest("SKILL", err.Error())
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	return &emptypb.Empty{}, nil
 }

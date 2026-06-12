@@ -109,11 +109,11 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 	// 获取完整数据
 	source, err := uc.reader.GetFullSkillForMerge(ctx, req.SourceID)
 	if err != nil {
-		return nil, fmt.Errorf("get source skill: %w", err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
 	}
 	target, err := uc.reader.GetFullSkillForMerge(ctx, req.TargetID)
 	if err != nil {
-		return nil, fmt.Errorf("get target skill: %w", err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
 	}
 
 	// Stage 1: 内容融合
@@ -125,7 +125,7 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 		}
 		fused, err = uc.fuser.Fuse(ctx, *target, *source)
 		if err != nil {
-			return nil, fmt.Errorf("AI fusion failed: %w", err)
+			return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
 		}
 	case MergeStrategyManualPick:
 		if strings.TrimSpace(req.ManualBody) == "" {
@@ -148,7 +148,7 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 	if uc.gate != nil {
 		gateResult, gateErr := uc.gate.Verify(ctx, req.TargetID, fused.Body, nil)
 		if gateErr != nil {
-			return nil, fmt.Errorf("gate verification error: %w", gateErr)
+			return nil, apierror.Wrap(gateErr, apierror.CodeInternal, "SKILL_MERGE")
 		}
 		if gateResult != nil && !gateResult.Passed {
 			return nil, apierror.BadRequest("SKILL_MERGE", "gate verification failed: %s", formatGateFailures(gateResult))
@@ -165,7 +165,7 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 		MergeReason: mergeReason,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("apply merge: %w", err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
 	}
 
 	uc.lg.Info("skill merged with content fusion",

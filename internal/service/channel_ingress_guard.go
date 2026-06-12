@@ -26,7 +26,7 @@ func (h *ChannelIngress) shouldProcessInbound(ctx context.Context, chRow biz.Cha
 	if platform == "" {
 		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
 	}
-	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey)
 	if !h.deduplicator.TryAcquireInflight(dedupKey) {
 		return false, "duplicate_inflight", nil
 	}

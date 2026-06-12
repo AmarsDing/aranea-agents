@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // CircuitBreakerStateEntry represents the persistent state of a circuit breaker.
@@ -11,6 +13,7 @@ type CircuitBreakerStateEntry struct {
 	State           string    // closed | open | half_open
 	FailureCount    int
 	SuccessCount    int
+	HalfOpenProbes  int
 	LastFailureTime time.Time
 	LastStateChange time.Time
 	UpdatedAt       time.Time
@@ -64,6 +67,12 @@ func WithStateRepo(repo CircuitBreakerStateRepo) CircuitBreakerRegistryOption {
 	}
 }
 
+func WithLogger(lg loggateway.Logger) CircuitBreakerRegistryOption {
+	return func(r *CircuitBreakerRegistry) {
+		r.lg = lg
+	}
+}
+
 type CircuitBreakerRegistry struct {
 	mu            sync.RWMutex
 	breakers      map[string]*CircuitBreaker
@@ -71,6 +80,7 @@ type CircuitBreakerRegistry struct {
 	overrides     map[string]CircuitBreakerConfig
 	onStateChange func(name string, from, to CircuitState)
 	stateRepo     CircuitBreakerStateRepo
+	lg            loggateway.Logger
 }
 
 func NewCircuitBreakerRegistry(opts ...CircuitBreakerRegistryOption) *CircuitBreakerRegistry {
@@ -191,7 +201,14 @@ func (r *CircuitBreakerRegistry) persistState(name string) {
 		return
 	}
 	entry := cb.snapshotEntry()
-	_ = r.stateRepo.SaveState(context.Background(), name, entry)
+	if err := r.stateRepo.SaveState(context.Background(), name, entry); err != nil {
+		if r.lg != nil {
+			r.lg.Warn("circuit_breaker: failed to persist state",
+				loggateway.Str("name", name),
+				loggateway.Err(err),
+			)
+		}
+	}
 }
 
 // RestoreStates loads all persisted circuit breaker states and applies them

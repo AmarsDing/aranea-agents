@@ -124,12 +124,14 @@ type providerCostBlock struct {
 }
 
 type LlmProviderModelReader interface {
+	// Stability:stable
 	ListProviderModels(ctx context.Context) ([]ProviderModel, error)
 	GetProviderModel(ctx context.Context, id string) (ProviderModel, error)
 	GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
 }
 
 type LlmProviderModelWriter interface {
+	// Stability:stable
 	CreateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
 	UpdateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
 	DeleteProviderModel(ctx context.Context, id string) error
@@ -137,12 +139,22 @@ type LlmProviderModelWriter interface {
 }
 
 type LlmProviderModelValidator interface {
+	// Stability:stable
 	ValidateProviderPair(ctx context.Context, provider, model string) (bool, error)
 }
 
 // ModelPricingRepo interface
 type ModelPricingRepo interface {
+	// Stability:stable
 	UpsertModelPricingRule(ctx context.Context, rule ModelPricingRule) error
+}
+
+// LlmProviderModelReaderWriter combines Reader + Writer for consumers that need
+// both read and write access (e.g. model-registry apply backend). Each method
+// count stays within the ≤5 limit because the sub-interfaces are already narrow.
+type LlmProviderModelReaderWriter interface {
+	LlmProviderModelReader
+	LlmProviderModelWriter
 }
 
 // PricingSourcePriority returns the priority of a pricing source.
@@ -161,6 +173,9 @@ func PricingSourcePriority(source string) int {
 	}
 }
 
+// LlmProviderModelRepo is the full data-layer interface that the repo struct
+// satisfies. It exists only for the data-layer compile-time check and Wire
+// provider; consumers should depend on the narrow sub-interfaces instead.
 type LlmProviderModelRepo interface {
 	LlmProviderModelReader
 	LlmProviderModelWriter
@@ -270,7 +285,14 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 		return ProviderModel{}, err
 	}
 	if err := u.syncProviderModelPricing(ctx, out); err != nil {
-		u.lg.Warn("syncProviderModelPricing failed", loggateway.StepID("llm_provider_model.pricing_sync"), loggateway.Err(err))
+		// Pricing sync is a best-effort side effect — the model row itself is
+		// already persisted, so we must not roll back. Log the failure so
+		// operators can investigate; the PricingConfigured flag will remain
+		// false until a subsequent update or inspect resolves the pricing.
+		u.lg.Warn("syncProviderModelPricing failed, model created but pricing not synced",
+			loggateway.StepID("llm_provider_model.pricing_sync"),
+			loggateway.Str("model_id", out.ID),
+			loggateway.Err(err))
 	}
 	return sanitizeProviderModelForAPI(out), nil
 }
@@ -335,7 +357,10 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 		return ProviderModel{}, err
 	}
 	if err := u.syncProviderModelPricing(ctx, out); err != nil {
-		u.lg.Warn("syncProviderModelPricing failed", loggateway.StepID("llm_provider_model.pricing_sync"), loggateway.Err(err))
+		u.lg.Warn("syncProviderModelPricing failed, model updated but pricing not synced",
+			loggateway.StepID("llm_provider_model.pricing_sync"),
+			loggateway.Str("model_id", out.ID),
+			loggateway.Err(err))
 	}
 	return sanitizeProviderModelForAPI(out), nil
 }
@@ -614,8 +639,13 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 		var c struct {
 			APIBaseURL string `json:"api_base_url"`
 		}
-		if err := json.Unmarshal([]byte(cfg.ConfigJSON), &c); err != nil {
-			u.lg.Warn("解析 config_json 失败", loggateway.StepID("provider.health"), loggateway.Err(err))
+		if jsonErr := json.Unmarshal([]byte(cfg.ConfigJSON), &c); jsonErr != nil {
+			u.lg.Warn("解析 config_json 失败，标记为 degraded", loggateway.StepID("provider.health"), loggateway.Str("model_id", row.ID), loggateway.Err(jsonErr))
+			writeCtx := context.WithoutCancel(ctx)
+			if updErr := u.writer.UpdateProviderModelStatus(writeCtx, row.ID, "degraded"); updErr != nil {
+				u.lg.Warn("update degraded status failed", loggateway.StepID("provider.health"), loggateway.Str("model_id", row.ID), loggateway.Err(updErr))
+			}
+			continue
 		}
 		base := strings.TrimSpace(c.APIBaseURL)
 		if base == "" {

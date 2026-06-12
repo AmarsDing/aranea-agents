@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -585,11 +584,19 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 
 func (r *skillRepo) DeleteSkill(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).
+	n, err := r.data.RW().Write(ctx).PlatformSkill.Update().
+		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
-		Exec(ctx)
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apierror.NotFound(apierror.DomainSkill, "skill not found or already deleted")
+	}
+	return nil
 }
 
 func runPredicates(q biz.SkillRunQuery) []predicate.SkillInvocation {
@@ -855,64 +862,108 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	in.Description = strings.TrimSpace(in.Description)
 	in.Body = strings.TrimSpace(in.Body)
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, errors.New("skill name, slug and body are required")
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, apierror.BadRequest(apierror.DomainSkill, "skill name, slug and body are required")
 	}
-	skillRow, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+
+	tx, txErr := r.data.RW().Write(ctx).Tx(ctx)
+	if txErr != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, txErr
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	skillRow, err := tx.PlatformSkill.Query().
 		Where(platformskill.SkillKeyEQ(in.Slug), platformskill.DeletedAtEQ("")).
 		Only(ctx)
+
 	if dataent.IsNotFound(err) {
-		sk, createErr := r.CreateSkillWithVersion(ctx, biz.SkillCreateInput{
-			Name:        in.Name,
-			Slug:        in.Slug,
-			Description: in.Description,
-			Body:        in.Body,
-			Tags:        in.Tags,
-			StorageDir:  in.StorageDir,
-			SyncOrigin:  biz.SkillSyncOriginFilesystem,
-		})
-		return sk, biz.SkillDiskSyncOutcome{}, createErr
+		skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
+		versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
+		metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem)
+		if encErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, encErr
+		}
+		now := nowRFC3339()
+		if _, createErr := tx.PlatformSkill.Create().
+			SetID(skillID).
+			SetSkillKey(in.Slug).
+			SetName(in.Name).
+			SetDescription(in.Description).
+			SetStatus("draft").
+			SetEnabled(false).
+			SetSortOrder(0).
+			SetConfigJSON("{}").
+			SetMetadataJSON(string(metaJSON)).
+			SetVisibility("").
+			SetCreatedAt(now).
+			SetUpdatedAt(now).
+			SetDeletedAt("").
+			Save(ctx); createErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, createErr
+		}
+		if _, createErr := tx.SkillVersion.Create().
+			SetID(versionID).
+			SetSkillID(skillID).
+			SetVersion("1.0.0").
+			SetStatus("pass").
+			SetContentMarkdown(in.Body).
+			SetMetadataJSON(string(metaJSON)).
+			SetCreatedAt(now).
+			SetUpdatedAt(now).
+			Save(ctx); createErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, createErr
+		}
+		if commitErr := tx.Commit(); commitErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, commitErr
+		}
+		sk, getErr := r.GetSkillByID(ctx, skillID)
+		return sk, biz.SkillDiskSyncOutcome{}, getErr
 	}
 	if err != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 	}
+
 	outcome := biz.SkillDiskSyncOutcome{}
 	wasPublished := skillRow.Status == "published" || skillRow.Status == "active"
 	now := nowRFC3339()
-	metaJSON, err := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem)
-	if err != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
+	metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem)
+	if encErr != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, encErr
 	}
-	update := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(skillRow.ID).
+	update := tx.PlatformSkill.UpdateOneID(skillRow.ID).
 		SetName(in.Name).
 		SetDescription(in.Description).
 		SetMetadataJSON(string(metaJSON)).
 		SetUpdatedAt(now).
 		SetFilesystemMissing(false)
-	sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
+
+	sv, svErr := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillRow.ID)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
-	if err != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
+	if svErr != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, svErr
 	}
 	if strings.TrimSpace(sv.ContentMarkdown) != in.Body {
 		outcome.ContentChanged = true
-		if _, err := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
+		if _, updateErr := tx.SkillVersion.UpdateOneID(sv.ID).
 			SetContentMarkdown(in.Body).
 			SetUpdatedAt(now).
-			Save(ctx); err != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
+			Save(ctx); updateErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, updateErr
 		}
 	}
 	if outcome.ContentChanged && wasPublished {
 		outcome.RevertedToDraft = true
 		update = update.SetStatus("draft").SetEnabled(false)
 	}
-	if _, err := update.Save(ctx); err != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
+	if _, updateErr := update.Save(ctx); updateErr != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, updateErr
 	}
-	sk, err := r.GetSkillByID(ctx, skillRow.ID)
-	return sk, outcome, err
+	if commitErr := tx.Commit(); commitErr != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, commitErr
+	}
+	sk, getErr := r.GetSkillByID(ctx, skillRow.ID)
+	return sk, outcome, getErr
 }
 
 func (r *skillRepo) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
@@ -1241,9 +1292,9 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 				}
 			}
 			if revertOk {
-				return biz.Skill{}, fmt.Errorf("filesystem write failed, DB changes reverted: %w", writeErr)
+				return biz.Skill{}, apierror.Wrap(writeErr, apierror.CodeInternal, apierror.DomainSkill)
 			}
-			return biz.Skill{}, fmt.Errorf("filesystem write failed AND DB revert incomplete, manual intervention required: %w", writeErr)
+			return biz.Skill{}, apierror.Wrap(fmt.Errorf("filesystem write failed AND DB revert incomplete, manual intervention required: %w", writeErr), apierror.CodeInternal, apierror.DomainSkill)
 		}
 	} else {
 		// No body change — single update, no transaction needed.

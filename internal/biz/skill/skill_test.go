@@ -1058,17 +1058,18 @@ func TestApplySkillPermission_AdminAuth(t *testing.T) {
 func TestApplySkillPermission_NonAdminAuth(t *testing.T) {
 	s := &Skill{}
 	applySkillPermission(nonAdminCtx(), s)
-	if !s.Permissions.CanEdit {
-		t.Error("expected CanEdit=true for non-admin")
+	// Non-admin: mutation methods require admin, so all write permissions must be false
+	if s.Permissions.CanEdit {
+		t.Error("expected CanEdit=false for non-admin (mutation requires admin)")
 	}
 	if s.Permissions.CanDelete {
 		t.Error("expected CanDelete=false for non-admin")
 	}
-	if !s.Permissions.CanToggleEnabled {
-		t.Error("expected CanToggleEnabled=true for non-admin")
+	if s.Permissions.CanToggleEnabled {
+		t.Error("expected CanToggleEnabled=false for non-admin (mutation requires admin)")
 	}
-	if !s.Permissions.CanDuplicate {
-		t.Error("expected CanDuplicate=true for non-admin")
+	if s.Permissions.CanDuplicate {
+		t.Error("expected CanDuplicate=false for non-admin (mutation requires admin)")
 	}
 }
 

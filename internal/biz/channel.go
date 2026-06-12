@@ -159,7 +159,6 @@ type ChannelCredentialRepo interface {
 type ChannelDeliveryReader interface {
 	ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error)
 	ListPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
-	HasDeliveryByIdempotencyKey(ctx context.Context, channelID, idempotencyKey string) (bool, error)
 }
 
 // ChannelDeliveryRepo provides full access to channel deliveries.
@@ -169,8 +168,8 @@ type ChannelDeliveryRepo interface {
 	ChannelDeliveryReader
 	AddDelivery(ctx context.Context, d ChannelDelivery) (ChannelDelivery, error)
 	// AddDeliveryIfNotExists atomically inserts a delivery row, returning (row, true) on insert
-	// or (existing, false) when the idempotency_key already exists. This replaces the
-	// non-atomic HasDeliveryByIdempotencyKey + AddDelivery pattern.
+	// or (existing, false) when the idempotency_key already exists for the same channel_id.
+	// The unique constraint is on (channel_id, idempotency_key).
 	AddDeliveryIfNotExists(ctx context.Context, d ChannelDelivery) (ChannelDelivery, bool, error)
 	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
 }
@@ -312,6 +311,11 @@ func (u *ChannelUsecase) Update(ctx context.Context, id string, opts ChannelUpda
 	if err := normalizeChannel(&row); err != nil {
 		return Channel{}, err
 	}
+	// Channel type is immutable — changing it would invalidate existing credentials,
+	// peer sessions, and runtime leases that are type-specific.
+	if ChannelTypeFromConfig(row.ConfigJSON) != ChannelTypeFromConfig(current.ConfigJSON) {
+		return Channel{}, apierror.BadRequest("CHANNEL", "channel type cannot be changed after creation; delete and recreate the channel instead")
+	}
 	updated, err := u.writer.Update(ctx, row)
 	if err != nil {
 		return Channel{}, err
@@ -432,7 +436,7 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 		safego.Go(ctx, "channel.EvaluateTestAll", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			writeCtx, writeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			writeCtx, writeCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer writeCancel()
 			credentials, err := u.credentials.ListCredentials(writeCtx, ch.ID)
 			if err != nil {

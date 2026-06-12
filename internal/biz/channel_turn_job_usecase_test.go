@@ -91,6 +91,23 @@ func (s *turnJobRepoStub) ListFiltered(_ context.Context, q ChannelTurnJobListQu
 	return out, nil
 }
 
+func (s *turnJobRepoStub) ListActiveBySession(_ context.Context, channelID, sessionID string) ([]ChannelTurnJob, error) {
+	var out []ChannelTurnJob
+	for _, job := range s.jobs {
+		if job.ChannelID != channelID {
+			continue
+		}
+		if sessionID != "" && job.SessionID != sessionID {
+			continue
+		}
+		if IsChannelTurnJobTerminalStatus(job.Status) {
+			continue
+		}
+		out = append(out, job)
+	}
+	return out, nil
+}
+
 func TestChannelTurnJobUsecaseCreateAcceptedReturnsStableID(t *testing.T) {
 	repo := &turnJobRepoStub{jobs: map[string]ChannelTurnJob{}}
 	uc := NewChannelTurnJobUsecase(nil, repo)

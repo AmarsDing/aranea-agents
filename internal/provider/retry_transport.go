@@ -32,7 +32,13 @@ func newRetryTransport(base http.RoundTripper, maxRetries int, baseDelay, maxDel
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	for attempt := 0; attempt <= t.maxRetries; attempt++ {
+		// On retry, reset the request body so the full payload is sent again.
+		// Without this, the body ReadCloser is already at EOF after the first
+		// attempt and the retried request would be sent with an empty body.
 		if attempt > 0 {
+			if err := resetRequestBody(req); err != nil {
+				return nil, fmt.Errorf("retry: reset body: %w", err)
+			}
 			delay := t.baseDelay * time.Duration(1<<(attempt-1)) // exponential backoff
 			if delay > t.maxDelay {
 				delay = t.maxDelay
@@ -71,4 +77,23 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 	return nil, lastErr
+}
+
+// resetRequestBody rewinds the request body using GetBody, which is set by
+// http.NewRequest for common body types ([]byte, strings.Reader, bytes.Reader).
+// If GetBody is nil (e.g. streaming body), retry is not possible and an error
+// is returned.
+func resetRequestBody(req *http.Request) error {
+	if req.Body == nil {
+		return nil
+	}
+	if req.GetBody == nil {
+		return fmt.Errorf("request body cannot be retried: GetBody is nil")
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return fmt.Errorf("GetBody: %w", err)
+	}
+	req.Body = body
+	return nil
 }

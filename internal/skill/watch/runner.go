@@ -3,6 +3,7 @@ package watch
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,20 +130,32 @@ func (r *Runner) refreshChildWatches(w *fsnotify.Watcher, root string) {
 	for _, p := range old {
 		_ = w.Remove(p)
 	}
-	ents, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
 	var added []string
-	for _, e := range ents {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
+	// Walk recursively to add all subdirectories, not just direct children.
+	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
 		}
-		p := filepath.Join(root, e.Name())
-		if err := w.Add(p); err == nil {
-			added = append(added, p)
+		if path == root {
+			return nil
 		}
-	}
+		if !d.IsDir() {
+			return nil
+		}
+		// Skip hidden directories.
+		if strings.HasPrefix(d.Name(), ".") {
+			return fs.SkipDir
+		}
+		if addErr := w.Add(path); addErr != nil {
+			r.lg.Warn("watch: failed to add subdirectory",
+				loggateway.StepID("skill.watch"),
+				loggateway.Str("path", path),
+				loggateway.Err(addErr))
+		} else {
+			added = append(added, path)
+		}
+		return nil
+	})
 	r.mu.Lock()
 	r.childWatches = added
 	r.mu.Unlock()
@@ -155,13 +168,27 @@ func (r *Runner) onEvent(ctx context.Context, w *fsnotify.Watcher, root string, 
 	}
 	if ev.Op&fsnotify.Create == fsnotify.Create {
 		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
-			rel, _ := filepath.Rel(root, ev.Name)
-			if rel == slug && !strings.Contains(slug, string(filepath.Separator)) {
-				_ = w.Add(ev.Name)
-				r.mu.Lock()
-				r.childWatches = append(r.childWatches, ev.Name)
-				r.mu.Unlock()
-			}
+			// Recursively add watches for the new directory and all its subdirectories.
+			filepath.WalkDir(ev.Name, func(path string, d fs.DirEntry, err error) error {
+				if err != nil || !d.IsDir() {
+					return nil
+				}
+				// Skip hidden directories.
+				if d.Name() != filepath.Base(ev.Name) && strings.HasPrefix(d.Name(), ".") {
+					return fs.SkipDir
+				}
+				if addErr := w.Add(path); addErr != nil {
+					r.lg.Warn("watch: failed to add new directory",
+						loggateway.StepID("skill.watch"),
+						loggateway.Str("path", path),
+						loggateway.Err(addErr))
+				} else {
+					r.mu.Lock()
+					r.childWatches = append(r.childWatches, path)
+					r.mu.Unlock()
+				}
+				return nil
+			})
 		}
 	}
 	r.scheduleSlug(ctx, root, slug)

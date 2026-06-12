@@ -80,6 +80,9 @@ type EvolutionLoopResult struct {
 	Stage     string
 	DraftBody string
 	GateResult *GateVerificationResult
+	// Err is non-nil when a stage failed due to a system error (not business rejection).
+	// Business rejection: Passed=false, Err=nil. System failure: Passed=false, Err!=nil.
+	Err error
 }
 
 // ── Evolution Loop Port Interfaces ────────────────────────────────────────────
@@ -206,6 +209,7 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 		return &EvolutionLoopResult{
 			Passed: false,
 			Stage:  EvoStageSolve,
+			Err:    err,
 		}, nil
 	}
 
@@ -219,6 +223,7 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 		return &EvolutionLoopResult{
 			Passed: false,
 			Stage:  EvoStageObserve,
+			Err:    err,
 		}, nil
 	}
 
@@ -232,6 +237,7 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 		return &EvolutionLoopResult{
 			Passed: false,
 			Stage:  EvoStageEvolve,
+			Err:    err,
 		}, nil
 	}
 
@@ -246,6 +252,7 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 			Stage:      EvoStageGate,
 			DraftBody:  draftBody,
 			GateResult: gateResult,
+			Err:        err,
 		}, nil
 	}
 
@@ -261,6 +268,7 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 			Passed:    false,
 			Stage:     EvoStageReload,
 			DraftBody: draftBody,
+			Err:       err,
 		}, nil
 	}
 

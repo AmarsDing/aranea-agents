@@ -113,12 +113,25 @@ func TestPickTitleModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := biz.PickTitleModel(tt.models)
+			got, ok := biz.PickTitleModel(tt.models)
+			if !ok {
+				t.Fatalf("PickTitleModel() returned ok=false for %q", tt.name)
+			}
 			if got.Model != tt.want {
 				t.Errorf("pickTitleModel() = %q, want %q", got.Model, tt.want)
 			}
 		})
 	}
+	t.Run("empty_slice_returns_false", func(t *testing.T) {
+		_, ok := biz.PickTitleModel(nil)
+		if ok {
+			t.Fatal("expected ok=false for nil slice")
+		}
+		_, ok = biz.PickTitleModel([]biz.ProviderModel{})
+		if ok {
+			t.Fatal("expected ok=false for empty slice")
+		}
+	})
 }
 
 func TestErrString(t *testing.T) {

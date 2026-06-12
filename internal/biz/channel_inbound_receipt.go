@@ -18,7 +18,7 @@ type ChannelInboundReceiptRepo interface {
 // It includes the platform prefix to avoid cross-platform key collisions
 // (e.g. feishu and dingtalk both using numeric message IDs).
 // Empty when the adapter did not provide a stable id — ingress must reject before Turn.
-func InboundIdempotencyKey(platform, messageKey, _, _ string) string {
+func InboundIdempotencyKey(platform, messageKey string) string {
 	messageKey = strings.TrimSpace(messageKey)
 	if messageKey == "" {
 		return ""
@@ -48,7 +48,7 @@ func TryClaimInbound(ctx context.Context, repo ChannelInboundReceiptRepo, channe
 	if channelID == "" {
 		return true, nil
 	}
-	key := InboundIdempotencyKey(platform, messageKey, peerID, text)
+	key := InboundIdempotencyKey(platform, messageKey)
 	return repo.TryClaim(ctx, channelID, key, peerID, inboundTextPreview(text))
 }
 

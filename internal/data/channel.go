@@ -340,14 +340,18 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 		SetErrorMessage(d.ErrorMessage).
 		SetCreatedAt(d.CreatedAt).
 		SetUpdatedAt(d.UpdatedAt).
-		OnConflictColumns(platformchanneldelivery.FieldIdempotencyKey).
+		// Unique index is on (channel_id, idempotency_key); both columns must match.
+		OnConflictColumns(platformchanneldelivery.FieldChannelID, platformchanneldelivery.FieldIdempotencyKey).
 		UpdateNewValues()
 
 	e, err := b.ID(ctx)
 	if err != nil {
-		// Check if it's a conflict error — load the existing row.
+		// Check if it's a conflict error — load the existing row by the full unique key.
 		existing, findErr := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
-			Where(platformchanneldelivery.IdempotencyKey(idempotencyKey)).
+			Where(
+				platformchanneldelivery.ChannelID(d.ChannelID),
+				platformchanneldelivery.IdempotencyKey(idempotencyKey),
+			).
 			Only(ctx)
 		if findErr != nil {
 			return biz.ChannelDelivery{}, false, err
@@ -396,16 +400,4 @@ func (r *channelRepo) UpdateDelivery(ctx context.Context, d biz.ChannelDelivery)
 	return err
 }
 
-func (r *channelRepo) HasDeliveryByIdempotencyKey(ctx context.Context, channelID, idempotencyKey string) (bool, error) {
-	if strings.TrimSpace(idempotencyKey) == "" {
-		return false, nil
-	}
-	count, err := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
-		Where(platformchanneldelivery.ChannelID(channelID)).
-		Where(platformchanneldelivery.IdempotencyKey(idempotencyKey)).
-		Count(ctx)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
+

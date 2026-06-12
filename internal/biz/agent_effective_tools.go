@@ -267,24 +267,31 @@ func computePolicyDenySet(denyList []string, catalog []Tool) map[string]bool {
 //     risk defaults (e.g. shell_exec) without per-tool code branches in callers.
 //   - Deny list and ToolsEnabled global switch override everything else.
 func computeEffectiveToolState(settings AgentRuntimeSettings, tool Tool, prof string, allowed, deny map[string]bool) (state, reason string, enabled bool) {
-	state = "denied"
-	reason = "global_disabled"
+	// 1. Deny always wins — check first regardless of profile or allow set.
+	if deny[tool.Key] {
+		if !settings.ToolsEnabled {
+			reason = "agent_tools_disabled"
+		} else {
+			reason = "agent_deny"
+		}
+		return "denied", reason, false
+	}
+
+	// 2. Global switch off.
+	if !settings.ToolsEnabled {
+		return "denied", "agent_tools_disabled", false
+	}
+
+	// 3. Allow: tool is open-by-default or explicitly named in policy, AND
+	//    either the profile is "full" or the tool key is in the allowed set.
 	toolOpenByDefault := tool.Enabled
 	policyNamesKey := allowed[tool.Key]
-	baseEnabled := settings.ToolsEnabled && (toolOpenByDefault || policyNamesKey)
-	if baseEnabled && (prof == "full" || allowed[tool.Key]) {
-		state = "allowed"
-		reason = "profile:" + settings.ToolsProfile
+	if (toolOpenByDefault || policyNamesKey) && (prof == "full" || allowed[tool.Key]) {
+		return "allowed", "profile:" + settings.ToolsProfile, true
 	}
-	if deny[tool.Key] {
-		state = "denied"
-		reason = "agent_deny"
-	}
-	if !settings.ToolsEnabled {
-		reason = "agent_tools_disabled"
-	}
-	enabled = baseEnabled && state == "allowed"
-	return state, reason, enabled
+
+	// 4. Not covered by any allow rule.
+	return "denied", "global_disabled", false
 }
 
 func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg loggateway.Logger) AgentEffectiveTools {

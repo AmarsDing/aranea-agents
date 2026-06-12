@@ -51,6 +51,11 @@ func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID strin
 	if vErr == nil && version != nil {
 		body = version.ContentMarkdown
 	}
+	if body == "" {
+		r.lg.Warn("GetFullSkillForMerge: no published version body found, merge may lose content",
+			loggateway.StepID("data.skill_merge"),
+			loggateway.Str("skill_id", skillID))
+	}
 
 	// 从 metadata_json 解析 tags
 	tags := extractTagNames(parseSkillTags(skill.MetadataJSON))
@@ -70,11 +75,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 	if err != nil {
 		return nil, entErrToBizErr(err, "SKILL")
 	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	// 1. 创建新版本（fused 内容）— version 从目标最新版本递增
 	now := nowRFC3339()

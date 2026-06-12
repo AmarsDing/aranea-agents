@@ -400,6 +400,15 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 				}
 				job.candidates[c.CandidateID] = cs
 			}
+			// Validate that candidate data survived the restart.
+			// If TempDir was empty or files were lost, candidates will have
+			// no body and no files, which would silently create broken skills.
+			for cid, cs := range job.candidates {
+				if strings.TrimSpace(cs.body) == "" && len(cs.files) == 0 {
+					return biz.SkillImportApplyResult{}, validationError(
+						fmt.Sprintf("candidate %s has no content (temporary files may have been lost after server restart)", cid))
+				}
+			}
 		}
 	}
 	if job == nil {
