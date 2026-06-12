@@ -21,7 +21,13 @@
       <q-scroll-area class="col">
         <div class="chat-side__content">
           <!-- Spirit Entry -->
-          <SpiritEntry :active="selectedKind === 'spirit'" @click="$emit('select-spirit')" />
+          <SpiritEntry
+            :active="selectedKind === 'spirit'"
+            :icon="spiritAgentIcon"
+            :show-settings="!!spiritAgentId"
+            @click="$emit('select-spirit')"
+            @settings="spiritAgentId && $emit('spirit-settings', spiritAgentId)"
+          />
 
           <!-- Agent Section (hidden in spiritMode per D4) -->
           <template v-if="!spiritMode">
@@ -206,10 +212,21 @@ const emit = defineEmits<{
   'agent-reorder': [payload: { groupKey: string; ids: string[] }];
   'select-spirit-team': [teamId: string];
   'toggle-team-expand': [teamId: string];
+  'spirit-settings': [id: string];
 }>();
 
 const { t } = useI18n();
 const collapse = useChatEntityCollapse();
+
+// --- Spirit agent icon ---
+const spiritAgentId = computed(() => {
+  const spirit = props.agents.find((a) => a.agent_key === '__spirit__');
+  return spirit?.id ?? null;
+});
+const spiritAgentIcon = computed(() => {
+  const spirit = props.agents.find((a) => a.agent_key === '__spirit__');
+  return spirit?.icon ?? '';
+});
 
 // --- Search interaction with collapse ---
 watch(

@@ -123,7 +123,7 @@
     </q-card-section>
   </q-card>
 
-  <q-dialog :model-value="detailOpen" @update:model-value="detailOpen = $event">
+  <q-dialog :model-value="detailOpen" @update:model-value="$emit('update:detailOpen', $event)">
     <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div>
@@ -179,6 +179,7 @@ defineEmits<{
   openChatSession: [sessionId: string];
   copyJSON: [];
   'update:category': [value: string];
+  'update:detailOpen': [value: boolean];
 }>();
 
 function eventColor(type: string) {

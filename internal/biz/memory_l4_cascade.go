@@ -374,7 +374,7 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 			return nil, err
 		}
 		// Build compensation payload with explicit _old_name field.
-		compPayload, _ := json.Marshal(map[string]any{
+		compPayload, err := mustMarshal(map[string]any{
 			"entity_id":   entityID,
 			"scope_type":  jsonutil.IfaceStr(entForSnapshot, "scope_type"),
 			"scope_id":    jsonutil.IfaceStr(entForSnapshot, "scope_id"),
@@ -386,9 +386,18 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 			"importance":  anyFloatRaw(entForSnapshot, "importance", l4CascadeEntImportance),
 			"confidence":  anyFloatRaw(entForSnapshot, "confidence", l4CascadeEntConfidence),
 		})
+		if err != nil {
+			return nil, err
+		}
 		affectedJSON := jsonutil.IfaceStr(row, "affected_json")
-		replacePayload, _ := json.Marshal(map[string]string{"agent_id": agentID, "old_name": oldName, "new_name": newName})
-		syncPayload, _ := json.Marshal(map[string]string{"agent_id": agentID})
+		replacePayload, err := mustMarshal(map[string]string{"agent_id": agentID, "old_name": oldName, "new_name": newName})
+		if err != nil {
+			return nil, err
+		}
+		syncPayload, err := mustMarshal(map[string]string{"agent_id": agentID})
+		if err != nil {
+			return nil, err
+		}
 		steps := []CascadeSagaStep{
 			{StepName: SagaStepUpsertEntity, IsCritical: true, PayloadJSON: string(compPayload)},
 			{StepName: SagaStepTouchAffected, IsCritical: false, PayloadJSON: affectedJSON},
@@ -540,7 +549,11 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, step *CascadeS
 	if err != nil {
 		return err
 	}
-	resultJSON, _ := json.Marshal(map[string]any{"updated_count": len(updatedRows)})
+	resultJSON, err := json.Marshal(map[string]any{"updated_count": len(updatedRows)})
+	if err != nil {
+		uc.lg.Warn("Cascade: failed to marshal replace-facts result", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		resultJSON = []byte("{}")
+	}
 	if err := uc.saga.UpdateSagaStepResult(ctx, step.ID, string(resultJSON)); err != nil {
 		uc.lg.Warn("Cascade: failed to update saga step result", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(step.ID)), loggateway.Err(err))
 	}
@@ -557,7 +570,11 @@ func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, step *CascadeSaga
 	if err != nil {
 		return err
 	}
-	resultJSON, _ := json.Marshal(map[string]any{"stale_marked": marked})
+	resultJSON, err := json.Marshal(map[string]any{"stale_marked": marked})
+	if err != nil {
+		uc.lg.Warn("Cascade: failed to marshal sync-index result", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		resultJSON = []byte("{}")
+	}
 	if err := uc.saga.UpdateSagaStepResult(ctx, step.ID, string(resultJSON)); err != nil {
 		uc.lg.Warn("Cascade: failed to update saga step result for sync index", loggateway.StepID("memory.cascade_fail"), loggateway.Str("step_id", fmt.Sprint(step.ID)), loggateway.Err(err))
 	}
@@ -835,7 +852,11 @@ func mergeCascadeAppliedMeta(base, newName string, lg loggateway.Logger) string 
 	delete(m, "pending_name")
 	delete(m, "gate")
 	delete(m, "conflict")
-	b, _ := json.Marshal(m)
+	b, err := json.Marshal(m)
+	if err != nil {
+		lg.Warn("序列化 cascade applied meta 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		return base
+	}
 	return string(b)
 }
 
@@ -849,7 +870,11 @@ func mergeCascadeLinkedMeta(base, triggerID, newName string, lg loggateway.Logge
 	}
 	m["cascade_linked_trigger_id"] = triggerID
 	m["cascade_linked_name"] = newName
-	b, _ := json.Marshal(m)
+	b, err := json.Marshal(m)
+	if err != nil {
+		lg.Warn("序列化 cascade linked meta 失败", loggateway.StepID("memory.cascade_fail"), loggateway.Err(err))
+		return base
+	}
 	return string(b)
 }
 
@@ -888,4 +913,15 @@ func anyFloatRaw(m map[string]any, key string, fallback float64) float64 {
 		return float64(n)
 	}
 	return fallback
+}
+
+// mustMarshal marshals v to JSON or returns an apierror.Internal error.
+// Used for saga payloads where data integrity is critical — silent
+// failure would leave the saga unable to compensate.
+func mustMarshal(v any) ([]byte, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, apierror.Internal("MEMORY", "marshal saga payload: %s", err.Error())
+	}
+	return b, nil
 }

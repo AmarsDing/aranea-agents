@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/skill/render"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
@@ -71,7 +73,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 			m := manifest.Parse(e.Guidance)
 			guidance := render.SkillGuidance(m, render.RenderOptions{Mode: render.ModeAIOptimized})
 			entry := fmt.Sprintf("### %s\n%s\n\n", e.Slug, guidance)
-			if totalChars+len(entry) > maxSkillGuidanceChars {
+			if totalChars+utf8.RuneCountInString(entry) > maxSkillGuidanceChars {
 				remaining := len(entries) - written
 				if remaining > 0 {
 					b.WriteString(fmt.Sprintf("... and %d more skills (truncated)\n", remaining))
@@ -79,7 +81,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 				break
 			}
 			b.WriteString(entry)
-			totalChars += len(entry)
+			totalChars += utf8.RuneCountInString(entry)
 			written++
 		}
 		if written == 0 {
@@ -115,7 +117,13 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps, progressive bool) *skillruntime.ResolveResult {
 	opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
 	result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
-	if err != nil || len(result.Slugs) == 0 {
+	if err != nil {
+		deps.Logger().Warn("resolveAndWriteSkillState: ResolveSkillSlugsDetailed failed",
+			loggateway.StepID("agent.skill_guidance"),
+			loggateway.Err(err))
+		return nil
+	}
+	if len(result.Slugs) == 0 {
 		return nil
 	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
@@ -206,11 +214,15 @@ func extractSlugFromArgs(args []byte) string {
 	return ""
 }
 
-// truncateAtMarkdownBoundary truncates content to at most limit bytes, preferring
+// truncateAtMarkdownBoundary truncates content to at most limit runes, preferring
 // to cut at a Markdown boundary (heading, horizontal rule, or blank line) rather
 // than in the middle of a paragraph.
 func truncateAtMarkdownBoundary(content string, limit int) string {
-	if len(content) <= limit {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(content)
+	if len(runes) <= limit {
 		return content
 	}
 	boundaries := []string{"\n### ", "\n---", "\n\n"}
@@ -220,16 +232,27 @@ func truncateAtMarkdownBoundary(content string, limit int) string {
 		if searchStart < 0 {
 			searchStart = 0
 		}
-		idx := strings.LastIndex(content[searchStart:limit], sep)
-		if idx >= 0 {
-			absIdx := searchStart + idx
-			if absIdx > bestPos {
-				bestPos = absIdx
+		sepRunes := []rune(sep)
+		// Search backwards from limit for the separator
+		for i := limit - len(sepRunes); i >= searchStart; i-- {
+			if i < 0 {
+				break
+			}
+			match := true
+			for j, sr := range sepRunes {
+				if runes[i+j] != sr {
+					match = false
+					break
+				}
+			}
+			if match && i > bestPos {
+				bestPos = i
+				break
 			}
 		}
 	}
 	if bestPos > 0 {
-		return content[:bestPos]
+		return string(runes[:bestPos]) + "\n..."
 	}
-	return content[:limit]
+	return string(runes[:limit]) + "\n..."
 }

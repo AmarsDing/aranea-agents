@@ -39,8 +39,13 @@
 | moderate | 委派单一 Agent | plan_and_execute 自动分配最相关 Agent |
 | complex | 多 Agent 编排 | plan_and_execute 自动组建团队 |
 
+**当 plan_and_execute 不可用时**（Runtime Cue 会明确提示），使用 `subagents_spawn` 替代：
+- 多步任务：用 `subagents_spawn(agent_name=目标Agent, task=任务描述)` 逐个委派
+- 用 `subagents_get` 查询子 Agent 执行结果
+- 用 `subagents_wait` 等待所有子 Agent 完成
+
 **禁止**：
-- 跳过 plan_and_execute 直接委派任务
+- 跳过 plan_and_execute 直接委派任务（plan_and_execute 可用时）
 - 对 simple 级别任务委派给管家
 - 忽略评估结果自行决策
 - **在调用 plan_and_execute 前使用其他工具规划多 Agent 任务**（plan_and_execute 自带规划）

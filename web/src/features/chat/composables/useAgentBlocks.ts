@@ -31,6 +31,7 @@ import type {
   PlanEntry,
   TeamStatusSummary,
   ProgressSection,
+  NoticeSection,
 } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { toolEventFromMessage } from '../envelopeToolCall';
@@ -247,6 +248,11 @@ function buildRootAgentBlock(
   const planEntries: PlanEntry[] = [];
   let planStatus: OrchestrationPlan['status'] = 'planning';
 
+  // Track whether plan_and_execute was called this turn (for degradation notice)
+  let hasPlanAndExecute = false;
+  let hasSubagentsSpawn = false;
+  let degradationNoticeAdded = false;
+
   // Process events in chronological order
   for (const event of events) {
     switch (event.type) {
@@ -304,25 +310,22 @@ function buildRootAgentBlock(
         // duplicate the last thinking entry (avoids "thinking then echo the
         // same content as reply" artifacts when the LLM only has reasoning
         // and no final-answer tag).
-        // F-17: Only dedup in non-ReAct mode. In ReAct mode, thinking and
-        // reply are already correctly separated by hasExplicitFinalAnswer.
         const replyContent = resolveReplyContent(messagePresentation);
         if (replyContent) {
-          if (messagePresentation.mode !== 'react') {
-            const lastThinking = [...timeline].reverse().find((e) => e.kind === 'thinking');
-            const lastThinkingContent = lastThinking?.kind === 'thinking' ? lastThinking.section.content.trim() : '';
-            if (replyContent === lastThinkingContent) break;
+          const lastThinking = [...timeline].reverse().find((e) => e.kind === 'thinking');
+          const lastThinkingContent = lastThinking?.kind === 'thinking' ? lastThinking.section.content.trim() : '';
+          if (replyContent !== lastThinkingContent) {
+            timeline.push({
+              kind: 'reply',
+              section: {
+                id: `root-reply-${event.message.id}`,
+                content: replyContent,
+                durationMs: 0,
+                streaming: event.message.status === 'streaming',
+              },
+              sortKey: sortCounter++,
+            });
           }
-          timeline.push({
-            kind: 'reply',
-            section: {
-              id: `root-reply-${event.message.id}`,
-              content: replyContent,
-              durationMs: 0,
-              streaming: event.message.status === 'streaming',
-            },
-            sortKey: sortCounter++,
-          });
         }
         break;
       }
@@ -345,6 +348,7 @@ function buildRootAgentBlock(
         const toolEv = event.toolEvent;
 
         if (toolEv.tool_name === 'plan_and_execute') {
+          hasPlanAndExecute = true;
           // Extract orchestration plan from plan_and_execute arguments
           const args = asObject(toolEv.arguments);
           const tasks = Array.isArray(args.tasks) ? args.tasks : Array.isArray(args.steps) ? args.steps : [];
@@ -376,6 +380,23 @@ function buildRootAgentBlock(
           toolEv.tool_name !== 'subagents_get' &&
           toolEv.tool_name !== 'subagents_wait'
         ) {
+          // Track subagents_spawn for degradation detection
+          if (toolEv.tool_name === 'subagents_spawn') {
+            hasSubagentsSpawn = true;
+            // Inject degradation notice when subagents_spawn is used without plan_and_execute
+            if (!hasPlanAndExecute && !degradationNoticeAdded) {
+              degradationNoticeAdded = true;
+              timeline.push({
+                kind: 'notice',
+                section: {
+                  id: `degradation-notice-${sortCounter}`,
+                  type: 'degradation',
+                  message: '编排工具 plan_and_execute 当前不可用，已自动降级为 SubAgent 模式执行',
+                } as NoticeSection,
+                sortKey: sortCounter++,
+              });
+            }
+          }
           // Spawn-like tool: create subagent entry at this chronological position
           const subBlock = buildSubAgentFromSpawn(toolEv, msgs);
           if (subBlock) {

@@ -422,7 +422,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	if client == nil {
 		return biz.ToolRunResult{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
-	where := []string{"1 = 1"}
+	where := []string{"ti.deleted_at = ''"}
 	args := []any{}
 	if q.ToolKey != "" {
 		where = append(where, "ti.tool_key = ?")
@@ -450,9 +450,9 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	}
 	if q.HasError != nil {
 		if *q.HasError {
-			where = append(where, "ti.status = 'error'")
+			where = append(where, "ti.status IN ('error', 'failed')")
 		} else {
-			where = append(where, "ti.status != 'error'")
+			where = append(where, "ti.status NOT IN ('error', 'failed')")
 		}
 	}
 	whereSQL := strings.Join(where, " AND ")

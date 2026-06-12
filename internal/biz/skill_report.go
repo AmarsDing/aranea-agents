@@ -112,12 +112,11 @@ func (uc *SkillReportUsecase) GenerateReport(ctx context.Context, inv SkillInvoc
 	// Persist the report.
 	if uc.writer != nil {
 		if err := uc.writer.Create(ctx, *report); err != nil {
-			// NOTE: Best-effort persistence — caller cannot determine if report was persisted.
 			uc.lg.Warn("GenerateReport: write failed",
 				loggateway.StepID("skill_intelligence.generate"),
 				loggateway.Str("skill_id", inv.SkillID),
 				loggateway.Err(err))
-			// Non-fatal: return the report even if persistence fails.
+			return nil, fmt.Errorf("persist experience report: %w", err)
 		}
 	}
 
@@ -295,8 +294,9 @@ func buildOptimizationAdvice(inv SkillInvocationWrite, isSuccess bool, failureTa
 }
 
 func truncateStr(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }

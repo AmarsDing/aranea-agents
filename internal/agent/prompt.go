@@ -17,6 +17,10 @@ type Deps struct {
 	SQLiteSessionMemory bool
 	Organization        *biz.OrganizationUsecase
 	LG                  loggateway.Logger
+	// CustomToolKeys carries the names of dynamically injected CustomTools
+	// (e.g. plan_and_execute, check_progress) that are NOT in the Registry.
+	// The Runtime Cue uses this to produce accurate tool availability hints.
+	CustomToolKeys []string
 }
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
@@ -216,6 +220,16 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 			}
 		}
 	}
+	// Merge CustomTool keys (e.g. plan_and_execute) into the effective key list
+	// so the LLM sees the complete set of available tools.
+	customKeySet := make(map[string]bool, len(d.CustomToolKeys))
+	for _, ck := range d.CustomToolKeys {
+		ck = strings.TrimSpace(ck)
+		if ck != "" && !customKeySet[ck] {
+			customKeySet[ck] = true
+			keys = append(keys, ck)
+		}
+	}
 	if len(keys) > 0 && !skipToolCue {
 		b.WriteString("- Effective tool keys this turn: " + strings.Join(keys, ", ") + "\n")
 		if level >= cueLevelStandard {
@@ -225,6 +239,12 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 		b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
 	} else if skipToolCue && len(keys) > 0 && level >= cueLevelCompact {
 		b.WriteString("- Tools: see CAPABILITIES.md in instruction; effective keys resolved at runtime.\n")
+	}
+	// Spirit orchestration fallback: when plan_and_execute is referenced in
+	// prompt files but NOT available as a CustomTool, inject explicit fallback
+	// guidance so the LLM does not waste turns trying to call a missing tool.
+	if ag.AgentKey == biz.SpiritAgentKey && !customKeySet["plan_and_execute"] && level >= cueLevelStandard {
+		b.WriteString("- IMPORTANT: plan_and_execute is NOT available this session. For multi-step tasks, use subagents_spawn to delegate to sub-agents instead. Do NOT attempt to call plan_and_execute.\n")
 	}
 	if hasWorkspaceSearch && level >= cueLevelFull && !skipToolCue {
 		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → diff_edit (or patch_file when you have unified diff). Use save_file only for new files or small full rewrites; use replace_content for simple single replacements. Avoid list_file at repo root without a narrowed path or keyword.\n")

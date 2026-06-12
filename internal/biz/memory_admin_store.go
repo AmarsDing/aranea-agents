@@ -128,6 +128,10 @@ type L1TaskWriter interface {
 	GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error)
 	ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error)
 	UnarchiveL1Task(ctx context.Context, sessionID, taskID string) error
+	// ArchiveAndCreateEpisodeTx atomically archives an L1 task and creates
+	// the corresponding L2 episode within a single database transaction.
+	// If the episode insert fails, the L1 archive is rolled back automatically.
+	ArchiveAndCreateEpisodeTx(ctx context.Context, sessionID, taskID string, episode L1ArchiveEpisodeInsert) ([]byte, error)
 }
 
 // L1FieldWriter exposes L1 field write operations.

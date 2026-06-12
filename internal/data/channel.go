@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -355,7 +356,7 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 			).
 			Only(ctx)
 		if findErr != nil {
-			return biz.ChannelDelivery{}, false, err
+			return biz.ChannelDelivery{}, false, fmt.Errorf("insert failed: %w; query also failed: %v", err, findErr)
 		}
 		return deliveryEntToBiz(existing), false, nil
 	}
@@ -400,5 +401,3 @@ func (r *channelRepo) UpdateDelivery(ctx context.Context, d biz.ChannelDelivery)
 		Save(ctx)
 	return err
 }
-
-

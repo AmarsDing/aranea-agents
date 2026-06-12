@@ -313,6 +313,13 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	if body == "" {
 		body = string(files["skill.md"])
 	}
+	if strings.TrimSpace(body) == "" {
+		r.lg.Warn("syncSlug: SKILL.md is empty or missing, skipping",
+			loggateway.StepID("skill.watch"),
+			loggateway.Str("slug", slug),
+			loggateway.Str("dir", dir))
+		return
+	}
 	wasMissing := false
 	isNew := true
 	if existing, err := r.reader.GetBySlug(ctx, slug); err == nil {

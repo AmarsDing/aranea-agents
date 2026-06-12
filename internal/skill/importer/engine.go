@@ -120,15 +120,12 @@ func candidateRequiresRiskApproval(candidate biz.SkillImportCandidate) bool {
 	if candidate.ValidationStatus != "block" {
 		return false
 	}
-	if len(candidate.Blocks) == 0 {
-		return false
-	}
 	for _, block := range candidate.Blocks {
-		if block.Type != "high_risk_file" {
-			return false
+		if block.Type == "high_risk_file" {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func (e *Engine) Import(ctx context.Context, file multipart.File, header *multipart.FileHeader) (biz.SkillImportJob, error) {
@@ -386,6 +383,13 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 			// CAS succeeded — load the full job for processing.
 			dbJob, dbErr := e.store.Get(ctx, trimmed)
 			if dbErr != nil || dbJob == nil {
+				// Roll back CAS: "applying" → "completed" to prevent permanent stuck state
+				if rbErr := e.store.UpdateStatus(context.Background(), trimmed, "completed", "CAS succeeded but Get failed, rolled back"); rbErr != nil {
+					e.lg.Warn("ApplyImport: DB rollback after Get failed",
+						loggateway.StepID("skill.import"),
+						loggateway.Str("job_id", trimmed),
+						loggateway.Err(rbErr))
+				}
 				return biz.SkillImportApplyResult{}, ErrImportJobNotFound
 			}
 			job = &jobState{
@@ -768,6 +772,10 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 			llmCalls++
 			metrics, reason, evidence, err := e.modelSimilarity(ctx, cfg, state, source)
 			if err != nil {
+				e.lg.Warn("inspectSimilarity: model similarity check failed",
+					loggateway.StepID("skill.similarity_llm_fail"),
+					loggateway.Str("candidate", candidate.CandidateID),
+					loggateway.Err(err))
 				continue
 			}
 			if metrics.SimilarityScore >= similarityThreshold {

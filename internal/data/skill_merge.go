@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	dataent "aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -35,7 +37,10 @@ func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID strin
 		Where(platformskill.IDEQ(skillID), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		return nil, err
+		if dataent.IsNotFound(err) {
+			return nil, apierror.NotFound(apierror.DomainSkill, "skill not found")
+		}
+		return nil, entErrToBizErr(err, "SKILL")
 	}
 
 	// 获取最新 published 版本的完整内容
@@ -66,6 +71,7 @@ func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID strin
 		Description: skill.Description,
 		Body:        body,
 		Tags:        tags,
+		Status:      skill.Status,
 	}, nil
 }
 
@@ -138,6 +144,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 	_, dErr := tx.PlatformSkill.UpdateOneID(params.SourceID).
 		SetEnabled(false).
 		SetStatus("deprecated").
+		SetDeletedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if dErr != nil {

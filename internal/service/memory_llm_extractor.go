@@ -2,23 +2,28 @@ package service
 
 import (
 	"context"
-	"net/http"
+	"encoding/json"
 	"strings"
 	"time"
 
-	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
+
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// MemoryLLMExtractor implements biz.MemoryTextExtractor using OpenAI-compatible chat completions.
+// MemoryLLMExtractor implements biz.MemoryTextExtractor using provider-routed LLM calls.
 type MemoryLLMExtractor struct {
 	agents       *biz.AgentUsecase
 	sessions     *biz.SessionUsecase
 	modelCatalog *biz.LlmProviderModelUsecase
-	http         *http.Client
+	rt           *provider.RoundTrip
 	llmDisabled  bool
+	lg           loggateway.Logger
 }
 
 // MemoryLLMExtractorConfig holds all dependencies for MemoryLLMExtractor.
@@ -26,8 +31,9 @@ type MemoryLLMExtractorConfig struct {
 	Agents       *biz.AgentUsecase
 	Sessions     *biz.SessionUsecase
 	ModelCatalog *biz.LlmProviderModelUsecase
-	HTTPClient   *http.Client
+	RoundTrip    *provider.RoundTrip
 	LLMDisabled  bool
+	Logger       loggateway.Logger
 }
 
 func NewMemoryLLMExtractor(cfg MemoryLLMExtractorConfig) *MemoryLLMExtractor {
@@ -35,15 +41,16 @@ func NewMemoryLLMExtractor(cfg MemoryLLMExtractorConfig) *MemoryLLMExtractor {
 		agents:       cfg.Agents,
 		sessions:     cfg.Sessions,
 		modelCatalog: cfg.ModelCatalog,
-		http:         cfg.HTTPClient,
+		rt:           cfg.RoundTrip,
 		llmDisabled:  cfg.LLMDisabled,
+		lg:           cfg.Logger,
 	}
 }
 
 var _ biz.MemoryTextExtractor = (*MemoryLLMExtractor)(nil)
 
 func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.ConsolidateInput) ([]biz.MemoryProposal, error) {
-	if e == nil || e.modelCatalog == nil || e.http == nil || e.llmDisabled {
+	if e == nil || e.modelCatalog == nil || e.rt == nil || e.llmDisabled {
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 	transcript := buildConsolidateTranscript(in.Messages)
@@ -59,12 +66,10 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 
-	row, err := e.modelCatalog.GetByProviderAndModel(ctx, prov, mod)
+	m, err := provider.TRPCModelForProviderModel(ctx, e.modelCatalog, e.rt, prov, mod, e.lg)
 	if err != nil {
 		return nil, err
 	}
-	var cfg chatagent.ProviderAPIConfig
-	chatagent.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 
 	callCtx := ctx
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
@@ -73,32 +78,60 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		defer cancel()
 	}
 
-	msgs := []chatagent.OpenAICompatMessage{
-		{Role: "system", Content: compress.MemoryExtractSystemPromptV2},
-		{Role: "user", Content: "Conversation excerpt:\n\n" + transcript},
+	toolDecls := mapSchemaToToolDecls([]map[string]any{compress.ExtractMemoryFactsFunctionSchema})
+
+	req := &trpcmodel.Request{
+		Messages: []trpcmodel.Message{
+			trpcmodel.NewSystemMessage(compress.MemoryExtractSystemPromptV2),
+			trpcmodel.NewUserMessage("Conversation excerpt:\n\n" + transcript),
+		},
+		Tools: toolDecls,
 	}
 
-	tools := []map[string]any{compress.ExtractMemoryFactsFunctionSchema}
-	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.http, cfg, mod, msgs, tools)
+	respCh, err := m.GenerateContent(callCtx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var text string
+	var toolCalls []toolCallResult
+	for resp := range respCh {
+		if resp.Error != nil {
+			return nil, biz.ErrLLMExtractionFailed
+		}
+		for _, c := range resp.Choices {
+			if c.Delta.Content != "" {
+				text += c.Delta.Content
+			}
+			if c.Message.Content != "" {
+				text += c.Message.Content
+			}
+			for _, tc := range c.Message.ToolCalls {
+				toolCalls = append(toolCalls, toolCallResult{
+					Name:      tc.Function.Name,
+					Arguments: string(tc.Function.Arguments),
+				})
+			}
+		}
+	}
+	text = strings.TrimSpace(text)
 
 	var proposals []biz.MemoryProposal
 	var extractionQuality float64
 	var jsonParseErr error
 
-	if callErr == nil {
-		for _, tc := range toolCalls {
-			if tc.Name == compress.ExtractMemoryFactsFunctionName {
-				facts, _, parseErr := compress.ParseMemoryExtractFunctionCallArgs(tc.Arguments)
-				if parseErr == nil && len(facts) > 0 {
-					extractionQuality = biz.ExtractionQualityFunctionCall
-					proposals = convertFactsToProposals(facts, in.Messages, extractionQuality)
-				}
-				break
+	for _, tc := range toolCalls {
+		if tc.Name == compress.ExtractMemoryFactsFunctionName {
+			facts, _, parseErr := compress.ParseMemoryExtractFunctionCallArgs(tc.Arguments)
+			if parseErr == nil && len(facts) > 0 {
+				extractionQuality = biz.ExtractionQualityFunctionCall
+				proposals = convertFactsToProposals(facts, in.Messages, extractionQuality)
 			}
+			break
 		}
 	}
 
-	if len(proposals) == 0 && callErr == nil && strings.TrimSpace(text) != "" {
+	if len(proposals) == 0 && strings.TrimSpace(text) != "" {
 		facts, parseErr := compress.ParseMemoryExtractJSON(text)
 		if parseErr == nil && len(facts) > 0 {
 			extractionQuality = biz.ExtractionQualityJSONMode
@@ -108,15 +141,46 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		}
 	}
 
-	if len(proposals) == 0 && callErr != nil {
-		return nil, callErr
-	}
-
 	if len(proposals) == 0 && jsonParseErr != nil {
 		return nil, biz.ErrLLMExtractionFailed
 	}
 
 	return proposals, nil
+}
+
+type toolCallResult struct {
+	Name      string
+	Arguments string
+}
+
+// staticToolDecl wraps a trpctool.Declaration to implement the Tool interface.
+type staticToolDecl struct {
+	decl *trpctool.Declaration
+}
+
+func (s *staticToolDecl) Declaration() *trpctool.Declaration { return s.decl }
+
+// mapSchemaToToolDecls converts map[string]any tool schemas to trpcmodel-compatible tool declarations.
+func mapSchemaToToolDecls(tools []map[string]any) map[string]trpctool.Tool {
+	toolDecls := make(map[string]trpctool.Tool, len(tools))
+	for _, t := range tools {
+		name, _ := t["name"].(string)
+		desc, _ := t["description"].(string)
+		params, _ := t["parameters"].(map[string]any)
+		decl := &trpctool.Declaration{
+			Name:        name,
+			Description: desc,
+		}
+		if params != nil {
+			schemaBytes, _ := json.Marshal(params)
+			var schema trpctool.Schema
+			if json.Unmarshal(schemaBytes, &schema) == nil {
+				decl.InputSchema = &schema
+			}
+		}
+		toolDecls[name] = &staticToolDecl{decl: decl}
+	}
+	return toolDecls
 }
 
 func convertFactsToProposals(facts []compress.MemoryExtractFact, messages []biz.ConsolidateMessage, quality float64) []biz.MemoryProposal {

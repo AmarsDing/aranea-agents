@@ -160,7 +160,8 @@ export type TimelineEntry =
   | { kind: 'thinking'; section: ThinkingSection; sortKey: number }
   | { kind: 'tool'; section: ToolSection; sortKey: number }
   | { kind: 'reply'; section: ReplySection; sortKey: number }
-  | { kind: 'subagent'; block: AgentBlock; sortKey: number };
+  | { kind: 'subagent'; block: AgentBlock; sortKey: number }
+  | { kind: 'notice'; section: NoticeSection; sortKey: number };
 
 // ── Thinking Section ──
 
@@ -199,6 +200,16 @@ export interface ToolSection {
    * "(等待中)" pill so users know the tool is intentionally silent.
    */
   isLongRunning?: boolean;
+}
+
+// ── Notice Section ──
+
+export interface NoticeSection {
+  id: string;
+  /** Semantic type for styling: 'degradation' | 'info' */
+  type: 'degradation' | 'info';
+  /** Human-readable notice text */
+  message: string;
 }
 
 // ── Avatar color palette ──

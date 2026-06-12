@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -62,19 +63,19 @@ func DedupL3WithL1(l3Rows [][]byte, l1FieldValues []string) [][]byte {
 	for _, raw := range l3Rows {
 		var row map[string]any
 		if json.Unmarshal(raw, &row) != nil {
-			// JSON parse failed: check raw bytes for any L1 value as fallback.
-			// Use NormalizeForDedup to compress whitespace consistently with l1Set keys.
-			rawNorm := NormalizeForDedup(string(raw))
-			dup := false
-			for l1key := range l1Set {
-				if strings.Contains(rawNorm, l1key) {
-					dup = true
-					break
+			// JSON parse failed: attempt to extract "statement" field via regex
+			// to avoid false positives from substring matching against the
+			// entire raw JSON (e.g. L1 value "like" matching field name "like").
+			stmtFallback := extractStatementFromCorruptJSON(raw)
+			if stmtFallback != "" {
+				stmt := NormalizeForDedup(stmtFallback)
+				if _, dup := l1Set[stmt]; dup {
+					continue
 				}
 			}
-			if !dup {
-				out = append(out, raw)
-			}
+			// If statement extraction also fails, conservatively retain the
+			// row rather than risk a false-positive dedup on raw JSON.
+			out = append(out, raw)
 			continue
 		}
 		stmt := NormalizeForDedup(fmt.Sprint(row["statement"]))
@@ -84,4 +85,25 @@ func DedupL3WithL1(l3Rows [][]byte, l1FieldValues []string) [][]byte {
 		out = append(out, raw)
 	}
 	return out
+}
+
+// stmtFieldRe extracts the "statement" field value from a potentially corrupt
+// JSON byte slice using regex, avoiding false positives from substring matching
+// against the entire raw JSON.
+var stmtFieldRe = regexp.MustCompile(`"statement"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+
+// extractStatementFromCorruptJSON attempts to extract the "statement" field
+// value from a corrupt JSON byte slice using regex. Returns empty string if
+// the field cannot be found or unescaped.
+func extractStatementFromCorruptJSON(raw []byte) string {
+	m := stmtFieldRe.FindSubmatch(raw)
+	if len(m) < 2 {
+		return ""
+	}
+	// Unescape JSON string
+	var s string
+	if json.Unmarshal(m[1], &s) == nil {
+		return s
+	}
+	return string(m[1])
 }

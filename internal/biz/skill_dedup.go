@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	dedupSimilarityThreshold = 0.3 // raised from 0.2 to reduce false positives
+	dedupSimilarityThreshold = 0.5 // raised from 0.3: Jaccard on short text is naturally low, 0.3 caused too many false positives
 	dedupBodyPreviewLen      = 500
 )
 
@@ -140,6 +140,10 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 				}
 				res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
 				if err != nil {
+					// If context was cancelled, return immediately rather than continuing.
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
 					uc.lg.Warn("skill_dedup: Compare failed",
 						loggateway.StepID("skill_dedup.compare"),
 						loggateway.Err(err))
@@ -157,28 +161,7 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	}
 
 	// Group connected pairs using union-find.
-	parent := make([]int, len(candidates))
-	for i := range parent {
-		parent[i] = i
-	}
-	find := func(x int) int {
-		root := x
-		for parent[root] != root {
-			root = parent[root]
-		}
-		for x != root {
-			next := parent[x]
-			parent[x] = root
-			x = next
-		}
-		return root
-	}
-	union := func(a, b int) {
-		ra, rb := find(a), find(b)
-		if ra != rb {
-			parent[ra] = rb
-		}
-	}
+	uf := newUnionFind(len(candidates))
 
 	// Track overlap info per group root — aggregate all overlap types.
 	type groupMeta struct {
@@ -191,8 +174,8 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	groupInfo := make(map[int]*groupMeta)
 
 	for _, p := range pairs {
-		union(p.i, p.j)
-		root := find(p.i)
+		uf.Union(p.i, p.j)
+		root := uf.Find(p.i)
 		meta := groupInfo[root]
 		if meta == nil {
 			meta = &groupMeta{overlapTypes: map[string]bool{}, bestScore: 0}
@@ -215,7 +198,7 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	// Collect groups.
 	buckets := make(map[int][]int)
 	for i := range candidates {
-		root := find(i)
+		root := uf.Find(i)
 		buckets[root] = append(buckets[root], i)
 	}
 
@@ -279,7 +262,7 @@ func jaccardSimilarity(a, b string) float64 {
 	setA := wordSet(a)
 	setB := wordSet(b)
 	if len(setA) == 0 && len(setB) == 0 {
-		return 1.0
+		return 0.0 // cannot determine similarity from empty fields
 	}
 	if len(setA) == 0 || len(setB) == 0 {
 		return 0.0
@@ -335,4 +318,51 @@ func wordSet(s string) map[string]bool {
 		}
 	}
 	return set
+}
+
+// unionFind implements a disjoint-set data structure with path compression
+// and union by rank for grouping similar skills.
+type unionFind struct {
+	parent []int
+	rank   []int
+}
+
+func newUnionFind(n int) *unionFind {
+	uf := &unionFind{
+		parent: make([]int, n),
+		rank:   make([]int, n),
+	}
+	for i := range uf.parent {
+		uf.parent[i] = i
+	}
+	return uf
+}
+
+func (uf *unionFind) Find(x int) int {
+	root := x
+	for uf.parent[root] != root {
+		root = uf.parent[root]
+	}
+	// Path compression.
+	for x != root {
+		next := uf.parent[x]
+		uf.parent[x] = root
+		x = next
+	}
+	return root
+}
+
+func (uf *unionFind) Union(a, b int) {
+	ra, rb := uf.Find(a), uf.Find(b)
+	if ra == rb {
+		return
+	}
+	// Union by rank.
+	if uf.rank[ra] < uf.rank[rb] {
+		ra, rb = rb, ra
+	}
+	uf.parent[rb] = ra
+	if uf.rank[ra] == uf.rank[rb] {
+		uf.rank[ra]++
+	}
 }

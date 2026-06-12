@@ -179,7 +179,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		for _, alias := range nameMatches[1:] {
 			aliasNorm := strings.ToLower(alias)
 			aliasID := fmt.Sprintf("l4-person-%s-%s", agentID, slugEntityName(alias))
-			aliasMeta, _ := json.Marshal(map[string]string{"source": "auto_memory", "alias_of": name})
+			aliasMeta := safeMarshalJSON(map[string]string{"source": "auto_memory", "alias_of": name}, uc.lg)
 			if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 				ID:             aliasID,
 				ScopeType:      "agent",
@@ -401,6 +401,6 @@ func mergeConflictMetadata(base string, conflict bool, priorName, pendingName st
 	m["prior_name"] = priorName
 	m["pending_name"] = pendingName
 	m["gate"] = "cascade_proposal"
-	b, _ := json.Marshal(m)
+	b := safeMarshalJSON(m, lg)
 	return string(b)
 }

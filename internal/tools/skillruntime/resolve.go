@@ -256,11 +256,38 @@ func skillMatchesPath(c biz.SkillRuntimeCandidate, path string) bool {
 		if tpl == pathLower {
 			return true
 		}
-		// Segment-level matching: split by common taxonomy separators
-		// to avoid "code" matching "code-review" or "encode".
-		for _, segment := range splitTaxonomySegments(tpl) {
-			if segment == pathLower {
-				return true
+		// Path segment matching: split by "/" and check if any segment matches
+		tplSegments := strings.Split(tpl, "/")
+		pathSegments := strings.Split(pathLower, "/")
+		for _, ts := range tplSegments {
+			ts = strings.TrimSpace(ts)
+			if ts == "" {
+				continue
+			}
+			for _, ps := range pathSegments {
+				ps = strings.TrimSpace(ps)
+				if ps == "" {
+					continue
+				}
+				if ts == ps {
+					return true
+				}
+			}
+		}
+		// Keyword fallback: check if any segment contains the other
+		for _, ts := range tplSegments {
+			ts = strings.TrimSpace(ts)
+			if ts == "" || len(ts) <= 2 {
+				continue
+			}
+			for _, ps := range pathSegments {
+				ps = strings.TrimSpace(ps)
+				if ps == "" || len(ps) <= 2 {
+					continue
+				}
+				if strings.Contains(ts, ps) || strings.Contains(ps, ts) {
+					return true
+				}
 			}
 		}
 	}
@@ -309,7 +336,7 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 	}
 	out := make([]slugScore, 0, len(in))
 	for _, c := range in {
-		sc := 0
+		bestScore := 0
 		matchDetail := ""
 		for _, tp := range c.TaxonomyPaths {
 			tp = strings.TrimSpace(tp)
@@ -320,24 +347,30 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 				tpl := strings.ToLower(tp)
 				pl := strings.ToLower(p)
 				if tpl == pl {
-					sc += 1000
-					matchDetail = "exact taxonomy path match"
+					if 1000 > bestScore {
+						bestScore = 1000
+						matchDetail = "exact taxonomy path match"
+					}
 				} else {
 					for _, segment := range splitTaxonomySegments(tpl) {
 						if segment == pl {
-							sc += 400
-							matchDetail = "partial taxonomy path match"
+							if 400 > bestScore {
+								bestScore = 400
+								matchDetail = "partial taxonomy path match"
+							}
 							break
 						}
 					}
 				}
 			}
 		}
-		if sc == 0 && len(paths) > 0 {
+		if bestScore == 0 && len(paths) > 0 {
 			for _, p := range paths {
 				if skillMatchesPath(c, strings.TrimSpace(p)) {
-					sc += 100
-					matchDetail = "keyword match"
+					if 100 > bestScore {
+						bestScore = 100
+						matchDetail = "keyword match"
+					}
 					break
 				}
 			}
@@ -350,7 +383,7 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 			}
 		}
 		reasons[c.Slug] = matchDetail
-		out = append(out, slugScore{slug: c.Slug, score: sc, reason: matchDetail})
+		out = append(out, slugScore{slug: c.Slug, score: bestScore, reason: matchDetail})
 	}
 	return out
 }

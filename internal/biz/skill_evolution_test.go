@@ -57,7 +57,7 @@ func (m *mockProposalRepo) GetByPatternHash(_ context.Context, agentID string, h
 func (m *mockProposalRepo) ListByAgent(_ context.Context, agentID string, status string, _ int, _ int) ([]SkillProposal, error) {
 	var result []SkillProposal
 	for _, p := range m.proposals {
-		if p.AgentID == agentID && (status == "" || string(p.Status) == status) {
+		if (agentID == "" || p.AgentID == agentID) && (status == "" || string(p.Status) == status) {
 			result = append(result, p)
 		}
 	}
@@ -360,6 +360,23 @@ func TestSkillEvolutionUsecase_ListProposals(t *testing.T) {
 	}
 	if len(pending) != 1 {
 		t.Errorf("expected 1 pending proposal, got %d", len(pending))
+	}
+}
+
+func TestSkillEvolutionUsecase_ListProposals_EmptyAgentID(t *testing.T) {
+	repo := newMockProposalRepo()
+	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+
+	repo.Create(context.Background(), SkillProposal{ID: "p1", AgentID: "a1", Status: SkillProposalStatusPending})
+	repo.Create(context.Background(), SkillProposal{ID: "p2", AgentID: "a1", Status: SkillProposalStatusApproved})
+	repo.Create(context.Background(), SkillProposal{ID: "p3", AgentID: "a2", Status: SkillProposalStatusPending})
+
+	all, err := uc.ListProposals(context.Background(), "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("ListProposals with empty agentID: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("expected 3 proposals (all agents), got %d", len(all))
 	}
 }
 

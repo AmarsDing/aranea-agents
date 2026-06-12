@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/pkg/apierror"
@@ -35,12 +37,13 @@ func FormatApprovedByUser(userID int64) string {
 }
 
 type LearningLoopUsecase struct {
-	obs          ObservationReadWriter
-	patterns     PatternReadWriter
-	proposals    ProposalReadWriter
-	agents       AgentRepository
-	evolution    *EvolutionUsecase
-	orchestrator *SkillEvolutionOrchestrator
+	obs              ObservationReadWriter
+	patterns         PatternReadWriter
+	proposals        ProposalReadWriter
+	agents           AgentRepository
+	evolution        *EvolutionUsecase
+	orchestrator     *SkillEvolutionOrchestrator
+	orchestratorOnce sync.Once
 }
 
 func NewLearningLoopUsecase(
@@ -62,9 +65,11 @@ func NewLearningLoopUsecase(
 // SetOrchestrator sets the unified evolution orchestrator for creating
 // UnifiedEvolutionSuggestion instead of legacy EvolutionSuggestion.
 // When set, RegisterKnowledge delegates to the orchestrator.
-// NOTE: Must only be called during initialization, before any concurrent access.
+// Protected by sync.Once to prevent concurrent initialization races.
 func (uc *LearningLoopUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
-	uc.orchestrator = o
+	uc.orchestratorOnce.Do(func() {
+		uc.orchestrator = o
+	})
 }
 
 func (uc *LearningLoopUsecase) CollectObservations(ctx context.Context, agentID string, since time.Time) ([]Observation, error) {
@@ -427,9 +432,14 @@ func describeBucket(key string, obs []Observation) string {
 				}
 			}
 		}
+		sortedNames := make([]string, 0, len(toolNames))
+		for name := range toolNames {
+			sortedNames = append(sortedNames, name)
+		}
+		sort.Strings(sortedNames)
 		var parts []string
-		for name, count := range toolNames {
-			parts = append(parts, fmt.Sprintf("%s(%d)", name, count))
+		for _, name := range sortedNames {
+			parts = append(parts, fmt.Sprintf("%s(%d)", name, toolNames[name]))
 		}
 		return fmt.Sprintf("高频工具调用模式: %s", strings.Join(parts, ", "))
 	case string(ObservationKindFeedback):

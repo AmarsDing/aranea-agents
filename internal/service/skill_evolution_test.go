@@ -45,7 +45,7 @@ func (s *stubProposalRepo) GetByPatternHash(_ context.Context, agentID string, h
 func (s *stubProposalRepo) ListByAgent(_ context.Context, agentID string, status string, _ int, _ int) ([]biz.SkillProposal, error) {
 	var result []biz.SkillProposal
 	for _, p := range s.proposals {
-		if p.AgentID == agentID && (status == "" || string(p.Status) == status) {
+		if (agentID == "" || p.AgentID == agentID) && (status == "" || string(p.Status) == status) {
 			result = append(result, p)
 		}
 	}
@@ -116,6 +116,25 @@ func TestSkillEvolutionService_ListSkillProposals_FilterByStatus(t *testing.T) {
 	}
 	if resp.Items[0].Status != "pending" {
 		t.Errorf("expected pending status, got %s", resp.Items[0].Status)
+	}
+}
+
+func TestSkillEvolutionService_ListSkillProposals_EmptyAgentID(t *testing.T) {
+	repo := newStubProposalRepo()
+	repo.Create(context.Background(), biz.SkillProposal{
+		ID: "p1", AgentID: "a1", Status: biz.SkillProposalStatusPending, CreatedAt: time.Now().UTC(),
+	})
+	repo.Create(context.Background(), biz.SkillProposal{
+		ID: "p2", AgentID: "a2", Status: biz.SkillProposalStatusApproved, CreatedAt: time.Now().UTC(),
+	})
+
+	svc := newTestSkillEvolutionService(repo)
+	resp, err := svc.ListSkillProposals(context.Background(), &v1.ListSkillProposalsRequest{})
+	if err != nil {
+		t.Fatalf("ListSkillProposals with empty agentID: %v", err)
+	}
+	if len(resp.Items) != 2 {
+		t.Errorf("expected 2 items (all agents), got %d", len(resp.Items))
 	}
 }
 

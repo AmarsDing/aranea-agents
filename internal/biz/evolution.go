@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/pkg/apierror"
@@ -69,13 +70,14 @@ type EvolutionSuggestionRepo interface {
 }
 
 type EvolutionUsecase struct {
-	metricsRepo    EvolutionMetricsRepo
-	suggestionRepo EvolutionSuggestionRepo
-	agents         AgentRepository
-	coordinator    *EvolutionCoordinator
-	orchestrator   *SkillEvolutionOrchestrator
-	lg             loggateway.Logger
-	evolutionSM    *EvolutionStateMachine
+	metricsRepo      EvolutionMetricsRepo
+	suggestionRepo   EvolutionSuggestionRepo
+	agents           AgentRepository
+	coordinator      *EvolutionCoordinator
+	orchestrator     *SkillEvolutionOrchestrator
+	orchestratorOnce sync.Once
+	lg               loggateway.Logger
+	evolutionSM      *EvolutionStateMachine
 }
 
 func NewEvolutionUsecase(
@@ -103,9 +105,11 @@ func (uc *EvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
 
 // SetOrchestrator sets the unified evolution orchestrator for cross-pipeline dedup.
 // When set, ScanAgent delegates to the orchestrator for pending checks.
-// NOTE: Must only be called during initialization, before any concurrent access.
+// Protected by sync.Once to prevent concurrent initialization races.
 func (uc *EvolutionUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
-	uc.orchestrator = o
+	uc.orchestratorOnce.Do(func() {
+		uc.orchestrator = o
+	})
 }
 
 func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (EvolutionMetrics, error) {

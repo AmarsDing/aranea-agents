@@ -44,7 +44,7 @@ func newForgetLowQualityTool(deps Deps) trpctool.Tool {
 			negCount := jsonutil.IfaceI32(m, "negative_feedback_count")
 			// A fact is considered misaligned if it has been retrieved enough times
 			// (>=3) and has a high negative feedback rate (>50%).
-			if hitCount >= 3 && negCount > 0 && float64(negCount)/float64(hitCount) > 0.5 {
+			if hitCount >= minHitCountForLowQuality && negCount > 0 && float64(negCount)/float64(hitCount) > negativeFeedbackRateThreshold {
 				candidates = append(candidates, factID)
 			}
 		}

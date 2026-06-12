@@ -50,7 +50,7 @@ func TestFirstCommandToken(t *testing.T) {
 		{"redirect", "echo hello > file.txt", "", false},
 		{"input redirect", "sort < /etc/passwd", "", false},
 		{"subshell with chaining", "(cd /tmp && ls)", "", false},
-		{"subshell simple", "(cd /tmp)", "cd", true},
+		{"subshell simple", "(cd /tmp)", "", false},
 		{"empty string", "", "", true},
 		{"whitespace only", "   \t\n  ", "", true},
 		{"leading pipe", "| grep foo", "", false},

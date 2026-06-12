@@ -68,6 +68,8 @@ function entryKey(entry: TimelineEntry, idx: number): string {
       return `reply-${entry.section.id}`;
     case 'subagent':
       return `subagent-${entry.block.id}`;
+    case 'notice':
+      return `notice-${entry.section.id}`;
     default:
       return `entry-${idx}`;
   }

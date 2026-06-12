@@ -26,6 +26,7 @@ type MemoryServiceConfig struct {
 	DeadLetterRepo    biz.MemoryDeadLetterAdminRepo
 	DebugRecaller     biz.MemoryDebugRecaller
 	FactIndexCounter  biz.MemoryFactIndexCounter
+	WorkerStats       *biz.MemoryWorkerStats
 	DeadLetterEnqueue func(ctx context.Context, id int64) error
 	QueueStats        queueStatsProvider
 	Logger            loggateway.Logger
@@ -40,6 +41,7 @@ type MemoryService struct {
 	deadLetterRepo    biz.MemoryDeadLetterAdminRepo
 	debugRecaller     biz.MemoryDebugRecaller
 	factIndexCounter  biz.MemoryFactIndexCounter
+	workerStats       *biz.MemoryWorkerStats
 	deadLetterEnqueue func(ctx context.Context, id int64) error
 	queueStats        queueStatsProvider
 	lg                loggateway.Logger
@@ -53,6 +55,7 @@ func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
 		deadLetterRepo:    cfg.DeadLetterRepo,
 		debugRecaller:     cfg.DebugRecaller,
 		factIndexCounter:  cfg.FactIndexCounter,
+		workerStats:       cfg.WorkerStats,
 		deadLetterEnqueue: cfg.DeadLetterEnqueue,
 		queueStats:        cfg.QueueStats,
 		lg:                cfg.Logger,

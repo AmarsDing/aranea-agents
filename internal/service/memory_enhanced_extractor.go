@@ -2,22 +2,25 @@ package service
 
 import (
 	"context"
-	"net/http"
 	"strings"
 	"time"
 
-	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
+
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// MemoryEnhancedExtractor implements biz.EnhancedTextExtractor using OpenAI-compatible chat completions.
+// MemoryEnhancedExtractor implements biz.EnhancedTextExtractor using provider-routed LLM calls.
 type MemoryEnhancedExtractor struct {
 	agents       *biz.AgentUsecase
 	sessions     *biz.SessionUsecase
 	modelCatalog *biz.LlmProviderModelUsecase
-	http         *http.Client
+	rt           *provider.RoundTrip
 	llmDisabled  bool
+	lg           loggateway.Logger
 }
 
 // MemoryEnhancedExtractorConfig holds all dependencies for MemoryEnhancedExtractor.
@@ -25,8 +28,9 @@ type MemoryEnhancedExtractorConfig struct {
 	Agents       *biz.AgentUsecase
 	Sessions     *biz.SessionUsecase
 	ModelCatalog *biz.LlmProviderModelUsecase
-	HTTPClient   *http.Client
+	RoundTrip    *provider.RoundTrip
 	LLMDisabled  bool
+	Logger       loggateway.Logger
 }
 
 // NewMemoryEnhancedExtractor creates a new MemoryEnhancedExtractor.
@@ -35,15 +39,16 @@ func NewMemoryEnhancedExtractor(cfg MemoryEnhancedExtractorConfig) *MemoryEnhanc
 		agents:       cfg.Agents,
 		sessions:     cfg.Sessions,
 		modelCatalog: cfg.ModelCatalog,
-		http:         cfg.HTTPClient,
+		rt:           cfg.RoundTrip,
 		llmDisabled:  cfg.LLMDisabled,
+		lg:           cfg.Logger,
 	}
 }
 
 var _ biz.EnhancedTextExtractor = (*MemoryEnhancedExtractor)(nil)
 
 func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.ConsolidateInput) (*biz.EnhancedExtractionResult, error) {
-	if e == nil || e.modelCatalog == nil || e.http == nil || e.llmDisabled {
+	if e == nil || e.modelCatalog == nil || e.rt == nil || e.llmDisabled {
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 	transcript := buildConsolidateTranscript(in.Messages)
@@ -59,12 +64,10 @@ func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.Co
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 
-	row, err := e.modelCatalog.GetByProviderAndModel(ctx, prov, mod)
+	m, err := provider.TRPCModelForProviderModel(ctx, e.modelCatalog, e.rt, prov, mod, e.lg)
 	if err != nil {
 		return nil, err
 	}
-	var cfg chatagent.ProviderAPIConfig
-	chatagent.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 
 	callCtx := ctx
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
@@ -73,38 +76,62 @@ func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.Co
 		defer cancel()
 	}
 
-	msgs := []chatagent.OpenAICompatMessage{
-		{Role: "system", Content: compress.EnhancedExtractSystemPrompt},
-		{Role: "user", Content: "Conversation excerpt:\n\n" + transcript},
+	toolDecls := mapSchemaToToolDecls([]map[string]any{compress.EnhancedExtractFunctionSchema})
+
+	req := &trpcmodel.Request{
+		Messages: []trpcmodel.Message{
+			trpcmodel.NewSystemMessage(compress.EnhancedExtractSystemPrompt),
+			trpcmodel.NewUserMessage("Conversation excerpt:\n\n" + transcript),
+		},
+		Tools: toolDecls,
 	}
 
-	tools := []map[string]any{compress.EnhancedExtractFunctionSchema}
-	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.http, cfg, mod, msgs, tools)
+	respCh, err := m.GenerateContent(callCtx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var text string
+	var toolCalls []toolCallResult
+	for resp := range respCh {
+		if resp.Error != nil {
+			return nil, biz.ErrLLMExtractionFailed
+		}
+		for _, c := range resp.Choices {
+			if c.Delta.Content != "" {
+				text += c.Delta.Content
+			}
+			if c.Message.Content != "" {
+				text += c.Message.Content
+			}
+			for _, tc := range c.Message.ToolCalls {
+				toolCalls = append(toolCalls, toolCallResult{
+					Name:      tc.Function.Name,
+					Arguments: string(tc.Function.Arguments),
+				})
+			}
+		}
+	}
+	text = strings.TrimSpace(text)
 
 	var compressResult *compress.EnhancedExtractionResult
 
-	if callErr == nil {
-		for _, tc := range toolCalls {
-			if tc.Name == compress.EnhancedExtractFunctionName {
-				parsed, parseErr := compress.ParseEnhancedExtractionResult(tc.Arguments)
-				if parseErr == nil && parsed != nil {
-					compressResult = parsed
-				}
-				break
+	for _, tc := range toolCalls {
+		if tc.Name == compress.EnhancedExtractFunctionName {
+			parsed, parseErr := compress.ParseEnhancedExtractionResult(tc.Arguments)
+			if parseErr == nil && parsed != nil {
+				compressResult = parsed
 			}
+			break
 		}
 	}
 
 	// Fallback: try parsing raw text as JSON.
-	if compressResult == nil && callErr == nil && strings.TrimSpace(text) != "" {
+	if compressResult == nil && strings.TrimSpace(text) != "" {
 		parsed, parseErr := compress.ParseEnhancedExtractionResult(text)
 		if parseErr == nil && parsed != nil {
 			compressResult = parsed
 		}
-	}
-
-	if compressResult == nil && callErr != nil {
-		return nil, callErr
 	}
 
 	if compressResult == nil {

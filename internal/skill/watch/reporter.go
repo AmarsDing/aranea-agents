@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
 
 // SyncReporter persists filesystem sync notifications (monitor + optional bus).
@@ -26,14 +27,18 @@ type SyncReport struct {
 type monitorSyncReporter struct {
 	mon *biz.MonitorUsecase
 	bus event.Bus
+	lg  loggateway.Logger
 }
 
 // NewMonitorSyncReporter writes monitor events and publishes bus envelopes.
-func NewMonitorSyncReporter(mon *biz.MonitorUsecase, bus event.Bus) SyncReporter {
+func NewMonitorSyncReporter(mon *biz.MonitorUsecase, bus event.Bus, lg loggateway.Logger) SyncReporter {
 	if mon == nil && bus == nil {
 		return nil
 	}
-	return &monitorSyncReporter{mon: mon, bus: bus}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &monitorSyncReporter{mon: mon, bus: bus, lg: lg}
 }
 
 func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report SyncReport) {
@@ -55,13 +60,17 @@ func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report S
 			"slug":    slug,
 			"message": message,
 		})
-		_ = r.mon.RecordMonitorEvent(ctx, biz.MonitorEventWrite{
+		if err := r.mon.RecordMonitorEvent(ctx, biz.MonitorEventWrite{
 			EventKey:     eventKey,
 			Name:         slug,
 			Description:  message,
 			Status:       severity,
 			MetadataJSON: string(meta),
-		})
+		}); err != nil {
+			r.lg.Warn("RecordMonitorEvent failed",
+				loggateway.StepID("skill.watch"),
+				loggateway.Err(err))
+		}
 		r.mon.RecordAdminAudit(ctx, "skill.filesystem.sync", "skill", slug, message)
 	}
 	if r.bus != nil {

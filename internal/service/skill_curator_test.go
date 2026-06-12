@@ -56,7 +56,7 @@ func (s *stubSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string
 }
 
 func newTestSandboxRunner(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SandboxRunner {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
 	// Pass nil factory → rule-based only (no CodeExecutor)
 	return NewSandboxRunner(uc, nil, loggateway.NewNoop())
 }
@@ -161,7 +161,7 @@ func TestSandboxRunner_ValidateSuggestion_DraftBodyTooLong(t *testing.T) {
 // ── SkillCuratorService Tests ────────────────────────────────────────────────
 
 func newTestCuratorService(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SkillCuratorService {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
 	return NewSkillCuratorService(uc, loggateway.NewNoop())
 }
 

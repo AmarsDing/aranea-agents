@@ -120,6 +120,16 @@
                 <AgentBlock :block="entry.block" :is-root="false" />
               </div>
             </div>
+
+            <!-- Notice entry (degradation, info) -->
+            <div v-else-if="entry.kind === 'notice'" class="notice-timeline-entry" :class="`notice--${entry.section.type}`">
+              <q-icon
+                :name="entry.section.type === 'degradation' ? 'warning_amber' : 'info'"
+                size="14px"
+                class="notice__icon"
+              />
+              <span class="notice__text">{{ entry.section.message }}</span>
+            </div>
           </template>
         </div>
       </div>
@@ -263,6 +273,8 @@ function entryKey(entry: TimelineEntry): string {
       return `reply-${entry.section.id}`;
     case 'subagent':
       return `subagent-${entry.block.id}`;
+    case 'notice':
+      return `notice-${entry.section.id}`;
   }
 }
 
@@ -485,6 +497,34 @@ onUnmounted(() => {
 
   .agent-block
     margin-bottom: 0
+
+// ── Notice entry ──
+.notice-timeline-entry
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 6px 10px
+  margin-bottom: 12px
+  border-radius: 8px
+  font-size: 12px
+  line-height: 1.4
+
+.notice--degradation
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--glass-surface))
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, var(--glass-border))
+
+  .notice__icon
+    color: var(--color-warning)
+
+.notice--info
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))
+
+  .notice__icon
+    color: var(--color-accent)
+
+.notice__text
+  color: var(--color-text-secondary)
 
 // ── Sections ──
 .section

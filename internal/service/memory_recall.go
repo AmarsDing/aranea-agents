@@ -80,7 +80,7 @@ func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.Com
 }
 
 func (s *MemoryService) GetMemoryWorkerStatus(ctx context.Context, _ *v1.GetMemoryWorkerStatusRequest) (*v1.MemoryWorkerStatus, error) {
-	done, dead, fallback, backfill, avg := biz.MemoryWorkerStatsGlobal().Snapshot()
+	done, dead, fallback, backfill, avg := s.workerStats.Snapshot()
 	out := &v1.MemoryWorkerStatus{
 		JobsDone:             done,
 		JobsDead:             dead,

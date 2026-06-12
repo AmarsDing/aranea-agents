@@ -25,6 +25,20 @@ var negationPatterns = []string{
 	"不", "不会", "不能", "不要", "不该", "不敢", "不肯", "不宜",
 }
 
+// safeMarshalJSON marshals v to JSON. On error it logs a warning and
+// returns "null" so callers never need to handle the error for
+// non-critical serialization (e.g. metadata, key_decisions).
+func safeMarshalJSON(v any, lg loggateway.Logger) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		lg.Warn("json.Marshal failed (using null fallback)",
+			loggateway.StepID("memory.json_marshal_fail"),
+			loggateway.Err(err))
+		return []byte("null")
+	}
+	return b
+}
+
 type MemoryAdminUsecase struct {
 	admin          MemoryAdminDeps
 	vec            *MemoryUsecase
@@ -262,23 +276,11 @@ func (uc *MemoryAdminUsecase) EndL1Task(ctx context.Context, sessionID, taskID, 
 	return raw, nil
 }
 
-// archiveAndCreateEpisode archives the L1 task and creates an L2 episode from the snapshot.
-// If the L2 episode insert fails, the L1 task archive is rolled back so the data
-// is not lost. The caller (EndL1Task) has already persisted the end-state, so
-// rolling back archived_at only means the task remains visible in active lists.
+// archiveAndCreateEpisode atomically archives the L1 task and creates an L2
+// episode from the snapshot within a single database transaction. If the
+// episode insert fails, the L1 archive is rolled back automatically by the
+// transaction, so no manual rollback is needed.
 func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessionID, taskID string, endTaskRaw []byte) {
-	snapshot, err := uc.admin.ArchiveL1Task(ctx, sessionID, taskID)
-	if err != nil {
-		uc.lg.Warn("L1 archive failed after EndL1Task",
-			loggateway.StepID("memory.l1_archive_fail"),
-			loggateway.Str("task_id", taskID),
-			loggateway.Err(err))
-		return
-	}
-
-	// Extract structured data from snapshot (Path A: zero-cost)
-	structured := ExtractStructuredEpisode(snapshot)
-
 	m, _ := jsonutil.ParseMap(endTaskRaw)
 	agentID := jsonutil.IfaceStr(m, "agent_id")
 	// Extract userID from task metadata if available.
@@ -286,9 +288,31 @@ func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessi
 	// from sessionID, since the L1 task table does not have a user_id column.
 	userID := extractUserIDFromTaskMeta(m)
 
-	decisionsJSON, _ := json.Marshal(structured.KeyDecisions)
-	artifactsJSON, _ := json.Marshal(structured.KeyArtifacts)
+	// Atomically archive the L1 task and create a bare L2 episode.
+	// The data layer builds the full snapshot inside the transaction and
+	// returns it for Path A extraction. If the episode insert fails, the
+	// archive update is rolled back automatically.
+	snapshot, err := uc.admin.ArchiveAndCreateEpisodeTx(ctx, sessionID, taskID, L1ArchiveEpisodeInsert{
+		SessionID: sessionID,
+		AgentID:   agentID,
+		TaskID:    taskID,
+	})
+	if err != nil {
+		uc.lg.Warn("L1 archive + episode atomic operation failed",
+			loggateway.StepID("memory.l1_archive_episode_atomic_fail"),
+			loggateway.Str("task_id", taskID),
+			loggateway.Err(err))
+		return
+	}
 
+	// Extract structured data from snapshot (Path A: zero-cost).
+	structured := ExtractStructuredEpisode(snapshot)
+
+	decisionsJSON := safeMarshalJSON(structured.KeyDecisions, uc.lg)
+	artifactsJSON := safeMarshalJSON(structured.KeyArtifacts, uc.lg)
+
+	// Enrich the episode with Path A structured fields (best-effort upsert).
+	// The atomic tx already created a bare episode; ON CONFLICT updates it.
 	if err := uc.admin.InsertL1ArchiveEpisode(ctx, L1ArchiveEpisodeInsert{
 		SessionID:        sessionID,
 		AgentID:          agentID,
@@ -305,19 +329,10 @@ func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessi
 		Importance:       structured.Importance,
 		Confidence:       structured.Confidence,
 	}); err != nil {
-		uc.lg.Warn("L1 archive episode insert failed — rolling back L1 archive",
-			loggateway.StepID("memory.l1_archive_episode_fail"),
+		uc.lg.Warn("L1 archive episode Path A enrichment failed (best-effort)",
+			loggateway.StepID("memory.l1_archive_episode_enrich_fail"),
 			loggateway.Str("task_id", taskID),
 			loggateway.Err(err))
-		// Roll back the L1 archive so the task data is not lost.
-		// The task will be retried by the idle-task archive worker later.
-		if rbErr := uc.rollbackL1Archive(ctx, sessionID, taskID); rbErr != nil {
-			uc.lg.Warn("L1 archive rollback also failed — data at risk",
-				loggateway.StepID("memory.l1_archive_rollback_fail"),
-				loggateway.Str("task_id", taskID),
-				loggateway.Err(rbErr))
-		}
-		return
 	}
 
 	// Path B: Check if LLM-enhanced extraction should be triggered.
@@ -337,15 +352,6 @@ func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessi
 			uc.runPathBExtraction(ctx, sessionID, agentID, userID, taskID, structured.Title, snapshot, score)
 		}
 	}
-}
-
-// rollbackL1Archive clears the archived_at timestamp on an L1 task so it
-// remains visible in active lists and can be retried by the idle-task worker.
-func (uc *MemoryAdminUsecase) rollbackL1Archive(ctx context.Context, sessionID, taskID string) error {
-	if uc == nil || uc.admin == nil {
-		return apierror.Internal("MEMORY", "session admin store not wired")
-	}
-	return uc.admin.UnarchiveL1Task(ctx, sessionID, taskID)
 }
 
 // runPathBExtraction performs the Path B LLM-enhanced extraction as a best-effort enhancement.
@@ -400,8 +406,8 @@ func (uc *MemoryAdminUsecase) runPathBExtraction(ctx context.Context, sessionID,
 	// Update the existing Path A episode with enhanced data.
 	// Reuse pathATitle so ON CONFLICT(session_id, title, agent_id) matches the
 	// Path A row and updates it in-place instead of creating a duplicate.
-	decisionsJSON, _ := json.Marshal(enhancedResult.Episode.KeyDecisions)
-	artifactsJSON, _ := json.Marshal(enhancedResult.Episode.KeyArtifacts)
+	decisionsJSON := safeMarshalJSON(enhancedResult.Episode.KeyDecisions, uc.lg)
+	artifactsJSON := safeMarshalJSON(enhancedResult.Episode.KeyArtifacts, uc.lg)
 	if err := uc.admin.InsertL1ArchiveEpisode(ctx, L1ArchiveEpisodeInsert{
 		SessionID:        sessionID,
 		AgentID:          agentID,
@@ -618,6 +624,13 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 	rows, _, _, _, err := uc.admin.ListFactRows(ctx, scopeType, scopeID, "", "", "", conflictDetectMaxRows, 0)
 	if err != nil || len(rows) == 0 {
 		return nil
+	}
+	if len(rows) >= conflictDetectMaxRows {
+		uc.lg.Warn("conflict detection hit row limit — some conflicts may be undetected",
+			loggateway.StepID("memory.conflict_detect_limit"),
+			loggateway.Str("scope_type", scopeType),
+			loggateway.Str("scope_id", scopeID),
+			loggateway.Int("limit", conflictDetectMaxRows))
 	}
 	var conflictIDs []string
 	for _, raw := range rows {

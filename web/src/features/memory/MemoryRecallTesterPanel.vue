@@ -73,10 +73,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import type { CompositeSearchHit, MemoryRecallHit } from './types';
-import { useMemoryApi } from './composables/useMemoryApi';
-const { compositeSearchMemories, debugMemoryRecall } = useMemoryApi();
+import { computed, ref } from 'vue';
+import type { CompositeSearchHit } from './types';
+import { useMemoryRecallTester } from './composables/useMemoryRecallTester';
 import RecallHitTable from '../../components/memory/RecallHitTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
@@ -84,70 +83,28 @@ import { COMPOSITE_COLUMNS } from './memoryTableUi';
 
 const compositeColumns = COMPOSITE_COLUMNS;
 
-const compositeRows = computed(() => compositeHits.value.map((row) => ({ ...row, row_uid: `${row.layer}-${row.id}` })));
-
 const props = defineProps<{
   agentId: string | null;
   sessionId?: string | null;
 }>();
 
+const { l2Hits, l3Hits, compositeHits, loadingDebug, loadingComposite, error, runDebug: runDebugFetch, runComposite: runCompositeFetch } = useMemoryRecallTester(
+  () => props.agentId,
+  () => props.sessionId,
+);
+
 const query = ref('');
 const l2Limit = ref(5);
 const l3Limit = ref(8);
-const l2Hits = ref<MemoryRecallHit[]>([]);
-const l3Hits = ref<MemoryRecallHit[]>([]);
-const compositeHits = ref<CompositeSearchHit[]>([]);
-const loadingDebug = ref(false);
-const loadingComposite = ref(false);
-const error = ref('');
 
-watch(
-  () => props.agentId,
-  () => {
-    l2Hits.value = [];
-    l3Hits.value = [];
-    compositeHits.value = [];
-    error.value = '';
-  },
-);
+const compositeRows = computed(() => compositeHits.value.map((row: CompositeSearchHit) => ({ ...row, row_uid: `${row.layer}-${row.id}` })));
 
 async function runDebug() {
-  if (!props.agentId || !query.value.trim()) return;
-  loadingDebug.value = true;
-  error.value = '';
-  try {
-    const res = await debugMemoryRecall({
-      agent_id: props.agentId,
-      session_id: props.sessionId || undefined,
-      query: query.value.trim(),
-      l2_limit: l2Limit.value,
-      l3_limit: l3Limit.value,
-    });
-    l2Hits.value = res.l2_hits;
-    l3Hits.value = res.l3_hits;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Recall debug failed';
-  } finally {
-    loadingDebug.value = false;
-  }
+  await runDebugFetch(query.value, l2Limit.value, l3Limit.value);
 }
 
 async function runComposite() {
-  if (!props.agentId || !query.value.trim()) return;
-  loadingComposite.value = true;
-  error.value = '';
-  try {
-    compositeHits.value = await compositeSearchMemories({
-      agent_id: props.agentId,
-      session_id: props.sessionId || undefined,
-      query: query.value.trim(),
-      limit: 10,
-    });
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Composite search failed';
-  } finally {
-    loadingComposite.value = false;
-  }
+  await runCompositeFetch(query.value);
 }
 
 function formatScore(v: number) {

@@ -48,7 +48,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "valid snapshot with completed status",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{
 					"task_title": "Build API",
 					"task_goal":  "Create REST endpoints",
@@ -67,7 +67,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "status mapping cancelled",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{"status": "cancelled"},
 				"fields": []any{},
 			}),
@@ -78,7 +78,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "status mapping failed",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{"status": "failed"},
 				"fields": []any{},
 			}),
@@ -89,7 +89,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "status mapping timeout",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{"status": "timeout"},
 				"fields": []any{},
 			}),
@@ -100,7 +100,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "status mapping unknown passes through",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{"status": "unknown"},
 				"fields": []any{},
 			}),
@@ -111,7 +111,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "last_assistant_message appended to outcome",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{
 					"status":                "completed",
 					"last_assistant_message": "All done!",
@@ -129,7 +129,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "last_assistant_message truncated to 200 chars",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{
 					"status":                "completed",
 					"last_assistant_message": string(make([]byte, 300)),
@@ -143,7 +143,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "fields with decision kind populate KeyDecisions",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{"status": "completed"},
 				"fields": []any{
 					map[string]any{"field_kind": "decision", "field_path": "/dec1", "value_text": "chose A"},
@@ -158,7 +158,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		},
 		{
 			name: "fields with artifact/reference kind populate KeyArtifacts",
-			snapshot: mustMarshal(map[string]any{
+			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{"status": "completed"},
 				"fields": []any{
 					map[string]any{"field_kind": "artifact", "field_path": "/art1", "value_text": "file.go"},
@@ -213,7 +213,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 
 	// Subtest: verify outcome includes last_assistant_message
 	t.Run("outcome includes last_assistant_message", func(t *testing.T) {
-		snap := mustMarshal(map[string]any{
+		snap := mustMarshalTest(map[string]any{
 			"task": map[string]any{
 				"status":                "completed",
 				"last_assistant_message": "All done!",
@@ -230,7 +230,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 	t.Run("long last_assistant_message truncated to 200", func(t *testing.T) {
 		// Use 300 'A' chars to test rune-aware truncation
 		longMsg := strings.Repeat("A", 300)
-		snap := mustMarshal(map[string]any{
+		snap := mustMarshalTest(map[string]any{
 			"task": map[string]any{
 				"status":                "completed",
 				"last_assistant_message": longMsg,
@@ -671,7 +671,7 @@ func TestExtractEpisodeSignals(t *testing.T) {
 	})
 
 	t.Run("tool_call_count parsed", func(t *testing.T) {
-		raw := mustMarshal(map[string]any{"tool_call_count": float64(15)})
+		raw := mustMarshalTest(map[string]any{"tool_call_count": float64(15)})
 		got := extractEpisodeSignals(raw, 0)
 		if got.ToolCallCount != 15 {
 			t.Errorf("ToolCallCount = %d, want 15", got.ToolCallCount)
@@ -679,7 +679,7 @@ func TestExtractEpisodeSignals(t *testing.T) {
 	})
 
 	t.Run("duration_ms parsed", func(t *testing.T) {
-		raw := mustMarshal(map[string]any{"duration_ms": float64(120000)})
+		raw := mustMarshalTest(map[string]any{"duration_ms": float64(120000)})
 		got := extractEpisodeSignals(raw, 0)
 		if got.DurationMs != 120000 {
 			t.Errorf("DurationMs = %d, want 120000", got.DurationMs)
@@ -687,7 +687,7 @@ func TestExtractEpisodeSignals(t *testing.T) {
 	})
 
 	t.Run("critic_score parsed", func(t *testing.T) {
-		raw := mustMarshal(map[string]any{"critic_score": 0.85})
+		raw := mustMarshalTest(map[string]any{"critic_score": 0.85})
 		got := extractEpisodeSignals(raw, 0)
 		if got.CriticScore != 0.85 {
 			t.Errorf("CriticScore = %v, want 0.85", got.CriticScore)
@@ -695,7 +695,7 @@ func TestExtractEpisodeSignals(t *testing.T) {
 	})
 
 	t.Run("user_mark parsed", func(t *testing.T) {
-		raw := mustMarshal(map[string]any{"user_mark": "star"})
+		raw := mustMarshalTest(map[string]any{"user_mark": "star"})
 		got := extractEpisodeSignals(raw, 0)
 		if got.UserMark != "star" {
 			t.Errorf("UserMark = %q, want star", got.UserMark)
@@ -703,7 +703,7 @@ func TestExtractEpisodeSignals(t *testing.T) {
 	})
 
 	t.Run("all fields populated", func(t *testing.T) {
-		raw := mustMarshal(map[string]any{
+		raw := mustMarshalTest(map[string]any{
 			"critic_score":    0.9,
 			"tool_call_count": float64(25),
 			"duration_ms":     float64(400000),
@@ -730,7 +730,7 @@ func TestExtractEpisodeSignals(t *testing.T) {
 
 // --- helper ---
 
-func mustMarshal(v any) []byte {
+func mustMarshalTest(v any) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
 		panic(err)

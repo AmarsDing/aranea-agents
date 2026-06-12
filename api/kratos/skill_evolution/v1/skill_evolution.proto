@@ -24,7 +24,7 @@ message SkillProposal {
 }
 
 message ListSkillProposalsRequest {
-  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 1;
   string status = 2;
   int32 page = 3;
   int32 page_size = 4;

@@ -269,7 +269,7 @@ func newTestUsecase(
 	scorer := NewSkillScoringUsecase(aggregator, lg)
 	reporter := NewSkillReportUsecase(reader, writer, nil, scorer, a, lg)
 	bridge := &mockEvolutionStoreBridge{}
-	return NewSkillIntelligenceUsecase(scorer, reporter, bridge, aggregator, lg)
+	return NewSkillIntelligenceUsecase(scorer, reporter, bridge, bridge, aggregator, lg)
 }
 
 // ── TestAnalyzeInvocation ─────────────────────────────────────────────────────
@@ -816,7 +816,7 @@ func TestCheckEvolutionTriggers_7dLowSuccessRate(t *testing.T) {
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-7d-bad")
 	if err != nil {
@@ -851,7 +851,7 @@ func TestCheckEvolutionTriggers_SameFailureTagThreshold(t *testing.T) {
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-repeat")
 	if err != nil {
@@ -886,7 +886,7 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-ok")
 	if err != nil {
@@ -915,7 +915,7 @@ func TestRunCuratorFlow_Success(t *testing.T) {
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-curator")
 	if err != nil {
@@ -927,8 +927,8 @@ func TestRunCuratorFlow_Success(t *testing.T) {
 	if suggestion.Status != EvoSuggestionPending {
 		t.Errorf("expected status=pending, got %q", suggestion.Status)
 	}
-	if suggestion.LifecycleStatus != EvoLifecycleReady {
-		t.Errorf("expected lifecycle_status=ready (sandbox passed), got %q", suggestion.LifecycleStatus)
+	if suggestion.LifecycleStatus != EvoLifecycleDraft {
+		t.Errorf("expected lifecycle_status=draft (rule-based template needs human editing), got %q", suggestion.LifecycleStatus)
 	}
 	if suggestion.DraftSkillBody == "" {
 		t.Error("expected non-empty DraftSkillBody after curator flow")
@@ -951,7 +951,7 @@ func TestRunCuratorFlow_NoTrigger(t *testing.T) {
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
-	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, agg, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, &mockEvolutionStoreBridge{}, &mockEvolutionStoreBridge{}, agg, lg)
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-healthy")
 	if err != nil {

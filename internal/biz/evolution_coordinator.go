@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"sync"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -14,8 +15,9 @@ import (
 // Deprecated: Use SkillEvolutionOrchestrator directly. This type will be
 // removed in a future release once all callers are migrated.
 type EvolutionCoordinator struct {
-	orchestrator *SkillEvolutionOrchestrator
-	lg           loggateway.Logger
+	orchestrator     *SkillEvolutionOrchestrator
+	orchestratorOnce sync.Once
+	lg               loggateway.Logger
 }
 
 // NewEvolutionCoordinator creates a new coordinator.
@@ -37,9 +39,11 @@ type EvolutionTarget struct {
 
 // SetOrchestrator sets the unified evolution orchestrator.
 // When set, HasPendingEvolution delegates to the orchestrator first.
-// NOTE: Must only be called during initialization, before any concurrent access.
+// Protected by sync.Once to prevent concurrent initialization races.
 func (c *EvolutionCoordinator) SetOrchestrator(o *SkillEvolutionOrchestrator) {
-	c.orchestrator = o
+	c.orchestratorOnce.Do(func() {
+		c.orchestrator = o
+	})
 }
 
 // HasPendingEvolution checks whether the unified orchestrator

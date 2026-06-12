@@ -66,7 +66,7 @@ func TestPreview_Long(t *testing.T) {
 }
 
 func TestNewMonitorSyncReporter_BothNil(t *testing.T) {
-	if NewMonitorSyncReporter(nil, nil) != nil {
+	if NewMonitorSyncReporter(nil, nil, nil) != nil {
 		t.Fatal("should return nil when both args are nil")
 	}
 }

@@ -129,7 +129,7 @@ func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.Sk
 	}
 	r := watch.NewRunnerWithBus(skillReader, skillWriter, sys, eventBus, lg)
 	if r != nil {
-		watch.SetSyncReporter(r, watch.NewMonitorSyncReporter(mon, eventBus))
+		watch.SetSyncReporter(r, watch.NewMonitorSyncReporter(mon, eventBus, lg))
 		if mon != nil {
 			watch.SetAlertEvaluator(r, mon)
 		}
@@ -837,7 +837,7 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	return err
 }
 
-func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, d *data.Data, lg loggateway.Logger) *service.MemoryService {
+func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, workerStats *biz.MemoryWorkerStats, d *data.Data, lg loggateway.Logger) *service.MemoryService {
 	enqueue := func(ctx context.Context, id int64) error {
 		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
 			queue.Enqueue(memtrpc.AutoMemoryJobRequest{
@@ -856,6 +856,7 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 		DeadLetterRepo:    deadLetterRepo,
 		DebugRecaller:     data.NewMemoryDebugRecaller(d),
 		FactIndexCounter:  data.NewMemoryFactIndexCounter(d),
+		WorkerStats:       workerStats,
 		DeadLetterEnqueue: enqueue,
 		QueueStats:        queueStats,
 		Logger:            lg,
@@ -1280,7 +1281,7 @@ func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo,
 func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	reporter.SetUnanalyzedReader(unanalyzedReader)
 	bridge := data.NewEvolutionStoreBridge(unifiedRepo, suggestionRepo, lg)
-	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, bridge, aggregator, lg,
+	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, bridge, bridge, aggregator, lg,
 		biz.SkillIntelligenceConfig{
 			UnanalyzedReader: unanalyzedReader,
 		},
@@ -1777,13 +1778,15 @@ func provideMemoryLLMExtractorConfig(
 	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
 	modelCatalog *biz.LlmProviderModelUsecase,
+	lg loggateway.Logger,
 ) service.MemoryLLMExtractorConfig {
 	return service.MemoryLLMExtractorConfig{
 		Agents:       agents,
 		Sessions:     sessions,
 		ModelCatalog: modelCatalog,
-		HTTPClient:   &http.Client{Timeout: 90 * time.Second},
+		RoundTrip:    &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		LLMDisabled:  false,
+		Logger:       lg,
 	}
 }
 
@@ -1791,13 +1794,15 @@ func provideMemoryEnhancedExtractorConfig(
 	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
 	modelCatalog *biz.LlmProviderModelUsecase,
+	lg loggateway.Logger,
 ) service.MemoryEnhancedExtractorConfig {
 	return service.MemoryEnhancedExtractorConfig{
 		Agents:       agents,
 		Sessions:     sessions,
 		ModelCatalog: modelCatalog,
-		HTTPClient:   &http.Client{Timeout: 120 * time.Second},
+		RoundTrip:    &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}},
 		LLMDisabled:  false,
+		Logger:       lg,
 	}
 }
 

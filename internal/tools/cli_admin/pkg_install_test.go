@@ -10,22 +10,23 @@ func TestValidateRepoURL(t *testing.T) {
 		url     string
 		wantErr bool
 	}{
-		{"absolute path", "/tmp/repo", false},
-		{"relative path dot", "./repo", false},
-		{"relative path dotdot", "../repo", false},
-		{"windows path", "C:\\repo", false},
-		{"file scheme", "file:///tmp/repo", false},
+		// Local paths are rejected for security (no arbitrary code execution from local filesystem).
+		{"absolute path", "/tmp/repo", true},
+		{"relative path dot", "./repo", true},
+		{"relative path dotdot", "../repo", true},
+		{"windows path", "C:\\repo", true},
+		{"file scheme", "file:///tmp/repo", true},
 		{"empty scheme", "github.com/user/repo", false},
-		{"single letter scheme drive", "C:/repo", false},
+		{"single letter scheme drive", "C:/repo", true},
 		// SSRF bypass: single-char scheme that's not a Windows drive letter
 		// Note: X is an alpha char, so X:// is treated as Windows drive letter by current code.
 		// This is a known limitation - the code allows any single alpha char as drive letter.
-		{"SSRF single-char scheme X (alpha=drive letter)", "X://evil.com/repo", false},
+		{"SSRF single-char scheme X (alpha=drive letter)", "X://evil.com/repo", true},
 		{"SSRF single-char scheme 1 (non-alpha)", "1:/path", true},
-		// Windows drive letters should be allowed
-		{"windows drive C", "C:/path", false},
-		{"windows drive D", "D:\\repo", false},
-		{"windows drive lowercase", "c:/path", false},
+		// Windows drive letters are local paths — rejected for security.
+		{"windows drive C", "C:/path", true},
+		{"windows drive D", "D:\\repo", true},
+		{"windows drive lowercase", "c:/path", true},
 		// Disallowed schemes
 		{"ftp scheme", "ftp://example.com/repo", true},
 		{"javascript scheme", "javascript://evil", true},

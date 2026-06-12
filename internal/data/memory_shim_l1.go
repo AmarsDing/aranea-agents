@@ -215,6 +215,138 @@ func (r *l1WorkingMemoryRepo) UnarchiveL1Task(ctx context.Context, sessionID, ta
 	return err
 }
 
+// ArchiveAndCreateEpisodeTx atomically archives an L1 task and creates the
+// corresponding L2 episode within a single database transaction. If the
+// episode insert fails, the L1 archive update is rolled back automatically.
+// It returns the L1 task snapshot (task + fields) for Path A extraction.
+func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, sessionID, taskID string, episode biz.L1ArchiveEpisodeInsert) ([]byte, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	var snapshot []byte
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		// Step 1: Archive the L1 task (set archived_at).
+		if _, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			`UPDATE memory_l1_tasks SET archived_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`,
+			now, now, taskID, sessionID,
+		); err != nil {
+			return err
+		}
+
+		// Step 2: Build the full snapshot (task + fields) inside the transaction.
+		taskRaw, err := r.GetL1TaskRow(txCtx, sessionID, taskID)
+		if err != nil {
+			return err
+		}
+		taskMap, err := jsonutil.ParseMap(taskRaw)
+		if err != nil {
+			return err
+		}
+		fieldsRaw, err := r.listL1FieldRowsInternal(txCtx, taskID, true)
+		if err != nil {
+			return err
+		}
+		var fields []map[string]any
+		for _, raw := range fieldsRaw {
+			m, parseErr := jsonutil.ParseMap(raw)
+			if parseErr != nil {
+				continue
+			}
+			if m != nil {
+				fields = append(fields, m)
+			}
+		}
+		snap := map[string]any{
+			"task":   taskMap,
+			"fields": fields,
+		}
+		snapshot, err = json.Marshal(snap)
+		if err != nil {
+			return err
+		}
+
+		// Step 3: Insert the L2 episode with the snapshot.
+		epID := newUUIDString()
+		title := strings.TrimSpace(episode.TaskTitle)
+		if title == "" {
+			title = "L1 Archive: " + episode.TaskID
+		}
+		outcomeSummary := strings.TrimSpace(episode.OutcomeSummary)
+		if outcomeSummary == "" {
+			outcomeSummary = strings.TrimSpace(episode.Status)
+		}
+		if outcomeSummary == "" {
+			outcomeSummary = "completed"
+		}
+		goal := strings.TrimSpace(episode.Goal)
+		outcome := strings.TrimSpace(episode.Outcome)
+		if outcome == "" {
+			outcome = outcomeSummary
+		}
+		episodeKind := strings.TrimSpace(episode.EpisodeKind)
+		if episodeKind == "" {
+			episodeKind = "l1_archive"
+		}
+		keyDecisionsJSON := strings.TrimSpace(episode.KeyDecisionsJSON)
+		if keyDecisionsJSON == "" {
+			keyDecisionsJSON = "[]"
+		}
+		keyArtifactsJSON := strings.TrimSpace(episode.KeyArtifactsJSON)
+		if keyArtifactsJSON == "" {
+			keyArtifactsJSON = "[]"
+		}
+		l1SnapshotJSON := string(snapshot)
+		importance := episode.Importance
+		if importance <= 0 {
+			importance = 0.5
+		}
+		confidence := episode.Confidence
+		if confidence <= 0 {
+			confidence = 0.6
+		}
+		consolidationStatus := "consolidated"
+		if _, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO memory_episodes (
+			id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
+			outcome, outcome_summary, importance, confidence,
+			key_decisions_json, key_artifacts_json, l1_snapshot_json,
+			consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(session_id, title, agent_id) DO UPDATE SET
+			goal = excluded.goal, outcome = excluded.outcome,
+			outcome_summary = excluded.outcome_summary, importance = excluded.importance,
+			confidence = excluded.confidence,
+			key_decisions_json = excluded.key_decisions_json,
+			key_artifacts_json = excluded.key_artifacts_json,
+			l1_snapshot_json = excluded.l1_snapshot_json,
+			l1_task_id = excluded.l1_task_id,
+			episode_kind = excluded.episode_kind,
+			ended_at = excluded.ended_at`,
+			epID,
+			strings.TrimSpace(episode.SessionID),
+			strings.TrimSpace(episode.AgentID),
+			strings.TrimSpace(episode.TaskID),
+			episodeKind,
+			title,
+			goal,
+			outcome,
+			outcomeSummary,
+			importance,
+			confidence,
+			keyDecisionsJSON,
+			keyArtifactsJSON,
+			l1SnapshotJSON,
+			consolidationStatus, 0, "{}", now, now,
+		); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
 func (r *l1WorkingMemoryRepo) buildL1TaskSnapshot(ctx context.Context, sessionID, taskID string) ([]byte, error) {
 	taskRaw, err := r.GetL1TaskRow(ctx, sessionID, taskID)
 	if err != nil {

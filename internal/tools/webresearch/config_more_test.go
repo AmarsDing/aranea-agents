@@ -199,8 +199,8 @@ func TestConfigBool_false(t *testing.T) {
 func TestConfigBool_stringTrue(t *testing.T) {
 	m := map[string]any{"x": "true"}
 	got := webresearch.ConfigBool(m, "x")
-	if got {
-		t.Fatal("ConfigBool should return false for string 'true'")
+	if !got {
+		t.Fatal("ConfigBool should return true for string 'true'")
 	}
 }
 

@@ -65,35 +65,6 @@ func TestTruncateUTF8_whitespaceTrimmed(t *testing.T) {
 	}
 }
 
-func TestTruncateStr_shorterThanN(t *testing.T) {
-	got := webresearch.TruncateStr("hi", 10)
-	if got != "hi" {
-		t.Fatalf("TruncateStr = %q, want %q", got, "hi")
-	}
-}
-
-func TestTruncateStr_exactlyN(t *testing.T) {
-	s := "hello"
-	got := webresearch.TruncateStr(s, len(s))
-	if got != "hello" {
-		t.Fatalf("TruncateStr = %q, want %q", got, "hello")
-	}
-}
-
-func TestTruncateStr_longerThanN(t *testing.T) {
-	got := webresearch.TruncateStr("hello world", 5)
-	if got != "hello..." {
-		t.Fatalf("TruncateStr = %q, want hello...", got)
-	}
-}
-
-func TestTruncateStr_empty(t *testing.T) {
-	got := webresearch.TruncateStr("", 5)
-	if got != "" {
-		t.Fatalf("TruncateStr = %q, want empty", got)
-	}
-}
-
 func TestFirstNonEmpty_emptyList(t *testing.T) {
 	got := webresearch.FirstNonEmpty()
 	if got != "" {

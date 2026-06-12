@@ -99,15 +99,17 @@ type UnifiedEvolutionWriter interface {
 	UnifiedEvolutionExpirationWriter
 }
 
-// EvolutionStoreBridge abstracts unified+legacy evolution suggestion storage access.
-// It combines UnifiedEvolutionReader/Writer with the legacy SkillEvolutionSuggestion
-// reader/writer into a single dependency to reduce field count on SkillIntelligenceUsecase.
+// UnifiedEvolutionStore combines unified evolution reading and writing.
 // Stability:evolving
-type EvolutionStoreBridge interface {
+type UnifiedEvolutionStore interface {
 	UnifiedEvolutionReader
 	UnifiedEvolutionWriter
+}
 
-	// Legacy access
+// LegacyEvolutionSuggestionStore provides access to the legacy SkillEvolutionSuggestion
+// storage. This interface will be removed once the unified migration is complete.
+// Stability:evolving
+type LegacyEvolutionSuggestionStore interface {
 	GetEvolutionSuggestion(ctx context.Context, id string) (*SkillEvolutionSuggestion, error)
 	ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error)
 	CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error)
@@ -120,6 +122,15 @@ type EvolutionStoreBridge interface {
 	GetLatestSuggestionBySkill(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error)
 }
 
+// EvolutionStoreBridge abstracts unified+legacy evolution suggestion storage access.
+// It combines UnifiedEvolutionStore with LegacyEvolutionSuggestionStore into a
+// single dependency to reduce field count on SkillIntelligenceUsecase.
+// Stability:evolving
+type EvolutionStoreBridge interface {
+	UnifiedEvolutionStore
+	LegacyEvolutionSuggestionStore
+}
+
 // EvolutionTrigger 进化触发器接口
 type EvolutionTrigger interface {
 	TargetType() EvolutionTargetType
@@ -130,12 +141,12 @@ type EvolutionTrigger interface {
 
 // SkillEvolutionOrchestrator 统一进化编排器
 type SkillEvolutionOrchestrator struct {
-	checkReader  UnifiedEvolutionCheckReader
-	queryReader  UnifiedEvolutionQueryReader
-	writer       UnifiedEvolutionWriter
-	triggers     []EvolutionTrigger
-	triggersMu   sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
-	lg           loggateway.Logger
+	checkReader UnifiedEvolutionCheckReader
+	queryReader UnifiedEvolutionQueryReader
+	writer      UnifiedEvolutionWriter
+	triggers    []EvolutionTrigger
+	triggersMu  sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
+	lg          loggateway.Logger
 }
 
 func NewSkillEvolutionOrchestrator(
@@ -168,8 +179,7 @@ func (o *SkillEvolutionOrchestrator) HasPendingForTarget(ctx context.Context, ta
 
 // CheckAndCreate 原子化检查+创建
 // 1. 检查是否已有 pending 建议
-// 2. 检查冷却期
-// 3. 遍历触发器，收集所有触发的建议并逐个创建
+// 2. 遍历触发器，收集所有触发的建议并逐个创建（含 per-action-type 冷却期检查）
 // DB UNIQUE 约束兜底防止并发重复创建
 func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetType EvolutionTargetType, targetID string) ([]UnifiedEvolutionSuggestion, error) {
 	// 1. 检查是否已有 pending 建议
@@ -183,16 +193,7 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 		return nil, nil
 	}
 
-	// 2. 检查冷却期（7 天）
-	latest, err := o.checkReader.GetLatestByTarget(ctx, string(targetType), targetID)
-	if err == nil && latest != nil {
-		cooldownEnd := latest.CreatedAt.Add(evoCooldownDuration)
-		if time.Now().UTC().Before(cooldownEnd) {
-			return nil, nil
-		}
-	}
-
-	// 3. 遍历触发器
+	// 2. 遍历触发器
 	o.triggersMu.RLock()
 	snapshot := make([]EvolutionTrigger, len(o.triggers))
 	copy(snapshot, o.triggers)
@@ -215,7 +216,7 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 			continue
 		}
 
-		// 4. 逐个创建（DB UNIQUE 约束兜底）
+		// 3. 逐个创建（DB UNIQUE 约束兜底）
 		for _, suggestion := range suggestions {
 			// Per-action-type cooldown check: each (targetType, targetID, actionType)
 			// triple has its own independent cooldown period.
@@ -278,7 +279,7 @@ func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, reje
 
 // ExpirePending 过期 pending 建议（超过 7 天）
 func (o *SkillEvolutionOrchestrator) ExpirePending(ctx context.Context) (int, error) {
-	cutoff := time.Now().UTC().Add(-evoCooldownDuration)
+	cutoff := time.Now().UTC().Add(-evoExpirationDuration)
 	expired, err := o.writer.ExpireOlderThan(ctx, cutoff)
 	if err != nil {
 		o.lg.Warn("orchestrator: ExpirePending failed",

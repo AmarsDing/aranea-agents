@@ -31,14 +31,16 @@
 | synthesize_results | 合成团队执行结果 | 所有子任务完成后调用 |
 | cancel_orchestration | 取消编排 | 编排异常时使用 |
 
-### SubAgent 工具（仅限 plan_and_execute 内部使用）
+> **降级说明**：当 Runtime Cue 提示 plan_and_execute 不可用时，使用 subagents_spawn 替代进行任务委派。
+
+### SubAgent 工具（plan_and_execute 不可用时的替代方案）
 
 | 工具 | 用途 | 限制 |
 |------|------|------|
-| subagents_spawn | 创建子 Agent | **禁止手动调用**，由 plan_and_execute 自动管理 |
-| subagents_list | 列出子 Agent | **禁止手动调用**，用 check_progress 替代 |
-| subagents_get | 获取子 Agent 状态 | **禁止手动调用**，用 check_progress 替代 |
-| subagents_cancel | 取消子 Agent | **禁止手动调用**，用 cancel_orchestration 替代 |
+| subagents_spawn | 创建子 Agent | plan_and_execute 可用时由其自动管理；不可用时手动调用委派任务 |
+| subagents_list | 列出子 Agent | plan_and_execute 可用时禁止手动调用，用 check_progress 替代 |
+| subagents_get | 获取子 Agent 状态 | plan_and_execute 可用时禁止手动调用，用 check_progress 替代 |
+| subagents_cancel | 取消子 Agent | plan_and_execute 可用时禁止手动调用，用 cancel_orchestration 替代 |
 
 ### 工具使用原则
 

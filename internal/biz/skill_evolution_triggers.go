@@ -153,7 +153,7 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 	var triggerReasons []string
 	var priority int
 
-	// 条件 1: 30d 失败率 > 30%
+	// Condition 1: 30d failure rate > 30%
 	failureRate := 1.0 - metrics.SuccessRate
 	if failureRate > EvoTriggerFailureRate {
 		triggerTypes = append(triggerTypes, EvolutionActionImprove)
@@ -162,7 +162,47 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 		priority = 2
 	}
 
-	// 条件 2: Skill score < 60
+	// Condition 2: 7d success rate < 60%
+	since7d := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	metrics7d, err7d := t.aggregator.GetHealthMetrics(ctx, skillID, since7d)
+	if err7d != nil {
+		t.lg.Warn("HealthTrigger.Check: GetHealthMetrics(7d) failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(err7d))
+	} else if metrics7d.InvocationCount >= EvoTrigger7dMinInvocations && metrics7d.SuccessRate < EvoTrigger7dSuccessRate {
+		triggerTypes = append(triggerTypes, EvolutionActionImprove)
+		triggerReasons = append(triggerReasons, fmt.Sprintf("7d success rate %.1f%% below threshold %.1f%% (%d invocations)",
+			metrics7d.SuccessRate*100, EvoTrigger7dSuccessRate*100, metrics7d.InvocationCount))
+		if priority < 2 {
+			priority = 2
+		}
+	}
+
+	// Condition 3: Same failure tag >= 5 times in 7d
+	if t.aggregator != nil {
+		tagCounts, tagErr := t.aggregator.GetFailureTagCounts(ctx, skillID, since7d)
+		if tagErr != nil {
+			t.lg.Warn("HealthTrigger.Check: GetFailureTagCounts failed",
+				loggateway.StepID("skill_intelligence.evo_trigger"),
+				loggateway.Str("skill_id", skillID),
+				loggateway.Err(tagErr))
+		} else {
+			for _, tc := range tagCounts {
+				if tc.Count >= EvoTriggerSameTagThreshold {
+					triggerTypes = append(triggerTypes, EvolutionActionImprove)
+					triggerReasons = append(triggerReasons, fmt.Sprintf("failure tag %q appears %d times in 7d (threshold %d)",
+						tc.Tag, tc.Count, EvoTriggerSameTagThreshold))
+					if priority < 2 {
+						priority = 2
+					}
+					break // one matching tag is enough
+				}
+			}
+		}
+	}
+
+	// Condition 4: Skill score < 60
 	if t.scoreUsecase != nil {
 		if score, scoreErr := t.scoreUsecase.ScoreSkill(ctx, skillID); scoreErr == nil && score < EvoTriggerScoreThreshold {
 			triggerTypes = append(triggerTypes, EvolutionActionImprove)

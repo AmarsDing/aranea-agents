@@ -8,7 +8,13 @@
     @keydown.enter="$emit('click')"
     @keydown.space.prevent="$emit('click')"
   >
-    <div class="spirit-entry__avatar">
+    <AgentAvatarQ
+      v-if="icon"
+      :icon="icon"
+      size="36px"
+      avatar-class="spirit-entry__avatar-img"
+    />
+    <div v-else class="spirit-entry__avatar">
       <span class="spirit-entry__emoji">🧚</span>
     </div>
     <div class="spirit-entry__info col min-width-0">
@@ -18,21 +24,36 @@
         {{ t('spirit.online') }}
       </div>
     </div>
+    <q-btn
+      v-if="showSettings"
+      dense
+      round
+      flat
+      size="sm"
+      icon="settings"
+      class="spirit-entry__settings-btn"
+      :aria-label="t('chat.settings')"
+      @click.stop="$emit('settings')"
+    />
     <div v-if="active" class="spirit-entry__indicator" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();
 
 defineProps<{
   active: boolean;
+  icon?: string;
+  showSettings?: boolean;
 }>();
 
 defineEmits<{
   click: [];
+  settings: [];
 }>();
 </script>
 
@@ -90,6 +111,26 @@ defineEmits<{
   border-radius: 50%
   background: var(--color-success)
   animation: spirit-pulse 2s ease-in-out infinite
+
+.spirit-entry__avatar-img
+  flex-shrink: 0
+
+.spirit-entry__settings-btn
+  width: 24px
+  height: 24px
+  min-height: 24px
+  border-radius: 10px
+  background: var(--glass-elevated)
+  opacity: 0
+  transition: opacity 0.2s
+
+.spirit-entry:hover .spirit-entry__settings-btn,
+.spirit-entry--active .spirit-entry__settings-btn
+  opacity: 1
+
+:global(.body--dark) .spirit-entry__settings-btn
+  color: var(--color-text-primary)
+  background: var(--glass-surface-hover)
 
 .spirit-entry__indicator
   width: 6px

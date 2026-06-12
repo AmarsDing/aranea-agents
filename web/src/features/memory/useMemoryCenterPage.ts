@@ -347,8 +347,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.approveCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
-    } catch (e: any) {
-      notify({ type: 'negative', message: e?.message || 'Cascade 批准失败' });
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 批准失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -359,8 +359,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.rejectCascade(row.id);
       await loadCascade();
-    } catch (e: any) {
-      notify({ type: 'negative', message: e?.message || 'Cascade 拒绝失败' });
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 拒绝失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -384,8 +384,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.retryCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
-    } catch (e: any) {
-      notify({ type: 'negative', message: e?.message || 'Cascade 重试失败' });
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 重试失败' });
     } finally {
       cascadeActingId.value = null;
     }
@@ -396,8 +396,8 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.compensateCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
-    } catch (e: any) {
-      notify({ type: 'negative', message: e?.message || 'Cascade 补偿失败' });
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : 'Cascade 补偿失败' });
     } finally {
       cascadeActingId.value = null;
     }

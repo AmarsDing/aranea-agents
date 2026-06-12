@@ -47,5 +47,4 @@ export { useUiConfigStore } from './uiConfig';
 export { useLearningLoopStore } from './learningLoop';
 export { useModelCatalogStore } from './model-catalog';
 export { useSkillIntelligenceStore } from './skillIntelligence';
-export { useSkillEvolutionSuggestionStore } from './skillEvolutionSuggestion';
 export { useSkillEvolutionStore } from './skillEvolution';

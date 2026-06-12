@@ -307,6 +307,17 @@ service ToolService {
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse) {
     option (google.api.http) = {get: "/v1/tools"};
   }
+  // Static GET paths MUST be registered before /v1/tools/{id} to avoid
+  // gorilla/mux matching the variable segment first (e.g. "runs" as {id}).
+  rpc ListToolRuns(ListToolRunsRequest) returns (ListToolRunsResponse) {
+    option (google.api.http) = {get: "/v1/tools/runs"};
+  }
+  rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
+    option (google.api.http) = {get: "/v1/tools/audits"};
+  }
+  rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
+    option (google.api.http) = {get: "/v1/tools/runs/{invocation_id}/params"};
+  }
   rpc GetTool(GetToolRequest) returns (Tool) {
     option (google.api.http) = {get: "/v1/tools/{id}"};
   }
@@ -331,9 +342,6 @@ service ToolService {
       body: "*"
     };
   }
-  rpc ListToolRuns(ListToolRunsRequest) returns (ListToolRunsResponse) {
-    option (google.api.http) = {get: "/v1/tools/runs"};
-  }
   rpc ListToolRunsForTool(ListToolRunsForToolRequest) returns (ListToolRunsResponse) {
     option (google.api.http) = {get: "/v1/tools/{tool_id}/runs"};
   }
@@ -352,9 +360,6 @@ service ToolService {
   rpc DeleteToolAgentOverride(DeleteToolAgentOverrideRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"};
   }
-  rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
-    option (google.api.http) = {get: "/v1/tools/runs/{invocation_id}/params"};
-  }
   rpc UpdateToolConfig(UpdateToolConfigRequest) returns (Tool) {
     option (google.api.http) = {
       put: "/v1/tools/{id}/config"
@@ -366,8 +371,5 @@ service ToolService {
       post: "/v1/tools/{id}/test"
       body: "*"
     };
-  }
-  rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
-    option (google.api.http) = {get: "/v1/tools/audits"};
   }
 }

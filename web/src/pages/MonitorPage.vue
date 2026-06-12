@@ -92,6 +92,7 @@
             @open-chat-session="openChatSession"
             @copy-j-s-o-n="copyJSON"
             @update:category="category = $event"
+            @update:detail-open="detailOpen = $event"
           />
         </q-tab-panel>
         <q-tab-panel name="traces">

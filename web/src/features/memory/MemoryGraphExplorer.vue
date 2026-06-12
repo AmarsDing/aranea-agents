@@ -122,9 +122,9 @@
 import { computed, ref, watch } from 'vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
 import { REGISTRY_COL_W, registryCol } from '../ui/registryTableColumns';
-import type { GraphNeighborhood, MemoryEntity } from './types';
-import { useMemoryApi } from './composables/useMemoryApi';
-const { getMemoryNeighborhood } = useMemoryApi();
+import type { MemoryEntity } from './types';
+import { useMemoryGraphExplorer } from './composables/useMemoryGraphExplorer';
+const { neighborhood, loadingGraph, graphError, loadNeighborhood: fetchNeighborhood, resetNeighborhood } = useMemoryGraphExplorer();
 
 const relationColumns = RELATION_COLUMNS;
 
@@ -138,9 +138,6 @@ defineEmits<{ refresh: [] }>();
 const selectedId = ref<string | null>(null);
 const hops = ref(2);
 const hopOptions = [1, 2, 3];
-const neighborhood = ref<GraphNeighborhood | null>(null);
-const loadingGraph = ref(false);
-const graphError = ref('');
 
 const svgW = 520;
 const svgH = 320;
@@ -191,28 +188,19 @@ watch(
   () => {
     if (selectedId.value && !props.entities.some((e) => e.id === selectedId.value)) {
       selectedId.value = null;
-      neighborhood.value = null;
+      resetNeighborhood();
     }
   },
 );
 
 function selectEntity(id: string) {
   selectedId.value = id;
-  void loadNeighborhood();
+  void fetchNeighborhood(id, hops.value);
 }
 
 async function loadNeighborhood() {
   if (!selectedId.value) return;
-  loadingGraph.value = true;
-  graphError.value = '';
-  try {
-    neighborhood.value = await getMemoryNeighborhood(selectedId.value, { hops: hops.value, max_nodes: 48 });
-  } catch (err) {
-    neighborhood.value = null;
-    graphError.value = err instanceof Error ? err.message : '加载 neighborhood 失败';
-  } finally {
-    loadingGraph.value = false;
-  }
+  await fetchNeighborhood(selectedId.value, hops.value);
 }
 
 function entityName(id: string) {

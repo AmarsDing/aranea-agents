@@ -18,8 +18,12 @@ func NewSkillProposalRepo(data *Data) biz.SkillProposalReadWriter {
 
 func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, status string, limit int, offset int) ([]biz.SkillProposal, error) {
 	q := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
-	       FROM skill_proposals WHERE agent_id = ?`
-	args := []any{agentID}
+	       FROM skill_proposals WHERE 1=1`
+	args := []any{}
+	if agentID != "" {
+		q += ` AND agent_id = ?`
+		args = append(args, agentID)
+	}
 	if status != "" {
 		q += ` AND status = ?`
 		args = append(args, status)

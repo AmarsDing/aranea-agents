@@ -2,6 +2,7 @@ package trpc
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -100,6 +101,10 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 		r.mu.RUnlock()
 		return nil, &skillNotFoundError{name: name}
 	}
+	if idx < 0 || idx >= len(r.entries) {
+		r.mu.RUnlock()
+		return nil, &skillNotFoundError{name: name}
+	}
 	entry := r.entries[idx]
 	r.mu.RUnlock()
 
@@ -127,7 +132,7 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 	idx, ok := r.index[key]
 	if !ok {
 		r.mu.RUnlock()
-		return "", &skillNotFoundError{name: name}
+		return "", nil // Skill not in cache, no storage path
 	}
 	slug := r.entries[idx].slug
 	r.mu.RUnlock()
@@ -135,7 +140,18 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 	// Resolve dir from DB on demand (dir is not part of the immutable snapshot).
 	sk, err := r.uc.GetBySlug(context.Background(), slug)
 	if err != nil {
-		return "", nil // DB-only skill, no storage dir
+		var notFound *skillNotFoundError
+		if errors.As(err, &notFound) {
+			return "", nil // DB-only skill has no storage path
+		}
+		r.lg.Warn("DBRepositoryAdapter.Path: GetBySlug failed",
+			loggateway.StepID("skill.trpc"),
+			loggateway.Str("slug", slug),
+			loggateway.Err(err))
+		return "", nil // Graceful degradation
+	}
+	if sk.ID == "" {
+		return "", nil
 	}
 	dir, _ := r.uc.GetStorageDir(context.Background(), sk.ID)
 	return dir, nil

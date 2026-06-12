@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -16,34 +17,67 @@ func NewRuleBasedContentFuser() *RuleBasedContentFuser {
 }
 
 func (f *RuleBasedContentFuser) Fuse(ctx context.Context, target SkillMergeSource, source SkillMergeSource) (*FusedContent, error) {
-	// 规则化融合策略：
+	// 规则化融合策略（与 append 的区别）：
 	// 1. 以 target body 为主体
-	// 2. 从 source body 中提取 target 没有的 ## 段落
-	// 3. 追加到 target body 末尾
+	// 2. 对于 source 和 target 共有的 ## 段落：合并内容（target 在前，source 补充在后）
+	// 3. 对于 source 独有的 ## 段落：追加到 target body 末尾
 	// 4. 合并标签集
 
+	targetSections := extractSections(target.Body)
 	sourceSections := extractSections(source.Body)
-	targetSections := extractSectionHeadings(target.Body)
 
-	var newSections []string
-	for heading, content := range sourceSections {
-		if !targetSections[heading] {
-			newSections = append(newSections, content)
+	// Collect source sections that need to be merged or appended.
+	var mergedSections []string   // sections merged into existing target headings
+	var appendedSections []string // sections unique to source
+
+	// Sort headings for deterministic output order.
+	sortedHeadings := make([]string, 0, len(sourceSections))
+	for heading := range sourceSections {
+		sortedHeadings = append(sortedHeadings, heading)
+	}
+	sort.Strings(sortedHeadings)
+
+	for _, heading := range sortedHeadings {
+		sourceContent := sourceSections[heading]
+		if _, exists := targetSections[heading]; exists {
+			// Same heading exists in both: merge source content after target content.
+			// Strip the heading line from sourceContent since the heading already exists in target.
+			sourceBody := stripHeading(sourceContent)
+			if strings.TrimSpace(sourceBody) != "" {
+				merged := "\n\n---\n> Merged from: " + source.Name + "\n\n" + sourceBody
+				mergedSections = append(mergedSections, merged)
+			}
+		} else {
+			appendedSections = append(appendedSections, sourceContent)
 		}
 	}
 
+	// Build fused body: start with target, then append merged additions and new sections.
 	fusedBody := target.Body
-	if len(newSections) > 0 {
+	if len(mergedSections) > 0 || len(appendedSections) > 0 {
 		fusedBody += fmt.Sprintf("\n\n---\n\n# Merged from: %s\n", source.Name)
-		for _, s := range newSections {
-			fusedBody += "\n" + s
-		}
+	}
+
+	for _, merged := range mergedSections {
+		fusedBody += merged
+	}
+	for _, appended := range appendedSections {
+		fusedBody += "\n" + appended
 	}
 
 	return &FusedContent{
 		Body: fusedBody,
 		Tags: mergeStringSets(target.Tags, source.Tags),
 	}, nil
+}
+
+// stripHeading removes the leading ## heading line from a section content string.
+func stripHeading(section string) string {
+	lines := strings.SplitN(section, "\n", 2)
+	if len(lines) > 1 && strings.HasPrefix(strings.TrimSpace(lines[0]), "## ") {
+		return lines[1]
+	}
+	return section
 }
 
 // extractSections 从 markdown 中提取 ## 级别的段落

@@ -43,6 +43,7 @@ type SkillMergeSource struct {
 	Description string
 	Body        string // 完整 SKILL.md
 	Tags        []string
+	Status      string
 }
 
 // FusedContent 融合结果
@@ -109,17 +110,27 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 	// 获取完整数据
 	source, err := uc.reader.GetFullSkillForMerge(ctx, req.SourceID)
 	if err != nil {
-		return nil, apierror.Internal("SKILL_MERGE", "get source skill: %s", err.Error())
+		return nil, err
 	}
 	target, err := uc.reader.GetFullSkillForMerge(ctx, req.TargetID)
 	if err != nil {
-		return nil, apierror.Internal("SKILL_MERGE", "get target skill: %s", err.Error())
+		return nil, err
+	}
+
+	// Validate skill states
+	if source.Status == "deleted" || source.Status == "archived" {
+		return nil, apierror.BadRequest(apierror.DomainSkill, "cannot merge from a deleted or archived skill")
+	}
+	if target.Status == "deleted" || target.Status == "archived" {
+		return nil, apierror.BadRequest(apierror.DomainSkill, "cannot merge into a deleted or archived skill")
 	}
 
 	// Stage 1: 内容融合
 	var fused *FusedContent
 	switch req.Strategy {
-	case MergeStrategyAIFuse, MergeStrategyRuleFuse:
+	case MergeStrategyAIFuse:
+		return nil, apierror.BadRequest("SKILL_MERGE", "ai_fuse strategy is deprecated, use rule_fuse instead")
+	case MergeStrategyRuleFuse:
 		if uc.fuser == nil {
 			return nil, apierror.BadRequest("SKILL_MERGE", "fusion not available, use manual_pick or append strategy")
 		}
@@ -178,6 +189,10 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 }
 
 func mergeStringSets(a, b []string) []string {
+	// Case-insensitive dedup preserving the first occurrence's original case.
+	// When target and source have the same tag with different casing (e.g.
+	// "Python" vs "python"), the target's version is kept because target (a)
+	// is iterated first.
 	seen := make(map[string]bool, len(a)+len(b))
 	var result []string
 	for _, s := range a {

@@ -91,6 +91,7 @@ var ProviderSet = wire.NewSet(
 	session.SessionCompressionProviderSet,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,
+	NewMemoryWorkerStats,
 )
 
 func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {

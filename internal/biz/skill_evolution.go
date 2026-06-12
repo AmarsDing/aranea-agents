@@ -27,15 +27,16 @@ type SkillRegistrationPort interface {
 }
 
 type SkillEvolutionUsecase struct {
-	repo            SkillProposalReadWriter
-	patterns        PatternReader
-	agents          AgentRepository
-	creator         SkillAutoCreator
-	registrar       SkillRegistrationPort
-	coordinator     *EvolutionCoordinator
-	coordinatorOnce sync.Once
-	orchestrator    *SkillEvolutionOrchestrator
-	lg              loggateway.Logger
+	repo             SkillProposalReadWriter
+	patterns         PatternReader
+	agents           AgentRepository
+	creator          SkillAutoCreator
+	registrar        SkillRegistrationPort
+	coordinator      *EvolutionCoordinator
+	coordinatorOnce  sync.Once
+	orchestrator     *SkillEvolutionOrchestrator
+	orchestratorOnce sync.Once
+	lg               loggateway.Logger
 }
 
 func NewSkillEvolutionUsecase(
@@ -71,9 +72,11 @@ func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
 
 // SetOrchestrator sets the unified evolution orchestrator for cross-pipeline dedup.
 // When set, DetectAndPropose delegates to the orchestrator for pending checks.
-// NOTE: Must only be called during initialization, before any concurrent access.
+// Protected by sync.Once to prevent concurrent initialization races.
 func (uc *SkillEvolutionUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
-	uc.orchestrator = o
+	uc.orchestratorOnce.Do(func() {
+		uc.orchestrator = o
+	})
 }
 
 func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID string) ([]SkillProposal, error) {
@@ -125,7 +128,7 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 		// spending an LLM call to generate SKILL.md.
 		toolHistory := uc.extractToolHistory(p)
 		suggestedName := uc.inferSkillName(p.Description)
-		if suggestedName != "" {
+		if suggestedName != "" && uc.registrar != nil {
 			exists, existErr := uc.registrar.SkillExists(ctx, agentID, suggestedName)
 			if existErr != nil {
 				uc.lg.Warn("check skill existence before generation", loggateway.StepID("skill_evo.detect"), loggateway.Err(existErr))
@@ -233,10 +236,6 @@ func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (Sk
 }
 
 func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string, limit int, offset int) ([]SkillProposal, error) {
-	agentID, err := requireNonEmpty(agentID, "SKILL_EVO", "agent_id")
-	if err != nil {
-		return nil, err
-	}
 	return uc.repo.ListByAgent(ctx, agentID, status, limit, offset)
 }
 
@@ -342,31 +341,14 @@ func (uc *SkillEvolutionUsecase) findSkillPatterns(ctx context.Context, agentID 
 	return skillPatterns, nil
 }
 
+// extractToolHistory delegates to the package-level extractToolHistoryFromPattern.
 func (uc *SkillEvolutionUsecase) extractToolHistory(p Pattern) []ToolCallRecord {
-	var records []ToolCallRecord
-	toolNames := extractToolNamesFromDesc(p.Description)
-	for _, name := range toolNames {
-		records = append(records, ToolCallRecord{
-			ToolName: name,
-			Success:  p.Confidence >= skillPatternMinConfidence, // use pattern confidence as proxy
-			CalledAt: p.DetectedAt,
-		})
-	}
-	return records
+	return extractToolHistoryFromPattern(p)
 }
 
-// inferSkillName attempts to derive a concise skill name from the pattern
-// description (e.g. "web_search(query)" → "web_search").
+// inferSkillName delegates to the package-level inferSkillNameFromDesc.
 func (uc *SkillEvolutionUsecase) inferSkillName(desc string) string {
-	parts := strings.Split(desc, ",")
-	if len(parts) == 0 {
-		return ""
-	}
-	first := strings.TrimSpace(parts[0])
-	if idx := strings.Index(first, "("); idx > 0 {
-		return strings.TrimSpace(first[:idx])
-	}
-	return ""
+	return inferSkillNameFromDesc(desc)
 }
 
 func patternHash(desc string) string {

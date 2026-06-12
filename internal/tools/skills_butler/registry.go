@@ -10,6 +10,8 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// SkillUsecasePort manages skill proposals lifecycle.
+// Stability:evolving
 type SkillUsecasePort interface {
 	ListProposals(ctx context.Context, agentID string, status string) ([]biz.SkillProposal, error)
 	ApproveProposal(ctx context.Context, id string, approvedBy string) (biz.SkillProposal, error)
@@ -18,14 +20,20 @@ type SkillUsecasePort interface {
 	CreateProposal(ctx context.Context, proposal biz.SkillProposal) (biz.SkillProposal, error)
 }
 
+// EvolutionUsecasePort provides skill evolution metrics.
+// Stability:evolving
 type EvolutionUsecasePort interface {
 	GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (biz.EvolutionMetrics, error)
 }
 
+// SkillQueryReaderPort reads skill invocation statistics.
+// Stability:evolving
 type SkillQueryReaderPort interface {
 	GetSkillInvocationStats(ctx context.Context, agentID string, since time.Time) ([]SkillInvocationStat, error)
 }
 
+// AnalyticsPort provides tool and skill analytics.
+// Stability:evolving
 type AnalyticsPort interface {
 	AnalyzeToolWeights(ctx context.Context) ([]biz.ToolWeightReport, error)
 	AnalyzeSkillHealth(ctx context.Context) ([]biz.SkillHealth, error)

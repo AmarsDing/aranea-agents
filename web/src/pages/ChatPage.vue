@@ -24,6 +24,7 @@
       @agent-reorder="(payload) => entity.onGroupReorder(payload.groupKey, payload.ids)"
       @select-spirit-team="spiritStore.selectTeam($event)"
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
+      @spirit-settings="(id) => entity.openSettings('agent', id)"
     />
 
     <ChatSideToggle

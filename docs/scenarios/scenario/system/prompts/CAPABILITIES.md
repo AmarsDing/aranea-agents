@@ -31,6 +31,15 @@
 | synthesize_results | 合成团队结果 | 所有团队完成后调用 |
 | cancel_orchestration | 取消编排 | 编排执行异常时使用 |
 
+> **降级说明**：当 Runtime Cue 提示 plan_and_execute 不可用时，使用 subagents_spawn 替代进行任务委派。
+
+### SubAgent 工具（plan_and_execute 不可用时的替代方案）
+
+| 工具 | 用途 | 限制 |
+|------|------|------|
+| subagents_spawn | 创建子 Agent | plan_and_execute 可用时由其自动管理；不可用时手动调用委派任务 |
+| subagents_get | 获取子 Agent 状态 | plan_and_execute 可用时禁止手动调用，用 check_progress 替代 |
+
 ### 工具使用原则
 
 1. **先搜索后读取**：search_content → read_file，避免盲目读取

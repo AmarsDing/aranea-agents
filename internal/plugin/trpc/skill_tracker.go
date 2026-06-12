@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -94,7 +95,12 @@ func (s *SkillUsageTrackerPlugin) afterTool(ctx context.Context, args *trpctool.
 		fields = append(fields, "output_preview", truncateString(redactText(formatToolResult(args.Result), true, true, true), s.cfg.MaxPreviewLength))
 	}
 	s.base.logger.Info("plugin.skill_tracker.after_tool", fields...)
-	s.base.record(ctx, "after_tool", status)
+	// Record asynchronously to avoid blocking the tool execution pipeline
+	capturedCtx := context.Background()
+	statusCapture := status
+	safego.Go(capturedCtx, "skill_tracker.after_tool.record", func() {
+		s.base.record(capturedCtx, "after_tool", statusCapture)
+	})
 	return &trpctool.AfterToolResult{}, nil
 }
 

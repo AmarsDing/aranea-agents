@@ -15,7 +15,7 @@ var NewSerpAPIProvider = newSerpAPIProvider
 
 var RedactedURL = redactedURL
 
-var TruncateStr = truncate
+var TruncateUTF8Func = truncateUTF8
 
 var FirstNonEmpty = firstNonEmpty
 

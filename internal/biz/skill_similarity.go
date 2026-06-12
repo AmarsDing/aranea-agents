@@ -165,7 +165,7 @@ func setJaccard(a, b []string) float64 {
 		setB[strings.ToLower(s)] = true
 	}
 	if len(setA) == 0 && len(setB) == 0 {
-		return 1.0
+		return 0.0 // cannot determine similarity from empty fields
 	}
 	if len(setA) == 0 || len(setB) == 0 {
 		return 0.0

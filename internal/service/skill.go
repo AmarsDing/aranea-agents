@@ -265,6 +265,13 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 		StorageDir:  dir,
 	})
 	if err != nil {
+		// Clean up filesystem directory on DB failure
+		if cleanErr := os.RemoveAll(dir); cleanErr != nil {
+			s.lg.Warn("CreateSkill: failed to clean up filesystem dir after DB error",
+				loggateway.StepID("service.skill"),
+				loggateway.Str("dir", dir),
+				loggateway.Err(cleanErr))
+		}
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	invalidateAllAgentBuildCaches()
@@ -295,6 +302,9 @@ func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillReque
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
+		}
+		if _, ok := apierror.From(err); ok {
+			return nil, err // Already a properly typed domain error
 		}
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}

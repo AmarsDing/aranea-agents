@@ -65,6 +65,12 @@ func invocationTimeRange(from, to string) []predicate.SkillInvocation {
 	return out
 }
 
+func escapeJSONStringValue(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
 func skillListPredicates(q biz.SkillListQuery) []predicate.PlatformSkill {
 	ps := []predicate.PlatformSkill{platformskill.DeletedAtEQ("")}
 	if s := strings.TrimSpace(q.Search); s != "" {
@@ -103,7 +109,7 @@ func skillListPredicates(q biz.SkillListQuery) []predicate.PlatformSkill {
 		ps = append(ps, platformskill.FilesystemMissingEQ(false))
 	}
 	if origin := strings.TrimSpace(q.SyncOrigin); origin != "" {
-		ps = append(ps, platformskill.MetadataJSONContains(`"sync_origin":"`+origin+`"`))
+		ps = append(ps, platformskill.MetadataJSONContains(`"sync_origin":"`+escapeJSONStringValue(origin)+`"`))
 	}
 	return ps
 }
@@ -273,6 +279,9 @@ func (r *skillRepo) batchInvocationStats(ctx context.Context, c *dataent.Client,
 		var total, success, failure, usage7d int
 		var avgDur sql.NullFloat64
 		if scanErr := statsRows.Scan(&sid, &total, &success, &failure, &usage7d, &avgDur); scanErr != nil {
+			r.data.lg.Warn("batch invocation stats scan failed",
+				loggateway.StepID("data.skill"),
+				loggateway.Err(scanErr))
 			continue
 		}
 		s := &invStats{Total: total, Success: success, Failure: failure, Usage7d: usage7d}
@@ -339,6 +348,9 @@ func (r *skillRepo) batchLastInvocations(ctx context.Context, c *dataent.Client,
 		var sid, agentID, invokedAt string
 		var durMs sql.NullInt64
 		if scanErr := lastRows.Scan(&sid, &agentID, &invokedAt, &durMs); scanErr != nil {
+			r.data.lg.Warn("batch last invocation scan failed",
+				loggateway.StepID("data.skill"),
+				loggateway.Err(scanErr))
 			continue
 		}
 		li := &lastInv{AgentID: agentID, InvokedAt: invokedAt}
@@ -517,30 +529,34 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 }
 
 func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, error) {
-	cur, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	if err != nil {
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	cur, err := tx.PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
-	latestVer, _ := r.data.RW().Read(ctx).SkillVersion.Query().
+	latestVer, verErr := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(id)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
+	if verErr != nil && !dataent.IsNotFound(verErr) {
+		return biz.Skill{}, entErrToBizErr(verErr, apierror.DomainSkill)
+	}
 	newID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
 	newKey := fmt.Sprintf("%s-copy-%d", cur.SkillKey, time.Now().UTC().Unix())
 	if strings.TrimSpace(cur.SkillKey) == "" {
 		newKey = newID
 	}
 	now := nowRFC3339()
-	tx, err := r.data.RW().Write(ctx).Tx(ctx)
-	if err != nil {
-		return biz.Skill{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.PlatformSkill.Create().
 		SetID(newID).
 		SetSkillKey(newKey).
@@ -557,7 +573,7 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		SetUpdatedAt(now).
 		SetDeletedAt("").
 		Save(ctx); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if latestVer != nil {
 		verID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
@@ -573,30 +589,51 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 			SetCreatedAt(now).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
 	}
 	if err = tx.Commit(); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.GetSkillByID(ctx, newID)
 }
 
 func (r *skillRepo) DeleteSkill(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	n, err := r.data.RW().Write(ctx).PlatformSkill.Update().
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	if err != nil {
+		return entErrToBizErr(err, apierror.DomainSkill)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	n, err := tx.PlatformSkill.Update().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if n == 0 {
 		return apierror.NotFound(apierror.DomainSkill, "skill not found or already deleted")
 	}
-	return nil
+
+	// Mark associated versions as deleted to prevent orphan access
+	_, vErr := tx.SkillVersion.Update().
+		Where(skillversion.SkillIDEQ(id)).
+		SetStatus("deleted").
+		SetUpdatedAt(now).
+		Save(ctx)
+	if vErr != nil {
+		r.data.lg.Warn("DeleteSkill: failed to mark versions as deleted",
+			loggateway.StepID("data.skill"),
+			loggateway.Str("skill_id", id),
+			loggateway.Err(vErr))
+		// Non-fatal: the skill itself is already soft-deleted
+	}
+
+	return entErrToBizErr(tx.Commit(), apierror.DomainSkill)
 }
 
 func runPredicates(q biz.SkillRunQuery) []predicate.SkillInvocation {
@@ -851,7 +888,10 @@ func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (bi
 		Where(platformskill.SkillKeyEQ(skillKey), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		return biz.Skill{}, err
+		if dataent.IsNotFound(err) {
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
+		}
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.enrichSkill(ctx, e)
 }
@@ -867,7 +907,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 
 	tx, txErr := r.data.RW().Write(ctx).Tx(ctx)
 	if txErr != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, txErr
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(txErr, apierror.DomainSkill)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -898,7 +938,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 			SetUpdatedAt(now).
 			SetDeletedAt("").
 			Save(ctx); createErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, createErr
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
 		}
 		if _, createErr := tx.SkillVersion.Create().
 			SetID(versionID).
@@ -910,16 +950,16 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 			SetCreatedAt(now).
 			SetUpdatedAt(now).
 			Save(ctx); createErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, createErr
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, commitErr
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(commitErr, apierror.DomainSkill)
 		}
 		sk, getErr := r.GetSkillByID(ctx, skillID)
 		return sk, biz.SkillDiskSyncOutcome{}, getErr
 	}
 	if err != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 
 	outcome := biz.SkillDiskSyncOutcome{}
@@ -941,15 +981,26 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
 	if svErr != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, svErr
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(svErr, apierror.DomainSkill)
 	}
 	if strings.TrimSpace(sv.ContentMarkdown) != in.Body {
 		outcome.ContentChanged = true
-		if _, updateErr := tx.SkillVersion.UpdateOneID(sv.ID).
+		// Create a new version to preserve immutability of existing versions
+		newVerID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
+		newVerMetaJSON := string(metaJSON)
+		if _, createErr := tx.SkillVersion.Create().
+			SetID(newVerID).
+			SetSkillID(skillRow.ID).
+			SetVersion(incrementVersion(sv.Version)).
+			SetStatus("pass").
 			SetContentMarkdown(in.Body).
+			SetMetadataJSON(newVerMetaJSON).
+			SetManifestJSON(sv.ManifestJSON).
+			SetFileManifestJSON(sv.FileManifestJSON).
+			SetCreatedAt(now).
 			SetUpdatedAt(now).
-			Save(ctx); updateErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, updateErr
+			Save(ctx); createErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
 		}
 	}
 	if outcome.ContentChanged && wasPublished {
@@ -957,10 +1008,10 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 		update = update.SetStatus("draft").SetEnabled(false)
 	}
 	if _, updateErr := update.Save(ctx); updateErr != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, updateErr
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(updateErr, apierror.DomainSkill)
 	}
 	if commitErr := tx.Commit(); commitErr != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, commitErr
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(commitErr, apierror.DomainSkill)
 	}
 	sk, getErr := r.GetSkillByID(ctx, skillRow.ID)
 	return sk, outcome, getErr
@@ -1190,17 +1241,34 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	now := nowRFC3339()
 
-	// Wrap PlatformSkill + SkillVersion updates in a transaction.
-	// Filesystem write remains outside the transaction (best-effort, not rollback-coordinated).
-	var storageDir string
 	if patch.HasBody {
+		body := strings.TrimSpace(patch.Body)
+
+		// Resolve storage directory first (before transaction)
+		md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
+		storageDir := strings.TrimSpace(md.StorageDir)
+		if storageDir == "" {
+			return biz.Skill{}, apierror.Internal("SKILL", "skill storage directory is not configured")
+		}
+		// Validate path is within expected root
+		skillPath := filepath.Join(storageDir, "SKILL.md")
+		if !isPathWithinRoot(storageDir, skillPath) {
+			return biz.Skill{}, apierror.Internal("SKILL", "skill file path escapes storage directory")
+		}
+
+		// Write filesystem FIRST (before DB transaction)
+		if writeErr := os.WriteFile(skillPath, []byte(body), 0o644); writeErr != nil {
+			return biz.Skill{}, apierror.Wrap(writeErr, apierror.CodeInternal, apierror.DomainSkill)
+		}
+
+		// Then commit DB transaction
 		tx, txErr := r.data.RW().Write(ctx).Tx(ctx)
 		if txErr != nil {
-			return biz.Skill{}, txErr
+			return biz.Skill{}, entErrToBizErr(txErr, apierror.DomainSkill)
 		}
 		defer func() { _ = tx.Rollback() }()
 
@@ -1221,80 +1289,24 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 			upd.SetMetadataJSON(string(metaJSON))
 		}
 		if err := upd.Exec(ctx); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
 
-		body := strings.TrimSpace(patch.Body)
 		sv, err := tx.SkillVersion.Query().
 			Where(skillversion.SkillIDEQ(id)).
 			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 			First(ctx)
 		if err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
-		oldBody := sv.ContentMarkdown
 		if _, err := tx.SkillVersion.UpdateOneID(sv.ID).
 			SetContentMarkdown(body).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
 		if err = tx.Commit(); err != nil {
-			return biz.Skill{}, err
-		}
-
-		// Filesystem write — outside the transaction.
-		fresh, err := r.data.RW().Read(ctx).PlatformSkill.Query().
-			Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
-			Only(ctx)
-		if err != nil {
-			return biz.Skill{}, err
-		}
-		md := parseSkillMetadata(r.data.lg, fresh.MetadataJSON)
-		storageDir = strings.TrimSpace(md.StorageDir)
-		if storageDir == "" {
-			return biz.Skill{}, apierror.Internal("SKILL", "skill storage directory is not configured")
-		}
-		path := filepath.Join(storageDir, "SKILL.md")
-		if writeErr := os.WriteFile(path, []byte(body), 0o644); writeErr != nil {
-			// Compensation: revert both SkillVersion content and PlatformSkill metadata.
-			// The transaction already committed, so we must manually undo both changes.
-			revertOk := true
-			if revertErr := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
-				SetContentMarkdown(oldBody).
-				SetUpdatedAt(now).
-				Exec(ctx); revertErr != nil {
-				revertOk = false
-				r.data.lg.Error("PatchSkill: filesystem write failed AND SkillVersion revert failed",
-					loggateway.StepID("data.skill"),
-					loggateway.Str("skill_id", id),
-					loggateway.Err(writeErr),
-					loggateway.Str("revert_err", revertErr.Error()))
-			}
-			// Revert PlatformSkill metadata (name/description/tags) if they were changed.
-			if patch.HasName || patch.HasDescription || patch.HasTags {
-				metaUpd := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
-				if patch.HasName {
-					metaUpd.SetName(e.Name) // e is the pre-transaction snapshot
-				}
-				if patch.HasDescription {
-					metaUpd.SetDescription(e.Description)
-				}
-				if patch.HasTags {
-					metaUpd.SetMetadataJSON(e.MetadataJSON)
-				}
-				if metaRevertErr := metaUpd.Exec(ctx); metaRevertErr != nil {
-					revertOk = false
-					r.data.lg.Error("PatchSkill: filesystem write failed AND PlatformSkill metadata revert failed",
-						loggateway.StepID("data.skill"),
-						loggateway.Str("skill_id", id),
-						loggateway.Err(metaRevertErr))
-				}
-			}
-			if revertOk {
-				return biz.Skill{}, apierror.Wrap(writeErr, apierror.CodeInternal, apierror.DomainSkill)
-			}
-			return biz.Skill{}, apierror.Wrap(fmt.Errorf("filesystem write failed AND DB revert incomplete, manual intervention required: %w", writeErr), apierror.CodeInternal, apierror.DomainSkill)
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
 	} else {
 		// No body change — single update, no transaction needed.
@@ -1315,7 +1327,36 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 			upd.SetMetadataJSON(string(metaJSON))
 		}
 		if err := upd.Exec(ctx); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		}
+
+		// Sync tags to latest SkillVersion metadata
+		if patch.HasTags {
+			sv, svErr := r.data.RW().Read(ctx).SkillVersion.Query().
+				Where(skillversion.SkillIDEQ(id)).
+				Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+				First(ctx)
+			if svErr == nil {
+				md := parseSkillMetadata(r.data.lg, sv.MetadataJSON)
+				md.Tags = normalizeSkillTags(patch.Tags)
+				svMetaJSON, jerr := json.Marshal(md)
+				if jerr == nil {
+					if tagSyncErr := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
+						SetMetadataJSON(string(svMetaJSON)).
+						SetUpdatedAt(now).
+						Exec(ctx); tagSyncErr != nil {
+						r.data.lg.Warn("PatchSkill: failed to sync tags to SkillVersion metadata",
+							loggateway.StepID("data.skill"),
+							loggateway.Str("skill_id", id),
+							loggateway.Err(tagSyncErr))
+					}
+				}
+			} else if !dataent.IsNotFound(svErr) {
+				r.data.lg.Warn("PatchSkill: failed to query latest version for tag sync",
+					loggateway.StepID("data.skill"),
+					loggateway.Str("skill_id", id),
+					loggateway.Err(svErr))
+			}
 		}
 	}
 	return r.GetSkillByID(ctx, id)
@@ -1326,10 +1367,25 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, err
 	if id == "" {
 		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
 	}
+
+	// Validate current skill state before publishing
+	existing, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		if dataent.IsNotFound(err) {
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
+		}
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	if existing.Status != "draft" {
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "only draft skills can be published")
+	}
+
 	now := nowRFC3339()
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	defer func() { _ = tx.Rollback() }()
 	err = tx.PlatformSkill.UpdateOneID(id).
@@ -1340,23 +1396,31 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, err
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	sv, err := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(id)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
-	if err == nil && sv != nil {
+	if err != nil {
+		if !dataent.IsNotFound(err) {
+			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		}
+		// No version found - skill has no content, still publish but log warning
+		r.data.lg.Warn("PublishSkill: no SkillVersion found for skill",
+			loggateway.StepID("data.skill"),
+			loggateway.Str("skill_id", id))
+	} else if sv != nil {
 		if _, serr := tx.SkillVersion.UpdateOneID(sv.ID).
 			SetPublishedAt(now).
 			SetValidationStatus("pass").
 			SetUpdatedAt(now).
 			Save(ctx); serr != nil {
-			return biz.Skill{}, serr
+			return biz.Skill{}, entErrToBizErr(serr, apierror.DomainSkill)
 		}
 	}
 	if err = tx.Commit(); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.GetSkillByID(ctx, id)
 }
@@ -1444,31 +1508,38 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 }
 
 func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, versionID string) (biz.Skill, error) {
-	_, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+	now := nowRFC3339()
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	if err != nil {
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	skillRow, err := tx.PlatformSkill.Query().
 		Where(platformskill.IDEQ(skillID), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
-	targetVer, err := r.data.RW().Read(ctx).SkillVersion.Query().
+
+	// Validate skill state: only published skills can be rolled back
+	if skillRow.Status != "published" && skillRow.Status != "active" {
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "only published skills can be rolled back")
+	}
+
+	targetVer, err := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillID), skillversion.IDEQ(versionID)).
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
-	now := nowRFC3339()
 	newVerID := fmt.Sprintf("sv_%d", time.Now().UTC().UnixNano())
-	tx, err := r.data.RW().Write(ctx).Tx(ctx)
-	if err != nil {
-		return biz.Skill{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.SkillVersion.Create().
 		SetID(newVerID).
 		SetSkillID(skillID).
@@ -1483,16 +1554,16 @@ func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, ve
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if _, err := tx.PlatformSkill.UpdateOneID(skillID).
 		SetStatus("published").
 		SetUpdatedAt(now).
 		Save(ctx); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if err = tx.Commit(); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.GetSkillByID(ctx, skillID)
 }
@@ -1521,4 +1592,16 @@ func incrementVersion(v string) string {
 		return fmt.Sprintf("%s.%s.%d", parts[0], parts[1], patch+1)
 	}
 	return v + "+rollback"
+}
+
+func isPathWithinRoot(root, path string) bool {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) || absPath == absRoot
 }
