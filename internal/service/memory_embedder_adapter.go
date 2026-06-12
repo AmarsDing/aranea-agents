@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/apierror"
 )
 
 type MemoryEmbeddingAdapter struct {
@@ -18,5 +19,8 @@ func NewMemoryEmbeddingAdapter(embedder knowledge.QueryEmbedder) *MemoryEmbeddin
 }
 
 func (a *MemoryEmbeddingAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
+	if a == nil || a.embedder == nil {
+		return nil, apierror.Unavailable("MEMORY", "embedding service not available")
+	}
 	return a.embedder.EmbedSingle(ctx, text)
 }

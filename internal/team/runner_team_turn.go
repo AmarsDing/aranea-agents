@@ -189,16 +189,36 @@ func (r *Runner) finalizeTeamRun(
 	t0 time.Time,
 	teamEmitter *event.TraceEmitter,
 ) biz.TeamRun {
-	run.Status = biz.TeamRunStatusSuccess
-	run.TokenIn = promptTok
-	run.TokenOut = completionTok
-	run.DurationMS = int(time.Since(t0).Milliseconds())
-	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
-	run.FinishedAt = agent.RFC3339Now()
-	if err := r.runWriter.UpdateTeamRun(ctx, run); err != nil {
-		r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
-			loggateway.StepID("team.run.finish_update_fail"),
-			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
+	// Transition status through the state machine for consistent validation & timestamps.
+	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusSuccess)
+	if transitionErr != nil {
+		r.lg.Warn("TransitionRunStatus failed in finalizeTeamRun",
+			loggateway.StepID("team.run.transition_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+		// Fallback: update the run directly so we don't lose the token/duration data.
+		run.Status = biz.TeamRunStatusSuccess
+		run.FinishedAt = agent.RFC3339Now()
+		run.TokenIn = promptTok
+		run.TokenOut = completionTok
+		run.DurationMS = int(time.Since(t0).Milliseconds())
+		run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
+		if err := r.runWriter.UpdateTeamRun(ctx, run); err != nil {
+			r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
+				loggateway.StepID("team.run.finish_update_fail"),
+				loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
+		}
+	} else {
+		// Preserve token/duration data from the original run before the transition.
+		updatedRun.TokenIn = promptTok
+		updatedRun.TokenOut = completionTok
+		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
+		updatedRun.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
+		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
+			r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
+				loggateway.StepID("team.run.finish_update_fail"),
+				loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", err.Error()))
+		}
+		run = updatedRun
 	}
 
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)

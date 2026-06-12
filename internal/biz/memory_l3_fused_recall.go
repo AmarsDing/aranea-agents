@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // RecallScoreBreakdown is the component-wise recall ranking for one hit.
@@ -67,16 +69,17 @@ type MemoryL3Recaller interface {
 
 // MemoryL3RecallUsecase embeds optional query vectors and delegates rerank to the store.
 type MemoryL3RecallUsecase struct {
-	store  SessionL3RecallStore
-	scored SessionL3ScoredRecallStore
+	store    SessionL3RecallStore
+	scored   SessionL3ScoredRecallStore
 	embedder EmbeddingService
+	lg       loggateway.Logger
 }
 
-func NewMemoryL3RecallUsecase(store SessionL3RecallStore, scored SessionL3ScoredRecallStore, embedder EmbeddingService) *MemoryL3RecallUsecase {
+func NewMemoryL3RecallUsecase(store SessionL3RecallStore, scored SessionL3ScoredRecallStore, embedder EmbeddingService, lg loggateway.Logger) *MemoryL3RecallUsecase {
 	if store == nil {
 		return nil
 	}
-	return &MemoryL3RecallUsecase{store: store, scored: scored, embedder: embedder}
+	return &MemoryL3RecallUsecase{store: store, scored: scored, embedder: embedder, lg: lg}
 }
 
 func (uc *MemoryL3RecallUsecase) RecallFacts(ctx context.Context, q L3RecallQuery) ([][]byte, error) {
@@ -92,6 +95,10 @@ func (uc *MemoryL3RecallUsecase) RecallFacts(ctx context.Context, q L3RecallQuer
 	if query != "" && uc.embedder != nil {
 		if vec, err := uc.embedder.Embed(ctx, query); err == nil {
 			qvec = vec
+		} else {
+			uc.lg.Warn("L3 recall embed failed, degrading to non-vector search",
+				loggateway.StepID("memory.l3_embed_fail"),
+				loggateway.Err(err))
 		}
 	}
 	lim := q.Limit
@@ -124,6 +131,10 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 	if query != "" && uc.embedder != nil {
 		if vec, err := uc.embedder.Embed(ctx, query); err == nil {
 			qvec = vec
+		} else {
+			uc.lg.Warn("L3 fused recall embed failed, degrading to non-vector search",
+				loggateway.StepID("memory.l3_fused_embed_fail"),
+				loggateway.Err(err))
 		}
 	}
 	lim := int(q.Limit)

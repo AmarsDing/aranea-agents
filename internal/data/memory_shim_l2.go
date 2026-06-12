@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -391,6 +390,3 @@ func anyInt(m map[string]any, key string) int {
 		return 0
 	}
 }
-
-// ensure float64 and float32 are referenced
-var _ = math.Pi

@@ -231,7 +231,7 @@ type L4EntityStore interface {
 type L4EvolutionStore interface {
 	EvolutionProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
 	EvolutionEventRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
-	EvolutionMetricsJSON(ctx context.Context, agentID string) ([]byte, error)
+	EvolutionMetricsJSON(ctx context.Context, agentID string, timeRange string) ([]byte, error)
 	InsertEvolutionEventRow(ctx context.Context, in EvolutionEventInsert) ([]byte, error)
 }
 
@@ -239,6 +239,26 @@ type L4EvolutionStore interface {
 type L3ConflictStore interface {
 	IncrementConflictCount(ctx context.Context, factID string) (int32, error)
 	ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
+	// BatchIncrementConflictCounts increments conflict_count for multiple facts in a single query.
+	BatchIncrementConflictCounts(ctx context.Context, factIDs []string) error
+}
+
+// MemoryAdminDeps composes the fine-grained admin store interfaces required by MemoryAdminUsecase.
+// Unlike SessionAdminStore, this does not include L2RecallStore or L3FactWriter
+// (which are injected via separate fields). This narrows the interface to only
+// what MemoryAdminUsecase actually needs.
+type MemoryAdminDeps interface {
+	L0AdminStore
+	L1AdminReader
+	L1TaskWriter
+	L1FieldWriter
+	L1IdleTaskReader
+	L2EpisodeWriter
+	L3FactReader
+	L3ConflictStore
+	PIIReviewStore
+	L4EntityStore
+	L4EvolutionStore
 }
 
 // SessionAdminStore is the composed admin port for L0–L4 session memory.
@@ -251,16 +271,7 @@ type L3ConflictStore interface {
 // Deprecated: Use fine-grained sub-interfaces (L0AdminStore, L1AdminReader, L2RecallStore, etc.)
 // instead of this aggregate. This interface is retained only for Wire binding convenience.
 type SessionAdminStore interface {
-	L0AdminStore
-	L1AdminReader
-	L1TaskWriter
-	L1FieldWriter
-	L1IdleTaskReader
+	MemoryAdminDeps
 	L2RecallStore
-	L2EpisodeWriter
-	L3FactAdminStore
-	L3ConflictStore
-	PIIReviewStore
-	L4EntityStore
-	L4EvolutionStore
+	L3FactWriter
 }

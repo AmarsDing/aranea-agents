@@ -22,10 +22,11 @@ var negationPatterns = []string{
 	"not ", "don't ", "doesn't ", "didn't ", "never ", "no longer ", "won't ", "can't ", "isn't ", "aren't ",
 	"bans ", "prohibits ", "avoids ", "dislikes ", "forbids ", "disables ", "rejects ",
 	"不喜欢", "不需要", "不想", "不再", "没有", "禁止", "不用", "别", "切勿", "避免", "拒绝",
+	"不", "不会", "不能", "不要", "不该", "不敢", "不肯", "不宜",
 }
 
 type MemoryAdminUsecase struct {
-	admin          SessionAdminStore
+	admin          MemoryAdminDeps
 	vec            *MemoryUsecase
 	indexSync      MemoryFactIndexSyncer
 	factWriter     L3FactWriter
@@ -34,7 +35,7 @@ type MemoryAdminUsecase struct {
 	lg             loggateway.Logger
 }
 
-func NewMemoryAdminUsecase(admin SessionAdminStore, vec *MemoryUsecase, indexSync MemoryFactIndexSyncer, factWriter L3FactWriter, lg loggateway.Logger) *MemoryAdminUsecase {
+func NewMemoryAdminUsecase(admin MemoryAdminDeps, vec *MemoryUsecase, indexSync MemoryFactIndexSyncer, factWriter L3FactWriter, lg loggateway.Logger) *MemoryAdminUsecase {
 	if admin == nil && vec == nil {
 		return nil
 	}
@@ -77,6 +78,20 @@ func (uc *MemoryAdminUsecase) RejectPIIFact(ctx context.Context, factID string) 
 		return err
 	}
 	return uc.admin.RejectPIIFact(ctx, factID)
+}
+
+func (uc *MemoryAdminUsecase) GetFactByID(ctx context.Context, factID string) ([]byte, error) {
+	if err := uc.requireAdmin(); err != nil {
+		return nil, err
+	}
+	rows, err := uc.admin.GetFactRowsByIDs(ctx, []string{factID})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, apierror.NotFound(apierror.DomainMemory, "fact not found")
+	}
+	return rows[0], nil
 }
 
 func (uc *MemoryAdminUsecase) ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error) {
@@ -156,11 +171,11 @@ func (uc *MemoryAdminUsecase) EvolutionEventRows(ctx context.Context, agentID st
 	return uc.admin.EvolutionEventRows(ctx, agentID, limit)
 }
 
-func (uc *MemoryAdminUsecase) EvolutionMetricsJSON(ctx context.Context, agentID string) ([]byte, error) {
+func (uc *MemoryAdminUsecase) EvolutionMetricsJSON(ctx context.Context, agentID string, timeRange string) ([]byte, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, err
 	}
-	return uc.admin.EvolutionMetricsJSON(ctx, agentID)
+	return uc.admin.EvolutionMetricsJSON(ctx, agentID, timeRange)
 }
 
 func (uc *MemoryAdminUsecase) UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error) {
@@ -589,6 +604,8 @@ func (uc *MemoryAdminUsecase) ListConflictingFacts(ctx context.Context, scopeTyp
 // It uses clause-level negation matching: extracts core noun phrases from both statements
 // and checks if one negates the other. Before conflict detection, it skips facts with
 // identical fingerprints (exact dedup handled by UpsertFactRow).
+// Conflicting fact IDs are collected first, then conflict_count is incremented in a
+// single batch query to avoid N+1 writes.
 func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType, scopeID, newStatement string) error {
 	if uc.admin == nil {
 		return nil
@@ -602,6 +619,7 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
+	var conflictIDs []string
 	for _, raw := range rows {
 		m, _ := jsonutil.ParseMap(raw)
 		if m == nil {
@@ -622,12 +640,15 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 			continue
 		}
 		if isNegationConflict(newNorm, existingNorm, negationPatterns) {
-			if _, err := uc.admin.IncrementConflictCount(ctx, id); err != nil {
-				uc.lg.Warn("IncrementConflictCount failed (best-effort)",
-					loggateway.StepID("memory.l3_conflict_increment_fail"),
-					loggateway.Str("fact_id", id),
-					loggateway.Err(err))
-			}
+			conflictIDs = append(conflictIDs, id)
+		}
+	}
+	if len(conflictIDs) > 0 {
+		if err := uc.admin.BatchIncrementConflictCounts(ctx, conflictIDs); err != nil {
+			uc.lg.Warn("BatchIncrementConflictCounts failed (best-effort)",
+				loggateway.StepID("memory.l3_conflict_batch_increment_fail"),
+				loggateway.Int("count", len(conflictIDs)),
+				loggateway.Err(err))
 		}
 	}
 	return nil
@@ -639,7 +660,7 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 // other statement. To avoid false positives from loose substring containment,
 // the core clause must either:
 //   - exactly equal the other statement, or
-//   - constitute a significant portion of the other statement (≥60% overlap),
+//   - constitute a significant portion of the other statement (≥75% overlap),
 //     ensuring the core clause is the semantic subject of both statements.
 func isNegationConflict(a, b string, negationPrefixes []string) bool {
 	aLower := " " + strings.ToLower(a) + " "
@@ -663,7 +684,7 @@ func isNegationConflict(a, b string, negationPrefixes []string) bool {
 
 // negationCoreMatches checks whether the stripped core clause (from a negated
 // statement) semantically matches the other statement. It requires either an
-// exact match or a significant word overlap (≥60%) to avoid false positives
+// exact match or a significant word overlap (≥75%) to avoid false positives
 // from loose substring containment (e.g. "not a" matching "banana").
 func negationCoreMatches(core, other string) bool {
 	core = strings.TrimSpace(core)
@@ -692,7 +713,7 @@ func negationCoreMatches(core, other string) bool {
 		}
 	}
 	overlapRatio := float64(matched) / float64(len(coreWords))
-	return overlapRatio >= 0.6
+	return overlapRatio >= 0.75
 }
 
 // stripPrefix removes a negation prefix from the beginning of a statement (after

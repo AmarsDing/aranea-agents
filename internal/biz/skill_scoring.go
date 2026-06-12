@@ -8,6 +8,44 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// Scoring and analysis thresholds.
+const (
+	TimeoutThresholdMS       = 30000 // Duration above which a skill invocation is considered timed out
+	ContextOverflowThreshold = 5000  // Input preview length above which context overflow is suspected
+	MinInvocationCount       = 5     // Minimum invocations needed for a reliable score
+	DefaultNeutralScore      = 50    // Default score when insufficient data is available
+)
+
+// Failure tag constants for ExperienceReport.FailureTags.
+const (
+	FailureTagParamMismatch        = "param_mismatch"
+	FailureTagWrongToolChoice      = "wrong_tool_choice"
+	FailureTagToolTimeout          = "tool_timeout"
+	FailureTagToolAPIError         = "tool_api_error"
+	FailureTagContextOverflow      = "context_overflow"
+	FailureTagInstructionAmbiguity = "instruction_ambiguity"
+	FailureTagUserCancelled        = "user_cancelled"
+	FailureTagUnknown              = "unknown"
+)
+
+// ScoreWeights holds configurable weights for the skill scoring model.
+type ScoreWeights struct {
+	SuccessRate float64 `json:"success_rate"`
+	Duration    float64 `json:"duration"`
+	Token       float64 `json:"token"`
+	Feedback    float64 `json:"feedback"`
+}
+
+// DefaultScoreWeights returns the v1 default scoring weights.
+func DefaultScoreWeights() ScoreWeights {
+	return ScoreWeights{
+		SuccessRate: 0.4,
+		Duration:    0.25,
+		Token:       0.2,
+		Feedback:    0.15,
+	}
+}
+
 // SkillScoringUsecase handles skill invocation analysis and scoring.
 // Extracted from SkillIntelligenceUsecase to reduce cognitive complexity (AS-COG-01).
 type SkillScoringUsecase struct {
@@ -168,4 +206,76 @@ func (uc *SkillScoringUsecase) ScoreSkill(ctx context.Context, skillID string) (
 		result = 100
 	}
 	return result, nil
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+func normalizeDuration(avgMS float64) float64 {
+	// Baseline: 30 seconds. Normalize to 0-1 range.
+	const baselineMS = 30000
+	if avgMS <= 0 {
+		return 0
+	}
+	ratio := avgMS / baselineMS
+	if ratio > 1 {
+		return 1
+	}
+	return ratio
+}
+
+// normalizeTokenUsage normalizes average token usage to a 0-1 range.
+// Lower is better: 0 tokens → 0, baselineTokens → 1, above baseline → 1.
+func normalizeTokenUsage(avgTokens int) float64 {
+	const baselineTokens = 2000
+	if avgTokens <= 0 {
+		return 0
+	}
+	ratio := float64(avgTokens) / baselineTokens
+	if ratio > 1 {
+		return 1
+	}
+	return ratio
+}
+
+// computeHeuristicFeedbackScore derives a provisional feedback score from
+// available health metrics. TEMPORARY: this will be replaced by a proper
+// feedback_score DB field in a future migration.
+//
+// Heuristic rules:
+//   - High success rate (>0.9) → bonus 0.2
+//   - Low avg duration (<5s) → bonus 0.1
+//   - Low token usage (<1000) → bonus 0.1
+//   - Clamped to [0, 1]
+func computeHeuristicFeedbackScore(m *SkillHealthMetrics) float64 {
+	if m == nil || m.InvocationCount == 0 {
+		return 0
+	}
+
+	var score float64
+
+	// Base: proportional to success rate (0-0.6 range).
+	score = m.SuccessRate * 0.6
+
+	// Bonus: high success rate.
+	if m.SuccessRate > 0.9 {
+		score += 0.2
+	}
+
+	// Bonus: low latency.
+	if m.AvgDurationMS > 0 && m.AvgDurationMS < 5000 {
+		score += 0.1
+	}
+
+	// Bonus: low token usage.
+	if m.AvgTokenUsage > 0 && m.AvgTokenUsage < 1000 {
+		score += 0.1
+	}
+
+	if score > 1 {
+		score = 1
+	}
+	if score < 0 {
+		score = 0
+	}
+	return score
 }

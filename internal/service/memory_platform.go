@@ -5,6 +5,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 func (s *MemoryService) GetMemoryPlatformSettings(ctx context.Context, _ *v1.GetMemoryPlatformSettingsRequest) (*v1.MemoryPlatformSettings, error) {
@@ -13,7 +14,7 @@ func (s *MemoryService) GetMemoryPlatformSettings(ctx context.Context, _ *v1.Get
 
 func (s *MemoryService) UpdateMemoryPlatformSettings(ctx context.Context, req *v1.UpdateMemoryPlatformSettingsRequest) (*v1.MemoryPlatformSettings, error) {
 	if s.sysUC == nil {
-		return s.memoryPlatformSettingsProto(ctx)
+		return nil, apierror.Unavailable("MEMORY", "system settings service not available")
 	}
 	_, err := s.sysUC.UpdateMemoryPlatform(ctx, biz.MemoryPlatformSetting{
 		PolicyStrict:            req.GetPolicyStrict(),

@@ -11,6 +11,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	diagBundleMaxCompletionEvents = 500
+	diagBundleMaxAlertEvents      = 200
+	diagBundleMaxUsageEvents      = 50
+)
+
 type DiagBundle struct {
 	BundleID    string
 	Manifest    map[string]any
@@ -83,7 +89,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	if sessionID != "" || traceID != "" {
 		// Fetch runner.completion events with SQL-level filtering
 		completionEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
-			Limit:     500,
+			Limit:     diagBundleMaxCompletionEvents,
 			Offset:    0,
 			EventType: "runner.completion",
 			SessionID: sessionID,
@@ -107,7 +113,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		}
 		// Fetch alert events with SQL-level filtering
 		alertEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
-			Limit:     200,
+			Limit:     diagBundleMaxAlertEvents,
 			Offset:    0,
 			EventType: "alert",
 			SessionID: sessionID,
@@ -152,7 +158,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	var usageData map[string]any
 	var usageRows []map[string]any
 	usageEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
-		Limit:     50,
+		Limit:     diagBundleMaxUsageEvents,
 		Offset:    0,
 		EventType: "usage",
 		SessionID: sessionID,
@@ -248,33 +254,6 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		RootCauses:  rootCauseResults,
 		Total:       total,
 	}, nil
-}
-
-// metadataMatchesID checks if a JSON metadata string contains an exact match
-// for the given traceID or sessionID in the corresponding JSON fields.
-// Returns true if at least one specified ID matches its field exactly.
-// Returns false if both IDs are empty (no filter criteria).
-// This avoids false positives from strings.Contains which could match partial
-// strings in unrelated JSON fields (e.g., traceID "abc" matching "xyz_abc_field").
-func metadataMatchesID(metadataJSON, traceID, sessionID string) bool {
-	if traceID == "" && sessionID == "" {
-		return false
-	}
-	parsed := parseMetadataJSON(metadataJSON)
-	if parsed == nil {
-		return false
-	}
-	if traceID != "" {
-		if v, ok := parsed["trace_id"].(string); ok && v == traceID {
-			return true
-		}
-	}
-	if sessionID != "" {
-		if v, ok := parsed["session_id"].(string); ok && v == sessionID {
-			return true
-		}
-	}
-	return false
 }
 
 func parseMetadataJSON(raw string) map[string]any {

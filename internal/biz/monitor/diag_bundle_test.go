@@ -86,37 +86,6 @@ func TestNonEmpty_Values(t *testing.T) {
 	}
 }
 
-func TestMetadataMatchesID(t *testing.T) {
-	tests := []struct {
-		name         string
-		metadataJSON string
-		traceID      string
-		sessionID    string
-		want         bool
-	}{
-		{"both_empty", `{"trace_id":"abc"}`, "", "", false},
-		{"trace_id_exact_match", `{"trace_id":"trace-1","session_id":"sess-2"}`, "trace-1", "", true},
-		{"session_id_exact_match", `{"trace_id":"trace-1","session_id":"sess-2"}`, "", "sess-2", true},
-		{"trace_id_no_match", `{"trace_id":"trace-other"}`, "trace-1", "", false},
-		{"session_id_no_match", `{"session_id":"sess-other"}`, "", "sess-1", false},
-		{"partial_match_rejected", `{"trace_id":"trace-1-extra"}`, "trace-1", "", false},
-		{"substring_in_other_field_rejected", `{"other":"trace-1","session_id":"sess-2"}`, "trace-1", "", false},
-		{"both_match_trace_wins", `{"trace_id":"trace-1","session_id":"sess-1"}`, "trace-1", "sess-1", true},
-		{"invalid_json", `{not json}`, "trace-1", "", false},
-		{"empty_json", `{}`, "trace-1", "", false},
-		{"nil_fields", `{"trace_id":null,"session_id":null}`, "trace-1", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.MetadataMatchesID(tt.metadataJSON, tt.traceID, tt.sessionID)
-			if got != tt.want {
-				t.Errorf("MetadataMatchesID() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestNewDiagBundleGenerator_NilRepo(t *testing.T) {
 	g := monitor.NewDiagBundleGenerator(nil, nil, nil)
 	if g != nil {
@@ -182,7 +151,21 @@ func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
 					continue
 				}
 				if query.SessionID != "" || query.TraceID != "" {
-					if !monitor.MetadataMatchesID(item.MetadataJSON, query.TraceID, query.SessionID) {
+					parsed := monitor.ParseMetadataJSON(item.MetadataJSON)
+					matched := false
+					if parsed != nil {
+						if query.TraceID != "" {
+							if v, ok := parsed["trace_id"].(string); ok && v == query.TraceID {
+								matched = true
+							}
+						}
+						if query.SessionID != "" {
+							if v, ok := parsed["session_id"].(string); ok && v == query.SessionID {
+								matched = true
+							}
+						}
+					}
+					if !matched {
 						continue
 					}
 				}

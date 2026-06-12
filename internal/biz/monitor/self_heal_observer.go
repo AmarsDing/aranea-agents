@@ -12,6 +12,9 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
+// observerCleanupInterval controls how often stale cooldowns and heal events are pruned.
+const observerCleanupInterval = 5 * time.Minute
+
 // SelfHealObserver is the Phase 2 self-healing implementation with circuit breaker.
 // TODO(debt): DEV-06 — After migration, SelfHealObserver will be the sole heal orchestrator.
 //
@@ -182,7 +185,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, ch <-chan Envelope) {
 	// Periodic cleanup of stale cooldowns and heal events to prevent unbounded map growth.
 	safego.Go(ctx, "self-heal-observer-cleanup", func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(observerCleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {

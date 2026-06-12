@@ -58,7 +58,7 @@ func (u *Usecase) DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserve
 			triggerType, contextMinutes,
 		)
 		if err != nil {
-			return nil, apierror.Internal("MONITOR", err.Error())
+			return nil, err
 		}
 		return &DiagnoseAndHealResult{
 			HealID:              rec.ID,
@@ -82,7 +82,7 @@ func (u *Usecase) DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserve
 		triggerType, contextMinutes,
 	)
 	if err != nil {
-		return nil, apierror.Internal("MONITOR", err.Error())
+		return nil, err
 	}
 
 	result := &DiagnoseAndHealResult{

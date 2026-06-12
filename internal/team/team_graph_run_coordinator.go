@@ -57,15 +57,16 @@ type TeamGraphTaskResumeHandler interface {
 
 // TeamGraphRunCoordinator unifies team graph execution register, HITL defer, and task resume (M53 P1).
 type TeamGraphRunCoordinator struct {
-	graphs       TeamGraphExecutionBackend
-	teamRunReader biz.TeamRunReader
-	teamRunWriter biz.TeamRunWriter
-	bus            event.Bus
-	finisher       *TeamRunMediator
-	sessionRepo    biz.TeamGraphSessionRepo
-	cfg            CoordinatorConfig
-	lg             loggateway.Logger
-	agentKeyFn     func(agentID string) string
+	graphs          TeamGraphExecutionBackend
+	teamRunReader   biz.TeamRunReader
+	teamRunWriter   biz.TeamRunWriter
+	runTransitioner biz.TeamRunStatusTransitioner
+	bus             event.Bus
+	finisher        *TeamRunMediator
+	sessionRepo     biz.TeamGraphSessionRepo
+	cfg             CoordinatorConfig
+	lg              loggateway.Logger
+	agentKeyFn      func(agentID string) string
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -95,20 +96,21 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	if agentKeyFn == nil {
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
 	return &TeamGraphRunCoordinator{
-		graphs:         graphs,
-		teamRunReader:  teamRunReader,
-		teamRunWriter:  teamRunWriter,
-		bus:            bus,
-		sessionRepo:    sessionRepo,
-		agentKeyFn:     agentKeyFn,
-		sessions:       make(map[string]*teamGraphRunSession),
-		cfg:            DefaultCoordinatorConfig(),
-		lg:             lg,
+		graphs:          graphs,
+		teamRunReader:   teamRunReader,
+		teamRunWriter:   teamRunWriter,
+		runTransitioner: runTransitioner,
+		bus:             bus,
+		sessionRepo:     sessionRepo,
+		agentKeyFn:      agentKeyFn,
+		sessions:        make(map[string]*teamGraphRunSession),
+		cfg:             DefaultCoordinatorConfig(),
+		lg:              lg,
 	}
 }
 
@@ -176,9 +178,19 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 	if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusWaitingHuman)) {
 		return nil
 	}
-	run.Status = biz.TeamRunStatusWaitingHuman
-	if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
-		return err
+	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusWaitingHuman)
+	if transitionErr != nil {
+		c.lg.Warn("TransitionRunStatus failed in MarkTeamGraphInterrupt",
+			loggateway.StepID("team.run.transition_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+		// Fallback: update directly.
+		run.Status = biz.TeamRunStatusWaitingHuman
+		if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
+			return err
+		}
+	} else {
+		// No extra fields to set for WaitingHuman; transition already persisted.
+		_ = updatedRun
 	}
 	c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusWaitingHuman)
 	return nil
@@ -203,9 +215,18 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 	if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusWaitingHuman)) {
 		return false, nil
 	}
-	run.Status = biz.TeamRunStatusWaitingHuman
-	if err := c.teamRunWriter.UpdateTeamRun(ctx, *run); err != nil {
-		return false, err
+	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusWaitingHuman)
+	if transitionErr != nil {
+		c.lg.Warn("TransitionRunStatus failed in DeferTeamRunSuccessIfHITL",
+			loggateway.StepID("team.run.transition_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+		// Fallback: update directly.
+		run.Status = biz.TeamRunStatusWaitingHuman
+		if err := c.teamRunWriter.UpdateTeamRun(ctx, *run); err != nil {
+			return false, err
+		}
+	} else {
+		*run = updatedRun
 	}
 	return true, nil
 }
@@ -229,13 +250,28 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		if c.teamRunReader != nil {
 			if run, rerr := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); rerr == nil {
 				if !biz.IsTeamRunTerminalStatus(run.Status) {
-					run.Status = biz.TeamRunStatusFailed
-					run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
-					run.FinishedAt = agent.RFC3339Now()
-					if uerr := c.teamRunWriter.UpdateTeamRun(ctx, run); uerr != nil {
-						c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
-						loggateway.StepID("team.graph.resume_fail_update"),
-						loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
+					updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
+					if transitionErr != nil {
+						c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
+							loggateway.StepID("team.run.transition_fail"),
+							loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+						// Fallback: update directly.
+						run.Status = biz.TeamRunStatusFailed
+						run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
+						run.FinishedAt = agent.RFC3339Now()
+						if uerr := c.teamRunWriter.UpdateTeamRun(ctx, run); uerr != nil {
+							c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
+							loggateway.StepID("team.graph.resume_fail_update"),
+							loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
+						}
+					} else {
+						updatedRun.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
+						if uerr := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); uerr != nil {
+							c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
+							loggateway.StepID("team.graph.resume_fail_update"),
+							loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", uerr.Error()))
+						}
+						run = updatedRun
 					}
 				}
 				if c.bus != nil {
@@ -266,12 +302,21 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 				loggateway.Str("from", run.Status),
 				loggateway.Str("to", biz.TeamRunStatusRunning))
 		} else {
-			run.Status = biz.TeamRunStatusRunning
-			if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
-				c.lg.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed",
-					loggateway.StepID("team.usage_record_fail"),
-					loggateway.Str("team_run_id", run.ID),
-					loggateway.Err(err))
+			updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusRunning)
+			if transitionErr != nil {
+				c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
+					loggateway.StepID("team.run.transition_fail"),
+					loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+				// Fallback: update directly.
+				run.Status = biz.TeamRunStatusRunning
+				if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
+					c.lg.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed",
+						loggateway.StepID("team.usage_record_fail"),
+						loggateway.Str("team_run_id", run.ID),
+						loggateway.Err(err))
+				}
+			} else {
+				_ = updatedRun
 			}
 			c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusRunning)
 		}
@@ -470,19 +515,41 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	if run.Status != biz.TeamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
-	now := agent.RFC3339Now()
-	run.FinishedAt = now
-	run.UpdatedAt = now
+	newStatus := biz.TeamRunStatusSuccess
 	if failed {
-		run.Status = biz.TeamRunStatusFailed
-		run.ErrorMessage = errMsg
-	} else {
-		run.Status = biz.TeamRunStatusSuccess
+		newStatus = biz.TeamRunStatusFailed
 	}
-	if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
-		c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
-			loggateway.StepID("team.graph.finalize_update_fail"),
-			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
+	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, newStatus)
+	if transitionErr != nil {
+		c.lg.Warn("TransitionRunStatus failed in coordinator.finalizeTeamRun",
+			loggateway.StepID("team.run.transition_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+		// Fallback: update directly.
+		now := agent.RFC3339Now()
+		run.FinishedAt = now
+		run.UpdatedAt = now
+		run.Status = newStatus
+		if failed {
+			run.ErrorMessage = errMsg
+		}
+		if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
+			c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
+				loggateway.StepID("team.graph.finalize_update_fail"),
+				loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
+		}
+	} else {
+		// Preserve extra fields that TransitionRunStatus doesn't set.
+		if failed {
+			updatedRun.ErrorMessage = errMsg
+		}
+		if updatedRun.ErrorMessage != "" || !failed {
+			if err := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
+				c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
+					loggateway.StepID("team.graph.finalize_update_fail"),
+					loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", err.Error()))
+			}
+		}
+		run = updatedRun
 	}
 	if c.bus != nil {
 		typ := event.EnvelopeTypeTeamRunFinished

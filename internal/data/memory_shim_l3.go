@@ -2,9 +2,9 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -87,18 +87,35 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	clauses, args := buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, true)
 	where := " WHERE " + strings.Join(clauses, " AND ")
 
-	total, err := r.countFacts(ctx, buildFactFilterClauses(scopeType, scopeID, kind, "", keyword, false))
+	// Single query to get total, active, and archived counts.
+	countClauses, countArgs := buildFactFilterClauses(scopeType, scopeID, kind, "", keyword, false)
+	countWhere := ""
+	if len(countClauses) > 0 {
+		countWhere = " WHERE " + strings.Join(countClauses, " AND ")
+	}
+	var total, active, archived int32
+	countRow, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active, SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived FROM memory_facts`+countWhere,
+		countArgs...)
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
-	active, err := r.countFacts(ctx, buildFactFilterClauses(scopeType, scopeID, kind, "active", keyword, false))
-	if err != nil {
-		active = total
+	if countRow.Next() {
+		var a, ar sql.NullInt32
+		if scanErr := countRow.Scan(&total, &a, &ar); scanErr != nil {
+			countRow.Close()
+			return nil, 0, 0, 0, scanErr
+		}
+		if a.Valid {
+			active = a.Int32
+		} else {
+			active = total
+		}
+		if ar.Valid {
+			archived = ar.Int32
+		}
 	}
-	archived, err := r.countFacts(ctx, buildFactFilterClauses(scopeType, scopeID, kind, "archived", keyword, false))
-	if err != nil {
-		archived = 0
-	}
+	countRow.Close()
 
 	lim := int(limit)
 	if lim <= 0 {
@@ -602,7 +619,11 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		}
 	}
 
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_facts (
+	// INSERT + read-back in a single transaction to ensure read-your-writes
+	// consistency under read-write separation.
+	var result []byte
+	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO memory_facts (
 		id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 		statement, statement_normalized, fingerprint, details_markdown,
 		fact_kind, tags_json,
@@ -628,48 +649,53 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		pii_flag = excluded.pii_flag, redacted_statement = excluded.redacted_statement,
 		quality_score = excluded.quality_score, pii_types = excluded.pii_types, metadata_json = excluded.metadata_json,
 		updated_at = excluded.updated_at`,
-		id,
-		strings.TrimSpace(in.ScopeType),
-		strings.TrimSpace(in.ScopeID),
-		strings.TrimSpace(in.WorkspaceID),
-		strings.TrimSpace(in.UserID),
-		strings.TrimSpace(in.TeamID),
-		strings.TrimSpace(in.AgentID),
-		strings.TrimSpace(in.Statement),
-		strings.ToLower(strings.TrimSpace(in.Statement)),
-		fp, details,
-		strings.TrimSpace(in.FactKind), tags,
-		in.Confidence, in.Importance, in.UseCount, in.HitCount,
-		in.PositiveFeedbackCount, in.NegativeFeedbackCount, in.ConflictCount,
-		strings.TrimSpace(in.SourceKind),
-		strings.TrimSpace(in.SourceEpisodeID),
-		strings.TrimSpace(in.SourceSessionID),
-		strings.TrimSpace(in.SourceMessageID),
-		strings.TrimSpace(in.SourceExternal),
-		in.Version, status, "",
-		pii, redacted,
-		defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	// Read back the row using the unique constraint (scope_type, scope_id, fingerprint)
-	// rather than fingerprint alone. The triple is the actual unique key, so this
-	// is deterministic even under concurrent writes.
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`,
-		strings.TrimSpace(in.ScopeType), strings.TrimSpace(in.ScopeID), fp)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return nil, entErrToBizErr(err, "MEMORY")
+			id,
+			strings.TrimSpace(in.ScopeType),
+			strings.TrimSpace(in.ScopeID),
+			strings.TrimSpace(in.WorkspaceID),
+			strings.TrimSpace(in.UserID),
+			strings.TrimSpace(in.TeamID),
+			strings.TrimSpace(in.AgentID),
+			strings.TrimSpace(in.Statement),
+			strings.ToLower(strings.TrimSpace(in.Statement)),
+			fp, details,
+			strings.TrimSpace(in.FactKind), tags,
+			in.Confidence, in.Importance, in.UseCount, in.HitCount,
+			in.PositiveFeedbackCount, in.NegativeFeedbackCount, in.ConflictCount,
+			strings.TrimSpace(in.SourceKind),
+			strings.TrimSpace(in.SourceEpisodeID),
+			strings.TrimSpace(in.SourceSessionID),
+			strings.TrimSpace(in.SourceMessageID),
+			strings.TrimSpace(in.SourceExternal),
+			in.Version, status, "",
+			pii, redacted,
+			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
+		)
+		if execErr != nil {
+			return execErr
 		}
-		return nil, apierror.NotFound("MEMORY", "fact row not found after upsert")
+		// Read back the row using the unique constraint (scope_type, scope_id, fingerprint)
+		// within the same transaction so the write connection is reused.
+		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
+			sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`,
+			strings.TrimSpace(in.ScopeType), strings.TrimSpace(in.ScopeID), fp)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			if err := rows.Err(); err != nil {
+				return entErrToBizErr(err, "MEMORY")
+			}
+			return apierror.NotFound("MEMORY", "fact row not found after upsert")
+		}
+		result, execErr = scanFactRowJSON(rows)
+		return execErr
+	})
+	if err != nil {
+		return nil, err
 	}
-	return scanFactRowJSON(rows)
+	return result, nil
 }
 
 func (r *l3FactRepo) DeleteFactRow(ctx context.Context, factID string) error {
@@ -682,11 +708,17 @@ func (r *l3FactRepo) DeleteFactRow(ctx context.Context, factID string) error {
 	// Cascade: remove pgvector embedding so deleted facts are not recalled.
 	if r.vectorStore != nil {
 		if delErr := r.vectorStore.Delete(ctx, factID); delErr != nil {
-			// Best-effort: log but don't fail the primary delete.
-			r.data.lg.Warn("cascade: delete fact vector failed (best-effort)",
+			r.data.lg.Warn("cascade: delete fact vector failed, marking stale",
 				loggateway.StepID("memory.l3.vector_delete"),
 				loggateway.Str("fact_id", factID),
 				loggateway.Err(delErr))
+			// Mark embedding_status as stale so reconciler can fix later.
+			if markErr := r.markFactEmbeddingStale(ctx, factID); markErr != nil {
+				r.data.lg.Warn("cascade: mark fact embedding stale failed",
+					loggateway.StepID("memory.l3.vector_mark_stale"),
+					loggateway.Str("fact_id", factID),
+					loggateway.Err(markErr))
+			}
 		}
 	}
 	return nil
@@ -714,10 +746,17 @@ func (r *l3FactRepo) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) 
 	if r.vectorStore != nil {
 		for _, fid := range factIDs {
 			if delErr := r.vectorStore.Delete(ctx, fid); delErr != nil {
-				r.data.lg.Warn("cascade: delete fact vector failed (best-effort)",
+				r.data.lg.Warn("cascade: delete fact vector failed, marking stale",
 					loggateway.StepID("memory.l3.vector_delete_batch"),
 					loggateway.Str("fact_id", fid),
 					loggateway.Err(delErr))
+				// Mark embedding_status as stale so reconciler can fix later.
+				if markErr := r.markFactEmbeddingStale(ctx, fid); markErr != nil {
+					r.data.lg.Warn("cascade: mark fact embedding stale failed",
+						loggateway.StepID("memory.l3.vector_mark_stale"),
+						loggateway.Str("fact_id", fid),
+						loggateway.Err(markErr))
+				}
 			}
 		}
 	}
@@ -725,47 +764,58 @@ func (r *l3FactRepo) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) 
 }
 
 func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, userID string) ([]string, error) {
-	// 1. Collect all active fact IDs before soft-deleting them.
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM memory_facts WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
-		scopeType, scopeID, userID)
-	if err != nil {
-		return nil, err
-	}
+	// Read IDs + soft-delete in a single transaction to prevent new facts
+	// from escaping cleanup (read-write consistency under separation).
 	var factIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
+			`SELECT id FROM memory_facts WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+			scopeType, scopeID, userID)
+		if queryErr != nil {
+			return queryErr
 		}
-		factIDs = append(factIDs, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if scanErr := rows.Scan(&id); scanErr != nil {
+				return scanErr
+			}
+			factIDs = append(factIDs, id)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if len(factIDs) == 0 {
+			return nil
+		}
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+			now, scopeType, scopeID, userID)
+		return execErr
+	})
+	if err != nil {
 		return nil, err
 	}
 	if len(factIDs) == 0 {
 		return nil, nil
 	}
 
-	// 2. Soft-delete in SQLite.
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
-		now, scopeType, scopeID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. Cascade: remove pgvector embeddings so deleted facts are not recalled.
+	// Cascade: remove pgvector embeddings so deleted facts are not recalled.
 	if r.vectorStore != nil {
 		for _, fid := range factIDs {
 			if delErr := r.vectorStore.Delete(ctx, fid); delErr != nil {
-				r.data.lg.Warn("cascade: clear fact vector failed (best-effort)",
+				r.data.lg.Warn("cascade: clear fact vector failed, marking stale",
 					loggateway.StepID("memory.l3.vector_clear"),
 					loggateway.Str("fact_id", fid),
 					loggateway.Err(delErr))
+				// Mark embedding_status as stale so reconciler can fix later.
+				if markErr := r.markFactEmbeddingStale(ctx, fid); markErr != nil {
+					r.data.lg.Warn("cascade: mark fact embedding stale failed",
+						loggateway.StepID("memory.l3.vector_mark_stale"),
+						loggateway.Str("fact_id", fid),
+						loggateway.Err(markErr))
+				}
 			}
 		}
 	}
@@ -775,17 +825,35 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 // --- L3ConflictStore ---
 
 func (r *l3FactRepo) IncrementConflictCount(ctx context.Context, factID string) (int32, error) {
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id = ?`,
-		time.Now().UTC().Format(time.RFC3339Nano), factID)
-	if err != nil {
-		return 0, err
-	}
 	var count int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `SELECT conflict_count FROM memory_facts WHERE id = ?`, []any{factID}, &count); err != nil {
-		return 0, err
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id = ?`,
+			time.Now().UTC().Format(time.RFC3339Nano), factID)
+		if execErr != nil {
+			return execErr
+		}
+		return queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx),
+			`SELECT conflict_count FROM memory_facts WHERE id = ?`, []any{factID}, &count)
+	})
+	return count, err
+}
+
+func (r *l3FactRepo) BatchIncrementConflictCounts(ctx context.Context, factIDs []string) error {
+	if len(factIDs) == 0 {
+		return nil
 	}
-	return count, nil
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	placeholders := make([]string, len(factIDs))
+	args := make([]any, 0, len(factIDs)+1)
+	args = append(args, now)
+	for i, id := range factIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	q := fmt.Sprintf(`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
+	return err
 }
 
 func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
@@ -888,5 +956,11 @@ func (r *l3FactRepo) RejectPIIFact(ctx context.Context, factID string) error {
 	return err
 }
 
-// ensure math is referenced
-var _ = math.Pi
+// markFactEmbeddingStale marks a fact's embedding_status as 'stale' so the
+// reconciler can detect and fix the inconsistency between SQLite and pgvector.
+func (r *l3FactRepo) markFactEmbeddingStale(ctx context.Context, factID string) error {
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_facts SET embedding_status = 'stale' WHERE id = ?`, factID)
+	return err
+}
+

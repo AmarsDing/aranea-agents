@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -86,6 +87,12 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 }
 
 func (w *AutoMemoryWorker) Start(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			w.lg.Error("AutoMemoryWorker panic recovered, worker stopped",
+				loggateway.Err(fmt.Errorf("%v", r)))
+		}
+	}()
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 	for {

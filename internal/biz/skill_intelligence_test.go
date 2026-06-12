@@ -164,13 +164,16 @@ func newTestUsecase(
 	if len(analyzer) > 0 {
 		a = analyzer[0]
 	}
+	scorer := NewSkillScoringUsecase(aggregator, lg)
+	reporter := NewSkillReportUsecase(reader, writer, nil, scorer, a, lg)
 	return NewSkillIntelligenceUsecase(
-		reader,
-		writer,
-		nil,
-		aggregator,
+		scorer,
+		reporter,
 		&mockSkillEvolutionSuggestionReader{},
 		&mockSkillEvolutionSuggestionWriter{},
+		nil, // unifiedReader
+		nil, // unifiedWriter
+		aggregator,
 		a,
 		lg,
 	)
@@ -469,7 +472,7 @@ func TestSkillIntelligence_GenerateReport_NilWriter(t *testing.T) {
 		},
 	}
 	uc := newTestUsecase(nil, nil, agg)
-	uc.writer = nil // explicitly nil writer
+	uc.reporter.writer = nil // explicitly nil writer
 
 	inv := SkillInvocationWrite{
 		SkillID:      "skill-1",
@@ -717,7 +720,10 @@ func TestCheckEvolutionTriggers_7dLowSuccessRate(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	lg := loggateway.NewNoop()
+	scorer := NewSkillScoringUsecase(agg, lg)
+	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, sugReader, sugWriter, nil, nil, agg, nil, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-7d-bad")
 	if err != nil {
@@ -749,7 +755,10 @@ func TestCheckEvolutionTriggers_SameFailureTagThreshold(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	lg := loggateway.NewNoop()
+	scorer := NewSkillScoringUsecase(agg, lg)
+	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, sugReader, sugWriter, nil, nil, agg, nil, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-repeat")
 	if err != nil {
@@ -781,7 +790,10 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	lg := loggateway.NewNoop()
+	scorer := NewSkillScoringUsecase(agg, lg)
+	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, sugReader, sugWriter, nil, nil, agg, nil, lg)
 
 	suggestion, err := uc.CheckEvolutionTriggers(context.Background(), "skill-tag-ok")
 	if err != nil {
@@ -807,7 +819,10 @@ func TestRunCuratorFlow_Success(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	lg := loggateway.NewNoop()
+	scorer := NewSkillScoringUsecase(agg, lg)
+	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, sugReader, sugWriter, nil, nil, agg, nil, lg)
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-curator")
 	if err != nil {
@@ -840,7 +855,10 @@ func TestRunCuratorFlow_NoTrigger(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, agg, sugReader, sugWriter, nil, loggateway.NewNoop())
+	lg := loggateway.NewNoop()
+	scorer := NewSkillScoringUsecase(agg, lg)
+	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
+	uc := NewSkillIntelligenceUsecase(scorer, reporter, sugReader, sugWriter, nil, nil, agg, nil, lg)
 
 	suggestion, err := uc.RunCuratorFlow(context.Background(), "skill-healthy")
 	if err != nil {

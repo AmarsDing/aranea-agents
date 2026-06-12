@@ -22,6 +22,8 @@ var _ biz.MemoryRepo = (*memoryRepo)(nil)
 
 type unavailableMemoryRepo struct{}
 
+var _ biz.MemoryRepo = (*unavailableMemoryRepo)(nil)
+
 func NewMemoryRepo(d *Data) biz.MemoryRepo {
 	if d == nil || d.Postgres() == nil {
 		return unavailableMemoryRepo{}

@@ -96,8 +96,12 @@ func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPII
 	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
+	scopeType := strings.TrimSpace(req.GetScopeType())
+	if scopeType == "" {
+		return nil, apierror.BadRequest("MEMORY", "scope_type is required")
+	}
 	rows, total, err := s.admin.ListPIIFlaggedFacts(ctx,
-		strings.TrimSpace(req.GetScopeType()),
+		scopeType,
 		strings.TrimSpace(req.GetScopeId()),
 		req.GetLimit(),
 		req.GetOffset(),
@@ -175,7 +179,15 @@ func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFact
 	default:
 		return nil, apierror.BadRequest("MEMORY", "action must be 'approve' or 'reject'")
 	}
-	return &v1.ReviewPIIFactResponse{Fact: &v1.MemoryFact{Id: factID}}, nil
+	raw, err := s.admin.GetFactByID(ctx, factID)
+	if err != nil {
+		return nil, err
+	}
+	fact, err := pbMemoryFact(raw)
+	if err != nil || fact == nil {
+		return nil, apierror.Internal("MEMORY", "failed to hydrate fact after review")
+	}
+	return &v1.ReviewPIIFactResponse{Fact: fact}, nil
 }
 
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
@@ -328,34 +340,47 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 	if err != nil {
 		return nil, err
 	}
-	var top struct {
-		Center    map[string]any   `json:"center"`
-		Hops      int32            `json:"hops"`
-		QueryAt   string           `json:"query_at"`
-		Entities  []map[string]any `json:"entities"`
-		Relations []map[string]any `json:"relations"`
+	top, err := jsonutil.ParseMap(body)
+	if err != nil {
+		return nil, apierror.Internal("MEMORY", "failed to parse neighborhood: %s", err.Error())
 	}
-	if err := json.Unmarshal(body, &top); err != nil {
-		return nil, err
+	out := &v1.GraphNeighborhood{
+		Hops:    jsonutil.IfaceI32(top, "hops"),
+		QueryAt: jsonutil.IfaceStr(top, "query_at"),
 	}
-	out := &v1.GraphNeighborhood{Hops: top.Hops, QueryAt: top.QueryAt}
-	if top.Center != nil {
-		raw, _ := json.Marshal(top.Center)
-		c, _ := pbMemoryEntity(raw)
-		out.Center = c
-	}
-	for _, row := range top.Entities {
-		raw, _ := json.Marshal(row)
-		e, _ := pbMemoryEntity(raw)
-		if e != nil {
-			out.Entities = append(out.Entities, e)
+	if centerRaw := top["center"]; centerRaw != nil {
+		raw, merr := json.Marshal(centerRaw)
+		if merr != nil {
+			s.lg.Warn("GetMemoryNeighborhood: failed to marshal center",
+				loggateway.StepID("memory.marshal_fail"),
+				loggateway.Err(merr))
+		} else {
+			c, _ := pbMemoryEntity(raw)
+			out.Center = c
 		}
 	}
-	for _, row := range top.Relations {
-		raw, _ := json.Marshal(row)
-		r, _ := pbMemoryRelation(raw)
-		if r != nil {
-			out.Relations = append(out.Relations, r)
+	if entitiesRaw, ok := top["entities"].([]any); ok {
+		for _, row := range entitiesRaw {
+			raw, merr := json.Marshal(row)
+			if merr != nil {
+				continue
+			}
+			e, _ := pbMemoryEntity(raw)
+			if e != nil {
+				out.Entities = append(out.Entities, e)
+			}
+		}
+	}
+	if relationsRaw, ok := top["relations"].([]any); ok {
+		for _, row := range relationsRaw {
+			raw, merr := json.Marshal(row)
+			if merr != nil {
+				continue
+			}
+			r, _ := pbMemoryRelation(raw)
+			if r != nil {
+				out.Relations = append(out.Relations, r)
+			}
 		}
 	}
 	return out, nil
@@ -671,7 +696,13 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 	}
 	out := &v1.ListEvolutionProposalsResponse{}
 	for _, raw := range rows {
-		m, _ := jsonutil.ParseMap(raw)
+		m, perr := jsonutil.ParseMap(raw)
+		if perr != nil {
+			s.lg.Warn("ListEvolutionProposals: failed to parse proposal row",
+				loggateway.StepID("memory.parse_fail"),
+				loggateway.Err(perr))
+			continue
+		}
 		out.Items = append(out.Items, &v1.EvolutionProposal{
 			Id:             jsonutil.IfaceStr(m, "id"),
 			AgentId:        jsonutil.IfaceStr(m, "agent_id"),
@@ -702,7 +733,13 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 	}
 	out := &v1.ListEvolutionEventsResponse{}
 	for _, raw := range rows {
-		m, _ := jsonutil.ParseMap(raw)
+		m, perr := jsonutil.ParseMap(raw)
+		if perr != nil {
+			s.lg.Warn("ListEvolutionEvents: failed to parse event row",
+				loggateway.StepID("memory.parse_fail"),
+				loggateway.Err(perr))
+			continue
+		}
 		out.Items = append(out.Items, &v1.EvolutionEvent{
 			Id:          jsonutil.IfaceStr(m, "id"),
 			AgentId:     jsonutil.IfaceStr(m, "agent_id"),
@@ -725,9 +762,9 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 	if aid == "" {
 		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
-	_ = strings.TrimSpace(req.GetRange())
+	timeRange := strings.TrimSpace(req.GetRange())
 
-	body, err := s.admin.EvolutionMetricsJSON(ctx, aid)
+	body, err := s.admin.EvolutionMetricsJSON(ctx, aid, timeRange)
 	if err != nil {
 		return nil, err
 	}

@@ -279,16 +279,16 @@ func (r *l1WorkingMemoryRepo) UpsertL1Field(ctx context.Context, in biz.L1FieldI
 		return nil, budgetErr
 	}
 
-	// Archive old value to field_history on conflict (best-effort, outside tx).
-	if in.HistoryEnabled {
-		r.archiveL1FieldHistory(ctx, taskID, fieldPath, in.ChangedBy, now, lg)
-	}
-
-	// Run upsert + sync + budget check in a single transaction.
+	// Run archive + upsert + sync + budget check in a single transaction.
 	// If budget is exceeded, the transaction rolls back atomically — no
-	// INSERT-then-DELETE rollback needed.
+	// INSERT-then-DELETE rollback needed. Archive is inside the tx so that
+	// a rollback also rolls back the history row.
 	var budgetExceeded bool
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		// Step 0: Archive old value to field_history on conflict (inside tx).
+		if in.HistoryEnabled {
+			r.archiveL1FieldHistory(txCtx, taskID, fieldPath, in.ChangedBy, now, lg)
+		}
 		// Step 1: Upsert the field.
 		if err := r.insertL1FieldRow(txCtx, id, in, fieldPath, fieldKind, visibility, now); err != nil {
 			return err
@@ -394,13 +394,21 @@ func (r *l1WorkingMemoryRepo) DeleteL1Field(ctx context.Context, taskID, fieldPa
 }
 
 func (r *l1WorkingMemoryRepo) PatchL1Fields(ctx context.Context, fields []biz.L1FieldInsert) ([][]byte, error) {
+	// Wrap all upserts in a single transaction so that partial failures
+	// roll back atomically. Nested ExecInTx uses savepoints internally.
 	var results [][]byte
-	for _, f := range fields {
-		b, err := r.UpsertL1Field(ctx, f)
-		if err != nil {
-			return results, err
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		for _, f := range fields {
+			b, upsertErr := r.UpsertL1Field(txCtx, f)
+			if upsertErr != nil {
+				return upsertErr
+			}
+			results = append(results, b)
 		}
-		results = append(results, b)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return results, nil
 }

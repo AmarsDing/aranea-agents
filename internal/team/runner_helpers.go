@@ -82,12 +82,27 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	if biz.IsTeamRunTerminalStatus(run.Status) {
 		return
 	}
-	run.Status = biz.TeamRunStatusFailed
-	run.ErrorMessage = msg
-	run.FinishedAt = agent.RFC3339Now()
-	run.DurationMS = int(time.Since(t0).Milliseconds())
-	if err := r.runWriter.UpdateTeamRun(ctx, *run); err != nil {
-		r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
+	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
+	if transitionErr != nil {
+		r.lg.Warn("TransitionRunStatus failed in finishRunErr",
+			loggateway.StepID("team.run.transition_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+		// Fallback: update the run directly so we don't lose the error/duration data.
+		run.Status = biz.TeamRunStatusFailed
+		run.ErrorMessage = msg
+		run.FinishedAt = agent.RFC3339Now()
+		run.DurationMS = int(time.Since(t0).Milliseconds())
+		if err := r.runWriter.UpdateTeamRun(ctx, *run); err != nil {
+			r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
+		}
+	} else {
+		// Preserve error/duration data from the original run before the transition.
+		updatedRun.ErrorMessage = msg
+		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
+		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
+			r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
+		}
+		*run = updatedRun
 	}
 	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
 		if dlerr := r.deadLetter.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{

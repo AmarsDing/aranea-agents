@@ -874,9 +874,10 @@ func keywordOverlapScore(tokens []string, text string) float64 {
 	if len(tokens) == 0 || text == "" {
 		return 0
 	}
+	lowerText := strings.ToLower(text)
 	hits := 0
 	for _, tok := range tokens {
-		if strings.Contains(text, tok) {
+		if strings.Contains(lowerText, strings.ToLower(tok)) {
 			hits++
 		}
 	}

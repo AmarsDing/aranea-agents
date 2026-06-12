@@ -35,7 +35,7 @@ func bigramJaccard(a, b string) float64 {
 	}
 	inter := 0
 	for k := range ga {
-		if gb[k] {
+		if _, ok := gb[k]; ok {
 			inter++
 		}
 	}
@@ -46,15 +46,15 @@ func bigramJaccard(a, b string) float64 {
 	return float64(inter) / float64(union)
 }
 
-func wordBigrams(text string) map[string]bool {
+func wordBigrams(text string) map[string]struct{} {
 	tokens := strings.Fields(text)
-	out := make(map[string]bool)
+	out := make(map[string]struct{})
 	if len(tokens) == 1 {
-		out[tokens[0]] = true
+		out[tokens[0]] = struct{}{}
 		return out
 	}
 	for i := 0; i < len(tokens)-1; i++ {
-		out[tokens[i]+" "+tokens[i+1]] = true
+		out[tokens[i]+" "+tokens[i+1]] = struct{}{}
 	}
 	return out
 }

@@ -9,6 +9,9 @@ import (
 // ErrLLMExtractorUnavailable indicates no LLM-backed extractor is wired.
 var ErrLLMExtractorUnavailable = apierror.Unavailable(apierror.DomainMemory, "memory: llm extractor not configured")
 
+// ErrLLMExtractionFailed indicates the LLM returned an unparseable response.
+var ErrLLMExtractionFailed = apierror.Internal(apierror.DomainMemory, "LLM memory extraction failed")
+
 // MemoryTextExtractor turns recent messages into memory proposals via an LLM call.
 type MemoryTextExtractor interface {
 	ExtractFacts(ctx context.Context, in ConsolidateInput) ([]MemoryProposal, error)

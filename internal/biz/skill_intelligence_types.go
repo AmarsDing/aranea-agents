@@ -31,15 +31,3 @@ type ExperienceReport struct {
 	GeneratedSuggestionID *string
 	CreatedAt             time.Time
 }
-
-// Failure tag constants for ExperienceReport.FailureTags.
-const (
-	FailureTagParamMismatch        = "param_mismatch"
-	FailureTagWrongToolChoice      = "wrong_tool_choice"
-	FailureTagToolTimeout          = "tool_timeout"
-	FailureTagToolAPIError         = "tool_api_error"
-	FailureTagContextOverflow      = "context_overflow"
-	FailureTagInstructionAmbiguity = "instruction_ambiguity"
-	FailureTagUserCancelled        = "user_cancelled"
-	FailureTagUnknown              = "unknown"
-)

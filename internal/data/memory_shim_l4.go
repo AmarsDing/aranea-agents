@@ -412,18 +412,26 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 	return out, rows.Err()
 }
 
-func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string) ([]byte, error) {
+func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string, timeRange string) ([]byte, error) {
 	var total, pending, approved, rejected int
 	metricsQ := `SELECT
 		COUNT(*) as total,
 		SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
 		SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
 		SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
-	FROM agent_evolution_events`
+		FROM agent_evolution_events`
 	args := []any{}
+	whereClauses := []string{}
 	if agentID != "" {
-		metricsQ += ` WHERE agent_id = ?`
+		whereClauses = append(whereClauses, "agent_id = ?")
 		args = append(args, agentID)
+	}
+	if cutoff := parseTimeRangeCutoff(timeRange); !cutoff.IsZero() {
+		whereClauses = append(whereClauses, "created_at >= ?")
+		args = append(args, cutoff.UTC().Format(time.RFC3339))
+	}
+	if len(whereClauses) > 0 {
+		metricsQ += " WHERE " + strings.Join(whereClauses, " AND ")
 	}
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), metricsQ, args, &total, &pending, &approved, &rejected); err != nil {
 		return nil, err
@@ -435,6 +443,36 @@ func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string)
 		"approved": approved,
 		"rejected": rejected,
 	})
+}
+
+// parseTimeRangeCutoff parses a time range string (e.g. "7d", "30d", "1h") and
+// returns the cutoff time. Returns zero time if the string is empty or unparseable.
+func parseTimeRangeCutoff(timeRange string) time.Time {
+	timeRange = strings.TrimSpace(timeRange)
+	if timeRange == "" {
+		return time.Time{}
+	}
+	now := time.Now()
+	// Support formats: "7d", "30d", "1h", "24h", "1w"
+	if len(timeRange) < 2 {
+		return time.Time{}
+	}
+	unit := timeRange[len(timeRange)-1]
+	valueStr := timeRange[:len(timeRange)-1]
+	var value int
+	if _, err := fmt.Sscanf(valueStr, "%d", &value); err != nil || value <= 0 {
+		return time.Time{}
+	}
+	switch unit {
+	case 'h':
+		return now.Add(-time.Duration(value) * time.Hour)
+	case 'd':
+		return now.AddDate(0, 0, -value)
+	case 'w':
+		return now.AddDate(0, 0, -value*7)
+	default:
+		return time.Time{}
+	}
 }
 
 func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.EvolutionEventInsert) ([]byte, error) {
@@ -510,6 +548,3 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 	}
 	return json.Marshal(result)
 }
-
-// ensure loggateway is referenced
-var _ loggateway.Logger

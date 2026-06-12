@@ -1103,6 +1103,12 @@ func provideSessionAdminStore(d *data.Data) biz.SessionAdminStore {
 	return data.NewSessionAdminStoreAdapter(d, d.VectorStore())
 }
 
+// provideMemoryAdminDeps extracts the narrower MemoryAdminDeps interface from SessionAdminStore.
+// SessionAdminStore embeds MemoryAdminDeps, so the cast is always safe.
+func provideMemoryAdminDeps(admin biz.SessionAdminStore) biz.MemoryAdminDeps {
+	return admin
+}
+
 func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
 	if jobs.MemoryL1ArchiveDisabled() {
 		return nil
@@ -1806,6 +1812,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePathBExtractor,
 		provideL4EntityWriter,
 		provideSessionAdminStore,
+		provideMemoryAdminDeps,
 		provideMemoryL1ArchiveWorker,
 		provideMemoryL3DecayWorker,
 		provideMemoryL4DecayWorker,
@@ -1876,7 +1883,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
 		wire.Bind(new(biz.SkillLookupReader), new(biz.SkillRepo)),
 		wire.Bind(new(bizskill.SkillQueryReader), new(biz.SkillRepo)),
-		wire.Bind(new(biz.SkillIntelligenceRepo), new(*data.SkillIntelligenceRepo)),
+		wire.Bind(new(biz.ExperienceReportReader), new(*data.SkillIntelligenceRepo)),
+		wire.Bind(new(biz.ExperienceReportStatsReader), new(*data.SkillIntelligenceRepo)),
+		wire.Bind(new(biz.ExperienceReportWriter), new(*data.SkillIntelligenceRepo)),
+		wire.Bind(new(biz.SkillHealthAggregator), new(*data.SkillIntelligenceRepo)),
+		wire.Bind(new(biz.SkillInvocationUnanalyzedReader), new(*data.SkillIntelligenceRepo)),
 		wire.Bind(new(biz.SkillDedupReader), new(*data.SkillDedupRepo)),
 		wire.Bind(new(biz.SkillMergeReader), new(*data.SkillMergeRepo)),
 		wire.Bind(new(biz.SkillMergeWriter), new(*data.SkillMergeRepo)),
@@ -1898,6 +1909,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.ProviderModelPairValidator), new(*biz.LlmProviderModelUsecase)),
 		// Team-layer narrow interface bindings
 		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
+		wire.Bind(new(biz.TeamRunStatusTransitioner), new(*biz.TeamUsecase)),
 		wire.Bind(new(biz.SessionTurnExtrasPort), new(*biz.SessionUsecase)),
 		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
 		// Self-check integration

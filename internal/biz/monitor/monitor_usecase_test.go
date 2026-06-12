@@ -1247,7 +1247,8 @@ func TestEvaluateAlerts_DisabledRule(t *testing.T) {
 	}
 }
 
-func TestEvaluateAlerts_ZeroTotalRecoversFiring(t *testing.T) {
+func TestEvaluateAlerts_ZeroTotalDoesNotAutoRecover(t *testing.T) {
+	// Empty data window provides no evidence for recovery; state must persist.
 	recoveredCalled := false
 	repo := &mockRepo{
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
@@ -1275,8 +1276,8 @@ func TestEvaluateAlerts_ZeroTotalRecoversFiring(t *testing.T) {
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.EvaluateAlerts(context.Background())
-	if !recoveredCalled {
-		t.Error("Firing alert with zero total should recover")
+	if recoveredCalled {
+		t.Error("Firing alert should NOT auto-recover when total=0 (empty window is ambiguous)")
 	}
 }
 

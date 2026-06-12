@@ -181,3 +181,15 @@ type TeamPersistTurnRecord interface {
 type TeamProjectRuntimeEvent interface {
 	ProjectTeamEvents(ctx context.Context, sessionID, runID string, outcome TurnOutcome, assistantMsg ChatMessage) error
 }
+
+// TeamRunStatusTransitioner is the biz-level port for transitioning team run
+// status through the state machine. The internal/team runtime layer must use
+// this instead of setting run.Status directly, ensuring all transitions are
+// validated and timestamped consistently.
+//
+// Stability:evolving
+type TeamRunStatusTransitioner interface {
+	// TransitionRunStatus validates and applies a team run status transition.
+	// Returns the updated TeamRun or an error if the transition is invalid.
+	TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRun, error)
+}

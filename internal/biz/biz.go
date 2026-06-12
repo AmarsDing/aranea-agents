@@ -74,6 +74,8 @@ var ProviderSet = wire.NewSet(
 	NewToolResultGate,
 	NewExperienceAnalyticsUsecase,
 	NewSkillHealthUsecase,
+	NewSkillScoringUsecase,
+	NewSkillReportUsecase,
 	NewSkillDedupUsecase,
 	NewSkillSimilarityEngine,
 	NewSkillMergeUsecase,

@@ -263,7 +263,7 @@ type Usecase struct {
 	notifier         AlertNotifier
 	fsHealth         FilesystemHealthReader
 	lg               loggateway.Logger
-	lastFired        sync.Map
+	lastFired        sync.Map // TECH-DEBT(COG): legacy in-memory fallback after MON-OPT-02 DB migration; remove after confirming all rules have LastFiredAt persisted
 	rulesCache       []AlertRule
 	rulesExpire      time.Time
 	rulesMu          sync.RWMutex
@@ -607,12 +607,9 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	}
 
 	if total == 0 {
-		switch rule.FiringState {
-		case AlertFiringStateFiring:
-			u.MarkAlertRecovered(ctx, rule, time.Now().UTC())
-		case AlertFiringStateRecovered:
-			u.MarkAlertReset(ctx, rule)
-		}
+		// No data in window — cannot determine error rate.
+		// Do NOT auto-recover; let the state machine persist until
+		// actual metric evaluation provides evidence for transition.
 		return
 	}
 	rate := float64(errors) / float64(total)

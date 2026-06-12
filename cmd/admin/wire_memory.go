@@ -37,12 +37,12 @@ func provideEpisodeIndexSync(vec *biz.MemoryUsecase, d *data.Data) biz.EpisodeIn
 	return data.NewMemoryEpisodeIndexSync(vec, d)
 }
 
-func provideMemoryL2Recall(d *data.Data, vec *biz.MemoryUsecase) biz.MemoryL2Recaller {
-	return biz.NewMemoryL2RecallUsecase(data.NewSessionL2RecallStore(d, d.VectorStore()), vec)
+func provideMemoryL2Recall(d *data.Data, vec *biz.MemoryUsecase, lg loggateway.Logger) biz.MemoryL2Recaller {
+	return biz.NewMemoryL2RecallUsecase(data.NewSessionL2RecallStore(d, d.VectorStore()), vec, lg)
 }
 
-func provideMemoryL3Recall(d *data.Data, vec *biz.MemoryUsecase) biz.MemoryL3Recaller {
-	return biz.NewMemoryL3RecallUsecase(data.NewSessionL3RecallStore(d, d.VectorStore()), data.NewL3ScoredRecallAdapter(d), vec)
+func provideMemoryL3Recall(d *data.Data, vec *biz.MemoryUsecase, lg loggateway.Logger) biz.MemoryL3Recaller {
+	return biz.NewMemoryL3RecallUsecase(data.NewSessionL3RecallStore(d, d.VectorStore()), data.NewL3ScoredRecallAdapter(d), vec, lg)
 }
 
 func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemoryEnqueuer {
@@ -53,7 +53,7 @@ func provideMemoryCompositeRecall(d *data.Data) biz.MemoryCompositeRecaller {
 	return biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
 }
 
-func provideMemoryAdminUsecase(admin biz.SessionAdminStore, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
+func provideMemoryAdminUsecase(admin biz.MemoryAdminDeps, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
 	return biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
 }
 

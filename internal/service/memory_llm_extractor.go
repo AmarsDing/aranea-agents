@@ -10,7 +10,6 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -115,7 +114,7 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 	}
 
 	if len(proposals) == 0 && jsonParseErr != nil {
-		return nil, apierror.Internal("MEMORY", "LLM returned unparseable response: %s", jsonParseErr.Error())
+		return nil, fmt.Errorf("LLM returned unparseable response: %w", biz.ErrLLMExtractionFailed)
 	}
 
 	return proposals, nil

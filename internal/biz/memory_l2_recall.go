@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // L2RecallQuery parameters for episodic memory retrieval.
@@ -27,13 +29,14 @@ type SessionL2RecallStore interface {
 type MemoryL2RecallUsecase struct {
 	store    SessionL2RecallStore
 	embedder EmbeddingService
+	lg       loggateway.Logger
 }
 
-func NewMemoryL2RecallUsecase(store SessionL2RecallStore, embedder EmbeddingService) *MemoryL2RecallUsecase {
+func NewMemoryL2RecallUsecase(store SessionL2RecallStore, embedder EmbeddingService, lg loggateway.Logger) *MemoryL2RecallUsecase {
 	if store == nil {
 		return nil
 	}
-	return &MemoryL2RecallUsecase{store: store, embedder: embedder}
+	return &MemoryL2RecallUsecase{store: store, embedder: embedder, lg: lg}
 }
 
 func (uc *MemoryL2RecallUsecase) RecallEpisodes(ctx context.Context, q L2RecallQuery) ([][]byte, error) {
@@ -45,6 +48,10 @@ func (uc *MemoryL2RecallUsecase) RecallEpisodes(ctx context.Context, q L2RecallQ
 	if query != "" && uc.embedder != nil {
 		if vec, err := uc.embedder.Embed(ctx, query); err == nil {
 			qvec = vec
+		} else {
+			uc.lg.Warn("L2 recall embed failed, degrading to non-vector search",
+				loggateway.StepID("memory.l2_embed_fail"),
+				loggateway.Err(err))
 		}
 	}
 	lim := q.Limit
