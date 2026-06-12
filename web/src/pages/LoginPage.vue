@@ -16,6 +16,13 @@
             </q-card-section>
           </template>
 
+          <template v-else-if="backendStarting">
+            <q-card-section class="text-center q-py-lg">
+              <q-spinner-dots color="primary" size="40px" />
+              <div class="text-caption text-grey-7 q-mt-sm">后端服务启动中，请稍候...</div>
+            </q-card-section>
+          </template>
+
           <template v-else-if="!backendHealthy">
             <q-card-section>
               <q-banner rounded dense class="bg-negative text-white">
@@ -127,6 +134,7 @@ const {
   localError,
   backendChecking,
   backendHealthy,
+  backendStarting,
   rechecking,
   authBypass,
   recheckBackend,

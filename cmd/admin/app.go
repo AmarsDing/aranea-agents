@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/service"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
+	"aranea-agents/pkg/safego"
 
 	"aranea-agents/internal/cronrunner/jobs"
 
@@ -75,56 +76,29 @@ func newApp(
 			if spiritUC != nil && teamStarter != nil {
 				spiritUC.SetTimeoutHandler(teamStarter)
 			}
+
+			// Start readiness-dependent initialization in background.
+			// The HTTP server now starts immediately so /healthz can report
+			// "starting" (503) while P1 migrations run. A readiness middleware
+			// blocks all non-infrastructure routes until ready.
 			if d != nil {
 				if gate := d.Readiness(); gate != nil {
-					if err := gate.Wait(ctx); err != nil {
-						lg.Warn("BeforeStart: data readiness wait failed", loggateway.StepID("startup.gate"), loggateway.Err(err))
-					}
-				}
-			}
-			if err := guard.OnStartup(ctx); err != nil {
-				lg.Warn("session status guard startup failed", loggateway.StepID("startup.guard"), loggateway.Err(err))
-			}
-			if orchCache != nil {
-				orchCache.InitFromRepo(ctx)
-			}
-			consumer.Start(consumerCtx)
-			if sideConsumers != nil {
-				sideConsumers.Start(consumerCtx)
-			}
-			sessions.StartMetricsFlusher(consumerCtx)
-			if eventInfra != nil {
-				event.BindInfra(eventInfra)
-				// AS-EVT-01: Recover unpublished Critical events from WAL after crash.
-				// Must run AFTER Bus and subscribers are ready (consumer.Start above).
-				if eventInfra.WAL != nil {
-					// TODO(debt): pass EventStoreExistChecker instead of nil for idempotent recovery.
-					eventInfra.WAL.Recover(ctx, eventInfra.SessionBus, nil)
-				}
-				if pipeline != nil {
-					if len(loggingSinks) > 0 {
-						// Config-driven: create eventbus sinks from config
-						for _, s := range loggingSinks {
-							cfg := protoSinkToConfig(s)
-							if cfg.Type != "eventbus" {
-								continue
-							}
-							sink, err := logpipeline.NewSinkFromConfig(cfg, logpipeline.SinkFactoryDeps{
-								EventBusPublisher: event.NewLogPipelinePublisher(eventInfra.MonitorBus),
-							})
-							if err != nil {
-								lg.Warn("failed to create eventbus sink from config", loggateway.Str("sink", cfg.Name), loggateway.Err(err))
-								continue
-							}
-							pipeline.AddSink(sink)
+					safego.Go(ctx, "startup.post_readiness", func() {
+						if err := gate.Wait(ctx); err != nil {
+							lg.Warn("post-readiness: data readiness wait failed", loggateway.StepID("startup.gate"), loggateway.Err(err))
+							return
 						}
-					} else {
-						// Default: add eventbus sink with "info" level
-						pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorBus), "info"))
-					}
+						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
+						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+					})
+				} else {
+					// No readiness gate (unlikely), start immediately.
+					startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 				}
+			} else {
+				// No data layer (unlikely), start immediately.
+				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 			}
-			lg.Info("event infra bound for monitor flow logs", loggateway.StepID("startup.event_infra"))
 			return nil
 		}),
 		kratos.AfterStart(func(startCtx context.Context) error {
@@ -160,4 +134,65 @@ func newApp(
 		}),
 	)
 	return app
+}
+
+// startReadinessDependentServices starts all services that require the data layer
+// to be fully initialized (DDL migrations, data migrations, seed data).
+// Extracted from BeforeStart so it can run in a background goroutine after
+// the HTTP server starts listening, allowing /healthz to report "starting".
+func startReadinessDependentServices(
+	ctx context.Context,
+	guard *service.SessionStatusGuard,
+	orchCache *biz.OrchestrationCache,
+	consumer *biz.EventBusConsumer,
+	sideConsumers *biz.EventBusSideConsumers,
+	sessions *biz.SessionUsecase,
+	eventInfra *event.Infra,
+	pipeline logpipeline.Pipeline,
+	loggingSinks []*conf.LoggingSink,
+	lg loggateway.Logger,
+) {
+	if err := guard.OnStartup(ctx); err != nil {
+		lg.Warn("session status guard startup failed", loggateway.StepID("startup.guard"), loggateway.Err(err))
+	}
+	if orchCache != nil {
+		orchCache.InitFromRepo(ctx)
+	}
+	consumer.Start(ctx)
+	if sideConsumers != nil {
+		sideConsumers.Start(ctx)
+	}
+	sessions.StartMetricsFlusher(ctx)
+	if eventInfra != nil {
+		event.BindInfra(eventInfra)
+		// AS-EVT-01: Recover unpublished Critical events from WAL after crash.
+		// Must run AFTER Bus and subscribers are ready (consumer.Start above).
+		if eventInfra.WAL != nil {
+			// TODO(debt): pass EventStoreExistChecker instead of nil for idempotent recovery.
+			eventInfra.WAL.Recover(ctx, eventInfra.SessionBus, nil)
+		}
+		if pipeline != nil {
+			if len(loggingSinks) > 0 {
+				// Config-driven: create eventbus sinks from config
+				for _, s := range loggingSinks {
+					cfg := protoSinkToConfig(s)
+					if cfg.Type != "eventbus" {
+						continue
+					}
+					sink, err := logpipeline.NewSinkFromConfig(cfg, logpipeline.SinkFactoryDeps{
+						EventBusPublisher: event.NewLogPipelinePublisher(eventInfra.MonitorBus),
+					})
+					if err != nil {
+						lg.Warn("failed to create eventbus sink from config", loggateway.Str("sink", cfg.Name), loggateway.Err(err))
+						continue
+					}
+					pipeline.AddSink(sink)
+				}
+			} else {
+				// Default: add eventbus sink with "info" level
+				pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorBus), "info"))
+			}
+		}
+	}
+	lg.Info("event infra bound for monitor flow logs", loggateway.StepID("startup.event_infra"))
 }

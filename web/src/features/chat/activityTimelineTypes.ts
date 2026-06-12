@@ -7,7 +7,7 @@
  * 设计文档：docs/reports/2026-06-12-proposal-chat-activity-timeline-redesign.md
  */
 
-import type { Message } from '../../domain/types';
+import type { Message } from './types';
 import type {
   OrchestrationPlan,
   PlanEntry,
@@ -22,7 +22,7 @@ import type {
 export interface ConversationTurn {
   /** 使用后端 turn_id（权威 FK），不用前端推算 */
   id: string;
-  userMessage: Message;
+  userMessage: Message | null;
   agentWork: AgentWorkProcess;
 }
 
@@ -92,7 +92,7 @@ export interface SayActivity {
   /** 渲染变体：默认 markdown / a2ui 结构化 UI */
   variant: 'default' | 'a2ui';
   /** A2UI 模式时的结构化数据 */
-  a2uiLines?: unknown[];
+  a2uiLines?: Record<string, unknown>[];
   durationMs: number | null;
 }
 

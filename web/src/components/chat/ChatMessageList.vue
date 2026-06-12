@@ -238,6 +238,7 @@ const virtualScrollRef = ref<QVirtualScroll | null>(null);
 const normalScrollEl = ref<HTMLElement | null>(null);
 
 const useActivityTimeline = computed(() => {
+  // TODO: feature flag configuration — integrate with localStorage or remote config
   // Feature flag: 使用新的活动时间线渲染
   // 可以通过 localStorage 或配置开关控制
   return true;

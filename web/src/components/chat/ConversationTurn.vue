@@ -1,6 +1,6 @@
 <template>
   <div class="conversation-turn">
-    <UserMessageBubble :message="turn.userMessage" />
+    <UserMessageBubble v-if="turn.userMessage" :message="turn.userMessage" />
     <AgentWorkPanel :agent-work="turn.agentWork" />
   </div>
 </template>

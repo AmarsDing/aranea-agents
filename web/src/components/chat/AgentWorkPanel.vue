@@ -90,7 +90,7 @@ const formattedDuration = computed(() => formatDuration(props.agentWork.duration
     align-items: center
     justify-content: center
     font-size: 12px
-    color: #fff
+    color: var(--color-text-on-accent, #fff)
     flex-shrink: 0
 
   &__name

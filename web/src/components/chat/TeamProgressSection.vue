@@ -102,19 +102,19 @@ function agentStatusIcon(status: string): string {
     border-radius: 8px
 
     &--running
-      background: rgba(0, 229, 255, 0.1)
+      background: rgba(0, 229, 255, 0.1) /* accent-bg, dark-mode only */
       color: var(--color-accent)
 
     &--completed
-      background: rgba(63, 224, 160, 0.1)
+      background: rgba(63, 224, 160, 0.1) /* success-bg */
       color: var(--color-success)
 
     &--failed
-      background: rgba(255, 94, 122, 0.1)
+      background: rgba(255, 94, 122, 0.1) /* danger-bg */
       color: var(--color-danger)
 
     &--interrupted
-      background: rgba(240, 155, 84, 0.1)
+      background: rgba(240, 155, 84, 0.1) /* warning-bg */
       color: var(--color-warning)
 
   &__duration

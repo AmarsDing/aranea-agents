@@ -793,9 +793,13 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 		return nil
 	}
 	ctxPG := context.Background()
-	if err := vector.EnsureSchema(ctxPG, pg, vdim); err != nil {
-		lg.Error("postgres schema step failed", loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
-		return err
+	if vector.IsPgvector() {
+		if err := vector.EnsureSchema(ctxPG, pg, vdim); err != nil {
+			lg.Error("postgres schema step failed", loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
+			return err
+		}
+	} else {
+		lg.Info("pgvector build tag not set, skipping vector schema on Postgres", loggateway.StepID("data.schema.pgvector"))
 	}
 	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
 		lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))

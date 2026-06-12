@@ -46,7 +46,7 @@ const renderedContent = computed(() =>
 
   &__text
     background: var(--color-accent)
-    color: #fff
+    color: var(--color-text-on-accent, #fff)
     border-radius: 12px 12px 12px 4px
     padding: 10px 14px
     font-size: 14px
@@ -60,12 +60,12 @@ const renderedContent = computed(() =>
       margin-top: 8px
 
     :deep(a)
-      color: #fff
+      color: var(--color-text-on-accent, #fff)
       text-decoration: underline
 
 body.body--dark &
   .user-message-bubble__text
-    background: rgba(0, 229, 255, 0.12)
+    background: rgba(0, 229, 255, 0.12) /* v7 neon-cyan, dark-mode only */
     color: var(--color-text-primary)
     border: 1px solid rgba(0, 229, 255, 0.3)
     border-radius: 12px 12px 12px 4px

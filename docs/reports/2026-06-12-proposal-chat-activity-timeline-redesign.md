@@ -1,8 +1,9 @@
 # 聊天会话过程展示重设计方案
 
 > **文档地位**：聊天 UI 重设计的完整方案，融合"活动时间线"模型与 v7 设计原型的 Team 面板风格。
-> **日期**：2026-06-13（v3 — 第二轮审查修复版）
+> **日期**：2026-06-13（v4 — 实施完成版）
 > **原型参考**：`.superpowers/brainstorm/chat-ui-design/content/m59-chat-ui-v7.html`
+> **实施状态**：Phase 1-5 已完成，aranea-review 审查通过（0 阻断 / 10 建议已修复）
 
 ---
 
@@ -969,3 +970,57 @@ ConversationView (页面)
 | ID | 描述 | 处理 | 状态 |
 |----|------|------|------|
 | R2-08 | `ToolActivity.status` 已包含 `blocked`/`cancelled`，与现有 `ToolSectionStatus` 一致，无需额外修改 | 确认一致 | ✅ 已确认 |
+
+---
+
+## 附录 C：实施记录（v4）
+
+> 实施日期：2026-06-13
+> 验证：pnpm build ✅ | pnpm lint ✅（0 errors）| aranea-review ✅（0 阻断）
+
+### C.1 新增文件清单
+
+| 文件 | 类型 | 说明 |
+|------|------|------|
+| `web/src/features/chat/activityTimelineTypes.ts` | 类型定义 | Activity、ConversationTurn、AgentWorkProcess、TeamPanel 等类型 |
+| `web/src/features/chat/composables/useConversationTimeline.ts` | Composable | AgentBlock[] → ConversationTurn[] 转换 |
+| `web/src/components/chat/ConversationTurn.vue` | 展示组件 | 对话轮次布局编排 |
+| `web/src/components/chat/UserMessageBubble.vue` | 展示组件 | 用户消息气泡 |
+| `web/src/components/chat/AgentWorkPanel.vue` | 展示组件 | Agent 工作面板（分支：ActivityTimeline / TeamPanel） |
+| `web/src/components/chat/ActivityTimeline.vue` | 展示组件 | 活动时间线列表 |
+| `web/src/components/chat/ThinkActivity.vue` | 展示组件 | 思考节点（card/compact 变体） |
+| `web/src/components/chat/ActActivity.vue` | 展示组件 | 工具节点（card/compact 变体） |
+| `web/src/components/chat/SayActivity.vue` | 展示组件 | 回复节点（card/compact 变体） |
+| `web/src/components/chat/NoticeActivity.vue` | 展示组件 | 通知节点（degradation/info） |
+| `web/src/components/chat/DelegateActivity.vue` | 展示组件 | 委派节点（递归 AgentWorkPanel） |
+| `web/src/components/chat/TeamPanel.vue` | 展示组件 | Team 统一面板容器 |
+| `web/src/components/chat/TaskBoardSection.vue` | 展示组件 | 任务拆解看板 |
+| `web/src/components/chat/DagSection.vue` | 展示组件 | DAG 依赖关系 |
+| `web/src/components/chat/TeamProgressSection.vue` | 展示组件 | 团队进度卡片 |
+
+### C.2 修改文件清单
+
+| 文件 | 修改内容 |
+|------|---------|
+| `web/src/components/chat/ChatMessageList.vue` | 添加 `useConversationTimeline` + feature flag 分支渲染 `ConversationTurn` |
+
+### C.3 aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| 数据流合规 | 0 | 1 | 0 | 1 |
+| 组件分层 | 0 | 2 | 1 | 3 |
+| 业务逻辑归属 | 0 | 1 | 0 | 1 |
+| 聊天消息分组 | 0 | 0 | 0 | 0 |
+| UX 主题 | 0 | 4 | 0 | 4 |
+| 编程规范 | 0 | 2 | 1 | 3 |
+| **合计** | **0** | **10** | **2** | **12** |
+
+全部 10 个建议项和 2 个提示项已修复。
+
+### C.4 关键设计决策
+
+1. **渐进式迁移**：新组件通过 feature flag（`useActivityTimeline`）切换，不删除旧渲染路径，可随时回退
+2. **类型转换层**：`useConversationTimeline` 内部调用 `useAgentBlocks` 并转换输出，复用现有数据构建逻辑
+3. **AgentWorkProcess.status 简化**：6 种 AgentBlockStatus 映射为 3 种（tool_running/tool_blocked→running, partial_failure→completed）
+4. **TeamPanel 暂无数据源**：当前 `AgentWorkProcess.panel` 为 undefined，Team 面板组件已创建但尚未接入真实数据

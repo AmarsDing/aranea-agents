@@ -18,12 +18,15 @@ var ErrFirstByteTimeout = errors.New("first byte timeout")
 
 // DisplayMarkdownFromStream returns assistant-visible text from a consumed event stream.
 // Reasoning-only replies are included when main content is empty (aligned with Team turns).
-func DisplayMarkdownFromStream(result EventStreamResult) string {
+// The second return value indicates whether the display text is a reasoning fallback
+// (i.e. the LLM produced only reasoning with no separate reply content).
+func DisplayMarkdownFromStream(result EventStreamResult) (string, bool) {
 	reply := strings.TrimSpace(result.Reply.String())
 	if reply != "" {
-		return reply
+		return reply, false
 	}
-	return strings.TrimSpace(result.Reasoning.String())
+	reasoning := strings.TrimSpace(result.Reasoning.String())
+	return reasoning, reasoning != ""
 }
 
 // EstimateTokensIfMissing fills token counts from text when the model omitted usage.
