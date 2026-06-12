@@ -9,7 +9,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
-	"aranea-agents/pkg/loggateway"
 )
 
 // l4EntityRepo implements biz.L4EntityStore + biz.L4EvolutionStore using direct Raw SQL.

@@ -18,6 +18,7 @@ const (
 	TeamStatusCancelled   = "cancelled"   // Was cancelled
 	TeamStatusInterrupted = "interrupted" // Abnormally interrupted, recoverable
 	TeamStatusArchived    = "archived"    // Auto-archived after completion
+	TeamStatusDeleted     = "deleted"     // Soft-deleted (only in data layer, not a valid state machine state)
 
 	// TeamStatusBlocked is a virtual status used only in cascade blocked results
 	// to indicate a team was blocked by a failed dependency. It is never persisted.

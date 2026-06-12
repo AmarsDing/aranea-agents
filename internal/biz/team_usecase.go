@@ -484,15 +484,7 @@ func (u *TeamUsecase) RetryTeam(ctx context.Context, id string) (Team, error) {
 	if err != nil {
 		return Team{}, err
 	}
-	current, err := u.reader.GetTeamByID(ctx, id)
-	if err != nil {
-		return Team{}, err
-	}
-	if current.Status != TeamStatusFailed && current.Status != TeamStatusCancelled {
-		return Team{}, apierror.BadRequest("TEAM", "only failed or cancelled teams can be retried")
-	}
-	current.Status = TeamStatusPending
-	return u.writer.UpdateTeam(ctx, current)
+	return u.TransitionStatus(ctx, id, TeamStatusPending)
 }
 
 // ResumeTeamIfInterrupted transitions an interrupted team to running.
@@ -583,6 +575,9 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 	current, err := u.reader.GetTeamByID(ctx, id)
 	if err != nil {
 		return Team{}, err
+	}
+	if current.Readonly {
+		return Team{}, apierror.BadRequest("TEAM", "readonly teams cannot be duplicated")
 	}
 	dup := Team{
 		TeamKey:            current.TeamKey + "-copy-" + newAgentCatalogID(),

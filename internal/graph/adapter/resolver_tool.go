@@ -57,7 +57,7 @@ func (r *CatalogToolResolver) ResolveTools(ctx context.Context, toolNames []stri
 
 func callableFromBizTool(ctx context.Context, row biz.Tool, lg loggateway.Logger) (trpctool.Tool, string, error) {
 	merged := mergeToolConfigJSON(row.ConfigJSON, row.DefaultConfigJSON, lg)
-	asm, ok := testexec.AssemblyForCatalogKey(row.Key, merged, nil, lg)
+	asm, ok, _ := testexec.AssemblyForCatalogKey(row.Key, merged, nil, lg)
 	if !ok {
 		spec, ok := openAPISpecFromBizTool(row, lg)
 		if !ok {

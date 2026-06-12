@@ -284,7 +284,7 @@ func (r *TeamRepo) DeleteTeam(ctx context.Context, id string) error {
 		now := nowRFC3339()
 		if _, err := r.data.RW().Write(txCtx).Team.UpdateOneID(id).
 			SetDeletedAt(now).
-			SetStatus("deleted").
+			SetStatus(biz.TeamStatusDeleted).
 			SetUpdatedAt(now).
 			Save(txCtx); err != nil {
 			return err

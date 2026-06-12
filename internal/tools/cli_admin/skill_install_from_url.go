@@ -31,7 +31,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "url is required")
 		}
 		if err := validateRepoURL(input.URL); err != nil {
-			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid url: %v", err)
+			return skillInstallOutput{}, err
 		}
 		manifest := &pkginstall.Manifest{
 			Version: 1,
@@ -49,7 +49,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 			},
 		}
 		if err := pkginstall.ValidateManifest(manifest); err != nil {
-			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid skill install manifest: %v", err)
+			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("invalid skill install manifest: %v", err))
 		}
 
 		var stepLog []string

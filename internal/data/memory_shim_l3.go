@@ -622,7 +622,7 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	// INSERT + read-back in a single transaction to ensure read-your-writes
 	// consistency under read-write separation.
 	var result []byte
-	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO memory_facts (
 		id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 		statement, statement_normalized, fingerprint, details_markdown,

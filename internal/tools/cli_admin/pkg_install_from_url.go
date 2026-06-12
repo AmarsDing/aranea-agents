@@ -37,22 +37,22 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "url is required")
 		}
 		if err := validateRepoURL(input.URL); err != nil {
-			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid url: %v", err)
+			return pkgInstallOutput{}, err
 		}
 
 		pkgDir, cleanup, err := pkginstall.FetchFromURL(input.URL, input.Ref, true)
 		if err != nil {
-			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", "fetch package: %v", err)
+			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", fmt.Sprintf("fetch package: %v", err))
 		}
 		defer cleanup()
 
 		// Load and validate manifest.
 		manifest, err := pkginstall.LoadManifestFromDir(pkgDir)
 		if err != nil {
-			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", "load manifest: %v", err)
+			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", fmt.Sprintf("load manifest: %v", err))
 		}
 		if err := pkginstall.ValidateManifest(manifest); err != nil {
-			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid manifest: %v", err)
+			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("invalid manifest: %v", err))
 		}
 
 		// Apply decision to skills.
@@ -123,7 +123,7 @@ func validateRepoURL(raw string) error {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return kerrors.BadRequest("CLI_ADMIN", "parse url: %v", err)
+		return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("parse url: %v", err))
 	}
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
@@ -133,7 +133,7 @@ func validateRepoURL(raw string) error {
 			return kerrors.BadRequest("CLI_ADMIN", "host is empty")
 		}
 		if err := outboundguard.ValidatePublicHost(host); err != nil {
-			return kerrors.BadRequest("CLI_ADMIN", "host %q: %v", host, err)
+			return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("host %q: %v", host, err))
 		}
 		return nil
 	case "http":
@@ -148,14 +148,14 @@ func validateRepoURL(raw string) error {
 			host = host[:slashIdx]
 		}
 		if host == "" {
-			return kerrors.BadRequest("CLI_ADMIN", "cannot determine host from URL %q", raw)
+			return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("cannot determine host from URL %q", raw))
 		}
 		if err := outboundguard.ValidatePublicHost(host); err != nil {
-			return kerrors.BadRequest("CLI_ADMIN", "host %q: %v", host, err)
+			return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("host %q: %v", host, err))
 		}
 		return nil
 	default:
-		return kerrors.BadRequest("CLI_ADMIN", "scheme %q is not allowed; only https and SCP-style Git URLs are permitted", u.Scheme)
+		return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("scheme %q is not allowed; only https and SCP-style Git URLs are permitted", u.Scheme))
 	}
 }
 

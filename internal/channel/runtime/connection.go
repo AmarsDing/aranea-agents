@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"strings"
 	"sync"
 	"time"
 )

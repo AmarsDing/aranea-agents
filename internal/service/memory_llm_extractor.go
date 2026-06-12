@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -114,7 +113,7 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 	}
 
 	if len(proposals) == 0 && jsonParseErr != nil {
-		return nil, fmt.Errorf("LLM returned unparseable response: %w", biz.ErrLLMExtractionFailed)
+		return nil, biz.ErrLLMExtractionFailed
 	}
 
 	return proposals, nil

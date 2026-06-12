@@ -86,6 +86,19 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 	return biz.EventStoreListResult{Items: items, Total: total}, nil
 }
 
+func (r *eventStoreRepo) ExistsByID(ctx context.Context, id string) bool {
+	if r == nil || r.data == nil {
+		return false
+	}
+	n, err := r.data.RW().Read(ctx).EventStore.Query().
+		Where(eventstore.IDEQ(id)).
+		Count(ctx)
+	if err != nil {
+		return false
+	}
+	return n > 0
+}
+
 func (r *eventStoreRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	if r == nil || r.data == nil {
 		return 0, apierror.Internal("EVENT_STORE", "database not configured")

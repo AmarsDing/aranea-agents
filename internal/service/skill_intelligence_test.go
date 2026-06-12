@@ -70,7 +70,7 @@ func (s *stubExperienceReportReader) ListFiltered(_ context.Context, skillID str
 // newTestSkillIntelligenceService creates a SkillIntelligenceService with a
 // real Usecase backed by stub repos.
 func newTestSkillIntelligenceService(reader *stubExperienceReportReader) *SkillIntelligenceService {
-	uc := biz.NewSkillIntelligenceUsecase(reader, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewSkillIntelligenceUsecase(reader, nil, nil, nil, loggateway.NewNoop())
 	return NewSkillIntelligenceService(uc, loggateway.NewNoop())
 }
 

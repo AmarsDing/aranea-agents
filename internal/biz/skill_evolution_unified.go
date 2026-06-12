@@ -55,24 +55,69 @@ type UnifiedEvolutionSuggestion struct {
 	AppliedAt  *time.Time
 }
 
-// UnifiedEvolutionReader 统一进化建议的读接口
-type UnifiedEvolutionReader interface {
+// UnifiedEvolutionCheckReader provides pending-check and latest-lookup queries.
+// Stability:evolving
+type UnifiedEvolutionCheckReader interface {
 	HasPendingForTarget(ctx context.Context, targetType string, targetID string) (bool, error)
 	GetLatestByTarget(ctx context.Context, targetType string, targetID string) (*UnifiedEvolutionSuggestion, error)
 	GetLatestByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string) (*UnifiedEvolutionSuggestion, error)
-	ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
-	CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error)
-	GetByID(ctx context.Context, id string) (*UnifiedEvolutionSuggestion, error)
 }
 
-// UnifiedEvolutionWriter 统一进化建议的写接口
-type UnifiedEvolutionWriter interface {
+// UnifiedEvolutionQueryReader provides by-ID, list, and count queries.
+// Stability:evolving
+type UnifiedEvolutionQueryReader interface {
+	GetByID(ctx context.Context, id string) (*UnifiedEvolutionSuggestion, error)
+	ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
+	CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error)
+}
+
+// UnifiedEvolutionMutationWriter provides create and status/draft/lifecycle/sandbox mutations.
+// Stability:evolving
+type UnifiedEvolutionMutationWriter interface {
 	Create(ctx context.Context, suggestion UnifiedEvolutionSuggestion) error
 	UpdateStatus(ctx context.Context, id string, status string, actor string, reason string) error
 	UpdateDraftBody(ctx context.Context, id string, draftBody string) error
 	UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error
 	UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
+}
+
+// UnifiedEvolutionExpirationWriter provides expiration of old pending suggestions.
+// Stability:evolving
+type UnifiedEvolutionExpirationWriter interface {
 	ExpireOlderThan(ctx context.Context, cutoff time.Time) (int, error)
+}
+
+// UnifiedEvolutionReader 统一进化建议的读接口 (composition of sub-interfaces).
+type UnifiedEvolutionReader interface {
+	UnifiedEvolutionCheckReader
+	UnifiedEvolutionQueryReader
+}
+
+// UnifiedEvolutionWriter 统一进化建议的写接口 (composition of sub-interfaces).
+type UnifiedEvolutionWriter interface {
+	UnifiedEvolutionMutationWriter
+	UnifiedEvolutionExpirationWriter
+}
+
+// EvolutionStoreBridge abstracts unified+legacy evolution suggestion storage access.
+// It combines UnifiedEvolutionReader/Writer with the legacy SkillEvolutionSuggestion
+// reader/writer into a single dependency to reduce field count on SkillIntelligenceUsecase.
+// Stability:evolving
+type EvolutionStoreBridge interface {
+	UnifiedEvolutionReader
+	UnifiedEvolutionWriter
+
+	// Legacy access
+	GetEvolutionSuggestion(ctx context.Context, id string) (*SkillEvolutionSuggestion, error)
+	ListEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus, limit, offset int) ([]SkillEvolutionSuggestion, error)
+	CountEvolutionSuggestions(ctx context.Context, skillID string, status EvolutionSuggestionStatus) (int, error)
+	CreateSuggestion(ctx context.Context, s SkillEvolutionSuggestion) error
+	UpdateSuggestionStatus(ctx context.Context, id string, status EvolutionSuggestionStatus, resolvedBy string, reason string) error
+	UpdateSuggestionDraftBody(ctx context.Context, id string, draftBody string) error
+	UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus EvolutionLifecycleStatus) error
+	UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error
+	ListPendingSuggestions(ctx context.Context, limit, offset int) ([]SkillEvolutionSuggestion, error)
+	GetLatestSuggestionBySkill(ctx context.Context, skillID string) (*SkillEvolutionSuggestion, error)
 }
 
 // EvolutionTrigger 进化触发器接口

@@ -43,6 +43,14 @@ export function useEvolutionSuggestionListPage() {
   const curatorDialogOpen = ref(false);
   const triggeringCurator = ref(false);
 
+  const detailDialogOpen = ref(false);
+  const detailTarget = ref<SkillEvolutionView | null>(null);
+
+  function openDetailDialog(row: SkillEvolutionView) {
+    detailTarget.value = row;
+    detailDialogOpen.value = true;
+  }
+
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
   async function loadRows() {
@@ -158,6 +166,9 @@ export function useEvolutionSuggestionListPage() {
     curatorSkillId,
     curatorDialogOpen,
     triggeringCurator,
+    detailDialogOpen,
+    detailTarget,
+    openDetailDialog,
     loadRows,
     approveSuggestion,
     openRejectDialog,

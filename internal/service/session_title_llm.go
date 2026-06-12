@@ -84,6 +84,9 @@ func (g *LLMSessionTitleGenerator) resolveModel(ctx context.Context) (trpcmodel.
 		return nil, apierror.NotFound("SESSION", "no models in catalog")
 	}
 
-	pm := biz.PickTitleModel(models)
+	pm, ok := biz.PickTitleModel(models)
+	if !ok {
+		return nil, apierror.NotFound("SESSION", "no models in catalog")
+	}
 	return provider.TRPCModelForProviderModel(ctx, g.catalog, g.rt, pm.Provider, pm.Model, g.lg)
 }

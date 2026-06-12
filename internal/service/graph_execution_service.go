@@ -122,7 +122,7 @@ func (s *GraphService) CancelGraphExecution(ctx context.Context, req *graphv1.Ca
 		return nil, err
 	}
 	exec, _ := s.uc.GetExecution(ctx, req.ExecutionId)
-	status := string(biz.GraphExecStateCancelled)
+	status := string(biz.GraphExecCancelled)
 	if exec != nil {
 		status = exec.Status
 	}

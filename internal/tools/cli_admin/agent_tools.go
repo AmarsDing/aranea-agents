@@ -3,7 +3,6 @@ package cli_admin
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"aranea-agents/pkg/apierror"
 	kerrors "github.com/go-kratos/kratos/v2/errors"

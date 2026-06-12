@@ -231,7 +231,13 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 	}
 	out := &v1.ListL1FieldsResponse{}
 	for _, raw := range rows {
-		m, _ := jsonutil.ParseMap(raw)
+		m, perr := jsonutil.ParseMap(raw)
+		if perr != nil {
+			s.lg.Warn("ListL1Fields: failed to parse field row",
+				loggateway.StepID("memory.parse_fail"),
+				loggateway.Err(perr))
+			continue
+		}
 		out.Items = append(out.Items, &v1.L1Field{
 			Id:            jsonutil.IfaceStr(m, "id"),
 			TaskId:        jsonutil.IfaceStr(m, "task_id"),

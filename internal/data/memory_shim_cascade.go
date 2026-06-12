@@ -307,6 +307,9 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		fmt.Sprintf("%s WHERE id IN (%s)", sqlFactSelect, strings.Join(placeholders, ",")),
 		ids...)
 	if err != nil {
+		r.data.lg.Warn("ReplaceNameInAgentFacts: read-back failed after successful update",
+			loggateway.StepID("memory.cascade_readback_fail"),
+			loggateway.Err(err))
 		return nil, len(updates), nil
 	}
 	defer readRows.Close()
@@ -512,6 +515,9 @@ func (r *cascadeRepo) GetCascadeSagaSteps(ctx context.Context, proposalID string
 		var s biz.CascadeSagaStep
 		var isCrit int
 		if err := rows.Scan(&s.ID, &s.ProposalID, &s.StepIndex, &s.StepName, &s.State, &isCrit, &s.Attempts, &s.StartedAt, &s.FinishedAt, &s.PayloadJSON, &s.ResultJSON, &s.Error); err != nil {
+			r.data.lg.Warn("GetCascadeSagaSteps: scan row failed",
+				loggateway.StepID("memory.saga_step_scan_fail"),
+				loggateway.Err(err))
 			continue
 		}
 		s.IsCritical = isCrit != 0

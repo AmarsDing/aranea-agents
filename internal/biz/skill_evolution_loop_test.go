@@ -431,7 +431,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions(t *testing.T) {
 
 	sugReader.suggestions = []SkillEvolutionSuggestion{oldSuggestion, recentSuggestion}
 
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -460,7 +460,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
 		},
 	}
 
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -488,7 +488,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_OnlyPendingExpired(t *testing.T)
 		},
 	}
 
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -1016,7 +1016,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
 	}
 	sugWriter := &mockSkillEvolutionSuggestionWriter{}
 
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
 
 	_, err := uc.ExpirePendingSuggestions(context.Background())
 	if err == nil {
@@ -1027,7 +1027,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
 // ── Test: Expiration - Nil reader/writer (no-op) ────────────────────────────────
 
 func TestEvolutionLoop_ExpirePendingSuggestions_NilAccessors(t *testing.T) {
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {
@@ -1052,7 +1052,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_PartialUpdateFailure(t *testing.
 		{ID: "sug-old-2", SkillID: "skill-2", Status: EvoSuggestionPending, LifecycleStatus: EvoLifecycleDraft, CreatedAt: oldTime},
 	}
 
-	uc := NewSkillIntelligenceUsecase(nil, nil, nil, nil, sugReader, sugWriter, nil, loggateway.NewNoop())
+	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
 
 	expired, err := uc.ExpirePendingSuggestions(context.Background())
 	if err != nil {

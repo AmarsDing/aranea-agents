@@ -343,7 +343,7 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 		OnConflictColumns(platformchanneldelivery.FieldIdempotencyKey).
 		UpdateNewValues()
 
-	e, err := b.Save(ctx)
+	e, err := b.ID(ctx)
 	if err != nil {
 		// Check if it's a conflict error — load the existing row.
 		existing, findErr := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
@@ -354,7 +354,12 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 		}
 		return deliveryEntToBiz(existing), false, nil
 	}
-	return deliveryEntToBiz(e), true, nil
+	// Load the upserted row by ID to return full entity.
+	upserted, findErr := r.data.RW().Read(ctx).PlatformChannelDelivery.Get(ctx, e)
+	if findErr != nil {
+		return biz.ChannelDelivery{}, true, nil
+	}
+	return deliveryEntToBiz(upserted), true, nil
 }
 
 func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]biz.ChannelDelivery, error) {

@@ -86,7 +86,7 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 	// Atomic upsert: when idempotency_key is set, use AddDeliveryIfNotExists
 	// to prevent duplicate deliveries under concurrent requests.
 	if strings.TrimSpace(payload.IdempotencyKey) != "" {
-		result, inserted, err := u.deliveries.AddDeliveryIfNotExists(ctx, delivery)
+		result, _, err := u.deliveries.AddDeliveryIfNotExists(ctx, delivery)
 		if err != nil {
 			return ChannelDelivery{}, err
 		}

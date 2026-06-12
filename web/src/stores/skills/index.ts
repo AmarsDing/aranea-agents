@@ -14,6 +14,7 @@ import {
   getSkillFilesystemHealth,
   getSkill,
   getSkillHealth,
+  updateSkillFile as updateSkillFileApi,
 } from '../../features/skills/api';
 import type {
   Skill,
@@ -24,6 +25,7 @@ import type {
   SkillImportDecision,
   SkillImportApplyResult,
   SkillRefineResult,
+  SkillFileContent,
   PaginatedResponse,
 } from '../../features/skills/types';
 
@@ -103,6 +105,10 @@ export const useSkillsStore = defineStore('skills', () => {
     return refineSkillConflictGroupApi(jobId, groupId, payload);
   }
 
+  async function updateSkillFile(id: string, path: string, content: string): Promise<SkillFileContent> {
+    return updateSkillFileApi(id, path, content);
+  }
+
   return {
     skills,
     total,
@@ -120,5 +126,6 @@ export const useSkillsStore = defineStore('skills', () => {
     getSkillImportJob,
     refineSkillConflictGroup,
     applySkillImport,
+    updateSkillFile,
   };
 });

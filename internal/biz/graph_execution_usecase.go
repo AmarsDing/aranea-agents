@@ -295,7 +295,8 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		return nil, err
 	}
 	exec.execMu.Lock()
-	if !ValidateGraphExecTransition(exec.Status, GraphExecStatusRunning) {
+	sm := NewGraphExecutionStateMachine()
+	if _, err := sm.Transition(ParseGraphExecutionState(exec.Status), GraphExecEventResume); err != nil {
 		exec.execMu.Unlock()
 		return nil, ErrGraphInvalidStatus
 	}
@@ -311,7 +312,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	oldRuntime := exec.runtime
 	// Transition status immediately to block concurrent Resume calls.
 	// If BuildAndResume fails below, we roll back to WaitingHuman.
-	exec.Status = GraphExecStatusRunning
+	exec.Status = string(GraphExecRunning)
 	exec.ctx = context.WithoutCancel(ctx)
 	exec.execMu.Unlock()
 
@@ -325,7 +326,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	if err != nil {
 		// Roll back status on failure.
 		exec.execMu.Lock()
-		exec.Status = GraphExecStatusWaitingHuman
+		exec.Status = string(GraphExecWaitingHuman)
 		exec.execMu.Unlock()
 		return nil, err
 	}
@@ -334,7 +335,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	if err != nil {
 		// Roll back status on failure.
 		exec.execMu.Lock()
-		exec.Status = GraphExecStatusWaitingHuman
+		exec.Status = string(GraphExecWaitingHuman)
 		exec.execMu.Unlock()
 		e := apierror.Internal("GRAPH", "graph resume failed")
 		e.Cause = err
@@ -453,8 +454,8 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	// If the execution was evicted (GC cancelled the runtime), the channel closes
 	// prematurely and Status may still be "running" — we must not override that
 	// to "completed" since the execution was actually cancelled.
-	if exec.Status == GraphExecStatusRunning && !exec.evicted {
-		exec.Status = GraphExecStatusCompleted
+	if exec.Status == string(GraphExecRunning) && !exec.evicted {
+		exec.Status = string(GraphExecCompleted)
 		now := time.Now()
 		exec.FinishedAt = &now
 	}

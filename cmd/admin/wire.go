@@ -1248,7 +1248,8 @@ func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *
 	analyzer := &skillIntelligenceRCAAdapter{inner: rca}
 	_ = analyzer // analyzer is used by reporter which is now Wire-injected
 	reporter.SetUnanalyzedReader(unanalyzedReader)
-	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, suggestionRepo, suggestionRepo, unifiedRepo, unifiedRepo, aggregator, nil, lg,
+	bridge := data.NewEvolutionStoreBridge(unifiedRepo, suggestionRepo, lg)
+	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, bridge, aggregator, lg,
 		biz.SkillIntelligenceConfig{
 			UnanalyzedReader: unanalyzedReader,
 		},

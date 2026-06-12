@@ -3,7 +3,7 @@ import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
 // TECH-DEBT(FD5): file ops bypass store, acceptable for single-use file operations
-import { listSkillFiles, readSkillFile, updateSkillFile } from './api';
+import { listSkillFiles, readSkillFile } from './api';
 
 export function useSkillsPage() {
   const $q = useQuasar();
@@ -221,7 +221,7 @@ export function useSkillsPage() {
     applySkillImport: skillsStore.applySkillImport,
     listSkillFiles,
     readSkillFile,
-    updateSkillFile,
+    updateSkillFile: skillsStore.updateSkillFile,
     notify,
     confirm,
   };

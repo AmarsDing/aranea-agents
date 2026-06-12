@@ -580,14 +580,18 @@ const healthCheckPoolSize = 5
 // PickTitleModel selects a lightweight model from the list suitable for
 // generating session titles. It prefers models with "mini", "flash",
 // "lite", or "small" in their name; otherwise falls back to the first model.
-func PickTitleModel(models []ProviderModel) ProviderModel {
+// Returns false when the list is empty.
+func PickTitleModel(models []ProviderModel) (ProviderModel, bool) {
+	if len(models) == 0 {
+		return ProviderModel{}, false
+	}
 	for _, m := range models {
 		name := strings.ToLower(m.Model)
 		if strings.Contains(name, "mini") || strings.Contains(name, "flash") || strings.Contains(name, "lite") || strings.Contains(name, "small") {
-			return m
+			return m, true
 		}
 	}
-	return models[0]
+	return models[0], true
 }
 
 func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {

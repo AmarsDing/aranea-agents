@@ -262,8 +262,6 @@ import {
 } from '../components/skills/evolutionSuggestionTableUi';
 import { useEvolutionSuggestionListPage, statusOptions, targetTypeOptions } from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
 import { formatDate } from '../features/skillEvolutionSuggestions/formatUtils';
-import type { SkillEvolutionView } from '../features/skills/types';
-import { ref } from 'vue';
 
 const {
   targetType,
@@ -284,6 +282,9 @@ const {
   curatorSkillId,
   curatorDialogOpen,
   triggeringCurator,
+  detailDialogOpen,
+  detailTarget,
+  openDetailDialog,
   loadRows,
   approveSuggestion,
   openRejectDialog,
@@ -294,12 +295,4 @@ const {
 } = useEvolutionSuggestionListPage();
 
 const columns = EVOLUTION_SUGGESTION_TABLE_COLUMNS;
-
-const detailDialogOpen = ref(false);
-const detailTarget = ref<SkillEvolutionView | null>(null);
-
-function openDetailDialog(row: SkillEvolutionView) {
-  detailTarget.value = row;
-  detailDialogOpen.value = true;
-}
 </script>
