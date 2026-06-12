@@ -132,6 +132,9 @@ func NormalizeTokenUsageStatus(status string) string {
 	}
 }
 
+// TECH-DEBT(COG): struct字段=23, 上限=15 — 下一迭代拆分：
+//   - TeamOrgMeta: DepartmentID, DeptLeadAgentID, Deliverables, InputContract, CrossDeptMemberIDs
+//   - TeamOrchestrationMeta: LinkedGraphID, SpiritSessionID, TaskDescription, AutoCreated, DagNodeID, DependsOn, ParallelConfigJSON, Topology, Readonly, InterruptReason
 type Team struct {
 	ID                  string
 	TeamKey             string

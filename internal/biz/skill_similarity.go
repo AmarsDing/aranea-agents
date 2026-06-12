@@ -7,6 +7,11 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// SkillSimilarityComparer compares two skills and returns a similarity result.
+type SkillSimilarityComparer interface {
+	Compare(ctx context.Context, a, b SkillDedupCandidate) (*SimilarityResult, error)
+}
+
 // SimilarityDimension 相似度维度
 type SimilarityDimension string
 
@@ -160,6 +165,9 @@ func setJaccard(a, b []string) float64 {
 		setB[strings.ToLower(s)] = true
 	}
 	if len(setA) == 0 && len(setB) == 0 {
+		return 1.0
+	}
+	if len(setA) == 0 || len(setB) == 0 {
 		return 0.0
 	}
 	intersection := 0

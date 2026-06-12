@@ -79,3 +79,11 @@ const (
 	EvoTrigger7dMinInvocations  = 5   // Minimum invocations in 7d window for significance
 	EvoTriggerSameTagThreshold  = 5   // Same failure tag >= 5 times triggers suggestion
 )
+
+// Pre-computed duration constants derived from EvoExpirationDays and EvoTriggerCooldownHours.
+// These replace inline `EvoExpirationDays * 24 * time.Hour` and
+// `EvoTriggerCooldownHours * time.Hour` expressions to eliminate magic-number arithmetic.
+var (
+	evoExpirationDuration = time.Duration(EvoExpirationDays) * 24 * time.Hour
+	evoCooldownDuration   = time.Duration(EvoTriggerCooldownHours) * time.Hour
+)

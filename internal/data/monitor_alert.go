@@ -261,35 +261,53 @@ WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
 }
 
 func (r *monitorRepo) LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error) {
-	rows, qErr := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
+	// Count total matching rows first
+	var n int
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
+SELECT COUNT(*)
+FROM monitor_events
+WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
+  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL
+  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) > 0`, []any{sinceRFC3339}, &n); err != nil {
+		return 0, 0, 0, err
+	}
+	if n == 0 {
+		return 0, 0, 0, nil
+	}
+
+	// Calculate percentiles using individual queries with OFFSET
+	// This avoids loading all rows into memory
+	p50, err = r.queryPercentile(ctx, sinceRFC3339, n, 50)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	p95, err = r.queryPercentile(ctx, sinceRFC3339, n, 95)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	p99, err = r.queryPercentile(ctx, sinceRFC3339, n, 99)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return p50, p95, p99, nil
+}
+
+// queryPercentile fetches a single percentile value using OFFSET-based lookup.
+func (r *monitorRepo) queryPercentile(ctx context.Context, sinceRFC3339 string, total, percentile int) (float64, error) {
+	idx := percentileIndex(total, percentile)
+	var d float64
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
 SELECT CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL) AS dur
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
   AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL
+  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) > 0
 ORDER BY dur ASC
-LIMIT 10000`, sinceRFC3339)
-	if qErr != nil {
-		return 0, 0, 0, qErr
+LIMIT 1 OFFSET ?`, []any{sinceRFC3339, idx}, &d)
+	if err != nil {
+		return 0, err
 	}
-	defer rows.Close()
-	var durations []float64
-	for rows.Next() {
-		var d float64
-		if scanErr := rows.Scan(&d); scanErr != nil {
-			continue
-		}
-		if d > 0 {
-			durations = append(durations, d)
-		}
-	}
-	n := len(durations)
-	if n == 0 {
-		return 0, 0, 0, nil
-	}
-	p50 = durations[percentileIndex(n, 50)]
-	p95 = durations[percentileIndex(n, 95)]
-	p99 = durations[percentileIndex(n, 99)]
-	return p50, p95, p99, nil
+	return d, nil
 }
 
 func percentileIndex(n, percentile int) int {

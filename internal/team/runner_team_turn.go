@@ -175,9 +175,11 @@ func (r *Runner) prepareUserTurnOptions(
 	return
 }
 
+// finalizeTeamRun persists the terminal state of a team run.
+// Returns the updated TeamRun value (no pointer side-effects on the caller).
 func (r *Runner) finalizeTeamRun(
 	ctx context.Context,
-	run *biz.TeamRun,
+	run biz.TeamRun,
 	teamRow biz.Team,
 	ar anchorResolution,
 	assistantMsg biz.ChatMessage,
@@ -186,30 +188,31 @@ func (r *Runner) finalizeTeamRun(
 	graphExecID string,
 	t0 time.Time,
 	teamEmitter *event.TraceEmitter,
-) {
+) biz.TeamRun {
 	run.Status = biz.TeamRunStatusSuccess
 	run.TokenIn = promptTok
 	run.TokenOut = completionTok
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 	run.FinishedAt = agent.RFC3339Now()
-	if err := r.runWriter.UpdateTeamRun(ctx, *run); err != nil {
+	if err := r.runWriter.UpdateTeamRun(ctx, run); err != nil {
 		r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
 			loggateway.StepID("team.run.finish_update_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
 	}
 
-	r.recordTeamRunUsage(ctx, *run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)
+	r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)
 
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))
 	}
 	if r.td.Pipeline.Bus != nil {
-		cp := *run
+		cp := run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", run.SessionID)
 		env.TeamID = teamRow.ID
 		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
 		r.td.Pipeline.Bus.Publish(ctx, env)
-		r.publishTeamRunSummary(ctx, *run)
+		r.publishTeamRunSummary(ctx, run)
 	}
+	return run
 }

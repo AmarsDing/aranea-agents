@@ -104,6 +104,21 @@ func (r *UnifiedEvolutionRepo) GetLatestByTarget(ctx context.Context, targetType
 	return s, nil
 }
 
+func (r *UnifiedEvolutionRepo) GetLatestByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string) (*biz.UnifiedEvolutionSuggestion, error) {
+	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	             status, priority, draft_body, draft_name, merge_target_id,
+	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
+	             created_at, approved_by, applied_at
+	      FROM unified_evolution_suggestions
+	      WHERE target_type = ? AND target_id = ? AND action_type = ?
+	      ORDER BY created_at DESC LIMIT 1`
+	s, err := r.scanOne(ctx, q, targetType, targetID, actionType)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
 func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	if limit <= 0 {
 		limit = 50

@@ -13,7 +13,8 @@ import (
 type MergeStrategy string
 
 const (
-	MergeStrategyAIFuse     MergeStrategy = "ai_fuse"     // AI 自动融合
+	MergeStrategyAIFuse     MergeStrategy = "ai_fuse"     // Deprecated: Use MergeStrategyRuleFuse
+	MergeStrategyRuleFuse   MergeStrategy = "rule_fuse"   // Rule-based automatic fusion
 	MergeStrategyManualPick MergeStrategy = "manual_pick" // 人工选择保留哪个
 	MergeStrategyAppend     MergeStrategy = "append"      // 追加源内容到目标末尾
 )
@@ -118,9 +119,9 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 	// Stage 1: 内容融合
 	var fused *FusedContent
 	switch req.Strategy {
-	case MergeStrategyAIFuse:
+	case MergeStrategyAIFuse, MergeStrategyRuleFuse:
 		if uc.fuser == nil {
-			return nil, apierror.BadRequest("SKILL_MERGE", "AI fusion not available, use manual_pick or append strategy")
+			return nil, apierror.BadRequest("SKILL_MERGE", "fusion not available, use manual_pick or append strategy")
 		}
 		fused, err = uc.fuser.Fuse(ctx, *target, *source)
 		if err != nil {
@@ -136,7 +137,7 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 		}
 	case MergeStrategyAppend:
 		fused = &FusedContent{
-			Body: target.Body + "\n\n---\n\n# Merged from: " + source.Name + "\n\n" + source.Body,
+			Body: appendWithDedup(target.Body, source.Body, source.Name, uc.lg),
 			Tags: mergeStringSets(target.Tags, source.Tags),
 		}
 	default:
@@ -204,4 +205,38 @@ func formatGateFailures(result *GateVerificationResult) string {
 		}
 	}
 	return strings.Join(failures, "; ")
+}
+
+// appendWithDedup appends source body to target body, skipping sections that
+// already exist in the target (based on ## heading deduplication).
+func appendWithDedup(targetBody, sourceBody, sourceName string, lg loggateway.Logger) string {
+	targetHeadings := extractSectionHeadings(targetBody)
+	sourceSections := extractSections(sourceBody)
+
+	var b strings.Builder
+	b.WriteString(targetBody)
+	b.WriteString("\n\n---\n\n# Merged from: ")
+	b.WriteString(sourceName)
+	b.WriteString("\n")
+
+	skippedCount := 0
+	for heading, content := range sourceSections {
+		if targetHeadings[heading] {
+			skippedCount++
+			lg.Debug("skill_merge: skipping duplicate section in append",
+				loggateway.StepID("skill_merge.append_dedup"),
+				loggateway.Str("heading", heading))
+			continue
+		}
+		b.WriteString("\n")
+		b.WriteString(content)
+	}
+
+	if skippedCount > 0 {
+		lg.Info("skill_merge: append dedup skipped duplicate sections",
+			loggateway.StepID("skill_merge.append_dedup"),
+			loggateway.Int("skipped_count", skippedCount))
+	}
+
+	return b.String()
 }

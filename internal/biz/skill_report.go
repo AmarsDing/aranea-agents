@@ -112,6 +112,7 @@ func (uc *SkillReportUsecase) GenerateReport(ctx context.Context, inv SkillInvoc
 	// Persist the report.
 	if uc.writer != nil {
 		if err := uc.writer.Create(ctx, *report); err != nil {
+			// NOTE: Best-effort persistence — caller cannot determine if report was persisted.
 			uc.lg.Warn("GenerateReport: write failed",
 				loggateway.StepID("skill_intelligence.generate"),
 				loggateway.Str("skill_id", inv.SkillID),

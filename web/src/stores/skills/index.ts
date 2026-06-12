@@ -7,13 +7,10 @@ import {
   publishSkill,
   duplicateSkill,
   deleteSkill,
-  listSkillFiles,
-  readSkillFile,
-  updateSkillFile,
-  uploadSkillZip,
+  uploadSkillZip as uploadSkillZipApi,
   getSkillImportJob,
-  refineSkillConflictGroup,
-  applySkillImport,
+  refineSkillConflictGroup as refineSkillConflictGroupApi,
+  applySkillImport as applySkillImportApi,
   getSkillFilesystemHealth,
   getSkill,
   getSkillHealth,
@@ -24,6 +21,9 @@ import type {
   SkillRunQuery,
   SkillFilesystemHealth,
   SkillHealthMetric,
+  SkillImportDecision,
+  SkillImportApplyResult,
+  SkillRefineResult,
   PaginatedResponse,
 } from '../../features/skills/types';
 
@@ -83,6 +83,26 @@ export const useSkillsStore = defineStore('skills', () => {
     return getSkill(id);
   }
 
+  async function uploadSkillZip(file: File): Promise<{ job_id: string }> {
+    const result = await uploadSkillZipApi(file);
+    await loadSkills();
+    return result;
+  }
+
+  async function applySkillImport(jobId: string, decisions: SkillImportDecision[]): Promise<SkillImportApplyResult> {
+    const result = await applySkillImportApi(jobId, decisions);
+    await loadSkills();
+    return result;
+  }
+
+  async function refineSkillConflictGroup(
+    jobId: string,
+    groupId: string,
+    payload: { provider?: string; model?: string; instructions?: string },
+  ): Promise<SkillRefineResult> {
+    return refineSkillConflictGroupApi(jobId, groupId, payload);
+  }
+
   return {
     skills,
     total,
@@ -96,9 +116,6 @@ export const useSkillsStore = defineStore('skills', () => {
     loadFilesystemHealth,
     loadSkillHealth,
     loadSkill,
-    listSkillFiles,
-    readSkillFile,
-    updateSkillFile,
     uploadSkillZip,
     getSkillImportJob,
     refineSkillConflictGroup,

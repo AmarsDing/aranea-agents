@@ -213,15 +213,13 @@ func (s *SelfCheckScheduler) RunOnce(ctx context.Context) *SelfCheckReport {
 		}
 	}
 
-	// Update alert metric and cache unhealthy count
-	s.updateMetric(overallCtx, results)
+	// Cache unhealthy count for SelfCheckUnhealthyCountMetric.Evaluate (reads atomically)
 	unhealthyCount := 0
 	for _, r := range results {
 		if r.Status != types.SelfCheckStatusPassed {
 			unhealthyCount++
 		}
 	}
-	// Update cached count directly — we already hold s.mu from TryLock at the top of RunOnce.
 	s.lastUnhealthyCount.Store(int32(unhealthyCount))
 
 	s.lg.Info("SelfCheckScheduler: self-check completed",
@@ -263,24 +261,6 @@ func (s *SelfCheckScheduler) runChecker(ctx context.Context, checker SelfChecker
 			Message:   "checker timed out",
 			Details:   map[string]any{"timeout": SelfCheckTimeout.String()},
 			CheckedAt: time.Now().UTC(),
-		}
-	}
-}
-
-// updateMetric updates the monitor.selfcheck_unhealthy_count alert metric.
-func (s *SelfCheckScheduler) updateMetric(ctx context.Context, results []types.SelfCheckResult) {
-	if s.registry == nil {
-		return
-	}
-	unhealthyCount := 0
-	for _, r := range results {
-		if r.Status != types.SelfCheckStatusPassed {
-			unhealthyCount++
-		}
-	}
-	if m, ok := s.registry.Get("monitor.selfcheck_unhealthy_count"); ok {
-		if _, err := m.Evaluate(ctx, 0); err == nil {
-			// Metric exists; value is updated by the metric itself
 		}
 	}
 }

@@ -7,7 +7,8 @@ import (
 )
 
 // RuleBasedContentFuser 基于规则的融合器（v1，无需 LLM）
-// 后续可替换为 LLM 驱动的融合器
+// 后续可替换为 LLM 驱动的融合器。
+// Used by both "ai_fuse" (deprecated) and "rule_fuse" merge strategies.
 type RuleBasedContentFuser struct{}
 
 func NewRuleBasedContentFuser() *RuleBasedContentFuser {

@@ -56,7 +56,7 @@ type SkillDedupReader interface {
 // SkillDedupUsecase detects duplicate skills.
 type SkillDedupUsecase struct {
 	reader SkillDedupReader
-	engine *SkillSimilarityEngine
+	engine SkillSimilarityComparer
 	lg     loggateway.Logger
 
 	cacheMu      sync.RWMutex
@@ -66,7 +66,7 @@ type SkillDedupUsecase struct {
 }
 
 // NewSkillDedupUsecase creates a new SkillDedupUsecase.
-func NewSkillDedupUsecase(reader SkillDedupReader, engine *SkillSimilarityEngine, lg loggateway.Logger) *SkillDedupUsecase {
+func NewSkillDedupUsecase(reader SkillDedupReader, engine SkillSimilarityComparer, lg loggateway.Logger) *SkillDedupUsecase {
 	return &SkillDedupUsecase{
 		reader:   reader,
 		engine:   engine,
@@ -77,6 +77,10 @@ func NewSkillDedupUsecase(reader SkillDedupReader, engine *SkillSimilarityEngine
 
 // DetectDuplicateGroups finds groups of similar skills using the unified similarity engine.
 func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]SkillDuplicateGroup, error) {
+	// Default 5-minute timeout to prevent runaway comparisons.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	// Check cache first.
 	uc.cacheMu.RLock()
 	if !uc.cachedAt.IsZero() && time.Since(uc.cachedAt) < uc.cacheTTL && uc.cachedGroups != nil {
@@ -107,29 +111,43 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 		}
 	}
 
-	// Pairwise comparison using the unified similarity engine.
+	// Pairwise comparison using the unified similarity engine with batch processing.
 	type pair struct {
-		i, j       int
-		result     *SimilarityResult
+		i, j   int
+		result *SimilarityResult
 	}
 
+	const batchSize = 200
 	var pairs []pair
-	for i := 0; i < len(candidates); i++ {
-		for j := i + 1; j < len(candidates); j++ {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-			}
-			res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
-			if err != nil {
-				uc.lg.Warn("skill_dedup: Compare failed",
-					loggateway.StepID("skill_dedup.compare"),
-					loggateway.Err(err))
-				continue
-			}
-			if res.TotalScore >= dedupSimilarityThreshold {
-				pairs = append(pairs, pair{i: i, j: j, result: res})
+	for batchStart := 0; batchStart < len(candidates); batchStart += batchSize {
+		// Check context cancellation between batches.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		batchEnd := batchStart + batchSize
+		if batchEnd > len(candidates) {
+			batchEnd = len(candidates)
+		}
+		for i := batchStart; i < batchEnd; i++ {
+			for j := i + 1; j < len(candidates); j++ {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				default:
+				}
+				res, err := uc.engine.Compare(ctx, candidates[i], candidates[j])
+				if err != nil {
+					uc.lg.Warn("skill_dedup: Compare failed",
+						loggateway.StepID("skill_dedup.compare"),
+						loggateway.Err(err))
+					continue
+				}
+				if res.TotalScore >= dedupSimilarityThreshold {
+					pairs = append(pairs, pair{i: i, j: j, result: res})
+				}
 			}
 		}
 	}
@@ -143,12 +161,17 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 	for i := range parent {
 		parent[i] = i
 	}
-	var find func(int) int
-	find = func(x int) int {
-		if parent[x] != x {
-			parent[x] = find(parent[x])
+	find := func(x int) int {
+		root := x
+		for parent[root] != root {
+			root = parent[root]
 		}
-		return parent[x]
+		for x != root {
+			next := parent[x]
+			parent[x] = root
+			x = next
+		}
+		return root
 	}
 	union := func(a, b int) {
 		ra, rb := find(a), find(b)
@@ -256,6 +279,9 @@ func jaccardSimilarity(a, b string) float64 {
 	setA := wordSet(a)
 	setB := wordSet(b)
 	if len(setA) == 0 && len(setB) == 0 {
+		return 1.0
+	}
+	if len(setA) == 0 || len(setB) == 0 {
 		return 0.0
 	}
 	intersection := 0

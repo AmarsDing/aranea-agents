@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,7 +60,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 	}
 
 	phase, _ := meta["flow_phase"].(string)
-	if !stringsEqualFold(phase, "error") {
+	if !strings.EqualFold(phase, "error") {
 		return
 	}
 

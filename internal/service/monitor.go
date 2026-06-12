@@ -80,7 +80,7 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.
 
 func notFoundMonitor(err error) error {
 	if apierror.IsCode(err, apierror.CodeNotFound) {
-		return apierror.NotFound("MONITOR_NOT_FOUND", err.Error())
+		return apierror.NotFound(apierror.DomainMonitor, err.Error())
 	}
 	return err
 }
@@ -91,7 +91,7 @@ func wrapInternalError(err error) error {
 	if ae, ok := apierror.From(err); ok {
 		return ae
 	}
-	return apierror.Internal("INTERNAL", err.Error())
+	return apierror.Internal(apierror.DomainMonitor, err.Error())
 }
 
 func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogsRequest) (*v1.ListAuditLogsResponse, error) {
@@ -299,7 +299,7 @@ func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, in *v1
 
 func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.GenerateDiagnosticBundleRequest) (*v1.GenerateDiagnosticBundleResponse, error) {
 	if s == nil || s.diag == nil {
-		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "diagnostic bundle generator not available")
+		return nil, apierror.Unavailable(apierror.DomainMonitor, "diagnostic bundle generator not available")
 	}
 	bundle, err := s.diag.Generate(ctx,
 		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
@@ -394,11 +394,11 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 
 func (s *MonitorService) TriggerSelfCheck(ctx context.Context, _ *v1.TriggerSelfCheckRequest) (*v1.TriggerSelfCheckResponse, error) {
 	if s == nil || s.selfCheckScheduler == nil {
-		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "self-check scheduler not available")
+		return nil, apierror.Unavailable(apierror.DomainMonitor, "self-check scheduler not available")
 	}
 	report := s.selfCheckScheduler.RunOnce(ctx)
 	if report == nil {
-		return nil, apierror.Internal("INTERNAL", "self-check returned no report")
+		return nil, apierror.Internal(apierror.DomainMonitor, "self-check returned no report")
 	}
 	return &v1.TriggerSelfCheckResponse{
 		Report: bizSelfCheckReportToProto(report),
@@ -463,7 +463,7 @@ func bizSelfCheckReportToProto(r *monitor.SelfCheckReport) *v1.SelfCheckReportEn
 
 func (s *MonitorService) GetHealStats(ctx context.Context, _ *v1.HealStatsRequest) (*v1.HealStatsResponse, error) {
 	if s == nil || s.selfHealObserver == nil {
-		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "self-heal observer not available")
+		return nil, apierror.Unavailable(apierror.DomainMonitor, "self-heal observer not available")
 	}
 	stats, err := s.selfHealObserver.GetHealStats(ctx)
 	if err != nil {
@@ -484,7 +484,7 @@ func (s *MonitorService) GetHealStats(ctx context.Context, _ *v1.HealStatsReques
 
 func (s *MonitorService) ListHealRecords(ctx context.Context, in *v1.ListHealRecordsRequest) (*v1.ListHealRecordsResponse, error) {
 	if s == nil || s.selfHealObserver == nil {
-		return nil, apierror.Unavailable("SERVICE_UNAVAILABLE", "self-heal observer not available")
+		return nil, apierror.Unavailable(apierror.DomainMonitor, "self-heal observer not available")
 	}
 	result, err := s.selfHealObserver.ListHealRecords(ctx, biz.HealRecordQuery{
 		Limit:     int(in.GetLimit()),

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/pkg/apierror"
-	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -24,8 +23,6 @@ type DiagBundle struct {
 }
 
 // DiagBundleGenerator generates diagnostic bundles for self-heal and RCA.
-// TODO(debt): DEV-07 — DiagBundleGenerator should receive RootCauseEngine via constructor injection
-// instead of creating it internally (violates DI principle).
 type DiagBundleGenerator struct {
 	eventRepo     EventRepo
 	traceRepo     TraceRepo
@@ -33,11 +30,11 @@ type DiagBundleGenerator struct {
 	selfCheckRepo SelfCheckReportRepo
 }
 
-func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, lg loggateway.Logger) *DiagBundleGenerator {
-	if eventRepo == nil || traceRepo == nil {
+func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, engine *RootCauseEngine) *DiagBundleGenerator {
+	if eventRepo == nil || traceRepo == nil || engine == nil {
 		return nil
 	}
-	return &DiagBundleGenerator{eventRepo: eventRepo, traceRepo: traceRepo, engine: NewRootCauseEngine(lg)}
+	return &DiagBundleGenerator{eventRepo: eventRepo, traceRepo: traceRepo, engine: engine}
 }
 
 // SetSelfCheckRepo injects the self-check report repo for diagnostic snapshots.
@@ -49,7 +46,7 @@ func (g *DiagBundleGenerator) SetSelfCheckRepo(repo SelfCheckReportRepo) {
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {
 	if g == nil {
-		return nil, apierror.Internal("MONITOR", "DiagBundleGenerator is nil")
+		return nil, apierror.Internal(apierror.DomainMonitor, "DiagBundleGenerator is nil")
 	}
 	if contextMinutes <= 0 {
 		contextMinutes = 5
@@ -84,17 +81,16 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	total := 0
 
 	if sessionID != "" || traceID != "" {
-		// Fetch runner.completion events
+		// Fetch runner.completion events with SQL-level filtering
 		completionEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
 			Limit:     500,
 			Offset:    0,
 			EventType: "runner.completion",
+			SessionID: sessionID,
+			TraceID:   traceID,
 		})
 		if err == nil && completionEvents.Items != nil {
 			for _, row := range completionEvents.Items {
-				if !metadataMatchesID(row.MetadataJSON, traceID, sessionID) {
-					continue
-				}
 				m := map[string]any{
 					"id": row.ID, "name": row.Name, "status": row.Status,
 					"created_at": row.CreatedAt, "metadata_json": row.MetadataJSON,
@@ -109,17 +105,16 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 				}
 			}
 		}
-		// Fetch alert events
+		// Fetch alert events with SQL-level filtering
 		alertEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
 			Limit:     200,
 			Offset:    0,
 			EventType: "alert",
+			SessionID: sessionID,
+			TraceID:   traceID,
 		})
 		if err == nil && alertEvents.Items != nil {
 			for _, row := range alertEvents.Items {
-				if !metadataMatchesID(row.MetadataJSON, traceID, sessionID) {
-					continue
-				}
 				m := map[string]any{
 					"id": row.ID, "name": row.Name, "status": row.Status,
 					"created_at": row.CreatedAt, "metadata_json": row.MetadataJSON,
@@ -160,16 +155,13 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		Limit:     50,
 		Offset:    0,
 		EventType: "usage",
+		SessionID: sessionID,
+		TraceID:   traceID,
 	})
 	if err == nil && usageEvents.Items != nil {
 		for _, row := range usageEvents.Items {
 			if !strings.HasPrefix(row.Key, "usage") {
 				continue
-			}
-			if traceID != "" || sessionID != "" {
-				if !metadataMatchesID(row.MetadataJSON, traceID, sessionID) {
-					continue
-				}
 			}
 			usageRows = append(usageRows, map[string]any{
 				"id": row.ID, "name": row.Name, "status": row.Status,

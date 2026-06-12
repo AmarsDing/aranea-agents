@@ -1224,8 +1224,8 @@ func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCom
 	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, lg)
 }
 
-func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, lg loggateway.Logger) *biz.DiagBundleGenerator {
-	return biz.NewDiagBundleGenerator(eventRepo, traceRepo, lg)
+func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, engine *monitor.RootCauseEngine) *biz.DiagBundleGenerator {
+	return biz.NewDiagBundleGenerator(eventRepo, traceRepo, engine)
 }
 
 func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger) *biz.SelfHealUsecase {

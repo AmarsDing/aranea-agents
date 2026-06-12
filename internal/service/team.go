@@ -389,11 +389,10 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 				break
 			}
 		}
-		if run.ID == "" && len(runs) > 0 {
-			run = runs[0]
-		}
 	}
 	if run.ID == "" {
+		// No persisted run found for this test session; synthesize a
+		// lightweight response so the caller still gets a reply.
 		run = biz.TeamRun{TeamID: teamID, SessionID: sess.ID, Status: biz.TeamRunStatusSuccess}
 	}
 

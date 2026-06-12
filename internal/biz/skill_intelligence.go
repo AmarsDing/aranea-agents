@@ -70,6 +70,7 @@ type SkillIntelligenceUsecase struct {
 	unanalyzedReader SkillInvocationUnanalyzedReader
 	coordinator      *EvolutionCoordinator
 	orchestrator     *SkillEvolutionOrchestrator
+	gate             SkillGateVerifier
 	lg               loggateway.Logger
 	weights          ScoreWeights
 }
@@ -79,6 +80,7 @@ type SkillIntelligenceConfig struct {
 	Coordinator      *EvolutionCoordinator
 	Orchestrator     *SkillEvolutionOrchestrator
 	UnanalyzedReader SkillInvocationUnanalyzedReader
+	Gate             SkillGateVerifier
 }
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
@@ -113,6 +115,9 @@ func NewSkillIntelligenceUsecase(
 		}
 		if opt.UnanalyzedReader != nil {
 			uc.unanalyzedReader = opt.UnanalyzedReader
+		}
+		if opt.Gate != nil {
+			uc.gate = opt.Gate
 		}
 	}
 	return uc
@@ -428,10 +433,11 @@ func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context
 		return nil, err
 	}
 
-	expirationCutoff := time.Now().UTC().Add(-EvoExpirationDays * 24 * time.Hour)
+	expirationCutoff := time.Now().UTC().Add(-evoExpirationDuration)
 	var expired []SkillEvolutionSuggestion
 
 	for _, sug := range pending {
+		// TECH-DEBT(BP10): batch update pending suggestions instead of row-by-row
 		select {
 		case <-ctx.Done():
 			return expired, ctx.Err()
@@ -551,36 +557,64 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 		return nil, nil
 	}
 
-	// Check cooldown: if a recent suggestion exists within the cooldown period, skip.
+	// Check cooldown period.
+	if ok, err := uc.checkEvolutionCooldown(ctx, skillID, ""); !ok || err != nil {
+		return nil, err
+	}
+
+	// Check health conditions and collect trigger reasons.
+	triggerType, triggerReason, err := uc.checkHealthConditions(ctx, skillID)
+	if err != nil {
+		return nil, err
+	}
+	if triggerType == "" {
+		return nil, nil
+	}
+
+	// Create the evolution suggestion.
+	return uc.createEvolutionSuggestion(ctx, skillID, triggerType, triggerReason, nil)
+}
+
+// checkEvolutionCooldown checks whether the cooldown period has elapsed since
+// the last suggestion for the given skill. Returns (true, nil) if the skill is
+// eligible (no recent suggestion or cooldown expired).
+// actionType is reserved for per-action-type cooldown (currently unused; pass "").
+func (uc *SkillIntelligenceUsecase) checkEvolutionCooldown(ctx context.Context, skillID, actionType string) (bool, error) {
 	latest, err := uc.suggestionReader.GetLatestBySkill(ctx, skillID)
 	if err != nil {
-		uc.lg.Warn("CheckEvolutionTriggers: GetLatestBySkill failed",
+		uc.lg.Warn("checkEvolutionCooldown: GetLatestBySkill failed",
 			loggateway.StepID("skill_intelligence.evo_trigger"),
 			loggateway.Str("skill_id", skillID),
 			loggateway.Err(err))
-		return nil, err
+		return false, err
 	}
 	if latest != nil {
-		cooldownEnd := latest.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
+		cooldownEnd := latest.CreatedAt.Add(evoCooldownDuration)
 		if time.Now().UTC().Before(cooldownEnd) {
-			return nil, nil
+			return false, nil
 		}
 	}
+	return true, nil
+}
 
+// checkHealthConditions evaluates all trigger conditions for a skill and returns
+// the primary trigger type and joined reason string. Returns ("", "", nil) if
+// no conditions are met.
+func (uc *SkillIntelligenceUsecase) checkHealthConditions(ctx context.Context, skillID string) (EvolutionSuggestionType, string, error) {
 	// Get health metrics for the last 30 days.
 	since30d := time.Now().UTC().Add(-30 * 24 * time.Hour)
 	metrics, err := uc.aggregator.GetHealthMetrics(ctx, skillID, since30d)
 	if err != nil {
-		uc.lg.Warn("CheckEvolutionTriggers: GetHealthMetrics failed",
+		uc.lg.Warn("checkHealthConditions: GetHealthMetrics failed",
 			loggateway.StepID("skill_intelligence.evo_trigger"),
 			loggateway.Str("skill_id", skillID),
 			loggateway.Err(err))
-		return nil, err
+		return "", "", err
 	}
 
 	// Check minimum invocations for statistical significance.
 	if metrics.InvocationCount < EvoTriggerMinInvocations {
-		return nil, nil
+		return "", "", nil
 	}
 
 	// Determine trigger conditions. Collect all matching types to avoid
@@ -600,7 +634,7 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	since7d := time.Now().UTC().Add(-7 * 24 * time.Hour)
 	metrics7d, err7d := uc.aggregator.GetHealthMetrics(ctx, skillID, since7d)
 	if err7d != nil {
-		uc.lg.Warn("CheckEvolutionTriggers: GetHealthMetrics(7d) failed",
+		uc.lg.Warn("checkHealthConditions: GetHealthMetrics(7d) failed",
 			loggateway.StepID("skill_intelligence.evo_trigger"),
 			loggateway.Str("skill_id", skillID),
 			loggateway.Err(err7d))
@@ -613,7 +647,7 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	// Condition 3: Same failure tag >= 5 times in 7d.
 	tagCounts, tagErr := uc.aggregator.GetFailureTagCounts(ctx, skillID, since7d)
 	if tagErr != nil {
-		uc.lg.Warn("CheckEvolutionTriggers: GetFailureTagCounts failed",
+		uc.lg.Warn("checkHealthConditions: GetFailureTagCounts failed",
 			loggateway.StepID("skill_intelligence.evo_trigger"),
 			loggateway.Str("skill_id", skillID),
 			loggateway.Err(tagErr))
@@ -636,25 +670,27 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	}
 
 	if len(triggerTypes) == 0 {
-		return nil, nil
+		return "", "", nil
 	}
 
 	// Pick the primary type (first triggered) and join all reasons.
-	triggerType := triggerTypes[0]
-	triggerReason := strings.Join(triggerReasons, "; ")
+	return triggerTypes[0], strings.Join(triggerReasons, "; "), nil
+}
 
+// createEvolutionSuggestion persists a new evolution suggestion for the given skill.
+func (uc *SkillIntelligenceUsecase) createEvolutionSuggestion(ctx context.Context, skillID string, triggerType EvolutionSuggestionType, triggerReason string, metadata map[string]any) (*SkillEvolutionSuggestion, error) {
 	suggestion := &SkillEvolutionSuggestion{
-		ID:            uuid.New().String(),
-		SkillID:       skillID,
-		Type:          triggerType,
-		Status:        EvoSuggestionPending,
-		TriggerReason: triggerReason,
+		ID:              uuid.New().String(),
+		SkillID:         skillID,
+		Type:            triggerType,
+		Status:          EvoSuggestionPending,
+		TriggerReason:   triggerReason,
 		LifecycleStatus: EvoLifecycleDraft,
-		CreatedAt:     time.Now().UTC(),
+		CreatedAt:       time.Now().UTC(),
 	}
 
 	if err := uc.suggestionWriter.Create(ctx, *suggestion); err != nil {
-		uc.lg.Warn("CheckEvolutionTriggers: Create suggestion failed",
+		uc.lg.Warn("createEvolutionSuggestion: Create suggestion failed",
 			loggateway.StepID("skill_intelligence.evo_trigger"),
 			loggateway.Str("skill_id", skillID),
 			loggateway.Err(err))
@@ -686,61 +722,136 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 		return nil, nil
 	}
 
-	// Step 2: Generate draft body (rule-based for v1).
+	// Step 2-3: Generate draft + update lifecycle to validating.
+	if suggestion, err = uc.runCuratorDraftStage(ctx, suggestion.ID, skillID); err != nil {
+		return nil, err
+	}
+
+	// Step 4: Sandbox validation.
+	if suggestion, err = uc.runCuratorValidationStage(ctx, suggestion.ID, suggestion.DraftSkillBody); err != nil {
+		return nil, err
+	}
+
+	// Step 5: Apply validation result.
+	if suggestion, err = uc.runCuratorApplyStage(ctx, suggestion.ID, suggestion); err != nil {
+		return nil, err
+	}
+
+	return suggestion, nil
+}
+
+// runCuratorDraftStage generates a rule-based draft body and transitions the
+// suggestion lifecycle to "validating" (Steps 2-3 of RunCuratorFlow).
+func (uc *SkillIntelligenceUsecase) runCuratorDraftStage(ctx context.Context, suggestionID, skillID string) (*SkillEvolutionSuggestion, error) {
+	// We need to read the suggestion to generate the draft.
+	suggestion, err := uc.suggestionReader.GetByID(ctx, suggestionID)
+	if err != nil || suggestion == nil {
+		return nil, apierror.Internal("SKILL_INTELLIGENCE", "failed to read suggestion %s for draft stage: %v", suggestionID, err)
+	}
+
 	draft := uc.generateRuleBasedDraft(suggestion)
-	if err := uc.suggestionWriter.UpdateDraftBody(ctx, suggestion.ID, draft); err != nil {
+	if err := uc.suggestionWriter.UpdateDraftBody(ctx, suggestionID, draft); err != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateDraftBody failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
-			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Str("suggestion_id", suggestionID),
 			loggateway.Err(err))
-		return nil, apierror.Internal("SKILL_INTELLIGENCE", "failed to persist draft body for suggestion %s: %s", suggestion.ID, err.Error())
+		return nil, apierror.Internal("SKILL_INTELLIGENCE", "failed to persist draft body for suggestion %s: %s", suggestionID, err.Error())
 	}
 	suggestion.DraftSkillBody = draft
 
-	// Step 3: Set lifecycle to validating.
-	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestion.ID, EvoLifecycleValidating); lcErr != nil {
+	// Set lifecycle to validating.
+	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestionID, EvoLifecycleValidating); lcErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(validating) failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
-			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Str("suggestion_id", suggestionID),
 			loggateway.Err(lcErr))
 	}
 	suggestion.LifecycleStatus = EvoLifecycleValidating
 
-	// Step 4: Rule-based sandbox validation.
-	passed := uc.ruleBasedSandboxValidation(suggestion)
-	resultJSON, _ := json.Marshal(map[string]any{
-		"passed":  passed,
-		"checks":  []map[string]any{
-			{"name": "draft_body_not_empty", "passed": suggestion.DraftSkillBody != ""},
-			{"name": "draft_body_length", "passed": len(suggestion.DraftSkillBody) < 10000},
-			{"name": "skill_id_valid", "passed": suggestion.SkillID != ""},
-		},
-		"message": func() string {
-			if passed {
-				return "All validation checks passed"
+	return suggestion, nil
+}
+
+// runCuratorValidationStage performs sandbox validation on the draft body
+// (Step 4 of RunCuratorFlow). Uses GateVerifier if available, otherwise
+// falls back to rule-based validation.
+func (uc *SkillIntelligenceUsecase) runCuratorValidationStage(ctx context.Context, suggestionID, draftBody string) (*SkillEvolutionSuggestion, error) {
+	suggestion, err := uc.suggestionReader.GetByID(ctx, suggestionID)
+	if err != nil || suggestion == nil {
+		return nil, apierror.Internal("SKILL_INTELLIGENCE", "failed to read suggestion %s for validation stage: %v", suggestionID, err)
+	}
+
+	var passed bool
+	var resultJSON json.RawMessage
+	if uc.gate != nil {
+		gateResult, gateErr := uc.gate.Verify(ctx, suggestion.SkillID, draftBody, nil)
+		if gateErr != nil {
+			uc.lg.Warn("RunCuratorFlow: GateVerifier failed",
+				loggateway.StepID("skill_intelligence.curator_flow"),
+				loggateway.Str("suggestion_id", suggestionID),
+				loggateway.Err(gateErr))
+			passed = false
+		} else {
+			passed = gateResult.Passed
+		}
+		// Build sandbox result from actual gate checks.
+		var checkResults []map[string]any
+		if gateResult != nil {
+			for _, c := range gateResult.Checks {
+				checkResults = append(checkResults, map[string]any{
+					"name": c.Name, "passed": c.Passed, "reason": c.Reason,
+				})
 			}
-			return "Some validation checks failed"
-		}(),
-	})
-	if sbErr := uc.suggestionWriter.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON); sbErr != nil {
+		}
+		resultJSON, _ = json.Marshal(map[string]any{
+			"passed":  passed,
+			"checks":  checkResults,
+			"message": func() string {
+				if passed {
+					return "All validation checks passed"
+				}
+				return "Some validation checks failed"
+			}(),
+		})
+	} else {
+		passed = uc.ruleBasedSandboxValidation(suggestion)
+		resultJSON, _ = json.Marshal(map[string]any{
+			"passed": passed,
+			"checks": []map[string]any{
+				{"name": "draft_body_not_empty", "passed": suggestion.DraftSkillBody != ""},
+				{"name": "draft_body_length", "passed": len(suggestion.DraftSkillBody) < 10000},
+				{"name": "skill_id_valid", "passed": suggestion.SkillID != ""},
+			},
+			"message": func() string {
+				if passed {
+					return "All validation checks passed"
+				}
+				return "Some validation checks failed"
+			}(),
+		})
+	}
+	if sbErr := uc.suggestionWriter.UpdateSandboxResult(ctx, suggestionID, passed, resultJSON); sbErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateSandboxResult failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
-			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Str("suggestion_id", suggestionID),
 			loggateway.Err(sbErr))
 	}
 	suggestion.SandboxPassed = passed
 	suggestion.SandboxResult = resultJSON
 
-	// Step 5: Update lifecycle based on validation result.
-	// Rule-based template drafts are always marked as "draft" (needs human
-	// editing) rather than "ready", because they contain generic placeholder
-	// suggestions instead of skill-specific analysis. Only LLM-generated
-	// drafts should be promoted to "ready" after passing validation.
+	return suggestion, nil
+}
+
+// runCuratorApplyStage updates the lifecycle status based on the validation
+// result (Step 5 of RunCuratorFlow). Rule-based template drafts are always
+// marked as "draft" (needs human editing) rather than "ready", because they
+// contain generic placeholder suggestions instead of skill-specific analysis.
+// Only LLM-generated drafts should be promoted to "ready" after passing validation.
+func (uc *SkillIntelligenceUsecase) runCuratorApplyStage(ctx context.Context, suggestionID string, suggestion *SkillEvolutionSuggestion) (*SkillEvolutionSuggestion, error) {
 	lifecycleStatus := EvoLifecycleDraft
-	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestion.ID, lifecycleStatus); lcErr != nil {
+	if lcErr := uc.suggestionWriter.UpdateLifecycleStatus(ctx, suggestionID, lifecycleStatus); lcErr != nil {
 		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(final) failed",
 			loggateway.StepID("skill_intelligence.curator_flow"),
-			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Str("suggestion_id", suggestionID),
 			loggateway.Err(lcErr))
 	}
 	suggestion.LifecycleStatus = lifecycleStatus
@@ -756,37 +867,57 @@ func (uc *SkillIntelligenceUsecase) generateRuleBasedDraft(suggestion *SkillEvol
 	case EvoSuggestionFixFailure:
 		return fmt.Sprintf("# Skill Evolution Draft (fix_failure)\n\n"+
 			"Original skill: %s\n"+
-			"Trigger reason: %s\n\n"+
+			"Trigger reason: %s\n"+
+			"Source reports: %d experience report(s) contributed to this trigger\n\n"+
+			"## Analysis\n"+
+			"This skill has been flagged due to repeated failures observed in experience reports.\n"+
+			"Source report data indicates actionable failure patterns that need correction.\n\n"+
 			"## Suggested improvements:\n"+
-			"1. Add error handling for common failure patterns\n"+
-			"2. Improve parameter validation\n"+
-			"3. Add retry logic for transient failures\n",
-			suggestion.SkillID, suggestion.TriggerReason)
+			"1. Add error handling for common failure patterns identified in reports\n"+
+			"2. Improve parameter validation based on observed error codes\n"+
+			"3. Add retry logic for transient failures\n"+
+			"4. Review and update failure tag taxonomy for better classification\n",
+			suggestion.SkillID, suggestion.TriggerReason, len(suggestion.SourceReportIDs))
 	case EvoSuggestionBoostEfficiency:
 		return fmt.Sprintf("# Skill Evolution Draft (boost_efficiency)\n\n"+
 			"Original skill: %s\n"+
+			"Parent version: %s\n"+
 			"Trigger reason: %s\n\n"+
+			"## Analysis\n"+
+			"This skill's efficiency score is below the acceptable threshold.\n"+
+			"The parent version (%s) may contain suboptimal patterns that can be refined.\n\n"+
 			"## Suggested improvements:\n"+
 			"1. Optimize prompt to reduce token usage\n"+
 			"2. Cache frequently used results\n"+
-			"3. Reduce unnecessary tool calls\n",
-			suggestion.SkillID, suggestion.TriggerReason)
+			"3. Reduce unnecessary tool calls\n"+
+			"4. Streamline instruction flow to lower average duration\n",
+			suggestion.SkillID, suggestion.ParentVersionID, suggestion.TriggerReason, suggestion.ParentVersionID)
 	case EvoSuggestionMergeDuplicate:
 		return fmt.Sprintf("# Skill Evolution Draft (merge_duplicate)\n\n"+
 			"Original skill: %s\n"+
 			"Trigger reason: %s\n\n"+
+			"## Dedup Analysis\n"+
+			"Similarity analysis has identified this skill as a candidate for merging with\n"+
+			"another skill that shares significant overlap in name, description, or body content.\n"+
+			"Jaccard similarity across multiple dimensions exceeded the dedup threshold.\n\n"+
 			"## Suggested improvements:\n"+
-			"1. Consolidate overlapping functionality\n"+
-			"2. Unify parameter interfaces\n"+
-			"3. Merge description and instructions\n",
+			"1. Consolidate overlapping functionality into a unified skill\n"+
+			"2. Unify parameter interfaces across duplicate entries\n"+
+			"3. Merge description and instructions, preserving unique aspects\n"+
+			"4. Add redirect markers in deprecated skill for backward compatibility\n",
 			suggestion.SkillID, suggestion.TriggerReason)
 	case EvoSuggestionCreateSkill:
 		return fmt.Sprintf("# Skill Evolution Draft (create_skill)\n\n"+
 			"Trigger reason: %s\n\n"+
+			"## Pattern Analysis\n"+
+			"A recurring tool-call pattern has been detected that suggests the need for a new skill.\n"+
+			"The pattern description and historical invocation data indicate a reusable workflow\n"+
+			"that is not yet captured by any existing skill.\n\n"+
 			"## Suggested actions:\n"+
-			"1. Define skill scope and purpose\n"+
-			"2. Specify tool dependencies and parameters\n"+
-			"3. Write skill instructions and examples\n",
+			"1. Define skill scope and purpose based on the observed pattern\n"+
+			"2. Specify tool dependencies and parameters from invocation history\n"+
+			"3. Write skill instructions and examples reflecting the detected workflow\n"+
+			"4. Validate the new skill against existing skills to avoid duplication\n",
 			suggestion.TriggerReason)
 	default:
 		return fmt.Sprintf("# Skill Evolution Draft\n\nOriginal skill: %s\nTrigger: %s\n",

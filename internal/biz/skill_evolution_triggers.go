@@ -177,10 +177,20 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 		return nil, nil
 	}
 
+	// Encode all triggered action types in metadata for traceability.
+	var triggeredActionStrs []string
+	for _, at := range triggerTypes {
+		triggeredActionStrs = append(triggeredActionStrs, string(at))
+	}
+
+	// Determine primary ActionType by priority: failure > efficiency.
+	primaryAction := triggerTypes[0]
+
 	metadata, _ := json.Marshal(map[string]any{
-		"success_rate":     metrics.SuccessRate,
-		"invocation_count": metrics.InvocationCount,
-		"avg_duration_ms":  metrics.AvgDurationMS,
+		"success_rate":       metrics.SuccessRate,
+		"invocation_count":   metrics.InvocationCount,
+		"avg_duration_ms":    metrics.AvgDurationMS,
+		"triggered_actions":  triggeredActionStrs,
 	})
 
 	return []UnifiedEvolutionSuggestion{
@@ -188,9 +198,9 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 			ID:              newAgentCatalogID(),
 			TargetType:      EvolutionTargetSkill,
 			TargetID:        skillID,
-			ActionType:      triggerTypes[0],
+			ActionType:      primaryAction,
 			TriggerSource:   "health",
-			TriggerReason:   joinReasons(triggerReasons),
+			TriggerReason:   strings.Join(triggerReasons, "; "),
 			Status:          "pending",
 			Priority:        priority,
 			LifecycleStatus: "draft",
@@ -258,13 +268,4 @@ func extractToolHistoryFromPattern(p Pattern) []ToolCallRecord {
 	return records
 }
 
-func joinReasons(reasons []string) string {
-	if len(reasons) == 0 {
-		return ""
-	}
-	result := reasons[0]
-	for _, r := range reasons[1:] {
-		result += "; " + r
-	}
-	return result
-}
+

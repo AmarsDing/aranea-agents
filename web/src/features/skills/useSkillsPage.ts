@@ -2,6 +2,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
+// TECH-DEBT(FD5): file ops bypass store, acceptable for single-use file operations
+import { listSkillFiles, readSkillFile, updateSkillFile } from './api';
 
 export function useSkillsPage() {
   const $q = useQuasar();
@@ -217,9 +219,9 @@ export function useSkillsPage() {
     getSkillImportJob: skillsStore.getSkillImportJob,
     refineSkillConflictGroup: skillsStore.refineSkillConflictGroup,
     applySkillImport: skillsStore.applySkillImport,
-    listSkillFiles: skillsStore.listSkillFiles,
-    readSkillFile: skillsStore.readSkillFile,
-    updateSkillFile: skillsStore.updateSkillFile,
+    listSkillFiles,
+    readSkillFile,
+    updateSkillFile,
     notify,
     confirm,
   };

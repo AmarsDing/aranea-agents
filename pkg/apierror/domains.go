@@ -20,6 +20,7 @@ const (
 	DomainChat          = "CHAT"
 	DomainSkill         = "SKILL"
 	DomainMCP           = "MCP"
+	DomainMonitor       = "MONITOR"
 	DomainOrg           = "ORG"
 	DomainHook          = "HOOK"
 	DomainBackgroundJob = "BACKGROUND_JOB"

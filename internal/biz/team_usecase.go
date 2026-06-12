@@ -79,31 +79,36 @@ type TeamUsecase struct {
 	lg           loggateway.Logger
 }
 
-func NewTeamUsecase(
-	reader TeamReader,
-	writer TeamWriter,
-	runReader TeamRunReader,
-	runWriter TeamRunWriter,
-	stepRepo OrchestrationStepRepo,
-	deadLetter TaskDeadLetterRepo,
-	agentChecker AgentIDExistenceChecker,
-	deptLeadMgr *DeptLeadManager,
-	graphReader GraphReader,
-	graphWriter GraphWriter,
-	lg loggateway.Logger,
-) *TeamUsecase {
+// TeamUsecaseOpts groups all dependencies for NewTeamUsecase.
+// Using an options struct keeps the constructor signature stable as
+// new dependencies are added (CS-B7).
+type TeamUsecaseOpts struct {
+	Reader       TeamReader
+	Writer       TeamWriter
+	RunReader    TeamRunReader
+	RunWriter    TeamRunWriter
+	StepRepo     OrchestrationStepRepo
+	DeadLetter   TaskDeadLetterRepo
+	AgentChecker AgentIDExistenceChecker
+	DeptLeadMgr  *DeptLeadManager
+	GraphReader  GraphReader
+	GraphWriter  GraphWriter
+	Lg           loggateway.Logger
+}
+
+func NewTeamUsecase(opts TeamUsecaseOpts) *TeamUsecase {
 	return &TeamUsecase{
-		reader:       reader,
-		writer:       writer,
-		runReader:    runReader,
-		runWriter:    runWriter,
-		stepRepo:     stepRepo,
-		deadLetter:   deadLetter,
-		agentChecker: agentChecker,
-		deptLeadMgr:  deptLeadMgr,
-		graphReader:  graphReader,
-		graphWriter:  graphWriter,
-		lg:           lg,
+		reader:       opts.Reader,
+		writer:       opts.Writer,
+		runReader:    opts.RunReader,
+		runWriter:    opts.RunWriter,
+		stepRepo:     opts.StepRepo,
+		deadLetter:   opts.DeadLetter,
+		agentChecker: opts.AgentChecker,
+		deptLeadMgr:  opts.DeptLeadMgr,
+		graphReader:  opts.GraphReader,
+		graphWriter:  opts.GraphWriter,
+		lg:           opts.Lg,
 	}
 }
 
@@ -260,14 +265,10 @@ func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) ([]Team, 
 			continue
 		}
 		for _, run := range runs {
-			if run.Status != TeamRunStatusRunning {
-				continue
-			}
-			run.Status = TeamRunStatusFailed
-			if err := u.UpdateRun(ctx, run); err != nil {
+			if _, tErr := u.TransitionRunStatus(ctx, run.ID, TeamRunStatusFailed); tErr != nil {
 				u.lg.Warn("recover orphaned teams: failed to transition team run to failed",
 					loggateway.Str("team_run_id", run.ID),
-					loggateway.Err(err),
+					loggateway.Err(tErr),
 				)
 			}
 		}
@@ -403,7 +404,13 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	}
 	current.TeamKey = strings.TrimSpace(firstNonEmpty(patch.TeamKey, current.TeamKey))
 	current.DisplayName = strings.TrimSpace(firstNonEmpty(patch.DisplayName, current.DisplayName))
-	current.Status = firstNonEmpty(patch.Status, current.Status)
+	// Status changes must go through TransitionStatus/TransitionStatusWithReason
+	// which enforce the state machine. UpdateTeam only accepts the current status
+	// (no-op) or rejects the change. Direct status modification via UpdateTeam
+	// is forbidden to prevent invalid state transitions.
+	if patchStatus := strings.TrimSpace(patch.Status); patchStatus != "" && patchStatus != current.Status {
+		return Team{}, apierror.BadRequest("TEAM", "status changes must use TransitionStatus, not UpdateTeam; current=%s patch=%s", current.Status, patchStatus)
+	}
 	current.DefinitionJSON = firstNonEmpty(patch.DefinitionJSON, current.DefinitionJSON)
 	current.ADKAppName = patch.ADKAppName
 	if patch.ADKAppName == "" {
@@ -577,11 +584,23 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 	if err != nil {
 		return Team{}, err
 	}
-	current.ID = newAgentCatalogID()
-	current.TeamKey = current.TeamKey + "-copy-" + newAgentCatalogID()
-	current.DisplayName = current.DisplayName + " Copy"
-	current.IsDefault = false
-	return u.writer.CreateTeam(ctx, current)
+	dup := Team{
+		TeamKey:            current.TeamKey + "-copy-" + newAgentCatalogID(),
+		DisplayName:        current.DisplayName + " Copy",
+		DefinitionJSON:     current.DefinitionJSON,
+		ADKAppName:         current.TeamKey + "-copy-" + newAgentCatalogID(),
+		DepartmentID:       current.DepartmentID,
+		Deliverables:       current.Deliverables,
+		InputContract:      current.InputContract,
+		CrossDeptMemberIDs: current.CrossDeptMemberIDs,
+		Kind:               current.Kind,
+		Source:             current.Source,
+		TaskDescription:    current.TaskDescription,
+		ParallelConfigJSON: current.ParallelConfigJSON,
+		Topology:           current.Topology,
+	}
+	// Delegate to Create which validates definition_json and member existence.
+	return u.Create(ctx, dup)
 }
 
 func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error) {
@@ -612,19 +631,36 @@ func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 
 // CancelRun cancels a team run if it is in running or pending status.
 // Returns the updated run or an error if the run cannot be cancelled.
+// Uses TeamRunStateMachine to validate the transition.
 func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, error) {
-	r, err := u.GetRun(ctx, runID)
+	return u.TransitionRunStatus(ctx, runID, TeamRunStatusCancelled)
+}
+
+// TransitionRunStatus validates and applies a team run status transition
+// using the TeamRunStateMachine. This is the single authoritative path
+// for all team run status changes — no caller should modify run.Status
+// directly.
+func (u *TeamUsecase) TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRun, error) {
+	runID, err := requireNonEmpty(runID, "TEAM", "run_id")
 	if err != nil {
 		return TeamRun{}, err
 	}
-	if r.Status != TeamRunStatusRunning && r.Status != TeamRunStatusPending {
-		return TeamRun{}, apierror.BadRequest("TEAM", "only running or pending team runs can be cancelled")
+	r, err := u.runReader.GetTeamRunByID(ctx, runID)
+	if err != nil {
+		return TeamRun{}, err
+	}
+	sm := NewTeamRunStateMachine()
+	if !sm.CanTransition(TeamRunState(r.Status), TeamRunState(newStatus)) {
+		return TeamRun{}, apierror.BadRequest("TEAM", "invalid team run status transition: %s → %s", r.Status, newStatus)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	r.Status = TeamRunStatusCancelled
-	r.FinishedAt = now
+	r.Status = newStatus
 	r.UpdatedAt = now
-	if err := u.UpdateRun(ctx, r); err != nil {
+	// Set finished_at for terminal transitions.
+	if IsTeamRunTerminalStatus(newStatus) {
+		r.FinishedAt = now
+	}
+	if err := u.runWriter.UpdateTeamRun(ctx, r); err != nil {
 		return TeamRun{}, err
 	}
 	return r, nil
@@ -912,6 +948,9 @@ func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDM
 		team.DefinitionJSON = EnsureGraphRuntimeDefault(team.DefinitionJSON)
 	}
 	if err := validateTeamDefinition(team.DefinitionJSON); err != nil {
+		return Team{}, err
+	}
+	if err := u.validateTeamMembersExist(ctx, team.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
 	return u.writer.CreateTeam(ctx, team)

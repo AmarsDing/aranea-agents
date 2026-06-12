@@ -123,7 +123,7 @@ func (m *memTeamRepoB) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (
 
 func TestTeamUsecase_CreateAndList(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
 	ctx := context.Background()
 
 	team, err := uc.Create(ctx, biz.Team{TeamKey: "alpha", DisplayName: "Alpha Team"})
@@ -145,7 +145,7 @@ func TestTeamUsecase_CreateAndList(t *testing.T) {
 
 func TestTeamUsecase_Create_Validation(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
 	ctx := context.Background()
 
 	_, err := uc.Create(ctx, biz.Team{TeamKey: "", DisplayName: "X"})
@@ -161,7 +161,7 @@ func TestTeamUsecase_Create_Validation(t *testing.T) {
 
 func TestTeamUsecase_Delete_DefaultBlocked(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "default", DisplayName: "Default"})
@@ -178,7 +178,7 @@ func TestTeamUsecase_Delete_DefaultBlocked(t *testing.T) {
 
 func TestTeamUsecase_Update(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "t1", DisplayName: "Original"})
@@ -193,7 +193,7 @@ func TestTeamUsecase_Update(t *testing.T) {
 
 func TestTeamUsecase_Duplicate(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "orig", DisplayName: "Orig"})

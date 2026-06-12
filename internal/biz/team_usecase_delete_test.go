@@ -86,7 +86,7 @@ func TestTeamUsecase_DeleteRejectsSystemBuiltin(t *testing.T) {
 	t.Parallel()
 	reader := &stubTeamReader{team: Team{ID: "team-1", Kind: "system_builtin"}}
 	writer := &stubTeamWriter{}
-	uc := NewTeamUsecase(reader, writer, &stubTeamRunReader{}, &stubTeamRunWriter{}, &stubOrchestrationStepRepo{}, &stubTaskDeadLetterRepo{}, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewTeamUsecase(TeamUsecaseOpts{Reader: reader, Writer: writer, RunReader: &stubTeamRunReader{}, RunWriter: &stubTeamRunWriter{}, StepRepo: &stubOrchestrationStepRepo{}, DeadLetter: &stubTaskDeadLetterRepo{}, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "team-1")
 	if err == nil {
 		t.Fatal("expected error when deleting system_builtin team")
@@ -110,7 +110,7 @@ func TestTeamUsecase_DeleteAllowsUserTeam(t *testing.T) {
 	t.Parallel()
 	reader := &stubTeamReader{team: Team{ID: "team-2", Kind: "user"}}
 	writer := &stubTeamWriter{}
-	uc := NewTeamUsecase(reader, writer, &stubTeamRunReader{}, &stubTeamRunWriter{}, &stubOrchestrationStepRepo{}, &stubTaskDeadLetterRepo{}, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewTeamUsecase(TeamUsecaseOpts{Reader: reader, Writer: writer, RunReader: &stubTeamRunReader{}, RunWriter: &stubTeamRunWriter{}, StepRepo: &stubOrchestrationStepRepo{}, DeadLetter: &stubTaskDeadLetterRepo{}, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "team-2")
 	if err != nil {
 		t.Fatalf("expected no error when deleting user team, got %v", err)

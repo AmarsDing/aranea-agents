@@ -2,14 +2,15 @@ package monitor
 
 import (
 	"context"
-	"crypto/rand"
-	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
 )
 
 // HealStatus represents the outcome of a self-heal action.
@@ -310,7 +311,7 @@ func (uc *SelfHealUsecase) processErrorEnvelope(ctx context.Context, env Envelop
 
 	// Only process error-phase flow logs
 	phase, _ := meta["flow_phase"].(string)
-	if !stringsEqualFold(phase, "error") {
+	if !strings.EqualFold(phase, "error") {
 		return
 	}
 
@@ -334,24 +335,6 @@ func (uc *SelfHealUsecase) processErrorEnvelope(ctx context.Context, env Envelop
 	})
 }
 
-func stringsEqualFold(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i]|0x20 != b[i]|0x20 {
-			return false
-		}
-	}
-	return true
-}
-
 func generateHealID() string {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// Fallback: use single UnixNano call for 4 bytes of entropy
-		nano := time.Now().UnixNano()
-		b = [4]byte{byte(nano), byte(nano >> 8), byte(nano >> 16), byte(nano >> 24)}
-	}
-	return fmt.Sprintf("heal-%d-%x", time.Now().UnixNano(), b)
+	return "heal-" + uuid.NewString()
 }

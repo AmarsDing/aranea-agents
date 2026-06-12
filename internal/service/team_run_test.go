@@ -109,7 +109,7 @@ func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 			},
 		},
 	}
-	svc := NewTeamService(biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop()), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 
 	resp, err := svc.GetTeamRunSummary(context.Background(), &v1.GetTeamRunSummaryRequest{Id: "run-1"})
 	if err != nil {
@@ -126,7 +126,7 @@ func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 
 func TestRunTeamTest_RequiresRuntime(t *testing.T) {
 	repo := &summaryTeamRepo{runs: map[string]biz.TeamRun{}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop()), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	_, err := svc.RunTeamTest(context.Background(), &v1.RunTeamTestRequest{Id: "t1"})
 	if err == nil {
 		t.Fatal("expected error when team runner is nil")

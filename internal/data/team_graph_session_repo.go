@@ -153,9 +153,9 @@ func (r *teamGraphSessionRepo) MarkOrphanedSessionsTerminal(ctx context.Context)
 	now := nowRFC3339()
 	res, err := db.ExecContext(ctx, `
 UPDATE team_graph_sessions
-SET status='cancelled', last_activity_at=?, updated_at=?
+SET status=?, last_activity_at=?, updated_at=?
 WHERE status=?`,
-		now, now,
+		biz.TeamRunStatusCancelled, now, now,
 		biz.TeamRunStatusRunning,
 	)
 	if err != nil {

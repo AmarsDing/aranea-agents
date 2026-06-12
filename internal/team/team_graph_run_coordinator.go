@@ -295,8 +295,10 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 	}
 	c.stopWatch(sess.execID)
 	watchCtx, cancel := context.WithCancel(ctx)
-	sess.watchStop = cancel
+	// Assign watchStop and update sessions map inside the same lock scope
+	// to prevent concurrent startGraphWatch/stopWatch from observing a nil watchStop.
 	c.mu.Lock()
+	sess.watchStop = cancel
 	c.sessions[sess.execID] = sess
 	c.mu.Unlock()
 
@@ -504,17 +506,22 @@ func (c *TeamGraphRunCoordinator) evictSession(execID string) {
 }
 
 // CleanupStaleSessions removes sessions older than sessionMaxAge (e.g. after process restart).
+// DB deletion is performed outside the lock to avoid blocking concurrent access.
 func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	maxAge := c.cfg.SessionMaxAge
 	if maxAge <= 0 {
 		maxAge = sessionMaxAge
 	}
 	now := time.Now()
+	// Phase 1: collect stale sessions under lock.
+	var stale []struct {
+		execID string
+		age    time.Duration
+	}
+	c.mu.Lock()
 	for id, sess := range c.sessions {
 		if !sess.registeredAt.IsZero() && now.Sub(sess.registeredAt) > maxAge {
 			if sess.watchStop != nil {
@@ -522,12 +529,20 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 				sess.watchStop = nil
 			}
 			delete(c.sessions, id)
-			c.deleteSessionFromDB(id)
-			c.lg.Warn("CleanupStaleSessions: evicted stale session",
-				loggateway.StepID("team.session.stale_evicted"),
-				loggateway.Str("exec_id", id),
-				loggateway.Str("age", now.Sub(sess.registeredAt).String()))
+			stale = append(stale, struct {
+				execID string
+				age    time.Duration
+			}{execID: id, age: now.Sub(sess.registeredAt)})
 		}
+	}
+	c.mu.Unlock()
+	// Phase 2: delete from DB outside the lock.
+	for _, s := range stale {
+		c.deleteSessionFromDB(s.execID)
+		c.lg.Warn("CleanupStaleSessions: evicted stale session",
+			loggateway.StepID("team.session.stale_evicted"),
+			loggateway.Str("exec_id", s.execID),
+			loggateway.Str("age", s.age.String()))
 	}
 }
 

@@ -124,6 +124,11 @@ type SkillLintChecker interface {
 
 // ── SkillEvolutionLoop ────────────────────────────────────────────────────────
 
+// EvolutionLoopOptions holds optional parameters for the evolution loop Run method.
+type EvolutionLoopOptions struct {
+	CurrentVersionID string
+}
+
 // SkillEvolutionLoop implements the Solve→Observe→Evolve→Gate→Reload five-stage
 // Skill evolution loop with multi-dimensional Gate verification and expiration.
 type SkillEvolutionLoop struct {
@@ -133,9 +138,6 @@ type SkillEvolutionLoop struct {
 	gate     SkillGateVerifier
 	reloader SkillReloader
 	lg       loggateway.Logger
-
-	// Optional: current version ID for parent tracking in Reload stage.
-	currentVersionID string
 
 	// Optional: suggestion reader/writer for expiration mechanism.
 	suggestionReader SkillEvolutionSuggestionReader
@@ -161,11 +163,6 @@ func NewSkillEvolutionLoop(
 	}
 }
 
-// SetCurrentVersionID sets the current skill version ID for parent tracking.
-func (l *SkillEvolutionLoop) SetCurrentVersionID(versionID string) {
-	l.currentVersionID = versionID
-}
-
 // SetSuggestionAccess sets the suggestion reader/writer for expiration mechanism.
 func (l *SkillEvolutionLoop) SetSuggestionAccess(reader SkillEvolutionSuggestionReader, writer SkillEvolutionSuggestionWriter) {
 	l.suggestionReader = reader
@@ -182,10 +179,15 @@ func (l *SkillEvolutionLoop) SetSuggestionAccess(reader SkillEvolutionSuggestion
 //     style)
 //  5. Reload: Register new Skill version, mark parent_version_id and
 //     evolution_reason
-func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task string) (*EvolutionLoopResult, error) {
+func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task string, opts ...EvolutionLoopOptions) (*EvolutionLoopResult, error) {
 	skillID, err := requireNonEmpty(skillID, "EVO_LOOP", "skill_id")
 	if err != nil {
 		return nil, err
+	}
+
+	var currentVersionID string
+	if len(opts) > 0 {
+		currentVersionID = opts[0].CurrentVersionID
 	}
 
 	// Stage 1: Solve
@@ -250,7 +252,7 @@ func (l *SkillEvolutionLoop) Run(ctx context.Context, skillID string, task strin
 	// Stage 5: Reload
 	evolutionReason := fmt.Sprintf("evolution: auto-improved skill based on observation (success_rate=%.2f, invocations=%d)",
 		observeReport.SuccessRate, observeReport.InvocationCount)
-	if err := l.reload(ctx, skillID, draftBody, l.currentVersionID, evolutionReason); err != nil {
+	if err := l.reload(ctx, skillID, draftBody, currentVersionID, evolutionReason); err != nil {
 		l.lg.Warn("EvolutionLoop: Reload stage failed",
 			loggateway.StepID("evo_loop.reload"),
 			loggateway.Str("skill_id", skillID),

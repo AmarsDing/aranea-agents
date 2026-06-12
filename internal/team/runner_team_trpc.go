@@ -473,7 +473,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	r.finalizeGraphRunStepsFallback(ctx, finishIn)
 
-	r.finalizeTeamRun(ctx, &run, teamRow, ar, assistantMsg, promptTok, completionTok, dialogMode, graphExecID, t0, teamEmitter)
+	run = r.finalizeTeamRun(ctx, run, teamRow, ar, assistantMsg, promptTok, completionTok, dialogMode, graphExecID, t0, teamEmitter)
 
 	sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, ar.agent, ar.prov, ar.mod, promptTok, completionTok, r.lg)
 	contextUsagePatched = true

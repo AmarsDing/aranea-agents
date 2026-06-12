@@ -525,9 +525,8 @@ func TestEvolutionLoop_Reload_SetsParentVersionAndReason(t *testing.T) {
 		reloader,
 		loggateway.NewNoop(),
 	)
-	loop.currentVersionID = "ver-001"
 
-	result, err := loop.Run(context.Background(), "skill-1", "test task")
+	result, err := loop.Run(context.Background(), "skill-1", "test task", EvolutionLoopOptions{CurrentVersionID: "ver-001"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

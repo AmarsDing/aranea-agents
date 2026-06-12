@@ -75,6 +75,8 @@ type EventsQuery struct {
 	EventType string
 	AgentID   string
 	Status    string
+	SessionID string // filter by session_id in metadata
+	TraceID   string // filter by trace_id in metadata
 }
 
 // TracesQuery filters monitor traces list.
@@ -484,6 +486,20 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 
 func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value float64) {
 	now := time.Now().UTC()
+
+	// Auto-transition recovered → idle after cooldown expires and metric stays below threshold
+	if rule.FiringState == AlertFiringStateRecovered && value < rule.Threshold {
+		if rule.RecoveredAt != nil {
+			cooldown := rule.CooldownMinutes
+			if cooldown <= 0 {
+				cooldown = 60
+			}
+			if now.Sub(*rule.RecoveredAt) >= time.Duration(cooldown)*time.Minute {
+				u.MarkAlertReset(ctx, rule)
+			}
+		}
+	}
+
 	if rule.FiringState == AlertFiringStateFiring && value < recoveryThreshold(rule) {
 		u.MarkAlertRecovered(ctx, rule, now)
 		meta, _ := json.Marshal(map[string]any{
@@ -591,8 +607,11 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	}
 
 	if total == 0 {
-		if rule.FiringState == AlertFiringStateFiring {
+		switch rule.FiringState {
+		case AlertFiringStateFiring:
 			u.MarkAlertRecovered(ctx, rule, time.Now().UTC())
+		case AlertFiringStateRecovered:
+			u.MarkAlertReset(ctx, rule)
 		}
 		return
 	}
@@ -631,13 +650,6 @@ func (u *Usecase) ShouldFireAlert(rule AlertRule, now time.Time) bool {
 	if rule.LastFiredAt != nil && now.Sub(*rule.LastFiredAt) < cooldownDur {
 		return false
 	}
-	// recovered state also enforces cooldown
-	if rule.FiringState == AlertFiringStateRecovered && rule.RecoveredAt != nil {
-		if now.Sub(*rule.RecoveredAt) < cooldownDur {
-			return false
-		}
-	}
-
 	// Legacy in-memory fallback (pre-OPT-02 data or repo not wired).
 	if rule.LastFiredAt == nil {
 		if v, ok := u.lastFired.Load(rule.ID); ok {
@@ -665,8 +677,18 @@ func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, 
 	if u == nil || u.alertRepo == nil {
 		return
 	}
+	// Validate state machine transition: current → firing
+	next, err := TransitionAlertFiringState(rule.FiringState, AlertEventThresholdExceeded)
+	if err != nil {
+		u.lg.Warn("MarkAlertFiredPersistent: invalid state transition",
+			loggateway.StepID("monitor.mark_fired_invalid_transition"),
+			loggateway.Str("rule_id", rule.ID),
+			loggateway.Str("from_state", string(rule.FiringState)),
+			loggateway.Err(err))
+		return
+	}
 	u.lastFired.Store(rule.ID, now)
-	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
+	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, &now, metricValue, nil); err != nil {
 		u.lg.Warn("MarkAlertFiredPersistent: DB update failed", loggateway.StepID("monitor.mark_fired_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	// Invalidate rules cache so next evaluation round reads fresh DB state.
@@ -680,8 +702,40 @@ func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now ti
 	if u == nil || u.alertRepo == nil {
 		return
 	}
-	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateRecovered, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
+	// Validate state machine transition: current → recovered
+	next, err := TransitionAlertFiringState(rule.FiringState, AlertEventRecovered)
+	if err != nil {
+		u.lg.Warn("MarkAlertRecovered: invalid state transition",
+			loggateway.StepID("monitor.mark_recovered_invalid_transition"),
+			loggateway.Str("rule_id", rule.ID),
+			loggateway.Str("from_state", string(rule.FiringState)),
+			loggateway.Err(err))
+		return
+	}
+	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
 		u.lg.Warn("MarkAlertRecovered: DB update failed", loggateway.StepID("monitor.mark_recovered_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
+	}
+	u.rulesMu.Lock()
+	u.rulesExpire = time.Time{}
+	u.rulesMu.Unlock()
+}
+
+// MarkAlertReset transitions a recovered alert back to idle after cooldown expires.
+func (u *Usecase) MarkAlertReset(ctx context.Context, rule AlertRule) {
+	if u == nil || u.alertRepo == nil {
+		return
+	}
+	next, err := TransitionAlertFiringState(rule.FiringState, AlertEventReset)
+	if err != nil {
+		u.lg.Warn("MarkAlertReset: invalid state transition",
+			loggateway.StepID("monitor.mark_reset_invalid_transition"),
+			loggateway.Str("rule_id", rule.ID),
+			loggateway.Str("from_state", string(rule.FiringState)),
+			loggateway.Err(err))
+		return
+	}
+	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, nil, 0, nil); err != nil {
+		u.lg.Warn("MarkAlertReset: DB update failed", loggateway.StepID("monitor.mark_reset_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	u.rulesMu.Lock()
 	u.rulesExpire = time.Time{}

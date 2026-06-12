@@ -1,14 +1,7 @@
-/**
- * @deprecated Use `useSkillEvolutionStore` from `stores/skillEvolution` directly instead.
- * This composable wraps the deprecated `useSkillEvolutionSuggestionStore` which only
- * handles skill-level suggestions. The unified store supports both skill and agent types.
- */
 import { computed, onMounted, ref, watch } from 'vue';
-import { useSkillEvolutionSuggestionStore } from '../../stores/skillEvolutionSuggestion';
+import { useSkillEvolutionStore } from '../../stores/skillEvolution';
 import { useAuthStore } from '../../stores/auth';
-import type { EvolutionSuggestionView } from '../skills/types';
-
-export type EvolutionSuggestion = EvolutionSuggestionView;
+import type { SkillEvolutionView, EvolutionTargetType } from '../skills/types';
 
 export const statusOptions = [
   { label: '全部', value: '' },
@@ -18,23 +11,29 @@ export const statusOptions = [
   { label: '已应用', value: 'applied' },
 ];
 
+export const targetTypeOptions = [
+  { label: '全部', value: '' },
+  { label: 'Skill', value: 'skill' },
+  { label: 'Agent', value: 'agent' },
+];
+
 export function useEvolutionSuggestionListPage() {
-  const store = useSkillEvolutionSuggestionStore();
+  const store = useSkillEvolutionStore();
   const auth = useAuthStore();
 
+  const targetType = ref<EvolutionTargetType | ''>('');
   const status = ref('');
-  const skillId = ref('');
+  const targetId = ref('');
   const page = ref(1);
   const pageSize = ref(20);
 
-  // Derive data from Store via computed to avoid dual-source refs.
   const rows = computed(() => store.suggestions);
   const total = computed(() => store.total);
   const loading = computed(() => store.loading);
   const error = computed(() => store.error ?? '');
 
   const rejectDialogOpen = ref(false);
-  const rejectTarget = ref<EvolutionSuggestion | null>(null);
+  const rejectTarget = ref<SkillEvolutionView | null>(null);
   const rejectionReason = ref('');
   const rejecting = ref(false);
 
@@ -49,22 +48,22 @@ export function useEvolutionSuggestionListPage() {
   async function loadRows() {
     try {
       await store.loadSuggestions({
-        skillId: skillId.value?.trim() || undefined,
+        targetType: targetType.value || undefined,
+        targetId: targetId.value?.trim() || undefined,
         status: status.value?.trim() || undefined,
         page: page.value,
         pageSize: pageSize.value,
       });
     } catch {
-      // error is already captured in store.error, exposed via computed
+      // error is already captured in store.error
     }
   }
 
-  async function approveSuggestion(item: EvolutionSuggestion) {
+  async function approveSuggestion(item: SkillEvolutionView) {
     if (!item.id) return;
     approvingId.value = item.id;
     try {
       await store.approveSuggestion(item.id, auth.displayLabel || 'unknown');
-      // Delay refresh to allow backend GenerateDraft + ValidateSuggestion to complete
       setTimeout(() => void loadRows(), 500);
     } catch {
       // error is already captured in store.error
@@ -73,7 +72,7 @@ export function useEvolutionSuggestionListPage() {
     }
   }
 
-  function openRejectDialog(item: EvolutionSuggestion) {
+  function openRejectDialog(item: SkillEvolutionView) {
     rejectTarget.value = item;
     rejectionReason.value = '';
     rejectDialogOpen.value = true;
@@ -86,7 +85,7 @@ export function useEvolutionSuggestionListPage() {
       await store.rejectSuggestion(
         rejectTarget.value.id,
         auth.displayLabel || 'unknown',
-        rejectionReason.value?.trim() || undefined,
+        rejectionReason.value?.trim() || '',
       );
       rejectDialogOpen.value = false;
       rejectTarget.value = null;
@@ -96,15 +95,6 @@ export function useEvolutionSuggestionListPage() {
       // error is already captured in store.error
     } finally {
       rejecting.value = false;
-    }
-  }
-
-  async function triggerCuratorFlow(targetSkillId: string): Promise<EvolutionSuggestionView | null> {
-    try {
-      return await store.runCuratorFlow(targetSkillId);
-    } catch {
-      // error is already captured in store.error
-      throw store.error;
     }
   }
 
@@ -118,25 +108,26 @@ export function useEvolutionSuggestionListPage() {
     if (!id) return;
     triggeringCurator.value = true;
     try {
-      await triggerCuratorFlow(id);
+      await store.runCuratorFlow(id);
       curatorDialogOpen.value = false;
       curatorSkillId.value = '';
       void loadRows();
     } catch {
-      // error handled in composable
+      // error handled in store
     } finally {
       triggeringCurator.value = false;
     }
   }
 
   function resetFilters() {
+    targetType.value = '';
     status.value = '';
-    skillId.value = '';
+    targetId.value = '';
     page.value = 1;
     void loadRows();
   }
 
-  watch([status, skillId], () => {
+  watch([targetType, status, targetId], () => {
     page.value = 1;
     void loadRows();
   });
@@ -149,8 +140,9 @@ export function useEvolutionSuggestionListPage() {
   });
 
   return {
+    targetType,
     status,
-    skillId,
+    targetId,
     page,
     pageSize,
     rows,
@@ -173,6 +165,5 @@ export function useEvolutionSuggestionListPage() {
     handleTriggerCurator,
     confirmTriggerCurator,
     resetFilters,
-    triggerCuratorFlow,
   };
 }

@@ -563,42 +563,32 @@ export async function listUnifiedEvolutionSuggestions(params: {
   // inconsistent across the merge boundary. Consumers should use skillTotal / agentTotal
   // for display and prefer specifying targetType when accurate pagination is needed.
   if (!params.targetType || params.targetType === 'skill') {
-    try {
-      const client = createSkillEvolutionSuggestionService();
-      const skillRes = await client.ListSkillEvolutionSuggestions({
-        skillId: params.targetId || undefined,
-        status: params.status || undefined,
-        page: params.page,
-        pageSize: params.pageSize,
-      });
-      for (const item of skillRes.items || []) {
-        items.push(mapProtoEvolutionSuggestionToView(item));
-      }
-      skillTotal = skillRes.total || 0;
-    } catch (err) {
-      // Service may not be available
-      console.warn('[listUnifiedEvolutionSuggestions] skill-level fetch failed:', err);
+    const client = createSkillEvolutionSuggestionService();
+    const skillRes = await client.ListSkillEvolutionSuggestions({
+      skillId: params.targetId || undefined,
+      status: params.status || undefined,
+      page: params.page,
+      pageSize: params.pageSize,
+    });
+    for (const item of skillRes.items || []) {
+      items.push(mapProtoEvolutionSuggestionToView(item));
     }
+    skillTotal = skillRes.total || 0;
   }
 
   // Fetch from SkillEvolutionService (agent-level)
   if (!params.targetType || params.targetType === 'agent') {
-    try {
-      const evoClient = createSkillEvolutionService();
-      const agentRes = await evoClient.ListSkillProposals({
-        agentId: params.targetId || undefined,
-        status: params.status || undefined,
-        page: params.page,
-        pageSize: params.pageSize,
-      });
-      for (const item of agentRes.items || []) {
-        items.push(mapProtoSkillProposalToView(item));
-      }
-      agentTotal = agentRes.total || (agentRes.items || []).length;
-    } catch (err) {
-      // Service may not be available
-      console.warn('[listUnifiedEvolutionSuggestions] agent-level fetch failed:', err);
+    const evoClient = createSkillEvolutionService();
+    const agentRes = await evoClient.ListSkillProposals({
+      agentId: params.targetId || undefined,
+      status: params.status || undefined,
+      page: params.page,
+      pageSize: params.pageSize,
+    });
+    for (const item of agentRes.items || []) {
+      items.push(mapProtoSkillProposalToView(item));
     }
+    agentTotal = agentRes.total || (agentRes.items || []).length;
   }
 
   return { items, total: skillTotal + agentTotal, skillTotal, agentTotal };

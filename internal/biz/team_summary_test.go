@@ -35,7 +35,7 @@ func TestTeamUsecase_GetRunSummary(t *testing.T) {
 			"run-1": {{AgentKey: "a1", ToolCallCount: 4}},
 		},
 	}
-	uc := NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewTeamUsecase(TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
 	data, err := uc.GetRunSummary(context.Background(), "run-1")
 	if err != nil {
 		t.Fatal(err)

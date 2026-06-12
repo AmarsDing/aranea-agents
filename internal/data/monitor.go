@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +78,9 @@ func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEven
 		id, ev.EventKey, ev.Name, ev.Description, status, ev.MetadataJSON, now, now,
 	)
 	if err != nil && isSQLiteUniqueConstraintError(err) {
+		r.data.lg.Warn("InsertMonitorEvent: duplicate event key, skipping",
+			loggateway.StepID("monitor.event_duplicate"),
+			loggateway.Str("event_key", ev.EventKey))
 		return nil
 	}
 	return err
@@ -210,6 +212,14 @@ func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
 	if q.AgentID != "" {
 		parts = append(parts, "json_extract(metadata_json, '$.agent_id') = ?")
 		args = append(args, q.AgentID)
+	}
+	if q.SessionID != "" {
+		parts = append(parts, "COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id')) = ?")
+		args = append(args, q.SessionID)
+	}
+	if q.TraceID != "" {
+		parts = append(parts, "COALESCE(meta_trace_id, json_extract(metadata_json, '$.trace_id')) = ?")
+		args = append(args, q.TraceID)
 	}
 	if q.Status != "" {
 		parts = append(parts, "status = ?")
@@ -369,12 +379,15 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 	if jsonValue == "" {
 		return false, nil
 	}
+	safeKey, ok := safeJSONKey(jsonKey)
+	if !ok {
+		return false, nil
+	}
 	var id, existing string
-	query := fmt.Sprintf(
-		`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+	query := `SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
 		 AND json_extract(metadata_json, '$.session_id') = ?
-		 AND json_extract(metadata_json, '$.%s') = ?
-		 ORDER BY created_at DESC LIMIT 1`, jsonKey)
+		 AND json_extract(metadata_json, '$.` + safeKey + `') = ?
+		 ORDER BY created_at DESC LIMIT 1`
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sessionID, jsonValue}, &id, &existing)
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return false, nil
@@ -471,6 +484,19 @@ func scanMonitorPlatformRow(resource string, row scanner) (biz.MonitorPlatformRo
 	v.UpdatedAt = updatedAt
 	v.DeletedAt = deletedAt
 	return v, nil
+}
+
+// allowedJSONKeys is a whitelist for json_extract path construction in SQL queries.
+var allowedJSONKeys = map[string]string{
+	"invocation_id": "invocation_id",
+	"run_id":        "run_id",
+}
+
+func safeJSONKey(key string) (string, bool) {
+	if k, ok := allowedJSONKeys[key]; ok {
+		return k, true
+	}
+	return "", false
 }
 
 func isSQLiteUniqueConstraintError(err error) bool {

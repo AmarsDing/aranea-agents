@@ -184,8 +184,10 @@ func TestShouldFireAlert_RecoveredWithinCooldown(t *testing.T) {
 		FiringState:      monitor.AlertFiringStateRecovered,
 		RecoveredAt:      &recoveredAt,
 	}
-	if u.ShouldFireAlert(rule, now) {
-		t.Error("ShouldFireAlert() = true, want false (recovered within cooldown)")
+	// Recovered state no longer enforces a separate RecoveredAt cooldown;
+	// only LastFiredAt cooldown applies. Without LastFiredAt, firing is allowed.
+	if !u.ShouldFireAlert(rule, now) {
+		t.Error("ShouldFireAlert() = false, want true (recovered no longer blocks via RecoveredAt cooldown)")
 	}
 }
 

@@ -59,6 +59,7 @@ type UnifiedEvolutionSuggestion struct {
 type UnifiedEvolutionReader interface {
 	HasPendingForTarget(ctx context.Context, targetType string, targetID string) (bool, error)
 	GetLatestByTarget(ctx context.Context, targetType string, targetID string) (*UnifiedEvolutionSuggestion, error)
+	GetLatestByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string) (*UnifiedEvolutionSuggestion, error)
 	ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
 	CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error)
 	GetByID(ctx context.Context, id string) (*UnifiedEvolutionSuggestion, error)
@@ -137,7 +138,7 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 	// 2. 检查冷却期（7 天）
 	latest, err := o.reader.GetLatestByTarget(ctx, string(targetType), targetID)
 	if err == nil && latest != nil {
-		cooldownEnd := latest.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
+		cooldownEnd := latest.CreatedAt.Add(evoCooldownDuration)
 		if time.Now().UTC().Before(cooldownEnd) {
 			return nil, nil
 		}
@@ -168,6 +169,19 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 
 		// 4. 逐个创建（DB UNIQUE 约束兜底）
 		for _, suggestion := range suggestions {
+			// Per-action-type cooldown check: each (targetType, targetID, actionType)
+			// triple has its own independent cooldown period.
+			latestByAction, lbErr := o.reader.GetLatestByTargetAndAction(ctx, string(suggestion.TargetType), suggestion.TargetID, string(suggestion.ActionType))
+			if lbErr == nil && latestByAction != nil {
+				cooldownEnd := latestByAction.CreatedAt.Add(EvoTriggerCooldownHours * time.Hour)
+				if time.Now().UTC().Before(cooldownEnd) {
+					o.lg.Debug("orchestrator: cooldown active for action type, skipping",
+						loggateway.StepID("evo_orchestrator.cooldown"),
+						loggateway.Str("action_type", string(suggestion.ActionType)))
+					continue
+				}
+			}
+
 			if createErr := o.writer.Create(ctx, suggestion); createErr != nil {
 				if isDuplicateKeyError(createErr) {
 					o.lg.Debug("orchestrator: concurrent creation detected, skipping",
@@ -216,7 +230,7 @@ func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, reje
 
 // ExpirePending 过期 pending 建议（超过 7 天）
 func (o *SkillEvolutionOrchestrator) ExpirePending(ctx context.Context) (int, error) {
-	cutoff := time.Now().UTC().Add(-EvoTriggerCooldownHours * time.Hour)
+	cutoff := time.Now().UTC().Add(-evoCooldownDuration)
 	expired, err := o.writer.ExpireOlderThan(ctx, cutoff)
 	if err != nil {
 		o.lg.Warn("orchestrator: ExpirePending failed",
@@ -261,7 +275,6 @@ func isDuplicateKeyError(err error) bool {
 	}
 	msg := err.Error()
 	lower := strings.ToLower(msg)
-	return strings.Contains(lower, "unique") ||
-		strings.Contains(lower, "duplicate") ||
-		strings.Contains(lower, "constraint")
+	return strings.Contains(lower, "unique constraint failed") ||
+		strings.Contains(lower, "duplicate")
 }

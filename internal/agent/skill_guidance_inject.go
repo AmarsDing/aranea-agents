@@ -87,7 +87,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		if written < len(entries) {
 			b.WriteString("\n> Other available skills can be loaded on demand using the skill_load tool.\n")
 		}
-		cue := b.String()
+		cue := truncateAtMarkdownBoundary(b.String(), maxSkillGuidanceChars)
 		sys := trpcmodel.NewSystemMessage(cue)
 		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -215,4 +215,32 @@ func extractSlugFromArgs(args []byte) string {
 		return rest[:end]
 	}
 	return ""
+}
+
+// truncateAtMarkdownBoundary truncates content to at most limit bytes, preferring
+// to cut at a Markdown boundary (heading, horizontal rule, or blank line) rather
+// than in the middle of a paragraph.
+func truncateAtMarkdownBoundary(content string, limit int) string {
+	if len(content) <= limit {
+		return content
+	}
+	boundaries := []string{"\n### ", "\n---", "\n\n"}
+	bestPos := -1
+	for _, sep := range boundaries {
+		searchStart := limit - limit/4
+		if searchStart < 0 {
+			searchStart = 0
+		}
+		idx := strings.LastIndex(content[searchStart:limit], sep)
+		if idx >= 0 {
+			absIdx := searchStart + idx
+			if absIdx > bestPos {
+				bestPos = absIdx
+			}
+		}
+	}
+	if bestPos > 0 {
+		return content[:bestPos]
+	}
+	return content[:limit]
 }

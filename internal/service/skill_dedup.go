@@ -84,6 +84,8 @@ func mapMergeStrategy(s string) biz.MergeStrategy {
 	switch s {
 	case "ai_fuse":
 		return biz.MergeStrategyAIFuse
+	case "rule_fuse":
+		return biz.MergeStrategyRuleFuse
 	case "manual_pick":
 		return biz.MergeStrategyManualPick
 	default:

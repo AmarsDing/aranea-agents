@@ -1559,7 +1559,7 @@ func TestMarkAlertRecovered_Success(t *testing.T) {
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	now := time.Now().UTC()
-	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, now)
+	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1", FiringState: monitor.AlertFiringStateFiring}, now)
 	if !updateCalled {
 		t.Error("UpdateAlertFiringState not called")
 	}
@@ -1572,17 +1572,17 @@ func TestMarkAlertRecovered_RepoError(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now())
+	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1", FiringState: monitor.AlertFiringStateFiring}, time.Now())
 }
 
 func TestMarkAlertRecovered_NilUsecase(t *testing.T) {
 	var uc *monitor.Usecase
-	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now())
+	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1", FiringState: monitor.AlertFiringStateFiring}, time.Now())
 }
 
 func TestMarkAlertRecovered_NilRepo(t *testing.T) {
 	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
-	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now())
+	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1", FiringState: monitor.AlertFiringStateFiring}, time.Now())
 }
 
 func TestRebuildRingBuffer_Success(t *testing.T) {
