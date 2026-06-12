@@ -2,8 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -77,7 +75,7 @@ func (r *sessionRepo) LatestSessionSummaryTime(ctx context.Context, sessionID st
 	var created string
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
 		`SELECT created_at FROM session_summaries WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`, []any{sessionID}, &created)
-	if errors.Is(err, sql.ErrNoRows) {
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return "", nil
 	}
 	if err != nil {

@@ -11,9 +11,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
 )
@@ -81,10 +81,10 @@ func NewTaskOrchestratorImpl(
 // Orchestrate builds and executes the orchestration graph based on the TaskPlan and AllocationPlan.
 func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) (*biz.OrchestrationHandle, error) {
 	if taskPlan == nil {
-		return nil, kerrors.BadRequest("SPIRIT", "task_plan is required")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "task_plan is required")
 	}
 	if allocPlan == nil {
-		return nil, kerrors.BadRequest("SPIRIT", "allocation_plan is required")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "allocation_plan is required")
 	}
 
 	o.lg.Info("TaskOrchestrator: starting orchestration",
@@ -151,8 +151,7 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 		}
 
 	default:
-		return nil, kerrors.BadRequest("SPIRIT",
-			fmt.Sprintf("unknown orchestration strategy: %s", taskPlan.Strategy))
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "unknown orchestration strategy: %s", taskPlan.Strategy)
 	}
 
 	// Save a step checkpoint after orchestration setup completes.
@@ -193,7 +192,7 @@ func (o *TaskOrchestratorImpl) orchestrateSingleAgent(ctx context.Context, taskP
 
 	_, err := BuildAgentAsTool(ctx, o.matcher, o.deps, o.lg, taskDesc, capabilities)
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "build agent-as-tool: "+err.Error())
+		return apierror.Internal(apierror.DomainSpirit, "build agent-as-tool").WithCause(err)
 	}
 
 	// For now, mark as running. The actual tool invocation happens in the Spirit turn.
@@ -230,7 +229,7 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 	}
 
 	if len(agentKeys) == 0 {
-		return kerrors.BadRequest("SPIRIT", "no agent keys in allocation plan")
+		return apierror.BadRequest(apierror.DomainSpirit, "no agent keys in allocation plan")
 	}
 
 	// Sort agents by historical performance for this task type.
@@ -247,7 +246,7 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 
 	team, _, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "assemble team: "+err.Error())
+		return apierror.Internal(apierror.DomainSpirit, "assemble team").WithCause(err)
 	}
 
 	handle.TeamIDs = []string{team.ID}
@@ -270,13 +269,13 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 	)
 
 	if taskPlan.TaskDAG == nil {
-		return kerrors.BadRequest("SPIRIT", "task_dag is required for DAG strategy")
+		return apierror.BadRequest(apierror.DomainSpirit, "task_dag is required for DAG strategy")
 	}
 
 	// Compile DAG + AllocationPlan → Definition JSON.
 	defJSON, err := o.compiler.Compile(taskPlan.TaskDAG, allocPlan)
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "compile DAG to graph: "+err.Error())
+		return apierror.Internal(apierror.DomainSpirit, "compile DAG to graph").WithCause(err)
 	}
 
 	o.lg.Info("TaskOrchestrator: DAG compiled to definition JSON",
@@ -294,7 +293,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 	}
 
 	if len(agentKeys) == 0 {
-		return kerrors.BadRequest("SPIRIT", "no agent keys in allocation plan for DAG strategy")
+		return apierror.BadRequest(apierror.DomainSpirit, "no agent keys in allocation plan for DAG strategy")
 	}
 
 	// Determine mode from the compiled definition.
@@ -324,7 +323,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 
 	team, _, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "assemble DAG team: "+err.Error())
+		return apierror.Internal(apierror.DomainSpirit, "assemble DAG team").WithCause(err)
 	}
 
 	// Update the team's DefinitionJSON with the DAG-compiled version.
@@ -358,7 +357,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 func (o *TaskOrchestratorImpl) CheckProgress(ctx context.Context, orchestrationID string) ([]biz.TaskProgress, error) {
 	handle, err := o.repo.GetByID(ctx, orchestrationID)
 	if err != nil {
-		return nil, kerrors.NotFound("SPIRIT", "orchestration not found")
+		return nil, apierror.NotFound(apierror.DomainSpirit, "orchestration not found")
 	}
 
 	// For team-based strategies, delegate to team progress checking.
@@ -398,11 +397,11 @@ func (o *TaskOrchestratorImpl) CheckProgress(ctx context.Context, orchestrationI
 func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID string) error {
 	handle, err := o.repo.GetByID(ctx, orchestrationID)
 	if err != nil {
-		return kerrors.NotFound("SPIRIT", "orchestration not found")
+		return apierror.NotFound(apierror.DomainSpirit, "orchestration not found")
 	}
 
 	if handle.Status != biz.OrchestrationStatusPending && handle.Status != biz.OrchestrationStatusRunning {
-		return kerrors.BadRequest("SPIRIT", "only pending or running orchestrations can be cancelled")
+		return apierror.BadRequest(apierror.DomainSpirit, "only pending or running orchestrations can be cancelled")
 	}
 
 	// Cancel all teams.
@@ -438,11 +437,11 @@ func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID strin
 func (o *TaskOrchestratorImpl) Synthesize(ctx context.Context, orchestrationID string) (*biz.SynthesisOutput, error) {
 	handle, err := o.repo.GetByID(ctx, orchestrationID)
 	if err != nil {
-		return nil, kerrors.NotFound("SPIRIT", "orchestration not found")
+		return nil, apierror.NotFound(apierror.DomainSpirit, "orchestration not found")
 	}
 
 	if handle.SpiritSessionID == "" {
-		return nil, kerrors.BadRequest("SPIRIT", "orchestration has no spirit_session_id")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "orchestration has no spirit_session_id")
 	}
 
 	// Delegate to the SpiritSynthesisService.
@@ -478,19 +477,18 @@ func (o *TaskOrchestratorImpl) Synthesize(ctx context.Context, orchestrationID s
 		return output, nil
 	}
 
-	return nil, kerrors.InternalServer("SPIRIT", "synthesis service not available")
+	return nil, apierror.Internal(apierror.DomainSpirit, "synthesis service not available")
 }
 
 // Recover recovers an interrupted orchestration from its last checkpoint.
 func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID string) error {
 	handle, err := o.repo.GetByID(ctx, orchestrationID)
 	if err != nil {
-		return kerrors.NotFound("SPIRIT", "orchestration not found")
+		return apierror.NotFound(apierror.DomainSpirit, "orchestration not found")
 	}
 
 	if handle.Status != biz.OrchestrationStatusInterrupted {
-		return kerrors.BadRequest("SPIRIT", fmt.Sprintf(
-			"only interrupted orchestrations can be recovered (status: %s)", handle.Status))
+		return apierror.BadRequest(apierror.DomainSpirit, "only interrupted orchestrations can be recovered (status: %s)", handle.Status)
 	}
 
 	o.lg.Info("TaskOrchestrator: recovering orchestration",
@@ -514,7 +512,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 				loggateway.Err(updateErr),
 			)
 		}
-		return kerrors.NotFound("SPIRIT", "no checkpoint available for orchestration "+orchestrationID)
+		return apierror.NotFound(apierror.DomainSpirit, "no checkpoint available for orchestration %s", orchestrationID)
 	}
 
 	// Attempt to load the latest checkpoint from the CheckpointSaver.
@@ -538,7 +536,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 					loggateway.Err(updateErr),
 				)
 			}
-			return kerrors.InternalServer("SPIRIT", "failed to load checkpoint for orchestration "+orchestrationID+": "+loadErr.Error())
+			return apierror.Internal(apierror.DomainSpirit, "failed to load checkpoint for orchestration %s", orchestrationID).WithCause(loadErr)
 		}
 
 		if tuple == nil || tuple.Checkpoint == nil {
@@ -555,7 +553,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 					loggateway.Err(updateErr),
 				)
 			}
-			return kerrors.NotFound("SPIRIT", fmt.Sprintf("checkpoint %s not found for orchestration %s", handle.CheckpointID, orchestrationID))
+			return apierror.NotFound(apierror.DomainSpirit, "checkpoint %s not found for orchestration %s", handle.CheckpointID, orchestrationID)
 		}
 
 		o.lg.Info("TaskOrchestrator: checkpoint loaded successfully",
@@ -601,7 +599,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 // handle and updates the handle's checkpoint ID for graph runtime resumption.
 func (o *TaskOrchestratorImpl) restoreGraphFromCheckpoint(ctx context.Context, handle *biz.OrchestrationHandle, tuple *graph.CheckpointTuple) error {
 	if tuple == nil || tuple.Checkpoint == nil {
-		return kerrors.InternalServer("SPIRIT", "checkpoint tuple is nil")
+		return apierror.Internal(apierror.DomainSpirit, "checkpoint tuple is nil")
 	}
 
 	ckpt := tuple.Checkpoint
@@ -653,7 +651,7 @@ func (o *TaskOrchestratorImpl) restoreGraphFromCheckpoint(ctx context.Context, h
 func (o *TaskOrchestratorImpl) RecoverAllInterrupted(ctx context.Context) error {
 	handles, err := o.repo.ListByStatus(ctx, biz.OrchestrationStatusInterrupted)
 	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "list interrupted orchestrations: "+err.Error())
+		return apierror.Internal(apierror.DomainSpirit, "list interrupted orchestrations").WithCause(err)
 	}
 
 	if len(handles) == 0 {

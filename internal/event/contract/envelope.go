@@ -13,59 +13,59 @@ import (
 type EnvelopeType string
 
 const (
-	EnvelopeTypeTextDelta          EnvelopeType = "text_delta"
-	EnvelopeTypeTextDone           EnvelopeType = "text_done"
-	EnvelopeTypeToolCall           EnvelopeType = "tool_call"
-	EnvelopeTypeToolResult         EnvelopeType = "tool_result"
-	EnvelopeTypeStateDelta         EnvelopeType = "state_delta"
-	EnvelopeTypeTransfer           EnvelopeType = "transfer"
-	EnvelopeTypeRunnerCompletion   EnvelopeType = "runner_completion"
+	EnvelopeTypeTextDelta        EnvelopeType = "text_delta"
+	EnvelopeTypeTextDone         EnvelopeType = "text_done"
+	EnvelopeTypeToolCall         EnvelopeType = "tool_call"
+	EnvelopeTypeToolResult       EnvelopeType = "tool_result"
+	EnvelopeTypeStateDelta       EnvelopeType = "state_delta"
+	EnvelopeTypeTransfer         EnvelopeType = "transfer"
+	EnvelopeTypeRunnerCompletion EnvelopeType = "runner_completion"
 	// EnvelopeTypeContextUsage carries mid-turn context window fill (ReAct sub-steps).
-	EnvelopeTypeContextUsage EnvelopeType = "context_usage"
-	EnvelopeTypeRunStatus          EnvelopeType = "run_status"
-	EnvelopeTypeError              EnvelopeType = "error"
-	EnvelopeTypeLog                EnvelopeType = "log"
-	EnvelopeTypeFlowLog            EnvelopeType = "flow_log"
-	EnvelopeTypeGraphNodeStart     EnvelopeType = "graph_node_start"
-	EnvelopeTypeGraphNodeEnd       EnvelopeType = "graph_node_end"
-	EnvelopeTypeCheckpoint         EnvelopeType = "checkpoint"
-	EnvelopeTypeIntentPass         EnvelopeType = "intent_pass"
-	EnvelopeTypeMemberMessageStart EnvelopeType = "member_message_start"
-	EnvelopeTypeMemberDelta        EnvelopeType = "member_delta"
-	EnvelopeTypeMemberMessageDone  EnvelopeType = "member_message_done"
-	EnvelopeTypeTeamRunStarted     EnvelopeType = "team_run_started"
-	EnvelopeTypeTeamRunFinished    EnvelopeType = "team_run_finished"
-	EnvelopeTypeTeamStepStarted    EnvelopeType = "team_step_started"
-	EnvelopeTypeTeamStepFinished   EnvelopeType = "team_step_finished"
-	EnvelopeTypeTeamRunFailed      EnvelopeType = "team_run_failed"
-	EnvelopeTypeTeamSummary        EnvelopeType = "team_summary"
-	EnvelopeTypeGraphStep          EnvelopeType = "graph_step"
-	EnvelopeTypeGraphExecutionDone EnvelopeType = "graph_execution_done"
-	EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
-	EnvelopeTypeGraphNodeCustom    EnvelopeType = "graph_node_custom"
-	EnvelopeTypeGraphTaskStatus    EnvelopeType = "graph_task_status"
-	EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
-	EnvelopeTypeMCPSessionReconnect EnvelopeType = "mcp.session.reconnect"
-	EnvelopeTypeMCPHealthAlert      EnvelopeType = "mcp.health.alert"
-	EnvelopeTypeAlertNotify                 EnvelopeType = "alert.notify"
-	EnvelopeTypeOrchestrationAgentStatus    EnvelopeType = "orchestration_agent_status"
-	EnvelopeTypeUserFeedback                EnvelopeType = "user_feedback"
-	EnvelopeTypeSessionStatusChanged        EnvelopeType = "session.status_changed"
-	EnvelopeTypeSpiritTeamAssembled         EnvelopeType = "spirit_team_assembled"
-	EnvelopeTypeSpiritTeamCompleted         EnvelopeType = "spirit_team_completed"
-	EnvelopeTypeSpiritTeamFailed            EnvelopeType = "spirit_team_failed"
-	EnvelopeTypeSpiritTeamCancelled         EnvelopeType = "spirit_team_cancelled"
-	EnvelopeTypeSpiritTeamInterrupted       EnvelopeType = "spirit_team_interrupted"
-	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
-	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
-	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
-	EnvelopeTypeSpiritPlanCreated           EnvelopeType = "spirit_plan_created"
-	EnvelopeTypeSpiritAllocationCreated     EnvelopeType = "spirit_allocation_created"
-	EnvelopeTypeSpiritOrchestrationStarted  EnvelopeType = "spirit_orchestration_started"
-	EnvelopeTypeSpiritOrchestrationCheckpoint EnvelopeType = "spirit_orchestration_checkpoint"
+	EnvelopeTypeContextUsage                   EnvelopeType = "context_usage"
+	EnvelopeTypeRunStatus                      EnvelopeType = "run_status"
+	EnvelopeTypeError                          EnvelopeType = "error"
+	EnvelopeTypeLog                            EnvelopeType = "log"
+	EnvelopeTypeFlowLog                        EnvelopeType = "flow_log"
+	EnvelopeTypeGraphNodeStart                 EnvelopeType = "graph_node_start"
+	EnvelopeTypeGraphNodeEnd                   EnvelopeType = "graph_node_end"
+	EnvelopeTypeCheckpoint                     EnvelopeType = "checkpoint"
+	EnvelopeTypeIntentPass                     EnvelopeType = "intent_pass"
+	EnvelopeTypeMemberMessageStart             EnvelopeType = "member_message_start"
+	EnvelopeTypeMemberDelta                    EnvelopeType = "member_delta"
+	EnvelopeTypeMemberMessageDone              EnvelopeType = "member_message_done"
+	EnvelopeTypeTeamRunStarted                 EnvelopeType = "team_run_started"
+	EnvelopeTypeTeamRunFinished                EnvelopeType = "team_run_finished"
+	EnvelopeTypeTeamStepStarted                EnvelopeType = "team_step_started"
+	EnvelopeTypeTeamStepFinished               EnvelopeType = "team_step_finished"
+	EnvelopeTypeTeamRunFailed                  EnvelopeType = "team_run_failed"
+	EnvelopeTypeTeamSummary                    EnvelopeType = "team_summary"
+	EnvelopeTypeGraphStep                      EnvelopeType = "graph_step"
+	EnvelopeTypeGraphExecutionDone             EnvelopeType = "graph_execution_done"
+	EnvelopeTypeGraphNodeError                 EnvelopeType = "graph_node_error"
+	EnvelopeTypeGraphNodeCustom                EnvelopeType = "graph_node_custom"
+	EnvelopeTypeGraphTaskStatus                EnvelopeType = "graph_task_status"
+	EnvelopeTypeKnowledgeIngest                EnvelopeType = "knowledge_ingest"
+	EnvelopeTypeMCPSessionReconnect            EnvelopeType = "mcp.session.reconnect"
+	EnvelopeTypeMCPHealthAlert                 EnvelopeType = "mcp.health.alert"
+	EnvelopeTypeAlertNotify                    EnvelopeType = "alert.notify"
+	EnvelopeTypeOrchestrationAgentStatus       EnvelopeType = "orchestration_agent_status"
+	EnvelopeTypeUserFeedback                   EnvelopeType = "user_feedback"
+	EnvelopeTypeSessionStatusChanged           EnvelopeType = "session.status_changed"
+	EnvelopeTypeSpiritTeamAssembled            EnvelopeType = "spirit_team_assembled"
+	EnvelopeTypeSpiritTeamCompleted            EnvelopeType = "spirit_team_completed"
+	EnvelopeTypeSpiritTeamFailed               EnvelopeType = "spirit_team_failed"
+	EnvelopeTypeSpiritTeamCancelled            EnvelopeType = "spirit_team_cancelled"
+	EnvelopeTypeSpiritTeamInterrupted          EnvelopeType = "spirit_team_interrupted"
+	EnvelopeTypeSpiritTeamProgress             EnvelopeType = "spirit_team_progress"
+	EnvelopeTypeSpiritTeamsAllCompleted        EnvelopeType = "spirit_teams_all_completed"
+	EnvelopeTypeSpiritSynthesisCompleted       EnvelopeType = "spirit_synthesis_completed"
+	EnvelopeTypeSpiritPlanCreated              EnvelopeType = "spirit_plan_created"
+	EnvelopeTypeSpiritAllocationCreated        EnvelopeType = "spirit_allocation_created"
+	EnvelopeTypeSpiritOrchestrationStarted     EnvelopeType = "spirit_orchestration_started"
+	EnvelopeTypeSpiritOrchestrationCheckpoint  EnvelopeType = "spirit_orchestration_checkpoint"
 	EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
-	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
-	EnvelopeTypeMetricsUpdated              EnvelopeType = "metrics_updated"
+	EnvelopeTypeTokenUsage                     EnvelopeType = "token_usage"
+	EnvelopeTypeMetricsUpdated                 EnvelopeType = "metrics_updated"
 
 	// EnvelopeTypeExecutionProgress carries a single orchestration step's start/done/error
 	// status. It is published to the chat channel so the AgentTreeTimeline can render
@@ -74,26 +74,31 @@ const (
 	EnvelopeTypeExecutionProgress EnvelopeType = "execution_progress"
 
 	// Butler orchestration events
-	EnvelopeTypeButlerOrchestrationStarted  EnvelopeType = "butler.orchestration.started"
+	EnvelopeTypeButlerOrchestrationStarted   EnvelopeType = "butler.orchestration.started"
 	EnvelopeTypeButlerOrchestrationCompleted EnvelopeType = "butler.orchestration.completed"
-	EnvelopeTypeButlerOrchestrationFailed   EnvelopeType = "butler.orchestration.failed"
+	EnvelopeTypeButlerOrchestrationFailed    EnvelopeType = "butler.orchestration.failed"
 
 	// Skill evolution events
-	EnvelopeTypeSkillHealthChanged          EnvelopeType = "skill.health_changed"
-	EnvelopeTypeSkillEvolutionProposed      EnvelopeType = "skill.evolution_proposed"
+	EnvelopeTypeSkillHealthChanged     EnvelopeType = "skill.health_changed"
+	EnvelopeTypeSkillEvolutionProposed EnvelopeType = "skill.evolution_proposed"
 
 	// Orchestration evolution events (DQ-score-driven closed loop)
 	EnvelopeTypeOrchestrationEvolutionSuggested EnvelopeType = "orchestration.evolution_suggested"
 	EnvelopeTypeOrchestrationCacheHit           EnvelopeType = "orchestration.cache_hit"
 
 	// Monitor self-healing events
-	EnvelopeTypeMonitorAutoHealed           EnvelopeType = "monitor.auto_healed"
-	EnvelopeTypeMonitorSelfCheckCompleted   EnvelopeType = "monitor.self_check_completed"
+	EnvelopeTypeMonitorAutoHealed         EnvelopeType = "monitor.auto_healed"
+	EnvelopeTypeMonitorSelfCheckCompleted EnvelopeType = "monitor.self_check_completed"
 
 	// Borrow request events (cross-department collaboration)
 	EnvelopeTypeBorrowApproved     EnvelopeType = "borrow.approved"
 	EnvelopeTypeBorrowRejected     EnvelopeType = "borrow.rejected"
 	EnvelopeTypeBorrowAutoApproved EnvelopeType = "borrow.auto_approved"
+
+	// Organization CRUD events
+	EnvelopeTypeOrganizationCreated EnvelopeType = "organization.created"
+	EnvelopeTypeOrganizationUpdated EnvelopeType = "organization.updated"
+	EnvelopeTypeOrganizationDeleted EnvelopeType = "organization.deleted"
 )
 
 // Envelope is the universal event carrier.
@@ -220,60 +225,60 @@ type EnvelopeActions struct {
 }
 
 type EnvelopeTokenUsage struct {
-	ID                       string  `json:"id"`
-	OccurredAt               string  `json:"occurred_at"`
-	DateKey                  string  `json:"date_key"`
-	HourKey                  string  `json:"hour_key"`
-	WorkspaceID              string  `json:"workspace_id"`
-	UserID                   string  `json:"user_id"`
-	TeamID                   string  `json:"team_id"`
-	AgentID                  string  `json:"agent_id"`
-	AgentKey                 string  `json:"agent_key"`
-	SessionID                string  `json:"session_id"`
-	MessageID                string  `json:"message_id"`
-	RequestID                string  `json:"request_id"`
-	ProviderCode             string  `json:"provider_code"`
-	CanonicalProviderCode    string  `json:"canonical_provider_code"`
-	ProviderType             string  `json:"provider_type"`
-	ProviderDisplayName      string  `json:"provider_display_name"`
-	ModelAPIID               string  `json:"model_api_id"`
-	ModelDisplayName         string  `json:"model_display_name"`
-	ModelCategoryJSON        string  `json:"model_category_json"`
-	UsageKind                string  `json:"usage_kind"`
-	CallCount                int     `json:"call_count"`
-	InputTokens              int     `json:"input_tokens"`
-	OutputTokens             int     `json:"output_tokens"`
-	CachedInputTokens        int     `json:"cached_input_tokens"`
-	CacheWriteTokens         int     `json:"cache_write_tokens"`
-	ReasoningTokens          int     `json:"reasoning_tokens"`
-	EmbeddingTokens          int     `json:"embedding_tokens"`
-	TotalTokens              int     `json:"total_tokens"`
-	InputPriceMicroUSDPer1K  int64   `json:"input_price_micro_usd_per_1k"`
-	OutputPriceMicroUSDPer1K int64   `json:"output_price_micro_usd_per_1k"`
-	CachedInputPriceMicroUSDPer1K int64 `json:"cached_input_price_micro_usd_per_1k"`
-	CacheWritePriceMicroUSDPer1K  int64 `json:"cache_write_price_micro_usd_per_1k"`
-	ReasoningPriceMicroUSDPer1K   int64 `json:"reasoning_price_micro_usd_per_1k"`
-	EmbeddingPriceMicroUSDPer1K   int64 `json:"embedding_price_micro_usd_per_1k"`
-	InputCostMicroUSD        int64   `json:"input_cost_micro_usd"`
-	OutputCostMicroUSD       int64   `json:"output_cost_micro_usd"`
-	CachedInputCostMicroUSD  int64   `json:"cached_input_cost_micro_usd"`
-	CacheWriteCostMicroUSD   int64   `json:"cache_write_cost_micro_usd"`
-	ReasoningCostMicroUSD    int64   `json:"reasoning_cost_micro_usd"`
-	EmbeddingCostMicroUSD    int64   `json:"embedding_cost_micro_usd"`
-	TotalCostMicroUSD        int64   `json:"total_cost_micro_usd"`
-	LatencyMS                int     `json:"latency_ms"`
-	TimeToFirstTokenMS       int     `json:"time_to_first_token_ms"`
-	TokensPerSecond          float64 `json:"tokens_per_second"`
-	Status                   string  `json:"status"`
-	ErrorCode                string  `json:"error_code"`
-	ErrorMessage             string  `json:"error_message"`
-	RetryCount               int     `json:"retry_count"`
-	PromptMode               string  `json:"prompt_mode"`
-	MaxOutputTokens          int     `json:"max_output_tokens"`
-	ContextWindowK           int     `json:"context_window_k"`
-	StreamEnabled            bool    `json:"stream_enabled"`
-	MetadataJSON             string  `json:"metadata_json"`
-	CreatedAt                string  `json:"created_at"`
+	ID                            string  `json:"id"`
+	OccurredAt                    string  `json:"occurred_at"`
+	DateKey                       string  `json:"date_key"`
+	HourKey                       string  `json:"hour_key"`
+	WorkspaceID                   string  `json:"workspace_id"`
+	UserID                        string  `json:"user_id"`
+	TeamID                        string  `json:"team_id"`
+	AgentID                       string  `json:"agent_id"`
+	AgentKey                      string  `json:"agent_key"`
+	SessionID                     string  `json:"session_id"`
+	MessageID                     string  `json:"message_id"`
+	RequestID                     string  `json:"request_id"`
+	ProviderCode                  string  `json:"provider_code"`
+	CanonicalProviderCode         string  `json:"canonical_provider_code"`
+	ProviderType                  string  `json:"provider_type"`
+	ProviderDisplayName           string  `json:"provider_display_name"`
+	ModelAPIID                    string  `json:"model_api_id"`
+	ModelDisplayName              string  `json:"model_display_name"`
+	ModelCategoryJSON             string  `json:"model_category_json"`
+	UsageKind                     string  `json:"usage_kind"`
+	CallCount                     int     `json:"call_count"`
+	InputTokens                   int     `json:"input_tokens"`
+	OutputTokens                  int     `json:"output_tokens"`
+	CachedInputTokens             int     `json:"cached_input_tokens"`
+	CacheWriteTokens              int     `json:"cache_write_tokens"`
+	ReasoningTokens               int     `json:"reasoning_tokens"`
+	EmbeddingTokens               int     `json:"embedding_tokens"`
+	TotalTokens                   int     `json:"total_tokens"`
+	InputPriceMicroUSDPer1K       int64   `json:"input_price_micro_usd_per_1k"`
+	OutputPriceMicroUSDPer1K      int64   `json:"output_price_micro_usd_per_1k"`
+	CachedInputPriceMicroUSDPer1K int64   `json:"cached_input_price_micro_usd_per_1k"`
+	CacheWritePriceMicroUSDPer1K  int64   `json:"cache_write_price_micro_usd_per_1k"`
+	ReasoningPriceMicroUSDPer1K   int64   `json:"reasoning_price_micro_usd_per_1k"`
+	EmbeddingPriceMicroUSDPer1K   int64   `json:"embedding_price_micro_usd_per_1k"`
+	InputCostMicroUSD             int64   `json:"input_cost_micro_usd"`
+	OutputCostMicroUSD            int64   `json:"output_cost_micro_usd"`
+	CachedInputCostMicroUSD       int64   `json:"cached_input_cost_micro_usd"`
+	CacheWriteCostMicroUSD        int64   `json:"cache_write_cost_micro_usd"`
+	ReasoningCostMicroUSD         int64   `json:"reasoning_cost_micro_usd"`
+	EmbeddingCostMicroUSD         int64   `json:"embedding_cost_micro_usd"`
+	TotalCostMicroUSD             int64   `json:"total_cost_micro_usd"`
+	LatencyMS                     int     `json:"latency_ms"`
+	TimeToFirstTokenMS            int     `json:"time_to_first_token_ms"`
+	TokensPerSecond               float64 `json:"tokens_per_second"`
+	Status                        string  `json:"status"`
+	ErrorCode                     string  `json:"error_code"`
+	ErrorMessage                  string  `json:"error_message"`
+	RetryCount                    int     `json:"retry_count"`
+	PromptMode                    string  `json:"prompt_mode"`
+	MaxOutputTokens               int     `json:"max_output_tokens"`
+	ContextWindowK                int     `json:"context_window_k"`
+	StreamEnabled                 bool    `json:"stream_enabled"`
+	MetadataJSON                  string  `json:"metadata_json"`
+	CreatedAt                     string  `json:"created_at"`
 }
 
 type EnvelopeTrace struct {
@@ -361,6 +366,8 @@ func init() {
 		// Chat-visible execution progress (LLM invoke, intent pass, tool dispatch, etc.)
 		// P0: covers the 5-15s silent wait. See proposal-execution-progress-inline.md.
 		EnvelopeTypeExecutionProgress,
+		// Organization CRUD events
+		EnvelopeTypeOrganizationCreated, EnvelopeTypeOrganizationUpdated, EnvelopeTypeOrganizationDeleted,
 	)
 }
 

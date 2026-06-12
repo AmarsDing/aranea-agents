@@ -3,7 +3,7 @@ package adapter
 import (
 	"context"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
@@ -21,7 +21,7 @@ var _ TeamGraphRootBuilder = (*trpcGraphBuilderFactory)(nil)
 // BuildTeamGraphRoot compiles a team GraphBuildConfig into a runnable GraphAgent.
 func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg biz.GraphBuildConfig) (trpcagent.Agent, error) {
 	if f == nil {
-		return nil, kerrors.InternalServer("GRAPH", "graph builder factory is nil")
+		return nil, apierror.Internal(apierror.DomainGraph, "graph builder factory is nil")
 	}
 	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {

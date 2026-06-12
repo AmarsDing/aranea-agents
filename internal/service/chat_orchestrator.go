@@ -135,12 +135,12 @@ type chatRunManager interface {
 //
 // Field count: 12 (well under AS-COG-01 limit of 15).
 type ChatOrchestrator struct {
-	core      chatTurnCoreDeps
-	channelDeps ChatChannelDeps
-	usageDeps  ChatUsageDeps
+	core         chatTurnCoreDeps
+	channelDeps  ChatChannelDeps
+	usageDeps    ChatUsageDeps
 	teamExecDeps ChatTeamDeps
-	evoDeps    ChatEvolutionDeps
-	infraDeps  ChatInfraDeps
+	evoDeps      ChatEvolutionDeps
+	infraDeps    ChatInfraDeps
 
 	runs       *rt.RunRegistry
 	chatUC     *biz.ChatUsecase
@@ -180,46 +180,54 @@ func (m *chatRunManagerImpl) Sweep() {
 var _ chatRunManager = (*chatRunManagerImpl)(nil)
 
 // Accessor methods preserve call-site compatibility after field grouping (AS-COG-01).
-func (o *ChatOrchestrator) td() rt.TurnDeps                  { return o.core.TD }
-func (o *ChatOrchestrator) tdPtr() *rt.TurnDeps              { return &o.core.TD }
-func (o *ChatOrchestrator) rt() RuntimeTooling               { return o.core.RT }
-func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate   { return o.core.AdmitGate }
+func (o *ChatOrchestrator) td() rt.TurnDeps                      { return o.core.TD }
+func (o *ChatOrchestrator) tdPtr() *rt.TurnDeps                  { return &o.core.TD }
+func (o *ChatOrchestrator) rt() RuntimeTooling                   { return o.core.RT }
+func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate       { return o.core.AdmitGate }
 func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase { return o.core.Admission }
-func (o *ChatOrchestrator) turnTimeout() time.Duration       { return o.core.TurnTimeout }
+func (o *ChatOrchestrator) turnTimeout() time.Duration           { return o.core.TurnTimeout }
 
-func (o *ChatOrchestrator) team() TeamOrchestrationDeps      { return o.teamExecDeps.Team }
-func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps       { return o.channelDeps.ChJobs }
-func (o *ChatOrchestrator) chNotify() ChannelNotifierDeps    { return o.channelDeps.ChNotify }
+func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
+func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }
+func (o *ChatOrchestrator) chNotify() ChannelNotifierDeps { return o.channelDeps.ChNotify }
 
-func (o *ChatOrchestrator) usage() *biz.UsageUsecase         { return o.usageDeps.Usage }
-func (o *ChatOrchestrator) monitor() *biz.MonitorUsecase     { return o.usageDeps.Monitor }
-func (o *ChatOrchestrator) artifacts() *biz.ArtifactUsecase  { return o.usageDeps.Artifacts }
+func (o *ChatOrchestrator) usage() *biz.UsageUsecase                   { return o.usageDeps.Usage }
+func (o *ChatOrchestrator) monitor() *biz.MonitorUsecase               { return o.usageDeps.Monitor }
+func (o *ChatOrchestrator) artifacts() *biz.ArtifactUsecase            { return o.usageDeps.Artifacts }
 func (o *ChatOrchestrator) skillStats() biz.SkillInvocationStatsReader { return o.usageDeps.SkillStats }
-func (o *ChatOrchestrator) expAnalytics() *biz.ExperienceAnalyticsUsecase { return o.usageDeps.ExpAnalytics }
+func (o *ChatOrchestrator) expAnalytics() *biz.ExperienceAnalyticsUsecase {
+	return o.usageDeps.ExpAnalytics
+}
 
-func (o *ChatOrchestrator) spiritAssembler() *SpiritTeamAssembler { return o.teamExecDeps.SpiritAssembler }
-func (o *ChatOrchestrator) spiritSynthesis() *SpiritSynthesisService { return o.teamExecDeps.SpiritSynthesis }
-func (o *ChatOrchestrator) teamStarter() biz.TeamStarterPort  { return o.teamExecDeps.TeamStarter }
-func (o *ChatOrchestrator) graphExec() biz.GraphExecutor      { return o.teamExecDeps.GraphExec }
+func (o *ChatOrchestrator) spiritAssembler() *SpiritTeamAssembler {
+	return o.teamExecDeps.SpiritAssembler
+}
+func (o *ChatOrchestrator) spiritSynthesis() *SpiritSynthesisService {
+	return o.teamExecDeps.SpiritSynthesis
+}
+func (o *ChatOrchestrator) teamStarter() biz.TeamStarterPort { return o.teamExecDeps.TeamStarter }
+func (o *ChatOrchestrator) graphExec() biz.GraphExecutor     { return o.teamExecDeps.GraphExec }
 
 func (o *ChatOrchestrator) skillEvo() *biz.SkillEvolutionUsecase { return o.evoDeps.SkillEvo }
-func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase  { return o.evoDeps.Evolution }
+func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase     { return o.evoDeps.Evolution }
 
-func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase           { return o.infraDeps.A2AUC }
-func (o *ChatOrchestrator) mcpServers() *biz.MCPServerUsecase { return o.infraDeps.MCPServers }
+func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase             { return o.infraDeps.A2AUC }
+func (o *ChatOrchestrator) mcpServers() *biz.MCPServerUsecase  { return o.infraDeps.MCPServers }
 func (o *ChatOrchestrator) orchCache() *biz.OrchestrationCache { return o.infraDeps.OrchCache }
-func (o *ChatOrchestrator) outboundRouter() *outbound.Router  { return o.infraDeps.OutboundRouter }
-func (o *ChatOrchestrator) subAgentService() *subagenttool.Service { return o.infraDeps.SubAgentService }
-func (o *ChatOrchestrator) lg() loggateway.Logger             { return o.infraDeps.LG }
+func (o *ChatOrchestrator) outboundRouter() *outbound.Router   { return o.infraDeps.OutboundRouter }
+func (o *ChatOrchestrator) subAgentService() *subagenttool.Service {
+	return o.infraDeps.SubAgentService
+}
+func (o *ChatOrchestrator) lg() loggateway.Logger { return o.infraDeps.LG }
 
 // Sub-manager accessors delegate to the composite interfaces.
 func (o *ChatOrchestrator) sessionStateMgr() sessionStateTransitor { return o.turnLC }
-func (o *ChatOrchestrator) turnMetrics() turnRecorder             { return o.turnLC }
-func (o *ChatOrchestrator) eventPublisher() turnEventPublisher    { return o.turnLC }
-func (o *ChatOrchestrator) runStatus() runStatusTracker           { return o.runMgr }
-func (o *ChatOrchestrator) pendingQ() pendingQueueManager         { return o.runMgr }
-func (o *ChatOrchestrator) awaitCoord() awaitCoordinator          { return o.runMgr }
-func (o *ChatOrchestrator) sessionRunLC() sessionRunLifecycle     { return o.runMgr }
+func (o *ChatOrchestrator) turnMetrics() turnRecorder              { return o.turnLC }
+func (o *ChatOrchestrator) eventPublisher() turnEventPublisher     { return o.turnLC }
+func (o *ChatOrchestrator) runStatus() runStatusTracker            { return o.runMgr }
+func (o *ChatOrchestrator) pendingQ() pendingQueueManager          { return o.runMgr }
+func (o *ChatOrchestrator) awaitCoord() awaitCoordinator           { return o.runMgr }
+func (o *ChatOrchestrator) sessionRunLC() sessionRunLifecycle      { return o.runMgr }
 
 // ChatTurnDeps groups turn execution lifecycle dependencies: session pipeline,
 // run registry, runtime tooling, admission control, and turn timeout.
@@ -347,13 +355,13 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			Admission:   deps.Turn.Admission,
 			TurnTimeout: turnTimeout,
 		},
-		channelDeps: deps.Channel,
-		usageDeps:   deps.Usage,
+		channelDeps:  deps.Channel,
+		usageDeps:    deps.Usage,
 		teamExecDeps: deps.Team,
-		evoDeps:     deps.Evolution,
-		infraDeps:   deps.Infra,
-		runs:        runs,
-		chatUC:      chatUC,
+		evoDeps:      deps.Evolution,
+		infraDeps:    deps.Infra,
+		runs:         runs,
+		chatUC:       chatUC,
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,
 			turnRecorder:          metrics,
@@ -431,14 +439,16 @@ var (
 // execution paths (Web, WS, Channel, Cron, A2A).
 func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
 	nativeResult, err := o.RunNativeAgentTurnWithOutcome(ctx, input)
-	result, classifyErr := turn.ClassifyNativeOutcome(nativeResult, mapTurnExecutorError(err))
+	result, classifyErr := turn.ClassifyNativeOutcome(nativeResult, replaceQueuedWithSentinel(err))
 	if classifyErr != nil && isTurnMessageQueued(classifyErr) {
 		return result, ErrTurnMessageQueued
 	}
 	return result, classifyErr
 }
 
-func mapTurnExecutorError(err error) error {
+// replaceQueuedWithSentinel converts a queued-turn error into the framework's
+// QueuedSentinel so that turn.ClassifyNativeOutcome recognises it correctly.
+func replaceQueuedWithSentinel(err error) error {
 	if err == nil || !isTurnMessageQueued(err) {
 		return err
 	}
@@ -527,7 +537,7 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	if !stopped {
 		return false
 	}
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, "cancelled", "")
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td().Sessions, sessionID, o.lg()); err != nil {
 		o.lg().Warn("取消执行卡片查询失败",

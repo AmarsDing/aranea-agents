@@ -7,7 +7,7 @@ import (
 
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -34,12 +34,12 @@ func (d *DeferredCallableTool) Declaration() *trpctool.Declaration {
 
 func (d *DeferredCallableTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	if err := d.resolve(ctx); err != nil {
-		return nil, kerrors.InternalServer("DEFERRED_TOOL", "deferred tool resolution failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainTool, "deferred tool resolution failed: "+err.Error())
 	}
 	if callable, ok := d.tool.(trpctool.CallableTool); ok {
 		return callable.Call(ctx, jsonArgs)
 	}
-	return nil, kerrors.InternalServer("DEFERRED_TOOL", "deferred tool does not implement CallableTool")
+	return nil, apierror.Internal(apierror.DomainTool, "deferred tool does not implement CallableTool")
 }
 
 func (d *DeferredCallableTool) resolve(ctx context.Context) error {

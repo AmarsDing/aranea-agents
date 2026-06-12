@@ -8,32 +8,24 @@ import (
 )
 
 // EvolutionCoordinator is deprecated. Use SkillEvolutionOrchestrator instead.
-// Kept for backward compatibility during migration.
+// All methods delegate to SkillEvolutionOrchestrator; the legacy fallback
+// code paths have been removed as part of DEV-04 unification.
 //
-// Before creating a new suggestion, each pipeline calls
-// HasPendingEvolution to check whether another pipeline has already
-// produced a pending suggestion for the same target.
+// Deprecated: Use SkillEvolutionOrchestrator directly. This type will be
+// removed in a future release once all callers are migrated.
 type EvolutionCoordinator struct {
 	orchestrator *SkillEvolutionOrchestrator
-	// legacy fields kept for backward compat
-	agentSuggRepo  EvolutionSuggestionRepo
-	skillSuggRepo  SkillEvolutionSuggestionReader
-	skillPropRepo  SkillProposalReadWriter
-	lg             loggateway.Logger
+	lg           loggateway.Logger
 }
 
 // NewEvolutionCoordinator creates a new coordinator.
+//
+// Deprecated: Use NewSkillEvolutionOrchestrator instead.
 func NewEvolutionCoordinator(
-	agentSuggRepo EvolutionSuggestionRepo,
-	skillSuggRepo SkillEvolutionSuggestionReader,
-	skillPropRepo SkillProposalReadWriter,
 	lg loggateway.Logger,
 ) *EvolutionCoordinator {
 	return &EvolutionCoordinator{
-		agentSuggRepo:  agentSuggRepo,
-		skillSuggRepo:  skillSuggRepo,
-		skillPropRepo:  skillPropRepo,
-		lg:             lg,
+		lg: lg,
 	}
 }
 
@@ -50,61 +42,34 @@ func (c *EvolutionCoordinator) SetOrchestrator(o *SkillEvolutionOrchestrator) {
 	c.orchestrator = o
 }
 
-// HasPendingEvolution checks whether any of the three evolution pipelines
+// HasPendingEvolution checks whether the unified orchestrator
 // has already created a pending suggestion for the given target.
 // Returns true if a pending suggestion exists, false otherwise.
+//
+// Deprecated: Use SkillEvolutionOrchestrator.HasPendingForTarget instead.
 func (c *EvolutionCoordinator) HasPendingEvolution(ctx context.Context, target EvolutionTarget) bool {
-	if c.orchestrator != nil {
-		hasPending, err := c.orchestrator.HasPendingForTarget(ctx, target.Type, target.ID)
-		if err != nil {
-			c.lg.Warn("coordinator: orchestrator check failed, falling back to legacy", loggateway.Err(err))
-		} else {
-			return hasPending
-		}
-	}
-	// Legacy fallback
-	switch target.Type {
-	case "agent":
-		return c.hasPendingForAgent(ctx, target.ID)
-	case "skill":
-		return c.hasPendingForSkill(ctx, target.ID)
-	default:
+	if c.orchestrator == nil {
+		c.lg.Warn("coordinator: no orchestrator configured, cannot check pending evolution",
+			loggateway.StepID("evo_coordinator.has_pending"),
+			loggateway.Str("target_type", target.Type),
+			loggateway.Str("target_id", target.ID))
 		return false
 	}
-}
-
-func (c *EvolutionCoordinator) hasPendingForAgent(ctx context.Context, agentID string) bool {
-	// Check EvolutionUsecase suggestions (agent-level).
-	if agentSuggs, err := c.agentSuggRepo.ListByAgent(ctx, agentID, "pending"); err == nil && len(agentSuggs) > 0 {
-		c.lg.Debug("EvolutionCoordinator: agent already has pending EvolutionSuggestion",
-			loggateway.Str("agent_id", agentID),
-			loggateway.Int("count", len(agentSuggs)))
-		return true
+	hasPending, err := c.orchestrator.HasPendingForTarget(ctx, target.Type, target.ID)
+	if err != nil {
+		c.lg.Warn("coordinator: orchestrator check failed",
+			loggateway.StepID("evo_coordinator.has_pending"),
+			loggateway.Err(err))
+		return false
 	}
-	// Check SkillEvolutionUsecase proposals (agent-level pattern proposals).
-	if proposals, err := c.skillPropRepo.ListByAgent(ctx, agentID, string(SkillProposalStatusPending), 1, 0); err == nil && len(proposals) > 0 {
-		c.lg.Debug("EvolutionCoordinator: agent already has pending SkillProposal",
-			loggateway.Str("agent_id", agentID),
-			loggateway.Int("count", len(proposals)))
-		return true
-	}
-	return false
-}
-
-func (c *EvolutionCoordinator) hasPendingForSkill(ctx context.Context, skillID string) bool {
-	// Check SkillIntelligenceUsecase suggestions (skill-level).
-	if skillSuggs, err := c.skillSuggRepo.ListBySkill(ctx, skillID, EvoSuggestionPending, 1, 0); err == nil && len(skillSuggs) > 0 {
-		c.lg.Debug("EvolutionCoordinator: skill already has pending SkillEvolutionSuggestion",
-			loggateway.Str("skill_id", skillID),
-			loggateway.Int("count", len(skillSuggs)))
-		return true
-	}
-	return false
+	return hasPending
 }
 
 // RequireNoPendingEvolution is a guard that returns an error if a pending
 // evolution already exists for the target. Use this when you want to
 // hard-block duplicate creation rather than silently skip.
+//
+// Deprecated: Use SkillEvolutionOrchestrator.HasPendingForTarget directly.
 func (c *EvolutionCoordinator) RequireNoPendingEvolution(ctx context.Context, target EvolutionTarget) error {
 	if c.HasPendingEvolution(ctx, target) {
 		return apierror.BadRequest("EVO_COORDINATOR", "pending evolution already exists for %s %s", target.Type, target.ID)

@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
@@ -165,7 +165,7 @@ type storeFile struct {
 
 func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Service, error) {
 	if strings.TrimSpace(stateDir) == "" {
-		return nil, kerrors.InternalServer("SUBAGENT", "empty state dir")
+		return nil, apierror.Internal(apierror.DomainSubagent, "empty state dir")
 	}
 
 	path := filepath.Join(
@@ -175,7 +175,7 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	)
 	runs, err := loadRuns(path, lg)
 	if err != nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "load runs: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSubagent, "load runs: "+err.Error())
 	}
 
 	svc := &Service{
@@ -189,7 +189,7 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	}
 	if normalizeLoadedRuns(svc.runs, svc.clock()) {
 		if err := svc.persist(); err != nil {
-			return nil, kerrors.InternalServer("SUBAGENT", "persist: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 		}
 	}
 	return svc, nil
@@ -273,26 +273,26 @@ func (s *Service) Close() error {
 
 func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run, error) {
 	if s == nil {
-		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "nil service")
+		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "nil service")
 	}
 	if s.baseCtx == nil {
-		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "not started")
+		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "not started")
 	}
 
 	nested, _ := trpcagent.GetRuntimeStateValueFromContext[bool](ctx, runtimeStateSubagentRun)
 	if nested {
-		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "nested subagent spawn is not allowed")
+		return trpcsubagent.Run{}, apierror.BadRequest(apierror.DomainSubagent, "nested subagent spawn is not allowed")
 	}
 
 	// Concurrency limit: check and reserve slot atomically to avoid TOCTOU race.
 	s.mu.Lock()
 	if s.runner == nil {
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "runner not configured")
+		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "runner not configured")
 	}
 	if len(s.running) >= defaultMaxConcurrentSubAgents {
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, kerrors.New(429, "SUBAGENT", fmt.Sprintf("too many concurrent sub-agents (limit: %d)", defaultMaxConcurrentSubAgents))
+		return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d)", defaultMaxConcurrentSubAgents))
 	}
 
 	if err := validateSpawnRequest(req); err != nil {
@@ -308,7 +308,7 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		s.mu.Lock()
 		delete(s.runs, record.ID)
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "persist: "+err.Error())
+		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 	}
 	view := record.publicView()
 
@@ -324,13 +324,13 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 // validateSpawnRequest checks required fields in a spawn request.
 func validateSpawnRequest(req SpawnRequest) error {
 	if strings.TrimSpace(req.OwnerUserID) == "" {
-		return kerrors.BadRequest("SUBAGENT", "empty owner")
+		return apierror.BadRequest(apierror.DomainSubagent, "empty owner")
 	}
 	if strings.TrimSpace(req.ParentSessionID) == "" {
-		return kerrors.BadRequest("SUBAGENT", "empty parent session id")
+		return apierror.BadRequest(apierror.DomainSubagent, "empty parent session id")
 	}
 	if strings.TrimSpace(req.Task) == "" {
-		return kerrors.BadRequest("SUBAGENT", "empty task")
+		return apierror.BadRequest(apierror.DomainSubagent, "empty task")
 	}
 	return nil
 }
@@ -442,7 +442,7 @@ func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run,
 	s.mu.Unlock()
 
 	if err := s.persist(); err != nil {
-		return nil, false, kerrors.InternalServer("SUBAGENT", "persist: "+err.Error())
+		return nil, false, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 	}
 	return &view, true, nil
 }
@@ -479,7 +479,7 @@ func (s *Service) runChild(
 	result *replyAccumulator,
 ) error {
 	if record == nil {
-		return kerrors.InternalServer("SUBAGENT", "nil run record")
+		return apierror.Internal(apierror.DomainSubagent, "nil run record")
 	}
 	runtimeState := map[string]any{
 		runtimeStateSubagentRun:      true,
@@ -524,7 +524,7 @@ func (s *Service) markRunning(
 	}
 	if record.Status == trpcsubagent.StatusCanceled {
 		s.mu.Unlock()
-		return nil, nil, runningRun{}, kerrors.BadRequest("SUBAGENT", "run canceled before start")
+		return nil, nil, runningRun{}, apierror.BadRequest(apierror.DomainSubagent, "run canceled before start")
 	}
 
 	now := s.clock()
@@ -583,7 +583,7 @@ func (s *Service) markRunning(
 			current.FinishedAt = cloneTime(now)
 		}
 		s.mu.Unlock()
-		return nil, nil, runningRun{}, kerrors.InternalServer("SUBAGENT", "persist: "+err.Error())
+		return nil, nil, runningRun{}, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 	}
 	return clone, runCtx, started, nil
 }
@@ -970,10 +970,10 @@ func (t *spawnTool) Declaration() *trpctool.Declaration {
 
 func (t *spawnTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainSubagent, "service unavailable")
 	}
 	if isNestedSubagent(ctx) {
-		return nil, kerrors.BadRequest("SUBAGENT", "nested subagent spawn is not supported")
+		return nil, apierror.BadRequest(apierror.DomainSubagent, "nested subagent spawn is not supported")
 	}
 
 	var in spawnInput
@@ -982,7 +982,7 @@ func (t *spawnTool) Call(ctx context.Context, args []byte) (any, error) {
 			loggateway.StepID("tool.subagent.spawn"),
 			loggateway.Err(err),
 		)
-		return nil, kerrors.BadRequest("SUBAGENT", "invalid arguments: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainSubagent, "invalid arguments: "+err.Error())
 	}
 
 	userID, sess, err := currentContext(ctx)
@@ -1020,7 +1020,7 @@ func (t *listTool) Declaration() *trpctool.Declaration {
 
 func (t *listTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainSubagent, "service unavailable")
 	}
 	if len(args) > 0 && strings.TrimSpace(string(args)) != "" &&
 		strings.TrimSpace(string(args)) != "{}" {
@@ -1030,7 +1030,7 @@ func (t *listTool) Call(ctx context.Context, args []byte) (any, error) {
 				loggateway.StepID("tool.subagent.list"),
 				loggateway.Err(err),
 			)
-			return nil, kerrors.BadRequest("SUBAGENT", "invalid arguments: "+err.Error())
+			return nil, apierror.BadRequest(apierror.DomainSubagent, "invalid arguments: "+err.Error())
 		}
 	}
 
@@ -1068,7 +1068,7 @@ func (t *getTool) Declaration() *trpctool.Declaration {
 
 func (t *getTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainSubagent, "service unavailable")
 	}
 	runID, userID, err := decodeRunIDArgs(ctx, args, t.svc.lg)
 	if err != nil {
@@ -1097,7 +1097,7 @@ func (t *cancelTool) Declaration() *trpctool.Declaration {
 
 func (t *cancelTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainSubagent, "service unavailable")
 	}
 	runID, userID, err := decodeRunIDArgs(ctx, args, t.svc.lg)
 	if err != nil {
@@ -1120,7 +1120,7 @@ func decodeRunIDArgs(ctx context.Context, args []byte, lg loggateway.Logger) (st
 			loggateway.StepID("tool.subagent.decode_run_id"),
 			loggateway.Err(err),
 		)
-		return "", "", kerrors.BadRequest("SUBAGENT", "invalid arguments: "+err.Error())
+		return "", "", apierror.BadRequest(apierror.DomainSubagent, "invalid arguments: "+err.Error())
 	}
 	userID, _, err := currentContext(ctx)
 	if err != nil {
@@ -1128,7 +1128,7 @@ func decodeRunIDArgs(ctx context.Context, args []byte, lg loggateway.Logger) (st
 	}
 	runID := strings.TrimSpace(in.ID)
 	if runID == "" {
-		return "", "", kerrors.BadRequest("SUBAGENT", "empty run id")
+		return "", "", apierror.BadRequest(apierror.DomainSubagent, "empty run id")
 	}
 	return runID, userID, nil
 }
@@ -1136,14 +1136,14 @@ func decodeRunIDArgs(ctx context.Context, args []byte, lg loggateway.Logger) (st
 func currentContext(ctx context.Context) (string, *trpcsession.Session, error) {
 	inv, ok := trpcagent.InvocationFromContext(ctx)
 	if !ok || inv == nil || inv.Session == nil {
-		return "", nil, kerrors.BadRequest("SUBAGENT", "current session context is unavailable")
+		return "", nil, apierror.BadRequest(apierror.DomainSubagent, "current session context is unavailable")
 	}
 	userID := strings.TrimSpace(inv.Session.UserID)
 	if userID == "" {
-		return "", nil, kerrors.BadRequest("SUBAGENT", "current user id is unavailable")
+		return "", nil, apierror.BadRequest(apierror.DomainSubagent, "current user id is unavailable")
 	}
 	if strings.TrimSpace(inv.Session.ID) == "" {
-		return "", nil, kerrors.BadRequest("SUBAGENT", "current session id is unavailable")
+		return "", nil, apierror.BadRequest(apierror.DomainSubagent, "current session id is unavailable")
 	}
 	return userID, inv.Session, nil
 }

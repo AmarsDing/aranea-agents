@@ -473,7 +473,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	for i, s := range scored {
 		passages[i] = factPassage(s.stmt, s.details)
 	}
-	applyCrossEncoderRerankToFactScored(query, scored, passages)
+	applyCrossEncoderRerankToFactScored(r.data.Reranker(), query, scored, passages)
 	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
 	var out [][]byte
 	for _, s := range scored {
@@ -587,7 +587,7 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	for i, s := range scored {
 		passages[i] = factPassage(s.stmt, s.details)
 	}
-	applyCrossEncoderRerankToFactScored(query, scored, passages)
+	applyCrossEncoderRerankToFactScored(r.data.Reranker(), query, scored, passages)
 	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
 	var out [][]byte
 	for _, s := range scored {

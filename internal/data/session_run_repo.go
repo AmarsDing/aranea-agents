@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/sessionrun"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -83,7 +84,7 @@ func (r *sessionRunRepo) Create(ctx context.Context, run biz.SessionRun) (string
 	}
 	id := strings.TrimSpace(run.ID)
 	if id == "" {
-		return "", sql.ErrNoRows
+		return "", apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	_, err := client.SessionRun.Create().
 		SetID(id).
@@ -313,11 +314,11 @@ func scanSessionRunRow(scanner interface {
 func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID string) (biz.SessionRun, error) {
 	client := r.readClient(ctx)
 	if client == nil {
-		return biz.SessionRun{}, sql.ErrNoRows
+		return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return biz.SessionRun{}, sql.ErrNoRows
+		return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	item, err := client.SessionRun.Query().
 		Where(
@@ -329,7 +330,7 @@ func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID stri
 		First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.SessionRun{}, sql.ErrNoRows
+			return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
 		return biz.SessionRun{}, err
 	}
@@ -343,7 +344,7 @@ func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, li
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, 0, sql.ErrNoRows
+		return nil, 0, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	if limit <= 0 {
 		limit = 20
@@ -379,12 +380,12 @@ func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, li
 func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, error) {
 	client := r.readClient(ctx)
 	if client == nil {
-		return biz.SessionRun{}, sql.ErrNoRows
+		return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	item, err := client.SessionRun.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.SessionRun{}, sql.ErrNoRows
+			return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
 		return biz.SessionRun{}, err
 	}
@@ -401,9 +402,9 @@ func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, er
 	now := biz.ChannelTurnJobNow()
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.ExecContext(ctx, `
-UPDATE session_runs SET phase='cancelled', error_message='orphaned: process restarted', finished_at=?, phase_changed_at=?, updated_at=?
+UPDATE session_runs SET phase=?, error_message='orphaned: process restarted', finished_at=?, phase_changed_at=?, updated_at=?
 WHERE phase IN ('interactive','escalating','durable') AND (finished_at IS NULL OR finished_at='')`,
-		now, now, nowStr,
+		biz.SessionRunPhaseCancelled, now, now, nowStr,
 	)
 	if err != nil {
 		r.data.lg.Error("mark orphaned runs cancelled failed", loggateway.StepID("data.session_run.orphan_cleanup"), loggateway.Err(err))

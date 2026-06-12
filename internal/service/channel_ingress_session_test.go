@@ -2,12 +2,12 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -23,11 +23,11 @@ func peerMapKey(channelID, peerKey string) string {
 
 func (r *ingressPeerSessionRepo) GetByChannelAndPeer(_ context.Context, channelID, peerKey string) (biz.ChannelPeerSession, error) {
 	if r.byKey == nil {
-		return biz.ChannelPeerSession{}, sql.ErrNoRows
+		return biz.ChannelPeerSession{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	row, ok := r.byKey[peerMapKey(channelID, peerKey)]
 	if !ok {
-		return biz.ChannelPeerSession{}, sql.ErrNoRows
+		return biz.ChannelPeerSession{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	return row, nil
 }
@@ -44,7 +44,7 @@ func (r *ingressPeerSessionRepo) UpdateSessionID(_ context.Context, channelID, p
 	key := peerMapKey(channelID, peerKey)
 	row, ok := r.byKey[key]
 	if !ok {
-		return biz.ChannelPeerSession{}, sql.ErrNoRows
+		return biz.ChannelPeerSession{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	row.SessionID = sessionID
 	r.byKey[key] = row
@@ -95,7 +95,7 @@ func (m *ingressSessionRepo) CreateSession(_ context.Context, in biz.Session) (b
 func (m *ingressSessionRepo) GetSessionByID(_ context.Context, id string) (biz.Session, error) {
 	s, ok := m.sessions[id]
 	if !ok {
-		return biz.Session{}, sql.ErrNoRows
+		return biz.Session{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	return s, nil
 }
@@ -240,13 +240,13 @@ func (m *ingressSessionRepo) PinSession(_ context.Context, id string) (biz.Sessi
 	if s, ok := m.sessions[id]; ok {
 		return s, nil
 	}
-	return biz.Session{}, sql.ErrNoRows
+	return biz.Session{}, apierror.NotFound(apierror.DomainSession, "not found")
 }
 func (m *ingressSessionRepo) UnpinSession(_ context.Context, id string) (biz.Session, error) {
 	if s, ok := m.sessions[id]; ok {
 		return s, nil
 	}
-	return biz.Session{}, sql.ErrNoRows
+	return biz.Session{}, apierror.NotFound(apierror.DomainSession, "not found")
 }
 func (m *ingressSessionRepo) BumpSessionRevision(context.Context, string) (int64, error) {
 	return 1, nil
@@ -281,7 +281,7 @@ func (s ingressAgentRepo) GetAgentByID(_ context.Context, id string) (biz.Agent,
 	return biz.Agent{ID: s.id, AgentKey: "agent-key"}, nil
 }
 func (s ingressAgentRepo) GetAgentByAgentKey(context.Context, string) (biz.Agent, error) {
-	return biz.Agent{}, sql.ErrNoRows
+	return biz.Agent{}, apierror.NotFound(apierror.DomainAgent, "not found")
 }
 func (s ingressAgentRepo) CreateAgent(context.Context, biz.Agent) (biz.Agent, error) {
 	return biz.Agent{}, nil

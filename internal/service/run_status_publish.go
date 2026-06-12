@@ -79,7 +79,7 @@ func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, sessions bi
 	if sessionID == "" {
 		return
 	}
-	PublishRunStatus(bus, sessionID, runID, "cancelled", "")
+	PublishRunStatus(bus, sessionID, runID, biz.SessionRunPhaseCancelled, "")
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, sessions, sessionID, lg); err != nil {
 		lg.Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),

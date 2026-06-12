@@ -2,13 +2,12 @@ package data
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
 	bizplugin "aranea-agents/internal/biz/plugin"
+	"aranea-agents/pkg/apierror"
 )
 
 type pluginCostGuardUsageRepo struct {
@@ -32,7 +31,7 @@ func (r *pluginCostGuardUsageRepo) GetTokens(ctx context.Context, usageDay, scop
 		`SELECT tokens FROM plugin_cost_guard_usage WHERE usage_day = ? AND scope_key = ?`,
 		[]any{usageDay, scopeKey}, &tokens)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return 0, nil
 		}
 		return 0, err

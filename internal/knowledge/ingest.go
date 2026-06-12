@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const defaultEmbedBatchSize = 32
@@ -45,7 +44,7 @@ func NormalizeMetadataJSON(raw string) (string, error) {
 		return "{}", nil
 	}
 	if !json.Valid([]byte(s)) {
-		return "", kerrors.BadRequest("KNOWLEDGE", "metadata_json must be valid JSON")
+		return "", apierror.BadRequest(apierror.DomainKnowledge, "metadata_json must be valid JSON")
 	}
 	return s, nil
 }
@@ -53,7 +52,7 @@ func NormalizeMetadataJSON(raw string) (string, error) {
 // BuildIndexedChunks splits text, embeds each chunk, and returns rows ready for persistence.
 func BuildIndexedChunks(ctx context.Context, embedder Embedder, p IngestParams) ([]biz.KnowledgeChunk, error) {
 	if embedder == nil {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "ingest: embedder is nil")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "ingest: embedder is nil")
 	}
 	meta, err := NormalizeMetadataJSON(p.MetadataJSON)
 	if err != nil {
@@ -65,7 +64,7 @@ func BuildIndexedChunks(ctx context.Context, embedder Embedder, p IngestParams) 
 		return nil, err
 	}
 	if len(chunks) == 0 {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "ingest: no chunks produced")
+		return nil, apierror.Internal(apierror.DomainKnowledge, "ingest: no chunks produced")
 	}
 
 	texts := make([]string, len(chunks))

@@ -12,7 +12,7 @@ import (
 	hostexecpkg "aranea-agents/internal/tools/hostexec"
 	memorytool "aranea-agents/internal/tools/memory"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
@@ -46,7 +46,7 @@ func (ac *assembleContext) assembleFromRegistry() error {
 		if reg.ToolSetFactory != nil {
 			ts, err := reg.ToolSetFactory(ac.ctx)
 			if err != nil {
-				return kerrors.InternalServer("TOOL_ASSEMBLY", fmt.Sprintf("tool %s: %s", reg.Name, err.Error()))
+				return apierror.Internal(apierror.DomainTool, fmt.Sprintf("tool %s: %s", reg.Name, err.Error()))
 			}
 			if ts != nil {
 				ac.out.ToolSets = append(ac.out.ToolSets, ts)
@@ -59,7 +59,7 @@ func (ac *assembleContext) assembleFromRegistry() error {
 		} else if reg.Factory != nil {
 			t, err := reg.Factory(ac.ctx)
 			if err != nil {
-				return kerrors.InternalServer("TOOL_ASSEMBLY", fmt.Sprintf("tool %s: %s", reg.Name, err.Error()))
+				return apierror.Internal(apierror.DomainTool, fmt.Sprintf("tool %s: %s", reg.Name, err.Error()))
 			}
 			if t != nil {
 				ac.out.Tools = append(ac.out.Tools, t)
@@ -83,7 +83,7 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 		}
 		ts, err := trpcfile.NewToolSet(opts...)
 		if err != nil {
-			return kerrors.InternalServer("TOOL_ASSEMBLY", "file toolset: "+err.Error())
+			return apierror.Internal(apierror.DomainTool, "file toolset: "+err.Error())
 		}
 		ac.out.ToolSets = append(ac.out.ToolSets, ts)
 	}
@@ -91,7 +91,7 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 	if ac.enabled["hostexec"] {
 		ts, err := hostexecpkg.BuildHostexecToolSet(ac.cfg.ShellExec.Dir, ac.cfg.ShellExec.Env)
 		if err != nil {
-			return kerrors.InternalServer("TOOL_ASSEMBLY", "hostexec toolset: "+err.Error())
+			return apierror.Internal(apierror.DomainTool, "hostexec toolset: "+err.Error())
 		}
 		ac.out.ToolSets = append(ac.out.ToolSets, ts)
 	}
@@ -113,7 +113,7 @@ func (ac *assembleContext) assembleSearchTools() error {
 		if model := strings.TrimSpace(ac.cfg.Search.GeminiModel); model != "" {
 			t, err := trpcgeminifetch.NewTool(model)
 			if err != nil {
-				return kerrors.InternalServer("TOOL_ASSEMBLY", "geminifetch: "+err.Error())
+				return apierror.Internal(apierror.DomainTool, "geminifetch: "+err.Error())
 			}
 			ac.out.Tools = append(ac.out.Tools, t)
 		} else {
@@ -132,7 +132,7 @@ func (ac *assembleContext) assembleSearchTools() error {
 				trpcgooglesearch.WithEngineID(cx),
 			)
 			if err != nil {
-				return kerrors.InternalServer("TOOL_ASSEMBLY", "google search: "+err.Error())
+				return apierror.Internal(apierror.DomainTool, "google search: "+err.Error())
 			}
 			ac.out.ToolSets = append(ac.out.ToolSets, ts)
 		} else {
@@ -181,7 +181,7 @@ func (ac *assembleContext) assembleClaudeCodeToolset() error {
 
 	ts, err := trpcclaudecode.NewToolSet(opts...)
 	if err != nil {
-		return kerrors.InternalServer("TOOL_ASSEMBLY", "claudecode: "+err.Error())
+		return apierror.Internal(apierror.DomainTool, "claudecode: "+err.Error())
 	}
 	if len(ac.cfg.ClaudeCode.CommandAllowList) > 0 {
 		ts = SandboxedToolSet(ts, ClaudeCodeSandboxConfig{
@@ -221,7 +221,7 @@ func (ac *assembleContext) assembleOpenAPIToolsets() error {
 			trpcopenapi.WithName(spec.Name),
 		)
 		if err != nil {
-			return kerrors.InternalServer("TOOL_ASSEMBLY", fmt.Sprintf("openapi %s: %s", spec.Name, err.Error()))
+			return apierror.Internal(apierror.DomainTool, fmt.Sprintf("openapi %s: %s", spec.Name, err.Error()))
 		}
 		ac.out.ToolSets = append(ac.out.ToolSets, ts)
 	}
@@ -254,7 +254,7 @@ func (ac *assembleContext) assembleMCPTools() error {
 	for _, mcpCfg := range ac.cfg.MCP.Servers {
 		ts, err := buildMCPToolSet(mcpCfg)
 		if err != nil {
-			return kerrors.InternalServer("TOOL_ASSEMBLY", fmt.Sprintf("mcp %s: %s", mcpCfg.Name, err.Error()))
+			return apierror.Internal(apierror.DomainTool, fmt.Sprintf("mcp %s: %s", mcpCfg.Name, err.Error()))
 		}
 		if ts != nil {
 			ac.out.ToolSets = append(ac.out.ToolSets, ts)
@@ -264,7 +264,7 @@ func (ac *assembleContext) assembleMCPTools() error {
 	if ac.enabled["mcpbroker"] && ac.cfg.MCP.Broker != nil {
 		brokerTools, err := buildMCPBrokerTools(*ac.cfg.MCP.Broker)
 		if err != nil {
-			return kerrors.InternalServer("TOOL_ASSEMBLY", "mcpbroker: "+err.Error())
+			return apierror.Internal(apierror.DomainTool, "mcpbroker: "+err.Error())
 		}
 		ac.out.Tools = append(ac.out.Tools, brokerTools...)
 	}
@@ -327,7 +327,7 @@ func (ac *assembleContext) assembleBrowserToolset() error {
 	}
 	ts, err := buildMCPToolSet(mcpCfg)
 	if err != nil {
-		return kerrors.InternalServer("TOOL_ASSEMBLY", "browser mcp: "+err.Error())
+		return apierror.Internal(apierror.DomainTool, "browser mcp: "+err.Error())
 	}
 	if ts != nil {
 		ac.out.ToolSets = append(ac.out.ToolSets, ts)

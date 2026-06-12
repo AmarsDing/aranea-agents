@@ -2,9 +2,7 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"time"
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
@@ -81,7 +79,7 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.
 }
 
 func notFoundMonitor(err error) error {
-	if errors.Is(err, sql.ErrNoRows) {
+	if apierror.IsCode(err, apierror.CodeNotFound) {
 		return apierror.NotFound("MONITOR_NOT_FOUND", err.Error())
 	}
 	return err

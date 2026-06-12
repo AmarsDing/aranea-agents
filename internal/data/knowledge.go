@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/pgvector/pgvector-go"
@@ -252,12 +253,13 @@ func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 		var collectionID string
 		var chunkCount int
 		var status string
-		switch err := tx.QueryRowContext(ctx,
+		err := tx.QueryRowContext(ctx,
 			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
-			Scan(&collectionID, &chunkCount, &status); {
-		case err == sql.ErrNoRows:
+			Scan(&collectionID, &chunkCount, &status)
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil
-		case err != nil:
+		}
+		if err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id); err != nil {

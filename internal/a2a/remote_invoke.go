@@ -9,9 +9,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	a2aclient "trpc.group/trpc-go/trpc-a2a-go/client"
 	"trpc.group/trpc-go/trpc-a2a-go/protocol"
@@ -21,7 +20,7 @@ import (
 // It applies retry with exponential backoff for transient errors (network timeout, 5xx).
 func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capability, payloadJSON string, timeoutSec int, lg loggateway.Logger, retryPolicy a2abiz.RetryPolicy) (string, error) {
 	if !remote.Enabled {
-		return "", kerrors.Forbidden("A2A", "remote agent is disabled")
+		return "", apierror.Forbidden(apierror.DomainA2A, "remote agent is disabled")
 	}
 	if err := CheckCalleeCard(remote.DiscoveredCard, nil, capability); err != nil {
 		return "", err
@@ -31,7 +30,7 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		targetURL = strings.TrimSpace(remote.AgentCardURL)
 	}
 	if targetURL == "" {
-		return "", kerrors.BadRequest("A2A", "remote_url is required")
+		return "", apierror.BadRequest(apierror.DomainA2A, "remote_url is required")
 	}
 	if timeoutSec <= 0 {
 		timeoutSec = a2abiz.DefaultRemoteInvokeTimeoutSec
@@ -48,7 +47,7 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 	client, err := a2aclient.NewA2AClient(targetURL, opts...)
 	if err != nil {
 		lg.Warn("A2A remote client creation failed", loggateway.StepID("a2a.invoke.remote_connect_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
-		return "", kerrors.BadRequest("A2A", "connect remote a2a: "+err.Error())
+		return "", apierror.BadRequest(apierror.DomainA2A, "connect remote a2a").WithCause(err)
 	}
 
 	input := PayloadToInput(payloadJSON, capability)
@@ -89,7 +88,7 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 	}
 	if lastErr != nil {
 		lg.Error("A2A remote invoke call failed", loggateway.StepID("a2a.invoke.remote_call_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(lastErr))
-		return "", kerrors.InternalServer("A2A", "remote invoke failed: "+lastErr.Error())
+		return "", apierror.Internal(apierror.DomainA2A, "remote invoke failed").WithCause(lastErr)
 	}
 
 	text := messageResultText(result)

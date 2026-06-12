@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // CompileAgentKey resolves catalog agent_key from agent_id; may return "" to fall back to agent_id.
@@ -42,7 +41,7 @@ func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, ra
 
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return biz.GraphBuildConfig{}, nil, nil, kerrors.BadRequest("TEAM", "compile graph: no enabled members")
+		return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam, "compile graph: no enabled members")
 	}
 
 	mode := normalizeCompileMode(def.Mode)

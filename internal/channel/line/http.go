@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 func doPost(ctx context.Context, client *http.Client, token, url string, body []byte) ([]byte, error) {
@@ -30,7 +30,7 @@ func doPost(ctx context.Context, client *http.Client, token, url string, body []
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, kerrors.InternalServer("LINE_PROTOCOL", fmt.Sprintf("line: status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw))))
+		return nil, apierror.Internal("LINE_PROTOCOL", fmt.Sprintf("line: status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw))))
 	}
 	return raw, nil
 }

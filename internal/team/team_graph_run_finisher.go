@@ -13,20 +13,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// TeamGraphRunFinisher persists graph run steps and finalizes deferred team runs.
-type TeamGraphRunFinisher interface {
-	PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int)
-	FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string)
-}
-
-// SetFinisher wires step persistence and team summary on graph resume completion.
-func (c *TeamGraphRunCoordinator) SetFinisher(f TeamGraphRunFinisher) {
-	if c == nil {
-		return
-	}
-	c.finisher = f
-}
-
 // PersistGraphRunStep writes a TeamRunStep for a graph member node (initial run or resume).
 func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int) {
 	if r == nil || stepCtx == nil || strings.TrimSpace(nodeID) == "" {

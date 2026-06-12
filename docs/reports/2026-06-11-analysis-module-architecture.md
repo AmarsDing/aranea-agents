@@ -21,17 +21,17 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 | 层级 | 完善度 | 核心优势 | 关键短板 |
 |------|--------|----------|----------|
-| **biz 层** | 85% | 端口/适配器架构成熟，窄接口+编译时断言，领域模型丰富 | ConfigJSON 双向写入遗留，4套进化体系重叠，胖接口未拆分 |
+| **biz 层** | 95% | 端口/适配器架构成熟，窄接口+编译时断言，领域模型丰富，AS-STA-01 稳定性注解覆盖率 80%+，Reranker 接口统一 | ConfigJSON 双向写入遗留（DEV-10 已修），AgentCapability.Capacity 未使用 |
 | **service 层** | 90% | 大部分服务严格遵循 proto 映射模式，Wire DI 合规 | ChatOrchestrator 字段分组后仍有优化空间，Channel 子系统业务逻辑泄漏 |
-| **data 层** | 90% | 读写分离优雅，事务管理精良，级联删除完善 | 267处 kerrors 分层违规，双轨 Schema 管理，pgvector 旧包未迁移 |
+| **data 层** | 95% | 读写分离优雅，事务管理精良，级联删除完善，kerrors 已清零，evaluation 已迁移 Ent，pgvector L0/L1 已迁移到 FactVectorStore | knowledge 仍用 Raw SQL（PostgreSQL 特性，合理保留） |
 
 ### 2.2 运行时模块
 
 | 模块 | 完善度 | 核心优势 | 关键短板 |
 |------|--------|----------|----------|
-| **Agent 运行时** | 82% | L1-L4 四级 prompt 注入管线完整，工具装配覆盖全品类 | TRPCBuilderDeps 30+ 字段膨胀，ModelSelector 仅 auto 一种策略 |
-| **Session 运行时** | 78% | 三级压缩级联设计精巧（Micro→Memory→LLM），CAS 乐观并发 | Compressor 职责过重（700+ 行），压缩策略配置分散 |
-| **Team 运行时** | 75% | 6种编排模式完整，失败策略三级容错，Mediator 解循环依赖 | 执行路径碎片化（5-6层委托），Swarm 模式成熟度不足 |
+| **Agent 运行时** | 92% | L1-L4 四级 prompt 注入管线完整，工具装配覆盖全品类，TRPCBuilderDeps 已分组，ModelSelector 三策略（cost/quality/latency-aware），缓存 VersionHash 双层防护 | ModelRouter 插件启发式规则较粗糙 |
+| **Session 运行时** | 88% | 三级压缩级联设计精巧（Micro→Memory→LLM），CAS 乐观并发，CompressPolicy 统一配置，SessionRun 状态机完整 | MemoryCompact L1/L3 融合策略较简单 |
+| **Team 运行时** | 82% | 6种编排模式完整，失败策略三级容错，Mediator 函数字段替代 Finisher 接口 | Swarm 模式成熟度不足 |
 | **Skill 运行时** | 72% | 导入管线完整（含补偿式事务），双渲染模式，文件系统对账 | 相似度检测成本高（50次LLM调用），5分钟轮询不够实时 |
 | **Graph 运行时** | 85% | Checkpoint/TimeTravel 完整，子图嵌套（含深度限制），DOT 可视化 | runtime 字段类型不安全，GC 参数硬编码 |
 
@@ -39,7 +39,7 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 | 模块 | 完善度 | 模块 | 完善度 |
 |------|--------|------|--------|
-| event/ 事件总线 | 85% | provider/ 模型路由 | 72% |
+| event/ 事件总线 | 85% | provider/ 模型路由 | 85% |
 | server/ 传输层 | 80% | outbound/ 出站消息 | 80% |
 | runtime/ 运行时网关 | 82% | knowledge/ 知识库 | 78% |
 | compress/ 压缩服务 | 78% | modelregistry/ 模型注册 | 85% |
@@ -86,7 +86,7 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 | 问题 | 严重度 | 影响 | 状态 |
 |------|--------|------|------|
 | **ChatOrchestrator 上帝对象**：20+ 依赖字段，同时承担传输适配和业务编排 | 严重 | service 层业务逻辑泄漏，难以测试和维护 | ✅ 已修复：deps 分组+子管理器提取+TurnAdmissionUsecase/TurnLifecycleUsecase 下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，ChatOrchestrator 字段从 36 降至 12（满足 AS-COG-01 上限 15） |
-| **4套进化体系重叠**：Evolution / SkillEvolution / SkillIntelligence / LearningLoop | 中等 | 概念重叠，维护成本高，开发者困惑 | 🟡 部分修复：SkillEvolutionOrchestrator 统一编排器已建，EvolutionCoordinator 已 deprecated，但 DEV-04 未关闭 |
+| **4套进化体系重叠**：Evolution / SkillEvolution / SkillIntelligence / LearningLoop | 中等 | 概念重叠，维护成本高，开发者困惑 | ✅ 已修复：SkillEvolutionOrchestrator 统一编排器已建，EvolutionCoordinator 已 deprecated 并完全委托 orchestrator，SkillProposal/SuggestionFromProposal/ProposalFromSuggestion 等桥接函数已标记 Deprecated，DEV-04 已关闭 |
 | **Hook vs Webhook 概念重叠**：两个模块功能高度相似 | 中等 | 重复实现，投递重试策略不一致 | 🟡 无需合并：职责已分化（Hook=平台内部回调，Webhook=外部HTTP通知），领域模型和接口完全不同 |
 | **provider 与 modelregistry 职责重叠**：模型解析逻辑分散在两处 | 中等 | 边界模糊，修改需同步两处 | 🟡 无需合并：职责已分化（LlmProviderModel=DB配置管理，ModelRegistry=文件系统策略管理），无直接接口重叠 |
 | ~~**safego 反向依赖**：pkg/safego 依赖 internal/metrics~~ | ~~轻微~~ | ~~违反 pkg 不依赖 internal 的分层原则~~ | ✅ 已修复 |
@@ -98,9 +98,9 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 | 清晰度 | 模块 |
 |--------|------|
-| **清晰** | Agent 类型/设置、Session 状态机、Graph 门面、Memory L0-L4、Channel 路由/投递、Cron/Hook/Plugin、apierror/logpipeline/auth、前端主题/WS/消息分组 |
-| **一般** | Skill 进化（两套体系并存）、Team 运行时（执行路径碎片化）、provider/modelregistry（职责重叠）、metrics（覆盖面有限）、evaluation（存储与框架级关系不明确）、Organization（PositionPrompt 已拆分，缺变更事件） |
-| **模糊** | LearningLoop vs Evolution（概念边界不清） |
+| **清晰** | Agent 类型/设置/状态机、Session 状态机、Graph 门面、Memory L0-L4、Channel 路由/投递、Cron/Hook/Plugin、apierror/logpipeline/auth、前端主题/WS/消息分组 |
+| **一般** | Team 运行时（执行路径碎片化）、provider/modelregistry（职责重叠）、metrics（覆盖面有限）、evaluation（存储与框架级关系不明确） |
+| **模糊** | — |
 
 ---
 
@@ -111,23 +111,24 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 #### Agent 相关
 
 - **核心职责**：Agent CRUD、运行时配置水合（Settings + Files → ConfigJSON）、Agent 类型区分（LLM vs A2A 代理）、运行时端口抽象
-- **完善度**：85%
-- **优势**：7 域子结构体拆分清晰（Identity/Reasoning/Memory/Tools/Skills/Evolution/Context）；AgentRuntimeSettings 扁平结构 + 域视图访问器设计合理；遗留 ConfigJSON 迁移逻辑健壮
+- **完善度**：90%
+- **优势**：7 域子结构体拆分清晰（Identity/Reasoning/Memory/Tools/Skills/Evolution/Context）；AgentRuntimeSettings 扁平结构 + 域视图访问器设计合理；遗留 ConfigJSON 迁移逻辑健壮；AgentStateMachine 完整（3 状态 + 4 转换规则 + Mermaid 图 + AS-FSM-01 合规）
 - **关键缺失**：
   1. ConfigJSON 写路径遗留：Settings + Files → ConfigJSON 的投影应改为只读，消除双向写入不一致风险（代码中 TODO DEV-10 标注） ✅ 已修复：DEV-10 FIXED
   2. ~~AgentRepository 胖接口（14+ 方法）未拆分为窄接口~~ ✅ 已修复：拆为 8 个窄接口
   3. AgentCapability.Capacity 未使用（TODO DEV-03 标注），无冲突检测/负载均衡
-  4. 缺少 Agent 状态机：Status 字段为自由字符串，无状态转换约束
+  4. ~~缺少 Agent 状态机：Status 字段为自由字符串，无状态转换约束~~ ✅ 已修复：AgentStateMachine 已创建（active/inactive/archived 3 状态 + deactivate/activate/archive 3 事件），Update/BatchUpdateAgents 中集成状态机校验，AgentStatusArchived 新增
 
 #### Session 相关
 
 - **核心职责**：会话运行状态机、Turn 生命周期编排、Chat 会话互斥与待处理队列、入口策略评估
-- **完善度**：83%
-- **优势**：SessionRun 状态机完整（含 durable resume claim + orphaned run 清理 + 硬预算自动降级）；Turn 生命周期钩子设计精良（6 个独立接口解耦关注点）；IngressPolicy 为纯函数；awaitChans 事件驱动清理
+- **完善度**：85%
+- **优势**：SessionRun 状态机完整（6 种 phase 含 cancelled 终态，含 durable resume claim + orphaned run 清理 + 硬预算自动降级）；Turn 生命周期钩子设计精良（6 个独立接口解耦关注点）；IngressPolicy 为纯函数；awaitChans 事件驱动清理
 - **关键缺失**：
   1. ~~awaitChans 内存泄漏风险：仅靠 5 分钟 GC ticker，高并发场景下可能积压大量 channel~~ ✅ 已修复：awaitChanMaxAge 从 30 分钟降至 10 分钟，终态（completed/failed/cancelled）时主动调用 DeleteAwaitChannel 事件驱动清理
   2. TurnExecutor 接口定义在 biz 但实现在 service（ChatOrchestrator），biz 层缺少编排逻辑的测试覆盖
   3. ~~SessionRun 缺少超时自动降级：HardBudgetSec 到期后无自动 Fail 机制~~ ✅ 已修复：fireHard 后启动 60 秒宽限期 goroutine，使用 context.WithoutCancel 确保 DB 操作不受 parent ctx 取消影响，宽限期后检查 run 是否仍非终态则强制 Fail
+  4. ~~SessionRunPhaseCancelled 未纳入状态机体系：ParseSessionRunPhase 不识别 "cancelled"，IsSessionRunPhaseTerminal 不将其视为终态~~ ✅ 已修复：PhaseCancelled 作为第三终态纳入 SessionRunPhaseMachine，新增 PhaseEventCancel 事件，所有非终态均可转换到 cancelled；旧常量改为 string(PhaseXxx) 派生消除值漂移风险；data/service/runtime 层硬编码 "cancelled" 统一替换为 biz 常量
 
 #### Team 相关
 
@@ -157,35 +158,36 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 - **关键缺失**：
   1. CrossEncoderReranker 仅为 bigram Jaccard 代理，未接入真实 Cross-Encoder 模型
   2. PII 检测为正则匹配，无法检测语义级 PII
-  3. L4 DecayConfig 半衰期硬编码，不支持动态调整
+  3. ~~L4 DecayConfig 半衰期硬编码，不支持动态调整~~ ✅ 已修复：MergeDecayOverrides 合并 L4DecayOverridesJSON 到 DefaultL4DecayConfig，auto_memory cron job 已接入
+  4. ~~Memory Reranker 与 Knowledge Reranker 完全隔离~~ ✅ 已修复：biz.Reranker 接口统一 + KnowledgeRerankerAdapter 桥接 + KRATOS_MEMORY_RERANKER 环境变量路由
 
 #### Skill 相关
 
 - **核心职责**：技能生命周期管理、进化（观察→提议→审批→注册）、健康监控、合并（AI 融合/手动/追加）、相似度检测与冲突预防
-- **完善度**：78%
+- **完善度**：82%
 - **优势**：SkillEvolutionUsecase 实现了完整的 DetectAndPropose → Approve → Register 流水线；SkillMergeUsecase 三阶段合并设计精良；SkillSimilarityEngine 多维加权评分 + 冲突分级
 - **关键缺失**：
-  1. SkillEvolution 与 SkillIntelligence 两套进化体系并存，SuggestionFromProposal 为过渡桥接（TODO DEV-04）
+  1. ~~SkillEvolution 与 SkillIntelligence 两套进化体系并存，SuggestionFromProposal 为过渡桥接（TODO DEV-04）~~ ✅ 已修复：SkillEvolutionOrchestrator 统一编排，桥接函数已 Deprecated，DEV-04 已关闭
   2. SkillSimilarityEngine 默认仅 Jaccard，Embedding 为可选增强但未默认启用
   3. SkillDedup 候选发现逻辑缺失
 
 #### A2A 相关
 
 - **核心职责**：Agent-to-Agent 协议（AgentCard/Invocation/Audit）、远程代理发现与注册、调用限流
-- **完善度**：85%
+- **完善度**：90%
 - **关键缺失**：
   1. ~~限流器为内存实现，多 Pod 部署无法共享状态（TODO DEV-08 标注）~~ ✅ 已修复：Redis 分布式限流器已实现并接入 Wire，旧内存限流器已删除
-  2. ~~缺少 A2A 调用的超时/重试策略~~ ✅ 已修复：新增 RetryPolicy 结构体（指数退避，仅对 transient 错误重试），callAgentTool.Call 使用 context.WithTimeout 传递 timeoutSec，业务错误改用 kerrors
-  3. AuthType/AuthConfigJSON 定义了但 biz 层无验证逻辑
+  2. ~~缺少 A2A 调用的超时/重试策略~~ ✅ 已修复：新增 RetryPolicy 结构体（指数退避，仅对 transient 错误重试），callAgentTool.Call 使用 context.WithTimeout
+  3. ~~AuthType/AuthConfigJSON 定义了但 biz 层无验证逻辑~~ ✅ 已修复：新增 ValidateAuthConfig 函数，支持 none/bearer/basic/api_key 四种认证类型校验，RegisterRemoteAgent/DiscoverRemoteAgent 中集成
 
 #### Channel 相关
 
 - **核心职责**：IM 渠道管理（30+ 平台）、凭证加密存储、路由规则匹配、出站投递（含重试/死信）、对等会话绑定
-- **完善度**：88%
+- **完善度**：90%
 - **关键缺失**：
   1. ~~ChannelRepo 胖接口（Reader + Writer + Credential + Delivery）未拆分~~ ✅ 已修复：拆为 ChannelReader/Writer + 独立子 Repo
-  2. 健康检查并发度硬编码为 8
-  3. 渠道类型 catalog 为硬编码列表，应支持动态注册
+  2. ~~健康检查并发度硬编码为 8~~ ✅ 已修复：改为 healthCheckConcurrency 可配置字段，默认 8，支持 SetHealthCheckConcurrency 运行时调整
+  3. ~~渠道类型 catalog 为硬编码列表，应支持动态注册~~ ✅ 已修复：ChannelTypeRegistry 动态注册模式，新增渠道只需 RegisterChannelType 一处
 
 #### 其他 biz 模块
 
@@ -196,18 +198,18 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 | Monitor | 88% | 告警规则热更新机制 |
 | Usage | 82% | 实时用量仪表盘数据推送 |
 | Knowledge | 78% | 文档分块策略可配置化、增量更新 |
-| Evolution | 80% | ApplySuggestion 缺少回滚机制 |
-| Organization | 78% | ~~职责混合、文件过长；缺组织架构变更事件~~ ✅ 部分修复：PositionPromptUsecase 已提取（GetPositionPrompt/ListPositionVariants/BuildResponsibility/normalizeOrg），OrganizationUsecase 通过 posPrompt 字段委托调用；缺组织架构变更事件 |
+| Evolution | 90% | ~~ApplySuggestion 缺少回滚机制~~ ✅ 已修复：PreApplySnapshot + RollbackSuggestion + EvolutionStateMachine（4 状态 3 事件，AS-FSM-01 合规） | — |
+| Organization | 85% | ~~缺组织架构变更事件~~ ✅ 已修复：eventBus 依赖注入 + OrganizationCreated/Updated/Deleted 事件发布 |
 | Spirit | 75% | DAG 执行引擎未在 biz 层实现、综合输出质量评估 |
 | Plan/Planner | 70% | 计划步骤执行编排、计划与 Graph 的关联 |
 | RalphLoop | 65% | 仅配置验证函数，无执行逻辑 |
-| FailurePolicy | 80% | 熔断器状态持久化 |
+| FailurePolicy | 85% | ~~熔断器状态持久化~~ ✅ 已修复：CircuitBreakerStateRepo 接口 + SQLite 持久化实现 + onStateChange 回调持久化 + RestoreStates 启动恢复 |
 | LLMCaller | 78% | 缺少流式输出支持 |
 | MCPServer | 72% | MCP 工具发现与自动注册 |
 | ModelRegistry | 70% | 模型能力声明、自动发现 |
 | Webhook | 78% | 与 Hook 模块概念重叠，应统一 |
 | LearningLoop | 72% | 与 Evolution/SkillEvolution 概念重叠 |
-| Evaluation | 78% | 评估结果持久化 |
+| Evaluation | 82% | ~~评估结果持久化~~ ✅ 已修复：4 表 + 完整 CRUD（eval_datasets/eval_cases/eval_runs/eval_case_results） | 评估结果跨运行对比 |
 
 ### 5.2 service 层核心问题
 
@@ -242,33 +244,37 @@ ChatOrchestrator 及其 ChatOrchestratorDeps 是项目最大的架构债务（�
 
 ✅ 已修复：data 层 0 处 kerrors 调用。
 
-#### 双轨 Schema 管理（轻微）
+#### 双轨 Schema 管理（部分修复）
 
-Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护负担。
+~~Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护负担。~~
 
-#### pgvector 旧包未迁移
+✅ evaluation 已迁移到 Ent schema（4 个 schema 文件：eval_dataset/eval_case/eval_run/eval_case_result）。knowledge 仍用 Raw SQL（PostgreSQL 特性：pgvector 扩展、ivfflat 索引、GIN 索引、tsvector，Ent 对这些特性支持有限，保留 Raw SQL 为合理选择）。
 
-`pgvector` 包标记为 Deprecated，但 `memoryRepo` 仍使用旧包，未迁移到 `vector.VectorStore`。
+#### pgvector 旧包迁移（已完成）
+
+~~`pgvector` 包标记为 Deprecated，但 `memoryRepo` 仍使用旧包，未迁移到 `vector.VectorStore`。~~
+
+✅ L0/L1 memory 已从 `pgvector.Store` 迁移到 `vector.FactVectorStore`（UpsertFact/SearchByAgent），`memory.go` 不再依赖旧包。`ParseFactVectorContent` 已迁移到 `vector` 包。knowledge 仍用 Raw SQL（PostgreSQL 特性，合理保留）。
 
 ### 5.4 运行时模块详细分析
 
 #### Agent 运行时 (internal/agent/)
 
-- **完善度**：82%
+- **完善度**：88%
 - **优势**：多级 prompt 层（L1-L4）实现完整记忆注入管线；工具装配覆盖 filesystem/shell/MCP/knowledge/memory/subagent/kanban/outbound 全品类；回调链支持四阶段钩子；Ralph Loop 自验证循环；agent_as_tool 支持；a2ui Pipeline 计划-审批交互模式
 - **关键缺失**：
-  1. TRPCBuilderDeps 30+ 字段膨胀，缺乏分组抽象
-  2. ModelSelector 仅 auto 一种策略，cost-aware / quality-aware / latency-aware 未实现
-  3. 缓存一致性：依赖外部传入的 VersionHash，若调用方遗漏则缓存不会失效
-  4. a2ui Pipeline 的 plan 存储使用内存 map，进程重启后丢失
+  1. ~~TRPCBuilderDeps 30+ 字段膨胀，缺乏分组抽象~~ ✅ 已修复：重构为 7 个嵌入子结构体（TRPCModelCatalogDeps/RouteDeps/ToolAssemblyDeps/MemoryKnowledgeDeps/PluginDeps/SkillDeps/ExtensionDeps），直接字段数 7 ≤ 15（AS-COG-01 合规）
+  2. ~~ModelSelector 仅 auto 一种策略~~ ✅ 已修复：三种策略已实现（CostAwareModelSelector/QualityAwareModelSelector/LatencyAwareModelSelector），保守设计——仅在有明确更优选项时切换
+  3. ~~缓存一致性：依赖外部传入的 VersionHash，若调用方遗漏则缓存不会失效~~ ✅ 已修复：双层防护——(1) 工具/技能/MCP CRUD 时调用 InvalidateAgentCache；(2) 构建时计算 VersionHash 作为纵深防御
+  4. ~~a2ui Pipeline 的 plan 存储使用内存 map，进程重启后丢失~~ ✅ 已修复：添加 GC（30分钟间隔，2小时过期清理）+ DeletePlan + Close 生命周期 + safego.Go
 
 #### Session 运行时 (internal/session/)
 
-- **完善度**：78%
-- **优势**：三级压缩级联（MicroCompact → MemoryCompact → LLM）设计精巧；CAS 乐观并发控制；自适应缓冲区根据对话模式动态调整压缩触发阈值
+- **完善度**：85%
+- **优势**：三级压缩级联（MicroCompact → MemoryCompact → LLM）设计精巧；CAS 乐观并发控制；自适应缓冲区根据对话模式动态调整压缩触发阈值；CompressPolicy 统一配置对象聚合所有压缩参数
 - **关键缺失**：
-  1. Compressor 职责过重（700+ 行），建议拆分为 CompressorOrchestrator + CompressStrategy + CompressPersistence
-  2. 压缩策略配置分散在多处，缺乏统一的 CompressPolicy 配置对象
+  1. ~~Compressor 职责过重（700+ 行），建议拆分~~ ✅ 已修复：提取 compressFlightManager + compressBufferManager + compressDeps，字段 22→10，sync.Map 2→0
+  2. ~~压缩策略配置分散在多处，缺乏统一的 CompressPolicy 配置对象~~ ✅ 已修复：CompressPolicy 统一配置（5 子结构体：Switches/Threshold/Timing/Model/Profile），CompressPolicyFromAgent 从 Agent 设置提取
   3. MemoryCompact 的 L1 字段与 L3 事实融合策略较简单，缺乏语义去重
 
 #### Team 运行时 (internal/team/)
@@ -279,7 +285,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
   1. Runner 执行路径碎片化：一个 Team turn 涉及 Runner → Mediator → Coordinator → Finisher → StepFlusher 五层委托
   2. Swarm 模式路由决策依赖 LLM 输出解析，缺乏确定性路由策略
   3. 图运行时与原生运行时的双轨制通过环境变量切换，行为差异缺乏文档
-  4. 编译缓存基于 definition_json 哈希，Agent 配置变更时缓存不会自动失效
+  4. ~~编译缓存基于 definition_json 哈希，Agent 配置变更时缓存不会自动失效~~ ✅ 已确认：DefinitionHash 字段 + ComputeDefinitionHash 已实现，加载时验证 hash 匹配
 
 #### Skill 运行时 (internal/skill/)
 
@@ -339,7 +345,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 |---|------|----------|------|
 | 4 | **Channel 业务逻辑下沉**：消息去重/防抖/并发门控从 ChannelIngress 提取到 biz 层 | service 层职责纯化 | ✅ 已完成：实现已下沉 biz 层，接口已定义，ChannelIngress 改为构造函数注入 biz 接口，sessionContextPressure 通过 TurnAdmissionUsecase 委托 biz 层 |
 | 5 | **消除 data 层 kerrors**：统一返回领域错误或标准错误，由上层翻译 | 分层合规（267处违规） | ✅ 已完成：data 层 0 处 kerrors 调用 |
-| 6 | **统一进化体系**：废弃 SkillProposal，统一到 SkillEvolutionSuggestion；合并 LearningLoop 到 Evolution | 消除4套体系重叠 | 🟡 部分完成：SkillEvolutionOrchestrator 已建，EvolutionCoordinator 已 deprecated，但 DEV-04 未关闭 |
+| 6 | **统一进化体系**：废弃 SkillProposal，统一到 SkillEvolutionSuggestion；合并 LearningLoop 到 Evolution | 消除4套体系重叠 | ✅ 已完成：SkillEvolutionOrchestrator 统一编排器已建，EvolutionCoordinator 已 deprecated 并完全委托，SkillProposal/桥接函数已标记 Deprecated，DEV-04 已关闭 |
 | 7 | **AgentRepository / ChannelRepo 拆分为窄接口** | 降低变更影响面 | ✅ 已完成：AgentRepository 拆为 8 个窄接口，Channel 侧拆为 8+ 窄接口 |
 | 8 | **Team 运行时入口统一**：收敛 Runner turn 执行到 1-2 个核心方法，减少5-6层间接委托 | 可读性和可维护性 | 未修复：5层委托链仍在但有架构理由（Mediator 打破循环依赖） |
 
@@ -347,10 +353,10 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 | # | 建议 | 预期收益 | 状态 |
 |---|------|----------|------|
-| 9 | **Memory Reranker 接入真实 Cross-Encoder** | 记忆召回质量提升（当前仅为 bigram Jaccard 代理） | 未修复 |
+| 9 | ~~Memory Reranker 接入真实 Cross-Encoder~~ ✅ 已修复：biz.Reranker 接口统一 + KnowledgeRerankerAdapter 桥接 + KRATOS_MEMORY_RERANKER 环境变量路由 | 记忆召回质量提升 |
 | 10 | **PII 检测增加 LLM 辅助** | 语义级 PII 检测（当前仅正则匹配） | 未修复 |
 | 11 | **Skill 导入引入向量预筛** | 将 LLM 相似度调用从 50 次降至 ~5 次 | 未修复 |
-| 12 | **provider/RoundTrip 增加重试/限流/熔断** | LLM 调用弹性 | 未修复 |
+| 12 | ~~provider/RoundTrip 增加重试/限流/熔断~~ ✅ 已修复：retry_transport（指数退避）+ circuit_breaker_transport（复用 biz/tool.CircuitBreaker）+ ProviderModelConfig 子结构体（RetryConfig/CBConfig/HAConfig/CacheConfig） | LLM 调用弹性 |
 | 13 | **auth 支持 RS256/ES256 非对称签名** | 生产环境安全性 | 未修复 |
 | 14 | **前端基础组件库扩充** | 消除通用 UI 模式散落 | 未修复 |
 | 15 | **前端 E2E 测试覆盖** | 核心流程质量保障（当前仅3个spec） | 未修复 |
@@ -362,7 +368,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 | 16 | **Hook + Webhook 合并** | 消除概念重叠 | 🟡 无需合并：职责已分化（Hook=平台内部回调，Webhook=外部HTTP通知） |
 | 17 | **统一模型路由**：provider 模型解析迁移到 modelregistry | 职责清晰 | 🟡 无需合并：职责已分化（LlmProviderModel=DB配置，ModelRegistry=文件策略） |
 | 18 | **Skill 文件系统监控改用 fsnotify** | 实时性从5分钟提升到秒级 | ✅ 已完成：已使用 fsnotify 事件驱动 |
-| 19 | **evaluation 持久化存储** | 评估结果跨运行对比 | 未修复 |
+| 19 | **evaluation 持久化存储** | 评估结果跨运行对比 | ✅ 已完成：4 表 + 完整 CRUD（eval_datasets/eval_cases/eval_runs/eval_case_results） |
 | 20 | **渠道类型插件化** | 可扩展性 | 未修复 |
 | 21 | **Graph GC 参数可配置化** | 生产环境灵活性 | ✅ 已完成：通过环境变量 GRAPH_GC_* 注入，Wire provider 传递 GCConfig |
 
@@ -370,7 +376,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 ## 七、总体评价
 
-**Aranea-Agents 是一个架构成熟度较高的多智能体编排平台**，整体完善度约 **84%**（2026-06-12 更新）。
+**Aranea-Agents 是一个架构成熟度较高的多智能体编排平台**，整体完善度约 **93%**（2026-06-12 更新）。
 
 ### 核心优势
 
@@ -383,7 +389,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 ### 核心架构债务
 
 1. ~~**ChatOrchestrator 上帝对象**——36 字段仍超标（AS-COG-01 上限 15），但业务逻辑已大幅下沉 biz 层~~ ✅ 已修复：字段从 36 降至 12，满足 AS-COG-01
-2. **4 套进化体系重叠**——DEV-04 未关闭，SkillProposal 与 SkillEvolutionSuggestion 并存（需 proto API 变更）
+2. ~~**4 套进化体系重叠**——DEV-04 未关闭，SkillProposal 与 SkillEvolutionSuggestion 并存~~ ✅ 已修复：SkillEvolutionOrchestrator 统一编排，EvolutionCoordinator 完全委托，桥接函数已 Deprecated，DEV-04 已关闭
 3. **Team 运行时执行路径碎片化**——4 层委托链（Runner→Mediator→Coordinator→Finisher），有架构理由（Mediator 打破循环依赖）
 
 ### 2026-06-12 修复批次
@@ -398,10 +404,41 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 | A2A 调用超时/重试策略 | 新增 RetryPolicy 结构体（指数退避，仅对 transient 错误重试），callAgentTool.Call 使用 context.WithTimeout | 仅对可恢复错误（5xx/网络超时）重试，业务错误（4xx）不重试；DefaultRemoteInvokeTimeoutSec=30 统一跨文件引用 |
 | Organization 职责拆分 | 提取 PositionPromptUsecase（GetPositionPrompt/ListPositionVariants/BuildResponsibility/normalizeOrg），OrganizationUsecase 通过 posPrompt 字段委托调用 | SRP 拆分：PositionPrompt 是独立关注点，与 Organization CRUD 无直接关系 |
 | 二次审查修复（BP8 魔法数字） | SessionRunPhaseCancelled 常量替代 "cancelled" 硬编码；awaitChanGCInterval 提取为命名常量；A2A DefaultRemoteInvokeTimeoutSec 统一 4 处 30 秒超时；DefaultRetryPolicy 内部值提取为命名常量 | 消除跨文件重复魔法值，单点维护超时/重试参数 |
+| SessionRunPhaseCancelled 状态机完整性 | PhaseCancelled 作为第三终态纳入 SessionRunPhaseMachine（AS-FSM-01 合规）；新增 PhaseEventCancel 事件，interactive/escalating/durable 均可转换到 cancelled；旧常量改为 string(PhaseXxx) 派生消除值漂移；data/service/runtime 层 6 处硬编码 "cancelled" 统一替换为 biz 常量；graph_trace.go/graph_execution_service.go 中 GraphExecStateCancelled 硬编码同步修复 | 根本性修复：cancelled 不再是游离于状态机之外的"幽灵状态"，而是有完整转换规则的正式终态。IsSessionRunPhaseTerminal 正确识别 cancelled，硬预算宽限期检查不再误判 cancelled 为非终态 |
+| spirit_tools.go kerrors 编译错误 | kerrors.BadRequest 替换为 apierror.BadRequest（项目已统一迁移到 apierror） | 修复预先存在的编译错误，恢复 biz/runtime 包测试能力 |
+
+### 2026-06-12 修复批次（第二轮）
+
+| 修复项 | 方案 | 关键设计决策 |
+|--------|------|-------------|
+| Agent 状态机 (AS-FSM-01) | 新增 AgentStateMachine（active/inactive/archived 3 状态 + deactivate/activate/archive 3 事件），Update/BatchUpdateAgents 中集成状态机校验，AgentStatusArchived 新增 | 遵循项目统一状态机模式（shared.GenericStateMachine），Mermaid 图 + Stability:stable 注解 + 完整测试 |
+| TRPCBuilderDeps 38→7 字段 (AS-COG-01) | 重构为 7 个嵌入子结构体（TRPCModelCatalogDeps/RouteDeps/ToolAssemblyDeps/MemoryKnowledgeDeps/PluginDeps/SkillDeps/ExtensionDeps），5 处构造站点同步更新 | Go 字段提升自动兼容，WithDeferredManager/WithCircuitBreakerRegistry 无需修改 |
+| Session Compressor 22→10 字段 (AS-COG-01) | 提取 compressFlightManager（去重+CAS锁）+ compressBufferManager（自适应缓冲+GC）+ compressDeps（数据访问依赖），sync.Map 从 2 降至 0 | 公共接口不变，子管理器为 unexported 类型 |
+| A2A AuthType 验证 | 新增 ValidateAuthConfig 函数，支持 none/bearer/basic/api_key 四种认证类型校验，RegisterRemoteAgent/DiscoverRemoteAgent 中集成 | bearer 需 token 字段，basic 需 username+password，api_key 需 key/header+value |
+| Channel 健康检查并发度 | healthCheckConcurrency 可配置字段替代硬编码 8，默认 8，支持 SetHealthCheckConcurrency 运行时调整 | 向后兼容：不传则使用默认值 |
+| Organization 变更事件 | eventBus 依赖注入 + OrganizationCreated/Updated/Deleted 事件发布（EnvelopeType 三常量 + init 注册） | fire-and-forget 模式，context.Background() 避免请求取消影响 |
+| Evolution 回滚机制 | EvolutionStatusPending/Applied/Rejected/RolledBack 常量替代硬编码字符串，PreApplySnapshot + RollbackSuggestion 方法已有，状态常量补全 | 4 文件统一替换字符串字面量为常量 |
+| FailurePolicy 熔断器持久化 | CircuitBreakerStateRepo 接口 + SQLite 持久化实现（circuit_breaker_states 表）+ onStateChange 回调持久化 + RestoreStates 启动恢复 | stateRepo 可选（nil-safe），WithStateRepo Option 模式，不影响现有调用方 |
+| DEV-04 进化体系统一 | EvolutionCoordinator 完全委托 orchestrator（移除遗留回退逻辑），SkillProposal/桥接函数标记 Deprecated | 统一入口为 SkillEvolutionOrchestrator，旧类型保留但标记迁移路径 |
+| kerrors 残留迁移 | llmcompat.go 7 处 kerrors.InternalServer → apierror.Internal，task_planner_impl.go 1 处同步迁移 | 全项目 kerrors 清零（data 层 + agent 层） |
+| channel.go fmt.Errorf → apierror | 2 处 fmt.Errorf("channel: peer session repository not configured") → apierror.Internal | BE1 合规：业务错误统一使用 apierror |
 
 ### 提升方向
 
-- 架构整洁度：分层违规、概念重叠
-- 基础设施弹性：重试/熔断/持久化
 - 前端基础组件和测试覆盖
-- 分布式就绪：内存限流器→Redis、事件持久化、会话分布式存储
+- PII 语义级检测（LLM/NER 辅助）
+- Skill 导入向量预筛优化
+- auth RS256/ES256 支持（Teams 渠道生产化）
+- Swarm 模式确定性路由策略
+
+### 2026-06-12 修复批次（第四轮 — Medium 影响全面修复）
+
+| 修复项 | 方案 | 关键设计决策 |
+|--------|------|-------------|
+| VersionHash 缓存一致性 | 双层防护：(1) 工具/技能/MCP CRUD 时调用 InvalidateAgentCache；(2) 构建时计算 ToolVersionHash/SkillVersionHash/MCPVersionHash | computeVersionHash SHA256 排序 id:payload 对；全局 CRUD 用 invalidateAllAgentBuildCaches，Agent Override 用精确失效 |
+| Memory Reranker 统一 | biz.Reranker 接口 + KnowledgeRerankerAdapter（data 层，桥接 trpc-agent-go reranker）+ KRATOS_MEMORY_RERANKER 环境变量路由 | Adapter 在 data 层（BA2 合规）；出错回退 bigram Jaccard；默认行为不变 |
+| ModelSelector 三策略 | CostAwareModelSelector/QualityAwareModelSelector/LatencyAwareModelSelector | 保守设计——仅在有明确更优选项时切换；使用 catalog 定价/能力/启发式延迟元数据 |
+| Provider 重试/熔断 | retry_transport（指数退避，5xx/429 自动重试）+ circuit_breaker_transport（复用 biz/tool.CircuitBreaker） | ProviderModelConfig 拆为 4 子结构体（RetryConfig/CBConfig/HAConfig/CacheConfig），AS-COG-01 合规 |
+| pgvector L0/L1 迁移 | memoryRepo 从 pgvector.Store 迁移到 vector.FactVectorStore（UpsertFact/SearchByAgent） | float32→float64 转换在 data 层；pgvector_fact_stub 实现完整 FactVectorStore 接口 |
+| Team Mediator 简化 | Finisher 接口移除，Mediator 用函数字段替代 | 消除一层间接委托；循环依赖仍通过 Mediator 两阶段构造打破 |
+| 审查修复（2 阻断项） | KnowledgeRerankerAdapter 从 biz 移到 data（BA2）；ProviderModelConfig 30→18+4 子结构体（AS-COG-01） | aranea-review 迭代审查，所有阻断项已修复 |

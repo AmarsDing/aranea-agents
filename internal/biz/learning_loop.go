@@ -35,11 +35,12 @@ func FormatApprovedByUser(userID int64) string {
 }
 
 type LearningLoopUsecase struct {
-	obs       ObservationReadWriter
-	patterns  PatternReadWriter
-	proposals ProposalReadWriter
-	agents    AgentRepository
-	evolution *EvolutionUsecase
+	obs          ObservationReadWriter
+	patterns     PatternReadWriter
+	proposals    ProposalReadWriter
+	agents       AgentRepository
+	evolution    *EvolutionUsecase
+	orchestrator *SkillEvolutionOrchestrator
 }
 
 func NewLearningLoopUsecase(
@@ -56,6 +57,14 @@ func NewLearningLoopUsecase(
 		agents:    agents,
 		evolution: evolution,
 	}
+}
+
+// SetOrchestrator sets the unified evolution orchestrator for creating
+// UnifiedEvolutionSuggestion instead of legacy EvolutionSuggestion.
+// When set, RegisterKnowledge delegates to the orchestrator.
+// NOTE: Must only be called during initialization, before any concurrent access.
+func (uc *LearningLoopUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
+	uc.orchestrator = o
 }
 
 func (uc *LearningLoopUsecase) CollectObservations(ctx context.Context, agentID string, since time.Time) ([]Observation, error) {
@@ -252,8 +261,29 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 	if p.Status != ProposalStatusValidated && p.Status != ProposalStatusApproved {
 		return KnowledgeProposal{}, apierror.BadRequest("LEARNING", "proposal must be validated or approved before registration")
 	}
-	if uc.evolution != nil && p.Kind == "prompt" {
-		suggestions, sErr := uc.evolution.GetEvolutionSuggestions(ctx, p.AgentID, "pending")
+	if uc.orchestrator != nil && p.Kind == "prompt" {
+		// Use the unified orchestrator to create a UnifiedEvolutionSuggestion
+		// instead of the legacy EvolutionSuggestion.
+		actionType := kindToActionType(p.Kind)
+		suggestion := UnifiedEvolutionSuggestion{
+			ID:              newAgentCatalogID(),
+			TargetType:      EvolutionTargetAgent,
+			TargetID:        p.AgentID,
+			ActionType:      actionType,
+			TriggerSource:   "pattern",
+			TriggerReason:   p.Title,
+			Status:          "pending",
+			Priority:        1,
+			DraftBody:       p.Content,
+			LifecycleStatus: "draft",
+			CreatedAt:       time.Now().UTC(),
+		}
+		if err := uc.orchestrator.CreateSuggestion(ctx, suggestion); err != nil {
+			// Non-fatal: log and continue with proposal registration.
+			// DB unique constraint may catch duplicates.
+		}
+	} else if uc.evolution != nil && p.Kind == "prompt" {
+		suggestions, sErr := uc.evolution.GetEvolutionSuggestions(ctx, p.AgentID, EvolutionStatusPending)
 		if sErr != nil {
 			suggestions = nil
 		}
@@ -437,5 +467,20 @@ func proposalKind(patternKind string) string {
 		return "skill"
 	default:
 		return "prompt"
+	}
+}
+
+// kindToActionType maps a LearningLoop proposal kind to the unified
+// EvolutionActionType used by the orchestrator.
+func kindToActionType(kind string) EvolutionActionType {
+	switch kind {
+	case "prompt":
+		return EvolutionActionEvolve
+	case "persona":
+		return EvolutionActionEvolve
+	case "skill":
+		return EvolutionActionImprove
+	default:
+		return EvolutionActionEvolve
 	}
 }

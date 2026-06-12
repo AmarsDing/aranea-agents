@@ -10,7 +10,7 @@ import (
 
 	"aranea-agents/internal/provider"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
@@ -86,12 +86,12 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
-			return "", "", 0, 0, kerrors.InternalServer("PROVIDER", resp.Error.Message)
+			return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, resp.Error.Message)
 		}
 		last = resp
 	}
 	if last == nil {
-		return "", "", 0, 0, kerrors.InternalServer("PROVIDER", "empty LLM response")
+		return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
 	}
 	return extractFromTRPCResponse(last, modelName)
 }
@@ -115,7 +115,7 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	var accText, accReason strings.Builder
 	for resp := range respCh {
 		if resp.Error != nil {
-			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, kerrors.InternalServer("PROVIDER", resp.Error.Message)
+			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, apierror.Internal(apierror.DomainProvider, resp.Error.Message)
 		}
 		if len(resp.Choices) == 0 {
 			continue
@@ -166,7 +166,7 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client) (trpcmodel.Model, e
 
 func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok int, err error) {
 	if len(resp.Choices) == 0 {
-		return "", "", 0, 0, kerrors.InternalServer("PROVIDER", "empty choices")
+		return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, "empty choices")
 	}
 	ch := resp.Choices[0]
 	text = strings.TrimSpace(ch.Message.Content)
@@ -233,15 +233,15 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
-			return "", nil, 0, 0, kerrors.InternalServer("PROVIDER", resp.Error.Message)
+			return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, resp.Error.Message)
 		}
 		last = resp
 	}
 	if last == nil {
-		return "", nil, 0, 0, kerrors.InternalServer("PROVIDER", "empty LLM response")
+		return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
 	}
 	if len(last.Choices) == 0 {
-		return "", nil, 0, 0, kerrors.InternalServer("PROVIDER", "empty choices")
+		return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, "empty choices")
 	}
 	ch := last.Choices[0]
 	text = strings.TrimSpace(ch.Message.Content)

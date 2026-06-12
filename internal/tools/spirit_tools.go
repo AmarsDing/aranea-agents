@@ -15,7 +15,7 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ---------------------------------------------------------------------------
@@ -38,13 +38,13 @@ type SubTaskSummary struct {
 
 // PlanAndExecuteOutput is the output for the plan_and_execute tool.
 type PlanAndExecuteOutput struct {
-	PlanID          string                          `json:"plan_id"`
-	Strategy        string                          `json:"strategy"`
-	ComplexityLevel string                          `json:"complexity_level"`
-	SubtaskCount    int                             `json:"subtask_count"`
-	SubTasks        []SubTaskSummary                `json:"sub_tasks,omitempty"`
-	OrchestrationID string                          `json:"orchestration_id,omitempty"`
-	MemoryHit       bool                            `json:"memory_hit"`
+	PlanID          string                             `json:"plan_id"`
+	Strategy        string                             `json:"strategy"`
+	ComplexityLevel string                             `json:"complexity_level"`
+	SubtaskCount    int                                `json:"subtask_count"`
+	SubTasks        []SubTaskSummary                   `json:"sub_tasks,omitempty"`
+	OrchestrationID string                             `json:"orchestration_id,omitempty"`
+	MemoryHit       bool                               `json:"memory_hit"`
 	Steps           []biztypes.OrchestrationStepRecord `json:"steps,omitempty"`
 }
 
@@ -74,12 +74,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 		func(ctx context.Context, input PlanAndExecuteInput) (PlanAndExecuteOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
 			if spiritSessionID == "" {
-				return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
+				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, "spirit session id not found in context")
 			}
 
 			taskPrompt := strings.TrimSpace(input.TaskPrompt)
 			if taskPrompt == "" {
-				return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", "task_prompt is required")
+				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, "task_prompt is required")
 			}
 
 			// Emit ButlerOrchestrationStarted event.
@@ -103,7 +103,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 							loggateway.Err(listErr),
 						)
 					} else if len(activeTeams) >= maxParallel {
-						return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", fmt.Sprintf("并行团队数已达上限 (%d/%d)，请等待当前团队完成后再试", len(activeTeams), maxParallel))
+						return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, fmt.Sprintf("并行团队数已达上限 (%d/%d)，请等待当前团队完成后再试", len(activeTeams), maxParallel))
 					}
 				}
 			}
@@ -141,12 +141,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 2: Allocate
-		allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
-		out.Steps = append(out.Steps, allocStep)
-		if allocErr != nil {
-			publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
-			return out, nil
-		}
+			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
+			out.Steps = append(out.Steps, allocStep)
+			if allocErr != nil {
+				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
+				return out, nil
+			}
 
 			// Fill agent keys from allocation into subtask summaries.
 			for i := range out.SubTasks {
@@ -159,12 +159,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 3: Orchestrate
-		handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
-		out.Steps = append(out.Steps, orchStep)
-		if orchErr != nil {
-			publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "orchestrate", orchErr.Error())
-			return out, nil
-		}
+			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
+			out.Steps = append(out.Steps, orchStep)
+			if orchErr != nil {
+				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "orchestrate", orchErr.Error())
+				return out, nil
+			}
 
 			out.OrchestrationID = handle.ID
 			publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
@@ -190,7 +190,7 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 			Error:      err.Error(),
 			StartedAt:  start,
 			FinishedAt: time.Now().UTC(),
-		}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+		}, apierror.Internal(apierror.DomainSpirit, "plan failed: "+err.Error())
 	}
 	return taskPlan, biztypes.OrchestrationStepRecord{
 		StepName:   "plan",
@@ -306,12 +306,12 @@ func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg
 		func(ctx context.Context, input CheckOrchestrationProgressInput) (CheckOrchestrationProgressOutput, error) {
 			orchestrationID := strings.TrimSpace(input.OrchestrationID)
 			if orchestrationID == "" {
-				return CheckOrchestrationProgressOutput{}, kerrors.BadRequest("SPIRIT", "orchestration_id is required")
+				return CheckOrchestrationProgressOutput{}, apierror.BadRequest(apierror.DomainSpirit, "orchestration_id is required")
 			}
 
 			progress, err := orchestrator.CheckProgress(ctx, orchestrationID)
 			if err != nil {
-				return CheckOrchestrationProgressOutput{}, kerrors.InternalServer("SPIRIT", "check progress: "+err.Error())
+				return CheckOrchestrationProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check progress: "+err.Error())
 			}
 
 			views := make([]TaskProgressView, 0, len(progress))
@@ -352,7 +352,7 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggat
 		func(ctx context.Context, input CancelOrchestrationInput) (CancelOrchestrationOutput, error) {
 			orchestrationID := strings.TrimSpace(input.OrchestrationID)
 			if orchestrationID == "" {
-				return CancelOrchestrationOutput{}, kerrors.BadRequest("SPIRIT", "orchestration_id is required")
+				return CancelOrchestrationOutput{}, apierror.BadRequest(apierror.DomainSpirit, "orchestration_id is required")
 			}
 			err := orchestrator.Cancel(ctx, orchestrationID)
 			if err != nil {
@@ -439,7 +439,7 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 		func(ctx context.Context, input AssembleTeamInput) (AssembleTeamOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
 			if spiritSessionID == "" {
-				return AssembleTeamOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
+				return AssembleTeamOutput{}, apierror.BadRequest(apierror.DomainSpirit, "spirit session id not found in context")
 			}
 
 			// Delegate to new three-phase flow when ports are available.
@@ -450,15 +450,15 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 				}
 				taskPlan, err := planner.Plan(ctx, planInput)
 				if err != nil {
-					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "plan failed: "+err.Error())
 				}
 				allocPlan, err := allocator.Allocate(ctx, taskPlan)
 				if err != nil {
-					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "allocate failed: "+err.Error())
+					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "allocate failed: "+err.Error())
 				}
 				handle, err := orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
 				if err != nil {
-					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "orchestrate failed: "+err.Error())
+					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "orchestrate failed: "+err.Error())
 				}
 				return AssembleTeamOutput{
 					TeamID:    handle.ID,
@@ -470,13 +470,13 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 			// Fallback to legacy flow when new ports are not available.
 			activeTeams, err := query.ListActiveTeams(ctx, spiritSessionID)
 			if err != nil {
-				return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "query active teams: "+err.Error())
+				return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "query active teams: "+err.Error())
 			}
 			maxParallel := query.GetMaxParallelTeams(ctx, spiritSessionID)
 			availableSlots := maxParallel - len(activeTeams)
 			if availableSlots <= 0 {
-				return AssembleTeamOutput{}, kerrors.BadRequest(
-					"SPIRIT",
+				return AssembleTeamOutput{}, apierror.BadRequest(
+					apierror.DomainSpirit,
 					fmt.Sprintf("max parallel teams (%d) reached, wait for existing teams to complete", maxParallel),
 				)
 			}
@@ -486,7 +486,7 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 
 			dag, dagErr := biz.ParseTaskDAG(strings.TrimSpace(input.TaskDAGJSON), lg)
 			if dagErr != nil {
-				return AssembleTeamOutput{}, kerrors.BadRequest("SPIRIT", "invalid task dag: "+dagErr.Error())
+				return AssembleTeamOutput{}, apierror.BadRequest(apierror.DomainSpirit, "invalid task dag: "+dagErr.Error())
 			}
 
 			if dag != nil && len(dag.Nodes) > 0 {
@@ -525,14 +525,14 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 			if dag != nil && len(dag.Nodes) > 1 {
 				outputs, err := assembleDAGTeams(ctx, assembler, dag, spiritSessionID, mode, input.AgentKeys, maxParallel, availableSlots, autoStart)
 				if err != nil {
-					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "assemble dag teams: "+err.Error())
+					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "assemble dag teams: "+err.Error())
 				}
 				if len(outputs) > 0 {
 					outputs[0].DAGDiagram = dag.ToTextDiagram()
 					outputs[0].TopologyReason = topologyReason
 					return outputs[0], nil
 				}
-				return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "no teams created from dag")
+				return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "no teams created from dag")
 			}
 
 			if dag != nil && len(dag.Nodes) == 1 {
@@ -549,7 +549,7 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 
 			team, session, err := assembler.AssembleTeam(ctx, params)
 			if err != nil {
-				return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "assemble team: "+err.Error())
+				return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "assemble team: "+err.Error())
 			}
 			return AssembleTeamOutput{
 				TeamID:         team.ID,
@@ -576,14 +576,14 @@ func NewCheckTeamProgressTool(controller SpiritTeamControllerPort, orchestrator 
 		func(ctx context.Context, _ CheckTeamProgressInput) (CheckTeamProgressOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
 			if spiritSessionID == "" {
-				return CheckTeamProgressOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
+				return CheckTeamProgressOutput{}, apierror.BadRequest(apierror.DomainSpirit, "spirit session id not found in context")
 			}
 
 			// Delegate to new orchestrator when available.
 			if orchestrator != nil {
 				progress, err := orchestrator.CheckProgress(ctx, spiritSessionID)
 				if err != nil {
-					return CheckTeamProgressOutput{}, kerrors.InternalServer("SPIRIT", "check progress: "+err.Error())
+					return CheckTeamProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check progress: "+err.Error())
 				}
 				views := make([]TeamProgressView, 0, len(progress))
 				for _, p := range progress {
@@ -599,7 +599,7 @@ func NewCheckTeamProgressTool(controller SpiritTeamControllerPort, orchestrator 
 			// Fallback to legacy flow.
 			progress, err := controller.CheckTeamProgress(ctx, spiritSessionID)
 			if err != nil {
-				return CheckTeamProgressOutput{}, kerrors.InternalServer("SPIRIT", "check team progress: "+err.Error())
+				return CheckTeamProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check team progress: "+err.Error())
 			}
 			views := make([]TeamProgressView, 0, len(progress))
 			for _, p := range progress {
@@ -635,7 +635,7 @@ func NewCancelTeamTool(controller SpiritTeamControllerPort, orchestrator biz.Tas
 		func(ctx context.Context, input CancelTeamInput) (CancelTeamOutput, error) {
 			teamID := strings.TrimSpace(input.TeamID)
 			if teamID == "" {
-				return CancelTeamOutput{}, kerrors.BadRequest("SPIRIT", "team_id is required")
+				return CancelTeamOutput{}, apierror.BadRequest(apierror.DomainSpirit, "team_id is required")
 			}
 
 			// Delegate to new orchestrator when available.
@@ -664,10 +664,10 @@ type SynthesizeResultsInput struct {
 }
 
 type SynthesizeResultsOutput struct {
-	Content            string                    `json:"content"`
-	Strategy           string                    `json:"strategy"`
-	TeamResults        []biz.TeamSynthesisResult `json:"team_results"`
-	NeedsLLMSynthesis  bool                      `json:"needs_llm_synthesis"`
+	Content           string                    `json:"content"`
+	Strategy          string                    `json:"strategy"`
+	TeamResults       []biz.TeamSynthesisResult `json:"team_results"`
+	NeedsLLMSynthesis bool                      `json:"needs_llm_synthesis"`
 }
 
 func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.FunctionTool[SynthesizeResultsInput, SynthesizeResultsOutput] {
@@ -675,11 +675,11 @@ func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.Funct
 		func(ctx context.Context, input SynthesizeResultsInput) (SynthesizeResultsOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
 			if spiritSessionID == "" {
-				return SynthesizeResultsOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
+				return SynthesizeResultsOutput{}, apierror.BadRequest(apierror.DomainSpirit, "spirit session id not found in context")
 			}
 			output, err := synthesis.SynthesizeResults(ctx, spiritSessionID, input.Strategy)
 			if err != nil {
-				return SynthesizeResultsOutput{}, kerrors.InternalServer("SPIRIT", "synthesize results: "+err.Error())
+				return SynthesizeResultsOutput{}, apierror.Internal(apierror.DomainSpirit, "synthesize results: "+err.Error())
 			}
 			return SynthesizeResultsOutput{
 				Content:           output.Content,

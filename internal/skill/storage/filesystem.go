@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/skill"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type skillFilesystem struct {
@@ -29,10 +29,10 @@ func (f *skillFilesystem) ResolveRoot(ctx context.Context) string {
 func (f *skillFilesystem) CreateSkillDir(slug string, body string) (string, error) {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		return "", kerrors.BadRequest("SKILL", "slug is required for skill directory creation")
+		return "", apierror.BadRequest(apierror.DomainSkill, "slug is required for skill directory creation")
 	}
 	if strings.Contains(slug, "..") || strings.HasPrefix(slug, "/") {
-		return "", kerrors.BadRequest("SKILL", "slug contains unsafe path characters")
+		return "", apierror.BadRequest(apierror.DomainSkill, "slug contains unsafe path characters")
 	}
 	root := f.resolveRootFn(context.Background())
 	dir := filepath.Join(root, slug)

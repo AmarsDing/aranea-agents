@@ -154,6 +154,14 @@ func (c *BuildCache) Invalidate(agentID string) {
 	}
 }
 
+// InvalidateAll evicts every entry from the cache.
+func (c *BuildCache) InvalidateAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = make(map[string]*buildCacheEntry)
+	c.lruList.Init()
+}
+
 // evict must be called with c.mu held.
 func (c *BuildCache) evict(key string) {
 	if e, ok := c.items[key]; ok {
@@ -298,6 +306,13 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 // Call this whenever an agent, tool, or skill is updated.
 func InvalidateAgentCache(agentID string) {
 	globalBuildCache.Invalidate(agentID)
+}
+
+// InvalidateAllAgentCaches evicts every entry from the global build cache.
+// Call this when a platform-wide resource (tool catalog, skill list, MCP servers)
+// changes and potentially affects all agents.
+func InvalidateAllAgentCaches() {
+	globalBuildCache.InvalidateAll()
 }
 
 // BuildTRPCLLMAgentCached wraps BuildTRPCLLMAgent with the global LRU cache

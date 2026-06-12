@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"time"
 
@@ -246,7 +245,7 @@ func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Sessio
 			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 			loggateway.Err(err))
 		if ent.IsNotFound(err) {
-			return biz.Session{}, sql.ErrNoRows
+			return biz.Session{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
 		return biz.Session{}, err
 	}

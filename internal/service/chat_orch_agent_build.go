@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -84,45 +85,121 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		customTools = d.customToolFunc(ctx, p.Agent)
 	}
 
+	// Compute content-based version hashes for tool/skill/MCP configurations.
+	// These hashes are folded into the build cache key so that configuration
+	// changes automatically invalidate the cached agent (defense-in-depth).
+	toolHash := d.computeToolHash(ctx, p.Agent.ID)
+	skillHash := d.computeSkillHash(ctx)
+	mcpHash := d.computeMCPHash(ctx, p.Agent.ID)
+
 	deps := chatagent.TRPCBuilderDeps{
-		// TRPCModelCatalogDeps
-		ModelCatalog: d.td.ReadDeps.LLM,
-		AgentUC:      d.td.ReadDeps.AgentsUC,
-		Agents:       d.td.ReadDeps.Agents,
-		Sys:          d.td.ReadDeps.Settings,
-		Sessions:     d.td.Sessions,
-		// TRPCModelRouteDeps
-		RT:         d.td.RoundTrip(),
-		Provider:   p.Provider,
-		Model:      p.Model,
-		DialogMode: p.DialogMode,
-		// TRPCToolAssemblyDeps
-		ToolUC:       d.td.ReadDeps.ToolUC,
-		MCPTooling:   d.td.Persist.AgentMCP,
-		AwaitHook:    d.awaitCoord.MakeAwaitReplyFunc(ctx, sessionID, p.RunID),
-		CustomTools:  customTools,
-		KanbanBridge: d.rt.KanbanBridge,
-		// TRPCMemoryKnowledgeDeps
-		HasMemory:             d.td.Persist.Memory.Available(),
-		MemoryService:         d.td.Persist.Memory.TRPC,
-		MemoryAdmin:           d.td.Persist.Memory.Admin,
-		MemoryL2Recall:        d.td.Persist.Memory.L2Recall,
-		MemoryL3Recall:        d.td.Persist.Memory.L3Recall,
-		MemoryCompositeRecall: d.td.Persist.Memory.CompositeRecall,
-		KnowledgeRetriever:    d.rt.KnowledgeRetriever,
-		KnowledgeUsecase:      d.rt.KnowledgeUC,
-		// TRPCPluginDeps (Plugins set by caller after agent build)
-		PluginManager: d.rt.PluginManager,
-		// TRPCSkillDeps
-		SkillUC:         d.td.ReadDeps.SkillUC,
-		SkillDBRepo:     d.rt.SkillDBRepo,
-		CodeExecFactory: d.rt.CodeExecFactory,
-		// Extended deps
-		Organization:    d.rt.OrganizationUC,
-		ToolResultGate: d.rt.ToolResultGate,
-		SubAgentService: d.subAgentSvc,
-		L0SnapshotForcer: d.td.SessionRT,
+		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
+			ModelCatalog: d.td.ReadDeps.LLM,
+			AgentUC:      d.td.ReadDeps.AgentsUC,
+			Agents:       d.td.ReadDeps.Agents,
+			Sys:          d.td.ReadDeps.Settings,
+			Sessions:     d.td.Sessions,
+		},
+		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
+			RT:         d.td.RoundTrip(),
+			Provider:   p.Provider,
+			Model:      p.Model,
+			DialogMode: p.DialogMode,
+		},
+		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
+			ToolUC:       d.td.ReadDeps.ToolUC,
+			MCPTooling:   d.td.Persist.AgentMCP,
+			AwaitHook:    d.awaitCoord.MakeAwaitReplyFunc(ctx, sessionID, p.RunID),
+			CustomTools:  customTools,
+			KanbanBridge: d.rt.KanbanBridge,
+		},
+		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
+			HasMemory:             d.td.Persist.Memory.Available(),
+			MemoryService:         d.td.Persist.Memory.TRPC,
+			MemoryAdmin:           d.td.Persist.Memory.Admin,
+			MemoryL2Recall:        d.td.Persist.Memory.L2Recall,
+			MemoryL3Recall:        d.td.Persist.Memory.L3Recall,
+			MemoryCompositeRecall: d.td.Persist.Memory.CompositeRecall,
+			KnowledgeRetriever:    d.rt.KnowledgeRetriever,
+			KnowledgeUsecase:      d.rt.KnowledgeUC,
+		},
+		TRPCPluginDeps: chatagent.TRPCPluginDeps{
+			PluginManager: d.rt.PluginManager,
+		},
+		TRPCSkillDeps: chatagent.TRPCSkillDeps{
+			SkillUC:         d.td.ReadDeps.SkillUC,
+			SkillDBRepo:     d.rt.SkillDBRepo,
+			CodeExecFactory: d.rt.CodeExecFactory,
+		},
+		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
+			Organization:     d.rt.OrganizationUC,
+			ToolResultGate:   d.rt.ToolResultGate,
+			SubAgentService:  d.subAgentSvc,
+			L0SnapshotForcer: d.td.SessionRT,
+			ToolVersionHash:  toolHash,
+			SkillVersionHash: skillHash,
+			MCPVersionHash:   mcpHash,
+		},
 	}
 
 	return deps, nil
+}
+
+// computeToolHash produces a content hash from the agent's effective tool configuration.
+// It hashes the sorted list of effective tool keys + their enabled states, so any change
+// in which tools are available to the agent invalidates the cache.
+func (d *chatAgentBuildDirector) computeToolHash(ctx context.Context, agentID string) string {
+	if d.td.ReadDeps.AgentsUC == nil {
+		return ""
+	}
+	eff, err := d.td.ReadDeps.AgentsUC.GetEffectiveTools(ctx, agentID)
+	if err != nil {
+		return ""
+	}
+	entries := make([]versionHashEntry, 0, len(eff.Items))
+	for _, item := range eff.Items {
+		state := "0"
+		if item.Enabled {
+			state = "1"
+		}
+		entries = append(entries, versionHashEntry{
+			ID:        fmt.Sprintf("%s:%s", item.ToolKey, state),
+			UpdatedAt: item.EffectiveState,
+		})
+	}
+	return computeVersionHash(entries)
+}
+
+// computeSkillHash produces a content hash from the currently enabled published skill slugs.
+// When skills are added/removed/toggled, this hash changes and invalidates the agent cache.
+func (d *chatAgentBuildDirector) computeSkillHash(ctx context.Context) string {
+	if d.td.ReadDeps.SkillUC == nil {
+		return ""
+	}
+	slugs, err := d.td.ReadDeps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
+	if err != nil {
+		return ""
+	}
+	entries := make([]versionHashEntry, len(slugs))
+	for i, slug := range slugs {
+		entries[i] = versionHashEntry{ID: slug}
+	}
+	return computeVersionHash(entries)
+}
+
+// computeMCPHash produces a content hash from the agent's effective MCP servers.
+// When MCP servers are added/removed/reconfigured, this hash changes and invalidates the cache.
+func (d *chatAgentBuildDirector) computeMCPHash(ctx context.Context, agentID string) string {
+	if d.td.Persist.AgentMCP == nil {
+		return ""
+	}
+	servers, err := d.td.Persist.AgentMCP.EffectiveServersForAgent(ctx, agentID)
+	if err != nil {
+		return ""
+	}
+	entries := make([]versionHashEntry, len(servers))
+	for i, s := range servers {
+		entries[i] = versionHashEntry{ID: s.ID, UpdatedAt: s.ConfigJSON}
+	}
+	return computeVersionHash(entries)
 }

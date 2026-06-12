@@ -11,9 +11,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -57,7 +57,7 @@ func NewAgentAllocator(
 // Allocate matches each SubTask in the TaskPlan to the best Agent or Team.
 func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.TaskPlan) (*biz.AllocationPlan, error) {
 	if taskPlan == nil {
-		return nil, kerrors.BadRequest("ALLOCATOR", "task plan is required")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "task plan is required")
 	}
 
 	traceID := taskPlan.TraceID
@@ -79,7 +79,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 			loggateway.Str("trace_id", traceID),
 			loggateway.Err(err),
 		)
-		return nil, kerrors.InternalServer("ALLOCATOR", "build capabilities: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSpirit, "build capabilities").WithCause(err)
 	}
 
 	// Match each subtask
@@ -137,7 +137,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 			loggateway.Str("trace_id", traceID),
 			loggateway.Err(err),
 		)
-		return nil, kerrors.InternalServer("ALLOCATOR", "persist allocation plan: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSpirit, "persist allocation plan").WithCause(err)
 	}
 
 	// Publish spirit_allocation_created event.
@@ -267,7 +267,7 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 		}, nil
 	}
 
-	return biz.TaskAllocation{}, kerrors.NotFound("ALLOCATOR", "no agent found for subtask "+subTask.ID)
+	return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for subtask %s", subTask.ID)
 }
 
 // exactMatch performs Layer 1 matching: overlap between required_capabilities and agent Roles.
@@ -491,7 +491,7 @@ func tokenizeForSemantic(text string) []string {
 // llmColdStart performs Layer 3 matching: use LLM to select the best agent.
 func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (string, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
-		return "", kerrors.InternalServer("ALLOCATOR", "LLM catalog or HTTP client not configured")
+		return "", apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
 	prompt := buildAllocatorColdStartPrompt(subTask, capabilities)
@@ -501,12 +501,12 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, "allocator.fallback_model", "AgentAllocator")
 	}
 	if provider == "" || model == "" {
-		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
+		return "", apierror.Internal(apierror.DomainSpirit, "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
 	if err != nil {
-		return "", kerrors.InternalServer("ALLOCATOR", "get provider config: "+err.Error())
+		return "", apierror.Internal(apierror.DomainSpirit, "get provider config").WithCause(err)
 	}
 
 	var cfg ProviderAPIConfig
@@ -522,7 +522,7 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 
 	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
 	if err != nil {
-		return "", kerrors.InternalServer("ALLOCATOR", "LLM call failed: "+err.Error())
+		return "", apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}
 
 	// Parse the agent_key from the response
@@ -630,13 +630,13 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 		}, nil
 	}
 
-	return biz.TaskAllocation{}, kerrors.NotFound("ALLOCATOR", "no agent found for plan")
+	return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for plan")
 }
 
 // llmColdStartForPlan uses LLM to select an agent for a whole plan (no subtasks).
 func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability, traceID string) (string, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
-		return "", kerrors.InternalServer("ALLOCATOR", "LLM catalog or HTTP client not configured")
+		return "", apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
 	prompt := buildAllocatorColdStartPromptForPlan(taskPlan, capabilities)
@@ -646,12 +646,12 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, "allocator.fallback_model", "AgentAllocator")
 	}
 	if provider == "" || model == "" {
-		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
+		return "", apierror.Internal(apierror.DomainSpirit, "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
 	if err != nil {
-		return "", kerrors.InternalServer("ALLOCATOR", "get provider config: "+err.Error())
+		return "", apierror.Internal(apierror.DomainSpirit, "get provider config").WithCause(err)
 	}
 
 	var cfg ProviderAPIConfig
@@ -667,7 +667,7 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 
 	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
 	if err != nil {
-		return "", kerrors.InternalServer("ALLOCATOR", "LLM call failed: "+err.Error())
+		return "", apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}
 
 	return parseAllocatorColdStartResponse(text), nil

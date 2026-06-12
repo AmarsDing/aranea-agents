@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/biz"
+
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
@@ -175,7 +177,7 @@ func (r *RunRegistry) Cancel(sessionID string) (bool, string) {
 	}
 	if run.cancel != nil {
 		run.cancel()
-		r.SetStatus(sessionID, run.runID, "cancelled", "")
+		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
 		if current, ok := r.activeRuns.load(sessionID); ok && current.runID == run.runID {
 			r.activeRuns.delete(sessionID)
 		}

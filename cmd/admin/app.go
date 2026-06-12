@@ -44,6 +44,7 @@ func newApp(
 	chatSvc *service.ChatService,
 	spiritUC *biz.SpiritTeamUsecase,
 	teamStarter *service.TeamStarter,
+	eventWALCleanup *jobs.EventWALCleanup,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -53,6 +54,7 @@ func newApp(
 	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 
 	app := kratos.New(
 		kratos.ID(id),
@@ -93,6 +95,12 @@ func newApp(
 			sessions.StartMetricsFlusher(consumerCtx)
 			if eventInfra != nil {
 				event.BindInfra(eventInfra)
+				// AS-EVT-01: Recover unpublished Critical events from WAL after crash.
+				// Must run AFTER Bus and subscribers are ready (consumer.Start above).
+				if eventInfra.WAL != nil {
+					// TODO(debt): pass EventStoreExistChecker instead of nil for idempotent recovery.
+					eventInfra.WAL.Recover(ctx, eventInfra.SessionBus, nil)
+				}
 				if pipeline != nil {
 					if len(loggingSinks) > 0 {
 						// Config-driven: create eventbus sinks from config
@@ -124,7 +132,11 @@ func newApp(
 				memoryDataMigration.Start(startCtx)
 				lg.Info("memory data migration worker started", loggateway.StepID("startup.memory_migration"))
 			}
-	
+			if eventWALCleanup != nil {
+				eventWALCleanup.Start(cleanupCtx)
+				lg.Info("event WAL cleanup worker started", loggateway.StepID("startup.event_wal_cleanup"))
+			}
+
 			return nil
 		}),
 		kratos.AfterStop(func(ctx context.Context) error {
@@ -137,6 +149,7 @@ func newApp(
 				}
 			}
 			consumerCancel()
+			cleanupCancel()
 			if pipeline != nil {
 				pipeline.Close()
 				if gw, ok := lg.(*loggateway.Gateway); ok {

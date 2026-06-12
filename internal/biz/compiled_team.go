@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 )
 
@@ -29,6 +31,7 @@ type CompiledTeam struct {
 	TaskMeta       map[string]NodeTaskMeta `json:"task_meta"`
 	RoleManifest   map[string]RoleInfo     `json:"role_manifest"`
 	OriginalPolicy *TeamFailurePolicy      `json:"original_policy,omitempty"`
+	DefinitionHash string                  `json:"definition_hash,omitempty"`
 	CompiledAt     time.Time               `json:"compiled_at"`
 }
 
@@ -63,4 +66,10 @@ func (ct *CompiledTeam) TaskMetaForNode(nodeID string) (NodeTaskMeta, bool) {
 func (ct *CompiledTeam) RoleForNode(nodeID string) (RoleInfo, bool) {
 	r, ok := ct.RoleManifest[nodeID]
 	return r, ok
+}
+
+// ComputeDefinitionHash returns the SHA256 hex digest of a team definition JSON string.
+func ComputeDefinitionHash(definitionJSON string) string {
+	h := sha256.Sum256([]byte(definitionJSON))
+	return hex.EncodeToString(h[:])
 }

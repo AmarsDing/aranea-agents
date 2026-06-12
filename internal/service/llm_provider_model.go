@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
@@ -142,7 +140,7 @@ func (s *LlmProviderModelService) CreateProviderModel(ctx context.Context, req *
 func (s *LlmProviderModelService) GetProviderModel(ctx context.Context, req *v1.GetProviderModelRequest) (*v1.ProviderModel, error) {
 	m, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
@@ -156,7 +154,7 @@ func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Con
 	out, err := s.uc.RevealCredentials(ctx, resourceID)
 	if err != nil {
 		logRevealCredentialsDenied(ctx, resourceID, err, s.lg)
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
@@ -190,7 +188,7 @@ func (s *LlmProviderModelService) UpdateProviderModel(ctx context.Context, req *
 	}
 	out, err := s.uc.Update(ctx, req.GetId(), patchFromProto(req.GetProviderModel()))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
@@ -259,7 +257,7 @@ func (s *LlmProviderModelService) ValidateProviderPair(ctx context.Context, req 
 func logRevealCredentialsDenied(ctx context.Context, resourceID string, err error, lg loggateway.Logger) {
 	reason := "error"
 	switch {
-	case errors.Is(err, sql.ErrNoRows):
+	case apierror.IsCode(err, apierror.CodeNotFound):
 		reason = "not_found"
 	default:
 		if se, ok := apierror.From(err); ok {

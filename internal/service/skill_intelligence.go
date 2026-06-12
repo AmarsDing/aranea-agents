@@ -43,7 +43,7 @@ func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, re
 
 	result, err := s.uc.GetExperienceReportsFiltered(ctx, req.GetSkillId(), startTime, endTime, limit, offset)
 	if err != nil {
-		return nil, mapSkillIntelligenceError(err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 
 	resp := &v1.ListExperienceReportsResponse{
@@ -66,7 +66,7 @@ func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, re
 func (s *SkillIntelligenceService) GetExperienceReport(ctx context.Context, req *v1.GetExperienceReportRequest) (*v1.GetExperienceReportResponse, error) {
 	r, err := s.uc.GetExperienceReport(ctx, req.GetId())
 	if err != nil {
-		return nil, mapSkillIntelligenceError(err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 	return &v1.GetExperienceReportResponse{
 		Report: toProtoExperienceReport(*r),
@@ -102,20 +102,6 @@ func toProtoExperienceReport(r biz.ExperienceReport) *v1.ExperienceReport {
 		pb.GeneratedSuggestionId = *r.GeneratedSuggestionID
 	}
 	return pb
-}
-
-// mapSkillIntelligenceError converts biz-layer errors to apierror for the transport layer.
-// If the error is already an apierror (e.g. from biz layer), it passes through.
-func mapSkillIntelligenceError(err error) error {
-	if err == nil {
-		return nil
-	}
-	// Already an apierror — pass through.
-	if _, ok := apierror.From(err); ok {
-		return err
-	}
-	// Wrap unknown errors as Internal.
-	return apierror.Internal("SKILL_INTELLIGENCE", err.Error())
 }
 
 // toProtoFailureTagCount converts a biz FailureTagCount to proto.

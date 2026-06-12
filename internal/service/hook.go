@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -111,7 +109,7 @@ func (s *HookService) CreateHook(ctx context.Context, req *v1.CreateHookRequest)
 func (s *HookService) GetHook(ctx context.Context, req *v1.GetHookRequest) (*v1.Hook, error) {
 	h, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("HOOK", "hook not found")
 		}
 		return nil, err
@@ -125,7 +123,7 @@ func (s *HookService) UpdateHook(ctx context.Context, req *v1.UpdateHookRequest)
 	}
 	out, err := s.uc.Update(ctx, req.GetId(), patchFromProtoHook(req.GetHook()))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("HOOK", "hook not found")
 		}
 		return nil, err

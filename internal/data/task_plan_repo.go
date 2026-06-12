@@ -100,7 +100,7 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	plan, err := scanTaskPlanFromRows(rows)
 	if err != nil {

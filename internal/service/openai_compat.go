@@ -136,32 +136,46 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
 	deps := chatagent.TRPCBuilderDeps{
-		ModelCatalog:               s.orch.td().ReadDeps.LLM,
-		AgentUC:               s.orch.td().ReadDeps.AgentsUC,
-		Agents:                s.orch.td().ReadDeps.Agents,
-		RT:                    s.orch.td().RoundTrip(),
-		SkillUC:               s.orch.td().ReadDeps.SkillUC,
-		MCPTooling:            s.orch.td().Persist.AgentMCP,
-		ToolUC:                s.orch.td().ReadDeps.ToolUC,
-		Sessions:              s.orch.td().Sessions,
-		Sys:                   s.orch.td().ReadDeps.Settings,
-		Provider:              prov,
-		Model:                 mod,
-		SkillDBRepo:           s.orch.rt().SkillDBRepo,
-		HasMemory:             s.orch.td().Persist.Memory.Available(),
-		MemoryService:         s.orch.td().Persist.Memory.TRPC,
-		PluginManager:         s.orch.rt().PluginManager,
-		MemoryAdmin:           s.orch.td().Persist.Memory.Admin,
-		MemoryL2Recall:        s.orch.td().Persist.Memory.L2Recall,
-		MemoryL3Recall:        s.orch.td().Persist.Memory.L3Recall,
-		MemoryCompositeRecall: s.orch.td().Persist.Memory.CompositeRecall,
-		KnowledgeRetriever:    s.orch.rt().KnowledgeRetriever,
-		CodeExecFactory:       s.orch.rt().CodeExecFactory,
-		KanbanBridge:          s.orch.rt().KanbanBridge,
-		Organization:          s.orch.rt().OrganizationUC,
-		ToolResultGate:        s.orch.rt().ToolResultGate,
-		SubAgentService:       s.orch.subAgentService(),
-		L0SnapshotForcer:      s.orch.td().SessionRT,
+		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
+			ModelCatalog: s.orch.td().ReadDeps.LLM,
+			AgentUC:      s.orch.td().ReadDeps.AgentsUC,
+			Agents:       s.orch.td().ReadDeps.Agents,
+			Sys:          s.orch.td().ReadDeps.Settings,
+			Sessions:     s.orch.td().Sessions,
+		},
+		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
+			RT:       s.orch.td().RoundTrip(),
+			Provider: prov,
+			Model:    mod,
+		},
+		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
+			ToolUC:       s.orch.td().ReadDeps.ToolUC,
+			MCPTooling:   s.orch.td().Persist.AgentMCP,
+			KanbanBridge: s.orch.rt().KanbanBridge,
+		},
+		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
+			HasMemory:             s.orch.td().Persist.Memory.Available(),
+			MemoryService:         s.orch.td().Persist.Memory.TRPC,
+			MemoryAdmin:           s.orch.td().Persist.Memory.Admin,
+			MemoryL2Recall:        s.orch.td().Persist.Memory.L2Recall,
+			MemoryL3Recall:        s.orch.td().Persist.Memory.L3Recall,
+			MemoryCompositeRecall: s.orch.td().Persist.Memory.CompositeRecall,
+			KnowledgeRetriever:    s.orch.rt().KnowledgeRetriever,
+		},
+		TRPCPluginDeps: chatagent.TRPCPluginDeps{
+			PluginManager: s.orch.rt().PluginManager,
+		},
+		TRPCSkillDeps: chatagent.TRPCSkillDeps{
+			SkillUC:         s.orch.td().ReadDeps.SkillUC,
+			SkillDBRepo:     s.orch.rt().SkillDBRepo,
+			CodeExecFactory: s.orch.rt().CodeExecFactory,
+		},
+		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
+			Organization:     s.orch.rt().OrganizationUC,
+			ToolResultGate:   s.orch.rt().ToolResultGate,
+			SubAgentService:  s.orch.subAgentService(),
+			L0SnapshotForcer: s.orch.td().SessionRT,
+		},
 	}
 	// Inject CustomTools for built-in agents (Spirit, Skills Butler, Memory Butler, System Admin).
 	// Without this, agents accessed via OpenAI compat would silently lack their core tools.

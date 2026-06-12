@@ -5,9 +5,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type RefineLLMSettingsGetter interface {
@@ -45,5 +44,5 @@ func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCat
 			}
 		}
 	}
-	return "", "", kerrors.ServiceUnavailable("KNOWLEDGE", "no LLM available for "+purpose+"; configure DefaultRefineLLM in system settings")
+	return "", "", apierror.Unavailable(apierror.DomainKnowledge, "no LLM available for "+purpose+"; configure DefaultRefineLLM in system settings")
 }

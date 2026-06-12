@@ -7,7 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -156,7 +156,7 @@ func validateFieldAgainstSchema(schemaJSON []byte, fieldPath, fieldKind string) 
 			return nil // field found in schema → allowed
 		}
 	}
-	return kerrors.BadRequest("WORKING_MEMORY", fmt.Sprintf("field_path %q is not allowed by the schema", fieldPath))
+	return apierror.BadRequest(apierror.DomainWorkingMemory, fmt.Sprintf("field_path %q is not allowed by the schema", fieldPath))
 }
 
 // validateFieldWithSchema reads the schema from the reader and validates the field.
@@ -239,7 +239,7 @@ func readExecute(ctx context.Context, input ReadInput) (ReadOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if taskWriter == nil || fieldWriter == nil || reader == nil || sessID == "" {
-		return ReadOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
+		return ReadOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {
@@ -247,7 +247,7 @@ func readExecute(ctx context.Context, input ReadInput) (ReadOutput, error) {
 	}
 	raw, err := reader.GetL1FieldRow(ctx, taskID, input.FieldPath)
 	if err != nil {
-		return ReadOutput{}, kerrors.InternalServer("WORKING_MEMORY", "read field: "+err.Error())
+		return ReadOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "read field: "+err.Error())
 	}
 	if len(raw) == 0 {
 		return ReadOutput{FieldPath: input.FieldPath, Found: false}, nil
@@ -291,7 +291,7 @@ func listExecute(ctx context.Context, input ListInput) (ListOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if reader == nil || sessID == "" {
-		return ListOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
+		return ListOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {
@@ -299,7 +299,7 @@ func listExecute(ctx context.Context, input ListInput) (ListOutput, error) {
 	}
 	rows, err := reader.ListL1FieldRows(ctx, taskID, false)
 	if err != nil {
-		return ListOutput{}, kerrors.InternalServer("WORKING_MEMORY", "list fields: "+err.Error())
+		return ListOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "list fields: "+err.Error())
 	}
 	fields := make([]FieldEntry, 0, len(rows))
 	for _, raw := range rows {
@@ -346,7 +346,7 @@ func writeExecute(ctx context.Context, input WriteInput) (WriteOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if taskWriter == nil || fieldWriter == nil || sessID == "" {
-		return WriteOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
+		return WriteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	// Validate field_kind against known enum values.
 	input.FieldKind = sanitizeFieldKind(input.FieldKind)
@@ -420,7 +420,7 @@ func patchExecute(ctx context.Context, input PatchInput) (PatchOutput, error) {
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if taskWriter == nil || fieldWriter == nil || sessID == "" {
-		return PatchOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
+		return PatchOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	taskID, err := ensureActiveTask(ctx, taskWriter, reader, sessID, agentID)
 	if err != nil {
@@ -486,7 +486,7 @@ func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
 	if fieldWriter == nil || sessID == "" {
-		return DeleteOutput{}, kerrors.InternalServer("WORKING_MEMORY", "working_memory not available")
+		return DeleteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {
@@ -494,7 +494,7 @@ func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error)
 	}
 	err = fieldWriter.DeleteL1Field(ctx, taskID, input.FieldPath)
 	if err != nil {
-		return DeleteOutput{}, kerrors.InternalServer("WORKING_MEMORY", "delete field: "+err.Error())
+		return DeleteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "delete field: "+err.Error())
 	}
 	return DeleteOutput{Deleted: true}, nil
 }

@@ -27,14 +27,15 @@ type SkillRegistrationPort interface {
 }
 
 type SkillEvolutionUsecase struct {
-	repo          SkillProposalReadWriter
-	patterns      PatternReader
-	agents        AgentRepository
-	creator       SkillAutoCreator
-	registrar     SkillRegistrationPort
-	coordinator   *EvolutionCoordinator
+	repo            SkillProposalReadWriter
+	patterns        PatternReader
+	agents          AgentRepository
+	creator         SkillAutoCreator
+	registrar       SkillRegistrationPort
+	coordinator     *EvolutionCoordinator
 	coordinatorOnce sync.Once
-	lg            loggateway.Logger
+	orchestrator    *SkillEvolutionOrchestrator
+	lg              loggateway.Logger
 }
 
 func NewSkillEvolutionUsecase(
@@ -57,6 +58,8 @@ func NewSkillEvolutionUsecase(
 
 // SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
 // Must only be called once during initialization. Panics on repeated calls.
+//
+// Deprecated: Use SetOrchestrator instead.
 func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
 	uc.coordinatorOnce.Do(func() {
 		uc.coordinator = c
@@ -64,6 +67,13 @@ func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
 	if uc.coordinator != c {
 		panic("SkillEvolutionUsecase: SetCoordinator called more than once")
 	}
+}
+
+// SetOrchestrator sets the unified evolution orchestrator for cross-pipeline dedup.
+// When set, DetectAndPropose delegates to the orchestrator for pending checks.
+// NOTE: Must only be called during initialization, before any concurrent access.
+func (uc *SkillEvolutionUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
+	uc.orchestrator = o
 }
 
 func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID string) ([]SkillProposal, error) {
@@ -77,8 +87,16 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 	}
 
 	// Cross-pipeline dedup: skip if another pipeline already has a pending
-	// suggestion for this agent.
-	if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
+	// suggestion for this agent. Prefer orchestrator over legacy coordinator.
+	if uc.orchestrator != nil {
+		hasPending, err := uc.orchestrator.HasPendingForTarget(ctx, "agent", agentID)
+		if err == nil && hasPending {
+			uc.lg.Debug("DetectAndPropose: skipped, pending evolution already exists via orchestrator",
+				loggateway.StepID("skill_evo.detect"),
+				loggateway.Str("agent_id", agentID))
+			return nil, nil
+		}
+	} else if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
 		uc.lg.Debug("DetectAndPropose: skipped, pending evolution already exists via another pipeline",
 			loggateway.StepID("skill_evo.detect"),
 			loggateway.Str("agent_id", agentID))
@@ -283,12 +301,15 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 
 // ── Bridge: SkillProposal → SkillEvolutionSuggestion ─────────────────────────
 //
-// TODO(debt): DEV-04 — Transitional bridge function. Will be removed once
-// SkillProposal is deprecated in favor of SkillEvolutionSuggestion.
+// Deprecated: Transitional bridge function. Will be removed once SkillProposal
+// is fully deprecated. Use UnifiedEvolutionSuggestion directly instead.
 
 // SuggestionFromProposal converts a SkillProposal into a
 // SkillEvolutionSuggestion for interoperability with the SkillIntelligenceUsecase pipeline.
 // Fields that have no direct equivalent are left at their zero values.
+//
+// Deprecated: Use UnifiedEvolutionSuggestion directly. Construct with
+// UnifiedEvolutionSuggestion{TargetType: "agent", ActionType: "create_skill", TargetID: p.AgentID, DraftBody: p.SkillMD, DraftName: p.SkillName}.
 func (uc *SkillEvolutionUsecase) SuggestionFromProposal(p SkillProposal) SkillEvolutionSuggestion {
 	return SkillEvolutionSuggestion{
 		ID:              p.ID,

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -124,7 +124,7 @@ func TestRunValidationEmptyProviderCode(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty ProviderCode")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest error, got %v", err)
 	}
 }
@@ -134,7 +134,7 @@ func TestRunValidationEmptyModelAPIID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty ModelAPIID")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest error, got %v", err)
 	}
 }

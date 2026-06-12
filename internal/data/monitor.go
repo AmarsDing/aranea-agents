@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -227,7 +228,7 @@ func (r *monitorRepo) GetMonitorEvent(ctx context.Context, id string) (biz.Monit
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.MonitorPlatformRow{}, sql.ErrNoRows
+		return biz.MonitorPlatformRow{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	return scanMonitorPlatformRow("monitor-events", rows)
 }
@@ -341,7 +342,7 @@ func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessio
 		 AND json_extract(metadata_json, '$.run_id') = ?
 		 ORDER BY created_at DESC LIMIT 1`, []any{sessionID, invocationID, runID},
 		&id, &existing)
-	if err == sql.ErrNoRows {
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return false, nil
 	}
 	if err != nil {
@@ -375,7 +376,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 		 AND json_extract(metadata_json, '$.%s') = ?
 		 ORDER BY created_at DESC LIMIT 1`, jsonKey)
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sessionID, jsonValue}, &id, &existing)
-	if err == sql.ErrNoRows {
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return false, nil
 	}
 	if err != nil {
@@ -427,7 +428,7 @@ func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.Monit
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.MonitorPlatformRow{}, sql.ErrNoRows
+		return biz.MonitorPlatformRow{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	return scanMonitorPlatformRow("monitor-traces", rows)
 }

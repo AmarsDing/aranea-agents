@@ -16,11 +16,11 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -475,7 +475,7 @@ func (r *Runner) sessionBusyErr(sessionID string) error {
 }
 
 func validationErr(format string, args ...any) error {
-	return kerrors.BadRequest("CRON", fmt.Sprintf(format, args...))
+	return apierror.BadRequest(apierror.DomainCron, fmt.Sprintf(format, args...))
 }
 
 func errString(err error) string {

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -42,13 +42,13 @@ func (t *tool) Declaration() *trpctool.Declaration {
 
 func (t *tool) Call(ctx context.Context, args []byte) (any, error) {
 	if t.bridge == nil {
-		return nil, kerrors.InternalServer("KANBAN", t.name+": kanban bridge not configured")
+		return nil, apierror.Internal(apierror.DomainKanban, t.name+": kanban bridge not configured")
 	}
 	return t.fn(ctx, t.bridge, args)
 }
 
 func (t *tool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpctool.StreamReader, error) {
-	return nil, kerrors.BadRequest("KANBAN", t.name+": kanban tools are not streamable")
+	return nil, apierror.BadRequest(apierror.DomainKanban, t.name+": kanban tools are not streamable")
 }
 
 const strType = "string"
@@ -60,14 +60,14 @@ func showFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		TaskID string `json:"task_id"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_show: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_show: invalid args: "+err.Error())
 	}
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
 		taskID = TaskIDFromEnv()
 	}
 	if taskID == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_show: task_id required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_show: task_id required")
 	}
 	return b.Show(ctx, taskID)
 }
@@ -79,14 +79,14 @@ func listFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Limit       int    `json:"limit"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_list: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_list: invalid args: "+err.Error())
 	}
 	execID := strings.TrimSpace(in.ExecutionID)
 	if execID == "" {
 		execID = ExecutionIDFromEnv()
 	}
 	if execID == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_list: execution_id required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_list: execution_id required")
 	}
 	if in.Limit <= 0 {
 		in.Limit = 20
@@ -107,7 +107,7 @@ func completeFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Metadata string `json:"metadata"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_complete: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_complete: invalid args: "+err.Error())
 	}
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
@@ -122,7 +122,7 @@ func completeFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		summary = output
 	}
 	if taskID == "" || summary == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_complete: task_id and summary/result required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_complete: task_id and summary/result required")
 	}
 	return b.Complete(ctx, taskID, summary, output, in.Metadata)
 }
@@ -134,14 +134,14 @@ func blockFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Metadata string `json:"metadata"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_block: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_block: invalid args: "+err.Error())
 	}
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
 		taskID = TaskIDFromEnv()
 	}
 	if taskID == "" || strings.TrimSpace(in.Reason) == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_block: task_id and reason required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_block: task_id and reason required")
 	}
 	return b.Block(ctx, taskID, in.Reason, in.Metadata)
 }
@@ -152,14 +152,14 @@ func unblockFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Comment string `json:"comment"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_unblock: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_unblock: invalid args: "+err.Error())
 	}
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
 		taskID = TaskIDFromEnv()
 	}
 	if taskID == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_unblock: task_id required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_unblock: task_id required")
 	}
 	return b.Unblock(ctx, taskID, in.Comment)
 }
@@ -171,7 +171,7 @@ func heartbeatFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Metadata string `json:"metadata"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_heartbeat: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_heartbeat: invalid args: "+err.Error())
 	}
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
@@ -182,7 +182,7 @@ func heartbeatFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		agentKey = lookupEnv("ARANEA_AGENT_KEY")
 	}
 	if taskID == "" || agentKey == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_heartbeat: task_id and agent_key required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_heartbeat: task_id and agent_key required")
 	}
 	return b.Heartbeat(ctx, taskID, agentKey, in.Metadata)
 }
@@ -196,7 +196,7 @@ func commentFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Type    string `json:"type"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_comment: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_comment: invalid args: "+err.Error())
 	}
 	taskID := strings.TrimSpace(in.TaskID)
 	if taskID == "" {
@@ -211,7 +211,7 @@ func commentFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		author = lookupEnv("ARANEA_AGENT_KEY")
 	}
 	if taskID == "" || body == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_comment: task_id and body required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_comment: task_id and body required")
 	}
 	return b.Comment(ctx, taskID, author, body, in.Type)
 }
@@ -226,14 +226,14 @@ func createFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		Parents     []string `json:"parents"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_create: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_create: invalid args: "+err.Error())
 	}
 	execID := strings.TrimSpace(in.ExecutionID)
 	if execID == "" {
 		execID = ExecutionIDFromEnv()
 	}
 	if execID == "" || strings.TrimSpace(in.Title) == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_create: execution_id and title required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_create: execution_id and title required")
 	}
 	input := strings.TrimSpace(in.Input)
 	if input == "" {
@@ -248,10 +248,10 @@ func linkFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 		ChildID  string `json:"child_id"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_link: invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_link: invalid args: "+err.Error())
 	}
 	if strings.TrimSpace(in.ParentID) == "" || strings.TrimSpace(in.ChildID) == "" {
-		return nil, kerrors.BadRequest("KANBAN", "kanban_link: parent_id and child_id required")
+		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_link: parent_id and child_id required")
 	}
 	if err := b.Link(ctx, in.ParentID, in.ChildID); err != nil {
 		return nil, err

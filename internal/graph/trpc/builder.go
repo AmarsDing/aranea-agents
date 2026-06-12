@@ -6,9 +6,8 @@ import (
 	"reflect"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -169,17 +168,17 @@ func BuildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 
 func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger, depth int) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	if depth >= maxSubgraphDepth {
-		return nil, nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: subgraph nesting depth exceeds limit (%d)", maxSubgraphDepth))
+		return nil, nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: subgraph nesting depth exceeds limit (%d)", maxSubgraphDepth))
 	}
 	cfg := rbc.cfg
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
-		return nil, nil, kerrors.BadRequest("GRAPH", "graph: at least one node required")
+		return nil, nil, apierror.BadRequest(apierror.DomainGraph, "graph: at least one node required")
 	}
 	if cfg.EntryPoint == "" {
-		return nil, nil, kerrors.BadRequest("GRAPH", "graph: entry point required")
+		return nil, nil, apierror.BadRequest(apierror.DomainGraph, "graph: entry point required")
 	}
 
 	lg.Info("graph.BuildStateGraph started",
@@ -223,11 +222,11 @@ func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 		subRbc := rbc.subRbcs[sub.ID]
 		subGraph, subAgents, err := buildFromResolved(ctx, subRbc, deps, lg, depth+1)
 		if err != nil {
-			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
+			return nil, nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}
 		subAgent, err := NewGraphAgent(sub.ID, subGraph, subRbc.cfg.EnableCheckpoint, subAgents...)
 		if err != nil {
-			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
+			return nil, nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
 		}
 		allAgents = append(allAgents, subAgent)
 		allAgents = append(allAgents, subAgents...)
@@ -306,7 +305,7 @@ func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoin
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
-		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph agent: %v", err))
+		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph agent: %v", err))
 	}
 	return &GraphAgent{
 		graph:     g,
@@ -330,7 +329,7 @@ func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.Che
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
-		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph agent: %v", err))
+		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph agent: %v", err))
 	}
 	return &GraphAgent{
 		graph:     g,
@@ -356,7 +355,7 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
-		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph agent: %v", err))
+		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph agent: %v", err))
 	}
 	return &GraphAgent{
 		graph:     g,

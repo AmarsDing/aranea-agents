@@ -2,11 +2,11 @@ package data
 
 import (
 	"context"
-	"database/sql"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformmcpserver"
+	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -65,7 +65,7 @@ func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPSer
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.MCPServer{}, sql.ErrNoRows
+			return biz.MCPServer{}, apierror.NotFound(apierror.DomainMCP, "not found")
 		}
 		return biz.MCPServer{}, err
 	}
@@ -78,7 +78,7 @@ func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.MCPServer{}, sql.ErrNoRows
+			return biz.MCPServer{}, apierror.NotFound(apierror.DomainMCP, "not found")
 		}
 		return biz.MCPServer{}, err
 	}

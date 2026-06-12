@@ -911,12 +911,18 @@ func provideGraphBuildDeps(
 	}
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	builderDeps := chatagent.TRPCBuilderDeps{
-		ModelCatalog: catalog,
-		AgentUC:      agentUC,
-		Agents:       agents,
-		RT:           rtTrip,
-		ToolUC:       toolUC,
-		Sys:          sys,
+		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
+			ModelCatalog: catalog,
+			AgentUC:      agentUC,
+			Agents:       agents,
+			Sys:          sys,
+		},
+		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
+			RT: rtTrip,
+		},
+		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
+			ToolUC: toolUC,
+		},
 	}
 	return graphtrpc.GraphNodeResolverSet{
 		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
@@ -1048,8 +1054,8 @@ func provideChannelIngressAdmission(
 	channels *biz.ChannelUsecase,
 ) *biz.TurnAdmissionUsecase {
 	uc := biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{
-		Quota:   usage,
-		Agents:  agents,
+		Quota:  usage,
+		Agents: agents,
 		ChannelConfigResolver: biz.ChannelLongTaskConfigResolverFunc(func(ctx context.Context, sess biz.Session) biz.ChannelLongTaskConfig {
 			meta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON)
 			if !ok || strings.TrimSpace(meta.ChannelID) == "" {
@@ -1160,6 +1166,13 @@ func provideEventStoreCleanup(store *biz.EventStoreUsecase, lg loggateway.Logger
 		return nil
 	}
 	return jobs.NewEventStoreCleanup(0, store, lg)
+}
+
+func provideEventWALCleanup(wal *event.EventWAL, lg loggateway.Logger) *jobs.EventWALCleanup {
+	if jobs.EventWALCleanupDisabled() || wal == nil {
+		return nil
+	}
+	return jobs.NewEventWALCleanup(0, 0, wal, lg)
 }
 
 func provideToolAuditCleanup(tools *biz.ToolUsecase, lg loggateway.Logger) *jobs.ToolAuditCleanup {
@@ -1439,6 +1452,7 @@ type wireOut struct {
 	ChannelRuntime              *service.ChannelRuntime
 	PluginRuntime               *plugintrpc.Runtime
 	EventStoreCleanup           *jobs.EventStoreCleanup
+	EventWALCleanup             *jobs.EventWALCleanup
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
@@ -1484,6 +1498,7 @@ func provideWireOut(
 	channelRuntime *service.ChannelRuntime,
 	pluginRuntime *plugintrpc.Runtime,
 	eventStoreCleanup *jobs.EventStoreCleanup,
+	eventWALCleanup *jobs.EventWALCleanup,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
 	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
@@ -1522,6 +1537,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
+		EventWALCleanup:         eventWALCleanup,
 		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
 		MemoryDataMigration:       memoryDataMigration,
@@ -1644,12 +1660,18 @@ func provideTaskOrchestrator(
 ) biz.TaskOrchestratorPort {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	deps := chatagent.TRPCBuilderDeps{
-		ModelCatalog: catalog,
-		AgentUC:      agentUC,
-		Agents:       agents,
-		RT:           rtTrip,
-		ToolUC:       toolUC,
-		Sys:          sys,
+		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
+			ModelCatalog: catalog,
+			AgentUC:      agentUC,
+			Agents:       agents,
+			Sys:          sys,
+		},
+		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
+			RT: rtTrip,
+		},
+		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
+			ToolUC: toolUC,
+		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
 	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, lg)
@@ -1769,6 +1791,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideOutboundRouter,
 		provideSubAgentService,
 		provideEventStoreCleanup,
+		provideEventWALCleanup,
 		provideMemoryL2DecayWorker,
 		provideMemoryAdminUsecase,
 		providePathBExtractor,

@@ -3,7 +3,7 @@ package testexec
 import (
 	"context"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -24,7 +24,7 @@ func newMockKnowledgeReflectTool() trpctool.CallableTool {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input mockKnowledgeReflectInput) (mockKnowledgeReflectOutput, error) {
 			if input.Query == "" {
-				return mockKnowledgeReflectOutput{}, kerrors.BadRequest("KNOWLEDGE_REFLECT", "query is required")
+				return mockKnowledgeReflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "query is required")
 			}
 			return mockKnowledgeReflectOutput{
 				Reflection: "mock reflection for: " + input.Query,

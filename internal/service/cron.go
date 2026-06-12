@@ -106,7 +106,7 @@ func (s *CronService) CreateCronTask(ctx context.Context, req *v1.CreateCronTask
 func (s *CronService) GetCronTask(ctx context.Context, req *v1.GetCronTaskRequest) (*v1.CronTask, error) {
 	t, err := s.uc.GetTask(ctx, req.GetId())
 	if err != nil {
-		return nil, mapCronError(err)
+		return nil, err
 	}
 	return toProtoCronTask(t), nil
 }
@@ -117,14 +117,14 @@ func (s *CronService) UpdateCronTask(ctx context.Context, req *v1.UpdateCronTask
 	}
 	out, err := s.uc.UpdateTask(ctx, req.GetId(), patchFromProtoCronTask(req.GetTask()))
 	if err != nil {
-		return nil, mapCronError(err)
+		return nil, err
 	}
 	return toProtoCronTask(out), nil
 }
 
 func (s *CronService) DeleteCronTask(ctx context.Context, req *v1.DeleteCronTaskRequest) (*emptypb.Empty, error) {
 	if err := s.uc.DeleteTask(ctx, req.GetId()); err != nil {
-		return nil, mapCronError(err)
+		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -149,7 +149,7 @@ func (s *CronService) ListCronTaskRuns(ctx context.Context, req *v1.ListCronTask
 func (s *CronService) TriggerCronTask(ctx context.Context, req *v1.TriggerCronTaskRequest) (*v1.CronTaskRun, error) {
 	run, err := s.uc.TriggerTask(ctx, req.GetId())
 	if err != nil {
-		return nil, mapCronError(err)
+		return nil, err
 	}
 	return toProtoCronTaskRun(run), nil
 }
@@ -165,7 +165,7 @@ func (s *CronService) GetTaskRun(ctx context.Context, id string) (biz.CronTaskRu
 func (s *CronService) ResetCronTaskFailures(ctx context.Context, req *v1.ResetCronTaskFailuresRequest) (*v1.CronTask, error) {
 	out, err := s.uc.ResetTaskFailures(ctx, req.GetId())
 	if err != nil {
-		return nil, mapCronError(err)
+		return nil, err
 	}
 	return toProtoCronTask(out), nil
 }

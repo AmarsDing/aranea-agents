@@ -5,9 +5,8 @@ import (
 	"strconv"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcchainagent "trpc.group/trpc-go/trpc-agent-go/agent/chainagent"
@@ -19,7 +18,7 @@ import (
 
 func BuildChainAgent(ctx context.Context, name string, subAgentKeys []string, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
 	if len(subAgentKeys) == 0 {
-		return nil, kerrors.BadRequest("AGENT", "chain agent requires at least one sub_agent_key")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "chain agent requires at least one sub_agent_key")
 	}
 	subs, err := buildSubAgents(ctx, subAgentKeys, deps)
 	if err != nil {
@@ -30,7 +29,7 @@ func BuildChainAgent(ctx context.Context, name string, subAgentKeys []string, de
 
 func BuildCycleAgent(ctx context.Context, name string, cfg biz.OrchestrationConfig, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
 	if len(cfg.SubAgentKeys) == 0 {
-		return nil, kerrors.BadRequest("AGENT", "cycle agent requires at least one sub_agent_key")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "cycle agent requires at least one sub_agent_key")
 	}
 	subs, err := buildSubAgents(ctx, cfg.SubAgentKeys, deps)
 	if err != nil {
@@ -51,7 +50,7 @@ func BuildCycleAgent(ctx context.Context, name string, cfg biz.OrchestrationConf
 
 func BuildParallelAgent(ctx context.Context, name string, subAgentKeys []string, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
 	if len(subAgentKeys) == 0 {
-		return nil, kerrors.BadRequest("AGENT", "parallel agent requires at least one sub_agent_key")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "parallel agent requires at least one sub_agent_key")
 	}
 	subs, err := buildSubAgents(ctx, subAgentKeys, deps)
 	if err != nil {
@@ -66,7 +65,7 @@ func buildSubAgents(ctx context.Context, keys []string, deps TRPCBuilderDeps) ([
 	for _, key := range keys {
 		ag, err := deps.Agents.GetAgentByAgentKey(ctx, key)
 		if err != nil {
-			return nil, kerrors.NotFound("AGENT", "sub agent "+key+" not found: "+err.Error())
+			return nil, apierror.NotFound(apierror.DomainAgent, "sub agent %s not found", key).WithCause(err)
 		}
 		bareAgents = append(bareAgents, ag)
 	}
@@ -77,7 +76,7 @@ func buildSubAgents(ctx context.Context, keys []string, deps TRPCBuilderDeps) ([
 		var err error
 		hydrated, err = deps.AgentUC.BatchHydrateForBuild(ctx, bareAgents)
 		if err != nil {
-			return nil, kerrors.NotFound("AGENT", "sub agent batch hydration failed: "+err.Error())
+			return nil, apierror.NotFound(apierror.DomainAgent, "sub agent batch hydration failed").WithCause(err)
 		}
 	} else {
 		deps.Logger().Warn("AgentUC not injected, sub agents will not be hydrated; runtime errors may occur",
@@ -89,7 +88,7 @@ func buildSubAgents(ctx context.Context, keys []string, deps TRPCBuilderDeps) ([
 	for i, ag := range hydrated {
 		built, err := BuildTRPCLLMAgentCached(ctx, ag, deps, deps.Logger())
 		if err != nil {
-			return nil, kerrors.NotFound("AGENT", "sub agent "+keys[i]+" build failed: "+err.Error())
+			return nil, apierror.NotFound(apierror.DomainAgent, "sub agent %s build failed", keys[i]).WithCause(err)
 		}
 		subs = append(subs, built)
 	}

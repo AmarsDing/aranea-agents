@@ -12,7 +12,7 @@ func graphExecutionFinishErr(exec *biz.GraphExecution) error {
 		return nil
 	}
 	switch strings.TrimSpace(exec.Status) {
-	case "failed", "cancelled":
+	case string(biz.GraphExecStateFailed), string(biz.GraphExecStateCancelled):
 		if msg := strings.TrimSpace(exec.ErrorMessage); msg != "" {
 			return apierror.Internal("GRAPH", msg)
 		}

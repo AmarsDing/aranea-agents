@@ -27,6 +27,7 @@ func (EvolutionSuggestion) Fields() []ent.Field {
 		field.Text("content").Default(""),
 		field.String("status").MaxLen(32).Default("pending"),
 		field.Text("diff_preview").Default(""),
+		field.Text("pre_apply_snapshot").Default(""),
 		field.String("created_at").Default(""),
 		field.String("applied_at").Default(""),
 	}

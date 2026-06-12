@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const defaultLineStreamEditInterval = 2 * time.Second
@@ -73,7 +73,7 @@ func (s *StreamSender) Update(ctx context.Context, recipient, text string, force
 func (s *StreamSender) pushMessage(ctx context.Context, recipient, text string) (string, error) {
 	token := strings.TrimSpace(s.ChannelToken)
 	if token == "" {
-		return "", kerrors.BadRequest("LINE_CONFIG", "line stream: channel_token required")
+		return "", apierror.BadRequest("LINE_CONFIG", "line stream: channel_token required")
 	}
 	body, _ := marshalMessages(recipient, []map[string]any{textMessage(text)})
 	raw, err := doPost(ctx, s.HTTP, token, "https://api.line.me/v2/bot/message/push", body)
@@ -86,12 +86,12 @@ func (s *StreamSender) pushMessage(ctx context.Context, recipient, text string) 
 		} `json:"sentMessages"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", kerrors.InternalServer("LINE_PROTOCOL", fmt.Sprintf("line stream: parse response: %s", err.Error()))
+		return "", apierror.Internal("LINE_PROTOCOL", fmt.Sprintf("line stream: parse response: %s", err.Error()))
 	}
 	if len(out.SentMessages) > 0 {
 		return strings.TrimSpace(out.SentMessages[0].ID), nil
 	}
-	return "", kerrors.InternalServer("LINE_PROTOCOL", "line stream: push succeeded but no message id returned")
+	return "", apierror.Internal("LINE_PROTOCOL", "line stream: push succeeded but no message id returned")
 }
 
 

@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type LLMSkillGenerator interface {
@@ -55,16 +54,16 @@ func (c *SkillAutoCreator) GenerateSKILLMD(ctx context.Context, patternDesc stri
 	result, err := c.generator.Generate(genCtx, prompt)
 	if err != nil {
 		if genCtx.Err() == context.DeadlineExceeded {
-			return "", "", kerrors.GatewayTimeout("SKILL_EVO", "skill generation timed out")
+			return "", "", apierror.Unavailable(apierror.DomainSkill, "skill generation timed out")
 		}
-		return "", "", kerrors.InternalServer("SKILL_EVO", "generate skill: "+err.Error())
+		return "", "", apierror.Internal(apierror.DomainSkill, "generate skill").WithCause(err)
 	}
 	name, content, err := parseSkillOutput(result)
 	if err != nil {
 		return "", "", err
 	}
 	if !strings.HasPrefix(strings.TrimSpace(content), "---") {
-		return "", "", kerrors.BadRequest("SKILL_EVO", "generated SKILL.md must start with YAML front matter (---)")
+		return "", "", apierror.BadRequest(apierror.DomainSkill, "generated SKILL.md must start with YAML front matter (---)")
 	}
 	if name == "" {
 		hash := sha256.Sum256([]byte(patternDesc))

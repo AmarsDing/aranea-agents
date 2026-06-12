@@ -6,11 +6,18 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+)
+
+const (
+	planGCInterval    = 30 * time.Minute
+	planMaxAge        = 2 * time.Hour
 )
 
 type Pipeline struct {
@@ -22,16 +29,21 @@ type Pipeline struct {
 	mu        sync.RWMutex
 	plans     map[string]*Plan
 	surfaceID atomic.Uint64
+
+	stopCh chan struct{}
 }
 
 func NewPipeline(lg loggateway.Logger) *Pipeline {
-	return &Pipeline{
+	p := &Pipeline{
 		encoder:  NewEncoder(),
 		decoder:  NewDecoder(),
 		surfaces: NewSurfaceManager(),
 		lg:       lg,
 		plans:    make(map[string]*Plan),
+		stopCh:   make(chan struct{}),
 	}
+	safego.Go(context.Background(), "a2ui.plan_gc", p.planGC)
+	return p
 }
 
 func (p *Pipeline) NextSurfaceID() string {
@@ -41,6 +53,9 @@ func (p *Pipeline) NextSurfaceID() string {
 func (p *Pipeline) StorePlan(plan *Plan) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if plan.CreatedAt.IsZero() {
+		plan.CreatedAt = time.Now()
+	}
 	p.plans[plan.ID] = plan
 }
 
@@ -65,6 +80,61 @@ func (p *Pipeline) GetPlan(planID string) (*Plan, bool) {
 		}
 	}
 	return &cp, true
+}
+
+// DeletePlan removes a plan from the plans map.
+func (p *Pipeline) DeletePlan(planID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.plans, planID)
+}
+
+// PlanCount returns the number of plans currently stored, for monitoring.
+func (p *Pipeline) PlanCount() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return len(p.plans)
+}
+
+// Close stops the background GC goroutine.
+func (p *Pipeline) Close() {
+	select {
+	case p.stopCh <- struct{}{}:
+	default:
+	}
+}
+
+// planGC runs a background goroutine that periodically removes plans older than planMaxAge.
+func (p *Pipeline) planGC() {
+	ticker := time.NewTicker(planGCInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		case <-ticker.C:
+			p.evictOldPlans()
+		}
+	}
+}
+
+// evictOldPlans removes plans whose CreatedAt is older than planMaxAge.
+func (p *Pipeline) evictOldPlans() {
+	now := time.Now()
+	p.mu.Lock()
+	var evicted int
+	for id, plan := range p.plans {
+		if !plan.CreatedAt.IsZero() && now.Sub(plan.CreatedAt) > planMaxAge {
+			delete(p.plans, id)
+			evicted++
+		}
+	}
+	p.mu.Unlock()
+	if evicted > 0 {
+		p.lg.Debug("a2ui pipeline GC evicted stale plans",
+			loggateway.StepID("a2ui.plan_gc"),
+			loggateway.Int("evicted", evicted))
+	}
 }
 
 func (p *Pipeline) EncodePlan(ctx context.Context, plan *Plan) ([]json.RawMessage, error) {

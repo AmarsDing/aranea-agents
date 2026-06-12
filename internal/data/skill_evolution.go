@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -95,7 +94,7 @@ func (r *skillProposalRepo) GetByPatternHash(ctx context.Context, agentID string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{agentID, hash},
 		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, nil
 		}
 		return nil, entErrToBizErr(err, "SKILL_EVO")

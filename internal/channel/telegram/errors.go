@@ -3,7 +3,7 @@ package telegram
 import (
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -13,19 +13,19 @@ const (
 )
 
 var (
-	errBotTokenRequired    = kerrors.BadRequest(configReason, "telegram: bot_token required")
-	errBadChatID           = kerrors.BadRequest(protocolReason, "telegram: bad chat id")
-	errNoMessage           = kerrors.BadRequest(protocolReason, "telegram: no message")
-	errBotMessageIgnored   = kerrors.BadRequest(protocolReason, "telegram: bot message ignored")
-	errEmptyText           = kerrors.BadRequest(protocolReason, "telegram: empty text")
-	errMissingChatID       = kerrors.BadRequest(protocolReason, "telegram: missing chat id")
-	errSecretTokenMismatch = kerrors.BadRequest(credentialReason, "telegram: secret token mismatch")
+	errBotTokenRequired    = apierror.BadRequest(configReason, "telegram: bot_token required")
+	errBadChatID           = apierror.BadRequest(protocolReason, "telegram: bad chat id")
+	errNoMessage           = apierror.BadRequest(protocolReason, "telegram: no message")
+	errBotMessageIgnored   = apierror.BadRequest(protocolReason, "telegram: bot message ignored")
+	errEmptyText           = apierror.BadRequest(protocolReason, "telegram: empty text")
+	errMissingChatID       = apierror.BadRequest(protocolReason, "telegram: missing chat id")
+	errSecretTokenMismatch = apierror.BadRequest(credentialReason, "telegram: secret token mismatch")
 )
 
 func telegramAPIError(prefix string, msg string) error {
-	return kerrors.InternalServer(protocolReason, fmt.Sprintf("%s: %s", prefix, msg))
+	return apierror.Internal(protocolReason, fmt.Sprintf("%s: %s", prefix, msg))
 }
 
 func telegramParseError(prefix string, err error) error {
-	return kerrors.InternalServer(protocolReason, fmt.Sprintf("%s: %v", prefix, err))
+	return apierror.Internal(protocolReason, fmt.Sprintf("%s: %v", prefix, err))
 }

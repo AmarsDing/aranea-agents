@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	stderrors "errors"
 	"fmt"
 	"strings"
 	"time"
@@ -197,7 +195,7 @@ func mapTeamErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if stderrors.Is(err, sql.ErrNoRows) {
+	if apierror.IsCode(err, apierror.CodeNotFound) {
 		return apierror.NotFound("TEAM", "team not found")
 	}
 	return err

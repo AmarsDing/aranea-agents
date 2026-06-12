@@ -3,7 +3,6 @@ package knowledge
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -13,9 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/genai"
 )
 
@@ -157,14 +155,14 @@ func (e *MultiProviderEmbedder) Dim() int {
 // EmbedSingle returns a single embedding vector for the input text.
 func (e *MultiProviderEmbedder) EmbedSingle(ctx context.Context, text string) ([]float32, error) {
 	if strings.TrimSpace(text) == "" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder: text is empty")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "embedder: text is empty")
 	}
 	vecs, err := e.Embed(ctx, []string{text})
 	if err != nil {
 		return nil, err
 	}
 	if len(vecs) == 0 || len(vecs[0]) == 0 {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder: empty embedding")
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder: empty embedding")
 	}
 	return vecs[0], nil
 }
@@ -172,14 +170,14 @@ func (e *MultiProviderEmbedder) EmbedSingle(ctx context.Context, text string) ([
 // EmbedWithTaskType returns a single embedding with a task type hint (e.g. "RETRIEVAL_QUERY").
 func (e *MultiProviderEmbedder) EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error) {
 	if strings.TrimSpace(text) == "" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder: text is empty")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "embedder: text is empty")
 	}
 	vecs, err := e.EmbedBatchWithTaskType(ctx, []string{text}, taskType)
 	if err != nil {
 		return nil, err
 	}
 	if len(vecs) == 0 || len(vecs[0]) == 0 {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder: empty embedding")
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder: empty embedding")
 	}
 	return vecs[0], nil
 }
@@ -240,22 +238,22 @@ func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, a
 		var r resp
 		if err := json.Unmarshal(body, &r); err != nil {
 			e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder openai parse failed: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai parse failed").WithCause(err)
 		}
 		if len(r.Data) != len(batch) {
 			e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
-			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data)))
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data))
 		}
 		ordered := make([][]float32, len(batch))
 		for _, item := range r.Data {
 			if item.Index < 0 || item.Index >= len(batch) {
-				return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder openai: invalid index %d", item.Index))
+				return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai: invalid index %d", item.Index)
 			}
 			ordered[item.Index] = item.Embedding
 		}
 		for i, vec := range ordered {
 			if len(vec) == 0 {
-				return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder openai: empty embedding at %d", start+i))
+				return nil, apierror.Internal(apierror.DomainKnowledge, "embedder openai: empty embedding at %d", start+i)
 			}
 			out = append(out, vec)
 		}
@@ -278,12 +276,12 @@ func (e *MultiProviderEmbedder) embedOllamaBatch(ctx context.Context, baseURL, m
 func (e *MultiProviderEmbedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string, taskType string) ([][]float32, error) {
 	if apiKey == "" {
 		e.lg.Error("knowledge embedder gemini API key required", loggateway.StepID("knowledge.embed_fail"))
-		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder gemini: API key required")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "embedder gemini: API key required")
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
 		e.lg.Error("knowledge embedder gemini client failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini client failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder gemini client failed").WithCause(err)
 	}
 	model = strings.TrimPrefix(model, "models/")
 	out := make([][]float32, 0, len(texts))
@@ -308,14 +306,14 @@ func (e *MultiProviderEmbedder) embedGeminiBatch(ctx context.Context, apiKey, mo
 		resp, err := client.Models.EmbedContent(ctx, model, contents, cfg)
 		if err != nil {
 			e.lg.Error("knowledge embedder gemini API failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini API failed: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder gemini API failed").WithCause(err)
 		}
 		if len(resp.Embeddings) != len(batch) {
-			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder gemini: expected %d embeddings, got %d", len(batch), len(resp.Embeddings)))
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder gemini: expected %d embeddings, got %d", len(batch), len(resp.Embeddings))
 		}
 		for _, emb := range resp.Embeddings {
 			if len(emb.Values) == 0 {
-				return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini: empty embedding")
+				return nil, apierror.Internal(apierror.DomainKnowledge, "embedder gemini: empty embedding")
 			}
 			vec := make([]float32, len(emb.Values))
 			for i, v := range emb.Values {
@@ -353,10 +351,10 @@ func (e *MultiProviderEmbedder) embedHuggingFaceBatch(ctx context.Context, baseU
 		var data [][]float64
 		if err := json.Unmarshal(body, &data); err != nil {
 			e.lg.Warn("解析 huggingface embed 响应失败", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder huggingface parse failed: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder huggingface parse failed").WithCause(err)
 		}
 		if len(data) != len(batch) {
-			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder huggingface: expected %d embeddings, got %d", len(batch), len(data)))
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder huggingface: expected %d embeddings, got %d", len(batch), len(data))
 		}
 		for _, row := range data {
 			vec := make([]float32, len(row))
@@ -390,7 +388,7 @@ func (e *MultiProviderEmbedder) embedOllamaWith(ctx context.Context, baseURL, mo
 	var r resp
 	if err := json.Unmarshal(body, &r); err != nil {
 		e.lg.Warn("解析 ollama embed 响应失败", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder ollama parse failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder ollama parse failed").WithCause(err)
 	}
 	return r.Embedding, nil
 }
@@ -410,7 +408,7 @@ func jsonPOST(ctx context.Context, client *http.Client, url, apiKey string, payl
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder http request failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder http request failed").WithCause(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -418,7 +416,7 @@ func jsonPOST(ctx context.Context, client *http.Client, url, apiKey string, payl
 		return nil, err
 	}
 	if resp.StatusCode >= 400 {
-		return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder http %d: %s", resp.StatusCode, string(body)))
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder http %d: %s", resp.StatusCode, string(body))
 	}
 	return body, nil
 }

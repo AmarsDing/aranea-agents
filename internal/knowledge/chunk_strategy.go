@@ -1,10 +1,9 @@
 package knowledge
 
 import (
-	"fmt"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpcchunk "trpc.group/trpc-go/trpc-agent-go/knowledge/chunking"
 	trpcdoc "trpc.group/trpc-go/trpc-agent-go/knowledge/document"
 	trpcsource "trpc.group/trpc-go/trpc-agent-go/knowledge/source"
@@ -67,7 +66,7 @@ func splitWithTrpcStrategy(strategy ChunkStrategy, text string, size, overlap in
 			trpcchunk.WithRecursiveOverlap(overlap),
 		)
 	default:
-		return nil, kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("unsupported chunk strategy %q", strategy))
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "unsupported chunk strategy %q", strategy)
 	}
 	docs, err := strat.Chunk(doc)
 	if err != nil {

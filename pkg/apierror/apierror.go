@@ -137,6 +137,13 @@ func Wrap(err error, code Code, domain string) *Error {
 	return &Error{Code: code, Domain: domain, Message: err.Error(), Cause: err}
 }
 
+// IsCode reports whether err is an *Error with the given Code, regardless of Domain.
+// For Code+Domain matching, use errors.Is(err, apierror.NotFound(domain, "")).
+func IsCode(err error, code Code) bool {
+	ae, ok := From(err)
+	return ok && ae.Code == code
+}
+
 // From extracts *Error from an error chain. Returns (nil, false) if err is nil
 // or the chain contains no *Error.
 func From(err error) (*Error, bool) {

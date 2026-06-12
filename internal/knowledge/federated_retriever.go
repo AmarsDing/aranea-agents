@@ -8,10 +8,9 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type FederationStrategy int
@@ -56,7 +55,7 @@ func NewFederatedRetrieverWithMeta(router *AdaptiveRouter, retriever *Retriever,
 
 func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
 	if len(collectionIDs) == 0 {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "federated_retriever: at least one collection_id required")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "federated_retriever: at least one collection_id required")
 	}
 	if len(collectionIDs) == 1 {
 		q.CollectionID = collectionIDs[0]
@@ -71,7 +70,7 @@ func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string,
 
 func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode, opts FederatedSearchOptions) ([]biz.KnowledgeChunk, error) {
 	if len(collectionIDs) == 0 {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "federated_retriever: at least one collection_id required")
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "federated_retriever: at least one collection_id required")
 	}
 	if len(collectionIDs) == 1 {
 		q.CollectionID = collectionIDs[0]
@@ -228,7 +227,7 @@ func (f *FederatedRetriever) searchBroadcast(ctx context.Context, collectionIDs 
 	}
 
 	if len(allChunks) == 0 && firstErr != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("federated_retriever: all collections failed: %v", firstErr))
+		return nil, apierror.Internal(apierror.DomainKnowledge, "federated_retriever: all collections failed").WithCause(firstErr)
 	}
 
 	return MergeSearchResults(nil, allChunks, q.TopK), nil

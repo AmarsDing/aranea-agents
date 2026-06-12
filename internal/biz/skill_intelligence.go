@@ -69,6 +69,7 @@ type SkillIntelligenceUsecase struct {
 	analyzer         RootCauseAnalyzer
 	unanalyzedReader SkillInvocationUnanalyzedReader
 	coordinator      *EvolutionCoordinator
+	orchestrator     *SkillEvolutionOrchestrator
 	lg               loggateway.Logger
 	weights          ScoreWeights
 }
@@ -76,6 +77,7 @@ type SkillIntelligenceUsecase struct {
 // SkillIntelligenceConfig holds optional dependencies for SkillIntelligenceUsecase.
 type SkillIntelligenceConfig struct {
 	Coordinator      *EvolutionCoordinator
+	Orchestrator     *SkillEvolutionOrchestrator
 	UnanalyzedReader SkillInvocationUnanalyzedReader
 }
 
@@ -105,6 +107,9 @@ func NewSkillIntelligenceUsecase(
 	for _, opt := range opts {
 		if opt.Coordinator != nil {
 			uc.coordinator = opt.Coordinator
+		}
+		if opt.Orchestrator != nil {
+			uc.orchestrator = opt.Orchestrator
 		}
 		if opt.UnanalyzedReader != nil {
 			uc.unanalyzedReader = opt.UnanalyzedReader
@@ -530,8 +535,16 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 	}
 
 	// Cross-pipeline dedup: skip if another pipeline already has a pending
-	// suggestion for this skill.
-	if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "skill", ID: skillID}) {
+	// suggestion for this skill. Prefer orchestrator over legacy coordinator.
+	if uc.orchestrator != nil {
+		hasPending, err := uc.orchestrator.HasPendingForTarget(ctx, "skill", skillID)
+		if err == nil && hasPending {
+			uc.lg.Debug("CheckEvolutionTriggers: skipped, pending evolution already exists via orchestrator",
+				loggateway.StepID("skill_intelligence.evo_trigger"),
+				loggateway.Str("skill_id", skillID))
+			return nil, nil
+		}
+	} else if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "skill", ID: skillID}) {
 		uc.lg.Debug("CheckEvolutionTriggers: skipped, pending evolution already exists via another pipeline",
 			loggateway.StepID("skill_intelligence.evo_trigger"),
 			loggateway.Str("skill_id", skillID))
@@ -901,12 +914,15 @@ func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, re
 
 // ── Bridge: SkillEvolutionSuggestion → SkillProposal ─────────────────────────
 //
-// TODO(debt): DEV-04 — Transitional bridge function. Will be removed once
-// SkillProposal is deprecated in favor of SkillEvolutionSuggestion.
+// Deprecated: Transitional bridge function. Will be removed once SkillProposal
+// is fully deprecated. Use UnifiedEvolutionSuggestion directly instead.
 
 // ProposalFromSuggestion converts a SkillEvolutionSuggestion into a
 // SkillProposal for interoperability with the SkillEvolutionUsecase pipeline.
 // Fields that have no direct equivalent are left at their zero values.
+//
+// Deprecated: Use UnifiedEvolutionSuggestion directly. Construct with
+// UnifiedEvolutionSuggestion{TargetType: "skill", ActionType: "improve_skill", TargetID: s.SkillID, DraftBody: s.DraftSkillBody}.
 func (uc *SkillIntelligenceUsecase) ProposalFromSuggestion(s SkillEvolutionSuggestion) SkillProposal {
 	return SkillProposal{
 		ID:         s.ID,

@@ -308,7 +308,7 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 	}
 	stopped, runID := l.runs.Cancel(sessionID)
 	if stopped {
-		l.runStatus.SetRunStatus(ctx, sessionID, runID, "cancelled", "")
+		l.runStatus.SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, "")
 	}
 	l.sessionState.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonBudgetEscalated)
 	run.Phase = biz.SessionRunPhaseDurable

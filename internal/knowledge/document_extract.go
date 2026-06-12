@@ -3,12 +3,11 @@ package knowledge
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpcdoc "trpc.group/trpc-go/trpc-agent-go/knowledge/document"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader"
 )
@@ -23,7 +22,7 @@ func ExtractDocumentText(raw []byte, source, mimeType string) (string, error) {
 // ExtractDocumentTextWithOCR allows injecting an OCR provider (tests / Wire).
 func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte, source, mimeType string) (string, error) {
 	if len(raw) == 0 {
-		return "", kerrors.BadRequest("KNOWLEDGE", "document content is empty")
+		return "", apierror.BadRequest(apierror.DomainKnowledge, "document content is empty")
 	}
 	if ocr == nil {
 		ocr = NewOCRProviderFromEnv()
@@ -45,7 +44,7 @@ func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte
 		if utf8.Valid(raw) {
 			return string(raw), nil
 		}
-		return "", kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("unsupported document type %q (mime=%q)", ext, mimeType))
+		return "", apierror.BadRequest(apierror.DomainKnowledge, "unsupported document type %q (mime=%q)", ext, mimeType)
 	}
 	name := strings.TrimSpace(source)
 	if name == "" {
@@ -53,7 +52,7 @@ func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte
 	}
 	docs, err := r.ReadFromReader(name, bytes.NewReader(raw))
 	if err != nil {
-		return "", kerrors.InternalServer("KNOWLEDGE", "read document failed: "+err.Error())
+		return "", apierror.Internal(apierror.DomainKnowledge, "read document failed").WithCause(err)
 	}
 	return joinDocumentTexts(docs), nil
 }

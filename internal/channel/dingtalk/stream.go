@@ -9,9 +9,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
@@ -74,7 +73,7 @@ func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCre
 		} `json:"config"`
 	}
 	if err := json.Unmarshal([]byte(ch.ConfigJSON), &cfg); err != nil {
-		return "", "", kerrors.BadRequest("DINGTALK_CONFIG", fmt.Sprintf("dingtalk stream: parse config: %s", err.Error()))
+		return "", "", apierror.BadRequest("DINGTALK_CONFIG", fmt.Sprintf("dingtalk stream: parse config: %s", err.Error()))
 	}
 	clientID := strings.TrimSpace(cfg.Config.ClientID)
 	if clientID == "" {
@@ -84,7 +83,7 @@ func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCre
 	secret, err := lookup(ctx, creds, "client_secret")
 	secret = strings.TrimSpace(secret)
 	if clientID == "" || secret == "" {
-		return "", "", kerrors.BadRequest("DINGTALK_CONFIG", "dingtalk stream: client_id and client_secret required")
+		return "", "", apierror.BadRequest("DINGTALK_CONFIG", "dingtalk stream: client_id and client_secret required")
 	}
 	return clientID, secret, err
 }

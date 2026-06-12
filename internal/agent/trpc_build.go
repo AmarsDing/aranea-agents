@@ -15,10 +15,9 @@ import (
 	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
@@ -29,12 +28,12 @@ import (
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
-		return nil, kerrors.BadRequest("AGENT", "agent_key required")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
 	}
 	prov := strutil.FirstNonEmpty(deps.Provider, ag.Provider)
 	mod := strutil.FirstNonEmpty(deps.Model, ag.Model)
 	if prov == "" || mod == "" {
-		return nil, kerrors.BadRequest("AGENT", "provider and model required")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "provider and model required")
 	}
 
 	lg.Info("Agent 构建", loggateway.StepID("agent.build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("provider", prov), loggateway.Str("model", mod))
@@ -146,7 +145,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 
 	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err != nil {
 		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, kerrors.InternalServer("AGENT", "tool build failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
 	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
@@ -175,7 +174,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	}
 
 	if ag.Settings != nil {
-		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard)...)
+		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard, prov, mod, deps.ModelCatalog, deps.RT, lg)...)
 
 		if toolFilter := buildToolFilter(ag.Settings, deps.DeferredManager, lg); toolFilter != nil {
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))
@@ -257,7 +256,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	return repo, filter, exec, nil
 }
 
-func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelector bool) []trpcllmagent.Option {
+func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelector bool, prov, mod string, catalog biz.TeamModelCatalog, rt *provider.RoundTrip, lg loggateway.Logger) []trpcllmagent.Option {
 	var opts []trpcllmagent.Option
 
 	if s.ModelInstructionsJSON != "" && s.ModelInstructionsJSON != "{}" {
@@ -306,7 +305,7 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 	}
 
 	if !skipRuntimeModelSelector && s.ModelSelector != "" && s.ModelSelector != "default" {
-		selector := buildModelSelector(s.ModelSelector)
+		selector := buildModelSelector(s.ModelSelector, prov, mod, catalog, rt, lg)
 		if selector != nil {
 			opts = append(opts, trpcllmagent.WithModelSelector(selector))
 		}
@@ -315,19 +314,21 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 	return opts
 }
 
-func buildModelSelector(selector string) trpcagent.ModelSelector {
+func buildModelSelector(selector string, prov, mod string, catalog biz.TeamModelCatalog, rt *provider.RoundTrip, lg loggateway.Logger) trpcagent.ModelSelector {
 	switch selector {
-	case "auto":
-		return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
-			return nil, nil
-		}
+	case "cost-aware":
+		return CostAwareModelSelector(prov, mod, catalog, rt, lg)
+	case "quality-aware":
+		return QualityAwareModelSelector(prov, mod, catalog, rt, lg)
+	case "latency-aware":
+		return LatencyAwareModelSelector(prov, mod, catalog, rt, lg)
+	case "auto", "default", "":
+		return nil // defer to framework default
 	default:
 		// Unknown selector values are treated as "auto" (defer to framework default).
 		// This preserves forward-compatibility: if a new selector name is introduced
 		// in the settings UI before this switch is updated, the agent still works.
-		return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
-			return nil, nil
-		}
+		return nil
 	}
 }
 

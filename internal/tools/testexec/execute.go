@@ -11,7 +11,7 @@ import (
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -43,14 +43,14 @@ type CatalogTool struct {
 func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeoutSec int, platform *webresearchpkg.PlatformFields, lg loggateway.Logger) (Result, error) {
 	key := strings.TrimSpace(tool.Key)
 	if key == "" {
-		return Result{}, kerrors.BadRequest("TOOL", "tool key is required")
+		return Result{}, apierror.BadRequest(apierror.DomainTool, "tool key is required")
 	}
 	src := strings.ToLower(strings.TrimSpace(tool.Source))
 	if src == "mcp" {
-		return Result{}, kerrors.BadRequest("TOOL", "MCP tools must be tested via MCPServer TestMCPServer")
+		return Result{}, apierror.BadRequest(apierror.DomainTool, "MCP tools must be tested via MCPServer TestMCPServer")
 	}
 	if key == toolKeyKnowledgeSearch || key == toolKeyCallAgent {
-		return Result{}, kerrors.BadRequest("TOOL", fmt.Sprintf("tool %q requires a live agent session to test", key))
+		return Result{}, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("tool %q requires a live agent session to test", key))
 	}
 
 	args := normalizeArgsJSON(argumentsJSON)
@@ -69,7 +69,7 @@ func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeou
 				Lg:           lg,
 			}
 		} else {
-			return Result{}, kerrors.BadRequest("TOOL", fmt.Sprintf("tool %q is not supported for online test yet", key))
+			return Result{}, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("tool %q is not supported for online test yet", key))
 		}
 	}
 
@@ -157,7 +157,7 @@ func catalogToolNames(key string) []string {
 
 func findCallable(ctx context.Context, ts *tools.AssembledToolsets, names ...string) (trpctool.CallableTool, error) {
 	if ts == nil {
-		return nil, kerrors.InternalServer("TOOL", "no toolsets assembled")
+		return nil, apierror.Internal(apierror.DomainTool, "no toolsets assembled")
 	}
 	for _, name := range names {
 		if t, ok := matchCallable(ts.Tools, name); ok {
@@ -172,7 +172,7 @@ func findCallable(ctx context.Context, ts *tools.AssembledToolsets, names ...str
 			}
 		}
 	}
-	return nil, kerrors.NotFound("TOOL", fmt.Sprintf("callable tool not found in assembly (tried %v)", names))
+	return nil, apierror.NotFound(apierror.DomainTool, fmt.Sprintf("callable tool not found in assembly (tried %v)", names))
 }
 
 func matchCallable(toolsList []trpctool.Tool, name string) (trpctool.CallableTool, bool) {

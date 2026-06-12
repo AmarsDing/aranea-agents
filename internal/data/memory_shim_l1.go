@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"time"
@@ -127,7 +126,7 @@ func (r *l1WorkingMemoryRepo) GetL1TaskRow(ctx context.Context, sessionID, id st
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	return scanL1TaskRow(rows)
 }
@@ -139,7 +138,7 @@ func (r *l1WorkingMemoryRepo) GetL1FieldRow(ctx context.Context, taskID, fieldPa
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	return scanL1FieldRow(rows)
 }
@@ -416,7 +415,7 @@ func (r *l1WorkingMemoryRepo) getL1TaskBudget(ctx context.Context, taskID string
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return 0, 0, sql.ErrNoRows
+		return 0, 0, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	if sErr := rows.Scan(&budget, &used); sErr != nil {
 		return 0, 0, sErr
@@ -509,7 +508,7 @@ func (r *l1WorkingMemoryRepo) GetL1SchemaRow(ctx context.Context, schemaID strin
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	var (
 		id, scopeType, scopeID, schemaKey string

@@ -236,7 +236,7 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 	for i, s := range scored {
 		passages[i] = episodePassage(s.raw)
 	}
-	applyCrossEncoderRerankToScored(query, scored, passages, func(i int, ceScore, total float64) {
+	applyCrossEncoderRerankToScored(r.data.Reranker(), query, scored, passages, func(i int, ceScore, total float64) {
 		scored[i].breakdown.CrossEncoder = ceScore
 		scored[i].breakdown.Total = total
 		scored[i].score = total
@@ -337,7 +337,7 @@ func (r *l2EpisodeRepo) recallL2WithVectorStore(ctx context.Context, agentID, se
 	for i, s := range scored {
 		passages[i] = episodePassage(s.raw)
 	}
-	applyCrossEncoderRerankToScored(query, scored, passages, func(i int, ceScore, total float64) {
+	applyCrossEncoderRerankToScored(r.data.Reranker(), query, scored, passages, func(i int, ceScore, total float64) {
 		scored[i].breakdown.CrossEncoder = ceScore
 		scored[i].breakdown.Total = total
 		scored[i].score = total

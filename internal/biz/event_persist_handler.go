@@ -53,22 +53,6 @@ func (h *eventPersistHandler) Start(ctx context.Context) {
 	})
 }
 
-// isCriticalEnvelopeType returns true for event types that must never be silently
-// dropped (AS-EVT-01 Critical tier: WBPF — Write-Before-Process-Forward).
-func isCriticalEnvelopeType(t contract.EnvelopeType) bool {
-	switch t {
-	case contract.EnvelopeTypeToolResult,
-		contract.EnvelopeTypeError,
-		contract.EnvelopeTypeRunnerCompletion,
-		contract.EnvelopeTypeStateDelta,
-		contract.EnvelopeTypeTokenUsage,
-		contract.EnvelopeTypeCheckpoint:
-		return true
-	default:
-		return false
-	}
-}
-
 func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope) {
 	if h == nil || h.store == nil || !shouldPersistEnvelope(env) {
 		return
@@ -89,9 +73,9 @@ func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope)
 	default:
 	}
 
-	// Queue is full. For critical events (AS-EVT-01), fall back to synchronous
-	// write so they are never silently dropped. Non-critical events are dropped.
-	if !isCriticalEnvelopeType(env.Type) {
+	// Queue is full. For Critical+Important events (AS-EVT-01), fall back to synchronous
+	// write so they are never silently dropped. Informational events are dropped.
+	if !contract.RequiresBlockUpTo(env.Type) {
 		if h.logger != nil {
 			h.logger.LogSessionWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，丢弃事件",
 				LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})

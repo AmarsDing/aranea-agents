@@ -81,7 +81,7 @@ func (r *orchestrationRepo) GetByID(ctx context.Context, id string) (*biz.Orches
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	handle, err := scanOrchestrationFromRows(rows)
 	if err != nil {

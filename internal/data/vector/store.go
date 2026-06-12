@@ -20,3 +20,13 @@ type VectorStore interface {
 	// Delete removes a vector by ID.
 	Delete(ctx context.Context, id string) error
 }
+
+// FactVectorStore extends VectorStore with fact-specific operations.
+// Stability:evolving
+type FactVectorStore interface {
+	VectorStore
+	// UpsertFact inserts or replaces the vector row for a memory fact.
+	UpsertFact(ctx context.Context, id string, agentID string, userID string, content string, embedding []float64) error
+	// SearchByAgent returns the top-K most similar facts filtered by agent and user.
+	SearchByAgent(ctx context.Context, agentID string, userID string, embedding []float64, topK int, minScore float64) ([]VectorHit, error)
+}

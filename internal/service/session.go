@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	stderrors "errors"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/session/v1"
@@ -161,7 +159,7 @@ func mapSessionErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if stderrors.Is(err, sql.ErrNoRows) {
+	if apierror.IsCode(err, apierror.CodeNotFound) {
 		return apierror.NotFound("SESSION", "session not found")
 	}
 	return err

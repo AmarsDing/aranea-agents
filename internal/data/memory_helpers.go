@@ -739,14 +739,6 @@ func cosineSimilarity(a, b []float32) float64 {
 	return dot / (math.Sqrt(na) * math.Sqrt(nb))
 }
 
-func float32To64(v []float32) []float64 {
-	out := make([]float64, len(v))
-	for i, f := range v {
-		out[i] = float64(f)
-	}
-	return out
-}
-
 // ──────────────────────────────────────────────────────────
 // Temporal helpers
 // ──────────────────────────────────────────────────────────
@@ -965,25 +957,23 @@ func factPassage(stmt, details string) string {
 	return strings.TrimSpace(stmt + " " + details)
 }
 
-func applyCrossEncoderRerankToScored(query string, scored []scoredEpisode, passages []string, apply func(i int, ceScore, total float64)) {
-	if strings.TrimSpace(query) == "" || len(scored) == 0 || len(scored) != len(passages) {
+func applyCrossEncoderRerankToScored(reranker biz.Reranker, query string, scored []scoredEpisode, passages []string, apply func(i int, ceScore, total float64)) {
+	if reranker == nil || strings.TrimSpace(query) == "" || len(scored) == 0 || len(scored) != len(passages) {
 		return
 	}
-	ce := biz.NewCrossEncoderReranker()
 	for i := range scored {
-		ceScore := ce.Score(query, passages[i])
+		ceScore := reranker.Score(query, passages[i])
 		total := (1-ceRerankWeight)*scored[i].score + ceRerankWeight*ceScore
 		apply(i, ceScore, total)
 	}
 }
 
-func applyCrossEncoderRerankToFactScored(query string, scored []scoredFact, passages []string) {
-	if strings.TrimSpace(query) == "" || len(scored) == 0 || len(scored) != len(passages) {
+func applyCrossEncoderRerankToFactScored(reranker biz.Reranker, query string, scored []scoredFact, passages []string) {
+	if reranker == nil || strings.TrimSpace(query) == "" || len(scored) == 0 || len(scored) != len(passages) {
 		return
 	}
-	ce := biz.NewCrossEncoderReranker()
 	for i := range scored {
-		ceScore := ce.Score(query, passages[i])
+		ceScore := reranker.Score(query, passages[i])
 		total := (1-ceRerankWeight)*scored[i].score + ceRerankWeight*ceScore
 		scored[i].breakdown.CrossEncoder = ceScore
 		scored[i].breakdown.Total = total

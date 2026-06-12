@@ -1,23 +1,5 @@
 package biz
 
-// channelTypeRegistry aligns with MuseBot-supported messaging platforms (robot/*.go).
-// bundled=true means adapter exists in this binary; false = spec only (see docs/需求/17 channel.md).
-var channelTypeRegistry = []ChannelTypeItem{
-	feishuTypeItem(),
-	dingtalkTypeItem(),
-	wecomTypeItem("wecom", "企业微信智能机器人", "群机器人或智能机器人", 30),
-	wecomTypeItem("wecom-app", "企业微信自建应用", "企业微信自建应用", 40),
-	wechatTypeItem(),
-	slackTypeItem(),
-	telegramTypeItem(),
-	discordTypeItem(),
-	lineTypeItem(),
-	mattermostTypeItem(),
-	teamsTypeItem(),
-	qqTypeItem(),
-	personalQQTypeItem(),
-}
-
 func channelTypeItem(channelType, label, group, receiveMode, description string, sortOrder int, bundled, supportsTest, supportsWebhook bool) ChannelTypeItem {
 	modes := []string{receiveMode}
 	return ChannelTypeItem{
@@ -34,7 +16,7 @@ func channelTypeItem(channelType, label, group, receiveMode, description string,
 			"type":        "object",
 			"description": "Non-sensitive channel configuration",
 		},
-		CredentialSchema: credentialSchemaFor(channelType),
+		CredentialSchema: nil, // built by channelTypeRegistry.Register
 		UIHints: map[string]any{
 			"group":        group,
 			"receive_mode": receiveMode,
@@ -96,9 +78,7 @@ func discordTypeItem() ChannelTypeItem {
 }
 
 func qqTypeItem() ChannelTypeItem {
-	item := channelTypeItem("qq", "QQ 官方机器人", "国内", "webhook", "Webhook + botgo 事件；MuseBot qq.go", 90, true, true, true)
-	item.CredentialSchema = credentialSchemaFor("qq")
-	return item
+	return channelTypeItem("qq", "QQ 官方机器人", "国内", "webhook", "Webhook + botgo 事件；MuseBot qq.go", 90, true, true, true)
 }
 
 func personalQQTypeItem() ChannelTypeItem {

@@ -9,9 +9,8 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -166,7 +165,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 	case "notify":
 		url := strings.TrimSpace(rh.Rule.Action.WebhookURL)
 		if url == "" {
-			err = kerrors.BadRequest("HOOK", "webhook_url required for notify action")
+			err = apierror.BadRequest(apierror.DomainHook, "webhook_url required for notify action")
 			status = "error"
 			return err
 		}
@@ -194,7 +193,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		if msg == "" {
 			msg = fmt.Sprintf("blocked by hook %s", rh.Hook.Key)
 		}
-		err = kerrors.Forbidden("HOOK_BLOCKED", msg)
+		err = apierror.Forbidden(apierror.DomainHook, msg)
 		status = "blocked"
 		return err
 	case "modify":

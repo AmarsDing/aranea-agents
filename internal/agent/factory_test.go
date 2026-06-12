@@ -74,7 +74,7 @@ func TestResolveBizAgentByKey(t *testing.T) {
 	repo := &memAgentRepo{byKey: map[string]biz.Agent{
 		"demo": {ID: "id-1", AgentKey: "demo", Provider: "openai", Model: "gpt-4"},
 	}}
-	deps := TRPCBuilderDeps{Agents: repo}
+	deps := TRPCBuilderDeps{TRPCModelCatalogDeps: TRPCModelCatalogDeps{Agents: repo}}
 	ag, err := resolveBizAgentByKey(context.Background(), deps, "demo")
 	if err != nil {
 		t.Fatalf("resolveBizAgentByKey() error = %v", err)

@@ -63,7 +63,6 @@ var (
 	ToProtoCronTask               = toProtoCronTask
 	PatchFromProtoCronTask        = patchFromProtoCronTask
 	ToProtoCronTaskRun            = toProtoCronTaskRun
-	MapCronError                  = mapCronError
 	FromProtoStateField           = fromProtoStateField
 	FromProtoNode                 = fromProtoNode
 	FromProtoCondEdge             = fromProtoCondEdge

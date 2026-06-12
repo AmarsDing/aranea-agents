@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -125,7 +124,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		flow.LogError("chat.session_fetch", "获取会话失败", event.P("error", err.Error()))
 		o.lg().With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
 			loggateway.StepID("chat.session_get_fail"), loggateway.Err(err))
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound("SESSION", "session not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -153,7 +152,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	if err != nil {
 		unlock()
 		flow.LogError("chat.agent_hydrate", "加载Agent配置失败", event.P("agent_id", agentID), event.P("error", err.Error()))
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound("AGENT", "agent not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err

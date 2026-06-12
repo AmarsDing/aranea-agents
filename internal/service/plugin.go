@@ -2,15 +2,13 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"time"
 
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/pkg/safego"
 )
 
@@ -55,7 +53,7 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 		if err == nil {
 			continue
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		if !apierror.IsCode(err, apierror.CodeNotFound) {
 			s.lg.Warn("插件种子查询失败",
 				loggateway.StepID("plugin.seed_fail"),
 				loggateway.Str("key", def.Key),
@@ -152,7 +150,7 @@ func (s *PluginService) ListPlugins(ctx context.Context, req *v1.ListPluginsRequ
 func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.TogglePluginEnabledRequest) (*v1.Plugin, error) {
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
@@ -164,7 +162,7 @@ func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.ToggleP
 func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePluginConfigRequest) (*v1.Plugin, error) {
 	out, err := s.uc.UpdateConfig(ctx, req.GetId(), req.GetConfigJson())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
@@ -176,7 +174,7 @@ func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePl
 func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.UpdatePluginSortOrderRequest) (*v1.Plugin, error) {
 	out, err := s.uc.UpdateSortOrder(ctx, req.GetId(), int(req.GetSortOrder()))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err
@@ -188,7 +186,7 @@ func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.Updat
 func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePluginScopeRequest) (*v1.Plugin, error) {
 	out, err := s.uc.UpdateScope(ctx, req.GetId(), req.GetScope())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("PLUGIN", "plugin not found")
 		}
 		return nil, err

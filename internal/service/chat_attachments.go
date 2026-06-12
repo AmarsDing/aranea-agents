@@ -2,13 +2,10 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/provider"
-	"aranea-agents/pkg/apierror"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -43,29 +40,9 @@ func (o *ChatOrchestrator) resolveUserAttachmentRefs(ctx context.Context, sessio
 	}
 	refs, err := artifactbiz.ResolveAttachmentRefs(ctx, o.artifacts(), sessionID, attachmentIDs)
 	if err != nil {
-		return nil, mapArtifactBizError(err)
+		return nil, err
 	}
 	return refs, nil
-}
-
-// mapArtifactBizError converts biz-layer domain errors to apierror for the transport layer.
-func mapArtifactBizError(err error) error {
-	if errors.Is(err, biz.ErrSizeExceeded) {
-		return apierror.BadRequest("ARTIFACT", err.Error())
-	}
-	if errors.Is(err, biz.ErrIDRequired) {
-		return apierror.BadRequest("ARTIFACT", err.Error())
-	}
-	if errors.Is(err, biz.ErrArtifactServiceRequired) {
-		return apierror.BadRequest("ARTIFACT", err.Error())
-	}
-	if errors.Is(err, biz.ErrAttachmentLoadFailed) {
-		return apierror.BadRequest("ARTIFACT", err.Error())
-	}
-	if errors.Is(err, biz.ErrAttachmentWrongSession) {
-		return apierror.BadRequest("ARTIFACT", err.Error())
-	}
-	return err
 }
 
 func mergeUserAttachmentRefs(userOpts string, refs []artifactbiz.Ref) (string, error) {

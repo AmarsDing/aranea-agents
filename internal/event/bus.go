@@ -54,30 +54,12 @@ func NewBus(lg loggateway.Logger) Bus {
 	}
 }
 
-// criticalTypes returns the set of event types that must never be silently dropped.
-// These are persisted session events where loss causes observable data corruption.
-var criticalTypeSet = map[EnvelopeType]struct{}{
-	EnvelopeTypeToolResult:           {},
-	EnvelopeTypeError:                {},
-	EnvelopeTypeRunnerCompletion:     {},
-	EnvelopeTypeContextUsage:         {},
-	EnvelopeTypeGraphNodeEnd:         {},
-	EnvelopeTypeTeamRunFinished:      {},
-	EnvelopeTypeTeamRunFailed:        {},
-	EnvelopeTypeSessionStatusChanged: {},
-	EnvelopeTypeStateDelta:           {}, // Agent 状态机一致性
-	EnvelopeTypeTokenUsage:           {}, // 用量计费数据
-	EnvelopeTypeRunStatus:            {}, // Webhook 回调 / 运行状态
-	EnvelopeTypeUserFeedback:         {}, // 用户反馈 / 偏好记忆
-	EnvelopeTypeCheckpoint:           {}, // 检查点可恢复性
-}
-
 func (b *bus) Publish(ctx context.Context, env Envelope) {
 	if env.Channel == "" {
 		env.Channel = RouteChannel(env)
 	}
 	arametrics.EventBusPublished.WithLabelValues(string(env.Type)).Inc()
-	_, isCritical := criticalTypeSet[env.Type]
+	requiresBlockUpTo := contract.RequiresBlockUpTo(env.Type)
 
 	b.mu.RLock()
 	criticalSubs := make([]*subscriber, 0, len(b.subscribers))
@@ -92,14 +74,14 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 	b.mu.RUnlock()
 
 	for _, sub := range criticalSubs {
-		b.deliverToSubscriber(sub, env, isCritical)
+		b.deliverToSubscriber(sub, env, requiresBlockUpTo)
 	}
 	for _, sub := range normalSubs {
-		b.deliverToSubscriber(sub, env, isCritical)
+		b.deliverToSubscriber(sub, env, requiresBlockUpTo)
 	}
 }
 
-func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, isCritical bool) {
+func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, requiresBlockUpTo bool) {
 	env = env.Clone()
 	if !b.matchSubscriber(sub.opts, env) {
 		return
@@ -111,7 +93,7 @@ func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, isCritical bool
 	policy := sub.opts.DropPolicy
 	blockFor := sub.opts.BlockFor
 
-	if sub.opts.Reliable || isCritical {
+	if sub.opts.Reliable || requiresBlockUpTo {
 		policy = BlockUpTo
 		if blockFor <= 0 {
 			blockFor = 100 * time.Millisecond

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
 
@@ -39,7 +40,7 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 		return nil, err
 	}
 	lg.Info("模型配置已解析", loggateway.StepID("provider.config_resolved"), loggateway.Phase("done"),
-		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HAMode))
+		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HA.Mode))
 	return trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
 }
 
@@ -76,7 +77,7 @@ func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConf
 	}
 
 	providerName := MapProviderType(cfg.ProviderType)
-	opts := buildProviderOptions(cfg, rt)
+	opts := buildProviderOptions(cfg, rt, lg)
 
 	m, err := trpcprovider.Model(providerName, name, opts...)
 	if err != nil {
@@ -223,7 +224,7 @@ func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities {
 		caps.Vision = false
 		caps.Audio = false
 	}
-	if caps.Cache || cfg.OptimizeForCache || cfg.CacheSystemPrompt || cfg.CacheTools || cfg.CacheMessages {
+	if caps.Cache || cfg.OptimizeForCache || cfg.Cache.SystemPrompt || cfg.Cache.Tools || cfg.Cache.Messages {
 		caps.Cache = true
 	}
 	if caps.Thinking || cfg.ReasoningBackfill {
@@ -271,7 +272,7 @@ func looksLikeDeepSeek(parts ...string) bool {
 	return false
 }
 
-func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
+func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) []trpcprovider.Option {
 	var opts []trpcprovider.Option
 
 	if apiKey := strings.TrimSpace(cfg.APIKey); apiKey != "" {
@@ -294,7 +295,7 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider
 	}
 	// Only set a custom transport when we have a reason to override the
 	// framework default: either the caller provides one (outboundguard,
-	// custom TLS) or we need to wrap it with rate-limiting.
+	// custom TLS) or we need to wrap it with rate-limiting / retry / circuit-breaker.
 	transport := http.DefaultTransport
 	hasCustomTransport := rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil
 	if hasCustomTransport {
@@ -303,7 +304,26 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider
 	if cfg.RateLimitRPM > 0 {
 		transport = wrapRateLimitTransport(transport, cfg.RateLimitRPM)
 	}
-	if hasCustomTransport || cfg.RateLimitRPM > 0 {
+	if cfg.Retry.MaxAttempts > 0 {
+		baseDelay := time.Duration(cfg.Retry.BaseDelayMs) * time.Millisecond
+		if baseDelay <= 0 {
+			baseDelay = 1000 * time.Millisecond
+		}
+		maxDelay := time.Duration(cfg.Retry.MaxDelayMs) * time.Millisecond
+		if maxDelay <= 0 {
+			maxDelay = 30000 * time.Millisecond
+		}
+		transport = newRetryTransport(transport, cfg.Retry.MaxAttempts, baseDelay, maxDelay, lg)
+	}
+	if cfg.CB.Enabled {
+		cbCfg := biztool.CircuitBreakerConfig{
+			FailureThreshold:  cfg.CB.FailureThreshold,
+			RecoveryTimeoutSec: cfg.CB.RecoverySec,
+		}
+		cb := biztool.NewCircuitBreaker(fmt.Sprintf("provider:%s:%s", cfg.ProviderType, cfg.ModelAPI), cbCfg)
+		transport = newCircuitBreakerTransport(transport, cb, lg)
+	}
+	if hasCustomTransport || cfg.RateLimitRPM > 0 || cfg.Retry.MaxAttempts > 0 || cfg.CB.Enabled {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(transport))
 	}
 
@@ -355,17 +375,17 @@ func buildOpenAISpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 
 func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
 	var providerOpts []trpcanthropic.Option
-	if cfg.CacheSystemPrompt {
+	if cfg.Cache.SystemPrompt {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPrompt(true))
 		// Enable dual-breakpoint mode for system prompt caching.
 		// Breakpoint 1: end of TextBlock[0] (static layer: identity + instructions + skills + staticRuntimeCue)
 		// Breakpoint 2: end of TextBlock[2] (semi-static layer: dynamicRuntimeCue + SkillGuidance)
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPromptDualBreakpoint(2))
 	}
-	if cfg.CacheTools {
+	if cfg.Cache.Tools {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheTools(true))
 	}
-	if cfg.CacheMessages {
+	if cfg.Cache.Messages {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheMessages(true))
 	}
 	if cfg.ShowToolCallDelta {
@@ -433,7 +453,7 @@ func buildHunyuanSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option 
 }
 
 func wrapHA(primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
-	switch strings.ToLower(strings.TrimSpace(cfg.HAMode)) {
+	switch strings.ToLower(strings.TrimSpace(cfg.HA.Mode)) {
 	case "failover":
 		return wrapFailover(cfg, rt, primary, lg)
 	case "hedge":
@@ -444,7 +464,7 @@ func wrapHA(primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip, lg 
 
 func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
-	for _, c := range cfg.HACandidates {
+	for _, c := range cfg.HA.Candidates {
 		m, err := trpcModelFromCandidate(c, rt, lg)
 		if err != nil {
 			continue
@@ -476,7 +496,7 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 
 func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
-	for _, c := range cfg.HACandidates {
+	for _, c := range cfg.HA.Candidates {
 		m, err := trpcModelFromCandidate(c, rt, lg)
 		if err != nil {
 			continue
@@ -499,8 +519,8 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 			)
 		}),
 	}
-	if cfg.HAHedgeDelayMs > 0 {
-		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HAHedgeDelayMs)*time.Millisecond))
+	if cfg.HA.HedgeDelayMs > 0 {
+		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HA.HedgeDelayMs)*time.Millisecond))
 	}
 	h, err := trpchedge.New(hedgeOpts...)
 	if err != nil {
@@ -526,7 +546,7 @@ func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip, lg loggateway.Lo
 		ModelAPI:     strings.TrimSpace(c.Name),
 	}
 	providerName := MapProviderType(cfg.ProviderType)
-	opts := buildProviderOptions(cfg, rt)
+	opts := buildProviderOptions(cfg, rt, lg)
 	m, err := trpcprovider.Model(providerName, cfg.ModelAPI, opts...)
 	if err != nil {
 		lg.Error("HA candidate model 构建失败", loggateway.StepID("provider.ha_candidate_build_fail"), loggateway.Str("provider", providerName), loggateway.Str("model", cfg.ModelAPI), loggateway.Err(err))

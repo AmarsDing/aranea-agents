@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -178,7 +176,7 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 	}
 	res, err := s.uc.AnnotateCaseResult(ctx, runID, resultID, patch)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("EVAL_NOT_FOUND", "case result not found")
 		}
 		return nil, err

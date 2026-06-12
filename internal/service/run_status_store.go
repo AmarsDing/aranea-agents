@@ -31,12 +31,7 @@ const (
 )
 
 func terminalRunStatus(status string) bool {
-	switch strings.TrimSpace(strings.ToLower(status)) {
-	case "completed", "failed", "cancelled", "idle":
-		return true
-	default:
-		return false
-	}
+	return biz.IsSessionRunPhaseTerminal(biz.ParseSessionRunPhase(status)) || strings.TrimSpace(strings.ToLower(status)) == "idle"
 }
 
 func (s *ChatService) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {

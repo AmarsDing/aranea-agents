@@ -3,7 +3,7 @@ package qq
 import (
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -12,15 +12,15 @@ const (
 )
 
 var (
-	errBadSignature             = kerrors.BadRequest(protocolReason, "qq: bad signature")
-	errInvalidValidationPayload = kerrors.BadRequest(protocolReason, "qq: invalid validation payload")
-	errMissingValidationFields  = kerrors.BadRequest(protocolReason, "qq: missing validation fields")
-	errUnsupportedEvent         = kerrors.BadRequest(protocolReason, "qq: unsupported event")
-	errEmptyContent             = kerrors.BadRequest(protocolReason, "qq: empty content")
-	errAppCredentialsRequired   = kerrors.BadRequest(configReason, "qq outbound: app_id and app_secret required")
-	errRecipientRequired        = kerrors.BadRequest(protocolReason, "qq: recipient required")
+	errBadSignature             = apierror.BadRequest(protocolReason, "qq: bad signature")
+	errInvalidValidationPayload = apierror.BadRequest(protocolReason, "qq: invalid validation payload")
+	errMissingValidationFields  = apierror.BadRequest(protocolReason, "qq: missing validation fields")
+	errUnsupportedEvent         = apierror.BadRequest(protocolReason, "qq: unsupported event")
+	errEmptyContent             = apierror.BadRequest(protocolReason, "qq: empty content")
+	errAppCredentialsRequired   = apierror.BadRequest(configReason, "qq outbound: app_id and app_secret required")
+	errRecipientRequired        = apierror.BadRequest(protocolReason, "qq: recipient required")
 )
 
 func qqUnsupportedEventError(eventType string) error {
-	return kerrors.BadRequest(protocolReason, fmt.Sprintf("qq: unsupported event %s", eventType))
+	return apierror.BadRequest(protocolReason, fmt.Sprintf("qq: unsupported event %s", eventType))
 }

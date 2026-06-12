@@ -7,9 +7,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // AgentTurnRunner executes one agent turn and returns the assistant text output.
@@ -69,7 +68,7 @@ func ValidateSameWorkspace(callerWS, calleeWS string) error {
 		return nil
 	}
 	if callerWS != calleeWS {
-		return kerrors.Forbidden("A2A", "cross-workspace invocation is not allowed")
+		return apierror.Forbidden(apierror.DomainA2A, "cross-workspace invocation is not allowed")
 	}
 	return nil
 }
@@ -80,10 +79,10 @@ func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentReposi
 		calleeAgentID = strings.TrimSpace(calleeAgentID)
 		capability = strings.TrimSpace(capability)
 		if calleeAgentID == "" {
-			return "", kerrors.BadRequest("A2A", "callee agent_id is required")
+			return "", apierror.BadRequest(apierror.DomainA2A, "callee agent_id is required")
 		}
 		if capability == "" {
-			return "", kerrors.BadRequest("A2A", "capability is required")
+			return "", apierror.BadRequest(apierror.DomainA2A, "capability is required")
 		}
 
 		lg.Info("A2A invoke started", loggateway.StepID("a2a.invoke"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Str("capability", capability))
@@ -112,14 +111,14 @@ func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentReposi
 		case InvokeTargetRemote:
 			return InvokeRemoteRegistry(ctx, target.Remote, capability, payloadJSON, timeoutSec, lg, retryPolicy)
 		default:
-			return "", kerrors.InternalServer("A2A", "unknown invoke target")
+			return "", apierror.Internal(apierror.DomainA2A, "unknown invoke target")
 		}
 	}
 }
 
 func invokeLocal(exec AgentTurnRunner, ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int, lg loggateway.Logger) (string, error) {
 	if exec == nil {
-		err := kerrors.InternalServer("A2A", "agent turn runner not configured")
+		err := apierror.Internal(apierror.DomainA2A, "agent turn runner not configured")
 		lg.Warn("A2A local invoke failed", loggateway.StepID("a2a.invoke.local_fail"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Err(err))
 		return "", err
 	}

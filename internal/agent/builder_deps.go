@@ -39,10 +39,11 @@ type TRPCModelRouteDeps struct {
 
 // TRPCToolAssemblyDeps documents tool/MCP assembly on TRPCBuilderDeps.
 type TRPCToolAssemblyDeps struct {
-	ToolUC      biz.TeamToolLookup
-	MCPTooling  *biz.AgentMCPTooling
-	AwaitHook   tooltrpc.ReplyFunc
-	CustomTools []trpctool.Tool
+	ToolUC       biz.TeamToolLookup
+	MCPTooling   *biz.AgentMCPTooling
+	AwaitHook    tooltrpc.ReplyFunc
+	CustomTools  []trpctool.Tool
+	KanbanBridge kanbanpkg.Bridge
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.
@@ -70,42 +71,8 @@ type TRPCSkillDeps struct {
 	CodeExecFactory *localexec.Factory
 }
 
-// TRPCBuilderDeps is the stable extension DTO for BuildTRPCLLMAgent / BuildTRPCAgent.
-// Field groups match TRPC*Deps types above; composite literals stay flat for Wire/service call sites.
-type TRPCBuilderDeps struct {
-	// TRPCModelCatalogDeps
-	ModelCatalog biz.TeamModelCatalog
-	AgentUC  biz.TeamAgentLookup
-	Agents   biz.AgentRepository
-	Sys      biz.SystemSettingRepo
-	Sessions biz.SessionTurnManager
-	// TRPCModelRouteDeps
-	RT         *provider.RoundTrip
-	Provider   string
-	Model      string
-	DialogMode string
-	// TRPCToolAssemblyDeps
-	ToolUC       biz.TeamToolLookup
-	MCPTooling   *biz.AgentMCPTooling
-	AwaitHook    tooltrpc.ReplyFunc
-	CustomTools  []trpctool.Tool
-	KanbanBridge kanbanpkg.Bridge
-	// TRPCMemoryKnowledgeDeps
-	HasMemory             bool
-	MemoryService         trpcmemory.Service
-	MemoryAdmin           biz.SessionAdminStore
-	MemoryL2Recall        biz.MemoryL2Recaller
-	MemoryL3Recall        biz.MemoryL3Recaller
-	MemoryCompositeRecall biz.MemoryCompositeRecaller
-	KnowledgeRetriever    *knowledge.Retriever
-	KnowledgeUsecase      *biz.KnowledgeUsecase
-	// TRPCPluginDeps
-	Plugins       []trpcplugin.Plugin
-	PluginManager *plugintrpc.Manager
-	// TRPCSkillDeps
-	SkillUC         biz.TeamSkillLookup
-	SkillDBRepo     trpcskill.Repository
-	CodeExecFactory *localexec.Factory
+// TRPCExtensionDeps documents cross-cutting / optional extensions on TRPCBuilderDeps.
+type TRPCExtensionDeps struct {
 	// PGO-1: Taxonomy is used to resolve the 岗位职责 (position description)
 	// from industry_taxonomy for injection into the system instruction.
 	// Optional: when nil, category responsibility injection is skipped.
@@ -136,11 +103,22 @@ type TRPCBuilderDeps struct {
 	L0SnapshotForcer biz.L0SnapshotForcer
 }
 
+// TRPCBuilderDeps is the stable extension DTO for BuildTRPCLLMAgent / BuildTRPCAgent.
+// Fields are grouped into cohesive sub-dependency structs (AS-COG-01 compliance).
+// All embedded fields are promoted, so d.ModelCatalog works the same as before.
+type TRPCBuilderDeps struct {
+	TRPCModelCatalogDeps
+	TRPCModelRouteDeps
+	TRPCToolAssemblyDeps
+	TRPCMemoryKnowledgeDeps
+	TRPCPluginDeps
+	TRPCSkillDeps
+	TRPCExtensionDeps
+}
+
 // ModelCatalogGroup returns the model-catalog subset (for tests and future refactors).
 func (d TRPCBuilderDeps) ModelCatalogGroup() TRPCModelCatalogDeps {
-	return TRPCModelCatalogDeps{
-		ModelCatalog: d.ModelCatalog, AgentUC: d.AgentUC, Agents: d.Agents, Sys: d.Sys, Sessions: d.Sessions,
-	}
+	return d.TRPCModelCatalogDeps
 }
 
 func (d TRPCBuilderDeps) Logger() loggateway.Logger {

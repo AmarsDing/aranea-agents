@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -23,12 +23,12 @@ func ValidatePath(path string, baseDir string) (string, error) {
 
 	// Reject UNC paths (\\?\, \\server\share) on all platforms.
 	if len(cleaned) >= 2 && cleaned[0] == '\\' && cleaned[1] == '\\' {
-		return "", kerrors.BadRequest("PATH_SECURITY", "UNC paths are not allowed")
+		return "", apierror.BadRequest(apierror.DomainTool, "UNC paths are not allowed")
 	}
 
 	absPath, err := filepath.Abs(cleaned)
 	if err != nil {
-		return "", kerrors.BadRequest("PATH_SECURITY", "resolve absolute path: "+err.Error())
+		return "", apierror.BadRequest(apierror.DomainTool, "resolve absolute path: "+err.Error())
 	}
 
 	// Resolve symlinks to prevent traversal via symbolic links.
@@ -44,7 +44,7 @@ func ValidatePath(path string, baseDir string) (string, error) {
 		// or broken symlinks. Only allow the fallback for non-existent paths.
 		if _, statErr := os.Lstat(absPath); statErr == nil {
 			// Path exists but EvalSymlinks failed — treat as security error.
-			return "", kerrors.InternalServer("PATH_SECURITY", "cannot resolve symlinks for existing path")
+			return "", apierror.Internal(apierror.DomainTool, "cannot resolve symlinks for existing path")
 		}
 		// Path does not exist yet (e.g. write to new file); fall through
 		// with the unresolved absPath. The baseDir check below still applies.
@@ -53,14 +53,14 @@ func ValidatePath(path string, baseDir string) (string, error) {
 	// Reject paths containing ".." components after cleaning.
 	for _, component := range strings.Split(absPath, string(filepath.Separator)) {
 		if component == ".." {
-			return "", kerrors.BadRequest("PATH_SECURITY", "path contains '..' component")
+			return "", apierror.BadRequest(apierror.DomainTool, "path contains '..' component")
 		}
 	}
 
 	if baseDir != "" {
 		cleanBase, err := filepath.Abs(filepath.Clean(baseDir))
 		if err != nil {
-			return "", kerrors.InternalServer("PATH_SECURITY", "resolve base dir: "+err.Error())
+			return "", apierror.Internal(apierror.DomainTool, "resolve base dir: "+err.Error())
 		}
 		// Resolve symlinks for base dir too
 		evalBase, err := filepath.EvalSymlinks(cleanBase)
@@ -76,7 +76,7 @@ func ValidatePath(path string, baseDir string) (string, error) {
 		}
 		// Use case-insensitive comparison on Windows for path prefix matching.
 		if !pathHasPrefix(checkPath, cleanBase) {
-			return "", kerrors.Forbidden("PATH_SECURITY", "path is outside base directory")
+			return "", apierror.Forbidden(apierror.DomainTool, "path is outside base directory")
 		}
 	}
 
@@ -97,10 +97,10 @@ func pathHasPrefix(path, prefix string) bool {
 func ValidateFileSize(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return kerrors.InternalServer("PATH_SECURITY", "stat file: "+err.Error())
+		return apierror.Internal(apierror.DomainTool, "stat file: "+err.Error())
 	}
 	if info.Size() > maxFileSize {
-		return kerrors.BadRequest("PATH_SECURITY", fmt.Sprintf("file size %d exceeds maximum allowed size %d", info.Size(), maxFileSize))
+		return apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("file size %d exceeds maximum allowed size %d", info.Size(), maxFileSize))
 	}
 	return nil
 }

@@ -58,7 +58,7 @@ func TestDispatchCronTask_ModelRegistrySync_NilAgent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
-	// validationErr now returns kerrors.BadRequest; check the message content.
+	// validationErr now returns apierror.BadRequest; check the message content.
 	if !strings.Contains(err.Error(), "model registry sync agent not available") {
 		t.Fatalf("unexpected error message: %v", err)
 	}

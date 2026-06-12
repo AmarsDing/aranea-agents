@@ -5,7 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type PlanToGraphConverter struct{}
@@ -16,7 +16,7 @@ func NewPlanToGraphConverter() *PlanToGraphConverter {
 
 func (c *PlanToGraphConverter) Convert(ctx context.Context, plan *Plan) (*biz.GraphBuildConfig, error) {
 	if len(plan.Steps) == 0 {
-		return nil, kerrors.BadRequest("A2UI", "plan has no steps")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "plan has no steps")
 	}
 
 	cfg := &biz.GraphBuildConfig{
@@ -54,7 +54,7 @@ func (c *PlanToGraphConverter) Convert(ctx context.Context, plan *Plan) (*biz.Gr
 	depGraph := buildDependencyGraph(plan)
 	order, err := topologicalSort(depGraph, stepIDs)
 	if err != nil {
-		return nil, err // already kerrors.BadRequest
+		return nil, err // already apierror.BadRequest
 	}
 
 	if len(order) > 0 {
@@ -139,7 +139,7 @@ func topologicalSort(depGraph map[string][]string, allIDs []string) ([]string, e
 	}
 
 	if len(order) != len(allNodeSet) {
-		return nil, kerrors.BadRequest("SPIRIT", "cycle detected in UI node dependencies")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "cycle detected in UI node dependencies")
 	}
 	return order, nil
 }

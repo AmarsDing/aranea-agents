@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -50,6 +51,7 @@ type OrgAncestors struct {
 }
 
 // OrganizationReader provides read-only access to organization nodes.
+// Stability:stable
 type OrganizationReader interface {
 	GetOrgNode(ctx context.Context, id string) (OrganizationNode, error)
 	GetOrgNodeByKey(ctx context.Context, key string) (OrganizationNode, error)
@@ -59,6 +61,7 @@ type OrganizationReader interface {
 }
 
 // OrganizationWriter provides write access to organization nodes.
+// Stability:stable
 type OrganizationWriter interface {
 	CreateOrgNode(ctx context.Context, c OrganizationNode) (OrganizationNode, error)
 	UpdateOrgNode(ctx context.Context, c OrganizationNode) (OrganizationNode, error)
@@ -68,6 +71,7 @@ type OrganizationWriter interface {
 
 // OrganizationRepo composes read and write interfaces for organization nodes.
 // It also includes GetOrgNodeByKeyAnyState for soft-deleted node lookups.
+// Stability:stable
 type OrganizationRepo interface {
 	OrganizationReader
 	OrganizationWriter
@@ -75,11 +79,13 @@ type OrganizationRepo interface {
 }
 
 // DeptTeamLister lists teams by department ID for cascade operations.
+// Stability:stable
 type DeptTeamLister interface {
 	ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]Team, error)
 }
 
 // DeptAgentPositionClearer clears agent position associations for a department.
+// Stability:stable
 type DeptAgentPositionClearer interface {
 	ClearPositionByDepartment(ctx context.Context, deptID string) (int, error)
 }
@@ -90,12 +96,13 @@ type OrganizationUsecase struct {
 	teamLister  DeptTeamLister
 	teamWriter  TeamWriter
 	agentClear  DeptAgentPositionClearer
+	eventBus    contract.Bus
 	lg          loggateway.Logger
 	posPrompt   *PositionPromptUsecase
 }
 
-func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager, teamLister DeptTeamLister, teamWriter TeamWriter, agentClear DeptAgentPositionClearer, posPrompt *PositionPromptUsecase, lg loggateway.Logger) *OrganizationUsecase {
-	return &OrganizationUsecase{repo: repo, deptLeadMgr: deptLeadMgr, teamLister: teamLister, teamWriter: teamWriter, agentClear: agentClear, lg: lg, posPrompt: posPrompt}
+func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager, teamLister DeptTeamLister, teamWriter TeamWriter, agentClear DeptAgentPositionClearer, posPrompt *PositionPromptUsecase, eventBus contract.Bus, lg loggateway.Logger) *OrganizationUsecase {
+	return &OrganizationUsecase{repo: repo, deptLeadMgr: deptLeadMgr, teamLister: teamLister, teamWriter: teamWriter, agentClear: agentClear, eventBus: eventBus, lg: lg, posPrompt: posPrompt}
 }
 
 func (u *OrganizationUsecase) List(ctx context.Context) ([]OrganizationNode, error) {
@@ -174,6 +181,7 @@ func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (
 				loggateway.Err(dlErr))
 		}
 	}
+	u.publishOrgEvent(contract.EnvelopeTypeOrganizationCreated, created)
 	return created, nil
 }
 
@@ -220,7 +228,12 @@ func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch Organ
 	if err := u.posPrompt.normalizeOrg(ctx, &merged); err != nil {
 		return OrganizationNode{}, err
 	}
-	return u.repo.UpdateOrgNode(ctx, merged)
+	updated, err := u.repo.UpdateOrgNode(ctx, merged)
+	if err != nil {
+		return OrganizationNode{}, err
+	}
+	u.publishOrgEvent(contract.EnvelopeTypeOrganizationUpdated, updated)
+	return updated, nil
 }
 
 func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
@@ -234,7 +247,11 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 
 	// Department-level deletion requires cascade handling
 	if node.Level == "department" {
-		return u.deleteDepartmentWithCascade(ctx, node)
+		err := u.deleteDepartmentWithCascade(ctx, node)
+		if err == nil {
+			u.publishOrgEvent(contract.EnvelopeTypeOrganizationDeleted, node)
+		}
+		return err
 	}
 
 	// Non-department nodes: simple delete with dept lead cleanup
@@ -245,7 +262,11 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 				loggateway.Err(dlErr))
 		}
 	}
-	return u.repo.DeleteOrgNode(ctx, id)
+	err = u.repo.DeleteOrgNode(ctx, id)
+	if err == nil {
+		u.publishOrgEvent(contract.EnvelopeTypeOrganizationDeleted, node)
+	}
+	return err
 }
 
 // deleteDepartmentWithCascade implements the full cascade logic for department deletion:
@@ -441,4 +462,22 @@ func ScenarioDir() string {
 
 func ErrOrgBadRequest(msg string) error {
 	return apierror.BadRequest("ORG", msg)
+}
+
+// publishOrgEvent publishes an organization CRUD event to the event bus.
+// Uses context.Background() intentionally: event publishing is fire-and-forget
+// and should not be cancelled when the originating request context expires.
+func (u *OrganizationUsecase) publishOrgEvent(typ contract.EnvelopeType, node OrganizationNode) {
+	if u.eventBus == nil {
+		return
+	}
+	env := contract.NewEnvelope(typ, "org", "")
+	env.Metadata = map[string]any{
+		"org_id":   node.ID,
+		"org_key":  node.Key,
+		"org_name": node.Name,
+		"level":    node.Level,
+		"status":   node.Status,
+	}
+	u.eventBus.Publish(context.Background(), env)
 }

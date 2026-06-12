@@ -2,13 +2,13 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -98,7 +98,7 @@ func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, er
 	row, err := r.data.RW().Read(ctx).GatewayWebhook.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.WebhookConfig{}, sql.ErrNoRows
+			return biz.WebhookConfig{}, apierror.NotFound(apierror.DomainHook, "not found")
 		}
 		return biz.WebhookConfig{}, err
 	}

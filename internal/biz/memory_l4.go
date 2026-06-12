@@ -1,6 +1,10 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"strings"
+)
 
 type L4EntityWrite struct {
 	ID             string
@@ -91,6 +95,37 @@ func DefaultL4DecayConfig() L4DecayConfig {
 	}
 }
 
+// MergeDecayOverrides parses overridesJSON as map[string]float64 and merges
+// the entries into base.HalfLifeDays. Invalid JSON is silently ignored.
+// This connects the existing L4DecayOverridesJSON field to the runtime decay config.
+func MergeDecayOverrides(base L4DecayConfig, overridesJSON string) L4DecayConfig {
+	overridesJSON = strings.TrimSpace(overridesJSON)
+	if overridesJSON == "" {
+		return base
+	}
+	var overrides map[string]float64
+	if err := json.Unmarshal([]byte(overridesJSON), &overrides); err != nil {
+		return base
+	}
+	if len(overrides) == 0 {
+		return base
+	}
+	// Clone the map to avoid mutating the base.
+	merged := make(map[string]float64, len(base.HalfLifeDays)+len(overrides))
+	for k, v := range base.HalfLifeDays {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		if v > 0 {
+			merged[k] = v
+		}
+	}
+	return L4DecayConfig{
+		HalfLifeDays: merged,
+		Alpha:        base.Alpha,
+	}
+}
+
 func (c L4DecayConfig) HalfLifeForEntityType(entityType string, isCore bool) float64 {
 	if isCore {
 		if hl, ok := c.HalfLifeDays["person_core"]; ok {
@@ -108,6 +143,7 @@ type L4DecayResult struct {
 	Archived int
 }
 
+// Stability:stable
 type L4GraphWriter interface {
 	WriteFromUserText(ctx context.Context, agentID, userID, text string) (int, error)
 	RunDecay(ctx context.Context, agentID string)
@@ -123,6 +159,7 @@ type L4EntityReader interface {
 	SearchEntitiesByName(ctx context.Context, scope, nameQuery string, limit int) ([]L4Entity, error)
 }
 
+// Stability:stable
 type L4EntityWriter interface {
 	UpsertEntity(ctx context.Context, params L4EntityWrite) error
 	UpsertRelation(ctx context.Context, params L4RelationWrite) error
@@ -136,6 +173,7 @@ type L4DecayWriter interface {
 	GetRecentReinforcementCounts(ctx context.Context, scopeType, scopeID string, windowDays int) (map[string]int, error)
 }
 
+// Stability:stable
 type L4GraphRepo interface {
 	L4EntityReader
 	L4EntityWriter

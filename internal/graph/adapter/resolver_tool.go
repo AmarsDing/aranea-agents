@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
@@ -31,7 +31,7 @@ func NewCatalogToolResolver(tools *biz.ToolUsecase, lg loggateway.Logger) *Catal
 
 func (r *CatalogToolResolver) ResolveTools(ctx context.Context, toolNames []string) (map[string]trpctool.Tool, error) {
 	if r == nil || r.Tools == nil {
-		return nil, kerrors.InternalServer("GRAPH", "graph: tool catalog not configured")
+		return nil, apierror.Internal(apierror.DomainGraph, "graph: tool catalog not configured")
 	}
 	out := make(map[string]trpctool.Tool)
 	for _, name := range toolNames {
@@ -41,16 +41,16 @@ func (r *CatalogToolResolver) ResolveTools(ctx context.Context, toolNames []stri
 		}
 		row, err := r.Tools.GetTool(ctx, key)
 		if err != nil {
-			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: tool %q: %v", key, err))
+			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: tool %q: %v", key, err))
 		}
 		callable, resolvedKey, err := callableFromBizTool(ctx, row, r.lg)
 		if err != nil {
-			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: tool %q: %v", key, err))
+			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: tool %q: %v", key, err))
 		}
 		out[resolvedKey] = callable
 	}
 	if len(out) == 0 {
-		return nil, kerrors.BadRequest("GRAPH", "graph: at least one tool name required for tool nodes")
+		return nil, apierror.BadRequest(apierror.DomainGraph, "graph: at least one tool name required for tool nodes")
 	}
 	return out, nil
 }
@@ -61,7 +61,7 @@ func callableFromBizTool(ctx context.Context, row biz.Tool, lg loggateway.Logger
 	if !ok {
 		spec, ok := openAPISpecFromBizTool(row, lg)
 		if !ok {
-			return nil, "", kerrors.InternalServer("GRAPH", fmt.Sprintf("unsupported catalog tool %q", row.Key))
+			return nil, "", apierror.Internal(apierror.DomainGraph, fmt.Sprintf("unsupported catalog tool %q", row.Key))
 		}
 		asm = tools.AssemblyConfig{
 			EnabledTools: []string{"openapi"},
@@ -88,7 +88,7 @@ func callableFromBizTool(ctx context.Context, row biz.Tool, lg loggateway.Logger
 			}
 		}
 	}
-	return nil, "", kerrors.NotFound("GRAPH", fmt.Sprintf("callable tool %q not found after assembly", row.Key))
+	return nil, "", apierror.NotFound(apierror.DomainGraph, fmt.Sprintf("callable tool %q not found after assembly", row.Key))
 }
 
 func mergeToolConfigJSON(configJSON, defaultJSON string, lg loggateway.Logger) map[string]any {

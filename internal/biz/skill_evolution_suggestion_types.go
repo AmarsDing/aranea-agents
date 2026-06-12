@@ -28,12 +28,11 @@ const (
 // SkillEvolutionSuggestion represents a suggestion to evolve an existing skill.
 // This is distinct from SkillProposal which proposes creating a NEW skill.
 //
-// TODO(debt): DEV-04 — Unify with SkillProposal into a single model.
-// Current plan: SkillEvolutionSuggestion will be the canonical model;
-// SkillProposal will be deprecated after migration.
+// Deprecated: Use UnifiedEvolutionSuggestion instead. For skill-level improvements,
+// use UnifiedEvolutionSuggestion{TargetType: "skill", ActionType: "improve_skill"}.
 // Status mapping: pending↔pending, approved↔approved, rejected↔rejected,
 // applied↔registered (semantic equivalence: both mean "action executed").
-// See also: skill_evolution_types.go, skill_evolution_unified.go.
+// See also: skill_evolution_unified.go.
 type SkillEvolutionSuggestion struct {
 	ID              string
 	SkillID         string

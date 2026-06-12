@@ -79,6 +79,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260718, Name: "ecosystem_preset_schema", SQL: "sql/migrations/20260718_ecosystem_preset_schema.sql", Func: ddlEcosystemPresetDataMigration},
 	{Version: 20260719, Name: "agent_source_column", SQL: "sql/migrations/20260719_agent_source_column.sql", Func: ddlAgentSourceDataMigration},
 	{Version: 20260720, Name: "unified_evolution_schema", Func: ddlUnifiedEvolutionSchema},
+	{Version: 20260721, Name: "evolution_suggestion_pre_apply_snapshot", Func: ddlEvolutionSuggestionPreApplySnapshot},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -378,4 +379,14 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 
 func ddlUnifiedEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
 	return EnsureUnifiedEvolutionSchema(ctx, entClient)
+}
+
+func ddlEvolutionSuggestionPreApplySnapshot(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE evolution_suggestions ADD COLUMN pre_apply_snapshot TEXT NOT NULL DEFAULT ''`); err != nil && !isColumnExistsErr(err) {
+		return fmt.Errorf("add evolution_suggestions.pre_apply_snapshot: %w", err)
+	}
+	return nil
 }

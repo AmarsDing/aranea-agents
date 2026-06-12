@@ -12,10 +12,9 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -58,8 +57,8 @@ func (r *Runner) resolveAnchorAndAttachments(
 	}
 	firstAg, err := r.lookupAgent(ctx, anchorMem.AgentID)
 	if err != nil {
-		if kerrors.IsNotFound(err) {
-			err = kerrors.NotFound("AGENT", "team member agent not found")
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
+			err = apierror.NotFound("AGENT", "team member agent not found")
 		}
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, run, t0, err.Error())
@@ -79,13 +78,13 @@ func (r *Runner) resolveAnchorAndAttachments(
 		}
 		attN = len(attachmentRefs)
 		if refsContainImageAttachment(attachmentRefs) && !provider.ModelSupportsImageAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0, r.lg) {
-			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support image attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
+			err = apierror.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support image attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, run, t0, err.Error())
 			return
 		}
 		if refsContainFileAttachment(attachmentRefs) && !provider.ModelSupportsFileAttachments(ctx, r.td.ReadDeps.LLM, prov0, mod0, r.lg) {
-			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support file attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
+			err = apierror.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support file attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, run, t0, err.Error())
 			return

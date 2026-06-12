@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	v1 "aranea-agents/api/kratos/organization/v1"
 	"aranea-agents/internal/biz"
@@ -147,7 +145,7 @@ func (s *OrganizationService) CreateOrganization(ctx context.Context, req *v1.Cr
 func (s *OrganizationService) GetOrganization(ctx context.Context, req *v1.GetOrganizationRequest) (*v1.OrganizationNode, error) {
 	c, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("ORGANIZATION", "node not found")
 		}
 		return nil, err
@@ -162,7 +160,7 @@ func (s *OrganizationService) UpdateOrganization(ctx context.Context, req *v1.Up
 	patch := fromProtoOrganization(req.GetNode())
 	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("ORGANIZATION", "node not found")
 		}
 		return nil, err

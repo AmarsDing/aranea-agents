@@ -24,15 +24,16 @@ func entSuggestionToBiz(row *ent.EvolutionSuggestion) biz.EvolutionSuggestion {
 		return biz.EvolutionSuggestion{}
 	}
 	return biz.EvolutionSuggestion{
-		ID:          row.ID,
-		AgentID:     row.AgentID,
-		Type:        row.Type,
-		Title:       row.Title,
-		Content:     row.Content,
-		Status:      row.Status,
-		DiffPreview: row.DiffPreview,
-		CreatedAt:   row.CreatedAt,
-		AppliedAt:   row.AppliedAt,
+		ID:               row.ID,
+		AgentID:          row.AgentID,
+		Type:             row.Type,
+		Title:            row.Title,
+		Content:          row.Content,
+		Status:           row.Status,
+		DiffPreview:      row.DiffPreview,
+		PreApplySnapshot: row.PreApplySnapshot,
+		CreatedAt:        row.CreatedAt,
+		AppliedAt:        row.AppliedAt,
 	}
 }
 
@@ -96,4 +97,17 @@ func (r *evolutionSuggestionRepo) UpdateStatus(ctx context.Context, id string, s
 		return biz.EvolutionSuggestion{}, err
 	}
 	return entSuggestionToBiz(row), nil
+}
+
+func (r *evolutionSuggestionRepo) UpdateSnapshot(ctx context.Context, id string, snapshot string) error {
+	_, err := r.data.RW().Write(ctx).EvolutionSuggestion.UpdateOneID(id).
+		SetPreApplySnapshot(snapshot).
+		Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("suggestion not found")
+		}
+		return err
+	}
+	return nil
 }

@@ -160,7 +160,7 @@ func (c *agentIDExistenceChecker) AgentIsActiveByID(ctx context.Context, agentID
 	if err != nil {
 		return false
 	}
-	return NormalizeAgentStatus(agent.Status) == AgentStatusActive
+	return IsAgentStateActive(ParseAgentState(agent.Status))
 }
 
 // ProvideAgentIDExistenceChecker creates an AgentIDExistenceChecker from AgentRepository.

@@ -15,7 +15,6 @@ import (
 	"aranea-agents/internal/data/artifactfs"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
-	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/vector"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
@@ -132,6 +131,7 @@ var ProviderSet = wire.NewSet(
 	NewFailurePatternRepo,
 	NewUnifiedEvolutionRepo,
 	NewPackSeeder,
+	NewCircuitBreakerStateRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -146,6 +146,7 @@ type Data struct {
 	rwDB        *ReadWriteDB
 	vectorDim   int
 	vectorStore vector.VectorStore
+	reranker    biz.Reranker
 	readiness   *ReadinessGate
 	lazySeeders map[string]*LazySeeder
 	p1Cancel    context.CancelFunc
@@ -253,6 +254,14 @@ func (d *Data) VectorStore() vector.VectorStore {
 		return nil
 	}
 	return d.vectorStore
+}
+
+// Reranker returns the configured biz.Reranker for memory recall scoring.
+func (d *Data) Reranker() biz.Reranker {
+	if d == nil || d.reranker == nil {
+		return biz.NewCrossEncoderReranker()
+	}
+	return d.reranker
 }
 
 func (d *Data) Readiness() *ReadinessGate {
@@ -452,7 +461,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
-	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
 
 	safego.Go(appctx.Ctx(), "startup.p1", func() {
 		defer close(p1Done)
@@ -783,7 +792,7 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 		return nil
 	}
 	ctxPG := context.Background()
-	if err := pgvector.EnsureSchema(ctxPG, pg, vdim); err != nil {
+	if err := vector.EnsureSchema(ctxPG, pg, vdim); err != nil {
 		lg.Error("postgres schema step failed", loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
 		return err
 	}
@@ -904,7 +913,7 @@ func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
 			vs = s
 		}
 	}
-	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), vectorStore: vs, lg: lg}
+	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), vectorStore: vs, reranker: newMemoryReranker(lg), lg: lg}
 }
 
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).

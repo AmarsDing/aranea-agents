@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	bizplugin "aranea-agents/internal/biz/plugin"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformplugin"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -119,7 +119,7 @@ func (r *pluginRepo) GetByKey(ctx context.Context, key string) (biz.Plugin, erro
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Plugin{}, sql.ErrNoRows
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
 		}
 		return biz.Plugin{}, err
 	}
@@ -174,7 +174,7 @@ func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, erro
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Plugin{}, sql.ErrNoRows
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
 		}
 		return biz.Plugin{}, err
 	}
@@ -188,7 +188,7 @@ func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled
 		Exec(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Plugin{}, sql.ErrNoRows
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
 		}
 		return biz.Plugin{}, err
 	}
@@ -202,7 +202,7 @@ func (r *pluginRepo) UpdatePluginConfig(ctx context.Context, id string, configJS
 		Exec(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Plugin{}, sql.ErrNoRows
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
 		}
 		return biz.Plugin{}, err
 	}
@@ -216,7 +216,7 @@ func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder i
 		Exec(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Plugin{}, sql.ErrNoRows
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
 		}
 		return biz.Plugin{}, err
 	}
@@ -230,7 +230,7 @@ func (r *pluginRepo) UpdatePluginScope(ctx context.Context, id string, scope str
 		Exec(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Plugin{}, sql.ErrNoRows
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
 		}
 		return biz.Plugin{}, err
 	}

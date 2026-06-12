@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	v1 "aranea-agents/api/kratos/taxonomy/v1"
 	"aranea-agents/internal/biz"
@@ -141,7 +139,7 @@ func (s *TaxonomyService) CreateTaxonomy(ctx context.Context, req *v1.CreateTaxo
 func (s *TaxonomyService) GetTaxonomy(ctx context.Context, req *v1.GetTaxonomyRequest) (*v1.TaxonomyNode, error) {
 	c, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TAXONOMY", "node not found")
 		}
 		return nil, err
@@ -156,7 +154,7 @@ func (s *TaxonomyService) UpdateTaxonomy(ctx context.Context, req *v1.UpdateTaxo
 	patch := fromProtoTaxonomy(req.GetNode())
 	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TAXONOMY", "node not found")
 		}
 		return nil, err

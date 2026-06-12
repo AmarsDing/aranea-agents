@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/avatarasset"
 	"aranea-agents/internal/data/ent/predicate"
+	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -102,7 +102,7 @@ func (r *avatarRepo) ListAvatarAssets(ctx context.Context, scope, workspaceID, o
 func (r *avatarRepo) GetAvatarAssetByKey(ctx context.Context, assetKey string) (biz.AvatarAsset, error) {
 	assetKey = strings.TrimSpace(assetKey)
 	if assetKey == "" {
-		return biz.AvatarAsset{}, sql.ErrNoRows
+		return biz.AvatarAsset{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	po, err := r.data.RW().Read(ctx).AvatarAsset.Query().
 		Where(
@@ -113,7 +113,7 @@ func (r *avatarRepo) GetAvatarAssetByKey(ctx context.Context, assetKey string) (
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.AvatarAsset{}, sql.ErrNoRows
+			return biz.AvatarAsset{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.AvatarAsset{}, err
 	}
@@ -127,12 +127,12 @@ func (r *avatarRepo) GetAvatarImage(ctx context.Context, id string, thumbnail bo
 	po, err := r.data.RW().Read(ctx).AvatarAsset.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.AvatarImage{}, sql.ErrNoRows
+			return biz.AvatarImage{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.AvatarImage{}, err
 	}
 	if po.DeletedAt != "" || !po.Enabled {
-		return biz.AvatarImage{}, sql.ErrNoRows
+		return biz.AvatarImage{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	payload := po.ImageData
 	if thumbnail && len(po.ThumbnailData) > 0 {
@@ -142,7 +142,7 @@ func (r *avatarRepo) GetAvatarImage(ctx context.Context, id string, thumbnail bo
 		payload = po.ImageData
 	}
 	if len(payload) == 0 {
-		return biz.AvatarImage{}, sql.ErrNoRows
+		return biz.AvatarImage{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	return biz.AvatarImage{ID: po.ID, MimeType: po.MimeType, Data: payload}, nil
 }
@@ -238,7 +238,7 @@ func (r *avatarRepo) UpdateAvatarAssetImages(ctx context.Context, id string, ima
 	_, err := up.Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return sql.ErrNoRows
+			return apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return err
 	}
@@ -254,7 +254,7 @@ func (r *avatarRepo) SoftDeleteAvatarAsset(ctx context.Context, id string) error
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return sql.ErrNoRows
+			return apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return err
 	}

@@ -521,3 +521,308 @@ func TestUpdateAgentCard_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateAuthConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		authType       string
+		authConfigJSON string
+		wantErr        bool
+		wantCode       int32
+	}{
+		{
+			name:     "empty_auth_type_defaults_to_none",
+			authType: "",
+		},
+		{
+			name:     "none_auth_type_valid",
+			authType: "none",
+		},
+		{
+			name:           "none_auth_type_ignores_config",
+			authType:       "none",
+			authConfigJSON: `{"token":"abc"}`,
+		},
+		{
+			name:           "bearer_valid",
+			authType:       "bearer",
+			authConfigJSON: `{"token":"my-secret-token"}`,
+		},
+		{
+			name:           "bearer_missing_token",
+			authType:       "bearer",
+			authConfigJSON: `{"key":"val"}`,
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "bearer_invalid_json",
+			authType:       "bearer",
+			authConfigJSON: "not-json",
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "basic_valid",
+			authType:       "basic",
+			authConfigJSON: `{"username":"user","password":"pass"}`,
+		},
+		{
+			name:           "basic_missing_username",
+			authType:       "basic",
+			authConfigJSON: `{"password":"pass"}`,
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "basic_missing_password",
+			authType:       "basic",
+			authConfigJSON: `{"username":"user"}`,
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "basic_invalid_json",
+			authType:       "basic",
+			authConfigJSON: "{bad",
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "api_key_valid_with_key",
+			authType:       "api_key",
+			authConfigJSON: `{"key":"X-API-Key","value":"my-key"}`,
+		},
+		{
+			name:           "api_key_valid_with_header",
+			authType:       "api_key",
+			authConfigJSON: `{"header":"Authorization","value":"Bearer xyz"}`,
+		},
+		{
+			name:           "api_key_missing_key_and_header",
+			authType:       "api_key",
+			authConfigJSON: `{"value":"my-key"}`,
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "api_key_missing_value",
+			authType:       "api_key",
+			authConfigJSON: `{"key":"X-API-Key"}`,
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:           "api_key_invalid_json",
+			authType:       "api_key",
+			authConfigJSON: "not-json",
+			wantErr:        true,
+			wantCode:       400,
+		},
+		{
+			name:     "invalid_auth_type",
+			authType: "oauth2",
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name:     "whitespace_auth_type_defaults_to_none",
+			authType: "   ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateAuthConfig(tt.authType, tt.authConfigJSON)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("ValidateAuthConfig() expected error, got nil")
+				}
+				if tt.wantCode != 0 {
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ValidateAuthConfig() unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestRegisterRemoteAgent_InvalidAuth(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    RegisterRemoteAgentInput
+		setup    func(*mockUsecaseRepo)
+		wantErr  bool
+		wantCode int32
+	}{
+		{
+			name: "invalid_auth_type_returns_error",
+			input: RegisterRemoteAgentInput{
+				Workspace:      "ws-1",
+				RemoteURL:      "https://remote.example.com",
+				AuthType:       "oauth2",
+				AuthConfigJSON: `{"token":"abc"}`,
+			},
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name: "bearer_without_token_returns_error",
+			input: RegisterRemoteAgentInput{
+				Workspace:      "ws-1",
+				RemoteURL:      "https://remote.example.com",
+				AuthType:       "bearer",
+				AuthConfigJSON: `{"key":"val"}`,
+			},
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name: "basic_without_username_returns_error",
+			input: RegisterRemoteAgentInput{
+				Workspace:      "ws-1",
+				RemoteURL:      "https://remote.example.com",
+				AuthType:       "basic",
+				AuthConfigJSON: `{"password":"pass"}`,
+			},
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name: "basic_without_password_returns_error",
+			input: RegisterRemoteAgentInput{
+				Workspace:      "ws-1",
+				RemoteURL:      "https://remote.example.com",
+				AuthType:       "basic",
+				AuthConfigJSON: `{"username":"user"}`,
+			},
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name: "empty_auth_type_valid_as_none",
+			input: RegisterRemoteAgentInput{
+				Workspace: "ws-1",
+				RemoteURL: "https://remote.example.com",
+				Enabled:   true,
+			},
+			setup: func(r *mockUsecaseRepo) {
+				r.discoverRemoteCardFn = func(_ context.Context, _ RemoteCardDiscoverInput) (AgentCard, error) {
+					return AgentCard{AgentID: "remote-agent-1", DisplayName: "Agent"}, nil
+				}
+				r.createRemoteAgentFn = func(_ context.Context, agent RemoteAgent) (RemoteAgent, error) {
+					return agent, nil
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockUsecaseRepo{}
+			if tt.setup != nil {
+				tt.setup(repo)
+			}
+			uc := NewUsecase(repo, repo, repo, repo, nil)
+			_, err := uc.RegisterRemoteAgent(context.Background(), tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("RegisterRemoteAgent() expected error, got nil")
+				}
+				if tt.wantCode != 0 {
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("RegisterRemoteAgent() unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestDiscoverRemoteAgent_InvalidAuth(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    RemoteCardDiscoverInput
+		setup    func(*mockUsecaseRepo)
+		wantErr  bool
+		wantCode int32
+	}{
+		{
+			name: "invalid_auth_type_returns_error",
+			input: RemoteCardDiscoverInput{
+				RemoteURL:      "https://remote.example.com",
+				AuthType:       "unknown",
+				AuthConfigJSON: `{}`,
+			},
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name: "bearer_without_token_returns_error",
+			input: RemoteCardDiscoverInput{
+				RemoteURL:      "https://remote.example.com",
+				AuthType:       "bearer",
+				AuthConfigJSON: `{}`,
+			},
+			wantErr:  true,
+			wantCode: 400,
+		},
+		{
+			name: "empty_auth_type_valid_as_none",
+			input: RemoteCardDiscoverInput{
+				RemoteURL: "https://remote.example.com",
+			},
+			setup: func(r *mockUsecaseRepo) {
+				r.discoverRemoteCardFn = func(_ context.Context, _ RemoteCardDiscoverInput) (AgentCard, error) {
+					return AgentCard{AgentID: "discovered-1"}, nil
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockUsecaseRepo{}
+			if tt.setup != nil {
+				tt.setup(repo)
+			}
+			uc := NewUsecase(repo, repo, repo, repo, nil)
+			_, err := uc.DiscoverRemoteAgent(context.Background(), tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("DiscoverRemoteAgent() expected error, got nil")
+				}
+				if tt.wantCode != 0 {
+					se, ok := apierror.From(err)
+					if !ok {
+						t.Fatalf("expected apierror.Error, got %T", err)
+					}
+					if se.Code != codeFromInt(tt.wantCode) {
+						t.Errorf("code = %s, want %d", se.Code, tt.wantCode)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DiscoverRemoteAgent() unexpected error: %v", err)
+			}
+		})
+	}
+}

@@ -258,11 +258,13 @@ type ToolAuditResult struct {
 	Offset int
 }
 
+// Stability:stable
 type ToolReader interface {
 	SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
 	GetTool(ctx context.Context, idOrKey string) (Tool, error)
 }
 
+// Stability:stable
 type ToolWriter interface {
 	CreateTool(ctx context.Context, in ToolUpsertInput) (Tool, error)
 	UpdateTool(ctx context.Context, idOrKey string, in ToolUpsertInput) (Tool, error)
@@ -271,26 +273,31 @@ type ToolWriter interface {
 	UpdateToolConfig(ctx context.Context, idOrKey string, configJSON string) (Tool, error)
 }
 
+// Stability:stable
 type ToolInvocationReader interface {
 	SearchToolInvocations(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
 	GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
 }
 
+// Stability:stable
 type ToolInvocationWriter interface {
 	RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
 }
 
+// Stability:stable
 type ToolAuditRepo interface {
 	RecordToolInvocationAudit(ctx context.Context, in ToolInvocationAuditWrite) error
 	SearchToolInvocationAudits(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
 	PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error)
 }
 
+// Stability:stable
 type ToolOverrideReader interface {
 	ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
 	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
 }
 
+// Stability:stable
 type ToolOverrideWriter interface {
 	UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput, toolID string) (ToolAgentOverride, error)
 	DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error
@@ -300,11 +307,13 @@ type ToolSyncer interface {
 	SyncBuiltinTools(ctx context.Context) error
 }
 
+// Stability:stable
 type ToolRegistryReader interface {
 	ToolReader
 	ToolOverrideReader
 }
 
+// Stability:stable
 type ToolRepo interface {
 	ToolReader
 	ToolWriter
@@ -317,6 +326,7 @@ type ToolRepo interface {
 }
 
 // SettingRepo provides read access to system settings needed by tool usecase.
+// Stability:stable
 type SettingRepo interface {
 	GetWebResearch(ctx context.Context) (WebResearchSetting, error)
 }

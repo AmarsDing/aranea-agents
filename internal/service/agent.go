@@ -2,17 +2,14 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	stderrors "errors"
 	"fmt"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/agent/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/loggateway"
-
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -617,7 +614,7 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 func (s *AgentService) GetAgent(ctx context.Context, req *v1.GetAgentRequest) (*v1.Agent, error) {
 	a, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -633,7 +630,7 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 	patch := fromProtoAgent(req.GetAgent())
 	a, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -657,7 +654,7 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavoriteRequest) (*v1.Agent, error) {
 	a, err := s.uc.ToggleFavorite(ctx, req.GetId())
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -669,7 +666,7 @@ func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavorit
 func (s *AgentService) GetAgentPromptPreview(ctx context.Context, req *v1.GetAgentPromptPreviewRequest) (*v1.GetAgentPromptPreviewResponse, error) {
 	a, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -721,7 +718,7 @@ func bizEffectiveToolsToProto(in biz.AgentEffectiveTools) *v1.AgentEffectiveTool
 func (s *AgentService) GetAgentEffectiveTools(ctx context.Context, req *v1.GetAgentEffectiveToolsRequest) (*v1.AgentEffectiveToolsView, error) {
 	out, err := s.uc.GetEffectiveTools(ctx, req.GetAgentId())
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -739,7 +736,7 @@ func (s *AgentService) UpdateAgentToolPolicy(ctx context.Context, req *v1.Update
 	}
 	out, err := s.uc.UpdateAgentToolPolicy(ctx, req.GetAgentId(), in)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -758,7 +755,7 @@ func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.Create
 	}
 	created, err := s.uc.CreatePromptFile(ctx, f)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -778,7 +775,7 @@ func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.Update
 	}
 	updated, err := s.uc.UpdatePromptFile(ctx, f)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT_FILE", "prompt file not found")
 		}
 		return nil, err
@@ -790,7 +787,7 @@ func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.Update
 // DeleteAgentPromptFile implements DELETE /v1/agents/{agent_id}/files/{id}.
 func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.DeleteAgentPromptFileRequest) (*emptypb.Empty, error) {
 	if err := s.uc.DeletePromptFile(ctx, req.GetAgentId(), req.GetId()); err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT_FILE", "prompt file not found")
 		}
 		return nil, err
@@ -803,7 +800,7 @@ func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.Delete
 func (s *AgentService) EstimateTokens(ctx context.Context, req *v1.EstimateTokensRequest) (*v1.EstimateTokensResponse, error) {
 	estimates, err := s.uc.EstimateTokens(ctx, req.GetAgentId())
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
@@ -848,7 +845,7 @@ func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromp
 	}
 	revised, err := s.promptAI.Revise(ctx, a.Provider, a.Model, target.Name, target.Body, instruction)
 	if err != nil {
-		return nil, mapPromptFileAIError(err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainAgent)
 	}
 	target.Body = revised
 	updated, err := s.uc.UpdatePromptFile(ctx, *target)

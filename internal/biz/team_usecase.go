@@ -9,6 +9,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// Stability:stable
 type TeamReader interface {
 	ListTeams(ctx context.Context) ([]Team, error)
 	ListTeamsByStatus(ctx context.Context, status string) ([]Team, error)
@@ -18,6 +19,7 @@ type TeamReader interface {
 	ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]Team, error)
 }
 
+// Stability:stable
 type TeamWriter interface {
 	CreateTeam(ctx context.Context, t Team) (Team, error)
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
@@ -25,6 +27,7 @@ type TeamWriter interface {
 	BatchArchiveTeams(ctx context.Context, ids []string) (int, error)
 }
 
+// Stability:stable
 type TeamRunReader interface {
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
 	ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRun, error)
@@ -33,6 +36,7 @@ type TeamRunReader interface {
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 }
 
+// Stability:stable
 type TeamRunWriter interface {
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
 	UpdateTeamRun(ctx context.Context, r TeamRun) error
@@ -42,17 +46,20 @@ type TeamRunWriter interface {
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
 }
 
+// Stability:evolving
 type OrchestrationStepRepo interface {
 	BatchCreateOrchestrationSteps(ctx context.Context, steps []OrchestrationStep) error
 	ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]OrchestrationStep, error)
 }
 
+// Stability:evolving
 type TaskDeadLetterRepo interface {
 	CreateTaskDeadLetter(ctx context.Context, dl TaskDeadLetter) error
 	ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error)
 	ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error)
 }
 
+// Stability:stable
 type TeamRunRepo interface {
 	TeamRunReader
 	TeamRunWriter

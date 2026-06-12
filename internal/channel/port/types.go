@@ -2,12 +2,12 @@
 package port
 
 import (
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ErrCredentialsNotConfigured is returned when a webhook verification is attempted
 // but the required credentials (token, secret, key, etc.) are not configured.
-var ErrCredentialsNotConfigured = kerrors.BadRequest("CHANNEL_CREDENTIAL", "webhook: credentials not configured")
+var ErrCredentialsNotConfigured = apierror.BadRequest("CHANNEL_CREDENTIAL", "webhook: credentials not configured")
 
 // WebhookTimestampToleranceSec is the maximum allowed clock skew (in seconds)
 // between the webhook's timestamp and the server's current time.

@@ -2,7 +2,6 @@ package service_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	v1 "aranea-agents/api/kratos/session/v1"
@@ -25,7 +24,7 @@ func (m *batchSessionRepo) CreateSession(context.Context, biz.Session) (biz.Sess
 func (m *batchSessionRepo) GetSessionByID(_ context.Context, id string) (biz.Session, error) {
 	s, ok := m.sessions[id]
 	if !ok {
-		return biz.Session{}, sql.ErrNoRows
+		return biz.Session{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	return s, nil
 }
@@ -175,7 +174,7 @@ func (m *batchSessionRepo) GetSessionRevision(_ context.Context, sessionID strin
 	if s, ok := m.sessions[sessionID]; ok {
 		return s.SessionRevision, nil
 	}
-	return 0, sql.ErrNoRows
+	return 0, apierror.NotFound(apierror.DomainSession, "not found")
 }
 func (m *batchSessionRepo) ListMessagesAfterRevision(context.Context, string, int64) ([]biz.ChatMessage, error) {
 	return nil, nil

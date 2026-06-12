@@ -1,8 +1,28 @@
 package tool
 
 import (
+	"context"
 	"sync"
+	"time"
 )
+
+// CircuitBreakerStateEntry represents the persistent state of a circuit breaker.
+type CircuitBreakerStateEntry struct {
+	State           string    // closed | open | half_open
+	FailureCount    int
+	SuccessCount    int
+	LastFailureTime time.Time
+	LastStateChange time.Time
+	UpdatedAt       time.Time
+}
+
+// CircuitBreakerStateRepo persists circuit breaker runtime state for crash recovery.
+// Stability:evolving
+type CircuitBreakerStateRepo interface {
+	SaveState(ctx context.Context, key string, state CircuitBreakerStateEntry) error
+	LoadState(ctx context.Context, key string) (CircuitBreakerStateEntry, error)
+	LoadAllStates(ctx context.Context) (map[string]CircuitBreakerStateEntry, error)
+}
 
 var DefaultCircuitBreakerPresets = map[string]CircuitBreakerConfig{
 	"fast_api":   {FailureThreshold: 3, RecoveryTimeoutSec: 30, HalfOpenMaxProbe: 1},
@@ -38,12 +58,19 @@ func WithRegistryOnStateChange(fn func(name string, from, to CircuitState)) Circ
 	}
 }
 
+func WithStateRepo(repo CircuitBreakerStateRepo) CircuitBreakerRegistryOption {
+	return func(r *CircuitBreakerRegistry) {
+		r.stateRepo = repo
+	}
+}
+
 type CircuitBreakerRegistry struct {
 	mu            sync.RWMutex
 	breakers      map[string]*CircuitBreaker
 	defaults      map[string]CircuitBreakerConfig
 	overrides     map[string]CircuitBreakerConfig
 	onStateChange func(name string, from, to CircuitState)
+	stateRepo     CircuitBreakerStateRepo
 }
 
 func NewCircuitBreakerRegistry(opts ...CircuitBreakerRegistryOption) *CircuitBreakerRegistry {
@@ -72,10 +99,24 @@ func (r *CircuitBreakerRegistry) Get(toolName, category string) *CircuitBreaker 
 	}
 	cfg := r.resolveConfig(toolName, category)
 	var opts []CircuitBreakerOption
-	if r.onStateChange != nil {
-		opts = append(opts, WithOnStateChange(r.onStateChange))
+	// Build combined onStateChange callback: user callback + persistence.
+	if r.onStateChange != nil || r.stateRepo != nil {
+		opts = append(opts, WithOnStateChange(func(name string, from, to CircuitState) {
+			if r.onStateChange != nil {
+				r.onStateChange(name, from, to)
+			}
+			if r.stateRepo != nil {
+				r.persistState(name)
+			}
+		}))
 	}
 	cb := NewCircuitBreaker(toolName, cfg, opts...)
+	// Restore persisted state if available.
+	if r.stateRepo != nil {
+		if entry, err := r.stateRepo.LoadState(context.Background(), toolName); err == nil && entry.State != "" {
+			cb.restoreFromEntry(entry)
+		}
+	}
 	r.breakers[toolName] = cb
 	return cb
 }
@@ -135,4 +176,40 @@ func (r *CircuitBreakerRegistry) resolveConfig(toolName, category string) Circui
 		cfg = CircuitBreakerConfig{FailureThreshold: 3, RecoveryTimeoutSec: 30, HalfOpenMaxProbe: 1}
 	}
 	return cfg
+}
+
+// persistState saves the current state of a circuit breaker to the stateRepo.
+// Called from the onStateChange callback; must be nil-safe.
+func (r *CircuitBreakerRegistry) persistState(name string) {
+	if r.stateRepo == nil {
+		return
+	}
+	r.mu.RLock()
+	cb, ok := r.breakers[name]
+	r.mu.RUnlock()
+	if !ok {
+		return
+	}
+	entry := cb.snapshotEntry()
+	_ = r.stateRepo.SaveState(context.Background(), name, entry)
+}
+
+// RestoreStates loads all persisted circuit breaker states and applies them
+// to existing breakers. Call this once after registry construction (e.g. at
+// startup) to recover from a process restart.
+func (r *CircuitBreakerRegistry) RestoreStates(ctx context.Context) {
+	if r.stateRepo == nil {
+		return
+	}
+	states, err := r.stateRepo.LoadAllStates(ctx)
+	if err != nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for name, entry := range states {
+		if cb, ok := r.breakers[name]; ok {
+			cb.restoreFromEntry(entry)
+		}
+	}
 }

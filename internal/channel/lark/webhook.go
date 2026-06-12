@@ -18,7 +18,7 @@ import (
 
 	"aranea-agents/internal/channel/port"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -188,7 +188,7 @@ type cardActionWebhookBody struct {
 
 func fillCardActionFromWebhook(raw []byte, res *WebhookParseResult) error {
 	if res == nil {
-		return kerrors.BadRequest(protocolReason, "missing result")
+		return apierror.BadRequest(protocolReason, "missing result")
 	}
 	var wrap struct {
 		Event cardActionWebhookBody `json:"event"`

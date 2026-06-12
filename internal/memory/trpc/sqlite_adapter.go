@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/pgvector"
+	"aranea-agents/internal/data/vector"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -261,7 +261,7 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 					if h.Score < vectorMinSimilarity {
 						continue
 					}
-					factID, memText := pgvector.ParseFactVectorContent(h.Content)
+					factID, memText := vector.ParseFactVectorContent(h.Content)
 					if memText == "" {
 						memText = strings.TrimSpace(h.Content)
 					}

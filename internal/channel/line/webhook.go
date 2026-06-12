@@ -9,7 +9,7 @@ import (
 
 	"aranea-agents/internal/channel/port"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type InboundMessage struct {
@@ -77,7 +77,7 @@ func ParseInbound(raw []byte) ([]InboundMessage, error) {
 		})
 	}
 	if len(results) == 0 {
-		return nil, kerrors.BadRequest("LINE_PROTOCOL", "line: no text messages in payload")
+		return nil, apierror.BadRequest("LINE_PROTOCOL", "line: no text messages in payload")
 	}
 	return results, nil
 }
@@ -89,12 +89,12 @@ func VerifySignature(channelSecret string, requestBody []byte, signature string)
 	}
 	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(signature))
 	if err != nil {
-		return kerrors.BadRequest("LINE_PROTOCOL", "line: bad signature encoding")
+		return apierror.BadRequest("LINE_PROTOCOL", "line: bad signature encoding")
 	}
 	mac := hmac.New(sha256.New, []byte(channelSecret))
 	_, _ = mac.Write(requestBody)
 	if !hmac.Equal(mac.Sum(nil), decoded) {
-		return kerrors.BadRequest("LINE_PROTOCOL", "line: bad signature")
+		return apierror.BadRequest("LINE_PROTOCOL", "line: bad signature")
 	}
 	return nil
 }

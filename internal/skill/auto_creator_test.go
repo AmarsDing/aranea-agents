@@ -5,9 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -60,7 +59,7 @@ func TestSkillAutoCreator_GenerateSKILLMD_WithToolHistory(t *testing.T) {
 
 func TestSkillAutoCreator_GenerateSKILLMD_GeneratorError(t *testing.T) {
 	generator := &mockLLMGenerator{
-		err: kerrors.InternalServer("LLM", "model unavailable"),
+		err: apierror.Internal(apierror.DomainLLMProvider, "model unavailable"),
 	}
 	creator := NewSkillAutoCreator(generator, loggateway.NewNoop())
 
@@ -68,7 +67,7 @@ func TestSkillAutoCreator_GenerateSKILLMD_GeneratorError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from generator failure")
 	}
-	if !kerrors.IsInternalServer(err) {
+	if !apierror.IsCode(err, apierror.CodeInternal) {
 		t.Errorf("expected InternalServer, got %v", err)
 	}
 }
@@ -83,7 +82,7 @@ func TestSkillAutoCreator_GenerateSKILLMD_NoYAMLFrontMatter(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing YAML front matter")
 	}
-	if !kerrors.IsBadRequest(err) {
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
 		t.Errorf("expected BadRequest, got %v", err)
 	}
 }

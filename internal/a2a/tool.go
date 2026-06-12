@@ -8,8 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -106,10 +105,10 @@ func (t *callAgentTool) Call(ctx context.Context, args []byte) (any, error) {
 		return nil, fmt.Errorf("call_agent: invalid args: %w", err)
 	}
 	if in.AgentID == "" {
-		return nil, kerrors.BadRequest("A2A", "call_agent: agent_id is required")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "call_agent: agent_id is required")
 	}
 	if in.Capability == "" {
-		return nil, kerrors.BadRequest("A2A", "call_agent: capability is required")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "call_agent: capability is required")
 	}
 	if in.TimeoutSeconds <= 0 {
 		in.TimeoutSeconds = 30
@@ -128,7 +127,7 @@ func (t *callAgentTool) Call(ctx context.Context, args []byte) (any, error) {
 	invoker := invokerFromContext(ctx)
 
 	if invoker == nil {
-		return nil, kerrors.New(500, "A2A_INTERNAL", "call_agent: invoker not configured")
+		return nil, apierror.Internal(apierror.DomainA2A, "call_agent: invoker not configured")
 	}
 
 	// Apply timeout as context deadline so both local and remote invocations respect it.

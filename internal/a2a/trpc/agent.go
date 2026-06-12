@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	a2aagent "trpc.group/trpc-go/trpc-agent-go/agent/a2aagent"
@@ -18,14 +17,14 @@ import (
 // BuildTRPCA2AAgent wraps a remote A2A service as a local agent.Agent.
 func BuildTRPCA2AAgent(_ context.Context, ag biz.Agent, cfg biz.A2AProxyConfig) (trpcagent.Agent, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
-		return nil, kerrors.BadRequest("AGENT", "agent_key required")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
 	}
 	remoteURL := strings.TrimSpace(cfg.RemoteURL)
 	if remoteURL == "" {
 		remoteURL = strings.TrimSpace(cfg.AgentCardURL)
 	}
 	if remoteURL == "" {
-		return nil, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		return nil, apierror.BadRequest(apierror.DomainAgent, "a2a_proxy remote_url is required")
 	}
 
 	opts := []a2aagent.Option{
@@ -52,7 +51,7 @@ func BuildTRPCA2AAgent(_ context.Context, ag biz.Agent, cfg biz.A2AProxyConfig) 
 
 	proxy, err := a2aagent.New(opts...)
 	if err != nil {
-		return nil, kerrors.InternalServer("AGENT", "build a2a proxy agent: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainAgent, "build a2a proxy agent").WithCause(err)
 	}
 	return proxy, nil
 }

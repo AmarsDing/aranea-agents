@@ -32,6 +32,7 @@ func newAgentCatalogID() string {
 	return hex.EncodeToString(buf)
 }
 
+// Stability:stable
 type AgentReader interface {
 	SearchAgents(ctx context.Context, q AgentListQuery) (AgentListResult, error)
 	GetAgentByID(ctx context.Context, id string) (Agent, error)
@@ -39,6 +40,7 @@ type AgentReader interface {
 	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
 }
 
+// Stability:stable
 type AgentWriter interface {
 	CreateAgent(ctx context.Context, a Agent) (Agent, error)
 	UpdateAgent(ctx context.Context, a Agent) (Agent, error)
@@ -46,11 +48,13 @@ type AgentWriter interface {
 	ToggleFavorite(ctx context.Context, id string) (Agent, error)
 }
 
+// Stability:stable
 type AgentRuntimeSettingsRepo interface {
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error)
 	UpsertAgentRuntimeSettings(ctx context.Context, v AgentRuntimeSettings) (AgentRuntimeSettings, error)
 }
 
+// Stability:stable
 type AgentPromptFileRepo interface {
 	ListAgentPromptFiles(ctx context.Context, agentID string) ([]AgentPromptFile, error)
 	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []AgentPromptFile) ([]AgentPromptFile, error)
@@ -62,6 +66,7 @@ type AgentPromptFileRepo interface {
 // AgentAtomicWriter 提供跨方法的事务化写入，保证 "agent + prompt files +
 // runtime settings" 三步原子化。Pack 导入场景必须使用这两个方法以避免
 // partial failure 导致数据半新半旧；其他 Usecase 可继续走单步 API。
+// Stability:evolving
 type AgentAtomicWriter interface {
 	CreateAgentAtomic(ctx context.Context, a Agent, files []AgentPromptFile, settings AgentRuntimeSettings) (Agent, error)
 	UpdateAgentAtomic(ctx context.Context, a Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error)
@@ -129,6 +134,7 @@ type AgentUsecase struct {
 	webResearchChecker WebResearchReadinessChecker
 	providerValidator  ProviderModelPairValidator
 	lg                 loggateway.Logger
+	agentSM            *AgentStateMachine
 }
 
 func NewAgentUsecase(d AgentUsecaseDeps) *AgentUsecase {
@@ -136,6 +142,7 @@ func NewAgentUsecase(d AgentUsecaseDeps) *AgentUsecase {
 		reader: d.Reader, writer: d.Writer, settings: d.Settings, files: d.Files,
 		position: d.Position, tx: d.Tx, tools: d.Tools, sys: d.Sys,
 		webResearchChecker: d.WebResearchChecker, providerValidator: d.ProviderValidator, lg: d.Lg,
+		agentSM: NewAgentStateMachine(),
 	}
 }
 
@@ -486,6 +493,12 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 		return Agent{}, apierror.BadRequest("AGENT", "agent_kind is immutable")
 	}
 	merged := mergeAgentCatalog(current, patch)
+	// AS-FSM-01: Validate state transition when status changes.
+	if merged.Status != current.Status && strings.TrimSpace(merged.Status) != "" {
+		if _, err := u.agentSM.Transition(ParseAgentState(current.Status), agentEventForTarget(ParseAgentState(merged.Status))); err != nil {
+			return Agent{}, apierror.BadRequest("AGENT", "invalid status transition from "+current.Status+" to "+merged.Status)
+		}
+	}
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
 	if err := validateAgentUpdate(ctx, u, &merged, &settings); err != nil {
@@ -920,6 +933,12 @@ func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdat
 				a, err := u.reader.GetAgentByID(txCtx, id)
 				if err != nil {
 					return err
+				}
+				// AS-FSM-01: Validate state transition.
+				if a.Status != st {
+					if _, err := u.agentSM.Transition(ParseAgentState(a.Status), agentEventForTarget(ParseAgentState(st))); err != nil {
+						return apierror.BadRequest("AGENT", "invalid status transition from "+a.Status+" to "+st+" for agent "+id)
+					}
 				}
 				a.Status = st
 				if _, err := u.writer.UpdateAgent(txCtx, a); err != nil {

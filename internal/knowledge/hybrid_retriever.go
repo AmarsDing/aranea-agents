@@ -4,9 +4,8 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const defaultRRF_K = 60
@@ -74,10 +73,10 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggatew
 
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {
 	if h.embedder == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "hybrid_retriever: embedder is nil")
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: embedder is nil")
 	}
 	if h.dense == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "hybrid_retriever: dense repo is nil")
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: dense repo is nil")
 	}
 
 	topK := q.TopK
@@ -100,7 +99,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 	default:
 		vec, err := h.embedder.EmbedSingle(ctx, q.Query)
 		if err != nil {
-			return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever embed failed: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever embed failed").WithCause(err)
 		}
 		searchQ := q
 		searchQ.TopK = topK
@@ -127,12 +126,12 @@ func (h *HybridRetriever) selectMode(q biz.KnowledgeSearchQuery) HybridSearchMod
 
 func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
 	if h.sparse == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "hybrid_retriever: sparse searcher not configured")
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: sparse searcher not configured")
 	}
 	q.TopK = topK
 	chunks, err := h.sparse.SearchChunksBM25(ctx, q)
 	if err != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever sparse failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever sparse failed").WithCause(err)
 	}
 	return trimChunks(chunks, topK), nil
 }
@@ -140,7 +139,7 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
 	vec, err := h.embedder.EmbedSingle(ctx, q.Query)
 	if err != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever embed failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever embed failed").WithCause(err)
 	}
 
 	overfetch := topK * 3

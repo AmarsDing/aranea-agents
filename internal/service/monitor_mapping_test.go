@@ -1,7 +1,6 @@
 package service
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
@@ -464,8 +463,8 @@ func TestNotFoundMonitor(t *testing.T) {
 		wantPassThrough bool
 	}{
 		{
-			name:         "sql_err_no_rows",
-			err:          sql.ErrNoRows,
+			name:         "apierror_not_found",
+			err:          apierror.NotFound(apierror.DomainData, "not found"),
 			wantNotFound: true,
 		},
 		{
@@ -479,8 +478,8 @@ func TestNotFoundMonitor(t *testing.T) {
 			wantPassThrough: true,
 		},
 		{
-			name:         "wrapped_sql_err_no_rows",
-			err:          fmt.Errorf("query: %w", sql.ErrNoRows),
+			name:         "wrapped_apierror_not_found",
+			err:          fmt.Errorf("query: %w", apierror.NotFound(apierror.DomainData, "not found")),
 			wantNotFound: true,
 		},
 	}

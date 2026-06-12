@@ -6,7 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
@@ -44,8 +44,8 @@ func NewReadFlowLogsTool(uc *biz.FlowLogUsecase) *trpcfunction.FunctionTool[read
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input readFlowLogsInput) (readFlowLogsOutput, error) {
 			if input.SessionID == "" && input.TraceID == "" && input.RunID == "" {
-				return readFlowLogsOutput{}, kerrors.BadRequest(
-					"FLOW_LOG", "at least one of session_id, trace_id, or run_id is required")
+				return readFlowLogsOutput{}, apierror.BadRequest(
+					apierror.DomainTool, "at least one of session_id, trace_id, or run_id is required")
 			}
 
 			limit := input.Limit
@@ -65,7 +65,7 @@ func NewReadFlowLogsTool(uc *biz.FlowLogUsecase) *trpcfunction.FunctionTool[read
 				Offset:    input.Offset,
 			})
 			if err != nil {
-				return readFlowLogsOutput{}, kerrors.InternalServer("FLOW_LOG", err.Error())
+				return readFlowLogsOutput{}, apierror.Internal(apierror.DomainTool, err.Error())
 			}
 
 			items := make([]flowLogEntry, 0, len(result.Items))

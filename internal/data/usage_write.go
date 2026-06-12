@@ -75,7 +75,7 @@ func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageE
 	switch e.Status {
 	case "success":
 		successCount = 1
-	case "cancelled":
+	case biz.SessionRunPhaseCancelled:
 		cancelledCount = 1
 	default:
 		failedCount = 1
@@ -124,7 +124,7 @@ func upsertModelTokenUsageHourly(ctx context.Context, c execer, e biz.TokenUsage
 	switch e.Status {
 	case "success":
 		successCount = 1
-	case "cancelled":
+	case biz.SessionRunPhaseCancelled:
 		cancelledCount = 1
 	default:
 		failedCount = 1

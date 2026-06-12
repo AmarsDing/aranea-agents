@@ -13,12 +13,12 @@ import (
 	"aranea-agents/internal/biz/hook"
 	"aranea-agents/internal/conf"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundwebhook"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/webhookurl"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -44,15 +44,15 @@ func NewHookNotifier(runtimeConf *conf.Runtime, repo biz.HookDeliveryRepo, lg lo
 func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, payload map[string]any) error {
 	url := strings.TrimSpace(rh.Rule.Action.WebhookURL)
 	if url == "" {
-		return kerrors.BadRequest("HOOK", "webhook_url required for notify action")
+		return apierror.BadRequest(apierror.DomainHook, "webhook_url required for notify action")
 	}
 	if err := webhookurl.ValidateNotifyURL(url); err != nil {
-		return kerrors.BadRequest("HOOK", err.Error())
+		return apierror.BadRequest(apierror.DomainHook, err.Error())
 	}
 	opts := biz.ParseHookNotifyOptions(rh.Rule.Action)
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return kerrors.InternalServer("HOOK", "notify payload marshal failed")
+		return apierror.Internal(apierror.DomainHook, "notify payload marshal failed")
 	}
 
 	if n == nil || n.repo == nil {
@@ -188,7 +188,7 @@ func deliverHookWebhook(url string, body []byte, secret string, timeoutSec int) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return kerrors.InternalServer("HOOK", fmt.Sprintf("webhook HTTP %d", resp.StatusCode))
+		return apierror.Internal(apierror.DomainHook, fmt.Sprintf("webhook HTTP %d", resp.StatusCode))
 	}
 	return nil
 }

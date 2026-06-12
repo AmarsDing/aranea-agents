@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"database/sql"
 	"errors"
 	"testing"
 
@@ -391,8 +390,8 @@ func TestMapTeamErr(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:       "sql.ErrNoRows maps to NotFound",
-			input:      sql.ErrNoRows,
+			name:       "apierror.NotFound passes through as NotFound",
+			input:      apierror.NotFound(apierror.DomainTeam, "not found"),
 			wantNotFound: true,
 		},
 		{

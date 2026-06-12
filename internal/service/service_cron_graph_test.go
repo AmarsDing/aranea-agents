@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/service"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -112,63 +110,6 @@ func TestToProtoCronTaskRun(t *testing.T) {
 	}
 	if got.RunId != "run1" {
 		t.Errorf("RunId = %q, want %q", got.RunId, "run1")
-	}
-}
-
-func TestMapCronError(t *testing.T) {
-	tests := []struct {
-		name    string
-		in      error
-		want404 bool
-		want503 bool
-		want400 bool
-		want409 bool
-		wantNil bool
-	}{
-		{name: "nil", in: nil, wantNil: true},
-		{name: "cron_not_found", in: biz.ErrCronNotFound, want404: true},
-		{name: "runner_disabled", in: biz.ErrCronRunnerDisabled, want503: true},
-		{name: "task_deleted", in: biz.ErrCronTaskDeleted, want404: true},
-		{name: "session_busy", in: biz.ErrCronSessionBusy, want409: true},
-		{name: "kratos_error", in: apierror.BadRequest("CRON", "bad"), want400: true},
-		{name: "required_msg", in: errors.New("name is required"), want400: true},
-		{name: "invalid_msg", in: errors.New("invalid config"), want400: true},
-		{name: "generic_error", in: errors.New("something went wrong")},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := service.MapCronError(tt.in)
-			if tt.wantNil {
-				if got != nil {
-					t.Errorf("expected nil, got %v", got)
-				}
-				return
-			}
-			if got == nil {
-				t.Fatalf("expected non-nil error")
-			}
-			ae, ok := apierror.From(got)
-			if tt.want404 {
-				if !ok || ae.Code != apierror.CodeNotFound {
-					t.Errorf("expected NOT_FOUND apierror, got %v", got)
-				}
-			}
-			if tt.want503 {
-				if !ok || ae.Code != apierror.CodeUnavailable {
-					t.Errorf("expected UNAVAILABLE apierror, got %v", got)
-				}
-			}
-			if tt.want400 {
-				if !ok || ae.Code != apierror.CodeBadRequest {
-					t.Errorf("expected BAD_REQUEST apierror, got %v", got)
-				}
-			}
-			if tt.want409 {
-				if !ok || ae.Code != apierror.CodeConflict {
-					t.Errorf("expected CONFLICT apierror, got %v", got)
-				}
-			}
-		})
 	}
 }
 

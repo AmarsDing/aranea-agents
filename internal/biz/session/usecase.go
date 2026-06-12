@@ -314,6 +314,7 @@ type SessionTurnUpdateFields struct {
 	MetadataJSON        *string
 }
 
+// Stability:stable
 type SessionReader interface {
 	SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
@@ -322,10 +323,12 @@ type SessionReader interface {
 	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
 }
 
+// Stability:stable
 type SessionTreeReader interface {
 	ListByParentSessionID(ctx context.Context, parentSessionID string) ([]Session, error)
 }
 
+// Stability:stable
 type SessionWriter interface {
 	CreateSession(ctx context.Context, s Session) (Session, error)
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
@@ -347,6 +350,7 @@ type SessionBatchMutator interface {
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
+// Stability:stable
 type MessageReader interface {
 	CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
 	ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
@@ -355,12 +359,14 @@ type MessageReader interface {
 	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 }
 
+// Stability:stable
 type MessageSearchReader interface {
 	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
+// Stability:stable
 type MessageWriter interface {
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
@@ -368,6 +374,7 @@ type MessageWriter interface {
 	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
 }
 
+// Stability:stable
 type TimelineReader interface {
 	ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
 	ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
@@ -375,29 +382,34 @@ type TimelineReader interface {
 	LookupAgentDisplayNames(ctx context.Context, agentIDs []string) (map[string]string, error)
 }
 
+// Stability:stable
 type InvocationReader interface {
 	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
 }
 
+// Stability:stable
 type SummaryReader interface {
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
 }
 
+// Stability:stable
 type SummaryWriter interface {
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
 	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
 	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
+// Stability:stable
 type StateRepo interface {
 	GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
 	SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
 	PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
 }
 
+// Stability:stable
 type TurnRepo interface {
 	CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
 	UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
@@ -413,6 +425,7 @@ type ContextUpdater interface {
 	ApplyMetricsDelta(ctx context.Context, d *SessionMetricsDelta) error
 }
 
+// Stability:stable
 type CompressRepo interface {
 	TryIncrementCompressVersion(ctx context.Context, sessionID string) (oldVersion int64, err error)
 	CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
@@ -425,6 +438,7 @@ type CompressRepo interface {
 //
 // Deprecated: Use fine-grained sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.)
 // instead of this aggregate. This interface is retained only for Wire binding convenience.
+// Stability:stable
 type SessionRepo interface {
 	SessionReader
 	SessionTreeReader
@@ -469,30 +483,30 @@ type MetricsUpdatedPublisher interface {
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
-	sessionReader           SessionReader
-	sessionTreeReader       SessionTreeReader
-	sessionWriter           SessionWriter
-	sessionMutator          SessionMutator
-	sessionBatchMutator     SessionBatchMutator
-	messageReader           MessageReader
-	messageSearchReader     MessageSearchReader
-	messageWriter           MessageWriter
-	messageStatusWriter     MessageStatusWriter
-	timelineReader          TimelineReader
-	invocationReader        InvocationReader
-	summaryReader           SummaryReader
-	summaryWriter           SummaryWriter
-	stateRepo               StateRepo
-	turnRepo                TurnRepo
-	contextUpdater          ContextUpdater
-	compressRepo            CompressRepo
-	runtimeWriter           SessionRuntimeWriter
-	agents                  AgentLookup
-	teams                   TeamLookup
-	titleGenerator          SessionTitleGenerator
-	participants            SessionParticipantRepository
-	lg                      loggateway.Logger
-	statusPublisher         SessionStatusPublisher
+	sessionReader       SessionReader
+	sessionTreeReader   SessionTreeReader
+	sessionWriter       SessionWriter
+	sessionMutator      SessionMutator
+	sessionBatchMutator SessionBatchMutator
+	messageReader       MessageReader
+	messageSearchReader MessageSearchReader
+	messageWriter       MessageWriter
+	messageStatusWriter MessageStatusWriter
+	timelineReader      TimelineReader
+	invocationReader    InvocationReader
+	summaryReader       SummaryReader
+	summaryWriter       SummaryWriter
+	stateRepo           StateRepo
+	turnRepo            TurnRepo
+	contextUpdater      ContextUpdater
+	compressRepo        CompressRepo
+	runtimeWriter       SessionRuntimeWriter
+	agents              AgentLookup
+	teams               TeamLookup
+	titleGenerator      SessionTitleGenerator
+	participants        SessionParticipantRepository
+	lg                  loggateway.Logger
+	statusPublisher     SessionStatusPublisher
 
 	// Sub-usecases (Facade pattern — old callers delegate through these).
 	metricsUsecase     *SessionMetricsUsecase

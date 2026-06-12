@@ -7,7 +7,7 @@ import (
 )
 
 // GraphRunStepContext is the public DTO for graph run step persistence (ARCH-01).
-// Keeps TeamGraphRunFinisher decoupled from coordinator session internals.
+// Keeps the finisher decoupled from coordinator session internals.
 type GraphRunStepContext struct {
 	TeamRunID     string
 	TeamID        string

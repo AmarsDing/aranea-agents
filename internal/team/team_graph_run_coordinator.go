@@ -59,7 +59,7 @@ type TeamGraphRunCoordinator struct {
 	graphs         TeamGraphExecutionBackend
 	teams          biz.TeamRunRepo
 	bus            event.Bus
-	finisher       TeamGraphRunFinisher
+	finisher       *TeamRunMediator
 	sessionRepo    biz.TeamGraphSessionRepo
 	cfg            CoordinatorConfig
 	lg             loggateway.Logger
@@ -107,6 +107,14 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.Team
 		cfg:            DefaultCoordinatorConfig(),
 		lg:             lg,
 	}
+}
+
+// SetFinisher wires the mediator for step persistence and team run finalization.
+func (c *TeamGraphRunCoordinator) SetFinisher(m *TeamRunMediator) {
+	if c == nil {
+		return
+	}
+	c.finisher = m
 }
 
 func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {

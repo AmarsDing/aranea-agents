@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -36,27 +36,27 @@ func delegationDepthFromCtx(ctx context.Context) int {
 func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TRPCBuilderDeps, lg loggateway.Logger, taskDesc string, capabilities []string) (trpctool.Tool, error) {
 	depth := delegationDepthFromCtx(ctx)
 	if depth >= maxAgentDelegationDepth {
-		return nil, kerrors.BadRequest("SPIRIT", fmt.Sprintf("agent delegation depth %d exceeds limit %d, refusing recursive delegation", depth, maxAgentDelegationDepth))
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "agent delegation depth %d exceeds limit %d, refusing recursive delegation", depth, maxAgentDelegationDepth)
 	}
 
 	match, err := matcher.MatchAgent(ctx, taskDesc, capabilities)
 	if err != nil {
-		return nil, kerrors.InternalServer("SPIRIT", "agent matching failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSpirit, "agent matching failed").WithCause(err)
 	}
 	if match == nil {
-		return nil, kerrors.NotFound("SPIRIT", "no matching agent found for: "+taskDesc)
+		return nil, apierror.NotFound(apierror.DomainSpirit, "no matching agent found for: %s", taskDesc)
 	}
 
 	bizAg, err := resolveBizAgentByKey(ctx, deps, match.AgentKey)
 	if err != nil {
-		return nil, kerrors.NotFound("SPIRIT", fmt.Sprintf("resolve agent %s: %s", match.AgentKey, err.Error()))
+		return nil, apierror.NotFound(apierror.DomainSpirit, "resolve agent %s", match.AgentKey).WithCause(err)
 	}
 
 	// Increment delegation depth so nested agent-as-tool calls are bounded.
 	buildCtx := withDelegationDepth(ctx, depth+1)
 	ag, err := BuildTRPCAgentCached(buildCtx, bizAg, deps, lg)
 	if err != nil {
-		return nil, kerrors.InternalServer("SPIRIT", fmt.Sprintf("build agent %s: %s", match.AgentKey, err.Error()))
+		return nil, apierror.Internal(apierror.DomainSpirit, "build agent %s", match.AgentKey).WithCause(err)
 	}
 
 	tool := agenttool.NewTool(
@@ -73,7 +73,7 @@ func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TR
 func ResolveAndBuildAgent(ctx context.Context, agentKey string, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	bizAg, err := resolveBizAgentByKey(ctx, deps, agentKey)
 	if err != nil {
-		return nil, kerrors.NotFound("SPIRIT", fmt.Sprintf("resolve agent %s: %s", agentKey, err.Error()))
+		return nil, apierror.NotFound(apierror.DomainSpirit, "resolve agent %s", agentKey).WithCause(err)
 	}
 	return BuildTRPCAgentCached(ctx, bizAg, deps, lg)
 }

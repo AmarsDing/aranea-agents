@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -31,7 +31,7 @@ func NewCatalogAgentResolver(deps chatagent.TRPCBuilderDeps, lg loggateway.Logge
 
 func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string) (trpcagent.Agent, error) {
 	if r == nil {
-		return nil, kerrors.InternalServer("GRAPH", "graph: agent catalog not configured")
+		return nil, apierror.Internal(apierror.DomainGraph, "graph: agent catalog not configured")
 	}
 	ag, err := r.resolveBizAgent(ctx, agentRef)
 	if err != nil {
@@ -43,7 +43,7 @@ func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string
 func (r *CatalogAgentResolver) resolveBizAgent(ctx context.Context, agentRef string) (biz.Agent, error) {
 	ref := strings.TrimSpace(agentRef)
 	if ref == "" {
-		return biz.Agent{}, kerrors.BadRequest("GRAPH", "graph: agent ref is required")
+		return biz.Agent{}, apierror.BadRequest(apierror.DomainGraph, "graph: agent ref is required")
 	}
 	if r.Deps.AgentUC != nil {
 		if ag, err := r.Deps.AgentUC.Get(ctx, ref); err == nil {
@@ -70,5 +70,5 @@ func (r *CatalogAgentResolver) resolveBizAgent(ctx context.Context, agentRef str
 			return biz.Agent{}, err
 		}
 	}
-	return biz.Agent{}, kerrors.NotFound("GRAPH", fmt.Sprintf("graph: agent %q not found", ref))
+	return biz.Agent{}, apierror.NotFound(apierror.DomainGraph, fmt.Sprintf("graph: agent %q not found", ref))
 }

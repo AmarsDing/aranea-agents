@@ -15,7 +15,7 @@ import (
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -180,7 +180,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	if cfg.WebResearch {
 		t, err := webresearchpkg.NewTool(cfg.WebResearchCfg, lg)
 		if err != nil {
-			return nil, kerrors.BadRequest("TOOL", fmt.Sprintf("web_research: %s", err.Error()))
+			return nil, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("web_research: %s", err.Error()))
 		}
 		customTools = append(customTools, t)
 	}

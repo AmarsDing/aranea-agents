@@ -3,7 +3,7 @@ package discord
 import (
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -12,14 +12,14 @@ const (
 )
 
 var (
-	errBotTokenRequired  = kerrors.BadRequest(configReason, "discord: bot_token required")
-	errChannelIDRequired = kerrors.BadRequest(protocolReason, "discord: channel_id required")
+	errBotTokenRequired  = apierror.BadRequest(configReason, "discord: bot_token required")
+	errChannelIDRequired = apierror.BadRequest(protocolReason, "discord: channel_id required")
 )
 
 func discordAPIError(prefix string, msg string) error {
-	return kerrors.InternalServer(protocolReason, fmt.Sprintf("%s: %s", prefix, msg))
+	return apierror.Internal(protocolReason, fmt.Sprintf("%s: %s", prefix, msg))
 }
 
 func discordGatewayError(prefix string, err error) error {
-	return kerrors.InternalServer(protocolReason, fmt.Sprintf("%s: %v", prefix, err))
+	return apierror.Internal(protocolReason, fmt.Sprintf("%s: %v", prefix, err))
 }

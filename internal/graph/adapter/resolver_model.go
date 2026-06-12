@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
@@ -34,7 +34,7 @@ func NewCatalogModelResolver(catalog *biz.LlmProviderModelUsecase, rt *provider.
 
 func (r *CatalogModelResolver) ResolveModel(ctx context.Context, modelName string) (trpcmodel.Model, error) {
 	if r == nil || r.ModelCatalog == nil {
-		return nil, kerrors.InternalServer("GRAPH", "graph: model catalog not configured")
+		return nil, apierror.Internal(apierror.DomainGraph, "graph: model catalog not configured")
 	}
 	prov, api, err := parseModelRef(ctx, r.ModelCatalog, modelName)
 	if err != nil {
@@ -46,7 +46,7 @@ func (r *CatalogModelResolver) ResolveModel(ctx context.Context, modelName strin
 func parseModelRef(ctx context.Context, catalog *biz.LlmProviderModelUsecase, modelName string) (prov, api string, err error) {
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" {
-		return "", "", kerrors.BadRequest("GRAPH", "graph: model_name is required for LLM nodes")
+		return "", "", apierror.BadRequest(apierror.DomainGraph, "graph: model_name is required for LLM nodes")
 	}
 	for _, sep := range []string{"/", "|", ":"} {
 		if i := strings.Index(modelName, sep); i > 0 {

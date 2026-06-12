@@ -54,7 +54,7 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 	}
 	saved, err := s.uc.Save(ctx, req.GetSessionId(), req.GetName(), mime, data)
 	if err != nil {
-		return nil, mapArtifactBizError(err)
+		return nil, err
 	}
 	metrics.ArtifactUploadBytesTotal.Add(float64(len(data)))
 	s.refreshStorageGauge(ctx)
@@ -136,7 +136,7 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 		return nil, apierror.BadRequest("ARTIFACT", "id is required")
 	}
 	if err := s.uc.Delete(ctx, id); err != nil {
-		return nil, mapArtifactBizError(err)
+		return nil, err
 	}
 	s.refreshStorageGauge(ctx)
 	return &emptypb.Empty{}, nil
@@ -156,7 +156,7 @@ func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.Del
 		if strings.Contains(err.Error(), "not found") {
 			return nil, apierror.NotFound("ARTIFACT", err.Error())
 		}
-		return nil, mapArtifactBizError(err)
+		return nil, err
 	}
 	s.refreshStorageGauge(ctx)
 	return &emptypb.Empty{}, nil

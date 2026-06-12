@@ -179,7 +179,7 @@ func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, c *ent.Client
 		case "user":
 			shouldReuse = latestTurn.Status == "awaiting_user"
 		default:
-			shouldReuse = latestTurn.Status != "completed" && latestTurn.Status != "failed" && latestTurn.Status != "cancelled"
+			shouldReuse = !biz.IsSessionRunPhaseTerminal(biz.ParseSessionRunPhase(latestTurn.Status))
 		}
 		if shouldReuse {
 			maxSeq, seqErr := c.Message.Query().

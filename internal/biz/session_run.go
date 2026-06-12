@@ -12,12 +12,19 @@ import (
 )
 
 const (
-	SessionRunPhaseInteractive = "interactive"
-	SessionRunPhaseEscalating  = "escalating"
-	SessionRunPhaseDurable     = "durable"
-	SessionRunPhaseCompleted   = "completed"
-	SessionRunPhaseFailed      = "failed"
-	SessionRunPhaseCancelled   = "cancelled"
+	// Legacy string constants — prefer the typed SessionRunPhase constants in
+	// session_run_phase_machine.go (PhaseInteractive, PhaseEscalating, etc.).
+	// These are kept only for DB string comparisons where a typed constant
+	// would require an explicit string() cast. New code must use PhaseXxx.
+	//
+	// TODO(debt): phase params in repo interfaces should use SessionRunPhase
+	// instead of string, after which these legacy constants can be removed.
+	SessionRunPhaseInteractive = string(PhaseInteractive)
+	SessionRunPhaseEscalating  = string(PhaseEscalating)
+	SessionRunPhaseDurable     = string(PhaseDurable)
+	SessionRunPhaseCompleted   = string(PhaseCompleted)
+	SessionRunPhaseFailed      = string(PhaseFailed)
+	SessionRunPhaseCancelled   = string(PhaseCancelled)
 )
 
 type SessionRunBudget struct {
@@ -52,6 +59,7 @@ type SessionRun struct {
 
 const DefaultDurableResumeClaimStaleSec = 300
 
+// Stability:stable
 type SessionRunReader interface {
 	Get(ctx context.Context, id string) (SessionRun, error)
 	GetActiveForSession(ctx context.Context, sessionID string) (SessionRun, error)
@@ -60,6 +68,7 @@ type SessionRunReader interface {
 	ListByPhase(ctx context.Context, phase string, limit int) ([]SessionRun, error)
 }
 
+// Stability:stable
 type SessionRunWriter interface {
 	Create(ctx context.Context, run SessionRun) (string, error)
 	UpdatePhase(ctx context.Context, id, phase string) error
@@ -67,12 +76,14 @@ type SessionRunWriter interface {
 	MarkTerminal(ctx context.Context, id, phase, errMsg string) error
 }
 
+// Stability:evolving
 type SessionRunDurableRepo interface {
 	TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error)
 	ClearResumeClaim(ctx context.Context, id string) error
 	MarkOrphanedRunsCancelled(ctx context.Context) (int, error)
 }
 
+// Stability:stable
 type SessionRunRepo interface {
 	SessionRunReader
 	SessionRunWriter
@@ -96,6 +107,7 @@ type SessionRunCheckpoint struct {
 	CreatedAt    string
 }
 
+// Stability:evolving
 type SessionRunCheckpointRepo interface {
 	Create(ctx context.Context, cp SessionRunCheckpoint) (string, error)
 	Get(ctx context.Context, id string) (SessionRunCheckpoint, error)
@@ -113,13 +125,12 @@ func NewSessionRunUsecase(repo SessionRunRepo, cps SessionRunCheckpointRepo, lg 
 }
 
 func NormalizeSessionRunPhase(phase string) string {
-	switch strings.TrimSpace(strings.ToLower(phase)) {
-	case SessionRunPhaseInteractive, SessionRunPhaseEscalating, SessionRunPhaseDurable,
-		SessionRunPhaseCompleted, SessionRunPhaseFailed:
-		return strings.TrimSpace(strings.ToLower(phase))
-	default:
+	p := ParseSessionRunPhase(phase)
+	if p == PhaseInteractive && strings.TrimSpace(strings.ToLower(phase)) != "interactive" {
+		// Unrecognised value normalised to interactive (matches ParseSessionRunPhase default).
 		return SessionRunPhaseInteractive
 	}
+	return string(p)
 }
 
 func sessionRunNow() string {

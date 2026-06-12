@@ -3,12 +3,12 @@ package data
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/apierror"
 )
 
 // ensureCredentialEncryptionKeyOnClient returns the platform AES key (hex), generating it once if empty.
@@ -20,7 +20,7 @@ func ensureCredentialEncryptionKeyOnClient(ctx context.Context, c *ent.Client) (
 	row, err := c.SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return "", sql.ErrNoRows
+			return "", apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return "", err
 	}

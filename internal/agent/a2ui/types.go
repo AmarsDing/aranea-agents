@@ -7,6 +7,7 @@ type Plan struct {
 	Goal         string
 	Steps        []PlanStep
 	Dependencies map[string][]string
+	CreatedAt    time.Time
 }
 
 type PlanStep struct {

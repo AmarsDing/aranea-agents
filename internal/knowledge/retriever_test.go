@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type emptyErrEmbedder struct{}
@@ -33,8 +32,11 @@ func TestRetriever_Search_EmptyQuery(t *testing.T) {
 		t.Fatal("expected error for empty query, got nil")
 	}
 
-	ke := kerrors.FromError(err)
-	if ke.Reason != "KNOWLEDGE" {
+	ke, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror.Error, got %T", err)
+	}
+	if ke.Domain != apierror.DomainKnowledge {
 		t.Fatalf("expected reason KNOWLEDGE, got %q", ke.Reason)
 	}
 }

@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -164,7 +163,7 @@ func (r *TeamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 	row, err := c.Team.Query().Where(team.IDEQ(id), team.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Team{}, sql.ErrNoRows
+			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
 		return biz.Team{}, err
 	}
@@ -176,7 +175,7 @@ func (r *TeamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, 
 	row, err := c.Team.Query().Where(team.TeamKeyEQ(teamKey), team.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Team{}, sql.ErrNoRows
+			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
 		return biz.Team{}, err
 	}
@@ -270,7 +269,7 @@ func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Team{}, sql.ErrNoRows
+			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
 		return biz.Team{}, err
 	}
@@ -409,7 +408,7 @@ func (r *TeamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, 
 	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.TeamRun{}, sql.ErrNoRows
+			return biz.TeamRun{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
 		return biz.TeamRun{}, err
 	}

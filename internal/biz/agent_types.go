@@ -31,12 +31,14 @@ type AgentStatus string
 const (
 	AgentStatusActive   AgentStatus = "active"
 	AgentStatusInactive AgentStatus = "inactive"
+	AgentStatusArchived AgentStatus = "archived"
 )
 
 // ValidAgentStatuses is the set of all valid agent statuses.
 var ValidAgentStatuses = map[AgentStatus]bool{
 	AgentStatusActive:   true,
 	AgentStatusInactive: true,
+	AgentStatusArchived: true,
 }
 
 // ValidateAgentStatus returns an error if the given status string is not a valid AgentStatus.
@@ -60,6 +62,21 @@ func NormalizeAgentStatus(status string) AgentStatus {
 		return s
 	}
 	return AgentStatusActive
+}
+
+// agentEventForTarget determines the AgentEvent needed to transition to the given target state.
+// This is used by AgentUsecase to validate status transitions via the state machine.
+func agentEventForTarget(target AgentState) AgentEvent {
+	switch target {
+	case AgentStateActive:
+		return AgentEventActivate
+	case AgentStateInactive:
+		return AgentEventDeactivate
+	case AgentStateArchived:
+		return AgentEventArchive
+	default:
+		return AgentEvent(target) // fallback; will fail transition validation
+	}
 }
 
 // BoolVal dereferences a *bool, returning false for nil.

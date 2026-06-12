@@ -2,12 +2,12 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -21,7 +21,7 @@ func (r *compileTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, e
 	if id == r.team.ID {
 		return r.team, nil
 	}
-	return biz.Team{}, sql.ErrNoRows
+	return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 }
 func (r *compileTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) {
 	return biz.Team{}, nil
@@ -41,7 +41,7 @@ func (r *compileTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error
 	return false, nil
 }
 func (r *compileTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
-	return biz.TeamRun{}, sql.ErrNoRows
+	return biz.TeamRun{}, apierror.NotFound(apierror.DomainTeam, "not found")
 }
 func (r *compileTeamRepo) ListTeamRunSteps(context.Context, string) ([]biz.TeamRunStep, error) {
 	return nil, nil

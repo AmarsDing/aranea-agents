@@ -2,13 +2,12 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -70,14 +69,14 @@ func (h *ChannelIngress) ensureChannelSession(
 	platform = strings.TrimSpace(platform)
 
 	bind, err := h.channels.GetPeerSession(ctx, chRow.ID, peerKey)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
 		return "", err
 	}
 	if err == nil {
 		if sessionID := strings.TrimSpace(bind.SessionID); sessionID != "" {
 			if _, verr := h.sessions.Get(ctx, sessionID); verr == nil {
 				return sessionID, nil
-			} else if !errors.Is(verr, sql.ErrNoRows) {
+			} else if !apierror.IsCode(verr, apierror.CodeNotFound) {
 				return "", verr
 			}
 			sessionID, cerr := h.createChannelSession(ctx, chRow, titlePrefix, platform, peerKey, peerID, ownerType, agentID, teamID)

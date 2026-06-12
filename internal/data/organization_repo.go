@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"aranea-agents/internal/biz"
@@ -80,7 +79,7 @@ func (r *organizationRepo) GetOrgNode(ctx context.Context, id string) (biz.Organ
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.OrganizationNode{}, sql.ErrNoRows
+			return biz.OrganizationNode{}, apierror.NotFound(apierror.DomainOrg, "not found")
 		}
 		return biz.OrganizationNode{}, err
 	}
@@ -96,7 +95,7 @@ func (r *organizationRepo) GetOrgNodeByKey(ctx context.Context, key string) (biz
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.OrganizationNode{}, sql.ErrNoRows
+			return biz.OrganizationNode{}, apierror.NotFound(apierror.DomainOrg, "not found")
 		}
 		return biz.OrganizationNode{}, err
 	}
@@ -111,7 +110,7 @@ func (r *organizationRepo) GetOrgNodeByKeyAnyState(ctx context.Context, key stri
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.OrganizationNode{}, sql.ErrNoRows
+			return biz.OrganizationNode{}, apierror.NotFound(apierror.DomainOrg, "not found")
 		}
 		return biz.OrganizationNode{}, err
 	}

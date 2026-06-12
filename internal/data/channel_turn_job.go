@@ -39,7 +39,7 @@ func queryChannelTurnJob(ctx context.Context, db execer, where string, args ...a
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.ChannelTurnJob{}, sql.ErrNoRows
+		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	j, err := scanChannelTurnJobRow(rows)
 	if err != nil {
@@ -164,11 +164,11 @@ WHERE id=?`,
 
 func (r *channelTurnJobRepo) GetByIdempotency(ctx context.Context, channelID, idempotencyKey string) (biz.ChannelTurnJob, error) {
 	if r == nil || r.data == nil {
-		return biz.ChannelTurnJob{}, sql.ErrNoRows
+		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
-		return biz.ChannelTurnJob{}, sql.ErrNoRows
+		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	return queryChannelTurnJob(ctx, db, `WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`,
 		strings.TrimSpace(channelID), strings.TrimSpace(idempotencyKey))
@@ -176,11 +176,11 @@ func (r *channelTurnJobRepo) GetByIdempotency(ctx context.Context, channelID, id
 
 func (r *channelTurnJobRepo) GetByID(ctx context.Context, id string) (biz.ChannelTurnJob, error) {
 	if r == nil || r.data == nil {
-		return biz.ChannelTurnJob{}, sql.ErrNoRows
+		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
-		return biz.ChannelTurnJob{}, sql.ErrNoRows
+		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	return queryChannelTurnJob(ctx, db, `WHERE id = ? LIMIT 1`, strings.TrimSpace(id))
 }

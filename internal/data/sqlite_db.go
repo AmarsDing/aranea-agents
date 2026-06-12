@@ -2,10 +2,10 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/apierror"
 )
 
 // entQueryRowScan runs `query` expecting at most one row, using Ent Client’s promoted
@@ -20,7 +20,7 @@ func entQueryRowScan(client *ent.Client, ctx context.Context, query string, args
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return sql.ErrNoRows
+		return apierror.NotFound(apierror.DomainData, "not found")
 	}
 	if err := rows.Scan(dest...); err != nil {
 		return err

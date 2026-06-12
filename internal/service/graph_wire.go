@@ -14,6 +14,7 @@ func ProvideGraphUsecase(
 	runRepo biz.GraphRunRepo,
 	factory biz.GraphBuilderFactory,
 	compiledTeamRepo biz.CompiledTeamRepo,
+	teamReader biz.TeamReader,
 	telemetry *GraphExecutionTelemetry,
 	orchProjector *GraphOrchestrationProjector,
 	lg loggateway.Logger,
@@ -21,7 +22,8 @@ func ProvideGraphUsecase(
 	observer := compositeGraphExecutionObserver{telemetry, orchProjector}
 	return biz.NewGraphUsecase(biz.GraphUsecaseDeps{
 		Repo: repo, RunRepo: runRepo, Factory: factory,
-		Observer: observer, CompiledTeam: compiledTeamRepo, Lg: lg,
+		Observer: observer, CompiledTeam: compiledTeamRepo,
+		TeamReader: teamReader, Lg: lg,
 		GCConfig: resolveGraphGCConfig(lg),
 	})
 }

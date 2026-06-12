@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizevaluation "aranea-agents/internal/biz/evaluation"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -285,7 +286,7 @@ func (r *evalRepo) GetRun(ctx context.Context, id string) (biz.EvalRun, error) {
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.EvalRun{}, sql.ErrNoRows
+		return biz.EvalRun{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	return scanEvalRun(rows)
 }
@@ -488,7 +489,7 @@ func (r *evalRepo) GetCaseResult(ctx context.Context, runID, resultID string) (b
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.EvalCaseResult{}, sql.ErrNoRows
+		return biz.EvalCaseResult{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	res, err := scanEvalCaseResult(rows)
 	if err != nil {

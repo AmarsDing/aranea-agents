@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -63,16 +63,16 @@ func (t *MessageTool) Declaration() *tool.Declaration {
 
 func (t *MessageTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.router == nil {
-		return nil, kerrors.InternalServer("OUTBOUND", "message tool not configured")
+		return nil, apierror.Internal(apierror.DomainOutbound, "message tool not configured")
 	}
 	var in messageToolInput
 	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, kerrors.BadRequest("OUTBOUND", "invalid args: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainOutbound, "invalid args").WithCause(err)
 	}
 	text := strings.TrimSpace(in.Text)
 	paths := collectPaths(in.File, in.Files)
 	if text == "" && len(paths) == 0 {
-		return nil, kerrors.BadRequest("OUTBOUND", "text or files required")
+		return nil, apierror.BadRequest(apierror.DomainOutbound, "text or files required")
 	}
 	target, err := ResolveTarget(ctx, DeliveryTarget{
 		Channel: in.Channel,
@@ -86,7 +86,7 @@ func (t *MessageTool) Call(ctx context.Context, args []byte) (any, error) {
 		msg.Files = append(msg.Files, OutboundFile{Path: p})
 	}
 	if err := t.router.SendMessage(ctx, target, msg); err != nil {
-		return nil, kerrors.InternalServer("OUTBOUND", "send failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainOutbound, "send failed").WithCause(err)
 	}
 	return map[string]any{
 		"ok":         true,

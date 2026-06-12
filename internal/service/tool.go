@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -148,7 +146,7 @@ func (s *ToolService) ListTools(ctx context.Context, req *v1.ListToolsRequest) (
 func (s *ToolService) GetTool(ctx context.Context, req *v1.GetToolRequest) (*v1.Tool, error) {
 	t, err := s.uc.GetTool(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
@@ -180,6 +178,7 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 	if err != nil {
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	s.mon.RecordAdminAudit(ctx, "tool.create", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
 	return bizToolToProto(t), nil
 }
@@ -206,11 +205,12 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 	}
 	t, err := s.uc.Update(ctx, req.GetId(), in)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	s.mon.RecordAdminAudit(ctx, "tool.update", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
 	return bizToolToProto(t), nil
 }
@@ -218,11 +218,12 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest) (*emptypb.Empty, error) {
 	err := s.uc.Delete(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	s.mon.RecordAdminAudit(ctx, "tool.delete", "tool", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
@@ -230,11 +231,12 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 func (s *ToolService) ToggleToolEnabled(ctx context.Context, req *v1.ToggleToolEnabledRequest) (*v1.Tool, error) {
 	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled(), req.GetConfirmIntent())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return bizToolToProto(t), nil
 }
 
@@ -356,6 +358,7 @@ func (s *ToolService) UpsertToolAgentOverride(ctx context.Context, req *v1.Upser
 	if err != nil {
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetAgentId())
 	return bizOverrideToProto(o), nil
 }
 
@@ -364,13 +367,14 @@ func (s *ToolService) DeleteToolAgentOverride(ctx context.Context, req *v1.Delet
 	if err != nil {
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetAgentId())
 	return &emptypb.Empty{}, nil
 }
 
 func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetToolInvocationParamsRequest) (*v1.ToolInvocationParam, error) {
 	p, err := s.uc.GetToolInvocationParams(ctx, req.GetInvocationId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "invocation params not found")
 		}
 		return nil, err
@@ -388,18 +392,19 @@ func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetTo
 func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolConfigRequest) (*v1.Tool, error) {
 	t, err := s.uc.UpdateToolConfig(ctx, req.GetId(), req.GetConfigJson())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return bizToolToProto(t), nil
 }
 
 func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v1.TestToolResponse, error) {
 	res, err := s.uc.TestTool(ctx, req.GetId(), req.GetArgumentsJson(), int(req.GetTimeoutSec()))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("TOOL", "tool not found")
 		}
 		return nil, err

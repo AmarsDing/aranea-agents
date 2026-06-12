@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/modelregistry"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -44,11 +44,11 @@ func newFetchDirectoryTool(deps Deps) *trpcfunction.FunctionTool[noArgs, fetchDi
 		func(ctx context.Context, _ noArgs) (fetchDirectoryOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return fetchDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
+				return fetchDirectoryOutput{}, apierror.Internal(apierror.DomainModelSync, "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return fetchDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
+				return fetchDirectoryOutput{}, apierror.Internal(apierror.DomainModelSync, "load policy: "+policyErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:     ctx,
@@ -74,11 +74,11 @@ func newMigrateProvidersTool(deps Deps) *trpcfunction.FunctionTool[noArgs, migra
 		func(ctx context.Context, _ noArgs) (migrateProvidersOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return migrateProvidersOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
+				return migrateProvidersOutput{}, apierror.Internal(apierror.DomainModelSync, "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return migrateProvidersOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
+				return migrateProvidersOutput{}, apierror.Internal(apierror.DomainModelSync, "load policy: "+policyErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:      ctx,
@@ -103,15 +103,15 @@ func newApplyDirectoryTool(deps Deps) *trpcfunction.FunctionTool[noArgs, applyDi
 		func(ctx context.Context, _ noArgs) (applyDirectoryOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return applyDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
+				return applyDirectoryOutput{}, apierror.Internal(apierror.DomainModelSync, "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return applyDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
+				return applyDirectoryOutput{}, apierror.Internal(apierror.DomainModelSync, "load policy: "+policyErr.Error())
 			}
 			dir, _, dirErr := store.LoadDirectory()
 			if dirErr != nil {
-				return applyDirectoryOutput{}, kerrors.InternalServer("MODEL_SYNC", "load directory: "+dirErr.Error())
+				return applyDirectoryOutput{}, apierror.Internal(apierror.DomainModelSync, "load directory: "+dirErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:       ctx,
@@ -138,15 +138,15 @@ func newSyncProviderLogosTool(deps Deps) *trpcfunction.FunctionTool[noArgs, sync
 		func(ctx context.Context, _ noArgs) (syncProviderLogosOutput, error) {
 			store, err := deps.StoreProvider.Store(ctx)
 			if err != nil {
-				return syncProviderLogosOutput{}, kerrors.InternalServer("MODEL_SYNC", "store error: "+err.Error())
+				return syncProviderLogosOutput{}, apierror.Internal(apierror.DomainModelSync, "store error: "+err.Error())
 			}
 			policy, policyErr := store.LoadPolicy()
 			if policyErr != nil {
-				return syncProviderLogosOutput{}, kerrors.InternalServer("MODEL_SYNC", "load policy: "+policyErr.Error())
+				return syncProviderLogosOutput{}, apierror.Internal(apierror.DomainModelSync, "load policy: "+policyErr.Error())
 			}
 			dir, _, dirErr := store.LoadDirectory()
 			if dirErr != nil {
-				return syncProviderLogosOutput{}, kerrors.InternalServer("MODEL_SYNC", "load directory: "+dirErr.Error())
+				return syncProviderLogosOutput{}, apierror.Internal(apierror.DomainModelSync, "load directory: "+dirErr.Error())
 			}
 			pc := &modelregistry.PhaseContext{
 				Ctx:       ctx,

@@ -2,9 +2,7 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -76,7 +74,7 @@ ON CONFLICT(id) DO UPDATE SET team_id = excluded.team_id, graph_id = excluded.gr
 func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*biz.CompiledTeam, error) {
 	db := r.readDB(ctx)
 	if db == nil {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainTeam, "not found")
 	}
 	teamID = strings.TrimSpace(teamID)
 	graphID = strings.TrimSpace(graphID)
@@ -84,8 +82,8 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	var configJSON string
 	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apierror.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound(apierror.DomainTeam, fmt.Sprintf("compiled_team not found: %s", id))
 		}
 		return nil, entErrToBizErr(err, "COMPILED_TEAM")
 	}

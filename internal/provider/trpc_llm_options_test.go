@@ -96,21 +96,21 @@ func TestBuildAnthropicSpecificOptions(t *testing.T) {
 	})
 
 	t.Run("cache_system_prompt", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(ProviderModelConfig{CacheSystemPrompt: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{Cache: CacheConfig{SystemPrompt: true}})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with CacheSystemPrompt")
 		}
 	})
 
 	t.Run("cache_tools", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(ProviderModelConfig{CacheTools: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{Cache: CacheConfig{Tools: true}})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with CacheTools")
 		}
 	})
 
 	t.Run("cache_messages", func(t *testing.T) {
-		opts := buildAnthropicSpecificOptions(ProviderModelConfig{CacheMessages: true})
+		opts := buildAnthropicSpecificOptions(ProviderModelConfig{Cache: CacheConfig{Messages: true}})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with CacheMessages")
 		}
@@ -125,9 +125,11 @@ func TestBuildAnthropicSpecificOptions(t *testing.T) {
 
 	t.Run("multiple_cache_flags", func(t *testing.T) {
 		opts := buildAnthropicSpecificOptions(ProviderModelConfig{
-			CacheSystemPrompt: true,
-			CacheTools:        true,
-			CacheMessages:     true,
+			Cache: CacheConfig{
+				SystemPrompt: true,
+				Tools:        true,
+				Messages:     true,
+			},
 		})
 		if len(opts) == 0 {
 			t.Fatal("expected non-nil options with multiple cache flags")

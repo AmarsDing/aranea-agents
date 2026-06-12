@@ -2,9 +2,7 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
@@ -107,6 +105,7 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 	if err != nil {
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	s.mon.RecordAdminAudit(ctx, "mcp_server.create", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
 	return toProtoMCP(out), nil
 }
@@ -114,7 +113,7 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 func (s *MCPServerService) GetMCPServer(ctx context.Context, req *v1.GetMCPServerRequest) (*v1.MCPServer, error) {
 	m, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
@@ -132,7 +131,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 	// value differs from the current persisted value.
 	current, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
@@ -140,11 +139,12 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 	patch := patchFromProtoMCPWithDiff(req.GetMcpServer(), current)
 	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	s.mon.RecordAdminAudit(ctx, "mcp_server.update", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
 	return toProtoMCP(out), nil
 }
@@ -153,6 +153,7 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	s.mon.RecordAdminAudit(ctx, "mcp_server.delete", "mcp_server", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
@@ -178,7 +179,7 @@ func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.Valida
 func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPServerRequest) (*v1.MCPServerTestResponse, error) {
 	res, err := s.uc.TestMCPServer(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
 		return nil, err
@@ -234,6 +235,7 @@ func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoMCPUserCred(out), nil
 }
 
@@ -241,5 +243,6 @@ func (s *MCPServerService) DeleteMCPServerUserCredential(ctx context.Context, re
 	if err := s.uc.DeleteUserCredential(ctx, req.GetMcpServerId(), req.GetUserId(), req.GetCredentialKey()); err != nil {
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return &emptypb.Empty{}, nil
 }

@@ -126,6 +126,11 @@ golangci-lint:
 test:
 	go test -cover ./...
 
+.PHONY: archlint
+# run architecture fitness function tests (AS-FIT-01)
+archlint:
+	go test ./internal/archlint/ -count=1 -v
+
 .PHONY: smoke
 # basic smoke test (build + health check)
 smoke:

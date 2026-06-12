@@ -10,7 +10,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/internal/outbound"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
@@ -265,7 +265,7 @@ func Registry() []*ToolRegistration {
 				Category:    "integration",
 				Tags:        []string{"api", "rest", "openapi"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return nil, kerrors.BadRequest("TOOL_ASSEMBLY", "openapi requires spec configuration")
+					return nil, apierror.BadRequest(apierror.DomainTool, "openapi requires spec configuration")
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
@@ -539,7 +539,7 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		loggateway.Int("deferred_tools", len(cfg.DeferredTools)),
 	)
 	if err := ValidateRuntimeAliasesAgainstPolicy(); err != nil {
-		return nil, kerrors.InternalServer("TOOL_ASSEMBLY", "alias validation: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainTool, "alias validation: "+err.Error())
 	}
 
 	enabled := make(map[string]bool, len(cfg.EnabledTools))

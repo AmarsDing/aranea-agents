@@ -14,23 +14,6 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-func mapPromptFileAIError(err error) error {
-	if err == nil {
-		return nil
-	}
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "not configured"), strings.Contains(msg, "instruction is required"):
-		return apierror.BadRequest("AGENT_FILE", "prompt file AI editor is not ready")
-	case strings.Contains(msg, "no matching model"), strings.Contains(msg, "catalog"):
-		return apierror.BadRequest("AGENT_FILE", "no model available for AI edit; configure provider catalog")
-	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline"):
-		return apierror.Internal("AGENT_FILE", "AI edit timed out; try again")
-	default:
-		return apierror.Internal("AGENT_FILE", "AI edit failed; try again")
-	}
-}
-
 const promptFileAIEditSystem = `你是 Agent 提示文件编辑助手。根据用户指令修订 Markdown 提示文件。
 只输出修订后的完整文件正文，不要解释、不要代码围栏、不要前后缀说明。`
 

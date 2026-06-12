@@ -38,7 +38,7 @@ func (r *agentPerformanceRepo) Get(ctx context.Context, agentKey, taskType strin
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainAgent, "not found")
 	}
 	perf, err := scanAgentPerformanceFromRows(rows)
 	if err != nil {

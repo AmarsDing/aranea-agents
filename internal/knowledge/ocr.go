@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // OCRProvider extracts text from image or scanned document bytes.
@@ -44,7 +44,7 @@ func isImageMime(mimeType string) bool {
 
 func tryOCR(ctx context.Context, ocr OCRProvider, raw []byte, mimeType, source string) (string, error) {
 	if ocr == nil {
-		return "", kerrors.ServiceUnavailable("KNOWLEDGE", "ocr provider not configured")
+		return "", apierror.Unavailable(apierror.DomainKnowledge, "ocr provider not configured")
 	}
 	text, err := ocr.Extract(ctx, raw, mimeType, source)
 	if err != nil {
@@ -52,7 +52,7 @@ func tryOCR(ctx context.Context, ocr OCRProvider, raw []byte, mimeType, source s
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "", kerrors.InternalServer("KNOWLEDGE", "ocr returned empty text")
+		return "", apierror.Internal(apierror.DomainKnowledge, "ocr returned empty text")
 	}
 	return text, nil
 }

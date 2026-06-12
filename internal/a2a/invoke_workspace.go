@@ -6,8 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/workspace"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 // ValidateAdminInvokeWorkspace enforces workspace scope for HTTP Admin Invoke.
@@ -17,11 +16,11 @@ func ValidateAdminInvokeWorkspace(ctx context.Context, reqWorkspace string, card
 		return nil
 	}
 	if reqWS := strings.TrimSpace(reqWorkspace); reqWS != "" && reqWS != calleeWS {
-		return kerrors.Forbidden("A2A", "callee agent is not in the requested workspace")
+		return apierror.Forbidden(apierror.DomainA2A, "callee agent is not in the requested workspace")
 	}
 	ctxWS, ok := workspace.FromContext(ctx)
 	if ok && ctxWS != "" && ctxWS != workspace.DefaultWorkspaceID && ctxWS != workspace.SystemWorkspaceID && ctxWS != calleeWS {
-		return kerrors.Forbidden("A2A", "cross-workspace invocation is not allowed")
+		return apierror.Forbidden(apierror.DomainA2A, "cross-workspace invocation is not allowed")
 	}
 	return nil
 }

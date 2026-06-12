@@ -2,13 +2,13 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -52,7 +52,7 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 				Embedding:  modelregistry.MicroPer1KToUSDPer1M(embedMicro),
 			}), true, nil
 		}
-	} else if err != sql.ErrNoRows {
+	} else if ae, ok := apierror.From(err); !ok || ae.Code != apierror.CodeNotFound {
 		return biz.ModelPricingSnapshot{}, false, err
 	}
 	return r.pricingFromProviderModelConfig(ctx, providerCode, modelAPIID)
@@ -68,7 +68,7 @@ func (r *usageRepo) pricingFromProviderModelConfig(ctx context.Context, provider
 		&cfgJSON,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return biz.ModelPricingSnapshot{}, false, nil
 		}
 		return biz.ModelPricingSnapshot{}, false, err

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -73,7 +73,7 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, kerrors.BadRequest("BASH", "failed to parse command arguments: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainTool, "failed to parse command arguments: "+err.Error())
 	}
 	cmd := strings.TrimSpace(input.Command)
 	if cmd == "" {
@@ -83,7 +83,7 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 	// This prevents prefix-based bypasses like "gitrm" matching "git".
 	cmdName, safe := firstCommandToken(cmd)
 	if !safe {
-		return nil, kerrors.Forbidden("BASH", "command contains shell metacharacters, chaining is not allowed: "+truncate(cmd, 64))
+		return nil, apierror.Forbidden(apierror.DomainTool, "command contains shell metacharacters, chaining is not allowed: "+truncate(cmd, 64))
 	}
 	allowed := false
 	for _, entry := range w.allowList {
@@ -93,7 +93,7 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 		}
 	}
 	if !allowed {
-		return nil, kerrors.Forbidden("BASH", "command not in allowlist: "+truncate(cmd, 64))
+		return nil, apierror.Forbidden(apierror.DomainTool, "command not in allowlist: "+truncate(cmd, 64))
 	}
 	return w.inner.Call(ctx, args)
 }

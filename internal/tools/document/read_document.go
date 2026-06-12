@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
+
 	pdfpkg "github.com/ledongthuc/pdf"
 	docreader "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader"
 	docxreader "trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/docx"
@@ -41,29 +42,29 @@ func NewReadDocumentTool(baseDir string) trpctool.Tool {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, in readDocumentInput) (readDocumentOutput, error) {
 			if strings.TrimSpace(in.Path) == "" {
-				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_PATH_REQUIRED", "path is required")
+				return readDocumentOutput{}, apierror.BadRequest(apierror.DomainTool, "path is required")
 			}
 
 			path, err := ValidatePath(strings.TrimSpace(in.Path), baseDir)
 			if err != nil {
-				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_PATH_INVALID", err.Error())
+				return readDocumentOutput{}, apierror.BadRequest(apierror.DomainTool, err.Error())
 			}
 
 			kind := documentKindFromPath(path)
 			if kind == "" {
-				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_UNSUPPORTED_TYPE", fmt.Sprintf("unsupported document type: %s", filepath.Ext(path)))
+				return readDocumentOutput{}, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("unsupported document type: %s", filepath.Ext(path)))
 			}
 
 			if err := ValidateFileSize(path); err != nil {
-				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_FILE_TOO_LARGE", err.Error())
+				return readDocumentOutput{}, apierror.BadRequest(apierror.DomainTool, err.Error())
 			}
 
 			info, err := os.Stat(path)
 			if err != nil {
-				return readDocumentOutput{}, kerrors.InternalServer("READ_DOCUMENT_STAT_ERROR", fmt.Sprintf("stat path: %v", err))
+				return readDocumentOutput{}, apierror.Internal(apierror.DomainTool, fmt.Sprintf("stat path: %v", err))
 			}
 			if info.IsDir() {
-				return readDocumentOutput{}, kerrors.BadRequest("READ_DOCUMENT_PATH_IS_DIR", fmt.Sprintf("path is a directory: %s", path))
+				return readDocumentOutput{}, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("path is a directory: %s", path))
 			}
 
 			maxChars := defaultReadDocumentChars
@@ -147,43 +148,43 @@ func readDocumentText(path string, kind string, page *int) (string, int, error) 
 		return readPDFText(path, page)
 	case "docx":
 		if normalizedPositive(page) != nil {
-			return "", 0, kerrors.BadRequest("READ_DOCUMENT_PAGE_UNSUPPORTED", "page is only supported for PDF files")
+			return "", 0, apierror.BadRequest(apierror.DomainTool, "page is only supported for PDF files")
 		}
 		text, err := readDOCXText(path)
 		return text, 0, err
 	case "text":
 		if normalizedPositive(page) != nil {
-			return "", 0, kerrors.BadRequest("READ_DOCUMENT_PAGE_UNSUPPORTED", "page is only supported for PDF files")
+			return "", 0, apierror.BadRequest(apierror.DomainTool, "page is only supported for PDF files")
 		}
 		text, err := readTextFile(path)
 		return text, 0, err
 	default:
-		return "", 0, kerrors.BadRequest("READ_DOCUMENT_UNSUPPORTED_KIND", fmt.Sprintf("unsupported document kind: %s", kind))
+		return "", 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("unsupported document kind: %s", kind))
 	}
 }
 
 func readPDFText(path string, page *int) (string, int, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", 0, kerrors.InternalServer("READ_DOCUMENT_OPEN_PDF_ERROR", fmt.Sprintf("open pdf: %v", err))
+		return "", 0, apierror.Internal(apierror.DomainTool, fmt.Sprintf("open pdf: %v", err))
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return "", 0, kerrors.InternalServer("READ_DOCUMENT_STAT_PDF_ERROR", fmt.Sprintf("stat pdf: %v", err))
+		return "", 0, apierror.Internal(apierror.DomainTool, fmt.Sprintf("stat pdf: %v", err))
 	}
 
 	reader, err := pdfpkg.NewReader(file, info.Size())
 	if err != nil {
-		return "", 0, kerrors.InternalServer("READ_DOCUMENT_READ_PDF_ERROR", fmt.Sprintf("read pdf: %v", err))
+		return "", 0, apierror.Internal(apierror.DomainTool, fmt.Sprintf("read pdf: %v", err))
 	}
 
 	pageCount := reader.NumPage()
 	selectedPage := normalizedPositive(page)
 	if selectedPage != nil {
 		if *selectedPage > pageCount {
-			return "", 0, kerrors.BadRequest("READ_DOCUMENT_PAGE_EXCEEDS", fmt.Sprintf("page %d exceeds page count %d", *selectedPage, pageCount))
+			return "", 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("page %d exceeds page count %d", *selectedPage, pageCount))
 		}
 		return pdfPageText(reader, *selectedPage), pageCount, nil
 	}
@@ -223,7 +224,7 @@ func readDOCXText(path string) (string, error) {
 	rdr := docxreader.New(docreader.WithChunk(false))
 	docs, err := rdr.ReadFromFile(path)
 	if err != nil {
-		return "", kerrors.InternalServer("READ_DOCUMENT_READ_DOCX_ERROR", fmt.Sprintf("read docx: %v", err))
+		return "", apierror.Internal(apierror.DomainTool, fmt.Sprintf("read docx: %v", err))
 	}
 
 	parts := make([]string, 0, len(docs))
@@ -243,13 +244,13 @@ func readDOCXText(path string) (string, error) {
 func readTextFile(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", kerrors.InternalServer("READ_DOCUMENT_OPEN_FILE_ERROR", fmt.Sprintf("read file: %v", err))
+		return "", apierror.Internal(apierror.DomainTool, fmt.Sprintf("read file: %v", err))
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxFileSize))
 	if err != nil {
-		return "", kerrors.InternalServer("READ_DOCUMENT_READ_FILE_ERROR", fmt.Sprintf("read file: %v", err))
+		return "", apierror.Internal(apierror.DomainTool, fmt.Sprintf("read file: %v", err))
 	}
 	return string(data), nil
 }

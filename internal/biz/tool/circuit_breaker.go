@@ -195,6 +195,32 @@ func (cb *CircuitBreaker) UpdateConfig(cfg CircuitBreakerConfig) {
 	cb.config = cfg
 }
 
+// snapshotEntry returns the current breaker state as a CircuitBreakerStateEntry
+// for persistence. Caller must NOT hold cb.mu.
+func (cb *CircuitBreaker) snapshotEntry() CircuitBreakerStateEntry {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	return CircuitBreakerStateEntry{
+		State:           string(cb.state),
+		FailureCount:    cb.failures,
+		SuccessCount:    cb.successes,
+		LastFailureTime: cb.lastFailureTime,
+		UpdatedAt:       time.Now(),
+	}
+}
+
+// restoreFromEntry applies a persisted state entry to this breaker.
+// This is used during startup to recover from a process restart.
+// Caller must NOT hold cb.mu.
+func (cb *CircuitBreaker) restoreFromEntry(entry CircuitBreakerStateEntry) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.state = CircuitState(entry.State)
+	cb.failures = entry.FailureCount
+	cb.successes = entry.SuccessCount
+	cb.lastFailureTime = entry.LastFailureTime
+}
+
 func IsTransientError(err error) bool {
 	if err == nil {
 		return false

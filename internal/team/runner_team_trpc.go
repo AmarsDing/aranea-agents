@@ -17,10 +17,10 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -30,14 +30,14 @@ import (
 func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	content := strings.TrimSpace(input.Content)
 	if content == "" {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "content is required")
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.BadRequest("CHAT_NATIVE", "content is required")
 	}
 	dialogMode, provOpt, modOpt, _ := extractOptsFromInput(input)
 	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
 
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("TEAM", "team has no enabled members")
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.BadRequest(apierror.DomainTeam, "team has no enabled members")
 	}
 
 	run := biz.TeamRun{
@@ -110,28 +110,40 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 
 	builderDeps := agent.TRPCBuilderDeps{
-		ModelCatalog:               r.td.ReadDeps.LLM,
-		AgentUC:               r.td.ReadDeps.AgentsUC,
-		Agents:                r.td.ReadDeps.Agents,
-		RT:                    r.td.RoundTrip(),
-		SkillUC:               r.td.ReadDeps.SkillUC,
-		MCPTooling:            r.td.Persist.AgentMCP,
-		ToolUC:                r.td.ReadDeps.ToolUC,
-		Sessions:              r.td.Sessions,
-		Sys:                   r.td.ReadDeps.Settings,
-		Provider:              ar.prov,
-		Model:                 ar.mod,
-		DialogMode:            dialogMode,
-		SkillDBRepo:           r.skillDBRepo,
-		HasMemory:             r.td.Persist.Memory.Available(),
-		MemoryService:         r.td.Persist.Memory.TRPC,
-		PluginManager:         r.cfg.PluginManager,
-		MemoryAdmin:           r.td.Persist.Memory.Admin,
-		MemoryL2Recall:        r.td.Persist.Memory.L2Recall,
-		MemoryL3Recall:        r.td.Persist.Memory.L3Recall,
-		MemoryCompositeRecall: r.td.Persist.Memory.CompositeRecall,
-		KnowledgeRetriever:    r.cfg.Knowledge.Retriever,
-		CodeExecFactory:       r.codeExecFactory,
+		TRPCModelCatalogDeps: agent.TRPCModelCatalogDeps{
+			ModelCatalog: r.td.ReadDeps.LLM,
+			AgentUC:      r.td.ReadDeps.AgentsUC,
+			Agents:       r.td.ReadDeps.Agents,
+			Sys:          r.td.ReadDeps.Settings,
+			Sessions:     r.td.Sessions,
+		},
+		TRPCModelRouteDeps: agent.TRPCModelRouteDeps{
+			RT:         r.td.RoundTrip(),
+			Provider:   ar.prov,
+			Model:      ar.mod,
+			DialogMode: dialogMode,
+		},
+		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
+			ToolUC:     r.td.ReadDeps.ToolUC,
+			MCPTooling: r.td.Persist.AgentMCP,
+		},
+		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
+			HasMemory:             r.td.Persist.Memory.Available(),
+			MemoryService:         r.td.Persist.Memory.TRPC,
+			MemoryAdmin:           r.td.Persist.Memory.Admin,
+			MemoryL2Recall:        r.td.Persist.Memory.L2Recall,
+			MemoryL3Recall:        r.td.Persist.Memory.L3Recall,
+			MemoryCompositeRecall: r.td.Persist.Memory.CompositeRecall,
+			KnowledgeRetriever:    r.cfg.Knowledge.Retriever,
+		},
+		TRPCPluginDeps: agent.TRPCPluginDeps{
+			PluginManager: r.cfg.PluginManager,
+		},
+		TRPCSkillDeps: agent.TRPCSkillDeps{
+			SkillUC:         r.td.ReadDeps.SkillUC,
+			SkillDBRepo:     r.skillDBRepo,
+			CodeExecFactory: r.codeExecFactory,
+		},
 	}
 	if r.cfg.AwaitHookProvider != nil {
 		builderDeps.AwaitHook = r.cfg.AwaitHookProvider(ctx, sess.ID, run.ID)
@@ -409,7 +421,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		} else if result.HasContent {
 			fallback = "The team workflow completed but produced no text output. This may indicate a configuration issue with the model."
 		}
-		err := kerrors.InternalServer("CHAT_TEAM_NATIVE", fallback)
+		err := apierror.Internal("CHAT_TEAM_NATIVE", fallback)
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err

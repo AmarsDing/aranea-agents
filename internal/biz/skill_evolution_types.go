@@ -14,10 +14,9 @@ const (
 // SkillProposal represents an evolution proposal from the SkillEvolutionLoop,
 // used for creating NEW skills from detected patterns.
 //
-// TODO(debt): DEV-04 — Unify with SkillEvolutionSuggestion into a single model.
-// Current plan: SkillEvolutionSuggestion will be the canonical model;
-// SkillProposal will be deprecated after migration.
-// See also: skill_evolution_suggestion_types.go, skill_evolution_unified.go.
+// Deprecated: Use UnifiedEvolutionSuggestion with ActionType=create_skill instead.
+// SkillProposal will be removed in a future release once all callers are migrated.
+// Migration: UnifiedEvolutionSuggestion{TargetType: "agent", ActionType: "create_skill", TargetID: proposal.AgentID, DraftBody: proposal.SkillMD, DraftName: proposal.SkillName}
 type SkillProposal struct {
 	ID          string
 	AgentID     string
@@ -42,12 +41,15 @@ type ToolCallRecord struct {
 
 // ── Status mapping between SkillProposal and SkillEvolutionSuggestion ────────
 //
-// TODO(debt): DEV-04 — These mapping functions are transitional and will be
-// removed once SkillProposal is deprecated in favor of SkillEvolutionSuggestion.
+// Deprecated: These mapping functions are transitional and will be removed
+// once SkillProposal is fully deprecated. Use UnifiedEvolutionSuggestion
+// directly instead of converting between legacy types.
 
 // ProposalStatusToSuggestion maps a SkillProposalStatus to the equivalent
 // EvolutionSuggestionStatus. The "registered" status maps to "applied" as
 // both represent "action has been executed".
+//
+// Deprecated: Use UnifiedEvolutionSuggestion.Status (string) directly.
 func ProposalStatusToSuggestion(s SkillProposalStatus) EvolutionSuggestionStatus {
 	switch s {
 	case SkillProposalStatusPending:
@@ -66,6 +68,8 @@ func ProposalStatusToSuggestion(s SkillProposalStatus) EvolutionSuggestionStatus
 // SuggestionStatusToProposal maps an EvolutionSuggestionStatus to the equivalent
 // SkillProposalStatus. The "applied" status maps to "registered" as both
 // represent "action has been executed".
+//
+// Deprecated: Use UnifiedEvolutionSuggestion.Status (string) directly.
 func SuggestionStatusToProposal(s EvolutionSuggestionStatus) SkillProposalStatus {
 	switch s {
 	case EvoSuggestionPending:

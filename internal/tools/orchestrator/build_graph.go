@@ -5,7 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
@@ -58,7 +58,7 @@ func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.Func
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input BuildOrchestrationGraphInput) (BuildOrchestrationGraphOutput, error) {
 			if len(input.Agents) == 0 {
-				return BuildOrchestrationGraphOutput{}, kerrors.BadRequest("ORCHESTRATOR", "at least one agent is required")
+				return BuildOrchestrationGraphOutput{}, apierror.BadRequest(apierror.DomainOrchestrator, "at least one agent is required")
 			}
 
 			config, warnings := BuildGraphConfig(input)

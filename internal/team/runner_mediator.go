@@ -11,8 +11,7 @@ import (
 )
 
 var (
-	errMediatorCoordNotSet    = errors.New("mediator coordinator not set")
-	errMediatorFinisherNotSet = errors.New("mediator finisher not set")
+	errMediatorCoordNotSet = errors.New("mediator coordinator not set")
 )
 
 // TeamGraphCoordAccess is the narrow interface Runner needs from the coordinator side.
@@ -25,29 +24,36 @@ type TeamGraphCoordAccess interface {
 }
 
 // TeamRunMediator breaks the circular dependency between Runner and TeamGraphRunCoordinator.
-// Runner depends on TeamGraphCoordAccess; Coordinator depends on TeamGraphRunFinisher.
+// Runner depends on TeamGraphCoordAccess; Coordinator depends on Mediator's finisher methods.
 // TeamRunMediator implements both and delegates to the concrete instances.
 type TeamRunMediator struct {
-	coord    TeamGraphCoordAccess
-	finisher TeamGraphRunFinisher
-	lg       loggateway.Logger
+	coord TeamGraphCoordAccess
+	lg    loggateway.Logger
+
+	// Finisher functions - set by Runner after construction via SetFinisherFunctions.
+	persistGraphRunStepFn  func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int)
+	finalizeGraphTeamRunFn func(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string)
 }
 
-// NewTeamRunMediator creates a mediator with no wiring; call SetCoordinator/SetFinisher after construction.
+// NewTeamRunMediator creates a mediator with no wiring; call SetCoordinator/SetFinisherFunctions after construction.
 func NewTeamRunMediator(lg loggateway.Logger) *TeamRunMediator {
 	return &TeamRunMediator{lg: lg}
 }
 
 // SetCoordinator wires the coordinator side (TeamGraphRunCoordinator implements TeamGraphCoordAccess).
-// Startup order: SetCoordinator/SetFinisher must be called before RecoverSessions.
+// Startup order: SetCoordinator/SetFinisherFunctions must be called before RecoverSessions.
 func (m *TeamRunMediator) SetCoordinator(c TeamGraphCoordAccess) {
 	m.coord = c
 }
 
-// SetFinisher wires the finisher side (Runner implements TeamGraphRunFinisher).
-// Startup order: SetFinisher/SetCoordinator must be called before RecoverSessions.
-func (m *TeamRunMediator) SetFinisher(f TeamGraphRunFinisher) {
-	m.finisher = f
+// SetFinisherFunctions wires the finisher side using Runner method references.
+// Startup order: SetFinisherFunctions/SetCoordinator must be called before RecoverSessions.
+func (m *TeamRunMediator) SetFinisherFunctions(
+	persistStep func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int),
+	finalizeRun func(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string),
+) {
+	m.persistGraphRunStepFn = persistStep
+	m.finalizeGraphTeamRunFn = finalizeRun
 }
 
 // --- TeamGraphCoordAccess delegation ---
@@ -90,29 +96,28 @@ func (m *TeamRunMediator) StartGraphStepWatch(ctx context.Context, execID string
 	return m.coord.StartGraphStepWatch(ctx, execID)
 }
 
-// --- TeamGraphRunFinisher delegation ---
+// --- Finisher delegation (via function fields) ---
 
 func (m *TeamRunMediator) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int) {
-	if m.finisher == nil {
+	if m.persistGraphRunStepFn == nil {
 		m.lg.Warn("mediator finisher not set, skipping PersistGraphRunStep",
 			loggateway.Str("node_id", nodeID))
 		return
 	}
-	m.finisher.PersistGraphRunStep(ctx, stepCtx, nodeID, outputPreview, errMsg, skipped, toolCallCount)
+	m.persistGraphRunStepFn(ctx, stepCtx, nodeID, outputPreview, errMsg, skipped, toolCallCount)
 }
 
 func (m *TeamRunMediator) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string) {
-	if m.finisher == nil {
+	if m.finalizeGraphTeamRunFn == nil {
 		m.lg.Warn("mediator finisher not set, skipping FinalizeGraphTeamRun",
 			loggateway.Bool("failed", failed))
 		return
 	}
-	m.finisher.FinalizeGraphTeamRun(ctx, stepCtx, failed, errMsg)
+	m.finalizeGraphTeamRunFn(ctx, stepCtx, failed, errMsg)
 }
 
 // Compile-time interface assertions.
 var (
 	_ TeamGraphCoordAccess = (*TeamRunMediator)(nil)
-	_ TeamGraphRunFinisher = (*TeamRunMediator)(nil)
 	_ TeamGraphCoordAccess = (*TeamGraphRunCoordinator)(nil)
 )

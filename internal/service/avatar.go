@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	v1 "aranea-agents/api/kratos/avatar/v1"
 	"aranea-agents/internal/biz"
@@ -83,7 +81,7 @@ func (s *AvatarService) GetAvatarThumbnail(ctx context.Context, req *v1.GetAvata
 func (s *AvatarService) blobResponse(ctx context.Context, id string, thumbnail bool) (*v1.GetAvatarBlobResponse, error) {
 	img, err := s.uc.GetAvatarImage(ctx, id, thumbnail)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AVATAR", "avatar not found")
 		}
 		return nil, err
@@ -95,7 +93,7 @@ func (s *AvatarService) blobResponse(ctx context.Context, id string, thumbnail b
 func (s *AvatarService) DeleteAvatarAsset(ctx context.Context, req *v1.DeleteAvatarAssetRequest) (*emptypb.Empty, error) {
 	err := s.uc.DeleteAvatarAsset(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("AVATAR", "avatar not found")
 		}
 		return nil, err

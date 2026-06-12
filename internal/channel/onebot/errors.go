@@ -3,7 +3,7 @@ package onebot
 import (
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -12,12 +12,12 @@ const (
 )
 
 var (
-	errHTTPServerRequired = kerrors.BadRequest(configReason, "onebot outbound: http_server required")
-	errBadSignature       = kerrors.BadRequest(protocolReason, "onebot: bad signature")
-	errEmptyMessage       = kerrors.BadRequest(protocolReason, "onebot: empty message")
-	errRecipientRequired  = kerrors.BadRequest(protocolReason, "onebot: recipient required")
+	errHTTPServerRequired = apierror.BadRequest(configReason, "onebot outbound: http_server required")
+	errBadSignature       = apierror.BadRequest(protocolReason, "onebot: bad signature")
+	errEmptyMessage       = apierror.BadRequest(protocolReason, "onebot: empty message")
+	errRecipientRequired  = apierror.BadRequest(protocolReason, "onebot: recipient required")
 )
 
 func onebotAPIError(prefix string, msg string) error {
-	return kerrors.InternalServer(protocolReason, fmt.Sprintf("%s: %s", prefix, msg))
+	return apierror.Internal(protocolReason, fmt.Sprintf("%s: %s", prefix, msg))
 }

@@ -12,9 +12,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	a2aclient "trpc.group/trpc-go/trpc-a2a-go/client"
 	a2aprotocol "trpc.group/trpc-go/trpc-a2a-go/server"
@@ -44,7 +43,7 @@ func ClientAuthOptions(authType, authJSON string) ([]a2aclient.Option, error) {
 		}
 		return []a2aclient.Option{a2aclient.WithHTTPClient(httpClient)}, nil
 	default:
-		return nil, kerrors.BadRequest("A2A", "unsupported auth_type: "+authType)
+		return nil, apierror.BadRequest(apierror.DomainA2A, "unsupported auth_type: "+authType)
 	}
 }
 
@@ -52,7 +51,7 @@ func apiKeyClientOptions(authType, raw string) ([]a2aclient.Option, error) {
 	var ac a2aAuthConfig
 	if s := strings.TrimSpace(raw); s != "" {
 		if err := json.Unmarshal([]byte(s), &ac); err != nil {
-			return nil, kerrors.BadRequest("A2A", "invalid auth_config_json")
+			return nil, apierror.BadRequest(apierror.DomainA2A, "invalid auth_config_json")
 		}
 	}
 	key := strings.TrimSpace(ac.APIKey)
@@ -60,7 +59,7 @@ func apiKeyClientOptions(authType, raw string) ([]a2aclient.Option, error) {
 		key = strings.TrimSpace(ac.Token)
 	}
 	if key == "" {
-		return nil, kerrors.BadRequest("A2A", "auth_config_json requires api_key or token")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "auth_config_json requires api_key or token")
 	}
 	headerName := strings.TrimSpace(ac.HeaderName)
 	if headerName == "" {
@@ -80,24 +79,24 @@ func apiKeyClientOptions(authType, raw string) ([]a2aclient.Option, error) {
 func MTLSHTTPClient(raw string) (*http.Client, error) {
 	var ac a2aAuthConfig
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &ac); err != nil {
-		return nil, kerrors.BadRequest("A2A", "invalid mtls auth_config_json")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "invalid mtls auth_config_json")
 	}
 	if strings.TrimSpace(ac.CertFile) == "" || strings.TrimSpace(ac.KeyFile) == "" {
-		return nil, kerrors.BadRequest("A2A", "mtls auth_config_json requires cert_file and key_file")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "mtls auth_config_json requires cert_file and key_file")
 	}
 	cert, err := tls.LoadX509KeyPair(ac.CertFile, ac.KeyFile)
 	if err != nil {
-		return nil, kerrors.BadRequest("A2A", "load mtls client cert: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainA2A, "load mtls client cert").WithCause(err)
 	}
 	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	if caFile := strings.TrimSpace(ac.CAFile); caFile != "" {
 		caPEM, err := os.ReadFile(caFile)
 		if err != nil {
-			return nil, kerrors.BadRequest("A2A", "read ca_file: "+err.Error())
+			return nil, apierror.BadRequest(apierror.DomainA2A, "read ca_file").WithCause(err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caPEM) {
-			return nil, kerrors.BadRequest("A2A", "invalid ca_file PEM")
+			return nil, apierror.BadRequest(apierror.DomainA2A, "invalid ca_file PEM")
 		}
 		tlsCfg.RootCAs = pool
 	}
@@ -113,7 +112,7 @@ func MTLSHTTPClient(raw string) (*http.Client, error) {
 func FetchRemoteAgentCard(ctx context.Context, remoteURL, authType, authConfigJSON string, lg loggateway.Logger) (biz.A2AAgentCard, error) {
 	remoteURL = strings.TrimSpace(remoteURL)
 	if remoteURL == "" {
-		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "remote_url is required")
+		return biz.A2AAgentCard{}, apierror.BadRequest(apierror.DomainA2A, "remote_url is required")
 	}
 	opts, err := ClientAuthOptions(authType, authConfigJSON)
 	if err != nil {
@@ -124,16 +123,16 @@ func FetchRemoteAgentCard(ctx context.Context, remoteURL, authType, authConfigJS
 	client, err := a2aclient.NewA2AClient(remoteURL, opts...)
 	if err != nil {
 		lg.Warn("A2A fetch remote card connect failed", loggateway.StepID("a2a.remote_card.connect_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
-		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "connect remote a2a: "+err.Error())
+		return biz.A2AAgentCard{}, apierror.BadRequest(apierror.DomainA2A, "connect remote a2a").WithCause(err)
 	}
 	cardPtr, err := client.GetAgentCard(ctx, remoteURL)
 	if err != nil {
 		lg.Error("A2A fetch remote card HTTP call failed", loggateway.StepID("a2a.remote_card.fetch_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
-		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "fetch remote agent card: "+err.Error())
+		return biz.A2AAgentCard{}, apierror.BadRequest(apierror.DomainA2A, "fetch remote agent card").WithCause(err)
 	}
 	if cardPtr == nil {
 		lg.Warn("A2A remote agent card is empty", loggateway.StepID("a2a.remote_card.empty"), loggateway.Str("remote_url", remoteURL))
-		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "remote agent card is empty")
+		return biz.A2AAgentCard{}, apierror.BadRequest(apierror.DomainA2A, "remote agent card is empty")
 	}
 	return protocolCardToBiz(*cardPtr), nil
 }

@@ -11,7 +11,7 @@ import (
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -115,9 +115,9 @@ func NewSearchTool() trpctool.CallableTool {
 			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) == 1 {
 				in.CollectionID = scoped[0]
 			} else if len(scoped) > 1 {
-				return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: collection_id is required when multiple knowledge_bases are scoped")
+				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: collection_id is required when multiple knowledge_bases are scoped")
 			} else {
-				return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: collection_id is required")
+				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: collection_id is required")
 			}
 		}
 		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
@@ -129,11 +129,11 @@ func NewSearchTool() trpctool.CallableTool {
 				}
 			}
 			if !allowed {
-				return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID))
+				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID))
 			}
 		}
 		if in.Query == "" {
-			return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: query is required")
+			return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: query is required")
 		}
 		if in.TopK <= 0 {
 			in.TopK = 5
@@ -156,10 +156,10 @@ func NewSearchTool() trpctool.CallableTool {
 		} else if ret := RetrieverFromContext(ctx); ret != nil {
 			chunks, err = ret.Search(ctx, q)
 		} else {
-			return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: retriever not configured in context")
+			return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: retriever not configured in context")
 		}
 		if err != nil {
-			return searchOutput{}, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("knowledge_search: %s", err.Error()))
+			return searchOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: %s", err.Error()))
 		}
 
 		out := searchOutput{Chunks: make([]chunkSummary, 0, len(chunks))}
@@ -202,7 +202,7 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
 				in.CollectionIDs = scoped
 			} else {
-				return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: collection_ids is required")
+				return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: collection_ids is required")
 			}
 		}
 		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
@@ -215,12 +215,12 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 					}
 				}
 				if !allowed {
-					return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("knowledge_reflect: collection_id %q is not in scoped knowledge_bases", id))
+					return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("knowledge_reflect: collection_id %q is not in scoped knowledge_bases", id))
 				}
 			}
 		}
 		if in.Query == "" {
-			return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: query is required")
+			return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: query is required")
 		}
 		if in.TopK <= 0 {
 			in.TopK = 5
@@ -241,20 +241,20 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 				q.CollectionID = in.CollectionIDs[0]
 				chunks, err = router.Search(ctx, q, nil, "")
 			} else {
-				return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: federated retriever not configured for multi-collection search")
+				return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: federated retriever not configured for multi-collection search")
 			}
 		} else if ret := RetrieverFromContext(ctx); ret != nil {
 			if len(in.CollectionIDs) == 1 {
 				q.CollectionID = in.CollectionIDs[0]
 				chunks, err = ret.Search(ctx, q)
 			} else {
-				return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: federated retriever not configured for multi-collection search")
+				return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: federated retriever not configured for multi-collection search")
 			}
 		} else {
-			return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: retriever not configured in context")
+			return reflectOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_reflect: retriever not configured in context")
 		}
 		if err != nil {
-			return reflectOutput{}, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("knowledge_reflect: %s", err.Error()))
+			return reflectOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_reflect: %s", err.Error()))
 		}
 
 		out := reflectOutput{

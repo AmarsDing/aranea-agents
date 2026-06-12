@@ -25,7 +25,7 @@ func (r *decoSyncSessionRepo) AppendChatMessage(_ context.Context, sessionID str
 func (r *decoSyncSessionRepo) BumpSessionRevision(_ context.Context, sessionID string) (int64, error) {
 	s, ok := r.sessions[sessionID]
 	if !ok {
-		return 0, sql.ErrNoRows
+		return 0, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	s.SessionRevision++
 	r.sessions[sessionID] = s

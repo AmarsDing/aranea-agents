@@ -54,8 +54,13 @@ func (uc *EvolutionUsecase) ScanAgent(ctx context.Context, agentID string) error
 	}
 
 	// Cross-pipeline dedup: skip if another pipeline already has a pending
-	// suggestion for this agent.
-	if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
+	// suggestion for this agent. Prefer orchestrator over legacy coordinator.
+	if uc.orchestrator != nil {
+		hasPending, err := uc.orchestrator.HasPendingForTarget(ctx, "agent", agentID)
+		if err == nil && hasPending {
+			return nil
+		}
+	} else if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
 		return nil
 	}
 
@@ -121,7 +126,7 @@ func (uc *EvolutionUsecase) ScanAgent(ctx context.Context, agentID string) error
 }
 
 func (uc *EvolutionUsecase) ensurePendingSuggestion(ctx context.Context, agentID, typ, title, content string) error {
-	pending, err := uc.suggestionRepo.ListByAgent(ctx, agentID, "pending")
+	pending, err := uc.suggestionRepo.ListByAgent(ctx, agentID, EvolutionStatusPending)
 	if err != nil {
 		return err
 	}
@@ -136,7 +141,7 @@ func (uc *EvolutionUsecase) ensurePendingSuggestion(ctx context.Context, agentID
 		Type:      typ,
 		Title:     title,
 		Content:   content,
-		Status:    "pending",
+		Status:    EvolutionStatusPending,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	return err

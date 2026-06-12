@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -114,6 +115,7 @@ type GatewayDiscoverInput struct {
 }
 
 // CardRepo handles agent card persistence and queries.
+// Stability:stable
 type CardRepo interface {
 	UpsertAgentCard(ctx context.Context, card AgentCard) (AgentCard, error)
 	GetAgentCard(ctx context.Context, agentID string) (AgentCard, error)
@@ -121,18 +123,21 @@ type CardRepo interface {
 }
 
 // InvocationRepo handles A2A invocation persistence.
+// Stability:stable
 type InvocationRepo interface {
 	CreateInvocation(ctx context.Context, inv Invocation) (Invocation, error)
 	UpdateInvocation(ctx context.Context, inv Invocation) error
 }
 
 // AuditRepo handles A2A audit logging.
+// Stability:stable
 type AuditRepo interface {
 	InsertAudit(ctx context.Context, entry AuditEntry) error
 	ListAudit(ctx context.Context, callerID, calleeID string, limit, offset int) ([]AuditEntry, int, error)
 }
 
 // RemoteAgentRepo handles remote agent CRUD and discovery.
+// Stability:evolving
 type RemoteAgentRepo interface {
 	CreateRemoteAgent(ctx context.Context, agent RemoteAgent) (RemoteAgent, error)
 	ListRemoteAgents(ctx context.Context, workspace string) ([]RemoteAgent, error)
@@ -161,9 +166,9 @@ type RetryPolicy struct {
 
 // Default retry policy constants.
 const (
-	defaultMaxRetries     = 2
-	defaultInitialBackoff = 500 * time.Millisecond
-	defaultMaxBackoff     = 5 * time.Second
+	defaultMaxRetries             = 2
+	defaultInitialBackoff         = 500 * time.Millisecond
+	defaultMaxBackoff             = 5 * time.Second
 	DefaultRemoteInvokeTimeoutSec = 30 // Default timeout for remote A2A invocations in seconds
 )
 
@@ -182,7 +187,73 @@ const (
 	SourceRemote = "remote"
 )
 
+// AuthType constants for remote agent authentication.
+const (
+	AuthTypeNone   = "none"
+	AuthTypeBearer = "bearer"
+	AuthTypeBasic  = "basic"
+	AuthTypeAPIKey = "api_key"
+)
+
+var validAuthTypes = map[string]bool{
+	AuthTypeNone:   true,
+	AuthTypeBearer: true,
+	AuthTypeBasic:  true,
+	AuthTypeAPIKey: true,
+}
+
+// ValidateAuthConfig checks that authType is valid and authConfigJSON matches the type.
+func ValidateAuthConfig(authType, authConfigJSON string) error {
+	at := strings.TrimSpace(authType)
+	if at == "" {
+		at = AuthTypeNone
+	}
+	if !validAuthTypes[at] {
+		return apierror.BadRequest("A2A", "invalid auth_type: %s", at)
+	}
+	cfg := strings.TrimSpace(authConfigJSON)
+	switch at {
+	case AuthTypeNone:
+		// No config needed; ignore any provided config silently.
+		return nil
+	case AuthTypeBearer:
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(cfg), &m); err != nil {
+			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for bearer auth")
+		}
+		if _, ok := m["token"]; !ok {
+			return apierror.BadRequest("A2A", "bearer auth_config_json must contain 'token' field")
+		}
+	case AuthTypeBasic:
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(cfg), &m); err != nil {
+			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for basic auth")
+		}
+		if _, ok := m["username"]; !ok {
+			return apierror.BadRequest("A2A", "basic auth_config_json must contain 'username' field")
+		}
+		if _, ok := m["password"]; !ok {
+			return apierror.BadRequest("A2A", "basic auth_config_json must contain 'password' field")
+		}
+	case AuthTypeAPIKey:
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(cfg), &m); err != nil {
+			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for api_key auth")
+		}
+		if _, ok := m["key"]; !ok {
+			if _, ok2 := m["header"]; !ok2 {
+				return apierror.BadRequest("A2A", "api_key auth_config_json must contain 'key' or 'header' field")
+			}
+		}
+		if _, ok := m["value"]; !ok {
+			return apierror.BadRequest("A2A", "api_key auth_config_json must contain 'value' field")
+		}
+	}
+	return nil
+}
+
 // AgentLookup provides read-only access to agent metadata for workspace resolution.
+// Stability:evolving
 type AgentLookup interface {
 	GetAgentByID(ctx context.Context, id string) (AgentMeta, error)
 }
@@ -389,6 +460,9 @@ func (u *Usecase) RegisterRemoteAgent(ctx context.Context, in RegisterRemoteAgen
 	if remoteURL == "" {
 		return RemoteAgent{}, apierror.BadRequest("A2A", "remote_url is required")
 	}
+	if err := ValidateAuthConfig(in.AuthType, in.AuthConfigJSON); err != nil {
+		return RemoteAgent{}, err
+	}
 	card, err := u.remoteRepo.DiscoverRemoteCard(ctx, RemoteCardDiscoverInput{
 		RemoteURL:      remoteURL,
 		AuthType:       in.AuthType,
@@ -448,6 +522,9 @@ func (u *Usecase) DiscoverRemoteAgent(ctx context.Context, in RemoteCardDiscover
 	}
 	if strings.TrimSpace(in.RemoteURL) == "" {
 		return AgentCard{}, apierror.BadRequest("A2A", "remote_url is required")
+	}
+	if err := ValidateAuthConfig(in.AuthType, in.AuthConfigJSON); err != nil {
+		return AgentCard{}, err
 	}
 	return u.remoteRepo.DiscoverRemoteCard(ctx, in)
 }

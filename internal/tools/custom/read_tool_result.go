@@ -7,7 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -43,10 +43,10 @@ func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.Functi
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input readToolResultInput) (readToolResultOutput, error) {
 			if input.BlobID == "" {
-				return readToolResultOutput{}, kerrors.BadRequest("TOOL_RESULT", "blob_id is required")
+				return readToolResultOutput{}, apierror.BadRequest(apierror.DomainTool, "blob_id is required")
 			}
 			if input.Offset < 0 {
-				return readToolResultOutput{}, kerrors.BadRequest("TOOL_RESULT", "offset must be >= 0")
+				return readToolResultOutput{}, apierror.BadRequest(apierror.DomainTool, "offset must be >= 0")
 			}
 
 			blob, err := reader.GetBlob(ctx, input.BlobID)

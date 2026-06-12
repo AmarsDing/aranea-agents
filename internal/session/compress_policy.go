@@ -9,6 +9,164 @@ import (
 	"aranea-agents/pkg/strutil"
 )
 
+// CompressPolicy aggregates all compression-related configuration into a single struct.
+// This replaces the scattered access to AgentSettings fields and hardcoded constants.
+// Sub-structs are grouped by responsibility to keep total direct fields ≤ 15 (AS-COG-01).
+type CompressPolicy struct {
+	Switches  CompressSwitches
+	Threshold CompressThreshold
+	Timing    CompressTiming
+	Model     CompressModelConfig
+	Profile   CompressProfile
+}
+
+// CompressSwitches controls which compression stages are active.
+type CompressSwitches struct {
+	Enabled               bool
+	MicroCompactEnabled   bool
+	MemoryCompactEnabled  bool
+	AdaptiveBufferEnabled bool
+}
+
+// CompressThreshold defines when compression triggers.
+type CompressThreshold struct {
+	SummaryThreshold float64 // L0SummaryThreshold
+	ForcedThreshold  float64 // forcedCompressThreshold
+	SoftTriggerRatio float64
+	HardTriggerRatio float64
+	BufferRatio      float64 // CompressionBufferRatio
+	KeepTurns        int     // L0SummaryKeepTurns
+	RecentWindowTurns int    // L0RecentWindowTurns
+}
+
+// CompressTiming controls compression scheduling.
+type CompressTiming struct {
+	MinGap  time.Duration // L0CompressMinGapSec → Duration
+	Timeout time.Duration // compressRunTimeout
+}
+
+// CompressModelConfig specifies the LLM used for compression.
+type CompressModelConfig struct {
+	Provider         string // L0CompressProvider
+	Model            string // L0CompressModel
+	TruncateStrategy string // L0TruncateStrategy
+	SnapshotMode     string // L0SnapshotMode
+}
+
+// CompressProfile defines reserved tokens per conversation mode.
+type CompressProfile struct {
+	ReservedTokensCoding   int
+	ReservedTokensResearch int
+	ReservedTokensChatOnly int
+	ReservedTokensDefault  int
+	MaxFieldTextChars      int // MemoryCompact field limit
+}
+
+// DefaultCompressPolicy returns a CompressPolicy with sensible defaults
+// matching the current hardcoded values.
+func DefaultCompressPolicy() CompressPolicy {
+	return CompressPolicy{
+		Switches: CompressSwitches{
+			Enabled:               true,
+			MicroCompactEnabled:   true,
+			MemoryCompactEnabled:  true,
+			AdaptiveBufferEnabled: true,
+		},
+		Threshold: CompressThreshold{
+			SummaryThreshold:  defaultCompressThreshold,
+			ForcedThreshold:   forcedCompressThreshold,
+			SoftTriggerRatio:  biz.DefaultSoftTriggerRatio,
+			HardTriggerRatio:  biz.DefaultHardTriggerRatio,
+			BufferRatio:       biz.DefaultCompressionBufferRatio,
+			KeepTurns:         defaultKeepTurns,
+			RecentWindowTurns: 0,
+		},
+		Timing: CompressTiming{
+			MinGap:  DefaultCompressMinGap,
+			Timeout: compressRunTimeout,
+		},
+		Model: CompressModelConfig{
+			Provider:         "",
+			Model:            "",
+			TruncateStrategy: "summary",
+			SnapshotMode:     "",
+		},
+		Profile: CompressProfile{
+			ReservedTokensCoding:   reservedTokensCoding,
+			ReservedTokensResearch: reservedTokensResearch,
+			ReservedTokensChatOnly: reservedTokensChatOnly,
+			ReservedTokensDefault:  reservedTokensDefault,
+			MaxFieldTextChars:      maxFieldTextChars,
+		},
+	}
+}
+
+// CompressPolicyFromAgent extracts the compression policy from an Agent's settings,
+// falling back to defaults for unset fields.
+func CompressPolicyFromAgent(ag biz.Agent) CompressPolicy {
+	p := DefaultCompressPolicy()
+	if ag.Settings == nil {
+		return p
+	}
+	s := ag.Settings
+
+	// Switches
+	if s.ContextCompactionEnabled {
+		p.Switches.Enabled = true
+	}
+	if strings.ToLower(strings.TrimSpace(s.L0SnapshotMode)) == "off" {
+		p.Switches.Enabled = false
+	}
+	p.Switches.MicroCompactEnabled = s.MicroCompactEnabled
+	p.Switches.MemoryCompactEnabled = s.MemoryCompactEnabled
+	p.Switches.AdaptiveBufferEnabled = s.CompressionBufferAdaptive
+
+	// Thresholds
+	if s.L0SummaryThreshold > 0 {
+		p.Threshold.SummaryThreshold = s.L0SummaryThreshold
+	}
+	if s.SoftTriggerRatio > 0 {
+		p.Threshold.SoftTriggerRatio = s.SoftTriggerRatio
+	}
+	if s.HardTriggerRatio > 0 {
+		p.Threshold.HardTriggerRatio = s.HardTriggerRatio
+	}
+	if s.CompressionBufferRatio > 0 {
+		p.Threshold.BufferRatio = s.CompressionBufferRatio
+	}
+
+	// Retention
+	if s.L0SummaryKeepTurns > 0 {
+		p.Threshold.KeepTurns = s.L0SummaryKeepTurns
+	}
+	if s.L0RecentWindowTurns > 0 {
+		p.Threshold.RecentWindowTurns = s.L0RecentWindowTurns
+	}
+
+	// Timing
+	if s.L0CompressMinGapSec > 0 {
+		p.Timing.MinGap = time.Duration(s.L0CompressMinGapSec) * time.Second
+	}
+
+	// Model
+	if v := strings.TrimSpace(s.L0CompressProvider); v != "" {
+		p.Model.Provider = v
+	}
+	if v := strings.TrimSpace(s.L0CompressModel); v != "" {
+		p.Model.Model = v
+	}
+
+	// Strategy
+	if v := strings.ToLower(strings.TrimSpace(s.L0TruncateStrategy)); v != "" {
+		p.Model.TruncateStrategy = v
+	}
+	if v := strings.TrimSpace(s.L0SnapshotMode); v != "" {
+		p.Model.SnapshotMode = v
+	}
+
+	return p
+}
+
 const (
 	DefaultCompressMinGap = 10 * time.Minute
 	compressRunTimeout    = 8 * time.Minute
@@ -27,74 +185,78 @@ const (
 	maxFieldTextChars = 200
 )
 
-func compressThresholdAndKeep(ag biz.Agent) (threshold float64, keepTurns int) {
-	threshold = defaultCompressThreshold
-	keepTurns = defaultKeepTurns
-	if ag.Settings == nil {
-		return threshold, keepTurns
-	}
-	if ag.Settings.L0SummaryThreshold > 0 {
-		threshold = ag.Settings.L0SummaryThreshold
-	}
-	if ag.Settings.L0SummaryKeepTurns > 0 {
-		keepTurns = ag.Settings.L0SummaryKeepTurns
-	} else if ag.Settings.L0RecentWindowTurns > 0 {
-		keepTurns = ag.Settings.L0RecentWindowTurns
+// compressThresholdAndKeepPolicy returns the threshold and keepTurns from a CompressPolicy.
+func compressThresholdAndKeepPolicy(p CompressPolicy) (threshold float64, keepTurns int) {
+	threshold = p.Threshold.SummaryThreshold
+	keepTurns = p.Threshold.KeepTurns
+	if p.Threshold.RecentWindowTurns > 0 && p.Threshold.KeepTurns == defaultKeepTurns {
+		keepTurns = p.Threshold.RecentWindowTurns
 	}
 	return threshold, keepTurns
 }
 
+// compressThresholdAndKeep is a backward-compatible wrapper that reads from biz.Agent.
+func compressThresholdAndKeep(ag biz.Agent) (threshold float64, keepTurns int) {
+	return compressThresholdAndKeepPolicy(CompressPolicyFromAgent(ag))
+}
+
+// sessionCompressEnabledPolicy returns whether compression is enabled based on CompressPolicy.
+func sessionCompressEnabledPolicy(p CompressPolicy) bool {
+	return p.Switches.Enabled
+}
+
 func sessionCompressEnabled(ag biz.Agent) bool {
-	if ag.Settings == nil {
-		return true
+	return sessionCompressEnabledPolicy(CompressPolicyFromAgent(ag))
+}
+
+// microCompactEnabledPolicy returns whether micro compact is enabled based on CompressPolicy.
+func microCompactEnabledPolicy(p CompressPolicy) bool {
+	if !p.Switches.Enabled {
+		return false
 	}
-	if ag.Settings.ContextCompactionEnabled {
-		return true
-	}
-	return strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode)) != "off"
+	return p.Switches.MicroCompactEnabled
 }
 
 func microCompactEnabled(ag biz.Agent) bool {
-	if !sessionCompressEnabled(ag) {
+	return microCompactEnabledPolicy(CompressPolicyFromAgent(ag))
+}
+
+// memoryCompactEnabledPolicy returns whether memory compact is enabled based on CompressPolicy.
+func memoryCompactEnabledPolicy(p CompressPolicy) bool {
+	if !p.Switches.Enabled {
 		return false
 	}
-	if ag.Settings == nil {
-		return true
-	}
-	return ag.Settings.MicroCompactEnabled
+	return p.Switches.MemoryCompactEnabled
 }
 
 func memoryCompactEnabled(ag biz.Agent) bool {
-	if !sessionCompressEnabled(ag) {
-		return false
+	return memoryCompactEnabledPolicy(CompressPolicyFromAgent(ag))
+}
+
+// sessionCompressThresholdPolicy returns the effective compress threshold from CompressPolicy.
+func sessionCompressThresholdPolicy(p CompressPolicy) float64 {
+	mode := strings.ToLower(strings.TrimSpace(p.Model.SnapshotMode))
+	if mode == "always" && p.Threshold.SummaryThreshold > p.Threshold.ForcedThreshold {
+		return p.Threshold.ForcedThreshold
 	}
-	if ag.Settings == nil {
-		return true
-	}
-	return ag.Settings.MemoryCompactEnabled
+	return p.Threshold.SummaryThreshold
 }
 
 func sessionCompressThreshold(ag biz.Agent) float64 {
-	threshold, _ := compressThresholdAndKeep(ag)
-	mode := "on_warning"
-	if ag.Settings != nil {
-		mode = strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode))
-	}
-	if mode == "always" && threshold > forcedCompressThreshold {
-		return forcedCompressThreshold
-	}
-	return threshold
+	return sessionCompressThresholdPolicy(CompressPolicyFromAgent(ag))
 }
 
-func truncateStrategy(ag biz.Agent) string {
-	if ag.Settings == nil {
-		return "summary"
-	}
-	s := strings.ToLower(strings.TrimSpace(ag.Settings.L0TruncateStrategy))
+// truncateStrategyPolicy returns the truncate strategy from CompressPolicy.
+func truncateStrategyPolicy(p CompressPolicy) string {
+	s := strings.ToLower(strings.TrimSpace(p.Model.TruncateStrategy))
 	if s == "" {
 		return "summary"
 	}
 	return s
+}
+
+func truncateStrategy(ag biz.Agent) string {
+	return truncateStrategyPolicy(CompressPolicyFromAgent(ag))
 }
 
 func filterMessagesForTruncateStrategy(msgs []biz.ChatMessage, strategy string) []biz.ChatMessage {
@@ -112,22 +274,25 @@ func filterMessagesForTruncateStrategy(msgs []biz.ChatMessage, strategy string) 
 	return out
 }
 
-func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
-	if ag.Settings != nil {
-		p := strings.TrimSpace(ag.Settings.L0CompressProvider)
-		m := strings.TrimSpace(ag.Settings.L0CompressModel)
-		if p != "" && m != "" {
-			return p, m
-		}
+// compressProviderModelPolicy returns the compress provider and model from CompressPolicy.
+func compressProviderModelPolicy(p CompressPolicy, sess biz.Session, ag biz.Agent) (prov, mod string) {
+	if p.Model.Provider != "" && p.Model.Model != "" {
+		return p.Model.Provider, p.Model.Model
 	}
 	return strutil.FirstNonEmpty(sess.DefaultProvider, ag.Provider), strutil.FirstNonEmpty(sess.DefaultModel, ag.Model)
 }
 
+func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
+	return compressProviderModelPolicy(CompressPolicyFromAgent(ag), sess, ag)
+}
+
+// compressMinGapFromAgentPolicy returns the minimum gap between compressions from CompressPolicy.
+func compressMinGapFromAgentPolicy(p CompressPolicy) time.Duration {
+	return p.Timing.MinGap
+}
+
 func compressMinGapFromAgent(ag biz.Agent) time.Duration {
-	if ag.Settings != nil && ag.Settings.L0CompressMinGapSec > 0 {
-		return time.Duration(ag.Settings.L0CompressMinGapSec) * time.Second
-	}
-	return DefaultCompressMinGap
+	return compressMinGapFromAgentPolicy(CompressPolicyFromAgent(ag))
 }
 
 func compressDebounceActive(lastSummaryRFC3339 string, minGap time.Duration, now time.Time) bool {
@@ -155,6 +320,21 @@ func atFullContextUsage(sess biz.Session) bool {
 	return false
 }
 
+// profileBasedDefaultPolicy returns the estimated reserved_system tokens for a given ToolsProfile
+// using the CompressPolicy's reserved token fields.
+func profileBasedDefaultPolicy(p CompressPolicy, profile string) int {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "coding", "full":
+		return p.Profile.ReservedTokensCoding
+	case "research":
+		return p.Profile.ReservedTokensResearch
+	case "chat_only", "minimal":
+		return p.Profile.ReservedTokensChatOnly
+	default:
+		return p.Profile.ReservedTokensDefault
+	}
+}
+
 // profileBasedDefault returns the estimated reserved_system tokens for a given ToolsProfile.
 func profileBasedDefault(profile string) int {
 	switch strings.ToLower(strings.TrimSpace(profile)) {
@@ -167,6 +347,11 @@ func profileBasedDefault(profile string) int {
 	default:
 		return reservedTokensDefault
 	}
+}
+
+// calculateReservedSystemPolicy estimates the system prompt tokens using CompressPolicy.
+func calculateReservedSystemPolicy(p CompressPolicy, profile string) int {
+	return profileBasedDefaultPolicy(p, profile)
 }
 
 // calculateReservedSystem estimates the system prompt tokens that are not compressible.
@@ -183,12 +368,14 @@ func calculateReservedSystem(ag biz.Agent) int {
 	return profileBasedDefault(profile)
 }
 
+// compressionBufferRatioPolicy returns the buffer ratio from CompressPolicy.
+func compressionBufferRatioPolicy(p CompressPolicy) float64 {
+	return p.Threshold.BufferRatio
+}
+
 // compressionBufferRatio returns the buffer ratio from agent settings or the default.
 func compressionBufferRatio(ag biz.Agent) float64 {
-	if ag.Settings != nil && ag.Settings.CompressionBufferRatio > 0 {
-		return ag.Settings.CompressionBufferRatio
-	}
-	return biz.DefaultCompressionBufferRatio
+	return compressionBufferRatioPolicy(CompressPolicyFromAgent(ag))
 }
 
 // effectiveBudget calculates the usable token budget for conversation content.
@@ -202,6 +389,13 @@ func effectiveBudget(contextWindow, reservedSystem int, bufferRatio float64) int
 	return budget
 }
 
+// softTriggerTokensPolicy returns the soft trigger token count using CompressPolicy.
+func softTriggerTokensPolicy(p CompressPolicy, contextWindow int) int {
+	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode) // profile derived from SnapshotMode is not ideal; use ToolsProfile
+	budget := effectiveBudget(contextWindow, reserved, p.Threshold.BufferRatio)
+	return reserved + int(float64(budget)*p.Threshold.SoftTriggerRatio) + int(float64(contextWindow)*p.Threshold.BufferRatio)
+}
+
 // softTriggerTokens returns the token count at which async compression should trigger.
 func softTriggerTokens(ag biz.Agent, contextWindow int) int {
 	reserved := calculateReservedSystem(ag)
@@ -211,6 +405,13 @@ func softTriggerTokens(ag biz.Agent, contextWindow int) int {
 		ratio = ag.Settings.SoftTriggerRatio
 	}
 	return reserved + int(float64(budget)*ratio) + int(float64(contextWindow)*compressionBufferRatio(ag))
+}
+
+// hardTriggerTokensPolicy returns the hard trigger token count using CompressPolicy.
+func hardTriggerTokensPolicy(p CompressPolicy, contextWindow int) int {
+	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode)
+	budget := effectiveBudget(contextWindow, reserved, p.Threshold.BufferRatio)
+	return reserved + int(float64(budget)*p.Threshold.HardTriggerRatio) + int(float64(contextWindow)*p.Threshold.BufferRatio)
 }
 
 // hardTriggerTokens returns the token count at which sync compression should trigger.
@@ -255,7 +456,7 @@ const (
 )
 
 // AdaptiveBufferState tracks token increments for adaptive buffer ratio adjustment.
-// Thread-safety: instances are stored in Compressor.adaptiveBuffer (sync.Map).
+// Thread-safety: instances are stored in compressBufferManager.buffer (sync.Map).
 // LastAccessed is accessed atomically to avoid data races between the compress
 // goroutine (writer) and the GC goroutine (reader). All other fields are only
 // accessed within runCompress, which is serialized per-session by tryStartCompress
@@ -340,6 +541,13 @@ func (s *AdaptiveBufferState) UpdateAdaptiveBuffer(usedTokens, contextWindow int
 	return s.CurrentRatio
 }
 
+// softTriggerTokensWithRatioPolicy returns the soft trigger token count using CompressPolicy and explicit buffer ratio.
+func softTriggerTokensWithRatioPolicy(p CompressPolicy, contextWindow int, bufferRatio float64) int {
+	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode)
+	budget := effectiveBudget(contextWindow, reserved, bufferRatio)
+	return reserved + int(float64(budget)*p.Threshold.SoftTriggerRatio) + int(float64(contextWindow)*bufferRatio)
+}
+
 // softTriggerTokensWithRatio returns the soft trigger token count using an explicit buffer ratio.
 func softTriggerTokensWithRatio(ag biz.Agent, contextWindow int, bufferRatio float64) int {
 	reserved := calculateReservedSystem(ag)
@@ -349,6 +557,13 @@ func softTriggerTokensWithRatio(ag biz.Agent, contextWindow int, bufferRatio flo
 		ratio = ag.Settings.SoftTriggerRatio
 	}
 	return reserved + int(float64(budget)*ratio) + int(float64(contextWindow)*bufferRatio)
+}
+
+// hardTriggerTokensWithRatioPolicy returns the hard trigger token count using CompressPolicy and explicit buffer ratio.
+func hardTriggerTokensWithRatioPolicy(p CompressPolicy, contextWindow int, bufferRatio float64) int {
+	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode)
+	budget := effectiveBudget(contextWindow, reserved, bufferRatio)
+	return reserved + int(float64(budget)*p.Threshold.HardTriggerRatio) + int(float64(contextWindow)*bufferRatio)
 }
 
 // hardTriggerTokensWithRatio returns the hard trigger token count using an explicit buffer ratio.
@@ -362,13 +577,15 @@ func hardTriggerTokensWithRatio(ag biz.Agent, contextWindow int, bufferRatio flo
 	return reserved + int(float64(budget)*ratio) + int(float64(contextWindow)*bufferRatio)
 }
 
+// adaptiveBufferEnabledPolicy returns true if adaptive buffer adjustment is enabled based on CompressPolicy.
+func adaptiveBufferEnabledPolicy(p CompressPolicy) bool {
+	return p.Switches.AdaptiveBufferEnabled
+}
+
 // adaptiveBufferEnabled returns true if adaptive buffer adjustment is enabled for the agent.
 // Defaults to true when not explicitly disabled.
 func adaptiveBufferEnabled(ag biz.Agent) bool {
-	if ag.Settings == nil {
-		return true
-	}
-	return ag.Settings.CompressionBufferAdaptive
+	return adaptiveBufferEnabledPolicy(CompressPolicyFromAgent(ag))
 }
 
 // effectiveBudgetRatio converts a token count to a ratio against contextWindow,

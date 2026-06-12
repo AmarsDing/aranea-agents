@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,7 +12,7 @@ import (
 
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -63,13 +62,13 @@ func ResolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string
 	case "oauth2_static":
 		token := strings.TrimSpace(auth.AccessToken)
 		if token == "" {
-			return "", kerrors.BadRequest("MCP_OAUTH", "oauth2_static: access_token is required")
+			return "", apierror.BadRequest(apierror.DomainMCP, "oauth2_static: access_token is required")
 		}
 		// Check expiry: if ExpiresAt is set and the token has expired,
 		// return an error so the caller can rebuild the agent with a
 		// fresh token rather than silently using an expired one.
 		if !auth.ExpiresAt.IsZero() && time.Now().After(auth.ExpiresAt) {
-			return "", kerrors.BadRequest("MCP_OAUTH", fmt.Sprintf("oauth2_static: access_token expired at %s", auth.ExpiresAt.Format(time.RFC3339)))
+			return "", apierror.BadRequest(apierror.DomainMCP, "oauth2_static: access_token expired at %s", auth.ExpiresAt.Format(time.RFC3339))
 		}
 		return token, nil
 	default:
@@ -85,7 +84,7 @@ func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpconfig.AuthConfig
 	clientID := strings.TrimSpace(auth.ClientID)
 	clientSecret := strings.TrimSpace(auth.ClientSecret)
 	if tokenURL == "" || clientID == "" {
-		return "", kerrors.BadRequest("MCP_OAUTH", "oauth2: token_url and client_id are required")
+		return "", apierror.BadRequest(apierror.DomainMCP, "oauth2: token_url and client_id are required")
 	}
 
 	// Check cache first.
@@ -140,7 +139,7 @@ func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (st
 	tokenURL := strings.TrimSpace(auth.TokenURL)
 	clientID := strings.TrimSpace(auth.ClientID)
 	if tokenURL == "" || strings.TrimSpace(auth.RefreshToken) == "" {
-		return "", kerrors.BadRequest("MCP_OAUTH", "oauth2_refresh: token_url and refresh_token are required")
+		return "", apierror.BadRequest(apierror.DomainMCP, "oauth2_refresh: token_url and refresh_token are required")
 	}
 
 	// Check cache first — reuse a valid token if we have one.
@@ -236,11 +235,11 @@ func postOAuth2RefreshWithRotation(ctx context.Context, tokenURL string, form ur
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", "oauth2 token: read body: "+err.Error())
+		return "", 0, "", apierror.Internal(apierror.DomainMCP, "oauth2 token: read body").WithCause(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		sanitized := sanitizeOAuth2Error(body)
-		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", fmt.Sprintf("oauth2 token: HTTP %d: %s", resp.StatusCode, sanitized))
+		return "", 0, "", apierror.Internal(apierror.DomainMCP, "oauth2 token: HTTP %d: %s", resp.StatusCode, sanitized)
 	}
 	var parsed struct {
 		AccessToken  string `json:"access_token"`
@@ -248,10 +247,10 @@ func postOAuth2RefreshWithRotation(ctx context.Context, tokenURL string, form ur
 		ExpiresIn    int    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", "oauth2 token: parse response: "+err.Error())
+		return "", 0, "", apierror.Internal(apierror.DomainMCP, "oauth2 token: parse response").WithCause(err)
 	}
 	if strings.TrimSpace(parsed.AccessToken) == "" {
-		return "", 0, "", kerrors.InternalServer("MCP_OAUTH", "oauth2 token: empty access_token")
+		return "", 0, "", apierror.Internal(apierror.DomainMCP, "oauth2 token: empty access_token")
 	}
 	return parsed.AccessToken, parsed.ExpiresIn, parsed.RefreshToken, nil
 }
@@ -274,21 +273,21 @@ func postOAuth2TokenWithExpiry(ctx context.Context, tokenURL string, form url.Va
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", 0, kerrors.InternalServer("MCP_OAUTH", "oauth2 token: read body: "+err.Error())
+		return "", 0, apierror.Internal(apierror.DomainMCP, "oauth2 token: read body").WithCause(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		sanitized := sanitizeOAuth2Error(body)
-		return "", 0, kerrors.InternalServer("MCP_OAUTH", fmt.Sprintf("oauth2 token: HTTP %d: %s", resp.StatusCode, sanitized))
+		return "", 0, apierror.Internal(apierror.DomainMCP, "oauth2 token: HTTP %d: %s", resp.StatusCode, sanitized)
 	}
 	var parsed struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", 0, kerrors.InternalServer("MCP_OAUTH", "oauth2 token: parse response: "+err.Error())
+		return "", 0, apierror.Internal(apierror.DomainMCP, "oauth2 token: parse response").WithCause(err)
 	}
 	if strings.TrimSpace(parsed.AccessToken) == "" {
-		return "", 0, kerrors.InternalServer("MCP_OAUTH", "oauth2 token: empty access_token")
+		return "", 0, apierror.Internal(apierror.DomainMCP, "oauth2 token: empty access_token")
 	}
 	return parsed.AccessToken, parsed.ExpiresIn, nil
 }

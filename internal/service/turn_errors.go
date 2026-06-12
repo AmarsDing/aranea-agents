@@ -30,19 +30,23 @@ var turnErrorMessages = map[TurnErrorCode]string{
 	TurnErrStreamPreviewFailed:   "流式回复预览更新失败",
 }
 
+const metaKeyTurnErrorCode = "turn_error_code"
+
 func TurnError(code TurnErrorCode, detail string) error {
 	msg := turnErrorMessages[code]
 	if detail != "" {
 		msg = msg + " (" + detail + ")"
 	}
+	var ae *apierror.Error
 	switch code {
 	case TurnErrAgentForbidden:
-		return apierror.Forbidden("CHAT_AGENT", msg)
+		ae = apierror.Forbidden("CHAT_AGENT", msg)
 	case TurnErrAttachmentFailed, TurnErrAttachmentUnsupported:
-		return apierror.BadRequest("CHAT_AGENT", msg)
+		ae = apierror.BadRequest("CHAT_AGENT", msg)
 	default:
-		return apierror.Internal("CHAT_AGENT", msg)
+		ae = apierror.Internal("CHAT_AGENT", msg)
 	}
+	return ae.WithMeta(metaKeyTurnErrorCode, string(code))
 }
 
 func TurnErrorCodeFromErr(err error) TurnErrorCode {
@@ -50,10 +54,8 @@ func TurnErrorCodeFromErr(err error) TurnErrorCode {
 		return ""
 	}
 	if ae, ok := apierror.From(err); ok {
-		for code, msg := range turnErrorMessages {
-			if ae.Message == msg || len(ae.Message) > len(msg) && ae.Message[:len(msg)] == msg {
-				return code
-			}
+		if v, exists := ae.Meta[metaKeyTurnErrorCode]; exists {
+			return TurnErrorCode(v)
 		}
 	}
 	return ""

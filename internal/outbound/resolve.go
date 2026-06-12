@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -33,7 +33,7 @@ func ResolveTarget(ctx context.Context, explicit DeliveryTarget) (DeliveryTarget
 	target = fillFromRuntime(ctx, target)
 	target = fillFromSession(ctx, target)
 	if strings.TrimSpace(target.Channel) == "" || strings.TrimSpace(target.Target) == "" {
-		return DeliveryTarget{}, kerrors.BadRequest("OUTBOUND", "unable to resolve delivery target")
+		return DeliveryTarget{}, apierror.BadRequest(apierror.DomainOutbound, "unable to resolve delivery target")
 	}
 	return target, nil
 }

@@ -2,13 +2,11 @@ package agent
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // DAGToGraphCompiler converts TaskDAG + AllocationPlan into a Team Definition JSON
@@ -34,7 +32,7 @@ type dagMember struct {
 // that can be fed into the existing CompileToCompiledTeam pipeline.
 func (c *DAGToGraphCompiler) Compile(dag *biz.PlanTaskDAG, allocPlan *biz.AllocationPlan) (string, error) {
 	if dag == nil || allocPlan == nil {
-		return "{}", kerrors.BadRequest("SPIRIT", "dag and allocPlan must not be nil")
+		return "{}", apierror.BadRequest(apierror.DomainSpirit, "dag and allocPlan must not be nil")
 	}
 
 	// Determine mode based on DAG structure.
@@ -73,7 +71,7 @@ func (c *DAGToGraphCompiler) Compile(dag *biz.PlanTaskDAG, allocPlan *biz.Alloca
 
 	// Validate: detect cycles in the DAG before proceeding.
 	if err := validateDAGNoCycle(dag); err != nil {
-		return "{}", err // already kerrors.BadRequest
+		return "{}", err // already apierror.BadRequest
 	}
 
 	// Add worker members from allocations.
@@ -110,7 +108,7 @@ func (c *DAGToGraphCompiler) Compile(dag *biz.PlanTaskDAG, allocPlan *biz.Alloca
 
 	out, err := json.Marshal(def)
 	if err != nil {
-		return "{}", kerrors.InternalServer("SPIRIT", "marshal definition: "+err.Error())
+		return "{}", apierror.Internal(apierror.DomainSpirit, "marshal definition").WithCause(err)
 	}
 	return string(out), nil
 }
@@ -147,7 +145,7 @@ func validateDAGNoCycle(dag *biz.PlanTaskDAG) error {
 		}
 	}
 	if visited != len(dag.Nodes) {
-		return kerrors.BadRequest("SPIRIT", fmt.Sprintf("DAG cycle detected: not all nodes reachable (%d/%d)", visited, len(dag.Nodes)))
+		return apierror.BadRequest(apierror.DomainSpirit, "DAG cycle detected: not all nodes reachable (%d/%d)", visited, len(dag.Nodes))
 	}
 	return nil
 }

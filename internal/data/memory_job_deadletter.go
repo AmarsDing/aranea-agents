@@ -7,11 +7,11 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -164,7 +164,7 @@ func (r *MemoryJobDeadLetterRepo) MarkDeadLetterAbandoned(ctx context.Context, i
 func (r *MemoryJobDeadLetterRepo) GetDeadLetter(ctx context.Context, id int64) (biz.MemoryDeadLetterEntry, error) {
 	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
-		return biz.MemoryDeadLetterEntry{}, sql.ErrNoRows
+		return biz.MemoryDeadLetterEntry{}, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	var row biz.MemoryDeadLetterEntry
 	var enqueuedMs, failedMs int64
@@ -230,7 +230,7 @@ func (r *MemoryJobDeadLetterRepo) ReplayDeadLetterIntoQueue(
 		`SELECT payload_json, session_id, app_name, user_id, feedback_msg_id, priority, enqueued_at
          FROM memory_job_deadletter WHERE id=? AND state='pending'`, []any{id},
 		&payloadJSON, &sessionID, &appName, &userID, &feedbackMsgID, &priority, &enqueuedMs)
-	if err == sql.ErrNoRows {
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return nil // already replayed or abandoned
 	}
 	if err != nil {

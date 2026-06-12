@@ -162,7 +162,7 @@ func queryRowScan(ctx context.Context, e execer, query string, args []any, dest 
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return sql.ErrNoRows
+		return apierror.NotFound(apierror.DomainData, "not found")
 	}
 	if err := rows.Scan(dest...); err != nil {
 		return err

@@ -2,12 +2,12 @@ package data
 
 import (
 	"context"
-	"database/sql"
 
 	"aranea-agents/internal/biz"
 	bizhook "aranea-agents/internal/biz/hook"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformhook"
+	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -67,7 +67,7 @@ func (r *hookRepo) GetHook(ctx context.Context, id string) (biz.Hook, error) {
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.Hook{}, sql.ErrNoRows
+			return biz.Hook{}, apierror.NotFound(apierror.DomainHook, "not found")
 		}
 		return biz.Hook{}, err
 	}

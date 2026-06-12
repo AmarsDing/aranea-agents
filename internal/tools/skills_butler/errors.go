@@ -1,11 +1,11 @@
 package skills_butler
 
-import kerrors "github.com/go-kratos/kratos/v2/errors"
+import "aranea-agents/pkg/apierror"
 
-var ErrAgentIDRequired = kerrors.BadRequest("SKILLS_BUTLER", "agent_id is required")
+var ErrAgentIDRequired = apierror.BadRequest(apierror.DomainSkill, "agent_id is required")
 
-var ErrSkillNameRequired = kerrors.BadRequest("SKILLS_BUTLER", "skill_name is required")
+var ErrSkillNameRequired = apierror.BadRequest(apierror.DomainSkill, "skill_name is required")
 
-var ErrImprovementDescRequired = kerrors.BadRequest("SKILLS_BUTLER", "improvement_description is required")
+var ErrImprovementDescRequired = apierror.BadRequest(apierror.DomainSkill, "improvement_description is required")
 
-var ErrTimeRangeRequired = kerrors.BadRequest("SKILLS_BUTLER", "time_range is required")
+var ErrTimeRangeRequired = apierror.BadRequest(apierror.DomainSkill, "time_range is required")

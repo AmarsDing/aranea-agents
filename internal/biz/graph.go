@@ -321,6 +321,20 @@ type GraphRunListOption struct {
 	StartedAfter *time.Time
 }
 
+// teamDefinitionJSONAdapter adapts TeamReader to the TeamDefinitionJSONProvider
+// interface used by GraphCacheManager for definition hash verification.
+type teamDefinitionJSONAdapter struct {
+	reader TeamReader
+}
+
+func (a *teamDefinitionJSONAdapter) GetTeamDefinitionJSON(ctx context.Context, teamID string) (string, error) {
+	team, err := a.reader.GetTeamByID(ctx, teamID)
+	if err != nil {
+		return "", err
+	}
+	return team.DefinitionJSON, nil
+}
+
 // GraphUsecaseDeps groups the dependencies for GraphUsecase construction.
 // Using a deps struct avoids long parameter lists (CS-B7).
 type GraphUsecaseDeps struct {
@@ -329,6 +343,7 @@ type GraphUsecaseDeps struct {
 	Factory        GraphBuilderFactory
 	Observer       GraphExecutionObserver
 	CompiledTeam   CompiledTeamRepo
+	TeamReader     TeamReader
 	Lg             loggateway.Logger
 	GCConfig       GraphGCConfig
 }
@@ -348,7 +363,11 @@ func NewGraphUsecase(d GraphUsecaseDeps) *GraphUsecase {
 		cfg = DefaultGraphGCConfig()
 	}
 	defUC := NewGraphDefinitionUsecase(d.Repo, d.Factory, d.Factory, d.Lg)
-	cacheMgr := NewGraphCacheManager(d.CompiledTeam, defUC, d.Lg)
+	var teamDefProvider TeamDefinitionJSONProvider
+	if d.TeamReader != nil {
+		teamDefProvider = &teamDefinitionJSONAdapter{reader: d.TeamReader}
+	}
+	cacheMgr := NewGraphCacheManager(d.CompiledTeam, defUC, teamDefProvider, d.Lg)
 	execUC := NewGraphExecutionUsecase(d.RunRepo, d.Factory, d.Observer, cacheMgr, defUC, d.Lg, cfg)
 	return &GraphUsecase{
 		defUC:   defUC,

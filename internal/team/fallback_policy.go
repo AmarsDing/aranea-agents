@@ -1,7 +1,7 @@
 package team
 
 import (
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 )
 
 type FallbackDecision struct {
@@ -53,5 +53,5 @@ func (d FallbackDecision) Error() error {
 	if d.ErrorMessage == "" {
 		return nil
 	}
-	return kerrors.InternalServer("TEAM", d.ErrorMessage)
+	return apierror.Internal(apierror.DomainTeam, d.ErrorMessage)
 }

@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // agentMatcherImpl implements biz.AgentMatcherPort using the agent catalog.
@@ -25,7 +24,7 @@ func NewAgentMatcher(agents biz.AgentReader, lg loggateway.Logger) biz.AgentMatc
 func (m *agentMatcherImpl) MatchAgent(ctx context.Context, taskDesc string, capabilities []string) (*biz.AgentMatch, error) {
 	result, err := m.agents.SearchAgents(ctx, biz.AgentListQuery{Limit: 200})
 	if err != nil {
-		return nil, kerrors.InternalServer("AGENT", "search agents: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainAgent, "search agents").WithCause(err)
 	}
 
 	var bestMatch *biz.AgentMatch

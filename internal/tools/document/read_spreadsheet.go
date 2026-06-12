@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	"github.com/xuri/excelize/v2"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -57,29 +57,29 @@ func NewReadSpreadsheetTool(baseDir string) trpctool.Tool {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, in readSpreadsheetInput) (readSpreadsheetOutput, error) {
 			if strings.TrimSpace(in.Path) == "" {
-				return readSpreadsheetOutput{}, kerrors.BadRequest("SPREADSHEET", "path is required")
+				return readSpreadsheetOutput{}, apierror.BadRequest(apierror.DomainTool, "path is required")
 			}
 
 			path, err := ValidatePath(strings.TrimSpace(in.Path), baseDir)
 			if err != nil {
-				return readSpreadsheetOutput{}, kerrors.BadRequest("SPREADSHEET", err.Error())
+				return readSpreadsheetOutput{}, apierror.BadRequest(apierror.DomainTool, err.Error())
 			}
 
 			kind := spreadsheetKindFromPath(path)
 			if kind == "" {
-				return readSpreadsheetOutput{}, kerrors.BadRequest("SPREADSHEET", fmt.Sprintf("unsupported spreadsheet type: %s", filepath.Ext(path)))
+				return readSpreadsheetOutput{}, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("unsupported spreadsheet type: %s", filepath.Ext(path)))
 			}
 
 			if err := ValidateFileSize(path); err != nil {
-				return readSpreadsheetOutput{}, kerrors.BadRequest("SPREADSHEET", err.Error())
+				return readSpreadsheetOutput{}, apierror.BadRequest(apierror.DomainTool, err.Error())
 			}
 
 			info, err := os.Stat(path)
 			if err != nil {
-				return readSpreadsheetOutput{}, kerrors.InternalServer("SPREADSHEET", "stat path: "+err.Error())
+				return readSpreadsheetOutput{}, apierror.Internal(apierror.DomainTool, "stat path: "+err.Error())
 			}
 			if info.IsDir() {
-				return readSpreadsheetOutput{}, kerrors.BadRequest("SPREADSHEET", "path is a directory: "+path)
+				return readSpreadsheetOutput{}, apierror.BadRequest(apierror.DomainTool, "path is a directory: "+path)
 			}
 
 			rows, sheetName, err := readSpreadsheetRows(path, kind, in.Sheet)
@@ -185,14 +185,14 @@ func readSpreadsheetRows(path string, kind string, sheet string) ([][]string, st
 	case sheetKindXLSX:
 		return readWorkbookRows(path, sheet)
 	default:
-		return nil, "", kerrors.BadRequest("SPREADSHEET", "unsupported spreadsheet kind: "+kind)
+		return nil, "", apierror.BadRequest(apierror.DomainTool, "unsupported spreadsheet kind: "+kind)
 	}
 }
 
 func readCSVRows(path string) ([][]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, kerrors.InternalServer("SPREADSHEET", "open csv: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainTool, "open csv: "+err.Error())
 	}
 	defer file.Close()
 
@@ -204,7 +204,7 @@ func readCSVRows(path string) ([][]string, error) {
 			break
 		}
 		if err != nil {
-			return nil, kerrors.InternalServer("SPREADSHEET", "read csv: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainTool, "read csv: "+err.Error())
 		}
 		rows = append(rows, record)
 	}
@@ -214,13 +214,13 @@ func readCSVRows(path string) ([][]string, error) {
 func readWorkbookRows(path string, sheet string) ([][]string, string, error) {
 	workbook, err := excelize.OpenFile(path)
 	if err != nil {
-		return nil, "", kerrors.InternalServer("SPREADSHEET", "open spreadsheet: "+err.Error())
+		return nil, "", apierror.Internal(apierror.DomainTool, "open spreadsheet: "+err.Error())
 	}
 	defer func() { _ = workbook.Close() }()
 
 	sheets := workbook.GetSheetList()
 	if len(sheets) == 0 {
-		return nil, "", kerrors.BadRequest("SPREADSHEET", "spreadsheet has no sheets")
+		return nil, "", apierror.BadRequest(apierror.DomainTool, "spreadsheet has no sheets")
 	}
 
 	selected := strings.TrimSpace(sheet)
@@ -230,7 +230,7 @@ func readWorkbookRows(path string, sheet string) ([][]string, string, error) {
 
 	rows, err := workbook.GetRows(selected)
 	if err != nil {
-		return nil, "", kerrors.InternalServer("SPREADSHEET", fmt.Sprintf("read sheet %q: %s", selected, err.Error()))
+		return nil, "", apierror.Internal(apierror.DomainTool, fmt.Sprintf("read sheet %q: %s", selected, err.Error()))
 	}
 	if len(rows) > maxSpreadsheetRows {
 		rows = rows[:maxSpreadsheetRows]
@@ -264,7 +264,7 @@ func spreadsheetRange(totalRows int, in readSpreadsheetInput) (int, int, error) 
 	row := normalizedPositive(in.Row)
 	if row != nil {
 		if *row > totalRows {
-			return 0, 0, kerrors.BadRequest("SPREADSHEET", fmt.Sprintf("row %d exceeds row count %d", *row, totalRows))
+			return 0, 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("row %d exceeds row count %d", *row, totalRows))
 		}
 		return *row, *row, nil
 	}
@@ -274,7 +274,7 @@ func spreadsheetRange(totalRows int, in readSpreadsheetInput) (int, int, error) 
 		start = *v
 	}
 	if start > totalRows {
-		return 0, 0, kerrors.BadRequest("SPREADSHEET", fmt.Sprintf("start_row %d exceeds row count %d", start, totalRows))
+		return 0, 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("start_row %d exceeds row count %d", start, totalRows))
 	}
 
 	end := minInt(totalRows, defaultSheetPreviewRows)
@@ -285,7 +285,7 @@ func spreadsheetRange(totalRows int, in readSpreadsheetInput) (int, int, error) 
 		end = *v
 	}
 	if end < start {
-		return 0, 0, kerrors.BadRequest("SPREADSHEET", fmt.Sprintf("end_row %d is smaller than start_row %d", end, start))
+		return 0, 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("end_row %d is smaller than start_row %d", end, start))
 	}
 	if end > totalRows {
 		end = totalRows

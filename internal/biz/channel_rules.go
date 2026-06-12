@@ -3,7 +3,6 @@ package biz
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -25,22 +24,16 @@ func channelValidationError(format string, args ...any) error {
 }
 
 func catalogHasType(channelType string) bool {
-	for _, item := range channelTypeRegistry {
-		if item.Type == channelType {
-			return true
-		}
-	}
-	return false
+	_, ok := defaultRegistry.Get(channelType)
+	return ok
 }
 
 func catalogSorted() []ChannelTypeItem {
-	items := append([]ChannelTypeItem{}, channelTypeRegistry...)
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].SortOrder != items[j].SortOrder {
-			return items[i].SortOrder < items[j].SortOrder
-		}
-		return items[i].Type < items[j].Type
-	})
+	specs := defaultRegistry.All()
+	items := make([]ChannelTypeItem, len(specs))
+	for i, spec := range specs {
+		items[i] = spec.TypeItem
+	}
 	return items
 }
 
@@ -107,34 +100,11 @@ func normalizeChannel(row *Channel) error {
 }
 
 func requiredCredentials(channelType string) []string {
-	switch channelType {
-	case "telegram":
-		return []string{"bot_token"}
-	case "feishu":
-		return []string{"app_secret"}
-	case "slack":
-		return []string{"bot_token", "signing_secret"}
-	case "discord":
-		return []string{"bot_token"}
-	case "wechat":
-		return []string{"app_secret"}
-	case "dingtalk":
-		return []string{"secret"}
-	case "wecom", "wecom-app":
-		return []string{"token"}
-	case "qq":
-		return []string{"app_secret"}
-	case "personal_qq":
-		return []string{"receive_token", "send_token"}
-	case "line":
-		return []string{"channel_secret", "channel_token"}
-	case "mattermost":
-		return []string{"server_url", "bot_token"}
-	case "teams":
-		return []string{"app_id", "app_secret"}
-	default:
+	spec, ok := defaultRegistry.Get(channelType)
+	if !ok {
 		return nil
 	}
+	return spec.RequiredCredentials
 }
 
 func missingCredentials(credentials []ChannelCredential, required []string) []string {
@@ -154,12 +124,11 @@ func missingCredentials(credentials []ChannelCredential, required []string) []st
 }
 
 func supportsLightweightTest(channelType string) bool {
-	switch channelType {
-	case "qq", "personal_qq", "feishu", "wechat", "wecom", "wecom-app", "telegram", "slack", "discord", "dingtalk":
-		return true
-	default:
+	spec, ok := defaultRegistry.Get(channelType)
+	if !ok {
 		return false
 	}
+	return spec.SupportsLightTest
 }
 
 func credentialCount(credentials []ChannelCredential) int {

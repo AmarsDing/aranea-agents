@@ -5,9 +5,8 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker"
 )
@@ -48,10 +47,10 @@ func (r *Retriever) HasReranker() bool {
 // Search embeds the query, retrieves candidates, optionally reranks, and returns top-k chunks.
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
 	if r.embedder == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "retriever: embedder is nil")
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "retriever: embedder is nil")
 	}
 	if r.repo == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "retriever: repo is nil")
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "retriever: repo is nil")
 	}
 	topK := q.TopK
 	if topK <= 0 {
@@ -60,7 +59,7 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 
 	vec, err := r.embedQuery(ctx, q.Query)
 	if err != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "retriever embed failed: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainKnowledge, "retriever embed failed").WithCause(err)
 	}
 
 	searchQ := q

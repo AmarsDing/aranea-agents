@@ -232,6 +232,28 @@ func (o *SkillEvolutionOrchestrator) ExpirePending(ctx context.Context) (int, er
 	return expired, nil
 }
 
+// CreateSuggestion creates a single UnifiedEvolutionSuggestion directly.
+// Use this when a caller (e.g. LearningLoop) has already determined the
+// suggestion content and just needs to persist it through the unified pipeline.
+// DB UNIQUE constraint handles concurrent duplicate prevention.
+func (o *SkillEvolutionOrchestrator) CreateSuggestion(ctx context.Context, suggestion UnifiedEvolutionSuggestion) error {
+	if err := o.writer.Create(ctx, suggestion); err != nil {
+		if isDuplicateKeyError(err) {
+			o.lg.Debug("orchestrator: concurrent creation detected, skipping",
+				loggateway.StepID("evo_orchestrator.create_suggestion"))
+			return nil
+		}
+		return err
+	}
+	o.lg.Info("orchestrator: evolution suggestion created",
+		loggateway.StepID("evo_orchestrator.create_suggestion"),
+		loggateway.Str("target_type", string(suggestion.TargetType)),
+		loggateway.Str("target_id", suggestion.TargetID),
+		loggateway.Str("action", string(suggestion.ActionType)),
+		loggateway.Str("trigger_source", suggestion.TriggerSource))
+	return nil
+}
+
 // isDuplicateKeyError 检查是否为 DB 唯一约束冲突错误
 func isDuplicateKeyError(err error) bool {
 	if err == nil {

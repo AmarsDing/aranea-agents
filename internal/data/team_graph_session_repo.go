@@ -2,10 +2,10 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 type teamGraphSessionRepo struct {
@@ -98,7 +98,7 @@ WHERE exec_id=?`,
 func (r *teamGraphSessionRepo) GetSession(ctx context.Context, execID string) (biz.TeamGraphSession, error) {
 	db := r.readDB(ctx)
 	if db == nil {
-		return biz.TeamGraphSession{}, sql.ErrNoRows
+		return biz.TeamGraphSession{}, apierror.NotFound(apierror.DomainTeam, "not found")
 	}
 	rows, err := db.QueryContext(ctx, teamGraphSessionSelectSQL+` WHERE exec_id=? LIMIT 1`,
 		strings.TrimSpace(execID))
@@ -107,7 +107,7 @@ func (r *teamGraphSessionRepo) GetSession(ctx context.Context, execID string) (b
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.TeamGraphSession{}, sql.ErrNoRows
+		return biz.TeamGraphSession{}, apierror.NotFound(apierror.DomainTeam, "not found")
 	}
 	return scanTeamGraphSessionRow(rows)
 }

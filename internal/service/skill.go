@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,22 +156,24 @@ func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest
 func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSkillEnabledRequest) (*v1.Skill, error) {
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
 }
 
 func (s *SkillService) DuplicateSkill(ctx context.Context, req *v1.DuplicateSkillRequest) (*v1.Skill, error) {
 	out, err := s.uc.Duplicate(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
 }
 
@@ -181,6 +181,7 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return &emptypb.Empty{}, nil
 }
 
@@ -228,13 +229,13 @@ func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillF
 func (s *SkillService) GetSkill(ctx context.Context, req *v1.GetSkillRequest) (*v1.GetSkillResponse, error) {
 	sk, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
 	body, err := s.uc.GetLatestMarkdown(ctx, req.GetId())
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
 		return nil, err
 	}
 	return &v1.GetSkillResponse{Skill: toProtoSkill(sk), BodyMarkdown: body}, nil
@@ -266,6 +267,7 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 	if err != nil {
 		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
 }
 
@@ -291,22 +293,24 @@ func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillReque
 	}
 	out, err := s.uc.Patch(ctx, req.GetId(), patch)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, apierror.BadRequest("SKILL", err.Error())
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
 }
 
 func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillRequest) (*v1.Skill, error) {
 	out, err := s.uc.Publish(ctx, req.GetId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
 }
 
@@ -410,11 +414,12 @@ func (s *SkillService) GetSkillVersions(ctx context.Context, req *v1.GetSkillVer
 func (s *SkillService) RollbackSkillVersion(ctx context.Context, req *v1.RollbackSkillVersionRequest) (*v1.Skill, error) {
 	out, err := s.uc.RollbackVersion(ctx, req.GetSkillId(), req.GetVersionId())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("SKILL", "skill or version not found")
 		}
 		return nil, err
 	}
+	invalidateAllAgentBuildCaches()
 	return toProtoSkill(out), nil
 }
 

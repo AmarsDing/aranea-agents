@@ -493,7 +493,7 @@ func (r *skillRepo) GetSkillByID(ctx context.Context, id string) (biz.Skill, err
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}
@@ -510,7 +510,7 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 		Exec(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}
@@ -523,7 +523,7 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}
@@ -1049,7 +1049,7 @@ func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) 
 		First(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return "", sql.ErrNoRows
+			return "", apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return "", err
 	}
@@ -1137,7 +1137,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}
@@ -1287,7 +1287,7 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, err
 		Exec(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}
@@ -1324,7 +1324,7 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 		return err
 	}
 	if n == 0 {
-		return sql.ErrNoRows
+		return apierror.NotFound(apierror.DomainSkill, "not found")
 	}
 	return nil
 }
@@ -1363,7 +1363,7 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 		return biz.SkillVersionListResult{}, err
 	}
 	if !exists {
-		return biz.SkillVersionListResult{}, sql.ErrNoRows
+		return biz.SkillVersionListResult{}, apierror.NotFound(apierror.DomainSkill, "not found")
 	}
 	count, err := c.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(q.SkillID)).
@@ -1398,7 +1398,7 @@ func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, ve
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}
@@ -1407,7 +1407,7 @@ func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, ve
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
-			return biz.Skill{}, sql.ErrNoRows
+			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
 		return biz.Skill{}, err
 	}

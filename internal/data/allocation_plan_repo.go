@@ -70,7 +70,7 @@ func (r *allocationPlanRepo) GetByID(ctx context.Context, id string) (*biz.Alloc
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, sql.ErrNoRows
+		return nil, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	plan, err := scanAllocationPlanFromRows(rows)
 	if err != nil {

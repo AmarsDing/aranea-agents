@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -40,7 +39,7 @@ func entPeerToBiz(e *ent.PlatformChannelPeerSession) biz.ChannelPeerSession {
 func (r *channelPeerSessionRepo) GetByChannelAndPeer(ctx context.Context, channelID, peerKey string) (biz.ChannelPeerSession, error) {
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return biz.ChannelPeerSession{}, sql.ErrNoRows
+		return biz.ChannelPeerSession{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformChannelPeerSession.Query().
 		Where(
@@ -50,7 +49,7 @@ func (r *channelPeerSessionRepo) GetByChannelAndPeer(ctx context.Context, channe
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.ChannelPeerSession{}, sql.ErrNoRows
+			return biz.ChannelPeerSession{}, apierror.NotFound(apierror.DomainChannel, "not found")
 		}
 		return biz.ChannelPeerSession{}, err
 	}
@@ -77,7 +76,7 @@ func (r *channelPeerSessionRepo) UpdateSessionID(ctx context.Context, channelID,
 			return err
 		}
 		if n == 0 {
-			return sql.ErrNoRows
+			return apierror.NotFound(apierror.DomainChannel, "not found")
 		}
 		e, err := r.data.RW().Read(txCtx).PlatformChannelPeerSession.Query().
 			Where(

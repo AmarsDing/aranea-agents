@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/apierror"
 )
 
 type modelRegistryApplyBackend struct {
@@ -102,7 +102,7 @@ func (b *modelRegistryApplyBackend) countWebResearchBindings(ctx context.Context
 		[]any{provider},
 		&n,
 	)
-	if err == sql.ErrNoRows {
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return 0, nil
 	}
 	return n, err
@@ -115,7 +115,7 @@ func (b *modelRegistryApplyBackend) countKnowledgeEmbedBindings(ctx context.Cont
 		[]any{provider},
 		&n,
 	)
-	if err == sql.ErrNoRows {
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return 0, nil
 	}
 	return n, err
@@ -272,8 +272,10 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, e exe
 		[]any{p.Provider, p.Model},
 		&existingID,
 	)
-	if err != nil && err != sql.ErrNoRows {
-		return err
+	if err != nil {
+		if ae, ok := apierror.From(err); !ok || ae.Code != apierror.CodeNotFound {
+			return err
+		}
 	}
 	if existingID != "" {
 		var existingSource string

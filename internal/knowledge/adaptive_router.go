@@ -6,9 +6,8 @@ import (
 	"unicode"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type QueryComplexity int
@@ -39,7 +38,7 @@ func (a *AdaptiveRouter) QueryRewriter() *QueryRewriter {
 
 func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
 	if a.hybrid == nil {
-		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "adaptive_router: hybrid retriever not configured")
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "adaptive_router: hybrid retriever not configured")
 	}
 	var mode HybridSearchMode
 	if modeOverride != "" && modeOverride != HybridAuto {

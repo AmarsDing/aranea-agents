@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/gateway/v1"
@@ -123,7 +121,7 @@ func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhoo
 	}
 	w, err := s.wh.Update(ctx, patch)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("GATEWAY", "webhook not found")
 		}
 		return nil, err
@@ -135,7 +133,7 @@ func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhoo
 
 func (s *GatewayService) DeleteWebhook(ctx context.Context, req *v1.DeleteWebhookRequest) (*emptypb.Empty, error) {
 	if err := s.wh.Delete(ctx, req.GetId()); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("GATEWAY", "webhook not found")
 		}
 		return nil, err

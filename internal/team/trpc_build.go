@@ -8,9 +8,8 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/chainagent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/cycleagent"
@@ -39,7 +38,7 @@ func BuildTeamMemberAgents(
 	for _, m := range members {
 		ag, err := lookupAgent(ctx, strings.TrimSpace(m.AgentID))
 		if err != nil {
-			return nil, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
+			return nil, nil, apierror.BadRequest(apierror.DomainTeam, fmt.Sprintf("member %s: %v", m.AgentID, err))
 		}
 		var trpcAg trpcagent.Agent
 		if deps.UseCache {
@@ -48,7 +47,7 @@ func BuildTeamMemberAgents(
 			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, deps.BuilderDeps, lg)
 		}
 		if err != nil {
-			return nil, nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
+			return nil, nil, apierror.Internal(apierror.DomainTeam, fmt.Sprintf("build member %s: %v", m.AgentID, err))
 		}
 		memberAgents = append(memberAgents, trpcAg)
 		if key := strings.TrimSpace(ag.AgentKey); key != "" {
@@ -64,7 +63,7 @@ func BuildTeamMemberAgents(
 func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, lookupAgent func(ctx context.Context, id string) (biz.Agent, error), lg loggateway.Logger) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return nil, nil, kerrors.BadRequest("TEAM", "no enabled members")
+		return nil, nil, apierror.BadRequest(apierror.DomainTeam, "no enabled members")
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
@@ -109,7 +108,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		return root, lookup, err
 
 	default:
-		return nil, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("unsupported team mode %q for native fallback path", mode))
+		return nil, nil, apierror.BadRequest(apierror.DomainTeam, fmt.Sprintf("unsupported team mode %q for native fallback path", mode))
 	}
 }
 
@@ -118,7 +117,7 @@ func buildSwarmTeam(def Definition, memberAgents []trpcagent.Agent) (trpcagent.A
 	opts := buildSwarmOptions(def)
 	t, err := trpcteam.NewSwarm("team", entryName, memberAgents, opts...)
 	if err != nil {
-		return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new swarm: %v", err))
+		return nil, apierror.Internal(apierror.DomainTeam, fmt.Sprintf("new swarm: %v", err))
 	}
 	return t, nil
 }
@@ -128,7 +127,7 @@ func buildAdaptiveSwarm(def Definition, memberAgents []trpcagent.Agent) (trpcage
 	opts := buildSwarmOptions(def)
 	t, err := trpcteam.NewSwarm("team-adaptive", entryName, memberAgents, opts...)
 	if err != nil {
-		return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new adaptive swarm: %v", err))
+		return nil, apierror.Internal(apierror.DomainTeam, fmt.Sprintf("new adaptive swarm: %v", err))
 	}
 	return t, nil
 }

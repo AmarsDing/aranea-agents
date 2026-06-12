@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const evalTimeout = 10 * time.Second
@@ -148,7 +147,7 @@ func parseJSONLoose(s string, v any) error {
 	start := strings.Index(s, "{")
 	end := strings.LastIndex(s, "}")
 	if start < 0 || end < 0 || end <= start {
-		return kerrors.InternalServer("KNOWLEDGE", "no JSON object found in LLM response")
+		return apierror.Internal(apierror.DomainKnowledge, "no JSON object found in LLM response")
 	}
 	return json.Unmarshal([]byte(s[start:end+1]), v)
 }

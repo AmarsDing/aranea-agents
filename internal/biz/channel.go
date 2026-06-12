@@ -3,7 +3,6 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -108,6 +107,7 @@ func (f ChannelLiveTesterFunc) TestLive(ctx context.Context, configJSON string, 
 	return f(ctx, configJSON, credentials)
 }
 
+// Stability:stable
 type ChannelReader interface {
 	List(ctx context.Context) ([]Channel, error)
 	Get(ctx context.Context, id string) (Channel, error)
@@ -121,12 +121,14 @@ type ChannelWriter interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// Stability:stable
 type ChannelCredentialRepo interface {
 	ListCredentials(ctx context.Context, channelID string) ([]ChannelCredential, error)
 	UpsertCredential(ctx context.Context, cred ChannelCredential) (ChannelCredential, error)
 	DeleteCredential(ctx context.Context, channelID, credentialKey string) error
 }
 
+// Stability:stable
 type ChannelDeliveryRepo interface {
 	ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error)
 	AddDelivery(ctx context.Context, d ChannelDelivery) (ChannelDelivery, error)
@@ -136,17 +138,20 @@ type ChannelDeliveryRepo interface {
 }
 
 type ChannelUsecase struct {
-	reader          ChannelReader
-	writer          ChannelWriter
-	credentials     ChannelCredentialRepo
-	deliveries      ChannelDeliveryRepo
-	peers           ChannelPeerSessionRepo
-	inboundReceipts ChannelInboundReceiptRepo
-	agents          AgentRepository
-	teams           TeamReader
-	crypto          *CredentialCrypto
-	lg              loggateway.Logger
+	reader                 ChannelReader
+	writer                 ChannelWriter
+	credentials            ChannelCredentialRepo
+	deliveries             ChannelDeliveryRepo
+	peers                  ChannelPeerSessionRepo
+	inboundReceipts        ChannelInboundReceiptRepo
+	agents                 AgentRepository
+	teams                  TeamReader
+	crypto                 *CredentialCrypto
+	healthCheckConcurrency int
+	lg                     loggateway.Logger
 }
+
+const defaultHealthCheckConcurrency = 8
 
 func NewChannelUsecase(
 	reader ChannelReader,
@@ -160,7 +165,16 @@ func NewChannelUsecase(
 	crypto *CredentialCrypto,
 	lg loggateway.Logger,
 ) *ChannelUsecase {
-	return &ChannelUsecase{reader: reader, writer: writer, credentials: credentials, deliveries: deliveries, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, lg: lg}
+	return &ChannelUsecase{reader: reader, writer: writer, credentials: credentials, deliveries: deliveries, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, healthCheckConcurrency: defaultHealthCheckConcurrency, lg: lg}
+}
+
+// SetHealthCheckConcurrency configures the maximum concurrent health checks.
+// If n <= 0, the default (8) is used.
+func (u *ChannelUsecase) SetHealthCheckConcurrency(n int) {
+	if n <= 0 {
+		n = defaultHealthCheckConcurrency
+	}
+	u.healthCheckConcurrency = n
 }
 
 func (u *ChannelUsecase) ChannelTypes() []ChannelTypeItem {
@@ -347,8 +361,11 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 		return err
 	}
 	// Limit concurrency to avoid resource exhaustion with many channels.
-	const maxConcurrent = 8
-	sem := make(chan struct{}, maxConcurrent)
+	concurrency := u.healthCheckConcurrency
+	if concurrency <= 0 {
+		concurrency = defaultHealthCheckConcurrency
+	}
+	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for _, row := range items {
 		if !row.Enabled {
@@ -490,14 +507,14 @@ func (u *ChannelUsecase) GetPeerSession(ctx context.Context, channelID, peerKey 
 
 func (u *ChannelUsecase) CreatePeerSession(ctx context.Context, row ChannelPeerSession) (ChannelPeerSession, error) {
 	if u.peers == nil {
-		return ChannelPeerSession{}, fmt.Errorf("channel: peer session repository not configured")
+		return ChannelPeerSession{}, apierror.Internal("CHANNEL", "peer session repository not configured")
 	}
 	return u.peers.Create(ctx, row)
 }
 
 func (u *ChannelUsecase) UpdatePeerSessionID(ctx context.Context, channelID, peerKey, sessionID string) (ChannelPeerSession, error) {
 	if u.peers == nil {
-		return ChannelPeerSession{}, fmt.Errorf("channel: peer session repository not configured")
+		return ChannelPeerSession{}, apierror.Internal("CHANNEL", "peer session repository not configured")
 	}
 	return u.peers.UpdateSessionID(ctx, channelID, peerKey, sessionID)
 }

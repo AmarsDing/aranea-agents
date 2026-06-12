@@ -14,6 +14,34 @@ type ModelCatalogInput struct {
 	ConfigJSON string
 }
 
+// RetryConfig holds retry configuration for provider HTTP calls.
+type RetryConfig struct {
+	MaxAttempts int // default 0 (disabled)
+	BaseDelayMs int // default 1000
+	MaxDelayMs  int // default 30000
+}
+
+// CBConfig holds circuit-breaker configuration for provider HTTP calls.
+type CBConfig struct {
+	Enabled          bool // default false
+	FailureThreshold int  // default 3
+	RecoverySec      int  // default 30
+}
+
+// HAConfig holds high-availability configuration for provider models.
+type HAConfig struct {
+	Mode         string
+	Candidates   []HACandidateConfig
+	HedgeDelayMs int
+}
+
+// CacheConfig holds prompt-caching configuration for provider models.
+type CacheConfig struct {
+	SystemPrompt bool
+	Tools        bool
+	Messages     bool
+}
+
 // ProviderModelConfig holds the resolved connection parameters parsed from a
 // provider-model catalog row. It is NOT "the config of the catalog" — it is
 // "the model config derived from a catalog entry".
@@ -32,16 +60,14 @@ type ProviderModelConfig struct {
 	OptimizeForCache     bool
 	ReasoningBackfill    bool
 	ShowToolCallDelta    bool
-	CacheSystemPrompt    bool
-	CacheTools           bool
-	CacheMessages        bool
+	Cache                CacheConfig
 	KeepAliveMinutes     int
 	ChannelBufferSize    int
-	HAMode               string
-	HACandidates         []HACandidateConfig
-	HAHedgeDelayMs       int
+	HA                   HAConfig
 	RateLimitRPM         int
 	Capabilities         biz.ModelCapabilities
+	Retry                RetryConfig
+	CB                   CBConfig
 }
 
 type HACandidateConfig struct {
@@ -74,7 +100,13 @@ type catalogConfigJSON struct {
 	HACandidates         []HACandidateConfig `json:"ha_candidates"`
 	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
 	RateLimitRPM         int                 `json:"rate_limit_rpm"`
-	Capabilities         biz.ModelCapabilities   `json:"capabilities"`
+	Capabilities         biz.ModelCapabilities `json:"capabilities"`
+	RetryMaxAttempts     int                 `json:"retry_max_attempts"`
+	RetryBaseDelayMs     int                 `json:"retry_base_delay_ms"`
+	RetryMaxDelayMs      int                 `json:"retry_max_delay_ms"`
+	CircuitBreakerEnabled          bool `json:"circuit_breaker_enabled"`
+	CircuitBreakerFailureThreshold int  `json:"circuit_breaker_failure_threshold"`
+	CircuitBreakerRecoverySec      int  `json:"circuit_breaker_recovery_sec"`
 }
 
 func ResolveModelConfig(in ModelCatalogInput) (ProviderModelConfig, error) {
@@ -106,11 +138,26 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 		MaxInputTokens:    c.MaxInputTokens,
 		KeepAliveMinutes:  c.KeepAliveMinutes,
 		ChannelBufferSize: c.ChannelBufferSize,
-		HAMode:            strings.TrimSpace(c.HAMode),
-		HACandidates:      c.HACandidates,
-		HAHedgeDelayMs:    c.HAHedgeDelayMs,
 		RateLimitRPM:      c.RateLimitRPM,
 		Capabilities:      c.Capabilities,
+		// HA
+		HA: HAConfig{
+			Mode:         strings.TrimSpace(c.HAMode),
+			Candidates:   c.HACandidates,
+			HedgeDelayMs: c.HAHedgeDelayMs,
+		},
+		// Retry
+		Retry: RetryConfig{
+			MaxAttempts: c.RetryMaxAttempts,
+			BaseDelayMs: c.RetryBaseDelayMs,
+			MaxDelayMs:  c.RetryMaxDelayMs,
+		},
+		// Circuit breaker
+		CB: CBConfig{
+			Enabled:          c.CircuitBreakerEnabled,
+			FailureThreshold: c.CircuitBreakerFailureThreshold,
+			RecoverySec:      c.CircuitBreakerRecoverySec,
+		},
 	}
 	if c.EnableTokenTailoring != nil {
 		cfg.EnableTokenTailoring = *c.EnableTokenTailoring
@@ -128,13 +175,13 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 		cfg.ShowToolCallDelta = *c.ShowToolCallDelta
 	}
 	if c.CacheSystemPrompt != nil {
-		cfg.CacheSystemPrompt = *c.CacheSystemPrompt
+		cfg.Cache.SystemPrompt = *c.CacheSystemPrompt
 	}
 	if c.CacheTools != nil {
-		cfg.CacheTools = *c.CacheTools
+		cfg.Cache.Tools = *c.CacheTools
 	}
 	if c.CacheMessages != nil {
-		cfg.CacheMessages = *c.CacheMessages
+		cfg.Cache.Messages = *c.CacheMessages
 	}
 	return cfg
 }

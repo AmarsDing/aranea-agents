@@ -4,10 +4,21 @@ import (
 	"strings"
 )
 
+// Reranker scores query-passage relevance for memory recall.
+// Implementations may use lexical similarity, Cross-Encoder models, or external APIs.
+// Stability:evolving
+type Reranker interface {
+	// Score returns a relevance score between 0 and 1 for the query-passage pair.
+	Score(query, passage string) float64
+}
+
 // CrossEncoderReranker scores query-passage relevance (lexical proxy until external CE model is wired).
 type CrossEncoderReranker struct{}
 
 func NewCrossEncoderReranker() *CrossEncoderReranker { return &CrossEncoderReranker{} }
+
+// Compile-time check: CrossEncoderReranker implements Reranker.
+var _ Reranker = (*CrossEncoderReranker)(nil)
 
 func (CrossEncoderReranker) Score(query, passage string) float64 {
 	return bigramJaccard(strings.ToLower(strings.TrimSpace(query)), strings.ToLower(strings.TrimSpace(passage)))

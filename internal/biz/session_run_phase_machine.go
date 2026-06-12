@@ -7,13 +7,17 @@
 //	    interactive --> escalating : escalate
 //	    interactive --> completed  : complete
 //	    interactive --> failed     : fail
+//	    interactive --> cancelled  : cancel
 //	    escalating --> durable     : durable
 //	    escalating --> completed   : complete
 //	    escalating --> failed      : fail
+//	    escalating --> cancelled   : cancel
 //	    durable --> completed      : complete
 //	    durable --> failed         : fail
+//	    durable --> cancelled      : cancel
 //	    completed --> [*]
 //	    failed --> [*]
+//	    cancelled --> [*]
 package biz
 
 import (
@@ -32,6 +36,7 @@ const (
 	PhaseDurable     SessionRunPhase = "durable"
 	PhaseCompleted   SessionRunPhase = "completed"
 	PhaseFailed      SessionRunPhase = "failed"
+	PhaseCancelled   SessionRunPhase = "cancelled"
 )
 
 // ── Event type ────────────────────────────────────────────────────────────────
@@ -45,19 +50,23 @@ const (
 	PhaseEventDurable  SessionRunPhaseEvent = "durable"
 	PhaseEventComplete SessionRunPhaseEvent = "complete"
 	PhaseEventFail     SessionRunPhaseEvent = "fail"
+	PhaseEventCancel   SessionRunPhaseEvent = "cancel"
 )
 
 // ── Transition rules ──────────────────────────────────────────────────────────
 
 var sessionRunPhaseTransitionRules = []shared.TransitionRule[SessionRunPhase, SessionRunPhaseEvent]{
 	{From: PhaseInteractive, Event: PhaseEventEscalate, To: PhaseEscalating},
-	{From: PhaseEscalating, Event: PhaseEventDurable, To: PhaseDurable},
 	{From: PhaseInteractive, Event: PhaseEventComplete, To: PhaseCompleted},
 	{From: PhaseInteractive, Event: PhaseEventFail, To: PhaseFailed},
+	{From: PhaseInteractive, Event: PhaseEventCancel, To: PhaseCancelled},
+	{From: PhaseEscalating, Event: PhaseEventDurable, To: PhaseDurable},
 	{From: PhaseEscalating, Event: PhaseEventComplete, To: PhaseCompleted},
 	{From: PhaseEscalating, Event: PhaseEventFail, To: PhaseFailed},
+	{From: PhaseEscalating, Event: PhaseEventCancel, To: PhaseCancelled},
 	{From: PhaseDurable, Event: PhaseEventComplete, To: PhaseCompleted},
 	{From: PhaseDurable, Event: PhaseEventFail, To: PhaseFailed},
+	{From: PhaseDurable, Event: PhaseEventCancel, To: PhaseCancelled},
 }
 
 // ── Machine ───────────────────────────────────────────────────────────────────
@@ -87,7 +96,7 @@ func (m *SessionRunPhaseMachine) CanTransition(from SessionRunPhase, to SessionR
 }
 
 // ValidTargets returns all phases reachable from the given phase.
-// Returns nil for terminal phases (completed, failed).
+// Returns nil for terminal phases (completed, failed, cancelled).
 func (m *SessionRunPhaseMachine) ValidTargets(from SessionRunPhase) []SessionRunPhase {
 	return m.inner.ValidTargets(from)
 }
@@ -98,15 +107,15 @@ func (m *SessionRunPhaseMachine) ValidTargets(from SessionRunPhase) []SessionRun
 // Unrecognised values default to PhaseInteractive.
 func ParseSessionRunPhase(s string) SessionRunPhase {
 	switch SessionRunPhase(s) {
-	case PhaseInteractive, PhaseEscalating, PhaseDurable, PhaseCompleted, PhaseFailed:
+	case PhaseInteractive, PhaseEscalating, PhaseDurable, PhaseCompleted, PhaseFailed, PhaseCancelled:
 		return SessionRunPhase(s)
 	default:
 		return PhaseInteractive
 	}
 }
 
-// IsSessionRunPhaseTerminal returns true for terminal phases (completed, failed)
+// IsSessionRunPhaseTerminal returns true for terminal phases (completed, failed, cancelled)
 // that have no further transitions.
 func IsSessionRunPhaseTerminal(phase SessionRunPhase) bool {
-	return phase == PhaseCompleted || phase == PhaseFailed
+	return phase == PhaseCompleted || phase == PhaseFailed || phase == PhaseCancelled
 }

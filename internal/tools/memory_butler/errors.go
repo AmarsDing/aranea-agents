@@ -1,11 +1,11 @@
 package memory_butler
 
-import kerrors "github.com/go-kratos/kratos/v2/errors"
+import "aranea-agents/pkg/apierror"
 
 var (
-	ErrAgentIDRequired  = kerrors.BadRequest("MEMORY_BUTLER", "agent_id is required")
-	ErrContentRequired  = kerrors.BadRequest("MEMORY_BUTLER", "content is required")
-	ErrFactIDRequired   = kerrors.BadRequest("MEMORY_BUTLER", "fact_id is required")
-	ErrNoFactsToDelete  = kerrors.BadRequest("MEMORY_BUTLER", "no facts to delete")
-	ErrDreamCycleFailed = kerrors.InternalServer("MEMORY_BUTLER", "dream_cycle execution failed")
+	ErrAgentIDRequired  = apierror.BadRequest(apierror.DomainMemory, "agent_id is required")
+	ErrContentRequired  = apierror.BadRequest(apierror.DomainMemory, "content is required")
+	ErrFactIDRequired   = apierror.BadRequest(apierror.DomainMemory, "fact_id is required")
+	ErrNoFactsToDelete  = apierror.BadRequest(apierror.DomainMemory, "no facts to delete")
+	ErrDreamCycleFailed = apierror.Internal(apierror.DomainMemory, "dream_cycle execution failed")
 )

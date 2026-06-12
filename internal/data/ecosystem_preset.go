@@ -2,11 +2,11 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -27,7 +27,7 @@ func (r *EcosystemPresetRepo) GetEcosystemLoaded(ctx context.Context) (biz.Ecosy
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		`SELECT ecosystem_loaded FROM system_settings WHERE id = 1`, nil, &raw)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, nil
 		}
 		return nil, err
@@ -61,7 +61,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 		`SELECT id FROM organizations WHERE org_key = ? AND level = 'company' AND deleted_at = ''`,
 		[]any{companyKey}, &companyID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return 0, nil
 		}
 		return 0, err
@@ -335,7 +335,7 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 		`SELECT id FROM organizations WHERE taxonomy_key = ? AND level = 'industry' AND deleted_at = ''`,
 		[]any{industryKey}, &companyID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, nil
 		}
 		return nil, err

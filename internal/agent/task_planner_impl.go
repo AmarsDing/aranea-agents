@@ -12,9 +12,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -111,7 +111,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 				loggateway.Str("trace_id", traceID),
 				loggateway.Err(err),
 			)
-			return nil, kerrors.InternalServer("TASK_PLANNER", "persist plan: "+err.Error())
+			return nil, apierror.Internal(apierror.DomainSpirit, "persist plan").WithCause(err)
 		}
 		impl.publishPlanCreated(ctx, saved)
 		return saved, nil
@@ -234,7 +234,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			loggateway.Str("trace_id", traceID),
 			loggateway.Err(err),
 		)
-		return nil, kerrors.InternalServer("TASK_PLANNER", "persist plan: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSpirit, "persist plan: "+err.Error())
 	}
 
 	// Publish spirit_plan_created event.
@@ -259,7 +259,7 @@ func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adj
 		return nil, err
 	}
 	if plan.Status != biz.PlanStatusDraft {
-		return nil, kerrors.BadRequest("TASK_PLANNER", "plan is not in draft status")
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "plan is not in draft status")
 	}
 
 	// Apply adjustments
@@ -304,7 +304,7 @@ func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adj
 
 	saved, err := impl.repo.Update(ctx, plan)
 	if err != nil {
-		return nil, kerrors.InternalServer("TASK_PLANNER", "update plan: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSpirit, "update plan").WithCause(err)
 	}
 	return saved, nil
 }
@@ -512,7 +512,7 @@ func (impl *taskPlannerImpl) determineStrategy(level biz.ComplexityLevel, score 
 // decomposeTask uses LLM to decompose a complex task into subtasks (T1.6).
 func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage string, artifact *biz.IntentArtifact) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "LLM catalog or HTTP client not configured")
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
 	prompt := buildDecompositionPrompt(userMessage, artifact)
@@ -524,12 +524,12 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, biz.SpiritStepPlannerAssess, "TaskPlanner")
 	}
 	if provider == "" || model == "" {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "no provider/model configured for task decomposition (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "no provider/model configured for task decomposition (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
 	if err != nil {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "get provider config: "+err.Error())
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "get provider config").WithCause(err)
 	}
 
 	var cfg ProviderAPIConfig
@@ -545,13 +545,13 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
 	if err != nil {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "LLM call failed: "+err.Error())
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}
 
 	text = stripDecompositionFences(text)
 	subTasks, err := parseDecompositionOutput(text)
 	if err != nil {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "parse decomposition: "+err.Error())
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "parse decomposition").WithCause(err)
 	}
 
 	if len(subTasks) == 0 {
@@ -560,7 +560,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 	// Validate: no cycles, all depends_on references exist
 	if err := validateSubTaskDAG(subTasks); err != nil {
-		return nil, nil, kerrors.InternalServer("TASK_PLANNER", "invalid DAG: "+err.Error())
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "invalid DAG").WithCause(err)
 	}
 
 	dag := buildDAGFromSubTasks(subTasks)
@@ -657,7 +657,7 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 	}
 
 	if err := json.Unmarshal([]byte(text), &rawTasks); err != nil {
-		return nil, kerrors.InternalServer("TASK_PLANNER", "json unmarshal: "+err.Error())
+		return nil, apierror.Internal(apierror.DomainSpirit, "json unmarshal").WithCause(err)
 	}
 
 	subTasks := make([]biz.SubTask, 0, len(rawTasks))
@@ -702,7 +702,7 @@ func validateSubTaskDAG(tasks []biz.SubTask) error {
 	for _, t := range tasks {
 		for _, depID := range t.DependsOn {
 			if !idSet[depID] {
-				return kerrors.BadRequest("TASK_PLANNER", fmt.Sprintf("subtask %s depends on non-existent subtask %s", t.ID, depID))
+				return apierror.BadRequest(apierror.DomainSpirit, "subtask %s depends on non-existent subtask %s", t.ID, depID)
 			}
 		}
 	}
@@ -731,7 +731,7 @@ func validateSubTaskDAG(tasks []biz.SubTask) error {
 			for _, depID := range t.DependsOn {
 				switch colors[depID] {
 				case gray:
-					return kerrors.BadRequest("TASK_PLANNER", fmt.Sprintf("cycle detected: %s → %s", id, depID))
+					return apierror.BadRequest(apierror.DomainSpirit, "cycle detected: %s → %s", id, depID)
 				case white:
 					if err := dfs(depID); err != nil {
 						return err

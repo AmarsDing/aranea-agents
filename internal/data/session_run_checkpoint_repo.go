@@ -2,12 +2,12 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/sessionruncheckpoint"
+	"aranea-agents/pkg/apierror"
 )
 
 type sessionRunCheckpointRepo struct {
@@ -72,12 +72,12 @@ func (r *sessionRunCheckpointRepo) Create(ctx context.Context, cp biz.SessionRun
 func (r *sessionRunCheckpointRepo) Get(ctx context.Context, id string) (biz.SessionRunCheckpoint, error) {
 	client := r.readClient(ctx)
 	if client == nil {
-		return biz.SessionRunCheckpoint{}, sql.ErrNoRows
+		return biz.SessionRunCheckpoint{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	item, err := client.SessionRunCheckpoint.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.SessionRunCheckpoint{}, sql.ErrNoRows
+			return biz.SessionRunCheckpoint{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
 		return biz.SessionRunCheckpoint{}, err
 	}
@@ -87,7 +87,7 @@ func (r *sessionRunCheckpointRepo) Get(ctx context.Context, id string) (biz.Sess
 func (r *sessionRunCheckpointRepo) GetBySessionRunID(ctx context.Context, sessionRunID string) (biz.SessionRunCheckpoint, error) {
 	client := r.readClient(ctx)
 	if client == nil {
-		return biz.SessionRunCheckpoint{}, sql.ErrNoRows
+		return biz.SessionRunCheckpoint{}, apierror.NotFound(apierror.DomainSession, "not found")
 	}
 	item, err := client.SessionRunCheckpoint.Query().
 		Where(sessionruncheckpoint.SessionRunIDEQ(strings.TrimSpace(sessionRunID))).
@@ -95,7 +95,7 @@ func (r *sessionRunCheckpointRepo) GetBySessionRunID(ctx context.Context, sessio
 		First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.SessionRunCheckpoint{}, sql.ErrNoRows
+			return biz.SessionRunCheckpoint{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
 		return biz.SessionRunCheckpoint{}, err
 	}

@@ -2,11 +2,11 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/apierror"
 )
 
 type systemSettingRepo struct {
@@ -89,7 +89,7 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 	row, err := r.data.RW().Read(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.SystemSetting{}, sql.ErrNoRows
+			return biz.SystemSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.SystemSetting{}, err
 	}
@@ -115,7 +115,7 @@ func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.Refin
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.RefineLLMSetting{}, sql.ErrNoRows
+		return biz.RefineLLMSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	var s biz.RefineLLMSetting
 	if err := rows.Scan(&s.Provider, &s.Model, &s.BaseURL); err != nil {
@@ -138,7 +138,7 @@ func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string,
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.SystemSetting{}, sql.ErrNoRows
+			return biz.SystemSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.SystemSetting{}, err
 	}
@@ -149,7 +149,7 @@ func (r *systemSettingRepo) GetKnowledgeEmbed(ctx context.Context) (biz.Knowledg
 	row, err := r.data.RW().Read(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.KnowledgeEmbedSetting{}, sql.ErrNoRows
+			return biz.KnowledgeEmbedSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.KnowledgeEmbedSetting{}, err
 	}
@@ -170,7 +170,7 @@ func (r *systemSettingRepo) UpdateKnowledgeEmbed(ctx context.Context, patch biz.
 	row, err := up.Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.KnowledgeEmbedSetting{}, sql.ErrNoRows
+			return biz.KnowledgeEmbedSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.KnowledgeEmbedSetting{}, err
 	}
@@ -181,7 +181,7 @@ func (r *systemSettingRepo) GetWebResearch(ctx context.Context) (biz.WebResearch
 	row, err := r.data.RW().Read(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.WebResearchSetting{}, sql.ErrNoRows
+			return biz.WebResearchSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.WebResearchSetting{}, err
 	}
@@ -204,7 +204,7 @@ func (r *systemSettingRepo) UpdateWebResearch(ctx context.Context, patch biz.Web
 	row, err := up.Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.WebResearchSetting{}, sql.ErrNoRows
+			return biz.WebResearchSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.WebResearchSetting{}, err
 	}
@@ -257,7 +257,7 @@ func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLM
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.EvalLLMSetting{}, sql.ErrNoRows
+			return biz.EvalLLMSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.EvalLLMSetting{}, err
 	}
@@ -275,7 +275,7 @@ func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSett
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.RefineLLMSetting{}, sql.ErrNoRows
+		return biz.RefineLLMSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	var s biz.RefineLLMSetting
 	if err := rows.Scan(&s.Provider, &s.Model, &s.BaseURL, &s.APIKey); err != nil {
@@ -312,7 +312,7 @@ func (r *systemSettingRepo) UpdateMemoryPlatform(ctx context.Context, patch biz.
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.MemoryPlatformSetting{}, sql.ErrNoRows
+			return biz.MemoryPlatformSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 		}
 		return biz.MemoryPlatformSetting{}, err
 	}

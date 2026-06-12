@@ -30,4 +30,12 @@ const (
 	DomainCompress      = "COMPRESS"
 	DomainLLMProvider   = "LLM_PROVIDER_MODEL"
 	DomainGraphTemplate = "GRAPH_TEMPLATE"
+	DomainSubagent      = "SUBAGENT"
+	DomainOrchestrator  = "ORCHESTRATOR"
+	DomainKanban        = "KANBAN"
+	DomainWorkingMemory = "WORKING_MEMORY"
+	DomainModelSync     = "MODEL_SYNC"
+	DomainPlugin        = "PLUGIN"
+	DomainA2A           = "A2A"
+	DomainOutbound      = "OUTBOUND"
 )

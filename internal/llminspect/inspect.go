@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
@@ -81,7 +81,7 @@ func Run(in Input, lg loggateway.Logger) (Result, error) {
 	in.SecretKey = strings.TrimSpace(in.SecretKey)
 	in.AWSRegion = strings.TrimSpace(in.AWSRegion)
 	if in.ProviderCode == "" || in.ModelAPIID == "" {
-		return Result{}, kerrors.BadRequest("LLM_INSPECT", "provider_code and model_api_id are required")
+		return Result{}, apierror.BadRequest(apierror.DomainProvider, "provider_code and model_api_id are required")
 	}
 
 	lg.Info("LLM inspect started", loggateway.StepID("llminspect.run"), loggateway.Str("provider_code", in.ProviderCode), loggateway.Str("model_api_id", in.ModelAPIID), loggateway.Str("provider_type", in.ProviderType))

@@ -2,12 +2,12 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -119,7 +119,7 @@ func (r *l4GraphRepo) GetEntityByScopeKey(ctx context.Context, scopeType, scopeI
 		`SELECT id, name, name_normalized, confidence, metadata_json, updated_at FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ? AND name_normalized = ? AND status = 'active' AND deleted_at = ''`,
 		[]any{scopeType, scopeID, entityType, nameNormalized}, &id, &name, &nnorm, &conf, &meta, &updatedAt)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return biz.L4EntitySnapshot{}, false, nil
 		}
 		return biz.L4EntitySnapshot{}, false, err
@@ -143,7 +143,7 @@ func (r *l4GraphRepo) GetFirstEntityByType(ctx context.Context, scopeType, scope
 		`SELECT id, name, name_normalized, confidence, metadata_json, updated_at FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ? AND status = 'active' AND deleted_at = '' LIMIT 1`,
 		[]any{scopeType, scopeID, entityType}, &id, &name, &nnorm, &conf, &meta, &updatedAt)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return biz.L4EntitySnapshot{}, false, nil
 		}
 		return biz.L4EntitySnapshot{}, false, err

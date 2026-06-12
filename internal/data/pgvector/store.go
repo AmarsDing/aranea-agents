@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
+
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -117,7 +119,7 @@ func (s *Store) Update(ctx context.Context, id int64, agentID, content string, e
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return sql.ErrNoRows
+		return apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	return nil
 }
@@ -134,7 +136,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return sql.ErrNoRows
+		return apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	return nil
 }
@@ -175,11 +177,15 @@ LIMIT $4`, s.Table())
 }
 
 // FactVectorContentPrefix returns the stable pgvector content prefix for one fact id.
+//
+// Deprecated: Use vector.FactVectorContentPrefix from internal/data/vector instead.
 func FactVectorContentPrefix(factID string) string {
 	return "fact_id:" + strings.TrimSpace(factID) + "\n"
 }
 
 // ParseFactVectorContent splits pgvector content into fact id and statement text.
+//
+// Deprecated: Use vector.ParseFactVectorContent from internal/data/vector instead.
 func ParseFactVectorContent(content string) (factID, statement string) {
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, "fact_id:") {

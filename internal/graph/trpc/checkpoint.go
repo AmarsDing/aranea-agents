@@ -5,8 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
@@ -21,11 +20,11 @@ type SQLiteCheckpointSaver struct {
 
 func NewSQLiteCheckpointSaver(db *sql.DB, lg loggateway.Logger) (*SQLiteCheckpointSaver, error) {
 	if db == nil {
-		return nil, kerrors.BadRequest("GRAPH", "graph checkpoint: db is nil")
+		return nil, apierror.BadRequest(apierror.DomainGraph, "graph checkpoint: db is nil")
 	}
 	saver, err := trpcgraphsqlite.NewSaver(db)
 	if err != nil {
-		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph checkpoint sqlite init: %v", err))
+		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph checkpoint sqlite init: %v", err))
 	}
 	return &SQLiteCheckpointSaver{saver: saver, db: db, lg: lg}, nil
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/internal/biz"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -91,7 +93,7 @@ func TestRunRegistryCancelableRunUpdatesStatus(t *testing.T) {
 		t.Fatalf("cancel func was not called")
 	}
 	status, ok := reg.GetStatus("session-1")
-	if !ok || status.Status != "cancelled" || status.RunID != "run-1" {
+	if !ok || status.Status != biz.SessionRunPhaseCancelled || status.RunID != "run-1" {
 		t.Fatalf("GetStatus() = (%+v, %v), want cancelled run-1", status, ok)
 	}
 }

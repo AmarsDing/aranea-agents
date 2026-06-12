@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
@@ -87,28 +86,28 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 	switch normalizeNodeType(n.Type) {
 	case biz.NodeTypeLLM:
 		if deps == nil || deps.Models == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type llm requires GraphNodeResolverSet.Models", n.ID))
+			return nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: node %q type llm requires GraphNodeResolverSet.Models", n.ID))
 		}
 		mdl, err := deps.Models.ResolveModel(ctx, n.ModelName)
 		if err != nil {
-			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q llm model: %v", n.ID, err))
+			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q llm model: %v", n.ID, err))
 		}
 		toolMap := map[string]trpctool.Tool{}
 		if deps.Tools != nil && len(n.ToolNames) > 0 {
 			toolMap, err = deps.Tools.ResolveTools(ctx, n.ToolNames)
 			if err != nil {
-				return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q llm tools: %v", n.ID, err))
+				return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q llm tools: %v", n.ID, err))
 			}
 		}
 		sg.AddLLMNode(n.ID, mdl, n.Instruction, toolMap, opts...)
 		return nil, nil
 	case biz.NodeTypeTool, biz.NodeTypeTools:
 		if deps == nil || deps.Tools == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type tool requires GraphNodeResolverSet.Tools", n.ID))
+			return nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: node %q type tool requires GraphNodeResolverSet.Tools", n.ID))
 		}
 		toolMap, err := deps.Tools.ResolveTools(ctx, n.ToolNames)
 		if err != nil {
-			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q tools: %v", n.ID, err))
+			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q tools: %v", n.ID, err))
 		}
 		sg.AddToolsNode(n.ID, toolMap, opts...)
 		return nil, nil
@@ -118,17 +117,17 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 			ref = strings.TrimSpace(n.ID)
 		}
 		if deps == nil || deps.Agents == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type agent requires GraphNodeResolverSet.Agents", n.ID))
+			return nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: node %q type agent requires GraphNodeResolverSet.Agents", n.ID))
 		}
 		sub, err := deps.Agents.ResolveAgent(ctx, ref)
 		if err != nil {
-			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q agent %q: %v", n.ID, ref, err))
+			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q agent %q: %v", n.ID, ref, err))
 		}
 		extras := []trpcagent.Agent{sub}
 		if fb := strings.TrimSpace(n.FallbackAgent); fb != "" {
 			fallback, ferr := deps.Agents.ResolveAgent(ctx, fb)
 			if ferr != nil {
-				return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q fallback agent %q: %v", n.ID, fb, ferr))
+				return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q fallback agent %q: %v", n.ID, fb, ferr))
 			}
 			extras = append(extras, fallback)
 		}
@@ -162,7 +161,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 			sg.AddNode(n.ID, SkipNodeFunc(n.ID), opts...)
 			return nil, nil
 		}
-		return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef))
+		return nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef))
 	case biz.NodeTypeRouter:
 		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
 			return state, nil
@@ -178,7 +177,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Gr
 		return nil, nil
 	default:
 		if n.Func == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q has no Func (type=%q FuncRef=%q)", n.ID, n.Type, n.FuncRef))
+			return nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: node %q has no Func (type=%q FuncRef=%q)", n.ID, n.Type, n.FuncRef))
 		}
 		sg.AddNode(n.ID, n.Func, opts...)
 		return nil, nil

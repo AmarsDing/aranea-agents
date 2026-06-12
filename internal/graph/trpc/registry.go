@@ -6,8 +6,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
@@ -48,7 +47,7 @@ func (r *Registry) GetNodeFunc(name string) (trpcgraph.NodeFunc, error) {
 	defer r.mu.RUnlock()
 	factory, ok := r.nodeFuncs[name]
 	if !ok {
-		return nil, kerrors.NotFound("GRAPH", fmt.Sprintf("graph registry: node func %q not found", name))
+		return nil, apierror.NotFound(apierror.DomainGraph, fmt.Sprintf("graph registry: node func %q not found", name))
 	}
 	return factory()
 }
@@ -70,7 +69,7 @@ func (r *Registry) GetCondFunc(name string) (any, error) {
 	defer r.mu.RUnlock()
 	factory, ok := r.condFuncs[name]
 	if !ok {
-		return nil, kerrors.NotFound("GRAPH", fmt.Sprintf("graph registry: cond func %q not found", name))
+		return nil, apierror.NotFound(apierror.DomainGraph, fmt.Sprintf("graph registry: cond func %q not found", name))
 	}
 	return factory()
 }
@@ -101,7 +100,7 @@ func (r *Registry) ResolveNodeDef(n biz.NodeDef) (NodeDef, error) {
 	}
 	fn, err := r.GetNodeFunc(n.FuncRef)
 	if err != nil {
-		return NodeDef{NodeDef: n}, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: node %q: %v", n.ID, err))
+		return NodeDef{NodeDef: n}, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph registry: node %q: %v", n.ID, err))
 	}
 	return NodeDef{NodeDef: n, Func: fn}, nil
 }
@@ -112,7 +111,7 @@ func (r *Registry) ResolveConditionalEdgeDef(ce biz.ConditionalEdgeDef) (Conditi
 	}
 	fn, err := r.GetCondFunc(ce.CondFuncRef)
 	if err != nil {
-		return ConditionalEdgeDef{ConditionalEdgeDef: ce}, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: conditional edge from %q: %v", ce.From, err))
+		return ConditionalEdgeDef{ConditionalEdgeDef: ce}, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph registry: conditional edge from %q: %v", ce.From, err))
 	}
 	return ConditionalEdgeDef{ConditionalEdgeDef: ce, CondFunc: fn}, nil
 }
@@ -123,7 +122,7 @@ func (r *Registry) ResolveBuildConfig(cfg GraphBuildConfig) (*resolvedBuildConfi
 
 func (r *Registry) resolveBuildConfig(cfg GraphBuildConfig, depth int) (*resolvedBuildConfig, error) {
 	if depth >= maxSubgraphResolveDepth {
-		return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph registry: subgraph nesting depth exceeds limit (%d)", maxSubgraphResolveDepth))
+		return nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph registry: subgraph nesting depth exceeds limit (%d)", maxSubgraphResolveDepth))
 	}
 	rbc := &resolvedBuildConfig{
 		cfg:       cfg,
@@ -153,7 +152,7 @@ func (r *Registry) resolveBuildConfig(cfg GraphBuildConfig, depth int) (*resolve
 		rbc.subs[i] = SubgraphDef{SubgraphDef: s}
 		subRbc, err := r.resolveBuildConfig(s.BuildConfig, depth+1)
 		if err != nil {
-			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: subgraph %q: %v", s.ID, err))
+			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph registry: subgraph %q: %v", s.ID, err))
 		}
 		rbc.subRbcs[s.ID] = subRbc
 	}

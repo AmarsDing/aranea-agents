@@ -2,6 +2,7 @@ package event
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"sync"
 
@@ -15,6 +16,8 @@ type Infra struct {
 	SessionBus Bus
 	MonitorBus Bus
 	Buffer     *Buffer
+	WAL        *EventWAL // nil when WAL is not configured (e.g., no SQLite)
+	lg         loggateway.Logger
 	// routing caches MONITOR_BUS_ROUTING once at construction to avoid per-call os.Getenv (M-01).
 	routing routingMode
 }
@@ -52,7 +55,7 @@ func monitorBusRef() Bus {
 }
 
 // NewInfra wires dual buses for dependency injection.
-func NewInfra(lg loggateway.Logger) *Infra {
+func NewInfra(lg loggateway.Logger, wal *EventWAL) *Infra {
 	mode := routingMode(os.Getenv("MONITOR_BUS_ROUTING"))
 	if mode == "" {
 		mode = routingModeSplit
@@ -61,6 +64,8 @@ func NewInfra(lg loggateway.Logger) *Infra {
 		SessionBus: NewBus(lg),
 		MonitorBus: NewBus(lg),
 		Buffer:     NewBuffer(),
+		WAL:        wal,
+		lg:         lg,
 		routing:    mode,
 	}
 }
@@ -89,6 +94,24 @@ func ProvideBuffer(infra *Infra) *Buffer {
 	return infra.Buffer
 }
 
+// ProvideEventWAL creates an EventWAL instance. Returns nil if the database
+// is not available (e.g., in test environments without SQLite).
+func ProvideEventWAL(db *sql.DB, lg loggateway.Logger) *EventWAL {
+	if db == nil {
+		return nil
+	}
+	wal, err := NewEventWAL(db, lg)
+	if err != nil {
+		if lg != nil {
+			lg.Warn("event_wal: failed to create, Critical events will not have WBPF protection",
+				loggateway.Err(err),
+			)
+		}
+		return nil
+	}
+	return wal
+}
+
 // routingMode caches the MONITOR_BUS_ROUTING env var value so Publish does not
 // call os.Getenv on every hot-path invocation (M-01).
 // The value is read once per Infra instance at construction time.
@@ -101,6 +124,11 @@ const (
 
 // Publish routes an envelope to the correct bus(es) based on its type.
 //
+// For Critical events (AS-EVT-01), if WAL is available, the event is persisted
+// before publishing (Write-Before-Publish-Fanout). If WAL write fails, the event
+// is still published directly (better to publish without WAL protection than to
+// lose the event entirely).
+//
 // Routing mode is controlled by the MONITOR_BUS_ROUTING environment variable
 // (read once at NewInfra / BindInfra time):
 //   - "split" (default, Phase 1): flow_log and log go to MonitorBus ONLY.
@@ -112,6 +140,27 @@ const (
 // Alert and MCP health events are dual-published so both session-scoped and
 // global monitor connections receive them.
 func (infra *Infra) Publish(ctx context.Context, env Envelope) {
+	if infra.WAL != nil {
+		publish := func() { infra.publishToBuses(ctx, env) }
+		if err := infra.WAL.WriteBeforePublish(ctx, env, publish); err != nil {
+			// WAL write failed — log and fall back to direct publish.
+			// Better to publish without WAL protection than to lose the event entirely.
+			if infra.lg != nil {
+				infra.lg.Warn("event_wal: WBPF failed, falling back to direct publish",
+					loggateway.Str("type", string(env.Type)),
+					loggateway.Str("id", env.ID),
+					loggateway.Err(err),
+				)
+			}
+			infra.publishToBuses(ctx, env)
+		}
+		return
+	}
+	infra.publishToBuses(ctx, env)
+}
+
+// publishToBuses routes an envelope to the correct bus(es) based on its type.
+func (infra *Infra) publishToBuses(ctx context.Context, env Envelope) {
 	switch env.Type {
 	case EnvelopeTypeFlowLog, EnvelopeTypeLog:
 		if infra.routing != routingModeSplit {
@@ -140,6 +189,7 @@ func (infra *Infra) Publish(ctx context.Context, env Envelope) {
 // SessionBus is the default event.Bus binding; MonitorBus is accessed via *Infra (WS + flow logs).
 var InfraProviderSet = wire.NewSet(
 	NewInfra,
+	ProvideEventWAL,
 	ProvideSessionBus,
 	ProvideBuffer,
 )

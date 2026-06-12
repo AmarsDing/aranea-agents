@@ -83,7 +83,7 @@ func (u *SessionRunUsecase) StartBudgetWatcher(
 				}
 				if !IsSessionRunPhaseTerminal(ParseSessionRunPhase(run.Phase)) {
 					u.lg.Warn("hard budget grace: forcing run to failed", loggateway.Str("run_id", runID), loggateway.Str("phase", run.Phase))
-					if err := u.repo.MarkTerminal(dbc, runID, string(PhaseFailed), "hard budget grace period exceeded"); err != nil {
+					if err := u.repo.MarkTerminal(dbc, runID, SessionRunPhaseFailed, "hard budget grace period exceeded"); err != nil {
 						u.lg.Warn("hard budget grace: force-fail failed", loggateway.Err(err), loggateway.Str("run_id", runID))
 					}
 				}

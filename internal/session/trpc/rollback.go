@@ -10,11 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/trpcscope"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const trpcSessionEventsTable = "trpc_session_events"
@@ -48,7 +47,7 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 		SessionID: strings.TrimSpace(sessionID),
 	}
 	if cur.SessionID == "" {
-		return "", kerrors.BadRequest("SESSION", "runner rollback: session_id is required")
+		return "", apierror.BadRequest(apierror.DomainSession, "runner rollback: session_id is required")
 	}
 	var maxID sql.NullInt64
 	err := s.db.QueryRowContext(ctx,
@@ -57,7 +56,7 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 	).Scan(&maxID)
 	if err != nil {
 		s.lg.Warn("runner rollback mark failed", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
-		return "", kerrors.InternalServer("SESSION", "runner rollback mark: "+err.Error())
+		return "", apierror.Internal(apierror.DomainSession, "runner rollback mark").WithCause(err)
 	}
 	if maxID.Valid {
 		cur.EventID = maxID.Int64
@@ -75,7 +74,7 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 	}
 	if sid := strings.TrimSpace(sessionID); sid != "" && sid != cur.SessionID {
 		s.lg.Warn("runner rollback session mismatch", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("boundary_session", cur.SessionID), loggateway.Str("target_session", sid))
-		return kerrors.BadRequest("SESSION", fmt.Sprintf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid))
+		return apierror.BadRequest(apierror.DomainSession, fmt.Sprintf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid))
 	}
 	now := time.Now().UTC().UnixNano()
 	_, err = s.db.ExecContext(ctx,
@@ -84,7 +83,7 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 	)
 	if err != nil {
 		s.lg.Warn("runner rollback update failed", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("session_id", cur.SessionID), loggateway.Err(err))
-		return kerrors.InternalServer("SESSION", "runner rollback: "+err.Error())
+		return apierror.Internal(apierror.DomainSession, "runner rollback").WithCause(err)
 	}
 	return nil
 }
@@ -101,7 +100,7 @@ func decodeRollbackCursor(s string) (rollbackCursor, error) {
 	var cur rollbackCursor
 	raw := strings.TrimSpace(s)
 	if raw == "" {
-		return cur, kerrors.BadRequest("SESSION", "runner rollback: empty boundary")
+		return cur, apierror.BadRequest(apierror.DomainSession, "runner rollback: empty boundary")
 	}
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
@@ -109,10 +108,10 @@ func decodeRollbackCursor(s string) (rollbackCursor, error) {
 			cur.EventID = legacyID
 			return cur, nil
 		}
-		return cur, kerrors.InternalServer("SESSION", "runner rollback boundary decode: "+err.Error())
+		return cur, apierror.Internal(apierror.DomainSession, "runner rollback boundary decode").WithCause(err)
 	}
 	if err := json.Unmarshal(b, &cur); err != nil {
-		return cur, kerrors.InternalServer("SESSION", "runner rollback boundary unmarshal: "+err.Error())
+		return cur, apierror.Internal(apierror.DomainSession, "runner rollback boundary unmarshal").WithCause(err)
 	}
 	cur.AppName = strings.TrimSpace(cur.AppName)
 	if cur.AppName == "" {
@@ -124,7 +123,7 @@ func decodeRollbackCursor(s string) (rollbackCursor, error) {
 	}
 	cur.SessionID = strings.TrimSpace(cur.SessionID)
 	if cur.SessionID == "" {
-		return cur, kerrors.BadRequest("SESSION", "runner rollback: boundary session_id is required")
+		return cur, apierror.BadRequest(apierror.DomainSession, "runner rollback: boundary session_id is required")
 	}
 	return cur, nil
 }
