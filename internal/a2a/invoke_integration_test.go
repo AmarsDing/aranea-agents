@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
@@ -38,7 +39,7 @@ func TestInvokeIntegration_LocalChatCapability(t *testing.T) {
 	}
 	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	runner := &mockTurnRunner{}
-	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop())
+	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop(), a2abiz.DefaultRetryPolicy())
 	ctx := workspace.WithContext(
 		WithCallerAgentID(context.Background(), "caller-1"),
 		"ws-1",
@@ -71,7 +72,7 @@ func TestInvokeIntegration_CrossWorkspaceDenied(t *testing.T) {
 		}},
 	}
 	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
-	inv := NewInvoker(&mockTurnRunner{}, uc, nil, loggateway.NewNoop())
+	inv := NewInvoker(&mockTurnRunner{}, uc, nil, loggateway.NewNoop(), a2abiz.DefaultRetryPolicy())
 	ctx := WithCallerAgentID(context.Background(), "caller-1")
 	_, err := inv(ctx, "agent-a", "chat", `{"message":"x"}`, 30)
 	if err == nil || !strings.Contains(err.Error(), "workspace") {

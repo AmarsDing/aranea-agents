@@ -91,7 +91,7 @@ func (o *ChatOrchestrator) durableSessionRunLifecycle(
 		}
 		return ctx, d.spec.SessionRunID, stopBudget
 	}
-	return o.sessionRunLC.BeginSessionRunLifecycle(ctx, SessionRunStartParams{
+	return o.sessionRunLC().BeginSessionRunLifecycle(ctx, SessionRunStartParams{
 		Emitter:      emitter,
 		Session:      sess,
 		Agent:        ag,

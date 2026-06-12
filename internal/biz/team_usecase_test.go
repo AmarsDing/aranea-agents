@@ -102,9 +102,9 @@ func TestParseDefinitionForUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d, err := biz.ParseDefinitionForUpdate(tt.raw)
+			d, err := biz.ParseOrchestrationSpec(tt.raw)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseDefinitionForUpdate() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ParseOrchestrationSpec() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr {

@@ -30,6 +30,7 @@ type (
 	A2AUsecase                  = a2a.Usecase
 	A2AAgentLookup              = a2a.AgentLookup
 	A2AAgentMeta                = a2a.AgentMeta
+	A2ARetryPolicy              = a2a.RetryPolicy
 )
 
 // Backward-compatible aliases using original biz type names.
@@ -45,9 +46,10 @@ const (
 )
 
 var (
-	NewA2AUsecase        = a2a.NewUsecase
-	A2AAgentIDsFromCards = a2a.AgentIDsFromCards
-	AgentIDsFromCards    = a2a.AgentIDsFromCards
-	NewA2AID             = a2a.NewID
+	NewA2AUsecase         = a2a.NewUsecase
+	A2AAgentIDsFromCards  = a2a.AgentIDsFromCards
+	AgentIDsFromCards     = a2a.AgentIDsFromCards
+	NewA2AID              = a2a.NewID
 	NewAgentLookupAdapter = a2a.NewAgentLookupAdapter
+	A2ADefaultRetryPolicy = a2a.DefaultRetryPolicy
 )

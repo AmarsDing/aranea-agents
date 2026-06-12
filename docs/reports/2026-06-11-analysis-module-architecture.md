@@ -22,7 +22,7 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 | 层级 | 完善度 | 核心优势 | 关键短板 |
 |------|--------|----------|----------|
 | **biz 层** | 85% | 端口/适配器架构成熟，窄接口+编译时断言，领域模型丰富 | ConfigJSON 双向写入遗留，4套进化体系重叠，胖接口未拆分 |
-| **service 层** | 86% | 大部分服务严格遵循 proto 映射模式，Wire DI 合规 | ChatOrchestrator 上帝对象，Channel 子系统业务逻辑泄漏 |
+| **service 层** | 90% | 大部分服务严格遵循 proto 映射模式，Wire DI 合规 | ChatOrchestrator 字段分组后仍有优化空间，Channel 子系统业务逻辑泄漏 |
 | **data 层** | 90% | 读写分离优雅，事务管理精良，级联删除完善 | 267处 kerrors 分层违规，双轨 Schema 管理，pgvector 旧包未迁移 |
 
 ### 2.2 运行时模块
@@ -33,7 +33,7 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 | **Session 运行时** | 78% | 三级压缩级联设计精巧（Micro→Memory→LLM），CAS 乐观并发 | Compressor 职责过重（700+ 行），压缩策略配置分散 |
 | **Team 运行时** | 75% | 6种编排模式完整，失败策略三级容错，Mediator 解循环依赖 | 执行路径碎片化（5-6层委托），Swarm 模式成熟度不足 |
 | **Skill 运行时** | 72% | 导入管线完整（含补偿式事务），双渲染模式，文件系统对账 | 相似度检测成本高（50次LLM调用），5分钟轮询不够实时 |
-| **Graph 运行时** | 82% | Checkpoint/TimeTravel 完整，子图嵌套，DOT 可视化 | runtime 字段类型不安全，GC 参数硬编码，Subgraph 递归无深度限制 |
+| **Graph 运行时** | 85% | Checkpoint/TimeTravel 完整，子图嵌套（含深度限制），DOT 可视化 | runtime 字段类型不安全，GC 参数硬编码 |
 
 ### 2.3 基础设施
 
@@ -85,7 +85,7 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 | 问题 | 严重度 | 影响 | 状态 |
 |------|--------|------|------|
-| **ChatOrchestrator 上帝对象**：20+ 依赖字段，同时承担传输适配和业务编排 | 严重 | service 层业务逻辑泄漏，难以测试和维护 | 🟡 部分修复：deps 分组+子管理器提取+TurnAdmissionUsecase/TurnLifecycleUsecase 下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，但 ChatOrchestrator 仍有 36 字段 |
+| **ChatOrchestrator 上帝对象**：20+ 依赖字段，同时承担传输适配和业务编排 | 严重 | service 层业务逻辑泄漏，难以测试和维护 | ✅ 已修复：deps 分组+子管理器提取+TurnAdmissionUsecase/TurnLifecycleUsecase 下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，ChatOrchestrator 字段从 36 降至 12（满足 AS-COG-01 上限 15） |
 | **4套进化体系重叠**：Evolution / SkillEvolution / SkillIntelligence / LearningLoop | 中等 | 概念重叠，维护成本高，开发者困惑 | 🟡 部分修复：SkillEvolutionOrchestrator 统一编排器已建，EvolutionCoordinator 已 deprecated，但 DEV-04 未关闭 |
 | **Hook vs Webhook 概念重叠**：两个模块功能高度相似 | 中等 | 重复实现，投递重试策略不一致 | 🟡 无需合并：职责已分化（Hook=平台内部回调，Webhook=外部HTTP通知），领域模型和接口完全不同 |
 | **provider 与 modelregistry 职责重叠**：模型解析逻辑分散在两处 | 中等 | 边界模糊，修改需同步两处 | 🟡 无需合并：职责已分化（LlmProviderModel=DB配置管理，ModelRegistry=文件系统策略管理），无直接接口重叠 |
@@ -99,8 +99,8 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 | 清晰度 | 模块 |
 |--------|------|
 | **清晰** | Agent 类型/设置、Session 状态机、Graph 门面、Memory L0-L4、Channel 路由/投递、Cron/Hook/Plugin、apierror/logpipeline/auth、前端主题/WS/消息分组 |
-| **一般** | Skill 进化（两套体系并存）、Team 运行时（执行路径碎片化）、provider/modelregistry（职责重叠）、metrics（覆盖面有限）、evaluation（存储与框架级关系不明确） |
-| **模糊** | Organization（职责混合、文件过长）、LearningLoop vs Evolution（概念边界不清） |
+| **一般** | Skill 进化（两套体系并存）、Team 运行时（执行路径碎片化）、provider/modelregistry（职责重叠）、metrics（覆盖面有限）、evaluation（存储与框架级关系不明确）、Organization（PositionPrompt 已拆分，缺变更事件） |
+| **模糊** | LearningLoop vs Evolution（概念边界不清） |
 
 ---
 
@@ -122,32 +122,32 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 #### Session 相关
 
 - **核心职责**：会话运行状态机、Turn 生命周期编排、Chat 会话互斥与待处理队列、入口策略评估
-- **完善度**：80%
-- **优势**：SessionRun 状态机完整（含 durable resume claim + orphaned run 清理）；Turn 生命周期钩子设计精良（6 个独立接口解耦关注点）；IngressPolicy 为纯函数
+- **完善度**：83%
+- **优势**：SessionRun 状态机完整（含 durable resume claim + orphaned run 清理 + 硬预算自动降级）；Turn 生命周期钩子设计精良（6 个独立接口解耦关注点）；IngressPolicy 为纯函数；awaitChans 事件驱动清理
 - **关键缺失**：
-  1. awaitChans 内存泄漏风险：仅靠 5 分钟 GC ticker，高并发场景下可能积压大量 channel
+  1. ~~awaitChans 内存泄漏风险：仅靠 5 分钟 GC ticker，高并发场景下可能积压大量 channel~~ ✅ 已修复：awaitChanMaxAge 从 30 分钟降至 10 分钟，终态（completed/failed/cancelled）时主动调用 DeleteAwaitChannel 事件驱动清理
   2. TurnExecutor 接口定义在 biz 但实现在 service（ChatOrchestrator），biz 层缺少编排逻辑的测试覆盖
-  3. SessionRun 缺少超时自动降级：HardBudgetSec 到期后无自动 Fail 机制
+  3. ~~SessionRun 缺少超时自动降级：HardBudgetSec 到期后无自动 Fail 机制~~ ✅ 已修复：fireHard 后启动 60 秒宽限期 goroutine，使用 context.WithoutCancel 确保 DB 操作不受 parent ctx 取消影响，宽限期后检查 run 是否仍非终态则强制 Fail
 
 #### Team 相关
 
 - **核心职责**：Team 定义管理、编排模式验证（6 种模式）、Team-Graph 双向关联、运行生命周期（含死信队列）
-- **完善度**：88%
-- **优势**：6 种编排模式（sequential/parallel/coordinator/critic_loop/swarm/adaptive）均有角色兼容性验证；Team 状态机转换约束完整；Team-Graph 双向关联同步（syncGraphTeamID）
+- **完善度**：90%
+- **优势**：6 种编排模式（sequential/parallel/coordinator/critic_loop/swarm/adaptive）均有角色兼容性验证；Team 状态机转换约束完整；Team-Graph 双向关联同步（syncGraphTeamID）；成员存在性+活跃性校验；DefinitionJSON 统一解析
 - **关键缺失**：
-  1. validateTeamMembersExist 仅检查存在性，不检查 active 状态
+  1. ~~validateTeamMembersExist 仅检查存在性，不检查 active 状态~~ ✅ 已修复：新增 AgentIsActiveByID 检查，AgentIDExistenceChecker 接口扩展
   2. ExportStructure 仅覆盖 3 种模式的结构生成
-  3. DefinitionJSON 解析重复：3 个不同的 JSON 解析结构体，应统一
+  3. ~~DefinitionJSON 解析重复：3 个不同的 JSON 解析结构体，应统一~~ ✅ 已修复：统一使用 ParseOrchestrationSpec，移除重复匿名 struct 解析
 
 #### Graph 相关
 
 - **核心职责**：Graph 定义 CRUD、执行生命周期（含 checkpoint/time-travel）、可视化、模板管理、版本回滚
-- **完善度**：90%
-- **优势**：GraphUsecase 门面模式拆分为 DefinitionUsecase + ExecutionUsecase + CacheManager；GraphBuildConfig 类型丰富（Node/Edge/ConditionalEdge/Subgraph/StateField）
+- **完善度**：92%
+- **优势**：GraphUsecase 门面模式拆分为 DefinitionUsecase + ExecutionUsecase + CacheManager；GraphBuildConfig 类型丰富（Node/Edge/ConditionalEdge/Subgraph/StateField）；SubgraphDef 嵌套深度限制
 - **关键缺失**：
   1. ~~GraphExecution 的 runtime 字段为 interface{}，缺少类型安全~~ ✅ 已修复：已类型化为 `GraphRuntime` 接口（组合 GraphExecutionControl + GraphCheckpoint）
   2. ~~GC 参数硬编码（gcInterval / executionMaxAge / maxExecutions），应支持配置覆盖~~ ✅ 已修复：通过环境变量 GRAPH_GC_* 注入
-  3. SubgraphDef 嵌套深度无限制，可能递归过深导致栈溢出
+  3. ~~SubgraphDef 嵌套深度无限制，可能递归过深导致栈溢出~~ ✅ 已修复：新增 validateSubgraphDepth 递归校验，使用已有 maxSubgraphDepth=10 常量限制
 
 #### Memory 相关
 
@@ -172,10 +172,10 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 #### A2A 相关
 
 - **核心职责**：Agent-to-Agent 协议（AgentCard/Invocation/Audit）、远程代理发现与注册、调用限流
-- **完善度**：80%
+- **完善度**：85%
 - **关键缺失**：
   1. ~~限流器为内存实现，多 Pod 部署无法共享状态（TODO DEV-08 标注）~~ ✅ 已修复：Redis 分布式限流器已实现并接入 Wire，旧内存限流器已删除
-  2. 缺少 A2A 调用的超时/重试策略
+  2. ~~缺少 A2A 调用的超时/重试策略~~ ✅ 已修复：新增 RetryPolicy 结构体（指数退避，仅对 transient 错误重试），callAgentTool.Call 使用 context.WithTimeout 传递 timeoutSec，业务错误改用 kerrors
   3. AuthType/AuthConfigJSON 定义了但 biz 层无验证逻辑
 
 #### Channel 相关
@@ -197,7 +197,7 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 | Usage | 82% | 实时用量仪表盘数据推送 |
 | Knowledge | 78% | 文档分块策略可配置化、增量更新 |
 | Evolution | 80% | ApplySuggestion 缺少回滚机制 |
-| Organization | 72% | 职责混合、文件过长；缺组织架构变更事件 |
+| Organization | 78% | ~~职责混合、文件过长；缺组织架构变更事件~~ ✅ 部分修复：PositionPromptUsecase 已提取（GetPositionPrompt/ListPositionVariants/BuildResponsibility/normalizeOrg），OrganizationUsecase 通过 posPrompt 字段委托调用；缺组织架构变更事件 |
 | Spirit | 75% | DAG 执行引擎未在 biz 层实现、综合输出质量评估 |
 | Plan/Planner | 70% | 计划步骤执行编排、计划与 Graph 的关联 |
 | RalphLoop | 65% | 仅配置验证函数，无执行逻辑 |
@@ -211,17 +211,16 @@ Aranea-Agents 是基于 **trpc-agent-go 运行时 + Kratos v2 传输壳层** 的
 
 ### 5.2 service 层核心问题
 
-#### ChatOrchestrator 上帝对象（严重，持续改善中）
+#### ChatOrchestrator 上帝对象（✅ 已修复）
 
-ChatOrchestrator 及其 ChatOrchestratorDeps 是项目最大的架构债务：
+ChatOrchestrator 及其 ChatOrchestratorDeps 是项目最大的架构债务（已修复）：
 
-1. ChatOrchestratorDeps 含 20+ 字段，代码注释自身标注了 `TECH-DEBT(BL8)`
+1. ~~ChatOrchestratorDeps 含 20+ 字段，代码注释自身标注了 `TECH-DEBT(BL8)`~~ → 已通过组合接口分组解决
 2. ~~直接持有 15+ 个 biz Usecase 引用~~ → 当前持有 10 个直接 biz Usecase 引用，已部分收敛
 3. ~~`RunNativeAgentTurnWithOutcome` 方法长达数百行，包含 turn 准入检查、上下文压力计算、session 状态转换、事件发布、指标记录等——这些逻辑应在 biz 层~~ → turn 准入已下沉到 TurnAdmissionUsecase，session 状态转换已下沉到 TurnLifecycleUsecase，sessionContextPressure 已完全委托 biz 层（含 channel 入口点分支）
 4. ~~`sessionLockManager` 属于并发控制基础设施，放在 service 层不合适~~ → 已删除
 5. ~~`enforceQuota` / `enforceChatTurnQuotas` 是业务规则，应下沉到 biz 层~~ → 已下沉到 TurnAdmissionUsecase.EnforceChatTurnQuotas
-
-**剩余问题**：ChatOrchestrator 仍有 36 字段（AS-COG-01 上限 15），需继续提取子管理器。
+6. ~~ChatOrchestrator 仍有 36 字段（AS-COG-01 上限 15）~~ → ✅ 已修复：定义 chatTurnCoreDeps/chatTurnLifecycle/chatRunManager 等组合接口和分组结构体，字段从 36 降至 12，满足 AS-COG-01
 
 #### Channel 子系统业务逻辑泄漏（已修复）
 
@@ -330,7 +329,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 | # | 建议 | 预期收益 | 状态 |
 |---|------|----------|------|
-| 1 | **拆分 ChatOrchestrator**：将 turn 准入、配额检查、session 状态转换提取到 biz 层 TurnAdmissionUsecase / TurnLifecycleUsecase | 消除 service 层最大业务逻辑泄漏，提升可测试性 | 🟡 部分完成：TurnAdmissionUsecase/TurnLifecycleUsecase 已下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，但 ChatOrchestrator 仍有 36 字段 |
+| 1 | **拆分 ChatOrchestrator**：将 turn 准入、配额检查、session 状态转换提取到 biz 层 TurnAdmissionUsecase / TurnLifecycleUsecase | 消除 service 层最大业务逻辑泄漏，提升可测试性 | ✅ 已完成：TurnAdmissionUsecase/TurnLifecycleUsecase 已下沉，sessionContextPressure 已完全委托 biz 层（含 channel 入口点），chatSessionStateMgr 已删除，enforceQuota 已下沉，ChatOrchestrator 字段从 36 降至 12（满足 AS-COG-01 上限 15） |
 | 2 | **ConfigJSON 写路径改为只读投影**：Settings + Files → ConfigJSON 仅做读投影，消除双向写入不一致风险 | 消除数据一致性隐患（TODO DEV-10） | ✅ 已完成：DEV-10 FIXED |
 | 3 | **A2ALimiter 替换为 Redis 分布式实现** | 多 Pod 部署可用（TODO DEV-08） | ✅ 已完成：Redis 实现已就绪并接入 Wire，service 层已使用注入的 a2a.Limiter，旧 a2a_limit.go 已删除 |
 
@@ -371,7 +370,7 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 ## 七、总体评价
 
-**Aranea-Agents 是一个架构成熟度较高的多智能体编排平台**，整体完善度约 **82%**。
+**Aranea-Agents 是一个架构成熟度较高的多智能体编排平台**，整体完善度约 **84%**（2026-06-12 更新）。
 
 ### 核心优势
 
@@ -383,9 +382,22 @@ Ent schema 和原生 SQL DDL 并存（evaluation、knowledge），增加维护�
 
 ### 核心架构债务
 
-1. **ChatOrchestrator 上帝对象**——36 字段仍超标（AS-COG-01 上限 15），但业务逻辑已大幅下沉 biz 层
+1. ~~**ChatOrchestrator 上帝对象**——36 字段仍超标（AS-COG-01 上限 15），但业务逻辑已大幅下沉 biz 层~~ ✅ 已修复：字段从 36 降至 12，满足 AS-COG-01
 2. **4 套进化体系重叠**——DEV-04 未关闭，SkillProposal 与 SkillEvolutionSuggestion 并存（需 proto API 变更）
 3. **Team 运行时执行路径碎片化**——4 层委托链（Runner→Mediator→Coordinator→Finisher），有架构理由（Mediator 打破循环依赖）
+
+### 2026-06-12 修复批次
+
+| 修复项 | 方案 | 关键设计决策 |
+|--------|------|-------------|
+| ChatOrchestrator 36→12 字段 | 定义 chatTurnCoreDeps/chatTurnLifecycle/chatRunManager 等组合接口和分组结构体，所有直接字段访问改为访问器方法 | 满足 AS-COG-01（字段 ≤15），保持 service 层薄适配定位 |
+| SessionRun 硬预算自动降级 | fireHard 后启动 60 秒宽限期 goroutine，使用 context.WithoutCancel 确保 DB 操作不受 parent ctx 取消影响，宽限期后检查 run 是否仍非终态则强制 Fail | 宽限期设计：给正常完成流程留时间，避免硬中断导致数据不一致 |
+| awaitChans 内存泄漏 | awaitChanMaxAge 从 30 分钟降至 10 分钟，终态（completed/failed/cancelled）时主动调用 DeleteAwaitChannel 事件驱动清理 | 双保险：事件驱动为主（终态立即清理），时间兜底为辅（10 分钟 GC） |
+| validateTeamMembersExist + DefinitionJSON 统一 | 新增 AgentIsActiveByID 检查，AgentIDExistenceChecker 接口扩展；统一使用 ParseOrchestrationSpec 替代 3 处重复匿名 struct 解析 | 不追溯：验证仅在 create/update 时执行，不回溯已存在团队的成员状态变更 |
+| SubgraphDef 嵌套深度限制 | 新增 validateSubgraphDepth 递归校验，使用已有 maxSubgraphDepth=10 常量 | 复用已有常量，避免重复定义 |
+| A2A 调用超时/重试策略 | 新增 RetryPolicy 结构体（指数退避，仅对 transient 错误重试），callAgentTool.Call 使用 context.WithTimeout | 仅对可恢复错误（5xx/网络超时）重试，业务错误（4xx）不重试；DefaultRemoteInvokeTimeoutSec=30 统一跨文件引用 |
+| Organization 职责拆分 | 提取 PositionPromptUsecase（GetPositionPrompt/ListPositionVariants/BuildResponsibility/normalizeOrg），OrganizationUsecase 通过 posPrompt 字段委托调用 | SRP 拆分：PositionPrompt 是独立关注点，与 Organization CRUD 无直接关系 |
+| 二次审查修复（BP8 魔法数字） | SessionRunPhaseCancelled 常量替代 "cancelled" 硬编码；awaitChanGCInterval 提取为命名常量；A2A DefaultRemoteInvokeTimeoutSec 统一 4 处 30 秒超时；DefaultRetryPolicy 内部值提取为命名常量 | 消除跨文件重复魔法值，单点维护超时/重试参数 |
 
 ### 提升方向
 

@@ -13,14 +13,14 @@ import (
 
 // ResumeDurableSessionRun continues an agent turn from a durable checkpoint (CC-R-03).
 func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID string) error {
-	if s == nil || s.orch == nil || s.orch.chJobs.SessionRuns == nil {
+	if s == nil || s.orch == nil || s.orch.chJobs().SessionRuns == nil {
 		return nil
 	}
 	sessionRunID = strings.TrimSpace(sessionRunID)
 	if sessionRunID == "" {
 		return nil
 	}
-	run, err := s.orch.chJobs.SessionRuns.Get(ctx, sessionRunID)
+	run, err := s.orch.chJobs().SessionRuns.Get(ctx, sessionRunID)
 	if err != nil || run.ID == "" {
 		return err
 	}
@@ -33,20 +33,20 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 	if s.orch.HasActiveRun(run.SessionID) {
 		return nil
 	}
-	claimed, err := s.orch.chJobs.SessionRuns.TryClaimDurableResume(ctx, sessionRunID)
+	claimed, err := s.orch.chJobs().SessionRuns.TryClaimDurableResume(ctx, sessionRunID)
 	if err != nil || !claimed {
 		return err
 	}
-	cp, err := s.orch.chJobs.SessionRuns.GetCheckpoint(ctx, sessionRunID)
+	cp, err := s.orch.chJobs().SessionRuns.GetCheckpoint(ctx, sessionRunID)
 	if err != nil || cp.ID == "" {
-		if err := s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID); err != nil {
+		if err := s.orch.chJobs().SessionRuns.ClearResumeClaim(ctx, sessionRunID); err != nil {
 			s.lg.Warn("durable resume: clear claim failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 		}
 		return err
 	}
 	payload, err := biz.ParseDurableCheckpointPayload(cp.PayloadJSON)
 	if err != nil {
-		if err := s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID); err != nil {
+		if err := s.orch.chJobs().SessionRuns.ClearResumeClaim(ctx, sessionRunID); err != nil {
 			s.lg.Warn("durable resume: clear claim failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 		}
 		return err
@@ -79,28 +79,28 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 		_, asst, turnErr := s.RunNativeTurn(bgCtx, req)
 		persistCtx := context.WithoutCancel(runCtx)
 		if turnErr != nil {
-			if err := s.orch.chJobs.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error()); err != nil {
+			if err := s.orch.chJobs().SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error()); err != nil {
 				s.lg.Warn("durable resume: fail session run failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 			}
-			if s.orch.chNotify.RunEscalation != nil {
-				if failed, gerr := s.orch.chJobs.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
-					if err := s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error()); err != nil {
+			if s.orch.chNotify().RunEscalation != nil {
+				if failed, gerr := s.orch.chJobs().SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
+					if err := s.orch.chNotify().RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error()); err != nil {
 						s.lg.Warn("durable resume: notify run failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 					}
 				} else {
-					if err := s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error()); err != nil {
+					if err := s.orch.chNotify().RunEscalation.NotifyRunFailed(persistCtx, biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error()); err != nil {
 						s.lg.Warn("durable resume: notify run failed (fallback)", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 					}
 				}
 			}
 			return
 		}
-		if err := s.orch.chJobs.SessionRuns.Complete(persistCtx, sessionRunID); err != nil {
+		if err := s.orch.chJobs().SessionRuns.Complete(persistCtx, sessionRunID); err != nil {
 			s.lg.Warn("durable resume: complete session run failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 		}
-		if s.orch.chNotify.RunEscalation != nil {
-			if completed, gerr := s.orch.chJobs.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && completed.ID != "" {
-				if err := s.orch.chNotify.RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown); err != nil {
+		if s.orch.chNotify().RunEscalation != nil {
+			if completed, gerr := s.orch.chJobs().SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && completed.ID != "" {
+				if err := s.orch.chNotify().RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown); err != nil {
 					s.lg.Warn("durable resume: notify run completed failed", loggateway.Err(err), loggateway.Str("session_run_id", sessionRunID))
 				}
 			}
@@ -113,5 +113,5 @@ func (s *ChatService) GetSessionRunUsecase() *biz.SessionRunUsecase {
 	if s == nil || s.orch == nil {
 		return nil
 	}
-	return s.orch.chJobs.SessionRuns
+	return s.orch.chJobs().SessionRuns
 }

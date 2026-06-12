@@ -102,15 +102,15 @@ func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []tr
 		return nil
 	}
 	return cli_admin.RegisterAll(cli_admin.Deps{
-		SkillRepo:  cliAdminSkillRepo{uc: o.td.ReadDeps.CLIAdminSkillUC},
-		AgentRepo:  cliAdminAgentRepo{uc: o.td.ReadDeps.CLIAdminAgentUC},
-		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td.ReadDeps.Settings),
+		SkillRepo:  cliAdminSkillRepo{uc: o.td().ReadDeps.CLIAdminSkillUC},
+		AgentRepo:  cliAdminAgentRepo{uc: o.td().ReadDeps.CLIAdminAgentUC},
+		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td().ReadDeps.Settings),
 		APIToken:   cliAdminAPIToken(),
 	})
 }
 
 func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
-	if o == nil || o.spiritAssembler == nil {
+	if o == nil || o.spiritAssembler() == nil {
 		return nil
 	}
 	if strings.TrimSpace(ag.AgentKey) != biz.SpiritAgentKey {
@@ -123,24 +123,24 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	// outputting OrchestrationStrategy (direct/single_agent/parallel/dag/coordinator).
 
 	// New three-phase orchestration tools.
-	planner := o.team.TaskPlanner
-	allocator := o.team.AgentAllocator
-	orchestrator := o.team.TaskOrchestrator
+	planner := o.team().TaskPlanner
+	allocator := o.team().AgentAllocator
+	orchestrator := o.team().TaskOrchestrator
 	if planner != nil && allocator != nil && orchestrator != nil {
-		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler, o.td.Pipeline.Bus, o.lg))
-		out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg))
-		out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg))
+		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), o.td().Pipeline.Bus, o.lg()))
+		out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg()))
+		out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg()))
 	}
 
 	// Synthesize results tool (still actively used for post-orchestration result synthesis).
-	if o.spiritSynthesis != nil {
-		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis))
+	if o.spiritSynthesis() != nil {
+		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis()))
 	}
 
 	// Graph orchestration tool for complex multi-agent DAG execution.
 	var graphBuilder orchtools.GraphBuilderPort
-	if o.graphExec != nil {
-		graphBuilder = graphBuilderAdapter{exec: o.graphExec}
+	if o.graphExec() != nil {
+		graphBuilder = graphBuilderAdapter{exec: o.graphExec()}
 	}
 	out = append(out, orchtools.NewBuildOrchestrationGraphTool(graphBuilder))
 
@@ -155,10 +155,10 @@ func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) 
 		return nil
 	}
 	return skills_butler.RegisterAll(skills_butler.Deps{
-		Skills:    skillsButlerSkillUsecaseAdapter{uc: o.skillEvo},
-		Evolution: skillsButlerEvolutionAdapter{uc: o.evolution},
-		Queries:   skillsButlerQueryAdapter{reader: o.skillStats},
-		Analytics: skillsButlerAnalyticsAdapter{uc: o.expAnalytics, agentID: ag.ID},
+		Skills:    skillsButlerSkillUsecaseAdapter{uc: o.skillEvo()},
+		Evolution: skillsButlerEvolutionAdapter{uc: o.evolution()},
+		Queries:   skillsButlerQueryAdapter{reader: o.skillStats()},
+		Analytics: skillsButlerAnalyticsAdapter{uc: o.expAnalytics(), agentID: ag.ID},
 	})
 }
 
@@ -170,10 +170,10 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 		return nil
 	}
 	return memory_butler.RegisterAll(memory_butler.Deps{
-		Analytics:   o.expAnalytics,
-		MemoryAdmin: o.td.Persist.Memory.AdminUsecase,
-		Agents:      o.td.ReadDeps.Agents,
-		LG:          o.lg,
+		Analytics:   o.expAnalytics(),
+		MemoryAdmin: o.td().Persist.Memory.AdminUsecase,
+		Agents:      o.td().ReadDeps.Agents,
+		LG:          o.lg(),
 	})
 }
 

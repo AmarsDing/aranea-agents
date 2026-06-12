@@ -27,6 +27,7 @@ const (
 	ValidationErrInvalidMapperJSON ValidationErrorCode = "invalid_mapper_json"
 	ValidationErrInvalidRetryPolicy ValidationErrorCode = "invalid_retry_policy"
 	ValidationErrSubgraphCycle      ValidationErrorCode = "subgraph_cycle"
+	ValidationErrSubgraphDepth      ValidationErrorCode = "subgraph_depth_exceeded"
 )
 
 type ValidationError struct {
@@ -80,6 +81,7 @@ func ValidateGraph(ctx context.Context, def *GraphBuildConfig, agentChecker Agen
 	validateLoopExits(def, result)
 	validateNodePolicies(def, result)
 	validateSubgraphCycles(def, result)
+	validateSubgraphDepth(def, result)
 
 	return result
 }
@@ -91,6 +93,26 @@ func validateSubgraphCycles(def *GraphBuildConfig, result *ValidationResult) {
 	loading := map[string]struct{}{}
 	for _, sub := range def.Subgraphs {
 		validateSubgraphChain(sub.ID, sub.GraphID, sub.BuildConfig, loading, result)
+	}
+}
+
+func validateSubgraphDepth(def *GraphBuildConfig, result *ValidationResult) {
+	if def == nil {
+		return
+	}
+	for i := range def.Subgraphs {
+		checkSubgraphDepth(&def.Subgraphs[i], 1, result)
+	}
+}
+
+func checkSubgraphDepth(sub *biz.SubgraphDef, depth int, result *ValidationResult) {
+	if depth > maxSubgraphDepth {
+		result.AddError(ValidationErrSubgraphDepth, sub.ID, "subgraph",
+			fmt.Sprintf("子图嵌套深度 %d 超过上限 %d（节点 %q）", depth, maxSubgraphDepth, sub.ID))
+		return
+	}
+	for i := range sub.BuildConfig.Subgraphs {
+		checkSubgraphDepth(&sub.BuildConfig.Subgraphs[i], depth+1, result)
 	}
 }
 

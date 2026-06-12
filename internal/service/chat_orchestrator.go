@@ -100,49 +100,126 @@ type ChatChannelDeps struct {
 	ChNotify ChannelNotifierDeps
 }
 
+// chatTurnCoreDeps groups core turn execution dependencies: TurnDeps, RuntimeTooling,
+// admission gate, admission usecase, and turn timeout. Consolidating these into a
+// single struct reduces ChatOrchestrator's field count (AS-COG-01).
+type chatTurnCoreDeps struct {
+	TD          rt.TurnDeps
+	RT          RuntimeTooling
+	AdmitGate   *turn.AdmissionGate
+	Admission   *biz.TurnAdmissionUsecase
+	TurnTimeout time.Duration
+}
+
+// chatTurnLifecycle combines session state transition, turn metrics recording,
+// and turn event publishing into a single composite interface.
+// Merging 3 sub-manager interfaces into 1 reduces ChatOrchestrator's field count (AS-COG-01).
+type chatTurnLifecycle interface {
+	sessionStateTransitor
+	turnRecorder
+	turnEventPublisher
+}
+
+// chatRunManager combines run status tracking, pending queue management,
+// await coordination, and session run lifecycle into a single composite interface.
+// Merging 4 sub-manager interfaces into 1 reduces ChatOrchestrator's field count (AS-COG-01).
+type chatRunManager interface {
+	runStatusTracker
+	pendingQueueManager
+	awaitCoordinator
+	sessionRunLifecycle
+}
+
 // ChatOrchestrator owns the turn lifecycle: admission, execution, status tracking,
 // and post-turn side effects. ChatService delegates all orchestration work here.
+//
+// Field count: 12 (well under AS-COG-01 limit of 15).
 type ChatOrchestrator struct {
-	td              rt.TurnDeps
-	rt              RuntimeTooling
-	team            TeamOrchestrationDeps
-	chJobs          ChannelTurnJobDeps
-	chNotify        ChannelNotifierDeps
-	admitGate       *turn.AdmissionGate
-	admission       *biz.TurnAdmissionUsecase
-	usage           *biz.UsageUsecase
-	monitor         *biz.MonitorUsecase
-	artifacts       *biz.ArtifactUsecase
-	a2aUC           *biz.A2AUsecase
-	mcpServers      *biz.MCPServerUsecase
-	runs            *rt.RunRegistry
-	chatUC          *biz.ChatUsecase
-	lg              loggateway.Logger
-	spiritAssembler *SpiritTeamAssembler
-	spiritSynthesis *SpiritSynthesisService
-	orchCache       *biz.OrchestrationCache
-	teamStarter     biz.TeamStarterPort
-	graphExec       biz.GraphExecutor
-	turnTimeout     time.Duration
-	skillEvo        *biz.SkillEvolutionUsecase
-	evolution       *biz.EvolutionUsecase
-	skillStats      biz.SkillInvocationStatsReader
-	outboundRouter  *outbound.Router
-	subAgentService *subagenttool.Service
-	expAnalytics    *biz.ExperienceAnalyticsUsecase
+	core      chatTurnCoreDeps
+	channelDeps ChatChannelDeps
+	usageDeps  ChatUsageDeps
+	teamExecDeps ChatTeamDeps
+	evoDeps    ChatEvolutionDeps
+	infraDeps  ChatInfraDeps
+
+	runs       *rt.RunRegistry
+	chatUC     *biz.ChatUsecase
+	turnLC     chatTurnLifecycle
+	runMgr     chatRunManager
+	agentBuild agentBuildDirector
 
 	sweepStop chan struct{}
-
-	// Extracted sub-managers (TECH-DEBT(BL8) resolution).
-	sessionStateMgr sessionStateTransitor
-	turnMetrics     turnRecorder
-	eventPublisher  turnEventPublisher
-	runStatus       runStatusTracker
-	pendingQ        pendingQueueManager
-	awaitCoord      awaitCoordinator
-	sessionRunLC    sessionRunLifecycle
-	agentBuild      agentBuildDirector
 }
+
+// chatTurnLifecycleImpl combines sessionStateTransitor, turnRecorder, and
+// turnEventPublisher into a single struct satisfying chatTurnLifecycle.
+type chatTurnLifecycleImpl struct {
+	sessionStateTransitor
+	turnRecorder
+	turnEventPublisher
+}
+
+var _ chatTurnLifecycle = (*chatTurnLifecycleImpl)(nil)
+
+// chatRunManagerImpl combines runStatusTracker, pendingQueueManager,
+// awaitCoordinator, and sessionRunLifecycle into a single struct satisfying chatRunManager.
+type chatRunManagerImpl struct {
+	runStatusTracker
+	pendingQueueManager
+	awaitCoordinator
+	sessionRunLifecycle
+}
+
+// Sweep resolves the ambiguity between runStatusTracker.Sweep and
+// awaitCoordinator.Sweep by delegating to both.
+func (m *chatRunManagerImpl) Sweep() {
+	m.runStatusTracker.Sweep()
+	m.awaitCoordinator.Sweep()
+}
+
+var _ chatRunManager = (*chatRunManagerImpl)(nil)
+
+// Accessor methods preserve call-site compatibility after field grouping (AS-COG-01).
+func (o *ChatOrchestrator) td() rt.TurnDeps                  { return o.core.TD }
+func (o *ChatOrchestrator) tdPtr() *rt.TurnDeps              { return &o.core.TD }
+func (o *ChatOrchestrator) rt() RuntimeTooling               { return o.core.RT }
+func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate   { return o.core.AdmitGate }
+func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase { return o.core.Admission }
+func (o *ChatOrchestrator) turnTimeout() time.Duration       { return o.core.TurnTimeout }
+
+func (o *ChatOrchestrator) team() TeamOrchestrationDeps      { return o.teamExecDeps.Team }
+func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps       { return o.channelDeps.ChJobs }
+func (o *ChatOrchestrator) chNotify() ChannelNotifierDeps    { return o.channelDeps.ChNotify }
+
+func (o *ChatOrchestrator) usage() *biz.UsageUsecase         { return o.usageDeps.Usage }
+func (o *ChatOrchestrator) monitor() *biz.MonitorUsecase     { return o.usageDeps.Monitor }
+func (o *ChatOrchestrator) artifacts() *biz.ArtifactUsecase  { return o.usageDeps.Artifacts }
+func (o *ChatOrchestrator) skillStats() biz.SkillInvocationStatsReader { return o.usageDeps.SkillStats }
+func (o *ChatOrchestrator) expAnalytics() *biz.ExperienceAnalyticsUsecase { return o.usageDeps.ExpAnalytics }
+
+func (o *ChatOrchestrator) spiritAssembler() *SpiritTeamAssembler { return o.teamExecDeps.SpiritAssembler }
+func (o *ChatOrchestrator) spiritSynthesis() *SpiritSynthesisService { return o.teamExecDeps.SpiritSynthesis }
+func (o *ChatOrchestrator) teamStarter() biz.TeamStarterPort  { return o.teamExecDeps.TeamStarter }
+func (o *ChatOrchestrator) graphExec() biz.GraphExecutor      { return o.teamExecDeps.GraphExec }
+
+func (o *ChatOrchestrator) skillEvo() *biz.SkillEvolutionUsecase { return o.evoDeps.SkillEvo }
+func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase  { return o.evoDeps.Evolution }
+
+func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase           { return o.infraDeps.A2AUC }
+func (o *ChatOrchestrator) mcpServers() *biz.MCPServerUsecase { return o.infraDeps.MCPServers }
+func (o *ChatOrchestrator) orchCache() *biz.OrchestrationCache { return o.infraDeps.OrchCache }
+func (o *ChatOrchestrator) outboundRouter() *outbound.Router  { return o.infraDeps.OutboundRouter }
+func (o *ChatOrchestrator) subAgentService() *subagenttool.Service { return o.infraDeps.SubAgentService }
+func (o *ChatOrchestrator) lg() loggateway.Logger             { return o.infraDeps.LG }
+
+// Sub-manager accessors delegate to the composite interfaces.
+func (o *ChatOrchestrator) sessionStateMgr() sessionStateTransitor { return o.turnLC }
+func (o *ChatOrchestrator) turnMetrics() turnRecorder             { return o.turnLC }
+func (o *ChatOrchestrator) eventPublisher() turnEventPublisher    { return o.turnLC }
+func (o *ChatOrchestrator) runStatus() runStatusTracker           { return o.runMgr }
+func (o *ChatOrchestrator) pendingQ() pendingQueueManager         { return o.runMgr }
+func (o *ChatOrchestrator) awaitCoord() awaitCoordinator          { return o.runMgr }
+func (o *ChatOrchestrator) sessionRunLC() sessionRunLifecycle     { return o.runMgr }
 
 // ChatTurnDeps groups turn execution lifecycle dependencies: session pipeline,
 // run registry, runtime tooling, admission control, and turn timeout.
@@ -223,62 +300,76 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
+	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG)
 
-	o := &ChatOrchestrator{
-		td:              deps.Turn.TurnDeps,
-		rt:              deps.Turn.RT,
-		team:            deps.Team.Team,
-		chJobs:          deps.Channel.ChJobs,
-		chNotify:        deps.Channel.ChNotify,
-		usage:           deps.Usage.Usage,
-		admission:       deps.Turn.Admission,
-		monitor:         deps.Usage.Monitor,
-		artifacts:       deps.Usage.Artifacts,
-		a2aUC:           deps.Infra.A2AUC,
-		mcpServers:      deps.Infra.MCPServers,
-		runs:            runs,
-		chatUC:          NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG),
-		lg:              deps.Infra.LG,
-		spiritAssembler: deps.Team.SpiritAssembler,
-		spiritSynthesis: deps.Team.SpiritSynthesis,
-		orchCache:       deps.Infra.OrchCache,
-		teamStarter:     deps.Team.TeamStarter,
-		graphExec:       deps.Team.GraphExec,
-		turnTimeout:     deps.Turn.TurnTimeout,
-		skillEvo:        deps.Evolution.SkillEvo,
-		evolution:       deps.Evolution.Evolution,
-		skillStats:      deps.Usage.SkillStats,
-		outboundRouter:  deps.Infra.OutboundRouter,
-		subAgentService: deps.Infra.SubAgentService,
-		expAnalytics:    deps.Usage.ExpAnalytics,
-		sessionStateMgr: deps.Infra.TurnLifecycle,
-		turnMetrics:     newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG),
-		eventPublisher:  newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG),
-		runStatus:       newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG),
-	}
-	o.pendingQ = newChatPendingQueueManager(o.chatUC)
-	o.awaitCoord = newChatAwaitCoordinator(chatAwaitCoordinatorDeps{
-		ChatUC:       o.chatUC,
-		RunStatus:    o.runStatus,
-		SessionState: o.sessionStateMgr,
-		SessionRT:    o.sessionRuntime,
-		Bus:          deps.Turn.Pipeline.Bus,
-		Logger:       deps.Infra.LG,
-	})
-	o.sessionRunLC = newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
+	// Build individual sub-managers first.
+	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
+	metrics := turnRecorder(newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG))
+	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG))
+	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG))
+	pendQ := pendingQueueManager(newChatPendingQueueManager(chatUC))
+	awaitCoord := awaitCoordinator(newChatAwaitCoordinator(chatAwaitCoordinatorDeps{
+		ChatUC:       chatUC,
+		RunStatus:    rStatus,
+		SessionState: stateMgr,
+		SessionRT: func() *araneasession.Runtime {
+			if deps.Turn.SessionRT != nil {
+				return deps.Turn.SessionRT
+			}
+			if deps.Turn.Persist.Session == nil {
+				return nil
+			}
+			return araneasession.NewRuntime(deps.Turn.Persist.Session, deps.Infra.LG)
+		},
+		Bus:    deps.Turn.Pipeline.Bus,
+		Logger: deps.Infra.LG,
+	}))
+	sessRunLC := sessionRunLifecycle(newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
 		SessionRuns:  deps.Channel.ChJobs.SessionRuns,
 		Channels:     deps.Channel.ChJobs.Channels,
 		Sessions:     deps.Turn.Sessions,
-		RunStatus:    o.runStatus,
-		SessionState: o.sessionStateMgr,
+		RunStatus:    rStatus,
+		SessionState: stateMgr,
 		Runs:         runs,
 		Escalation:   deps.Channel.ChNotify.RunEscalation,
 		Logger:       deps.Infra.LG,
-	})
+	}))
+
+	turnTimeout := deps.Turn.TurnTimeout
+	if turnTimeout <= 0 {
+		turnTimeout = chatagent.DefaultTurnTimeout
+	}
+
+	o := &ChatOrchestrator{
+		core: chatTurnCoreDeps{
+			TD:          deps.Turn.TurnDeps,
+			RT:          deps.Turn.RT,
+			Admission:   deps.Turn.Admission,
+			TurnTimeout: turnTimeout,
+		},
+		channelDeps: deps.Channel,
+		usageDeps:   deps.Usage,
+		teamExecDeps: deps.Team,
+		evoDeps:     deps.Evolution,
+		infraDeps:   deps.Infra,
+		runs:        runs,
+		chatUC:      chatUC,
+		turnLC: &chatTurnLifecycleImpl{
+			sessionStateTransitor: stateMgr,
+			turnRecorder:          metrics,
+			turnEventPublisher:    evtPub,
+		},
+		runMgr: &chatRunManagerImpl{
+			runStatusTracker:    rStatus,
+			pendingQueueManager: pendQ,
+			awaitCoordinator:    awaitCoord,
+			sessionRunLifecycle: sessRunLC,
+		},
+	}
 	o.agentBuild = newChatAgentBuildDirector(chatAgentBuildDirectorDeps{
 		TurnDeps:    deps.Turn.TurnDeps,
 		RT:          deps.Turn.RT,
-		AwaitCoord:  o.awaitCoord,
+		AwaitCoord:  awaitCoord,
 		SubAgentSvc: deps.Infra.SubAgentService,
 		CustomToolFunc: func(ctx context.Context, ag biz.Agent) []trpctool.Tool {
 			var tools []trpctool.Tool
@@ -290,25 +381,22 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		},
 		Logger: deps.Infra.LG,
 	})
-	if o.turnTimeout <= 0 {
-		o.turnTimeout = chatagent.DefaultTurnTimeout
-	}
-	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.pendingQ.SessionPendingMergeFollowup)
+	o.core.AdmitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, chatUC, pendQ.SessionPendingMergeFollowup)
 
 	// Wire the threshold resolver so that TurnAdmissionUsecase.EvaluateContextPressure
 	// uses the orchestrator's channel-aware threshold lookup policy.
-	if o.admission != nil {
-		o.admission.SetThresholdResolver(biz.ThresholdResolverFunc(o.resolveContextAdmissionThresholdForSession))
+	if o.admission() != nil {
+		o.admission().SetThresholdResolver(biz.ThresholdResolverFunc(o.resolveContextAdmissionThresholdForSession))
 		// Wire the channel config resolver so channel entry points use the
 		// long-task config threshold directly instead of the agent L0 threshold.
-		if o.sessionRunLC != nil {
-			o.admission.SetChannelConfigResolver(biz.ChannelLongTaskConfigResolverFunc(o.sessionRunLC.ResolveChannelLongTaskConfig))
+		if o.sessionRunLC() != nil {
+			o.admission().SetChannelConfigResolver(biz.ChannelLongTaskConfigResolverFunc(o.sessionRunLC().ResolveChannelLongTaskConfig))
 		}
 	}
 
 	if deps.Team.Team.TeamsNative != nil {
 		deps.Team.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) biz.AwaitReplyFunc {
-			return o.awaitCoord.MakeAwaitReplyFunc(runCtx, sessionID, runID)
+			return o.awaitCoord().MakeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
 		if deps.Team.Team.TeamMediator != nil {
 			deps.Team.Team.TeamsNative.SetMediator(deps.Team.Team.TeamMediator)
@@ -383,42 +471,42 @@ func (o *ChatOrchestrator) CancelRun(ctx context.Context, sessionID string) bool
 
 // LastPendingMessageID returns the most recently enqueued pending message id.
 func (o *ChatOrchestrator) LastPendingMessageID(sessionID string) string {
-	return o.pendingQ.LastPendingMessageID(sessionID)
+	return o.pendingQ().LastPendingMessageID(sessionID)
 }
 
 // GetPendingMessages returns pending messages for a session.
 func (o *ChatOrchestrator) GetPendingMessages(sessionID string) []biz.PendingQueueEntry {
-	return o.pendingQ.GetPendingMessages(sessionID)
+	return o.pendingQ().GetPendingMessages(sessionID)
 }
 
 // CancelPendingMessage cancels a pending message.
 func (o *ChatOrchestrator) CancelPendingMessage(sessionID, pendingID string) bool {
-	return o.pendingQ.CancelPendingMessage(sessionID, pendingID)
+	return o.pendingQ().CancelPendingMessage(sessionID, pendingID)
 }
 
 // UpdatePendingMessage updates a pending message's content.
 func (o *ChatOrchestrator) UpdatePendingMessage(sessionID, pendingID, content string) bool {
-	return o.pendingQ.UpdatePendingMessage(sessionID, pendingID, content)
+	return o.pendingQ().UpdatePendingMessage(sessionID, pendingID, content)
 }
 
 // EnqueueUserMessage enqueues a user message when a turn is active.
 func (o *ChatOrchestrator) EnqueueUserMessage(sessionID, content string) (accepted, queued bool, pendingID, rejectReason string, err error) {
-	return o.pendingQ.EnqueueUserMessage(sessionID, content)
+	return o.pendingQ().EnqueueUserMessage(sessionID, content)
 }
 
 // SetSessionPendingMergeFollowup toggles followup merge for pending queue enqueues (CH-BOR-01).
 func (o *ChatOrchestrator) SetSessionPendingMergeFollowup(sessionID string, merge bool) {
-	o.pendingQ.SetSessionPendingMergeFollowup(sessionID, merge)
+	o.pendingQ().SetSessionPendingMergeFollowup(sessionID, merge)
 }
 
 // DequeuePendingMessage dequeues the next pending message.
 func (o *ChatOrchestrator) DequeuePendingMessage(sessionID string) (biz.PendingQueueEntry, bool) {
-	return o.pendingQ.DequeuePendingMessage(sessionID)
+	return o.pendingQ().DequeuePendingMessage(sessionID)
 }
 
 // GetRunStatus returns the current run lifecycle state for a session.
 func (o *ChatOrchestrator) GetRunStatus(ctx context.Context, sessionID string) (runID, status, errMsg string, updatedAt string, ok bool) {
-	return o.runStatus.GetRunStatus(ctx, sessionID)
+	return o.runStatus().GetRunStatus(ctx, sessionID)
 }
 
 // ActiveRunner returns the active runner for a session, if any.
@@ -427,7 +515,7 @@ func (o *ChatOrchestrator) ActiveRunner(sessionID string) (runner trpcrunner.Run
 }
 
 func (o *ChatOrchestrator) transitionSessionStatus(ctx context.Context, sessionID string, targetStatus sessstatus.SessionStatus, reason sessstatus.SessionStatusReason) {
-	o.sessionStateMgr.TransitionStatus(ctx, sessionID, targetStatus, reason)
+	o.sessionStateMgr().TransitionStatus(ctx, sessionID, targetStatus, reason)
 }
 
 // cancelActiveRun cancels the active run for a session.
@@ -439,10 +527,10 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	if !stopped {
 		return false
 	}
-	o.runStatus.SetRunStatus(ctx, sessionID, runID, "cancelled", "")
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "cancelled", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
-	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td.Sessions, sessionID, o.lg); err != nil {
-		o.lg.Warn("取消执行卡片查询失败",
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td().Sessions, sessionID, o.lg()); err != nil {
+		o.lg().Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),
 			loggateway.Str("session_id", sessionID),
 			loggateway.Err(err),
@@ -453,15 +541,15 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 
 // setRunStatus delegates to the runStatus sub-manager.
 func (o *ChatOrchestrator) setRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	o.runStatus.SetRunStatus(ctx, sessionID, runID, status, errMsg)
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 func (o *ChatOrchestrator) setRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
-	o.runStatus.SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, await)
+	o.runStatus().SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, await)
 }
 
 func (o *ChatOrchestrator) publishRunStatus(sessionID, runID, status, errMsg string) {
-	o.runStatus.PublishRunStatus(sessionID, runID, status, errMsg)
+	o.runStatus().PublishRunStatus(sessionID, runID, status, errMsg)
 }
 
 func (o *ChatOrchestrator) lockSession(sessionID string) func() {
@@ -473,7 +561,7 @@ func (o *ChatOrchestrator) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHoo
 	if o == nil || hook == nil {
 		return
 	}
-	o.td.AfterTurn = hook
+	o.core.TD.AfterTurn = hook
 }
 
 // SetTaskOrchestrator sets the TaskOrchestratorPort on the TeamOrchestrationDeps.
@@ -482,71 +570,71 @@ func (o *ChatOrchestrator) SetTaskOrchestrator(orch biz.TaskOrchestratorPort) {
 	if o == nil {
 		return
 	}
-	o.team.TaskOrchestrator = orch
+	o.teamExecDeps.Team.TaskOrchestrator = orch
 }
 
 // AwaitChannel operations delegate to awaitCoord.
 func (o *ChatOrchestrator) RegisterAwaitChannel(sessionID string, ch biz.AwaitChannel) {
-	o.awaitCoord.RegisterAwaitChannel(sessionID, ch)
+	o.awaitCoord().RegisterAwaitChannel(sessionID, ch)
 }
 
 func (o *ChatOrchestrator) DeleteAwaitChannel(sessionID string) {
-	o.awaitCoord.DeleteAwaitChannel(sessionID)
+	o.awaitCoord().DeleteAwaitChannel(sessionID)
 }
 
 func (o *ChatOrchestrator) LoadAwaitChannel(sessionID string) (biz.AwaitChannel, bool) {
-	return o.awaitCoord.LoadAwaitChannel(sessionID)
+	return o.awaitCoord().LoadAwaitChannel(sessionID)
 }
 
 func (o *ChatOrchestrator) TrySendAwaitChannel(sessionID string, msg biz.AwaitReplyMsg) bool {
-	return o.awaitCoord.TrySendAwaitChannel(sessionID, msg)
+	return o.awaitCoord().TrySendAwaitChannel(sessionID, msg)
 }
 
 // persistRunStatus delegates to the runStatus sub-manager.
 func (o *ChatOrchestrator) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	o.runStatus.PersistRunStatus(ctx, sessionID, runID, status, errMsg)
+	o.runStatus().PersistRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 // hydrateRunStatusFromSession delegates to the runStatus sub-manager.
 func (o *ChatOrchestrator) hydrateRunStatusFromSession(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
-	return o.runStatus.HydrateRunStatusFromSession(ctx, sessionID)
+	return o.runStatus().HydrateRunStatusFromSession(ctx, sessionID)
 }
 
 func (o *ChatOrchestrator) persistAwaitMarkers(ctx context.Context, sessionID, runID string, await AwaitStatusMeta, syncWrite bool) {
-	o.runStatus.PersistAwaitMarkers(ctx, sessionID, runID, await, syncWrite)
+	o.runStatus().PersistAwaitMarkers(ctx, sessionID, runID, await, syncWrite)
 }
 
 func (o *ChatOrchestrator) setAwaitMetaCache(sessionID string, meta biz.ChatAwaitMeta) {
-	o.runStatus.SetAwaitMetaCache(sessionID, meta)
+	o.runStatus().SetAwaitMetaCache(sessionID, meta)
 }
 
 func (o *ChatOrchestrator) getAwaitMetaCache(sessionID string) (biz.ChatAwaitMeta, bool) {
-	return o.runStatus.GetAwaitMetaCache(sessionID)
+	return o.runStatus().GetAwaitMetaCache(sessionID)
 }
 
 func (o *ChatOrchestrator) clearAwaitMetaCache(sessionID string) {
-	o.runStatus.ClearAwaitMetaCache(sessionID)
+	o.runStatus().ClearAwaitMetaCache(sessionID)
 }
 
 func (o *ChatOrchestrator) resolveAwaitMeta(ctx context.Context, sessionID, status string) biz.ChatAwaitMeta {
-	return o.runStatus.ResolveAwaitMeta(ctx, sessionID, status)
+	return o.runStatus().ResolveAwaitMeta(ctx, sessionID, status)
 }
 
 func (o *ChatOrchestrator) clearAwaitingRunStateSync(ctx context.Context, sessionID string) error {
-	return o.runStatus.ClearAwaitingRunStateSync(ctx, sessionID)
+	return o.runStatus().ClearAwaitingRunStateSync(ctx, sessionID)
 }
 
 func (o *ChatOrchestrator) clearAwaitingRunState(ctx context.Context, sessionID string) {
-	o.runStatus.ClearAwaitingRunState(ctx, sessionID)
+	o.runStatus().ClearAwaitingRunState(ctx, sessionID)
 }
 
 // tryBeginResume delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) tryBeginResume(sessionID string) bool {
-	return o.awaitCoord.TryBeginResume(sessionID)
+	return o.awaitCoord().TryBeginResume(sessionID)
 }
 
 func (o *ChatOrchestrator) endResume(sessionID string) {
-	o.awaitCoord.EndResume(sessionID)
+	o.awaitCoord().EndResume(sessionID)
 }
 
 func (o *ChatOrchestrator) Close() {
@@ -575,42 +663,42 @@ func (o *ChatOrchestrator) sweepLoop() {
 }
 
 func (o *ChatOrchestrator) sweepStaleMaps() {
-	o.runStatus.Sweep()
-	o.pendingQ.Sweep()
-	o.awaitCoord.Sweep()
+	o.runStatus().Sweep()
+	o.pendingQ().Sweep()
+	o.awaitCoord().Sweep()
 }
 
 // publishAwaitResumed delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) publishAwaitResumed(sessionID, runID string) {
-	o.awaitCoord.PublishAwaitResumed(sessionID, runID)
+	o.awaitCoord().PublishAwaitResumed(sessionID, runID)
 }
 
 // sessionAwaitingUser delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) sessionAwaitingUser(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
-	return o.awaitCoord.SessionAwaitingUser(ctx, sessionID)
+	return o.awaitCoord().SessionAwaitingUser(ctx, sessionID)
 }
 
 // canResumeAwait delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) canResumeAwait(ctx context.Context, sessionID string) (runID string, ok bool) {
-	return o.awaitCoord.CanResumeAwait(ctx, sessionID)
+	return o.awaitCoord().CanResumeAwait(ctx, sessionID)
 }
 
 // hasPendingAwaitUserReplyRoute delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) hasPendingAwaitUserReplyRoute(ctx context.Context, sessionID string) bool {
-	return o.awaitCoord.HasPendingAwaitUserReplyRoute(ctx, sessionID)
+	return o.awaitCoord().HasPendingAwaitUserReplyRoute(ctx, sessionID)
 }
 
 func (o *ChatOrchestrator) sessionRuntime() *araneasession.Runtime {
 	if o == nil {
 		return nil
 	}
-	if o.td.SessionRT != nil {
-		return o.td.SessionRT
+	if o.td().SessionRT != nil {
+		return o.td().SessionRT
 	}
-	if o.td.Persist.Session == nil {
+	if o.td().Persist.Session == nil {
 		return nil
 	}
-	return araneasession.NewRuntime(o.td.Persist.Session, o.lg)
+	return araneasession.NewRuntime(o.td().Persist.Session, o.lg())
 }
 
 func (o *ChatOrchestrator) resolveUserID(ctx context.Context, sessionID string) string {

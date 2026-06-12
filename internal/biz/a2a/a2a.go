@@ -152,6 +152,30 @@ type Repo interface {
 	RemoteAgentRepo
 }
 
+// RetryPolicy configures retry behavior for A2A remote invocations.
+type RetryPolicy struct {
+	MaxRetries     int           // Maximum retry attempts (default 2)
+	InitialBackoff time.Duration // Initial backoff duration (default 500ms)
+	MaxBackoff     time.Duration // Maximum backoff cap (default 5s)
+}
+
+// Default retry policy constants.
+const (
+	defaultMaxRetries     = 2
+	defaultInitialBackoff = 500 * time.Millisecond
+	defaultMaxBackoff     = 5 * time.Second
+	DefaultRemoteInvokeTimeoutSec = 30 // Default timeout for remote A2A invocations in seconds
+)
+
+// DefaultRetryPolicy returns a sensible default retry policy.
+func DefaultRetryPolicy() RetryPolicy {
+	return RetryPolicy{
+		MaxRetries:     defaultMaxRetries,
+		InitialBackoff: defaultInitialBackoff,
+		MaxBackoff:     defaultMaxBackoff,
+	}
+}
+
 // Source constants.
 const (
 	SourceLocal  = "local"
@@ -318,7 +342,7 @@ func (u *Usecase) StartInvocation(ctx context.Context, inv Invocation) (Invocati
 		inv.Status = "pending"
 	}
 	if inv.TimeoutSeconds <= 0 {
-		inv.TimeoutSeconds = 30
+		inv.TimeoutSeconds = DefaultRemoteInvokeTimeoutSec
 	}
 	return u.invocationRepo.CreateInvocation(ctx, inv)
 }

@@ -5,7 +5,6 @@ var (
 	TimeRangeToSince           = timeRangeToSince
 	ValidateTeamDefinition     = validateTeamDefinition
 	ValidRolesForMode          = validRolesForMode
-	ParseDefinitionForUpdate   = parseDefinitionForUpdate
 	DefaultTeamDefinitionJSON  = defaultTeamDefinitionJSON
 	RequireNonEmpty            = requireNonEmpty
 	FirstNonEmpty              = firstNonEmpty

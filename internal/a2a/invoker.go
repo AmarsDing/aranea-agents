@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -74,7 +75,7 @@ func ValidateSameWorkspace(callerWS, calleeWS string) error {
 }
 
 // NewInvoker returns an invokerFunc wired to exec with workspace and capability checks.
-func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentRepository, lg loggateway.Logger) InvokerFunc {
+func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentRepository, lg loggateway.Logger, retryPolicy a2abiz.RetryPolicy) InvokerFunc {
 	return func(ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error) {
 		calleeAgentID = strings.TrimSpace(calleeAgentID)
 		capability = strings.TrimSpace(capability)
@@ -109,7 +110,7 @@ func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentReposi
 			}
 			return invokeLocal(exec, ctx, calleeAgentID, capability, payloadJSON, timeoutSec, lg)
 		case InvokeTargetRemote:
-			return InvokeRemoteRegistry(ctx, target.Remote, capability, payloadJSON, timeoutSec, lg)
+			return InvokeRemoteRegistry(ctx, target.Remote, capability, payloadJSON, timeoutSec, lg, retryPolicy)
 		default:
 			return "", kerrors.InternalServer("A2A", "unknown invoke target")
 		}

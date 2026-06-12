@@ -3,10 +3,12 @@ package a2a
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -16,7 +18,8 @@ import (
 )
 
 // InvokeRemoteRegistry calls an external A2A service registered in the workspace catalog.
-func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capability, payloadJSON string, timeoutSec int, lg loggateway.Logger) (string, error) {
+// It applies retry with exponential backoff for transient errors (network timeout, 5xx).
+func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capability, payloadJSON string, timeoutSec int, lg loggateway.Logger, retryPolicy a2abiz.RetryPolicy) (string, error) {
 	if !remote.Enabled {
 		return "", kerrors.Forbidden("A2A", "remote agent is disabled")
 	}
@@ -31,7 +34,7 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		return "", kerrors.BadRequest("A2A", "remote_url is required")
 	}
 	if timeoutSec <= 0 {
-		timeoutSec = 30
+		timeoutSec = a2abiz.DefaultRemoteInvokeTimeoutSec
 	}
 
 	lg.Info("A2A remote invoke started", loggateway.StepID("a2a.invoke.remote"), loggateway.Str("remote_url", targetURL), loggateway.Str("capability", capability))
@@ -54,16 +57,41 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		msg.Metadata = md
 	}
 	blocking := true
-	result, err := client.SendMessage(ctx, protocol.SendMessageParams{
+	params := protocol.SendMessageParams{
 		Message: msg,
 		Configuration: &protocol.SendMessageConfiguration{
 			Blocking: &blocking,
 		},
-	})
-	if err != nil {
-		lg.Error("A2A remote invoke call failed", loggateway.StepID("a2a.invoke.remote_call_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
-		return "", kerrors.InternalServer("A2A", "remote invoke failed: "+err.Error())
 	}
+
+	var result *protocol.MessageResult
+	var lastErr error
+	maxAttempts := 1 + retryPolicy.MaxRetries
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := backoffDuration(retryPolicy.InitialBackoff, retryPolicy.MaxBackoff, attempt-1)
+			lg.Info("A2A remote invoke retry", loggateway.StepID("a2a.invoke.remote_retry"), loggateway.Str("remote_url", targetURL), loggateway.Int("attempt", attempt+1), loggateway.Str("backoff", backoff.String()))
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		result, lastErr = client.SendMessage(ctx, params)
+		if lastErr == nil {
+			break
+		}
+		if !isRetryableError(lastErr) {
+			lg.Warn("A2A remote invoke non-retryable error", loggateway.StepID("a2a.invoke.remote_non_retryable"), loggateway.Str("remote_url", targetURL), loggateway.Err(lastErr))
+			break
+		}
+		lg.Warn("A2A remote invoke retryable error", loggateway.StepID("a2a.invoke.remote_retryable"), loggateway.Str("remote_url", targetURL), loggateway.Err(lastErr), loggateway.Int("attempt", attempt+1))
+	}
+	if lastErr != nil {
+		lg.Error("A2A remote invoke call failed", loggateway.StepID("a2a.invoke.remote_call_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(lastErr))
+		return "", kerrors.InternalServer("A2A", "remote invoke failed: "+lastErr.Error())
+	}
+
 	text := messageResultText(result)
 	out, err := json.Marshal(map[string]any{
 		"capability": capability,
@@ -74,6 +102,15 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		return text, nil
 	}
 	return string(out), nil
+}
+
+// backoffDuration computes exponential backoff: initialBackoff * 2^step, capped at maxBackoff.
+func backoffDuration(initial, max time.Duration, step int) time.Duration {
+	d := time.Duration(float64(initial) * math.Pow(2, float64(step)))
+	if d > max {
+		return max
+	}
+	return d
 }
 
 func messageResultText(result *protocol.MessageResult) string {

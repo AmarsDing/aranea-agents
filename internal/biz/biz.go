@@ -16,6 +16,7 @@ type AgentExistenceCheckerFunc func(ctx context.Context, agentName string) bool
 // AgentIDExistenceChecker checks whether an agent exists by its ID.
 type AgentIDExistenceChecker interface {
 	AgentExistsByID(ctx context.Context, agentID string) bool
+	AgentIsActiveByID(ctx context.Context, agentID string) bool
 }
 
 var ProviderSet = wire.NewSet(
@@ -64,6 +65,7 @@ var ProviderSet = wire.NewSet(
 	NewHealthTrigger,
 	NewAgentConfigTrigger,
 	NewOrganizationUsecase,
+	NewPositionPromptUsecase,
 	ProvideDeptTeamLister,
 	ProvideDeptAgentPositionClearer,
 	ProvideGraphReaderForTeam,
@@ -151,6 +153,14 @@ type agentIDExistenceChecker struct {
 func (c *agentIDExistenceChecker) AgentExistsByID(ctx context.Context, agentID string) bool {
 	_, err := c.repo.GetAgentByID(ctx, agentID)
 	return err == nil
+}
+
+func (c *agentIDExistenceChecker) AgentIsActiveByID(ctx context.Context, agentID string) bool {
+	agent, err := c.repo.GetAgentByID(ctx, agentID)
+	if err != nil {
+		return false
+	}
+	return NormalizeAgentStatus(agent.Status) == AgentStatusActive
 }
 
 // ProvideAgentIDExistenceChecker creates an AgentIDExistenceChecker from AgentRepository.

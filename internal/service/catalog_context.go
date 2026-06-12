@@ -33,5 +33,5 @@ func (o *ChatOrchestrator) llmContextCatalog() llmCatalogContext {
 	if o == nil {
 		return llmCatalogContext{}
 	}
-	return llmCatalogContext{llm: o.td.ReadDeps.LLM}
+	return llmCatalogContext{llm: o.td().ReadDeps.LLM}
 }

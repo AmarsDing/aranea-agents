@@ -28,8 +28,8 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 	}
 
 	out := make([]*chatv1.ChatBackgroundJob, 0)
-	if s != nil && s.orch.chJobs.SessionRuns != nil {
-		runs, err := s.orch.chJobs.SessionRuns.ListForJobs(ctx, q)
+	if s != nil && s.orch.chJobs().SessionRuns != nil {
+		runs, err := s.orch.chJobs().SessionRuns.ListForJobs(ctx, q)
 		if err != nil {
 			return nil, err
 		}
@@ -37,14 +37,14 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 			out = append(out, sessionRunToChatBackgroundJob(r))
 		}
 	}
-	if s != nil && s.orch.chJobs.TurnJobs != nil {
+	if s != nil && s.orch.chJobs().TurnJobs != nil {
 		cq := biz.ChannelTurnJobListQuery{
 			SessionID: q.SessionID,
 			AgentID:   q.AgentID,
 			Status:    q.Status,
 			Limit:     q.Limit,
 		}
-		jobs, err := s.orch.chJobs.TurnJobs.ListFiltered(ctx, cq)
+		jobs, err := s.orch.chJobs().TurnJobs.ListFiltered(ctx, cq)
 		if err != nil {
 			return nil, err
 		}
@@ -119,10 +119,10 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 
 	switch source {
 	case "session_run":
-		if s == nil || s.orch.chJobs.SessionRuns == nil {
+		if s == nil || s.orch.chJobs().SessionRuns == nil {
 			return nil, apierror.NotFound("CHAT_JOBS", "session run service not available")
 		}
-		run, err := s.orch.chJobs.SessionRuns.Get(ctx, id)
+		run, err := s.orch.chJobs().SessionRuns.Get(ctx, id)
 		if err != nil {
 			return nil, apierror.NotFound("CHAT_JOBS", "session run %s not found", id)
 		}
@@ -130,16 +130,16 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 		if run.FinishedAt != "" {
 			return &chatv1.CancelChatBackgroundJobResponse{Cancelled: false}, nil
 		}
-		if err := s.orch.chJobs.SessionRuns.Fail(ctx, id, "cancelled by user"); err != nil {
+		if err := s.orch.chJobs().SessionRuns.Fail(ctx, id, "cancelled by user"); err != nil {
 			return nil, apierror.Internal("CHAT_JOBS", "cancel session run failed: %v", err)
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 
 	case "channel":
-		if s == nil || s.orch.chJobs.TurnJobs == nil {
+		if s == nil || s.orch.chJobs().TurnJobs == nil {
 			return nil, apierror.NotFound("CHAT_JOBS", "turn job service not available")
 		}
-		if err := s.orch.chJobs.TurnJobs.Cancel(ctx, id); err != nil {
+		if err := s.orch.chJobs().TurnJobs.Cancel(ctx, id); err != nil {
 			return nil, apierror.Internal("CHAT_JOBS", "cancel turn job failed: %v", err)
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil

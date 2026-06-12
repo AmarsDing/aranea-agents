@@ -71,8 +71,8 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 func (s *ChatService) Close() error {
 	var firstErr error
 	if s.orch != nil {
-		if s.orch.rt.SubAgentService != nil {
-			if err := s.orch.rt.SubAgentService.Close(); err != nil && firstErr == nil {
+		if s.orch.rt().SubAgentService != nil {
+			if err := s.orch.rt().SubAgentService.Close(); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		}
@@ -169,14 +169,14 @@ func (s *ChatService) HasActiveRun(sessionID string) bool {
 
 // ActiveSessionRunPhase returns the phase of the active session run, if any (CC-FIX-CHANNEL UX).
 func (s *ChatService) ActiveSessionRunPhase(ctx context.Context, sessionID string) string {
-	if s == nil || s.orch == nil || s.orch.chJobs.SessionRuns == nil {
+	if s == nil || s.orch == nil || s.orch.chJobs().SessionRuns == nil {
 		return ""
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return ""
 	}
-	run, err := s.orch.chJobs.SessionRuns.GetActiveForSession(ctx, sessionID)
+	run, err := s.orch.chJobs().SessionRuns.GetActiveForSession(ctx, sessionID)
 	if err != nil || run.ID == "" {
 		return ""
 	}

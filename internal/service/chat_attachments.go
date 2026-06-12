@@ -38,10 +38,10 @@ func (o *ChatOrchestrator) mergeUserAttachmentRefs(ctx context.Context, sessionI
 }
 
 func (o *ChatOrchestrator) resolveUserAttachmentRefs(ctx context.Context, sessionID string, attachmentIDs []string) ([]artifactbiz.Ref, error) {
-	if len(artifactbiz.NormalizeAttachmentIDs(attachmentIDs)) == 0 || o == nil || o.artifacts == nil {
+	if len(artifactbiz.NormalizeAttachmentIDs(attachmentIDs)) == 0 || o == nil || o.artifacts() == nil {
 		return nil, nil
 	}
-	refs, err := artifactbiz.ResolveAttachmentRefs(ctx, o.artifacts, sessionID, attachmentIDs)
+	refs, err := artifactbiz.ResolveAttachmentRefs(ctx, o.artifacts(), sessionID, attachmentIDs)
 	if err != nil {
 		return nil, mapArtifactBizError(err)
 	}
@@ -80,7 +80,7 @@ func (o *ChatOrchestrator) validateTurnAttachmentCapabilities(ctx context.Contex
 	if len(refs) == 0 || o == nil {
 		return nil
 	}
-	if err := provider.ValidateAttachmentCapabilities(ctx, o.td.ReadDeps.LLM, prov, mod, refs, o.lg); err != nil {
+	if err := provider.ValidateAttachmentCapabilities(ctx, o.td().ReadDeps.LLM, prov, mod, refs, o.lg()); err != nil {
 		return TurnError(TurnErrAttachmentUnsupported, err.Error())
 	}
 	return nil

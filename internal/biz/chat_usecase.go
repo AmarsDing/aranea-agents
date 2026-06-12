@@ -10,7 +10,15 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
-const awaitChanMaxAge = 30 * time.Minute
+// awaitChanMaxAge is the maximum lifetime of an await channel entry before GC
+// reclaims it. Reduced from 30m to 10m as a safety net: the primary cleanup
+// mechanism is event-driven (SetRunStatus deletes on terminal status), and the
+// GC ticker serves as a fallback for edge cases.
+const awaitChanMaxAge = 10 * time.Minute
+
+// awaitChanGCInterval is the interval at which the background GC ticker scans
+// for stale await channel entries.
+const awaitChanGCInterval = 5 * time.Minute
 
 // AwaitReplyMsg is the message sent over an await channel when a user replies.
 type AwaitReplyMsg struct {
@@ -140,6 +148,13 @@ func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, statu
 	}
 	uc.runs.SetStatus(sessionID, runID, status, errMsg)
 	uc.publisher.PublishRunStatus(sessionID, runID, status, errMsg)
+	// Proactively clean up await channel when run reaches a terminal status.
+	// This prevents memory leaks when runs end without going through the normal
+	// await reply flow (e.g., hard budget, cancellation, unexpected failure).
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case SessionRunPhaseCompleted, SessionRunPhaseFailed, SessionRunPhaseCancelled:
+		uc.DeleteAwaitChannel(sessionID)
+	}
 }
 
 func (uc *ChatUsecase) GetRunStatus(sessionID string) (ChatRunStatus, bool) {
@@ -276,7 +291,7 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 	ctx, cancel := context.WithCancel(context.Background())
 	uc.bgCancel = cancel
 	safego.Go(ctx, "chat-usecase-gc", func() {
-			ticker := time.NewTicker(5 * time.Minute)
+			ticker := time.NewTicker(awaitChanGCInterval)
 			defer ticker.Stop()
 			for {
 				select {

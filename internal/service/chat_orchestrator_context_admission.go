@@ -9,22 +9,22 @@ import (
 )
 
 func (o *ChatOrchestrator) sessionContextPressure(ctx context.Context, input biz.TurnInput) bool {
-	if o == nil || o.admission == nil {
+	if o == nil || o.admission() == nil {
 		return false
 	}
 	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
 		return false
 	}
-	sess, err := o.td.Sessions.Get(ctx, sessionID)
+	sess, err := o.td().Sessions.Get(ctx, sessionID)
 	if err != nil {
-		o.lg.Warn("session lookup failed in context pressure check, skipping",
+		o.lg().Warn("session lookup failed in context pressure check, skipping",
 			loggateway.Str("session_id", sessionID),
 			loggateway.Err(err),
 		)
 		return false
 	}
-	result := o.admission.EvaluateContextPressure(ctx, sess, input.EntryConfig.EntryPoint)
+	result := o.admission().EvaluateContextPressure(ctx, sess, input.EntryConfig.EntryPoint)
 	return result.Pressure
 }
 

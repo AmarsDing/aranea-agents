@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -85,7 +86,7 @@ func TestNewInvoker_RequiresEnabledCapability(t *testing.T) {
 	}}
 	uc := biz.NewA2AUsecase(repo, repo, repo, repo, nil)
 	runner := &mockTurnRunner{}
-	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop())
+	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop(), a2abiz.DefaultRetryPolicy())
 	ctx := WithCallerAgentID(context.Background(), "caller")
 
 	_, err := inv(ctx, "callee", "missing", `{}`, 30)

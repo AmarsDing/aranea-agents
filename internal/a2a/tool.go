@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"aranea-agents/internal/biz"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -104,10 +106,10 @@ func (t *callAgentTool) Call(ctx context.Context, args []byte) (any, error) {
 		return nil, fmt.Errorf("call_agent: invalid args: %w", err)
 	}
 	if in.AgentID == "" {
-		return nil, fmt.Errorf("call_agent: agent_id is required")
+		return nil, kerrors.BadRequest("A2A", "call_agent: agent_id is required")
 	}
 	if in.Capability == "" {
-		return nil, fmt.Errorf("call_agent: capability is required")
+		return nil, kerrors.BadRequest("A2A", "call_agent: capability is required")
 	}
 	if in.TimeoutSeconds <= 0 {
 		in.TimeoutSeconds = 30
@@ -126,10 +128,14 @@ func (t *callAgentTool) Call(ctx context.Context, args []byte) (any, error) {
 	invoker := invokerFromContext(ctx)
 
 	if invoker == nil {
-		return nil, fmt.Errorf("call_agent: invoker not configured")
+		return nil, kerrors.New(500, "A2A_INTERNAL", "call_agent: invoker not configured")
 	}
 
-	result, err := invoker(ctx, in.AgentID, in.Capability, payloadJSON, in.TimeoutSeconds)
+	// Apply timeout as context deadline so both local and remote invocations respect it.
+	invCtx, cancel := context.WithTimeout(ctx, time.Duration(in.TimeoutSeconds)*time.Second)
+	defer cancel()
+
+	result, err := invoker(invCtx, in.AgentID, in.Capability, payloadJSON, in.TimeoutSeconds)
 	if err != nil {
 		// Audit the failure when the usecase is available.
 		if uc != nil {

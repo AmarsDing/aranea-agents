@@ -20,7 +20,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	flow *event.TraceEmitter,
 	unlock func(),
 ) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
-	if o == nil || o.team.TeamsNative == nil {
+	if o == nil || o.team().TeamsNative == nil {
 		if unlock != nil {
 			unlock()
 		}
@@ -29,7 +29,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
 
-	if qerr := o.admission.EnforceChatTurnQuotas(ctx, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
+	if qerr := o.admission().EnforceChatTurnQuotas(ctx, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
 		if unlock != nil {
 			unlock()
 		}
@@ -50,14 +50,14 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	teamCtx, teamCancel := context.WithCancel(ctx)
 	// Apply default turn timeout if the parent context has no deadline.
 	// This mirrors the single-agent path in runSingleAgentViaTRPC.
-	if _, hasDeadline := teamCtx.Deadline(); !hasDeadline && o.turnTimeout > 0 {
+	if _, hasDeadline := teamCtx.Deadline(); !hasDeadline && o.turnTimeout() > 0 {
 		var timeoutCancel context.CancelFunc
-		teamCtx, timeoutCancel = context.WithTimeout(teamCtx, o.turnTimeout)
+		teamCtx, timeoutCancel = context.WithTimeout(teamCtx, o.turnTimeout())
 		origCancel := teamCancel
 		teamCancel = func() { timeoutCancel(); origCancel() }
 	}
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
-	o.runStatus.SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	if unlock != nil {
 		unlock()
@@ -67,21 +67,21 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
 	}()
 
-	userMsg, assistantMsg, err = o.team.TeamsNative.RunTurnFromInput(teamCtx, sess, input)
+	userMsg, assistantMsg, err = o.team().TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
-		o.runStatus.SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
-			o.teamStarter.HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "failed", err.Error())
+			o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "failed", err.Error())
 		}
 		return userMsg, assistantMsg, err
 	}
 
-	o.runStatus.SetRunStatus(ctx, sessionID, runID, "completed", "")
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
-		o.teamStarter.HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "")
+		o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "")
 	}
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",

@@ -17,6 +17,7 @@ const (
 	SessionRunPhaseDurable     = "durable"
 	SessionRunPhaseCompleted   = "completed"
 	SessionRunPhaseFailed      = "failed"
+	SessionRunPhaseCancelled   = "cancelled"
 )
 
 type SessionRunBudget struct {

@@ -170,7 +170,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		return nil, err
 	}
 
-	invoker := a2apkg.NewInvoker(s.runner, s.uc, s.agents, s.lg)
+	invoker := a2apkg.NewInvoker(s.runner, s.uc, s.agents, s.lg, a2abiz.DefaultRetryPolicy())
 
 	timer := prometheus.NewTimer(a2aInvokeDuration)
 	start := time.Now()

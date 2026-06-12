@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -113,25 +112,17 @@ func validateTeamDefinition(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
-	var body struct {
-		Mode             string `json:"mode"`
-		SynthesizerAgent string `json:"synthesizer_agent_id"`
-		Members          []struct {
-			AgentID string `json:"agent_id"`
-			Role    string `json:"role"`
-			Enabled *bool  `json:"enabled"`
-		} `json:"members"`
-	}
-	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+	spec, err := ParseOrchestrationSpec(raw)
+	if err != nil {
 		return apierror.BadRequest("TEAM", "definition_json must be valid JSON")
 	}
-	mode := firstNonEmpty(body.Mode, TeamModeSequential)
+	mode := firstNonEmpty(spec.Mode, TeamModeSequential)
 	switch mode {
 	case TeamModeSequential, TeamModeParallel, TeamModeCoordinator, TeamModeCriticLoop, TeamModeSwarm, TeamModeAdaptive:
 	default:
 		return apierror.BadRequest("TEAM", "unsupported team orchestration mode")
 	}
-	if len(body.Members) == 0 {
+	if len(spec.Members) == 0 {
 		return nil
 	}
 	enabledCount := 0
@@ -139,11 +130,11 @@ func validateTeamDefinition(raw string) error {
 	hasGenerator := false
 	hasCritic := false
 	hasCoordinator := false
-	for _, member := range body.Members {
+	for _, member := range spec.Members {
 		if strings.TrimSpace(member.AgentID) == "" {
 			return apierror.BadRequest("TEAM", "team member agent_id is required")
 		}
-		if member.Enabled == nil || *member.Enabled {
+		if member.Enabled() {
 			enabledCount++
 		}
 		switch member.Role {
@@ -159,7 +150,7 @@ func validateTeamDefinition(raw string) error {
 	}
 	// Validate role compatibility with mode.
 	validRoles := validRolesForMode(mode)
-	for _, member := range body.Members {
+	for _, member := range spec.Members {
 		role := strings.TrimSpace(member.Role)
 		if role == "" {
 			continue
@@ -171,10 +162,10 @@ func validateTeamDefinition(raw string) error {
 	if enabledCount == 0 {
 		return apierror.BadRequest("TEAM", "team must have at least one enabled member")
 	}
-	if mode == TeamModeParallel && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" && enabledCount > 1 {
+	if mode == TeamModeParallel && !hasSynthesizer && strings.TrimSpace(spec.SynthesizerAgentID) == "" && enabledCount > 1 {
 		return apierror.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")
 	}
-	if mode == TeamModeCoordinator && !hasSynthesizer && !hasCoordinator && strings.TrimSpace(body.SynthesizerAgent) == "" {
+	if mode == TeamModeCoordinator && !hasSynthesizer && !hasCoordinator && strings.TrimSpace(spec.SynthesizerAgentID) == "" {
 		return apierror.BadRequest("TEAM", "coordinator mode requires a synthesizer or coordinator member, or synthesizer_agent_id")
 	}
 	if mode == TeamModeCriticLoop && (!hasGenerator || !hasCritic) {
@@ -203,21 +194,19 @@ func validRolesForMode(mode string) map[string]bool {
 	}
 }
 
+// validateTeamMembersExist checks that all agent members in the team definition
+// exist and are active. Validation runs at create/update time only; it does not
+// retroactively enforce active status for existing teams whose members are later
+// deactivated.
 func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) error {
 	if u.agentChecker == nil || strings.TrimSpace(raw) == "" {
 		return nil
 	}
-	var body struct {
-		Members []struct {
-			AgentID string `json:"agent_id"`
-			Role    string `json:"role"`
-			Enabled *bool  `json:"enabled"`
-		} `json:"members"`
-	}
-	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+	spec, err := ParseOrchestrationSpec(raw)
+	if err != nil {
 		return apierror.BadRequest("TEAM", "invalid team definition JSON: %s", err.Error())
 	}
-	for _, member := range body.Members {
+	for _, member := range spec.Members {
 		aid := strings.TrimSpace(member.AgentID)
 		if aid == "" {
 			continue
@@ -225,8 +214,9 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		if !u.agentChecker.AgentExistsByID(ctx, aid) {
 			return apierror.BadRequest("TEAM", "team member agent %s does not exist", aid)
 		}
-		// NOTE: AgentIDExistenceChecker only checks existence, not active status.
-		// Adding AgentIsActiveByID would require interface changes across multiple packages.
+		if !u.agentChecker.AgentIsActiveByID(ctx, aid) {
+			return apierror.BadRequest("TEAM", "team member agent %s is not active", aid)
+		}
 	}
 	return nil
 }

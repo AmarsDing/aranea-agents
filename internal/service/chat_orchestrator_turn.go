@@ -14,6 +14,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
@@ -67,7 +68,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		ctx = event.WithEnvelopeSource(ctx, ep)
 	}
 
-	flow := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, "", o.lg)
+	flow := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, "", o.lg())
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 
 	hasActive := o.runs.HasActive(sessionID)
@@ -95,7 +96,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 }
 
 func (o *ChatOrchestrator) checkTurnAdmission(input biz.TurnInput, hasActive, contextPressure bool) (turn.AdmissionVerdict, bool) {
-	if o == nil || o.admitGate == nil || !hasActive {
+	if o == nil || o.admitGate() == nil || !hasActive {
 		return turn.AdmissionVerdict{}, false
 	}
 	hasRunner := o.HasActiveRunner(input.SessionID)
@@ -104,7 +105,7 @@ func (o *ChatOrchestrator) checkTurnAdmission(input biz.TurnInput, hasActive, co
 	if policy.Decision == IngressRejectBusy {
 		return turn.AdmissionVerdict{Action: turn.AdmissionRejectBusy}, true
 	}
-	verdict := o.admitGate.Check(input)
+	verdict := o.admitGate().Check(input)
 	switch verdict.Action {
 	case turn.AdmissionProceed:
 		return verdict, false
@@ -118,11 +119,11 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	sessionID := strings.TrimSpace(input.SessionID)
 
 	unlock := o.lockSession(sessionID)
-	sess, err := o.td.Sessions.Get(ctx, sessionID)
+	sess, err := o.td().Sessions.Get(ctx, sessionID)
 	if err != nil {
 		unlock()
 		flow.LogError("chat.session_fetch", "获取会话失败", event.P("error", err.Error()))
-		o.lg.With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
+		o.lg().With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
 			loggateway.StepID("chat.session_get_fail"), loggateway.Err(err))
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound("SESSION", "session not found")
@@ -158,7 +159,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	flow.LogDone("chat.agent_hydrate", "Agent配置已加载", event.P("agent_key", ag.AgentKey), event.P("provider", ag.Provider), event.P("model", ag.Model))
-	if err := o.admission.EnforceChatTurnQuotas(ctx, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
+	if err := o.admission().EnforceChatTurnQuotas(ctx, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
 		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -188,8 +189,8 @@ func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, pro
 	if prov != "" && mod != "" {
 		return prov, mod
 	}
-	if o.td.ReadDeps.Settings != nil {
-		if refine, err := o.td.ReadDeps.Settings.GetRefineLLM(ctx); err == nil {
+	if o.td().ReadDeps.Settings != nil {
+		if refine, err := o.td().ReadDeps.Settings.GetRefineLLM(ctx); err == nil {
 			prov = strutil.FirstNonEmpty(prov, refine.Provider)
 			mod = strutil.FirstNonEmpty(mod, refine.Model)
 		}
@@ -197,8 +198,8 @@ func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, pro
 	if prov != "" && mod != "" {
 		return prov, mod
 	}
-	if o.td.ReadDeps.LLM != nil {
-		if models, err := o.td.ReadDeps.LLM.List(ctx); err == nil {
+	if o.td().ReadDeps.LLM != nil {
+		if models, err := o.td().ReadDeps.LLM.List(ctx); err == nil {
 			for _, m := range models {
 				if m.Enabled && m.Provider != "" && m.Model != "" {
 					prov = strutil.FirstNonEmpty(prov, m.Provider)
@@ -218,15 +219,15 @@ func (o *ChatOrchestrator) syncSessionProviderModel(ctx context.Context, session
 	if sess.DefaultProvider == prov && sess.DefaultModel == mod {
 		return
 	}
-	if o.td.Sessions == nil {
+	if o.td().Sessions == nil {
 		return
 	}
 	p, m := prov, mod
-	if _, err := o.td.Sessions.Update(ctx, sessionID, biz.SessionUpdateFields{
+	if _, err := o.td().Sessions.Update(ctx, sessionID, biz.SessionUpdateFields{
 		DefaultProvider: &p,
 		DefaultModel:    &m,
 	}); err != nil {
-		o.lg.Warn("sync session provider model failed", loggateway.Err(err), loggateway.Str("session_id", sessionID))
+		o.lg().Warn("sync session provider model failed", loggateway.Err(err), loggateway.Str("session_id", sessionID))
 	}
 }
 
@@ -236,18 +237,18 @@ func (o *ChatOrchestrator) hydratedAgent(ctx context.Context, agentID string) (b
 	if agentID == "" {
 		return biz.Agent{}, apierror.BadRequest("CHAT_NATIVE", "agent id is required")
 	}
-	if o.td.ReadDeps.AgentsUC != nil {
-		return o.td.ReadDeps.AgentsUC.Get(ctx, agentID)
+	if o.td().ReadDeps.AgentsUC != nil {
+		return o.td().ReadDeps.AgentsUC.Get(ctx, agentID)
 	}
-	if o.td.ReadDeps.Agents == nil {
+	if o.td().ReadDeps.Agents == nil {
 		return biz.Agent{}, apierror.Internal("CHAT_NATIVE", "agent repository not configured")
 	}
-	return o.td.ReadDeps.Agents.GetAgentByID(ctx, agentID)
+	return o.td().ReadDeps.Agents.GetAgentByID(ctx, agentID)
 }
 
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch.
 func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input string, timeoutSec int) (string, error) {
-	if o == nil || o.td.Sessions == nil {
+	if o == nil || o.td().Sessions == nil {
 		return "", apierror.Internal("A2A", "chat service not configured")
 	}
 	if timeoutSec <= 0 {
@@ -260,7 +261,7 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 	if uid == "" {
 		uid = "system"
 	}
-	sess, err := o.td.Sessions.Create(runCtx, biz.Session{
+	sess, err := o.td().Sessions.Create(runCtx, biz.Session{
 		ID:        uuid.NewString(),
 		AgentID:   strings.TrimSpace(agentID),
 		OwnerType: "agent",
@@ -289,7 +290,7 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 
 // RunEvalAgentTurn runs an evaluation agent turn.
 func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input string) (string, error) {
-	if o == nil || o.td.Sessions == nil {
+	if o == nil || o.td().Sessions == nil {
 		return "", apierror.Internal("CHAT", "eval: chat service not configured")
 	}
 	agentID = strings.TrimSpace(agentID)
@@ -297,7 +298,7 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 	if agentID == "" || input == "" {
 		return "", apierror.BadRequest("CHAT", "eval: agent_id and input are required")
 	}
-	sess, err := o.td.Sessions.Create(ctx, biz.Session{
+	sess, err := o.td().Sessions.Create(ctx, biz.Session{
 		ID:        uuid.NewString(),
 		AgentID:   agentID,
 		OwnerType: "agent",
@@ -342,33 +343,33 @@ func (o *ChatOrchestrator) RunCronTurn(ctx context.Context, sessionID, content, 
 
 // injectA2AContext injects A2A invoker context.
 func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID string) context.Context {
-	if o == nil || o.a2aUC == nil {
+	if o == nil || o.a2aUC() == nil {
 		return ctx
 	}
-	inv := a2apkg.NewInvoker(o, o.a2aUC, o.td.ReadDeps.Agents, o.lg)
-	return a2apkg.InjectRunContext(ctx, o.a2aUC, callerAgentID, inv)
+	inv := a2apkg.NewInvoker(o, o.a2aUC(), o.td().ReadDeps.Agents, o.lg(), a2abiz.DefaultRetryPolicy())
+	return a2apkg.InjectRunContext(ctx, o.a2aUC(), callerAgentID, inv)
 }
 
 // resumeAwaitAfterRestart resumes an await after process restart.
 func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionID, reply, runID string) error {
-	if !o.awaitCoord.TryBeginResume(sessionID) {
+	if !o.awaitCoord().TryBeginResume(sessionID) {
 		return errResumeInFlight
 	}
-	if err := o.runStatus.ClearAwaitingRunStateSync(ctx, sessionID); err != nil {
-		o.awaitCoord.EndResume(sessionID)
+	if err := o.runStatus().ClearAwaitingRunStateSync(ctx, sessionID); err != nil {
+		o.awaitCoord().EndResume(sessionID)
 		return err
 	}
-	o.awaitCoord.PublishAwaitResumed(sessionID, runID)
+	o.awaitCoord().PublishAwaitResumed(sessionID, runID)
 	safego.Go(ctx, "chat.resume_await_turn", func() {
-		defer o.awaitCoord.EndResume(sessionID)
-		bgCtx, cancel := context.WithTimeout(context.Background(), o.turnTimeout)
+		defer o.awaitCoord().EndResume(sessionID)
+		bgCtx, cancel := context.WithTimeout(context.Background(), o.turnTimeout())
 		defer cancel()
 		_, _, turnErr := o.RunNativeAgentTurnFromInput(bgCtx, biz.TurnInput{
 			SessionID: sessionID,
 			Content:   reply,
 		})
 		if turnErr != nil && !isTurnMessageQueued(turnErr) {
-			o.runStatus.SetRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error())
+			o.runStatus().SetRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error())
 			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
 		}
@@ -378,27 +379,27 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 
 // checkTeamMemberQuotas rejects the turn when any enabled team member exceeds agent scope quota.
 func (o *ChatOrchestrator) checkTeamMemberQuotas(ctx context.Context, teamID string) error {
-	return o.admission.EnforceTeamMemberQuotas(ctx, teamID)
+	return o.admission().EnforceTeamMemberQuotas(ctx, teamID)
 }
 
 // bumpSessionRevisionAndPublish bumps revision after turn completion (status=completed).
 func (o *ChatOrchestrator) bumpSessionRevisionAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	o.eventPublisher.BumpSessionRevisionAndPublish(ctx, sessionID, runID, turnID)
+	o.eventPublisher().BumpSessionRevisionAndPublish(ctx, sessionID, runID, turnID)
 }
 
 // bumpSessionRevisionSyncAndPublish bumps revision after user message persist (status=sync).
 func (o *ChatOrchestrator) bumpSessionRevisionSyncAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	o.eventPublisher.BumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, turnID)
+	o.eventPublisher().BumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, turnID)
 }
 
 // notifySessionRevisionSync notifies Web of the current revision without incrementing (durable resume).
 func (o *ChatOrchestrator) notifySessionRevisionSync(ctx context.Context, sessionID, runID, turnID string) {
-	o.eventPublisher.NotifySessionRevisionSync(ctx, sessionID, runID, turnID)
+	o.eventPublisher().NotifySessionRevisionSync(ctx, sessionID, runID, turnID)
 }
 
 // buildUserMessage constructs a trpcmodel.Message from content and attachment IDs.
 func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, content string, attachmentIDs []string) (trpcmodel.Message, error) {
-	return chatagent.BuildUserMessageFromArtifacts(ctx, o.artifacts, sessionID, content, attachmentIDs)
+	return chatagent.BuildUserMessageFromArtifacts(ctx, o.artifacts(), sessionID, content, attachmentIDs)
 }
 
 // runSingleAgentViaTRPC runs a single agent turn via the trpc-agent-go framework.
@@ -424,9 +425,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	prov = durableCtx.provider
 	mod = durableCtx.model
 	if durableCtx.active {
-		if comp, ok := o.td.Compress.(biz.DurableTurnCompressor); ok {
+		if comp, ok := o.td().Compress.(biz.DurableTurnCompressor); ok {
 			if err := comp.BeforeDurableTurn(ctx, sessionID, ag); err != nil {
-				o.lg.Warn("BeforeDurableTurn failed", loggateway.StepID("chat.turn.before_durable"), loggateway.Err(err))
+				o.lg().Warn("BeforeDurableTurn failed", loggateway.StepID("chat.turn.before_durable"), loggateway.Err(err))
 			}
 		}
 	}
@@ -438,9 +439,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var turnErrMsg string
 	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
-		Ctx: ctx, Bus: o.td.Pipeline.Bus, Buffer: o.td.Pipeline.Buffer,
+		Ctx: ctx, Bus: o.td().Pipeline.Bus, Buffer: o.td().Pipeline.Buffer,
 		SessionID: sessionID, RunID: runID, AgentKey: ag.AgentKey, AgentID: ag.ID,
-		Domain: event.TraceDomainChat, LG: o.lg,
+		Domain: event.TraceDomainChat, LG: o.lg(),
 	})
 	emitter.SetOtelRefs(traceBridge.TraceID(), traceBridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)
@@ -456,7 +457,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, o.turnTimeout)
+		ctx, cancel = context.WithTimeout(ctx, o.turnTimeout())
 		defer cancel()
 	}
 
@@ -490,7 +491,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, te
 	}
-	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg)
+	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg())
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.agent.build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
@@ -502,10 +503,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
 
 	var plugins []trpcplugin.Plugin
-	if o.rt.PluginManager != nil {
-		plugins = o.rt.PluginManager.RunnerPluginsForAgent(ag.ID)
-	} else if o.rt.PluginRT != nil {
-		plugins = o.rt.PluginRT.PluginsForAgent(ag.ID)
+	if o.rt().PluginManager != nil {
+		plugins = o.rt().PluginManager.RunnerPluginsForAgent(ag.ID)
+	} else if o.rt().PluginRT != nil {
+		plugins = o.rt().PluginRT.PluginsForAgent(ag.ID)
 	}
 	emitter.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
 	deps.Plugins = plugins
@@ -519,7 +520,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
 	}
 	emitter.LogStart("chat.runner.create", "创建 Runner", event.P("agent_key", ag.AgentKey), event.P("plugin_count", len(plugins)))
-	runnerMgr := o.td.CoalesceRunnerManager()
+	runnerMgr := o.tdPtr().CoalesceRunnerManager()
 	runner, err := runnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:               plugins,
 		AwaitUserReplyRouting: deps.AwaitHook != nil,
@@ -538,11 +539,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	o.runs.StoreRunner(sessionID, runID, runner)
 	// Wire the runner into SubAgentService so subagent spawn can use it.
-	if o.subAgentService != nil {
-		o.subAgentService.SetRunner(runner)
+	if o.subAgentService() != nil {
+		o.subAgentService().SetRunner(runner)
 		// Register per-session rune limits from the agent's runtime settings.
 		if ag.Settings != nil {
-			o.subAgentService.SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
+			o.subAgentService().SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
 		}
 	}
 	rollbackBoundary, rbErr := runnerMgr.MarkRollbackBoundary(ctx, sessionID, runID, "")
@@ -561,7 +562,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			emitter.LogWarn("chat.runner.rollback", "Runner 会话回滚失败", "", event.P("error", err.Error()))
 		}
 	}
-	o.runStatus.SetRunStatus(ctx, sessionID, runID, "running", "")
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "running", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
@@ -595,7 +596,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if !biz.IsA2AProxyAgent(ag) {
 		if intent.ShouldRun(ag, content) {
 			emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-			intRes := intent.RunForAgent(ctx, ag, o.td.ReadDeps.LLM, o.td.LLMHTTP, prov, mod, content, o.lg)
+			intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.lg())
 			if intRes.Artifact != nil {
 				emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
 				if strings.TrimSpace(intRes.RawJSON) != "" {
@@ -612,10 +613,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			}
 			meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 			intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-			if o.td.Pipeline.Bus != nil {
+			if o.td().Pipeline.Bus != nil {
 				env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
 				env.Metadata = intentPayload
-				o.td.Pipeline.Bus.Publish(ctx, env)
+				o.td().Pipeline.Bus.Publish(ctx, env)
 			}
 		} else {
 			emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
@@ -637,8 +638,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	userMsgPersisted := false
 	defer func() {
 		if userMsgPersisted && turnStatus != "ok" {
-			if err := o.td.Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "failed", turnErrMsg); err != nil {
-				o.lg.Warn("用户消息失败状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", userMsg.ID), loggateway.Err(err))
+			if err := o.td().Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "failed", turnErrMsg); err != nil {
+				o.lg().Warn("用户消息失败状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", userMsg.ID), loggateway.Err(err))
 			}
 		}
 	}()
@@ -656,8 +657,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			CreatedAt:        now,
 			AttachmentsCount: attN,
 		}
-		if err := o.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
-			o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: AppendChatMessage 失败",
+		if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
+			o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: AppendChatMessage 失败",
 				loggateway.StepID("chat.append_user_msg_fail"), loggateway.Err(err))
 			markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
@@ -675,7 +676,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	ctx, sessionRunID, stopBudget = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
 	defer stopBudget()
 	defer func() {
-		o.sessionRunLC.FinishSessionRunLifecycle(ctx, sessionID, sessionRunID, turnErr)
+		o.sessionRunLC().FinishSessionRunLifecycle(ctx, sessionID, sessionRunID, turnErr)
 	}()
 
 	uid := chatagent.UserIDFromCtx(ctx)
@@ -685,7 +686,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	runOpts = append(runOpts, intentRunOpts...)
 	if ag.Settings != nil {
-		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg); vars != nil {
+		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg()); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
 		}
 	}
@@ -705,17 +706,17 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
 	runCtx = o.injectA2AContext(runCtx, ag.ID)
-	if o.rt.KnowledgeRetriever != nil {
-		runCtx = knowledgetool.WithRetriever(runCtx, o.rt.KnowledgeRetriever)
+	if o.rt().KnowledgeRetriever != nil {
+		runCtx = knowledgetool.WithRetriever(runCtx, o.rt().KnowledgeRetriever)
 	}
-	if o.rt.KnowledgeRouter != nil {
-		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, o.rt.KnowledgeRouter)
+	if o.rt().KnowledgeRouter != nil {
+		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, o.rt().KnowledgeRouter)
 	}
-	if o.rt.KnowledgeFederatedRetriever != nil {
-		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt.KnowledgeFederatedRetriever)
+	if o.rt().KnowledgeFederatedRetriever != nil {
+		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt().KnowledgeFederatedRetriever)
 	}
-	if o.rt.KnowledgeEvaluator != nil {
-		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt.KnowledgeEvaluator)
+	if o.rt().KnowledgeEvaluator != nil {
+		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt().KnowledgeEvaluator)
 	}
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
@@ -736,7 +737,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// 3-15s wait. Independent of flow_log which still goes to monitor bus.
 	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "start", "正在调用语言模型", "orchestration",
 		event.P("run_id", runID), event.P("provider", prov), event.P("model", mod))
-	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始构建 userMessage + 调用 LLM",
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始构建 userMessage + 调用 LLM",
 		loggateway.StepID("chat.llm_invoke_start"),
 		loggateway.Any("provider", prov),
 		loggateway.Any("model", mod),
@@ -746,7 +747,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
-		o.runStatus.SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrAttachmentFailed, err.Error())
 		rollbackRunnerSession()
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
@@ -755,7 +756,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	llmCtx, llmSpan := traceBridge.StartChild(runCtx, "chat.llm.invoke")
 	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
 	turntrace.EndChild(llmSpan, err)
-	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: LLM 调用返回",
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: LLM 调用返回",
 		loggateway.StepID("chat.llm_invoke_done"),
 		loggateway.Any("elapsed_ms", time.Since(llmStart).Milliseconds()),
 		loggateway.Any("has_error", err != nil))
@@ -768,7 +769,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "error", "语言模型调用失败", "orchestration",
 			event.P("run_id", runID), event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
-		o.runStatus.SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrLLMCallFailed, err.Error())
 		rollbackRunnerSession()
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
@@ -796,12 +797,12 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td.ReadDeps.ToolUC, o.td.ReadDeps.Agents, o.td.Sessions)
-	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
+	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
-	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td.Pipeline.Bus, projectMeta, streamOpts, o.lg)
-	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 事件流消费完成",
+	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td().Pipeline.Bus, projectMeta, streamOpts, o.lg())
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 事件流消费完成",
 		loggateway.StepID("chat.stream_consume_done"),
 		loggateway.Any("elapsed_ms", time.Since(llmStart).Milliseconds()),
 		loggateway.Any("has_stream_error", streamErr != nil),
@@ -816,14 +817,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
 			emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
 			arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
-			o.runStatus.SetRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
+			o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
 			o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
 			te := TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
 			o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 			return userMsg, biz.ChatMessage{}, te
 		}
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
-		o.runStatus.SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error())
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error())
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", streamErr, "")
 		return userMsg, biz.ChatMessage{}, streamErr
@@ -839,17 +840,17 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		turnStatus = "timeout"
 		turnErr = ctx.Err()
 		turnErrMsg = "turn timeout"
-		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", o.turnTimeout.String()), event.P("reason", "sync_cap"))
+		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", o.turnTimeout().String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
-		o.runStatus.SetRunStatus(ctx, sessionID, runID, "failed", "turn timeout")
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", "turn timeout")
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
-		te := TurnError(TurnErrTurnTimeout, o.turnTimeout.String())
+		te := TurnError(TurnErrTurnTimeout, o.turnTimeout().String())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
 	}
 	if ctx.Err() != nil && result.HasContent {
 		turnStatus = "timeout_degraded"
-		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout.String()), event.P("reply_len", result.Reply.Len()))
+		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout().String()), event.P("reply_len", result.Reply.Len()))
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer bgCancel()
 		ctx = bgCtx
@@ -869,7 +870,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, errors.New(detail))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
-		o.runStatus.SetRunStatus(ctx, sessionID, runID, "failed", detail)
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", detail)
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		te := TurnError(TurnErrEmptyReply, detail)
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
@@ -918,14 +919,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		TokenOut:         completionTok,
 		AttachmentsCount: assistantAttN,
 	}
-	if err := o.td.Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
+	if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return userMsg, biz.ChatMessage{}, err
 	}
 	if userMsgPersisted {
-		if err := o.td.Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "ok", ""); err != nil {
-			o.lg.Warn("用户消息成功状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", userMsg.ID), loggateway.Err(err))
+		if err := o.td().Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "ok", ""); err != nil {
+			o.lg().Warn("用户消息成功状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", userMsg.ID), loggateway.Err(err))
 		} else {
 			userMsg.Status = "ok"
 		}
@@ -939,7 +940,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
 	o.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
-	o.runStatus.SetRunStatus(ctx, sessionID, runID, "completed", "")
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	o.bumpSessionRevisionAndPublish(ctx, sessionID, runID, userMsg.ID)
 	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, assistantMsg.ContentMarkdown)
@@ -961,7 +962,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 	}
 	pendingContent := entry.Content
 	pendingEntryID := entry.ID
-	pendingEmitter := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, ag.AgentKey, o.lg)
+	pendingEmitter := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, ag.AgentKey, o.lg())
 	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", pendingEntryID), event.P("content_len", len(pendingContent)))
 	safego.Go(appctx.Ctx(), "pending-queue", func() {
 		unlock := o.lockSession(sessionID)
@@ -971,7 +972,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队", event.P("entry_id", pendingEntryID))
 			return
 		}
-		bgCtx, cancel := context.WithTimeout(appctx.Ctx(), o.turnTimeout)
+		bgCtx, cancel := context.WithTimeout(appctx.Ctx(), o.turnTimeout())
 		o.runs.SetPendingCancel(sessionID, cancel)
 		defer func() {
 			cancel()
@@ -984,19 +985,19 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 		var err error
 		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusRunning, "")
-			_, _, err = o.team.TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
+			_, _, err = o.team().TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
 			spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
 			teamID := strings.TrimSpace(sess.TeamID)
 			if err != nil {
 				o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
 				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 				if spiritSessionID != "" && teamID != "" {
-					o.teamStarter.HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error())
+					o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error())
 				}
 			} else {
 				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusCompleted, "")
 				if spiritSessionID != "" && teamID != "" {
-					o.teamStarter.HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "")
+					o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "")
 				}
 			}
 		} else {
@@ -1015,7 +1016,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 
 // recordSessionTurn records a completed agent turn.
 func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
-	o.turnMetrics.RecordSessionTurn(ctx, SessionTurnRecordParams{
+	o.turnMetrics().RecordSessionTurn(ctx, SessionTurnRecordParams{
 		SessionID:      sessionID,
 		OwnerType:      "agent",
 		OwnerID:        ag.ID,
@@ -1031,7 +1032,7 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 
 // recordTeamSessionTurn records a completed team turn.
 func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
-	o.turnMetrics.RecordSessionTurn(ctx, SessionTurnRecordParams{
+	o.turnMetrics().RecordSessionTurn(ctx, SessionTurnRecordParams{
 		SessionID:      sessionID,
 		OwnerType:      "team",
 		OwnerID:        teamID,
@@ -1054,7 +1055,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 	latency time.Duration,
 	errMsg string,
 ) {
-	o.turnMetrics.RecordTurnUsage(ctx, TurnUsageParams{
+	o.turnMetrics().RecordTurnUsage(ctx, TurnUsageParams{
 		Emitter:       emitter,
 		SessionID:     sessionID,
 		RunID:         runID,
@@ -1072,15 +1073,15 @@ func (o *ChatOrchestrator) recordTurnUsage(
 
 // patchSessionContextUsage updates session context usage after a turn.
 func (o *ChatOrchestrator) patchSessionContextUsage(ctx context.Context, sessionID string, sess biz.Session, ag biz.Agent, prov, mod string, promptTok, completionTok int) {
-	sessctx.PatchContextFromLLMUsage(ctx, o.td.Sessions, o.td.Compress, o.llmContextCatalog(), sessionID, sess, ag, prov, mod, promptTok, completionTok, o.lg)
+	sessctx.PatchContextFromLLMUsage(ctx, o.td().Sessions, o.td().Compress, o.llmContextCatalog(), sessionID, sess, ag, prov, mod, promptTok, completionTok, o.lg())
 }
 
 // notifyNativeTurnHooks runs post-turn side effects.
 func (o *ChatOrchestrator) notifyNativeTurnHooks(ctx context.Context, sessionID string, ag biz.Agent, userInput, assistantOutput string) {
-	if o == nil || o.td.AfterTurn == nil {
+	if o == nil || o.td().AfterTurn == nil {
 		return
 	}
-	o.td.AfterTurn.AfterNativeTurn(ctx, biz.NativeTurnEvent{
+	o.td().AfterTurn.AfterNativeTurn(ctx, biz.NativeTurnEvent{
 		AgentID:         ag.ID,
 		AgentConfigJSON: ag.ConfigJSON,
 		AgentSettings:   ag.Settings,
@@ -1117,11 +1118,11 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 		out.AgentMessage = st
 	}
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		if o.td.Pipeline.Bus != nil {
+		if o.td().Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "chat-native", "")
 			env.TeamID = tid
 			env.Metadata = map[string]any{"hint": true}
-			o.td.Pipeline.Bus.Publish(ctx, env)
+			o.td().Pipeline.Bus.Publish(ctx, env)
 		}
 	}
 	return out, nil
@@ -1143,10 +1144,10 @@ func (o *ChatOrchestrator) nativeGetChatOptions(ctx context.Context, req *chatv1
 }
 
 func (o *ChatOrchestrator) nativeGetProviderOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
-	if o.td.ReadDeps.LLM == nil {
+	if o.td().ReadDeps.LLM == nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	rows, err := o.td.ReadDeps.LLM.List(ctx)
+	rows, err := o.td().ReadDeps.LLM.List(ctx)
 	if err != nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
@@ -1173,10 +1174,10 @@ func (o *ChatOrchestrator) nativeGetProviderOptions(ctx context.Context) (*chatv
 }
 
 func (o *ChatOrchestrator) nativeGetModelOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
-	if o.td.ReadDeps.LLM == nil {
+	if o.td().ReadDeps.LLM == nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	rows, err := o.td.ReadDeps.LLM.List(ctx)
+	rows, err := o.td().ReadDeps.LLM.List(ctx)
 	if err != nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
