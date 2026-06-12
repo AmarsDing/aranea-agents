@@ -158,3 +158,21 @@ var ChannelTurnJobTerminalStatuses = []string{
 	ChannelTurnJobStatusTimeout,
 	ChannelTurnJobStatusCancelled,
 }
+
+// ChannelTurnJobStartStatuses are statuses that trigger started_at timestamp.
+// Exported for data layer SQL CASE expressions.
+var ChannelTurnJobStartStatuses = []string{
+	ChannelTurnJobStatusRunning,
+	ChannelTurnJobStatusAsyncQueued,
+}
+
+// ChannelTurnJobFinishStatuses are statuses that trigger finished_at timestamp.
+// Includes 'queued' because a cancelled-while-queued job also finishes.
+// Exported for data layer SQL CASE expressions.
+var ChannelTurnJobFinishStatuses = []string{
+	ChannelTurnJobStatusCompleted,
+	ChannelTurnJobStatusFailed,
+	ChannelTurnJobStatusTimeout,
+	ChannelTurnJobStatusCancelled,
+	ChannelTurnJobStatusQueued,
+}

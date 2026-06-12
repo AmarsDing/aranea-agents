@@ -131,16 +131,18 @@ func (r *channelTurnJobRepo) UpdateStatus(ctx context.Context, id, status, errMs
 	}
 	now := biz.ChannelTurnJobNow()
 	status = biz.NormalizeChannelTurnJobStatus(status)
-	_, err := db.ExecContext(ctx, `
+	startInClause := buildSQLInClause(biz.ChannelTurnJobStartStatuses)
+	finishInClause := buildSQLInClause(biz.ChannelTurnJobFinishStatuses)
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`
 UPDATE channel_turn_job SET
   status=?,
   error_message=CASE WHEN ? != '' THEN ? ELSE error_message END,
   preview_message_id=CASE WHEN ? != '' THEN ? ELSE preview_message_id END,
   content_preview=CASE WHEN ? != '' THEN ? ELSE content_preview END,
-  started_at=CASE WHEN started_at='' AND ? IN ('running','async_queued') THEN ? ELSE started_at END,
-  finished_at=CASE WHEN ? IN ('completed','failed','timeout','cancelled','queued') THEN ? ELSE finished_at END,
+  started_at=CASE WHEN started_at='' AND ? IN (%s) THEN ? ELSE started_at END,
+  finished_at=CASE WHEN ? IN (%s) THEN ? ELSE finished_at END,
   updated_at=?
-WHERE id=?`,
+WHERE id=?`, startInClause, finishInClause),
 		status,
 		errMsg, errMsg,
 		previewMsgID, previewMsgID,

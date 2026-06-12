@@ -220,6 +220,11 @@ func (r *CircuitBreakerRegistry) RestoreStates(ctx context.Context) {
 	}
 	states, err := r.stateRepo.LoadAllStates(ctx)
 	if err != nil {
+		if r.lg != nil {
+			r.lg.Warn("circuit_breaker: failed to load persisted states",
+				loggateway.Err(err),
+			)
+		}
 		return
 	}
 	r.mu.Lock()

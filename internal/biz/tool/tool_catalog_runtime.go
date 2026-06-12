@@ -193,10 +193,12 @@ func hasOpenAPIMetadata(raw string) bool {
 	return false
 }
 
-func MergeToolConfigMaps(baseJSON, defaultJSON string) map[string]any {
+// MergeToolConfigMaps merges two JSON config maps. Keys from overlayJSON
+// overwrite keys from baseJSON when overlapping.
+func MergeToolConfigMaps(baseJSON, overlayJSON string) map[string]any {
 	out := map[string]any{}
 	MergeJSONMapInto(out, baseJSON)
-	MergeJSONMapInto(out, defaultJSON)
+	MergeJSONMapInto(out, overlayJSON)
 	return out
 }
 

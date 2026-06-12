@@ -122,11 +122,10 @@ func cleanupStaleWebhookRateLimits() {
 			return true
 		}
 		if !snap.windowStart.IsZero() && now.Sub(snap.windowStart) >= staleThreshold {
-			// Only delete if CAS succeeds — if it failed, another goroutine
-			// updated the entry (it is still live) and we must not remove it.
-			if webhookRateLimits.CompareAndSwap(key, snap, nil) {
-				webhookRateLimits.Delete(key)
-			}
+			// Atomically delete only if the snapshot hasn't changed — avoids
+			// both (a) deleting a live entry updated by another goroutine and
+			// (b) leaving a nil intermediate value that would panic on type assertion.
+			webhookRateLimits.CompareAndDelete(key, snap)
 		}
 		return true
 	})

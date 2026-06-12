@@ -125,16 +125,5 @@ func (u *ChannelTurnJobUsecase) Cancel(ctx context.Context, id string) error {
 	if u == nil || u.jobs == nil {
 		return errChannelTurnJobNotInit
 	}
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return nil
-	}
-	job, err := u.jobs.GetByID(ctx, id)
-	if err != nil {
-		return apierror.NotFound("CHANNEL_TURN_JOB", "job not found: "+id)
-	}
-	if !CanTransitionChannelTurnJob(job.Status, JobEventCancel) {
-		return apierror.BadRequest("CHANNEL_TURN_JOB", "cannot cancel job in status: "+job.Status)
-	}
-	return u.jobs.UpdateStatus(ctx, id, ChannelTurnJobStatusCancelled, "cancelled by user", "", "")
+	return u.TransitionByEvent(ctx, id, JobEventCancel, "cancelled by user", "", "")
 }
