@@ -253,8 +253,15 @@ func skillMatchesPath(c biz.SkillRuntimeCandidate, path string) bool {
 			continue
 		}
 		tpl := strings.ToLower(tp)
-		if tpl == pathLower || strings.Contains(tpl, pathLower) {
+		if tpl == pathLower {
 			return true
+		}
+		// Segment-level matching: split by common taxonomy separators
+		// to avoid "code" matching "code-review" or "encode".
+		for _, segment := range splitTaxonomySegments(tpl) {
+			if segment == pathLower {
+				return true
+			}
 		}
 	}
 	corpus := strings.ToLower(strings.TrimSpace(c.Slug + " " + c.Name + " " + c.Description))
@@ -271,6 +278,25 @@ func skillMatchesPath(c biz.SkillRuntimeCandidate, path string) bool {
 		return false
 	}
 	return false
+}
+
+// splitTaxonomySegments splits a taxonomy path into individual segments
+// using common separators (/, -, _). This enables segment-level matching
+// instead of substring matching, preventing "code" from matching "encode".
+func splitTaxonomySegments(path string) []string {
+	// First split by / to get path components, then split each by - and _
+	var segments []string
+	for _, part := range strings.Split(path, "/") {
+		for _, sub := range strings.Split(part, "-") {
+			for _, seg := range strings.Split(sub, "_") {
+				seg = strings.TrimSpace(seg)
+				if seg != "" {
+					segments = append(segments, seg)
+				}
+			}
+		}
+	}
+	return segments
 }
 
 func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, reasons map[string]string) []slugScore {
@@ -296,9 +322,14 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 				if tpl == pl {
 					sc += 1000
 					matchDetail = "exact taxonomy path match"
-				} else if strings.Contains(tpl, pl) {
-					sc += 400
-					matchDetail = "partial taxonomy path match"
+				} else {
+					for _, segment := range splitTaxonomySegments(tpl) {
+						if segment == pl {
+							sc += 400
+							matchDetail = "partial taxonomy path match"
+							break
+						}
+					}
 				}
 			}
 		}

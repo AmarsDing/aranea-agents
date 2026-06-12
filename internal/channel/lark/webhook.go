@@ -266,12 +266,15 @@ func VerifyHTTPRequest(r *http.Request, encryptKey string, rawBody []byte) error
 	return nil
 }
 
-// ReadBodyDrain reads the body and restores r.Body for downstream use.
+// maxWebhookBodySize limits the size of webhook request bodies to prevent OOM attacks.
+const maxWebhookBodySize = 1 << 20 // 1 MiB
+
+// ReadBodyDrain reads the body (up to maxWebhookBodySize) and restores r.Body for downstream use.
 func ReadBodyDrain(r *http.Request) ([]byte, error) {
 	if r == nil || r.Body == nil {
 		return nil, errNilRequest
 	}
-	raw, err := io.ReadAll(r.Body)
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodySize))
 	_ = r.Body.Close()
 	r.Body = io.NopCloser(bytes.NewReader(raw))
 	return raw, err
@@ -292,7 +295,7 @@ func FetchTenantAccessToken(ctx context.Context, httpClient *http.Client, region
 		return "", 0, errAppCredentialsRequired
 	}
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = DefaultHTTPClient()
 	}
 	u := APIBase(region) + "/open-apis/auth/v3/tenant_access_token/internal"
 	body := map[string]string{"app_id": appID, "app_secret": appSecret}
@@ -307,7 +310,7 @@ func FetchTenantAccessToken(ctx context.Context, httpClient *http.Client, region
 		return "", 0, err
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxWebhookBodySize))
 	if err != nil {
 		return "", 0, err
 	}
@@ -343,7 +346,7 @@ func SendTextMessage(ctx context.Context, httpClient *http.Client, region, tenan
 		return errReceiveIDAndTextRequired
 	}
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = DefaultHTTPClient()
 	}
 	switch strings.ToLower(strings.TrimSpace(receiveIDType)) {
 	case ReceiveIDTypeUserID, ReceiveIDTypeChatID:
@@ -373,7 +376,7 @@ func SendTextMessage(ctx context.Context, httpClient *http.Client, region, tenan
 		return err
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxWebhookBodySize))
 	if err != nil {
 		return err
 	}

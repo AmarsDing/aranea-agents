@@ -113,8 +113,17 @@ func (u *ChannelUsecase) ListPendingOutboundDeliveries(ctx context.Context, limi
 func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDelivery, sendErr error) (deadLetter bool, err error) {
 	var payload ChannelOutboundPayload
 	if err := json.Unmarshal([]byte(defaultJSON(row.PayloadJSON)), &payload); err != nil {
-		u.lg.Warn("解析 outbound payload 失败", loggateway.StepID("channel.delivery"), loggateway.Err(err))
-		return false, err
+		u.lg.Warn("解析 outbound payload 失败，标记为 dead letter",
+			loggateway.StepID("channel.delivery"),
+			loggateway.Err(err),
+			loggateway.Str("delivery_id", row.ID),
+		)
+		row.Status = ChannelDeliveryStatusError
+		row.ErrorMessage = "payload parse failed: " + err.Error()
+		if updateErr := u.deliveries.UpdateDelivery(ctx, row); updateErr != nil {
+			return false, updateErr
+		}
+		return true, nil
 	}
 	payload.Attempts++
 	if row.PayloadJSON, err = marshalOutboundPayload(payload); err != nil {
@@ -147,13 +156,14 @@ func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDel
 }
 
 // IsOutboundDeliveryReady reports whether a pending/retry row may be attempted now.
+// Returns false for rows with corrupt payloads — they should be marked as error by the caller.
 func (u *ChannelUsecase) IsOutboundDeliveryReady(row ChannelDelivery) bool {
 	if row.Status == ChannelDeliveryStatusPending {
 		return true
 	}
 	var payload ChannelOutboundPayload
 	if json.Unmarshal([]byte(defaultJSON(row.PayloadJSON)), &payload) != nil {
-		return true
+		return false
 	}
 	if strings.TrimSpace(payload.NextRetryAt) == "" {
 		return true

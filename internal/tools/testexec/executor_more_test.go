@@ -322,7 +322,7 @@ func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := AssemblyForCatalogKey(tt.key, tt.merged, nil, loggateway.NewNoop())
+			cfg, ok, _ := AssemblyForCatalogKey(tt.key, tt.merged, nil, loggateway.NewNoop())
 			if ok != tt.wantOK {
 				t.Fatalf("ok=%v wantOK=%v", ok, tt.wantOK)
 			}
@@ -340,7 +340,7 @@ func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 }
 
 func TestAssemblyForCatalogKey_googleSearchKeys(t *testing.T) {
-	cfg, ok := AssemblyForCatalogKey("google_search", map[string]any{
+	cfg, ok, _ := AssemblyForCatalogKey("google_search", map[string]any{
 		"google_api_key":   "gkey",
 		"search_engine_id": "scx",
 	}, nil, loggateway.NewNoop())
@@ -356,7 +356,7 @@ func TestAssemblyForCatalogKey_googleSearchKeys(t *testing.T) {
 }
 
 func TestAssemblyForCatalogKey_claudeCodeDir(t *testing.T) {
-	cfg, ok := AssemblyForCatalogKey("claude_code", map[string]any{
+	cfg, ok, _ := AssemblyForCatalogKey("claude_code", map[string]any{
 		"claude_code_dir": "/my/dir",
 	}, nil, loggateway.NewNoop())
 	if !ok {
@@ -368,7 +368,7 @@ func TestAssemblyForCatalogKey_claudeCodeDir(t *testing.T) {
 }
 
 func TestAssemblyForCatalogKey_geminiModel(t *testing.T) {
-	cfg, ok := AssemblyForCatalogKey("gemini_web_fetch", map[string]any{
+	cfg, ok, _ := AssemblyForCatalogKey("gemini_web_fetch", map[string]any{
 		"model": "gemini-pro",
 	}, nil, loggateway.NewNoop())
 	if !ok {
@@ -394,7 +394,7 @@ func TestAssemblyForCatalogKey_filesystemDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := AssemblyForCatalogKey(tt.key, tt.merged, nil, loggateway.NewNoop())
+			cfg, ok, _ := AssemblyForCatalogKey(tt.key, tt.merged, nil, loggateway.NewNoop())
 			if !ok {
 				t.Fatal("expected ok")
 			}
@@ -420,7 +420,7 @@ func TestAssemblyForCatalogKey_shellExecDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := AssemblyForCatalogKey("shell_exec", tt.merged, nil, loggateway.NewNoop())
+			cfg, ok, _ := AssemblyForCatalogKey("shell_exec", tt.merged, nil, loggateway.NewNoop())
 			if !ok {
 				t.Fatal("expected ok")
 			}
@@ -542,7 +542,7 @@ func TestPreviewValue_truncation(t *testing.T) {
 }
 
 func TestAssemblyForCatalogKey_googleSearchAlternativeKeys(t *testing.T) {
-	cfg, ok := AssemblyForCatalogKey("google_search", map[string]any{
+	cfg, ok, _ := AssemblyForCatalogKey("google_search", map[string]any{
 		"api_key":   "ak",
 		"engine_id": "ei",
 		"google_cx": "gcx",
@@ -573,7 +573,7 @@ func TestOpenAPISpecFromCatalogTool_dataFallback(t *testing.T) {
 }
 
 func TestAssemblyForCatalogKey_claudeCodeAlternativeDirKeys(t *testing.T) {
-	cfg, ok := AssemblyForCatalogKey("claude_code", map[string]any{
+	cfg, ok, _ := AssemblyForCatalogKey("claude_code", map[string]any{
 		"working_dir": "/alt/dir",
 	}, nil, loggateway.NewNoop())
 	if !ok {

@@ -60,7 +60,10 @@ func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeou
 
 	started := time.Now().UTC()
 	merged := mergeConfigJSON(tool.ConfigJSON, tool.DefaultConfigJSON)
-	asmCfg, ok, _ := AssemblyForCatalogKey(key, merged, platform, lg)
+	asmCfg, ok, asmErr := AssemblyForCatalogKey(key, merged, platform, lg)
+	if asmErr != nil {
+		return Result{}, apierror.Internal(apierror.DomainTool, fmt.Sprintf("tool %q assembly config error: %s", key, asmErr.Error()))
+	}
 	if !ok {
 		if spec, ok := openAPISpecFromCatalogTool(tool); ok {
 			asmCfg = tools.AssemblyConfig{

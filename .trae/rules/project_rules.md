@@ -83,7 +83,7 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | 前端数据流 / 分层 | `aranea-frontend-guide` §3+§4 |
 | 聊天消息分组 | `aranea-frontend-guide` §5 |
 | UX 主题 / Dialog 规范 | `aranea-frontend-guide` §6+§7 |
-| 数据库编码规范 | `aranea-coding-guide` §5.4（Schema/访问模式/Repo/事务/读写分离/迁移） |
+| 数据库编码规范 | `aranea-coding-guide` §5.4（Schema/访问模式/Repo/事务/读写分离/迁移）+ `project_rules.md` 数据库框架约束（连接管理/迁移体系/错误翻译/技术债务/开发红线） |
 | Go OOP 设计模式 | `go-oop-guide` |
 | Vue 3 组件/Composable 模式 | `vue-frontend-guide` |
 | 代码审查清单 | `aranea-review`（全栈）、`go-oop-review`（Go OOP） |
@@ -98,10 +98,212 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 ## 日志架构约束
 
+### 红线（强制）
+
 - **红线 #16**：禁止 `log/slog`，统一使用 `pkg/loggateway.Logger`
 - **Global() deprecated**：`loggateway.Global()` 已废弃，新代码必须通过构造注入 `loggateway.Logger`
-- **CtxFlowLog\***：`internal/event/flow_context.go` 中的 CtxFlowLog* 函数为遗留 API，新代码应使用 `loggateway.Logger` + `With()` 预设字段
-- **RuntimeLogAdapter**：trpc-agent-go 运行时日志已桥接到 loggateway Pipeline，无需额外处理
+- **CtxFlowLog\***：`internal/event/flow_context.go` 中的 `WithFlowLogger`/`FlowLoggerFromContext`/`NewFlowLogger` 为遗留 API（已标记 Deprecated），新代码应使用 `loggateway.Logger` + `With()` 预设字段
+- **RuntimeLogAdapter**：trpc-agent-go 运行时日志已通过 `RuntimeLogAdapter` 桥接到 loggateway Pipeline，无需额外处理
+
+### 架构概览
+
+```
+业务代码 → loggateway.Logger → Gateway.emitToPipeline() → logpipeline.Pipeline.Emit()
+    → pipeline.dispatchLoop() → SinkGroup.Emit() → Sink.Write()
+        ├── FileSink (JSON + lumberjack 轮转)
+        ├── StdoutSink (JSON → stdout)
+        └── EventBusSink (→ event.Bus → WebSocket/持久化，含熔断器)
+
+trpc-agent-go 运行时 → RuntimeLogAdapter → loggateway.Logger → 同上
+```
+
+### 核心组件
+
+| 组件 | 包路径 | 职责 |
+|------|--------|------|
+| `Logger` 接口 | `pkg/loggateway/logger.go` | 统一日志接口：Debug/Info/Warn/Error/With |
+| `Gateway` | `pkg/loggateway/gateway.go` | Logger 实现，桥接 Pipeline，nil-safe |
+| `Pipeline` | `pkg/logpipeline/pipeline.go` | 异步日志分发（channel + 多 SinkGroup 隔离） |
+| `SinkGroup` | `pkg/logpipeline/sink_group.go` | Sink 隔离（独立 goroutine/buffer/DropPolicy） |
+| `FileSink` | `pkg/logpipeline/file_sink.go` | 文件输出（JSON + lumberjack 轮转） |
+| `StdoutSink` | `pkg/logpipeline/stdout_sink.go` | 标准输出（JSON + 级别过滤） |
+| `EventBusSink` | `pkg/logpipeline/eventbus_sink.go` | 事件总线输出（熔断器：5次失败开启，10秒恢复，3次探测关闭） |
+| `RuntimeLogAdapter` | `internal/adapter/runtime_log.go` | trpc-agent-go 桥接（Fatal 同步写 stderr，其余异步） |
+
+### 使用规则
+
+1. **构造注入**：所有 struct 通过构造函数参数 `lg loggateway.Logger` 获取 Logger，禁止在构造函数外调用 `loggateway.Global()`
+2. **With() 预设字段**：需要固定上下文字段时，在构造函数中用 `lg.With()` 创建子 Logger 存入 struct 字段
+   ```go
+   // 正确：构造时预设字段
+   func NewXxxUsecase(lg loggateway.Logger, ...) *XxxUsecase {
+       return &XxxUsecase{lg: lg.With(loggateway.Domain("xxx"))}
+   }
+   // 错误：每次调用都 With()
+   func (u *XxxUsecase) Do() { u.lg.With(loggateway.Domain("xxx")).Info("msg") }
+   ```
+3. **结构化字段优先**：使用预定义字段构造函数（`loggateway.StepID`/`SessionID`/`RunID`/`AgentKey`/`Domain`/`Phase`/`Err` 等），禁止拼接字符串到 msg 中
+4. **错误记录**：使用 `loggateway.Err(err)` 记录错误（自动解包错误链），不要用 `loggateway.Str("error", err.Error())`
+5. **日志级别语义**：
+   - `Debug`：开发调试信息，生产环境默认关闭
+   - `Info`：正常业务流程关键节点
+   - `Warn`：可恢复的异常/降级/兼容处理
+   - `Error`：需要关注的错误，但不影响进程存活
+6. **测试中使用 Noop**：测试代码中优先使用 `loggateway.NewNoop()` 创建静默 Logger，避免 `loggateway.Global()`（Global 是 deprecated API）
+7. **data 层日志访问**：data 层存在两种模式——独立 Repo 持有 `lg loggateway.Logger`（推荐）或通过 `r.data.lg` 访问共享 Logger。新增 Repo 优先使用独立持有模式
+8. **禁止 fmt.Fprintf(os.Stderr, ...)**：除 `RuntimeLogAdapter.Fatal` 和 Pipeline 内部 panic 恢复外，业务代码禁止直接写 stderr
+
+### 初始化流程（cmd/admin/logging.go）
+
+1. 创建 `logpipeline.Pipeline`（缓冲区 4096）
+2. 根据配置创建 Sink（file/stdout/eventbus），eventbus sink 延迟到 BeforeStart
+3. 创建 `loggateway.Gateway`（注入 Pipeline）
+4. 创建 `RuntimeLogAdapter` 并替换 `agentlog.Default`/`agentlog.ContextDefault`
+5. 返回 Logger + Pipeline + Sink 配置供 Wire 使用
+
+### 限流机制
+
+Pipeline 支持基于 stepID 前缀匹配的令牌桶限流（`ThrottleRule{Prefix, MaxPerSec}`），按前缀最长匹配，空闲 5 分钟自动清理桶。被限流的日志计入 `Throttled()` 计数，不进入 Sink。
+
+### 前端日志
+
+前端无日志框架，仅使用原生 `console.warn/info`（共约 13 处），集中在 chat 实时通信模块。禁止使用 `console.log`（无法按级别过滤），优先使用 `console.warn`（异常）或 `console.info`（关键流程）。
+
+---
+
+## 数据库框架约束（SQLite + Ent ORM）
+
+> 详细规范见 `aranea-coding-guide` §5.4。本节为**架构分析 + 审查验证后的实战规则**，补充 SKILL 中未覆盖的注意事项。
+
+### 架构概览
+
+```
+internal/biz           ← Repo 接口定义（窄接口：Reader/Writer/Mutator）
+        ↓
+internal/data          ← Repo 实现
+    ├── Data struct     ← 连接管理（双连接读写分离 + 可选 Postgres）
+    ├── ReadWriteClient ← 事务感知的 Ent 读写选择器
+    ├── ReadWriteDB     ← 事务感知的 Raw SQL 读写选择器
+    ├── ent/schema/     ← 76 个 Ent Schema（唯一真相源）
+    ├── ent/            ← go generate 生成物（禁止手动修改）
+    ├── sql/migrations/ ← DDL 迁移 SQL 文件（28 个版本化迁移）
+    └── *_repo.go       ← Repo 实现（Ent / Raw SQL / 混合）
+```
+
+### 连接管理
+
+| 连接 | 用途 | MaxOpenConns | 访问方式 |
+|------|------|-------------|---------|
+| `entClient` | Ent 写 | 1（SQLite 单写） | `d.RW().Write(ctx)` |
+| `readClient` | Ent 读 | 2（WAL 并发读） | `d.RW().Read(ctx)` |
+| `rawDB` | Raw SQL 写 | 1 | `d.RWDB().WriteDB(ctx)` |
+| `readDB` | Raw SQL 读 | 2 | `d.RWDB().ReadDB(ctx)` |
+| `pg` | Postgres（pgvector） | 8 | `d.Postgres()` |
+
+**SQLite PRAGMAs**（写连接 + 读连接均设置）：
+- `foreign_keys=ON`、`journal_mode=WAL`、`busy_timeout=30000`
+- `synchronous=NORMAL`、`wal_autocheckpoint=500`
+
+### 读写分离规则
+
+| 操作类型 | Ent Repo | Raw SQL Repo |
+|---------|----------|-------------|
+| 读 | `r.data.RW().Read(ctx)` | `r.data.RWDB().ReadDB(ctx)` |
+| 写 | `r.data.RW().Write(ctx)` | `r.data.RWDB().WriteDB(ctx)` |
+| DDL | `r.data.RW().Write(ctx)` | `r.data.RWDB().WriteHandle()` |
+
+**已废弃的访问器**（禁止新增调用）：`RawDB()`、`ReadDB()`、`ReadEnt()`、`ReadClient()`
+
+### 事务管理
+
+**统一入口**：`Data.ExecInTx(ctx, fn func(ctx) error) error`
+
+关键行为：
+1. **嵌套事务检测**：context 中已有事务时复用，不创建 savepoint
+2. **分离 context**：事务在 `context.Background()` + 30s 硬超时上执行，防止 HTTP 取消中断 SQLite 操作
+3. **提交前检查**：`fn()` 成功后检查原始调用方 context 是否已取消，已取消则回滚
+4. **双 key 注入**：`txClientKey{}`（Ent 客户端）+ `rawTxKey{}`（Raw SQL execer），确保 Ent 和 Raw SQL 在同一事务中
+
+**Biz 层事务接口**：
+- `AgentTxRepo.ExecInTx` — Agent 原子创建/更新
+- `CompressRepo.CompressSessionInTx` — Session 压缩（含版本 CAS 守卫）
+- `TxProvider.ExecInTx` — Pack 导入原子操作
+
+### Schema 管理
+
+- **76 个 Ent Schema**，73 个使用 `entsql.Annotation{Table: ...}` 显式映射表名
+- **仅 Eval 域使用 Ent Edge**（4 个 Schema 有 8 条边），其余全部使用手动 FK 字段
+- **FTS5 全文搜索**（`messages_fts`）和 **pgvector 向量搜索**（`vector_embeddings`）不在 Ent Schema 中，通过 DDL 迁移管理
+- **Ent 生成命令**：`go generate ./internal/data/ent`（启用 `sql/execquery` + `sql/upsert` 特性）
+
+### 三层迁移体系
+
+| 层级 | 机制 | 范围 |
+|------|------|------|
+| L1: Ent Auto-Migration | `Schema.Create()` | 核心表结构（Ent Schema 定义的所有表） |
+| L2: DDL Migration Registry | `ddl_migration_registry.go` + `sql/migrations/*.sql` | FTS5、索引、列补丁等 Ent 不支持的特性（28 个版本化迁移） |
+| L3: Data Migration | `runPendingDataMigrations` | 一次性数据转换（TRPC 记忆回填、turn_index 迁移等） |
+
+**迁移门控**：所有迁移通过 `schema_migrations` 表去重，已应用的跳过。
+
+**启动就绪门**：`ReadinessGate` 确保 P1 步骤（DDL 迁移 + Postgres Schema + 数据迁移）完成后才接受流量。
+
+### 错误翻译
+
+**唯一出口**：`entErrToBizErr(err, domain)` — 所有 Repo 方法的数据库错误必须经过此函数。
+
+| 输入 | 输出 Code |
+|------|----------|
+| `nil` | `nil` |
+| 已是 `*apierror.Error` | 透传 |
+| `ent.IsNotFound` / `sql.ErrNoRows` | `CodeNotFound` |
+| `ent.IsConstraintError` / `shared.ErrMessageDuplicate` / `shared.ErrAgentKeyConflict` | `CodeConflict` |
+| `ent.IsNotLoaded` | `CodeBadRequest` |
+| 其他 | `CodeInternal` |
+
+### 类型转换
+
+- **方向**：Ent → Biz（单向），无反向转换函数
+- **命名**：`entXxxToBiz` / `entToBizXxx`
+- **写路径**：直接从 Biz 模型字段构造 Ent create/update builder
+
+### 已知技术债务（审查发现）
+
+| 编号 | 问题 | 位置 | 严重度 |
+|------|------|------|--------|
+| DB-DEBT-01 | `AgentRuntimeSetting` Schema 约 140 个字段，严重超标 | `ent/schema/agent_runtime_setting.go` | 高 |
+| DB-DEBT-02 | 8 个窄接口方法数 >5：`AnalyticsRepo`(10)、`QuotaRepo`(8)、`SystemSettingRepo`(11)、`plugin.Repo`(9)、`RemoteAgentRepo`(7)、`TeamReader`(6)、`TeamRunWriter`(6)、`TraceRepo`(6) | 各 biz 接口文件 | 中 |
+| DB-DEBT-03 | 部分窄接口缺少 Stability 标注（`AnalyticsRepo`、`QuotaRepo`、`plugin.Repo`、`SystemSettingRepo`、`TraceRepo`） | 各 biz 接口文件 | 低 |
+| DB-DEBT-04 | Data 层 `fmt.Errorf` 使用不一致：`evolution_suggestion_repo.go`、`background_job.go` 等对 Ent 错误使用 `fmt.Errorf` 而非 `entErrToBizErr` | `internal/data/` | 中 |
+| DB-DEBT-05 | 多个复合 Repo 接口方法数远超 5（`SessionRepo`~40+、`skill.Repo`23、`tool.ToolRepo`18、`usage.Repo`22），已标记 Deprecated/TECH-DEBT 但仍用于 Wire 绑定 | 各 biz 接口文件 | 已知 |
+
+### 数据库开发规则（红线 + 注意事项）
+
+#### 红线（强制）
+
+| # | 规则 | 说明 |
+|---|------|------|
+| DB-R1 | **禁止在 `NewData` 外另开 SQLite 连接** | 仅通过 `d.RW()`/`d.RWDB()` 访问，对应红线 #10 |
+| DB-R2 | **禁止修改 Ent 生成代码** | 改 Schema → `go generate` → 提交生成物，对应红线 #11 |
+| DB-R3 | **禁止野生表** | 所有表必须进 Ent Schema，FTS5/pgvector 等通过 DDL 迁移补充但不另建表 |
+| DB-R4 | **禁止散落 `*_patch.go` 迁移** | 所有 Schema 变更纳入 DDL Migration Registry，有版本号、有依赖顺序 |
+| DB-R5 | **禁止 Repo 方法直接返回 Ent 错误** | 所有错误必须经 `entErrToBizErr(err, domain)` 翻译 |
+| DB-R6 | **禁止使用已废弃的连接访问器** | `RawDB()`/`ReadDB()`/`ReadEnt()`/`ReadClient()` 已废弃，使用 `RW()`/`RWDB()` |
+
+#### 注意事项（建议）
+
+| # | 规则 | 说明 |
+|---|------|------|
+| DB-N1 | **新增 Repo 优先使用 Ent API** | 仅在 Ent 无法覆盖时（FTS5/pgvector/复杂 SQL）使用 Raw SQL |
+| DB-N2 | **Raw SQL 必须走事务感知路径** | 读用 `RW().Read(ctx).QueryContext` 或 `RWDB().ReadDB(ctx)`，写用 `RW().Write(ctx).ExecContext` 或 `RWDB().WriteDB(ctx)` |
+| DB-N3 | **Repo 接口方法 ≤ 5** | 超过按读写职责拆分为 `XxxReader`/`XxxWriter`，复合接口仅用于 Wire 绑定 |
+| DB-N4 | **新增 Schema 必须加 `entsql.Annotation{Table: ...}`** | 避免依赖 Ent 默认复数化规则，保持表名可控 |
+| DB-N5 | **Schema 中禁止 import `pkg/trpc-agent-go`** | Schema 属于 data 层，不得依赖框架运行时 |
+| DB-N6 | **DDL 迁移 SQL 必须幂等** | 使用 `IF NOT EXISTS` / `IF NOT NULL`，"duplicate column" 和 "already exists" 错误视为成功 |
+| DB-N7 | **事务内操作必须从 ctx 获取连接** | 使用 `EntClientFromCtx` / `TxExecerFromCtx`，确保参与同一事务 |
+| DB-N8 | **敏感字段必须标记 `.Sensitive()`** | 如 `credential_encryption_key`、`api_key` 等，防止日志泄漏 |
+| DB-N9 | **JSON 字段优先使用 `field.JSON()`** | 避免手动 `json.Marshal`/`Unmarshal`，利用 Ent 的类型安全 JSON 支持 |
+| DB-N10 | **新增迁移必须在 `ddl_migration_registry.go` 注册** | 包含版本号（YYYYMMDD 格式）+ 名称 + SQL 路径或 Go 函数 |
 
 ---
 

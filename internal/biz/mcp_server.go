@@ -18,8 +18,17 @@ var mcpIDRand uint64
 func newMCPServerID() string {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil {
+		// Fallback: mix counter + timestamp for unpredictability.
 		n := atomic.AddUint64(&mcpIDRand, 1)
-		return hex.EncodeToString([]byte{byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32), byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
+		ts := time.Now().UnixNano()
+		fallback := make([]byte, 12)
+		for i := 0; i < 8; i++ {
+			fallback[i] = byte(n >> uint(i*8))
+		}
+		for i := 0; i < 4; i++ {
+			fallback[8+i] = byte(ts >> uint(i*8))
+		}
+		return hex.EncodeToString(fallback)
 	}
 	return hex.EncodeToString(buf)
 }
@@ -43,9 +52,9 @@ type MCPProber interface {
 type MCPMetadataEditor interface {
 	Parse(raw string) map[string]any
 	Marshal(m map[string]any) (string, error)
-	ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) string
-	ApplyReconnect(m map[string]any, at time.Time)
-	MarkHealthAlert(m map[string]any, at time.Time)
+	ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string)
+	ApplyReconnect(m map[string]any, at time.Time) map[string]any
+	MarkHealthAlert(m map[string]any, at time.Time) map[string]any
 }
 
 // MCPServer matches legacy PlatformResource for mcp-servers.
@@ -88,13 +97,14 @@ type MCPServerRepo interface {
 
 type MCPServerUsecase struct {
 	repo     MCPServerRepo
+	credRepo MCPServerUserCredentialRepo
 	prober   MCPProber
 	metaEdit MCPMetadataEditor
 	crypto   *CredentialCrypto
 }
 
-func NewMCPServerUsecase(repo MCPServerRepo, prober MCPProber, metaEdit MCPMetadataEditor, crypto *CredentialCrypto) *MCPServerUsecase {
-	return &MCPServerUsecase{repo: repo, prober: prober, metaEdit: metaEdit, crypto: crypto}
+func NewMCPServerUsecase(repo MCPServerRepo, credRepo MCPServerUserCredentialRepo, prober MCPProber, metaEdit MCPMetadataEditor, crypto *CredentialCrypto) *MCPServerUsecase {
+	return &MCPServerUsecase{repo: repo, credRepo: credRepo, prober: prober, metaEdit: metaEdit, crypto: crypto}
 }
 
 func (u *MCPServerUsecase) List(ctx context.Context) ([]MCPServer, error) {
@@ -192,20 +202,26 @@ func (u *MCPServerUsecase) Delete(ctx context.Context, id string) error {
 	return u.repo.DeleteMCPServer(ctx, id)
 }
 
+// TestMCPServerResult combines the probe result with the updated server state.
+type TestMCPServerResult struct {
+	Result MCPTestResult
+	Server MCPServer
+}
+
 // TestMCPServer runs probe and persists health_* metadata + row status.
-func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (MCPTestResult, error) {
+func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (TestMCPServerResult, error) {
 	row, err := u.repo.GetMCPServer(ctx, id)
 	if err != nil {
-		return MCPTestResult{}, err
+		return TestMCPServerResult{}, err
 	}
 	if u.prober == nil {
-		return MCPTestResult{}, apierror.Internal("MCP_SERVER", "mcp prober not configured")
+		return TestMCPServerResult{}, apierror.Internal("MCP_SERVER", "mcp prober not configured")
 	}
 	result := u.prober.Evaluate(ctx, row.Enabled, row.ConfigJSON)
-	if err := u.persistHealth(ctx, &row, result); err != nil {
-		return result, err
-	}
-	return result, nil
+	updated, persistErr := u.persistHealth(ctx, &row, result)
+	// Return both result and updated server; caller can use updated metadata
+	// without an extra DB read.
+	return TestMCPServerResult{Result: result, Server: updated}, persistErr
 }
 
 // RecordReconnectMetadata updates last_reconnect_at and reconnect_count for the server key.
@@ -225,8 +241,8 @@ func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKe
 		return apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
-	u.metaEdit.ApplyReconnect(meta, at)
-	raw, err := u.metaEdit.Marshal(meta)
+	updatedMeta := u.metaEdit.ApplyReconnect(meta, at)
+	raw, err := u.metaEdit.Marshal(updatedMeta)
 	if err != nil {
 		return err
 	}
@@ -243,8 +259,8 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 		return apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
-	u.metaEdit.MarkHealthAlert(meta, at)
-	raw, err := u.metaEdit.Marshal(meta)
+	updatedMeta := u.metaEdit.MarkHealthAlert(meta, at)
+	raw, err := u.metaEdit.Marshal(updatedMeta)
 	if err != nil {
 		return err
 	}
@@ -252,25 +268,33 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 }
 
 // ValidateConfig runs probe without persisting (pre-create URL check).
-func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, enabled bool, configJSON string) MCPTestResult {
+// Always passes enabled=true so the probe actually validates the config,
+// regardless of the server's enabled state.
+func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, _ bool, configJSON string) MCPTestResult {
 	if u.prober == nil {
 		return MCPTestResult{OK: false, Status: "unknown", Message: "mcp prober not configured"}
 	}
-	return u.prober.Evaluate(ctx, enabled, configJSON)
+	return u.prober.Evaluate(ctx, true, configJSON)
 }
 
-func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) error {
+func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) (MCPServer, error) {
 	if u.metaEdit == nil {
-		return apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
+		return MCPServer{}, apierror.Internal("MCP_SERVER", "mcp metadata editor not configured")
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
 	at := time.Now().UTC()
-	status := u.metaEdit.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
+	meta, status := u.metaEdit.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
 	raw, err := u.metaEdit.Marshal(meta)
 	if err != nil {
-		return err
+		return MCPServer{}, err
 	}
-	return u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, status)
+	if err := u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, status); err != nil {
+		return MCPServer{}, err
+	}
+	// Return the in-memory updated server to avoid an extra DB read.
+	row.MetadataJSON = raw
+	row.Status = status
+	return *row, nil
 }
 
 // validateMCPConfigURLs parses configJSON and validates that any HTTP
@@ -288,6 +312,11 @@ func validateMCPConfigURLs(configJSON string) error {
 	transport, _ := cfg["transport"].(string)
 	transport = strings.ToLower(strings.TrimSpace(transport))
 	switch transport {
+	case "stdio":
+		cmd, _ := cfg["command"].(string)
+		if strings.TrimSpace(cmd) == "" {
+			return apierror.BadRequest("MCP_SERVER", "mcp stdio transport requires command")
+		}
 	case "sse", "streamable", "streamable_http":
 		url, _ := cfg["url"].(string)
 		if strings.TrimSpace(url) == "" {

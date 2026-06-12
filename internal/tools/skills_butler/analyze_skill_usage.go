@@ -63,7 +63,7 @@ func newAnalyzeSkillUsageTool(deps Deps) trpctool.Tool {
 
 func assessHealth(stat SkillInvocationStat, weeks float64) string {
 	callsPerWeek := float64(stat.Count) / weeks
-	if callsPerWeek > 5 && stat.SuccessRate >= 0.8 {
+	if callsPerWeek >= 2 && stat.SuccessRate >= 0.8 {
 		return "healthy"
 	}
 	if callsPerWeek > 5 && stat.SuccessRate >= 0.6 {
@@ -89,15 +89,17 @@ func timeRangeToSince(tr string) time.Time {
 	}
 }
 
+const weeksPerMonth = 4.29
+
 func weeksInRange(tr string) float64 {
 	switch tr {
 	case "7d":
 		return 1.0
 	case "30d":
-		return 4.29
+		return weeksPerMonth
 	case "90d":
 		return 12.86
 	default:
-		return 4.29
+		return weeksPerMonth
 	}
 }

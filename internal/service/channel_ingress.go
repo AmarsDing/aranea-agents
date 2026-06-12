@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -33,6 +34,7 @@ type ChannelIngress struct {
 	previewManager biz.TurnPreviewManager
 	concurrentGate biz.ConcurrencyGate
 	admission      *biz.TurnAdmissionUsecase
+	teamCompiler   biz.TeamCompiler
 	lg             loggateway.Logger
 }
 
@@ -57,6 +59,7 @@ func NewChannelIngress(
 	previewManager biz.TurnPreviewManager,
 	concurrentGate biz.ConcurrencyGate,
 	admission *biz.TurnAdmissionUsecase,
+	teamCompiler biz.TeamCompiler,
 	lg loggateway.Logger,
 ) *ChannelIngress {
 	return &ChannelIngress{
@@ -75,6 +78,7 @@ func NewChannelIngress(
 		previewManager: previewManager,
 		concurrentGate: concurrentGate,
 		admission:      admission,
+		teamCompiler:   teamCompiler,
 	}
 }
 
@@ -221,18 +225,11 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "credentials", http.StatusInternalServerError)
 			return nil
 		}
-		encryptKey, encErr := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key", h.lg)
-		if encErr != nil {
-			h.lg.Warn("凭证解析失败",
+		encryptKey, err := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key", h.lg)
+		if err != nil {
+			h.lg.Warn("encrypt_key 凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
-				loggateway.Str("key", "encrypt_key"),
-				loggateway.Err(encErr),
-			)
-		}
-		if strings.TrimSpace(encryptKey) == "" {
-			h.lg.Warn("飞书 Webhook 未配置 encrypt_key，拒绝请求",
-				loggateway.StepID("channel.feishu.webhook.no_encrypt_key"),
-				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Err(err),
 			)
 			http.Error(w, "forbidden: encrypt_key not configured", http.StatusForbidden)
 			return nil
@@ -251,13 +248,13 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil
 		}
-		verTok, verErr := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token", h.lg)
-		if verErr != nil {
-			h.lg.Warn("凭证解析失败",
+		verTok, err := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token", h.lg)
+		if err != nil {
+			h.lg.Warn("verification_token 凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
-				loggateway.Str("key", "verification_token"),
-				loggateway.Err(verErr),
+				loggateway.Err(err),
 			)
+			// verification_token 缺失时仍可继续处理（仅影响事件验签），不阻断请求
 		}
 		parsed, err := lark.ParseWebhookPost(raw, verTok)
 		if err != nil {
@@ -345,17 +342,9 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 		}
 		ref := strings.TrimSpace(c.SecretRef)
 		if ref == "" {
-			lg.Warn("凭证 secret_ref 为空",
-				loggateway.StepID("channel.credential.empty_ref"),
-				loggateway.Str("key", key),
-			)
-			return "", nil
+			return "", apierror.BadRequest("CHANNEL_CREDENTIAL", fmt.Sprintf("credential %q has empty secret_ref", key))
 		}
 		return ResolveSecretRef(ctx, channels, ref)
 	}
-	lg.Warn("凭证 key 未找到",
-		loggateway.StepID("channel.credential.not_found"),
-		loggateway.Str("key", key),
-	)
-	return "", nil
+	return "", apierror.NotFound(apierror.DomainChannel, fmt.Sprintf("credential key %q not found", key))
 }

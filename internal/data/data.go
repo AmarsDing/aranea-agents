@@ -50,6 +50,7 @@ var ProviderSet = wire.NewSet(
 	NewHookDeliveryRepo,
 	NewPluginCostGuardUsageRepo,
 	NewMCPServerRepo,
+	NewMCPServerUserCredentialRepo,
 	NewSkillRepo,
 	NewSessionRepo,
 	NewToolRepo,

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
+
 	"github.com/google/uuid"
 )
 
@@ -40,13 +42,16 @@ func inboundTextPreview(text string) string {
 }
 
 // TryClaimInbound records idempotency before running an agent turn.
+// Returns (claimed, error). When claimed=false, the message was already processed.
+// When repo is nil or channelID is empty, returns an error instead of silently
+// bypassing idempotency — callers must handle this explicitly.
 func TryClaimInbound(ctx context.Context, repo ChannelInboundReceiptRepo, channelID, platform, messageKey, peerID, text string) (bool, error) {
 	if repo == nil {
-		return true, nil
+		return false, apierror.Internal("CHANNEL_INBOUND", "inbound receipt repo not configured")
 	}
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
-		return true, nil
+		return false, apierror.BadRequest("CHANNEL_INBOUND", "channel_id is required")
 	}
 	key := InboundIdempotencyKey(platform, messageKey)
 	return repo.TryClaim(ctx, channelID, key, peerID, inboundTextPreview(text))

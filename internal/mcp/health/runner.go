@@ -111,11 +111,12 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	start := time.Now()
-	result, err := r.deps.UC.TestMCPServer(ctx, srv.ID)
+	res, err := r.deps.UC.TestMCPServer(ctx, srv.ID)
 	if err != nil {
 		r.lg.Error("MCP 健康探测失败", loggateway.StepID("mcp.health_probe_fail"), loggateway.Str("server_key", srv.Key), loggateway.Err(err))
 		return
 	}
+	result := res.Result
 	elapsed := time.Since(start)
 
 	metricStatus := result.Status
@@ -130,15 +131,13 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
 
 	// TestMCPServer already persisted health metadata via persistHealth.
-	// Re-read the server to get the updated metadata_json for alert debounce logic.
-	isHardFailure := !result.OK && result.Status != "auth_required"
-	if isHardFailure {
-		updated, err := r.deps.MCP.GetMCPServer(ctx, srv.ID)
-		if err == nil {
-			srv = updated
-		}
+	// Use the returned server (with updated metadata) for alert debounce logic.
+	isHardFailure := !result.OK
+	isAuthWarning := result.OK && result.Status == "auth_required"
+	if isHardFailure || isAuthWarning {
+		updated := res.Server
 		if r.deps.Alerts != nil {
-			r.deps.Alerts.MaybeEmitAfterHealth(ctx, srv, result)
+			r.deps.Alerts.MaybeEmitAfterHealth(ctx, updated, result)
 		}
 	}
 }

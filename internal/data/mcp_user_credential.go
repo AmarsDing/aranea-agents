@@ -64,6 +64,7 @@ func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred 
 			platformmcpusercredential.McpServerIDEQ(cred.MCPServerID),
 			platformmcpusercredential.UserIDEQ(cred.UserID),
 			platformmcpusercredential.CredentialKeyEQ(cred.CredentialKey),
+			platformmcpusercredential.DeletedAtEQ(""),
 		).
 		Only(ctx)
 	now := nowRFC3339()
@@ -128,5 +129,11 @@ func (r *mcpServerRepo) DeleteMCPServerUserCredential(ctx context.Context, mcpSe
 
 // Ensure mcpServerRepo implements user credential repo at compile time.
 var _ biz.MCPServerUserCredentialRepo = (*mcpServerRepo)(nil)
+
+// NewMCPServerUserCredentialRepo returns the same repo that implements
+// both MCPServerRepo and MCPServerUserCredentialRepo.
+func NewMCPServerUserCredentialRepo(d *Data) biz.MCPServerUserCredentialRepo {
+	return &mcpServerRepo{data: d}
+}
 
 // ent field names use McpServerID from schema - verify after ent generate

@@ -105,7 +105,7 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 // the second command unrestricted.
 var shellMetacharacters = []string{
 	";", "&&", "||", "|", "&",
-	"$(", "`", "${", ">", "<",
+	"$(", "(", ")", "`", "${", ">", "<",
 	"\n", "\r", "#",
 }
 

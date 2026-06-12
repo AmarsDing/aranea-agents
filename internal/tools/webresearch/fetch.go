@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/outboundguard"
 
 	trpchttpfetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch"
 )
@@ -27,6 +28,16 @@ func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config, lg lo
 		}
 		u := strings.TrimSpace(hits[i].URL)
 		if u == "" {
+			continue
+		}
+		// Validate URL against SSRF — skip internal/private addresses.
+		if err := outboundguard.ValidateURL(u); err != nil {
+			if lg != nil {
+				lg.Warn("skipping non-public URL in search results",
+					loggateway.StepID("tool.webresearch.ssrf_skip"),
+					loggateway.Str("url", u),
+					loggateway.Err(err))
+			}
 			continue
 		}
 		urls = append(urls, u)

@@ -86,8 +86,12 @@ func (g *ChannelConcurrentGate) Close() {
 
 // TryAcquire implements ConcurrencyGate.
 // It returns a release function on success, nil on failure.
+// limit <= 0 means "no concurrency limit" — all requests are allowed.
 func (g *ChannelConcurrentGate) TryAcquire(channelID, peerID string, isGroup bool, limit int) (release func(), ok bool) {
-	if g == nil || limit <= 0 {
+	if g == nil {
+		return func() {}, true
+	}
+	if limit <= 0 {
 		return func() {}, true
 	}
 	key := channelConcurrentKey{channelID: channelID, peerID: peerID, group: isGroup}
@@ -123,5 +127,4 @@ func (g *ChannelConcurrentGate) release(channelID, peerID string, isGroup bool) 
 	}
 	entry.count--
 	entry.lastAcq = time.Now() // refresh to prevent stale detection from evicting active entries
-	g.active[key] = entry
 }

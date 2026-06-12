@@ -362,6 +362,8 @@ func sanitizeConfigJSONForAPI(cfg string) string {
 	delete(m, "api_key_enc")
 	delete(m, "secret_key")
 	delete(m, "secret_key_enc")
+	delete(m, "api_key_decrypt_failed")
+	delete(m, "secret_key_decrypt_failed")
 	if cands, ok := m["ha_candidates"].([]any); ok {
 		for i, item := range cands {
 			cm, ok := item.(map[string]any)
@@ -370,6 +372,7 @@ func sanitizeConfigJSONForAPI(cfg string) string {
 			}
 			delete(cm, "api_key")
 			delete(cm, "api_key_enc")
+			delete(cm, "api_key_decrypt_failed")
 			cands[i] = cm
 		}
 		m["ha_candidates"] = cands

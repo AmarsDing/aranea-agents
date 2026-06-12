@@ -31,6 +31,8 @@ const (
 	defaultMaxResults = 8
 	defaultFetchTop   = 5
 	defaultTimeoutSec = 15
+
+	maxSearchResponseBytes = 4 << 20 // 4 MB
 )
 
 // ConfigFromMap builds Config from merged tool config_json (catalog + agent override).

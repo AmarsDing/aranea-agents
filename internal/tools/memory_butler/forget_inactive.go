@@ -28,11 +28,11 @@ func newForgetInactiveTool(deps Deps) trpctool.Tool {
 		}
 		threshold := input.InactiveThresholdDays
 		if threshold <= 0 {
-			threshold = 30
+			threshold = defaultInactiveThresholdDays
 		}
 		cutoff := time.Now().UTC().AddDate(0, 0, -threshold)
 
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", 500, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", defaultFactListLimit, 0)
 		if err != nil {
 			return forgetInactiveOutput{}, err
 		}
@@ -49,6 +49,8 @@ func newForgetInactiveTool(deps Deps) trpctool.Tool {
 			}
 			updatedAt := jsonutil.IfaceStr(m, "updated_at")
 			if updatedAt == "" {
+				// No updated_at means the fact was never updated — treat as inactive.
+				candidates = append(candidates, factID)
 				continue
 			}
 			t, parseErr := time.Parse(time.RFC3339, updatedAt)

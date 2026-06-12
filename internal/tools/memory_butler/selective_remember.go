@@ -53,7 +53,7 @@ func newSelectiveRememberTool(deps Deps) trpctool.Tool {
 			if contentLower == existing {
 				return selectiveRememberOutput{Remembered: false, Reason: "redundant with existing memory"}, nil
 			}
-			if len(contentLower) > 20 && len(existing) > 20 {
+			if len(contentLower) > minLengthForSubstringCheck && len(existing) > minLengthForSubstringCheck {
 				if strings.Contains(contentLower, existing) || strings.Contains(existing, contentLower) {
 					return selectiveRememberOutput{Remembered: false, Reason: "redundant with existing memory"}, nil
 				}

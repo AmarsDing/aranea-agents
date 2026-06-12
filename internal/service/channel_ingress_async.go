@@ -10,11 +10,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"aranea-agents/pkg/apierror"
 )
 
 const (
@@ -72,7 +69,8 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 			h.markTurnJobByEvent(ctx, biz.JobEventFail, err.Error(), "", "")
 			return err
 		}
-	case ltCfg.AsyncCronTaskID != "" && h.cron != nil:
+	case errors.Is(resolveErr, biz.ErrAsyncTargetNotConfigured) && ltCfg.AsyncCronTaskID != "" && h.cron != nil:
+		// No graph target configured; fall back to cron if available.
 		targetType = "cron"
 		targetID = ltCfg.AsyncCronTaskID
 		run, cerr := h.cron.TriggerCronTask(ctx, targetID)
@@ -82,8 +80,8 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		}
 		asyncID = strings.TrimSpace(run.ID)
 	default:
-		h.markTurnJobByEvent(ctx, biz.JobEventFail, "async target not configured", "", "")
-		return apierror.BadRequest("CHANNEL", "no graph_id or cron_task_id configured")
+		h.markTurnJobByEvent(ctx, biz.JobEventFail, resolveErr.Error(), "", "")
+		return resolveErr
 	}
 
 	h.markTurnJobByEvent(ctx, biz.JobEventAsyncQueue, "", "", "")
@@ -123,8 +121,11 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 	jobID := channelTurnJobIDFromContext(ctx)
 	chCopy := chRow
 	evCopy := ev
-	watchCtx, cancel := context.WithTimeout(appctx.Ctx(), asyncWatchTimeout)
-	safego.Go(appctx.Ctx(), "channel.async.graph.watch", func() {
+	// Use context.WithoutCancel(ctx) so the watch outlives the HTTP request
+	// but is still cancelled when the parent process shuts down (unlike appctx.Ctx()
+	// which is a background context that never cancels).
+	watchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), asyncWatchTimeout)
+	safego.Go(context.WithoutCancel(ctx), "channel.async.graph.watch", func() {
 		defer cancel()
 		ch, unsub := h.eventBus.Subscribe(event.SubscribeOptions{
 			SessionID:  sessionID,
@@ -138,6 +139,10 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 				return
 			case env, ok := <-ch:
 				if !ok {
+					// EventBus closed the subscription channel (e.g., session deleted).
+					// Must transition the TurnJob to a terminal state to prevent
+					// it from being stuck in async_queued forever.
+					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New("event bus subscription closed"))
 					return
 				}
 				if env.Type == event.EnvelopeTypeGraphNodeError {
@@ -173,8 +178,8 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 	jobID := channelTurnJobIDFromContext(ctx)
 	chCopy := chRow
 	evCopy := ev
-	watchCtx, cancel := context.WithTimeout(appctx.Ctx(), asyncWatchTimeout)
-	safego.Go(appctx.Ctx(), "channel.async.cron.watch", func() {
+	watchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), asyncWatchTimeout)
+	safego.Go(context.WithoutCancel(ctx), "channel.async.cron.watch", func() {
 		defer cancel()
 		ticker := time.NewTicker(asyncCronPollInterval)
 		defer ticker.Stop()
@@ -186,6 +191,11 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 			case <-ticker.C:
 				run, err := h.cron.GetTaskRun(asyncWatchPersistCtx(ctx), runID)
 				if err != nil {
+					h.lg.Warn("Cron 任务状态查询失败",
+						loggateway.StepID("channel.async.cron_get_failed"),
+						loggateway.Str("run_id", runID),
+						loggateway.Err(err),
+					)
 					continue
 				}
 				switch strings.ToLower(strings.TrimSpace(run.Status)) {

@@ -19,40 +19,25 @@ import (
 // MetadataRecorder persists reconnect timestamps into mcp_server.metadata_json.
 type MetadataRecorder func(ctx context.Context, serverKey string, at time.Time)
 
-var (
-	mu               sync.RWMutex
+// Observer holds the dependencies for MCP reconnect telemetry.
+// Construct via NewObserver and use ObserverForServer method instead of
+// the package-level SetBus/SetMetadataRecorder functions.
+type Observer struct {
 	bus              event.Bus
 	metadataRecorder MetadataRecorder
-)
-
-// SetBus configures the event bus used for MCP reconnect envelopes.
-func SetBus(b event.Bus) {
-	mu.Lock()
-	bus = b
-	mu.Unlock()
 }
 
-// SetMetadataRecorder configures optional persistence of last_reconnect_at / reconnect_count.
-func SetMetadataRecorder(rec MetadataRecorder) {
-	mu.Lock()
-	metadataRecorder = rec
-	mu.Unlock()
-}
-
-func currentBus() event.Bus {
-	mu.RLock()
-	defer mu.RUnlock()
-	return bus
-}
-
-func currentMetadataRecorder() MetadataRecorder {
-	mu.RLock()
-	defer mu.RUnlock()
-	return metadataRecorder
+// NewObserver creates an Observer with the given dependencies.
+func NewObserver(bus event.Bus, rec MetadataRecorder) *Observer {
+	return &Observer{bus: bus, metadataRecorder: rec}
 }
 
 // ObserverForServer returns a ReconnectObserver for the given MCP server key.
-func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
+func (o *Observer) ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
+	return o.buildObserver(serverKey)
+}
+
+func (o *Observer) buildObserver(serverKey string) trpcmcp.ReconnectObserver {
 	serverKey = strings.TrimSpace(serverKey)
 	return func(ctx context.Context, ev trpcmcp.ReconnectEvent) {
 		outcome := "failed"
@@ -67,8 +52,7 @@ func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
 		}
 		metrics.MCPSessionReconnectTotal.WithLabelValues(name, outcome).Inc()
 
-		b := currentBus()
-		if b != nil {
+		if o.bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeMCPSessionReconnect, "mcp", "")
 			env.Channel = "monitor"
 			env.Metadata = map[string]any{
@@ -81,19 +65,57 @@ func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
 			if ev.Err != nil {
 				env.Metadata["error"] = ev.Err.Error()
 			}
-			b.Publish(ctx, env)
+			o.bus.Publish(ctx, env)
 		}
 
-		if rec := currentMetadataRecorder(); rec != nil {
+		if o.metadataRecorder != nil {
 			at := time.Now().UTC()
 			key := name
 			safego.Go(ctx, "mcp.reconnect_metadata", func() {
 				metaCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				rec(metaCtx, key, at)
+				o.metadataRecorder(metaCtx, key, at)
 			})
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Legacy package-level API (deprecated — use NewObserver + Observer.ObserverForServer instead)
+// ---------------------------------------------------------------------------
+
+var (
+	mu               sync.RWMutex
+	bus              event.Bus
+	metadataRecorder MetadataRecorder
+)
+
+// SetBus configures the event bus used for MCP reconnect envelopes.
+// Deprecated: Use NewObserver instead.
+func SetBus(b event.Bus) {
+	mu.Lock()
+	bus = b
+	mu.Unlock()
+}
+
+// SetMetadataRecorder configures optional persistence of last_reconnect_at / reconnect_count.
+// Deprecated: Use NewObserver instead.
+func SetMetadataRecorder(rec MetadataRecorder) {
+	mu.Lock()
+	metadataRecorder = rec
+	mu.Unlock()
+}
+
+// ObserverForServer returns a ReconnectObserver for the given MCP server key.
+// This is the legacy package-level function that uses global state.
+// Deprecated: Use NewObserver().ObserverForServer() instead.
+func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
+	mu.RLock()
+	b := bus
+	rec := metadataRecorder
+	mu.RUnlock()
+	o := &Observer{bus: b, metadataRecorder: rec}
+	return o.buildObserver(serverKey)
 }
 
 // DefaultSessionReconnectMax returns the default max reconnect attempts for network transports.

@@ -14,6 +14,7 @@ type Deps struct {
 	Analytics     *biz.ExperienceAnalyticsUsecase
 	MemoryAdmin   *biz.MemoryAdminUsecase
 	Embedder      skill.SkillEmbedder
+	// EventBus is reserved for future event-driven memory operations.
 	EventBus      contract.Bus
 	Agents        biz.AgentRuntimeSettingsRepo
 	LG            loggateway.Logger

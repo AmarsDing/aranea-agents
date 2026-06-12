@@ -84,6 +84,14 @@ func (h *ChannelIngress) ensureChannelSession(
 				return "", cerr
 			}
 			if _, uerr := h.channels.UpdatePeerSessionID(ctx, chRow.ID, peerKey, sessionID); uerr != nil {
+				// Clean up the orphaned session to prevent accumulation.
+				if derr := h.sessions.Delete(ctx, sessionID); derr != nil {
+					h.lg.Warn("ensureChannelSession: 清理孤儿 session 失败",
+						loggateway.StepID("channel.session.orphan_cleanup_failed"),
+						loggateway.Str("orphaned_session_id", sessionID),
+						loggateway.Err(derr),
+					)
+				}
 				return "", uerr
 			}
 			return sessionID, nil

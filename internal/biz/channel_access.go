@@ -45,6 +45,10 @@ func ParseChannelAccessPolicy(configJSON string) (ChannelAccessPolicy, error) {
 //   - Empty allowlist on a dimension → that dimension does not restrict.
 //   - Non-empty allowed_user_ids → sender must match one listed ID.
 //   - Non-empty allowed_group_ids → group chats must match one listed chat/conversation ID.
+//   - When both allowed_user_ids and allowed_group_ids are non-empty, BOTH conditions
+//     must be satisfied (AND semantics): the sender must be in the user list AND the
+//     group must be in the group list. This is stricter than OR but prevents
+//     unauthorized users from triggering agents in allowed groups.
 //   - require_mention → group chats must carry a platform @ mention (Feishu/钉钉等).
 //   - Sentinel "0" in a list → deny all on that dimension (MuseBot compat).
 func (p ChannelAccessPolicy) Allows(in InboundAccessContext) (bool, string) {

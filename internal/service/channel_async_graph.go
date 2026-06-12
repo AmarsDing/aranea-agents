@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/team"
 	"aranea-agents/pkg/apierror"
 
 	"github.com/google/uuid"
@@ -66,24 +65,15 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		}
 		return "graph", target.GraphID, strings.TrimSpace(execID), nil
 	case "team_graph":
-		teamRow, terr := h.channels.GetTeamByID(ctx, target.TeamID)
-		if terr != nil {
-			return "", "", "", terr
+		if h.teamCompiler == nil {
+			return "", "", "", apierror.BadRequest("CHANNEL", "team compiler not configured")
 		}
-		def, perr := team.ParseDefinition(teamRow.DefinitionJSON)
-		if perr != nil {
-			return "", "", "", perr
-		}
-		agentKey := h.channels.AgentKeyResolver(ctx)
-		ct, cerr := team.CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, agentKey, nil, h.lg)
+		buildConfig, cerr := h.teamCompiler.Compile(ctx, target.TeamID)
 		if cerr != nil {
 			return "", "", "", cerr
 		}
-		graphID := strings.TrimSpace(team.LinkedGraphIDFromDefinition(teamRow.DefinitionJSON))
-		if graphID == "" {
-			graphID = "team-" + strings.TrimSpace(teamRow.ID)
-		}
-		execID, gerr := h.graphs.ExecuteGraphBuildConfig(ctx, graphID, sessionID, ct.GraphBuildConfig, initialState)
+		graphID := "team-" + strings.TrimSpace(target.TeamID)
+		execID, gerr := h.graphs.ExecuteGraphBuildConfig(ctx, graphID, sessionID, buildConfig, initialState)
 		if gerr != nil {
 			return "", "", "", gerr
 		}

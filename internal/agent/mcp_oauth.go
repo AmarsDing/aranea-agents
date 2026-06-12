@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -31,14 +33,34 @@ const oauth2TokenEarlyRefresh = 30 * time.Second
 // growth in multi-tenant scenarios with many distinct OAuth2 credentials.
 const oauth2CacheMaxEntries = 256
 
+// oauth2CacheCleanupInterval controls how often expired entries are evicted.
+const oauth2CacheCleanupInterval = 5 * time.Minute
+
 type oauth2CachedToken struct {
 	AccessToken  string
 	RefreshToken string // non-empty when obtained via refresh_token grant
 	ExpiresAt    time.Time
 }
 
+// oauth2LastCleanup tracks the last cache cleanup time for lazy eviction.
+var oauth2LastCleanup time.Time
+
 func init() {
 	oauth2Cache = make(map[string]*oauth2CachedToken)
+	oauth2LastCleanup = time.Now()
+}
+
+// maybeEvictOAuth2CacheLocked performs lazy cleanup: evicts expired and overflow
+// entries if the cleanup interval has elapsed since the last eviction.
+// Must be called with oauth2CacheMu held for writing.
+// This avoids background goroutines while keeping memory bounded.
+func maybeEvictOAuth2CacheLocked() {
+	if time.Since(oauth2LastCleanup) < oauth2CacheCleanupInterval {
+		return
+	}
+	evictExpiredOAuth2CacheLocked()
+	evictOverflowOAuth2CacheLocked()
+	oauth2LastCleanup = time.Now()
 }
 
 // oauth2HTTPClient is a shared HTTP client for all OAuth2 token requests.
@@ -49,7 +71,9 @@ var oauth2HTTPClient = &http.Client{
 }
 
 func oauth2CacheKey(tokenURL, clientID string) string {
-	return tokenURL + "|" + clientID
+	// Use SHA256 to avoid collisions from "|" in tokenURL or clientID.
+	h := sha256.Sum256([]byte(tokenURL + "\x00" + clientID))
+	return hex.EncodeToString(h[:])
 }
 
 func ResolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
@@ -124,8 +148,7 @@ func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpconfig.AuthConfig
 			AccessToken: token,
 			ExpiresAt:   expiresAt,
 		}
-		evictExpiredOAuth2CacheLocked()
-		evictOverflowOAuth2CacheLocked()
+		maybeEvictOAuth2CacheLocked()
 		oauth2CacheMu.Unlock()
 		return token, nil
 	})
@@ -205,8 +228,7 @@ func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (st
 			cached.RefreshToken = old.RefreshToken
 		}
 		oauth2Cache[cacheKey] = cached
-		evictExpiredOAuth2CacheLocked()
-		evictOverflowOAuth2CacheLocked()
+		maybeEvictOAuth2CacheLocked()
 		oauth2CacheMu.Unlock()
 		return token, nil
 	})

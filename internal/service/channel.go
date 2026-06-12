@@ -290,11 +290,12 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 	}
 	if biz.RoutingTargetChanged(current.ConfigJSON, c.ConfigJSON) {
 		if _, err := s.uc.DeletePeerBindingsByChannelID(ctx, c.ID); err != nil {
-			s.lg.Warn("删除渠道 Peer 绑定失败",
+			s.lg.Error("删除渠道 Peer 绑定失败，中止 runtime reload",
 				loggateway.StepID("channel.peer.delete_failed"),
 				loggateway.Str("channel_id", c.ID),
 				loggateway.Err(err),
 			)
+			return nil, err
 		}
 	}
 	s.reloadRuntime(ctx)

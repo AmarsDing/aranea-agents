@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
@@ -60,7 +61,7 @@ func (u *ChannelTurnJobUsecase) TransitionByEvent(ctx context.Context, id, event
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return nil
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
 	}
 	job, err := u.jobs.GetByID(ctx, id)
 	if err != nil {
@@ -81,7 +82,7 @@ func (u *ChannelTurnJobUsecase) updateStatus(ctx context.Context, id, status, er
 		return errChannelTurnJobNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return nil
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
 	}
 	return u.jobs.UpdateStatus(ctx, id, status, errMsg, previewMsgID, contentPreview)
 }
@@ -91,7 +92,7 @@ func (u *ChannelTurnJobUsecase) UpdateAsyncTarget(ctx context.Context, id, targe
 		return errChannelTurnJobNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return nil
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
 	}
 	return u.jobs.UpdateAsyncTarget(ctx, id, targetType, targetID)
 }
@@ -105,19 +106,22 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 	channelID = strings.TrimSpace(channelID)
 	sessionID = strings.TrimSpace(sessionID)
 	if channelID == "" {
-		return nil
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "channel_id is required")
 	}
 	jobs, err := u.jobs.ListActiveBySession(ctx, channelID, sessionID)
 	if err != nil {
 		return err
 	}
-	var firstErr error
+	var errs []error
 	for _, job := range jobs {
-		if err := u.TransitionByEvent(ctx, job.ID, JobEventCancel, "cancelled by session cleanup", "", ""); err != nil && firstErr == nil {
-			firstErr = err
+		if err := u.TransitionByEvent(ctx, job.ID, JobEventCancel, "cancelled by session cleanup", "", ""); err != nil {
+			errs = append(errs, err)
 		}
 	}
-	return firstErr
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 // Cancel cancels a specific job by ID using the state machine.

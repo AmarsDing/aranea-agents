@@ -7,14 +7,14 @@ import (
 
 func TestApplyHealth_OKClearsError(t *testing.T) {
 	m := Parse(`{"last_error_message":"old","health_error_since":"2026-05-21T00:00:00Z"}`)
-	st := ApplyHealth(m, "ok", true, "", time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC))
+	updated, st := ApplyHealth(m, "ok", true, "", time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC))
 	if st != "active" {
 		t.Fatalf("status=%q", st)
 	}
-	if m[KeyLastErrorMessage] != "" {
-		t.Fatalf("last_error_message=%v", m[KeyLastErrorMessage])
+	if updated[KeyLastErrorMessage] != "" {
+		t.Fatalf("last_error_message=%v", updated[KeyLastErrorMessage])
 	}
-	if _, ok := m[KeyHealthErrorSince]; ok {
+	if _, ok := updated[KeyHealthErrorSince]; ok {
 		t.Fatal("expected health_error_since cleared")
 	}
 }

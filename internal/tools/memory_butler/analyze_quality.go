@@ -15,10 +15,10 @@ type analyzeMemoryQualityInput struct {
 type analyzeMemoryQualityOutput struct {
 	HitRate          float64 `json:"hit_rate"`
 	MissRate         float64 `json:"miss_rate"`
-	RedundancyScore  float64 `json:"redundancy_score"`
+	RedundancyScore  float64 `json:"redundancy_score"`   // TODO(debt): not yet computed, always 0
 	MisalignedCount  int     `json:"misaligned_count"`
-	InactiveCount    int     `json:"inactive_count"`
-	PredictableCount int     `json:"predictable_count"`
+	InactiveCount    int     `json:"inactive_count"`     // TODO(debt): not yet computed, always 0
+	PredictableCount int     `json:"predictable_count"`  // TODO(debt): not yet computed, always 0
 	HealthScore      float64 `json:"health_score"`
 }
 

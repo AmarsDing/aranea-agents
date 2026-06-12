@@ -51,17 +51,15 @@ type MCPServerUserCredentialRepo interface {
 }
 
 func (u *MCPServerUsecase) ListUserCredentials(ctx context.Context, mcpServerID, userID string) ([]MCPServerUserCredential, error) {
-	repo, err := u.userCredRepo()
-	if err != nil {
-		return nil, err
+	if u.credRepo == nil {
+		return nil, apierror.Internal("MCP_SERVER", "mcp user credential repo not configured")
 	}
-	return sanitizeMCPUserCredentials(repo.ListMCPServerUserCredentials(ctx, strings.TrimSpace(mcpServerID), strings.TrimSpace(userID)))
+	return sanitizeMCPUserCredentials(u.credRepo.ListMCPServerUserCredentials(ctx, strings.TrimSpace(mcpServerID), strings.TrimSpace(userID)))
 }
 
 func (u *MCPServerUsecase) UpsertUserCredential(ctx context.Context, mcpServerID, userID string, in MCPServerUserCredentialInput) (MCPServerUserCredential, error) {
-	repo, err := u.userCredRepo()
-	if err != nil {
-		return MCPServerUserCredential{}, err
+	if u.credRepo == nil {
+		return MCPServerUserCredential{}, apierror.Internal("MCP_SERVER", "mcp user credential repo not configured")
 	}
 	mcpServerID = strings.TrimSpace(mcpServerID)
 	userID = strings.TrimSpace(userID)
@@ -73,6 +71,10 @@ func (u *MCPServerUsecase) UpsertUserCredential(ctx context.Context, mcpServerID
 	if secret == "" {
 		return MCPServerUserCredential{}, apierror.BadRequest("MCP_SERVER", "secret is required")
 	}
+	// Verify the MCP server exists before creating a credential.
+	if _, err := u.repo.GetMCPServer(ctx, mcpServerID); err != nil {
+		return MCPServerUserCredential{}, apierror.BadRequest("MCP_SERVER", "mcp server not found")
+	}
 	secretRef, err := u.crypto.EncryptChannelSecretRef(ctx, secret)
 	if err != nil {
 		return MCPServerUserCredential{}, err
@@ -81,7 +83,7 @@ func (u *MCPServerUsecase) UpsertUserCredential(ctx context.Context, mcpServerID
 	if status == "" {
 		status = "active"
 	}
-	out, err := repo.UpsertMCPServerUserCredential(ctx, MCPServerUserCredential{
+	out, err := u.credRepo.UpsertMCPServerUserCredential(ctx, MCPServerUserCredential{
 		ID:            uuid.NewString(),
 		MCPServerID:   mcpServerID,
 		UserID:        userID,
@@ -97,11 +99,10 @@ func (u *MCPServerUsecase) UpsertUserCredential(ctx context.Context, mcpServerID
 }
 
 func (u *MCPServerUsecase) DeleteUserCredential(ctx context.Context, mcpServerID, userID, credentialKey string) error {
-	repo, err := u.userCredRepo()
-	if err != nil {
-		return err
+	if u.credRepo == nil {
+		return apierror.Internal("MCP_SERVER", "mcp user credential repo not configured")
 	}
-	return repo.DeleteMCPServerUserCredential(ctx, strings.TrimSpace(mcpServerID), strings.TrimSpace(userID), strings.TrimSpace(credentialKey))
+	return u.credRepo.DeleteMCPServerUserCredential(ctx, strings.TrimSpace(mcpServerID), strings.TrimSpace(userID), strings.TrimSpace(credentialKey))
 }
 
 // ResolveUserAuthHeaders merges per-user credential into headers when require_user_credentials is set.
@@ -117,16 +118,15 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 	if userID == "" {
 		return headers, apierror.BadRequest("MCP_SERVER", "user credentials required but session user_id is empty")
 	}
-	repo, err := u.userCredRepo()
-	if err != nil {
-		return headers, err
+	if u.credRepo == nil {
+		return headers, apierror.Internal("MCP_SERVER", "mcp user credential repo not configured")
 	}
 	serverKey = strings.TrimSpace(serverKey)
 	row, err := u.findServerByKey(ctx, serverKey)
 	if err != nil {
 		return headers, err
 	}
-	creds, err := repo.ListMCPServerUserCredentials(ctx, row.ID, userID)
+	creds, err := u.credRepo.ListMCPServerUserCredentials(ctx, row.ID, userID)
 	if err != nil {
 		return headers, err
 	}
@@ -134,21 +134,38 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 	if keyName == "" {
 		keyName = "authorization"
 	}
-	credKey := strings.ToLower(keyName)
-	if credKey == "authorization" || credKey == "api_key" || credKey == "bearer" {
-		// prefer explicit credential_key match, else first configured row
-	}
+
+	// Two-pass selection: first try exact credential_key match, then fallback.
 	var picked *MCPServerUserCredential
+	// Pass 1: exact match on credential_key
 	for i := range creds {
 		if !creds[i].Configured {
 			continue
 		}
-		if strings.EqualFold(creds[i].CredentialKey, keyName) || strings.EqualFold(creds[i].CredentialKey, "authorization") {
+		if strings.EqualFold(creds[i].CredentialKey, keyName) {
 			picked = &creds[i]
 			break
 		}
-		if picked == nil {
-			picked = &creds[i]
+	}
+	// Pass 2: fallback to "authorization" if keyName is not "authorization"
+	if picked == nil && !strings.EqualFold(keyName, "authorization") {
+		for i := range creds {
+			if !creds[i].Configured {
+				continue
+			}
+			if strings.EqualFold(creds[i].CredentialKey, "authorization") {
+				picked = &creds[i]
+				break
+			}
+		}
+	}
+	// Pass 3: first configured credential as last resort
+	if picked == nil {
+		for i := range creds {
+			if creds[i].Configured {
+				picked = &creds[i]
+				break
+			}
 		}
 	}
 	if picked == nil {
@@ -178,16 +195,6 @@ func (u *MCPServerUsecase) findServerByKey(ctx context.Context, serverKey string
 	return row, nil
 }
 
-func (u *MCPServerUsecase) userCredRepo() (MCPServerUserCredentialRepo, error) {
-	if u == nil {
-		return nil, apierror.Internal("MCP_SERVER", "mcp usecase not configured")
-	}
-	repo, ok := u.repo.(MCPServerUserCredentialRepo)
-	if !ok || repo == nil {
-		return nil, apierror.Internal("MCP_SERVER", "mcp user credential repo not configured")
-	}
-	return repo, nil
-}
 
 func sanitizeMCPUserCredentials(items []MCPServerUserCredential, err error) ([]MCPServerUserCredential, error) {
 	if err != nil {

@@ -92,9 +92,10 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeFederatedRetriever,
 	ProvideKnowledgeSearchDeps,
 	NewSkillDBRepository,
-	// MemoryLLMExtractor and MemoryEnhancedExtractor are provided by
-	// provideMemoryLLMExtractor / provideMemoryEnhancedExtractor in wire.go
-	// (they need os.Getenv for LLMDisabled, which is not injectable here).
+	// MemoryLLMExtractor and MemoryEnhancedExtractor use Config structs
+	// and are provided directly here (no custom wire.go provider needed).
+	NewMemoryLLMExtractor,
+	NewMemoryEnhancedExtractor,
 	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
 	wire.Bind(new(biz.EnhancedTextExtractor), new(*MemoryEnhancedExtractor)),
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),

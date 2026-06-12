@@ -88,13 +88,13 @@ func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channe
 				defer release()
 			}
 			if err := h.dispatchAsyncInbound(procCtx, chRow, ev, platform, ltCfg); err != nil {
-			if replyErr := h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err); replyErr != nil {
-				h.lg.Warn("异步回复投递失败",
-					loggateway.StepID("channel.async.reply_failed"),
-					loggateway.Err(replyErr),
-				)
+				if replyErr := h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err); replyErr != nil {
+					h.lg.Warn("异步回复投递失败",
+						loggateway.StepID("channel.async.reply_failed"),
+						loggateway.Err(replyErr),
+					)
+				}
 			}
-		}
 		})
 		return nil
 	}

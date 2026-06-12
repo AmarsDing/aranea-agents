@@ -51,8 +51,15 @@
 |------|------|
 | 红线 #16 | 禁止 `log/slog`，统一使用 `pkg/loggateway.Logger` |
 | Global() deprecated | 新代码必须通过构造注入 `loggateway.Logger`，禁止使用 `loggateway.Global()` |
-| CtxFlowLog* | 遗留 API，新代码使用 `loggateway.Logger` + `With()` |
+| CtxFlowLog* | 遗留 API（`WithFlowLogger`/`FlowLoggerFromContext`/`NewFlowLogger`），新代码使用 `loggateway.Logger` + `With()` |
 | 运行时日志 | trpc-agent-go 运行时日志已通过 RuntimeLogAdapter 桥接到 Pipeline |
+| 构造注入 | struct 通过 `lg loggateway.Logger` 参数注入，用 `lg.With()` 预设字段 |
+| 结构化字段 | 使用 `loggateway.StepID`/`SessionID`/`RunID`/`Err` 等，禁止拼接字符串到 msg |
+| 错误记录 | 使用 `loggateway.Err(err)`（自动解包错误链），不要用 `Str("error", err.Error())` |
+| 测试 Logger | 优先使用 `loggateway.NewNoop()`，避免 `loggateway.Global()` |
+| 前端日志 | 无框架，仅 `console.warn/info`，禁止 `console.log` |
+
+> 详细规则见 `project_rules.md` §日志架构约束
 
 ## 模块关联（开发前必读）
 

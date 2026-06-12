@@ -15,12 +15,12 @@ import (
 
 type modelRegistryApplyBackend struct {
 	data *Data
-	llm  biz.LlmProviderModelReaderWriter
+	llm  biz.LlmProviderModelApplyBackend
 }
 
 var _ modelregistry.ApplyBackend = (*modelRegistryApplyBackend)(nil)
 
-func NewModelRegistryApplyBackend(d *Data, llm biz.LlmProviderModelReaderWriter) modelregistry.ApplyBackend {
+func NewModelRegistryApplyBackend(d *Data, llm biz.LlmProviderModelApplyBackend) modelregistry.ApplyBackend {
 	return &modelRegistryApplyBackend{data: d, llm: llm}
 }
 

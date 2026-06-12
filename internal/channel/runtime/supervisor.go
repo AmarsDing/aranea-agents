@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 const (
 	runtimeReconnectInitial = time.Second
 	runtimeReconnectMax     = 5 * time.Minute
+	runtimeLeaseRenewRetry  = 3
 )
 
 func (m *Manager) runSupervised(
@@ -47,6 +49,7 @@ func (m *Manager) runSupervised(
 	if backoff <= 0 {
 		backoff = runtimeReconnectInitial
 	}
+	initialBackoff := backoff
 	for {
 		if runCtx.Err() != nil {
 			return
@@ -69,6 +72,9 @@ func (m *Manager) runSupervised(
 			)
 		}
 		setChannelConnection(ch.ID, false)
+		// Reset backoff after a successful run so that transient disconnects
+		// don't accumulate to the max backoff ceiling.
+		backoff = initialBackoff
 		if runCtx.Err() != nil {
 			return
 		}
@@ -78,7 +84,11 @@ func (m *Manager) runSupervised(
 		arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, mode, "disconnect").Inc()
 		arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, mode, "attempt").Inc()
 
-		timer := time.NewTimer(backoff)
+		// Add jitter to avoid thundering herd when multiple channels
+		// disconnect simultaneously (e.g., platform-side restart).
+		jitter := time.Duration(rand.Int64N(int64(backoff) / 2))
+		sleepDuration := backoff/2 + jitter
+		timer := time.NewTimer(sleepDuration)
 		select {
 		case <-runCtx.Done():
 			timer.Stop()
@@ -105,6 +115,7 @@ func (m *Manager) renewLeaseLoop(ctx context.Context, leaseKey, platform string,
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	consecutiveFailures := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -112,11 +123,26 @@ func (m *Manager) renewLeaseLoop(ctx context.Context, leaseKey, platform string,
 		case <-ticker.C:
 			renewed, err := m.leaseRepo.RenewRuntimeLease(ctx, leaseKey, m.ownerID, time.Now().UTC().Add(ttl))
 			if err != nil || !renewed {
+				consecutiveFailures++
 				if err != nil {
 					arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, "lease", "renew_error").Inc()
 				}
-				cancelRun()
-				return
+				if consecutiveFailures >= runtimeLeaseRenewRetry {
+					m.lg.Warn("渠道租约续期连续失败，取消连接器",
+						loggateway.StepID("channel.runtime.lease_renew_exhausted"),
+						loggateway.Str("platform", platform),
+						loggateway.Int("failures", consecutiveFailures),
+					)
+					cancelRun()
+					return
+				}
+				m.lg.Warn("渠道租约续期失败，将重试",
+					loggateway.StepID("channel.runtime.lease_renew_retry"),
+					loggateway.Str("platform", platform),
+					loggateway.Int("failures", consecutiveFailures),
+				)
+			} else {
+				consecutiveFailures = 0
 			}
 		}
 	}

@@ -26,10 +26,10 @@ func newDeduplicateMemoriesTool(deps Deps) trpctool.Tool {
 		}
 		threshold := input.SimThreshold
 		if threshold <= 0 {
-			threshold = 0.8
+			threshold = defaultSimilarityThreshold
 		}
 
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", 500, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", defaultFactListLimit, 0)
 		if err != nil {
 			return deduplicateMemoriesOutput{}, err
 		}
@@ -134,8 +134,9 @@ func stringSimilarity(a, b string) float64 {
 
 func trigramSet(s string) map[string]bool {
 	set := make(map[string]bool)
-	for i := 0; i+3 <= len(s); i++ {
-		set[s[i:i+3]] = true
+	runes := []rune(s)
+	for i := 0; i+3 <= len(runes); i++ {
+		set[string(runes[i:i+3])] = true
 	}
 	return set
 }

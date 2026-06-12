@@ -2,6 +2,7 @@ package security
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -179,7 +180,11 @@ func looksLikePath(s string) bool {
 func normalizePath(p string) string {
 	p = strings.ReplaceAll(p, "\\", "/")
 	if strings.HasPrefix(p, "~/") {
-		p = p[1:]
+		if home, err := os.UserHomeDir(); err == nil {
+			p = home + p[1:]
+		} else {
+			p = p[1:]
+		}
 	}
 	p = strings.ReplaceAll(filepath.Clean(p), "\\", "/")
 	if !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, ".") {

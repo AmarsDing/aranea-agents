@@ -13,8 +13,12 @@ type ChannelAsyncGraphTarget struct {
 	TeamID     string
 }
 
+// ErrAsyncTargetNotConfigured indicates that no async graph target is configured.
+var ErrAsyncTargetNotConfigured = apierror.BadRequest("CHANNEL", "channel async: no async_graph_id or async_team_id configured")
+
 // ResolveChannelAsyncGraphTarget picks async graph execution target from channel long-task config.
 // async_team_id takes precedence and uses the team compile path; async_graph_id uses stored graph.
+// Returns ErrAsyncTargetNotConfigured when neither is set.
 func ResolveChannelAsyncGraphTarget(cfg ChannelLongTaskConfig) (ChannelAsyncGraphTarget, error) {
 	teamID := strings.TrimSpace(cfg.AsyncTeamID)
 	if teamID != "" {
@@ -24,5 +28,5 @@ func ResolveChannelAsyncGraphTarget(cfg ChannelLongTaskConfig) (ChannelAsyncGrap
 	if graphID != "" {
 		return ChannelAsyncGraphTarget{TargetType: "graph", GraphID: graphID}, nil
 	}
-	return ChannelAsyncGraphTarget{}, apierror.BadRequest("CHANNEL", "channel async: no async_graph_id or async_team_id configured")
+	return ChannelAsyncGraphTarget{}, ErrAsyncTargetNotConfigured
 }

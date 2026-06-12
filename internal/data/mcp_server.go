@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformmcpserver"
+	"aranea-agents/internal/data/ent/platformmcpusercredential"
 	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -123,7 +124,7 @@ func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (b
 
 func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
 	m.UpdatedAt = nowRFC3339()
-	err := r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(m.ID).
+	saved, err := r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(m.ID).
 		SetServerKey(m.Key).
 		SetName(m.Name).
 		SetDescription(m.Description).
@@ -133,15 +134,28 @@ func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (b
 		SetConfigJSON(m.ConfigJSON).
 		SetMetadataJSON(m.MetadataJSON).
 		SetUpdatedAt(m.UpdatedAt).
-		Exec(ctx)
+		Save(ctx)
 	if err != nil {
 		return biz.MCPServer{}, err
 	}
-	return r.GetMCPServer(ctx, m.ID)
+	return entToBizMCP(saved), nil
 }
 
 func (r *mcpServerRepo) DeleteMCPServer(ctx context.Context, id string) error {
 	now := nowRFC3339()
+	// Cascade: soft-delete all user credentials belonging to this server.
+	_, credErr := r.data.RW().Write(ctx).PlatformMCPUserCredential.Update().
+		Where(
+			platformmcpusercredential.McpServerIDEQ(id),
+			platformmcpusercredential.DeletedAtEQ(""),
+		).
+		SetDeletedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if credErr != nil {
+		return credErr
+	}
+	// Soft-delete the server itself.
 	return r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").

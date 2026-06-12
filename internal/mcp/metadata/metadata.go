@@ -45,23 +45,44 @@ func Marshal(m map[string]any) (string, error) {
 	return string(b), nil
 }
 
-// ApplyHealth updates health_* keys and returns the row status to persist ("active" or "error").
-func ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) string {
-	if m == nil {
-		m = map[string]any{}
-	}
-	m[KeyHealthStatus] = healthStatus
-	m[KeyLastHealthAt] = at.UTC().Format(time.RFC3339)
+// ApplyHealth returns a new map with health_* keys updated and the row status to persist ("active" or "error").
+// The input map is not modified.
+func ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string) {
+	out := cloneMap(m)
+	out[KeyHealthStatus] = healthStatus
+	out[KeyLastHealthAt] = at.UTC().Format(time.RFC3339)
 	if ok {
-		m[KeyLastErrorMessage] = ""
-		delete(m, KeyHealthErrorSince)
-		return "active"
+		out[KeyLastErrorMessage] = ""
+		delete(out, KeyHealthErrorSince)
+		return out, "active"
 	}
-	m[KeyLastErrorMessage] = errMsg
-	if _, exists := m[KeyHealthErrorSince]; !exists || strings.TrimSpace(metaString(m[KeyHealthErrorSince])) == "" {
-		m[KeyHealthErrorSince] = at.UTC().Format(time.RFC3339)
+	out[KeyLastErrorMessage] = errMsg
+	if _, exists := out[KeyHealthErrorSince]; !exists || strings.TrimSpace(metaString(out[KeyHealthErrorSince])) == "" {
+		out[KeyHealthErrorSince] = at.UTC().Format(time.RFC3339)
 	}
-	return "error"
+	return out, "error"
+}
+
+// MarkHealthAlert returns a new map with last_health_alert_at set.
+// The input map is not modified.
+func MarkHealthAlert(m map[string]any, at time.Time) map[string]any {
+	out := cloneMap(m)
+	out[KeyLastHealthAlertAt] = at.UTC().Format(time.RFC3339)
+	return out
+}
+
+// ApplyReconnect returns a new map with reconnect_count incremented and last_reconnect_at set.
+// The input map is not modified.
+func ApplyReconnect(m map[string]any, at time.Time) map[string]any {
+	out := cloneMap(m)
+	out[KeyLastReconnectAt] = at.UTC().Format(time.RFC3339)
+	switch v := out[KeyReconnectCount].(type) {
+	case float64:
+		out[KeyReconnectCount] = v + 1
+	default:
+		out[KeyReconnectCount] = float64(1)
+	}
+	return out
 }
 
 func metaString(v any) string {
@@ -78,14 +99,6 @@ func ErrorSince(m map[string]any) string {
 		return ""
 	}
 	return metaString(m[KeyHealthErrorSince])
-}
-
-// MarkHealthAlert records that a sustained-health alert was emitted at at.
-func MarkHealthAlert(m map[string]any, at time.Time) {
-	if m == nil {
-		return
-	}
-	m[KeyLastHealthAlertAt] = at.UTC().Format(time.RFC3339)
 }
 
 // ShouldEmitHealthAlert returns true when error persisted longer than after and no recent alert.
@@ -112,18 +125,14 @@ func ShouldEmitHealthAlert(m map[string]any, now time.Time, after time.Duration)
 	return now.Sub(lt) >= after
 }
 
-// ApplyReconnect increments reconnect_count and sets last_reconnect_at.
-// reconnect_count is stored as float64 for consistency with JSON round-trip
-// (json.Unmarshal into map[string]any always produces float64 for numbers).
-func ApplyReconnect(m map[string]any, at time.Time) {
+// cloneMap returns a shallow copy of m.
+func cloneMap(m map[string]any) map[string]any {
 	if m == nil {
-		m = map[string]any{}
+		return map[string]any{}
 	}
-	m[KeyLastReconnectAt] = at.UTC().Format(time.RFC3339)
-	switch v := m[KeyReconnectCount].(type) {
-	case float64:
-		m[KeyReconnectCount] = v + 1
-	default:
-		m[KeyReconnectCount] = float64(1)
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
 	}
+	return out
 }

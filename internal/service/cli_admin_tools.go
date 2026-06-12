@@ -159,6 +159,7 @@ func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) 
 		Evolution: skillsButlerEvolutionAdapter{uc: o.evolution()},
 		Queries:   skillsButlerQueryAdapter{reader: o.skillStats()},
 		Analytics: skillsButlerAnalyticsAdapter{uc: o.expAnalytics(), agentID: ag.ID},
+		LG:        o.lg(),
 	})
 }
 

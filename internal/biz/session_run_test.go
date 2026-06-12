@@ -134,6 +134,19 @@ func (s *sessionRunRepoStub) ClearResumeClaim(_ context.Context, id string) erro
 	return nil
 }
 
+func (s *sessionRunRepoStub) TransitionPhase(_ context.Context, id, fromPhase, toPhase string) (bool, error) {
+	run, ok := s.runs[id]
+	if !ok {
+		return false, nil
+	}
+	if run.Phase != NormalizeSessionRunPhase(fromPhase) {
+		return false, nil
+	}
+	run.Phase = NormalizeSessionRunPhase(toPhase)
+	s.runs[id] = run
+	return true, nil
+}
+
 func (s *sessionRunRepoStub) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
 	return 0, nil
 }

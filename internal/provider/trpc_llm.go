@@ -70,7 +70,8 @@ func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConf
 				lg.Warn("模型 API 预检失败（不阻塞）", loggateway.StepID("provider.preflight_warn"), loggateway.Str("url", baseURL), loggateway.Err(probeErr))
 			} else {
 				// Drain and close body for proper connection reuse.
-				io.Copy(io.Discard, resp.Body)
+				// Limit to 1MB as defense against misbehaving servers.
+				io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 				resp.Body.Close()
 				lg.Info("模型 API 预检通过", loggateway.StepID("provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
 			}

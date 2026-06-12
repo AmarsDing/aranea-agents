@@ -11,6 +11,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
+const maxContentBytesPerSource = 12000
+
 // researchInput is the LLM-facing schema for web_research.
 type researchInput struct {
 	Query string `json:"query" jsonschema:"description=Natural-language search query,required"`
@@ -81,7 +83,7 @@ func NewTool(cfg Config, lg loggateway.Logger) (trpctool.CallableTool, error) {
 				Title:   h.Title,
 				URL:     h.URL,
 				Snippet: h.Snippet,
-				Content: truncateUTF8(h.Content, 12000),
+				Content: truncateUTF8(h.Content, maxContentBytesPerSource),
 				Score:   h.Score,
 			})
 		}

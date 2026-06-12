@@ -26,7 +26,13 @@ func IsMCPToolInvocation(toolName string, result any) bool {
 		return true
 	}
 	if strings.HasPrefix(key, "mcp_") && strings.Contains(key, "__") {
-		return true
+		// Validate: after "mcp_", there must be a non-empty server key before "__".
+		// This prevents false positives like "mcp___" or "mcp__something".
+		rest := key[len("mcp_"):]
+		sepIdx := strings.Index(rest, "__")
+		if sepIdx > 0 {
+			return true
+		}
 	}
 	if result != nil {
 		if mg, ok := result.(metaGetter); ok && mg.GetMeta() != nil {

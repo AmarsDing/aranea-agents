@@ -20,8 +20,12 @@ type UnifiedEvolutionRepo struct {
 // RowsAffected 批量更新）用 Ent 表达不便。待 Ent schema 补齐后可迁移。
 
 var (
-	_ biz.UnifiedEvolutionReader = (*UnifiedEvolutionRepo)(nil)
-	_ biz.UnifiedEvolutionWriter = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionCheckReader      = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionQueryReader      = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionMutationWriter   = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionExpirationWriter = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionReader           = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionWriter           = (*UnifiedEvolutionRepo)(nil)
 )
 
 func NewUnifiedEvolutionRepo(data *Data, lg loggateway.Logger) *UnifiedEvolutionRepo {

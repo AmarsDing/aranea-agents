@@ -20,11 +20,6 @@ import (
 
 var _ biz.TaskOrchestratorPort = (*TaskOrchestratorImpl)(nil)
 
-// SpiritSynthesisPort is a local port for synthesizing results.
-type SpiritSynthesisPort interface {
-	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
-}
-
 // TaskOrchestratorImpl implements biz.TaskOrchestratorPort.
 type TaskOrchestratorImpl struct {
 	spiritUC        *biz.SpiritTeamUsecase
@@ -34,7 +29,7 @@ type TaskOrchestratorImpl struct {
 	repo            biz.OrchestrationRepository
 	matcher         biz.AgentMatcherPort
 	deps            TRPCBuilderDeps
-	synthesis       SpiritSynthesisPort
+	synthesis       tools.SpiritSynthesisPort
 	checkpointSaver graph.CheckpointSaver
 	orchCache       *biz.OrchestrationCache
 	perfRepo        biz.AgentPerformanceRepository
@@ -52,7 +47,7 @@ func NewTaskOrchestratorImpl(
 	repo biz.OrchestrationRepository,
 	matcher biz.AgentMatcherPort,
 	deps TRPCBuilderDeps,
-	synthesis SpiritSynthesisPort,
+	synthesis tools.SpiritSynthesisPort,
 	checkpointSaver graph.CheckpointSaver,
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,

@@ -10,14 +10,17 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-// buildSQLInClause builds a comma-separated, quoted SQL IN clause from a string slice.
-// E.g. ["completed","failed"] → "'completed','failed'"
-func buildSQLInClause(statuses []string) string {
-	parts := make([]string, len(statuses))
+// buildSQLInPlaceholders builds parameterized IN clause placeholders and args.
+// E.g. buildSQLInPlaceholders(2, 0) → ("?,?", []any{"completed","failed"})
+// offset is the starting position for positional args (unused for ? placeholders).
+func buildSQLInPlaceholders(statuses []string) (string, []any) {
+	placeholders := make([]string, len(statuses))
+	args := make([]any, len(statuses))
 	for i, s := range statuses {
-		parts[i] = "'" + s + "'"
+		placeholders[i] = "?"
+		args[i] = s
 	}
-	return strings.Join(parts, ",")
+	return strings.Join(placeholders, ","), args
 }
 
 type channelTurnJobRepo struct {
@@ -74,8 +77,8 @@ func (r *channelTurnJobRepo) Create(ctx context.Context, job biz.ChannelTurnJob)
 	var actualID string
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
-		lockedStatusInClause := buildSQLInClause(biz.ChannelTurnJobIdempotentLockedStatuses)
-		_, execErr := e.ExecContext(txCtx, fmt.Sprintf(`
+		lockedPlaceholders, lockedArgs := buildSQLInPlaceholders(biz.ChannelTurnJobIdempotentLockedStatuses)
+		query := fmt.Sprintf(`
 INSERT INTO channel_turn_job (
   id, channel_id, session_id, peer_id, peer_key, idempotency_key, status,
   preview_message_id, content_preview, async_target_type, async_target_id,
@@ -84,7 +87,8 @@ INSERT INTO channel_turn_job (
 ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
   updated_at=excluded.updated_at,
   status=CASE WHEN channel_turn_job.status IN (%s)
-    THEN channel_turn_job.status ELSE excluded.status END`, lockedStatusInClause),
+    THEN channel_turn_job.status ELSE excluded.status END`, lockedPlaceholders)
+		args := []any{
 			strings.TrimSpace(job.ID),
 			channelID,
 			strings.TrimSpace(job.SessionID),
@@ -101,7 +105,9 @@ ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
 			strings.TrimSpace(job.FinishedAt),
 			strings.TrimSpace(job.CreatedAt),
 			strings.TrimSpace(job.UpdatedAt),
-		)
+		}
+		args = append(args, lockedArgs...)
+		_, execErr := e.ExecContext(txCtx, query, args...)
 		if execErr != nil {
 			return execErr
 		}
@@ -127,13 +133,13 @@ func (r *channelTurnJobRepo) UpdateStatus(ctx context.Context, id, status, errMs
 		return apierror.Internal("CHANNEL_TURN_JOB", "repository unavailable")
 	}
 	if strings.TrimSpace(id) == "" {
-		return nil
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
 	}
 	now := biz.ChannelTurnJobNow()
 	status = biz.NormalizeChannelTurnJobStatus(status)
-	startInClause := buildSQLInClause(biz.ChannelTurnJobStartStatuses)
-	finishInClause := buildSQLInClause(biz.ChannelTurnJobFinishStatuses)
-	_, err := db.ExecContext(ctx, fmt.Sprintf(`
+	startPlaceholders, startArgs := buildSQLInPlaceholders(biz.ChannelTurnJobStartStatuses)
+	finishPlaceholders, finishArgs := buildSQLInPlaceholders(biz.ChannelTurnJobFinishStatuses)
+	query := fmt.Sprintf(`
 UPDATE channel_turn_job SET
   status=?,
   error_message=CASE WHEN ? != '' THEN ? ELSE error_message END,
@@ -142,16 +148,22 @@ UPDATE channel_turn_job SET
   started_at=CASE WHEN started_at='' AND ? IN (%s) THEN ? ELSE started_at END,
   finished_at=CASE WHEN ? IN (%s) THEN ? ELSE finished_at END,
   updated_at=?
-WHERE id=?`, startInClause, finishInClause),
+WHERE id=?`, startPlaceholders, finishPlaceholders)
+	args := []any{
 		status,
 		errMsg, errMsg,
 		previewMsgID, previewMsgID,
 		contentPreview, contentPreview,
-		status, now,
-		status, now,
+		status,
+		now,
+		status,
+		now,
 		now,
 		id,
-	)
+	}
+	args = append(args, startArgs...)
+	args = append(args, finishArgs...)
+	_, err := db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -162,7 +174,7 @@ func (r *channelTurnJobRepo) UpdateAsyncTarget(ctx context.Context, id, targetTy
 		return apierror.Internal("CHANNEL_TURN_JOB", "repository unavailable")
 	}
 	if strings.TrimSpace(id) == "" {
-		return nil
+		return apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
 	}
 	now := biz.ChannelTurnJobNow()
 	_, err := db.ExecContext(ctx, `
@@ -304,11 +316,12 @@ func (r *channelTurnJobRepo) ListActiveBySession(ctx context.Context, channelID,
 	if channelID == "" {
 		return nil, nil
 	}
-	terminalStatusInClause := buildSQLInClause(biz.ChannelTurnJobTerminalStatuses)
-	rows, err := db.QueryContext(ctx, channelTurnJobSelectSQL+fmt.Sprintf(`
+	terminalPlaceholders, terminalArgs := buildSQLInPlaceholders(biz.ChannelTurnJobTerminalStatuses)
+	query := channelTurnJobSelectSQL + fmt.Sprintf(`
 WHERE channel_id = ? AND session_id = ? AND status NOT IN (%s)
-ORDER BY created_at DESC`, terminalStatusInClause),
-		channelID, sessionID)
+ORDER BY created_at DESC`, terminalPlaceholders)
+	args := append([]any{channelID, sessionID}, terminalArgs...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -323,4 +336,3 @@ ORDER BY created_at DESC`, terminalStatusInClause),
 	}
 	return out, nil
 }
-

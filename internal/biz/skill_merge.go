@@ -109,11 +109,11 @@ func (uc *SkillMergeUsecase) Merge(ctx context.Context, req SkillMergeRequest) (
 	// 获取完整数据
 	source, err := uc.reader.GetFullSkillForMerge(ctx, req.SourceID)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
+		return nil, apierror.Internal("SKILL_MERGE", "get source skill: %s", err.Error())
 	}
 	target, err := uc.reader.GetFullSkillForMerge(ctx, req.TargetID)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_MERGE")
+		return nil, apierror.Internal("SKILL_MERGE", "get target skill: %s", err.Error())
 	}
 
 	// Stage 1: 内容融合

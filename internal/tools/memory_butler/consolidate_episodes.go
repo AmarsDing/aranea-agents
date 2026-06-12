@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -26,7 +27,7 @@ func newConsolidateEpisodesTool(deps Deps) trpctool.Tool {
 		}
 
 		// List episodic facts (kind="episode") for the agent.
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "episode", "", "", 500, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "episode", "", "", defaultFactListLimit, 0)
 		if err != nil {
 			return consolidateEpisodesOutput{}, err
 		}
@@ -79,6 +80,30 @@ func newConsolidateEpisodesTool(deps Deps) trpctool.Tool {
 		})
 		if err != nil {
 			return consolidateEpisodesOutput{}, err
+		}
+
+		// Delete the original episodic facts now that they have been distilled.
+		var episodeIDs []string
+		for _, raw := range rows {
+			m, parseErr := jsonutil.ParseMap(raw)
+			if parseErr != nil || m == nil {
+				continue
+			}
+			id := jsonutil.IfaceStr(m, "id")
+			if id != "" {
+				episodeIDs = append(episodeIDs, id)
+			}
+		}
+		if len(episodeIDs) > 0 {
+			if _, delErr := deps.MemoryAdmin.DeleteFactRowsByIDs(ctx, episodeIDs); delErr != nil {
+				// Log but don't fail — the distillation succeeded, deletion is best-effort.
+				if deps.LG != nil {
+					deps.LG.Warn("consolidate_episodes: failed to delete original episodic facts",
+						loggateway.StepID("memory_butler.consolidate.delete_episodes"),
+						loggateway.Str("agent_id", input.AgentID),
+						loggateway.Err(delErr))
+				}
+			}
 		}
 
 		return consolidateEpisodesOutput{DistilledCount: len(unique)}, nil

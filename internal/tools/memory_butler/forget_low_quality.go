@@ -25,7 +25,7 @@ func newForgetLowQualityTool(deps Deps) trpctool.Tool {
 			return forgetLowQualityOutput{}, ErrAgentIDRequired
 		}
 
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", 500, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", defaultFactListLimit, 0)
 		if err != nil {
 			return forgetLowQualityOutput{}, err
 		}

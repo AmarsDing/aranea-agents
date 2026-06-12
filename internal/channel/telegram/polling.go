@@ -87,9 +87,11 @@ func parsePollingUpdate(update tgbotapi.Update) (port.InboundEvent, bool) {
 		peerID = strconv.FormatInt(msg.From.ID, 10)
 	}
 	return port.InboundEvent{
-		PeerID:         peerID,
-		Text:           text,
-		IdempotencyKey: fmt.Sprintf("telegram:%d", msg.MessageID),
+		PeerID: peerID,
+		Text:   text,
+		// Telegram MessageID is unique per chat but NOT globally unique.
+		// Use chat_id:message_id composite key to ensure cross-chat uniqueness.
+		IdempotencyKey: fmt.Sprintf("telegram:%s:%d", chatID, msg.MessageID),
 		OutboundMeta: map[string]string{
 			port.MetaRecipient: chatID,
 			port.MetaChatID:    chatID,

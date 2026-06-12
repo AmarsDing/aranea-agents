@@ -189,14 +189,14 @@ type mcpMetadataAdapter struct{}
 
 func (mcpMetadataAdapter) Parse(raw string) map[string]any          { return mcpmetadata.Parse(raw) }
 func (mcpMetadataAdapter) Marshal(m map[string]any) (string, error) { return mcpmetadata.Marshal(m) }
-func (mcpMetadataAdapter) ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) string {
+func (mcpMetadataAdapter) ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string) {
 	return mcpmetadata.ApplyHealth(m, healthStatus, ok, errMsg, at)
 }
-func (mcpMetadataAdapter) ApplyReconnect(m map[string]any, at time.Time) {
-	mcpmetadata.ApplyReconnect(m, at)
+func (mcpMetadataAdapter) ApplyReconnect(m map[string]any, at time.Time) map[string]any {
+	return mcpmetadata.ApplyReconnect(m, at)
 }
-func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) {
-	mcpmetadata.MarkHealthAlert(m, at)
+func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) map[string]any {
+	return mcpmetadata.MarkHealthAlert(m, at)
 }
 
 func provideMCPMetadataEditor() biz.MCPMetadataEditor { return mcpMetadataAdapter{} }
@@ -378,8 +378,8 @@ func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, 
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
-func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor, crypto *biz.CredentialCrypto) *biz.MCPServerUsecase {
-	return biz.NewMCPServerUsecase(repo, prober, metaEdit, crypto)
+func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, credRepo biz.MCPServerUserCredentialRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor, crypto *biz.CredentialCrypto) *biz.MCPServerUsecase {
+	return biz.NewMCPServerUsecase(repo, credRepo, prober, metaEdit, crypto)
 }
 
 func provideRunRegistry() *rt.RunRegistry {
@@ -849,7 +849,17 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 			})
 		})
 	}
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(d), data.NewMemoryFactIndexCounter(d), enqueue, queueStats)
+	return service.NewMemoryService(service.MemoryServiceConfig{
+		Admin:             biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg),
+		Cascade:           cascade,
+		SysUC:             sysUC,
+		DeadLetterRepo:    deadLetterRepo,
+		DebugRecaller:     data.NewMemoryDebugRecaller(d),
+		FactIndexCounter:  data.NewMemoryFactIndexCounter(d),
+		DeadLetterEnqueue: enqueue,
+		QueueStats:        queueStats,
+		Logger:            lg,
+	})
 }
 
 func provideL4CascadeUsecase(d *data.Data, factSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *biz.L4CascadeUsecase {
@@ -953,7 +963,19 @@ func provideAutoMemoryWorker(
 	queue memtrpc.AutoMemoryQueue,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
-	return jobs.NewAutoMemoryWorker(runtimeConf, 0, sessions, agents, writer, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue, lg)
+	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
+		RuntimeConf:  runtimeConf,
+		Interval:     0,
+		Sessions:     sessions,
+		Agents:       agents,
+		Writer:       writer,
+		IndexSync:    factSync,
+		EpisodeSync:  episodeSync,
+		L4:           l4,
+		Consolidator: biz.DefaultMemoryConsolidator(extractor),
+		Queue:        queue,
+		Logger:       lg,
+	})
 }
 
 func provideL4GraphWriter(d *data.Data, cascade *biz.L4CascadeUsecase, lg loggateway.Logger) biz.L4GraphWriter {
@@ -1026,6 +1048,19 @@ func provideChannelHealthScanner(uc *biz.ChannelUsecase, logger log.Logger) *job
 	return jobs.NewChannelHealthScanner(0, uc, logger)
 }
 
+func provideTeamCompiler(
+	channels *biz.ChannelUsecase,
+	lg loggateway.Logger,
+) biz.TeamCompiler {
+	return team.NewTeamCompilerAdapter(
+		channels,
+		func(ctx context.Context) func(agentID string) string {
+			return channels.AgentKeyResolver(ctx)
+		},
+		lg,
+	)
+}
+
 func provideChannelIngress(
 	channels *biz.ChannelUsecase,
 	turnJobs *biz.ChannelTurnJobUsecase,
@@ -1036,13 +1071,14 @@ func provideChannelIngress(
 	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
 	admission *biz.TurnAdmissionUsecase,
+	teamCompiler biz.TeamCompiler,
 	lg loggateway.Logger,
 ) *service.ChannelIngress {
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, flowBuffer, graphs, cron, eventBus, dedupe, debouncer, registry, gate, admission, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, flowBuffer, graphs, cron, eventBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(
@@ -1241,7 +1277,7 @@ func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo,
 	return monitor.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
 
-func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, _ monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	reporter.SetUnanalyzedReader(unanalyzedReader)
 	bridge := data.NewEvolutionStoreBridge(unifiedRepo, suggestionRepo, lg)
 	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, bridge, aggregator, lg,
@@ -1709,6 +1745,62 @@ func provideDeptLeadManager(
 }
 
 // provideEcosystemPresetScenarioDir provides the scenario directory for EcosystemPresetUsecase.
+func provideTeamUsecaseOpts(
+	reader biz.TeamReader,
+	writer biz.TeamWriter,
+	runReader biz.TeamRunReader,
+	runWriter biz.TeamRunWriter,
+	stepRepo biz.OrchestrationStepRepo,
+	deadLetter biz.TaskDeadLetterRepo,
+	agentChecker biz.AgentIDExistenceChecker,
+	deptLeadMgr *biz.DeptLeadManager,
+	graphReader biz.GraphReader,
+	graphWriter biz.GraphWriter,
+	lg loggateway.Logger,
+) biz.TeamUsecaseOpts {
+	return biz.TeamUsecaseOpts{
+		Reader:       reader,
+		Writer:       writer,
+		RunReader:    runReader,
+		RunWriter:    runWriter,
+		StepRepo:     stepRepo,
+		DeadLetter:   deadLetter,
+		AgentChecker: agentChecker,
+		DeptLeadMgr:  deptLeadMgr,
+		GraphReader:  graphReader,
+		GraphWriter:  graphWriter,
+		Lg:           lg,
+	}
+}
+
+func provideMemoryLLMExtractorConfig(
+	agents *biz.AgentUsecase,
+	sessions *biz.SessionUsecase,
+	modelCatalog *biz.LlmProviderModelUsecase,
+) service.MemoryLLMExtractorConfig {
+	return service.MemoryLLMExtractorConfig{
+		Agents:       agents,
+		Sessions:     sessions,
+		ModelCatalog: modelCatalog,
+		HTTPClient:   &http.Client{Timeout: 90 * time.Second},
+		LLMDisabled:  false,
+	}
+}
+
+func provideMemoryEnhancedExtractorConfig(
+	agents *biz.AgentUsecase,
+	sessions *biz.SessionUsecase,
+	modelCatalog *biz.LlmProviderModelUsecase,
+) service.MemoryEnhancedExtractorConfig {
+	return service.MemoryEnhancedExtractorConfig{
+		Agents:       agents,
+		Sessions:     sessions,
+		ModelCatalog: modelCatalog,
+		HTTPClient:   &http.Client{Timeout: 120 * time.Second},
+		LLMDisabled:  false,
+	}
+}
+
 func provideEcosystemPresetScenarioDir() string {
 	return biz.ScenarioDir()
 }
@@ -1794,6 +1886,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
+		provideTeamCompiler,
 		provideChannelIngress,
 		provideChannelIngressAdmission,
 		provideChannelDeliveryWorker,
@@ -1933,6 +2026,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.ToolResultBlobReader), new(*data.ToolResultBlobRepo)),
 		wire.Bind(new(biz.ToolResultBlobWriter), new(*data.ToolResultBlobRepo)),
 		wire.Bind(new(biz.ToolResultReplacementWriter), new(*data.ToolResultReplacementRepo)),
+		wire.Bind(new(biz.ToolResultReplacementReader), new(*data.ToolResultReplacementRepo)),
 		// Knowledge embedder bindings
 		wire.Bind(new(knowledge.QueryEmbedder), new(*knowledge.MultiProviderEmbedder)),
 		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
@@ -1945,6 +2039,13 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideEcosystemPresetScenarioDir,
 		wire.Bind(new(biz.DeptLeadTeamGetter), new(*data.TeamRepo)),
 		provideDeptLeadManager,
+		// TeamUsecaseOpts provider
+		provideTeamUsecaseOpts,
+		// SkillSimilarityComparer binding
+		wire.Bind(new(biz.SkillSimilarityComparer), new(*biz.SkillSimilarityEngine)),
+		// Memory extractor config providers
+		provideMemoryLLMExtractorConfig,
+		provideMemoryEnhancedExtractorConfig,
 		newApp,
 		provideWireOut,
 	))

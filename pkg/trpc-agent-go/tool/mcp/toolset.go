@@ -81,6 +81,13 @@ func NewMCPToolSet(config ConnectionConfig, opts ...ToolSetOption) *ToolSet {
 		name:           cfg.name,
 	}
 
+	// Invalidate tool cache on reconnection so the next Tools() call refreshes.
+	sessionManager.onReconnect = func(_ context.Context) {
+		toolSet.mu.Lock()
+		toolSet.tools = nil
+		toolSet.mu.Unlock()
+	}
+
 	return toolSet
 }
 
@@ -183,6 +190,7 @@ type mcpSessionManager struct {
 	sessionReconnectConfig *SessionReconnectConfig // Session reconnection configuration
 	serverName             string
 	reconnectObserver      ReconnectObserver
+	onReconnect            func(ctx context.Context) // called after successful reconnection
 	client                 mcp.Connector
 	mu                     sync.RWMutex
 	connected              bool
@@ -520,6 +528,11 @@ func (m *mcpSessionManager) executeWithSessionReconnect(ctx context.Context, ope
 
 		log.InfofContext(ctx, "Session reconnection successful, retrying operation (attempt=%d/%d, server=%q)",
 			attempt, maxAttempts, m.serverName)
+
+		// Notify callback (e.g. invalidate tool cache) after successful reconnection.
+		if m.onReconnect != nil {
+			m.onReconnect(ctx)
+		}
 
 		// Retry the operation after successful reconnection.
 		err = operation()

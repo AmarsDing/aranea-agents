@@ -43,6 +43,7 @@ var ProviderSet = wire.NewSet(
 	NewOrchestrationCache,
 	NewToolSettingRepo,
 	NewChannelUsecase,
+	NewChannelPeerUsecase,
 	NewChannelTurnJobUsecase,
 	NewSessionRunUsecase,
 	NewAgentMCPTooling,

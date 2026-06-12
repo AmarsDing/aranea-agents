@@ -8,7 +8,7 @@ import (
 )
 
 type analyzeToolWeightsInput struct {
-	AgentID string `json:"agent_id" jsonschema:"description=Agent ID，为空则返回全部"`
+	AgentID string `json:"agent_id" jsonschema:"description=Agent ID（预留，当前返回全部工具权重）"`
 }
 
 type toolWeightItem struct {

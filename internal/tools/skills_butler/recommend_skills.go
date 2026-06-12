@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -21,7 +23,7 @@ type skillRecommendation struct {
 }
 
 type recommendSkillsOutput struct {
-	AgentID        string              `json:"agent_id"`
+	AgentID         string                `json:"agent_id"`
 	Recommendations []skillRecommendation `json:"recommendations"`
 }
 
@@ -30,9 +32,18 @@ func newRecommendSkillsTool(deps Deps) trpctool.Tool {
 		if input.AgentID == "" {
 			return recommendSkillsOutput{}, ErrAgentIDRequired
 		}
+		lg := deps.LG
+		if lg == nil {
+			lg = loggateway.NewNoop()
+		}
 		var recs []skillRecommendation
 		pendingProposals, err := deps.Skills.ListProposals(ctx, input.AgentID, "pending")
-		if err == nil {
+		if err != nil {
+			lg.Warn("recommend_skills: ListProposals failed, skipping proposal-based recommendations",
+				loggateway.StepID("skills_butler.recommend.list_proposals_fail"),
+				loggateway.Str("agent_id", input.AgentID),
+				loggateway.Err(err))
+		} else {
 			for _, p := range pendingProposals {
 				recs = append(recs, skillRecommendation{
 					SkillName: p.SkillName,
@@ -43,9 +54,14 @@ func newRecommendSkillsTool(deps Deps) trpctool.Tool {
 		}
 		since := time.Now().AddDate(0, 0, -30)
 		stats, err := deps.Queries.GetSkillInvocationStats(ctx, input.AgentID, since)
-		if err == nil {
+		if err != nil {
+			lg.Warn("recommend_skills: GetSkillInvocationStats failed, skipping usage-based recommendations",
+				loggateway.StepID("skills_butler.recommend.stats_fail"),
+				loggateway.Str("agent_id", input.AgentID),
+				loggateway.Err(err))
+		} else {
 			for _, s := range stats {
-				h := assessHealth(s, 4.29)
+				h := assessHealth(s, weeksPerMonth)
 				if h == "warning" {
 					recs = append(recs, skillRecommendation{
 						SkillName: s.SkillName,
@@ -62,7 +78,7 @@ func newRecommendSkillsTool(deps Deps) trpctool.Tool {
 			}
 		}
 		return recommendSkillsOutput{
-			AgentID:        input.AgentID,
+			AgentID:         input.AgentID,
 			Recommendations: recs,
 		}, nil
 	}

@@ -47,7 +47,12 @@ func SustainedErrorAfter() time.Duration {
 }
 
 func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result biz.MCPTestResult) {
-	if p == nil || p.bus == nil || result.OK {
+	if p == nil || p.bus == nil {
+		return
+	}
+	// Only hard failures and auth_required warnings trigger alert logic.
+	// OK=true with status other than auth_required means healthy — skip.
+	if result.OK && result.Status != "auth_required" {
 		return
 	}
 	meta := metadata.Parse(srv.MetadataJSON)
@@ -55,7 +60,21 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 	if !metadata.ShouldEmitHealthAlert(meta, now, SustainedErrorAfter()) {
 		return
 	}
-	metadata.MarkHealthAlert(meta, now)
+	// WBPF: persist debounce marker BEFORE emitting event to prevent
+	// duplicate alerts if the process crashes between publish and persist.
+	if p.uc != nil {
+		if err := p.uc.MarkHealthAlertEmitted(ctx, srv.ID, now); err != nil {
+			p.lg.Warn("MCP 健康告警持久化失败",
+				loggateway.StepID("mcp.health_alert_persist_fail"),
+				loggateway.Str("server_key", srv.Key),
+				loggateway.Err(err),
+			)
+			// Abort: if we can't persist the debounce marker, don't emit
+			// or we risk duplicate alerts on restart.
+			return
+		}
+	}
+	meta = metadata.MarkHealthAlert(meta, now)
 	healthAlertTotal.WithLabelValues(srv.Key).Inc()
 	metrics.AlertNotifyTotal.WithLabelValues("mcp_health", "ok").Inc()
 
@@ -73,13 +92,4 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 		env.Content = &event.EnvelopeContent{Text: result.Message}
 	}
 	p.bus.Publish(ctx, env)
-	if p.uc != nil {
-		if err := p.uc.MarkHealthAlertEmitted(ctx, srv.ID, now); err != nil {
-			p.lg.Warn("MCP 健康告警持久化失败",
-				loggateway.StepID("mcp.health_alert_persist_fail"),
-				loggateway.Str("server_key", srv.Key),
-				loggateway.Err(err),
-			)
-		}
-	}
 }

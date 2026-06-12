@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -42,6 +44,7 @@ type Deps struct {
 	Evolution EvolutionUsecasePort
 	Queries   SkillQueryReaderPort
 	Analytics AnalyticsPort
+	LG        loggateway.Logger
 }
 
 func RegisterAll(deps Deps) []trpctool.Tool {

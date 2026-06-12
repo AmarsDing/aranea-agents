@@ -185,17 +185,17 @@ func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPSer
 		return nil, err
 	}
 	detailsJSON := "{}"
-	if len(res.Details) > 0 {
-		b, err := json.Marshal(res.Details)
+	if len(res.Result.Details) > 0 {
+		b, err := json.Marshal(res.Result.Details)
 		if err != nil {
 			return nil, err
 		}
 		detailsJSON = string(b)
 	}
 	return &v1.MCPServerTestResponse{
-		Ok:          res.OK,
-		Status:      res.Status,
-		Message:     res.Message,
+		Ok:          res.Result.OK,
+		Status:      res.Result.Status,
+		Message:     res.Result.Message,
 		DetailsJson: detailsJSON,
 	}, nil
 }

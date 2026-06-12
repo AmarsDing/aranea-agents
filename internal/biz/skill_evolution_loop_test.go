@@ -473,7 +473,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_NoneExpired(t *testing.T) {
 
 func TestEvolutionLoop_ExpirePendingSuggestions_OnlyPendingExpired(t *testing.T) {
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
 
 	oldTime := time.Now().UTC().Add(-8 * 24 * time.Hour)
 
@@ -1014,7 +1014,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_ListPendingError(t *testing.T) {
 	sugReader := &mockSkillEvolutionSuggestionReader{
 		err: fmt.Errorf("database unavailable"),
 	}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
 
 	uc := NewSkillIntelligenceUsecase(nil, nil, &mockEvolutionStoreBridge{suggestions: sugReader.suggestions}, nil, loggateway.NewNoop())
 
@@ -1042,7 +1042,7 @@ func TestEvolutionLoop_ExpirePendingSuggestions_NilAccessors(t *testing.T) {
 
 func TestEvolutionLoop_ExpirePendingSuggestions_PartialUpdateFailure(t *testing.T) {
 	sugReader := &mockSkillEvolutionSuggestionReader{}
-	sugWriter := &mockSkillEvolutionSuggestionWriterWithFailure{
+	_ = &mockSkillEvolutionSuggestionWriterWithFailure{
 		failIDs: map[string]bool{"sug-old-1": true},
 	}
 

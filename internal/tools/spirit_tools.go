@@ -326,13 +326,49 @@ func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg
 			}
 			return CheckOrchestrationProgressOutput{
 				OrchestrationID: orchestrationID,
-				Status:          "running",
+				Status:          deriveOrchestrationStatus(views),
 				Tasks:           views,
 			}, nil
 		},
 		trpcfunction.WithName("check_progress"),
 		trpcfunction.WithDescription("查询编排执行进度。替代 check_team_progress，基于 orchestration_id 查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
 	)
+}
+
+// deriveOrchestrationStatus infers the overall orchestration status from
+// individual task statuses. This prevents the caller from having to
+// poll indefinitely when the orchestration has already completed or failed.
+func deriveOrchestrationStatus(tasks []TaskProgressView) string {
+	if len(tasks) == 0 {
+		return "pending"
+	}
+	allCompleted := true
+	anyFailed := false
+	anyCancelled := false
+	for _, t := range tasks {
+		switch t.Status {
+		case "failed":
+			anyFailed = true
+			allCompleted = false
+		case "cancelled":
+			anyCancelled = true
+			allCompleted = false
+		case "completed":
+			// ok
+		default:
+			allCompleted = false
+		}
+	}
+	if anyFailed {
+		return "failed"
+	}
+	if anyCancelled {
+		return "cancelled"
+	}
+	if allCompleted {
+		return "completed"
+	}
+	return "running"
 }
 
 // CancelOrchestrationInput is the input for the cancel_orchestration tool.
@@ -411,6 +447,8 @@ type SpiritTeamQueryPort interface {
 	GetMaxParallelTeams(ctx context.Context, spiritSessionID string) int
 }
 
+// SpiritTeamControllerPort controls team lifecycle (cancel, progress check).
+// Stability:evolving
 type SpiritTeamControllerPort interface {
 	CancelTeam(ctx context.Context, teamID string) error
 	CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]biz.TeamProgress, error)
@@ -428,6 +466,8 @@ type AssessComplexityOutput struct {
 	AvailableTools []string `json:"available_tools"`
 }
 
+// SpiritSynthesisPort synthesizes results from multiple teams.
+// Stability:evolving
 type SpiritSynthesisPort interface {
 	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
 }

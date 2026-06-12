@@ -36,7 +36,11 @@ func TestMaybeEmitAfterHealth_SustainedError(t *testing.T) {
 	p := &Publisher{}
 	now := time.Now().UTC()
 	meta := metadata.Parse("{}")
-	raw := metadata.ApplyHealth(meta, "error", false, "connection refused", now.Add(-10*time.Minute))
+	updatedMeta, _ := metadata.ApplyHealth(meta, "error", false, "connection refused", now.Add(-10*time.Minute))
+	raw, err := metadata.Marshal(updatedMeta)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	srv := biz.MCPServer{ID: "s1", Key: "test", MetadataJSON: raw}
 	result := biz.MCPTestResult{OK: false, Status: "error", Message: "connection refused"}

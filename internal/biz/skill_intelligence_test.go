@@ -811,8 +811,8 @@ func TestCheckEvolutionTriggers_7dLowSuccessRate(t *testing.T) {
 		},
 		tagCounts: []FailureTagCount{},
 	}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
-	sugReader := &mockSkillEvolutionSuggestionReader{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
@@ -846,8 +846,8 @@ func TestCheckEvolutionTriggers_SameFailureTagThreshold(t *testing.T) {
 			{Tag: FailureTagToolAPIError, Count: 2},
 		},
 	}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
-	sugReader := &mockSkillEvolutionSuggestionReader{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
@@ -881,8 +881,8 @@ func TestCheckEvolutionTriggers_SameFailureTagBelowThreshold(t *testing.T) {
 			{Tag: FailureTagToolTimeout, Count: 3}, // < 5 threshold
 		},
 	}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
-	sugReader := &mockSkillEvolutionSuggestionReader{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
@@ -910,8 +910,8 @@ func TestRunCuratorFlow_Success(t *testing.T) {
 		},
 		tagCounts: []FailureTagCount{},
 	}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
-	sugReader := &mockSkillEvolutionSuggestionReader{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)
@@ -946,8 +946,8 @@ func TestRunCuratorFlow_NoTrigger(t *testing.T) {
 		},
 		tagCounts: []FailureTagCount{},
 	}
-	sugWriter := &mockSkillEvolutionSuggestionWriter{}
-	sugReader := &mockSkillEvolutionSuggestionReader{}
+	_ = &mockSkillEvolutionSuggestionWriter{}
+	_ = &mockSkillEvolutionSuggestionReader{}
 	lg := loggateway.NewNoop()
 	scorer := NewSkillScoringUsecase(agg, lg)
 	reporter := NewSkillReportUsecase(nil, nil, nil, scorer, nil, lg)

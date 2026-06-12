@@ -54,6 +54,9 @@ func RunStream(
 				loggateway.StepID("channel.dingtalk.inbound_failed"),
 				loggateway.Err(err),
 			)
+			// Return error to SDK so it can retry delivery.
+			// This prevents silent message loss on transient failures.
+			return nil, err
 		}
 		return nil, nil
 	}
@@ -80,12 +83,16 @@ func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCre
 		s, _ := lookup(ctx, creds, "client_id")
 		clientID = strings.TrimSpace(s)
 	}
-	secret, err := lookup(ctx, creds, "client_secret")
+	secret, lookupErr := lookup(ctx, creds, "client_secret")
 	secret = strings.TrimSpace(secret)
 	if clientID == "" || secret == "" {
 		return "", "", apierror.BadRequest("DINGTALK_CONFIG", "dingtalk stream: client_id and client_secret required")
 	}
-	return clientID, secret, err
+	// Credentials validated; discard lookupErr to avoid returning an error
+	// alongside valid credentials, which would cause the caller to fail
+	// even though the credentials are usable.
+	_ = lookupErr
+	return clientID, secret, nil
 }
 
 func parseStreamMessage(message *chatbot.BotCallbackDataModel, lg loggateway.Logger) (port.InboundEvent, bool) {
@@ -100,6 +107,8 @@ func parseStreamMessage(message *chatbot.BotCallbackDataModel, lg loggateway.Log
 		SenderStaffId  string `json:"senderStaffId"`
 		ConversationId string `json:"conversationId"`
 		SessionWebhook string `json:"sessionWebhook"`
+		MsgId          string `json:"msgId"`
+		CreateAt       int64  `json:"createAt"`
 	}
 	if err := json.Unmarshal(raw, &generic); err != nil {
 		lg.Warn("解析 dingtalk stream message 失败", loggateway.StepID("channel.dingtalk.parse"), loggateway.Err(err))
@@ -109,10 +118,18 @@ func parseStreamMessage(message *chatbot.BotCallbackDataModel, lg loggateway.Log
 		return port.InboundEvent{}, false
 	}
 	peerID := port.FirstNonEmpty(generic.SenderStaffId, generic.ConversationId)
+	// IdempotencyKey must be message-level unique to avoid deduplicating
+	// different messages within the same conversation.
+	// Primary: msgId (DingTalk message-level unique ID).
+	// Fallback: conversationId + senderStaffId + createAt composite key.
+	idempotencyKey := strings.TrimSpace(generic.MsgId)
+	if idempotencyKey == "" {
+		idempotencyKey = fmt.Sprintf("%s:%s:%d", generic.ConversationId, generic.SenderStaffId, generic.CreateAt)
+	}
 	return port.InboundEvent{
 		PeerID:         peerID,
 		Text:           text,
-		IdempotencyKey: "dingtalk:" + generic.ConversationId,
+		IdempotencyKey: "dingtalk:" + idempotencyKey,
 		OutboundMeta: map[string]string{
 			port.MetaSessionWebhook: generic.SessionWebhook,
 			port.MetaRecipient:      generic.SessionWebhook,

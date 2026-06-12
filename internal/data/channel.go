@@ -341,8 +341,9 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 		SetCreatedAt(d.CreatedAt).
 		SetUpdatedAt(d.UpdatedAt).
 		// Unique index is on (channel_id, idempotency_key); both columns must match.
+		// On conflict, do NOT update any field — idempotency means "same request, same result".
 		OnConflictColumns(platformchanneldelivery.FieldChannelID, platformchanneldelivery.FieldIdempotencyKey).
-		UpdateNewValues()
+		Ignore()
 
 	e, err := b.ID(ctx)
 	if err != nil {
@@ -361,7 +362,7 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 	// Load the upserted row by ID to return full entity.
 	upserted, findErr := r.data.RW().Read(ctx).PlatformChannelDelivery.Get(ctx, e)
 	if findErr != nil {
-		return biz.ChannelDelivery{}, true, nil
+		return biz.ChannelDelivery{}, true, findErr
 	}
 	return deliveryEntToBiz(upserted), true, nil
 }

@@ -150,11 +150,19 @@ type ModelPricingRepo interface {
 }
 
 // LlmProviderModelReaderWriter combines Reader + Writer for consumers that need
-// both read and write access (e.g. model-registry apply backend). Each method
-// count stays within the ≤5 limit because the sub-interfaces are already narrow.
+// both read and write access. Each method count stays within the ≤5 limit
+// because the sub-interfaces are already narrow.
 type LlmProviderModelReaderWriter interface {
 	LlmProviderModelReader
 	LlmProviderModelWriter
+}
+
+// LlmProviderModelApplyBackend combines Reader + Writer + PricingRepo for the
+// model-registry apply backend, which needs list/update and pricing upsert.
+type LlmProviderModelApplyBackend interface {
+	LlmProviderModelReader
+	LlmProviderModelWriter
+	ModelPricingRepo
 }
 
 // PricingSourcePriority returns the priority of a pricing source.
@@ -671,7 +679,9 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 			writeCtx := context.WithoutCancel(ctx)
 			jitter := time.Duration(rand.IntN(500)) * time.Millisecond
 			time.Sleep(jitter)
-			req, err := http.NewRequestWithContext(ctx, http.MethodHead, checkBase, nil)
+			// Use writeCtx (WithoutCancel) so the health check HTTP request
+			// is not canceled when the parent request context is done.
+			req, err := http.NewRequestWithContext(writeCtx, http.MethodHead, checkBase, nil)
 			if err != nil {
 				return
 			}

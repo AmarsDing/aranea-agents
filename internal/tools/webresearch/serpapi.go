@@ -66,7 +66,7 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxSearchResponseBytes))
 	if err != nil {
 		return nil, err
 	}

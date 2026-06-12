@@ -127,16 +127,18 @@ func replaceWithWordBoundary(output, value, replacement string) string {
 			b.WriteString(replacement)
 		} else {
 			// Check for quoted context: "value" or 'value' or `value`
+			var quoteChar byte
 			inQuotes := false
 			if pos > 0 && afterPos < len(output) {
-				q := output[pos-1]
-				if (q == '"' || q == '\'' || q == '`') && output[afterPos] == q {
+				quoteChar = output[pos-1]
+				if (quoteChar == '"' || quoteChar == '\'' || quoteChar == '`') && output[afterPos] == quoteChar {
 					inQuotes = true
 				}
 			}
 			if inQuotes {
-				b.WriteString(output[i : pos-1])
+				b.WriteString(output[i:pos])
 				b.WriteString(replacement)
+				b.WriteByte(quoteChar)
 				i = afterPos + 1
 				continue
 			}

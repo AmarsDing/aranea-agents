@@ -3,10 +3,10 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
+	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -63,13 +63,26 @@ func (s *stubMCPRepo) UpdateMCPServerMetadata(_ context.Context, id string, meta
 	return nil
 }
 
+// stubMCPCredRepo is a stub for MCPServerUserCredentialRepo.
+type stubMCPCredRepo struct{}
+
+func (stubMCPCredRepo) ListMCPServerUserCredentials(_ context.Context, _, _ string) ([]MCPServerUserCredential, error) {
+	return nil, nil
+}
+func (stubMCPCredRepo) UpsertMCPServerUserCredential(_ context.Context, c MCPServerUserCredential) (MCPServerUserCredential, error) {
+	return c, nil
+}
+func (stubMCPCredRepo) DeleteMCPServerUserCredential(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 	repo := &stubMCPRepo{rows: []MCPServer{{
 		ID:           "m1",
 		Key:          "my-server",
 		MetadataJSON: `{"reconnect_count":2}`,
 	}}}
-	uc := NewMCPServerUsecase(repo, nil, testMCPMetadataEditor{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
 	at := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	if err := uc.RecordReconnectMetadata(context.Background(), "my-server", at); err != nil {
 		t.Fatal(err)
@@ -86,71 +99,20 @@ func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 	}
 }
 
-// testMCPMetadataEditor is a test double that delegates to the same logic as the real adapter.
-type testMCPMetadataEditor struct{}
+// mcpMetadataAdapter delegates to the real metadata package, eliminating
+// test code duplication while satisfying the MCPMetadataEditor interface.
+type mcpMetadataAdapter struct{}
 
-func (testMCPMetadataEditor) Parse(raw string) map[string]any {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		raw = "{}"
-	}
-	var m map[string]any
-	if json.Unmarshal([]byte(raw), &m) != nil {
-		return map[string]any{}
-	}
-	if m == nil {
-		return map[string]any{}
-	}
-	return m
+func (mcpMetadataAdapter) Parse(raw string) map[string]any          { return mcpmetadata.Parse(raw) }
+func (mcpMetadataAdapter) Marshal(m map[string]any) (string, error) { return mcpmetadata.Marshal(m) }
+func (mcpMetadataAdapter) ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string) {
+	return mcpmetadata.ApplyHealth(m, healthStatus, ok, errMsg, at)
 }
-
-func (testMCPMetadataEditor) Marshal(m map[string]any) (string, error) {
-	if m == nil {
-		m = map[string]any{}
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+func (mcpMetadataAdapter) ApplyReconnect(m map[string]any, at time.Time) map[string]any {
+	return mcpmetadata.ApplyReconnect(m, at)
 }
-
-func (testMCPMetadataEditor) ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) string {
-	if m == nil {
-		m = map[string]any{}
-	}
-	m["health_status"] = healthStatus
-	m["last_health_at"] = at.UTC().Format(time.RFC3339)
-	if ok {
-		m["last_error_message"] = ""
-		delete(m, "health_error_since")
-		return "active"
-	}
-	m["last_error_message"] = errMsg
-	if _, exists := m["health_error_since"]; !exists {
-		m["health_error_since"] = at.UTC().Format(time.RFC3339)
-	}
-	return "error"
-}
-
-func (testMCPMetadataEditor) ApplyReconnect(m map[string]any, at time.Time) {
-	if m == nil {
-		m = map[string]any{}
-	}
-	m["last_reconnect_at"] = at.UTC().Format(time.RFC3339)
-	switch v := m["reconnect_count"].(type) {
-	case float64:
-		m["reconnect_count"] = v + 1
-	default:
-		m["reconnect_count"] = float64(1)
-	}
-}
-
-func (testMCPMetadataEditor) MarkHealthAlert(m map[string]any, at time.Time) {
-	if m == nil {
-		return
-	}
-	m["last_health_alert_at"] = at.UTC().Format(time.RFC3339)
+func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) map[string]any {
+	return mcpmetadata.MarkHealthAlert(m, at)
 }
 
 func TestValidateMCPConfigURLs(t *testing.T) {
@@ -162,6 +124,8 @@ func TestValidateMCPConfigURLs(t *testing.T) {
 		{"empty allowed", "", false},
 		{"empty object allowed", "{}", false},
 		{"stdio allowed", `{"transport":"stdio","command":"npx"}`, false},
+		{"stdio no command", `{"transport":"stdio","command":""}`, true},
+		{"stdio missing command", `{"transport":"stdio"}`, true},
 		{"public URL allowed", `{"transport":"sse","url":"https://mcp.example.com/sse"}`, false},
 		{"localhost blocked", `{"transport":"sse","url":"http://localhost:8080/sse"}`, true},
 		{"private IP blocked", `{"transport":"streamable_http","url":"http://10.0.0.1/mcp"}`, true},
@@ -185,7 +149,7 @@ func TestValidateMCPConfigURLs(t *testing.T) {
 
 func TestMCPServerUsecase_Create_SSRFBlock(t *testing.T) {
 	repo := &stubMCPRepo{}
-	uc := NewMCPServerUsecase(repo, nil, testMCPMetadataEditor{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
 	_, err := uc.Create(context.Background(), MCPServer{
 		Key:        "ssrf-test",
 		Name:       "SSRF Test",
@@ -203,7 +167,7 @@ func TestMCPServerUsecase_Update_SSRFBlock(t *testing.T) {
 		Name:      "My Server",
 		ConfigJSON: `{"transport":"stdio","command":"npx"}`,
 	}}}
-	uc := NewMCPServerUsecase(repo, nil, testMCPMetadataEditor{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, NewCredentialCrypto(nil, loggateway.NewNoop()))
 	ssrfURL := `{"transport":"sse","url":"http://192.168.1.1/mcp"}`
 	_, err := uc.Update(context.Background(), "m1", MCPServerUpdate{ConfigJSON: &ssrfURL})
 	if err == nil {

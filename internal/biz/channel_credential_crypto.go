@@ -34,7 +34,7 @@ func (c *CredentialCrypto) EncryptChannelSecretRef(ctx context.Context, plain st
 func (c *CredentialCrypto) DecryptChannelSecretRef(ctx context.Context, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return "", apierror.BadRequest("CHANNEL", "empty secret_ref")
+		return "", nil
 	}
 	if !strings.HasPrefix(ref, channelSecretRefPrefix) {
 		return "", apierror.BadRequest("CHANNEL", "unsupported channel secret_ref")

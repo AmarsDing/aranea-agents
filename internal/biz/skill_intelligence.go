@@ -31,6 +31,7 @@ type RootCauseAnalyzer interface {
 	AnalyzeInvocationFailure(ctx context.Context, inv SkillInvocationWrite) (*RootCauseAnalysisResult, error)
 }
 
+// TECH-DEBT(COG): biz_deps=10, 上限=8; coordinator 待移除后降至 9，unified 迁移完成后 suggestionReader/Writer 可移除降至 7
 // SkillIntelligenceUsecase provides skill intelligence analysis: invocation
 // analysis, scoring, and experience report generation.
 // Scoring and report generation are delegated to SkillScoringUsecase and
@@ -93,15 +94,23 @@ func NewSkillIntelligenceUsecase(
 
 // bridgeWrite executes the primary write operation and, if successful,
 // attempts the legacy write as a non-fatal side effect.
-func (uc *SkillIntelligenceUsecase) bridgeWrite(ctx context.Context, primaryFn func() error, legacyFn func() error, desc string) error {
+// If primaryFn succeeds, bridgeFn is called as non-fatal; if primaryFn fails, fallbackFn is called.
+func (uc *SkillIntelligenceUsecase) bridgeWrite(
+	ctx context.Context,
+	primaryFn func() error,
+	bridgeFn func() error,
+	opName string,
+	targetID string,
+) error {
 	if err := primaryFn(); err != nil {
 		return err
 	}
-	if legacyFn != nil {
-		if legacyErr := legacyFn(); legacyErr != nil {
-			uc.lg.Warn("legacy bridge write failed",
-				loggateway.Str("op", desc),
-				loggateway.Err(legacyErr))
+	if bridgeFn != nil {
+		if bridgeErr := bridgeFn(); bridgeErr != nil {
+			uc.lg.Warn("bridge write to legacy store failed",
+				loggateway.Str("op", opName),
+				loggateway.Str("id", targetID),
+				loggateway.Err(bridgeErr))
 		}
 	}
 	return nil
@@ -370,6 +379,7 @@ func (uc *SkillIntelligenceUsecase) CheckEvolutionTriggers(ctx context.Context, 
 		func() error { return uc.bridge.Create(ctx, unified) },
 		func() error { return uc.bridge.CreateSuggestion(ctx, *suggestion) },
 		"CheckEvolutionTriggers.Create",
+		skillID,
 	); err != nil {
 		// Primary (unified) failed; try legacy as fallback.
 		if legErr := uc.bridge.CreateSuggestion(ctx, *suggestion); legErr != nil {
@@ -414,6 +424,7 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 		func() error { return uc.bridge.UpdateDraftBody(ctx, suggestion.ID, draft) },
 		func() error { return uc.bridge.UpdateSuggestionDraftBody(ctx, suggestion.ID, draft) },
 		"RunCuratorFlow.UpdateDraftBody",
+		suggestion.ID,
 	); uErr != nil {
 		// Primary (unified) failed; try legacy as fallback.
 		if legErr := uc.bridge.UpdateSuggestionDraftBody(ctx, suggestion.ID, draft); legErr != nil {
@@ -427,11 +438,17 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 	suggestion.DraftSkillBody = draft
 
 	// Step 3: Set lifecycle to validating.
-	_ = uc.bridgeWrite(ctx,
+	if lcErr := uc.bridgeWrite(ctx,
 		func() error { return uc.bridge.UpdateLifecycleStatus(ctx, suggestion.ID, "validating") },
 		func() error { return uc.bridge.UpdateSuggestionLifecycleStatus(ctx, suggestion.ID, EvoLifecycleValidating) },
 		"RunCuratorFlow.UpdateLifecycleStatus(validating)",
-	)
+		suggestion.ID,
+	); lcErr != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(validating) failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(lcErr))
+	}
 	suggestion.LifecycleStatus = EvoLifecycleValidating
 
 	// Step 4: Sandbox validation — use GateVerifier if available, otherwise rule-based fallback.
@@ -484,11 +501,17 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 			}(),
 		})
 	}
-	_ = uc.bridgeWrite(ctx,
+	if sbErr := uc.bridgeWrite(ctx,
 		func() error { return uc.bridge.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON) },
 		func() error { return uc.bridge.UpdateSuggestionSandboxResult(ctx, suggestion.ID, passed, resultJSON) },
 		"RunCuratorFlow.UpdateSandboxResult",
-	)
+		suggestion.ID,
+	); sbErr != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateSandboxResult failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(sbErr))
+	}
 	suggestion.SandboxPassed = passed
 	suggestion.SandboxResult = resultJSON
 
@@ -498,11 +521,17 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 	// suggestions instead of skill-specific analysis. Only LLM-generated
 	// drafts should be promoted to "ready" after passing validation.
 	lifecycleStatus := EvoLifecycleDraft
-	_ = uc.bridgeWrite(ctx,
+	if lcErr := uc.bridgeWrite(ctx,
 		func() error { return uc.bridge.UpdateLifecycleStatus(ctx, suggestion.ID, "draft") },
 		func() error { return uc.bridge.UpdateSuggestionLifecycleStatus(ctx, suggestion.ID, lifecycleStatus) },
 		"RunCuratorFlow.UpdateLifecycleStatus(final)",
-	)
+		suggestion.ID,
+	); lcErr != nil {
+		uc.lg.Warn("RunCuratorFlow: UpdateLifecycleStatus(final) failed",
+			loggateway.StepID("skill_intelligence.curator_flow"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(lcErr))
+	}
 	suggestion.LifecycleStatus = lifecycleStatus
 
 	return suggestion, nil
@@ -631,11 +660,16 @@ func (uc *SkillIntelligenceUsecase) CreateSuggestion(ctx context.Context, sugges
 	}
 	// Bridge to unified store.
 	unified := unifiedToLegacySuggestion(&suggestion)
-	_ = uc.bridgeWrite(ctx,
+	if bridgeErr := uc.bridgeWrite(ctx,
 		func() error { return uc.bridge.Create(ctx, unified) },
 		nil,
 		"CreateSuggestion.bridge",
-	)
+		suggestion.ID,
+	); bridgeErr != nil {
+		uc.lg.Warn("CreateSuggestion: bridge to unified store failed",
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(bridgeErr))
+	}
 	return nil
 }
 
@@ -661,6 +695,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionDraftBody(ctx context.Contex
 		func() error { return uc.bridge.UpdateDraftBody(ctx, id, draftBody) },
 		func() error { return uc.bridge.UpdateSuggestionDraftBody(ctx, id, draftBody) },
 		"UpdateSuggestionDraftBody",
+		id,
 	)
 }
 
@@ -673,6 +708,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionSandboxResult(ctx context.Co
 		func() error { return uc.bridge.UpdateSandboxResult(ctx, id, passed, result) },
 		func() error { return uc.bridge.UpdateSuggestionSandboxResult(ctx, id, passed, result) },
 		"UpdateSuggestionSandboxResult",
+		id,
 	)
 }
 
@@ -685,6 +721,7 @@ func (uc *SkillIntelligenceUsecase) UpdateSuggestionLifecycleStatus(ctx context.
 		func() error { return uc.bridge.UpdateLifecycleStatus(ctx, id, string(lifecycleStatus)) },
 		func() error { return uc.bridge.UpdateSuggestionLifecycleStatus(ctx, id, lifecycleStatus) },
 		"UpdateSuggestionLifecycleStatus",
+		id,
 	)
 }
 
@@ -727,6 +764,7 @@ func (uc *SkillIntelligenceUsecase) ApproveSuggestion(ctx context.Context, id, a
 		func() error { return uc.bridge.UpdateStatus(ctx, id, "approved", approvedBy, "") },
 		func() error { return uc.bridge.UpdateSuggestionStatus(ctx, id, EvoSuggestionApproved, approvedBy, "") },
 		"ApproveSuggestion",
+		id,
 	)
 }
 
@@ -739,6 +777,7 @@ func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, re
 		func() error { return uc.bridge.UpdateStatus(ctx, id, "rejected", rejectedBy, reason) },
 		func() error { return uc.bridge.UpdateSuggestionStatus(ctx, id, EvoSuggestionRejected, rejectedBy, reason) },
 		"RejectSuggestion",
+		id,
 	)
 }
 

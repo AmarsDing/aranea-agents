@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type scoredStoreMock struct {
@@ -29,7 +31,7 @@ func TestRecallFactsFused_SortsAndDedupes(t *testing.T) {
 		{ID: "a", Statement: "low", Raw: []byte(`{"id":"a","statement":"low"}`), Scores: RecallScoreBreakdown{Total: 0.4}},
 		{ID: "b", Statement: "high", Raw: []byte(`{"id":"b","statement":"high"}`), Scores: RecallScoreBreakdown{Total: 0.9}},
 		{ID: "b", Statement: "high dup", Raw: []byte(`{"id":"b","statement":"high dup"}`), Scores: RecallScoreBreakdown{Total: 0.8}},
-	}}, nil)
+	}}, nil, loggateway.NewNoop())
 	rows, err := uc.RecallFactsFused(context.Background(), L3FusedRecallQuery{
 		Runtime: MemoryRuntimeContext{AgentID: "ag1", UserID: "u1"},
 		Scopes:  []string{"agent"},
@@ -45,7 +47,7 @@ func TestRecallFactsFused_SortsAndDedupes(t *testing.T) {
 
 func TestRecallFacts_SkipsMinScoreWhenQueryEmpty(t *testing.T) {
 	store := &recallStoreMockWithQuery{}
-	uc := NewMemoryL3RecallUsecase(store, nil, nil)
+	uc := NewMemoryL3RecallUsecase(store, nil, nil, loggateway.NewNoop())
 	_, err := uc.RecallFacts(context.Background(), L3RecallQuery{
 		ScopeType: "agent",
 		ScopeID:   "ag1",
