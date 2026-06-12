@@ -7,6 +7,7 @@ import (
 )
 
 // ChannelRuntimeLeaseRepo coordinates long-lived channel connectors across replicas.
+// Stability:stable
 type ChannelRuntimeLeaseRepo interface {
 	// TryAcquireRuntimeLease claims a channel runtime lease until expiresAt.
 	TryAcquireRuntimeLease(ctx context.Context, lease RuntimeLease) (claimed bool, err error)

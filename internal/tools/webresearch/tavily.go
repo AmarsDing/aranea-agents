@@ -93,7 +93,7 @@ func (p *tavilyProvider) search(ctx context.Context, query string) (*SearchRespo
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("web_research: tavily status %d: %s", resp.StatusCode, truncate(string(raw), 512))
+		return nil, fmt.Errorf("web_research: tavily status %d: %s", resp.StatusCode, truncateUTF8(string(raw), 512))
 	}
 
 	var parsed tavilySearchResponse

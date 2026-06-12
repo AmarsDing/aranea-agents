@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/pkginstall"
 	"aranea-agents/pkg/outboundguard"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -33,25 +34,25 @@ type pkgInstallOutput struct {
 func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input pkgInstallInput) (pkgInstallOutput, error) {
 		if input.URL == "" {
-			return pkgInstallOutput{}, fmt.Errorf("url is required")
+			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "url is required")
 		}
 		if err := validateRepoURL(input.URL); err != nil {
-			return pkgInstallOutput{}, fmt.Errorf("invalid url: %w", err)
+			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid url: %v", err)
 		}
 
 		pkgDir, cleanup, err := pkginstall.FetchFromURL(input.URL, input.Ref, true)
 		if err != nil {
-			return pkgInstallOutput{}, fmt.Errorf("fetch package: %w", err)
+			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", "fetch package: %v", err)
 		}
 		defer cleanup()
 
 		// Load and validate manifest.
 		manifest, err := pkginstall.LoadManifestFromDir(pkgDir)
 		if err != nil {
-			return pkgInstallOutput{}, fmt.Errorf("load manifest: %w", err)
+			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", "load manifest: %v", err)
 		}
 		if err := pkginstall.ValidateManifest(manifest); err != nil {
-			return pkgInstallOutput{}, fmt.Errorf("invalid manifest: %w", err)
+			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid manifest: %v", err)
 		}
 
 		// Apply decision to skills.
@@ -101,30 +102,44 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 }
 
 func validateRepoURL(raw string) error {
+	// Reject local paths: absolute, relative, and Windows drive letters.
 	if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "./") || strings.HasPrefix(raw, "../") {
-		return nil
+		return kerrors.BadRequest("CLI_ADMIN", "local paths are not allowed")
 	}
 	// Windows drive letter: C:/path or C:\path
 	if len(raw) >= 2 && raw[1] == ':' && isAlpha(rune(raw[0])) {
-		return nil
+		return kerrors.BadRequest("CLI_ADMIN", "local paths are not allowed")
+	}
+	// Reject paths containing ".." components (path traversal).
+	for _, seg := range strings.Split(raw, "/") {
+		if seg == ".." {
+			return kerrors.BadRequest("CLI_ADMIN", "path traversal (..) is not allowed")
+		}
+	}
+	for _, seg := range strings.Split(raw, `\`) {
+		if seg == ".." {
+			return kerrors.BadRequest("CLI_ADMIN", "path traversal (..) is not allowed")
+		}
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("parse url: %w", err)
+		return kerrors.BadRequest("CLI_ADMIN", "parse url: %v", err)
 	}
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
-	case "https", "http":
+	case "https":
 		host := u.Hostname()
 		if host == "" {
-			return fmt.Errorf("host is empty")
+			return kerrors.BadRequest("CLI_ADMIN", "host is empty")
 		}
 		if err := outboundguard.ValidatePublicHost(host); err != nil {
-			return fmt.Errorf("host %q: %w", host, err)
+			return kerrors.BadRequest("CLI_ADMIN", "host %q: %v", host, err)
 		}
 		return nil
+	case "http":
+		return kerrors.BadRequest("CLI_ADMIN", "http scheme is not allowed; use https instead")
 	case "file":
-		return nil
+		return kerrors.BadRequest("CLI_ADMIN", "file scheme is not allowed")
 	case "":
 		// No scheme: treat as SCP-style Git URL (e.g. github.com/user/repo).
 		// Parse the first path segment as the host and validate it.
@@ -133,14 +148,14 @@ func validateRepoURL(raw string) error {
 			host = host[:slashIdx]
 		}
 		if host == "" {
-			return fmt.Errorf("cannot determine host from URL %q", raw)
+			return kerrors.BadRequest("CLI_ADMIN", "cannot determine host from URL %q", raw)
 		}
 		if err := outboundguard.ValidatePublicHost(host); err != nil {
-			return fmt.Errorf("host %q: %w", host, err)
+			return kerrors.BadRequest("CLI_ADMIN", "host %q: %v", host, err)
 		}
 		return nil
 	default:
-		return fmt.Errorf("scheme %q is not allowed; only https, http, and file are permitted", u.Scheme)
+		return kerrors.BadRequest("CLI_ADMIN", "scheme %q is not allowed; only https and SCP-style Git URLs are permitted", u.Scheme)
 	}
 }
 

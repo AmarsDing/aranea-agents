@@ -78,10 +78,21 @@ func (rc *redactingCallable) Call(ctx context.Context, jsonArgs []byte) (any, er
 		return nil, nil
 	}
 	result, err := rc.inner.Call(ctx, jsonArgs)
-	if err != nil {
-		return result, err
+	// Always redact — even on error, the result may contain sensitive values
+	// (e.g., partial command output with env vars in stderr).
+	return rc.redactResult(result), err
+}
+
+// redactStringFields applies RedactOutput to every string field in the map,
+// covering output, stderr, error, and any other string values that may leak
+// sensitive environment variable values.
+func (rc *redactingCallable) redactStringFields(m map[string]any) map[string]any {
+	for key, val := range m {
+		if s, ok := val.(string); ok && s != "" {
+			m[key] = RedactOutput(rc.env, s)
+		}
 	}
-	return rc.redactResult(result), nil
+	return m
 }
 
 func (rc *redactingCallable) redactResult(result any) any {
@@ -89,10 +100,7 @@ func (rc *redactingCallable) redactResult(result any) any {
 	if !ok {
 		return result
 	}
-	if output, _ := m["output"].(string); output != "" {
-		m["output"] = RedactOutput(rc.env, output)
-	}
-	return m
+	return rc.redactStringFields(m)
 }
 
 func BuildHostexecToolSet(baseDir string, env map[string]string) (trpctool.ToolSet, error) {

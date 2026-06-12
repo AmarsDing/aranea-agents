@@ -44,7 +44,11 @@ func (h *ChannelIngress) scheduleInboundBackground(r *http.Request, chRow biz.Ch
 	evCopy := ev
 	platform := inboundPlatform(chCopy, evCopy, h.lg)
 	ltCfg := biz.ParseChannelLongTaskConfig(chCopy.ConfigJSON)
+	release := outcome.releaseConcurrent
 	safego.Go(appctx.Ctx(), "channel.inbound.background", func() {
+		if release != nil {
+			defer release()
+		}
 		procCtx := context.WithoutCancel(r.Context())
 		if outcome.DispatchAsync {
 			defer h.releaseInboundInflight(evCopy, platform)

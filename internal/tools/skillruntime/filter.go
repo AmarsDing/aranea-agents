@@ -116,11 +116,13 @@ func (c *filterCache) InvalidateAll() {
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B
 // policy from agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 type AgentVisibilityFilter struct {
-	skillUC  SkillResolver
-	runtime  RuntimeSettings
-	cache    filterCache
-	lg       loggateway.Logger
-	agentKey string
+	skillUC    SkillResolver
+	runtime    RuntimeSettings
+	cache      filterCache
+	lg         loggateway.Logger
+	agentKey   string
+	lastGoodMu sync.RWMutex
+	lastGoodSet map[string]bool
 }
 
 func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings, lg loggateway.Logger, agentKey string) trpcskill.VisibilityFilter {
@@ -169,19 +171,34 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 	opts := &SkillToolsetOptions{Runtime: f.runtime, UserQuery: TurnQueryFromContext(ctx)}
 	slugs, err := ResolveSkillSlugsDetailed(ctx, f.skillUC, opts, f.lg)
 	set := map[string]bool{}
-	if err == nil {
-		for _, slug := range slugs.Slugs {
-			s := strings.TrimSpace(strings.ToLower(slug))
-			if s != "" {
-				set[s] = true
-			}
-		}
-	}
 	if err != nil {
-		f.lg.Warn("ResolveSkillSlugs failed; hiding all skills (fail-closed)",
+		// Resolution failed: return the last successful result (stale-but-available)
+		// so that transient errors don't hide all skills.
+		f.lastGoodMu.RLock()
+		cached := f.lastGoodSet
+		f.lastGoodMu.RUnlock()
+		if len(cached) > 0 {
+			f.lg.Warn("ResolveSkillSlugs failed; returning last good set (stale-but-available)",
+				loggateway.StepID("tool.skillruntime.resolve_fail_stale"),
+				loggateway.Err(err))
+			return cached
+		}
+		// No previous good result: fail-closed but do NOT cache the empty set.
+		f.lg.Warn("ResolveSkillSlugs failed; no last good set available, hiding all skills",
 			loggateway.StepID("tool.skillruntime.resolve_fail"),
 			loggateway.Err(err))
+		return set
 	}
+	// Successful resolution (even if result is empty): cache the result.
+	for _, slug := range slugs.Slugs {
+		s := strings.TrimSpace(strings.ToLower(slug))
+		if s != "" {
+			set[s] = true
+		}
+	}
+	f.lastGoodMu.Lock()
+	f.lastGoodSet = set
+	f.lastGoodMu.Unlock()
 	f.cache.Store(cacheKey, set)
 	return set
 }

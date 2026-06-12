@@ -88,13 +88,6 @@ func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config, lg lo
 	return warnings, nil
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
-
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {

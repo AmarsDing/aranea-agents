@@ -88,7 +88,9 @@ func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
 			at := time.Now().UTC()
 			key := name
 			safego.Go(ctx, "mcp.reconnect_metadata", func() {
-				rec(context.WithoutCancel(ctx), key, at)
+				metaCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				rec(metaCtx, key, at)
 			})
 		}
 	}

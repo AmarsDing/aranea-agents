@@ -4,28 +4,26 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//
-//	[*] --> Accepted
-//	Accepted --> Running : start
-//	Accepted --> Queued : queue
-//	Accepted --> Cancelled : cancel
-//	Accepted --> AsyncQueued : async_queue
-//	Running --> Completed : complete
-//	Running --> Failed : fail
-//	Running --> Timeout : timeout
-//	Running --> Cancelled : cancel
-//	Running --> AsyncQueued : async_queue
-//	Queued --> Running : dequeue
-//	Queued --> Cancelled : cancel
-//	AsyncQueued --> Running : async_start
-//	AsyncQueued --> Failed : async_fail
-//	AsyncQueued --> Cancelled : async_cancel
-//	AsyncQueued --> Timeout : timeout
-//	Completed --> [*]
-//	Failed --> [*]
-//	Timeout --> [*]
-//	Cancelled --> [*]
-//
+//     [*] --> Accepted
+//     Accepted --> Running : start
+//     Accepted --> Queued : queue
+//     Accepted --> Cancelled : cancel
+//     Accepted --> AsyncQueued : async_queue
+//     Running --> Completed : complete
+//     Running --> Failed : fail
+//     Running --> Timeout : timeout
+//     Running --> Cancelled : cancel
+//     Running --> AsyncQueued : async_queue
+//     Queued --> Running : dequeue
+//     Queued --> Cancelled : cancel
+//     AsyncQueued --> Running : async_start
+//     AsyncQueued --> Failed : async_fail
+//     AsyncQueued --> Cancelled : async_cancel
+//     AsyncQueued --> Timeout : timeout
+//     Completed --> [*]
+//     Failed --> [*]
+//     Timeout --> [*]
+//     Cancelled --> [*]
 // ```
 package biz
 

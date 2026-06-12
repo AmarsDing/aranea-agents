@@ -88,8 +88,10 @@ func resolveAPIKeyFromEnv(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case ProviderSerpAPI:
 		return strings.TrimSpace(os.Getenv("SERPAPI_API_KEY"))
-	default:
+	case ProviderTavily, "":
 		return strings.TrimSpace(os.Getenv("TAVILY_API_KEY"))
+	default:
+		return ""
 	}
 }
 
@@ -121,6 +123,8 @@ func configBool(m map[string]any, key string) bool {
 		return t
 	case float64:
 		return t != 0
+	case string:
+		return strings.EqualFold(t, "true") || t == "1"
 	default:
 		return false
 	}

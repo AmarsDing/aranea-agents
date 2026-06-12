@@ -1,6 +1,7 @@
 package testexec
 
 import (
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/tools"
@@ -17,44 +18,44 @@ const (
 )
 
 // AssemblyForCatalogKey returns an AssemblyConfig for a single catalog tool_key.
-func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresearchpkg.PlatformFields, lg loggateway.Logger) (tools.AssemblyConfig, bool) {
+func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresearchpkg.PlatformFields, lg loggateway.Logger) (tools.AssemblyConfig, bool, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return tools.AssemblyConfig{}, false
+		return tools.AssemblyConfig{}, false, nil
 	}
 	switch key {
 	case toolKeyKnowledgeSearch, toolKeyCallAgent, toolKeyMCPToolSet, toolKeyMCPBroker:
-		return tools.AssemblyConfig{}, false
+		return tools.AssemblyConfig{}, false, nil
 	case toolKeyKnowledgeReflect:
-		return tools.AssemblyConfig{}, false
+		return tools.AssemblyConfig{}, false, nil
 	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"file"}}
 		applyFilesystemDir(&cfg, merged)
-		return cfg, true
+		return cfg, true, nil
 	case "shell_exec":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"hostexec"}}
 		applyShellExecDir(&cfg, merged)
-		return cfg, true
+		return cfg, true, nil
 	case "web_research":
 		wcfg := webresearchpkg.ResolveConfig(merged, platform)
 		if !wcfg.Ready() {
-			return tools.AssemblyConfig{}, false
+			return tools.AssemblyConfig{}, false, nil
 		}
 		t, err := webresearchpkg.NewTool(wcfg, lg)
 		if err != nil {
-			return tools.AssemblyConfig{}, false
+			return tools.AssemblyConfig{}, false, fmt.Errorf("web_research: %w", err)
 		}
-		return tools.AssemblyConfig{Session: tools.SessionConfig{CustomTools: []tools.Tool{t}}}, true
+		return tools.AssemblyConfig{Session: tools.SessionConfig{CustomTools: []tools.Tool{t}}}, true, nil
 	case "web_fetch":
-		return tools.AssemblyConfig{EnabledTools: []string{"httpfetch"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"httpfetch"}}, true, nil
 	case "duckduckgo_search":
-		return tools.AssemblyConfig{EnabledTools: []string{"duckduckgo"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"duckduckgo"}}, true, nil
 	case "gemini_web_fetch":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"geminifetch"}}
 		if v := tools.ConfigString(merged, "model", "gemini_model"); v != "" {
 			cfg.Search.GeminiModel = v
 		}
-		return cfg, true
+		return cfg, true, nil
 	case "google_search":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"google_search"}}
 		if v := tools.ConfigString(merged, "api_key", "google_api_key"); v != "" {
@@ -63,33 +64,33 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		if v := tools.ConfigString(merged, "cx", "engine_id", "google_cx", "search_engine_id"); v != "" {
 			cfg.Search.GoogleCX = v
 		}
-		return cfg, true
+		return cfg, true, nil
 	case "arxiv_search":
-		return tools.AssemblyConfig{EnabledTools: []string{"arxiv_search"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"arxiv_search"}}, true, nil
 	case "wikipedia_search":
-		return tools.AssemblyConfig{EnabledTools: []string{"wikipedia"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"wikipedia"}}, true, nil
 	case "send_email":
-		return tools.AssemblyConfig{EnabledTools: []string{"email"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"email"}}, true, nil
 	case "todo_write":
-		return tools.AssemblyConfig{EnabledTools: []string{"todo"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"todo"}}, true, nil
 	case "working_memory.read", "working_memory.list", "working_memory.write", "working_memory.patch", "working_memory.delete":
-		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true, nil
 	case "await_user_reply":
-		return tools.AssemblyConfig{EnabledTools: []string{"await_user_reply"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"await_user_reply"}}, true, nil
 	case "claude_code":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"claudecode"}}
 		if v := tools.ConfigString(merged, "base_dir", "claude_code_dir", "working_dir"); v != "" {
 			cfg.ClaudeCode.Dir = v
 		}
-		return cfg, true
+		return cfg, true, nil
 	case "workspace_exec":
-		return tools.AssemblyConfig{}, false
+		return tools.AssemblyConfig{}, false, nil
 	case "read_document":
-		return tools.AssemblyConfig{EnabledTools: []string{"read_document"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"read_document"}}, true, nil
 	case "read_spreadsheet":
-		return tools.AssemblyConfig{EnabledTools: []string{"read_spreadsheet"}}, true
+		return tools.AssemblyConfig{EnabledTools: []string{"read_spreadsheet"}}, true, nil
 	default:
-		return tools.AssemblyConfig{}, false
+		return tools.AssemblyConfig{}, false, nil
 	}
 }
 

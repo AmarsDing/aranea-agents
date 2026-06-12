@@ -30,7 +30,7 @@ func BuildPhases(backend modelregistry.ApplyBackend, lg loggateway.Logger) *Phas
 }
 
 func (p *Phases) List() []modelregistry.Phase {
-	return []modelregistry.Phase{p.fetchPhase, p.migratePhase, p.applyPhase}
+	return []modelregistry.Phase{p.fetchPhase, p.migratePhase, p.applyPhase, p.logoPhase}
 }
 
 func (p *Phases) LogoPhase() modelregistry.Phase {

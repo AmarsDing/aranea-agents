@@ -8,15 +8,26 @@ import (
 )
 
 // ChannelInboundReceiptRepo records processed inbound events (idempotency).
+// Stability:stable
 type ChannelInboundReceiptRepo interface {
 	// TryClaim inserts a receipt; returns claimed=false when the key already exists.
 	TryClaim(ctx context.Context, channelID, idempotencyKey, peerID, textPreview string) (claimed bool, err error)
 }
 
-// InboundIdempotencyKey returns the platform message id key (e.g. feishu:om_xxx).
+// InboundIdempotencyKey returns the deduplication key for an inbound message.
+// It includes the platform prefix to avoid cross-platform key collisions
+// (e.g. feishu and dingtalk both using numeric message IDs).
 // Empty when the adapter did not provide a stable id — ingress must reject before Turn.
-func InboundIdempotencyKey(_, messageKey, _, _ string) string {
-	return strings.TrimSpace(messageKey)
+func InboundIdempotencyKey(platform, messageKey, _, _ string) string {
+	messageKey = strings.TrimSpace(messageKey)
+	if messageKey == "" {
+		return ""
+	}
+	platform = strings.TrimSpace(platform)
+	if platform != "" && !strings.Contains(messageKey, ":") {
+		return platform + ":" + messageKey
+	}
+	return messageKey
 }
 
 func inboundTextPreview(text string) string {

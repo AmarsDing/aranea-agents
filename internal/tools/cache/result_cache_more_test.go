@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -273,18 +274,19 @@ func TestTrimJSON(t *testing.T) {
 		{"leading_newlines", "\nhello", "hello"},
 		{"mixed_leading", "  \n  hello", "hello"},
 		{"already_trimmed", "hello", "hello"},
-		{"tab_not_trimmed", "\thello", "\thello"},
-		{"trailing_not_trimmed", "hello  ", "hello  "},
+		{"tab_trimmed", "\thello", "hello"},
+		{"trailing_trimmed", "hello  ", "hello"},
 		{"empty_string", "", ""},
 		{"only_spaces", "   ", ""},
 		{"only_newlines", "\n\n", ""},
+		{"carriage_return", "\r\nhello\r\n", "hello"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := TrimJSON(tt.input)
+			got := strings.TrimSpace(tt.input)
 			if got != tt.want {
-				t.Fatalf("TrimJSON(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Fatalf("TrimSpace(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

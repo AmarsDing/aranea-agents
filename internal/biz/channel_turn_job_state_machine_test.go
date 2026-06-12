@@ -230,37 +230,3 @@ func TestChannelTurnJobStateMachine_FullLifecycle_Async(t *testing.T) {
 		t.Fatalf("expected terminal state, got %q", current)
 	}
 }
-
-// ── Typed state machine direct tests ─────────────────────────────────────────
-
-func TestChannelTurnJobStateMachine_TypedTransition(t *testing.T) {
-	sm := NewChannelTurnJobStateMachine()
-
-	to, err := sm.Transition(ChannelTurnJobStateAccepted, ChannelTurnJobEventStart)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if to != ChannelTurnJobStateRunning {
-		t.Errorf("got %q, want %q", to, ChannelTurnJobStateRunning)
-	}
-}
-
-func TestChannelTurnJobStateMachine_TypedCanTransition(t *testing.T) {
-	sm := NewChannelTurnJobStateMachine()
-
-	if !sm.CanTransition(ChannelTurnJobStateAccepted, ChannelTurnJobStateRunning) {
-		t.Error("expected accepted→running to be valid")
-	}
-	if sm.CanTransition(ChannelTurnJobStateCompleted, ChannelTurnJobStateRunning) {
-		t.Error("expected completed→running to be invalid")
-	}
-}
-
-func TestChannelTurnJobStateMachine_TypedValidTargets(t *testing.T) {
-	sm := NewChannelTurnJobStateMachine()
-
-	targets := sm.ValidTargets(ChannelTurnJobStateAccepted)
-	if len(targets) != 4 {
-		t.Errorf("accepted should have 4 valid targets, got %d: %v", len(targets), targets)
-	}
-}

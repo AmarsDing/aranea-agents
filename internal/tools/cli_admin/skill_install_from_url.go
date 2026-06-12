@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/pkginstall"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -26,9 +27,11 @@ type skillInstallOutput struct {
 
 func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input skillInstallInput) (skillInstallOutput, error) {
-		_ = ctx
 		if input.URL == "" {
-			return skillInstallOutput{}, fmt.Errorf("url is required")
+			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "url is required")
+		}
+		if err := validateRepoURL(input.URL); err != nil {
+			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid url: %v", err)
 		}
 		manifest := &pkginstall.Manifest{
 			Version: 1,
@@ -46,7 +49,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 			},
 		}
 		if err := pkginstall.ValidateManifest(manifest); err != nil {
-			return skillInstallOutput{}, fmt.Errorf("invalid skill install manifest: %w", err)
+			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "invalid skill install manifest: %v", err)
 		}
 
 		var stepLog []string

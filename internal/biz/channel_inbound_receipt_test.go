@@ -15,9 +15,12 @@ func TestInboundIdempotencyKey(t *testing.T) {
 		text       string
 		want       string
 	}{
-		{"returns trimmed message key", "feishu", "om_123", "u1", "hello", "om_123"},
-		{"trims spaces", "feishu", "  om_456  ", "u1", "hello", "om_456"},
+		{"returns platform-prefixed key", "feishu", "om_123", "u1", "hello", "feishu:om_123"},
+		{"trims spaces and prefixes", "feishu", "  om_456  ", "u1", "hello", "feishu:om_456"},
 		{"empty message key", "feishu", "", "u1", "hello", ""},
+		{"already prefixed key not double-prefixed", "feishu", "feishu:om_789", "u1", "hello", "feishu:om_789"},
+		{"dingtalk prefixed key preserved", "dingtalk", "dingtalk:msg:abc", "u1", "hello", "dingtalk:msg:abc"},
+		{"no platform returns raw key", "", "om_123", "u1", "hello", "om_123"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

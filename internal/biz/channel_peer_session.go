@@ -15,6 +15,7 @@ type ChannelPeerSession struct {
 }
 
 // ChannelPeerSessionRepo persists channel_id + peer_key → session_id mappings.
+// Stability:stable
 type ChannelPeerSessionRepo interface {
 	GetByChannelAndPeer(ctx context.Context, channelID, peerKey string) (ChannelPeerSession, error)
 	Create(ctx context.Context, row ChannelPeerSession) (ChannelPeerSession, error)

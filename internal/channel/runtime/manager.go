@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/outbound"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -187,7 +188,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 			m.mu.Unlock()
 			continue
 		}
-		runCtx, cancel := context.WithCancel(ctx)
+		runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 		done := make(chan struct{})
 		m.running[ch.ID] = runningInstance{cancel: cancel, fingerprint: fp, done: done}
 		m.mu.Unlock()
@@ -296,7 +297,7 @@ func (m *Manager) StopAll() {
 }
 
 // ErrNoStarter indicates no runtime connector registered for type/mode.
-var ErrNoStarter = fmt.Errorf("channel runtime: no starter registered")
+var ErrNoStarter = apierror.BadRequest("CHANNEL_RUNTIME", "no starter registered")
 
 func feishuAppIDFromConfig(configJSON string) string {
 	var cfg struct {

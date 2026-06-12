@@ -2,8 +2,11 @@ package cli_admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"aranea-agents/pkg/apierror"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -17,7 +20,7 @@ type skillGetInput struct {
 func newSkillGetTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input skillGetInput) (*SkillItem, error) {
 		if input.ID == "" {
-			return nil, fmt.Errorf("id is required")
+			return nil, kerrors.BadRequest("CLI_ADMIN", "id is required")
 		}
 		return deps.SkillRepo.GetSkill(ctx, input.ID)
 	}
@@ -43,9 +46,15 @@ type agentListOutput struct {
 
 func newAgentListTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input agentListInput) (agentListOutput, error) {
+		if input.Offset < 0 {
+			return agentListOutput{}, kerrors.BadRequest("CLI_ADMIN", "offset must be >= 0")
+		}
 		limit := input.Limit
 		if limit <= 0 {
 			limit = 20
+		}
+		if limit > 100 {
+			limit = 100
 		}
 		items, total, err := deps.AgentRepo.ListAgents(ctx, input.Keyword, limit, input.Offset)
 		if err != nil {
@@ -69,11 +78,15 @@ type agentGetInput struct {
 func newAgentGetTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input agentGetInput) (*AgentItem, error) {
 		if input.ID == "" {
-			return nil, fmt.Errorf("id is required")
+			return nil, kerrors.BadRequest("CLI_ADMIN", "id is required")
 		}
 		item, err := deps.AgentRepo.GetAgent(ctx, input.ID)
 		if err != nil {
-			// Fallback: try agent_key when ID lookup fails
+			// Only fallback to agent_key lookup on NotFound errors.
+			var ae *apierror.Error
+			if !errors.As(err, &ae) || ae.Code != apierror.CodeNotFound {
+				return nil, err
+			}
 			byKey, keyErr := deps.AgentRepo.GetAgentByAgentKey(ctx, input.ID)
 			if keyErr != nil {
 				return nil, err // return original error

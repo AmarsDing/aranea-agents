@@ -150,6 +150,7 @@ func main() {
 		PluginRuntime:               out.PluginRuntime,
 		ChannelRuntime:              out.ChannelRuntime,
 		EventStoreCleanup:           out.EventStoreCleanup,
+		EventWALCleanup:             out.EventWALCleanup,
 		ToolAuditCleanup:            out.ToolAuditCleanup,
 		FlowLogCleanup:              out.FlowLogCleanup,
 		MonitorAlertCooldownCleanup: out.MonitorAlertCooldownCleanup,

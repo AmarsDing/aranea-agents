@@ -31,12 +31,12 @@ func TestBuildPhases_ReturnsAllPhases(t *testing.T) {
 	}
 }
 
-func TestPhases_List_ReturnsThreePhases(t *testing.T) {
+func TestPhases_List_ReturnsAllPhases(t *testing.T) {
 	backend := &stubBackend{}
 	phases := BuildPhases(backend, loggateway.NewNoop())
 	list := phases.List()
-	if len(list) != 3 {
-		t.Errorf("expected 3 phases in List, got %d", len(list))
+	if len(list) != 4 {
+		t.Errorf("expected 4 phases in List, got %d", len(list))
 	}
 }
 

@@ -10,6 +10,12 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// Compile-time assertion: EventStoreUsecase implements EventStoreExistChecker
+// (defined in internal/event/wal.go) for WAL recovery idempotency.
+var _ interface {
+	Exists(ctx context.Context, eventID string) bool
+} = (*EventStoreUsecase)(nil)
+
 const defaultEventStoreTTLDays = 7
 
 // EventStoreRecord is a persisted Envelope snapshot.
@@ -40,10 +46,12 @@ type EventStoreListResult struct {
 }
 
 // EventStoreRepo persists Envelope snapshots.
+// Stability:evolving
 type EventStoreRepo interface {
 	Insert(ctx context.Context, rec EventStoreRecord) error
 	List(ctx context.Context, q EventStoreQuery) (EventStoreListResult, error)
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	ExistsByID(ctx context.Context, id string) bool
 }
 
 // EventStoreUsecase manages event persistence and replay queries.
@@ -96,6 +104,15 @@ func (uc *EventStoreUsecase) PurgeExpired(ctx context.Context) (int64, error) {
 	}
 	cutoff := time.Now().UTC().Add(-eventStoreTTL())
 	return uc.repo.DeleteOlderThan(ctx, cutoff)
+}
+
+// Exists checks if an event with the given ID already exists in the EventStore.
+// This implements the EventStoreExistChecker interface for WAL recovery idempotency.
+func (uc *EventStoreUsecase) Exists(ctx context.Context, eventID string) bool {
+	if uc == nil || uc.repo == nil {
+		return false
+	}
+	return uc.repo.ExistsByID(ctx, eventID)
 }
 
 func eventStoreTTL() time.Duration {
