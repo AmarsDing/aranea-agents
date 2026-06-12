@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
@@ -433,7 +431,7 @@ type CompressRepo interface {
 
 // SessionRepo aggregates all session sub-repositories for Wire binding only.
 // Consumers should depend on the specific sub-interface they need.
-// TECH-DEBT: SessionRepo aggregates 17+ methods; should be split into sub-interfaces.
+// TECH-DEBT(COG): interface_methods=17, limit=5; SessionRepo aggregates 17+ methods; should be split into sub-interfaces.
 // New code should depend on narrow interfaces like SessionRuntimeWriter, SessionMetricsReader, etc.
 //
 // Deprecated: Use fine-grained sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.)
@@ -482,6 +480,7 @@ type MetricsUpdatedPublisher interface {
 }
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
+// TECH-DEBT(COG): struct_fields=26, limit=10 (biz layer); needs further decomposition
 type SessionUsecase struct {
 	sessionReader       SessionReader
 	sessionTreeReader   SessionTreeReader
@@ -511,15 +510,9 @@ type SessionUsecase struct {
 	// Sub-usecases (Facade pattern — old callers delegate through these).
 	metricsUsecase     *SessionMetricsUsecase
 	compressionUsecase *SessionCompressionUsecase
-
-	// Legacy fields kept for backward-compatible Set* methods; delegate to sub-usecases.
-	metricsUpdatedPublisher MetricsUpdatedPublisher
-	metricsDeltaMu          sync.Mutex
-	metricsDeltas           map[string]*SessionMetricsDelta
-	flushInterval           time.Duration
 }
 
-func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUpdatedPublisher MetricsUpdatedPublisher, runtimeWriter SessionRuntimeWriter) *SessionUsecase {
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
@@ -547,12 +540,9 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 		titleGenerator:          titleGenerator,
 		participants:            participants,
 		statusPublisher:         statusPublisher,
-		metricsUpdatedPublisher: metricsUpdatedPublisher,
-		metricsDeltas:           make(map[string]*SessionMetricsDelta),
-		flushInterval:           200 * time.Millisecond,
+		metricsUsecase:          metricsUsecase,
 	}
 	// Create sub-usecases with shared repo references.
-	uc.metricsUsecase = NewSessionMetricsUsecase(sessions, loggateway.NewNoop(), metricsUpdatedPublisher)
 	uc.compressionUsecase = NewSessionCompressionUsecase(sessions, sessions, sessions, sessions)
 	return uc
 }

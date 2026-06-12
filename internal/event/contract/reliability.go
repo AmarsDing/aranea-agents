@@ -22,8 +22,8 @@ const (
 // Classification follows AS-EVT-01:
 //   - Critical (WBPF): ToolResult, Error, RunnerCompletion, Checkpoint
 //   - Important (BlockUpTo + async): StateDelta, TokenUsage, RunStatus,
-//     SessionStatusChanged, GraphNodeEnd, TeamRunFinished, UserFeedback
-//   - Informational (best-effort): everything else
+//     SessionStatusChanged, GraphNodeEnd, TeamRunFinished, TeamRunFailed, UserFeedback
+//   - Informational (best-effort): ContextUsage, everything else
 //
 // This function is the single source of truth for event reliability classification.
 // All consumers (Bus delivery policy, EventWAL, persist handler) must use this
@@ -43,8 +43,11 @@ func ClassifyEventReliability(t EnvelopeType) EventReliability {
 		EnvelopeTypeSessionStatusChanged,
 		EnvelopeTypeGraphNodeEnd,
 		EnvelopeTypeTeamRunFinished,
+		EnvelopeTypeTeamRunFailed,
 		EnvelopeTypeUserFeedback:
 		return ReliabilityImportant
+	case EnvelopeTypeContextUsage:
+		return ReliabilityInformational
 	default:
 		return ReliabilityInformational
 	}

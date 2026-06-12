@@ -25,6 +25,7 @@ const (
 )
 
 // ValidTeamStatusTransition returns true if a team status transition from→to is allowed.
+// Deprecated: Use TeamStateMachine.CanTransition() instead. This function will be removed in a future release.
 func ValidTeamStatusTransition(from, to string) bool {
 	if from == to {
 		return true
@@ -41,6 +42,7 @@ func ValidTeamStatusTransition(from, to string) bool {
 	return false
 }
 
+// Deprecated: Use TeamStateMachine transition rules instead.
 var teamStatusValidTransitions = map[string][]string{
 	TeamStatusPending:     {TeamStatusRunning, TeamStatusCancelled},
 	TeamStatusRunning:     {TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted},
@@ -75,12 +77,14 @@ func IsTeamRunTerminalStatus(status string) bool {
 	return teamRunTerminalStatuses[status]
 }
 
+// Deprecated: Use TeamRunStateMachine transition rules instead.
 var teamRunValidTransitions = map[string][]string{
 	TeamRunStatusPending:      {TeamRunStatusRunning, TeamRunStatusCancelled},
 	TeamRunStatusRunning:      {TeamRunStatusWaitingHuman, TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled},
 	TeamRunStatusWaitingHuman: {TeamRunStatusRunning, TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled},
 }
 
+// Deprecated: Use TeamRunStateMachine.CanTransition() instead. This function will be removed in a future release.
 func ValidateTeamRunTransition(from, to string) bool {
 	if from == to {
 		return true

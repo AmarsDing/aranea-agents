@@ -4,34 +4,9 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-type FallbackDecision struct {
-	UseNative    bool
-	MetricLabel  string
-	ErrorMessage string
-}
-
-func DecideNativeFallback(
-	def Definition,
-	teamID string,
-	graphAttempted bool,
-	graphCompileErr string,
-	graphBuildErr string,
-	mode string,
-	graphRootAvailable bool,
-) FallbackDecision {
-	if envTeamNativeForced() {
-		return FallbackDecision{
-			UseNative:   true,
-			MetricLabel: "native_emergency",
-		}
-	}
-
+func graphRuntimeDiagnosticError(graphCompileErr, graphBuildErr, mode string, graphRootAvailable bool) error {
 	msg := nativeFallbackDiagnosticMessage(graphCompileErr, graphBuildErr, mode, graphRootAvailable)
-	return FallbackDecision{
-		UseNative:    false,
-		MetricLabel:  "",
-		ErrorMessage: msg,
-	}
+	return apierror.Internal(apierror.DomainTeam, msg)
 }
 
 func nativeFallbackDiagnosticMessage(graphCompileErr, graphBuildErr, mode string, graphRootAvailable bool) string {
@@ -47,11 +22,4 @@ func nativeFallbackDiagnosticMessage(graphCompileErr, graphBuildErr, mode string
 	default:
 		return "team graph runtime unavailable"
 	}
-}
-
-func (d FallbackDecision) Error() error {
-	if d.ErrorMessage == "" {
-		return nil
-	}
-	return apierror.Internal(apierror.DomainTeam, d.ErrorMessage)
 }

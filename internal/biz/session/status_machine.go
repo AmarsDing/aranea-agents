@@ -51,6 +51,6 @@ func (m *SessionStatusMachine) CanTransitionTo(target SessionStatus) bool {
 	return false
 }
 
-func (m *SessionStatusMachine) Status() SessionStatus            { return m.status }
+func (m *SessionStatusMachine) Status() SessionStatus             { return m.status }
 func (m *SessionStatusMachine) StatusReason() SessionStatusReason { return m.statusReason }
-func (m *SessionStatusMachine) ChangedAt() string                { return m.changedAt }
+func (m *SessionStatusMachine) ChangedAt() string                 { return m.changedAt }

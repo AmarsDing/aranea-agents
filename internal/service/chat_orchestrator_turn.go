@@ -1,3 +1,4 @@
+// TECH-DEBT(COG): file_lines=1252, limit=500; needs further extraction of turn phases
 package service
 
 import (
@@ -402,6 +403,7 @@ func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, cont
 }
 
 // runSingleAgentViaTRPC runs a single agent turn via the trpc-agent-go framework.
+// TECH-DEBT(COG): method_lines=550, limit=80; needs phase-based decomposition
 func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	ctx context.Context,
 	sess biz.Session,

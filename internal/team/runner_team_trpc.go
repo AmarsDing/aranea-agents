@@ -471,11 +471,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AnchorMem:      ar.member,
 		AnchorAg:       ar.agent,
 	}
-	if graphExecID != "" {
-		r.finalizeGraphRunStepsFallback(ctx, finishIn)
-	} else {
-		r.persistNativeBulkMemberSteps(ctx, finishIn, members)
-	}
+	r.finalizeGraphRunStepsFallback(ctx, finishIn)
 
 	r.finalizeTeamRun(ctx, &run, teamRow, ar, assistantMsg, promptTok, completionTok, dialogMode, graphExecID, t0, teamEmitter)
 

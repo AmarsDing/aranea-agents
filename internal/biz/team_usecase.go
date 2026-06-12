@@ -440,7 +440,8 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 	if err != nil {
 		return Team{}, err
 	}
-	if !ValidTeamStatusTransition(current.Status, newStatus) {
+	sm := NewTeamStateMachine()
+	if !sm.CanTransition(TeamState(current.Status), TeamState(newStatus)) {
 		return Team{}, apierror.BadRequest("TEAM", "invalid team status transition: %s → %s", current.Status, newStatus)
 	}
 	current.Status = newStatus
@@ -458,7 +459,8 @@ func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string,
 	if err != nil {
 		return Team{}, err
 	}
-	if !ValidTeamStatusTransition(current.Status, newStatus) {
+	sm := NewTeamStateMachine()
+	if !sm.CanTransition(TeamState(current.Status), TeamState(newStatus)) {
 		return Team{}, apierror.BadRequest("TEAM", "invalid team status transition: %s → %s", current.Status, newStatus)
 	}
 	current.Status = newStatus

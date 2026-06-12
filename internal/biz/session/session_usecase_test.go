@@ -1,18 +1,18 @@
 package session
 
 import (
-	"context"
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
+	"context"
 	"errors"
 	"testing"
 )
 
 type mockSessionRepo struct {
-	searchSessionsFn   func(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
-	createSessionFn    func(ctx context.Context, s Session) (Session, error)
-	searchMessagesFn   func(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-	getSessionByIDFn   func(ctx context.Context, id string) (Session, error)
+	searchSessionsFn func(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
+	createSessionFn  func(ctx context.Context, s Session) (Session, error)
+	searchMessagesFn func(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+	getSessionByIDFn func(ctx context.Context, id string) (Session, error)
 }
 
 func (m *mockSessionRepo) SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -292,7 +292,7 @@ func (m *mockParticipantRepo) ListBySession(_ context.Context, _ string) ([]Sess
 }
 
 func newTestUsecase(repo *mockSessionRepo, agents *mockAgentLookup, teams *mockTeamLookup) *SessionUsecase {
-	return NewSessionUsecase(repo, agents, teams, nil, &mockParticipantRepo{}, nil, nil, nil)
+	return NewSessionUsecase(repo, agents, teams, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil)
 }
 
 func assertBadRequest(t *testing.T, err error, wantMsg string) {
@@ -357,14 +357,14 @@ func assertNotFound(t *testing.T, err error, wantMsg string) {
 
 func TestCreate(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      Session
-		agentFn    func(ctx context.Context, id string) (struct{}, error)
-		teamFn     func(ctx context.Context, id string) (struct{}, error)
-		createFn   func(ctx context.Context, s Session) (Session, error)
-		wantErr    bool
-		wantCode   apierror.Code
-		wantMsg    string
+		name        string
+		input       Session
+		agentFn     func(ctx context.Context, id string) (struct{}, error)
+		teamFn      func(ctx context.Context, id string) (struct{}, error)
+		createFn    func(ctx context.Context, s Session) (Session, error)
+		wantErr     bool
+		wantCode    apierror.Code
+		wantMsg     string
 		checkResult func(t *testing.T, got Session)
 	}{
 		{
@@ -411,9 +411,9 @@ func TestCreate(t *testing.T) {
 				OwnerType: "agent",
 				AgentID:   "",
 			},
-			wantErr:    true,
-			wantCode:   apierror.CodeBadRequest,
-			wantMsg:    "agent_id is required",
+			wantErr:  true,
+			wantCode: apierror.CodeBadRequest,
+			wantMsg:  "agent_id is required",
 		},
 		{
 			name: "empty owner_type defaults to agent",
@@ -457,9 +457,9 @@ func TestCreate(t *testing.T) {
 			input: Session{
 				OwnerType: "invalid",
 			},
-			wantErr:    true,
-			wantCode:   apierror.CodeBadRequest,
-			wantMsg:    "owner_type must be agent or team",
+			wantErr:  true,
+			wantCode: apierror.CodeBadRequest,
+			wantMsg:  "owner_type must be agent or team",
 		},
 		{
 			name: "agent not found returns not found error",
@@ -470,9 +470,9 @@ func TestCreate(t *testing.T) {
 			agentFn: func(_ context.Context, _ string) (struct{}, error) {
 				return struct{}{}, shared.ErrNotFound
 			},
-			wantErr:    true,
-			wantCode:   apierror.CodeNotFound,
-			wantMsg:    "agent not found",
+			wantErr:  true,
+			wantCode: apierror.CodeNotFound,
+			wantMsg:  "agent not found",
 		},
 		{
 			name: "team session creation",
@@ -506,9 +506,9 @@ func TestCreate(t *testing.T) {
 				OwnerType: "team",
 				TeamID:    "",
 			},
-			wantErr:    true,
-			wantCode:   apierror.CodeBadRequest,
-			wantMsg:    "team_id is required",
+			wantErr:  true,
+			wantCode: apierror.CodeBadRequest,
+			wantMsg:  "team_id is required",
 		},
 	}
 
@@ -549,12 +549,12 @@ func TestCreate(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	tests := []struct {
-		name      string
-		query     SessionSearchQuery
-		searchFn  func(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
-		wantErr   bool
-		wantLimit int
-		wantOffset int
+		name        string
+		query       SessionSearchQuery
+		searchFn    func(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
+		wantErr     bool
+		wantLimit   int
+		wantOffset  int
 		checkResult func(t *testing.T, got SessionListResult, capturedQ SessionSearchQuery)
 	}{
 		{
@@ -698,11 +698,11 @@ func TestSearch(t *testing.T) {
 
 func TestSearchMessages(t *testing.T) {
 	tests := []struct {
-		name     string
-		query    MessageSearchQuery
-		searchFn func(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-		wantErr  bool
-		wantMsg  string
+		name        string
+		query       MessageSearchQuery
+		searchFn    func(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+		wantErr     bool
+		wantMsg     string
 		checkResult func(t *testing.T, got MessageSearchResult)
 	}{
 		{

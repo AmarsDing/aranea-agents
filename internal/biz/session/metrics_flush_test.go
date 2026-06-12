@@ -22,16 +22,14 @@ func (m *mockMetricsRepo) ApplyMetricsDelta(_ context.Context, d *SessionMetrics
 
 func newTestUsecaseWithMock() (*SessionUsecase, *mockMetricsRepo) {
 	repo := &mockMetricsRepo{}
+	mu := NewSessionMetricsUsecase(repo, nil, nil)
+	mu.flushInterval = 1 * time.Hour // disable periodic flush for test
 	uc := &SessionUsecase{
 		sessionReader:  repo,
 		sessionWriter:  repo,
 		contextUpdater: repo,
-		metricsDeltas:  make(map[string]*SessionMetricsDelta),
-		flushInterval:  1 * time.Hour, // disable periodic flush for test
+		metricsUsecase: mu,
 	}
-	// Wire up the sub-usecase so delegation works.
-	uc.metricsUsecase = NewSessionMetricsUsecase(repo, nil, nil)
-	uc.metricsUsecase.flushInterval = 1 * time.Hour
 	return uc, repo
 }
 

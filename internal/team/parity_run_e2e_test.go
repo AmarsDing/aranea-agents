@@ -164,38 +164,6 @@ type parityPathOutcome struct {
 	envelopes []event.Envelope
 }
 
-func runNativePathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
-	t.Helper()
-	repo := newParityMemRepo()
-	bus := event.NewBus(nil)
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 64})
-	defer unsub()
-
-	runner := newParityTestRunner(repo, bus)
-	run := parityRunBase(def.Mode)
-	repo.runs[run.ID] = run
-
-	reply := fmt.Sprintf("team reply %s", def.Mode)
-	result := stubStreamResultFromOutcomes(outcomes, reply)
-	asst := parityAssistantMsg(run.SessionID, reply)
-	finishIn := TeamRunFinishInput{
-		Run:            run,
-		TeamID:         run.TeamID,
-		DefinitionJSON: definitionJSONFromDef(def),
-		Content:        "hello parity",
-		AssistantMsg:   asst,
-		Result:         result,
-		PromptTok:      result.PromptTok,
-		CompletionTok:  result.CompletionTok,
-		GraphExecID:    "",
-	}
-	runner.persistNativeBulkMemberSteps(context.Background(), finishIn, EnabledMembers(def))
-
-	envs := drainEnvelopes(ch)
-	steps, _ := repo.ListTeamRunSteps(context.Background(), run.ID)
-	return parityPathOutcome{steps: steps, envelopes: envs}
-}
-
 func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
 	t.Helper()
 	repo := newParityMemRepo()
@@ -277,7 +245,7 @@ func envelopeTypeHash(envs []event.Envelope, skip map[event.EnvelopeType]struct{
 	return hex.EncodeToString(h[:8])
 }
 
-// TestParityRunE2E_stubStreamAllModes exercises Native vs Graph step persistence with stub EventStreamResult.
+// TestParityRunE2E_stubStreamAllModes exercises Graph step persistence with stub EventStreamResult.
 func TestParityRunE2E_stubStreamAllModes(t *testing.T) {
 	modes := []string{"sequential", "parallel", "coordinator", "critic_loop", "adaptive", "swarm"}
 
@@ -287,31 +255,15 @@ func TestParityRunE2E_stubStreamAllModes(t *testing.T) {
 			def := parityFixture(mode)
 			outcomes := parityMemberOutcomes(def)
 
-			native := runNativePathHarness(t, def, outcomes)
 			graph := runGraphPathHarness(t, def, outcomes)
 
-			if len(native.steps) != len(graph.steps) {
-				t.Fatalf("step count native=%d graph=%d", len(native.steps), len(graph.steps))
+			if len(graph.steps) == 0 {
+				t.Fatalf("expected at least one step for mode %s", mode)
 			}
-			nativeFP := stepFingerprint(native.steps)
 			graphFP := stepFingerprint(graph.steps)
-			if nativeFP != graphFP {
-				t.Fatalf("step fingerprint native=%s graph=%s", nativeFP, graphFP)
-			}
 
-			// Harness uses persistStep on both paths → WS envelope sequences should match.
-			nativeWS := envelopeTypeHash(native.envelopes, nil)
-			graphWS := envelopeTypeHash(graph.envelopes, nil)
-			if nativeWS != graphWS {
-				t.Fatalf("WS type hash native=%s graph=%s", nativeWS, graphWS)
-			}
-
-			nativeSteps := envelopeTypeSetFromEnvs(native.envelopes, envelopeTypeSet(nativeOnlyEnvelopeTypes))
-			if len(nativeSteps) == 0 {
-				t.Fatal("expected team_step envelopes on native path")
-			}
-			t.Logf("mode=%s steps=%d fp=%s native_envs=%d graph_envs=%d",
-				mode, len(native.steps), nativeFP, len(native.envelopes), len(graph.envelopes))
+			t.Logf("mode=%s steps=%d fp=%s graph_envs=%d",
+				mode, len(graph.steps), graphFP, len(graph.envelopes))
 		})
 	}
 }

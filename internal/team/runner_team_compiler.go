@@ -13,28 +13,6 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-func (r *Runner) tryNativeFallback(
-	ctx context.Context,
-	def Definition,
-	teamDeps TRPCTeamBuilderDeps,
-	metricLabel string,
-) (
-	root trpcagent.Agent,
-	memberLookup map[string]trpcagent.Agent,
-	ok bool,
-	err error,
-) {
-	if !envTeamNativeForced() {
-		return nil, nil, false, nil
-	}
-	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.lookupAgent, r.lg)
-	if err != nil {
-		return nil, nil, false, err
-	}
-	metrics.TeamGraphRuntimeTotal.WithLabelValues("native", metricLabel).Inc()
-	return root, memberLookup, true, nil
-}
-
 func (r *Runner) compileTeamRuntime(
 	ctx context.Context,
 	sess biz.Session,
@@ -52,17 +30,12 @@ func (r *Runner) compileTeamRuntime(
 	err error,
 ) {
 	if r.cfg.GraphRoot == nil {
-		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_emergency"); nOk {
-			return nRoot, nLookup, "", nil, nil
-		} else if nErr != nil {
-			return nil, nil, "", nil, nErr
-		}
-		err = DecideNativeFallback(def, teamRow.ID, false, "", "", mode, false).Error()
+		err = graphRuntimeDiagnosticError("", "", mode, false)
 		return
 	}
 
 	if !SupportsTeamGraphRuntimeMode(mode) {
-		err = DecideNativeFallback(def, teamRow.ID, false, "", "", mode, true).Error()
+		err = graphRuntimeDiagnosticError("", "", mode, true)
 		return
 	}
 
@@ -77,12 +50,7 @@ func (r *Runner) compileTeamRuntime(
 	if cerr != nil {
 		r.lg.Warn("Graph 编译失败", loggateway.StepID("team.graph_runtime.compile"), loggateway.Err(cerr))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "compile_error").Inc()
-		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_fallback"); nOk {
-			return nRoot, nLookup, "", nil, nil
-		} else if nErr != nil {
-			return nil, nil, "", nil, nErr
-		}
-		err = DecideNativeFallback(def, teamRow.ID, true, cerr.Error(), "", mode, true).Error()
+		err = graphRuntimeDiagnosticError(cerr.Error(), "", mode, true)
 		return
 	}
 
@@ -91,12 +59,7 @@ func (r *Runner) compileTeamRuntime(
 	if gerr != nil {
 		r.lg.Warn("GraphAgent 构建失败", loggateway.StepID("team.graph_runtime.build"), loggateway.Err(gerr))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "build_error").Inc()
-		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_fallback"); nOk {
-			return nRoot, nLookup, "", nil, nil
-		} else if nErr != nil {
-			return nil, nil, "", nil, nErr
-		}
-		err = DecideNativeFallback(def, teamRow.ID, true, "", gerr.Error(), mode, true).Error()
+		err = graphRuntimeDiagnosticError("", gerr.Error(), mode, true)
 		return
 	}
 

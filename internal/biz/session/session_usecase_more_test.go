@@ -154,7 +154,7 @@ func (r *testRepo) DeleteSessionsByIDs(ctx context.Context, ids []string) (int, 
 }
 
 func newTestUc(repo *testRepo) *SessionUsecase {
-	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, &mockParticipantRepo{}, nil, nil, nil)
+	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil)
 }
 
 func strPtr(s string) *string {

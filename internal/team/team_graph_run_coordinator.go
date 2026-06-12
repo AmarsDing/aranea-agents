@@ -169,7 +169,8 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 	if run.Status == biz.TeamRunStatusWaitingHuman {
 		return nil
 	}
-	if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusWaitingHuman) {
+	sm := biz.NewTeamRunStateMachine()
+	if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusWaitingHuman)) {
 		return nil
 	}
 	run.Status = biz.TeamRunStatusWaitingHuman
@@ -195,7 +196,8 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 	if strings.TrimSpace(exec.GetInterruptNode()) == "" {
 		return false, nil
 	}
-	if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusWaitingHuman) {
+	sm := biz.NewTeamRunStateMachine()
+	if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusWaitingHuman)) {
 		return false, nil
 	}
 	run.Status = biz.TeamRunStatusWaitingHuman
@@ -253,7 +255,8 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, err
 	}
 	if run.Status == biz.TeamRunStatusWaitingHuman {
-		if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusRunning) {
+		sm := biz.NewTeamRunStateMachine()
+		if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusRunning)) {
 			c.lg.Warn("HandleTeamGraphTaskCompleted: invalid transition",
 				loggateway.StepID("team.transition_invalid"),
 				loggateway.Str("team_run_id", run.ID),

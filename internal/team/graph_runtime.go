@@ -6,13 +6,7 @@ import (
 )
 
 func TeamGraphRuntimeEnabled(def Definition) bool {
-	if !envTeamGraphRuntimeGate() {
-		return false
-	}
-	if envTeamNativeForced() {
-		return false
-	}
-	return true
+	return envTeamGraphRuntimeGate()
 }
 
 func envTeamGraphRuntimeGate() bool {
@@ -26,11 +20,6 @@ func envTeamGraphRuntimeGate() bool {
 	default:
 		return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
 	}
-}
-
-func envTeamNativeForced() bool {
-	v := strings.TrimSpace(os.Getenv("ARANEA_TEAM_NATIVE"))
-	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
 }
 
 func SupportsTeamGraphRuntimeMode(mode string) bool {

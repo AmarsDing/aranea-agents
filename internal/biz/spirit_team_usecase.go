@@ -99,6 +99,7 @@ func WithTimeoutHandler(h TimeoutHandler) SpiritTeamUsecaseOption {
 }
 
 // SpiritTeamUsecase manages Spirit team lifecycle.
+// TECH-DEBT(COG): file_lines=1431, limit=500; sync_maps=1, limit=0; needs decomposition into sub-Usecases
 // TODO(debt): DEV-09 — Split into three sub-Usecases:
 //   - SpiritTeamAssemblyUsecase: assembly + creation (AssembleTeam, InjectDeptLeadIntoTeam, UpdateTeamDefinitionJSON, etc.)
 //   - SpiritTeamOrchestrationUsecase: DAG scheduling + timeout + completion (ScheduleDependentTeams, registerTeamTimeout, RecordTeamCompletion, etc.)

@@ -1,7 +1,7 @@
 # Review: Architecture Runtime Pain Points & Optimization
 
 > **日期**：2026-06-11
-> **版本**：v4.0（v3.0 基础上同步代码进展，标注已完成项）
+> **版本**：v5.0（v4.0 基础上同步代码进展，标注已完成项）
 > **范围**：业务运行时核心（ChatOrchestrator / EventBus / Session State / Team Orchestration / HITL）
 
 ---
@@ -19,14 +19,14 @@
 - 修正依赖关系图（事件持久化非独立可并行，是横切关注点）
 - 细化 6 项 AS 标准的落地路径和分层上限
 
-**v4.0 代码同步要点**：
+**v5.0 代码同步要点**：
 - 痛点 1 ChatOrchestrator 重构基本完成：字段 35→12，sync.Map 4→0，5 个子管理器全部提取，runSingleAgentViaTRPC 571→550 行
 - 痛点 1 SessionUsecase 部分拆分：SessionMetricsUsecase/SessionCompressionUsecase 已提取为子 Usecase，但遗留字段仍存在，总字段 30
-- 痛点 2 EventWAL 已实现，事件三级分级已落地（contract/reliability.go），但 criticalTypeSet 与 AS-EVT-01 不一致
+- 痛点 2 EventWAL 已实现，事件三级分级已落地（contract/reliability.go）。v5.0 核实：`criticalTypeSet` 和 `isCriticalEnvelopeType` 已删除，统一使用 `contract.RequiresBlockUpTo()`；`event_reliability.go` 改为 type alias + delegation 兼容层（标记 Deprecated），漂移风险已消除。R3/R4/R13 已修复
 - 痛点 3 状态机大幅进展：统一接口 `StateMachine[S,E]` 已实现，Run/SessionRunPhase/Team/TeamRun/GraphExecution/ChannelTurnJob/Evolution/Agent 状态机均已落地，Session 未迁移到统一接口，Team/TeamRun 旧式函数仍被调用，StateMachineCoordinator 未实现
 - 痛点 4 AwaitCoordinator 已提取，HumanLoopGate 未实现
 - 痛点 5 Native 路径已 Deprecated 但未移除
-- AS 标准：Stability 标注 144 处已广泛落地（94 stable + 46 evolving + 4 internal），archlint 5 个测试已实现，事件可靠性分级已实现，docs/adr/ 未创建，TECH-DEBT(COG) 标注未使用
+- AS 标准：Stability 标注 144 处已广泛落地（94 stable + 46 evolving + 4 internal），archlint 5 个测试已实现，事件可靠性分级已实现，1 篇 ADR 已存在（docs/reports/2026-06-11-review-adr-architecture-refactoring.md）但 docs/adr/ 目录未创建，TECH-DEBT(COG) 标注未使用
 
 ---
 
@@ -153,14 +153,15 @@
 
 #### 2.2.2 关键事件保护评估
 
-`criticalTypeSet`（`internal/event/bus.go:59-73`）定义了 13 种不可静默丢弃的事件类型，但与 AS-EVT-01 分级存在不一致：
+> **v5.0 更新**：`criticalTypeSet`（`internal/event/bus.go`）和 `isCriticalEnvelopeType`（`internal/biz/event_persist_handler.go`）已删除，统一使用 `contract.RequiresBlockUpTo()` 和 `contract.IsCriticalWBPFType()`，与 AS-EVT-01 三级分类对齐。`event_reliability.go` 改为 type alias + delegation 兼容层（标记 Deprecated），漂移风险已消除。
 
-> **v3.0 更新**：事件三级分级已落地（`internal/event/contract/reliability.go`，标注 `Stability:stable`），但 `criticalTypeSet` 仍包含 13 种事件（混合了 Critical + Important 级别），且包含 `ContextUsage` 和 `TeamRunFailed`（不在 AS-EVT-01 任何级别中）。`isCriticalEnvelopeType`（`internal/biz/event_persist_handler.go:58-70`）的 Critical 列表也与 AS-EVT-01 不一致。
+**已修复问题**（v5.0 核实）：
+- ~~`criticalTypeSet`（13 种）≠ AS-EVT-01 Critical（4 种）~~ → 已删除，bus.go 改用 `contract.RequiresBlockUpTo()`
+- ~~`isCriticalEnvelopeType` ≠ `ClassifyEventReliability`~~ → 已删除，event_persist_handler.go 改用 `contract.RequiresBlockUpTo()`
+- ~~`event/event_reliability.go` 与 `contract/reliability.go` 逻辑重复~~ → event_reliability.go 改为 type alias + delegation，标记 Deprecated
 
-**不一致问题**：
-- `criticalTypeSet`（13 种）≠ AS-EVT-01 Critical（4 种）
-- `isCriticalEnvelopeType` ≠ `ClassifyEventReliability`
-- `ContextUsage` 和 `TeamRunFailed` 未在 AS-EVT-01 中定义
+**仍存在的问题**：
+- `ContextUsage` 和 `TeamRunFailed` 未在 AS-EVT-01 任何级别中显式定义，当前落入 Informational（default 分支）
 
 **BlockUpTo**：超时仍为 100ms，Important 级别事件超时后降级为 `DropOldest`。
 
@@ -178,11 +179,11 @@
 
 **根因**（v2.0）：EventBus 设计为纯内存传输层，持久化是后置的、尽力而为的异步操作。
 
-**v3.0 进展**：EventWAL 已实现，Critical 级事件不再丢失。事件三级分级已落地。但 `criticalTypeSet` 与 AS-EVT-01 分级不一致，需统一。
+**v5.0 进展**：EventWAL 已实现，Critical 级事件不再丢失。事件三级分级已落地。`criticalTypeSet` 和 `isCriticalEnvelopeType` 已删除，统一使用 `contract.RequiresBlockUpTo()`，与 AS-EVT-01 完全对齐。`event_reliability.go` 改为兼容层，漂移风险已消除。
 
 **剩余风险**：
 - Important 级别事件（StateDelta/TokenUsage 等）进程崩溃仍可能丢失
-- `criticalTypeSet`（13 种）与 `ClassifyEventReliability`（Critical 4 种）不一致
+- `ContextUsage` 和 `TeamRunFailed` 未在 AS-EVT-01 中显式分级，当前落入 Informational
 - 无法支持事件回放/状态重建
 
 > **v2.0 补充**：痛点 2 不是"相对独立可并行推进"的，它是痛点 1/3/4 的**横切关注点**。状态机转换事件、HITL 挂起/恢复事件、Orchestrator 生命周期事件都需要可靠投递。依赖关系图需修正。
@@ -559,13 +560,16 @@ CREATE TABLE IF NOT EXISTS event_wal (
 CREATE INDEX idx_event_wal_unpublished ON event_wal(published, created_at);
 ```
 
-**迁移策略**（v3.0 进展）：
+**迁移策略**（v5.0 进展）：
 1. ~~新建 `EventWAL`，在 Bus 和所有 subscriber 就绪后调用 `Recover`~~ ✅ 已完成
 2. ~~修改 `Infra.Publish`，对 Critical WBPF 类型走 `WriteBeforePublish`~~ ✅ 已完成
 3. ~~Important 级别事件保持现有 `BlockUpTo` + 异步持久化到 EventStore~~ ✅ 已完成
 4. ~~Informational 级别事件行为不变~~ ✅ 已完成
 5. ~~添加 WAL 清理定时任务（7 天 TTL，与 EventStore 一致）~~ ✅ 已完成
-6. 统一 `criticalTypeSet` 与 `ClassifyEventReliability` — ❌ 未完成（`criticalTypeSet` 仍含 13 种事件）
+6. ~~统一 `criticalTypeSet` 与 `ClassifyEventReliability`~~ ✅ 已完成（v5.0：`criticalTypeSet` 已删除，bus.go 改用 `contract.RequiresBlockUpTo()`）
+7. ~~统一 `isCriticalEnvelopeType` 与 `ClassifyEventReliability`~~ ✅ 已完成（v5.0：`isCriticalEnvelopeType` 已删除，event_persist_handler.go 改用 `contract.RequiresBlockUpTo()`）
+8. ~~消除 `event_reliability.go` 与 `contract/reliability.go` 逻辑重复~~ ✅ 已完成（v5.0：event_reliability.go 改为 type alias + delegation 兼容层）
+9. `ContextUsage` 和 `TeamRunFailed` 显式分级 — ❌ 未完成（需架构决策确定应归入 Important 或 Informational）
 
 **验证**：模拟进程崩溃测试，验证 Critical 事件不丢失；Recover 幂等测试验证不重复。
 
@@ -839,7 +843,7 @@ type HumanLoopGate interface {
 3. 代码审查清单增加"跨模块变更是否附 ADR"
 4. 编号从 ADR-001 开始，顺序分配
 
-**执行现状**：0 篇 ADR，完全未执行。`docs/adr/` 目录未创建。
+**执行现状**：1 篇 ADR 已存在（`docs/reports/2026-06-11-review-adr-architecture-refactoring.md`，ADR-01），但 `docs/adr/` 目录未创建，ADR 索引文件未创建，编号规范未落地。
 
 ### 标准 2：认知复杂度量化
 
@@ -868,10 +872,10 @@ type HumanLoopGate interface {
 2. 在下一个迭代规划中安排拆分
 3. 不阻断当前开发，但禁止继续堆叠
 
-**执行现状**（v4.0 更新）：
+**执行现状**（v5.0 更新）：
 - ChatOrchestrator：35→12 字段，✅ 已达标
 - SessionUsecase：30 字段，❌ 仍严重超标
-- `TECH-DEBT(COG)` 标注格式未使用（源码中有其他 TECH-DEBT 标注约 68 处，但无 AS-COG-01 规范格式）
+- `TECH-DEBT(COG)` 标注格式未使用（源码中有其他 TECH-DEBT 标注约 22 处，但无 AS-COG-01 规范格式）
 - `internal/archlint/archlint_test.go` 中 `TestStructFieldCount` 已实现 struct 字段 ≤15 检查
 
 ### 标准 3：状态机显式化要求
@@ -994,24 +998,26 @@ func TestServiceNotDirectlyAccessData(t *testing.T) { ... }
 
 **检测方式**：代码审查时校验新增事件类型的分级是否正确。
 
-**执行现状**（v3.0 更新）：三级分级已实现（`internal/event/contract/reliability.go`，标注 `Stability:stable`）。EventWAL 已实现，Critical 事件走 WBPF。但 `criticalTypeSet`（13 种）与 `ClassifyEventReliability`（Critical 4 种）不一致，需统一。
+**执行现状**（v5.0 更新）：三级分级已实现（`internal/event/contract/reliability.go`，标注 `Stability:stable`），是事件可靠性分级的单一真相源。EventWAL 已实现，Critical 事件走 WBPF。`criticalTypeSet` 和 `isCriticalEnvelopeType` 已删除，bus.go 和 event_persist_handler.go 统一使用 `contract.RequiresBlockUpTo()`，与 AS-EVT-01 完全对齐。`event_reliability.go` 改为 type alias + delegation 兼容层（标记 Deprecated），漂移风险已消除。仍存在 `ContextUsage` 和 `TeamRunFailed` 未显式分级的问题。
 
 ---
 
 ## 六、实施路线图
 
-> **v4.0 修正**：标注已完成项和当前进展
+> **v5.0 修正**：标注已完成项和当前进展
 
 ```
-阶段一（P0，1-2 迭代）— ✅ 大部分已完成
+阶段一（P0，1-2 迭代）— ✅ 已完成
 ├── ✅ RunStateMachine 定义 + 统一接口 + 迁移
 ├── ✅ SessionRunPhaseMachine 定义 + 迁移
 ├── ✅ EventWAL 实现（仅 Critical 4 种事件 WBPF）+ Recover
 ├── ✅ 事件分级标注（AS-EVT-01，contract/reliability.go）
-├── ⚠️ AS 标准落地：Stability 标注 144 处已落地，archlint 5 个测试已实现，ADR 索引未创建
+├── ✅ criticalTypeSet/isCriticalEnvelopeType 统一删除，改用 contract.RequiresBlockUpTo()（v5.0）
+├── ✅ event_reliability.go 改为兼容层，漂移风险消除（v5.0）
+├── ⚠️ AS 标准落地：Stability 标注 144 处已落地，archlint 5 个测试已实现，1 篇 ADR 已存在但 docs/adr/ 目录未创建
 └── ✅ openspec/specs/ 基础结构创建（architecture-blueprint.md 初版）
 
-阶段二（P1，2-3 迭代）— ✅ 大部分已完成
+阶段二（P1，2-3 迭代）— ⚠️ 大部分已完成，少量遗留
 ├── ✅ RunStatusTracker 提取 → chatRunStatusTracker
 ├── ✅ PendingQueueManager 提取 → chatPendingQueueManager
 ├── ✅ AwaitCoordinator 提取 → chatAwaitCoordinator
@@ -1049,14 +1055,14 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 通过 4 阶段渐进式改进（基础加固→结构优化→能力增强→生态扩展），可以在不破坏现有行为的前提下系统性地解决这些问题。同时补充 6 项建设性架构评判标准（ADR、认知复杂度、状态机显式化、接口稳定性、Fitness Function、事件可靠性分级），将项目从"禁止性红线"模式升级为"建设性指引"模式。
 
-**v4.0 核心进展总结**：
+**v5.0 核心进展总结**：
 
 1. **ChatOrchestrator 上帝对象**基本解决：字段 35→12，sync.Map 4→0，5 个子管理器全部提取，7 个子管理器合并为 2 个组合接口
-2. **EventBus 持久化**核心完成：EventWAL 已实现，三级事件分级已落地，Critical 事件不再丢失
+2. **EventBus 持久化**完全解决（阶段一/二部分）：EventWAL 已实现，三级事件分级已落地，Critical 事件不再丢失，`criticalTypeSet`/`isCriticalEnvelopeType` 已删除统一到 contract 单一真相源，`event_reliability.go` 漂移风险已消除
 3. **显式状态机**大幅进展：统一接口已实现，6/9 实体完全合规（+Evolution/Agent），2/9 新旧并存，1/9 需迁移
 4. **HITL** 前置依赖完成：AwaitCoordinator 已提取，HumanLoopGate 未实现
 5. **编排模式** Native 已 Deprecated，未彻底移除
-6. **AS 标准**：Stability 标注 144 处已落地，archlint 5 个测试已实现，ADR 索引未创建
+6. **AS 标准**：Stability 标注 144 处已落地，archlint 5 个测试已实现，1 篇 ADR 已存在但 docs/adr/ 目录未创建
 
 **v2.0 核心修正总结**：
 
@@ -1072,27 +1078,27 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 ---
 
-## 八、v4.0 剩余问题清单
+## 八、v5.0 剩余问题清单
 
-> 2026-06-12 代码核对后统计
+> 2026-06-12 代码核对后统计（v5.0 更新：R3/R4/R13 已修复）
 
 ### 阶段一/二遗留（P0/P1）
 
-| # | 问题 | 痛点 | 严重度 | 当前状态 |
-|---|------|------|--------|---------|
-| R1 | `runSingleAgentViaTRPC` 仍 550 行，超标 6.9x | 痛点1 | 高 | 5 阶段混杂单一方法，无显式阶段边界 |
-| R2 | SessionUsecase 30 字段，超标 2x | 痛点1 | 高 | Legacy 遗留字段（4 个）未清理 |
-| R3 | `criticalTypeSet`（13 种）与 `ClassifyEventReliability`（Critical 4 种）不一致 | 痛点2 | 中 | bus.go 和 event_persist_handler.go 维护独立列表，违反 contract 单一真相源 |
-| R4 | `isCriticalEnvelopeType` 将 StateDelta/TokenUsage 误标为 Critical | 痛点2 | 中 | 持久化路径与 AS-EVT-01 分级不一致 |
-| R5 | `ContextUsage` 和 `TeamRunFailed` 未在 AS-EVT-01 任何级别中定义 | 痛点2 | 低 | criticalTypeSet 包含未分级事件 |
-| R6 | Session 状态机未迁移到统一接口 | 痛点3 | 中 | 仍用旧式 validTransitions map，缺 Event/ValidTargets |
-| R7 | Team 旧式 `ValidTeamStatusTransition` 仍被调用（2 处） | 痛点3 | 低 | team_usecase.go 未迁移 |
-| R8 | TeamRun 旧式 `ValidateTeamRunTransition` 仍被调用（3 处） | 痛点3 | 低 | team_graph_run_coordinator.go 未迁移 |
-| R9 | StateMachineCoordinator 未实现 | 痛点3 | 中 | 跨实体状态关联无校验 |
-| R10 | Native 路径代码仍存在 | 痛点5 | 低 | Deprecated 但未移除，BuildTRPCTeam/tryNativeFallback 仍在 |
-| R11 | `docs/adr/` 目录未创建 | AS-ADR-01 | 中 | 0 篇 ADR，架构决策无记录 |
-| R12 | `TECH-DEBT(COG)` 标注格式未使用 | AS-COG-01 | 低 | 68 处 TECH-DEBT 标注但无 AS-COG-01 规范格式 |
-| R13 | `event/event_reliability.go` 与 `contract/reliability.go` 逻辑重复 | 痛点2 | 低 | WAL 调用 event 包版本而非 contract 包，存在漂移风险 |
+| # | 问题 | 痛点 | 严重度 | 当前状态 | v5.0 变化 |
+|---|------|------|--------|---------|----------|
+| R1 | `runSingleAgentViaTRPC` 仍 550 行，超标 6.9x | 痛点1 | 高 | 5 阶段混杂单一方法，无显式阶段边界 | 无变化 |
+| R2 | SessionUsecase 30 字段，超标 2x | 痛点1 | 高 | Legacy 遗留字段（4 个）未清理 | 无变化 |
+| ~~R3~~ | ~~`criticalTypeSet`（13 种）与 `ClassifyEventReliability`（Critical 4 种）不一致~~ | ~~痛点2~~ | ~~中~~ | ~~已修复~~ | ✅ v5.0：`criticalTypeSet` 已删除，bus.go 改用 `contract.RequiresBlockUpTo()` |
+| ~~R4~~ | ~~`isCriticalEnvelopeType` 将 StateDelta/TokenUsage 误标为 Critical~~ | ~~痛点2~~ | ~~中~~ | ~~已修复~~ | ✅ v5.0：`isCriticalEnvelopeType` 已删除，event_persist_handler.go 改用 `contract.RequiresBlockUpTo()` |
+| R5 | `ContextUsage` 和 `TeamRunFailed` 未在 AS-EVT-01 任何级别中定义 | 痛点2 | 低 | 落入 Informational（default 分支），需架构决策 | 无变化 |
+| R6 | Session 状态机未迁移到统一接口 | 痛点3 | 中 | 仍用旧式 validTransitions map，缺 Event/ValidTargets | 无变化 |
+| R7 | Team 旧式 `ValidTeamStatusTransition` 仍被调用（2 处） | 痛点3 | 低 | team_usecase.go 未迁移 | 无变化 |
+| R8 | TeamRun 旧式 `ValidateTeamRunTransition` 仍被调用（3 处） | 痛点3 | 低 | internal/team/team_graph_run_coordinator.go 未迁移 | 无变化 |
+| R9 | StateMachineCoordinator 未实现 | 痛点3 | 中 | 跨实体状态关联无校验 | 无变化 |
+| R10 | Native 路径代码仍存在 | 痛点5 | 低 | Deprecated 但未移除，BuildTRPCTeam/tryNativeFallback 仍在 | 无变化 |
+| R11 | `docs/adr/` 目录未创建，ADR 编号规范未落地 | AS-ADR-01 | 中 | 1 篇 ADR 已存在（docs/reports/），但目录结构和索引未建立 | ⚠️ 部分进展 |
+| R12 | `TECH-DEBT(COG)` 标注格式未使用 | AS-COG-01 | 低 | 22 处 TECH-DEBT 标注但无 AS-COG-01 规范格式 | 无变化 |
+| ~~R13~~ | ~~`event/event_reliability.go` 与 `contract/reliability.go` 逻辑重复~~ | ~~痛点2~~ | ~~低~~ | ~~已修复~~ | ✅ v5.0：event_reliability.go 改为 type alias + delegation 兼容层（标记 Deprecated） |
 
 ### 阶段三未启动（P2）
 
@@ -1113,12 +1119,17 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 ### 统计
 
-| 类别 | 数量 |
-|------|------|
-| 阶段一/二遗留（P0/P1） | 13 |
-| 阶段三未启动（P2） | 4 |
-| 阶段四未启动（P3） | 3 |
-| **剩余问题总计** | **20** |
+| 类别 | v4.0 数量 | v5.0 数量 | 变化 |
+|------|----------|----------|------|
+| 阶段一/二遗留（P0/P1） | 13 | 10（R3/R4/R13 已修复） | -3 |
+| 阶段三未启动（P2） | 4 | 4 | 0 |
+| 阶段四未启动（P3） | 3 | 3 | 0 |
+| **剩余问题总计** | **20** | **17** | **-3** |
+
+**v5.0 已修复项**：
+- R3：`criticalTypeSet` 已删除，bus.go 统一使用 `contract.RequiresBlockUpTo()`
+- R4：`isCriticalEnvelopeType` 已删除，event_persist_handler.go 统一使用 `contract.RequiresBlockUpTo()`
+- R13：`event_reliability.go` 改为 type alias + delegation 兼容层，漂移风险消除
 
 ### 价值评估
 
@@ -1138,17 +1149,14 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 |---|------|--------|---------|---------|---------|---------|---------|
 | R1 | runSingleAgentViaTRPC 550 行 | ★☆☆ | ★★★ | ★★★ | 高 | **中** | 可靠性影响小（当前稳定运行），但对开发效率和可演进性影响极大——550 行方法是系统最频繁修改的热点，任何 Turn 阶段逻辑变更都需理解全部代码。拆分后可独立测试各阶段，但实施成本高（Wire 重组 + 集成测试覆盖） |
 | R2 | SessionUsecase 30 字段 | ★☆☆ | ★★☆ | ★★★ | 低 | **高** | 清理 4 个 Legacy 遗留字段是纯删除操作，成本极低，立即可将字段数从 30 降至 26。虽然仍超标，但消除了 Facade 回退路径的维护负担。进一步拆分到 ~15 字段成本中等，但收益递增 |
-| R3 | criticalTypeSet 与 ClassifyEventReliability 不一致 | ★★☆ | ★☆☆ | ★★☆ | 低 | **高** | 当前三处独立维护"关键事件"列表，新增事件类型时极易遗漏同步，是隐性 Bug 温床。统一到 contract 单一真相源是低成本高收益——删除 bus.go 和 event_persist_handler.go 中的硬编码列表，改为调用 contract 函数 |
-| R4 | isCriticalEnvelopeType 误标 StateDelta/TokenUsage | ★★☆ | ★☆☆ | ★☆☆ | 低 | **中** | StateDelta/TokenUsage 被误标为 Critical 导致持久化路径走同步写，增加延迟。但当前系统未因此出现生产问题（异步队列未满则不触发同步回退），实际影响有限。随 R3 一起修复成本更低 |
-| R5 | ContextUsage/TeamRunFailed 未分级 | ★☆☆ | ★☆☆ | ★★☆ | 低 | **中** | 这两个事件在 criticalTypeSet 中但 AS-EVT-01 未定义，说明分级标准本身有遗漏。需先决策它们应归入哪个级别，再随 R3 统一修复。成本极低但需架构决策 |
+| R5 | ContextUsage/TeamRunFailed 未分级 | ★☆☆ | ★☆☆ | ★★☆ | 低 | **中** | 这两个事件在 AS-EVT-01 中未显式定义，当前落入 Informational（default）。需先决策它们应归入哪个级别，再修改 contract/reliability.go。成本极低但需架构决策 |
 | R6 | Session 状态机未迁移统一接口 | ★☆☆ | ★★☆ | ★★★ | 中 | **中高** | Session 是核心实体，旧式实现缺 Event 类型和 ValidTargets，无法参与 StateMachineCoordinator 的跨实体关联。迁移后与其他 8 个实体接口一致，降低新人理解成本。但 Session 状态转换逻辑稳定，短期无功能收益 |
 | R7 | Team 旧式函数仍被调用（2 处） | ★☆☆ | ★☆☆ | ★★☆ | 低 | **中** | 2 处调用迁移简单（改用 TeamStateMachine.CanTransition），但 Team 状态转换逻辑稳定，无功能收益。建议随 R8 一起批量处理 |
 | R8 | TeamRun 旧式函数仍被调用（3 处） | ★☆☆ | ★☆☆ | ★★☆ | 低 | **中** | 同 R7，3 处调用迁移简单。新旧两套并存增加认知负担，但无生产风险。建议与 R7 合并处理 |
 | R9 | StateMachineCoordinator 未实现 | ★★★ | ★★☆ | ★★★ | 高 | **中高** | 跨实体状态关联是当前系统最大的隐性风险——Run 进入 awaiting_user 时 Session 未联动、TeamRun waiting_human 时下属 Run 未暂停，全靠代码中手动配对。但实现 Coordinator 需要先完成 R6（Session 迁移），且需设计级联策略避免循环依赖。长期价值高，短期成本也高 |
 | R10 | Native 路径代码仍存在 | ★☆☆ | ★★☆ | ★★☆ | 中 | **中** | 每次编排逻辑修改需双路径维护，增加开发和测试成本。但 Native 路径已 Deprecated 且需环境变量激活，生产风险极低。移除是"清理债务"而非"修复缺陷"，收益渐进 |
-| R11 | docs/adr/ 未创建 | ★☆☆ | ★☆☆ | ★★★ | 低 | **高** | ADR 是架构治理的基础设施——没有 ADR，架构决策无记录，新人无法理解决策背景，重构时可能重复犯错。创建目录 + 编写前 5 篇 ADR 成本低，但对长期可维护性价值极高 |
-| R12 | TECH-DEBT(COG) 标注格式未使用 | ★☆☆ | ★★☆ | ★★☆ | 低 | **中** | 当前 68 处 TECH-DEBT 标注格式不统一，无法自动统计超标项。统一格式后可与 archlint 集成，形成"标注→检测→规划"闭环。但这是工具链改进，不直接影响系统行为 |
-| R13 | event_reliability.go 与 contract/reliability.go 重复 | ★★☆ | ★☆☆ | ★★☆ | 低 | **中高** | 逻辑重复是漂移风险——WAL 调用 event 包版本而非 contract 包，若 contract 更新而 event 包未同步，Critical 事件可能走错路径。随 R3 一起修复成本更低 |
+| R11 | docs/adr/ 目录未创建 | ★☆☆ | ★☆☆ | ★★★ | 低 | **高** | ADR 是架构治理的基础设施——没有 ADR，架构决策无记录，新人无法理解决策背景，重构时可能重复犯错。1 篇 ADR 已存在但目录规范未落地，创建 docs/adr/ + 索引 + 迁移现有 ADR 成本低，但对长期可维护性价值极高 |
+| R12 | TECH-DEBT(COG) 标注格式未使用 | ★☆☆ | ★★☆ | ★★☆ | 低 | **中** | 当前 22 处 TECH-DEBT 标注格式不统一，无法自动统计超标项。统一格式后可与 archlint 集成，形成"标注→检测→规划"闭环。但这是工具链改进，不直接影响系统行为 |
 | R14 | HumanLoopGate 统一抽象 | ★★☆ | ★★★ | ★★★ | 中 | **高** | HITL 是 Agent 平台的核心差异化能力。当前 HITL 分散在 3 个层级，行为不一致（超时策略、恢复机制各异），新增 HITL 场景需改多处。HumanLoopGate 统一后，新场景只需实现一个接口。前置依赖（AwaitCoordinator 提取）已完成，时机成熟 |
 | R15 | EventStore 查询增强 + Checkpoint | ★★☆ | ★☆☆ | ★★☆ | 中 | **中** | 当前 EventStore 仅支持简单列表查询，无法按 run_id 或时间范围检索。Checkpoint 机制支持状态快照和恢复。但当前无明确业务需求驱动，属于"有了更好"而非"缺了不行" |
 | R16 | Swarm/Adaptive 合并 | ★☆☆ | ★★☆ | ★★☆ | 低 | **中** | normalizeCompileMode 已将 swarm 映射为 adaptive，常量层面分开仅增加认知负担。合并为单一模式成本低，但需考虑 API 兼容性（用户配置中可能使用 ModeSwarm） |
@@ -1163,9 +1171,9 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 | 优先级 | 项 | 理由 |
 |--------|-----|------|
-| 1 | R3+R4+R5+R13 事件分级统一 | 成本极低（删除硬编码列表→调用 contract），消除隐性 Bug 温床和漂移风险，四项可合并一次 PR 完成 |
-| 2 | R2 SessionUsecase Legacy 清理 | 成本极低（删除 4 个字段 + 回退路径），立竿见影降低认知复杂度 |
-| 3 | R11 ADR 目录创建 | 成本极低（创建目录 + 5 篇 ADR），架构治理基础设施，越早建立越早受益 |
+| 1 | R2 SessionUsecase Legacy 清理 | 成本极低（删除 4 个字段 + 回退路径），立竿见影降低认知复杂度 |
+| 2 | R11 ADR 目录创建 + 规范落地 | 成本极低（创建目录 + 索引 + 迁移现有 ADR），架构治理基础设施，越早建立越早受益 |
+| 3 | R5 ContextUsage/TeamRunFailed 分级决策 | 成本极低（修改 contract/reliability.go），需架构决策确定级别，消除 AS-EVT-01 遗漏 |
 
 **第二梯队（中高 ROI，建议本迭代推进）**：
 
@@ -1198,7 +1206,7 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 | 梯队 | 项数 | 总实施成本 | 核心收益 |
 |------|------|-----------|---------|
-| 第一梯队 | 4 项（合并为 3 个 PR） | 低（~2 天） | 消除事件分级漂移风险 + 降低 SessionUsecase 复杂度 + 建立架构决策记录 |
+| 第一梯队 | 3 项 | 低（~1 天） | 降低 SessionUsecase 复杂度 + 建立架构决策记录规范 + 补全事件分级遗漏 |
 | 第二梯队 | 3 项 | 中（~5 天） | 状态机 100% 合规 + HITL 统一抽象 + 技术债闭环 |
 | 第三梯队 | 3 项 | 高（~10 天） | 最热点方法可独立测试 + 跨实体状态安全 + Native 债务清零 |
 | 第四梯队 | 6 项 | 中~极高 | 等业务需求驱动，避免过度工程 |
