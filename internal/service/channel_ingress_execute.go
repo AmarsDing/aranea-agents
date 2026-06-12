@@ -60,8 +60,8 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		arametrics.ChannelTurnDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
 		if execErr == nil {
 			h.markTurnJobByEvent(ctx, terminalEvent, "", previewMsgID, contentPreview)
-			terminalStatus := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
-			if jobID != "" {
+			terminalStatus, _ := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
+			if jobID != "" && terminalStatus != "" {
 				arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, terminalStatus).Inc()
 			}
 			step := flowStepChannelTurnDone
@@ -80,8 +80,8 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 			step = flowStepChannelTurnTimeout
 		}
 		h.markTurnJobByEvent(ctx, failEvent, execErr.Error(), "", "")
-		failStatus := biz.ChannelTurnJobStatusFromEvent(failEvent)
-		if jobID != "" {
+		failStatus, _ := biz.ChannelTurnJobStatusFromEvent(failEvent)
+		if jobID != "" && failStatus != "" {
 			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, failStatus).Inc()
 		}
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,

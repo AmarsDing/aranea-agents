@@ -124,7 +124,16 @@ func (h *ChannelIngress) markTurnJobByEvent(ctx context.Context, event, errMsg, 
 		return
 	}
 	// Derive the target status for the refresh event from the event name.
-	status := biz.ChannelTurnJobStatusFromEvent(event)
+	status, statusErr := biz.ChannelTurnJobStatusFromEvent(event)
+	if statusErr != nil {
+		h.lg.Warn("ChannelTurnJobStatusFromEvent 未知事件",
+			loggateway.StepID(flowStepChannelIngressJob),
+			loggateway.Str("job_id", jobID),
+			loggateway.Str("event", event),
+			loggateway.Err(statusErr),
+		)
+		return
+	}
 	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)
 }
 

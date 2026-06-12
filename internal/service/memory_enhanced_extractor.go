@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -14,34 +13,37 @@ import (
 
 // MemoryEnhancedExtractor implements biz.EnhancedTextExtractor using OpenAI-compatible chat completions.
 type MemoryEnhancedExtractor struct {
+	agents       *biz.AgentUsecase
+	sessions     *biz.SessionUsecase
+	modelCatalog *biz.LlmProviderModelUsecase
+	http         *http.Client
+	llmDisabled  bool
+}
+
+// MemoryEnhancedExtractorConfig holds all dependencies for MemoryEnhancedExtractor.
+type MemoryEnhancedExtractorConfig struct {
 	Agents       *biz.AgentUsecase
 	Sessions     *biz.SessionUsecase
 	ModelCatalog *biz.LlmProviderModelUsecase
-	HTTP         *http.Client
+	HTTPClient   *http.Client
+	LLMDisabled  bool
 }
 
 // NewMemoryEnhancedExtractor creates a new MemoryEnhancedExtractor.
-func NewMemoryEnhancedExtractor(
-	agents *biz.AgentUsecase,
-	sessions *biz.SessionUsecase,
-	catalog *biz.LlmProviderModelUsecase,
-	httpClient *http.Client,
-) *MemoryEnhancedExtractor {
+func NewMemoryEnhancedExtractor(cfg MemoryEnhancedExtractorConfig) *MemoryEnhancedExtractor {
 	return &MemoryEnhancedExtractor{
-		Agents:       agents,
-		Sessions:     sessions,
-		ModelCatalog: catalog,
-		HTTP:         httpClient,
+		agents:       cfg.Agents,
+		sessions:     cfg.Sessions,
+		modelCatalog: cfg.ModelCatalog,
+		http:         cfg.HTTPClient,
+		llmDisabled:  cfg.LLMDisabled,
 	}
 }
 
 var _ biz.EnhancedTextExtractor = (*MemoryEnhancedExtractor)(nil)
 
 func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.ConsolidateInput) (*biz.EnhancedExtractionResult, error) {
-	if e == nil || e.ModelCatalog == nil || e.HTTP == nil {
-		return nil, biz.ErrLLMExtractorUnavailable
-	}
-	if strings.TrimSpace(os.Getenv("MEMORY_WORKER_LLM_DISABLED")) == "1" {
+	if e == nil || e.modelCatalog == nil || e.http == nil || e.llmDisabled {
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 	transcript := buildConsolidateTranscript(in.Messages)
@@ -57,7 +59,7 @@ func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.Co
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 
-	row, err := e.ModelCatalog.GetByProviderAndModel(ctx, prov, mod)
+	row, err := e.modelCatalog.GetByProviderAndModel(ctx, prov, mod)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +79,7 @@ func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.Co
 	}
 
 	tools := []map[string]any{compress.EnhancedExtractFunctionSchema}
-	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.HTTP, cfg, mod, msgs, tools)
+	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.http, cfg, mod, msgs, tools)
 
 	var compressResult *compress.EnhancedExtractionResult
 
@@ -114,21 +116,21 @@ func (e *MemoryEnhancedExtractor) ExtractEnhanced(ctx context.Context, in biz.Co
 
 func (e *MemoryEnhancedExtractor) resolveProviderModel(ctx context.Context, in biz.ConsolidateInput) (prov, mod string, err error) {
 	var ag biz.Agent
-	if e.Agents != nil {
+	if e.agents != nil {
 		agentID := strings.TrimSpace(in.AgentID)
 		if agentID == "" {
 			agentID = strings.TrimSpace(in.AppName)
 		}
 		if agentID != "" {
-			ag, err = e.Agents.Get(ctx, agentID)
+			ag, err = e.agents.Get(ctx, agentID)
 			if err != nil {
 				return "", "", err
 			}
 		}
 	}
 	var sess biz.Session
-	if e.Sessions != nil && strings.TrimSpace(in.SessionID) != "" {
-		sess, err = e.Sessions.Get(ctx, in.SessionID)
+	if e.sessions != nil && strings.TrimSpace(in.SessionID) != "" {
+		sess, err = e.sessions.Get(ctx, in.SessionID)
 		if err != nil {
 			return "", "", err
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
@@ -12,6 +13,14 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
+)
+
+// Channel status constants — replace magic strings across the module.
+const (
+	ChannelStatusActive  = "active"
+	ChannelStatusDeleted = "deleted"
+	ChannelStatusError   = "error"
+	ChannelStatusPending = "pending"
 )
 
 // Channel mirrors legacy PlatformResource for resource "channels".
@@ -86,6 +95,23 @@ type ChannelDelivery struct {
 	UpdatedAt      string
 }
 
+// ChannelUpdateOptions uses pointer fields to distinguish "not provided" (nil)
+// from "explicitly set to zero value". This solves the bool zero-value problem
+// where Enabled=false cannot be differentiated from "caller didn't set Enabled".
+type ChannelUpdateOptions struct {
+	Key          *string
+	Name         *string
+	Description  *string
+	Enabled      *bool
+	SortOrder    *int
+	AgentID      *string
+	Provider     *string
+	Model        *string
+	ConfigJSON   *string
+	MetadataJSON *string
+	Status       *string
+}
+
 type ChannelTestResult struct {
 	OK      bool
 	Status  string
@@ -128,13 +154,25 @@ type ChannelCredentialRepo interface {
 	DeleteCredential(ctx context.Context, channelID, credentialKey string) error
 }
 
+// ChannelDeliveryReader provides read-only access to channel deliveries.
+// Stability:stable
+type ChannelDeliveryReader interface {
+	ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error)
+	ListPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
+	HasDeliveryByIdempotencyKey(ctx context.Context, channelID, idempotencyKey string) (bool, error)
+}
+
+// ChannelDeliveryRepo provides full access to channel deliveries.
+// Embeds ChannelDeliveryReader for convenience.
 // Stability:stable
 type ChannelDeliveryRepo interface {
-	ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error)
+	ChannelDeliveryReader
 	AddDelivery(ctx context.Context, d ChannelDelivery) (ChannelDelivery, error)
-	ListPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
+	// AddDeliveryIfNotExists atomically inserts a delivery row, returning (row, true) on insert
+	// or (existing, false) when the idempotency_key already exists. This replaces the
+	// non-atomic HasDeliveryByIdempotencyKey + AddDelivery pattern.
+	AddDeliveryIfNotExists(ctx context.Context, d ChannelDelivery) (ChannelDelivery, bool, error)
 	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
-	HasDeliveryByIdempotencyKey(ctx context.Context, channelID, idempotencyKey string) (bool, error)
 }
 
 type ChannelUsecase struct {
@@ -142,8 +180,7 @@ type ChannelUsecase struct {
 	writer                 ChannelWriter
 	credentials            ChannelCredentialRepo
 	deliveries             ChannelDeliveryRepo
-	peers                  ChannelPeerSessionRepo
-	inboundReceipts        ChannelInboundReceiptRepo
+	peerUsecase            *ChannelPeerUsecase
 	agents                 AgentRepository
 	teams                  TeamReader
 	crypto                 *CredentialCrypto
@@ -158,14 +195,13 @@ func NewChannelUsecase(
 	writer ChannelWriter,
 	credentials ChannelCredentialRepo,
 	deliveries ChannelDeliveryRepo,
-	peers ChannelPeerSessionRepo,
-	inboundReceipts ChannelInboundReceiptRepo,
+	peerUsecase *ChannelPeerUsecase,
 	agents AgentRepository,
 	teams TeamReader,
 	crypto *CredentialCrypto,
 	lg loggateway.Logger,
 ) *ChannelUsecase {
-	return &ChannelUsecase{reader: reader, writer: writer, credentials: credentials, deliveries: deliveries, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, healthCheckConcurrency: defaultHealthCheckConcurrency, lg: lg}
+	return &ChannelUsecase{reader: reader, writer: writer, credentials: credentials, deliveries: deliveries, peerUsecase: peerUsecase, agents: agents, teams: teams, crypto: crypto, healthCheckConcurrency: defaultHealthCheckConcurrency, lg: lg}
 }
 
 // SetHealthCheckConcurrency configures the maximum concurrent health checks.
@@ -228,7 +264,7 @@ func (u *ChannelUsecase) Create(ctx context.Context, row Channel, credentials []
 	return created, nil
 }
 
-func (u *ChannelUsecase) Update(ctx context.Context, id string, row Channel, credentials []ChannelCredentialInput) (Channel, error) {
+func (u *ChannelUsecase) Update(ctx context.Context, id string, opts ChannelUpdateOptions, credentials []ChannelCredentialInput) (Channel, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return Channel{}, apierror.BadRequest("CHANNEL", "id is required")
@@ -237,23 +273,42 @@ func (u *ChannelUsecase) Update(ctx context.Context, id string, row Channel, cre
 	if err != nil {
 		return Channel{}, err
 	}
+	row := current // start from current state
+	if opts.Key != nil {
+		row.Key = *opts.Key
+	}
+	if opts.Name != nil {
+		row.Name = *opts.Name
+	}
+	if opts.Description != nil {
+		row.Description = *opts.Description
+	}
+	if opts.Enabled != nil {
+		row.Enabled = *opts.Enabled
+	}
+	if opts.SortOrder != nil {
+		row.SortOrder = *opts.SortOrder
+	}
+	if opts.AgentID != nil {
+		row.AgentID = *opts.AgentID
+	}
+	if opts.Provider != nil {
+		row.Provider = *opts.Provider
+	}
+	if opts.Model != nil {
+		row.Model = *opts.Model
+	}
+	if opts.ConfigJSON != nil {
+		row.ConfigJSON = *opts.ConfigJSON
+	}
+	if opts.MetadataJSON != nil {
+		row.MetadataJSON = *opts.MetadataJSON
+	}
+	if opts.Status != nil {
+		row.Status = *opts.Status
+	}
 	row.ID = id
 	row.Resource = "channels"
-	if row.Key == "" {
-		row.Key = current.Key
-	}
-	if row.Name == "" {
-		row.Name = current.Name
-	}
-	if row.ConfigJSON == "" {
-		row.ConfigJSON = current.ConfigJSON
-	}
-	if row.MetadataJSON == "" {
-		row.MetadataJSON = current.MetadataJSON
-	}
-	if row.Status == "" {
-		row.Status = current.Status
-	}
 	if err := normalizeChannel(&row); err != nil {
 		return Channel{}, err
 	}
@@ -285,8 +340,8 @@ func (u *ChannelUsecase) Toggle(ctx context.Context, id string, enabled bool) (C
 		return Channel{}, err
 	}
 	row.Enabled = enabled
-	if row.Status == "" || row.Status == "deleted" {
-		row.Status = "active"
+	if row.Status == "" || row.Status == ChannelStatusDeleted {
+		row.Status = ChannelStatusActive
 	}
 	return u.writer.Update(ctx, row)
 }
@@ -329,7 +384,7 @@ func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string
 		}
 		status := strings.TrimSpace(input.Status)
 		if status == "" {
-			status = "active"
+			status = ChannelStatusActive
 		}
 		metadata := strings.TrimSpace(input.MetadataJSON)
 		if metadata == "" {
@@ -377,7 +432,8 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 		safego.Go(ctx, "channel.EvaluateTestAll", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			writeCtx := context.WithoutCancel(ctx)
+			writeCtx, writeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer writeCancel()
 			credentials, err := u.credentials.ListCredentials(writeCtx, ch.ID)
 			if err != nil {
 				u.lg.Warn("list credentials for health check failed", loggateway.Err(err), loggateway.Str("channel_id", ch.ID))
@@ -470,12 +526,12 @@ func (u *ChannelUsecase) updateTestMetadata(ctx context.Context, row Channel, re
 		metadata["last_error_code"] = ""
 		metadata["last_error_message"] = ""
 		metadata["connected_at"] = nowUTCString()
-		row.Status = "active"
+		row.Status = ChannelStatusActive
 	} else {
 		metadata["last_error_code"] = result.Status
 		metadata["last_error_message"] = result.Message
-		if result.Status == "error" {
-			row.Status = "error"
+		if result.Status == ChannelStatusError {
+			row.Status = ChannelStatusError
 		}
 	}
 	raw, err := json.Marshal(metadata)
@@ -492,35 +548,38 @@ func (ch Channel) ParseConfig() (ChannelConfig, error) {
 }
 
 func (u *ChannelUsecase) DeletePeerBindingsByChannelID(ctx context.Context, channelID string) (int, error) {
-	if u.peers == nil {
+	if u.peerUsecase == nil {
 		return 0, nil
 	}
-	return u.peers.DeleteByChannelID(ctx, channelID)
+	return u.peerUsecase.DeletePeerBindingsByChannelID(ctx, channelID)
 }
 
 func (u *ChannelUsecase) GetPeerSession(ctx context.Context, channelID, peerKey string) (ChannelPeerSession, error) {
-	if u.peers == nil {
+	if u.peerUsecase == nil {
 		return ChannelPeerSession{}, shared.ErrNotFound
 	}
-	return u.peers.GetByChannelAndPeer(ctx, channelID, peerKey)
+	return u.peerUsecase.GetPeerSession(ctx, channelID, peerKey)
 }
 
 func (u *ChannelUsecase) CreatePeerSession(ctx context.Context, row ChannelPeerSession) (ChannelPeerSession, error) {
-	if u.peers == nil {
+	if u.peerUsecase == nil {
 		return ChannelPeerSession{}, apierror.Internal("CHANNEL", "peer session repository not configured")
 	}
-	return u.peers.Create(ctx, row)
+	return u.peerUsecase.CreatePeerSession(ctx, row)
 }
 
 func (u *ChannelUsecase) UpdatePeerSessionID(ctx context.Context, channelID, peerKey, sessionID string) (ChannelPeerSession, error) {
-	if u.peers == nil {
+	if u.peerUsecase == nil {
 		return ChannelPeerSession{}, apierror.Internal("CHANNEL", "peer session repository not configured")
 	}
-	return u.peers.UpdateSessionID(ctx, channelID, peerKey, sessionID)
+	return u.peerUsecase.UpdatePeerSessionID(ctx, channelID, peerKey, sessionID)
 }
 
 func (u *ChannelUsecase) TryClaimInbound(ctx context.Context, channelID, platform, messageKey, peerID, text string) (bool, error) {
-	return TryClaimInbound(ctx, u.inboundReceipts, channelID, platform, messageKey, peerID, text)
+	if u.peerUsecase == nil {
+		return false, nil
+	}
+	return u.peerUsecase.TryClaimInbound(ctx, channelID, platform, messageKey, peerID, text)
 }
 
 func (u *ChannelUsecase) ResolveChannelTarget(ctx context.Context, routing ChannelRouting, peerID string) (string, string, string, error) {

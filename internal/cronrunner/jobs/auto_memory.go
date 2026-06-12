@@ -39,42 +39,49 @@ type AutoMemoryWorker struct {
 	lg           loggateway.Logger
 }
 
+// AutoMemoryWorkerConfig holds all dependencies for AutoMemoryWorker.
+// Using a config struct instead of positional parameters improves readability
+// and makes future additions non-breaking.
+type AutoMemoryWorkerConfig struct {
+	RuntimeConf  *conf.Runtime
+	Interval     time.Duration
+	Sessions     *biz.SessionUsecase
+	Agents       *biz.AgentUsecase
+	Writer       biz.MemoryConsolidationWriter
+	IndexSync    biz.MemoryFactIndexSyncer
+	EpisodeSync  biz.EpisodeIndexSyncer
+	L4           biz.L4GraphWriter
+	Consolidator biz.MemoryConsolidator
+	Queue        memtrpc.AutoMemoryQueue
+	Logger       loggateway.Logger
+}
+
 // NewAutoMemoryWorker creates an AutoMemoryWorker. // WIRE: needs *conf.Runtime
-func NewAutoMemoryWorker(
-	runtimeConf *conf.Runtime,
-	interval time.Duration,
-	sessions *biz.SessionUsecase,
-	agents *biz.AgentUsecase,
-	writer biz.MemoryConsolidationWriter,
-	indexSync biz.MemoryFactIndexSyncer,
-	episodeSync biz.EpisodeIndexSyncer,
-	l4 biz.L4GraphWriter,
-	consolidator biz.MemoryConsolidator,
-	queue memtrpc.AutoMemoryQueue,
-	lg loggateway.Logger,
-) (*AutoMemoryWorker, error) {
-	if queue == nil {
+func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) {
+	if cfg.Queue == nil {
 		return nil, errors.New("jobs: auto memory queue is required")
 	}
+	interval := cfg.Interval
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
+	consolidator := cfg.Consolidator
 	if consolidator == nil {
 		consolidator = biz.DefaultMemoryConsolidator(nil)
 	}
 	return &AutoMemoryWorker{
 		interval:     interval,
-		sessions:     sessions,
-		agents:       agents,
-		writer:       writer,
-		indexSync:    indexSync,
-		episodeSync:  episodeSync,
-		l4:           l4,
+		sessions:     cfg.Sessions,
+		agents:       cfg.Agents,
+		writer:       cfg.Writer,
+		indexSync:    cfg.IndexSync,
+		episodeSync:  cfg.EpisodeSync,
+		l4:           cfg.L4,
 		consolidator: consolidator,
 		feedback:     biz.NewFeedbackConsolidator(),
-		queue:        queue,
-		memConf:      runtimeConf.AutoMemoryConfig(),
-		lg:           lg,
+		queue:        cfg.Queue,
+		memConf:      cfg.RuntimeConf.AutoMemoryConfig(),
+		lg:           cfg.Logger,
 	}, nil
 }
 

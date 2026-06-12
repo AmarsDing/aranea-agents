@@ -96,7 +96,7 @@ func (u *ChannelTurnJobUsecase) UpdateAsyncTarget(ctx context.Context, id, targe
 }
 
 // CancelRunningForSession cancels all active (non-terminal) jobs for a given session.
-// Uses the state machine to determine which statuses are cancellable.
+// Uses TransitionByEvent to ensure atomic state machine validation + update.
 func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, channelID, sessionID string) error {
 	if u == nil || u.jobs == nil {
 		return errChannelTurnJobNotInit
@@ -115,10 +115,8 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 		if sessionID != "" && strings.TrimSpace(job.SessionID) != sessionID {
 			continue
 		}
-		if CanTransitionChannelTurnJob(job.Status, JobEventCancel) {
-			if err := u.jobs.UpdateStatus(ctx, job.ID, ChannelTurnJobStatusCancelled, "", "", ""); err != nil && firstErr == nil {
-				firstErr = err
-			}
+		if err := u.TransitionByEvent(ctx, job.ID, JobEventCancel, "cancelled by session cleanup", "", ""); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 	return firstErr

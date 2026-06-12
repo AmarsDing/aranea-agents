@@ -37,14 +37,15 @@ func readWebhookConf() conf.RuntimeWebhookConfig {
 	return webhookConf
 }
 
-type webhookRateLimiter struct {
-	mu     sync.Mutex
-	window time.Time
-	count  int
-	limit  int
+// webhookLimiterSnapshot is an immutable snapshot of rate-limit state.
+// Replaced atomically via sync.Map CompareAndSwap — no mutex needed.
+type webhookLimiterSnapshot struct {
+	windowStart time.Time
+	count       int
+	limit       int
 }
 
-var webhookRateLimits sync.Map // channel_key -> *webhookRateLimiter
+var webhookRateLimits sync.Map // channel_key -> *webhookLimiterSnapshot
 
 var webhookRateLimitsLastCleaned atomic.Int64
 
@@ -62,40 +63,67 @@ func allowWebhookRequest(channelKey string, lg loggateway.Logger) bool {
 			cleanupStaleWebhookRateLimits()
 		})
 	}
-	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: int(readWebhookConf().RateLimitPerMin)})
-	rl := v.(*webhookRateLimiter)
-	now = time.Now()
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	if rl.window.IsZero() || now.Sub(rl.window) >= time.Minute {
-		rl.window = now
-		rl.count = 0
+	limit := int(readWebhookConf().RateLimitPerMin)
+	// Load or create initial snapshot.
+	newSnap := &webhookLimiterSnapshot{windowStart: now, count: 1, limit: limit}
+	actual, loaded := webhookRateLimits.LoadOrStore(channelKey, newSnap)
+	if !loaded {
+		// First request in a new window.
+		return true
 	}
-	if rl.count >= rl.limit {
-		lg.Warn("Channel Webhook 入站限流",
-			loggateway.StepID(flowStepChannelWebhookRateLimit),
-			loggateway.Str("channel_key", channelKey),
-			loggateway.Int("limit_per_min", rl.limit),
-		)
-		return false
+	snap := actual.(*webhookLimiterSnapshot)
+	for {
+		// If window expired, reset.
+		if now.Sub(snap.windowStart) >= time.Minute {
+			replacement := &webhookLimiterSnapshot{windowStart: now, count: 1, limit: limit}
+			if webhookRateLimits.CompareAndSwap(channelKey, snap, replacement) {
+				return true
+			}
+			// CAS failed; reload and retry.
+			v, ok := webhookRateLimits.Load(channelKey)
+			if !ok {
+				// Entry was deleted; re-insert.
+				webhookRateLimits.Store(channelKey, &webhookLimiterSnapshot{windowStart: now, count: 1, limit: limit})
+				return true
+			}
+			snap = v.(*webhookLimiterSnapshot)
+			continue
+		}
+		if snap.count >= snap.limit {
+			lg.Warn("Channel Webhook 入站限流",
+				loggateway.StepID(flowStepChannelWebhookRateLimit),
+				loggateway.Str("channel_key", channelKey),
+				loggateway.Int("limit_per_min", snap.limit),
+			)
+			return false
+		}
+		replacement := &webhookLimiterSnapshot{windowStart: snap.windowStart, count: snap.count + 1, limit: snap.limit}
+		if webhookRateLimits.CompareAndSwap(channelKey, snap, replacement) {
+			return true
+		}
+		// CAS failed; reload and retry.
+		v, ok := webhookRateLimits.Load(channelKey)
+		if !ok {
+			webhookRateLimits.Store(channelKey, &webhookLimiterSnapshot{windowStart: now, count: 1, limit: limit})
+			return true
+		}
+		snap = v.(*webhookLimiterSnapshot)
 	}
-	rl.count++
-	return true
 }
 
 // cleanupStaleWebhookRateLimits removes rate limiter entries whose window has expired.
 func cleanupStaleWebhookRateLimits() {
 	now := time.Now()
+	staleThreshold := readWebhookConf().StaleThreshold
 	webhookRateLimits.Range(func(key, value any) bool {
-		rl, ok := value.(*webhookRateLimiter)
+		snap, ok := value.(*webhookLimiterSnapshot)
 		if !ok {
 			webhookRateLimits.Delete(key)
 			return true
 		}
-		rl.mu.Lock()
-		stale := !rl.window.IsZero() && now.Sub(rl.window) >= readWebhookConf().StaleThreshold
-		rl.mu.Unlock()
-		if stale {
+		if !snap.windowStart.IsZero() && now.Sub(snap.windowStart) >= staleThreshold {
+			webhookRateLimits.CompareAndSwap(key, snap, nil)
+			// If CAS failed (concurrent update), the entry is still live — skip.
 			webhookRateLimits.Delete(key)
 		}
 		return true

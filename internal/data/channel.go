@@ -23,6 +23,7 @@ var (
 	_ biz.ChannelWriter         = (*channelRepo)(nil)
 	_ biz.ChannelCredentialRepo = (*channelRepo)(nil)
 	_ biz.ChannelDeliveryRepo   = (*channelRepo)(nil)
+	_ biz.ChannelDeliveryReader = (*channelRepo)(nil)
 )
 
 // NewChannelRepo implements channel sub-interfaces (legacy channels / channel_* tables).
@@ -307,6 +308,53 @@ func (r *channelRepo) AddDelivery(ctx context.Context, d biz.ChannelDelivery) (b
 		return biz.ChannelDelivery{}, err
 	}
 	return deliveryEntToBiz(e), nil
+}
+
+func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelDelivery) (biz.ChannelDelivery, bool, error) {
+	now := nowRFC3339()
+	if d.Status == "" {
+		d.Status = "pending"
+	}
+	if d.PayloadJSON == "" {
+		d.PayloadJSON = "{}"
+	}
+	if d.CreatedAt == "" {
+		d.CreatedAt = now
+	}
+	d.UpdatedAt = now
+
+	idempotencyKey := strings.TrimSpace(d.IdempotencyKey)
+	if idempotencyKey == "" {
+		// No idempotency key; fall back to regular insert.
+		result, err := r.AddDelivery(ctx, d)
+		return result, true, err
+	}
+
+	b := r.data.RW().Write(ctx).PlatformChannelDelivery.Create().
+		SetID(d.ID).
+		SetChannelID(d.ChannelID).
+		SetAgentID(strings.TrimSpace(d.AgentID)).
+		SetIdempotencyKey(idempotencyKey).
+		SetStatus(d.Status).
+		SetPayloadJSON(d.PayloadJSON).
+		SetErrorMessage(d.ErrorMessage).
+		SetCreatedAt(d.CreatedAt).
+		SetUpdatedAt(d.UpdatedAt).
+		OnConflictColumns(platformchanneldelivery.FieldIdempotencyKey).
+		UpdateNewValues()
+
+	e, err := b.Save(ctx)
+	if err != nil {
+		// Check if it's a conflict error — load the existing row.
+		existing, findErr := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
+			Where(platformchanneldelivery.IdempotencyKey(idempotencyKey)).
+			Only(ctx)
+		if findErr != nil {
+			return biz.ChannelDelivery{}, false, err
+		}
+		return deliveryEntToBiz(existing), false, nil
+	}
+	return deliveryEntToBiz(e), true, nil
 }
 
 func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]biz.ChannelDelivery, error) {

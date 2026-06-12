@@ -84,111 +84,19 @@ func (a *factConsistencyAdapter) GetFactResyncRow(ctx context.Context, factID st
 // --- L3FactReader ---
 
 func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
-	clauses := []string{}
-	args := []any{}
-	if scopeType != "" {
-		clauses = append(clauses, "scope_type = ?")
-		args = append(args, scopeType)
-	}
-	if scopeID != "" {
-		clauses = append(clauses, "scope_id = ?")
-		args = append(args, scopeID)
-	}
-	if kind != "" {
-		clauses = append(clauses, "fact_kind = ?")
-		args = append(args, kind)
-	}
-	if status != "" {
-		clauses = append(clauses, "status = ?")
-		args = append(args, status)
-	} else {
-		clauses = append(clauses, "status = 'active'")
-	}
-	if keyword != "" {
-		clauses = append(clauses, "statement_normalized LIKE ?")
-		args = append(args, "%"+strings.ToLower(keyword)+"%")
-	}
-	clauses = append(clauses, "deleted_at = ''")
+	clauses, args := buildFactFilterClauses(scopeType, scopeID, kind, status, keyword, true)
+	where := " WHERE " + strings.Join(clauses, " AND ")
 
-	where := ""
-	if len(clauses) > 0 {
-		where = " WHERE " + strings.Join(clauses, " AND ")
-	}
-	// Count total (without status filter) for the same scope/kind/keyword.
-	var total int32
-	totalClauses := []string{}
-	totalArgs := []any{}
-	if scopeType != "" {
-		totalClauses = append(totalClauses, "scope_type = ?")
-		totalArgs = append(totalArgs, scopeType)
-	}
-	if scopeID != "" {
-		totalClauses = append(totalClauses, "scope_id = ?")
-		totalArgs = append(totalArgs, scopeID)
-	}
-	if kind != "" {
-		totalClauses = append(totalClauses, "fact_kind = ?")
-		totalArgs = append(totalArgs, kind)
-	}
-	if keyword != "" {
-		totalClauses = append(totalClauses, "statement_normalized LIKE ?")
-		totalArgs = append(totalArgs, "%"+strings.ToLower(keyword)+"%")
-	}
-	totalClauses = append(totalClauses, "deleted_at = ''")
-	totalWhere := ""
-	if len(totalClauses) > 0 {
-		totalWhere = " WHERE " + strings.Join(totalClauses, " AND ")
-	}
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+totalWhere, totalArgs, &total); err != nil {
+	total, err := r.countFacts(ctx, buildFactFilterClauses(scopeType, scopeID, kind, "", keyword, false))
+	if err != nil {
 		return nil, 0, 0, 0, err
 	}
-	// Count active (with status = 'active' filter).
-	var active int32
-	activeClauses := []string{"status = 'active'"}
-	activeArgs := []any{}
-	if scopeType != "" {
-		activeClauses = append(activeClauses, "scope_type = ?")
-		activeArgs = append(activeArgs, scopeType)
-	}
-	if scopeID != "" {
-		activeClauses = append(activeClauses, "scope_id = ?")
-		activeArgs = append(activeArgs, scopeID)
-	}
-	if kind != "" {
-		activeClauses = append(activeClauses, "fact_kind = ?")
-		activeArgs = append(activeArgs, kind)
-	}
-	if keyword != "" {
-		activeClauses = append(activeClauses, "statement_normalized LIKE ?")
-		activeArgs = append(activeArgs, "%"+strings.ToLower(keyword)+"%")
-	}
-	activeClauses = append(activeClauses, "deleted_at = ''")
-	activeWhere := " WHERE " + strings.Join(activeClauses, " AND ")
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+activeWhere, activeArgs, &active); err != nil {
+	active, err := r.countFacts(ctx, buildFactFilterClauses(scopeType, scopeID, kind, "active", keyword, false))
+	if err != nil {
 		active = total
 	}
-	// Count archived (with status = 'archived' filter, same scope/kind/keyword as main query).
-	var archived int32
-	archivedClauses := []string{"status = 'archived'", "deleted_at = ''"}
-	archivedArgs := []any{}
-	if scopeType != "" {
-		archivedClauses = append(archivedClauses, "scope_type = ?")
-		archivedArgs = append(archivedArgs, scopeType)
-	}
-	if scopeID != "" {
-		archivedClauses = append(archivedClauses, "scope_id = ?")
-		archivedArgs = append(archivedArgs, scopeID)
-	}
-	if kind != "" {
-		archivedClauses = append(archivedClauses, "fact_kind = ?")
-		archivedArgs = append(archivedArgs, kind)
-	}
-	if keyword != "" {
-		archivedClauses = append(archivedClauses, "statement_normalized LIKE ?")
-		archivedArgs = append(archivedArgs, "%"+strings.ToLower(keyword)+"%")
-	}
-	archivedWhere := " WHERE " + strings.Join(archivedClauses, " AND ")
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+archivedWhere, archivedArgs, &archived); err != nil {
+	archived, err := r.countFacts(ctx, buildFactFilterClauses(scopeType, scopeID, kind, "archived", keyword, false))
+	if err != nil {
 		archived = 0
 	}
 
@@ -216,6 +124,53 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 		out = append(out, b)
 	}
 	return out, total, active, archived, rows.Err()
+}
+
+// buildFactFilterClauses constructs WHERE clause components for fact queries.
+// When withStatusFilter is true, the status parameter is applied; otherwise
+// only scope/kind/keyword/deleted_at filters are included (for total counts).
+func buildFactFilterClauses(scopeType, scopeID, kind, status, keyword string, withStatusFilter bool) ([]string, []any) {
+	clauses := []string{}
+	args := []any{}
+	if scopeType != "" {
+		clauses = append(clauses, "scope_type = ?")
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		clauses = append(clauses, "scope_id = ?")
+		args = append(args, scopeID)
+	}
+	if kind != "" {
+		clauses = append(clauses, "fact_kind = ?")
+		args = append(args, kind)
+	}
+	if withStatusFilter {
+		if status != "" {
+			clauses = append(clauses, "status = ?")
+			args = append(args, status)
+		} else {
+			clauses = append(clauses, "status = 'active'")
+		}
+	}
+	if keyword != "" {
+		clauses = append(clauses, "statement_normalized LIKE ?")
+		args = append(args, "%"+strings.ToLower(keyword)+"%")
+	}
+	clauses = append(clauses, "deleted_at = ''")
+	return clauses, args
+}
+
+// countFacts returns the count of facts matching the given filter clauses.
+func (r *l3FactRepo) countFacts(ctx context.Context, clauses []string, args ...any) (int32, error) {
+	where := ""
+	if len(clauses) > 0 {
+		where = " WHERE " + strings.Join(clauses, " AND ")
+	}
+	var count int32
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+where, args, &count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {

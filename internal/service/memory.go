@@ -7,13 +7,28 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/jsonutil"
-
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/jsonutil"
+	"aranea-agents/pkg/loggateway"
 )
 
 type queueStatsProvider interface {
 	QueueLaneStats() (highLen, normalLen, lowLen int, highCap, normalCap, lowCap int, dropped, debounced int64)
+}
+
+// MemoryServiceConfig holds all dependencies for MemoryService.
+// Using a config struct instead of positional parameters improves readability
+// and makes future additions non-breaking.
+type MemoryServiceConfig struct {
+	Admin             *biz.MemoryAdminUsecase
+	Cascade           *biz.L4CascadeUsecase
+	SysUC             *biz.SystemSettingUsecase
+	DeadLetterRepo    biz.MemoryDeadLetterAdminRepo
+	DebugRecaller     biz.MemoryDebugRecaller
+	FactIndexCounter  biz.MemoryFactIndexCounter
+	DeadLetterEnqueue func(ctx context.Context, id int64) error
+	QueueStats        queueStatsProvider
+	Logger            loggateway.Logger
 }
 
 type MemoryService struct {
@@ -27,10 +42,21 @@ type MemoryService struct {
 	factIndexCounter  biz.MemoryFactIndexCounter
 	deadLetterEnqueue func(ctx context.Context, id int64) error
 	queueStats        queueStatsProvider
+	lg                loggateway.Logger
 }
 
-func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, debugRecaller biz.MemoryDebugRecaller, factIndexCounter biz.MemoryFactIndexCounter, deadLetterEnqueue func(ctx context.Context, id int64) error, queueStats queueStatsProvider) *MemoryService {
-	return &MemoryService{admin: admin, cascade: cascade, sysUC: sysUC, deadLetterRepo: deadLetterRepo, debugRecaller: debugRecaller, factIndexCounter: factIndexCounter, deadLetterEnqueue: deadLetterEnqueue, queueStats: queueStats}
+func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
+	return &MemoryService{
+		admin:             cfg.Admin,
+		cascade:           cfg.Cascade,
+		sysUC:             cfg.SysUC,
+		deadLetterRepo:    cfg.DeadLetterRepo,
+		debugRecaller:     cfg.DebugRecaller,
+		factIndexCounter:  cfg.FactIndexCounter,
+		deadLetterEnqueue: cfg.DeadLetterEnqueue,
+		queueStats:        cfg.QueueStats,
+		lg:                cfg.Logger,
+	}
 }
 
 func (s *MemoryService) requireAdmin() error {
@@ -56,6 +82,9 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	for _, raw := range rows {
 		snap, e := pbL0AssemblySnapshot(raw)
 		if e != nil {
+			s.lg.Warn("ListL0Snapshots: failed to decode snapshot row",
+				loggateway.StepID("memory.decode_fail"),
+				loggateway.Err(e))
 			continue
 		}
 		out.Items = append(out.Items, snap)
@@ -79,7 +108,13 @@ func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPII
 	out := &v1.ListPIIFlaggedFactsResponse{Total: total}
 	for _, raw := range rows {
 		f, e := pbMemoryFact(raw)
-		if e == nil && f != nil {
+		if e != nil {
+			s.lg.Warn("ListPIIFlaggedFacts: failed to decode fact row",
+				loggateway.StepID("memory.decode_fail"),
+				loggateway.Err(e))
+			continue
+		}
+		if f != nil {
 			out.Items = append(out.Items, f)
 		}
 	}
@@ -106,7 +141,13 @@ func (s *MemoryService) ListConflictingFacts(ctx context.Context, req *v1.ListCo
 	out := &v1.ListConflictingFactsResponse{Total: total}
 	for _, raw := range rows {
 		f, e := pbMemoryFact(raw)
-		if e == nil && f != nil {
+		if e != nil {
+			s.lg.Warn("ListConflictingFacts: failed to decode fact row",
+				loggateway.StepID("memory.decode_fail"),
+				loggateway.Err(e))
+			continue
+		}
+		if f != nil {
 			out.Items = append(out.Items, f)
 		}
 	}
@@ -228,7 +269,13 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	out := &v1.ListMemoryFactsResponse{Total: total, Limit: lim, Offset: off}
 	for _, raw := range rows {
 		f, e := pbMemoryFact(raw)
-		if e == nil && f != nil {
+		if e != nil {
+			s.lg.Warn("ListMemoryFacts: failed to decode fact row",
+				loggateway.StepID("memory.decode_fail"),
+				loggateway.Err(e))
+			continue
+		}
+		if f != nil {
 			out.Items = append(out.Items, f)
 		}
 	}
@@ -256,7 +303,13 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 	out := &v1.ListMemoryEntitiesResponse{Total: total}
 	for _, raw := range rows {
 		ent, e := pbMemoryEntity(raw)
-		if e == nil && ent != nil {
+		if e != nil {
+			s.lg.Warn("ListMemoryEntities: failed to decode entity row",
+				loggateway.StepID("memory.decode_fail"),
+				loggateway.Err(e))
+			continue
+		}
+		if ent != nil {
 			out.Items = append(out.Items, ent)
 		}
 	}

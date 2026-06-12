@@ -21,6 +21,11 @@ type channelConcurrentEntry struct {
 const GateCleanupInterval = 5 * time.Minute
 const GateEntryMaxAge = 30 * time.Minute
 
+// GateStaleActiveMaxAge is the safety-net threshold for force-resetting
+// entries whose count > 0 but haven't been touched for this duration.
+// This prevents permanent blocking when a release call is lost (panic, bug).
+const GateStaleActiveMaxAge = 2 * time.Hour
+
 // ChannelConcurrentGate limits the number of concurrent inbound turns per channel+peer.
 type ChannelConcurrentGate struct {
 	mu     sync.Mutex
@@ -59,8 +64,14 @@ func (g *ChannelConcurrentGate) cleanupExpired() {
 	defer g.mu.Unlock()
 	now := time.Now()
 	for key, entry := range g.active {
-		if entry.count == 0 && now.Sub(entry.lastAcq) > GateEntryMaxAge {
+		age := now.Sub(entry.lastAcq)
+		if entry.count == 0 && age > GateEntryMaxAge {
 			delete(g.active, key)
+			continue
+		}
+		// Safety net: force-reset stale active entries to prevent permanent blocking.
+		if entry.count > 0 && age > GateStaleActiveMaxAge {
+			entry.count = 0
 		}
 	}
 }

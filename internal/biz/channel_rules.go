@@ -82,7 +82,7 @@ func normalizeChannel(row *Channel) error {
 		return channelValidationError("key and name are required")
 	}
 	if row.Status == "" {
-		row.Status = "active"
+		row.Status = ChannelStatusActive
 	}
 	cfg, err := parseChannelConfig(row.ConfigJSON)
 	if err != nil {

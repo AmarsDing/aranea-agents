@@ -41,6 +41,7 @@ var (
 	piiSSNLikeRe    = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
 	piiMedicalRe    = regexp.MustCompile(`(?i)(?:medical record|patient id|mrn)\s*[:#]?\s*\S+`)
 	piiHomeAddrRe   = regexp.MustCompile(`(?i)\d+\s+[A-Z][a-zA-Z]+\s+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct)`)
+	piiHomeAddrCNRe = regexp.MustCompile(`(?:[\p{Han}]{2,6}(?:省|市|区|县|镇|乡))?(?:[\p{Han}]{2,8}(?:路|街|道|巷|弄|胡同))?\d+(?:号|弄)\d*(?:室|栋|楼|单元)?`) // Chinese address: 省/市/区 + 路/街/道 + 号/弄
 	piiSecretKeyRe  = regexp.MustCompile(`(?i)(?:api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*["']?[A-Za-z0-9_\-]{8,}["']?`) // Exclude "password" to avoid blocking user preferences; require 8+ char value
 	// piiLongNumberRe catches long digit sequences that look like financial
 	// identifiers but are NOT already matched by piiBankAcctRe (UnionPay 62-prefix).
@@ -66,6 +67,7 @@ var piiDetectors = []piiDetector{
 	{piiSSNLikeRe, "[ssn]", "ssn"},
 	{piiMedicalRe, "[medical]", "medical_record"},
 	{piiHomeAddrRe, "[address]", "home_address"},
+	{piiHomeAddrCNRe, "[address]", "home_address"},
 	{piiSecretKeyRe, "[secret]", "secret_key"},
 }
 

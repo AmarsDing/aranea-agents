@@ -269,17 +269,22 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 	if err != nil {
 		return nil, err
 	}
-	row := biz.Channel{
-		Key:          req.GetKey(),
-		Name:         req.GetName(),
-		Description:  req.GetDescription(),
-		Status:       req.GetStatus(),
-		Enabled:      req.GetEnabled(),
-		SortOrder:    int(req.GetSortOrder()),
-		ConfigJSON:   req.GetConfigJson(),
-		MetadataJSON: req.GetMetadataJson(),
-	}
-	c, err := s.uc.Update(ctx, req.GetId(), row, protoCredInputs(req.GetCredentials()))
+	key := req.GetKey()
+	name := req.GetName()
+	description := req.GetDescription()
+	enabled := req.GetEnabled()
+	sortOrder := int(req.GetSortOrder())
+	configJSON := req.GetConfigJson()
+	metadataJSON := req.GetMetadataJson()
+	c, err := s.uc.Update(ctx, req.GetId(), biz.ChannelUpdateOptions{
+		Key:          &key,
+		Name:         &name,
+		Description:  &description,
+		Enabled:      &enabled,
+		SortOrder:    &sortOrder,
+		ConfigJSON:   &configJSON,
+		MetadataJSON: &metadataJSON,
+	}, protoCredInputs(req.GetCredentials()))
 	if err != nil {
 		return nil, err
 	}

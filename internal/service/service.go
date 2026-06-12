@@ -92,9 +92,10 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeFederatedRetriever,
 	ProvideKnowledgeSearchDeps,
 	NewSkillDBRepository,
-	NewMemoryLLMExtractor,
+	// MemoryLLMExtractor and MemoryEnhancedExtractor are provided by
+	// provideMemoryLLMExtractor / provideMemoryEnhancedExtractor in wire.go
+	// (they need os.Getenv for LLMDisabled, which is not injectable here).
 	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
-	NewMemoryEnhancedExtractor,
 	wire.Bind(new(biz.EnhancedTextExtractor), new(*MemoryEnhancedExtractor)),
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
 	// Dependency inversion: bind concrete types to biz ports for TeamService

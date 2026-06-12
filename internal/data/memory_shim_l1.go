@@ -273,53 +273,54 @@ func (r *l1WorkingMemoryRepo) UpsertL1Field(ctx context.Context, in biz.L1FieldI
 
 	lg := r.data.lg
 
-	// Read budget for post-upsert check.
+	// Read budget before entering the transaction (read-only, no lock needed).
 	budgetTokens, _, budgetErr := r.getL1TaskBudget(ctx, taskID)
 	if budgetErr != nil {
 		return nil, budgetErr
 	}
 
-	// Archive old value to field_history on conflict (best-effort).
+	// Archive old value to field_history on conflict (best-effort, outside tx).
 	if in.HistoryEnabled {
 		r.archiveL1FieldHistory(ctx, taskID, fieldPath, in.ChangedBy, now, lg)
 	}
 
-	// Upsert the field (optimistic — budget checked after).
-	if err := r.insertL1FieldRow(ctx, id, in, fieldPath, fieldKind, visibility, now); err != nil {
-		return nil, err
-	}
-
-	// Sync used_tokens aggregation for the parent task.
-	if syncErr := r.syncL1TaskUsedTokens(ctx, taskID); syncErr != nil {
-		lg.Warn("L1 used_tokens sync failed after upsert",
-			loggateway.StepID("memory.l1_used_tokens_sync_fail"),
-			loggateway.Str("task_id", taskID),
-			loggateway.Err(syncErr))
-	}
-
-	// Post-upsert budget check: if budget is set, verify we didn't exceed it.
-	// This eliminates the TOCTOU race — SQLite serializes writes, so the
-	// sync above reflects the true state after our upsert.
-	if budgetTokens > 0 {
-		_, currentUsed, checkErr := r.getL1TaskBudget(ctx, taskID)
-		if checkErr != nil {
-			lg.Warn("L1 budget verification read failed",
-				loggateway.StepID("memory.l1_budget_verify_fail"),
+	// Run upsert + sync + budget check in a single transaction.
+	// If budget is exceeded, the transaction rolls back atomically — no
+	// INSERT-then-DELETE rollback needed.
+	var budgetExceeded bool
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		// Step 1: Upsert the field.
+		if err := r.insertL1FieldRow(txCtx, id, in, fieldPath, fieldKind, visibility, now); err != nil {
+			return err
+		}
+		// Step 2: Sync used_tokens aggregation.
+		if syncErr := r.syncL1TaskUsedTokens(txCtx, taskID); syncErr != nil {
+			lg.Warn("L1 used_tokens sync failed after upsert",
+				loggateway.StepID("memory.l1_used_tokens_sync_fail"),
 				loggateway.Str("task_id", taskID),
-				loggateway.Err(checkErr))
-		} else if currentUsed > budgetTokens {
-			// Roll back: delete the field we just inserted.
-			if _, delErr := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-				`DELETE FROM memory_l1_fields WHERE id = ?`, id); delErr != nil {
-				lg.Error("L1 budget rollback DELETE failed",
-					loggateway.StepID("memory.l1_budget_rollback_fail"),
+				loggateway.Err(syncErr))
+		}
+		// Step 3: Budget check within the same transaction.
+		if budgetTokens > 0 {
+			_, currentUsed, checkErr := r.getL1TaskBudget(txCtx, taskID)
+			if checkErr != nil {
+				lg.Warn("L1 budget verification read failed",
+					loggateway.StepID("memory.l1_budget_verify_fail"),
 					loggateway.Str("task_id", taskID),
-					loggateway.Str("field_id", id),
-					loggateway.Err(delErr))
+					loggateway.Err(checkErr))
+			} else if currentUsed > budgetTokens {
+				budgetExceeded = true
+				// Return error to roll back the entire transaction.
+				return biz.ErrL1BudgetOverflow
 			}
-			r.syncL1TaskUsedTokens(ctx, taskID) // re-sync after rollback
+		}
+		return nil
+	})
+	if err != nil {
+		if budgetExceeded {
 			return nil, biz.ErrL1BudgetOverflow
 		}
+		return nil, err
 	}
 
 	return r.GetL1FieldRow(ctx, taskID, fieldPath)

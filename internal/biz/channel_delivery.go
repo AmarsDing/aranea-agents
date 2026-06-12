@@ -69,13 +69,6 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 		}
 		payload.Kind = ChannelOutboundTextKind
 	}
-	if payload.IdempotencyKey != "" {
-		if exists, err := u.hasOutboundIdempotency(ctx, channelID, payload.IdempotencyKey); err != nil {
-			return ChannelDelivery{}, err
-		} else if exists {
-			return ChannelDelivery{}, nil
-		}
-	}
 	if payload.Extra == nil {
 		payload.Extra = map[string]string{}
 	}
@@ -83,19 +76,23 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 	if err != nil {
 		return ChannelDelivery{}, err
 	}
-	return u.deliveries.AddDelivery(ctx, ChannelDelivery{
-		ID:          uuid.NewString(),
-		ChannelID:   channelID,
-		Status:      ChannelDeliveryStatusPending,
-		PayloadJSON: string(raw),
-	})
-}
-
-func (u *ChannelUsecase) hasOutboundIdempotency(ctx context.Context, channelID, key string) (bool, error) {
-	if strings.TrimSpace(key) == "" {
-		return false, nil
+	delivery := ChannelDelivery{
+		ID:             uuid.NewString(),
+		ChannelID:      channelID,
+		IdempotencyKey: payload.IdempotencyKey,
+		Status:         ChannelDeliveryStatusPending,
+		PayloadJSON:    string(raw),
 	}
-	return u.deliveries.HasDeliveryByIdempotencyKey(ctx, channelID, key)
+	// Atomic upsert: when idempotency_key is set, use AddDeliveryIfNotExists
+	// to prevent duplicate deliveries under concurrent requests.
+	if strings.TrimSpace(payload.IdempotencyKey) != "" {
+		result, inserted, err := u.deliveries.AddDeliveryIfNotExists(ctx, delivery)
+		if err != nil {
+			return ChannelDelivery{}, err
+		}
+		return result, nil
+	}
+	return u.deliveries.AddDelivery(ctx, delivery)
 }
 
 // ListPendingOutboundDeliveries returns queued outbound rows across channels.
@@ -163,12 +160,14 @@ func outboundRetryDelay(attempts int) time.Duration {
 	if attempts <= 0 {
 		return outboundRetryBaseDelay
 	}
-	delay := outboundRetryBaseDelay
-	for i := 1; i < attempts; i++ {
-		delay *= 2
-		if delay >= outboundRetryMaxDelay {
-			return outboundRetryMaxDelay
-		}
+	// Exponential backoff: base * 2^(attempts-1), capped at max.
+	shift := uint(attempts - 1)
+	if shift > 30 { // prevent overflow
+		shift = 30
+	}
+	delay := outboundRetryBaseDelay << shift
+	if delay <= 0 || delay > outboundRetryMaxDelay {
+		return outboundRetryMaxDelay
 	}
 	return delay
 }

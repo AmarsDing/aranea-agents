@@ -123,7 +123,7 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 	jobID := channelTurnJobIDFromContext(ctx)
 	chCopy := chRow
 	evCopy := ev
-	watchCtx, cancel := context.WithTimeout(context.Background(), asyncWatchTimeout)
+	watchCtx, cancel := context.WithTimeout(appctx.Ctx(), asyncWatchTimeout)
 	safego.Go(appctx.Ctx(), "channel.async.graph.watch", func() {
 		defer cancel()
 		ch, unsub := h.eventBus.Subscribe(event.SubscribeOptions{
@@ -173,7 +173,7 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 	jobID := channelTurnJobIDFromContext(ctx)
 	chCopy := chRow
 	evCopy := ev
-	watchCtx, cancel := context.WithTimeout(context.Background(), asyncWatchTimeout)
+	watchCtx, cancel := context.WithTimeout(appctx.Ctx(), asyncWatchTimeout)
 	safego.Go(appctx.Ctx(), "channel.async.cron.watch", func() {
 		defer cancel()
 		ticker := time.NewTicker(asyncCronPollInterval)

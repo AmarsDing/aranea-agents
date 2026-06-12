@@ -2,46 +2,50 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/strutil"
 )
 
 // MemoryLLMExtractor implements biz.MemoryTextExtractor using OpenAI-compatible chat completions.
 type MemoryLLMExtractor struct {
-	Agents      *biz.AgentUsecase
-	Sessions    *biz.SessionUsecase
-	ModelCatalog *biz.LlmProviderModelUsecase
-	HTTP        *http.Client
+	agents       *biz.AgentUsecase
+	sessions     *biz.SessionUsecase
+	modelCatalog *biz.LlmProviderModelUsecase
+	http         *http.Client
+	llmDisabled  bool
 }
 
-func NewMemoryLLMExtractor(
-	agents *biz.AgentUsecase,
-	sessions *biz.SessionUsecase,
-	catalog *biz.LlmProviderModelUsecase,
-	httpClient *http.Client,
-) *MemoryLLMExtractor {
+// MemoryLLMExtractorConfig holds all dependencies for MemoryLLMExtractor.
+type MemoryLLMExtractorConfig struct {
+	Agents       *biz.AgentUsecase
+	Sessions     *biz.SessionUsecase
+	ModelCatalog *biz.LlmProviderModelUsecase
+	HTTPClient   *http.Client
+	LLMDisabled  bool
+}
+
+func NewMemoryLLMExtractor(cfg MemoryLLMExtractorConfig) *MemoryLLMExtractor {
 	return &MemoryLLMExtractor{
-		Agents:      agents,
-		Sessions:    sessions,
-		ModelCatalog: catalog,
-		HTTP:        httpClient,
+		agents:       cfg.Agents,
+		sessions:     cfg.Sessions,
+		modelCatalog: cfg.ModelCatalog,
+		http:         cfg.HTTPClient,
+		llmDisabled:  cfg.LLMDisabled,
 	}
 }
 
 var _ biz.MemoryTextExtractor = (*MemoryLLMExtractor)(nil)
 
 func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.ConsolidateInput) ([]biz.MemoryProposal, error) {
-	if e == nil || e.ModelCatalog == nil || e.HTTP == nil {
-		return nil, biz.ErrLLMExtractorUnavailable
-	}
-	if strings.TrimSpace(os.Getenv("MEMORY_WORKER_LLM_DISABLED")) == "1" {
+	if e == nil || e.modelCatalog == nil || e.http == nil || e.llmDisabled {
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 	transcript := buildConsolidateTranscript(in.Messages)
@@ -57,7 +61,7 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		return nil, biz.ErrLLMExtractorUnavailable
 	}
 
-	row, err := e.ModelCatalog.GetByProviderAndModel(ctx, prov, mod)
+	row, err := e.modelCatalog.GetByProviderAndModel(ctx, prov, mod)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +81,11 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 	}
 
 	tools := []map[string]any{compress.ExtractMemoryFactsFunctionSchema}
-	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.HTTP, cfg, mod, msgs, tools)
+	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.http, cfg, mod, msgs, tools)
 
 	var proposals []biz.MemoryProposal
 	var extractionQuality float64
+	var jsonParseErr error
 
 	if callErr == nil {
 		for _, tc := range toolCalls {
@@ -100,11 +105,17 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		if parseErr == nil && len(facts) > 0 {
 			extractionQuality = biz.ExtractionQualityJSONMode
 			proposals = convertFactsToProposals(facts, in.Messages, extractionQuality)
+		} else if parseErr != nil {
+			jsonParseErr = parseErr
 		}
 	}
 
 	if len(proposals) == 0 && callErr != nil {
 		return nil, callErr
+	}
+
+	if len(proposals) == 0 && jsonParseErr != nil {
+		return nil, apierror.Internal("MEMORY", "LLM returned unparseable response: %s", jsonParseErr.Error())
 	}
 
 	return proposals, nil
@@ -134,21 +145,21 @@ func convertFactsToProposals(facts []compress.MemoryExtractFact, messages []biz.
 
 func (e *MemoryLLMExtractor) resolveProviderModel(ctx context.Context, in biz.ConsolidateInput) (prov, mod string, err error) {
 	var ag biz.Agent
-	if e.Agents != nil {
+	if e.agents != nil {
 		agentID := strings.TrimSpace(in.AgentID)
 		if agentID == "" {
 			agentID = strings.TrimSpace(in.AppName)
 		}
 		if agentID != "" {
-			ag, err = e.Agents.Get(ctx, agentID)
+			ag, err = e.agents.Get(ctx, agentID)
 			if err != nil {
 				return "", "", err
 			}
 		}
 	}
 	var sess biz.Session
-	if e.Sessions != nil && strings.TrimSpace(in.SessionID) != "" {
-		sess, err = e.Sessions.Get(ctx, in.SessionID)
+	if e.sessions != nil && strings.TrimSpace(in.SessionID) != "" {
+		sess, err = e.sessions.Get(ctx, in.SessionID)
 		if err != nil {
 			return "", "", err
 		}

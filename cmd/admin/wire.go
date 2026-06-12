@@ -1238,12 +1238,21 @@ func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo,
 	return monitor.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
 
-func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, suggestionRepo *data.SkillEvolutionSuggestionRepo, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, suggestionRepo *data.SkillEvolutionSuggestionRepo, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, rca monitor.RootCauseAnalyzer, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
 	analyzer := &skillIntelligenceRCAAdapter{inner: rca}
-	uc := biz.NewSkillIntelligenceUsecase(repo, repo, repo, repo, suggestionRepo, suggestionRepo, analyzer, lg,
-		biz.SkillIntelligenceConfig{UnanalyzedReader: repo},
+	_ = analyzer // analyzer is used by reporter which is now Wire-injected
+	reporter.SetUnanalyzedReader(unanalyzedReader)
+	uc := biz.NewSkillIntelligenceUsecase(scorer, reporter, suggestionRepo, suggestionRepo, unifiedRepo, unifiedRepo, aggregator, nil, lg,
+		biz.SkillIntelligenceConfig{
+			UnanalyzedReader: unanalyzedReader,
+		},
 	)
 	return uc
+}
+
+// provideBizRootCauseAdapter bridges monitor.RootCauseAnalyzer to biz.RootCauseAnalyzer.
+func provideBizRootCauseAdapter(rca monitor.RootCauseAnalyzer) biz.RootCauseAnalyzer {
+	return &skillIntelligenceRCAAdapter{inner: rca}
 }
 
 // skillIntelligenceRCAAdapter bridges monitor.RootCauseAnalyzer to biz.RootCauseAnalyzer.
@@ -1537,8 +1546,8 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		EventWALCleanup:         eventWALCleanup,
-		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		EventWALCleanup: eventWALCleanup,
+		FlowLogCleanup:  flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
 		MemoryDataMigration:       memoryDataMigration,
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
@@ -1816,6 +1825,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideSelfHealUsecase,
 		provideSelfHealObserver,
 		provideSkillIntelligenceUsecase,
+		provideBizRootCauseAdapter,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,

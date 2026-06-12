@@ -60,14 +60,12 @@ func (r *channelRuntimeLeaseRepo) TryAcquireRuntimeLease(ctx context.Context, le
 INSERT INTO channel_runtime_lease (key, channel_id, platform, owner_id, expires_at, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET
-  channel_id = excluded.channel_id,
-  platform = excluded.platform,
   owner_id = excluded.owner_id,
   expires_at = excluded.expires_at,
   updated_at = excluded.updated_at
-WHERE (channel_runtime_lease.owner_id = excluded.owner_id AND channel_runtime_lease.expires_at > ?)
+WHERE channel_runtime_lease.owner_id = excluded.owner_id
    OR channel_runtime_lease.expires_at <= ?`,
-		lease.Key, lease.ChannelID, lease.Platform, lease.OwnerID, exp, now, now, now, now,
+		lease.Key, lease.ChannelID, lease.Platform, lease.OwnerID, exp, now, now, now,
 	)
 	if err != nil {
 		return false, err

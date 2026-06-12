@@ -155,37 +155,34 @@ func CanTransitionChannelTurnJob(fromStatus, event string) bool {
 	return defaultChannelTurnJobSM.CanTransition(from, to)
 }
 
-// ChannelTurnJobStatusFromEvent returns the target status for a given event,
-// assuming the transition starts from the most common source state.
-// This is a convenience for Service-layer callers that need the target status
-// for metrics/refresh events after a successful TransitionByEvent call.
+// ChannelTurnJobStatusFromEvent returns the target status for a given event.
+// Returns an error for unknown events to prevent silent misrouting.
 // Stability:stable
-func ChannelTurnJobStatusFromEvent(event string) string {
-	// Map event → canonical target status (from the transition table).
+func ChannelTurnJobStatusFromEvent(event string) (string, error) {
 	switch event {
 	case JobEventStart:
-		return ChannelTurnJobStatusRunning
+		return ChannelTurnJobStatusRunning, nil
 	case JobEventQueue:
-		return ChannelTurnJobStatusQueued
+		return ChannelTurnJobStatusQueued, nil
 	case JobEventDequeue:
-		return ChannelTurnJobStatusRunning
+		return ChannelTurnJobStatusRunning, nil
 	case JobEventComplete:
-		return ChannelTurnJobStatusCompleted
+		return ChannelTurnJobStatusCompleted, nil
 	case JobEventFail:
-		return ChannelTurnJobStatusFailed
+		return ChannelTurnJobStatusFailed, nil
 	case JobEventTimeout:
-		return ChannelTurnJobStatusTimeout
+		return ChannelTurnJobStatusTimeout, nil
 	case JobEventCancel:
-		return ChannelTurnJobStatusCancelled
+		return ChannelTurnJobStatusCancelled, nil
 	case JobEventAsyncQueue:
-		return ChannelTurnJobStatusAsyncQueued
+		return ChannelTurnJobStatusAsyncQueued, nil
 	case JobEventAsyncStart:
-		return ChannelTurnJobStatusRunning
+		return ChannelTurnJobStatusRunning, nil
 	case JobEventAsyncFail:
-		return ChannelTurnJobStatusFailed
+		return ChannelTurnJobStatusFailed, nil
 	case JobEventAsyncCancel:
-		return ChannelTurnJobStatusCancelled
+		return ChannelTurnJobStatusCancelled, nil
 	default:
-		return ChannelTurnJobStatusAccepted
+		return "", apierror.BadRequest("CHANNEL_TURN_JOB", "unknown event: "+event)
 	}
 }
