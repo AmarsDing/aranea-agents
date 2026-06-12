@@ -222,11 +222,15 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	}
 	// Merge CustomTool keys (e.g. plan_and_execute) into the effective key list
 	// so the LLM sees the complete set of available tools.
-	customKeySet := make(map[string]bool, len(d.CustomToolKeys))
+	// Use existingKeys to deduplicate against eff.Items.
+	existingKeys := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		existingKeys[k] = true
+	}
 	for _, ck := range d.CustomToolKeys {
 		ck = strings.TrimSpace(ck)
-		if ck != "" && !customKeySet[ck] {
-			customKeySet[ck] = true
+		if ck != "" && !existingKeys[ck] {
+			existingKeys[ck] = true
 			keys = append(keys, ck)
 		}
 	}
@@ -243,7 +247,7 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	// Spirit orchestration fallback: when plan_and_execute is referenced in
 	// prompt files but NOT available as a CustomTool, inject explicit fallback
 	// guidance so the LLM does not waste turns trying to call a missing tool.
-	if ag.AgentKey == biz.SpiritAgentKey && !customKeySet["plan_and_execute"] && level >= cueLevelStandard {
+	if ag.AgentKey == biz.SpiritAgentKey && !existingKeys["plan_and_execute"] && level >= cueLevelStandard {
 		b.WriteString("- IMPORTANT: plan_and_execute is NOT available this session. For multi-step tasks, use subagents_spawn to delegate to sub-agents instead. Do NOT attempt to call plan_and_execute.\n")
 	}
 	if hasWorkspaceSearch && level >= cueLevelFull && !skipToolCue {

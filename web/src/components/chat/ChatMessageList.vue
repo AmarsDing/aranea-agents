@@ -95,7 +95,14 @@
       @click="$emit('messages-click', $event)"
     >
       <template v-if="agentBlocks?.length">
-        <AgentTreeTimeline :agent-blocks="agentBlocks" />
+        <template v-if="useActivityTimeline">
+          <ConversationTurn
+            v-for="turn in conversationTurns"
+            :key="turn.id"
+            :turn="turn"
+          />
+        </template>
+        <AgentTreeTimeline v-else :agent-blocks="agentBlocks" />
       </template>
       <template v-else-if="useTurnBlockMode">
         <TurnBlock
@@ -163,18 +170,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { QVirtualScroll } from 'quasar';
 import TurnBlock from './TurnBlock.vue';
 import ChatMessageRow from './ChatMessageRow.vue';
 import ChatPendingQueue from './ChatPendingQueue.vue';
+import ConversationTurn from './ConversationTurn.vue';
+import { useConversationTimeline } from '../../features/chat/composables/useConversationTimeline';
 import type { Message, ReactToolLinkIndex, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import type { TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import type { AgentBlock } from '../../features/chat/agentTreeTypes';
+import type { Envelope } from '../../realtime/envelope';
 import AgentTreeTimeline from './AgentTreeTimeline.vue';
 
 const props = defineProps<{
@@ -195,6 +205,7 @@ const props = defineProps<{
   turnIsFocused: (turnId: string, userId?: string) => boolean;
   isBlockCollapsed?: (blockKey: number) => boolean;
   agentBlocks?: AgentBlock[];
+  progressEnvelopes?: readonly Envelope[];
 }>();
 
 defineEmits<{
@@ -225,6 +236,19 @@ const quickStartHints = [
 const emptyScrollEl = ref<HTMLElement | null>(null);
 const virtualScrollRef = ref<QVirtualScroll | null>(null);
 const normalScrollEl = ref<HTMLElement | null>(null);
+
+const useActivityTimeline = computed(() => {
+  // Feature flag: 使用新的活动时间线渲染
+  // 可以通过 localStorage 或配置开关控制
+  return true;
+});
+
+const { conversationTurns } = useConversationTimeline({
+  messages: computed(() => props.messages),
+  isTeamSession: props.isTeamSession,
+  plannerKind: computed(() => props.plannerKind ?? ''),
+  progressEnvelopes: computed(() => props.progressEnvelopes ?? []),
+});
 
 defineExpose({
   emptyScrollEl,

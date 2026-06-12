@@ -480,7 +480,7 @@ func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz
 	preds := skillListPredicates(q)
 	total, err := c.PlatformSkill.Query().Where(preds...).Count(ctx)
 	if err != nil {
-		return biz.SkillListResult{}, err
+		return biz.SkillListResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	rows, err := c.PlatformSkill.Query().
 		Where(preds...).
@@ -489,11 +489,11 @@ func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.SkillListResult{}, err
+		return biz.SkillListResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	items, err := r.batchEnrichSkills(ctx, rows)
 	if err != nil {
-		return biz.SkillListResult{}, err
+		return biz.SkillListResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return biz.SkillListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
@@ -506,7 +506,7 @@ func (r *skillRepo) GetSkillByID(ctx context.Context, id string) (biz.Skill, err
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.enrichSkill(ctx, e)
 }
@@ -523,7 +523,7 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 		if dataent.IsNotFound(err) {
 			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.GetSkillByID(ctx, id)
 }
@@ -663,7 +663,7 @@ func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillR
 	}
 	total, err := base.Clone().Count(ctx)
 	if err != nil {
-		return biz.SkillRunResult{}, err
+		return biz.SkillRunResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	rows, err := base.Clone().
 		Order(skillinvocation.ByCreatedAt(entsql.OrderDesc())).
@@ -671,7 +671,7 @@ func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillR
 		Offset(query.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.SkillRunResult{}, err
+		return biz.SkillRunResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 
 	skillIDs := map[string]struct{}{}
@@ -696,7 +696,7 @@ func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillR
 	if len(sidList) > 0 {
 		skills, err := c.PlatformSkill.Query().Where(platformskill.IDIn(sidList...)).All(ctx)
 		if err != nil {
-			return biz.SkillRunResult{}, err
+			return biz.SkillRunResult{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
 		for _, s := range skills {
 			skillNames[s.ID] = s.Name
@@ -706,7 +706,7 @@ func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillR
 	if len(aidList) > 0 {
 		agents, err := c.Agent.Query().Where(agent.IDIn(aidList...)).All(ctx)
 		if err != nil {
-			return biz.SkillRunResult{}, err
+			return biz.SkillRunResult{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
 		for _, a := range agents {
 			agentNames[a.ID] = a.DisplayName
@@ -747,7 +747,7 @@ func (r *skillRepo) GetSkillStorageDir(ctx context.Context, id string) (string, 
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		return "", err
+		return "", entErrToBizErr(err, apierror.DomainSkill)
 	}
 	var metadata struct {
 		StorageDir string `json:"storage_dir"`
@@ -781,7 +781,7 @@ func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.Skill
 		Order(platformskill.ByUpdatedAt(entsql.OrderDesc()), platformskill.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 
 	// Batch-fetch latest SkillVersion per skill to avoid N+1.
@@ -796,7 +796,7 @@ func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.Skill
 			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 			All(ctx)
 		if vErr != nil {
-			return nil, vErr
+			return nil, entErrToBizErr(vErr, apierror.DomainSkill)
 		}
 		for _, v := range versions {
 			if _, exists := versionMap[v.SkillID]; !exists {
@@ -840,7 +840,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 	now := nowRFC3339()
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.PlatformSkill.Create().
@@ -859,7 +859,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		SetUpdatedAt(now).
 		SetDeletedAt("").
 		Save(ctx); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if _, err = tx.SkillVersion.Create().
 		SetID(versionID).
@@ -871,10 +871,10 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if err = tx.Commit(); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return r.GetSkillByID(ctx, skillID)
 }
@@ -1022,7 +1022,7 @@ func (r *skillRepo) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
 		Where(platformskill.DeletedAtEQ("")).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	out := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -1042,7 +1042,7 @@ func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	out := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -1060,7 +1060,7 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	out := make([]biz.SkillRuntimeCandidate, 0, len(rows))
 	for _, row := range rows {
@@ -1137,7 +1137,7 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 		builder = builder.SetLoadedSlug(strings.TrimSpace(in.LoadedSlug))
 	}
 	_, err := builder.Save(ctx)
-	return err
+	return entErrToBizErr(err, apierror.DomainSkill)
 }
 
 func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error) {
@@ -1153,7 +1153,7 @@ func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) 
 		if dataent.IsNotFound(err) {
 			return "", apierror.NotFound(apierror.DomainSkill, "not found")
 		}
-		return "", err
+		return "", entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return sv.ContentMarkdown, nil
 }
@@ -1166,7 +1166,7 @@ func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []st
 		Where(platformskill.SkillKeyIn(slugs...), platformskill.DeletedAtEQ("")).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	skillIDs := make([]string, 0, len(skills))
 	keyToID := make(map[string]string, len(skills))
@@ -1182,7 +1182,7 @@ func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []st
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	idToMarkdown := make(map[string]string, len(skillIDs))
 	seen := make(map[string]bool, len(skillIDs))
@@ -1436,7 +1436,7 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if n == 0 {
 		return apierror.NotFound(apierror.DomainSkill, "not found")
@@ -1450,7 +1450,7 @@ func (r *skillRepo) FilesystemHealthStats(ctx context.Context) (biz.SkillFilesys
 		Where(platformskill.DeletedAtEQ(""), platformskill.FilesystemMissingEQ(true)).
 		Count(ctx)
 	if err != nil {
-		return biz.SkillFilesystemHealthStats{}, err
+		return biz.SkillFilesystemHealthStats{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	pending, err := c.PlatformSkill.Query().
 		Where(
@@ -1461,7 +1461,7 @@ func (r *skillRepo) FilesystemHealthStats(ctx context.Context) (biz.SkillFilesys
 		).
 		Count(ctx)
 	if err != nil {
-		return biz.SkillFilesystemHealthStats{}, err
+		return biz.SkillFilesystemHealthStats{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return biz.SkillFilesystemHealthStats{
 		MissingCount:           missing,
@@ -1475,7 +1475,7 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 		Where(platformskill.IDEQ(q.SkillID), platformskill.DeletedAtEQ("")).
 		Exist(ctx)
 	if err != nil {
-		return biz.SkillVersionListResult{}, err
+		return biz.SkillVersionListResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if !exists {
 		return biz.SkillVersionListResult{}, apierror.NotFound(apierror.DomainSkill, "not found")
@@ -1484,7 +1484,7 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 		Where(skillversion.SkillIDEQ(q.SkillID)).
 		Count(ctx)
 	if err != nil {
-		return biz.SkillVersionListResult{}, err
+		return biz.SkillVersionListResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	rows, err := c.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(q.SkillID)).
@@ -1493,7 +1493,7 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 		Limit(q.Limit).
 		All(ctx)
 	if err != nil {
-		return biz.SkillVersionListResult{}, err
+		return biz.SkillVersionListResult{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
 	items := make([]biz.SkillVersionDetail, 0, len(rows))
 	for _, row := range rows {

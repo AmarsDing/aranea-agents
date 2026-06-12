@@ -31,34 +31,34 @@
 
           <!-- Agent Section (hidden in spiritMode per D4) -->
           <template v-if="!spiritMode">
-          <ChatSectionHeader
-            icon="smart_toy"
-            :label="t('chat.groupAgents')"
-            :count="filteredAgents.length"
-            :collapsed="collapse.sectionCollapsed.agents"
-            class="q-pt-md"
-            @update:collapsed="collapse.toggleSection('agents')"
-          />
-          <template v-if="!collapse.sectionCollapsed.agents">
-            <ChatEntityGroup
-              v-for="group in agentGroups"
-              :key="group.key"
-              :items="group.items"
-              :label="group.label"
-              :icon="group.icon"
-              :collapsed="collapse.groupCollapsed[group.key] ?? false"
-              :active-id="selectedAgentId"
-              :pinned-id="group.pinnedId"
-              @update:collapsed="collapse.toggleGroup(group.key)"
-              @select="onSelectAgent"
-              @settings="$emit('agent-settings', $event)"
-              @delete="$emit('agent-delete', $event)"
-              @reorder="(ids) => $emit('agent-reorder', { groupKey: group.key, ids })"
+            <ChatSectionHeader
+              icon="smart_toy"
+              :label="t('chat.groupAgents')"
+              :count="filteredAgents.length"
+              :collapsed="collapse.sectionCollapsed.agents"
+              class="q-pt-md"
+              @update:collapsed="collapse.toggleSection('agents')"
             />
-            <div v-if="filteredAgents.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              {{ t('chat.sidebar.noAgents') }}
-            </div>
-          </template>
+            <template v-if="!collapse.sectionCollapsed.agents">
+              <ChatEntityGroup
+                v-for="group in agentGroups"
+                :key="group.key"
+                :items="group.items"
+                :label="group.label"
+                :icon="group.icon"
+                :collapsed="collapse.groupCollapsed[group.key] ?? false"
+                :active-id="selectedAgentId"
+                :pinned-id="group.pinnedId"
+                @update:collapsed="collapse.toggleGroup(group.key)"
+                @select="onSelectAgent"
+                @settings="$emit('agent-settings', $event)"
+                @delete="$emit('agent-delete', $event)"
+                @reorder="(ids) => $emit('agent-reorder', { groupKey: group.key, ids })"
+              />
+              <div v-if="filteredAgents.length === 0" class="chat-side-hint text-caption text-cream-muted">
+                {{ t('chat.sidebar.noAgents') }}
+              </div>
+            </template>
           </template>
 
           <!-- Active Teams Section -->
@@ -71,13 +71,22 @@
             @update:collapsed="collapse.toggleSection('activeTeams')"
           />
           <template v-if="!collapse.sectionCollapsed.activeTeams">
+            <!-- Orchestration phase progress (shown before teams arrive) -->
+            <div v-if="showOrchestrationProgress && phaseDisplay" class="spirit-phase-hint q-px-sm q-py-xs">
+              <q-icon :name="phaseDisplay.icon" size="16px" :style="{ color: phaseDisplay.color }" class="q-mr-xs" />
+              <span class="text-caption">{{ phaseDisplay.label }}</span>
+              <q-spinner-dots size="14px" :color="phaseDisplay.color" class="q-ml-xs" />
+            </div>
             <div
               v-for="team in activeTeamList"
               :key="team.id"
               :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
               :style="
                 pulseTeamColors?.has(team.id)
-                  ? { '--pulse-color': pulseTeamColors!.get(team.id)!.color, '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms` }
+                  ? {
+                      '--pulse-color': pulseTeamColors!.get(team.id)!.color,
+                      '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms`,
+                    }
                   : undefined
               "
             >
@@ -89,7 +98,10 @@
                 @toggle-expand="$emit('toggle-team-expand', team.id)"
               />
             </div>
-            <div v-if="activeTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
+            <div
+              v-if="activeTeamList.length === 0 && !showOrchestrationProgress"
+              class="chat-side-hint text-caption text-cream-muted"
+            >
               {{ t('chat.sidebar.noActiveTeams') }}
             </div>
           </template>
@@ -110,7 +122,10 @@
               :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
               :style="
                 pulseTeamColors?.has(team.id)
-                  ? { '--pulse-color': pulseTeamColors!.get(team.id)!.color, '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms` }
+                  ? {
+                      '--pulse-color': pulseTeamColors!.get(team.id)!.color,
+                      '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms`,
+                    }
                   : undefined
               "
             >
@@ -143,7 +158,10 @@
               :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
               :style="
                 pulseTeamColors?.has(team.id)
-                  ? { '--pulse-color': pulseTeamColors!.get(team.id)!.color, '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms` }
+                  ? {
+                      '--pulse-color': pulseTeamColors!.get(team.id)!.color,
+                      '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms`,
+                    }
                   : undefined
               "
             >
@@ -201,6 +219,8 @@ const props = defineProps<{
   pulseTeamColors?: Map<string, { color: string; durationMs: number }>;
   /** D4: When true, hide Agent groups and only show Spirit entry + teams. */
   spiritMode?: boolean;
+  /** Current orchestration phase for sidebar progress display. */
+  orchestrationPhase?: string;
 }>();
 
 const emit = defineEmits<{
@@ -255,9 +275,7 @@ const filteredAgents = computed(() => {
 // --- Agent grouping ---
 const agentGroups = computed((): AgentGroup[] => {
   // Filter out system_builtin agents and the __spirit__ virtual agent
-  const agents = filteredAgents.value.filter(
-    (a) => a.kind !== 'system_builtin' && a.agent_key !== '__spirit__',
-  );
+  const agents = filteredAgents.value.filter((a) => a.kind !== 'system_builtin' && a.agent_key !== '__spirit__');
   if (agents.length === 0) return [];
 
   const defaultId = props.defaultAgentId;
@@ -302,12 +320,36 @@ function toEntityItems(agents: Agent[]): EntityItem[] {
   }));
 }
 
+// --- Orchestration phase display ---
+const PHASE_DISPLAY: Record<string, { icon: string; label: string; color: string }> = {
+  planning: { icon: 'search', label: '正在规划任务…', color: 'var(--color-accent)' },
+  allocating: { icon: 'people', label: '正在分配 Agent…', color: 'var(--color-warning)' },
+  orchestrating: { icon: 'construction', label: '正在编排执行…', color: 'var(--color-accent)' },
+};
+
+const showOrchestrationProgress = computed(() => {
+  const phase = props.orchestrationPhase;
+  return (
+    phase && phase !== 'idle' && phase !== 'completed' && phase !== 'interrupted' && props.spiritTeams.length === 0
+  );
+});
+
+const phaseDisplay = computed(() => {
+  const phase = props.orchestrationPhase;
+  return phase ? PHASE_DISPLAY[phase] : null;
+});
+
 // --- Team lists (F-12: search filters team name + taskSummary) ---
 const activeTeamList = computed(() => {
   const q = props.search.trim().toLowerCase();
   return props.spiritTeams
     .filter(
-      (t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled' && t.status !== 'archived' && t.status !== 'interrupted',
+      (t) =>
+        t.status !== 'completed' &&
+        t.status !== 'failed' &&
+        t.status !== 'cancelled' &&
+        t.status !== 'archived' &&
+        t.status !== 'interrupted',
     )
     .filter((t) => {
       if (!q) return true;
@@ -352,6 +394,12 @@ function onSelectAgent(item: EntityItem) {
 
 :global(.body--dark) .chat-side-hint {
   color: var(--chat-idle-meta);
+}
+
+.spirit-phase-hint {
+  display: flex;
+  align-items: center;
+  opacity: 0.85;
 }
 
 .team-card-wrapper--pulse {

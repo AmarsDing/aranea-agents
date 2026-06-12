@@ -31,7 +31,6 @@ import type {
   PlanEntry,
   TeamStatusSummary,
   ProgressSection,
-  NoticeSection,
 } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { toolEventFromMessage } from '../envelopeToolCall';
@@ -392,7 +391,7 @@ function buildRootAgentBlock(
                   id: `degradation-notice-${sortCounter}`,
                   type: 'degradation',
                   message: '编排工具 plan_and_execute 当前不可用，已自动降级为 SubAgent 模式执行',
-                } as NoticeSection,
+                },
                 sortKey: sortCounter++,
               });
             }

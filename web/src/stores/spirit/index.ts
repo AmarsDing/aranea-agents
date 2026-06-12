@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { listSpiritTeams, cancelSpiritTeam, resumeSpiritTeam, archiveSpiritTeam, retrySpiritTeam } from '../../features/spirit/api';
+import {
+  listSpiritTeams,
+  cancelSpiritTeam,
+  resumeSpiritTeam,
+  archiveSpiritTeam,
+  retrySpiritTeam,
+} from '../../features/spirit/api';
 import type {
   SpiritTeam,
   SpiritPanelMode,
@@ -23,10 +29,42 @@ import type {
 } from '../../realtime/envelope';
 import { Notify } from 'quasar';
 
+/** Orchestration phase derived from WS events. */
+export type OrchestrationPhase = 'idle' | 'planning' | 'allocating' | 'orchestrating' | 'completed' | 'interrupted';
+
 const VALID_STRATEGIES = new Set<string>(['template', 'prompt', 'hybrid']);
 
 function isValidStrategy(s: string): boolean {
   return VALID_STRATEGIES.has(s);
+}
+
+/**
+ * Merge fields from an API-fetched team into an existing WS-driven team.
+ * Only fills in fields that WS events don't carry (members, tokenIn, etc.).
+ * Never overwrites WS-updated fields (status, progressPct) which are more real-time.
+ */
+function mergeTeamFields(existing: SpiritTeam, incoming: SpiritTeam) {
+  if (incoming.members.length > 0 && existing.members.length === 0) {
+    existing.members = incoming.members;
+  }
+  if (incoming.memberAvatars.length > 0 && existing.memberAvatars.length === 0) {
+    existing.memberAvatars = incoming.memberAvatars;
+  }
+  if (incoming.tokenIn && !existing.tokenIn) {
+    existing.tokenIn = incoming.tokenIn;
+  }
+  if (incoming.tokenOut && !existing.tokenOut) {
+    existing.tokenOut = incoming.tokenOut;
+  }
+  if (incoming.dqScore && !existing.dqScore) {
+    existing.dqScore = incoming.dqScore;
+  }
+  if (incoming.evolutionSuggestion && !existing.evolutionSuggestion) {
+    existing.evolutionSuggestion = incoming.evolutionSuggestion;
+  }
+  if (incoming.interruptReason && !existing.interruptReason) {
+    existing.interruptReason = incoming.interruptReason;
+  }
 }
 
 export const useSpiritTeamStore = defineStore('spiritTeam', () => {
@@ -52,8 +90,14 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const lastCheckpoint = ref<SpiritOrchestrationCheckpointPayload | null>(null);
   const orchestrationInterrupted = ref<SpiritOrchestrationInterruptedPayload | null>(null);
 
+  /** Orchestration phase derived from WS events (idle → planning → allocating → orchestrating → completed/interrupted). */
+  const orchestrationPhase = ref<OrchestrationPhase>('idle');
+
   // Track the current spirit session ID for loadSpiritTeams and reset.
   const currentSpiritSessionId = ref<string | null>(null);
+
+  /** In-flight load promise to deduplicate concurrent loadSpiritTeams calls. */
+  let _loadPromise: Promise<void> | null = null;
 
   /** Max concurrent teams quota from backend ParallelConfig. */
   const maxConcurrentTeams = ref<number | null>(null);
@@ -93,16 +137,46 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     return [...teams.value].sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
   });
 
+  /**
+   * Load spirit teams from API with merge semantics.
+   * API teams supplement WS-driven teams (which are more real-time).
+   * WS events already added teams are preserved; API fills in missing fields.
+   * Teams not in API response are removed (deleted/archived server-side).
+   * Concurrent calls for the same sessionId are deduplicated.
+   */
   async function loadSpiritTeams(spiritSessionId: string) {
-    loading.value = true;
-    try {
-      teams.value = await listSpiritTeams(spiritSessionId);
-      currentSpiritSessionId.value = spiritSessionId;
-    } catch {
-      Notify.create({ type: 'negative', message: '加载团队列表失败', position: 'top' });
-    } finally {
-      loading.value = false;
+    // Deduplicate: if a load is already in flight for this session, await it
+    if (_loadPromise) {
+      await _loadPromise;
+      // After awaiting, if sessionId changed (e.g. reset), skip
+      if (currentSpiritSessionId.value !== spiritSessionId) return;
     }
+    loading.value = true;
+    _loadPromise = (async () => {
+      try {
+        const apiTeams = await listSpiritTeams(spiritSessionId);
+        currentSpiritSessionId.value = spiritSessionId;
+        const apiIds = new Set(apiTeams.map((t) => t.id));
+        for (const team of apiTeams) {
+          const existing = teams.value.find((t) => t.id === team.id);
+          if (existing) {
+            // WS already has this team: only fill in fields WS events don't carry
+            mergeTeamFields(existing, team);
+          } else {
+            // API has a team WS hasn't delivered yet (e.g. historical team)
+            teams.value.push(team);
+          }
+        }
+        // Remove teams that no longer exist on the server
+        teams.value = teams.value.filter((t) => apiIds.has(t.id));
+      } catch {
+        Notify.create({ type: 'negative', message: '加载团队列表失败', position: 'top' });
+      } finally {
+        loading.value = false;
+        _loadPromise = null;
+      }
+    })();
+    await _loadPromise;
   }
 
   /** Reload teams for the current spirit session (e.g. after WS reconnect). */
@@ -120,6 +194,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     activeTeamId.value = null;
     activeMemberId.value = null;
     loading.value = false;
+    _loadPromise = null;
     teamProgress.value = [];
     allTeamsCompleted.value = false;
     synthesisCompleted.value = false;
@@ -131,6 +206,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     orchestrationStarted.value = null;
     lastCheckpoint.value = null;
     orchestrationInterrupted.value = null;
+    orchestrationPhase.value = 'idle';
     currentSpiritSessionId.value = null;
     maxConcurrentTeams.value = null;
     lastDqScore.value = null;
@@ -289,9 +365,11 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         break;
       case 'spirit_plan_created':
         planCreated.value = md as unknown as SpiritPlanCreatedPayload;
+        orchestrationPhase.value = 'planning';
         break;
       case 'spirit_allocation_created':
         allocationCreated.value = md as unknown as SpiritAllocationCreatedPayload;
+        orchestrationPhase.value = 'allocating';
         break;
       case 'spirit_orchestration_started':
         handleOrchestrationStarted(md);
@@ -301,6 +379,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         break;
       case 'spirit_orchestration_interrupted':
         orchestrationInterrupted.value = md as unknown as SpiritOrchestrationInterruptedPayload;
+        orchestrationPhase.value = 'interrupted';
         break;
       case 'butler.orchestration.started':
       case 'butler.orchestration.completed':
@@ -435,6 +514,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   function handleAllTeamsCompleted(md: Record<string, unknown>) {
     allTeamsCompleted.value = true;
+    orchestrationPhase.value = 'completed';
     const aggTokenIn = Number(md.total_token_in ?? 0);
     const aggTokenOut = Number(md.total_token_out ?? 0);
     if (aggTokenIn > 0 || aggTokenOut > 0) {
@@ -472,9 +552,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         teamId: String(r.team_id ?? ''),
         teamName: String(r.team_name ?? ''),
         taskName: String(r.task_name ?? ''),
-        status: isValidTeamStatus(String(r.status ?? ''))
-          ? (String(r.status ?? '') as SpiritTeamStatus)
-          : 'failed',
+        status: isValidTeamStatus(String(r.status ?? '')) ? (String(r.status ?? '') as SpiritTeamStatus) : 'failed',
         summary: String(r.summary ?? ''),
         keyFindings: String(r.key_findings ?? ''),
       })),
@@ -485,8 +563,13 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   function handleOrchestrationStarted(md: Record<string, unknown>) {
     const payload = md as unknown as SpiritOrchestrationStartedPayload;
     orchestrationStarted.value = payload;
+    orchestrationPhase.value = 'orchestrating';
     if (payload.max_concurrent_teams && payload.max_concurrent_teams > 0) {
       maxConcurrentTeams.value = payload.max_concurrent_teams;
+    }
+    // Teams are now persisted in DB — merge API data to ensure list completeness
+    if (currentSpiritSessionId.value) {
+      void loadSpiritTeams(currentSpiritSessionId.value);
     }
   }
 
@@ -508,6 +591,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     orchestrationStarted,
     lastCheckpoint,
     orchestrationInterrupted,
+    orchestrationPhase,
     currentSpiritSessionId,
     maxConcurrentTeams,
     lastDqScore,
