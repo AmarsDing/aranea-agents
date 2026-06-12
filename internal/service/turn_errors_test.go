@@ -26,8 +26,7 @@ func TestTurnError_withoutDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil error")
 	}
-	ae, ok := apierror.From(err)
-	if !ok {
+	if _, ok := apierror.From(err); !ok {
 		t.Fatal("expected apierror")
 	}
 }

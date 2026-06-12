@@ -94,25 +94,39 @@ func (m *batchSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, st
 func (m *batchSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) (bool, error) {
 	return false, nil
 }
-func (m *batchSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error { return nil }
+func (m *batchSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error {
+	return nil
+}
 func (m *batchSessionRepo) UpdateSessionContextFromLLMUsage(context.Context, string, int, int, int) error {
 	return nil
 }
 func (m *batchSessionRepo) UpdateSessionContextAfterCompression(context.Context, string, int, int) error {
 	return nil
 }
-func (m *batchSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error { return nil }
-func (m *batchSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error)     { return 0, nil }
+func (m *batchSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error {
+	return nil
+}
+func (m *batchSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error) {
+	return 0, nil
+}
 func (m *batchSessionRepo) ListSessionSummaries(context.Context, string) ([]biz.SessionSummary, error) {
 	return nil, nil
 }
-func (m *batchSessionRepo) LatestSessionSummaryTime(context.Context, string) (string, error) { return "", nil }
-func (m *batchSessionRepo) UpdateSessionListSummary(context.Context, string, string) error   { return nil }
+func (m *batchSessionRepo) LatestSessionSummaryTime(context.Context, string) (string, error) {
+	return "", nil
+}
+func (m *batchSessionRepo) UpdateSessionListSummary(context.Context, string, string) error {
+	return nil
+}
 func (m *batchSessionRepo) GetSessionState(context.Context, string) (map[string]string, error) {
 	return nil, nil
 }
-func (m *batchSessionRepo) SaveSessionState(context.Context, string, map[string]string) error { return nil }
-func (m *batchSessionRepo) PatchSessionState(context.Context, string, map[string]string, []string) error { return nil }
+func (m *batchSessionRepo) SaveSessionState(context.Context, string, map[string]string) error {
+	return nil
+}
+func (m *batchSessionRepo) PatchSessionState(context.Context, string, map[string]string, []string) error {
+	return nil
+}
 func (m *batchSessionRepo) CreateSessionTurn(context.Context, biz.SessionTurn) (biz.SessionTurn, error) {
 	return biz.SessionTurn{}, nil
 }
@@ -195,13 +209,8 @@ func (m *batchSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([
 	return nil, nil
 }
 
-func isAPIErrorCode(err error, code apierror.Code) bool {
-	ae, ok := apierror.From(err)
-	return ok && ae.Code == code
-}
-
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
-	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil)
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
@@ -222,7 +231,7 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil)
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{

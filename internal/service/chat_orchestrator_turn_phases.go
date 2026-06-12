@@ -1,0 +1,872 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/intent"
+	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
+	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/event"
+	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/internal/outbound"
+	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/telemetry/turntrace"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
+
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
+	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
+
+	"github.com/google/uuid"
+)
+
+// turnAdmissionResult holds the outputs of the ADMISSION phase.
+// Stability:internal
+type turnAdmissionResult struct {
+	runID      string
+	dialogMode string
+	provider   string
+	model      string
+	durableCtx durableResumeTurnCtx
+}
+
+// turnExecuteResult holds the outputs of the EXECUTE phase.
+// Stability:internal
+type turnExecuteResult struct {
+	userMsg             biz.ChatMessage
+	userMsgPersisted    bool
+	result              chatagent.EventStreamResult
+	resultPromptTok     int
+	resultCompletionTok int
+	sessionRunID        string
+	stopBudget          context.CancelFunc
+	turnArtCollector    *artifactbiz.TurnCollector
+}
+
+// turnPersistResult holds the outputs of the PERSIST phase.
+// Stability:internal
+type turnPersistResult struct {
+	assistantMsg  biz.ChatMessage
+	promptTok     int
+	completionTok int
+}
+
+// ────────────────────────────────────────────────────────────
+// ADMISSION phase
+// ────────────────────────────────────────────────────────────
+
+// admitTurn validates the turn request and generates run metadata.
+// Stability:internal
+func (o *ChatOrchestrator) admitTurn(
+	ctx context.Context,
+	sess biz.Session,
+	input biz.TurnInput,
+	ag biz.Agent,
+	dialogMode, prov, mod string,
+) (turnAdmissionResult, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	if ak := strings.TrimSpace(input.AgentKey); ak != "" && !strings.EqualFold(ak, ag.AgentKey) {
+		te := TurnError(TurnErrAgentForbidden, "")
+		o.publishTurnFailure(sessionID, "", "chat-service", te, "")
+		return turnAdmissionResult{}, te
+	}
+
+	runID := uuid.NewString()
+	durableCtx := durableResumeTurnCtxFrom(ctx, runID, dialogMode, prov, mod)
+	runID = durableCtx.runID
+	dialogMode = durableCtx.dialogMode
+	prov = durableCtx.provider
+	mod = durableCtx.model
+	if durableCtx.active {
+		if comp, ok := o.td().Compress.(biz.DurableTurnCompressor); ok {
+			if err := comp.BeforeDurableTurn(ctx, sessionID, ag); err != nil {
+				o.lg().Warn("BeforeDurableTurn failed", loggateway.StepID("chat.turn.before_durable"), loggateway.Err(err))
+			}
+		}
+	}
+	return turnAdmissionResult{
+		runID:      runID,
+		dialogMode: dialogMode,
+		provider:   prov,
+		model:      mod,
+		durableCtx: durableCtx,
+	}, nil
+}
+
+// ────────────────────────────────────────────────────────────
+// EXECUTE phase (orchestrator + sub-methods)
+// ────────────────────────────────────────────────────────────
+
+// executeTurn orchestrates the EXECUTE phase: user options, intent pass,
+// user message persistence, LLM invocation, and stream consumption.
+// Stability:internal
+func (o *ChatOrchestrator) executeTurn(
+	ctx context.Context,
+	sess biz.Session,
+	input biz.TurnInput,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	traceBridge *turntrace.Bridge,
+	deps chatagent.TRPCBuilderDeps,
+	runner trpcrunner.Runner,
+	attachmentRefs []artifactbiz.Ref,
+	turnStart time.Time,
+) (turnExecuteResult, error) {
+	// Step 1: Build user options (with intent pass + attachments)
+	userOpts, intentRunOpts, err := o.prepareTurnUserOptions(ctx, input, ag, admit, emitter, attachmentRefs, sess)
+	if err != nil {
+		return turnExecuteResult{}, err
+	}
+	attN := len(attachmentRefs)
+
+	// Step 2: Persist user message
+	userMsg, userMsgPersisted, err := o.persistTurnUserMessage(ctx, input, ag, admit, emitter, userOpts, attN)
+	if err != nil {
+		return turnExecuteResult{}, err
+	}
+
+	// Step 3: Session run lifecycle + run options + LLM call + stream
+	return o.invokeTurnLLMAndStream(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner,
+		userMsg, userMsgPersisted, userOpts, intentRunOpts, turnStart)
+}
+
+// prepareTurnUserOptions builds user options with intent pass and attachment merge.
+// Stability:internal
+func (o *ChatOrchestrator) prepareTurnUserOptions(
+	ctx context.Context,
+	input biz.TurnInput,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	attachmentRefs []artifactbiz.Ref,
+	sess biz.Session,
+) (string, []trpcagent.RunOption, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+	runID := admit.runID
+	dialogMode := admit.dialogMode
+	prov := admit.provider
+	mod := admit.model
+
+	userOpts, err := chatagent.UserOptionsJSON(ag, dialogMode, prov, mod, sess.ContextUsedRatio, nil)
+	if err != nil {
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return "", nil, err
+	}
+	if src := event.EnvelopeSourceFromContext(ctx); src != "" {
+		userOpts, err = chatagent.MergeInboundSourceIntoUserOptionsJSON(
+			userOpts, src,
+			event.EnvelopePlatformFromContext(ctx),
+			event.EnvelopeChannelKeyFromContext(ctx),
+		)
+		if err != nil {
+			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			return "", nil, err
+		}
+	}
+
+	// Intent Pass
+	var intentRunOpts []trpcagent.RunOption
+	if !biz.IsA2AProxyAgent(ag) {
+		if intent.ShouldRun(ag, content) {
+			intentRunOpts = o.runIntentPass(ctx, ag, sessionID, content, prov, mod, userOpts, emitter)
+		} else {
+			emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
+		}
+	} else {
+		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
+	}
+
+	userOpts, err = mergeUserAttachmentRefs(userOpts, attachmentRefs)
+	if err != nil {
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return "", nil, err
+	}
+	return userOpts, intentRunOpts, nil
+}
+
+// runIntentPass executes the intent recognition pass and returns run options.
+// Stability:internal
+func (o *ChatOrchestrator) runIntentPass(
+	ctx context.Context,
+	ag biz.Agent,
+	sessionID, content, prov, mod string,
+	userOpts string,
+	emitter *event.TraceEmitter,
+) []trpcagent.RunOption {
+	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
+	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.lg())
+	var intentRunOpts []trpcagent.RunOption
+	if intRes.Artifact != nil {
+		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
+		if strings.TrimSpace(intRes.RawJSON) != "" {
+			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
+			if merr != nil {
+				emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
+			} else {
+				userOpts = merged
+			}
+		}
+		intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
+	} else {
+		emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
+	}
+	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
+	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
+	if o.td().Pipeline.Bus != nil {
+		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
+		env.Metadata = intentPayload
+		o.td().Pipeline.Bus.Publish(ctx, env)
+	}
+	return intentRunOpts
+}
+
+// persistTurnUserMessage persists the user message and returns it.
+// Stability:internal
+func (o *ChatOrchestrator) persistTurnUserMessage(
+	ctx context.Context,
+	input biz.TurnInput,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	userOpts string,
+	attN int,
+) (biz.ChatMessage, bool, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+	runID := admit.runID
+	durableCtx := admit.durableCtx
+
+	now := chatagent.RFC3339Now()
+	var userMsg biz.ChatMessage
+	userMsgPersisted := false
+	if durableCtx.active {
+		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
+		o.notifySessionRevisionSync(ctx, sessionID, runID, userMsg.ID)
+	} else {
+		userMsg = biz.ChatMessage{
+			ID:               uuid.NewString(),
+			SessionID:        sessionID,
+			Role:             "user",
+			ContentMarkdown:  content,
+			Status:           "pending",
+			OptionsJSON:      userOpts,
+			CreatedAt:        now,
+			AttachmentsCount: attN,
+		}
+		if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
+			o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: AppendChatMessage 失败",
+				loggateway.StepID("chat.append_user_msg_fail"), loggateway.Err(err))
+			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			return biz.ChatMessage{}, false, err
+		}
+		userMsgPersisted = true
+		emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
+		if !input.EntryConfig.AllowStream {
+			o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
+		}
+	}
+	return userMsg, userMsgPersisted, nil
+}
+
+// invokeTurnLLMAndStream builds run options, invokes the LLM, and consumes the stream.
+// Stability:internal
+func (o *ChatOrchestrator) invokeTurnLLMAndStream(
+	ctx context.Context,
+	sess biz.Session,
+	input biz.TurnInput,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	traceBridge *turntrace.Bridge,
+	deps chatagent.TRPCBuilderDeps,
+	runner trpcrunner.Runner,
+	userMsg biz.ChatMessage,
+	userMsgPersisted bool,
+	userOpts string,
+	intentRunOpts []trpcagent.RunOption,
+	turnStart time.Time,
+) (turnExecuteResult, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+	durableCtx := admit.durableCtx
+
+	// Session run lifecycle
+	var sessionRunID string
+	var stopBudget context.CancelFunc
+	ctx, sessionRunID, stopBudget = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
+
+	// Build run options + prepare run context
+	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, intentRunOpts)
+	firstByteTimeout := chatagent.DefaultFirstByteTimeout
+	if custom, ok := firstByteTimeoutFromContext(ctx); ok {
+		firstByteTimeout = custom
+	}
+	runCtx := o.prepareRunContext(ctx, input, ag, deps)
+
+	// LLM invocation
+	events, err := o.invokeLLMCall(runCtx, ctx, runner, sess, input, ag, admit, emitter, traceBridge, runOpts, content, turnStart)
+	if err != nil {
+		return turnExecuteResult{userMsg: userMsg}, err
+	}
+
+	// Stream consumption
+	result, streamErr := o.consumeTurnStream(runCtx, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, time.Now())
+	if streamErr != nil {
+		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), streamErr
+	}
+
+	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, stopBudget, emitter, ag, turnStart)
+}
+
+// assembleTurnResult checks for context timeout and assembles the final turnExecuteResult.
+// Stability:internal
+func (o *ChatOrchestrator) assembleTurnResult(
+	ctx context.Context,
+	sessionID string,
+	admit turnAdmissionResult,
+	result chatagent.EventStreamResult,
+	userMsg biz.ChatMessage,
+	userMsgPersisted bool,
+	sessionRunID string,
+	stopBudget context.CancelFunc,
+	emitter *event.TraceEmitter,
+	ag biz.Agent,
+	turnStart time.Time,
+) (turnExecuteResult, error) {
+	if ctx.Err() != nil && !result.HasContent {
+		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", o.turnTimeout().String()), event.P("reason", "sync_cap"))
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
+		o.runStatus().SetRunStatus(ctx, sessionID, admit.runID, "failed", "turn timeout")
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
+		te := TurnError(TurnErrTurnTimeout, o.turnTimeout().String())
+		o.publishTurnFailure(sessionID, admit.runID, "chat-service", te, "")
+		return turnExecuteResult{userMsg: userMsg}, te
+	}
+
+	var turnArtCollector *artifactbiz.TurnCollector
+	ctx, turnArtCollector = artifactbiz.WithTurnCollector(ctx)
+	return turnExecuteResult{
+		userMsg: userMsg, userMsgPersisted: userMsgPersisted, result: result,
+		resultPromptTok: result.PromptTok, resultCompletionTok: result.CompletionTok,
+		sessionRunID: sessionRunID, stopBudget: stopBudget, turnArtCollector: turnArtCollector,
+	}, nil
+}
+
+// invokeLLMCall builds the user turn message, calls the LLM, and returns the event stream.
+// Stability:internal
+func (o *ChatOrchestrator) invokeLLMCall(
+	runCtx, ctx context.Context,
+	runner trpcrunner.Runner,
+	sess biz.Session,
+	input biz.TurnInput,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	traceBridge *turntrace.Bridge,
+	runOpts []trpcagent.RunOption,
+	content string,
+	turnStart time.Time,
+) (<-chan *trpcevent.Event, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	runID := admit.runID
+	prov := admit.provider
+	mod := admit.model
+
+	safego.Go(runCtx, "llm-call-timeout-log", func() {
+		select {
+		case <-time.After(60 * time.Second):
+			emitter.Log("chat.llm.invoke", event.FlowPhaseStart, "语言模型调用超过 60 秒仍在等待", event.P("run_id", runID))
+		case <-runCtx.Done():
+		}
+	})
+
+	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
+	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "start", "正在调用语言模型", "orchestration",
+		event.P("run_id", runID), event.P("provider", prov), event.P("model", mod))
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始构建 userMessage + 调用 LLM",
+		loggateway.StepID("chat.llm_invoke_start"),
+		loggateway.Any("provider", prov), loggateway.Any("model", mod), loggateway.Any("run_id", runID))
+
+	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, content, input.Options.AttachmentIDs)
+	if err != nil {
+		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		te := TurnError(TurnErrAttachmentFailed, err.Error())
+		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
+		return nil, te
+	}
+
+	llmCtx, llmSpan := traceBridge.StartChild(runCtx, "chat.llm.invoke")
+	uid := chatagent.UserIDFromCtx(llmCtx)
+	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
+	turntrace.EndChild(llmSpan, err)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: LLM 调用返回",
+		loggateway.StepID("chat.llm_invoke_done"),
+		loggateway.Any("elapsed_ms", time.Since(turnStart).Milliseconds()),
+		loggateway.Any("has_error", err != nil))
+	if err != nil {
+		emitter.LogError("chat.llm.invoke", "语言模型调用失败", event.P("error", err.Error()))
+		emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "error", "语言模型调用失败", "orchestration",
+			event.P("run_id", runID), event.P("error", err.Error()))
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		te := TurnError(TurnErrLLMCallFailed, err.Error())
+		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
+		return nil, te
+	}
+	emitter.LogDone("chat.llm.invoke", "模型已返回，开始处理输出流")
+	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "done", "语言模型已返回", "orchestration",
+		event.P("run_id", runID))
+	return events, nil
+}
+
+// prepareRunContext assembles the run context with knowledge, A2A, and reply hooks.
+// Stability:internal
+func (o *ChatOrchestrator) prepareRunContext(
+	ctx context.Context,
+	input biz.TurnInput,
+	ag biz.Agent,
+	deps chatagent.TRPCBuilderDeps,
+) context.Context {
+	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
+	runCtx = o.injectA2AContext(runCtx, ag.ID)
+	if o.rt().KnowledgeRetriever != nil {
+		runCtx = knowledgetool.WithRetriever(runCtx, o.rt().KnowledgeRetriever)
+	}
+	if o.rt().KnowledgeRouter != nil {
+		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, o.rt().KnowledgeRouter)
+	}
+	if o.rt().KnowledgeFederatedRetriever != nil {
+		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt().KnowledgeFederatedRetriever)
+	}
+	if o.rt().KnowledgeEvaluator != nil {
+		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt().KnowledgeEvaluator)
+	}
+	if len(input.Options.KnowledgeBases) > 0 {
+		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
+	}
+	return runCtx
+}
+
+// buildTurnRunOptions assembles the trpc-agent RunOption slice for the LLM call.
+// Stability:internal
+func (o *ChatOrchestrator) buildTurnRunOptions(
+	ctx context.Context,
+	sess biz.Session,
+	input biz.TurnInput,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	intentRunOpts []trpcagent.RunOption,
+) []trpcagent.RunOption {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+	durableCtx := admit.durableCtx
+
+	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{
+		trpcagent.WithRequestID(sessionID),
+		skillruntime.RunOptionWithTurnQuery(content),
+	})
+	if input.EntryConfig.AllowStream {
+		runOpts = append(runOpts, trpcagent.WithStream(true))
+	}
+	runOpts = append(runOpts, intentRunOpts...)
+	if ag.Settings != nil {
+		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg()); vars != nil {
+			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
+		}
+	}
+	if chMeta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON); ok {
+		if deliveryState := outbound.RuntimeStateForTarget(outbound.DeliveryTarget{
+			Channel: chMeta.ChannelID,
+			Target:  chMeta.PeerID,
+		}); len(deliveryState) > 0 {
+			runOpts = append(runOpts, trpcagent.MergeRuntimeState(deliveryState))
+		}
+	}
+	return runOpts
+}
+
+// consumeTurnStream wraps the stream consumption with logging.
+// Stability:internal
+func (o *ChatOrchestrator) consumeTurnStream(
+	runCtx context.Context,
+	sess biz.Session,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	traceBridge *turntrace.Bridge,
+	events <-chan *trpcevent.Event,
+	firstByteTimeout time.Duration,
+	llmStart time.Time,
+) (chatagent.EventStreamResult, error) {
+	sessionID := strings.TrimSpace(sess.ID)
+	runID := admit.runID
+	prov := admit.provider
+	mod := admit.model
+
+	contextWin := o.resolveContextWindowTokens(runCtx, sess, ag, prov, mod)
+	projectMeta := chatagent.ProjectMeta{
+		SessionID: sessionID, RequestID: sessionID,
+		InvocationID: runID, RunID: runID,
+		TraceID: emitter.TraceID(), AgentID: ag.ID,
+		AgentDisplayName: ag.DisplayName, ContextWindow: contextWin,
+		Source: event.EnvelopeSourceFromContext(runCtx),
+	}
+	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
+	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
+		loggateway.StepID("chat.stream_consume_start"),
+		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
+	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td().Pipeline.Bus, projectMeta, streamOpts, o.lg())
+	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 事件流消费完成",
+		loggateway.StepID("chat.stream_consume_done"),
+		loggateway.Any("elapsed_ms", time.Since(llmStart).Milliseconds()),
+		loggateway.Any("has_stream_error", streamErr != nil),
+		loggateway.Any("stream_error", fmt.Sprintf("%v", streamErr)),
+		loggateway.Any("has_content", result.HasContent),
+		loggateway.Any("has_error", result.HasError),
+		loggateway.Any("reply_len", result.Reply.Len()))
+	if streamErr == nil {
+		emitter.LogDone("chat.stream.consume", "模型输出流处理完成",
+			event.P("reply_len", result.Reply.Len()),
+			event.P("has_error", result.HasError),
+			event.P("has_content", result.HasContent),
+			event.P("prompt_tok", result.PromptTok),
+			event.P("completion_tok", result.CompletionTok))
+	}
+	return result, streamErr
+}
+
+// handleStreamError classifies and records stream errors.
+// Stability:internal
+func (o *ChatOrchestrator) handleStreamError(
+	ctx context.Context,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	userMsg biz.ChatMessage,
+	streamErr error,
+	firstByteTimeout time.Duration,
+	turnStart time.Time,
+) turnExecuteResult {
+	sessionID := strings.TrimSpace(userMsg.SessionID)
+	runID := admit.runID
+	if errors.Is(streamErr, chatagent.ErrFirstByteTimeout) {
+		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
+	} else {
+		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error())
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+	}
+	o.publishTurnFailure(sessionID, runID, "chat-service", streamErr, "")
+	return turnExecuteResult{userMsg: userMsg}
+}
+
+// ────────────────────────────────────────────────────────────
+// PERSIST phase
+// ────────────────────────────────────────────────────────────
+
+// persistTurn handles timeout degradation, empty reply detection, and message persistence.
+// Stability:internal
+func (o *ChatOrchestrator) persistTurn(
+	ctx *context.Context,
+	sess biz.Session,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	execResult turnExecuteResult,
+	emitter *event.TraceEmitter,
+	turnStart time.Time,
+	turnStatus *string,
+	turnErr *error,
+	turnErrMsg *string,
+) (turnPersistResult, error) {
+	sessionID := strings.TrimSpace(execResult.userMsg.SessionID)
+	result := execResult.result
+
+	// Timeout degradation: has content but context expired
+	if (*ctx).Err() != nil && result.HasContent {
+		*turnStatus = "timeout_degraded"
+		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout().String()), event.P("reply_len", result.Reply.Len()))
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer bgCancel()
+		*ctx = bgCtx
+	}
+
+	// Empty reply detection
+	displayMarkdown := chatagent.DisplayMarkdownFromStream(result)
+	if displayMarkdown == "" {
+		return turnPersistResult{}, o.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
+	}
+
+	promptTok, completionTok := chatagent.EstimateTokensIfMissing(execResult.resultPromptTok, execResult.resultCompletionTok, "", displayMarkdown)
+
+	// Build and persist assistant message
+	assistantMsg, err := o.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, promptTok, completionTok, turnStatus, turnErr, turnErrMsg)
+	if err != nil {
+		return turnPersistResult{}, err
+	}
+
+	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
+	o.patchSessionContextUsage(*ctx, sessionID, sess, ag, admit.provider, admit.model, promptTok, completionTok)
+
+	return turnPersistResult{
+		assistantMsg:  assistantMsg,
+		promptTok:     promptTok,
+		completionTok: completionTok,
+	}, nil
+}
+
+// handleEmptyReply records an empty reply error and returns it.
+// Stability:internal
+func (o *ChatOrchestrator) handleEmptyReply(
+	ctx context.Context,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+	result chatagent.EventStreamResult,
+	turnStart time.Time,
+	turnStatus *string,
+	turnErr *error,
+	turnErrMsg *string,
+	sessionID string,
+) error {
+	runID := admit.runID
+	emitter.LogCritical("chat.turn.empty_reply", "未收到助手回复", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent))
+	detail := ""
+	if result.HasError {
+		detail = result.LastError
+	} else if !result.HasContent {
+		detail = "no content produced"
+	}
+	if detail == "" {
+		detail = "empty reply"
+	}
+	markTurnError(turnStatus, turnErr, turnErrMsg, errors.New(detail))
+	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", detail)
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+	te := TurnError(TurnErrEmptyReply, detail)
+	o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
+	return te
+}
+
+// buildAndPersistAssistantMessage constructs and persists the assistant message.
+// Stability:internal
+func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
+	ctx context.Context,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	execResult turnExecuteResult,
+	emitter *event.TraceEmitter,
+	displayMarkdown string,
+	promptTok, completionTok int,
+	turnStatus *string,
+	turnErr *error,
+	turnErrMsg *string,
+) (biz.ChatMessage, error) {
+	sessionID := strings.TrimSpace(execResult.userMsg.SessionID)
+	runID := admit.runID
+	mod := admit.model
+	result := execResult.result
+
+	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
+	if err != nil {
+		markTurnError(turnStatus, turnErr, turnErrMsg, err)
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return biz.ChatMessage{}, err
+	}
+	if s := result.Reasoning.String(); s != "" {
+		if assistantOptsStr, err = chatagent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, s); err != nil {
+			markTurnError(turnStatus, turnErr, turnErrMsg, err)
+			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			return biz.ChatMessage{}, err
+		}
+	}
+	if execResult.turnArtCollector != nil {
+		if merged, merr := mergeTurnArtifactRefs(assistantOptsStr, execResult.turnArtCollector.Refs()); merr != nil {
+			markTurnError(turnStatus, turnErr, turnErrMsg, merr)
+			o.publishTurnFailure(sessionID, runID, "chat-service", merr, "")
+			return biz.ChatMessage{}, merr
+		} else {
+			assistantOptsStr = merged
+		}
+	}
+
+	assistantAttN := 0
+	if execResult.turnArtCollector != nil {
+		assistantAttN = len(execResult.turnArtCollector.Refs())
+	}
+	assistantMsg := biz.ChatMessage{
+		ID:               uuid.NewString(),
+		SessionID:        sessionID,
+		Role:             "assistant",
+		ContentMarkdown:  displayMarkdown,
+		ModelName:        mod,
+		Status:           "ok",
+		OptionsJSON:      assistantOptsStr,
+		CreatedAt:        chatagent.RFC3339Now(),
+		TokenIn:          promptTok,
+		TokenOut:         completionTok,
+		AttachmentsCount: assistantAttN,
+	}
+	if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
+		markTurnError(turnStatus, turnErr, turnErrMsg, err)
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return biz.ChatMessage{}, err
+	}
+	if execResult.userMsgPersisted {
+		if err := o.td().Sessions.UpdateChatMessageStatus(ctx, sessionID, execResult.userMsg.ID, "ok", ""); err != nil {
+			o.lg().Warn("用户消息成功状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", execResult.userMsg.ID), loggateway.Err(err))
+		} else {
+			execResult.userMsg.Status = "ok"
+		}
+	}
+	return assistantMsg, nil
+}
+
+// ────────────────────────────────────────────────────────────
+// POST-PROCESS phase
+// ────────────────────────────────────────────────────────────
+
+// postProcessTurn records metrics, completes status, bumps revision, and fires hooks.
+// Stability:internal
+func (o *ChatOrchestrator) postProcessTurn(
+	ctx context.Context,
+	sess biz.Session,
+	ag biz.Agent,
+	input biz.TurnInput,
+	admit turnAdmissionResult,
+	execResult turnExecuteResult,
+	persistResult turnPersistResult,
+	emitter *event.TraceEmitter,
+	turnStart time.Time,
+	turnStatus string,
+) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	runID := admit.runID
+	prov := admit.provider
+	mod := admit.model
+	content := strings.TrimSpace(input.Content)
+
+	metricsLabel := "ok"
+	if turnStatus == "timeout_degraded" {
+		metricsLabel = "timeout_degraded"
+	}
+	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
+	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, persistResult.assistantMsg.ContentMarkdown)
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
+	o.bumpSessionRevisionAndPublish(ctx, sessionID, runID, execResult.userMsg.ID)
+	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, persistResult.assistantMsg.ContentMarkdown)
+	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
+		event.P("run_id", runID),
+		event.P("reply_len", len(persistResult.assistantMsg.ContentMarkdown)),
+		event.P("prompt_tok", persistResult.promptTok),
+		event.P("completion_tok", persistResult.completionTok),
+	)
+}
+
+// ────────────────────────────────────────────────────────────
+// BUILD phase helper
+// ────────────────────────────────────────────────────────────
+
+// turnBuildResult holds the outputs of the BUILD phase.
+// Stability:internal
+type turnBuildResult struct {
+	deps             chatagent.TRPCBuilderDeps
+	runner           trpcrunner.ManagedRunner
+	rollbackBoundary rt.RunnerRollbackBoundary
+}
+
+// buildTurnRunner constructs the agent deps, builds the agent, creates the runner,
+// and wires the sub-agent service.
+// Stability:internal
+func (o *ChatOrchestrator) buildTurnRunner(
+	ctx context.Context,
+	sess biz.Session,
+	ag biz.Agent,
+	admit turnAdmissionResult,
+	emitter *event.TraceEmitter,
+) (turnBuildResult, error) {
+	sessionID := strings.TrimSpace(sess.ID)
+	runID := admit.runID
+	dialogMode := admit.dialogMode
+	prov := admit.provider
+	mod := admit.model
+
+	deps, err := o.agentBuild.BuildTRPCDeps(ctx, AgentBuildParams{
+		Session: sess, Agent: ag, RunID: runID,
+		DialogMode: dialogMode, Provider: prov, Model: mod, Emitter: emitter,
+	})
+	if err != nil {
+		emitter.LogError("chat.agent.build", "构建Agent依赖失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
+		return turnBuildResult{}, TurnError(TurnErrAgentBuildFailed, err.Error())
+	}
+	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg())
+	if err != nil {
+		emitter.LogError("chat.agent.build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
+		return turnBuildResult{}, TurnError(TurnErrAgentBuildFailed, err.Error())
+	}
+	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
+
+	var plugins []trpcplugin.Plugin
+	if o.rt().PluginManager != nil {
+		plugins = o.rt().PluginManager.RunnerPluginsForAgent(ag.ID)
+	} else if o.rt().PluginRT != nil {
+		plugins = o.rt().PluginRT.PluginsForAgent(ag.ID)
+	}
+	emitter.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
+	deps.Plugins = plugins
+	lookup := map[string]trpcagent.Agent{}
+	if key := strings.TrimSpace(ag.AgentKey); key != "" {
+		lookup[key] = root
+	}
+	rl := chatagent.ResolveRalphLoopTurn(ag.Settings)
+	if rl.SkipErr != nil {
+		emitter.LogWarn("chat.runner.ralph_loop", "Ralph Loop 配置无效，已跳过", "",
+			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
+	}
+	emitter.LogStart("chat.runner.create", "创建 Runner", event.P("agent_key", ag.AgentKey), event.P("plugin_count", len(plugins)))
+	runnerMgr := o.tdPtr().CoalesceRunnerManager()
+	runner, err := runnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
+		Plugins: plugins, AwaitUserReplyRouting: deps.AwaitHook != nil,
+		BuilderDeps: deps, AgentFactoryKeys: []string{ag.AgentKey},
+		LookupAgents: lookup, RalphLoop: rl.Config,
+	})
+	if err != nil {
+		emitter.LogError("chat.runner.create", "Runner 创建失败", event.P("error", err.Error()))
+		return turnBuildResult{}, err
+	}
+	emitter.LogDone("chat.runner.create", "Runner 已创建")
+	o.runs.StoreRunner(sessionID, runID, runner)
+	if o.subAgentService() != nil {
+		o.subAgentService().SetRunner(runner)
+		if ag.Settings != nil {
+			o.subAgentService().SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
+		}
+	}
+	rollbackBoundary, rbErr := runnerMgr.MarkRollbackBoundary(ctx, sessionID, runID, "")
+	if rbErr != nil {
+		emitter.LogWarn("chat.runner.rollback_boundary", "Runner 回滚边界记录失败", "", event.P("error", rbErr.Error()))
+	}
+	return turnBuildResult{
+		deps:             deps,
+		runner:           runner,
+		rollbackBoundary: rollbackBoundary,
+	}, nil
+}

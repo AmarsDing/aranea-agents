@@ -12,6 +12,7 @@ import (
 )
 
 // TeamGraphTaskCreator creates Kanban task rows for team Graph runtime nodes (M53 TG-RT-TASK).
+// Stability:evolving
 type TeamGraphTaskCreator interface {
 	CreateGraphTask(ctx context.Context, graphExecutionID, sessionID string, node biz.NodeDef) error
 }

@@ -210,11 +210,6 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 ---
 
-## 八、建设性架构评判标准（AS 系列）
-
-> 当前项目已有"禁止性红线"（19 条）和"编程规范"（CS-B1~B17），但缺少**建设性指引**——告诉开发者"应该怎样做"而非仅"不能做什么"。
-> 以下 6 项标准（AS = Architecture Standard）补充此空白，详细方案见 `docs/reports/2026-06-11-review-architecture-runtime-pain-points.md`。
-
 ### AS-ADR-01：架构决策记录
 
 **要求**：每个影响跨模块的架构决策必须记录 ADR。
@@ -243,7 +238,7 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | 单方法行数 | 80 | linter（CS-B5） |
 | 单方法圈复杂度 | 15 | linter（CS-B6） |
 | biz 层依赖数（单 struct） | 8 | 代码审查 |
-| sync.Map 数（单 struct） | 0（应提取为子管理器） | 代码审查 |
+| sync.Map 数（单 struct） | 1（2+ 必须提取为子管理器；惰性初始化场景优先用 sync.OnceValue） | 代码审查 |
 | 文件总行数 | 500 | linter |
 | 包级导出类型数 | 20 | 代码审查 |
 

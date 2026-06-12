@@ -3,11 +3,6 @@ package session
 import (
 	"context"
 	"strings"
-	"time"
-
-	"aranea-agents/pkg/appctx"
-	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/safego"
 )
 
 type SessionTitleGenerator interface {
@@ -53,37 +48,4 @@ func shouldAutoNameSession(title string) bool {
 		return true
 	}
 	return false
-}
-
-func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
-	sess, err := uc.Get(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	if !shouldAutoNameSession(sess.Title) {
-		return nil
-	}
-	snippet := sessionTitleFromUserSnippet(content)
-	if snippet != "" {
-		if _, err := uc.Rename(ctx, sessionID, snippet); err != nil {
-			uc.lg.Warn("auto rename from snippet failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
-		}
-	}
-	safego.Go(appctx.Ctx(), "generate-title-async", func() {
-		uc.generateTitleAsync(sessionID, content)
-	})
-	return nil
-}
-
-func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
-	bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	title, err := uc.titleGenerator.Generate(bgCtx, content)
-	if err != nil || title == "" {
-		return
-	}
-	if _, err := uc.Rename(bgCtx, sessionID, title); err != nil {
-		uc.lg.Warn("auto rename from generated title failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
-	}
 }

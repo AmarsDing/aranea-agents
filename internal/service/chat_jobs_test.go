@@ -19,11 +19,23 @@ type chatJobsRepoStub struct {
 	jobs []biz.ChannelTurnJob
 }
 
-func (s *chatJobsRepoStub) Create(context.Context, biz.ChannelTurnJob) (string, error) { return "", nil }
+func (s *chatJobsRepoStub) Create(context.Context, biz.ChannelTurnJob) (string, error) {
+	return "", nil
+}
 func (s *chatJobsRepoStub) UpdateStatus(context.Context, string, string, string, string, string) error {
 	return nil
 }
-func (s *chatJobsRepoStub) UpdateAsyncTarget(context.Context, string, string, string) error { return nil }
+func (s *chatJobsRepoStub) UpdateAsyncTarget(context.Context, string, string, string) error {
+	return nil
+}
+func (s *chatJobsRepoStub) GetByID(_ context.Context, id string) (biz.ChannelTurnJob, error) {
+	for _, j := range s.jobs {
+		if j.ID == id {
+			return j, nil
+		}
+	}
+	return biz.ChannelTurnJob{}, nil
+}
 func (s *chatJobsRepoStub) GetByIdempotency(context.Context, string, string) (biz.ChannelTurnJob, error) {
 	return biz.ChannelTurnJob{}, nil
 }

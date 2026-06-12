@@ -12,7 +12,7 @@ import (
 )
 
 // KnowledgeFacade groups knowledge subsystem pointers used by the team Runner.
-// TECH-DEBT: fields are still concrete types; extract narrow interfaces once
+// TECH-DEBT(COG): concrete_deps=4, limit=0; fields are still concrete types; extract narrow interfaces once
 // knowledge tool context injection is refactored to accept interfaces.
 type KnowledgeFacade struct {
 	Retriever          *knowledge.Retriever
@@ -30,7 +30,7 @@ type RunnerConfig struct {
 	AgentHelper       biz.TeamAgentHelper
 	Runs              *rt.RunRegistry
 	GraphRoot         graphadapter.TeamGraphRootBuilder
-	// TECH-DEBT: PluginRT and PluginManager are still concrete types; extract
+	// TECH-DEBT(COG): concrete_deps=2, limit=0; PluginRT and PluginManager are still concrete types; extract
 	// narrow interfaces once plugin/trpc API surface is stabilized.
 	PluginRT          *plugintrpc.Runtime
 	PluginManager     *plugintrpc.Manager

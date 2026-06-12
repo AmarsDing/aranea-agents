@@ -50,14 +50,16 @@ type TeamGraphExecutionBackend interface {
 }
 
 // TeamGraphTaskResumeHandler resumes team Graph runs after Kanban task completion.
+// Stability:evolving
 type TeamGraphTaskResumeHandler interface {
 	HandleTeamGraphTaskCompleted(ctx context.Context, task *biz.GraphTask, resume map[string]any) (handled bool, err error)
 }
 
 // TeamGraphRunCoordinator unifies team graph execution register, HITL defer, and task resume (M53 P1).
 type TeamGraphRunCoordinator struct {
-	graphs         TeamGraphExecutionBackend
-	teams          biz.TeamRunRepo
+	graphs       TeamGraphExecutionBackend
+	teamRunReader biz.TeamRunReader
+	teamRunWriter biz.TeamRunWriter
 	bus            event.Bus
 	finisher       *TeamRunMediator
 	sessionRepo    biz.TeamGraphSessionRepo
@@ -93,13 +95,14 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRunRepo, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	if agentKeyFn == nil {
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
 	return &TeamGraphRunCoordinator{
 		graphs:         graphs,
-		teams:          teams,
+		teamRunReader:  teamRunReader,
+		teamRunWriter:  teamRunWriter,
 		bus:            bus,
 		sessionRepo:    sessionRepo,
 		agentKeyFn:     agentKeyFn,
@@ -133,8 +136,8 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		stepDedup:    newGraphStepDedup(),
 		registeredAt: time.Now(),
 	}
-	if c.teams != nil {
-		if run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
+	if c.teamRunReader != nil {
+		if run, err := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
 			sess.inputPreview = strings.TrimSpace(run.InputPreview)
 			sess.definitionJSON = strings.TrimSpace(run.DefinitionSnapshotJSON)
 			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview, c.agentKeyFn, c.lg)
@@ -159,10 +162,10 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 		return err
 	}
 	sess := c.session(execID)
-	if sess == nil || c.teams == nil {
+	if sess == nil || c.teamRunReader == nil {
 		return nil
 	}
-	run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
+	run, err := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID)
 	if err != nil {
 		return err
 	}
@@ -174,7 +177,7 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 		return nil
 	}
 	run.Status = biz.TeamRunStatusWaitingHuman
-	if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+	if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
 		return err
 	}
 	c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusWaitingHuman)
@@ -201,7 +204,7 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 		return false, nil
 	}
 	run.Status = biz.TeamRunStatusWaitingHuman
-	if err := c.teams.UpdateTeamRun(ctx, *run); err != nil {
+	if err := c.teamRunWriter.UpdateTeamRun(ctx, *run); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -223,13 +226,13 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, nil
 	}
 	if _, err := c.graphs.ResumeExecution(ctx, task.ExecutionID, resume); err != nil {
-		if c.teams != nil {
-			if run, rerr := c.teams.GetTeamRunByID(ctx, sess.teamRunID); rerr == nil {
+		if c.teamRunReader != nil {
+			if run, rerr := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); rerr == nil {
 				if !biz.IsTeamRunTerminalStatus(run.Status) {
 					run.Status = biz.TeamRunStatusFailed
 					run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
 					run.FinishedAt = agent.RFC3339Now()
-					if uerr := c.teams.UpdateTeamRun(ctx, run); uerr != nil {
+					if uerr := c.teamRunWriter.UpdateTeamRun(ctx, run); uerr != nil {
 						c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
 						loggateway.StepID("team.graph.resume_fail_update"),
 						loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
@@ -250,7 +253,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 			loggateway.Err(err))
 		return true, err
 	}
-	run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
+	run, err := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID)
 	if err != nil {
 		return true, err
 	}
@@ -264,7 +267,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 				loggateway.Str("to", biz.TeamRunStatusRunning))
 		} else {
 			run.Status = biz.TeamRunStatusRunning
-			if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+			if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
 				c.lg.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed",
 					loggateway.StepID("team.usage_record_fail"),
 					loggateway.Str("team_run_id", run.ID),
@@ -321,7 +324,7 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 				return
 			case <-deadline:
 				if mode == graphWatchStepsAndFinalize {
-					sessRun, runErr := c.teams.GetTeamRunByID(watchCtx, sess.teamRunID)
+					sessRun, runErr := c.teamRunReader.GetTeamRunByID(watchCtx, sess.teamRunID)
 					if runErr == nil && sessRun.Status == biz.TeamRunStatusWaitingHuman && hitlExtensions < maxHITLSLAExtensions {
 						hitlExtensions++
 					c.lg.Warn("HITL SLA expired, extending deadline for manual resolution",
@@ -455,10 +458,10 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		c.evictSession(sess.execID)
 		return
 	}
-	if c.teams == nil {
+	if c.teamRunReader == nil {
 		return
 	}
-	run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
+	run, err := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID)
 	if err != nil {
 		return
 	}
@@ -474,7 +477,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	} else {
 		run.Status = biz.TeamRunStatusSuccess
 	}
-	if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+	if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
 		c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
 			loggateway.StepID("team.graph.finalize_update_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))

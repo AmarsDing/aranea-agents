@@ -335,6 +335,7 @@ type SessionWriter interface {
 	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
 }
 
+// Stability:stable
 type SessionMutator interface {
 	ArchiveSession(ctx context.Context, id string) (int, error)
 	DeleteSession(ctx context.Context, id string) (int, error)
@@ -343,6 +344,7 @@ type SessionMutator interface {
 	UnpinSession(ctx context.Context, id string) (Session, error)
 }
 
+// Stability:stable
 type SessionBatchMutator interface {
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
@@ -415,6 +417,7 @@ type TurnRepo interface {
 	GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
 }
 
+// Stability:evolving
 type ContextUpdater interface {
 	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
 	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
@@ -436,7 +439,7 @@ type CompressRepo interface {
 //
 // Deprecated: Use fine-grained sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.)
 // instead of this aggregate. This interface is retained only for Wire binding convenience.
-// Stability:stable
+// Stability:evolving
 type SessionRepo interface {
 	SessionReader
 	SessionTreeReader
@@ -463,6 +466,7 @@ type AgentLookup interface {
 }
 
 // TeamLookup checks team existence (decoupled from biz.TeamReader).
+// Stability:stable
 type TeamLookup interface {
 	GetTeamByID(ctx context.Context, id string) (struct{}, error)
 }
@@ -475,75 +479,53 @@ type SessionStatusPublisher interface {
 
 // MetricsUpdatedPublisher emits metrics_updated events to realtime observers (WS).
 // Implemented in service layer; injected via constructor.
+// Stability:evolving
 type MetricsUpdatedPublisher interface {
 	PublishMetricsUpdated(sessionID string)
 }
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
-// TECH-DEBT(COG): struct_fields=26, limit=10 (biz layer); needs further decomposition
+// TECH-DEBT(COG): struct_fields=14, limit=15 (AS-COG-01 biz layer); resolved via sub-usecase decomposition
 type SessionUsecase struct {
 	sessionReader       SessionReader
 	sessionTreeReader   SessionTreeReader
 	sessionWriter       SessionWriter
 	sessionMutator      SessionMutator
 	sessionBatchMutator SessionBatchMutator
-	messageReader       MessageReader
-	messageSearchReader MessageSearchReader
-	messageWriter       MessageWriter
-	messageStatusWriter MessageStatusWriter
-	timelineReader      TimelineReader
-	invocationReader    InvocationReader
-	summaryReader       SummaryReader
-	summaryWriter       SummaryWriter
-	stateRepo           StateRepo
-	turnRepo            TurnRepo
-	contextUpdater      ContextUpdater
-	compressRepo        CompressRepo
 	runtimeWriter       SessionRuntimeWriter
 	agents              AgentLookup
 	teams               TeamLookup
-	titleGenerator      SessionTitleGenerator
-	participants        SessionParticipantRepository
 	lg                  loggateway.Logger
 	statusPublisher     SessionStatusPublisher
 
 	// Sub-usecases (Facade pattern — old callers delegate through these).
 	metricsUsecase     *SessionMetricsUsecase
 	compressionUsecase *SessionCompressionUsecase
+	timelineUsecase    *SessionTimelineUsecase
+	messageUsecase     *SessionMessageUsecase
 }
 
-func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter) *SessionUsecase {
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter, lg loggateway.Logger) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
 	uc := &SessionUsecase{
-		sessionReader:           sessions,
-		sessionTreeReader:       sessions,
-		sessionWriter:           sessions,
-		sessionMutator:          sessions,
-		sessionBatchMutator:     sessions,
-		messageReader:           sessions,
-		messageSearchReader:     sessions,
-		messageWriter:           sessions,
-		messageStatusWriter:     sessions,
-		timelineReader:          sessions,
-		invocationReader:        sessions,
-		summaryReader:           sessions,
-		summaryWriter:           sessions,
-		stateRepo:               sessions,
-		turnRepo:                sessions,
-		contextUpdater:          sessions,
-		compressRepo:            sessions,
-		runtimeWriter:           runtimeWriter,
-		agents:                  agents,
-		teams:                   teams,
-		titleGenerator:          titleGenerator,
-		participants:            participants,
-		statusPublisher:         statusPublisher,
-		metricsUsecase:          metricsUsecase,
+		sessionReader:       sessions,
+		sessionTreeReader:   sessions,
+		sessionWriter:       sessions,
+		sessionMutator:      sessions,
+		sessionBatchMutator: sessions,
+		runtimeWriter:       runtimeWriter,
+		agents:              agents,
+		teams:               teams,
+		lg:                  lg,
+		statusPublisher:     statusPublisher,
+		metricsUsecase:      metricsUsecase,
 	}
 	// Create sub-usecases with shared repo references.
 	uc.compressionUsecase = NewSessionCompressionUsecase(sessions, sessions, sessions, sessions)
+	uc.timelineUsecase = NewSessionTimelineUsecase(sessions, sessions, sessions, sessions)
+	uc.messageUsecase = NewSessionMessageUsecase(sessions, sessions, sessions, sessions, titleGenerator, sessions, sessions, lg, metricsUsecase, sessions, sessions, participants)
 	return uc
 }
 
@@ -748,4 +730,8 @@ func normalizeSessionSearch(q *SessionSearchQuery) {
 	if q.Offset < 0 {
 		q.Offset = 0
 	}
+}
+
+func validationErr(msg string) error {
+	return apierror.BadRequest("SESSION", msg)
 }

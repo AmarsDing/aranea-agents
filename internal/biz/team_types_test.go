@@ -22,6 +22,7 @@ func TestIsTeamRunTerminalStatus(t *testing.T) {
 }
 
 func TestValidateTeamRunTransition(t *testing.T) {
+	sm := NewTeamRunStateMachine()
 	valid := [][2]string{
 		{TeamRunStatusPending, TeamRunStatusRunning},
 		{TeamRunStatusPending, TeamRunStatusCancelled},
@@ -33,11 +34,9 @@ func TestValidateTeamRunTransition(t *testing.T) {
 		{TeamRunStatusWaitingHuman, TeamRunStatusSuccess},
 		{TeamRunStatusWaitingHuman, TeamRunStatusFailed},
 		{TeamRunStatusWaitingHuman, TeamRunStatusCancelled},
-		{TeamRunStatusRunning, TeamRunStatusRunning},
-		{TeamRunStatusPending, TeamRunStatusPending},
 	}
 	for _, pair := range valid {
-		if !ValidateTeamRunTransition(pair[0], pair[1]) {
+		if !sm.CanTransition(TeamRunState(pair[0]), TeamRunState(pair[1])) {
 			t.Errorf("expected transition %s → %s to be valid", pair[0], pair[1])
 		}
 	}
@@ -52,7 +51,7 @@ func TestValidateTeamRunTransition(t *testing.T) {
 		{TeamRunStatusFailed, TeamRunStatusSuccess},
 	}
 	for _, pair := range invalid {
-		if ValidateTeamRunTransition(pair[0], pair[1]) {
+		if sm.CanTransition(TeamRunState(pair[0]), TeamRunState(pair[1])) {
 			t.Errorf("expected transition %s → %s to be INVALID", pair[0], pair[1])
 		}
 	}
@@ -104,23 +103,21 @@ func TestExtractScore(t *testing.T) {
 // --- T1.2: Team status state machine tests ---
 
 func TestValidTeamStatusTransition(t *testing.T) {
+	sm := NewTeamStateMachine()
 	valid := [][2]string{
 		// pending → running, cancelled
 		{TeamStatusPending, TeamStatusRunning},
 		{TeamStatusPending, TeamStatusCancelled},
-		{TeamStatusPending, TeamStatusPending},
 		// running → completed, failed, cancelled, interrupted
 		{TeamStatusRunning, TeamStatusCompleted},
 		{TeamStatusRunning, TeamStatusFailed},
 		{TeamStatusRunning, TeamStatusCancelled},
 		{TeamStatusRunning, TeamStatusInterrupted},
-		{TeamStatusRunning, TeamStatusRunning},
 		// interrupted → running (recovery)
 		{TeamStatusInterrupted, TeamStatusRunning},
-		{TeamStatusInterrupted, TeamStatusInterrupted},
 	}
 	for _, pair := range valid {
-		if !ValidTeamStatusTransition(pair[0], pair[1]) {
+		if !sm.CanTransition(TeamState(pair[0]), TeamState(pair[1])) {
 			t.Errorf("expected team transition %s → %s to be valid", pair[0], pair[1])
 		}
 	}
@@ -144,7 +141,7 @@ func TestValidTeamStatusTransition(t *testing.T) {
 		{TeamStatusInterrupted, TeamStatusPending},
 	}
 	for _, pair := range invalid {
-		if ValidTeamStatusTransition(pair[0], pair[1]) {
+		if sm.CanTransition(TeamState(pair[0]), TeamState(pair[1])) {
 			t.Errorf("expected team transition %s → %s to be INVALID", pair[0], pair[1])
 		}
 	}

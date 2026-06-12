@@ -3,17 +3,19 @@ package session
 import "context"
 
 // AccumulateMetricsDelta delegates to SessionMetricsUsecase (Facade pattern).
+// Graceful degradation: if metricsUsecase is nil (e.g. misconfigured DI), the delta is silently discarded.
 func (uc *SessionUsecase) AccumulateMetricsDelta(delta SessionMetricsDelta) {
 	if uc.metricsUsecase == nil {
-		panic("session: AccumulateMetricsDelta called with nil metricsUsecase — this is a programming error")
+		return
 	}
 	uc.metricsUsecase.AccumulateMetricsDelta(delta)
 }
 
 // StartMetricsFlusher delegates to SessionMetricsUsecase (Facade pattern).
+// Graceful degradation: if metricsUsecase is nil, no flusher is started.
 func (uc *SessionUsecase) StartMetricsFlusher(ctx context.Context) {
 	if uc.metricsUsecase == nil {
-		panic("session: StartMetricsFlusher called with nil metricsUsecase — this is a programming error")
+		return
 	}
 	uc.metricsUsecase.StartMetricsFlusher(ctx)
 }
@@ -21,7 +23,7 @@ func (uc *SessionUsecase) StartMetricsFlusher(ctx context.Context) {
 // flushAllMetrics delegates to SessionMetricsUsecase (Facade pattern).
 func (uc *SessionUsecase) flushAllMetrics(ctx context.Context) {
 	if uc.metricsUsecase == nil {
-		panic("session: flushAllMetrics called with nil metricsUsecase — this is a programming error")
+		return
 	}
 	uc.metricsUsecase.flushAllMetrics(ctx)
 }
@@ -29,7 +31,7 @@ func (uc *SessionUsecase) flushAllMetrics(ctx context.Context) {
 // forceFlushSingle delegates to SessionMetricsUsecase (Facade pattern).
 func (uc *SessionUsecase) forceFlushSingle(sessionID string) {
 	if uc.metricsUsecase == nil {
-		panic("session: forceFlushSingle called with nil metricsUsecase — this is a programming error")
+		return
 	}
 	uc.metricsUsecase.forceFlushSingle(sessionID)
 }

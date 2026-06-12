@@ -32,11 +32,11 @@ func (uc *SessionUsecase) Export(ctx context.Context, id, format string) (conten
 	if err != nil {
 		return "", "", "", err
 	}
-	messages, err := uc.listAllMessages(ctx, id)
+	messages, err := uc.messageUsecase.listAllMessages(ctx, id)
 	if err != nil {
 		return "", "", "", err
 	}
-	timeline, err := uc.Timeline(ctx, id, TimelineQuery{SortOrder: "asc"})
+	timeline, err := uc.timelineUsecase.Timeline(ctx, id, TimelineQuery{SortOrder: "asc"})
 	if err != nil {
 		return "", "", "", err
 	}
@@ -58,33 +58,6 @@ func (uc *SessionUsecase) Export(ctx context.Context, id, format string) (conten
 	default:
 		return buildSessionMarkdown(sess, messages, timeline), baseName + ".md", "text/markdown; charset=utf-8", nil
 	}
-}
-
-func (uc *SessionUsecase) listAllMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
-	total, err := uc.messageReader.CountMessagesBySession(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if total == 0 {
-		return nil, nil
-	}
-	out := make([]ChatMessage, 0, total)
-	for offset := 0; offset < total; {
-		limit := MessageListMaxLimit
-		if remaining := total - offset; remaining < limit {
-			limit = remaining
-		}
-		chunk, err := uc.messageReader.ListMessagesBySession(ctx, sessionID, limit, offset)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, chunk...)
-		offset += len(chunk)
-		if len(chunk) == 0 {
-			break
-		}
-	}
-	return out, nil
 }
 
 func sanitizeExportFilename(title, id string) string {

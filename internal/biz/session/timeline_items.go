@@ -150,3 +150,29 @@ func timelineFirstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+func sessionTimelineSummary(sess Session, pageItems []SessionTimelineItem) SessionTimelineSummary {
+	summary := SessionTimelineSummary{
+		MessageCount: sess.MessageCount,
+		ToolCount:    sess.ToolCallCount,
+		SkillCount:   sess.SkillCallCount,
+		MCPCount:     sess.MCPCallCount,
+	}
+	summary.Total = summary.MessageCount + summary.ToolCount + summary.SkillCount
+	if summary.Total == 0 && len(pageItems) > 0 {
+		for _, item := range pageItems {
+			switch item.Kind {
+			case "message":
+				summary.MessageCount++
+			case "tool":
+				summary.ToolCount++
+			case "skill":
+				summary.SkillCount++
+			case "mcp":
+				summary.MCPCount++
+			}
+		}
+		summary.Total = len(pageItems)
+	}
+	return summary
+}

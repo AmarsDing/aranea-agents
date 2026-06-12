@@ -2,13 +2,13 @@ package service_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/apierror"
 )
 
 type decoSyncSessionRepo struct {
@@ -54,7 +54,7 @@ func TestDECO01_SessionRevisionChannelToWebSync(t *testing.T) {
 			sessionID: {ID: sessionID, SessionRevision: 0},
 		}},
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	proj := service.NewSessionProjectionAdapter(uc, nil)
 	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: sessionID, BufferSize: 4})

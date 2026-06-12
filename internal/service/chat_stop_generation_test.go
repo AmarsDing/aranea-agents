@@ -19,12 +19,18 @@ func TestStopGeneration_PublishesCancelledRunStatus(t *testing.T) {
 	reg.SetStatus("sess-1", runID, "running", "")
 	reg.StoreCancelable("sess-1", runID, func() {})
 
+	rStatus := newChatRunStatusTracker(reg, nil, bus, nil)
 	svc := &ChatService{
 		orch: &ChatOrchestrator{
 			runs: reg,
-			td: rt.TurnDeps{
-				Pipeline: rt.EventPipeline{Bus: bus},
+			core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+			runMgr: &chatRunManagerImpl{
+				runStatusTracker:    rStatus,
+				pendingQueueManager: noopPendingQueueManager{},
+				awaitCoordinator:    noopAwaitCoordinator{},
+				sessionRunLifecycle: noopSessionRunLifecycle{},
 			},
+			turnLC: newNoopChatTurnLifecycle(),
 		},
 	}
 

@@ -11,11 +11,6 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-func isAPIErrorCode(err error, code apierror.Code) bool {
-	ae, ok := apierror.From(err)
-	return ok && ae.Code == code
-}
-
 type memEventStoreRepo struct {
 	records []biz.EventStoreRecord
 }
@@ -54,7 +49,7 @@ func (m *memEventStoreRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int
 func newEventServiceForTest(sessions map[string]biz.Session) (*service.EventService, *memEventStoreRepo) {
 	repo := &memEventStoreRepo{}
 	storeUC := biz.NewEventStoreUsecase(repo)
-	sessionUC := biz.NewSessionUsecase(&batchSessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil)
+	sessionUC := biz.NewSessionUsecase(&batchSessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil, nil)
 	return service.NewEventService(storeUC, sessionUC), repo
 }
 

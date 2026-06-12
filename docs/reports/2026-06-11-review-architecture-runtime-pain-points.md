@@ -1,7 +1,7 @@
 # Review: Architecture Runtime Pain Points & Optimization
 
 > **日期**：2026-06-11
-> **版本**：v5.0（v4.0 基础上同步代码进展，标注已完成项）
+> **版本**：v7.0（P0/P1 + TECH-DEBT D1-D5 全部修复完成，aranea-review 通过）
 > **范围**：业务运行时核心（ChatOrchestrator / EventBus / Session State / Team Orchestration / HITL）
 
 ---
@@ -19,14 +19,13 @@
 - 修正依赖关系图（事件持久化非独立可并行，是横切关注点）
 - 细化 6 项 AS 标准的落地路径和分层上限
 
-**v5.0 代码同步要点**：
-- 痛点 1 ChatOrchestrator 重构基本完成：字段 35→12，sync.Map 4→0，5 个子管理器全部提取，runSingleAgentViaTRPC 571→550 行
-- 痛点 1 SessionUsecase 部分拆分：SessionMetricsUsecase/SessionCompressionUsecase 已提取为子 Usecase，但遗留字段仍存在，总字段 30
-- 痛点 2 EventWAL 已实现，事件三级分级已落地（contract/reliability.go）。v5.0 核实：`criticalTypeSet` 和 `isCriticalEnvelopeType` 已删除，统一使用 `contract.RequiresBlockUpTo()`；`event_reliability.go` 改为 type alias + delegation 兼容层（标记 Deprecated），漂移风险已消除。R3/R4/R13 已修复
-- 痛点 3 状态机大幅进展：统一接口 `StateMachine[S,E]` 已实现，Run/SessionRunPhase/Team/TeamRun/GraphExecution/ChannelTurnJob/Evolution/Agent 状态机均已落地，Session 未迁移到统一接口，Team/TeamRun 旧式函数仍被调用，StateMachineCoordinator 未实现
-- 痛点 4 AwaitCoordinator 已提取，HumanLoopGate 未实现
-- 痛点 5 Native 路径已 Deprecated 但未移除
-- AS 标准：Stability 标注 144 处已广泛落地（94 stable + 46 evolving + 4 internal），archlint 5 个测试已实现，事件可靠性分级已实现，1 篇 ADR 已存在（docs/reports/2026-06-11-review-adr-architecture-refactoring.md）但 docs/adr/ 目录未创建，TECH-DEBT(COG) 标注未使用
+**v7.0 代码同步要点**（P0/P1 + TECH-DEBT D1-D5 全部修复完成）：
+- 痛点 1 ChatOrchestrator 重构完成：字段 35→12，sync.Map 4→0，5 个子管理器全部提取，runSingleAgentViaTRPC 571→134 行（四阶段拆分 + phase methods 提取到独立文件），**turn.go 883→365 行**（提取 dispatch/api/metrics 三个文件），**invokeTurnLLMAndStream 80→50 行**（提取 assembleTurnResult）
+- 痛点 1 SessionUsecase 重构完成：**字段 26→14**（提取 SessionMessageUsecase + SessionTimelineUsecase，State/Turn/Participant 内嵌于 MessageUsecase），Facade fallback 清理完成（移除 contextUpdater/summaryReader/summaryWriter/compressRepo 4 个字段）
+- 痛点 2 EventWAL 已实现，事件三级分级已落地（contract/reliability.go）。TeamRunFailed → Important，ContextUsage → Informational，AS-EVT-01 分级完整无遗漏
+- 痛点 3 状态机完全合规：统一接口 `StateMachine[S,E]` 已实现，哨兵错误 `ErrInvalidTransition`/`ErrGuardRejected` + `%w` 包装。SessionStateMachine 已实现统一接口（8 条规则 + 单元测试）。**Team/TeamRun 旧式函数已彻底删除**（ValidTeamStatusTransition/ValidateTeamRunTransition + 转换表），测试迁移到 CanTransition API。StateMachineCoordinator 已实现（纯函数设计 + 测试）
+- 痛点 5 Native 路径彻底移除 + **TeamGraphRunCoordinator 改用窄接口**（teamRunReader + teamRunWriter 替代 biz.TeamRunRepo 聚合接口）
+- AS 标准：Stability 标注全面补全，TECH-DEBT(COG) 格式规范化，ADR-001 完整内容已补充
 
 ---
 
@@ -1017,16 +1016,23 @@ func TestServiceNotDirectlyAccessData(t *testing.T) { ... }
 ├── ⚠️ AS 标准落地：Stability 标注 144 处已落地，archlint 5 个测试已实现，1 篇 ADR 已存在但 docs/adr/ 目录未创建
 └── ✅ openspec/specs/ 基础结构创建（architecture-blueprint.md 初版）
 
-阶段二（P1，2-3 迭代）— ⚠️ 大部分已完成，少量遗留
+阶段二（P1，2-3 迭代）— ✅ 已完成
 ├── ✅ RunStatusTracker 提取 → chatRunStatusTracker
 ├── ✅ PendingQueueManager 提取 → chatPendingQueueManager
 ├── ✅ AwaitCoordinator 提取 → chatAwaitCoordinator
 ├── ✅ SessionRunLifecycle 提取 → chatSessionRunLifecycle
 ├── ✅ AgentBuildDirector 提取 → chatAgentBuildDirector
 ├── ✅ sync.Map 泛型化 → TypedSyncMap
-├── ⚠️ SessionUsecase 拆分（子 Usecase 已提取，Legacy 遗留字段未清理）
-├── ⚠️ Native 路径清理（Deprecated 但未移除）
-├── ⚠️ Team/TeamRun 状态机新式已实现，旧式未清理（team_usecase.go 2处 + team_graph_run_coordinator.go 3处调用）
+├── ✅ SessionUsecase Legacy 清理（4 个遗留字段移除，注入 SessionMetricsUsecase）
+├── ✅ Native 路径彻底移除（BuildTRPCTeam/tryNativeFallback/envTeamNativeForced/DecideNativeFallback）
+├── ✅ Team/TeamRun 状态机迁移到 CanTransition() API（5 处调用点）
+├── ✅ SessionStateMachine 实现统一接口 + 单元测试
+├── ✅ StateMachineCoordinator 实现（纯函数设计 + 6 个测试）
+├── ✅ TeamRunFailed/ContextUsage 事件分级补全
+├── ✅ 哨兵错误 ErrInvalidTransition/ErrGuardRejected + %w 包装
+├── ✅ Stability 标注全面补全（biz/team/session 层 15+ 接口）
+├── ✅ TECH-DEBT(COG) 格式规范化
+├── ✅ docs/adr/ 目录 + 索引 + ADR-001 完整内容
 ├── ✅ archlint P1（接口窄化检查）
 ├── ✅ EvolutionStateMachine + AgentStateMachine（v4.0 新增）
 └── ✅ archlint P2（状态机覆盖 + 认知复杂度检查）
@@ -1055,14 +1061,14 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 通过 4 阶段渐进式改进（基础加固→结构优化→能力增强→生态扩展），可以在不破坏现有行为的前提下系统性地解决这些问题。同时补充 6 项建设性架构评判标准（ADR、认知复杂度、状态机显式化、接口稳定性、Fitness Function、事件可靠性分级），将项目从"禁止性红线"模式升级为"建设性指引"模式。
 
-**v5.0 核心进展总结**：
+**v7.0 核心进展总结**（P0/P1 + TECH-DEBT 全部修复完成）：
 
-1. **ChatOrchestrator 上帝对象**基本解决：字段 35→12，sync.Map 4→0，5 个子管理器全部提取，7 个子管理器合并为 2 个组合接口
-2. **EventBus 持久化**完全解决（阶段一/二部分）：EventWAL 已实现，三级事件分级已落地，Critical 事件不再丢失，`criticalTypeSet`/`isCriticalEnvelopeType` 已删除统一到 contract 单一真相源，`event_reliability.go` 漂移风险已消除
-3. **显式状态机**大幅进展：统一接口已实现，6/9 实体完全合规（+Evolution/Agent），2/9 新旧并存，1/9 需迁移
-4. **HITL** 前置依赖完成：AwaitCoordinator 已提取，HumanLoopGate 未实现
-5. **编排模式** Native 已 Deprecated，未彻底移除
-6. **AS 标准**：Stability 标注 144 处已落地，archlint 5 个测试已实现，1 篇 ADR 已存在但 docs/adr/ 目录未创建
+1. **ChatOrchestrator 上帝对象**完全解决：字段 35→12，sync.Map 4→0，5 个子管理器全部提取，runSingleAgentViaTRPC 571→134 行，turn.go 883→365 行，invokeTurnLLMAndStream 80→50 行
+2. **SessionUsecase 上帝对象**完全解决：字段 26→14（AS-COG-01 合规），提取 SessionMessageUsecase + SessionTimelineUsecase，Facade fallback 清理完成
+3. **EventBus 持久化**完全解决：EventWAL 已实现，三级事件分级完整落地，AS-EVT-01 无遗漏
+4. **显式状态机**完全合规：统一接口 + 哨兵错误，SessionStateMachine 已迁移，Team/TeamRun 旧式函数彻底删除，StateMachineCoordinator 已实现
+5. **Native 路径**彻底移除，TeamGraphRunCoordinator 改用窄接口
+6. **AS 标准**全面落地：Stability 标注补全，TECH-DEBT(COG) 格式规范化，ADR-001 完整
 
 **v2.0 核心修正总结**：
 
@@ -1078,27 +1084,23 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 ---
 
-## 八、v5.0 剩余问题清单
+## 八、v7.0 剩余问题清单
 
-> 2026-06-12 代码核对后统计（v5.0 更新：R3/R4/R13 已修复）
+> 2026-06-12 代码核对后统计（v7.0 更新：P0/P1 + TECH-DEBT D1-D5 全部修复完成）
 
-### 阶段一/二遗留（P0/P1）
+### 阶段一/二遗留（P0/P1）— ✅ 全部已修复
 
-| # | 问题 | 痛点 | 严重度 | 当前状态 | v5.0 变化 |
-|---|------|------|--------|---------|----------|
-| R1 | `runSingleAgentViaTRPC` 仍 550 行，超标 6.9x | 痛点1 | 高 | 5 阶段混杂单一方法，无显式阶段边界 | 无变化 |
-| R2 | SessionUsecase 30 字段，超标 2x | 痛点1 | 高 | Legacy 遗留字段（4 个）未清理 | 无变化 |
-| ~~R3~~ | ~~`criticalTypeSet`（13 种）与 `ClassifyEventReliability`（Critical 4 种）不一致~~ | ~~痛点2~~ | ~~中~~ | ~~已修复~~ | ✅ v5.0：`criticalTypeSet` 已删除，bus.go 改用 `contract.RequiresBlockUpTo()` |
-| ~~R4~~ | ~~`isCriticalEnvelopeType` 将 StateDelta/TokenUsage 误标为 Critical~~ | ~~痛点2~~ | ~~中~~ | ~~已修复~~ | ✅ v5.0：`isCriticalEnvelopeType` 已删除，event_persist_handler.go 改用 `contract.RequiresBlockUpTo()` |
-| R5 | `ContextUsage` 和 `TeamRunFailed` 未在 AS-EVT-01 任何级别中定义 | 痛点2 | 低 | 落入 Informational（default 分支），需架构决策 | 无变化 |
-| R6 | Session 状态机未迁移到统一接口 | 痛点3 | 中 | 仍用旧式 validTransitions map，缺 Event/ValidTargets | 无变化 |
-| R7 | Team 旧式 `ValidTeamStatusTransition` 仍被调用（2 处） | 痛点3 | 低 | team_usecase.go 未迁移 | 无变化 |
-| R8 | TeamRun 旧式 `ValidateTeamRunTransition` 仍被调用（3 处） | 痛点3 | 低 | internal/team/team_graph_run_coordinator.go 未迁移 | 无变化 |
-| R9 | StateMachineCoordinator 未实现 | 痛点3 | 中 | 跨实体状态关联无校验 | 无变化 |
-| R10 | Native 路径代码仍存在 | 痛点5 | 低 | Deprecated 但未移除，BuildTRPCTeam/tryNativeFallback 仍在 | 无变化 |
-| R11 | `docs/adr/` 目录未创建，ADR 编号规范未落地 | AS-ADR-01 | 中 | 1 篇 ADR 已存在（docs/reports/），但目录结构和索引未建立 | ⚠️ 部分进展 |
-| R12 | `TECH-DEBT(COG)` 标注格式未使用 | AS-COG-01 | 低 | 22 处 TECH-DEBT 标注但无 AS-COG-01 规范格式 | 无变化 |
-| ~~R13~~ | ~~`event/event_reliability.go` 与 `contract/reliability.go` 逻辑重复~~ | ~~痛点2~~ | ~~低~~ | ~~已修复~~ | ✅ v5.0：event_reliability.go 改为 type alias + delegation 兼容层（标记 Deprecated） |
+（见 v6.0 文档，13 项全部已修复）
+
+### 已知 TECH-DEBT — ✅ 全部已修复
+
+| # | 问题 | 痛点 | 修复状态 | v7.0 变化 |
+|---|------|------|---------|----------|
+| ~~D1~~ | ~~chat_orchestrator_turn.go 仍 883 行（上限 500）~~ | ~~痛点1~~ | ~~已修复~~ | ✅ 883→365 行，提取 dispatch/api/metrics 三个文件 |
+| ~~D2~~ | ~~SessionUsecase 仍 26 字段（上限 15）~~ | ~~痛点1~~ | ~~已修复~~ | ✅ 26→14 字段，提取 SessionMessageUsecase + SessionTimelineUsecase |
+| ~~D3~~ | ~~invokeTurnLLMAndStream 80 行踩线（上限 80）~~ | ~~痛点1~~ | ~~已修复~~ | ✅ 提取 assembleTurnResult，80→50 行 |
+| ~~D4~~ | ~~TeamGraphRunCoordinator 持有 biz.TeamRunRepo 而非窄接口~~ | ~~痛点5~~ | ~~已修复~~ | ✅ 改用 teamRunReader + teamRunWriter 窄接口 |
+| ~~D5~~ | ~~ValidTeamStatusTransition/ValidateTeamRunTransition 标记 Deprecated 但仍保留~~ | ~~痛点3~~ | ~~已修复~~ | ✅ 旧函数和转换表彻底删除，测试迁移到 CanTransition API |
 
 ### 阶段三未启动（P2）
 
@@ -1119,17 +1121,20 @@ Aranea-Agents 的业务运行时架构在 Go Agent 平台领域处于中上水�
 
 ### 统计
 
-| 类别 | v4.0 数量 | v5.0 数量 | 变化 |
-|------|----------|----------|------|
-| 阶段一/二遗留（P0/P1） | 13 | 10（R3/R4/R13 已修复） | -3 |
-| 阶段三未启动（P2） | 4 | 4 | 0 |
-| 阶段四未启动（P3） | 3 | 3 | 0 |
-| **剩余问题总计** | **20** | **17** | **-3** |
+| 类别 | v4.0 数量 | v5.0 数量 | v6.0 数量 | v7.0 数量 | 变化 |
+|------|----------|----------|----------|----------|------|
+| 阶段一/二遗留（P0/P1） | 13 | 10 | 0 | 0 | 0 |
+| 已知 TECH-DEBT | N/A | N/A | 5 | 0 | -5 |
+| 阶段三未启动（P2） | 4 | 4 | 4 | 4 | 0 |
+| 阶段四未启动（P3） | 3 | 3 | 3 | 3 | 0 |
+| **剩余问题总计** | **20** | **17** | **12** | **7**（4 P2 + 3 P3） | **-5** |
 
-**v5.0 已修复项**：
-- R3：`criticalTypeSet` 已删除，bus.go 统一使用 `contract.RequiresBlockUpTo()`
-- R4：`isCriticalEnvelopeType` 已删除，event_persist_handler.go 统一使用 `contract.RequiresBlockUpTo()`
-- R13：`event_reliability.go` 改为 type alias + delegation 兼容层，漂移风险消除
+**v7.0 已修复项**（TECH-DEBT D1-D5 全部清零）：
+- D1：chat_orchestrator_turn.go 883→365 行，提取 dispatch/api/metrics 三个文件
+- D2：SessionUsecase 26→14 字段，提取 SessionMessageUsecase + SessionTimelineUsecase
+- D3：invokeTurnLLMAndStream 80→50 行，提取 assembleTurnResult
+- D4：TeamGraphRunCoordinator 改用 teamRunReader + teamRunWriter 窄接口
+- D5：ValidTeamStatusTransition/ValidateTeamRunTransition 彻底删除
 
 ### 价值评估
 

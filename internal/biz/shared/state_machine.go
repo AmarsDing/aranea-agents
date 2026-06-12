@@ -25,9 +25,20 @@ package shared
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 )
+
+// ── Sentinel Errors ──────────────────────────────────────────────────────────
+
+// ErrInvalidTransition is returned when a state transition is not defined in the
+// transition table (unknown source state or unknown event for the given source).
+var ErrInvalidTransition = errors.New("invalid state transition")
+
+// ErrGuardRejected is returned when a transition rule exists but its guard
+// condition evaluated to false.
+var ErrGuardRejected = errors.New("transition guard rejected")
 
 // ── Generic State Machine ────────────────────────────────────────────────────
 
@@ -65,7 +76,7 @@ type TransitionRule[S ~string, E ~string] struct {
 // The machine is safe for concurrent use after construction — all internal state is immutable.
 type GenericStateMachine[S ~string, E ~string] struct {
 	fromEventIndex map[S]map[E]TransitionRule[S, E] // from → event → rule
-	fromToIndex    map[S]map[S]bool                  // from → to → allowed
+	fromToIndex    map[S]map[S]bool                 // from → to → allowed
 }
 
 // NewGenericStateMachine builds a GenericStateMachine from the given transition rules.
@@ -103,20 +114,26 @@ func NewGenericStateMachine[S, E ~string](rules []TransitionRule[S, E]) *Generic
 
 // Transition validates and executes a state transition triggered by the given event.
 // If a guard is defined on the matching rule and it returns false, an error is returned.
+//
+// Note: Guards receive context.Background() because the StateMachine interface does not
+// accept a ctx parameter. This is intentional — state transitions are synchronous and
+// instantaneous; cancellation should be handled by the caller before invoking Transition.
+// If a guard needs context-awareness, wrap the Transition call in a higher-level method
+// that accepts ctx and passes it to the guard externally.
 func (m *GenericStateMachine[S, E]) Transition(from S, event E) (S, error) {
 	events, ok := m.fromEventIndex[from]
 	if !ok {
 		var zero S
-		return zero, fmt.Errorf("invalid state transition: from=%s event=%s", from, event)
+		return zero, fmt.Errorf("%w: from=%s event=%s", ErrInvalidTransition, from, event)
 	}
 	rule, ok := events[event]
 	if !ok {
 		var zero S
-		return zero, fmt.Errorf("invalid state transition: from=%s event=%s", from, event)
+		return zero, fmt.Errorf("%w: from=%s event=%s", ErrInvalidTransition, from, event)
 	}
 	if rule.Guard != nil && !rule.Guard(context.Background()) {
 		var zero S
-		return zero, fmt.Errorf("invalid state transition: from=%s event=%s: guard rejected", from, event)
+		return zero, fmt.Errorf("%w: from=%s event=%s", ErrGuardRejected, from, event)
 	}
 	return rule.To, nil
 }

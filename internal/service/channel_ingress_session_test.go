@@ -325,6 +325,9 @@ func (s ingressAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, _ []
 func (s ingressAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
 	return 0, nil
 }
+func (s ingressAgentRepo) ToggleFavorite(_ context.Context, id string) (biz.Agent, error) {
+	return biz.Agent{ID: id}, nil
+}
 func (s ingressAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
@@ -349,7 +352,7 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	}
 	sessRepo := &ingressSessionRepo{sessions: map[string]biz.Session{}}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil)
 	h := &ChannelIngress{
 		channels: biz.NewChannelUsecase(nil, nil, nil, nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
@@ -403,7 +406,7 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 		},
 	}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil)
 	h := &ChannelIngress{
 		channels: biz.NewChannelUsecase(nil, nil, nil, nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,

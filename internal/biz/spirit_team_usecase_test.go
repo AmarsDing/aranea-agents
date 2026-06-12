@@ -106,8 +106,10 @@ func (m *memSpiritTeamRepo) ListTeamRunSteps(_ context.Context, _ string) ([]Tea
 func (m *memSpiritTeamRepo) CreateTeamRun(_ context.Context, r TeamRun) (TeamRun, error) {
 	return r, nil
 }
-func (m *memSpiritTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error          { return nil }
-func (m *memSpiritTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (m *memSpiritTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error { return nil }
+func (m *memSpiritTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
+	return nil
+}
 func (m *memSpiritTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil
 }
@@ -225,11 +227,17 @@ func (m *memSpiritSessionRepo) BumpSessionRevision(_ context.Context, _ string) 
 
 // --- SessionMutator ---
 
-func (m *memSpiritSessionRepo) ArchiveSession(_ context.Context, _ string) (int, error)  { return 0, nil }
-func (m *memSpiritSessionRepo) DeleteSession(_ context.Context, _ string) (int, error)   { return 0, nil }
+func (m *memSpiritSessionRepo) ArchiveSession(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+func (m *memSpiritSessionRepo) DeleteSession(_ context.Context, _ string) (int, error)    { return 0, nil }
 func (m *memSpiritSessionRepo) DeleteSessionsByAgentID(_ context.Context, _ string) error { return nil }
-func (m *memSpiritSessionRepo) PinSession(_ context.Context, _ string) (Session, error)   { return Session{}, nil }
-func (m *memSpiritSessionRepo) UnpinSession(_ context.Context, _ string) (Session, error) { return Session{}, nil }
+func (m *memSpiritSessionRepo) PinSession(_ context.Context, _ string) (Session, error) {
+	return Session{}, nil
+}
+func (m *memSpiritSessionRepo) UnpinSession(_ context.Context, _ string) (Session, error) {
+	return Session{}, nil
+}
 
 // --- SessionBatchMutator ---
 
@@ -329,8 +337,12 @@ func (m *memSpiritSessionRepo) LatestSessionSummaryTime(_ context.Context, _ str
 
 // --- SummaryWriter ---
 
-func (m *memSpiritSessionRepo) InsertSessionSummary(_ context.Context, _ SessionSummary) error { return nil }
-func (m *memSpiritSessionRepo) UpdateSessionListSummary(_ context.Context, _, _ string) error  { return nil }
+func (m *memSpiritSessionRepo) InsertSessionSummary(_ context.Context, _ SessionSummary) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) UpdateSessionListSummary(_ context.Context, _, _ string) error {
+	return nil
+}
 func (m *memSpiritSessionRepo) SessionSummaryExists(_ context.Context, _ string, _, _ int) (bool, error) {
 	return false, nil
 }
@@ -364,7 +376,9 @@ func (m *memSpiritSessionRepo) GetSessionTurn(_ context.Context, _ string) (Sess
 
 // --- ContextUpdater ---
 
-func (m *memSpiritSessionRepo) UpdateRunnerSnapshotJSON(_ context.Context, _, _ string) error { return nil }
+func (m *memSpiritSessionRepo) UpdateRunnerSnapshotJSON(_ context.Context, _, _ string) error {
+	return nil
+}
 func (m *memSpiritSessionRepo) UpdateSessionContextFromLLMUsage(_ context.Context, _ string, _, _, _ int) error {
 	return nil
 }
@@ -374,7 +388,9 @@ func (m *memSpiritSessionRepo) UpdateSessionContextAfterCompression(_ context.Co
 func (m *memSpiritSessionRepo) IncrementInvocationCounts(_ context.Context, _ string, _, _, _ int) error {
 	return nil
 }
-func (m *memSpiritSessionRepo) ApplyMetricsDelta(_ context.Context, _ *session.SessionMetricsDelta) error { return nil }
+func (m *memSpiritSessionRepo) ApplyMetricsDelta(_ context.Context, _ *session.SessionMetricsDelta) error {
+	return nil
+}
 
 // --- CompressRepo ---
 
@@ -616,7 +632,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	}
 
 	// Cancel again should fail (cancelled → cancelled is same-state, which is allowed)
-	// Actually, same-state transitions are allowed by ValidTeamStatusTransition
+	// Actually, same-state transitions are allowed by TeamStateMachine
 	// But let's test that cancelling a completed team fails
 	team2, _ := uc.AssembleTeam(ctx, SpiritTeamParams{
 		SpiritSessionID: "spirit-cancel2",

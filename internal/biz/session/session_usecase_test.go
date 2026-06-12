@@ -292,7 +292,7 @@ func (m *mockParticipantRepo) ListBySession(_ context.Context, _ string) ([]Sess
 }
 
 func newTestUsecase(repo *mockSessionRepo, agents *mockAgentLookup, teams *mockTeamLookup) *SessionUsecase {
-	return NewSessionUsecase(repo, agents, teams, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil)
+	return NewSessionUsecase(repo, agents, teams, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, nil)
 }
 
 func assertBadRequest(t *testing.T, err error, wantMsg string) {

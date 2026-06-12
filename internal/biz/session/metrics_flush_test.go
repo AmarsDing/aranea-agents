@@ -25,10 +25,12 @@ func newTestUsecaseWithMock() (*SessionUsecase, *mockMetricsRepo) {
 	mu := NewSessionMetricsUsecase(repo, nil, nil)
 	mu.flushInterval = 1 * time.Hour // disable periodic flush for test
 	uc := &SessionUsecase{
-		sessionReader:  repo,
-		sessionWriter:  repo,
-		contextUpdater: repo,
-		metricsUsecase: mu,
+		sessionReader:      repo,
+		sessionWriter:      repo,
+		metricsUsecase:     mu,
+		compressionUsecase: NewSessionCompressionUsecase(repo, repo, repo, repo),
+		timelineUsecase:    NewSessionTimelineUsecase(repo, repo, repo, repo),
+		messageUsecase:     NewSessionMessageUsecase(repo, repo, repo, repo, nil, repo, repo, nil, mu, repo, repo, nil),
 	}
 	return uc, repo
 }
@@ -143,4 +145,14 @@ func TestForceFlushSingle(t *testing.T) {
 	if last == nil || last.MessageCount != 5 {
 		t.Errorf("expected MessageCount=5 in flushed delta, got %+v", last)
 	}
+}
+
+func TestNilMetricsUsecase_GracefulDegradation(t *testing.T) {
+	uc := &SessionUsecase{} // metricsUsecase is nil
+
+	// None of these should panic — graceful degradation.
+	uc.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: "s1", MessageCount: 1})
+	uc.StartMetricsFlusher(context.Background())
+	uc.flushAllMetrics(context.Background())
+	uc.forceFlushSingle("s1")
 }

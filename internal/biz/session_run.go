@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ const (
 	SessionRunPhaseFailed      = string(PhaseFailed)
 	SessionRunPhaseCancelled   = string(PhaseCancelled)
 )
+
+// sessionRunPhaseMachine is the shared, stateless phase machine for all SessionRun transitions.
+var sessionRunPhaseMachine = NewSessionRunPhaseMachine()
 
 type SessionRunBudget struct {
 	SoftBudgetSec int
@@ -81,6 +85,7 @@ type SessionRunDurableRepo interface {
 	TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error)
 	ClearResumeClaim(ctx context.Context, id string) error
 	MarkOrphanedRunsCancelled(ctx context.Context) (int, error)
+	TransitionPhase(ctx context.Context, id, fromPhase, toPhase string) (bool, error)
 }
 
 // Stability:stable
@@ -186,6 +191,38 @@ func (u *SessionRunUsecase) MarkPhase(ctx context.Context, id, phase string) err
 		return apierror.BadRequest("SESSION_RUN", "id is required")
 	}
 	return u.repo.UpdatePhase(ctx, id, NormalizeSessionRunPhase(phase))
+}
+
+// TransitionPhase performs a CAS phase transition validated by the state machine.
+// It atomically transitions from the expected phase to the target phase only if
+// the current DB phase matches fromPhase, preventing TOCTOU races (N-04 fix).
+// Returns (true, nil) on success, (false, nil) if CAS failed (concurrent modification).
+func (u *SessionRunUsecase) TransitionPhase(ctx context.Context, id string, event SessionRunPhaseEvent) (bool, error) {
+	if u == nil || u.repo == nil {
+		return false, errSessionRunNotInit
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, apierror.BadRequest("SESSION_RUN", "id is required")
+	}
+	cur, err := u.repo.Get(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	fromPhase := ParseSessionRunPhase(cur.Phase)
+	toPhase, err := sessionRunPhaseMachine.Transition(fromPhase, event)
+	if err != nil {
+		return false, fmt.Errorf("invalid phase transition from %s via %s: %w", fromPhase, event, err)
+	}
+	ok, err := u.repo.TransitionPhase(ctx, id, string(fromPhase), string(toPhase))
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		u.lg.Warn("transition phase CAS failed: phase changed concurrently",
+			loggateway.Str("id", id), loggateway.Str("from", string(fromPhase)), loggateway.Str("to", string(toPhase)))
+	}
+	return ok, nil
 }
 
 func (u *SessionRunUsecase) Complete(ctx context.Context, id string) error {

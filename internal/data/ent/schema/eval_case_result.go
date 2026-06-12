@@ -53,10 +53,12 @@ func (EvalCaseResult) Edges() []ent.Edge {
 		edge.From("run", EvalRun.Type).
 			Ref("results").
 			Field("run_id").
-			Unique(),
+			Unique().
+			Required(),
 		edge.From("case", EvalCase.Type).
 			Ref("results").
 			Field("case_id").
-			Unique(),
+			Unique().
+			Required(),
 	}
 }

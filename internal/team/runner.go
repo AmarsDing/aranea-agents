@@ -19,6 +19,7 @@ import (
 
 // StreamOptsFactory creates StreamConsumeOptions for a team turn.
 // Implemented by internal/chatactivity; injected via RunnerConfig.StreamOptsFactory.
+// Stability:internal
 type StreamOptsFactory interface {
 	NewStreamConsumeOptions() *agent.StreamConsumeOptions
 }

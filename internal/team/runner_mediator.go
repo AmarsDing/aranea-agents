@@ -17,6 +17,7 @@ var (
 // TeamGraphCoordAccess is the narrow interface Runner needs from the coordinator side.
 // It combines execution registration with HITL deferral and step watching,
 // breaking the direct dependency on *TeamGraphRunCoordinator.
+// Stability:evolving
 type TeamGraphCoordAccess interface {
 	TeamGraphExecutionRegistry
 	DeferTeamRunSuccessIfHITL(ctx context.Context, graphExecID string, run *biz.TeamRun) (bool, error)
@@ -82,7 +83,7 @@ func (m *TeamRunMediator) DeferTeamRunSuccessIfHITL(ctx context.Context, graphEx
 	if m.coord == nil {
 		m.lg.Warn("mediator coordinator not set, skipping DeferTeamRunSuccessIfHITL",
 			loggateway.Str("graph_exec_id", graphExecID))
-		return false, fmt.Errorf("mediator coordinator not set")
+		return false, fmt.Errorf("%w: DeferTeamRunSuccessIfHITL", errMediatorCoordNotSet)
 	}
 	return m.coord.DeferTeamRunSuccessIfHITL(ctx, graphExecID, run)
 }

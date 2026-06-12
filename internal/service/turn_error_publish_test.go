@@ -11,8 +11,14 @@ import (
 
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 	bus := testutil.NewRecordingBus()
+	evtPub := newChatTurnEventPublisher(nil, bus, nil)
 	orch := &ChatOrchestrator{
-		td: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}},
+		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+		turnLC: &chatTurnLifecycleImpl{
+			sessionStateTransitor: noopSessionStateTransitor{},
+			turnRecorder:          noopTurnRecorder{},
+			turnEventPublisher:    evtPub,
+		},
 	}
 	te := TurnError(TurnErrLLMCallFailed, "connection reset")
 	orch.publishTurnFailure("sess-1", "run-1", "chat-service", te, "")
@@ -35,8 +41,14 @@ func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 
 func TestPublishTurnFailure_pendingID(t *testing.T) {
 	bus := testutil.NewRecordingBus()
+	evtPub := newChatTurnEventPublisher(nil, bus, nil)
 	orch := &ChatOrchestrator{
-		td: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}},
+		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+		turnLC: &chatTurnLifecycleImpl{
+			sessionStateTransitor: noopSessionStateTransitor{},
+			turnRecorder:          noopTurnRecorder{},
+			turnEventPublisher:    evtPub,
+		},
 	}
 	orch.publishTurnFailure("sess-1", "", "pending-queue", TurnError(TurnErrTurnTimeout, "5m"), "pend-1")
 

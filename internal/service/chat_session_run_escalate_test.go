@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -62,6 +63,13 @@ func (s *escalateSessionRunRepoStub) ClearResumeClaim(_ context.Context, _ strin
 func (s *escalateSessionRunRepoStub) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
 	return 0, nil
 }
+func (s *escalateSessionRunRepoStub) TransitionPhase(_ context.Context, id, fromPhase, toPhase string) (bool, error) {
+	if s.run.ID != id || string(s.run.Phase) != fromPhase {
+		return false, nil
+	}
+	s.run.Phase = biz.NormalizeSessionRunPhase(toPhase)
+	return true, nil
+}
 
 type escalateCheckpointRepoStub struct {
 	cps map[string]biz.SessionRunCheckpoint
@@ -97,9 +105,12 @@ func TestEscalateSessionRun_ownershipDenied(t *testing.T) {
 	svc := &ChatService{
 		lg: loggateway.NewNoop(),
 		orch: &ChatOrchestrator{
-			chJobs: ChannelTurnJobDeps{
-				SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
+			channelDeps: ChatChannelDeps{
+				ChJobs: ChannelTurnJobDeps{
+					SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
+				},
 			},
+			runMgr: newNoopChatRunManager(),
 		},
 	}
 	reply, err := svc.EscalateSessionRun(context.Background(), "run-1", "sess-other")
@@ -124,11 +135,27 @@ func TestEscalateSessionRun_ownershipAllowed(t *testing.T) {
 		},
 	}
 	cps := &escalateCheckpointRepoStub{cps: map[string]biz.SessionRunCheckpoint{}}
+	sessionRuns := biz.NewSessionRunUsecase(repo, cps, nil)
+	rStatus := newChatRunStatusTracker(rt.NewRunRegistry(), nil, nil, nil)
+	sessRunLC := newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
+		SessionRuns:  sessionRuns,
+		RunStatus:    rStatus,
+		SessionState: noopSessionStateTransitor{},
+		Runs:         rt.NewRunRegistry(),
+	})
 	svc := &ChatService{
 		lg: loggateway.NewNoop(),
 		orch: &ChatOrchestrator{
-			chJobs: ChannelTurnJobDeps{
-				SessionRuns: biz.NewSessionRunUsecase(repo, cps, nil),
+			channelDeps: ChatChannelDeps{
+				ChJobs: ChannelTurnJobDeps{
+					SessionRuns: sessionRuns,
+				},
+			},
+			runMgr: &chatRunManagerImpl{
+				runStatusTracker:    rStatus,
+				pendingQueueManager: noopPendingQueueManager{},
+				awaitCoordinator:    noopAwaitCoordinator{},
+				sessionRunLifecycle: sessRunLC,
 			},
 		},
 	}

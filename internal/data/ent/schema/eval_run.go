@@ -56,7 +56,8 @@ func (EvalRun) Edges() []ent.Edge {
 		edge.From("dataset", EvalDataset.Type).
 			Ref("runs").
 			Field("dataset_id").
-			Unique(),
+			Unique().
+			Required(),
 		edge.To("results", EvalCaseResult.Type),
 	}
 }

@@ -2,6 +2,8 @@ package team
 
 import "sync"
 
+// OrchestrationTemplate defines the contract for team orchestration patterns.
+// Stability:stable
 type OrchestrationTemplate interface {
 	ID() string
 	BuildEdges(def Definition, agentIDs []string) []embeddedGraphEdge

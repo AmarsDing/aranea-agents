@@ -75,5 +75,10 @@ func (uc *SessionCompressionUsecase) SessionSummaryExists(ctx context.Context, s
 	return uc.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 }
 
+// UpdateRunnerSnapshotJSON persists the Runner session snapshot.
+func (uc *SessionCompressionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
+	return uc.contextUpdater.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)
+}
+
 // SessionCompressionProviderSet provides Wire bindings for SessionCompressionUsecase.
 var SessionCompressionProviderSet = wire.NewSet(NewSessionCompressionUsecase)

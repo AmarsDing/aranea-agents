@@ -1,0 +1,174 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+
+	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/pkg/apierror"
+
+	"google.golang.org/protobuf/types/known/structpb"
+)
+
+// nativeSendChatMessage is the native implementation of SendChatMessage.
+func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
+	tr, err := o.Execute(ctx, turnInputFromProto(req))
+	if err != nil {
+		if isTurnMessageQueued(err) {
+			return &chatv1.SendChatMessageResponse{}, nil
+		}
+		return nil, err
+	}
+	if tr.Outcome != biz.TurnOutcomeCompleted {
+		return &chatv1.SendChatMessageResponse{}, nil
+	}
+	userMsg, assistantMsg := tr.UserMsg, tr.AssistantMsg
+	um := chatMessageToMap(userMsg)
+	am := chatMessageToMap(assistantMsg)
+	out := &chatv1.SendChatMessageResponse{}
+	if st, err := structpb.NewStruct(um); err != nil {
+		return nil, apierror.Internal("CHAT_NATIVE", "encode user_message: %v", err)
+	} else {
+		out.UserMessage = st
+	}
+	if st, err := structpb.NewStruct(am); err != nil {
+		return nil, apierror.Internal("CHAT_NATIVE", "encode agent_message: %v", err)
+	} else {
+		out.AgentMessage = st
+	}
+	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
+		if o.td().Pipeline.Bus != nil {
+			env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "chat-native", "")
+			env.TeamID = tid
+			env.Metadata = map[string]any{"hint": true}
+			o.td().Pipeline.Bus.Publish(ctx, env)
+		}
+	}
+	return out, nil
+}
+
+// nativeGetChatOptions returns chat options.
+func (o *ChatOrchestrator) nativeGetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
+	typed := strings.TrimSpace(req.GetType())
+	switch typed {
+	case "", "dialog_mode":
+		return &chatv1.GetChatOptionsResponse{Items: nativeDialogModeChatOptions()}, nil
+	case "provider":
+		return o.nativeGetProviderOptions(ctx)
+	case "model":
+		return o.nativeGetModelOptions(ctx)
+	default:
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+}
+
+func (o *ChatOrchestrator) nativeGetProviderOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
+	if o.td().ReadDeps.LLM == nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	rows, err := o.td().ReadDeps.LLM.List(ctx)
+	if err != nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	seen := make(map[string]struct{})
+	var items []*chatv1.ChatOption
+	for _, row := range rows {
+		p := strings.TrimSpace(row.Provider)
+		if p == "" || row.Enabled == false {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		items = append(items, &chatv1.ChatOption{
+			Type:      "provider",
+			Key:       p,
+			Label:     p,
+			Enabled:   true,
+			SortOrder: int32(len(items) + 1),
+		})
+	}
+	return &chatv1.GetChatOptionsResponse{Items: items}, nil
+}
+
+func (o *ChatOrchestrator) nativeGetModelOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
+	if o.td().ReadDeps.LLM == nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	rows, err := o.td().ReadDeps.LLM.List(ctx)
+	if err != nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	var items []*chatv1.ChatOption
+	for i, row := range rows {
+		if row.Enabled == false {
+			continue
+		}
+		type modelMeta struct {
+			Provider string `json:"provider,omitempty"`
+			Model    string `json:"model,omitempty"`
+		}
+		mj := "{}"
+		if row.Provider != "" || row.Model != "" {
+			if b, err := json.Marshal(modelMeta{Provider: row.Provider, Model: row.Model}); err == nil {
+				mj = string(b)
+			}
+		}
+		label := row.Name
+		if label == "" {
+			label = row.Key
+		}
+		if label == "" {
+			label = row.Model
+		}
+		items = append(items, &chatv1.ChatOption{
+			Type:         "model",
+			Key:          row.Key,
+			Label:        label,
+			Enabled:      true,
+			SortOrder:    int32(i + 1),
+			MetadataJson: mj,
+		})
+	}
+	return &chatv1.GetChatOptionsResponse{Items: items}, nil
+}
+
+// turnInputFromProto converts a proto SendChatMessageRequest to a biz-level TurnInput.
+// This adapter lives in the service layer (the proto boundary) so that internal
+// packages never need to import api/*/v1.
+func turnInputFromProto(req *chatv1.SendChatMessageRequest) biz.TurnInput {
+	if req == nil {
+		return biz.TurnInput{}
+	}
+	input := biz.TurnInput{
+		SessionID: req.GetSessionId(),
+		Content:   req.GetContent(),
+		AgentKey:  req.GetAgentKey(),
+		EntryConfig: biz.TurnEntryPointConfig{
+			EntryPoint:  biz.EntryPointWeb,
+			AllowQueue:  true,
+			AllowStream: true,
+		},
+	}
+	if req.TeamId != nil {
+		input.TeamID = *req.TeamId
+	}
+	if opts := req.GetOptions(); opts != nil {
+		input.Options = biz.TurnOptions{
+			DialogMode:     opts.GetDialogMode(),
+			Provider:       opts.GetProvider(),
+			Model:          opts.GetModel(),
+			KnowledgeBases: opts.GetKnowledgeBases(),
+		}
+		for _, att := range opts.GetAttachments() {
+			if att != nil {
+				input.Options.AttachmentIDs = append(input.Options.AttachmentIDs, att.GetId())
+			}
+		}
+	}
+	return input
+}

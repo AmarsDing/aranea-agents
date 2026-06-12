@@ -761,6 +761,9 @@ $env:DEPLOY_ENV="dev"
 $env:KRATOS_HTTP_AUTH_DISABLED="1"
 go run ./cmd/admin -conf ./configs/config.yaml
 
+$env:KRATOS_AUTH_SECRET = "your-random-secret-at-least-32-chars"
+go run ./cmd/admin -conf ./configs/config.yaml
+
 # Linux / macOS:
 # DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run ./cmd/admin -conf ./configs/config.yaml
 ```

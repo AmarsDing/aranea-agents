@@ -24,34 +24,6 @@ const (
 	TeamStatusBlocked = "blocked"
 )
 
-// ValidTeamStatusTransition returns true if a team status transition from→to is allowed.
-// Deprecated: Use TeamStateMachine.CanTransition() instead. This function will be removed in a future release.
-func ValidTeamStatusTransition(from, to string) bool {
-	if from == to {
-		return true
-	}
-	allowed, ok := teamStatusValidTransitions[from]
-	if !ok {
-		return false
-	}
-	for _, s := range allowed {
-		if s == to {
-			return true
-		}
-	}
-	return false
-}
-
-// Deprecated: Use TeamStateMachine transition rules instead.
-var teamStatusValidTransitions = map[string][]string{
-	TeamStatusPending:     {TeamStatusRunning, TeamStatusCancelled},
-	TeamStatusRunning:     {TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted},
-	TeamStatusInterrupted: {TeamStatusRunning},
-	TeamStatusCompleted:   {TeamStatusArchived},
-	TeamStatusFailed:      {TeamStatusArchived, TeamStatusPending},
-	TeamStatusCancelled:   {TeamStatusArchived, TeamStatusPending},
-}
-
 // IsTeamStatusActive returns true if the team status means the team is
 // considered "active" (i.e. not terminal and not deleted).
 func IsTeamStatusActive(status string) bool {
@@ -75,30 +47,6 @@ var teamRunTerminalStatuses = map[string]bool{
 
 func IsTeamRunTerminalStatus(status string) bool {
 	return teamRunTerminalStatuses[status]
-}
-
-// Deprecated: Use TeamRunStateMachine transition rules instead.
-var teamRunValidTransitions = map[string][]string{
-	TeamRunStatusPending:      {TeamRunStatusRunning, TeamRunStatusCancelled},
-	TeamRunStatusRunning:      {TeamRunStatusWaitingHuman, TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled},
-	TeamRunStatusWaitingHuman: {TeamRunStatusRunning, TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled},
-}
-
-// Deprecated: Use TeamRunStateMachine.CanTransition() instead. This function will be removed in a future release.
-func ValidateTeamRunTransition(from, to string) bool {
-	if from == to {
-		return true
-	}
-	allowed, ok := teamRunValidTransitions[from]
-	if !ok {
-		return false
-	}
-	for _, s := range allowed {
-		if s == to {
-			return true
-		}
-	}
-	return false
 }
 
 const OrchestrationControlToolName = "orchestration_control"
@@ -315,12 +263,14 @@ type TeamGraphSession struct {
 }
 
 // TeamGraphSessionReader provides read access to team graph sessions.
+// Stability:stable
 type TeamGraphSessionReader interface {
 	GetSession(ctx context.Context, execID string) (TeamGraphSession, error)
 	ListActiveSessions(ctx context.Context) ([]TeamGraphSession, error)
 }
 
 // TeamGraphSessionWriter provides write access to team graph sessions.
+// Stability:stable
 type TeamGraphSessionWriter interface {
 	SaveSession(ctx context.Context, sess TeamGraphSession) error
 	UpdateSessionStatus(ctx context.Context, execID, status string) error

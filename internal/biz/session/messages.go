@@ -1,196 +1,86 @@
 package session
 
-import (
-	"context"
-	"strings"
+import "context"
 
-	"aranea-agents/pkg/loggateway"
-)
-
+// Stability:stable
 type MessageStatusWriter interface {
 	UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error
 }
 
-// SearchMessages full-text search within one session.
+// SearchMessages delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
-	if uc == nil || uc.messageReader == nil {
+	if uc == nil || uc.messageUsecase == nil {
 		return MessageSearchResult{}, nil
 	}
-	if strings.TrimSpace(q.SessionID) == "" {
-		return MessageSearchResult{}, validationErr("session_id is required")
-	}
-	if strings.TrimSpace(q.Keyword) == "" {
-		return MessageSearchResult{}, validationErr("keyword is required")
-	}
-	return uc.messageSearchReader.SearchMessages(ctx, q)
+	return uc.messageUsecase.SearchMessages(ctx, q)
 }
 
+// ListMessages delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
-	res, err := uc.ListMessagesPaged(ctx, sessionID, 0, 0)
-	if err != nil {
-		return nil, err
-	}
-	return res.Items, nil
+	return uc.messageUsecase.ListMessages(ctx, sessionID)
 }
 
-// ListMessagesPaged returns messages with DB pagination (default limit when limit<=0).
+// ListMessagesPaged delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID string, limit, offset int) (MessageListResult, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return MessageListResult{}, validationErr("session id is required")
-	}
-	total, err := uc.messageReader.CountMessagesBySession(ctx, sessionID)
-	if err != nil {
-		return MessageListResult{}, err
-	}
-	limit = clampMessageListLimit(limit)
-	if offset < 0 {
-		offset = 0
-	}
-	items, err := uc.messageReader.ListMessagesBySession(ctx, sessionID, limit, offset)
-	if err != nil {
-		return MessageListResult{}, err
-	}
-	return MessageListResult{Items: items, Total: total}, nil
+	return uc.messageUsecase.ListMessagesPaged(ctx, sessionID, limit, offset)
 }
 
-// ListMessagesAfterTurn loads rows with turn_number > afterTurn (compression path).
+// ListMessagesAfterTurn delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	return uc.messageReader.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
+	return uc.messageUsecase.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
 }
 
-// ListMessagesByStatus loads recent rows matching status (e.g. tool_running cancel path).
+// ListMessagesByStatus delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	return uc.messageSearchReader.ListMessagesByStatus(ctx, sessionID, status, limit)
+	return uc.messageUsecase.ListMessagesByStatus(ctx, sessionID, status, limit)
 }
 
-// ListMessagesRecent loads the latest N messages in chronological order (timeline / cron).
+// ListMessagesRecent delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	return uc.messageReader.ListMessagesRecent(ctx, sessionID, limit)
+	return uc.messageUsecase.ListMessagesRecent(ctx, sessionID, limit)
 }
 
-// AppendChatTurn persists a user + assistant pair (native chat).
+// AppendChatTurn delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error {
-	if err := uc.messageWriter.AppendChatTurn(ctx, sessionID, user, assistant); err != nil {
-		return err
-	}
-	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 2, LastMessageAt: assistant.CreatedAt}
-	uc.AccumulateMetricsDelta(delta)
-	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
-		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
-			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
-		}
-	}
-	return nil
+	return uc.messageUsecase.AppendChatTurn(ctx, sessionID, user, assistant)
 }
 
-// AppendChatMessage persists one chat row (streamed native turns).
+// AppendChatMessage delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error {
-	if err := uc.messageWriter.AppendChatMessage(ctx, sessionID, msg, bumpModelCall); err != nil {
-		return err
-	}
-	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 1, LastMessageAt: msg.CreatedAt}
-	uc.AccumulateMetricsDelta(delta)
-	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
-		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
-			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
-		}
-	}
-	return nil
+	return uc.messageUsecase.AppendChatMessage(ctx, sessionID, msg, bumpModelCall)
 }
 
+// UpdateChatMessageStatus delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {
-	sessionID = strings.TrimSpace(sessionID)
-	messageID = strings.TrimSpace(messageID)
-	status = strings.TrimSpace(status)
-	if sessionID == "" || messageID == "" {
-		return validationErr("session_id and message_id are required")
-	}
-	if status == "" {
-		return validationErr("status is required")
-	}
-	return uc.messageStatusWriter.UpdateChatMessageStatus(ctx, sessionID, messageID, status, strings.TrimSpace(errorMessage))
+	return uc.messageUsecase.UpdateChatMessageStatus(ctx, sessionID, messageID, status, errorMessage)
 }
 
-// UpdateMessageFeedback records thumbs up/down on an assistant message (options_json.feedback).
+// UpdateMessageFeedback delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) UpdateMessageFeedback(ctx context.Context, sessionID, messageID, rating, comment string) error {
-	sessionID = strings.TrimSpace(sessionID)
-	messageID = strings.TrimSpace(messageID)
-	rating = strings.TrimSpace(strings.ToLower(rating))
-	if sessionID == "" || messageID == "" {
-		return validationErr("session_id and message_id are required")
-	}
-	if rating != "positive" && rating != "negative" {
-		return validationErr("rating must be positive or negative")
-	}
-	return uc.messageWriter.UpdateMessageFeedbackJSON(ctx, sessionID, messageID, rating, strings.TrimSpace(comment))
+	return uc.messageUsecase.UpdateMessageFeedback(ctx, sessionID, messageID, rating, comment)
 }
 
-// ListMessagesAfterRevision returns messages with turn_number > afterRevision (M55 session sync).
+// ListMessagesAfterRevision delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	if _, err := uc.sessionReader.GetSessionByID(ctx, sessionID); err != nil {
-		return nil, err
-	}
-	return uc.messageSearchReader.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
+	return uc.messageUsecase.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
 }
 
-// BumpSessionRevision atomically increments session_revision after a completed turn.
+// BumpSessionRevision delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) BumpSessionRevision(ctx context.Context, sessionID string) (int64, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return 0, validationErr("session id is required")
-	}
-	return uc.sessionWriter.BumpSessionRevision(ctx, sessionID)
+	return uc.messageUsecase.BumpSessionRevision(ctx, sessionID)
 }
 
-// GetSessionRevision returns the current session_revision counter.
+// GetSessionRevision delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) GetSessionRevision(ctx context.Context, sessionID string) (int64, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return 0, validationErr("session id is required")
-	}
-	return uc.sessionReader.GetSessionRevision(ctx, sessionID)
+	return uc.messageUsecase.GetSessionRevision(ctx, sessionID)
 }
 
-// UpsertChatActivityMessage persists a tool/MCP/Skill execution card for chat history restore.
+// UpsertChatActivityMessage delegates to SessionMessageUsecase (Facade pattern).
 func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return validationErr("session id is required")
-	}
-	if strings.TrimSpace(msg.ID) == "" {
-		return validationErr("message id is required")
-	}
-	if _, err := uc.sessionReader.GetSessionByID(ctx, sessionID); err != nil {
-		return err
-	}
-	inserted, err := uc.messageWriter.UpsertChatActivityMessage(ctx, sessionID, msg)
-	if err != nil {
-		return err
-	}
-	if inserted {
-		uc.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: sessionID, MessageCount: 1, LastMessageAt: msg.CreatedAt})
-	}
-	return nil
+	return uc.messageUsecase.UpsertChatActivityMessage(ctx, sessionID, msg)
 }
 
 // UpdateRunnerSnapshotJSON persists the Runner session snapshot.
 func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
-	return uc.contextUpdater.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)
+	return uc.compressionUsecase.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)
 }

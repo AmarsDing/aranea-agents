@@ -4,7 +4,6 @@ import (
 	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	"aranea-agents/internal/data"
 	"aranea-agents/internal/knowledge"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/skill/importer"
@@ -100,7 +99,6 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
 	// Dependency inversion: bind concrete types to biz ports for TeamService
 	wire.Bind(new(biz.TeamTurnRunnerPort), new(*team.Runner)),
-	wire.Bind(new(biz.TeamReader), new(*data.TeamRepo)),
 	ProvideRunRegistryPort,
 	// Dependency inversion: adapt team runtime types to biz ports for ChatOrchestrator
 	ProvideTeamRunnerWirePort,

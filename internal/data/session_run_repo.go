@@ -392,8 +392,44 @@ func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, er
 	return entSessionRunToBiz(item), nil
 }
 
+// TransitionPhase performs a CAS (Compare-And-Swap) phase transition.
+// It only updates the row if the current phase matches fromPhase, preventing
+// TOCTOU races where a concurrent writer changes the phase between a Get and
+// an UpdatePhase call (N-04 fix).
+// Returns true if the transition succeeded (row was updated).
+func (r *sessionRunRepo) TransitionPhase(ctx context.Context, id, fromPhase, toPhase string) (bool, error) {
+	db := r.writeDB(ctx)
+	if db == nil {
+		return false, nil
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, nil
+	}
+	now := biz.ChannelTurnJobNow()
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.ExecContext(ctx, `
+UPDATE session_runs SET phase=?, phase_changed_at=?, updated_at=?
+WHERE id=? AND phase=?`,
+		biz.NormalizeSessionRunPhase(toPhase), now, nowStr, id, biz.NormalizeSessionRunPhase(fromPhase),
+	)
+	if err != nil {
+		r.data.lg.Warn("transition phase CAS failed", loggateway.StepID("data.session_run.transition_phase"), loggateway.Err(err))
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // MarkOrphanedRunsCancelled uses Raw SQL because it does a bulk conditional UPDATE
 // with a WHERE clause that is not easily expressible via Ent's Update API.
+//
+// B01 fix: durable runs with valid checkpoints are preserved (they will be
+// resumed by SessionRunDurableWorker). Only durable runs without a checkpoint
+// (anomalous data) are cleaned up alongside interactive/escalating orphans.
 func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, error) {
 	db := r.writeDB(ctx)
 	if db == nil {
@@ -403,7 +439,11 @@ func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, er
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.ExecContext(ctx, `
 UPDATE session_runs SET phase=?, error_message='orphaned: process restarted', finished_at=?, phase_changed_at=?, updated_at=?
-WHERE phase IN ('interactive','escalating','durable') AND (finished_at IS NULL OR finished_at='')`,
+WHERE (
+    phase IN ('interactive','escalating')
+    OR (phase='durable' AND (checkpoint_id IS NULL OR checkpoint_id=''))
+  )
+  AND (finished_at IS NULL OR finished_at='')`,
 		biz.SessionRunPhaseCancelled, now, now, nowStr,
 	)
 	if err != nil {

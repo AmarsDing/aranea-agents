@@ -41,7 +41,8 @@ func (EvalCase) Edges() []ent.Edge {
 		edge.From("dataset", EvalDataset.Type).
 			Ref("cases").
 			Field("dataset_id").
-			Unique(),
+			Unique().
+			Required(),
 		edge.To("results", EvalCaseResult.Type),
 	}
 }

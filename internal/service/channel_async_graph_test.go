@@ -131,6 +131,9 @@ func (s channelTestAgentRepo) UpdateAgentAtomic(_ context.Context, a biz.Agent, 
 func (s channelTestAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
 	return 0, nil
 }
+func (s channelTestAgentRepo) ToggleFavorite(_ context.Context, id string) (biz.Agent, error) {
+	return biz.Agent{ID: id}, nil
+}
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }

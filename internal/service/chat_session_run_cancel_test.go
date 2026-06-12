@@ -19,8 +19,10 @@ func TestCancelSessionRunForCard_ownershipDenied(t *testing.T) {
 	svc := &ChatService{
 		lg: loggateway.NewNoop(),
 		orch: &ChatOrchestrator{
-			chJobs: ChannelTurnJobDeps{
-				SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
+			channelDeps: ChatChannelDeps{
+				ChJobs: ChannelTurnJobDeps{
+					SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
+				},
 			},
 		},
 	}

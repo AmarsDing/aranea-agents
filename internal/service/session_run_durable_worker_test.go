@@ -81,6 +81,15 @@ func (s *durableWorkerRepoStub) ClearResumeClaim(_ context.Context, id string) e
 func (s *durableWorkerRepoStub) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
 	return 0, nil
 }
+func (s *durableWorkerRepoStub) TransitionPhase(_ context.Context, id, fromPhase, toPhase string) (bool, error) {
+	run, ok := s.runs[id]
+	if !ok || string(run.Phase) != fromPhase {
+		return false, nil
+	}
+	run.Phase = biz.NormalizeSessionRunPhase(toPhase)
+	s.runs[id] = run
+	return true, nil
+}
 
 type durableWorkerCheckpointStub struct {
 	cps map[string]biz.SessionRunCheckpoint
@@ -120,7 +129,7 @@ func TestSessionRunDurableWorker_skipsUnclaimedDuplicate(t *testing.T) {
 		},
 	}
 	uc := biz.NewSessionRunUsecase(repo, cps, nil)
-	chat := &ChatService{orch: &ChatOrchestrator{chJobs: ChannelTurnJobDeps{SessionRuns: uc}, runs: nil}}
+	chat := &ChatService{orch: &ChatOrchestrator{channelDeps: ChatChannelDeps{ChJobs: ChannelTurnJobDeps{SessionRuns: uc}}, runs: nil}}
 	w := NewSessionRunDurableWorker(uc, chat, chat, nil)
 	w.processOnce(context.Background())
 	if repo.runs["run-1"].ResumeStartedAt == "" {
