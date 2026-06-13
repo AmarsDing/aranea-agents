@@ -121,7 +121,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
-import { REGISTRY_COL_W, registryCol } from '../ui/registryTableColumns';
+import { RELATION_COLUMNS } from './memoryTableUi';
 import type { MemoryEntity } from './types';
 import { useMemoryGraphExplorer } from './composables/useMemoryGraphExplorer';
 const { neighborhood, loadingGraph, graphError, loadNeighborhood: fetchNeighborhood, resetNeighborhood } = useMemoryGraphExplorer();

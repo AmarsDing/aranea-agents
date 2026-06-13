@@ -136,3 +136,9 @@ export async function listPluginRuns(query: PluginRunListQuery = {}): Promise<Pa
     page_size: Number(res.pageSize ?? pageSize),
   };
 }
+
+export async function deleteAllPluginRuns(): Promise<number> {
+  const svc = pluginService;
+  const res = await svc.DeleteAllPluginRuns({});
+  return Number(res.deletedCount ?? 0);
+}

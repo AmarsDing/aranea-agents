@@ -69,11 +69,16 @@ func TestNormalizeRunStatus(t *testing.T) {
 }
 
 func TestShouldPersistPluginRun(t *testing.T) {
-	if shouldPersistPluginRun("success") || shouldPersistPluginRun("ok") {
-		t.Fatal("success should not persist run row")
+	rec := &RepoStatsRecorder{persistOK: false}
+	if rec.shouldPersistPluginRun("success") || rec.shouldPersistPluginRun("ok") {
+		t.Fatal("success should not persist run row when persistOK=false")
 	}
-	if !shouldPersistPluginRun("blocked") || !shouldPersistPluginRun("error") {
+	if !rec.shouldPersistPluginRun("blocked") || !rec.shouldPersistPluginRun("error") {
 		t.Fatal("blocked/error should persist")
+	}
+	recOK := &RepoStatsRecorder{persistOK: true}
+	if !recOK.shouldPersistPluginRun("success") {
+		t.Fatal("success should persist when persistOK=true")
 	}
 }
 

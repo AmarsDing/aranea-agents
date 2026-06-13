@@ -46,6 +46,13 @@ func NewDBPinger(db *sql.DB) DBPinger {
 	return &dbPingerAdapter{db: db}
 }
 
+// defaultTraceProjectorIdleTimeout is the threshold beyond which a
+// previously-active trace projector is considered stalled. The value
+// must be larger than the self-check interval (5 minutes by default) to
+// avoid flapping, and larger than the traceActiveTTL (10 minutes) so a
+// long-running run does not look like a stall.
+const defaultTraceProjectorIdleTimeout = 30 * time.Minute
+
 // DBHealthChecker verifies SQLite connectivity and basic schema integrity.
 type DBHealthChecker struct {
 	db DBPinger
@@ -208,18 +215,48 @@ func (c *FlowFileChecker) Check(ctx context.Context) types.SelfCheckResult {
 }
 
 // TraceProjectorHealthChecker is the port for checking TraceProjector health.
+//
+// The interface exposes liveness signals (Started), activity signals
+// (LastEventAt, HasEverProcessed) and the in-flight trace counter
+// (TraceCount). The self-check uses all four to distinguish "idle but
+// healthy" from "stalled subscription".
 type TraceProjectorHealthChecker interface {
+	// TraceCount returns the number of currently in-flight traces.
+	// In-flight means the projector has received a trace_id-bearing
+	// FlowLog for the trace and the matching runner.completion has
+	// not yet been observed.
 	TraceCount() int
+	// Started reports whether the projector's Start() has been invoked.
+	Started() bool
+	// LastEventAt returns the wall-clock time of the last envelope
+	// the projector received from the bus. The zero time means the
+	// projector has never received an envelope.
+	LastEventAt() time.Time
+	// HasEverProcessed reports whether the projector has received at
+	// least one envelope since it was started.
+	HasEverProcessed() bool
 }
 
-// TraceProjectorChecker verifies that the trace projector is active and processing traces.
+// TraceProjectorChecker verifies that the trace projector is active and
+// processing traces. The checker distinguishes three states:
+//
+//   - Idle (no traces in flight, but projector started and recent
+//     activity observed) → Passed. This is the steady state of a
+//     healthy system with no chat/team runs in progress.
+//   - Idle (projector started, never received an envelope, or hasn't
+//     received one in a long time) → Warning. This is a potential stall
+//     worth surfacing.
+//   - Not started (Start() was never invoked, e.g., missing wire binding)
+//     → Warning. Catches wiring bugs.
 type TraceProjectorChecker struct {
-	projector TraceProjectorHealthChecker
+	projector   TraceProjectorHealthChecker
+	idleTimeout time.Duration
 }
 
 // NewTraceProjectorChecker creates a checker for trace projector health.
+// A zero idleTimeout falls back to the default (30 minutes).
 func NewTraceProjectorChecker(projector TraceProjectorHealthChecker) *TraceProjectorChecker {
-	return &TraceProjectorChecker{projector: projector}
+	return &TraceProjectorChecker{projector: projector, idleTimeout: defaultTraceProjectorIdleTimeout}
 }
 
 func (c *TraceProjectorChecker) Name() string { return "trace_projector" }
@@ -238,17 +275,53 @@ func (c *TraceProjectorChecker) Check(ctx context.Context) types.SelfCheckResult
 		return result
 	}
 
+	started := c.projector.Started()
+	lastAt := c.projector.LastEventAt()
+	hasEver := c.projector.HasEverProcessed()
 	count := c.projector.TraceCount()
-	result.Details = map[string]any{"active_traces": count}
+	timeout := c.idleTimeout
+	if timeout <= 0 {
+		timeout = defaultTraceProjectorIdleTimeout
+	}
 
-	if count == 0 {
+	result.Details = map[string]any{
+		"active_traces":    count,
+		"started":          started,
+		"last_event_at":    lastAt,
+		"has_ever_received": hasEver,
+		"idle_timeout_sec": int(timeout.Seconds()),
+	}
+
+	switch {
+	case !started:
+		// Projector was constructed but never started. Most likely cause
+		// is a wiring bug in cmd/admin/wire.go. Worth flagging.
 		result.Status = types.SelfCheckStatusWarning
-		result.Message = "no active traces in projector (may be idle or stalled)"
+		result.Message = "trace projector not started (Start() never invoked)"
+		return result
+
+	case hasEver && !lastAt.IsZero() && now.Sub(lastAt) > timeout:
+		// Projector used to receive events but hasn't seen any in a while.
+		// This is the actual stall condition: subscription is up but
+		// traffic has stopped.
+		result.Status = types.SelfCheckStatusWarning
+		result.Message = fmt.Sprintf(
+			"trace projector stalled: no event received in the last %s (last event at %s)",
+			timeout.Truncate(time.Second), lastAt.Format(time.RFC3339),
+		)
 		return result
 	}
 
-	result.Status = types.SelfCheckStatusPassed
-	result.Message = fmt.Sprintf("trace projector healthy, %d active traces", count)
+	// Healthy: projector started, and either still receiving events or
+	// simply idle. In-flight trace count is reported but not used as a
+	// health signal — a count of 0 is the normal idle state.
+	if count > 0 {
+		result.Status = types.SelfCheckStatusPassed
+		result.Message = fmt.Sprintf("trace projector healthy, %d active trace(s)", count)
+	} else {
+		result.Status = types.SelfCheckStatusPassed
+		result.Message = "trace projector healthy, idle (no in-flight traces)"
+	}
 	return result
 }
 

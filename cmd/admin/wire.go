@@ -1454,8 +1454,9 @@ func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGu
 	return rt
 }
 
-func providePluginStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, agents biz.AgentRepository, lg loggateway.Logger) plugintrpc.StatsRecorder {
-	rec := plugintrpc.NewRepoStatsRecorder(repo, runs, lg)
+func providePluginStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, agents biz.AgentRepository, runtimeConf *conf.Runtime, lg loggateway.Logger) plugintrpc.StatsRecorder {
+	cfg := runtimeConf.PluginConfig()
+	rec := plugintrpc.NewRepoStatsRecorder(repo, runs, cfg.PersistSuccessRuns, lg)
 	if rec != nil {
 		rec.SetAgentKeyResolver(agentKeyToID(agents))
 	}

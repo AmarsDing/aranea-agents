@@ -316,11 +316,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       deps.onSpiritEnvelope?.(env);
     }
 
-    // AF-FE-15: Route Activity events to useActivityTimeline handler
-    if (env.type.startsWith('activity_')) {
-      deps.onActivityEnvelope?.(env);
-    }
-
     // P1: Register default handlers for previously-unhandled event types
     if (env.type === 'mcp.session.reconnect' || env.type === 'mcp.health.alert') {
       console.info(`[envelope] ${env.type} received`, { sessionId, requestId: env.request_id });
@@ -375,6 +370,18 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
+
+    // DECO-R-AF1: Route Activity events to useActivityTimeline handler.
+    // For the current session, activity events are handled by the session WS
+    // streamHandlers (which also update messageStore). The global hub only
+    // processes activity events for non-current sessions (channel inbound,
+    // background sessions) to avoid double-processing.
+    if (env.type.startsWith('activity_')) {
+      if (!isCurrent) {
+        deps.onActivityEnvelope?.(env);
+      }
+    }
+
     const entityMatch = matchesSelectedEntity(env);
     const turnComplete = isTurnCompleteEnvelope(env);
     const ownsEnvelope = isCurrent || entityMatch || (channelInbound && (isStreamEnvelopeType(env) || turnComplete));

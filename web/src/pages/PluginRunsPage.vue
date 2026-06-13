@@ -84,6 +84,16 @@
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="delete_sweep"
+          label="清空记录"
+          :loading="clearing"
+          :disable="rows.length === 0"
+          @click="confirmClear"
+        />
       </template>
     </AppPageToolbar>
 
@@ -149,6 +159,7 @@
 </template>
 
 <script setup lang="ts">
+import { Dialog } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -173,6 +184,7 @@ const {
   pageMax,
   detailOpen,
   detailText,
+  clearing,
   callbackPointOptions,
   statusOptions,
   pluginKeyOptions,
@@ -184,5 +196,16 @@ const {
   resetFilters,
   openDetail,
   detailPreview,
+  clearAll,
 } = usePluginRunsPage();
+
+function confirmClear() {
+  Dialog.create({
+    title: '确认清空',
+    message: '将删除所有 Callback / Plugin 运行记录，此操作不可撤销。确定继续？',
+    cancel: { label: '取消', flat: true, noCaps: true },
+    ok: { label: '确认清空', color: 'negative', flat: true, noCaps: true },
+    persistent: true,
+  }).onOk(() => void clearAll());
+}
 </script>

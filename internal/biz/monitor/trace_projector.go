@@ -21,6 +21,13 @@ type TraceProjector struct {
 
 	mu     sync.Mutex
 	traces map[string]*activeTrace
+
+	// started records whether Start() has been invoked. Combined with
+	// lastEventUnixNano it lets the self-check distinguish idle (never
+	// started or never received events) from stalled (used to receive
+	// events but hasn't recently).
+	started           atomic.Bool
+	lastEventUnixNano atomic.Int64
 }
 
 type activeTrace struct {
@@ -77,6 +84,7 @@ func (p *TraceProjector) Start(ctx context.Context) {
 	if err := p.repo.EnsureTraceSchema(ctx); err != nil {
 		p.lg.Warn("EnsureTraceSchema failed", loggateway.StepID("monitor.trace_schema_fail"), loggateway.Err(err))
 	}
+	p.started.Store(true)
 	opts := contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
 		BufferSize: 256,
@@ -138,6 +146,10 @@ func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
 	if p == nil || env.Metadata == nil {
 		return
 	}
+	// Record last-event time on every invocation, even for envelopes that
+	// don't carry a trace_id. This lets the self-check verify the projector
+	// is still receiving flow_log traffic from the bus.
+	p.lastEventUnixNano.Store(time.Now().UnixNano())
 	m := env.Metadata
 	traceID := metaStr(m, "trace_id")
 	if traceID == "" {
@@ -148,6 +160,8 @@ func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
 	runID := metaStr(m, "run_id")
 	agentID := metaStr(m, "agent_id")
 	agentKey := metaStr(m, "agent_key")
+	provider := metaStr(m, "provider")
+	model := metaStr(m, "model")
 	teamID := strings.TrimSpace(env.TeamID)
 	stepID := metaStr(m, "step_id")
 	flowPhase := metaStr(m, "flow_phase")
@@ -157,7 +171,7 @@ func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
 		agentID = agentKey
 	}
 
-	p.ensureTrace(ctx, traceID, sessionID, runID, agentID, teamID, domain)
+	p.ensureTrace(ctx, traceID, sessionID, runID, agentID, provider, model, teamID, domain)
 
 	kind := spanKindFromStep(stepID, domain)
 	if kind == "" {
@@ -279,6 +293,39 @@ func (p *TraceProjector) TraceCount() int {
 	return len(p.traces)
 }
 
+// Started reports whether Start() has been invoked on this projector.
+func (p *TraceProjector) Started() bool {
+	if p == nil {
+		return false
+	}
+	return p.started.Load()
+}
+
+// LastEventAt returns the wall-clock time at which the projector last
+// received an envelope from the bus. The zero value indicates that no
+// envelope has been received since process start.
+func (p *TraceProjector) LastEventAt() time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	ns := p.lastEventUnixNano.Load()
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns).UTC()
+}
+
+// HasEverProcessed reports whether the projector has received at least
+// one envelope since it was started. It is the boolean counterpart of
+// LastEventAt and lets callers cheaply distinguish "fresh / never seen
+// traffic" from "stale / once saw traffic but now silent".
+func (p *TraceProjector) HasEverProcessed() bool {
+	if p == nil {
+		return false
+	}
+	return p.lastEventUnixNano.Load() > 0
+}
+
 func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status string, durationMs int64) {
 	if p == nil || traceID == "" {
 		return
@@ -308,7 +355,7 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 	}
 }
 
-func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, runID, agentID, teamID, domain string) {
+func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, runID, agentID, provider, model, teamID, domain string) {
 	p.mu.Lock()
 	if _, exists := p.traces[traceID]; exists {
 		p.mu.Unlock()
@@ -331,6 +378,8 @@ func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, ru
 		SessionID: sessionID,
 		RunID:     runID,
 		AgentID:   agentID,
+		Provider:  provider,
+		Model:     model,
 		TeamID:    teamID,
 		Name:      domain,
 		Status:    "running",

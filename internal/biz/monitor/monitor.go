@@ -95,6 +95,8 @@ type TraceWrite struct {
 	RunID         string
 	InvocationID  string
 	AgentID       string
+	Provider      string
+	Model         string
 	TeamID        string
 	ParentTraceID string
 	Name          string

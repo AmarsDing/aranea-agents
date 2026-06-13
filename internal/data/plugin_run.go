@@ -111,3 +111,21 @@ FROM plugin_runs`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs..
 	}
 	return biz.PluginRunListResult{Items: items, Total: total, Limit: limit, Offset: offset}, rows.Err()
 }
+
+func (r *pluginRunRepo) DeleteAll(ctx context.Context) (int32, error) {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
+		return 0, nil
+	}
+	var count int32
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM plugin_runs", nil, &count); err != nil {
+		return 0, err
+	}
+	if count == 0 {
+		return 0, nil
+	}
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, "DELETE FROM plugin_runs")
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}

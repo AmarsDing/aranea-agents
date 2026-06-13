@@ -185,11 +185,17 @@ func TestTraceProjector_EnsureTrace_NewTraceCreated(t *testing.T) {
 			if tw.Status != "running" {
 				t.Errorf("Status = %q, want %q", tw.Status, "running")
 			}
+			if tw.Provider != "openai" {
+				t.Errorf("Provider = %q, want %q", tw.Provider, "openai")
+			}
+			if tw.Model != "gpt-4o" {
+				t.Errorf("Model = %q, want %q", tw.Model, "gpt-4o")
+			}
 			return nil
 		},
 	}
 	p := newTestTraceProjector(repo)
-	p.EnsureTraceExposed(context.Background(), "trace-new", "sess-1", "run-1", "agent-1", "team-1", "domain-1")
+	p.EnsureTraceExposed(context.Background(), "trace-new", "sess-1", "run-1", "agent-1", "openai", "gpt-4o", "team-1", "domain-1")
 	if !called {
 		t.Error("InsertMonitorTrace not called for new trace")
 	}
@@ -207,12 +213,12 @@ func TestTraceProjector_EnsureTrace_ExistingTraceReused(t *testing.T) {
 		},
 	}
 	p := newTestTraceProjector(repo)
-	p.EnsureTraceExposed(context.Background(), "trace-1", "sess-1", "run-1", "agent-1", "team-1", "domain-1")
+	p.EnsureTraceExposed(context.Background(), "trace-1", "sess-1", "run-1", "agent-1", "openai", "gpt-4o", "team-1", "domain-1")
 	if !called {
 		t.Error("InsertMonitorTrace should be called on first ensureTrace")
 	}
 	called = false
-	p.EnsureTraceExposed(context.Background(), "trace-1", "sess-1", "run-1", "agent-1", "team-1", "domain-1")
+	p.EnsureTraceExposed(context.Background(), "trace-1", "sess-1", "run-1", "agent-1", "openai", "gpt-4o", "team-1", "domain-1")
 	if called {
 		t.Error("InsertMonitorTrace should not be called for existing trace")
 	}
@@ -228,7 +234,7 @@ func TestTraceProjector_EnsureTrace_InsertError(t *testing.T) {
 		},
 	}
 	p := newTestTraceProjector(repo)
-	p.EnsureTraceExposed(context.Background(), "trace-1", "sess-1", "run-1", "agent-1", "team-1", "domain-1")
+	p.EnsureTraceExposed(context.Background(), "trace-1", "sess-1", "run-1", "agent-1", "openai", "gpt-4o", "team-1", "domain-1")
 	if p.TraceCount() != 1 {
 		t.Errorf("TraceCount() = %d, want 1 (trace still added to memory map even if insert fails)", p.TraceCount())
 	}
@@ -290,5 +296,66 @@ func TestTraceProjector_NewTraceProjector_DuplicateBus(t *testing.T) {
 	p := monitor.NewTraceProjector(repo, loggateway.NewNoop(), bus, bus)
 	if p == nil {
 		t.Fatal("NewTraceProjector with duplicate bus should still return non-nil")
+	}
+}
+
+// The next three tests cover the activity signals added to support the
+// self-check distinguishing idle from stalled. They do not exercise
+// Start() / Subscribe() because that requires a live bus goroutine;
+// instead they drive the signals directly via the public methods.
+
+func TestTraceProjector_Started_FalseBeforeStart(t *testing.T) {
+	// Fresh projector must report Started()=false until Start() runs.
+	// Self-check relies on this to detect wiring bugs.
+	p := newTestTraceProjector(&mockRepo{})
+	if p.Started() {
+		t.Error("expected Started()=false before Start()")
+	}
+}
+
+func TestTraceProjector_LastEventAt_ZeroBeforeEvents(t *testing.T) {
+	// No envelope has been processed, so LastEventAt must be the zero
+	// time. The check uses this to detect "freshly started, never seen
+	// traffic" vs "stalled".
+	p := newTestTraceProjector(&mockRepo{})
+	if !p.LastEventAt().IsZero() {
+		t.Errorf("expected zero time before any event, got %s", p.LastEventAt())
+	}
+	if p.HasEverProcessed() {
+		t.Error("expected HasEverProcessed()=false before any event")
+	}
+}
+
+func TestTraceProjector_HandleEnvelope_RecordsLastEvent(t *testing.T) {
+	// handle() should set lastEventUnixNano even for envelopes without
+	// a trace_id, because the bus subscription itself is the signal
+	// that the projector is "alive".
+	repo := &mockRepo{}
+	p := newTestTraceProjector(repo)
+	// We don't call Start() (it spawns goroutines that race the test);
+	// RecordEventForTest exercises the same lastEventUnixNano store
+	// call that handle() makes on the hot path.
+	p.RecordEventForTest()
+	if p.LastEventAt().IsZero() {
+		t.Error("expected LastEventAt to be non-zero after RecordEventForTest")
+	}
+	if !p.HasEverProcessed() {
+		t.Error("expected HasEverProcessed()=true after RecordEventForTest")
+	}
+}
+
+func TestTraceProjector_NilReceiverHealthMethods(t *testing.T) {
+	// A nil *TraceProjector must not panic on the new health methods;
+	// they all return the zero/false value, matching the contract used
+	// by TraceCount() already.
+	var p *monitor.TraceProjector
+	if p.Started() {
+		t.Error("nil Started() should be false")
+	}
+	if !p.LastEventAt().IsZero() {
+		t.Error("nil LastEventAt() should be zero")
+	}
+	if p.HasEverProcessed() {
+		t.Error("nil HasEverProcessed() should be false")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -330,8 +331,15 @@ func (p *ActivityProjector) OnDelegate(ctx context.Context, teamID, spiritSessio
 	p.publishAndPersist(ctx, child, contract.EnvelopeTypeActivityChildStart)
 }
 
-// OnError creates an error Activity.
-func (p *ActivityProjector) OnError(ctx context.Context, errMsg string) {
+// ActivityUsage carries token consumption data for a completed turn.
+type ActivityUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// OnError creates an error Activity with full error classification.
+func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType string, errCode string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -351,11 +359,22 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string) {
 	}
 
 	p.activities[id] = a
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+
+	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityStart)
+	// Attach error classification so the frontend can drive messageStore
+	// error handling (markStreamingMessagesFailed, onErrorNotify) without
+	// needing the legacy error envelope.
+	if errType != "" {
+		env.Metadata["error_type"] = errType
+	}
+	if errCode != "" {
+		env.Metadata["error_code"] = errCode
+	}
+	p.publishEnvelope(ctx, env, a)
 }
 
-// OnTurnEnd finalizes the root task Activity.
-func (p *ActivityProjector) OnTurnEnd(ctx context.Context) {
+// OnTurnEnd finalizes the root task Activity with optional token usage.
+func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -371,19 +390,34 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context) {
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityDone)
+	// Attach usage so the frontend can update session context metrics
+	// without needing the legacy runner_completion envelope.
+	if usage != nil {
+		env.Metadata["usage"] = map[string]any{
+			"prompt_tokens":     usage.PromptTokens,
+			"completion_tokens": usage.CompletionTokens,
+			"total_tokens":      usage.TotalTokens,
+		}
+	}
+	p.publishEnvelope(ctx, env, a)
 }
 
 // publishAndPersist publishes an Activity envelope and persists to DB.
 // Called with p.mu held — copies data before releasing mutex for I/O.
 func (p *ActivityProjector) publishAndPersist(ctx context.Context, a *biz.Activity, envType contract.EnvelopeType) {
-	// Copy activity data before I/O to avoid holding mutex during blocking operations
-	activityCopy := *a
 	env := p.buildActivityEnvelope(a, envType)
+	p.publishEnvelope(ctx, env, a)
+}
+
+// publishEnvelope publishes a pre-built envelope and persists the activity to DB.
+// Called with p.mu held — copies data before releasing mutex for I/O.
+func (p *ActivityProjector) publishEnvelope(ctx context.Context, env contract.Envelope, a *biz.Activity) {
+	activityCopy := *a
 
 	// I/O operations (event bus publish + DB write) happen after mutex release
 	// since callers unlock p.mu immediately after this method returns.
-	go func() {
+	safego.Go(ctx, "activity_projector.publish", func() {
 		if p.eventBus != nil {
 			p.eventBus.Publish(ctx, env)
 		}
@@ -393,10 +427,11 @@ func (p *ActivityProjector) publishAndPersist(ctx context.Context, a *biz.Activi
 					loggateway.StepID("agent.activity_projector.persist"),
 					loggateway.Str("activity_id", activityCopy.ID),
 					loggateway.Str("kind", string(activityCopy.Kind)),
+					loggateway.Str("status", string(activityCopy.Status)),
 					loggateway.Err(err))
 			}
 		}
-	}()
+	})
 }
 
 // publishActivityDelta publishes an activity_delta envelope with a content patch.
@@ -435,15 +470,22 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 		env.Metadata["reasoning"] = a.Reasoning
 	}
 
-	// Tool fields (exclude sensitive data from WS envelope — available via API)
+	// Tool fields — include redacted arguments/result so the frontend message
+	// list can render tool call messages without a separate API round-trip.
+	// The redaction limit (512 bytes) matches biz.redactActivityJSON and the
+	// frontend ACTIVITY_JSON_PREVIEW_LIMIT, ensuring consistency.
 	if a.ToolName != "" {
 		env.Metadata["tool_name"] = a.ToolName
 	}
 	if a.ToolCallID != "" {
 		env.Metadata["tool_call_id"] = a.ToolCallID
 	}
-	// tool_arguments and tool_result are NOT sent via WS for security;
-	// clients should fetch them via the ListActivities API if needed.
+	if a.ToolArguments != "" {
+		env.Metadata["tool_arguments"] = biz.RedactActivityJSON(a.ToolArguments)
+	}
+	if a.ToolResult != "" {
+		env.Metadata["tool_result"] = biz.RedactActivityJSON(a.ToolResult)
+	}
 	if a.ToolDurationMs > 0 {
 		env.Metadata["tool_duration_ms"] = a.ToolDurationMs
 	}

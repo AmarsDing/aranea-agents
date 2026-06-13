@@ -9,7 +9,7 @@ import {
 import type { PluginRun } from './types';
 
 import { PLUGIN_RUN_TABLE_COLUMNS } from './pluginRunsTableUi';
-import { listPluginRuns } from './api';
+import { listPluginRuns, deleteAllPluginRuns } from './api';
 
 export function usePluginRunsPage() {
   const route = useRoute();
@@ -65,8 +65,8 @@ export function usePluginRunsPage() {
     error.value = '';
     try {
       const data = await listPluginRuns({
-        plugin_key: pluginKey.value.trim() || undefined,
-        agent_id: agentId.value.trim() || undefined,
+        plugin_key: (pluginKey.value ?? '').trim() || undefined,
+        agent_id: (agentId.value ?? '').trim() || undefined,
         callback_point: callbackPoint.value || undefined,
         status: status.value || undefined,
         from: toRFC3339(from.value),
@@ -124,6 +124,22 @@ export function usePluginRunsPage() {
     return row.detail_json?.trim() || '';
   }
 
+  const clearing = ref(false);
+
+  async function clearAll() {
+    clearing.value = true;
+    try {
+      await deleteAllPluginRuns();
+      rows.value = [];
+      total.value = 0;
+      page.value = 1;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '清空记录失败';
+    } finally {
+      clearing.value = false;
+    }
+  }
+
   function applyRouteQuery() {
     const q = pluginRunsQueryFromRoute(route.query as Record<string, unknown>);
     if (q.plugin_key) pluginKey.value = q.plugin_key;
@@ -163,6 +179,7 @@ export function usePluginRunsPage() {
     pageMax,
     detailOpen,
     detailText,
+    clearing,
     callbackPointOptions,
     statusOptions,
     pluginKeyOptions,
@@ -174,5 +191,6 @@ export function usePluginRunsPage() {
     resetFilters,
     openDetail,
     detailPreview,
+    clearAll,
   };
 }

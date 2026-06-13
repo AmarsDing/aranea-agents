@@ -381,16 +381,21 @@ func (c *turnStreamConsumer) projectActivityEvents(ev *trpcevent.Event, envelope
 			}
 		case event.EnvelopeTypeError:
 			if env.Error != nil {
-				ap.OnError(c.turnCtx, env.Error.Message)
+				ap.OnError(c.turnCtx, env.Error.Message, env.Error.Type, env.Error.Code)
 			}
 		}
 	}
 }
 
 func (c *turnStreamConsumer) finalize() {
-	// AF phase: finalize root task Activity
+	// AF phase: finalize root task Activity with token usage
 	if c.opts != nil && c.opts.ActivityProjector != nil {
-		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx)
+		usage := &ActivityUsage{
+			PromptTokens:     c.result.PromptTok,
+			CompletionTokens: c.result.CompletionTok,
+			TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
+		}
+		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage)
 	}
 	if len(c.pendingToolCalls) == 0 {
 		return

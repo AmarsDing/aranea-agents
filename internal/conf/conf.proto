@@ -207,6 +207,10 @@ message Runtime {
     int32 channel_buffer = 3;         // internal channel capacity (0 = 64)
     int64 db_timeout_ms = 4;          // BatchCreate context timeout (0 = 5 s)
   }
+  // Plugin stats recorder tuning.
+  message Plugin {
+    bool persist_success_runs = 1;    // persist successful plugin runs to plugin_runs table (default false)
+  }
 
   WS ws = 1;
   Hook hook = 2;
@@ -215,4 +219,5 @@ message Runtime {
   Webhook webhook = 5;
   AutoMemory auto_memory = 6;
   ActivityFlusher activity_flusher = 7;
+  Plugin plugin = 8;
 }

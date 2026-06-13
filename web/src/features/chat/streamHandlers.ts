@@ -2,7 +2,7 @@ import type { Envelope } from './envelope';
 import type { UseEnvelopeStreamReturn } from './useEnvelopeStream';
 import type { Message } from './types';
 import type { Session } from '../session/types';
-import { upsertToolMessage, finalizeOrphanToolMessages } from './envelopeToolCall';
+import { upsertToolMessage, finalizeOrphanToolMessages, toolEventFromMessage } from './envelopeToolCall';
 import { patchStreamingMessage } from './streamContentPatch';
 import { createMessageBatchWriter } from './messageStoreBatch';
 import { shouldSessionWsSkipEnvelope } from './inboundSyncRouting';
@@ -11,6 +11,15 @@ import type { SessionContextPatch } from './sessionContextPatch';
 
 import { originFromId } from './messageOrigin';
 import { formatErrorWithHint } from './errorCodeHints';
+import {
+  createStreamingMessageFromActivity,
+  patchStreamingMessageFromDelta,
+  finalizeStreamingMessageFromDone,
+  createToolMessageFromActivityStart,
+  mergeToolResultFromDone,
+} from './activityMessageAdapter';
+import { toolEventToMessage } from './toolEventMarkdown';
+import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta } from './activityTypes';
 
 export function createPlaceholderMessage(id: string, sessionID: string, role: string, content: string): Message {
   return {
@@ -69,6 +78,15 @@ export type StreamHandlerCtx = {
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   streamIdPrefix?: string;
+  /**
+   * H-03: Maximum time (ms) to wait for a runner_completion event after the
+   * first streaming event arrives. If exceeded, the streaming session is
+   * forcefully finalized to prevent messages from being stuck in 'streaming'
+   * status indefinitely. Defaults to 5 minutes if not provided.
+   */
+  streamTimeoutMs?: number;
+  /** AF mode: route activity envelopes to timeline handler */
+  onActivityEnvelope?: (env: Envelope) => void;
 };
 
 function streamRowId(ctx: StreamHandlerCtx, sessionId: string): string {
@@ -94,16 +112,19 @@ function snapshotStreamingMessage(
 
   const streamMsg = messages[streamIdx];
   // Only snapshot if the streaming message has content (reasoning or text)
-  const hasContent = (streamMsg.content_markdown?.trim() ?? '') !== ''
-    || (streamMsg.reasoning_markdown?.trim() ?? '') !== '';
+  const hasContent =
+    (streamMsg.content_markdown?.trim() ?? '') !== '' || (streamMsg.reasoning_markdown?.trim() ?? '') !== '';
   if (!hasContent) return { messages, newStreamId: streamId };
 
-  // Generate a stable ID for the snapshot: ws-snap-{sessionId}-{timestamp}
-  const snapId = `ws-snap-${sessionId}-${Date.now()}`;
+  // Generate a stable ID for the snapshot: ws-snap-{sessionId}-{counter}
+  // Using a monotonic counter instead of Date.now() to avoid collisions
+  // when multiple snapshots occur within the same millisecond.
+  snapshotCounter++;
+  const snapId = `ws-snap-${sessionId}-${snapshotCounter}`;
   const snapMsg: Message = {
     ...streamMsg,
     id: snapId,
-    status: 'ok',  // Snapshot is complete — no longer streaming
+    status: 'ok', // Snapshot is complete — no longer streaming
   };
 
   // Replace the streaming message with the snapshot
@@ -111,6 +132,13 @@ function snapshotStreamingMessage(
   next[streamIdx] = snapMsg;
   return { messages: next, newStreamId: streamId };
 }
+
+// Monotonic counter for snapshot IDs — avoids Date.now() collisions.
+// TECH-DEBT: Module-level mutable state. If parallel streaming sessions
+// ever need isolated counters, move this into StreamHandlerCtx or the
+// bindStreamHandlers closure. For now, shared counter is acceptable because
+// uniqueness (not isolation) is the only requirement.
+let snapshotCounter = 0;
 
 function patchMessages(ctx: StreamHandlerCtx, sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
   ctx.setMessages(sessionId, patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone));
@@ -126,6 +154,24 @@ function markPendingUserFailed(messages: Message[], pendingId: string, errorMess
         }
       : m,
   );
+}
+
+/**
+ * Mark all active streaming assistant messages (ws-stream-*) as failed.
+ * Called when an error event arrives during streaming, ensuring that
+ * in-progress assistant messages don't remain stuck in 'streaming' status.
+ */
+function markStreamingMessagesFailed(messages: Message[], sessionId: string, errorMessage: string): Message[] {
+  return messages.map((m) => {
+    if (m.role !== 'assistant' || m.status !== 'streaming') return m;
+    if (m.origin?.kind !== 'streaming') return m;
+    if (m.session_id !== sessionId) return m;
+    return {
+      ...m,
+      status: 'failed',
+      error_message: errorMessage,
+    };
+  });
 }
 
 function latestPendingUserId(messages: Message[]): string {
@@ -182,7 +228,7 @@ export function bindStreamHandlers(
   stream: UseEnvelopeStreamReturn,
   ctx: StreamHandlerCtx,
   opts?: { batched?: boolean },
-): void {
+): () => void {
   const batched = opts?.batched ?? false;
   const writer = batched
     ? createMessageBatchWriter(
@@ -190,6 +236,41 @@ export function bindStreamHandlers(
         (rows) => ctx.setMessages(ctx.sessionId, rows),
       )
     : null;
+
+  let afMode = false; // AF mode: activity events drive messageStore
+
+  // H-03: Stream timeout protection. If runner_completion never arrives
+  // (e.g., WS disconnect), force-finalize all streaming/tool_running messages
+  // after the timeout expires. The timer starts on the first streaming event
+  // and is cleared when runner_completion or error arrives.
+  const STREAM_TIMEOUT_MS = ctx.streamTimeoutMs ?? 5 * 60 * 1_000;
+  let streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let streamStarted = false;
+
+  function startStreamTimeout() {
+    if (streamStarted) return;
+    streamStarted = true;
+    streamTimeoutId = setTimeout(() => {
+      const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
+      if (!sid) return;
+      writer?.flushSync();
+      let rows = ctx.getMessages(sid);
+      // Finalize orphan tool messages
+      rows = finalizeOrphanToolMessages(rows, '流式响应超时，已自动结束');
+      // Mark streaming assistant messages as failed
+      rows = markStreamingMessagesFailed(rows, sid, '流式响应超时，已自动结束');
+      ctx.setMessages(sid, rows);
+      ctx.markSendingDone();
+      ctx.onErrorNotify('流式响应超时，已自动结束');
+    }, STREAM_TIMEOUT_MS);
+  }
+
+  function clearStreamTimeout() {
+    if (streamTimeoutId !== null) {
+      clearTimeout(streamTimeoutId);
+      streamTimeoutId = null;
+    }
+  }
 
   function patch(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
     if (writer) {
@@ -223,9 +304,11 @@ export function bindStreamHandlers(
   stream.onType(
     'text_delta',
     withSessionFilter(ctx, (env, sid) => {
+      if (afMode) return; // AF mode: activity handlers drive messageStore
       if (!env.content?.text && !env.content?.reasoning) return;
       ctx.onRunActivity?.();
       ctx.onFirstByteArrived?.();
+      startStreamTimeout();
       ctx.onStreamingPatch?.(sid, {
         reasoning: env.content?.reasoning,
         partialText: env.content?.text,
@@ -237,6 +320,7 @@ export function bindStreamHandlers(
   stream.onType(
     'text_done',
     withSessionFilter(ctx, (env, sid) => {
+      if (afMode) return; // AF mode: activity handlers drive messageStore
       ctx.onStreamingPatch?.(sid, {
         reasoning: env.content?.reasoning,
         partialText: env.content?.text,
@@ -259,6 +343,7 @@ export function bindStreamHandlers(
   stream.onType(
     'tool_call',
     withSessionFilter(ctx, (env, sid) => {
+      if (afMode) return; // AF mode: activity handlers drive messageStore
       if (!env.tool_call) return;
       ctx.onRunActivity?.();
 
@@ -268,26 +353,28 @@ export function bindStreamHandlers(
       // streaming message. This is the key mechanism for separating multiple
       // rounds of thinking/replying in the Activity Timeline.
       const streamId = streamRowId(ctx, sid);
-      const cur = ctx.getMessages(sid);
-      const { messages: snapped, newStreamId } = snapshotStreamingMessage(cur, sid, streamId);
-
-      // Remove the old streaming row if it was snapshotted (a new one will be
-      // created automatically when the next text_delta arrives).
-      const cleaned = newStreamId !== streamId
-        ? snapped.filter((m) => m.id !== streamId)
-        : snapped;
 
       if (writer) {
-        writer.update(() => upsertToolMessage(cleaned, sid, env, 'before'));
+        // C-02 fix: perform snapshot inside the writer.update callback so that
+        // the snapshot is computed from the writer's pending state (which may
+        // include unflushed text_delta updates), not from the stale store.
+        writer.update((cur) => {
+          const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
+          return upsertToolMessage(snapped, sid, env, 'before');
+        });
         return;
       }
-      ctx.setMessages(sid, upsertToolMessage(cleaned, sid, env, 'before'));
+      // Non-batched path: read directly from store (no pending state to lose)
+      const cur = ctx.getMessages(sid);
+      const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
+      ctx.setMessages(sid, upsertToolMessage(snapped, sid, env, 'before'));
     }),
   );
 
   stream.onType(
     'tool_result',
     withSessionFilter(ctx, (env, sid) => {
+      if (afMode) return; // AF mode: activity handlers drive messageStore
       if (!env.tool_call) return;
       if (writer) {
         writer.update((cur) => upsertToolMessage(cur, sid, env, 'after'));
@@ -313,26 +400,45 @@ export function bindStreamHandlers(
       const sid = ctx.resolveActiveSessionId();
       if (!sid || !env.author) return;
       const msgId = `member-${env.author}`;
+      const meta = ctx.resolveMemberMeta!(env.author);
+      const newMsg: Message = {
+        ...createPlaceholderMessage(msgId, sid, 'assistant', ''),
+        status: 'streaming',
+        model_name: `team/${meta.role || 'member'}`,
+        options_json: JSON.stringify({ team_member: meta }),
+        origin: { kind: 'team_member', agentKey: env.author },
+        team_member: { agent_id: '', name: meta.name, role: meta.role },
+      };
+      // Use batch writer when available for consistency with member_delta/done.
+      // member_message_start needs immediate rendering, but the writer's
+      // RAF flush is fast enough (~16ms) that the delay is imperceptible.
+      if (writer && sid === ctx.sessionId) {
+        writer.update((cur) => {
+          if (cur.some((m) => m.id === msgId)) return cur;
+          return [...cur, newMsg];
+        });
+        return;
+      }
       const cur = ctx.getMessages(sid);
       if (cur.some((m) => m.id === msgId)) return;
-      const meta = ctx.resolveMemberMeta!(env.author);
-      ctx.setMessages(sid, [
-        ...cur,
-        {
-          ...createPlaceholderMessage(msgId, sid, 'assistant', ''),
-          status: 'streaming',
-          model_name: `team/${meta.role || 'member'}`,
-          options_json: JSON.stringify({ team_member: meta }),
-          origin: { kind: 'team_member', agentKey: env.author },
-          team_member: { agent_id: '', name: meta.name, role: meta.role },
-        },
-      ]);
+      ctx.setMessages(sid, [...cur, newMsg]);
     });
 
     stream.onType('member_delta', (env: Envelope) => {
       const sid = ctx.resolveActiveSessionId();
       if (!sid || !env.author) return;
       const msgId = `member-${env.author}`;
+      // M-01 fix: use batch writer when available to avoid racing with
+      // other streaming updates on the same session.
+      if (writer && sid === ctx.sessionId) {
+        writer.update((cur) =>
+          patchStreamingMessage(cur, msgId, {
+            text: env.content?.text,
+            reasoning: env.content?.reasoning,
+          }),
+        );
+        return;
+      }
       ctx.setMessages(
         sid,
         patchStreamingMessage(ctx.getMessages(sid), msgId, {
@@ -346,6 +452,16 @@ export function bindStreamHandlers(
       const sid = ctx.resolveActiveSessionId();
       if (!sid || !env.author) return;
       const msgId = `member-${env.author}`;
+      if (writer && sid === ctx.sessionId) {
+        writer.update((cur) =>
+          patchStreamingMessage(cur, msgId, {
+            replaceText: env.content?.text,
+            replaceReasoning: env.content?.reasoning,
+            status: 'ok',
+          }),
+        );
+        return;
+      }
       ctx.setMessages(
         sid,
         patchStreamingMessage(ctx.getMessages(sid), msgId, {
@@ -358,6 +474,8 @@ export function bindStreamHandlers(
   }
 
   stream.onType('runner_completion', async (env: Envelope) => {
+    if (afMode) return; // AF mode: activity handlers drive messageStore
+    clearStreamTimeout();
     ctx.markSendingDone();
     writer?.flushSync();
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
@@ -383,6 +501,8 @@ export function bindStreamHandlers(
   });
 
   stream.onType('error', async (env: Envelope) => {
+    if (afMode) return; // AF mode: activity handlers drive messageStore
+    clearStreamTimeout();
     const errType = env.error?.type ?? '';
     if (errType.startsWith('flow_')) return;
     const hint = env.error?.hint?.trim();
@@ -392,12 +512,16 @@ export function bindStreamHandlers(
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
     writer?.flushSync();
     if (sid) {
-      const pendingUserId = env.request_id?.startsWith('pending-user-')
-        ? env.request_id
-        : latestPendingUserId(ctx.getMessages(sid));
+      // H-02 fix: mark both the pending user message and any active
+      // streaming assistant message as failed, so neither gets stuck
+      // in a non-terminal status.
+      let rows = ctx.getMessages(sid);
+      const pendingUserId = env.request_id?.startsWith('pending-user-') ? env.request_id : latestPendingUserId(rows);
       if (pendingUserId) {
-        ctx.setMessages(sid, markPendingUserFailed(ctx.getMessages(sid), pendingUserId, msg));
+        rows = markPendingUserFailed(rows, pendingUserId, msg);
       }
+      rows = markStreamingMessagesFailed(rows, sid, msg);
+      ctx.setMessages(sid, rows);
     }
     ctx.markSendingDone();
     if (sid && !shouldSessionWsSkipEnvelope(env)) {
@@ -434,4 +558,239 @@ export function bindStreamHandlers(
       }),
     );
   }
+
+  // === AF (Activity-First) Handlers ===
+  // When the backend enables SkipEventProjectorWS, these handlers drive
+  // the messageStore exclusively. AF mode is detected by receiving
+  // activity_start(kind=task) — the root turn activity.
+
+  stream.onType('activity_start', (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
+    const sid = env.session_id || ctx.sessionId;
+    const active = ctx.resolveActiveSessionId();
+    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+    const md = (env.metadata ?? {}) as Record<string, unknown>;
+    const kind = String(md.kind ?? '');
+
+    // Detect AF mode on root task start
+    if (kind === 'task') {
+      afMode = true;
+      ctx.onRunActivity?.();
+      ctx.onFirstByteArrived?.();
+    }
+
+    if (!afMode) return; // Only process in AF mode
+
+    const streamId = streamRowId(ctx, sid);
+
+    switch (kind) {
+      case 'thinking':
+      case 'reply': {
+        // Create or ensure streaming message exists
+        const msgs = ctx.getMessages(sid);
+        const exists = msgs.some((m) => m.id === streamId);
+        if (!exists) {
+          const newMsg = createStreamingMessageFromActivity(streamId, sid, md as unknown as ActivityStartMeta);
+          if (writer && sid === ctx.sessionId) {
+            writer.update((cur) => [...cur, newMsg]);
+          } else {
+            ctx.setMessages(sid, [...msgs, newMsg]);
+          }
+        }
+        startStreamTimeout();
+        if (kind === 'reply') ctx.onFirstByteArrived?.();
+        ctx.onStreamingPatch?.(sid, {
+          reasoning: kind === 'thinking' ? '' : undefined,
+          partialText: kind === 'reply' ? '' : undefined,
+        });
+        break;
+      }
+      case 'action': {
+        // Snapshot current streaming message, then create tool message
+        if (writer && sid === ctx.sessionId) {
+          writer.update((cur) => {
+            const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
+            const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
+            return [...snapped, toolMsg];
+          });
+        } else {
+          const snapped = snapshotStreamingMessage(ctx.getMessages(sid), sid, streamId);
+          const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
+          ctx.setMessages(sid, [...snapped.messages, toolMsg]);
+        }
+        break;
+      }
+      case 'error': {
+        clearStreamTimeout();
+        const errMsg = String(md.content ?? 'stream failed');
+        const errType = String(md.error_type ?? '');
+        if (!errType.startsWith('flow_')) {
+          ctx.onErrorNotify?.(errMsg);
+          const msgs = ctx.getMessages(sid);
+          const withFailed = markStreamingMessagesFailed(msgs, sid, errMsg);
+          const pendingId = latestPendingUserId(withFailed);
+          const final = pendingId ? markPendingUserFailed(withFailed, pendingId, errMsg) : withFailed;
+          ctx.setMessages(sid, final);
+        }
+        ctx.markSendingDone();
+        break;
+      }
+    }
+
+    // Also update activity timeline
+    ctx.onActivityEnvelope?.(env);
+  });
+
+  stream.onType('activity_delta', (env: Envelope) => {
+    if (!afMode) return;
+    if (shouldSessionWsSkipEnvelope(env)) return;
+    const sid = env.session_id || ctx.sessionId;
+    const active = ctx.resolveActiveSessionId();
+    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+    const md = (env.metadata ?? {}) as Record<string, unknown>;
+    const field = String(md.delta_field ?? '');
+    const chunk = String(md.delta_chunk ?? '');
+    if (!chunk) return;
+
+    const streamId = streamRowId(ctx, sid);
+    ctx.onRunActivity?.();
+
+    if (field === 'content') {
+      ctx.onStreamingPatch?.(sid, { partialText: chunk });
+    } else if (field === 'reasoning') {
+      ctx.onStreamingPatch?.(sid, { reasoning: chunk });
+    }
+
+    if (writer && sid === ctx.sessionId) {
+      writer.update((cur) => {
+        const idx = cur.findIndex((m) => m.id === streamId);
+        if (idx < 0) return cur;
+        const patched = patchStreamingMessageFromDelta(cur[idx], md as unknown as ActivityDeltaMeta);
+        const next = [...cur];
+        next[idx] = patched;
+        return next;
+      });
+    } else {
+      const msgs = ctx.getMessages(sid);
+      const idx = msgs.findIndex((m) => m.id === streamId);
+      if (idx >= 0) {
+        const patched = patchStreamingMessageFromDelta(msgs[idx], md as unknown as ActivityDeltaMeta);
+        const next = [...msgs];
+        next[idx] = patched;
+        ctx.setMessages(sid, next);
+      }
+    }
+
+    ctx.onActivityEnvelope?.(env);
+  });
+
+  stream.onType('activity_done', async (env: Envelope) => {
+    if (!afMode) return;
+    if (shouldSessionWsSkipEnvelope(env)) return;
+    const sid = env.session_id || ctx.sessionId;
+    const active = ctx.resolveActiveSessionId();
+    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+    const md = (env.metadata ?? {}) as Record<string, unknown>;
+    const kind = String(md.kind ?? '');
+    const streamId = streamRowId(ctx, sid);
+
+    switch (kind) {
+      case 'thinking': {
+        // Finalize reasoning, then snapshot
+        writer?.flushSync();
+        const msgs = ctx.getMessages(sid);
+        const idx = msgs.findIndex((m) => m.id === streamId);
+        if (idx >= 0) {
+          const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
+          const next = [...msgs];
+          next[idx] = finalized;
+          const snapped = snapshotStreamingMessage(next, sid, streamId);
+          ctx.setMessages(sid, snapped.messages);
+        }
+        break;
+      }
+      case 'reply': {
+        writer?.flushSync();
+        const msgs = ctx.getMessages(sid);
+        const idx = msgs.findIndex((m) => m.id === streamId);
+        if (idx >= 0) {
+          const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
+          const next = [...msgs];
+          next[idx] = finalized;
+          ctx.setMessages(sid, next);
+        }
+        break;
+      }
+      case 'action': {
+        // Update tool message with result
+        const toolCallId = String(md.tool_call_id ?? '');
+        const actId = `act-${toolCallId}`;
+        if (writer && sid === ctx.sessionId) {
+          writer.update((cur) => {
+            const idx = cur.findIndex((m) => m.id === actId);
+            if (idx < 0) return cur;
+            const existing = toolEventFromMessage(cur[idx]);
+            if (!existing) return cur;
+            const merged = mergeToolResultFromDone(existing, md as unknown as ActivityDoneMeta);
+            const updated = toolEventToMessage(sid, merged);
+            updated.id = actId;
+            const next = [...cur];
+            next[idx] = { ...cur[idx], ...updated, id: actId };
+            return next;
+          });
+        } else {
+          const msgs = ctx.getMessages(sid);
+          const idx = msgs.findIndex((m) => m.id === actId);
+          if (idx >= 0) {
+            const existing = toolEventFromMessage(msgs[idx]);
+            if (existing) {
+              const merged = mergeToolResultFromDone(existing, md as unknown as ActivityDoneMeta);
+              const updated = toolEventToMessage(sid, merged);
+              updated.id = actId;
+              const next = [...msgs];
+              next[idx] = { ...msgs[idx], ...updated, id: actId };
+              ctx.setMessages(sid, next);
+            }
+          }
+        }
+        break;
+      }
+      case 'task': {
+        // Equivalent to runner_completion
+        clearStreamTimeout();
+        ctx.markSendingDone();
+        writer?.flushSync();
+        const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid));
+        ctx.setMessages(sid, finalized);
+        // Apply usage if present
+        const usage = md.usage as Record<string, unknown> | undefined;
+        if (usage) {
+          applySessionContextPatch(sid, env);
+        }
+        if (shouldSessionWsSkipEnvelope(env)) return;
+        try {
+          await ctx.onReloadAfterCompletion?.(sid);
+        } catch {
+          /* caller may surface errors */
+        }
+        break;
+      }
+    }
+
+    ctx.onActivityEnvelope?.(env);
+  });
+
+  stream.onType('activity_child_start', (env: Envelope) => {
+    if (!afMode) return;
+    ctx.onActivityEnvelope?.(env);
+  });
+
+  // Return a cleanup function that clears the stream timeout and disposes
+  // the batch writer. Callers should invoke this when the stream is
+  // disconnected or the component is unmounted to prevent the timeout
+  // from firing on stale state or the writer from flushing after unmount.
+  return () => {
+    clearStreamTimeout();
+    writer?.dispose();
+  };
 }

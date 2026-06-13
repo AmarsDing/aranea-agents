@@ -3,6 +3,7 @@ import type { Message } from './types';
 type MessageWriter = {
   update: (updater: (current: Message[]) => Message[]) => void;
   flushSync: () => void;
+  dispose: () => void;
 };
 
 /** Coalesce rapid WS tool/text patches into one render per animation frame. */
@@ -12,6 +13,7 @@ export function createMessageBatchWriter(
 ): MessageWriter {
   let pending: Message[] | null = null;
   let rafId = 0;
+  let disposed = false;
 
   function flushSync() {
     if (rafId) {
@@ -28,7 +30,7 @@ export function createMessageBatchWriter(
     if (rafId) return;
     rafId = requestAnimationFrame(() => {
       rafId = 0;
-      if (pending) {
+      if (pending && !disposed) {
         setMessages(pending);
         pending = null;
       }
@@ -36,10 +38,20 @@ export function createMessageBatchWriter(
   }
 
   function update(updater: (current: Message[]) => Message[]) {
+    if (disposed) return;
     const base = pending ?? getMessages();
     pending = updater(base);
     schedule();
   }
 
-  return { update, flushSync };
+  function dispose() {
+    disposed = true;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    pending = null;
+  }
+
+  return { update, flushSync, dispose };
 }

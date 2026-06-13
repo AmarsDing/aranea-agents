@@ -22,6 +22,13 @@ func redactActivityJSON(s string) string {
 	return s[:activityJSONPreviewLimit] + "…[truncated]"
 }
 
+// RedactActivityJSON is the exported version of redactActivityJSON for use by
+// packages outside biz (e.g., agent.ActivityProjector) that need to apply the
+// same SEC-04 redaction when building WS envelopes.
+func RedactActivityJSON(s string) string {
+	return redactActivityJSON(s)
+}
+
 // AgentNodeStatus is the fine-grained lifecycle status of an agent node in an orchestration run.
 type AgentNodeStatus string
 

@@ -238,3 +238,11 @@ func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRu
 	}
 	return resp, nil
 }
+
+func (s *PluginService) DeleteAllPluginRuns(ctx context.Context, _ *v1.DeleteAllPluginRunsRequest) (*v1.DeleteAllPluginRunsResponse, error) {
+	count, err := s.uc.DeleteAllRuns(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeleteAllPluginRunsResponse{DeletedCount: count}, nil
+}

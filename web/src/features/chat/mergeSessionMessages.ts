@@ -30,7 +30,32 @@ export function isInFlightLocalRow(message: Message): boolean {
   return isInFlightStatus(message.status || '');
 }
 
+/**
+ * Whether a local-only message should be included in the merge output.
+ *
+ * Messages fall into three categories for merge purposes:
+ *   1. **persisted** — has a server counterpart, managed by server data
+ *   2. **in-flight-active** — still streaming/running, must be preserved
+ *   3. **in-flight-snapshot** — finalized local snapshot (ws-snap-*) that
+ *      carries correct per-round content when the server message merges
+ *      all rounds into one. These must be preserved when hasSnapshots=true.
+ */
+function shouldIncludeInMerge(message: Message, hasSnapshots: boolean): boolean {
+  // Streaming snapshots are a third category: not persisted, not active,
+  // but must be kept when they carry round-separated content that the
+  // server's merged assistant message would duplicate.
+  if (message.origin?.kind === 'streaming_snapshot' && hasSnapshots) return true;
+  return isInFlightLocalRow(message);
+}
+
 function messageOrder(message: Message): [number, string] {
+  // Streaming snapshots are finalized local messages that should sort
+  // alongside persisted messages by timestamp, not be pushed to the end
+  // with active in-flight messages. This is correct because snapshots
+  // inherit their created_at from the original ws-stream-* message,
+  // which was set when the streaming row was first created — so the
+  // timestamp is comparable with server-persisted messages.
+  if (message.origin?.kind === 'streaming_snapshot') return [0, message.created_at || ''];
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
   return [inFlight, message.created_at || ''];
 }
@@ -150,24 +175,39 @@ function findServerMatchForStreaming(
   matched: Set<string>,
 ): Message | null {
   const content = (streaming.content_markdown ?? '').trim();
-  if (!content) return null;
-  // Try exact match first
-  const key = `${streaming.session_id}::${content}`;
-  const candidates = serverMap.get(key);
-  if (candidates) {
-    for (const c of candidates) {
-      if (!matched.has(c.id)) {
-        matched.add(c.id);
-        return c;
+  const reasoning = (streaming.reasoning_markdown ?? '').trim();
+  // M-02: Allow matching when only reasoning exists (no content_markdown).
+  // Some LLM rounds produce only thinking with no separate reply text.
+  if (!content && !reasoning) return null;
+
+  // Try exact content match first
+  if (content) {
+    const key = `${streaming.session_id}::${content}`;
+    const candidates = serverMap.get(key);
+    if (candidates) {
+      for (const c of candidates) {
+        if (!matched.has(c.id)) {
+          matched.add(c.id);
+          return c;
+        }
       }
     }
   }
+
   // Try prefix match — server content may be longer (includes reasoning, etc.)
+  // Only allow serverContent.startsWith(content): the server message is the
+  // superset that contains the streaming content as a prefix. The reverse
+  // direction (content.startsWith(serverContent)) is unsafe because a
+  // streaming message may contain accumulated multi-round content that
+  // coincidentally starts with a different round's server message.
+  // PERF: O(n*m) prefix scan over server assistant messages. Acceptable
+  // for typical session sizes (< 100 assistant messages per session).
   for (const [mapKey, msgs] of serverMap) {
     const prefix = `${streaming.session_id}::`;
     if (!mapKey.startsWith(prefix)) continue;
     const serverContent = mapKey.slice(prefix.length);
-    if (serverContent.startsWith(content) || content.startsWith(serverContent)) {
+    if (!serverContent || !content) continue;
+    if (serverContent.startsWith(content)) {
       for (const c of msgs) {
         if (!matched.has(c.id)) {
           matched.add(c.id);
@@ -241,7 +281,7 @@ export function mergeSessionMessages(
   for (const row of local) {
     if (pendingReplacedBy.has(row.id)) continue;
     if (serverById.has(row.id)) continue;
-    if (!isInFlightLocalRow(row)) continue;
+    if (!shouldIncludeInMerge(row, hasSnapshots)) continue;
     if (opts?.dropStaleInFlight && shouldDropStaleInFlight(row)) continue;
     merged.push(row);
   }

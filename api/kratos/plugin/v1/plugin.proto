@@ -109,6 +109,12 @@ message ListPluginRunsResponse {
   int32 page_size = 4;
 }
 
+message DeleteAllPluginRunsRequest {}
+
+message DeleteAllPluginRunsResponse {
+  int32 deleted_count = 1;
+}
+
 service PluginService {
   rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse) {
     option (google.api.http) = {get: "/v1/plugins"};
@@ -139,5 +145,8 @@ service PluginService {
   }
   rpc ListPluginRuns(ListPluginRunsRequest) returns (ListPluginRunsResponse) {
     option (google.api.http) = {get: "/v1/plugins/runs"};
+  }
+  rpc DeleteAllPluginRuns(DeleteAllPluginRunsRequest) returns (DeleteAllPluginRunsResponse) {
+    option (google.api.http) = {delete: "/v1/plugins/runs"};
   }
 }

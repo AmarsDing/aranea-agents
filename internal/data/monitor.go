@@ -164,9 +164,9 @@ const sqlMonitorEventsGet = `SELECT id, event_key, name, description, status, me
 	FROM monitor_events WHERE id = ? AND deleted_at = ''`
 
 const sqlMonitorTracesCount = `SELECT COUNT(*) FROM monitor_traces WHERE deleted_at = ''`
-const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status, metadata_json, created_at, updated_at, deleted_at
+const sqlMonitorTracesList = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at
 	FROM monitor_traces WHERE deleted_at = ''`
-const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status, metadata_json, created_at, updated_at, deleted_at
+const sqlMonitorTracesGet = `SELECT id, trace_key, name, description, status, agent_id, provider, model, metadata_json, created_at, updated_at, deleted_at
 	FROM monitor_traces WHERE id = ? AND deleted_at = ''`
 
 func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEventsQuery) (biz.MonitorListResult, error) {
@@ -269,7 +269,7 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 	}
 	defer rows.Close()
 
-	out, err := scanMonitorRows("monitor-traces", rows)
+	out, err := scanTraceRows(rows)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -279,16 +279,19 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 func monitorTracesWhere(q biz.MonitorTracesQuery) (string, []any) {
 	parts := []string{}
 	args := []any{}
+	// TODO(debt): After backfill completes for all rows, simplify to direct column
+	// comparison (e.g. "agent_id = ?") for index utilization. The COALESCE fallback
+	// to json_extract is a transition pattern for rows created before the column existed.
 	if q.AgentID != "" {
-		parts = append(parts, "json_extract(metadata_json, '$.agent_id') = ?")
+		parts = append(parts, "COALESCE(NULLIF(agent_id, ''), json_extract(metadata_json, '$.agent_id')) = ?")
 		args = append(args, q.AgentID)
 	}
 	if q.Provider != "" {
-		parts = append(parts, "json_extract(metadata_json, '$.provider') = ?")
+		parts = append(parts, "COALESCE(NULLIF(provider, ''), json_extract(metadata_json, '$.provider')) = ?")
 		args = append(args, q.Provider)
 	}
 	if q.Model != "" {
-		parts = append(parts, "json_extract(metadata_json, '$.model') = ?")
+		parts = append(parts, "COALESCE(NULLIF(model, ''), json_extract(metadata_json, '$.model')) = ?")
 		args = append(args, q.Model)
 	}
 	if q.Status != "" {
@@ -443,7 +446,7 @@ func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.Monit
 	if !rows.Next() {
 		return biz.MonitorPlatformRow{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
-	return scanMonitorPlatformRow("monitor-traces", rows)
+	return scanTracePlatformRow(rows)
 }
 
 func scanMonitorRows(resource string, rows *sql.Rows) ([]biz.MonitorPlatformRow, error) {
@@ -478,6 +481,53 @@ func scanMonitorPlatformRow(resource string, row scanner) (biz.MonitorPlatformRo
 	v.Status = status
 	v.Enabled = true
 	v.SortOrder = 0
+	v.MetadataJSON = metaJSON
+	v.ConfigJSON = "{}"
+	v.CreatedAt = createdAt
+	v.UpdatedAt = updatedAt
+	v.DeletedAt = deletedAt
+	return v, nil
+}
+
+// scanTraceRows scans a batch of trace rows using the trace-specific column set.
+func scanTraceRows(rows *sql.Rows) ([]biz.MonitorPlatformRow, error) {
+	var out []biz.MonitorPlatformRow
+	for rows.Next() {
+		item, err := scanTracePlatformRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+// scanTracePlatformRow scans a single monitor_traces row with extended columns
+// (agent_id, provider, model) that are not present in the events table.
+func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
+	var (
+		v                                       biz.MonitorPlatformRow
+		id, key, name                           string
+		description, status                     string
+		agentID, provider, model                string
+		metaJSON                                string
+		createdAt, updatedAt, deletedAt         string
+	)
+	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt)
+	if err != nil {
+		return biz.MonitorPlatformRow{}, err
+	}
+	v.Resource = "monitor-traces"
+	v.ID = id
+	v.Key = key
+	v.Name = name
+	v.Description = description
+	v.Status = status
+	v.Enabled = true
+	v.SortOrder = 0
+	v.AgentID = agentID
+	v.Provider = provider
+	v.Model = model
 	v.MetadataJSON = metaJSON
 	v.ConfigJSON = "{}"
 	v.CreatedAt = createdAt

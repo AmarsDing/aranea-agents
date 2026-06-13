@@ -54,6 +54,7 @@ type RepoStatsRecorder struct {
 	resolveAgent AgentKeyResolver
 	resolveMu    sync.RWMutex
 	lg           loggateway.Logger
+	persistOK    bool // persist successful runs to plugin_runs table
 
 	ch   chan CallbackEvent
 	done chan struct{}
@@ -61,16 +62,17 @@ type RepoStatsRecorder struct {
 	closeOnce sync.Once
 }
 
-func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, lg loggateway.Logger) *RepoStatsRecorder {
+func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, persistSuccessRuns bool, lg loggateway.Logger) *RepoStatsRecorder {
 	if repo == nil {
 		return nil
 	}
 	r := &RepoStatsRecorder{
-		repo: repo,
-		runs: runs,
-		lg:   lg,
-		ch:   make(chan CallbackEvent, statsChanSize),
-		done: make(chan struct{}),
+		repo:      repo,
+		runs:      runs,
+		lg:        lg,
+		persistOK: persistSuccessRuns,
+		ch:        make(chan CallbackEvent, statsChanSize),
+		done:      make(chan struct{}),
 	}
 	r.wg.Add(1)
 	safego.Go(appctx.Ctx(), "stats.worker", r.worker)
@@ -217,7 +219,7 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 	if st == "" {
 		st = "success"
 	}
-	if !shouldPersistPluginRun(st) {
+	if !r.shouldPersistPluginRun(st) {
 		return
 	}
 	if r.runs == nil {
@@ -289,10 +291,12 @@ func normalizeRunStatus(status string) string {
 	}
 }
 
-func shouldPersistPluginRun(status string) bool {
+func (r *RepoStatsRecorder) shouldPersistPluginRun(status string) bool {
 	switch normalizeRunStatus(status) {
 	case "blocked", "error":
 		return true
+	case "success":
+		return r.persistOK
 	default:
 		return false
 	}

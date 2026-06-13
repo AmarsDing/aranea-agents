@@ -30,17 +30,26 @@ export function patchStreamingMessage(
 ): Message[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m;
+
+    // H-01 fix: lifecycle state guard. Once a message reaches a terminal
+    // status (ok, failed), incremental text/reasoning appends are rejected.
+    // Only replaceText/replaceReasoning and status updates are allowed on
+    // terminal messages. This prevents out-of-order text_delta events from
+    // duplicating content after text_done has finalized the message.
+    const isTerminal = m.status === 'ok' || m.status === 'failed';
+    const allowAppend = !isTerminal;
+
     let content = m.content_markdown;
     if (patch.replaceText !== undefined) {
       content = patch.replaceText;
-    } else if (patch.text) {
+    } else if (allowAppend && patch.text) {
       content = `${content}${patch.text}`;
     }
     // reasoning_markdown is the single source of truth (no dual storage in options_json)
     let reasoning = m.reasoning_markdown?.trim() ?? '';
     if (patch.replaceReasoning !== undefined) {
       reasoning = patch.replaceReasoning;
-    } else if (patch.reasoning) {
+    } else if (allowAppend && patch.reasoning) {
       reasoning = `${reasoning}${patch.reasoning}`;
     }
     return {

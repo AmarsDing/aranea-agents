@@ -117,6 +117,8 @@ export interface ActivityStartMeta {
   agent_key?: string;
   agent_name?: string;
   label?: string;
+  error_type?: string;
+  error_code?: string;
 }
 
 export interface ActivityDeltaMeta {
@@ -133,6 +135,7 @@ export interface ActivityDoneMeta {
   status: ActivityStatus;
   duration_ms: number;
   collapsed: boolean;
+  timestamp?: string;
   content?: string;
   reasoning?: string;
   tool_result?: string;
@@ -140,6 +143,9 @@ export interface ActivityDoneMeta {
   tool_error_code?: string;
   child_board_id?: string;
   label?: string;
+  usage?: Record<string, unknown>;
+  error_type?: string;
+  error_code?: string;
 }
 
 export interface ActivityChildStartMeta {

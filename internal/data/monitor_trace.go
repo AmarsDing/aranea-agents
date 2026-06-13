@@ -28,6 +28,8 @@ func (r *monitorRepo) EnsureTraceSchema(ctx context.Context) error {
 			{"monitor_traces", "run_id", "ALTER TABLE monitor_traces ADD COLUMN run_id TEXT NOT NULL DEFAULT ''"},
 			{"monitor_traces", "invocation_id", "ALTER TABLE monitor_traces ADD COLUMN invocation_id TEXT NOT NULL DEFAULT ''"},
 			{"monitor_traces", "agent_id", "ALTER TABLE monitor_traces ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''"},
+			{"monitor_traces", "provider", "ALTER TABLE monitor_traces ADD COLUMN provider TEXT NOT NULL DEFAULT ''"},
+			{"monitor_traces", "model", "ALTER TABLE monitor_traces ADD COLUMN model TEXT NOT NULL DEFAULT ''"},
 			{"monitor_traces", "team_id", "ALTER TABLE monitor_traces ADD COLUMN team_id TEXT NOT NULL DEFAULT ''"},
 			{"monitor_traces", "parent_trace_id", "ALTER TABLE monitor_traces ADD COLUMN parent_trace_id TEXT NOT NULL DEFAULT ''"},
 			{"monitor_traces", "duration_ms", "ALTER TABLE monitor_traces ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0"},
@@ -61,6 +63,27 @@ func (r *monitorRepo) EnsureTraceSchema(ctx context.Context) error {
 		}
 		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_agent_id ON monitor_traces(agent_id)`); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("create index idx_monitor_traces_agent_id: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_provider ON monitor_traces(provider)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_traces_provider: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_model ON monitor_traces(model)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_traces_model: %w", err)
+		}
+
+		// Backfill agent_id / provider / model from metadata_json for rows where
+		// the column is empty but the JSON blob carries the value. This is idempotent.
+		// COALESCE(NULLIF(...), col) preserves the original value when json_extract
+		// returns NULL (missing key) or empty string, preventing NOT NULL constraint violations.
+		if _, err := db.ExecContext(ctx, `
+UPDATE monitor_traces SET
+  agent_id = COALESCE(NULLIF(json_extract(metadata_json, '$.agent_id'), ''), agent_id),
+  provider = COALESCE(NULLIF(json_extract(metadata_json, '$.provider'), ''), provider),
+  model    = COALESCE(NULLIF(json_extract(metadata_json, '$.model'), ''), model)
+WHERE (agent_id = '' AND json_extract(metadata_json, '$.agent_id') != '')
+   OR (provider = '' AND json_extract(metadata_json, '$.provider') != '')
+   OR (model    = '' AND json_extract(metadata_json, '$.model')    != '')`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("backfill monitor_traces columns: %w", err)
 		}
 
 		_, firstErr = db.ExecContext(ctx, `
@@ -158,11 +181,11 @@ func (r *monitorRepo) InsertMonitorTrace(ctx context.Context, tw biz.MonitorTrac
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`INSERT OR IGNORE INTO monitor_traces
 		 (id, trace_key, name, description, status, metadata_json, created_at, updated_at, deleted_at,
-		  session_id, run_id, invocation_id, agent_id, team_id, parent_trace_id,
+		  session_id, run_id, invocation_id, agent_id, provider, model, team_id, parent_trace_id,
 		  duration_ms, span_count, error_count, total_tokens, total_cost_usd)
-		 VALUES (?, ?, ?, '', ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, '', ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, tw.TraceID, tw.Name, status, tw.MetadataJSON, now, now,
-		tw.SessionID, tw.RunID, tw.InvocationID, tw.AgentID, tw.TeamID, tw.ParentTraceID,
+		tw.SessionID, tw.RunID, tw.InvocationID, tw.AgentID, tw.Provider, tw.Model, tw.TeamID, tw.ParentTraceID,
 		tw.DurationMs, tw.SpanCount, tw.ErrorCount, tw.TotalTokens, tw.TotalCostUsd,
 	)
 	return err

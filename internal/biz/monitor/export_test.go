@@ -39,8 +39,8 @@ func CoalesceStr(a, b string) string {
 	return coalesceStr(a, b)
 }
 
-func (p *TraceProjector) EnsureTraceExposed(ctx context.Context, traceID, sessionID, runID, agentID, teamID, domain string) {
-	p.ensureTrace(ctx, traceID, sessionID, runID, agentID, teamID, domain)
+func (p *TraceProjector) EnsureTraceExposed(ctx context.Context, traceID, sessionID, runID, agentID, provider, model, teamID, domain string) {
+	p.ensureTrace(ctx, traceID, sessionID, runID, agentID, provider, model, teamID, domain)
 }
 
 func (p *TraceProjector) EvictStaleTracesExposed() {
@@ -54,6 +54,28 @@ func (p *TraceProjector) AddTestTrace(traceID string, createdAt time.Time) {
 		createdAt: createdAt,
 	}
 	p.mu.Unlock()
+}
+
+// RecordEventForTest updates the projector's last-event timestamp the
+// same way handle() does for a real envelope. It exists so the
+// self-check signal plumbing can be unit-tested without spinning up a
+// real bus subscription.
+func (p *TraceProjector) RecordEventForTest() {
+	if p == nil {
+		return
+	}
+	p.lastEventUnixNano.Store(time.Now().UnixNano())
+}
+
+// MarkStartedForTest flips the started flag without going through
+// Start(). The signal is otherwise exclusively controlled by the
+// production Start() path; the test helper exists for symmetry with
+// RecordEventForTest.
+func (p *TraceProjector) MarkStartedForTest() {
+	if p == nil {
+		return
+	}
+	p.started.Store(true)
 }
 
 func (a *FlowFileAppender) OnEnvelopeExposed(env contract.Envelope) {

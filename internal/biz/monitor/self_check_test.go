@@ -153,6 +153,137 @@ func TestTraceProjectorChecker_NilProjector(t *testing.T) {
 	}
 }
 
+// fakeTraceProjectorHealth is a stub for TraceProjectorHealthChecker that
+// returns the configured values. It is used to drive the three healthy /
+// not-healthy branches of TraceProjectorChecker.Check in isolation.
+type fakeTraceProjectorHealth struct {
+	count          int
+	started        bool
+	lastEventAt    time.Time
+	hasEver        bool
+}
+
+func (f *fakeTraceProjectorHealth) TraceCount() int       { return f.count }
+func (f *fakeTraceProjectorHealth) Started() bool          { return f.started }
+func (f *fakeTraceProjectorHealth) LastEventAt() time.Time { return f.lastEventAt }
+func (f *fakeTraceProjectorHealth) HasEverProcessed() bool { return f.hasEver }
+
+func TestTraceProjectorChecker_StartedIdlePasses(t *testing.T) {
+	// Started, never received any envelope, zero in-flight traces.
+	// This is the most common state on a freshly deployed system.
+	fp := &fakeTraceProjectorHealth{
+		started:     true,
+		hasEver:     false,
+		lastEventAt: time.Time{},
+		count:       0,
+	}
+	c := monitor.NewTraceProjectorChecker(fp)
+	result := c.Check(context.Background())
+	if result.Status != types.SelfCheckStatusPassed {
+		t.Errorf("expected passed for started-but-idle projector, got %s (msg=%s)", result.Status, result.Message)
+	}
+	if !contains(result.Message, "idle") {
+		t.Errorf("expected message to mention 'idle', got %q", result.Message)
+	}
+}
+
+func TestTraceProjectorChecker_StartedWithInFlightPasses(t *testing.T) {
+	// Started, has active traces. Healthy steady state.
+	fp := &fakeTraceProjectorHealth{
+		started:     true,
+		hasEver:     true,
+		lastEventAt: time.Now().UTC().Add(-1 * time.Minute),
+		count:       3,
+	}
+	c := monitor.NewTraceProjectorChecker(fp)
+	result := c.Check(context.Background())
+	if result.Status != types.SelfCheckStatusPassed {
+		t.Errorf("expected passed for active projector, got %s (msg=%s)", result.Status, result.Message)
+	}
+	if !contains(result.Message, "3 active") {
+		t.Errorf("expected message to report 3 active traces, got %q", result.Message)
+	}
+}
+
+func TestTraceProjectorChecker_NotStartedWarns(t *testing.T) {
+	// Projector constructed but Start() never invoked. Wiring bug.
+	fp := &fakeTraceProjectorHealth{started: false, hasEver: false}
+	c := monitor.NewTraceProjectorChecker(fp)
+	result := c.Check(context.Background())
+	if result.Status != types.SelfCheckStatusWarning {
+		t.Errorf("expected warning for un-started projector, got %s (msg=%s)", result.Status, result.Message)
+	}
+	if !contains(result.Message, "not started") {
+		t.Errorf("expected message to mention 'not started', got %q", result.Message)
+	}
+}
+
+func TestTraceProjectorChecker_StalledWarns(t *testing.T) {
+	// Projector used to receive events, but the last one is older than
+	// the idle timeout. This is the actual stall condition the original
+	// check failed to distinguish from idle.
+	fp := &fakeTraceProjectorHealth{
+		started:     true,
+		hasEver:     true,
+		lastEventAt: time.Now().UTC().Add(-45 * time.Minute),
+		count:       0,
+	}
+	c := monitor.NewTraceProjectorChecker(fp)
+	result := c.Check(context.Background())
+	if result.Status != types.SelfCheckStatusWarning {
+		t.Errorf("expected warning for stalled projector, got %s (msg=%s)", result.Status, result.Message)
+	}
+	if !contains(result.Message, "stalled") {
+		t.Errorf("expected message to mention 'stalled', got %q", result.Message)
+	}
+}
+
+func TestTraceProjectorChecker_RecentActivityIdlePasses(t *testing.T) {
+	// Projector received events in the past and last event is within
+	// the idle window. count is 0 because the in-flight traces have all
+	// completed — still healthy idle, not stalled.
+	fp := &fakeTraceProjectorHealth{
+		started:     true,
+		hasEver:     true,
+		lastEventAt: time.Now().UTC().Add(-2 * time.Minute),
+		count:       0,
+	}
+	c := monitor.NewTraceProjectorChecker(fp)
+	result := c.Check(context.Background())
+	if result.Status != types.SelfCheckStatusPassed {
+		t.Errorf("expected passed for recently-active idle projector, got %s (msg=%s)", result.Status, result.Message)
+	}
+}
+
+func TestTraceProjectorChecker_DetailsIncludeSignals(t *testing.T) {
+	// The Details payload should carry every signal the checker uses,
+	// so that operators inspecting the report can see exactly why a
+	// result was emitted.
+	fp := &fakeTraceProjectorHealth{
+		started:     true,
+		hasEver:     true,
+		lastEventAt: time.Now().UTC().Add(-5 * time.Minute),
+		count:       2,
+	}
+	c := monitor.NewTraceProjectorChecker(fp)
+	result := c.Check(context.Background())
+	for _, k := range []string{"active_traces", "started", "last_event_at", "has_ever_received", "idle_timeout_sec"} {
+		if _, ok := result.Details[k]; !ok {
+			t.Errorf("expected Details[%q] to be set", k)
+		}
+	}
+}
+
+// contains is a tiny helper to keep the assertions above readable.
+func contains(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAlertEvalChecker_NilWorker(t *testing.T) {
 	c := monitor.NewAlertEvalChecker(nil)
 	result := c.Check(context.Background())

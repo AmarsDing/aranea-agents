@@ -93,6 +93,12 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
       wsConnected = true;
       refreshFlowState();
       refreshProcessState();
+      // Re-apply enableLog after connection — setProcessEnabled() may have been
+      // called before the stream connected, in which case enableLog(true) was a
+      // no-op. Re-sending here ensures the server actually enables log delivery.
+      if (processEnabled.value) {
+        stream.enableLog(true);
+      }
     },
     onDisconnected: () => {
       wsConnected = false;
@@ -149,8 +155,14 @@ export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLog
     processLines,
     connect,
     disconnect,
-    setFlowPaused: paused.setFlowPaused,
-    setProcessPaused: paused.setProcessPaused,
+    setFlowPaused: (p: boolean) => {
+      paused.setFlowPaused(p);
+      refreshFlowState();
+    },
+    setProcessPaused: (p: boolean) => {
+      paused.setProcessPaused(p);
+      refreshProcessState();
+    },
     setProcessEnabled: (enabled: boolean) => {
       processEnabled.value = enabled;
       stream.enableLog(enabled);

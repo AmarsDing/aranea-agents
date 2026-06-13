@@ -291,6 +291,20 @@ func (r *Runtime) ActivityFlusherConfig() RuntimeActivityFlusherConfig {
 	}
 }
 
+// RuntimePluginConfig returns resolved Plugin stats recorder config values with zero-value defaults.
+type RuntimePluginConfig struct {
+	PersistSuccessRuns bool
+}
+
+func (r *Runtime) PluginConfig() RuntimePluginConfig {
+	if r == nil || r.Plugin == nil {
+		return RuntimePluginConfig{PersistSuccessRuns: false}
+	}
+	return RuntimePluginConfig{
+		PersistSuccessRuns: r.Plugin.PersistSuccessRuns,
+	}
+}
+
 func msToDuration(ms int64, fallback time.Duration) time.Duration {
 	if ms <= 0 {
 		return fallback

@@ -155,7 +155,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 			"tool", toolName,
 			"duration_ms", durationMS,
 		)
-		recordHookAudit(stats, ctx, rh, point, st, agentID, durationMS)
+		recordHookAudit(stats, ctx, rh, point, st, agentID, durationMS, err)
 	}()
 
 	switch action {

@@ -129,6 +129,7 @@ type RunListResult struct {
 type RunRepo interface {
 	Insert(ctx context.Context, run Run) error
 	List(ctx context.Context, q RunQuery) (RunListResult, error)
+	DeleteAll(ctx context.Context) (int32, error)
 }
 
 // ScopeAgentLookup checks whether an agent exists for scope validation.
@@ -279,6 +280,14 @@ func (u *Usecase) ListRuns(ctx context.Context, q RunQuery) (RunListResult, erro
 		q.Limit = 50
 	}
 	return u.runs.List(ctx, q)
+}
+
+// DeleteAllRuns deletes all plugin run records and returns the count deleted.
+func (u *Usecase) DeleteAllRuns(ctx context.Context) (int32, error) {
+	if u == nil || u.runs == nil {
+		return 0, nil
+	}
+	return u.runs.DeleteAll(ctx)
 }
 
 // ── Schema validation ─────────────────────────────────────────────────────────
