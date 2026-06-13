@@ -401,6 +401,16 @@ func (c *turnStreamConsumer) finalize() {
 		return
 	}
 	pending := c.pendingToolCalls
+	// Log each stuck tool for observability before publishing failure envelopes.
+	for id, tc := range pending {
+		c.lg.Warn("stuck tool detected at turn finalization",
+			loggateway.StepID("stream.stuck_tool"),
+			loggateway.Str("tool_call_id", id),
+			loggateway.Str("tool_name", tc.Name),
+			loggateway.Str("status", tc.Status),
+			loggateway.Str("session_id", c.projectMeta.SessionID),
+		)
+	}
 	if c.eventBus != nil {
 		PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, c.eventBus, pending)
 	}

@@ -154,6 +154,10 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 		a.Reasoning = ""
 	} else {
 		a.Reasoning = fullReasoning
+		// Remove completed thinking from lookup so the next ReAct round
+		// creates a new thinking Activity instead of appending to this one.
+		// This mirrors OnToolResult's delete(p.toolCalls, toolCallID) pattern.
+		delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
 	}
 
 	a.Status = biz.ActivityStatusCompleted
@@ -212,6 +216,10 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 	a.Collapsed = false
+
+	// Remove completed reply from lookup so the next ReAct round
+	// creates a new reply Activity instead of appending to this one.
+	delete(p.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
 
 	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
 }

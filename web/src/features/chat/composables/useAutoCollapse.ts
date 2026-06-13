@@ -2,9 +2,11 @@
  * OBS-01: Auto-collapse composable for TurnBlockGroups.
  *
  * Manages collapsed/expanded state of chat turn blocks.
- * Completed blocks auto-collapse; users can manually toggle or expand all.
+ * Blocks are never auto-collapsed — the entire conversation should remain
+ * expanded so users can follow the temporal flow of thinking → tools → reply.
+ * Users can still manually collapse or expand individual blocks.
  */
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import type { TurnBlockGroup } from '../groupMessagesByTurn';
 
 export function useAutoCollapse(turnBlocks: { value: TurnBlockGroup[] }) {
@@ -13,38 +15,6 @@ export function useAutoCollapse(turnBlocks: { value: TurnBlockGroup[] }) {
 
   /** Whether "expand all" mode is active (overrides individual collapses). */
   const expandAllActive = ref(false);
-
-  /**
-   * Watch turn blocks and auto-collapse newly completed blocks.
-   * A block is auto-collapsed when:
-   * 1. It transitions to isCompleted === true
-   * 2. The user has not manually expanded it
-   */
-  watch(
-    () => turnBlocks.value,
-    (blocks, prevBlocks) => {
-      if (expandAllActive.value) return;
-      // Index previous blocks by key for O(1) lookup
-      const prevMap = new Map<number, TurnBlockGroup>();
-      if (prevBlocks) {
-        for (const b of prevBlocks) prevMap.set(b.key, b);
-      }
-      for (const block of blocks) {
-        if (!block.isCompleted) continue;
-        // OBS-01: Pure assistant replies (no tools, no members) are never auto-collapsed
-        if (block.tools.length === 0 && block.members.length === 0) continue;
-        const prev = prevMap.get(block.key);
-        if (!prev) {
-          // New block that is already completed — auto-collapse
-          collapsedBlockKeys.value.add(block.key);
-        } else if (!prev.isCompleted) {
-          // Existing block just became completed — auto-collapse
-          collapsedBlockKeys.value.add(block.key);
-        }
-      }
-    },
-    { deep: true },
-  );
 
   /** Check if a block is collapsed. */
   function isCollapsed(blockKey: number): boolean {
@@ -72,8 +42,7 @@ export function useAutoCollapse(turnBlocks: { value: TurnBlockGroup[] }) {
   function collapseAll(): void {
     expandAllActive.value = false;
     for (const block of turnBlocks.value) {
-      // OBS-01: Pure assistant replies (no tools, no members) are never collapsed
-      if (block.isCompleted && (block.tools.length > 0 || block.members.length > 0)) {
+      if (block.isCompleted) {
         collapsedBlockKeys.value.add(block.key);
       }
     }

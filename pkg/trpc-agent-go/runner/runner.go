@@ -1017,6 +1017,45 @@ func (r *runner) runEventLoop(ctx context.Context, loop *eventLoopContext) {
 				log.Errorf("handle flush request: %v", err)
 			}
 		case <-ctx.Done():
+			// Context cancelled (e.g. turn timeout). Drain remaining events
+			// from agentEventCh before exiting so that in-flight tool_result
+			// events are not silently dropped, which would cause the upstream
+			// stream_consumer to mark those tools as "stuck".
+			r.drainAgentEvents(loop)
+			return
+		}
+	}
+}
+
+// drainAgentEvents drains remaining events from agentEventCh after the context
+// is cancelled. This ensures that in-flight tool results and other critical
+// events are forwarded to processedEventCh before the loop exits and the
+// channel is closed.
+//
+// A background context with a 5-second timeout is used so that session
+// persistence and other ctx-sensitive operations can still succeed even though
+// the original turn context has been cancelled.
+func (r *runner) drainAgentEvents(loop *eventLoopContext) {
+	const drainTimeout = 5 * time.Second
+	drainCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer cancel()
+
+	drained := 0
+	for {
+		select {
+		case agentEvent, ok := <-loop.agentEventCh:
+			if !ok {
+				// Channel closed — producer goroutine exited; all events drained.
+				log.Infof("drainAgentEvents: channel closed after draining %d events", drained)
+				return
+			}
+			if err := r.processSingleAgentEvent(drainCtx, loop, agentEvent); err != nil {
+				log.Warnf("drainAgentEvents: process event error: %v", err)
+				return
+			}
+			drained++
+		case <-drainCtx.Done():
+			log.Warnf("drainAgentEvents: timeout after draining %d events, some events may be lost", drained)
 			return
 		}
 	}

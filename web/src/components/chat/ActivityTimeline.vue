@@ -16,6 +16,7 @@
         :reasoning="activity.content"
         :streaming="activity.streaming"
         :duration-ms="activity.durationMs"
+        :default-collapsed="activity.collapsed"
         :variant="variant"
       />
       <ActActivity
@@ -24,19 +25,9 @@
         :variant="variant"
         :agent-color="agentColor"
       />
-      <SayActivity
-        v-else-if="activity.kind === 'say'"
-        :activity="activity"
-        :variant="variant"
-      />
-      <NoticeActivity
-        v-else-if="activity.kind === 'notice'"
-        :activity="activity"
-      />
-      <DelegateActivity
-        v-else-if="activity.kind === 'delegate'"
-        :activity="activity"
-      />
+      <SayActivity v-else-if="activity.kind === 'say'" :activity="activity" :variant="variant" />
+      <NoticeActivity v-else-if="activity.kind === 'notice'" :activity="activity" />
+      <DelegateActivity v-else-if="activity.kind === 'delegate'" :activity="activity" />
     </template>
   </div>
 </template>

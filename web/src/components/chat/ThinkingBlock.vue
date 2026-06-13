@@ -138,6 +138,8 @@ const props = withDefaults(
     isDark?: boolean;
     /** 渲染变体 */
     variant?: 'inline' | 'card' | 'compact';
+    /** 默认折叠状态：true=收起，false=展开。流式时通常展开，完成后收起 */
+    defaultCollapsed?: boolean;
   }>(),
   {
     streaming: false,
@@ -145,6 +147,7 @@ const props = withDefaults(
     durationMs: null,
     isDark: false,
     variant: 'inline',
+    defaultCollapsed: true,
   },
 );
 
@@ -152,7 +155,15 @@ const { t } = useI18n();
 
 // --- Collapse state ---
 
-const collapsed = ref(false);
+const collapsed = ref(props.defaultCollapsed);
+// Sync with external defaultCollapsed changes (e.g., when Activity data updates from AF).
+// Only apply when not streaming — streaming state is managed by the streaming watch.
+watch(
+  () => props.defaultCollapsed,
+  (val) => {
+    if (!props.streaming) collapsed.value = val;
+  },
+);
 const viewportRef = ref<HTMLElement | null>(null);
 
 /** Whether user has scrolled up away from the bottom. */
@@ -228,7 +239,11 @@ watch(
   (live) => {
     if (live) {
       userScrolledUp.value = false;
+      collapsed.value = false; // streaming 时自动展开
       void nextTick(scrollToBottom);
+    } else {
+      // streaming 结束时自动收起
+      collapsed.value = true;
     }
   },
 );

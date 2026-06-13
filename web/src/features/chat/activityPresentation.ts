@@ -64,6 +64,13 @@ export function classifyActivityKind(toolName: string): ActivityKind {
   return 'tool';
 }
 
+const todoWriteToolNames = new Set(['todo_write', 'TodoWrite']);
+
+/** Check if a tool is a todo_write variant that should render as inline task cards. */
+export function isTodoWriteTool(toolName: string): boolean {
+  return todoWriteToolNames.has(toolName);
+}
+
 export function resolveDisplayLabel(event: ToolUseEvent): string {
   return (
     event.display_label?.trim() ||

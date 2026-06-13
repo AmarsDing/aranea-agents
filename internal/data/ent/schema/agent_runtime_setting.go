@@ -153,6 +153,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("tools_circuit_breaker_overrides_json").Default(""),
 		field.String("tools_deferred_json").Default(""),
 		field.Bool("tools_command_safety_enabled").Default(false),
+		// ToolsExecutionTimeoutSec is the per-tool execution timeout in seconds (0 = use default safety-net).
+		field.Int("tools_execution_timeout_sec").Default(0),
 		// ForgetPolicyJSON stores the memory butler's forget policy configuration.
 		field.String("forget_policy_json").Default("{}"),
 		// ToolWeightJSON stores tool weight analysis results for prompt priority hints.

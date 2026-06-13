@@ -584,7 +584,48 @@ export function bindStreamHandlers(
     const streamId = streamRowId(ctx, sid);
 
     switch (kind) {
-      case 'thinking':
+      case 'thinking': {
+        // Snapshot any existing streaming message (e.g. a previous round's reply)
+        // before starting a new thinking activity. This ensures each ReAct round's
+        // thinking and reply are in separate messages, preserving temporal order.
+        const msgs = ctx.getMessages(sid);
+        const existing = msgs.find((m) => m.id === streamId);
+        if (existing) {
+          const hasContent =
+            (existing.content_markdown?.trim() ?? '') !== '' || (existing.reasoning_markdown?.trim() ?? '') !== '';
+          if (hasContent) {
+            // Snapshot the previous round's content, then create a fresh streaming message
+            const newMsg = createStreamingMessageFromActivity(streamId, sid, md as unknown as ActivityStartMeta);
+            if (writer && sid === ctx.sessionId) {
+              writer.update((cur) => {
+                const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
+                return [...snapped, newMsg];
+              });
+            } else {
+              const { messages: snapped } = snapshotStreamingMessage(msgs, sid, streamId);
+              ctx.setMessages(sid, [...snapped, newMsg]);
+            }
+          } else {
+            // Existing message is empty — reuse it for thinking
+            if (writer && sid === ctx.sessionId) {
+              // Already exists in writer state, no action needed
+            } else {
+              ctx.setMessages(sid, msgs);
+            }
+          }
+        } else {
+          // No existing message — create new
+          const newMsg = createStreamingMessageFromActivity(streamId, sid, md as unknown as ActivityStartMeta);
+          if (writer && sid === ctx.sessionId) {
+            writer.update((cur) => [...cur, newMsg]);
+          } else {
+            ctx.setMessages(sid, [...msgs, newMsg]);
+          }
+        }
+        startStreamTimeout();
+        ctx.onStreamingPatch?.(sid, { reasoning: '' });
+        break;
+      }
       case 'reply': {
         // Create or ensure streaming message exists
         const msgs = ctx.getMessages(sid);
@@ -598,11 +639,8 @@ export function bindStreamHandlers(
           }
         }
         startStreamTimeout();
-        if (kind === 'reply') ctx.onFirstByteArrived?.();
-        ctx.onStreamingPatch?.(sid, {
-          reasoning: kind === 'thinking' ? '' : undefined,
-          partialText: kind === 'reply' ? '' : undefined,
-        });
+        ctx.onFirstByteArrived?.();
+        ctx.onStreamingPatch?.(sid, { partialText: '' });
         break;
       }
       case 'action': {

@@ -12,10 +12,16 @@ import (
 )
 
 const (
-	defaultRetryMaxAttempts      = 2
+	defaultRetryMaxAttempts       = 2
 	defaultRetryInitialIntervalMs = 500
-	defaultRetryBackoffFactor    = 2.0
-	defaultRetryMaxIntervalMs    = 5000
+	defaultRetryBackoffFactor     = 2.0
+	defaultRetryMaxIntervalMs     = 5000
+
+	// defaultToolExecutionTimeout is the safety-net timeout for a single tool execution
+	// (including BeforeTool callbacks, actual execution, and AfterTool callbacks).
+	// This prevents indefinite blocking when a tool or its callbacks hang.
+	// Set to 0 to disable (not recommended in production).
+	defaultToolExecutionTimeout = 10 * time.Minute
 )
 
 func buildToolFilter(s *biz.AgentRuntimeSettings, dm *deferred.DeferredToolManager, lg loggateway.Logger) trpctool.FilterFunc {
@@ -75,4 +81,17 @@ func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy {
 		Jitter:          s.ToolsRetryJitter,
 		RetryOn:         trpctool.DefaultRetryOn,
 	}
+}
+
+// buildToolExecutionTimeout returns the per-tool execution timeout.
+// When AgentRuntimeSettings does not specify a value (zero or negative),
+// the default safety-net timeout is used. Returns 0 only when tools are disabled.
+func buildToolExecutionTimeout(s *biz.AgentRuntimeSettings) time.Duration {
+	if !s.ToolsEnabled {
+		return 0
+	}
+	if s.ToolsExecutionTimeoutSec > 0 {
+		return time.Duration(s.ToolsExecutionTimeoutSec) * time.Second
+	}
+	return defaultToolExecutionTimeout
 }

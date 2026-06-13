@@ -20,6 +20,11 @@ import (
 
 const errToolConfirmationRequired = "TOOL_CONFIRMATION_REQUIRED"
 
+// defaultToolConfirmationTimeout is the maximum duration to wait for a user
+// to approve or deny a tool confirmation request. After this deadline the
+// tool invocation is rejected with ErrorCodeConfirmationTimeout.
+const defaultToolConfirmationTimeout = 5 * time.Minute
+
 type toolCallStartKey struct{}
 
 type toolConfirmationBeforeHook struct {
@@ -66,8 +71,27 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			ToolKey:    toolKey,
 			ToolCallID: args.ToolCallID,
 		})
+		// Apply confirmation timeout to prevent indefinite blocking.
+		confirmCtx, confirmCancel := context.WithTimeout(confirmCtx, defaultToolConfirmationTimeout)
+		defer confirmCancel()
 		reply, err := fn(confirmCtx)
 		if err != nil {
+			// Distinguish between confirmation timeout and other errors.
+			if confirmCtx.Err() == context.DeadlineExceeded {
+				recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
+					ToolKey:      toolKey,
+					AgentID:      h.ag.ID,
+					Status:       "blocked",
+					ErrorCode:    event.ErrorCodeConfirmationTimeout,
+					ErrorMessage: fmt.Sprintf("tool confirmation timed out after %s", defaultToolConfirmationTimeout),
+					InputPreview: previewFromToolArgs(args.Arguments),
+					StartedAt:    time.Now().UTC().Format(time.RFC3339),
+					EndedAt:      time.Now().UTC().Format(time.RFC3339),
+					Source:       biz.ToolInvocationSourceRuntime,
+					ToolCallID:   args.ToolCallID,
+				}, nil, h.ag, h.deps)
+				return nil, fmt.Errorf("%s: tool %s confirmation timed out after %s", errToolConfirmationRequired, toolKey, defaultToolConfirmationTimeout)
+			}
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {

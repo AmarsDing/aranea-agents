@@ -27,6 +27,7 @@ import (
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 const (
@@ -902,6 +903,13 @@ func (a *replyAccumulator) consumeDelta(rsp *trpcmodel.Response) {
 type spawnTool struct {
 	svc *Service
 }
+
+// LongRunning marks subagents_spawn as a long-running (asynchronous) tool.
+// The tool returns immediately with a queued Run, while the actual sub-agent
+// executes in the background. This flag is propagated to the frontend via
+// EnvelopeToolCall.is_long_running so the UI can display an appropriate
+// "running in background" indicator instead of a spinner.
+func (t *spawnTool) LongRunning() bool { return true }
 
 type listTool struct {
 	svc *Service

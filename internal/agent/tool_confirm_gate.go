@@ -5,13 +5,65 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools/alias"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/loggateway"
 )
 
+// confirmCatalogEntry records whether a catalog tool requires confirmation
+// and its registry (ToolSet) name for runtime name derivation.
+type confirmCatalogEntry struct {
+	requiresConfirm bool
+	registryName    string // e.g., "file", "hostexec", "mcpbroker"
+}
+
+// catalogKeyRegistryNames maps catalog tool keys to their registry (ToolSet) name.
+// Only ToolSet-backed tools need an entry; single-tool registrations have no prefix.
+// Derived from internal/data/builtin_tools_seed.go registryName field.
+var catalogKeyRegistryNames = map[string]string{
+	// file ToolSet
+	"read_file":           "file",
+	"read_multiple_files": "file",
+	"save_file":           "file",
+	"list_file":           "file",
+	"search_file":         "file",
+	"search_content":      "file",
+	"replace_content":     "file",
+	"diff_edit":           "file",
+	"patch_file":          "file",
+	// hostexec ToolSet
+	"shell_exec": "hostexec",
+	// email ToolSet
+	"send_email": "email",
+	// todo
+	"todo_write": "todo",
+	// await_user_reply
+	"await_user_reply": "await_user_reply",
+	// claudecode ToolSet
+	"claude_code": "claudecode",
+	// workspace_exec
+	"workspace_exec": "workspace_exec",
+	// arxiv_search ToolSet
+	"arxiv_search": "arxiv_search",
+	// wikipedia ToolSet
+	"wikipedia_search": "wikipedia",
+	// google_search ToolSet
+	"google_search": "google_search",
+	// mcpbroker
+	"mcp_broker": "mcpbroker",
+	// read_document
+	"read_document": "read_document",
+	// read_spreadsheet
+	"read_spreadsheet": "read_spreadsheet",
+	// browser ToolSet
+	"browser": "browser",
+	// model_registry_sync
+	"model_registry_sync": "model_registry_sync",
+}
+
 type toolConfirmGate struct {
-	catalog   map[string]bool
+	catalog   map[string]confirmCatalogEntry
 	plugin    plugintrpc.ConfirmationGuardConfig
 	hasPlugin bool
 }
@@ -35,7 +87,7 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 	return &toolConfirmGate{catalog: catalog, plugin: pluginCfg, hasPlugin: hasPlugin}
 }
 
-func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) map[string]bool {
+func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) map[string]confirmCatalogEntry {
 	if deps.ToolUC == nil || strings.TrimSpace(ag.ID) == "" {
 		return nil
 	}
@@ -54,12 +106,12 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 			loggateway.Err(err))
 		overrides = nil
 		// Build a conservative catalog: all enabled tools require confirmation.
-		out := make(map[string]bool, len(eff))
+		out := make(map[string]confirmCatalogEntry, len(eff))
 		for key, enabled := range eff {
 			if enabled {
-				out[key] = true
-				for _, alias := range runtimeConfirmAliases(key) {
-					out[alias] = true
+				out[key] = confirmCatalogEntry{
+					requiresConfirm: true,
+					registryName:    catalogKeyRegistryNames[key],
 				}
 			}
 		}
@@ -69,7 +121,7 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 	for _, o := range overrides {
 		overrideByKey[strings.TrimSpace(o.ToolKey)] = o
 	}
-	out := make(map[string]bool)
+	out := make(map[string]confirmCatalogEntry)
 	for key, enabled := range eff {
 		if !enabled {
 			continue
@@ -78,43 +130,55 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 		if err != nil {
 			// Fail-closed: when DB is unavailable for a specific tool,
 			// assume it requires confirmation to be safe.
-			out[key] = true
-			for _, alias := range runtimeConfirmAliases(key) {
-				out[alias] = true
+			out[key] = confirmCatalogEntry{
+				requiresConfirm: true,
+				registryName:    catalogKeyRegistryNames[key],
 			}
 			continue
 		}
 		ov, hasOV := overrideByKey[key]
 		if biz.ToolRequiresConfirmation(tool, ov, hasOV) {
-			out[key] = true
-			for _, alias := range runtimeConfirmAliases(key) {
-				out[alias] = true
+			out[key] = confirmCatalogEntry{
+				requiresConfirm: true,
+				registryName:    catalogKeyRegistryNames[key],
 			}
 		}
 	}
 	return out
 }
 
-// runtimeConfirmAliases maps catalog tool_key to mounted runtime declaration names.
-func runtimeConfirmAliases(catalogKey string) []string {
-	switch strings.TrimSpace(catalogKey) {
-	case "shell_exec":
-		return []string{"exec_command"}
-	default:
-		return nil
-	}
-}
-
-func catalogRequiresConfirm(catalog map[string]bool, toolName string) bool {
+func catalogRequiresConfirm(catalog map[string]confirmCatalogEntry, toolName string) bool {
 	if catalog == nil {
 		return false
 	}
 	toolName = strings.TrimSpace(toolName)
-	if catalog[toolName] {
-		return true
+	// Exact match first.
+	if entry, ok := catalog[toolName]; ok {
+		return entry.requiresConfirm
 	}
-	if toolName == "exec_command" && catalog["shell_exec"] {
-		return true
+	// Try deriving catalog key from runtime name using registry name prefix.
+	// Runtime names follow the pattern: <registryName>_<catalogKey>
+	// e.g., "file_save_file" → registry="file", catalogKey="save_file"
+	for catalogKey, entry := range catalog {
+		if entry.registryName == "" {
+			continue
+		}
+		prefix := entry.registryName + "_"
+		if strings.HasPrefix(toolName, prefix) {
+			suffix := strings.TrimPrefix(toolName, prefix)
+			if suffix == catalogKey {
+				return entry.requiresConfirm
+			}
+		}
+	}
+	// Try reverse alias lookup: check if toolName is a canonical runtime name
+	// that maps from a catalog key alias (e.g., "exec_command" ← "shell_exec").
+	for aliasKey, canonical := range alias.RuntimeToolNameAliases {
+		if canonical == toolName {
+			if entry, ok := catalog[aliasKey]; ok {
+				return entry.requiresConfirm
+			}
+		}
 	}
 	return false
 }
@@ -149,8 +213,8 @@ func (g *toolConfirmGate) confirmationMap() map[string]bool {
 		return nil
 	}
 	out := make(map[string]bool)
-	for k, v := range g.catalog {
-		if v {
+	for k, entry := range g.catalog {
+		if entry.requiresConfirm {
 			out[k] = true
 		}
 	}

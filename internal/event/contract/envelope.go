@@ -179,6 +179,7 @@ const (
 	ErrorCodeToolError            = "tool_error"
 	ErrorCodeConfirmationRequired = "confirmation_required"
 	ErrorCodeConfirmationDenied   = "confirmation_denied"
+	ErrorCodeConfirmationTimeout  = "confirmation_timeout"
 )
 
 // ValidErrorCodes is the set of allowed error_code values for EnvelopeToolCall.
@@ -187,6 +188,7 @@ var ValidErrorCodes = map[string]bool{
 	ErrorCodeToolError:            true,
 	ErrorCodeConfirmationRequired: true,
 	ErrorCodeConfirmationDenied:   true,
+	ErrorCodeConfirmationTimeout:  true,
 }
 
 // ValidateErrorCode ensures ErrorCode is one of the known values.

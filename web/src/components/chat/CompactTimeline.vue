@@ -38,7 +38,12 @@
 
       <!-- Tool node -->
       <template v-else-if="node.kind === 'tool'">
+        <TodoInlineList
+          v-if="isTodoWriteTool(node.event.tool_name)"
+          :event="node.event"
+        />
         <ChatExecutionCard
+          v-else
           :event="node.event"
           :initial-collapsed="isToolEventCompleted(node.event)"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
@@ -75,7 +80,9 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ChatExecutionCard from './ChatExecutionCard.vue';
+import TodoInlineList from './TodoInlineList.vue';
 import { compactNodeKey, type CompactNode, type ReplyStatus } from '../../features/chat/compactTimeline';
+import { isTodoWriteTool } from '../../features/chat/activityPresentation';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ToolUseEvent } from '../../features/chat/types';

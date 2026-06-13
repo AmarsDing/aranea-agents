@@ -114,6 +114,7 @@ type FunctionCallResponseProcessor struct {
 	enableParallelTools bool
 	toolCallbacks       *tool.Callbacks
 	toolRetryPolicy     *tool.RetryPolicy
+	toolExecutionTimeout time.Duration
 }
 
 // FunctionCallResponseProcessorOption configures a function-call response processor.
@@ -127,6 +128,15 @@ func WithToolCallRetryPolicy(policy *tool.RetryPolicy) FunctionCallResponseProce
 			return
 		}
 		p.toolRetryPolicy = policy
+	}
+}
+
+// WithToolCallExecutionTimeout sets the maximum duration for a single tool execution
+// (including BeforeTool callbacks, actual execution, and AfterTool callbacks).
+// A zero or negative value disables the timeout (default behavior).
+func WithToolCallExecutionTimeout(timeout time.Duration) FunctionCallResponseProcessorOption {
+	return func(p *FunctionCallResponseProcessor) {
+		p.toolExecutionTimeout = timeout
 	}
 }
 
@@ -1803,6 +1813,18 @@ func (p *FunctionCallResponseProcessor) executeToolWithCallbacks(
 	tl tool.Tool,
 	eventChan chan<- *event.Event,
 ) (context.Context, any, []byte, bool, bool, error) {
+	// Apply per-tool execution timeout if configured.
+	// This covers BeforeTool callbacks + actual execution + AfterTool callbacks.
+	var toolCancel context.CancelFunc
+	if p.toolExecutionTimeout > 0 {
+		ctx, toolCancel = context.WithTimeout(ctx, p.toolExecutionTimeout)
+	}
+	defer func() {
+		if toolCancel != nil {
+			toolCancel()
+		}
+	}()
+
 	// Inject tool call ID into context for callbacks to use.
 	ctx = context.WithValue(ctx, tool.ContextKeyToolCallID{}, toolCall.ID)
 	// Repair tool call arguments in place when needed.
@@ -1903,6 +1925,10 @@ func (p *FunctionCallResponseProcessor) executeToolWithCallbacks(
 	// instead of discarding it due to a non-nil error.
 	if afterCallbackReplacedResult(toolErr, toolResult) {
 		toolErr = nil
+	}
+	// If context deadline exceeded and no other error was set, report a timeout error.
+	if ctx.Err() == context.DeadlineExceeded && toolErr == nil {
+		toolErr = fmt.Errorf("tool %s execution timed out after %s", toolCall.Function.Name, p.toolExecutionTimeout)
 	}
 	return ctx, toolResult, toolCall.Function.Arguments,
 		suppressDefaultToolMessage, skipSummarization || localSkip, toolErr

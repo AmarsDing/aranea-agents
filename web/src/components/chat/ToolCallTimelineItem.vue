@@ -48,29 +48,35 @@
             <span class="text-caption tool-timeline-item__error-text">{{ t('chat.activity.stuckTool', '工具无返回结果') }}</span>
           </div>
 
-          <!-- 参数 -->
-          <div v-if="node.argsPreview" class="tool-timeline-item__detail">
-            <div class="text-caption text-weight-medium q-mb-xs" style="color: var(--color-text-tertiary)">
-              {{ t('chat.toolArgs', '参数') }}
-            </div>
-            <pre class="tool-timeline-item__pre tool-timeline-item__pre--compact">{{ node.argsPreview }}</pre>
-          </div>
+          <!-- todo_write: render as inline task cards -->
+          <TodoInlineList v-if="isTodoWriteTool(event.tool_name)" :event="event" />
 
-          <!-- 结果 -->
-          <div v-if="node.resultPreview" class="tool-timeline-item__detail">
-            <div class="text-caption text-weight-medium q-mb-xs" style="color: var(--color-text-tertiary)">
-              {{ t('chat.toolResult', '结果') }}
+          <!-- Other tools: original args/result display -->
+          <template v-else>
+            <!-- 参数 -->
+            <div v-if="node.argsPreview" class="tool-timeline-item__detail">
+              <div class="text-caption text-weight-medium q-mb-xs" style="color: var(--color-text-tertiary)">
+                {{ t('chat.toolArgs', '参数') }}
+              </div>
+              <pre class="tool-timeline-item__pre tool-timeline-item__pre--compact">{{ node.argsPreview }}</pre>
             </div>
-            <pre class="tool-timeline-item__pre tool-timeline-item__pre--compact">{{ node.resultPreview }}</pre>
-          </div>
 
-          <!-- 错误 -->
-          <div v-if="node.errorText" role="alert" class="tool-timeline-item__detail">
-            <div class="text-caption text-weight-medium q-mb-xs" style="color: var(--color-text-tertiary)">
-              {{ t('chat.activity.failed', '失败') }}
+            <!-- 结果 -->
+            <div v-if="node.resultPreview" class="tool-timeline-item__detail">
+              <div class="text-caption text-weight-medium q-mb-xs" style="color: var(--color-text-tertiary)">
+                {{ t('chat.toolResult', '结果') }}
+              </div>
+              <pre class="tool-timeline-item__pre tool-timeline-item__pre--compact">{{ node.resultPreview }}</pre>
             </div>
-            <pre class="tool-timeline-item__pre tool-timeline-item__pre--error">{{ node.i18nKey ? t(node.i18nKey) : node.errorText }}</pre>
-          </div>
+
+            <!-- 错误 -->
+            <div v-if="node.errorText" role="alert" class="tool-timeline-item__detail">
+              <div class="text-caption text-weight-medium q-mb-xs" style="color: var(--color-text-tertiary)">
+                {{ t('chat.activity.failed', '失败') }}
+              </div>
+              <pre class="tool-timeline-item__pre tool-timeline-item__pre--error">{{ node.i18nKey ? t(node.i18nKey) : node.errorText }}</pre>
+            </div>
+          </template>
         </div>
       </template>
     </div>
@@ -83,8 +89,9 @@ import { useI18n } from 'vue-i18n';
 import type { ToolUseEvent } from '../../features/chat/types';
 import type { ToolCallTimelineNode } from '../../features/chat/timelineTypes';
 import { buildTimelineNode } from '../../features/chat/composables/useToolCallTimeline';
-import { resolveDisplayLabel } from '../../features/chat/activityPresentation';
+import { isTodoWriteTool, resolveDisplayLabel } from '../../features/chat/activityPresentation';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
+import TodoInlineList from './TodoInlineList.vue';
 
 const props = defineProps<{
   event: ToolUseEvent;

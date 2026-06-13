@@ -7,7 +7,9 @@
       <span class="agent-header__status" :class="statusClass">{{ statusLabel }}</span>
       <span v-if="formattedDuration" class="agent-header__duration">{{ formattedDuration }}</span>
       <!-- Sub-task count for root agent -->
-      <span v-if="isRoot && subAgentCount > 0" class="agent-header__meta"> · {{ subAgentCount }} {{ t('chat.turn.block.memberCount') }} </span>
+      <span v-if="isRoot && subAgentCount > 0" class="agent-header__meta">
+        · {{ subAgentCount }} {{ t('chat.turn.block.memberCount') }}
+      </span>
       <!-- Team status summary for root agent -->
       <span v-if="isRoot && block.teamStatus" class="agent-header__team-status">
         <span v-if="block.teamStatus.running > 0" class="team-status-running">
@@ -16,7 +18,9 @@
         <span v-if="block.teamStatus.completed > 0" class="team-status-completed">
           {{ block.teamStatus.completed }} {{ t('chat.turn.block.completed') }}
         </span>
-        <span v-if="block.teamStatus.failed > 0" class="team-status-failed"> {{ block.teamStatus.failed }} {{ t('chat.turn.block.failed') }} </span>
+        <span v-if="block.teamStatus.failed > 0" class="team-status-failed">
+          {{ block.teamStatus.failed }} {{ t('chat.turn.block.failed') }}
+        </span>
       </span>
       <q-icon
         class="agent-header__toggle"
@@ -47,15 +51,29 @@
 
         <!-- Progress sections (orchestration / team / tool / thinking steps) -->
         <template v-if="block.progressSections?.length">
-          <div v-for="(ps, psi) in block.progressSections" :key="'ps-' + psi" class="section section--progress" :class="progressClass(ps)">
+          <div
+            v-for="(ps, psi) in block.progressSections"
+            :key="'ps-' + psi"
+            class="section section--progress"
+            :class="progressClass(ps)"
+          >
             <div class="section__label">
               <span class="section__label-icon">{{ progressIcon(ps.category) }}</span>
               <span class="section__label-text">{{ progressCategoryLabel(ps.category) }}</span>
               <span class="section__label-message">{{ ps.message }}</span>
-              <span v-if="ps.durationMs != null" class="section__label-duration">{{ formatDuration(ps.durationMs) }}</span>
+              <span v-if="ps.durationMs != null" class="section__label-duration">{{
+                formatDuration(ps.durationMs)
+              }}</span>
               <span v-else-if="ps.status === 'running'" class="pulse-dot" />
-              <span v-if="ps.status === 'failed'" class="section__label-icon" :title="t('chat.turn.block.failed')">{{ progressStatusGlyph('failed') }}</span>
-              <span v-else-if="ps.status === 'timeout'" class="section__label-icon" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
+              <span v-if="ps.status === 'failed'" class="section__label-icon" :title="t('chat.turn.block.failed')">{{
+                progressStatusGlyph('failed')
+              }}</span>
+              <span
+                v-else-if="ps.status === 'timeout'"
+                class="section__label-icon"
+                :title="t('chat.agentBlock.timeout')"
+                >{{ progressStatusGlyph('timeout') }}</span
+              >
             </div>
           </div>
         </template>
@@ -89,7 +107,11 @@
               <div class="section__label">
                 <q-icon name="article" size="14px" style="color: var(--color-success)" />
                 <span class="section__label-text">
-                  {{ totalReplyCount > 1 ? t('chat.turn.block.resultLabelN') + ' ' + replyRoundIndex(idx) : t('chat.turn.block.resultLabel') }}
+                  {{
+                    totalReplyCount > 1
+                      ? t('chat.turn.block.resultLabelN') + ' ' + replyRoundIndex(idx)
+                      : t('chat.turn.block.resultLabel')
+                  }}
                 </span>
                 <span v-if="entry.section.durationMs != null" class="section__label-duration">
                   {{ formatDuration(entry.section.durationMs) }}
@@ -125,7 +147,11 @@
             </div>
 
             <!-- Notice entry (degradation, info) -->
-            <div v-else-if="entry.kind === 'notice'" class="notice-timeline-entry" :class="`notice--${entry.section.type}`">
+            <div
+              v-else-if="entry.kind === 'notice'"
+              class="notice-timeline-entry"
+              :class="`notice--${entry.section.type}`"
+            >
               <q-icon
                 :name="entry.section.type === 'degradation' ? 'warning_amber' : 'info'"
                 size="14px"
@@ -165,23 +191,15 @@ const props = defineProps<{
 
 /**
  * Local collapse state — initialized from props.block.collapsed.
- * Watches for status changes to auto-collapse when agent completes.
+ * No auto-collapse: the conversation should remain expanded.
  */
 const localCollapsed = ref<boolean>(props.block.collapsed);
 
 // Sync localCollapsed when the parent changes the prop
-watch(() => props.block.collapsed, (val) => { localCollapsed.value = val; });
-
-// Auto-collapse when status transitions to completed
 watch(
-  () => props.block.status,
-  (newStatus, oldStatus) => {
-    if (newStatus === 'completed' && oldStatus === 'running') {
-      // Delay auto-collapse to let user see the result briefly
-      setTimeout(() => {
-        localCollapsed.value = true;
-      }, 800);
-    }
+  () => props.block.collapsed,
+  (val) => {
+    localCollapsed.value = val;
   },
 );
 

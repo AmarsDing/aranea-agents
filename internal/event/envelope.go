@@ -89,6 +89,7 @@ const (
 	ErrorCodeToolError            = contract.ErrorCodeToolError
 	ErrorCodeConfirmationRequired = contract.ErrorCodeConfirmationRequired
 	ErrorCodeConfirmationDenied   = contract.ErrorCodeConfirmationDenied
+	ErrorCodeConfirmationTimeout  = contract.ErrorCodeConfirmationTimeout
 )
 
 // Re-export functions.

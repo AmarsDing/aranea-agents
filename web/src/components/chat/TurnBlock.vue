@@ -75,15 +75,22 @@
           <div v-if="step.body" class="text-body2 q-mb-xs" v-html="renderStepBody(step.body)" />
           <template v-if="toolDisplay.showToolCalls">
             <ToolCallTimeline v-if="step.linkedTools.length >= 2" :events="step.linkedTools" />
-            <ChatExecutionCard
-              v-else
-              v-for="tool in step.linkedTools"
-              :key="tool.id"
-              :event="tool"
-              :initial-collapsed="isToolEventCompleted(tool)"
-              class="q-mb-xs"
-              @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-            />
+            <template v-else>
+              <TodoInlineList
+                v-for="tool in step.linkedTools.filter(t => isTodoWriteTool(t.tool_name))"
+                :key="tool.id"
+                :event="tool"
+                class="q-mb-xs"
+              />
+              <ChatExecutionCard
+                v-for="tool in step.linkedTools.filter(t => !isTodoWriteTool(t.tool_name))"
+                :key="tool.id"
+                :event="tool"
+                :initial-collapsed="isToolEventCompleted(tool)"
+                class="q-mb-xs"
+                @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+              />
+            </template>
           </template>
         </div>
       </div>
@@ -169,9 +176,11 @@ import { useI18n } from 'vue-i18n';
 import ChatMessageRow from './ChatMessageRow.vue';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ChatExecutionCard from './ChatExecutionCard.vue';
+import TodoInlineList from './TodoInlineList.vue';
 import ToolCallTimeline from './ToolCallTimeline.vue';
 import CompactTimeline from './CompactTimeline.vue';
 import ToolStrip from './ToolStrip.vue';
+import { isTodoWriteTool } from '../../features/chat/activityPresentation';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import { filterToolsForToolStrip, lastAssistant, toolStripSummary } from '../../features/chat/groupMessagesByTurn';
 import { toolEventFromMessage } from '../../features/chat/envelopeToolCall';

@@ -310,6 +310,10 @@ type AgentRuntimeSettings struct {
 	ToolsCircuitBreakerOverridesJSON string
 	ToolsDeferredJSON                string
 	ToolsCommandSafetyEnabled        bool
+	// ToolsExecutionTimeoutSec is the per-tool execution timeout in seconds (0 = use default).
+	// This covers BeforeTool callbacks, actual execution, and AfterTool callbacks.
+	// A safety-net default is applied in the agent layer when this is zero.
+	ToolsExecutionTimeoutSec int
 	// PlannerKind selects the planning strategy: "" | "builtin" | "react" | "a2ui".
 	// Empty string inherits the legacy dialog-mode based selection (builtin when dialogMode="plan").
 	PlannerKind string

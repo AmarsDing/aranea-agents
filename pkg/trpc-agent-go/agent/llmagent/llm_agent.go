@@ -190,6 +190,7 @@ func New(name string, opts ...Option) *LLMAgent {
 		options.EnableParallelTools,
 		options.ToolCallbacks,
 		processor.WithToolCallRetryPolicy(options.ToolCallRetryPolicy),
+		processor.WithToolCallExecutionTimeout(options.ToolCallExecutionTimeout),
 	)
 	// Configure default transfer message for direct sub-agent calls.
 	// Default behavior (when not configured): enabled with built-in default message.
