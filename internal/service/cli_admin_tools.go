@@ -113,7 +113,13 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	if o == nil || o.spiritAssembler() == nil {
 		return nil
 	}
-	if strings.TrimSpace(ag.AgentKey) != biz.SpiritAgentKey {
+	isSpirit := strings.TrimSpace(ag.AgentKey) == biz.SpiritAgentKey
+	// Also allow agents with build_orchestration_graph in their ToolsAllowJSON
+	var hasGraphToolAllowed bool
+	if ag.Settings != nil {
+		hasGraphToolAllowed = biz.ToolKeyInAllowJSON(ag.Settings.ToolsAllowJSON, "build_orchestration_graph")
+	}
+	if !isSpirit && !hasGraphToolAllowed {
 		return nil
 	}
 	var out []trpctool.Tool
@@ -122,22 +128,25 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	// The planner uses ComplexityRuleEngine (rule-based) + LLM (task decomposition) hybrid approach,
 	// outputting OrchestrationStrategy (direct/single_agent/parallel/dag/coordinator).
 
-	// New three-phase orchestration tools.
-	planner := o.team().TaskPlanner
-	allocator := o.team().AgentAllocator
-	orchestrator := o.team().TaskOrchestrator
-	if planner != nil && allocator != nil && orchestrator != nil {
-		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), o.td().Pipeline.Bus, o.lg()))
-		out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg()))
-		out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg()))
-	}
+	// New three-phase orchestration tools (Spirit-only, requires planner+allocator+orchestrator).
+	if isSpirit {
+		planner := o.team().TaskPlanner
+		allocator := o.team().AgentAllocator
+		orchestrator := o.team().TaskOrchestrator
+		if planner != nil && allocator != nil && orchestrator != nil {
+			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), o.td().Pipeline.Bus, o.lg()))
+			out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg()))
+			out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg()))
+		}
 
-	// Synthesize results tool (still actively used for post-orchestration result synthesis).
-	if o.spiritSynthesis() != nil {
-		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis()))
+		// Synthesize results tool (still actively used for post-orchestration result synthesis).
+		if o.spiritSynthesis() != nil {
+			out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis()))
+		}
 	}
 
 	// Graph orchestration tool for complex multi-agent DAG execution.
+	// Available to Spirit agents and agents with build_orchestration_graph in ToolsAllowJSON.
 	var graphBuilder orchtools.GraphBuilderPort
 	if o.graphExec() != nil {
 		graphBuilder = graphBuilderAdapter{exec: o.graphExec()}

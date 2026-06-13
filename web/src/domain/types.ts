@@ -43,6 +43,7 @@ export type MessageOrigin =
   | { kind: 'persisted' }
   | { kind: 'pending_user'; localId: string }
   | { kind: 'streaming'; sessionId: string }
+  | { kind: 'streaming_snapshot'; sessionId: string }
   | { kind: 'team_member'; agentKey: string }
   | { kind: 'tool_activity'; toolEventId: string };
 

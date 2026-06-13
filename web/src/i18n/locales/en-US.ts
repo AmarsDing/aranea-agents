@@ -297,6 +297,8 @@ export default {
       receiveTask: 'Receive task',
       timeout: 'Timeout',
       progress: 'Progress',
+      finalReply: 'Reply',
+      intermediateReply: 'Intermediate reply',
     },
     agentTool: {
       longRunningTitle: 'Tool still running, LLM has not received final result',

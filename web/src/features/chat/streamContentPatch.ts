@@ -3,6 +3,7 @@ import type { Message } from './types';
 type StreamExtras = {
   reasoning_markdown?: string;
   reasoning_content?: string;
+  reasoning_as_display?: boolean;
 };
 
 function reasoningFromExtras(extras: StreamExtras): string {
@@ -57,6 +58,12 @@ export function patchStreamingMessage(
 export function reasoningMarkdown(message: Message): string {
   if (message.reasoning_markdown?.trim()) return message.reasoning_markdown.trim();
   return reasoningFromExtras(parseMessageExtras(message.options_json));
+}
+
+/** Check if content_markdown is a reasoning fallback (LLM produced only reasoning, no separate reply). */
+export function isReasoningAsDisplay(message: Message): boolean {
+  const extras = parseMessageExtras(message.options_json);
+  return extras.reasoning_as_display === true;
 }
 
 /** Map legacy reasoning_content from server rows to reasoning_markdown for UI replay. */

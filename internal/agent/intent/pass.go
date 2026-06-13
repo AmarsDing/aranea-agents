@@ -238,7 +238,10 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: "User message:\n\n" + userText},
 	}
-	callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	// Intent pass is a lightweight classification call; 3s is sufficient.
+	// The previous 45s timeout could block the main LLM call on slow models,
+	// adding significant first-byte latency for the user.
+	callCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	text, _, _, _, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)

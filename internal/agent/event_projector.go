@@ -188,6 +188,13 @@ func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trp
 				_, isLongRunning := ev.LongRunningToolIDs[tc.ID]
 				env.ToolCall = p.buildToolCallEnvelope(ctx, tc.ID, tc.Function.Name, argsJSON, "", "calling", ev.Author, startedAt, nil, 0, "", isLongRunning)
 				p.attachActivityMetadata(&env)
+				// Reset stream builders when a tool call is detected. This ensures
+				// the next LLM round's text_delta/text_done contains only that
+				// round's content, not the accumulated content from previous rounds.
+				// Without this reset, the streamBuilder would carry over accumulated
+				// text/reasoning from earlier rounds, causing content duplication.
+				p.resetStreamBuilder(streamKey(ev.Author, meta))
+				p.resetStreamBuilder(streamKey(ev.Author, meta) + ":reasoning")
 				envelopes = append(envelopes, env)
 			}
 		}
@@ -710,6 +717,16 @@ func (p *EventProjector) streamBuilder(key string) *strings.Builder {
 		p.streamText[key] = b
 	}
 	return b
+}
+
+// resetStreamBuilder clears the accumulated content for a given key.
+// Called when a tool_call is detected, so the next LLM round starts with
+// a fresh accumulator and doesn't carry over content from previous rounds.
+func (p *EventProjector) resetStreamBuilder(key string) {
+	if p.streamText == nil {
+		return
+	}
+	delete(p.streamText, key)
 }
 
 func (p *EventProjector) visibleStreamDelta(key, chunk string) string {

@@ -47,7 +47,7 @@ const localCollapsed = ref(props.activity.collapsed);
 watch(
   () => props.activity.streaming,
   (isStreaming, wasStreaming) => {
-    if (wasStreaming && !isStreaming) {
+    if (wasStreaming && !isStreaming && props.activity.collapsed) {
       setTimeout(() => { localCollapsed.value = true; }, 500);
     }
   },
@@ -62,7 +62,7 @@ const label = computed(() => {
   return t('chat.thinking.summary');
 });
 
-const formattedDuration = computed(() => formatDuration(props.activity.durationMs));
+const formattedDuration = computed(() => props.activity.durationMs != null ? formatDuration(props.activity.durationMs) : '');
 
 const renderedContent = computed(() => renderChatMarkdown(props.activity.content));
 

@@ -85,10 +85,20 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		customTools = d.customToolFunc(ctx, p.Agent)
 	}
 
+	// Fetch effective tools ONCE and reuse for hash computation and tool assembly.
+	// Previously GetEffectiveTools was called 3 times per turn (computeToolHash,
+	// computeMCPHash, loadEffectiveToolKeys), each triggering 3-5 DB queries.
+	var cachedEffTools *biz.AgentEffectiveTools
+	if d.td.ReadDeps.AgentsUC != nil {
+		if eff, err := d.td.ReadDeps.AgentsUC.GetEffectiveTools(ctx, p.Agent.ID); err == nil {
+			cachedEffTools = &eff
+		}
+	}
+
 	// Compute content-based version hashes for tool/skill/MCP configurations.
 	// These hashes are folded into the build cache key so that configuration
 	// changes automatically invalidate the cached agent (defense-in-depth).
-	toolHash := d.computeToolHash(ctx, p.Agent.ID)
+	toolHash := d.computeToolHashFromCached(cachedEffTools)
 	skillHash := d.computeSkillHash(ctx)
 	mcpHash := d.computeMCPHash(ctx, p.Agent.ID)
 
@@ -107,11 +117,12 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			DialogMode: p.DialogMode,
 		},
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
-			ToolUC:       d.td.ReadDeps.ToolUC,
-			MCPTooling:   d.td.Persist.AgentMCP,
-			AwaitHook:    d.awaitCoord.MakeAwaitReplyFunc(ctx, sessionID, p.RunID),
-			CustomTools:  customTools,
-			KanbanBridge: d.rt.KanbanBridge,
+			ToolUC:               d.td.ReadDeps.ToolUC,
+			MCPTooling:           d.td.Persist.AgentMCP,
+			AwaitHook:            d.awaitCoord.MakeAwaitReplyFunc(ctx, sessionID, p.RunID),
+			CustomTools:          customTools,
+			KanbanBridge:         d.rt.KanbanBridge,
+			CachedEffectiveTools: cachedEffTools,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
 			HasMemory:             d.td.Persist.Memory.Available(),
@@ -145,9 +156,30 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 	return deps, nil
 }
 
+// computeToolHashFromCached produces a content hash from a pre-fetched effective tool result.
+// This avoids a redundant GetEffectiveTools DB call when the result is already available.
+func (d *chatAgentBuildDirector) computeToolHashFromCached(eff *biz.AgentEffectiveTools) string {
+	if eff == nil {
+		return ""
+	}
+	entries := make([]versionHashEntry, 0, len(eff.Items))
+	for _, item := range eff.Items {
+		state := "0"
+		if item.Enabled {
+			state = "1"
+		}
+		entries = append(entries, versionHashEntry{
+			ID:        fmt.Sprintf("%s:%s", item.ToolKey, state),
+			UpdatedAt: item.EffectiveState,
+		})
+	}
+	return computeVersionHash(entries)
+}
+
 // computeToolHash produces a content hash from the agent's effective tool configuration.
 // It hashes the sorted list of effective tool keys + their enabled states, so any change
 // in which tools are available to the agent invalidates the cache.
+// Deprecated: use computeToolHashFromCached when the effective tools result is already available.
 func (d *chatAgentBuildDirector) computeToolHash(ctx context.Context, agentID string) string {
 	if d.td.ReadDeps.AgentsUC == nil {
 		return ""

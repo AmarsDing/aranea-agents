@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -51,30 +50,13 @@ func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConf
 		return nil, ErrEmptyModelAPI
 	}
 
-	// Preflight connectivity check: verify the LLM API endpoint is reachable
-	// before constructing the full model. This is a best-effort check — a
-	// failure is logged as a warning but does NOT block model construction,
-	// because a temporary network glitch should not prevent the user from
-	// sending a message. The URL validation (security) is still fatal.
+	// Security validation is still required, but the synchronous HTTP HEAD
+	// preflight has been removed — it added up to 10s latency on the
+	// critical path (Agent build → SetRunStatus). The LLM call itself
+	// validates connectivity; a preflight is redundant.
 	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
 		if err := outboundguard.ValidateURL(baseURL); err != nil {
 			return nil, fmt.Errorf("LLM API URL blocked: %w", err)
-		}
-		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		probeReq, err := http.NewRequestWithContext(probeCtx, http.MethodHead, baseURL, nil)
-		if err == nil {
-			client := outboundguard.NewClient(10 * time.Second)
-			resp, probeErr := client.Do(probeReq)
-			if probeErr != nil {
-				lg.Warn("模型 API 预检失败（不阻塞）", loggateway.StepID("provider.preflight_warn"), loggateway.Str("url", baseURL), loggateway.Err(probeErr))
-			} else {
-				// Drain and close body for proper connection reuse.
-				// Limit to 1MB as defense against misbehaving servers.
-				io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-				resp.Body.Close()
-				lg.Info("模型 API 预检通过", loggateway.StepID("provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
-			}
 		}
 	}
 

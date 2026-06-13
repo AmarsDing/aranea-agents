@@ -149,6 +149,11 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
+			// Defer MCP ToolSet initialization to first LLM call instead of
+			// blocking Agent construction on MCP Initialize+ListTools.
+			// This removes 0.2-5s per MCP server from the critical path
+			// (Agent build → SetRunStatus → frontend ACK).
+			opts = append(opts, trpcllmagent.WithRefreshToolSetsOnRun(true))
 		}
 		if len(ts.Tools) > 0 {
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))

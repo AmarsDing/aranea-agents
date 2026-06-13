@@ -21,6 +21,11 @@
 
     <!-- Branch: ActivityTimeline or TeamPanel -->
     <div class="agent-work-panel__body">
+      <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
+      <div v-if="agentWork.status === 'running' && !agentWork.activities.length" class="agent-work-panel__waiting">
+        <span class="pulse-dot"></span>
+        <span class="agent-work-panel__waiting-text">{{ t('chat.thinking', '正在思考…') }}</span>
+      </div>
       <ActivityTimeline
         v-if="!agentWork.panel"
         :activities="agentWork.activities"
@@ -119,4 +124,15 @@ const formattedDuration = computed(() => formatDuration(props.agentWork.duration
 
   &__body
     margin-left: 12px
+
+  &__waiting
+    display: flex
+    align-items: center
+    gap: 8px
+    padding: 8px 0
+    color: var(--color-text-secondary)
+    font-style: italic
+
+  &__waiting-text
+    font-size: 13px
 </style>

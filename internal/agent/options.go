@@ -142,6 +142,29 @@ func MergeReasoningIntoAssistantOptionsJSON(base string, reasoning string) (stri
 	return string(out), nil
 }
 
+// MergeReasoningAsDisplayFlag sets the reasoning_as_display flag in options_json.
+// When true, content_markdown is a reasoning fallback (LLM produced only reasoning, no separate reply).
+// Frontend uses this to render ThinkActivity instead of SayActivity.
+func MergeReasoningAsDisplayFlag(base string, flag bool) (string, error) {
+	b := strings.TrimSpace(base)
+	var opts map[string]any
+	if b == "" {
+		opts = map[string]any{}
+	} else if err := json.Unmarshal([]byte(b), &opts); err != nil {
+		return "", err
+	}
+	if flag {
+		opts["reasoning_as_display"] = true
+	} else {
+		delete(opts, "reasoning_as_display")
+	}
+	out, err := json.Marshal(opts)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 // MergeSourceIntoUserOptionsJSON stamps envelope source (web|channel|cron|a2a) for UserBubble badges (M55 CC-B-07).
 func MergeSourceIntoUserOptionsJSON(optionsJSON, source string) (string, error) {
 	return MergeInboundSourceIntoUserOptionsJSON(optionsJSON, source, "", "")

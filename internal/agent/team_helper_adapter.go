@@ -35,11 +35,19 @@ func (h *TeamAgentHelperAdapter) MergeReasoningIntoAssistantOptionsJSON(optsJSON
 	return MergeReasoningIntoAssistantOptionsJSON(optsJSON, reasoning)
 }
 
-func (h *TeamAgentHelperAdapter) DisplayMarkdownFromStream(result biz.TeamStreamResult) string {
+func (h *TeamAgentHelperAdapter) DisplayMarkdownFromStream(result biz.TeamStreamResult) (string, bool) {
 	esr := EventStreamResult{
 		HasError:   result.HasError,
 		LastError:  result.LastError,
 		HasContent: result.HasContent,
+	}
+	// Populate Reply and Reasoning builders from TeamStreamResult fields
+	// so that DisplayMarkdownFromStream can correctly detect reasoning fallback.
+	if result.ContentMarkdown != "" {
+		esr.Reply.WriteString(result.ContentMarkdown)
+	}
+	if result.ReasoningText != "" {
+		esr.Reasoning.WriteString(result.ReasoningText)
 	}
 	return DisplayMarkdownFromStream(esr)
 }

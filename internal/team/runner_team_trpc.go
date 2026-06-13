@@ -366,7 +366,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 
 	reasoningText := strings.TrimSpace(result.Reasoning.String())
-	displayMarkdown := agent.DisplayMarkdownFromStream(result)
+	displayMarkdown, reasoningAsDisplay := agent.DisplayMarkdownFromStream(result)
 	promptTok, completionTok := agent.EstimateTokensIfMissing(result.PromptTok, result.CompletionTok, content, displayMarkdown)
 
 	assistantOptsStr, err := agent.AssistantOptionsJSON(ar.agent, &agent.TeamMemberAnchor{
@@ -381,6 +381,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	if reasoningText != "" {
 		if assistantOptsStr, err = agent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, reasoningText); err != nil {
+			turnStatus = biz.TeamMemberStepStatusError
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return userMsg, biz.ChatMessage{}, err
+		}
+	}
+	if reasoningAsDisplay {
+		if assistantOptsStr, err = agent.MergeReasoningAsDisplayFlag(assistantOptsStr, true); err != nil {
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, &run, t0, err.Error())
 			return userMsg, biz.ChatMessage{}, err

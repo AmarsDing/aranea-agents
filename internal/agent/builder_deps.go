@@ -44,6 +44,10 @@ type TRPCToolAssemblyDeps struct {
 	AwaitHook    tooltrpc.ReplyFunc
 	CustomTools  []trpctool.Tool
 	KanbanBridge kanbanpkg.Bridge
+	// CachedEffectiveTools carries a pre-fetched effective-tools result so
+	// that buildToolsetsForAgent can skip its own GetEffectiveTools call.
+	// When nil, buildToolsetsForAgent falls back to fetching it itself.
+	CachedEffectiveTools *biz.AgentEffectiveTools
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.

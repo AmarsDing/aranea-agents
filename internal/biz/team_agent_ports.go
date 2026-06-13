@@ -75,7 +75,8 @@ type TeamAgentHelper interface {
 	MergeReasoningIntoAssistantOptionsJSON(optsJSON, reasoning string) (string, error)
 
 	// DisplayMarkdownFromStream extracts display markdown from a turn result.
-	DisplayMarkdownFromStream(result TeamStreamResult) string
+	// The second return value indicates whether the display text is a reasoning fallback.
+	DisplayMarkdownFromStream(result TeamStreamResult) (string, bool)
 
 	// EstimateTokensIfMissing estimates token counts when not provided by the model.
 	EstimateTokensIfMissing(promptTok, completionTok int, input, output string) (int, int)

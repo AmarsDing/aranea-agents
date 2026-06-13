@@ -8,16 +8,35 @@ func TestDisplayMarkdownFromStream_prefersReply(t *testing.T) {
 	var r EventStreamResult
 	_, _ = r.Reply.WriteString("hello")
 	_, _ = r.Reasoning.WriteString("think")
-	if got := DisplayMarkdownFromStream(r); got != "hello" {
+	got, fallback := DisplayMarkdownFromStream(r)
+	if got != "hello" {
 		t.Fatalf("got %q", got)
+	}
+	if fallback {
+		t.Fatal("expected fallback=false for reply content")
 	}
 }
 
 func TestDisplayMarkdownFromStream_reasoningFallback(t *testing.T) {
 	var r EventStreamResult
 	_, _ = r.Reasoning.WriteString("only reasoning")
-	if got := DisplayMarkdownFromStream(r); got != "only reasoning" {
+	got, fallback := DisplayMarkdownFromStream(r)
+	if got != "only reasoning" {
 		t.Fatalf("got %q", got)
+	}
+	if !fallback {
+		t.Fatal("expected fallback=true for reasoning-only content")
+	}
+}
+
+func TestDisplayMarkdownFromStream_emptyResult(t *testing.T) {
+	var r EventStreamResult
+	got, fallback := DisplayMarkdownFromStream(r)
+	if got != "" {
+		t.Fatalf("got %q, want empty", got)
+	}
+	if fallback {
+		t.Fatal("expected fallback=false for empty result")
 	}
 }
 

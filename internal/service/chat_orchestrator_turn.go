@@ -248,6 +248,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	prov = admit.provider
 	mod = admit.model
 
+	// ── EARLY ACK ──
+	// Signal "running" to the frontend immediately after admission so the
+	// client-side 30s Turn ACK timeout is cleared before the BUILD phase.
+	// Previously this was sent after BUILD, which could take 2-15s on cache
+	// miss, causing the frontend to time out.
+	o.runStatus().SetRunStatus(ctx, sessionID, runID, "running", "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
+
 	// ── BUILD (inline — defer interactions prevent extraction) ──
 	turnStart := time.Now()
 	biz.DefaultTurnCompletionBridge().RegisterTurnStart(sessionID, runID, turnStart)
@@ -282,12 +290,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	attachmentRefs, err := o.resolveUserAttachmentRefs(ctx, sessionID, input.Options.AttachmentIDs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		o.publishRunStatus(sessionID, runID, "failed", err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	if err := o.validateTurnAttachmentCapabilities(ctx, prov, mod, attachmentRefs); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogWarn("chat.attachment.preflight", "模型不支持当前附件类型", "", event.P("provider", prov), event.P("model", mod), event.P("error", err.Error()))
+		o.publishRunStatus(sessionID, runID, "failed", err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -296,6 +306,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.runs.Finish(sessionID)
+		// Since we sent "running" early (EARLY ACK), we must publish a
+		// terminal run_status so the frontend knows the run has ended.
+		o.publishRunStatus(sessionID, runID, "failed", err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -315,8 +328,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			emitter.LogWarn("chat.runner.rollback", "Runner 会话回滚失败", "", event.P("error", err.Error()))
 		}
 	}
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, "running", "")
-	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
+	// SetRunStatus("running") was already sent in the EARLY ACK section
+	// above (right after ADMISSION) to clear the frontend 30s timeout early.
 	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
 		if turnStatus != "ok" {

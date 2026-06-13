@@ -295,6 +295,8 @@ export default {
       receiveTask: '接收任务',
       timeout: '超时',
       progress: '进度',
+      finalReply: '回复',
+      intermediateReply: '中间回复',
     },
     agentTool: {
       longRunningTitle: '工具仍在执行，LLM 尚未收到最终结果',

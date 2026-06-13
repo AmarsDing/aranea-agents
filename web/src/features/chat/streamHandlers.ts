@@ -78,6 +78,42 @@ function streamRowId(ctx: StreamHandlerCtx, sessionId: string): string {
   return `${prefix}-${sessionId}`;
 }
 
+/**
+ * Snapshot the current streaming message into a standalone assistant message
+ * with a stable ID, so that subsequent LLM rounds (after tool calls) get their
+ * own streaming message. This enables the Activity Timeline to display each
+ * round of thinking/replying as separate ThinkActivity/SayActivity nodes.
+ *
+ * Returns the new streamId for the next round.
+ */
+function snapshotStreamingMessage(
+  messages: Message[],
+  sessionId: string,
+  streamId: string,
+): { messages: Message[]; newStreamId: string } {
+  const streamIdx = messages.findIndex((m) => m.id === streamId);
+  if (streamIdx < 0) return { messages, newStreamId: streamId };
+
+  const streamMsg = messages[streamIdx];
+  // Only snapshot if the streaming message has content (reasoning or text)
+  const hasContent = (streamMsg.content_markdown?.trim() ?? '') !== ''
+    || (streamMsg.reasoning_markdown?.trim() ?? '') !== '';
+  if (!hasContent) return { messages, newStreamId: streamId };
+
+  // Generate a stable ID for the snapshot: ws-snap-{sessionId}-{timestamp}
+  const snapId = `ws-snap-${sessionId}-${Date.now()}`;
+  const snapMsg: Message = {
+    ...streamMsg,
+    id: snapId,
+    status: 'ok',  // Snapshot is complete — no longer streaming
+  };
+
+  // Replace the streaming message with the snapshot
+  const next = [...messages];
+  next[streamIdx] = snapMsg;
+  return { messages: next, newStreamId: streamId };
+}
+
 function patchMessages(ctx: StreamHandlerCtx, sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
   ctx.setMessages(sessionId, patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone));
 }
@@ -208,7 +244,16 @@ export function bindStreamHandlers(
         partialText: env.content?.text,
         done: true,
       });
-      patch(sid, streamRowId(ctx, sid), env, true);
+
+      // The backend resets stream builders when tool_call is detected,
+      // so text_done now contains only the CURRENT round's content (not
+      // accumulated across all rounds). This means we can safely use
+      // replaceText/replaceReasoning to set the authoritative final content
+      // for the current ws-stream-* message.
+      // ws-snap-* messages already contain earlier rounds' content and are
+      // unaffected by this text_done event.
+      const streamId = streamRowId(ctx, sid);
+      patch(sid, streamId, env, true);
       applySessionContextPatch(sid, env);
     }),
   );
@@ -218,11 +263,27 @@ export function bindStreamHandlers(
     withSessionFilter(ctx, (env, sid) => {
       if (!env.tool_call) return;
       ctx.onRunActivity?.();
+
+      // Snapshot the current streaming message before the tool call.
+      // This converts the in-progress ws-stream-* message into a standalone
+      // assistant message (ws-snap-*), so that the next LLM round gets its own
+      // streaming message. This is the key mechanism for separating multiple
+      // rounds of thinking/replying in the Activity Timeline.
+      const streamId = streamRowId(ctx, sid);
+      const cur = ctx.getMessages(sid);
+      const { messages: snapped, newStreamId } = snapshotStreamingMessage(cur, sid, streamId);
+
+      // Remove the old streaming row if it was snapshotted (a new one will be
+      // created automatically when the next text_delta arrives).
+      const cleaned = newStreamId !== streamId
+        ? snapped.filter((m) => m.id !== streamId)
+        : snapped;
+
       if (writer) {
-        writer.update((cur) => upsertToolMessage(cur, sid, env, 'before'));
+        writer.update(() => upsertToolMessage(cleaned, sid, env, 'before'));
         return;
       }
-      ctx.setMessages(sid, upsertToolMessage(ctx.getMessages(sid), sid, env, 'before'));
+      ctx.setMessages(sid, upsertToolMessage(cleaned, sid, env, 'before'));
     }),
   );
 

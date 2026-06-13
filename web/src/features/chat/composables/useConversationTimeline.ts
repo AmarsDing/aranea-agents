@@ -23,6 +23,7 @@ import type {
   Activity,
   ActActivity,
   SayActivity,
+  ThinkActivity,
   ToolActivity,
 } from '../activityTimelineTypes';
 import type { AgentBlock } from '../agentTreeTypes';
@@ -32,6 +33,7 @@ import { resolveAssistantPresentation } from '../messagePlannerPresentation';
 import { resolveDisplayLabel } from '../activityPresentation';
 import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { canonicalToolStatus } from '../lib/statusMap';
+import { isReasoningAsDisplay } from '../streamContentPatch';
 
 // ── UserTurn (internal) ──
 
@@ -169,39 +171,57 @@ function buildConversationTurn(turn: UserTurn, plannerKind: string): Conversatio
         }
       } else {
         // 非 ReAct 模式
-        // 判断是否为后端 fallback：content_markdown 和 reasoning_markdown 内容相同
-        // 后端 DisplayMarkdownFromStream 在 LLM 只有 reasoning 没有 text 时，
-        // 会将 reasoning 作为 content_markdown 持久化，导致两者内容相同。
-        // 此时应该只创建 SayActivity（这是 LLM 的实际回复），不创建 ThinkActivity。
+        // 判断后端标记：reasoning_as_display 表示 content_markdown 是 reasoning 的 fallback
+        // 此时应该创建 ThinkActivity（作为主要回复），不创建 SayActivity
+        const hasReasoningAsDisplayFlag = isReasoningAsDisplay(msg);
+
+        // 兼容旧数据：没有 reasoning_as_display 标记时，用内容比较判断
         const isBackendFallback = reasoning && bodyMarkdown && bodyMarkdown === reasoning;
 
-        if (reasoning && !isBackendFallback) {
-          // reasoning 有独立内容，且 content_markdown 不同 → 创建 ThinkActivity
-          activities.push({
-            kind: 'think',
-            id: `think-${msg.id}`,
-            content: reasoning,
-            collapsed: true,
-            streaming: msg.status === 'streaming',
-            durationMs: null,
-          });
-          sortCounter++;
-        }
-
-        if (bodyMarkdown) {
-          // content_markdown 有内容 → 创建 SayActivity
-          // （后端 fallback 时 bodyMarkdown === reasoning，此时只创建 SayActivity）
+        if (hasReasoningAsDisplayFlag || isBackendFallback) {
+          // reasoning 是实际回复内容 → 创建 SayActivity 作为主要展示
+          // 后端标记 reasoning_as_display 表示 content_markdown 是 reasoning 的 fallback，
+          // 此时 reasoning 就是实际回复，应显示为 SayActivity（💬 回复样式）
           activities.push({
             kind: 'say',
             id: `say-${msg.id}`,
-            content: bodyMarkdown,
-            isFinal: false,
+            content: reasoning || bodyMarkdown,
+            isFinal: false, // 后面统一设置
             streaming: msg.status === 'streaming',
-            variant: presentation.mode === 'a2ui' ? 'a2ui' : 'default',
+            variant: 'default',
             durationMs: null,
           });
           lastSayIndex = activities.length - 1;
           sortCounter++;
+        } else {
+          // reasoning 和 content 不同，各自独立
+          if (reasoning) {
+            activities.push({
+              kind: 'think',
+              id: `think-${msg.id}`,
+              content: reasoning,
+              // During streaming, keep reasoning expanded so user can see
+              // the thinking process in real-time. Collapse after completion.
+              collapsed: msg.status !== 'streaming',
+              streaming: msg.status === 'streaming',
+              durationMs: null,
+            });
+            sortCounter++;
+          }
+
+          if (bodyMarkdown) {
+            activities.push({
+              kind: 'say',
+              id: `say-${msg.id}`,
+              content: bodyMarkdown,
+              isFinal: false,
+              streaming: msg.status === 'streaming',
+              variant: presentation.mode === 'a2ui' ? 'a2ui' : 'default',
+              durationMs: null,
+            });
+            lastSayIndex = activities.length - 1;
+            sortCounter++;
+          }
         }
       }
     }
@@ -242,7 +262,9 @@ function buildConversationTurn(turn: UserTurn, plannerKind: string): Conversatio
     task: userMessage?.content_markdown || null,
     result: lastSayIndex >= 0 && activities[lastSayIndex].kind === 'say'
       ? (activities[lastSayIndex] as SayActivity).content
-      : null,
+      : activities.length > 0 && activities[activities.length - 1].kind === 'think'
+        ? (activities[activities.length - 1] as ThinkActivity).content
+        : null,
     hasPartialFailure: false, // TECH-DEBT: 未计算 hasPartialFailure
     plan: null,
     teamStatus: null,

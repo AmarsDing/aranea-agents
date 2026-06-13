@@ -608,7 +608,7 @@ func (o *ChatOrchestrator) persistTurn(
 	}
 
 	// Empty reply detection
-	displayMarkdown := chatagent.DisplayMarkdownFromStream(result)
+	displayMarkdown, reasoningAsDisplay := chatagent.DisplayMarkdownFromStream(result)
 	if displayMarkdown == "" {
 		return turnPersistResult{}, o.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
 	}
@@ -616,7 +616,7 @@ func (o *ChatOrchestrator) persistTurn(
 	promptTok, completionTok := chatagent.EstimateTokensIfMissing(execResult.resultPromptTok, execResult.resultCompletionTok, "", displayMarkdown)
 
 	// Build and persist assistant message
-	assistantMsg, err := o.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, promptTok, completionTok, turnStatus, turnErr, turnErrMsg)
+	assistantMsg, err := o.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, reasoningAsDisplay, promptTok, completionTok, turnStatus, turnErr, turnErrMsg)
 	if err != nil {
 		return turnPersistResult{}, err
 	}
@@ -674,6 +674,7 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 	execResult turnExecuteResult,
 	emitter *event.TraceEmitter,
 	displayMarkdown string,
+	reasoningAsDisplay bool,
 	promptTok, completionTok int,
 	turnStatus *string,
 	turnErr *error,
@@ -692,6 +693,16 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 	}
 	if s := result.Reasoning.String(); s != "" {
 		if assistantOptsStr, err = chatagent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, s); err != nil {
+			markTurnError(turnStatus, turnErr, turnErrMsg, err)
+			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			return biz.ChatMessage{}, err
+		}
+	}
+	// Mark reasoning_as_display when content_markdown is a reasoning fallback.
+	// Frontend uses this flag to render ThinkActivity instead of SayActivity,
+	// ensuring thinking and replying are visually separated per the Activity Timeline proposal.
+	if reasoningAsDisplay {
+		if assistantOptsStr, err = chatagent.MergeReasoningAsDisplayFlag(assistantOptsStr, true); err != nil {
 			markTurnError(turnStatus, turnErr, turnErrMsg, err)
 			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 			return biz.ChatMessage{}, err

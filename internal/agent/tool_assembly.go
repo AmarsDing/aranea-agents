@@ -186,6 +186,18 @@ func applyWebResearchPlatformDefaults(ctx context.Context, deps TRPCBuilderDeps,
 
 func loadEffectiveToolKeys(ctx context.Context, deps TRPCBuilderDeps, agentID string) map[string]bool {
 	m := map[string]bool{}
+	// Use cached result when available to avoid redundant GetEffectiveTools DB call.
+	if deps.CachedEffectiveTools != nil {
+		if !deps.CachedEffectiveTools.ToolsEnabled {
+			return m
+		}
+		for _, it := range deps.CachedEffectiveTools.Items {
+			if it.Enabled {
+				m[it.ToolKey] = true
+			}
+		}
+		return m
+	}
 	if deps.AgentUC == nil || strings.TrimSpace(agentID) == "" {
 		return m
 	}

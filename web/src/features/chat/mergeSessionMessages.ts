@@ -24,6 +24,8 @@ function isEphemeralMessage(message: Message): boolean {
 
 /** Whether this row is a local-only in-flight message (not yet persisted by server). */
 export function isInFlightLocalRow(message: Message): boolean {
+  // ws-snap-* messages are finalized snapshots — treat as persisted for sorting
+  if (message.origin?.kind === 'streaming_snapshot') return false;
   if (isEphemeralMessage(message)) return true;
   return isInFlightStatus(message.status || '');
 }
@@ -42,6 +44,11 @@ function shouldDropStaleInFlight(message: Message): boolean {
   const origin = message.origin;
   if (isPendingUserOrigin(origin)) return message.status !== 'failed';
   if (isStreamingOrigin(origin)) {
+    // streaming_snapshot messages (ws-snap-*) represent correctly separated
+    // LLM round content. They must NOT be dropped during merge, because the
+    // server-persisted assistant message contains ALL rounds' content merged
+    // into one, and dropping snapshots would lose the round separation.
+    if (origin?.kind === 'streaming_snapshot') return false;
     return !isInFlightStatus(message.status || '');
   }
   if (isTeamMemberOrigin(origin)) return false;
@@ -184,6 +191,14 @@ export function mergeSessionMessages(
   const serverUserByContent = buildServerUserContentMap(normalizedServer);
   const serverAssistantByContent = buildServerAssistantContentMap(normalizedServer);
 
+  // Check if there are streaming_snapshot messages — these represent correctly
+  // separated LLM round content. When snapshots exist, the server-persisted
+  // assistant message contains ALL rounds merged into one, which would
+  // duplicate the snapshot content. We need to handle this carefully.
+  const hasSnapshots = local.some(
+    (m) => m.origin?.kind === 'streaming_snapshot' && m.role === 'assistant',
+  );
+
   const pendingReplacedBy = new Map<string, Message>();
   const matchedServerIDs = new Set<string>();
   for (const row of local) {
@@ -197,13 +212,32 @@ export function mergeSessionMessages(
   // Also match ws-stream assistant placeholders to server-persisted assistant messages.
   for (const row of local) {
     if (!isStreamingPlaceholder(row) || row.role !== 'assistant') continue;
+    // Don't match ws-snap-* messages to server messages — they contain partial
+    // content that is a subset of the full server message. Matching would cause
+    // the server message to replace the snapshot, losing round separation.
+    if (row.origin?.kind === 'streaming_snapshot') continue;
     const serverMatch = findServerMatchForStreaming(row, serverAssistantByContent, matchedServerIDs);
     if (serverMatch) {
       pendingReplacedBy.set(row.id, serverMatch);
     }
   }
 
-  const merged = [...normalizedServer];
+  // When snapshots exist, exclude server assistant messages that would duplicate
+  // the snapshot content. The snapshots + ws-stream-* already have the correct
+  // per-round content. The server message contains ALL rounds merged into one.
+  const serverAssistantIds = new Set<string>();
+  if (hasSnapshots) {
+    for (const m of normalizedServer) {
+      if (m.role === 'assistant') serverAssistantIds.add(m.id);
+    }
+  }
+
+  const merged: Message[] = [];
+  for (const srv of normalizedServer) {
+    // Skip server assistant messages when snapshots exist — they'd duplicate content
+    if (hasSnapshots && serverAssistantIds.has(srv.id)) continue;
+    merged.push(srv);
+  }
   for (const row of local) {
     if (pendingReplacedBy.has(row.id)) continue;
     if (serverById.has(row.id)) continue;

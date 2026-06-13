@@ -61,6 +61,7 @@ var toolGroupsRuntime = []string{"shell_exec", "claude_code", "workspace_exec"}
 var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
 var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"}
+var toolGroupsSubagent = []string{"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"}
 
 // syntheticShellExecTool matches internal/data builtin seeds when the tools table has no shell_exec row.
 func syntheticShellExecTool() Tool {
@@ -135,6 +136,8 @@ func expandToolGroup(name string, catalog []Tool) []string {
 		return append([]string{}, toolGroupsSession...)
 	case "integration":
 		return append([]string{}, toolGroupsIntegration...)
+	case "subagent":
+		return append([]string{}, toolGroupsSubagent...)
 	case "cli_admin":
 		return cliAdminKeysFromRegistry(catalog)
 	default:
@@ -186,12 +189,12 @@ var toolProfiles = map[string][]string{
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
 	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
-	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:cli_admin", "datetime"},
+	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
-	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "assemble_team", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "datetime"},
+	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "assemble_team", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "group:subagent", "datetime"},
 }
 
 func canonicalToolProfile(profile string) string {
@@ -465,4 +468,20 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	}
 	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, all.Items, platform, overrides)
 	return eff, nil
+}
+
+// ToolKeyInAllowJSON checks whether a specific tool key is present in a JSON allow list string.
+// Used by CustomTool injection logic (e.g. build_orchestration_graph) to determine
+// whether a non-Spirit agent should receive the tool.
+func ToolKeyInAllowJSON(allowJSON, key string) bool {
+	list, err := shared.JSONStringList(strings.TrimSpace(allowJSON))
+	if err != nil {
+		return false
+	}
+	for _, k := range list {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
