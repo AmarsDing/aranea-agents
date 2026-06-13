@@ -350,28 +350,34 @@ func (impl *taskPlannerImpl) queryMemory(ctx context.Context, input biz.PlanInpu
 func (impl *taskPlannerImpl) assessComplexity(input biz.PlanInput) biz.DimensionScores {
 	dims := biz.DimensionScores{}
 
-	// Semantic: from IntentArtifact.ComplexityScore (weight 0.25)
-	if input.IntentArtifact != nil && input.IntentArtifact.ComplexityScore > 0 {
-		dims.Semantic = input.IntentArtifact.ComplexityScore
+	// Semantic: estimate from message length and intent kind (weight 0.25)
+	runeCount := len([]rune(input.UserMessage))
+	if runeCount > 500 {
+		dims.Semantic = 0.7
+	} else if runeCount > 200 {
+		dims.Semantic = 0.4
 	} else {
-		// Fallback: estimate from message length
-		runeCount := len([]rune(input.UserMessage))
-		if runeCount > 500 {
-			dims.Semantic = 0.7
-		} else if runeCount > 200 {
-			dims.Semantic = 0.4
-		} else {
-			dims.Semantic = 0.2
+		dims.Semantic = 0.2
+	}
+	if input.IntentArtifact != nil {
+		switch input.IntentArtifact.IntentKind {
+		case "research", "debug":
+			dims.Semantic += 0.15
+		case "code_change":
+			dims.Semantic += 0.1
+		}
+		if dims.Semantic > 1.0 {
+			dims.Semantic = 1.0
 		}
 	}
 
 	// Structural: check if user message contains multiple questions/tasks (weight 0.15)
 	dims.Structural = assessStructural(input.UserMessage)
 
-	// Domain: count distinct domain signals from ComplexitySignals (weight 0.15)
+	// Domain: evaluate from intent kind and risk flags (weight 0.15)
 	dims.Domain = assessDomain(input.IntentArtifact)
 
-	// Tool: check if suggested_agents or tools are mentioned (weight 0.10)
+	// Tool: evaluate from intent kind and search hints (weight 0.10)
 	dims.Tool = assessTool(input.IntentArtifact)
 
 	// Context: check message length and ambiguity count (weight 0.10)
@@ -412,41 +418,60 @@ func assessStructural(userMessage string) float64 {
 	return score
 }
 
-// assessDomain evaluates domain complexity.
+// assessDomain evaluates domain complexity from intent kind and risk flags.
 func assessDomain(artifact *biz.IntentArtifact) float64 {
-	if artifact == nil || len(artifact.ComplexitySignals) == 0 {
+	if artifact == nil {
 		return 0.1
 	}
-	// Count distinct domain signals
-	domainSignals := 0
-	for _, sig := range artifact.ComplexitySignals {
-		switch sig {
-		case "multi_domain", "requires_database", "needs_research":
-			domainSignals++
-		}
+	score := 0.0
+	// Risk flags indicate cross-domain concerns
+	if len(artifact.RiskFlags) >= 2 {
+		score += 0.4
+	} else if len(artifact.RiskFlags) >= 1 {
+		score += 0.2
 	}
-	if domainSignals >= 2 {
-		return 0.8
-	} else if domainSignals >= 1 {
-		return 0.5
+	// Certain intent kinds imply cross-domain work
+	switch artifact.IntentKind {
+	case "research", "debug":
+		score += 0.3
+	case "code_change":
+		score += 0.15
 	}
-	return 0.2
+	if score > 1.0 {
+		score = 1.0
+	}
+	if score < 0.1 {
+		score = 0.1
+	}
+	return score
 }
 
-// assessTool evaluates tool complexity.
+// assessTool evaluates tool complexity from intent kind and search hints.
 func assessTool(artifact *biz.IntentArtifact) float64 {
 	if artifact == nil {
 		return 0.1
 	}
-	agentCount := len(artifact.SuggestedAgents)
-	if agentCount >= 3 {
-		return 0.8
-	} else if agentCount >= 2 {
-		return 0.5
-	} else if agentCount >= 1 {
-		return 0.3
+	score := 0.0
+	// Certain intent kinds imply tool usage
+	switch artifact.IntentKind {
+	case "code_change", "debug":
+		score += 0.3
+	case "research":
+		score += 0.2
 	}
-	return 0.1
+	// More search hints suggest more tool lookups needed
+	if len(artifact.SearchHints) >= 3 {
+		score += 0.3
+	} else if len(artifact.SearchHints) >= 1 {
+		score += 0.15
+	}
+	if score > 1.0 {
+		score = 1.0
+	}
+	if score < 0.1 {
+		score = 0.1
+	}
+	return score
 }
 
 // assessContext evaluates context complexity.
@@ -487,21 +512,8 @@ func (impl *taskPlannerImpl) determineStrategy(level biz.ComplexityLevel, score 
 		return biz.StrategySingleAgent, "中等复杂度，使用 Agent-as-Tool", biz.TopologyCoordinator
 	case biz.ComplexityComplex:
 		// Check memory hit for historical topology
-		if input.HistoryDQScore > 0.7 && input.IntentArtifact != nil && input.IntentArtifact.SuggestedTopology != "" {
-			topology := biz.TopologyType(input.IntentArtifact.SuggestedTopology)
-			return biz.StrategyCoordinator, "基于历史编排缓存推荐策略", topology
-		}
-		// Use intent artifact's suggested topology if available
-		if input.IntentArtifact != nil && input.IntentArtifact.SuggestedTopology != "" {
-			topology := biz.TopologyType(input.IntentArtifact.SuggestedTopology)
-			switch topology {
-			case biz.TopologyParallel:
-				return biz.StrategyParallel, "基于意图分析推荐并行策略", topology
-			case "dag":
-				return biz.StrategyDAG, "基于意图分析推荐 DAG 策略", topology
-			default:
-				return biz.StrategyCoordinator, "基于意图分析推荐协调策略", topology
-			}
+		if input.HistoryDQScore > 0.7 {
+			return biz.StrategyCoordinator, "基于历史编排缓存推荐策略", biz.TopologyCoordinator
 		}
 		return biz.StrategyCoordinator, "复杂任务，默认使用 coordinator 策略", biz.TopologyCoordinator
 	default:
@@ -571,11 +583,10 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact) string {
 	intentContext := ""
 	if artifact != nil {
-		intentContext = fmt.Sprintf("\nIntent analysis:\n- Refined goal: %s\n- Intent kind: %s\n- Complexity signals: %v\n- Suggested agents: %v",
+		intentContext = fmt.Sprintf("\nIntent analysis:\n- Refined goal: %s\n- Intent kind: %s\n- Risk flags: %v",
 			artifact.RefinedGoal,
 			artifact.IntentKind,
-			artifact.ComplexitySignals,
-			artifact.SuggestedAgents,
+			artifact.RiskFlags,
 		)
 	}
 

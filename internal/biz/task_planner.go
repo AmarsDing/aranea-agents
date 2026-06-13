@@ -13,16 +13,12 @@ type TaskPlannerPort interface {
 // IntentArtifact mirrors the intent pass output fields consumed by TaskPlanner.
 // Defined in biz to avoid import cycles (internal/agent/intent → internal/agent → internal/biz).
 type IntentArtifact struct {
-	RefinedGoal       string   `json:"refined_goal"`
-	IntentKind        string   `json:"intent_kind"`
-	SuccessCriteria   []string `json:"success_criteria"`
-	Ambiguities       []string `json:"ambiguities"`
-	SearchHints       []string `json:"search_hints"`
-	RiskFlags         []string `json:"risk_flags"`
-	ComplexityScore   float64  `json:"complexity_score,omitempty"`
-	ComplexitySignals []string `json:"complexity_signals,omitempty"`
-	SuggestedAgents   []string `json:"suggested_agents,omitempty"`
-	SuggestedTopology string   `json:"suggested_topology,omitempty"`
+	RefinedGoal     string   `json:"refined_goal"`
+	IntentKind      string   `json:"intent_kind"`
+	SuccessCriteria []string `json:"success_criteria"`
+	Ambiguities     []string `json:"ambiguities"`
+	SearchHints     []string `json:"search_hints"`
+	RiskFlags       []string `json:"risk_flags"`
 }
 
 // PlanInput is the input to TaskPlanner.Plan

@@ -64,10 +64,13 @@
         <div class="agent-timeline">
           <template v-for="(entry, idx) in block.timeline" :key="entryKey(entry)">
             <!-- Thinking entry -->
-            <AgentThinkingSection
+            <ThinkingBlock
               v-if="entry.kind === 'thinking'"
-              :section="entry.section"
-              @streaming-finished="onThinkingFinished(entry.section.id)"
+              :message-id="entry.section.id"
+              :reasoning="entry.section.content"
+              :streaming="entry.section.streaming"
+              :duration-ms="entry.section.durationMs"
+              variant="card"
             />
 
             <!-- Tool entry -->
@@ -147,7 +150,7 @@ import {
   type AgentBlock as AgentBlockType,
   type TimelineEntry,
 } from '../../features/chat/agentTreeTypes';
-import AgentThinkingSection from './AgentThinkingSection.vue';
+import ThinkingBlock from './ThinkingBlock.vue';
 import AgentToolSection from './AgentToolSection.vue';
 import PlanCard from './PlanCard.vue';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
@@ -158,10 +161,6 @@ const { t } = useI18n();
 const props = defineProps<{
   block: AgentBlockType;
   isRoot: boolean;
-}>();
-
-const emit = defineEmits<{
-  'streaming-finished': [sectionId: string];
 }>();
 
 /**
@@ -310,10 +309,6 @@ function progressStatusGlyph(status: string): string {
 
 function toggleCollapse() {
   localCollapsed.value = !localCollapsed.value;
-}
-
-function onThinkingFinished(sectionId: string) {
-  emit('streaming-finished', sectionId);
 }
 
 // Listen for global expand/collapse events from AgentTreeTimeline

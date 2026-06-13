@@ -67,6 +67,12 @@ type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
 	ActivityPersister ActivityPersister
 	ActivityProjector *ActivityProjector // AF phase: projects runtime events into Activity semantic units
+	// SkipEventProjectorWS disables WS publishing of EventProjector envelopes
+	// when ActivityProjector is active (AF enabled). The EventProjector still
+	// runs (its output is needed by projectActivityEvents), but envelopes are
+	// not published to the event bus, eliminating duplicate WS traffic.
+	// The frontend AF path consumes Activity events exclusively.
+	SkipEventProjectorWS bool
 }
 
 func ConsumeEventStream(

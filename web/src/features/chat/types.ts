@@ -37,16 +37,6 @@ export type SendMessageResult = {
   agent_message: Message;
 };
 
-export type IntentPassResult = {
-  outcome: string;
-  duration_ms: number;
-  session_id?: string;
-  agent_id?: string;
-  intent_kind?: string;
-  refined_goal_len?: number;
-  search_hints_count?: number;
-};
-
 export type ActivityKind = 'tool' | 'skill' | 'mcp' | 'subagent' | 'memory' | 'knowledge' | 'session';
 
 export type ToolUseEvent = {

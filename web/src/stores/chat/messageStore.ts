@@ -8,14 +8,13 @@ import {
   listSessionChatMessages as listMessages,
   listSessionChatMessagesAfterRevision,
 } from '../../features/session/api';
-import type { IntentPassResult, Message } from '../../features/chat/types';
+import type { Message } from '../../features/chat/types';
 import { mergeIncrementalSessionMessages, mergeSessionMessages } from '../../features/chat/mergeSessionMessages';
 import { onSessionMutation } from '../sessionSync';
 
 export const useChatMessageStore = defineStore('chatMessage', () => {
   const messagesBySession = ref<Record<string, Message[]>>({});
   const sessionRevisionBySession = ref<Record<string, number>>({});
-  const lastIntentPass = ref<IntentPassResult | null>(null);
 
   onSessionMutation((mutation) => {
     if (mutation.type === 'agent_removed') {
@@ -83,7 +82,6 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
   return {
     messagesBySession,
     sessionRevisionBySession,
-    lastIntentPass,
     getMessages,
     setMessages,
     clearSessionMessages,

@@ -6,7 +6,6 @@ import { upsertToolMessage, finalizeOrphanToolMessages } from './envelopeToolCal
 import { patchStreamingMessage } from './streamContentPatch';
 import { createMessageBatchWriter } from './messageStoreBatch';
 import { shouldSessionWsSkipEnvelope } from './inboundSyncRouting';
-import type { IntentPassResult } from './types';
 import { sessionContextPatchFromEnvelope, isSessionCompressNotice } from './sessionContextPatch';
 import type { SessionContextPatch } from './sessionContextPatch';
 
@@ -56,7 +55,6 @@ export type StreamHandlerCtx = {
   getSessionMetrics?: (
     sessionId: string,
   ) => Pick<Session, 'total_tokens' | 'max_context_used_ratio' | 'input_tokens' | 'output_tokens'> | undefined;
-  setLastIntentPass: (value: IntentPassResult | null) => void;
   onStreamingPatch?: (sessionId: string, patch: { reasoning?: string; partialText?: string; done?: boolean }) => void;
   onRunActivity?: () => void;
   onFirstByteArrived?: () => void;
@@ -412,7 +410,6 @@ export function bindStreamHandlers(
   });
 
   stream.onType('intent_pass', (env: Envelope) => {
-    ctx.setLastIntentPass(env.metadata as IntentPassResult);
     const meta = env.metadata as Record<string, unknown> | undefined;
     const kind = typeof meta?.intent_kind === 'string' ? meta.intent_kind : '';
     const target = typeof meta?.target_agent === 'string' ? meta.target_agent : '';

@@ -168,7 +168,7 @@ export type TimelineEntry =
 export interface ThinkingSection {
   id: string;
   content: string;
-  durationMs: number;
+  durationMs: number | null;
   collapsed: boolean;
   /** Whether content is still streaming */
   streaming: boolean;

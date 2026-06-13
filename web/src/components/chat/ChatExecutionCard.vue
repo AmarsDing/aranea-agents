@@ -199,10 +199,15 @@ watch(
       userManuallyExpanded.value = false;
       startElapsedTimer();
     } else if (
-      (newStatus === 'success' || newStatus === 'failed' || newStatus === 'cancelled') &&
+      (newStatus === 'success' || newStatus === 'cancelled') &&
       !userManuallyExpanded.value
     ) {
       expanded.value = false;
+      stopElapsedTimer();
+    } else if (newStatus === 'failed' || newStatus === 'error') {
+      // U1: Failed tools stay expanded so the error message is immediately
+      // visible. Auto-collapsing a failed card hides the error summary,
+      // forcing the user to manually expand to see what went wrong.
       stopElapsedTimer();
     } else {
       stopElapsedTimer();

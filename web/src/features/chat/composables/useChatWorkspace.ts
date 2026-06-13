@@ -50,6 +50,7 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
+import { useActivityFirstEnabled } from '../useActivityFirstFlag';
 import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
 
 export function useChatWorkspace() {
@@ -766,6 +767,16 @@ export function useChatWorkspace() {
     try {
       if (replace) clearChatMarkdownCache();
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
+      // AF-FE-14: Load historical Activity data so the AF path can build
+      // ConversationTurns for ALL turns (including historical ones) without
+      // falling back to message inference. For sessions without Activity
+      // records (pre-AF), the API returns an empty array and the AF path
+      // gracefully falls back to the message inference path.
+      if (useActivityFirstEnabled()) {
+        activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
+          // Non-critical: AF path falls back to message inference on failure
+        });
+      }
     } catch (err) {
       $q.notify({
         type: 'negative',

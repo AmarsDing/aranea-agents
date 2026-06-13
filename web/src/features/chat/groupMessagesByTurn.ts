@@ -100,6 +100,9 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
   let current: TurnBlockGroup | null = null;
   let blockIndex = 0;
   let currentRound: TurnRound | null = null;
+  // Tools that arrive before the first assistant in a block are buffered
+  // and attached to the first round when it is created.
+  let preRoundTools: Message[] = [];
 
   function closeRound() {
     if (currentRound && current) {
@@ -125,6 +128,7 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
       };
       blocks.push(current);
       currentRound = null;
+      preRoundTools = [];
     }
 
     // Distribute into current block by role/origin
@@ -136,13 +140,16 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
       // Real assistant message (including ws-snap-* streaming snapshots).
       // Close previous round, start a new one.
       closeRound();
-      currentRound = { assistant: msg, tools: [] };
+      currentRound = { assistant: msg, tools: [...preRoundTools] };
+      preRoundTools = [];
       current!.assistants.push(msg);
     } else if (isActivityMessage(msg)) {
-      // Tool/activity message — add to flat tools and current round.
+      // Tool/activity message — add to flat tools and current round (or buffer).
       current!.tools.push(msg);
       if (currentRound) {
         currentRound.tools.push(msg);
+      } else {
+        preRoundTools.push(msg);
       }
     }
   }

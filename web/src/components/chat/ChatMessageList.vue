@@ -216,6 +216,8 @@ const props = defineProps<{
   activityTaskContent?: string;
   /** AF-FE-06: Activity tree for building TeamPanel */
   activityTree?: readonly import('../../features/chat/activityTypes').ActivityTreeNode[];
+  /** AF-FE-14: Raw Activity records (with turnId) for grouping by turn */
+  activityRawRecords?: readonly import('../../features/chat/activityTypes').Activity[];
 }>();
 
 defineEmits<{
@@ -261,6 +263,7 @@ const { conversationTurns } = useConversationTimeline({
   activityAgentKey: computed(() => props.activityAgentKey ?? ''),
   activityTaskContent: computed(() => props.activityTaskContent ?? null),
   activityTree: computed(() => props.activityTree ?? []),
+  activityRawRecords: computed(() => props.activityRawRecords ?? []),
 });
 
 defineExpose({

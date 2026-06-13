@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
 
@@ -168,6 +169,7 @@ func (c *turnStreamConsumer) markFirstByte(ev *trpcevent.Event) {
 		loggateway.Any("ttft_ms", ttft.Milliseconds()),
 		loggateway.Any("first_byte_type", evType),
 		loggateway.Any("author", ev.Author))
+	metrics.ChatTTFT.WithLabelValues(c.projectMeta.AgentID, evType).Observe(ttft.Seconds())
 	if c.firstByteReceived != nil {
 		*c.firstByteReceived = true
 	}
@@ -247,6 +249,14 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 		meta.TurnCompletionTok = c.result.CompletionTok
 	}
 	envelopes := c.projector.Project(c.turnCtx, ev, meta)
+
+	// AF-FE-14: When ActivityProjector is active, skip WS publishing of
+	// EventProjector envelopes. The frontend AF path consumes Activity events
+	// exclusively — text_delta/text_done/tool_call/tool_result are redundant.
+	// EventProjector still runs because projectActivityEvents depends on its
+	// output to translate into ActivityProjector callbacks.
+	skipWS := c.opts != nil && c.opts.SkipEventProjectorWS
+
 	for _, env := range envelopes {
 		c.trackToolEnvelope(env)
 		if c.projectMeta.TeamID != "" && env.Type == event.EnvelopeTypeToolCall {
@@ -258,10 +268,12 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 				c.result.MemberToolCalls[author]++
 			}
 		}
-		if c.observer != nil {
-			c.observer.PublishChat(c.turnCtx, env)
-		} else if c.eventBus != nil {
-			c.eventBus.Publish(c.turnCtx, env)
+		if !skipWS {
+			if c.observer != nil {
+				c.observer.PublishChat(c.turnCtx, env)
+			} else if c.eventBus != nil {
+				c.eventBus.Publish(c.turnCtx, env)
+			}
 		}
 	}
 	if c.opts != nil {

@@ -37,7 +37,7 @@ import type {
   AgentProgress,
 } from '../activityTimelineTypes';
 import type { ActivityTreeNode } from '../activityTypes';
-import type { AgentBlock, TaskBoardNodeData } from '../agentTreeTypes';
+import type { AgentBlock, TaskBoardNodeData, ProgressSection } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { activityToTaskBoardNode, activityToTimelineActivity } from './useActivityTimeline';
 import { toolEventFromMessage } from '../envelopeToolCall';
@@ -46,12 +46,33 @@ import { resolveDisplayLabel } from '../activityPresentation';
 import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { canonicalToolStatus } from '../lib/statusMap';
 import { isReasoningAsDisplay } from '../streamContentPatch';
+import { mergeProgressEvents } from '../executionProgress';
 
 // ── UserTurn (internal) ──
 
 interface UserTurn {
   userMessage: Message | null;
   messages: Message[];
+}
+
+// ── Helpers ──
+
+/** Build sorted ProgressSection[] from execution_progress envelopes, clamping startedAt to turn start. */
+function buildProgressSections(
+  progressByStep: Map<string, ProgressSection>,
+  userMessage: Message | undefined,
+): ProgressSection[] {
+  if (progressByStep.size === 0) return [];
+  const turnStartTs = userMessage?.created_at
+    ? new Date(userMessage.created_at).getTime()
+    : Date.now();
+  const sections: ProgressSection[] = [];
+  for (const section of progressByStep.values()) {
+    // Clamp startedAt to turn start to avoid progress events appearing before the turn
+    sections.push({ ...section, startedAt: Math.max(turnStartTs, section.startedAt) });
+  }
+  sections.sort((a, b) => a.startedAt - b.startedAt);
+  return sections;
 }
 
 // ── Main composable ──
@@ -71,19 +92,40 @@ export function useConversationTimeline(deps: {
   activityTaskContent?: ComputedRef<string | null>;
   /** AF-FE-06: Activity tree for building TeamPanel */
   activityTree?: ComputedRef<readonly ActivityTreeNode[]>;
+  /** AF-FE-14: Raw Activity records (with turnId) for grouping by turn */
+  activityRawRecords?: ComputedRef<readonly import('../activityTypes').Activity[]>;
 }) {
   const conversationTurns = computed((): ConversationTurn[] => {
     const allMessages = deps.messages.value;
     if (allMessages.length === 0) return [];
 
-    // AF-FE-06: When Activity-First data is available, build turns from Activity events
+    // Merge execution_progress envelopes into ProgressSection map (shared by both paths)
+    const progressByStep = deps.progressEnvelopes?.value
+      ? mergeProgressEvents(deps.progressEnvelopes.value)
+      : new Map<string, ProgressSection>();
+
+    // AF-FE-06 + AF-FE-14: When Activity-First data is available, build turns
+    // from Activity events. Uses buildAllConversationTurnsFromActivities which
+    // groups raw Activity records by turnId to build ALL turns from AF data —
+    // eliminating message inference entirely. Turns without Activity data
+    // (e.g., pre-AF sessions) fall back to message inference per-turn.
+    //
+    // U1 fix: Activate AF path when raw Activity records exist, even if
+    // timelineActivities is empty. This handles the "first-byte wait" period
+    // where activity_start(kind=task) has been emitted but no thinking/action
+    // activities exist yet. The resulting ConversationTurn will have
+    // status=running with empty activities, causing AgentWorkPanel to show
+    // the "正在思考…" indicator immediately.
     const afActivities = deps.activityTimelineActivities?.value;
     const afTree = deps.activityTree?.value;
-    if (afActivities && afActivities.length > 0) {
-      return buildConversationTurnsFromActivities(allMessages, [...afActivities], {
+    const afRawRecords = deps.activityRawRecords?.value;
+    const hasAfData = (afActivities && afActivities.length > 0) || (afRawRecords && afRawRecords.length > 0);
+    if (hasAfData) {
+      return buildAllConversationTurnsFromActivities(allMessages, afRawRecords ?? [], afActivities ?? [], {
         agentKey: deps.activityAgentKey?.value || '',
         taskContent: deps.activityTaskContent?.value || null,
         activityTree: afTree ? [...afTree] : [],
+        progressByStep,
       });
     }
 
@@ -96,7 +138,7 @@ export function useConversationTimeline(deps: {
     const turns = findUserTurns(ensured);
 
     // 2. 为每个 Turn 构建 ConversationTurn
-    return turns.map((turn) => buildConversationTurn(turn, plannerKind));
+    return turns.map((turn) => buildConversationTurn(turn, plannerKind, progressByStep));
   });
 
   return {
@@ -133,7 +175,7 @@ function findUserTurns(messages: Message[]): UserTurn[] {
 
 // ── buildConversationTurn: 核心逻辑 ──
 
-function buildConversationTurn(turn: UserTurn, plannerKind: string): ConversationTurn {
+function buildConversationTurn(turn: UserTurn, plannerKind: string, progressByStep: Map<string, ProgressSection>): ConversationTurn {
   const msgs = turn.messages;
   const userMessage = turn.userMessage || msgs.find((m) => m.role === 'user');
 
@@ -284,6 +326,9 @@ function buildConversationTurn(turn: UserTurn, plannerKind: string): Conversatio
   const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
   const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
 
+  // Build progressSections from execution_progress envelopes
+  const progressSections = buildProgressSections(progressByStep, userMessage);
+
   const agentWork: AgentWorkProcess = {
     agentKey,
     agentName,
@@ -301,7 +346,7 @@ function buildConversationTurn(turn: UserTurn, plannerKind: string): Conversatio
     hasPartialFailure: false, // TECH-DEBT: 未计算 hasPartialFailure
     plan: null,
     teamStatus: null,
-    progressSections: [],
+    progressSections,
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
     finishedAt: isCompleted ? lastMsg?.created_at || '' : null,
   };
@@ -335,52 +380,167 @@ function buildActActivity(toolEv: ToolUseEvent, sortKey: number): ActActivity {
   };
 }
 
-// ── AF-FE-06: Build ConversationTurns from Activity-First data ──
+// ── AF-FE-14: Build ALL ConversationTurns from raw Activity records ──
 
-function buildConversationTurnsFromActivities(
+/**
+ * Build ConversationTurns for ALL turns by grouping raw Activity records
+ * (which contain turnId) by turn. This eliminates the need for message
+ * inference on historical turns — every turn is built from Activity data.
+ *
+ * Fallback: if a user turn has no matching Activity records (e.g., pre-AF
+ * sessions), it falls back to `buildConversationTurn` for that turn only.
+ */
+function buildAllConversationTurnsFromActivities(
   messages: Message[],
-  activities: Activity[],
-  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[] },
+  rawRecords: readonly import('../activityTypes').Activity[],
+  timelineActivities: readonly Activity[],
+  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection> },
 ): ConversationTurn[] {
-  const userTurns = findUserTurns(messages.map(ensureOrigin));
+  const ensured = messages.map(ensureOrigin);
+  const userTurns = findUserTurns(ensured);
   if (userTurns.length === 0) return [];
 
-  // Use the last user turn's messages for the current turn
-  const lastTurn = userTurns[userTurns.length - 1];
-  const userMessage = lastTurn.userMessage || lastTurn.messages.find((m) => m.role === 'user');
+  // Group raw Activity records by turnId
+  const activitiesByTurn = new Map<string, import('../activityTypes').Activity[]>();
+  for (const record of rawRecords) {
+    const tid = record.turnId;
+    if (!tid) continue;
+    const group = activitiesByTurn.get(tid);
+    if (group) group.push(record);
+    else activitiesByTurn.set(tid, [record]);
+  }
 
-  // Find agent info from messages
-  const firstAssistant = lastTurn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
+  const result: ConversationTurn[] = [];
+
+  for (const turn of userTurns) {
+    const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
+    // Match turn by finding the user message's turn_id, or by matching
+    // the first assistant message's turn_id in the turn's messages.
+    const turnId = userMessage?.turn_id
+      || turn.messages.find((m) => m.role === 'assistant')?.turn_id
+      || '';
+
+    const turnActivities = turnId ? activitiesByTurn.get(turnId) : undefined;
+
+    if (turnActivities && turnActivities.length > 0) {
+      // Build from Activity data — zero inference
+      result.push(buildSingleTurnFromActivities(turn, turnActivities, opts));
+    } else {
+      // AF-Phase3: No Activity data for this turn (pre-AF session or API failure).
+      // Build a minimal ConversationTurn instead of falling back to message
+      // inference. The turn shows the user message and a "historical" label;
+      // detailed content (reasoning, tool calls) is available via the
+      // original messages but not reconstructed through inference.
+      result.push(buildLegacyConversationTurn(turn, opts));
+    }
+  }
+
+  return result;
+}
+
+/**
+ * AF-Phase3: Build a minimal ConversationTurn for turns without Activity data.
+ * Shows the user message and a "historical conversation" label with basic
+ * agent info extracted from the message metadata. No message inference is
+ * performed — reasoning, tool calls, and ReAct steps are not reconstructed.
+ *
+ * This replaces the previous fallback to `buildConversationTurn` which
+ * performed 13-layer inference (resolveAssistantPresentation, isReasoningAsDisplay,
+ * parseReactPlannerContent, etc.).
+ */
+function buildLegacyConversationTurn(
+  turn: UserTurn,
+  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection> },
+): ConversationTurn {
+  const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
+  const firstAssistant = turn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
+  const lastMsg = turn.messages[turn.messages.length - 1];
+
   const agentKey = opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
   const agentName = firstAssistant?.agent_ref?.name || '精灵助手';
   const agentIcon = firstAssistant?.agent_ref?.icon || '精';
 
+  // Calculate duration from message timestamps
+  const startTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : 0;
+  const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
+  const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
+
+  // Extract reply text from the last assistant message (no inference)
+  const replyContent = firstAssistant?.content_markdown || null;
+
+  const agentWork: AgentWorkProcess = {
+    agentKey,
+    agentName,
+    agentIcon,
+    agentColor: agentColorFromKey(agentKey),
+    status: 'completed',
+    durationMs,
+    activities: [],
+    task: userMessage?.content_markdown || null,
+    result: replyContent,
+    hasPartialFailure: false,
+    plan: null,
+    teamStatus: null,
+    progressSections: [],
+    startedAt: userMessage?.created_at || '',
+    finishedAt: lastMsg?.created_at || '',
+    isLegacy: true,  // Signal to UI: this turn has no Activity data
+  };
+
+  return {
+    id: `turn-legacy-${userMessage?.id || 'no-user'}`,
+    userMessage: userMessage ?? null,
+    agentWork,
+  };
+}
+
+/**
+ * Build a single ConversationTurn from raw Activity records for one turn.
+ * Maps raw Activity records to TimelineActivity[] and constructs the
+ * AgentWorkProcess without any message inference.
+ */
+function buildSingleTurnFromActivities(
+  turn: UserTurn,
+  rawRecords: readonly import('../activityTypes').Activity[],
+  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection> },
+): ConversationTurn {
+  const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
+  const firstAssistant = turn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
+
+  // Build Activity tree from raw records for this turn
+  const treeNodes = buildTreeFromRecords(rawRecords);
+  let turnTimelineActivities = treeNodes
+    .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
+    .map(activityToTimelineActivity);
+
+  // D3: Merge adjacent ThinkActivities into a single grouped ThinkActivity.
+  // Complex tasks can produce 5-10 separate thinking steps (planning, reasoning,
+  // replanning), which creates visual clutter. Merging them into one collapsible
+  // group with subSteps reduces card count while preserving all content.
+  turnTimelineActivities = mergeAdjacentThinkActivities(turnTimelineActivities);
+
+  // Agent info from Activity data or fallback to message data
+  const rootTask = rawRecords.find((r) => r.kind === 'task');
+  const agentKey = rootTask?.agentKey || opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
+  const agentName = rootTask?.agentName || firstAssistant?.agent_ref?.name || '精灵助手';
+  const agentIcon = firstAssistant?.agent_ref?.icon || '精';
+
   // Determine status from activities
-  const hasRunning = activities.some(
-    (a) =>
-      (a.kind === 'think' && (a as ThinkActivity).streaming) ||
-      (a.kind === 'say' && (a as SayActivity).streaming) ||
-      (a.kind === 'act' && (a as ActActivity).tool.status === 'running'),
-  );
-  const hasFailed = activities.some(
-    (a) => a.kind === 'act' && (a as ActActivity).tool.status === 'failed',
-  );
+  const hasRunning = rawRecords.some((a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked');
+  const hasFailed = rawRecords.some((a) => a.kind === 'action' && a.status === 'failed');
   const status: AgentWorkProcess['status'] = hasRunning ? 'running' : (hasFailed ? 'failed' : 'completed');
 
   // Calculate duration
   const startTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : 0;
-  const lastMsg = lastTurn.messages[lastTurn.messages.length - 1];
+  const lastMsg = turn.messages[turn.messages.length - 1];
   const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
   const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
 
   // Find last SayActivity for result
-  const lastSay = [...activities].reverse().find((a) => a.kind === 'say') as SayActivity | undefined;
+  const lastSay = [...turnTimelineActivities].reverse().find((a) => a.kind === 'say') as SayActivity | undefined;
 
-  // Build TeamPanel from Activity tree when delegate/sub_task_board activities exist
-  const panel = buildTeamPanelFromActivityTree(opts.activityTree);
-
-  // Build TaskBoardNodes from Activity tree for tree-nested rendering
-  const taskBoardNodes = buildTaskBoardNodesFromActivityTree(opts.activityTree);
+  // Build progressSections
+  const progressSections = buildProgressSections(opts.progressByStep, userMessage);
 
   const agentWork: AgentWorkProcess = {
     agentKey,
@@ -389,32 +549,104 @@ function buildConversationTurnsFromActivities(
     agentColor: agentColorFromKey(agentKey),
     status,
     durationMs,
-    activities,
-    panel,
-    taskBoardNodes,
-    task: opts.taskContent || userMessage?.content_markdown || null,
+    activities: turnTimelineActivities,
+    task: opts.taskContent || rootTask?.content || userMessage?.content_markdown || null,
     result: lastSay?.content || null,
     hasPartialFailure: false,
     plan: null,
     teamStatus: null,
-    progressSections: [],
+    progressSections,
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
     finishedAt: !hasRunning ? lastMsg?.created_at || '' : null,
   };
 
-  // Build all turns — previous turns use message inference, last turn uses AF data
-  const result: ConversationTurn[] = [];
-  for (let i = 0; i < userTurns.length - 1; i++) {
-    result.push(buildConversationTurn(userTurns[i], ''));
-  }
-  result.push({
+  return {
     id: `turn-${userMessage?.id || 'no-user'}`,
     userMessage: userMessage ?? null,
     agentWork,
-  });
+  };
+}
 
+/**
+ * D3: Merge adjacent ThinkActivities into a single grouped ThinkActivity.
+ * Complex tasks can produce 5-10 separate thinking steps (planning, reasoning,
+ * replanning), which creates visual clutter. Merging them into one collapsible
+ * group with subSteps reduces card count while preserving all content.
+ *
+ * Rules:
+ * - Only adjacent ThinkActivities are merged (interrupted by act/say → separate groups)
+ * - A single ThinkActivity is never wrapped (no subSteps if only one)
+ * - The merged content concatenates all sub-step content with newlines
+ * - The merged durationMs is the sum of all sub-step durations
+ * - The merged id uses the first sub-step's id with a "-merged" suffix
+ */
+function mergeAdjacentThinkActivities(activities: Activity[]): Activity[] {
+  const result: Activity[] = [];
+  let i = 0;
+  while (i < activities.length) {
+    const current = activities[i];
+    if (current.kind !== 'think') {
+      result.push(current);
+      i++;
+      continue;
+    }
+    // Collect adjacent ThinkActivities
+    const group: ThinkActivity[] = [current as ThinkActivity];
+    while (i + 1 < activities.length && activities[i + 1].kind === 'think') {
+      i++;
+      group.push(activities[i] as ThinkActivity);
+    }
+    if (group.length === 1) {
+      // Single ThinkActivity — no merge needed
+      result.push(group[0]);
+    } else {
+      // Merge: concatenate content, sum durations, collect subSteps
+      const mergedContent = group.map((s) => s.content).filter(Boolean).join('\n\n');
+      const totalDuration = group.reduce((sum, s) => sum + (s.durationMs ?? 0), 0) || null;
+      const anyStreaming = group.some((s) => s.streaming);
+      result.push({
+        kind: 'think',
+        id: group[0].id + '-merged',
+        content: mergedContent,
+        label: undefined,
+        collapsed: !anyStreaming,
+        streaming: anyStreaming,
+        durationMs: totalDuration,
+        subSteps: group,
+      });
+    }
+    i++;
+  }
   return result;
 }
+
+/**
+ * Build a simple ActivityTreeNode[] from flat Activity records.
+ * Uses parentActivityId to establish parent-child relationships.
+ */
+function buildTreeFromRecords(records: readonly import('../activityTypes').Activity[]): ActivityTreeNode[] {
+  const nodeMap = new Map<string, ActivityTreeNode>();
+  const roots: ActivityTreeNode[] = [];
+
+  // First pass: create all nodes
+  for (const record of records) {
+    nodeMap.set(record.id, { ...record, children: [] });
+  }
+
+  // Second pass: establish parent-child relationships
+  for (const record of records) {
+    const node = nodeMap.get(record.id)!;
+    if (record.parentActivityId && nodeMap.has(record.parentActivityId)) {
+      nodeMap.get(record.parentActivityId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  return roots;
+}
+
+// ── AF-FE-06: Build ConversationTurns from Activity-First data ──
 
 /**
  * Build TeamPanel from Activity tree.
@@ -441,6 +673,7 @@ function buildTeamPanelFromActivityTree(tree: ActivityTreeNode[]): TeamPanel | u
     task: rootTask.content || rootTask.label || '',
     status: mapActivityStatusToPlanStatus(rootTask.status),
     num: num++,
+    agentKey: rootTask.agentKey || null,
     agentName: rootTask.agentName || null,
     agentIcon: rootTask.agentName?.charAt(0) || null,
     agentColor: agentColorFromKey(rootTask.agentKey || ''),
@@ -454,6 +687,7 @@ function buildTeamPanelFromActivityTree(tree: ActivityTreeNode[]): TeamPanel | u
         task: child.content || child.label || '',
         status: mapActivityStatusToPlanStatus(child.status),
         num: num++,
+        agentKey: child.agentKey || null,
         agentName: child.agentName || null,
         agentIcon: child.agentName?.charAt(0) || null,
         agentColor: agentColorFromKey(child.agentKey || ''),

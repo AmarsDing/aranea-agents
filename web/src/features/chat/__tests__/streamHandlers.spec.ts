@@ -38,7 +38,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion,
-      setLastIntentPass: vi.fn(),
     });
 
     dispatcher.dispatch(
@@ -84,7 +83,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion,
-      setLastIntentPass: vi.fn(),
     });
 
     dispatcher.dispatch(
@@ -120,7 +118,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion: vi.fn(),
-      setLastIntentPass: vi.fn(),
     });
 
     dispatcher.dispatch(
@@ -171,7 +168,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion,
-      setLastIntentPass: vi.fn(),
     });
 
     dispatcher.dispatch(
@@ -226,7 +222,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion: vi.fn(),
-      setLastIntentPass: vi.fn(),
       onSessionContextPatch,
     });
 
@@ -270,7 +265,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion: vi.fn().mockResolvedValue(undefined),
-      setLastIntentPass: vi.fn(),
       onSessionContextPatch,
       getSessionMetrics: () => ({
         input_tokens: 500,
@@ -321,7 +315,6 @@ describe('bindStreamHandlers', () => {
       onRunStatus: vi.fn(),
       onErrorNotify: vi.fn(),
       onReloadAfterCompletion: vi.fn(),
-      setLastIntentPass: vi.fn(),
       onSessionContextPatch,
     });
 

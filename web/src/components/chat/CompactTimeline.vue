@@ -26,12 +26,13 @@
           <q-space />
           <span class="compact-timeline__node-meta">·</span>
         </div>
-        <ChatReasoningPeek
+        <ThinkingBlock
           :message-id="node.messageId"
           :reasoning="node.text"
           :is-dark="isDark"
-          :streaming="false"
-          :thinking-only="false"
+          :streaming="node.streaming"
+          :duration-ms="node.durationMs"
+          variant="inline"
         />
       </template>
 
@@ -72,7 +73,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import ChatReasoningPeek from './ChatReasoningPeek.vue';
+import ThinkingBlock from './ThinkingBlock.vue';
 import ChatExecutionCard from './ChatExecutionCard.vue';
 import { compactNodeKey, type CompactNode, type ReplyStatus } from '../../features/chat/compactTimeline';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';

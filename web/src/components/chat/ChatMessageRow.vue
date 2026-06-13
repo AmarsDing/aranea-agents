@@ -108,7 +108,8 @@
           />
         </q-expansion-item>
         <template v-else>
-          <ChatReasoningPeek
+          <ThinkingBlock
+            variant="inline"
             v-if="!reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
             :message-id="message.id"
             :reasoning="bundle.presentation.reasoning || ' '"
@@ -265,7 +266,7 @@ import {
 import { messageAttachmentsFromMessage } from '../../features/chat/messageAttachments';
 import { userPromptText } from '../../features/chat/useChatScrollTitle';
 import ChatExecutionCard from './ChatExecutionCard.vue';
-import ChatReasoningPeek from './ChatReasoningPeek.vue';
+import ThinkingBlock from './ThinkingBlock.vue';
 import ChatReactSteps from './ChatReactSteps.vue';
 import ChatA2UIPreview from './ChatA2UIPreview.vue';
 import ChatMessageAttachments from './ChatMessageAttachments.vue';

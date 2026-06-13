@@ -145,6 +145,11 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 			lg = loggateway.NewNoop()
 		}
 		opts.ActivityProjector = chatagent.NewActivityProjector(eventBus, activityWriter, lg)
+		// AF-FE-14: When ActivityProjector is active, skip WS publishing of
+		// EventProjector envelopes. The frontend AF path consumes Activity
+		// events exclusively — text_delta/text_done/tool_call/tool_result
+		// are redundant and waste WS bandwidth.
+		opts.SkipEventProjectorWS = true
 	}
 	return opts
 }

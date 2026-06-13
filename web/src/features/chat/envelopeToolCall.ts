@@ -2,7 +2,6 @@ import type { Envelope } from './envelope';
 import type { ActivityKind, ToolUseEvent } from './types';
 import type { Message } from './types';
 import { MESSAGE_STATUS } from '../../domain/types';
-import { classifyActivityKind } from './activityPresentation';
 import { canonicalToolStatus, messageStatusFromWire } from './lib/statusMap';
 import { activityMessageId } from './lib/activityMessageId';
 import { isToolUseEvent } from './lib/isToolUseEvent';
@@ -74,7 +73,9 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
   const resultRecord = parseJSONRecord(tc.result_json);
   const result = unwrapParsed(resultRecord) as Record<string, unknown> | null | undefined;
   const toolName = tc.name || 'tool';
-  const kind = (tc.activity_kind || classifyActivityKind(toolName)) as ActivityKind;
+  // AF-Phase3: activity_kind is always provided by the backend ActivityProjector.
+  // The classifyActivityKind fallback is no longer needed.
+  const kind = (tc.activity_kind || 'tool') as ActivityKind;
   // Resolve the user-facing error message with the following precedence:
   //   1) result.error (string body)            — most descriptive
   //   2) error_code, but only if the tool actually failed

@@ -21,11 +21,29 @@
 
     <!-- Branch: TaskBoard, ActivityTimeline, or TeamPanel -->
     <div class="agent-work-panel__body">
+      <!-- AF-Phase3: Legacy turn without Activity data — show simplified view -->
+      <div v-if="agentWork.isLegacy" class="agent-work-panel__legacy">
+        <div v-if="agentWork.result" class="agent-work-panel__legacy-content chat-message-prose" v-html="renderedResult" />
+        <div v-else class="agent-work-panel__legacy-hint text-caption text-grey">
+          {{ t('chat.turn.legacyHint', '历史对话（无活动详情）') }}
+        </div>
+      </div>
       <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
-      <div v-if="agentWork.status === 'running' && !agentWork.activities.length" class="agent-work-panel__waiting">
+      <div v-else-if="agentWork.status === 'running' && !agentWork.activities.length && !agentWork.progressSections?.length" class="agent-work-panel__waiting">
         <span class="pulse-dot"></span>
         <span class="agent-work-panel__waiting-text">{{ t('chat.thinking', '正在思考…') }}</span>
       </div>
+      <!-- Progress sections (orchestration / thinking / tool steps from execution_progress envelopes) -->
+      <template v-if="agentWork.progressSections?.length">
+        <div v-for="(ps, psi) in agentWork.progressSections" :key="'ps-' + psi" class="agent-work-panel__progress" :class="progressClass(ps)">
+          <span class="agent-work-panel__progress-icon">{{ progressIcon(ps.category) }}</span>
+          <span class="agent-work-panel__progress-message">{{ ps.message }}</span>
+          <span v-if="ps.durationMs != null" class="agent-work-panel__progress-duration">{{ formatDuration(ps.durationMs) }}</span>
+          <span v-else-if="ps.status === 'running'" class="pulse-dot" />
+          <span v-if="ps.status === 'failed'" class="agent-work-panel__progress-status" :title="t('chat.turn.block.failed')">{{ progressStatusGlyph('failed') }}</span>
+          <span v-else-if="ps.status === 'timeout'" class="agent-work-panel__progress-status" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
+        </div>
+      </template>
       <!-- TaskBoard: tree-nested rendering when taskBoardNodes data is available -->
       <TaskBoard
         v-if="agentWork.taskBoardNodes?.length"
@@ -56,7 +74,10 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AgentWorkProcess } from '../../features/chat/activityTimelineTypes';
+import type { ProgressCategory, ProgressSection } from '../../features/chat/agentTreeTypes';
+import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
+import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import ActivityTimeline from './ActivityTimeline.vue';
 import TaskBoard from './TaskBoard.vue';
 import TeamPanel from './TeamPanel.vue';
@@ -82,7 +103,30 @@ const statusLabel = computed(() => {
   }
 });
 
-const formattedDuration = computed(() => formatDuration(props.agentWork.durationMs));
+const formattedDuration = computed(() => props.agentWork.durationMs != null ? formatDuration(props.agentWork.durationMs) : '');
+
+/** Render legacy turn result as Markdown */
+const renderedResult = computed(() => {
+  const raw = props.agentWork.result;
+  return raw ? renderChatMarkdown(raw) : '';
+});
+
+function progressIcon(category: ProgressCategory): string {
+  return PROGRESS_GLYPHS[category] ?? '•';
+}
+
+function progressStatusGlyph(status: 'running' | 'done' | 'failed' | 'timeout'): string {
+  return PROGRESS_STATUS_GLYPHS[status] ?? '';
+}
+
+function progressClass(ps: ProgressSection): Record<string, boolean> {
+  return {
+    'agent-work-panel__progress--running': ps.status === 'running',
+    'agent-work-panel__progress--done': ps.status === 'done',
+    'agent-work-panel__progress--failed': ps.status === 'failed',
+    'agent-work-panel__progress--timeout': ps.status === 'timeout',
+  };
+}
 </script>
 
 <style lang="sass" scoped>
@@ -143,4 +187,36 @@ const formattedDuration = computed(() => formatDuration(props.agentWork.duration
 
   &__waiting-text
     font-size: 13px
+
+  &__progress
+    display: flex
+    align-items: center
+    gap: 6px
+    padding: 4px 0
+    font-size: 13px
+
+    &--running
+      color: var(--color-accent)
+
+    &--done
+      color: var(--color-success)
+
+    &--failed
+      color: var(--color-danger)
+
+    &--timeout
+      color: var(--color-warning)
+
+  &__progress-icon
+    flex-shrink: 0
+
+  &__progress-message
+    flex: 1
+
+  &__progress-duration
+    font-size: 12px
+    color: var(--color-text-secondary)
+
+  &__progress-status
+    flex-shrink: 0
 </style>

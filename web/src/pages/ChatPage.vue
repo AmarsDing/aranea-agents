@@ -82,6 +82,7 @@
         :activity-agent-key="session.activityTimeline.activities[0]?.agentKey"
         :activity-task-content="session.activityTimeline.activities.find((a: {kind: string}) => a.kind === 'task')?.content"
         :activity-tree="session.activityTimeline.activityTree"
+        :activity-raw-records="session.activityTimeline.activities"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"

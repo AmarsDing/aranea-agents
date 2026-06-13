@@ -11,6 +11,13 @@ import (
 // All metrics use the "aranea_" prefix to avoid collisions in shared Prometheus
 // deployments.  Metrics are registered once at package init time via promauto.
 var (
+	// ChatTTFT tracks time-to-first-token: duration from stream consume start to first meaningful event.
+	ChatTTFT = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_chat_ttft_seconds",
+		Help:    "Time to first token: duration from stream consume start to first meaningful event.",
+		Buckets: []float64{0.1, 0.25, 0.5, 1, 2, 5, 10, 30},
+	}, []string{"agent_id", "first_byte_type"})
+
 	// ChatTurnDuration tracks agent chat turn latency by agent and status.
 	ChatTurnDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "aranea_chat_turn_duration_seconds",

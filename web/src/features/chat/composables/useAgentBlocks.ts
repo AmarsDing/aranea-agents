@@ -43,6 +43,7 @@ import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { useTurnBlockEnabled } from '../useTurnBlock';
 import { canonicalToolStatus } from '../lib/statusMap';
 import { mergeProgressEvents } from '../executionProgress';
+import { useActivityFirstEnabled } from '../useActivityFirstFlag';
 
 export function useAgentBlocks(deps: {
   messages: ComputedRef<Message[]>;
@@ -55,6 +56,9 @@ export function useAgentBlocks(deps: {
   progressEnvelopes?: ComputedRef<readonly Envelope[]>;
 }) {
   const useTurnBlockMode = computed(() => useTurnBlockEnabled());
+  // Cache AF flag at composable init time — it reads localStorage which is
+  // synchronous but unnecessary to repeat on every computed re-evaluation.
+  const activityFirstEnabled = useActivityFirstEnabled();
 
   /**
    * Build AgentBlock tree from turn blocks. Active for all sessions in P0
@@ -64,6 +68,15 @@ export function useAgentBlocks(deps: {
    */
   const agentBlocks = computed((): AgentBlock[] => {
     if (!useTurnBlockMode.value) return [];
+
+    // AF-FE-05: When Activity-First is enabled, skip the 13-layer inference
+    // entirely. The AF path (useActivityTimeline → ConversationTurn) renders
+    // directly from backend Activity events. This composable's output is only
+    // consumed by AgentTreeTimeline, which is never reached when AF data is
+    // available (ConversationTurn takes priority in ChatMessageList rendering).
+    // When AF data is not yet available (e.g., old sessions), TurnBlock renders
+    // instead — also without needing agentBlocks.
+    if (activityFirstEnabled) return [];
 
     const allMessages = deps.messages.value;
     if (allMessages.length === 0) return [];
@@ -284,7 +297,7 @@ function buildRootAgentBlock(
                 section: {
                   id: stableId,
                   content: step.body,
-                  durationMs: 0,
+                  durationMs: null,
                   collapsed: true,
                   streaming: event.message.status === 'streaming',
                 },
@@ -299,7 +312,7 @@ function buildRootAgentBlock(
             section: {
               id: `root-think-${event.message.id}`,
               content: messagePresentation.reasoning,
-              durationMs: 0,
+              durationMs: null,
               collapsed: true,
               streaming: event.message.status === 'streaming',
             },
@@ -322,7 +335,7 @@ function buildRootAgentBlock(
               section: {
                 id: `root-reply-${event.message.id}`,
                 content: replyContent,
-                durationMs: 0,
+                durationMs: null,
                 streaming: event.message.status === 'streaming',
               },
               sortKey: sortCounter++,
@@ -713,7 +726,7 @@ class SubAgentBuilder {
         section: {
           id: `sub-think-${msg.id}`,
           content: msg.reasoning_markdown,
-          durationMs: 0,
+          durationMs: null,
           collapsed: true,
           streaming: msg.status === 'streaming',
         },

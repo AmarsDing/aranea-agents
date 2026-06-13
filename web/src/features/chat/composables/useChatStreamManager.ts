@@ -220,9 +220,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         onOrchestrationNotice: notifyOrchestration,
         onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
         ...sessionContextHandlers(sessionId),
-        setLastIntentPass: (value) => {
-          deps.messageStore.lastIntentPass = value;
-        },
         onStreamingPatch: (sid, patch) => {
           if (patch.done) {
             streamingSnapshots.put(sid, {
@@ -313,9 +310,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       onOrchestrationNotice: notifyOrchestration,
       onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
       ...sessionContextHandlers(sessionId),
-      setLastIntentPass: (value) => {
-        deps.messageStore.lastIntentPass = value;
-      },
       resolveMemberMeta: resolveTeamMemberMeta,
       onRunActivity: deps.touchRunActivity,
       onFirstByteArrived: deps.onFirstByteArrived,

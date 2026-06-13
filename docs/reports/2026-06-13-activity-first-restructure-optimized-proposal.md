@@ -628,10 +628,3 @@ v7 原型中的 ThinkingArea 设计与 Activity-First 完美兼容：
 4. **树形嵌套原生支持**：parentActivityId 递归构建，无需前端推理
 5. **reasoning_as_display 流式解决**：投影器在流式阶段即判断，前端无需等持久化
 6. **渐进式迁移**：双发射 + feature flag，风险可控
-
-### 7.3 下一步
-
-1. 评审本报告，确认优化方案
-2. 进入 sddflow brainstorming 阶段，生成 proposal.md
-3. 进入 sddflow spec 阶段，生成规格和计划
-4. 进入 sddflow build 阶段，TDD 实施

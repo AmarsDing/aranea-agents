@@ -57,6 +57,9 @@ export interface AgentWorkProcess {
   progressSections: ProgressSection[];
   startedAt: string;
   finishedAt: string | null;
+  /** AF-Phase3: true when this turn was built without Activity data (pre-AF session).
+   * The UI should render a simplified view instead of the full activity timeline. */
+  isLegacy?: boolean;
 }
 
 // ── Activity (时间线节点) ──
@@ -78,6 +81,10 @@ export interface ThinkActivity {
   collapsed: boolean;
   streaming: boolean;
   durationMs: number | null;
+  /** D3: When multiple adjacent ThinkActivities are merged, subSteps
+   * contains the individual thinking steps. When undefined, this is
+   * a single (unmerged) ThinkActivity. */
+  subSteps?: ThinkActivity[];
 }
 
 export interface ActActivity {

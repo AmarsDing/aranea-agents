@@ -71,17 +71,6 @@ func (p *EventProjector) ensureToolCallCache() {
 	}
 }
 
-func (p *EventProjector) ProjectAndPublish(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) {
-	if ev == nil {
-		return
-	}
-	p.projectMeta = meta
-	envelopes := p.Project(ctx, ev, meta)
-	for _, env := range envelopes {
-		p.eventBus.Publish(ctx, env)
-	}
-}
-
 func (p *EventProjector) Project(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) []event.Envelope {
 	if ev == nil {
 		return nil

@@ -154,6 +154,7 @@
             :activity-agent-key="props.activityAgentKey"
             :activity-task-content="props.activityTaskContent"
             :activity-tree="props.activityTree"
+            :activity-raw-records="props.activityRawRecords"
             @messages-click="handleMessagesClick"
             @scroll="onMessagesScrollWrapped"
             @scroll-to-bottom="scrollToBottom"
@@ -291,6 +292,7 @@ import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/sp
 
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatTimeline, type TimelineItem } from '../../features/chat/composables/useChatTimeline';
+import { useActivityFirstEnabled } from '../../features/chat/useActivityFirstFlag';
 import { CHAT_VIRTUAL_ROW_ESTIMATE, CHAT_VIRTUAL_SCROLL_THRESHOLD } from '../../features/chat/chatListVirtual';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
@@ -304,8 +306,7 @@ import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from 
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
-import { useAgentBlocks } from '../../features/chat/composables/useAgentBlocks';
-import { useActivityFirstEnabled } from '../../features/chat/useActivityFirstFlag';
+import type { AgentBlock } from '../../features/chat/agentTreeTypes';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 
 type Option = { label: string; value: string; caption?: string };
@@ -388,6 +389,8 @@ const props = defineProps<{
   activityTaskContent?: string;
   /** AF-FE-06: Activity tree for building TeamPanel */
   activityTree?: readonly import('../../features/chat/activityTypes').ActivityTreeNode[];
+  /** AF-FE-14: Raw Activity records (with turnId) for grouping by turn */
+  activityRawRecords?: readonly import('../../features/chat/activityTypes').Activity[];
 }>();
 
 const emit = defineEmits<{
@@ -448,17 +451,10 @@ const { messageRow, teamMemberLanes, useTurnBlockMode, turnBlocks, timelineItems
 
 const executionProgressRef = computed(() => props.executionProgress ?? []);
 
-// AF-FE-05: When Activity-First is enabled, skip useAgentBlocks computation entirely.
-// The AF path consumes Activity events via useActivityTimeline instead of inferring
-// from messages. This avoids the expensive 13-layer inference in useAgentBlocks.
-const activityFirstEnabled = useActivityFirstEnabled();
-
-const { agentBlocks } = useAgentBlocks({
-  messages: messagesRef,
-  isTeamSession: props.isTeamSession,
-  plannerKind: props.plannerKind,
-  progressEnvelopes: activityFirstEnabled ? computed(() => []) : executionProgressRef,
-});
+// AF-Phase3: useAgentBlocks is fully removed. The AF path renders via
+// ConversationTurn (zero inference). The legacy TurnBlock path renders
+// via useChatTimeline.turnBlocks (groupMessagesByTurn, no 13-layer inference).
+const agentBlocks = computed(() => [] as AgentBlock[]);
 
 const {
   collapsedBlockKeys,
@@ -497,7 +493,14 @@ function handleCollapseAll() {
 }
 
 
-const useVirtualMessageList = computed(() => timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
+// AF-FE-05: When Activity-First data is available, ConversationTurn renders
+// which already provides compact timeline views — no need for virtual scroll.
+// Virtual scroll is only useful for the TurnBlock/ChatMessageRow path where
+// individual messages can be numerous.
+const useVirtualMessageList = computed(() => {
+  if (useActivityFirstEnabled() && props.activityTimelineActivities?.length) return false;
+  return timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD;
+});
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
 const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 

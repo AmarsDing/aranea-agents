@@ -174,7 +174,7 @@ describe('buildCompactNodes', () => {
 
 describe('compactNodeKey', () => {
   it('returns stable key for thinking', () => {
-    const node = { kind: 'thinking' as const, text: 'x', messageId: 'm1' };
+    const node = { kind: 'thinking' as const, text: 'x', messageId: 'm1', streaming: false, durationMs: null };
     expect(compactNodeKey(node)).toBe('m1-thinking');
   });
 

@@ -57,7 +57,8 @@
             <q-icon :name="stepIcon(step.kind)" size="14px" :style="{ color: 'var(--color-accent)' }" />
             <span class="text-caption text-weight-medium" :style="{ color: 'var(--color-accent)' }">{{ stepTitle(step) }}</span>
           </div>
-          <ChatReasoningPeek
+          <ThinkingBlock
+            variant="inline"
             :message-id="lastAssistant(block)?.id ?? ''"
             :reasoning="step.body"
             :is-dark="isDark"
@@ -166,12 +167,12 @@
 import { computed, inject } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatMessageRow from './ChatMessageRow.vue';
-import ChatReasoningPeek from './ChatReasoningPeek.vue';
+import ThinkingBlock from './ThinkingBlock.vue';
 import ChatExecutionCard from './ChatExecutionCard.vue';
 import ToolCallTimeline from './ToolCallTimeline.vue';
 import CompactTimeline from './CompactTimeline.vue';
 import ToolStrip from './ToolStrip.vue';
-import type { TurnBlockGroup, TurnRound } from '../../features/chat/groupMessagesByTurn';
+import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import { filterToolsForToolStrip, lastAssistant, toolStripSummary } from '../../features/chat/groupMessagesByTurn';
 import { toolEventFromMessage } from '../../features/chat/envelopeToolCall';
 import {
@@ -380,7 +381,7 @@ const compactNodes = computed(() => {
 
     // Thinking
     if (reasoning) {
-      nodes.push({ kind: 'thinking', text: reasoning, messageId: round.assistant.id });
+      nodes.push({ kind: 'thinking', text: reasoning, messageId: round.assistant.id, streaming: isRoundStreaming, durationMs: null });
     }
 
     // Tools (per-round)

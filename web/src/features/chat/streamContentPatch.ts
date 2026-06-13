@@ -36,8 +36,8 @@ export function patchStreamingMessage(
     } else if (patch.text) {
       content = `${content}${patch.text}`;
     }
-    const extras = parseMessageExtras(m.options_json);
-    let reasoning = reasoningFromExtras(extras);
+    // reasoning_markdown is the single source of truth (no dual storage in options_json)
+    let reasoning = m.reasoning_markdown?.trim() ?? '';
     if (patch.replaceReasoning !== undefined) {
       reasoning = patch.replaceReasoning;
     } else if (patch.reasoning) {
@@ -47,17 +47,13 @@ export function patchStreamingMessage(
       ...m,
       content_markdown: content,
       status: patch.status ?? m.status,
-      options_json: mergeMessageExtras(m.options_json, {
-        reasoning_markdown: reasoning.trim() ? reasoning : undefined,
-      }),
       reasoning_markdown: reasoning.trim() || undefined,
     };
   });
 }
 
 export function reasoningMarkdown(message: Message): string {
-  if (message.reasoning_markdown?.trim()) return message.reasoning_markdown.trim();
-  return reasoningFromExtras(parseMessageExtras(message.options_json));
+  return message.reasoning_markdown?.trim() ?? '';
 }
 
 /**

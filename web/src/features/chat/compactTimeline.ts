@@ -15,7 +15,7 @@ import type { ToolUseEvent } from './types';
 
 /** 紧凑时间线节点。 */
 export type CompactNode =
-  | { kind: 'thinking'; text: string; messageId: string }
+  | { kind: 'thinking'; text: string; messageId: string; streaming: boolean; durationMs: number | null }
   | { kind: 'tool'; event: ToolUseEvent }
   | { kind: 'reply'; text: string; messageId: string; streaming: boolean; status: 'ok' | 'failed' | 'cancelled' | 'streaming' };
 
@@ -38,6 +38,8 @@ export type BuildCompactNodesArgs = {
   isStreaming: boolean;
   /** 消息状态（决定 reply 节点 status） */
   messageStatus?: string;
+  /** 思考耗时（毫秒），null 表示未知 */
+  reasoningDurationMs?: number | null;
 };
 
 /**
@@ -54,13 +56,13 @@ export type BuildCompactNodesArgs = {
  * - reply 在 thinking/tools 之后（符合用户期待"先思考再回复"）
  */
 export function buildCompactNodes(args: BuildCompactNodesArgs): CompactNode[] {
-  const { reasoning, bodyMarkdown, toolEvents, messageId, isStreaming, messageStatus } = args;
+  const { reasoning, bodyMarkdown, toolEvents, messageId, isStreaming, messageStatus, reasoningDurationMs } = args;
   const nodes: CompactNode[] = [];
 
   // 1) 思考（整段，不切分）
   const trimmedReasoning = reasoning?.trim() ?? '';
   if (trimmedReasoning) {
-    nodes.push({ kind: 'thinking', text: trimmedReasoning, messageId });
+    nodes.push({ kind: 'thinking', text: trimmedReasoning, messageId, streaming: isStreaming, durationMs: reasoningDurationMs ?? null });
   }
 
   // 2) 工具（保持原顺序）
