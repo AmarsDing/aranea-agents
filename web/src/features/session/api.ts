@@ -557,3 +557,50 @@ export async function getCompressStatus(sessionId: string): Promise<CompressStat
   const data = await sessionApi.GetCompressStatus({ sessionId });
   return (data.status ?? 'normal') as CompressStatus;
 }
+
+// AF-FE-14: List activities for a session (Activity-First architecture)
+
+function safeJsonParseArray(json: string): string[] | undefined {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    console.warn('[api] failed to parse dependsOnJson:', json);
+    return undefined;
+  }
+}
+
+export async function listActivities(
+  sessionId: string,
+  turnId?: string,
+): Promise<import('../chat/activityTypes').Activity[]> {
+  const data = await sessionApi.ListActivities({ sessionId, turnId: turnId || '' });
+  if (!data.items) return [];
+  return data.items.map((a) => ({
+    id: a.id || '',
+    kind: (a.kind || 'task') as import('../chat/activityTypes').ActivityKind,
+    status: (a.status || 'pending') as import('../chat/activityTypes').ActivityStatus,
+    sessionId: a.sessionId || '',
+    turnId: a.turnId || '',
+    parentActivityId: a.parentActivityId || null,
+    timestamp: a.timestamp || '',
+    durationMs: a.durationMs ?? null,
+    content: a.content || undefined,
+    reasoning: a.reasoning || undefined,
+    toolName: a.toolName || undefined,
+    toolCallId: a.toolCallId || undefined,
+    toolArguments: a.toolArguments || undefined,
+    toolResult: a.toolResult || undefined,
+    toolDurationMs: a.toolDurationMs ?? undefined,
+    toolErrorCode: a.toolErrorCode || undefined,
+    childBoardId: a.childBoardId || undefined,
+    spiritSessionId: a.spiritSessionId || undefined,
+    teamId: a.teamId || undefined,
+    dagNodeId: a.dagNodeId || undefined,
+    dependsOn: a.dependsOnJson ? safeJsonParseArray(a.dependsOnJson) : undefined,
+    agentKey: a.agentKey || undefined,
+    agentName: a.agentName || undefined,
+    collapsed: a.collapsed ?? false,
+    label: a.label || undefined,
+  }));
+}

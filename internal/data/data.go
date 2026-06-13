@@ -133,6 +133,10 @@ var ProviderSet = wire.NewSet(
 	NewUnifiedEvolutionRepo,
 	NewPackSeeder,
 	NewCircuitBreakerStateRepo,
+	// AF-BE-04/17: Activity repo for Activity-First architecture
+	NewActivityRepo,
+	wire.Bind(new(biz.ActivityReader), new(biz.ActivityRepo)),
+	wire.Bind(new(biz.ActivityWriter), new(biz.ActivityRepo)),
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

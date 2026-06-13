@@ -88,6 +88,8 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 	// Fetch effective tools ONCE and reuse for hash computation and tool assembly.
 	// Previously GetEffectiveTools was called 3 times per turn (computeToolHash,
 	// computeMCPHash, loadEffectiveToolKeys), each triggering 3-5 DB queries.
+	// On failure, cachedEffTools stays nil and downstream falls back to per-call
+	// DB queries (graceful degradation).
 	var cachedEffTools *biz.AgentEffectiveTools
 	if d.td.ReadDeps.AgentsUC != nil {
 		if eff, err := d.td.ReadDeps.AgentsUC.GetEffectiveTools(ctx, p.Agent.ID); err == nil {
@@ -160,32 +162,6 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 // This avoids a redundant GetEffectiveTools DB call when the result is already available.
 func (d *chatAgentBuildDirector) computeToolHashFromCached(eff *biz.AgentEffectiveTools) string {
 	if eff == nil {
-		return ""
-	}
-	entries := make([]versionHashEntry, 0, len(eff.Items))
-	for _, item := range eff.Items {
-		state := "0"
-		if item.Enabled {
-			state = "1"
-		}
-		entries = append(entries, versionHashEntry{
-			ID:        fmt.Sprintf("%s:%s", item.ToolKey, state),
-			UpdatedAt: item.EffectiveState,
-		})
-	}
-	return computeVersionHash(entries)
-}
-
-// computeToolHash produces a content hash from the agent's effective tool configuration.
-// It hashes the sorted list of effective tool keys + their enabled states, so any change
-// in which tools are available to the agent invalidates the cache.
-// Deprecated: use computeToolHashFromCached when the effective tools result is already available.
-func (d *chatAgentBuildDirector) computeToolHash(ctx context.Context, agentID string) string {
-	if d.td.ReadDeps.AgentsUC == nil {
-		return ""
-	}
-	eff, err := d.td.ReadDeps.AgentsUC.GetEffectiveTools(ctx, agentID)
-	if err != nil {
 		return ""
 	}
 	entries := make([]versionHashEntry, 0, len(eff.Items))

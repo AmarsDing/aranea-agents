@@ -2,7 +2,7 @@ import { computed, type ComputedRef } from 'vue';
 import type { Message, ReactToolLinkIndex } from '../types';
 import type { TeamMemberLane } from '../../../components/chat/ChatTeamMemberStrip';
 import { useChatMessageRow } from '../useChatMessageRow';
-import { groupMessagesByTurn, type TurnBlockGroup } from '../groupMessagesByTurn';
+import { groupMessagesByTurn, lastAssistant, type TurnBlockGroup } from '../groupMessagesByTurn';
 import { useTurnBlockEnabled } from '../useTurnBlock';
 import { toolEventFromMessage } from '../envelopeToolCall';
 import { resolveDisplayLabel } from '../activityPresentation';
@@ -71,11 +71,15 @@ export function useChatTimeline(deps: {
         });
       }
 
-      if (block.assistant) {
-        const presentation = resolveAssistantPresentation(plannerKind, block.assistant);
+      // Iterate over rounds for multi-round support
+      for (let rIdx = 0; rIdx < block.rounds.length; rIdx++) {
+        const round = block.rounds[rIdx]!;
+        const presentation = resolveAssistantPresentation(plannerKind, round.assistant);
         const steps = presentation.reactSteps?.steps;
+        const isLastRound = rIdx === block.rounds.length - 1;
 
-        if (steps?.length) {
+        if (steps?.length && isLastRound) {
+          // ReAct mode only applies to the last round
           for (const step of steps) {
             const isThinking = step.kind === 'planning' || step.kind === 'reasoning' || step.kind === 'replanning';
             const isAction = step.kind === 'action';
@@ -83,14 +87,14 @@ export function useChatTimeline(deps: {
             if (isThinking) {
               elements.push({
                 kind: 'thinking',
-                id: `${block.key}-think-${elements.length}`,
-                timestamp: block.assistant.created_at || '',
+                id: `${block.key}-round${rIdx}-think-${elements.length}`,
+                timestamp: round.assistant.created_at || '',
                 reasoning: step.body,
                 collapsed: true,
               });
             } else if (isAction) {
               let matchedTool: Message | undefined;
-              for (const toolMsg of block.tools) {
+              for (const toolMsg of round.tools) {
                 const toolEv = toolEventFromMessage(toolMsg);
                 if (toolEv?.id && !reactLinkedToolIds.has(toolEv.id)) {
                   matchedTool = toolMsg;
@@ -101,8 +105,8 @@ export function useChatTimeline(deps: {
               const toolEv = matchedTool ? toolEventFromMessage(matchedTool) : null;
               elements.push({
                 kind: 'action',
-                id: `${block.key}-action-${elements.length}`,
-                timestamp: matchedTool?.created_at || block.assistant.created_at || '',
+                id: `${block.key}-round${rIdx}-action-${elements.length}`,
+                timestamp: matchedTool?.created_at || round.assistant.created_at || '',
                 reasoning: step.body,
                 toolName: toolEv ? resolveDisplayLabel(toolEv) : undefined,
                 toolStatus: toolEv?.status,
@@ -114,64 +118,65 @@ export function useChatTimeline(deps: {
               });
             }
           }
-        }
-
-        // F-6: Non-ReAct mode — generate thinking from reasoning
-        if (!steps?.length && presentation.reasoning?.trim()) {
-          elements.push({
-            kind: 'thinking',
-            id: `${block.key}-think-fallback`,
-            timestamp: block.assistant.created_at || '',
-            reasoning: presentation.reasoning,
-            collapsed: true,
-          });
-        }
-
-        // Standalone tool messages not covered by ReAct steps
-        for (const toolMsg of block.tools) {
-          const toolEv = toolEventFromMessage(toolMsg);
-          if (toolEv?.id && reactLinkedToolIds.has(toolEv.id)) continue;
-
-          // F-10: Generate error element for failed tools
-          if (toolEv && (toolEv.status === 'error' || toolEv.status === 'failed') && toolEv.error) {
+        } else {
+          // Non-ReAct mode or intermediate round — generate thinking from reasoning
+          if (presentation.reasoning?.trim()) {
             elements.push({
-              kind: 'error',
-              id: `${block.key}-error-${toolMsg.id}`,
-              timestamp: toolMsg.created_at || '',
-              errorMessage: toolEv.error,
-              toolName: resolveDisplayLabel(toolEv),
+              kind: 'thinking',
+              id: `${block.key}-round${rIdx}-think`,
+              timestamp: round.assistant.created_at || '',
+              reasoning: presentation.reasoning,
               collapsed: true,
             });
-            continue;
           }
 
-          elements.push({
-            kind: 'action',
-            id: `${block.key}-tool-${toolMsg.id}`,
-            timestamp: toolMsg.created_at || '',
-            toolName: toolEv ? resolveDisplayLabel(toolEv) : undefined,
-            toolStatus: toolEv?.status,
-            toolDuration: toolEv?.duration_ms,
-            toolCallId: toolEv?.id,
-            toolArguments: toolEv?.arguments ? JSON.stringify(toolEv.arguments, null, 2) : undefined,
-            toolResult: toolEv?.result ? (typeof toolEv.result === 'string' ? toolEv.result : JSON.stringify(toolEv.result, null, 2)) : undefined,
-            collapsed: true,
-          });
+          // Per-round tools
+          for (const toolMsg of round.tools) {
+            const toolEv = toolEventFromMessage(toolMsg);
+            if (toolEv?.id && reactLinkedToolIds.has(toolEv.id)) continue;
+
+            if (toolEv && (toolEv.status === 'error' || toolEv.status === 'failed') && toolEv.error) {
+              elements.push({
+                kind: 'error',
+                id: `${block.key}-round${rIdx}-error-${toolMsg.id}`,
+                timestamp: toolMsg.created_at || '',
+                errorMessage: toolEv.error,
+                toolName: resolveDisplayLabel(toolEv),
+                collapsed: true,
+              });
+              continue;
+            }
+
+            elements.push({
+              kind: 'action',
+              id: `${block.key}-round${rIdx}-tool-${toolMsg.id}`,
+              timestamp: toolMsg.created_at || '',
+              toolName: toolEv ? resolveDisplayLabel(toolEv) : undefined,
+              toolStatus: toolEv?.status,
+              toolDuration: toolEv?.duration_ms,
+              toolCallId: toolEv?.id,
+              toolArguments: toolEv?.arguments ? JSON.stringify(toolEv.arguments, null, 2) : undefined,
+              toolResult: toolEv?.result ? (typeof toolEv.result === 'string' ? toolEv.result : JSON.stringify(toolEv.result, null, 2)) : undefined,
+              collapsed: true,
+            });
+          }
         }
 
-        // Summary: assistant body content
+        // Summary: assistant body content (for last round or any round with body)
         const body = presentation.bodyMarkdown?.trim();
         if (body) {
           elements.push({
             kind: 'summary',
-            id: `${block.key}-summary`,
-            timestamp: block.assistant.created_at || '',
+            id: `${block.key}-round${rIdx}-summary`,
+            timestamp: round.assistant.created_at || '',
             content: body,
             collapsed: false,
           });
         }
-      } else {
-        // No assistant message — emit standalone tool messages
+      }
+
+      // No assistant rounds — emit standalone tool messages
+      if (block.rounds.length === 0) {
         for (const toolMsg of block.tools) {
           const toolEv = toolEventFromMessage(toolMsg);
 
@@ -204,10 +209,11 @@ export function useChatTimeline(deps: {
 
       // End element when block is completed
       if (block.isCompleted) {
+        const last = lastAssistant(block);
         elements.push({
           kind: 'end',
           id: `${block.key}-end`,
-          timestamp: block.assistant?.created_at || block.tools.at(-1)?.created_at || '',
+          timestamp: last?.created_at || block.tools.at(-1)?.created_at || '',
           turnStatus: 'completed',
           collapsed: false,
         });

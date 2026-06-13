@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
+	"time"
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
@@ -23,6 +25,7 @@ type SessionService struct {
 	compress         biz.ManualCompressor
 	compressStatus   biz.CompressStatusReader
 	metricsCache     biz.SessionMetricsReader
+	activityReader   biz.ActivityReader
 }
 
 func NewSessionService(
@@ -32,8 +35,9 @@ func NewSessionService(
 	compress biz.ManualCompressor,
 	compressStatus biz.CompressStatusReader,
 	metricsCache biz.SessionMetricsReader,
+	activityReader biz.ActivityReader,
 ) *SessionService {
-	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress, compressStatus: compressStatus, metricsCache: metricsCache}
+	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress, compressStatus: compressStatus, metricsCache: metricsCache, activityReader: activityReader}
 }
 
 func toProtoSession(s biz.Session, metrics *biz.SessionMetrics) *v1.Session {
@@ -530,4 +534,71 @@ func (s *SessionService) ListChildSessions(ctx context.Context, req *v1.ListChil
 		out = append(out, toProtoSession(sessions[i], nil))
 	}
 	return &v1.ListChildSessionsResponse{Sessions: out}, nil
+}
+
+// ListActivities returns activities for a session/turn (AF-BE-17).
+func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivitiesRequest) (*v1.ListActivitiesResponse, error) {
+	if s == nil || s.activityReader == nil {
+		return nil, apierror.Internal("SESSION", "session service not configured")
+	}
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest("SESSION", "session_id is required")
+	}
+
+	var activities []biz.Activity
+	var err error
+	turnID := strings.TrimSpace(req.GetTurnId())
+	if turnID != "" {
+		activities, err = s.activityReader.ListBySessionTurn(ctx, sessionID, turnID)
+	} else {
+		activities, err = s.activityReader.ListBySession(ctx, sessionID)
+	}
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+
+	out := make([]*v1.Activity, 0, len(activities))
+	for i := range activities {
+		out = append(out, toProtoActivity(activities[i]))
+	}
+	return &v1.ListActivitiesResponse{Items: out}, nil
+}
+
+func toProtoActivity(a biz.Activity) *v1.Activity {
+	var dependsOnJSON string
+	if len(a.DependsOn) > 0 {
+		if b, err := json.Marshal(a.DependsOn); err == nil {
+			dependsOnJSON = string(b)
+		}
+	} else {
+		dependsOnJSON = "[]"
+	}
+	return &v1.Activity{
+		Id:               a.ID,
+		Kind:             string(a.Kind),
+		Status:           string(a.Status),
+		SessionId:        a.SessionID,
+		TurnId:           a.TurnID,
+		ParentActivityId: a.ParentActivityID,
+		Timestamp:        a.Timestamp.Format(time.RFC3339),
+		DurationMs:       a.DurationMs,
+		Content:          a.Content,
+		Reasoning:        a.Reasoning,
+		ToolName:         a.ToolName,
+		ToolCallId:       a.ToolCallID,
+		ToolArguments:    a.ToolArguments,
+		ToolResult:       a.ToolResult,
+		ToolDurationMs:   a.ToolDurationMs,
+		ToolErrorCode:    a.ToolErrorCode,
+		ChildBoardId:     a.ChildBoardID,
+		SpiritSessionId:  a.SpiritSessionID,
+		TeamId:           a.TeamID,
+		DagNodeId:        a.DagNodeID,
+		DependsOnJson:    dependsOnJSON,
+		AgentKey:         a.AgentKey,
+		AgentName:        a.AgentName,
+		Collapsed:        a.Collapsed,
+		Label:            a.Label,
+	}
 }

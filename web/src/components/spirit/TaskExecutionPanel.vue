@@ -121,6 +121,7 @@ import SynthesisResultCard from './SynthesisResultCard.vue';
 import InterruptedTeamCard from './InterruptedTeamCard.vue';
 import SpiritStatusBar from './SpiritStatusBar.vue';
 import { mapSpiritStatusToSession, modeToTopology } from '../../features/spirit/spiritUi';
+import { isStuckTool } from '../../features/chat/lib/isStuckTool';
 import type { SpiritTeam, SynthesisOutput, CompletionStats, TaskNode, SpiritStatusBarData } from '../../features/spirit/types';
 import type { PlanEntry } from '../../features/chat/agentTreeTypes';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
@@ -205,7 +206,7 @@ const isThinkingActive = computed(() => {
 // ── v7: ToolStuckBadge computed ──
 const stuckToolCount = computed(() => {
   return props.messages.filter(
-    (m) => m.role === 'tool' && (m as Message & { tool_event?: ToolUseEvent }).tool_event?.status === 'blocked',
+    (m) => m.role === 'tool' && m.tool_event && isStuckTool(m.tool_event),
   ).length;
 });
 

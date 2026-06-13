@@ -7,7 +7,7 @@
           class="thinking-area__brain"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="var(--color-accent)"
+          stroke="var(--color-accent-blue)"
           stroke-width="1.5"
         >
           <path d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z" />
@@ -25,9 +25,9 @@
 
     <!-- No content (collapsed) state -->
     <template v-else-if="!content">
-      <q-btn flat dense no-caps class="thinking-area__collapsed-btn" @click="expanded = true">
+      <span class="thinking-area__collapsed-btn" @click="expanded = true">
         {{ t('chat.thinking.label') }}
-      </q-btn>
+      </span>
     </template>
 
     <!-- Completed state -->
@@ -39,7 +39,7 @@
             class="thinking-area__brain"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="var(--color-accent)"
+            stroke="var(--color-accent-blue)"
             stroke-width="1.5"
           >
             <path
@@ -54,43 +54,45 @@
         </span>
       </template>
 
-      <!-- Collapsed summary -->
-      <template v-else-if="!expanded">
-        <q-btn flat dense no-caps class="thinking-area__collapsed-btn" @click="expanded = true">
-          🧠 {{ summaryText }}
-        </q-btn>
-      </template>
-
-      <!-- Expanded full reasoning -->
-      <template v-else>
-        <div class="thinking-area__icon-wrap thinking-area__icon-wrap--done">
-          <svg
-            class="thinking-area__brain"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--color-accent)"
-            stroke-width="1.5"
-          >
-            <path
-              d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z"
-            />
-            <path d="M9 7c1-1 2-1 3 0s2 1 3 0" stroke-opacity="0.5" />
-            <path d="M8 11c1-1 2.5-1 4 0s2.5 1 4 0" stroke-opacity="0.3" />
-          </svg>
+      <!-- Collapsed / Expanded with transition -->
+      <Transition name="thinking-expand" mode="out-in">
+        <!-- Collapsed summary -->
+        <div v-if="!expanded" key="collapsed" class="thinking-area__collapsed-wrap" @click="expanded = true">
+          <span class="thinking-area__collapsed-btn">
+            🧠 {{ summaryText }}
+          </span>
         </div>
-        <span class="thinking-area__content thinking-area__content--expanded">
-          {{ content }}
-        </span>
-        <q-btn
-          flat
-          dense
-          round
-          icon="unfold_less"
-          size="8px"
-          class="thinking-area__collapse-btn"
-          @click="expanded = false"
-        />
-      </template>
+        <!-- Expanded full reasoning -->
+        <div v-else key="expanded" class="thinking-area__expanded-wrap">
+          <div class="thinking-area__icon-wrap thinking-area__icon-wrap--done">
+            <svg
+              class="thinking-area__brain"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--color-accent-blue)"
+              stroke-width="1.5"
+            >
+              <path
+                d="M12 2C8 2 5 5 5 9c0 2 1 3.5 2 4.5V20a2 2 0 002 2h6a2 2 0 002-2v-6.5c1-1 2-2.5 2-4.5 0-4-3-7-7-7z"
+              />
+              <path d="M9 7c1-1 2-1 3 0s2 1 3 0" stroke-opacity="0.5" />
+              <path d="M8 11c1-1 2.5-1 4 0s2.5 1 4 0" stroke-opacity="0.3" />
+            </svg>
+          </div>
+          <span class="thinking-area__content thinking-area__content--expanded">
+            {{ content }}
+          </span>
+          <q-btn
+            flat
+            dense
+            round
+            icon="unfold_less"
+            size="8px"
+            class="thinking-area__collapse-btn"
+            @click="expanded = false"
+          />
+        </div>
+      </Transition>
     </template>
   </div>
 </template>
@@ -244,7 +246,7 @@ const rootClasses = computed(() => ({
 
 .thinking-area__content--active
   font-size: var(--text-xs)
-  background: var(--glass-surface)
+  background: color-mix(in srgb, var(--glass-surface) 60%, transparent)
   overflow: hidden
   display: -webkit-box
   -webkit-line-clamp: 2
@@ -295,14 +297,33 @@ const rootClasses = computed(() => ({
 .thinking-area__collapsed-btn
   font-size: var(--text-xs)
   color: var(--color-text-secondary)
-  background: var(--glass-surface)
+  background: color-mix(in srgb, var(--glass-surface) 60%, transparent)
   border-radius: 6px
   padding: 2px 8px
-  min-height: unset
+  cursor: pointer
   transition: background 0.15s ease
 
   &:hover
     background: var(--glass-elevated)
+
+.thinking-area__collapsed-wrap
+  cursor: pointer
+
+.thinking-area__expanded-wrap
+  display: flex
+  align-items: flex-start
+  gap: 6px
+
+// ── Expand/collapse transition ──
+.thinking-expand-enter-active,
+.thinking-expand-leave-active
+  transition: max-height 200ms ease, opacity 200ms ease
+  overflow: hidden
+
+.thinking-expand-enter-from,
+.thinking-expand-leave-to
+  max-height: 0
+  opacity: 0
 
 // ── Collapse toggle ──
 .thinking-area__collapse-btn

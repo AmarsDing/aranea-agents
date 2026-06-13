@@ -291,6 +291,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.publishRunStatus(sessionID, runID, "failed", err.Error())
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -298,6 +299,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogWarn("chat.attachment.preflight", "模型不支持当前附件类型", "", event.P("provider", prov), event.P("model", mod), event.P("error", err.Error()))
 		o.publishRunStatus(sessionID, runID, "failed", err.Error())
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -309,6 +311,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// Since we sent "running" early (EARLY ACK), we must publish a
 		// terminal run_status so the frontend knows the run has ended.
 		o.publishRunStatus(sessionID, runID, "failed", err.Error())
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}

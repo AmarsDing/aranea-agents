@@ -1689,3 +1689,349 @@ E2E：SP-E2E-01（精灵对话 → 组建团队 → 查看执行面板 → 下�
 | 23 Tools | 工具调用结果、stuck 工具检测 |
 | 39 Planner | 远期：A2UI Planner 生成结构化执行计划 |
 | superpowers Builtin Agents | 精灵/编排管家定义、三阶段编排工具 |
+
+---
+
+## 十四、Activity-First 架构设计（2026-06-13 新增）
+
+> **方案**：[2026-06-13-activity-first-restructure-optimized-proposal.md](../reports/2026-06-13-activity-first-restructure-optimized-proposal.md)
+> **需求**：[59-chat-ui-optimization.md §15](./59-chat-ui-optimization.md)
+> **原则**：后端语义直推前端，M59 展示层保留，渐进式迁移
+
+### 14.1 设计定位
+
+当前系统采用 Message-First 模型，后端按 LLM 调用轮次建模，前端需 13 层推理恢复语义。Activity-First 架构在数据源层引入 Activity 语义模型，后端通过 `ActivityProjector` 从运行时事件中投影出 Activity，通过 WS 事件直推前端，前端零推理消费。
+
+**与 M59 的关系**：M59 是"展示层治理"（TaskBoard/ThinkingArea/UnifiedExecutionPanel），Activity-First 是"数据源层治理"。两者互补，Activity 替代 `useAgentBlocks` 的推理逻辑，M59 组件的数据源从 AgentBlock 切换到 Activity。
+
+### 14.2 ActivityProjector 设计
+
+#### 14.2.1 核心结构
+
+```go
+// internal/agent/activity_projector.go
+type ActivityProjector struct {
+    lg           loggateway.Logger
+    eventBus     event.Bus
+    sessionID    string
+    turnID       string
+    spiritCtx    *SpiritContext
+    activities   map[string]*Activity
+    rootActivity *Activity
+    mu           sync.Mutex
+}
+
+type SpiritContext struct {
+    SpiritSessionID string
+    TeamID          string
+    DAGNodeID       string
+    DependsOn       []string
+    AgentKey        string
+    AgentName       string
+}
+// SpiritContext 承载 Spirit 模式专有上下文，与 EventProjector 的 ProjectMeta（传输层元数据）互补。
+// ProjectMeta 提供 sessionID/turnID 等基础字段，SpiritContext 提供 DAG 依赖和团队归属等业务字段。
+```
+
+#### 14.2.2 投影规则
+
+| 运行时事件 | 投影为 Activity | 说明 |
+|-----------|----------------|------|
+| Turn 开始 | `task` | 根 Activity，描述任务 |
+| `reasoning_delta` | `thinking` | reasoning 内容流式推送 |
+| `reasoning_done` + `reasoning_as_display=true` | `thinking` → `reply` | reasoning 即回复时升级 |
+| `text_delta` | `reply` | 正式回复流式推送 |
+| `tool_call` | `action` | 工具调用开始 |
+| `tool_result` | `action` (done) | 工具调用完成 |
+| `tool_call(tool_name=subagents_spawn)` | `delegate` + `sub_task_board` | 委派子代理（工具调用语义重分类） |
+| Team 组建 | `delegate` | 精灵委派团队 |
+| Turn 完成 | `end` | 任务完成标记 |
+| 错误 | `error` | 错误信息 |
+| 编排事件 | `notice` | 语境加载消息 |
+
+#### 14.2.3 关键改进：reasoning_as_display 流式解决
+
+**当前问题**：`reasoning_as_display` 标志在 `DisplayMarkdownFromStream` 中设置，但仅在持久化后的 `options_json` 中可见，流式阶段前端无法知道。
+
+**优化方案**：`ActivityProjector` 在 `OnReasoningDone` 时判断是否为 `reasoning_as_display`，如果是，直接发射 `activity_done(kind=reply)` 而非 `activity_done(kind=thinking)`。前端无需推理。
+
+#### 14.2.4 与 EventProjector 的关系
+
+`ActivityProjector` 与 `EventProjector` 并行运行，共享同一个 mutex 确保顺序发射。Phase 1 双发射阶段两者同时工作，Phase 3 停发旧事件后 `EventProjector` 标记 Deprecated。
+
+### 14.3 Envelope 协议
+
+#### 14.3.1 新增 EnvelopeType
+
+```go
+const (
+    EnvelopeTypeActivityStart     EnvelopeType = "activity_start"
+    EnvelopeTypeActivityDelta     EnvelopeType = "activity_delta"
+    EnvelopeTypeActivityDone      EnvelopeType = "activity_done"
+    EnvelopeTypeActivityChildStart EnvelopeType = "activity_child_start"
+)
+```
+
+#### 14.3.2 事件载荷
+
+**activity_start**：
+
+```go
+env.Metadata = map[string]any{
+    "activity_id":        activityID,
+    "kind":               kind,
+    "parent_activity_id": parentID,
+    "session_id":         sessionID,
+    "turn_id":            turnID,
+    "spirit_session_id":  spiritSessionID,
+    "team_id":            teamID,
+    "dag_node_id":        dagNodeID,
+    "agent_key":          agentKey,
+    "agent_name":         agentName,
+    "label":              label,
+    "tool_name":          toolName,
+    "tool_call_id":       toolCallID,
+    "tool_arguments":     toolArguments,
+}
+```
+
+**activity_delta**：
+
+```go
+env.Metadata = map[string]any{
+    "activity_id":      activityID,
+    "kind":             kind,
+    "reasoning_delta":  reasoningDelta,   // kind=thinking
+    "content_delta":    contentDelta,     // kind=reply
+    "status":           newStatus,        // kind=action
+    "tool_result":      toolResult,
+    "tool_duration_ms": durationMs,
+    "tool_error_code":  errorCode,        // kind=action
+    "notice_delta":     noticeDelta,      // kind=notice
+}
+```
+
+**activity_done**：
+
+```go
+env.Metadata = map[string]any{
+    "activity_id":      activityID,
+    "kind":             kind,
+    "status":           finalStatus,
+    "duration_ms":      durationMs,
+    "collapsed":        collapsed,
+    "reasoning":        fullReasoning,    // kind=thinking
+    "content":          fullContent,      // kind=reply
+    "tool_result":      fullToolResult,   // kind=action
+    "tool_duration_ms": totalDurationMs,
+    "tool_error_code":  errorCode,         // kind=action
+}
+```
+
+**activity_child_start**：
+
+```go
+env.Metadata = map[string]any{
+    "activity_id":        activityID,
+    "parent_activity_id": parentID,
+    "child_agent_key":    childAgentKey,
+    "child_agent_name":   childAgentName,
+    "child_session_id":   childSessionID,
+    "kind":               "delegate",
+}
+```
+
+#### 14.3.3 与现有 M59 事件的关系
+
+| 现有 M59 事件 | Activity 事件 | 迁移策略 |
+|-------------|-------------|---------|
+| `text_delta` / `text_done` | `activity_delta(kind=reply)` | 双发射并行 |
+| `text_delta(含 reasoning)` / `text_done(含 reasoning)` | `activity_delta(kind=thinking)` | 双发射并行；reasoning 内容在 EnvelopeContent.Reasoning 字段中 |
+| `tool_call` / `tool_result` | `activity_start(kind=action)` + `activity_done` | 双发射并行 |
+| `member_message_start/delta/done` | `activity_child_start` + `activity_delta` | 双发射并行 |
+| `spirit_team_assembled` | `activity_start(kind=delegate)` | 双发射并行 |
+| `spirit_plan_created` 等 | `activity_start(kind=notice)` | 双发射并行 |
+| `spirit_team_progress` | `activity_delta(kind=notice)` | 双发射并行 |
+| `butler_plan_created` | `activity_start(kind=notice)` | 双发射并行 |
+| `butler_plan_updated` | `activity_delta(kind=notice)` | 双发射并行 |
+
+#### 14.3.4 AS-EVT-01 可靠性分级
+
+| Activity 事件 | AS-EVT-01 级别 | 可靠性保证 | 说明 |
+|--------------|---------------|-----------|------|
+| `activity_start` | Important | BlockUpTo + 异步持久化 | Activity 创建需可靠到达 |
+| `activity_delta` | Informational | 尽力而为 | 流式增量，丢失可容忍 |
+| `activity_done` | Important | BlockUpTo + 异步持久化 | Activity 完成需可靠到达 |
+| `activity_child_start` | Important | BlockUpTo + 异步持久化 | 子代理委派需可靠到达 |
+
+### 14.4 activities 表 Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS activities (
+    id                TEXT PRIMARY KEY,
+    kind              TEXT NOT NULL,
+    session_id        TEXT NOT NULL,
+    turn_id           TEXT NOT NULL,
+    parent_activity_id TEXT,
+    timestamp         TEXT NOT NULL,
+    content           TEXT,
+    reasoning         TEXT,
+    tool_name         TEXT,
+    tool_call_id      TEXT,
+    tool_arguments    TEXT,
+    tool_result       TEXT,
+    tool_duration_ms  INTEGER,
+    tool_error_code   TEXT,
+    child_board_id    TEXT,
+    spirit_session_id TEXT,
+    team_id           TEXT,
+    dag_node_id       TEXT,
+    depends_on        TEXT,
+    agent_key         TEXT,
+    agent_name        TEXT,
+    status            TEXT NOT NULL DEFAULT 'running',
+    collapsed         INTEGER NOT NULL DEFAULT 0,
+    duration_ms       INTEGER,
+    label             TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id),
+    FOREIGN KEY (parent_activity_id) REFERENCES activities(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activities_session_turn ON activities(session_id, turn_id);
+CREATE INDEX IF NOT EXISTS idx_activities_parent ON activities(parent_activity_id);
+CREATE INDEX IF NOT EXISTS idx_activities_spirit_session ON activities(spirit_session_id);
+CREATE INDEX IF NOT EXISTS idx_activities_team ON activities(team_id);
+```
+
+**Ent Schema 规范**：
+- `entsql.Annotation{Table: "activities"}` 显式映射表名
+- 不使用 Ent Edge，使用手动 FK 字段
+- `tool_arguments` 标记 `.Sensitive()`
+- `tool_result` 标记 `.Sensitive()`（可能包含 API 密钥、凭证等敏感输出）
+- `depends_on` 使用 `field.JSON()`
+- 新增 Repo 接口遵循窄接口原则（Reader/Writer 拆分）
+
+### 14.5 前端 Activity 消费层
+
+#### 14.5.1 useActivityTimeline composable
+
+```typescript
+// web/src/features/chat/composables/useActivityTimeline.ts
+export function useActivityTimeline(deps: {
+  sessionId: ComputedRef<string | undefined>
+}) {
+  const activities = ref<Activity[]>([])
+  const activityTree = computed<ActivityTreeNode[]>(() =>
+    buildActivityTree(activities.value)
+  )
+  const taskBoardNodes = computed<TaskBoardNode[]>(() =>
+    activityTree.value.map(activityToTaskBoardNode)
+  )
+
+  function handleActivityStart(env: Envelope) { /* ... */ }
+  function handleActivityDelta(env: Envelope) { /* ... */ }
+  function handleActivityDone(env: Envelope) { /* ... */ }
+
+  return { activities, activityTree, taskBoardNodes, handleActivityStart, handleActivityDelta, handleActivityDone }
+}
+```
+
+#### 14.5.2 Activity → TaskBoardNode 映射
+
+```typescript
+function activityToTaskBoardNode(activity: Activity): TaskBoardNode {
+  return {
+    kind: activity.kind as TaskBoardNodeKind,
+    id: activity.id,
+    timestamp: activity.timestamp,
+    collapsed: activity.collapsed,
+    content: activity.content,
+    reasoning: activity.reasoning,
+    toolName: activity.toolName,
+    toolDuration: activity.toolDurationMs,
+    toolCallId: activity.toolCallId,
+    toolArguments: activity.toolArguments,
+    toolResult: activity.toolResult,
+    toolStatus: mapActivityStatusToNodeStatus(activity.status),
+    errorMessage: activity.kind === 'error' ? activity.content : undefined,
+  }
+}
+```
+
+#### 14.5.3 与 M59 组件集成
+
+| M59 组件 | 数据源变更 | 说明 |
+|---------|----------|------|
+| `TaskBoard.vue` | `useAgentBlocks.blocks` → `useActivityTimeline.taskBoardNodes` | 直接消费 Activity 树 |
+| `ThinkingArea.vue` | `ChatReasoningPeek` → `Activity(kind=thinking)` | 流式态从 `activity_delta` 获取 |
+| `UnifiedExecutionPanel.vue` | 多 Store 拼装 → Activity 树过滤 | delegate/sub_task_board 过滤 |
+| `ChatExecutionCard.vue` | `ToolUseEvent` → `Activity(kind=action)` | 直接消费 |
+| `TurnBlock.vue` | `AgentBlock` → Activity 树根节点 | 简化 |
+| `SpiritStatusBar.vue` | 多 computed 拼装 → Activity 聚合 | 简化 |
+| `TodoKanbanBoard.vue` | `useTodoBoard` → `Activity(kind=action, toolName=todo_write)` | 特殊处理 |
+| `ToolCallTimeline.vue` | `ToolUseEvent[]` → `Activity(kind=action)[]` | 直接消费 |
+
+#### 14.5.4 Store 集成
+
+| Store | 变更 | 说明 |
+|-------|------|------|
+| `useChatStore` | 新增 `activities` Map + Activity 事件处理 | Activity 数据入口 |
+| `useAgentBlocksStore` | 保留 Phase AF-1，Phase AF-3 废弃 | 双发射期并存 |
+| `useSpiritStore` | `spiritTeamAssembled` → `activity_start(kind=delegate)` | Phase AF-2 切换 |
+| `useTodoBoardStore` | `todo_write` 事件 → `Activity(kind=action, toolName=todo_write)` | Phase AF-2 切换 |
+
+### 14.6 13 层推理消除映射
+
+| # | 原推理步骤 | Activity-First 后 | 消除方式 |
+|---|-----------|------------------|---------|
+| 1 | `reasoning_as_display` 推断 | `activity_done(kind=reply)` | 后端投影器判断 |
+| 2 | ReAct 标签解析 | `activity_start(kind=thinking, label=xxx)` | 后端解析标签 |
+| 3 | member ID 前缀约定 | `activity_start(agentKey=xxx)` | 直接携带 |
+| 4 | EnvelopeContent 无语义 | `activity_start(kind=xxx)` | 语义在 kind 中 |
+| 5 | snapshotStreamingMessage | `activity_done` 替代 | 不再需要 snapshot |
+| 6 | mergeSessionMessages 内容匹配 | `activity.id` 全局唯一 | ID 匹配替代内容匹配 |
+| 7 | classifyActivityKind | `activity.kind` 直接给出 | 后端分类 |
+| 8 | resolveAssistantPresentation | `activity.kind=reply` 直接给出 | 后端判断 |
+| 9 | isReasoningAsDisplay | 不再需要 | 后端在投影器中处理 |
+| 10 | reasoningMarkdown fallback | `activity.content` 或 `activity.reasoning` | 字段明确 |
+| 11 | useConversationTimeline 推理 | `useActivityTimeline` 直接消费 | 无推理 |
+| 12 | useAgentBlocks 构建 | `activityTree` 直接映射 | 无推理 |
+| 13 | computeAgentStatus | `activity.status` 直接给出 | 后端计算 |
+
+### 14.7 迁移策略
+
+#### Phase AF-1：双发射（兼容期）
+
+- 后端同时发射旧事件和新 Activity 事件
+- 前端仍消费旧事件，新事件仅记录日志
+- `ActivityProjector` 与 `EventProjector` 并行运行
+- 新增 `activities` 表和 Ent Schema
+
+#### Phase AF-2：前端切换
+
+- 前端新增 `useActivityTimeline` composable
+- Feature flag 控制切换
+- 逐步替换各组件数据源
+- 保留旧事件消费路径作为 fallback
+
+#### Phase AF-3：清理与优化
+
+- 前端完全切换后停发旧事件
+- 清理 `useAgentBlocks` 推理逻辑
+- 清理 `useConversationTimeline` 推理逻辑
+- `EventProjector` 标记 Deprecated
+
+### 14.8 影响域
+
+| 包 | 变更类型 | 说明 |
+|----|----------|------|
+| `internal/agent/` | 新增 | `activity_projector.go` |
+| `internal/biz/` | 新增 | `ActivityRepo` 接口（Reader/Writer 拆分） |
+| `internal/data/` | 新增 | `activity_repo.go` + Ent Schema + DDL 迁移 |
+| `internal/event/contract/` | 扩展 | 4 个新 EnvelopeType |
+| `internal/service/` | 修改 | 集成 ActivityProjector |
+| `web/src/features/chat/` | 新增 | `activityTypes.ts` + `useActivityTimeline.ts` |
+| `web/src/features/chat/composables/` | 修改 | 组件数据源切换 |
+| `web/src/components/` | 修改 | 各组件数据源切换 |
+
+**不改动**：M59 展示组件的模板和样式；`internal/server` 直连 runtime；Team 编译/运行流程。

@@ -23,6 +23,14 @@ export type MessagePresentationBundle = {
   structuredToolEvent: ReturnType<typeof toolEventFromMessage>;
 };
 
+/**
+ * Resolve the presentation mode for an assistant message.
+ *
+ * @deprecated Activity-First architecture eliminates the need for frontend
+ * presentation inference. The backend ActivityProjector directly classifies
+ * each content chunk as thinking/reply/action. This function is only needed
+ * for the legacy message-inference fallback path.
+ */
 export function resolveAssistantPresentation(plannerKind: string, message: Message): AssistantPresentation {
   const raw = message.content_markdown ?? '';
   const reasoningRaw = reasoningMarkdown(message).trim();

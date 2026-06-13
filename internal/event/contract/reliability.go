@@ -90,6 +90,11 @@ func isImportantEvent(t EnvelopeType) bool {
 	// User
 	case EnvelopeTypeUserFeedback:
 		return true
+	// Activity-First lifecycle — start/done/child_start must not be silently dropped
+	case EnvelopeTypeActivityStart,
+		EnvelopeTypeActivityDone,
+		EnvelopeTypeActivityChildStart:
+		return true
 	default:
 		return false
 	}

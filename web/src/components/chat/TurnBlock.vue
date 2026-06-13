@@ -58,7 +58,7 @@
             <span class="text-caption text-weight-medium" :style="{ color: 'var(--color-accent)' }">{{ stepTitle(step) }}</span>
           </div>
           <ChatReasoningPeek
-            :message-id="block.assistant?.id ?? ''"
+            :message-id="lastAssistant(block)?.id ?? ''"
             :reasoning="step.body"
             :is-dark="isDark"
             :streaming="isAssistantStreaming && idx === reactSteps.length - 1"
@@ -120,7 +120,7 @@
         v-if="compactNodes.length"
         :nodes="compactNodes"
         :is-dark="isDark"
-        :message-id="block.assistant?.id ?? ''"
+        :message-id="lastAssistant(block)?.id ?? ''"
         :is-streaming="isAssistantStreaming"
         @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
       />
@@ -171,8 +171,8 @@ import ChatExecutionCard from './ChatExecutionCard.vue';
 import ToolCallTimeline from './ToolCallTimeline.vue';
 import CompactTimeline from './CompactTimeline.vue';
 import ToolStrip from './ToolStrip.vue';
-import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
-import { filterToolsForToolStrip, toolStripSummary } from '../../features/chat/groupMessagesByTurn';
+import type { TurnBlockGroup, TurnRound } from '../../features/chat/groupMessagesByTurn';
+import { filterToolsForToolStrip, lastAssistant, toolStripSummary } from '../../features/chat/groupMessagesByTurn';
 import { toolEventFromMessage } from '../../features/chat/envelopeToolCall';
 import {
   messageSourceChipFallback,
@@ -180,7 +180,6 @@ import {
   messageSourceFromMessage,
 } from '../../features/chat/messageSourceMeta';
 import { resolveAssistantPresentation } from '../../features/chat/messagePlannerPresentation';
-import { buildCompactNodes } from '../../features/chat/compactTimeline';
 import { parseReactPlannerContent, shouldUseReactPlannerView } from '../../features/chat/reactPlannerParse';
 import { enrichReactStepsWithToolEvents } from '../../features/chat/reactPlannerToolLink';
 import { renderChatMarkdownForMessage, renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
@@ -232,7 +231,7 @@ const agentMeta = computed(() => {
     const ev = toolEventFromMessage(firstTool);
     if (ev) return { name: ev.agent_name, key: ev.agent_key };
   }
-  const assistant = props.block.assistant;
+  const assistant = lastAssistant(props.block);
   if (assistant?.agent_ref) {
     return { name: assistant.agent_ref.name, key: assistant.agent_ref.agent_key };
   }
@@ -286,24 +285,27 @@ const turnSourceLabel = computed(() => {
   return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
 });
 
-const isAssistantStreaming = computed(() =>
-  props.block.assistant?.status === 'streaming' || props.block.assistant?.status === 'tool_running',
-);
+const isAssistantStreaming = computed(() => {
+  const last = lastAssistant(props.block);
+  return last?.status === 'streaming' || last?.status === 'tool_running';
+});
 
 // ═══════════════════════════════════════════════════════════════
 // ReAct Mode: Parse steps and link tools
 // ═══════════════════════════════════════════════════════════════
 const reactParsed = computed(() => {
-  if (!props.block.assistant) return null;
-  const content = props.block.assistant.content_markdown ?? '';
+  const assistant = lastAssistant(props.block);
+  if (!assistant) return null;
+  const content = assistant.content_markdown ?? '';
   if (!shouldUseReactPlannerView(props.plannerKind ?? '', content)) return null;
   return parseReactPlannerContent(content);
 });
 
 const reactSteps = computed((): ReactStepWithTools[] => {
-  if (!reactParsed.value?.steps.length || !props.block.assistant) return [];
+  const assistant = lastAssistant(props.block);
+  if (!reactParsed.value?.steps.length || !assistant) return [];
   // Find the assistant message index in allMessages for tool linking
-  const assistantIdx = props.allMessages.findIndex((m) => m.id === props.block.assistant!.id);
+  const assistantIdx = props.allMessages.findIndex((m) => m.id === assistant.id);
   if (assistantIdx < 0) return [];
   return enrichReactStepsWithToolEvents(reactParsed.value.steps, assistantIdx, props.allMessages);
 });
@@ -325,7 +327,7 @@ const reactReplyRounds = computed((): string[] => {
 });
 
 function renderReactReplyRound(round: string, rIdx: number): string {
-  const msgId = props.block.assistant?.id ?? '';
+  const msgId = lastAssistant(props.block)?.id ?? '';
   const isLast = rIdx === reactReplyRounds.value.length - 1;
   return renderChatMarkdownForMessage(`${msgId}-final-${rIdx}`, round, isAssistantStreaming.value && isLast);
 }
@@ -346,11 +348,12 @@ const unlinkedTools = computed(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Non-ReAct Mode: Simple reasoning → tools → body
+// Non-ReAct Mode: Multi-round compact timeline
 // ═══════════════════════════════════════════════════════════════
 const assistantPresentation = computed(() => {
-  if (!props.block.assistant) return null;
-  return resolveAssistantPresentation(props.plannerKind ?? '', props.block.assistant);
+  const assistant = lastAssistant(props.block);
+  if (!assistant) return null;
+  return resolveAssistantPresentation(props.plannerKind ?? '', assistant);
 });
 
 const assistantReasoning = computed(() => assistantPresentation.value?.reasoning?.trim() || '');
@@ -358,23 +361,46 @@ const assistantBody = computed(() => assistantPresentation.value?.bodyMarkdown?.
 
 const visibleTools = computed(() => filterToolsForToolStrip(props.block.tools, props.reactToolLinkIndex));
 
-// Compact timeline: thinking (整段) → tools (按顺序) → reply (整段)
-// 不切分段落，不配对，不均分工具。
-// 替换原 `interleavedRounds` 1:1 配对渲染。
-// @see docs/reports/2026-06-10-proposal-chat-compact-timeline.md
+/** Build compact timeline nodes from ALL rounds (not just the last assistant). */
 const compactNodes = computed(() => {
-  if (!props.block.assistant) return [];
-  const allToolEvents = visibleTools.value
-    .map((msg) => toolEventFromMessage(msg))
-    .filter((ev): ev is ToolUseEvent => ev != null);
-  return buildCompactNodes({
-    reasoning: assistantReasoning.value,
-    bodyMarkdown: assistantBody.value,
-    toolEvents: allToolEvents,
-    messageId: props.block.assistant.id,
-    isStreaming: isAssistantStreaming.value,
-    messageStatus: props.block.assistant.status,
-  });
+  if (props.block.assistants.length === 0) return [];
+
+  const nodes: import('../../features/chat/compactTimeline').CompactNode[] = [];
+
+  for (let rIdx = 0; rIdx < props.block.rounds.length; rIdx++) {
+    const round = props.block.rounds[rIdx]!;
+    const presentation = resolveAssistantPresentation(props.plannerKind ?? '', round.assistant);
+    const reasoning = presentation.reasoning?.trim() || '';
+    const bodyMarkdown = presentation.bodyMarkdown?.trim() || '';
+    const roundToolEvents = round.tools
+      .map((msg) => toolEventFromMessage(msg))
+      .filter((ev): ev is ToolUseEvent => ev != null);
+    const isLastRound = rIdx === props.block.rounds.length - 1;
+    const isRoundStreaming = isLastRound && isAssistantStreaming.value;
+
+    // Thinking
+    if (reasoning) {
+      nodes.push({ kind: 'thinking', text: reasoning, messageId: round.assistant.id });
+    }
+
+    // Tools (per-round)
+    for (const event of roundToolEvents) {
+      nodes.push({ kind: 'tool', event });
+    }
+
+    // Reply: show body for the last round, or any round with content
+    if (bodyMarkdown) {
+      nodes.push({
+        kind: 'reply',
+        text: bodyMarkdown,
+        messageId: round.assistant.id,
+        streaming: isRoundStreaming,
+        status: isRoundStreaming ? 'streaming' : (round.assistant.status === 'failed' ? 'failed' : 'ok'),
+      });
+    }
+  }
+
+  return nodes;
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -415,7 +441,7 @@ const collapsedSummary = computed(() => {
     return `${members.length} ${t('chat.turn.block.memberCount', '个子任务')} · ${t('chat.turn.block.completed', '已完成')}`;
   }
   if (tools.length === 0) {
-    return props.block.assistant?.content_markdown?.slice(0, 60) || t('chat.turn.block.completed', '已完成');
+    return lastAssistant(props.block)?.content_markdown?.slice(0, 60) || t('chat.turn.block.completed', '已完成');
   }
   if (tools.length === 1) {
     const ev = toolEventFromMessage(tools[0]!);

@@ -38,6 +38,13 @@ const nameIcons: Record<string, string> = {
   skill_load: 'download',
 };
 
+/**
+ * Classify an activity kind from a tool name (frontend inference).
+ *
+ * @deprecated Activity-First architecture provides kind directly from the
+ * backend via Activity events. This function is only needed for the legacy
+ * message-inference fallback path.
+ */
 export function classifyActivityKind(toolName: string): ActivityKind {
   const name = toolName.trim().toLowerCase();
   if (['skill_load', 'skill_run', 'skill_search', 'use_skill'].includes(name) || name.startsWith('skill_')) {

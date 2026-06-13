@@ -16,16 +16,19 @@
       <TodoColumn
         :title="t('chat.todo.pending')"
         :items="pendingItems"
+        column-key="pending"
         color="var(--color-text-tertiary)"
       />
       <TodoColumn
         :title="t('chat.todo.inProgress')"
         :items="inProgressItems"
+        column-key="in_progress"
         color="var(--color-primary)"
       />
       <TodoColumn
         :title="t('chat.todo.completed')"
         :items="completedItems"
+        column-key="completed"
         color="var(--color-success)"
       />
     </div>

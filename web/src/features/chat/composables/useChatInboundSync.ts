@@ -45,6 +45,7 @@ export type ChatInboundSyncDeps = {
   selectedSessionId: Ref<string | undefined>;
   wsReplaying?: Ref<boolean>;
   onSpiritEnvelope?: (envelope: Envelope) => void;
+  onActivityEnvelope?: (envelope: Envelope) => void;
   isChatRoute?: () => boolean;
   shouldAutoFocusChannel?: () => boolean;
   onTurnComplete?: (sessionId: string) => void;
@@ -313,6 +314,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (env.type.startsWith('spirit_')) {
       deps.spiritStore.handleSpiritEnvelope(env);
       deps.onSpiritEnvelope?.(env);
+    }
+
+    // AF-FE-15: Route Activity events to useActivityTimeline handler
+    if (env.type.startsWith('activity_')) {
+      deps.onActivityEnvelope?.(env);
     }
 
     // P1: Register default handlers for previously-unhandled event types

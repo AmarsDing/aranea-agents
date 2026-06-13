@@ -34,6 +34,7 @@ type ProjectMeta struct {
 	Source             string
 }
 
+// Deprecated: Use ActivityProjector instead (Activity-First architecture). EventProjector will be removed after frontend fully migrates to Activity consumption (Phase 3).
 type EventProjector struct {
 	eventBus      event.Bus
 	memberStarted map[string]bool
@@ -51,6 +52,7 @@ type toolCallCache struct {
 	startedAt time.Time
 }
 
+// Deprecated: Use ActivityProjector instead (Activity-First architecture). EventProjector will be removed after frontend fully migrates to Activity consumption (Phase 3).
 func NewEventProjector(eventBus event.Bus, lg loggateway.Logger) *EventProjector {
 	if lg == nil {
 		lg = loggateway.NewNoop()

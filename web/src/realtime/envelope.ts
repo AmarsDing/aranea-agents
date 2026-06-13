@@ -71,7 +71,12 @@ export type EnvelopeType =
   // Chat-visible execution progress. Published to chat channel by
   // TraceEmitter.EmitProgress to drive the inline progress card in
   // AgentTreeTimeline. See docs/reports/2026-06-10-proposal-execution-progress-inline.md
-  | 'execution_progress';
+  | 'execution_progress'
+  // AF: Activity-First envelope types — backend projects Activity lifecycle events
+  | 'activity_start'
+  | 'activity_delta'
+  | 'activity_done'
+  | 'activity_child_start';
 
 export type EnvelopeContent = {
   text: string;

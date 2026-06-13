@@ -99,6 +99,14 @@ const (
 	EnvelopeTypeOrganizationCreated EnvelopeType = "organization.created"
 	EnvelopeTypeOrganizationUpdated EnvelopeType = "organization.updated"
 	EnvelopeTypeOrganizationDeleted EnvelopeType = "organization.deleted"
+
+	// Activity-First lifecycle events (AF phase)
+	// ActivityProjector projects runtime events into Activity semantic units
+	// and pushes them to the frontend, eliminating frontend inference.
+	EnvelopeTypeActivityStart     EnvelopeType = "activity_start"
+	EnvelopeTypeActivityDelta     EnvelopeType = "activity_delta"
+	EnvelopeTypeActivityDone      EnvelopeType = "activity_done"
+	EnvelopeTypeActivityChildStart EnvelopeType = "activity_child_start"
 )
 
 // Envelope is the universal event carrier.
@@ -368,6 +376,8 @@ func init() {
 		EnvelopeTypeExecutionProgress,
 		// Organization CRUD events
 		EnvelopeTypeOrganizationCreated, EnvelopeTypeOrganizationUpdated, EnvelopeTypeOrganizationDeleted,
+		// Activity-First lifecycle events
+		EnvelopeTypeActivityStart, EnvelopeTypeActivityDelta, EnvelopeTypeActivityDone, EnvelopeTypeActivityChildStart,
 	)
 }
 

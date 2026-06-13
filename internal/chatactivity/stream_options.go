@@ -9,6 +9,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type catalogActivityMetaResolver struct {
@@ -125,7 +126,7 @@ func (p *sessionActivityPersister) UpsertActivity(ctx context.Context, meta chat
 }
 
 // NewStreamConsumeOptions wires catalog lookup and activity persistence for a chat turn.
-func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort) *chatagent.StreamConsumeOptions {
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort, activityWriter biz.ActivityWriter, eventBus event.Bus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	var persister chatagent.ActivityPersister
 	if tools != nil || agents != nil {
@@ -134,10 +135,18 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 	if sessions != nil {
 		persister = newSessionActivityPersister(sessions)
 	}
-	return &chatagent.StreamConsumeOptions{
+	opts := &chatagent.StreamConsumeOptions{
 		MetaResolver:      resolver,
 		ActivityPersister: persister,
 	}
+	// AF phase: create ActivityProjector for dual-emission
+	if activityWriter != nil && eventBus != nil {
+		if lg == nil {
+			lg = loggateway.NewNoop()
+		}
+		opts.ActivityProjector = chatagent.NewActivityProjector(eventBus, activityWriter, lg)
+	}
+	return opts
 }
 
 // StreamOptsFactoryAdapter implements team.StreamOptsFactory by closing over
@@ -145,11 +154,14 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 // Inject this into the team Runner via SetStreamOptsFactory to eliminate
 // the team→chatactivity direct import.
 type StreamOptsFactoryAdapter struct {
-	Tools    biz.TeamToolLookup
-	Agents   biz.AgentRepository
-	Sessions biz.SessionTurnExtrasPort
+	Tools          biz.TeamToolLookup
+	Agents         biz.AgentRepository
+	Sessions       biz.SessionTurnExtrasPort
+	ActivityWriter biz.ActivityWriter
+	EventBus       event.Bus
+	Logger         loggateway.Logger
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
-	return NewStreamConsumeOptions(a.Tools, a.Agents, a.Sessions)
+	return NewStreamConsumeOptions(a.Tools, a.Agents, a.Sessions, a.ActivityWriter, a.EventBus, a.Logger)
 }

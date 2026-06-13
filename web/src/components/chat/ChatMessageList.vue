@@ -94,15 +94,15 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <template v-if="agentBlocks?.length">
-        <template v-if="useActivityTimeline">
-          <ConversationTurn
-            v-for="turn in conversationTurns"
-            :key="turn.id"
-            :turn="turn"
-          />
-        </template>
-        <AgentTreeTimeline v-else :agent-blocks="agentBlocks" />
+      <template v-if="useActivityTimeline && activityTimelineActivities?.length">
+        <ConversationTurn
+          v-for="turn in conversationTurns"
+          :key="turn.id"
+          :turn="turn"
+        />
+      </template>
+      <template v-else-if="agentBlocks?.length">
+        <AgentTreeTimeline :agent-blocks="agentBlocks" />
       </template>
       <template v-else-if="useTurnBlockMode">
         <TurnBlock
@@ -177,6 +177,7 @@ import TurnBlock from './TurnBlock.vue';
 import ChatMessageRow from './ChatMessageRow.vue';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import ConversationTurn from './ConversationTurn.vue';
+import { useActivityFirstEnabled } from '../../features/chat/useActivityFirstFlag';
 import { useConversationTimeline } from '../../features/chat/composables/useConversationTimeline';
 import type { Message, ReactToolLinkIndex, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
@@ -185,6 +186,7 @@ import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import type { TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import type { AgentBlock } from '../../features/chat/agentTreeTypes';
 import type { Envelope } from '../../realtime/envelope';
+import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
 import AgentTreeTimeline from './AgentTreeTimeline.vue';
 
 const props = defineProps<{
@@ -206,6 +208,14 @@ const props = defineProps<{
   isBlockCollapsed?: (blockKey: number) => boolean;
   agentBlocks?: AgentBlock[];
   progressEnvelopes?: readonly Envelope[];
+  /** AF-FE-06: Activity-First timeline activities (from useActivityTimeline) */
+  activityTimelineActivities?: readonly TimelineActivity[];
+  /** AF-FE-06: Agent key from Activity data */
+  activityAgentKey?: string;
+  /** AF-FE-06: Root task content from Activity data */
+  activityTaskContent?: string;
+  /** AF-FE-06: Activity tree for building TeamPanel */
+  activityTree?: readonly import('../../features/chat/activityTypes').ActivityTreeNode[];
 }>();
 
 defineEmits<{
@@ -238,10 +248,8 @@ const virtualScrollRef = ref<QVirtualScroll | null>(null);
 const normalScrollEl = ref<HTMLElement | null>(null);
 
 const useActivityTimeline = computed(() => {
-  // TODO: feature flag configuration — integrate with localStorage or remote config
-  // Feature flag: 使用新的活动时间线渲染
-  // 可以通过 localStorage 或配置开关控制
-  return true;
+  // AF-FE-05: Feature flag — use centralized composable
+  return useActivityFirstEnabled();
 });
 
 const { conversationTurns } = useConversationTimeline({
@@ -249,6 +257,10 @@ const { conversationTurns } = useConversationTimeline({
   isTeamSession: props.isTeamSession,
   plannerKind: computed(() => props.plannerKind ?? ''),
   progressEnvelopes: computed(() => props.progressEnvelopes ?? []),
+  activityTimelineActivities: computed(() => props.activityTimelineActivities ?? []),
+  activityAgentKey: computed(() => props.activityAgentKey ?? ''),
+  activityTaskContent: computed(() => props.activityTaskContent ?? null),
+  activityTree: computed(() => props.activityTree ?? []),
 });
 
 defineExpose({

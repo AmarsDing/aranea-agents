@@ -47,6 +47,9 @@ type TRPCToolAssemblyDeps struct {
 	// CachedEffectiveTools carries a pre-fetched effective-tools result so
 	// that buildToolsetsForAgent can skip its own GetEffectiveTools call.
 	// When nil, buildToolsetsForAgent falls back to fetching it itself.
+	// IMPORTANT: must belong to the current agent (same agentID used in
+	// the surrounding build context); passing a stale or mismatched result
+	// will produce incorrect tool keys.
 	CachedEffectiveTools *biz.AgentEffectiveTools
 }
 

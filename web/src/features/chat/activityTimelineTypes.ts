@@ -14,6 +14,7 @@ import type {
   TeamStatusSummary,
   ProgressSection,
   ToolSectionStatus,
+  TaskBoardNodeData,
 } from './agentTreeTypes';
 
 // ── Conversation Turn ──
@@ -43,6 +44,9 @@ export interface AgentWorkProcess {
 
   /** Team 统一面板（Team 模式时存在） */
   panel?: TeamPanel;
+
+  /** TaskBoard 树状节点（Activity-First 模式，有数据时优先渲染 TaskBoard） */
+  taskBoardNodes?: TaskBoardNodeData[];
 
   /** 以下字段从现有 AgentBlock 迁移，保留语义 */
   task: string | null;

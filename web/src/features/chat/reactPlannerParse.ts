@@ -1,4 +1,10 @@
-/** Parse ReAct planner tags embedded in assistant content_markdown. */
+/**
+ * Parse ReAct planner tags embedded in assistant content_markdown.
+ *
+ * @deprecated Activity-First architecture resolves ReAct labels at the backend
+ * via ActivityProjector (label field on thinking activities). This module is
+ * only needed for the legacy message-inference fallback path.
+ */
 
 import { i18n } from '../../i18n';
 import type { ReactParsedContent, ReactStep, ReactStepKind } from './reactPlannerTypes';

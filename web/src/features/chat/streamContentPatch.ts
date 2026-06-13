@@ -60,7 +60,13 @@ export function reasoningMarkdown(message: Message): string {
   return reasoningFromExtras(parseMessageExtras(message.options_json));
 }
 
-/** Check if content_markdown is a reasoning fallback (LLM produced only reasoning, no separate reply). */
+/**
+ * Check if content_markdown is a reasoning fallback (LLM produced only reasoning, no separate reply).
+ *
+ * @deprecated Activity-First architecture resolves this at the backend via
+ * ActivityProjector.OnReasoningDone(reasoningAsDisplay=true) → kind=reply.
+ * This function is only needed for the legacy message-inference fallback path.
+ */
 export function isReasoningAsDisplay(message: Message): boolean {
   const extras = parseMessageExtras(message.options_json);
   return extras.reasoning_as_display === true;

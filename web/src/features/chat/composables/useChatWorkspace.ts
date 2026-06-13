@@ -49,6 +49,8 @@ import type { AgentPromptPreview } from '../../agents/types';
 import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
+import { useActivityTimeline } from './useActivityTimeline';
+import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -86,6 +88,9 @@ export function useChatWorkspace() {
     clearAwaitMeta,
     createSubmitHandlers,
   } = awaitReply;
+
+  // AF-FE-02~04: Activity-First timeline composable
+  const activityTimeline = useActivityTimeline();
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
   const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus, forceSetRunStatus } = runStatusCtrl;
@@ -411,6 +416,24 @@ export function useChatWorkspace() {
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
     onSpiritEnvelope: contextualLoading.onSpiritEnvelope,
+    onActivityEnvelope: (env: Envelope) => {
+      const md = env.metadata as Record<string, unknown> | undefined;
+      if (!md) return;
+      switch (env.type) {
+        case 'activity_start':
+          activityTimeline.handleActivityStart(md as unknown as ActivityStartMeta);
+          break;
+        case 'activity_delta':
+          activityTimeline.handleActivityDelta(md as unknown as ActivityDeltaMeta);
+          break;
+        case 'activity_done':
+          activityTimeline.handleActivityDone(md as unknown as ActivityDoneMeta);
+          break;
+        case 'activity_child_start':
+          activityTimeline.handleActivityChildStart(md as unknown as ActivityChildStartMeta);
+          break;
+      }
+    },
     isChatRoute: () => route.name === 'chat',
     shouldAutoFocusChannel: () => {
       // Default OFF: channel inbound messages no longer auto-focus the session
@@ -425,6 +448,7 @@ export function useChatWorkspace() {
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
       inboundHydrateError.value = '';
+      activityTimeline.reset();
     },
     onHydrateError: (sessionId, message) => {
       if (selectedSessionId.value === sessionId) {
@@ -773,6 +797,7 @@ export function useChatWorkspace() {
       stopCompressPolling();
       startCompressPolling();
       if (sid !== prevSid) {
+        activityTimeline.reset();
         sender.clearFailedPendingForSession(prevSid);
         void bindSessionView(sid, true);
       }
@@ -947,6 +972,7 @@ export function useChatWorkspace() {
       compactSessionAction: sessionStore.compactSessionAction,
       onCompactSession,
       compressStatus,
+      activityTimeline,
     }),
     composer: reactive({
       inputText,

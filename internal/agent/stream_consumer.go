@@ -58,6 +58,12 @@ func newTurnStreamConsumer(
 			c.projector.Configure(projectMeta, opts.MetaResolver)
 		}
 	}
+	// AF phase: configure ActivityProjector for dual-emission
+	if opts != nil && opts.ActivityProjector != nil {
+		opts.ActivityProjector.Configure(projectMeta, opts.MetaResolver)
+		opts.ActivityProjector.Reset()
+		opts.ActivityProjector.OnTurnStart(turnCtx, projectMeta)
+	}
 	return c
 }
 
@@ -261,6 +267,9 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	if c.opts != nil {
 		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes, c.lg)
 	}
+
+	// AF phase: dual-emit Activity events alongside existing envelopes
+	c.projectActivityEvents(ev, envelopes)
 }
 
 func (c *turnStreamConsumer) publishContextUsageStep() {
@@ -311,7 +320,66 @@ func (c *turnStreamConsumer) trackToolEnvelope(env event.Envelope) {
 	}
 }
 
+// projectActivityEvents maps projected envelopes to ActivityProjector callbacks.
+// This is the dual-emission bridge: existing envelopes are translated into Activity semantic events.
+func (c *turnStreamConsumer) projectActivityEvents(ev *trpcevent.Event, envelopes []event.Envelope) {
+	if c.opts == nil || c.opts.ActivityProjector == nil {
+		return
+	}
+	ap := c.opts.ActivityProjector
+
+	for _, env := range envelopes {
+		switch env.Type {
+		case event.EnvelopeTypeToolCall:
+			if env.ToolCall != nil {
+				startedAt := time.Now().UTC()
+				if t, err := time.Parse(time.RFC3339Nano, env.ToolCall.StartedAt); err == nil {
+					startedAt = t
+				}
+				ap.OnToolCall(c.turnCtx, env.ToolCall.ID, env.ToolCall.Name, env.ToolCall.ArgumentsJSON, env.Author, startedAt)
+			}
+		case event.EnvelopeTypeToolResult:
+			if env.ToolCall != nil {
+				ap.OnToolResult(c.turnCtx, env.ToolCall.ID, env.ToolCall.ResultJSON, env.ToolCall.Status, env.ToolCall.ErrorCode, env.ToolCall.DurationMS)
+			}
+		case event.EnvelopeTypeTextDelta:
+			if env.Content != nil && env.Content.IsPartial {
+				if env.Content.Reasoning != "" {
+					ap.OnReasoningDelta(c.turnCtx, env.Author, env.Content.Reasoning, true)
+				}
+				if env.Content.Text != "" {
+					ap.OnTextDelta(c.turnCtx, env.Author, env.Content.Text)
+				}
+			}
+		case event.EnvelopeTypeTextDone:
+			if env.Content != nil && !env.Content.IsPartial {
+				if env.Content.Reasoning != "" {
+					// Check reasoning_as_display from extensions
+					reasoningAsDisplay := false
+					if env.Extensions != nil {
+						if v, ok := env.Extensions["reasoning_as_display"]; ok && v == "true" {
+							reasoningAsDisplay = true
+						}
+					}
+					ap.OnReasoningDone(c.turnCtx, env.Author, env.Content.Reasoning, reasoningAsDisplay)
+				}
+				if env.Content.Text != "" {
+					ap.OnTextDone(c.turnCtx, env.Author, env.Content.Text)
+				}
+			}
+		case event.EnvelopeTypeError:
+			if env.Error != nil {
+				ap.OnError(c.turnCtx, env.Error.Message)
+			}
+		}
+	}
+}
+
 func (c *turnStreamConsumer) finalize() {
+	// AF phase: finalize root task Activity
+	if c.opts != nil && c.opts.ActivityProjector != nil {
+		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx)
+	}
 	if len(c.pendingToolCalls) == 0 {
 		return
 	}

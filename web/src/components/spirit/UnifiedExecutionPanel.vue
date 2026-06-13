@@ -62,7 +62,7 @@
                 </span>
               </div>
               <div v-if="layerIdx < dagLayers.length - 1" class="uep-dag-layer__arrow row justify-center">
-                <q-icon name="arrow_downward" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
+                <span class="uep-dag-arrow">→</span>
               </div>
             </div>
           </div>
@@ -158,6 +158,7 @@ import {
   planEntryStatusLabel,
   nameInitial,
 } from '../../features/spirit/spiritUi';
+import { kahnTopoLayers } from '../../features/spirit/lib/dagTopoSort';
 import type { AgentNodeStatusLabel } from '../../features/spirit/spiritUi';
 import TeamProgressCard from './TeamProgressCard.vue';
 
@@ -291,54 +292,7 @@ const dagLayers = computed<DagLayer[]>(() => {
   }
 
   // Kahn's algorithm: topological sort with cycle detection
-  // Build adjacency list (parent → children) and in-degree map
-  const childrenOf = new Map<string, string[]>();
-  const inDegree = new Map<string, number>();
-  for (const tn of props.taskNodes) {
-    childrenOf.set(tn.id, []);
-    inDegree.set(tn.id, tn.dependsOn.length);
-    for (const depId of tn.dependsOn) {
-      const children = childrenOf.get(depId);
-      if (children) children.push(tn.id);
-    }
-  }
-
-  // Enqueue root nodes (in-degree 0)
-  const queue: string[] = [];
-  for (const [id, deg] of inDegree) {
-    if (deg === 0) queue.push(id);
-  }
-
-  // Process in BFS order, assigning layers
-  const depths = new Map<string, number>();
-  let visitedCount = 0;
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
-    const parentDepth = depths.get(nodeId) ?? 0;
-    visitedCount++;
-
-    for (const childId of childrenOf.get(nodeId) ?? []) {
-      const childDepth = parentDepth + 1;
-      const existing = depths.get(childId) ?? 0;
-      depths.set(childId, Math.max(existing, childDepth));
-
-      const deg = (inDegree.get(childId) ?? 1) - 1;
-      inDegree.set(childId, deg);
-      if (deg === 0) {
-        queue.push(childId);
-      }
-    }
-  }
-
-  // Cycle detection: if not all nodes visited, assign remaining to depth 0
-  if (visitedCount < props.taskNodes.length) {
-    for (const tn of props.taskNodes) {
-      if (!depths.has(tn.id)) {
-        depths.set(tn.id, 0);
-      }
-    }
-  }
+  const depths = kahnTopoLayers(props.taskNodes);
 
   // Group by depth
   const maxDepth = Math.max(...Array.from(depths.values()), 0);
@@ -516,6 +470,11 @@ const dagLayers = computed<DagLayer[]>(() => {
   &__arrow
     padding: 1px 0
     color: var(--color-text-tertiary)
+
+.uep-dag-arrow
+  font-size: 14px
+  color: var(--color-text-tertiary)
+  line-height: 1
 
 .uep-dag-node
   display: inline-flex

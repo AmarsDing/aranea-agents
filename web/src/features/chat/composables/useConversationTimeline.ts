@@ -1,8 +1,13 @@
 /**
- * useConversationTimeline — 直接从原始消息构建 ConversationTurn[]
+ * useConversationTimeline — 直接从原始消息或 Activity 事件构建 ConversationTurn[]
  *
- * 不再包装 useAgentBlocks，直接按 role=user 边界划分 Turn，
- * 在每个 Turn 内按消息时间顺序构建 Activity（Think / Act / Say）。
+ * 双路径架构（Activity-First 过渡期）：
+ * - AF 路径（优先）：当 activityTimelineActivities 非空时，从后端 Activity 事件
+ *   构建 Turn，零推理，语义由后端直推。
+ * - 消息推理路径（fallback）：无 AF 数据时，从原始消息按 role=user 边界划分 Turn，
+ *   在每个 Turn 内按消息时间顺序推断 Activity（Think / Act / Say）。
+ *
+ * TECH-DEBT: 消息推理路径将在 Phase 3 完全移除，届时所有 Turn 均从 Activity 构建。
  *
  * 设计原则：
  * 1. 按 role=user 边界划分 Turn（堆栈模型，红线 #14）
@@ -25,9 +30,16 @@ import type {
   SayActivity,
   ThinkActivity,
   ToolActivity,
+  TeamPanel,
+  TaskBoardSection,
+  DagSection,
+  TeamProgressSection,
+  AgentProgress,
 } from '../activityTimelineTypes';
-import type { AgentBlock } from '../agentTreeTypes';
+import type { ActivityTreeNode } from '../activityTypes';
+import type { AgentBlock, TaskBoardNodeData } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
+import { activityToTaskBoardNode, activityToTimelineActivity } from './useActivityTimeline';
 import { toolEventFromMessage } from '../envelopeToolCall';
 import { resolveAssistantPresentation } from '../messagePlannerPresentation';
 import { resolveDisplayLabel } from '../activityPresentation';
@@ -51,11 +63,32 @@ export function useConversationTimeline(deps: {
   plannerKind?: ComputedRef<string>;
   /** TECH-DEBT: Phase 3 — Team 进度面板构建时使用 */
   progressEnvelopes?: ComputedRef<readonly Envelope[]>;
+  /** AF-FE-06: Activity-First data source — when provided, skips message inference */
+  activityTimelineActivities?: ComputedRef<readonly Activity[]>;
+  /** AF-FE-06: Agent info from Activity data */
+  activityAgentKey?: ComputedRef<string>;
+  /** AF-FE-06: Root task content from Activity data */
+  activityTaskContent?: ComputedRef<string | null>;
+  /** AF-FE-06: Activity tree for building TeamPanel */
+  activityTree?: ComputedRef<readonly ActivityTreeNode[]>;
 }) {
   const conversationTurns = computed((): ConversationTurn[] => {
     const allMessages = deps.messages.value;
     if (allMessages.length === 0) return [];
 
+    // AF-FE-06: When Activity-First data is available, build turns from Activity events
+    const afActivities = deps.activityTimelineActivities?.value;
+    const afTree = deps.activityTree?.value;
+    if (afActivities && afActivities.length > 0) {
+      return buildConversationTurnsFromActivities(allMessages, [...afActivities], {
+        agentKey: deps.activityAgentKey?.value || '',
+        taskContent: deps.activityTaskContent?.value || null,
+        activityTree: afTree ? [...afTree] : [],
+      });
+    }
+
+    // TECH-DEBT(AF-Phase3): 消息推理路径 — 将在 Activity-First 完全上线后移除。
+    // 届时所有 Turn 均从后端 Activity 事件构建，不再需要前端推断。
     const plannerKind = deps.plannerKind?.value ?? '';
     const ensured = allMessages.map((m) => ensureOrigin(m));
 
@@ -300,4 +333,292 @@ function buildActActivity(toolEv: ToolUseEvent, sortKey: number): ActActivity {
     id: `act-${toolEv.id || sortKey}`,
     tool,
   };
+}
+
+// ── AF-FE-06: Build ConversationTurns from Activity-First data ──
+
+function buildConversationTurnsFromActivities(
+  messages: Message[],
+  activities: Activity[],
+  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[] },
+): ConversationTurn[] {
+  const userTurns = findUserTurns(messages.map(ensureOrigin));
+  if (userTurns.length === 0) return [];
+
+  // Use the last user turn's messages for the current turn
+  const lastTurn = userTurns[userTurns.length - 1];
+  const userMessage = lastTurn.userMessage || lastTurn.messages.find((m) => m.role === 'user');
+
+  // Find agent info from messages
+  const firstAssistant = lastTurn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
+  const agentKey = opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
+  const agentName = firstAssistant?.agent_ref?.name || '精灵助手';
+  const agentIcon = firstAssistant?.agent_ref?.icon || '精';
+
+  // Determine status from activities
+  const hasRunning = activities.some(
+    (a) =>
+      (a.kind === 'think' && (a as ThinkActivity).streaming) ||
+      (a.kind === 'say' && (a as SayActivity).streaming) ||
+      (a.kind === 'act' && (a as ActActivity).tool.status === 'running'),
+  );
+  const hasFailed = activities.some(
+    (a) => a.kind === 'act' && (a as ActActivity).tool.status === 'failed',
+  );
+  const status: AgentWorkProcess['status'] = hasRunning ? 'running' : (hasFailed ? 'failed' : 'completed');
+
+  // Calculate duration
+  const startTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : 0;
+  const lastMsg = lastTurn.messages[lastTurn.messages.length - 1];
+  const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
+  const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
+
+  // Find last SayActivity for result
+  const lastSay = [...activities].reverse().find((a) => a.kind === 'say') as SayActivity | undefined;
+
+  // Build TeamPanel from Activity tree when delegate/sub_task_board activities exist
+  const panel = buildTeamPanelFromActivityTree(opts.activityTree);
+
+  // Build TaskBoardNodes from Activity tree for tree-nested rendering
+  const taskBoardNodes = buildTaskBoardNodesFromActivityTree(opts.activityTree);
+
+  const agentWork: AgentWorkProcess = {
+    agentKey,
+    agentName,
+    agentIcon,
+    agentColor: agentColorFromKey(agentKey),
+    status,
+    durationMs,
+    activities,
+    panel,
+    taskBoardNodes,
+    task: opts.taskContent || userMessage?.content_markdown || null,
+    result: lastSay?.content || null,
+    hasPartialFailure: false,
+    plan: null,
+    teamStatus: null,
+    progressSections: [],
+    startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
+    finishedAt: !hasRunning ? lastMsg?.created_at || '' : null,
+  };
+
+  // Build all turns — previous turns use message inference, last turn uses AF data
+  const result: ConversationTurn[] = [];
+  for (let i = 0; i < userTurns.length - 1; i++) {
+    result.push(buildConversationTurn(userTurns[i], ''));
+  }
+  result.push({
+    id: `turn-${userMessage?.id || 'no-user'}`,
+    userMessage: userMessage ?? null,
+    agentWork,
+  });
+
+  return result;
+}
+
+/**
+ * Build TeamPanel from Activity tree.
+ * When the tree contains delegate/sub_task_board nodes, construct the
+ * TaskBoard + DAG + TeamProgress sections for the unified panel.
+ */
+function buildTeamPanelFromActivityTree(tree: ActivityTreeNode[]): TeamPanel | undefined {
+  if (!tree || tree.length === 0) return undefined;
+
+  // Find delegate or sub_task_board nodes in the tree
+  const delegateNodes = findNodesByKind(tree, 'delegate');
+  const subTaskBoardNodes = findNodesByKind(tree, 'sub_task_board');
+  const hasTeamStructure = delegateNodes.length > 0 || subTaskBoardNodes.length > 0;
+  if (!hasTeamStructure) return undefined;
+
+  // Build TaskBoard from root task and its children
+  const rootTask = tree[0]; // root is always the task node
+  const taskBoardEntries: TaskBoardSection['entries'] = [];
+  let num = 1;
+
+  // Add the root task itself
+  taskBoardEntries.push({
+    id: rootTask.id,
+    task: rootTask.content || rootTask.label || '',
+    status: mapActivityStatusToPlanStatus(rootTask.status),
+    num: num++,
+    agentName: rootTask.agentName || null,
+    agentIcon: rootTask.agentName?.charAt(0) || null,
+    agentColor: agentColorFromKey(rootTask.agentKey || ''),
+  });
+
+  // Add delegate/sub_task_board children as task board entries
+  for (const child of rootTask.children) {
+    if (child.kind === 'delegate' || child.kind === 'sub_task_board') {
+      taskBoardEntries.push({
+        id: child.id,
+        task: child.content || child.label || '',
+        status: mapActivityStatusToPlanStatus(child.status),
+        num: num++,
+        agentName: child.agentName || null,
+        agentIcon: child.agentName?.charAt(0) || null,
+        agentColor: agentColorFromKey(child.agentKey || ''),
+      });
+    }
+  }
+
+  // Build DAG from dependsOn relationships
+  const dagNodes: DagSection['nodes'] = [];
+  const dagEdges: DagSection['edges'] = [];
+  const allNodes = flattenTree(tree);
+  for (const node of allNodes) {
+    if (node.dagNodeId) {
+      dagNodes.push({
+        id: node.dagNodeId,
+        label: node.label || node.content || '',
+        status: mapActivityStatusToDagStatus(node.status),
+      });
+      if (node.dependsOn) {
+        for (const depId of node.dependsOn) {
+          dagEdges.push({ from: depId, to: node.dagNodeId });
+        }
+      }
+    }
+  }
+
+  // Build TeamProgress from delegate/sub_task_board nodes
+  const teamProgress: TeamProgressSection[] = [];
+  for (const delegateNode of delegateNodes) {
+    const agents = buildAgentProgress(delegateNode);
+    const totalAgents = agents.length;
+    const completedAgents = agents.filter((a) => a.status === 'completed').length;
+    const progressPercent = totalAgents > 0 ? Math.round((completedAgents / totalAgents) * 100) : 0;
+
+    teamProgress.push({
+      teamId: delegateNode.teamId || delegateNode.id,
+      teamName: delegateNode.label || delegateNode.content || '团队',
+      teamIcon: delegateNode.agentName?.charAt(0) || 'T',
+      status: mapActivityStatusToTeamStatus(delegateNode.status),
+      progressPercent,
+      durationMs: delegateNode.durationMs,
+      agents,
+      actions: delegateNode.status === 'interrupted' ? ['resume', 'cancel'] : undefined,
+    });
+  }
+  for (const stbNode of subTaskBoardNodes) {
+    const agents = buildAgentProgress(stbNode);
+    const totalAgents = agents.length;
+    const completedAgents = agents.filter((a) => a.status === 'completed').length;
+    const progressPercent = totalAgents > 0 ? Math.round((completedAgents / totalAgents) * 100) : 0;
+
+    teamProgress.push({
+      teamId: stbNode.teamId || stbNode.id,
+      teamName: stbNode.label || stbNode.content || '子任务',
+      teamIcon: stbNode.agentName?.charAt(0) || 'S',
+      status: mapActivityStatusToTeamStatus(stbNode.status),
+      progressPercent,
+      durationMs: stbNode.durationMs,
+      agents,
+    });
+  }
+
+  return {
+    taskBoard: { entries: taskBoardEntries },
+    dag: dagNodes.length > 0 ? { nodes: dagNodes, edges: dagEdges } : undefined,
+    teamProgress,
+  };
+}
+
+/** Find all nodes of a given kind in the tree (recursive). */
+function findNodesByKind(tree: ActivityTreeNode[], kind: string): ActivityTreeNode[] {
+  const result: ActivityTreeNode[] = [];
+  for (const node of tree) {
+    if (node.kind === kind) result.push(node);
+    result.push(...findNodesByKind(node.children, kind));
+  }
+  return result;
+}
+
+/** Flatten tree into a flat list. */
+function flattenTree(tree: ActivityTreeNode[]): ActivityTreeNode[] {
+  const result: ActivityTreeNode[] = [];
+  for (const node of tree) {
+    result.push(node);
+    result.push(...flattenTree(node.children));
+  }
+  return result;
+}
+
+/** Build AgentProgress from a delegate/sub_task_board node's children. */
+function buildAgentProgress(parentNode: ActivityTreeNode): AgentProgress[] {
+  const agents: AgentProgress[] = [];
+  // Group children by agentKey
+  const agentMap = new Map<string, ActivityTreeNode[]>();
+  for (const child of parentNode.children) {
+    const key = child.agentKey || child.id;
+    if (!agentMap.has(key)) agentMap.set(key, []);
+    agentMap.get(key)!.push(child);
+  }
+
+  for (const [key, children] of agentMap) {
+    const firstChild = children[0];
+    const agentActivities: Activity[] = children.map((child) => activityToTimelineActivity(child));
+    const hasRunning = children.some((c) => c.status === 'running' || c.status === 'tool_running');
+    const hasFailed = children.some((c) => c.status === 'failed');
+    const allCompleted = children.every((c) => c.status === 'completed');
+
+    agents.push({
+      agentKey: key,
+      agentName: firstChild.agentName || key,
+      agentIcon: firstChild.agentName?.charAt(0) || key.charAt(0),
+      status: hasRunning ? 'running' : (hasFailed ? 'failed' : (allCompleted ? 'completed' : 'waiting')),
+      activities: agentActivities,
+    });
+  }
+
+  return agents;
+}
+
+/** Map ActivityStatus to PlanEntry status for TaskBoard. */
+function mapActivityStatusToPlanStatus(status: string): 'pending' | 'running' | 'completed' | 'failed' {
+  switch (status) {
+    case 'completed': return 'completed';
+    case 'failed':
+    case 'partial_failure': return 'failed';
+    case 'running':
+    case 'tool_running':
+    case 'tool_blocked': return 'running';
+    default: return 'pending';
+  }
+}
+
+/** Map ActivityStatus to DAG node status. */
+function mapActivityStatusToDagStatus(status: string): 'done' | 'running' | 'pending' | 'failed' {
+  switch (status) {
+    case 'completed': return 'done';
+    case 'failed':
+    case 'partial_failure': return 'failed';
+    case 'running':
+    case 'tool_running':
+    case 'tool_blocked': return 'running';
+    default: return 'pending';
+  }
+}
+
+/** Map ActivityStatus to TeamProgressSection status. */
+function mapActivityStatusToTeamStatus(status: string): 'running' | 'completed' | 'failed' | 'interrupted' {
+  switch (status) {
+    case 'completed': return 'completed';
+    case 'failed':
+    case 'partial_failure': return 'failed';
+    case 'interrupted':
+    case 'cancelled': return 'interrupted';
+    default: return 'running';
+  }
+}
+
+/**
+ * Build TaskBoardNodeData[] from Activity tree for tree-nested rendering.
+ * Reuses the activityToTaskBoardNode mapping from useActivityTimeline.
+ */
+function buildTaskBoardNodesFromActivityTree(tree: ActivityTreeNode[]): TaskBoardNodeData[] | undefined {
+  if (!tree || tree.length === 0) return undefined;
+  const nodes = tree
+    .filter((node) => node.kind !== 'delegate' && node.kind !== 'notice')
+    .map(activityToTaskBoardNode);
+  return nodes.length > 0 ? nodes : undefined;
 }

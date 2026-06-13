@@ -735,6 +735,7 @@ func provideChatServiceDeps(
 	subAgentSvc *subagenttool.Service,
 	expAnalytics *biz.ExperienceAnalyticsUsecase,
 	turnLifecycle *biz.TurnLifecycleUsecase,
+	activityWriter biz.ActivityWriter,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -751,11 +752,12 @@ func provideChatServiceDeps(
 				RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
 				Lg:        lg,
 			},
-			Runs:         runs,
-			PendingQueue: pendingQueue,
-			RT:           rtDeps,
-			TurnTimeout:  0,
-			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
+			Runs:           runs,
+			PendingQueue:   pendingQueue,
+			RT:             rtDeps,
+			TurnTimeout:    0,
+			Admission:      biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
+			ActivityWriter: activityWriter,
 		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,

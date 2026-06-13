@@ -25,14 +25,14 @@ func TestCancelRunningActivityMessages_EmptySessionID(t *testing.T) {
 }
 
 func TestNewStreamConsumeOptions_Nil(t *testing.T) {
-	opts := NewStreamConsumeOptions(nil, nil, nil)
+	opts := NewStreamConsumeOptions(nil, nil, nil, nil, nil, nil)
 	if opts == nil {
 		t.Fatal("expected non-nil options")
 	}
 }
 
 func TestNewStreamConsumeOptions_WithDeps(t *testing.T) {
-	opts := NewStreamConsumeOptions(&biz.ToolUsecase{}, &stubAgentRepo{}, nil)
+	opts := NewStreamConsumeOptions(&biz.ToolUsecase{}, &stubAgentRepo{}, nil, nil, nil, nil)
 	if opts == nil {
 		t.Fatal("expected non-nil options")
 	}

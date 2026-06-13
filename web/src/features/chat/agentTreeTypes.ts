@@ -272,7 +272,7 @@ export type TaskBoardToolStatus = 'running' | 'success' | 'failed' | 'blocked' |
 export interface TaskBoardNodeData {
   kind: TaskBoardNodeKind;
   content?: string;
-  children?: TimelineEntry[];
+  children?: TaskBoardNodeData[];
   durationMs?: number | null;
   streaming?: boolean;
   toolName?: string;

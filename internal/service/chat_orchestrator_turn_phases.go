@@ -526,7 +526,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		Source: event.EnvelopeSourceFromContext(runCtx),
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions)
+	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions, o.activityWriter(), o.td().Pipeline.Bus, o.lg())
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))

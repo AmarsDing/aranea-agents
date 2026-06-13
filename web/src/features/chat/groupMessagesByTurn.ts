@@ -5,7 +5,9 @@
  * - Grouping uses `turn_id` from the backend; messages sharing the same turn_id
  *   are guaranteed to belong to the same turn.
  * - If turn_id is missing or changes, a new block is started.
- * - Within a block, messages are distributed by role/origin into user/assistant/tools/members.
+ * - Within a block, messages are distributed by role/origin into user/assistants/tools/members.
+ * - Multi-round ReAct loops produce multiple assistant messages (ws-snap-*) per turn;
+ *   each round pairs an assistant message with its subsequent tool calls.
  *
  * The `turn_number` field is preserved for display/sorting but is NOT used for
  * grouping decisions — `turn_id` is the authoritative FK.
@@ -16,17 +18,34 @@ import { isActivityMessage, isInFlightLocalRow } from './mergeSessionMessages';
 import { isToolLinkedInReactIndex } from './reactToolLinkIndex';
 import { isTeamMemberOrigin, ensureOrigin } from './messageOrigin';
 
+/** A single LLM round within a turn: assistant thinking/reply + subsequent tool calls. */
+export type TurnRound = {
+  /** The assistant message for this round (ws-snap-* or ws-stream-* or persisted). */
+  assistant: Message;
+  /** Tool messages called after this assistant, before the next assistant in the same turn. */
+  tools: Message[];
+};
+
 export type TurnBlockGroup = {
   /** Sequential block index (0-based). */
   key: number;
   turnId: string;
   user: Message | null;
-  assistant: Message | null;
+  /** All assistant messages in chronological order (replaces single `assistant`). */
+  assistants: Message[];
+  /** Pre-computed rounds: each round pairs an assistant with its subsequent tools. */
+  rounds: TurnRound[];
+  /** All tool/activity messages (flat, for backward compat and strip summary). */
   tools: Message[];
   members: Message[];
-  /** true when all tools completed and assistant message arrived — eligible for auto-collapse. */
+  /** true when all tools completed and last assistant message arrived — eligible for auto-collapse. */
   isCompleted: boolean;
 };
+
+/** Convenience: get the last assistant message from a block. */
+export function lastAssistant(block: TurnBlockGroup): Message | null {
+  return block.assistants.length > 0 ? block.assistants[block.assistants.length - 1]! : null;
+}
 
 export function isTeamMemberStreamMessage(message: Message): boolean {
   return isTeamMemberOrigin(message.origin);
@@ -58,7 +77,9 @@ function shouldStartNewBlock(current: TurnBlockGroup | null, msg: Message, effec
  * 1. Sort: persisted by created_at, in-flight at the end.
  * 2. Group by turn_id (authoritative FK from backend).
  * 3. Within each turn block, distribute messages by role/origin.
- * 4. Consolidate orphan tool-only blocks into previous block.
+ * 4. Build rounds: each assistant message starts a new round; subsequent tools
+ *    belong to that round until the next assistant message.
+ * 5. Consolidate orphan tool-only blocks into previous block.
  */
 export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
   if (messages.length === 0) return [];
@@ -78,34 +99,56 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
   const blocks: TurnBlockGroup[] = [];
   let current: TurnBlockGroup | null = null;
   let blockIndex = 0;
+  let currentRound: TurnRound | null = null;
+
+  function closeRound() {
+    if (currentRound && current) {
+      current.rounds.push(currentRound);
+      currentRound = null;
+    }
+  }
 
   for (const msg of sorted) {
     const effectiveTurnId = getEffectiveTurnId(msg);
 
     if (shouldStartNewBlock(current, msg, effectiveTurnId)) {
+      closeRound();
       current = {
         key: blockIndex++,
         turnId: effectiveTurnId || `__legacy_${blockIndex}`,
         user: null,
-        assistant: null,
+        assistants: [],
+        rounds: [],
         tools: [],
         members: [],
         isCompleted: false,
       };
       blocks.push(current);
+      currentRound = null;
     }
 
     // Distribute into current block by role/origin
     if (msg.role === 'user') {
-      current.user = msg;
+      current!.user = msg;
     } else if (isTeamMemberStreamMessage(msg)) {
-      current.members.push(msg);
+      current!.members.push(msg);
+    } else if (msg.role === 'assistant' && !isActivityMessage(msg)) {
+      // Real assistant message (including ws-snap-* streaming snapshots).
+      // Close previous round, start a new one.
+      closeRound();
+      currentRound = { assistant: msg, tools: [] };
+      current!.assistants.push(msg);
     } else if (isActivityMessage(msg)) {
-      current.tools.push(msg);
-    } else if (msg.role === 'assistant') {
-      current.assistant = msg;
+      // Tool/activity message — add to flat tools and current round.
+      current!.tools.push(msg);
+      if (currentRound) {
+        currentRound.tools.push(msg);
+      }
     }
   }
+
+  // Close last round
+  closeRound();
 
   const result = consolidateOrphanToolBlocks(blocks);
   for (const block of result) {
@@ -114,9 +157,10 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
   return result;
 }
 
-/** Check whether a block is completed — all tools done and assistant arrived. */
+/** Check whether a block is completed — all tools done and last assistant arrived. */
 function computeBlockCompleted(block: TurnBlockGroup): boolean {
-  if (!block.assistant || block.assistant.status === 'streaming') return false;
+  const last = lastAssistant(block);
+  if (!last || last.status === 'streaming') return false;
   if (block.tools.length === 0) return true;
   const completedStatuses: ReadonlySet<string> = new Set(['success', 'failed', 'cancelled']);
   return block.tools.every((t) => {
@@ -125,14 +169,15 @@ function computeBlockCompleted(block: TurnBlockGroup): boolean {
   });
 }
 
-/** Merge tool-only blocks (no user, no assistant) into the previous user turn. */
+/** Merge tool-only blocks (no user, no assistants) into the previous user turn. */
 function consolidateOrphanToolBlocks(blocks: TurnBlockGroup[]): TurnBlockGroup[] {
   const out: TurnBlockGroup[] = [];
   for (const block of blocks) {
-    const toolsOnly = !block.user && !block.assistant && block.tools.length > 0;
+    const toolsOnly = !block.user && block.assistants.length === 0 && block.tools.length > 0;
     if (toolsOnly && out.length > 0) {
       const prev = out[out.length - 1]!;
       prev.tools.push(...block.tools);
+      prev.rounds.push(...block.rounds);
       continue;
     }
     if (toolsOnly) continue;
@@ -145,8 +190,9 @@ function consolidateOrphanToolBlocks(blocks: TurnBlockGroup[]): TurnBlockGroup[]
 export function lastAssistantTurnBlockIndex(blocks: TurnBlockGroup[]): number {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i]!;
-    if (b.assistant && (b.assistant.content_markdown ?? '').trim()) return i;
-    if (b.user && !b.assistant && b.tools.length > 0) return i;
+    const last = lastAssistant(b);
+    if (last && (last.content_markdown ?? '').trim()) return i;
+    if (b.user && b.assistants.length === 0 && b.tools.length > 0) return i;
   }
   return Math.max(0, blocks.length - 1);
 }

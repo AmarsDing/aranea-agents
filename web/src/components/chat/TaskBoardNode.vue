@@ -141,7 +141,7 @@ watch(
 );
 
 const isCollapsible = computed(() => {
-  return props.node.kind !== 'end' && props.node.kind !== 'error';
+  return props.node.kind !== 'end' && props.node.kind !== 'error' && props.node.kind !== 'task' && props.node.kind !== 'reply';
 });
 
 function toggleCollapse() {

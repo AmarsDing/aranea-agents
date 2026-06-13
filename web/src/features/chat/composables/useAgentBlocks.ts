@@ -1,9 +1,12 @@
 /**
  * useAgentBlocks — Build AgentBlock tree from chat messages.
  *
- * As of P0 (proposal-execution-progress-inline), single agent sessions are
- * also represented as an AgentBlock tree (root agent only, no sub-agents).
- * Team/spirit sessions nest sub-agent blocks recursively.
+ * @deprecated Use useActivityTimeline + useConversationTimeline instead
+ * (Activity-First architecture). This composable performs 13 layers of
+ * frontend inference that are eliminated by the Activity-First model.
+ * It is retained only as a fallback when the Activity-First feature flag
+ * is disabled. See docs/reports/2026-06-13-activity-first-restructure-optimized-proposal.md
+ * for migration details.
  *
  * Algorithm:
  * 1. Group messages by user turn boundaries

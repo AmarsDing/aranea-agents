@@ -19,15 +19,22 @@
       </span>
     </div>
 
-    <!-- Branch: ActivityTimeline or TeamPanel -->
+    <!-- Branch: TaskBoard, ActivityTimeline, or TeamPanel -->
     <div class="agent-work-panel__body">
       <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
       <div v-if="agentWork.status === 'running' && !agentWork.activities.length" class="agent-work-panel__waiting">
         <span class="pulse-dot"></span>
         <span class="agent-work-panel__waiting-text">{{ t('chat.thinking', '正在思考…') }}</span>
       </div>
+      <!-- TaskBoard: tree-nested rendering when taskBoardNodes data is available -->
+      <TaskBoard
+        v-if="agentWork.taskBoardNodes?.length"
+        :entries="agentWork.taskBoardNodes"
+        :depth="0"
+      />
+      <!-- ActivityTimeline fallback when no TaskBoard data -->
       <ActivityTimeline
-        v-if="!agentWork.panel"
+        v-else-if="!agentWork.panel"
         :activities="agentWork.activities"
         :agent-color="agentWork.agentColor"
         variant="card"
@@ -51,6 +58,7 @@ import { useI18n } from 'vue-i18n';
 import type { AgentWorkProcess } from '../../features/chat/activityTimelineTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import ActivityTimeline from './ActivityTimeline.vue';
+import TaskBoard from './TaskBoard.vue';
 import TeamPanel from './TeamPanel.vue';
 
 const { t } = useI18n();
@@ -95,7 +103,7 @@ const formattedDuration = computed(() => formatDuration(props.agentWork.duration
     align-items: center
     justify-content: center
     font-size: 12px
-    color: var(--color-text-on-accent, #fff)
+    color: var(--color-on-accent)
     flex-shrink: 0
 
   &__name

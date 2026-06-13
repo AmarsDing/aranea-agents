@@ -35,18 +35,19 @@ export function spiritModeLabel(mode: SpiritTeamMode | string): string {
   return labels[mode] ?? mode;
 }
 
-/** 8 aggregate display labels for AgentNode status */
+/** 9 aggregate display labels for AgentNode status */
 export type AgentNodeStatusLabel =
   | 'queued'
   | 'active'
   | 'suspended'
+  | 'tool_blocked'
   | 'interrupted'
   | 'done'
   | 'failed'
   | 'skipped'
   | 'cancelled';
 
-/** Maps 17 backend AgentNodeStatus values to 8 display labels */
+/** Maps 17 backend AgentNodeStatus values to 9 display labels */
 export const AGENT_NODE_STATUS_MAP: Record<string, AgentNodeStatusLabel> = {
   // Queued
   idle: 'queued',
@@ -62,7 +63,8 @@ export const AGENT_NODE_STATUS_MAP: Record<string, AgentNodeStatusLabel> = {
   waiting_input: 'suspended',
   waiting_review: 'suspended',
   waiting_assign: 'suspended',
-  blocked: 'suspended',
+  // Tool blocked (waiting for user input on tool confirmation)
+  blocked: 'tool_blocked',
   // Interrupted (requires user intervention to resume)
   interrupted: 'interrupted',
   // Done
@@ -90,6 +92,13 @@ export const STATUS_LABEL_CONFIG: Record<
     animated: false,
     dotColor: 'orange',
   },
+  tool_blocked: {
+    text: '🟡 等待您的输入',
+    color: 'var(--color-warning)',
+    icon: 'pause_circle',
+    animated: false,
+    dotColor: 'orange',
+  },
   interrupted: {
     text: '已中断',
     color: 'var(--color-warning)',
@@ -114,12 +123,15 @@ export function agentNodeStatusToLabel(status: string): AgentNodeStatusLabel {
   return AGENT_NODE_STATUS_MAP[status] ?? 'queued';
 }
 
-/** Maps SpiritMember.status (idle/running/error) to aggregate display label */
+/** Maps SpiritMember.status (idle/running/error/completed/waiting/blocked) to aggregate display label */
 export function spiritMemberStatusToLabel(status: string): AgentNodeStatusLabel {
   const mapping: Record<string, AgentNodeStatusLabel> = {
     idle: 'queued',
     running: 'active',
     error: 'failed',
+    completed: 'done',
+    waiting: 'suspended',
+    blocked: 'tool_blocked',
   };
   return mapping[status] ?? 'queued';
 }

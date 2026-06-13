@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import type { TimelineEntry } from '../../features/chat/agentTreeTypes';
+import type { TaskBoardNodeData } from '../../features/chat/agentTreeTypes';
 import TaskBoardNode from './TaskBoardNode.vue';
 
 const { t } = useI18n();
@@ -52,24 +52,28 @@ const MAX_DEPTH = 2;
 
 withDefaults(
   defineProps<{
-    entries: TimelineEntry[];
+    entries: TaskBoardNodeData[];
     depth?: number;
   }>(),
   { depth: 0 },
 );
 
-function entryKey(entry: TimelineEntry, idx: number): string {
+function entryKey(entry: TaskBoardNodeData, idx: number): string {
   switch (entry.kind) {
+    case 'task':
+      return `task-${idx}`;
     case 'thinking':
-      return `thinking-${entry.section.id}`;
-    case 'tool':
-      return `tool-${entry.section.id}`;
+      return `thinking-${idx}`;
+    case 'action':
+      return `action-${idx}`;
     case 'reply':
-      return `reply-${entry.section.id}`;
-    case 'subagent':
-      return `subagent-${entry.block.id}`;
-    case 'notice':
-      return `notice-${entry.section.id}`;
+      return `reply-${idx}`;
+    case 'sub_task_board':
+      return `sub_task_board-${idx}`;
+    case 'end':
+      return `end-${idx}`;
+    case 'error':
+      return `error-${idx}`;
   }
 }
 </script>

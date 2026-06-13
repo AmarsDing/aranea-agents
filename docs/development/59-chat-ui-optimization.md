@@ -1272,3 +1272,222 @@ WebSocket Envelope
 |-----------|--------------|
 | AC-17~AC-25 | 见 §10.4 表格 |
 | F-13~F-21 | 见 §14.2 表格，对应修复点见设计 §D5 和开发计划 Phase P4 |
+
+---
+
+## 15. Activity-First 架构需求（2026-06-13 新增）
+
+> **触发**：前端 13 层推理导致"思考/回复"显示问题反复出现，M59 展示层治理后数据源层语义鸿沟仍未根治
+> **方案**：[2026-06-13-activity-first-restructure-optimized-proposal.md](../reports/2026-06-13-activity-first-restructure-optimized-proposal.md)
+> **原则**：后端语义直推前端，M59 展示层保留，渐进式迁移
+
+### 15.1 问题根源
+
+当前系统采用 **Message-First** 模型：后端按 LLM 调用轮次建模（Message），前端需要"用户可理解的活动"（Activity）。两者之间存在语义鸿沟，前端必须执行 13 层推理才能从非结构化载体中恢复语义：
+
+| # | 推理步骤 | 脆弱度 | 来源 |
+|---|---------|--------|------|
+| 1 | `reasoning_as_display` 标志在 `options_json` 中，流式阶段不可见 | 🔴 | `turn_stream_helpers.go` |
+| 2 | ReAct Planner 标签 `/*PLANNING*/` 等嵌入纯文本 Content | 🔴 | `reactPlannerParse.ts` |
+| 3 | Team 成员消息用 `member-${agentKey}` ID 前缀约定 | 🟠 | `messageOrigin.ts` |
+| 4 | `EnvelopeContent` 仅有 Text + Reasoning，无语义标记 | 🔴 | `envelope.go` |
+| 5 | 工具调用触发 `snapshotStreamingMessage()` 转换 ID 前缀 | 🟠 | `streamContentPatch.ts` |
+| 6 | `mergeSessionMessages` 用内容匹配关联本地/服务端消息 | 🟠 | `mergeSessionMessages.ts` |
+| 7 | `classifyActivityKind` 按工具名推断活动类型 | 🟡 | `activityPresentation.ts` |
+| 8 | `resolveAssistantPresentation` 分发器推断展示模式 | 🟡 | `messagePlannerPresentation.ts` |
+| 9 | `isReasoningAsDisplay()` 从持久化后的 `options_json` 读取 | 🔴 | `streamContentPatch.ts` |
+| 10 | `reasoningMarkdown()` 拼接 reasoning + body 作为 fallback | 🟡 | `streamContentPatch.ts` |
+| 11 | `useConversationTimeline` 从 Message 反推 Activity 列表 | 🟠 | `useConversationTimeline.ts` |
+| 12 | `useAgentBlocks` 从 Message 构建 AgentBlock 树 | 🟠 | `useAgentBlocks.ts` |
+| 13 | `computeAgentStatus` 从工具状态推断 Agent 状态 | 🟡 | `useAgentBlocks.ts` |
+
+M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层的语义鸿沟未根治。Activity-First 是"数据源层治理"，与 M59 的"展示层治理"互补。
+
+### 15.2 ActivityKind 定义
+
+对齐 M59 TaskBoardNodeKind，扩展为 9 种语义类型：
+
+| ActivityKind | 对应 TaskBoardNodeKind | 图标 | 说明 |
+|-------------|----------------------|------|------|
+| `task` | `task` | 📋 | 任务描述（用户/Agent 视角） |
+| `thinking` | `thinking` | 🧠 | reasoning 内容 |
+| `action` | `action` | ⚡ | 工具调用 |
+| `reply` | `reply` | 💬 | Agent 回复（含最终答案） |
+| `sub_task_board` | `sub_task_board` | 🗂️ | 子任务看板（递归嵌套） |
+| `end` | `end` | ✅ | 任务完成标记 |
+| `error` | `error` | ❌ | 错误信息 |
+| `delegate` | — | 🤝 | 精灵委派团队（Spirit→Team） |
+| `notice` | — | 💡 | 系统通知（语境加载消息、状态变更提示） |
+
+### 15.3 用户故事
+
+#### AF-01 后端按 Activity 建模
+
+**作为** 前端开发者
+**我希望** 后端按 Activity（语义活动）而非 Message（LLM 轮次）建模，通过 WS 事件直接推送 Activity 生命周期
+**以便** 前端无需推理即可知道"思考/回复/工具调用/委派"的语义
+
+**验收**：
+- 后端 `ActivityProjector` 从运行时事件中投影出 Activity
+- 新增 `activity_start` / `activity_delta` / `activity_done` / `activity_child_start` 四种 EnvelopeType
+- Activity 携带 `kind`（ActivityKind）、`status`（ActivityStatus）、`parentActivityId`（树形嵌套）
+- `reasoning_as_display` 场景在流式阶段即判断为 `reply` 而非 `thinking`
+- ReAct Planner 标签由后端解析为 `activity_start(kind=thinking, label="规划")` 等
+
+#### AF-02 Activity 树形嵌套
+
+**作为** 用户
+**我希望** Activity 支持树形嵌套，子 Activity 通过 `parentActivityId` 关联到父 Activity
+**以便** 任务看板的递归嵌套由数据结构直接表达，无需前端推理
+
+**验收**：
+- `Activity.parentActivityId` 指向父 Activity，null 表示根节点
+- `sub_task_board` 类型的 Activity 通过 `childBoardId` 关联子看板根节点
+- 嵌套深度受 `MaxSessionDepth=2` 约束
+- 前端 `useActivityTimeline` 直接从 Activity 树构建 TaskBoardNode 树
+
+#### AF-03 Activity 持久化
+
+**作为** 系统
+**我希望** Activity 持久化到 `activities` 表，支持历史消息恢复
+**以便** 加载历史会话时能直接从 Activity 重建展示，无需重新推理
+
+**验收**：
+- 新增 `activities` 表（Ent Schema + DDL 迁移）
+- Activity 包含所有语义字段（content/reasoning/toolName/toolResult 等）
+- Activity 包含 Spirit 扩展字段（spiritSessionId/teamId/dagNodeId/dependsOn/agentKey）
+- 按 `session_id` + `turn_id` 索引查询
+- 历史消息加载时从 `activities` 表直接读取
+
+#### AF-04 Spirit 模式 Activity 扩展
+
+**作为** 用户
+**我希望** Activity 携带 Spirit 上下文（spiritSessionId/teamId/dagNodeId/dependsOn）
+**以便** 精灵模式下的团队委派、DAG 依赖、成员状态由数据结构直接表达
+
+**验收**：
+- `delegate` 类型 Activity 携带 `teamId`、`dagNodeId`、`dependsOn`
+- `action` 类型 Activity 携带 `agentKey`、`agentName`
+- `notice` 类型 Activity 携带 `spiritSessionId`
+- UnifiedExecutionPanel 从 Activity 树过滤构建三区数据
+
+#### AF-05 前端 Activity 消费
+
+**作为** 前端开发者
+**我希望** 前端新增 `useActivityTimeline` composable 直接消费 Activity 事件
+**以便** 替代 `useAgentBlocks` 的 13 层推理，前端零推理
+
+**验收**：
+- 新增 `useActivityTimeline` composable
+- `activityTree` 计算属性直接从 Activity 列表构建树
+- `taskBoardNodes` 计算属性直接映射 Activity → TaskBoardNode
+- M59 组件（TaskBoard/ThinkingArea/UnifiedExecutionPanel 等）数据源切换到 Activity
+- Feature flag 控制切换：`useActivityTimeline` vs `useAgentBlocks`
+
+#### AF-06 双发射迁移
+
+**作为** 运维
+**我希望** 迁移采用双发射策略，旧事件和新事件并行发送
+**以便** 前端可逐步切换，不中断现有功能
+
+**验收**：
+- Phase 1：后端同时发射旧事件和新 Activity 事件
+- Phase 2：前端通过 feature flag 逐步切换到 Activity 消费
+- Phase 3：前端完全切换后停发旧事件
+- 每个阶段有独立验证标准（见 §15.5 迁移需求表格）
+
+#### AF-07 13 层推理消除
+
+**作为** 前端开发者
+**我希望** Activity-First 架构消除前端 13 层推理
+**以便** 代码可维护性提升，"思考/回复"显示问题不再复发
+
+**验收**：
+- `reasoning_as_display` 推理 → `activity_done(kind=reply)` 直接告知
+- ReAct 标签解析 → `activity_start(kind=thinking, label=xxx)` 后端解析
+- member ID 前缀约定 → `activity_start(agentKey=xxx)` 直接携带
+- EnvelopeContent 无语义 → `activity_start(kind=xxx)` 语义在 kind 中
+- snapshotStreamingMessage → `activity_done` 替代
+- mergeSessionMessages 内容匹配 → `activity.id` 全局唯一 ID 匹配
+- classifyActivityKind → `activity.kind` 直接给出
+- resolveAssistantPresentation → `activity.kind=reply` 直接给出
+- 其余 5 层推理均由 Activity 字段直接替代
+- §14.2 中 F-13~F-21 对应的推理层均由 Activity 字段直接替代
+
+#### AF-08 M59 展示层兼容
+
+**作为** 产品
+**我希望** Activity-First 架构与 M59 已实现的展示层完全兼容
+**以便** TaskBoard 树形嵌套、ThinkingArea v7、UnifiedExecutionPanel v7 等成果不受影响
+
+**验收**：
+- 7 种 ActivityKind（task/thinking/action/reply/sub_task_board/end/error）与 TaskBoardNodeKind 一一映射，delegate 和 notice 为 Spirit 扩展类型由前端特殊渲染
+- Activity 树可直接转换为 AgentBlock 树
+- ThinkingArea v7 从 `activity_delta(kind=thinking)` 获取流式数据
+- UnifiedExecutionPanel v7 从 Activity 树过滤构建三区
+- Spirit 模式侧边栏从 `Activity(kind=delegate)` 聚合团队列表
+- TODO 看板从 `Activity(kind=action, toolName=todo_write)` 获取数据
+- 工具时间线从 `Activity(kind=action)[]` 按 timestamp 排序
+- ChatExecutionCard 从 `Activity(kind=action)` 获取工具调用数据，折叠状态由 `Activity.collapsed` 建议
+- 中断恢复提示从 `Activity(status=interrupted)` 直接获取中断状态
+- §10.4 中 AC-17~AC-25 的验收项在 Activity 模式下仍可通过 Activity→AgentBlock 转换满足
+
+### 15.4 Activity 数据结构
+
+```typescript
+type ActivityKind =
+  | 'task' | 'thinking' | 'action' | 'reply'
+  | 'sub_task_board' | 'end' | 'error'
+  | 'delegate' | 'notice'
+
+type ActivityStatus =
+  | 'pending' | 'running' | 'tool_running' | 'tool_blocked'
+  | 'completed' | 'failed' | 'partial_failure'
+  | 'cancelled' | 'interrupted'
+
+interface Activity {
+  id: string
+  kind: ActivityKind
+  sessionId: string
+  turnId: string
+  parentActivityId: string | null
+  timestamp: string
+  content?: string
+  reasoning?: string
+  toolName?: string
+  toolCallId?: string
+  toolArguments?: string
+  toolResult?: string
+  toolDurationMs?: number
+  toolErrorCode?: string
+  childBoardId?: string
+  spiritSessionId?: string
+  teamId?: string
+  dagNodeId?: string
+  dependsOn?: string[]
+  agentKey?: string
+  agentName?: string
+  status: ActivityStatus
+  collapsed: boolean
+  durationMs: number | null
+  label?: string
+}
+```
+
+### 15.5 迁移需求
+
+| 阶段 | 内容 | 验证 |
+|------|------|------|
+| Phase AF-1 | 后端 Activity 投影 + 双发射 + activities 表 | `make api && make wire && make build && make test && make lint` |
+| Phase AF-2 | 前端 useActivityTimeline + feature flag + 组件切换 | `cd web && pnpm lint && pnpm test && pnpm build` |
+| Phase AF-3 | 停发旧事件 + 清理推理逻辑 + 全量回归 | 全量测试通过 |
+
+### 15.6 非功能需求
+
+| 项 | 要求 |
+|----|------|
+| 性能 | Activity 事件增量 ≤ 20% WS 消息量；前端 Activity→TaskBoardNode 映射 < 5ms/100 节点 |
+| 兼容 | M59 展示层零修改即可消费 Activity 数据 |
+| 迁移 | 双发射期间旧事件路径不受影响 |
+| 存储 | activities 表按 session_id 索引，单会话 Activity 数 ≤ 1000 |
+| 可靠性 | ActivityProjector 与 EventProjector 共享 mutex，顺序发射 |

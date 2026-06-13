@@ -130,7 +130,7 @@
       </div>
       <div class="col row no-wrap chat-messages-area" style="min-height: 0">
         <div class="col column no-wrap chat-messages-main" style="min-height: 0">
-          <TodoKanbanBoard v-if="!panelMode || panelMode === 'spirit'" :board-state="todoBoardState" />
+          <TodoKanbanBoard v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')" :board-state="todoBoardState" />
           <ChatMessageList
             ref="messageListRef"
             :session-key="sessionKey"
@@ -150,6 +150,10 @@
             :turn-is-focused="turnIsFocused"
             :is-block-collapsed="isBlockCollapsed"
             :agent-blocks="agentBlocks"
+            :activity-timeline-activities="props.activityTimelineActivities"
+            :activity-agent-key="props.activityAgentKey"
+            :activity-task-content="props.activityTaskContent"
+            :activity-tree="props.activityTree"
             @messages-click="handleMessagesClick"
             @scroll="onMessagesScrollWrapped"
             @scroll-to-bottom="scrollToBottom"
@@ -301,6 +305,7 @@ import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
 import { useAgentBlocks } from '../../features/chat/composables/useAgentBlocks';
+import { useActivityFirstEnabled } from '../../features/chat/useActivityFirstFlag';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 
 type Option = { label: string; value: string; caption?: string };
@@ -375,6 +380,14 @@ const props = defineProps<{
   spiritCompletionStats?: CompletionStats | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
+  /** AF-FE-06: Activity-First timeline activities */
+  activityTimelineActivities?: readonly import('../../features/chat/activityTimelineTypes').Activity[];
+  /** AF-FE-06: Agent key from Activity data */
+  activityAgentKey?: string;
+  /** AF-FE-06: Root task content from Activity data */
+  activityTaskContent?: string;
+  /** AF-FE-06: Activity tree for building TeamPanel */
+  activityTree?: readonly import('../../features/chat/activityTypes').ActivityTreeNode[];
 }>();
 
 const emit = defineEmits<{
@@ -435,11 +448,16 @@ const { messageRow, teamMemberLanes, useTurnBlockMode, turnBlocks, timelineItems
 
 const executionProgressRef = computed(() => props.executionProgress ?? []);
 
+// AF-FE-05: When Activity-First is enabled, skip useAgentBlocks computation entirely.
+// The AF path consumes Activity events via useActivityTimeline instead of inferring
+// from messages. This avoids the expensive 13-layer inference in useAgentBlocks.
+const activityFirstEnabled = useActivityFirstEnabled();
+
 const { agentBlocks } = useAgentBlocks({
   messages: messagesRef,
   isTeamSession: props.isTeamSession,
   plannerKind: props.plannerKind,
-  progressEnvelopes: executionProgressRef,
+  progressEnvelopes: activityFirstEnabled ? computed(() => []) : executionProgressRef,
 });
 
 const {

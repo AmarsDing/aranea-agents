@@ -433,6 +433,44 @@ message ListChildSessionsResponse {
   repeated Session sessions = 1;
 }
 
+// AF-BE-17: Activity-First — List activities for a session/turn
+message Activity {
+  string id = 1;
+  string kind = 2;
+  string status = 3;
+  string session_id = 4;
+  string turn_id = 5;
+  string parent_activity_id = 6;
+  string timestamp = 7;
+  int64 duration_ms = 8;
+  string content = 9;
+  string reasoning = 10;
+  string tool_name = 11;
+  string tool_call_id = 12;
+  string tool_arguments = 13;
+  string tool_result = 14;
+  int64 tool_duration_ms = 15;
+  string tool_error_code = 16;
+  string child_board_id = 17;
+  string spirit_session_id = 18;
+  string team_id = 19;
+  string dag_node_id = 20;
+  string depends_on_json = 21;
+  string agent_key = 22;
+  string agent_name = 23;
+  bool collapsed = 24;
+  string label = 25;
+}
+
+message ListActivitiesRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string turn_id = 2;
+}
+
+message ListActivitiesResponse {
+  repeated Activity items = 1;
+}
+
 service SessionService {
   rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
@@ -533,5 +571,9 @@ service SessionService {
   // ListChildSessions returns child sessions of a parent session (session tree model).
   rpc ListChildSessions(ListChildSessionsRequest) returns (ListChildSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{parent_session_id}/children"};
+  }
+  // ListActivities returns activities for a session turn (Activity-First architecture).
+  rpc ListActivities(ListActivitiesRequest) returns (ListActivitiesResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/activities"};
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupMessagesByTurn, lastAssistantTurnBlockIndex } from '../groupMessagesByTurn';
+import { groupMessagesByTurn, lastAssistantTurnBlockIndex, lastAssistant } from '../groupMessagesByTurn';
 import type { Message } from '../types';
 import type { MessageOrigin } from '../../../domain/types';
 
@@ -60,7 +60,7 @@ describe('groupMessagesByTurn (turn_id-based)', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.user?.id).toBe('u1');
     expect(blocks[0]?.tools).toHaveLength(1);
-    expect(blocks[0]?.assistant?.id).toBe('a1');
+    expect(lastAssistant(blocks[0]!)?.id).toBe('a1');
   });
 
   it('splits multiple turns by turn_id boundary', () => {
@@ -130,9 +130,9 @@ describe('groupMessagesByTurn (turn_id-based)', () => {
     const blocks = groupMessagesByTurn(messages);
     expect(blocks).toHaveLength(2);
     expect(blocks[0]?.user?.id).toBe('u1');
-    expect(blocks[0]?.assistant?.id).toBe('a1');
+    expect(lastAssistant(blocks[0]!)?.id).toBe('a1');
     expect(blocks[1]?.user?.id).toBe('pending-user-abc');
-    expect(blocks[1]?.assistant?.id).toBe('ws-stream-s1');
+    expect(lastAssistant(blocks[1]!)?.id).toBe('ws-stream-s1');
   });
 
   it('handles first message not being user', () => {
@@ -148,7 +148,7 @@ describe('groupMessagesByTurn (turn_id-based)', () => {
     const blocks = groupMessagesByTurn(messages);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.user).toBeNull();
-    expect(blocks[0]?.assistant?.id).toBe('a1');
+    expect(lastAssistant(blocks[0]!)?.id).toBe('a1');
   });
 
   it('groups team member messages into members array', () => {
@@ -194,7 +194,7 @@ describe('groupMessagesByTurn (turn_id-based)', () => {
     ];
     const blocks = groupMessagesByTurn(messages);
     expect(blocks).toHaveLength(2);
-    expect(blocks[0]?.assistant?.id).toBe('a1');
-    expect(blocks[1]?.assistant?.id).toBe('a2');
+    expect(lastAssistant(blocks[0]!)?.id).toBe('a1');
+    expect(lastAssistant(blocks[1]!)?.id).toBe('a2');
   });
 });

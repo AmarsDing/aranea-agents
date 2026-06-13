@@ -7,7 +7,8 @@ function makeBlock(overrides: Partial<TurnBlockGroup> & Pick<TurnBlockGroup, 'ke
   return {
     turnId: `turn-${overrides.key}`,
     user: null,
-    assistant: null,
+    assistants: [],
+    rounds: [],
     tools: [],
     members: [],
     isCompleted: false,
