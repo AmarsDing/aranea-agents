@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,9 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
+
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // ActivityProjector projects runtime events into Activity semantic units
@@ -63,6 +67,146 @@ func (p *ActivityProjector) Reset() {
 	p.toolCalls = make(map[string]*biz.Activity)
 	p.kindAuthorMap = make(map[string]string)
 	p.reasoningBuf = make(map[string]*strings.Builder)
+}
+
+// ProcessEvent dispatches a trpc-agent-go event to the appropriate On* callback.
+// This is the AF-3 entry point: ActivityProjector directly consumes trpc events
+// instead of depending on EventProjector output.
+func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Event) {
+	if ev == nil {
+		return
+	}
+
+	// RunnerCompletion is handled by OnTurnEnd (called separately from finalize).
+	// Error events are forwarded to OnError.
+	if ev.Response != nil && ev.Response.Error != nil {
+		errType := ev.Response.Error.Type
+		if errType == "" {
+			errType = "run_error"
+		}
+		p.OnError(ctx, ev.Response.Error.Message, errType, "")
+		return
+	}
+
+	if ev.Response == nil {
+		return
+	}
+
+	objType := ev.Response.Object
+	switch objType {
+	case trpcmodel.ObjectTypeChatCompletionChunk:
+		p.processChatCompletionChunk(ctx, ev)
+	case trpcmodel.ObjectTypeChatCompletion:
+		p.processChatCompletion(ctx, ev)
+	case trpcmodel.ObjectTypeToolResponse:
+		p.processToolResponse(ctx, ev)
+	}
+}
+
+// processChatCompletionChunk handles streaming chat completion events.
+func (p *ActivityProjector) processChatCompletionChunk(ctx context.Context, ev *trpcevent.Event) {
+	for _, choice := range ev.Response.Choices {
+		msg := choice.Message
+		delta := choice.Delta
+		author := ev.Author
+
+		// Tool calls
+		allToolCalls := append(msg.ToolCalls, delta.ToolCalls...)
+		for _, tc := range allToolCalls {
+			startedAt := time.Now().UTC()
+			if !ev.Timestamp.IsZero() {
+				startedAt = ev.Timestamp.UTC()
+			}
+			p.OnToolCall(ctx, tc.ID, tc.Function.Name, string(tc.Function.Arguments), author, startedAt)
+		}
+
+		// Text and reasoning content
+		text, reasoning := ChoiceStreamContent(choice, ev.Response.IsPartial)
+		if text != "" {
+			if ev.Response.IsPartial {
+				p.OnTextDelta(ctx, author, text)
+			} else {
+				p.OnTextDone(ctx, author, text)
+			}
+		}
+		if reasoning != "" {
+			if ev.Response.IsPartial {
+				p.OnReasoningDelta(ctx, author, reasoning, true)
+			} else {
+				p.OnReasoningDone(ctx, author, reasoning, false)
+			}
+		}
+	}
+}
+
+// processChatCompletion handles non-streaming chat completion events.
+func (p *ActivityProjector) processChatCompletion(ctx context.Context, ev *trpcevent.Event) {
+	for _, choice := range ev.Response.Choices {
+		msg := choice.Message
+		author := ev.Author
+
+		// Tool calls
+		for _, tc := range msg.ToolCalls {
+			startedAt := time.Now().UTC()
+			if !ev.Timestamp.IsZero() {
+				startedAt = ev.Timestamp.UTC()
+			}
+			p.OnToolCall(ctx, tc.ID, tc.Function.Name, string(tc.Function.Arguments), author, startedAt)
+		}
+
+		// Text and reasoning content
+		text := strings.TrimSpace(msg.Content)
+		reasoning := strings.TrimSpace(msg.ReasoningContent)
+		if text != "" {
+			p.OnTextDone(ctx, author, text)
+		}
+		if reasoning != "" {
+			p.OnReasoningDone(ctx, author, reasoning, false)
+		}
+	}
+}
+
+// processToolResponse handles tool result events.
+func (p *ActivityProjector) processToolResponse(ctx context.Context, ev *trpcevent.Event) {
+	if len(ev.Response.Choices) == 0 {
+		return
+	}
+	msg := ev.Response.Choices[0].Message
+	toolID := strings.TrimSpace(msg.ToolID)
+	if toolID == "" {
+		return
+	}
+
+	resultRaw, _ := json.Marshal(msg.Content)
+	resultJSON := string(resultRaw)
+	status := "success"
+	errorCode := ""
+	if ev.Response.Error != nil {
+		status = "failed"
+		errorCode = ev.Response.Error.Type
+		if errorCode == "" {
+			errorCode = "tool_error"
+		}
+	}
+
+	// Calculate duration from cached tool call
+	var durationMs int64
+	p.mu.Lock()
+	if a, ok := p.toolCalls[toolID]; ok {
+		if !a.Timestamp.IsZero() {
+			finishedAt := time.Now().UTC()
+			if !ev.Timestamp.IsZero() {
+				finishedAt = ev.Timestamp.UTC()
+			}
+			durationMs = finishedAt.Sub(a.Timestamp).Milliseconds()
+			if durationMs < 0 {
+				durationMs = 0
+			}
+		}
+	}
+	p.mu.Unlock()
+
+	p.OnToolResult(ctx, toolID, resultJSON, status, errorCode, durationMs)
 }
 
 // OnTurnStart creates the root task Activity for a new turn.
@@ -550,5 +694,3 @@ func (p *ActivityProjector) resolveAgentName(ctx context.Context, agentKey strin
 	}
 	return agentKey
 }
-
-

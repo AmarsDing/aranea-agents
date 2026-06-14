@@ -357,6 +357,7 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			},
 			"parallel_enabled":  settings.ToolsParallelEnabled,
 			"streaming_enabled": settings.ToolsStreamingEnabled,
+			"execution_timeout_sec": settings.ToolsExecutionTimeoutSec,
 		},
 		"intent_pass": map[string]any{
 			"enabled": settings.IntentPassEnabled,

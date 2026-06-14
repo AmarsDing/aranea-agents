@@ -45,7 +45,7 @@
         <ChatExecutionCard
           v-else
           :event="node.event"
-          :initial-collapsed="isToolEventCompleted(node.event)"
+          :initial-collapsed="true"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
         />
       </template>
@@ -85,7 +85,6 @@ import { compactNodeKey, type CompactNode, type ReplyStatus } from '../../featur
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { ToolUseEvent } from '../../features/chat/types';
 
 const props = defineProps<{
   nodes: CompactNode[];
@@ -127,11 +126,6 @@ function nodeClasses(node: CompactNode): Record<string, boolean> {
     'compact-timeline__node--failed': node.status === 'failed',
     'compact-timeline__node--cancelled': node.status === 'cancelled',
   };
-}
-
-function isToolEventCompleted(event: ToolUseEvent): boolean {
-  const s = event.status;
-  return s === 'success' || s === 'failed' || s === 'cancelled';
 }
 
 function replyIcon(status: ReplyStatus): string {

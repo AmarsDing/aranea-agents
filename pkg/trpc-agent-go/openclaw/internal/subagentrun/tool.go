@@ -20,7 +20,6 @@ import (
 	publicsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
-	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 const (
@@ -113,11 +112,6 @@ type ServiceAwareTool struct {
 type spawnTool struct {
 	ServiceAwareTool
 }
-
-// LongRunning marks subagents_spawn as a long-running (asynchronous) tool.
-// The tool returns immediately with a queued Run; the actual sub-agent
-// executes in the background.
-func (t *spawnTool) LongRunning() bool { return true }
 
 type listTool struct {
 	ServiceAwareTool

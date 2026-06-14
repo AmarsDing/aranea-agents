@@ -30,10 +30,30 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	if strings.TrimSpace(ag.AgentKey) == "" {
 		return nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
 	}
-	prov := strutil.FirstNonEmpty(deps.Provider, ag.Provider)
-	mod := strutil.FirstNonEmpty(deps.Model, ag.Model)
-	if prov == "" || mod == "" {
-		return nil, apierror.BadRequest(apierror.DomainAgent, "provider and model required")
+	// Always use the Agent's own provider/model for the cached build.
+	// Per-request provider/model overrides are applied via RunOption
+	// (agent.WithModel) at turn execution time, so they don't need to
+	// be baked into the agent build — this is what enables cache key
+	// simplification (removing Provider/Model from the fingerprint).
+	//
+	// When the agent has no provider/model configured (e.g. spirit agent
+	// configured to inherit from the chat interface), we resolve a system
+	// default model for the build. The actual model used at runtime will
+	// be overridden by WithModel RunOption from the chat request.
+	prov := strings.TrimSpace(ag.Provider)
+	mod := strings.TrimSpace(ag.Model)
+	agentModelEmpty := prov == "" || mod == ""
+	if agentModelEmpty {
+		prov, mod = resolveBuildDefaultModel(ctx, deps, lg)
+		if prov == "" || mod == "" {
+			return nil, apierror.BadRequest(apierror.DomainAgent, "agent provider and model required (no system default available)")
+		}
+		lg.Info("Agent 无配置模型，使用系统默认模型构建",
+			loggateway.StepID("agent.build_default_model"),
+			loggateway.Str("agent_id", ag.ID),
+			loggateway.Str("agent_key", ag.AgentKey),
+			loggateway.Str("provider", prov),
+			loggateway.Str("model", mod))
 	}
 
 	lg.Info("Agent 构建", loggateway.StepID("agent.build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("provider", prov), loggateway.Str("model", mod))
@@ -149,11 +169,12 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
-			// Defer MCP ToolSet initialization to first LLM call instead of
-			// blocking Agent construction on MCP Initialize+ListTools.
-			// This removes 0.2-5s per MCP server from the critical path
-			// (Agent build → SetRunStatus → frontend ACK).
-			opts = append(opts, trpcllmagent.WithRefreshToolSetsOnRun(true))
+			// WithRefreshToolSetsOnRun is intentionally set to false (disabled).
+			// Previously this was true, causing 0.2-5s MCP Initialize+ListTools
+			// on every LLM call. Now MCP ToolSets are initialized once during
+			// Agent build and cached. When MCP servers change, the agent cache
+			// is invalidated (via MCPVersionHash change) and a fresh agent is
+			// built with the updated tool list.
 		}
 		if len(ts.Tools) > 0 {
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
@@ -376,6 +397,29 @@ func ParseVariablesJSON(raw string, lg loggateway.Logger) map[string]any {
 	return out
 }
 
+// resolveBuildDefaultModel finds a system default provider/model for agents
+// that have no model configured. It tries the system RefineLLM setting first,
+// then falls back to the first enabled model in the catalog.
+func resolveBuildDefaultModel(ctx context.Context, deps TRPCBuilderDeps, lg loggateway.Logger) (string, string) {
+	if deps.Sys != nil {
+		if refine, err := deps.Sys.GetRefineLLM(ctx); err == nil && refine.Provider != "" && refine.Model != "" {
+			return refine.Provider, refine.Model
+		}
+	}
+	if deps.ModelCatalog != nil {
+		if models, err := deps.ModelCatalog.List(ctx); err == nil {
+			for _, m := range models {
+				if m.Enabled && m.Provider != "" && m.Model != "" {
+					return m.Provider, m.Model
+				}
+			}
+		}
+	}
+	lg.Warn("无法解析系统默认模型：RefineLLM 和模型目录均无可用模型",
+		loggateway.StepID("agent.build_default_model_fail"))
+	return "", ""
+}
+
 // plannerKind extracts the PlannerKind from agent settings, defaulting to "".
 func plannerKind(ag biz.Agent) string {
 	if ag.Settings == nil {
@@ -389,4 +433,11 @@ func plannerConfigJSON(ag biz.Agent) string {
 		return ""
 	}
 	return ag.Settings.PlannerConfigJSON
+}
+
+// ResolveModelForRunOption resolves a provider/model pair into a trpcmodel.Model
+// suitable for use as an agent.WithModel() RunOption. This enables per-request
+// model overrides without baking Provider/Model into the agent build cache key.
+func ResolveModelForRunOption(ctx context.Context, deps TRPCBuilderDeps, prov, mod string, lg loggateway.Logger) (trpcmodel.Model, error) {
+	return provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
 }

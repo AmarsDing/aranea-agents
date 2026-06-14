@@ -11,7 +11,6 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
-	"aranea-agents/internal/tools/mcpobserve"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -89,24 +88,10 @@ func ProvideChatOrchestrator(svc *ChatService, taskOrch biz.TaskOrchestratorPort
 	return svc.orch
 }
 
-func configureMCPObserve(bus event.Bus, mcp *biz.MCPServerUsecase) {
-	if bus != nil {
-		mcpobserve.SetBus(bus)
-	}
-	if mcp == nil {
-		return
-	}
-	lg := loggateway.NewNoop()
-	mcpobserve.SetMetadataRecorder(func(ctx context.Context, serverKey string, at time.Time) {
-		if err := mcp.RecordReconnectMetadata(ctx, serverKey, at); err != nil {
-			lg.Warn("MCP reconnect metadata record failed",
-				loggateway.StepID("chat.mcp.reconnect_meta"),
-				loggateway.Str("server_key", serverKey),
-				loggateway.Err(err),
-			)
-		}
-	})
-}
+// NOTE: MCP reconnect telemetry is now handled internally by the framework.
+// The Observer/ReconnectObserver callbacks were removed in the framework upgrade.
+// configureMCPObserve is kept as a placeholder for future re-integration.
+func configureMCPObserve(_ event.Bus, _ *biz.MCPServerUsecase) {}
 
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	return s.orch.nativeSendChatMessage(ctx, req)

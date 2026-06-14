@@ -94,6 +94,18 @@ function streamRowId(ctx: StreamHandlerCtx, sessionId: string): string {
   return `${prefix}-${sessionId}`;
 }
 
+/** Remove the "thinking" placeholder message created on run_status=running.
+ * Called when real streaming content (text_delta or activity_start) arrives. */
+function removeThinkingPlaceholder(ctx: StreamHandlerCtx, sid: string) {
+  const msgs = ctx.getMessages(sid);
+  const idx = msgs.findIndex((m) => m.id.startsWith('run-') && m.model_name === 'thinking');
+  if (idx >= 0) {
+    const updated = [...msgs];
+    updated.splice(idx, 1);
+    ctx.setMessages(sid, updated);
+  }
+}
+
 /**
  * Snapshot the current streaming message into a standalone assistant message
  * with a stable ID, so that subsequent LLM rounds (after tool calls) get their
@@ -239,6 +251,19 @@ export function bindStreamHandlers(
 
   let afMode = false; // AF mode: activity events drive messageStore
 
+  // Structural AF transition: once activity_start(kind=task) is received,
+  // unsubscribe all legacy handlers from the dispatcher. This eliminates the
+  // runtime `if (afMode) return` check on every event and makes the AF
+  // transition structural — legacy handlers are physically removed, not
+  // short-circuited. This prevents any possibility of dual-path processing.
+  const legacyUnsubs: (() => void)[] = [];
+  function activateAFMode() {
+    if (afMode) return;
+    afMode = true;
+    for (const unsub of legacyUnsubs) unsub();
+    legacyUnsubs.length = 0;
+  }
+
   // H-03: Stream timeout protection. If runner_completion never arrives
   // (e.g., WS disconnect), force-finalize all streaming/tool_running messages
   // after the timeout expires. The timer starts on the first streaming event
@@ -301,13 +326,15 @@ export function bindStreamHandlers(
     }),
   );
 
-  stream.onType(
-    'text_delta',
-    withSessionFilter(ctx, (env, sid) => {
-      if (afMode) return; // AF mode: activity handlers drive messageStore
+  legacyUnsubs.push(
+    stream.onType(
+      'text_delta',
+      withSessionFilter(ctx, (env, sid) => {
       if (!env.content?.text && !env.content?.reasoning) return;
       ctx.onRunActivity?.();
       ctx.onFirstByteArrived?.();
+      // Remove placeholder message now that real content is arriving.
+      removeThinkingPlaceholder(ctx, sid);
       startStreamTimeout();
       ctx.onStreamingPatch?.(sid, {
         reasoning: env.content?.reasoning,
@@ -315,12 +342,14 @@ export function bindStreamHandlers(
       });
       patch(sid, streamRowId(ctx, sid), env, false);
     }),
+  ),
   );
 
-  stream.onType(
+  legacyUnsubs.push(
+    stream.onType(
     'text_done',
     withSessionFilter(ctx, (env, sid) => {
-      if (afMode) return; // AF mode: activity handlers drive messageStore
+
       ctx.onStreamingPatch?.(sid, {
         reasoning: env.content?.reasoning,
         partialText: env.content?.text,
@@ -338,12 +367,14 @@ export function bindStreamHandlers(
       patch(sid, streamId, env, true);
       applySessionContextPatch(sid, env);
     }),
+  ),
   );
 
-  stream.onType(
+  legacyUnsubs.push(
+    stream.onType(
     'tool_call',
     withSessionFilter(ctx, (env, sid) => {
-      if (afMode) return; // AF mode: activity handlers drive messageStore
+
       if (!env.tool_call) return;
       ctx.onRunActivity?.();
 
@@ -369,12 +400,14 @@ export function bindStreamHandlers(
       const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
       ctx.setMessages(sid, upsertToolMessage(snapped, sid, env, 'before'));
     }),
+  ),
   );
 
-  stream.onType(
+  legacyUnsubs.push(
+    stream.onType(
     'tool_result',
     withSessionFilter(ctx, (env, sid) => {
-      if (afMode) return; // AF mode: activity handlers drive messageStore
+
       if (!env.tool_call) return;
       if (writer) {
         writer.update((cur) => upsertToolMessage(cur, sid, env, 'after'));
@@ -382,6 +415,7 @@ export function bindStreamHandlers(
       }
       ctx.setMessages(sid, upsertToolMessage(ctx.getMessages(sid), sid, env, 'after'));
     }),
+  ),
   );
 
   stream.onType('run_status', (env: Envelope) => {
@@ -392,6 +426,28 @@ export function bindStreamHandlers(
     if (status === 'running' || status === 'accepted') {
       ctx.clearSendingTimeout?.();
       ctx.onRunAccepted?.();
+
+      // Create a placeholder assistant message so the user sees "正在思考"
+      // immediately instead of staring at a blank screen during the BUILD
+      // phase (0-15s). The placeholder is replaced when the first
+      // activity_start or text_delta arrives.
+      const sid = ctx.sessionId;
+      const placeholderId = `run-${env.metadata?.run_id ?? 'pending'}`;
+      const existing = ctx.getMessages(sid);
+      if (!existing.some((m) => m.id === placeholderId)) {
+        const placeholder: Message = {
+          ...createPlaceholderMessage(placeholderId, sid, 'assistant', ''),
+          status: 'streaming',
+          model_name: 'thinking',
+          origin: { kind: 'assistant' },
+        };
+        ctx.setMessages(sid, [...existing, placeholder]);
+      }
+    } else if (status === 'failed' || status === 'cancelled' || status === 'completed') {
+      // Remove the thinking placeholder on terminal status.
+      // Under normal flow, text_delta or activity_start already removed it,
+      // but guard against edge cases (e.g., empty LLM response).
+      removeThinkingPlaceholder(ctx, ctx.sessionId);
     }
   });
 
@@ -473,8 +529,8 @@ export function bindStreamHandlers(
     });
   }
 
-  stream.onType('runner_completion', async (env: Envelope) => {
-    if (afMode) return; // AF mode: activity handlers drive messageStore
+  legacyUnsubs.push(
+    stream.onType('runner_completion', async (env: Envelope) => {
     clearStreamTimeout();
     ctx.markSendingDone();
     writer?.flushSync();
@@ -498,10 +554,11 @@ export function bindStreamHandlers(
     } catch {
       /* caller may surface errors */
     }
-  });
+  }),
+  );
 
-  stream.onType('error', async (env: Envelope) => {
-    if (afMode) return; // AF mode: activity handlers drive messageStore
+  legacyUnsubs.push(
+    stream.onType('error', async (env: Envelope) => {
     clearStreamTimeout();
     const errType = env.error?.type ?? '';
     if (errType.startsWith('flow_')) return;
@@ -531,7 +588,8 @@ export function bindStreamHandlers(
         /* caller may surface errors */
       }
     }
-  });
+  }),
+  );
 
   stream.onType('intent_pass', (env: Envelope) => {
     const meta = env.metadata as Record<string, unknown> | undefined;
@@ -560,7 +618,7 @@ export function bindStreamHandlers(
   }
 
   // === AF (Activity-First) Handlers ===
-  // When the backend enables SkipEventProjectorWS, these handlers drive
+  // When the backend enables ActivityProjector (AF mode), these handlers drive
   // the messageStore exclusively. AF mode is detected by receiving
   // activity_start(kind=task) — the root turn activity.
 
@@ -572,11 +630,15 @@ export function bindStreamHandlers(
     const md = (env.metadata ?? {}) as Record<string, unknown>;
     const kind = String(md.kind ?? '');
 
-    // Detect AF mode on root task start
+    // Detect AF mode on root task start — structural transition
     if (kind === 'task') {
-      afMode = true;
+      activateAFMode(); // Unsubscribes all legacy handlers from dispatcher
       ctx.onRunActivity?.();
       ctx.onFirstByteArrived?.();
+
+      // Remove the placeholder message created on run_status=running.
+      // The real streaming message will be created by the AF handlers below.
+      removeThinkingPlaceholder(ctx, sid);
     }
 
     if (!afMode) return; // Only process in AF mode
@@ -748,6 +810,13 @@ export function bindStreamHandlers(
         break;
       }
       case 'reply': {
+        // Finalize reply content, then snapshot — same as thinking.
+        // Without snapshot, the ws-stream-* message (origin.kind='streaming')
+        // would be dropped by shouldDropStaleInFlight after onReloadAfterCompletion,
+        // or cause content duplication when hasSnapshots=false and the server's
+        // merged assistant message is not excluded. Snapshotting ensures every
+        // round's content is preserved as ws-snap-* (origin.kind='streaming_snapshot'),
+        // which hasSnapshots detects and uses to exclude the server's merged message.
         writer?.flushSync();
         const msgs = ctx.getMessages(sid);
         const idx = msgs.findIndex((m) => m.id === streamId);
@@ -755,7 +824,8 @@ export function bindStreamHandlers(
           const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
           const next = [...msgs];
           next[idx] = finalized;
-          ctx.setMessages(sid, next);
+          const snapped = snapshotStreamingMessage(next, sid, streamId);
+          ctx.setMessages(sid, snapped.messages);
         }
         break;
       }

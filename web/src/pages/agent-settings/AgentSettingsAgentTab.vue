@@ -70,9 +70,10 @@
           emit-value
           map-options
           use-input
+          clearable
           input-debounce="0"
           label="模型"
-          hint="仅可选择 Provider 管理中已录入且启用的模型。"
+          hint="留空则使用聊天界面选择的模型；选择已录入且启用的模型可固定使用。"
           :options="filteredProviderModelOptions"
           :loading="loadingProviderModels || checkingAgentModel"
           @filter="(val, update) => $emit('filter-provider-models', val, update)"

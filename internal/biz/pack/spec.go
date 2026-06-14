@@ -190,6 +190,7 @@ type RuntimeToolsSpec struct {
 	StreamingEnabled       bool    `yaml:"streaming_enabled,omitempty"`
 	CircuitBreakerEnabled  bool    `yaml:"circuit_breaker_enabled,omitempty"`
 	CommandSafetyEnabled   bool    `yaml:"command_safety_enabled,omitempty"`
+	ExecutionTimeoutSec    int     `yaml:"execution_timeout_sec,omitempty"`
 }
 
 // RuntimeEvolutionSpec 进化域可移植配置。

@@ -8,6 +8,10 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+func (m *memAgentRepo) ToggleFavorite(context.Context, string) (biz.Agent, error) {
+	return biz.Agent{}, nil
+}
+
 type memAgentRepo struct {
 	byKey map[string]biz.Agent
 }

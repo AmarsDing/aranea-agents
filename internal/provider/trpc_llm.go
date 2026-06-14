@@ -301,7 +301,7 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 	}
 	if cfg.CB.Enabled {
 		cbCfg := biztool.CircuitBreakerConfig{
-			FailureThreshold:  cfg.CB.FailureThreshold,
+			FailureThreshold:   cfg.CB.FailureThreshold,
 			RecoveryTimeoutSec: cfg.CB.RecoverySec,
 		}
 		cb := biztool.NewCircuitBreaker(fmt.Sprintf("provider:%s:%s", cfg.ProviderType, cfg.ModelAPI), cbCfg)
@@ -361,10 +361,6 @@ func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Optio
 	var providerOpts []trpcanthropic.Option
 	if cfg.Cache.SystemPrompt {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPrompt(true))
-		// Enable dual-breakpoint mode for system prompt caching.
-		// Breakpoint 1: end of TextBlock[0] (static layer: identity + instructions + skills + staticRuntimeCue)
-		// Breakpoint 2: end of TextBlock[2] (semi-static layer: dynamicRuntimeCue + SkillGuidance)
-		providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPromptDualBreakpoint(2))
 	}
 	if cfg.Cache.Tools {
 		providerOpts = append(providerOpts, trpcanthropic.WithCacheTools(true))
@@ -461,15 +457,6 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 	}
 	fo, err := trpcfailover.New(
 		trpcfailover.WithCandidates(candidates...),
-		trpcfailover.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
-			lg.Warn("HA 故障切换",
-				loggateway.StepID("provider.ha_failover"),
-				loggateway.Str("ha_mode", "failover"),
-				loggateway.Str("from_candidate", from),
-				loggateway.Str("to_candidate", to),
-				loggateway.Err(err),
-			)
-		}),
 	)
 	if err != nil {
 		lg.Warn("HA failover 构建失败，回退到主模型", loggateway.StepID("provider.ha_failover_build_fail"), loggateway.Err(err))
@@ -493,15 +480,6 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 	}
 	hedgeOpts := []trpchedge.Option{
 		trpchedge.WithCandidates(candidates...),
-		trpchedge.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
-			lg.Warn("HA 对冲切换",
-				loggateway.StepID("provider.ha_hedge"),
-				loggateway.Str("ha_mode", "hedge"),
-				loggateway.Str("primary_candidate", from),
-				loggateway.Str("winner_candidate", to),
-				loggateway.Err(err),
-			)
-		}),
 	}
 	if cfg.HA.HedgeDelayMs > 0 {
 		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HA.HedgeDelayMs)*time.Millisecond))

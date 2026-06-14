@@ -10,6 +10,7 @@ import (
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -20,7 +21,10 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // RunNativeAgentTurnFromInput executes a full agent/team turn from a biz-level TurnInput.
@@ -304,12 +308,39 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	buildResult, err := o.buildTurnRunner(ctx, sess, ag, admit, emitter)
-	if err != nil {
+	// ── BUILD + INTENT PASS (parallel) ──
+	// Run BUILD and Intent Pass concurrently since they have no data
+	// dependency on each other. This saves 0.5-3s when Intent Pass is enabled.
+	content := strings.TrimSpace(input.Content)
+	prov = admit.provider
+	mod = admit.model
+
+	var buildResult turnBuildResult
+	var intentRunOpts []trpcagent.RunOption
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	// Goroutine 1: BUILD
+	eg.Go(func() error {
+		var buildErr error
+		buildResult, buildErr = o.buildTurnRunner(egCtx, sess, ag, admit, emitter)
+		return buildErr
+	})
+
+	// Goroutine 2: Intent Pass (only for non-A2A agents with intent enabled)
+	if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
+		eg.Go(func() error {
+			intentRunOpts = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
+			return nil // Intent Pass failure is non-fatal; it returns empty opts on error
+		})
+	} else if biz.IsA2AProxyAgent(ag) {
+		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
+	} else {
+		emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
+	}
+
+	if err := eg.Wait(); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.runs.Finish(sessionID)
-		// Since we sent "running" early (EARLY ACK), we must publish a
-		// terminal run_status so the frontend knows the run has ended.
 		o.publishRunStatus(sessionID, runID, "failed", err.Error())
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
@@ -344,7 +375,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}()
 
 	// ── EXECUTE ──
-	execResult, err := o.executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, turnStart)
+	execResult, err := o.executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, intentRunOpts, turnStart)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return execResult.userMsg, biz.ChatMessage{}, err

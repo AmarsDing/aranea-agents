@@ -8,7 +8,7 @@ import { canonicalToolStatus } from './lib/statusMap';
 /**
  * activityMessageAdapter translates Activity event metadata into Message
  * objects for the messageStore. This is the AF (Activity-First) path —
- * when SkipEventProjectorWS=true on the backend, the frontend message list
+ * when ActivityProjector is active on the backend, the frontend message list
  * is driven exclusively by activity events through this adapter.
  *
  * Design principle: direct Message construction from activity metadata,
@@ -33,6 +33,15 @@ export function createStreamingMessageFromActivity(
 
 /** Patch a streaming Message with an activity delta chunk. */
 export function patchStreamingMessageFromDelta(msg: Message, md: ActivityDeltaMeta): Message {
+  // H-01 fix: lifecycle state guard (consistent with streamContentPatch.ts).
+  // Once a message reaches a terminal status (ok, failed), incremental
+  // appends are rejected. This prevents out-of-order activity_delta events
+  // from duplicating content after activity_done has finalized the message.
+  // Cross-round deltas are safe: activity_done finalizes the old message,
+  // then activity_start creates a new streaming message for the next round.
+  const isTerminal = msg.status === 'ok' || msg.status === 'failed';
+  if (isTerminal) return msg;
+
   const chunk = md.delta_chunk ?? '';
   if (!chunk) return msg;
 

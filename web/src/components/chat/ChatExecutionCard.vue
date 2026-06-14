@@ -119,7 +119,7 @@ const props = withDefaults(
   }>(),
   {
     showMemberLabel: undefined,
-    initialCollapsed: false,
+    initialCollapsed: true,
     autoCollapse: true,
   },
 );

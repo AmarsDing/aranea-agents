@@ -626,7 +626,6 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 
 	opts := []trpcmcp.ToolSetOption{
 		trpcmcp.WithName(cfg.Name),
-		trpcmcp.WithReconnectObserver(mcpobserve.ObserverForServer(cfg.Name)),
 	}
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))

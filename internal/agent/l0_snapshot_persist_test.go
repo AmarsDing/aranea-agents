@@ -31,8 +31,8 @@ func TestL0NeedsWindowRecheck(t *testing.T) {
 
 func TestL0SnapshotPendingForCall(t *testing.T) {
 	inv := &trpcagent.Invocation{}
-	setL0SnapshotPendingForCall(inv, 1, "snap-a", 32000)
-	setL0SnapshotPendingForCall(inv, 2, "snap-b", 64000)
+	setL0SnapshotPendingForCall(inv, 1, "snap-a", "sess-1", 32000)
+	setL0SnapshotPendingForCall(inv, 2, "snap-b", "sess-2", 64000)
 
 	p1, ok := l0SnapshotPendingForCall(inv, 1)
 	if !ok || p1.ID != "snap-a" || p1.Window != 32000 {

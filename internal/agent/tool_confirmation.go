@@ -77,7 +77,12 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		reply, err := fn(confirmCtx)
 		if err != nil {
 			// Distinguish between confirmation timeout and other errors.
-			if confirmCtx.Err() == context.DeadlineExceeded {
+			// Only report ErrorCodeConfirmationTimeout when the confirmation
+			// deadline itself expired but the parent context is still alive.
+			// If the parent context (e.g., tool execution timeout) also expired,
+			// the error is not a confirmation timeout — it will be handled by
+			// the execution timeout logic upstream.
+			if confirmCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
 				recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
 					ToolKey:      toolKey,
 					AgentID:      h.ag.ID,

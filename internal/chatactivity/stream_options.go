@@ -139,17 +139,16 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 		MetaResolver:      resolver,
 		ActivityPersister: persister,
 	}
-	// AF phase: create ActivityProjector for dual-emission
+	// AF phase: create ActivityProjector for dual-emission.
+	// When ActivityProjector is active, stream_consumer.go uses hasAF
+	// (opts.ActivityProjector != nil) to skip WS publishing of
+	// EventProjector envelopes. The frontend AF path consumes Activity
+	// events exclusively.
 	if activityWriter != nil && eventBus != nil {
 		if lg == nil {
 			lg = loggateway.NewNoop()
 		}
 		opts.ActivityProjector = chatagent.NewActivityProjector(eventBus, activityWriter, lg)
-		// AF-FE-14: When ActivityProjector is active, skip WS publishing of
-		// EventProjector envelopes. The frontend AF path consumes Activity
-		// events exclusively — text_delta/text_done/tool_call/tool_result
-		// are redundant and waste WS bandwidth.
-		opts.SkipEventProjectorWS = true
 	}
 	return opts
 }

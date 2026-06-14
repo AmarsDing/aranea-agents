@@ -11,6 +11,8 @@ import (
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/pkg/loggateway"
 
+	"golang.org/x/sync/errgroup"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -18,13 +20,13 @@ import (
 // Introduced to satisfy BI1 (parameter count ≤ 5) while preserving call-site clarity.
 // Stability:evolving
 type AgentBuildParams struct {
-	Session   biz.Session
-	Agent     biz.Agent
-	RunID     string
+	Session    biz.Session
+	Agent      biz.Agent
+	RunID      string
 	DialogMode string
-	Provider  string
-	Model     string
-	Emitter   *event.TraceEmitter
+	Provider   string
+	Model      string
+	Emitter    *event.TraceEmitter
 }
 
 // agentBuildDirector constructs the TRPCBuilderDeps for agent turn execution.
@@ -53,12 +55,12 @@ type chatAgentBuildDirector struct {
 // Introduced to satisfy BI1 (parameter count ≤ 5) for the constructor.
 // Stability:internal
 type chatAgentBuildDirectorDeps struct {
-	TurnDeps      rt.TurnDeps
-	RT            RuntimeTooling
-	AwaitCoord    awaitCoordinator
-	SubAgentSvc   *subagenttool.Service
+	TurnDeps       rt.TurnDeps
+	RT             RuntimeTooling
+	AwaitCoord     awaitCoordinator
+	SubAgentSvc    *subagenttool.Service
 	CustomToolFunc func(ctx context.Context, ag biz.Agent) []trpctool.Tool
-	Logger        loggateway.Logger
+	Logger         loggateway.Logger
 }
 
 func newChatAgentBuildDirector(d chatAgentBuildDirectorDeps) *chatAgentBuildDirector {
@@ -85,24 +87,33 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		customTools = d.customToolFunc(ctx, p.Agent)
 	}
 
-	// Fetch effective tools ONCE and reuse for hash computation and tool assembly.
-	// Previously GetEffectiveTools was called 3 times per turn (computeToolHash,
-	// computeMCPHash, loadEffectiveToolKeys), each triggering 3-5 DB queries.
-	// On failure, cachedEffTools stays nil and downstream falls back to per-call
-	// DB queries (graceful degradation).
+	// Parallel fetch: GetEffectiveTools, computeSkillHash, computeMCPHash
+	// are independent DB queries. Running them concurrently reduces BUILD
+	// phase latency from ~3x sequential DB round-trips to ~1x.
 	var cachedEffTools *biz.AgentEffectiveTools
-	if d.td.ReadDeps.AgentsUC != nil {
-		if eff, err := d.td.ReadDeps.AgentsUC.GetEffectiveTools(ctx, p.Agent.ID); err == nil {
-			cachedEffTools = &eff
-		}
-	}
+	var skillHash, mcpHash string
 
-	// Compute content-based version hashes for tool/skill/MCP configurations.
-	// These hashes are folded into the build cache key so that configuration
-	// changes automatically invalidate the cached agent (defense-in-depth).
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		if d.td.ReadDeps.AgentsUC != nil {
+			if eff, err := d.td.ReadDeps.AgentsUC.GetEffectiveTools(egCtx, p.Agent.ID); err == nil {
+				cachedEffTools = &eff
+			}
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		skillHash = d.computeSkillHash(egCtx)
+		return nil
+	})
+	eg.Go(func() error {
+		mcpHash = d.computeMCPHash(egCtx, p.Agent.ID)
+		return nil
+	})
+	_ = eg.Wait() // errors are non-fatal; hashes default to ""
+
+	// Compute tool hash from cached result (depends on GetEffectiveTools above).
 	toolHash := d.computeToolHashFromCached(cachedEffTools)
-	skillHash := d.computeSkillHash(ctx)
-	mcpHash := d.computeMCPHash(ctx, p.Agent.ID)
 
 	deps := chatagent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{

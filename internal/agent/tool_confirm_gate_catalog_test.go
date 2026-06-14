@@ -4,7 +4,7 @@ import "testing"
 
 func TestCatalogRequiresConfirm_execCommandAlias(t *testing.T) {
 	t.Parallel()
-	catalog := map[string]confirmCatalogEntry{"shell_exec": {requiresConfirm: true, registryName: "hostexec"}}
+	catalog := map[string]confirmCatalogEntry{"shell_exec": {requiresConfirm: true}}
 	if !catalogRequiresConfirm(catalog, "exec_command") {
 		t.Fatal("expected exec_command to require confirm when shell_exec does (via reverse alias lookup)")
 	}
@@ -16,15 +16,15 @@ func TestCatalogRequiresConfirm_execCommandAlias(t *testing.T) {
 func TestCatalogRequiresConfirm_fileToolPrefix(t *testing.T) {
 	t.Parallel()
 	catalog := map[string]confirmCatalogEntry{
-		"save_file":       {requiresConfirm: true, registryName: "file"},
-		"replace_content": {requiresConfirm: true, registryName: "file"},
+		"save_file":       {requiresConfirm: true},
+		"replace_content": {requiresConfirm: true},
 	}
-	// Runtime name "file_save_file" should match catalog key "save_file" via registry prefix.
+	// Runtime name "file_save_file" should match catalog key "save_file" via ToolSet prefix.
 	if !catalogRequiresConfirm(catalog, "file_save_file") {
-		t.Fatal("expected file_save_file to require confirm when save_file does (via registry prefix)")
+		t.Fatal("expected file_save_file to require confirm when save_file does (via ToolSet prefix)")
 	}
 	if !catalogRequiresConfirm(catalog, "file_replace_content") {
-		t.Fatal("expected file_replace_content to require confirm when replace_content does (via registry prefix)")
+		t.Fatal("expected file_replace_content to require confirm when replace_content does (via ToolSet prefix)")
 	}
 	// Exact match still works.
 	if !catalogRequiresConfirm(catalog, "save_file") {
@@ -45,7 +45,7 @@ func TestCatalogRequiresConfirm_nilCatalog(t *testing.T) {
 
 func TestToolConfirmGate_needsConfirm_execCommand(t *testing.T) {
 	t.Parallel()
-	g := &toolConfirmGate{catalog: map[string]confirmCatalogEntry{"shell_exec": {requiresConfirm: true, registryName: "hostexec"}}}
+	g := &toolConfirmGate{catalog: map[string]confirmCatalogEntry{"shell_exec": {requiresConfirm: true}}}
 	if !g.needsConfirm("exec_command", nil) {
 		t.Fatal("expected needsConfirm for exec_command")
 	}
@@ -54,7 +54,7 @@ func TestToolConfirmGate_needsConfirm_execCommand(t *testing.T) {
 func TestToolConfirmGate_needsConfirm_fileSaveFile(t *testing.T) {
 	t.Parallel()
 	g := &toolConfirmGate{catalog: map[string]confirmCatalogEntry{
-		"save_file": {requiresConfirm: true, registryName: "file"},
+		"save_file": {requiresConfirm: true},
 	}}
 	if !g.needsConfirm("file_save_file", nil) {
 		t.Fatal("expected needsConfirm for file_save_file")

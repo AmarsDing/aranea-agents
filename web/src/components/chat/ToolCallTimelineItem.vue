@@ -103,7 +103,7 @@ const { t } = useI18n();
 const node = computed<ToolCallTimelineNode>(() => buildTimelineNode(props.event));
 
 const isRunning = computed(() => props.event.status === 'running');
-const expanded = ref(isRunning.value);
+const expanded = ref(false);
 
 // Running items are always expanded
 watch(isRunning, (running) => {

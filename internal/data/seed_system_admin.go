@@ -33,9 +33,6 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		?, ?, '', 1, 'system_builtin', 'system',
 		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
-		display_name = excluded.display_name,
-		provider = excluded.provider,
-		model = excluded.model,
 		status = excluded.status,
 		agent_description = excluded.agent_description,
 		system_prompt_mode = excluded.system_prompt_mode,
@@ -73,9 +70,6 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		?, ?, '', 1, 'system_builtin', 'system',
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
-		display_name = excluded.display_name,
-		provider = excluded.provider,
-		model = excluded.model,
 		status = excluded.status,
 		agent_description = excluded.agent_description,
 		system_prompt_mode = excluded.system_prompt_mode,
@@ -157,9 +151,6 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		?, ?, '', 1, 'system_builtin', 'system',
 		'memory', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
-		display_name = excluded.display_name,
-		provider = excluded.provider,
-		model = excluded.model,
 		status = excluded.status,
 		agent_description = excluded.agent_description,
 		system_prompt_mode = excluded.system_prompt_mode,
@@ -197,9 +188,6 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		?, ?, '', 1, 'system_builtin', 'system',
 		'skills', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
-		display_name = excluded.display_name,
-		provider = excluded.provider,
-		model = excluded.model,
 		status = excluded.status,
 		agent_description = excluded.agent_description,
 		system_prompt_mode = excluded.system_prompt_mode,
@@ -408,9 +396,6 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 			?, ?, '', 1, 'system_builtin', 'system',
 			?, 'dept_lead'
 		) ON CONFLICT(agent_key) DO UPDATE SET
-			display_name = excluded.display_name,
-			provider = excluded.provider,
-			model = excluded.model,
 			status = excluded.status,
 			agent_description = excluded.agent_description,
 			system_prompt_mode = excluded.system_prompt_mode,

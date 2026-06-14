@@ -599,6 +599,9 @@ func provideRunnerConfig(
 	tools *biz.ToolUsecase,
 	agents biz.AgentRepository,
 	sessions biz.SessionTurnExtrasPort,
+	activityWriter biz.ActivityWriter,
+	eventBus event.Bus,
+	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
 		PluginRT:      pluginRT,
@@ -609,9 +612,12 @@ func provideRunnerConfig(
 			FederatedRetriever: knowledgeFederatedRetriever,
 			Evaluator:          knowledgeEvaluator,
 		},
-		Runs:              runs,
-		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{Tools: tools, Agents: agents, Sessions: sessions},
-		AgentHelper:       &chatagent.TeamAgentHelperAdapter{},
+		Runs: runs,
+		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
+			Tools: tools, Agents: agents, Sessions: sessions,
+			ActivityWriter: activityWriter, EventBus: eventBus, Logger: lg,
+		},
+		AgentHelper: &chatagent.TeamAgentHelperAdapter{},
 	}
 	if graphs != nil {
 		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)

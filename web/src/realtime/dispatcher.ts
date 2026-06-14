@@ -30,6 +30,17 @@ let nextSubId = 1;
 
 export class EnvelopeDispatcher {
   private subs: Map<number, subscription> = new Map();
+  /**
+   * Structural dedup: prevents the same envelope from being dispatched
+   * twice within a single stream lifecycle. This is a safety net that
+   * makes duplicate dispatch *impossible* rather than relying on upstream
+   * correctness (WAL replay, reconnect overlap, network retransmission).
+   *
+   * Lifecycle: cleared on clear() / disconnect, so replay after reconnect
+   * is not affected. Empty envelope IDs are skipped (defensive).
+   */
+  private dispatchedIds: Set<string> = new Set();
+  private static readonly DEDUP_MAX = 256;
 
   on(filter: DispatcherFilter, handler: EnvelopeHandler): () => void {
     const id = nextSubId++;
@@ -50,6 +61,23 @@ export class EnvelopeDispatcher {
   }
 
   dispatch(env: Envelope): void {
+    // Structural dedup: skip envelopes already dispatched in this stream.
+    // This prevents WAL replay, reconnect overlap, or any upstream
+    // duplication from causing duplicate handler invocations.
+    if (env.id) {
+      if (this.dispatchedIds.has(env.id)) return;
+      this.dispatchedIds.add(env.id);
+      if (this.dispatchedIds.size > EnvelopeDispatcher.DEDUP_MAX) {
+        // Evict oldest entries to prevent unbounded growth
+        const iter = this.dispatchedIds.values();
+        for (let i = 0; i < 64; i++) iter.next();
+        for (let i = 0; i < 64; i++) {
+          const r = iter.next();
+          if (r.done) break;
+          this.dispatchedIds.delete(r.value);
+        }
+      }
+    }
     for (const sub of this.subs.values()) {
       if (!this.matchFilter(sub.filter, env)) continue;
       try {
@@ -77,6 +105,7 @@ export class EnvelopeDispatcher {
 
   clear(): void {
     this.subs.clear();
+    this.dispatchedIds.clear();
   }
 }
 

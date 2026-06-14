@@ -122,10 +122,11 @@ func (o *ChatOrchestrator) executeTurn(
 	deps chatagent.TRPCBuilderDeps,
 	runner trpcrunner.Runner,
 	attachmentRefs []artifactbiz.Ref,
+	intentRunOpts []trpcagent.RunOption,
 	turnStart time.Time,
 ) (turnExecuteResult, error) {
-	// Step 1: Build user options (with intent pass + attachments)
-	userOpts, intentRunOpts, err := o.prepareTurnUserOptions(ctx, input, ag, admit, emitter, attachmentRefs, sess)
+	// Step 1: Build user options (with attachments, no intent pass — it ran in parallel with BUILD)
+	userOpts, err := o.prepareTurnUserOptions(ctx, input, ag, admit, emitter, attachmentRefs, sess)
 	if err != nil {
 		return turnExecuteResult{}, err
 	}
@@ -142,7 +143,8 @@ func (o *ChatOrchestrator) executeTurn(
 		userMsg, userMsgPersisted, userOpts, intentRunOpts, turnStart)
 }
 
-// prepareTurnUserOptions builds user options with intent pass and attachment merge.
+// prepareTurnUserOptions builds user options with attachment merge.
+// Intent Pass has been moved to run in parallel with BUILD (see runSingleAgentViaTRPC).
 // Stability:internal
 func (o *ChatOrchestrator) prepareTurnUserOptions(
 	ctx context.Context,
@@ -152,9 +154,9 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 	emitter *event.TraceEmitter,
 	attachmentRefs []artifactbiz.Ref,
 	sess biz.Session,
-) (string, []trpcagent.RunOption, error) {
+) (string, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
-	content := strings.TrimSpace(input.Content)
+	_ = strings.TrimSpace(input.Content) // content used by caller
 	runID := admit.runID
 	dialogMode := admit.dialogMode
 	prov := admit.provider
@@ -163,7 +165,7 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 	userOpts, err := chatagent.UserOptionsJSON(ag, dialogMode, prov, mod, sess.ContextUsedRatio, nil)
 	if err != nil {
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-		return "", nil, err
+		return "", err
 	}
 	if src := event.EnvelopeSourceFromContext(ctx); src != "" {
 		userOpts, err = chatagent.MergeInboundSourceIntoUserOptionsJSON(
@@ -173,52 +175,36 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 		)
 		if err != nil {
 			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-			return "", nil, err
+			return "", err
 		}
-	}
-
-	// Intent Pass
-	var intentRunOpts []trpcagent.RunOption
-	if !biz.IsA2AProxyAgent(ag) {
-		if intent.ShouldRun(ag, content) {
-			intentRunOpts = o.runIntentPass(ctx, ag, sessionID, content, prov, mod, userOpts, emitter)
-		} else {
-			emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
-		}
-	} else {
-		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	}
 
 	userOpts, err = mergeUserAttachmentRefs(userOpts, attachmentRefs)
 	if err != nil {
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-		return "", nil, err
+		return "", err
 	}
-	return userOpts, intentRunOpts, nil
+	return userOpts, nil
 }
 
 // runIntentPass executes the intent recognition pass and returns run options.
+// The userOpts merge is deferred to after BUILD completes (see prepareTurnUserOptions).
 // Stability:internal
 func (o *ChatOrchestrator) runIntentPass(
 	ctx context.Context,
 	ag biz.Agent,
 	sessionID, content, prov, mod string,
-	userOpts string,
 	emitter *event.TraceEmitter,
 ) []trpcagent.RunOption {
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
+	emitter.EmitProgress(ctx, event.StepIDChatIntentPass, "start", "正在理解意图", "orchestration",
+		event.P("run_id", ""), event.P("content_len", len(content)))
 	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.lg())
 	var intentRunOpts []trpcagent.RunOption
 	if intRes.Artifact != nil {
 		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
-		if strings.TrimSpace(intRes.RawJSON) != "" {
-			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
-			if merr != nil {
-				emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
-			} else {
-				userOpts = merged
-			}
-		}
+		emitter.EmitProgress(ctx, event.StepIDChatIntentPass, "done", "意图识别完成", "orchestration",
+			event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
 		intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
 	} else {
 		emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
@@ -309,7 +295,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	ctx, sessionRunID, stopBudget = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
 
 	// Build run options + prepare run context
-	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, intentRunOpts)
+	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, deps, intentRunOpts)
 	firstByteTimeout := chatagent.DefaultFirstByteTimeout
 	if custom, ok := firstByteTimeoutFromContext(ctx); ok {
 		firstByteTimeout = custom
@@ -462,13 +448,14 @@ func (o *ChatOrchestrator) prepareRunContext(
 }
 
 // buildTurnRunOptions assembles the trpc-agent RunOption slice for the LLM call.
-// Stability:internal
+// Stability:evolving
 func (o *ChatOrchestrator) buildTurnRunOptions(
 	ctx context.Context,
 	sess biz.Session,
 	input biz.TurnInput,
 	ag biz.Agent,
 	admit turnAdmissionResult,
+	deps chatagent.TRPCBuilderDeps,
 	intentRunOpts []trpcagent.RunOption,
 ) []trpcagent.RunOption {
 	sessionID := strings.TrimSpace(input.SessionID)
@@ -496,6 +483,41 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(deliveryState))
 		}
 	}
+
+	// Inject per-request Provider/Model override via RunOption.
+	// The cached agent is built with its default model (ag.Provider/ag.Model),
+	// or a system default model when the agent has no model configured.
+	// If the request specifies a different Provider/Model (or the agent has
+	// no model), we resolve it and inject agent.WithModel() so resolveBaseModel()
+	// picks it up at run time.
+	// This is the key enabler for removing Provider/Model from the cache key.
+	prov := admit.provider
+	mod := admit.model
+	agentDefaultProv := strings.TrimSpace(ag.Provider)
+	agentDefaultMod := strings.TrimSpace(ag.Model)
+	agentModelEmpty := agentDefaultProv == "" || agentDefaultMod == ""
+	// When the agent has no model, always inject the request-level model.
+	// When the agent has a model, inject only if the request model differs.
+	if prov != "" && mod != "" && (agentModelEmpty || prov != agentDefaultProv || mod != agentDefaultMod) {
+		if m, err := chatagent.ResolveModelForRunOption(ctx, deps, prov, mod, o.lg()); err == nil && m != nil {
+			runOpts = append(runOpts, trpcagent.WithModel(m))
+			o.lg().Debug("请求级 Model RunOption 已注入",
+				loggateway.StepID("chat.run_option_model"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Str("agent_default_provider", agentDefaultProv),
+				loggateway.Str("agent_default_model", agentDefaultMod),
+				loggateway.Str("request_provider", prov),
+				loggateway.Str("request_model", mod))
+		} else if err != nil {
+			o.lg().Warn("请求级 Model 解析失败，将使用 Agent 默认模型",
+				loggateway.StepID("chat.run_option_model_fail"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Str("provider", prov),
+				loggateway.Str("model", mod),
+				loggateway.Err(err))
+		}
+	}
+
 	return runOpts
 }
 
@@ -806,7 +828,7 @@ type turnBuildResult struct {
 
 // buildTurnRunner constructs the agent deps, builds the agent, creates the runner,
 // and wires the sub-agent service.
-// Stability:internal
+// Stability:evolving
 func (o *ChatOrchestrator) buildTurnRunner(
 	ctx context.Context,
 	sess biz.Session,
@@ -819,6 +841,10 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	dialogMode := admit.dialogMode
 	prov := admit.provider
 	mod := admit.model
+
+	// Emit BUILD phase progress so the frontend knows the backend is working.
+	emitter.EmitProgress(ctx, event.StepIDChatAgentBuild, "start", "正在构建Agent依赖", "orchestration",
+		event.P("run_id", runID), event.P("agent_id", ag.ID))
 
 	deps, err := o.agentBuild.BuildTRPCDeps(ctx, AgentBuildParams{
 		Session: sess, Agent: ag, RunID: runID,
@@ -834,6 +860,8 @@ func (o *ChatOrchestrator) buildTurnRunner(
 		return turnBuildResult{}, TurnError(TurnErrAgentBuildFailed, err.Error())
 	}
 	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
+	emitter.EmitProgress(ctx, event.StepIDChatAgentBuild, "done", "Agent构建完成", "orchestration",
+		event.P("run_id", runID), event.P("agent_id", ag.ID))
 
 	var plugins []trpcplugin.Plugin
 	if o.rt().PluginManager != nil {

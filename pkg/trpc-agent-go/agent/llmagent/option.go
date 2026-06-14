@@ -12,7 +12,6 @@ package llmagent
 
 import (
 	"reflect"
-	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -271,10 +270,6 @@ type Options struct {
 	ToolCallbacks *tool.Callbacks
 	// ToolCallRetryPolicy configures retry behavior for callable tool calls.
 	ToolCallRetryPolicy *tool.RetryPolicy
-	// ToolCallExecutionTimeout is the maximum duration for a single tool execution
-	// (including BeforeTool callbacks, actual execution, and AfterTool callbacks).
-	// A zero or negative value disables the timeout.
-	ToolCallExecutionTimeout time.Duration
 	// Knowledge is the knowledge base for the agent.
 	// If provided, the knowledge search tool will be automatically added.
 	Knowledge knowledge.Knowledge
@@ -1151,13 +1146,6 @@ func WithToolCallbacks(callbacks *tool.Callbacks) Option {
 func WithToolCallRetryPolicy(policy *tool.RetryPolicy) Option {
 	return func(opts *Options) {
 		opts.ToolCallRetryPolicy = policy
-	}
-}
-
-// WithToolCallExecutionTimeout sets the maximum duration for a single tool execution.
-func WithToolCallExecutionTimeout(timeout time.Duration) Option {
-	return func(opts *Options) {
-		opts.ToolCallExecutionTimeout = timeout
 	}
 }
 

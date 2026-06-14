@@ -207,6 +207,10 @@ func (o *TaskOrchestratorImpl) orchestrateSingleAgent(ctx context.Context, taskP
 }
 
 // orchestrateTeam handles the parallel/coordinator team path.
+// For parallel strategy, each subtask allocation creates an independent team
+// so that tasks with different descriptions can execute concurrently.
+// For coordinator strategy, all agents are placed in a single team with a
+// coordinator agent that delegates.
 func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, handle *biz.OrchestrationHandle, mode string) error {
 	o.lg.Info("TaskOrchestrator: team path",
 		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
@@ -230,30 +234,103 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 	// Sort agents by historical performance for this task type.
 	agentKeys = o.sortByPerformance(ctx, agentKeys, string(taskPlan.Strategy))
 
-	// Assemble the team via SpiritTeamAssembler.
-	params := biz.SpiritTeamParams{
-		SpiritSessionID: taskPlan.SpiritSessionID,
-		TaskDescription: taskPlan.UserMessage,
-		AgentKeys:       agentKeys,
-		Mode:            mode,
-		AutoStart:       true,
+	var teamIDs []string
+
+	if mode == "parallel" && len(allocPlan.Allocations) > 1 {
+		// Parallel strategy: create one team per subtask allocation.
+		// Each team gets its own task description from the subtask,
+		// enabling independent execution with focused instructions.
+		parallelTeamIDs, parallelErr := o.orchestrateParallelTeams(ctx, taskPlan, allocPlan)
+		if parallelErr != nil {
+			return parallelErr
+		}
+		teamIDs = parallelTeamIDs
+	} else {
+		// Coordinator strategy (or single allocation): single team with all agents.
+		params := biz.SpiritTeamParams{
+			SpiritSessionID: taskPlan.SpiritSessionID,
+			TaskDescription: taskPlan.UserMessage,
+			AgentKeys:       agentKeys,
+			Mode:            mode,
+			AutoStart:       true,
+		}
+
+		team, _, err := o.assembler.AssembleTeam(ctx, params)
+		if err != nil {
+			return apierror.Internal(apierror.DomainSpirit, "assemble team").WithCause(err)
+		}
+		teamIDs = []string{team.ID}
+
+		o.lg.Info("TaskOrchestrator: team assembled and started",
+			loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+			loggateway.Str("orchestration_id", handle.ID),
+			loggateway.Str("team_id", team.ID),
+		)
 	}
 
-	team, _, err := o.assembler.AssembleTeam(ctx, params)
-	if err != nil {
-		return apierror.Internal(apierror.DomainSpirit, "assemble team").WithCause(err)
-	}
-
-	handle.TeamIDs = []string{team.ID}
+	handle.TeamIDs = teamIDs
 	handle.AgentKeys = agentKeys
 	handle.Status = biz.OrchestrationStatusRunning
-
-	o.lg.Info("TaskOrchestrator: team assembled and started",
-		loggateway.StepID(biz.SpiritStepOrchestratorExecute),
-		loggateway.Str("orchestration_id", handle.ID),
-		loggateway.Str("team_id", team.ID),
-	)
 	return nil
+}
+
+// orchestrateParallelTeams creates one independent team per subtask allocation.
+// Each team receives its own task description derived from the subtask name,
+// enabling focused and concurrent execution. Teams that fail to assemble are
+// logged but do not block the orchestration — the remaining teams proceed.
+// Returns an error only if ALL teams fail to assemble.
+func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) ([]string, error) {
+	var teamIDs []string
+	var lastErr error
+	for _, alloc := range allocPlan.Allocations {
+		key := strings.TrimSpace(alloc.AssignedKey)
+		if key == "" {
+			continue
+		}
+
+		// Use the subtask name as the team's task description for focused execution.
+		taskDesc := alloc.SubTaskName
+		if taskDesc == "" {
+			taskDesc = alloc.SubTaskID
+		}
+		if taskDesc == "" {
+			taskDesc = taskPlan.UserMessage
+		}
+
+		params := biz.SpiritTeamParams{
+			SpiritSessionID: taskPlan.SpiritSessionID,
+			TaskDescription: taskDesc,
+			AgentKeys:       []string{key},
+			Mode:            "parallel",
+			AutoStart:       true,
+		}
+
+		team, _, err := o.assembler.AssembleTeam(ctx, params)
+		if err != nil {
+			lastErr = err
+			o.lg.Warn("TaskOrchestrator: failed to assemble team for subtask, skipping",
+				loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+				loggateway.Str("subtask_id", alloc.SubTaskID),
+				loggateway.Str("agent_key", key),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		teamIDs = append(teamIDs, team.ID)
+
+		o.lg.Info("TaskOrchestrator: parallel team assembled for subtask",
+			loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+			loggateway.Str("team_id", team.ID),
+			loggateway.Str("subtask_id", alloc.SubTaskID),
+			loggateway.Str("agent_key", key),
+		)
+	}
+
+	if len(teamIDs) == 0 {
+		return nil, apierror.Internal(apierror.DomainSpirit, "all parallel teams failed to assemble").WithCause(lastErr)
+	}
+
+	return teamIDs, nil
 }
 
 // orchestrateDAG handles the DAG → Graph compilation path.
@@ -1077,11 +1154,13 @@ func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, 
 	o.bus.Publish(ctx, env)
 
 	// Dual consumption: also publish spirit_team_assembled (old equivalent).
-	if len(handle.TeamIDs) > 0 {
+	// For multi-team orchestrations, publish one event per team so the frontend
+	// Spirit Store creates a team entry for each.
+	for _, tid := range handle.TeamIDs {
 		dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamAssembled, "task-orchestrator", spiritSessionID)
-		dualEnv.TeamID = handle.TeamIDs[0]
+		dualEnv.TeamID = tid
 		dualEnv.Metadata = map[string]any{
-			"team_id":           handle.TeamIDs[0],
+			"team_id":           tid,
 			"spirit_session_id": spiritSessionID,
 			"mode":              string(handle.Strategy),
 			"task_summary":      biz.TruncateRunes(taskPlan.UserMessage, 200),

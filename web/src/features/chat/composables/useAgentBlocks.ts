@@ -364,25 +364,44 @@ function buildRootAgentBlock(
 
         if (toolEv.tool_name === 'plan_and_execute') {
           hasPlanAndExecute = true;
-          // Extract orchestration plan from plan_and_execute arguments
-          const args = asObject(toolEv.arguments);
-          const tasks = Array.isArray(args.tasks) ? args.tasks : Array.isArray(args.steps) ? args.steps : [];
-          for (let i = 0; i < tasks.length; i++) {
-            const t = asObject(tasks[i]);
-            const task = String(t.task || t.description || t.prompt || `步骤 ${i + 1}`);
-            const agentName = String(t.agent_name || t.agent || t.assignee || '');
-            const agentKey = String(t.agent_key || t.key || '');
-            planEntries.push({
-              id: `plan-${i}`,
-              task,
-              agentKey: agentKey || null, // F-18
-              agentName: agentName || null,
-              agentIcon: agentName ? agentName.charAt(0) : null,
-              agentColor: agentName ? agentColorFromKey(agentName) : null,
-              status: 'pending',
-            });
+
+          // Check for tool execution failure first — if the tool itself failed,
+          // the plan has failed regardless of whether result/sub_tasks exist.
+          // Without this check, a failed plan_and_execute leaves planStatus at
+          // 'planning' forever because result is empty and the else-if branch
+          // sets planStatus='planning' unconditionally.
+          if (toolEv.error || toolEv.status === 'failed') {
+            planStatus = 'failed';
+          } else {
+            // Extract orchestration plan from plan_and_execute result (output).
+            // PlanAndExecuteOutput.sub_tasks contains id/name/agent_key/depends_on.
+            // During the 'before' phase (tool still running), result is unavailable
+            // and we show a 'planning' status. When the 'after' phase arrives,
+            // result.sub_tasks populates the plan entries.
+            const result = asObject(toolEv.result);
+            const subTasks = Array.isArray(result.sub_tasks) ? result.sub_tasks : [];
+
+            if (subTasks.length > 0) {
+              for (let i = 0; i < subTasks.length; i++) {
+                const t = asObject(subTasks[i]);
+                const task = String(t.name || t.id || `步骤 ${i + 1}`);
+                const agentKey = String(t.agent_key || '');
+                planEntries.push({
+                  id: `plan-${i}`,
+                  task,
+                  agentKey: agentKey || null,
+                  agentName: agentKey || null,
+                  agentIcon: agentKey ? agentKey.charAt(0) : null,
+                  agentColor: agentKey ? agentColorFromKey(agentKey) : null,
+                  status: 'pending',
+                });
+              }
+              planStatus = 'executing';
+            } else if (!toolEv.result) {
+              // Result not yet available (before phase) — show planning state.
+              planStatus = 'planning';
+            }
           }
-          planStatus = 'executing';
 
           // Also add as a tool entry in timeline
           timeline.push({

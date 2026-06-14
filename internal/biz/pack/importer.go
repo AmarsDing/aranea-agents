@@ -934,6 +934,7 @@ func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz
 		s.ToolsStreamingEnabled = spec.Runtime.Tools.StreamingEnabled
 		s.ToolsCircuitBreakerEnabled = spec.Runtime.Tools.CircuitBreakerEnabled
 		s.ToolsCommandSafetyEnabled = spec.Runtime.Tools.CommandSafetyEnabled
+		s.ToolsExecutionTimeoutSec = spec.Runtime.Tools.ExecutionTimeoutSec
 	}
 	s.ToolsProfile = spec.ToolsProfile
 	if spec.ToolsAllow != nil {

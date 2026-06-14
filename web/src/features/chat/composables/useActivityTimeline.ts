@@ -175,14 +175,21 @@ export function useActivityTimeline() {
   // === Load activities from API (for history recovery) ===
 
   function loadActivities(activityList: Activity[]) {
-    reset();
+    // Atomic replacement: build a complete new Map before assigning to the
+    // shallowRef. This avoids the intermediate empty-map state that causes
+    // a flash when the old Map is cleared and the new data hasn't been
+    // written yet. shallowRef detects the reference change and triggers
+    // reactivity exactly once — no manual triggerRef needed.
+    const newMap = new Map<string, Activity>();
+    let newRootId: string | null = null;
     for (const a of activityList) {
-      activities.value.set(a.id, a);
+      newMap.set(a.id, a);
       if (!a.parentActivityId) {
-        rootActivityId.value = a.id;
+        newRootId = a.id;
       }
     }
-    triggerRef(activities);
+    activities.value = newMap;
+    rootActivityId.value = newRootId;
   }
 
   // AF-FE-14: Load activities from backend API for history recovery

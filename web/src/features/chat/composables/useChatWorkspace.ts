@@ -449,7 +449,15 @@ export function useChatWorkspace() {
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
       inboundHydrateError.value = '';
-      activityTimeline.reset();
+      // AF architecture: Activity data is the source of truth for the timeline.
+      // Turn completion must NOT clear it — the AF path uses Activity records
+      // (grouped by turnId) to render each turn's thinking/action/reply in
+      // correct temporal order. Clearing would force degradation to the message
+      // inference path, which cannot reconstruct multi-round ReAct timelines.
+      // Non-AF mode still resets to preserve legacy behavior.
+      if (!useActivityFirstEnabled()) {
+        activityTimeline.reset();
+      }
     },
     onHydrateError: (sessionId, message) => {
       if (selectedSessionId.value === sessionId) {

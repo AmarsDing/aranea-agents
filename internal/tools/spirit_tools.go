@@ -141,12 +141,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 2: Allocate
-			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
-			out.Steps = append(out.Steps, allocStep)
-			if allocErr != nil {
-				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
-				return out, nil
-			}
+		allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
+		out.Steps = append(out.Steps, allocStep)
+		if allocErr != nil {
+			publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
+			return out, allocErr
+		}
 
 			// Fill agent keys from allocation into subtask summaries.
 			for i := range out.SubTasks {
@@ -159,12 +159,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 3: Orchestrate
-			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
-			out.Steps = append(out.Steps, orchStep)
-			if orchErr != nil {
-				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "orchestrate", orchErr.Error())
-				return out, nil
-			}
+		handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
+		out.Steps = append(out.Steps, orchStep)
+		if orchErr != nil {
+			publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "orchestrate", orchErr.Error())
+			return out, orchErr
+		}
 
 			out.OrchestrationID = handle.ID
 			publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))

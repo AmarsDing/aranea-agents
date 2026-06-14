@@ -15,7 +15,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -131,13 +130,10 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 		return result
 	}
 	if progressive {
-		// RoutedSkillsStateKey is read by trpc-agent-go's SkillsRequestProcessor
-		// to mark skills as [routed] in the overview. skillRoutedSlugsStateKey is
-		// read by the invocation recorder to persist routed_slugs for health metrics.
-		// Both store the same data but serve different consumers.
-		inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)
+		// skillRoutedSlugsStateKey is read by the invocation recorder
+		// to persist routed_slugs for health metrics.
+		inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
 	}
-	inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
 	inv.SetState(skillSelectionReasonStateKey, result.Reasons)
 	return result
 }

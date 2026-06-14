@@ -110,6 +110,7 @@ type ToolsCfg struct {
 	CircuitBreakerEnabled         bool   `json:"tools_circuit_breaker_enabled,omitempty"`
 	CircuitBreakerOverridesJSON   string `json:"tools_circuit_breaker_overrides_json,omitempty"`
 	CommandSafetyEnabled          bool   `json:"tools_command_safety_enabled,omitempty"`
+	ExecutionTimeoutSec           int    `json:"tools_execution_timeout_sec,omitempty"`
 	DeferredJSON                  string `json:"tools_deferred_json,omitempty"`
 	// ToolWeightJSON stores tool weight analysis results for prompt priority hints.
 	ToolWeightJSON string `json:"tool_weight_json,omitempty"`
@@ -284,6 +285,7 @@ func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {
 	s.ToolsCircuitBreakerOverridesJSON = cfg.CircuitBreakerOverridesJSON
 	s.ToolsDeferredJSON = cfg.DeferredJSON
 	s.ToolsCommandSafetyEnabled = cfg.CommandSafetyEnabled
+	s.ToolsExecutionTimeoutSec = cfg.ExecutionTimeoutSec
 	s.ToolWeightJSON = cfg.ToolWeightJSON
 }
 

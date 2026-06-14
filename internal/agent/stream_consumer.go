@@ -248,14 +248,23 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 		meta.TurnPromptTokens = c.result.PromptTok
 		meta.TurnCompletionTok = c.result.CompletionTok
 	}
-	envelopes := c.projector.Project(c.turnCtx, ev, meta)
 
-	// AF-FE-14: When ActivityProjector is active, skip WS publishing of
-	// EventProjector envelopes. The frontend AF path consumes Activity events
-	// exclusively — text_delta/text_done/tool_call/tool_result are redundant.
-	// EventProjector still runs because projectActivityEvents depends on its
-	// output to translate into ActivityProjector callbacks.
-	skipWS := c.opts != nil && c.opts.SkipEventProjectorWS
+	// AF-3: ActivityProjector directly consumes trpc events.
+	// It no longer depends on EventProjector output for translation.
+	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
+	if hasAF {
+		c.opts.ActivityProjector.ProcessEvent(c.turnCtx, ev)
+	}
+
+	// EventProjector still runs for persistence-only purposes:
+	// - trackToolEnvelope (stuck tool detection at finalize)
+	// - PublishActivityEnvelopes (activity persistence)
+	// - Member tool call counting
+	// When ActivityProjector is active, EventProjector output is NEVER published
+	// to WS — ActivityProjector owns the WS path.
+	// Fallback: if ActivityProjector is nil (should not happen after Phase 2),
+	// EventProjector output is published to WS as the legacy path.
+	envelopes := c.projector.Project(c.turnCtx, ev, meta)
 
 	for _, env := range envelopes {
 		c.trackToolEnvelope(env)
@@ -268,7 +277,7 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 				c.result.MemberToolCalls[author]++
 			}
 		}
-		if !skipWS {
+		if !hasAF {
 			if c.observer != nil {
 				c.observer.PublishChat(c.turnCtx, env)
 			} else if c.eventBus != nil {
@@ -279,9 +288,6 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	if c.opts != nil {
 		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes, c.lg)
 	}
-
-	// AF phase: dual-emit Activity events alongside existing envelopes
-	c.projectActivityEvents(ev, envelopes)
 }
 
 func (c *turnStreamConsumer) publishContextUsageStep() {
@@ -329,61 +335,6 @@ func (c *turnStreamConsumer) trackToolEnvelope(env event.Envelope) {
 		}
 	case event.EnvelopeTypeToolResult:
 		delete(c.pendingToolCalls, id)
-	}
-}
-
-// projectActivityEvents maps projected envelopes to ActivityProjector callbacks.
-// This is the dual-emission bridge: existing envelopes are translated into Activity semantic events.
-func (c *turnStreamConsumer) projectActivityEvents(ev *trpcevent.Event, envelopes []event.Envelope) {
-	if c.opts == nil || c.opts.ActivityProjector == nil {
-		return
-	}
-	ap := c.opts.ActivityProjector
-
-	for _, env := range envelopes {
-		switch env.Type {
-		case event.EnvelopeTypeToolCall:
-			if env.ToolCall != nil {
-				startedAt := time.Now().UTC()
-				if t, err := time.Parse(time.RFC3339Nano, env.ToolCall.StartedAt); err == nil {
-					startedAt = t
-				}
-				ap.OnToolCall(c.turnCtx, env.ToolCall.ID, env.ToolCall.Name, env.ToolCall.ArgumentsJSON, env.Author, startedAt)
-			}
-		case event.EnvelopeTypeToolResult:
-			if env.ToolCall != nil {
-				ap.OnToolResult(c.turnCtx, env.ToolCall.ID, env.ToolCall.ResultJSON, env.ToolCall.Status, env.ToolCall.ErrorCode, env.ToolCall.DurationMS)
-			}
-		case event.EnvelopeTypeTextDelta:
-			if env.Content != nil && env.Content.IsPartial {
-				if env.Content.Reasoning != "" {
-					ap.OnReasoningDelta(c.turnCtx, env.Author, env.Content.Reasoning, true)
-				}
-				if env.Content.Text != "" {
-					ap.OnTextDelta(c.turnCtx, env.Author, env.Content.Text)
-				}
-			}
-		case event.EnvelopeTypeTextDone:
-			if env.Content != nil && !env.Content.IsPartial {
-				if env.Content.Reasoning != "" {
-					// Check reasoning_as_display from extensions
-					reasoningAsDisplay := false
-					if env.Extensions != nil {
-						if v, ok := env.Extensions["reasoning_as_display"]; ok && v == "true" {
-							reasoningAsDisplay = true
-						}
-					}
-					ap.OnReasoningDone(c.turnCtx, env.Author, env.Content.Reasoning, reasoningAsDisplay)
-				}
-				if env.Content.Text != "" {
-					ap.OnTextDone(c.turnCtx, env.Author, env.Content.Text)
-				}
-			}
-		case event.EnvelopeTypeError:
-			if env.Error != nil {
-				ap.OnError(c.turnCtx, env.Error.Message, env.Error.Type, env.Error.Code)
-			}
-		}
 	}
 }
 

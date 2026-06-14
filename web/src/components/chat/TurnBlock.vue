@@ -86,7 +86,7 @@
                 v-for="tool in step.linkedTools.filter(t => !isTodoWriteTool(t.tool_name))"
                 :key="tool.id"
                 :event="tool"
-                :initial-collapsed="isToolEventCompleted(tool)"
+                :initial-collapsed="true"
                 class="q-mb-xs"
                 @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
               />
@@ -435,11 +435,6 @@ function stepTitle(step: ReactStepWithTools): string {
 
 function renderStepBody(body: string): string {
   return renderChatMarkdown(body.trim());
-}
-
-function isToolEventCompleted(event: ToolUseEvent): boolean {
-  const s = event.status;
-  return s === 'success' || s === 'failed' || s === 'cancelled';
 }
 
 // ── Collapsed state ──

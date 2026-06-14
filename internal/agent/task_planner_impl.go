@@ -933,14 +933,16 @@ func stripDecompositionFences(s string) string {
 }
 
 // publishPlanCreated publishes the spirit_plan_created event after a TaskPlan is persisted.
-// For dual consumption (REQ-SO-04), also publishes spirit_team_assembled (old equivalent).
+// The spirit_team_assembled event is NOT published here — it is only published by
+// SpiritTeamAssembler when a real team is actually created, preventing ghost team
+// entries in the frontend with fake plan IDs.
 func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.TaskPlan) {
 	if impl.bus == nil || plan == nil {
 		return
 	}
 	spiritSessionID := plan.SpiritSessionID
 
-	// New event: spirit_plan_created
+	// spirit_plan_created: the canonical event for plan creation.
 	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritPlanCreated, "task-planner", spiritSessionID)
 	env.Metadata = map[string]any{
 		"plan_id":           plan.ID,
@@ -953,17 +955,4 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 		"subtask_count":     len(plan.SubTasks),
 	}
 	impl.bus.Publish(ctx, env)
-
-	// Dual consumption: also publish spirit_team_assembled (old equivalent)
-	// so that the existing frontend continues to work during migration.
-	dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamAssembled, "task-planner", spiritSessionID)
-	dualEnv.Metadata = map[string]any{
-		"team_id":           plan.ID,
-		"team_name":         "Task Plan: " + biz.TruncateRunes(plan.UserMessage, 50),
-		"task_summary":      biz.TruncateRunes(plan.UserMessage, 200),
-		"mode":              string(plan.Strategy),
-		"total_steps":       len(plan.SubTasks),
-		"spirit_session_id": spiritSessionID,
-	}
-	impl.bus.Publish(ctx, dualEnv)
 }

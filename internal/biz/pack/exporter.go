@@ -675,6 +675,7 @@ func buildRuntimePackSpec(s *biz.AgentRuntimeSettings) *AgentRuntimePackSpec {
 		StreamingEnabled:       s.ToolsStreamingEnabled,
 		CircuitBreakerEnabled:  s.ToolsCircuitBreakerEnabled,
 		CommandSafetyEnabled:   s.ToolsCommandSafetyEnabled,
+		ExecutionTimeoutSec:    s.ToolsExecutionTimeoutSec,
 	}
 
 	// Evolution

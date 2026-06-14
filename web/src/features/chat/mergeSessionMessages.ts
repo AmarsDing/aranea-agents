@@ -263,19 +263,27 @@ export function mergeSessionMessages(
   }
 
   // When snapshots exist, exclude server assistant messages that would duplicate
-  // the snapshot content. The snapshots + ws-stream-* already have the correct
-  // per-round content. The server message contains ALL rounds merged into one.
-  const serverAssistantIds = new Set<string>();
+  // the snapshot content. The snapshots (ws-snap-*) already have the correct
+  // per-round reasoning/text. The server's main assistant message contains ALL
+  // rounds merged into one — including it would duplicate snapshot content.
+  //
+  // However, tool activity messages (act-*, schema=chat.activity/v1) must NOT
+  // be excluded: they contain tool call details (name/args/result) that are
+  // distinct from the reasoning/text in snapshots. Excluding them caused tool
+  // messages to disappear after reload.
+  const serverMainAssistantIds = new Set<string>();
   if (hasSnapshots) {
     for (const m of normalizedServer) {
-      if (m.role === 'assistant') serverAssistantIds.add(m.id);
+      if (m.role === 'assistant' && !isActivityMessage(m)) {
+        serverMainAssistantIds.add(m.id);
+      }
     }
   }
 
   const merged: Message[] = [];
   for (const srv of normalizedServer) {
-    // Skip server assistant messages when snapshots exist — they'd duplicate content
-    if (hasSnapshots && serverAssistantIds.has(srv.id)) continue;
+    // Skip server main assistant messages when snapshots exist — they'd duplicate content
+    if (hasSnapshots && serverMainAssistantIds.has(srv.id)) continue;
     merged.push(srv);
   }
   for (const row of local) {

@@ -441,6 +441,7 @@ func (s *AgentRuntimeSettings) GetTools() ToolsCfg {
 		CircuitBreakerOverridesJSON: s.ToolsCircuitBreakerOverridesJSON,
 		DeferredJSON:          s.ToolsDeferredJSON,
 		CommandSafetyEnabled:  s.ToolsCommandSafetyEnabled,
+		ExecutionTimeoutSec:   s.ToolsExecutionTimeoutSec,
 		ToolWeightJSON:        s.ToolWeightJSON,
 	}
 }

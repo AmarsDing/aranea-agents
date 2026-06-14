@@ -29,18 +29,14 @@ func (m *mockAgent) FindSubAgent(name string) trpcagent.Agent  { return nil }
 // makeAgent returns a distinct trpcagent.Agent for cache tests.
 func makeAgent(key string) trpcagent.Agent { return &mockAgent{key: key} }
 
-func newTestCache(cap int, ttl time.Duration) *BuildCache {
-	c := newBuildCache(cap, ttl)
-	// Mark GC as started so tests don't accidentally start a real GC loop.
-	// Tests that exercise GC start it explicitly.
-	c.started = true
-	return c
+func newTestCache(cap int) *BuildCache {
+	return newBuildCache(cap)
 }
 
 // TestBuildCacheLRUEviction verifies that the LRU cap is honored and the
 // least-recently-used entry is the one evicted.
 func TestBuildCacheLRUEviction(t *testing.T) {
-	c := newTestCache(2, time.Minute)
+	c := newTestCache(2)
 	c.put("a", makeAgent("a"), nil)
 	c.put("b", makeAgent("b"), nil)
 	c.put("c", makeAgent("c"), nil) // should evict "a"
@@ -55,23 +51,15 @@ func TestBuildCacheLRUEviction(t *testing.T) {
 	}
 }
 
-// TestBuildCacheTTLExpiry verifies that an entry past its TTL is not
-// returned by get and is removed from the map.
-func TestBuildCacheTTLExpiry(t *testing.T) {
-	c := newTestCache(4, 20*time.Millisecond)
+// TestBuildCacheNoTTL verifies that entries persist indefinitely —
+// no TTL-based expiry exists in the Always-Ready design.
+func TestBuildCacheNoTTL(t *testing.T) {
+	c := newTestCache(4)
 	c.put("k", makeAgent("k"), nil)
-	if got := c.get("k"); got == nil {
-		t.Fatalf("expected k to be present immediately, got nil")
-	}
+	// Wait longer than any reasonable TTL would be.
 	time.Sleep(50 * time.Millisecond)
-	if got := c.get("k"); got != nil {
-		t.Fatalf("expected k to be expired, got %v", got)
-	}
-	c.mu.Lock()
-	_, stillPresent := c.items["k"]
-	c.mu.Unlock()
-	if stillPresent {
-		t.Fatalf("expected k to be removed after expiry, still present")
+	if got := c.get("k"); got == nil {
+		t.Fatalf("expected k to persist (no TTL), got nil")
 	}
 }
 
@@ -79,7 +67,7 @@ func TestBuildCacheTTLExpiry(t *testing.T) {
 // concurrent cache-miss calls for the same key collapse to a single
 // build invocation via singleflight. This is the core thundering-herd guarantee.
 func TestBuildCacheSingleflightCollapsesConcurrentMisses(t *testing.T) {
-	c := newTestCache(8, time.Minute)
+	c := newTestCache(8)
 	var calls int32
 	gate := make(chan struct{})
 
@@ -142,7 +130,7 @@ func TestBuildCacheSingleflightCollapsesConcurrentMisses(t *testing.T) {
 // build surfaces the error to every caller, and that the failed result is
 // NOT cached.
 func TestBuildCacheSingleflightReturnsErrorOnBuildFailure(t *testing.T) {
-	c := newTestCache(4, time.Minute)
+	c := newTestCache(4)
 	sentinel := errors.New("build boom")
 	calls := 0
 
@@ -167,33 +155,11 @@ func TestBuildCacheSingleflightReturnsErrorOnBuildFailure(t *testing.T) {
 	}
 }
 
-// TestBuildCacheSweepEvictsExpiredOnly verifies that sweepExpired prunes
-// only expired entries and leaves live ones intact.
-func TestBuildCacheSweepEvictsExpiredOnly(t *testing.T) {
-	c := newTestCache(4, 10*time.Millisecond)
-	c.put("expired", makeAgent("expired"), nil)
-	time.Sleep(30 * time.Millisecond)
-	c.put("live", makeAgent("live"), nil)
-
-	evicted := c.sweepExpired()
-	if evicted != 1 {
-		t.Fatalf("expected 1 entry evicted, got %d", evicted)
-	}
-	if got := c.get("expired"); got != nil {
-		t.Fatalf("expected expired to be gone, got %v", got)
-	}
-	if got := c.get("live"); got == nil {
-		t.Fatalf("expected live to survive sweep")
-	}
-}
-
-// TestBuildCacheCloseStopsAndClears ensures Close is idempotent, stops
-// the GC loop, and clears all entries.
+// TestBuildCacheCloseStopsAndClears ensures Close is idempotent and
+// clears all entries.
 func TestBuildCacheCloseStopsAndClears(t *testing.T) {
-	c := newTestCache(4, time.Minute)
+	c := newTestCache(4)
 	c.put("k", makeAgent("k"), nil)
-	// newTestCache sets started=true so no GC loop runs; Close must still
-	// clear the map and be idempotent.
 	c.Close()
 	c.Close() // second call must not panic
 	c.mu.Lock()
@@ -204,57 +170,46 @@ func TestBuildCacheCloseStopsAndClears(t *testing.T) {
 	}
 }
 
-// TestBuildCacheGCLoopSelfTerminatesOnIdle verifies that the background
-// reaper exits when the cache stays empty long enough, so test processes
-// don't leak goroutines.
-func TestBuildCacheGCLoopSelfTerminatesOnIdle(t *testing.T) {
-	// Use very short intervals so the test doesn't take 5 minutes.
-	origInterval := buildCacheGCInterval
-	origIdle := buildCacheGCIdleShutdown
-	buildCacheGCInterval = 20 * time.Millisecond
-	buildCacheGCIdleShutdown = 60 * time.Millisecond
-	t.Cleanup(func() {
-		buildCacheGCInterval = origInterval
-		buildCacheGCIdleShutdown = origIdle
-	})
-
-	c := newBuildCache(4, time.Minute)
-	c.ensureGC()
-	// Wait up to ~1s for the loop to self-terminate.
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		c.gcMu.Lock()
-		done := c.gcDone
-		c.gcMu.Unlock()
-		// gcDone is open until runGC closes it; non-blocking check.
-		select {
-		case <-done:
-			return // success
-		default:
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("GC loop did not self-terminate within deadline")
-}
-
-// TestBuildCacheInvalidateByAgentIDPrefix verifies that Invalidate
-// removes every entry whose key starts with "agentID:".
-func TestBuildCacheInvalidateByAgentIDPrefix(t *testing.T) {
-	c := newTestCache(8, time.Minute)
+// TestBuildCacheInvalidateMarksDirty verifies that Invalidate marks
+// entries as dirty (instead of evicting them) so the stale agent
+// continues serving while a background rebuild runs.
+func TestBuildCacheInvalidateMarksDirty(t *testing.T) {
+	c := newTestCache(8)
 	c.put("agent-1:hash1", makeAgent("a1h1"), nil)
 	c.put("agent-1:hash2", makeAgent("a1h2"), nil)
 	c.put("agent-2:hash3", makeAgent("a2h3"), nil)
 
 	c.Invalidate("agent-1")
 
-	if c.get("agent-1:hash1") != nil {
-		t.Fatalf("expected agent-1:hash1 to be invalidated")
+	// Entries should still be present (marked dirty, not evicted).
+	c.mu.Lock()
+	e1, ok1 := c.items["agent-1:hash1"]
+	e2, ok2 := c.items["agent-1:hash2"]
+	e3, ok3 := c.items["agent-2:hash3"]
+	c.mu.Unlock()
+
+	if !ok1 {
+		t.Fatalf("expected agent-1:hash1 to still be present (dirty)")
 	}
-	if c.get("agent-1:hash2") != nil {
-		t.Fatalf("expected agent-1:hash2 to be invalidated")
+	if !ok2 {
+		t.Fatalf("expected agent-1:hash2 to still be present (dirty)")
 	}
-	if c.get("agent-2:hash3") == nil {
-		t.Fatalf("expected agent-2:hash3 to remain")
+	if !ok3 {
+		t.Fatalf("expected agent-2:hash3 to still be present")
+	}
+	if !e1.dirty {
+		t.Fatalf("expected agent-1:hash1 to be marked dirty")
+	}
+	if !e2.dirty {
+		t.Fatalf("expected agent-1:hash2 to be marked dirty")
+	}
+	if e3.dirty {
+		t.Fatalf("expected agent-2:hash3 to NOT be dirty")
+	}
+
+	// get() still returns the stale agent (dirty entries are served).
+	if got := c.get("agent-1:hash1"); got == nil {
+		t.Fatalf("expected dirty entry to still be served via get()")
 	}
 }
 
@@ -262,7 +217,7 @@ func TestBuildCacheInvalidateByAgentIDPrefix(t *testing.T) {
 // with a nil entry — a nil agent would later panic type assertions
 // in the lookup path.
 func TestBuildCachePutNilAgentIsNoop(t *testing.T) {
-	c := newTestCache(2, time.Minute)
+	c := newTestCache(2)
 	c.put("k", nil, nil)
 	if got := c.get("k"); got != nil {
 		t.Fatalf("expected nil agent to be rejected, got %v", got)
@@ -280,7 +235,7 @@ func TestBuildCachePutNilAgentIsNoop(t *testing.T) {
 // This is the key context.WithoutCancel guarantee: the build uses a
 // derived context that survives caller cancellation.
 func TestBuildCacheSingleflightContextIsolation(t *testing.T) {
-	c := newTestCache(8, time.Minute)
+	c := newTestCache(8)
 	buildStarted := make(chan struct{})
 	caller2Ready := make(chan struct{})
 	buildComplete := make(chan struct{})
@@ -367,5 +322,29 @@ func TestBuildCacheSingleflightContextIsolation(t *testing.T) {
 	// The agent should be in the cache.
 	if got := c.get("isolated"); got == nil {
 		t.Fatalf("expected agent to be cached after build completed")
+	}
+}
+
+// TestBuildCachePutClearsDirty verifies that putting a fresh agent
+// clears the dirty flag, allowing the entry to serve normally again.
+func TestBuildCachePutClearsDirty(t *testing.T) {
+	c := newTestCache(4)
+	c.put("agent-1:hash1", makeAgent("v1"), nil)
+	c.Invalidate("agent-1")
+
+	c.mu.Lock()
+	e := c.items["agent-1:hash1"]
+	c.mu.Unlock()
+	if !e.dirty {
+		t.Fatalf("expected entry to be dirty after Invalidate")
+	}
+
+	// Put a fresh agent — should clear dirty.
+	c.put("agent-1:hash1", makeAgent("v2"), nil)
+	c.mu.Lock()
+	e = c.items["agent-1:hash1"]
+	c.mu.Unlock()
+	if e.dirty {
+		t.Fatalf("expected entry to be clean after put")
 	}
 }

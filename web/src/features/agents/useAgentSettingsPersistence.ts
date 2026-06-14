@@ -117,13 +117,15 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
 
   async function saveAgent() {
     if (!deps.selectedProviderModelID.value) {
-      deps.$q.notify({
-        type: 'negative',
-        message: deps.orphanProviderModel.value
-          ? '当前模型不在 Provider 目录或已禁用，请在「模型管理」修正后重新选择'
-          : '请选择已录入且启用的模型',
-      });
-      return;
+      // Allow empty model (agent will inherit from chat interface at runtime).
+      // Only block if the model was explicitly set but is orphaned/disabled.
+      if (deps.orphanProviderModel.value) {
+        deps.$q.notify({
+          type: 'negative',
+          message: '当前模型不在 Provider 目录或已禁用，请在「模型管理」修正后重新选择',
+        });
+        return;
+      }
     }
     if (modelChanged.value) {
       const modelResult = await deps.runAgentModelValidate();

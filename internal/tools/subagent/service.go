@@ -27,7 +27,6 @@ import (
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 const (
@@ -976,6 +975,12 @@ func (t *spawnTool) Declaration() *trpctool.Declaration {
 	}
 }
 
+// Call executes the subagents_spawn tool. It returns the queued Run object
+// (not nil) so that the LLM receives a tool_result confirming the spawn
+// succeeded and containing the Run ID for subsequent subagents_get queries.
+// Returning nil would cause the framework to skip tool_result generation,
+// leaving an orphaned tool_call in the LLM conversation and violating the
+// tool_call/tool_result pairing required by LLM APIs.
 func (t *spawnTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
 		return nil, apierror.Internal(apierror.DomainSubagent, "service unavailable")

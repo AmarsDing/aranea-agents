@@ -75,6 +75,12 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 
 	var cbRegistry *biztool.CircuitBreakerRegistry
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
+		// Tool execution timeout: inject BeforeTool + AfterTool hooks that
+		// enforce a per-tool timeout via context.WithTimeout. This is the
+		// product-layer implementation since the framework lacks built-in timeout.
+		if timeoutHooks := toolExecutionTimeoutHooks(buildToolExecutionTimeout(ag.Settings), lg); len(timeoutHooks) > 0 {
+			entries = append(entries, timeoutHooks...)
+		}
 		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolResultCacheBeforeHook(deps))

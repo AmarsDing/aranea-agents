@@ -221,6 +221,7 @@ func fromEntTools(e *ent.AgentRuntimeSetting) biz.ToolsCfg {
 		CircuitBreakerOverridesJSON: e.ToolsCircuitBreakerOverridesJSON,
 		DeferredJSON:                e.ToolsDeferredJSON,
 		CommandSafetyEnabled:        e.ToolsCommandSafetyEnabled,
+		ExecutionTimeoutSec:         e.ToolsExecutionTimeoutSec,
 		ToolWeightJSON:              e.ToolWeightJSON,
 	}
 }
@@ -445,6 +446,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolsCircuitBreakerOverridesJSON(v.ToolsCircuitBreakerOverridesJSON).
 		SetToolsDeferredJSON(v.ToolsDeferredJSON).
 		SetToolsCommandSafetyEnabled(v.ToolsCommandSafetyEnabled).
+		SetToolsExecutionTimeoutSec(v.ToolsExecutionTimeoutSec).
 		SetVerificationTruncateChars(v.VerificationTruncateChars).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)

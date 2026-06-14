@@ -13,7 +13,6 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -105,8 +104,8 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 	}
 
 	report := analyzePromptRequest(messages)
-	prov := strutil.FirstNonEmpty(deps.Provider, ag.Provider)
-	mod := strutil.FirstNonEmpty(deps.Model, ag.Model)
+	prov := strings.TrimSpace(ag.Provider)
+	mod := strings.TrimSpace(ag.Model)
 	force := l0SnapshotForceDebug()
 
 	// Check if compression set a force-write flag for this session.

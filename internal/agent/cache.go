@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.org/x/sync/singleflight"
 
@@ -20,76 +19,61 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-var (
-	buildCacheDefaultCap     = 128
-	buildCacheTTL            = 10 * time.Minute
-	buildCacheGCInterval     = 2 * time.Minute
-	buildCacheGCIdleShutdown = 5 * time.Minute
-)
+var buildCacheDefaultCap = 128
 
-// buildCacheEntry stores a cached agent along with its expiry time.
+// buildCacheEntry stores a cached agent.
+// TTL has been removed — entries stay until explicitly invalidated or evicted
+// by LRU policy. This ensures that hot agents are always available without
+// periodic cold-start penalties.
 type buildCacheEntry struct {
-	agent     trpcagent.Agent
-	expiresAt time.Time
-	key       string
-	elem      *list.Element
-	a2ui      *planner.A2UIResult
+	agent trpcagent.Agent
+	key   string
+	elem  *list.Element
+	a2ui  *planner.A2UIResult
+	dirty bool // if true, a background rebuild is in progress
 }
 
 // BuildCache is a thread-safe LRU cache for built trpc LLMAgents.
 // It is keyed by a sha256 hash of the agent's configuration fingerprint.
 //
-// Concurrency: singleflight coalesces concurrent builds for the same key so
-// that only one BuildTRPCLLMAgent call runs per key at a time (thundering-herd
-// protection). The builder callback receives a context derived via
-// context.WithoutCancel so that one caller cancelling its request does not
-// abort the shared build.
+// Design principles (Always-Ready Agent):
+//   - No TTL: entries persist until explicitly invalidated or LRU-evicted.
+//     This eliminates the 2-15s cold-start penalty when a hot agent's TTL
+//     expires between requests.
+//   - MarkDirty: instead of evicting on invalidation, entries are marked
+//     dirty and continue serving stale agents while a background rebuild
+//     runs. This ensures zero downtime during configuration changes.
+//   - singleflight: concurrent cache-miss builds for the same key collapse
+//     to a single BuildTRPCLLMAgent invocation (thundering-herd protection).
 type BuildCache struct {
 	mu      sync.Mutex
 	cap     int
-	ttl     time.Duration
 	items   map[string]*buildCacheEntry
 	lruList *list.List // front = most-recently-used
 
 	// singleflight coalesces concurrent cache-miss builds for the same key.
 	sfGroup singleflight.Group
-
-	// GC loop fields — lazily started on first put, self-terminates when
-	// the cache stays empty long enough (buildCacheGCIdleShutdown).
-	started bool
-	gcMu    sync.Mutex
-	gcDone  chan struct{} // closed when the GC goroutine exits
-	gcIdle  time.Duration
 }
 
-var globalBuildCache = newBuildCache(buildCacheDefaultCap, buildCacheTTL)
+var globalBuildCache = newBuildCache(buildCacheDefaultCap)
 
-func newBuildCache(cap int, ttl time.Duration) *BuildCache {
+func newBuildCache(cap int) *BuildCache {
 	if cap <= 0 {
 		cap = buildCacheDefaultCap
 	}
-	if ttl <= 0 {
-		ttl = buildCacheTTL
-	}
 	return &BuildCache{
 		cap:     cap,
-		ttl:     ttl,
 		items:   make(map[string]*buildCacheEntry),
 		lruList: list.New(),
-		gcIdle:  buildCacheGCIdleShutdown,
 	}
 }
 
-// get returns the cached agent for the given key, or nil if not found / expired.
+// get returns the cached agent for the given key, or nil if not found.
 func (c *BuildCache) get(key string) trpcagent.Agent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry, ok := c.items[key]
 	if !ok {
-		return nil
-	}
-	if time.Now().After(entry.expiresAt) {
-		c.evict(key)
 		return nil
 	}
 	c.lruList.MoveToFront(entry.elem)
@@ -101,10 +85,6 @@ func (c *BuildCache) getA2UI(key string) *planner.A2UIResult {
 	defer c.mu.Unlock()
 	entry, ok := c.items[key]
 	if !ok {
-		return nil
-	}
-	if time.Now().After(entry.expiresAt) {
-		c.evict(key)
 		return nil
 	}
 	return entry.a2ui
@@ -119,9 +99,9 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 	}
 	if e, ok := c.items[key]; ok {
 		c.lruList.MoveToFront(e.elem)
-		e.expiresAt = time.Now().Add(c.ttl)
 		e.agent = ag
 		e.a2ui = a2uiResult
+		e.dirty = false
 		return
 	}
 	for len(c.items) >= c.cap {
@@ -132,34 +112,35 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 		c.evict(back.Value.(*buildCacheEntry).key)
 	}
 	entry := &buildCacheEntry{
-		key:       key,
-		agent:     ag,
-		expiresAt: time.Now().Add(c.ttl),
-		a2ui:      a2uiResult,
+		key:   key,
+		agent: ag,
+		a2ui:  a2uiResult,
 	}
 	entry.elem = c.lruList.PushFront(entry)
 	c.items[key] = entry
-	c.ensureGC()
 }
 
-// Invalidate removes all cache entries whose key contains the given agentID prefix.
+// Invalidate marks all cache entries for the given agentID as dirty.
+// The stale agent continues to serve requests until the next request
+// triggers a background rebuild (see BuildTRPCLLMAgentCached).
 func (c *BuildCache) Invalidate(agentID string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	for k := range c.items {
+	for k, e := range c.items {
 		idx := strings.Index(k, ":")
 		if idx >= 0 && k[:idx] == agentID {
-			c.evict(k)
+			e.dirty = true
 		}
 	}
+	c.mu.Unlock()
 }
 
-// InvalidateAll evicts every entry from the cache.
+// InvalidateAll marks every entry as dirty.
 func (c *BuildCache) InvalidateAll() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.items = make(map[string]*buildCacheEntry)
-	c.lruList.Init()
+	for _, e := range c.items {
+		e.dirty = true
+	}
+	c.mu.Unlock()
 }
 
 // evict must be called with c.mu held.
@@ -170,106 +151,25 @@ func (c *BuildCache) evict(key string) {
 	}
 }
 
-// sweepExpired removes all expired entries and returns the count evicted.
-func (c *BuildCache) sweepExpired() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := time.Now()
-	var evicted int
-	for k, e := range c.items {
-		if now.After(e.expiresAt) {
-			c.evict(k)
-			evicted++
-		}
-	}
-	return evicted
-}
-
-// Close stops the GC goroutine (if running) and clears all entries.
-// It is safe to call Close multiple times.
+// Close clears all entries. It is safe to call Close multiple times.
 func (c *BuildCache) Close() {
 	c.mu.Lock()
 	c.items = make(map[string]*buildCacheEntry)
 	c.lruList.Init()
 	c.mu.Unlock()
-
-	c.gcMu.Lock()
-	if c.started {
-		c.started = false
-		done := c.gcDone
-		c.gcMu.Unlock()
-		if done != nil {
-			// Wait for the GC goroutine to exit so we don't leak.
-			select {
-			case <-done:
-			case <-time.After(5 * time.Second):
-			}
-		}
-	} else {
-		c.gcMu.Unlock()
-	}
-}
-
-// ensureGC lazily starts the background GC loop on the first put.
-func (c *BuildCache) ensureGC() {
-	c.gcMu.Lock()
-	defer c.gcMu.Unlock()
-	if c.started {
-		return
-	}
-	c.started = true
-	c.gcDone = make(chan struct{})
-	safego.Go(context.Background(), "agent.cache.gc", func() { c.runGC() })
-}
-
-// runGC periodically sweeps expired entries. It self-terminates when the cache
-// stays empty for buildCacheGCIdleShutdown consecutive intervals, so that
-// long-lived processes don't leak a goroutine when the cache is idle.
-func (c *BuildCache) runGC() {
-	defer close(c.gcDone)
-	emptyStreak := 0
-	ticker := time.NewTicker(buildCacheGCInterval)
-	defer ticker.Stop()
-	for {
-		<-ticker.C
-		c.gcMu.Lock()
-		if !c.started {
-			c.gcMu.Unlock()
-			return
-		}
-		c.gcMu.Unlock()
-
-		c.sweepExpired()
-
-		c.mu.Lock()
-		isEmpty := len(c.items) == 0
-		c.mu.Unlock()
-
-		if isEmpty {
-			emptyStreak++
-		} else {
-			emptyStreak = 0
-		}
-		if emptyStreak >= int(c.gcIdle/buildCacheGCInterval) {
-			c.gcMu.Lock()
-			c.started = false
-			c.gcMu.Unlock()
-			return
-		}
-	}
 }
 
 // BuildCacheKey produces a sha256 fingerprint that uniquely identifies an agent build
 // configuration. The key encodes agent ID + UpdatedAt (covers all DB-level changes)
-// + provider / model / dialog_mode so that per-request option overrides produce their
-// own cache slot.
+// + DialogMode (affects Planner selection at build time) but NOT Provider/Model,
+// which are resolved per-request via RunOption (agent.WithModel) instead of being
+// baked into the cache key. This allows different provider/model combinations to
+// share the same cached agent, dramatically improving cache hit rates.
 func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpHash string) string {
 	type fingerprint struct {
 		AgentID      string
 		AgentUpdated string
 		ConfigJSON   string
-		Provider     string
-		Model        string
 		DialogMode   string
 		SettingsJSON string
 		ToolHash     string
@@ -280,8 +180,6 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 		AgentID:      ag.ID,
 		AgentUpdated: ag.UpdatedAt,
 		ConfigJSON:   strings.TrimSpace(ag.ConfigJSON),
-		Provider:     deps.Provider,
-		Model:        deps.Model,
 		DialogMode:   deps.DialogMode,
 		ToolHash:     toolHash,
 		SkillHash:    skillHash,
@@ -291,26 +189,22 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 		if b, err := json.Marshal(ag.Settings); err == nil {
 			fp.SettingsJSON = string(b)
 		}
-		// ConfigJSON may carry additional configuration not captured in Settings;
-		// always include it so that a ConfigJSON-only change invalidates the cache.
-		if fp.ConfigJSON == "" {
-			fp.ConfigJSON = strings.TrimSpace(ag.ConfigJSON)
-		}
 	}
 	raw, _ := json.Marshal(fp)
 	sum := sha256.Sum256(raw)
 	return fmt.Sprintf("%s:%x", ag.ID, sum)
 }
 
-// InvalidateAgentCache evicts all cached agents for the given agentID from the global cache.
-// Call this whenever an agent, tool, or skill is updated.
+// InvalidateAgentCache marks all cached agents for the given agentID as dirty,
+// triggering background rebuilds. The stale agent continues serving until the
+// rebuild completes. Call this whenever an agent, tool, or skill is updated.
 func InvalidateAgentCache(agentID string) {
 	globalBuildCache.Invalidate(agentID)
 }
 
-// InvalidateAllAgentCaches evicts every entry from the global build cache.
-// Call this when a platform-wide resource (tool catalog, skill list, MCP servers)
-// changes and potentially affects all agents.
+// InvalidateAllAgentCaches marks every cached agent as dirty, triggering
+// background rebuilds. Call this when a platform-wide resource (tool catalog,
+// skill list, MCP servers) changes and potentially affects all agents.
 func InvalidateAllAgentCaches() {
 	globalBuildCache.InvalidateAll()
 }
@@ -320,13 +214,59 @@ func InvalidateAllAgentCaches() {
 // collapse to a single BuildTRPCLLMAgent invocation; the builder receives a
 // context derived via context.WithoutCancel so that one caller cancelling does
 // not abort the shared build.
+//
+// When a dirty entry is found, the stale agent is returned immediately (zero
+// latency) and a background rebuild is triggered to refresh the cache for
+// subsequent requests.
 func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	key := BuildCacheKey(ag, deps, deps.ToolVersionHash, deps.SkillVersionHash, deps.MCPVersionHash)
-	if cached := globalBuildCache.get(key); cached != nil {
+
+	// Snapshot cache entry fields under lock to avoid races with concurrent
+	// Invalidate calls that may set dirty=true or replace the agent.
+	globalBuildCache.mu.Lock()
+	entry, ok := globalBuildCache.items[key]
+	var cachedAgent trpcagent.Agent
+	var dirty bool
+	if ok {
+		cachedAgent = entry.agent
+		dirty = entry.dirty
+	}
+	globalBuildCache.mu.Unlock()
+
+	if ok {
+		if dirty {
+			// Dirty entry: serve stale agent immediately for zero latency,
+			// but also trigger a fresh build in the background so the next
+			// request gets the updated agent. The stale agent is safe to use
+			// because the configuration change only affects tool/skill/MCP
+			// composition, not the LLM agent's core behavior.
+			arametrics.AgentBuildCacheHits.Inc()
+			lg.Info("Agent 构建缓存命中（脏，后台重建中）", loggateway.StepID("agent.cache_hit_dirty"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
+
+			// Kick off a background build to refresh this cache entry.
+			// Use singleflight to coalesce if multiple requests hit the same dirty key.
+			safego.Go(context.Background(), "agent.cache.dirty_rebuild", func() {
+				globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
+					buildCtx := context.WithoutCancel(ctx)
+					built, buildErr := BuildTRPCLLMAgent(buildCtx, ag, deps, lg)
+					if buildErr != nil {
+						lg.Warn("Agent 后台重建失败", loggateway.StepID("agent.cache_rebuild_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(buildErr))
+						return nil, buildErr
+					}
+					globalBuildCache.put(key, built, nil)
+					lg.Info("Agent 后台重建完成", loggateway.StepID("agent.cache_rebuild_done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("cache_key", key))
+					return built, nil
+				})
+			})
+
+			return cachedAgent, nil
+		}
+
 		arametrics.AgentBuildCacheHits.Inc()
 		lg.Info("Agent 构建缓存命中", loggateway.StepID("agent.cache_hit"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
-		return cached, nil
+		return cachedAgent, nil
 	}
+
 	arametrics.AgentBuildCacheMisses.Inc()
 	lg.Info("Agent 构建缓存未命中", loggateway.StepID("agent.cache_miss"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
 
