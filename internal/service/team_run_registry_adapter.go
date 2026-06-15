@@ -20,8 +20,8 @@ func ProvideRunRegistryPort(reg *rt.RunRegistry) biz.RunRegistryPort {
 	return &runRegistryAdapter{inner: reg}
 }
 
-func (a *runRegistryAdapter) Cancel(sessionID string) (bool, string) {
-	return a.inner.Cancel(sessionID)
+func (a *runRegistryAdapter) Cancel(sessionID, reason string) (bool, string) {
+	return a.inner.Cancel(sessionID, reason)
 }
 
 func (a *runRegistryAdapter) GetStatus(sessionID string) (biz.RunStatusEntry, bool) {

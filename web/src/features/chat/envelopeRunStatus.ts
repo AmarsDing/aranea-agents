@@ -16,7 +16,9 @@ export { AWAIT_KIND_REPLY, AWAIT_KIND_TOOL_CONFIRM };
 export function runStatusFromEnvelope(env: Envelope): RunStatusFromWs | null {
   if (env.type !== 'run_status') return null;
   const meta = env.metadata ?? {};
-  const status = String(meta.status ?? 'idle');
+  let status = String(meta.status ?? 'idle');
+  // Backward compat: map legacy 'escalating' to 'durable' (matches backend ParseSessionRunPhase)
+  if (status === 'escalating') status = 'durable';
   if (status === 'background_job') return null;
   return {
     status: status as RunStatusValue,

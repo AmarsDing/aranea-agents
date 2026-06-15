@@ -92,6 +92,22 @@ export function useFollowUpQueue(
     }
   }
 
+  async function onInterruptPending(pendingId: string) {
+    const sid = sessionId.value;
+    if (!sid || !pendingId) return;
+    const runtime = useChatRuntimeStore();
+    try {
+      const ok = await runtime.interruptAndSend(sid, pendingId);
+      if (ok) {
+        pendingMessages.value = pendingMessages.value.filter((pm) => pm.id !== pendingId);
+      } else {
+        notifyError?.('立即发送失败');
+      }
+    } catch (err) {
+      notifyError?.(err instanceof Error ? err.message : '立即发送失败');
+    }
+  }
+
   function watchSending(active: boolean) {
     if (active) {
       // One-shot fetch after 500ms; WS events handle subsequent updates
@@ -111,6 +127,7 @@ export function useFollowUpQueue(
     refreshPendingMessages,
     onRunStatusEnvelope,
     onCancelPending,
+    onInterruptPending,
     onUpdatePending,
     watchSending,
   };

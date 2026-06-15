@@ -35,7 +35,6 @@ export function backgroundJobStatusColor(status: string) {
     case 'running':
     case 'accepted':
     case 'interactive':
-    case 'escalating':
     case 'durable':
       return 'info';
     case 'completed':

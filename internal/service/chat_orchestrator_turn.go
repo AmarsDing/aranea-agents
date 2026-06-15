@@ -88,7 +88,7 @@ func (o *ChatOrchestrator) checkTurnAdmission(input biz.TurnInput, hasActive, co
 	hasRunner := o.HasActiveRunner(input.SessionID)
 	policy := ingressPolicyFromTurnInput(input, true, hasRunner, contextPressure)
 	recordIngressIntentMetric(policy.Intent)
-	if policy.Decision == IngressRejectBusy {
+	if policy.Decision == IngressQueue && policy.Intent == "reject_busy_queue" {
 		return turn.AdmissionVerdict{Action: turn.AdmissionRejectBusy}, true
 	}
 	verdict := o.admitGate().Check(input)
@@ -287,7 +287,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, o.turnTimeout())
+		// Safety upper bound: turnTimeout * 12 (~1h) prevents infinite hangs.
+		// The business-level timeout (turnTimeout) now only triggers a WS notification
+		// instead of failing the turn; this hard deadline is the last resort.
+		ctx, cancel = context.WithTimeout(ctx, o.turnTimeout()*12)
 		defer cancel()
 	}
 
@@ -380,7 +383,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return execResult.userMsg, biz.ChatMessage{}, err
 	}
-	defer execResult.stopBudget()
 	defer func() {
 		o.sessionRunLC().FinishSessionRunLifecycle(ctx, sessionID, execResult.sessionRunID, turnErr)
 	}()

@@ -136,7 +136,7 @@ export function useChatBackgroundJobs(
     }
   });
 
-  const ACTIVE_STATUSES = ['running', 'accepted', 'async_queued', 'queued', 'interactive', 'escalating', 'durable'];
+  const ACTIVE_STATUSES = ['running', 'accepted', 'async_queued', 'queued', 'interactive', 'durable'];
 
   const runningCount = () => rows.value.filter((r) => ACTIVE_STATUSES.includes(r.status)).length;
 

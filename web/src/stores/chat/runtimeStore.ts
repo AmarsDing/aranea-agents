@@ -12,6 +12,7 @@ import {
   enqueueMessage,
   getPendingMessages,
   getRunStatus,
+  interruptAndSendMessage,
   listChatOptions as apiListChatOptions,
   sendMessage as apiSendMessage,
   stopGeneration,
@@ -59,6 +60,10 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     return updatePendingMessage(sessionId, pendingId, content);
   }
 
+  async function interruptAndSend(sessionId: string, pendingEntryId: string): Promise<boolean> {
+    return interruptAndSendMessage(sessionId, pendingEntryId);
+  }
+
   async function submitFeedback(payload: { session_id: string; message_id: string; rating: 'positive' | 'negative' }) {
     return apiSubmitFeedback(payload);
   }
@@ -96,6 +101,7 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     fetchPendingMessages,
     cancelPending,
     updatePending,
+    interruptAndSend,
     submitFeedback,
     cancelBackgroundJob,
     listChatOptions,

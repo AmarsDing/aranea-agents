@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -62,7 +61,7 @@ func (s *sessionRunRepoStub) GetActiveForSession(_ context.Context, sessionID st
 			continue
 		}
 		switch run.Phase {
-		case SessionRunPhaseInteractive, SessionRunPhaseEscalating, SessionRunPhaseDurable:
+		case SessionRunPhaseInteractive, SessionRunPhaseDurable:
 			if run.FinishedAt == "" {
 				return run, nil
 			}
@@ -179,7 +178,7 @@ func (s *sessionRunCheckpointRepoStub) GetBySessionRunID(_ context.Context, sess
 func TestSessionRunUsecaseStartInteractive(t *testing.T) {
 	repo := &sessionRunRepoStub{runs: map[string]SessionRun{}}
 	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
-	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "channel", "agent-1", DefaultSessionRunBudget())
+	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "channel", "agent-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,32 +187,6 @@ func TestSessionRunUsecaseStartInteractive(t *testing.T) {
 	}
 	if run.Source != "channel" {
 		t.Fatalf("source=%q", run.Source)
-	}
-}
-
-func TestSessionRunBudgetWatcherSoftBudget(t *testing.T) {
-	repo := &sessionRunRepoStub{runs: map[string]SessionRun{}}
-	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
-	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "web", "agent-1", SessionRunBudget{SoftBudgetSec: 1, HardBudgetSec: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	phaseCh := make(chan string, 1)
-	cancel := uc.StartBudgetWatcher(context.Background(), run.ID, SessionRunBudget{SoftBudgetSec: 1, HardBudgetSec: 5}, BudgetPhaseCallbacks{
-		OnSoftBudget: func(phase string) { phaseCh <- phase },
-	})
-	defer cancel()
-	select {
-	case phase := <-phaseCh:
-		if phase != SessionRunPhaseEscalating {
-			t.Fatalf("soft phase=%q", phase)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("soft budget did not fire")
-	}
-	got, _ := repo.Get(context.Background(), run.ID)
-	if got.Phase != SessionRunPhaseEscalating {
-		t.Fatalf("repo phase=%q", got.Phase)
 	}
 }
 
@@ -257,37 +230,4 @@ func TestSessionRunTryClaimDurableResume(t *testing.T) {
 	}
 }
 
-func TestSessionRunBudgetWatcherHardBudgetDoesNotPremarkDurable(t *testing.T) {
-	repo := &sessionRunRepoStub{runs: map[string]SessionRun{}}
-	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
-	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "web", "agent-1", SessionRunBudget{SoftBudgetSec: 30, HardBudgetSec: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	hardCh := make(chan string, 1)
-	cancel := uc.StartBudgetWatcher(context.Background(), run.ID, SessionRunBudget{SoftBudgetSec: 30, HardBudgetSec: 1}, BudgetPhaseCallbacks{
-		OnHardBudget: func(phase string) {
-			got, _ := repo.Get(context.Background(), run.ID)
-			if got.Phase == SessionRunPhaseDurable {
-				t.Error("hard budget callback must not see durable phase pre-escalate")
-			}
-			hardCh <- phase
-		},
-	})
-	defer cancel()
-	select {
-	case phase := <-hardCh:
-		if phase != SessionRunPhaseDurable {
-			t.Fatalf("hard phase hint=%q", phase)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("hard budget did not fire")
-	}
-	got, _ := repo.Get(context.Background(), run.ID)
-	if got.Phase == SessionRunPhaseDurable {
-		t.Fatalf("watcher must not mark durable; phase=%q", got.Phase)
-	}
-	if strings.TrimSpace(got.Phase) == "" {
-		t.Fatalf("unexpected empty phase=%q", got.Phase)
-	}
-}
+

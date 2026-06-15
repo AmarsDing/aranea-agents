@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ type PendingMessage struct {
 	Content   string `json:"content"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
+	Priority  int    `json:"priority,omitempty"` // 0=normal, 1=high priority
 }
 
 // PendingMessageQueue stores per-session follow-up message queues (Follow-up Queue / Cursor-style).
@@ -116,6 +118,7 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 			Content:   merged,
 			Status:    queue[last].Status,
 			CreatedAt: queue[last].CreatedAt,
+			Priority:  queue[last].Priority,
 		}
 		q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 		return queue[last].ID
@@ -179,12 +182,54 @@ func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool
 				Content:   newContent,
 				Status:    e.Status,
 				CreatedAt: e.CreatedAt,
+				Priority:  e.Priority,
 			}
 			q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 			return true
 		}
 	}
 	return false
+}
+
+// PromoteToFront moves the specified message to the front of the session queue.
+func (q *PendingMessageQueue) PromoteToFront(sessionID, pendingID string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	queue := q.queues[sessionID]
+	for i, e := range queue {
+		if e.ID == pendingID {
+			if i == 0 {
+				return nil
+			}
+			entry := queue[i]
+			queue = append(queue[:i], queue[i+1:]...)
+			queue = append([]PendingMessage{entry}, queue...)
+			q.queues[sessionID] = queue
+			return nil
+		}
+	}
+	return fmt.Errorf("pending message %s not found in session %s", pendingID, sessionID)
+}
+
+// SetPriority sets the priority of the specified message (0=normal, 1=high).
+func (q *PendingMessageQueue) SetPriority(sessionID, pendingID string, priority int) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	queue := q.queues[sessionID]
+	for i, e := range queue {
+		if e.ID == pendingID {
+			queue[i] = PendingMessage{
+				ID:        e.ID,
+				Content:   e.Content,
+				Status:    e.Status,
+				CreatedAt: e.CreatedAt,
+				Priority:  priority,
+			}
+			q.queues[sessionID] = append([]PendingMessage(nil), queue...)
+			return nil
+		}
+	}
+	return fmt.Errorf("pending message %s not found in session %s", pendingID, sessionID)
 }
 
 func (q *PendingMessageQueue) Close() {

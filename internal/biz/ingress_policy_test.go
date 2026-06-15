@@ -14,7 +14,7 @@ func TestEvaluateIngressPolicy(t *testing.T) {
 		{"route async", IngressPolicyInput{RouteAsync: true}, IngressRouteAsync},
 		{"status with active run", IngressPolicyInput{IsStatusQuery: true, HasActiveRun: true}, IngressStatus},
 		{"status without active run", IngressPolicyInput{IsStatusQuery: true, HasActiveRun: false}, IngressAdmit},
-		{"context pressure with active run no queue", IngressPolicyInput{ContextPressure: true, HasActiveRun: true, EntryPoint: EntryPointChannel}, IngressRejectBusy},
+		{"context pressure with active run no queue", IngressPolicyInput{ContextPressure: true, HasActiveRun: true, EntryPoint: EntryPointChannel}, IngressQueue},
 		{"context pressure with active run allow queue", IngressPolicyInput{ContextPressure: true, HasActiveRun: true, AllowQueue: true}, IngressQueue},
 		{"no active run admits", IngressPolicyInput{}, IngressAdmit},
 	}
@@ -54,11 +54,10 @@ func TestIngressDecisionNeedsTurn(t *testing.T) {
 	}{
 		{IngressAdmit, true},
 		{IngressQueue, true},
-		{IngressSteer, true},
+		{IngressInterrupt, true},
 		{IngressCancel, false},
 		{IngressRouteAsync, false},
 		{IngressRouteBackground, false},
-		{IngressRejectBusy, false},
 		{IngressSkipDuplicate, false},
 		{IngressStatus, false},
 	}

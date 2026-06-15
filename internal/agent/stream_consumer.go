@@ -376,6 +376,8 @@ func (c *turnStreamConsumer) finalize() {
 	}
 	if c.eventBus != nil {
 		PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, c.eventBus, pending)
+		// Push a user-facing notification via WS so the user knows a tool got stuck.
+		publishStuckToolNotification(c.turnCtx, c.projectMeta, c.eventBus, pending)
 	}
 	if c.opts != nil && c.opts.ActivityPersister != nil {
 		FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, pending, c.lg)

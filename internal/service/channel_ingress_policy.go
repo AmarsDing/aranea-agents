@@ -43,12 +43,17 @@ func (h *ChannelIngress) applyPreTurnIngressPolicy(
 	recordIngressIntentMetric(policy.Intent)
 
 	switch policy.Decision {
-	case IngressRejectBusy:
-		if policy.Intent == "context_pressure" {
-			idempotency := ackIdempotencyKey(platform, ev, "context_pressure")
-			return true, h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), biz.ChannelTurnErrorContextOverflowMsg, ev.OutboundMeta, idempotency)
+	case IngressInterrupt:
+		pendingID, err := h.interruptActiveTurn(ctx, chRow, ev, platform, sessionID, ltCfg)
+		if err != nil {
+			return true, err
 		}
-		return false, nil
+		h.recordDelivery(ctx, chRow.ID, "interrupted", map[string]any{
+			"peer_id":    ev.PeerID,
+			"session_id": sessionID,
+			"pending_id": pendingID,
+		}, "")
+		return true, nil
 	case IngressStatus:
 		reply := channelStatusReplyNoRun
 		if hasActive {
@@ -61,23 +66,12 @@ func (h *ChannelIngress) applyPreTurnIngressPolicy(
 		}
 		idempotency := ackIdempotencyKey(platform, ev, "status")
 		return true, h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), reply, ev.OutboundMeta, idempotency)
-	case IngressSteer:
-		pendingID, err := h.steerIntoActiveTurn(ctx, chRow, ev, platform, sessionID, ltCfg)
-		if err != nil {
-			return true, err
-		}
-		h.recordDelivery(ctx, chRow.ID, "steered", map[string]any{
-			"peer_id":    ev.PeerID,
-			"session_id": sessionID,
-			"pending_id": pendingID,
-		}, "")
-		return true, nil
 	default:
 		return false, nil
 	}
 }
 
-func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, sessionID string, ltCfg biz.ChannelLongTaskConfig) (string, error) {
+func (h *ChannelIngress) interruptActiveTurn(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, sessionID string, ltCfg biz.ChannelLongTaskConfig) (string, error) {
 	if h == nil || h.chat == nil || sessionID == "" {
 		return "", nil
 	}
@@ -90,9 +84,15 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 		return "", err
 	}
 	if !accepted {
-		return "", apierror.BadRequest("CHANNEL", "steer rejected")
+		return "", apierror.BadRequest("CHANNEL", "interrupt rejected")
 	}
 	pendingID := h.chat.LastPendingMessageID(sessionID)
+	if pendingID == "" {
+		return "", nil
+	}
+	if err := h.chat.InterruptAndSendMessage(ctx, sessionID, pendingID); err != nil {
+		return pendingID, err
+	}
 	if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
 		return pendingID, err
 	}

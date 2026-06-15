@@ -99,6 +99,15 @@ message UpdatePendingMessageResponse {
   bool updated = 1;
 }
 
+message InterruptAndSendMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string pending_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message InterruptAndSendMessageResponse {
+  bool sent = 1;
+}
+
 // RunStatus represents the lifecycle state of an agent run within a session.
 message RunStatus {
   // run_id is the unique identifier of the current or most-recent run.
@@ -223,6 +232,12 @@ service ChatService {
   rpc UpdatePendingMessage(UpdatePendingMessageRequest) returns (UpdatePendingMessageResponse) {
     option (google.api.http) = {
       post: "/v1/chat/pending/update"
+      body: "*"
+    };
+  }
+  rpc InterruptAndSendMessage(InterruptAndSendMessageRequest) returns (InterruptAndSendMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/pending/interrupt-and-send"
       body: "*"
     };
   }

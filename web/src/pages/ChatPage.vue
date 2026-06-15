@@ -116,6 +116,7 @@
         @send="composer.onSend"
         @stop="composer.stopStreaming"
         @cancel-pending="composer.onCancelPending"
+        @interrupt-pending="composer.onInterruptPending"
         @update-pending="composer.onUpdatePending"
         @submit-await-reply="composer.submitAwaitingReply"
         @submit-tool-confirm="composer.submitToolConfirm"

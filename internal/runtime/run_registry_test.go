@@ -54,7 +54,7 @@ func TestRunRegistryCancelManagedRunner(t *testing.T) {
 	runner := &registryRunner{cancelOK: true}
 	reg.StoreRunner("session-1", "run-1", runner)
 
-	if stopped, _ := reg.Cancel("session-1"); !stopped {
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
 		t.Fatalf("Cancel() = false, want true")
 	}
 	if !runner.cancelled {
@@ -70,7 +70,7 @@ func TestRunRegistryCancelFallsBackToClose(t *testing.T) {
 	runner := &registryRunner{}
 	reg.StoreRunner("session-1", "run-1", runner)
 
-	if stopped, _ := reg.Cancel("session-1"); !stopped {
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
 		t.Fatalf("Cancel() = false, want true")
 	}
 	if !runner.closed {
@@ -86,7 +86,7 @@ func TestRunRegistryCancelableRunUpdatesStatus(t *testing.T) {
 	cancelled := false
 	reg.StoreCancelable("session-1", "run-1", func() { cancelled = true })
 
-	if stopped, _ := reg.Cancel("session-1"); !stopped {
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
 		t.Fatalf("Cancel() = false, want true")
 	}
 	if !cancelled {
@@ -121,7 +121,7 @@ func TestRunRegistryStoreRunnerPreservesCancel(t *testing.T) {
 	reg.StoreCancelable("session-1", "run-outer", func() { cancelled = true })
 	reg.StoreRunner("session-1", "run-inner", &registryRunner{})
 
-	if stopped, _ := reg.Cancel("session-1"); !stopped {
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
 		t.Fatalf("Cancel() = false, want true")
 	}
 	if !cancelled {

@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/safego"
 )
 
 // SessionRunStartParams aggregates the parameters for starting a session run lifecycle.
@@ -31,12 +29,12 @@ type SessionRunStartParams struct {
 // sessionRunLifecycle manages the session run lifecycle: begin, finish, and escalate to durable.
 // Stability:evolving
 type sessionRunLifecycle interface {
-	// BeginSessionRunLifecycle starts a session run, creates budget watchers, and stores the binding.
-	BeginSessionRunLifecycle(ctx context.Context, p SessionRunStartParams) (context.Context, string, context.CancelFunc)
+	// BeginSessionRunLifecycle starts a session run and stores the binding.
+	BeginSessionRunLifecycle(ctx context.Context, p SessionRunStartParams) (context.Context, string)
 	// FinishSessionRunLifecycle ends a session run and cleans up the binding.
 	FinishSessionRunLifecycle(ctx context.Context, sessionID, sessionRunID string, turnErr error)
-	// EscalateSessionRunToDurable escalates a session run from interactive to durable mode.
-	EscalateSessionRunToDurable(ctx context.Context, sessionID, sessionRunID string)
+	// EscalateToDurableByUser escalates a session run from interactive to durable mode by user action.
+	EscalateToDurableByUser(ctx context.Context, sessionID, sessionRunID string)
 	// ResolveChannelLongTaskConfig resolves the channel long task config for a session.
 	ResolveChannelLongTaskConfig(ctx context.Context, sess biz.Session) biz.ChannelLongTaskConfig
 }
@@ -102,17 +100,15 @@ func (l *chatSessionRunLifecycle) ResolveChannelLongTaskConfig(ctx context.Conte
 	return biz.ParseChannelLongTaskConfig(ch.ConfigJSON)
 }
 
-// BeginSessionRunLifecycle starts a session run, creates budget watchers, and stores the binding.
+// BeginSessionRunLifecycle starts a session run and stores the binding.
 func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 	ctx context.Context, p SessionRunStartParams,
-) (context.Context, string, context.CancelFunc) {
-	stopBudget := func() {}
+) (context.Context, string) {
 	if l == nil || l.sessionRuns == nil {
-		return ctx, "", stopBudget
+		return ctx, ""
 	}
 	sessionID := strings.TrimSpace(p.Session.ID)
 	ltCfg := l.ResolveChannelLongTaskConfig(ctx, p.Session)
-	budget := ltCfg.RunPolicy()
 	run, err := l.sessionRuns.StartInteractive(
 		ctx,
 		sessionID,
@@ -120,10 +116,9 @@ func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 		p.RuntimeRunID,
 		event.EnvelopeSourceFromContext(ctx),
 		strings.TrimSpace(p.Agent.ID),
-		budget,
 	)
 	if err != nil || run.ID == "" {
-		return ctx, "", stopBudget
+		return ctx, ""
 	}
 	ctx = event.WithSessionRunID(ctx, run.ID)
 	ctx = event.WithTurnID(ctx, p.TurnID)
@@ -148,70 +143,11 @@ func (l *chatSessionRunLifecycle) BeginSessionRunLifecycle(
 			event.P("turn_id", p.TurnID),
 		)
 	}
-	stopBudget = l.sessionRuns.StartBudgetWatcher(ctx, run.ID, budget, biz.BudgetPhaseCallbacks{
-		OnSoftBudget: func(phase string) {
-			if p.Emitter != nil {
-				p.Emitter.Log("run.budget.soft", event.FlowPhaseDone, "软预算到达",
-					event.P("session_run_id", run.ID), event.P("run.phase", phase))
-			}
-			l.onSessionRunSoftBudget(ctx, run, ltCfg)
-		},
-		OnHardBudget: func(phase string) {
-			if p.Emitter != nil {
-				p.Emitter.Log("run.budget.hard", event.FlowPhaseDone, "硬预算到达",
-					event.P("session_run_id", run.ID), event.P("run.phase", phase))
-			}
-			l.EscalateSessionRunToDurable(ctx, sessionID, run.ID)
-		},
-	})
-	return ctx, run.ID, stopBudget
+	return ctx, run.ID
 }
 
-func (l *chatSessionRunLifecycle) onSessionRunSoftBudget(ctx context.Context, run biz.SessionRun, ltCfg biz.ChannelLongTaskConfig) {
-	if l == nil {
-		return
-	}
-	auto := ltCfg.AutoEscalateAfterSoftBudget
-	if l.escalation != nil {
-		_ = l.escalation.NotifySoftBudget(ctx, run, auto)
-	}
-	if !auto {
-		return
-	}
-	wait := time.Duration(ltCfg.SoftEscalateConfirmSecOrDefault()) * time.Second
-	runID := run.ID
-	sessionID := run.SessionID
-	safego.Go(ctx, "session-run-auto-escalate", func() {
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
-		fromTimer := false
-		select {
-		case <-ctx.Done():
-		case <-timer.C:
-			fromTimer = true
-		}
-		escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		cur, err := l.sessionRuns.Get(escalateCtx, runID)
-		if err != nil || cur.ID == "" {
-			return
-		}
-		if cur.Phase != biz.SessionRunPhaseEscalating {
-			if fromTimer {
-				l.lg.Warn("skipping auto-escalate, run no longer escalating",
-					loggateway.StepID("session-run-auto-escalate"),
-					loggateway.Str("session_run_id", runID),
-					loggateway.Any("current_phase", cur.Phase),
-				)
-			}
-			return
-		}
-		l.EscalateSessionRunToDurable(escalateCtx, sessionID, runID)
-	})
-}
-
-// EscalateSessionRunToDurable escalates a session run from interactive to durable mode.
-func (l *chatSessionRunLifecycle) EscalateSessionRunToDurable(ctx context.Context, sessionID, sessionRunID string) {
+// EscalateToDurableByUser escalates a session run from interactive to durable mode by user action.
+func (l *chatSessionRunLifecycle) EscalateToDurableByUser(ctx context.Context, sessionID, sessionRunID string) {
 	if l == nil || l.sessionRuns == nil {
 		return
 	}
@@ -306,11 +242,11 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 		)
 		return
 	}
-	stopped, runID := l.runs.Cancel(sessionID)
+	stopped, runID := l.runs.Cancel(sessionID, "durable_escalate")
 	if stopped {
 		l.runStatus.SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, "")
 	}
-	l.sessionState.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonBudgetEscalated)
+	l.sessionState.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserEscalated)
 	run.Phase = biz.SessionRunPhaseDurable
 	run.CheckpointID = cp.ID
 	if l.escalation != nil {
@@ -342,14 +278,6 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 	cur, err := l.sessionRuns.Get(ctx, sessionRunID)
 	if err == nil && cur.Phase == biz.SessionRunPhaseDurable {
 		return
-	}
-	// If the run is in escalating phase and the turn completed successfully,
-	// mark it as completed (the turn finished before hard budget was reached).
-	if err == nil && cur.Phase == biz.SessionRunPhaseEscalating {
-		l.lg.Info("session run in escalating phase, marking as completed since turn finished",
-			loggateway.StepID("chat.session_run_escalating_complete"),
-			loggateway.Str("session_run_id", sessionRunID),
-		)
 	}
 	if err := l.sessionRuns.Complete(ctx, sessionRunID); err != nil {
 		l.lg.Error("session run complete transition failed",

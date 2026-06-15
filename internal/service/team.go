@@ -319,7 +319,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		return nil, mapTeamErr(err)
 	}
 	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
-		if cancelled, reason := s.runs.Cancel(r.SessionID); !cancelled && reason != "" {
+		if cancelled, reason := s.runs.Cancel(r.SessionID, "team_cancel"); !cancelled && reason != "" {
 			s.lg.Warn("cancel team run session failed", loggateway.Str("session_id", r.SessionID), loggateway.Str("reason", reason))
 		}
 		runID := strings.TrimSpace(r.ID)

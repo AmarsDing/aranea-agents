@@ -6,7 +6,7 @@ import trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 // Channel ingress, and WebSocket cancel/status/enqueue handlers.
 type RunGateway interface {
 	HasActive(sessionID string) bool
-	Cancel(sessionID string) (bool, string)
+	Cancel(sessionID, reason string) (bool, string)
 	EnqueueUserMessage(sessionID, content string) (bool, error)
 	GetStatus(sessionID string) (RunStatusEntry, bool)
 	ActiveRunner(sessionID string) (trpcrunner.Runner, string, bool)

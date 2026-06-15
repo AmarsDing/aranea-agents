@@ -8,8 +8,7 @@ type IngressDecision string
 const (
 	IngressAdmit           IngressDecision = "admit"
 	IngressQueue           IngressDecision = "queue"
-	IngressSteer           IngressDecision = "steer"
-	IngressRejectBusy      IngressDecision = "reject_busy"
+	IngressInterrupt       IngressDecision = "interrupt"
 	IngressRouteAsync      IngressDecision = "route_async"
 	IngressRouteBackground IngressDecision = "route_background"
 	IngressCancel          IngressDecision = "cancel"
@@ -61,7 +60,7 @@ func EvaluateIngressPolicy(in IngressPolicyInput) IngressPolicyResult {
 		if in.AllowQueue && in.EntryPoint != EntryPointChannel {
 			return IngressPolicyResult{Decision: IngressQueue, Intent: "context_force_queue"}
 		}
-		return IngressPolicyResult{Decision: IngressRejectBusy, Intent: "context_pressure"}
+		return IngressPolicyResult{Decision: IngressQueue, Intent: "context_pressure"}
 	}
 	if in.HasActiveRun {
 		allowQueue := in.AllowQueue
@@ -81,11 +80,11 @@ func EvaluateIngressPolicy(in IngressPolicyInput) IngressPolicyResult {
 		switch admission {
 		case AdmitEnqueue:
 			if in.EntryPoint == EntryPointChannel {
-				return IngressPolicyResult{Decision: IngressSteer, Intent: "steer"}
+				return IngressPolicyResult{Decision: IngressInterrupt, Intent: "interrupt"}
 			}
 			return IngressPolicyResult{Decision: IngressQueue, Intent: "queue"}
 		case AdmitReject:
-			return IngressPolicyResult{Decision: IngressRejectBusy, Intent: "reject_busy"}
+			return IngressPolicyResult{Decision: IngressQueue, Intent: "reject_busy_queue"}
 		}
 	}
 	return IngressPolicyResult{Decision: IngressAdmit, Intent: "admit"}
@@ -141,7 +140,7 @@ func ChannelIngressPolicyInput(text string, ltCfg ChannelLongTaskConfig, allowQu
 // IngressDecisionNeedsTurn reports whether the decision requires a Turn execution.
 func IngressDecisionNeedsTurn(decision IngressDecision) bool {
 	switch decision {
-	case IngressAdmit, IngressQueue, IngressSteer:
+	case IngressAdmit, IngressQueue, IngressInterrupt:
 		return true
 	default:
 		return false

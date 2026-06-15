@@ -274,7 +274,7 @@ WHERE 1=1`
 		query += ` AND r.phase=?`
 		args = append(args, biz.NormalizeSessionRunPhase(st))
 	} else {
-		query += ` AND r.phase IN ('escalating','durable','interactive') AND (r.finished_at IS NULL OR r.finished_at='')`
+		query += ` AND r.phase IN ('durable','interactive') AND (r.finished_at IS NULL OR r.finished_at='')`
 	}
 	query += ` ORDER BY r.created_at DESC LIMIT ?`
 	args = append(args, limit)
@@ -323,7 +323,7 @@ func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID stri
 	item, err := client.SessionRun.Query().
 		Where(
 			sessionrun.SessionIDEQ(sessionID),
-			sessionrun.PhaseIn(biz.SessionRunPhaseInteractive, biz.SessionRunPhaseEscalating, biz.SessionRunPhaseDurable),
+			sessionrun.PhaseIn(biz.SessionRunPhaseInteractive, biz.SessionRunPhaseDurable),
 			sessionrun.FinishedAtEQ(""),
 		).
 		Order(ent.Desc(sessionrun.FieldCreatedAt)).
@@ -429,7 +429,7 @@ WHERE id=? AND phase=?`,
 //
 // B01 fix: durable runs with valid checkpoints are preserved (they will be
 // resumed by SessionRunDurableWorker). Only durable runs without a checkpoint
-// (anomalous data) are cleaned up alongside interactive/escalating orphans.
+// (anomalous data) are cleaned up alongside interactive orphans.
 func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, error) {
 	db := r.writeDB(ctx)
 	if db == nil {
@@ -440,7 +440,7 @@ func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, er
 	res, err := db.ExecContext(ctx, `
 UPDATE session_runs SET phase=?, error_message='orphaned: process restarted', finished_at=?, phase_changed_at=?, updated_at=?
 WHERE (
-    phase IN ('interactive','escalating')
+    phase IN ('interactive')
     OR (phase='durable' AND (checkpoint_id IS NULL OR checkpoint_id=''))
   )
   AND (finished_at IS NULL OR finished_at='')`,

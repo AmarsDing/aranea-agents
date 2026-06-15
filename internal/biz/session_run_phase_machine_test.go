@@ -13,14 +13,10 @@ func TestSessionRunPhaseMachine_Transition_Valid(t *testing.T) {
 		event SessionRunPhaseEvent
 		want  SessionRunPhase
 	}{
-		{PhaseInteractive, PhaseEventEscalate, PhaseEscalating},
+		{PhaseInteractive, PhaseEventUserEscalate, PhaseDurable},
 		{PhaseInteractive, PhaseEventComplete, PhaseCompleted},
 		{PhaseInteractive, PhaseEventFail, PhaseFailed},
 		{PhaseInteractive, PhaseEventCancel, PhaseCancelled},
-		{PhaseEscalating, PhaseEventDurable, PhaseDurable},
-		{PhaseEscalating, PhaseEventComplete, PhaseCompleted},
-		{PhaseEscalating, PhaseEventFail, PhaseFailed},
-		{PhaseEscalating, PhaseEventCancel, PhaseCancelled},
 		{PhaseDurable, PhaseEventComplete, PhaseCompleted},
 		{PhaseDurable, PhaseEventFail, PhaseFailed},
 		{PhaseDurable, PhaseEventCancel, PhaseCancelled},
@@ -47,23 +43,22 @@ func TestSessionRunPhaseMachine_Transition_Invalid(t *testing.T) {
 		// Terminal phases have no outgoing transitions.
 		{PhaseCompleted, PhaseEventComplete},
 		{PhaseCompleted, PhaseEventFail},
-		{PhaseCompleted, PhaseEventEscalate},
+		{PhaseCompleted, PhaseEventUserEscalate},
 		{PhaseCompleted, PhaseEventDurable},
 		{PhaseCompleted, PhaseEventCancel},
 		{PhaseFailed, PhaseEventComplete},
 		{PhaseFailed, PhaseEventFail},
-		{PhaseFailed, PhaseEventEscalate},
+		{PhaseFailed, PhaseEventUserEscalate},
 		{PhaseFailed, PhaseEventDurable},
 		{PhaseFailed, PhaseEventCancel},
 		{PhaseCancelled, PhaseEventComplete},
 		{PhaseCancelled, PhaseEventFail},
-		{PhaseCancelled, PhaseEventEscalate},
+		{PhaseCancelled, PhaseEventUserEscalate},
 		{PhaseCancelled, PhaseEventDurable},
 		{PhaseCancelled, PhaseEventCancel},
 		// Wrong events for the current phase.
 		{PhaseInteractive, PhaseEventDurable},
-		{PhaseEscalating, PhaseEventEscalate},
-		{PhaseDurable, PhaseEventEscalate},
+		{PhaseDurable, PhaseEventUserEscalate},
 		{PhaseDurable, PhaseEventDurable},
 	}
 	for _, tt := range tests {
@@ -83,39 +78,28 @@ func TestSessionRunPhaseMachine_CanTransition(t *testing.T) {
 		to    SessionRunPhase
 		valid bool
 	}{
-		{PhaseInteractive, PhaseEscalating, true},
+		{PhaseInteractive, PhaseDurable, true},
 		{PhaseInteractive, PhaseCompleted, true},
 		{PhaseInteractive, PhaseFailed, true},
 		{PhaseInteractive, PhaseCancelled, true},
-		{PhaseEscalating, PhaseDurable, true},
-		{PhaseEscalating, PhaseCompleted, true},
-		{PhaseEscalating, PhaseFailed, true},
-		{PhaseEscalating, PhaseCancelled, true},
 		{PhaseDurable, PhaseCompleted, true},
 		{PhaseDurable, PhaseFailed, true},
 		{PhaseDurable, PhaseCancelled, true},
 		// Invalid
-		{PhaseInteractive, PhaseDurable, false},
 		{PhaseInteractive, PhaseInteractive, false},
-		{PhaseEscalating, PhaseInteractive, false},
-		{PhaseEscalating, PhaseEscalating, false},
 		{PhaseDurable, PhaseInteractive, false},
-		{PhaseDurable, PhaseEscalating, false},
 		{PhaseDurable, PhaseDurable, false},
 		{PhaseCompleted, PhaseInteractive, false},
-		{PhaseCompleted, PhaseEscalating, false},
 		{PhaseCompleted, PhaseDurable, false},
 		{PhaseCompleted, PhaseCompleted, false},
 		{PhaseCompleted, PhaseFailed, false},
 		{PhaseCompleted, PhaseCancelled, false},
 		{PhaseFailed, PhaseInteractive, false},
-		{PhaseFailed, PhaseEscalating, false},
 		{PhaseFailed, PhaseDurable, false},
 		{PhaseFailed, PhaseCompleted, false},
 		{PhaseFailed, PhaseFailed, false},
 		{PhaseFailed, PhaseCancelled, false},
 		{PhaseCancelled, PhaseInteractive, false},
-		{PhaseCancelled, PhaseEscalating, false},
 		{PhaseCancelled, PhaseDurable, false},
 		{PhaseCancelled, PhaseCompleted, false},
 		{PhaseCancelled, PhaseFailed, false},
@@ -138,8 +122,7 @@ func TestSessionRunPhaseMachine_ValidTargets(t *testing.T) {
 		wantCount  int
 		wantSubset []SessionRunPhase
 	}{
-		{PhaseInteractive, 4, []SessionRunPhase{PhaseEscalating, PhaseCompleted, PhaseFailed, PhaseCancelled}},
-		{PhaseEscalating, 4, []SessionRunPhase{PhaseDurable, PhaseCompleted, PhaseFailed, PhaseCancelled}},
+		{PhaseInteractive, 4, []SessionRunPhase{PhaseDurable, PhaseCompleted, PhaseFailed, PhaseCancelled}},
 		{PhaseDurable, 3, []SessionRunPhase{PhaseCompleted, PhaseFailed, PhaseCancelled}},
 		{PhaseCompleted, 0, nil},
 		{PhaseFailed, 0, nil},
@@ -183,7 +166,7 @@ func TestParseSessionRunPhase(t *testing.T) {
 		want  SessionRunPhase
 	}{
 		{"interactive", PhaseInteractive},
-		{"escalating", PhaseEscalating},
+		{"escalating", PhaseDurable}, // legacy: escalating maps to durable
 		{"durable", PhaseDurable},
 		{"completed", PhaseCompleted},
 		{"failed", PhaseFailed},
@@ -208,7 +191,6 @@ func TestIsSessionRunPhaseTerminal(t *testing.T) {
 		want  bool
 	}{
 		{PhaseInteractive, false},
-		{PhaseEscalating, false},
 		{PhaseDurable, false},
 		{PhaseCompleted, true},
 		{PhaseFailed, true},

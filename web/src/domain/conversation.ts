@@ -69,6 +69,9 @@ export function runStatusToTurnStatus(status: RunStatusValue | string): Conversa
     case 'running':
     case 'sync':
       return 'running';
+    case 'escalating':
+    case 'durable':
+      return 'background';
     case 'awaiting_user':
       return 'awaiting_user';
     case 'completed':

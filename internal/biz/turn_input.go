@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"context"
 	"time"
 )
 
@@ -77,6 +78,9 @@ type PendingQueueGateway interface {
 	TryEnqueueUserMessage(sessionID, content string) (bool, error)
 	// SetSessionPendingMergeFollowup configures whether followup messages merge into the active turn.
 	SetSessionPendingMergeFollowup(sessionID string, merge bool)
+	// InterruptAndSendMessage promotes a pending message to the front, marks it high priority,
+	// and cancels the current turn so the pending queue processor picks it up next.
+	InterruptAndSendMessage(ctx context.Context, sessionID, pendingEntryID string) error
 }
 
 // ---------------------------------------------------------------------------

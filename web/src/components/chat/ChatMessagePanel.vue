@@ -166,6 +166,7 @@
             @download-artifact="(meta) => emit('download-artifact', meta)"
             @pin-reasoning-message="(id) => emit('pin-reasoning-message', id)"
             @cancel-pending="(id) => emit('cancel-pending', id)"
+            @interrupt-pending="(id) => emit('interrupt-pending', id)"
             @update-pending="(id, content) => emit('update-pending', id, content)"
             @toggle-block-collapse="toggleBlock"
           />
@@ -403,6 +404,7 @@ const emit = defineEmits<{
   stop: [];
   'enqueue-message': [content: string];
   'cancel-pending': [pendingId: string];
+  'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   'submit-await-reply': [];
   'submit-tool-confirm': [approved: boolean];

@@ -44,7 +44,7 @@ type ChatRunStatus struct {
 
 type ChatRunGateway interface {
 	HasActive(sessionID string) bool
-	Cancel(sessionID string) (stopped bool, runID string)
+	Cancel(sessionID, reason string) (stopped bool, runID string)
 	EnqueueUserMessage(sessionID, content string) (bool, error)
 	SetStatus(sessionID, runID, status, errMsg string)
 	GetStatus(sessionID string) (ChatRunStatus, bool)
@@ -61,6 +61,8 @@ type ChatPendingQueue interface {
 	Dequeue(sessionID string) (PendingQueueEntry, bool)
 	Remove(sessionID, entryID string) bool
 	Update(sessionID, entryID, newContent string) bool
+	PromoteToFront(sessionID, pendingID string) error
+	SetPriority(sessionID, pendingID string, priority int) error
 	Close()
 }
 
@@ -139,7 +141,21 @@ func (uc *ChatUsecase) HasActiveRun(sessionID string) bool {
 }
 
 func (uc *ChatUsecase) CancelRun(sessionID string) (bool, string) {
-	return uc.runs.Cancel(sessionID)
+	return uc.runs.Cancel(sessionID, "user_cancel")
+}
+
+// InterruptAndSendMessage promotes a pending message to the front of the queue,
+// marks it as high priority, and cancels the current turn so the pending queue
+// processor picks it up next.
+func (uc *ChatUsecase) InterruptAndSendMessage(ctx context.Context, sessionID, pendingEntryID string) error {
+	if err := uc.pending.PromoteToFront(sessionID, pendingEntryID); err != nil {
+		return err
+	}
+	if err := uc.pending.SetPriority(sessionID, pendingEntryID, 1); err != nil {
+		return err
+	}
+	uc.runs.Cancel(sessionID, "user_interrupt")
+	return nil
 }
 
 func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {

@@ -143,6 +143,14 @@ func (s *ChatService) SetSessionPendingMergeFollowup(sessionID string, merge boo
 	s.orch.SetSessionPendingMergeFollowup(sessionID, merge)
 }
 
+// InterruptAndSendMessage implements biz.ChannelTurnGateway — delegates to ChatOrchestrator.
+func (s *ChatService) InterruptAndSendMessage(ctx context.Context, sessionID, pendingEntryID string) error {
+	if s == nil || s.orch == nil {
+		return nil
+	}
+	return s.orch.InterruptAndSendMessage(ctx, sessionID, pendingEntryID)
+}
+
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).
 func (s *ChatService) RunGateway() *rt.RunRegistry {
 	return s.orch.runs
@@ -154,6 +162,7 @@ func (s *ChatService) HasActiveRun(sessionID string) bool {
 }
 
 // ActiveSessionRunPhase returns the phase of the active session run, if any (CC-FIX-CHANNEL UX).
+// Legacy DB rows with phase='escalating' are mapped to 'durable' via ParseSessionRunPhase.
 func (s *ChatService) ActiveSessionRunPhase(ctx context.Context, sessionID string) string {
 	if s == nil || s.orch == nil || s.orch.chJobs().SessionRuns == nil {
 		return ""
@@ -166,7 +175,7 @@ func (s *ChatService) ActiveSessionRunPhase(ctx context.Context, sessionID strin
 	if err != nil || run.ID == "" {
 		return ""
 	}
-	return run.Phase
+	return string(biz.ParseSessionRunPhase(run.Phase))
 }
 
 // LastPendingMessageID returns the most recently enqueued pending message id for a session, if any.
@@ -220,6 +229,21 @@ func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.Upda
 	}
 	updated := s.orch.UpdatePendingMessage(sessionID, pendingID, content)
 	return &chatv1.UpdatePendingMessageResponse{Updated: updated}, nil
+}
+
+func (s *ChatService) InterruptAndSendMessage(ctx context.Context, req *chatv1.InterruptAndSendMessageRequest) (*chatv1.InterruptAndSendMessageResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
+	}
+	pendingID := strings.TrimSpace(req.GetPendingId())
+	if pendingID == "" {
+		return nil, apierror.BadRequest("CHAT", "pending_id is required")
+	}
+	if err := s.orch.InterruptAndSendMessage(ctx, sessionID, pendingID); err != nil {
+		return nil, err
+	}
+	return &chatv1.InterruptAndSendMessageResponse{Sent: true}, nil
 }
 
 func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error) {

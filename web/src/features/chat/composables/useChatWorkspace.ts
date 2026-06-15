@@ -500,7 +500,7 @@ export function useChatWorkspace() {
   const followUp = useFollowUpQueue(sessionIdForPending, sender.sending, (message) =>
     $q.notify({ type: 'negative', message }),
   );
-  const { pendingMessages, refreshPendingMessages, onCancelPending, onUpdatePending } = followUp;
+  const { pendingMessages, refreshPendingMessages, onCancelPending, onInterruptPending, onUpdatePending } = followUp;
   pendingMsgRef.fn = refreshPendingMessages;
 
   watch(sender.sending, (val) => followUp.watchSending(val));
@@ -619,6 +619,68 @@ export function useChatWorkspace() {
       jobsRefreshNonce.value += 1;
     }
   });
+
+  // ── Long-running stall detection ──
+  // When run is in 'running' status but no events arrive for 5 minutes,
+  // prompt the user with a "seems stuck, stop?" notification.
+  const STALL_NOTIFY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  let stallNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+  let stallNotified = false;
+
+  function clearStallNotifyTimer() {
+    if (stallNotifyTimer != null) {
+      clearTimeout(stallNotifyTimer);
+      stallNotifyTimer = null;
+    }
+  }
+
+  function resetStallNotifyTimer() {
+    clearStallNotifyTimer();
+    stallNotified = false;
+    if (runStatus.value === 'running') {
+      stallNotifyTimer = setTimeout(() => {
+        stallNotified = true;
+        $q.notify({
+          type: 'warning',
+          message: t('chat.runLongStallWarning', '似乎没有进展，是否停止？'),
+          actions: [
+            {
+              label: t('chat.stop', '停止'),
+              color: 'negative',
+              handler: () => stopStreaming(),
+            },
+            {
+              label: t('chat.wait', '继续等待'),
+              color: 'grey',
+              handler: () => {},
+            },
+          ],
+          timeout: 15_000,
+        });
+      }, STALL_NOTIFY_TIMEOUT_MS);
+    }
+  }
+
+  // Start/stop stall timer based on runStatus
+  watch(runStatus, (newVal) => {
+    if (newVal === 'running') {
+      resetStallNotifyTimer();
+    } else {
+      clearStallNotifyTimer();
+      stallNotified = false;
+    }
+  });
+
+  // Reset stall timer whenever we receive a run activity event
+  const origTouchRunActivity = sender.touchRunActivity.bind(sender);
+  sender.touchRunActivity = () => {
+    origTouchRunActivity();
+    if (stallNotified) {
+      resetStallNotifyTimer();
+    } else if (runStatus.value === 'running' && stallNotifyTimer != null) {
+      resetStallNotifyTimer();
+    }
+  };
 
   const sessionRevision = computed(() => {
     const sid = selectedSessionForUi.value?.id;
@@ -868,6 +930,7 @@ export function useChatWorkspace() {
 
   onUnmounted(() => {
     if (visibleRefreshTimer) clearTimeout(visibleRefreshTimer);
+    clearStallNotifyTimer();
     stopCompressPolling();
     document.removeEventListener('visibilitychange', onPageVisible);
     sender.clearSendingTimeout();
@@ -1051,6 +1114,7 @@ export function useChatWorkspace() {
       uploadFile,
       removeAttachment,
       onCancelPending,
+      onInterruptPending,
       onUpdatePending,
       onVoiceClick,
       onMessageFeedback,

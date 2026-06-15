@@ -110,7 +110,7 @@ type TeamRunnerWirePort interface {
 // Stability:evolving
 type RunRegistryPort interface {
 	// Cancel cancels the active run for the given session.
-	Cancel(sessionID string) (bool, string)
+	Cancel(sessionID, reason string) (bool, string)
 
 	// GetStatus returns the current status entry for the given session.
 	GetStatus(sessionID string) (RunStatusEntry, bool)

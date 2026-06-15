@@ -22,8 +22,6 @@ export function phaseLabel(phase?: string): string {
   switch (phase) {
     case 'interactive':
       return 'Interactive';
-    case 'escalating':
-      return 'Escalating';
     case 'durable':
       return 'Durable';
     case 'completed':

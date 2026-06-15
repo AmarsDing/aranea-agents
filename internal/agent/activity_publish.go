@@ -14,7 +14,7 @@ const stuckToolResultI18nKey = "chat.tool.stuckTimeout"
 
 // stuckToolResultFallback is the human-readable fallback message for the error field.
 // The i18n_key field takes priority on the frontend; this fallback is shown when i18n is unavailable.
-const stuckToolResultFallback = "Tool execution timed out without result"
+const stuckToolResultFallback = "工具执行未返回结果，已自动标记为失败。如需重试请重新发送指令"
 
 func toolCallIDValid(tc *event.EnvelopeToolCall) bool {
 	return tc != nil && strings.TrimSpace(tc.ID) != ""
@@ -112,4 +112,30 @@ func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persiste
 			)
 		}
 	}
+}
+
+// publishStuckToolNotification pushes a user-facing alert via WS when tools get stuck.
+// This complements the tool_result failure envelope (which is for programmatic cleanup)
+// with a human-readable notification the user can see and act on.
+func publishStuckToolNotification(ctx context.Context, meta ProjectMeta, bus event.Bus, pending map[string]event.EnvelopeToolCall) {
+	if bus == nil || len(pending) == 0 {
+		return
+	}
+	toolNames := make([]string, 0, len(pending))
+	for _, tc := range pending {
+		if name := strings.TrimSpace(tc.Name); name != "" {
+			toolNames = append(toolNames, name)
+		}
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeAlertNotify, "chat-service", meta.SessionID)
+	env.RequestID = meta.RequestID
+	env.InvocationID = meta.InvocationID
+	env.Metadata = map[string]any{
+		"alert_kind": "stuck_tool",
+		"tool_names": toolNames,
+		"count":      len(pending),
+		"message":    stuckToolResultFallback,
+		"i18n_key":   stuckToolResultI18nKey,
+	}
+	bus.Publish(ctx, env)
 }

@@ -21,9 +21,8 @@ const channelOutboundEmptyFallback = "（暂无文本回复）"
 // nature of enqueueForSession which inherently mixes biz data queries with channel
 // service calls. Tracked in issue TBD.
 
-// SessionRunEscalationNotifier sends IM notices when a run hits soft/hard budgets (CC-R-02).
+// SessionRunEscalationNotifier sends IM notices when a run hits hard budgets or completes (CC-R-02).
 type SessionRunEscalationNotifier interface {
-	NotifySoftBudget(ctx context.Context, run biz.SessionRun, autoEscalate bool) error
 	NotifyDurableEscalated(ctx context.Context, run biz.SessionRun) error
 	NotifyRunCompleted(ctx context.Context, run biz.SessionRun, replyMarkdown string) error
 	NotifyRunFailed(ctx context.Context, run biz.SessionRun, errMsg string) error
@@ -44,30 +43,6 @@ func NewChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz
 		return nil
 	}
 	return &channelRunEscalationNotifier{channels: channels, sessions: sessions, lg: lg}
-}
-
-func (n *channelRunEscalationNotifier) NotifySoftBudget(ctx context.Context, run biz.SessionRun, autoEscalate bool) error {
-	if n == nil {
-		return nil
-	}
-	text := "任务处理时间较长，仍在执行中。"
-	if autoEscalate {
-		text += "若无进一步操作，将自动转入后台继续。"
-	} else {
-		text += "如需后台继续，请回复 /background。"
-	}
-	cardJSON := ""
-	if card, err := preview.BuildFeishuEscalateCardJSON(run.ID, run.SessionID, ""); err != nil {
-		n.lg.Warn("Channel escalate card build failed",
-			loggateway.StepID(flowStepChannelOutbound),
-			loggateway.Str("session_run_id", run.ID),
-			loggateway.Str("session_id", run.SessionID),
-			loggateway.Err(err),
-		)
-	} else {
-		cardJSON = card
-	}
-	return n.enqueueForSession(ctx, run.SessionID, "run:"+run.ID+":soft", text, cardJSON)
 }
 
 func (n *channelRunEscalationNotifier) NotifyDurableEscalated(ctx context.Context, run biz.SessionRun) error {

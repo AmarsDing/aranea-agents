@@ -4,17 +4,13 @@
 //
 //	stateDiagram-v2
 //	    [*] --> interactive
-//	    interactive --> escalating : escalate
-//	    interactive --> completed  : complete
-//	    interactive --> failed     : fail
-//	    interactive --> cancelled  : cancel
-//	    escalating --> durable     : durable
-//	    escalating --> completed   : complete
-//	    escalating --> failed      : fail
-//	    escalating --> cancelled   : cancel
-//	    durable --> completed      : complete
-//	    durable --> failed         : fail
-//	    durable --> cancelled      : cancel
+//	    interactive --> durable     : user_escalate
+//	    interactive --> completed   : complete
+//	    interactive --> failed      : fail
+//	    interactive --> cancelled   : cancel
+//	    durable --> completed       : complete
+//	    durable --> failed          : fail
+//	    durable --> cancelled       : cancel
 //	    completed --> [*]
 //	    failed --> [*]
 //	    cancelled --> [*]
@@ -32,7 +28,6 @@ type SessionRunPhase string
 
 const (
 	PhaseInteractive SessionRunPhase = "interactive"
-	PhaseEscalating  SessionRunPhase = "escalating"
 	PhaseDurable     SessionRunPhase = "durable"
 	PhaseCompleted   SessionRunPhase = "completed"
 	PhaseFailed      SessionRunPhase = "failed"
@@ -46,24 +41,20 @@ const (
 type SessionRunPhaseEvent string
 
 const (
-	PhaseEventEscalate SessionRunPhaseEvent = "escalate"
-	PhaseEventDurable  SessionRunPhaseEvent = "durable"
-	PhaseEventComplete SessionRunPhaseEvent = "complete"
-	PhaseEventFail     SessionRunPhaseEvent = "fail"
-	PhaseEventCancel   SessionRunPhaseEvent = "cancel"
+	PhaseEventUserEscalate SessionRunPhaseEvent = "user_escalate"
+	PhaseEventDurable      SessionRunPhaseEvent = "durable"
+	PhaseEventComplete     SessionRunPhaseEvent = "complete"
+	PhaseEventFail         SessionRunPhaseEvent = "fail"
+	PhaseEventCancel       SessionRunPhaseEvent = "cancel"
 )
 
 // ── Transition rules ──────────────────────────────────────────────────────────
 
 var sessionRunPhaseTransitionRules = []shared.TransitionRule[SessionRunPhase, SessionRunPhaseEvent]{
-	{From: PhaseInteractive, Event: PhaseEventEscalate, To: PhaseEscalating},
+	{From: PhaseInteractive, Event: PhaseEventUserEscalate, To: PhaseDurable},
 	{From: PhaseInteractive, Event: PhaseEventComplete, To: PhaseCompleted},
 	{From: PhaseInteractive, Event: PhaseEventFail, To: PhaseFailed},
 	{From: PhaseInteractive, Event: PhaseEventCancel, To: PhaseCancelled},
-	{From: PhaseEscalating, Event: PhaseEventDurable, To: PhaseDurable},
-	{From: PhaseEscalating, Event: PhaseEventComplete, To: PhaseCompleted},
-	{From: PhaseEscalating, Event: PhaseEventFail, To: PhaseFailed},
-	{From: PhaseEscalating, Event: PhaseEventCancel, To: PhaseCancelled},
 	{From: PhaseDurable, Event: PhaseEventComplete, To: PhaseCompleted},
 	{From: PhaseDurable, Event: PhaseEventFail, To: PhaseFailed},
 	{From: PhaseDurable, Event: PhaseEventCancel, To: PhaseCancelled},
@@ -107,9 +98,13 @@ func (m *SessionRunPhaseMachine) ValidTargets(from SessionRunPhase) []SessionRun
 // Unrecognised values default to PhaseInteractive.
 func ParseSessionRunPhase(s string) SessionRunPhase {
 	switch SessionRunPhase(s) {
-	case PhaseInteractive, PhaseEscalating, PhaseDurable, PhaseCompleted, PhaseFailed, PhaseCancelled:
+	case PhaseInteractive, PhaseDurable, PhaseCompleted, PhaseFailed, PhaseCancelled:
 		return SessionRunPhase(s)
 	default:
+		// 兼容：DB 中历史 escalating 记录映射为 PhaseDurable
+		if SessionRunPhase(s) == "escalating" {
+			return PhaseDurable
+		}
 		return PhaseInteractive
 	}
 }

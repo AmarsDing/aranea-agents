@@ -14,14 +14,13 @@ import (
 
 const (
 	// Legacy string constants — prefer the typed SessionRunPhase constants in
-	// session_run_phase_machine.go (PhaseInteractive, PhaseEscalating, etc.).
+	// session_run_phase_machine.go (PhaseInteractive, PhaseDurable, etc.).
 	// These are kept only for DB string comparisons where a typed constant
 	// would require an explicit string() cast. New code must use PhaseXxx.
 	//
 	// TODO(debt): phase params in repo interfaces should use SessionRunPhase
 	// instead of string, after which these legacy constants can be removed.
 	SessionRunPhaseInteractive = string(PhaseInteractive)
-	SessionRunPhaseEscalating  = string(PhaseEscalating)
 	SessionRunPhaseDurable     = string(PhaseDurable)
 	SessionRunPhaseCompleted   = string(PhaseCompleted)
 	SessionRunPhaseFailed      = string(PhaseFailed)
@@ -31,15 +30,6 @@ const (
 // sessionRunPhaseMachine is the shared, stateless phase machine for all SessionRun transitions.
 var sessionRunPhaseMachine = NewSessionRunPhaseMachine()
 
-type SessionRunBudget struct {
-	SoftBudgetSec int
-	HardBudgetSec int
-}
-
-func DefaultSessionRunBudget() SessionRunBudget {
-	return SessionRunBudget{SoftBudgetSec: 180, HardBudgetSec: 900}
-}
-
 type SessionRun struct {
 	ID              string
 	SessionID       string
@@ -48,8 +38,8 @@ type SessionRun struct {
 	AgentID         string
 	Source          string
 	Phase           string
-	SoftBudgetSec   int
-	HardBudgetSec   int
+	SoftBudgetSec   int // Deprecated: budget mechanism removed, kept for DB compatibility
+	HardBudgetSec   int // Deprecated: budget mechanism removed, kept for DB compatibility
 	CheckpointID    string
 	WorkflowJobID   string
 	ErrorMessage    string
@@ -144,7 +134,7 @@ func sessionRunNow() string {
 
 var errSessionRunNotInit = apierror.Internal("SESSION_RUN", "SessionRunUsecase: not initialized")
 
-func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, turnID, runtimeRunID, source, agentID string, budget SessionRunBudget) (SessionRun, error) {
+func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, turnID, runtimeRunID, source, agentID string) (SessionRun, error) {
 	if u == nil || u.repo == nil {
 		return SessionRun{}, errSessionRunNotInit
 	}
@@ -152,12 +142,6 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 	turnID = strings.TrimSpace(turnID)
 	if sessionID == "" || turnID == "" {
 		return SessionRun{}, apierror.BadRequest("SESSION_RUN", "sessionID and turnID are required")
-	}
-	if budget.SoftBudgetSec <= 0 {
-		budget = DefaultSessionRunBudget()
-	}
-	if budget.HardBudgetSec <= 0 {
-		budget.HardBudgetSec = DefaultSessionRunBudget().HardBudgetSec
 	}
 	now := sessionRunNow()
 	run := SessionRun{
@@ -168,8 +152,8 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 		AgentID:        strings.TrimSpace(agentID),
 		Source:         strings.TrimSpace(source),
 		Phase:          SessionRunPhaseInteractive,
-		SoftBudgetSec:  budget.SoftBudgetSec,
-		HardBudgetSec:  budget.HardBudgetSec,
+		SoftBudgetSec:  0,
+		HardBudgetSec:  0,
 		StartedAt:      now,
 		PhaseChangedAt: now,
 		CreatedAt:      now,

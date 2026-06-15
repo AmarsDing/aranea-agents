@@ -182,6 +182,15 @@ export async function cancelPendingMessage(sessionId: string, pendingId: string)
   }
 }
 
+export async function interruptAndSendMessage(sessionId: string, pendingEntryId: string): Promise<boolean> {
+  try {
+    const data = await chatService.InterruptAndSendMessage({ sessionId, pendingId: pendingEntryId });
+    return !!data?.sent;
+  } catch (err) {
+    wrapChatError(err, 'interruptAndSendMessage failed');
+  }
+}
+
 export async function updatePendingMessage(sessionId: string, pendingId: string, content: string): Promise<boolean> {
   try {
     const data = await chatService.UpdatePendingMessage({ sessionId, pendingId, content });

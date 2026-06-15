@@ -50,7 +50,6 @@ type turnExecuteResult struct {
 	resultPromptTok     int
 	resultCompletionTok int
 	sessionRunID        string
-	stopBudget          context.CancelFunc
 	turnArtCollector    *artifactbiz.TurnCollector
 }
 
@@ -291,8 +290,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 
 	// Session run lifecycle
 	var sessionRunID string
-	var stopBudget context.CancelFunc
-	ctx, sessionRunID, stopBudget = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
+	ctx, sessionRunID = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
 
 	// Build run options + prepare run context
 	runOpts := o.buildTurnRunOptions(ctx, sess, input, ag, admit, deps, intentRunOpts)
@@ -314,10 +312,14 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), streamErr
 	}
 
-	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, stopBudget, emitter, ag, turnStart)
+	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart)
 }
 
 // assembleTurnResult checks for context timeout and assembles the final turnExecuteResult.
+// When the turn timeout fires without content, we no longer fail immediately — instead we
+// push a timeout notification via WS so the user knows the turn is taking longer than
+// expected, and continue waiting (the actual hard deadline is set in runSingleAgentViaTRPC
+// as a safety upper bound of turnTimeout * 12).
 // Stability:internal
 func (o *ChatOrchestrator) assembleTurnResult(
 	ctx context.Context,
@@ -327,19 +329,17 @@ func (o *ChatOrchestrator) assembleTurnResult(
 	userMsg biz.ChatMessage,
 	userMsgPersisted bool,
 	sessionRunID string,
-	stopBudget context.CancelFunc,
 	emitter *event.TraceEmitter,
 	ag biz.Agent,
 	turnStart time.Time,
 ) (turnExecuteResult, error) {
 	if ctx.Err() != nil && !result.HasContent {
-		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", o.turnTimeout().String()), event.P("reason", "sync_cap"))
+		emitter.LogCritical("chat.turn.timeout", "对话请求超时，推送超时提醒并继续等待", event.P("timeout", o.turnTimeout().String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
-		o.runStatus().SetRunStatus(ctx, sessionID, admit.runID, "failed", "turn timeout")
-		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
-		te := TurnError(TurnErrTurnTimeout, o.turnTimeout().String())
-		o.publishTurnFailure(sessionID, admit.runID, "chat-service", te, "")
-		return turnExecuteResult{userMsg: userMsg}, te
+		// Push a timeout notification via WS instead of failing the turn.
+		// The turn continues to wait for the LLM to respond.
+		o.publishTurnTimeoutNotification(ctx, sessionID, admit.runID, o.turnTimeout())
+		return turnExecuteResult{userMsg: userMsg}, TurnError(TurnErrTurnTimeout, o.turnTimeout().String())
 	}
 
 	var turnArtCollector *artifactbiz.TurnCollector
@@ -347,7 +347,7 @@ func (o *ChatOrchestrator) assembleTurnResult(
 	return turnExecuteResult{
 		userMsg: userMsg, userMsgPersisted: userMsgPersisted, result: result,
 		resultPromptTok: result.PromptTok, resultCompletionTok: result.CompletionTok,
-		sessionRunID: sessionRunID, stopBudget: stopBudget, turnArtCollector: turnArtCollector,
+		sessionRunID: sessionRunID, turnArtCollector: turnArtCollector,
 	}, nil
 }
 

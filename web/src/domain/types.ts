@@ -124,6 +124,7 @@ export type RunStatusValue =
   | 'running'
   | 'awaiting_user'
   | 'sync'
+  | 'durable'
   | 'completed'
   | 'failed'
   | 'cancelled';

@@ -34,7 +34,9 @@ func (SessionRun) Fields() []ent.Field {
 		field.String("runtime_run_id").Default(""),
 		field.String("source").Default(""),
 		field.String("phase").Default("interactive"),
+		// Deprecated: budget mechanism removed
 		field.Int("soft_budget_sec").Default(0),
+		// Deprecated: budget mechanism removed
 		field.Int("hard_budget_sec").Default(0),
 		field.String("checkpoint_id").Default(""),
 		field.String("workflow_job_id").Default(""),

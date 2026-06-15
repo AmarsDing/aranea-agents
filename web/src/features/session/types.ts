@@ -176,8 +176,8 @@ export type SessionRunRecord = {
   runtime_run_id: string;
   source: string;
   phase: string;
-  soft_budget_sec: number;
-  hard_budget_sec: number;
+  soft_budget_sec?: number;
+  hard_budget_sec?: number;
   checkpoint_id: string;
   workflow_job_id: string;
   agent_id: string;

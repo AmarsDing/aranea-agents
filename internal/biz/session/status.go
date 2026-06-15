@@ -15,7 +15,7 @@ type SessionStatusReason string
 const (
 	StatusReasonUserCancelled       SessionStatusReason = "user_cancelled"
 	StatusReasonTimeout             SessionStatusReason = "timeout"
-	StatusReasonBudgetEscalated     SessionStatusReason = "budget_escalated"
+	StatusReasonUserEscalated       SessionStatusReason = "user_escalated"
 	StatusReasonError               SessionStatusReason = "error"
 	StatusReasonContextOverflow     SessionStatusReason = "context_overflow"
 	StatusReasonServerShutdown      SessionStatusReason = "server_shutdown"

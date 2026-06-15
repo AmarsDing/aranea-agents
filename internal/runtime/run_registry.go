@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
@@ -95,10 +96,19 @@ type RunRegistry struct {
 	activeRuns     activeRunMap
 	pendingCancels cancelMap
 	runStatuses    statusMap
+	lg             loggateway.Logger
 }
 
 func NewRunRegistry() *RunRegistry {
 	return &RunRegistry{}
+}
+
+// WithLogger sets the logger for the registry. Returns the same registry for chaining.
+func (r *RunRegistry) WithLogger(lg loggateway.Logger) *RunRegistry {
+	if r != nil {
+		r.lg = lg.With(loggateway.Domain("run_registry"))
+	}
+	return r
 }
 
 func (r *RunRegistry) HasActive(sessionID string) bool {
@@ -164,7 +174,7 @@ func (r *RunRegistry) ClearPendingCancel(sessionID string) {
 	r.pendingCancels.delete(sessionID)
 }
 
-func (r *RunRegistry) Cancel(sessionID string) (bool, string) {
+func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	if r == nil {
 		return false, ""
 	}
@@ -189,7 +199,9 @@ func (r *RunRegistry) Cancel(sessionID string) (bool, string) {
 	if mr, ok := run.runner.(trpcrunner.ManagedRunner); ok && mr.Cancel(sessionID) {
 		return true, run.runID
 	}
-	_ = run.runner.Close()
+	if err := run.runner.Close(); err != nil && r.lg != nil {
+		r.lg.Warn("runner close error during cancel", loggateway.SessionID(sessionID), loggateway.Err(err))
+	}
 	r.activeRuns.delete(sessionID)
 	return true, run.runID
 }

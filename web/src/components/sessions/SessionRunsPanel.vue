@@ -44,7 +44,7 @@ const { runs, total, loading, error, offset, pageSize, pageLabel, prevPage, next
 function phaseColor(phase: string) {
   if (phase === 'completed') return 'positive';
   if (phase === 'failed') return 'negative';
-  if (phase === 'durable' || phase === 'escalating') return 'warning';
+  if (phase === 'durable') return 'warning';
   return 'primary';
 }
 </script>

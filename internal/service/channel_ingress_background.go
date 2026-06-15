@@ -10,11 +10,22 @@ import (
 )
 
 const (
-	flowStepChannelTurnBackground     = "channel.turn.background"
+	flowStepChannelTurnBackground = "channel.turn.background"
+	flowStepRunEscalate           = "run.escalate.durable"
 	channelBackgroundReplyOK          = "已转入后台继续执行。"
 	channelBackgroundReplyAlready     = "任务已在后台执行中。"
 	channelBackgroundReplyNoActiveRun = "当前没有可转入后台的任务。"
+	channelBackgroundReplyDenied      = "无权操作该任务。"
 )
+
+func firstNonEmptyString(parts ...string) string {
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 // tryBackgroundInboundTurn handles IM /background without starting a new Turn (CC-R-02).
 func (h *ChannelIngress) tryBackgroundInboundTurn(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string) (handled bool, err error) {
@@ -65,4 +76,51 @@ func (h *ChannelIngress) resolveBackgroundInboundTurn(ctx context.Context, chRow
 		"escalated":  escalated,
 	}, "")
 	return true, reply, nil
+}
+
+// EscalateActiveSessionRun moves the active session run to durable phase (/background).
+func (s *ChatService) EscalateActiveSessionRun(ctx context.Context, sessionID string) (escalated bool, reply string, err error) {
+	if s == nil || s.orch == nil || s.orch.chJobs().SessionRuns == nil {
+		return false, channelBackgroundReplyNoActiveRun, nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, channelBackgroundReplyNoActiveRun, nil
+	}
+	run, err := s.orch.chJobs().SessionRuns.GetActiveForSession(ctx, sessionID)
+	if err != nil || run.ID == "" {
+		return false, channelBackgroundReplyNoActiveRun, nil
+	}
+	if run.Phase == biz.SessionRunPhaseDurable {
+		return true, channelBackgroundReplyAlready, nil
+	}
+	s.orch.sessionRunLC().EscalateToDurableByUser(ctx, sessionID, run.ID)
+	return true, channelBackgroundReplyOK, nil
+}
+
+// EscalateSessionRun moves a specific session run to durable phase (Feishu card callback).
+func (s *ChatService) EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error) {
+	if s == nil || s.orch == nil || s.orch.chJobs().SessionRuns == nil {
+		return channelBackgroundReplyNoActiveRun, nil
+	}
+	sessionRunID = strings.TrimSpace(sessionRunID)
+	expectedSessionID = strings.TrimSpace(expectedSessionID)
+	if sessionRunID == "" {
+		return channelBackgroundReplyNoActiveRun, nil
+	}
+	run, err := s.orch.chJobs().SessionRuns.Get(ctx, sessionRunID)
+	if err != nil || run.ID == "" {
+		return channelBackgroundReplyNoActiveRun, nil
+	}
+	if expectedSessionID != "" && run.SessionID != expectedSessionID {
+		return channelBackgroundReplyDenied, nil
+	}
+	if run.Phase == biz.SessionRunPhaseDurable {
+		return channelBackgroundReplyAlready, nil
+	}
+	if run.Phase == biz.SessionRunPhaseCompleted || run.Phase == biz.SessionRunPhaseFailed {
+		return channelBackgroundReplyNoActiveRun, nil
+	}
+	s.orch.sessionRunLC().EscalateToDurableByUser(ctx, run.SessionID, run.ID)
+	return channelBackgroundReplyOK, nil
 }

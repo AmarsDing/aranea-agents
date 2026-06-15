@@ -10,6 +10,7 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/debug"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
@@ -513,6 +514,15 @@ func (o *ChatOrchestrator) SetSessionPendingMergeFollowup(sessionID string, merg
 	o.pendingQ().SetSessionPendingMergeFollowup(sessionID, merge)
 }
 
+// InterruptAndSendMessage promotes a pending message to the front, marks it high priority,
+// and cancels the current turn so the pending queue processor picks it up next.
+func (o *ChatOrchestrator) InterruptAndSendMessage(ctx context.Context, sessionID, pendingEntryID string) error {
+	if o == nil || o.chatUC == nil {
+		return nil
+	}
+	return o.chatUC.InterruptAndSendMessage(ctx, sessionID, pendingEntryID)
+}
+
 // DequeuePendingMessage dequeues the next pending message.
 func (o *ChatOrchestrator) DequeuePendingMessage(sessionID string) (biz.PendingQueueEntry, bool) {
 	return o.pendingQ().DequeuePendingMessage(sessionID)
@@ -537,7 +547,7 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	if o == nil || sessionID == "" {
 		return false
 	}
-	stopped, runID := o.runs.Cancel(sessionID)
+	stopped, runID := o.runs.Cancel(sessionID, "user_cancel")
 	if !stopped {
 		return false
 	}
@@ -564,6 +574,25 @@ func (o *ChatOrchestrator) setRunStatusWithAwait(ctx context.Context, sessionID,
 
 func (o *ChatOrchestrator) publishRunStatus(sessionID, runID, status, errMsg string) {
 	o.runStatus().PublishRunStatus(sessionID, runID, status, errMsg)
+}
+
+// publishTurnTimeoutNotification pushes a timeout alert via WS so the user knows
+// the turn is taking longer than expected, without failing the turn.
+func (o *ChatOrchestrator) publishTurnTimeoutNotification(ctx context.Context, sessionID, runID string, timeout time.Duration) {
+	bus := o.td().Pipeline.Bus
+	if bus == nil {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeAlertNotify, "chat-service", sessionID)
+	env.RequestID = sessionID
+	env.InvocationID = runID
+	env.Metadata = map[string]any{
+		"alert_kind": "turn_timeout",
+		"timeout":    timeout.String(),
+		"message":    "对话响应时间较长，请耐心等待或手动停止",
+		"i18n_key":   "chat.turn.timeout_notify",
+	}
+	bus.Publish(ctx, env)
 }
 
 func (o *ChatOrchestrator) lockSession(sessionID string) func() {

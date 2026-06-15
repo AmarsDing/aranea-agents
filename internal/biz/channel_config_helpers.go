@@ -32,9 +32,6 @@ type ChannelLongTaskConfig struct {
 	AsyncTeamID         string
 	AsyncCronTaskID     string
 	AsyncKeywords       []string
-	// RunPolicy (M55 §2.6 · CC-R-02)
-	AutoEscalateAfterSoftBudget bool
-	SoftEscalateConfirmSec      int
 	DurableDeadlineSec          int
 	BusyInputMode               string
 	SessionMaxConcurrentDM      int
@@ -71,8 +68,6 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 			SessionMaxConcurrentDM      *int     `json:"session_max_concurrent_dm"`
 			SessionMaxConcurrentGroup   *int     `json:"session_max_concurrent_group"`
 			ContextAdmissionThreshold   *float64 `json:"context_admission_threshold"`
-			AutoEscalateAfterSoftBudget *bool `json:"auto_escalate_after_soft_budget"`
-			SoftEscalateConfirmSec      *int  `json:"soft_escalate_confirm_sec"`
 			DurableDeadlineSec          *int  `json:"durable_deadline_sec"`
 		} `json:"config"`
 	}
@@ -114,12 +109,6 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	}
 	if env.Config.AsyncKeywords != nil {
 		cfg.AsyncKeywords = normalizeAsyncKeywords(*env.Config.AsyncKeywords)
-	}
-	if env.Config.AutoEscalateAfterSoftBudget != nil {
-		cfg.AutoEscalateAfterSoftBudget = *env.Config.AutoEscalateAfterSoftBudget
-	}
-	if env.Config.SoftEscalateConfirmSec != nil && *env.Config.SoftEscalateConfirmSec > 0 {
-		cfg.SoftEscalateConfirmSec = *env.Config.SoftEscalateConfirmSec
 	}
 	if env.Config.DurableDeadlineSec != nil && *env.Config.DurableDeadlineSec > 0 {
 		cfg.DurableDeadlineSec = *env.Config.DurableDeadlineSec
@@ -183,26 +172,8 @@ func (c ChannelLongTaskConfig) MaxConcurrentInbound(isGroup bool) int {
 	return defaultChannelMaxConcurrentDM
 }
 
-// DefaultSoftEscalateConfirmSec is the wait before auto-escalating after soft budget IM notice.
-func DefaultSoftEscalateConfirmSec() int { return 60 }
-
 // DefaultDurableDeadlineSec matches blueprint run_policy durable_deadline_sec.
 func DefaultDurableDeadlineSec() int { return 86400 }
-
-func (c ChannelLongTaskConfig) RunPolicy() SessionRunBudget {
-	budget := DefaultSessionRunBudget()
-	if c.TurnTimeoutSec > 0 && c.TurnTimeoutSec > budget.SoftBudgetSec {
-		budget.HardBudgetSec = c.TurnTimeoutSec
-	}
-	return budget
-}
-
-func (c ChannelLongTaskConfig) SoftEscalateConfirmSecOrDefault() int {
-	if c.SoftEscalateConfirmSec > 0 {
-		return c.SoftEscalateConfirmSec
-	}
-	return DefaultSoftEscalateConfirmSec()
-}
 
 // ParseWeChatActiveMode reads config_json.config.active_mode for official account channels.
 func ParseWeChatActiveMode(configJSON string) bool {

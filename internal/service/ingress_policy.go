@@ -11,8 +11,7 @@ type IngressDecision = biz.IngressDecision
 const (
 	IngressAdmit           = biz.IngressAdmit
 	IngressQueue           = biz.IngressQueue
-	IngressSteer           = biz.IngressSteer
-	IngressRejectBusy      = biz.IngressRejectBusy
+	IngressInterrupt       = biz.IngressInterrupt
 	IngressRouteAsync      = biz.IngressRouteAsync
 	IngressRouteBackground = biz.IngressRouteBackground
 	IngressCancel          = biz.IngressCancel

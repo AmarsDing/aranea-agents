@@ -149,6 +149,7 @@
       :messages="pendingMessages"
       :is-dark="isDark"
       @cancel-pending="(id) => $emit('cancel-pending', id)"
+      @interrupt-pending="(id) => $emit('interrupt-pending', id)"
       @update-pending="(id, content) => $emit('update-pending', id, content)"
     />
     <transition name="chat-scroll-fade">
@@ -227,6 +228,7 @@ defineEmits<{
   'download-artifact': [meta: ArtifactMeta];
   'pin-reasoning-message': [messageId: string];
   'cancel-pending': [pendingId: string];
+  'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   'toggle-block-collapse': [blockKey: number];
 }>();

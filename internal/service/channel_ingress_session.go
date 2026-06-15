@@ -208,7 +208,7 @@ func (h *ChannelIngress) shouldSkipTurnErrorReply(ctx context.Context, chRow biz
 	}
 	phase := h.chat.ActiveSessionRunPhase(ctx, sessionID)
 	switch phase {
-	case biz.SessionRunPhaseDurable, biz.SessionRunPhaseEscalating:
+	case biz.SessionRunPhaseDurable:
 		return true
 	default:
 	}

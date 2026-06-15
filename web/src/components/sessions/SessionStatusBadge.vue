@@ -37,7 +37,7 @@ const statusConfig: Record<SessionStatus, { icon: string; label: string; color: 
 const reasonLabels: Record<Exclude<SessionStatusReason, ''>, string> = {
   user_cancelled: '用户取消',
   timeout: '执行超时',
-  budget_escalated: '预算超限',
+  user_escalated: '用户转后台',
   error: '执行出错',
   context_overflow: '上下文溢出',
   server_shutdown: '服务关闭',

@@ -215,29 +215,3 @@ func TestChannelStreamingEnabled(t *testing.T) {
 		}
 	}
 }
-
-func TestChannelLongTaskConfig_RunPolicy(t *testing.T) {
-	cfg := ChannelLongTaskConfig{TurnTimeoutSec: 0}
-	policy := cfg.RunPolicy()
-	if policy.HardBudgetSec != DefaultSessionRunBudget().HardBudgetSec {
-		t.Fatal("default hard budget should match")
-	}
-
-	cfg2 := ChannelLongTaskConfig{TurnTimeoutSec: 900}
-	policy2 := cfg2.RunPolicy()
-	if policy2.HardBudgetSec != 900 {
-		t.Fatalf("HardBudgetSec=%d want 900", policy2.HardBudgetSec)
-	}
-}
-
-func TestChannelLongTaskConfig_SoftEscalateConfirmSecOrDefault(t *testing.T) {
-	cfg := ChannelLongTaskConfig{}
-	if cfg.SoftEscalateConfirmSecOrDefault() != DefaultSoftEscalateConfirmSec() {
-		t.Fatal("default should match")
-	}
-
-	cfg2 := ChannelLongTaskConfig{SoftEscalateConfirmSec: 30}
-	if cfg2.SoftEscalateConfirmSecOrDefault() != 30 {
-		t.Fatal("explicit should be used")
-	}
-}

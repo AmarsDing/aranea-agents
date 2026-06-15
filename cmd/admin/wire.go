@@ -382,8 +382,8 @@ func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, credRepo biz.MCPSer
 	return biz.NewMCPServerUsecase(repo, credRepo, prober, metaEdit, crypto)
 }
 
-func provideRunRegistry() *rt.RunRegistry {
-	return rt.NewRunRegistry()
+func provideRunRegistry(lg loggateway.Logger) *rt.RunRegistry {
+	return rt.NewRunRegistry().WithLogger(lg)
 }
 
 func providePendingMessageQueue(lg loggateway.Logger) *rt.PendingMessageQueue {

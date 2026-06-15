@@ -57,6 +57,17 @@
             flat
             round
             size="sm"
+            icon="send"
+            color="primary"
+            class="chat-pending-item__interrupt"
+            :aria-label="t('chat.interruptAndSend')"
+            @click="$emit('interrupt-pending', pm.id)"
+          />
+          <q-btn
+            dense
+            flat
+            round
+            size="sm"
             icon="cancel"
             color="negative"
             class="chat-pending-item__cancel"
@@ -87,6 +98,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'cancel-pending': [pendingId: string];
+  'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
 }>();
 

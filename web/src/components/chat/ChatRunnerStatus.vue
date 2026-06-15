@@ -35,7 +35,7 @@ const emit = defineEmits<{ cancel: [] }>();
 
 const visible = computed(() => {
   const s = props.status;
-  return s === 'running' || s === 'pending' || s === 'awaiting_user';
+  return s === 'running' || s === 'pending' || s === 'awaiting_user' || s === 'durable';
 });
 
 const presentation = computed(() => presentRunStatus(props.status));
@@ -54,7 +54,7 @@ const elapsedLabel = computed(() => {
 });
 
 const showCancel = computed(
-  () => props.showCancel !== false && (props.status === 'running' || props.status === 'pending'),
+  () => props.showCancel !== false && (props.status === 'running' || props.status === 'pending' || props.status === 'durable'),
 );
 </script>
 
