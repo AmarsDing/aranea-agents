@@ -1,9 +1,10 @@
 import type { Message } from './types';
 import type { ToolUseEvent, ActivityKind as LegacyActivityKind } from './types';
-import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta } from './activityTypes';
+import type { Activity, ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta } from './activityTypes';
 import { createPlaceholderMessage } from './streamHandlers';
 import { toolEventToMessage } from './toolEventMarkdown';
 import { canonicalToolStatus } from './lib/statusMap';
+import { activityMessageId } from './lib/activityMessageId';
 
 /**
  * activityMessageAdapter translates Activity event metadata into Message
@@ -137,4 +138,262 @@ export function createFailedMessageFromError(sessionId: string, md: ActivityStar
     error_message: errMsg,
     origin: { kind: 'streaming', sessionId },
   };
+}
+
+/**
+ * Reconstruct per-round `actv-*` Messages from persisted Activity records.
+ *
+ * When a session is reloaded from the database, the server returns a single
+ * merged assistant ChatMessage per turn (all reasoning concatenated into
+ * `reasoning_markdown`, all content into `content_markdown`). This loses the
+ * multi-round structure needed for correct interleaved display
+ * (thinking → tool → thinking → tool → reply).
+ *
+ * This function rebuilds individual `actv-*` messages from Activity API data
+ * so that `groupMessagesByTurn` can create multiple `TurnRound` objects and
+ * the TurnBlock/CompactTimeline can correctly interleave thinking, tools,
+ * and reply nodes.
+ *
+ * Only `thinking`, `reply`, and `action` activities produce messages;
+ * `task`, `end`, `error`, `sub_task_board`, `delegate`, `notice` are skipped.
+ *
+ * **Timestamp ordering**: Activity records store the *start* time. Multiple
+ * activities within the same turn may start at the same second (or even the
+ * same millisecond). To guarantee correct chronological ordering for
+ * `groupMessagesByTurn` (which sorts by `created_at`), we apply a tiny
+ * monotonic offset to each message's `created_at` within a turn:
+ *   - Each message gets an additional `N * 1µs` offset (N = sequential index)
+ *   - This preserves the original order while keeping timestamps distinct
+ *   - The offset is small enough to be invisible in UI display
+ *
+ * @param activities - Raw Activity records from the API (with turnId)
+ * @param sessionId - Current session ID
+ * @returns Message[] suitable for injection as local messages in mergeSessionMessages
+ */
+export function reconstructMessagesFromActivities(
+  activities: readonly Activity[],
+  sessionId: string,
+): Message[] {
+  if (!activities.length) return [];
+
+  // Group activities by turnId to apply per-turn sequential offsets
+  const byTurn = new Map<string, Activity[]>();
+  for (const record of activities) {
+    // Skip non-content activities
+    if (record.kind === 'task' || record.kind === 'end' || record.kind === 'sub_task_board'
+      || record.kind === 'delegate' || record.kind === 'notice') {
+      continue;
+    }
+    const turnId = record.turnId || '';
+    const arr = byTurn.get(turnId) ?? [];
+    arr.push(record);
+    byTurn.set(turnId, arr);
+  }
+
+  const messages: Message[] = [];
+
+  for (const [, turnActivities] of byTurn) {
+    // Activities are already sorted by timestamp ASC from the API.
+    // Apply monotonic microsecond offsets to guarantee stable ordering
+    // even when multiple activities share the same timestamp.
+    let seqInTurn = 0;
+
+    for (const record of turnActivities) {
+      const activityId = `actv-${record.id}`;
+      const turnId = record.turnId || '';
+      const baseTimestamp = record.timestamp || new Date().toISOString();
+      // Apply sequential microsecond offset to guarantee stable ordering.
+      // 1µs increments are invisible in UI but sufficient for string sorting.
+      const createdAt = addMicroOffset(baseTimestamp, seqInTurn);
+      seqInTurn++;
+
+      const agentRef = record.agentKey || record.agentName
+        ? { id: '', agent_key: record.agentKey || '', name: record.agentName || '', icon: '' }
+        : null;
+
+      if (record.kind === 'thinking') {
+        // Thinking activity → assistant message with reasoning_markdown
+        // Use streaming_snapshot origin so isInFlightLocalRow returns false
+        // (these are finalized snapshots reconstructed from Activity API data,
+        // not active in-flight messages).
+        messages.push({
+          id: activityId,
+          session_id: sessionId,
+          parent_message_id: '',
+          turn_id: turnId,
+          turn_number: 0,
+          seq_in_turn: 0,
+          role: 'assistant',
+          content_markdown: '',
+          reasoning_markdown: record.reasoning || record.content || '',
+          model_name: record.agentName || '',
+          token_in: 0,
+          token_out: 0,
+          latency_ms: record.durationMs ?? 0,
+          status: 'ok',
+          attachments_count: 0,
+          options_json: '',
+          error_message: '',
+          created_at: createdAt,
+          origin: { kind: 'streaming_snapshot', sessionId },
+          agent_ref: agentRef,
+          team_member: null,
+          source_meta: null,
+        });
+      } else if (record.kind === 'reply') {
+        // Reply activity → assistant message with content_markdown
+        messages.push({
+          id: activityId,
+          session_id: sessionId,
+          parent_message_id: '',
+          turn_id: turnId,
+          turn_number: 0,
+          seq_in_turn: 0,
+          role: 'assistant',
+          content_markdown: record.content || '',
+          reasoning_markdown: '',
+          model_name: record.agentName || '',
+          token_in: 0,
+          token_out: 0,
+          latency_ms: record.durationMs ?? 0,
+          status: 'ok',
+          attachments_count: 0,
+          options_json: '',
+          error_message: '',
+          created_at: createdAt,
+          origin: { kind: 'streaming_snapshot', sessionId },
+          agent_ref: agentRef,
+          team_member: null,
+          source_meta: null,
+        });
+      } else if (record.kind === 'action') {
+        // Action activity → tool message (same as createToolMessageFromActivityStart)
+        const toolEvent: ToolUseEvent = {
+          id: record.toolCallId || '',
+          phase: 'after',
+          status: record.status === 'failed' ? 'failed' : 'success',
+          agent_id: '',
+          agent_key: record.agentKey || '',
+          agent_name: record.agentName || record.agentKey || 'Agent',
+          tool_name: record.toolName || '',
+          tool_label: record.label || record.toolName || '',
+          arguments: parseToolArgs(record.toolArguments),
+          result: parseToolResult(record.toolResult),
+          error: record.toolErrorCode || undefined,
+          occurred_at: createdAt,
+          duration_ms: record.toolDurationMs ?? record.durationMs ?? undefined,
+          activity_kind: 'tool' as LegacyActivityKind,
+          display_label: record.label,
+          started_at: createdAt,
+          finished_at: createdAt,
+        };
+        const canonicalStatus = canonicalToolStatus(toolEvent.status);
+        toolEvent.status = canonicalStatus;
+        const toolMsg = toolEventToMessage(sessionId, toolEvent);
+        // Override turn_id and created_at from Activity record
+        toolMsg.turn_id = turnId;
+        toolMsg.created_at = createdAt;
+        messages.push(toolMsg);
+      } else if (record.kind === 'error') {
+        // Error activity → failed assistant message
+        messages.push({
+          id: activityId,
+          session_id: sessionId,
+          parent_message_id: '',
+          turn_id: turnId,
+          turn_number: 0,
+          seq_in_turn: 0,
+          role: 'assistant',
+          content_markdown: '',
+          model_name: record.agentName || '',
+          token_in: 0,
+          token_out: 0,
+          latency_ms: record.durationMs ?? 0,
+          status: 'failed',
+          attachments_count: 0,
+          options_json: '',
+          error_message: record.content || 'Error',
+          created_at: createdAt,
+          origin: { kind: 'streaming_snapshot', sessionId },
+          agent_ref: agentRef,
+          team_member: null,
+          source_meta: null,
+        });
+      }
+    }
+  }
+
+  return messages;
+}
+
+/**
+ * Add N microseconds to an ISO 8601 timestamp string.
+ * This ensures stable ordering when multiple messages share the same base timestamp.
+ * The offset is invisible in UI display (1µs = 0.001ms).
+ *
+ * JavaScript Date only supports millisecond precision, so we manipulate the
+ * fractional seconds portion of the ISO string directly. This works for both
+ * second-precision (RFC3339) and nanosecond-precision (RFC3339Nano) formats.
+ *
+ * Examples:
+ *   "2026-06-15T10:30:45Z"       + 1µs → "2026-06-15T10:30:45.000001Z"
+ *   "2026-06-15T10:30:45.123Z"   + 1µs → "2026-06-15T10:30:45.123001Z"
+ *   "2026-06-15T10:30:45.123456789Z" + 1µs → "2026-06-15T10:30:45.123456790Z"
+ */
+function addMicroOffset(isoTimestamp: string, offsetCount: number): string {
+  if (offsetCount === 0) return isoTimestamp;
+
+  // Offset in microseconds, converted to nanoseconds for string manipulation
+  const offsetNs = offsetCount * 1000;
+
+  // Parse: everything before the fractional seconds, the fractional part, and the timezone
+  const match = isoTimestamp.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})?$/);
+  if (!match) return isoTimestamp;
+
+  const [, base, fracStr, tz] = match;
+  const timezone = tz || 'Z';
+
+  // Parse existing fractional seconds as nanoseconds (pad to 9 digits)
+  let existingNs = 0;
+  if (fracStr) {
+    // Pad to 9 digits (nanosecond precision) and parse as integer
+    const padded = fracStr.padEnd(9, '0').slice(0, 9);
+    existingNs = parseInt(padded, 10);
+  }
+
+  const newNs = existingNs + offsetNs;
+
+  // Handle carry-over to seconds
+  if (newNs >= 1_000_000_000) {
+    // Rare: offset pushes past the current second. Use Date arithmetic as fallback.
+    try {
+      const date = new Date(isoTimestamp);
+      const extraMs = Math.floor(newNs / 1_000_000);
+      date.setTime(date.getTime() + extraMs);
+      const remainderNs = newNs % 1_000_000;
+      if (remainderNs === 0) return date.toISOString();
+      const frac = remainderNs.toString().padStart(6, '0');
+      const iso = date.toISOString();
+      return iso.replace(/\.\d+Z$/, `.${frac}Z`);
+    } catch {
+      return isoTimestamp;
+    }
+  }
+
+  // Format new fractional seconds (at least 6 digits for microsecond precision)
+  const newFrac = newNs.toString().padStart(6, '0');
+  // Remove trailing zeros for compactness, but keep at least 6 digits
+  const trimmedFrac = newFrac.replace(/0+$/, '') || '0';
+
+  return `${base}.${trimmedFrac}${timezone}`;
+}
+
+function parseToolArgs(raw?: string): unknown {
+  if (!raw) return undefined;
+  try { return JSON.parse(raw); } catch { return { __raw: raw }; }
+}
+
+function parseToolResult(raw?: string): unknown {
+  if (!raw) return undefined;
+  try { return JSON.parse(raw); } catch { return { __raw: raw }; }
 }

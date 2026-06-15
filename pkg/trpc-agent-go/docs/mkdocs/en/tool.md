@@ -1435,7 +1435,7 @@ child := agenttool.NewTool(
 
 ### Notes
 
-- Completion signaling: Tool response events are marked `RequiresCompletion=true`; Runner sends completion automatically
+- Completion signaling: Tool response events no longer set `RequiresCompletion=true` (removed in P0-A1 for performance). Runner processes events in FIFO order; persistence is asynchronous and non-blocking. Only queued user message events still use `RequiresCompletion` to guarantee delivery before LLM processing.
 - De-duplication: When inner deltas are forwarded, avoid printing the aggregated final `tool.response` text again by default
 - Progress-only UX: combine `WithStreamInner(true)` with
   `WithInnerTextMode(agenttool.InnerTextModeExclude)` when users should see
@@ -1962,6 +1962,66 @@ Tool 2: get_population       [====] 50ms
 Tool 3: get_time                  [====] 50ms
 Total time: ~150ms (executed sequentially)
 ```
+
+### Tool Result Budget
+
+Control the maximum size of tool execution results to prevent context bloat. When a tool result exceeds the budget, it is automatically truncated and wrapped in a valid JSON envelope.
+
+```go
+// Global budget: applies to all tools without a tool-level budget.
+agent := llmagent.New("ai-assistant",
+    llmagent.WithModel(model),
+    llmagent.WithTools(tools),
+    processor.WithResultBudget(&tool.ResultBudget{
+        MaxBytes:       10 * 1024, // 10KB
+        TruncationMode: "tail",     // Keep beginning, truncate end
+    }),
+)
+
+// Tool-level budget: overrides the global budget for specific tools.
+readFileTool := function.New(
+    function.WithName("read_file"),
+    function.WithDescription("Read file contents"),
+    function.WithHandler(func(ctx context.Context, args map[string]any) (any, error) {
+        // ...
+    }),
+    function.WithDeclarationModifier(func(d *tool.Declaration) {
+        d.ResultBudget = &tool.ResultBudget{
+            MaxBytes:       20 * 1024, // 20KB for file reads
+            TruncationMode: "tail",
+        }
+    }),
+)
+```
+
+**Budget priority**: Tool-level (`Declaration.ResultBudget`) > Global (`WithResultBudget`) > No truncation.
+
+**Truncated result format** (valid JSON):
+
+```json
+{
+  "truncated": true,
+  "original_size": 50000,
+  "shown_bytes": 10240,
+  "preview": "<first 10KB of original result>..."
+}
+```
+
+### Tool Execution Timeout
+
+Set a global timeout for tool execution to prevent indefinite blocking. Default is 60 seconds.
+
+```go
+agent := llmagent.New("ai-assistant",
+    llmagent.WithModel(model),
+    llmagent.WithTools(tools),
+    processor.WithToolExecutionTimeout(30*time.Second), // 30s timeout
+)
+```
+
+- If the context already has a deadline, the existing deadline is respected.
+- A negative value explicitly disables the timeout.
+- Zero value uses the default (60s).
 
 ### Dynamic ToolSet Management (Runtime)
 

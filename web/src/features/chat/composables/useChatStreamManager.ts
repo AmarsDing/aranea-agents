@@ -39,8 +39,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   let chatStream: UseEnvelopeStreamReturn | null = null;
   let chatStreamSessionId: string | null = null;
+  let chatStreamCleanup: (() => void) | null = null;
   let teamStream: UseEnvelopeStreamReturn | null = null;
   let teamStreamSessionId: string | null = null;
+  let teamStreamCleanup: (() => void) | null = null;
 
   const wsReplaying = ref(false);
   let lastErrorNotifyMessage = '';
@@ -160,6 +162,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       }
       return chatStream;
     }
+    // B-02: Clean up previous stream's timeout & batch writer before creating
+    // a new one, preventing the stale timeout from firing on the new session.
+    chatStreamCleanup?.();
+    chatStreamCleanup = null;
     chatStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
     // New stream: reset progress accumulator so we don't leak envelopes from
@@ -200,7 +206,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
     });
 
-    bindStreamHandlers(
+    chatStreamCleanup = bindStreamHandlers(
       chatStream,
       {
         sessionId,
@@ -248,13 +254,21 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function ensureTeamStream(sessionId: string) {
-    if (teamStream && teamStream.transport.value && teamStreamSessionId === sessionId) {
+    if (teamStream && teamStreamSessionId === sessionId) {
       // Only sync wsConnected→true; never downgrade — onDisconnected is authoritative.
       if (teamStream.connected.value) {
         deps.runtimeStore.setWsConnected(sessionId, true);
       }
+      // B-01: Reconnect if the transport exists but is disconnected.
+      if (!teamStream.connected.value) {
+        teamStream.connect();
+      }
       return teamStream;
     }
+    // B-02: Clean up previous stream's timeout & batch writer before creating
+    // a new one, preventing the stale timeout from firing on the new session.
+    teamStreamCleanup?.();
+    teamStreamCleanup = null;
     teamStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
     // New team stream: also reset progress accumulator so we don't leak
@@ -292,7 +306,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
     });
 
-    bindStreamHandlers(teamStream, {
+    teamStreamCleanup = bindStreamHandlers(teamStream, {
       sessionId,
       streamIdPrefix: 'ws-team-stream',
       resolveActiveSessionId: () => deps.sessionStore.teamSelectedSessionId,
@@ -338,6 +352,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     if (chatStreamSessionId) {
       deps.runtimeStore.setWsConnected(chatStreamSessionId, false);
     }
+    chatStreamCleanup?.();
+    chatStreamCleanup = null;
     chatStream?.disconnect();
     chatStream = null;
     chatStreamSessionId = null;
@@ -347,6 +363,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     if (teamStreamSessionId) {
       deps.runtimeStore.setWsConnected(teamStreamSessionId, false);
     }
+    teamStreamCleanup?.();
+    teamStreamCleanup = null;
     teamStream?.disconnect();
     teamStream = null;
     teamStreamSessionId = null;

@@ -26,6 +26,16 @@ function isEphemeralMessage(message: Message): boolean {
 export function isInFlightLocalRow(message: Message): boolean {
   // ws-snap-* messages are finalized snapshots — treat as persisted for sorting
   if (message.origin?.kind === 'streaming_snapshot') return false;
+  // Finalized Activity messages (actv-* prefix, status='ok') — treat as persisted
+  // regardless of origin kind. This unifies handling for both:
+  //   - Streaming phase: actv-* with origin.kind='streaming' (from WS events)
+  //   - Reconstructed phase: actv-* with origin.kind='streaming_snapshot' (from API)
+  if (message.id.startsWith('actv-') && message.status === 'ok') return false;
+  // Reconstructed action messages (tool_activity origin with terminal status)
+  // are finalized snapshots from Activity API data — treat as persisted for sorting.
+  // Without this, they get sorted into the in-flight zone, breaking
+  // thinking → action → reply ordering within a turn.
+  if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || '')) return false;
   if (isEphemeralMessage(message)) return true;
   return isInFlightStatus(message.status || '');
 }
@@ -60,6 +70,9 @@ function messageOrder(message: Message): [number, string] {
   // the end with active in-flight messages.
   if (message.origin?.kind === 'streaming_snapshot') return [0, message.created_at || ''];
   if (message.id.startsWith('actv-') && message.status === 'ok') return [0, message.created_at || ''];
+  // Reconstructed action messages (tool_activity origin with terminal status)
+  // sort alongside persisted messages to maintain thinking → action → reply order.
+  if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || '')) return [0, message.created_at || ''];
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
   return [inFlight, message.created_at || ''];
 }
@@ -78,10 +91,12 @@ function shouldDropStaleInFlight(message: Message): boolean {
     // server-persisted assistant message contains ALL rounds' content merged
     // into one, and dropping snapshots would lose the round separation.
     if (origin?.kind === 'streaming_snapshot') return false;
-    // AF mode: when a streaming message is finalized (status='ok'), it
-    // represents completed per-round content that must be preserved.
+    // AF mode: when an actv-* streaming message is finalized (status='ok'),
+    // it represents completed per-round content that must be preserved.
     // Dropping it would lose the round separation that Activity data provides.
-    if (message.status === 'ok') return false;
+    // Note: ws-stream-* messages with status='ok' should still be droppable
+    // because they are superseded by the server-persisted assistant message.
+    if (message.id.startsWith('actv-') && message.status === 'ok') return false;
     return !isInFlightStatus(message.status || '');
   }
   if (isTeamMemberOrigin(origin)) return false;
@@ -107,7 +122,7 @@ export function mergeIncrementalSessionMessages(
   return mergeSessionMessages([...byId.values()], local, opts);
 }
 
-const PENDING_MATCH_TIME_WINDOW_MS = 5_000;
+const PENDING_MATCH_TIME_WINDOW_MS = 30_000;
 
 /** Match a pending-user placeholder to a server-persisted user message by content. */
 function isPendingUserMatch(pending: Message, serverUser: Message): boolean {
@@ -276,6 +291,12 @@ export function mergeSessionMessages(
     // content that is a subset of the full server message. Matching would cause
     // the server message to replace the snapshot, losing round separation.
     if (row.origin?.kind === 'streaming_snapshot') continue;
+    // Don't match finalized ws-stream-* messages (status='ok') — they are kept
+    // as fallback by the runner_completion handler until the reload replaces
+    // them. Matching would remove them prematurely, causing a brief flicker
+    // where the assistant reply disappears between ws-stream removal and
+    // server message arrival.
+    if (row.status === 'ok' && row.id.startsWith('ws-stream-')) continue;
     const serverMatch = findServerMatchForStreaming(row, serverAssistantByContent, matchedServerIDs);
     if (serverMatch) {
       pendingReplacedBy.set(row.id, serverMatch);

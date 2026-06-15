@@ -309,7 +309,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 
 	// Stream consumption
-	result, streamErr := o.consumeTurnStream(runCtx, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, time.Now())
+	result, streamErr := o.consumeTurnStream(runCtx, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, time.Now(), content)
 	if streamErr != nil {
 		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), streamErr
 	}
@@ -533,6 +533,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	events <-chan *trpcevent.Event,
 	firstByteTimeout time.Duration,
 	llmStart time.Time,
+	userContent string,
 ) (chatagent.EventStreamResult, error) {
 	sessionID := strings.TrimSpace(sess.ID)
 	runID := admit.runID
@@ -545,7 +546,8 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		InvocationID: runID, RunID: runID,
 		TraceID: emitter.TraceID(), AgentID: ag.ID,
 		AgentDisplayName: ag.DisplayName, ContextWindow: contextWin,
-		Source: event.EnvelopeSourceFromContext(runCtx),
+		Source:      event.EnvelopeSourceFromContext(runCtx),
+		TaskContent: userContent,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions, o.activityWriter(), o.td().Pipeline.Bus, o.lg())

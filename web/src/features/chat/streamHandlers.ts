@@ -263,6 +263,25 @@ export function bindStreamHandlers(
     afMode = true;
     for (const unsub of legacyUnsubs) unsub();
     legacyUnsubs.length = 0;
+
+    // S-02: Remove any ws-stream-* messages that were created by legacy
+    // handlers before AF mode was activated. These are superseded by the
+    // Activity-First (actv-*) messages that will follow. Without cleanup,
+    // both ws-stream and actv messages coexist until runner_completion reload,
+    // causing visible duplication.
+    const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
+    if (sid) {
+      const msgs = ctx.getMessages(sid);
+      const hasStreamingLegacy = msgs.some(
+        (m) => m.origin?.kind === 'streaming' && m.id.startsWith('ws-stream-') && m.status === 'streaming',
+      );
+      if (hasStreamingLegacy) {
+        const cleaned = msgs.filter(
+          (m) => !(m.origin?.kind === 'streaming' && m.id.startsWith('ws-stream-') && m.status === 'streaming'),
+        );
+        ctx.setMessages(sid, cleaned);
+      }
+    }
   }
 
   // H-03: Stream timeout protection. If runner_completion never arrives

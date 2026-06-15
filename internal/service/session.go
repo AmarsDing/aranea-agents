@@ -581,7 +581,7 @@ func toProtoActivity(a biz.Activity) *v1.Activity {
 		SessionId:        a.SessionID,
 		TurnId:           a.TurnID,
 		ParentActivityId: a.ParentActivityID,
-		Timestamp:        a.Timestamp.Format(time.RFC3339),
+		Timestamp:        a.Timestamp.Format(time.RFC3339Nano),
 		DurationMs:       a.DurationMs,
 		Content:          a.Content,
 		Reasoning:        a.Reasoning,

@@ -25,7 +25,6 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
 	"trpc.group/trpc-go/trpc-agent-go/internal/jsonrepair"
-	"trpc.group/trpc-go/trpc-agent-go/internal/state/appender"
 	itelemetry "trpc.group/trpc-go/trpc-agent-go/internal/telemetry"
 	itool "trpc.group/trpc-go/trpc-agent-go/internal/tool"
 	"trpc.group/trpc-go/trpc-agent-go/internal/toolretry"
@@ -47,11 +46,17 @@ const (
 	ErrorStreamableToolExecution = "Error: streamable tool execution failed"
 	// ErrorMarshalResult is the error message for failed to marshal result.
 	ErrorMarshalResult = "Error: failed to marshal result"
+	// ErrorToolExecutionTimeout is the error message for tool execution timeout.
+	ErrorToolExecutionTimeout = "Error: tool execution timed out"
 )
 
 // funcRespCompletionTimeout is the default wait duration for ensuring a
 // tool.response event has been processed by the session persistence layer.
 const funcRespCompletionTimeout = 5 * time.Second
+
+// defaultToolExecutionTimeout is the default timeout for a single tool execution
+// when the context has no deadline.
+const defaultToolExecutionTimeout = 60 * time.Second
 
 // summarizationSkipper is implemented by tools that can indicate whether
 // the flow should skip a post-tool summarization step. This allows tools
@@ -114,6 +119,16 @@ type FunctionCallResponseProcessor struct {
 	enableParallelTools bool
 	toolCallbacks       *tool.Callbacks
 	toolRetryPolicy     *tool.RetryPolicy
+	globalResultBudget  *tool.ResultBudget
+	// toolExecutionTimeout is the maximum duration for a single tool execution.
+	// If the context has no deadline, this timeout is applied automatically.
+	// Defaults to 60 seconds. Set to a negative value to disable.
+	toolExecutionTimeout time.Duration
+	// sanitizedNameCache caches the mapping from sanitized tool names to
+	// original tool names. Built once per Processor instance via sync.Once
+	// since the tool list does not change within a single Run.
+	sanitizedNameCache     map[string]string
+	sanitizedNameCacheOnce sync.Once
 }
 
 // FunctionCallResponseProcessorOption configures a function-call response processor.
@@ -127,6 +142,24 @@ func WithToolCallRetryPolicy(policy *tool.RetryPolicy) FunctionCallResponseProce
 			return
 		}
 		p.toolRetryPolicy = policy
+	}
+}
+
+// WithResultBudget sets the global result budget for tool execution results.
+// Individual tools can override this by setting ResultBudget in their Declaration.
+func WithResultBudget(budget *tool.ResultBudget) FunctionCallResponseProcessorOption {
+	return func(p *FunctionCallResponseProcessor) {
+		p.globalResultBudget = budget
+	}
+}
+
+// WithToolExecutionTimeout sets the maximum duration for a single tool execution.
+// If the context has no deadline when a tool is invoked, this timeout is applied
+// automatically to prevent indefinite blocking. The default is 60 seconds.
+// Set to a negative value to disable the timeout (not recommended).
+func WithToolExecutionTimeout(timeout time.Duration) FunctionCallResponseProcessorOption {
+	return func(p *FunctionCallResponseProcessor) {
+		p.toolExecutionTimeout = timeout
 	}
 }
 
@@ -299,28 +332,11 @@ func (p *FunctionCallResponseProcessor) handleFunctionCallsAndSendEvent(
 		return nil, nil
 	}
 
-	functionResponseEvent.RequiresCompletion = true
+	// P0-A1: Removed RequiresCompletion and AddNoticeChannelAndWait to eliminate
+	// synchronous wait for tool response persistence. Event ordering is guaranteed
+	// by the runner's FIFO event loop, so blocking here only adds latency.
 	agent.EmitEvent(ctx, invocation, eventChan, functionResponseEvent)
 
-	if !appender.IsAttached(invocation) {
-		return functionResponseEvent, nil
-	}
-
-	completionID :=
-		agent.GetAppendEventNoticeKey(functionResponseEvent.ID)
-	timeout := funcRespWaitTimeout(ctx)
-	err = invocation.AddNoticeChannelAndWait(ctx, completionID, timeout)
-	if errors.Is(err, context.Canceled) ||
-		errors.Is(err, context.DeadlineExceeded) {
-		return nil, err
-	}
-	if err != nil {
-		log.WarnfContext(
-			ctx,
-			"Wait for tool response persistence failed: %v",
-			err,
-		)
-	}
 	return functionResponseEvent, nil
 }
 
@@ -347,12 +363,18 @@ func (p *FunctionCallResponseProcessor) handleFunctionCalls(
 	}
 
 	toolResults := make([]toolResult, 0, len(toolCalls))
+	var firstErr error
 	for i, tc := range toolCalls {
 		result, err := p.executeSingleToolCallSequentialResult(
 			ctx, invocation, llmResponse, tools, eventChan, i, tc,
 		)
 		if err != nil {
-			return nil, err
+			if firstErr == nil {
+				firstErr = err
+			}
+			// Continue executing remaining tools even if one fails,
+			// consistent with the parallel execution path.
+			continue
 		}
 		toolResults = append(toolResults, result)
 	}
@@ -377,7 +399,7 @@ func (p *FunctionCallResponseProcessor) handleFunctionCalls(
 		ctx, invocation, llmResponse, tools, toolCalls, toolResults,
 		toolCallResponsesEvents,
 	)
-	return mergedEvent, nil
+	return mergedEvent, firstErr
 }
 
 // executeSingleToolCallSequential runs one tool call and returns its event.
@@ -1307,7 +1329,8 @@ func (p *FunctionCallResponseProcessor) executeToolCall(
 		}
 	}
 	if suppressDefaultToolMessage {
-		defaultMsg, err := buildDefaultToolMessage(toolCall.ID, toolCall.Function.Name, result)
+		budget := p.resolveResultBudget(tl)
+		defaultMsg, err := buildDefaultToolMessage(toolCall.ID, toolCall.Function.Name, result, budget)
 		if err != nil {
 			log.WarnfContext(
 				ctx,
@@ -1346,7 +1369,7 @@ func (p *FunctionCallResponseProcessor) executeToolCall(
 			skipSummarization, nil
 	}
 
-	defaultMsg, err := buildDefaultToolMessage(toolCall.ID, toolCall.Function.Name, result)
+	defaultMsg, err := buildDefaultToolMessage(toolCall.ID, toolCall.Function.Name, result, p.resolveResultBudget(tl))
 	if err != nil {
 		// Marshal failures (for example, NaN in floats) do not
 		// affect the overall flow. Downgrade to warning to avoid
@@ -1408,7 +1431,7 @@ func (p *FunctionCallResponseProcessor) resolveToolCallTarget(
 		// Fallback: the model may have returned a sanitized tool name when the
 		// original name contains characters outside ^[a-zA-Z0-9_-]+$. Try to
 		// resolve by matching the sanitized name against all registered tools.
-		matched, err := lookupBySanitizedName(toolCall.Function.Name, tools)
+		matched, err := p.lookupBySanitizedName(toolCall.Function.Name, tools)
 		if err != nil {
 			// Sanitized name collision — cannot determine which tool was intended.
 			log.WarnfContext(ctx, "%v", err)
@@ -1460,10 +1483,12 @@ func (p *FunctionCallResponseProcessor) resolveToolCallTarget(
 // sanitize tool names (e.g. replacing non-ASCII characters) before returning
 // them in tool_call responses.
 // It returns an error if multiple tools share the same sanitized name.
-// Uses a pre-built cache for O(1) lookup instead of linear scan.
-func lookupBySanitizedName(requested string, tools map[string]tool.Tool) (tool.Tool, error) {
-	cache := buildSanitizedNameCache(tools)
-	originalName, ok := cache[requested]
+// Uses a cached map for O(1) lookup instead of rebuilding on every call.
+func (p *FunctionCallResponseProcessor) lookupBySanitizedName(requested string, tools map[string]tool.Tool) (tool.Tool, error) {
+	p.sanitizedNameCacheOnce.Do(func() {
+		p.sanitizedNameCache = buildSanitizedNameCache(tools)
+	})
+	originalName, ok := p.sanitizedNameCache[requested]
 	if !ok {
 		return nil, nil
 	}
@@ -1976,12 +2001,37 @@ func (f *FunctionCallResponseProcessor) executeTool(
 	return ctx, nil, false, fmt.Errorf("unsupported tool type: %T", tl)
 }
 
+// ensureToolTimeout returns a context with a deadline if the original context
+// has none. This prevents tools from blocking indefinitely when the caller
+// forgets to set a timeout. If toolExecutionTimeout is explicitly set to a
+// negative value, no timeout is added.
+// Returns the (possibly wrapped) context and a cancel function that must be
+// called when the tool execution completes to release timer resources.
+func (p *FunctionCallResponseProcessor) ensureToolTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		// Context already has a deadline; no need to add one.
+		return ctx, func() {}
+	}
+	timeout := p.toolExecutionTimeout
+	if timeout < 0 {
+		// Negative value explicitly disables the timeout.
+		return ctx, func() {}
+	}
+	if timeout == 0 {
+		timeout = defaultToolExecutionTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	return ctx, cancel
+}
+
 // executeCallableTool executes a callable tool.
 func (p *FunctionCallResponseProcessor) executeCallableTool(
 	ctx context.Context,
 	toolCall model.ToolCall,
 	tl tool.CallableTool,
 ) (context.Context, any, error) {
+	ctx, timeoutCancel := p.ensureToolTimeout(ctx)
+	defer timeoutCancel()
 	if p.toolRetryPolicy == nil {
 		result, err := tl.Call(ctx, toolCall.Function.Arguments)
 		if err != nil {
@@ -2089,18 +2139,73 @@ func buildDefaultToolMessage(
 	toolCallID string,
 	toolName string,
 	result any,
+	budget *tool.ResultBudget,
 ) (model.Message, error) {
 	// Preserve legacy tool message serialization for default fallback content.
 	resultBytes, err := json.Marshal(result)
 	if err != nil {
 		return model.Message{}, err
 	}
+
+	// Apply budget truncation if a budget is configured and the result exceeds it.
+	if budget != nil && budget.MaxBytes > 0 && len(resultBytes) > budget.MaxBytes {
+		resultBytes = truncateResult(resultBytes, budget)
+	}
+
 	return model.Message{
 		Role:     model.RoleTool,
 		Content:  string(resultBytes),
 		ToolID:   toolCallID,
 		ToolName: toolName,
 	}, nil
+}
+
+// truncateResult truncates the serialized tool result according to the budget.
+// It produces valid JSON by wrapping the truncated preview in a structured envelope,
+// avoiding broken JSON that would confuse the LLM.
+func truncateResult(data []byte, budget *tool.ResultBudget) []byte {
+	maxPreview := budget.MaxBytes
+	if maxPreview > len(data) {
+		maxPreview = len(data)
+	}
+
+	var preview string
+	if budget.TruncationMode == "head" {
+		// Keep the end, truncate the beginning.
+		preview = string(data[len(data)-maxPreview:])
+	} else {
+		// Default: keep the beginning, truncate the end ("tail").
+		preview = string(data[:maxPreview])
+	}
+
+	// Wrap in a valid JSON envelope so the LLM receives parseable output.
+	envelope := map[string]any{
+		"truncated":    true,
+		"original_size": len(data),
+		"shown_bytes":  maxPreview,
+		"preview":      preview,
+	}
+	wrapped, err := json.Marshal(envelope)
+	if err != nil {
+		// Fallback: if envelope serialization fails, return a simple JSON message.
+		fallback := fmt.Sprintf(`{"truncated":true,"original_size":%d,"error":"failed to serialize preview"}`, len(data))
+		return []byte(fallback)
+	}
+	return wrapped
+}
+
+// resolveResultBudget returns the effective result budget for a tool.
+// Tool-level budget takes precedence over the global budget.
+// Returns nil if neither is set (meaning no truncation).
+func (p *FunctionCallResponseProcessor) resolveResultBudget(tl tool.Tool) *tool.ResultBudget {
+	if tl == nil {
+		return p.globalResultBudget
+	}
+	decl := tl.Declaration()
+	if decl != nil && decl.ResultBudget != nil {
+		return decl.ResultBudget
+	}
+	return p.globalResultBudget
 }
 
 type structuredStreamErrorOptIn interface {
@@ -2153,6 +2258,8 @@ func (f *FunctionCallResponseProcessor) executeStreamableTool(
 	tl tool.StreamableTool,
 	eventChan chan<- *event.Event,
 ) (context.Context, any, bool, error) {
+	ctx, timeoutCancel := f.ensureToolTimeout(ctx)
+	defer timeoutCancel()
 	reader, err := tl.StreamableCall(
 		streamableToolCallContext(ctx, tl),
 		toolCall.Function.Arguments,

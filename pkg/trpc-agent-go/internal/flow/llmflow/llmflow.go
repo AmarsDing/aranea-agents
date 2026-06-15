@@ -475,16 +475,10 @@ func (f *Flow) emitStartEventAndWait(ctx context.Context, invocation *agent.Invo
 		agentName = invocation.AgentName
 	}
 	startEvent := event.New(invocationID, agentName)
-	startEvent.RequiresCompletion = true
+	// P0-A1: Removed RequiresCompletion and AddNoticeChannelAndWait to eliminate
+	// synchronous wait for event persistence. Event ordering is guaranteed by
+	// the runner's FIFO event loop, so blocking here only adds latency.
 	agent.EmitEvent(ctx, invocation, eventChan, startEvent)
-
-	// Wait for completion notice.
-	// Ensure that the events of the previous agent or the previous step have been synchronized to the session.
-	completionID := agent.GetAppendEventNoticeKey(startEvent.ID)
-	err := invocation.AddNoticeChannelAndWait(ctx, completionID, eventCompletionTimeout)
-	if errors.Is(err, context.Canceled) {
-		return err
-	}
 	return nil
 }
 

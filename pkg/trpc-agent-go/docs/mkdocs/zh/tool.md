@@ -1395,7 +1395,7 @@ child := agenttool.NewTool(
 
 ### 注意事项
 
-- 事件完成信号：工具响应事件会被标记 `RequiresCompletion=true`，Runner 会自动发送完成信号，无需手工处理
+- 事件完成信号：工具响应事件不再设置 `RequiresCompletion=true`（P0-A1 性能优化移除）。Runner 按 FIFO 顺序处理事件，持久化异步非阻塞。仅排队用户消息事件仍使用 `RequiresCompletion` 以保证 LLM 处理前消息已持久化。
 - 内容去重：如果已转发子 Agent 的增量内容，默认不要再把最终 `tool.response` 的聚合内容打印出来
 - “只看进度”体验：当你希望用户看到内部进度、但不想重复看到子 Agent 正文时，可组合使用 `WithStreamInner(true)` 和 `WithInnerTextMode(agenttool.InnerTextModeExclude)`
 - 模型兼容性：一些模型要求工具调用后必须跟随工具消息，AgentTool 已自动填充聚合后的工具内容满足此要求
@@ -1904,6 +1904,66 @@ Tool 2: get_population       [====] 50ms
 Tool 3: get_time                  [====] 50ms
 总时间: ~150ms（依次执行）
 ```
+
+### 工具结果预算
+
+控制工具执行结果的最大大小，防止上下文膨胀。当工具结果超出预算时，会自动截断并包装为合法的 JSON 信封。
+
+```go
+// 全局预算：应用于所有未设置工具级预算的工具。
+agent := llmagent.New("ai-assistant",
+    llmagent.WithModel(model),
+    llmagent.WithTools(tools),
+    processor.WithResultBudget(&tool.ResultBudget{
+        MaxBytes:       10 * 1024, // 10KB
+        TruncationMode: "tail",     // 保留开头，截断尾部
+    }),
+)
+
+// 工具级预算：覆盖全局预算，针对特定工具设置。
+readFileTool := function.New(
+    function.WithName("read_file"),
+    function.WithDescription("读取文件内容"),
+    function.WithHandler(func(ctx context.Context, args map[string]any) (any, error) {
+        // ...
+    }),
+    function.WithDeclarationModifier(func(d *tool.Declaration) {
+        d.ResultBudget = &tool.ResultBudget{
+            MaxBytes:       20 * 1024, // 文件读取允许 20KB
+            TruncationMode: "tail",
+        }
+    }),
+)
+```
+
+**预算优先级**：工具级（`Declaration.ResultBudget`）> 全局级（`WithResultBudget`）> 不截断。
+
+**截断结果格式**（合法 JSON）：
+
+```json
+{
+  "truncated": true,
+  "original_size": 50000,
+  "shown_bytes": 10240,
+  "preview": "<原始结果的前 10KB>..."
+}
+```
+
+### 工具执行超时
+
+设置工具执行的全局超时，防止无限阻塞。默认为 60 秒。
+
+```go
+agent := llmagent.New("ai-assistant",
+    llmagent.WithModel(model),
+    llmagent.WithTools(tools),
+    processor.WithToolExecutionTimeout(30*time.Second), // 30 秒超时
+)
+```
+
+- 如果 context 已有 deadline，则尊重现有 deadline。
+- 负值显式禁用超时。
+- 零值使用默认值（60 秒）。
 
 ### 运行时 ToolSet 动态管理
 

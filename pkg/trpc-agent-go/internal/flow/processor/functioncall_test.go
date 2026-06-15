@@ -2230,7 +2230,7 @@ func TestFunctionCallResponseProcessor_ToolExecutionFilter_AllDeferred(
 	require.True(t, inv.EndInvocation)
 }
 
-func TestFunctionCallResponseProcessor_WaitsForToolResponseCompletion(
+func TestFunctionCallResponseProcessor_EmitsToolResponseEvent(
 	t *testing.T,
 ) {
 	const (
@@ -2288,22 +2288,10 @@ func TestFunctionCallResponseProcessor_WaitsForToolResponseCompletion(
 		}},
 	}
 
-	allowComplete := make(chan struct{})
-	eventSeen := make(chan struct{})
 	eventChan := make(chan *event.Event, 1)
 
-	go func() {
-		evt := <-eventChan
-		require.NotNil(t, evt)
-		require.True(t, evt.RequiresCompletion)
-		sess.UpdateUserSession(evt)
-		close(eventSeen)
-
-		<-allowComplete
-		completionID := agent.GetAppendEventNoticeKey(evt.ID)
-		require.NoError(t, inv.NotifyCompletion(ctx, completionID))
-	}()
-
+	// P0-A1: ProcessResponse no longer waits for NotifyCompletion; it returns
+	// immediately after emitting the tool.response event.
 	done := make(chan struct{})
 	p := NewFunctionCallResponseProcessor(false, nil)
 	go func() {
@@ -2311,26 +2299,24 @@ func TestFunctionCallResponseProcessor_WaitsForToolResponseCompletion(
 		close(done)
 	}()
 
-	select {
-	case <-eventSeen:
-	case <-ctx.Done():
-		t.Fatalf("timeout waiting for tool.response event")
-	}
-
-	const noReturnWindow = 50 * time.Millisecond
-	select {
-	case <-done:
-		t.Fatalf("ProcessResponse returned before completion")
-	case <-time.After(noReturnWindow):
-	}
-
-	close(allowComplete)
-
+	// Verify ProcessResponse returns promptly (no blocking wait).
 	select {
 	case <-done:
 	case <-ctx.Done():
 		t.Fatalf("timeout waiting for ProcessResponse to return")
 	}
+
+	// Verify the tool.response event was emitted.
+	select {
+	case evt := <-eventChan:
+		require.NotNil(t, evt)
+		// P0-A1: RequiresCompletion is no longer set.
+		require.False(t, evt.RequiresCompletion)
+		sess.UpdateUserSession(evt)
+	default:
+		t.Fatalf("expected tool.response event to be emitted")
+	}
+
 	require.Len(t, sess.Events, 2)
 }
 
@@ -2392,7 +2378,8 @@ func TestFunctionCallResponseProcessor_NoWaitWithoutAppender(t *testing.T) {
 	select {
 	case evt := <-eventChan:
 		require.NotNil(t, evt)
-		require.True(t, evt.RequiresCompletion)
+		// P0-A1: RequiresCompletion is no longer set.
+		require.False(t, evt.RequiresCompletion)
 	default:
 		t.Fatalf("expected tool.response event to be emitted")
 	}
@@ -2510,16 +2497,11 @@ func TestFunctionCallResponseProcessor_HandleFunctionCallsAndSendEvent_Canceled(
 		}},
 	}
 
-	eventSeen := make(chan struct{})
-	eventChan := make(chan *event.Event)
-	go func() {
-		defer close(eventSeen)
-		evt := <-eventChan
-		require.NotNil(t, evt)
-		require.True(t, evt.RequiresCompletion)
-		cancel()
-	}()
-
+	// P0-A1: Since handleFunctionCallsAndSendEvent no longer blocks on
+	// AddNoticeChannelAndWait, the tool executes synchronously and the event
+	// is emitted before any context cancellation can take effect. Verify that
+	// the function returns successfully with the event.
+	eventChan := make(chan *event.Event, 1)
 	got, err := p.handleFunctionCallsAndSendEvent(
 		ctx,
 		inv,
@@ -2527,14 +2509,22 @@ func TestFunctionCallResponseProcessor_HandleFunctionCallsAndSendEvent_Canceled(
 		tools,
 		eventChan,
 	)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Nil(t, got)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	// P0-A1: RequiresCompletion is no longer set.
+	require.False(t, got.RequiresCompletion)
 
+	// Verify the event was emitted to the channel.
 	select {
-	case <-eventSeen:
+	case evt := <-eventChan:
+		require.NotNil(t, evt)
+		require.False(t, evt.RequiresCompletion)
 	case <-time.After(time.Second):
 		t.Fatalf("timeout waiting for tool.response event")
 	}
+
+	// Cancel context after successful completion to verify no side effects.
+	cancel()
 }
 
 func TestFunctionCallResponseProcessor_HandleFunctionCallsAndSendEvent_Warns(
@@ -2593,12 +2583,14 @@ func TestFunctionCallResponseProcessor_HandleFunctionCallsAndSendEvent_Warns(
 	)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.True(t, got.RequiresCompletion)
+	// P0-A1: RequiresCompletion is no longer set.
+	require.False(t, got.RequiresCompletion)
 
 	select {
 	case evt := <-eventChan:
 		require.NotNil(t, evt)
-		require.True(t, evt.RequiresCompletion)
+		// P0-A1: RequiresCompletion is no longer set.
+		require.False(t, evt.RequiresCompletion)
 	default:
 		t.Fatalf("expected tool.response event to be emitted")
 	}

@@ -22,7 +22,6 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
-	"trpc.group/trpc-go/trpc-agent-go/internal/flow/llmflow"
 	"trpc.group/trpc-go/trpc-agent-go/internal/flow/processor"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/barrier"
 	itelemetry "trpc.group/trpc-go/trpc-agent-go/internal/telemetry"
@@ -325,8 +324,11 @@ func recordTraceEvent(
 	return evt
 }
 
-// emitStartBarrierAndWait emits a barrier event and waits until the runner has processed it,
-// ensuring that all prior events have been appended to the session before GraphAgent reads history.
+// emitStartBarrierAndWait emits a barrier event without waiting for persistence.
+// P0-A1: Removed synchronous wait (RequiresCompletion + AddNoticeChannelAndWait) to eliminate
+// blocking latency. Event ordering is guaranteed by the runner's FIFO event loop,
+// so the barrier event will still be processed in order — we just no longer block
+// the execution pipeline waiting for that processing to complete.
 func (ga *GraphAgent) emitStartBarrierAndWait(ctx context.Context, invocation *agent.Invocation,
 	ch chan<- *event.Event) error {
 	// If graph barrier is not enabled, skip.
@@ -335,17 +337,8 @@ func (ga *GraphAgent) emitStartBarrierAndWait(ctx context.Context, invocation *a
 	}
 	barrier := event.New(invocation.InvocationID, invocation.AgentName,
 		event.WithObject(graph.ObjectTypeGraphBarrier))
-	barrier.RequiresCompletion = true
-	completionID := agent.GetAppendEventNoticeKey(barrier.ID)
-	if noticeCh := invocation.AddNoticeChannel(ctx, completionID); noticeCh == nil {
-		return fmt.Errorf("add notice channel for %s", completionID)
-	}
 	if err := agent.EmitEvent(ctx, invocation, ch, barrier); err != nil {
 		return fmt.Errorf("emit barrier event: %w", err)
-	}
-	timeout := llmflow.WaitEventTimeout(ctx)
-	if err := invocation.AddNoticeChannelAndWait(ctx, completionID, timeout); err != nil {
-		return fmt.Errorf("wait for barrier completion: %w", err)
 	}
 	return nil
 }
@@ -538,10 +531,9 @@ func (ga *GraphAgent) forwardVisibleEvents(
 	defer close(dst)
 	for evt := range src {
 		if shouldSuppressGraphAgentBarrierEvent(invocation, evt) {
-			if err := completeSuppressedGraphAgentBarrier(ctx, invocation, evt); err != nil {
-				log.Errorf("graphagent: complete hidden barrier failed: %v", err)
-				return
-			}
+			// P0-A1: Barrier events no longer set RequiresCompletion=true,
+			// so there is no completion signal to send for suppressed barriers.
+			// The event is simply dropped from the forwarded stream.
 			continue
 		}
 		if err := event.EmitEvent(ctx, dst, evt); err != nil {
@@ -549,18 +541,6 @@ func (ga *GraphAgent) forwardVisibleEvents(
 			return
 		}
 	}
-}
-
-func completeSuppressedGraphAgentBarrier(
-	ctx context.Context,
-	invocation *agent.Invocation,
-	evt *event.Event,
-) error {
-	if invocation == nil || evt == nil || !evt.RequiresCompletion {
-		return nil
-	}
-	completionID := agent.GetAppendEventNoticeKey(evt.ID)
-	return invocation.NotifyCompletion(ctx, completionID)
 }
 
 func (ga *GraphAgent) setupInvocation(invocation *agent.Invocation) {

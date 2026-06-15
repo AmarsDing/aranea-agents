@@ -399,7 +399,7 @@ When AgentTool enables `WithStreamInner(true)`, it also forwards the child Agent
   `WithStreamInner(true)` with
   `WithInnerTextMode(agenttool.InnerTextModeExclude)`.
 
-Runner automatically sends completion signals for events requiring them (`RequiresCompletion=true`), so manual handling is not needed.
+Runner automatically sends completion signals for events requiring them (`RequiresCompletion=true`). Note: as of P0-A1, most events (tool responses, LLM start events, StateDelta events, graph barriers) no longer set `RequiresCompletion=true` for performance. Persistence is now asynchronous and non-blocking. Only queued user message events still use this mechanism to guarantee delivery before LLM processing.
 
 Example handling in an event loop:
 

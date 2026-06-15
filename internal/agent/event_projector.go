@@ -32,6 +32,7 @@ type ProjectMeta struct {
 	TurnCompletionTok  int
 	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
 	Source             string
+	TaskContent        string // User input text for the root task Activity
 }
 
 // Deprecated: Use ActivityProjector instead (Activity-First architecture). EventProjector will be removed after frontend fully migrates to Activity consumption (Phase 3).

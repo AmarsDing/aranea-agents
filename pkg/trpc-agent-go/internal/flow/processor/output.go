@@ -170,7 +170,9 @@ func (p *OutputResponseProcessor) handleOutputKey(ctx context.Context, invocatio
 		event.WithObject(model.ObjectTypeStateUpdate),
 		event.WithStateDelta(stateDelta),
 	)
-	stateEvent.RequiresCompletion = true
+	// P0-A1: Removed RequiresCompletion and AddNoticeChannelAndWait to eliminate
+	// synchronous wait for state delta persistence. Event ordering is guaranteed
+	// by the runner's FIFO event loop, so blocking here only adds latency.
 
 	log.DebugfContext(
 		ctx,
@@ -179,19 +181,6 @@ func (p *OutputResponseProcessor) handleOutputKey(ctx context.Context, invocatio
 	)
 	if err := agent.EmitEvent(ctx, invocation, ch, stateEvent); err != nil {
 		return
-	}
-
-	// Ensure that the state delta is synchronized to the local session before executing the next agent.
-	// maybe the next agent need to use delta state before executing the flow.
-	completionID := agent.GetAppendEventNoticeKey(stateEvent.ID)
-	if err := invocation.AddNoticeChannelAndWait(ctx, completionID,
-		agent.WaitNoticeWithoutTimeout); err != nil {
-		log.WarnfContext(
-			ctx,
-			"Failed to add notice channel for completion ID %s: %v",
-			completionID,
-			err,
-		)
 	}
 }
 

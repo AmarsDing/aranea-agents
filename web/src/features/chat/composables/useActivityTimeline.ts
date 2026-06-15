@@ -52,6 +52,13 @@ export function useActivityTimeline() {
       }
     }
 
+    // Sort tree by timestamp to ensure correct order even if WS events arrive out-of-order
+    const sortTree = (nodes: ActivityTreeNode[]) => {
+      nodes.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      for (const node of nodes) sortTree(node.children);
+    };
+    sortTree(roots);
+
     return roots;
   });
 

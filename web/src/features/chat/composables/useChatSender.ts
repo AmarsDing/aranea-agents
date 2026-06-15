@@ -493,9 +493,9 @@ export function useChatSender(deps: SenderDeps) {
     const text = content.trim();
     if (!text) return;
     const followUp = isActiveRun();
-    if (!followUp) {
-      markSending();
-    }
+    // S-03: Do not call markSending() before session is resolved — it starts
+    // the stall check and dispatch timeout prematurely. The second call below
+    // (after ensureSession) is the correct one.
     let clearAttachments = false;
     try {
       await strategy.ensureSession(deps.makeSessionTitle(text));
@@ -573,8 +573,10 @@ export function useChatSender(deps: SenderDeps) {
               knowledgeBases: deps.selectedKnowledgeBases.value,
             },
           );
-          dropPendingUserRow(sessionId, pendingUserId);
+          // S-06: Drop the pending user row AFTER loadMessages succeeds,
+          // so the user never sees their message disappear if the reload fails.
           await deps.messageStore.loadMessages({ sessionId });
+          dropPendingUserRow(sessionId, pendingUserId);
           clearAttachments = true;
         } catch (httpError) {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));

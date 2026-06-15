@@ -330,6 +330,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		MemberAgentKeys:  memberKeySet,
 		ContextWindow:    contextWin,
 		Source:           event.EnvelopeSourceFromContext(ctx),
+		TaskContent:      content,
 	}
 	streamOpts := r.newStreamConsumeOptions()
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts, r.lg)

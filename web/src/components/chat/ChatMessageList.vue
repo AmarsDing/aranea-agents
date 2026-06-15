@@ -27,7 +27,7 @@
       </div>
     </div>
     <q-virtual-scroll
-      v-else-if="useVirtual && !agentBlocks?.length"
+      v-else-if="useVirtual"
       ref="virtualScrollRef"
       v-slot="{ item, index }"
       class="col chat-messages__viewport"
@@ -100,9 +100,6 @@
           :key="turn.id"
           :turn="turn"
         />
-      </template>
-      <template v-else-if="agentBlocks?.length">
-        <AgentTreeTimeline :agent-blocks="agentBlocks" />
       </template>
       <template v-else-if="useTurnBlockMode">
         <TurnBlock
@@ -184,10 +181,8 @@ import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
 import type { TimelineItem } from '../../features/chat/composables/useChatTimeline';
-import type { AgentBlock } from '../../features/chat/agentTreeTypes';
 import type { Envelope } from '../../realtime/envelope';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
-import AgentTreeTimeline from './AgentTreeTimeline.vue';
 
 const props = defineProps<{
   sessionKey: string;
@@ -206,7 +201,6 @@ const props = defineProps<{
   showScrollBtn: boolean;
   turnIsFocused: (turnId: string, userId?: string) => boolean;
   isBlockCollapsed?: (blockKey: number) => boolean;
-  agentBlocks?: AgentBlock[];
   progressEnvelopes?: readonly Envelope[];
   /** AF-FE-06: Activity-First timeline activities (from useActivityTimeline) */
   activityTimelineActivities?: readonly TimelineActivity[];

@@ -50,6 +50,25 @@ type StreamableTool interface {
 	Tool
 }
 
+// ResultBudget controls the maximum size of tool execution results.
+// When a tool result exceeds MaxBytes, it is automatically truncated.
+type ResultBudget struct {
+	// MaxBytes is the maximum number of bytes for the serialized tool result.
+	// 0 means no limit (default).
+	MaxBytes int
+
+	// TruncationMode controls how results are truncated:
+	// "tail" - keep the beginning, truncate the end (default)
+	// "head" - keep the end, truncate the beginning
+	TruncationMode string
+}
+
+// DefaultResultBudget is the default budget for tool results (10KB).
+var DefaultResultBudget = &ResultBudget{
+	MaxBytes:       10 * 1024, // 10KB
+	TruncationMode: "tail",
+}
+
 // Declaration describes the metadata of a tool, such as its name, description, and expected arguments.
 type Declaration struct {
 	// Name is the unique identifier of the tool
@@ -63,6 +82,11 @@ type Declaration struct {
 
 	// OutputSchema defines the expected output for the tool in JSON schema format.
 	OutputSchema *Schema `json:"outputSchema,omitempty"`
+
+	// ResultBudget controls the maximum size of tool execution results.
+	// If nil, the global budget (if set) is used instead.
+	// This field is not exposed to the LLM.
+	ResultBudget *ResultBudget `json:"-"`
 }
 
 // Schema represents the structure of JSON Schema used for defining arguments and responses.

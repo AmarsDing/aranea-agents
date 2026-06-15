@@ -51,6 +51,7 @@ import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
 import { useActivityFirstEnabled } from '../useActivityFirstFlag';
+import { reconstructMessagesFromActivities } from '../activityMessageAdapter';
 import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
 
 export function useChatWorkspace() {
@@ -788,6 +789,7 @@ export function useChatWorkspace() {
       // is actually available. Pre-AF sessions (no Activity records) rely
       // on the server's merged assistant message for content display.
       let activityFirstForMerge = false;
+      let activityReconstructedMessages: import('../../chat/types').Message[] = [];
       if (useActivityFirstEnabled()) {
         await activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
           // Non-critical: AF path falls back to message inference on failure
@@ -795,12 +797,20 @@ export function useChatWorkspace() {
         // Check if Activity data was successfully loaded
         const afActivities = activityTimeline.activities.value;
         activityFirstForMerge = afActivities.length > 0;
+        // Reconstruct per-round actv-* messages from Activity records.
+        // When the server's merged assistant ChatMessage is excluded
+        // (activityFirst=true), these reconstructed messages provide the
+        // per-round structure needed for correct interleaved display
+        // (thinking → tool → thinking → tool → reply).
+        if (activityFirstForMerge) {
+          activityReconstructedMessages = reconstructMessagesFromActivities(afActivities, sessionId);
+        }
       }
 
       await messageStore.loadMessages(
         replace
-          ? { sessionId, replace: true, activityFirst: activityFirstForMerge }
-          : { sessionId, activityFirst: activityFirstForMerge },
+          ? { sessionId, replace: true, activityFirst: activityFirstForMerge, activityMessages: activityReconstructedMessages }
+          : { sessionId, activityFirst: activityFirstForMerge, activityMessages: activityReconstructedMessages },
       );
     } catch (err) {
       $q.notify({

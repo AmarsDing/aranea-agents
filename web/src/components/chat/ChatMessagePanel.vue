@@ -149,7 +149,6 @@
             :show-scroll-btn="showScrollBtn"
             :turn-is-focused="turnIsFocused"
             :is-block-collapsed="isBlockCollapsed"
-            :agent-blocks="agentBlocks"
             :activity-timeline-activities="props.activityTimelineActivities"
             :activity-agent-key="props.activityAgentKey"
             :activity-task-content="props.activityTaskContent"
@@ -306,7 +305,6 @@ import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from 
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
-import type { AgentBlock } from '../../features/chat/agentTreeTypes';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 
 type Option = { label: string; value: string; caption?: string };
@@ -454,7 +452,6 @@ const executionProgressRef = computed(() => props.executionProgress ?? []);
 // AF-Phase3: useAgentBlocks is fully removed. The AF path renders via
 // ConversationTurn (zero inference). The legacy TurnBlock path renders
 // via useChatTimeline.turnBlocks (groupMessagesByTurn, no 13-layer inference).
-const agentBlocks = computed(() => [] as AgentBlock[]);
 
 const {
   collapsedBlockKeys,

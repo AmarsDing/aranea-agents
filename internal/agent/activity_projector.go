@@ -228,6 +228,7 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 		AgentName:       meta.AgentDisplayName,
 		SpiritSessionID: meta.SessionID,
 		TeamID:          meta.TeamID,
+		Content:         meta.TaskContent,
 	}
 	p.rootActivityID = id
 	p.activities[id] = a
