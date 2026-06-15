@@ -12,12 +12,12 @@ import type {
 import type { TaskBoardNodeData, TaskBoardNodeKind, TaskBoardToolStatus } from '../agentTreeTypes';
 import type {
   Activity as TimelineActivity,
-  ThinkActivity,
-  ActActivity,
-  SayActivity,
-  NoticeActivity,
+  ThinkingEvent,
+  ActionEvent,
+  ReplyEvent,
+  ErrorEvent,
   ToolActivity,
-} from '../activityTimelineTypes';
+} from '../streamEventTypes';
 import { listActivities } from '../../session/api';
 
 /**
@@ -66,7 +66,7 @@ export function useActivityTimeline() {
 
   const taskBoardNodes = computed<TaskBoardNodeData[]>(() => {
     return activityTree.value
-      .filter((node) => node.kind !== 'delegate' && node.kind !== 'notice')
+      .filter((node) => node.kind !== 'delegate' && node.kind !== 'error')
       .map(activityToTaskBoardNode);
   });
 
@@ -200,13 +200,29 @@ export function useActivityTimeline() {
   }
 
   // AF-FE-14: Load activities from backend API for history recovery
+  // Retries up to 2 times with exponential backoff (500ms, 1000ms) on failure.
+  // On final failure, logs a warning and returns silently — the UI falls back
+  // to the legacy "isLegacy" path in useConversationTimeline.
   async function loadActivitiesFromAPI(sessionId: string, turnId?: string) {
-    try {
-      const activityList = await listActivities(sessionId, turnId);
-      loadActivities(activityList);
-    } catch (err) {
-      console.warn('[activity] failed to load activities from API:', err);
+    const maxAttempts = 3;
+    const baseDelay = 500;
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const activityList = await listActivities(sessionId, turnId);
+        loadActivities(activityList);
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxAttempts - 1) {
+          const delay = baseDelay * (2 ** attempt);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
     }
+
+    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', lastErr);
   }
 
   // === Cleanup on unmount (only when inside a component instance) ===
@@ -237,7 +253,7 @@ export function useActivityTimeline() {
 
 /**
  * Maps ActivityKind to TaskBoardNodeKind.
- * delegate and notice are not rendered as TaskBoardNodes.
+ * delegate is not rendered as TaskBoardNodes.
  * Exported for use by activityToTaskBoardNode (used by useConversationTimeline).
  */
 export function mapActivityKindToNodeKind(kind: ActivityKind): TaskBoardNodeKind | null {
@@ -247,7 +263,6 @@ export function mapActivityKindToNodeKind(kind: ActivityKind): TaskBoardNodeKind
     case 'action':
     case 'reply':
     case 'sub_task_board':
-    case 'end':
     case 'error':
       return kind;
     default:
@@ -285,7 +300,7 @@ export function mapActivityStatusToToolStatus(status: ActivityStatus): TaskBoard
 export function activityToTaskBoardNode(node: ActivityTreeNode): TaskBoardNodeData {
   const nodeKind = mapActivityKindToNodeKind(node.kind);
   if (!nodeKind) {
-    // Fallback for delegate/notice
+    // Fallback for delegate
     return {
       kind: 'task',
       content: node.content || node.label || '',
@@ -329,14 +344,14 @@ export function activityToTimelineActivity(node: ActivityTreeNode): TimelineActi
   switch (node.kind) {
     case 'thinking':
       return {
-        kind: 'think',
+        kind: 'thinking',
         id: node.id,
         content: node.reasoning || node.content || '',
         label: node.label || undefined,
         collapsed: node.collapsed,
         streaming: node.status === 'running',
         durationMs: node.durationMs,
-      } satisfies ThinkActivity;
+      } satisfies ThinkingEvent;
 
     case 'action': {
       const toolStatus = mapActivityStatusToToolStatus(node.status);
@@ -350,57 +365,38 @@ export function activityToTimelineActivity(node: ActivityTreeNode): TimelineActi
         error: node.toolErrorCode || null,
       };
       return {
-        kind: 'act',
+        kind: 'action',
         id: node.id,
         tool,
-      } satisfies ActActivity;
+      } satisfies ActionEvent;
     }
 
     case 'reply':
       return {
-        kind: 'say',
+        kind: 'reply',
         id: node.id,
         content: node.content || '',
         isFinal: node.status === 'completed' || node.status === 'failed',
         streaming: node.status === 'running',
         variant: 'default',
         durationMs: node.durationMs,
-      } satisfies SayActivity;
-
-    case 'notice':
-      return {
-        kind: 'notice',
-        id: node.id,
-        type: 'info',
-        message: node.content || '',
-      } satisfies NoticeActivity;
+      } satisfies ReplyEvent;
 
     case 'error':
       return {
-        kind: 'notice',
+        kind: 'error',
         id: node.id,
         type: 'degradation',
         message: node.content || node.toolErrorCode || '',
-      } satisfies NoticeActivity;
-
-    case 'end':
-      return {
-        kind: 'say',
-        id: node.id,
-        content: node.content || '',
-        isFinal: true,
-        streaming: false,
-        variant: 'default',
-        durationMs: node.durationMs,
-      } satisfies SayActivity;
+      } satisfies ErrorEvent;
 
     default:
-      // Fallback: task, sub_task_board, delegate → notice
+      // Fallback: task, sub_task_board, delegate → error
       return {
-        kind: 'notice',
+        kind: 'error',
         id: node.id,
         type: 'info',
         message: node.content || node.label || '',
-      } satisfies NoticeActivity;
+      } satisfies ErrorEvent;
   }
 }

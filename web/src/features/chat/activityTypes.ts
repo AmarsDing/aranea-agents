@@ -16,10 +16,8 @@ export type ActivityKind =
   | 'action' // Tool invocation
   | 'reply' // Agent reply (including final answer)
   | 'sub_task_board' // Sub-task board (recursive nesting)
-  | 'end' // Task completion marker
   | 'error' // Error information
-  | 'delegate' // Spirit delegates to team
-  | 'notice'; // System notification (context loading, status change)
+  | 'delegate'; // Spirit delegates to team
 
 // === ActivityStatus ===
 

@@ -26,67 +26,6 @@
         </div>
       </div>
     </div>
-    <q-virtual-scroll
-      v-else-if="useVirtual"
-      ref="virtualScrollRef"
-      v-slot="{ item, index }"
-      class="col chat-messages__viewport"
-      style="min-height: 0"
-      :items="timelineItems"
-      :virtual-scroll-item-size="virtualRowSize"
-      :virtual-scroll-slice-size="48"
-      :virtual-scroll-slice-ratio-before="2"
-      :virtual-scroll-slice-ratio-after="2"
-      @scroll="$emit('scroll', $event)"
-      @click="$emit('messages-click', $event)"
-    >
-      <TurnBlock
-        v-if="useTurnBlockMode && item.kind === 'block'"
-        :block="item.block"
-        :collapsed="props.isBlockCollapsed?.(item.block.key)"
-        :focused="turnIsFocused(item.block.turnId, item.block.user?.id)"
-        :all-messages="messages"
-        :is-dark="isDark"
-        :is-team-session="isTeamSession"
-        :planner-kind="plannerKind"
-        :react-tool-link-index="reactToolLinkIndex"
-        :reasoning-sidebar-open="reasoningSidebarOpen"
-        @a2ui-user-action="(p) => $emit('a2ui-user-action', p)"
-        @feedback="(p) => $emit('feedback', p)"
-        @regenerate="(msg) => $emit('regenerate', msg)"
-        @retry="(id) => $emit('retry', id)"
-        @dismiss-failed="(id) => $emit('dismiss-failed', id)"
-        @pin-reasoning="(id) => $emit('pin-reasoning-message', id)"
-        @toggle-collapse="$emit('toggle-block-collapse', item.block.key)"
-      />
-      <ChatMessageRow
-        v-else
-        v-memo="[
-          item.message.id,
-          item.message.content_markdown,
-          item.message.status,
-          item.message.options_json,
-          isDark,
-          plannerKind,
-        ]"
-        :message="item.message"
-        :index="index"
-        :messages="messages"
-        :is-dark="isDark"
-        :is-team-session="isTeamSession"
-        :planner-kind="plannerKind"
-        :react-tool-link-index="reactToolLinkIndex"
-        :reasoning-sidebar-open="reasoningSidebarOpen"
-        @a2ui-user-action="(p) => $emit('a2ui-user-action', p)"
-        @feedback="(p) => $emit('feedback', p)"
-        @retry="(id) => $emit('retry', id)"
-        @dismiss-failed="(id) => $emit('dismiss-failed', id)"
-        @attachment-deleted="(id) => $emit('attachment-deleted', id)"
-        @download-artifact="(meta) => $emit('download-artifact', meta)"
-        @regenerate="(msg) => $emit('regenerate', msg)"
-        @pin-reasoning="(id) => $emit('pin-reasoning-message', id)"
-      />
-    </q-virtual-scroll>
     <div
       v-else
       ref="normalScrollEl"
@@ -94,55 +33,10 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <template v-if="useActivityTimeline && conversationTurns.length">
-        <ConversationTurn
-          v-for="turn in conversationTurns"
-          :key="turn.id"
-          :turn="turn"
-        />
-      </template>
-      <template v-else-if="useTurnBlockMode">
-        <TurnBlock
-          v-for="block in turnBlocks"
-          :key="block.turnId"
-          :block="block"
-          :collapsed="props.isBlockCollapsed?.(block.key)"
-          :focused="turnIsFocused(block.turnId, block.user?.id)"
-          :all-messages="messages"
-          :is-dark="isDark"
-          :is-team-session="isTeamSession"
-          :planner-kind="plannerKind"
-          :react-tool-link-index="reactToolLinkIndex"
-          :reasoning-sidebar-open="reasoningSidebarOpen"
-          @a2ui-user-action="(p) => $emit('a2ui-user-action', p)"
-          @feedback="(p) => $emit('feedback', p)"
-          @regenerate="(msg) => $emit('regenerate', msg)"
-          @retry="(id) => $emit('retry', id)"
-          @dismiss-failed="(id) => $emit('dismiss-failed', id)"
-          @pin-reasoning="(id) => $emit('pin-reasoning-message', id)"
-          @toggle-collapse="$emit('toggle-block-collapse', block.key)"
-        />
-      </template>
-      <ChatMessageRow
-        v-for="(message, idx) in messages"
-        v-else
-        :key="message.id"
-        v-memo="[message.id, message.content_markdown, message.status, message.options_json, isDark, plannerKind, reactToolLinkIndex, reasoningSidebarOpen]"
-        :message="message"
-        :index="idx"
-        :messages="messages"
-        :is-dark="isDark"
-        :is-team-session="isTeamSession"
-        :planner-kind="plannerKind"
-        :react-tool-link-index="reactToolLinkIndex"
-        :reasoning-sidebar-open="reasoningSidebarOpen"
-        @a2ui-user-action="(p) => $emit('a2ui-user-action', p)"
-        @retry="(id) => $emit('retry', id)"
-        @dismiss-failed="(id) => $emit('dismiss-failed', id)"
-        @attachment-deleted="(id) => $emit('attachment-deleted', id)"
-        @download-artifact="(meta) => $emit('download-artifact', meta)"
-        @regenerate="(msg) => $emit('regenerate', msg)"
-        @pin-reasoning="(id) => $emit('pin-reasoning-message', id)"
+      <ConversationTurn
+        v-for="turn in conversationTurns"
+        :key="turn.id"
+        :turn="turn"
       />
     </div>
     <ChatPendingQueue
@@ -170,18 +64,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { QVirtualScroll } from 'quasar';
-import TurnBlock from './TurnBlock.vue';
-import ChatMessageRow from './ChatMessageRow.vue';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import ConversationTurn from './ConversationTurn.vue';
-import { useActivityFirstEnabled } from '../../features/chat/useActivityFirstFlag';
 import { useConversationTimeline } from '../../features/chat/composables/useConversationTimeline';
-import type { Message, ReactToolLinkIndex, PendingMessage } from '../../features/chat/types';
+import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
-import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
-import type { TimelineItem } from '../../features/chat/composables/useChatTimeline';
 import type { Envelope } from '../../realtime/envelope';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
 
@@ -192,16 +80,8 @@ const props = defineProps<{
   isDark: boolean;
   isTeamSession?: boolean;
   plannerKind?: string;
-  reactToolLinkIndex: ReactToolLinkIndex;
   reasoningSidebarOpen?: boolean;
-  useVirtual: boolean;
-  useTurnBlockMode: boolean;
-  timelineItems: TimelineItem[];
-  turnBlocks: TurnBlockGroup[];
-  virtualRowSize: number;
   showScrollBtn: boolean;
-  turnIsFocused: (turnId: string, userId?: string) => boolean;
-  isBlockCollapsed?: (blockKey: number) => boolean;
   progressEnvelopes?: readonly Envelope[];
   /** AF-FE-06: Activity-First timeline activities (from useActivityTimeline) */
   activityTimelineActivities?: readonly TimelineActivity[];
@@ -230,7 +110,6 @@ defineEmits<{
   'cancel-pending': [pendingId: string];
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
-  'toggle-block-collapse': [blockKey: number];
 }>();
 
 const { t } = useI18n();
@@ -242,13 +121,7 @@ const quickStartHints = [
 ];
 
 const emptyScrollEl = ref<HTMLElement | null>(null);
-const virtualScrollRef = ref<QVirtualScroll | null>(null);
 const normalScrollEl = ref<HTMLElement | null>(null);
-
-const useActivityTimeline = computed(() => {
-  // AF-FE-05: Feature flag — use centralized composable
-  return useActivityFirstEnabled();
-});
 
 const { conversationTurns } = useConversationTimeline({
   messages: computed(() => props.messages),
@@ -264,10 +137,8 @@ const { conversationTurns } = useConversationTimeline({
 
 defineExpose({
   emptyScrollEl,
-  virtualScrollRef,
   normalScrollEl,
   getScrollTarget: () => {
-    if (props.useVirtual) return virtualScrollRef.value?.$el ?? null;
     if (!props.messages.length) return emptyScrollEl.value;
     return normalScrollEl.value;
   },

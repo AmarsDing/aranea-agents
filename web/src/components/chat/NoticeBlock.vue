@@ -1,15 +1,15 @@
 <template>
-  <div class="notice-activity" :class="`notice-activity--${activity.type}`">
-    <span class="notice-activity__icon">{{ activity.type === 'degradation' ? '⚠️' : 'ℹ️' }}</span>
-    <span class="notice-activity__message">{{ activity.message }}</span>
+  <div class="notice-activity" :class="`notice-activity--${event.type}`">
+    <span class="notice-activity__icon">{{ event.type === 'degradation' ? '⚠️' : 'ℹ️' }}</span>
+    <span class="notice-activity__message">{{ event.message }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { NoticeActivity as NoticeActivityType } from '../../features/chat/activityTimelineTypes';
+import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
 defineProps<{
-  activity: NoticeActivityType;
+  event: ErrorEvent;
 }>();
 </script>
 

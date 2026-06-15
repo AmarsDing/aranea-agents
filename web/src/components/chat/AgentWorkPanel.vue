@@ -19,7 +19,7 @@
       </span>
     </div>
 
-    <!-- Branch: TaskBoard, ActivityTimeline, or TeamPanel -->
+    <!-- Branch: TeamPanel, EventStream, or legacy -->
     <div class="agent-work-panel__body">
       <!-- AF-Phase3: Legacy turn without Activity data — show simplified view -->
       <div v-if="agentWork.isLegacy" class="agent-work-panel__legacy">
@@ -44,28 +44,15 @@
           <span v-else-if="ps.status === 'timeout'" class="agent-work-panel__progress-status" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
         </div>
       </template>
-      <!-- TaskBoard: tree-nested rendering when taskBoardNodes data is available -->
-      <TaskBoard
-        v-if="agentWork.taskBoardNodes?.length"
-        :entries="agentWork.taskBoardNodes"
-        :depth="0"
-      />
-      <!-- ActivityTimeline fallback when no TaskBoard data -->
-      <ActivityTimeline
-        v-else-if="!agentWork.panel"
-        :activities="agentWork.activities"
+      <!-- Team panel (v7 style) — displayed above EventStream when panel data exists -->
+      <TeamPanel v-if="agentWork.panel" :panel="agentWork.panel" />
+      <!-- Unified event stream rendering (replaces TaskBoard + ActivityTimeline) -->
+      <EventStream
+        v-if="agentWork.activities.length"
+        :events="agentWork.activities"
         :agent-color="agentWork.agentColor"
         variant="card"
       />
-      <!-- Team panel (v7 style) -->
-      <template v-else>
-        <TeamPanel :panel="agentWork.panel" />
-        <ActivityTimeline
-          :activities="agentWork.activities"
-          :agent-color="agentWork.agentColor"
-          variant="card"
-        />
-      </template>
     </div>
   </div>
 </template>
@@ -78,8 +65,7 @@ import type { ProgressCategory, ProgressSection } from '../../features/chat/agen
 import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
-import ActivityTimeline from './ActivityTimeline.vue';
-import TaskBoard from './TaskBoard.vue';
+import EventStream from './EventStream.vue';
 import TeamPanel from './TeamPanel.vue';
 
 const { t } = useI18n();

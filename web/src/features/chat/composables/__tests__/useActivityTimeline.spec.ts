@@ -288,10 +288,10 @@ describe('useActivityTimeline', () => {
     const activities = tl.timelineActivities.value;
     // task, delegate, sub_task_board are filtered out; thinking, action, reply, error remain
     expect(activities).toHaveLength(4);
-    expect(activities[0].kind).toBe('think');
-    expect(activities[1].kind).toBe('act');
-    expect(activities[2].kind).toBe('say');
-    expect(activities[3].kind).toBe('notice');
+    expect(activities[0].kind).toBe('thinking');
+    expect(activities[1].kind).toBe('action');
+    expect(activities[2].kind).toBe('reply');
+    expect(activities[3].kind).toBe('error');
   });
 
   it('delta creates new object for reactivity (not mutating existing)', () => {

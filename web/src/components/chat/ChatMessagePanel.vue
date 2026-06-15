@@ -139,16 +139,8 @@
             :is-dark="props.isDark"
             :is-team-session="props.isTeamSession"
             :planner-kind="props.plannerKind"
-            :react-tool-link-index="props.reactToolLinkIndex"
             :reasoning-sidebar-open="props.reasoningSidebarOpen"
-            :use-virtual="useVirtualMessageList"
-            :use-turn-block-mode="useTurnBlockMode"
-            :timeline-items="timelineItems"
-            :turn-blocks="turnBlocks"
-            :virtual-row-size="virtualRowSize"
             :show-scroll-btn="showScrollBtn"
-            :turn-is-focused="turnIsFocused"
-            :is-block-collapsed="isBlockCollapsed"
             :activity-timeline-activities="props.activityTimelineActivities"
             :activity-agent-key="props.activityAgentKey"
             :activity-task-content="props.activityTaskContent"
@@ -168,7 +160,6 @@
             @cancel-pending="(id) => emit('cancel-pending', id)"
             @interrupt-pending="(id) => emit('interrupt-pending', id)"
             @update-pending="(id, content) => emit('update-pending', id, content)"
-            @toggle-block-collapse="toggleBlock"
           />
 
           <SynthesisResultCard
@@ -266,13 +257,12 @@
 </template>
 
 <script setup lang="ts">
-// Container: approved — orchestrates virtual scroll, TurnBlock grouping, scroll anchoring, and composable wiring
 import { computed, nextTick, onMounted, provide, readonly, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { QVirtualScroll } from 'quasar';
 import type { Envelope } from '../../realtime/envelope';
 import ChatRunnerStatus from './ChatRunnerStatus.vue';
 import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
+import type { TeamMemberLane } from './ChatTeamMemberStrip';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatHeaderUsagePanel from './ChatHeaderUsagePanel.vue';
@@ -291,13 +281,10 @@ import type { CompressStatus } from '../../features/session/types';
 import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
 
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
-import { useChatTimeline, type TimelineItem } from '../../features/chat/composables/useChatTimeline';
-import { useActivityFirstEnabled } from '../../features/chat/useActivityFirstFlag';
-import { CHAT_VIRTUAL_ROW_ESTIMATE, CHAT_VIRTUAL_SCROLL_THRESHOLD } from '../../features/chat/chatListVirtual';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { Message, ReactToolLinkIndex } from '../../features/chat/types';
+import type { Message } from '../../features/chat/types';
 import type { ComposerUsageSnapshot } from '../../features/chat/composerUsageMetrics';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
@@ -305,8 +292,8 @@ import type { ChatAttachment } from './types';
 import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from '../../features/spirit/types';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
-import { useAutoCollapse } from '../../features/chat/composables/useAutoCollapse';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
+import { isTeamMemberOrigin, ensureOrigin } from '../../features/chat/messageOrigin';
 
 type Option = { label: string; value: string; caption?: string };
 
@@ -342,7 +329,6 @@ const props = defineProps<{
   sessionLoading?: boolean;
   isTeamSession?: boolean;
   plannerKind?: string;
-  reactToolLinkIndex: ReactToolLinkIndex;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
   runStatus?: RunStatusValue;
   runAgentName?: string;
@@ -354,13 +340,6 @@ const props = defineProps<{
   focusTurnId?: string;
   sessionArtifacts?: ArtifactMeta[];
   sessionArtifactsLoading?: boolean;
-  /**
-   * Ordered execution_progress envelopes for the active stream. Surfaced by
-   * useChatStreamManager and consumed by useAgentBlocks to render inline
-   * orchestration / team / tool / thinking step cards in the timeline.
-   *
-   * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
-   */
   executionProgress?: readonly Envelope[];
   fileSupported?: boolean;
   fileAccept?: string;
@@ -444,30 +423,30 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const messagesRef = computed(() => props.messages);
 
-const { messageRow, teamMemberLanes, useTurnBlockMode, turnBlocks, timelineItems } = useChatTimeline({
-  messages: messagesRef,
-  isTeamSession: props.isTeamSession,
+// ── Team member lanes (inlined from deleted useChatTimeline) ──
+const teamMemberLanes = computed((): TeamMemberLane[] => {
+  if (!props.isTeamSession) return [];
+  const lanes = new Map<string, TeamMemberLane>();
+  for (const message of props.messages) {
+    const origin = ensureOrigin(message).origin;
+    if (!isTeamMemberOrigin(origin)) continue;
+    const key = origin.agentKey || message.id;
+    const label = message.agent_ref?.name || origin.agentKey || key;
+    const streaming = message.status === 'streaming' || message.status === 'tool_running';
+    const prev = lanes.get(key);
+    lanes.set(key, {
+      key,
+      label,
+      streaming: (prev?.streaming ?? false) || streaming,
+    });
+  }
+  return [...lanes.values()];
 });
-
-const executionProgressRef = computed(() => props.executionProgress ?? []);
-
-// AF-Phase3: useAgentBlocks is fully removed. The AF path renders via
-// ConversationTurn (zero inference). The legacy TurnBlock path renders
-// via useChatTimeline.turnBlocks (groupMessagesByTurn, no 13-layer inference).
-
-const {
-  collapsedBlockKeys,
-  expandAllActive,
-  isCollapsed: isBlockCollapsed,
-  toggleBlock,
-  expandAll,
-  collapseAll,
-  reset: resetAutoCollapse,
-} = useAutoCollapse(turnBlocks);
 
 // ── SP-FE-30: Provide/Inject global collapse control ──
 const expandAllSignal = ref(0);
 const collapseAllSignal = ref(0);
+const expandAllActive = ref(false);
 provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
   expandAllSignal: readonly(expandAllSignal),
   collapseAllSignal: readonly(collapseAllSignal),
@@ -482,32 +461,17 @@ provide(TOOL_DISPLAY_KEY, computed(() => ({
 const { todoBoardState } = useTodoBoard(messagesRef);
 
 function handleExpandAll() {
-  expandAll();
+  expandAllActive.value = true;
   expandAllSignal.value++;
 }
 
 function handleCollapseAll() {
-  collapseAll();
+  expandAllActive.value = false;
   collapseAllSignal.value++;
 }
 
-
-const useVirtualMessageList = computed(() => {
-  // AF-FE-05: When Activity-First data is available, ConversationTurn renders
-  // which already provides compact timeline views — no need for virtual scroll.
-  // Virtual scroll is only useful for the TurnBlock/ChatMessageRow path where
-  // individual messages can be numerous.
-  // Use activityRawRecords (unfiltered) instead of activityTimelineActivities
-  // (filtered) to detect AF data availability — timelineActivities may be empty
-  // when all activities are kind=task (root nodes only), but AF path should
-  // still be activated via conversationTurns built from rawRecords.
-  if (useActivityFirstEnabled() && props.activityRawRecords?.length) return false;
-  return timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD;
-});
-const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
 const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 
-const virtualScrollRef = computed(() => messageListRef.value?.virtualScrollRef ?? null);
 const messagesScrollEl = computed(() => messageListRef.value?.getScrollTarget() ?? null);
 
 const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
@@ -516,11 +480,6 @@ const sessionTitleRef = computed(() => props.sessionTitle);
 const { showScrollBtn, highlightedTurnId, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
   sessionKey,
   messages: messagesRef,
-  useTurnBlockMode,
-  turnBlocks,
-  useVirtualMessageList,
-  timelineItemsLength: computed(() => timelineItems.value.length),
-  virtualScrollRef,
   messagesScrollEl,
 });
 
@@ -528,8 +487,8 @@ const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession
   sessionTitle: sessionTitleRef,
   messages: messagesRef,
   messagesScrollEl,
-  virtualScrollRef,
-  useVirtualMessageList,
+  virtualScrollRef: computed(() => null),
+  useVirtualMessageList: computed(() => false),
 });
 
 function onMessagesScrollWrapped(event?: Event) {

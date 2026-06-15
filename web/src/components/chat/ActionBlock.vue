@@ -41,14 +41,15 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { ActActivity as ActActivityType, ActivityVariant } from '../../features/chat/activityTimelineTypes';
+import type { ActionEvent } from '../../features/chat/streamEventTypes';
+import type { ActivityVariant } from '../../features/chat/activityTimelineTypes';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
 import TodoInlineList from './TodoInlineList.vue';
 
 const props = defineProps<{
-  activity: ActActivityType;
+  activity: ActionEvent;
   variant?: ActivityVariant;
   agentColor?: string;
 }>();

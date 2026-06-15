@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, toRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useRoute } from 'vue-router';
@@ -21,8 +21,6 @@ import { useChatSender } from './useChatSender';
 import { useFollowUpQueue } from './useFollowUpQueue';
 import { useAwaitReply } from './useAwaitReply';
 import { formatUserActionMessage, type A2UIUserActionPayload } from '../a2uiUserAction';
-import { buildReactToolLinkIndex } from '../reactToolLinkIndex';
-import { messageListStructureFingerprint } from '../messageListFingerprint';
 import { clearChatMarkdownCache } from '../chatMessageMarkdown';
 import { formatSessionTime, getProviderModelValue, sessionToView } from './chatWorkspaceUtils';
 import { useChatSidebarOrder } from './useChatSidebarOrder';
@@ -50,7 +48,6 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
-import { useActivityFirstEnabled } from '../useActivityFirstFlag';
 import { reconstructMessagesFromActivities } from '../activityMessageAdapter';
 import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
 
@@ -196,15 +193,6 @@ export function useChatWorkspace() {
     const sid = sessionStore.currentSessionId();
     return sid ? messageStore.getMessages(sid) : [];
   });
-
-  const reactToolLinkIndex = shallowRef(buildReactToolLinkIndex([]));
-  watch(
-    () => messageListStructureFingerprint(displayMessages.value),
-    () => {
-      reactToolLinkIndex.value = buildReactToolLinkIndex(displayMessages.value);
-    },
-    { immediate: true },
-  );
 
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
@@ -455,10 +443,6 @@ export function useChatWorkspace() {
       // (grouped by turnId) to render each turn's thinking/action/reply in
       // correct temporal order. Clearing would force degradation to the message
       // inference path, which cannot reconstruct multi-round ReAct timelines.
-      // Non-AF mode still resets to preserve legacy behavior.
-      if (!useActivityFirstEnabled()) {
-        activityTimeline.reset();
-      }
     },
     onHydrateError: (sessionId, message) => {
       if (selectedSessionId.value === sessionId) {
@@ -852,21 +836,19 @@ export function useChatWorkspace() {
       // on the server's merged assistant message for content display.
       let activityFirstForMerge = false;
       let activityReconstructedMessages: import('../../chat/types').Message[] = [];
-      if (useActivityFirstEnabled()) {
-        await activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
-          // Non-critical: AF path falls back to message inference on failure
-        });
-        // Check if Activity data was successfully loaded
-        const afActivities = activityTimeline.activities.value;
-        activityFirstForMerge = afActivities.length > 0;
-        // Reconstruct per-round actv-* messages from Activity records.
-        // When the server's merged assistant ChatMessage is excluded
-        // (activityFirst=true), these reconstructed messages provide the
-        // per-round structure needed for correct interleaved display
-        // (thinking → tool → thinking → tool → reply).
-        if (activityFirstForMerge) {
-          activityReconstructedMessages = reconstructMessagesFromActivities(afActivities, sessionId);
-        }
+      await activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
+        // Non-critical: AF path falls back to message inference on failure
+      });
+      // Check if Activity data was successfully loaded
+      const afActivities = activityTimeline.activities.value;
+      activityFirstForMerge = afActivities.length > 0;
+      // Reconstruct per-round actv-* messages from Activity records.
+      // When the server's merged assistant ChatMessage is excluded
+      // (activityFirst=true), these reconstructed messages provide the
+      // per-round structure needed for correct interleaved display
+      // (thinking → tool → thinking → tool → reply).
+      if (activityFirstForMerge) {
+        activityReconstructedMessages = reconstructMessagesFromActivities(afActivities, sessionId);
       }
 
       await messageStore.loadMessages(
@@ -1028,7 +1010,6 @@ export function useChatWorkspace() {
       composerUsageSnapshot,
       contextBreakdown,
       displayMessages,
-      reactToolLinkIndex,
       sessionRevision,
       wsConnected: computed(() => {
         const sid = sessionStore.currentSessionId();

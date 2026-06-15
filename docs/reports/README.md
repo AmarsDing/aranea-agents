@@ -20,7 +20,10 @@ docs/reports/
 ├── 2026-06-08-research-chat-observability-ux.md         # Chat 精灵模式可观测性 UX 调研
 ├── 2026-06-09-research-langflow-ui-replication.md       # Langflow UI 复刻方案调研
 ├── 2026-06-11-review-architecture-runtime-pain-points.md # 业务运行时架构痛点评审与优化方案
-└── 2026-06-11-research-skill-production-readiness.md     # Skill 模块生产就绪性评估与竞品对比
+├── 2026-06-11-research-skill-production-readiness.md     # Skill 模块生产就绪性评估与竞品对比
+├── 2026-06-15-review-chat-ui-unified-event-stream.md     # Chat UI 统一事件流评审
+├── 2026-06-15-review-agent-tool-execution-performance.md # Agent 工具执行性能评审
+└── 2026-06-16-review-overdesign-fullstack.md             # 全栈过度设计排查与优化方案
 ```
 
 ## AI 存放规则

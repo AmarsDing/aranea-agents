@@ -25,13 +25,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { SayActivity as SayActivityType, ActivityVariant } from '../../features/chat/activityTimelineTypes';
+import type { ReplyEvent } from '../../features/chat/streamEventTypes';
+import type { ActivityVariant } from '../../features/chat/activityTimelineTypes';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 
 const { t } = useI18n();
 
 const props = defineProps<{
-  activity: SayActivityType;
+  activity: ReplyEvent;
   variant?: ActivityVariant;
 }>();
 

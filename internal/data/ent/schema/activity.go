@@ -27,7 +27,7 @@ func (Activity) Fields() []ent.Field {
 		field.String("id").MaxLen(64).Unique().Immutable(),
 
 		// === Classification ===
-		field.String("kind").MaxLen(32).Comment("ActivityKind: task/thinking/action/reply/sub_task_board/end/error/delegate/notice"),
+		field.String("kind").MaxLen(32).Comment("ActivityKind: task/thinking/action/reply/sub_task_board/error/delegate"),
 		field.String("status").MaxLen(32).Default("pending").Comment("ActivityStatus: pending/running/tool_running/tool_blocked/completed/failed/partial_failure/cancelled/interrupted"),
 
 		// === Ownership ===
@@ -44,7 +44,7 @@ func (Activity) Fields() []ent.Field {
 		field.Int64("completion_tokens").Default(0).Comment("LLM completion tokens for this turn (root task only)"),
 
 		// === Content fields (by kind) ===
-		field.Text("content").Default("").Comment("task/reply/notice/end/error text content"),
+		field.Text("content").Default("").Comment("task/reply/error text content"),
 		field.Text("reasoning").Default("").Comment("thinking reasoning content"),
 
 		// === Tool fields (kind=action) ===

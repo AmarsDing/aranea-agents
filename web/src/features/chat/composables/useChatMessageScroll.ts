@@ -1,7 +1,4 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue';
-import type { QVirtualScroll } from 'quasar';
-import { isActivityMessage } from '../mergeSessionMessages';
-import { groupMessagesByTurn, lastAssistantTurnBlockIndex, type TurnBlockGroup } from '../groupMessagesByTurn';
 import type { Message } from '../types';
 
 const SCROLL_BOTTOM_THRESHOLD = 80;
@@ -9,11 +6,6 @@ const SCROLL_BOTTOM_THRESHOLD = 80;
 export type ChatMessageScrollOpts = {
   sessionKey: Ref<string> | ComputedRef<string>;
   messages: Ref<Message[]>;
-  useTurnBlockMode: ComputedRef<boolean>;
-  turnBlocks: ComputedRef<TurnBlockGroup[]>;
-  useVirtualMessageList: ComputedRef<boolean>;
-  timelineItemsLength: ComputedRef<number>;
-  virtualScrollRef: Ref<QVirtualScroll | null>;
   messagesScrollEl: Ref<HTMLElement | null>;
 };
 
@@ -41,9 +33,6 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   }
 
   function activeScrollEl(): HTMLElement | null {
-    if (opts.useVirtualMessageList.value && opts.virtualScrollRef.value) {
-      return opts.virtualScrollRef.value.$el as HTMLElement;
-    }
     return opts.messagesScrollEl.value;
   }
 
@@ -64,63 +53,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     stickToBottom.value = dist <= SCROLL_BOTTOM_THRESHOLD;
   }
 
-  function lastDialogueIndex(): number {
-    if (opts.useTurnBlockMode.value) {
-      return lastAssistantTurnBlockIndex(opts.turnBlocks.value);
-    }
-    for (let i = opts.messages.value.length - 1; i >= 0; i--) {
-      const m = opts.messages.value[i]!;
-      if (m.role === 'user' && (m.content_markdown ?? '').trim()) return i;
-      if (m.role === 'assistant' && !isActivityMessage(m) && (m.content_markdown ?? '').trim()) {
-        return i;
-      }
-    }
-    return Math.max(0, opts.messages.value.length - 1);
-  }
-
-  async function scrollToLatestDialogue(smooth = false) {
-    const idx = lastDialogueIndex();
-    if (opts.useVirtualMessageList.value && opts.virtualScrollRef.value) {
-      for (let attempt = 0; attempt < 4; attempt++) {
-        await nextTick();
-        if (opts.virtualScrollRef.value) {
-          opts.virtualScrollRef.value.scrollTo(idx, smooth ? 'start' : 'start-force');
-          stickToBottom.value = true;
-          showScrollBtn.value = false;
-          return;
-        }
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-      }
-      return;
-    }
-    const el = opts.messagesScrollEl.value;
-    if (el) {
-      const rows = el.querySelectorAll<HTMLElement>(opts.useTurnBlockMode.value ? '.turn-block' : '.chat-q-message');
-      const target = rows[idx];
-      if (target) {
-        target.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
-        stickToBottom.value = true;
-        showScrollBtn.value = false;
-        return;
-      }
-    }
-    await scrollToBottom(smooth);
-  }
-
   async function scrollToBottom(smooth = false) {
-    if (opts.useVirtualMessageList.value && opts.timelineItemsLength.value > 0) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        await nextTick();
-        if (opts.virtualScrollRef.value) {
-          opts.virtualScrollRef.value.scrollTo(opts.timelineItemsLength.value - 1, smooth ? 'start' : 'start-force');
-          stickToBottom.value = true;
-          showScrollBtn.value = false;
-          return;
-        }
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-      }
-      return;
-    }
     const el = opts.messagesScrollEl.value;
     if (!el) return;
     clampScrollTop(el, true);
@@ -180,12 +113,6 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }
   });
 
-  watch(opts.useVirtualMessageList, (enabled) => {
-    if (enabled && opts.messages.value.length > 0 && stickToBottom.value) {
-      void scrollToLatestDialogue(false);
-    }
-  });
-
   let scrollStickRaf = 0;
   let scrollStickThrottle = 0;
   watch(
@@ -217,16 +144,8 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
 
   async function scrollToTurnId(turnId: string, smooth = true) {
     const id = turnId.trim();
-    if (!id || !opts.useTurnBlockMode.value) return;
+    if (!id) return;
     await nextTick();
-    if (opts.useVirtualMessageList.value && opts.virtualScrollRef.value) {
-      const idx = opts.turnBlocks.value.findIndex((b) => b.turnId === id || b.user?.id === id);
-      if (idx >= 0) {
-        opts.virtualScrollRef.value.scrollTo(idx, smooth ? 'start' : 'start-force');
-        flashTurnHighlight(id);
-      }
-      return;
-    }
     const el = opts.messagesScrollEl.value;
     if (!el) return;
     const target = el.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`);

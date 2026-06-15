@@ -88,7 +88,6 @@
         :ws-connected="session.wsConnected"
         :is-team-session="entity.selectedEntityKind === 'team'"
         :planner-kind="entity.activePlannerKind"
-        :react-tool-link-index="session.reactToolLinkIndex"
         :focus-turn-id="session.focusTurnId"
         :session-artifacts="session.sessionArtifacts"
         :session-artifacts-loading="session.sessionArtifactsLoading"

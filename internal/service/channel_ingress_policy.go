@@ -90,7 +90,7 @@ func (h *ChannelIngress) interruptActiveTurn(ctx context.Context, chRow biz.Chan
 	if pendingID == "" {
 		return "", nil
 	}
-	if err := h.chat.InterruptAndSendMessage(ctx, sessionID, pendingID); err != nil {
+	if err := h.chat.InterruptAndSend(ctx, sessionID, pendingID); err != nil {
 		return pendingID, err
 	}
 	if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {

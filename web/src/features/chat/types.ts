@@ -5,7 +5,6 @@
  */
 
 import type { ComputedRef, InjectionKey } from 'vue';
-import type { ReactStep } from './reactPlannerTypes';
 
 // Re-export shared domain types
 export type { Message, RunStatus, RunStatusValue } from '../../domain/types';
@@ -109,17 +108,6 @@ export type ContextRef = {
   kind: ContextRefKind;
   ref_id: string;
   label: string;
-};
-
-/** ReAct ACTION step with linked `chat.activity/v1` tool rows (see `reactPlannerToolLink`). */
-export type ReactStepWithTools = ReactStep & {
-  linkedTools: ToolUseEvent[];
-};
-
-/** Session-level cache: one O(n) pass over `displayMessages` for ReAct ↔ tool dedupe. */
-export type ReactToolLinkIndex = {
-  linkedToolIds: ReadonlySet<string>;
-  stepsByAssistantIndex: ReadonlyMap<number, ReactStepWithTools[]>;
 };
 
 export type PendingMessage = {

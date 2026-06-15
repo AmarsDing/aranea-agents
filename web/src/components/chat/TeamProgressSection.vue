@@ -43,7 +43,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { TeamProgressSection as TeamProgressSectionType } from '../../features/chat/activityTimelineTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
-import ActivityTimeline from './ActivityTimeline.vue';
+import EventStream from './EventStream.vue';
 
 const { t } = useI18n();
 

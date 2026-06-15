@@ -1,8 +1,12 @@
 /**
- * Activity Timeline Types — 聊天活动时间线数据模型
+ * Activity Timeline Types — 聊天活动时间线 UI 组合类型
  *
  * 基于"活动时间线"模型重设计，替代原有的"消息列表"模型。
  * 每个用户 Turn 内的所有内容按时间顺序排列为活动时间线。
+ *
+ * 底层事件类型（StreamEvent 等）定义在 streamEventTypes.ts，
+ * 本文件仅定义高层 UI 组合类型（ConversationTurn、TeamPanel 等）。
+ * 消费者应直接从 streamEventTypes.ts 导入事件类型。
  *
  * 设计文档：docs/reports/2026-06-12-proposal-chat-activity-timeline-redesign.md
  */
@@ -13,9 +17,9 @@ import type {
   PlanEntry,
   TeamStatusSummary,
   ProgressSection,
-  ToolSectionStatus,
   TaskBoardNodeData,
 } from './agentTreeTypes';
+import type { StreamEvent } from './streamEventTypes';
 
 // ── Conversation Turn ──
 
@@ -64,76 +68,16 @@ export interface AgentWorkProcess {
 
 // ── Activity (时间线节点) ──
 
-/** 活动节点 — 时间线上的最小展示单元 */
+/** 活动节点 — 时间线上的最小展示单元（StreamEvent + DelegateActivity） */
 export type Activity =
-  | ThinkActivity
-  | ActActivity
-  | SayActivity
-  | DelegateActivity
-  | NoticeActivity;
+  | StreamEvent
+  | DelegateActivity;
 
-export interface ThinkActivity {
-  kind: 'think';
-  id: string;
-  content: string;
-  /** 区分"规划"/"推理"/"重规划"/"进度" */
-  label?: string;
-  collapsed: boolean;
-  streaming: boolean;
-  durationMs: number | null;
-  /** D3: When multiple adjacent ThinkActivities are merged, subSteps
-   * contains the individual thinking steps. When undefined, this is
-   * a single (unmerged) ThinkActivity. */
-  subSteps?: ThinkActivity[];
-}
-
-export interface ActActivity {
-  kind: 'act';
-  id: string;
-  tool: ToolActivity;
-}
-
-export interface SayActivity {
-  kind: 'say';
-  id: string;
-  content: string;
-  /** isFinal 判定规则：Turn 内最后一条 assistant 消息的 say 为 isFinal:true */
-  isFinal: boolean;
-  streaming: boolean;
-  /** 渲染变体：默认 markdown / a2ui 结构化 UI */
-  variant: 'default' | 'a2ui';
-  /** A2UI 模式时的结构化数据 */
-  a2uiLines?: Record<string, unknown>[];
-  durationMs: number | null;
-}
-
+/** 委托活动 — 子 Agent 工作（暂保留在本文件） */
 export interface DelegateActivity {
   kind: 'delegate';
   id: string;
   subAgent: AgentWorkProcess;
-}
-
-/** 通知/提示节点 — 对应现有 TimelineEntry.kind === 'notice' */
-export interface NoticeActivity {
-  kind: 'notice';
-  id: string;
-  type: 'degradation' | 'info';
-  message: string;
-}
-
-// ── Tool Activity ──
-
-/** 工具活动 */
-export interface ToolActivity {
-  toolName: string;
-  toolLabel: string;
-  status: ToolSectionStatus;
-  durationMs: number | null;
-  arguments: string | null;
-  result: string | null;
-  error: string | null;
-  iconKey?: string;
-  isLongRunning?: boolean;
 }
 
 // ── Team Panel ──

@@ -15,10 +15,8 @@ const (
 	ActivityKindAction      ActivityKind = "action"       // Tool invocation
 	ActivityKindReply       ActivityKind = "reply"        // Agent reply (including final answer)
 	ActivityKindSubTaskBoard ActivityKind = "sub_task_board" // Sub-task board (recursive nesting)
-	ActivityKindEnd         ActivityKind = "end"          // Task completion marker
 	ActivityKindError       ActivityKind = "error"        // Error information
 	ActivityKindDelegate    ActivityKind = "delegate"     // Spirit delegates to team
-	ActivityKindNotice      ActivityKind = "notice"       // System notification (context loading, status change)
 )
 
 // ActivityStatus represents the lifecycle status of an Activity.
@@ -54,7 +52,7 @@ type Activity struct {
 	CompletionTokens int64
 
 	// Content fields (by kind)
-	Content   string // task/reply/notice/end/error text
+	Content   string // task/reply/error text
 	Reasoning string // thinking reasoning content
 
 	// Tool fields (kind=action)

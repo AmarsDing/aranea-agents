@@ -143,8 +143,8 @@ func (s *ChatService) SetSessionPendingMergeFollowup(sessionID string, merge boo
 	s.orch.SetSessionPendingMergeFollowup(sessionID, merge)
 }
 
-// InterruptAndSendMessage implements biz.ChannelTurnGateway — delegates to ChatOrchestrator.
-func (s *ChatService) InterruptAndSendMessage(ctx context.Context, sessionID, pendingEntryID string) error {
+// InterruptAndSend implements biz.PendingQueueGateway — delegates to ChatOrchestrator.
+func (s *ChatService) InterruptAndSend(ctx context.Context, sessionID, pendingEntryID string) error {
 	if s == nil || s.orch == nil {
 		return nil
 	}
