@@ -145,7 +145,7 @@ const props = defineProps<{
   completionStats?: CompletionStats | null;
   /** DAG task nodes for dependency visualization. */
   taskNodes?: TaskNode[];
-  /** Plan entries from agent blocks (useAgentBlocks). */
+  /** Plan entries from agent blocks. */
   planEntries?: PlanEntry[];
   /** Markdown render function injected by parent (avoids cross-domain import). */
   renderMarkdown: (text: string) => string;

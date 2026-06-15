@@ -1,6 +1,6 @@
 /**
  * executionProgress — pure functions to merge `execution_progress` envelopes
- * into the `ProgressSection` shape consumed by the AgentTreeTimeline.
+ * into the `ProgressSection` shape consumed by the execution progress timeline.
  *
  * The backend emits an envelope per step transition (start → done/error).
  * Multiple envelopes for the same `step_id` are merged into a single

@@ -150,8 +150,7 @@ export function createFailedMessageFromError(sessionId: string, md: ActivityStar
  * (thinking → tool → thinking → tool → reply).
  *
  * This function rebuilds individual `actv-*` messages from Activity API data
- * so that `groupMessagesByTurn` can create multiple `TurnRound` objects and
- * the TurnBlock/CompactTimeline can correctly interleave thinking, tools,
+ * so that the Activity-First timeline can correctly interleave thinking, tools,
  * and reply nodes.
  *
  * Only `thinking`, `reply`, and `action` activities produce messages;
@@ -159,8 +158,8 @@ export function createFailedMessageFromError(sessionId: string, md: ActivityStar
  *
  * **Timestamp ordering**: Activity records store the *start* time. Multiple
  * activities within the same turn may start at the same second (or even the
- * same millisecond). To guarantee correct chronological ordering for
- * `groupMessagesByTurn` (which sorts by `created_at`), we apply a tiny
+ * same millisecond). To guarantee correct chronological ordering for turn-based grouping
+ * (which sorts by `created_at`), we apply a tiny
  * monotonic offset to each message's `created_at` within a turn:
  *   - Each message gets an additional `N * 1µs` offset (N = sequential index)
  *   - This preserves the original order while keeping timestamps distinct

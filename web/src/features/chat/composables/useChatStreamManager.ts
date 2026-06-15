@@ -329,7 +329,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       onRunActivity: deps.touchRunActivity,
       onFirstByteArrived: deps.onFirstByteArrived,
       // Spirit / team sessions must also accumulate execution_progress so the
-      // AgentTreeTimeline shows inline orchestration / team / tool step cards
+      // timeline shows inline orchestration / team / tool step cards
       // during the multi-agent fan-out. Mirrors the chat stream binding.
       onExecutionProgress: pushProgress,
     });

@@ -69,8 +69,8 @@ export type EnvelopeType =
   | 'monitor.self_check_completed'
   | 'metrics_updated'
   // Chat-visible execution progress. Published to chat channel by
-  // TraceEmitter.EmitProgress to drive the inline progress card in
-  // AgentTreeTimeline. See docs/reports/2026-06-10-proposal-execution-progress-inline.md
+  // TraceEmitter.EmitProgress to drive the inline progress card.
+  // See docs/reports/2026-06-10-proposal-execution-progress-inline.md
   | 'execution_progress'
   // AF: Activity-First envelope types — backend projects Activity lifecycle events
   | 'activity_start'
@@ -205,7 +205,7 @@ export type EnvelopeTrace = {
 
 /**
  * Metadata carried by execution_progress envelopes. Drives the inline
- * progress card inside AgentTreeTimeline.
+ * progress card in the execution progress timeline.
  *
  * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
  */

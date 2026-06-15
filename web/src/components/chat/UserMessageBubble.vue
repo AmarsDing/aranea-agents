@@ -65,9 +65,9 @@ const renderedContent = computed(() =>
 
 body.body--dark &
   .user-message-bubble__text
-    background: rgba(0, 229, 255, 0.12) /* v7 neon-cyan, dark-mode only */
+    background: var(--chat-accent-bg-strong)
     color: var(--color-text-primary)
-    border: 1px solid rgba(0, 229, 255, 0.3)
+    border: 1px solid var(--chat-accent-border-strong)
     border-radius: 12px 12px 12px 4px
 
     :deep(a)

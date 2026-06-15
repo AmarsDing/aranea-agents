@@ -29,8 +29,8 @@
             {{ agentStatusIcon(agent.status) }}
           </span>
         </div>
-        <ActivityTimeline
-          :activities="agent.activities"
+        <EventStream
+          :events="agent.activities"
           variant="compact"
         />
       </div>
@@ -102,19 +102,19 @@ function agentStatusIcon(status: string): string {
     border-radius: 8px
 
     &--running
-      background: rgba(0, 229, 255, 0.1) /* accent-bg, dark-mode only */
+      background: var(--chat-status-accent-bg)
       color: var(--color-accent)
 
     &--completed
-      background: rgba(63, 224, 160, 0.1) /* success-bg */
+      background: var(--chat-status-success-bg)
       color: var(--color-success)
 
     &--failed
-      background: rgba(255, 94, 122, 0.1) /* danger-bg */
+      background: var(--chat-status-danger-bg)
       color: var(--color-danger)
 
     &--interrupted
-      background: rgba(240, 155, 84, 0.1) /* warning-bg */
+      background: var(--chat-status-warning-bg)
       color: var(--color-warning)
 
   &__duration

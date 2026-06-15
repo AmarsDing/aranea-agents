@@ -70,7 +70,7 @@ export type StreamHandlerCtx = {
   /**
    * Chat-visible execution progress event (orchestration / team / tool /
    * thinking step). Consumers can accumulate these envelopes to drive inline
-   * progress cards in the AgentTreeTimeline.
+   * progress cards in the execution progress timeline.
    *
    * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
    */

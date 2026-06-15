@@ -25,7 +25,7 @@ defineProps<{
   font-size: 13px
 
   &--degradation
-    background: rgba(220, 53, 69, 0.08)
+    background: var(--chat-status-danger-bg)
     color: var(--color-danger)
 
   &--info

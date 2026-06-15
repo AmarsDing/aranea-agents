@@ -23,8 +23,8 @@ defineProps<{
   font-size: 13px
 
   &--degradation
-    background: rgba(240, 155, 84, 0.1)
-    border: 1px solid rgba(240, 155, 84, 0.3)
+    background: var(--chat-status-warning-bg)
+    border: 1px solid var(--chat-status-warning-border)
     color: var(--color-warning)
 
   &--info

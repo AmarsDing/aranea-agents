@@ -17,7 +17,8 @@ export type ActivityKind =
   | 'reply' // Agent reply (including final answer)
   | 'sub_task_board' // Sub-task board (recursive nesting)
   | 'error' // Error information
-  | 'delegate'; // Spirit delegates to team
+  | 'delegate' // Spirit delegates to team
+  | 'plan'; // Execution plan (Spirit→Team orchestration)
 
 // === ActivityStatus ===
 

@@ -324,9 +324,6 @@ export default {
       longRunningTitle: 'Tool still running, LLM has not received final result',
       error: 'Error',
     },
-    compactTimeline: {
-      generating: 'Generating',
-    },
     scrollToLatest: 'Scroll to latest message',
     sidebar: {
       noAgents: 'No agents',

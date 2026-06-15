@@ -137,6 +137,7 @@ export function useConversationTimeline(deps: {
 
   return {
     conversationTurns,
+    /** @deprecated AgentBlocks removed in AF refactoring — always empty */
     agentBlocks: computed((): AgentBlock[] => []),
   };
 }

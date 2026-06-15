@@ -322,9 +322,6 @@ export default {
       longRunningTitle: '工具仍在执行，LLM 尚未收到最终结果',
       error: '错误',
     },
-    compactTimeline: {
-      generating: '正在生成',
-    },
     scrollToLatest: '滚动到最新消息',
     sidebar: {
       noAgents: '暂无 Agent',

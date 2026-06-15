@@ -16,6 +16,7 @@ import type {
   ActionEvent,
   ReplyEvent,
   ErrorEvent,
+  PlanEvent,
   ToolActivity,
 } from '../streamEventTypes';
 import { listActivities } from '../../session/api';
@@ -25,7 +26,7 @@ import { listActivities } from '../../session/api';
  * It consumes WS activity events (activity_start/delta/done/child_start) and
  * provides computed properties for rendering TaskBoard and other components.
  *
- * This composable replaces useAgentBlocks' 13-layer inference with zero-inference
+ * This composable replaces the legacy inference-based approach with zero-inference
  * Activity consumption from the backend.
  */
 export function useActivityTimeline() {
@@ -389,6 +390,14 @@ export function activityToTimelineActivity(node: ActivityTreeNode): TimelineActi
         type: 'degradation',
         message: node.content || node.toolErrorCode || '',
       } satisfies ErrorEvent;
+
+    case 'plan':
+      return {
+        kind: 'plan',
+        id: node.id,
+        title: node.label || node.content || '',
+        steps: [],
+      } satisfies PlanEvent;
 
     default:
       // Fallback: task, sub_task_board, delegate → error

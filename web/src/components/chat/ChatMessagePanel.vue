@@ -423,7 +423,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const messagesRef = computed(() => props.messages);
 
-// ── Team member lanes (inlined from deleted useChatTimeline) ──
+// ── Team member lanes ──
 const teamMemberLanes = computed((): TeamMemberLane[] => {
   if (!props.isTeamSession) return [];
   const lanes = new Map<string, TeamMemberLane>();
