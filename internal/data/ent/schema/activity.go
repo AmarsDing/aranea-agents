@@ -39,6 +39,10 @@ func (Activity) Fields() []ent.Field {
 		field.String("timestamp").Default("").Comment("ISO8601 start timestamp"),
 		field.Int64("duration_ms").Default(0).Comment("Duration in ms, filled on completion"),
 
+		// === Token usage (kind=task, root Activity only) ===
+		field.Int64("prompt_tokens").Default(0).Comment("LLM prompt tokens for this turn (root task only)"),
+		field.Int64("completion_tokens").Default(0).Comment("LLM completion tokens for this turn (root task only)"),
+
 		// === Content fields (by kind) ===
 		field.Text("content").Default("").Comment("task/reply/notice/end/error text content"),
 		field.Text("reasoning").Default("").Comment("thinking reasoning content"),

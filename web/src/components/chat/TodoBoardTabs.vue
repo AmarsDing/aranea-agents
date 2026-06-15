@@ -81,19 +81,19 @@ const activeBoard = computed<TodoBoardState | null>(() => {
   align-items: center
   gap: 4px
   padding: 4px 6px
-  margin-bottom: 4px
-  border-radius: 8px
-  background: color-mix(in srgb, var(--glass-surface) 35%, transparent)
-  border: 1px solid var(--glass-border)
+  margin-bottom: 6px
+  border-radius: 10px
+  background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
   overflow-x: auto
 
 .todo-kanban-tabs__tab
   display: inline-flex
   align-items: center
-  gap: 4px
-  padding: 4px 10px
+  gap: 5px
+  padding: 5px 12px
   border: 1px solid transparent
-  border-radius: 6px
+  border-radius: 7px
   background: transparent
   font-size: 12px
   color: var(--color-text-secondary)
@@ -104,20 +104,20 @@ const activeBoard = computed<TodoBoardState | null>(() => {
   flex-shrink: 0
 
   &:hover
-    background: color-mix(in srgb, var(--color-text-primary) 5%, transparent)
+    background: color-mix(in srgb, var(--glass-surface-hover) 50%, transparent)
     color: var(--color-text-primary)
 
 .todo-kanban-tabs__tab--active
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent)
-  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent)
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+  border-color: color-mix(in srgb, var(--color-accent) 25%, transparent)
   color: var(--color-text-primary)
 
 .todo-kanban-tabs__tab-icon
   flex-shrink: 0
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
 
 .todo-kanban-tabs__tab--active .todo-kanban-tabs__tab-icon
-  color: var(--color-primary)
+  color: var(--color-accent)
 
 .todo-kanban-tabs__tab-label
   max-width: 120px
@@ -125,9 +125,10 @@ const activeBoard = computed<TodoBoardState | null>(() => {
 
 .todo-kanban-tabs__tab-count
   font-size: 10px
-  color: var(--color-text-tertiary)
-  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+  font-weight: 600
+  color: var(--color-text-secondary)
+  background: color-mix(in srgb, var(--color-text-secondary) 10%, transparent)
   border-radius: 8px
-  padding: 0 5px
-  line-height: 16px
+  padding: 1px 5px
+  line-height: 15px
 </style>

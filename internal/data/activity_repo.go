@@ -77,6 +77,8 @@ func (r *activityRepo) CreateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetParentActivityID(a.ParentActivityID).
 		SetTimestamp(a.Timestamp.UTC().Format(time.RFC3339Nano)).
 		SetDurationMs(a.DurationMs).
+		SetPromptTokens(a.PromptTokens).
+		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
 		SetReasoning(a.Reasoning).
 		SetToolName(a.ToolName).
@@ -111,6 +113,8 @@ func (r *activityRepo) UpdateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetKind(string(a.Kind)).
 		SetStatus(string(a.Status)).
 		SetDurationMs(a.DurationMs).
+		SetPromptTokens(a.PromptTokens).
+		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
 		SetReasoning(a.Reasoning).
 		SetToolResult(a.ToolResult).
@@ -160,6 +164,8 @@ func entActivityToBiz(row *ent.Activity) biz.Activity {
 		ParentActivityID: row.ParentActivityID,
 		Timestamp:        ts,
 		DurationMs:       row.DurationMs,
+		PromptTokens:     row.PromptTokens,
+		CompletionTokens: row.CompletionTokens,
 		Content:          row.Content,
 		Reasoning:        row.Reasoning,
 		ToolName:         row.ToolName,

@@ -1,6 +1,11 @@
 <template>
   <div class="todo-card" :class="`todo-card--${item.status}`">
-    <span class="todo-card__icon" :class="`todo-card__icon--${item.status}`">{{ statusIcon }}</span>
+    <q-icon
+      :name="statusIconName"
+      size="14px"
+      :color="statusIconColor"
+      class="todo-card__icon"
+    />
     <span class="todo-card__content" :class="`todo-card__content--${item.status}`">{{ item.content }}</span>
   </div>
 </template>
@@ -13,11 +18,19 @@ const props = defineProps<{
   item: TodoItem;
 }>();
 
-const statusIcon = computed(() => {
+const statusIconName = computed(() => {
   switch (props.item.status) {
-    case 'in_progress': return '⚡';
-    case 'completed': return '✓';
-    default: return '○';
+    case 'in_progress': return 'bolt';
+    case 'completed': return 'check_circle';
+    default: return 'radio_button_unchecked';
+  }
+});
+
+const statusIconColor = computed(() => {
+  switch (props.item.status) {
+    case 'in_progress': return 'accent';
+    case 'completed': return 'positive';
+    default: return 'grey';
   }
 });
 </script>
@@ -26,47 +39,36 @@ const statusIcon = computed(() => {
 .todo-card
   display: flex
   align-items: center
-  gap: 6px
-  padding: 4px 8px
-  border-radius: 4px
-  background: var(--glass-surface)
-  border: 1px solid var(--glass-border)
-  margin-bottom: 4px
-  transition: border-color 0.15s
+  gap: 8px
+  padding: 5px 10px
+  border-radius: 6px
+  background: transparent
+  margin-bottom: 2px
+  transition: background 0.15s ease
 
   &:hover
-    border-color: color-mix(in srgb, var(--color-text-primary) 15%, var(--glass-border))
+    background: color-mix(in srgb, var(--glass-surface-hover) 50%, transparent)
 
 .todo-card--in_progress
-  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent)
+
+  &:hover
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent)
 
 .todo-card--completed
-  opacity: 0.65
+  opacity: 0.6
 
 .todo-card__icon
   flex-shrink: 0
-  font-size: 12px
-  width: 16px
-  text-align: center
-
-.todo-card__icon--pending
-  color: var(--color-text-tertiary)
-
-.todo-card__icon--in_progress
-  color: var(--color-primary)
-
-.todo-card__icon--completed
-  color: var(--color-success)
 
 .todo-card__content
   font-size: 13px
-  line-height: 1.4
+  line-height: 1.45
   color: var(--color-text-primary)
   word-break: break-word
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
 
 .todo-card__content--completed
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
+  text-decoration: line-through
+  text-decoration-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent)
 </style>

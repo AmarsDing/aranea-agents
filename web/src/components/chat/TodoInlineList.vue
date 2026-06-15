@@ -92,30 +92,33 @@ const errorText = computed(() => {
 
 <style scoped lang="sass">
 .todo-inline-list
-  border-radius: 10px
+  border-radius: 12px
   border: 1px solid color-mix(in srgb, var(--glass-border) 65%, transparent)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
-  transition: border-color 0.2s ease
+  transition: border-color 0.25s ease, box-shadow 0.25s ease
 
 .todo-inline-list--running
   border-color: color-mix(in srgb, var(--color-warning) 30%, transparent)
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 8%, transparent)
 
 .todo-inline-list--failed
   border-color: color-mix(in srgb, var(--color-danger) 30%, transparent)
   background: color-mix(in srgb, var(--color-danger) 4%, transparent)
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 8%, transparent)
 
 .todo-inline-list--completed
   border-color: color-mix(in srgb, var(--color-success) 20%, transparent)
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-success) 6%, transparent)
 
 .todo-inline-list__header
-  padding: 8px 12px
+  padding: 10px 14px
   border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 40%, transparent)
 
 .todo-inline-list__meta
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
 
 .todo-inline-list__pulse
   display: inline-block
@@ -123,17 +126,19 @@ const errorText = computed(() => {
   height: 6px
   border-radius: 50%
   background: var(--color-accent)
-  animation: todo-pulse 1s ease-in-out infinite
+  animation: todo-pulse 1.4s ease-in-out infinite
 
 .todo-inline-list__cards
-  padding: 6px 8px 8px
+  padding: 8px 10px 10px
 
 .todo-inline-list__error
-  padding: 4px 12px 8px
+  padding: 6px 14px 10px
 
 @keyframes todo-pulse
   0%, 100%
     opacity: 1
+    transform: scale(1)
   50%
     opacity: 0.3
+    transform: scale(0.85)
 </style>

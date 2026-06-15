@@ -58,7 +58,7 @@ export type StreamHandlerCtx = {
   onRunStatus: (env: Envelope) => void;
   onErrorNotify: (message: string) => void;
   onOrchestrationNotice?: (message: string) => void;
-  onReloadAfterCompletion: (sessionId: string) => Promise<void>;
+  onReloadAfterCompletion: (sessionId: string, opts?: { activityFirst?: boolean }) => Promise<void>;
   onSessionContextPatch?: (sessionId: string, patch: SessionContextPatch) => void;
   onCompressNotice?: (sessionId: string, prevRatio: number, newRatio: number) => void;
   getSessionMetrics?: (
@@ -145,7 +145,8 @@ function snapshotStreamingMessage(
   return { messages: next, newStreamId: streamId };
 }
 
-// Monotonic counter for snapshot IDs — avoids Date.now() collisions.
+// Monotonic counter for message IDs — avoids Date.now() collisions.
+// Used by both legacy snapshot (ws-snap-*) and AF mode (ws-af-*) paths.
 // TECH-DEBT: Module-level mutable state. If parallel streaming sessions
 // ever need isolated counters, move this into StreamHandlerCtx or the
 // bindStreamHandlers closure. For now, shared counter is acceptable because
@@ -643,80 +644,51 @@ export function bindStreamHandlers(
 
     if (!afMode) return; // Only process in AF mode
 
-    const streamId = streamRowId(ctx, sid);
+    const rawActivityId = String(md.activity_id ?? '');
+    if (!rawActivityId) return; // Guard: activity_id must be present
+    const activityId = `actv-${rawActivityId}`;
 
     switch (kind) {
       case 'thinking': {
-        // Snapshot any existing streaming message (e.g. a previous round's reply)
-        // before starting a new thinking activity. This ensures each ReAct round's
-        // thinking and reply are in separate messages, preserving temporal order.
-        const msgs = ctx.getMessages(sid);
-        const existing = msgs.find((m) => m.id === streamId);
-        if (existing) {
-          const hasContent =
-            (existing.content_markdown?.trim() ?? '') !== '' || (existing.reasoning_markdown?.trim() ?? '') !== '';
-          if (hasContent) {
-            // Snapshot the previous round's content, then create a fresh streaming message
-            const newMsg = createStreamingMessageFromActivity(streamId, sid, md as unknown as ActivityStartMeta);
-            if (writer && sid === ctx.sessionId) {
-              writer.update((cur) => {
-                const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
-                return [...snapped, newMsg];
-              });
-            } else {
-              const { messages: snapped } = snapshotStreamingMessage(msgs, sid, streamId);
-              ctx.setMessages(sid, [...snapped, newMsg]);
-            }
-          } else {
-            // Existing message is empty — reuse it for thinking
-            if (writer && sid === ctx.sessionId) {
-              // Already exists in writer state, no action needed
-            } else {
-              ctx.setMessages(sid, msgs);
-            }
-          }
+        // AF mode: Each Activity gets its own message with a unique ID
+        // derived from the backend's activity_id. This ensures that
+        // activity_delta and activity_done events can always find the
+        // correct message, even across multiple ReAct rounds.
+        const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
+        if (writer && sid === ctx.sessionId) {
+          writer.update((cur) => [...cur, newMsg]);
         } else {
-          // No existing message — create new
-          const newMsg = createStreamingMessageFromActivity(streamId, sid, md as unknown as ActivityStartMeta);
-          if (writer && sid === ctx.sessionId) {
-            writer.update((cur) => [...cur, newMsg]);
-          } else {
-            ctx.setMessages(sid, [...msgs, newMsg]);
-          }
+          const msgs = ctx.getMessages(sid);
+          ctx.setMessages(sid, [...msgs, newMsg]);
         }
         startStreamTimeout();
-        ctx.onStreamingPatch?.(sid, { reasoning: '' });
+        // No onStreamingPatch in AF mode — each Activity has its own
+        // message, so delta events update it directly via activity_id.
         break;
       }
       case 'reply': {
-        // Create or ensure streaming message exists
-        const msgs = ctx.getMessages(sid);
-        const exists = msgs.some((m) => m.id === streamId);
-        if (!exists) {
-          const newMsg = createStreamingMessageFromActivity(streamId, sid, md as unknown as ActivityStartMeta);
-          if (writer && sid === ctx.sessionId) {
-            writer.update((cur) => [...cur, newMsg]);
-          } else {
-            ctx.setMessages(sid, [...msgs, newMsg]);
-          }
+        // Create a new streaming message for this reply Activity
+        const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
+        if (writer && sid === ctx.sessionId) {
+          writer.update((cur) => [...cur, newMsg]);
+        } else {
+          const msgs = ctx.getMessages(sid);
+          ctx.setMessages(sid, [...msgs, newMsg]);
         }
         startStreamTimeout();
         ctx.onFirstByteArrived?.();
-        ctx.onStreamingPatch?.(sid, { partialText: '' });
+        // No onStreamingPatch in AF mode — each Activity has its own
+        // message, so delta events update it directly via activity_id.
         break;
       }
       case 'action': {
-        // Snapshot current streaming message, then create tool message
+        // Create tool message for this action Activity
+        const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
         if (writer && sid === ctx.sessionId) {
-          writer.update((cur) => {
-            const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
-            const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
-            return [...snapped, toolMsg];
-          });
+          writer.update((cur) => [...cur, toolMsg]);
         } else {
-          const snapped = snapshotStreamingMessage(ctx.getMessages(sid), sid, streamId);
-          const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
-          ctx.setMessages(sid, [...snapped.messages, toolMsg]);
+          const msgs = ctx.getMessages(sid);
+          ctx.setMessages(sid, [...msgs, toolMsg]);
         }
         break;
       }
@@ -752,18 +724,21 @@ export function bindStreamHandlers(
     const chunk = String(md.delta_chunk ?? '');
     if (!chunk) return;
 
-    const streamId = streamRowId(ctx, sid);
+    // Use activity_id to find the correct message — each Activity has
+    // its own unique message ID (actv-<uuid>), so delta events always
+    // target the right message regardless of ReAct round.
+    const rawActivityId = String(md.activity_id ?? '');
+    if (!rawActivityId) return; // Guard: activity_id must be present
+    const activityId = `actv-${rawActivityId}`;
+
     ctx.onRunActivity?.();
 
-    if (field === 'content') {
-      ctx.onStreamingPatch?.(sid, { partialText: chunk });
-    } else if (field === 'reasoning') {
-      ctx.onStreamingPatch?.(sid, { reasoning: chunk });
-    }
+    // No onStreamingPatch in AF mode — each Activity has its own message,
+    // so delta events update it directly via activity_id lookup above.
 
     if (writer && sid === ctx.sessionId) {
       writer.update((cur) => {
-        const idx = cur.findIndex((m) => m.id === streamId);
+        const idx = cur.findIndex((m) => m.id === activityId);
         if (idx < 0) return cur;
         const patched = patchStreamingMessageFromDelta(cur[idx], md as unknown as ActivityDeltaMeta);
         const next = [...cur];
@@ -772,7 +747,7 @@ export function bindStreamHandlers(
       });
     } else {
       const msgs = ctx.getMessages(sid);
-      const idx = msgs.findIndex((m) => m.id === streamId);
+      const idx = msgs.findIndex((m) => m.id === activityId);
       if (idx >= 0) {
         const patched = patchStreamingMessageFromDelta(msgs[idx], md as unknown as ActivityDeltaMeta);
         const next = [...msgs];
@@ -792,40 +767,35 @@ export function bindStreamHandlers(
     if (sid !== ctx.sessionId || (active && sid !== active)) return;
     const md = (env.metadata ?? {}) as Record<string, unknown>;
     const kind = String(md.kind ?? '');
-    const streamId = streamRowId(ctx, sid);
+    const rawActivityId = String(md.activity_id ?? '');
+    const activityId = rawActivityId ? `actv-${rawActivityId}` : '';
 
     switch (kind) {
       case 'thinking': {
-        // Finalize reasoning, then snapshot
+        // Finalize the thinking message using its activity_id
+        if (!activityId) break;
         writer?.flushSync();
         const msgs = ctx.getMessages(sid);
-        const idx = msgs.findIndex((m) => m.id === streamId);
+        const idx = msgs.findIndex((m) => m.id === activityId);
         if (idx >= 0) {
           const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
           const next = [...msgs];
           next[idx] = finalized;
-          const snapped = snapshotStreamingMessage(next, sid, streamId);
-          ctx.setMessages(sid, snapped.messages);
+          ctx.setMessages(sid, next);
         }
         break;
       }
       case 'reply': {
-        // Finalize reply content, then snapshot — same as thinking.
-        // Without snapshot, the ws-stream-* message (origin.kind='streaming')
-        // would be dropped by shouldDropStaleInFlight after onReloadAfterCompletion,
-        // or cause content duplication when hasSnapshots=false and the server's
-        // merged assistant message is not excluded. Snapshotting ensures every
-        // round's content is preserved as ws-snap-* (origin.kind='streaming_snapshot'),
-        // which hasSnapshots detects and uses to exclude the server's merged message.
+        // Finalize the reply message using its activity_id
+        if (!activityId) break;
         writer?.flushSync();
         const msgs = ctx.getMessages(sid);
-        const idx = msgs.findIndex((m) => m.id === streamId);
+        const idx = msgs.findIndex((m) => m.id === activityId);
         if (idx >= 0) {
           const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
           const next = [...msgs];
           next[idx] = finalized;
-          const snapped = snapshotStreamingMessage(next, sid, streamId);
-          ctx.setMessages(sid, snapped.messages);
+          ctx.setMessages(sid, next);
         }
         break;
       }
@@ -864,7 +834,10 @@ export function bindStreamHandlers(
         break;
       }
       case 'task': {
-        // Equivalent to runner_completion
+        // Equivalent to runner_completion — but in AF mode, Activity events
+        // already provide complete per-round data. Skip message reload to
+        // prevent the server's merged assistant message from replacing the
+        // correctly separated streaming state (which would cause UI jumping).
         clearStreamTimeout();
         ctx.markSendingDone();
         writer?.flushSync();
@@ -877,7 +850,7 @@ export function bindStreamHandlers(
         }
         if (shouldSessionWsSkipEnvelope(env)) return;
         try {
-          await ctx.onReloadAfterCompletion?.(sid);
+          await ctx.onReloadAfterCompletion?.(sid, { activityFirst: true });
         } catch {
           /* caller may surface errors */
         }

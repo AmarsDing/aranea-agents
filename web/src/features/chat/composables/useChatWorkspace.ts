@@ -774,17 +774,34 @@ export function useChatWorkspace() {
     sessionLoading.value = true;
     try {
       if (replace) clearChatMarkdownCache();
-      await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
-      // AF-FE-14: Load historical Activity data so the AF path can build
-      // ConversationTurns for ALL turns (including historical ones) without
-      // falling back to message inference. For sessions without Activity
-      // records (pre-AF), the API returns an empty array and the AF path
-      // gracefully falls back to the message inference path.
+
+      // AF-FE-14: Load Activity data BEFORE messages so that:
+      // 1. The AF path (buildAllConversationTurnsFromActivities) has data
+      //    available when conversationTurns is computed.
+      // 2. loadMessages can pass activityFirst=true to exclude the server's
+      //    merged assistant ChatMessage, preventing content duplication.
+      // Without this ordering, the server's merged message and AF data
+      // coexist, causing "thinking/reply merged into one UI block" and
+      // content duplication bugs.
+      //
+      // Only pass activityFirst=true to loadMessages when Activity data
+      // is actually available. Pre-AF sessions (no Activity records) rely
+      // on the server's merged assistant message for content display.
+      let activityFirstForMerge = false;
       if (useActivityFirstEnabled()) {
-        activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
+        await activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
           // Non-critical: AF path falls back to message inference on failure
         });
+        // Check if Activity data was successfully loaded
+        const afActivities = activityTimeline.activities.value;
+        activityFirstForMerge = afActivities.length > 0;
       }
+
+      await messageStore.loadMessages(
+        replace
+          ? { sessionId, replace: true, activityFirst: activityFirstForMerge }
+          : { sessionId, activityFirst: activityFirstForMerge },
+      );
     } catch (err) {
       $q.notify({
         type: 'negative',

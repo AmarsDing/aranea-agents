@@ -128,13 +128,16 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
       }
     }
     if (modelChanged.value) {
-      const modelResult = await deps.runAgentModelValidate();
-      if (!modelResult.ok) {
-        deps.$q.notify({
-          type: 'negative',
-          message: modelResult.message || '模型不可用，请检查 Provider 管理中的目录配置',
-        });
-        return;
+      // Skip model validation when clearing the model (agent will inherit from chat interface).
+      if (deps.form.provider || deps.form.model) {
+        const modelResult = await deps.runAgentModelValidate();
+        if (!modelResult.ok) {
+          deps.$q.notify({
+            type: 'negative',
+            message: modelResult.message || '模型不可用，请检查 Provider 管理中的目录配置',
+          });
+          return;
+        }
       }
     }
     const plannerErr = deps.validatePlannerFormState();

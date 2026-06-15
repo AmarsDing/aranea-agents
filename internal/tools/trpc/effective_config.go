@@ -32,6 +32,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		ReadDocument:     has("read_document"),
 		ReadSpreadsheet:  has("read_spreadsheet"),
 		WorkingMemory:    has("working_memory_read") || has("working_memory_list") || has("working_memory_write") || has("working_memory_patch") || has("working_memory_delete"),
+		Datetime:         has("datetime"),
 	}
 	return cfg
 }
@@ -42,6 +43,6 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
 		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
-		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.WorkingMemory ||
+		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.WorkingMemory || cfg.Datetime ||
 		len(cfg.AgentTools) > 0 || len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

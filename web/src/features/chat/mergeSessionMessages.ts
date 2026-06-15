@@ -33,29 +33,33 @@ export function isInFlightLocalRow(message: Message): boolean {
 /**
  * Whether a local-only message should be included in the merge output.
  *
- * Messages fall into three categories for merge purposes:
+ * Messages fall into four categories for merge purposes:
  *   1. **persisted** — has a server counterpart, managed by server data
  *   2. **in-flight-active** — still streaming/running, must be preserved
  *   3. **in-flight-snapshot** — finalized local snapshot (ws-snap-*) that
  *      carries correct per-round content when the server message merges
- *      all rounds into one. These must be preserved when hasSnapshots=true.
+ *      all rounds into one. These must be preserved when excludeMergedAssistant=true.
+ *   4. **af-finalized** — Activity-First mode messages (actv-*) that have been
+ *      finalized (status='ok'). These carry per-round content from Activity
+ *      events and must be preserved when excludeMergedAssistant=true, because
+ *      the server's merged assistant ChatMessage is excluded.
  */
-function shouldIncludeInMerge(message: Message, hasSnapshots: boolean): boolean {
-  // Streaming snapshots are a third category: not persisted, not active,
-  // but must be kept when they carry round-separated content that the
-  // server's merged assistant message would duplicate.
-  if (message.origin?.kind === 'streaming_snapshot' && hasSnapshots) return true;
+function shouldIncludeInMerge(message: Message, excludeMergedAssistant: boolean): boolean {
+  // Streaming snapshots: finalized local snapshots carrying round-separated content
+  if (message.origin?.kind === 'streaming_snapshot' && excludeMergedAssistant) return true;
+  // AF mode: finalized Activity messages (actv-*) carry per-round content.
+  // When the server's merged assistant message is excluded, these must be
+  // preserved as the source of truth for assistant content.
+  if (excludeMergedAssistant && message.id.startsWith('actv-') && message.status === 'ok') return true;
   return isInFlightLocalRow(message);
 }
 
 function messageOrder(message: Message): [number, string] {
-  // Streaming snapshots are finalized local messages that should sort
-  // alongside persisted messages by timestamp, not be pushed to the end
-  // with active in-flight messages. This is correct because snapshots
-  // inherit their created_at from the original ws-stream-* message,
-  // which was set when the streaming row was first created — so the
-  // timestamp is comparable with server-persisted messages.
+  // Finalized local messages (streaming snapshots and AF-mode actv-* messages)
+  // should sort alongside persisted messages by timestamp, not be pushed to
+  // the end with active in-flight messages.
   if (message.origin?.kind === 'streaming_snapshot') return [0, message.created_at || ''];
+  if (message.id.startsWith('actv-') && message.status === 'ok') return [0, message.created_at || ''];
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
   return [inFlight, message.created_at || ''];
 }
@@ -74,6 +78,10 @@ function shouldDropStaleInFlight(message: Message): boolean {
     // server-persisted assistant message contains ALL rounds' content merged
     // into one, and dropping snapshots would lose the round separation.
     if (origin?.kind === 'streaming_snapshot') return false;
+    // AF mode: when a streaming message is finalized (status='ok'), it
+    // represents completed per-round content that must be preserved.
+    // Dropping it would lose the round separation that Activity data provides.
+    if (message.status === 'ok') return false;
     return !isInFlightStatus(message.status || '');
   }
   if (isTeamMemberOrigin(origin)) return false;
@@ -87,7 +95,7 @@ function shouldDropStaleInFlight(message: Message): boolean {
 export function mergeIncrementalSessionMessages(
   incremental: Message[],
   local: Message[],
-  opts?: { dropStaleInFlight?: boolean },
+  opts?: { dropStaleInFlight?: boolean; activityFirst?: boolean },
 ): Message[] {
   if (incremental.length === 0) return local;
   const normalizedIncremental = incremental.map(normalizeMessage);
@@ -223,7 +231,7 @@ function findServerMatchForStreaming(
 export function mergeSessionMessages(
   server: Message[],
   local: Message[],
-  opts?: { dropStaleInFlight?: boolean },
+  opts?: { dropStaleInFlight?: boolean; activityFirst?: boolean },
 ): Message[] {
   const normalizedServer = server.map(normalizeMessage);
   if (local.length === 0) return normalizedServer;
@@ -231,13 +239,25 @@ export function mergeSessionMessages(
   const serverUserByContent = buildServerUserContentMap(normalizedServer);
   const serverAssistantByContent = buildServerAssistantContentMap(normalizedServer);
 
-  // Check if there are streaming_snapshot messages — these represent correctly
-  // separated LLM round content. When snapshots exist, the server-persisted
-  // assistant message contains ALL rounds merged into one, which would
-  // duplicate the snapshot content. We need to handle this carefully.
+  // Determine whether to exclude the server's merged assistant message.
+  //
+  // Two independent triggers:
+  //   1. **activityFirst** (AF mode): Activity events/data provide complete
+  //      per-round content (thinking/reply/action). The server-persisted
+  //      assistant ChatMessage merges ALL rounds into one — including it would
+  //      duplicate Activity content and cause the UI to show a single merged
+  //      block instead of correctly separated rounds.
+  //   2. **hasSnapshots** (legacy mode): When local streaming_snapshot messages
+  //      exist (ws-snap-*), they carry correctly separated round content from
+  //      the legacy tool_call handler's snapshot mechanism. The merged server
+  //      message must be excluded to avoid duplication.
+  //
+  // AF mode is the primary path; hasSnapshots is a legacy compatibility fallback.
+  // When AF mode is fully migrated (Phase 3 complete), hasSnapshots can be removed.
   const hasSnapshots = local.some(
     (m) => m.origin?.kind === 'streaming_snapshot' && m.role === 'assistant',
   );
+  const excludeMergedAssistant = opts?.activityFirst || hasSnapshots;
 
   const pendingReplacedBy = new Map<string, Message>();
   const matchedServerIDs = new Set<string>();
@@ -262,17 +282,16 @@ export function mergeSessionMessages(
     }
   }
 
-  // When snapshots exist, exclude server assistant messages that would duplicate
-  // the snapshot content. The snapshots (ws-snap-*) already have the correct
-  // per-round reasoning/text. The server's main assistant message contains ALL
-  // rounds merged into one — including it would duplicate snapshot content.
+  // When excluding merged assistant messages, identify server assistant
+  // messages that are NOT activity messages (tool cards). These "main"
+  // assistant messages contain ALL rounds merged into one — including them
+  // would duplicate Activity/snapshot content.
   //
-  // However, tool activity messages (act-*, schema=chat.activity/v1) must NOT
+  // Tool activity messages (act-*, schema=chat.activity/v1) must NOT
   // be excluded: they contain tool call details (name/args/result) that are
-  // distinct from the reasoning/text in snapshots. Excluding them caused tool
-  // messages to disappear after reload.
+  // distinct from the reasoning/text in Activities/snapshots.
   const serverMainAssistantIds = new Set<string>();
-  if (hasSnapshots) {
+  if (excludeMergedAssistant) {
     for (const m of normalizedServer) {
       if (m.role === 'assistant' && !isActivityMessage(m)) {
         serverMainAssistantIds.add(m.id);
@@ -282,14 +301,15 @@ export function mergeSessionMessages(
 
   const merged: Message[] = [];
   for (const srv of normalizedServer) {
-    // Skip server main assistant messages when snapshots exist — they'd duplicate content
-    if (hasSnapshots && serverMainAssistantIds.has(srv.id)) continue;
+    // Skip server main assistant messages when Activity data or snapshots
+    // provide correctly separated per-round content
+    if (excludeMergedAssistant && serverMainAssistantIds.has(srv.id)) continue;
     merged.push(srv);
   }
   for (const row of local) {
     if (pendingReplacedBy.has(row.id)) continue;
     if (serverById.has(row.id)) continue;
-    if (!shouldIncludeInMerge(row, hasSnapshots)) continue;
+    if (!shouldIncludeInMerge(row, excludeMergedAssistant)) continue;
     if (opts?.dropStaleInFlight && shouldDropStaleInFlight(row)) continue;
     merged.push(row);
   }

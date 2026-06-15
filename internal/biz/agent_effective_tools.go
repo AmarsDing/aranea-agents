@@ -164,12 +164,16 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 // profile/allow JSON to opt in (e.g. shell_exec on "full"). Default-enabled tools (gemini_web_fetch)
 // administratively disabled in Tools UI are forced into denySet so profiles cannot re-enable them.
 var registryOptInOnlyKeys = map[string]bool{
-	"shell_exec":     true,
-	"send_email":     true,
-	"claude_code":    true,
-	"workspace_exec": true,
-	"create_image":   true,
-	"tts":            true,
+	"shell_exec":        true,
+	"send_email":        true,
+	"claude_code":       true,
+	"workspace_exec":    true,
+	"create_image":      true,
+	"tts":               true,
+	"subagents_spawn":   true,
+	"subagents_list":    true,
+	"subagents_get":     true,
+	"subagents_cancel":  true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
@@ -194,7 +198,7 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
-	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "assemble_team", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "group:subagent", "datetime"},
+	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "synthesize_results", "build_orchestration_graph", "memory_search", "group:subagent", "datetime"},
 }
 
 func canonicalToolProfile(profile string) string {

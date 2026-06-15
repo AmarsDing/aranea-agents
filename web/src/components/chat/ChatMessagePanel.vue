@@ -493,12 +493,16 @@ function handleCollapseAll() {
 }
 
 
-// AF-FE-05: When Activity-First data is available, ConversationTurn renders
-// which already provides compact timeline views — no need for virtual scroll.
-// Virtual scroll is only useful for the TurnBlock/ChatMessageRow path where
-// individual messages can be numerous.
 const useVirtualMessageList = computed(() => {
-  if (useActivityFirstEnabled() && props.activityTimelineActivities?.length) return false;
+  // AF-FE-05: When Activity-First data is available, ConversationTurn renders
+  // which already provides compact timeline views — no need for virtual scroll.
+  // Virtual scroll is only useful for the TurnBlock/ChatMessageRow path where
+  // individual messages can be numerous.
+  // Use activityRawRecords (unfiltered) instead of activityTimelineActivities
+  // (filtered) to detect AF data availability — timelineActivities may be empty
+  // when all activities are kind=task (root nodes only), but AF path should
+  // still be activated via conversationTurns built from rawRecords.
+  if (useActivityFirstEnabled() && props.activityRawRecords?.length) return false;
   return timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD;
 });
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;

@@ -352,8 +352,10 @@ func validateAgentCreate(ctx context.Context, u *AgentUsecase, agent *Agent, set
 			agent.Model = "proxy"
 		}
 	default:
-		if agent.Provider == "" || agent.Model == "" {
-			return apierror.BadRequest("AGENT", "provider and model are required")
+		// Allow empty provider/model — the agent will inherit the model
+		// from the chat interface at runtime (resolved via WithModel RunOption).
+		if (agent.Provider != "" && agent.Model == "") || (agent.Provider == "" && agent.Model != "") {
+			return apierror.BadRequest("AGENT", "provider and model must both be set or both be empty")
 		}
 	}
 	return validateAgentSettings(ctx, u, agent, settings, "agent.create.provider_validate")
@@ -375,16 +377,22 @@ func validateAgentUpdate(ctx context.Context, u *AgentUsecase, agent *Agent, set
 // It validates provider/model pairs, settings fields, and force-disables A2A-incompatible features.
 func validateAgentSettings(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings, logStepID string) error {
 	// Validate that the provider+model pair exists in the catalog (non-A2A agents only).
+	// Skip validation when provider/model is empty — the agent will inherit
+	// the model from the chat interface at runtime (resolved via WithModel RunOption).
 	if u.providerValidator != nil && !IsA2AProxyAgent(*agent) {
-		ok, msg, valErr := u.providerValidator.ValidatePair(ctx, agent.Provider, agent.Model)
-		if valErr != nil {
-			u.lg.Warn("provider model validation failed, proceeding",
-				loggateway.StepID(logStepID),
-				loggateway.Str("provider", agent.Provider),
-				loggateway.Str("model", agent.Model),
-				loggateway.Err(valErr))
-		} else if !ok {
-			return apierror.BadRequest("AGENT", "provider/model is not enabled: "+msg)
+		prov := strings.TrimSpace(agent.Provider)
+		mod := strings.TrimSpace(agent.Model)
+		if prov != "" || mod != "" {
+			ok, msg, valErr := u.providerValidator.ValidatePair(ctx, agent.Provider, agent.Model)
+			if valErr != nil {
+				u.lg.Warn("provider model validation failed, proceeding",
+					loggateway.StepID(logStepID),
+					loggateway.Str("provider", agent.Provider),
+					loggateway.Str("model", agent.Model),
+					loggateway.Err(valErr))
+			} else if !ok {
+				return apierror.BadRequest("AGENT", "provider/model is not enabled: "+msg)
+			}
 		}
 	}
 	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {

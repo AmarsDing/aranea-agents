@@ -66,8 +66,11 @@ function getEffectiveTurnId(msg: Message): string {
 
 function shouldStartNewBlock(current: TurnBlockGroup | null, msg: Message, effectiveTurnId: string): boolean {
   if (!current) return true;
+  // Red line #14: role=user always starts a new block (stack model),
+  // regardless of turn_id — prevents merging multiple user turns into one block.
+  if (msg.role === 'user') return true;
   if (effectiveTurnId) return current.turnId !== effectiveTurnId;
-  return msg.role === 'user';
+  return false;
 }
 
 /**

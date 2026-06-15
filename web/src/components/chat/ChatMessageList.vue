@@ -94,7 +94,7 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <template v-if="useActivityTimeline && activityTimelineActivities?.length">
+      <template v-if="useActivityTimeline && conversationTurns.length">
         <ConversationTurn
           v-for="turn in conversationTurns"
           :key="turn.id"

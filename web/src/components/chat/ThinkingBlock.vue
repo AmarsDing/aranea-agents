@@ -33,13 +33,21 @@
   >
     <!-- ===== inline variant ===== -->
     <template v-if="variant === 'inline'">
-      <!-- Collapsed: summary line -->
-      <div v-if="collapsed && !isShort" class="thinking-block__summary">
+      <!-- Streaming + collapsed: status indicator only -->
+      <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator" @click.stop="onClick">
+        <q-icon name="psychology_alt" size="14px" color="accent" />
+        <span class="thinking-block__streaming-text">{{ t('chat.thinking', '正在思考…') }}</span>
+        <span class="thinking-block__pulse" aria-hidden="true" />
+        <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
+      </div>
+
+      <!-- Collapsed (not streaming): summary line -->
+      <div v-else-if="collapsed && !isShort" class="thinking-block__summary">
         <q-icon name="psychology_alt" size="14px" color="accent" /> {{ summaryText }}
         <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
       </div>
 
-      <!-- Expanded / streaming / short -->
+      <!-- Expanded / short -->
       <template v-else>
         <div class="thinking-block__label">
           {{ t('chat.reasoningTitle', '思考过程') }}
@@ -63,36 +71,54 @@
 
     <!-- ===== card variant ===== -->
     <template v-else-if="variant === 'card'">
-      <!-- Label row (always visible) -->
-      <div class="thinking-block__label">
-        <q-icon name="psychology_alt" size="14px" color="accent" class="thinking-block__label-icon" />
-        <span class="thinking-block__label-text">{{ t('chat.thinking.summary', '思考') }}</span>
-        <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
+      <!-- Streaming + collapsed: status indicator only -->
+      <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator thinking-block__streaming-indicator--card" @click.stop="onClick">
+        <q-icon name="psychology_alt" size="14px" color="accent" />
+        <span class="thinking-block__streaming-text">{{ t('chat.thinking.summary', '思考') }}</span>
+        <span class="thinking-block__pulse" aria-hidden="true" />
         <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
         <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
       </div>
 
-      <!-- Collapsed: preview text -->
-      <div v-if="collapsed" class="thinking-block__preview">{{ previewText }}</div>
+      <!-- Label row (not streaming or expanded) -->
+      <template v-else>
+        <div class="thinking-block__label">
+          <q-icon name="psychology_alt" size="14px" color="accent" class="thinking-block__label-icon" />
+          <span class="thinking-block__label-text">{{ t('chat.thinking.summary', '思考') }}</span>
+          <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
+          <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
+          <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
+        </div>
 
-      <!-- Expanded content -->
-      <div v-else class="thinking-block__collapse-wrapper">
-        <div class="thinking-block__collapse-inner">
-          <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
-            <div class="thinking-block__content" v-html="renderedHtml" />
-            <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
+        <!-- Collapsed: preview text -->
+        <div v-if="collapsed" class="thinking-block__preview">{{ previewText }}</div>
+
+        <!-- Expanded content -->
+        <div v-else class="thinking-block__collapse-wrapper">
+          <div class="thinking-block__collapse-inner">
+            <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
+              <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
+              <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </template>
 
     <!-- ===== compact variant ===== -->
     <template v-else>
-      <!-- Collapsed: inline preview -->
-      <div v-if="collapsed" class="thinking-block__compact">
+      <!-- Streaming + collapsed: status indicator only -->
+      <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator thinking-block__streaming-indicator--compact" @click.stop="onClick">
+        <q-icon name="psychology_alt" size="12px" color="accent" />
+        <span class="thinking-block__streaming-text">{{ t('chat.thinking', '正在思考…') }}</span>
+        <span class="thinking-block__pulse" aria-hidden="true" />
+        <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
+      </div>
+
+      <!-- Collapsed (not streaming): inline preview -->
+      <div v-else-if="collapsed" class="thinking-block__compact">
         <q-icon name="psychology_alt" size="12px" color="accent" class="thinking-block__compact-icon" />
         <span class="thinking-block__compact-text">{{ previewText }}</span>
-        <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
       </div>
 
       <!-- Expanded: same as card expanded -->
@@ -106,7 +132,7 @@
         <div class="thinking-block__collapse-wrapper">
           <div class="thinking-block__collapse-inner">
             <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
-              <div class="thinking-block__content" v-html="renderedHtml" />
+              <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
               <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
             </div>
           </div>
@@ -138,7 +164,7 @@ const props = withDefaults(
     isDark?: boolean;
     /** 渲染变体 */
     variant?: 'inline' | 'card' | 'compact';
-    /** 默认折叠状态：true=收起，false=展开。流式时通常展开，完成后收起 */
+    /** 默认折叠状态：true=收起，false=展开。流式和结束后均默认折叠 */
     defaultCollapsed?: boolean;
   }>(),
   {
@@ -233,16 +259,16 @@ watch(
   },
 );
 
-// When streaming starts, reset scroll follow
+// When streaming starts, reset scroll follow but stay collapsed
 watch(
   () => props.streaming,
   (live) => {
     if (live) {
       userScrolledUp.value = false;
-      collapsed.value = false; // streaming 时自动展开
+      collapsed.value = true; // 流式时保持折叠，显示状态指示器
       void nextTick(scrollToBottom);
     } else {
-      // streaming 结束时自动收起
+      // streaming 结束时保持折叠
       collapsed.value = true;
     }
   },
@@ -286,6 +312,36 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   padding: 2px 0
 
 .thinking-block__thinking-text
+  font-style: italic
+
+// ===== Streaming indicator (collapsed + streaming) =====
+.thinking-block__streaming-indicator
+  display: flex
+  align-items: center
+  gap: 6px
+  cursor: pointer
+  color: var(--color-text-secondary)
+  font-size: $font-size-inline
+  font-family: inherit
+  padding: 2px 0
+  transition: opacity 0.15s ease
+
+  &:hover
+    opacity: 0.8
+
+.thinking-block__streaming-indicator--card
+  padding: 4px 0
+  font-size: $font-size-card
+
+  &:hover
+    background: color-mix(in srgb, var(--color-text-primary) 4%, transparent)
+    border-radius: 4px
+
+.thinking-block__streaming-indicator--compact
+  font-size: $font-size-card
+  padding: 2px 0
+
+.thinking-block__streaming-text
   font-style: italic
 
 // ===== Pulse dot =====

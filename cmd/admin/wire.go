@@ -734,6 +734,7 @@ func provideChatServiceDeps(
 	orchCache *biz.OrchestrationCache,
 	teamStarter biz.TeamStarterPort,
 	graphExec biz.GraphExecutor,
+	taskOrch biz.TaskOrchestratorPort,
 	skillEvo *biz.SkillEvolutionUsecase,
 	evolution *biz.EvolutionUsecase,
 	skillStats biz.SkillInvocationStatsReader,
@@ -744,6 +745,12 @@ func provideChatServiceDeps(
 	activityWriter biz.ActivityWriter,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
+	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
+	// TaskOrchestrator → SpiritTeamAssembler → TeamStarterPort → ChatService.
+	// provideTeamOrchestrationDeps cannot include TaskOrchestrator directly
+	// (it would create a cycle), so we inject it here after Wire resolves it.
+	teamDeps.TaskOrchestrator = taskOrch
+
 	return service.ChatOrchestratorDeps{
 		Turn: service.ChatTurnDeps{
 			TurnDeps: rt.TurnDeps{

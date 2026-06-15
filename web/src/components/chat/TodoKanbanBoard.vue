@@ -3,13 +3,22 @@
     <div class="todo-kanban__header" @click="expanded = !expanded">
       <template v-if="!expanded">
         <span class="todo-kanban__summary">
-          📋 {{ pendingCount }} {{ t('chat.todo.pending') }} · {{ inProgressCount }} {{ t('chat.todo.inProgress') }} · {{ completedCount }} {{ t('chat.todo.completed') }}
+          <q-icon name="checklist" size="14px" class="todo-kanban__summary-icon" />
+          {{ pendingCount }} {{ t('chat.todo.pending') }} · {{ inProgressCount }} {{ t('chat.todo.inProgress') }} · {{ completedCount }} {{ t('chat.todo.completed') }}
         </span>
       </template>
       <template v-else>
-        <span class="todo-kanban__title">📋 {{ t('chat.todo.summary') }}</span>
+        <span class="todo-kanban__title">
+          <q-icon name="checklist" size="14px" class="todo-kanban__title-icon" />
+          {{ t('chat.todo.summary') }}
+        </span>
       </template>
-      <span class="todo-kanban__toggle">{{ expanded ? '▼' : '▶' }}</span>
+      <q-icon
+        name="expand_more"
+        size="16px"
+        class="todo-kanban__toggle"
+        :class="{ 'todo-kanban__toggle--expanded': expanded }"
+      />
     </div>
 
     <div v-if="expanded" class="todo-kanban__columns">
@@ -17,13 +26,13 @@
         :title="t('chat.todo.pending')"
         :items="pendingItems"
         column-key="pending"
-        color="var(--color-text-tertiary)"
+        color="var(--color-text-secondary)"
       />
       <TodoColumn
         :title="t('chat.todo.inProgress')"
         :items="inProgressItems"
         column-key="in_progress"
-        color="var(--color-primary)"
+        color="var(--color-accent)"
       />
       <TodoColumn
         :title="t('chat.todo.completed')"
@@ -68,40 +77,56 @@ const completedCount = computed(() => completedItems.value.length);
 <style scoped lang="sass">
 .todo-kanban
   border: 1px solid var(--glass-border)
-  border-radius: 8px
-  background: color-mix(in srgb, var(--color-primary) 3%, var(--glass-surface))
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   margin-bottom: 12px
   overflow: hidden
 
 .todo-kanban__header
   display: flex
   align-items: center
-  padding: 8px 12px
+  padding: 10px 14px
   cursor: pointer
   user-select: none
-  transition: background 0.12s
+  transition: background 0.15s ease
 
   &:hover
-    background: color-mix(in srgb, var(--color-text-primary) 4%, transparent)
+    background: color-mix(in srgb, var(--glass-surface-hover) 50%, transparent)
 
 .todo-kanban__summary
   font-size: 12px
   color: var(--color-text-secondary)
   flex: 1
+  display: flex
+  align-items: center
+  gap: 6px
+
+.todo-kanban__summary-icon
+  color: var(--color-text-secondary)
 
 .todo-kanban__title
   font-size: 12px
   font-weight: 600
   color: var(--color-text-secondary)
   flex: 1
+  display: flex
+  align-items: center
+  gap: 6px
+
+.todo-kanban__title-icon
+  color: var(--color-accent)
 
 .todo-kanban__toggle
-  color: var(--color-text-tertiary)
-  font-size: 10px
-  margin-left: 8px
+  color: var(--color-text-secondary)
+  transition: transform 0.2s ease
+
+.todo-kanban__toggle--expanded
+  transform: rotate(180deg)
 
 .todo-kanban__columns
   display: flex
   gap: 8px
-  padding: 6px 8px 8px
+  padding: 8px 10px 10px
 </style>

@@ -81,10 +81,11 @@ func (s *ChatService) Close() error {
 }
 
 // ProvideChatOrchestrator extracts the ChatOrchestrator from ChatService for
-// Wire binding to biz.TurnExecutor, and injects the TaskOrchestratorPort
-// to break the cycle: TaskOrchestrator → SpiritTeamAssembler → TeamStarterPort → ChatService.
-func ProvideChatOrchestrator(svc *ChatService, taskOrch biz.TaskOrchestratorPort) *ChatOrchestrator {
-	svc.orch.SetTaskOrchestrator(taskOrch)
+// Wire binding to biz.TurnExecutor.
+// TaskOrchestrator backfill is now handled by provideChatServiceDeps in wire.go,
+// which injects it directly into TeamOrchestrationDeps without requiring this
+// provider to be called.
+func ProvideChatOrchestrator(svc *ChatService) *ChatOrchestrator {
 	return svc.orch
 }
 

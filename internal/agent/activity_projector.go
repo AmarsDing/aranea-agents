@@ -525,6 +525,39 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 	p.publishEnvelope(ctx, env, a)
 }
 
+// OnStuckTools finalizes action Activities whose tool_result never arrived.
+// Called from stream_consumer.finalize() when the turn ends with pending tool calls.
+// This is the AF equivalent of PublishStuckToolResultEnvelopes — instead of
+// publishing a legacy tool_result envelope (which AF mode doesn't process),
+// it publishes activity_done(kind=action, status=failed) envelopes so the
+// frontend can update the tool card from running → failed.
+func (p *ActivityProjector) OnStuckTools(ctx context.Context, pending map[string]event.EnvelopeToolCall) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for toolCallID := range pending {
+		a, ok := p.toolCalls[toolCallID]
+		if !ok {
+			continue
+		}
+
+		// Mark as failed with timeout error
+		errPayload, _ := json.Marshal(map[string]string{
+			"error":    stuckToolResultFallback,
+			"i18n_key": stuckToolResultI18nKey,
+		})
+		a.ToolResult = string(errPayload)
+		a.ToolErrorCode = contract.ErrorCodeToolTimeout
+		a.Status = biz.ActivityStatusFailed
+		now := time.Now().UTC()
+		a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
+		a.Collapsed = true
+
+		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+		delete(p.toolCalls, toolCallID)
+	}
+}
+
 // OnTurnEnd finalizes the root task Activity with optional token usage.
 func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage) {
 	p.mu.Lock()
@@ -541,6 +574,14 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 	a.Status = biz.ActivityStatusCompleted
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
+
+	// Store token usage in the root task Activity record.
+	// This enables future migration away from the merged assistant ChatMessage,
+	// since token stats will be available directly from Activity data.
+	if usage != nil {
+		a.PromptTokens = int64(usage.PromptTokens)
+		a.CompletionTokens = int64(usage.CompletionTokens)
+	}
 
 	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityDone)
 	// Attach usage so the frontend can update session context metrics

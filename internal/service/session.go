@@ -600,5 +600,7 @@ func toProtoActivity(a biz.Activity) *v1.Activity {
 		AgentName:        a.AgentName,
 		Collapsed:        a.Collapsed,
 		Label:            a.Label,
+		PromptTokens:     a.PromptTokens,
+		CompletionTokens: a.CompletionTokens,
 	}
 }

@@ -63,6 +63,7 @@ type ToolsetConfig struct {
 	ReadDocument     bool
 	ReadSpreadsheet  bool
 	WorkingMemory    bool
+	Datetime         bool
 	OutboundRouter   *outbound.Router
 	SubAgentService  *subagenttool.Service
 }
@@ -140,6 +141,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.WorkingMemory {
 		enabled = append(enabled, "working_memory")
+	}
+	if cfg.Datetime {
+		enabled = append(enabled, "datetime")
 	}
 
 	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))

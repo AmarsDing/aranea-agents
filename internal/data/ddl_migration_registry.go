@@ -81,6 +81,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260720, Name: "unified_evolution_schema", Func: ddlUnifiedEvolutionSchema},
 	{Version: 20260721, Name: "evolution_suggestion_pre_apply_snapshot", Func: ddlEvolutionSuggestionPreApplySnapshot},
 	{Version: 20260722, Name: "activity_schema", SQL: "sql/migrations/20260722_activity_schema.sql"},
+	{Version: 20260723, Name: "activity_token_columns", SQL: "sql/migrations/20260723_activity_token_columns.sql"},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {

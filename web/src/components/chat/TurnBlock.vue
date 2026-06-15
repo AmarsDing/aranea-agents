@@ -266,7 +266,13 @@ const agentAvatarColor = computed(() => {
 const blockStatusText = computed(() => {
   if (!props.block.isCompleted) return t('chat.turn.block.running', '运行中');
   const summary = toolStripSummary(props.block.tools);
-  if (summary.failed > 0) return t('chat.turn.block.failed', '失败');
+  if (summary.failed > 0) {
+    // If assistant produced a result, it's a partial failure → show "已完成"
+    const assistant = lastAssistant(props.block);
+    const hasResult = !!(assistant?.content_markdown?.trim() || assistant?.reasoning_markdown?.trim());
+    if (hasResult) return t('chat.turn.block.completed', '已完成');
+    return t('chat.turn.block.failed', '失败');
+  }
   if (summary.cancelled > 0) return t('chat.turn.block.cancelled', '已中断');
   return t('chat.turn.block.completed', '已完成');
 });
@@ -274,7 +280,12 @@ const blockStatusText = computed(() => {
 const blockStatusClass = computed(() => {
   if (!props.block.isCompleted) return 'turn-block__status-badge--running';
   const summary = toolStripSummary(props.block.tools);
-  if (summary.failed > 0) return 'turn-block__status-badge--failed';
+  if (summary.failed > 0) {
+    const assistant = lastAssistant(props.block);
+    const hasResult = !!(assistant?.content_markdown?.trim() || assistant?.reasoning_markdown?.trim());
+    if (hasResult) return 'turn-block__status-badge--completed';
+    return 'turn-block__status-badge--failed';
+  }
   if (summary.cancelled > 0) return 'turn-block__status-badge--cancelled';
   return 'turn-block__status-badge--completed';
 });

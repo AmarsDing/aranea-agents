@@ -109,17 +109,6 @@ func Registry() []*ToolRegistration {
 				},
 			},
 			{
-				Name:        "claudefetch",
-				Description: "Claude web fetch tool (Claude-powered page extraction) — framework stub, not yet implemented",
-				Category:    "web",
-				Tags:        []string{"web", "fetch", "claude"},
-				Factory: func(ctx context.Context) (Tool, error) {
-					return nil, nil
-				},
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
-			},
-			{
 				Name:        "geminifetch",
 				Description: "Gemini web fetch tool (Gemini-powered page extraction)",
 				Category:    "web",
@@ -249,7 +238,7 @@ func Registry() []*ToolRegistration {
 			},
 			{
 				Name:        "workspace_exec",
-				Description: "Workspace execution tools (exec, write_stdin, kill_session)",
+				Description: "Workspace execution tools (exec, write_stdin, kill_session) — NOT YET IMPLEMENTED",
 				Category:    "execution",
 				Tags:        []string{"exec", "workspace", "code"},
 				Factory: func(ctx context.Context) (Tool, error) {
@@ -382,6 +371,17 @@ func Registry() []*ToolRegistration {
 				Category:         "memory",
 				Tags:             []string{"memory", "working-memory", "l1"},
 				ToolSetFactory:   func(ctx context.Context) (ToolSet, error) { return workingmemory.ToolSet{}, nil },
+				EnabledByDefault: true,
+				RiskLevel:        "low",
+			},
+			{
+				Name:        "datetime",
+				Description: "Returns current date, time and timezone information",
+				Category:    "system",
+				Tags:        []string{"system", "datetime", "time"},
+				Factory: func(ctx context.Context) (Tool, error) {
+					return newDatetimeTool(), nil
+				},
 				EnabledByDefault: true,
 				RiskLevel:        "low",
 			},

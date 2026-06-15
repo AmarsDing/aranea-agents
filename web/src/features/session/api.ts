@@ -600,6 +600,8 @@ export async function listActivities(
     dependsOn: a.dependsOnJson ? safeJsonParseArray(a.dependsOnJson) : undefined,
     agentKey: a.agentKey || undefined,
     agentName: a.agentName || undefined,
+    promptTokens: a.promptTokens ?? undefined,
+    completionTokens: a.completionTokens ?? undefined,
     collapsed: a.collapsed ?? false,
     label: a.label || undefined,
   }));

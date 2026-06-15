@@ -104,6 +104,9 @@ export function useConversationTimeline(deps: {
       ? mergeProgressEvents(deps.progressEnvelopes.value)
       : new Map<string, ProgressSection>();
 
+    // plannerKind is shared by both AF and message-inference paths
+    const plannerKind = deps.plannerKind?.value ?? '';
+
     // AF-FE-06 + AF-FE-14: When Activity-First data is available, build turns
     // from Activity events. Uses buildAllConversationTurnsFromActivities which
     // groups raw Activity records by turnId to build ALL turns from AF data —
@@ -126,12 +129,12 @@ export function useConversationTimeline(deps: {
         taskContent: deps.activityTaskContent?.value || null,
         activityTree: afTree ? [...afTree] : [],
         progressByStep,
+        plannerKind,
       });
     }
 
     // TECH-DEBT(AF-Phase3): 消息推理路径 — 将在 Activity-First 完全上线后移除。
     // 届时所有 Turn 均从后端 Activity 事件构建，不再需要前端推断。
-    const plannerKind = deps.plannerKind?.value ?? '';
     const ensured = allMessages.map((m) => ensureOrigin(m));
 
     // 1. 按 role=user 边界划分 Turn
@@ -318,7 +321,13 @@ function buildConversationTurn(turn: UserTurn, plannerKind: string, progressBySt
     const ev = toolEventFromMessage(m);
     return ev?.status === 'failed';
   });
-  const status: AgentWorkProcess['status'] = isCompleted ? (hasFailedTool ? 'failed' : 'completed') : 'running';
+  // If there's a successful assistant response, overall status is "completed" even with failed tools.
+  const hasAssistantResult = lastSayIndex >= 0 && activities[lastSayIndex].kind === 'say'
+    && !!(activities[lastSayIndex] as SayActivity).content;
+  const isPartialFailure = hasFailedTool && hasAssistantResult;
+  const status: AgentWorkProcess['status'] = isCompleted
+    ? (hasFailedTool && !hasAssistantResult ? 'failed' : 'completed')
+    : 'running';
 
   // 计算时长
   const startTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : 0;
@@ -343,7 +352,7 @@ function buildConversationTurn(turn: UserTurn, plannerKind: string, progressBySt
       : activities.length > 0 && activities[activities.length - 1].kind === 'think'
         ? (activities[activities.length - 1] as ThinkActivity).content
         : null,
-    hasPartialFailure: false, // TECH-DEBT: 未计算 hasPartialFailure
+    hasPartialFailure: isPartialFailure,
     plan: null,
     teamStatus: null,
     progressSections,
@@ -394,7 +403,7 @@ function buildAllConversationTurnsFromActivities(
   messages: Message[],
   rawRecords: readonly import('../activityTypes').Activity[],
   timelineActivities: readonly Activity[],
-  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection> },
+  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection>; plannerKind: string },
 ): ConversationTurn[] {
   const ensured = messages.map(ensureOrigin);
   const userTurns = findUserTurns(ensured);
@@ -426,12 +435,14 @@ function buildAllConversationTurnsFromActivities(
       // Build from Activity data — zero inference
       result.push(buildSingleTurnFromActivities(turn, turnActivities, opts));
     } else {
-      // AF-Phase3: No Activity data for this turn (pre-AF session or API failure).
-      // Build a minimal ConversationTurn instead of falling back to message
-      // inference. The turn shows the user message and a "historical" label;
-      // detailed content (reasoning, tool calls) is available via the
-      // original messages but not reconstructed through inference.
-      result.push(buildLegacyConversationTurn(turn, opts));
+      // No Activity data for this turn (pre-AF session, API failure, or
+      // turnId mismatch). Fall back to message inference so that thinking
+      // and reply content is still correctly displayed. Without this
+      // fallback, buildLegacyConversationTurn would produce an empty turn
+      // (activities=[], isLegacy=true) with no assistant content — because
+      // when activityFirst=true, mergeSessionMessages excludes the server's
+      // merged assistant ChatMessage, leaving no assistant data at all.
+      result.push(buildConversationTurn(turn, opts.plannerKind, opts.progressByStep));
     }
   }
 
@@ -509,7 +520,12 @@ function buildSingleTurnFromActivities(
 
   // Build Activity tree from raw records for this turn
   const treeNodes = buildTreeFromRecords(rawRecords);
-  let turnTimelineActivities = treeNodes
+  // CRITICAL: Flatten the tree BEFORE filtering. thinking/action/reply activities
+  // are CHILDREN of the task root node. If we filter root nodes only, all children
+  // of the filtered-out task node are silently discarded, causing thinking and
+  // reply content to disappear entirely.
+  const allNodes = flattenTree(treeNodes);
+  let turnTimelineActivities = allNodes
     .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
     .map(activityToTimelineActivity);
 
@@ -519,16 +535,34 @@ function buildSingleTurnFromActivities(
   // group with subSteps reduces card count while preserving all content.
   turnTimelineActivities = mergeAdjacentThinkActivities(turnTimelineActivities);
 
-  // Agent info from Activity data or fallback to message data
+  // Agent info from Activity data or fallback to message data.
+  // AF-Phase3: Prefer Activity data over message data for agent info.
+  // When merged assistant messages are excluded from the store (activityFirst),
+  // firstAssistant may be undefined — Activity data must be the primary source.
   const rootTask = rawRecords.find((r) => r.kind === 'task');
   const agentKey = rootTask?.agentKey || opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
   const agentName = rootTask?.agentName || firstAssistant?.agent_ref?.name || '精灵助手';
-  const agentIcon = firstAssistant?.agent_ref?.icon || '精';
+  const agentIcon = rootTask?.agentName?.charAt(0) || firstAssistant?.agent_ref?.icon || '精';
 
   // Determine status from activities
   const hasRunning = rawRecords.some((a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked');
-  const hasFailed = rawRecords.some((a) => a.kind === 'action' && a.status === 'failed');
-  const status: AgentWorkProcess['status'] = hasRunning ? 'running' : (hasFailed ? 'failed' : 'completed');
+  const hasFailedAction = rawRecords.some((a) => a.kind === 'action' && a.status === 'failed');
+  const hasError = rawRecords.some((a) => a.kind === 'error');
+  // Root task completed with a result → overall "completed" even if some tools failed (partial failure).
+  // Only mark "failed" when there's an error-level activity or no successful result at all.
+  const rootTaskCompleted = rootTask?.status === 'completed';
+  // Find last SayActivity for result (computed before status check)
+  const lastSay = [...turnTimelineActivities].reverse().find((a) => a.kind === 'say') as SayActivity | undefined;
+  const hasResult = lastSay != null && !!lastSay.content;
+  const isPartialFailure = hasFailedAction && rootTaskCompleted && hasResult;
+  let status: AgentWorkProcess['status'];
+  if (hasRunning) {
+    status = 'running';
+  } else if (hasError || (hasFailedAction && !hasResult)) {
+    status = 'failed';
+  } else {
+    status = 'completed';
+  }
 
   // Calculate duration
   const startTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : 0;
@@ -536,11 +570,13 @@ function buildSingleTurnFromActivities(
   const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
   const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
 
-  // Find last SayActivity for result
-  const lastSay = [...turnTimelineActivities].reverse().find((a) => a.kind === 'say') as SayActivity | undefined;
-
   // Build progressSections
   const progressSections = buildProgressSections(opts.progressByStep, userMessage);
+
+  // Build TaskBoard nodes from Activity tree for plan/task board rendering.
+  // Without this, AgentWorkPanel falls back to ActivityTimeline (no TaskBoard),
+  // and the user sees no plan list during or after execution.
+  const taskBoardNodes = buildTaskBoardNodesFromActivityTree(treeNodes);
 
   const agentWork: AgentWorkProcess = {
     agentKey,
@@ -552,10 +588,11 @@ function buildSingleTurnFromActivities(
     activities: turnTimelineActivities,
     task: opts.taskContent || rootTask?.content || userMessage?.content_markdown || null,
     result: lastSay?.content || null,
-    hasPartialFailure: false,
+    hasPartialFailure: isPartialFailure,
     plan: null,
     teamStatus: null,
     progressSections,
+    taskBoardNodes,
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
     finishedAt: !hasRunning ? lastMsg?.created_at || '' : null,
   };

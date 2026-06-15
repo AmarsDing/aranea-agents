@@ -61,22 +61,22 @@ onBeforeUnmount(() => {
 .todo-column
   flex: 1
   min-width: 0
-  border-radius: 6px
-  background: color-mix(in srgb, var(--glass-surface) 60%, transparent)
-  border: 1px solid var(--glass-border)
+  border-radius: 8px
+  background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
   overflow: hidden
-  transition: box-shadow 0.3s ease
+  transition: box-shadow 0.3s ease, border-color 0.3s ease
 
 .todo-column--pulse
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent)
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent)
+  border-color: color-mix(in srgb, var(--color-accent) 20%, transparent)
 
 .todo-column__header
   display: flex
   align-items: center
   gap: 6px
-  padding: 6px 10px
-  border-bottom: 1px solid var(--glass-border)
-  background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+  padding: 8px 10px
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
 
 .todo-column__dot
   width: 8px
@@ -85,25 +85,29 @@ onBeforeUnmount(() => {
   flex-shrink: 0
 
 .todo-column__title
-  font-size: 12px
+  font-size: 11px
   font-weight: 600
   color: var(--color-text-secondary)
   flex: 1
+  text-transform: uppercase
+  letter-spacing: 0.3px
 
 .todo-column__count
-  font-size: 11px
-  color: var(--color-text-tertiary)
-  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+  font-size: 10px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  background: color-mix(in srgb, var(--color-text-secondary) 10%, transparent)
   border-radius: 8px
-  padding: 0 6px
-  line-height: 18px
+  padding: 1px 6px
+  line-height: 16px
 
 .todo-column__body
-  padding: 6px
+  padding: 6px 4px
 
 .todo-column__empty
   text-align: center
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
   font-size: 12px
-  padding: 8px 0
+  padding: 12px 0
+  opacity: 0.5
 </style>

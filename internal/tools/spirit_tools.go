@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -171,7 +170,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			return out, nil
 		},
 		trpcfunction.WithName("plan_and_execute"),
-		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。替代 assess_complexity + assemble_team 的组合调用。简单任务直接回答，复杂任务自动组建团队。"),
+		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。简单任务直接回答，复杂任务自动组建团队。"),
 	)
 }
 
@@ -300,7 +299,7 @@ type CheckOrchestrationProgressOutput struct {
 	Tasks           []TaskProgressView `json:"tasks"`
 }
 
-// NewCheckOrchestrationProgressTool creates the check_progress tool that replaces check_team_progress.
+// NewCheckOrchestrationProgressTool creates the check_progress tool.
 func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[CheckOrchestrationProgressInput, CheckOrchestrationProgressOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input CheckOrchestrationProgressInput) (CheckOrchestrationProgressOutput, error) {
@@ -331,7 +330,7 @@ func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg
 			}, nil
 		},
 		trpcfunction.WithName("check_progress"),
-		trpcfunction.WithDescription("查询编排执行进度。替代 check_team_progress，基于 orchestration_id 查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
+		trpcfunction.WithDescription("查询编排执行进度。基于 orchestration_id 查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
 	)
 }
 
@@ -382,7 +381,7 @@ type CancelOrchestrationOutput struct {
 	Status          string `json:"status"`
 }
 
-// NewCancelOrchestrationTool creates the cancel_orchestration tool that replaces cancel_team.
+// NewCancelOrchestrationTool creates the cancel_orchestration tool.
 func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[CancelOrchestrationInput, CancelOrchestrationOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input CancelOrchestrationInput) (CancelOrchestrationOutput, error) {
@@ -397,50 +396,23 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggat
 			return CancelOrchestrationOutput{OrchestrationID: orchestrationID, Status: "cancelled"}, nil
 		},
 		trpcfunction.WithName("cancel_orchestration"),
-		trpcfunction.WithDescription("取消正在运行的编排。替代 cancel_team，基于 orchestration_id 取消。取消后释放资源。"),
+		trpcfunction.WithDescription("取消正在运行的编排。基于 orchestration_id 取消。取消后释放资源。"),
 	)
 }
 
 // ---------------------------------------------------------------------------
-// TODO(debt): Remove deprecated tools after Spirit migration period (target: v0.4).
-// These tools are no longer registered but kept for reference and backward compatibility.
-// Ref: cross-module-coordination-unify
-// ---------------------------------------------------------------------------
-// Deprecated old tools — kept for backward compatibility and test coverage.
-// These tools are NO LONGER REGISTERED in the Spirit Agent's tool list.
-// Use plan_and_execute / check_progress / cancel_orchestration instead.
+// Port interfaces — still used by SpiritTeamAssembler and TaskOrchestratorImpl.
 // ---------------------------------------------------------------------------
 
-type AssembleTeamInput struct {
-	AgentKeys   []string `json:"agent_keys"  jsonschema:"description=参与团队的 Agent key 列表"`
-	Mode        string   `json:"mode"         jsonschema:"description=团队编排模式,enum=coordinator,enum=sequential,enum=parallel"`
-	TaskPrompt  string   `json:"task_prompt"  jsonschema:"description=任务描述，用于生成团队名称和成员指令"`
-	TaskDAGJSON string   `json:"task_dag_json,omitempty" jsonschema:"description=任务 DAG 的 JSON 描述（可选），包含节点和依赖关系。格式为 [{id,task_name,description,depends_on,mode,agent_keys}]"`
-	AutoStart   *bool    `json:"auto_start,omitempty"  jsonschema:"description=是否自动启动团队执行（默认 true）"`
-}
-
-type AssembleTeamOutput struct {
-	TeamID         string `json:"team_id"`
-	SessionID      string `json:"session_id"`
-	TeamName       string `json:"team_name"`
-	TopologyReason string `json:"topology_reason,omitempty"`
-	DAGDiagram     string `json:"dag_diagram,omitempty"`
-}
-
-type TeamProgressView struct {
-	TeamID      string  `json:"team_id"`
-	TeamName    string  `json:"team_name"`
-	Status      string  `json:"status"`
-	ProgressPct float64 `json:"progress_pct"`
-	CurrentStep string  `json:"current_step"`
-	DurationMs  int64   `json:"duration_ms"`
-}
-
+// SpiritTeamAssemblerPort assembles teams for the Spirit agent.
+// Stability:evolving
 type SpiritTeamAssemblerPort interface {
 	AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, error)
 	SuggestTopology(ctx context.Context, taskDescription string) (string, bool)
 }
 
+// SpiritTeamQueryPort queries team state for the Spirit agent.
+// Stability:evolving
 type SpiritTeamQueryPort interface {
 	ListActiveTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error)
 	ListAllTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error)
@@ -454,255 +426,18 @@ type SpiritTeamControllerPort interface {
 	CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]biz.TeamProgress, error)
 }
 
-type AssessComplexityInput struct {
-	UserMessage string `json:"user_message" jsonschema:"description=用户消息内容"`
-}
-
-type AssessComplexityOutput struct {
-	Level          string   `json:"level"`
-	Reasoning      string   `json:"reasoning"`
-	SuggestedPath  string   `json:"suggested_path"`
-	RequiredSkills []string `json:"required_skills,omitempty"`
-	AvailableTools []string `json:"available_tools"`
-}
-
 // SpiritSynthesisPort synthesizes results from multiple teams.
 // Stability:evolving
 type SpiritSynthesisPort interface {
 	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
 }
 
-// NewAssembleTeamTool creates the deprecated assemble_team tool.
-// DEPRECATED: Use plan_and_execute instead. This tool delegates to the new three-phase flow.
-func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQueryPort, lg loggateway.Logger, planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort) *trpcfunction.FunctionTool[AssembleTeamInput, AssembleTeamOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, input AssembleTeamInput) (AssembleTeamOutput, error) {
-			spiritSessionID := spiritSessionIDFromCtx(ctx)
-			if spiritSessionID == "" {
-				return AssembleTeamOutput{}, apierror.BadRequest(apierror.DomainSpirit, "spirit session id not found in context")
-			}
-
-			// Delegate to new three-phase flow when ports are available.
-			if planner != nil && allocator != nil && orchestrator != nil {
-				planInput := biz.PlanInput{
-					UserMessage:     strings.TrimSpace(input.TaskPrompt),
-					SpiritSessionID: spiritSessionID,
-				}
-				taskPlan, err := planner.Plan(ctx, planInput)
-				if err != nil {
-					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "plan failed: "+err.Error())
-				}
-				allocPlan, err := allocator.Allocate(ctx, taskPlan)
-				if err != nil {
-					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "allocate failed: "+err.Error())
-				}
-				handle, err := orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
-				if err != nil {
-					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "orchestrate failed: "+err.Error())
-				}
-				return AssembleTeamOutput{
-					TeamID:    handle.ID,
-					TeamName:  string(handle.Strategy),
-					SessionID: spiritSessionID,
-				}, nil
-			}
-
-			// Fallback to legacy flow when new ports are not available.
-			activeTeams, err := query.ListActiveTeams(ctx, spiritSessionID)
-			if err != nil {
-				return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "query active teams: "+err.Error())
-			}
-			maxParallel := query.GetMaxParallelTeams(ctx, spiritSessionID)
-			availableSlots := maxParallel - len(activeTeams)
-			if availableSlots <= 0 {
-				return AssembleTeamOutput{}, apierror.BadRequest(
-					apierror.DomainSpirit,
-					fmt.Sprintf("max parallel teams (%d) reached, wait for existing teams to complete", maxParallel),
-				)
-			}
-
-			mode := strings.TrimSpace(input.Mode)
-			var topologyReason string
-
-			dag, dagErr := biz.ParseTaskDAG(strings.TrimSpace(input.TaskDAGJSON), lg)
-			if dagErr != nil {
-				return AssembleTeamOutput{}, apierror.BadRequest(apierror.DomainSpirit, "invalid task dag: "+dagErr.Error())
-			}
-
-			if dag != nil && len(dag.Nodes) > 0 {
-				routed := dag.RouteTopology()
-				if mode == "" {
-					mode = string(routed)
-				}
-				topologyReason = biz.FormatTopologyReason(routed, false, dag)
-			}
-
-			if cached, found := assembler.SuggestTopology(ctx, strings.TrimSpace(input.TaskPrompt)); found && cached != "" {
-				if mode == "" {
-					mode = cached
-				}
-				if topologyReason == "" {
-					topologyReason = fmt.Sprintf("基于历史编排缓存推荐拓扑: %s", cached)
-				}
-			}
-			if mode == "" {
-				mode = "coordinator"
-			}
-			autoStart := true
-			if input.AutoStart != nil {
-				autoStart = *input.AutoStart
-			}
-			params := biz.SpiritTeamParams{
-				SpiritSessionID:    spiritSessionID,
-				TaskDescription:    strings.TrimSpace(input.TaskPrompt),
-				AgentKeys:          input.AgentKeys,
-				Mode:               mode,
-				ParallelConfigJSON: buildParallelConfigJSON(maxParallel),
-				TopologyReason:     topologyReason,
-				AutoStart:          autoStart,
-			}
-
-			if dag != nil && len(dag.Nodes) > 1 {
-				outputs, err := assembleDAGTeams(ctx, assembler, dag, spiritSessionID, mode, input.AgentKeys, maxParallel, availableSlots, autoStart)
-				if err != nil {
-					return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "assemble dag teams: "+err.Error())
-				}
-				if len(outputs) > 0 {
-					outputs[0].DAGDiagram = dag.ToTextDiagram()
-					outputs[0].TopologyReason = topologyReason
-					return outputs[0], nil
-				}
-				return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "no teams created from dag")
-			}
-
-			if dag != nil && len(dag.Nodes) == 1 {
-				for _, node := range dag.OrderedNodes() {
-					params.DagNodeID = string(node.ID)
-					dependsOn := make([]string, len(node.DependsOn))
-					for i, d := range node.DependsOn {
-						dependsOn[i] = string(d)
-					}
-					params.DependsOn = dependsOn
-					break
-				}
-			}
-
-			team, session, err := assembler.AssembleTeam(ctx, params)
-			if err != nil {
-				return AssembleTeamOutput{}, apierror.Internal(apierror.DomainSpirit, "assemble team: "+err.Error())
-			}
-			return AssembleTeamOutput{
-				TeamID:         team.ID,
-				SessionID:      session.ID,
-				TeamName:       team.DisplayName,
-				TopologyReason: topologyReason,
-			}, nil
-		},
-		trpcfunction.WithName("assemble_team"),
-		trpcfunction.WithDescription("[DEPRECATED] 组建任务团队。请改用 plan_and_execute 工具。当用户需求复杂、需要多 Agent 协作时调用此工具。"),
-	)
-}
-
-type CheckTeamProgressInput struct{}
-
-type CheckTeamProgressOutput struct {
-	Teams []TeamProgressView `json:"teams"`
-}
-
-// NewCheckTeamProgressTool creates the deprecated check_team_progress tool.
-// DEPRECATED: Use check_progress instead. This tool delegates to TaskOrchestratorPort.CheckProgress.
-func NewCheckTeamProgressTool(controller SpiritTeamControllerPort, orchestrator biz.TaskOrchestratorPort) *trpcfunction.FunctionTool[CheckTeamProgressInput, CheckTeamProgressOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, _ CheckTeamProgressInput) (CheckTeamProgressOutput, error) {
-			spiritSessionID := spiritSessionIDFromCtx(ctx)
-			if spiritSessionID == "" {
-				return CheckTeamProgressOutput{}, apierror.BadRequest(apierror.DomainSpirit, "spirit session id not found in context")
-			}
-
-			// Delegate to new orchestrator when available.
-			if orchestrator != nil {
-				progress, err := orchestrator.CheckProgress(ctx, spiritSessionID)
-				if err != nil {
-					return CheckTeamProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check progress: "+err.Error())
-				}
-				views := make([]TeamProgressView, 0, len(progress))
-				for _, p := range progress {
-					views = append(views, TeamProgressView{
-						TeamName:    p.SubTaskName,
-						Status:      p.Status,
-						ProgressPct: p.Progress * 100,
-					})
-				}
-				return CheckTeamProgressOutput{Teams: views}, nil
-			}
-
-			// Fallback to legacy flow.
-			progress, err := controller.CheckTeamProgress(ctx, spiritSessionID)
-			if err != nil {
-				return CheckTeamProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check team progress: "+err.Error())
-			}
-			views := make([]TeamProgressView, 0, len(progress))
-			for _, p := range progress {
-				views = append(views, TeamProgressView{
-					TeamID:      p.TeamID,
-					TeamName:    p.TeamName,
-					Status:      p.Status,
-					ProgressPct: p.ProgressPct,
-					CurrentStep: p.CurrentStep,
-					DurationMs:  p.DurationMs,
-				})
-			}
-			return CheckTeamProgressOutput{Teams: views}, nil
-		},
-		trpcfunction.WithName("check_team_progress"),
-		trpcfunction.WithDescription("[DEPRECATED] 查询当前精灵会话下所有团队的执行进度。请改用 check_progress 工具。"),
-	)
-}
-
-type CancelTeamInput struct {
-	TeamID string `json:"team_id" jsonschema:"description=要取消的团队 ID"`
-}
-
-type CancelTeamOutput struct {
-	TeamID string `json:"team_id"`
-	Status string `json:"status"`
-}
-
-// NewCancelTeamTool creates the deprecated cancel_team tool.
-// DEPRECATED: Use cancel_orchestration instead. This tool delegates to TaskOrchestratorPort.Cancel.
-func NewCancelTeamTool(controller SpiritTeamControllerPort, orchestrator biz.TaskOrchestratorPort) *trpcfunction.FunctionTool[CancelTeamInput, CancelTeamOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, input CancelTeamInput) (CancelTeamOutput, error) {
-			teamID := strings.TrimSpace(input.TeamID)
-			if teamID == "" {
-				return CancelTeamOutput{}, apierror.BadRequest(apierror.DomainSpirit, "team_id is required")
-			}
-
-			// Delegate to new orchestrator when available.
-			if orchestrator != nil {
-				err := orchestrator.Cancel(ctx, teamID)
-				if err != nil {
-					return CancelTeamOutput{}, err
-				}
-				return CancelTeamOutput{TeamID: teamID, Status: "cancelled"}, nil
-			}
-
-			// Fallback to legacy flow.
-			err := controller.CancelTeam(ctx, teamID)
-			if err != nil {
-				return CancelTeamOutput{}, err
-			}
-			return CancelTeamOutput{TeamID: teamID, Status: "cancelled"}, nil
-		},
-		trpcfunction.WithName("cancel_team"),
-		trpcfunction.WithDescription("[DEPRECATED] 取消正在运行的团队。请改用 cancel_orchestration 工具。"),
-	)
-}
-
+// SynthesizeResultsInput is the input for the synthesize_results tool.
 type SynthesizeResultsInput struct {
 	Strategy string `json:"strategy,omitempty" jsonschema:"description=合成策略,enum=template,enum=prompt,enum=hybrid"`
 }
 
+// SynthesizeResultsOutput is the output for the synthesize_results tool.
 type SynthesizeResultsOutput struct {
 	Content           string                    `json:"content"`
 	Strategy          string                    `json:"strategy"`
@@ -710,6 +445,7 @@ type SynthesizeResultsOutput struct {
 	NeedsLLMSynthesis bool                      `json:"needs_llm_synthesis"`
 }
 
+// NewSynthesizeResultsTool creates the synthesize_results tool.
 func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.FunctionTool[SynthesizeResultsInput, SynthesizeResultsOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input SynthesizeResultsInput) (SynthesizeResultsOutput, error) {
@@ -742,145 +478,4 @@ func spiritSessionIDFromCtx(ctx context.Context) string {
 		return inv.Session.ID
 	}
 	return ""
-}
-
-func buildParallelConfigJSON(maxConcurrent int) string {
-	if maxConcurrent <= 0 {
-		return ""
-	}
-	cfg := biz.ParallelConfig{
-		MaxConcurrentTeams: maxConcurrent,
-	}
-	b, err := json.Marshal(cfg)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-func taskNodeIDsToStrings(ids []biz.TaskNodeID) []string {
-	if len(ids) == 0 {
-		return nil
-	}
-	result := make([]string, len(ids))
-	for i, id := range ids {
-		result[i] = string(id)
-	}
-	return result
-}
-
-func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, dag *biz.TaskDAG, spiritSessionID, mode string, agentKeys []string, maxParallel, availableSlots int, autoStart bool) ([]AssembleTeamOutput, error) {
-	var outputs []AssembleTeamOutput
-	immediateStartCount := 0
-	for _, node := range dag.OrderedNodes() {
-		nodeAgentKeys := node.AgentKeys
-		if len(nodeAgentKeys) == 0 {
-			nodeAgentKeys = agentKeys
-		}
-		nodeMode := mode
-		if node.Mode != "" {
-			nodeMode = node.Mode
-		}
-		dependsOn := make([]string, len(node.DependsOn))
-		for i, d := range node.DependsOn {
-			dependsOn[i] = string(d)
-		}
-		canAutoStart := autoStart
-		if canAutoStart && len(dependsOn) == 0 {
-			if immediateStartCount >= availableSlots {
-				canAutoStart = false
-			} else {
-				immediateStartCount++
-			}
-		}
-		params := biz.SpiritTeamParams{
-			SpiritSessionID:    spiritSessionID,
-			TaskDescription:    node.Description,
-			AgentKeys:          nodeAgentKeys,
-			Mode:               nodeMode,
-			DagNodeID:          string(node.ID),
-			DependsOn:          taskNodeIDsToStrings(node.DependsOn),
-			ParallelConfigJSON: buildParallelConfigJSON(maxParallel),
-			AutoStart:          canAutoStart,
-		}
-		team, session, err := assembler.AssembleTeam(ctx, params)
-		if err != nil {
-			return outputs, err
-		}
-		outputs = append(outputs, AssembleTeamOutput{
-			TeamID:    team.ID,
-			SessionID: session.ID,
-			TeamName:  team.DisplayName,
-		})
-	}
-	return outputs, nil
-}
-
-// NewAssessComplexityTool creates the deprecated assess_complexity tool.
-// DEPRECATED: Use plan_and_execute instead. This tool delegates to TaskPlannerPort.Plan.
-func NewAssessComplexityTool(engine *ComplexityRuleEngine, planner biz.TaskPlannerPort) *trpcfunction.FunctionTool[AssessComplexityInput, AssessComplexityOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, input AssessComplexityInput) (AssessComplexityOutput, error) {
-			// Delegate to new planner when available.
-			if planner != nil {
-				spiritSessionID := spiritSessionIDFromCtx(ctx)
-				planInput := biz.PlanInput{
-					UserMessage:     input.UserMessage,
-					SpiritSessionID: spiritSessionID,
-				}
-				taskPlan, err := planner.Plan(ctx, planInput)
-				if err != nil {
-					// Fallback to rule engine on error.
-					return assessComplexityFallback(engine, input), nil
-				}
-				return AssessComplexityOutput{
-					Level:          string(taskPlan.ComplexityLevel),
-					Reasoning:      taskPlan.StrategyReason,
-					SuggestedPath:  string(taskPlan.Strategy),
-					AvailableTools: complexityAvailableTools(ComplexityLevel(taskPlan.ComplexityLevel)),
-				}, nil
-			}
-
-			return assessComplexityFallback(engine, input), nil
-		},
-		trpcfunction.WithName("assess_complexity"),
-		trpcfunction.WithDescription("[DEPRECATED] 评估用户消息的任务复杂度。请改用 plan_and_execute 工具。"),
-	)
-}
-
-func assessComplexityFallback(engine *ComplexityRuleEngine, input AssessComplexityInput) AssessComplexityOutput {
-	level := engine.Assess(input.UserMessage)
-	path := complexityLevelToPath(level)
-	return AssessComplexityOutput{
-		Level:          string(level),
-		Reasoning:      engine.LastReasoning(),
-		SuggestedPath:  path,
-		AvailableTools: complexityAvailableTools(level),
-	}
-}
-
-func complexityLevelToPath(level ComplexityLevel) string {
-	switch level {
-	case ComplexitySimple:
-		return "direct_answer"
-	case ComplexityModerate:
-		return "single_butler"
-	case ComplexityComplex:
-		return "orchestrator"
-	default:
-		return "single_butler"
-	}
-}
-
-func complexityAvailableTools(level ComplexityLevel) []string {
-	switch level {
-	case ComplexitySimple:
-		return simpleAvailableTools
-	case ComplexityModerate:
-		return moderateAvailableTools
-	case ComplexityComplex:
-		return complexAvailableTools
-	default:
-		return moderateAvailableTools
-	}
 }

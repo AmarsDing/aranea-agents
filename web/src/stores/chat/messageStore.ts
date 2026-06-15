@@ -45,12 +45,26 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
     replace?: boolean;
     afterRevision?: number;
     dropStaleInFlight?: boolean;
+    /**
+     * When true, exclude server-persisted merged assistant ChatMessages from
+     * the merge result. In AF mode, Activity data provides per-round content
+     * (thinking/reply/action), so the merged assistant message is redundant.
+     *
+     * IMPORTANT: Only set this to true when Activity data is confirmed
+     * available for the session. Pre-AF sessions (no Activity data) rely on
+     * the merged message for content display. Default is false.
+     */
+    activityFirst?: boolean;
   }) {
     const sid = opts.sessionId;
     if (!sid) return;
 
+    const activityFirst = opts.activityFirst ?? false;
     const local = getMessages(sid);
-    const mergeOpts = opts.dropStaleInFlight ? { dropStaleInFlight: true } : undefined;
+    const mergeOpts = {
+      dropStaleInFlight: opts.dropStaleInFlight ?? false,
+      activityFirst,
+    };
 
     if (opts.afterRevision != null && opts.afterRevision > 0) {
       const { items, currentRevision } = await listSessionChatMessagesAfterRevision(sid, opts.afterRevision);

@@ -347,6 +347,18 @@ func (c *turnStreamConsumer) finalize() {
 			TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
 		}
 		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage)
+
+		// AF-FIX: Finalize stuck tool Activities in the ActivityProjector.
+		// When a turn ends with pending tool calls (no tool_result received),
+		// the ActivityProjector's toolCalls map still holds action Activities
+		// in tool_running status. Without this step, the frontend never receives
+		// activity_done(kind=action) for these tools, leaving them stuck in
+		// running state indefinitely. This is the AF equivalent of
+		// PublishStuckToolResultEnvelopes (which publishes legacy tool_result
+		// envelopes that AF mode doesn't process).
+		if len(c.pendingToolCalls) > 0 {
+			c.opts.ActivityProjector.OnStuckTools(c.turnCtx, c.pendingToolCalls)
+		}
 	}
 	if len(c.pendingToolCalls) == 0 {
 		return

@@ -460,6 +460,8 @@ message Activity {
   string agent_name = 23;
   bool collapsed = 24;
   string label = 25;
+  int64 prompt_tokens = 26;
+  int64 completion_tokens = 27;
 }
 
 message ListActivitiesRequest {

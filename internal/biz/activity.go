@@ -49,6 +49,10 @@ type Activity struct {
 	Timestamp        time.Time
 	DurationMs       int64
 
+	// Token usage (kind=task, root Activity only)
+	PromptTokens     int64
+	CompletionTokens int64
+
 	// Content fields (by kind)
 	Content   string // task/reply/notice/end/error text
 	Reasoning string // thinking reasoning content

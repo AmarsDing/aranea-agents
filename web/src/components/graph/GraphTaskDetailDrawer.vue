@@ -13,7 +13,10 @@
       </q-card-section>
       <q-separator />
       <div class="app-glass-dialog__scroll">
-        <q-card-section v-if="task" class="app-dialog-body app-glass-dialog__body">
+        <q-card-section v-if="!task && detailLoading" class="app-dialog-body app-glass-dialog__body flex flex-center" style="min-height: 120px">
+          <q-spinner color="primary" size="32px" />
+        </q-card-section>
+        <q-card-section v-else-if="task" class="app-dialog-body app-glass-dialog__body">
           <q-tabs v-model="tab" dense align="left" class="q-mb-md">
             <q-tab name="detail" label="详情" />
             <q-tab name="comments" label="评论" />

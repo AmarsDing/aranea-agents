@@ -78,6 +78,10 @@ export interface Activity {
   agentKey?: string;
   agentName?: string;
 
+  // === Token usage (kind=task, root Activity only) ===
+  promptTokens?: number;
+  completionTokens?: number;
+
   // === Display hints ===
   collapsed: boolean;
   label?: string;

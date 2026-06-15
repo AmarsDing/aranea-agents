@@ -8,7 +8,7 @@
         <span v-if="activity.streaming" class="pulse-dot"></span>
       </div>
       <div class="say-activity__content">
-        <div class="say-activity__markdown" v-html="renderedContent"></div>
+        <div class="say-activity__markdown chat-message-prose" v-html="renderedContent"></div>
         <span v-if="activity.streaming" class="cursor-blink"></span>
       </div>
     </template>
@@ -71,28 +71,6 @@ const previewText = computed(() => {
     font-size: 14px
     line-height: 1.7
     word-break: break-word
-
-    :deep(p)
-      margin: 0
-
-    :deep(p + p)
-      margin-top: 8px
-
-    :deep(a)
-      color: var(--color-accent)
-
-    :deep(code)
-      background: var(--glass-surface)
-      padding: 2px 4px
-      border-radius: 4px
-      font-size: 13px
-
-    :deep(pre)
-      background: var(--glass-surface)
-      border: 1px solid var(--glass-border)
-      border-radius: 8px
-      padding: 10px 12px
-      overflow-x: auto
 
   &__compact
     padding: 2px 0

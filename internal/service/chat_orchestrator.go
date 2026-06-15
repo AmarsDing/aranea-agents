@@ -579,7 +579,9 @@ func (o *ChatOrchestrator) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHoo
 }
 
 // SetTaskOrchestrator sets the TaskOrchestratorPort on the TeamOrchestrationDeps.
-// This breaks the Wire injection cycle: TaskOrchestrator → SpiritTeamAssembler → TeamStarterPort → ChatService.
+//
+// Deprecated: TaskOrchestrator is now backfilled via provideChatServiceDeps in wire.go.
+// This method is retained for potential ad-hoc use but is no longer called by Wire.
 func (o *ChatOrchestrator) SetTaskOrchestrator(orch biz.TaskOrchestratorPort) {
 	if o == nil {
 		return

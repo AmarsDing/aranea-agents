@@ -257,4 +257,32 @@ describe('groupMessagesByTurn (turn_id-based)', () => {
     ])[0]!;
     expect(lastAssistant(block)).toBeNull();
   });
+
+  it('splits blocks on role=user even when turn_id is identical (red line #14)', () => {
+    const messages: Message[] = [
+      msg({ id: 'u1', role: 'user', turn_id: 'same-turn', created_at: '2026-05-23T00:00:00Z' }),
+      msg({ id: 'a1', role: 'assistant', turn_id: 'same-turn', created_at: '2026-05-23T00:00:01Z', content_markdown: 'reply1' }),
+      msg({ id: 'u2', role: 'user', turn_id: 'same-turn', created_at: '2026-05-23T00:00:02Z' }),
+      msg({ id: 'a2', role: 'assistant', turn_id: 'same-turn', created_at: '2026-05-23T00:00:03Z', content_markdown: 'reply2' }),
+    ];
+    const blocks = groupMessagesByTurn(messages);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.user?.id).toBe('u1');
+    expect(lastAssistant(blocks[0]!)?.id).toBe('a1');
+    expect(blocks[1]?.user?.id).toBe('u2');
+    expect(lastAssistant(blocks[1]!)?.id).toBe('a2');
+  });
+
+  it('splits blocks on role=user when turn_id is empty', () => {
+    const messages: Message[] = [
+      msg({ id: 'u1', role: 'user', turn_id: '', created_at: '2026-05-23T00:00:00Z' }),
+      msg({ id: 'a1', role: 'assistant', turn_id: '', created_at: '2026-05-23T00:00:01Z', content_markdown: 'reply1' }),
+      msg({ id: 'u2', role: 'user', turn_id: '', created_at: '2026-05-23T00:00:02Z' }),
+      msg({ id: 'a2', role: 'assistant', turn_id: '', created_at: '2026-05-23T00:00:03Z', content_markdown: 'reply2' }),
+    ];
+    const blocks = groupMessagesByTurn(messages);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.user?.id).toBe('u1');
+    expect(blocks[1]?.user?.id).toBe('u2');
+  });
 });
