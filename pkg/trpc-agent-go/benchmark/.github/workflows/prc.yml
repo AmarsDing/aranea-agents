@@ -1,0 +1,71 @@
+name: Pull Request Check
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover-go-modules:
+    name: discover go modules
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t modules < <(find . -name go.mod | sort | while IFS= read -r mod; do
+            if head -n 5 "${mod}" | grep -q "DO NOT USE!"; then
+              continue
+            fi
+            echo "${mod}"
+          done)
+          if [ "${#modules[@]}" -eq 0 ]; then
+            echo "matrix={\"module\":[]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          matrix=$(printf '%s\n' "${modules[@]}" | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length>0))')
+          echo "matrix={\"module\":${matrix}}" >> "$GITHUB_OUTPUT"
+
+  test-go-modules:
+    name: go test (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    needs: discover-go-modules
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover-go-modules.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.9"
+      - name: Test module
+        shell: bash
+        run: bash .github/scripts/run-go-tests.sh --module "${{ matrix.module }}"
+
+  check-go-mod-tidy:
+    name: check go mod tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.9"
+      - name: Check go.mod and go.sum are tidy
+        shell: bash
+        run: bash .github/scripts/check-go-mod-tidy.sh
+
+  check-lfs-excluded:
+    name: check git lfs excluded
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Git LFS files are excluded from published modules
+        shell: bash
+        run: bash .github/scripts/check-lfs-excluded.sh
