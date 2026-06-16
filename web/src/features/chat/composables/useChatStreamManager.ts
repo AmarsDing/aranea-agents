@@ -227,20 +227,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         onOrchestrationNotice: notifyOrchestration,
         onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
         ...sessionContextHandlers(sessionId),
-        onStreamingPatch: (sid, patch) => {
-          if (patch.done) {
-            streamingSnapshots.put(sid, {
-              reasoning: patch.reasoning,
-              partialText: patch.partialText,
-              replace: true,
-            });
-            return;
-          }
-          streamingSnapshots.put(sid, {
-            reasoning: patch.reasoning,
-            partialText: patch.partialText,
-          });
-        },
         onRunActivity: deps.touchRunActivity,
         onFirstByteArrived: deps.onFirstByteArrived,
         onExecutionProgress: pushProgress,
@@ -308,7 +294,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
     teamStreamCleanup = bindStreamHandlers(teamStream, {
       sessionId,
-      streamIdPrefix: 'ws-team-stream',
       resolveActiveSessionId: () => deps.sessionStore.teamSelectedSessionId,
       getMessages: (sid) => deps.messageStore.getMessages(sid),
       setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),

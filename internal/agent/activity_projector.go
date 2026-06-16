@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -526,6 +527,173 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 	p.publishEnvelope(ctx, env, a)
 }
 
+// OnNotice creates a notice Activity for system notifications.
+func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID string, content string, noticeType string) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	activity := &biz.Activity{
+		ID:        id,
+		Kind:      biz.ActivityKindNotice,
+		Status:    biz.ActivityStatusPending,
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Timestamp: now,
+		Content:   content,
+		Meta:      map[string]any{"noticeType": noticeType},
+	}
+	p.activities[id] = activity
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+
+	// Notice is immediately completed
+	activity.Status = biz.ActivityStatusCompleted
+	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+
+	return activity, nil
+}
+
+// ConfirmRequestParams holds the parameters for creating a confirm Activity.
+type ConfirmRequestParams struct {
+	ToolName      string
+	ToolArguments string
+	Content       string
+}
+
+// OnConfirmRequest creates a confirm Activity that blocks until user responds.
+func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessionID string, params ConfirmRequestParams) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	activity := &biz.Activity{
+		ID:        id,
+		Kind:      biz.ActivityKindConfirm,
+		Status:    biz.ActivityStatusToolBlocked,
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Timestamp: now,
+		Content:   params.Content,
+		Meta:      map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
+	}
+	p.activities[id] = activity
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+
+	return activity, nil
+}
+
+// OnConfirmResult updates a confirm Activity with the user's response.
+func (p *ActivityProjector) OnConfirmResult(ctx context.Context, activityID string, approved bool) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	activity, ok := p.activities[activityID]
+	if !ok {
+		return nil, apierror.NotFound("activity", "activity not found: %s", activityID)
+	}
+	if activity.Kind != biz.ActivityKindConfirm {
+		return nil, apierror.BadRequest("activity", "expected confirm kind, got %s", activity.Kind)
+	}
+	if approved {
+		activity.Status = biz.ActivityStatusCompleted
+	} else {
+		activity.Status = biz.ActivityStatusCancelled
+	}
+	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+
+	return activity, nil
+}
+
+// OnPlanStart creates a plan Activity with initial steps.
+func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID string, title string, steps []biz.ActivityPlanStep) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	activity := &biz.Activity{
+		ID:        id,
+		Kind:      biz.ActivityKindPlan,
+		Status:    biz.ActivityStatusPending,
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Timestamp: now,
+		Content:   title,
+		Meta:      map[string]any{"steps": steps},
+	}
+	p.activities[id] = activity
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+
+	return activity, nil
+}
+
+// OnPlanStepUpdate updates a step's status within a plan Activity.
+func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID string, stepID string, status biz.ActivityStatus) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	activity, ok := p.activities[activityID]
+	if !ok {
+		return nil, apierror.NotFound("activity", "activity not found: %s", activityID)
+	}
+	if activity.Kind != biz.ActivityKindPlan {
+		return nil, apierror.BadRequest("activity", "expected plan kind, got %s", activity.Kind)
+	}
+	steps, ok := activity.Meta["steps"].([]biz.ActivityPlanStep)
+	if !ok || steps == nil {
+		return nil, apierror.BadRequest("activity", "plan activity has no valid steps metadata")
+	}
+	stepFound := false
+	for i := range steps {
+		if steps[i].ID == stepID {
+			steps[i].Status = status
+			stepFound = true
+			break
+		}
+	}
+	if !stepFound {
+		return nil, apierror.NotFound("step", "step not found in plan: %s", stepID)
+	}
+	activity.Meta["steps"] = steps
+
+	// Update plan status based on steps
+	allCompleted := true
+	anyFailed := false
+	for _, s := range steps {
+		if s.Status != biz.ActivityStatusCompleted && s.Status != biz.ActivityStatusFailed {
+			allCompleted = false
+		}
+		if s.Status == biz.ActivityStatusFailed {
+			anyFailed = true
+		}
+	}
+
+	if allCompleted {
+		if anyFailed {
+			activity.Status = biz.ActivityStatusPartialFailure
+		} else {
+			activity.Status = biz.ActivityStatusCompleted
+		}
+		activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
+		p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+	} else {
+		activity.Status = biz.ActivityStatusRunning
+		env := p.buildActivityEnvelope(activity, contract.EnvelopeTypeActivityDelta)
+		if env.Metadata == nil {
+			env.Metadata = make(map[string]any)
+		}
+		env.Metadata["delta_field"] = "steps"
+		env.Metadata["delta_chunk"] = ""
+		p.publishEnvelope(ctx, env, activity)
+	}
+
+	return activity, nil
+}
+
 // OnStuckTools finalizes action Activities whose tool_result never arrived.
 // Called from stream_consumer.finalize() when the turn ends with pending tool calls.
 // This is the AF equivalent of PublishStuckToolResultEnvelopes — instead of
@@ -712,6 +880,11 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 	}
 	if a.Label != "" {
 		env.Metadata["label"] = a.Label
+	}
+
+	// Meta fields (for notice/confirm/plan kinds)
+	if a.Meta != nil {
+		env.Metadata["meta"] = a.Meta
 	}
 
 	return env

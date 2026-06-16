@@ -37,8 +37,7 @@ describe('useActivityTimeline', () => {
   it('starts with empty activities', () => {
     expect(tl.activities.value).toEqual([]);
     expect(tl.activityTree.value).toEqual([]);
-    expect(tl.taskBoardNodes.value).toEqual([]);
-    expect(tl.timelineActivities.value).toEqual([]);
+    expect(tl.streamEvents.value).toEqual([]);
   });
 
   it('handleActivityStart adds an activity', () => {
@@ -246,26 +245,7 @@ describe('useActivityTimeline', () => {
     expect(tree[0].children[1].id).toBe('child-2');
   });
 
-  it('taskBoardNodes filters out delegate and notice', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'task-1',
-      kind: 'task',
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'delegate-1',
-      kind: 'delegate',
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'notice-1',
-      kind: 'notice',
-    }));
-
-    const nodes = tl.taskBoardNodes.value;
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0].kind).toBe('task');
-  });
-
-  it('timelineActivities maps kinds correctly', () => {
+  it('streamEvents maps kinds correctly', () => {
     tl.handleActivityStart(makeStartMeta({
       activity_id: 'think-1',
       kind: 'thinking',
@@ -285,7 +265,7 @@ describe('useActivityTimeline', () => {
       content: 'something went wrong',
     }));
 
-    const activities = tl.timelineActivities.value;
+    const activities = tl.streamEvents.value;
     // task, delegate, sub_task_board are filtered out; thinking, action, reply, error remain
     expect(activities).toHaveLength(4);
     expect(activities[0].kind).toBe('thinking');

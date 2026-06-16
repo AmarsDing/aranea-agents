@@ -27,7 +27,7 @@ func (Activity) Fields() []ent.Field {
 		field.String("id").MaxLen(64).Unique().Immutable(),
 
 		// === Classification ===
-		field.String("kind").MaxLen(32).Comment("ActivityKind: task/thinking/action/reply/sub_task_board/error/delegate"),
+		field.String("kind").MaxLen(32).Comment("ActivityKind: task/thinking/action/reply/sub_task_board/error/delegate/notice/confirm/plan"),
 		field.String("status").MaxLen(32).Default("pending").Comment("ActivityStatus: pending/running/tool_running/tool_blocked/completed/failed/partial_failure/cancelled/interrupted"),
 
 		// === Ownership ===
@@ -71,6 +71,9 @@ func (Activity) Fields() []ent.Field {
 		// === Display hints ===
 		field.Bool("collapsed").Default(false).Comment("Backend suggestion, frontend may override"),
 		field.String("label").MaxLen(128).Default("").Comment("Custom label e.g. '规划'/'推理'/'重规划'"),
+
+		// === Kind-specific metadata ===
+		field.JSON("meta", map[string]any{}).Optional().Comment("Kind-specific metadata (noticeType, toolName, steps, etc.)"),
 	}
 }
 

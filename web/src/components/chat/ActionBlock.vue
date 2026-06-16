@@ -1,7 +1,7 @@
 <template>
-  <div class="act-activity" :class="`act-activity--${variant}`">
+  <div class="act-activity">
     <!-- Card variant -->
-    <template v-if="variant === 'card'">
+    <template>
       <!-- Todo write: render structured plan list instead of raw JSON -->
       <TodoInlineList v-if="isTodo" :event="todoEvent" />
       <template v-else>
@@ -27,22 +27,12 @@
         </div>
       </template>
     </template>
-
-    <!-- Compact variant -->
-    <template v-else>
-      <div class="act-activity__compact">
-        <span class="act-activity__compact-icon">{{ statusIcon }}</span>
-        <span class="act-activity__compact-tool">{{ activity.tool.toolLabel }}</span>
-        <span v-if="activity.tool.durationMs != null" class="act-activity__compact-duration">{{ formattedDuration }}</span>
-      </div>
-    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import type { ActionEvent } from '../../features/chat/streamEventTypes';
-import type { ActivityVariant } from '../../features/chat/activityTimelineTypes';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
@@ -50,7 +40,6 @@ import TodoInlineList from './TodoInlineList.vue';
 
 const props = defineProps<{
   activity: ActionEvent;
-  variant?: ActivityVariant;
   agentColor?: string;
 }>();
 
@@ -163,21 +152,4 @@ const formattedDuration = computed(() => formatDuration(props.activity.tool.dura
   &__error
     .act-activity__code
       border-color: var(--color-danger)
-
-  &__compact
-    display: flex
-    align-items: center
-    gap: 6px
-    padding: 2px 0
-    font-size: 12px
-
-  &__compact-icon
-    font-size: 11px
-
-  &__compact-tool
-    color: var(--color-text-primary)
-
-  &__compact-duration
-    color: var(--color-text-secondary)
-    font-size: 11px
 </style>

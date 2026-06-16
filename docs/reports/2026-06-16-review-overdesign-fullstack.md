@@ -1,7 +1,7 @@
 # Review: Overdesign Audit — Full-Stack Pass-Through & Premature Abstraction
 
 > **日期**：2026-06-16
-> **版本**：v1.0
+> **版本**：v1.1（含验证修正与修复记录）
 > **范围**：前端（Chat/Agent/Session/共享层/Router）+ 后端（Chat/Agent/Skill/Tool/Event/Wire）
 
 ---
@@ -234,3 +234,105 @@ UnifiedEvolutionExpirationWriter (2 methods)
 2. Service 方法必须包含至少 1 行业务逻辑（校验/转换/编排），否则 Orchestrator 直接实现 biz 接口
 3. Composable 必须被至少 2 个消费者使用才独立提取，否则内联到消费者
 4. biz 接口必须有至少 2 个实现（或明确的 mock 需求）才独立定义，否则使用复合接口
+
+---
+
+## 十二、验证修正与修复记录（v1.1 — 2026-06-16）
+
+### 验证修正
+
+对报告 37 个问题逐项验证后，以下数据需修正：
+
+| 编号 | 原声称 | 实际值 | 修正说明 |
+|------|--------|--------|----------|
+| FE-1 | 50+ 属性、15+ 子 composable | **140 个叶属性、21 个子 composable** | 问题比声称更严重 |
+| FE-2 | 12 action 全透传、零状态逻辑 | **15 函数中 12 透传 + 3 个 wsConnected 状态管理** | "零状态逻辑"不准确 |
+| FE-3 | 8 层调用链 | **7 层，2 层纯透传 + 1 层极薄包装** | 程度略轻 |
+| FE-4 | 43% 仅 1 消费者 | **80% 仅 1 消费者（16/20）** | 问题比声称严重得多 |
+| FE-5 | 12/14 透传 (86%) | **11/14 透传 (78.6%)** | 略低但核心判断成立 |
+| FE-8 | 70 个根 TS 文件、平均不足 50 行 | **60 个文件、平均约 110 行** | 粒度偏细但程度被夸大 |
+| FE-12 | 约 7 个极薄透传 Store | **仅 2 个**（agentsCatalog、event） | 严重夸大 |
+| FE-15 | useToolDisplayMode 死 composable | **文件不存在** | 已被删除或从未存在 |
+| BE-1 | 23 个单实现接口 | **35 个接口，29 个仅 1 实现（83%）** | 比声称更严重 |
+| BE-3 | 10 接口 | **8 接口** | 略低但 4 层金字塔确认 |
+| BE-7 | 6 层读接口嵌套 | **3 层** | 层数被夸大 |
+| BE-9 | 30+ 参数 | **40 参数** | 比声称更严重 |
+| BE-10 | 46 字段含 ~25 Job | **47 字段含 ~35 Job** | 比声称更严重 |
+| BE-11 | 5 个 Adapter | **22 个 Adapter/Gateway** | 严重低估 |
+| BE-12 | 9 个单方法接口 | **9 接口中 8 单方法 + 1 双方法** | 微调 |
+
+### 反驳项
+
+| 编号 | 问题 | 判定理由 |
+|------|------|---------|
+| FE-11 | Agent 运行时配置 4 文件拆分 | **合理拆分**——类型/填充/序列化/子域各 131-246 行，合并超 500 行限制 |
+| BE-17 | DurableResumeGateway 仅 1 方法 | **Go 窄接口惯用模式**，非过度设计 |
+
+### 已修复问题
+
+| 编号 | 问题 | 修复内容 | 状态 |
+|------|------|---------|------|
+| FE-14 | 3 个死组件 | 删除 ChatSkillHintBar.vue、ChatSkillCatalogStrip.vue、ChatMentionPopup.vue | ✅ 已修复 |
+| FE-15 | useToolDisplayMode 死 composable | 文件不存在，无需操作 | ✅ 无需操作 |
+| FE-16 | enqueueUserMessage 废弃函数 | 从 api.ts 删除函数定义 | ✅ 已修复 |
+| FE-17 | 2 个 re-export barrel 文件 | 删除 envelope.ts、dispatcher.ts，更新 24 处 import 指向 realtime/ 目录 | ✅ 已修复 |
+| FE-2 | runtimeStore 纯透传层 | 删除 Store，wsConnected 迁移到 useChatStreamManager，11 个 API 透传改为消费者直接调 API | ✅ 已修复 |
+| FE-12 | agentsCatalog 极薄 Store | 删除 Store，2 个消费者改为直接调 listAgents API | ✅ 已修复 |
+| FE-12 | event 极薄 Store | 删除 Store，1 个消费者改为直接调 listSessionEvents API | ✅ 已修复 |
+| FE-4 | useAgentChannelRefs 单消费者 composable | 内联到 AgentChannelRefsSection.vue（86 行） | ✅ 已修复 |
+| BE-2 | ChatService 纯转发文件 | 删除 chat_await_resume.go、chat_await_route.go，errResumeInFlight 迁移到 chat_orch_await.go | ✅ 已修复 |
+| BE-13 | 重复 WebResearch 适配器 | biz.WebResearchPlatformFields/WebResearchReadinessChecker 改为 tool 包类型别名，删除 wire.go 重复适配器 | ✅ 已修复 |
+
+### 审查修复（aranea-review）
+
+| 审查项 | 问题描述 | 修复内容 |
+|--------|---------|---------|
+| BLK-01 | 删除 barrel 文件后 19 个文件 import 未更新 | 更新所有 import 指向 realtime/ 目录 |
+| ADV-01 | tool_reexport.go 大规模 re-export 无设计说明 | 添加文件头注释说明向后兼容意图 + TECH-DEBT 标注 |
+| ADV-03 | webResearchPlatformFields 重复代码 | 统一到 tool 包，biz 层通过 re-export 调用 |
+| ADV-04 | composable 直接调 API 未标 TECH-DEBT | useChatSender/useFollowUpQueue/useChatEventInspector 添加 TECH-DEBT(FL5) 标注 |
+| ADV-05 | useChatWorkspace 直接调 API 未标 TECH-DEBT | 添加 TECH-DEBT(FL5) 标注 |
+
+### 修复量化
+
+| 指标 | 修复前 | 修复后 | 变化 |
+|------|--------|--------|------|
+| 删除的死代码文件 | — | 8 个（3 组件 + 2 barrel + 1 Store + 2 Go 文件） | -8 文件 |
+| 删除的 Store | — | 3 个（runtimeStore + agentsCatalog + event） | -3 Store |
+| 消除的透传 action | — | 26 个（15 runtimeStore + 1 agentsCatalog + 1 event + 9 Go 转发方法） | -26 透传 |
+| 消除的重复代码 | — | ~120 行（2 个 WebResearch 适配器 + 2 个转换函数 + 2 个 Go 转发文件） | -120 行 |
+| 内联的 composable | — | 1 个（useAgentChannelRefs） | -1 文件 |
+| 添加的 TECH-DEBT 标注 | — | 5 处 | +5 标注 |
+
+### 未修复项（需后续迭代）
+
+| 编号 | 问题 | 原因 |
+|------|------|------|
+| FE-1 | useChatWorkspace God Composable (1125 行) | 风险最高，需完整测试覆盖后专项重构 |
+| FE-3 | 发送消息 7 层调用链 | 需重新设计 Sender 策略模式 |
+| FE-4 | Agent 15 个单消费者 composable | 多数 >50 行或消费者已超 200 行，合并成本高 |
+| FE-5 | Agent Detail Store 11/14 透传 | 需评估哪些 action 应迁入 composable |
+| FE-6 | sessionStore Agent/Team 对称重复 | 数据容器差异使参数化需额外抽象 |
+| BE-1 | Service 层 29 个单实现接口 | 需更新所有消费者和 mock 测试，1-2 天 |
+| BE-3 | Skill Evolution 4 层接口金字塔 | 需更新 Wire 绑定和所有消费者 |
+| BE-4 | ChatUsecase 与 Service 子管理器重叠 | 涉及 biz/service 两层职责重新划分 |
+| BE-9 | provideChatServiceDeps 40 参数 | ChatService 需拆分为更小服务单元 |
+
+### 12.7 Phase 1 实施记录（已完成）
+
+**日期**：2026-06-16
+
+| 修复项 | 文件 | 变更 | 状态 |
+|--------|------|------|------|
+| P1.1 | `streamHandlers.ts` | 删除 6 个 Legacy handler + legacyUnsubs/activateAFMode/afMode/streamRowId/snapshotStreamingMessage/snapshotCounter/patchStreamingEnvelope/patchMessages/patch；删除 onStreamingPatch/streamIdPrefix 接口属性；删除 if (!afMode) return 守卫；添加 runner_completion/error 兜底 handler | ✅ |
+| P1.2 | `mergeSessionMessages.ts` | 删除 isStreamingPlaceholder/findServerMatchForStreaming/buildServerAssistantContentMap + 合并循环 Legacy 分支 | ✅ |
+| P1.3 | `messageOrigin.ts` | 删除 ws-stream-/ws-team-stream-/ws-snap- 前缀分支 | ✅ |
+| P1.3 | `chatStreamingSnapshots.ts` | 删除 applyStreamingSnapshotToSession 函数 | ✅ |
+| P1.3 | `channelFocusLoad.ts` | 删除 applyStreamingSnapshotToSession 导入和调用 | ✅ |
+| P1.4 | `streamContentPatch.ts` | 删除 isReasoningAsDisplay 函数和 reasoning_as_display 字段 | ✅ |
+| P1.1 | `useChatStreamManager.ts` | 删除 onStreamingPatch 回调和 streamIdPrefix 属性 | ✅ |
+| P1.1 | `streamHandlers.spec.ts` | 删除 5 个 Legacy handler 测试用例 | ✅ |
+
+**审查结果**：0 个阻断；4 个建议中 S-01/S-02（error/runner_completion 兜底 handler）已修复，S-03（mergeSessionMessages 清理不完整）已修复，S-04（测试文件同步）为低优先级；1 个提示（inbound sync 兼容层注释）记录备忘。
+
+**净减代码**：约 500 行（streamHandlers.ts ~300 行 + mergeSessionMessages.ts ~70 行 + 其他文件 ~130 行）

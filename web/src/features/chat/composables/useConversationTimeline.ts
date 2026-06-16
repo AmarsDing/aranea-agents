@@ -26,9 +26,9 @@ import type {
 } from '../activityTimelineTypes';
 import type { ReplyEvent, ThinkingEvent } from '../streamEventTypes';
 import type { ActivityTreeNode } from '../activityTypes';
-import type { AgentBlock, TaskBoardNodeData, ProgressSection } from '../agentTreeTypes';
+import type { AgentBlock, ProgressSection } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
-import { activityToTaskBoardNode, activityToTimelineActivity } from './useActivityTimeline';
+import { activityToStreamEvent } from './useActivityTimeline';
 import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { mergeProgressEvents } from '../executionProgress';
 
@@ -247,9 +247,9 @@ function buildSingleTurnFromActivities(
   // Build Activity tree from raw records for this turn
   const treeNodes = buildTreeFromRecords(rawRecords);
   const allNodes = flattenTree(treeNodes);
-  let turnTimelineActivities = allNodes
+  let turnTimelineActivities: Activity[] = allNodes
     .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
-    .map(activityToTimelineActivity);
+    .map(activityToStreamEvent);
 
   // D3: Merge adjacent ThinkActivities
   turnTimelineActivities = mergeAdjacentThinkActivities(turnTimelineActivities);
@@ -283,7 +283,6 @@ function buildSingleTurnFromActivities(
   const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
 
   const progressSections = buildProgressSections(opts.progressByStep, userMessage);
-  const taskBoardNodes = buildTaskBoardNodesFromActivityTree(treeNodes);
 
   const agentWork: AgentWorkProcess = {
     agentKey,
@@ -299,7 +298,6 @@ function buildSingleTurnFromActivities(
     plan: null,
     teamStatus: null,
     progressSections,
-    taskBoardNodes,
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
     finishedAt: !hasRunning ? lastMsg?.created_at || '' : null,
   };
@@ -501,7 +499,7 @@ function buildAgentProgress(parentNode: ActivityTreeNode): AgentProgress[] {
 
   for (const [key, children] of agentMap) {
     const firstChild = children[0];
-    const agentActivities: Activity[] = children.map((child) => activityToTimelineActivity(child));
+    const agentActivities: Activity[] = children.map((child) => activityToStreamEvent(child));
     const hasRunning = children.some((c) => c.status === 'running' || c.status === 'tool_running');
     const hasFailed = children.some((c) => c.status === 'failed');
     const allCompleted = children.every((c) => c.status === 'completed');
@@ -553,10 +551,4 @@ function mapActivityStatusToTeamStatus(status: string): 'running' | 'completed' 
   }
 }
 
-function buildTaskBoardNodesFromActivityTree(tree: ActivityTreeNode[]): TaskBoardNodeData[] | undefined {
-  if (!tree || tree.length === 0) return undefined;
-  const nodes = tree
-    .filter((node) => node.kind !== 'delegate' && node.kind !== 'error')
-    .map(activityToTaskBoardNode);
-  return nodes.length > 0 ? nodes : undefined;
-}
+

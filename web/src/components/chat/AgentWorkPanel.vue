@@ -51,7 +51,6 @@
         v-if="agentWork.activities.length"
         :events="agentWork.activities"
         :agent-color="agentWork.agentColor"
-        variant="card"
       />
     </div>
   </div>

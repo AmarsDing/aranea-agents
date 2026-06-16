@@ -1,5 +1,5 @@
 <template>
-  <div class="event-stream" :class="`event-stream--${variant}`">
+  <div class="event-stream">
     <template v-for="(event, idx) in events" :key="event.id">
       <!-- Phase transition indicator between thinking and reply -->
       <div
@@ -18,27 +18,34 @@
         :streaming="event.streaming"
         :duration-ms="event.durationMs"
         :default-collapsed="event.collapsed"
-        :variant="variant"
       />
       <ActionBlock
         v-else-if="event.kind === 'action'"
         :activity="event"
-        :variant="variant"
         :agent-color="agentColor"
       />
       <ReplyBlock
         v-else-if="event.kind === 'reply'"
         :activity="event"
-        :variant="variant"
       />
       <ErrorBlock
         v-else-if="event.kind === 'error'"
         :event="event"
       />
-      <!-- Plan: placeholder until PlanBlock is implemented -->
-      <div v-else-if="event.kind === 'plan'" class="event-stream__plan-placeholder">
-        {{ t('chat.plan.label', '计划') }} ({{ event.steps.length }} {{ t('chat.plan.steps', '步骤') }})
-      </div>
+      <PlanBlock
+        v-else-if="event.kind === 'plan'"
+        :activity="event"
+        :agent-color="agentColor"
+      />
+      <ConfirmBlock
+        v-else-if="event.kind === 'confirm'"
+        :activity="event"
+        @confirm="(id, approved) => $emit('confirm', id, approved)"
+      />
+      <NoticeBlock
+        v-else-if="event.kind === 'notice'"
+        :activity="event"
+      />
       <DelegateActivity v-else-if="event.kind === 'delegate'" :activity="event" />
     </template>
   </div>
@@ -46,11 +53,14 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import type { Activity, ActivityVariant } from '../../features/chat/activityTimelineTypes';
+import type { Activity } from '../../features/chat/activityTimelineTypes';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';
 import ErrorBlock from './ErrorBlock.vue';
+import PlanBlock from './PlanBlock.vue';
+import ConfirmBlock from './ConfirmBlock.vue';
+import NoticeBlock from './NoticeBlock.vue';
 import DelegateActivity from './DelegateActivity.vue';
 
 const { t } = useI18n();
@@ -58,7 +68,10 @@ const { t } = useI18n();
 defineProps<{
   events: Activity[];
   agentColor?: string;
-  variant?: ActivityVariant;
+}>();
+
+defineEmits<{
+  confirm: [activityId: string, approved: boolean];
 }>();
 </script>
 
@@ -67,9 +80,6 @@ defineProps<{
   display: flex
   flex-direction: column
   gap: 4px
-
-  &--compact
-    gap: 2px
 
   &__transition
     display: flex
@@ -86,9 +96,4 @@ defineProps<{
     font-size: 11px
     color: var(--color-text-tertiary)
     white-space: nowrap
-
-  &__plan-placeholder
-    font-size: 13px
-    color: var(--color-text-secondary)
-    padding: 4px 0
 </style>

@@ -17,6 +17,9 @@ const (
 	ActivityKindSubTaskBoard ActivityKind = "sub_task_board" // Sub-task board (recursive nesting)
 	ActivityKindError       ActivityKind = "error"        // Error information
 	ActivityKindDelegate    ActivityKind = "delegate"     // Spirit delegates to team
+	ActivityKindNotice      ActivityKind = "notice"       // System notification
+	ActivityKindConfirm     ActivityKind = "confirm"      // User confirmation required
+	ActivityKindPlan        ActivityKind = "plan"         // Multi-step plan
 )
 
 // ActivityStatus represents the lifecycle status of an Activity.
@@ -79,6 +82,18 @@ type Activity struct {
 	// Display hints
 	Collapsed bool
 	Label     string
+
+	// Meta stores kind-specific metadata (noticeType, toolName, steps, etc.)
+	Meta map[string]any
+}
+
+// ActivityPlanStep represents a step in a plan Activity.
+type ActivityPlanStep struct {
+	ID        string         `json:"id"`
+	Label     string         `json:"label"`
+	Status    ActivityStatus `json:"status"`
+	AgentName string         `json:"agentName,omitempty"`
+	DependsOn []string       `json:"dependsOn,omitempty"`
 }
 
 // ActivityReader provides read access to Activity records.

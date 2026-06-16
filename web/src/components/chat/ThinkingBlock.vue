@@ -17,11 +17,9 @@
     v-else
     class="thinking-block"
     :class="[
-      `thinking-block--${variant}`,
       {
         'thinking-block--streaming': streaming,
         'thinking-block--collapsed': collapsed,
-        'thinking-block--short': isShort,
         'thinking-block--dark': isDark,
       },
     ]"
@@ -31,46 +29,8 @@
     @click="onClick"
     @keydown.escape="onEscape"
   >
-    <!-- ===== inline variant ===== -->
-    <template v-if="variant === 'inline'">
-      <!-- Streaming + collapsed: status indicator only -->
-      <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator" @click.stop="onClick">
-        <q-icon name="psychology_alt" size="14px" color="accent" />
-        <span class="thinking-block__streaming-text">{{ t('chat.thinking', '正在思考…') }}</span>
-        <span class="thinking-block__pulse" aria-hidden="true" />
-        <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-      </div>
-
-      <!-- Collapsed (not streaming): summary line -->
-      <div v-else-if="collapsed && !isShort" class="thinking-block__summary">
-        <q-icon name="psychology_alt" size="14px" color="accent" /> {{ summaryText }}
-        <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-      </div>
-
-      <!-- Expanded / short -->
-      <template v-else>
-        <div class="thinking-block__label">
-          {{ t('chat.reasoningTitle', '思考过程') }}
-          <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
-          <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-        </div>
-        <div class="thinking-block__collapse-wrapper">
-          <div class="thinking-block__collapse-inner">
-            <div ref="viewportRef" class="thinking-block__viewport" @scroll="onViewportScroll">
-              <div
-                class="thinking-block__content chat-message-prose"
-                :class="{ 'chat-message-content--dark': isDark }"
-                v-html="renderedHtml"
-              />
-              <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
-            </div>
-          </div>
-        </div>
-      </template>
-    </template>
-
     <!-- ===== card variant ===== -->
-    <template v-else-if="variant === 'card'">
+    <template>
       <!-- Streaming + collapsed: status indicator only -->
       <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator thinking-block__streaming-indicator--card" @click.stop="onClick">
         <q-icon name="psychology_alt" size="14px" color="accent" />
@@ -104,41 +64,6 @@
         </div>
       </template>
     </template>
-
-    <!-- ===== compact variant ===== -->
-    <template v-else>
-      <!-- Streaming + collapsed: status indicator only -->
-      <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator thinking-block__streaming-indicator--compact" @click.stop="onClick">
-        <q-icon name="psychology_alt" size="12px" color="accent" />
-        <span class="thinking-block__streaming-text">{{ t('chat.thinking', '正在思考…') }}</span>
-        <span class="thinking-block__pulse" aria-hidden="true" />
-        <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-      </div>
-
-      <!-- Collapsed (not streaming): inline preview -->
-      <div v-else-if="collapsed" class="thinking-block__compact">
-        <q-icon name="psychology_alt" size="12px" color="accent" class="thinking-block__compact-icon" />
-        <span class="thinking-block__compact-text">{{ previewText }}</span>
-      </div>
-
-      <!-- Expanded: same as card expanded -->
-      <template v-else>
-        <div class="thinking-block__label">
-          <q-icon name="psychology_alt" size="14px" color="accent" class="thinking-block__label-icon" />
-          <span class="thinking-block__label-text">{{ t('chat.thinking.summary', '思考') }}</span>
-          <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
-          <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-        </div>
-        <div class="thinking-block__collapse-wrapper">
-          <div class="thinking-block__collapse-inner">
-            <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
-              <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
-              <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
-            </div>
-          </div>
-        </div>
-      </template>
-    </template>
   </div>
 </template>
 
@@ -146,7 +71,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
-import { formatDuration, truncateThinkingSummary } from '../../features/chat/agentTreeUtils';
+import { formatDuration } from '../../features/chat/agentTreeUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -162,8 +87,6 @@ const props = withDefaults(
     durationMs?: number | null;
     /** 深色模式 */
     isDark?: boolean;
-    /** 渲染变体 */
-    variant?: 'inline' | 'card' | 'compact';
     /** 默认折叠状态：true=收起，false=展开。流式和结束后均默认折叠 */
     defaultCollapsed?: boolean;
   }>(),
@@ -172,7 +95,6 @@ const props = withDefaults(
     thinkingOnly: false,
     durationMs: null,
     isDark: false,
-    variant: 'inline',
     defaultCollapsed: true,
   },
 );
@@ -211,13 +133,7 @@ const plainText = computed(() => {
     .trim();
 });
 
-/** Short reasoning: < 30 chars, don't collapse. */
-const isShort = computed(() => plainText.value.length < 30);
-
-/** Collapsed summary for inline variant. */
-const summaryText = computed(() => truncateThinkingSummary(plainText.value));
-
-/** Preview text for card/compact collapsed state. */
+/** Preview text for card collapsed state. */
 const previewText = computed(() => {
   const content = props.reasoning || '';
   const firstLine = content.split('\n').find((l) => l.trim() !== '') || '';
@@ -277,9 +193,6 @@ watch(
 // --- Interaction ---
 
 function onClick() {
-  // Short non-streaming content: no toggle
-  if (isShort.value && !props.streaming && props.variant === 'inline') return;
-
   collapsed.value = !collapsed.value;
 
   // After expanding, scroll to bottom if streaming
@@ -337,10 +250,6 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
     background: color-mix(in srgb, var(--color-text-primary) 4%, transparent)
     border-radius: 4px
 
-.thinking-block__streaming-indicator--compact
-  font-size: $font-size-card
-  padding: 2px 0
-
 .thinking-block__streaming-text
   font-style: italic
 
@@ -382,50 +291,6 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
 
 .thinking-block__collapse-inner
   overflow: hidden
-
-// ===== inline variant =====
-.thinking-block--inline
-  cursor: pointer
-
-.thinking-block--inline.thinking-block--short
-  cursor: default
-
-.thinking-block--inline .thinking-block__summary
-  color: var(--color-text-secondary)
-  font-size: $font-size-inline
-  font-family: inherit
-  line-height: 1.5
-  white-space: nowrap
-  overflow: hidden
-  text-overflow: ellipsis
-  transition: opacity 0.2s ease
-
-  &:hover
-    opacity: 0.8
-
-.thinking-block--inline .thinking-block__label
-  display: flex
-  align-items: center
-  gap: 4px
-  color: var(--color-text-secondary)
-  font-size: $font-size-inline
-  font-family: inherit
-  line-height: 1.5
-  margin-bottom: 4px
-
-.thinking-block--inline .thinking-block__viewport
-  overflow-y: auto
-  max-height: 300px
-  padding-left: 8px
-  border-left: 2px solid var(--glass-border)
-  transition: border-color 0.3s ease
-
-.thinking-block--inline.thinking-block--streaming .thinking-block__viewport
-  border-left-color: $border-accent
-
-.thinking-block--inline .thinking-block__content
-  font-size: $font-size-inline
-  line-height: 1.6
 
 // ===== card variant =====
 .thinking-block--card
@@ -480,50 +345,6 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   transition: border-color 0.3s ease
 
 .thinking-block--card .thinking-block__body--streaming
-  border-left-color: $border-accent
-
-// ===== compact variant =====
-.thinking-block--compact
-  cursor: pointer
-
-.thinking-block--compact .thinking-block__compact
-  display: flex
-  align-items: center
-  gap: 6px
-  padding: 2px 0
-  font-size: $font-size-card
-  color: var(--color-text-secondary)
-  font-style: italic
-
-.thinking-block__compact-icon
-  flex-shrink: 0
-
-.thinking-block__compact-text
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
-
-.thinking-block--compact .thinking-block__label
-  display: flex
-  align-items: center
-  gap: 6px
-  padding: 4px 0
-  user-select: none
-
-.thinking-block--compact .thinking-block__body
-  padding: 8px 12px
-  margin-left: 20px
-  background: $bg-subtle
-  border-left: 2px solid var(--glass-border)
-  border-radius: 0 8px 8px 0
-  font-size: $font-size-card
-  color: var(--color-text-secondary)
-  line-height: 1.6
-  max-height: 200px
-  overflow-y: auto
-  transition: border-color 0.3s ease
-
-.thinking-block--compact .thinking-block__body--streaming
   border-left-color: $border-accent
 
 // ===== Keyframes =====

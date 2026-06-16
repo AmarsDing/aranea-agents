@@ -31,7 +31,6 @@
         </div>
         <EventStream
           :events="agent.activities"
-          variant="compact"
         />
       </div>
     </div>

@@ -78,7 +78,7 @@
         :spirit-completion-stats="spiritStore.completionStats"
         :compress-status="session.compressStatus"
         :show-tool-calls="uiConfig.showToolCalls"
-        :activity-timeline-activities="session.activityTimeline.timelineActivities"
+        :activity-timeline-activities="session.activityTimeline.streamEvents"
         :activity-agent-key="session.activityTimeline.activities[0]?.agentKey"
         :activity-task-content="session.activityTimeline.activities.find((a: {kind: string}) => a.kind === 'task')?.content"
         :activity-tree="session.activityTimeline.activityTree"
