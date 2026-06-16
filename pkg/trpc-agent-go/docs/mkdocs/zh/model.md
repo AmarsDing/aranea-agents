@@ -393,6 +393,54 @@ func main() {
 }
 ```
 
+### 结构化输出
+
+直接调用 `model.GenerateContent` 时，可以用 `model.NewRequest` 和
+`model.WithStructuredOutputJSON` 从 Go 结构体自动生成 JSON schema，并传给支持
+provider-native structured output 的模型适配器。
+
+```go
+type StageParseResult struct {
+    Stage  string `json:"stage"`
+    Reason string `json:"reason"`
+}
+
+request := model.NewRequest(
+    []model.Message{
+        model.NewUserMessage("分析当前用户意图属于哪个阶段。"),
+    },
+    model.WithStructuredOutputJSON(
+        new(StageParseResult),
+        true,
+        "Return stage parse result as JSON.",
+    ),
+)
+
+responseChan, err := llm.GenerateContent(ctx, request)
+if err != nil {
+    return err
+}
+
+var final string
+for response := range responseChan {
+    if response.Error != nil {
+        return fmt.Errorf("model error: %s", response.Error.Message)
+    }
+    if len(response.Choices) > 0 {
+        final = response.Choices[0].Message.Content
+    }
+}
+
+var result StageParseResult
+if err := json.Unmarshal([]byte(final), &result); err != nil {
+    return err
+}
+```
+
+`WithStructuredOutputJSON` 只负责配置模型请求；直接使用 `model` 包时，最终响应仍在
+`model.Response` 中，需要调用方自行解析 JSON。若已经有手写 schema，也可以直接设置
+`request.StructuredOutput`。
+
 ### 流式输出
 
 ```go
@@ -603,6 +651,24 @@ func runOnce(ctx context.Context, r runner.Runner, cacheKey string) error {
     }
     return nil
 }
+```
+
+如果供应商同时要求同一会话携带请求体缓存键和路由 Header，可以组合使用
+请求级 extra fields 与请求级 headers：
+
+```go
+events, err := r.Run(
+    ctx,
+    "user-001",
+    "session-001",
+    model.NewUserMessage("Hello"),
+    agent.WithModelRequestExtraFields(map[string]any{
+        "prompt_cache_key": cacheKey,
+    }),
+    agent.WithModelRequestHeaders(map[string]string{
+        "X-Session-ID": "session-001",
+    }),
+)
 ```
 
 该选项会作用于本次运行中创建的每一次模型调用，包括普通 LLM Agent、
@@ -1182,16 +1248,17 @@ llm := openai.New("gpt-4o-mini",
 
 在网关、专有平台或代理环境中，请求模型 API 往往需要额外的
 HTTP Header（例如组织/租户标识、灰度路由、自定义鉴权等）。Model 模块
-提供两种可靠方式为“所有模型请求”添加 Header，适用于普通请求、流式、
-文件上传、批处理等全链路。
+提供多种可靠方式添加 Header。
 
 推荐顺序：
 
 - 通过 `openai.WithHeaders` 快速追加静态 Header（简便）
+- 通过 `agent.WithModelRequestHeaders` 设置请求级 Header（适合
+  `runner.Run(...)` 调用中按用户、会话或租户变化的 Header）
 - 通过 OpenAI RequestOption 设置全局 Header（灵活、可组合中间件）
 - 通过自定义 `http.RoundTripper` 注入（进阶、横切能力更强）
 
-上述三种方式同样影响流式请求，因为底层使用的是同一个客户端。
+上述方式同样影响流式请求，因为底层使用的是同一个客户端。
 
 ##### 1. 使用 openai.WithHeaders 追加 Header
 
@@ -1206,7 +1273,26 @@ llm := openai.New("deepseek-v4-flash",
 )
 ```
 
-##### 2. 使用 OpenAI RequestOption 设置全局 Header
+##### 2. 从 Runner 传递请求级 Header
+
+如果 Header 需要随每次 `runner.Run(...)` 动态变化，可以使用
+`agent.WithModelRequestHeaders`。典型例子是供应商要求通过 `X-Session-ID`
+把同一会话路由到同一推理实例。内置 OpenAI adapter 会在模型级 Header 之后
+合并这些请求级 Header，因此同名 Header 以请求级值为准。
+
+```go
+events, err := r.Run(
+    ctx,
+    "user-001",
+    "session-001",
+    model.NewUserMessage("Hello"),
+    agent.WithModelRequestHeaders(map[string]string{
+        "X-Session-ID": "session-001",
+    }),
+)
+```
+
+##### 3. 使用 OpenAI RequestOption 设置全局 Header
 
 通过 `WithOpenAIOptions` 配合 `openaiopt.WithHeader` 或
 `openaiopt.WithMiddleware`，可为底层 OpenAI 客户端发起的“每个请求”
@@ -1338,7 +1424,7 @@ llm := openai.New("deepseek-v4-flash",
 ```
 
 
-##### 3. 使用自定义 http.RoundTripper（进阶）
+##### 4. 使用自定义 http.RoundTripper（进阶）
 
 在 HTTP 传输层统一注入 Header，适合同时需要代理、TLS、自定义监控等
 能力的场景。
@@ -1383,7 +1469,13 @@ Token 计数器用于估算文本内容的 token 数量。框架提供了 `Simpl
 
 **估算原理：**
 
-使用启发式规则：每 token 大约对应 `N` 个 UTF-8 字符，其中 `N` 可通过 `WithApproxRunesPerToken` 配置。
+使用启发式规则：每 token 大约对应 `N` 个 UTF-8 字符，其中 `N` 可通过 `WithApproxRunesPerToken` 配置。这里的 `N` 是除数，不是乘数：
+
+```text
+estimatedTokens = countedUTF8Runes / N
+```
+
+因此 `WithApproxRunesPerToken(1.5)` 表示约 `1.5` 字符/token；如果传入 `2.0/3.0`，则表示约 `0.67` 字符/token，等价于约 `1.5` token/字符。
 
 **使用方式：**
 
@@ -1412,6 +1504,7 @@ counter := model.NewSimpleTokenCounter(
 - **类型**：float64
 - **默认值**：4.0（约每 4 个字符对应 1 个 token，适合英文场景）
 - **值限制**：<= 0 的值会被忽略，保持默认值
+- **计算方式**：估算 token 数 = 统计到的 UTF-8 字符数 / `v`；例如 `v=1.5` 才是约 `1.5` 字符/token
 
 **常见语言的推荐值：**
 
@@ -1555,7 +1648,7 @@ model := openai.New("deepseek-v4-flash",
 
 > **Context Window 注册**
 >
-> Token 裁剪和会话摘要的 `WithContextThreshold` 都需要模型 context window。内置模型名会自动解析。对于私有部署、租户自定义模型或 endpoint ID，优先使用模型实例配置，例如 `openai.WithContextWindow(32768)` 或统一入口的 `provider.WithContextWindow(32768)`；对于单次运行覆盖，使用 `agent.WithModelContextWindow(32768)`。只有当模型名在当前进程中有稳定全局含义时，才使用 `model.RegisterModelContextWindow("my-model", 32768)`。完整示例参见[会话摘要文档](session/summary.md)。
+> Token 裁剪和会话摘要的 `WithContextThreshold` 都需要模型 context window。内置模型名会自动解析。Token 裁剪对未知模型名使用 128000 tokens 的 fallback。对于私有部署、租户自定义模型、endpoint ID 或更小的未知模型，优先使用模型实例配置，例如 `openai.WithContextWindow(32768)` 或统一入口的 `provider.WithContextWindow(32768)`；对于单次运行覆盖，使用 `agent.WithModelContextWindow(32768)`。只有当模型名在当前进程中有稳定全局含义时，才使用 `model.RegisterModelContextWindow("my-model", 32768)`。完整示例参见[会话摘要文档](session/summary.md)。
 
 ```text
 outputReserve = max(ReserveOutputTokens, request.MaxTokens, request.ThinkingTokens)

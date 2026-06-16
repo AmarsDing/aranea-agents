@@ -40,14 +40,26 @@ func (p *SurfacePatch) SetModel(m model.Model) {
 	p.patch.SetModel(m)
 }
 
-// SetTools sets the tool surface override.
+// SetTools sets the tool surface override and clears appended tools.
 func (p *SurfacePatch) SetTools(tools []tool.Tool) {
 	p.patch.SetTools(tools)
+}
+
+// AppendTools appends tools to the node's runtime tool surface.
+func (p *SurfacePatch) AppendTools(tools []tool.Tool) {
+	p.patch.AppendTools(tools)
 }
 
 // SetSkillRepository sets the skill repository surface override.
 func (p *SurfacePatch) SetSkillRepository(repo skill.Repository) {
 	p.patch.SetSkillRepository(repo)
+}
+
+// SetSuppressSubAgentTransfer omits framework-managed sub-agent transfer
+// (transfer_to_agent) from the node's tool surface even when the node's agent
+// has sub-agents.
+func (p *SurfacePatch) SetSuppressSubAgentTransfer() {
+	p.patch.SetSuppressSubAgentTransfer()
 }
 
 // WithSurfacePatchForNode applies one node's runtime surface overrides to this run.

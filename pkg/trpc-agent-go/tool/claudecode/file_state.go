@@ -15,9 +15,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
-
-	"trpc.group/trpc-go/trpc-agent-go/tool/internal/textfile"
+	"unicode"
 )
 
 func readLocalFileSnapshot(absPath string, maxFileSize int64) (localFileSnapshot, error) {
@@ -154,20 +154,100 @@ func intPtrsEqual(left *int, right *int) bool {
 	}
 }
 
+func normalizeQuotes(raw string) string {
+	replacer := strings.NewReplacer(
+		"‘", "'",
+		"’", "'",
+		"“", "\"",
+		"”", "\"",
+	)
+	return replacer.Replace(raw)
+}
+
 func findActualString(fileContent string, searchString string) string {
-	return textfile.FindActualString(fileContent, searchString)
+	if strings.Contains(fileContent, searchString) {
+		return searchString
+	}
+	var builder strings.Builder
+	for _, r := range searchString {
+		switch r {
+		case '\'':
+			builder.WriteString("['‘’]")
+		case '"':
+			builder.WriteString("[\"“”]")
+		default:
+			builder.WriteString(regexp.QuoteMeta(string(r)))
+		}
+	}
+	re, err := regexp.Compile(builder.String())
+	if err != nil {
+		return ""
+	}
+	return re.FindString(fileContent)
 }
 
 func preserveQuoteStyle(oldString string, actualOldString string, newString string) string {
-	return textfile.PreserveQuoteStyle(oldString, actualOldString, newString)
+	if oldString == actualOldString {
+		return newString
+	}
+	hasDoubleQuotes := strings.Contains(actualOldString, "“") || strings.Contains(actualOldString, "”")
+	hasSingleQuotes := strings.Contains(actualOldString, "‘") || strings.Contains(actualOldString, "’")
+	result := newString
+	if hasDoubleQuotes {
+		result = applyCurlyDoubleQuotes(result)
+	}
+	if hasSingleQuotes {
+		result = applyCurlySingleQuotes(result)
+	}
+	return result
 }
 
-func normalizeQuotes(raw string) string {
-	return textfile.NormalizeQuotes(raw)
+func applyCurlyDoubleQuotes(raw string) string {
+	chars := []rune(raw)
+	out := make([]rune, 0, len(chars))
+	for idx, r := range chars {
+		if r != '"' {
+			out = append(out, r)
+			continue
+		}
+		if isOpeningQuote(chars, idx) {
+			out = append(out, '“')
+			continue
+		}
+		out = append(out, '”')
+	}
+	return string(out)
 }
 
 func applyCurlySingleQuotes(raw string) string {
-	return textfile.ApplyCurlySingleQuotes(raw)
+	chars := []rune(raw)
+	out := make([]rune, 0, len(chars))
+	for idx, r := range chars {
+		if r != '\'' {
+			out = append(out, r)
+			continue
+		}
+		prevIsLetter := idx > 0 && unicode.IsLetter(chars[idx-1])
+		nextIsLetter := idx+1 < len(chars) && unicode.IsLetter(chars[idx+1])
+		if prevIsLetter && nextIsLetter {
+			out = append(out, '’')
+			continue
+		}
+		if isOpeningQuote(chars, idx) {
+			out = append(out, '‘')
+			continue
+		}
+		out = append(out, '’')
+	}
+	return string(out)
+}
+
+func isOpeningQuote(chars []rune, idx int) bool {
+	if idx == 0 {
+		return true
+	}
+	prev := chars[idx-1]
+	return unicode.IsSpace(prev) || strings.ContainsRune("([{", prev)
 }
 
 func editLocalFile(

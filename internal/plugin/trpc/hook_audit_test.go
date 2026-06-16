@@ -28,6 +28,10 @@ func (s *pluginRunsInsertStub) List(context.Context, biz.PluginRunQuery) (biz.Pl
 	return biz.PluginRunListResult{}, nil
 }
 
+func (s *pluginRunsInsertStub) DeleteAll(context.Context) (int32, error) {
+	return 0, nil
+}
+
 func TestRecordHookAudit_persistsBlockedRun(t *testing.T) {
 	repo := &statsRepoStub{key: "unused"}
 	runs := &pluginRunsInsertStub{}

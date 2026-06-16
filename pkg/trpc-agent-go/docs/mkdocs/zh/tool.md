@@ -38,6 +38,79 @@ type CallableTool interface {
 
 > 对于 Function Tool：通过 `function.WithName(...)` / `function.WithDescription(...)` 配置；对于自定义 Tool：在 `Declaration()` 返回的 `tool.Declaration` 中设置 `Name` / `Description`。
 
+#### 🛡️ Tool Metadata 与权限策略
+
+Tool Metadata 是可选的执行行为描述，不改变核心 `tool.Tool` 接口。
+
+当宿主、策略或 UI 需要判断一个工具是否只读、是否具有破坏性、是否可并发、是否主要用于搜索/读取、是否会访问外部世界，或是否声明了建议的结果大小上限时，可以让工具实现 metadata。
+
+```go
+type ToolMetadata struct {
+    ReadOnly        bool
+    Destructive     bool
+    ConcurrencySafe bool
+    SearchOrRead    bool
+    OpenWorld       bool
+    MaxResultSize   int
+}
+
+type MetadataProvider interface {
+    ToolMetadata() tool.ToolMetadata
+}
+```
+
+直接使用 MCP ToolSet 暴露出来的工具，也会从显式 MCP annotations 生成
+metadata：
+
+| MCP annotation | ToolMetadata 字段 |
+| -------------- | ----------------- |
+| `readOnlyHint` | `ReadOnly`        |
+| `destructiveHint` | `Destructive` |
+| `openWorldHint` | `OpenWorld`     |
+
+框架只映射 MCP server 显式返回的 hint。如果 MCP server 没有返回
+`destructiveHint` 或 `openWorldHint`，`ToolMetadata` 会保持 Go 零值
+（`false`）。这与 MCP 规范的默认 hint 语义不同：MCP 中非只读工具的
+`destructiveHint` 默认是 `true`，`openWorldHint` 默认也是 `true`。
+由于 `ToolMetadata` 使用普通 `bool` 字段，无法区分“未设置”和“显式
+false”。如果你的 permission policy 需要遵循 MCP 默认语义，请对非只读
+MCP 工具采用更保守的策略，除非业务侧还有额外的可信信号。
+
+MCP annotations 没有与 `SearchOrRead` 或 `ConcurrencySafe` 对应的字段。
+框架也不会把 `readOnlyHint` 或 `idempotentHint` 推断为并发安全信号。
+
+权限策略发生在模型已经发起 tool call、框架完成 JSON 修复和 before-tool callbacks 参数改写、并且即将真正执行工具之前：
+
+```go
+runner.Run(ctx, userID, sessionID, message,
+    agent.WithToolPermissionPolicyFunc(
+        func(ctx context.Context, req *tool.PermissionRequest) (tool.PermissionDecision, error) {
+            if req.Metadata.Destructive {
+                return tool.AskPermission("destructive tools require approval"), nil
+            }
+            return tool.AllowPermission(), nil
+        },
+    ),
+)
+```
+
+工具也可以实现 `tool.PermissionChecker` 来声明自己的强约束。工具级检查先于本次运行的 policy 执行，遇到第一个非 allow 决策就停止。没有实现 checker 的工具，在配置了本次运行 policy 时仍然会被 policy 检查；如果工具 checker 和本次运行 policy 都不存在，则保持旧行为，默认允许执行。
+
+决策语义：
+
+- `tool.AllowPermission()`：执行工具。
+- `tool.DenyPermission(reason)`：不执行工具，并向模型返回结构化的 `denied` 工具结果。
+- `tool.AskPermission(reason)`：不执行工具，并向模型返回结构化的 `approval_required` 工具结果。
+
+如果你的应用有真正的审批 UI，请在 policy 内部完成询问，并在用户同意后返回 `tool.AllowPermission()`。框架不会为 `ask` 自行发明一套 UI 交互流程。
+
+几个机制的边界需要区分清楚：
+
+- `agent.WithToolFilter(...)`：控制哪些工具对模型可见。
+- `agent.WithToolExecutionFilter(...)`：让部分已可见的 tool call 留给调用方外部执行。
+- `agent.WithToolPermissionPolicy(...)`：对框架即将执行的每个工具做权限判断。
+- Tool callbacks 与 guardrail plugins 仍然适合做鉴权、审计、自动审批评估等流程。简单确定性的 allow/deny/ask 判断，优先使用 permission policy。
+
 #### 📦 ToolSet（工具集）
 
 ToolSet 是一组相关工具的集合，实现 `tool.ToolSet` 接口。ToolSet 负责管理工具的生命周期、连接和资源清理。
@@ -628,6 +701,26 @@ agent := llmagent.New("todo-assistant",
 
 `todo.DefaultToolPrompt` 是开箱即用的 system instruction 片段，告诉模型何时调用 `todo_write` 以及如何撰写条目；你也可以替换成自己的版本，下文的运行时校验规则不受影响。
 
+#### 强制完成
+
+默认情况下，`todo_write` 只是建议性工具：即使清单里还有未完成项，模型仍可能直接结束回复。若希望 Agent 必须完成清单后才能输出最终回复，可以安装 `todoenforcer` extension：
+
+```go
+import (
+    "trpc.group/trpc-go/trpc-agent-go/agent/extension/todoenforcer"
+    "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+    "trpc.group/trpc-go/trpc-agent-go/tool/todo"
+)
+
+agent := llmagent.New("todo-assistant",
+    llmagent.WithModel(model),
+    llmagent.WithInstruction(todo.DefaultToolPrompt),
+    llmagent.WithExtensions(todoenforcer.New()),
+)
+```
+
+该 extension 会自动贡献 `todo_write` 和 `todo_declare_blocker`，不要再通过 `WithTools` 额外传入 `todo.New()`。如果需要复用 `tool/todo` 的选项（例如 `WithStateKeyPrefix`、`WithClearOnAllDone` 或 `WithNudgeHook`），先构造 `todo.New(...)`，再通过 `todoenforcer.WithTodoTool(...)` 传入。`todo_declare_blocker` 用于声明客观阻塞，例如缺少权限、凭据、基础设施或必须由用户决策的信息。
+
 #### 工具返回结构
 
 `todo_write` 返回的是结构化结果而不是自由文本，因此终端、AG-UI、自研 HTTP 前端等任何调用方都可以直接消费：
@@ -687,7 +780,7 @@ todoTool := todo.New(
 )
 ```
 
-完整可运行示例（包含多轮暂停/续接场景与 ASCII 渲染器）见 [`examples/todo/`](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/todo)。
+基础工具的完整可运行示例（包含多轮暂停/续接场景与 ASCII 渲染器）见 [`examples/todo/`](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/todo)。带强制完成对照的示例见 [`examples/todoenforcer/`](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/todoenforcer)。
 
 ## MCP Tools 协议工具
 
@@ -726,6 +819,18 @@ agent := llmagent.New("mcp-assistant",
     llmagent.WithModel(model),
     llmagent.WithToolSets([]tool.ToolSet{mcpToolSet}))
 ```
+
+### MCP Annotations 与权限 Metadata
+
+当远端 MCP server 在 `tools/list` 中返回 tool annotations 时，直接通过
+MCP ToolSet 暴露的工具会实现 `tool.MetadataProvider`。Permission policy
+可以直接读取 `req.Metadata.ReadOnly`、`req.Metadata.Destructive` 和
+`req.Metadata.OpenWorld`，无需再解析 MCP 专属结构。
+
+这个映射基于 `tools/list` 返回的工具快照。ToolSet 刷新工具列表时，会
+重新构造框架内的工具列表，而不是原地修改已有 `mcpTool` 实例。如果未来
+支持基于 MCP `ToolListChangedNotification` 的原地热更新，需要重新评估
+metadata 读取的线程安全性。
 
 ### ToolSet 生命周期与所有权
 
@@ -969,9 +1074,11 @@ agent := llmagent.New(
 - `MCP ToolSet`
   - 在初始化或运行时先 `initialize + tools/list`
   - 把远端每个 MCP tool 直接变成 Agent 可见 Tool
+  - 把远端 MCP 工具显式声明的安全 annotations 映射到 `PermissionRequest.Metadata`
 - `mcpbroker`
   - 初始只暴露 4 个 broker 工具
   - 模型先发现 server，再发现 tool，再检查指定 tool 的 schema，最后再调用
+  - 暴露的是 `mcp_call` 等 broker 工具，远端 tool annotations 不会自动进入 `PermissionRequest.Metadata`
 
 可以把它理解为：
 
@@ -1354,6 +1461,50 @@ childTool := agenttool.NewTool(
 )
 ```
 
+### 子 Agent 上下文可见性
+
+AgentTool 会复用当前 invocation 和 session 来运行子 Agent。为了避免把几个
+相近概念混在一起，可以先按下面的职责理解：
+
+| 概念 | 作用 | 不负责什么 |
+| --- | --- | --- |
+| `FilterKey` | 标记事件属于哪个会话视图；内容处理器用它决定哪些历史消息会进入模型请求 | 不是权限边界，也不是独立存储 |
+| `Branch` | 记录 Agent 执行链路，主要用于 trace、跨 Agent 消息投影等场景 | 一般不直接决定 AgentTool 能读哪些历史 |
+| `HistoryScope` | AgentTool 生成子 Agent `FilterKey` 的策略 | 不改变工具结果如何裁剪，也不改变子 Agent 可用工具 |
+| `MessageFilterMode` | LLMAgent/GraphAgent 的高层历史过滤预设，组合了时间维度和 `FilterKey` 维度 | 普通 AgentTool 使用者通常不需要直接配置 |
+
+由于历史命名原因，`BranchFilterMode` 这个名字里有 `Branch`，但对当前版本事件，
+它比较的是 `Event.FilterKey` 与当前 invocation 的 `FilterKey`。在 `FilterKey`
+出现前写入的旧版本事件，为了兼容仍可能回退使用 `Event.Branch`。
+
+AgentTool 目前有两个历史作用域：
+
+- `HistoryScopeIsolated`（默认）：子 Agent 使用独立的 `FilterKey`，例如
+  `math-specialist-<uuid>`。在正常 Runner 生成的事件下，子 Agent 只会看到本次
+  工具调用参数，不会继承父 Agent 的历史。子 Agent 的事件仍会写入同一个
+  session，但位于独立视图下。
+- `HistoryScopeParentBranch`：子 Agent 使用父 key 的子 key，例如
+  `assistant/math-specialist-<uuid>`。默认的 prefix 匹配会把祖先和子孙都视为同一
+  上下文链路，因此子 Agent 可以看到父 Agent 历史，父 Agent 后续也可能看到这个
+  子 Agent 的事件。这个模式适合共享上下文的协作链路，不是“只读取父历史但不污染
+  父历史”的快照隔离。
+
+换句话说：
+
+- 想让子 Agent 做独立工作，只把最终答案作为工具结果交回父 Agent：使用默认
+  `HistoryScopeIsolated`，必要时把上下文显式放进工具参数。
+- 想让子 Agent 基于父 Agent 的历史继续编辑、优化或续写，并接受父子事件处在同一
+  上下文链路中：使用 `HistoryScopeParentBranch`。
+
+`HistoryScope` 只控制历史可见性。下面这些行为不会因为切换 `HistoryScope` 而改变：
+
+- `WithResponseMode` 仍然只控制工具结果里返回哪些子 Agent assistant 内容。
+- `WithSkipSummarization` 仍然只控制父流程是否在工具结果后追加一次外层总结调用。
+- 子 Agent 仍通过 `Invocation.Clone(...)` 继承当前 invocation 的 session、plugins、
+  `RunOptions` 等运行上下文；如果需要真正后台隔离，请启动独立的应用运行流程。
+- 如果业务手动追加了空 `FilterKey` 事件，这类事件按兼容规则可能被多个视图看到；
+  自定义事件建议始终设置带 app 前缀的明确 `FilterKey`。
+
 ### 选项说明
 
 - WithSkipSummarization(bool)：
@@ -1377,8 +1528,8 @@ childTool := agenttool.NewTool(
   - `ResponseModeFinalOnly`：只把子 Agent 最后一条完整 assistant 消息作为工具结果返回
 
 - WithHistoryScope(HistoryScope)：
-  - `HistoryScopeIsolated`（默认）：保持子调用完全隔离，只读取本次工具参数（不继承父历史）。
-  - `HistoryScopeParentBranch`：通过分层过滤键 `父键/子名-UUID（Universally Unique Identifier，通用唯一识别码）` 继承父会话历史；内容处理器会基于前缀匹配纳入父事件，同时子事件仍写入独立子分支。典型场景：基于上一轮产出进行“编辑/优化/续写”。
+  - `HistoryScopeIsolated`（默认）：子调用使用独立 `FilterKey`，通常只读取本次工具参数，不继承父历史。
+  - `HistoryScopeParentBranch`：子调用使用 `父键/子名-UUID（Universally Unique Identifier，通用唯一识别码）` 形式的分层 `FilterKey`。父子事件处于同一上下文链路，prefix 匹配下可互相进入上下文。典型场景：基于上一轮产出进行“编辑/优化/续写”。
 
 示例：
 
@@ -1395,14 +1546,125 @@ child := agenttool.NewTool(
 
 ### 注意事项
 
-- 事件完成信号：工具响应事件不再设置 `RequiresCompletion=true`（P0-A1 性能优化移除）。Runner 按 FIFO 顺序处理事件，持久化异步非阻塞。仅排队用户消息事件仍使用 `RequiresCompletion` 以保证 LLM 处理前消息已持久化。
+- 事件完成信号：工具响应事件会被标记 `RequiresCompletion=true`，Runner 会自动发送完成信号，无需手工处理
 - 内容去重：如果已转发子 Agent 的增量内容，默认不要再把最终 `tool.response` 的聚合内容打印出来
 - “只看进度”体验：当你希望用户看到内部进度、但不想重复看到子 Agent 正文时，可组合使用 `WithStreamInner(true)` 和 `WithInnerTextMode(agenttool.InnerTextModeExclude)`
 - 模型兼容性：一些模型要求工具调用后必须跟随工具消息，AgentTool 已自动填充聚合后的工具内容满足此要求
 - 子 Agent 上下文隔离和工具结果裁剪是两件事：
   `WithHistoryScope(agenttool.HistoryScopeIsolated)` 控制子 Agent 能读到什么；
   `WithResponseMode(agenttool.ResponseModeFinalOnly)` 控制父 Agent 作为工具结果收到什么。
+- `HistoryScopeParentBranch` 是共享上下文链路，不是快照隔离。如果不希望子 Agent 的详细事件在父 Agent 后续上下文中出现，保持默认 `HistoryScopeIsolated`，并把必要上下文放进工具参数。
 - `WithSkipSummarization(true)` 只会跳过额外的外层总结型 LLM 调用，不会把 `tool.response` 变成 assistant final response；如果你需要真正的终止信号，仍应持续消费到 `runner.completion`
+
+### 动态 AgentTool
+
+`agenttool.NewTool(agent)` 适合工具背后已经有一个明确的专家 Agent：开发者先把
+Agent、模型、工具、skills、权限等配置好，再把它包装成父 Agent 的一个工具。
+
+当你的应用无法提前穷举所有专家角色，而是希望父 Agent 在每次调用时按任务临时选择
+工具子集或指定本次执行指令，可以使用 `agenttool.NewDynamicTool()`。它会向模型暴露
+一个默认名为 `dynamic_agent` 的工具；模型调用它时，不是在创建任意 Go 对象，也不是
+选择某个已注册 Agent，而是在代码定义的边界内运行一次短生命周期的子 Agent invocation。
+
+典型接入方式如下：
+
+```go
+dynamicAgent := agenttool.NewDynamicTool()
+
+parent := llmagent.New(
+    "assistant",
+    llmagent.WithModel(modelInstance),
+    llmagent.WithTools([]tool.Tool{
+        readFileTool,
+        searchCodeTool,
+        dynamicAgent,
+    }),
+)
+```
+
+默认情况下，`dynamic_agent` 的能力边界来自父 Agent 当前可用的业务工具。模型可以通过
+`tools` 字段把子 Agent 本次可用工具收窄到其中一部分；如果不传 `tools`，则允许使用
+边界内的全部工具。`dynamic_agent` 自身、`transfer_to_agent` 以及调用方执行的外部工具
+不会进入这个子 Agent 的可选工具面。
+
+模型侧默认可见的参数包括：
+
+```json
+{
+  "request": "分析这段代码是否存在权限绕过风险，必要上下文如下：...",
+  "instruction": "你是安全审计专家，只输出风险点和修复建议",
+  "tools": ["read_file", "search_code"]
+}
+```
+
+- `request`：必填，描述子 Agent 本次要完成的任务。默认历史作用域是
+  `HistoryScopeIsolated`，因此建议把完成任务需要的上下文写进 `request`。
+- `instruction`：可选，作为本次子 Agent invocation 的角色、约束或执行指令。
+- `tools`：可选，精确指定本次允许子 Agent 使用哪些工具名。传空数组表示本次不授予
+  任何业务工具。
+
+如果默认从父 Agent 派生能力面不符合业务边界，可以在代码侧显式设置模板 Agent 或最大
+能力面：
+
+```go
+workerTemplate := llmagent.New(
+    "worker-template",
+    llmagent.WithModel(workerModel),
+    llmagent.WithInstruction("你是一个只处理单个任务的执行型 Agent。"),
+)
+
+dynamicAgent := agenttool.NewDynamicTool(
+    // 可选：定义子 Agent 的模型、executor、callbacks、权限策略等执行边界。
+    agenttool.WithTemplateAgent(workerTemplate),
+    // 可选：限制模型最多只能从这些工具里选择。
+    agenttool.WithCapabilityTools([]tool.Tool{readFileTool, searchCodeTool}),
+)
+```
+
+`WithTemplateAgent` 是代码侧边界，不是模型参数。模型不能通过 `dynamic_agent` 选择任意
+Agent、模型或 executor；它只能在开发者配置好的边界内，为这一次调用填写 `request`、
+`instruction`，并按需选择 tools/skills 子集。
+
+常用选项：
+
+- `WithName(name)`：修改模型可见工具名。仅对 `NewDynamicTool` 生效；普通
+  `NewTool(agent)` 的工具名始终来自被包装 Agent 的 `Info().Name`。
+- `WithTemplateAgent(agent)`：设置动态子 Agent 的模板，常用于固定模型、executor、
+  callbacks、权限策略等执行边界。
+- `WithCapabilityTools(tools)`：设置模型可选择的最大工具集合。未设置时默认从父 Agent
+  本轮有效业务工具派生。显式设置后，这些工具名会被枚举进 `tools` 字段的 schema，模型从
+  已知集合中选择而非猜测字符串（父派生工具面与 `WithCapabilityProvider` 在每次调用时
+  解析，不会在此枚举）。
+- `WithCapabilitySkills(repo)`：设置模型可选择的最大 skill 仓库。未设置时默认从父
+  Agent 本轮有效 skill 仓库派生。
+- `WithExposeToolSelection(false)`：不向模型暴露 `tools` 字段。子 Agent 仍使用代码边界内
+  的工具面，但模型不能进一步收窄。
+- `WithExposeSkillSelection(true)`：向模型暴露 `skills` 字段。默认关闭，因为 skill 是否
+  可执行通常依赖部署环境和 code executor。
+- `WithExposeInstruction(false)`：不向模型暴露 `instruction` 字段。
+- `WithRequestDescription` / `WithInstructionDescription` /
+  `WithToolsDescription` / `WithSkillsDescription`：按业务语义调整字段描述，帮助模型更
+  稳定地填写参数。
+
+使用 `skills` 时需要额外注意 executor 环境。Dynamic AgentTool 会校验模型选择的 skill
+是否在边界仓库中；如果子 Agent 没有可用 code executor，而选中的 skill 可能需要执行代码，
+工具结果会带上提示。生产环境中更推荐在代码侧通过 `WithCapabilitySkills` 和模板 Agent
+先定义清楚可执行范围，再决定是否把 `skills` 字段暴露给模型。
+
+Dynamic AgentTool 与另外两种多 Agent 机制的边界不同：
+
+| 机制 | 模型选择什么 | 生命周期 | 控制权 |
+| --- | --- | --- | --- |
+| `agenttool.NewTool(agent)` | 一个固定的工具入口 | 每次工具调用 | 返回工具结果给父 Agent |
+| `transfer_to_agent` | 一个已注册 sub-agent | 当前轮继续由目标 Agent 处理 | 控制权移交 |
+| `agenttool.NewDynamicTool()` | 本次调用的 `request`、`instruction` 和 tools/skills 子集 | 每次工具调用 | 返回工具结果给父 Agent |
+
+如果同一个专家 Agent 同时通过 `WithSubAgents` 和 `agenttool.NewTool(agent)` 暴露给父
+Agent，模型会看到两条不同路径：`transfer_to_agent` 和普通 AgentTool。框架可以运行，
+但开发者应在 instruction 或工具 description 中明确何时使用哪一种，或者只保留一种入口。
+`dynamic_agent` 子调用内部不会获得 `transfer_to_agent`，但普通 AgentTool 会被视作业务工具；
+如果不希望动态子 Agent 再调用其他 AgentTool，可以用 `WithCapabilityTools` 或运行时
+`ToolFilter` 收窄边界。
 
 ## 工具集成与使用
 
@@ -1822,26 +2084,49 @@ r := runner.NewRunner(
 
 在一些系统里，你可能希望由调用方（例如客户端、上游服务，或外部工具运行时，例如
 Model Context Protocol (MCP)）来执行工具。此时可以使用
-`agent.WithToolExecutionFilter(...)` 来中断工具的自动执行。
+`agent.WithExternalTools(...)` 或 `agent.WithToolExecutionFilter(...)`
+来中断工具的自动执行。
 
 **核心区别：**
 
 - `agent.WithToolFilter(...)` 控制**工具可见性**（模型能看到/能调用哪些工具）
 - `agent.WithToolExecutionFilter(...)` 控制**工具执行**（模型请求后，框架是否自动执行）
+- `agent.WithAdditionalTools(...)` 为本次运行追加临时可见工具
+- `agent.WithExternalTools(...)` 追加临时可见工具，并声明这些工具由调用方执行
 
 #### 基本流程
 
-1. 使用 `WithToolExecutionFilter` 发起一次 `runner.Run`，让框架**不执行**指定工具
+1. 使用 `WithExternalTools` 发起一次 `runner.Run`，让模型看到调用方工具
 2. 从事件里读取模型返回的 `tool_calls`
 3. 调用方在外部执行工具
 4. 通过 `role=tool` 的消息把结果回填，模型继续输出最终答案
 
 ```go
-execFilter := tool.NewExcludeToolNamesFilter("external_search")
+type declarationOnlyTool struct {
+    decl *tool.Declaration
+}
+
+func (t *declarationOnlyTool) Declaration() *tool.Declaration {
+    return t.decl
+}
+
+externalSearch := &declarationOnlyTool{
+    decl: &tool.Declaration{
+        Name:        "external_search",
+        Description: "Search a caller-owned system.",
+        InputSchema: &tool.Schema{
+            Type: "object",
+            Properties: map[string]*tool.Schema{
+                "query": {Type: "string"},
+            },
+            Required: []string{"query"},
+        },
+    },
+}
 
 // 第一步：模型会返回 tool_calls，但工具不会被框架执行。
 ch, err := r.Run(ctx, userID, sessionID, model.NewUserMessage("search ..."),
-    agent.WithToolExecutionFilter(execFilter),
+    agent.WithExternalTools([]tool.Tool{externalSearch}),
 )
 
 // 第二步：从事件里提取 tool_call_id + arguments（此处省略）。
@@ -1851,9 +2136,15 @@ toolResultJSON := `{"status":"ok","data":"..."}`
 // 第三/四步：用 role=tool 回填工具结果，模型继续输出。
 toolMsg := model.NewToolMessage(toolCallID, "external_search", toolResultJSON)
 ch, err = r.Run(ctx, userID, sessionID, toolMsg,
-    agent.WithToolExecutionFilter(execFilter),
+    agent.WithExternalTools([]tool.Tool{externalSearch}),
 )
 ```
+
+如果工具已经通过 `llmagent.WithTools(...)` 注册在 Agent 上，只是想在某次
+运行中改成由调用方执行，可以继续使用 `agent.WithToolExecutionFilter(...)`。
+`WithExternalTools` 更适合 AG-UI、浏览器、移动端或上游服务在每次请求中动态声明
+工具的场景。AG-UI runner 默认会把请求里的 `input.Tools` 映射为
+`WithExternalTools`。外部工具与已有工具同名时，已有工具优先，外部声明不会覆盖或拦截它。这里的已有工具包括 Agent 上注册的工具，以及通过 `WithAdditionalTools` 追加的工具。
 
 **完整示例：** `examples/toolinterrupt/`
 
@@ -1904,66 +2195,6 @@ Tool 2: get_population       [====] 50ms
 Tool 3: get_time                  [====] 50ms
 总时间: ~150ms（依次执行）
 ```
-
-### 工具结果预算
-
-控制工具执行结果的最大大小，防止上下文膨胀。当工具结果超出预算时，会自动截断并包装为合法的 JSON 信封。
-
-```go
-// 全局预算：应用于所有未设置工具级预算的工具。
-agent := llmagent.New("ai-assistant",
-    llmagent.WithModel(model),
-    llmagent.WithTools(tools),
-    processor.WithResultBudget(&tool.ResultBudget{
-        MaxBytes:       10 * 1024, // 10KB
-        TruncationMode: "tail",     // 保留开头，截断尾部
-    }),
-)
-
-// 工具级预算：覆盖全局预算，针对特定工具设置。
-readFileTool := function.New(
-    function.WithName("read_file"),
-    function.WithDescription("读取文件内容"),
-    function.WithHandler(func(ctx context.Context, args map[string]any) (any, error) {
-        // ...
-    }),
-    function.WithDeclarationModifier(func(d *tool.Declaration) {
-        d.ResultBudget = &tool.ResultBudget{
-            MaxBytes:       20 * 1024, // 文件读取允许 20KB
-            TruncationMode: "tail",
-        }
-    }),
-)
-```
-
-**预算优先级**：工具级（`Declaration.ResultBudget`）> 全局级（`WithResultBudget`）> 不截断。
-
-**截断结果格式**（合法 JSON）：
-
-```json
-{
-  "truncated": true,
-  "original_size": 50000,
-  "shown_bytes": 10240,
-  "preview": "<原始结果的前 10KB>..."
-}
-```
-
-### 工具执行超时
-
-设置工具执行的全局超时，防止无限阻塞。默认为 60 秒。
-
-```go
-agent := llmagent.New("ai-assistant",
-    llmagent.WithModel(model),
-    llmagent.WithTools(tools),
-    processor.WithToolExecutionTimeout(30*time.Second), // 30 秒超时
-)
-```
-
-- 如果 context 已有 deadline，则尊重现有 deadline。
-- 负值显式禁用超时。
-- 零值使用默认值（60 秒）。
 
 ### 运行时 ToolSet 动态管理
 

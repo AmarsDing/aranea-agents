@@ -36,8 +36,9 @@ type modelSlot struct {
 }
 
 type toolsSlot struct {
-	set   bool
-	value []tool.Tool
+	set    bool
+	value  []tool.Tool
+	append []tool.Tool
 }
 
 type skillRepoSlot struct {
@@ -53,6 +54,13 @@ type Patch struct {
 	model             modelSlot
 	tools             toolsSlot
 	skillRepo         skillRepoSlot
+
+	// suppressSubAgentTransfer, when true, omits framework-managed sub-agent
+	// transfer (the transfer_to_agent tool, auto-added when the node's agent
+	// has sub-agents) from the node's tool surface. Unlike the tool slot it is
+	// not a value override: it only removes the framework tool, never a user
+	// tool, so it composes with SetTools.
+	suppressSubAgentTransfer bool
 }
 
 // SetInstruction sets the instruction surface override.
@@ -82,16 +90,33 @@ func (p *Patch) SetModel(m model.Model) {
 	p.model.value = m
 }
 
-// SetTools sets the tool surface override.
+// SetTools sets the tool surface override and clears appended tools.
 func (p *Patch) SetTools(tools []tool.Tool) {
 	p.tools.set = true
 	p.tools.value = cloneTools(tools)
+	p.tools.append = nil
+}
+
+// AppendTools appends tools to the effective tool surface.
+func (p *Patch) AppendTools(tools []tool.Tool) {
+	if len(tools) == 0 {
+		return
+	}
+	p.tools.append = append(p.tools.append, cloneTools(tools)...)
 }
 
 // SetSkillRepository sets the skill repository surface override.
 func (p *Patch) SetSkillRepository(repo skill.Repository) {
 	p.skillRepo.set = true
 	p.skillRepo.value = repo
+}
+
+// SetSuppressSubAgentTransfer requests that framework-managed sub-agent
+// transfer (transfer_to_agent) be omitted from the node's tool surface even
+// when the node's agent has sub-agents. The dynamic AgentTool uses this so a
+// short-lived sub-agent cannot hand control to another agent.
+func (p *Patch) SetSuppressSubAgentTransfer() {
+	p.suppressSubAgentTransfer = true
 }
 
 // Instruction returns the instruction surface override.
@@ -119,12 +144,32 @@ func (p Patch) Model() (model.Model, bool) {
 
 // Tools returns the tool surface override.
 func (p Patch) Tools() ([]tool.Tool, bool) {
-	return cloneTools(p.tools.value), p.tools.set
+	if !p.tools.set {
+		return nil, false
+	}
+	return appendTools(p.tools.value, p.tools.append), true
+}
+
+// ApplyTools returns the effective tool surface after applying this patch.
+func (p Patch) ApplyTools(base []tool.Tool) ([]tool.Tool, bool) {
+	if !p.tools.set && len(p.tools.append) == 0 {
+		return nil, false
+	}
+	if p.tools.set {
+		return appendTools(p.tools.value, p.tools.append), true
+	}
+	return appendTools(base, p.tools.append), true
 }
 
 // SkillRepository returns the skill repository surface override.
 func (p Patch) SkillRepository() (skill.Repository, bool) {
 	return p.skillRepo.value, p.skillRepo.set
+}
+
+// SuppressSubAgentTransfer reports whether framework-managed sub-agent transfer
+// must be omitted from the node's tool surface.
+func (p Patch) SuppressSubAgentTransfer() bool {
+	return p.suppressSubAgentTransfer
 }
 
 // IsEmpty reports whether the patch carries any surface override.
@@ -134,7 +179,9 @@ func (p Patch) IsEmpty() bool {
 		!p.fewShot.set &&
 		!p.model.set &&
 		!p.tools.set &&
-		!p.skillRepo.set
+		len(p.tools.append) == 0 &&
+		!p.skillRepo.set &&
+		!p.suppressSubAgentTransfer
 }
 
 // Merge returns a copy where values from other override the same surface type.
@@ -157,12 +204,21 @@ func (p Patch) Merge(other Patch) Patch {
 	}
 	if other.tools.set {
 		out.tools = toolsSlot{
-			set:   true,
-			value: cloneTools(other.tools.value),
+			set:    true,
+			value:  cloneTools(other.tools.value),
+			append: cloneTools(other.tools.append),
 		}
+	} else if len(other.tools.append) > 0 {
+		out.tools.append = append(
+			out.tools.append,
+			cloneTools(other.tools.append)...,
+		)
 	}
 	if other.skillRepo.set {
 		out.skillRepo = other.skillRepo
+	}
+	if other.suppressSubAgentTransfer {
+		out.suppressSubAgentTransfer = true
 	}
 	return out
 }
@@ -178,10 +234,12 @@ func (p Patch) Clone() Patch {
 		},
 		model: p.model,
 		tools: toolsSlot{
-			set:   p.tools.set,
-			value: cloneTools(p.tools.value),
+			set:    p.tools.set,
+			value:  cloneTools(p.tools.value),
+			append: cloneTools(p.tools.append),
 		},
-		skillRepo: p.skillRepo,
+		skillRepo:                p.skillRepo,
+		suppressSubAgentTransfer: p.suppressSubAgentTransfer,
 	}
 }
 
@@ -304,4 +362,9 @@ func cloneTools(in []tool.Tool) []tool.Tool {
 		return nil
 	}
 	return append([]tool.Tool(nil), in...)
+}
+
+func appendTools(base []tool.Tool, appended []tool.Tool) []tool.Tool {
+	out := cloneTools(base)
+	return append(out, cloneTools(appended)...)
 }

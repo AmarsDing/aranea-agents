@@ -6,28 +6,6 @@ export type A2UIParseLine =
   | { ok: true; lineNumber: number; raw: string; key: string; payload: Record<string, unknown> }
   | { ok: false; lineNumber: number; raw: string; error: string };
 
-export function contentLooksLikeA2UIJsonl(text: string): boolean {
-  const lines = (text || '')
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return false;
-  let hits = 0;
-  for (const line of lines.slice(0, 5)) {
-    if (line.startsWith('```')) return false;
-    try {
-      const obj = JSON.parse(line) as Record<string, unknown>;
-      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-        const keys = Object.keys(obj);
-        if (keys.some((k) => ALLOWED_KEYS.has(k))) hits++;
-      }
-    } catch {
-      return false;
-    }
-  }
-  return hits > 0;
-}
-
 export function parseA2UIJsonl(text: string): A2UIParseLine[] {
   const lines = (text || '').split(/\r?\n/);
   const out: A2UIParseLine[] = [];
@@ -63,11 +41,4 @@ export function parseA2UIJsonl(text: string): A2UIParseLine[] {
     }
   }
   return out;
-}
-
-export function shouldUseA2UIView(plannerKind: string, text: string): boolean {
-  const k = plannerKind.trim().toLowerCase();
-  if (k === 'a2ui') return true;
-  if (k === 'react') return false;
-  return contentLooksLikeA2UIJsonl(text);
 }

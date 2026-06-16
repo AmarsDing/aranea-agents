@@ -46,6 +46,10 @@ func (m *memEventStoreRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int
 	return 0, nil
 }
 
+func (m *memEventStoreRepo) ExistsByID(_ context.Context, _ string) bool {
+	return false
+}
+
 func newEventServiceForTest(sessions map[string]biz.Session) (*service.EventService, *memEventStoreRepo) {
 	repo := &memEventStoreRepo{}
 	storeUC := biz.NewEventStoreUsecase(repo)

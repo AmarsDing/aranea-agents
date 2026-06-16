@@ -762,6 +762,10 @@ func (m *Model) buildChatRequest(request *model.Request) (*openai.ChatCompletion
 	for key, value := range request.ExtraFields {
 		opts = append(opts, openaiopt.WithJSONSet(key, value))
 	}
+	// Add request-level headers after model-level client options so they take precedence.
+	for key, value := range request.Headers {
+		opts = append(opts, openaiopt.WithHeader(key, value))
+	}
 
 	// Add streaming options if needed.
 	if request.Stream {
@@ -1386,10 +1390,6 @@ func (m *Model) convertTools(tools map[string]tool.Tool) []openai.ChatCompletion
 	var result []openai.ChatCompletionToolParam
 	for _, t := range toolorder.SortedTools(tools) {
 		declaration := t.Declaration()
-		sanitizedName := tool.SanitizeToolName(declaration.Name)
-		if sanitizedName != declaration.Name {
-			log.Warnf("tool name %q sanitized to %q for LLM API compatibility", declaration.Name, sanitizedName)
-		}
 		// Convert the InputSchema to JSON to correctly map to OpenAI's expected format
 		schemaBytes, err := json.Marshal(declaration.InputSchema)
 		if err != nil {
@@ -1410,7 +1410,7 @@ func (m *Model) convertTools(tools map[string]tool.Tool) []openai.ChatCompletion
 		}
 		result = append(result, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        sanitizedName,
+				Name:        declaration.Name,
 				Description: openai.String(buildToolDescription(declaration)),
 				Parameters:  parameters,
 			},

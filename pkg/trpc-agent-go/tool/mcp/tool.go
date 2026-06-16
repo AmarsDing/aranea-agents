@@ -57,6 +57,8 @@ type mcpTool struct {
 	sessionManager *mcpSessionManager
 }
 
+var _ tool.MetadataProvider = (*mcpTool)(nil)
+
 // newMCPTool creates a new MCP tool wrapper.
 func newMCPTool(mcpToolData mcp.Tool, sessionManager *mcpSessionManager) *mcpTool {
 	mcpTool := &mcpTool{
@@ -75,6 +77,26 @@ func newMCPTool(mcpToolData mcp.Tool, sessionManager *mcpSessionManager) *mcpToo
 	}
 
 	return mcpTool
+}
+
+// ToolMetadata converts explicit MCP tool annotations into framework metadata.
+func (t *mcpTool) ToolMetadata() tool.ToolMetadata {
+	if t == nil || t.mcpToolRef == nil || t.mcpToolRef.Annotations == nil {
+		return tool.ToolMetadata{}
+	}
+
+	annotations := t.mcpToolRef.Annotations
+	var metadata tool.ToolMetadata
+	if annotations.ReadOnlyHint != nil {
+		metadata.ReadOnly = *annotations.ReadOnlyHint
+	}
+	if annotations.DestructiveHint != nil {
+		metadata.Destructive = *annotations.DestructiveHint
+	}
+	if annotations.OpenWorldHint != nil {
+		metadata.OpenWorld = *annotations.OpenWorldHint
+	}
+	return metadata
 }
 
 // Call implements the Tool interface.
@@ -117,7 +139,7 @@ func (t *mcpTool) callOnce(ctx context.Context, arguments map[string]any) (any, 
 // Declaration implements the Tool interface.
 func (t *mcpTool) Declaration() *tool.Declaration {
 	return &tool.Declaration{
-		Name:         tool.SanitizeToolName(t.mcpToolRef.Name),
+		Name:         t.mcpToolRef.Name,
 		Description:  t.mcpToolRef.Description,
 		InputSchema:  t.inputSchema,
 		OutputSchema: t.outputSchema,

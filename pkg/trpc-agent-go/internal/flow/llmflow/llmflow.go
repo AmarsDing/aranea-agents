@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +25,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/internal/flow"
 	"trpc.group/trpc-go/trpc-agent-go/internal/flow/processor"
+	"trpc.group/trpc-go/trpc-agent-go/internal/flow/toolsnapshot"
 	"trpc.group/trpc-go/trpc-agent-go/internal/jsonmap"
 	"trpc.group/trpc-go/trpc-agent-go/internal/jsonrepair"
 	"trpc.group/trpc-go/trpc-agent-go/internal/modelcontext"
@@ -33,6 +33,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/steer"
 	itelemetry "trpc.group/trpc-go/trpc-agent-go/internal/telemetry"
 	"trpc.group/trpc-go/trpc-agent-go/internal/toolcall"
+	"trpc.group/trpc-go/trpc-agent-go/internal/toolsurface"
 	itrace "trpc.group/trpc-go/trpc-agent-go/internal/trace"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -54,16 +55,6 @@ const (
 
 	flowRunPanicErrFmt = "flow panic: %v"
 
-	// stateKeyToolsSnapshot is the invocation state key used to cache the
-	// final tool list for a single Invocation. This ensures that the tool
-	// set (including ToolSet-based tools and filters) stays stable for the
-	// entire lifetime of an Invocation, even when underlying ToolSets are
-	// dynamic.
-	stateKeyToolsSnapshot = "llmflow:tools_snapshot"
-	// stateKeyHasFilteredUserTools caches whether the final filtered tool
-	// snapshot for this invocation still contains any user tool.
-	stateKeyHasFilteredUserTools = "llmflow:has_filtered_user_tools"
-
 	defaultContextCompactionThresholdRatio = 0.7
 	contextCompactionFallbackWindow        = 8192
 	contextCompactionMinTokens             = 2000
@@ -72,10 +63,7 @@ const (
 // InvocationHasFilteredUserTools reports whether the cached filtered tool
 // snapshot for this invocation still contains any user tool.
 func InvocationHasFilteredUserTools(invocation *agent.Invocation) (bool, bool) {
-	if invocation == nil {
-		return false, false
-	}
-	return agent.GetStateValue[bool](invocation, stateKeyHasFilteredUserTools)
+	return toolsnapshot.HasFilteredUserTools(invocation)
 }
 
 // Options contains configuration options for creating a Flow.
@@ -87,7 +75,17 @@ type Options struct {
 	SyncSummaryIntraRun             bool
 	EnableContextCompaction         bool
 	ContextCompactionThresholdRatio float64
+	ToolActivationApplier           ToolActivationApplier
 }
+
+// ToolActivationApplier applies invocation-specific tool activation.
+type ToolActivationApplier func(
+	ctx context.Context,
+	invocation *agent.Invocation,
+	tools []tool.Tool,
+	userToolNames map[string]bool,
+	externalToolNames map[string]bool,
+) ([]tool.Tool, map[string]bool, map[string]bool)
 
 // ModelBaseResolution describes the base model for one LLM call.
 type ModelBaseResolution struct {
@@ -109,6 +107,7 @@ type Flow struct {
 	syncSummaryIntraRun             bool
 	enableContextCompaction         bool
 	contextCompactionThresholdRatio float64
+	toolActivationApplier           ToolActivationApplier
 }
 
 type contextCompactionTailProcessor interface {
@@ -129,9 +128,11 @@ type contextCompactionRebuildPlan struct {
 }
 
 type summarySnapshot struct {
-	exists    bool
-	summary   string
-	updatedAt time.Time
+	exists              bool
+	summary             string
+	updatedAt           time.Time
+	boundaryCutoff      time.Time
+	boundaryLastEventID string
 }
 
 // New creates a new basic flow instance with the provided processors.
@@ -150,6 +151,7 @@ func New(
 		modelSelector:           opts.ModelSelector,
 		syncSummaryIntraRun:     opts.SyncSummaryIntraRun,
 		enableContextCompaction: opts.EnableContextCompaction,
+		toolActivationApplier:   opts.ToolActivationApplier,
 		contextCompactionThresholdRatio: normalizeContextCompactionThresholdRatio(
 			opts.ContextCompactionThresholdRatio,
 		),
@@ -475,10 +477,16 @@ func (f *Flow) emitStartEventAndWait(ctx context.Context, invocation *agent.Invo
 		agentName = invocation.AgentName
 	}
 	startEvent := event.New(invocationID, agentName)
-	// P0-A1: Removed RequiresCompletion and AddNoticeChannelAndWait to eliminate
-	// synchronous wait for event persistence. Event ordering is guaranteed by
-	// the runner's FIFO event loop, so blocking here only adds latency.
+	startEvent.RequiresCompletion = true
 	agent.EmitEvent(ctx, invocation, eventChan, startEvent)
+
+	// Wait for completion notice.
+	// Ensure that the events of the previous agent or the previous step have been synchronized to the session.
+	completionID := agent.GetAppendEventNoticeKey(startEvent.ID)
+	err := invocation.AddNoticeChannelAndWait(ctx, completionID, eventCompletionTimeout)
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
 	return nil
 }
 
@@ -1331,10 +1339,19 @@ func snapshotSummary(sess *session.Session, filterKey string) summarySnapshot {
 	if summary == nil {
 		return summarySnapshot{}
 	}
+	boundary := summary.CutoffBoundary()
+	var boundaryCutoff time.Time
+	var boundaryLastEventID string
+	if boundary != nil {
+		boundaryCutoff = boundary.CutoffTime()
+		boundaryLastEventID = boundary.LastEventID
+	}
 	return summarySnapshot{
-		exists:    true,
-		summary:   summary.Summary,
-		updatedAt: summary.UpdatedAt,
+		exists:              true,
+		summary:             summary.Summary,
+		updatedAt:           summary.UpdatedAt,
+		boundaryCutoff:      boundaryCutoff,
+		boundaryLastEventID: boundaryLastEventID,
 	}
 }
 
@@ -1343,6 +1360,13 @@ func (s summarySnapshot) advanced(next summarySnapshot) bool {
 		return false
 	}
 	if !s.exists {
+		return true
+	}
+	if next.boundaryCutoff.After(s.boundaryCutoff) {
+		return true
+	}
+	if next.boundaryCutoff.Equal(s.boundaryCutoff) &&
+		next.boundaryLastEventID != s.boundaryLastEventID {
 		return true
 	}
 	if next.updatedAt.After(s.updatedAt) {
@@ -1402,30 +1426,6 @@ func contextCompactionThreshold(inv *agent.Invocation, ratio float64) int {
 	return threshold
 }
 
-// UserToolsProvider is an optional interface that agents can implement to expose
-// which tools were explicitly registered by the user (WithTools, WithToolSets)
-// vs framework-added tools (Knowledge, SubAgents).
-//
-// User tools are subject to filtering via WithToolFilter.
-// Framework tools are never filtered and always available to the agent.
-type UserToolsProvider interface {
-	UserTools() []tool.Tool
-}
-
-// ToolFilterProvider is an optional interface that agents can implement to provide
-type ToolFilterProvider interface {
-	FilterTools(ctx context.Context) []tool.Tool
-}
-
-// InvocationToolSurfaceProvider is an optional interface that exposes
-// invocation-scoped tools and user-tool classification.
-type InvocationToolSurfaceProvider interface {
-	InvocationToolSurface(
-		ctx context.Context,
-		invocation *agent.Invocation,
-	) ([]tool.Tool, map[string]bool)
-}
-
 // getFilteredTools returns the list of tools for this invocation after applying the filter.
 //
 // User tools (can be filtered):
@@ -1442,88 +1442,121 @@ func (f *Flow) getFilteredTools(ctx context.Context, invocation *agent.Invocatio
 		return nil
 	}
 
-	if cached, ok := agent.GetStateValue[[]tool.Tool](
-		invocation,
-		stateKeyToolsSnapshot,
-	); ok && cached != nil {
+	if cached, ok := toolsnapshot.Get(invocation); ok && cached != nil {
 		return cached
 	}
 
-	var allTools []tool.Tool
-	var userToolNames map[string]bool
-	hasUserToolTracking := false
-	if provider, ok := invocation.Agent.(InvocationToolSurfaceProvider); ok {
-		allTools, userToolNames = provider.InvocationToolSurface(
-			ctx,
-			invocation,
+	allTools, userToolNames, hasUserToolTracking := toolsurface.ResolveBase(
+		ctx,
+		invocation,
+	)
+	allTools, userToolNames, hasUserToolTracking, externalToolNames :=
+		toolsurface.AppendRunOptionTools(
+			allTools,
+			userToolNames,
+			hasUserToolTracking,
+			invocation.RunOptions,
 		)
+	if f.toolActivationApplier != nil {
+		allTools = append([]tool.Tool(nil), allTools...)
+		if userToolNames != nil {
+			userToolNames = copyToolNames(userToolNames)
+		}
+		if externalToolNames != nil {
+			externalToolNames = copyToolNames(externalToolNames)
+		}
+		allTools, userToolNames, externalToolNames =
+			f.toolActivationApplier(
+				ctx,
+				invocation,
+				allTools,
+				userToolNames,
+				externalToolNames,
+			)
 		hasUserToolTracking = userToolNames != nil
-	} else if provider, ok := invocation.Agent.(ToolFilterProvider); ok {
-		allTools = provider.FilterTools(ctx)
-	} else {
-		allTools = invocation.Agent.Tools()
 	}
 
 	// If no filter is specified, return all tools for this invocation.
 	if invocation.RunOptions.ToolFilter == nil {
-		invocation.SetState(stateKeyToolsSnapshot, allTools)
-		invocation.SetState(
-			stateKeyHasFilteredUserTools,
+		allTools = sanitizeTools(allTools)
+		setVisibleExternalToolNames(invocation, allTools, externalToolNames)
+		toolsnapshot.Set(
+			invocation,
+			allTools,
 			hasTrackedUserTool(allTools, hasUserToolTracking, userToolNames),
 		)
 		return allTools
 	}
 
-	// Get user tools (if the agent supports it).
-	// User tools are those explicitly registered via WithTools and WithToolSets.
-	// Framework tools (Knowledge, SubAgents) are never filtered.
-	if !hasUserToolTracking {
-		if provider, ok := invocation.Agent.(UserToolsProvider); ok {
-			userTools := provider.UserTools()
-			hasUserToolTracking = true
-			// Build a map for fast lookup.
-			userToolNames = make(map[string]bool, len(userTools))
-			for _, t := range userTools {
-				userToolNames[t.Declaration().Name] = true
-			}
-		}
-	}
+	// Framework tools are never filtered; user tools must pass the run-scoped
+	// filter. Shared via toolsurface so getFilteredTools and the dynamic tool's
+	// surface derivation stay in lockstep.
+	filtered := toolsurface.ApplyToolFilter(
+		ctx,
+		allTools,
+		userToolNames,
+		hasUserToolTracking,
+		invocation.RunOptions,
+	)
 
-	// Apply the filter function to each tool.
-	// Framework tools are never filtered.
-	filtered := make([]tool.Tool, 0, len(allTools))
-	for _, t := range allTools {
-		toolName := t.Declaration().Name
-
-		// Determine if this is a user tool or framework tool.
-		isUserTool := !hasUserToolTracking || userToolNames[toolName]
-
-		// Framework tools are always included (never filtered).
-		if !isUserTool {
-			filtered = append(filtered, t)
-			continue
-		}
-
-		// User tool: apply the filter function.
-		if invocation.RunOptions.ToolFilter(ctx, t) {
-			filtered = append(filtered, t)
-		}
-	}
-
-	// Sort tools by name to ensure stable order for better prompt cache hit rate.
-	// Map iteration order is random in Go, so sorting ensures consistent tool ordering
-	// across requests, which improves cache efficiency.
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].Declaration().Name < filtered[j].Declaration().Name
-	})
-
-	invocation.SetState(stateKeyToolsSnapshot, filtered)
-	invocation.SetState(
-		stateKeyHasFilteredUserTools,
+	setVisibleExternalToolNames(invocation, filtered, externalToolNames)
+	toolsnapshot.Set(
+		invocation,
+		filtered,
 		hasTrackedUserTool(filtered, hasUserToolTracking, userToolNames),
 	)
 
 	return filtered
+}
+
+func sanitizeTools(tools []tool.Tool) []tool.Tool {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make([]tool.Tool, 0, len(tools))
+	for _, tl := range tools {
+		if toolName(tl) != "" {
+			out = append(out, tl)
+		}
+	}
+	return out
+}
+
+func setVisibleExternalToolNames(
+	invocation *agent.Invocation,
+	tools []tool.Tool,
+	externalNames map[string]bool,
+) {
+	if invocation == nil || externalNames == nil {
+		return
+	}
+	visible := make(map[string]bool, len(externalNames))
+	for _, tl := range tools {
+		name := toolName(tl)
+		if name != "" && externalNames[name] {
+			visible[name] = true
+		}
+	}
+	invocation.RunOptions.ExternalToolNames = visible
+}
+
+func copyToolNames(src map[string]bool) map[string]bool {
+	dst := make(map[string]bool, len(src))
+	for name, ok := range src {
+		dst[name] = ok
+	}
+	return dst
+}
+
+func toolName(tl tool.Tool) string {
+	if tl == nil {
+		return ""
+	}
+	decl := tl.Declaration()
+	if decl == nil {
+		return ""
+	}
+	return decl.Name
 }
 
 func hasTrackedUserTool(

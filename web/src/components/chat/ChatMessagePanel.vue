@@ -160,6 +160,7 @@
             @cancel-pending="(id) => emit('cancel-pending', id)"
             @interrupt-pending="(id) => emit('interrupt-pending', id)"
             @update-pending="(id, content) => emit('update-pending', id, content)"
+            @confirm="(id, approved) => emit('confirm-activity', id, approved)"
           />
 
           <SynthesisResultCard
@@ -418,6 +419,7 @@ const emit = defineEmits<{
   'status-bar-click-interrupted': [];
   'status-bar-click-last-event': [];
   'toggle-tool-calls': [];
+  'confirm-activity': [activityId: string, approved: boolean];
 }>();
 
 const { t } = useI18n();

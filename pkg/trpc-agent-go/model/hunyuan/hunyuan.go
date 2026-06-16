@@ -587,14 +587,6 @@ func convertMessage(msg model.Message) (*hunyuan.ChatCompletionMessageParam, err
 	// Convert content parts (multimodal content)
 	if len(msg.ContentParts) > 0 {
 		var contents []*hunyuan.ChatCompletionMessageContentParam
-		// If msg.Content is non-empty, prepend it as the first text part
-		// to avoid losing the main Content when ContentParts are present.
-		if msg.Content != "" {
-			contents = append(contents, &hunyuan.ChatCompletionMessageContentParam{
-				Type: "text",
-				Text: msg.Content,
-			})
-		}
 		for _, part := range msg.ContentParts {
 			switch part.Type {
 			case model.ContentTypeText:
@@ -642,10 +634,6 @@ func convertTools(tools map[string]tool.Tool) []*hunyuan.ChatCompletionMessageTo
 	var result []*hunyuan.ChatCompletionMessageTool
 	for _, tl := range toolorder.SortedTools(tools) {
 		decl := tl.Declaration()
-		sanitizedName := tool.SanitizeToolName(decl.Name)
-		if sanitizedName != decl.Name {
-			log.Warnf("tool name %q sanitized to %q for LLM API compatibility", decl.Name, sanitizedName)
-		}
 
 		schemaBytes, err := json.Marshal(decl.InputSchema)
 		if err != nil {
@@ -656,7 +644,7 @@ func convertTools(tools map[string]tool.Tool) []*hunyuan.ChatCompletionMessageTo
 		result = append(result, &hunyuan.ChatCompletionMessageTool{
 			Type: functionToolType,
 			Function: &hunyuan.ChatCompletionMessageToolFunction{
-				Name:        sanitizedName,
+				Name:        decl.Name,
 				Parameters:  string(schemaBytes),
 				Description: buildToolDescription(decl),
 			},
@@ -677,7 +665,7 @@ func buildToolDescription(declaration *tool.Declaration) string {
 		log.Debugf("marshal output schema for tool %s: %v", declaration.Name, err)
 		return desc
 	}
-	desc += "\nOutput schema: " + string(schemaJSON)
+	desc += "Output schema: " + string(schemaJSON)
 	return desc
 }
 

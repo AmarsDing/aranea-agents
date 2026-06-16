@@ -46,7 +46,6 @@ type Team struct {
 	swarm             SwarmConfig
 	swarmHandoff      swarmHandoffPolicy
 	swarmHandoffInput SwarmHandoffInputBuilder
-	coordinatorConfig CoordinatorConfig
 }
 
 // Mode controls how a Team runs.
@@ -124,14 +123,13 @@ func New(
 	adder.AddToolSet(memberToolSet)
 
 	return &Team{
-		name:              name,
-		description:       cfg.description,
-		mode:              ModeCoordinator,
-		coordinator:       coordinator,
-		members:           members,
-		memberByName:      memberByName,
-		memberToolSet:     memberToolSet,
-		coordinatorConfig: cfg.coordinator,
+		name:          name,
+		description:   cfg.description,
+		mode:          ModeCoordinator,
+		coordinator:   coordinator,
+		members:       members,
+		memberByName:  memberByName,
+		memberToolSet: memberToolSet,
 	}, nil
 }
 
@@ -202,13 +200,6 @@ func (t *Team) runCoordinator(
 ) (<-chan *event.Event, error) {
 	if t.coordinator == nil {
 		return nil, errors.New("coordinator is nil")
-	}
-	// Apply coordinator safety limit: cap the number of tool-call iterations
-	// to prevent unbounded loops when the coordinator LLM repeatedly calls
-	// member tools without converging. This uses the existing MaxToolIterations
-	// mechanism on the invocation level.
-	if t.coordinatorConfig.MaxToolCalls > 0 && invocation.MaxToolIterations <= 0 {
-		invocation.MaxToolIterations = t.coordinatorConfig.MaxToolCalls
 	}
 	rootNodeID := teamtrace.RootNodeID(invocation, t.name)
 	teamtrace.SetMemberTraceRootForInvocation(invocation, rootNodeID)

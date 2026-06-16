@@ -88,7 +88,7 @@ type testRunRegistry struct {
 	cancelled map[string]bool
 }
 
-func (t *testRunRegistry) Cancel(sessionID string) (bool, string) {
+func (t *testRunRegistry) Cancel(sessionID, _ string) (bool, string) {
 	entry, ok := t.statuses[sessionID]
 	if !ok {
 		return false, ""

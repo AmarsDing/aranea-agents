@@ -36,6 +36,7 @@
         v-else-if="event.kind === 'plan'"
         :activity="event"
         :agent-color="agentColor"
+        :child-activities="getChildActivities(event.id)"
       />
       <ConfirmBlock
         v-else-if="event.kind === 'confirm'"
@@ -52,8 +53,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Activity } from '../../features/chat/activityTimelineTypes';
+import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
+import type { ActivityTreeNode } from '../../features/chat/activityTypes';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';
@@ -65,14 +68,37 @@ import DelegateActivity from './DelegateActivity.vue';
 
 const { t } = useI18n();
 
-defineProps<{
-  events: Activity[];
+const props = defineProps<{
+  events: TimelineActivity[];
   agentColor?: string;
+  /** Full activity tree for resolving child activities (plan sub-events) */
+  activityTree?: ActivityTreeNode[];
 }>();
 
 defineEmits<{
   confirm: [activityId: string, approved: boolean];
 }>();
+
+/** Pre-built Map<parentId, children[]> for O(1) child lookup instead of recursive tree search. */
+const childrenMap = computed(() => {
+  const map = new Map<string, ActivityTreeNode[]>();
+  if (!props.activityTree) return map;
+  const walk = (nodes: ActivityTreeNode[]) => {
+    for (const node of nodes) {
+      if (node.children.length > 0) {
+        map.set(node.id, node.children);
+      }
+      walk(node.children);
+    }
+  };
+  walk(props.activityTree);
+  return map;
+});
+
+/** Find child activities for a given parent activity ID — O(1) via pre-built Map. */
+function getChildActivities(parentId: string): ActivityTreeNode[] {
+  return childrenMap.value.get(parentId) ?? [];
+}
 </script>
 
 <style lang="sass" scoped>

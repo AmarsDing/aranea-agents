@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/internal/jsonmap"
@@ -28,7 +29,6 @@ type hedgeModel struct {
 	name          string
 	contextWindow int
 	launchOffsets []time.Duration
-	onSwitch      SwitchCallback
 }
 
 type attempt struct {
@@ -91,7 +91,6 @@ func New(opt ...Option) (model.Model, error) {
 		name:          name,
 		contextWindow: contextWindow,
 		launchOffsets: launchOffsets,
-		onSwitch:      opts.onSwitch,
 	}, nil
 }
 
@@ -264,9 +263,6 @@ func (r *hedgeRun) handleEvent(event attemptEvent) bool {
 			r.winnerIndex = event.index
 			r.cancelLosers(event.index)
 			r.stopLaunchTimer()
-			if r.hedge.onSwitch != nil && event.index > 0 {
-				r.hedge.onSwitch(r.ctx, r.hedge.candidates[0].Info().Name, r.hedge.candidates[event.index].Info().Name, nil)
-			}
 			if r.yield(event.response) {
 				return false
 			}
@@ -544,6 +540,7 @@ func cloneRequest(request *model.Request) (*model.Request, error) {
 		return nil, fmt.Errorf("unmarshal request: %w", err)
 	}
 	cloned.ExtraFields = jsonmap.Clone(request.ExtraFields)
+	cloned.Headers = maps.Clone(request.Headers)
 	if len(request.Tools) > 0 {
 		cloned.Tools = make(map[string]tool.Tool, len(request.Tools))
 		for name, toolImpl := range request.Tools {

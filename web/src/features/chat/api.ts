@@ -320,3 +320,18 @@ export async function cancelChatBackgroundJob(id: string, source: string): Promi
     return false;
   }
 }
+
+/** Confirm a tool-blocked activity (approve or reject). */
+export async function confirmActivity(sessionId: string, activityId: string, approved: boolean): Promise<boolean> {
+  try {
+    const data = await chatService.ConfirmActivity({
+      sessionId,
+      activityId,
+      approved,
+    });
+    return Boolean((data as { accepted?: boolean })?.accepted);
+  } catch (err) {
+    wrapChatError(err, 'confirmActivity failed');
+    return false;
+  }
+}

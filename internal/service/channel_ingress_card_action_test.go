@@ -33,7 +33,7 @@ func TestResolvePeerSessionID_prefersOperatorOpenID(t *testing.T) {
 	}
 	agents := ingressAgentRepo{id: agentID}
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, nil, nil, nil, peerRepo, nil, agents, nil, nil, nil),
+		channels: biz.NewChannelUsecase(nil, nil, nil, nil, biz.NewChannelPeerUsecase(peerRepo, nil, loggateway.NewNoop()), agents, nil, nil, nil),
 		sessions: biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil),
 		lg:       loggateway.NewNoop(),
 	}
@@ -76,7 +76,7 @@ func TestResolvePeerSessionID_deniedWhenOnlyChatIDBindMissing(t *testing.T) {
 	}
 	agents := ingressAgentRepo{id: agentID}
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, nil, nil, nil, peerRepo, nil, agents, nil, nil, nil),
+		channels: biz.NewChannelUsecase(nil, nil, nil, nil, biz.NewChannelPeerUsecase(peerRepo, nil, loggateway.NewNoop()), agents, nil, nil, nil),
 		sessions: biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil),
 		lg:       loggateway.NewNoop(),
 	}

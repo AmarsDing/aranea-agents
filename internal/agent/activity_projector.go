@@ -20,6 +20,21 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
+// Graph node event object types (mirrored from trpc-agent-go/graph to avoid
+// importing the graph package, which pulls in broken transitive dependencies).
+const (
+	graphObjectTypeNodeStart   = "graph.node.start"
+	graphObjectTypeNodeComplete = "graph.node.complete"
+	graphObjectTypeNodeError   = "graph.node.error"
+	graphMetadataKeyNode       = "_node_metadata"
+)
+
+// graphNodeMetadata mirrors trpc-agent-go/graph.NodeExecutionMetadata
+// (only the fields we need for plan step mapping).
+type graphNodeMetadata struct {
+	NodeID string `json:"nodeId"`
+}
+
 // ActivityProjector projects runtime events into Activity semantic units
 // and publishes them via WS, eliminating frontend inference.
 // It runs parallel to EventProjector during the AF-1 dual-emission phase.
@@ -37,6 +52,8 @@ type ActivityProjector struct {
 	kindAuthorMap  map[string]string        // "kind:author" -> activity ID (O(1) lookup)
 	reasoningBuf   map[string]*strings.Builder
 	meta           ProjectMeta
+	planActivityID string                   // current turn's plan activity ID (graph node events)
+	planStepIndex  int                      // monotonic counter for plan steps within this turn
 }
 
 // NewActivityProjector creates a new ActivityProjector.
@@ -68,6 +85,8 @@ func (p *ActivityProjector) Reset() {
 	p.toolCalls = make(map[string]*biz.Activity)
 	p.kindAuthorMap = make(map[string]string)
 	p.reasoningBuf = make(map[string]*strings.Builder)
+	p.planActivityID = ""
+	p.planStepIndex = 0
 }
 
 // ProcessEvent dispatches a trpc-agent-go event to the appropriate On* callback.
@@ -101,6 +120,10 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 		p.processChatCompletion(ctx, ev)
 	case trpcmodel.ObjectTypeToolResponse:
 		p.processToolResponse(ctx, ev)
+	case graphObjectTypeNodeStart:
+		p.processGraphNodeStart(ctx, ev)
+	case graphObjectTypeNodeComplete, graphObjectTypeNodeError:
+		p.processGraphNodeComplete(ctx, ev)
 	}
 }
 
@@ -608,7 +631,126 @@ func (p *ActivityProjector) OnConfirmResult(ctx context.Context, activityID stri
 	return activity, nil
 }
 
-// OnPlanStart creates a plan Activity with initial steps.
+// processGraphNodeStart handles graph.node.start events by lazily creating a plan
+// Activity on first node arrival and registering a pending step.
+// This is N-02 Plan Activity runtime integration: graph nodes → plan steps.
+func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpcevent.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Extract node metadata from StateDelta
+	if ev.StateDelta == nil {
+		return
+	}
+	nodeRaw, ok := ev.StateDelta[graphMetadataKeyNode]
+	if !ok {
+		return
+	}
+	var meta graphNodeMetadata
+	if err := json.Unmarshal(nodeRaw, &meta); err != nil {
+		return
+	}
+	if meta.NodeID == "" {
+		return
+	}
+
+	// Lazily create plan Activity on first node arrival (inline to avoid deadlock)
+	if p.planActivityID == "" {
+		id := uuid.NewString()
+		now := time.Now().UTC()
+		planAct := &biz.Activity{
+			ID:        id,
+			Kind:      biz.ActivityKindPlan,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: p.meta.SessionID,
+			TurnID:    p.meta.RequestID,
+			Timestamp: now,
+			Content:   "执行计划",
+			Meta:      map[string]any{"steps": []biz.ActivityPlanStep{}},
+		}
+		p.activities[id] = planAct
+		p.planActivityID = id
+		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityStart)
+	}
+
+	// Append a new step to the plan
+	planAct, ok := p.activities[p.planActivityID]
+	if !ok {
+		return
+	}
+	stepsRaw := planAct.Meta["steps"]
+	steps, _ := stepsRaw.([]biz.ActivityPlanStep)
+	if steps == nil {
+		steps = []biz.ActivityPlanStep{}
+	}
+	p.planStepIndex++
+	step := biz.ActivityPlanStep{
+		ID:      meta.NodeID,
+		Label:   meta.NodeID, // Use node ID as label for now
+		Status:  biz.ActivityStatusRunning,
+	}
+	steps = append(steps, step)
+	planAct.Meta["steps"] = steps
+	p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDelta)
+}
+
+// processGraphNodeComplete handles graph.node.complete and graph.node.error events
+// by updating the corresponding plan step's status.
+func (p *ActivityProjector) processGraphNodeComplete(ctx context.Context, ev *trpcevent.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.planActivityID == "" || ev.StateDelta == nil {
+		return
+	}
+	nodeRaw, ok := ev.StateDelta[graphMetadataKeyNode]
+	if !ok {
+		return
+	}
+	var meta graphNodeMetadata
+	if err := json.Unmarshal(nodeRaw, &meta); err != nil {
+		return
+	}
+	if meta.NodeID == "" {
+		return
+	}
+
+	planAct, ok := p.activities[p.planActivityID]
+	if !ok {
+		return
+	}
+	stepsRaw := planAct.Meta["steps"]
+	steps, _ := stepsRaw.([]biz.ActivityPlanStep)
+
+	// Find and update the step matching this node ID
+	newStatus := biz.ActivityStatusCompleted
+	if ev.Response.Object == graphObjectTypeNodeError {
+		newStatus = biz.ActivityStatusFailed
+	}
+	for i := range steps {
+		if steps[i].ID == meta.NodeID {
+			steps[i].Status = newStatus
+			break
+		}
+	}
+	planAct.Meta["steps"] = steps
+
+	// Check if all steps are done
+	allDone := true
+	for _, s := range steps {
+		if s.Status != biz.ActivityStatusCompleted && s.Status != biz.ActivityStatusFailed {
+			allDone = false
+			break
+		}
+	}
+	if allDone {
+		planAct.Status = biz.ActivityStatusCompleted
+		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDone)
+	} else {
+		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDelta)
+	}
+}
+
 func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID string, title string, steps []biz.ActivityPlanStep) (*biz.Activity, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -643,9 +785,16 @@ func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID str
 	if activity.Kind != biz.ActivityKindPlan {
 		return nil, apierror.BadRequest("activity", "expected plan kind, got %s", activity.Kind)
 	}
-	steps, ok := activity.Meta["steps"].([]biz.ActivityPlanStep)
-	if !ok || steps == nil {
-		return nil, apierror.BadRequest("activity", "plan activity has no valid steps metadata")
+	stepsRaw, ok := activity.Meta["steps"]
+	if !ok {
+		return nil, apierror.BadRequest("activity", "plan activity has no steps metadata")
+	}
+	steps, ok := stepsRaw.([]biz.ActivityPlanStep)
+	if !ok {
+		return nil, apierror.BadRequest("activity", "plan activity steps has invalid type: %T", stepsRaw)
+	}
+	if steps == nil {
+		return nil, apierror.BadRequest("activity", "plan activity has nil steps")
 	}
 	stepFound := false
 	for i := range steps {

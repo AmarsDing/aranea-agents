@@ -1,14 +1,14 @@
 <template>
-  <div class="say-activity">
+  <div class="reply-block">
     <!-- Card variant -->
     <template>
-      <div class="say-activity__label">
-        <span class="say-activity__icon">💬</span>
-        <span class="say-activity__label-text">{{ label }}</span>
+      <div class="reply-block__label">
+        <span class="reply-block__icon">💬</span>
+        <span class="reply-block__label-text">{{ label }}</span>
         <span v-if="activity.streaming" class="pulse-dot"></span>
       </div>
-      <div class="say-activity__content">
-        <div class="say-activity__markdown chat-message-prose" v-html="renderedContent"></div>
+      <div class="reply-block__content">
+        <div class="reply-block__markdown chat-message-prose" v-html="renderedContent"></div>
         <span v-if="activity.streaming" class="cursor-blink"></span>
       </div>
     </template>
@@ -35,7 +35,7 @@ const renderedContent = computed(() => renderChatMarkdown(props.activity.content
 </script>
 
 <style lang="sass" scoped>
-.say-activity
+.reply-block
   &__label
     display: flex
     align-items: center

@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	"trpc.group/trpc-go/trpc-agent-go/internal/jsonmap"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -26,9 +27,9 @@ import (
 // first non-error chunk is observed.
 type failoverModel struct {
 	candidates []model.Model
-	onSwitch   SwitchCallback
 }
 
+// New creates a failover model wrapper.
 func New(opts ...Option) (model.Model, error) {
 	options := options{}
 	for _, opt := range opts {
@@ -44,7 +45,7 @@ func New(opts ...Option) (model.Model, error) {
 		}
 		candidates = append(candidates, candidate)
 	}
-	return &failoverModel{candidates: candidates, onSwitch: options.onSwitch}, nil
+	return &failoverModel{candidates: candidates}, nil
 }
 
 // Info returns the primary candidate model info.
@@ -134,9 +135,6 @@ func (m *failoverModel) prepareAttempt(
 			err.Error(),
 			"",
 		)
-		if m.onSwitch != nil && i+1 < len(m.candidates) {
-			m.onSwitch(ctx, m.candidates[i].Info().Name, m.candidates[i+1].Info().Name, err)
-		}
 	}
 	return nil, newFailureError(currentFailures)
 }
@@ -169,9 +167,6 @@ func (m *failoverModel) runAttempts(
 				cloned.Error.Message,
 				cloned.Error.Type,
 			)
-			if m.onSwitch != nil && currentAttempt.index+1 < len(m.candidates) {
-				m.onSwitch(ctx, currentAttempt.candidate.Info().Name, m.candidates[currentAttempt.index+1].Info().Name, fmt.Errorf("%s: %s", cloned.Error.Type, cloned.Error.Message))
-			}
 			if currentAttempt.index == len(m.candidates)-1 {
 				if len(currentAttempt.failures) == 0 {
 					return yield(cloned)
@@ -243,6 +238,7 @@ func cloneRequest(request *model.Request) (*model.Request, error) {
 		return nil, fmt.Errorf("unmarshal request: %w", err)
 	}
 	cloned.ExtraFields = jsonmap.Clone(request.ExtraFields)
+	cloned.Headers = maps.Clone(request.Headers)
 	if len(request.Tools) > 0 {
 		cloned.Tools = make(map[string]tool.Tool, len(request.Tools))
 		for name, toolImpl := range request.Tools {

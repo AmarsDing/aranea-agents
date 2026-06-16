@@ -19,6 +19,7 @@ import type {
   ProgressSection,
 } from './agentTreeTypes';
 import type { StreamEvent } from './streamEventTypes';
+import type { ActivityTreeNode } from './activityTypes';
 
 // ── Conversation Turn ──
 
@@ -44,6 +45,9 @@ export interface AgentWorkProcess {
 
   /** 活动时间线 — 严格按发生顺序排列 */
   activities: Activity[];
+
+  /** Activity tree for resolving parent-child relationships (plan sub-events) */
+  activityTree?: ActivityTreeNode[];
 
   /** Team 统一面板（Team 模式时存在） */
   panel?: TeamPanel;

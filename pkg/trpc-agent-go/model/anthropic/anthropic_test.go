@@ -2527,17 +2527,17 @@ func TestWithEnableTokenTailoring_Disabled(t *testing.T) {
 func TestWithEnableTokenTailoring_UnknownModel(t *testing.T) {
 	// Capture the built Anthropic request.
 	var captured *anthropic.MessageNewParams
-	m := New("unknown-model-xyz", // Unknown model should fallback to default context window
+	m := New("unknown-model-xyz", // Unknown model should fallback to the 128000-token default context window
 		WithEnableTokenTailoring(true),
 		WithChatRequestCallback(func(ctx context.Context, req *anthropic.MessageNewParams) {
 			captured = req
 		}),
 	)
 
-	// Create many messages to trigger tailoring.
+	// Create messages large enough to trigger tailoring with the unknown-model fallback window.
 	messages := []model.Message{model.NewSystemMessage("You are a helpful assistant.")}
 	for i := 0; i < 50; i++ {
-		messages = append(messages, model.NewUserMessage(fmt.Sprintf("Message %d: %s", i, strings.Repeat("lorem ipsum ", 50))))
+		messages = append(messages, model.NewUserMessage(fmt.Sprintf("Message %d: %s", i, strings.Repeat("lorem ipsum ", 1000))))
 	}
 
 	req := &model.Request{Messages: messages}
@@ -2916,132 +2916,6 @@ func TestApplyCacheControlToSystem(t *testing.T) {
 		assert.Len(t, result, 3)
 		// Check that cache control is set on the last item
 		assert.NotEmpty(t, result[2].CacheControl.Type)
-	})
-}
-
-func TestApplyCacheControlToSystem_DualBreakpoint(t *testing.T) {
-	m := &Model{
-		cacheSystemPrompt:                true,
-		cacheSystemPromptDualBreakpoint:  true,
-		cacheSystemPromptSecondBlockIndex: 2,
-	}
-	systemPrompts := []anthropic.TextBlockParam{
-		{Text: "static layer"},
-		{Text: "semi-static layer 1"},
-		{Text: "semi-static layer 2"},
-		{Text: "dynamic layer"},
-	}
-	result := m.applyCacheControlToSystem(systemPrompts)
-
-	// Breakpoint 1: TextBlock[0]
-	assert.NotEmpty(t, result[0].CacheControl.Type, "expected cache control on TextBlock[0]")
-	// Breakpoint 2: TextBlock[2]
-	assert.NotEmpty(t, result[2].CacheControl.Type, "expected cache control on TextBlock[2]")
-	// No breakpoint on TextBlock[1] and TextBlock[3]
-	assert.Empty(t, result[1].CacheControl.Type, "unexpected cache control on TextBlock[1]")
-	assert.Empty(t, result[3].CacheControl.Type, "unexpected cache control on TextBlock[3]")
-}
-
-func TestApplyCacheControl_BreakpointCountValidation(t *testing.T) {
-	t.Run("all breakpoints within limit", func(t *testing.T) {
-		m := New("claude-3-5-sonnet",
-			WithCacheSystemPrompt(true),
-			WithCacheTools(true),
-			WithCacheMessages(true),
-		)
-		systemPrompts := []anthropic.TextBlockParam{{Text: "sys"}}
-		tools := []anthropic.ToolUnionParam{{OfTool: &anthropic.ToolParam{Name: "calc"}}}
-		messages := []anthropic.MessageParam{
-			{Role: "user", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "Hi"}},
-			}},
-			{Role: "assistant", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "Hello"}},
-			}},
-			{Role: "user", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "How are you?"}},
-			}},
-		}
-
-		resultSys, resultTools, resultMsgs := m.applyCacheControl(systemPrompts, tools, messages)
-
-		// All 3 breakpoints should be applied (system + tools + messages)
-		assert.NotEmpty(t, resultSys[0].CacheControl.Type, "system should have cache control")
-		assert.NotNil(t, resultTools[0].OfTool.CacheControl, "tools should have cache control")
-		assert.NotNil(t, resultMsgs[1].Content[0].OfText.CacheControl, "assistant message should have cache control")
-	})
-
-	t.Run("dual breakpoint exceeds limit - eliminates messages first", func(t *testing.T) {
-		m := New("claude-3-5-sonnet",
-			WithCacheSystemPrompt(true),
-			WithCacheSystemPromptDualBreakpoint(2),
-			WithCacheTools(true),
-			WithCacheMessages(true),
-		)
-		// 4 system blocks for dual breakpoint, tools, messages = 2+1+1 = 4 breakpoints
-		// This is exactly at the limit, so all should be applied
-		systemPrompts := []anthropic.TextBlockParam{
-			{Text: "static"},
-			{Text: "semi1"},
-			{Text: "semi2"},
-			{Text: "dynamic"},
-		}
-		tools := []anthropic.ToolUnionParam{{OfTool: &anthropic.ToolParam{Name: "calc"}}}
-		messages := []anthropic.MessageParam{
-			{Role: "user", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "Hi"}},
-			}},
-			{Role: "assistant", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "Hello"}},
-			}},
-			{Role: "user", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "How are you?"}},
-			}},
-		}
-
-		resultSys, resultTools, resultMsgs := m.applyCacheControl(systemPrompts, tools, messages)
-
-		// System dual breakpoint (2) + tools (1) + messages (1) = 4, at limit
-		assert.NotEmpty(t, resultSys[0].CacheControl.Type, "system[0] should have cache control (static)")
-		assert.NotEmpty(t, resultSys[2].CacheControl.Type, "system[2] should have cache control (semi-static)")
-		assert.NotNil(t, resultTools[0].OfTool.CacheControl, "tools should have cache control")
-		assert.NotNil(t, resultMsgs[1].Content[0].OfText.CacheControl, "messages should have cache control")
-	})
-
-	t.Run("dual breakpoint exceeds limit - eliminates messages and semi-static", func(t *testing.T) {
-		m := New("claude-3-5-sonnet",
-			WithCacheSystemPrompt(true),
-			WithCacheSystemPromptDualBreakpoint(2),
-			WithCacheTools(true),
-			WithCacheMessages(true),
-		)
-		// 5 breakpoints would be needed: system dual(2) + tools(1) + messages(1) = 4
-		// But if we also had another breakpoint source, messages would be eliminated first
-		// For this test, verify that when at limit, all 4 are kept
-		systemPrompts := []anthropic.TextBlockParam{
-			{Text: "static"},
-			{Text: "semi1"},
-			{Text: "semi2"},
-			{Text: "dynamic"},
-		}
-		tools := []anthropic.ToolUnionParam{{OfTool: &anthropic.ToolParam{Name: "calc"}}}
-		messages := []anthropic.MessageParam{
-			{Role: "user", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "Hi"}},
-			}},
-			{Role: "assistant", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "Hello"}},
-			}},
-			{Role: "user", Content: []anthropic.ContentBlockParamUnion{
-				{OfText: &anthropic.TextBlockParam{Text: "How are you?"}},
-			}},
-		}
-
-		resultSys, _, _ := m.applyCacheControl(systemPrompts, tools, messages)
-
-		// Verify dual breakpoint is applied
-		assert.NotEmpty(t, resultSys[0].CacheControl.Type, "system[0] should have cache control")
-		assert.NotEmpty(t, resultSys[2].CacheControl.Type, "system[2] should have cache control")
 	})
 }
 

@@ -1,19 +1,11 @@
 /**
  * Stream Event Types — 统一事件流类型系统
  *
- * 定义聊天事件流的 5 种 Activity Kind：
- * thinking / action / reply / error / plan
+ * 定义聊天事件流的 7 种 Activity Kind：
+ * thinking / action / reply / error / plan / confirm / notice
  *
  * 替代原有 activityTimelineTypes.ts 中的 Activity 类型，
  * 通过 re-export 保持向后兼容。
- *
- * 映射关系：
- *   ThinkActivity  → ThinkingEvent  (kind: 'think'   → 'thinking')
- *   ActActivity    → ActionEvent    (kind: 'act'     → 'action')
- *   SayActivity    → ReplyEvent     (kind: 'say'     → 'reply')
- *   NoticeActivity → ErrorEvent     (kind: 'notice'  → 'error')
- *   PlanEvent      → 新增           (kind: 'plan')
- *   DelegateActivity → 暂保留在 activityTimelineTypes
  */
 
 // ── Stream Event Kind ──
@@ -101,10 +93,10 @@ export interface ReplyEvent extends StreamEventBase {
   durationMs: number | null;
 }
 
-/** 错误/通知事件 — 对应原 NoticeActivity */
+/** 错误事件 — 对应原 NoticeActivity */
 export interface ErrorEvent extends StreamEventBase {
   kind: 'error';
-  type: 'degradation' | 'info';
+  type: 'degradation';
   message: string;
 }
 

@@ -102,17 +102,6 @@ type options struct {
 	// showToolCallDelta controls whether to expose tool call argument deltas in
 	// streaming responses.
 	showToolCallDelta bool
-	// cacheSystemPromptDualBreakpoint enables dual-breakpoint caching for system prompts.
-	// When enabled, cache breakpoints are placed at the end of both the static layer
-	// (TextBlock[0]) and the semi-static layer (TextBlock[secondBlockIndex]).
-	// This requires the system prompt to be split into multiple TextBlocks by the
-	// BeforeModelHook chain (LayerStatic + LayerSemiStatic separation).
-	cacheSystemPromptDualBreakpoint bool
-	// cacheSystemPromptSecondBlockIndex specifies the index of the TextBlock
-	// where the second breakpoint (semi-static layer end) should be placed.
-	// Only used when cacheSystemPromptDualBreakpoint is true.
-	// Default: 2 (TextBlock[2] = last semi-static block)
-	cacheSystemPromptSecondBlockIndex int
 }
 
 var (
@@ -127,11 +116,9 @@ var (
 			MaxInputTokensRatio:    imodel.DefaultMaxInputTokensRatio,
 		},
 		// Prompt cache defaults - all disabled by default, controlled by three sub-options
-		cacheSystemPrompt:                defaultCacheSystemPrompt,
-		cacheTools:                       defaultCacheTools,
-		cacheMessages:                    defaultCacheMessages,
-		cacheSystemPromptDualBreakpoint:  false,
-		cacheSystemPromptSecondBlockIndex: 2,
+		cacheSystemPrompt: defaultCacheSystemPrompt,
+		cacheTools:        defaultCacheTools,
+		cacheMessages:     defaultCacheMessages,
 	}
 )
 
@@ -371,24 +358,5 @@ func WithCacheTools(cache bool) Option {
 func WithCacheMessages(cache bool) Option {
 	return func(opts *options) {
 		opts.cacheMessages = cache
-	}
-}
-
-// WithCacheSystemPromptDualBreakpoint enables dual-breakpoint caching for system prompts.
-// When enabled, two cache breakpoints are placed in the system prompt:
-//   - Breakpoint 1: end of the static layer (last TextBlock before secondBlockIndex)
-//   - Breakpoint 2: end of the semi-static layer (TextBlock[secondBlockIndex])
-//
-// This requires the BeforeModelHook chain to separate system content into
-// distinct TextBlocks by Layer (LayerStatic, LayerSemiStatic, LayerDynamic).
-//
-// The Anthropic API allows up to 4 cache breakpoints total. DualBreakpoint uses 2
-// for system prompts, leaving 2 for tools and messages.
-//
-// Default: false (single breakpoint at end of system prompts)
-func WithCacheSystemPromptDualBreakpoint(secondBlockIndex int) Option {
-	return func(opts *options) {
-		opts.cacheSystemPromptDualBreakpoint = true
-		opts.cacheSystemPromptSecondBlockIndex = secondBlockIndex
 	}
 }

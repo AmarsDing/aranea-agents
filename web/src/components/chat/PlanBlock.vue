@@ -9,7 +9,7 @@
     </div>
 
     <!-- Steps list -->
-    <div class="plan-block__steps">
+    <div v-if="activity.steps?.length" class="plan-block__steps">
       <div
         v-for="(step, idx) in activity.steps"
         :key="step.id"
@@ -30,12 +30,12 @@
         <div v-if="step.dependsOn?.length" class="plan-block__step-dep">
           {{ t('chat.plan.dependsOn', '等待步骤') }} {{ step.dependsOn.join(', ') }}
         </div>
-
-        <!-- Step children (nested EventStream) -->
-        <div v-if="step.children?.length" class="plan-block__step-children">
-          <EventStream :events="step.children" :agent-color="agentColor" />
-        </div>
       </div>
+    </div>
+
+    <!-- Child events from activityTree (thinking/action/reply sub-activities) -->
+    <div v-if="childEvents.length" class="plan-block__children">
+      <EventStream :events="childEvents" :agent-color="agentColor" />
     </div>
   </div>
 </template>
@@ -44,15 +44,20 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { PlanEvent } from '../../features/chat/streamEventTypes';
+import type { ActivityTreeNode } from '../../features/chat/activityTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import EventStream from './EventStream.vue';
 
 const props = defineProps<{
   activity: PlanEvent;
   agentColor?: string;
+  /** Child activities from activityTree (sub-activities linked via parentActivityId) */
+  childActivities?: ActivityTreeNode[];
 }>();
 
 const { t } = useI18n();
+
+const childEvents = computed(() => props.childActivities ?? []);
 
 const statusClass = computed(() => ({
   'plan-block__status--planning': props.activity.status === 'planning',
@@ -185,9 +190,11 @@ const statusIcon = computed(() => {
     margin-left: 28px
     margin-top: 2px
 
-  &__step-children
-    margin-left: 28px
-    margin-top: 4px
+  &__children
+    margin-left: 12px
+    margin-top: 8px
+    padding-top: 4px
+    border-left: 2px solid var(--glass-border)
 
 @keyframes plan-pulse
   0%, 100%

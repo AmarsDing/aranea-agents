@@ -743,6 +743,7 @@ func provideChatServiceDeps(
 	expAnalytics *biz.ExperienceAnalyticsUsecase,
 	turnLifecycle *biz.TurnLifecycleUsecase,
 	activityWriter biz.ActivityWriter,
+	activityReader biz.ActivityReader,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -771,6 +772,7 @@ func provideChatServiceDeps(
 			TurnTimeout:    0,
 			Admission:      biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
 			ActivityWriter: activityWriter,
+			ActivityReader: activityReader,
 		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,

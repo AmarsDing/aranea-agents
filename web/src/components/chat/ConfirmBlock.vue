@@ -16,11 +16,19 @@
       <pre class="confirm-block__code">{{ formatArguments(activity.toolArguments) }}</pre>
     </div>
     <div class="confirm-block__actions">
-      <button class="confirm-block__btn confirm-block__btn--approve" @click="onApprove">
-        {{ t('chat.confirm.approve', '批准') }}
+      <button
+        class="confirm-block__btn confirm-block__btn--approve"
+        :disabled="confirming"
+        @click="onApprove"
+      >
+        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '批准') }}
       </button>
-      <button class="confirm-block__btn confirm-block__btn--reject" @click="onReject">
-        {{ t('chat.confirm.reject', '拒绝') }}
+      <button
+        class="confirm-block__btn confirm-block__btn--reject"
+        :disabled="confirming"
+        @click="onReject"
+      >
+        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
       </button>
     </div>
   </div>
@@ -41,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ConfirmEvent } from '../../features/chat/streamEventTypes';
 
@@ -54,6 +62,17 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+// --- Confirm loading state ---
+const confirming = ref(false);
+const CONFIRM_TIMEOUT_MS = 15_000;
+let confirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Reset confirming when activity status changes (WebSocket will update status)
+watch(() => props.activity.status, () => {
+  confirming.value = false;
+  if (confirmTimer) { clearTimeout(confirmTimer); confirmTimer = null; }
+});
 
 // --- Countdown timer ---
 const now = ref(Date.now());
@@ -91,10 +110,16 @@ function formatArguments(raw: string): string {
 }
 
 function onApprove() {
+  if (confirming.value) return;
+  confirming.value = true;
+  confirmTimer = setTimeout(() => { confirming.value = false; }, CONFIRM_TIMEOUT_MS);
   emit('confirm', props.activity.id, true);
 }
 
 function onReject() {
+  if (confirming.value) return;
+  confirming.value = true;
+  confirmTimer = setTimeout(() => { confirming.value = false; }, CONFIRM_TIMEOUT_MS);
   emit('confirm', props.activity.id, false);
 }
 </script>
@@ -202,6 +227,10 @@ function onReject() {
 
     &:hover
       opacity: 0.85
+
+    &:disabled
+      opacity: 0.5
+      cursor: not-allowed
 
     &--approve
       background: var(--color-success)

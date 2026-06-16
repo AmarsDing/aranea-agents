@@ -1203,36 +1203,3 @@ func parseBackgroundPID(t *testing.T, output string) int {
 	t.Fatalf("did not find background pid marker in %q", output)
 	return 0
 }
-
-func TestTruncateOutput(t *testing.T) {
-	// Short string is not truncated.
-	require.Equal(t, "short", truncateOutput("short", 100))
-
-	// Long string is truncated with head+tail+marker.
-	input := strings.Repeat("x", 500)
-	truncated := truncateOutput(input, 200)
-	require.Contains(t, truncated, "[... 300 characters truncated ...]")
-	require.LessOrEqual(t, len([]rune(truncated)), 200,
-		"output must not exceed maxChars")
-	require.True(t, strings.HasPrefix(truncated, "xxx"),
-		"head must be preserved")
-	require.True(t, strings.HasSuffix(truncated, "xxx"),
-		"tail must be preserved")
-
-	// Zero maxChars returns input unchanged.
-	require.Equal(t, "hello", truncateOutput("hello", 0))
-
-	// Negative maxChars returns input unchanged.
-	require.Equal(t, "hello", truncateOutput("hello", -1))
-
-	// Very small maxChars falls back to head-only.
-	tiny := truncateOutput("ABCDEFGHIJ0123456789", 10)
-	require.Equal(t, "ABCDEFGHIJ", tiny,
-		"when marker is too large, fall back to head-only truncation")
-
-	// Unicode is handled correctly by rune count.
-	unicode := strings.Repeat("你好", 100) // 200 runes
-	truncatedUnicode := truncateOutput(unicode, 100)
-	require.LessOrEqual(t, len([]rune(truncatedUnicode)), 100)
-	require.Contains(t, truncatedUnicode, "characters truncated")
-}

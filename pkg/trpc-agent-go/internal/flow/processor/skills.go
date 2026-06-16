@@ -47,11 +47,6 @@ const (
 	// SkillLoadModeSession keeps loaded skill content available across
 	// invocations until cleared or the session expires.
 	SkillLoadModeSession = "session"
-	// SkillLoadModeProgressive enables 3-phase progressive loading:
-	// L0 manifest only in prompt, L1 body via skill_load tool,
-	// L2 refs via skill_select_docs. Loaded content is materialized
-	// into tool results instead of the system prompt.
-	SkillLoadModeProgressive = "progressive"
 
 	defaultSkillLoadMode = SkillLoadModeTurn
 )
@@ -71,8 +66,6 @@ type skillsRequestProcessorOptions struct {
 	repoResolver       func(*agent.Invocation) skill.Repository
 	directoryHints     bool
 	filePathHints      bool
-	routedSkills       []string
-	routedSkillsResolver func(*agent.Invocation) []string
 }
 
 // SkillsRequestProcessorOption configures SkillsRequestProcessor.
@@ -85,7 +78,6 @@ type SkillsRequestProcessorOption func(*skillsRequestProcessorOptions)
 //   - SkillLoadModeTurn (default)
 //   - SkillLoadModeOnce
 //   - SkillLoadModeSession (legacy)
-//   - SkillLoadModeProgressive (3-phase progressive loading)
 func WithSkillLoadMode(mode string) SkillsRequestProcessorOption {
 	return func(o *skillsRequestProcessorOptions) {
 		o.loadMode = mode
@@ -237,26 +229,6 @@ func WithSkillsFilePathHints(
 	}
 }
 
-// WithRoutedSkills marks specific skills as routed in the overview,
-// appending a [routed] suffix to their summary lines. This guides the
-// LLM to prioritize loading these skills via skill_load.
-func WithRoutedSkills(names []string) SkillsRequestProcessorOption {
-	return func(o *skillsRequestProcessorOptions) {
-		o.routedSkills = names
-	}
-}
-
-// WithRoutedSkillsResolver sets an invocation-aware resolver that
-// returns the set of skill names to mark as [routed] in the overview.
-// When set, it takes precedence over the static routedSkills list.
-func WithRoutedSkillsResolver(
-	resolver func(*agent.Invocation) []string,
-) SkillsRequestProcessorOption {
-	return func(o *skillsRequestProcessorOptions) {
-		o.routedSkillsResolver = resolver
-	}
-}
-
 // SkillsRequestProcessor injects skill overviews and loaded contents.
 //
 // Behavior:
@@ -281,20 +253,10 @@ type SkillsRequestProcessor struct {
 	toolFlagsResolver  func(*agent.Invocation) skillprofile.Flags
 	directoryHints     bool
 	filePathHints      bool
-	routedSkills       []string
-	routedSkillsResolver func(*agent.Invocation) []string
 }
 
 const (
 	skillsTurnInitStateKey = "processor:skills:turn_init"
-	// RoutedSkillsStateKey is the invocation state key under which
-	// external hooks (e.g. progressive guidance hooks) store the
-	// list of skill names that have been routed for the current turn.
-	// The processor reads this key when no static or resolver-based
-	// routed skills are configured.
-	//
-	// Expected value type: []string (slice of skill names).
-	RoutedSkillsStateKey = "processor:skills:routed"
 )
 
 // NewSkillsRequestProcessor creates a processor instance.
@@ -315,7 +277,6 @@ func NewSkillsRequestProcessor(
 		var err error
 		flags, err = skillprofile.ResolveFlags(options.toolProfile, nil)
 		if err != nil {
-			log.Warnf("skill profile resolution failed, degrading to empty flags: profile=%s err=%v", options.toolProfile, err)
 			flags = skillprofile.Flags{}
 		}
 	}
@@ -335,8 +296,6 @@ func NewSkillsRequestProcessor(
 		toolFlagsResolver:  options.toolFlagsResolver,
 		directoryHints:     options.directoryHints,
 		filePathHints:      options.filePathHints,
-		routedSkills:       options.routedSkills,
-		routedSkillsResolver: options.routedSkillsResolver,
 	}
 }
 
@@ -349,8 +308,6 @@ func normalizeSkillLoadMode(mode string) string {
 		return SkillLoadModeTurn
 	case SkillLoadModeSession:
 		return SkillLoadModeSession
-	case SkillLoadModeProgressive:
-		return SkillLoadModeProgressive
 	default:
 		return defaultSkillLoadMode
 	}
@@ -694,7 +651,7 @@ func (p *SkillsRequestProcessor) maybeClearSkillStateForTurn(
 	inv *agent.Invocation,
 	ch chan<- *event.Event,
 ) {
-	if (p.loadMode != SkillLoadModeTurn && p.loadMode != SkillLoadModeProgressive) || inv == nil || inv.Session == nil {
+	if p.loadMode != SkillLoadModeTurn || inv == nil || inv.Session == nil {
 		return
 	}
 	if _, ok := inv.GetState(skillsTurnInitStateKey); ok {
@@ -784,29 +741,26 @@ func (p *SkillsRequestProcessor) injectOverview(
 	if len(sums) == 0 {
 		return
 	}
-	routedSet := make(map[string]struct{})
-	if p.routedSkillsResolver != nil && inv != nil {
-		for _, name := range p.routedSkillsResolver(inv) {
-			routedSet[name] = struct{}{}
-		}
-	} else if len(p.routedSkills) > 0 {
-		for _, name := range p.routedSkills {
-			routedSet[name] = struct{}{}
-		}
-	} else if inv != nil {
-		if names, ok := agent.GetStateValue[[]string](inv, RoutedSkillsStateKey); ok {
-			for _, name := range names {
-				routedSet[name] = struct{}{}
-			}
-		}
+	flags := p.toolFlagsForInvocation(inv)
+	availableSkills := p.availableSkillsText(ctx, inv, repo, sums)
+	overview, prepend := p.defaultOverviewText(flags, availableSkills)
+	p.mergeOverview(req, overview, prepend)
+}
+
+func (p *SkillsRequestProcessor) availableSkillsText(
+	ctx context.Context,
+	inv *agent.Invocation,
+	repo skill.Repository,
+	sums []skill.Summary,
+) string {
+	if renderer := availableSkillsRendererFromInvocation(inv); renderer != nil {
+		return normalizeSkillsOverviewText(
+			renderer(ctx, agent.AvailableSkillsRenderRequest{
+				Summaries: append([]skill.Summary(nil), sums...),
+			}),
+		)
 	}
 	var b strings.Builder
-	flags := p.toolFlagsForInvocation(inv)
-	protocol := p.protocolGuidanceText(flags)
-	if protocol != "" {
-		b.WriteString(protocol)
-		b.WriteString("\n")
-	}
 	b.WriteString(skillsOverviewHeader)
 	b.WriteString("\n")
 	if p.directoryHints || p.filePathHints {
@@ -814,22 +768,87 @@ func (p *SkillsRequestProcessor) injectOverview(
 			b.WriteString(rootsText)
 		}
 	}
-	p.writeSkillOverviewLines(&b, ctx, repo, sums, routedSet)
-	if protocol == "" {
-		if capability := p.capabilityGuidanceText(flags); capability != "" {
-			b.WriteString(capability)
-		}
-		if guidance := p.toolingGuidanceText(flags); guidance != "" {
-			b.WriteString(guidance)
-		}
+	for _, s := range sums {
+		line := fmt.Sprintf(
+			"- %s: %s%s\n",
+			s.Name,
+			s.Description,
+			p.skillOverviewSuffix(ctx, repo, s.Name),
+		)
+		b.WriteString(line)
 	}
-	overview := b.String()
+	return b.String()
+}
 
+func (p *SkillsRequestProcessor) defaultOverviewText(
+	flags skillprofile.Flags,
+	availableSkills string,
+) (string, bool) {
+	var b strings.Builder
+	if protocol := p.protocolGuidanceText(flags); protocol != "" {
+		b.WriteString(protocol)
+		if availableSkills != "" {
+			b.WriteString("\n")
+			b.WriteString(availableSkills)
+		}
+		return b.String(), true
+	}
+	if availableSkills != "" {
+		b.WriteString(availableSkills)
+	}
+	if capability := p.capabilityGuidanceText(flags); capability != "" {
+		b.WriteString(capability)
+	}
+	if guidance := p.toolingGuidanceText(flags); guidance != "" {
+		b.WriteString(guidance)
+	}
+	return b.String(), false
+}
+
+func availableSkillsRendererFromInvocation(
+	inv *agent.Invocation,
+) agent.AvailableSkillsRenderer {
+	if inv != nil && inv.RunOptions.AvailableSkillsRenderer != nil {
+		return inv.RunOptions.AvailableSkillsRenderer
+	}
+	return nil
+}
+
+func normalizeSkillsOverviewText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if startsWithSectionHeader(text, skillsOverviewHeader) {
+		return text
+	}
+	return skillsOverviewHeader + "\n" + text
+}
+
+func startsWithSectionHeader(text string, header string) bool {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		return strings.TrimSpace(line) == header
+	}
+	return false
+}
+
+func (p *SkillsRequestProcessor) mergeOverview(
+	req *model.Request,
+	overview string,
+	prepend bool,
+) {
+	if req == nil || overview == "" {
+		return
+	}
 	idx := findSystemMessageIndex(req.Messages)
 	if idx >= 0 {
 		sys := &req.Messages[idx]
-		if !strings.Contains(sys.Content, skillsOverviewHeader) {
-			if p.protocolGuidanceText(flags) != "" {
+		if !strings.Contains(sys.Content, skillsOverviewMergeMarker(overview)) {
+			if prepend {
 				if sys.Content != "" {
 					sys.Content = overview + "\n\n" + sys.Content
 				} else {
@@ -846,6 +865,19 @@ func (p *SkillsRequestProcessor) injectOverview(
 	// No system message yet: create one at the front.
 	msg := model.NewSystemMessage(overview)
 	req.Messages = append([]model.Message{msg}, req.Messages...)
+}
+
+func skillsOverviewMergeMarker(overview string) string {
+	if strings.Contains(overview, skillsOverviewHeader) {
+		return skillsOverviewHeader
+	}
+	if strings.Contains(overview, skillsToolingGuidanceHeader) {
+		return skillsToolingGuidanceHeader
+	}
+	if strings.Contains(overview, skillsCapabilityHeader) {
+		return skillsCapabilityHeader
+	}
+	return strings.TrimSpace(overview)
 }
 
 func (p *SkillsRequestProcessor) toolFlagsForInvocation(
@@ -1185,31 +1217,6 @@ func (p *SkillsRequestProcessor) skillOverviewSuffix(
 		}
 	}
 	return ""
-}
-
-// writeSkillOverviewLines writes one summary line per skill into b.
-// Skills present in routedSet are suffixed with " [routed]".
-func (p *SkillsRequestProcessor) writeSkillOverviewLines(
-	b *strings.Builder,
-	ctx context.Context,
-	repo skill.Repository,
-	sums []skill.Summary,
-	routedSet map[string]struct{},
-) {
-	for _, s := range sums {
-		routedMark := ""
-		if _, ok := routedSet[s.Name]; ok {
-			routedMark = " [routed]"
-		}
-		line := fmt.Sprintf(
-			"- %s: %s%s%s\n",
-			s.Name,
-			s.Description,
-			p.skillOverviewSuffix(ctx, repo, s.Name),
-			routedMark,
-		)
-		b.WriteString(line)
-	}
 }
 
 func skillDirectoryLocator(

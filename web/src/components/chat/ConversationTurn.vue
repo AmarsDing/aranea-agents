@@ -1,7 +1,7 @@
 <template>
   <div class="conversation-turn">
     <UserMessageBubble v-if="turn.userMessage" :message="turn.userMessage" />
-    <AgentWorkPanel :agent-work="turn.agentWork" />
+    <AgentWorkPanel :agent-work="turn.agentWork" @confirm="(id, approved) => $emit('confirm', id, approved)" />
   </div>
 </template>
 
@@ -12,6 +12,10 @@ import AgentWorkPanel from './AgentWorkPanel.vue';
 
 defineProps<{
   turn: ConversationTurn;
+}>();
+
+defineEmits<{
+  confirm: [activityId: string, approved: boolean];
 }>();
 </script>
 

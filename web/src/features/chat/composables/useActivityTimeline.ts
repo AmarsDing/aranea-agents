@@ -33,6 +33,7 @@ import { listActivities } from '../../session/api';
 export function useActivityTimeline() {
   const activities = shallowRef<Map<string, Activity>>(new Map());
   const rootActivityId = shallowRef<string | null>(null);
+  const loadError = shallowRef<string | null>(null);
 
   // === Activity tree computed from flat list ===
 
@@ -196,8 +197,7 @@ export function useActivityTimeline() {
 
   // AF-FE-14: Load activities from backend API for history recovery
   // Retries up to 2 times with exponential backoff (500ms, 1000ms) on failure.
-  // On final failure, logs a warning and returns silently — the UI falls back
-  // to the legacy "isLegacy" path in useConversationTimeline.
+  // On final failure, sets loadError so the UI can show a degradation notice.
   async function loadActivitiesFromAPI(sessionId: string, turnId?: string) {
     const maxAttempts = 3;
     const baseDelay = 500;
@@ -207,6 +207,7 @@ export function useActivityTimeline() {
       try {
         const activityList = await listActivities(sessionId, turnId);
         loadActivities(activityList);
+        loadError.value = null;
         return;
       } catch (err) {
         lastErr = err;
@@ -217,7 +218,15 @@ export function useActivityTimeline() {
       }
     }
 
-    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', lastErr);
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    loadError.value = msg;
+    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', msg);
+  }
+
+  /** Retry loading activities after a previous failure */
+  async function retryLoad(sessionId: string, turnId?: string) {
+    loadError.value = null;
+    await loadActivitiesFromAPI(sessionId, turnId);
   }
 
   // === Cleanup on unmount (only when inside a component instance) ===
@@ -233,6 +242,7 @@ export function useActivityTimeline() {
     activityTree,
     streamEvents,
     rootActivityId,
+    loadError: computed(() => loadError.value),
     handleActivityStart,
     handleActivityDelta,
     handleActivityDone,
@@ -240,6 +250,7 @@ export function useActivityTimeline() {
     reset,
     loadActivities,
     loadActivitiesFromAPI,
+    retryLoad,
   };
 }
 
@@ -375,14 +386,15 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         content: node.content || '',
         toolName: (node.meta?.toolName as string) || '',
         toolArguments: (node.meta?.toolArguments as string) ?? null,
+        autoApproveAt: (node.meta?.autoApproveAt as string) ?? null,
       } satisfies ConfirmEvent;
 
     default:
-      // Fallback: task, sub_task_board, delegate → error
+      // Fallback: task, sub_task_board, delegate → error (degradation)
       return {
         kind: 'error',
         id: node.id,
-        type: 'info',
+        type: 'degradation',
         message: node.content || node.label || '',
       } satisfies ErrorEvent;
   }

@@ -48,6 +48,7 @@ var (
 	defaultMaxSteps              = 100
 	defaultStepTimeout           = time.Duration(0) // No timeout by default, users can set if needed.
 	defaultCheckpointSaveTimeout = 10 * time.Second // Default timeout for checkpoint save operations.
+	defaultBarrierWaitTimeout    = 5 * time.Second  // Default timeout for barrier completion waits.
 )
 
 func defaultMaxConcurrency() int {
@@ -368,9 +369,18 @@ func (e *Executor) forwardExecutionEvents(
 			continue
 		}
 		if hideBarrierEvents && isGraphNodeBarrierEvent(evt) {
-			// P0-A1: Barrier events no longer set RequiresCompletion=true,
-			// so there is no completion signal to send for suppressed barriers.
-			// The event is simply dropped from the forwarded stream.
+			if err := notifySuppressedBarrierCompletion(
+				ctx,
+				invocation,
+				evt,
+			); err != nil {
+				log.WarnfContext(
+					ctx,
+					"Failed to complete hidden executor barrier event: %v",
+					err,
+				)
+				return
+			}
 			continue
 		}
 		if ctx.Err() == nil {
@@ -401,6 +411,18 @@ func shouldHideExecutorBarrierEvents(invocation *agent.Invocation) bool {
 
 func isGraphNodeBarrierEvent(evt *event.Event) bool {
 	return evt != nil && evt.Object == ObjectTypeGraphNodeBarrier
+}
+
+func notifySuppressedBarrierCompletion(
+	ctx context.Context,
+	invocation *agent.Invocation,
+	evt *event.Event,
+) error {
+	if invocation == nil || evt == nil || !evt.RequiresCompletion {
+		return nil
+	}
+	completionID := agent.GetAppendEventNoticeKey(evt.ID)
+	return invocation.NotifyCompletion(ctx, completionID)
 }
 
 // executeGraph executes the graph using Pregel-style BSP execution.
@@ -437,6 +459,7 @@ func (e *Executor) executeGraph(
 		eventChan, invocation.InvocationID, execState, resumed, lastCkpt,
 	)
 	execCtx.Invocation = invocation
+	execCtx.startTime = startTime
 	// Initialize per-execution input channels from the prepared state.
 	e.initializeChannels(execCtx, execState, true)
 	if len(restoredPending) > 0 {
@@ -2768,14 +2791,32 @@ func (e *Executor) emitNodeBarrierAndWait(
 		formatNodeAuthor(nodeID, AuthorGraphExecutor),
 		event.WithObject(ObjectTypeGraphNodeBarrier),
 	)
-	// P0-A1: Removed RequiresCompletion and AddNoticeChannelAndWait to eliminate
-	// synchronous wait for barrier persistence. Event ordering is guaranteed by
-	// the runner's FIFO event loop, so the barrier event will still be processed
-	// in order — we just no longer block the execution pipeline waiting for that
-	// processing to complete.
+	barrierEvent.RequiresCompletion = true
+	completionID := agent.GetAppendEventNoticeKey(barrierEvent.ID)
+	if noticeCh := invocation.AddNoticeChannel(ctx, completionID); noticeCh == nil {
+		return fmt.Errorf("add notice channel for node barrier (inv=%s node=%s step=%d key=%s)",
+			invocation.InvocationID, nodeID, step, completionID)
+	}
 	if err := agent.EmitEvent(ctx, invocation, execCtx.EventChan, barrierEvent); err != nil {
 		return fmt.Errorf("emit node barrier event (inv=%s node=%s step=%d): %w",
 			invocation.InvocationID, nodeID, step, err)
+	}
+	timeout := defaultBarrierWaitTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			remaining = 0
+		}
+		if remaining < timeout {
+			timeout = remaining
+		}
+	}
+	if err := invocation.AddNoticeChannelAndWait(ctx, completionID, timeout); err != nil {
+		return fmt.Errorf("wait for node barrier completion (inv=%s node=%s step=%d timeout=%v): %w",
+			invocation.InvocationID, nodeID, step, timeout, err)
 	}
 	return nil
 }
@@ -3104,8 +3145,10 @@ type nodeExecutionContext struct {
 }
 
 type workflowMetricRecorder struct {
-	once       sync.Once
-	start      time.Time
+	once      sync.Once
+	start     time.Time
+	rootStart time.Time
+
 	attributes itelemetry.WorkflowAttributes
 }
 
@@ -3125,6 +3168,9 @@ func (r *workflowMetricRecorder) record(ctx context.Context, err error) {
 		attrs := r.attributes
 		attrs.Error = err
 		itelemetry.ReportWorkflowMetrics(ctx, attrs, time.Since(r.start))
+		if !r.rootStart.IsZero() {
+			itelemetry.ReportWorkflowElapsedMetrics(ctx, attrs, time.Since(r.rootStart))
+		}
 	})
 }
 
@@ -3629,8 +3675,14 @@ func (e *Executor) newWorkflowMetricRecorder(
 		}
 	}
 
+	var rootStart time.Time
+	if execCtx != nil {
+		rootStart = execCtx.startTime
+	}
 	return &workflowMetricRecorder{
-		start:      start,
+		start:     start,
+		rootStart: rootStart,
+
 		attributes: attrs,
 	}
 }

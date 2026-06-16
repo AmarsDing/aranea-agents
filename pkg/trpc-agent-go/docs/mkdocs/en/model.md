@@ -396,6 +396,55 @@ func main() {
 }
 ```
 
+### Structured Output
+
+When calling `model.GenerateContent` directly, use `model.NewRequest` and
+`model.WithStructuredOutputJSON` to generate a JSON schema from a Go struct and
+pass it to model adapters that support provider-native structured output.
+
+```go
+type StageParseResult struct {
+    Stage  string `json:"stage"`
+    Reason string `json:"reason"`
+}
+
+request := model.NewRequest(
+    []model.Message{
+        model.NewUserMessage("Classify the current user intent stage."),
+    },
+    model.WithStructuredOutputJSON(
+        new(StageParseResult),
+        true,
+        "Return stage parse result as JSON.",
+    ),
+)
+
+responseChan, err := llm.GenerateContent(ctx, request)
+if err != nil {
+    return err
+}
+
+var final string
+for response := range responseChan {
+    if response.Error != nil {
+        return fmt.Errorf("model error: %s", response.Error.Message)
+    }
+    if len(response.Choices) > 0 {
+        final = response.Choices[0].Message.Content
+    }
+}
+
+var result StageParseResult
+if err := json.Unmarshal([]byte(final), &result); err != nil {
+    return err
+}
+```
+
+`WithStructuredOutputJSON` only configures the model request. Direct `model`
+callers still receive normal `model.Response` values and should unmarshal the
+final JSON content themselves. If you already have a hand-written schema, set
+`request.StructuredOutput` directly.
+
 ### Streaming Output
 
 ```go
@@ -608,6 +657,24 @@ func runOnce(ctx context.Context, r runner.Runner, cacheKey string) error {
     }
     return nil
 }
+```
+
+When a provider requires both a request body cache key and a routing header
+for the same conversation, combine this with request-scoped headers:
+
+```go
+events, err := r.Run(
+    ctx,
+    "user-001",
+    "session-001",
+    model.NewUserMessage("Hello"),
+    agent.WithModelRequestExtraFields(map[string]any{
+        "prompt_cache_key": cacheKey,
+    }),
+    agent.WithModelRequestHeaders(map[string]string{
+        "X-Session-ID": "session-001",
+    }),
+)
 ```
 
 This option applies to every model call created during that run, including
@@ -1188,12 +1255,13 @@ For a complete interactive example, see [examples/model/retry](https://github.co
 In some enterprise or proxy scenarios, the model provider requires
 additional HTTP headers (for example, organization ID, tenant routing,
 or custom authentication). The Model module supports setting headers in
-three reliable ways that apply to all model requests, including
-non-streaming, streaming, file upload, and batch APIs.
+several reliable ways.
 
 Recommended order:
 
 - Global header via `openai.WithHeaders` (simplest for static headers)
+- Request-scoped header via `agent.WithModelRequestHeaders` (for
+  `runner.Run(...)` calls whose headers vary by user, session, or tenant)
 - Global header via OpenAI RequestOption (flexible, middleware-friendly)
 - Custom `http.RoundTripper` (advanced, cross-cutting)
 
@@ -1213,7 +1281,27 @@ llm := openai.New("deepseek-v4-flash",
 )
 ```
 
-##### 2. Global headers using OpenAI RequestOption
+##### 2. Request-scoped headers from Runner
+
+Use `agent.WithModelRequestHeaders` when a header should vary per
+`runner.Run(...)` call, for example `X-Session-ID` on providers that route
+a conversation to the same inference instance. The OpenAI adapter merges
+these headers into the HTTP request after model-level headers, so request-level
+values take precedence on the same key.
+
+```go
+events, err := r.Run(
+    ctx,
+    "user-001",
+    "session-001",
+    model.NewUserMessage("Hello"),
+    agent.WithModelRequestHeaders(map[string]string{
+        "X-Session-ID": "session-001",
+    }),
+)
+```
+
+##### 3. Global headers using OpenAI RequestOption
 
 Use `WithOpenAIOptions` with `openaiopt.WithHeader` or
 `openaiopt.WithMiddleware` to inject headers for every request created
@@ -1349,7 +1437,7 @@ llm := openai.New("deepseek-v4-flash",
 )
 ```
 
-##### 3. Custom http.RoundTripper (advanced)
+##### 4. Custom http.RoundTripper (advanced)
 
 Inject headers across all requests at the HTTP layer by wrapping the
 transport. This is useful when you also need custom proxy, TLS, or
@@ -1395,7 +1483,13 @@ The Token Counter is used to estimate the token count of text content. The frame
 
 **Estimation Principle:**
 
-Uses heuristic rules: approximately `N` UTF-8 characters per token, where `N` can be configured via `WithApproxRunesPerToken`.
+Uses heuristic rules: approximately `N` UTF-8 characters per token, where `N` can be configured via `WithApproxRunesPerToken`. `N` is a divisor, not a multiplier:
+
+```text
+estimatedTokens = countedUTF8Runes / N
+```
+
+Therefore, `WithApproxRunesPerToken(1.5)` means approximately `1.5` characters per token. Passing `2.0/3.0` means approximately `0.67` characters per token, which is about `1.5` tokens per character.
 
 **Usage:**
 
@@ -1424,6 +1518,7 @@ counter := model.NewSimpleTokenCounter(
 - **Type**: float64
 - **Default Value**: 4.0 (approx. 4 characters per token, suitable for English scenarios)
 - **Value Constraint**: Values <= 0 will be ignored, keeping the default value
+- **Formula**: estimated tokens = counted UTF-8 characters / `v`; for example, `v=1.5` means approximately `1.5` characters per token
 
 **Recommended Values for Common Languages:**
 
@@ -1568,7 +1663,7 @@ for request-scoped output limits and tool definitions:
 
 > **Context Window Registration**
 >
-> Token Tailoring and session summary `WithContextThreshold` both need a model context window. Built-in model names are resolved automatically. For private deployments, tenant-provided models, or endpoint IDs, prefer model-instance configuration such as `openai.WithContextWindow(32768)` or the unified `provider.WithContextWindow(32768)`. For one-off runs, use `agent.WithModelContextWindow(32768)`. Use `model.RegisterModelContextWindow("my-model", 32768)` only when the name has a stable process-wide meaning. See the [Session Summary documentation](session/summary.md) for a full example.
+> Token Tailoring and session summary `WithContextThreshold` both need a model context window. Built-in model names are resolved automatically. Token Tailoring uses a 128000-token fallback for unknown model names. For private deployments, tenant-provided models, endpoint IDs, or smaller unknown models, prefer model-instance configuration such as `openai.WithContextWindow(32768)` or the unified `provider.WithContextWindow(32768)`. For one-off runs, use `agent.WithModelContextWindow(32768)`. Use `model.RegisterModelContextWindow("my-model", 32768)` only when the name has a stable process-wide meaning. See the [Session Summary documentation](session/summary.md) for a full example.
 
 ```text
 outputReserve = max(ReserveOutputTokens, request.MaxTokens, request.ThinkingTokens)

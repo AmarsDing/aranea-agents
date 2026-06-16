@@ -394,7 +394,7 @@ evt := event.NewResponseEvent("invoke-123", "agent", response)
   `WithStreamInner(true)` 和
   `WithInnerTextMode(agenttool.InnerTextModeExclude)` 搭配使用
 
-Runner 会自动针对需要完成信号的事件（`RequiresCompletion=true`）发送完成信号。注意：自 P0-A1 起，大多数事件（工具响应、LLM 开始事件、StateDelta 事件、Graph 屏障事件）不再设置 `RequiresCompletion=true` 以提升性能。持久化现为异步非阻塞。仅排队用户消息事件仍使用此机制以保证 LLM 处理前消息已持久化。
+Runner 会自动针对需要完成信号的事件（`RequiresCompletion=true`）发送完成信号，使用者无需额外处理。
 
 事件循环中的处理示例：
 

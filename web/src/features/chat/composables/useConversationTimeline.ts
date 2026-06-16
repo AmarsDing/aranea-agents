@@ -292,6 +292,7 @@ function buildSingleTurnFromActivities(
     status,
     durationMs,
     activities: turnTimelineActivities,
+    activityTree: opts.activityTree,
     task: opts.taskContent || rootTask?.content || userMessage?.content_markdown || null,
     result: lastSay?.content || null,
     hasPartialFailure: isPartialFailure,
