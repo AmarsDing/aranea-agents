@@ -165,11 +165,13 @@ llmAgent := llmagent.New(
 
 启用条件与行为：
 
-- 只有在 Session 后端同时实现了 `session.SearchableService` 和
-  `session.WindowService` 时，`WithEnableOnDemandSession(true)` 才会启用
-  这条渐进式披露链路，并暴露
-  `session_search` 和 `session_load`。
-- 当前 `session/pgvector` 支持这条链路；纯内存摘要示例不会暴露这两个工具。
+- `WithEnableOnDemandSession(true)` 会按后端能力暴露按需 session 工具：
+  后端实现 `session.SearchableService` 时暴露 `session_search`，实现
+  `session.WindowService` 时暴露 `session_load`。后端可以只支持其中一个，
+  也可以同时支持两者。
+- `session/pgvector` 同时支持语义发现和精确加载。普通 session 后端只要实现了
+  `WindowService`，即使没有语义 `session_search`，也可以暴露精确的
+  `session_load` 恢复能力。
 - `current_hidden` 会严格搜索当前 session 中、位于 `summary:last_included_ts`
   之前的历史内容。`summary:last_included_ts` 是摘要中记录的
   `last_included_ts` 时间戳，表示该摘要覆盖到的最后一个事件时间。
@@ -192,9 +194,14 @@ llmAgent := llmagent.New(
 推荐使用方式：
 
 1. 先让模型基于当前可见 prompt、summary 和最近历史正常回答。
-2. 如果缺少旧细节，再先调用 `session_search`。
-3. 只有当 `session_search` 返回的小窗口仍然不够时，再调用 `session_load`。
+2. 如果 `session_search` 可用且缺少旧细节，再先调用 `session_search`。
+3. 当已经有 `event_id` 且需要周边原始历史或精确 tool result 时，调用
+   `session_load`；这同样适用于没有语义搜索能力的后端。
 4. 取回的内容应视为历史上下文，而不是当前轮的主动指令。
+
+迁移提示：早期版本只有在 `session_search` 和 `session_load` 同时存在时，
+才认为按需 session 能力可用。现在工具面按能力分别暴露，因此 search-only
+集成可以只暴露 `session_search`，load-only 集成可以只暴露 `session_load`。
 
 ## SessionSummarizer 接口
 
@@ -563,6 +570,8 @@ summarizer := summary.NewSummarizer(
 
 默认情况下，`CheckTokenThreshold` 使用内置的 `SimpleTokenCounter` 基于文本长度估算 token 数量。如果需要自定义 token 计数行为，可以使用 `summary.SetTokenCounter` 设置全局 token 计数器：
 
+`SimpleTokenCounter` 的 `WithApproxRunesPerToken(v)` 表示约 `v` 个 UTF-8 字符对应 1 个 token，估算公式是 `estimatedTokens = countedUTF8Runes / v`。例如 `v=1.5` 表示约 `1.5` 字符/token；不要把它当成 token 乘数。
+
 ```go
 import (
     "context"
@@ -608,6 +617,7 @@ summary.SetTokenCounter(&MyCustomCounter{})
 
 - **全局影响**：`SetTokenCounter` 会影响当前进程中所有的 `CheckTokenThreshold` 评估，建议在应用初始化时一次性设置
 - **默认计数器**：如果不设置，将使用默认的 `SimpleTokenCounter`（约每 token 对应 4 个字符）
+- **参数语义**：`WithApproxRunesPerToken(v)` 中的 `v` 是字符/token。传入 `2.0/3.0` 表示约 `0.67` 字符/token，等价于约 `1.5` token/字符
 
 ## 跳过最近事件
 
@@ -909,11 +919,12 @@ LLM 摘要，也不会像 token tailoring 那样直接丢弃完整消息轮次�
 
 - 只作用于**旧 request** 中超过阈值的 `tool result`，将其内容整体替换为简短占位符，但保留 `ToolID` 和 `ToolName`
 - 当前 request 和最近 `ContextCompactionKeepRecentRequests` 个已完成 request 不受影响
+- 如果 `ToolResultCompactionConfig.SkipRecentFunc` 返回正数，尾部这些 event 所属的 request/invocation 也会被视为 recent，从而跳过 Pass 1
 - 适合清理已不重要的历史工具输出
 
 **Pass 2 — 超大 tool result 截断**（`ContextCompactionOversizedToolResultMaxTokens`，**默认 0 / 关闭**）：
 
-- 作用于**所有 tool result，包括当前 request 的**
+- 作用于**几乎所有 tool result，包括当前 request 的**；`session_load` 自身返回的恢复结果会被跳过，避免恢复片段再次被压缩
 - 超过阈值的 tool result 会使用首尾保留策略截断：保留内容的开头和结尾，中间插入 `[...N characters truncated...]` 标记
 - 这是防止单个超大 tool result 直接撑爆 context window 的安全网（例如 `web_fetch` 返回 800K+ 字符的 HTML）
 
@@ -921,10 +932,20 @@ LLM 摘要，也不会像 token tailoring 那样直接丢弃完整消息轮次�
 
 Pass 2 默认是关闭的（`0`），需要满足两个条件才会生效：(1) `WithEnableContextCompaction(true)` 总开关已打开；(2) `ContextCompactionOversizedToolResultMaxTokens > 0`（推荐显式传入 `8192`，可读取常量 `processor.DefaultContextCompactionOversizedToolResultMaxTokens`）。这样 `EnableContextCompaction=false` 在语义上始终等于"框架不会修改任何 tool result"。
 
+如果需要按工具名控制行为，可以使用 `WithToolResultCompactionConfig(...)`：
+
+- `ForceCleanToolNames`：这些 tool 的历史结果在 context compaction 开启、且 current/recent 保护生效之后会直接替换为策略占位符，适合 shell、grep、日志抓取等高噪声工具
+- `KeepToolNames`：这些 tool 的结果不会被 context compaction 清理，适合 `session_load`、`session_search` 这类模型可能需要逐字读取的恢复工具
+- `SkipRecentFunc`：自定义尾部多少个 event 视为 recent，影响 Pass 0 强制清理和 Pass 1 的"历史"判定；Pass 2 仍会处理 recent/current 中的超大 tool result
+
+如果同一个 tool name 同时出现在 `ForceCleanToolNames` 和 `KeepToolNames` 中，`KeepToolNames` 优先。
+
+当被压缩的事件有 `event_id` 时，占位符或截断标记会携带 `event_id`、`tool_call_id`、`tool_name` 等恢复线索。开启 `WithEnableOnDemandSession(true)` 且后端实现 `session.WindowService` 后，模型可以调用 `session_load`，用 `content_offset` / `content_limit` 精确加载原始 tool result 的小片段。`session_load` 的返回大小由它自己的窗口参数和 `content_limit` 控制；读取超大结果时建议分片加载，而不是一次请求全文。
+
 此外：
 
 - 如果同时开启了 `WithAddSessionSummary(true)`，并且压完后请求仍接近 context window，会在 LLM 调用前同步执行一次 `CreateSessionSummary(...)` 并重建 request
-- 模型层的 token tailoring 仍然作为最后兜底
+- 模型层的 token tailoring 仍然作为最后兜底。它按消息轮次裁剪，因此恢复片段应保持足够小，避免在最后的模型请求中被整体挤出
 - Context compaction 默认使用 `SimpleTokenCounter` 估算 token。如果业务使用了针对中文
   或特定 provider 的自定义 counter，建议同时通过
   `WithContextCompactionTokenCounter(...)` 传入同一个 counter，让 Pass 1 判断和
@@ -932,7 +953,7 @@ Pass 2 默认是关闭的（`0`），需要满足两个条件才会生效：(1) 
 
 ```go
 counter := model.NewSimpleTokenCounter(
-    model.WithApproxRunesPerToken(1.6), // 中文内容较多时的示例值
+    model.WithApproxRunesPerToken(1.6), // 约 1.6 字符/token；该值是除数，不是乘数
 )
 
 modelInstance := openai.New(
@@ -951,8 +972,22 @@ agent := llmagent.New(
     llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),  // Pass 2: 任意超大 result → 首尾保留截断
     llmagent.WithContextCompactionKeepRecentRequests(1),
     llmagent.WithContextCompactionTokenCounter(counter),
+    llmagent.WithToolResultCompactionConfig(&llmagent.ToolResultCompactionConfig{
+        ForceCleanToolNames: []string{"shell", "grep"},
+        KeepToolNames:       []string{"session_load", "session_search"},
+        SkipRecentFunc: func(events []event.Event) int {
+            // 例如保护最后 3 个 event 对应的 request/invocation，
+            // 避免仍在收尾的工具链路被 Pass 1 当成历史清理。
+            return 3
+        },
+    }),
 )
 ```
+
+完整示例见
+[examples/context_compaction](https://github.com/trpc-group/trpc-agent-go/tree/main/examples/context_compaction)。
+该示例会调用真实模型，默认通过 `-debug=true` 打印每次实际发送给模型的
+request，用来检查历史大 `tool result` 是否按预期被替换为占位符。
 
 **上下文结构**：
 

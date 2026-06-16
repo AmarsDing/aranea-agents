@@ -274,6 +274,12 @@ service ChatService {
       body: "*"
     };
   }
+  rpc ConfirmActivity(ConfirmActivityRequest) returns (ConfirmActivityResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/activities/{activity_id}/confirm"
+      body: "*"
+    };
+  }
 }
 
 message SubmitMessageFeedbackRequest {
@@ -286,4 +292,17 @@ message SubmitMessageFeedbackRequest {
 
 message SubmitMessageFeedbackResponse {
   bool accepted = 1;
+}
+
+// ConfirmActivityRequest is the request for confirming a tool-blocked activity.
+message ConfirmActivityRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string activity_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // approved = true → resume tool execution; approved = false → cancel tool
+  bool approved = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ConfirmActivityResponse {
+  bool accepted = 1;
+  string status = 2; // "completed" or "cancelled"
 }

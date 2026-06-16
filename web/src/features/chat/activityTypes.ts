@@ -18,7 +18,9 @@ export type ActivityKind =
   | 'sub_task_board' // Sub-task board (recursive nesting)
   | 'error' // Error information
   | 'delegate' // Spirit delegates to team
-  | 'plan'; // Execution plan (Spirit→Team orchestration)
+  | 'plan' // Execution plan (Spirit→Team orchestration)
+  | 'notice' // System notification
+  | 'confirm'; // User confirmation required
 
 // === ActivityStatus ===
 
@@ -84,6 +86,9 @@ export interface Activity {
   // === Display hints ===
   collapsed: boolean;
   label?: string;
+
+  // === Kind-specific metadata ===
+  meta?: Record<string, unknown>;
 }
 
 // === Activity Tree Node (computed from flat Activity list) ===
@@ -122,6 +127,7 @@ export interface ActivityStartMeta {
   label?: string;
   error_type?: string;
   error_code?: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface ActivityDeltaMeta {

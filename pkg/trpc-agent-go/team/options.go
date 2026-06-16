@@ -20,7 +20,6 @@ type options struct {
 	swarm             SwarmConfig
 	swarmHandoff      swarmHandoffPolicy
 	swarmHandoffInput SwarmHandoffInputBuilder
-	coordinator       CoordinatorConfig
 }
 
 // HistoryScope controls whether and how member AgentTools inherit parent
@@ -219,43 +218,11 @@ func WithSwarmHandoffInputBuilder(builder SwarmHandoffInputBuilder) Option {
 	}
 }
 
-// WithCoordinatorConfig sets safety limits for coordinator-style teams.
-//
-// This only applies to coordinator teams.
-func WithCoordinatorConfig(cfg CoordinatorConfig) Option {
-	return func(o *options) {
-		o.coordinator = cfg
-	}
-}
-
 const (
 	defaultMemberToolSetNamePrefix = "team-members-"
 
 	defaultMemberToolHistoryScope = HistoryScopeParentBranch
-
-	// DefaultMaxCoordinatorToolCalls is the default upper bound on how many
-	// tool-call iterations a coordinator may perform in a single run.
-	// This prevents unbounded loops when the coordinator LLM repeatedly
-	// calls member tools without converging.
-	DefaultMaxCoordinatorToolCalls = 50
 )
-
-// CoordinatorConfig defines optional safety limits for coordinator-style teams.
-type CoordinatorConfig struct {
-	// MaxToolCalls limits how many tool-call iterations the coordinator may
-	// perform in a single run. A zero value means no limit (not recommended
-	// for production use).
-	MaxToolCalls int
-}
-
-// DefaultCoordinatorConfig returns conservative defaults that prevent unbounded
-// coordinator tool-call loops while keeping the limit generous enough for
-// legitimate multi-step orchestration.
-func DefaultCoordinatorConfig() CoordinatorConfig {
-	return CoordinatorConfig{
-		MaxToolCalls: DefaultMaxCoordinatorToolCalls,
-	}
-}
 
 func defaultOptions(teamName string) options {
 	return options{
@@ -263,8 +230,7 @@ func defaultOptions(teamName string) options {
 			name:         defaultMemberToolSetNamePrefix + teamName,
 			historyScope: defaultMemberToolHistoryScope,
 		},
-		swarm:       DefaultSwarmConfig(),
-		coordinator: DefaultCoordinatorConfig(),
+		swarm: DefaultSwarmConfig(),
 	}
 }
 

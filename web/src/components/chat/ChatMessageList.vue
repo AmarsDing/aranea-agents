@@ -37,6 +37,7 @@
         v-for="turn in conversationTurns"
         :key="turn.id"
         :turn="turn"
+        @confirm="(id, approved) => $emit('confirm', id, approved)"
       />
     </div>
     <ChatPendingQueue
@@ -110,6 +111,7 @@ defineEmits<{
   'cancel-pending': [pendingId: string];
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
+  confirm: [activityId: string, approved: boolean];
 }>();
 
 const { t } = useI18n();

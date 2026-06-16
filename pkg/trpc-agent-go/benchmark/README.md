@@ -1,27 +1,22 @@
-# Benchmarks
+[English](README.md) | [中文](README.zh_CN.md)
 
-The benchmark suites that used to live in this directory have moved to the dedicated [`trpc-agent-go-benchmark`](https://github.com/trpc-group/trpc-agent-go-benchmark) repository.
+# trpc-agent-go-benchmark
 
-This keeps the main `trpc-agent-go` repository focused on the framework itself, while benchmark datasets, evaluation assets, and benchmark-specific runners are maintained separately.
+Benchmark suites for `trpc-agent-go`.
 
-## Benchmark Repository
+## Repository Layout
 
-- Repository: https://github.com/trpc-group/trpc-agent-go-benchmark
-- Main entry: https://github.com/trpc-group/trpc-agent-go-benchmark/blob/main/README.md
+- `anthropic_skills`: Agent Skills compatibility and token usage benchmarks.
+- `gaia`: GAIA benchmark implementation and assets.
+- `knowledge`: Knowledge-system evaluation assets and scripts.
+- `memory`: Long-context and memory-backend benchmarks.
+- `summary`: Session summary evaluation assets and runner.
+- `toolsearch`: Tool-search evaluation assets and runner.
 
-## Available Suites
+## Source Repository
 
-- [`anthropic_skills`](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/anthropic_skills): Agent Skills compatibility, token usage, and prompt cache benchmarks.
-- [`gaia`](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/gaia): GAIA benchmark implementation, datasets, and evaluation runner.
-- [`knowledge`](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/knowledge): Knowledge-system evaluation scripts and reports.
-- [`memory`](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/memory): Long-context and memory-backend benchmark suites.
-- [`summary`](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/summary): Session summarization evaluation assets and runner.
-- [`toolsearch`](https://github.com/trpc-group/trpc-agent-go-benchmark/tree/main/toolsearch): Tool-search evaluation assets and runner.
+The main framework repository lives at https://github.com/trpc-group/trpc-agent-go.
 
-## Relationship to `trpc-agent-go`
+## License
 
-The benchmark repository is designed for evaluating or demonstrating `trpc-agent-go`. See the benchmark repository README for suite-specific setup and usage.
-
-For framework documentation, examples, and API usage, continue to use the main repository:
-
-- https://github.com/trpc-group/trpc-agent-go
+This repository is licensed under Apache License 2.0. See [LICENSE](LICENSE).

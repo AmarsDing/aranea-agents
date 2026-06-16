@@ -17,5 +17,5 @@ export async function refreshAgentSessionsForChannel(
   if (context?.entityKind === 'team') return;
   const active = context?.activeAgentId?.trim();
   if (active && active !== aid) return;
-  await sessionStore.loadAgentSessions(aid, { refreshOnly: true });
+  await sessionStore.loadSessions(aid, { refreshOnly: true });
 }

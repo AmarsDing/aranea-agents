@@ -49,14 +49,16 @@ func (m *mockRepo) IncrementStats(ctx context.Context, pluginKey string, delta S
 }
 
 type mockRunRepo struct {
-	insertFn func(ctx context.Context, run Run) error
-	listFn   func(ctx context.Context, q RunQuery) (RunListResult, error)
+	insertFn   func(ctx context.Context, run Run) error
+	listFn     func(ctx context.Context, q RunQuery) (RunListResult, error)
+	deleteAllFn func(ctx context.Context) (int32, error)
 }
 
 func (m *mockRunRepo) Insert(ctx context.Context, run Run) error  { return m.insertFn(ctx, run) }
 func (m *mockRunRepo) List(ctx context.Context, q RunQuery) (RunListResult, error) {
 	return m.listFn(ctx, q)
 }
+func (m *mockRunRepo) DeleteAll(ctx context.Context) (int32, error) { return m.deleteAllFn(ctx) }
 
 type mockScopeAgentLookup struct {
 	agentExistsFn func(ctx context.Context, id string) error
@@ -82,8 +84,9 @@ func noOpRepo() *mockRepo {
 
 func noOpRunRepo() *mockRunRepo {
 	return &mockRunRepo{
-		insertFn: func(_ context.Context, _ Run) error { return nil },
-		listFn:   func(_ context.Context, _ RunQuery) (RunListResult, error) { return RunListResult{}, nil },
+		insertFn:   func(_ context.Context, _ Run) error { return nil },
+		listFn:     func(_ context.Context, _ RunQuery) (RunListResult, error) { return RunListResult{}, nil },
+		deleteAllFn: func(_ context.Context) (int32, error) { return 0, nil },
 	}
 }
 

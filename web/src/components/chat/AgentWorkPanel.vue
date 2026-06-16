@@ -51,7 +51,8 @@
         v-if="agentWork.activities.length"
         :events="agentWork.activities"
         :agent-color="agentWork.agentColor"
-        variant="card"
+        :activity-tree="agentWork.activityTree"
+        @confirm="(id, approved) => $emit('confirm', id, approved)"
       />
     </div>
   </div>
@@ -72,6 +73,10 @@ const { t } = useI18n();
 
 const props = defineProps<{
   agentWork: AgentWorkProcess;
+}>();
+
+defineEmits<{
+  confirm: [activityId: string, approved: boolean];
 }>();
 
 const statusClass = computed(() => ({

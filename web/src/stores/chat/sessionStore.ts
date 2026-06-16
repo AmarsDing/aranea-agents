@@ -124,6 +124,68 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     teamSelectedSessionId.value = null;
   }
 
+  // --- Unified entity-kind-aware methods ---
+
+  /** Load sessions for the current entity kind (agent or team). */
+  async function loadSessions(entityId: string, opts?: { refreshOnly?: boolean }) {
+    if (entityKind.value === 'team') {
+      await loadTeamSessions(entityId);
+    } else {
+      await loadAgentSessions(entityId, opts);
+    }
+  }
+
+  /** Add a session for the current entity kind. */
+  async function addSession(
+    title: string,
+    options?: { dialog_mode?: string; default_provider?: string; default_model?: string },
+  ) {
+    if (entityKind.value === 'team' && selectedTeamId.value) {
+      return addTeamSession(selectedTeamId.value, title, options);
+    }
+    if (_currentAgentId) {
+      return addAgentSession(_currentAgentId, title, options);
+    }
+    return null;
+  }
+
+  /** Remove a session for the current entity kind. */
+  async function removeSessionByKind(sessionId: string) {
+    if (entityKind.value === 'team' && selectedTeamId.value) {
+      return removeTeamSessionLocal(selectedTeamId.value, sessionId);
+    }
+    return removeSessionLocal(sessionId);
+  }
+
+  /** Pin/unpin a session for the current entity kind. */
+  async function setSessionPinnedByKind(sessionId: string, pinned: boolean) {
+    if (entityKind.value === 'team' && selectedTeamId.value) {
+      return setTeamSessionPinnedLocal(selectedTeamId.value, sessionId, pinned);
+    }
+    return setSessionPinnedLocal(sessionId, pinned);
+  }
+
+  /** Rename a session for the current entity kind. */
+  async function renameSessionByKind(sessionId: string, title: string) {
+    if (entityKind.value === 'team' && selectedTeamId.value) {
+      return renameTeamSessionLocal(selectedTeamId.value, sessionId, title);
+    }
+    return renameSessionLocal(sessionId, title);
+  }
+
+  /** Clear all sessions for the current entity kind. */
+  async function clearSessionsByKind() {
+    if (entityKind.value === 'team' && selectedTeamId.value) {
+      clearTeamSessions(selectedTeamId.value);
+      return;
+    }
+    if (_currentAgentId) {
+      await clearAllAgentSessions(_currentAgentId);
+    }
+  }
+
+  // --- Original methods (kept for backward compat, prefer unified methods) ---
+
   async function loadAgentSessions(agentId: string, opts?: { refreshOnly?: boolean }) {
     if (!agentId) return;
     _currentAgentId = agentId;
@@ -515,6 +577,14 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     currentSessionId,
     resetForAgentSwitch,
     resetForTeamSwitch,
+    // Unified entity-kind-aware methods (prefer these)
+    loadSessions,
+    addSession,
+    removeSessionByKind,
+    setSessionPinnedByKind,
+    renameSessionByKind,
+    clearSessionsByKind,
+    // Original methods (for direct agent/team access)
     loadAgentSessions,
     loadTeamSessions,
     addAgentSession,
@@ -527,6 +597,7 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     setTeamSessionPinnedLocal,
     clearAllAgentSessions,
     clearTeamSessions,
+    // Shared helpers
     findSessionById,
     patchSessionMetricsLocal,
     patchSessionStatus,

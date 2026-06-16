@@ -30,6 +30,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/appender"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/barrier"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/flush"
+	"trpc.group/trpc-go/trpc-agent-go/internal/state/livesession"
 	"trpc.group/trpc-go/trpc-agent-go/internal/teamtrace"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -1095,6 +1096,13 @@ type sessionMirrorAgent struct {
 	inv  string
 }
 
+type liveSessionHistoryAgent struct {
+	name            string
+	liveOnlyContent string
+	seenSession     *session.Session
+	sawLiveOnly     bool
+}
+
 const (
 	graphCompletionMsg   = "graph-done"
 	graphCompletionAgent = "graph-completion"
@@ -1322,6 +1330,44 @@ func (m *sessionMirrorAgent) Info() agent.Info {
 }
 func (m *sessionMirrorAgent) SubAgents() []agent.Agent        { return nil }
 func (m *sessionMirrorAgent) FindSubAgent(string) agent.Agent { return nil }
+
+func (m *liveSessionHistoryAgent) Run(
+	ctx context.Context,
+	inv *agent.Invocation,
+) (<-chan *event.Event, error) {
+	_ = ctx
+	invocationID := "live-session-history-agent"
+	author := m.name
+	if inv != nil {
+		invocationID = inv.InvocationID
+		if inv.AgentName != "" {
+			author = inv.AgentName
+		}
+		m.seenSession = inv.Session
+		m.sawLiveOnly = sessionHasAssistantContent(inv.Session, m.liveOnlyContent)
+	}
+
+	ch := make(chan *event.Event, 1)
+	ch <- event.NewResponseEvent(invocationID, author, &model.Response{
+		Done: true,
+		Choices: []model.Choice{{
+			Message: model.NewAssistantMessage("saw-live-session"),
+		}},
+	})
+	close(ch)
+	return ch, nil
+}
+
+func (m *liveSessionHistoryAgent) Tools() []tool.Tool { return nil }
+func (m *liveSessionHistoryAgent) Info() agent.Info {
+	return agent.Info{Name: m.name, Description: "live session history"}
+}
+func (m *liveSessionHistoryAgent) SubAgents() []agent.Agent {
+	return nil
+}
+func (m *liveSessionHistoryAgent) FindSubAgent(string) agent.Agent {
+	return nil
+}
 
 func sessionHasToolResult(
 	sess *session.Session,
@@ -1768,6 +1814,26 @@ func TestTool_ensureUserMessageForCall_SkipsWhenUserExists(t *testing.T) {
 	require.Equal(t, 1, sess.GetEventCount())
 }
 
+func TestTool_ensureUserMessageForCall_AppendsWhenOnlyOtherUserExists(t *testing.T) {
+	at := NewTool(&mockAgent{name: "x", description: "x"})
+	sess := session.NewSession("app", "user", "session")
+	sess.UpdateUserSession(event.NewResponseEvent("other-inv", "user", &model.Response{
+		Choices: []model.Choice{{
+			Message: model.NewUserMessage("existing user"),
+		}},
+	}))
+	inv := agent.NewInvocation(
+		agent.WithInvocationID("child-inv"),
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationMessage(model.NewUserMessage("tool input")),
+	)
+
+	at.ensureUserMessageForCall(context.Background(), inv)
+	require.Equal(t, 2, sess.GetEventCount())
+	require.Equal(t, "child-inv", sess.Events[1].InvocationID)
+	require.Equal(t, "tool input", sess.Events[1].Choices[0].Message.Content)
+}
+
 func TestTool_ensureUserMessageForCall_NilCases(t *testing.T) {
 	at := NewTool(&mockAgent{name: "x", description: "x"})
 	at.ensureUserMessageForCall(context.Background(), nil)
@@ -1830,6 +1896,56 @@ func TestTool_wrapWithCallSemantics_NotifyCompletionError(t *testing.T) {
 	require.True(t, ok)
 	_, ok = <-out
 	require.False(t, ok)
+}
+
+func TestTool_wrapWithCallSemantics_FillsMissingInvocationFields(t *testing.T) {
+	at := NewTool(&mockAgent{name: "child", description: "child"})
+	sess := session.NewSession("app", "user", "session")
+	parent := agent.NewInvocation(
+		agent.WithInvocationID("parent-inv"),
+		agent.WithInvocationAgent(&mockAgent{name: "parent"}),
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationRunOptions(agent.RunOptions{RequestID: "req-1"}),
+		agent.WithInvocationEventFilterKey("parent-filter"),
+	)
+	var appended *event.Event
+	appender.Attach(parent, func(_ context.Context, evt *event.Event) error {
+		copied := *evt
+		appended = &copied
+		return nil
+	})
+	child := parent.Clone(
+		agent.WithInvocationID("child-inv"),
+		agent.WithInvocationAgent(&mockAgent{name: "child"}),
+		agent.WithInvocationBranch("parent/child"),
+		agent.WithInvocationEventFilterKey("child-filter"),
+	)
+
+	src := make(chan *event.Event, 1)
+	evt := event.NewResponseEvent(child.InvocationID, "child", &model.Response{
+		Done: true,
+		Choices: []model.Choice{{
+			Message: model.NewAssistantMessage("child answer"),
+		}},
+	})
+	evt.InvocationID = ""
+	src <- evt
+	close(src)
+
+	out := at.wrapWithCallSemantics(context.Background(), child, src)
+	got, ok := <-out
+	require.True(t, ok)
+	require.Equal(t, "req-1", got.RequestID)
+	require.Equal(t, "child-inv", got.InvocationID)
+	require.Equal(t, "parent-inv", got.ParentInvocationID)
+	require.Equal(t, "parent/child", got.Branch)
+	require.Equal(t, "child-filter", got.FilterKey)
+	_, ok = <-out
+	require.False(t, ok)
+	require.NotNil(t, appended)
+	require.Equal(t, "parent-inv", appended.ParentInvocationID)
+	require.Equal(t, "parent/child", appended.Branch)
+	require.Equal(t, "child-filter", appended.FilterKey)
 }
 
 func TestTool_wrapWithCallSemantics_ForwardsNilEvents(t *testing.T) {
@@ -2205,6 +2321,40 @@ func TestTool_StreamableCall_DefersCompletionToRunner(t *testing.T) {
 	}
 	require.Contains(t, contents, "done")
 	require.Len(t, parent.Session.Events, 0)
+}
+
+func TestTool_StreamableCall_DefersCompletion_FillsMissingInvocationFields(t *testing.T) {
+	const toolCallID = "call-1"
+	parent := agent.NewInvocation(
+		agent.WithInvocationID("parent-inv"),
+		agent.WithInvocationSession(session.NewSession("app", "user", "session")),
+		agent.WithInvocationRunOptions(agent.RunOptions{RequestID: "req-stream"}),
+		agent.WithInvocationEventFilterKey("parent-filter"),
+	)
+	appender.Attach(parent, func(context.Context, *event.Event) error {
+		return nil
+	})
+	at := NewTool(&streamingMockAgent{name: "stream-agent"}, WithStreamInner(true))
+	toolCtx := agent.NewInvocationContext(context.Background(), parent)
+	ctxWithToolCallID := context.WithValue(
+		toolCtx,
+		tool.ContextKeyToolCallID{},
+		toolCallID,
+	)
+
+	reader, err := at.StreamableCall(ctxWithToolCallID, []byte(`{"request":"hi"}`))
+	require.NoError(t, err)
+	defer reader.Close()
+
+	chunk, err := reader.Recv()
+	require.NoError(t, err)
+	ev, ok := chunk.Content.(*event.Event)
+	require.True(t, ok)
+	require.Equal(t, "req-stream", ev.RequestID)
+	require.NotEmpty(t, ev.InvocationID)
+	require.Equal(t, "parent-inv", ev.ParentInvocationID)
+	require.Equal(t, "stream-agent", ev.Branch)
+	require.Contains(t, ev.FilterKey, "stream-agent-")
 }
 
 func TestTool_StreamableCall_DefersCompletion_FlushesVisibleCompletionBeforeBarrierNotification(
@@ -3636,6 +3786,95 @@ func TestTool_callWithParentInvocation_PreservesRunStructuredOutput(t *testing.T
 	seen, schemaName := modelImpl.Snapshot()
 	require.True(t, seen)
 	require.Equal(t, "tool_output", schemaName)
+}
+
+func TestTool_callWithParentInvocation_RestoresLiveSessionFromParallelClone(
+	t *testing.T,
+) {
+	const liveOnlyContent = "live-only-history"
+	liveSess, frozenSess := liveAndFrozenSessionsForTest(t, liveOnlyContent)
+
+	child := &liveSessionHistoryAgent{
+		name:            "live-session-child",
+		liveOnlyContent: liveOnlyContent,
+	}
+	at := NewTool(child, WithHistoryScope(HistoryScopeParentBranch))
+	parent := agent.NewInvocation(
+		agent.WithInvocationSession(frozenSess),
+		agent.WithInvocationEventFilterKey("parent"),
+	)
+	livesession.Attach(parent, liveSess)
+
+	res, err := at.callWithParentInvocation(
+		context.Background(),
+		parent,
+		model.NewUserMessage("hi"),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "saw-live-session", res)
+	require.Same(t, liveSess, child.seenSession)
+	require.True(t, child.sawLiveOnly)
+}
+
+func TestTool_StreamableCall_RestoresLiveSessionFromParallelClone(
+	t *testing.T,
+) {
+	const liveOnlyContent = "live-only-stream-history"
+	liveSess, frozenSess := liveAndFrozenSessionsForTest(t, liveOnlyContent)
+
+	child := &liveSessionHistoryAgent{
+		name:            "live-session-stream-child",
+		liveOnlyContent: liveOnlyContent,
+	}
+	at := NewTool(child, WithStreamInner(true), WithHistoryScope(HistoryScopeParentBranch))
+	parent := agent.NewInvocation(
+		agent.WithInvocationSession(frozenSess),
+		agent.WithInvocationEventFilterKey("parent"),
+	)
+	livesession.Attach(parent, liveSess)
+	ctx := agent.NewInvocationContext(context.Background(), parent)
+
+	reader, err := at.StreamableCall(ctx, []byte(`{"request":"hi"}`))
+	require.NoError(t, err)
+	defer reader.Close()
+	for {
+		_, recvErr := reader.Recv()
+		if recvErr == io.EOF {
+			break
+		}
+		require.NoError(t, recvErr)
+	}
+	require.Same(t, liveSess, child.seenSession)
+	require.True(t, child.sawLiveOnly)
+}
+
+func liveAndFrozenSessionsForTest(
+	t *testing.T,
+	liveOnlyContent string,
+) (*session.Session, *session.Session) {
+	t.Helper()
+	liveSess := session.NewSession("app", "user", "live-session")
+	appendAssistantEventForTest(liveSess, "before-parallel-clone")
+	frozenSess := liveSess.Clone()
+	appendAssistantEventForTest(liveSess, liveOnlyContent)
+	require.False(t, sessionHasAssistantContent(frozenSess, liveOnlyContent))
+	require.True(t, sessionHasAssistantContent(liveSess, liveOnlyContent))
+	return liveSess, frozenSess
+}
+
+func appendAssistantEventForTest(sess *session.Session, content string) {
+	if sess == nil {
+		return
+	}
+	evt := event.NewResponseEvent("parent", "parent", &model.Response{
+		Done: true,
+		Choices: []model.Choice{{
+			Message: model.NewAssistantMessage(content),
+		}},
+	})
+	sess.EventMu.Lock()
+	defer sess.EventMu.Unlock()
+	sess.Events = append(sess.Events, *evt)
 }
 
 func TestTool_Call_WithParentInvocation_FlushError(t *testing.T) {

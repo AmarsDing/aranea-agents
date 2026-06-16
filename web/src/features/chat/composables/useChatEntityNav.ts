@@ -250,11 +250,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     const title = payload.title.trim();
     if (!title) return;
     try {
-      if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
-        await deps.sessionStore.renameTeamSessionLocal(deps.sessionStore.selectedTeamId, payload.id, title);
-        return;
-      }
-      await deps.sessionStore.renameSessionLocal(payload.id, title);
+      await deps.sessionStore.renameSessionByKind(payload.id, title);
     } catch {
       $q.notify({ type: 'negative', message: '重命名失败，请重试' });
     }
@@ -262,11 +258,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
 
   async function onTogglePinSession(payload: { id: string; pinned: boolean }) {
     try {
-      if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
-        await deps.sessionStore.setTeamSessionPinnedLocal(deps.sessionStore.selectedTeamId, payload.id, payload.pinned);
-        return;
-      }
-      await deps.sessionStore.setSessionPinnedLocal(payload.id, payload.pinned);
+      await deps.sessionStore.setSessionPinnedByKind(payload.id, payload.pinned);
     } catch {
       $q.notify({ type: 'negative', message: payload.pinned ? '置顶失败，请重试' : '取消置顶失败，请重试' });
     }

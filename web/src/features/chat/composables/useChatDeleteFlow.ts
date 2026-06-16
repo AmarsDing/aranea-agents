@@ -95,25 +95,14 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   }
 
   async function deleteSession(id: string) {
-    if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
-      await deps.sessionStore.removeTeamSessionLocal(deps.sessionStore.selectedTeamId, id);
-      return;
-    }
-    await deps.sessionStore.removeSessionLocal(id);
-    if (deps.sessionStore.selectedSession) {
+    await deps.sessionStore.removeSessionByKind(id);
+    if (deps.sessionStore.entityKind === 'agent' && deps.sessionStore.selectedSession) {
       await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.selectedSession.id });
     }
   }
 
   async function clearSessions() {
-    if (deps.sessionStore.entityKind === 'agent') {
-      const agentId = deps.appStore.selectedAgent?.id;
-      if (agentId) await deps.sessionStore.clearAllAgentSessions(agentId);
-      return;
-    }
-    if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
-      deps.sessionStore.clearTeamSessions(deps.sessionStore.selectedTeamId);
-    }
+    await deps.sessionStore.clearSessionsByKind();
   }
 
   async function onConfirmDelete() {
@@ -129,7 +118,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
         deps.defaultAgentId.value = (deps.appStore.agents.find((a) => a.agent_key === '__spirit__') || deps.appStore.agents[0])?.id ?? null;
         if (deps.sessionStore.entityKind === 'agent') {
           if (deps.appStore.selectedAgent) {
-            await deps.sessionStore.loadAgentSessions(deps.appStore.selectedAgent.id);
+            await deps.sessionStore.loadSessions(deps.appStore.selectedAgent.id);
             deps.sessionStore.selectedSession = deps.sessionStore.sessions[0] ?? null;
             if (deps.sessionStore.selectedSession) {
               deps.messageStore.clearSessionMessages(deps.sessionStore.selectedSession.id);

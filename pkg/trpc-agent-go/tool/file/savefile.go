@@ -40,7 +40,7 @@ type saveFileResponse struct {
 
 // saveFile performs the save file operation.
 func (f *fileToolSet) saveFile(
-	ctx context.Context,
+	_ context.Context,
 	req *saveFileRequest,
 ) (*saveFileResponse, error) {
 	rsp := &saveFileResponse{
@@ -100,7 +100,6 @@ func (f *fileToolSet) saveFile(
 		)
 		return rsp, fmt.Errorf("writing to file '%s': %w", req.FileName, err)
 	}
-	storeSaveFileView(ctx, filePath, req.Contents, f.createFileMode)
 	rsp.Message = fmt.Sprintf("Successfully saved: %s", req.FileName)
 	return rsp, nil
 }
@@ -111,10 +110,7 @@ func (f *fileToolSet) saveFileTool() tool.CallableTool {
 		f.saveFile,
 		function.WithName("save_file"),
 		function.WithDescription(
-			"Write a text file under base_directory. Creates parent directories automatically. "+
-				"Does not support workspace:// or artifact:// refs (use read_file for those). "+
-				"Set overwrite=true to replace an existing file; otherwise the write fails if the file already exists. "+
-				"For small targeted edits, prefer diff_edit or replace_content instead.",
+			"Write a text file under base_directory (optional overwrite).",
 		),
 	)
 }

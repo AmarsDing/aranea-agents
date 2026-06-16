@@ -154,7 +154,16 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
 	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
-	w, err := NewAutoMemoryWorker(&conf.Runtime{}, 0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.NewNoop())
+	w, err := NewAutoMemoryWorker(AutoMemoryWorkerConfig{
+		RuntimeConf:  &conf.Runtime{},
+		Interval:     0,
+		Sessions:     sessionsUC,
+		Agents:       agentsUC,
+		Writer:       writer,
+		Consolidator: biz.NewHeuristicConsolidator(),
+		Queue:        q,
+		Logger:       loggateway.NewNoop(),
+	})
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
 	}
@@ -197,7 +206,16 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
 	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
-	w, err := NewAutoMemoryWorker(&conf.Runtime{}, 0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.NewNoop())
+	w, err := NewAutoMemoryWorker(AutoMemoryWorkerConfig{
+		RuntimeConf:  &conf.Runtime{},
+		Interval:     0,
+		Sessions:     sessionsUC,
+		Agents:       agentsUC,
+		Writer:       writer,
+		Consolidator: biz.NewHeuristicConsolidator(),
+		Queue:        q,
+		Logger:       loggateway.NewNoop(),
+	})
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
 	}

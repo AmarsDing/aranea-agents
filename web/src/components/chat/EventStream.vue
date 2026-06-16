@@ -1,5 +1,5 @@
 <template>
-  <div class="event-stream" :class="`event-stream--${variant}`">
+  <div class="event-stream">
     <template v-for="(event, idx) in events" :key="event.id">
       <!-- Phase transition indicator between thinking and reply -->
       <div
@@ -18,48 +18,87 @@
         :streaming="event.streaming"
         :duration-ms="event.durationMs"
         :default-collapsed="event.collapsed"
-        :variant="variant"
       />
       <ActionBlock
         v-else-if="event.kind === 'action'"
         :activity="event"
-        :variant="variant"
         :agent-color="agentColor"
       />
       <ReplyBlock
         v-else-if="event.kind === 'reply'"
         :activity="event"
-        :variant="variant"
       />
       <ErrorBlock
         v-else-if="event.kind === 'error'"
         :event="event"
       />
-      <!-- Plan: placeholder until PlanBlock is implemented -->
-      <div v-else-if="event.kind === 'plan'" class="event-stream__plan-placeholder">
-        {{ t('chat.plan.label', '计划') }} ({{ event.steps.length }} {{ t('chat.plan.steps', '步骤') }})
-      </div>
+      <PlanBlock
+        v-else-if="event.kind === 'plan'"
+        :activity="event"
+        :agent-color="agentColor"
+        :child-activities="getChildActivities(event.id)"
+      />
+      <ConfirmBlock
+        v-else-if="event.kind === 'confirm'"
+        :activity="event"
+        @confirm="(id, approved) => $emit('confirm', id, approved)"
+      />
+      <NoticeBlock
+        v-else-if="event.kind === 'notice'"
+        :activity="event"
+      />
       <DelegateActivity v-else-if="event.kind === 'delegate'" :activity="event" />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Activity, ActivityVariant } from '../../features/chat/activityTimelineTypes';
+import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
+import type { ActivityTreeNode } from '../../features/chat/activityTypes';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';
 import ErrorBlock from './ErrorBlock.vue';
+import PlanBlock from './PlanBlock.vue';
+import ConfirmBlock from './ConfirmBlock.vue';
+import NoticeBlock from './NoticeBlock.vue';
 import DelegateActivity from './DelegateActivity.vue';
 
 const { t } = useI18n();
 
-defineProps<{
-  events: Activity[];
+const props = defineProps<{
+  events: TimelineActivity[];
   agentColor?: string;
-  variant?: ActivityVariant;
+  /** Full activity tree for resolving child activities (plan sub-events) */
+  activityTree?: ActivityTreeNode[];
 }>();
+
+defineEmits<{
+  confirm: [activityId: string, approved: boolean];
+}>();
+
+/** Pre-built Map<parentId, children[]> for O(1) child lookup instead of recursive tree search. */
+const childrenMap = computed(() => {
+  const map = new Map<string, ActivityTreeNode[]>();
+  if (!props.activityTree) return map;
+  const walk = (nodes: ActivityTreeNode[]) => {
+    for (const node of nodes) {
+      if (node.children.length > 0) {
+        map.set(node.id, node.children);
+      }
+      walk(node.children);
+    }
+  };
+  walk(props.activityTree);
+  return map;
+});
+
+/** Find child activities for a given parent activity ID — O(1) via pre-built Map. */
+function getChildActivities(parentId: string): ActivityTreeNode[] {
+  return childrenMap.value.get(parentId) ?? [];
+}
 </script>
 
 <style lang="sass" scoped>
@@ -67,9 +106,6 @@ defineProps<{
   display: flex
   flex-direction: column
   gap: 4px
-
-  &--compact
-    gap: 2px
 
   &__transition
     display: flex
@@ -86,9 +122,4 @@ defineProps<{
     font-size: 11px
     color: var(--color-text-tertiary)
     white-space: nowrap
-
-  &__plan-placeholder
-    font-size: 13px
-    color: var(--color-text-secondary)
-    padding: 4px 0
 </style>

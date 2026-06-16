@@ -1592,6 +1592,7 @@ func TestGraphAgent_CreateInitialStateWithContextCompaction(t *testing.T) {
 				},
 			},
 			{
+				ID:        "event-old",
 				RequestID: "req-old",
 				FilterKey: agentName,
 				Response: &model.Response{
@@ -1655,7 +1656,10 @@ func TestGraphAgent_CreateInitialStateWithContextCompaction(t *testing.T) {
 	require.Len(t, messages, 5)
 	require.Equal(t, model.RoleAssistant, messages[0].Role)
 	require.Equal(t, model.RoleTool, messages[1].Role)
-	require.Equal(t, "Historical tool result omitted to save context.", messages[1].Content)
+	require.Contains(t, messages[1].Content, "Historical tool result omitted to save context.")
+	require.Contains(t, messages[1].Content, "event_id: event-old")
+	require.Contains(t, messages[1].Content, "tool_call_id: tool-call-old")
+	require.Contains(t, messages[1].Content, "tool_name: worker")
 	require.Equal(t, "tool-call-old", messages[1].ToolID)
 	require.Equal(t, "worker", messages[1].ToolName)
 	require.Equal(t, model.RoleAssistant, messages[2].Role)
@@ -3197,10 +3201,7 @@ func TestGraphAgent_DisableGraphCompletionEvent_WithAfterCallbackCustomResponse(
 	require.Equal(t, "after callback", last.Response.Choices[0].Message.Content)
 }
 
-func TestGraphAgent_BarrierEmitsEvent(t *testing.T) {
-	// P0-A1: Renamed from TestGraphAgent_BarrierWaitsForCompletion.
-	// Barrier no longer blocks on RequiresCompletion; it emits the event
-	// and the graph continues immediately without waiting for persistence.
+func TestGraphAgent_BarrierWaitsForCompletion(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -3229,11 +3230,26 @@ func TestGraphAgent_BarrierEmitsEvent(t *testing.T) {
 	ch, err := ga.Run(ctx, inv)
 	require.NoError(t, err)
 
-	// Collect all events; the graph should run to completion without
-	// requiring any NotifyCompletion calls since P0-A1 removed the
-	// synchronous wait.
+	var barrierEvt *event.Event
+	select {
+	case barrierEvt = <-ch:
+	case <-ctx.Done():
+		require.NoError(t, ctx.Err(), "did not receive barrier event")
+	}
+	require.NotNil(t, barrierEvt)
+	require.Equal(t, graph.ObjectTypeGraphBarrier, barrierEvt.Object)
+	require.True(t, barrierEvt.RequiresCompletion)
+
+	select {
+	case evt, ok := <-ch:
+		require.False(t, ok, "unexpected event before completion: %+v", evt)
+	default:
+	}
+
+	completionID := agent.GetAppendEventNoticeKey(barrierEvt.ID)
+	require.NoError(t, inv.NotifyCompletion(ctx, completionID))
+
 	var received []*event.Event
-	var sawBarrier bool
 	var sawNodeBarrier bool
 	for {
 		select {
@@ -3241,13 +3257,12 @@ func TestGraphAgent_BarrierEmitsEvent(t *testing.T) {
 			if !ok {
 				goto done
 			}
-			if evt.Object == graph.ObjectTypeGraphBarrier {
-				sawBarrier = true
-				// P0-A1: RequiresCompletion is no longer set.
-				require.False(t, evt.RequiresCompletion)
-			}
 			if evt.Object == graph.ObjectTypeGraphNodeBarrier {
 				sawNodeBarrier = true
+			}
+			if evt.RequiresCompletion {
+				completionID := agent.GetAppendEventNoticeKey(evt.ID)
+				require.NoError(t, inv.NotifyCompletion(ctx, completionID))
 			}
 			received = append(received, evt)
 		case <-ctx.Done():
@@ -3256,7 +3271,6 @@ func TestGraphAgent_BarrierEmitsEvent(t *testing.T) {
 	}
 done:
 	require.NotEmpty(t, received)
-	require.True(t, sawBarrier)
 	require.True(t, sawNodeBarrier)
 	var hasGraphExec bool
 	for _, evt := range received {
@@ -3268,17 +3282,8 @@ done:
 }
 
 func TestGraphAgent_RunWithBarrierEmitError(t *testing.T) {
-	// P0-A1: The original test relied on noticeMu being nil to force
-	// AddNoticeChannelAndWait to fail. Since P0-A1 removed the synchronous
-	// wait, that error path no longer exists. Instead, we trigger an error
-	// in runWithCallbacks by providing an invocation without a session,
-	// which causes createInitialState to proceed but the executor to fail
-	// when it cannot properly initialize the graph run.
-	// We use a cancelled context to make emitStartBarrierAndWait fail;
-	// however, since the error event also uses the same cancelled context,
-	// we verify the error path by checking that the channel closes cleanly.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately so EmitEvent fails.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
 	schema := graph.NewStateSchema().
 		AddField("done", graph.StateField{
@@ -3297,21 +3302,26 @@ func TestGraphAgent_RunWithBarrierEmitError(t *testing.T) {
 	ga, err := New("barrier-error", g)
 	require.NoError(t, err)
 
-	inv := agent.NewInvocation(
-		agent.WithInvocationSession(session.NewSession("app", "u", "s")),
-	)
+	inv := &agent.Invocation{
+		AgentName:    "barrier-error",
+		InvocationID: "inv-barrier-error",
+		// noticeMu left nil to force AddNoticeChannel to fail.
+	}
 	barrier.Enable(inv)
 
 	out := make(chan *event.Event, 1)
 	go ga.runWithBarrier(ctx, inv, out)
 
-	// P0-A1: With a cancelled context, both the barrier event and the error
-	// event fail to emit. The channel should close cleanly with zero events.
 	var events []*event.Event
 	for evt := range out {
 		events = append(events, evt)
 	}
-	require.Empty(t, events)
+
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].Response)
+	require.NotNil(t, events[0].Response.Error)
+	require.Equal(t, model.ErrorTypeFlowError, events[0].Response.Error.Type)
+	require.Contains(t, events[0].Response.Error.Message, "add notice channel")
 }
 
 func TestGraphAgent_RunWithBarrier_DisableGraphExecutorEventsHidesBarrierEvents(

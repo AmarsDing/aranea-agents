@@ -15,7 +15,6 @@ import (
 	"sync"
 
 	"trpc.group/trpc-go/trpc-agent-go/tool"
-	"trpc.group/trpc-go/trpc-agent-go/tool/file/patch"
 )
 
 type compositeToolSet struct {
@@ -74,7 +73,13 @@ type localFileSnapshot struct {
 	OriginalSize int64
 }
 
-type patchHunk = patch.Hunk
+type patchHunk struct {
+	OldStart int      `json:"oldStart"`
+	OldLines int      `json:"oldLines"`
+	NewStart int      `json:"newStart"`
+	NewLines int      `json:"newLines"`
+	Lines    []string `json:"lines"`
+}
 
 type bashInput struct {
 	Command         string `json:"command"`

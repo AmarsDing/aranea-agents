@@ -29,10 +29,8 @@ func withNoopErrorfContext(t *testing.T, fn func()) {
 }
 
 // TestIsToolCallArgumentsJSONRepairEnabled_ReturnsExpected verifies the helper handles nil and boolean pointers.
-// JSON repair is enabled by default (nil or absent option → true).
 func TestIsToolCallArgumentsJSONRepairEnabled_ReturnsExpected(t *testing.T) {
-	// nil invocation → default enabled
-	require.True(t, IsToolCallArgumentsJSONRepairEnabled(nil))
+	require.False(t, IsToolCallArgumentsJSONRepairEnabled(nil))
 
 	enabled := true
 	require.True(t, IsToolCallArgumentsJSONRepairEnabled(&agent.Invocation{
@@ -43,8 +41,7 @@ func TestIsToolCallArgumentsJSONRepairEnabled_ReturnsExpected(t *testing.T) {
 	require.False(t, IsToolCallArgumentsJSONRepairEnabled(&agent.Invocation{
 		RunOptions: agent.RunOptions{ToolCallArgumentsJSONRepairEnabled: &disabled},
 	}))
-	// nil option → default enabled
-	require.True(t, IsToolCallArgumentsJSONRepairEnabled(&agent.Invocation{}))
+	require.False(t, IsToolCallArgumentsJSONRepairEnabled(&agent.Invocation{}))
 }
 
 // TestRepairToolCallArguments_ReturnsOriginalForValidJSON verifies that valid JSON arguments are returned unchanged.

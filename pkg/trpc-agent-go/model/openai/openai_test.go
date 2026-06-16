@@ -2516,7 +2516,7 @@ func TestWithTokenTailoring_ClampsExplicitLimitToHardBudget(t *testing.T) {
 func TestWithEnableTokenTailoring_SimpleMode(t *testing.T) {
 	// Capture the built OpenAI request to check messages count reflects tailoring.
 	var captured *openaigo.ChatCompletionNewParams
-	m := New("gpt-4o-mini", // Known model with 200000 context window
+	m := New("gpt-4o-mini", // Known model with 128000 context window
 		WithEnableTokenTailoring(true),
 		WithChatRequestCallback(func(ctx context.Context, req *openaigo.ChatCompletionNewParams) {
 			captured = req
@@ -2524,9 +2524,9 @@ func TestWithEnableTokenTailoring_SimpleMode(t *testing.T) {
 	)
 
 	// Create many messages to trigger tailoring.
-	// With gpt-4o-mini (contextWindow=200000), maxInputTokens calculated as:
-	// safetyMargin = 200000 * 0.10 = 20000
-	// maxInputTokens = 200000 - 2048 - 512 - 20000 = 177440 (~88.7% of context)
+	// With gpt-4o-mini (contextWindow=128000), maxInputTokens calculated as:
+	// safetyMargin = 128000 * 0.10 = 12800
+	// maxInputTokens = 128000 - 2048 - 512 - 12800 = 112640 (88% of context)
 	// Need ~600 messages * 300 tokens each = ~180000 tokens to exceed limit.
 	messages := []model.Message{model.NewSystemMessage("You are a helpful assistant.")}
 	for i := 0; i < 600; i++ {
@@ -2618,17 +2618,17 @@ func TestWithEnableTokenTailoring_Disabled(t *testing.T) {
 func TestWithEnableTokenTailoring_UnknownModel(t *testing.T) {
 	// Capture the built OpenAI request to check messages count reflects tailoring.
 	var captured *openaigo.ChatCompletionNewParams
-	m := New("unknown-model-xyz", // Unknown model should fallback to default context window
+	m := New("unknown-model-xyz", // Unknown model should fallback to the 128000-token default context window
 		WithEnableTokenTailoring(true),
 		WithChatRequestCallback(func(ctx context.Context, req *openaigo.ChatCompletionNewParams) {
 			captured = req
 		}),
 	)
 
-	// Create many messages to trigger tailoring.
+	// Create messages large enough to trigger tailoring with the unknown-model fallback window.
 	messages := []model.Message{model.NewSystemMessage("You are a helpful assistant.")}
 	for i := 0; i < 50; i++ {
-		messages = append(messages, model.NewUserMessage(fmt.Sprintf("Message %d: %s", i, strings.Repeat("lorem ipsum ", 50))))
+		messages = append(messages, model.NewUserMessage(fmt.Sprintf("Message %d: %s", i, strings.Repeat("lorem ipsum ", 1000))))
 	}
 
 	req := &model.Request{Messages: messages}
@@ -5101,6 +5101,52 @@ func TestModel_GenerateContent_RequestExtraFieldsOverrideModelExtraFields(t *tes
 	require.NotNil(t, captured)
 	assert.Equal(t, "model_value", captured["model_field"])
 	assert.Equal(t, "request-cache", captured["prompt_cache_key"])
+}
+
+func TestModel_GenerateContent_RequestHeadersOverrideModelHeaders(t *testing.T) {
+	var sessionHeader string
+	var tenantHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		sessionHeader = r.Header.Get("X-Session-ID")
+		tenantHeader = r.Header.Get("X-Tenant-ID")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-test",
+			"object":"chat.completion",
+			"created":123,
+			"model":"gpt-3.5-turbo",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]
+		}`))
+	}))
+	defer server.Close()
+
+	m := New(
+		"gpt-3.5-turbo",
+		WithBaseURL(server.URL),
+		WithAPIKey("test-key"),
+		WithHeaders(map[string]string{
+			"X-Session-ID": "model-session",
+			"X-Tenant-ID":  "tenant-a",
+		}),
+	)
+	req := &model.Request{
+		Messages: []model.Message{model.NewUserMessage("test")},
+		Headers: map[string]string{
+			"X-Session-ID": "request-session",
+		},
+	}
+
+	responseChan, err := m.GenerateContent(context.Background(), req)
+	require.NoError(t, err)
+	for range responseChan {
+	}
+
+	assert.Equal(t, "request-session", sessionHeader)
+	assert.Equal(t, "tenant-a", tenantHeader)
 }
 
 // TestNew_WithAllOptions tests creating a model with all available options.

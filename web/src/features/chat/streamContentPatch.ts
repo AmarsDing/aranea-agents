@@ -3,7 +3,6 @@ import type { Message } from './types';
 type StreamExtras = {
   reasoning_markdown?: string;
   reasoning_content?: string;
-  reasoning_as_display?: boolean;
 };
 
 function reasoningFromExtras(extras: StreamExtras): string {
@@ -63,18 +62,6 @@ export function patchStreamingMessage(
 
 export function reasoningMarkdown(message: Message): string {
   return message.reasoning_markdown?.trim() ?? '';
-}
-
-/**
- * Check if content_markdown is a reasoning fallback (LLM produced only reasoning, no separate reply).
- *
- * @deprecated Activity-First architecture resolves this at the backend via
- * ActivityProjector.OnReasoningDone(reasoningAsDisplay=true) → kind=reply.
- * This function is only needed for the legacy message-inference fallback path.
- */
-export function isReasoningAsDisplay(message: Message): boolean {
-  const extras = parseMessageExtras(message.options_json);
-  return extras.reasoning_as_display === true;
 }
 
 /** Map legacy reasoning_content from server rows to reasoning_markdown for UI replay. */

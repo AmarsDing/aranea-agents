@@ -67,6 +67,163 @@ mainAgent := llmagent.New(
 )
 ```
 
+## Dynamic SubAgents and Agent Factories
+
+In trpc-agent-go, a SubAgent is not a different runtime type. It is still an
+ordinary `agent.Agent`. The word "SubAgent" only describes where the Agent is
+visible: it is listed under a parent Agent through `WithSubAgents`, so that the
+parent can delegate work to it.
+
+This distinction is important when you need dynamic Agent construction.
+
+### Root Agent vs. SubAgent
+
+Use the smallest API that matches the problem:
+
+| Need | Recommended API | Why |
+| --- | --- | --- |
+| The whole request should start from a different Agent by name | `runner.WithAgentFactory` + `agent.WithAgentByName` | Runner chooses the root Agent before the run starts. |
+| A parent Agent should delegate to already-built specialists | `llmagent.WithSubAgents` | The parent can immediately describe all specialists to the model. |
+| A parent Agent should delegate to a specialist, but building that specialist is expensive or request-specific | `agent.NewLazyAgent` inside `WithSubAgents` | The parent can advertise the specialist from `agent.Info`, while the concrete Agent is built only if it is invoked. |
+| A tenant, project, or database decides which specialists exist | Build the slice in your application code, then pass it to `WithSubAgents` | Discovery, authorization, and configuration ownership usually belong to the application. |
+
+`runner.WithAgentFactory` is for **root Agent lookup**. It answers: "I already
+know the root Agent name for this run; please create it."
+
+`WithSubAgents` is for **parent-scoped visibility**. It answers: "While this
+parent Agent is running, which specialists may it delegate to?"
+
+Registering an Agent factory on the Runner does not automatically make that
+Agent visible to every parent Agent. This is intentional: different parent
+Agents often need different delegation boundaries.
+
+### Request-Scoped Root Agent with Request-Scoped SubAgents
+
+If the full Agent tree depends on the request, build the parent Agent in a
+Runner factory and pass the request-specific SubAgents into `WithSubAgents`.
+
+```go
+r := runner.NewRunnerWithAgentFactory(
+	"support-app",
+	"support-coordinator",
+	func(ctx context.Context, ro agent.RunOptions) (agent.Agent, error) {
+		tenantID, _ := agent.GetRuntimeStateValue[string](&ro, "tenant_id")
+
+		billingAgent := llmagent.New(
+			"billing-agent",
+			llmagent.WithModel(modelInstance),
+			llmagent.WithDescription("Handles billing and invoice questions"),
+			llmagent.WithInstruction(
+				"Answer billing questions for tenant " + tenantID + ".",
+			),
+		)
+
+		coordinator := llmagent.New(
+			"support-coordinator",
+			llmagent.WithModel(modelInstance),
+			llmagent.WithDescription("Routes support requests to specialists"),
+			llmagent.WithInstruction(
+				"Decide whether to answer directly or transfer to a specialist.",
+			),
+			llmagent.WithSubAgents([]agent.Agent{billingAgent}),
+		)
+		return coordinator, nil
+	},
+)
+
+events, err := r.Run(
+	ctx,
+	userID,
+	sessionID,
+	model.NewUserMessage("Why was my invoice higher this month?"),
+	agent.MergeRuntimeState(map[string]any{
+		"tenant_id": "tenant-001",
+	}),
+)
+_ = events
+_ = err
+```
+
+This pattern keeps ownership clear:
+
+- Your application decides which tenant or project configuration to load.
+- The Runner creates the request-specific root Agent.
+- The parent Agent explicitly receives the SubAgents it is allowed to use.
+
+### Lazy SubAgent Construction
+
+Sometimes the parent only needs a specialist in rare cases. Creating that
+specialist up front may be wasteful if it opens network clients, builds a large
+tool set, or prepares a sandbox.
+
+`agent.NewLazyAgent` solves this small framework boundary. It gives the parent
+an `agent.Info` immediately, so the `transfer_to_agent` tool can show the
+specialist name and description. The concrete Agent is created only when the
+lazy Agent's `Run` method is called.
+
+```go
+lazyBillingAgent := agent.NewLazyAgent(
+	agent.Info{
+		Name:        "billing-agent",
+		Description: "Handles billing and invoice questions",
+	},
+	func(ctx context.Context, ro agent.RunOptions) (agent.Agent, error) {
+		tenantID, _ := agent.GetRuntimeStateValue[string](&ro, "tenant_id")
+
+		return llmagent.New(
+			"billing-agent",
+			llmagent.WithModel(modelInstance),
+			llmagent.WithDescription("Handles billing and invoice questions"),
+			llmagent.WithInstruction(
+				"Answer billing questions for tenant " + tenantID + ".",
+			),
+		), nil
+	},
+)
+
+coordinator := llmagent.New(
+	"support-coordinator",
+	llmagent.WithModel(modelInstance),
+	llmagent.WithDescription("Routes support requests to specialists"),
+	llmagent.WithInstruction(
+		"Use transfer_to_agent when a specialist should handle the request.",
+	),
+	llmagent.WithSubAgents([]agent.Agent{lazyBillingAgent}),
+)
+```
+
+The lazy Agent is still an ordinary `agent.Agent`. The parent sees it through
+the normal `WithSubAgents` mechanism, and `transfer_to_agent` finds it through
+the normal `FindSubAgent` path.
+
+Keep these rules in mind:
+
+- `agent.Info.Name` is the stable transfer target name. The factory should
+  return a concrete Agent with the same name so events and session branches are
+  easy to follow.
+- `NewLazyAgent` is best for leaf specialists. If the specialist itself needs
+  nested SubAgents, build and configure them inside the factory.
+- The framework does not own resources created by the factory. If the factory
+  opens per-request resources, clean them up in your application or callbacks.
+
+### Application-Owned Discovery
+
+The framework deliberately does not prescribe where dynamic SubAgent
+definitions come from. They may come from code, a database, a tenant
+configuration service, a plugin, or files in your own application.
+
+The recommended boundary is:
+
+1. Your application discovers and validates the configuration.
+2. Your application converts that configuration into `agent.Agent` values
+   or `agent.NewLazyAgent(...)` descriptors.
+3. The framework runs the resulting Agents through `WithSubAgents`,
+   `transfer_to_agent`, AgentTool, ChainAgent, ParallelAgent, CycleAgent, or
+   GraphAgent.
+
+This keeps configuration, authorization, and rollout policy in the application
+while preserving the framework's single runtime abstraction: `agent.Agent`.
+
 ## Core Collaboration Patterns
 
 All collaboration patterns are based on the SubAgent concept, implemented through different execution strategies:
@@ -723,6 +880,92 @@ Important behavior:
 
 For custom Agents that do not use `LLMAgent`, see the `runner` guide for the
 low-level `agent.MarkAwaitingUserReply(...)` API.
+
+## Built-in Explorer (Read-only Exploration Agent)
+
+`agent/llmagent/builtin` provides a ready-to-use, read-only "explore / search /
+analyze / inspect" agent preset, so you do not have to hand-write the name,
+description, read-only prompt, and parent-capability inheritance every time.
+
+`builtin.NewExplorer()` returns a plain `agent.Agent`, so both mounting styles
+work:
+
+```go
+import (
+    "trpc.group/trpc-go/trpc-agent-go/agent"
+    "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+    "trpc.group/trpc-go/trpc-agent-go/agent/llmagent/builtin"
+    agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
+)
+
+// Option 1: as a SubAgent, the model hands control over via transfer_to_agent.
+root := llmagent.New("assistant",
+    llmagent.WithModel(modelInstance),
+    llmagent.WithTools(tools),
+    llmagent.WithSubAgents([]agent.Agent{builtin.NewExplorer()}),
+)
+
+// Option 2: wrapped by AgentTool, the model calls explorer synchronously and
+// continues after collecting the result.
+root := llmagent.New("assistant",
+    llmagent.WithModel(modelInstance),
+    llmagent.WithTools(append(tools, agenttool.NewTool(builtin.NewExplorer()))),
+)
+```
+
+Capability inheritance is identical for both: transfer and AgentTool each run
+the sub-agent on a clone of the parent invocation, so the explorer derives its
+default surface from the direct parent invocation at `Run` time.
+
+### Default inheritance
+
+With no options, the explorer inherits from the **direct parent invocation**:
+
+- **User tools**: tools the parent registered via `WithTools` / `WithToolSets`.
+  Framework-injected tools (`transfer_to_agent`, `await_user_reply`, ...) are
+  not inherited.
+- **Knowledge**: the parent's retrieval capability (`knowledge_search`, ...) is
+  regenerated from the parent's knowledge configuration.
+- **Skills / code executor**: regenerated from the parent's configuration so
+  they bind to the child invocation instead of carrying the parent's runtime
+  state.
+- **Model**: inherits the parent invocation's currently resolved model.
+
+### Read-only is an advisory constraint
+
+The explorer's read-only behavior is an **advisory system prompt, not a
+permission boundary**. It is intended as a convenient built-in read-only role:
+the model is instructed to inspect, search, and summarize, but the framework
+does not automatically classify tools as read-only or mutating.
+
+### Customizing the surface
+
+```go
+builtin.NewExplorer(
+    builtin.WithName("explorer"),
+    builtin.WithDescription("Reads and investigates available context without modifying anything."),
+    builtin.WithInstruction(customReadOnlyPrompt),
+    builtin.WithSkills(readOnlySkillsRepo),            // explicit replacement
+    builtin.WithModel(modelInstance),                  // explicit; otherwise inherits parent model
+)
+```
+
+Available options: `WithName`, `WithDescription`, `WithInstruction`,
+`WithTools`, `WithSkills`, `WithModel`, `WithCodeExecutor`, plus the advanced
+escape hatch `WithLLMAgentOptions` (forwards raw `llmagent.Option` values to the
+inner agent; use sparingly).
+
+Behavior notes:
+
+- Without `WithTools`: inherits the parent's user tools at run time. With
+  `WithTools`: uses the explicit set and inherits neither parent user tools nor
+  knowledge.
+- Without `WithSkills` / `WithCodeExecutor`: regenerated from the parent's
+  capabilities at run time.
+- Without `WithModel`: inherits the parent invocation's model; if the parent
+  has no model either, `Run` returns a clear error.
+- No parent invocation (for example when run as a root): nothing is inherited;
+  only explicit configuration is used.
 
 ## Environment Variable Configuration
 

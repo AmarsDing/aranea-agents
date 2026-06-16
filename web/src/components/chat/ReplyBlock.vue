@@ -1,22 +1,15 @@
 <template>
-  <div class="say-activity" :class="`say-activity--${variant}`">
+  <div class="reply-block">
     <!-- Card variant -->
-    <template v-if="variant === 'card'">
-      <div class="say-activity__label">
-        <span class="say-activity__icon">💬</span>
-        <span class="say-activity__label-text">{{ label }}</span>
+    <template>
+      <div class="reply-block__label">
+        <span class="reply-block__icon">💬</span>
+        <span class="reply-block__label-text">{{ label }}</span>
         <span v-if="activity.streaming" class="pulse-dot"></span>
       </div>
-      <div class="say-activity__content">
-        <div class="say-activity__markdown chat-message-prose" v-html="renderedContent"></div>
+      <div class="reply-block__content">
+        <div class="reply-block__markdown chat-message-prose" v-html="renderedContent"></div>
         <span v-if="activity.streaming" class="cursor-blink"></span>
-      </div>
-    </template>
-
-    <!-- Compact variant -->
-    <template v-else>
-      <div class="say-activity__compact">
-        <span class="say-activity__compact-text">{{ previewText }}</span>
       </div>
     </template>
   </div>
@@ -26,14 +19,12 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ReplyEvent } from '../../features/chat/streamEventTypes';
-import type { ActivityVariant } from '../../features/chat/activityTimelineTypes';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 
 const { t } = useI18n();
 
 const props = defineProps<{
   activity: ReplyEvent;
-  variant?: ActivityVariant;
 }>();
 
 const label = computed(() =>
@@ -41,15 +32,10 @@ const label = computed(() =>
 );
 
 const renderedContent = computed(() => renderChatMarkdown(props.activity.content));
-
-const previewText = computed(() => {
-  const text = props.activity.content.replace(/[#*`]/g, '').trim();
-  return text.length > 80 ? text.slice(0, 80) + '…' : text;
-});
 </script>
 
 <style lang="sass" scoped>
-.say-activity
+.reply-block
   &__label
     display: flex
     align-items: center
@@ -72,16 +58,4 @@ const previewText = computed(() => {
     font-size: 14px
     line-height: 1.7
     word-break: break-word
-
-  &__compact
-    padding: 2px 0
-    font-size: 13px
-    color: var(--color-text-primary)
-
-  &__compact-text
-    overflow: hidden
-    text-overflow: ellipsis
-    display: -webkit-box
-    -webkit-line-clamp: 2
-    -webkit-box-orient: vertical
 </style>

@@ -1,4 +1,3 @@
-import { applyStreamingSnapshotToSession } from '../../stores/chatStreamingSnapshots';
 import type { Message } from './types';
 
 export type ChannelFocusLoadDeps = {
@@ -26,10 +25,5 @@ export async function hydrateSessionForChannelFocus(
     await deps.loadMessages({ sessionId: sid, replace: true });
   }
 
-  applyStreamingSnapshotToSession(
-    (s) => deps.getMessages(s),
-    (s, rows) => deps.setMessages(s, rows),
-    sid,
-  );
   deps.ensureChatStream(sid);
 }

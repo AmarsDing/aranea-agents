@@ -17,9 +17,9 @@ import type {
   PlanEntry,
   TeamStatusSummary,
   ProgressSection,
-  TaskBoardNodeData,
 } from './agentTreeTypes';
 import type { StreamEvent } from './streamEventTypes';
+import type { ActivityTreeNode } from './activityTypes';
 
 // ── Conversation Turn ──
 
@@ -46,11 +46,11 @@ export interface AgentWorkProcess {
   /** 活动时间线 — 严格按发生顺序排列 */
   activities: Activity[];
 
+  /** Activity tree for resolving parent-child relationships (plan sub-events) */
+  activityTree?: ActivityTreeNode[];
+
   /** Team 统一面板（Team 模式时存在） */
   panel?: TeamPanel;
-
-  /** TaskBoard 树状节点（Activity-First 模式，有数据时优先渲染 TaskBoard） */
-  taskBoardNodes?: TaskBoardNodeData[];
 
   /** 以下字段从现有 AgentBlock 迁移，保留语义 */
   task: string | null;
@@ -134,8 +134,3 @@ export interface AgentProgress {
   /** 复用 Activity 类型，通过 variant 控制紧凑/展开渲染 */
   activities: Activity[];
 }
-
-// ── Activity Variant ──
-
-/** Activity 渲染变体：card（折叠卡片）或 compact（紧凑行） */
-export type ActivityVariant = 'card' | 'compact';

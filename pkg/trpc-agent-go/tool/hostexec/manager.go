@@ -20,7 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 const (
@@ -34,12 +33,6 @@ const (
 	defaultIODrain    = 1 * time.Second
 	maxTimeoutSeconds = int64((1<<63)-1) /
 		int64(time.Second)
-
-	// defaultMaxForegroundChars limits the total character count returned by
-	// a foreground (blocking) command execution. Outputs exceeding this limit
-	// are truncated with a head+tail preservation strategy so the model can
-	// still see the beginning (structure/headers) and end (exit info/errors).
-	defaultMaxForegroundChars = 1_000_000
 )
 
 var errUnknownSession = errors.New("unknown session id")
@@ -187,7 +180,7 @@ func runForeground(
 		params,
 		timeout,
 		baseEnv,
-		defaultMaxLines,
+		0,
 	)
 	if err != nil {
 		return "", 0, err
@@ -201,15 +194,6 @@ func runForeground(
 	}
 
 	out, code := sess.allOutput()
-
-	// Indicate if the sliding window dropped earlier lines.
-	if sess.lineBase > 0 {
-		out = fmt.Sprintf("[... %d earlier lines omitted ...]\n%s", sess.lineBase, out)
-	}
-
-	// Truncate if total output exceeds character limit.
-	out = truncateOutput(out, defaultMaxForegroundChars)
-
 	return out, code, nil
 }
 
@@ -567,32 +551,4 @@ func (m *manager) close() error {
 
 func intPtr(value int) *int {
 	return &value
-}
-
-// truncateOutput truncates s to at most maxChars runes, keeping the head
-// and tail with a truncation marker in between. This preserves the beginning
-// (usually contains structure/headers) and end (usually contains exit info
-// and errors) of command output. When maxChars is too small for head+tail+
-// marker, it falls back to head-only truncation.
-func truncateOutput(s string, maxChars int) string {
-	if maxChars <= 0 {
-		return s
-	}
-	runeCount := utf8.RuneCountInString(s)
-	if runeCount <= maxChars {
-		return s
-	}
-	removed := runeCount - maxChars
-	marker := fmt.Sprintf("\n\n[... %d characters truncated ...]\n\n", removed)
-	markerLen := utf8.RuneCountInString(marker)
-	available := maxChars - markerLen
-	if available < 2 {
-		runes := []rune(s)
-		return string(runes[:maxChars])
-	}
-	halfBudget := available / 2
-	runes := []rune(s)
-	head := string(runes[:halfBudget])
-	tail := string(runes[runeCount-halfBudget:])
-	return head + marker + tail
 }

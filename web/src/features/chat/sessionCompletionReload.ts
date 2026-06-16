@@ -42,10 +42,11 @@ export async function reloadSessionAfterCompletion(input: {
 
   await input.sessionStore.fetchAndReconcileSession(sessionId);
 
+  // Refresh session list for the current entity kind
   if (input.sessionStore.entityKind === 'agent') {
     const agentId = input.resolveAgentId?.()?.trim();
     if (agentId) {
-      await input.sessionStore.loadAgentSessions(agentId, { refreshOnly: true });
+      await input.sessionStore.loadSessions(agentId, { refreshOnly: true });
     }
     return;
   }
@@ -53,7 +54,7 @@ export async function reloadSessionAfterCompletion(input: {
   if (input.sessionStore.entityKind === 'team') {
     const teamId = input.sessionStore.selectedTeamId?.trim();
     if (teamId) {
-      await input.sessionStore.loadTeamSessions(teamId);
+      await input.sessionStore.loadSessions(teamId);
     }
   }
 }

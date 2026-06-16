@@ -2,7 +2,7 @@ import type { Envelope } from './envelope';
 import type { UseEnvelopeStreamReturn } from './useEnvelopeStream';
 import type { Message } from './types';
 import type { Session } from '../session/types';
-import { upsertToolMessage, finalizeOrphanToolMessages, toolEventFromMessage } from './envelopeToolCall';
+import { finalizeOrphanToolMessages, toolEventFromMessage } from './envelopeToolCall';
 import { patchStreamingMessage } from './streamContentPatch';
 import { createMessageBatchWriter } from './messageStoreBatch';
 import { shouldSessionWsSkipEnvelope } from './inboundSyncRouting';
@@ -10,7 +10,6 @@ import { sessionContextPatchFromEnvelope, isSessionCompressNotice } from './sess
 import type { SessionContextPatch } from './sessionContextPatch';
 
 import { originFromId } from './messageOrigin';
-import { formatErrorWithHint } from './errorCodeHints';
 import {
   createStreamingMessageFromActivity,
   patchStreamingMessageFromDelta,
@@ -64,7 +63,6 @@ export type StreamHandlerCtx = {
   getSessionMetrics?: (
     sessionId: string,
   ) => Pick<Session, 'total_tokens' | 'max_context_used_ratio' | 'input_tokens' | 'output_tokens'> | undefined;
-  onStreamingPatch?: (sessionId: string, patch: { reasoning?: string; partialText?: string; done?: boolean }) => void;
   onRunActivity?: () => void;
   onFirstByteArrived?: () => void;
   /**
@@ -77,85 +75,16 @@ export type StreamHandlerCtx = {
   onExecutionProgress?: (env: Envelope) => void;
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
-  streamIdPrefix?: string;
   /**
    * H-03: Maximum time (ms) to wait for a runner_completion event after the
    * first streaming event arrives. If exceeded, the streaming session is
    * forcefully finalized to prevent messages from being stuck in 'streaming'
-   * status indefinitely. Defaults to 5 minutes if not provided.
+   * status indefinitely. Defaults to 10 minutes if not provided.
    */
   streamTimeoutMs?: number;
-  /** AF mode: route activity envelopes to timeline handler */
+  /** Route activity envelopes to timeline handler */
   onActivityEnvelope?: (env: Envelope) => void;
 };
-
-function streamRowId(ctx: StreamHandlerCtx, sessionId: string): string {
-  const prefix = ctx.streamIdPrefix ?? 'ws-stream';
-  return `${prefix}-${sessionId}`;
-}
-
-/** Remove the "thinking" placeholder message created on run_status=running.
- * Called when real streaming content (text_delta or activity_start) arrives. */
-function removeThinkingPlaceholder(ctx: StreamHandlerCtx, sid: string) {
-  const msgs = ctx.getMessages(sid);
-  const idx = msgs.findIndex((m) => m.id.startsWith('run-') && m.model_name === 'thinking');
-  if (idx >= 0) {
-    const updated = [...msgs];
-    updated.splice(idx, 1);
-    ctx.setMessages(sid, updated);
-  }
-}
-
-/**
- * Snapshot the current streaming message into a standalone assistant message
- * with a stable ID, so that subsequent LLM rounds (after tool calls) get their
- * own streaming message. This enables the Activity Timeline to display each
- * round of thinking/replying as separate ThinkActivity/SayActivity nodes.
- *
- * Returns the new streamId for the next round.
- */
-function snapshotStreamingMessage(
-  messages: Message[],
-  sessionId: string,
-  streamId: string,
-): { messages: Message[]; newStreamId: string } {
-  const streamIdx = messages.findIndex((m) => m.id === streamId);
-  if (streamIdx < 0) return { messages, newStreamId: streamId };
-
-  const streamMsg = messages[streamIdx];
-  // Only snapshot if the streaming message has content (reasoning or text)
-  const hasContent =
-    (streamMsg.content_markdown?.trim() ?? '') !== '' || (streamMsg.reasoning_markdown?.trim() ?? '') !== '';
-  if (!hasContent) return { messages, newStreamId: streamId };
-
-  // Generate a stable ID for the snapshot: ws-snap-{sessionId}-{counter}
-  // Using a monotonic counter instead of Date.now() to avoid collisions
-  // when multiple snapshots occur within the same millisecond.
-  snapshotCounter++;
-  const snapId = `ws-snap-${sessionId}-${snapshotCounter}`;
-  const snapMsg: Message = {
-    ...streamMsg,
-    id: snapId,
-    status: 'ok', // Snapshot is complete — no longer streaming
-  };
-
-  // Replace the streaming message with the snapshot
-  const next = [...messages];
-  next[streamIdx] = snapMsg;
-  return { messages: next, newStreamId: streamId };
-}
-
-// Monotonic counter for message IDs — avoids Date.now() collisions.
-// Used by both legacy snapshot (ws-snap-*) and AF mode (ws-af-*) paths.
-// TECH-DEBT: Module-level mutable state. If parallel streaming sessions
-// ever need isolated counters, move this into StreamHandlerCtx or the
-// bindStreamHandlers closure. For now, shared counter is acceptable because
-// uniqueness (not isolation) is the only requirement.
-let snapshotCounter = 0;
-
-function patchMessages(ctx: StreamHandlerCtx, sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
-  ctx.setMessages(sessionId, patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone));
-}
 
 function markPendingUserFailed(messages: Message[], pendingId: string, errorMessage: string): Message[] {
   return messages.map((m) =>
@@ -250,37 +179,16 @@ export function bindStreamHandlers(
       )
     : null;
 
-  let afMode = false; // AF mode: activity events drive messageStore
-
-  // Structural AF transition: once activity_start(kind=task) is received,
-  // unsubscribe all legacy handlers from the dispatcher. This eliminates the
-  // runtime `if (afMode) return` check on every event and makes the AF
-  // transition structural — legacy handlers are physically removed, not
-  // short-circuited. This prevents any possibility of dual-path processing.
-  const legacyUnsubs: (() => void)[] = [];
-  function activateAFMode() {
-    if (afMode) return;
-    afMode = true;
-    for (const unsub of legacyUnsubs) unsub();
-    legacyUnsubs.length = 0;
-
-    // S-02: Remove any ws-stream-* messages that were created by legacy
-    // handlers before AF mode was activated. These are superseded by the
-    // Activity-First (actv-*) messages that will follow. Without cleanup,
-    // both ws-stream and actv messages coexist until runner_completion reload,
-    // causing visible duplication.
-    const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
-    if (sid) {
-      const msgs = ctx.getMessages(sid);
-      const hasStreamingLegacy = msgs.some(
-        (m) => m.origin?.kind === 'streaming' && m.id.startsWith('ws-stream-') && m.status === 'streaming',
-      );
-      if (hasStreamingLegacy) {
-        const cleaned = msgs.filter(
-          (m) => !(m.origin?.kind === 'streaming' && m.id.startsWith('ws-stream-') && m.status === 'streaming'),
-        );
-        ctx.setMessages(sid, cleaned);
-      }
+  /** Remove the "thinking" placeholder message created on run_status=running.
+   * Called when real streaming content (activity_start) arrives. */
+  function removeThinkingPlaceholder(sid: string) {
+    const msgs = ctx.getMessages(sid);
+    const idx = msgs.findIndex((m) => m.id.startsWith('run-') && m.model_name === 'thinking');
+    if (idx >= 0) {
+      writer?.flushSync();
+      const updated = [...msgs];
+      updated.splice(idx, 1);
+      ctx.setMessages(sid, updated);
     }
   }
 
@@ -288,7 +196,7 @@ export function bindStreamHandlers(
   // (e.g., WS disconnect), force-finalize all streaming/tool_running messages
   // after the timeout expires. The timer starts on the first streaming event
   // and is cleared when runner_completion or error arrives.
-  const STREAM_TIMEOUT_MS = ctx.streamTimeoutMs ?? 5 * 60 * 1_000;
+  const STREAM_TIMEOUT_MS = ctx.streamTimeoutMs ?? 10 * 60 * 1_000;
   let streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let streamStarted = false;
 
@@ -317,14 +225,6 @@ export function bindStreamHandlers(
     }
   }
 
-  function patch(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
-    if (writer) {
-      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, isDone));
-      return;
-    }
-    patchMessages(ctx, sessionId, streamId, env, isDone);
-  }
-
   function applySessionContextPatch(sessionId: string, env: Envelope) {
     if (!ctx.onSessionContextPatch && !ctx.onCompressNotice) return;
     const prev = ctx.getSessionMetrics?.(sessionId);
@@ -346,98 +246,6 @@ export function bindStreamHandlers(
     }),
   );
 
-  legacyUnsubs.push(
-    stream.onType(
-      'text_delta',
-      withSessionFilter(ctx, (env, sid) => {
-      if (!env.content?.text && !env.content?.reasoning) return;
-      ctx.onRunActivity?.();
-      ctx.onFirstByteArrived?.();
-      // Remove placeholder message now that real content is arriving.
-      removeThinkingPlaceholder(ctx, sid);
-      startStreamTimeout();
-      ctx.onStreamingPatch?.(sid, {
-        reasoning: env.content?.reasoning,
-        partialText: env.content?.text,
-      });
-      patch(sid, streamRowId(ctx, sid), env, false);
-    }),
-  ),
-  );
-
-  legacyUnsubs.push(
-    stream.onType(
-    'text_done',
-    withSessionFilter(ctx, (env, sid) => {
-
-      ctx.onStreamingPatch?.(sid, {
-        reasoning: env.content?.reasoning,
-        partialText: env.content?.text,
-        done: true,
-      });
-
-      // The backend resets stream builders when tool_call is detected,
-      // so text_done now contains only the CURRENT round's content (not
-      // accumulated across all rounds). This means we can safely use
-      // replaceText/replaceReasoning to set the authoritative final content
-      // for the current ws-stream-* message.
-      // ws-snap-* messages already contain earlier rounds' content and are
-      // unaffected by this text_done event.
-      const streamId = streamRowId(ctx, sid);
-      patch(sid, streamId, env, true);
-      applySessionContextPatch(sid, env);
-    }),
-  ),
-  );
-
-  legacyUnsubs.push(
-    stream.onType(
-    'tool_call',
-    withSessionFilter(ctx, (env, sid) => {
-
-      if (!env.tool_call) return;
-      ctx.onRunActivity?.();
-
-      // Snapshot the current streaming message before the tool call.
-      // This converts the in-progress ws-stream-* message into a standalone
-      // assistant message (ws-snap-*), so that the next LLM round gets its own
-      // streaming message. This is the key mechanism for separating multiple
-      // rounds of thinking/replying in the Activity Timeline.
-      const streamId = streamRowId(ctx, sid);
-
-      if (writer) {
-        // C-02 fix: perform snapshot inside the writer.update callback so that
-        // the snapshot is computed from the writer's pending state (which may
-        // include unflushed text_delta updates), not from the stale store.
-        writer.update((cur) => {
-          const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
-          return upsertToolMessage(snapped, sid, env, 'before');
-        });
-        return;
-      }
-      // Non-batched path: read directly from store (no pending state to lose)
-      const cur = ctx.getMessages(sid);
-      const { messages: snapped } = snapshotStreamingMessage(cur, sid, streamId);
-      ctx.setMessages(sid, upsertToolMessage(snapped, sid, env, 'before'));
-    }),
-  ),
-  );
-
-  legacyUnsubs.push(
-    stream.onType(
-    'tool_result',
-    withSessionFilter(ctx, (env, sid) => {
-
-      if (!env.tool_call) return;
-      if (writer) {
-        writer.update((cur) => upsertToolMessage(cur, sid, env, 'after'));
-        return;
-      }
-      ctx.setMessages(sid, upsertToolMessage(ctx.getMessages(sid), sid, env, 'after'));
-    }),
-  ),
-  );
-
   stream.onType('run_status', (env: Envelope) => {
     if (env.session_id && env.session_id !== ctx.sessionId) return;
     ctx.onRunActivity?.();
@@ -450,7 +258,7 @@ export function bindStreamHandlers(
       // Create a placeholder assistant message so the user sees "正在思考"
       // immediately instead of staring at a blank screen during the BUILD
       // phase (0-15s). The placeholder is replaced when the first
-      // activity_start or text_delta arrives.
+      // activity_start arrives.
       const sid = ctx.sessionId;
       const placeholderId = `run-${env.metadata?.run_id ?? 'pending'}`;
       const existing = ctx.getMessages(sid);
@@ -459,15 +267,16 @@ export function bindStreamHandlers(
           ...createPlaceholderMessage(placeholderId, sid, 'assistant', ''),
           status: 'streaming',
           model_name: 'thinking',
-          origin: { kind: 'assistant' },
+          origin: { kind: 'streaming', sessionId: sid },
         };
+        writer?.flushSync();
         ctx.setMessages(sid, [...existing, placeholder]);
       }
     } else if (status === 'failed' || status === 'cancelled' || status === 'completed') {
       // Remove the thinking placeholder on terminal status.
-      // Under normal flow, text_delta or activity_start already removed it,
+      // Under normal flow, activity_start already removed it,
       // but guard against edge cases (e.g., empty LLM response).
-      removeThinkingPlaceholder(ctx, ctx.sessionId);
+      removeThinkingPlaceholder(ctx.sessionId);
     }
   });
 
@@ -549,68 +358,6 @@ export function bindStreamHandlers(
     });
   }
 
-  legacyUnsubs.push(
-    stream.onType('runner_completion', async (env: Envelope) => {
-    clearStreamTimeout();
-    ctx.markSendingDone();
-    writer?.flushSync();
-    const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
-    if (!sid) return;
-    // Finalize orphan tool messages but keep ws-stream rows as fallback until
-    // the server-persisted messages arrive via onReloadAfterCompletion.
-    // The merge logic in mergeSessionMessages will deduplicate ws-stream rows
-    // against server messages by matching content + role + session_id, so there
-    // is no visible duplication. This prevents the brief flicker where the
-    // assistant reply disappears between removing ws-stream rows and loading
-    // the persisted version.
-    const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid));
-    ctx.setMessages(sid, finalized);
-    applySessionContextPatch(sid, env);
-    if (shouldSessionWsSkipEnvelope(env)) {
-      return;
-    }
-    try {
-      await ctx.onReloadAfterCompletion(sid);
-    } catch {
-      /* caller may surface errors */
-    }
-  }),
-  );
-
-  legacyUnsubs.push(
-    stream.onType('error', async (env: Envelope) => {
-    clearStreamTimeout();
-    const errType = env.error?.type ?? '';
-    if (errType.startsWith('flow_')) return;
-    const hint = env.error?.hint?.trim();
-    const msg = env.error?.message ?? 'stream failed';
-    const errorCode = env.error?.code;
-    ctx.onErrorNotify(hint ? `${formatErrorWithHint(msg, errorCode)} — ${hint}` : formatErrorWithHint(msg, errorCode));
-    const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
-    writer?.flushSync();
-    if (sid) {
-      // H-02 fix: mark both the pending user message and any active
-      // streaming assistant message as failed, so neither gets stuck
-      // in a non-terminal status.
-      let rows = ctx.getMessages(sid);
-      const pendingUserId = env.request_id?.startsWith('pending-user-') ? env.request_id : latestPendingUserId(rows);
-      if (pendingUserId) {
-        rows = markPendingUserFailed(rows, pendingUserId, msg);
-      }
-      rows = markStreamingMessagesFailed(rows, sid, msg);
-      ctx.setMessages(sid, rows);
-    }
-    ctx.markSendingDone();
-    if (sid && !shouldSessionWsSkipEnvelope(env)) {
-      try {
-        await ctx.onReloadAfterCompletion(sid);
-      } catch {
-        /* caller may surface errors */
-      }
-    }
-  }),
-  );
-
   stream.onType('intent_pass', (env: Envelope) => {
     const meta = env.metadata as Record<string, unknown> | undefined;
     const kind = typeof meta?.intent_kind === 'string' ? meta.intent_kind : '';
@@ -637,10 +384,60 @@ export function bindStreamHandlers(
     );
   }
 
-  // === AF (Activity-First) Handlers ===
-  // When the backend enables ActivityProjector (AF mode), these handlers drive
-  // the messageStore exclusively. AF mode is detected by receiving
-  // activity_start(kind=task) — the root turn activity.
+  // === Fallback handlers for raw error/runner_completion envelopes ===
+  // In AF mode, the backend wraps errors into activity_start(kind=error) and
+  // turn completion into activity_done(kind=task). However, if the backend
+  // sends raw error/runner_completion envelopes (e.g., pre-AF fallback or
+  // infrastructure errors), these handlers ensure the frontend doesn't get
+  // stuck. They are intentionally lightweight — the Activity handlers above
+  // handle the full lifecycle.
+
+  stream.onType('runner_completion', async (env: Envelope) => {
+    clearStreamTimeout();
+    ctx.markSendingDone();
+    writer?.flushSync();
+    const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
+    if (!sid) return;
+    const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid));
+    ctx.setMessages(sid, finalized);
+    applySessionContextPatch(sid, env);
+    if (shouldSessionWsSkipEnvelope(env)) return;
+    try {
+      await ctx.onReloadAfterCompletion(sid);
+    } catch {
+      /* caller may surface errors */
+    }
+  });
+
+  stream.onType('error', async (env: Envelope) => {
+    clearStreamTimeout();
+    const errType = env.error?.type ?? '';
+    if (errType.startsWith('flow_')) return;
+    const msg = env.error?.message ?? 'stream failed';
+    ctx.onErrorNotify(msg);
+    const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
+    writer?.flushSync();
+    if (sid) {
+      let rows = ctx.getMessages(sid);
+      const pendingUserId = env.request_id?.startsWith('pending-user-') ? env.request_id : latestPendingUserId(rows);
+      if (pendingUserId) {
+        rows = markPendingUserFailed(rows, pendingUserId, msg);
+      }
+      rows = markStreamingMessagesFailed(rows, sid, msg);
+      ctx.setMessages(sid, rows);
+    }
+    ctx.markSendingDone();
+    if (sid && !shouldSessionWsSkipEnvelope(env)) {
+      try {
+        await ctx.onReloadAfterCompletion(sid);
+      } catch {
+        /* caller may surface errors */
+      }
+    }
+  });
+
+  // === Activity Handlers ===
+  // These handlers drive the messageStore via Activity envelopes.
 
   stream.onType('activity_start', (env: Envelope) => {
     if (shouldSessionWsSkipEnvelope(env)) return;
@@ -650,18 +447,14 @@ export function bindStreamHandlers(
     const md = (env.metadata ?? {}) as Record<string, unknown>;
     const kind = String(md.kind ?? '');
 
-    // Detect AF mode on root task start — structural transition
     if (kind === 'task') {
-      activateAFMode(); // Unsubscribes all legacy handlers from dispatcher
       ctx.onRunActivity?.();
       ctx.onFirstByteArrived?.();
 
       // Remove the placeholder message created on run_status=running.
-      // The real streaming message will be created by the AF handlers below.
-      removeThinkingPlaceholder(ctx, sid);
+      // The real streaming message will be created by the Activity handlers below.
+      removeThinkingPlaceholder(sid);
     }
-
-    if (!afMode) return; // Only process in AF mode
 
     const rawActivityId = String(md.activity_id ?? '');
     if (!rawActivityId) return; // Guard: activity_id must be present
@@ -669,10 +462,6 @@ export function bindStreamHandlers(
 
     switch (kind) {
       case 'thinking': {
-        // AF mode: Each Activity gets its own message with a unique ID
-        // derived from the backend's activity_id. This ensures that
-        // activity_delta and activity_done events can always find the
-        // correct message, even across multiple ReAct rounds.
         const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
         if (writer && sid === ctx.sessionId) {
           writer.update((cur) => [...cur, newMsg]);
@@ -681,12 +470,9 @@ export function bindStreamHandlers(
           ctx.setMessages(sid, [...msgs, newMsg]);
         }
         startStreamTimeout();
-        // No onStreamingPatch in AF mode — each Activity has its own
-        // message, so delta events update it directly via activity_id.
         break;
       }
       case 'reply': {
-        // Create a new streaming message for this reply Activity
         const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
         if (writer && sid === ctx.sessionId) {
           writer.update((cur) => [...cur, newMsg]);
@@ -696,12 +482,9 @@ export function bindStreamHandlers(
         }
         startStreamTimeout();
         ctx.onFirstByteArrived?.();
-        // No onStreamingPatch in AF mode — each Activity has its own
-        // message, so delta events update it directly via activity_id.
         break;
       }
       case 'action': {
-        // Create tool message for this action Activity
         const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
         if (writer && sid === ctx.sessionId) {
           writer.update((cur) => [...cur, toolMsg]);
@@ -717,6 +500,7 @@ export function bindStreamHandlers(
         const errType = String(md.error_type ?? '');
         if (!errType.startsWith('flow_')) {
           ctx.onErrorNotify?.(errMsg);
+          writer?.flushSync();
           const msgs = ctx.getMessages(sid);
           const withFailed = markStreamingMessagesFailed(msgs, sid, errMsg);
           const pendingId = latestPendingUserId(withFailed);
@@ -728,12 +512,10 @@ export function bindStreamHandlers(
       }
     }
 
-    // Also update activity timeline
     ctx.onActivityEnvelope?.(env);
   });
 
   stream.onType('activity_delta', (env: Envelope) => {
-    if (!afMode) return;
     if (shouldSessionWsSkipEnvelope(env)) return;
     const sid = env.session_id || ctx.sessionId;
     const active = ctx.resolveActiveSessionId();
@@ -743,17 +525,11 @@ export function bindStreamHandlers(
     const chunk = String(md.delta_chunk ?? '');
     if (!chunk) return;
 
-    // Use activity_id to find the correct message — each Activity has
-    // its own unique message ID (actv-<uuid>), so delta events always
-    // target the right message regardless of ReAct round.
     const rawActivityId = String(md.activity_id ?? '');
     if (!rawActivityId) return; // Guard: activity_id must be present
     const activityId = `actv-${rawActivityId}`;
 
     ctx.onRunActivity?.();
-
-    // No onStreamingPatch in AF mode — each Activity has its own message,
-    // so delta events update it directly via activity_id lookup above.
 
     if (writer && sid === ctx.sessionId) {
       writer.update((cur) => {
@@ -779,7 +555,6 @@ export function bindStreamHandlers(
   });
 
   stream.onType('activity_done', async (env: Envelope) => {
-    if (!afMode) return;
     if (shouldSessionWsSkipEnvelope(env)) return;
     const sid = env.session_id || ctx.sessionId;
     const active = ctx.resolveActiveSessionId();
@@ -791,7 +566,6 @@ export function bindStreamHandlers(
 
     switch (kind) {
       case 'thinking': {
-        // Finalize the thinking message using its activity_id
         if (!activityId) break;
         writer?.flushSync();
         const msgs = ctx.getMessages(sid);
@@ -805,7 +579,6 @@ export function bindStreamHandlers(
         break;
       }
       case 'reply': {
-        // Finalize the reply message using its activity_id
         if (!activityId) break;
         writer?.flushSync();
         const msgs = ctx.getMessages(sid);
@@ -819,7 +592,6 @@ export function bindStreamHandlers(
         break;
       }
       case 'action': {
-        // Update tool message with result
         const toolCallId = String(md.tool_call_id ?? '');
         const actId = `act-${toolCallId}`;
         if (writer && sid === ctx.sessionId) {
@@ -853,10 +625,6 @@ export function bindStreamHandlers(
         break;
       }
       case 'task': {
-        // Equivalent to runner_completion — but in AF mode, Activity events
-        // already provide complete per-round data. Skip message reload to
-        // prevent the server's merged assistant message from replacing the
-        // correctly separated streaming state (which would cause UI jumping).
         clearStreamTimeout();
         ctx.markSendingDone();
         writer?.flushSync();
@@ -881,7 +649,6 @@ export function bindStreamHandlers(
   });
 
   stream.onType('activity_child_start', (env: Envelope) => {
-    if (!afMode) return;
     ctx.onActivityEnvelope?.(env);
   });
 

@@ -37,7 +37,7 @@ func TestRetriever_Search_EmptyQuery(t *testing.T) {
 		t.Fatalf("expected apierror.Error, got %T", err)
 	}
 	if ke.Domain != apierror.DomainKnowledge {
-		t.Fatalf("expected reason KNOWLEDGE, got %q", ke.Reason)
+		t.Fatalf("expected domain KNOWLEDGE, got %q", ke.Domain)
 	}
 }
 

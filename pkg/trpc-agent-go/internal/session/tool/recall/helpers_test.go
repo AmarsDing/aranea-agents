@@ -12,6 +12,7 @@ package recall
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,14 @@ func TestSupportChecks(t *testing.T) {
 	require.False(t, SupportsSearch(nil))
 	require.False(t, SupportsLoad(nil))
 	require.False(t, SupportsOnDemandSession(nil))
+
+	loadOnlyInv := agent.NewInvocation(
+		agent.WithInvocationSession(session.NewSession("app", "user", "sess")),
+		agent.WithInvocationSessionService(sessioninmemory.NewSessionService()),
+	)
+	require.False(t, SupportsSearch(loadOnlyInv))
+	require.True(t, SupportsLoad(loadOnlyInv))
+	require.True(t, SupportsOnDemandSession(loadOnlyInv))
 
 	inv := agent.NewInvocation(
 		agent.WithInvocationSession(session.NewSession("app", "user", "sess")),
@@ -77,6 +86,9 @@ func TestCurrentSummaryCutoff_StateAndSummaryFallbacks(t *testing.T) {
 
 	updatedAt := time.Date(2025, 4, 7, 11, 0, 0, 0, time.UTC)
 	childUpdatedAt := updatedAt.Add(2 * time.Minute)
+	fullCutoff := updatedAt.Add(-2 * time.Minute)
+	earliestChildCutoff := updatedAt.Add(-time.Minute)
+	childCutoff := updatedAt.Add(time.Minute)
 	sess := session.NewSession(
 		"app",
 		"user",
@@ -85,10 +97,26 @@ func TestCurrentSummaryCutoff_StateAndSummaryFallbacks(t *testing.T) {
 			"team/child": {
 				Summary:   "team child summary",
 				UpdatedAt: childUpdatedAt,
+				Boundary: session.NewSummaryBoundary(
+					"team/child",
+					childCutoff,
+				),
+			},
+			"team/earlier": {
+				Summary:   "team earlier summary",
+				UpdatedAt: childUpdatedAt,
+				Boundary: session.NewSummaryBoundary(
+					"team/earlier",
+					earliestChildCutoff,
+				),
 			},
 			session.SummaryFilterKeyAllContents: {
 				Summary:   "full summary",
 				UpdatedAt: updatedAt,
+				Boundary: session.NewSummaryBoundary(
+					session.SummaryFilterKeyAllContents,
+					fullCutoff,
+				),
 			},
 		}),
 	)
@@ -98,21 +126,74 @@ func TestCurrentSummaryCutoff_StateAndSummaryFallbacks(t *testing.T) {
 		agent.WithInvocationSession(sess),
 		agent.WithInvocationEventFilterKey("team"),
 	)
-	assert.Equal(t, childUpdatedAt, currentSummaryCutoff(inv))
+	assert.Equal(t, earliestChildCutoff, currentSummaryCutoff(inv))
+
+	otherInv := agent.NewInvocation(
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationEventFilterKey("other"),
+	)
+	assert.Equal(t, fullCutoff, currentSummaryCutoff(otherInv))
 
 	exactUpdatedAt := updatedAt.Add(4 * time.Minute)
+	exactCutoff := updatedAt.Add(3 * time.Minute)
 	sess.Summaries["team"] = &session.Summary{
 		Summary:   "team summary",
 		UpdatedAt: exactUpdatedAt,
+		Boundary: session.NewSummaryBoundary(
+			"team",
+			exactCutoff,
+		),
 	}
-	assert.Equal(t, exactUpdatedAt, currentSummaryCutoff(inv))
+	assert.Equal(t, exactCutoff, currentSummaryCutoff(inv))
 
 	lastIncludedAt := updatedAt.Add(-time.Minute)
 	sess.SetState(
 		summaryLastIncludedTsKey,
 		[]byte(lastIncludedAt.Format(time.RFC3339Nano)),
 	)
-	assert.Equal(t, lastIncludedAt, currentSummaryCutoff(inv))
+	assert.Equal(t, exactCutoff, currentSummaryCutoff(inv))
+
+	stateOnly := session.NewSession("app", "user", "state-only")
+	stateOnly.SetState(
+		summaryLastIncludedTsKey,
+		[]byte(lastIncludedAt.Format(time.RFC3339Nano)),
+	)
+	stateOnlyInv := agent.NewInvocation(
+		agent.WithInvocationSession(stateOnly),
+		agent.WithInvocationEventFilterKey("team"),
+	)
+	assert.Equal(t, lastIncludedAt, currentSummaryCutoff(stateOnlyInv))
+}
+
+func TestCurrentSummaryCutoff_PrefixMissingCutoff(t *testing.T) {
+	updatedAt := time.Date(2025, 4, 7, 11, 0, 0, 0, time.UTC)
+	sess := session.NewSession(
+		"app",
+		"user",
+		"sess",
+		session.WithSessionSummaries(map[string]*session.Summary{
+			"team/a": {
+				Summary: "team a summary",
+				Boundary: session.NewSummaryBoundary(
+					"team/a",
+					updatedAt,
+				),
+			},
+			"team/b": {
+				Summary: "team b summary",
+			},
+		}),
+	)
+	sess.SetState(
+		summaryLastIncludedTsKey,
+		[]byte(updatedAt.Format(time.RFC3339Nano)),
+	)
+	inv := agent.NewInvocation(
+		agent.WithInvocationSession(sess),
+		agent.WithInvocationEventFilterKey("team"),
+	)
+
+	assert.True(t, currentSummaryCutoff(inv).IsZero())
 }
 
 func TestExtractSessionMessageText(t *testing.T) {
@@ -179,7 +260,7 @@ func TestExtractSessionMessageText(t *testing.T) {
 }
 
 func TestLoadedMessagesFromWindow_SkipsUnusableEntries(t *testing.T) {
-	require.Nil(t, loadedMessagesFromWindow(nil))
+	require.Nil(t, loadedMessagesFromWindow(nil, loadContentWindow{}))
 
 	window := &session.EventWindow{
 		Entries: []session.EventWindowEntry{
@@ -215,10 +296,302 @@ func TestLoadedMessagesFromWindow_SkipsUnusableEntries(t *testing.T) {
 		},
 	}
 
-	messages := loadedMessagesFromWindow(window)
+	messages := loadedMessagesFromWindow(window, loadContentWindow{})
 	require.Len(t, messages, 1)
 	assert.Equal(t, "evt-user", messages[0].EventID)
 	assert.Equal(t, "hello", messages[0].Content)
+}
+
+func TestLoadToolResolvesToolCallIDFromSessionService(t *testing.T) {
+	sess := session.NewSession("app", "user", "sess")
+	sess.Events = []event.Event{
+		{
+			ID: "evt-tool-result",
+			Response: &model.Response{
+				Choices: []model.Choice{{
+					Message: model.Message{
+						Role:    model.RoleTool,
+						ToolID:  "call-1",
+						Content: "tool result",
+					},
+				}},
+			},
+		},
+	}
+	svc := &mockSessionService{
+		Service: sessioninmemory.NewSessionService(),
+		getSessionFunc: func(
+			key session.Key,
+			_ ...session.Option,
+		) (*session.Session, error) {
+			assert.Equal(t, "sess", key.SessionID)
+			return sess, nil
+		},
+		window: &session.EventWindow{
+			AnchorEventID: "evt-tool-result",
+			Entries: []session.EventWindowEntry{{
+				Event:     sess.Events[0],
+				CreatedAt: time.Date(2025, 4, 7, 11, 0, 0, 0, time.UTC),
+			}},
+		},
+	}
+	inv := agent.NewInvocation(
+		agent.WithInvocationSession(session.NewSession("app", "user", "sess")),
+		agent.WithInvocationSessionService(svc),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), inv)
+
+	args, err := json.Marshal(&LoadSessionRequest{ToolCallID: " call-1 "})
+	require.NoError(t, err)
+	result, err := NewLoadTool().Call(ctx, args)
+	require.NoError(t, err)
+
+	resp, ok := result.(*LoadSessionResponse)
+	require.True(t, ok)
+	assert.Equal(t, "evt-tool-result", resp.EventID)
+	assert.Equal(t, "evt-tool-result", svc.lastWindowReq.AnchorEventID)
+}
+
+func TestLoadToolEventIDSelectsMatchingToolCallID(t *testing.T) {
+	svc := &mockSessionService{
+		Service: sessioninmemory.NewSessionService(),
+		window: &session.EventWindow{
+			AnchorEventID: "evt-anchor",
+			Entries: []session.EventWindowEntry{{
+				Event: event.Event{
+					ID: "evt-anchor",
+					Response: &model.Response{
+						Choices: []model.Choice{
+							{
+								Message: model.Message{
+									Role:    model.RoleTool,
+									ToolID:  "call-other",
+									Content: "wrong-tool-result",
+								},
+							},
+							{
+								Message: model.Message{
+									Role:    model.RoleTool,
+									ToolID:  "call-anchor",
+									Content: "0123456789",
+								},
+							},
+						},
+					},
+				},
+			}},
+		},
+	}
+	inv := agent.NewInvocation(
+		agent.WithInvocationSession(session.NewSession("app", "user", "sess")),
+		agent.WithInvocationSessionService(svc),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), inv)
+
+	args, err := json.Marshal(&LoadSessionRequest{
+		EventID:       "evt-anchor",
+		ToolCallID:    "call-anchor",
+		ContentOffset: 2,
+		ContentLimit:  3,
+	})
+	require.NoError(t, err)
+	result, err := NewLoadTool().Call(ctx, args)
+	require.NoError(t, err)
+
+	resp, ok := result.(*LoadSessionResponse)
+	require.True(t, ok)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "234", resp.Messages[0].Content)
+	assert.Equal(t, 2, resp.Messages[0].ContentOffset)
+}
+
+func TestLoadToolReturnsSessionServiceFallbackError(t *testing.T) {
+	svc := &mockSessionService{
+		Service: sessioninmemory.NewSessionService(),
+		getSessionFunc: func(
+			session.Key,
+			...session.Option,
+		) (*session.Session, error) {
+			return nil, assert.AnError
+		},
+	}
+	inv := agent.NewInvocation(
+		agent.WithInvocationSession(session.NewSession("app", "user", "sess")),
+		agent.WithInvocationSessionService(svc),
+	)
+	ctx := agent.NewInvocationContext(context.Background(), inv)
+
+	args, err := json.Marshal(&LoadSessionRequest{ToolCallID: "call-1"})
+	require.NoError(t, err)
+	_, err = NewLoadTool().Call(ctx, args)
+	require.ErrorIs(t, err, assert.AnError)
+}
+
+func TestToolCallIDLookupAndContentWindowBoundaries(t *testing.T) {
+	assert.Empty(t, toolResultEventIDByToolCallID(nil, " "))
+	assert.Empty(t, toolResultEventIDByToolCallID([]event.Event{
+		{
+			ID: "evt-partial",
+			Response: &model.Response{
+				IsPartial: true,
+				Choices: []model.Choice{{
+					Message: model.Message{
+						Role:   model.RoleTool,
+						ToolID: "call-1",
+					},
+				}},
+			},
+		},
+	}, "call-1"))
+
+	offset, limit := normalizeContentWindow(-10, maxContentLimit+1)
+	assert.Equal(t, 0, offset)
+	assert.Equal(t, maxContentLimit, limit)
+
+	offset, limit, apply := contentWindowForToolResult(
+		"evt-neighbor",
+		"call-neighbor",
+		loadContentWindow{ToolCallID: "call-anchor", Limit: 4},
+	)
+	assert.False(t, apply)
+	assert.Equal(t, 0, offset)
+	assert.Equal(t, 0, limit)
+
+	assert.False(t, isAnchorToolResult(
+		"evt-anchor",
+		"call-other",
+		loadContentWindow{ToolCallID: "call-anchor"},
+	))
+}
+
+func TestLoadedMessageFromModelMessageContentPartsAndSlicingEdges(t *testing.T) {
+	part1 := "  "
+	part2 := "alpha"
+	part3 := "beta"
+	loaded, ok := loadedMessageFromModelMessage(
+		"evt-parts",
+		time.Date(2025, 4, 7, 11, 0, 0, 0, time.UTC),
+		model.Message{
+			ContentParts: []model.ContentPart{
+				{},
+				{Text: &part1},
+				{Text: &part2},
+				{Text: &part3},
+			},
+		},
+		loadContentWindow{},
+	)
+	require.True(t, ok)
+	assert.Equal(t, model.RoleAssistant, loaded.Role)
+	assert.Equal(t, "alpha\nbeta", loaded.Content)
+
+	_, ok = loadedMessageFromModelMessage(
+		"evt-empty",
+		time.Time{},
+		model.Message{ContentParts: []model.ContentPart{{Text: &part1}}},
+		loadContentWindow{},
+	)
+	assert.False(t, ok)
+
+	_, ok = loadedMessageFromModelMessage(
+		"evt-system",
+		time.Time{},
+		model.Message{Role: model.RoleSystem, Content: "system"},
+		loadContentWindow{},
+	)
+	assert.False(t, ok)
+
+	loaded, ok = loadedMessageFromModelMessage(
+		"evt-tool",
+		time.Time{},
+		model.Message{
+			Role:    model.RoleTool,
+			ToolID:  "call-1",
+			Content: "short",
+		},
+		loadContentWindow{AnchorEventID: "evt-tool", Limit: maxContentLimit},
+	)
+	require.True(t, ok)
+	assert.Equal(t, "short", loaded.Content)
+	assert.Equal(t, 5, loaded.ReturnedBytes)
+	assert.False(t, loaded.ContentTruncated)
+
+	loaded, ok = loadedMessageFromModelMessage(
+		"evt-tool-parts",
+		time.Time{},
+		model.Message{
+			Role: model.RoleTool,
+			ContentParts: []model.ContentPart{
+				{Text: &part2},
+				{Text: &part3},
+			},
+			ToolID:   "call-parts",
+			ToolName: "parts_tool",
+		},
+		loadContentWindow{AnchorEventID: "evt-tool-parts", Limit: 64},
+	)
+	require.True(t, ok)
+	assert.Equal(t, "parts_tool: alpha\nbeta", loaded.Content)
+	assert.Equal(t, len("alpha\nbeta"), loaded.ContentBytes)
+
+	loaded, ok = loadedMessageFromModelMessage(
+		"evt-slice",
+		time.Time{},
+		model.Message{
+			Role:    model.RoleTool,
+			ToolID:  "call-slice",
+			Content: "0123456789",
+		},
+		loadContentWindow{ToolCallID: "call-slice", Offset: 3, Limit: 4},
+	)
+	require.True(t, ok)
+	assert.Equal(t, "3456", loaded.Content)
+	assert.Equal(t, 3, loaded.ContentOffset)
+	assert.Equal(t, 4, loaded.ReturnedBytes)
+	assert.True(t, loaded.ContentTruncated)
+
+	sliced, start, returned, truncated := sliceContentByBytes("你好", 100, 3)
+	assert.Empty(t, sliced)
+	assert.Equal(t, len("你好"), start)
+	assert.Equal(t, 0, returned)
+	assert.True(t, truncated)
+
+	sliced, start, returned, truncated = sliceContentByBytes("你a", 2, 1)
+	assert.Equal(t, "你", sliced)
+	assert.Equal(t, 0, start)
+	assert.Equal(t, len("你"), returned)
+	assert.True(t, truncated)
+}
+
+func TestToolResultSnippetTruncationFollowsVisibleSnippet(t *testing.T) {
+	content := strings.Repeat("你", maxSnippetLength)
+	result := session.EventSearchResult{
+		Event: event.Event{
+			ID: "evt-tool",
+			Response: &model.Response{
+				Choices: []model.Choice{{
+					Message: model.Message{
+						Role:    model.RoleTool,
+						ToolID:  "call-1",
+						Content: content,
+					},
+				}},
+			},
+		},
+	}
+
+	_, _, contentBytes, isTool := toolResultMetadata(result.Event)
+	require.True(t, isTool)
+	require.Greater(t, contentBytes, maxSnippetLength)
+	snippet, truncated := resultSnippetWithTruncation(result, nil)
+	assert.Equal(t, content, snippet)
+	assert.False(t, truncated)
+
+	longResult := result
+	longResult.Event.Response.Choices[0].Message.Content += "超"
+	snippet, truncated = resultSnippetWithTruncation(longResult, nil)
+	assert.True(t, strings.HasSuffix(snippet, "..."))
+	assert.True(t, truncated)
 }
 
 func TestSearchHelperFunctions(t *testing.T) {
@@ -502,7 +875,7 @@ func TestLexicalScanSessionEvents_HonorsCutoffAndTopK(t *testing.T) {
 		},
 		"budget planning friday",
 		"",
-		base.Add(90*time.Second),
+		session.NewSummaryBoundary("", base.Add(90*time.Second)),
 		1,
 	)
 	require.Len(t, results, 1)
@@ -548,7 +921,7 @@ func TestLexicalScanSessionEvents_HonorsFilterKey(t *testing.T) {
 		session.Key{AppName: "app", UserID: "user", SessionID: "sess"},
 		"budget planning",
 		"branch/a",
-		time.Time{},
+		nil,
 		5,
 	)
 	require.Len(t, results, 1)
@@ -835,8 +1208,8 @@ func TestSearchHelpers_EdgeBranches(t *testing.T) {
 	assert.Empty(t, keywordSearchQuery("the and or"))
 	assert.Nil(t, keywordTokens("the and or"))
 
-	assert.Nil(t, lexicalScanSessionEvents(nil, session.Key{}, "alpha", "", time.Time{}, 1))
-	assert.Nil(t, lexicalScanSessionEvents(session.NewSession("app", "user", "sess"), session.Key{}, "", "", time.Time{}, 1))
+	assert.Nil(t, lexicalScanSessionEvents(nil, session.Key{}, "alpha", "", nil, 1))
+	assert.Nil(t, lexicalScanSessionEvents(session.NewSession("app", "user", "sess"), session.Key{}, "", "", nil, 1))
 
 	assert.Zero(
 		t,
@@ -955,7 +1328,7 @@ func TestSearchSessionHistory_AndScanErrorBranches(t *testing.T) {
 			},
 		},
 		&SearchSessionRequest{Query: "alpha"},
-		time.Time{},
+		nil,
 	)
 	require.Error(t, err)
 
@@ -974,7 +1347,7 @@ func TestSearchSessionHistory_AndScanErrorBranches(t *testing.T) {
 			},
 		},
 		&SearchSessionRequest{Query: "alpha"},
-		time.Time{},
+		nil,
 	)
 	require.Error(t, err)
 
@@ -993,7 +1366,7 @@ func TestSearchSessionHistory_AndScanErrorBranches(t *testing.T) {
 			},
 		},
 		&SearchSessionRequest{Query: "alpha"},
-		time.Time{},
+		nil,
 	)
 	require.NoError(t, err)
 	assert.Nil(t, results)

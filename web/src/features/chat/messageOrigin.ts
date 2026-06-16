@@ -6,7 +6,7 @@ export type { MessageOrigin };
  * Derive MessageOrigin from a message ID using prefix conventions.
  *
  * This is a **migration bridge**: existing in-flight messages still carry
- * prefix-based IDs (pending-user-*, ws-stream-*, member-*, act-*, tool-*).
+ * prefix-based IDs (pending-user-*, member-*, act-*, tool-*).
  * Once all message creation sites set `origin` explicitly at construction time,
  * this function can be removed and `ensureOrigin` can simply assert `message.origin`.
  *
@@ -15,10 +15,6 @@ export type { MessageOrigin };
  */
 export function originFromId(id: string, role: string): MessageOrigin {
   if (id.startsWith('pending-user-')) return { kind: 'pending_user', localId: id };
-  if (id.startsWith('ws-stream-') || id.startsWith('ws-team-stream-'))
-    return { kind: 'streaming', sessionId: id.replace(/^ws-(team-)?stream-/, '') };
-  if (id.startsWith('ws-snap-'))
-    return { kind: 'streaming_snapshot', sessionId: id.replace(/^ws-snap-/, '').replace(/-\d+$/, '') };
   if (id.startsWith('actv-'))
     return { kind: 'streaming', sessionId: '' };
   if (id.startsWith('member-')) return { kind: 'team_member', agentKey: id.replace(/^member-/, '') };

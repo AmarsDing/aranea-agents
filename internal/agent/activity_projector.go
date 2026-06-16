@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -18,6 +19,21 @@ import (
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
+
+// Graph node event object types (mirrored from trpc-agent-go/graph to avoid
+// importing the graph package, which pulls in broken transitive dependencies).
+const (
+	graphObjectTypeNodeStart   = "graph.node.start"
+	graphObjectTypeNodeComplete = "graph.node.complete"
+	graphObjectTypeNodeError   = "graph.node.error"
+	graphMetadataKeyNode       = "_node_metadata"
+)
+
+// graphNodeMetadata mirrors trpc-agent-go/graph.NodeExecutionMetadata
+// (only the fields we need for plan step mapping).
+type graphNodeMetadata struct {
+	NodeID string `json:"nodeId"`
+}
 
 // ActivityProjector projects runtime events into Activity semantic units
 // and publishes them via WS, eliminating frontend inference.
@@ -36,6 +52,8 @@ type ActivityProjector struct {
 	kindAuthorMap  map[string]string        // "kind:author" -> activity ID (O(1) lookup)
 	reasoningBuf   map[string]*strings.Builder
 	meta           ProjectMeta
+	planActivityID string                   // current turn's plan activity ID (graph node events)
+	planStepIndex  int                      // monotonic counter for plan steps within this turn
 }
 
 // NewActivityProjector creates a new ActivityProjector.
@@ -67,6 +85,8 @@ func (p *ActivityProjector) Reset() {
 	p.toolCalls = make(map[string]*biz.Activity)
 	p.kindAuthorMap = make(map[string]string)
 	p.reasoningBuf = make(map[string]*strings.Builder)
+	p.planActivityID = ""
+	p.planStepIndex = 0
 }
 
 // ProcessEvent dispatches a trpc-agent-go event to the appropriate On* callback.
@@ -100,6 +120,10 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 		p.processChatCompletion(ctx, ev)
 	case trpcmodel.ObjectTypeToolResponse:
 		p.processToolResponse(ctx, ev)
+	case graphObjectTypeNodeStart:
+		p.processGraphNodeStart(ctx, ev)
+	case graphObjectTypeNodeComplete, graphObjectTypeNodeError:
+		p.processGraphNodeComplete(ctx, ev)
 	}
 }
 
@@ -526,6 +550,299 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 	p.publishEnvelope(ctx, env, a)
 }
 
+// OnNotice creates a notice Activity for system notifications.
+func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID string, content string, noticeType string) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	activity := &biz.Activity{
+		ID:        id,
+		Kind:      biz.ActivityKindNotice,
+		Status:    biz.ActivityStatusPending,
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Timestamp: now,
+		Content:   content,
+		Meta:      map[string]any{"noticeType": noticeType},
+	}
+	p.activities[id] = activity
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+
+	// Notice is immediately completed
+	activity.Status = biz.ActivityStatusCompleted
+	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+
+	return activity, nil
+}
+
+// ConfirmRequestParams holds the parameters for creating a confirm Activity.
+type ConfirmRequestParams struct {
+	ToolName      string
+	ToolArguments string
+	Content       string
+}
+
+// OnConfirmRequest creates a confirm Activity that blocks until user responds.
+func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessionID string, params ConfirmRequestParams) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	activity := &biz.Activity{
+		ID:        id,
+		Kind:      biz.ActivityKindConfirm,
+		Status:    biz.ActivityStatusToolBlocked,
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Timestamp: now,
+		Content:   params.Content,
+		Meta:      map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
+	}
+	p.activities[id] = activity
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+
+	return activity, nil
+}
+
+// OnConfirmResult updates a confirm Activity with the user's response.
+func (p *ActivityProjector) OnConfirmResult(ctx context.Context, activityID string, approved bool) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	activity, ok := p.activities[activityID]
+	if !ok {
+		return nil, apierror.NotFound("activity", "activity not found: %s", activityID)
+	}
+	if activity.Kind != biz.ActivityKindConfirm {
+		return nil, apierror.BadRequest("activity", "expected confirm kind, got %s", activity.Kind)
+	}
+	if approved {
+		activity.Status = biz.ActivityStatusCompleted
+	} else {
+		activity.Status = biz.ActivityStatusCancelled
+	}
+	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+
+	return activity, nil
+}
+
+// processGraphNodeStart handles graph.node.start events by lazily creating a plan
+// Activity on first node arrival and registering a pending step.
+// This is N-02 Plan Activity runtime integration: graph nodes → plan steps.
+func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpcevent.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Extract node metadata from StateDelta
+	if ev.StateDelta == nil {
+		return
+	}
+	nodeRaw, ok := ev.StateDelta[graphMetadataKeyNode]
+	if !ok {
+		return
+	}
+	var meta graphNodeMetadata
+	if err := json.Unmarshal(nodeRaw, &meta); err != nil {
+		return
+	}
+	if meta.NodeID == "" {
+		return
+	}
+
+	// Lazily create plan Activity on first node arrival (inline to avoid deadlock)
+	if p.planActivityID == "" {
+		id := uuid.NewString()
+		now := time.Now().UTC()
+		planAct := &biz.Activity{
+			ID:        id,
+			Kind:      biz.ActivityKindPlan,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: p.meta.SessionID,
+			TurnID:    p.meta.RequestID,
+			Timestamp: now,
+			Content:   "执行计划",
+			Meta:      map[string]any{"steps": []biz.ActivityPlanStep{}},
+		}
+		p.activities[id] = planAct
+		p.planActivityID = id
+		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityStart)
+	}
+
+	// Append a new step to the plan
+	planAct, ok := p.activities[p.planActivityID]
+	if !ok {
+		return
+	}
+	stepsRaw := planAct.Meta["steps"]
+	steps, _ := stepsRaw.([]biz.ActivityPlanStep)
+	if steps == nil {
+		steps = []biz.ActivityPlanStep{}
+	}
+	p.planStepIndex++
+	step := biz.ActivityPlanStep{
+		ID:      meta.NodeID,
+		Label:   meta.NodeID, // Use node ID as label for now
+		Status:  biz.ActivityStatusRunning,
+	}
+	steps = append(steps, step)
+	planAct.Meta["steps"] = steps
+	p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDelta)
+}
+
+// processGraphNodeComplete handles graph.node.complete and graph.node.error events
+// by updating the corresponding plan step's status.
+func (p *ActivityProjector) processGraphNodeComplete(ctx context.Context, ev *trpcevent.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.planActivityID == "" || ev.StateDelta == nil {
+		return
+	}
+	nodeRaw, ok := ev.StateDelta[graphMetadataKeyNode]
+	if !ok {
+		return
+	}
+	var meta graphNodeMetadata
+	if err := json.Unmarshal(nodeRaw, &meta); err != nil {
+		return
+	}
+	if meta.NodeID == "" {
+		return
+	}
+
+	planAct, ok := p.activities[p.planActivityID]
+	if !ok {
+		return
+	}
+	stepsRaw := planAct.Meta["steps"]
+	steps, _ := stepsRaw.([]biz.ActivityPlanStep)
+
+	// Find and update the step matching this node ID
+	newStatus := biz.ActivityStatusCompleted
+	if ev.Response.Object == graphObjectTypeNodeError {
+		newStatus = biz.ActivityStatusFailed
+	}
+	for i := range steps {
+		if steps[i].ID == meta.NodeID {
+			steps[i].Status = newStatus
+			break
+		}
+	}
+	planAct.Meta["steps"] = steps
+
+	// Check if all steps are done
+	allDone := true
+	for _, s := range steps {
+		if s.Status != biz.ActivityStatusCompleted && s.Status != biz.ActivityStatusFailed {
+			allDone = false
+			break
+		}
+	}
+	if allDone {
+		planAct.Status = biz.ActivityStatusCompleted
+		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDone)
+	} else {
+		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDelta)
+	}
+}
+
+func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID string, title string, steps []biz.ActivityPlanStep) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	activity := &biz.Activity{
+		ID:        id,
+		Kind:      biz.ActivityKindPlan,
+		Status:    biz.ActivityStatusPending,
+		SessionID: sessionID,
+		TurnID:    turnID,
+		Timestamp: now,
+		Content:   title,
+		Meta:      map[string]any{"steps": steps},
+	}
+	p.activities[id] = activity
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+
+	return activity, nil
+}
+
+// OnPlanStepUpdate updates a step's status within a plan Activity.
+func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID string, stepID string, status biz.ActivityStatus) (*biz.Activity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	activity, ok := p.activities[activityID]
+	if !ok {
+		return nil, apierror.NotFound("activity", "activity not found: %s", activityID)
+	}
+	if activity.Kind != biz.ActivityKindPlan {
+		return nil, apierror.BadRequest("activity", "expected plan kind, got %s", activity.Kind)
+	}
+	stepsRaw, ok := activity.Meta["steps"]
+	if !ok {
+		return nil, apierror.BadRequest("activity", "plan activity has no steps metadata")
+	}
+	steps, ok := stepsRaw.([]biz.ActivityPlanStep)
+	if !ok {
+		return nil, apierror.BadRequest("activity", "plan activity steps has invalid type: %T", stepsRaw)
+	}
+	if steps == nil {
+		return nil, apierror.BadRequest("activity", "plan activity has nil steps")
+	}
+	stepFound := false
+	for i := range steps {
+		if steps[i].ID == stepID {
+			steps[i].Status = status
+			stepFound = true
+			break
+		}
+	}
+	if !stepFound {
+		return nil, apierror.NotFound("step", "step not found in plan: %s", stepID)
+	}
+	activity.Meta["steps"] = steps
+
+	// Update plan status based on steps
+	allCompleted := true
+	anyFailed := false
+	for _, s := range steps {
+		if s.Status != biz.ActivityStatusCompleted && s.Status != biz.ActivityStatusFailed {
+			allCompleted = false
+		}
+		if s.Status == biz.ActivityStatusFailed {
+			anyFailed = true
+		}
+	}
+
+	if allCompleted {
+		if anyFailed {
+			activity.Status = biz.ActivityStatusPartialFailure
+		} else {
+			activity.Status = biz.ActivityStatusCompleted
+		}
+		activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
+		p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+	} else {
+		activity.Status = biz.ActivityStatusRunning
+		env := p.buildActivityEnvelope(activity, contract.EnvelopeTypeActivityDelta)
+		if env.Metadata == nil {
+			env.Metadata = make(map[string]any)
+		}
+		env.Metadata["delta_field"] = "steps"
+		env.Metadata["delta_chunk"] = ""
+		p.publishEnvelope(ctx, env, activity)
+	}
+
+	return activity, nil
+}
+
 // OnStuckTools finalizes action Activities whose tool_result never arrived.
 // Called from stream_consumer.finalize() when the turn ends with pending tool calls.
 // This is the AF equivalent of PublishStuckToolResultEnvelopes — instead of
@@ -712,6 +1029,11 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 	}
 	if a.Label != "" {
 		env.Metadata["label"] = a.Label
+	}
+
+	// Meta fields (for notice/confirm/plan kinds)
+	if a.Meta != nil {
+		env.Metadata["meta"] = a.Meta
 	}
 
 	return env

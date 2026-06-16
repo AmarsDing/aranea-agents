@@ -890,16 +890,12 @@ func buildToolConfig(tools map[string]tool.Tool) *types.ToolConfiguration {
 	for _, name := range toolNames {
 		t := tools[name]
 		declaration := t.Declaration()
-		sanitizedName := tool.SanitizeToolName(declaration.Name)
-		if sanitizedName != declaration.Name {
-			log.Warnf("tool name %q sanitized to %q for LLM API compatibility", declaration.Name, sanitizedName)
-		}
 
 		// Convert tool.Schema to document.Interface as JSON schema
 		inputSchema := convertSchemaToDocument(declaration.InputSchema)
 
 		toolSpec := types.ToolSpecification{
-			Name:        aws.String(sanitizedName),
+			Name:        aws.String(declaration.Name),
 			Description: aws.String(buildToolDescription(declaration)),
 			InputSchema: &types.ToolInputSchemaMemberJson{
 				Value: inputSchema,

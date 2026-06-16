@@ -647,23 +647,8 @@ func convertMessage(msg model.Message) (api.Message, error) {
 	switch msg.Role {
 	case model.RoleSystem:
 		role = "system"
-	case model.RoleUser:
+	case model.RoleUser, model.RoleTool:
 		role = "user"
-	case model.RoleTool:
-		// Ollama does not support a dedicated "tool" role. We embed the
-		// tool result as a user message with a structured prefix so the
-		// model can correlate it with the originating tool call.
-		role = "user"
-		oMsg := api.Message{
-			Role:     role,
-			Thinking: msg.ReasoningContent,
-		}
-		if msg.ToolName != "" {
-			oMsg.Content = fmt.Sprintf("[Tool Result: %s (id: %s)]\n%s", msg.ToolName, msg.ToolID, msg.Content)
-		} else {
-			oMsg.Content = msg.Content
-		}
-		return oMsg, nil
 	case model.RoleAssistant:
 		role = "assistant"
 	default:
@@ -700,157 +685,38 @@ func convertMessage(msg model.Message) (api.Message, error) {
 }
 
 // convertTools converts our tool declarations to Ollama tool parameters.
-//
-// Known Ollama SDK limitations (api.ToolFunctionParameters / api.ToolProperty):
-//   - No "additionalProperties" field: open object schemas cannot be constrained.
-//   - No "default" field: default parameter values are not transmitted.
-//   - No nested "required" field: only the top-level ToolFunctionParameters
-//     has Required; nested object schemas cannot declare their own required fields.
-//   - No "$ref" field: recursive types via $ref are not natively supported
-//     (Defs is available at the top level for $defs only).
 func convertTools(tools map[string]tool.Tool) []api.Tool {
 	var result []api.Tool
 	for _, tl := range toolorder.SortedTools(tools) {
-		decl := tl.Declaration()
-		parameters := api.ToolFunctionParameters{
-			Type:       "object",
-			Properties: api.NewToolPropertiesMap(),
-		}
+		properties := api.NewToolPropertiesMap()
+		var required []string
 
-		if decl.InputSchema != nil {
-			if decl.InputSchema.Properties != nil {
-				for name, prop := range decl.InputSchema.Properties {
-					parameters.Properties.Set(name, convertSchemaToToolProperty(prop))
-				}
-			}
-			if len(decl.InputSchema.Required) > 0 {
-				parameters.Required = decl.InputSchema.Required
-			}
-			if decl.InputSchema.Defs != nil {
-				parameters.Defs = decl.InputSchema.Defs
-			}
-			if decl.InputSchema.Items != nil {
-				parameters.Items = decl.InputSchema.Items
+		decl := tl.Declaration()
+		if decl.InputSchema != nil && decl.InputSchema.Properties != nil {
+			for name, prop := range decl.InputSchema.Properties {
+				properties.Set(name, api.ToolProperty{
+					Type:        api.PropertyType{prop.Type},
+					Description: prop.Description,
+					Items:       prop.Items,
+					Enum:        prop.Enum,
+				})
+				required = append(required, prop.Required...)
 			}
 		}
 		result = append(result, api.Tool{
 			Type: functionToolType,
 			Function: api.ToolFunction{
-				Name:        tool.SanitizeToolName(decl.Name),
+				Name:        decl.Name,
 				Description: buildToolDescription(decl),
-				Parameters:  parameters,
+				Parameters: api.ToolFunctionParameters{
+					Type:       "object",
+					Properties: properties,
+					Required:   required,
+				},
 			},
 		})
 	}
 	return result
-}
-
-// convertSchemaToToolProperty converts a tool.Schema to an api.ToolProperty,
-// preserving nested properties, items, and enum.
-//
-// Note: api.ToolProperty does not support a "required" field for nested
-// objects — only the top-level ToolFunctionParameters has Required.
-// Nested required fields from tool.Schema are migrated to the property description
-// so the LLM can still discover them via natural language.
-// Similarly, additionalProperties and default values that cannot be represented
-// in api.ToolProperty are appended to the description as fallback.
-func convertSchemaToToolProperty(schema *tool.Schema) api.ToolProperty {
-	desc := schema.Description
-	desc = appendSchemaConstraintsToDescription(desc, schema)
-
-	prop := api.ToolProperty{
-		Type:        api.PropertyType{schema.Type},
-		Description: desc,
-	}
-	if len(schema.Enum) > 0 {
-		prop.Enum = schema.Enum
-	}
-	if schema.Items != nil {
-		prop.Items = schema.Items
-	}
-	if schema.Properties != nil {
-		nested := api.NewToolPropertiesMap()
-		for name, p := range schema.Properties {
-			nested.Set(name, convertSchemaToToolProperty(p))
-		}
-		prop.Properties = nested
-	}
-	return prop
-}
-
-// appendSchemaConstraintsToDescription appends schema constraints that cannot be
-// represented in api.ToolProperty (additionalProperties, default, nested required,
-// and JSON Schema constraint keywords) to the property description as natural
-// language hints for the LLM. All hints are collected into a single parenthesized
-// block for consistent formatting.
-func appendSchemaConstraintsToDescription(desc string, schema *tool.Schema) string {
-	if schema == nil {
-		return desc
-	}
-	var hints []string
-
-	// Standard constraint keywords (minLength, maxLength, pattern, etc.)
-	collectConstraintHints(schema, &hints)
-
-	// Nested required fields — Ollama SDK only supports top-level Required
-	if len(schema.Required) > 0 && schema.Type == "object" {
-		names := make([]string, 0, len(schema.Required))
-		for _, r := range schema.Required {
-			names = append(names, r)
-		}
-		hints = append(hints, fmt.Sprintf("required fields: %s", strings.Join(names, ", ")))
-	}
-
-	// additionalProperties — Ollama SDK does not support this field
-	if schema.AdditionalProperties != nil {
-		if allowed, ok := schema.AdditionalProperties.(bool); ok && allowed {
-			hints = append(hints, "allows additional properties")
-		}
-	}
-
-	// default value — Ollama SDK does not support this field
-	if schema.Default != nil {
-		defaultJSON, err := json.Marshal(schema.Default)
-		if err == nil {
-			hints = append(hints, fmt.Sprintf("default: %s", string(defaultJSON)))
-		}
-	}
-
-	if len(hints) == 0 {
-		return desc
-	}
-	if desc != "" {
-		desc += " "
-	}
-	desc += "(" + strings.Join(hints, "; ") + ")"
-	return desc
-}
-
-// collectConstraintHints extracts JSON Schema constraint keywords from the schema
-// into the hints slice, matching the logic of tool.AppendConstraintsToDescription
-// but collecting strings instead of formatting directly.
-func collectConstraintHints(schema *tool.Schema, hints *[]string) {
-	if schema.MinLength != nil {
-		*hints = append(*hints, fmt.Sprintf("minLength: %d", *schema.MinLength))
-	}
-	if schema.MaxLength != nil {
-		*hints = append(*hints, fmt.Sprintf("maxLength: %d", *schema.MaxLength))
-	}
-	if schema.Pattern != "" {
-		*hints = append(*hints, fmt.Sprintf("pattern: %s", schema.Pattern))
-	}
-	if schema.Minimum != nil {
-		*hints = append(*hints, fmt.Sprintf("minimum: %v", *schema.Minimum))
-	}
-	if schema.Maximum != nil {
-		*hints = append(*hints, fmt.Sprintf("maximum: %v", *schema.Maximum))
-	}
-	if schema.MinItems != nil {
-		*hints = append(*hints, fmt.Sprintf("minItems: %d", *schema.MinItems))
-	}
-	if schema.MaxItems != nil {
-		*hints = append(*hints, fmt.Sprintf("maxItems: %d", *schema.MaxItems))
-	}
 }
 
 // buildToolDescription builds the description for a tool.
@@ -865,7 +731,7 @@ func buildToolDescription(declaration *tool.Declaration) string {
 		log.Debugf("marshal output schema for tool %s: %v", declaration.Name, err)
 		return desc
 	}
-	desc += "\nOutput schema: " + string(schemaJSON)
+	desc += "Output schema: " + string(schemaJSON)
 	return desc
 }
 

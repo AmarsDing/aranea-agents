@@ -1470,6 +1470,30 @@ for _, sess := range sessions {
 }
 ```
 
+```go
+// 仅获取会话元数据，不返回 Events 和 Tracks
+sessions, err := sessionService.ListSessions(ctx, session.UserKey{
+    AppName: "my-agent",
+    UserID:  "user123",
+}, session.WithListSessionOnlyMeta())
+```
+
+```go
+// 获取第二页会话列表，按 UpdatedAt 倒序返回
+sessions, err := sessionService.ListSessions(ctx, session.UserKey{
+    AppName: "my-agent",
+    UserID:  "user123",
+}, session.WithListSessionPage(20, 20))
+```
+
+说明：
+
+- `session.WithListSessionOnlyMeta()` 只用于 `ListSessions`
+- 当前仅 `inmemory` 和 `redis` 后端支持该优化
+- `session.WithListSessionPage(offset, limit)` 只用于 `ListSessions`；`offset` 必须 `>= 0`，`limit == 0` 表示不做会话级分页
+- 会话列表分页与 `session.WithEventNum()`、`session.WithEventTime()` 相互独立，后两者用于过滤每个返回会话内部的事件
+- 结果按 `UpdatedAt` 倒序返回，`UpdatedAt` 相同时使用 session ID 做确定性排序
+
 #### 手动删除会话
 
 ```go
@@ -1903,9 +1927,12 @@ LLM 摘要，也不会像 token tailoring 那样直接丢弃完整消息轮次�
 
 - **Pass 1** — 旧 request 中超过 `ContextCompactionToolResultMaxTokens`（默认 1024 tokens）的 tool result 整体替换为占位符，保留 `ToolID` 和 `ToolName`
 - **Pass 2** — 任意 request（包括当前 request）中超过 `ContextCompactionOversizedToolResultMaxTokens` 的单个 tool result，使用首尾保留策略截断，中间插入 `[...N characters truncated...]` 标记。**默认值为 0（关闭）**，需要显式调用 `WithContextCompactionOversizedToolResultMaxTokens(...)` 并保持 `WithEnableContextCompaction(true)` 才会生效（推荐值 8192 tokens）
-- 最近 `ContextCompactionKeepRecentRequests` 个已完成 request 不受 Pass 1 影响（如果同时开启了 Pass 2，仍会受 Pass 2 截断）
+- 最近 `ContextCompactionKeepRecentRequests` 个已完成 request 不受 Pass 1 影响；也可以通过 `WithToolResultCompactionConfig(...).SkipRecentFunc` 自定义尾部多少个 event 视为 recent（如果同时开启了 Pass 2，recent/current 仍会受 Pass 2 截断，除非被按工具名保留）
+- `WithToolResultCompactionConfig(...)` 还支持按 tool name 控制：`ForceCleanToolNames` 在 current/recent 保护之后强制清理指定历史工具结果，`KeepToolNames` 保留指定工具结果且优先级更高
+- 当被压缩的事件有 `event_id` 时，占位符或截断标记会携带 `event_id`、`tool_call_id`、`tool_name` 等恢复线索；开启 `WithEnableOnDemandSession(true)` 且后端实现 `session.WindowService` 后，模型可用 `session_load` 搭配 `content_offset` / `content_limit` 精确加载原始 tool result 的小片段
+- Pass 2 会跳过 `session_load` 自身返回的 tool result，避免“恢复结果再次被压缩”。`session_load` 的返回大小由它自己的窗口参数和 `content_limit` 控制；如果需要读取超大结果，应让模型分片加载，而不是一次拉回全文
 - 如果同时开启了 `WithAddSessionSummary(true)`，并且压完后请求仍接近 context window，会在 LLM 调用前同步执行一次 `CreateSessionSummary(...)` 并重建 request
-- 模型层的 token tailoring 仍然作为最后兜底
+- 模型层的 token tailoring 仍然作为最后兜底。它按消息轮次裁剪，因此恢复片段应保持足够小，避免在最后的模型请求中被整体挤出
 - Context compaction 默认使用 `SimpleTokenCounter`。中文内容较多或 provider
   tokenization 特殊时，建议通过 `WithContextCompactionTokenCounter(...)`
   传入与 token tailoring 相同的自定义 counter。
@@ -1923,6 +1950,13 @@ agent := llmagent.New(
     llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),  // Pass 2: 任意超大 result → 首尾保留截断
     llmagent.WithContextCompactionKeepRecentRequests(1),
     llmagent.WithContextCompactionTokenCounter(counter),
+    llmagent.WithToolResultCompactionConfig(&llmagent.ToolResultCompactionConfig{
+        ForceCleanToolNames: []string{"shell", "grep"},
+        KeepToolNames:       []string{"session_load", "session_search"},
+        SkipRecentFunc: func(events []event.Event) int {
+            return 3
+        },
+    }),
 )
 ```
 

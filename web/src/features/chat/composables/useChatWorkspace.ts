@@ -836,12 +836,10 @@ export function useChatWorkspace() {
       // on the server's merged assistant message for content display.
       let activityFirstForMerge = false;
       let activityReconstructedMessages: import('../../chat/types').Message[] = [];
-      await activityTimeline.loadActivitiesFromAPI(sessionId).catch(() => {
-        // Non-critical: AF path falls back to message inference on failure
-      });
-      // Check if Activity data was successfully loaded
+      await activityTimeline.loadActivitiesFromAPI(sessionId);
+      // Check if Activity data was successfully loaded (loadError indicates API failure)
       const afActivities = activityTimeline.activities.value;
-      activityFirstForMerge = afActivities.length > 0;
+      activityFirstForMerge = afActivities.length > 0 && !activityTimeline.loadError.value;
       // Reconstruct per-round actv-* messages from Activity records.
       // When the server's merged assistant ChatMessage is excluded
       // (activityFirst=true), these reconstructed messages provide the

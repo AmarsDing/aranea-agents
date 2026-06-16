@@ -35,7 +35,6 @@ const (
 	defaultHTTPTimeout     = 30 * time.Second
 	defaultBashTimeoutMs   = 120_000
 	maxBashTimeoutMs       = 600_000
-	maxBashOutputChars     = 1_000_000
 	maxEditableFileSize    = 1024 * 1024 * 1024
 	pdfInlineReadThreshold = 10
 	pdfMaxPagesPerRead     = 20
@@ -51,6 +50,9 @@ var (
 	pdftoppmOnce      sync.Once
 	pdftoppmLookPath  = func(file string) (string, error) {
 		return exec.LookPath(file)
+	}
+	pdftoppmRun = func(path string, args ...string) ([]byte, error) {
+		return exec.Command(path, args...).CombinedOutput()
 	}
 )
 

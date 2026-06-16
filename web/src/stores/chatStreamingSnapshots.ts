@@ -1,7 +1,4 @@
 import { ref } from 'vue';
-import type { Message } from '../features/chat/types';
-import { createPlaceholderMessage } from '../features/chat/streamHandlers';
-import { patchStreamingMessage } from '../features/chat/streamContentPatch';
 
 export type ChatStreamingSnapshot = {
   reasoning: string;
@@ -47,49 +44,4 @@ export function useChatStreamingSnapshots() {
   }
 
   return { snapshots, put, get, clear };
-}
-
-export function applyStreamingSnapshotToSession(
-  getMessages: (sessionId: string) => Message[],
-  setMessages: (sessionId: string, rows: Message[]) => void,
-  sessionId: string,
-) {
-  const store = useChatStreamingSnapshots();
-  const snap = store.get(sessionId);
-  if (!snap || (!snap.reasoning && !snap.partialText)) return;
-
-  const streamId = `ws-stream-${sessionId}`;
-  let rows = getMessages(sessionId);
-  const existingStream = rows.find((m) => m.id === streamId);
-
-  if (!existingStream) {
-    const lastPersistedAssistant = [...rows]
-      .reverse()
-      .find(
-        (m) =>
-          m.role === 'assistant' &&
-          !String(m.id).startsWith('ws-stream-') &&
-          !String(m.id).startsWith('ws-team-stream-'),
-      );
-    if (lastPersistedAssistant?.status === 'ok' && lastPersistedAssistant.content_markdown?.trim()) {
-      store.clear(sessionId);
-      return;
-    }
-    rows = [
-      ...rows,
-      {
-        ...createPlaceholderMessage(streamId, sessionId, 'assistant', ''),
-        status: 'streaming',
-      },
-    ];
-  }
-
-  setMessages(
-    sessionId,
-    patchStreamingMessage(rows, streamId, {
-      reasoning: snap.reasoning || undefined,
-      text: snap.partialText || undefined,
-      status: existingStream?.status === 'ok' ? 'ok' : 'streaming',
-    }),
-  );
 }

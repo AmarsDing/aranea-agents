@@ -174,74 +174,6 @@ function findServerMatchForPending(
   return null;
 }
 
-/** Whether this row is a local streaming placeholder (ws-stream-* prefix). */
-function isStreamingPlaceholder(message: Message): boolean {
-  return isStreamingOrigin(message.origin);
-}
-
-/** Build a map from (sessionId, role=assistant, content) → server message for fast lookup. */
-function buildServerAssistantContentMap(server: Message[]): Map<string, Message[]> {
-  const map = new Map<string, Message[]>();
-  for (const m of server) {
-    if (m.role !== 'assistant') continue;
-    const key = `${m.session_id}::${(m.content_markdown ?? '').trim()}`;
-    const arr = map.get(key) ?? [];
-    arr.push(m);
-    map.set(key, arr);
-  }
-  return map;
-}
-
-function findServerMatchForStreaming(
-  streaming: Message,
-  serverMap: Map<string, Message[]>,
-  matched: Set<string>,
-): Message | null {
-  const content = (streaming.content_markdown ?? '').trim();
-  const reasoning = (streaming.reasoning_markdown ?? '').trim();
-  // M-02: Allow matching when only reasoning exists (no content_markdown).
-  // Some LLM rounds produce only thinking with no separate reply text.
-  if (!content && !reasoning) return null;
-
-  // Try exact content match first
-  if (content) {
-    const key = `${streaming.session_id}::${content}`;
-    const candidates = serverMap.get(key);
-    if (candidates) {
-      for (const c of candidates) {
-        if (!matched.has(c.id)) {
-          matched.add(c.id);
-          return c;
-        }
-      }
-    }
-  }
-
-  // Try prefix match — server content may be longer (includes reasoning, etc.)
-  // Only allow serverContent.startsWith(content): the server message is the
-  // superset that contains the streaming content as a prefix. The reverse
-  // direction (content.startsWith(serverContent)) is unsafe because a
-  // streaming message may contain accumulated multi-round content that
-  // coincidentally starts with a different round's server message.
-  // PERF: O(n*m) prefix scan over server assistant messages. Acceptable
-  // for typical session sizes (< 100 assistant messages per session).
-  for (const [mapKey, msgs] of serverMap) {
-    const prefix = `${streaming.session_id}::`;
-    if (!mapKey.startsWith(prefix)) continue;
-    const serverContent = mapKey.slice(prefix.length);
-    if (!serverContent || !content) continue;
-    if (serverContent.startsWith(content)) {
-      for (const c of msgs) {
-        if (!matched.has(c.id)) {
-          matched.add(c.id);
-          return c;
-        }
-      }
-    }
-  }
-  return null;
-}
-
 /** Merge server history with in-flight WS rows (streaming text, running tool cards). */
 export function mergeSessionMessages(
   server: Message[],
@@ -252,7 +184,6 @@ export function mergeSessionMessages(
   if (local.length === 0) return normalizedServer;
   const serverById = new Map(normalizedServer.map((m) => [m.id, m]));
   const serverUserByContent = buildServerUserContentMap(normalizedServer);
-  const serverAssistantByContent = buildServerAssistantContentMap(normalizedServer);
 
   // Determine whether to exclude the server's merged assistant message.
   //
@@ -280,24 +211,6 @@ export function mergeSessionMessages(
     if (!isPendingUserOrigin(row.origin) || row.role !== 'user') continue;
     if (row.status === 'failed') continue;
     const serverMatch = findServerMatchForPending(row, serverUserByContent, matchedServerIDs);
-    if (serverMatch) {
-      pendingReplacedBy.set(row.id, serverMatch);
-    }
-  }
-  // Also match ws-stream assistant placeholders to server-persisted assistant messages.
-  for (const row of local) {
-    if (!isStreamingPlaceholder(row) || row.role !== 'assistant') continue;
-    // Don't match ws-snap-* messages to server messages — they contain partial
-    // content that is a subset of the full server message. Matching would cause
-    // the server message to replace the snapshot, losing round separation.
-    if (row.origin?.kind === 'streaming_snapshot') continue;
-    // Don't match finalized ws-stream-* messages (status='ok') — they are kept
-    // as fallback by the runner_completion handler until the reload replaces
-    // them. Matching would remove them prematurely, causing a brief flicker
-    // where the assistant reply disappears between ws-stream removal and
-    // server message arrival.
-    if (row.status === 'ok' && row.id.startsWith('ws-stream-')) continue;
-    const serverMatch = findServerMatchForStreaming(row, serverAssistantByContent, matchedServerIDs);
     if (serverMatch) {
       pendingReplacedBy.set(row.id, serverMatch);
     }

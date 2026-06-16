@@ -258,31 +258,4 @@ export interface TodoColumn {
   items: TodoItem[]
 }
 
-// ── Task Board Node Types ──
 
-/**
- * Extended node data for TaskBoard rendering.
- * The task board uses a richer node model with additional fields
- * that are mapped from the base TimelineEntry in the composable layer.
- */
-export type TaskBoardNodeKind = 'task' | 'thinking' | 'action' | 'reply' | 'sub_task_board' | 'end' | 'error';
-
-export type TaskBoardToolStatus = 'running' | 'success' | 'failed' | 'blocked' | 'cancelled';
-
-export interface TaskBoardNodeData {
-  kind: TaskBoardNodeKind;
-  content?: string;
-  children?: TaskBoardNodeData[];
-  durationMs?: number | null;
-  streaming?: boolean;
-  toolName?: string;
-  toolStatus?: TaskBoardToolStatus;
-  arguments?: string | null;
-  result?: string | null;
-}
-
-/** Icon text for task board node kinds that use emoji instead of Material Icons. */
-export const TASK_BOARD_NODE_ICON_TEXT: Readonly<Partial<Record<TaskBoardNodeKind, string>>> = Object.freeze({
-  end: '✅',
-  error: '❌',
-});

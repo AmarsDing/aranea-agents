@@ -1,7 +1,6 @@
 import { shallowRef, computed, triggerRef, onUnmounted, getCurrentInstance, type ComputedRef } from 'vue';
 import type {
   Activity,
-  ActivityKind,
   ActivityStatus,
   ActivityTreeNode,
   ActivityStartMeta,
@@ -9,14 +8,16 @@ import type {
   ActivityDoneMeta,
   ActivityChildStartMeta,
 } from '../activityTypes';
-import type { TaskBoardNodeData, TaskBoardNodeKind, TaskBoardToolStatus } from '../agentTreeTypes';
 import type {
-  Activity as TimelineActivity,
+  StreamEvent,
   ThinkingEvent,
   ActionEvent,
   ReplyEvent,
   ErrorEvent,
   PlanEvent,
+  PlanStep,
+  ConfirmEvent,
+  NoticeEvent,
   ToolActivity,
 } from '../streamEventTypes';
 import { listActivities } from '../../session/api';
@@ -32,6 +33,7 @@ import { listActivities } from '../../session/api';
 export function useActivityTimeline() {
   const activities = shallowRef<Map<string, Activity>>(new Map());
   const rootActivityId = shallowRef<string | null>(null);
+  const loadError = shallowRef<string | null>(null);
 
   // === Activity tree computed from flat list ===
 
@@ -63,20 +65,12 @@ export function useActivityTimeline() {
     return roots;
   });
 
-  // === TaskBoardNodes computed from Activity tree ===
+  // === Stream Events (AF → streamEventTypes bridge) ===
 
-  const taskBoardNodes = computed<TaskBoardNodeData[]>(() => {
-    return activityTree.value
-      .filter((node) => node.kind !== 'delegate' && node.kind !== 'error')
-      .map(activityToTaskBoardNode);
-  });
-
-  // === Timeline Activities (AF → activityTimelineTypes bridge) ===
-
-  const timelineActivities = computed<TimelineActivity[]>(() => {
+  const streamEvents = computed<StreamEvent[]>(() => {
     return activityTree.value
       .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
-      .map(activityToTimelineActivity);
+      .map(activityToStreamEvent);
   });
 
   // === WS Event Handlers ===
@@ -108,6 +102,7 @@ export function useActivityTimeline() {
       agentName: meta.agent_name,
       collapsed: meta.collapsed,
       label: meta.label,
+      meta: meta.meta,
     };
     activities.value.set(activity.id, activity);
     triggerRef(activities);
@@ -202,8 +197,7 @@ export function useActivityTimeline() {
 
   // AF-FE-14: Load activities from backend API for history recovery
   // Retries up to 2 times with exponential backoff (500ms, 1000ms) on failure.
-  // On final failure, logs a warning and returns silently — the UI falls back
-  // to the legacy "isLegacy" path in useConversationTimeline.
+  // On final failure, sets loadError so the UI can show a degradation notice.
   async function loadActivitiesFromAPI(sessionId: string, turnId?: string) {
     const maxAttempts = 3;
     const baseDelay = 500;
@@ -213,6 +207,7 @@ export function useActivityTimeline() {
       try {
         const activityList = await listActivities(sessionId, turnId);
         loadActivities(activityList);
+        loadError.value = null;
         return;
       } catch (err) {
         lastErr = err;
@@ -223,7 +218,15 @@ export function useActivityTimeline() {
       }
     }
 
-    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', lastErr);
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    loadError.value = msg;
+    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', msg);
+  }
+
+  /** Retry loading activities after a previous failure */
+  async function retryLoad(sessionId: string, turnId?: string) {
+    loadError.value = null;
+    await loadActivitiesFromAPI(sessionId, turnId);
   }
 
   // === Cleanup on unmount (only when inside a component instance) ===
@@ -237,9 +240,9 @@ export function useActivityTimeline() {
   return {
     activities: computed(() => Array.from(activities.value.values())),
     activityTree,
-    taskBoardNodes,
-    timelineActivities,
+    streamEvents,
     rootActivityId,
+    loadError: computed(() => loadError.value),
     handleActivityStart,
     handleActivityDelta,
     handleActivityDone,
@@ -247,35 +250,17 @@ export function useActivityTimeline() {
     reset,
     loadActivities,
     loadActivitiesFromAPI,
+    retryLoad,
   };
 }
 
 // === Mapping Functions ===
 
 /**
- * Maps ActivityKind to TaskBoardNodeKind.
- * delegate is not rendered as TaskBoardNodes.
- * Exported for use by activityToTaskBoardNode (used by useConversationTimeline).
+ * Maps ActivityStatus to ToolActivity status.
+ * Used by activityToStreamEvent for the action kind.
  */
-export function mapActivityKindToNodeKind(kind: ActivityKind): TaskBoardNodeKind | null {
-  switch (kind) {
-    case 'task':
-    case 'thinking':
-    case 'action':
-    case 'reply':
-    case 'sub_task_board':
-    case 'error':
-      return kind;
-    default:
-      return null;
-  }
-}
-
-/**
- * Maps ActivityStatus to TaskBoardToolStatus.
- * Exported for use by activityToTaskBoardNode (used by useConversationTimeline).
- */
-export function mapActivityStatusToToolStatus(status: ActivityStatus): TaskBoardToolStatus {
+export function mapActivityStatusToToolStatus(status: ActivityStatus): ToolActivity['status'] {
   switch (status) {
     case 'tool_running':
       return 'running';
@@ -295,53 +280,31 @@ export function mapActivityStatusToToolStatus(status: ActivityStatus): TaskBoard
 }
 
 /**
- * Converts an ActivityTreeNode to a TaskBoardNodeData for rendering.
- * Exported for use by useConversationTimeline to compute taskBoardNodes.
+ * Maps backend ActivityStatus to frontend PlanEvent.status.
+ * Backend: pending → running → completed / partial_failure / failed
+ * Frontend: planning → executing → completed / failed
  */
-export function activityToTaskBoardNode(node: ActivityTreeNode): TaskBoardNodeData {
-  const nodeKind = mapActivityKindToNodeKind(node.kind);
-  if (!nodeKind) {
-    // Fallback for delegate
-    return {
-      kind: 'task',
-      content: node.content || node.label || '',
-    };
+function mapPlanStatus(status: ActivityStatus): PlanEvent['status'] {
+  switch (status) {
+    case 'pending':
+      return 'planning';
+    case 'running':
+      return 'executing';
+    case 'completed':
+      return 'completed';
+    case 'partial_failure':
+    case 'failed':
+      return 'failed';
+    default:
+      return 'planning';
   }
-
-  const result: TaskBoardNodeData = {
-    kind: nodeKind,
-    content: node.content || node.reasoning,
-    durationMs: node.durationMs,
-    streaming: node.status === 'running' || node.status === 'tool_running',
-  };
-
-  // Tool fields for action kind
-  if (node.kind === 'action') {
-    result.toolName = node.toolName;
-    result.toolStatus = mapActivityStatusToToolStatus(node.status);
-    result.arguments = node.toolArguments || null;
-    result.result = node.toolResult || null;
-  }
-
-  // Children for sub_task_board — recursively map to TaskBoardNodeData[]
-  if (node.kind === 'sub_task_board' && node.children.length > 0) {
-    const children: TaskBoardNodeData[] = [];
-    for (const child of node.children) {
-      const childNodeKind = mapActivityKindToNodeKind(child.kind);
-      if (childNodeKind === null) continue;
-      children.push(activityToTaskBoardNode(child));
-    }
-    result.children = children.length > 0 ? children : undefined;
-  }
-
-  return result;
 }
 
 /**
- * Maps an AF ActivityTreeNode to a TimelineActivity (activityTimelineTypes).
+ * Maps an AF ActivityTreeNode to a StreamEvent (streamEventTypes).
  * This bridges the AF backend Activity model to the frontend rendering model.
  */
-export function activityToTimelineActivity(node: ActivityTreeNode): TimelineActivity {
+export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
   switch (node.kind) {
     case 'thinking':
       return {
@@ -391,20 +354,47 @@ export function activityToTimelineActivity(node: ActivityTreeNode): TimelineActi
         message: node.content || node.toolErrorCode || '',
       } satisfies ErrorEvent;
 
-    case 'plan':
+    case 'plan': {
+      // Map backend ActivityStatus → frontend PlanEvent.status
+      const planStatus = mapPlanStatus(node.status);
+      // Extract steps from meta (serialized from Go ActivityPlanStep[])
+      const metaSteps = Array.isArray(node.meta?.steps) ? node.meta.steps as PlanStep[] : [];
       return {
         kind: 'plan',
         id: node.id,
         title: node.label || node.content || '',
-        steps: [],
+        steps: metaSteps,
+        status: planStatus,
       } satisfies PlanEvent;
+    }
+
+    case 'notice': {
+      const noticeType = (node.meta?.noticeType as NoticeEvent['type']) ?? 'info';
+      return {
+        kind: 'notice',
+        id: node.id,
+        type: noticeType,
+        message: node.content || '',
+      } satisfies NoticeEvent;
+    }
+
+    case 'confirm':
+      return {
+        kind: 'confirm',
+        id: node.id,
+        status: node.status as ConfirmEvent['status'],
+        content: node.content || '',
+        toolName: (node.meta?.toolName as string) || '',
+        toolArguments: (node.meta?.toolArguments as string) ?? null,
+        autoApproveAt: (node.meta?.autoApproveAt as string) ?? null,
+      } satisfies ConfirmEvent;
 
     default:
-      // Fallback: task, sub_task_board, delegate → error
+      // Fallback: task, sub_task_board, delegate → error (degradation)
       return {
         kind: 'error',
         id: node.id,
-        type: 'info',
+        type: 'degradation',
         message: node.content || node.label || '',
       } satisfies ErrorEvent;
   }
