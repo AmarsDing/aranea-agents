@@ -89,6 +89,19 @@ func resolveJudgeModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase
 	return provider.TRPCModelForProviderModel(ctx, catalog, rt, pm.Provider, pm.Model, lg)
 }
 
+func pickJudgeModel(models []biz.ProviderModel) biz.ProviderModel {
+	if len(models) == 0 {
+		return biz.ProviderModel{}
+	}
+	for _, m := range models {
+		name := strings.ToLower(m.Model)
+		if strings.Contains(name, "mini") || strings.Contains(name, "flash") || strings.Contains(name, "lite") {
+			return m
+		}
+	}
+	return models[0]
+}
+
 func resolveSimModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if prov, mod := resolveSimProviderModel(ctx, sys); prov != "" && mod != "" {
 		return provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod, lg)

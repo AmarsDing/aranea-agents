@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (r *Runner) executeLegacy(ctx context.Context, run biz.EvalRun, cases []biz.EvalCase, want metricSet) error {
@@ -28,17 +29,20 @@ func (r *Runner) executeLegacy(ctx context.Context, run biz.EvalRun, cases []biz
 			res.ErrorMessage = runErr.Error()
 		} else {
 			res.ActualOutput = actual
-			sc := scoreLegacyCase(ctx, c, actual, want, r.llmJudge)
+			sc := scoreLegacyCase(ctx, c, actual, want)
 			res.ExactMatch = sc.ExactMatch
 			res.ContainsMatch = sc.ContainsMatch
-			res.LLMJudgeScore = sc.LLMJudgeScore
 			res.ToolCallAccuracy = sc.ToolCallAccuracy
 			agg.add(sc, want)
 		}
 
-		_ = r.uc.InsertCaseResult(ctx, res)
+		if err := r.uc.InsertCaseResult(ctx, res); err != nil {
+			r.lg.Warn("failed to insert evaluation case result", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+		}
 		run.CompletedCases++
-		_ = r.uc.UpdateRun(ctx, run)
+		if err := r.uc.UpdateRun(ctx, run); err != nil {
+			r.lg.Warn("failed to update evaluation run", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+		}
 	}
 
 	agg.finalize(&run)

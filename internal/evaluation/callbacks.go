@@ -7,6 +7,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/service"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
 )
 
 // NewEvalCallbacks creates evaluation lifecycle callbacks that log progress
@@ -20,8 +21,8 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 				return &service.AfterInferenceCaseResult{Context: ctx}, nil
 			}
 			caseID := ""
-			if args.Request != nil {
-				caseID = args.Request.EvalCaseID
+			if args.Result != nil {
+				caseID = args.Result.EvalCaseID
 			}
 			errStr := ""
 			if args.Error != nil {
@@ -39,15 +40,15 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 			if args == nil {
 				return &service.AfterEvaluateCaseResult{Context: ctx}, nil
 			}
-			caseID := ""
+			evalSetID := ""
 			if args.Request != nil {
-				caseID = args.Request.EvalCaseID
+				evalSetID = args.Request.EvalSetID
 			}
-			score := float64(0)
+			caseID := ""
 			passed := false
 			if args.Result != nil {
-				score = args.Result.Score
-				passed = args.Result.FinalEvalStatus.String() == "passed"
+				caseID = args.Result.EvalID
+				passed = args.Result.FinalEvalStatus == status.EvalStatusPassed
 			}
 			errStr := ""
 			if args.Error != nil {
@@ -55,8 +56,8 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 			}
 			lg.Info("eval.evaluate.case_done",
 				loggateway.StepID("evaluation.evaluate.case_done"),
+				loggateway.Str("eval_set_id", evalSetID),
 				loggateway.Str("eval_case_id", caseID),
-				loggateway.Float64("score", score),
 				loggateway.Bool("passed", passed),
 				loggateway.Str("error", errStr),
 				loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),

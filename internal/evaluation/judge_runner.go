@@ -16,6 +16,11 @@ import (
 const judgeSystemInstruction = `You are an evaluation judge. Score how well ACTUAL matches EXPECTED for the given INPUT.
 Reply with ONLY a JSON object: {"score": <decimal between 0 and 1>, "reason": "<brief explanation>"}.`
 
+const (
+	judgeMaxTokens   = 512
+	judgeTemperature = 0.3
+)
+
 // NewJudgeRunner creates a runner.Runner backed by the project's LLM catalog for
 // use with the framework's WithJudgeRunner option. The runner wraps an LLM agent
 // that produces structured {score, reason} output compatible with the framework's
@@ -42,8 +47,8 @@ func NewJudgeRunner(
 		llmagent.WithInstruction(judgeSystemInstruction),
 		llmagent.WithDescription("Aranea evaluation LLM judge"),
 		llmagent.WithGenerationConfig(trpcmodel.GenerationConfig{
-			MaxTokens:   intPtr(512),
-			Temperature: floatPtr(0.3),
+			MaxTokens:   intPtr(judgeMaxTokens),
+			Temperature: floatPtr(judgeTemperature),
 			Stream:      false,
 		}),
 	)

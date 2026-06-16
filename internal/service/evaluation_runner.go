@@ -14,7 +14,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
-// NewEvaluationRunner wires AgentRunner + LLMJudge for evaluation runs (EP-RT-08).
+// NewEvaluationRunner wires AgentRunner + JudgeRunner for evaluation runs (EP-RT-08).
 func NewEvaluationRunner(
 	uc *biz.EvalUsecase,
 	turns EvalTurnGateway,
@@ -29,14 +29,27 @@ func NewEvaluationRunner(
 		}
 		return turns.RunEvalAgentTurn(ctx, agentID, input)
 	}
-	judge := evaluation.NewLLMJudge(catalog, rt, sys, lg)
 	runFactory := func(agentID string) (runner.Runner, error) {
 		return evaluation.NewChatRunnerAdapter(agentID, agentRunner), nil
 	}
+
+	// P1-7: Use framework Judge Runner instead of self-built LLMJudge.
+	var judgeRunner runner.Runner
+	if jr, err := evaluation.NewJudgeRunner(catalog, rt, sys, lg); err == nil {
+		judgeRunner = jr
+	} else {
+		lg.Warn("eval.judge_runner.init_failed, LLM Judge metrics will be unavailable",
+			loggateway.StepID("evaluation.judge_runner.init_fail"),
+			loggateway.Err(err))
+	}
+
+	// P1-8: Enable framework Callbacks for evaluation progress awareness.
+	callbacks := evaluation.NewEvalCallbacks(lg)
+
 	var llmUserSim usersimulation.Simulator
 	if sim, err := evaluation.NewLLMUserSimulator(catalog, rt, sys, lg); err == nil {
 		llmUserSim = sim
 	}
-	framework := evaluation.NewFrameworkBridge(runFactory, judge, llmUserSim, evaluation.DefaultMultiRunConfig(), lg)
-	return evaluation.NewRunner(uc, agentRunner, judge, framework, lg)
+	framework := evaluation.NewFrameworkBridge(runFactory, judgeRunner, callbacks, llmUserSim, evaluation.DefaultMultiRunConfig(), lg)
+	return evaluation.NewRunner(uc, agentRunner, framework, lg)
 }

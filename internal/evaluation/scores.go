@@ -20,6 +20,8 @@ func applyMetricResult(res *biz.EvalCaseResult, name string, score float32, thre
 		res.ContainsMatch = score >= float32(threshold)
 	case MetricToolCallAccuracy:
 		res.ToolCallAccuracy = score
+	case MetricLLMAsJudge:
+		res.LLMJudgeScore = score
 	case MetricToolTrajectory:
 		// Full trajectory score stored in scores_json; mirror into ToolCallAccuracy when legacy unset.
 		if res.ToolCallAccuracy == 0 {
