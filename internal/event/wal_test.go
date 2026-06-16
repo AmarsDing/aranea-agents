@@ -294,7 +294,10 @@ func TestEventWAL_markPublished_Synchronous(t *testing.T) {
 		t.Fatalf("insert test data: %v", err)
 	}
 
-	w.markPublished(ctx, env.ID)
+	err = w.storage.MarkPublished(ctx, env.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("MarkPublished: %v", err)
+	}
 
 	var publishedFlag int
 	var publishedAt sql.NullString

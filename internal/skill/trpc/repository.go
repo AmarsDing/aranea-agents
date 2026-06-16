@@ -4,6 +4,13 @@ import (
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
+// Compile-time interface compliance checks.
+var (
+	_ trpcskill.Repository            = (*FSRepositoryAdapter)(nil)
+	_ trpcskill.RootedRepository      = (*FSRepositoryAdapter)(nil)
+	_ trpcskill.RefreshableRepository = (*FSRepositoryAdapter)(nil)
+)
+
 type FSRepositoryAdapter struct {
 	root     string
 	delegate *trpcskill.FSRepository

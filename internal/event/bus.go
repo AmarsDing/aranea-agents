@@ -30,7 +30,19 @@ const (
 	ChannelPriorityNormal   = contract.ChannelPriorityNormal
 )
 
-type bus struct {
+// NewBus returns a new in-process event bus.
+// Delegates to the framework bus.Bus[Envelope] implementation via busAdapter.
+// If lg is nil, drop notifications fall back to stderr.
+func NewBus(lg loggateway.Logger) Bus {
+	return newBusAdapter(lg)
+}
+
+// --- Legacy bus implementation (kept for reference, no longer used by NewBus) ---
+// The following code is the original in-process bus implementation.
+// It is retained temporarily for comparison and will be removed after
+// the framework delegation is verified in production.
+
+type legacyBus struct {
 	mu          sync.RWMutex
 	subscribers map[uint64]*subscriber
 	nextID      uint64
@@ -45,16 +57,15 @@ type subscriber struct {
 	closed bool
 }
 
-// NewBus returns a new in-process event bus.
-// If lg is nil, drop notifications fall back to stderr.
-func NewBus(lg loggateway.Logger) Bus {
-	return &bus{
+// newLegacyBus creates a legacy bus (used only for testing/comparison).
+func newLegacyBus(lg loggateway.Logger) Bus {
+	return &legacyBus{
 		subscribers: make(map[uint64]*subscriber),
 		lg:          lg,
 	}
 }
 
-func (b *bus) Publish(ctx context.Context, env Envelope) {
+func (b *legacyBus) Publish(ctx context.Context, env Envelope) {
 	if env.Channel == "" {
 		env.Channel = RouteChannel(env)
 	}
@@ -81,7 +92,7 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 	}
 }
 
-func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, requiresBlockUpTo bool) {
+func (b *legacyBus) deliverToSubscriber(sub *subscriber, env Envelope, requiresBlockUpTo bool) {
 	env = env.Clone()
 	if !b.matchSubscriber(sub.opts, env) {
 		return
@@ -110,7 +121,7 @@ func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, requiresBlockUp
 	}
 }
 
-func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Duration) {
+func (b *legacyBus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Duration) {
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
 	if sub.closed {
@@ -137,7 +148,7 @@ func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Dura
 	}
 }
 
-func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
+func (b *legacyBus) deliverDropOldest(sub *subscriber, env Envelope) {
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
 	if sub.closed {
@@ -146,7 +157,7 @@ func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
 	b.deliverDropOldestLocked(sub, env)
 }
 
-func (b *bus) deliverDropOldestLocked(sub *subscriber, env Envelope) {
+func (b *legacyBus) deliverDropOldestLocked(sub *subscriber, env Envelope) {
 	select {
 	case sub.ch <- env:
 	default:
@@ -163,7 +174,7 @@ func (b *bus) deliverDropOldestLocked(sub *subscriber, env Envelope) {
 	}
 }
 
-func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
+func (b *legacyBus) deliverDropNewest(sub *subscriber, env Envelope) {
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
 	if sub.closed {
@@ -176,7 +187,7 @@ func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
 	}
 }
 
-func (b *bus) logDrop(env Envelope, policy string) {
+func (b *legacyBus) logDrop(env Envelope, policy string) {
 	b.dropCount.Add(1)
 	arametrics.EventBusDropped.WithLabelValues(string(env.Type), policy).Inc()
 	if b.lg != nil {
@@ -193,11 +204,11 @@ func (b *bus) logDrop(env Envelope, policy string) {
 	}
 }
 
-func (b *bus) DropCount() uint64 {
+func (b *legacyBus) DropCount() uint64 {
 	return b.dropCount.Load()
 }
 
-func (b *bus) Subscribe(opts SubscribeOptions) (<-chan Envelope, func()) {
+func (b *legacyBus) Subscribe(opts SubscribeOptions) (<-chan Envelope, func()) {
 	bufSize := opts.BufferSize
 	if bufSize <= 0 {
 		bufSize = 128
@@ -229,7 +240,7 @@ func (b *bus) Subscribe(opts SubscribeOptions) (<-chan Envelope, func()) {
 	return ch, unsubscribe
 }
 
-func (b *bus) matchSubscriber(opts SubscribeOptions, env Envelope) bool {
+func (b *legacyBus) matchSubscriber(opts SubscribeOptions, env Envelope) bool {
 	if opts.SessionID != "" && opts.SessionID != env.SessionID {
 		return false
 	}
@@ -239,7 +250,7 @@ func (b *bus) matchSubscriber(opts SubscribeOptions, env Envelope) bool {
 	if opts.Channel != "" && opts.Channel != env.Channel {
 		return false
 	}
-	if opts.FilterKey != "" && !MatchFilterKey(opts.FilterKey, env.FilterKey) {
+	if opts.FilterKey != "" && !contract.MatchFilterKey(opts.FilterKey, env.FilterKey) {
 		return false
 	}
 	if len(opts.EventTypes) > 0 {

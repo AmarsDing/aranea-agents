@@ -70,6 +70,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	trpc.group/trpc-go/trpc-a2a-go v0.2.5
 	trpc.group/trpc-go/trpc-agent-go v1.10.0
+	trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe v1.10.0
 	trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/codeexecutor/container v0.0.0-00010101000000-000000000000
 	trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0
@@ -79,6 +80,7 @@ require (
 	trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0
+	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0
 	trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1
 	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch v1.9.0
@@ -157,6 +159,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/docker v28.4.0+incompatible // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -185,6 +188,8 @@ require (
 	github.com/hhrutter/pkcs7 v0.2.0 // indirect
 	github.com/hhrutter/tiff v1.0.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/itchyny/gojq v0.12.16 // indirect
+	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
@@ -245,6 +250,7 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
+	github.com/tiktoken-go/tokenizer v0.7.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
@@ -280,6 +286,7 @@ require (
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
+	mvdan.cc/sh/v3 v3.8.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 	trpc.group/trpc-go/trpc-mcp-go v0.0.10 // indirect
 )

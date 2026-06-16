@@ -21,9 +21,12 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpctiktoken "trpc.group/trpc-go/trpc-agent-go/model/tiktoken"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
@@ -215,6 +218,17 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		}
 	}
 
+	// ToolPipe Extension: enables LLM to filter long tool results (grep/head/tail/jq),
+	// reducing token consumption by 50-90% on large outputs. Uses WithToolScope to
+	// dynamically match MCP tools and known long-output tools, avoiding interference
+	// with framework-managed tools (todo, memory, skill_*).
+	opts = append(opts, trpcllmagent.WithExtensions(
+		toolpipe.New(
+			toolpipe.WithToolScope(isToolPipeEligible),
+			toolpipe.WithAllowedOps(toolpipe.OpGrep, toolpipe.OpHead, toolpipe.OpTail),
+		),
+	))
+
 	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), nil
 }
 
@@ -309,6 +323,18 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 		// Uses the framework's recommended 8192-token threshold, which preserves
 		// head+tail of the output so the model can see both structure and results.
 		opts = append(opts, trpcllmagent.WithContextCompactionOversizedToolResultMaxTokens(8192))
+
+		// Use tiktoken-based counter for precise token estimation when
+		// context compaction is enabled. Falls back to SimpleTokenCounter
+		// if tiktoken initialization fails (e.g., unsupported model name).
+		if counter, err := trpctiktoken.New(mod); err == nil {
+			opts = append(opts, trpcllmagent.WithContextCompactionTokenCounter(counter))
+		} else {
+			lg.Warn("tiktoken 初始化失败，使用默认估算器",
+				loggateway.StepID("agent.tiktoken_fallback"),
+				loggateway.Str("model", mod),
+				loggateway.Err(err))
+		}
 	}
 
 	if s.SessionSummaryEnabled {
@@ -440,4 +466,24 @@ func plannerConfigJSON(ag biz.Agent) string {
 // model overrides without baking Provider/Model into the agent build cache key.
 func ResolveModelForRunOption(ctx context.Context, deps TRPCBuilderDeps, prov, mod string, lg loggateway.Logger) (trpcmodel.Model, error) {
 	return provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
+}
+
+// isToolPipeEligible determines whether a tool should receive the result_filter
+// capability from ToolPipe Extension. Only tools that produce large or structured
+// output benefit from filtering; framework-managed tools (todo, memory, skill_*)
+// and control-flow tools (transfer_to_agent, await_user_reply) are excluded.
+// The framework's own isFrameworkTool check provides additional protection.
+func isToolPipeEligible(t trpctool.Tool) bool {
+	name := t.Declaration().Name
+	// MCP tools are the primary target: they often return large structured data.
+	if strings.HasPrefix(name, "mcp_") {
+		return true
+	}
+	// Known long-output tools that benefit from result filtering.
+	switch name {
+	case "read_file", "execute_command", "web_fetch", "list_directory",
+		"search_files", "search_code":
+		return true
+	}
+	return false
 }
