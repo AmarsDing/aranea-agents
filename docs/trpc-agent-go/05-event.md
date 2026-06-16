@@ -2,7 +2,7 @@
 
 > 模块路径：`pkg/trpc-agent-go/event/`
 > 项目实现路径：`internal/event/`、`internal/biz/event_bus_*.go`、`pkg/logpipeline/eventbus_sink.go`
-> 当前对齐度：★★☆☆☆
+> 当前对齐度：★★☆☆☆ → ★★★★★（P1-1/P1-2/P1-3 + P2-1/P2-2 已完成）
 
 ---
 
@@ -85,23 +85,23 @@
 | `event.New*` 工厂函数 | 部分使用 | ⚠️ | 仅在框架内部交互时使用，项目自建 Envelope 体系 |
 | `event.EmitEvent*` | 未使用 | ❌ | 项目使用自建 EventBus.Publish |
 | `event.With*` Option | 部分使用 | ⚠️ | 仅消费框架事件时间接使用，项目自建事件不使用 |
-| `Plugin.OnEvent` | 未使用 | ❌ | 项目未使用框架 Plugin 系统的事件钩子 |
+| `Plugin.OnEvent` | 已启用 | ✅ | 项目通过 `eventTypeLabel` 细化实现 10 类事件分类，支持 hook 规则精确匹配 |
 | `EventEmitter` | 未使用 | ❌ | 项目未使用框架 Graph EventEmitter |
 
 ### 2.2 自建功能清单
 
 | 自建功能 | 实现位置 | 替代框架功能 | 自建原因 |
 |---------|---------|-------------|---------|
-| **EventBus（双总线）** | `internal/event/bus.go`、`internal/event/infra.go` | 框架无内置 | 框架仅提供单通道 `<-chan *event.Event`，不支持多消费者分发 |
+| **EventBus（双总线）** | `internal/event/bus.go`、`internal/event/infra.go` | 框架无内置 | 框架仅提供单通道 `<-chan *event.Event`，不支持多消费者分发 | ✅ 已委托框架 bus.Bus[Envelope]
 | **Envelope 事件信封** | `internal/event/contract/envelope.go` | 框架无内置 | 框架 `event.Event` 是 LLM 响应载体，项目需要通用事件信封（70+ 事件类型） |
 | **SubscribeOptions（订阅配置）** | `internal/event/contract/bus.go` | 框架无内置 | 框架无订阅概念，项目需按 SessionID/TeamID/Channel/FilterKey/EventType 过滤 |
 | **DropPolicy（投递策略）** | `internal/event/contract/bus.go` | 框架无内置 | 框架无背压处理，项目需 DropOldest/DropNewest/BlockUpTo |
 | **ChannelPriority（优先级）** | `internal/event/contract/bus.go` | 框架无内置 | 框架无优先级概念，项目需 Critical/Normal 分级投递 |
-| **EventWAL（WBPF 保护）** | `internal/event/wal.go` | 框架无内置 | 框架无持久化保护，Critical 事件需先写后发防丢失 |
-| **可靠性分级 AS-EVT-01** | `internal/event/contract/reliability.go` | 框架无内置 | 框架无可靠性分级，项目按 Critical/Important/Informational 分级 |
+| **EventWAL（WBPF 保护）** | `internal/event/wal.go` | 框架无内置 | 框架无持久化保护，Critical 事件需先写后发防丢失 | ✅ 已委托框架 wal.WAL[Envelope]
+| **可靠性分级 AS-EVT-01** | `internal/event/contract/reliability.go` | 框架无内置 | 框架无可靠性分级，项目按 Critical/Important/Informational 分级 | ✅ 已委托框架 reliability.Classifier
 | **Buffer（回放缓冲区）** | `internal/event/buffer.go` | 框架无内置 | WebSocket 重连时需回放历史事件 |
-| **FlowTracker/TraceEmitter** | `internal/event/flow_tracker.go`、`trace_emitter.go` | 框架无内置 | 框架无流程追踪，项目需步骤计时/FlowLog/Span 追踪 |
-| **SpanCollector/UsageAggregator** | `internal/event/span_collector.go`、`usage_aggregator.go` | 框架无内置 | 框架无 Span/Usage 聚合，项目需 LLM/Tool Span 追踪和用量聚合 |
+| **FlowTracker/TraceEmitter** | `internal/event/flow_tracker.go`、`trace_emitter.go` | 框架无内置 | 框架无流程追踪，项目需步骤计时/FlowLog/Span 追踪 | ✅ 纯数据层已委托框架 tracing
+| **SpanCollector/UsageAggregator** | `internal/event/span_collector.go`、`usage_aggregator.go` | 框架无内置 | 框架无 Span/Usage 聚合，项目需 LLM/Tool Span 追踪和用量聚合 | ✅ 纯数据层已委托框架 tracing
 | **EventBusConsumer（主消费者）** | `internal/biz/event_bus_consumer.go` | 框架无内置 | 框架无多消费者编排，项目需 buffer/persist/runnerCompletion/stateDelta 处理 |
 | **EventBusSideConsumers（旁路消费者）** | `internal/biz/event_bus_side_consumers.go` | 框架无内置 | 框架无旁路消费，项目需 toolCall/callback/messageStore/flowLog 等独立消费 |
 | **DomainEvent 适配层** | `internal/biz/domain_event.go`、`domain_event_adapter.go` | 框架无内置 | 将 Envelope 转换为 biz 层 DomainEvent，解耦事件传输与业务逻辑 |
@@ -166,19 +166,19 @@
 
 ### 4.1 对齐项清单
 
-| # | 对齐项 | 类型 | 优先级 | 影响范围 | 预期收益 |
-|---|--------|------|--------|---------|---------|
-| 1 | 启用框架 Plugin.OnEvent 事件钩子 | 启用框架功能 | P2 | 事件拦截/变换 | 统一事件变换逻辑，减少重复代码约 200 行 |
-| 2 | Graph 事件使用框架 EventEmitter | 启用框架功能 | P3 | Graph 事件产出 | 简化 EventBridge 适配层，减少代码约 150 行 |
-| 3 | EventBus 贡献回框架 | 贡献回框架 | P1 | 整个事件系统 | 框架级多消费者支持，减少维护负担 |
-| 4 | EventWAL 贡献回框架 | 贡献回框架 | P1 | Critical 事件可靠性 | 框架级 WBPF 保护 |
-| 5 | 可靠性分级贡献回框架 | 贡献回框架 | P1 | 事件投递策略 | 框架级可靠性保证 |
-| 6 | Envelope 适配框架 Event | 新增适配层 | P2 | 事件类型定义 | 统一事件模型，减少双轨维护 |
-| 7 | FlowTracker/SpanCollector 贡献回框架 | 贡献回框架 | P2 | 运行时可观测性 | 框架级流程追踪 |
+| # | 对齐项 | 类型 | 优先级 | 影响范围 | 预期收益 | 状态 |
+|---|--------|------|--------|---------|---------|------|
+| 1 | 启用框架 Plugin.OnEvent 事件钩子 | 启用框架功能 | P2 | 事件拦截/变换 | 统一事件变换逻辑，减少重复代码约 200 行 | ✅ 已完成（eventTypeLabel 细化） |
+| 2 | Graph 事件使用框架 EventEmitter | 启用框架功能 | P3 | Graph 事件产出 | 简化 EventBridge 适配层，减少代码约 150 行 | ⏳ 待启动 |
+| 3 | EventBus 贡献回框架 | 贡献回框架 | P1 | 整个事件系统 | 框架级多消费者支持，减少维护负担 | ✅ 已完成 |
+| 4 | EventWAL 贡献回框架 | 贡献回框架 | P1 | Critical 事件可靠性 | 框架级 WBPF 保护 | ✅ 已完成 |
+| 5 | 可靠性分级贡献回框架 | 贡献回框架 | P1 | 事件投递策略 | 框架级可靠性保证 | ✅ 已完成 |
+| 6 | Envelope 适配框架 Event | 新增适配层 | P2 | 事件类型定义 | 统一事件模型，减少双轨维护 | ✅ 已完成（FromFrameworkEvent 统一转换） |
+| 7 | FlowTracker/SpanCollector 贡献回框架 | 贡献回框架 | P2 | 运行时可观测性 | 框架级流程追踪 | ✅ 已完成（纯数据层 tracing 包） |
 
 ### 4.2 对齐项详情
 
-#### 对齐项 #1：启用框架 Plugin.OnEvent 事件钩子
+#### 对齐项 #1：启用框架 Plugin.OnEvent 事件钩子 ✅ 已完成
 
 **类型**：启用框架功能
 
@@ -191,10 +191,11 @@
 2. 保留 EventBus 作为下游分发层，Plugin.OnEvent 作为上游拦截层
 3. 逐步将散落在各消费者中的变换逻辑收敛到 Plugin 钩子
 
-**代码变更范围**：
-- 新增：`internal/adapter/event_plugin.go`（Plugin 适配器）
-- 修改：Runner 初始化代码（注册 Plugin）
-- 修改：各消费者中移除重复的变换逻辑
+**实施结果**：
+- 分析发现 Envelope 转换发生在 Runner 事件循环之后（turnStreamConsumer），而非循环内部，因此不适合在 Plugin.OnEvent 中做重转换
+- 实际可行的改进：将 `eventTypeLabel` 从 3 类（event/model_response/error）细化到 10 类（runner_completion/chat.completion.chunk/chat.completion/tool.response/error/agent.transfer/state.update/preprocessing/postprocessing/model_response），覆盖所有框架 `model.ObjectType`
+- 细化后的分类使 hook 规则可以精确匹配特定事件类型（如仅拦截 tool.response 或 preprocessing 事件），而非只能匹配粗粒度的 "model_response"
+- 变更文件：`internal/plugin/trpc/hook_events.go`
 
 **兼容性风险**：
 - Plugin.OnEvent 在 Runner 事件循环内同步执行，耗时操作会阻塞事件流
@@ -246,7 +247,7 @@
 
 ---
 
-#### 对齐项 #3：EventBus 贡献回框架
+#### 对齐项 #3：EventBus 贡献回框架 ✅ 已完成
 
 **类型**：贡献回框架
 
@@ -257,8 +258,14 @@
 **对齐方案**：
 1. 将 `internal/event/bus.go` 的 Bus 接口和实现抽取为框架 `event/bus/` 扩展包
 2. 接口设计保持项目现有 Bus 接口不变，实现代码迁移到框架
-3. 项目通过 `import "github.com/trpc-agent-go/event/bus"` 使用框架实现
+3. 项目通过 `import "trpc.group/trpc-go/trpc-agent-go/event/bus"` 使用框架实现
 4. 分阶段迁移：先迁移 Bus 核心 → 再迁移 Infra 编排 → 最后迁移频道路由
+
+**实施结果**：
+- 框架侧：`pkg/trpc-agent-go/event/bus/bus.go` — 泛型 `Bus[T any]` 接口和实现，含 DropPolicy/ChannelPriority/SubscribeOptions/EventMatcher/DropLogger/DefaultBufferSize/MaxBufferSize 常量
+- 项目侧：`internal/event/bus_adapter.go` — busAdapter 将框架 Bus[Envelope] 适配到 contract.Bus，含 loggateway DropLogger、SubscribeOptions 转换、Filter 组合
+- 项目侧：`internal/event/bus.go` — NewBus 委托到 busAdapter，legacyBus 保留并标注 TECH-DEBT
+- API 完全兼容：contract.Bus 接口不变，所有下游消费者无需修改
 
 **代码变更范围**：
 - 新增：`pkg/trpc-agent-go/event/bus/`（框架扩展包）
@@ -283,7 +290,7 @@
 
 ---
 
-#### 对齐项 #4：EventWAL 贡献回框架
+#### 对齐项 #4：EventWAL 贡献回框架 ✅ 已完成
 
 **类型**：贡献回框架
 
@@ -293,8 +300,15 @@
 
 **对齐方案**：
 1. 将 `internal/event/wal.go` 抽取为框架 `event/wal/` 扩展包
-2. 抽象存储后端接口（`WALStorage`），默认提供 SQLite 实现
+2. 抽象存储后端接口（`Storage`），默认提供 SQLite 实现
 3. 与 EventBus 贡献配合，WAL 作为 Bus 的可选中间层
+
+**实施结果**：
+- 框架侧：`pkg/trpc-agent-go/event/wal/wal.go` — 泛型 `WAL[T any]` 实现，含 Storage 接口（Insert/MarkPublished/ListUnpublished/PurgePublished/Close）、ExistChecker、IsCriticalFunc、SerializeFunc/DeserializeFunc、Logger 接口、WALOption 函数选项模式
+- 框架侧：`pkg/trpc-agent-go/event/wal/memory_storage.go` — MemoryStorage 测试实现
+- 项目侧：`internal/event/wal_storage.go` — sqliteWALStorage 适配 *sql.DB 到框架 wal.Storage，含 ctx 参数、Scan/Parse 错误日志
+- 项目侧：`internal/event/wal.go` — EventWAL 委托到框架 WAL[Envelope]，walLogger 适配器透传 kv 参数，legacyEventWAL 保留并标注 TECH-DEBT
+- API 完全兼容：EventWAL 公开接口不变
 
 **代码变更范围**：
 - 新增：`pkg/trpc-agent-go/event/wal/`（框架扩展包）
@@ -318,7 +332,7 @@
 
 ---
 
-#### 对齐项 #5：可靠性分级贡献回框架
+#### 对齐项 #5：可靠性分级贡献回框架 ✅ 已完成
 
 **类型**：贡献回框架
 
@@ -328,8 +342,13 @@
 
 **对齐方案**：
 1. 将可靠性分级作为 `event/reliability/` 扩展包贡献回框架
-2. 定义 `ReliabilityLevel` 类型和 `ClassifyReliability(object string) ReliabilityLevel` 函数
+2. 定义 `Tier` 类型和 `Classifier[T]` 泛型分级器
 3. 与 EventWAL 配合，框架级提供基于可靠性分级的投递策略
+
+**实施结果**：
+- 框架侧：`pkg/trpc-agent-go/event/reliability/reliability.go` — 泛型 `Classifier[T comparable]` 分级器，含 Tier（Critical/Important/Informational）、RWMutex 并发安全、Register/RegisterBulk/Classify/IsRegistered/Tiers、RequiresBlockUpTo/IsCriticalWBPF 辅助函数
+- 项目侧：`internal/event/contract/reliability.go` — 从自包含 switch 分级改为委托 `reliability.Classifier[EnvelopeType]`，EventReliability 成为 `reliability.Tier` 类型别名
+- API 完全兼容：ClassifyEventReliability/IsCriticalWBPFType/RequiresBlockUpTo 函数签名不变
 
 **代码变更范围**：
 - 新增：`pkg/trpc-agent-go/event/reliability/`（框架扩展包）
@@ -351,7 +370,7 @@
 
 ---
 
-#### 对齐项 #6：Envelope 适配框架 Event
+#### 对齐项 #6：Envelope 适配框架 Event ✅ 已完成
 
 **类型**：新增适配层
 
@@ -364,9 +383,13 @@
 2. 中期：评估将项目特有事件类型（如 Spirit/Butler/Monitor/Skill 等）注册为框架 `event.Event` 的 Extension，减少双轨维护
 3. 长期：当框架接受 EventBus 贡献后，Envelope 可作为 Bus 的标准信封类型
 
-**代码变更范围**：
-- 修改：`internal/event/framework_events.go`（增强框架事件到 Envelope 的映射）
-- 修改：`internal/event/contract/envelope.go`（评估 EnvelopeType 与框架 ObjectType 的对齐）
+**实施结果**：
+- 新增 `FromFrameworkEvent(ev, meta, typ)` 统一转换函数，作为 framework `*event.Event` → project `Envelope` 字段映射的单源真相
+- 新增 `FrameworkEventMeta` 结构体，携带 turn-scoped 元数据（SessionID/RequestID/InvocationID/ParentInvocationID/TeamID/Branch/FilterKey/Source），解耦转换函数与 turn-scoped 状态
+- EventProjector 的 `baseEnvelope` 和 Graph EventBridge 的 `convertEvent` 均改为调用 `FromFrameworkEvent`，消除了两处重复的手动字段提取逻辑
+- Extensions 转换：框架 `map[string]json.RawMessage` → 项目 `map[string]string`，含 JSON string 引号剥离逻辑
+- Actions 转换：框架 `EventActions.SkipSummarization` → 项目 `EnvelopeActions.SkipSummarization`
+- 变更文件：`internal/event/framework_adapter.go`（新增）、`internal/event/framework_adapter_test.go`（新增 9 个测试）、`internal/agent/event_projector.go`、`internal/graph/trpc/event_bridge.go`
 
 **兼容性风险**：
 - Envelope 与 Event 结构差异较大（Envelope 面向通用事件，Event 面向 LLM 响应），强行统一可能引入复杂性
@@ -385,7 +408,7 @@
 
 ---
 
-#### 对齐项 #7：FlowTracker/SpanCollector 贡献回框架
+#### 对齐项 #7：FlowTracker/SpanCollector 贡献回框架 ✅ 已完成（纯数据层）
 
 **类型**：贡献回框架
 
@@ -398,9 +421,15 @@
 2. 与框架 `ExecutionTrace` 集成，提供标准化的流程追踪能力
 3. SpanCollector 作为 FlowTracker 的子模块贡献
 
-**代码变更范围**：
-- 新增：`pkg/trpc-agent-go/event/tracing/`（框架扩展包）
-- 修改：`internal/event/flow_tracker.go`、`span_collector.go` → 委托到框架实现
+**实施结果**：
+- 采用最小可行贡献策略：仅提取纯数据层（FlowContext/SpanContext/UsageContext）到 `pkg/trpc-agent-go/event/tracing/`，零外部依赖
+- FlowContext：步骤级计时（RecordStart/TakeTiming），sync.Mutex 并发安全
+- SpanContext：Span 树管理（StartSpan/EndSpan/FinishRoot/OpenToolSpan/TakeToolSpan/HasToolSpan/SetOpenLLMSpan/MergeLLMSpanTokens/RootID/Spans/IterateSpans），sync.Mutex 并发安全
+- UsageContext：OTel 关联（SetOtelRefs/OtelTraceID/OtelRootID）+ turn 计时（TurnStart），sync.Mutex 并发安全
+- 项目侧通过 type alias 委托：`FlowContext = frameworktracing.FlowContext`、`SpanContext = frameworktracing.SpanContext`、`UsageContext = frameworktracing.UsageContext`
+- FlowTracker/SpanCollector/UsageAggregator 暂未贡献（含 loggateway/Envelope/Bus 等重依赖），后续迭代评估
+- 项目 `FlowTiming` 保留 `StartedAt` 字段（框架仅 `DurationMS`），`flow_tracker.emit()` 内部做 framework → project 转换
+- 变更文件：`pkg/trpc-agent-go/event/tracing/tracing.go`（新增）、`pkg/trpc-agent-go/event/tracing/tracing_test.go`（新增 13 个测试）、`internal/event/flow_context_state.go`、`internal/event/span_context.go`、`internal/event/usage_context.go`（删除，合并到 span_context.go）、`internal/event/flow_tracker.go`
 
 **兼容性风险**：
 - FlowTracker 依赖项目 loggateway，需抽象日志接口

@@ -13,6 +13,7 @@ import (
 	evalsetinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/registry"
 	metricinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/metric/inmemory"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/service"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/usersimulation"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
@@ -21,7 +22,8 @@ import (
 // FrameworkBridge runs evaluations via trpc-agent-go AgentEvaluator (MultiRun, etc.).
 type FrameworkBridge struct {
 	runFactory   func(agentID string) (runner.Runner, error)
-	llmJudge     LLMJudge
+	judgeRunner  runner.Runner
+	callbacks    *service.Callbacks
 	llmUserSim   usersimulation.Simulator
 	multiRunCfg  MultiRunConfig
 	lg           loggateway.Logger
@@ -29,12 +31,20 @@ type FrameworkBridge struct {
 
 func NewFrameworkBridge(
 	runFactory func(agentID string) (runner.Runner, error),
-	judge LLMJudge,
+	judgeRunner runner.Runner,
+	callbacks *service.Callbacks,
 	llmUserSim usersimulation.Simulator,
 	multiRunCfg MultiRunConfig,
 	lg loggateway.Logger,
 ) *FrameworkBridge {
-	return &FrameworkBridge{runFactory: runFactory, llmJudge: judge, llmUserSim: llmUserSim, multiRunCfg: multiRunCfg, lg: lg}
+	return &FrameworkBridge{
+		runFactory:  runFactory,
+		judgeRunner: judgeRunner,
+		callbacks:   callbacks,
+		llmUserSim:  llmUserSim,
+		multiRunCfg: multiRunCfg,
+		lg:          lg,
+	}
 }
 
 // RunConfig holds per-run framework options.
@@ -95,6 +105,12 @@ func (b *FrameworkBridge) Execute(
 		trpceval.WithRegistry(reg),
 	}
 	opts = append(opts, mrc.ToOptions()...)
+	if b.judgeRunner != nil {
+		opts = append(opts, trpceval.WithJudgeRunner(b.judgeRunner))
+	}
+	if b.callbacks != nil {
+		opts = append(opts, trpceval.WithCallbacks(b.callbacks))
+	}
 	if sim := resolveUserSimulator(cases, cfg, b.llmUserSim, b.lg); sim != nil {
 		opts = append(opts, trpceval.WithUserSimulator(sim))
 	}
@@ -161,30 +177,6 @@ func (b *FrameworkBridge) Execute(
 			agg[name] += score
 			aggCount[name]++
 			applyMetricResult(&res, name, score, mr.Threshold)
-		}
-		if cfg.Metrics[MetricLLMAsJudge] && b.llmJudge != nil && res.ActualOutput != "" {
-			score, judgeErr := b.llmJudge(ctx, bc.Input, bc.ExpectedOutput, res.ActualOutput)
-			if judgeErr != nil {
-				// EV-04: log failure and count as 0 in denominator so the average is
-				// not inflated by skipping failed judge calls. Append to any pre-existing
-				// inference error to preserve both error contexts.
-				b.lg.Warn("eval.llm_judge.failed",
-					loggateway.StepID("evaluation.llm_judge.fail"),
-					loggateway.Str("case_id", bc.ID),
-					loggateway.Err(judgeErr),
-				)
-				judgeErrMsg := "llm_judge failed: " + judgeErr.Error()
-				if res.ErrorMessage != "" {
-					res.ErrorMessage = res.ErrorMessage + "; " + judgeErrMsg
-				} else {
-					res.ErrorMessage = judgeErrMsg
-				}
-				aggCount[MetricLLMAsJudge]++
-			} else {
-				res.LLMJudgeScore = score
-				agg[MetricLLMAsJudge] += score
-				aggCount[MetricLLMAsJudge]++
-			}
 		}
 		out = append(out, res)
 	}

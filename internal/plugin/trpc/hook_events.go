@@ -9,6 +9,7 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func (m *Manager) dispatchHookOnEvent(
@@ -71,6 +72,8 @@ func hookEventMatches(cond biz.HookCondition, eventType string) bool {
 	return strings.EqualFold(want, eventType)
 }
 
+// eventTypeLabel returns a fine-grained event type label for hook rule matching.
+// Maps framework event.Object to a stable label string that hook conditions can match against.
 func eventTypeLabel(e *trpcevent.Event) string {
 	if e == nil {
 		return ""
@@ -78,8 +81,33 @@ func eventTypeLabel(e *trpcevent.Event) string {
 	if e.IsRunnerCompletion() {
 		return "runner_completion"
 	}
-	if e.Response != nil {
+	if e.Response == nil {
+		return "event"
+	}
+	// Fine-grained classification based on event.Object (framework model.ObjectType).
+	switch e.Response.Object {
+	case trpcmodel.ObjectTypeChatCompletionChunk:
+		return "chat.completion.chunk"
+	case trpcmodel.ObjectTypeChatCompletion:
+		return "chat.completion"
+	case trpcmodel.ObjectTypeToolResponse:
+		return "tool.response"
+	case trpcmodel.ObjectTypeError:
+		return "error"
+	case trpcmodel.ObjectTypeTransfer:
+		return "agent.transfer"
+	case trpcmodel.ObjectTypeStateUpdate:
+		return "state.update"
+	case trpcmodel.ObjectTypePreprocessingBasic,
+		trpcmodel.ObjectTypePreprocessingContent,
+		trpcmodel.ObjectTypePreprocessingIdentity,
+		trpcmodel.ObjectTypePreprocessingInstruction,
+		trpcmodel.ObjectTypePreprocessingPlanning:
+		return "preprocessing"
+	case trpcmodel.ObjectTypePostprocessingPlanning,
+		trpcmodel.ObjectTypePostprocessingCodeExecution:
+		return "postprocessing"
+	default:
 		return "model_response"
 	}
-	return "event"
 }

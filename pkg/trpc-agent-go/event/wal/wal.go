@@ -78,10 +78,12 @@ type WAL[T any] struct {
 // New creates a new WAL instance.
 // The isCritical function determines which events require WBPF protection.
 // If isCritical is nil, ALL events will be treated as critical (conservative default).
+// serialize and deserialize can be overridden via options; defaults to JSON.
 func New[T any](
 	storage Storage,
 	isCritical IsCriticalFunc[T],
 	lg Logger,
+	opts ...WALOption[T],
 ) (*WAL[T], error) {
 	if storage == nil {
 		return nil, fmt.Errorf("wal: storage is required")
@@ -101,14 +103,22 @@ func New[T any](
 			return event, nil
 		},
 	}
+	for _, opt := range opts {
+		opt(w)
+	}
 	return w, nil
 }
 
+// WALOption configures a WAL instance.
+type WALOption[T any] func(*WAL[T])
+
 // WithSerializer sets custom serialization functions.
-func (w *WAL[T]) WithSerializer(serialize SerializeFunc[T], deserialize DeserializeFunc[T]) *WAL[T] {
-	w.serialize = serialize
-	w.deserialize = deserialize
-	return w
+// Must be called before any WriteBeforePublish call.
+func WithSerializer[T any](serialize SerializeFunc[T], deserialize DeserializeFunc[T]) WALOption[T] {
+	return func(w *WAL[T]) {
+		w.serialize = serialize
+		w.deserialize = deserialize
+	}
 }
 
 // WriteBeforePublish persists a critical event to WAL before publishing.
@@ -140,18 +150,24 @@ func (w *WAL[T]) WriteBeforePublish(ctx context.Context, event T, eventID string
 	publish()
 
 	// 4. Mark as published (synchronous — avoids crash-time inconsistency)
-	w.markPublished(ctx, eventID)
-
+	// If marking fails, the event was still published, but on restart it may
+	// be republished. Return a non-fatal error so the caller can log it.
+	if markErr := w.markPublished(ctx, eventID); markErr != nil {
+		return fmt.Errorf("wal: event published but mark failed (may republish on restart): %w", markErr)
+	}
 	return nil
 }
 
 // markPublished marks a WAL entry as published.
-func (w *WAL[T]) markPublished(ctx context.Context, id string) {
+// Returns the error from the storage layer so callers can decide how to handle it.
+func (w *WAL[T]) markPublished(ctx context.Context, id string) error {
 	if err := w.storage.MarkPublished(ctx, id, time.Now().UTC()); err != nil {
 		if w.lg != nil {
 			w.lg.Warn("wal: mark published failed", "id", id, "error", err)
 		}
+		return err
 	}
+	return nil
 }
 
 // Recover replays unpublished WAL entries after process restart.

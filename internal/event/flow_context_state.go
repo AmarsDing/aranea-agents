@@ -1,37 +1,15 @@
 package event
 
 import (
-	"sync"
-	"time"
+	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
 )
 
-// FlowContext holds flow step timing data with its own mutex.
-type FlowContext struct {
-	mu     sync.Mutex
-	timers map[string]time.Time
-}
+// FlowContext holds flow step timing data.
+// Delegates to the framework tracing.FlowContext implementation.
+//
+// TECH-DEBT(P2-alignment): type alias delegates to framework; evaluate if
+// project-specific extensions are needed in future iterations.
+type FlowContext = frameworktracing.FlowContext
 
 // NewFlowContext creates a FlowContext with initialized timers map.
-func NewFlowContext() *FlowContext {
-	return &FlowContext{
-		timers: make(map[string]time.Time),
-	}
-}
-
-// RecordStart stores the start time for a step.
-func (fc *FlowContext) RecordStart(stepID string) {
-	fc.mu.Lock()
-	fc.timers[stepID] = time.Now()
-	fc.mu.Unlock()
-}
-
-// TakeTiming returns and removes the timing for a step.
-func (fc *FlowContext) TakeTiming(stepID string) *FlowTiming {
-	fc.mu.Lock()
-	defer fc.mu.Unlock()
-	if start, ok := fc.timers[stepID]; ok {
-		delete(fc.timers, stepID)
-		return &FlowTiming{DurationMS: time.Since(start).Milliseconds()}
-	}
-	return nil
-}
+var NewFlowContext = frameworktracing.NewFlowContext

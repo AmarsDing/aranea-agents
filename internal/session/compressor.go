@@ -564,7 +564,7 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 	}
 
 	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, txTail)
-	c.postCompressionSync(ctx, sessionID, ag, sess, fromTurn, toTurn, txMerged, txTail)
+	c.postCompressionSync(ctx, sessionID, trpcUserID, ag, sess, fromTurn, toTurn, txMerged, txTail)
 
 	return nil
 }
@@ -646,8 +646,9 @@ func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, 
 	}
 }
 
-// postCompressionSync handles post-compression side effects: notice, memory resync, L0 force-snapshot.
-func (c *Compressor) postCompressionSync(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, fromTurn, toTurn int, txMerged string, txTail []biz.ChatMessage) {
+// postCompressionSync handles post-compression side effects: notice, memory resync, L0 force-snapshot,
+// and framework summary sync.
+func (c *Compressor) postCompressionSync(ctx context.Context, sessionID, trpcUserID string, ag biz.Agent, sess biz.Session, fromTurn, toTurn int, txMerged string, txTail []biz.ChatMessage) {
 	win := llmcontext.ResolveWindow(llmcontext.ResolveInput{
 		SessionDefaultWindow: sess.LastContextWindowTokens,
 		AgentWindow:          ag.ContextWindow,
@@ -663,6 +664,17 @@ func (c *Compressor) postCompressionSync(ctx context.Context, sessionID string, 
 	// Mark session for forced L0 snapshot on next model call (bypasses throttle).
 	if c.Runtime != nil {
 		c.Runtime.MarkForceL0Snapshot(sessionID)
+
+		// Sync framework session summary after compression.
+		// The framework's async summarizer will update session.Summaries,
+		// providing a secondary summary path that complements the project's
+		// three-level compression cascade.
+		if err := c.Runtime.EnqueueFrameworkSummary(ctx, trpcUserID, sessionID, true); err != nil {
+			c.lg.Warn("framework summary enqueue failed",
+				loggateway.StepID("session.compress"),
+				loggateway.SessionID(sessionID),
+				loggateway.Err(err))
+		}
 	}
 }
 

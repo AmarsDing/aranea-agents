@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	frameworkwal "trpc.group/trpc-go/trpc-agent-go/event/wal"
 )
 
 // sqliteWALStorage adapts *sql.DB to the framework wal.Storage interface.
 type sqliteWALStorage struct {
 	db *sql.DB
+	lg loggateway.Logger
 }
 
 // newSQLiteWALStorage creates a new SQLite-backed WAL storage.
-func newSQLiteWALStorage(db *sql.DB) (*sqliteWALStorage, error) {
-	s := &sqliteWALStorage{db: db}
-	if err := s.ensureSchema(context.Background()); err != nil {
+func newSQLiteWALStorage(ctx context.Context, db *sql.DB, lg loggateway.Logger) (*sqliteWALStorage, error) {
+	s := &sqliteWALStorage{db: db, lg: lg}
+	if err := s.ensureSchema(ctx); err != nil {
 		return nil, fmt.Errorf("event_wal: ensure schema: %w", err)
 	}
 	return s, nil
@@ -65,9 +68,22 @@ func (s *sqliteWALStorage) ListUnpublished(ctx context.Context) ([]frameworkwal.
 		var id, envJSON string
 		var createdAtStr string
 		if err := rows.Scan(&id, &envJSON, &createdAtStr); err != nil {
+			if s.lg != nil {
+				s.lg.Warn("event_wal: scan row failed", loggateway.Err(err))
+			}
 			continue
 		}
-		createdAt, _ := time.Parse(time.RFC3339Nano, createdAtStr)
+		createdAt, err := time.Parse(time.RFC3339Nano, createdAtStr)
+		if err != nil {
+			if s.lg != nil {
+				s.lg.Warn("event_wal: parse created_at failed",
+					loggateway.Str("id", id),
+					loggateway.Str("created_at", createdAtStr),
+					loggateway.Err(err),
+				)
+			}
+			createdAt = time.Now().UTC()
+		}
 		entries = append(entries, frameworkwal.Entry{
 			ID:        id,
 			EventJSON: envJSON,

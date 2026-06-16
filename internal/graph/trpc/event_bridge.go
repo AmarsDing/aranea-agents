@@ -61,9 +61,11 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		return nil
 	}
 
-	env := event.NewEnvelope(envType, "graph", b.sessionID)
+	env := event.FromFrameworkEvent(e, event.FrameworkEventMeta{
+		SessionID:  b.sessionID,
+		FilterKey:  fmt.Sprintf("graph/%s/%s", b.graphID, b.execID),
+	}, envType)
 	env.Channel = "graph"
-	env.FilterKey = fmt.Sprintf("graph/%s/%s", b.graphID, b.execID)
 
 	switch e.Object {
 	case trpcgraph.ObjectTypeGraphNodeStart:
@@ -76,7 +78,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 			"step_number":  meta.StepNumber,
 			"phase":        string(meta.Phase),
 		}
-		if meta.StartTime.IsZero() == false {
+		if !meta.StartTime.IsZero() {
 			env.Metadata["start_time"] = meta.StartTime.Format("2006-01-02T15:04:05.000Z07:00")
 		}
 
@@ -96,7 +98,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		if meta.Duration > 0 {
 			env.Metadata["duration_ns"] = meta.Duration.Nanoseconds()
 		}
-		if meta.EndTime.IsZero() == false {
+		if !meta.EndTime.IsZero() {
 			env.Metadata["end_time"] = meta.EndTime.Format("2006-01-02T15:04:05.000Z07:00")
 		}
 		if len(meta.OutputKeys) > 0 {

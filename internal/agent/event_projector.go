@@ -109,45 +109,16 @@ func (p *EventProjector) Project(ctx context.Context, ev *trpcevent.Event, meta 
 }
 
 func (p *EventProjector) baseEnvelope(ev *trpcevent.Event, meta ProjectMeta, typ event.EnvelopeType) event.Envelope {
-	env := event.NewEnvelope(typ, ev.Author, meta.SessionID)
-	if ev.ID != "" {
-		env.ID = ev.ID
-	}
-	env.RequestID = meta.RequestID
-	if ev.RequestID != "" {
-		env.RequestID = ev.RequestID
-	}
-	env.InvocationID = ev.InvocationID
-	if meta.InvocationID != "" {
-		env.InvocationID = meta.InvocationID
-	}
-	env.ParentInvocationID = ev.ParentInvocationID
-	if meta.ParentInvocationID != "" {
-		env.ParentInvocationID = meta.ParentInvocationID
-	}
-	env.Branch = coalesceStr(ev.Branch, meta.Branch)
-	env.FilterKey = coalesceStr(ev.FilterKey, meta.FilterKey)
-	env.Tag = ev.Tag
-	env.TeamID = meta.TeamID
-	env.Version = ev.Version
-	if !ev.Timestamp.IsZero() {
-		env.Timestamp = ev.Timestamp.UTC().Format(time.RFC3339Nano)
-	}
-	if len(ev.Extensions) > 0 {
-		env.Extensions = make(map[string]string, len(ev.Extensions))
-		for k, v := range ev.Extensions {
-			env.Extensions[k] = string(v)
-		}
-	}
-	if ev.Actions != nil {
-		env.Actions = &event.EnvelopeActions{
-			SkipSummarization: ev.Actions.SkipSummarization,
-		}
-	}
-	if src := strings.TrimSpace(meta.Source); src != "" {
-		env.Source = src
-	}
-	return env
+	return event.FromFrameworkEvent(ev, event.FrameworkEventMeta{
+		SessionID:          meta.SessionID,
+		RequestID:          meta.RequestID,
+		InvocationID:       meta.InvocationID,
+		ParentInvocationID: meta.ParentInvocationID,
+		TeamID:             meta.TeamID,
+		Branch:             meta.Branch,
+		FilterKey:          meta.FilterKey,
+		Source:             meta.Source,
+	}, typ)
 }
 
 func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) []event.Envelope {

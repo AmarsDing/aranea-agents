@@ -2,7 +2,6 @@ package event
 
 import (
 	"context"
-	"sync/atomic"
 
 	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
@@ -14,15 +13,13 @@ import (
 // This allows the project to delegate to the framework implementation while
 // keeping the contract.Bus interface unchanged for all downstream consumers.
 type busAdapter struct {
-	inner     frameworkbus.Bus[Envelope]
-	lg        loggateway.Logger
-	dropCount atomic.Uint64
+	inner frameworkbus.Bus[Envelope]
+	lg    loggateway.Logger
 }
 
 // newBusAdapter creates a contract.Bus backed by the framework bus implementation.
 func newBusAdapter(lg loggateway.Logger) contract.Bus {
 	dropLogger := frameworkbus.DropLogger[Envelope](func(env Envelope, policy string, totalDrops uint64) {
-		dropCount := totalDrops
 		arametrics.EventBusDropped.WithLabelValues(string(env.Type), policy).Inc()
 		if lg != nil {
 			lg.Warn("[event_bus] drop",
@@ -30,7 +27,7 @@ func newBusAdapter(lg loggateway.Logger) contract.Bus {
 				loggateway.Str("type", string(env.Type)),
 				loggateway.Str("channel", env.Channel),
 				loggateway.SessionID(env.SessionID),
-				loggateway.Int64("total_drops", int64(dropCount)),
+				loggateway.Int64("total_drops", int64(totalDrops)),
 			)
 		}
 	})

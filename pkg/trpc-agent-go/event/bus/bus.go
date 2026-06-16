@@ -10,8 +10,6 @@ package bus
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,6 +38,13 @@ const (
 	PriorityNormal
 )
 
+const (
+	// DefaultBufferSize is the default subscriber channel capacity.
+	DefaultBufferSize = 128
+	// MaxBufferSize is the maximum allowed subscriber channel capacity.
+	MaxBufferSize = 512
+)
+
 // EventMatcher is a function that checks if an event matches a subscription filter.
 // Return true to deliver the event, false to skip it.
 type EventMatcher[T any] func(event T) bool
@@ -51,7 +56,7 @@ type SubscribeOptions[T any] struct {
 	Priority ChannelPriority
 
 	// BufferSize is the capacity of the subscriber's channel.
-	// Default: 128, Max: 512.
+	// Default: DefaultBufferSize, Max: MaxBufferSize.
 	BufferSize int
 
 	// Reliable forces BlockUpTo delivery policy regardless of the event's
@@ -150,10 +155,10 @@ func (b *bus[T]) Publish(ctx context.Context, event T) {
 func (b *bus[T]) Subscribe(opts SubscribeOptions[T]) (<-chan T, func()) {
 	bufSize := opts.BufferSize
 	if bufSize <= 0 {
-		bufSize = 128
+		bufSize = DefaultBufferSize
 	}
-	if bufSize > 512 {
-		bufSize = 512
+	if bufSize > MaxBufferSize {
+		bufSize = MaxBufferSize
 	}
 	ch := make(chan T, bufSize)
 	id := atomic.AddUint64(&b.nextID, 1)
@@ -288,19 +293,6 @@ func (b *bus[T]) logEventDrop(event T, policy string) {
 	b.dropCount.Add(1)
 	if b.logDrop != nil {
 		b.logDrop(event, policy, b.dropCount.Load())
-	}
-}
-
-// StderrDropLogger returns a DropLogger that writes to stderr.
-// This is the default fallback when no custom logger is set.
-func StderrDropLogger[T any](formatFunc func(event T) string) DropLogger[T] {
-	return func(event T, policy string, totalDrops uint64) {
-		desc := ""
-		if formatFunc != nil {
-			desc = formatFunc(event)
-		}
-		fmt.Fprintf(os.Stderr, "[event_bus] drop policy=%s event=%s total_drops=%d\n",
-			policy, desc, totalDrops)
 	}
 }
 

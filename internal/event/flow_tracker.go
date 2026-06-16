@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"aranea-agents/pkg/loggateway"
+
+	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
 )
 
 // FlowTracker holds FlowContext + optional SpanCollector + optional UsageAggregator.
@@ -158,7 +160,7 @@ func (ft *FlowTracker) shouldPublishFlowChatError(stepID string) bool {
 	return !skip
 }
 
-func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeverity, message, titleOverride string, timing *FlowTiming, extra []Pair) {
+func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeverity, message, titleOverride string, timing *frameworktracing.FlowTiming, extra []Pair) {
 	if ft == nil {
 		return
 	}
@@ -173,7 +175,12 @@ func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 			flowErr.Message = fmt.Sprint(errVal)
 		}
 	}
-	entry := newFlowLogEntry(ft.tc, stepID, phase, explicitSev, titleOverride, message, "", timing, flowErr, ex)
+	// Convert framework FlowTiming to project FlowTiming (adds StartedAt field).
+	var projectTiming *FlowTiming
+	if timing != nil {
+		projectTiming = &FlowTiming{DurationMS: timing.DurationMS}
+	}
+	entry := newFlowLogEntry(ft.tc, stepID, phase, explicitSev, titleOverride, message, "", projectTiming, flowErr, ex)
 
 	if ft.lg != nil {
 		ft.lg.Info(entry.displayText(),

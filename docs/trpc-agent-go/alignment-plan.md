@@ -10,21 +10,21 @@
 
 | 模块 | 对齐度 | P1 项 | P2 项 | P3 项 | P4 项 | 总对齐项 |
 |------|--------|-------|-------|-------|-------|---------|
-| Event | ★★☆☆☆ | 3 | 2 | 2 | 0 | 7 |
+| Event | ★★☆☆☆→★★★★★ | 3✅ | 2✅ | 2 | 0 | 7 |
 | Prompt | ☆☆☆☆☆ | 1 | 2 | 1 | 0 | 4 |
 | Knowledge | ★☆☆☆☆ | 2 | 2 | 6 | 0 | 10 |
 | Team | ★☆☆☆☆ | 0 | 3 | 5 | 0 | 8 |
 | Evaluation | ★★★☆☆ | 2 | 2 | 3 | 0 | 7 |
 | Tool | ★★★★☆→★★★★★ | 1✅ | 2 | 2 | 0 | 5 |
-| Session | ★★★☆☆ | 0 | 4 | 4 | 0 | 8 |
-| Memory | ★★★☆☆ | 0 | 2 | 6 | 0 | 8 |
+| Session | ★★★☆☆→★★★★☆ | 0 | 4(4✅) | 4 | 0 | 8 |
+| Memory | ★★★☆☆→★★★★☆ | 0 | 2 | 6 | 0 | 8 |
 | Server | ★★☆☆☆ | 0 | 2 | 3 | 0 | 5 |
 | Model | ★★★★☆→★★★★★ | 0 | 3(1✅) | 7 | 0 | 10 |
 | Agent | ★★★★☆ | 0 | 0 | 6 | 2 | 8 |
 | Runner | ★★★★☆ | 0 | 0 | 6 | 0 | 6 |
 | Skill | ★★★★☆→★★★★★ | 0 | 2 | 5(1✅) | 0 | 7 |
 | Extended | ★★☆☆☆ | 1 | 1 | 1 | 3 | 6 |
-| **合计** | — | **9(1✅)** | **27(1✅)** | **54(1✅)** | **5** | **99(3✅)** |
+| **合计** | — | **9(4✅)** | **27(3✅)** | **54(1✅)** | **5** | **99(8✅)** |
 
 ### 1.2 对齐类型分布
 
@@ -60,9 +60,9 @@ Extended（独立，ToolPipe 依赖 Tool）
 
 | # | 模块 | 对齐项 | 类型 | 核心收益 |
 |---|------|--------|------|---------|
-| P1-1 | Event | 贡献 EventBus（双总线） | 贡献回框架 | 框架获得事件总线能力，项目减少 ~800 行自建代码 |
-| P1-2 | Event | 贡献 EventWAL（WBPF） | 贡献回框架 | 框架获得事件持久化+先写后发能力 |
-| P1-3 | Event | 贡献事件可靠性分级 | 贡献回框架 | 框架获得 Critical/Important/Informational 三级可靠性保证 |
+| P1-1 | Event | 贡献 EventBus（双总线） | 贡献回框架 | 框架获得事件总线能力，项目减少 ~800 行自建代码 | ✅ 已完成 |
+| P1-2 | Event | 贡献 EventWAL（WBPF） | 贡献回框架 | 框架获得事件持久化+先写后发能力 | ✅ 已完成 |
+| P1-3 | Event | 贡献事件可靠性分级 | 贡献回框架 | 框架获得 Critical/Important/Informational 三级可靠性保证 | ✅ 已完成 |
 | P1-4 | Tool | 启用 ToolPipe Extension | 启用框架功能 | Token 消耗降低 50-90%（框架 benchmark 数据） | ✅ 已完成 |
 | P1-5 | Knowledge | 实现 VectorStore 适配器 | 新增适配层 | 对接框架 Knowledge 接口，统一向量搜索 |
 | P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 |
@@ -92,14 +92,14 @@ P1-9 (PromptIter) ──→ 独立
 
 | # | 模块 | 对齐项 | 类型 | 前置依赖 | 核心收益 |
 |---|------|--------|------|---------|---------|
-| P2-1 | Event | Envelope 适配框架 Event | 替换自建实现 | P1-1 EventBus | 70+ 事件类型与框架事件体系统一 |
-| P2-2 | Event | 贡献 FlowTracker/SpanCollector | 贡献回框架 | P1-1 EventBus | 框架获得链路追踪能力 |
-| P2-3 | Session | 启用 AppendEventHook | 启用框架功能 | P1-1 EventBus | 事件写入后自动触发回调 |
-| P2-4 | Session | 启用 GetSessionHook | 启用框架功能 | P1-1 EventBus | Session 读取时注入自定义逻辑 |
-| P2-5 | Session | 评估 Summary 替换 micro_compact | 替换自建实现 | P2-3 | 框架 Summary 替换自建压缩 |
-| P2-6 | Session | 启用 WithSessionEventLimit | 启用框架功能 | P2-3 | 控制单 Session 事件数量 |
-| P2-7 | Memory | L2/L3 适配 memory.Service 接口 | 新增适配层 | P1-1 EventBus | 记忆层对接框架接口 |
-| P2-8 | Memory | Extractor Chain 适配 MemoryExtractor | 新增适配层 | P2-7 | 提取器链对接框架接口 |
+| P2-1 | Event | Envelope 适配框架 Event | 替换自建实现 | P1-1 EventBus | 70+ 事件类型与框架事件体系统一 | ✅ 已完成 |
+| P2-2 | Event | 贡献 FlowTracker/SpanCollector | 贡献回框架 | P1-1 EventBus | 框架获得链路追踪能力 | ✅ 已完成（纯数据层） |
+| P2-3 | Session | 启用 AppendEventHook | 启用框架功能 | P1-1 EventBus | 事件写入后自动触发回调 | ✅ 已完成 |
+| P2-4 | Session | 启用 GetSessionHook | 启用框架功能 | P1-1 EventBus | Session 读取时注入自定义逻辑 | ✅ 已完成 |
+| P2-5 | Session | 评估 Summary 替换 micro_compact | 替换自建实现 | P2-3 | 框架 Summary 替换自建压缩 | ✅ 已完成（补充模式） |
+| P2-6 | Session | 启用 WithSessionEventLimit | 启用框架功能 | P2-3 | 控制单 Session 事件数量 | ✅ 已完成 |
+| P2-7 | Memory | L2/L3 适配 memory.Service 接口 | 新增适配层 | P1-1 EventBus | 记忆层对接框架接口 | ✅ 已验证（已有实现） |
+| P2-8 | Memory | Extractor Chain 适配 MemoryExtractor | 新增适配层 | P2-7 | 提取器链对接框架接口 | ✅ 已完成 |
 | P2-9 | Tool | DeferredCallableTool 实现 DeferredTool | 替换自建实现 | P1-4 ToolPipe | 延迟加载工具对接框架接口 |
 | P2-10 | Tool | 贡献 Circuit Breaker | 贡献回框架 | 无 | 框架获得工具级熔断能力 |
 | P2-11 | Tool | 贡献 Confirmation Gate | 贡献回框架 | 无 | 框架获得工具确认门控能力 |
@@ -277,39 +277,100 @@ P1-9 (PromptIter) ──→ 独立
 
 **审查结果**：aranea-review 通过，0 阻断项，2 建议项（均不修复：ToolPipe 无条件启用安全；工具名硬编码 YAGNI）。
 
-### Phase 1：Event 对齐（2-3 周）
+### Phase 1：Event 对齐（2-3 周） 🔄 进行中
 
 **目标**：完成 Event 模块对齐，解锁 Session/Memory 依赖链。
 
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 贡献 EventBus（双总线） | 贡献回框架 | 大 | 中 |
-| 贡献 EventWAL（WBPF） | 贡献回框架 | 大 | 中 |
-| 贡献事件可靠性分级 | 贡献回框架 | 中 | 低 |
-| 启用 Plugin.OnEvent | 启用框架功能 | 小 | 低 |
-| Envelope 适配框架 Event | 替换自建实现 | 中 | 中 |
-| 贡献 FlowTracker/SpanCollector | 贡献回框架 | 中 | 低 |
+| 任务 | 类型 | 工作量 | 风险 | 状态 |
+|------|------|--------|------|------|
+| 贡献 EventBus（双总线） | 贡献回框架 | 大 | 中 | ✅ P1-1 已完成 |
+| 贡献 EventWAL（WBPF） | 贡献回框架 | 大 | 中 | ✅ P1-2 已完成 |
+| 贡献事件可靠性分级 | 贡献回框架 | 中 | 低 | ✅ P1-3 已完成 |
+| 启用 Plugin.OnEvent | 启用框架功能 | 小 | 低 | ✅ P2 已完成（eventTypeLabel 细化） |
+| Envelope 适配框架 Event | 替换自建实现 | 中 | 中 | ✅ P2 已完成（FromFrameworkEvent 统一转换） |
+| 贡献 FlowTracker/SpanCollector | 贡献回框架 | 中 | 低 | ✅ P2 已完成（纯数据层 tracing 包） |
 
 **前置条件**：Phase 0 完成（ToolPipe 验证 Extension 注册机制）。
 
-**产出**：Event 模块对齐度 ★★☆☆☆ → ★★★★☆，解锁 Session/Memory 对齐。
+**产出**：Event 模块对齐度 ★★☆☆☆ → ★★★★★，解锁 Session/Memory 对齐。
 
-### Phase 2：Session + Memory 对齐（3-4 周）
+**实施记录（P1-1/P1-2/P1-3）**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `pkg/trpc-agent-go/event/bus/bus.go` | 新增 ~300 行：泛型 Bus[T] 接口和实现，含 DropPolicy（DropOldest/DropNewest/BlockUpTo）、ChannelPriority（Critical/Normal）、SubscribeOptions、EventMatcher 过滤、DropLogger 回调、DefaultBufferSize/MaxBufferSize 常量 |
+| `pkg/trpc-agent-go/event/bus/bus_test.go` | 新增 ~250 行：Bus 测试覆盖 Publish/Subscribe/PriorityOrder/DropNewest/BlockUpTo/Reliable/Filter/Unsubscribe/MultipleSubscribers/BufferSize/MatchLevelFilter |
+| `pkg/trpc-agent-go/event/wal/wal.go` | 新增 ~220 行：泛型 WAL[T] 实现，含 Storage 接口（Insert/MarkPublished/ListUnpublished/PurgePublished/Close）、ExistChecker、IsCriticalFunc、SerializeFunc/DeserializeFunc、Logger 接口、WALOption 函数选项模式 |
+| `pkg/trpc-agent-go/event/wal/memory_storage.go` | 新增 ~80 行：MemoryStorage 测试实现 |
+| `pkg/trpc-agent-go/event/wal/wal_test.go` | 新增 ~200 行：WAL 测试覆盖 WriteBeforePublish/Recover/ExistChecker/PurgePublished/NilStorage/NilIsCritical |
+| `pkg/trpc-agent-go/event/reliability/reliability.go` | 新增 ~140 行：泛型 Classifier[T] 可靠性分级器，含 Tier（Critical/Important/Informational）、RWMutex 并发安全、Register/RegisterBulk/Classify/IsRegistered/Tiers |
+| `pkg/trpc-agent-go/event/reliability/reliability_test.go` | 新增 ~150 行：Classifier 测试覆盖 Classify/RequiresBlockUpTo/IsCriticalWBPF/TierString/IsRegistered/Tiers/CustomFallback/IntKeyType |
+| `internal/event/contract/reliability.go` | 重构：从自包含 switch 分级改为委托 `reliability.Classifier[EnvelopeType]`，EventReliability 成为 `reliability.Tier` 类型别名 |
+| `internal/event/bus_adapter.go` | 新增 ~140 行：busAdapter 将框架 Bus[Envelope] 适配到 contract.Bus，含 DropLogger（loggateway）、SubscribeOptions 转换、Filter 组合 |
+| `internal/event/bus.go` | 修改：NewBus 委托到 busAdapter，legacyBus 保留并标注 TECH-DEBT，移除 stderr 写入 |
+| `internal/event/wal_storage.go` | 新增 ~100 行：sqliteWALStorage 适配 *sql.DB 到框架 wal.Storage，含 ctx 参数、Scan 错误日志、time.Parse 错误处理 |
+| `internal/event/wal.go` | 修改：EventWAL 委托到框架 WAL[Envelope]，walLogger 适配器透传 kv 参数（toLoggatewayFields），legacyEventWAL 保留并标注 TECH-DEBT |
+
+**审查结果**：aranea-review 三轮审查，0 阻断项。已修复 12 项审查问题（REV-001~REV-014，含并发安全、错误传播、红线合规、魔法数字、TECH-DEBT 标注等）。
+
+**实施记录（P2-1/P2-2）**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/event/framework_adapter.go` | 新增 ~115 行：`FromFrameworkEvent` 统一转换函数 + `FrameworkEventMeta` 元数据结构 + `isJSONString`/`coalesceStr` 辅助函数。单源真相：framework `*event.Event` → project `Envelope` 字段映射 |
+| `internal/event/framework_adapter_test.go` | 新增 ~228 行：9 个测试用例覆盖基础字段、meta 回退、Extensions/Actions/nil Actions、空时间戳、Response、isJSONString、coalesceStr、返回类型 |
+| `internal/plugin/trpc/hook_events.go` | 修改：`eventTypeLabel` 从 3 类（event/model_response/error）扩展到 10 类（runner_completion/chat.completion.chunk/chat.completion/tool.response/error/agent.transfer/state.update/preprocessing/postprocessing/model_response），覆盖所有框架 `model.ObjectType` |
+| `internal/agent/event_projector.go` | 修改：`baseEnvelope` 方法从手动字段提取改为调用 `event.FromFrameworkEvent`，消除与 Graph EventBridge 的重复逻辑 |
+| `internal/graph/trpc/event_bridge.go` | 修改：`convertEvent` 方法从手动字段提取改为调用 `event.FromFrameworkEvent`，修复 `IsZero() == false` → `!IsZero()` |
+| `internal/event/flow_context_state.go` | 修改：`FlowContext` type alias 委托到 `frameworktracing.FlowContext`，添加 TECH-DEBT(P2-alignment) 注解 |
+| `internal/event/span_context.go` | 修改：`SpanContext`/`UsageContext` type alias 委托到 `frameworktracing`，添加 TECH-DEBT(P2-alignment) 注解，移除 28 行冗余代码（恒真指针转换、方法签名检查、FlowTiming 空引用、time import） |
+| `internal/event/usage_context.go` | 删除：`UsageContext` 合并到 `span_context.go` |
+| `internal/event/flow_tracker.go` | 修改：`emit()` 签名改为接受 `*frameworktracing.FlowTiming`，内部转换为项目 `FlowTiming`（保留 `StartedAt` 字段） |
+| `internal/event/bus.go` | 修改：移除 ~260 行 legacyBus 实现（TECH-DEBT，零调用者），仅保留 re-export + `NewBus` 委托 |
+| `internal/event/wal.go` | 修改：移除 ~130 行 legacyEventWAL 实现（TECH-DEBT），仅保留 EventWAL 委托 + walLogger 适配器 |
+| `pkg/trpc-agent-go/event/tracing/tracing.go` | 新增 ~287 行：框架级 tracing 原语包，零外部依赖。含 FlowContext（步骤计时）、SpanContext（Span 树管理）、UsageContext（OTel 关联 + turn 计时），全部使用 sync.Mutex 并发安全 |
+| `pkg/trpc-agent-go/event/tracing/tracing_test.go` | 新增 ~200 行：13 个测试用例覆盖 FlowContext/SpanContext/UsageContext 含并发访问测试 |
+
+**审查结果**：aranea-review 两轮审查，0 阻断项。第一轮修复 5 项（S-09 IsZero 修正、S-10 TECH-DEBT 注解、S-11 冗余代码清理、S-03 coalesceStr 重复评估、S-07 event_projector 行数预存问题），第二轮 0 阻断、1 建议（预存）、1 提示。
+
+### Phase 2：Session + Memory 对齐（3-4 周） ✅ 已完成
 
 **目标**：完成 Session 和 Memory 模块对齐。
 
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 启用 AppendEventHook | 启用框架功能 | 小 | 低 |
-| 启用 GetSessionHook | 启用框架功能 | 小 | 低 |
-| 评估 Summary 替换 micro_compact | 替换自建实现 | 中 | 中 |
-| 启用 WithSessionEventLimit | 启用框架功能 | 小 | 低 |
-| L2/L3 适配 memory.Service | 新增适配层 | 中 | 中 |
-| Extractor Chain 适配 MemoryExtractor | 新增适配层 | 中 | 中 |
+| 任务 | 类型 | 工作量 | 风险 | 状态 |
+|------|------|--------|------|------|
+| 启用 AppendEventHook | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 启用 GetSessionHook | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 评估 Summary 替换 micro_compact | 替换自建实现 | 中 | 中 | ✅ 已完成（补充模式） |
+| 启用 WithSessionEventLimit | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| L2/L3 适配 memory.Service | 新增适配层 | 中 | 中 | ✅ 已验证（已有完整实现） |
+| Extractor Chain 适配 MemoryExtractor | 新增适配层 | 中 | 中 | ✅ 已完成 |
 
 **前置条件**：Phase 1 完成（Event 对齐）。
 
 **产出**：Session 对齐度 ★★★☆☆ → ★★★★☆，Memory 对齐度 ★★★☆☆ → ★★★★☆。
+
+**实施记录**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/session/trpc/sqlite.go` | +15 行：添加 `WithSessionEventLimit(5000)` + `WithAppendEventHook` + `WithGetSessionHook` + `WithSummarizer`（DynamicSummarizer），新增 `sessionEventLimit` 常量 |
+| `internal/session/trpc/hooks.go` | 新增 ~85 行：`AppendEventAuditHook`（事件写入审计日志）+ `GetSessionAuditHook`（Session 读取审计日志）+ `eventTypeLabel` 分类映射 |
+| `internal/session/trpc/summarizer.go` | 新增 ~67 行：`SummarizerConfig` + `NewDynamicSummarizer`（DynamicSummarizer 模式，按请求解析模型）+ `resolveSummaryModel`（复用 PickTitleModel 策略） |
+| `internal/session/trpc/factory.go` | 修改：`NewTRPCSessionService` 签名添加 `SummarizerConfig` 参数 |
+| `internal/session/compressor.go` | +10 行：`postCompressionSync` 添加 `EnqueueFrameworkSummary` 调用，压缩后同步框架摘要状态 |
+| `internal/memory/trpc/extractor_adapter.go` | 新增 ~110 行：`ConsolidatorExtractorAdapter` 将 `biz.MemoryConsolidator` 适配为 `extractor.MemoryExtractor` 接口 |
+| `internal/runtime/providers.go` | 修改：`NewTRPCSessionService` 签名添加 `SummarizerConfig` |
+| `internal/runtime/providers_test.go` | 修改：测试更新 |
+| `cmd/admin/wire.go` | 修改：`provideTRPCSessionService` 注入 `LlmProviderModelUsecase` + `RoundTrip` |
+| `cmd/admin/wire_gen.go` | 修改：同步 Wire 生成物 |
+
+**审查结果**：aranea-review 一轮审查，修复 3 个阻断项（nil 指针解引用、ToolCall 信息丢失、空 proposal 过滤）+ 1 个建议项（魔法数字常量化），0 阻断项剩余。
+
+**设计决策**：
+- **Summary 不替换 micro_compact**：框架 Summary 操作 `session.Summaries`（异步 LLM 摘要），项目 Compressor 操作 `biz.SessionSummary` + Runner Snapshot（三级级联压缩）。两者互补而非替代：Compressor 压缩后调用 `EnqueueFrameworkSummary` 同步框架摘要状态。
+- **L2/L3 适配已验证**：项目 `sqliteMemoryService` 已完整实现 `memory.Service` 接口（含编译期断言），无需额外适配层。
+- **Extractor 适配器为未来桥接**：`ConsolidatorExtractorAdapter` 允许项目在准备好时切换到框架的 auto-memory worker，当前仍使用项目自建的 `AutoMemoryWorker`。
 
 ### Phase 3：Knowledge + Evaluation + Prompt 对齐（2-3 周）
 
@@ -530,6 +591,8 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 ### 9.1 每个 Phase 完成标准
 
 - [x] Phase 0：所有对齐项代码已合并，构建通过，审查通过
+- [x] Phase 1（P1-1/P1-2/P1-3）：EventBus/EventWAL/可靠性分级贡献完成，构建通过，审查通过
+- [x] Phase 1（P2 后续）：Plugin.OnEvent eventTypeLabel 细化/FromFrameworkEvent 统一转换/tracing 纯数据层贡献完成，构建通过，审查通过
 - [ ] Phase 1~7：所有该 Phase 的对齐项代码已合并
 - [ ] 全量测试通过（`make test`）
 - [ ] 全量构建通过（`make build`）
@@ -553,7 +616,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 | 模块 | 当前 | Phase 0 后 | Phase 1 后 | Phase 3 后 | 最终目标 |
 |------|------|-----------|-----------|-----------|---------|
-| Event | ★★☆☆☆ | ★★☆☆☆ | ★★★★☆ | ★★★★☆ | ★★★★★ |
+| Event | ★★☆☆☆ | ★★☆☆☆ | ★★★★★ | ★★★★★ | ★★★★★ |
 | Prompt | ☆☆☆☆☆ | ☆☆☆☆☆ | ☆☆☆☆☆ | ★★★☆☆ | ★★★★☆ |
 | Knowledge | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★☆☆ | ★★★★☆ |
 | Team | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ |

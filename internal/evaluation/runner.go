@@ -31,20 +31,16 @@ var (
 // It returns the agent's output for a given input string.
 type AgentRunner func(ctx context.Context, agentID, input string) (string, error)
 
-// LLMJudge is an optional function that scores an answer vs expected on [0, 1].
-type LLMJudge func(ctx context.Context, input, expected, actual string) (float32, error)
-
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
 	uc        *biz.EvalUsecase
 	agent     AgentRunner
-	llmJudge  LLMJudge
 	framework *FrameworkBridge
 	lg        loggateway.Logger
 }
 
-func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, judge LLMJudge, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
-	return &Runner{uc: uc, agent: agent, llmJudge: judge, framework: framework, lg: lg}
+func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
+	return &Runner{uc: uc, agent: agent, framework: framework, lg: lg}
 }
 
 func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) {

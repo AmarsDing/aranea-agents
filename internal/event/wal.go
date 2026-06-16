@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -35,20 +34,51 @@ type walLogger struct {
 
 func (l *walLogger) Warn(msg string, kv ...any) {
 	if l.lg != nil {
-		l.lg.Warn(msg, loggateway.Str("source", "event_wal"))
+		l.lg.Warn(msg, toLoggatewayFields(kv)...)
 	}
 }
 
 func (l *walLogger) Info(msg string, kv ...any) {
 	if l.lg != nil {
-		l.lg.Info(msg, loggateway.Str("source", "event_wal"))
+		l.lg.Info(msg, toLoggatewayFields(kv)...)
 	}
+}
+
+// toLoggatewayFields converts alternating key-value pairs from framework
+// wal.Logger (any...any) to loggateway field functions.
+// Framework passes pairs like ("id", "abc", "error", err).
+// We convert known keys to typed loggateway fields, unknown to Str.
+func toLoggatewayFields(kv []any) []loggateway.Field {
+	fields := make([]loggateway.Field, 0, len(kv)/2)
+	for i := 0; i+1 < len(kv); i += 2 {
+		key, _ := kv[i].(string)
+		val := kv[i+1]
+		switch key {
+		case "error":
+			if err, ok := val.(error); ok {
+				fields = append(fields, loggateway.Err(err))
+			} else {
+				fields = append(fields, loggateway.Str(key, fmt.Sprintf("%v", val)))
+			}
+		case "id":
+			fields = append(fields, loggateway.Str("event_id", fmt.Sprintf("%v", val)))
+		case "count":
+			if n, ok := val.(int); ok {
+				fields = append(fields, loggateway.Int(key, n))
+			} else {
+				fields = append(fields, loggateway.Str(key, fmt.Sprintf("%v", val)))
+			}
+		default:
+			fields = append(fields, loggateway.Str(key, fmt.Sprintf("%v", val)))
+		}
+	}
+	return fields
 }
 
 // NewEventWAL creates a new WAL backed by the given SQLite database.
 // The database must be opened with WAL journal mode for best crash safety.
 func NewEventWAL(db *sql.DB, lg loggateway.Logger) (*EventWAL, error) {
-	storage, err := newSQLiteWALStorage(db)
+	storage, err := newSQLiteWALStorage(context.Background(), db, lg)
 	if err != nil {
 		return nil, err
 	}
@@ -124,136 +154,4 @@ type existCheckerAdapter struct {
 
 func (a *existCheckerAdapter) Exists(ctx context.Context, eventID string) bool {
 	return a.inner.Exists(ctx, eventID)
-}
-
-// --- Legacy WAL implementation (kept for reference) ---
-// The following functions are the original WAL implementation.
-// They are retained temporarily for comparison and will be removed after
-// the framework delegation is verified in production.
-
-type legacyEventWAL struct {
-	db *sql.DB
-	lg loggateway.Logger
-}
-
-func newLegacyEventWAL(db *sql.DB, lg loggateway.Logger) (*legacyEventWAL, error) {
-	w := &legacyEventWAL{db: db, lg: lg}
-	if err := w.ensureSchema(context.Background()); err != nil {
-		return nil, fmt.Errorf("event_wal: ensure schema: %w", err)
-	}
-	return w, nil
-}
-
-func (w *legacyEventWAL) ensureSchema(ctx context.Context) error {
-	const ddl = `
-	CREATE TABLE IF NOT EXISTS event_wal (
-		id TEXT PRIMARY KEY,
-		envelope_json TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		published_at DATETIME,
-		published INTEGER DEFAULT 0
-	);
-	CREATE INDEX IF NOT EXISTS idx_event_wal_unpublished ON event_wal(published, created_at);
-	`
-	_, err := w.db.ExecContext(ctx, ddl)
-	return err
-}
-
-func (w *legacyEventWAL) writeBeforePublish(ctx context.Context, env contract.Envelope, publish func()) error {
-	if !IsCriticalWBPFType(env.Type) {
-		publish()
-		return nil
-	}
-	raw, err := json.Marshal(env)
-	if err != nil {
-		return fmt.Errorf("event_wal: marshal envelope: %w", err)
-	}
-	const insertSQL = `INSERT OR IGNORE INTO event_wal (id, envelope_json, created_at) VALUES (?, ?, ?)`
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := w.db.ExecContext(ctx, insertSQL, env.ID, string(raw), now); err != nil {
-		return fmt.Errorf("event_wal: insert: %w", err)
-	}
-	publish()
-	w.markPublished(ctx, env.ID)
-	return nil
-}
-
-func (w *legacyEventWAL) markPublished(ctx context.Context, id string) {
-	const updateSQL = `UPDATE event_wal SET published = 1, published_at = ? WHERE id = ?`
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := w.db.ExecContext(ctx, updateSQL, now, id); err != nil {
-		if w.lg != nil {
-			w.lg.Warn("event_wal: mark published failed",
-				loggateway.Str("id", id),
-				loggateway.Err(err),
-			)
-		}
-	}
-}
-
-func (w *legacyEventWAL) recover(ctx context.Context, bus contract.Bus, store EventStoreExistChecker) {
-	if w == nil || w.db == nil {
-		return
-	}
-	rows, err := w.db.QueryContext(ctx,
-		`SELECT id, envelope_json FROM event_wal WHERE published = 0 ORDER BY created_at ASC`)
-	if err != nil {
-		if w.lg != nil {
-			w.lg.Warn("event_wal: recover query failed", loggateway.Err(err))
-		}
-		return
-	}
-
-	type walEntry struct {
-		id      string
-		envJSON string
-	}
-	var entries []walEntry
-	for rows.Next() {
-		var id, envJSON string
-		if err := rows.Scan(&id, &envJSON); err != nil {
-			continue
-		}
-		entries = append(entries, walEntry{id: id, envJSON: envJSON})
-	}
-	rows.Close()
-
-	recovered := 0
-	for _, e := range entries {
-		if store != nil && store.Exists(ctx, e.id) {
-			w.markPublished(ctx, e.id)
-			continue
-		}
-		var env contract.Envelope
-		if err := json.Unmarshal([]byte(e.envJSON), &env); err != nil {
-			if w.lg != nil {
-				w.lg.Warn("event_wal: recover unmarshal failed",
-					loggateway.Str("id", e.id),
-					loggateway.Err(err),
-				)
-			}
-			continue
-		}
-		bus.Publish(ctx, env)
-		w.markPublished(ctx, e.id)
-		recovered++
-	}
-	if recovered > 0 && w.lg != nil {
-		w.lg.Info("event_wal: recovered events",
-			loggateway.Int("count", recovered),
-		)
-	}
-}
-
-func (w *legacyEventWAL) purgePublished(ctx context.Context, ttl time.Duration) (int64, error) {
-	if w == nil || w.db == nil {
-		return 0, nil
-	}
-	cutoff := time.Now().UTC().Add(-ttl).Format(time.RFC3339)
-	result, err := w.db.ExecContext(ctx,
-		`DELETE FROM event_wal WHERE published = 1 AND created_at < ?`, cutoff)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
 }

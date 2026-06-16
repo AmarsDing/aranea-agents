@@ -13,8 +13,8 @@ import (
 
 // NewTRPCSessionService builds the framework session service from the shared SQLite pool.
 // Deprecated: prefer aranea-agents/internal/session/trpc.NewTRPCSessionService directly.
-func NewTRPCSessionService(rawDB *sql.DB, lg loggateway.Logger) trpcsession.Service {
-	return sessiontrpc.NewTRPCSessionService(rawDB, lg)
+func NewTRPCSessionService(rawDB *sql.DB, lg loggateway.Logger, summarizerCfg sessiontrpc.SummarizerConfig) trpcsession.Service {
+	return sessiontrpc.NewTRPCSessionService(rawDB, lg, summarizerCfg)
 }
 
 // NewGraphCheckpointSaver builds the graph checkpoint saver from the shared SQLite pool.

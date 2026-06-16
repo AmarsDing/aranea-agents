@@ -6,6 +6,10 @@
 // make uniform decisions based on event criticality without maintaining their
 // own classification logic.
 //
+// The Classifier is safe for concurrent use after registration is complete.
+// Typical usage: register all event types in init(), then read concurrently.
+// For concurrent registration, use the mutex-protected methods.
+//
 // Usage:
 //
 //	classifier := reliability.NewClassifier[string]()
@@ -14,6 +18,8 @@
 //	classifier.Register("text_delta", reliability.Informational)
 //	tier := classifier.Classify("tool_result") // => Critical
 package reliability
+
+import "sync"
 
 // Tier defines the reliability guarantee for an event type.
 type Tier int
@@ -62,9 +68,13 @@ func IsCriticalWBPF(t Tier) bool {
 // Classifier maps event types to reliability tiers.
 // Type parameter T allows using any comparable type as the event type key
 // (e.g., string, int, or a custom enum type).
+//
+// The Classifier is safe for concurrent reads and writes. Register/RegisterBulk
+// acquire a write lock; Classify/IsRegistered/Tiers acquire a read lock.
 type Classifier[T comparable] struct {
+	mu             sync.RWMutex
 	classifications map[T]Tier
-	fallback        Tier
+	fallback       Tier
 }
 
 // NewClassifier creates a new Classifier with the given fallback tier
@@ -83,11 +93,15 @@ func NewClassifier[T comparable](fallback ...Tier) *Classifier[T] {
 
 // Register maps an event type to a reliability tier.
 func (c *Classifier[T]) Register(eventType T, tier Tier) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.classifications[eventType] = tier
 }
 
 // RegisterBulk maps multiple event types to the same reliability tier.
 func (c *Classifier[T]) RegisterBulk(tier Tier, eventTypes ...T) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, t := range eventTypes {
 		c.classifications[t] = tier
 	}
@@ -96,15 +110,8 @@ func (c *Classifier[T]) RegisterBulk(tier Tier, eventTypes ...T) {
 // Classify returns the reliability tier for an event type.
 // Unregistered types fall back to the classifier's default tier.
 func (c *Classifier[T]) Classify(eventType T) Tier {
-	if tier, ok := c.classifications[eventType]; ok {
-		return tier
-	}
-	return c.fallback
-}
-
-// MustClassify returns the reliability tier for an event type.
-// Panics if the event type is not registered and no fallback is set.
-func (c *Classifier[T]) MustClassify(eventType T) Tier {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if tier, ok := c.classifications[eventType]; ok {
 		return tier
 	}
@@ -113,12 +120,16 @@ func (c *Classifier[T]) MustClassify(eventType T) Tier {
 
 // IsRegistered returns true if the event type has an explicit classification.
 func (c *Classifier[T]) IsRegistered(eventType T) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	_, ok := c.classifications[eventType]
 	return ok
 }
 
 // Tiers returns all registered event types for a given tier.
 func (c *Classifier[T]) Tiers(tier Tier) []T {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	var result []T
 	for t, v := range c.classifications {
 		if v == tier {

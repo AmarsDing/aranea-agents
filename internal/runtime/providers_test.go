@@ -3,11 +3,12 @@ package runtime
 import (
 	"testing"
 
+	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewTRPCSessionServiceNilDB(t *testing.T) {
-	svc := NewTRPCSessionService(nil, loggateway.NewNoop())
+	svc := NewTRPCSessionService(nil, loggateway.NewNoop(), sessiontrpc.SummarizerConfig{})
 	if svc == nil {
 		t.Fatal("expected in-memory fallback session service")
 	}

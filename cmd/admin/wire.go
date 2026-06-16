@@ -54,6 +54,7 @@ import (
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	araneasession "aranea-agents/internal/session"
+	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/internal/skill"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
@@ -904,8 +905,12 @@ func provideSQLiteRawDB(d *data.Data) *sql.DB {
 	return d.RWDB().WriteHandle()
 }
 
-func provideTRPCSessionService(rawDB *sql.DB, lg loggateway.Logger) trpcsession.Service {
-	return rt.NewTRPCSessionService(rawDB, lg)
+func provideTRPCSessionService(rawDB *sql.DB, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
+	return rt.NewTRPCSessionService(rawDB, lg, sessiontrpc.SummarizerConfig{
+		Catalog: catalog,
+		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
+		Lg:      lg,
+	})
 }
 
 func provideSessionMemoryResync(persist rt.PersistenceSet) araneasession.MemoryResync {
