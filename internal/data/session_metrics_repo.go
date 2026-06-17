@@ -64,7 +64,7 @@ func (r *sessionMetricsRepo) GetSessionMetrics(ctx context.Context, sessionID st
 		if ent.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_METRICS")
 	}
 	return entSessionMetricsToBiz(row), nil
 }
@@ -78,7 +78,7 @@ func (r *sessionMetricsRepo) ListSessionMetricsByIDs(ctx context.Context, ids []
 		Where(sessionmetrics.IDIn(ids...)).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_METRICS")
 	}
 	result := make(map[string]*biz.SessionMetrics, len(rows))
 	for _, row := range rows {
@@ -170,7 +170,7 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 	if err != nil {
 		r.data.lg.Warn("upsert session metrics failed", loggateway.StepID("data.session_metrics.upsert"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION_METRICS")
 }
 
 func (r *sessionMetricsRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionMetricsDelta) error {

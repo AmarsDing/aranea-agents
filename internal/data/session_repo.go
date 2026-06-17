@@ -646,7 +646,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 			r.metricsCache.Invalidate(sessionID)
 		}
 	}
-	return err
+	return entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {
@@ -698,7 +698,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 			r.metricsCache.Invalidate(sessionID)
 		}
 	}
-	return err
+	return entErrToBizErr(err, "SESSION")
 }
 
 func sessionSearchOrder(sortBy, sortOrder string) []entsession.OrderOption {
@@ -764,7 +764,7 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 		// 仅写旧表（当前行为）
 		err = r.applyMetricsDeltaToSession(ctx, d)
 	}
-	return err
+	return entErrToBizErr(err, "SESSION")
 }
 
 // applyMetricsDeltaToSession writes metrics delta to the legacy sessions table.

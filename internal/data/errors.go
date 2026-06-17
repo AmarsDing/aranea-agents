@@ -57,8 +57,9 @@ func entErrToBizErr(err error, domain string) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return apierror.Wrap(err, apierror.CodeNotFound, domain)
 	}
-	// Postgres errors (lib/pq).
-	if pgErr, ok := err.(*pq.Error); ok {
+	// Postgres errors (lib/pq). Use errors.As to handle wrapped errors.
+	var pgErr *pq.Error
+	if errors.As(err, &pgErr) {
 		switch pgErr.Code.Name() {
 		case "unique_violation", "foreign_key_violation":
 			return apierror.Wrap(err, apierror.CodeConflict, domain)

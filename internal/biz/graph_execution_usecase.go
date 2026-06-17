@@ -322,8 +322,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		return nil, err
 	}
 	exec.execMu.Lock()
-	sm := NewGraphExecutionStateMachine()
-	if _, err := sm.Transition(ParseGraphExecutionState(exec.Status), GraphExecEventResume); err != nil {
+	if _, err := uc.sm.Transition(ParseGraphExecutionState(exec.Status), GraphExecEventResume); err != nil {
 		exec.execMu.Unlock()
 		return nil, ErrGraphInvalidStatus
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -923,7 +924,8 @@ func isPostgresAlreadyExistsErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	if pgErr, ok := err.(*pq.Error); ok {
+	var pgErr *pq.Error
+	if errors.As(err, &pgErr) {
 		// 42P07 = duplicate_table, 42710 = duplicate_object, 42701 = duplicate_column
 		switch pgErr.Code {
 		case "42P07", "42710", "42701":
