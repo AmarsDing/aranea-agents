@@ -75,9 +75,9 @@
 
 **验收标准**：
 - 4 层匹配（Performance/Exact/Semantic/LLM 冷启动）失败时，自动触发 AgentFactory
-- AgentFactory 用 LLM 生成 Agent 定义（AgentKey/DisplayName/Description/Provider/Model/Tools/Skills/Prompt）
+- AgentFactory 用 LLM 生成 Agent 定义（含 Key/名称/描述/Provider/Model/Tools/Skills/Prompt）
 - 创建过程无需人工审核，自动持久化到 DB
-- 创建的 Agent 标记 `source="dynamic"`，可在 Admin UI 区分
+- 创建的 Agent 标记来源为"系统创建"，可在 Admin UI 区分
 - 动态创建的 Agent 可被后续任务复用
 - 创建过程发布事件，前端可见"系统创建了新 Agent [name]"
 
@@ -114,23 +114,27 @@
 | FR-1.1 | EventStore/WAL/Checkpoint/Run/SessionRun/TeamRun/GraphExecution 迁移到 Postgres | P0 |
 | FR-1.2 | Memory（L2/L3/L4）+ Usage 迁移到 Postgres | P1 |
 | FR-1.3 | 其余 70+ 表完成迁移，下线 SQLite | P2 |
-| FR-1.4 | 补齐 FK 约束（Message/TeamRun/GraphExecution） | P0 |
+| FR-1.4 | 补齐 FK 约束（关键实体间引用完整性） | P0 |
 | FR-1.5 | 补齐唯一约束（SessionRun/TeamRun 的"一 X 多活跃 Run"） | P0 |
-| FR-1.6 | Postgres 连接池配置（写 16/读 32） | P0 |
-| FR-1.7 | `entErrToBizErr` 适配 Postgres 错误码 | P0 |
+| FR-1.6 | Postgres 连接池支持高并发读写 | P0 |
+| FR-1.7 | 数据库错误翻译适配 Postgres 错误码 | P0 |
+
+> 实现细节（连接池参数、错误码映射、迁移 SQL）详见 [70-orchestration-longtask-memory.design.md §二](./70-orchestration-longtask-memory.design.md#二postgres-全量迁移设计)
 
 ### FR-2：统一执行引擎（基于 trpc-agent-go 增强）
 
 | # | 需求 | 优先级 |
 |---|------|--------|
-| FR-2.1 | taskrun 事件透传：扩展 taskrun.Controller 增加 `Events() <-chan *event.Event` | P0 |
-| FR-2.2 | 跨进程事件流：event.Bus 增加 Postgres-backed EventStore 持久层 | P0 |
-| FR-2.3 | 任务级心跳：执行引擎每 10s 发布 `run_heartbeat` 事件 | P0 |
+| FR-2.1 | 后台任务事件可被外部消费（taskrun 事件透传） | P0 |
+| FR-2.2 | 跨进程事件流：事件总线增加 Postgres 持久层 | P0 |
+| FR-2.3 | 任务级心跳：执行引擎周期发布心跳事件 | P0 |
 | FR-2.4 | 崩溃恢复：所有 Run 强制启用 CheckpointSaver（Postgres） | P0 |
 | FR-2.5 | RecoveryWorker：进程重启时扫描未完成 Run，从 checkpoint 恢复 | P0 |
-| FR-2.6 | WBPF 语义修复：WAL 失败时不发布 Critical 事件 | P0 |
-| FR-2.7 | 状态机强制接入：禁止 `exec.Status =` 直接赋值 | P0 |
+| FR-2.6 | Critical 事件写入失败时不发布（WBPF 语义修复） | P0 |
+| FR-2.7 | GraphExecution 状态变更经状态机校验（禁止直接赋值） | P0 |
 | FR-2.8 | 短/长任务无感切换：前端检测运行 >2min 自动展开任务面板 | P1 |
+
+> 实现细节（接口签名、状态机定义、WBPF 流程）详见 [70-orchestration-longtask-memory.design.md §三](./70-orchestration-longtask-memory.design.md#三统一执行引擎设计)
 
 ### FR-3：强制任务规划（Layer 1）
 
@@ -145,12 +149,14 @@
 
 | # | 需求 | 优先级 |
 |---|------|--------|
-| FR-4.1 | 语义匹配接入 pgvector embedding（替换 TF-IDF） | P0 |
+| FR-4.1 | 语义匹配升级为向量 embedding（替换关键词匹配） | P0 |
 | FR-4.2 | AgentFactory：LLM 生成 Agent 定义，无需人工审核 | P0 |
-| FR-4.3 | 动态创建的 Agent 持久化到 DB，标记 `source="dynamic"` | P0 |
-| FR-4.4 | `EnvelopeTypeAgentCreated` 事件发布 | P0 |
+| FR-4.3 | 动态创建的 Agent 持久化到 DB，标记来源 | P0 |
+| FR-4.4 | Agent 创建事件发布 | P0 |
 | FR-4.5 | Capacity 负载均衡接入（解决 DEV-03） | P1 |
 | FR-4.6 | 前端展示"系统创建了新 Agent"通知 | P1 |
+
+> 实现细节（AgentFactory 接口、向量匹配流程）详见 [70-orchestration-longtask-memory.design.md §五](./70-orchestration-longtask-memory.design.md#五layer-2动态-agent-供给设计)
 
 ### FR-5：自主 Graph 编排（Layer 3）
 
@@ -186,12 +192,14 @@
 
 | # | 需求 | 优先级 |
 |---|------|--------|
-| FR-8.1 | Bi-temporal 失效标记：Memory 增加 ValidFrom/ValidUntil，冲突时不删除 | P1 |
-| FR-8.2 | Ebbinghaus 衰减评分：`R_t = exp(-n_t/S_t)`，后台 worker 周期计算 | P1 |
-| FR-8.3 | Sleep-time Agent 异步整理：EnqueueConsolidationJob | P2 |
-| FR-8.4 | 主动召回触发器：ProactiveRecall(ctx, convCtx) | P2 |
-| FR-8.5 | 记忆链接图 Evolution：Entry 增加 Links/Keywords/Tags | P2 |
-| FR-8.6 | mid-run 增量记忆提取（扩展 EnqueueAutoMemoryJob 触发点） | P1 |
+| FR-8.1 | Bi-temporal 失效标记：Memory 支持双时序（有效区间），冲突时不删除 | P1 |
+| FR-8.2 | Ebbinghaus 衰减评分：后台 worker 周期计算衰减因子 | P1 |
+| FR-8.3 | Sleep-time Agent 异步整理：后台合并/反思/更新 core memory | P2 |
+| FR-8.4 | 主动召回触发器：基于对话上下文自发检索关联记忆 | P2 |
+| FR-8.5 | 记忆链接图 Evolution：记忆条目增加链接/关键词/标签 | P2 |
+| FR-8.6 | mid-run 增量记忆提取（扩展记忆提取任务触发点） | P1 |
+
+> 实现细节（Memory 结构扩展、衰减公式、召回接口）详见 [70-orchestration-longtask-memory.design.md §九](./70-orchestration-longtask-memory.design.md#九领先记忆系统设计)
 
 ### FR-9：体验痛点修复
 
@@ -199,10 +207,10 @@
 |---|------|--------|
 | FR-9.1 | ErrorBlock 增加重试/切换模型/重新表述按钮，与 errorCodeHints 联动 | P0 |
 | FR-9.2 | errorCodeHints 扩展到覆盖所有 apierror 码 | P0 |
-| FR-9.3 | WS 断连快速检测（run_heartbeat 30s 内） | P0 |
+| FR-9.3 | WS 断连快速检测（心跳 30s 内） | P0 |
 | FR-9.4 | i18n 全覆盖，CI 禁止新增硬编码 | P1 |
 | FR-9.5 | 移动端三栏折叠策略 | P1 |
-| FR-9.6 | HTTP 错误消息从配置读取后端地址 | P1 |
+| FR-9.6 | HTTP 错误消息后端地址可配置 | P1 |
 | FR-9.7 | 长任务进度可视化（进度条+步骤+ETA） | P1 |
 | FR-9.8 | 记忆透明度（侧边栏展示召回记忆） | P2 |
 

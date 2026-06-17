@@ -17,6 +17,8 @@ type fakePlanner struct {
 	quickErr   error
 }
 
+var _ biz.TaskPlannerPort = (*fakePlanner)(nil)
+
 func (f *fakePlanner) Plan(_ context.Context, _ biz.PlanInput) (*biz.TaskPlan, error) {
 	return nil, nil
 }

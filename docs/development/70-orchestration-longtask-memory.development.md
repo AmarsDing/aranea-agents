@@ -135,7 +135,7 @@
 
 **任务**：Repo 文件中所有 `return err` 改为 `return entErrToBizErr(err, "DOMAIN")`
 
-**改动文件**（9 个 + 审查修复 1 个）：
+**改动文件**（9 个主修复 + 3 个审查/补修，共 12 个，完整清单见 §9.3）：
 - `internal/data/session_run_repo.go`（19 处，domain "SESSION_RUN"）
 - `internal/data/session_repo.go`（27 处 + 审查修复 3 处，domain "SESSION"）
 - `internal/data/agent_repo.go`（21 处，domain "AGENT"）
@@ -146,6 +146,8 @@
 - `internal/data/model_registry_apply.go`（多处，domain "MODEL_REGISTRY"）
 - `internal/data/agent_performance_repo.go`（2 处，domain "AGENT_PERFORMANCE"）
 - `internal/data/session_metrics_repo.go`（审查修复 3 处，domain "SESSION_METRICS"）
+- `internal/data/evolution_suggestion_repo.go`（补修，domain "EVOLUTION_SUGGESTION"）
+- `internal/data/channel.go`（补修，domain "CHANNEL"）
 
 **实现细节**：
 - 所有 `return err` 后 Ent/Raw SQL 操作替换为 `return entErrToBizErr(err, "DOMAIN")`
@@ -201,18 +203,29 @@
 **任务**：复杂度 ≥ Moderate 强制走规划路径
 
 **改动文件**：
-- `internal/service/chat_orchestrator_turn.go`（新增 prePlanningGate）
-- `internal/agent/task_planner_impl.go`（新增 QuickAssess）
+- `internal/biz/task_planner.go`（TaskPlannerPort 新增 QuickAssess 方法，标注 Stability: evolving）
+- `internal/agent/task_planner_impl.go`（新增 QuickAssess 实现，纯计算复用 assessComplexity）
+- `internal/event/contract/envelope.go`（新增 3 个规划时间线事件类型 + chat 频道路由注册）
+- `internal/event/contract/envelope_contract_test.go`（更新 EnvelopeType 常量计数 59→62）
+- `internal/service/chat_orchestrator_turn.go`（eg.Wait 后插入 PRE-PLANNING GATE 调用）
+- `internal/service/chat_orchestrator_turn_phases.go`（runIntentPass 签名变更：返回 *intent.Artifact）
 
 **新增文件**：
-- `internal/service/pre_planning_gate.go`
+- `internal/service/pre_planning_gate.go`（GateDecision + PrePlanningGate.Evaluate + 规划时间线事件发布）
+- `internal/service/pre_planning_gate_test.go`（fakePlanner + gateCaptureBus，覆盖 simple/moderate/complex + 错误传播）
+- `internal/service/chat_orchestrator_turn_preplanning.go`（runPrePlanningGate 方法 + forcedPlanningRunOption 函数 + intentArtifactToBiz 转换）
+- `internal/agent/task_planner_impl_test.go`（QuickAssess 单测：simple/moderate/complex + 纯计算验证）
 
 **验收**：
-- Simple 任务直接回答（<2s）
-- Moderate/Complex 任务强制走规划
-- 规划时间线事件发布
+- ✅ Simple 任务直接回答（<2s）— QuickAssess 纯计算 <1ms
+- ✅ Moderate/Complex 任务强制走规划 — ForcePlanning 标志 + RunOption 注入 plan_and_execute 指令
+- ✅ 规划时间线事件发布 — planning_phase_start/done 事件经 contract.Bus 发布
+- ✅ go build ./... 通过
+- ✅ go vet（改动包）通过
+- ✅ TestPrePlanningGate / TestTaskPlanner_QuickAssess / envelope contract / intent 全部通过
+- ✅ aranea-review 两阶段审查通过（规格合规 + 代码质量）
 
-**状态**：📋 待办
+**状态**：✅ 完成
 
 ### 4.3 P1-3：语义匹配接入 pgvector
 
@@ -633,7 +646,7 @@
 | # | 验收项 | 验证方式 | 状态 |
 |---|--------|---------|------|
 | 5 | Intent Pass 默认开启 | 默认场景执行；agent setting 可关闭 | ✅ |
-| 6 | 预规划门控 | Simple <2s，Moderate+ 强制规划 | 📋 |
+| 6 | 预规划门控 | Simple <2s，Moderate+ 强制规划 | ✅ |
 | 7 | pgvector 语义匹配 | 准确率 > TF-IDF | 📋 |
 | 8 | AgentFactory | 无匹配时自动创建，可观测，可复用 | 📋 |
 | 9 | taskrun 事件透传 | 后台任务事件可消费 | 📋 |
@@ -691,40 +704,45 @@
 ### 9.1 新增文件
 
 **后端**：
-- `internal/data/postgres.go`
-- `internal/service/pre_planning_gate.go`
-- `internal/service/run_heartbeat.go`
-- `internal/service/recovery_worker.go`
-- `internal/event/postgres_eventstore.go`
-- `internal/agent/agent_factory.go`
-- `internal/graph/nl2graph.go`
-- `internal/graph/runtime_replanner.go`
-- `internal/graph/topology_evolution.go`
-- `internal/tools/parallel_executor.go`
-- `internal/tools/dependency_analyzer.go`
-- `internal/tools/worktree_isolator.go`
-- `internal/tools/transaction_sandbox.go`
-- `internal/memory/ebbinghaus.go`
-- `internal/memory/sleep_time.go`
-- `internal/memory/link_evolution.go`
-- `internal/cronrunner/jobs/memory_ebbinghaus_decay.go`
-- `internal/cronrunner/jobs/memory_sleep_time.go`
-- `pkg/trpc-agent-go/graph/checkpoint/postgres/*.go`
+- `internal/service/pre_planning_gate.go` ✅
+- `internal/service/pre_planning_gate_test.go` ✅
+- `internal/service/chat_orchestrator_turn_preplanning.go` ✅
+- `internal/event/postgres_wal_storage.go` ✅
+- `internal/biz/graph_execution_state_machine.go` ✅
+- `internal/biz/graph_execution_usecase_fsm_test.go` ✅
+- `internal/data/errors_postgres_test.go` ✅
+- `internal/service/run_heartbeat.go`（📋 待创建）
+- `internal/service/recovery_worker.go`（📋 待创建）
+- `internal/event/postgres_eventstore.go`（📋 待创建）
+- `internal/agent/agent_factory.go`（📋 待创建）
+- `internal/graph/nl2graph.go`（📋 待创建）
+- `internal/graph/runtime_replanner.go`（📋 待创建）
+- `internal/graph/topology_evolution.go`（📋 待创建）
+- `internal/tools/parallel_executor.go`（📋 待创建）
+- `internal/tools/dependency_analyzer.go`（📋 待创建）
+- `internal/tools/worktree_isolator.go`（📋 待创建）
+- `internal/tools/transaction_sandbox.go`（📋 待创建）
+- `internal/memory/ebbinghaus.go`（📋 待创建）
+- `internal/memory/sleep_time.go`（📋 待创建）
+- `internal/memory/link_evolution.go`（📋 待创建）
+- `internal/cronrunner/jobs/memory_ebbinghaus_decay.go`（📋 待创建）
+- `internal/cronrunner/jobs/memory_sleep_time.go`（📋 待创建）
+- `pkg/trpc-agent-go/graph/checkpoint/postgres/*.go`（📋 待创建）
 
 **前端**：
-- `web/src/features/orchestration/OrchestrationTimeline.vue`
-- `web/src/features/orchestration/timelineTypes.ts`
+- `web/src/features/orchestration/OrchestrationTimeline.vue`（📋 待创建）
+- `web/src/features/orchestration/timelineTypes.ts`（📋 待创建）
 
 **SQL 迁移**：
-- `sql/migrations/20260617_postgres_phase1.sql`
-- `sql/migrations/20260617_memory_bitemporal.sql`
-- `sql/migrations/20260617_memory_ebbinghaus.sql`
-- `sql/migrations/20260617_event_store.sql`
+- `internal/data/sql/migrations/20260617_postgres_phase1.sql` ✅
+- `internal/data/sql/migrations/20260617_memory_bitemporal.sql`（📋 待创建）
+- `internal/data/sql/migrations/20260617_memory_ebbinghaus.sql`（📋 待创建）
+- `internal/data/sql/migrations/20260617_event_store.sql`（📋 待创建）
 
 ### 9.2 改动文件
 
 **后端**（主要）：
-- `internal/data/data.go`、`internal/data/tx.go`、`internal/data/ent_err.go`
+- `internal/data/data.go`、`internal/data/tx.go`、`internal/data/errors.go`
 - `internal/event/infra.go`、`internal/event/wal.go`
 - `internal/service/chat_orchestrator_turn.go`
 - `internal/agent/intent/pass.go`
@@ -760,19 +778,22 @@
 - `web/src/i18n/locales/zh-CN.ts`
 - `web/src/i18n/locales/en-US.ts`
 
-### 9.3 DB-R5 修复文件（11 个）
+### 9.3 DB-R5 修复文件（12 个）
 
-- `internal/data/evolution_suggestion_repo.go`
-- `internal/data/session_run_repo.go`
-- `internal/data/session_repo.go`
-- `internal/data/agent_repo.go`
-- `internal/data/borrow_request_repo.go`
-- `internal/data/agent_performance_repo.go`
-- `internal/data/monitor.go`
-- `internal/data/tool.go`
-- `internal/data/channel.go`
-- `internal/data/memory_shim_l1.go`
-- `internal/data/model_registry_apply.go`
+> 与 §3.4 任务清单对齐：9 个主修复 + 3 个审查修复（session_repo 含审查修复 3 处，session_metrics_repo 审查修复 3 处，evolution_suggestion_repo/channel.go 为后续补修）。
+
+- `internal/data/session_run_repo.go`（19 处，SESSION_RUN）
+- `internal/data/session_repo.go`（27 处 + 审查修复 3 处，SESSION）
+- `internal/data/agent_repo.go`（21 处，AGENT）
+- `internal/data/borrow_request_repo.go`（7 处，BORROW_REQUEST）
+- `internal/data/tool.go`（34 处，TOOL）
+- `internal/data/monitor.go`（25 处，MONITOR）
+- `internal/data/memory_shim_l1.go`（16 处，MEMORY_L1）
+- `internal/data/model_registry_apply.go`（多处，MODEL_REGISTRY）
+- `internal/data/agent_performance_repo.go`（2 处，AGENT_PERFORMANCE）
+- `internal/data/session_metrics_repo.go`（审查修复 3 处，SESSION_METRICS）
+- `internal/data/evolution_suggestion_repo.go`（补修，EVOLUTION_SUGGESTION）
+- `internal/data/channel.go`（补修，CHANNEL）
 
 ---
 
@@ -825,7 +846,118 @@ Phase 3（可观测 + 体验 + 记忆）
 
 ---
 
-## 十二、实施纪律
+## 十二、并行执行波次
+
+> 基于 §十一 依赖关系与文件冲突分析，将 19 个待办任务划分为 5 个 Wave。同一 Wave 内任务可并行执行，Wave 间存在依赖需串行。已完成任务（P0-1~P0-4、P1-1、P1-2）不纳入波次。
+
+### 12.0 文件冲突预处理（Wave 1 启动前）
+
+`internal/event/contract/envelope.go` 为高频冲突文件（P1-4/P1-6/P1-7/P2-2/P2-3/P3-3 均需新增 EnvelopeType）。**建议在 Wave 1 启动前先执行一次"事件类型批量注册"预处理**，将后续 Wave 所需的新事件类型常量一次性添加，避免并行开发时的合并冲突。
+
+需批量注册的事件类型：
+- `EnvelopeTypeAgentCreated`（P1-4）
+- `EnvelopeTypeRunHeartbeat`（P1-7）
+- `EnvelopeTypeGraphReplanned`（P2-2）
+- `EnvelopeTypeGraphTopologyEvolved`（P2-3）
+
+### 12.1 Wave 1：基础设施 + 独立模块（6 任务并行，立即启动）
+
+| 任务 | Stream | 关键文件 | 依赖 |
+|------|--------|---------|------|
+| P1-5 taskrun 事件透传 | A | `pkg/trpc-agent-go/agent/taskrun/inprocess/service.go` | 无 |
+| P1-3 pgvector 语义匹配 | B | `internal/agent/agent_allocator_impl.go` | 无 |
+| P3-3 Spirit Metrics | E | `internal/metrics/vars.go` | 无 |
+| P3-6 i18n 全覆盖 | F | `web/src/i18n/locales/*` + 多 `.vue` | 无 |
+| P3-10 Sleep-time 整理 | G2 | 新增 `internal/memory/sleep_time.go` + cron job | 无 |
+| P3-13 mid-run 增量提取 | G2 | `pkg/trpc-agent-go/runner/runner.go` | 无 |
+
+**说明**：6 个任务分属不同模块、无文件冲突，可完全并行。本波完成后解锁 Wave 2 的 P1-6（依赖 P1-5）和 P1-4（依赖 P1-3）。
+
+### 12.2 Wave 2：执行引擎续 + Agent 动态化 + 独立模块（5 任务并行）
+
+| 任务 | Stream | 关键文件 | 依赖 |
+|------|--------|---------|------|
+| P1-6 跨进程事件流 | A | 新增 `postgres_eventstore.go` + 改 `envelope.go` | P1-5 ✅ |
+| P1-4 AgentFactory | B | 新增 `agent_factory.go` + 改 `agent_types.go`/`schema/agent.go`/`envelope.go` | P1-3 ✅ |
+| P3-2 跨边界 Trace 传播 | E | 改 `turn_trace.go`/`task_orchestrator_impl.go`/`team_graph_run_coordinator.go` | 无 |
+| P3-7 移动端三栏折叠 | F | 改 `MainLayout.vue`/`ChatMessagePanel.vue` | 无 |
+| P3-8 Bi-temporal 失效标记 | G1 | 改 `memory.go`/`sqlite_adapter.go`/`schema/memory.go` + 迁移 SQL | 无 |
+
+**冲突协调**：P1-6 与 P1-4 均改 `envelope.go`，若已执行 §12.0 预处理则无冲突；否则需协调合并。
+
+### 12.3 Wave 3：心跳 + Graph 入口 + 可观测前端 + 记忆衰减（4 任务并行）
+
+| 任务 | Stream | 关键文件 | 依赖 |
+|------|--------|---------|------|
+| P1-7 任务级心跳 | A | 新增 `run_heartbeat.go` + 改 `envelope.go`/`ws-transport.ts`/`streamHandlers.ts` | P1-6 ✅ |
+| P2-1 NL2Graph | C | 新增 `internal/graph/nl2graph.go` | P1-4 ✅ |
+| P3-1 编排时间线视图 | E | 新增 `OrchestrationTimeline.vue` + 改 `ChatMessagePanel.vue` | P1-2 ✅ |
+| P3-9 Ebbinghaus 衰减评分 | G1 | 新增 `ebbinghaus.go` + cron + 改 `schema/memory.go`/`memory_l3_fused_recall.go` | P3-8 ✅ |
+
+**冲突协调**：P3-1 与 Wave 2 的 P3-7 均改 `ChatMessagePanel.vue`，Wave 2 先行完成，无冲突。
+
+### 12.4 Wave 4：崩溃恢复 + 重规划 + 并行工具 + 体验补全 + 主动召回（6 任务并行）
+
+| 任务 | Stream | 关键文件 | 依赖 |
+|------|--------|---------|------|
+| P1-8 崩溃恢复 | A | 新增 `recovery_worker.go` + postgres checkpoint + 改 `chat_orchestrator_turn.go`/`main.go` | P1-6 ✅ + P1-7 ✅ |
+| P2-2 RuntimeReplanner | C | 新增 `runtime_replanner.go` + 改 `executor.go`/`envelope.go` | P2-1 ✅ |
+| P2-4 ParallelToolExecutor | D | 新增 `parallel_executor.go`/`dependency_analyzer.go`/`worktree_isolator.go`/`transaction_sandbox.go` | 无 |
+| P3-4 ErrorBlock 内联重试 | F | 改 `ErrorBlock.vue`/`errorCodeHints.ts`/`streamHandlers.ts` | P1-7 ✅ |
+| P3-5 WS 断连快速检测 | F | 改 `ws-transport.ts`/`useChatStreamManager.ts` | P1-7 ✅ |
+| P3-11 主动召回触发器 | G1 | 改 `memory.go`/`sqlite_adapter.go`/`memory_composite_recall.go` | P3-8 ✅ |
+
+**冲突协调**：P3-4 改 `streamHandlers.ts`、P3-5 改 `ws-transport.ts`/`useChatStreamManager.ts`，文件交叉少可并行；P2-2 改 `envelope.go` 需确认 §12.0 预处理已完成。
+
+### 12.5 Wave 5：拓扑演化 + Team 并行 + 记忆链接（3 任务并行）
+
+| 任务 | Stream | 关键文件 | 依赖 |
+|------|--------|---------|------|
+| P2-3 Graph 拓扑演化 | C | 新增 `topology_evolution.go` + 改 `envelope.go` | P2-2 ✅ |
+| P2-5 Team 并行组装 | D | 改 `task_orchestrator_impl.go` | P3-2 ✅（避免共改同文件） |
+| P3-12 记忆链接图 Evolution | G1 | 改 `memory.go`/`sqlite_adapter.go` + 新增 `link_evolution.go` | P3-8/9/11 ✅ |
+
+### 12.6 波次依赖总览
+
+```
+Wave 1 (6 并行) ──► Wave 2 (5 并行) ──► Wave 3 (4 并行) ──► Wave 4 (6 并行) ──► Wave 5 (3 并行)
+
+Stream A (执行引擎):  P1-5 ──► P1-6 ──► P1-7 ──► P1-8
+Stream B (Agent):     P1-3 ──► P1-4 ──►
+Stream C (Graph):                      P2-1 ──► P2-2 ──► P2-3
+Stream D (并行):                                P2-4          P2-5
+Stream E (可观测):    P3-3     P3-2     P3-1
+Stream F (体验):      P3-6     P3-7              P3-4/P3-5
+Stream G1 (记忆):              P3-8 ──► P3-9 ──► P3-11 ──► P3-12
+Stream G2 (记忆):     P3-10/P3-13
+```
+
+### 12.7 关键路径与并行度
+
+| 指标 | 值 | 说明 |
+|------|-----|------|
+| 最长依赖链 | `P1-3 → P1-4 → P2-1 → P2-2 → P2-3`（Stream B+C，5 任务深度） | 决定整体工期下限 |
+| 次长链 | `P1-5 → P1-6 → P1-7 → P1-8`（Stream A，4 任务深度） | 24h 长任务关键路径 |
+| 记忆链 | `P3-8 → P3-9 → P3-11 → P3-12`（Stream G1，4 任务深度） | 共享 memory.go，必须串行 |
+| 最大并行度 | 6（Wave 1/Wave 4） | 受文件冲突约束 |
+| 总任务数 | 19（待办） + 6（已完成） = 25 | 5 个 Wave 覆盖全部待办 |
+
+### 12.8 Stream 划分速查
+
+| Stream | 定位 | 任务序列 | Wave 跨度 |
+|--------|------|---------|----------|
+| A | 执行引擎与长任务可靠性 | P1-5 → P1-6 → P1-7 → P1-8 | Wave 1-4 |
+| B | Agent 动态化 | P1-3 → P1-4 | Wave 1-2 |
+| C | Graph 自主编排 | P2-1 → P2-2 → P2-3 | Wave 3-5 |
+| D | Cursor 级并行 | P2-4 ∥ P2-5 | Wave 4-5 |
+| E | 可观测性 | P3-3 ∥ P3-2 ∥ P3-1 | Wave 1-3 |
+| F | 前端体验 | P3-6 ∥ P3-7 ∥ P3-4 ∥ P3-5 | Wave 1-4 |
+| G1 | 记忆框架扩展（串行） | P3-8 → P3-9 → P3-11 → P3-12 | Wave 2-5 |
+| G2 | 记忆独立模块 | P3-10 ∥ P3-13 | Wave 1 |
+
+---
+
+## 十三、实施纪律
 
 1. **TDD 铁律**：每个任务先写失败测试，再写最小实现
 2. **两阶段审查**：规格合规审查优先，代码质量审查其次

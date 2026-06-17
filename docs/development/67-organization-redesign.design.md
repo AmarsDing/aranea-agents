@@ -50,7 +50,7 @@ internal/scenario/
   */agents.yaml                                  ← position_key 适配
   system/prompts/dept_lead.md                    ← 部门主管 Prompt
         ↓
-web/src/features/organization/                   ← 原 industries/
+web/src/features/platform/                       ← 原 industries/（暂未重命名为 organization/）
 ```
 
 **红线**：
@@ -203,13 +203,16 @@ func (uc *OrganizationUsecase) deleteDepartmentWithCascade(ctx context.Context, 
 
 ### 2.3 Team 字段变更
 
+> **代码锚点**：`internal/data/ent/schema/team.go`
+
 | 旧字段 | 新字段 | 说明 |
 |--------|--------|------|
 | `category_industry_id` | `department_id` | FK → Organization(department) |
 | - | `deliverables` | text, 默认 `"[]"`, 交付物定义 JSON |
 | - | `input_contract` | text, 默认 `"[]"`, 输入契约 JSON |
-| - | `dept_lead_agent_id` | string, 可空, 部门主管（默认从部门继承） |
-| - | `cross_dept_member_ids` | text, 默认 `"[]"` | 跨部门成员 Agent ID 列表 JSON |
+| - | `dept_lead_agent_id` | string, Default(""), 部门主管（默认从部门继承） |
+| - | `cross_dept_member_ids` | text, 默认 `"[]"`, 跨部门成员 Agent ID 列表 JSON |
+| - | `linked_graph_id` | string, Default(""), FK → graph_definitions(id)，与 Graph.team_id 双向引用 |
 
 **cross_dept_members 详细 Schema**：
 ```json
@@ -263,9 +266,11 @@ type DeliverableContract struct {
 
 ### 2.4 Graph 字段变更
 
+> **代码锚点**：`internal/data/ent/schema/graph_definition.go`
+
 | 新字段 | 类型 | 说明 |
 |--------|------|------|
-| `team_id` | string, 可空 | 归属 Team，空表示模板 |
+| `team_id` | string, Default(""), Optional | 归属 Team，空表示模板 |
 | `is_template` | bool, 默认 false | 是否为模板 Graph |
 | `verification_gates` | text, 默认 `"[]"` | 审批门禁定义 JSON |
 
@@ -276,34 +281,25 @@ type DeliverableContract struct {
 - 查询时：通过 Graph.team_id 快速定位归属 Team，无需遍历所有 Team
 - 模板 Graph：team_id 为空，linked_graph_id 也不指向它
 
-**双向引用回写实现**：
+**双向引用回写实现**（与代码一致）：
+
 ```go
-// 在 TeamUsecase.UpdateTeam 中，当 linked_graph_id 变更时：
-func (uc *TeamUsecase) syncGraphTeamID(ctx context.Context, team *Team) error {
-    if team.OrchestrationSpec.LinkedGraphID != "" {
-        // 回写 Graph.team_id
-        return uc.graphUC.UpdateGraphTeamID(ctx, team.OrchestrationSpec.LinkedGraphID, team.ID)
-    }
-    return nil
-}
+// internal/biz/team_usecase.go
+// 在 TeamUsecase.Update 中，当 linked_graph_id 变更时调用 syncGraphTeamID
+func (u *TeamUsecase) syncGraphTeamID(ctx context.Context, oldGraphID, newGraphID, teamID string)
+    // oldGraphID 的 Graph.team_id 清空
+    // newGraphID 的 Graph.team_id 设为 teamID
 ```
 
 ```go
-// Team 删除时清理 Graph.team_id
-func (uc *TeamUsecase) cleanupGraphTeamID(ctx context.Context, team *Team) error {
-    if team.OrchestrationSpec.LinkedGraphID != "" {
-        graph, err := uc.graphUC.Get(ctx, team.OrchestrationSpec.LinkedGraphID)
-        if err != nil {
-            return err
-        }
-        // 专属 Graph：随 Team 一起删除
-        if !graph.IsTemplate {
-            return uc.graphUC.Delete(ctx, graph.ID)
-        }
-        // 模板 Graph：仅清除 team_id 引用
-        return uc.graphUC.UpdateGraphTeamID(ctx, graph.ID, "")
-    }
-    return nil
+// internal/biz/team_usecase.go — TeamUsecase.Delete 中的 Graph 清理（ORG-11c）
+// 专属 Graph（!IsTemplate）：随 Team 一起删除
+// 模板 Graph（IsTemplate）：仅清除 team_id 引用
+if graphDef.IsTemplate {
+    graphDef.TeamID = ""
+    u.graphWriter.UpdateDefinition(ctx, graphDef)
+} else {
+    u.graphWriter.DeleteDefinition(ctx, team.LinkedGraphID)
 }
 ```
 
@@ -572,25 +568,48 @@ type DeptAgentPositionClearer interface {
 
 ### 4.2 DeptLeadManager（部门主管管理）
 
+> **代码锚点**：`internal/biz/dept_lead.go`
+
 ```go
 // internal/biz/dept_lead.go
-type DeptLeadManager struct {
-    agentRepo  AgentRepo
-    orgRepo    OrganizationRepo
-    logger     *loggateway.Logger
+const DeptLeadAgentKeyPrefix = "__dept_lead_"
+const maxCrossDeptRatio = 0.5  // 跨部门成员上限 50%
+
+type DeptLeadManagerOpts struct {
+    OrgRepo    OrganizationRepo
+    BorrowRepo BorrowRequestRepo
+    AgentRepo  AgentRepository
+    AgentUC    *AgentUsecase
+    TeamGetter DeptLeadTeamGetter
+    EventBus   contract.Bus
+    Logger     loggateway.Logger
 }
 
+type DeptLeadManager struct {
+    orgRepo    OrganizationRepo
+    borrowRepo BorrowRequestRepo
+    agentRepo  AgentRepository
+    agentUC    *AgentUsecase
+    teamGetter DeptLeadTeamGetter
+    eventBus   contract.Bus
+    lg         loggateway.Logger
+}
+
+// DeptLeadTeamGetter is a narrow interface for fetching team info needed by DeptLeadManager.
+type DeptLeadTeamGetter interface {
+    GetTeamByID(ctx context.Context, id string) (Team, error)
+}
+```
+
+```go
 // 创建部门主管
-func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, dept *OrgNode) (*Agent, error)
-    // 1. 生成 Agent Key: "__dept_lead_{dept.OrgKey}__"
-    // 2. 生成 Agent ID: "agent___dept_lead_{dept.OrgKey}__"
-    // 3. 设置 kind=system_builtin, source=system
-    // 4. 设置 position_id 指向部门管理岗
-    // 5. 加载部门主管 Prompt 模板
-    // 6. 设置 tools_profile = "dept_lead"（部门主管专用工具集）
-    //    初期工具列表：无（纯 LLM 判断）
-    //    后续可添加：query_team_status, review_deliverable, escalate_to_spirit
-    // 7. 创建 Agent 记录
+func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode OrganizationNode) (*Agent, error)
+    // 1. 生成 Agent Key: "__dept_lead_{deptNode.Key}__"
+    // 2. 设置 kind=system_builtin, source=system
+    // 3. 设置 position_id 指向部门管理岗
+    // 4. 加载部门主管 Prompt 模板（buildDeptLeadSystemPrompt）
+    // 5. 创建 Agent 记录
+    // 6. 幂等：若已存在则仅更新 Organization.dept_lead_agent_id
 
 // 删除部门主管
 func (m *DeptLeadManager) DeleteDeptLead(ctx context.Context, deptID string) error
@@ -599,52 +618,62 @@ func (m *DeptLeadManager) DeleteDeptLead(ctx context.Context, deptID string) err
 func (m *DeptLeadManager) ReplaceDeptLead(ctx context.Context, deptID string, newAgentID string) error
     // 更新 Organization.dept_lead_agent_id
 
-// 借调请求
+// 借调请求类型（与代码一致）
 type BorrowRequest struct {
-    AgentID             string    `json:"agent_id"`
-    SourceDepartmentID  string    `json:"source_department_id"`
-    TargetTeamID        string    `json:"target_team_id"`
-    TargetDepartmentID  string    `json:"target_department_id"`
-    Role                string    `json:"role"`
-    ApprovalStatus      string    `json:"approval_status"` // "pending" | "approved" | "rejected"
-    ApprovedBy          string    `json:"approved_by"`
-    RequestedAt         time.Time `json:"requested_at"`
+    ID           string
+    TeamID       string
+    AgentID      string
+    FromDeptID   string // 拥有该 Agent 的部门
+    ToDeptID     string // 想借调该 Agent 的部门
+    Status       string // pending | approved | rejected | auto_approved
+    Reason       string
+    ReviewedBy   string // 审批的部门主管 Agent ID
+    ReviewReason string
+    CreatedAt    time.Time
+    UpdatedAt    time.Time
 }
 
-// 自动加入 Team
-func (m *DeptLeadManager) EnsureDeptLeadInTeam(ctx context.Context, team *Team) error
-    // 检查 Team.members 是否包含部门主管
-    // 不包含则自动添加
+// 借调请求状态常量
+const (
+    BorrowRequestPending      = "pending"
+    BorrowRequestApproved     = "approved"
+    BorrowRequestRejected     = "rejected"
+    BorrowRequestAutoApproved = "auto_approved"
+)
+const BorrowAutoApproveTimeout = 5 * time.Minute
+
+// BorrowRequestRepo 接口拆分
+type BorrowRequestReader interface {
+    GetBorrowRequest(ctx context.Context, id string) (BorrowRequest, error)
+    ListPendingBorrowRequests(ctx context.Context, deptID string) ([]BorrowRequest, error)
+    ListBorrowRequestsByTeam(ctx context.Context, teamID string) ([]BorrowRequest, error)
+    ListExpiredPendingBorrowRequests(ctx context.Context) ([]BorrowRequest, error)
+}
+type BorrowRequestWriter interface {
+    CreateBorrowRequest(ctx context.Context, r BorrowRequest) (BorrowRequest, error)
+    UpdateBorrowRequest(ctx context.Context, r BorrowRequest) (BorrowRequest, error)
+    CancelBorrowRequestsByFromDept(ctx context.Context, deptID string) (int, error)
+}
+type BorrowRequestRepo interface {
+    BorrowRequestReader
+    BorrowRequestWriter
+}
+
+// 提交借调请求
+func (m *DeptLeadManager) SubmitBorrowRequest(ctx context.Context, r BorrowRequest) (BorrowRequest, error)
 
 // 审批借调请求
-func (m *DeptLeadManager) ApproveBorrowRequest(ctx context.Context, req *BorrowRequest) error
-    // 1. 验证请求合法性（被借调 Agent 确实属于本部门）
-    // 2. 更新 cross_dept_members 中的 approval_status 为 "approved"
-    // 3. 正式将 Agent 加入 Team.members
-    // 4. 发布 BorrowApproved 事件
-    // 初期实现策略：
-    // - 借调请求创建后自动进入 pending 状态
-    // - 5 分钟超时后自动通过（AutoApproveExpiredBorrowRequests）
-    // - 不实现实时审批 UI（后续迭代）
-    // - 后续迭代：部门主管收到通知后可主动审批/拒绝
+func (m *DeptLeadManager) ApproveBorrowRequest(ctx context.Context, id string, reviewerAgentID string, reason string) (BorrowRequest, error)
 
 // 拒绝借调请求
-func (m *DeptLeadManager) RejectBorrowRequest(ctx context.Context, req *BorrowRequest, reason string) error
-    // 1. 更新 cross_dept_members 中的 approval_status 为 "rejected"
-    // 2. 从 Team.members 中移除该 Agent（如果已临时加入）
-    // 3. 发布 BorrowRejected 事件
+func (m *DeptLeadManager) RejectBorrowRequest(ctx context.Context, id string, reviewerAgentID string, reason string) (BorrowRequest, error)
 
 // 借调超时自动通过
 func (m *DeptLeadManager) AutoApproveExpiredBorrowRequests(ctx context.Context) error
-    // 1. 查找所有 approval_status = "pending" 且创建时间超过 5 分钟的借调请求
-    // 2. 自动通过
-    // 3. 发布 BorrowAutoApproved 事件
+    // 查找 pending 且超过 BorrowAutoApproveTimeout(5分钟) 的请求，自动通过
 
 // 查看被借调成员的工作状态（只读）
 func (m *DeptLeadManager) GetBorrowedMemberStatus(ctx context.Context, deptID string) ([]BorrowedMemberStatus, error)
-    // 1. 查找本部门被借调到其他 Team 的所有 Agent
-    // 2. 获取这些 Agent 所在 Team 的执行状态和最近输出
-    // 3. 返回只读视图（不可修改 Team 状态）
 
 type BorrowedMemberStatus struct {
     AgentID       string `json:"agent_id"`
@@ -660,25 +689,18 @@ type BorrowedMemberStatus struct {
 
 ```go
 // internal/biz/deliverable_contract.go
-type DeliverableContractValidator struct {
-    logger *loggateway.Logger
-}
+type DeliverableContractValidator struct{}
 
 // 验证上下游契约匹配（提示性，不阻断）
-func (v *DeliverableContractValidator) ValidateMatch(
-    upstream *DeliverableContract,
-    downstream *DeliverableContract,
-) *ContractMatchResult
-    // 1. 遍历 downstream.InputContract
-    // 2. 在 upstream.Deliverables 中查找 name 匹配
-    // 3. 检查 format 兼容性
-    // 4. 返回匹配结果（matched/unmatched/warnings）
-
-type ContractMatchResult struct {
-    Matched   []ContractMatch   `json:"matched"`
-    Unmatched []ContractGap     `json:"unmatched"`   // 下游需要但上游未提供
-    Warnings  []ContractWarning `json:"warnings"`     // 格式不匹配等
-}
+// 返回警告列表（[]string），空列表表示完全匹配
+func (v *DeliverableContractValidator) ValidateContractMatch(
+    upstream []DeliverableContract,
+    downstream []DeliverableContract,
+) []string
+    // 1. 遍历 downstream 的每一项
+    // 2. 在 upstream 中查找 name 匹配
+    // 3. 检查 type/format 兼容性
+    // 4. 返回警告列表（提示性，不阻断 Team 组建）
 ```
 
 ### 4.4 VerificationGateExecutor（审批门禁执行）
@@ -686,16 +708,18 @@ type ContractMatchResult struct {
 ```go
 // internal/biz/verification_gate.go
 type VerificationGateExecutor struct {
-    agentRepo AgentRepo
-    logger    *loggateway.Logger
+    deptLeadMgr *DeptLeadManager
+    llmCaller   LLMCaller
+    lg          loggateway.Logger
 }
 
 // 执行审批门禁
 func (e *VerificationGateExecutor) ExecuteGate(
     ctx context.Context,
-    gate *VerificationGate,
+    gate VerificationGate,
     teamOutput string,
-) (*GateResult, error)
+    truncateChars int,
+) (bool, string, error)
     // 审批执行路径：
     // 方案A（推荐）：直接调用 LLM API
     //   1. 查找部门主管 Agent，获取其 model/provider 配置
@@ -720,9 +744,8 @@ func (e *VerificationGateExecutor) ExecuteGate(
     // - borrow_approval: 借调审批（来源部门主管同意借出）
 
 type GateResult struct {
-    Approved   bool   `json:"approved"`
-    Reason     string `json:"reason"`      // 驳回理由
-    RetryCount int    `json:"retry_count"` // 当前重试次数
+    Approved bool   `json:"approved"`
+    Reason   string `json:"reason"`      // 驳回理由
 }
 ```
 
@@ -731,7 +754,7 @@ type GateResult struct {
 ```go
 // 驳回返工策略：
 // - 初期方案：重新执行整个 Team（简单可靠）
-//   1. 部门主管驳回 → 标记 Team 状态为 "rework"
+//   1. 部门主管驳回 → 通过 TransitionStatus 标记 Team 状态为 pending（触发重执行）
 //   2. 清除 Team 的执行结果
 //   3. 重新启动 Team 执行（从 entry_point 开始）
 //   4. 优点：实现简单，与现有 Team 生命周期一致
@@ -745,11 +768,44 @@ type GateResult struct {
 //
 // 初期采用"重新执行整个 Team"方案
 
+// internal/biz/rework.go
 type ReworkStrategy string
 const (
-    ReworkStrategyFullTeam  ReworkStrategy = "full_team"   // 重新执行整个 Team
-    ReworkStrategyPartial   ReworkStrategy = "partial"     // 部分重执行（后续迭代）
+    ReworkStrategyFullTeam ReworkStrategy = "full_team" // 重新执行整个 Team（初期唯一实现）
+    // 后续迭代可新增 ReworkStrategyPartial（部分重执行），当前代码未定义
 )
+
+// ReworkTracker 追踪 Team 的返工次数
+type ReworkTracker struct {
+    TeamID    string         `json:"team_id"`
+    Strategy  ReworkStrategy `json:"strategy"`
+    MaxRetries int           `json:"max_retries"`
+    Attempts  int            `json:"attempts"`
+}
+
+// CanRetry 判断是否还能重试
+func (r *ReworkTracker) CanRetry() bool
+
+// IncrementAttempt 增加重试次数
+func (r *ReworkTracker) IncrementAttempt() int
+```
+
+**返工流程实现**（与代码一致）：
+
+```go
+// internal/biz/spirit_team_usecase.go
+// HandleTeamRejection 处理审批门禁驳回
+func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID string, tracker ReworkTracker, reason string) (*ReworkTracker, error) {
+    // 1. 检查是否还能重试（CanRetry）
+    // 2. 若不能重试 → 调用 EscalateToSpirit 升级处理
+    // 3. 若能重试 → IncrementAttempt + TransitionStatus(teamID, TeamStatusPending) 触发重执行
+}
+
+// EscalateToSpirit 升级给精灵助手（超过 max_retries）
+func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string, tracker ReworkTracker) error {
+    // 1. TransitionStatus(teamID, TeamStatusFailed) 标记 Team 为 failed
+    // 2. 发布升级事件
+}
 ```
 
 ### 4.6 交付物传递机制
@@ -1072,77 +1128,76 @@ web/src/features/platform/
 
 ### 7.1 数据库迁移
 
+> **实现状态**：通过 Ent Auto-Migration（`Schema.Create()`）自动处理表结构和字段变更，未单独编写 DDL 迁移脚本。以下 SQL 为概念性说明，实际由 Ent 自动执行。
+
 ```sql
--- Step 1: 重命名表
-ALTER TABLE industry_taxonomy RENAME TO organizations;
+-- 概念性说明（实际由 Ent Auto-Migration 自动执行）
+-- Step 1: 重命名表（Ent 通过 Schema Annotation 自动处理）
+-- industry_taxonomy → organizations
 
--- Step 2: 重命名字段
-ALTER TABLE organizations RENAME COLUMN taxonomy_key TO org_key;
+-- Step 2: 重命名字段（Ent Auto-Migration 自动处理）
+-- taxonomy_key → org_key
 
--- Step 3: 更新 level 值
-UPDATE organizations SET level = 'company' WHERE level = 'industry';
+-- Step 3: 更新 level 值（需数据迁移脚本，当前未实施 MG-02）
+-- UPDATE organizations SET level = 'company' WHERE level = 'industry';
 
--- Step 4: 新增字段
-ALTER TABLE organizations ADD COLUMN dept_lead_agent_id TEXT;
-ALTER TABLE organizations ADD COLUMN dept_lead_config_json TEXT DEFAULT '{}';
+-- Step 4: 新增字段（Ent Auto-Migration 自动处理）
+-- dept_lead_agent_id, dept_lead_config_json
 
--- Step 5: Agent 字段重命名
-ALTER TABLE agents RENAME COLUMN taxonomy_position_id TO position_id;
+-- Step 5: Agent 字段重命名（Ent Auto-Migration 自动处理）
+-- taxonomy_position_id → position_id
 
--- Step 6: Team 字段变更
--- 需要程序化迁移：category_industry_id → department_id
--- 逻辑：查找原 industry 节点下的 department 节点，取第一个
--- 如果无 department 子节点，创建一个默认 department
+-- Step 6: Team 字段变更（Ent Auto-Migration 自动处理新增字段）
+-- category_industry_id → department_id（需数据迁移，当前未实施 MG-02）
 
--- Step 7: Graph 新增字段
-ALTER TABLE graph_definitions ADD COLUMN team_id TEXT;
-ALTER TABLE graph_definitions ADD COLUMN is_template BOOLEAN DEFAULT FALSE;
-ALTER TABLE graph_definitions ADD COLUMN verification_gates TEXT DEFAULT '[]';
+-- Step 7: Graph 新增字段（Ent Auto-Migration 自动处理）
+-- team_id, is_template, verification_gates
 ```
+
+**注意**：数据迁移（level 值更新、category_industry_id → department_id 映射）尚未实施（MG-02 ⏳）。
 
 ### 7.2 Wire 注入链路变更
 
-| 文件 | 变更 | 说明 |
-|------|------|------|
-| `internal/biz/biz.go` | `NewTaxonomyUsecase` → `NewOrganizationUsecase` | ProviderSet 更新 |
-| `internal/data/data.go` | `NewTaxonomyRepo` → `NewOrganizationRepo` | ProviderSet 更新 |
-| `internal/service/taxonomy.go` | → `organization.go` | Service 重命名 |
-| `internal/scenario/loader/deps.go` | `TaxonomyUsecase` → `OrganizationUsecase` | 依赖注入更新 |
-| `internal/agent/builder_deps.go` | `TaxonomyUsecase` → `OrganizationUsecase` | 依赖注入更新 |
-| `internal/service/chat_orchestrator.go` | `TaxonomyUsecase` → `OrganizationUsecase` | 依赖注入更新 |
-| `internal/agent/prompt.go` | `Taxonomy *biz.TaxonomyUsecase` → `Organization *biz.OrganizationUsecase` | 依赖注入更新 |
-| `cmd/admin/wire.go` | 无需手动修改 | Wire 自动生成 wire_gen.go |
+| 文件 | 变更 | 说明 | 状态 |
+|------|------|------|------|
+| `internal/biz/biz.go` | `NewTaxonomyUsecase` → `NewOrganizationUsecase` | ProviderSet 更新 | ✅ |
+| `internal/data/data.go` | `NewTaxonomyRepo` → `NewOrganizationRepo` | ProviderSet 更新 | ✅ |
+| `internal/service/organization.go` | 新增 OrganizationService 实现 | Service 新增 | ✅ |
+| `internal/service/taxonomy.go` | 保留作为兼容层，代理到 OrganizationUsecase | 兼容层 | ✅ |
+| `internal/agent/builder_deps.go` | `TaxonomyUsecase` → `OrganizationUsecase` | 依赖注入更新 | ✅ |
+| `internal/service/chat_orchestrator.go` | `TaxonomyUsecase` → `OrganizationUsecase` | 依赖注入更新 | ✅ |
+| `internal/agent/prompt.go` | `Taxonomy *biz.TaxonomyUsecase` → `Organization *biz.OrganizationUsecase` | 依赖注入更新 | ✅ |
+| `cmd/admin/wire.go` | 无需手动修改 | Wire 自动生成 wire_gen.go | ✅ |
 
 ### 7.3 API 兼容层
 
 ```go
-// internal/service/industry_taxonomy_compat.go
-// 旧 IndustryTaxonomyService 代理到新 OrganizationService
-type IndustryTaxonomyCompatService struct {
-    orgSvc *OrganizationService
-}
-// 所有方法转发到 orgSvc，字段名做映射
+// internal/service/taxonomy.go
+// 旧 TaxonomyService / IndustryTaxonomyService 代理到新 OrganizationUsecase
+// 兼容层保留旧 RPC 端点，内部转发到 OrganizationUsecase，字段名做映射
+// 同时支持 createTaxonomyService / createIndustryTaxonomyService（前端兼容）
 ```
 
 ### 7.3 前端路由兼容
 
 ```typescript
-// router 中添加重定向
-{ path: '/industries/:rest*', redirect: to => ({ path: `/organization/${to.params.rest}` }) }
+// web/src/router/routes.ts
+// 旧 /settings/taxonomy 重定向到 /settings/organization
+{ path: 'settings/taxonomy', redirect: '/settings/organization' },
+{ path: 'settings/organization', name: 'organization', component: OrganizationPage },
 ```
 
 ### 7.4 Pack 导入链路适配
 
-| 文件 | 变更 | 说明 |
-|------|------|------|
-| `internal/data/seed_pack.go` | `SeedPackIndustry` → `SeedPackOrganization` | 函数重命名 |
-| `internal/scenario/loader/loader.go` | `LoadIndustrySpec` → `LoadOrganizationSpec` | 加载器重命名 |
-| `internal/scenario/loader/loader.go` | `BuildBizTeamFromSpec` 中 `CategoryIndustryID: spec.IndustryKey` → `DepartmentID: spec.DepartmentKey` | 字段映射更新 |
-| `internal/scenario/loader/taxonomy_loader.go` | `TaxonomySpec`/`TaxonomyIndustrySpec` 等 5 个结构体重命名 | 结构体重命名 |
-| `internal/data/ecosystem_preset.go` | 行 171, 229: `taxonomy_position_id` 硬编码 SQL | SQL 列名更新 |
-| `cmd/admin/wire.go` | 行 1511: 直接调用 `SeedPackIndustry` | 函数调用重命名 |
-| `internal/biz/ecosystem_preset.go` | 行 63: `SeedPackFunc` 类型别名 | 类型别名同步更新 |
-| `internal/scenario/loader/spec.go` | `IndustrySpec` → `OrganizationSpec`，新增 `DepartmentSpec`/`DepartmentKey` 字段 | 结构体重命名 |
+| 文件 | 变更 | 说明 | 状态 |
+|------|------|------|------|
+| `internal/data/seed_pack.go` | `SeedPackIndustry` 函数名保留（内部调用 `LoadCompanySpec`） | 函数名未重命名，内部实现已适配 | 🟡 部分完成（`pack.ConvertCompanySpecToPack` 未实现） |
+| `internal/scenario/loader/loader.go` | `LoadIndustrySpec` → `LoadOrganizationSpec` + `LoadCompanySpec` | 加载器拆分 | ✅ |
+| `internal/scenario/loader/company_loader.go` | 新增 `LoadCompanySpec` | 新增加载器 | ✅ |
+| `internal/scenario/loader/organization_loader.go` | 新增 `LoadOrganizationSpec` + `OrganizationSpec`/`OrgCompanySpec`/`OrgDepartmentSpec`/`OrgPositionSpec` 结构体 | 新增加载器 | ✅ |
+| `internal/scenario/loader/spec.go` | `IndustrySpec` → `CompanySpec`（`IndustryKey` → `CompanyKey`） | 结构体重命名 | ✅ |
+| `internal/data/ecosystem_preset.go` | `taxonomy_position_id` 硬编码 SQL → `position_id` | SQL 列名更新 | ✅ |
+| `internal/biz/pack/exporter.go` | `agent.TaxonomyPositionID` → `agent.PositionID` | 字段引用更新 | ✅ |
 
 ### 7.5 TaxonomyAncestors 引用迁移
 
@@ -1160,11 +1215,11 @@ type IndustryTaxonomyCompatService struct {
 |----|----------|------|
 | `internal/data/ent/schema/` | 重命名+修改 | industry_taxonomy.go → organization.go，字段变更 |
 | `internal/biz/` | 重命名+新增 | taxonomy.go → organization.go，新增 dept_lead/deliverable_contract/verification_gate |
-| `internal/service/` | 重命名+新增 | taxonomy.go → organization.go，新增兼容层 |
+| `internal/service/` | 新增+保留兼容层 | 新增 organization.go，保留 taxonomy.go 作为兼容层 |
 | `internal/scenario/` | 修改 | YAML 结构变更，新增部门主管 Prompt |
 | `internal/data/seed_*.go` | 修改 | 种子数据适配新结构 |
 | `api/kratos/` | 新增+修改 | 新增 organization proto，修改 agent/team/graph proto |
-| `web/src/features/` | 重命名+修改 | industries → organization，新增组件 |
+| `web/src/features/platform/` | 修改（未重命名） | 仍在 platform/ 下，未重命名为 organization/，API 层支持三套服务 |
 | `web/src/pages/` | 重命名+修改 | 页面重命名，新增页面 |
 
 ---

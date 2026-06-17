@@ -108,10 +108,10 @@ ALTER TABLE graph_executions ADD CONSTRAINT fk_graph_executions_definition
   FOREIGN KEY (graph_definition_id) REFERENCES graph_definitions(id) ON DELETE CASCADE;
 ```
 
-### 2.4 事务超时改造（✅ Phase 0 已实现）
+### 2.4 事务超时改造
 
 ```go
-// internal/data/tx.go 改造（已实现）
+// internal/data/tx.go 改造
 // 去掉 30s 硬超时，改为可配置
 detached, detachedCancel := context.WithTimeout(
     context.Background(),
@@ -125,10 +125,10 @@ detached, detachedCancel := context.WithTimeout(
 - `SetTxTimeout(d)` 支持运行时调整（如长运行 Postgres 操作可设为 0 禁用）
 - 默认值 30s 保持向后兼容
 
-### 2.5 错误翻译适配（✅ Phase 0 已实现）
+### 2.5 错误翻译适配
 
 ```go
-// internal/data/errors.go 扩展（已实现）
+// internal/data/errors.go 扩展
 func entErrToBizErr(err error, domain string) error {
     // ... 现有 SQLite 错误码处理 ...
 
@@ -136,16 +136,10 @@ func entErrToBizErr(err error, domain string) error {
     var pgErr *pq.Error
     if errors.As(err, &pgErr) {
         switch pgErr.Code.Name() {
-        case "unique_violation":          // 23505
-            return apierror.NewConflict(domain, pgErr.Message)
-        case "foreign_key_violation":     // 23503
-            return apierror.NewBadRequest(domain, pgErr.Message)
-        case "not_null_violation":        // 23502
-            return apierror.NewBadRequest(domain, pgErr.Message)
-        case "check_violation":           // 23514
-            return apierror.NewBadRequest(domain, pgErr.Message)
-        case "serialization_failure":     // 40001
-            return apierror.NewConflict(domain, "concurrent modification")
+        case "unique_violation", "foreign_key_violation":  // 23505, 23503
+            return apierror.Wrap(err, apierror.CodeConflict, domain)
+        case "not_null_violation", "check_violation":      // 23502, 23514
+            return apierror.Wrap(err, apierror.CodeBadRequest, domain)
         }
     }
     // ...
@@ -156,6 +150,7 @@ func entErrToBizErr(err error, domain string) error {
 - 使用 `github.com/lib/pq` 驱动（非 `pgconn.PgError`），通过 `pgErr.Code.Name()` 获取 SQLSTATE 名称
 - 类型断言改为 `errors.As(err, &pgErr)` 支持被 `fmt.Errorf("%w", err)` 包装的错误链遍历
 - `isPostgresAlreadyExistsErr`（data.go）同样改用 `errors.As`，处理 SQLSTATE 42P07/42710/42701（duplicate_table/duplicate_object/duplicate_column）
+- 错误翻译使用 `apierror.Wrap(err, code, domain)` 保留原始错误链（非 `apierror.NewXxx`）
 
 ---
 
@@ -312,10 +307,29 @@ func (o *ChatOrchestrator) prePlanningGate(ctx, input) (Strategy, error) {
 }
 ```
 
-### 4.2 Intent Pass 默认开启（✅ P1-1 已实现）
+**实现差异说明**：
+
+设计稿为概念草图，实际实现做了三处安全/效率改进：
+
+1. **返回 `GateDecision` 而非 `Strategy`** — 实际 `PrePlanningGate.Evaluate` 返回结构化的 `GateDecision{Level, Score, ForcePlanning, Reason, IntentArtifact}`，携带复杂度分数和原因，便于日志和前端时间线展示。调用方（`chat_orchestrator_turn.go`）根据 `ForcePlanning` 标志决定是否注入强制规划 RunOption。
+
+2. **复用已有 Intent Pass 结果而非重新运行** — 设计稿中门控自己调 `o.intentPass.Run()`，实际实现复用 BUILD 阶段并行运行的 Intent Pass 产物（`*intent.Artifact`）。这避免了重复 LLM 调用（节省 0.5-3s），且 Intent Pass 已在 `eg.Wait()` 前完成，门控只需 <1ms 纯计算。
+
+3. **注入 RunOption 而非直接调 `PlanAndExecute`** — 设计稿中门控直接调 `o.planner.PlanAndExecute()`，实际实现通过 `forcedPlanningRunOption()` 注入一条系统消息（`trpcagent.WithInjectedContextMessages`），指示 Spirit LLM 调用 `plan_and_execute` 工具。这保持了正常 turn 流程的完整性（BUILD → EXECUTE → PERSIST → POST-PROCESS），让 plan_and_execute 作为工具在框架内执行，而非绕过 turn 生命周期。
+
+**事件可靠性分级（AS-EVT-01）**：规划时间线事件（`planning_phase_start/progress/done`）归类为 **Informational** 级别（尽力而为，不持久化），因为它们仅用于前端时间线可见性，不影响业务状态一致性。
+
+**代码锚点**：
+- `internal/service/pre_planning_gate.go` — `PrePlanningGate.Evaluate` + `publishPlanningPhase`
+- `internal/service/chat_orchestrator_turn_preplanning.go` — `runPrePlanningGate` + `forcedPlanningRunOption` + `intentArtifactToBiz`
+- `internal/service/chat_orchestrator_turn.go:354-360` — 门控调用点（eg.Wait 后）
+- `internal/agent/task_planner_impl.go:259-284` — `QuickAssess` 纯计算实现
+- `internal/biz/task_planner.go:14` — `TaskPlannerPort.QuickAssess` 接口（Stability: evolving）
+
+### 4.2 Intent Pass 默认开启
 
 ```go
-// internal/agent/intent/pass.go 改造（已实现）
+// internal/agent/intent/pass.go 改造
 func IntentPassFromAgent(ag biz.Agent) bool {
     if ag.Settings != nil {
         return ag.Settings.IntentPassEnabled // 显式设置仍可关闭
@@ -417,7 +431,7 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx, profile TaskProfile) (string, error)
         Model:       agentDef.Model,
         ConfigJSON:  agentDef.ConfigJSON,
         Status:      biz.AgentStatusActive,
-        Source:      "dynamic", // 标记动态创建
+        Source:      "system", // 标记动态创建（对齐 agent.go schema enum: user/system/imported）
     })
 
     // 发布事件
@@ -426,7 +440,7 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx, profile TaskProfile) (string, error)
         Content: &AgentCreatedContent{
             AgentKey:    agent.AgentKey,
             DisplayName: agent.DisplayName,
-            Source:      "dynamic",
+            Source:      "system",
             Trigger:     profile.TaskDescription,
         },
     })
@@ -936,9 +950,11 @@ type Entry struct {
 ### 11.1 新增 Ent Schema
 
 ```go
-// internal/data/ent/schema/agent.go 新增字段
-field.String("source").Default("manual").Comment("创建来源：manual/dynamic"),
+// internal/data/ent/schema/agent.go 已有 source 字段
+field.Enum("source").Values("user", "system", "imported").Default("user").Comment("agent source: origin tracking (user | system | imported), aligned with team.source"),
 ```
+
+> 注：动态创建的 Agent 标记为 `source="system"`（非 "dynamic"），与现有 enum 值对齐。详见 `internal/biz/agent_types.go:121`。
 
 ### 11.2 Memory 表新增列
 
@@ -974,8 +990,10 @@ CREATE TABLE event_store (
 
 ### 12.1 新增 RPC
 
+> 以下 RPC 为 Phase 1-2 规划新增，当前 `api/kratos/chat/v1/chat.proto` 尚未包含。现有 ChatService 已有 `StopGeneration`/`GetRunStatus`/`AwaitUserReply` 等运行控制 RPC。
+
 ```protobuf
-// api/kratos/chat/v1/chat.proto 新增
+// api/kratos/chat/v1/chat.proto 新增（规划中）
 rpc PauseRun(PauseRunRequest) returns (PauseRunResponse);
 rpc ResumeRun(ResumeRunRequest) returns (ResumeRunResponse);
 rpc GetRunProgress(GetRunProgressRequest) returns (GetRunProgressResponse);
@@ -995,6 +1013,8 @@ message GetRunProgressResponse {
 ```
 
 ### 12.2 新增事件类型
+
+> 当前 `internal/event/contract/envelope.go` 包含 `EnvelopeTypePlanningPhaseStart/Progress/Done`（P1-2 预规划门控使用）。以下完整列表包含规划新增的 4 个事件类型（RunHeartbeat/AgentCreated/GraphTopologyEvolved/GraphReplanned）。任务实现状态详见 [70-orchestration-longtask-memory.development.md §七](./70-orchestration-longtask-memory.development.md#七验收标准)。
 
 ```go
 // internal/event/contract/envelope.go 新增
@@ -1027,9 +1047,9 @@ const (
 
 ---
 
-## 十四、Phase 0 实现细节（✅ 已完成）
+## 十四、Phase 0 设计参考
 
-> Phase 0 聚焦 P0 阻断修复 + Postgres Phase 1 迁移，为后续 Phase 1-3 奠定基础。本章节记录 Phase 0 的实际设计与实现，作为后续 Phase 的参考基线。
+> Phase 0 聚焦 P0 阻断修复 + Postgres Phase 1 迁移，为后续 Phase 1-3 奠定基础。本章节记录 Phase 0 的核心设计决策，作为后续 Phase 的参考基线。任务清单与验收状态详见 [70-orchestration-longtask-memory.development.md §三](./70-orchestration-longtask-memory.development.md#三phase-0基础夯实p0-阻断修复--postgres-phase-1)。
 
 ### 14.1 P0-1：WBPF 语义修复（AS-EVT-01）
 
@@ -1057,7 +1077,7 @@ Critical 事件发布流程：
 - 非 Critical 事件直接走 `publishToBuses`，无 WAL 开销
 - WAL 失败不阻塞非 Critical 事件路径
 
-**改动文件**：`internal/event/infra.go`
+> 改动文件与验收状态详见 [70-orchestration-longtask-memory.development.md §3.1](./70-orchestration-longtask-memory.development.md#31-p0-1修复-wbpf-语义违规)。
 
 ### 14.2 P0-2：GraphExecution 状态机（AS-FSM-01）
 
@@ -1069,11 +1089,11 @@ Critical 事件发布流程：
 
 ```go
 const (
-    GraphExecStateRunning        GraphExecutionState = "running"
-    GraphExecStateCompleted      GraphExecutionState = "completed"
-    GraphExecStateFailed         GraphExecutionState = "failed"
-    GraphExecStateCancelled      GraphExecutionState = "cancelled"
-    GraphExecStateWaitingHuman   GraphExecutionState = "waiting_human"
+    GraphExecRunning      GraphExecutionState = "running"
+    GraphExecCompleted    GraphExecutionState = "completed"
+    GraphExecFailed       GraphExecutionState = "failed"
+    GraphExecCancelled    GraphExecutionState = "cancelled"
+    GraphExecWaitingHuman GraphExecutionState = "waiting_human"
 )
 ```
 
@@ -1084,7 +1104,7 @@ const (
 | Running | complete | Completed | 正常完成 |
 | Running | fail | Failed | 执行失败 |
 | Running | cancel | Cancelled | 用户取消 |
-| Running | pause | WaitingHuman | HITL 暂停 |
+| Running | interrupt | WaitingHuman | HITL 暂停 |
 | WaitingHuman | resume | Running | HITL 恢复 |
 | WaitingHuman | cancel | Cancelled | HITL 期间取消 |
 | WaitingHuman | fail | Failed | HITL 期间节点错误（新增） |
@@ -1093,20 +1113,29 @@ const (
 
 ```go
 // internal/biz/graph_execution_state_machine.go
-type GraphExecutionStateMachine interface {
-    Transition(from GraphExecutionState, event GraphExecEvent) (GraphExecutionState, error)
-    CanTransition(from GraphExecutionState, event GraphExecEvent) bool
+// GraphExecutionStateMachine 为 struct（非 interface），包装通用状态机
+type GraphExecutionStateMachine struct {
+    inner *shared.GenericStateMachine[GraphExecutionState, GraphExecutionEvent]
 }
 
+// Transition 校验并执行状态转换，非法转换返回 error
+func (sm *GraphExecutionStateMachine) Transition(from GraphExecutionState, event GraphExecutionEvent) (GraphExecutionState, error)
+
+// CanTransition 校验 from→to 是否合法（注意：参数为 from/to，非 from/event）
+func (sm *GraphExecutionStateMachine) CanTransition(from, to GraphExecutionState) bool
+
 // internal/biz/graph_execution_usecase.go
-func (uc *GraphExecutionUsecase) applyExecTransition(
-    ctx context.Context,
-    exec *GraphExecution,
-    event GraphExecEvent,
-) error {
+func (uc *GraphExecutionUsecase) applyExecTransition(exec *GraphExecution, event GraphExecutionEvent) error {
     // authoritative 模式：非法转换拒绝并保留原状态
-    newState, err := uc.sm.Transition(ParseGraphExecutionState(exec.Status), event)
+    from := ParseGraphExecutionState(exec.Status)
+    newState, err := uc.sm.Transition(from, event)
     if err != nil {
+        uc.lg.Warn("graph: illegal state transition rejected by FSM",
+            loggateway.StepID("graph.fsm_rejected"),
+            loggateway.Str("execution_id", exec.ID),
+            loggateway.Str("from", string(from)),
+            loggateway.Str("event", string(event)),
+            loggateway.Err(err))
         return err
     }
     exec.Status = string(newState)
@@ -1125,11 +1154,7 @@ func (uc *GraphExecutionUsecase) applyExecTransition(
 - 终态无出口：Completed/Failed/Cancelled 无后续转换
 - HITL 转换：WaitingHuman→Running/Cancelled/Failed
 
-**改动文件**：
-- `internal/biz/graph_execution_state_machine.go`（新增）
-- `internal/biz/graph_execution_usecase.go`（新增 `applyExecTransition`）
-- `internal/biz/graph_execution_usecase_fsm_test.go`（新增，6 测试）
-- `internal/team/team_graph_run_coordinator.go`（fallback 注释更新）
+> 改动文件清单与验收状态详见 [70-orchestration-longtask-memory.development.md §3.2](./70-orchestration-longtask-memory.development.md#32-p0-2接入状态机)。
 
 ### 14.3 P0-3：Postgres Phase 1 迁移
 
@@ -1169,10 +1194,13 @@ type PostgresWALStorage struct {
 // cmd/admin/wire.go
 // 问题：*sql.DB 在 Data 中有多个实例（entClient/rawDB/pg），Wire 无法区分
 // 解决：provideEventWAL 从 *data.Data 提取双 DB 句柄
-func provideEventWAL(d *data.Data) (*EventWAL, func(), error) {
-    sqliteDB := d.RawDBHandle()       // SQLite 回退
-    pgDB := d.PostgresHandle()        // Postgres 优先（可能为 nil）
-    return NewEventWAL(pgDB, sqliteDB)
+func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
+    if d == nil {
+        return nil
+    }
+    sqliteDB := d.RWDB().WriteHandle()  // SQLite 回退
+    pgDB := d.Postgres()                // Postgres 优先（可能为 nil）
+    return event.ProvideEventWAL(sqliteDB, pgDB, lg)
 }
 ```
 
@@ -1180,20 +1208,23 @@ func provideEventWAL(d *data.Data) (*EventWAL, func(), error) {
 
 ```sql
 -- internal/data/sql/migrations/20260617_postgres_phase1.sql
--- 整个 SQL 作为单个 ExecContext 执行（DO $$ 块含分号不能用 splitDDLStatements）
+-- 表/索引用 IF NOT EXISTS；FK 约束用 DO $$ ... IF NOT EXISTS ... END $$ 检查 pg_constraint
 
+CREATE TABLE IF NOT EXISTS event_wal (...);  -- 幂等
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_runs_active_unique
+    ON session_runs(session_id) WHERE phase NOT IN ('completed', 'failed', 'cancelled');
+
+-- FK 约束：检查 pg_constraint 后添加（非 EXCEPTION WHEN duplicate_table）
 DO $$ BEGIN
-    CREATE TABLE event_wal (...);        -- SQLSTATE 42P07 已存在则跳过
-EXCEPTION WHEN duplicate_table THEN NULL;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_session_run_checkpoints_run') THEN
+        ALTER TABLE session_run_checkpoints
+            ADD CONSTRAINT fk_session_run_checkpoints_run
+            FOREIGN KEY (session_run_id) REFERENCES session_runs(id) ON DELETE CASCADE;
+    END IF;
 END $$;
-
-DO $$ BEGIN
-    CREATE UNIQUE INDEX idx_session_run_active ON session_runs (...);
-EXCEPTION WHEN duplicate_table THEN NULL;
-END $$;
-
--- INV-UNIQ-01/02 + INV-REF-01/02/03 全部用 DO $$ 块包裹
 ```
+
+> 注：实际实现的 INV-REF 约束与设计稿 §2.3 不同。设计稿原列 Message→Session / TeamRun→Team / GraphExecution→GraphDefinition，实际迁移文件实现的是 session_run_checkpoints→session_runs / event_store→sessions / session_run_checkpoints→sessions。详见 `internal/data/sql/migrations/20260617_postgres_phase1.sql`。
 
 **SQLSTATE 错误处理**：
 
@@ -1203,21 +1234,13 @@ END $$;
 | 42710 | duplicate_object | 迁移幂等，跳过 |
 | 42701 | duplicate_column | 迁移幂等，跳过 |
 | 23505 | unique_violation | 翻译为 Conflict |
-| 23503 | foreign_key_violation | 翻译为 BadRequest |
+| 23503 | foreign_key_violation | 翻译为 Conflict |
 | 23502 | not_null_violation | 翻译为 BadRequest |
 | 23514 | check_violation | 翻译为 BadRequest |
-| 40001 | serialization_failure | 翻译为 Conflict |
 
-**改动文件**：
-- `internal/data/data.go`（`ensurePostgresPhase1Schema` + `isPostgresAlreadyExistsErr`）
-- `internal/data/tx.go`（可配置 `TxTimeout()`）
-- `internal/data/errors.go`（Postgres SQLSTATE 翻译）
-- `internal/event/wal.go`（双 DB 签名）
-- `internal/event/postgres_wal_storage.go`（新增）
-- `internal/event/infra.go`（`ProvideEventWAL` 双 DB 签名）
-- `cmd/admin/wire.go`（`provideEventWAL` 桥接）
-- `internal/data/errors_postgres_test.go`（新增，5 测试）
-- `internal/data/sql/migrations/20260617_postgres_phase1.sql`（新增）
+> 注：`40001 serialization_failure` 在设计稿中曾列为 Conflict 翻译，但实际 `internal/data/errors.go` 未实现此 case。如需支持可后续扩展。
+
+> 改动文件清单与验收状态详见 [70-orchestration-longtask-memory.development.md §3.3](./70-orchestration-longtask-memory.development.md#33-p0-3postgres-phase-1-迁移)。
 
 ### 14.4 P0-4：DB-R5 错误翻译修复
 
@@ -1237,32 +1260,4 @@ END $$;
 
 **Domain 命名规范**：使用大写下划线格式，如 `SESSION`、`SESSION_RUN`、`SESSION_METRICS`、`AGENT`、`TOOL`、`MONITOR`、`MEMORY_L1`、`MODEL_REGISTRY`、`AGENT_PERFORMANCE`、`BORROW_REQUEST`。
 
-**审查发现的根因问题**：
-- `session_repo.go` 3 处 `metricsWriter.ApplyMetricsDelta()` 跨 Repo 调用返回未翻译错误
-- `session_metrics_repo.go` 根因 3 处 `return err` 未翻译（`UpsertSessionMetrics`/`GetSessionMetrics`/`ListSessionMetricsByIDs`）
-
-**改动文件**（10 个）：
-- `internal/data/session_run_repo.go`（19 处，SESSION_RUN）
-- `internal/data/session_repo.go`（27 处 + 审查修复 3 处，SESSION）
-- `internal/data/session_metrics_repo.go`（审查修复 3 处，SESSION_METRICS）
-- `internal/data/agent_repo.go`（21 处，AGENT）
-- `internal/data/borrow_request_repo.go`（7 处，BORROW_REQUEST）
-- `internal/data/tool.go`（34 处，TOOL）
-- `internal/data/monitor.go`（25 处，MONITOR）
-- `internal/data/memory_shim_l1.go`（16 处，MEMORY_L1）
-- `internal/data/model_registry_apply.go`（多处，MODEL_REGISTRY）
-- `internal/data/agent_performance_repo.go`（2 处，AGENT_PERFORMANCE）
-
-### 14.5 Phase 0 验收总结
-
-| 任务 | 状态 | 验收要点 |
-|------|------|---------|
-| P0-1 WBPF 语义修复 | ✅ | pre-publish 失败不发布；post-publish 失败仅 Warn |
-| P0-2 状态机集成 | ✅ | 5 状态 + 7 转换；authoritative 模式；6 测试通过 |
-| P0-3 Postgres Phase 1 | ✅ | 双后端 WAL；DO $$ 幂等；可配置超时；5 错误翻译测试 |
-| P0-4 DB-R5 错误翻译 | ✅ | 10 文件修复；errors.As 支持包装错误；审查根因修复 |
-
-**构建验证**：
-- `go build ./...` 通过
-- `go vet ./internal/data/ ./internal/event/ ./internal/biz/` 通过
-- 相关单元测试通过（预存失败除外）
+> 改动文件清单与验收状态详见 [70-orchestration-longtask-memory.development.md §3.4](./70-orchestration-longtask-memory.development.md#34-p0-4修复-db-r5-错误翻译)。
