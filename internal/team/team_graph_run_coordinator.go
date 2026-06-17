@@ -183,7 +183,9 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 		c.lg.Warn("TransitionRunStatus failed in MarkTeamGraphInterrupt",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Fallback: update directly. CanTransition already validated above (line 178).
+		// Persistence-recovery fallback: CanTransition already validated the state
+		// machine legality above (line 178). TransitionRunStatus failed for another
+		// reason (e.g., race or DB error), so we re-attempt the write directly.
 		run.Status = biz.TeamRunStatusWaitingHuman
 		if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
 			return err
@@ -220,7 +222,9 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 		c.lg.Warn("TransitionRunStatus failed in DeferTeamRunSuccessIfHITL",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Fallback: update directly. CanTransition already validated above (line 215).
+		// Persistence-recovery fallback: CanTransition already validated the state
+		// machine legality above (line 215). TransitionRunStatus failed for another
+		// reason (e.g., race or DB error), so we re-attempt the write directly.
 		run.Status = biz.TeamRunStatusWaitingHuman
 		if err := c.teamRunWriter.UpdateTeamRun(ctx, *run); err != nil {
 			return false, err
@@ -262,7 +266,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 							c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
 								loggateway.StepID("team.run.transition_fail"),
 								loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-							// Fallback: update directly. CanTransition validated above.
+							// Persistence-recovery fallback: CanTransition validated above.
 							run.Status = biz.TeamRunStatusFailed
 							run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
 							run.FinishedAt = agent.RFC3339Now()
@@ -315,7 +319,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 				c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
 					loggateway.StepID("team.run.transition_fail"),
 					loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-				// Fallback: update directly.
+				// Persistence-recovery fallback: CanTransition validated above.
 				run.Status = biz.TeamRunStatusRunning
 				if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
 					c.lg.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed",
@@ -532,7 +536,9 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		c.lg.Warn("TransitionRunStatus failed in coordinator.finalizeTeamRun",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Fallback: update directly.
+		// Persistence-recovery fallback: CanTransition validated above (line 523-525
+		// checks run.Status is WaitingHuman or Running, both of which can transition
+		// to Success/Failed). TransitionRunStatus failed for another reason.
 		now := agent.RFC3339Now()
 		run.FinishedAt = now
 		run.UpdatedAt = now

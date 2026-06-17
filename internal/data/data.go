@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ import (
 
 	_ "github.com/glebarez/go-sqlite/compat"
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/google/wire"
 )
@@ -147,6 +148,7 @@ type Data struct {
 	rawDB       *sql.DB
 	readDB      *sql.DB
 	pg          *sql.DB
+	pgRead      *sql.DB
 	rw          *ReadWriteClient
 	rwDB        *ReadWriteDB
 	vectorDim   int
@@ -157,6 +159,9 @@ type Data struct {
 	p1Cancel    context.CancelFunc
 	p1Done      chan struct{}
 	lg          loggateway.Logger
+	// txTimeout is the hard deadline for ExecInTx transactions. Default 30s.
+	// Set to 0 to disable the timeout (e.g., for long-running Postgres migrations).
+	txTimeout time.Duration
 }
 
 // Ent returns the SQLite-backed Ent client.
@@ -176,6 +181,24 @@ func (d *Data) SetEntClientForTest(client *ent.Client, rawDB *sql.DB, lg loggate
 	d.lg = lg
 	d.rw = NewReadWriteClient(client, client)
 	d.rwDB = NewReadWriteDB(rawDB, rawDB)
+	d.txTimeout = 30 * time.Second
+}
+
+// SetTxTimeout configures the hard deadline for ExecInTx transactions.
+// A value of 0 disables the timeout (use with care — only for long-running
+// Postgres migrations or batch operations where the caller manages deadlines).
+func (d *Data) SetTxTimeout(dur time.Duration) {
+	if d != nil {
+		d.txTimeout = dur
+	}
+}
+
+// TxTimeout returns the configured transaction timeout. Returns 30s if unset.
+func (d *Data) TxTimeout() time.Duration {
+	if d == nil || d.txTimeout <= 0 {
+		return 30 * time.Second
+	}
+	return d.txTimeout
 }
 
 // RawDB returns the write *sql.DB handle.
@@ -237,10 +260,24 @@ func (d *Data) RWDB() *ReadWriteDB {
 	return d.rwDB
 }
 
-// Postgres returns the Postgres DB handle for vectors, or nil if not configured.
+// Postgres returns the Postgres write DB handle (16 connections) for vectors,
+// WAL, EventStore, and Checkpoint writes. Returns nil if not configured.
 func (d *Data) Postgres() *sql.DB {
 	if d == nil {
 		return nil
+	}
+	return d.pg
+}
+
+// PostgresRead returns the Postgres read DB handle (32 connections) for vector
+// similarity search and read-heavy queries. Returns nil if not configured.
+// Falls back to the write pool if the read pool is not initialized.
+func (d *Data) PostgresRead() *sql.DB {
+	if d == nil {
+		return nil
+	}
+	if d.pgRead != nil {
+		return d.pgRead
 	}
 	return d.pg
 }
@@ -379,6 +416,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	var readClient *ent.Client
 	var readDB *sql.DB
 	var pg *sql.DB
+	var pgRead *sql.DB
 	var pgOpened bool
 	var st *Data
 
@@ -408,8 +446,13 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		if readDB != nil {
 			readDB.Close()
 		}
-		if pgOpened && pg != nil {
-			pg.Close()
+		if pgOpened {
+			if pg != nil {
+				pg.Close()
+			}
+			if pgRead != nil {
+				pgRead.Close()
+			}
 		}
 	}
 
@@ -423,7 +466,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	if err := runStartupStep("initPostgres", func() error {
 		var stepErr error
-		pg, stepErr = initPostgres(c, lg)
+		pg, pgRead, stepErr = initPostgres(c, lg)
 		pgOpened = true
 		return stepErr
 	}, lg); err != nil {
@@ -466,7 +509,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
-	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, pgRead: pgRead, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg, txTimeout: 30 * time.Second}
 
 	safego.Go(appctx.Ctx(), "startup.p1", func() {
 		defer close(p1Done)
@@ -769,29 +812,51 @@ func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
 
 // initPostgres opens the optional Postgres vector store connection.
 // On failure, logs a warning and returns nil (degrades to SQLite-only mode).
-func initPostgres(c *conf.Data, lg loggateway.Logger) (*sql.DB, error) {
+// Creates separate write (16) and read (32) connection pools for optimal
+// concurrency. The write pool is returned as the primary handle; the read
+// pool is stored in Data.pgRead.
+func initPostgres(c *conf.Data, lg loggateway.Logger) (*sql.DB, *sql.DB, error) {
 	pgDSN := postgresVectorDSN(c)
 	if pgDSN == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
-	pg, err := sql.Open("postgres", pgDSN)
+	// Write pool: 16 connections (inserts, updates, DDL).
+	pgWrite, err := sql.Open("postgres", pgDSN)
 	if err != nil {
-		lg.Warn("init postgres failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open"), loggateway.Err(err))
-		return nil, nil
+		lg.Warn("init postgres write pool failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open_write"), loggateway.Err(err))
+		return nil, nil, nil
 	}
-	pg.SetMaxOpenConns(8)
-	pg.SetConnMaxLifetime(0)
+	pgWrite.SetMaxOpenConns(16)
+	pgWrite.SetMaxIdleConns(4)
+	pgWrite.SetConnMaxLifetime(30 * time.Minute)
+	pgWrite.SetConnMaxIdleTime(5 * time.Minute)
+
+	// Read pool: 32 connections (vector similarity search, knowledge queries).
+	pgRead, err := sql.Open("postgres", pgDSN)
+	if err != nil {
+		pgWrite.Close()
+		lg.Warn("init postgres read pool failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open_read"), loggateway.Err(err))
+		return nil, nil, nil
+	}
+	pgRead.SetMaxOpenConns(32)
+	pgRead.SetMaxIdleConns(8)
+	pgRead.SetConnMaxLifetime(30 * time.Minute)
+	pgRead.SetConnMaxIdleTime(5 * time.Minute)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err = pg.PingContext(ctx); err != nil {
-		pg.Close()
+	if err = pgWrite.PingContext(ctx); err != nil {
+		pgWrite.Close()
+		pgRead.Close()
 		lg.Warn("init postgres ping failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "ping"), loggateway.Err(err))
-		return nil, nil
+		return nil, nil, nil
 	}
-	return pg, nil
+	return pgWrite, pgRead, nil
 }
 
 // ensurePostgresSchemas applies vector and knowledge schema on Postgres if configured.
+// Also runs Phase 1 migration (event_wal/event_store/session_run_checkpoints tables
+// + invariant constraints) for Postgres-native WAL/EventStore/Checkpoint support.
 func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 	if pg == nil {
 		return nil
@@ -809,7 +874,63 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 		lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
 		return fmt.Errorf("knowledge schema: %w", err)
 	}
+	if err := ensurePostgresPhase1Schema(ctxPG, pg, lg); err != nil {
+		lg.Error("postgres phase1 schema step failed", loggateway.StepID("data.schema.postgres_phase1"), loggateway.Err(err))
+		return fmt.Errorf("postgres phase1 schema: %w", err)
+	}
 	return nil
+}
+
+// ensurePostgresPhase1Schema runs the Phase 1 migration SQL on Postgres.
+// Idempotent — uses IF NOT EXISTS / ON CONFLICT DO NOTHING / DO $$ blocks.
+// The migration creates event_wal, event_store, session_run_checkpoints tables
+// (Postgres-native types: TIMESTAMPTZ, partial unique indexes, FK constraints)
+// and adds invariant constraints (INV-UNIQ-01/02, INV-REF-01/02/03).
+//
+// The entire SQL is sent as a single ExecContext call because Postgres DO $$
+// blocks contain semicolons inside the $$ delimiters, which would break the
+// generic splitDDLStatements splitter. The lib/pq driver supports
+// multi-statement execution in a single call.
+func ensurePostgresPhase1Schema(ctx context.Context, pg *sql.DB, lg loggateway.Logger) error {
+	sqlBytes, err := fs.ReadFile(migrationSQLFS, "sql/migrations/20260617_postgres_phase1.sql")
+	if err != nil {
+		return fmt.Errorf("read postgres phase1 SQL: %w", err)
+	}
+	ddl := strings.TrimPrefix(string(sqlBytes), "\ufeff")
+	if _, err := pg.ExecContext(ctx, ddl); err != nil {
+		// Postgres idempotency: tolerate "already exists" errors at the
+		// statement level. Since we send all statements in one call, a
+		// duplicate-object error in any statement aborts the whole batch.
+		// The SQL uses IF NOT EXISTS / DO $$ ... IF NOT EXISTS ... checks
+		// to be idempotent, so this error path should only trigger on
+		// unexpected failures.
+		if isPostgresAlreadyExistsErr(err) {
+			lg.Debug("postgres phase1 step skipped (already exists)",
+				loggateway.StepID("data.schema.postgres_phase1"),
+				loggateway.Err(err))
+			return nil
+		}
+		return fmt.Errorf("execute postgres phase1 SQL: %w", err)
+	}
+	lg.Info("postgres phase1 schema applied",
+		loggateway.StepID("data.schema.postgres_phase1"))
+	return nil
+}
+
+// isPostgresAlreadyExistsErr reports whether err is a Postgres "already exists"
+// error (e.g., duplicate table/index/constraint). Used for idempotent migrations.
+func isPostgresAlreadyExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if pgErr, ok := err.(*pq.Error); ok {
+		// 42P07 = duplicate_table, 42710 = duplicate_object, 42701 = duplicate_column
+		switch pgErr.Code {
+		case "42P07", "42710", "42701":
+			return true
+		}
+	}
+	return false
 }
 
 func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {

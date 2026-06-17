@@ -11,6 +11,7 @@
 //     Running --> WaitingHuman : interrupt
 //     WaitingHuman --> Running : resume
 //     WaitingHuman --> Cancelled : cancel
+//     WaitingHuman --> Failed : fail
 //     Completed --> [*]
 //     Failed --> [*]
 //     Cancelled --> [*]
@@ -59,6 +60,7 @@ var graphExecutionTransitionRules = []shared.TransitionRule[GraphExecutionState,
 	{From: GraphExecRunning, Event: GraphExecEventInterrupt, To: GraphExecWaitingHuman},
 	{From: GraphExecWaitingHuman, Event: GraphExecEventResume, To: GraphExecRunning},
 	{From: GraphExecWaitingHuman, Event: GraphExecEventCancel, To: GraphExecCancelled},
+	{From: GraphExecWaitingHuman, Event: GraphExecEventFail, To: GraphExecFailed},
 }
 
 // ── GraphExecutionStateMachine ────────────────────────────────────────────────

@@ -247,7 +247,7 @@ func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Sessio
 		if ent.IsNotFound(err) {
 			return biz.Session{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return entSessionToBiz(row), nil
 }
@@ -320,11 +320,11 @@ func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Sessio
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	row, err := c.Session.Get(ctx, id)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return entSessionToBiz(row), nil
 }
@@ -358,7 +358,7 @@ func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session,
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return r.GetSessionByID(ctx, id)
 }
@@ -441,7 +441,7 @@ func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionI
 	if len(agentIDs) > 0 {
 		agents, err := c.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SESSION")
 		}
 		for _, a := range agents {
 			agentNames[a.ID] = a.DisplayName
@@ -483,7 +483,7 @@ func (r *sessionRepo) ListSkillInvocationsBySession(ctx context.Context, session
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION")
 	}
 	if len(rows) == 0 {
 		return nil, nil
@@ -618,7 +618,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	)
 	if err != nil {
 		r.data.lg.Warn("update session context from llm usage failed", loggateway.StepID("data.session.context_from_llm"), loggateway.Err(err))
-		return err
+		return entErrToBizErr(err, "SESSION")
 	}
 
 	// dual_write: also update session_metrics table
@@ -864,7 +864,7 @@ func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID
 	if err != nil {
 		r.data.lg.Error("cas increment compress version failed", loggateway.StepID("data.session.compress_version.cas"), loggateway.Err(err))
 	}
-	return old, err
+	return old, entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(ctx context.Context) error) error {

@@ -94,13 +94,16 @@ func ProvideBuffer(infra *Infra) *Buffer {
 	return infra.Buffer
 }
 
-// ProvideEventWAL creates an EventWAL instance. Returns nil if the database
-// is not available (e.g., in test environments without SQLite).
-func ProvideEventWAL(db *sql.DB, lg loggateway.Logger) *EventWAL {
-	if db == nil {
+// ProvideEventWAL creates an EventWAL instance. Returns nil if neither
+// database is available (e.g., in test environments without SQLite/Postgres).
+//
+// When pgDB is non-nil, Postgres-backed WAL storage is used (preferred for
+// Phase 1 migration). Otherwise, SQLite-backed storage is used with sqliteDB.
+func ProvideEventWAL(sqliteDB *sql.DB, pgDB *sql.DB, lg loggateway.Logger) *EventWAL {
+	if sqliteDB == nil && pgDB == nil {
 		return nil
 	}
-	wal, err := NewEventWAL(db, lg)
+	wal, err := NewEventWAL(sqliteDB, pgDB, lg)
 	if err != nil {
 		if lg != nil {
 			lg.Warn("event_wal: failed to create, Critical events will not have WBPF protection",
@@ -125,11 +128,16 @@ const (
 // Publish routes an envelope to the correct bus(es) based on its type.
 //
 // For Critical events (AS-EVT-01), if WAL is available, the event is persisted
-// before publishing (Write-Before-Publish-Fanout). If WAL write fails, the event
-// is NOT published — publishing an unpersisted Critical event would violate
-// WBPF semantics: on crash recovery the event would be lost from WAL while
-// consumers may have already processed it, causing inconsistency. Losing the
-// event entirely is safer than publishing without persistence guarantee.
+// before publishing (Write-Before-Publish-Fanout). WBPF error handling distinguishes
+// two failure modes:
+//
+//   - Pre-publish failure (serialize/insert): the event was NOT published.
+//     Logged as Error "dropped" — on crash the event is absent from both WAL
+//     and consumers, preserving consistency.
+//   - Post-publish failure (markPublished): the event WAS already published
+//     (publish callback ran inside WriteBeforePublish before mark). Logged as
+//     Warn "published but mark failed" — the event is NOT dropped; on restart
+//     it may be replayed by Recover, which subscribers must handle idempotently.
 //
 // Routing mode is controlled by the MONITOR_BUS_ROUTING environment variable
 // (read once at NewInfra / BindInfra time):
@@ -143,11 +151,30 @@ const (
 // global monitor connections receive them.
 func (infra *Infra) Publish(ctx context.Context, env Envelope) {
 	if infra.WAL != nil {
-		publish := func() { infra.publishToBuses(ctx, env) }
+		published := false
+		publish := func() {
+			infra.publishToBuses(ctx, env)
+			published = true
+		}
 		if err := infra.WAL.WriteBeforePublish(ctx, env, publish); err != nil {
-			// WAL write failed — do NOT publish. Publishing an unpersisted
-			// Critical event violates WBPF: on crash the event is absent from
-			// WAL but consumers may have already side-effected on it.
+			if published {
+				// Post-publish failure (markPublished): event WAS published.
+				// Logging "dropped" would be misleading — the event reached
+				// consumers. On restart, Recover may replay it; subscribers
+				// must be idempotent.
+				if infra.lg != nil {
+					infra.lg.Warn("event_wal: published but mark failed (may republish on restart)",
+						loggateway.Str("type", string(env.Type)),
+						loggateway.Str("id", env.ID),
+						loggateway.Err(err),
+					)
+				}
+				return
+			}
+			// Pre-publish failure (serialize/insert): event was NOT published.
+			// Publishing an unpersisted Critical event violates WBPF: on crash
+			// the event is absent from WAL but consumers may have already
+			// side-effected on it. Dropping is the safer choice.
 			if infra.lg != nil {
 				infra.lg.Error("event_wal: WBPF failed, event dropped to preserve consistency",
 					loggateway.Str("type", string(env.Type)),
@@ -190,9 +217,13 @@ func (infra *Infra) publishToBuses(ctx context.Context, env Envelope) {
 
 // InfraProviderSet is the wire set replacing standalone NewBus/NewBuffer.
 // SessionBus is the default event.Bus binding; MonitorBus is accessed via *Infra (WS + flow logs).
+//
+// Note: ProvideEventWAL is NOT included here because it requires two *sql.DB
+// handles (SQLite + Postgres) which Wire cannot disambiguate by type alone.
+// Callers should provide a dedicated provider function (e.g., in cmd/admin/wire.go)
+// that extracts both DBs from *data.Data and calls NewEventWAL directly.
 var InfraProviderSet = wire.NewSet(
 	NewInfra,
-	ProvideEventWAL,
 	ProvideSessionBus,
 	ProvideBuffer,
 )

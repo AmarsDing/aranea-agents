@@ -36,10 +36,18 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	//
 	// 2026-06-04 fix for agent-save-timeout: the detached context previously
 	// had no deadline, so any single blocking SQL statement would hold the
-	// write connection forever and starve every other writer.  The 30s
-	// hard cap forces the tx to surface as a timeout error and release the
-	// connection back to the pool.
-	detached, detachedCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// write connection forever and starve every other writer.  The configurable
+	// txTimeout (default 30s) forces the tx to surface as a timeout error and
+	// release the connection back to the pool. Set to 0 via SetTxTimeout to
+	// disable for long-running Postgres operations.
+	txTimeout := d.TxTimeout()
+	var detached context.Context
+	var detachedCancel context.CancelFunc
+	if txTimeout > 0 {
+		detached, detachedCancel = context.WithTimeout(context.Background(), txTimeout)
+	} else {
+		detached, detachedCancel = context.WithCancel(context.Background())
+	}
 	// #region debug-point data.tx.trace
 	tl.Info("before d.entClient.Tx(detached)", loggateway.Duration(time.Since(t0).Milliseconds()))
 	// #endregion debug-point

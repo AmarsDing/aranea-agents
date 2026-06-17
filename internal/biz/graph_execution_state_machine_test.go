@@ -29,6 +29,7 @@ func TestGraphExecutionStateMachine_ValidTransitions(t *testing.T) {
 		{GraphExecRunning, GraphExecEventInterrupt, GraphExecWaitingHuman},
 		{GraphExecWaitingHuman, GraphExecEventResume, GraphExecRunning},
 		{GraphExecWaitingHuman, GraphExecEventCancel, GraphExecCancelled},
+		{GraphExecWaitingHuman, GraphExecEventFail, GraphExecFailed},
 	}
 
 	for _, tc := range cases {
@@ -76,9 +77,6 @@ func TestGraphExecutionStateMachine_InvalidTransitions(t *testing.T) {
 		// WaitingHuman cannot complete directly (must resume first)
 		{"waiting_human→complete", GraphExecWaitingHuman, GraphExecEventComplete},
 
-		// WaitingHuman cannot fail directly
-		{"waiting_human→fail", GraphExecWaitingHuman, GraphExecEventFail},
-
 		// WaitingHuman cannot interrupt again
 		{"waiting_human→interrupt", GraphExecWaitingHuman, GraphExecEventInterrupt},
 	}
@@ -108,6 +106,7 @@ func TestGraphExecutionStateMachine_CanTransition(t *testing.T) {
 		{GraphExecRunning, GraphExecWaitingHuman, true},
 		{GraphExecWaitingHuman, GraphExecRunning, true},
 		{GraphExecWaitingHuman, GraphExecCancelled, true},
+		{GraphExecWaitingHuman, GraphExecFailed, true},
 
 		// Cannot reach any state from terminal states
 		{GraphExecCompleted, GraphExecRunning, false},
@@ -119,9 +118,8 @@ func TestGraphExecutionStateMachine_CanTransition(t *testing.T) {
 		{GraphExecRunning, GraphExecRunning, false},
 		{GraphExecWaitingHuman, GraphExecWaitingHuman, false},
 
-		// WaitingHuman cannot reach completed/failed directly
+		// WaitingHuman cannot reach completed directly (must resume first)
 		{GraphExecWaitingHuman, GraphExecCompleted, false},
-		{GraphExecWaitingHuman, GraphExecFailed, false},
 	}
 
 	for _, tc := range cases {
@@ -142,7 +140,7 @@ func TestGraphExecutionStateMachine_ValidTargets(t *testing.T) {
 		want []GraphExecutionState
 	}{
 		{GraphExecRunning, []GraphExecutionState{GraphExecCancelled, GraphExecCompleted, GraphExecFailed, GraphExecWaitingHuman}},
-		{GraphExecWaitingHuman, []GraphExecutionState{GraphExecCancelled, GraphExecRunning}},
+		{GraphExecWaitingHuman, []GraphExecutionState{GraphExecCancelled, GraphExecFailed, GraphExecRunning}},
 		{GraphExecCompleted, nil},
 		{GraphExecFailed, nil},
 		{GraphExecCancelled, nil},

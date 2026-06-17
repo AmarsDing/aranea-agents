@@ -7,11 +7,13 @@ import (
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/apierror"
+
+	"github.com/lib/pq"
 )
 
-// entErrToBizErr translates a data-layer error (Ent, raw SQL, or biz sentinel)
-// into a domain error (apierror.Error). It preserves the original error via the
-// Cause field so the error chain is not lost.
+// entErrToBizErr translates a data-layer error (Ent, raw SQL, Postgres, or biz
+// sentinel) into a domain error (apierror.Error). It preserves the original
+// error via the Cause field so the error chain is not lost.
 //
 // This is the single entry point for error translation in all repo methods.
 // Use this instead of apierror.Wrap(err, apierror.CodeInternal, domain) to
@@ -24,6 +26,10 @@ import (
 //   - shared.ErrMessageDuplicate    → apierror.CodeConflict
 //   - shared.ErrAgentKeyConflict    → apierror.CodeConflict
 //   - Ent NotLoaded                 → apierror.CodeBadRequest
+//   - Postgres 23505 (unique)       → apierror.CodeConflict
+//   - Postgres 23503 (foreign key)  → apierror.CodeConflict
+//   - Postgres 23502 (not null)     → apierror.CodeBadRequest
+//   - Postgres 23514 (check)        → apierror.CodeBadRequest
 //   - default                       → apierror.CodeInternal
 func entErrToBizErr(err error, domain string) error {
 	if err == nil {
@@ -50,6 +56,15 @@ func entErrToBizErr(err error, domain string) error {
 	// Raw SQL errors.
 	if errors.Is(err, sql.ErrNoRows) {
 		return apierror.Wrap(err, apierror.CodeNotFound, domain)
+	}
+	// Postgres errors (lib/pq).
+	if pgErr, ok := err.(*pq.Error); ok {
+		switch pgErr.Code.Name() {
+		case "unique_violation", "foreign_key_violation":
+			return apierror.Wrap(err, apierror.CodeConflict, domain)
+		case "not_null_violation", "check_violation":
+			return apierror.Wrap(err, apierror.CodeBadRequest, domain)
+		}
 	}
 	// Default — internal.
 	return apierror.Wrap(err, apierror.CodeInternal, domain)

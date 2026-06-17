@@ -905,6 +905,18 @@ func provideSQLiteRawDB(d *data.Data) *sql.DB {
 	return d.RWDB().WriteHandle()
 }
 
+// provideEventWAL creates an EventWAL with both SQLite and Postgres DB handles.
+// Postgres is preferred when available (Phase 1 migration); SQLite is the fallback.
+// This provider is needed because Wire cannot disambiguate two *sql.DB args by type.
+func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
+	if d == nil {
+		return nil
+	}
+	sqliteDB := d.RWDB().WriteHandle()
+	pgDB := d.Postgres()
+	return event.ProvideEventWAL(sqliteDB, pgDB, lg)
+}
+
 func provideTRPCSessionService(rawDB *sql.DB, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
 	return rt.NewTRPCSessionService(rawDB, lg, sessiontrpc.SummarizerConfig{
 		Catalog: catalog,
@@ -1889,6 +1901,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideArtifactSigner,
 		provideMemoryService,
 		provideSQLiteRawDB,
+		provideEventWAL,
 		provideTRPCSessionService,
 		provideGraphCheckpointSaver,
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),

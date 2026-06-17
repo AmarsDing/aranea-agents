@@ -61,28 +61,28 @@ func NewGraphExecutionUsecase(
 }
 
 // applyExecTransition validates and applies a state transition via the state machine.
-// On illegal transition, logs a warning and still applies the target state to avoid
-// blocking error-recovery paths (the warning surfaces the bug for later investigation).
+// Returns an error if the transition is illegal; in that case exec.Status is NOT modified.
 // Caller must hold exec.execMu (write lock).
 //
-// TECH-DEBT(FSM): Currently advisory-only — illegal transitions are logged but not
-// blocked, to avoid breaking error-recovery paths. Future iteration should split
-// authoritative paths (normal complete/cancel) from advisory paths (error recovery).
-func (uc *GraphExecutionUsecase) applyExecTransition(exec *GraphExecution, event GraphExecutionEvent, target GraphExecutionState) {
+// For error-recovery paths where the caller has already validated the transition or
+// where leaving the status unchanged is acceptable on illegal transition, the error
+// can be ignored. Do NOT silently apply a target state on illegal transition —
+// either fix the caller to not request illegal transitions, or extend the state
+// machine rules to include the needed transition.
+func (uc *GraphExecutionUsecase) applyExecTransition(exec *GraphExecution, event GraphExecutionEvent) error {
 	from := ParseGraphExecutionState(exec.Status)
 	newState, err := uc.sm.Transition(from, event)
 	if err != nil {
-		uc.lg.Warn("graph: illegal state transition blocked by FSM, applying target anyway",
-			loggateway.StepID("graph.fsm_illegal"),
+		uc.lg.Warn("graph: illegal state transition rejected by FSM",
+			loggateway.StepID("graph.fsm_rejected"),
 			loggateway.Str("execution_id", exec.ID),
 			loggateway.Str("from", string(from)),
 			loggateway.Str("event", string(event)),
-			loggateway.Str("target", string(target)),
 			loggateway.Err(err))
-		exec.Status = string(target)
-		return
+		return err
 	}
 	exec.Status = string(newState)
+	return nil
 }
 
 // SetTaskCoordinator sets the task coordinator for graph-node-to-task-board wiring.
@@ -218,7 +218,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 	exec.LineageID = runtime.GetLineageID()
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
-		uc.applyExecTransition(exec, GraphExecEventFail, GraphExecFailed)
+		_ = uc.applyExecTransition(exec, GraphExecEventFail)
 		exec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(exec)
 		e := apierror.Internal("GRAPH", "graph execute save run failed")
@@ -251,9 +251,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
 	if err != nil {
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, "failed")
-		failedExec.ErrorMessage = err.Error()
-		uc.notifyExecComplete(failedExec)
-		return nil, err
+	failedExec.ErrorMessage = err.Error()
+	uc.notifyExecComplete(failedExec)
+	return nil, err
 	}
 
 	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, "running")
@@ -261,7 +261,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 	exec.LineageID = runtime.GetLineageID()
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
-		uc.applyExecTransition(exec, GraphExecEventFail, GraphExecFailed)
+		_ = uc.applyExecTransition(exec, GraphExecEventFail)
 		exec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(exec)
 		e := apierror.Internal("GRAPH", "graph execute save run failed")
@@ -307,7 +307,7 @@ func (uc *GraphExecutionUsecase) CancelExecution(ctx context.Context, executionI
 			uc.lg.Warn("cancel graph runtime", loggateway.Err(err))
 		}
 	}
-	uc.applyExecTransition(exec, GraphExecEventCancel, GraphExecCancelled)
+	uc.applyExecTransition(exec, GraphExecEventCancel)
 	now := time.Now()
 	exec.FinishedAt = &now
 	persistSnap = exec.SnapshotForPersist()
@@ -339,7 +339,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	oldRuntime := exec.runtime
 	// Transition status immediately to block concurrent Resume calls.
 	// If BuildAndResume fails below, we roll back to WaitingHuman.
-	uc.applyExecTransition(exec, GraphExecEventResume, GraphExecRunning)
+	uc.applyExecTransition(exec, GraphExecEventResume)
 	exec.ctx = context.WithoutCancel(ctx)
 	exec.execMu.Unlock()
 
@@ -353,7 +353,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	if err != nil {
 		// Roll back status on failure (running → waiting_human via interrupt semantics).
 		exec.execMu.Lock()
-		uc.applyExecTransition(exec, GraphExecEventInterrupt, GraphExecWaitingHuman)
+		uc.applyExecTransition(exec, GraphExecEventInterrupt)
 		exec.execMu.Unlock()
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	if err != nil {
 		// Roll back status on failure (running → waiting_human via interrupt semantics).
 		exec.execMu.Lock()
-		uc.applyExecTransition(exec, GraphExecEventInterrupt, GraphExecWaitingHuman)
+		uc.applyExecTransition(exec, GraphExecEventInterrupt)
 		exec.execMu.Unlock()
 		e := apierror.Internal("GRAPH", "graph resume failed")
 		e.Cause = err
@@ -450,7 +450,7 @@ func (uc *GraphExecutionUsecase) MarkTeamGraphInterrupt(ctx context.Context, exe
 	exec.interruptMu.Unlock()
 	var persistSnap *GraphExecution
 	exec.execMu.Lock()
-	uc.applyExecTransition(exec, GraphExecEventInterrupt, GraphExecWaitingHuman)
+	uc.applyExecTransition(exec, GraphExecEventInterrupt)
 	exec.CurrentNode = nodeID
 	if lineageID != "" {
 		exec.LineageID = lineageID
@@ -482,7 +482,7 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	// prematurely and Status may still be "running" — we must not override that
 	// to "completed" since the execution was actually cancelled.
 	if exec.Status == string(GraphExecRunning) && !exec.evicted {
-		uc.applyExecTransition(exec, GraphExecEventComplete, GraphExecCompleted)
+		uc.applyExecTransition(exec, GraphExecEventComplete)
 		now := time.Now()
 		exec.FinishedAt = &now
 	}
@@ -552,7 +552,7 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		var persistSnap *GraphExecution
 		exec.execMu.Lock()
 		exec.ErrorMessage = e.Error
-		uc.applyExecTransition(exec, GraphExecEventFail, GraphExecFailed)
+		uc.applyExecTransition(exec, GraphExecEventFail)
 		exec.Steps = upsertGraphStep(exec.Steps, GraphStepSnapshot{
 			NodeID:    e.NodeID,
 			StepIndex: e.StepNumber,
@@ -572,7 +572,7 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		exec.InterruptNode = e.NodeID
 		exec.interruptMu.Unlock()
 		exec.execMu.Lock()
-		uc.applyExecTransition(exec, GraphExecEventInterrupt, GraphExecWaitingHuman)
+		uc.applyExecTransition(exec, GraphExecEventInterrupt)
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
 		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
@@ -696,22 +696,30 @@ func (uc *GraphExecutionUsecase) gc() {
 			delete(uc.executions, id)
 			uc.cacheMgr.RemoveBuildConfig(id)
 		} else if finishedAt == nil && now.Sub(startedAt) > uc.gcConfig.ExecutionMaxAge {
-			if rt != nil {
-				if err := rt.Cancel(); err != nil {
-					uc.lg.Warn("cancel graph runtime on gc eviction", loggateway.Err(err))
-				}
+		if rt != nil {
+			if err := rt.Cancel(); err != nil {
+				uc.lg.Warn("cancel graph runtime on gc eviction", loggateway.Err(err))
 			}
-			exec.execMu.Lock()
-			uc.applyExecTransition(exec, GraphExecEventFail, GraphExecFailed)
-			exec.ErrorMessage = "execution expired: no activity within timeout"
-			nowCopy := now
-			exec.FinishedAt = &nowCopy
-			exec.execMu.Unlock()
-			exec.SetEvicted()
-			expired = append(expired, exec)
-			delete(uc.executions, id)
-			uc.cacheMgr.RemoveBuildConfig(id)
 		}
+		exec.execMu.Lock()
+		// Try to transition to failed. If the execution is already in a terminal
+		// state (completed/failed/cancelled), the transition is rejected and the
+		// status is preserved — we still mark it evicted and clean up below.
+		if err := uc.applyExecTransition(exec, GraphExecEventFail); err != nil {
+			uc.lg.Warn("gc: execution already terminal, skipping fail transition",
+				loggateway.StepID("graph.gc_already_terminal"),
+				loggateway.Str("execution_id", exec.ID),
+				loggateway.Str("status", exec.Status))
+		}
+		exec.ErrorMessage = "execution expired: no activity within timeout"
+		nowCopy := now
+		exec.FinishedAt = &nowCopy
+		exec.execMu.Unlock()
+		exec.SetEvicted()
+		expired = append(expired, exec)
+		delete(uc.executions, id)
+		uc.cacheMgr.RemoveBuildConfig(id)
+	}
 	}
 	uc.mu.Unlock()
 

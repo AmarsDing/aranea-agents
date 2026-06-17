@@ -26,7 +26,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func newTestWAL(t *testing.T) *EventWAL {
 	t.Helper()
 	db := openTestDB(t)
-	w, err := NewEventWAL(db, nil)
+	w, err := NewEventWAL(db, nil, nil)
 	if err != nil {
 		t.Fatalf("new test wal: %v", err)
 	}

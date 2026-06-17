@@ -15,15 +15,19 @@ import (
 // EventWAL provides Write-Before-Publish-Fanout (WBPF) for Critical events.
 // Delegates to the framework wal.WAL[Envelope] implementation.
 //
-// Critical events are persisted to SQLite BEFORE being published to the Bus,
+// Critical events are persisted to the WAL BEFORE being published to the Bus,
 // ensuring no data loss on process crash. On restart, unpublished entries
 // are recovered and republished.
+//
+// When a Postgres DB handle is provided, the WAL uses Postgres-backed storage
+// (postgresWALStorage) for better crash safety and cross-process recovery.
+// Otherwise, it falls back to SQLite-backed storage (sqliteWALStorage).
 //
 // Stability:evolving
 type EventWAL struct {
 	inner   *frameworkwal.WAL[Envelope]
-	storage *sqliteWALStorage // kept for direct DB access in tests
-	db      *sql.DB           // kept for ProvideEventWAL nil check
+	storage frameworkwal.Storage // either *sqliteWALStorage or *postgresWALStorage
+	db      *sql.DB              // kept for ProvideEventWAL nil check (primary DB)
 	lg      loggateway.Logger
 }
 
@@ -75,12 +79,36 @@ func toLoggatewayFields(kv []any) []loggateway.Field {
 	return fields
 }
 
-// NewEventWAL creates a new WAL backed by the given SQLite database.
+// NewEventWAL creates a new WAL backed by the given database.
 // The database must be opened with WAL journal mode for best crash safety.
-func NewEventWAL(db *sql.DB, lg loggateway.Logger) (*EventWAL, error) {
-	storage, err := newSQLiteWALStorage(context.Background(), db, lg)
-	if err != nil {
-		return nil, err
+//
+// If pgDB is non-nil, Postgres-backed storage is used (preferred for Phase 1
+// migration — better crash safety, cross-process recovery, and durability).
+// Otherwise, SQLite-backed storage is used with the sqliteDB handle.
+func NewEventWAL(sqliteDB *sql.DB, pgDB *sql.DB, lg loggateway.Logger) (*EventWAL, error) {
+	ctx := context.Background()
+	var storage frameworkwal.Storage
+	var err error
+	if pgDB != nil {
+		storage, err = newPostgresWALStorage(ctx, pgDB, lg)
+		if err != nil {
+			return nil, fmt.Errorf("event_wal: create postgres storage: %w", err)
+		}
+		if lg != nil {
+			lg.Info("event_wal: using Postgres-backed storage",
+				loggateway.StepID("event_wal.init"))
+		}
+	} else if sqliteDB != nil {
+		storage, err = newSQLiteWALStorage(ctx, sqliteDB, lg)
+		if err != nil {
+			return nil, fmt.Errorf("event_wal: create sqlite storage: %w", err)
+		}
+		if lg != nil {
+			lg.Info("event_wal: using SQLite-backed storage",
+				loggateway.StepID("event_wal.init"))
+		}
+	} else {
+		return nil, fmt.Errorf("event_wal: no database provided")
 	}
 
 	isCritical := func(env Envelope) bool {
@@ -93,10 +121,14 @@ func NewEventWAL(db *sql.DB, lg loggateway.Logger) (*EventWAL, error) {
 		return nil, fmt.Errorf("event_wal: create framework WAL: %w", err)
 	}
 
+	primaryDB := sqliteDB
+	if primaryDB == nil {
+		primaryDB = pgDB
+	}
 	return &EventWAL{
 		inner:   inner,
 		storage: storage,
-		db:      db,
+		db:      primaryDB,
 		lg:      lg,
 	}, nil
 }

@@ -106,7 +106,7 @@ func (r *sessionRunRepo) Create(ctx context.Context, run biz.SessionRun) (string
 		SetCreatedAt(run.CreatedAt).
 		SetUpdatedAt(run.UpdatedAt).
 		Save(ctx)
-	return id, err
+	return id, entErrToBizErr(err, "SESSION_RUN")
 }
 
 func (r *sessionRunRepo) UpdatePhase(ctx context.Context, id, phase string) error {
@@ -123,7 +123,7 @@ func (r *sessionRunRepo) UpdatePhase(ctx context.Context, id, phase string) erro
 	if err != nil {
 		r.data.lg.Warn("update phase failed", loggateway.StepID("data.session_run.update_phase"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION_RUN")
 }
 
 func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg string) error {
@@ -139,11 +139,12 @@ func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg str
 		SetPhaseChangedAt(now).
 		SetUpdatedAt(now).
 		SetResumeStartedAt("").
+		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("mark terminal failed", loggateway.StepID("data.session_run.mark_terminal"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION_RUN")
 }
 
 func (r *sessionRunRepo) UpdateCheckpointID(ctx context.Context, id, checkpointID string) error {
@@ -159,7 +160,7 @@ func (r *sessionRunRepo) UpdateCheckpointID(ctx context.Context, id, checkpointI
 	if err != nil {
 		r.data.lg.Warn("update checkpoint id failed", loggateway.StepID("data.session_run.update_checkpoint"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION_RUN")
 }
 
 // TryClaimDurableResume uses Raw SQL because it relies on conditional WHERE with
@@ -184,11 +185,11 @@ WHERE id=? AND phase='durable'
 	)
 	if err != nil {
 		r.data.lg.Error("claim durable resume failed", loggateway.StepID("data.session_run.claim_durable"), loggateway.Err(err))
-		return false, err
+		return false, entErrToBizErr(err, "SESSION_RUN")
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "SESSION_RUN")
 	}
 	return n > 0, nil
 }
@@ -210,7 +211,7 @@ func (r *sessionRunRepo) ClearResumeClaim(ctx context.Context, id string) error 
 	if err != nil {
 		r.data.lg.Warn("clear resume claim failed", loggateway.StepID("data.session_run.clear_resume"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION_RUN")
 }
 
 func (r *sessionRunRepo) ListByPhase(ctx context.Context, phase string, limit int) ([]biz.SessionRun, error) {
@@ -231,7 +232,7 @@ func (r *sessionRunRepo) ListByPhase(ctx context.Context, phase string, limit in
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_RUN")
 	}
 	out := make([]biz.SessionRun, len(items))
 	for i, item := range items {
@@ -280,7 +281,7 @@ WHERE 1=1`
 	args = append(args, limit)
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_RUN")
 	}
 	defer rows.Close()
 	return scanSessionRunRows(rows)
@@ -291,11 +292,11 @@ func scanSessionRunRows(rows *sql.Rows) ([]biz.SessionRun, error) {
 	for rows.Next() {
 		run, err := scanSessionRunRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SESSION_RUN")
 		}
 		out = append(out, run)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "SESSION_RUN")
 }
 
 func scanSessionRunRow(scanner interface {
@@ -308,7 +309,7 @@ func scanSessionRunRow(scanner interface {
 		&run.ErrorMessage, &run.StartedAt, &run.PhaseChangedAt, &run.FinishedAt, &run.ResumeStartedAt,
 		&run.CreatedAt, &run.UpdatedAt,
 	)
-	return run, err
+	return run, entErrToBizErr(err, "SESSION_RUN")
 }
 
 func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID string) (biz.SessionRun, error) {
@@ -332,7 +333,7 @@ func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID stri
 		if ent.IsNotFound(err) {
 			return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
-		return biz.SessionRun{}, err
+		return biz.SessionRun{}, entErrToBizErr(err, "SESSION_RUN")
 	}
 	return entSessionRunToBiz(item), nil
 }
@@ -359,7 +360,7 @@ func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, li
 		Where(sessionrun.SessionIDEQ(sessionID)).
 		Count(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "SESSION_RUN")
 	}
 	items, err := client.SessionRun.Query().
 		Where(sessionrun.SessionIDEQ(sessionID)).
@@ -368,7 +369,7 @@ func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, li
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "SESSION_RUN")
 	}
 	out := make([]biz.SessionRun, len(items))
 	for i, item := range items {
@@ -387,7 +388,7 @@ func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, er
 		if ent.IsNotFound(err) {
 			return biz.SessionRun{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
-		return biz.SessionRun{}, err
+		return biz.SessionRun{}, entErrToBizErr(err, "SESSION_RUN")
 	}
 	return entSessionRunToBiz(item), nil
 }
@@ -415,11 +416,11 @@ WHERE id=? AND phase=?`,
 	)
 	if err != nil {
 		r.data.lg.Warn("transition phase CAS failed", loggateway.StepID("data.session_run.transition_phase"), loggateway.Err(err))
-		return false, err
+		return false, entErrToBizErr(err, "SESSION_RUN")
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "SESSION_RUN")
 	}
 	return n > 0, nil
 }
@@ -448,7 +449,7 @@ WHERE (
 	)
 	if err != nil {
 		r.data.lg.Error("mark orphaned runs cancelled failed", loggateway.StepID("data.session_run.orphan_cleanup"), loggateway.Err(err))
-		return 0, err
+		return 0, entErrToBizErr(err, "SESSION_RUN")
 	}
 	n, rowsErr := res.RowsAffected()
 	if rowsErr != nil {
