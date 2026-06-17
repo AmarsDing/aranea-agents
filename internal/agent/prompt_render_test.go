@@ -3,6 +3,8 @@ package agent
 import (
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestRenderPromptTemplate_BasicSubstitution(t *testing.T) {
@@ -11,7 +13,7 @@ func TestRenderPromptTemplate_BasicSubstitution(t *testing.T) {
 		"name": "Alice",
 		"role": "engineer",
 	}
-	got, err := RenderPromptTemplate(tmpl, vars)
+	got, err := RenderPromptTemplate(tmpl, vars, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("RenderPromptTemplate returned error: %v", err)
 	}
@@ -28,7 +30,7 @@ func TestRenderPromptTemplate_MissingVariablesPreserved(t *testing.T) {
 	vars := map[string]string{
 		"name": "Bob",
 	}
-	got, err := RenderPromptTemplate(tmpl, vars)
+	got, err := RenderPromptTemplate(tmpl, vars, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("RenderPromptTemplate returned error: %v", err)
 	}
@@ -42,7 +44,7 @@ func TestRenderPromptTemplate_MissingVariablesPreserved(t *testing.T) {
 
 func TestRenderPromptTemplate_EmptyVars(t *testing.T) {
 	tmpl := "No variables here."
-	got, err := RenderPromptTemplate(tmpl, nil)
+	got, err := RenderPromptTemplate(tmpl, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("RenderPromptTemplate returned error: %v", err)
 	}
@@ -58,7 +60,7 @@ func TestRenderCapabilityCue(t *testing.T) {
 		"max_depth":       "2",
 		"profile":         "default",
 	}
-	got, err := RenderCapabilityCue(tmpl, vars)
+	got, err := RenderCapabilityCue(tmpl, vars, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("RenderCapabilityCue returned error: %v", err)
 	}
@@ -75,7 +77,7 @@ func TestRenderCapabilityCue(t *testing.T) {
 
 func TestRenderCapabilityCue_MissingVarsPreserved(t *testing.T) {
 	tmpl := "- Tools: enabled; profile={profile}"
-	got, err := RenderCapabilityCue(tmpl, nil)
+	got, err := RenderCapabilityCue(tmpl, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("RenderCapabilityCue returned error: %v", err)
 	}

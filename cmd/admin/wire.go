@@ -1989,6 +1989,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		chatagent.NewDynamicLLMCaller,
 		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
 		biz.NewPromptRefiner,
+		wire.Bind(new(biz.Refiner), new(*biz.PromptRefiner)),
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.ToolRegistryReader), new(biz.ToolRepo)),
 		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),

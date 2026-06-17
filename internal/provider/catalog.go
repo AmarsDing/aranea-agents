@@ -55,19 +55,24 @@ type ProviderModelConfig struct {
 	SecretKey            string
 	AWSRegion            string
 	EnableTokenTailoring bool
-	ContextWindow        int
-	MaxInputTokens       int
-	OptimizeForCache     bool
-	ReasoningBackfill    bool
-	ShowToolCallDelta    bool
-	Cache                CacheConfig
-	KeepAliveMinutes     int
-	ChannelBufferSize    int
-	HA                   HAConfig
-	RateLimitRPM         int
-	Capabilities         biz.ModelCapabilities
-	Retry                RetryConfig
-	CB                   CBConfig
+	// TokenTailoringStrategy selects the tailoring strategy: "middle-out" (default), "head-out", "tail-out".
+	// Underscore form ("middle_out") is also accepted.
+	TokenTailoringStrategy string
+	// TokenTailoringSafetyMargin is the safety margin ratio (0.0–1.0) for token counting inaccuracies.
+	TokenTailoringSafetyMargin float64
+	ContextWindow              int
+	MaxInputTokens             int
+	OptimizeForCache           bool
+	ReasoningBackfill          bool
+	ShowToolCallDelta          bool
+	Cache                      CacheConfig
+	KeepAliveMinutes           int
+	ChannelBufferSize          int
+	HA                         HAConfig
+	RateLimitRPM               int
+	Capabilities               biz.ModelCapabilities
+	Retry                      RetryConfig
+	CB                         CBConfig
 }
 
 type HACandidateConfig struct {
@@ -78,35 +83,37 @@ type HACandidateConfig struct {
 }
 
 type catalogConfigJSON struct {
-	ProviderType         string              `json:"provider_type"`
-	Variant              string              `json:"variant"`
-	APIBaseURL           string              `json:"api_base_url"`
-	APIKey               string              `json:"api_key"`
-	SecretID             string              `json:"secret_id"`
-	SecretKey            string              `json:"secret_key"`
-	AWSRegion            string              `json:"aws_region"`
-	EnableTokenTailoring *bool               `json:"enable_token_tailoring"`
-	ContextWindowK       int                 `json:"context_window_k"`
-	MaxInputTokens       int                 `json:"max_input_tokens"`
-	OptimizeForCache     *bool               `json:"optimize_for_cache"`
-	ReasoningBackfill    *bool               `json:"reasoning_content_backfill"`
-	ShowToolCallDelta    *bool               `json:"show_tool_call_delta"`
-	CacheSystemPrompt    *bool               `json:"cache_system_prompt"`
-	CacheTools           *bool               `json:"cache_tools"`
-	CacheMessages        *bool               `json:"cache_messages"`
-	KeepAliveMinutes     int                 `json:"keep_alive_minutes"`
-	ChannelBufferSize    int                 `json:"channel_buffer_size"`
-	HAMode               string              `json:"ha_mode"`
-	HACandidates         []HACandidateConfig `json:"ha_candidates"`
-	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
-	RateLimitRPM         int                 `json:"rate_limit_rpm"`
-	Capabilities         biz.ModelCapabilities `json:"capabilities"`
-	RetryMaxAttempts     int                 `json:"retry_max_attempts"`
-	RetryBaseDelayMs     int                 `json:"retry_base_delay_ms"`
-	RetryMaxDelayMs      int                 `json:"retry_max_delay_ms"`
-	CircuitBreakerEnabled          bool `json:"circuit_breaker_enabled"`
-	CircuitBreakerFailureThreshold int  `json:"circuit_breaker_failure_threshold"`
-	CircuitBreakerRecoverySec      int  `json:"circuit_breaker_recovery_sec"`
+	ProviderType                   string                `json:"provider_type"`
+	Variant                        string                `json:"variant"`
+	APIBaseURL                     string                `json:"api_base_url"`
+	APIKey                         string                `json:"api_key"`
+	SecretID                       string                `json:"secret_id"`
+	SecretKey                      string                `json:"secret_key"`
+	AWSRegion                      string                `json:"aws_region"`
+	EnableTokenTailoring           *bool                 `json:"enable_token_tailoring"`
+	TokenTailoringStrategy         string                `json:"token_tailoring_strategy"`
+	TokenTailoringSafetyMargin     float64               `json:"token_tailoring_safety_margin"`
+	ContextWindowK                 int                   `json:"context_window_k"`
+	MaxInputTokens                 int                   `json:"max_input_tokens"`
+	OptimizeForCache               *bool                 `json:"optimize_for_cache"`
+	ReasoningBackfill              *bool                 `json:"reasoning_content_backfill"`
+	ShowToolCallDelta              *bool                 `json:"show_tool_call_delta"`
+	CacheSystemPrompt              *bool                 `json:"cache_system_prompt"`
+	CacheTools                     *bool                 `json:"cache_tools"`
+	CacheMessages                  *bool                 `json:"cache_messages"`
+	KeepAliveMinutes               int                   `json:"keep_alive_minutes"`
+	ChannelBufferSize              int                   `json:"channel_buffer_size"`
+	HAMode                         string                `json:"ha_mode"`
+	HACandidates                   []HACandidateConfig   `json:"ha_candidates"`
+	HAHedgeDelayMs                 int                   `json:"ha_hedge_delay_ms"`
+	RateLimitRPM                   int                   `json:"rate_limit_rpm"`
+	Capabilities                   biz.ModelCapabilities `json:"capabilities"`
+	RetryMaxAttempts               int                   `json:"retry_max_attempts"`
+	RetryBaseDelayMs               int                   `json:"retry_base_delay_ms"`
+	RetryMaxDelayMs                int                   `json:"retry_max_delay_ms"`
+	CircuitBreakerEnabled          bool                  `json:"circuit_breaker_enabled"`
+	CircuitBreakerFailureThreshold int                   `json:"circuit_breaker_failure_threshold"`
+	CircuitBreakerRecoverySec      int                   `json:"circuit_breaker_recovery_sec"`
 }
 
 func ResolveModelConfig(in ModelCatalogInput) (ProviderModelConfig, error) {
@@ -162,6 +169,8 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 	if c.EnableTokenTailoring != nil {
 		cfg.EnableTokenTailoring = *c.EnableTokenTailoring
 	}
+	cfg.TokenTailoringStrategy = strings.TrimSpace(c.TokenTailoringStrategy)
+	cfg.TokenTailoringSafetyMargin = c.TokenTailoringSafetyMargin
 	if c.ContextWindowK > 0 {
 		cfg.ContextWindow = c.ContextWindowK * 1000
 	}

@@ -93,27 +93,39 @@ type MemoryCfg struct {
 
 // ToolsCfg holds tool execution and retry settings.
 type ToolsCfg struct {
-	Enabled                bool    `json:"tools_enabled,omitempty"`
-	Profile                string  `json:"tools_profile,omitempty"`
-	ToolCallPrefix         string  `json:"tools_tool_call_prefix,omitempty"`
-	AllowJSON              string  `json:"tools_allow_json,omitempty"`
-	DenyJSON               string  `json:"tools_deny_json,omitempty"`
-	ConcurrentAllowJSON    string  `json:"tools_concurrent_allow_json,omitempty"`
-	RetryEnabled           bool    `json:"tools_retry_enabled,omitempty"`
-	RetryMaxAttempts       int     `json:"tools_retry_max_attempts,omitempty"`
-	RetryInitialIntervalMs int     `json:"tools_retry_initial_interval_ms,omitempty"`
-	RetryBackoffFactor     float64 `json:"tools_retry_backoff_factor,omitempty"`
-	RetryMaxIntervalMs     int     `json:"tools_retry_max_interval_ms,omitempty"`
-	RetryJitter            bool    `json:"tools_retry_jitter,omitempty"`
-	ParallelEnabled        bool    `json:"tools_parallel_enabled,omitempty"`
-	StreamingEnabled              bool   `json:"tools_streaming_enabled,omitempty"`
-	CircuitBreakerEnabled         bool   `json:"tools_circuit_breaker_enabled,omitempty"`
-	CircuitBreakerOverridesJSON   string `json:"tools_circuit_breaker_overrides_json,omitempty"`
-	CommandSafetyEnabled          bool   `json:"tools_command_safety_enabled,omitempty"`
-	ExecutionTimeoutSec           int    `json:"tools_execution_timeout_sec,omitempty"`
-	DeferredJSON                  string `json:"tools_deferred_json,omitempty"`
+	Enabled                     bool    `json:"tools_enabled,omitempty"`
+	Profile                     string  `json:"tools_profile,omitempty"`
+	ToolCallPrefix              string  `json:"tools_tool_call_prefix,omitempty"`
+	AllowJSON                   string  `json:"tools_allow_json,omitempty"`
+	DenyJSON                    string  `json:"tools_deny_json,omitempty"`
+	ConcurrentAllowJSON         string  `json:"tools_concurrent_allow_json,omitempty"`
+	RetryEnabled                bool    `json:"tools_retry_enabled,omitempty"`
+	RetryMaxAttempts            int     `json:"tools_retry_max_attempts,omitempty"`
+	RetryInitialIntervalMs      int     `json:"tools_retry_initial_interval_ms,omitempty"`
+	RetryBackoffFactor          float64 `json:"tools_retry_backoff_factor,omitempty"`
+	RetryMaxIntervalMs          int     `json:"tools_retry_max_interval_ms,omitempty"`
+	RetryJitter                 bool    `json:"tools_retry_jitter,omitempty"`
+	ParallelEnabled             bool    `json:"tools_parallel_enabled,omitempty"`
+	StreamingEnabled            bool    `json:"tools_streaming_enabled,omitempty"`
+	CircuitBreakerEnabled       bool    `json:"tools_circuit_breaker_enabled,omitempty"`
+	CircuitBreakerOverridesJSON string  `json:"tools_circuit_breaker_overrides_json,omitempty"`
+	CommandSafetyEnabled        bool    `json:"tools_command_safety_enabled,omitempty"`
+	ExecutionTimeoutSec         int     `json:"tools_execution_timeout_sec,omitempty"`
+	DeferredJSON                string  `json:"tools_deferred_json,omitempty"`
 	// ToolWeightJSON stores tool weight analysis results for prompt priority hints.
 	ToolWeightJSON string `json:"tool_weight_json,omitempty"`
+	// MaxLLMCalls limits the number of LLM calls per turn (0 = unlimited).
+	MaxLLMCalls int `json:"max_llm_calls,omitempty"`
+	// MaxToolIterations limits the number of tool-call iterations per turn (0 = unlimited).
+	MaxToolIterations int `json:"max_tool_iterations,omitempty"`
+	// EnableTokenTailoring enables automatic token tailoring for the model's context window.
+	EnableTokenTailoring bool `json:"enable_token_tailoring,omitempty"`
+	// TokenTailoringStrategy selects the tailoring strategy: "middle_out" (default), "head_out", "tail_out".
+	// Maps to framework trpcmodel.TailoringStrategy implementations.
+	TokenTailoringStrategy string `json:"token_tailoring_strategy,omitempty"`
+	// TokenTailoringSafetyMargin is the safety margin ratio for token counting inaccuracies (0.0–1.0).
+	// Maps to framework trpcmodel.TokenTailoringConfig.SafetyMarginRatio.
+	TokenTailoringSafetyMargin float64 `json:"token_tailoring_safety_margin,omitempty"`
 }
 
 // SkillsCfg holds skill loading and intent-pass settings.
@@ -287,6 +299,11 @@ func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {
 	s.ToolsCommandSafetyEnabled = cfg.CommandSafetyEnabled
 	s.ToolsExecutionTimeoutSec = cfg.ExecutionTimeoutSec
 	s.ToolWeightJSON = cfg.ToolWeightJSON
+	s.MaxLLMCalls = cfg.MaxLLMCalls
+	s.MaxToolIterations = cfg.MaxToolIterations
+	s.EnableTokenTailoring = cfg.EnableTokenTailoring
+	s.TokenTailoringStrategy = cfg.TokenTailoringStrategy
+	s.TokenTailoringSafetyMargin = cfg.TokenTailoringSafetyMargin
 }
 
 func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {

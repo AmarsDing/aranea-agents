@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	knowledgeadapter "aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
@@ -12,35 +13,41 @@ import (
 
 // KnowledgeAdapter converts the project's knowledge configuration into
 // framework llmagent.Option functions that enable framework WithKnowledge.
-//
-// TECH-DEBT: Currently returns nil because the project uses its own
-// knowledge_search tool pipeline (see knowledge_inject.go). Will be activated
-// when migrating to framework-native knowledge support.
-func KnowledgeAdapter(_ context.Context, ag biz.Agent, deps TRPCBuilderDeps, _ loggateway.Logger) []llmagent.Option {
+// It bridges the project's self-built retriever to the framework's
+// knowledge.Knowledge interface, enabling framework-native knowledge_search
+// alongside the project's custom knowledge tools.
+func KnowledgeAdapter(_ context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) []llmagent.Option {
 	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
 		return nil
 	}
-	if deps.KnowledgeUsecase == nil {
+	if deps.KnowledgeUsecase == nil || deps.KnowledgeUsecase.IsUnavailable() {
 		return nil
 	}
-	// TODO(debt): Activate when project migrates from custom knowledge tools
-	// to framework-native llmagent.WithKnowledge.
-	return nil
+	if deps.KnowledgeRetriever == nil {
+		return nil
+	}
+	// Bridge the project's Retriever.Search to framework knowledge.Knowledge.
+	adapter := knowledgeadapter.NewKnowledgeAdapter(deps.KnowledgeRetriever.Search, lg)
+	fk := NewFrameworkKnowledge(adapter)
+	return fk.Options()
 }
 
 // SafetyLimitAdapter converts the project's agent safety settings into
 // framework llmagent.Option functions that enable framework safety limits.
-//
-// TECH-DEBT: Currently returns nil because AgentRuntimeSettings lacks
-// MaxLLMCalls / MaxToolIterations fields. Will be extended when those
-// fields are added.
+// When MaxLLMCalls or MaxToolIterations are configured (> 0), the framework
+// enforces per-turn limits to prevent runaway agent behavior.
 func SafetyLimitAdapter(ag biz.Agent) []llmagent.Option {
 	if ag.Settings == nil {
 		return nil
 	}
-	// TODO(debt): Add safety options when AgentRuntimeSettings gains
-	// MaxLLMCalls / MaxToolIterations fields.
-	return nil
+	var opts []llmagent.Option
+	if ag.Settings.MaxLLMCalls > 0 {
+		opts = append(opts, llmagent.WithMaxLLMCalls(ag.Settings.MaxLLMCalls))
+	}
+	if ag.Settings.MaxToolIterations > 0 {
+		opts = append(opts, llmagent.WithMaxToolIterations(ag.Settings.MaxToolIterations))
+	}
+	return opts
 }
 
 // FrameworkKnowledge wraps a knowledge.Knowledge implementation to satisfy

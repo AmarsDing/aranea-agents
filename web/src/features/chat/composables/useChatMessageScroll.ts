@@ -113,27 +113,38 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }
   });
 
+  // Leading-edge throttle with trailing call: ensures the first delta in each
+  // 50ms window triggers a scroll, and the last delta always gets a trailing
+  // scroll so the view doesn't get stuck mid-stream.
   let scrollStickRaf = 0;
-  let scrollStickThrottle = 0;
+  let scrollStickLastRun = 0;
+  const SCROLL_STICK_THROTTLE_MS = 50;
+  function scheduleScrollToBottom() {
+    if (scrollStickRaf) return;
+    scrollStickRaf = requestAnimationFrame(() => {
+      scrollStickRaf = 0;
+      scrollStickLastRun = Date.now();
+      void scrollToBottom(false);
+    });
+  }
   watch(
     () => opts.messages.value[opts.messages.value.length - 1]?.content_markdown ?? '',
     () => {
       if (!stickToBottom.value) return;
-      if (scrollStickRaf) return;
       const now = Date.now();
-      if (now - scrollStickThrottle < 50) {
-        scrollStickRaf = requestAnimationFrame(() => {
-          scrollStickRaf = 0;
-          scrollStickThrottle = Date.now();
-          void scrollToBottom(false);
-        });
-        return;
+      const elapsed = now - scrollStickLastRun;
+      if (elapsed >= SCROLL_STICK_THROTTLE_MS) {
+        // Leading edge: enough time has passed — scroll immediately
+        scrollStickLastRun = now;
+        scheduleScrollToBottom();
+      } else {
+        // Within throttle window — schedule a trailing scroll after the
+        // remaining wait so the final position is always correct.
+        setTimeout(() => {
+          if (!stickToBottom.value) return;
+          scheduleScrollToBottom();
+        }, SCROLL_STICK_THROTTLE_MS - elapsed);
       }
-      scrollStickThrottle = now;
-      scrollStickRaf = requestAnimationFrame(() => {
-        scrollStickRaf = 0;
-        void scrollToBottom(false);
-      });
     },
   );
 

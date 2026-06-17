@@ -48,7 +48,7 @@ func TestDurableResumeRunOpts(t *testing.T) {
 		t.Fatalf("base=%v", base)
 	}
 	with := durableResumeRunOpts(true, nil)
-	if len(with) != 1 {
+	if len(with) != 2 {
 		t.Fatalf("with=%v", with)
 	}
 }

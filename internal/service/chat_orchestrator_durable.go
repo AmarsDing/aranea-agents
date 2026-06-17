@@ -107,5 +107,8 @@ func durableResumeRunOpts(active bool, base []trpcagent.RunOption) []trpcagent.R
 	if !active {
 		return base
 	}
-	return append(base, trpcagent.WithDetachedCancel(true))
+	return append(base,
+		trpcagent.WithDetachedCancel(true),
+		trpcagent.WithPersistInterruptedAssistant(true),
+	)
 }

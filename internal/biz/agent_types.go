@@ -314,6 +314,20 @@ type AgentRuntimeSettings struct {
 	// This covers BeforeTool callbacks, actual execution, and AfterTool callbacks.
 	// A safety-net default is applied in the agent layer when this is zero.
 	ToolsExecutionTimeoutSec int
+	// MaxLLMCalls limits the number of LLM calls per turn (0 = unlimited).
+	// Maps to framework llmagent.WithMaxLLMCalls.
+	MaxLLMCalls int
+	// MaxToolIterations limits the number of tool-call iterations per turn (0 = unlimited).
+	// Maps to framework llmagent.WithMaxToolIterations.
+	MaxToolIterations int
+	// EnableTokenTailoring enables automatic token tailoring for the model's context window.
+	EnableTokenTailoring bool
+	// TokenTailoringStrategy selects the tailoring strategy: "middle_out" (default), "head_out", "tail_out".
+	// Maps to framework trpcmodel.TailoringStrategy implementations.
+	TokenTailoringStrategy string
+	// TokenTailoringSafetyMargin is the safety margin ratio for token counting inaccuracies (0.0–1.0).
+	// Maps to framework trpcmodel.TokenTailoringConfig.SafetyMarginRatio.
+	TokenTailoringSafetyMargin float64
 	// PlannerKind selects the planning strategy: "" | "builtin" | "react" | "a2ui".
 	// Empty string inherits the legacy dialog-mode based selection (builtin when dialogMode="plan").
 	PlannerKind string
@@ -443,6 +457,11 @@ func (s *AgentRuntimeSettings) GetTools() ToolsCfg {
 		CommandSafetyEnabled:  s.ToolsCommandSafetyEnabled,
 		ExecutionTimeoutSec:   s.ToolsExecutionTimeoutSec,
 		ToolWeightJSON:        s.ToolWeightJSON,
+		MaxLLMCalls:           s.MaxLLMCalls,
+		MaxToolIterations:     s.MaxToolIterations,
+		EnableTokenTailoring:  s.EnableTokenTailoring,
+		TokenTailoringStrategy:    s.TokenTailoringStrategy,
+		TokenTailoringSafetyMargin: s.TokenTailoringSafetyMargin,
 	}
 }
 

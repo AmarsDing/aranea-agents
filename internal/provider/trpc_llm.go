@@ -273,6 +273,16 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 	}
 	if cfg.EnableTokenTailoring {
 		opts = append(opts, trpcprovider.WithEnableTokenTailoring(true))
+		// Map TokenTailoringStrategy to the corresponding framework TailoringStrategy implementation.
+		if strategy := resolveTailoringStrategy(cfg.TokenTailoringStrategy); strategy != nil {
+			opts = append(opts, trpcprovider.WithTailoringStrategy(strategy))
+		}
+		// Map TokenTailoringSafetyMargin to framework TokenTailoringConfig.SafetyMarginRatio.
+		if cfg.TokenTailoringSafetyMargin > 0 {
+			opts = append(opts, trpcprovider.WithTokenTailoringConfig(&trpcmodel.TokenTailoringConfig{
+				SafetyMarginRatio: cfg.TokenTailoringSafetyMargin,
+			}))
+		}
 	}
 	if cfg.MaxInputTokens > 0 {
 		opts = append(opts, trpcprovider.WithMaxInputTokens(cfg.MaxInputTokens))
@@ -320,6 +330,24 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 	opts = append(opts, buildBedrockSpecificOptions(cfg)...)
 
 	return opts
+}
+
+// resolveTailoringStrategy maps a strategy string to the framework's
+// TailoringStrategy implementation. Returns nil for empty/unrecognized
+// values, letting the framework use its default (MiddleOut).
+// Accepts both hyphen ("middle-out") and underscore ("middle_out") forms.
+func resolveTailoringStrategy(s string) trpcmodel.TailoringStrategy {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), "_", "-"))
+	switch normalized {
+	case "middle-out":
+		return trpcmodel.NewMiddleOutStrategy(nil)
+	case "head-out":
+		return trpcmodel.NewHeadOutStrategy(nil)
+	case "tail-out":
+		return trpcmodel.NewTailOutStrategy(nil)
+	default:
+		return nil
+	}
 }
 
 func buildHuggingFaceSpecificOptions(_ ProviderModelConfig) []trpcprovider.Option {

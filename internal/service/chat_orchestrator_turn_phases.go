@@ -468,12 +468,18 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 	})
 	if input.EntryConfig.AllowStream {
 		runOpts = append(runOpts, trpcagent.WithStream(true))
+		// Enable message-level stream filtering so only message events are
+		// forwarded, reducing unnecessary event traffic.
+		runOpts = append(runOpts, trpcagent.WithStreamMode(trpcagent.StreamModeMessages))
 	}
 	runOpts = append(runOpts, intentRunOpts...)
 	if ag.Settings != nil {
 		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg()); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
 		}
+		// Install TransferController for agent transfer safety (depth limit + timeout).
+		runOpts = append(runOpts, trpcagent.MergeRuntimeState(
+			chatagent.NewTransferController(o.lg()).RuntimeState()))
 	}
 	if chMeta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON); ok {
 		if deliveryState := outbound.RuntimeStateForTarget(outbound.DeliveryTarget{

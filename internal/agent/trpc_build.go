@@ -204,6 +204,8 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 
 	if ag.Settings != nil {
 		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard, prov, mod, deps.ModelCatalog, deps.RT, lg)...)
+		opts = append(opts, SafetyLimitAdapter(ag)...)
+		opts = append(opts, KnowledgeAdapter(ctx, ag, deps, lg)...)
 
 		if toolFilter := buildToolFilter(ag.Settings, deps.DeferredManager, lg); toolFilter != nil {
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))
