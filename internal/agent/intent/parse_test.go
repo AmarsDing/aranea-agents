@@ -156,9 +156,10 @@ func TestMergeIntoUserOptionsJSON_EmptyOptions(t *testing.T) {
 }
 
 func TestIntentPassFromAgent_NilSettings(t *testing.T) {
+	// P1-1: intent pass defaults to ON when Settings is nil.
 	ag := biz.Agent{}
-	if IntentPassFromAgent(ag) {
-		t.Error("expected false when Settings is nil")
+	if !IntentPassFromAgent(ag) {
+		t.Error("expected true (default ON) when Settings is nil")
 	}
 }
 

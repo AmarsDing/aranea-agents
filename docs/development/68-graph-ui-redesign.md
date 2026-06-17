@@ -89,10 +89,7 @@
 | P0-1.8 | 连接时结构性检查 | 禁止自连接、重复边；字段名匹配提示（非阻断） |
 | P0-1.9 | 节点类型色标 | 7 种节点类型各有独立色标，驱动 Handle 边框色和 Header 色条 |
 
-**技术约束**：
-- Vue Flow Handle 支持 `id` 属性和默认 slot，可渲染字段名标签
-- `updateNodeInternals()` 在 Handle 动态变更时必须调用
-- Handle id 编码方案：`r:{fieldName}` / `w:{fieldName}`，避免特殊字符
+> 技术约束（Vue Flow Handle API、Handle id 编码方案、updateNodeInternals 调用时机）详见 [设计文档 §7 技术约束](./68-graph-ui-redesign.design.md#7-技术约束)
 
 #### P0-2：5 种运行时状态
 
@@ -122,9 +119,7 @@
 | P0-3.4 | Checkpoint 导航 | 列出所有 Checkpoint，点击可 TimeTravel |
 | P0-3.5 | 与 PropertyPanel 共存 | RunPanel 在右侧，PropertyPanel 在节点旁浮动（借鉴 Langflow InspectionPanel + Playground 共存） |
 
-**技术约束**：
-- 复用现有 `useGraphExecutionStream` 和 `useGraphTimeTravel` composable
-- RunPanel 使用 `q-drawer` 或自定义 flex 面板
+> 技术约束（composable 复用、面板组件选型）详见 [设计文档 §7 技术约束](./68-graph-ui-redesign.design.md#7-技术约束)
 
 #### P0-4：资源分类选择器
 
@@ -141,14 +136,7 @@
 | P0-4.5 | Agent MCP 信息 | 选中 Agent 后显示其 MCP 策略（通过 GetAgentEffectiveTools API） |
 | P0-4.6 | 选择器验证 | 选择的资源不存在时显示红色警告 |
 
-**数据源**：
-
-| 选择器 | API | Store | 已有？ |
-|--------|-----|-------|--------|
-| Agent | `listAgents()` | `useAgentsCatalogStore` | 是，需增加 Kind 分组 |
-| Tool | `listTools()` | `useToolsStore` | 是，需增加 Category 分组 |
-| Function | `listTools()` (filter) | `useToolsStore` | 复用 Tool API |
-| Agent MCP | `getAgentEffectiveTools()` | 新建 | API 已有，需封装 |
+> 资源选择器的数据源映射（API/Store 对应关系）详见 [设计文档 §8 API 与数据源](./68-graph-ui-redesign.design.md#8-api-与数据源)
 
 ### P1 — 体验打磨
 
@@ -222,14 +210,16 @@
 | 依赖 | 状态 | 说明 |
 |------|------|------|
 | Graph CRUD API | ✅ 就绪 | 28 个 RPC 方法 |
-| Graph 执行 API | ✅ 就绪 | ExecuteGraph/ResumeGraph/CancelGraph |
-| Graph 校验 API | ✅ 就绪 | ValidateGraph |
-| Graph State API | ✅ 就绪 | GetStateSnapshot/EditState/TimeTravel |
+| Graph 执行 API | ✅ 就绪 | 执行/恢复/取消 |
+| Graph 校验 API | ✅ 就绪 | 图结构校验 |
+| Graph State API | ✅ 就绪 | 状态快照/编辑/时间旅行 |
 | Agent 列表 API | ✅ 就绪 | 含 agent_key/display_name/kind/agent_kind |
 | Tool 列表 API | ✅ 就绪 | 含 key/display_name/category/source |
-| Agent 有效工具 API | ✅ 就绪 | GetAgentEffectiveTools |
+| Agent 有效工具 API | ✅ 就绪 | 查询 Agent 生效工具集 |
 | WS 事件 | ✅ 就绪 | 7 种执行事件 |
 | M54 任务系统 | 进行中 | 不阻塞 P0/P1 |
+
+> 各依赖的具体 RPC 方法名与前端 API 函数映射详见 [设计文档 §8 API 与数据源](./68-graph-ui-redesign.design.md#8-api-与数据源)
 
 ## 9. 参考资料
 

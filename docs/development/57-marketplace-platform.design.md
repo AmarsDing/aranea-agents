@@ -1,14 +1,16 @@
 # M57 — 公网商城平台（Marketplace Platform）实现设计
 
-> 对应需求：[57 marketplace-platform.md](./57%20marketplace-platform.md)
-> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
+> 对应需求：[57-marketplace-platform.md](./57-marketplace-platform.md)
+> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [project_rules.md](../../.trae/rules/project_rules.md)
 > 版本：2026-05-26 · 状态：📋 设计草案
+
+> **实现状态说明**：本设计文档描述的是 **规划中的未来实现**。截至 2026-06-17，本文档引用的所有代码路径（`api/marketplace/v1/*.proto`、`cmd/marketplace/`、`internal/marketplace/*`、`internal/installer/`、`pkg/aranea-asset/`、`web/marketplace/`、`web/src/features/marketplace/`）均 **尚未创建**。现有 M30 Ecosystem 模块（`api/kratos/ecosystem/v1/ecosystem.proto`、`internal/biz/ecosystem/`、`internal/data/ecosystem.go`、`internal/service/ecosystem.go`、`web/src/pages/EcosystemPage.vue`）是本设计的前身与未来客户端化目标。
 
 ---
 
 ## 一、模块全景与代码骨架
 
-### 1.1 仓库分布
+### 1.1 仓库分布（规划）
 
 | 位置 | 内容 |
 |------|------|
@@ -24,6 +26,8 @@
 | `web/marketplace/` | 公网商城 Web 客户端（独立构建产物） |
 | `web/src/features/marketplace/` | 主项目内 `/shop` 客户端（M30 继承） |
 
+> **现状对照**：现有 `cmd/aranea/main.go` 已注册 `cmdpkg.NewPackCmd()`（Pack 命令），但未注册 `publish` / `install` 子命令。现有 `internal/pkginstall/installer.go` 是另一用途的安装器（通过 HTTP API 安装 aranea 包），与本文档规划的 `internal/installer/`（商城客户端）不同。
+
 ### 1.2 依赖红线（CI 守护）
 
 ```
@@ -38,6 +42,92 @@ internal/biz/* (主项目) ──► NOT import internal/installer/* (installer 
 ```
 
 新增 `make marketplace-boundary` 检查脚本（仿 `make runtime-boundary`）。
+
+### 1.3 系统全景
+
+```mermaid
+flowchart TB
+  subgraph PublicNet["公网（marketplace.aranea.dev）"]
+    direction LR
+    GW[gRPC-Gateway + HTTP]
+    Catalog[Catalog Service]
+    Publish[Publish Service]
+    Review[Review Service]
+    Pay[Payment Service]
+    Deploy[Deployment Orchestrator]
+    Storage[(对象存储<br/>S3/MinIO)]
+    DB[(PostgreSQL)]
+    Search[(Meilisearch/PG-FTS)]
+    GW --> Catalog & Publish & Review & Pay & Deploy
+    Catalog & Publish & Review & Pay & Deploy --> DB
+    Publish --> Storage
+    Catalog --> Search
+  end
+  subgraph Creator["创作者：Aranea workspace A"]
+    A_CLI[aranea CLI publish]
+  end
+  subgraph BuyerLocal["买家本地：Aranea workspace B"]
+    B_Web[Web /shop（M30）]
+    B_Installer[Installer Agent]
+    B_Runtime[Aranea Runtime]
+  end
+  subgraph BuyerHosted["买家托管：Aranea SaaS 租户"]
+    H_Tenant[Tenant Runtime Pod]
+  end
+  A_CLI -->|publish| GW
+  B_Web -->|browse/install| GW
+  B_Installer -->|pull| Storage
+  B_Installer -->|落库| B_Runtime
+  Deploy -->|deploy| H_Tenant
+```
+
+### 1.4 数据流主路径
+
+```mermaid
+sequenceDiagram
+  participant C as Creator workspace
+  participant CLI as aranea CLI
+  participant MKT as Marketplace
+  participant Buyer as Buyer Web
+  participant Inst as Installer
+  participant Tgt as Buyer Runtime
+
+  C->>CLI: aranea pack ./my-team
+  CLI->>CLI: 解析依赖 + 签名
+  CLI->>MKT: PublishVersion(metadata, signed bundle url)
+  MKT->>MKT: 审核 (自动 + 人工)
+  MKT-->>C: 上架成功
+
+  Buyer->>MKT: SearchAssets(q, domain, sort)
+  MKT-->>Buyer: 商品列表（评分、活跃度）
+  Buyer->>MKT: InstallAsset(assetID, version)
+  MKT-->>Buyer: 签发 LicenseToken + 下载 URL
+  Buyer->>Inst: trigger install(LicenseToken, url)
+  Inst->>MKT: VerifyLicense(token)
+  Inst->>Storage: download bundle
+  Inst->>Tgt: 解析依赖 + 落库 + 健康检查
+  Tgt-->>Buyer: ready
+  Tgt->>MKT: 回流安装/运行指标
+```
+
+### 1.5 服务边界
+
+| 服务 | 部署位置 | 技术栈 | 备注 |
+|------|----------|--------|------|
+| Marketplace Backend | 公网 SaaS | Go + Kratos v2 + Wire（与 Aranea 同栈） | 独立仓库或 monorepo `cmd/marketplace` |
+| Web Marketplace | 公网 SaaS | Vue 3 + Quasar（复用前端栈）| `web/marketplace/` 独立构建 |
+| Object Storage | 公网 SaaS | S3 兼容（MinIO 自建或云） | bundle 与截图 |
+| Search | 公网 SaaS | Meilisearch（v1） / Elastic（v2） | 商品索引 |
+| Payment Gateway | 第三方 | Stripe / 支付宝 / 微信 | webhook 回调 |
+| **Installer SDK** | 买家侧 | Go 库 + CLI | 编入 Aranea 主项目 `internal/installer` |
+| **Tenant Orchestrator** | 公网 SaaS | K8s Operator | 仅托管场景 |
+
+### 1.6 与主项目的依赖关系（红线）
+
+- 主项目 → 新增 `internal/installer/`，**只依赖商城对外的 gRPC schema**（`api/marketplace/v1/*.proto`），不依赖任何商城内部包
+- 商城后端 → **不依赖** `pkg/trpc-agent-go`（商城不运行 Agent）
+- `internal/biz`（主项目）不 import installer 业务包，installer 走 `service` + Wire
+- Asset Schema 由商城定义，主项目通过 proto + 共享 schema 包 `pkg/aranea-asset` 引入
 
 ---
 
@@ -153,6 +243,8 @@ aranea publish ./dist/my-team-v1.4.2.aranea
 ---
 
 ## 三、Proto 设计
+
+> **现状对照**：现有 `api/kratos/ecosystem/v1/ecosystem.proto` 提供 5 个 RPC（ListProducts/GetProduct/PublishProduct/InstallProduct/UninstallProduct），是 M30 的实现。本节描述的 `api/marketplace/v1/*.proto` 是 M57 规划的新 Proto，尚未创建。
 
 ### 3.1 `api/marketplace/v1/catalog.proto`
 
@@ -388,6 +480,8 @@ type Plan struct {
 
 ## 五、Data 层（PostgreSQL + Ent）
 
+> **现状对照**：现有 M30 使用 SQLite + 原生 SQL（`internal/data/sql/ecosystem_product.sql`，表 `ecosystem_products` + `ecosystem_installs`），不在 Ent Schema 中。M57 商城后端强制 PG（多租户 + 全文检索 + 分区表）。
+
 ### 5.1 关键 Schema
 
 `internal/marketplace/data/ent/schema/`：
@@ -468,6 +562,8 @@ var ProviderSet = wire.NewSet(
 ---
 
 ## 七、买家侧 Installer（主项目 `internal/installer/`）
+
+> **现状对照**：现有 `internal/pkginstall/installer.go` 是通过 HTTP API 安装 aranea 包的安装器（依赖顺序：MCP → Skills → Org → Agents → Teams → Graphs），与本文档规划的 `internal/installer/`（商城客户端，含签名校验、staging 事务、冒烟测试）不同。M57 上线后两者并存：`pkginstall` 用于组织导入，`installer` 用于商城资产安装。
 
 ### 7.1 模块结构
 
@@ -676,6 +772,8 @@ func RatingWeight(actor ActorContext) float64 {
 
 ### 11.2 主项目内 `/shop`（M30 → M57 客户端化）
 
+> **现状对照**：现有 `web/src/pages/EcosystemPage.vue` 已挂载在 `/shop` 路由（见 `web/src/router/routes.ts:204`），是 M30 的实现。M57 上线后该页面将切换为 M57 客户端。
+
 - 路由 `/shop` 保持，但 API 全部走 `api/marketplace/v1`
 - 新增 `/shop/installs`（我的安装、健康度）
 - 新增 `/shop/credentials`（凭据管理器，安装时统一注入）
@@ -797,7 +895,7 @@ installer:
 
 ### 16.1 与 M30 的迁移
 
-- M30 现有数据 `ecosystem_product` 等表 **保留**，作为本地预置内容（"workspace-local marketplace"）
+- M30 现有数据 `ecosystem_products` 等表 **保留**，作为本地预置内容（"workspace-local marketplace"）
 - 引入新表 `mp_remote_install`，记录从公网 M57 安装的 Asset
 - 同一 ID 命名空间区分：`local::xxx` vs `mkt::xxx`
 - `/shop` 页面合并展示：tab「公网商城」（M57）+ tab「本地仓库」（M30）
@@ -834,7 +932,14 @@ installer:
 
 ## 十九、附录
 
-### 19.1 Asset 包结构样例（团队类）
+### 19.1 命名与编号
+
+- 主题前缀：`MKT-{主题}-{子模块}-{序号}`，例 `MKT-1-PROTO-03`
+- 服务命名：`cmd/marketplace`、`internal/marketplace/{catalog,publish,review,payment,deploy,telemetry}`
+- proto 路径：`api/marketplace/v1/*.proto`
+- 客户端模块：`internal/installer/`（主项目）+ `pkg/aranea-asset/`（schema 共享）
+
+### 19.2 Asset 包结构样例（团队类）
 
 ```
 team-codereview-pr-1.4.2/
@@ -860,7 +965,7 @@ team-codereview-pr-1.4.2/
     └── smoke.sh
 ```
 
-### 19.2 安装日志样例
+### 19.3 安装日志样例
 
 ```
 [install:abc123] resolving plan ... ok (3 steps)
@@ -877,7 +982,7 @@ team-codereview-pr-1.4.2/
 [install:abc123] post-install wizard: /shop/wizard/abc123
 ```
 
-### 19.3 红线 CI 脚本（雏形）
+### 19.4 红线 CI 脚本（雏形）
 
 ```bash
 # scripts/marketplace-boundary.sh

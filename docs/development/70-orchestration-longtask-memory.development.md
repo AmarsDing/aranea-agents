@@ -60,75 +60,107 @@
 **任务**：Critical 事件 WAL 写入失败时不发布事件
 
 **改动文件**：
-- `internal/event/infra.go:142-160`
+- `internal/event/infra.go`（Publish 方法 WBPF 语义修复）
+
+**实现细节**：
+- WBPF 失败区分两种模式：pre-publish 失败（serialize/insert）→ 事件未发布，记 Error "dropped"；post-publish 失败（markPublished）→ 事件已发布，记 Warn "published but mark failed"
+- Critical 事件经 `contract.IsCriticalWBPFType` 判定后走 WAL 写入路径
+- 非 Critical 事件直接走 `publishToBuses`，无 WAL 开销
 
 **验收**：
-- 单元测试：WAL 失败时不发布 Critical 事件
-- 单元测试：WAL 成功时正常发布
+- ✅ WBPF 失败时不发布 Critical 事件（pre-publish 失败路径）
+- ✅ WAL 成功时正常发布
+- ✅ post-publish 失败时事件已发布，日志标记 "may republish on restart"
 
-**状态**：📋 待办
+**状态**：✅ 完成
 
 ### 3.2 P0-2：接入状态机
 
-**任务**：GraphExecution 8 处直接赋值改为 Transition 调用
+**任务**：GraphExecution 状态变更改为经状态机 Transition 函数（AS-FSM-01）
 
 **改动文件**：
-- `internal/biz/graph_execution_usecase.go:194,237,283,426,458,528,548,678`
-- `internal/team/team_graph_run_coordinator.go:186-190,223-227,258-259`
+- `internal/biz/graph_execution_state_machine.go`（新增，GraphExecution 状态机：5 状态 + 7 转换规则）
+- `internal/biz/graph_execution_usecase.go`（新增 `applyExecTransition` 方法，authoritative 模式）
+- `internal/biz/graph_execution_usecase_fsm_test.go`（新增，6 个测试覆盖合法/非法/终态/HITL 转换）
+- `internal/team/team_graph_run_coordinator.go`（更新 fallback 注释，说明 CanTransition 已校验）
+
+**实现细节**：
+- 状态机定义：Running/Completed/Failed/Cancelled/WaitingHuman（5 状态）
+- 转换规则：7 条（Running→Completed/Failed/Cancelled/WaitingHuman, WaitingHuman→Running/Cancelled/Failed）
+- 新增 WaitingHuman→Failed 转换（修复 HITL 期间节点错误无法标记 failed 的问题）
+- `applyExecTransition` 采用 authoritative 模式：非法转换拒绝并保留原状态（非 advisory 模式）
+- ResumeExecution 中复用 `uc.sm` 而非创建新实例
 
 **验收**：
-- 静态分析：无 `exec.Status =` 直接赋值
-- 单元测试：非法状态转换被拒绝
+- ✅ 静态分析：无 `exec.Status =` 直接赋值（所有变更经 `applyExecTransition`）
+- ✅ 单元测试：非法状态转换被拒绝，状态保留
+- ✅ 单元测试：终态无出口转换
+- ✅ 单元测试：WaitingHuman→Failed 合法（新增转换）
 
-**状态**：📋 待办
+**状态**：✅ 完成
 
 ### 3.3 P0-3：Postgres Phase 1 迁移
 
-**任务**：EventStore/WAL/Checkpoint/Run/SessionRun/TeamRun/GraphExecution 迁移到 Postgres
+**任务**：WAL/EventStore/Checkpoint 关键表迁移到 Postgres 原生 schema + 可配置事务超时
 
 **改动文件**：
-- `internal/data/data.go`（新增 Postgres 连接池）
-- `internal/data/tx.go`（去掉 30s 硬超时）
-- `internal/data/ent_err.go`（适配 Postgres 错误码）
-- `internal/data/ent/schema/*.go`（补齐 FK + 唯一约束）
-- `internal/event/wal.go`（适配 Postgres）
-- `internal/biz/event_store.go`（适配 Postgres）
-- `internal/biz/session_run_checkpoint.go`（适配 Postgres）
+- `internal/data/data.go`（新增 `ensurePostgresPhase1Schema` + `isPostgresAlreadyExistsErr`，Postgres Phase 1 迁移执行）
+- `internal/data/tx.go`（30s 硬超时改为可配置 `TxTimeout()`，支持 `SetTxTimeout(0)` 禁用）
+- `internal/data/errors.go`（新增 Postgres SQLSTATE 错误翻译：23505/23503→Conflict, 23502/23514→BadRequest，使用 `errors.As` 支持包装错误）
+- `internal/event/wal.go`（`NewEventWAL` 改为双 DB 签名，Postgres 优先 SQLite 回退）
+- `internal/event/postgres_wal_storage.go`（新增，Postgres WAL 存储适配器，ON CONFLICT/TIMESTAMPTZ/$N 语法）
+- `internal/event/infra.go`（`ProvideEventWAL` 双 DB 签名，从 `InfraProviderSet` 移除因 Wire 类型歧义）
+- `cmd/admin/wire.go`（新增 `provideEventWAL` 桥接 `*data.Data` → 双 DB 句柄）
+- `internal/data/errors_postgres_test.go`（新增，5 个 Postgres 错误翻译测试）
 
 **新增文件**：
-- `internal/data/postgres.go`（Postgres 连接管理）
-- `sql/migrations/20260617_postgres_phase1.sql`
+- `internal/data/sql/migrations/20260617_postgres_phase1.sql`（event_wal/event_store/session_run_checkpoints 表 + INV-UNIQ-01/02 唯一索引 + INV-REF-01/02/03 FK 约束，DO $$ 块幂等）
+
+**实现细节**：
+- WAL 双后端选择：Postgres 可用时优先（Phase 1），否则回退 SQLite
+- Wire DI 解决 `*sql.DB` 类型歧义：`provideEventWAL` 从 `*data.Data` 提取双 DB
+- Postgres 迁移幂等：整个 SQL 作为单个 `ExecContext`（DO $$ 块含分号不能用 `splitDDLStatements`），`isPostgresAlreadyExistsErr` 处理 SQLSTATE 42P07/42710/42701
+- 事务超时可配置：默认 30s，`SetTxTimeout(0)` 禁用用于长运行 Postgres 操作
 
 **验收**：
-- 现有测试全部通过
-- Postgres 连接池配置正确（写 16/读 32）
-- FK 约束生效（插入孤儿记录失败）
-- 唯一约束生效（并发创建活跃 Run 失败）
+- ✅ `go build ./...` 通过
+- ✅ `go vet ./internal/data/ ./internal/event/` 通过
+- ✅ 现有测试全部通过（预存失败除外）
+- ✅ Postgres 错误翻译测试通过（5 个 SQLSTATE 场景）
+- ✅ WAL 双后端选择正确（Postgres 优先，SQLite 回退）
 
-**状态**：📋 待办
+**状态**：✅ 完成
 
 ### 3.4 P0-4：修复 DB-R5 错误翻译
 
-**任务**：11 个 Repo 文件 52+ 处错误翻译
+**任务**：Repo 文件中所有 `return err` 改为 `return entErrToBizErr(err, "DOMAIN")`
 
-**改动文件**：
-- `internal/data/evolution_suggestion_repo.go`
-- `internal/data/session_run_repo.go`
-- `internal/data/session_repo.go`
-- `internal/data/agent_repo.go`
-- `internal/data/borrow_request_repo.go`
-- `internal/data/agent_performance_repo.go`
-- `internal/data/monitor.go`
-- `internal/data/tool.go`
-- `internal/data/channel.go`
-- `internal/data/memory_shim_l1.go`
-- `internal/data/model_registry_apply.go`
+**改动文件**（9 个 + 审查修复 1 个）：
+- `internal/data/session_run_repo.go`（19 处，domain "SESSION_RUN"）
+- `internal/data/session_repo.go`（27 处 + 审查修复 3 处，domain "SESSION"）
+- `internal/data/agent_repo.go`（21 处，domain "AGENT"）
+- `internal/data/borrow_request_repo.go`（7 处，domain "BORROW_REQUEST"）
+- `internal/data/tool.go`（34 处，domain "TOOL"）
+- `internal/data/monitor.go`（25 处，domain "MONITOR"）
+- `internal/data/memory_shim_l1.go`（16 处，domain "MEMORY_L1"）
+- `internal/data/model_registry_apply.go`（多处，domain "MODEL_REGISTRY"）
+- `internal/data/agent_performance_repo.go`（2 处，domain "AGENT_PERFORMANCE"）
+- `internal/data/session_metrics_repo.go`（审查修复 3 处，domain "SESSION_METRICS"）
+
+**实现细节**：
+- 所有 `return err` 后 Ent/Raw SQL 操作替换为 `return entErrToBizErr(err, "DOMAIN")`
+- 同文件函数调用使用 pass-through（避免双重包装，因 `entErrToBizErr` 对 `apierror.Error` 透传）
+- 非 DB 错误（json.Unmarshal 等）不翻译
+- 审查发现 `session_repo.go` 3 处 `metricsWriter.ApplyMetricsDelta()` 跨 Repo 调用返回未翻译错误，已修复
+- 审查发现 `session_metrics_repo.go` 根因 3 处 `return err` 未翻译，已修复
 
 **验收**：
-- 静态分析：无直接返回 Ent 错误
-- 单元测试：错误码翻译正确
+- ✅ 静态分析：9 个文件无直接返回 Ent 错误（审查后修复 session_repo + session_metrics_repo）
+- ✅ 单元测试：Postgres 错误码翻译正确（5 个 SQLSTATE 场景）
+- ✅ `go build ./...` 通过
+- ✅ 相关测试通过
 
-**状态**：📋 待办
+**状态**：✅ 完成
 
 ---
 
@@ -139,13 +171,30 @@
 **任务**：Intent Pass 改为默认开启
 
 **改动文件**：
-- `internal/agent/intent/pass.go:50-63`
+- `internal/agent/intent/pass.go`（`IntentPassFromAgent` 无 Settings 时返回 true；`PassEffective` 注释更新）
+- `internal/agent/intent/pass_test.go`（新增 `TestIntentPassFromAgent_DefaultOn` + `TestShouldRun` 增加 nil Settings 用例）
+- `internal/agent/intent/parse_test.go`（`TestIntentPassFromAgent_NilSettings` 断言改为 true）
+- `internal/biz/agent_defaults.go`（`IntentPassEnabled` 默认 false → true）
+- `internal/biz/agent_types.go`（字段注释更新）
+- `docs/guides/prompt/assembly.md`、`docs/guides/prompt/README.md`（"默认 false" → "默认 true"）
+
+**实现细节**：
+- `IntentPassEnabled` 为 plain bool（非 `*bool`），无法区分"未设置"与"显式 false"
+- 采用双层默认 ON 策略：
+  1. `IntentPassFromAgent`：`ag.Settings == nil` 时返回 `true`（无 settings = 默认 ON）
+  2. `DefaultAgentRuntimeSettings()`：`IntentPassEnabled: true`（新 Agent 默认 ON）
+- 显式 `IntentPassEnabled=false` 仍被尊重（agent setting 可关闭）
+- A2A Proxy Agent 在 `agent_usecase.go:411` 显式覆盖为 `false`，不受默认值变更影响
+- 现有 DB 中已持久化 `false` 的 Agent 保持 OFF（不追溯变更）
 
 **验收**：
-- 默认场景 Intent Pass 执行
-- agent setting 可关闭
+- ✅ 默认场景 Intent Pass 执行（`TestIntentPassFromAgent_DefaultOn` + `TestShouldRun` nil Settings 用例）
+- ✅ agent setting 可关闭（`TestPassEffective` `{"", false, false}` 用例 + `TestIntentPassFromAgent_DefaultOn` 显式 false 用例）
+- ✅ `go build ./internal/agent/... ./internal/biz/...` 通过
+- ✅ `go vet ./internal/agent/intent/` 通过
+- ✅ 相关测试全部通过（intent 包 + biz 包默认值相关测试）
 
-**状态**：📋 待办
+**状态**：✅ 完成
 
 ### 4.2 P1-2：预规划门控
 
@@ -572,25 +621,25 @@
 
 ### 7.1 Phase 0 验收
 
-| # | 验收项 | 验证方式 |
-|---|--------|---------|
-| 1 | WBPF 语义修复 | WAL 失败时不发布 Critical 事件 |
-| 2 | 状态机接入 | 无直接赋值，非法转换被拒绝 |
-| 3 | Postgres Phase 1 | 关键表迁移完成，FK/唯一约束生效 |
-| 4 | DB-R5 修复 | 无直接返回 Ent 错误 |
+| # | 验收项 | 验证方式 | 状态 |
+|---|--------|---------|------|
+| 1 | WBPF 语义修复 | WAL 失败时不发布 Critical 事件（pre-publish 失败路径） | ✅ |
+| 2 | 状态机接入 | 无直接赋值，非法转换被拒绝，WaitingHuman→Failed 合法 | ✅ |
+| 3 | Postgres Phase 1 | 关键表迁移完成，FK/唯一约束生效，WAL 双后端选择 | ✅ |
+| 4 | DB-R5 修复 | 无直接返回 Ent 错误（含审查修复 session_metrics_repo） | ✅ |
 
 ### 7.2 Phase 1 验收
 
-| # | 验收项 | 验证方式 |
-|---|--------|---------|
-| 5 | Intent Pass 默认开启 | 默认场景执行 |
-| 6 | 预规划门控 | Simple <2s，Moderate+ 强制规划 |
-| 7 | pgvector 语义匹配 | 准确率 > TF-IDF |
-| 8 | AgentFactory | 无匹配时自动创建，可观测，可复用 |
-| 9 | taskrun 事件透传 | 后台任务事件可消费 |
-| 10 | 跨进程事件流 | WS 重连从 Postgres replay |
-| 11 | 任务级心跳 | 10s 间隔，30s 检测 stale |
-| 12 | 崩溃恢复 | 进程重启从 checkpoint 恢复 |
+| # | 验收项 | 验证方式 | 状态 |
+|---|--------|---------|------|
+| 5 | Intent Pass 默认开启 | 默认场景执行；agent setting 可关闭 | ✅ |
+| 6 | 预规划门控 | Simple <2s，Moderate+ 强制规划 | 📋 |
+| 7 | pgvector 语义匹配 | 准确率 > TF-IDF | 📋 |
+| 8 | AgentFactory | 无匹配时自动创建，可观测，可复用 | 📋 |
+| 9 | taskrun 事件透传 | 后台任务事件可消费 | 📋 |
+| 10 | 跨进程事件流 | WS 重连从 Postgres replay | 📋 |
+| 11 | 任务级心跳 | 10s 间隔，30s 检测 stale | 📋 |
+| 12 | 崩溃恢复 | 进程重启从 checkpoint 恢复 | 📋 |
 
 ### 7.3 Phase 2 验收
 

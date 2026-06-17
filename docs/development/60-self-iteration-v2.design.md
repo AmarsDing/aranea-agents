@@ -3,7 +3,6 @@
 > 对应需求：[60-self-iteration-v2.md](./60-self-iteration-v2.md)
 > 遵循规范：四层架构（Server→Service→Biz→Data）+ Wire DI
 > OpenSpec Change：`openspec/changes/self-iteration-v2/design.md`
-> **当前进度**：Phase 1–3 ✅ 已落地
 
 ---
 
@@ -73,6 +72,16 @@ CI 失败 ──► FailureReport ──► Auto-Fix ──► Critic Agent ─�
            PredictiveHeal      PatternMining      Skill Intelligence
            (预测性自愈)        (动态挖掘)          (经验报告+进化)
 ```
+
+### 1.3 现有代码基线
+
+| 能力 | 现有实现 |
+|------|----------|
+| 运行时自愈 | `SelfHealObserver` + `RootCauseEngine`（12 条内置规则）+ 滑动窗口断路器 |
+| CI Auto-Fix | `auto-fix.yml` 完整流水线（日志提取→分类→修复→验证→PR） |
+| Skill Intelligence | `SkillIntelligenceUsecase`（AnalyzeInvocation/ScoreSkill/GenerateReport） |
+| 知识库（改造前） | 运行时 `RootCauseEngine` 规则与 CI `.auto-fix/patterns.jsonl` 互相独立 |
+| 集成测试（改造前） | 仅 3 个文件覆盖 Agent CRUD/Chat API/Channel Turn Preview |
 
 ---
 
@@ -146,7 +155,7 @@ high → 放弃修复，记录到知识库
 
 ### D6: Skill Intelligence Cron Worker
 
-**选择**：新增 `skill_intelligence_worker` Cron Job，每 10 分钟扫描未分析的 `skill_invocation`
+**选择**：新增 `skill_intelligence_worker` Cron Job，每 15 分钟扫描未分析的 `skill_invocation`
 
 **理由**：
 - 当前 `AnalyzeInvocation`/`ScoreSkill`/`GenerateReport` 仅在显式调用时触发
@@ -156,8 +165,8 @@ high → 放弃修复，记录到知识库
 **Worker 逻辑**：
 
 ```
-每 10 分钟：
-1. 查询最近 10 分钟内未分析的 skill_invocation（WHERE analyzed_at IS NULL）
+每 15 分钟：
+1. 查询最近 15 分钟内未分析的 skill_invocation（WHERE analyzed_at IS NULL）
 2. 批量 AnalyzeInvocation → 失败标签
 3. ScoreSkill → 健康评分
 4. GenerateReport → 经验报告持久化（集成 RootCauseAnalyzer）
@@ -224,74 +233,105 @@ type FailureReport struct {
     ID          string            `json:"id"`
     Type        FailureType       `json:"type"`
     Source      string            `json:"source"`       // "ci" or "runtime"
-    Job         string            `json:"job"`
-    File        string            `json:"file"`
-    Line        int               `json:"line"`
-    ErrorCode   string            `json:"error_code"`
-    Message     string            `json:"message"`
-    StackTrace  string            `json:"stack_trace"`
-    RelatedCode string            `json:"related_code"`
-    Metadata    map[string]string `json:"metadata"`
+    Job         string            `json:"job"`          // CI job name or runtime component
+    File        string            `json:"file"`         // source file path
+    Line        int               `json:"line"`         // line number (0 if unknown)
+    ErrorCode   string            `json:"error_code"`   // machine-readable error code
+    Message     string            `json:"message"`      // human-readable error message
+    StackTrace  string            `json:"stack_trace"`  // full stack trace (runtime errors)
+    RelatedCode string            `json:"related_code"` // surrounding code snippet
+    Metadata    map[string]string `json:"metadata"`     // extra key-value pairs
 }
 ```
 
 ### 3.2 FailurePattern（Ent Schema，持久化）
 
+**表名**：`failure_pattern`
+**Schema 路径**：`internal/data/ent/schema/failure_pattern.go`
+
 ```go
-// internal/data/ent/schema/failure_pattern.go
 type FailurePattern struct {
-    ID           string    // UUID
-    Source       string    // "runtime" | "ci" | "mined"
-    Type         string    // FailureType
-    PatternHash  string    // SHA256(pattern_regex)，用于精确索引
-    PatternRegex string    // 正则表达式
-    FixAction    string    // JSON(FixAction)
-    Confidence   float64   // 0-1，置信度
-    SuccessCount int       // 成功修复次数
-    FailCount    int       // 修复失败次数
-    Version      int       // 版本号，支持回滚
-    IsActive     bool      // 是否启用（审计机制）
-    CreatedAt    time.Time
-    UpdatedAt    time.Time
+    ID           string               // UUID, MaxLen(64), Unique, Immutable
+    Source       FailurePatternSource // "runtime" | "ci" | "mined", MaxLen(32)
+    Type         string               // FailureType, MaxLen(64)
+    PatternHash  string               // SHA256(pattern_regex), MaxLen(64)
+    PatternRegex string               // 正则表达式, Text
+    FixAction    FixAction            // JSON(FixAction), Text
+    Confidence   float64              // 0-1, Default(0.5)
+    SuccessCount int                  // Default(0)
+    FailCount    int                  // Default(0)
+    Version      int                  // Default(1)
+    IsActive     bool                 // Default(true)
+    CreatedAt    time.Time            // Immutable
+    UpdatedAt    time.Time            // auto-update via SQL
 }
 ```
 
 **索引**：
 - `(source, type)` — 按来源和类型查询
 - `(pattern_hash)` — 精确索引，不使用 pattern_regex 做索引
-- `(is_active, confidence DESC)` — 活跃规则按置信度排序
+- `(is_active, confidence)` — 活跃规则按置信度排序
 
-### 3.3 ExperienceReport 扩展
+### 3.3 ExperienceReport（Ent Schema，持久化）
 
-在已有 `ExperienceReport` 基础上新增字段：
+**表名**：`experience_reports`
+**Schema 路径**：`internal/data/ent/schema/experience_report.go`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `RootCauseAnalysis` | string | 根因分析结果（JSON） |
-| `SuggestedFix` | string | 人类可读的修复建议 |
+| `id` | string(256) | UUID, Immutable, Unique |
+| `tenant_id` | string(256) | 租户 ID |
+| `session_id` | string(256) | 会话 ID |
+| `invocation_id` | string(256) | Skill 调用 ID |
+| `skill_id` | string(256) | Skill ID |
+| `skill_name` | string(256) | Skill 名称（可选） |
+| `is_success` | bool | 是否成功 |
+| `score` | int | 健康评分 |
+| `failure_tags` | JSON([]string) | 失败标签 |
+| `flow_summary` | Text | 流程摘要 |
+| `optimization_advice` | Text | 优化建议 |
+| `selection_snapshot` | JSON(map) | 选择快照 |
+| `root_cause_analysis` | Text | 根因分析结果（V2 新增） |
+| `suggested_fix` | Text | 人类可读的修复建议（V2 新增） |
+| `generated_suggestion_id` | string(256) | 生成的建议 ID |
+| `created_at` | string | 创建时间 |
 
-### 3.4 SkillEvolutionSuggestion（Ent Schema，新增）
+**索引**：
+- `(skill_id, created_at)` — `idx_experience_report_skill_time`
+- `(invocation_id)` — `idx_experience_report_invocation`
 
-```go
-// internal/data/ent/schema/skill_evolution_suggestion.go
-type SkillEvolutionSuggestion struct {
-    ID              string    // UUID
-    SkillID         string    // 关联 Skill
-    Type            string    // "prompt_optimize" | "tool_adjust" | "config_tune"
-    Status          string    // "pending" | "approved" | "rejected" | "expired"
-    TriggerReason   string    // 触发原因（JSON）
-    SuggestedChange string    // 建议变更内容（SKILL.md 草案）
-    SandboxResult   string    // Sandbox 验证结果（JSON）
-    ParentVersionID string    // 父版本 Skill ID
-    EvolutionReason string    // 进化原因
-    LifecycleStatus string    // Skill 生命周期状态
-    ExpiresAt       time.Time // 过期时间（创建后 7 天）
-    CreatedAt       time.Time
-    UpdatedAt       time.Time
-}
-```
+### 3.4 SkillEvolutionSuggestion（Ent Schema，持久化）
 
-**索引**：`(skill_id, created_at)`、`(status, expires_at)`
+**表名**：`skill_evolution_suggestions`（注意：复数）
+**Schema 路径**：`internal/data/ent/schema/skill_evolution_suggestion.go`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string(256) | UUID, Immutable, Unique |
+| `skill_id` | string(256) | 关联 Skill |
+| `type` | string(64) | "prompt_optimize" \| "tool_adjust" \| "config_tune" |
+| `status` | string(64) | "pending" \| "approved" \| "rejected" \| "expired"，Default("pending") |
+| `source_report_ids` | JSON([]string) | 来源经验报告 ID 列表 |
+| `trigger_reason` | Text | 触发原因 |
+| `draft_skill_body` | Text | 建议变更内容（SKILL.md 草案） |
+| `draft_version_id` | string(256) | 草案版本 ID |
+| `sandbox_passed` | bool | Sandbox 验证是否通过 |
+| `sandbox_result` | JSON(map) | Sandbox 验证结果 |
+| `pre_verify_result` | JSON(map) | 预验证结果 |
+| `approved_by` | string(256) | 审批人 |
+| `rejected_by` | string(256) | 拒绝人 |
+| `rejection_reason` | Text | 拒绝原因 |
+| `created_at` | string | 创建时间 |
+| `resolved_at` | string | 解决时间（可选） |
+| `parent_version_id` | string(256) | 父版本 Skill ID（Curator 进化追踪） |
+| `evolution_reason` | Text | 进化原因 |
+| `lifecycle_status` | string(64) | Skill 生命周期状态，Default("draft") |
+
+> **注**：过期时间不作为持久化字段，由 Biz 层常量 `EvoExpirationDays = 7` 结合 `created_at` 计算得出。
+
+**索引**：
+- `(skill_id, status)` — `idx_evo_suggestion_skill_status`
+- `(status, created_at)` — `idx_evo_suggestion_status_time`
 
 ---
 
@@ -302,7 +342,13 @@ type SkillEvolutionSuggestion struct {
 ```go
 // internal/biz/monitor/root_cause_analyzer.go
 type RootCauseAnalyzer interface {
+    // Analyze performs root cause analysis for the given step/phase error and
+    // returns the best-matching result. Returns nil if no rule matches.
     Analyze(ctx context.Context, stepID, phase string, err error, metadata map[string]any) (*RootCauseResult, error)
+
+    // AnalyzeFromReport performs root cause analysis from a standardized
+    // FailureReport. It converts the report into the internal metadata format
+    // and delegates to Analyze. Returns nil if no rule matches.
     AnalyzeFromReport(ctx context.Context, report *FailureReport) (*RootCauseResult, error)
 }
 ```
@@ -310,8 +356,8 @@ type RootCauseAnalyzer interface {
 **实现者**：`RootCauseEngine`（已实现，无需修改方法签名）
 
 **消费者**：
-- `SkillIntelligenceUsecase`（通过 Wire 注入）✅
-- `PredictiveHealUsecase`（通过 Wire 注入）✅
+- `SkillIntelligenceUsecase`（通过 Wire 注入）
+- `PredictiveHealUsecase`（通过 Wire 注入）
 
 > **实现备注**：Biz 层 `skill_intelligence.go` 另定义了 `AnalyzeInvocationFailure(ctx, inv)` 方法用于解耦 biz→monitor 依赖，与 monitor 包的接口互补。
 
@@ -325,29 +371,41 @@ type HealthMetricsProvider interface {
 }
 ```
 
-**实现者**：Biz 层 `SkillHealthAggregator` 适配器 ✅
+**实现者**：Biz 层 `SkillHealthAggregator` 适配器
 
-**消费者**：`DynamicRankFactors`（Tools 层）✅
+**消费者**：`DynamicRankFactors`（Tools 层）
 
 ### 4.3 FailurePatternReader / FailurePatternWriter
 
 ```go
 // internal/biz/monitor/failure_pattern_repo.go
+
+// FailurePatternReader provides read access to the failure pattern knowledge base.
 type FailurePatternReader interface {
-    FindByHash(ctx context.Context, patternHash string) (*FailurePattern, error)
-    FindActiveByType(ctx context.Context, source, failureType string) ([]*FailurePattern, error)
-    ListActive(ctx context.Context, limit, offset int) ([]*FailurePattern, error)
+    // ListBySource returns all patterns matching the given source.
+    ListBySource(ctx context.Context, source FailurePatternSource) ([]FailurePattern, error)
+    // GetByPatternHash returns the pattern with the given hash, or nil if not found.
+    GetByPatternHash(ctx context.Context, hash string) (*FailurePattern, error)
+    // ListActive returns all active patterns, ordered by confidence descending.
+    ListActive(ctx context.Context) ([]FailurePattern, error)
 }
 
+// FailurePatternWriter provides write access to the failure pattern knowledge base.
 type FailurePatternWriter interface {
-    Create(ctx context.Context, pattern *FailurePattern) error
-    UpdateCounts(ctx context.Context, id string, success bool) error
+    // Create inserts a new failure pattern.
+    Create(ctx context.Context, pattern FailurePattern) error
+    // Update updates an existing failure pattern by ID.
+    Update(ctx context.Context, pattern FailurePattern) error
+    // IncrementSuccess atomically increments the success_count for the pattern with the given ID.
+    IncrementSuccess(ctx context.Context, id string) error
+    // IncrementFail atomically increments the fail_count for the pattern with the given ID.
+    IncrementFail(ctx context.Context, id string) error
+    // Deactivate sets is_active = false for the pattern with the given ID.
     Deactivate(ctx context.Context, id string) error
-    UpsertFromSync(ctx context.Context, patterns []*FailurePattern) error
 }
 ```
 
-**实现者**：`internal/data/failure_pattern_repo.go` ✅
+**实现者**：`internal/data/failure_pattern_repo.go`
 
 ---
 
@@ -355,35 +413,35 @@ type FailurePatternWriter interface {
 
 > 以下 Cron Job 均已实现并注册到 Wire DI。
 
-### 5.1 skill_intelligence_worker ✅
+### 5.1 skill_intelligence_worker
 
 | 项 | 说明 |
 |----|------|
-| 频率 | 每 15 分钟（实际实现） |
+| 频率 | 每 15 分钟（默认，可通过构造参数覆盖） |
 | 路径 | `internal/cronrunner/jobs/skill_intelligence_worker.go` |
 | 逻辑 | 查询 `analyzed_at IS NULL` 的 `skill_invocation` → 批量 AnalyzeInvocation → ScoreSkill → GenerateReport（集成 RootCauseAnalyzer）→ 更新 `analyzed_at` |
 
-### 5.2 failure_pattern_sync ✅
+### 5.2 failure_pattern_sync
 
 | 项 | 说明 |
 |----|------|
-| 频率 | 每日 |
+| 频率 | 每日（默认 24h，可通过环境变量 `FAILURE_PATTERN_SYNC_INTERVAL` 覆盖） |
 | 路径 | `internal/cronrunner/jobs/failure_pattern_sync.go` |
 | 逻辑 | 从 `RootCauseEngine` 规则 + `.auto-fix/patterns.jsonl` 同步到 `failure_pattern` 表 |
 
-### 5.3 predictive_heal ✅
+### 5.3 predictive_heal
 
 | 项 | 说明 |
 |----|------|
-| 频率 | 每 5 分钟 |
+| 频率 | 每 5 分钟（默认，可通过环境变量 `PREDICTIVE_HEAL_INTERVAL` 覆盖） |
 | 路径 | `internal/cronrunner/jobs/predictive_heal.go` |
 | 逻辑 | 读取系统指标 → 匹配 FailurePattern 前置条件 → 计算预测置信度 → 高置信度（> 0.8）时执行预防行动 |
 
-### 5.4 pattern_mining ✅
+### 5.4 pattern_mining
 
 | 项 | 说明 |
 |----|------|
-| 频率 | 每日 |
+| 频率 | 每日（默认 24h，可通过环境变量 `PATTERN_MINING_INTERVAL` 覆盖） |
 | 路径 | `internal/cronrunner/jobs/pattern_mining.go` |
 | 逻辑 | 读取 patterns.jsonl + HealRecord → 聚类相似失败模式 → 提取共性修复策略 → 写入 failure_pattern 表（source="mined"） |
 
@@ -393,7 +451,7 @@ type FailurePatternWriter interface {
 
 > 以下改造已在 `.github/workflows/auto-fix.yml` 中实现。
 
-### 6.1 auto-fix.yml 改造 ✅
+### 6.1 auto-fix.yml 改造
 
 **新增步骤**：
 
@@ -448,35 +506,41 @@ type FailurePatternWriter interface {
 
 ## 七、Wire DI 影响分析
 
-> 以下绑定均已实现。
+### 7.1 新增绑定
 
-### 7.1 新增绑定 ✅
-
-| 接口 | 实现 | Wire Set |
+| 接口 | 实现 | Wire Set 位置 |
 |------|------|----------|
-| `RootCauseAnalyzer` | `RootCauseEngine` | `internal/biz/wire.go` |
-| `FailurePatternReader` | `FailurePatternRepo` | `internal/data/wire.go` |
-| `FailurePatternWriter` | `FailurePatternRepo` | `internal/data/wire.go` |
-| `HealthMetricsProvider` | `SkillHealthAggregatorAdapter` | `internal/biz/wire.go` |
+| `RootCauseAnalyzer` | `RootCauseEngine` | `cmd/admin/wire.go` |
+| `FailurePatternReader` | `FailurePatternRepo` | `cmd/admin/wire.go` |
+| `FailurePatternWriter` | `FailurePatternRepo` | `cmd/admin/wire.go` |
+| `HealthMetricsProvider` | `SkillHealthAggregatorAdapter` | `cmd/admin/wire.go` |
 
-### 7.2 新增 Provider ✅
+### 7.2 新增 Provider
 
 | Provider | 位置 | 说明 |
 |----------|------|------|
 | `NewFailurePatternRepo` | `internal/data/failure_pattern_repo.go` | FailurePattern 数据层 |
 | `NewSkillHealthAggregatorAdapter` | `internal/biz/` | HealthMetricsProvider 适配器 |
 | `NewSkillIntelligenceService` | `internal/service/skill_intelligence.go` | Skill Intelligence API |
+| `NewSkillEvolutionSuggestionService` | `internal/service/skill_evolution_suggestion.go` | 进化建议 API |
+| `NewSkillCuratorService` | `internal/service/skill_curator.go` | Curator Agent 装配 |
 | `NewPredictiveHealUsecase` | `internal/biz/monitor/predictive_heal.go` | 预测性自愈 |
 | `NewPatternMiningUsecase` | `internal/biz/monitor/pattern_mining.go` | 知识库动态挖掘 |
+| `provideSkillIntelligenceWorker` | `cmd/admin/wire.go` | Cron Job Provider |
+| `provideFailurePatternSyncJob` | `cmd/admin/wire.go` | Cron Job Provider |
+| `providePredictiveHealJob` | `cmd/admin/wire.go` | Cron Job Provider |
+| `providePatternMiningJob` | `cmd/admin/wire.go` | Cron Job Provider |
 
-### 7.3 新增 Cron Job 注册 ✅
+### 7.3 新增 Cron Job 注册
 
 | Job | 注册位置 |
 |-----|----------|
-| `skill_intelligence_worker` | `internal/cronrunner/wire.go` |
-| `failure_pattern_sync` | `internal/cronrunner/wire.go` |
-| `predictive_heal` | `internal/cronrunner/wire.go` |
-| `pattern_mining` | `internal/cronrunner/wire.go` |
+| `skill_intelligence_worker` | `cmd/admin/wire.go` + `cmd/admin/workers.go` |
+| `failure_pattern_sync` | `cmd/admin/wire.go` + `cmd/admin/workers.go` |
+| `predictive_heal` | `cmd/admin/wire.go` + `cmd/admin/workers.go` |
+| `pattern_mining` | `cmd/admin/wire.go` + `cmd/admin/workers.go` |
+
+> Cron Job 通过 `cmd/admin/workers.go` 中的 `goAfterReady` 在 ReadinessGate 通过后启动。
 
 ---
 
@@ -497,27 +561,79 @@ type FailurePatternWriter interface {
 
 ## 九、Proto 设计
 
-### 9.1 skill_intelligence.proto ✅
+### 9.1 skill_intelligence.proto
 
-> 实际路径：`api/kratos/skill_intelligence/v1/skill_intelligence.proto`（Kratos 规范路径）
+**路径**：`api/kratos/skill_intelligence/v1/skill_intelligence.proto`
+**Package**：`kratos.skill_intelligence.v1`
 
 ```protobuf
 service SkillIntelligenceService {
   rpc ListExperienceReports(ListExperienceReportsRequest) returns (ListExperienceReportsResponse) {
     option (google.api.http) = {get: "/v1/skill-intelligence/experience-reports"};
   }
-  rpc GetExperienceReport(GetExperienceReportRequest) returns (ExperienceReportDetail) {
+  rpc GetExperienceReport(GetExperienceReportRequest) returns (GetExperienceReportResponse) {
     option (google.api.http) = {get: "/v1/skill-intelligence/experience-reports/{id}"};
-  }
-  rpc ListEvolutionSuggestions(ListEvolutionSuggestionsRequest) returns (ListEvolutionSuggestionsResponse) {
-    option (google.api.http) = {get: "/v1/skill-intelligence/evolution-suggestions"};
-  }
-  rpc ReviewEvolutionSuggestion(ReviewEvolutionSuggestionRequest) returns (ReviewEvolutionSuggestionResponse) {
-    option (google.api.http) = {post: "/v1/skill-intelligence/evolution-suggestions/{id}/review"; body: "*"};
   }
 }
 ```
 
+**关键消息**：
+- `ExperienceReport`：包含 `root_cause_analysis`（字段 14）和 `suggested_fix`（字段 15）两个 V2 新增字段
+- `ListExperienceReportsResponse`：包含 `failure_tag_counts` 和 `root_cause_reports` 聚合字段
+
+### 9.2 skill_evolution_suggestion.proto
+
+**路径**：`api/kratos/skill_evolution_suggestion/v1/skill_evolution_suggestion.proto`
+**Package**：`kratos.skill_evolution_suggestion.v1`
+
+```protobuf
+service SkillEvolutionSuggestionService {
+  rpc ListSkillEvolutionSuggestions(ListSkillEvolutionSuggestionsRequest) returns (ListSkillEvolutionSuggestionsResponse) {
+    option (google.api.http) = { get: "/v1/skill-evolution-suggestions" };
+  }
+  rpc GetSkillEvolutionSuggestion(GetSkillEvolutionSuggestionRequest) returns (GetSkillEvolutionSuggestionResponse) {
+    option (google.api.http) = { get: "/v1/skill-evolution-suggestions/{id}" };
+  }
+  rpc ApproveSkillEvolutionSuggestion(ApproveSkillEvolutionSuggestionRequest) returns (ApproveSkillEvolutionSuggestionResponse) {
+    option (google.api.http) = { post: "/v1/skill-evolution-suggestions/{id}/approve" body: "*" };
+  }
+  rpc RejectSkillEvolutionSuggestion(RejectSkillEvolutionSuggestionRequest) returns (RejectSkillEvolutionSuggestionResponse) {
+    option (google.api.http) = { post: "/v1/skill-evolution-suggestions/{id}/reject" body: "*" };
+  }
+  rpc TriggerCuratorFlow(TriggerCuratorFlowRequest) returns (TriggerCuratorFlowResponse) {
+    option (google.api.http) = { post: "/v1/skill-evolution-suggestions/trigger-curator" body: "*" };
+  }
+}
+```
+
+**关键消息**：
+- `SkillEvolutionSuggestionMsg`：包含 `parent_version_id`（字段 17）、`evolution_reason`（字段 18）、`lifecycle_status`（字段 19）三个 Curator Agent 进化追踪字段
+
 ---
 
-*文档版本：2026-06-06 — Phase 1–3 已落地，标注实现状态。*
+## 十、前端组件设计
+
+### 10.1 经验报告列表页
+
+**路径**：`web/src/pages/ExperienceReportListPage.vue`
+
+**功能**：
+- 调用 `ListExperienceReports` API 展示经验报告列表
+- 支持 Skill ID、开始日期、结束日期筛选
+- 展示成功/失败、评分、失败标签、流程摘要
+- 展示根因分析结果和修复建议（V2 新增）
+
+### 10.2 进化建议列表页
+
+**路径**：`web/src/pages/EvolutionSuggestionListPage.vue`
+
+**功能**：
+- 调用 `ListSkillEvolutionSuggestions` API 展示进化建议列表
+- 支持 Agent/Skill 维度切换、状态筛选
+- 提供"触发 Curator"按钮（调用 `TriggerCuratorFlow` API）
+- 提供 Approve/Reject 操作（调用 `ApproveSkillEvolutionSuggestion` / `RejectSkillEvolutionSuggestion` API）
+- 展示沙箱验证结果与触发原因
+
+---
+
+*文档版本：2026-06-17 — 按三件套内容边界重组，修正 Proto/接口/字段/注册位置与代码一致。*

@@ -1,477 +1,243 @@
 # Database Architecture — 需求文档
 
-> **状态**：✅ 核心架构已落地（2026-06）
+> **定位**：Aranea-Agents 数据库架构模块的需求规格。
 >
-> **定位**：Aranea-Agents 数据库架构权威规范。精简参考，聚焦规则、约束与结构。
+> **范围**：定义数据库架构需要支持的业务能力、非功能性约束与验收标准。技术设计见 [66-database-architecture.design.md](./66-database-architecture.design.md)，开发进度见 [66-database-architecture.development.md](./66-database-architecture.development.md)。
 
 ---
 
-## 1. 双库架构
+## 1. 模块定位
 
-项目采用 SQLite + PostgreSQL 双库架构，职责分明：
+数据库架构是 Aranea-Agents 多智能体编排平台的数据持久化基座。它为 Agent 编排、Team 协作、Session 管理、Message 存储、Tool 调用、Memory 系统、Graph 任务、监控告警、用量统计等全部业务域提供统一的数据访问能力。
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                      应用层                                    │
-│  biz.Usecase → biz.Repo 接口 → data.Repo 实现                │
-└──────────┬────────────────────────────┬───────────────────────┘
-           │                            │
-           ▼                            ▼
-┌─────────────────────┐    ┌─────────────────────────┐
-│   SQLite (主库)      │    │  PostgreSQL (可选)       │
-│   Ent ORM            │    │  原生 database/sql       │
-│   业务 CRUD          │    │  pgvector 向量搜索       │
-│   67 Schema          │    │  Knowledge 知识库        │
-│   读写分离 (WAL)     │    │  MaxOpenConns=8          │
-│   写=1 / 读=2        │    │                          │
-└─────────────────────┘    └─────────────────────────┘
-```
-
-| 数据库 | 用途 | ORM/访问方式 | 连接池 |
-|--------|------|-------------|--------|
-| **SQLite** (主库) | Agent/Team/Session/Message/ToolInvocation 等全部业务实体 | Ent ORM + 原生 SQL | 写 MaxOpen=1, 读 MaxOpen=2 |
-| **PostgreSQL** (可选) | 向量存储 (pgvector)、知识库 (Knowledge) | 原生 `database/sql` + `pgvector-go` | MaxOpen=8 |
+本模块不直接面向终端用户，但它的可用性、性能、一致性直接决定上层所有业务模块的行为契约。
 
 ---
 
-## 2. 红线约束
+## 2. 用户故事
 
-| 编号 | 规则 | 验证方式 |
-|------|------|----------|
-| #DB-1 | 禁止在 `internal/biz/` 中直接导入 `ent` 包，Repo 接口必须定义在 biz 层 | `grep -r "ent\." internal/biz/` 应为零 |
-| #DB-2 | 禁止在 `internal/data/` 外直接操作数据库，所有数据访问必须通过 Repo | 代码审查 |
-| #DB-3 | 禁止 Ent Schema 定义 Edge，关系通过字符串外键字段手动维护 | `grep -r "\.Edge(" internal/data/ent/schema/` 应为零 |
-| #DB-4 | 禁止手动创建 DDL 迁移而不注册到 `ddlMigrationRegistry` | 代码审查 |
-| #DB-5 | 事务必须使用 `Data.ExecInTx()`，禁止直接操作 `sql.Tx`（PostgreSQL 除外） | `grep -r "sql.Tx" internal/data/` 应仅限 Postgres 方法 |
+### 2.1 平台运维者视角
 
----
+| 编号 | 用户故事 | 优先级 |
+|------|---------|--------|
+| US-1 | 作为平台运维者，我希望系统能够在单机 SQLite 模式下开箱即用，无需额外部署数据库，以便快速验证和开发。 | P0 |
+| US-2 | 作为平台运维者，我希望系统能够可选地接入 PostgreSQL 用于向量搜索和知识库，以便在生产环境扩展语义检索能力。 | P1 |
+| US-3 | 作为平台运维者，我希望数据库 Schema 变更能够通过版本化迁移自动执行，无需手动操作数据库，以便降低部署风险。 | P0 |
+| US-4 | 作为平台运维者，我希望系统能够在数据库迁移完成前拒绝外部请求，以避免请求命中未就绪的 Schema。 | P0 |
+| US-5 | 作为平台运维者，我希望系统能够在 PostgreSQL 不可用时自动降级为纯 SQLite 模式，以保证核心业务不中断。 | P1 |
+| US-6 | 作为平台运维者，我希望数据库错误能够被翻译为统一的业务错误码（404/409/400/500），以便上层模块和前端能够正确处理。 | P0 |
 
-## 3. Ent Schema 规范
+### 2.2 业务开发者视角
 
-### 3.1 Schema 总表
+| 编号 | 用户故事 | 优先级 |
+|------|---------|--------|
+| US-7 | 作为业务开发者，我希望能够通过 Repo 接口访问数据，而不需要关心底层 SQL 细节，以便聚焦业务逻辑。 | P0 |
+| US-8 | 作为业务开发者，我希望事务能够自动传播，在事务内的所有读写操作使用同一连接，以保证一致性。 | P0 |
+| US-9 | 作为业务开发者，我希望 HTTP 请求取消不会中断正在执行的事务，以避免数据库状态不一致。 | P0 |
+| US-10 | 作为业务开发者，我希望软删除能够自动过滤，查询时不需要每次手动添加 `deleted_at = ""` 条件。 | P1 |
+| US-11 | 作为业务开发者，我希望能够使用 AIP-160 风格的过滤表达式和 AIP-132 风格的排序表达式进行列表查询，以便提供灵活的查询能力。 | P1 |
+| US-12 | 作为业务开发者，我希望删除 Agent/Session/Team/Channel 时能够自动级联清理关联数据，以避免数据残留。 | P0 |
 
-共 67 个 Schema，位于 `internal/data/ent/schema/`。
+### 2.3 上层业务模块视角
 
-| 域 | Schema | 表名 | 说明 |
-|----|--------|------|------|
-| **Agent** | Agent | agents | Agent 配置（20+ 字段，kind/source 枚举） |
-| | AgentPerformance | agent_performances | Agent 性能评估 |
-| | AgentPromptFile | agent_prompt_files | Agent Prompt 文件 |
-| | AgentRuntimeSetting | agent_runtime_settings | Agent 运行时配置 |
-| | AgentTemplate | agent_templates | Agent 模板 |
-| **Team** | Team | teams | Team 编排（20+ 字段，topology/kind/source） |
-| | CompiledTeam | compiled_teams | 编译后 Team |
-| | TeamRun | team_runs | Team 运行记录 |
-| | TeamRunStep | team_run_steps | Team 运行步骤 |
-| **Session** | Session | sessions | 会话（40+ 字段，最重 Schema） |
-| | SessionRun | session_runs | 会话运行 |
-| | SessionRunCheckpoint | session_run_checkpoints | 运行检查点 |
-| | SessionRuntime | session_runtime | 运行时状态 |
-| | SessionMetrics | session_metrics | 会话指标 |
-| | SessionParticipant | session_participants | 会话参与者 |
-| | SessionTurn | session_turns | 会话轮次 |
-| **Message** | Message | messages | 消息（16 字段，FTS5 全文搜索） |
-| **Tool** | ToolInvocation | tool_invocations | 工具调用（24 字段） |
-| | ToolInvocationAudit | tool_invocation_audits | 工具调用审计 |
-| | ToolInvocationParam | tool_invocation_params | 工具调用参数 |
-| | ToolResultBlob | tool_result_blobs | 工具结果 Blob |
-| | ToolResultReplacement | tool_result_replacements | 工具结果替换 |
-| | ToolAgentOverride | tool_agent_overrides | 工具 Agent 覆盖 |
-| **Channel** | PlatformChannel | platform_channels | 平台渠道 |
-| | PlatformChannelCredential | channel_credential | 渠道凭证 |
-| | PlatformChannelDelivery | channel_delivery | 渠道投递 |
-| | PlatformChannelPeerSession | channel_peer_session | 渠道对端会话 |
-| | ChannelInboundReceipt | channel_inbound_receipt | 入站消息回执 |
-| | ChannelRuntimeLease | channel_runtime_lease | 渠道运行时租约 |
-| | ChannelTurnJob | channel_turn_job | 渠道轮次任务 |
-| **Graph** | GraphDefinition | graph_definitions | Graph 定义 |
-| | GraphExecution | graph_executions | Graph 执行 |
-| | GraphTask | graph_tasks | Graph 任务 |
-| | GraphTaskComment | graph_task_comments | 任务评论 |
-| | GraphTaskEvent | graph_task_events | 任务事件 |
-| | GraphTaskLink | graph_task_links | 任务链接 |
-| | GraphTaskLog | graph_task_logs | 任务日志 |
-| | GraphTaskRun | graph_task_runs | 任务运行 |
-| **Cron** | CronTask | cron_tasks | 定时任务 |
-| | CronTaskRun | cron_task_runs | 定时任务运行 |
-| **Memory** | EventStore | event_store | 事件存储 |
-| **Monitor** | FlowLogEvent | flow_log_events | 流日志事件 |
-| | SelfCheckReport | self_check_reports | 自检报告 |
-| **Usage** | ModelPricingRule | model_pricing_rules | 模型定价规则 |
-| | ModelTokenUsageHourly | model_token_usage_hourly | Token 用量小时统计 |
-| | UsageQuota | usage_quotas | 用量配额 |
-| | BudgetAlert | budget_alerts | 预算告警 |
-| **Plugin** | Plugin | plugins | 插件 |
-| | Hook | hooks | Hook |
-| | PlatformPlugin | platform_plugins | 平台插件 |
-| | PlatformHook | platform_hooks | 平台 Hook |
-| **Skill** | PlatformSkill | platform_skills | 平台技能 |
-| | SkillInvocation | skill_invocation | 技能调用 |
-| | SkillVersion | skill_versions | 技能版本 |
-| | SkillEvolutionSuggestion | skill_evolution_suggestions | 技能演化建议 |
-| **Ecosystem** | PlatformTool | platform_tools | 平台工具 |
-| | PlatformMcpServer | platform_mcp_servers | MCP 服务器 |
-| | PlatformMcpUserCredential | platform_mcp_user_credential | MCP 用户凭证 |
-| | IndustryTaxonomy | industry_taxonomies | 行业分类 |
-| | AvatarAsset | avatar_assets | Avatar 资源 |
-| **System** | Admin | admins | 管理员 |
-| | SystemSetting | system_settings | 系统设置 |
-| | SchemaMigration | schema_migrations | 迁移版本记录 |
-| | BackgroundJob | background_jobs | 后台任务 |
-| | Orchestration | orchestrations | 编排 |
-| | OrchestrationStep | orchestration_steps | 编排步骤 |
-| | AllocationPlan | allocation_plans | 分配计划 |
-| | TaskDeadLetter | task_dead_letters | 死信 |
-| | TaskPlan | task_plans | 任务计划 |
-| | GatewayWebhook | gateway_webhooks | Webhook |
-| | HealRecord | heal_records | 自愈记录 |
-| | EvolutionSuggestion | evolution_suggestions | 演化建议 |
-| | ExperienceReport | experience_reports | 经验报告 |
-| | FailurePattern | failure_patterns | 失败模式 |
-| | UserEmbeddingSetting | user_embedding_settings | 用户 Embedding 设置 |
-
-### 3.2 Schema 约定
-
-| 约定 | 说明 |
-|------|------|
-| **无 Edge** | 所有关系通过字符串外键字段（如 `session_id`, `agent_id`）手动维护 |
-| **表名注解** | 每个 Schema 通过 `entsql.Annotation{Table: "xxx"}` 显式映射 |
-| **时间戳 String** | 大部分时间字段用 `field.String()` 存储 RFC3339 文本 |
-| **软删除** | 通过 `deleted_at` 字段（空字符串 = 未删除） |
-| **JSON 字段** | 大量使用 `field.Text("xxx_json").Default("{}")` 存储结构化数据 |
-| **枚举值** | 使用 `field.Enum()` 定义（如 Agent.kind, Agent.source） |
+| 编号 | 用户故事 | 优先级 |
+|------|---------|--------|
+| US-13 | 作为 Session 模块，我希望能够存储和检索会话、消息、轮次、参与者、运行记录等数据，以支撑多轮对话。 | P0 |
+| US-14 | 作为 Memory 模块，我希望能够持久化 L0-L4 分层记忆（摘要、工作记忆、情景记忆、语义记忆、实体记忆），以支撑长期记忆能力。 | P0 |
+| US-15 | 作为 Message 模块，我希望能够对消息内容进行全文搜索，以支持历史消息检索。 | P0 |
+| US-16 | 作为 Memory/Knowledge 模块，我希望能够进行向量相似度搜索，以支撑语义检索和 RAG。 | P1 |
+| US-17 | 作为 Tool 模块，我希望能够记录工具调用、参数、结果、审计日志，以支撑工具调用追踪。 | P0 |
+| US-18 | 作为 Usage 模块，我希望能够统计 Token 用量、计算费用、管理配额和预算告警，以支撑成本控制。 | P1 |
 
 ---
 
-## 4. 原生 SQL 表（非 Ent 管理）
+## 3. 功能需求
 
-### 4.1 记忆系统核心表
+### 3.1 双库架构
 
-| 层级 | 表名 | 用途 |
-|------|------|------|
-| L0 | `session_summaries`, `memory_l0_assembly_snapshots` | 会话摘要和组装快照 |
-| L1 | `memory_l1_tasks`, `memory_l1_fields`, `memory_l1_field_history`, `memory_l1_schemas` | 工作记忆 |
-| L2 | `memory_episodes`, `memory_l2_index_meta`, `memory_event_marks` | 情景记忆 |
-| L3 | `memory_facts`, `memory_fact_versions`, `memory_fact_feedback`, `memory_fact_conflicts`, `memory_fact_index` | 语义记忆 |
-| L4 | `memory_entities`, `memory_relations`, `memory_entity_facts`, `memory_entity_versions` | 持久/演化记忆 |
-| 审计 | `memory_action_log`, `memory_cascade_proposals` | 策略审计和级联提案 |
-| 演化 | `agent_evolution_events`, `agent_evolution_proposals`, `agent_skill_stats` | Agent 演化 |
-
-### 4.2 其他原生 SQL 表
-
-| SQL 文件 | 表/功能 | 说明 |
-|----------|---------|------|
-| `message_fts.sql` | `messages_fts` | FTS5 全文搜索虚拟表 + 3 触发器 |
-| `flow_log.sql` | flow_log 相关表 | 流日志持久化 |
-| `plugin_run.sql` | plugin_run 相关表 | 插件运行记录 |
-| `monitor_alert.sql` | monitor_alert 相关表 | 监控告警 |
-| `learning_loop.sql` | learning_loop 相关表 | 学习循环 |
-| `skill_evolution.sql` | skill_evolution 相关表 | 技能演化 |
-| `plan.sql` | plan 相关表 | 计划管理 |
-| `hook_delivery.sql` | hook_delivery 相关表 | Hook 投递 |
-| `ecosystem_product.sql` | ecosystem_product 相关表 | 生态产品 |
-| `memory_job_deadletter.sql` | 死信表 | 记忆任务死信 |
-| `monitor_alert_firing_state.sql` | firing_state 表 | 告警触发状态 |
-
----
-
-## 5. 迁移策略
-
-### 5.1 三层迁移机制
-
-| 层级 | 机制 | 管理对象 | 文件 |
-|------|------|---------|------|
-| 第一层 | Ent 自动迁移 | Ent Schema 定义的表 | `internal/data/data.go` |
-| 第二层 | DDL 迁移注册表 | 原生 SQL 表 + 索引 + 列变更 | `internal/data/ddl_migration_registry.go` |
-| 第三层 | 数据迁移 | 数据回填/转换 | `internal/data/schema_migrations.go` |
-
-### 5.2 DDL 迁移注册表
-
-```go
-type ddlMigration struct {
-    Version int
-    Name    string
-    SQL     string  // SQL 文件路径（可选）
-    Func    func(...) error  // Go 函数（可选）
-}
-```
-
-- 版本号式迁移，记录在 `schema_migrations` 表
-- 幂等设计：`duplicate column` / `already exists` 错误视为成功
-- 当前注册 30+ 个迁移，版本号从 20260601 到 20260719
-
-### 5.3 数据迁移
-
-| 迁移 | 版本号 | 说明 |
-|------|--------|------|
-| LegacyTRPCMemoryFacts | 20260524 | 从旧 trpc-agent-go 迁移 memory facts |
-| TurnIndexToTurnID | 20260528 | turn_index 迁移到 turn_id |
-| SessionStatusIdle | 20260531 | session status 从 active 改为 idle |
-
-### 5.4 迁移执行时序
-
-启动时在后台 goroutine (P1) 中按序执行：
-
-```
-1. ensureSchemaDDL (DDL 迁移)
-2. ensurePostgresSchemas (pgvector/knowledge)
-3. runPendingDataMigrations (数据迁移)
-4. seedP1Data (种子数据)
-```
-
-所有步骤通过 `ReadinessGate` 管理：成功后 `MarkReady()`，失败 `MarkFailed()`，HTTP 健康检查可感知。
-
----
-
-## 6. 事务处理
-
-### 6.1 ExecInTx
-
-```go
-func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
-```
-
-**设计要点**：
-
-| 特性 | 说明 |
-|------|------|
-| 嵌套事务检测 | 通过 `txClientKey{}` context key，已在事务中则直接执行 fn |
-| 分离上下文 | `context.WithTimeout(context.Background(), 30s)`，防止 HTTP 取消中断事务 |
-| 30 秒硬超时 | 防止单个事务无限阻塞 SQLite 写连接 |
-| 调用者取消检测 | fn 执行后检查原始 ctx 是否已取消，若是则回滚 |
-| 事务传播 | 通过 `context.WithValue` 将事务注入上下文 |
-
-### 6.2 PostgresExecInTx
-
-```go
-func (d *Data) PostgresExecInTx(ctx context.Context, fn func(ctx context.Context, tx *sql.Tx) error) error
-```
-
-独立的 PostgreSQL 事务方法，标准 `BeginTx` + `Rollback` + `Commit` 模式。
-
----
-
-## 7. 读写分离
-
-### 7.1 ReadWriteClient
-
-```go
-type ReadWriteClient struct {
-    write *ent.Client  // 写客户端 (MaxOpenConns=1)
-    read  *ent.Client  // 读客户端 (MaxOpenConns=2)
-}
-```
-
-- 读操作：`d.RW().Read(ctx)` — 事务中返回事务客户端，否则返回读客户端
-- 写操作：`d.RW().Write(ctx)` — 事务中返回事务客户端，否则返回写客户端
-
-### 7.2 ReadWriteDB
-
-同理操作 `*sql.DB` 句柄，确保原生 SQL 也参与事务。
-
-### 7.3 SQLite PRAGMA
-
-```sql
-PRAGMA foreign_keys=ON;     -- 启用外键约束
-PRAGMA journal_mode=WAL;    -- Write-Ahead Logging，允许并发读写
-PRAGMA busy_timeout=30000;  -- 30 秒忙等待超时
-PRAGMA synchronous=NORMAL;  -- 平衡性能和安全
-```
-
----
-
-## 8. Repository 模式
-
-### 8.1 接口定义位置
-
-Repo 接口分散定义在 `internal/biz/` 各子模块中，遵循 DDD 聚合边界。
-
-### 8.2 主要 Repo 接口
-
-| 接口名 | 定义位置 | 核心方法 |
-|--------|----------|---------|
-| `AgentRepository` | `biz/agent_usecase.go` | 组合 AgentReader + AgentWriter + AgentAtomicWriter + AgentRuntimeSettingsRepo + AgentPromptFileRepo + AgentReferenceChecker + ExecInTx |
-| `TeamRepository` | `biz/team_usecase.go` | 组合 TeamReader + TeamWriter + TeamRunReader + TeamRunWriter + OrchestrationStepRepo + TaskDeadLetterRepo |
-| `SessionRepo` | `biz/session/` | 会话 CRUD、消息 CRUD、搜索、统计 |
-| `GraphRepo` | `biz/graph.go` | GraphReader + GraphWriter |
-| `OrchestrationRepository` | `biz/task_orchestrator.go` | Create/GetByID/Update/List |
-| `knowledge.Repo` | `biz/knowledge/knowledge.go` | CollectionRepo + DocumentRepo + ChunkRepo |
-| `a2a.Repo` | `biz/a2a/a2a.go` | CardRepo + InvocationRepo + AuditRepo + RemoteAgentRepo |
-
-### 8.3 接口组合模式
-
-```go
-type AgentRepository interface {
-    AgentReader       // 只读方法
-    AgentWriter       // 写入方法
-    AgentAtomicWriter // 事务化原子写入
-    AgentRuntimeSettingsRepo
-    AgentPromptFileRepo
-    AgentReferenceChecker
-}
-```
-
-Usecase 只依赖需要的最小接口集，而非整个 Repository。
-
-### 8.4 data 层实现
-
-```go
-func NewAgentRepo(d *Data, lg loggateway.Logger) biz.AgentRepository { ... }
-func NewTeamRepo(d *Data, lg loggateway.Logger) biz.TeamRepository { ... }
-func NewSessionRepo(d *Data, lg loggateway.Logger) biz.SessionRepo { ... }
-```
-
----
-
-## 9. 查询模式
-
-### 9.1 分页
-
-```go
-func PageToLimitOffset(page, pageSize int32) (limit, offset int, pageOut, pageSizeOut int32)
-// 默认: page>=1, size 默认 20, 最大 100
-```
-
-### 9.2 AIP 风格过滤/排序
-
-```go
-type ListOptions struct {
-    Filter  filtering.Filter   // AIP-160 过滤表达式
-    OrderBy ordering.OrderBy   // AIP-132 排序
-    Offset  int
-    Limit   int
-}
-```
-
-使用 `go.einride.tech/aip/filtering` 和 `go.einride.tech/aip/ordering` 库。
-
-### 9.3 搜索模式
-
-| 模式 | 实现 | 适用场景 |
+| 编号 | 需求 | 验收标准 |
 |------|------|---------|
-| FTS5 全文搜索 | `messages_fts` 虚拟表 + `snippet()` + `bm25()` | 消息内容搜索 |
-| LIKE 回退 | `content_markdown LIKE ?` | FTS 表不存在时 |
-| 向量搜索 | pgvector `<=>` 或 SQLite Go 侧余弦 | 语义搜索 |
-| BM25 稀疏搜索 | Knowledge `SearchChunksBM25` | 知识库搜索 |
+| FR-1 | 系统必须支持 SQLite 作为主库，承载全部业务实体 CRUD | 启动后所有业务实体的增删改查均通过 SQLite 完成 |
+| FR-2 | 系统必须支持可选的 PostgreSQL 作为向量库和知识库 | 配置 PostgreSQL 连接串后，向量搜索和知识库查询走 PostgreSQL |
+| FR-3 | SQLite 必须启用 WAL 模式以支持并发读写 | 启动后 `PRAGMA journal_mode` 返回 `wal` |
+| FR-4 | SQLite 必须启用外键约束 | 启动后 `PRAGMA foreign_keys` 返回 `1` |
+| FR-5 | PostgreSQL 不可用时必须降级为纯 SQLite 模式 | PostgreSQL 连接失败时系统仍能启动，向量搜索回退到 SQLite 实现 |
 
-### 9.4 软删除
+### 3.2 读写分离
 
-几乎所有查询包含 `deleted_at = ""` 条件过滤。
+| 编号 | 需求 | 验收标准 |
+|------|------|---------|
+| FR-6 | SQLite 必须实现读写连接分离 | 写连接 MaxOpenConns=1，读连接 MaxOpenConns=2 |
+| FR-7 | 事务中的读写操作必须使用同一连接 | 事务内所有操作走事务客户端，提交后恢复读写分离 |
+| FR-8 | 原生 SQL 操作必须同样参与事务传播 | 事务内的原生 SQL 使用事务句柄，非事务使用读写分离句柄 |
 
----
+### 3.3 事务管理
 
-## 10. 特殊数据库特性
+| 编号 | 需求 | 验收标准 |
+|------|------|---------|
+| FR-9 | 必须提供统一的事务入口 `ExecInTx` | 所有需要事务的操作通过 `ExecInTx` 执行 |
+| FR-10 | 事务必须使用独立的 30 秒超时上下文 | HTTP 请求取消不影响事务执行，事务 30 秒后自动超时 |
+| FR-11 | 必须支持嵌套事务检测 | 已在事务中调用 `ExecInTx` 时复用外层事务，不创建 savepoint |
+| FR-12 | 事务 fn 执行成功但调用者已取消时必须回滚 | 调用者 context 已取消时，即使 fn 成功也回滚事务 |
+| FR-13 | 必须提供 PostgreSQL 独立事务方法 | PostgreSQL 事务使用标准 `BeginTx` + `Commit`/`Rollback` |
 
-### 10.1 FTS5 全文搜索
+### 3.4 迁移系统
 
-```sql
-CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-  message_id UNINDEXED,
-  session_id UNINDEXED,
-  content_markdown,
-  tokenize = 'unicode61'
-);
-```
+| 编号 | 需求 | 验收标准 |
+|------|------|---------|
+| FR-14 | 必须提供三层迁移机制 | L1 Ent 自动迁移、L2 DDL 迁移注册表、L3 数据迁移 |
+| FR-15 | DDL 迁移必须版本化管理 | 每个迁移有唯一版本号，已执行的迁移记录在 `schema_migrations` 表 |
+| FR-16 | DDL 迁移必须幂等 | `duplicate column` / `already exists` 错误视为成功 |
+| FR-17 | 数据迁移必须在 DDL 迁移后执行 | 启动时序：DDL 迁移 → Postgres Schema → 数据迁移 → 种子数据 |
+| FR-18 | 迁移失败必须标记就绪门为 Failed | 迁移失败后 `ReadinessGate.IsReady()` 返回 false，健康检查失败 |
 
-配套 3 个触发器自动同步 INSERT/DELETE/UPDATE。
+### 3.5 数据访问
 
-### 10.2 向量存储双实现
+| 编号 | 需求 | 验收标准 |
+|------|------|---------|
+| FR-19 | biz 层必须定义 Repo 接口，data 层实现 | `grep -r "ent\." internal/biz/` 为零 |
+| FR-20 | Repo 接口必须按职责拆分（Reader/Writer） | 单接口方法数 ≤ 5，复合接口仅用于 Wire 绑定 |
+| FR-21 | 所有数据库错误必须经过 `entErrToBizErr` 翻译 | NotFound→404, Constraint→409, NotLoaded→400, 其他→500 |
+| FR-22 | 必须支持软删除 | 通过 `deleted_at` 字段，空字符串=未删除 |
+| FR-23 | 必须支持分页查询 | 默认 page=1, size=20, 最大 100 |
+| FR-24 | 必须支持 AIP-160 过滤和 AIP-132 排序 | 列表接口接受 `filter` 和 `order_by` 参数 |
 
-| 实现 | 特点 |
-|------|------|
-| `SQLiteVectorStore` | embedding 存为 JSON TEXT，Go 侧余弦相似度（全表扫描） |
-| `PgVectorStore` | pgvector 扩展，数据库侧余弦距离计算 |
+### 3.6 特殊特性
 
-初始化逻辑：优先 pgvector（需特性开关 + PostgreSQL 可用），失败回退 SQLite。
-
-### 10.3 级联删除
-
-应用层实现（因无 Ent Edge / 数据库外键）：
-
-- `cascadeDeleteByAgent` — 删除 runtime_settings, prompt_files, 软删 sessions, 硬删 tool_overrides
-- `cascadeDeleteBySession` — 事务内硬删 14 个关联表
-- `cascadeDeleteByTeam` — 硬删 run_steps, runs, compiled_teams
-- `cascadeDeleteByChannel` — 硬删 peer_session, credential, delivery, inbound_receipt, turn_job, runtime_lease
-
-### 10.4 错误转换
-
-```go
-func entErrToBizErr(err error, domain, msg string) error
-// NotFound → 404, ConstraintError → 409, NotLoaded → 400, default → 500
-```
-
-### 10.5 ReadinessGate
-
-三态门控（Pending → Ready / Failed），确保数据库迁移完成前不接收请求。
-
----
-
-## 11. 配置规格
-
-### 11.1 Proto 定义
-
-```protobuf
-message Data {
-  message Database { string driver = 1; string source = 2; }
-  message Sqlite { bool enable = 1; string source = 2; }
-  message Postgres { string source = 1; int32 vector_dim = 2; }
-  message InitialAdmin { string name = 1; string email = 2; string password = 3; string access = 4; }
-  Database database = 1;
-  Sqlite sqlite = 3;
-  Postgres postgres = 4;
-  InitialAdmin initial_admin = 5;
-}
-```
+| 编号 | 需求 | 验收标准 |
+|------|------|---------|
+| FR-25 | 必须支持 FTS5 全文搜索 | `messages_fts` 虚拟表 + 3 触发器自动同步 |
+| FR-26 | FTS5 不可用时必须回退到 LIKE 查询 | FTS 表不存在时使用 `content_markdown LIKE ?` |
+| FR-27 | 必须支持向量存储双实现 | SQLiteVectorStore（JSON+Go 余弦）+ PgVectorStore（pgvector） |
+| FR-28 | 必须支持级联删除 | 删除 Agent/Session/Team/Channel 时自动清理关联表 |
+| FR-29 | 必须提供启动就绪门控 | `ReadinessGate` 三态：Pending → Ready / Failed |
 
 ---
 
-## 12. Data 层结构
+## 4. 非功能需求
 
-`internal/data/` 包含约 150+ 个 Go 文件：
+### 4.1 性能
 
-| 类别 | 文件 | 说明 |
+| 编号 | 需求 | 指标 |
 |------|------|------|
-| 核心框架 | `data.go`, `tx.go`, `readwrite.go`, `readwrite_db.go`, `errors.go`, `readiness.go` | 初始化、事务、读写分离、错误转换、就绪门控 |
-| 迁移 | `ddl_migration_registry.go`, `schema_migrations.go` | DDL 迁移 + 数据迁移 |
-| 级联删除 | `cascade_delete.go` | 应用层级联删除 |
-| Agent Repo | `agent_repo.go`, `agent_runtime_patch.go`, `agent_list_extras.go`, `agent_performance_repo.go`, `agent_template_repo.go` | Agent 领域数据访问 |
-| Session Repo | `session_repo.go`, `session_state_repo.go`, `session_runtime_repo.go`, `session_metrics_repo.go`, `session_message_repo.go`, `session_turn_repo.go`, `session_participant_repo.go`, `session_run_repo.go` 等 | Session 领域（最重） |
-| Team Repo | `team_repo.go`, `compiled_team_repo.go`, `team_graph_session_repo.go` | Team 领域 |
-| Channel Repo | `channel.go`, `channel_peer_session.go`, `channel_inbound_receipt.go`, `channel_turn_job.go`, `channel_runtime_lease.go` | Channel 领域 |
-| Memory Repo | `memory.go`, `memory_shim_l0.go` ~ `memory_shim_l4.go`, `memory_composite_adapter.go` 等 | 记忆系统（L0-L4） |
-| 其他 | `tool.go`, `skill.go`, `usage.go`, `monitor.go`, `graph.go`, `knowledge.go`, `a2a.go` 等 | 各领域 Repo |
+| NFR-1 | SQLite 写连接单连接，避免 SQLITE_BUSY | MaxOpenConns=1, busy_timeout=30s |
+| NFR-2 | SQLite 读连接并发，平衡性能和资源 | MaxOpenConns=2 |
+| NFR-3 | PostgreSQL 写连接池支持中等并发 | MaxOpenConns=16 |
+| NFR-4 | PostgreSQL 读连接池支持高并发检索 | MaxOpenConns=32 |
+| NFR-5 | 关键查询路径必须有索引覆盖 | 通过 DDL 迁移补缺失索引 |
+| NFR-6 | 消息全文搜索必须避免 LIKE 全表扫描 | 使用 FTS5 + bm25 排序 |
+
+### 4.2 可靠性
+
+| 编号 | 需求 | 指标 |
+|------|------|------|
+| NFR-7 | 事务必须保证原子性 | 全成功或全回滚，无部分成功 |
+| NFR-8 | 迁移必须幂等可重试 | 重复执行不报错，失败可重试 |
+| NFR-9 | PostgreSQL 降级不能阻断启动 | 连接失败时 `log.Warn` 后继续 |
+| NFR-10 | 数据库错误必须保留原始错误链 | `apierror.Wrap` 保留 Cause 字段 |
+
+### 4.3 可维护性
+
+| 编号 | 需求 | 指标 |
+|------|------|------|
+| NFR-11 | Schema 变更必须通过 Ent Schema + DDL 迁移 | 禁止手动建表，禁止野生 `*_patch.go` |
+| NFR-12 | Repo 接口必须标注稳定性等级 | Stable / Evolving / Internal |
+| NFR-13 | 单 Repo 方法数 ≤ 5 | 超过按读写职责拆分 |
+| NFR-14 | 单方法行数 ≤ 80，圈复杂度 ≤ 15 | linter 强制 |
+
+### 4.4 安全
+
+| 编号 | 需求 | 指标 |
+|------|------|------|
+| NFR-15 | 敏感字段必须标记 `.Sensitive()` | 凭证、API Key 等不泄漏到日志 |
+| NFR-16 | 外键约束必须启用 | `PRAGMA foreign_keys=ON` |
 
 ---
 
-## 13. 关键文件索引
+## 5. 交互规格
 
-| 文件 | 作用 |
-|------|------|
-| `internal/data/data.go` | Data 结构体、NewData 初始化、Wire ProviderSet |
-| `internal/data/tx.go` | 事务管理（ExecInTx、PostgresExecInTx） |
-| `internal/data/readwrite.go` | ReadWriteClient（Ent 读写分离） |
-| `internal/data/readwrite_db.go` | ReadWriteDB（原生 SQL 读写分离） |
-| `internal/data/errors.go` | entErrToBizErr 错误转换 |
-| `internal/data/readiness.go` | ReadinessGate 启动就绪门控 |
-| `internal/data/ddl_migration_registry.go` | DDL 迁移注册表 |
-| `internal/data/schema_migrations.go` | 数据迁移门控 |
-| `internal/data/cascade_delete.go` | 级联删除逻辑 |
-| `internal/data/lazy_seeder.go` | 延迟种子数据 |
-| `internal/data/ent/schema/*.go` | 67 个 Ent Schema 定义 |
-| `internal/data/sql/*.sql` | 原生 DDL SQL 文件 |
-| `internal/data/vector/store.go` | VectorStore 接口定义 |
-| `internal/data/vector/sqlite.go` | SQLite 向量存储实现 |
-| `internal/data/vector/pgvector.go` | PgVector 向量存储实现 |
-| `internal/conf/conf.proto` | Data 配置 Proto 定义 |
+### 5.1 启动流程
+
+```
+系统启动
+  │
+  ├── 1. 初始化 SQLite 写连接 + PRAGMA + Ent Client
+  ├── 2. 初始化 SQLite 读连接 + PRAGMA + Ent Client
+  ├── 3. 初始化 PostgreSQL 连接（可选，失败降级）
+  ├── 4. 初始化 ReadinessGate（Pending 态）
+  └── 5. 后台 goroutine (P1)
+       ├── ensureSchemaDDL (DDL 迁移)
+       ├── ensurePostgresSchemas (pgvector/knowledge)
+       ├── runPendingDataMigrations (数据迁移)
+       └── seedP1Data (种子数据)
+            │
+            ├── 全部成功 → MarkReady() → 接受流量
+            └── 任一失败 → MarkFailed() → 健康检查失败
+```
+
+### 5.2 请求处理
+
+```
+HTTP 请求 → 中间件 → Service → Usecase → Repo
+                                        │
+                                        ├── 读操作 → RW().Read(ctx) → 读客户端
+                                        └── 写操作 → RW().Write(ctx) → 写客户端
+                                                              │
+                                              事务? → 事务客户端
+                                              非事务 → 写客户端
+```
+
+### 5.3 错误响应
+
+| 数据库错误 | HTTP 状态码 | 业务语义 |
+|-----------|------------|---------|
+| NotFound / sql.ErrNoRows | 404 | 资源不存在 |
+| ConstraintError / 唯一冲突 | 409 | 资源冲突 |
+| NotLoaded | 400 | 请求参数错误 |
+| 其他 | 500 | 内部错误 |
 
 ---
 
-## 14. 已知偏差
+## 6. 验收标准
 
-| 编号 | 严重性 | 描述 | 状态 |
-|------|--------|------|------|
-| DB-1 | 黄 | Ent Schema 无 Edge，级联删除在应用层实现，无数据库外键约束 | 设计决策，暂不改变 |
-| DB-2 | 黄 | 时间戳用 String 而非 Time，查询排序需 CAST | 历史遗留，迁移成本高 |
-| DB-3 | 黄 | pgvector 旧版存储（`internal/data/pgvector/`）已废弃但仍保留 | 待清理 |
-| DB-4 | 黄 | SQLite 写连接池 MaxOpen=1，高并发写场景可能成为瓶颈 | 设计决策，SQLite 单写限制 |
-| DB-5 | 低 | 部分 Repo 方法过长（如 session_repo.go），职责可进一步拆分 | 待重构 |
+### 6.1 功能验收
+
+- [x] SQLite 单机模式可启动，全部业务实体 CRUD 正常
+- [x] PostgreSQL 可选模式可启动，向量搜索和知识库走 PostgreSQL
+- [x] PostgreSQL 不可用时降级为纯 SQLite 模式
+- [x] 事务原子性保证（全成功或全回滚）
+- [x] 嵌套事务检测正常
+- [x] HTTP 取消不中断事务
+- [x] 三层迁移机制正常工作
+- [x] ReadinessGate 三态门控正常
+- [x] FTS5 全文搜索正常
+- [x] 向量搜索双实现正常
+- [x] 级联删除正常
+- [x] 错误转换统一
+
+### 6.2 红线合规
+
+- [x] `grep -r "ent\." internal/biz/` 为零（biz 不直接依赖 ent）
+- [x] `grep -r "\.Edge(" internal/data/ent/schema/` 为零（无 Ent Edge，仅 Eval 域例外）
+- [x] DDL 迁移均注册到 `ddlMigrations`（无野生迁移）
+- [x] 所有数据库错误经 `entErrToBizErr` 翻译
+- [x] 事务均通过 `ExecInTx` 执行（PostgreSQL 除外）
+
+### 6.3 性能验收
+
+- [x] SQLite 读写分离正常
+- [x] busy_timeout 生效，无 SQLITE_BUSY 错误
+- [x] FTS5 搜索性能优于 LIKE
+- [x] 关键查询路径有索引覆盖
+
+---
+
+## 7. 已知限制
+
+| 编号 | 描述 | 影响 | 状态 |
+|------|------|------|------|
+| LIM-1 | SQLite 单写限制，写连接 MaxOpen=1 | 高并发写场景可能成为瓶颈 | 设计决策，SQLite 固有限制 |
+| LIM-2 | 时间戳用 String 而非 Time | 查询排序需 CAST | 历史遗留，迁移成本高 |
+| LIM-3 | Ent Schema 无 Edge（仅 Eval 域例外） | 级联删除在应用层实现 | 设计决策，灵活性优先 |
+| LIM-4 | pgvector 旧版存储（`internal/data/pgvector/`）已废弃 | 代码冗余 | 待清理 |
+| LIM-5 | 部分 Repo 方法过长（如 session_repo.go） | 可维护性 | 待重构 |

@@ -1,7 +1,7 @@
 # M53: Team × Graph 编排融合 — 实现设计
 
-> 对应需求：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md)
-> 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
+> 对应需求：[53-team-graph-orchestration.md](./53-team-graph-orchestration.md)
+> 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
 > **实现差距与迭代计划**以 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md) 为准
 
 ---
@@ -16,7 +16,7 @@
 - **Graph 高级视图**：Vue Flow 自由编辑，可 `linked_graph_id` 引用
 - **运行态**：StatusProjector 将异构 Envelope 投影为 `AgentNodeState`；Kanban 与 Graph 共用
 
-**终态（执行单链）**：所有 Team Run 经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；`BuildTRPCTeam`（Native）已退役，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断。
+**终态（执行单链）**：所有 Team Run 经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；Native 路径已移除，`ARANEA_TEAM_GRAPH_RUNTIME=0` 为 Graph 执行熔断开关。
 
 > 实施进度与剩余差距详见 [53-team-graph-orchestration.development.md §2 现状评估](./53-team-graph-orchestration.development.md#2-现状评估2026-06-06)
 
@@ -424,7 +424,7 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 
 ## 附录：企业级蓝图与 AI 落地指南
 
-> 原 `需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南` 已并入本文。
+> 原 `53-team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南` 已并入本文。
 > **实施进度与任务清单**详见 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md)。
 
 ## 0. 本文是什么
@@ -519,7 +519,7 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 
 **Native 路径定位**：
 
-- `BuildTRPCTeam` 标记 Deprecated，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断时使用。
+- Native 主路径已移除，`ARANEA_TEAM_GRAPH_RUNTIME=0` 为 Graph 执行熔断开关。
 - 编译器统一走 `compileFromEmbeddedGraph`，不再按 mode 分发。
 
 > 退役实施进度详见 [53-team-graph-orchestration.development.md §8.2 已完成](./53-team-graph-orchestration.development.md#82-已完成一条链的完整实现)
@@ -948,7 +948,7 @@ Team A 内某 Agent 调 call_agent(b)
 >
 > 任务编号承接 M53 / M36 已有 ID（TG-RT-* / G-* / TEAM-*）+ 新增前缀 `OPS-` 表示运维/可观测、`UX-` 表示前端体验。
 > 待实施任务（Phase 8.9）：BL-05（Step 持久化事件驱动统一）、BL-09（Observer 单订阅化）、FP-02（Circuit Breaker）、FP-04（死信表）。
-> **注意**：OPS-TRACE-01（trace_id 持久化）已在 Ent Schema 中实现（`team_runs.trace_id` 字段）。
+> **注意**：OPS-TRACE-01（trace_id 持久化）已实现（`team_runs.trace_id` 字段 + `UpdateTeamRunTraceID`）。
 
 ---
 
@@ -967,231 +967,10 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 |------|------|------|
 | `TestParityNativeVsGraph_<mode>` | `internal/team/parity_test.go` | 六模式 parity |
 | `TestActivityHistoryProjection` | `internal/team/status_projector_test.go` | history capped + ordering |
-- **验收**：六种 mode（sequential/parallel/coordinator/critic_loop/swarm/adaptive）输出 parity 报告；diff 文档化。
-- **风险**：Graph 路径事件序列与 Native 不完全 1:1（Graph 多 `graph_node_*`）；接受这一类有文档的 diff。
-
-#### TG-RT-UI：runtime_engine 前端编辑
-
-- **目标**：
-  - `web/src/features/teams/types.ts` 扩展 `OrchestrationSpec.runtime_engine`。
-  - `web/src/features/teams/teamUtils.ts` 的 `parseDefinition` 改 raw merge（保留未知字段）。
-  - `TeamEditDialog.vue` 添加 `RuntimeEngineSelector`（admin 权限可见）。
-- **代码锚点**：`web/src/features/teams/teamUtils.ts` · `web/src/components/teams/TeamEditDialog.vue`。
-- **验收**：保存 Team 不丢 `runtime_engine` / `failure_policy`；切换值后 reload 仍显示正确。
-- **风险**：parseDefinition 改动影响所有 Team 编辑；先在 PR 标注必跑 `pnpm test` 覆盖 `teamUtils.spec.ts`。
-
-#### TG-RT-UI-RO：GraphEditorCanvas readonly 模式
-
-- **目标**：`web/src/components/graph/GraphEditorCanvas.vue` 增加 `readonly` prop；Run 期间 OrchestratePage 与 Observatory Graph Tab 设 `readonly=true`，禁止拖拽 / 连边 / 删除。
-- **验收**：Run 中拖节点不动；删除快捷键无效；右键菜单隐藏 destructive 项。
-- **风险**：Vue Flow 默认允许交互；需 `nodesDraggable=false`、`edgesUpdatable=false`、`elementsSelectable=true`（保留选中查看）。
-
-#### TG-RT-METRICS：runtime 路径指标
-
-- **目标**：Prometheus 增加 `team_run_runtime_total{engine=native|graph, outcome=success|fallback|error}`；Grafana panel `Team Runtime Path Distribution`。
-- **代码锚点**：`internal/metrics/vars.go`（已有 `TeamGraphRuntimeTotal`）+ Grafana JSON。
-- **验收**：每个 TeamRun 完成后指标 +1；Grafana 看板 Canary 阶段可见 Graph % 增长。
-
-#### TG-RT-FLAG：生产 Canary rollout playbook
-
-- **目标**：在 `docs/devlog/` 新增 `2026-XX-XX-Team-Graph-Rollout-Runbook.md`：
-  - Canary：先开 5% Team；
-  - 监控：parity 测试通过 + metrics 无 fallback 飙升 + FlowLog 无 error 增多；
-  - Stage：50% → 100%；
-  - 回滚：env 切回 0，无需代码改动。
-- **验收**：Runbook 评审通过；按 Runbook 走 1 周观察期。
-
-### 6.2 Phase 5b · Activity History + 持久化（P0）— ✅ 已完成
-
-#### OPS-OBS-HIST-01：StatusProjector 增加历史
-
-- **目标**：`internal/team/status_projector.go` 在 push activity 时同时追加到 `activity_history`（capped 50 条）；`internal/biz/orchestration_status.go.ActivitySnapshot` 已有；扩展 `AgentNodeState` 加 `ActivityHistory []ActivitySnapshot`。
-- **验收**：单测：连续 10 个 tool_call → 全在 history 里，current 是最后一个；finished_at 正确。
-- **风险**：内存压力；用环形缓冲（已实现 ringbuffer 模式可参考）。
-
-#### OPS-OBS-HIST-02：持久化到 `orchestration_steps`
-
-- **目标**：新建 Ent schema `orchestration_step`（字段：`id`、`team_run_id`、`graph_execution_id`、`node_id`、`activity_snapshot_json`、`status`、`started_at`、`finished_at`）。Projector 异步批 flush（每 500ms 或 10 条）。
-- **代码锚点**：`internal/data/ent/schema/orchestration_step.go`（新建）· `internal/biz/orchestration_step.go`（Repo 接口） · `internal/team/status_projector.go`（flush hook）。
-- **验收**：Run 完成后从 DB 可重建 timeline；Observatory API 走 DB 而非内存。
-- **风险**：高频写入；用 `sql.WAL` + 批写入。
-
-#### OPS-OBS-HIST-03：Timeline RPC + 前端
-
-- **目标**：
-  - 后端 `GetTeamRunObservatoryTimeline` RPC（见 §3.4）。
-  - 前端 `OrchestrationActivityTimeline.vue` + Observatory 新 Tab "Activity"。
-- **验收**：进入 Run 后看到时间线；过滤节点；点击行可跳工具卡片。
-
-### 6.3 Phase 6 · 默认 Graph + Spec v2 + Checkpoint（P0）— ✅ 已完成
-
-#### TG-RT-DEFAULT：新 Team 默认 Graph
-
-- **目标**：`internal/biz/team_usecase.go` 创建 Team 时若用户未指定 `runtime_engine`，自动写 `"graph"`；前端 wizard 文案说明。
-- **代码锚点**：`team_usecase.go` 创建分支 · `TeamCreateDialog.vue`。
-- **验收**：新 Team 默认走 Graph；旧 Team 不动。
-
-#### TG-RT-ENV-DEFAULT：env 默认开
-
-- **目标**：`internal/team/graph_runtime.go.envTeamGraphRuntimeGate` 默认返回 `true`，env=0 才关。
-- **风险**：必须在 TG-RT-PARITY + metrics 健康观察期 1 周后才能合并；做一次 release note 通告。
-
-#### TG-CMP-V2：OrchestrationSpec v2 类型
-
-- **目标**：
-  - Proto 新增 `OrchestrationSpec` 顶层消息（§3.4）。
-  - `internal/biz/team_types.go` 增加 `OrchestrationSpec` 结构（与 Definition 并存，转换函数双向）。
-  - 前端 `types.ts` 对齐。
-- **验收**：Service `GetTeam` 同时返回 `orchestration_spec` + `definition_json`；保存时优先 v2，向后写入 v1。
-
-#### TG-RT-CHECKPOINT：Team Graph Run Checkpoint
-
-- **目标**：在 `adapter.BuildTeamGraphRoot` 传入 `EnableCheckpoint`；服务层暴露 `ResumeTeamRunExecution`（包装 GraphService Resume）。
-- **代码锚点**：`internal/graph/adapter/team_graph_root.go` · `internal/service/team.go`。
-- **验收**：长时间 Team Run 进程重启后能继续；前端 `TeamRunsDialog` 显示 "可恢复" 状态。
-
-#### TG-RT-HITL：Team Graph Run InterruptBefore/After
-
-- **目标**：OrchestrationSpec embedded graph 节点配置 `interrupt_before` 后，编译期传入；Run 命中后投影为 `waiting_review`；前端 Observatory HITL Tab 可恢复（复用现有 `useGraphRunHitl.ts`）。
-- **风险**：与 Chat AwaitUserReply 共用 UX 时避免双弹窗；Observatory HITL Tab 是唯一入口。
-
-### 6.4 Phase 6b · 容错完整化（P1）— 🟡 部分完成
-
-#### FP-01：fallback_agent UI + 事件
-
-- **目标**：前端 Team Editor 节点配置「失败时切到 Agent」下拉；后端 envelope `agent_failover` 在节点 fallback 时发射；Observatory Kanban 显示切换记录。
-- **代码锚点**：`internal/graph/trpc/failure_recovery.go` · `internal/biz/orchestration_status.go`。
-
-#### FP-02：Circuit Breaker
-
-- **目标**：
-  - `internal/graph/trpc/circuit_breaker.go`（新建）：节点级状态机（closed → half-open → open）。
-  - GraphBuildConfig 增加 `CircuitBreakerPolicy { Threshold, CooldownSec }`。
-  - 编译期 Apply；运行时连续失败到阈值时切 open，envelope `circuit_opened`。
-- **代码锚点**：`internal/biz/failure_policy.go` · `internal/graph/trpc/builder.go`。
-- **验收**：单测：5 次连续失败 → open；cooldown 后 half-open；成功 1 次回 closed。
-
-#### FP-03：HITL 错误接管
-
-- **目标**：节点失败且 `failure_policy.on_error="await_review"` 时进入 `waiting_review`；Observatory 弹 banner，提供：
-  - "重试"（重新跑节点）
-  - "切 fallback"（按配置）
-  - "编辑输入后继续"（state_patch_json）
-  - "终止" 
-- **代码锚点**：`internal/team/status_projector.go` · 前端 `OrchestrationFailureBanner.vue`（新建）。
-
-#### FP-04：死信表
-
-- **目标**：失败超过 retry 且 policy=halt 的 Job 写入 `task_dead_letters`；Web 后台任务面板新增 "失败队列" 标签。
-- **依赖**：见 [`m55 chat-channel blueprint §6.4`](../55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) Background Jobs 面板。
-
-### 6.5 Phase 6c · Graph 编辑器属性面板（P1）— ✅ 已完成
-
-#### G-RETRY：RetryPolicy 属性面板
-
-- **目标**：`GraphPropertyPanel.vue` 添加「重试」分区：`max_attempts` + `backoff_strategy`。
-- **代码锚点**：`web/src/components/graph/GraphPropertyPanel.vue` · `web/src/features/graph/types.ts`。
-
-#### G-GOTO：Destinations 属性面板
-
-- **目标**：节点属性中可编辑 `destinations[]`（多选其他节点 id），保存后编译期传 `WithEndsMap`。
-- **风险**：避免与 conditional_edges 冲突；UI 应在节点类型为 router/agent 时显示。
-
-#### G-AGENT-MAP：Mapper 属性面板
-
-- **目标**：节点级 Mapper（Input/Output JSON 编辑）+ JSON 校验；与 `validator.go` 的 `invalid_mapper_json` 错误联动。
-
-### 6.6 Phase 7 · 单链终态（P2）— ✅ 已完成
-
-#### TG-RT-RETIRE：移除 Native 主路径
-
-- **目标**：
-  - `internal/team/trpc_build.go` 的 `BuildTRPCTeam` 标记 deprecated；
-  - `runner_team_trpc.go` 默认走 Graph；仅当 `ARANEA_TEAM_NATIVE=1` 时走 Native；
-  - 删除六模式分支的特殊代码（保留为最终 fallback 一行调用）。
-- **代码锚点**：`runner_team_trpc.go:198-211` 区段。
-- **验收**：`make test` 全绿；FlowLog 无 `native_fallback` 事件。
-
-#### TG-RT-TASK：Team 编译支持 Task / review 节点
-
-- **目标**：OrchestrationSpec 节点 type 增加 `task`（对应 Graph TaskUsecase + Kanban），用户在 Team 内画"审核任务"节点。
-- **依赖**：M54 Hermes Kanban Phase 3 已落地的 `kanban_*` tools。
-
-#### TG-RT-SUBGRAPH：Team 嵌套子图
-
-- **目标**：节点 type `subgraph`，引用另一个 Team / Graph，运行时复用 Mapper 实现父子状态隔离。
-- **风险**：循环检测必须在编译期做（`validator.go` 扩展）。
-
-#### TG-0-ARCH / TG-11-SYNC：文档与系统框图
-
-- **目标**：更新 [`0 系统框图.md`](../需求/0%20系统框图.md) Team 执行路径 + [`11 multi-agent.md`](../需求/11%20multi-agent.md) §运行时章节标注 Native 退役。
-
-### 6.7 Phase X · 跨域 Trace 统一（P1，可并行）— 📋 待实施
-
-#### OPS-TRACE-01：trace_id 持久化
-
-- **目标**：`team_runs.trace_id` 字段；Chat Turn 启动 Team 时把 chat run 的 trace_id 写入 team_run；Graph Execution 同步。
-- **代码锚点**：`internal/service/chat_native.go`（team 分支）· `internal/team/runner_team_trpc.go`。
-- **验收**：DB 查询 `team_runs WHERE trace_id = ?` 可拉出全链路。
-
-#### OPS-TRACE-02：Cross-Team Trace 视图
-
-- **目标**：Monitor Trace UI 增加 "Cross-Team / Cross-Channel" tree 视图，按 trace_id 聚合多个 team_run / graph_execution / channel_turn_job。
-- **依赖**：[`m55 chat-channel blueprint`](../55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) §Background Job 面板共建。
-
-### 6.8 Phase 8 · 架构优化 — ✅ 8.1–8.8 已完成 / 📋 8.9 待实施
-
-> Phase 8 详细任务见 [53-team-graph-orchestration-development.md §Phase 8](./53-team-graph-orchestration-development.md)。
-
-**已完成（8.1–8.8）**：
-
-| ID | 任务 | 状态 |
-|----|------|------|
-| BL-07 | TeamRunStatus 常量统一 + 状态机 | ✅ |
-| BL-06 | DefinitionJSON 一次解析 | ✅ |
-| BL-03 | OrchestrationControlTool 协议化 | ✅ |
-| BL-04a | HITL 超时语义拆分 | ✅ |
-| BL-01a–d | 单轨化（fallback/graph_runtime/canary/compiler 简化） | ✅ |
-| BL-10a–b | 编译器统一走 compileFromEmbeddedGraph + 条件边 | ✅ |
-| BL-02 | 模板注册表 + 5 个内置模板 | ✅ |
-| BL-04b | team_graph_sessions 持久化 + 进程重启恢复 | ✅ |
-| REFACTOR | God Function 拆分 | ✅ |
-| TG-Q-04~25 | Review 修复 + 配置化 + 错误规范化 | ✅ |
-
-**待实施（8.9）**：
-
-| ID | 任务 | 优先级 | 说明 |
-|----|------|--------|------|
-| BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 Native 完全退役 |
-| BL-09 | Observer 单订阅化 | 低 | 当前 4 个订阅开销可接受，建议 6+ 时再实施 |
-| FP-02 | Circuit Breaker 实现 | P1 | 类型预留，`circuit_breaker.go` 待创建 |
-| FP-04 | 死信表 | P2 | 依赖 M55 Background Job 面板 |
-| OPS-TRACE-01 | trace_id 持久化 | P1 | `team_runs.trace_id` 字段 |
-
----
-
-## 7. 验证矩阵
-
-### 7.1 CI 必跑
-
-```bash
-make wire && make wire-clean && make api && make build && make test && make lint && make runtime-boundary
-cd web && pnpm i && pnpm lint && pnpm test && pnpm build
-```
-
-### 7.2 单测与集成测试
-
-| 测试 | 位置 | 验证 |
-|------|------|------|
-| `TestParityNativeVsGraph_<mode>` | `internal/team/parity_test.go` | 六模式 parity |
-| `TestActivityHistoryProjection` | `internal/team/status_projector_test.go` | history capped + ordering |
-| `TestOrchestrationStepsFlush` | `internal/biz/orchestration_step_test.go` | 持久化 + 批 flush |
-| `TestCircuitBreakerStateMachine` | `internal/graph/trpc/circuit_breaker_test.go` | closed/half-open/open |
 | `TestFallbackAgentEnvelope` | `internal/graph/trpc/failure_recovery_test.go` | envelope agent_failover |
 | `TestSpecV2RoundTrip` | `internal/biz/orchestration_spec_test.go` | v1 ↔ v2 双向转换 |
-| `TestRaw MergeParseDefinition` | `web/src/features/teams/teamUtils.spec.ts` | 未知字段保留 |
-| `TestTeamRuntimeEngineSelector` | `web/src/components/teams/TeamEditDialog.spec.ts` | admin 权限切换 |
-| `TestObservatoryReadonlyGraph` | `web/src/pages/TeamRunObservatoryPage.spec.ts` | Run 中画布不可拖 |
+
+> 任务级代码锚点、验收标准与状态标记详见 [53-team-graph-orchestration.development.md §3 开发阶段](./53-team-graph-orchestration.development.md#3-开发阶段)
 
 ### 7.3 E2E（手工 / Playwright）
 
@@ -1217,77 +996,7 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 
 ---
 
-## 8. 风险与回滚
-
-| 风险 | 影响 | 缓解 |
-|------|------|------|
-| Graph 路径 silent fallback Native | 用户以为 Graph 在跑 | metrics + FlowLog warn；strict 模式可选（失败即报错） |
-| `parseDefinition` raw merge 破坏旧 Team | 加载 / 保存异常 | 单测覆盖；feature flag 灰度 |
-| `orchestration_steps` 高频写入 | DB 锁 / 拖慢 | 异步批 flush + SQLite WAL；可关闭（env `ARANEA_OBS_PERSIST=0`） |
-| Circuit Breaker 误触发 | 正常节点被冻结 | 默认阈值高（10 失败）+ half-open 自恢复 |
-| Checkpoint 兼容性 | 升级后旧 Run 无法 resume | nullable schema；resume 失败 graceful 报错 |
-| Spec v2 切换 | 老客户端编辑后丢字段 | 双协议并存 1 个 sprint；Service 同时写 v1+v2 |
-| Cross-Team trace 拖慢 | Monitor 慢查询 | trace_id 加索引；按时间分区 |
-
-**回滚剧本**：
-
-- Native fallback 兜底：env `ARANEA_TEAM_GRAPH_RUNTIME=0` 立即关 Graph。
-- Activity 持久化关闭：env `ARANEA_OBS_PERSIST=0`；Observatory 退化到内存模式。
-- Spec v2 暂停：Service 优先读 v1；前端切回 raw JSON 编辑。
-- Circuit Breaker 全关：FailurePolicy.circuit 不传即不启用。
-
----
-
-## 9. 文档同步清单
-
-| 文档 | 更新内容 | 时机 | 状态 |
-|------|---------|------|------|
-| [`53-team-graph-orchestration-development.md`](./53-team-graph-orchestration-development.md) §8 终态路线图 | Phase 5/6/7/8 任务 ID 状态 | 每 Phase 完成 | ✅ 已同步 |
-| [`36-graph-development.md`](./36-graph-development.md) | G-RETRY / G-GOTO / G-AGENT-MAP 状态 | Phase 6c | ✅ |
-| [`11-multi-agent-development.md`](./11-multi-agent-development.md) | Native 退役标注 | Phase 7 | ✅ |
-| [`0 系统框图.md`](../需求/0%20系统框图.md) | Team 执行路径单链 | Phase 7 | ✅ |
-| [`51 消息机制.md`](../需求/51%20消息机制.md) §Envelope 类型 | 新增 `orchestration_activity` / `agent_failover` / `circuit_opened` | Phase 5b / 6b | 🟡 部分同步 |
-| [`execution-plan.md`](../guides/execution-plan.md) §迭代 TG | 当前 Sprint 任务卡 | 每周 | ✅ |
-
----
-
-## 10. AI 编码代理执行守则
-
-> 在执行 §6.X 任务前 **必读**。
-
-1. **CodeGraph 优先**：找符号、调用链、影响面用 `codegraph_*`；不要 grep 扫符号。
-2. **一卡一 PR**：每个任务（TG-RT-* / OPS-* / FP-* / G-*）一个 PR；跨 Phase 不合并。
-3. **测试先行**：每个任务必带单测或集成测试；新增 Envelope 字段必须有 round-trip 测试。
-4. **架构红线**：`make runtime-boundary` 必跑；biz import trpc-agent-go 立即拒绝。
-5. **wire 三步**：Schema 改动 → `make wire && make wire-clean && make api`；遗漏不可提交。
-6. **前端守则**：
-   - 颜色 / 字号 / 间距用 `var(--*)`，遵循 `.cursor/rules/glass-dialog.mdc` 与 `frontend-ux.mdc`；
-   - `parseDefinition` 类工具改动必带单测覆盖未知字段保留；
-   - readonly 模式必须真正禁用交互（不靠 CSS pointer-events 单点）。
-7. **FlowLog 必带**：每个新分支用 `event.NewFlowLogger` / `event.CtxFlowLogWarn`；禁止 slog。
-8. **指标必带**：新增运行时分支必带 Prometheus counter（参考 `metrics.TeamGraphRuntimeTotal`）。
-9. **错误分类**：用户可感知错误必经 `TurnError(code, msg)` / `kerrors.*`，禁止裸 `errors.New`。
-10. **Native 保留期**：在 Phase 7 RETIRE 前，**任何 Native 路径修改**必须同步 Graph 路径，避免行为漂移。
-11. **跨蓝图协调**：本文与 [m55 chat-channel blueprint](../55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) 共用 `trace_id` / Background Job 面板 / Channel async 编译链；改任一处先看另一份。
-
----
-
-## 11. 速查卡（执行顺序）
-
-```
-✅ Phase 5  parity + UI + metrics + Canary — 已完成
-✅ Phase 5b Activity History + 持久化 — 已完成
-✅ Phase 6  默认 Graph + Checkpoint/HITL + Spec v2 — 已完成
-🟡 Phase 6b FP-01 fallback ✅ / FP-02 Circuit Breaker 📋 / FP-03 HITL 接管 ✅ / FP-04 死信 📋
-✅ Phase 6c G-RETRY / G-GOTO / G-AGENT-MAP 前端面板 — 已完成
-✅ Phase 7  TG-RT-RETIRE / TASK / SUBGRAPH / 文档 — 已完成
-✅ Phase 8.1–8.8 架构优化 — 已完成
-📋 Phase 8.9 BL-05 / BL-09 / FP-02 / FP-04 / OPS-TRACE-01 — 待实施
-```
-
----
-
-## 12. 与 M55（Chat × Channel）蓝图的协同
+## 8. 与 M55（Chat × Channel）蓝图的协同
 
 > 两份蓝图共用底层契约；下表展示交叉关系。
 
@@ -1304,9 +1013,4 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 
 ---
 
-> **执行守则一句话**：每个 PR 都要回答三个问题——
-> 1. 这改变了哪一类问题（T-1…T-6）？  
-> 2. 它符合 §3 架构契约的哪一条？  
-> 3. 它带了 §7 验证矩阵里的哪一个测试？
-
-如果 PR 描述里没有这三段答案，AI 编码代理应自我拒绝并补齐后再提交。
+> 风险与回滚、文档同步清单、AI 编码代理执行守则、速查卡等开发流程内容详见 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md)。

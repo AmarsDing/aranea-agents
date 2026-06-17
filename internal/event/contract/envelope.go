@@ -64,6 +64,12 @@ const (
 	EnvelopeTypeSpiritOrchestrationStarted     EnvelopeType = "spirit_orchestration_started"
 	EnvelopeTypeSpiritOrchestrationCheckpoint  EnvelopeType = "spirit_orchestration_checkpoint"
 	EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
+
+	// Planning phase timeline events (P1-2). Published by PrePlanningGate to make
+	// the complexity assessment + gate decision observable on the frontend timeline.
+	EnvelopeTypePlanningPhaseStart    EnvelopeType = "planning_phase_start"
+	EnvelopeTypePlanningPhaseProgress EnvelopeType = "planning_phase_progress"
+	EnvelopeTypePlanningPhaseDone     EnvelopeType = "planning_phase_done"
 	EnvelopeTypeTokenUsage                     EnvelopeType = "token_usage"
 	EnvelopeTypeMetricsUpdated                 EnvelopeType = "metrics_updated"
 
@@ -369,6 +375,8 @@ func init() {
 		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated,
 		EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint,
 		EnvelopeTypeSpiritOrchestrationInterrupted,
+		// Planning phase timeline (P1-2): gate decision visibility
+		EnvelopeTypePlanningPhaseStart, EnvelopeTypePlanningPhaseProgress, EnvelopeTypePlanningPhaseDone,
 		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted,
 		EnvelopeTypeButlerOrchestrationFailed,
 		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed,

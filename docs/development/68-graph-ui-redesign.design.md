@@ -111,20 +111,39 @@ interface NodeDef {
 
 ### 2.3 Handle ID 编码方案
 
+> **实现现状**：当前代码（`features/graph/portTypes.ts`）使用 **3-part 编码**，包含 nodeId 以支持跨节点唯一性。以下为实际实现规范。
+
 ```
-格式：{direction}:{fieldName}
+格式：{direction}:{fieldName}:{nodeId}
 方向：r = read (target Handle, 左侧)
      w = write (source Handle, 右侧)
 
+注意：Handle ID 包含 nodeId 以确保跨节点唯一性。
+字段名可能包含冒号，因此解码时按首尾冒号分割。
+
 示例：
-  r:messages     — 读取 messages 字段（左侧 Handle）
-  w:response     — 写入 response 字段（右侧 Handle）
-  r:step         — 读取 step 字段
-  w:approval     — 写入 approval 字段
+  r:messages:node-1     — node-1 读取 messages 字段（左侧 Handle）
+  w:response:node-1     — node-1 写入 response 字段（右侧 Handle）
 
 折叠态汇总 Handle：
   __reads        — 汇总读取端口
   __writes       — 汇总写入端口
+```
+
+**编码/解码函数**（已实现于 `features/graph/portTypes.ts`）：
+
+```typescript
+export function encodeHandleId(port: PortInfo): string {
+  const prefix = port.direction === 'reads' ? 'r' : 'w';
+  return `${prefix}:${port.field}:${port.nodeId}`;
+}
+
+export function decodeHandleId(id: string): PortInfo {
+  // 按首尾冒号分割，支持字段名包含冒号
+  const firstColon = id.indexOf(':');
+  const lastColon = id.lastIndexOf(':');
+  // ... 返回 { direction, field, fieldType, nodeId }
+}
 ```
 
 ## 3. 组件设计
@@ -368,39 +387,43 @@ interface GraphResourceSelectorProps {
 
 ### 4.1 State Schema → Handle 生成
 
+> **实现现状**：端口计算逻辑已实现于 `features/graph/portTypes.ts` 的 `getNodePorts()` 函数。实际实现比原始设计更精细——根据节点类型的不同配置（inputMapperJson/outputMapperJson/instruction 模板）推导端口，而非简单的"读写全部字段"。
+
 ```
 GraphDefinition.stateFields[]
         │
         ▼
-  computeNodePorts(node, stateFields)
+  getNodePorts(node, stateFields)  ← features/graph/portTypes.ts
         │
-        ├── Agent 节点: reads=所有字段, writes=所有字段（Agent 可读写任意字段）
-        ├── LLM 节点: reads=所有字段, writes=所有字段
-        ├── Tool 节点: reads=所有字段, writes=所有字段
-        ├── Function 节点: reads=所有字段, writes=所有字段
-        ├── Router 节点: reads=所有字段, writes=[]（路由不写 State）
+        ├── Agent 节点: reads=inputMapperJson 的 values, writes=outputMapperJson 的 keys
+        ├── LLM 节点: reads=instruction 模板中的 ${field} 引用, writes=['response']
+        ├── Tool 节点: reads=[], writes=[]（前端无法内省工具签名）
+        ├── Function 节点: reads=[], writes=[]（前端无法内省 Go 函数签名）
+        ├── Router 节点: reads=[], writes=[]（前端无法确定 condFuncRef 读取字段）
         ├── Join 节点: reads=[], writes=[]（透传）
-        └── HITL 节点: reads=所有字段, writes=所有字段
+        └── HITL 节点: reads=[], writes=[]（前端无法确定审批字段）
         │
         ▼
-  PortDef[] → 渲染 Handle 列表
+  PortInfo[] → 渲染 Handle 列表
 ```
 
-> **简化策略**：所有可执行节点类型（Agent/LLM/Tool/Function/HITL）默认读写全部 State 字段。Router 只读不写。Join 透传。后续可通过 PropertyPanel 配置节点的具体读写字段范围（P2 功能）。
+> **设计说明**：原始设计假设"所有可执行节点读写全部 State 字段"，但实际实现发现前端无法内省 Tool/Function/Router/HITL 的字段读写范围，因此这些节点返回空端口（使用默认 Handle）。Agent 和 LLM 节点通过解析配置（inputMapperJson/outputMapperJson/instruction 模板）推导端口。后续可通过 PropertyPanel 手动配置节点的具体读写字段范围（P2 功能）。
 
 ### 4.2 WS 事件 → 节点状态
 
+> **实现现状**：事件→状态映射已实现于 `features/graph/runtime/useGraphExecutionStream.ts`。实际使用的状态值与原始设计略有差异——使用 `completed` 而非 `success`，使用 `failed` 而非 `error`。
+
 ```
-WS Event Bus
+WS Event Bus  ← features/graph/runtime/useGraphExecutionStream.ts
     │
     ├── graph_node_start → { nodeId, stepNumber }
     │       └── execNodeStates[nodeId] = 'running'
     │
     ├── graph_node_end → { nodeId, durationNs }
-    │       └── execNodeStates[nodeId] = 'success'
+    │       └── execNodeStates[nodeId] = 'completed'
     │
     ├── graph_node_error → { nodeId, error }
-    │       └── execNodeStates[nodeId] = 'error'
+    │       └── execNodeStates[nodeId] = 'failed'
     │
     ├── checkpoint (interrupt) → { nodeId, interruptKey }
     │       └── execNodeStates[nodeId] = 'interrupted'
@@ -409,10 +432,21 @@ WS Event Bus
             └── 重置所有节点状态
 ```
 
+**实际状态值映射**（`features/graph/types.ts` EXECUTION_STATUS_STYLES）：
+
+| 状态值 | 颜色 | 图标 | 标签 |
+|--------|------|------|------|
+| `idle` | grey | radio_button_unchecked | 等待 |
+| `running` | cyan | sync | 运行中 |
+| `completed` | emerald | check_circle | 完成 |
+| `failed` | pink | error | 失败 |
+| `interrupted` | amber | pause_circle | 中断 |
+| `waiting` | grey-6 | schedule | 等待 |
+
 ### 4.3 资源选择器数据流
 
 ```
-useGraphEditorPage
+useGraphEditorPage  ← features/graph/useGraphEditorPage.ts
     │
     ├── loadAvailableAgents() → useAgentsCatalogStore.listAgents()
     │       └── agents → ResourceOption[] (grouped by kind)
@@ -428,7 +462,7 @@ useGraphEditorPage
 
 ## 5. CSS 变量扩展（Langflow 对齐）
 
-> 所有 CSS 变量使用 HSL 通道格式，消费方式为 `hsl(var(--token))`。Light/Dark 双模式完整定义。
+> 所有 CSS 变量使用 HSL 通道格式，消费方式为 `hsl(var(--token))`。Light/Dark 双模式完整定义。实际定义文件：`web/src/css/theme/_graph-pages.sass`
 
 ```scss
 // _graph-pages.sass — Langflow 完整色彩体系
@@ -623,13 +657,13 @@ box-shadow: 0 0 0 1px hsl(var(--border)),
 
 ```css
 /* 右侧 Handle */
-.right-handle {
+.right_handle {
   right: 0 !important;
   transform: translate(50%, -50%) !important;
 }
 
 /* 左侧 Handle */
-.left-handle {
+.left_handle {
   left: 0 !important;
   transform: translate(-50%, -50%) !important;
 }
@@ -808,55 +842,99 @@ box-shadow: 0 0 0 1px hsl(var(--border)),
 }
 ```
 
-## 7. 文件变更清单
+## 7. 技术约束
 
-### 7.1 新增文件
+> 以下技术约束从需求文档迁移，属于实现层面的约束规范。
 
-| 文件 | 用途 | 阶段 |
-|------|------|------|
-| `components/graph/GraphResourceSelector.vue` | 通用资源选择器 | P0 |
-| `components/graph/GraphAgentSelector.vue` | Agent 分类选择器 | P0 |
-| `components/graph/GraphToolSelector.vue` | Tool 分类选择器 | P0 |
-| `components/graph/GraphFunctionSelector.vue` | Function 选择器 | P0 |
-| `components/graph/GraphRunPanel.vue` | 运行面板 | P0 |
-| `components/graph/GraphNodeStatusBadge.vue` | 节点状态徽章 | P0 |
-| `features/graph/composables/useNodePorts.ts` | Handle 端口计算 | P0 |
-| `features/graph/composables/useResourceSelectors.ts` | 资源选择器数据 | P0 |
-| `features/graph/composables/useGraphPlayground.ts` | RunPanel 执行逻辑（与 GraphRunPage 共享） | P0 |
-| `components/graph/GraphNodeToolbar.vue` | 节点浮动工具栏 | P1 |
-| `components/graph/GraphStatePanel.vue` | State 可视化面板 | P1 |
+### 7.1 P0-1 State-Aware 节点技术约束
 
-### 7.2 修改文件
+- Vue Flow Handle 支持 `id` 属性和默认 slot，可渲染字段名标签
+- `updateNodeInternals()` 在 Handle 动态变更时必须调用
+- Handle id 编码方案：`{direction}:{fieldName}:{nodeId}`（3-part，详见 §2.3），避免特殊字符
 
-| 文件 | 变更 | 阶段 |
-|------|------|------|
-| `components/graph/GraphFlowNode.vue` | 多端口 Handle + 折叠 + 5 种状态 | P0 |
-| `components/graph/GraphFlowEdge.vue` | sourceHandle/targetHandle + 状态动画 | P0 |
-| `components/graph/GraphPropertyPanel.vue` | 资源选择器替换纯文本输入 | P0 |
-| `components/graph/GraphEditorCanvas.vue` | isValidConnection + sourceHandle/targetHandle + NodeToolbar + 画布锁定 | P0/P1 |
-| `components/graph/GraphEditorPage.vue` | 集成 RunPanel + 布局调整 | P0 |
-| `components/graph/GraphNodePalette.vue` | 3 区段 + 快速模板 | P1 |
-| `features/graph/types.ts` | PortDef + EdgeDef 扩展 + NodeExecState | P0 |
-| `features/graph/useGraphEditorPage.ts` | 资源加载 + 节点创建引导 | P0 |
-| `features/graph/useGraphLocalValidation.ts` | 结构性连接检查 | P0 |
-| `features/graph/useGraphRunStream.ts` | 事件→状态映射 + 批量边动画 | P0 |
-| `css/theme/_graph-pages.sass` | Langflow 完整色彩体系 + 端口色 + 状态色 + Handle 动画 | P0 |
+### 7.2 P0-3 RunPanel 技术约束
 
-## 8. 与现有模块的交互
+- 复用现有 `useGraphExecutionStream`（`features/graph/runtime/useGraphExecutionStream.ts`）和 `useGraphTimeTravel`（`features/graph/runtime/useGraphTimeTravel.ts`）composable
+- RunPanel 使用 `q-drawer` 或自定义 flex 面板
 
-### 8.1 与 M36 Graph Workflow 的关系
+### 7.3 边重连行为
+
+```
+Langflow 行为：无效重连 → 删除边
+Aranea 行为：无效重连 → 恢复原边（更安全）
+
+实现：在 edgeUpdateEnd 事件中：
+1. 检查新连接是否有效（isValidConnection）
+2. 有效 → 更新边的 source/target/sourceHandle/targetHandle
+3. 无效 → 恢复原始边数据（不删除）
+```
+
+### 7.4 画布执行锁定
+
+```
+执行时：
+  - nodesDraggable = false
+  - nodesConnectable = false
+  - elementsSelectable = false（可选，保留选择查看状态）
+  - 显示执行横幅（CanvasBadge + Loader2 旋转）
+  - 快捷键禁用（Delete/Ctrl+D 等）
+
+执行完成后：
+  - 恢复所有交互
+  - 移除横幅（350ms 退出动画）
+```
+
+## 8. API 与数据源
+
+> 以下 API/数据源映射从需求文档迁移，属于实现层面的接口契约。
+
+### 8.1 资源选择器数据源映射
+
+| 选择器 | 前端 API 函数 | Store | 已有？ |
+|--------|--------------|-------|--------|
+| Agent | `listAgents()` | `useAgentsCatalogStore` | 是，需增加 Kind 分组 |
+| Tool | `listTools()` | `useToolsStore` | 是，需增加 Category 分组 |
+| Function | `listTools()` (filter) | `useToolsStore` | 复用 Tool API |
+| Agent MCP | `getAgentEffectiveTools()` | 新建 | API 已有，需封装 |
+
+### 8.2 Graph API 函数映射
+
+> 实际实现位于 `web/src/features/graph/api.ts`
+
+| 功能 | 前端 API 函数 | 说明 |
+|------|--------------|------|
+| 执行 Graph | `executeGraph()` | 启动图执行 |
+| 恢复执行 | `resumeGraph()` | 恢复中断的执行 |
+| 取消执行 | `cancelGraphExecution()` | 取消正在运行的执行 |
+| 状态快照 | `getStateSnapshot()` | 获取当前 State 快照 |
+| 编辑状态 | `editState()` | 修改 State 字段 |
+| 时间旅行 | `timeTravelGraph()` | 回退到指定 Checkpoint |
+| 图校验 | `validateGraph()` | 校验图结构合法性 |
+| 列出 Checkpoint | `listCheckpoints()` | 获取 Checkpoint 列表 |
+
+### 8.3 数据源分组依据
+
+| 选择器 | API | 分组依据 |
+|--------|-----|---------|
+| Agent | `listAgents()` | Kind（user/system_builtin/ecosystem_preset）+ AgentKind（llm/a2a_proxy） |
+| Tool | `listTools()` | Category + Source（registry/mcp/custom） |
+| Function | `listTools({ source: 'registry' })` | Category |
+
+## 9. 与现有模块的交互
+
+### 9.1 与 M36 Graph Workflow 的关系
 
 - **M36** 定义了 Graph 的后端架构和基础前端（已完成）
 - **M68** 是 M36 前端的 UI 重构，不改变后端 API 和数据模型
 - M68 的 `EdgeDef` 扩展（sourceHandle/targetHandle）需要与 M36 的 Proto `EdgeDef` 对齐
 
-### 8.2 与 M54 Hermes Kanban 的关系
+### 9.2 与 M54 Hermes Kanban 的关系
 
 - M54 的 Task 系统在 Graph 编辑器中有 UI（GraphTaskKanban + GraphTaskDetailDrawer）
 - M68 的 RunPanel 需要集成 Task 视图（Tab 之一）
 - 不阻塞，M54 完成后集成
 
-### 8.3 与 Agent/Tool/MCP 管理的关系
+### 9.3 与 Agent/Tool/MCP 管理的关系
 
 - Agent 选择器依赖 `useAgentsCatalogStore`（已有）
 - Tool 选择器依赖 `useToolsStore`（已有）

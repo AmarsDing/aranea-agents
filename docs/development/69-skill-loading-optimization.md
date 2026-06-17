@@ -1,7 +1,10 @@
 # 69-Skill 加载优化与可观测性增强
 
 > 来源：[2026-06-09-solution-skill-loading-optimization.md](../reports/2026-06-09-solution-skill-loading-optimization.md) 方案评估后裁剪
-> **状态**: Phase 1-3 已实施，代码审查通过（0 阻断项）
+> 设计文档：[69-skill-loading-optimization.design.md](./69-skill-loading-optimization.design.md)
+> 开发计划：[69-skill-loading-optimization.development.md](./69-skill-loading-optimization.development.md)
+
+---
 
 ## 0. 需求结论
 
@@ -18,196 +21,106 @@
 | C2 Token 效率 | **不做** | 需精确计量，依赖 C1 数据后再评估 |
 | D1/D2 后期验证 | **不做** | 依赖 C1/C2 数据积累 |
 
-### 0.2 实施阶段
+---
 
-```
-Phase 1: 路由命中率可观测性 (C1) ✅
-├── skill_invocation 增加 routed_slugs / loaded_slug 字段
-├── resolveAndWriteSkillState 写入 routed_slugs 到 State
-├── newSkillLoadCaptureAfterHook 捕获 skill_load/skill_run 的 slug
-├── recordSkillInvocation 读取并持久化
-├── SkillHealthDetail 增加 RouteHitRate7d / RouteHitRate30d
-├── skill_health.go 聚合计算命中率
-└── 前端 SkillHealthCard 展示命中率 + types.ts 更新
+## 1. 用户故事
 
-Phase 2: AI 优化渲染 + 按需注入 (B1 + B2) ✅
-├── render.go 增加 Mode 字段，支持 ai_optimized 模式
-├── ai_optimized 过滤非决策段落（精确匹配 + 前缀匹配）
-├── UTF-8 安全截断描述至 120 字符
-├── Full Profile 注入改用 ai_optimized 渲染
-└── 注入尾部提示"其他可用 Skill 请使用 skill_load 按需加载"
+### 1.1 路由命中率可观测性（C1）
 
-Phase 3: Skill 入口可见性 (A1 + A2) ✅ (前端类型补全，集成待后端事件)
-├── 前端补全 SkillCatalogEntry / SkillHint 类型
-├── ChatSkillCatalogStrip.vue 类型引用已修复
-└── 后端 skill_catalog WebSocket 事件待实施
-```
+**作为** 平台运维人员 / Skill 作者，
+**我希望** 看到 Skill 路由命中率指标（7d / 30d），
+**以便** 评估路由准确性，识别"路由到但未被实际加载"的 Skill，优化路由策略。
+
+### 1.2 AI 优化渲染（B1）
+
+**作为** Agent 运行时，
+**我希望** 注入到 System Message 的 Skill Guidance 采用 AI 优化渲染模式（过滤介绍/背景/示例段落，仅保留决策树），
+**以便** 压缩 Token 消耗，让模型注意力集中在决策关键信息上。
+
+### 1.3 按需注入提示（B2）
+
+**作为** Agent 运行时，
+**我希望** Full Profile 模式下注入 Skill Guidance 时，尾部提示"其他可用 Skill 请使用 skill_load 按需加载"，
+**以便** 引导模型在路由结果不全时主动加载所需 Skill。
+
+### 1.4 Skill 入口可见性（A1 + A2）
+
+**作为** 聊天用户，
+**我希望** 打开聊天时即可看到当前 Agent 可用的 Skill 摘要卡片条，并点击卡片主动加载 Skill，
+**以便** 知道有哪些 Skill 可用，无需在对话中盲目试探。
 
 ---
 
-## 1. Phase 1: 路由命中率可观测性
+## 2. 功能需求
 
-### 1.1 数据库变更
+### 2.1 路由命中率可观测性
 
-**文件**: `internal/data/ent/schema/skill_invocation.go`
+| # | 需求 | 优先级 |
+|---|------|--------|
+| FR-1 | `skill_invocation` 记录本轮路由到的所有 Skill slug（`routed_slugs`） | P0 |
+| FR-2 | `skill_invocation` 记录本轮实际通过 `skill_load` / `skill_run` 加载的 slug（`loaded_slug`） | P0 |
+| FR-3 | Progressive 模式下路由结果写入 Invocation State，供调用记录器持久化 | P0 |
+| FR-4 | AfterTool 钩子捕获 `skill_load` / `skill_run` 工具调用的 slug，写入 Invocation State | P0 |
+| FR-5 | `SkillHealthDetail` 提供 7d / 30d 路由命中率指标 | P0 |
+| FR-6 | `DailyMetric` 提供每日路由次数与加载次数 | P0 |
+| FR-7 | 前端 `SkillHealthCard` 展示路由命中率，rate=0 时显示"暂无路由数据" | P0 |
 
-新增字段：
-- `routed_slugs` JSON(`[]string`) — 本轮路由到的所有 Skill slug
-- `loaded_slug` String(256) — 本轮实际通过 skill_load 加载的 slug
+### 2.2 AI 优化渲染 + 按需注入
 
-### 1.2 路由结果写入 Invocation State
+| # | 需求 | 优先级 |
+|---|------|--------|
+| FR-8 | `render.SkillGuidance()` 支持 `ai_optimized` 渲染模式 | P0 |
+| FR-9 | `ai_optimized` 模式保留 Name、Description（UTF-8 安全截断 120 字符）、Triggers、Tools | P0 |
+| FR-10 | `ai_optimized` 模式过滤介绍/背景/示例等非决策段落，仅保留 `##` 决策树段落 | P0 |
+| FR-11 | Full Profile 注入使用 `ai_optimized` 渲染模式 | P0 |
+| FR-12 | Full Profile 注入尾部提示"其他可用 Skill 请使用 skill_load 按需加载" | P0 |
 
-**文件**: `internal/agent/skill_guidance_inject.go`
+### 2.3 Skill 入口可见性
 
-- `resolveAndWriteSkillState` 中，将 `result.Slugs` 写入 `skillRoutedSlugsStateKey`
-- Full Profile 模式也写入（当前仅 Progressive 模式写入 RoutedSkillsStateKey）
-- 双 state key 注释说明兼容原因
-
-### 1.3 Skill 加载捕获
-
-**文件**: `internal/agent/skill_guidance_inject.go`
-
-- 新增 `newSkillLoadCaptureAfterHook`：AfterTool 钩子，捕获 skill_load/skill_run 的 slug
-- `extractSlugFromArgs`：从工具参数 JSON 中提取 slug（轻量字符串搜索，避免 full unmarshal）
-- 新增 `skillLoadedSlugStateKey` 常量
-- 钩子在 callback_chain.go 中注册于 tool recorder 之前（priority 0 < 50）
-
-### 1.4 Skill 调用记录读取路由结果
-
-**文件**: `internal/agent/tool_invocation_recorder.go`
-
-- `recordSkillInvocation` 读取 `skillRoutedSlugsStateKey` 写入 `SkillInvocationWrite.RoutedSlugs`
-- 读取 `skillLoadedSlugStateKey` 写入 `SkillInvocationWrite.LoadedSlug`
-
-### 1.5 健康指标扩展
-
-**文件**: `internal/biz/types/skill_health.go`
-
-- `SkillHealthDetail` 增加 `RouteHitRate7d float64` 和 `RouteHitRate30d float64`
-- `DailyMetric` 增加 `RoutedCount int` 和 `LoadedCount int`
-
-**文件**: `internal/data/skill_health.go`
-
-- 聚合计算：RouteHitRate = SafeRate(loaded, routed)
-
-### 1.6 前端展示
-
-**文件**: `web/src/features/skills/types.ts`
-
-- `SkillHealthMetric` 增加 `route_hit_rate_7d` / `route_hit_rate_30d`
-- `SkillHealthDailyMetric` 增加 `routed_count` / `loaded_count`
-
-**文件**: `web/src/components/skills/SkillHealthCard.vue`
-
-- 增加路由命中率指标行，rate=0 时显示"-"和"暂无路由数据"
+| # | 需求 | 优先级 |
+|---|------|--------|
+| FR-13 | 前端定义 `SkillCatalogEntry` 类型（slug / name / description / tags） | P0 |
+| FR-14 | 前端定义 `SkillHint` 类型（matched_skill / trigger / confidence） | P0 |
+| FR-15 | `ChatSkillCatalogStrip.vue` 组件可编译，展示 Skill 摘要卡片条 | P0 |
+| FR-16 | `ChatSkillHintBar.vue` 组件可编译，展示 Skill 提示条 | P0 |
+| FR-17 | 后端 `skill_catalog` WebSocket 事件（会话初始化时发送 Skill 摘要） | P1（待实施） |
+| FR-18 | 聊天界面集成 Skill 摘要卡片条 | P1（待实施） |
 
 ---
 
-## 2. Phase 2: AI 优化渲染 + 按需注入
+## 3. 非功能需求
 
-### 2.1 渲染模式
-
-**文件**: `internal/skill/render/render.go`
-
-- `RenderOptions` 增加 `Mode string`（`"full"` / `"ai_optimized"`）
-- `ai_optimized` 模式：保留 Name、Description（UTF-8 安全截断 120 字符）、Triggers、Tools
-- Body 中仅保留 `##` 开头的决策树段落，过滤介绍/背景/示例等段落
-- `isExcludedHeading` 使用精确匹配 + 前缀匹配（带分隔符校验），避免误排除
-
-### 2.2 按需注入
-
-**文件**: `internal/agent/skill_guidance_inject.go`
-
-- Full Profile 注入改用 `ai_optimized` 渲染模式
-- 注入尾部增加提示："Other available skills can be loaded on demand using the skill_load tool."
-
----
-
-## 3. Phase 3: Skill 入口可见性
-
-### 3.1 前端类型补全
-
-**文件**: `web/src/features/skills/types.ts`
-
-- 新增 `SkillCatalogEntry` 类型：`{slug, name, description, tags: string[]}`
-- 新增 `SkillHint` 类型：`{matched_skill, trigger, confidence}`
-
-### 3.2 组件状态
-
-- `ChatSkillCatalogStrip.vue` 类型引用已修复，可编译
-- `ChatSkillHintBar.vue` 类型引用已修复，可编译
-- 后端 `skill_catalog` WebSocket 事件待实施后集成到聊天界面
+| # | 需求 | 说明 |
+|---|------|------|
+| NFR-1 | UTF-8 安全 | 描述截断必须基于 `[]rune`，不得破坏多字节字符 |
+| NFR-2 | 向后兼容 | 不新增 `turn_optimized` load mode，直接优化 Full Profile 注入逻辑，保持现有配置兼容 |
+| NFR-3 | 性能 | AfterTool 钩子优先级 0（早于 tool recorder 的 50），确保 slug 写入在持久化之前完成 |
+| NFR-4 | UI 语义 | `route_hit_rate=0` 时显示"-"而非"0%"，避免"无数据"与"0%命中率"语义混淆 |
+| NFR-5 | 渲染准确性 | 段落过滤使用精确匹配 + 前缀匹配（带分隔符校验），避免误排除决策树段落 |
 
 ---
 
 ## 4. 验收标准
 
-### Phase 1 ✅
+### 4.1 Phase 1：路由命中率可观测性
 
-- [x] `skill_invocation` 表新增 `routed_slugs` 和 `loaded_slug` 字段
-- [x] Full Profile 模式下路由结果正确写入 Invocation State
-- [x] `SkillHealthDetail` 包含 `RouteHitRate7d` 和 `RouteHitRate30d`
-- [x] `SkillHealthCard` 展示路由命中率指标
+- `skill_invocation` 表新增 `routed_slugs` 和 `loaded_slug` 字段
+- Progressive 模式下路由结果正确写入 Invocation State（供 recorder 持久化）
+- AfterTool 钩子捕获 `skill_load` / `skill_run` 的 slug 并写入 Invocation State
+- `SkillHealthDetail` 包含 `RouteHitRate7d` 和 `RouteHitRate30d`
+- `SkillHealthCard` 展示路由命中率指标
 
-### Phase 2 ✅
+### 4.2 Phase 2：AI 优化渲染 + 按需注入
 
-- [x] `render.SkillGuidance()` 支持 `ai_optimized` 模式（过滤非决策段落）
-- [x] Full Profile 注入使用 ai_optimized 渲染
-- [x] 注入尾部包含 skill_load 提示
+- `render.SkillGuidance()` 支持 `ai_optimized` 模式（过滤非决策段落）
+- Full Profile 注入使用 `ai_optimized` 渲染
+- 注入尾部包含 `skill_load` 提示
 
-### Phase 3 (部分完成)
+### 4.3 Phase 3：Skill 入口可见性
 
-- [x] `SkillCatalogEntry` / `SkillHint` 类型已定义
-- [x] `ChatSkillCatalogStrip.vue` / `ChatSkillHintBar.vue` 可编译
-- [ ] 后端 skill_catalog WebSocket 事件（待实施）
-- [ ] 聊天界面集成 Skill 摘要卡片条（待后端事件）
+- `SkillCatalogEntry` / `SkillHint` 类型已定义
+- `ChatSkillCatalogStrip.vue` / `ChatSkillHintBar.vue` 可编译
+- 后端 `skill_catalog` WebSocket 事件（待实施）
+- 聊天界面集成 Skill 摘要卡片条（待后端事件）
 
----
-
-## 5. 代码审查记录
-
-### 审查结果
-
-| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 |
-|------|---------|---------|---------|
-| 后端架构合规 | 0 | 0 | 0 |
-| 后端分层合规 | 0 | 0 | 0 |
-| 后端 OOP | 0 | 0 | 0 |
-| Agent 运行时 | 0 | 0 | 0 |
-| 并发安全 | 0 | 0 | 0 |
-| 错误处理 | 0 | 0 | 0 |
-| 前端数据流 | 0 | 0 | 0 |
-| 前端 UX | 0 | 1 | 0 |
-| 编程规范 | 0 | 0 | 3 |
-
-### 已修复的问题
-
-| 问题 | 修复 |
-|------|------|
-| `loadedSlug` 推导逻辑永远返回空字符串 | 新增 `newSkillLoadCaptureAfterHook` 从工具参数提取 slug 写入 invocation state |
-| 描述截断可能破坏多字节 UTF-8 | 改用 `[]rune` 截断 |
-| `isExcludedHeading` 使用 `strings.Contains` 过于宽泛 | 改为精确匹配 + 前缀匹配（带分隔符校验） |
-| route_hit_rate=0 时 UI 语义矛盾 | rate=0 时显示"-"而非"0%" |
-
-### 待后续迭代
-
-- 🟡 route_hit_rate=0 时无法区分"无数据"和"0%命中率"，需后端暴露 routed_count 聚合字段
-
----
-
-## 6. 变更文件索引
-
-| 文件 | 变更说明 |
-|------|----------|
-| `internal/data/ent/schema/skill_invocation.go` | 新增 routed_slugs / loaded_slug 字段 |
-| `internal/biz/skill/skill.go` | InvocationWrite 新增 RoutedSlugs / LoadedSlug |
-| `internal/biz/types/skill_health.go` | SkillHealthDetail 增加 RouteHitRate; DailyMetric 增加 RoutedCount/LoadedCount |
-| `internal/agent/skill_guidance_inject.go` | 新增 skillRoutedSlugsStateKey / skillLoadedSlugStateKey; newSkillLoadCaptureAfterHook; extractSlugFromArgs; ai_optimized 渲染; skill_load 提示 |
-| `internal/agent/tool_invocation_recorder.go` | 从 invocation state 读取 routedSlugs / loadedSlug |
-| `internal/agent/callback_chain.go` | 注册 newSkillLoadCaptureAfterHook |
-| `internal/data/skill.go` | RecordSkillInvocation 持久化新字段 |
-| `internal/data/skill_health.go` | 路由命中率聚合计算 |
-| `internal/data/skill_intelligence.go` | mapEntSkillInvocationToWrite 映射新字段 |
-| `internal/skill/render/render.go` | AI 优化渲染模式（ModeAIOptimized / filterDecisionSections / isExcludedHeading） |
-| `web/src/features/skills/types.ts` | 新增 route_hit_rate / routed_count / loaded_count / SkillCatalogEntry / SkillHint |
-| `web/src/components/skills/SkillHealthCard.vue` | 路由命中率展示 |
+> 实施进度与状态标记详见 [开发计划](./69-skill-loading-optimization.development.md) §3 与 §7。

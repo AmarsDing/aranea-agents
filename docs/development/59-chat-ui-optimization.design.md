@@ -64,11 +64,11 @@ internal/data/ent/schema/
         ↓
 web/src/
   features/spirit/                    ← 精灵域（api.ts / types.ts / spiritUi.ts / observabilityConstants.ts）
-  features/chat/                      ← Chat 域（types / timelineTypes / useAgentBlocks / useChatTimeline / useTodoBoard 等）
-  composables/chat/                   ← useAutoCollapse / useContextualLoadingMessage / useStatusPulse
+  features/chat/                      ← Chat 域（types / agentTreeTypes / activityTypes / activityTimelineTypes / useActivityTimeline / useTodoBoard 等）
+  features/chat/composables/          ← useContextualLoadingMessage / useStatusPulse / useConversationTimeline 等
   stores/spirit/                      ← useSpiritTeamStore
-  components/spirit/                  ← 精灵专用组件（14+ 个）
-  components/chat/                    ← Chat 面板扩展（TaskBoard / TaskBoardNode / TimelineNode / ChatExecutionCard 等）
+  components/spirit/                  ← 精灵专用组件（17 个）
+  components/chat/                    ← Chat 面板扩展（ConversationTurn / ThinkingBlock / ActionBlock / ReplyBlock / ChatExecutionCard 等）
 ```
 
 **红线**：
@@ -95,11 +95,11 @@ web/src/
 | `internal/event` | 扩展 | spirit_team_assembled 等 15+ 个新 EnvelopeType |
 | `internal/data/ent/schema/team` | 扩展 | spirit_session_id 索引 |
 | `web/src/features/spirit` | 新增 | 类型、API、UI 工具函数、可观测性常量 |
-| `web/src/features/chat` | 新增 | useAgentBlocks / useChatTimeline / useTodoBoard / timelineTypes / agentTreeTypes |
-| `web/src/composables/chat` | 新增 | useAutoCollapse / useContextualLoadingMessage / useStatusPulse |
+| `web/src/features/chat` | 新增 | useActivityTimeline / useTodoBoard / agentTreeTypes / activityTypes / activityTimelineTypes |
+| `web/src/features/chat/composables` | 新增 | useContextualLoadingMessage / useStatusPulse / useConversationTimeline |
 | `web/src/stores/spirit` | 新增 | useSpiritTeamStore |
-| `web/src/components/spirit` | 新增 | 14+ 个新组件 |
-| `web/src/components/chat` | 修改 | ChatEntitySidebar 重构、ChatMessagePanel 三模式 + TaskBoard 树形嵌套 + 可观测性集成 |
+| `web/src/components/spirit` | 新增 | 17 个新组件 |
+| `web/src/components/chat` | 修改 | ChatEntitySidebar 重构、ChatMessagePanel 三模式 + Activity-First 树形嵌套 + 可观测性集成 |
 | `api/kratos/session/v1` | 扩展 | Session Proto 字段 |
 | `api/kratos/team/v1` | 扩展 | Team Proto 字段 |
 
@@ -384,7 +384,7 @@ watch(streamManager.wsReplaying, (replaying, wasReplaying) => {
 
 #### 6.2.1 数据结构
 
-**新增文件**：`web/src/features/chat/timelineTypes.ts`
+**定义文件**：`web/src/features/chat/agentTreeTypes.ts`（TaskBoardNodeKind / NodeStatus / TaskBoardNode）、`web/src/features/chat/activityTypes.ts`（ActivityKind / ActivityStatus / Activity）
 
 ```typescript
 export type TaskBoardNodeKind =
@@ -477,39 +477,47 @@ export interface AgentBlock {
 
 #### 6.2.4 节点构建逻辑
 
-**核心 composable**：`web/src/features/chat/composables/useAgentBlocks.ts`
+**核心 composable**：`web/src/features/chat/composables/useActivityTimeline.ts`（Activity-First 架构，替代原 `useAgentBlocks.ts`）
+
+> **架构演进说明**：原 `useAgentBlocks.ts` 采用 Message-First 模型，需 13 层推理从消息恢复语义。Activity-First 架构（§十四）后，由 `useActivityTimeline.ts` 直接消费 Activity 事件，零推理构建 TaskBoardNode 树。以下代码示例保留原设计意图作为参考。
 
 ```typescript
-export function useAgentBlocks(deps: {
-  messages: ComputedRef<Message[]>
-  plannerKind?: ComputedRef<string>
+// useActivityTimeline.ts（Activity-First 架构）
+export function useActivityTimeline(deps: {
+  activities: ComputedRef<Activity[]>
 }) {
-  const blocks = computed<AgentBlock[]>(() => {
-    const turnBlocks = groupMessagesByTurn(deps.messages.value)
-    return turnBlocks.map((turn) => buildAgentBlock(turn, deps.plannerKind?.value))
-  })
-  return { blocks }
+  const activityTree = computed<Activity[]>(() => buildActivityTree(deps.activities.value))
+  const taskBoardNodes = computed<TaskBoardNode[]>(() => mapActivitiesToNodes(activityTree.value))
+  return { activityTree, taskBoardNodes }
 }
 
-function buildAgentBlock(turn: TurnBlock, plannerKind: string): AgentBlock {
-  // 1. 构建 timeline（不含 progress）
-  // 2. 提取 progressSections（独立字段，渲染在 turn 头部）
-  // 3. 计算 status（含 tool_blocked / tool_running 显式状态）
-  // 4. 计算 hasPartialFailure
-  // 5. 递归构建 childBlocks（从 subagents_spawn tool 提取子 agent session）
-  // 6. collapsed: false（已完成回合默认展开，修复 F-19）
-  return { ... }
-}
+// 原 useAgentBlocks.ts 设计意图（已由 Activity-First 替代）：
+// 1. 构建 timeline（不含 progress）
+// 2. 提取 progressSections（独立字段，渲染在 turn 头部）
+// 3. 计算 status（含 tool_blocked / tool_running 显式状态）
+// 4. 计算 hasPartialFailure
+// 5. 递归构建 childBlocks（从 subagents_spawn tool 提取子 agent session）
+// 6. collapsed: false（已完成回合默认展开，修复 F-19）
 ```
 
 #### 6.2.5 组件结构
 
-**新增文件**：
-- `web/src/components/chat/TaskBoardNode.vue` — 单个节点（task/thinking/action/reply/sub_task_board/end/error）
-- `web/src/components/chat/TaskBoard.vue` — 任务看板壳（递归渲染，支持树形嵌套）
+**Activity-First 组件**（替代原 TaskBoardNode.vue / TaskBoard.vue）：
+- `web/src/components/chat/ConversationTurn.vue` — 单个对话回合（替代原 TurnBlock.vue）
+- `web/src/components/chat/ThinkingBlock.vue` — 思考节点（替代原 ChatReasoningPeek.vue）
+- `web/src/components/chat/ActionBlock.vue` — 工具调用节点（替代原 ToolCallTimeline/ToolCallTimelineItem.vue）
+- `web/src/components/chat/ReplyBlock.vue` — 回复节点
+- `web/src/components/chat/PlanBlock.vue` — 计划节点
+- `web/src/components/chat/NoticeBlock.vue` — 通知节点
+- `web/src/components/chat/ErrorBlock.vue` — 错误节点
+- `web/src/components/chat/ConfirmBlock.vue` — 确认节点
+- `web/src/components/chat/TaskBoardSection.vue` — 任务看板区段
+- `web/src/components/chat/DelegateActivity.vue` — 委派活动节点
+
+> **架构演进说明**：原设计采用 `TaskBoardNode.vue`（单节点）+ `TaskBoard.vue`（递归壳）的双组件结构。Activity-First 架构后，按 ActivityKind 拆分为独立的 Block 组件，由 `ConversationTurn.vue` 统一组装。以下代码示例保留原设计意图作为参考。
 
 ```vue
-<!-- TaskBoardNode.vue -->
+<!-- 原 TaskBoardNode.vue 设计意图（已由 Activity-First Block 组件替代） -->
 <template>
   <div :class="['task-board-node', `task-board-node--${kind}`]">
     <!-- 节点轨道：左侧连接线 + 节点圆点 -->
@@ -581,7 +589,7 @@ function buildAgentBlock(turn: TurnBlock, plannerKind: string): AgentBlock {
 #### 6.2.6 嵌套深度控制
 
 ```vue
-<!-- TaskBoard.vue -->
+<!-- 原 TaskBoard.vue 设计意图（已由 ConversationTurn.vue + Activity-First 替代） -->
 <template>
   <div :class="['task-board', `task-board--depth-${depth}`]">
     <TaskBoardNode
@@ -611,7 +619,9 @@ const MAX_DEPTH = 2
 </script>
 ```
 
-#### 6.2.7 状态机（M69 P4 useAgentBlocks 修复）
+> **Activity-First 实现**：嵌套深度控制现由 `useActivityTimeline.ts` 中的 `buildActivityTree` 函数实现，通过 `Activity.parentActivityId` 构建树形结构，深度受 `MaxSessionDepth=2` 约束。`ConversationTurn.vue` 递归渲染子活动。
+
+#### 6.2.7 状态机（M69 P4 修复，Activity-First 后由 useActivityTimeline 实现）
 
 **`AgentBlockStatus` 状态机**：
 
@@ -842,7 +852,7 @@ export function isStuckTool(event: ToolUseEvent): boolean {
 **采纳方案详细**：
 - 控制位置：`useUiConfigStore`（Pinia），持久化 `localStorage.chat.ui.showToolCalls`
 - 注入：通过 `provide(TOOL_DISPLAY_KEY, { showToolCalls })` 注入到 `ChatMessagePanel`
-- 消费方：`ChatMessageList.vue` / `TurnBlock.vue` / `SpiritStatusBar.vue` 读取后条件渲染
+- 消费方：`ChatMessageList.vue` / `ConversationTurn.vue` / `SpiritStatusBar.vue` 读取后条件渲染
 - 影响范围：仅前端渲染层，后端 Envelope 协议零修改
 
 ### 6.6 工具显示开关（TK-04）
@@ -1046,17 +1056,17 @@ async function onCopy() {
 </style>
 ```
 
-#### 6.7.4 MarkdownView 集成
+#### 6.7.4 Markdown 集成
 
 ```typescript
-// web/src/components/chat/MarkdownView.vue
-import CodeBlock from './CodeBlock.vue'
+// web/src/features/chat/chatMessageMarkdown.ts（Markdown 渲染工具，替代原 MarkdownView.vue 设计）
+import CodeBlock from '../../components/chat/CodeBlock.vue'
 
 // ~~方案 A（已否决）：markdown-it renderer override~~
 // 问题：v-html 渲染后无法挂载 Vue 组件，只能做静态高亮
 
 // 方案 B（采纳）：自定义组件渲染
-// 在 MarkdownView 的 render 函数中，识别 <pre><code class="language-xxx"> 后
+// 在 Markdown 渲染流程中，识别 <pre><code class="language-xxx"> 后
 // 挂载 <CodeBlock> 组件替代默认的 <pre><code> 渲染
 ```
 
@@ -1167,7 +1177,7 @@ import CodeBlock from './CodeBlock.vue'
 #### 6.8.3 完成态折叠
 
 ```vue
-<!-- TaskBoardNode.vue - kind === 'thinking' 完成态 -->
+<!-- ThinkingBlock.vue - kind === 'thinking' 完成态（原 TaskBoardNode.vue 设计意图） -->
 <template>
   <div v-else class="thinking-node thinking-node--collapsed" @click="toggle">
     <span class="thinking-node__icon">🧠</span>
@@ -1240,13 +1250,14 @@ web/src/features/spirit/
 
 web/src/features/chat/
   types.ts                    ← ChatMessage / ToolUseEvent / EXECUTION_COLLAPSE_CONTROL_KEY / TOOL_DISPLAY_KEY
-  timelineTypes.ts            ← TaskBoardNode / TaskBoardNodeKind / NodeStatus
-  agentTreeTypes.ts           ← AgentBlock / AgentBlockStatus / PlanEntry / ProgressSection
+  agentTreeTypes.ts           ← AgentBlock / AgentBlockStatus / PlanEntry / ProgressSection / TaskBoardNodeKind / NodeStatus / TaskBoardNode
+  activityTypes.ts            ← ActivityKind / ActivityStatus / Activity（Activity-First 架构）
+  activityTimelineTypes.ts    ← ConversationTurn / AgentWorkProcess / TeamPanel（Activity-First 消费层）
+  chatMessageMarkdown.ts      ← Markdown 渲染（替代原 MarkdownView.vue）
   composables/
-    useAgentBlocks.ts         ← 任务看板树形构建（M69 P4 修复）
-    useChatTimeline.ts        ← 时间线计算属性
+    useActivityTimeline.ts    ← Activity-First 树形构建（替代原 useAgentBlocks.ts）
+    useConversationTimeline.ts ← 时间线计算属性（替代原 useChatTimeline.ts）
     useTodoBoard.ts           ← TODO 看板域内 composable
-    useToolCallTimeline.ts    ← 工具时间线排序 + 折叠态共享
   lib/
     isStuckTool.ts            ← error_code === 'tool_timeout' 判断
     executionCardHelpers.ts   ← ChatExecutionCard 折叠控制 signal + 5s 计时器
@@ -1256,10 +1267,10 @@ web/src/stores/
   spirit/index.ts             ← useSpiritTeamStore
   uiConfig/index.ts           ← useUiConfigStore（TK-04 工具显示开关）
 
-web/src/composables/chat/
-  useAutoCollapse.ts          ← OBS-01 自动折叠
+web/src/features/chat/composables/
   useContextualLoadingMessage.ts ← OBS-02 语境加载消息
   useStatusPulse.ts           ← OBS-05 侧边栏脉冲
+  useChatEntityCollapse.ts    ← OBS-01 自动折叠（替代原 useAutoCollapse.ts）
 
 web/src/components/spirit/
   SpiritEntry.vue             ← 精灵入口卡片
@@ -1268,7 +1279,7 @@ web/src/components/spirit/
   TeamTaskCard.vue            ← 团队任务卡片
   TeamProgressCard.vue        ← 团队进度卡片
   TeamAssemblyCard.vue        ← 团队组建卡片
-  TaskExecutionPanel.vue      ← 任务执行面板（集成所有子组件 + TaskBoard）
+  TaskExecutionPanel.vue      ← 任务执行面板（集成所有子组件 + Activity-First 树）
   ParallelTeamOverview.vue    ← 并行团队概览
   DAGDiagramCard.vue          ← DAG 依赖图
   SynthesisResultCard.vue     ← 综合结果卡片
@@ -1281,20 +1292,25 @@ web/src/components/spirit/
   ToolStuckBadge.vue          ← stuck 工具徽章
 
 web/src/components/chat/
-  ChatExecutionCard.vue       ← 工具执行卡片（增强折叠 + 5s 计时）
-  ChatMessagePanel.vue        ← 三模式 + SpiritStatusBar + 语境加载消息 + TaskBoard
+  ChatExecutionCard.vue       ← 工具执行卡片（增强折叠 + 5s 计时 + autoCollapse prop）
+  ChatMessagePanel.vue        ← 三模式 + SpiritStatusBar + 语境加载消息 + Activity-First 树
   ChatEntitySidebar.vue       ← 精灵模式重构 + useStatusPulse
-  ChatMessageList.vue         ← 集成 TaskBoard 树形嵌套渲染
-  TurnBlock.vue               ← 渲染 Agent Block Header（含 hasPartialFailure 徽章）
-  ChatReasoningPeek.vue       ← 思考预览（脉冲+光标闪烁）
-  TaskBoard.vue               ← 任务看板壳（递归渲染）— 新增
-  TaskBoardNode.vue           ← 任务看板单个节点 — 新增
+  ChatMessageList.vue         ← 集成 Activity-First 树形嵌套渲染
+  ConversationTurn.vue        ← 对话回合（替代原 TurnBlock.vue，含 hasPartialFailure 徽章）
+  ThinkingBlock.vue           ← 思考节点（替代原 ChatReasoningPeek.vue，脉冲+光标闪烁）
+  ActionBlock.vue             ← 工具调用节点（替代原 ToolCallTimeline/ToolCallTimelineItem.vue）
+  ReplyBlock.vue              ← 回复节点
+  PlanBlock.vue               ← 计划节点
+  NoticeBlock.vue             ← 通知节点
+  ErrorBlock.vue              ← 错误节点
+  ConfirmBlock.vue            ← 确认节点
+  TaskBoardSection.vue        ← 任务看板区段（替代原 TaskBoard.vue）
+  DelegateActivity.vue        ← 委派活动节点
   TodoKanbanBoard.vue         ← TODO 三列任务看板
   TodoColumn.vue              ← TODO 单列
   TodoCard.vue                ← TODO 单卡
-  ToolCallTimeline.vue        ← 工具调用纵向时间线
-  ToolCallTimelineItem.vue    ← 时间线单个节点
   CodeBlock.vue               ← 代码块自动识别 + 高亮 + 复制 + 折叠（TK-05）
+  UiConfigToggle.vue          ← 工具显示开关（TK-04）
 ```
 
 ### 7.2 Store 设计
@@ -1420,8 +1436,9 @@ message SpiritTeamView {
 
 ## 九、D5: useAgentBlocks 业务逻辑修复设计（2026-06-10）
 
-> **触发**：用户报告 CHAT UI 最终回复重复展示 → 静态代码审查 `useAgentBlocks.ts`
-> **范围**：M59/M69 整合后时间线展示层（`web/src/features/chat/composables/useAgentBlocks.ts`）
+> **触发**：用户报告 CHAT UI 最终回复重复展示 → 静态代码审查原 `useAgentBlocks.ts`
+> **范围**：M59/M69 整合后时间线展示层（原 `web/src/features/chat/composables/useAgentBlocks.ts`）
+> **架构演进说明**：原 `useAgentBlocks.ts` 已由 Activity-First 架构的 `useActivityTimeline.ts` 替代（§十四）。以下设计保留原修复意图作为参考，对应的状态机逻辑已迁移到 Activity-First 消费层。
 
 ### 9.1 D5.1 修复 SubAgentBuilder 状态机（AC-17、AC-18）
 
@@ -1480,7 +1497,7 @@ export type AgentBlockStatus =
   | 'cancelled'
 ```
 
-**UI 联动**：`ChatExecutionCard.vue` 与 `TurnBlock.vue` 渲染 `tool_blocked` 时显示"🟡 等待您的输入"徽章。
+**UI 联动**：`ChatExecutionCard.vue` 与 `ConversationTurn.vue` 渲染 `tool_blocked` 时显示"🟡 等待您的输入"徽章。
 
 ### 9.2 D5.2 修复 PlanCard 状态机（AC-19）
 
@@ -1574,7 +1591,7 @@ const hasSuccessfulResult = assistant?.content_markdown?.trim() || assistant?.re
 const hasPartialFailure = hasFailedTool && !!hasSuccessfulResult;
 ```
 
-**UI 联动**：`TurnBlock.vue` 渲染 `hasPartialFailure === true` 时显示"⚠️ 部分工具失败"徽章。
+**UI 联动**：`ConversationTurn.vue` 渲染 `hasPartialFailure === true` 时显示"⚠️ 部分工具失败"徽章。
 
 ### 9.8 D5.8 progress section 移到 turn 头部（AC-25）
 
@@ -1614,66 +1631,38 @@ ChatMessageList
 |----|-------------|---------|
 | `AgentBlock.result` 降级为兼容字段 | ✅ | — |
 | `SynthesisResultCard` 去重（与 timeline reply 互斥） | — | ❌ M59 拥有 |
-| `TaskBoardNode.vue` 渲染 hasPartialFailure / tool_blocked 徽章 | ✅ | — |
+| `ConversationTurn.vue` / Block 组件渲染 hasPartialFailure / tool_blocked 徽章 | ✅ | — |
 | 合成卡片 UI 调整 | — | ❌ M59 拥有 |
 
 ---
 
 ## 十、第五轮审查修复记录（M69 useAgentBlocks）
 
-> **日期**：2026-06-10 | **触发**：用户反馈 CHAT UI 最终回复重复 → 静态代码审查
+> **文档边界说明**：本节原包含 F-13~F-21 问题清单（含根因、修复方案、影响文件），属于开发进度/修复记录，已迁移至开发计划文档。
 
-| ID | 问题 | 根因 | 修复 | 影响文件 |
-|----|------|------|------|----------|
-| F-13 | 子代理工具未完成时状态被误判为 `completed` | `SubAgentBuilder.addTool` 未维护 `allToolMsgs` | `addTool(msg, toolEv)` 签名扩展 | `useAgentBlocks.ts` |
-| F-14 | `tool_blocked` 状态被合并入 `running` | `computeAgentStatus` 仅识别 `running/streaming` | 状态机扩展 `tool_blocked` | `useAgentBlocks.ts` + `agentTreeTypes.ts` + `ChatExecutionCard.vue` |
-| F-15 | `subagents_spawn` 路径下 PlanCard 永远停在"规划中" | `resolvePlanStatus` 漏 `running` 转换分支 | 补 `(planning && running && planEntries > 0)` → `'executing'` | `useAgentBlocks.ts` |
-| F-16 | progress 卡片可能插到 user 消息之前 | `sortKey = offset - 0.5` 时钟漂移为负 | 钳制 `Math.max(0, offset) - 0.5` | `useAgentBlocks.ts` |
-| F-17 | ReAct 模式下 reply 与最后 thinking 内容重复 | reply 去重仅在非 ReAct 模式生效 | 改为基于 `presentation.mode` 条件去重 | `useAgentBlocks.ts` |
-| F-18 | 多子代理相似任务时 PlanCard 状态错配 | 匹配用 `agentName || task` | 改用 `agentKey` 强键 | `useAgentBlocks.ts` + `agentTreeTypes.ts` |
-| F-19 | 已完成回合默认折叠，最终答案不可达 | `collapsed: status === 'completed'` | 改为 `collapsed: false` | `useAgentBlocks.ts` |
-| F-20 | 部分工具失败被掩盖为 `completed` | 无信号输出 | AgentBlock 新增 `hasPartialFailure` 字段 | `useAgentBlocks.ts` + `agentTreeTypes.ts` + `TurnBlock.vue` |
-| F-21 | progress section 与 timeline 主线混排 | progress 走 `timeline.sort()` 插入任意位置 | 拆出 `progressSections` 独立字段 | `useAgentBlocks.ts` + `agentTreeTypes.ts` + `ChatMessageList.vue` |
+> 详见 [59-chat-ui-optimization.development.md §8](./59-chat-ui-optimization.development.md#8-审查修复记录)（2026-06-11 v7 原型对齐审查修复记录 V7-R01~V7-R09，覆盖 F-13~F-21 完整修复详情）
 
 ---
 
 ## 十一、UI 原型对齐优化（M69 P3）
 
-| ID | 优化 | 文件 |
-|----|------|------|
-| T-15 | TurnBlock 添加 Agent Block Header（头像+名称+状态徽章+耗时+子任务数） | `TurnBlock.vue` |
-| T-16 | ChatExecutionCard 添加 agent 首字头像 | `ChatExecutionCard.vue` |
-| T-17 | 运行中耗时添加 `...` 后缀 | `ChatExecutionCard.vue` |
-| T-18 | ChatReasoningPeek 添加脉冲圆点和光标闪烁指示器 | `ChatReasoningPeek.vue` |
-| T-19 | ChatExecutionCard running 状态添加脉冲圆点 | `ChatExecutionCard.vue` |
-| T-20 | 全局展开/折叠按钮始终可见 | `ChatMessagePanel.vue` |
-| T-21 | Sub-Agent 嵌套缩进（左边框线+缩进） | `TurnBlock.vue` |
-| T-22 | 执行结果区段标签 | `TurnBlock.vue` |
+> **文档边界说明**：本节原包含 T-15~T-22 UI 优化任务清单（含文件路径），属于开发任务清单，已迁移至开发计划文档。
+
+> 详见 [59-chat-ui-optimization.development.md §8](./59-chat-ui-optimization.development.md#8-审查修复记录)（UI 原型对齐优化 T-15~T-22 任务清单与状态）
 
 ---
 
 ## 十二、测试策略
 
-| 层 | 文件 | 覆盖 | 阶段 |
-|----|------|------|------|
-| Biz | `session_tree_test.go` | Session 树查询、深度限制 | P0 |
-| Biz | `team_spirit_test.go` | AutoCreated Team 创建、SpiritSessionID 关联 | P0 |
-| Biz | `spirit_team_usecase_test.go` | AssembleTeam / CancelTeam / AutoArchive / DAG 拓扑路由 | P0 |
-| Biz | `task_planner_test.go` | Plan 阶段逻辑 | P0.5 |
-| Biz | `agent_allocator_test.go` | Allocate 阶段逻辑 | P0.5 |
-| Biz | `task_orchestrator_test.go` | Orchestrate 阶段逻辑 | P0.5 |
-| Biz | `spirit_parallel_config_test.go` | ParallelConfig 默认值、校验 | P1 |
-| Biz | `spirit_task_dag_test.go` | DAG 校验、环检测、拓扑路由 | P2 |
-| Biz | `spirit_synthesis_test.go` | 合成策略（模板/LLM/混合） | P2 |
-| Biz | `orchestration_cache_test.go` | 缓存命中、DQ Score 阈值 | P2 |
-| Service | `spirit_team_test.go` | AssembleTeam 流程、Envelope 发射 | P0 |
-| Service | `team_turn_hooks_test.go` | Team Turn 完成回调 | P0 |
-| 前端 | `useSpiritTeamStore.spec.ts` | 团队列表加载、面板切换、事件处理 | P0 |
-| 前端 | `TaskExecutionPanel.spec.ts` | 三区布局、WS 实时更新 | P0 |
-| 前端 | `useAgentBlocks.test.ts` | 8 项业务逻辑修复（F-13~F-21） | M69 P4 |
-| 前端 | `TaskBoardNode.spec.ts` | 树形嵌套渲染 | M69 P1 |
+> **文档边界说明**：本节描述测试分层策略（设计层面）。具体测试文件清单与阶段标记已迁移至开发计划文档。
 
-E2E：SP-E2E-01（精灵对话 → 组建团队 → 查看执行面板 → 下钻子 agent 子任务看板 → 返回精灵）。
+**分层策略**：
+- **Biz 层**：Session 树查询、Team 创建、三阶段编排（Plan/Allocate/Orchestrate）、ParallelConfig、TaskDAG、Synthesis、Orchestration Cache
+- **Service 层**：AssembleTeam 流程、Envelope 发射、Team Turn 完成回调
+- **前端**：Store 状态管理、面板布局、WS 实时更新、Activity-First 消费（useActivityTimeline）、树形嵌套渲染
+- **E2E**：SP-E2E-01（精灵对话 → 组建团队 → 查看执行面板 → 下钻子 agent 子任务看板 → 返回精灵）
+
+> 详见 [59-chat-ui-optimization.development.md §8](./59-chat-ui-optimization.development.md#8-审查修复记录)（测试文件清单与阶段标记）
 
 ---
 
@@ -1960,16 +1949,14 @@ function activityToTaskBoardNode(activity: Activity): TaskBoardNode {
 
 #### 14.5.3 与 M59 组件集成
 
-| M59 组件 | 数据源变更 | 说明 |
+| M59 组件（Activity-First 后） | 数据源变更 | 说明 |
 |---------|----------|------|
-| `TaskBoard.vue` | `useAgentBlocks.blocks` → `useActivityTimeline.taskBoardNodes` | 直接消费 Activity 树 |
-| `ThinkingArea.vue` | `ChatReasoningPeek` → `Activity(kind=thinking)` | 流式态从 `activity_delta` 获取 |
+| `ConversationTurn.vue`（原 TaskBoard.vue/TurnBlock.vue） | `useActivityTimeline.taskBoardNodes` | 直接消费 Activity 树 |
+| `ThinkingArea.vue` / `ThinkingBlock.vue`（原 ChatReasoningPeek.vue） | `Activity(kind=thinking)` | 流式态从 `activity_delta` 获取 |
 | `UnifiedExecutionPanel.vue` | 多 Store 拼装 → Activity 树过滤 | delegate/sub_task_board 过滤 |
-| `ChatExecutionCard.vue` | `ToolUseEvent` → `Activity(kind=action)` | 直接消费 |
-| `TurnBlock.vue` | `AgentBlock` → Activity 树根节点 | 简化 |
+| `ChatExecutionCard.vue` / `ActionBlock.vue`（原 ToolCallTimeline.vue） | `Activity(kind=action)` | 直接消费 |
 | `SpiritStatusBar.vue` | 多 computed 拼装 → Activity 聚合 | 简化 |
 | `TodoKanbanBoard.vue` | `useTodoBoard` → `Activity(kind=action, toolName=todo_write)` | 特殊处理 |
-| `ToolCallTimeline.vue` | `ToolUseEvent[]` → `Activity(kind=action)[]` | 直接消费 |
 
 #### 14.5.4 Store 集成
 

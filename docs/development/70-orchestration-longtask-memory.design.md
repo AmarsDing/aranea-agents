@@ -108,41 +108,54 @@ ALTER TABLE graph_executions ADD CONSTRAINT fk_graph_executions_definition
   FOREIGN KEY (graph_definition_id) REFERENCES graph_definitions(id) ON DELETE CASCADE;
 ```
 
-### 2.4 事务超时改造
+### 2.4 事务超时改造（✅ Phase 0 已实现）
 
 ```go
-// internal/data/tx.go 改造
+// internal/data/tx.go 改造（已实现）
 // 去掉 30s 硬超时，改为可配置
 detached, detachedCancel := context.WithTimeout(
     context.Background(),
-    d.txTimeout(), // 从配置读取，默认 60s
+    d.TxTimeout(), // 从配置读取，默认 30s；SetTxTimeout(0) 禁用
 )
 ```
 
-### 2.5 错误翻译适配
+**实现细节**：
+- `Data` struct 新增 `txTimeout time.Duration` 字段
+- `TxTimeout()` 方法返回当前超时配置
+- `SetTxTimeout(d)` 支持运行时调整（如长运行 Postgres 操作可设为 0 禁用）
+- 默认值 30s 保持向后兼容
+
+### 2.5 错误翻译适配（✅ Phase 0 已实现）
 
 ```go
-// internal/data/ent_err.go 扩展
+// internal/data/errors.go 扩展（已实现）
 func entErrToBizErr(err error, domain string) error {
     // ... 现有 SQLite 错误码处理 ...
 
-    // 新增 Postgres 错误码
-    var pgErr *pgconn.PgError
+    // 新增 Postgres 错误码（使用 errors.As 支持包装错误）
+    var pgErr *pq.Error
     if errors.As(err, &pgErr) {
-        switch pgErr.Code {
-        case "23505": // unique_violation
-            return apierror.NewConflict(domain, pgErr.Detail)
-        case "23503": // foreign_key_violation
-            return apierror.NewBadRequest(domain, pgErr.Detail)
-        case "23502": // not_null_violation
-            return apierror.NewBadRequest(domain, pgErr.Detail)
-        case "40001": // serialization_failure
+        switch pgErr.Code.Name() {
+        case "unique_violation":          // 23505
+            return apierror.NewConflict(domain, pgErr.Message)
+        case "foreign_key_violation":     // 23503
+            return apierror.NewBadRequest(domain, pgErr.Message)
+        case "not_null_violation":        // 23502
+            return apierror.NewBadRequest(domain, pgErr.Message)
+        case "check_violation":           // 23514
+            return apierror.NewBadRequest(domain, pgErr.Message)
+        case "serialization_failure":     // 40001
             return apierror.NewConflict(domain, "concurrent modification")
         }
     }
     // ...
 }
 ```
+
+**实现细节**：
+- 使用 `github.com/lib/pq` 驱动（非 `pgconn.PgError`），通过 `pgErr.Code.Name()` 获取 SQLSTATE 名称
+- 类型断言改为 `errors.As(err, &pgErr)` 支持被 `fmt.Errorf("%w", err)` 包装的错误链遍历
+- `isPostgresAlreadyExistsErr`（data.go）同样改用 `errors.As`，处理 SQLSTATE 42P07/42710/42701（duplicate_table/duplicate_object/duplicate_column）
 
 ---
 
@@ -299,18 +312,26 @@ func (o *ChatOrchestrator) prePlanningGate(ctx, input) (Strategy, error) {
 }
 ```
 
-### 4.2 Intent Pass 默认开启
+### 4.2 Intent Pass 默认开启（✅ P1-1 已实现）
 
 ```go
-// internal/agent/intent/pass.go 改造
-func (p *Pass) PassEffective(ag *biz.Agent, content string) bool {
-    // 改为默认开启
-    if ag.IntentPassEnabled != nil {
-        return *ag.IntentPassEnabled // 仍可通过 agent setting 关闭
+// internal/agent/intent/pass.go 改造（已实现）
+func IntentPassFromAgent(ag biz.Agent) bool {
+    if ag.Settings != nil {
+        return ag.Settings.IntentPassEnabled // 显式设置仍可关闭
     }
     return true // 默认开启（原来是默认 false）
 }
 ```
+
+**实现差异说明**：
+- 设计稿原用 `*bool` 指针区分"未设置"与"显式 false"，实际代码 `IntentPassEnabled` 为 plain bool
+- 采用双层默认 ON 策略替代指针语义：
+  1. `IntentPassFromAgent`：`ag.Settings == nil`（无 settings 整体）→ 返回 `true`
+  2. `DefaultAgentRuntimeSettings()`：`IntentPassEnabled: true`（新 Agent 默认 ON）
+- 显式 `IntentPassEnabled=false` 仍被尊重（agent setting 可关闭）
+- A2A Proxy Agent 在 `agent_usecase.go:411` 显式覆盖为 `false`，不受影响
+- 现有 DB 中已持久化 `false` 的 Agent 保持 OFF（不追溯变更，避免改变现有行为契约）
 
 ### 4.3 规划时间线事件
 
@@ -1003,3 +1024,245 @@ const (
 | Metrics | Prometheus | 已在用 |
 | 记忆衰减 | Ebbinghaus 曲线 | 论文验证，OBLIVION 2026 |
 | 记忆冲突 | Bi-temporal model | Zep/Graphiti 验证 |
+
+---
+
+## 十四、Phase 0 实现细节（✅ 已完成）
+
+> Phase 0 聚焦 P0 阻断修复 + Postgres Phase 1 迁移，为后续 Phase 1-3 奠定基础。本章节记录 Phase 0 的实际设计与实现，作为后续 Phase 的参考基线。
+
+### 14.1 P0-1：WBPF 语义修复（AS-EVT-01）
+
+**问题**：原 `event.Infra.Publish` 对 Critical 事件 WAL 写入失败时仍发布事件，违反 AS-EVT-01 "Critical 事件 WBPF + 重试" 要求。
+
+**设计**：区分 pre-publish 与 post-publish 失败语义：
+
+```
+Critical 事件发布流程：
+  1. serialize envelope
+  2. WAL.Insert(envelope)         ← pre-publish 阶段
+  3. publishToBuses(envelope)     ← 发布阶段
+  4. WAL.markPublished(envelopeID) ← post-publish 阶段
+```
+
+**失败处理矩阵**：
+
+| 失败阶段 | 行为 | 日志级别 | 日志消息 | 事件可见性 |
+|---------|------|---------|---------|-----------|
+| pre-publish（serialize/insert） | 不发布事件 | Error | "WAL insert failed, event dropped" | 不可见（正确） |
+| post-publish（markPublished） | 事件已发布，仅记录 | Warn | "event published but markPublished failed, may republish on restart" | 可见（可能重复） |
+
+**实现要点**：
+- `contract.IsCriticalWBPFType(envelope.Type)` 判定 Critical 事件
+- 非 Critical 事件直接走 `publishToBuses`，无 WAL 开销
+- WAL 失败不阻塞非 Critical 事件路径
+
+**改动文件**：`internal/event/infra.go`
+
+### 14.2 P0-2：GraphExecution 状态机（AS-FSM-01）
+
+**问题**：GraphExecution 状态变更通过 `exec.Status =` 直接赋值，绕过状态机校验，违反 AS-FSM-01 ">3 状态实体必须定义显式状态机" 要求。
+
+**设计**：定义 5 状态 + 7 转换的显式状态机，采用 authoritative 模式（非法转换拒绝并保留原状态）。
+
+**状态枚举**：
+
+```go
+const (
+    GraphExecStateRunning        GraphExecutionState = "running"
+    GraphExecStateCompleted      GraphExecutionState = "completed"
+    GraphExecStateFailed         GraphExecutionState = "failed"
+    GraphExecStateCancelled      GraphExecutionState = "cancelled"
+    GraphExecStateWaitingHuman   GraphExecutionState = "waiting_human"
+)
+```
+
+**转换规则表**（7 条）：
+
+| From | Event | To | 场景 |
+|------|-------|----|------|
+| Running | complete | Completed | 正常完成 |
+| Running | fail | Failed | 执行失败 |
+| Running | cancel | Cancelled | 用户取消 |
+| Running | pause | WaitingHuman | HITL 暂停 |
+| WaitingHuman | resume | Running | HITL 恢复 |
+| WaitingHuman | cancel | Cancelled | HITL 期间取消 |
+| WaitingHuman | fail | Failed | HITL 期间节点错误（新增） |
+
+**接口设计**：
+
+```go
+// internal/biz/graph_execution_state_machine.go
+type GraphExecutionStateMachine interface {
+    Transition(from GraphExecutionState, event GraphExecEvent) (GraphExecutionState, error)
+    CanTransition(from GraphExecutionState, event GraphExecEvent) bool
+}
+
+// internal/biz/graph_execution_usecase.go
+func (uc *GraphExecutionUsecase) applyExecTransition(
+    ctx context.Context,
+    exec *GraphExecution,
+    event GraphExecEvent,
+) error {
+    // authoritative 模式：非法转换拒绝并保留原状态
+    newState, err := uc.sm.Transition(ParseGraphExecutionState(exec.Status), event)
+    if err != nil {
+        return err
+    }
+    exec.Status = string(newState)
+    return nil
+}
+```
+
+**集成点**：
+- 所有 `exec.Status =` 直接赋值改为 `applyExecTransition(ctx, exec, event)`
+- `ResumeExecution` 复用 `uc.sm` 而非创建新实例
+- `team_graph_run_coordinator.go` 的 `CanTransition` 调用已校验，fallback 路径注释更新
+
+**测试覆盖**（6 个用例）：
+- 合法转换：Running→Completed/Failed/Cancelled/WaitingHuman
+- 非法转换：Completed→Running 被拒绝，状态保留
+- 终态无出口：Completed/Failed/Cancelled 无后续转换
+- HITL 转换：WaitingHuman→Running/Cancelled/Failed
+
+**改动文件**：
+- `internal/biz/graph_execution_state_machine.go`（新增）
+- `internal/biz/graph_execution_usecase.go`（新增 `applyExecTransition`）
+- `internal/biz/graph_execution_usecase_fsm_test.go`（新增，6 测试）
+- `internal/team/team_graph_run_coordinator.go`（fallback 注释更新）
+
+### 14.3 P0-3：Postgres Phase 1 迁移
+
+**目标**：将 WAL/EventStore/Checkpoint 关键表迁移到 Postgres 原生 schema，突破 SQLite 单写瓶颈。
+
+**架构设计**：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    EventWAL 双后端选择                        │
+│                                                             │
+│  NewEventWAL(pgDB, sqliteDB)                                │
+│       │                                                     │
+│       ├─ pgDB != nil → PostgresWALStorage（Phase 1 优先）    │
+│       │                                                     │
+│       └─ pgDB == nil → SQLiteWALStorage（回退）              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**PostgresWALStorage 设计**：
+
+```go
+// internal/event/postgres_wal_storage.go
+type PostgresWALStorage struct {
+    db *sql.DB // Postgres 连接
+}
+
+// Insert 使用 ON CONFLICT DO NOTHING 实现幂等
+// markPublished 使用 UPDATE ... WHERE published = false
+// LoadPending 使用 SELECT ... WHERE published = false ORDER BY created_at
+// 使用 TIMESTAMPTZ（非 TIMESTAMP）+ $N 占位符（非 ?）
+```
+
+**Wire DI 类型歧义解决**：
+
+```go
+// cmd/admin/wire.go
+// 问题：*sql.DB 在 Data 中有多个实例（entClient/rawDB/pg），Wire 无法区分
+// 解决：provideEventWAL 从 *data.Data 提取双 DB 句柄
+func provideEventWAL(d *data.Data) (*EventWAL, func(), error) {
+    sqliteDB := d.RawDBHandle()       // SQLite 回退
+    pgDB := d.PostgresHandle()        // Postgres 优先（可能为 nil）
+    return NewEventWAL(pgDB, sqliteDB)
+}
+```
+
+**幂等迁移设计**：
+
+```sql
+-- internal/data/sql/migrations/20260617_postgres_phase1.sql
+-- 整个 SQL 作为单个 ExecContext 执行（DO $$ 块含分号不能用 splitDDLStatements）
+
+DO $$ BEGIN
+    CREATE TABLE event_wal (...);        -- SQLSTATE 42P07 已存在则跳过
+EXCEPTION WHEN duplicate_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE UNIQUE INDEX idx_session_run_active ON session_runs (...);
+EXCEPTION WHEN duplicate_table THEN NULL;
+END $$;
+
+-- INV-UNIQ-01/02 + INV-REF-01/02/03 全部用 DO $$ 块包裹
+```
+
+**SQLSTATE 错误处理**：
+
+| SQLSTATE | 名称 | 处理 |
+|----------|------|------|
+| 42P07 | duplicate_table | 迁移幂等，跳过 |
+| 42710 | duplicate_object | 迁移幂等，跳过 |
+| 42701 | duplicate_column | 迁移幂等，跳过 |
+| 23505 | unique_violation | 翻译为 Conflict |
+| 23503 | foreign_key_violation | 翻译为 BadRequest |
+| 23502 | not_null_violation | 翻译为 BadRequest |
+| 23514 | check_violation | 翻译为 BadRequest |
+| 40001 | serialization_failure | 翻译为 Conflict |
+
+**改动文件**：
+- `internal/data/data.go`（`ensurePostgresPhase1Schema` + `isPostgresAlreadyExistsErr`）
+- `internal/data/tx.go`（可配置 `TxTimeout()`）
+- `internal/data/errors.go`（Postgres SQLSTATE 翻译）
+- `internal/event/wal.go`（双 DB 签名）
+- `internal/event/postgres_wal_storage.go`（新增）
+- `internal/event/infra.go`（`ProvideEventWAL` 双 DB 签名）
+- `cmd/admin/wire.go`（`provideEventWAL` 桥接）
+- `internal/data/errors_postgres_test.go`（新增，5 测试）
+- `internal/data/sql/migrations/20260617_postgres_phase1.sql`（新增）
+
+### 14.4 P0-4：DB-R5 错误翻译修复
+
+**问题**：多个 Repo 文件中 `return err` 直接返回 Ent/Raw SQL 错误，违反 DB-R5 "禁止 Repo 方法直接返回 Ent 错误" 要求。
+
+**设计**：所有 DB 错误必须经 `entErrToBizErr(err, domain)` 翻译为 `apierror.Error`。
+
+**翻译策略**：
+
+| 错误来源 | 处理方式 |
+|---------|---------|
+| Ent 操作（Create/Update/Delete/Query） | `entErrToBizErr(err, "DOMAIN")` |
+| Raw SQL 操作（ExecContext/QueryContext） | `entErrToBizErr(err, "DOMAIN")` |
+| 同文件函数调用 | pass-through（`entErrToBizErr` 对 `apierror.Error` 透传，避免双重包装） |
+| 非 DB 错误（json.Unmarshal 等） | 不翻译，直接返回 |
+| 跨 Repo 调用返回的错误 | 必须翻译（如 `metricsWriter.ApplyMetricsDelta()` 返回的错误） |
+
+**Domain 命名规范**：使用大写下划线格式，如 `SESSION`、`SESSION_RUN`、`SESSION_METRICS`、`AGENT`、`TOOL`、`MONITOR`、`MEMORY_L1`、`MODEL_REGISTRY`、`AGENT_PERFORMANCE`、`BORROW_REQUEST`。
+
+**审查发现的根因问题**：
+- `session_repo.go` 3 处 `metricsWriter.ApplyMetricsDelta()` 跨 Repo 调用返回未翻译错误
+- `session_metrics_repo.go` 根因 3 处 `return err` 未翻译（`UpsertSessionMetrics`/`GetSessionMetrics`/`ListSessionMetricsByIDs`）
+
+**改动文件**（10 个）：
+- `internal/data/session_run_repo.go`（19 处，SESSION_RUN）
+- `internal/data/session_repo.go`（27 处 + 审查修复 3 处，SESSION）
+- `internal/data/session_metrics_repo.go`（审查修复 3 处，SESSION_METRICS）
+- `internal/data/agent_repo.go`（21 处，AGENT）
+- `internal/data/borrow_request_repo.go`（7 处，BORROW_REQUEST）
+- `internal/data/tool.go`（34 处，TOOL）
+- `internal/data/monitor.go`（25 处，MONITOR）
+- `internal/data/memory_shim_l1.go`（16 处，MEMORY_L1）
+- `internal/data/model_registry_apply.go`（多处，MODEL_REGISTRY）
+- `internal/data/agent_performance_repo.go`（2 处，AGENT_PERFORMANCE）
+
+### 14.5 Phase 0 验收总结
+
+| 任务 | 状态 | 验收要点 |
+|------|------|---------|
+| P0-1 WBPF 语义修复 | ✅ | pre-publish 失败不发布；post-publish 失败仅 Warn |
+| P0-2 状态机集成 | ✅ | 5 状态 + 7 转换；authoritative 模式；6 测试通过 |
+| P0-3 Postgres Phase 1 | ✅ | 双后端 WAL；DO $$ 幂等；可配置超时；5 错误翻译测试 |
+| P0-4 DB-R5 错误翻译 | ✅ | 10 文件修复；errors.As 支持包装错误；审查根因修复 |
+
+**构建验证**：
+- `go build ./...` 通过
+- `go vet ./internal/data/ ./internal/event/ ./internal/biz/` 通过
+- 相关单元测试通过（预存失败除外）

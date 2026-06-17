@@ -64,6 +64,8 @@ web/src/features/organization/                   ← 原 industries/
 
 ### 2.1 Organization（原 IndustryTaxonomy）
 
+> **代码锚点**：`internal/data/ent/schema/organization.go`
+
 **表名变更**：`industry_taxonomy` → `organizations`
 
 **字段变更**：
@@ -71,38 +73,36 @@ web/src/features/organization/                   ← 原 industries/
 | 字段 | 变更 | 说明 |
 |------|------|------|
 | `level` | 值变更 | `"industry"` → `"company"`，`"department"` / `"position"` 不变 |
-| `dept_lead_agent_id` | **新增** | string, 可空，仅 department 级节点使用 |
+| `dept_lead_agent_id` | **新增** | string, Default(""), 仅 department 级节点使用 |
 | `dept_lead_config_json` | **新增** | text, 默认 `"{}"`，部门主管配置覆盖 |
 
-**Ent Schema 关键定义**：
+**Ent Schema 关键定义**（与代码一致）：
 
 ```go
 // internal/data/ent/schema/organization.go
 func (Organization) Fields() []ent.Field {
     return []ent.Field{
-        field.String("id").MaxLen(256),
-        field.String("org_key").MaxLen(512).Unique(),    // 原 taxonomy_key
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("org_key").Unique().MaxLen(512),    // renamed from taxonomy_key
         field.String("name").MaxLen(1024),
-        field.Text("description").Optional(),
+        field.Text("description").Default(""),
         field.String("status").Default("active"),
         field.Bool("enabled").Default(true),
         field.Int("sort_order").Default(0),
         field.String("parent_id").Default(""),            // 自引用，树形结构
-        field.String("level").                           // "company" | "department" | "position"
-            Default("company").
-            Validate(func(s string) error {
-                return validation.In(s, "company", "department", "position")
-            }),
-        field.String("scenario_key").Optional(),
-        field.String("workspace_id").Optional(),
-        field.String("owner_user_id").Optional(),
+        field.String("level").Default(""),                // "company" | "department" | "position"
+        field.String("scenario_key").Default(""),
+        field.String("workspace_id").Default(""),
+        field.String("owner_user_id").Default(""),
         field.Bool("is_system").Default(false),
-        field.Text("config_json").Optional(),
-        field.Text("metadata_json").Optional(),
-        // 新增
-        field.String("dept_lead_agent_id").Optional(),   // 部门主管 Agent ID
-        field.Text("dept_lead_config_json").Default("{}"), // 部门主管配置
-        field.Time("deleted_at").Optional(),
+        field.Text("config_json").Default(""),
+        field.Text("metadata_json").Default(""),
+        // 部门级字段
+        field.String("dept_lead_agent_id").Default("").Optional(),
+        field.Text("dept_lead_config_json").Default("{}"),
+        field.String("created_at").Default(""),
+        field.String("updated_at").Default(""),
+        field.String("deleted_at").Default(""),
     }
 }
 ```
@@ -247,22 +247,19 @@ func (uc *OrganizationUsecase) deleteDepartmentWithCascade(ctx context.Context, 
   2. 深度协作：多个 Team 组成 DAG（如设计 Team → 研发 Team）
 - 用户根据实际需要选择模式，系统不强制
 
-**交付物 Schema**：
+**交付物 Schema**（与代码一致）：
 
 ```go
 // internal/biz/deliverable_contract.go
-type DeliverableItem struct {
-    Name        string `json:"name"`         // 交付物标识
-    Description string `json:"description"`  // 交付物描述
-    Format      string `json:"format"`       // 格式: markdown/json/file
-    Required    bool   `json:"required"`     // 是否必需
-}
-
 type DeliverableContract struct {
-    Deliverables   []DeliverableItem `json:"deliverables"`
-    InputContract  []DeliverableItem `json:"input_contract"`
+    Name        string `json:"name"`         // 交付物标识，如 "design_spec"
+    Type        string `json:"type"`         // 类型: document/code/data
+    Format      string `json:"format"`       // 格式: markdown/json/zip
+    Description string `json:"description"`
 }
 ```
+
+**契约验证**：`DeliverableContractValidator.ValidateContractMatch(upstream, downstream []DeliverableContract) []string` 返回警告列表（提示性，不阻断）。验证逻辑：遍历 downstream 的每一项，在 upstream 中查找 name 匹配，检查 type/format 兼容性。
 
 ### 2.4 Graph 字段变更
 
@@ -310,36 +307,40 @@ func (uc *TeamUsecase) cleanupGraphTeamID(ctx context.Context, team *Team) error
 }
 ```
 
-**审批门禁 Schema**：
+**审批门禁 Schema**（与代码一致）：
 
 ```go
 // internal/biz/verification_gate.go
+type VerificationGateType string
+
+const (
+    GateTypeDeptLeadApproval  VerificationGateType = "dept_lead_approval"
+    GateTypeCrossDeptDelivery VerificationGateType = "cross_dept_delivery"
+    GateTypeBorrowApproval    VerificationGateType = "borrow_approval"
+)
+
+// VerificationGate 定义 Graph 中的审批门禁节点
 type VerificationGate struct {
-    NodeID       string `json:"node_id"`        // Graph 节点 ID
-    GateType     string `json:"gate_type"`       // "dept_lead_approval"
-    DepartmentID string `json:"department_id"`   // 审批部门
-    Description  string `json:"description"`     // 门禁描述
-    MaxRetries   int    `json:"max_retries"`     // 最大重试次数，默认 3
-    Escalation   string `json:"escalation"`      // 升级策略: "notify_user" | "auto_approve"
+    GateType    VerificationGateType `json:"gate_type"`
+    AgentID     string               `json:"agent_id,omitempty"`     // dept_lead_approval 用
+    Description string               `json:"description"`
+    MaxRetries  int                  `json:"max_retries"`            // 默认 3
 }
 
-// 借调审批门禁（部门主管审批借出请求）
-type BorrowApprovalGate struct {
-    GateType           string `json:"gate_type"`            // "borrow_approval"
-    SourceDepartmentID string `json:"source_department_id"` // 借出部门
-    AgentID            string `json:"agent_id"`             // 被借调的 Agent
-    TimeoutSeconds     int    `json:"timeout_seconds"`      // 超时时间，默认 300s
-    AutoApproveOnTimeout bool  `json:"auto_approve_on_timeout"` // 超时自动通过，默认 true
-}
-
-// 跨部门交付物审批需要双方主管确认
+// CrossDeptDeliveryGate 跨部门交付物双方审批门禁
 type CrossDeptDeliveryGate struct {
-    GateType              string `json:"gate_type"`               // "cross_dept_delivery"
-    OutputDepartmentID    string `json:"output_department_id"`    // 输出方部门
-    ReceivingDepartmentID string `json:"receiving_department_id"` // 接收方部门
-    DeliverableName       string `json:"deliverable_name"`        // 交付物名称
-    Description           string `json:"description"`             // 门禁描述
-    MaxRetries            int    `json:"max_reries"`              // 最大重试次数，默认 3
+    GateType              VerificationGateType `json:"gate_type"`               // "cross_dept_delivery"
+    OutputDepartmentID    string               `json:"output_department_id"`    // 输出方部门
+    ReceivingDepartmentID string               `json:"receiving_department_id"` // 接收方部门
+    DeliverableName       string               `json:"deliverable_name"`
+    Description           string               `json:"description"`
+    MaxRetries            int                  `json:"max_retries"`             // 默认 3
+}
+
+// GateResult 审批结果
+type GateResult struct {
+    Approved bool
+    Reason   string
 }
 
 // 审批流程：
@@ -348,7 +349,11 @@ type CrossDeptDeliveryGate struct {
 // 3. 两方都通过 → 交付物传递到下游 Team
 // 4. 任一方驳回 → 上游 Team 返工
 // 5. 审批顺序：输出方先审（质量），接收方再审（验收）
+// 6. LLM 解析失败默认拒绝（安全优先）
+// 7. dept lead 缺失返回错误
 ```
+
+**借调审批**：通过 `GateTypeBorrowApproval` 类型实现，由 `VerificationGateExecutor.executeBorrowApproval` 执行，不需要单独的 `BorrowApprovalGate` 结构体。借调请求通过 `BorrowRequest` 类型管理（见 4.2）。
 
 ---
 
@@ -356,54 +361,65 @@ type CrossDeptDeliveryGate struct {
 
 ### 3.1 OrganizationService
 
+> **代码锚点**：`api/kratos/organization/v1/organization.proto`
+
 ```protobuf
 // api/kratos/organization/v1/organization.proto
 
 service OrganizationService {
-  rpc ListOrgNodes(ListOrgNodesRequest) returns (ListOrgNodesResponse) {
+  rpc ListOrganization(google.protobuf.Empty) returns (ListOrganizationResponse) {
     option (google.api.http) = { get: "/v1/organization" };
   }
-  rpc GetOrgTree(GetOrgTreeRequest) returns (GetOrgTreeResponse) {
+  rpc ListOrganizationTree(google.protobuf.Empty) returns (ListOrganizationTreeResponse) {
     option (google.api.http) = { get: "/v1/organization/tree" };
   }
-  rpc CreateOrgNode(CreateOrgNodeRequest) returns (OrgNode) {
-    option (google.api.http) = { post: "/v1/organization" };
+  rpc CreateOrganization(CreateOrganizationRequest) returns (OrganizationNode) {
+    option (google.api.http) = { post: "/v1/organization" body: "*" };
   }
-  rpc GetOrgNode(GetOrgNodeRequest) returns (OrgNode) {
+  rpc GetOrganization(GetOrganizationRequest) returns (OrganizationNode) {
     option (google.api.http) = { get: "/v1/organization/{id}" };
   }
-  rpc UpdateOrgNode(UpdateOrgNodeRequest) returns (OrgNode) {
-    option (google.api.http) = { put: "/v1/organization/{id}" };
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (OrganizationNode) {
+    option (google.api.http) = { patch: "/v1/organization/{id}" body: "node" };
   }
-  rpc DeleteOrgNode(DeleteOrgNodeRequest) returns (google.protobuf.Empty) {
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = { delete: "/v1/organization/{id}" };
   }
-  rpc ReorderOrgNodes(ReorderOrgNodesRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = { put: "/v1/organization/reorder" };
+  rpc ReorderOrganization(ReorderOrganizationRequest) returns (ReorderOrganizationResponse) {
+    option (google.api.http) = { put: "/v1/organization/reorder" body: "*" };
   }
 }
 
-message OrgNode {
+message OrganizationNode {
   string id = 1;
   string org_key = 2;
   string name = 3;
   string description = 4;
-  string parent_id = 5;
-  string level = 6;           // "company" | "department" | "position"
-  string status = 7;
-  int32 sort_order = 8;
-  string config_json = 9;
-  string metadata_json = 10;
-  bool is_system = 11;
+  string status = 5;
+  bool enabled = 6;
+  int32 sort_order = 7;
+  string parent_id = 8;
+  string level = 9;           // "company" | "department" | "position"
+  string workspace_id = 10;
+  string owner_user_id = 11;
+  bool is_system = 12;
+  string config_json = 13;
+  string metadata_json = 14;
+  string created_at = 15;
+  string updated_at = 16;
+  string deleted_at = 17;
   // 部门级专用
-  string dept_lead_agent_id = 12;
-  string dept_lead_config_json = 13;
-  // 岗位级专用
-  string scenario_key = 14;
-  // 树形辅助
-  repeated OrgNode children = 20;
+  string dept_lead_agent_id = 18;
+  string dept_lead_config_json = 19;
+}
+
+message OrganizationTreeNode {
+  OrganizationNode node = 1;
+  repeated OrganizationTreeNode children = 2;
 }
 ```
+
+**注意**：Biz 层 `OrganizationNode` 结构体的字段名为 `Key`（对应 proto 的 `org_key`），`OrganizationTreeNode` 的字段名为 `Category`（对应 proto 的 `node`）。Proto 与 Biz 层的字段映射在 `internal/service/organization.go` 的 `toProtoOrganization`/`fromProtoOrganization` 中完成。
 
 ### 3.2 Agent Proto 变更
 
@@ -450,58 +466,108 @@ message GraphDefinition {
 
 ### 4.1 OrganizationUsecase（原 TaxonomyUsecase）
 
+> **代码锚点**：`internal/biz/organization.go`
+
 ```go
 // internal/biz/organization.go
 type OrganizationUsecase struct {
-    repo    OrganizationRepo
-    logger  *loggateway.Logger
+    repo        OrganizationRepo
+    deptLeadMgr *DeptLeadManager
+    teamLister  DeptTeamLister
+    teamWriter  TeamWriter
+    agentClear  DeptAgentPositionClearer
+    eventBus    contract.Bus
+    lg          loggateway.Logger
+    posPrompt   *PositionPromptUsecase
 }
 
-// 核心方法（原 TaxonomyUsecase 14 个方法，全部迁移并重命名）
-func (uc *OrganizationUsecase) List(ctx context.Context) ([]OrgNode, error)
-func (uc *OrganizationUsecase) Tree(ctx context.Context) ([]OrgTreeNode, error)
-func (uc *OrganizationUsecase) Get(ctx context.Context, id string) (OrgNode, error)
-func (uc *OrganizationUsecase) Create(ctx context.Context, in OrgNode) (OrgNode, error)
-func (uc *OrganizationUsecase) Update(ctx context.Context, id string, patch OrgNode) (OrgNode, error)
-func (uc *OrganizationUsecase) Delete(ctx context.Context, id string) error
-func (uc *OrganizationUsecase) ListByLevel(ctx context.Context, level string) ([]OrgNode, error)
-func (uc *OrganizationUsecase) ListByParentID(ctx context.Context, parentID string) ([]OrgNode, error)
-func (uc *OrganizationUsecase) GetByKey(ctx context.Context, key string) (OrgNode, error)
-func (uc *OrganizationUsecase) Reorder(ctx context.Context, ids []string) error
-func (uc *OrganizationUsecase) GetAncestors(ctx context.Context, positionID string) (OrgAncestors, error)
-func (uc *OrganizationUsecase) GetPositionPrompt(ctx context.Context, companyKey, positionKey, variant string) (PositionPromptResult, error)
-func (uc *OrganizationUsecase) ListPositionVariants(ctx context.Context, companyKey, positionKey string) ([]VariantInfo, error)
-func (uc *OrganizationUsecase) BuildResponsibility(ctx context.Context, positionID string, mode string) (string, error)
-// 注意：GetPositionPrompt/ListPositionVariants 的 industryKey 参数重命名为 companyKey
+// 核心方法（原 TaxonomyUsecase 方法迁移并重命名）
+func (u *OrganizationUsecase) List(ctx context.Context) ([]OrganizationNode, error)
+func (u *OrganizationUsecase) Tree(ctx context.Context) ([]OrganizationTreeNode, error)
+func (u *OrganizationUsecase) Get(ctx context.Context, id string) (OrganizationNode, error)
+func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (OrganizationNode, error)
+func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch OrganizationNode) (OrganizationNode, error)
+func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error
+// ... 其他方法（ListByLevel/ListByParentID/GetByKey/Reorder/GetAncestors 等）
 
 // OrgAncestors 结构体（原 TaxonomyAncestors）
 type OrgAncestors struct {
-    Company    OrgNode // 原 Industry
-    Department OrgNode
-    Position   OrgNode
+    Company    OrganizationNode // 原 Industry
+    Department OrganizationNode
+    Position   OrganizationNode
 }
 
-// OrganizationRepo 接口（原 TaxonomyRepo，10 个方法）
-type OrganizationListReader interface {
-    ListOrgNodes(ctx context.Context) ([]OrgNode, error)
-    ListOrgNodesByLevel(ctx context.Context, level string) ([]OrgNode, error)
-    ListOrgNodesByParentID(ctx context.Context, parentID string) ([]OrgNode, error)
+// OrganizationNode biz 层结构体（字段名 Key 对应 proto 的 org_key）
+type OrganizationNode struct {
+    ID                  string
+    Key                 string  // 对应 proto org_key
+    Name                string
+    Description         string
+    Status              string
+    Enabled             bool
+    SortOrder           int
+    ParentID            string
+    Level               string
+    ScenarioKey         string
+    WorkspaceID         string
+    OwnerUserID         string
+    IsSystem            bool
+    ConfigJSON          string
+    MetadataJSON        string
+    DeptLeadAgentID     string
+    DeptLeadConfigJSON  string
+    CreatedAt           string
+    UpdatedAt           string
+    DeletedAt           string
 }
 
-type OrganizationItemReader interface {
-    GetOrgNode(ctx context.Context, id string) (OrgNode, error)
-    GetOrgNodeByKey(ctx context.Context, key string) (OrgNode, error)
-    GetOrgNodeByKeyAnyState(ctx context.Context, key string) (OrgNode, error)
+// OrganizationTreeNode（字段名 Category 对应 proto 的 node）
+type OrganizationTreeNode struct {
+    Category OrganizationNode
+    Children []OrganizationTreeNode
+}
+```
+
+**OrganizationRepo 接口拆分**（与代码一致）：
+
+```go
+// Stability:stable
+type OrganizationReader interface {
+    GetOrgNode(ctx context.Context, id string) (OrganizationNode, error)
+    GetOrgNodeByKey(ctx context.Context, key string) (OrganizationNode, error)
+    ListOrgNodes(ctx context.Context) ([]OrganizationNode, error)
+    ListOrgNodesByLevel(ctx context.Context, level string) ([]OrganizationNode, error)
+    ListOrgNodesByParentID(ctx context.Context, parentID string) ([]OrganizationNode, error)
 }
 
+// Stability:stable
 type OrganizationWriter interface {
-    CreateOrgNode(ctx context.Context, c OrgNode) (OrgNode, error)
-    UpdateOrgNode(ctx context.Context, c OrgNode) (OrgNode, error)
+    CreateOrgNode(ctx context.Context, c OrganizationNode) (OrganizationNode, error)
+    UpdateOrgNode(ctx context.Context, c OrganizationNode) (OrganizationNode, error)
     DeleteOrgNode(ctx context.Context, id string) error
     ReorderOrgNodes(ctx context.Context, ids []string) error
 }
 
-type OrganizationRepo = OrganizationListReader + OrganizationItemReader + OrganizationWriter
+// Stability:stable
+type OrganizationRepo interface {
+    OrganizationReader
+    OrganizationWriter
+    GetOrgNodeByKeyAnyState(ctx context.Context, key string) (OrganizationNode, error)
+}
+```
+
+**辅助接口**（部门级联删除使用）：
+
+```go
+// Stability:stable
+type DeptTeamLister interface {
+    ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]Team, error)
+}
+
+// Stability:stable
+type DeptAgentPositionClearer interface {
+    ClearPositionByDepartment(ctx context.Context, deptID string) (int, error)
+}
 ```
 
 ### 4.2 DeptLeadManager（部门主管管理）
@@ -797,96 +863,117 @@ const (
 
 ## 五、Scenario 层设计
 
-### 5.1 organization.yaml（原 industry.yaml）
+### 5.1 organization.yaml（原 taxonomy.yaml）
+
+> **代码锚点**：`internal/scenario/organization.yaml`、`internal/scenario/loader/organization_loader.go`
 
 ```yaml
-# organization.yaml (原 industry.yaml)
-# 新增 department_key 字段在 Team 级别，而非 Industry 级别
-# 原因：一个 company 下有多个 department，Team 归属某个 department
+# organization.yaml (原 taxonomy.yaml)
+# 顶层 key 为 companies（复数），支持多公司预留
+# 加载器 LoadOrganizationSpec 优先读 organization.yaml，回退到 taxonomy.yaml
 
-organization:
-  company_key: tech_corp          # 原 industry_key
-  display_name: 技术公司
-
-  departments:                     # 新增：显式定义部门
-    - key: rd
-      display_name: 研发部
-    - key: design
-      display_name: 设计部
-
-  agents:
-    - key: go-senior-general
-      position_key: go_engineer
-      variant: senior_general
-      # ... 同原结构
-
-  teams:
-    - key: xx_product_dev
-      display_name: XX产品开发组
-      department_key: rd           # 新增：Team 归属的部门
-      mode: coordinator
-      members:
-        - agent_key: go-senior-general
-        - agent_key: vue-senior-general
-        - agent_key: ui-designer-zhou
-          cross_dept: true
-          source_department: design
-      graph:
-        layout: sequential
-        nodes:
-          - id: start
-            type: start
-          - id: dev
-            type: agent
-            agent_key: go-senior-general
-          - id: end
-            type: end
-        edges:
-          - source: start
-            target: dev
-          - source: dev
-            target: end
+companies:
+  - key: finance                    # 公司 key
+    name: 金融
+    icon: trending_up
+    description: 量化交易、风险管理等金融行业场景
+    sort_order: 1
+    departments:                     # 部门列表
+      - key: quant_trading
+        name: 量化交易
+        description: 量化策略研发与交易执行
+        sort_order: 1
+        positions:                   # 岗位列表
+          - key: quant_researcher
+            name: 量化研究员
+            description: 因子挖掘、回测验证与策略研发
+            sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 因子挖掘
+              - 回测验证
+            responsibilities:
+              - 因子挖掘与策略研发
+            variants:
+              - key: alpha
+                name: Alpha因子
 ```
+
+**注意**：Team 归属部门通过 `agents.yaml` 中的 `CompanySpec` 结构管理（见 5.2），不在 `organization.yaml` 中定义 Team。
 
 ### 5.2 Spec 结构变更
 
-**原结构** (`IndustrySpec`):
-```go
-type IndustrySpec struct {
-    IndustryKey string       `yaml:"industry_key"`
-    Defaults    AgentDefaults `yaml:"defaults"`
-    Agents      []AgentSpec  `yaml:"agents"`
-    Teams       []TeamSpec   `yaml:"teams"`
-}
-```
+> **代码锚点**：`internal/scenario/loader/organization_loader.go`、`internal/scenario/loader/spec.go`、`internal/scenario/loader/company_loader.go`
 
-**新结构** (`OrganizationSpec`):
+**organization.yaml 加载结构**（`organization_loader.go`）：
+
 ```go
+// internal/scenario/loader/organization_loader.go
 type OrganizationSpec struct {
-    CompanyKey  string           `yaml:"company_key"`    // 原 IndustryKey
-    DisplayName string           `yaml:"display_name"`
-    Departments []DepartmentSpec `yaml:"departments"`    // 新增
-    Defaults    AgentDefaults    `yaml:"defaults"`
-    Agents      []AgentSpec      `yaml:"agents"`
-    Teams       []TeamSpec       `yaml:"teams"`
+    Companies       []OrgCompanySpec `yaml:"companies"`
+    // LegacyIndustries 支持读取旧 "industries" key，向后兼容
+    LegacyIndustries []OrgCompanySpec `yaml:"industries"`
 }
 
-type DepartmentSpec struct {
-    Key         string `yaml:"key"`
-    DisplayName string `yaml:"display_name"`
+type OrgCompanySpec struct {
+    Key         string              `yaml:"key"`
+    Name        string              `yaml:"name"`
+    Icon        string              `yaml:"icon"`
+    Description string              `yaml:"description"`
+    SortOrder   int                 `yaml:"sort_order"`
+    Departments []OrgDepartmentSpec `yaml:"departments"`
 }
 
-// TeamSpec 新增字段
-type TeamSpec struct {
-    // ... 原有字段不变
-    DepartmentKey string `yaml:"department_key"` // 新增：归属部门
+type OrgDepartmentSpec struct {
+    Key         string            `yaml:"key"`
+    Name        string            `yaml:"name"`
+    Description string            `yaml:"description"`
+    SortOrder   int               `yaml:"sort_order"`
+    Positions   []OrgPositionSpec `yaml:"positions"`
+}
+
+type OrgPositionSpec struct {
+    Key              string           `yaml:"key"`
+    Name             string           `yaml:"name"`
+    Description      string           `yaml:"description"`
+    SortOrder        int              `yaml:"sort_order"`
+    SeniorityLevel   string           `yaml:"seniority_level"`
+    SkillsRequired   []string         `yaml:"skills_required"`
+    Responsibilities []string         `yaml:"responsibilities"`
+    Variants         []OrgVariantSpec `yaml:"variants"`
 }
 ```
+
+**agents.yaml 加载结构**（`spec.go`，原 `IndustrySpec` → `CompanySpec`）：
+
+```go
+// internal/scenario/loader/spec.go
+type CompanySpec struct {
+    CompanyKey string        `yaml:"company_key"`    // 原 IndustryKey
+    Defaults   AgentDefaults `yaml:"defaults"`
+    Agents     []AgentSpec   `yaml:"agents"`
+    Teams      []TeamSpec    `yaml:"teams"`
+}
+
+// TeamSpec 未新增 DepartmentKey 字段
+// Team 的 department_id 通过运行时从 Organization 树解析设置
+type TeamSpec struct {
+    Key            string        `yaml:"key"`
+    DisplayName    string        `yaml:"display_name"`
+    Mode           string        `yaml:"mode"`
+    // ... 其他字段
+    Members        []TeamMemberSpec `yaml:"members"`
+    Graph          *GraphSpec    `yaml:"graph"`
+}
+```
+
+**加载器**：
+- `LoadOrganizationSpec(scenarioDir)` — 加载 `organization.yaml`（回退 `taxonomy.yaml`），返回 `OrganizationSpec`
+- `LoadCompanySpec(scenarioDir, companyKey)` — 加载 `{scenarioDir}/{companyKey}/agents.yaml`，返回 `CompanySpec`
 
 **映射变更**:
 - `spec.IndustryKey` → `spec.CompanyKey`（公司级 key）
-- `CategoryIndustryID: spec.IndustryKey` → `DepartmentID: teamSpec.DepartmentKey`（Team 级别映射）
-- 新增 `Departments` 列表，用于自动创建 Organization 树的 department 节点
+- `CategoryIndustryID: spec.IndustryKey` → `DepartmentID`（Team 级别映射，运行时从 Organization 树解析）
 
 ### 5.3 agents.yaml 适配
 
@@ -901,80 +988,83 @@ agents:
 
 ### 5.4 部门主管 Prompt
 
+> **代码锚点**：`internal/scenario/system/prompts/dept_lead.md`
+
 ```markdown
-# internal/scenario/system/prompts/dept_lead.md
+# 部门主管
 
-你是 {department_name} 的部门主管。
+你是「{{.DepartmentName}}」的部门主管。
 
-## 核心职责
-1. 审批本部门 Team 的跨部门交付物
-2. 协调本部门资源分配
-3. 把关本部门输出质量
+## 职责
+
+1. **资源协调**：管理本部门的人力资源分配，审批跨部门借调请求
+2. **质量把关**：审核本部门产出的交付物质量
+3. **验收确认**：确认其他部门交付给本部门的工作是否满足需求
 
 ## 审批规则
-- 仔细审查交付物是否满足下游 Team 的输入契约
-- 交付物质量达标 → 通过
-- 交付物不达标 → 驳回，附具体改进建议
-- 驳回理由必须具体、可操作
 
-## 审批输出格式
-```json
-{
-  "approved": true/false,
-  "reason": "审批理由"
-}
+- 跨部门交付物需要双方主管确认（输出方质量把关 + 接收方验收确认）
+- 借调成员加入其他 Team 时，你需要审批同意
+- 你自动加入本部门的所有 Team
+- 借调请求超过 5 分钟未处理，系统自动批准
+
+## 部门信息
+
+- 部门名称：{{.DepartmentName}}
+- 部门描述：{{.DepartmentDescription}}
 ```
-```
+
+**模板变量**：`{{.DepartmentName}}`、`{{.DepartmentDescription}}` 在 `DeptLeadManager.buildDeptLeadSystemPrompt` 中填充。
 
 ---
 
 ## 六、前端设计
 
-### 6.1 目录结构变更
+### 6.1 目录结构现状
+
+> **现状**：前端组织架构管理位于 `web/src/features/platform/`（非 `industries/` 或 `organization/`），使用 `useTaxonomyPage.ts` 等组合式函数。API 层在 `web/src/features/platform/api.ts` 中同时支持 `createOrganizationService`、`createTaxonomyService`、`createIndustryTaxonomyService` 三套服务（兼容层）。
 
 ```
-web/src/features/
-  industries/          → organization/         # 重命名
-    types.ts           → types.ts              # Industry→Company, Department/Position 不变
-    api.ts             → api.ts                # TaxonomyService → OrganizationService
+web/src/features/platform/
+  api.ts                    # 同时支持 Organization/Taxonomy/IndustryTaxonomy 三套 API
+  useTaxonomyPage.ts        # 组织架构管理页面逻辑（CATEGORY_RESOURCE = 'organization'）
+  taxonomyTreeUtils.ts      # 树形结构工具
+  taxonomyLabels.ts         # 标签工具
+  types.ts
 ```
 
-### 6.2 页面变更
+### 6.2 页面变更（计划）
 
-| 旧页面 | 新页面 | 说明 |
-|--------|--------|------|
-| `TaxonomyPage.vue` | `OrganizationPage.vue` | 公司架构管理 |
-| `IndustryMarketPage.vue` | `OrganizationMarketPage.vue` | 架构市场 |
-| `TaxonomyIndustryCard.vue` | `OrgCompanyCard.vue` | 公司卡片 |
-| `TaxonomyDepartmentNode.vue` | `OrgDepartmentNode.vue` | 部门节点 |
+| 旧页面/组件 | 新页面/组件 | 说明 | 状态 |
+|--------|--------|------|------|
+| `useTaxonomyPage.ts` | `useOrganizationPage.ts` | 重命名（可选） | ⏳ 未实施 |
+| `taxonomyTreeUtils.ts` | `organizationTreeUtils.ts` | 重命名（可选） | ⏳ 未实施 |
 
-### 6.3 新增页面/组件
+### 6.3 新增页面/组件（计划）
 
-| 组件 | 说明 |
-|------|------|
-| `DeptLeadConfigDialog.vue` | 部门主管配置（替换、Prompt 覆盖） |
-| `TeamDeliverableEditor.vue` | Team 交付物/契约编辑器 |
-| `VerificationGateConfig.vue` | 审批门禁配置（Graph 编辑器中） |
-| `CrossDeptDAGView.vue` | 跨部门 Team DAG 可视化 |
+| 组件 | 说明 | 状态 |
+|------|------|------|
+| `DeptLeadConfigDialog.vue` | 部门主管配置（替换、Prompt 覆盖） | ⏳ 未实施 |
+| `TeamDeliverableEditor.vue` | Team 交付物/契约编辑器 | ⏳ 未实施 |
+| `VerificationGateConfig.vue` | 审批门禁配置（Graph 编辑器中） | ⏳ 未实施 |
+| `CrossDeptDAGView.vue` | 跨部门 Team DAG 可视化 | ⏳ 未实施 |
 
 ### 6.4 i18n 变更清单
 
-| 语言 | 文件 | 涉及条目数 | 关键变更 |
-|------|------|-----------|----------|
-| zh-CN | `web/src/i18n/locales/zh-CN.ts` | 4 处 | `taxonomy: '行业分类'` → `organization: '公司架构'`；`industryMarket` → `orgMarket`；`statCategories` → `statDepartments`；kicker 文案 |
-| en-US | `web/src/i18n/locales/en-US.ts` | ~11 处 | `taxonomy: 'Industry Taxonomy'` → `organization: 'Organization'`；`industryMarket` → `orgMarket` |
+| 语言 | 文件 | 涉及条目数 | 关键变更 | 状态 |
+|------|------|-----------|----------|------|
+| zh-CN | `web/src/i18n/locales/zh-CN.ts` | 1+ 处 | `organization: '组织架构'` 已存在 | 🟡 部分完成 |
+| en-US | `web/src/i18n/locales/en-US.ts` | ~11 处 | `taxonomy` → `organization` 等 | ⏳ 未实施 |
 
 **i18n key 重命名策略**：保持 key 层级结构不变，仅替换 `taxonomy` → `organization`、`industry` → `company`/`department` 等前缀。
 
-**注意**：zh-CN i18n 文件中实际只有 4 处直接引用，但 Vue 组件中可能存在硬编码的中文文本（如页面标题、空状态文案等），需在 FE-05 实施时逐组件排查。en-US 的 10 处更接近实际变更量。
+### 6.5 新增前端组件（计划）
 
-### 6.5 新增前端组件
-
-| 组件 | 位置 | 功能 | 依赖 |
-|------|------|------|------|
-| `CrossDeptDAGView.vue` | `web/src/features/teams/components/` | 跨部门 Team DAG 可视化 | Phase 3 后端 API |
-| `BorrowApprovalDialog.vue` | `web/src/features/organization/components/` | 借调审批对话框 | Phase 2 后端 API |
-| `BorrowStatusBadge.vue` | `web/src/features/teams/components/` | 借调审批状态徽章 | Phase 2 后端 API |
+| 组件 | 位置 | 功能 | 依赖 | 状态 |
+|------|------|------|------|------|
+| `CrossDeptDAGView.vue` | `web/src/features/teams/components/` | 跨部门 Team DAG 可视化 | Phase 3 后端 API | ⏳ 未实施 |
+| `BorrowApprovalDialog.vue` | `web/src/features/platform/components/` | 借调审批对话框 | Phase 2 后端 API | ⏳ 未实施 |
+| `BorrowStatusBadge.vue` | `web/src/features/teams/components/` | 借调审批状态徽章 | Phase 2 后端 API | ⏳ 未实施 |
 
 ---
 

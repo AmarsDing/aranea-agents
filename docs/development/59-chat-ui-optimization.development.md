@@ -44,6 +44,19 @@ Chat UI 优化：精灵为唯一对话入口，左侧列表重构为精灵 + 任
 
 ## 3. 开发阶段
 
+> **代码锚点说明（2026-06-17 更新）**：以下各 Phase 任务表中的文件路径为**任务完成时的历史锚点**。Activity-First 架构（Phase AF）迁移后，部分前端文件已重命名/替换：
+> - `useAgentBlocks.ts` → `useActivityTimeline.ts`
+> - `useChatTimeline.ts` → `useConversationTimeline.ts`
+> - `timelineTypes.ts` → `agentTreeTypes.ts` / `activityTypes.ts` / `activityTimelineTypes.ts`
+> - `TaskBoard.vue` / `TaskBoardNode.vue` → `ConversationTurn.vue` + Block 组件（`ThinkingBlock.vue` / `ActionBlock.vue` / `ReplyBlock.vue` 等）
+> - `TurnBlock.vue` → `ConversationTurn.vue`
+> - `ChatReasoningPeek.vue` → `ThinkingBlock.vue` / `ThinkingArea.vue`
+> - `ToolCallTimeline.vue` / `ToolCallTimelineItem.vue` → `ActionBlock.vue`
+> - `MarkdownView.vue` → `chatMessageMarkdown.ts`
+> - `useAutoCollapse.ts` → `ChatExecutionCard.vue` autoCollapse prop / `useChatEntityCollapse.ts`
+>
+> 历史任务记录中的旧文件名保留不变（记录"当时改了什么"），当前开发请参考 Phase AF 中的新文件名。
+
 ### Phase P0 — 核心骨架（M59 原有）
 
 > **目标**：精灵为唯一入口，左侧列表重构，团队列表展示，任务执行面板基础版，Session 树关联。
@@ -992,6 +1005,21 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 
 **aranea-review 二轮审查结果**：0 阻断 / 0 建议 / 0 提示。前端合规性清单全部通过。
 
+### UI 原型对齐优化（M69 P3，T-15~T-22）
+
+> **来源**：从设计文档 §十一 迁移（文档边界合规调整）
+
+| ID | 优化 | 文件（Activity-First 后） | 状态 |
+|----|------|--------------------------|------|
+| T-15 | 对话回合添加 Agent Block Header（头像+名称+状态徽章+耗时+子任务数） | `ConversationTurn.vue`（原 `TurnBlock.vue`） | ✅ |
+| T-16 | ChatExecutionCard 添加 agent 首字头像 | `ChatExecutionCard.vue` | ✅ |
+| T-17 | 运行中耗时添加 `...` 后缀 | `ChatExecutionCard.vue` | ✅ |
+| T-18 | 思考节点添加脉冲圆点和光标闪烁指示器 | `ThinkingBlock.vue`（原 `ChatReasoningPeek.vue`）/ `ThinkingArea.vue` | ✅ |
+| T-19 | ChatExecutionCard running 状态添加脉冲圆点 | `ChatExecutionCard.vue` | ✅ |
+| T-20 | 全局展开/折叠按钮始终可见 | `ChatMessagePanel.vue` | ✅ |
+| T-21 | Sub-Agent 嵌套缩进（左边框线+缩进） | `ConversationTurn.vue`（原 `TurnBlock.vue`） | ✅ |
+| T-22 | 执行结果区段标签 | `ConversationTurn.vue`（原 `TurnBlock.vue`） | ✅ |
+
 ### 未修复项（后续迭代）
 
 | 编号 | 原因 |
@@ -1030,17 +1058,19 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 
 `features/spirit/types.ts` 中定义了 `SpiritStatusBarData` 类型，`ChatMessagePanel.vue` 和 `SpiritStatusBar.vue` 应统一使用此类型。
 
-#### 提示 5（M69 新增）: useAgentBlocks 状态机扩展
+#### 提示 5（M69 新增，Activity-First 后更新）: 状态机扩展
 
-修改 `useAgentBlocks.ts` 时，必须检查：
-1. 新增 `tool_blocked` 状态后，UI 是否有对应渲染
-2. `hasPartialFailure` 字段需配合 `TurnBlock.vue` 徽章渲染
+> **架构演进说明**：原 `useAgentBlocks.ts` 已由 `useActivityTimeline.ts` 替代。以下检查清单适用于 Activity-First 消费层。
+
+修改 Activity 消费逻辑时，必须检查：
+1. 新增 `tool_blocked` 状态后，UI（`ConversationTurn.vue` / `ActionBlock.vue`）是否有对应渲染
+2. `hasPartialFailure` 字段需配合 `ConversationTurn.vue` 徽章渲染
 3. `progressSections` 不再走 `timeline.sort()`，由 `ChatMessageList` 单独渲染
 4. `collapsed: false`（已完成回合默认展开）需要与全局折叠按钮协同
 
-#### 提示 6（M69 新增）: 任务看板树形嵌套深度
+#### 提示 6（M69 新增，Activity-First 后更新）: 任务看板树形嵌套深度
 
-`TaskBoard` 组件的 `depth` prop 受 `MaxSessionDepth=2` 约束，禁止无限递归。组件内部应有最大深度守卫。
+`ConversationTurn.vue` / `TaskBoardSection.vue` 的 `depth` prop 受 `MaxSessionDepth=2` 约束，禁止无限递归。组件内部应有最大深度守卫。Activity-First 架构下，嵌套深度由 `useActivityTimeline.ts` 的 `buildActivityTree` 函数通过 `Activity.parentActivityId` 控制。
 
 ---
 
@@ -1055,27 +1085,27 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 ### Phase AF-1 — 后端 Activity 投影
 
 > **目标**：新增 ActivityProjector + activities 表 + 双发射
-> **状态**：📋 规划中
+> **状态**：🟡 部分实现（核心组件已落地：ActivityProjector 16 个 On* 方法、activities 表、ActivityReader/Writer 接口、ListActivities RPC、4 种 EnvelopeType）
 
 | ID | 任务 | 影响域 | 验收标准 | 状态 |
 |----|------|--------|----------|------|
-| AF-BE-01 | 新增 `ent/schema/activity.go`（含 entsql.Annotation + Sensitive + JSON 字段） | `internal/data/ent/schema/` | `go generate ./internal/data/ent` 通过 | 📋 |
-| AF-BE-02 | 新增 DDL 迁移：activities 表 + 索引 | `internal/data/sql/migrations/` | 迁移幂等执行 | 📋 |
-| AF-BE-03 | 新增 `ActivityReader` / `ActivityWriter` 窄接口 | `internal/biz/` | 接口方法 ≤ 5 | 📋 |
-| AF-BE-04 | 新增 `activity_repo.go` 实现 | `internal/data/` | 单测通过 | 📋 |
-| AF-BE-05 | 新增 `ActivityProjector` 核心结构 + 投影规则 | `internal/agent/` | 单测通过 | 📋 |
-| AF-BE-06 | `ActivityProjector.OnTurnStart` — 创建根 task Activity | `internal/agent/` | 单测通过 | 📋 |
-| AF-BE-07 | `ActivityProjector.OnReasoningDelta/Done` — thinking/reply Activity | `internal/agent/` | reasoning_as_display 场景正确升级为 reply | 📋 |
-| AF-BE-08 | `ActivityProjector.OnTextDelta/Done` — reply Activity | `internal/agent/` | 单测通过 | 📋 |
-| AF-BE-09 | `ActivityProjector.OnToolCall/Result` — action Activity | `internal/agent/` | tool_timeout 场景正确设置 toolErrorCode | 📋 |
-| AF-BE-10 | `ActivityProjector.OnDelegate` — delegate + sub_task_board Activity | `internal/agent/` | Spirit 上下文字段正确填充 | 📋 |
-| AF-BE-11 | `ActivityProjector.OnError` — error Activity | `internal/agent/` | 单测通过 | 📋 |
-| AF-BE-12 | 新增 EnvelopeType：activity_start / activity_delta / activity_done / activity_child_start | `internal/event/contract/envelope.go` | 注册到 channel 路由表 | 📋 |
-| AF-BE-13 | 集成 ActivityProjector 到 chat_orchestrator_turn.go | `internal/service/` | 双发射：旧事件 + Activity 事件并行 | 📋 |
-| AF-BE-14 | ActivityProjector 与 EventProjector 共享 mutex | `internal/agent/` | 顺序发射，无竞态 | 📋 |
-| AF-BE-15 | Activity 持久化：ActivityProjector 写入 activities 表 | `internal/agent/` + `internal/data/` | Activity 可从 DB 查询 | 📋 |
-| AF-BE-16 | ReAct Planner 标签解析集成到 ActivityProjector | `internal/agent/` | `/*PLANNING*/` → `activity_start(kind=thinking, label="规划")` | 📋 |
-| AF-BE-17 | 新增 ListActivities RPC/HTTP 端点 | `internal/service/` | API 可查询 session 下的 activities | 📋 |
+| AF-BE-01 | 新增 `ent/schema/activity.go`（含 entsql.Annotation + Sensitive + JSON 字段） | `internal/data/ent/schema/` | `go generate ./internal/data/ent` 通过 | ✅ |
+| AF-BE-02 | 新增 DDL 迁移：activities 表 + 索引 | `internal/data/sql/migrations/` | 迁移幂等执行 | ✅ |
+| AF-BE-03 | 新增 `ActivityReader` / `ActivityWriter` 窄接口 | `internal/biz/` | 接口方法 ≤ 5 | ✅ |
+| AF-BE-04 | 新增 `activity_repo.go` 实现 | `internal/data/` | 单测通过 | ✅ |
+| AF-BE-05 | 新增 `ActivityProjector` 核心结构 + 投影规则 | `internal/agent/` | 单测通过 | ✅ |
+| AF-BE-06 | `ActivityProjector.OnTurnStart` — 创建根 task Activity | `internal/agent/` | 单测通过 | ✅ |
+| AF-BE-07 | `ActivityProjector.OnReasoningDelta/Done` — thinking/reply Activity | `internal/agent/` | reasoning_as_display 场景正确升级为 reply | ✅ |
+| AF-BE-08 | `ActivityProjector.OnTextDelta/Done` — reply Activity | `internal/agent/` | 单测通过 | ✅ |
+| AF-BE-09 | `ActivityProjector.OnToolCall/Result` — action Activity | `internal/agent/` | tool_timeout 场景正确设置 toolErrorCode | ✅ |
+| AF-BE-10 | `ActivityProjector.OnDelegate` — delegate + sub_task_board Activity | `internal/agent/` | Spirit 上下文字段正确填充 | ✅ |
+| AF-BE-11 | `ActivityProjector.OnError` — error Activity | `internal/agent/` | 单测通过 | ✅ |
+| AF-BE-12 | 新增 EnvelopeType：activity_start / activity_delta / activity_done / activity_child_start | `internal/event/contract/envelope.go` | 注册到 channel 路由表 | ✅ |
+| AF-BE-13 | 集成 ActivityProjector 到 chat_orchestrator_turn.go | `internal/service/` | 双发射：旧事件 + Activity 事件并行 | ✅ |
+| AF-BE-14 | ActivityProjector 与 EventProjector 共享 mutex | `internal/agent/` | 顺序发射，无竞态 | 🟡 待验证 |
+| AF-BE-15 | Activity 持久化：ActivityProjector 写入 activities 表 | `internal/agent/` + `internal/data/` | Activity 可从 DB 查询 | ✅ |
+| AF-BE-16 | ReAct Planner 标签解析集成到 ActivityProjector | `internal/agent/` | `/*PLANNING*/` → `activity_start(kind=thinking, label="规划")` | 🟡 待验证 |
+| AF-BE-17 | 新增 ListActivities RPC/HTTP 端点 | `internal/service/` | API 可查询 session 下的 activities | ✅ |
 
 #### AF-1 任务依赖
 
@@ -1098,27 +1128,27 @@ make api && make wire && make build && make test && make lint
 ### Phase AF-2 — 前端 Activity 消费
 
 > **目标**：新增 useActivityTimeline + feature flag + 组件数据源切换
-> **状态**：📋 规划中
+> **状态**：🟡 部分实现（核心 composable 已落地：useActivityTimeline + activityTree + handleActivityStart/Delta/Done/ChildStart + 单测）
 
 | ID | 任务 | 影响域 | 验收标准 | 状态 |
 |----|------|--------|----------|------|
-| AF-FE-01 | 新增 `activityTypes.ts`（Activity / ActivityKind / ActivityStatus 类型定义） | `web/src/features/chat/` | 类型编译通过 | 📋 |
-| AF-FE-02 | 新增 `useActivityTimeline` composable（activityTree + taskBoardNodes 计算属性） | `web/src/features/chat/composables/` | 单测通过 | 📋 |
-| AF-FE-03 | `useActivityTimeline.handleActivityStart/Delta/Done` WS 事件处理 | `web/src/features/chat/composables/` | 单测通过 | 📋 |
-| AF-FE-04 | `activityToTaskBoardNode` 映射函数 | `web/src/features/chat/composables/` | 9 种 ActivityKind 正确映射 | 📋 |
-| AF-FE-05 | Feature flag：`useActivityTimeline` vs `useAgentBlocks` 切换 | `web/src/stores/` | 切换无报错 | 📋 |
-| AF-FE-06 | `TaskBoard.vue` 数据源切换 | `web/src/components/chat/` | Activity 模式下渲染正确 | 📋 |
-| AF-FE-07 | `ThinkingArea.vue` 数据源切换 | `web/src/components/spirit/` | 流式态从 activity_delta 获取 | 📋 |
-| AF-FE-08 | `UnifiedExecutionPanel.vue` 数据源切换 | `web/src/components/spirit/` | 三区从 Activity 树过滤 | 📋 |
-| AF-FE-09 | `ChatExecutionCard.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action) 渲染正确 | 📋 |
-| AF-FE-10 | `TurnBlock.vue` 数据源切换 | `web/src/components/chat/` | Activity 树根节点渲染正确 | 📋 |
-| AF-FE-11 | `SpiritStatusBar.vue` 数据源切换 | `web/src/components/spirit/` | Activity 聚合渲染正确 | 📋 |
-| AF-FE-12 | `TodoKanbanBoard.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action, toolName=todo_write) 渲染正确 | 📋 |
-| AF-FE-13 | `ToolCallTimeline.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action)[] 按 timestamp 排序 | 📋 |
-| AF-FE-14 | 历史消息恢复：从 activities API 加载 | `web/src/features/chat/` | 历史会话 Activity 正确加载 | 📋 |
-| AF-FE-15 | WS 事件路由：activity_start/delta/done 分发 | `web/src/features/chat/streamHandlers.ts` | 事件正确分发到 useActivityTimeline | 📋 |
-| AF-FE-16 | i18n 新增键（Activity 相关） | `web/src/i18n/` | zh-CN + en-US 完整 | 📋 |
-| AF-FE-17 | `useActivityTimeline.test.ts` 单元测试 | `web/src/features/chat/composables/` | 覆盖所有 ActivityKind 映射 | 📋 |
+| AF-FE-01 | 新增 `activityTypes.ts`（Activity / ActivityKind / ActivityStatus 类型定义） | `web/src/features/chat/` | 类型编译通过 | ✅ |
+| AF-FE-02 | 新增 `useActivityTimeline` composable（activityTree + taskBoardNodes 计算属性） | `web/src/features/chat/composables/` | 单测通过 | ✅ |
+| AF-FE-03 | `useActivityTimeline.handleActivityStart/Delta/Done` WS 事件处理 | `web/src/features/chat/composables/` | 单测通过 | ✅ |
+| AF-FE-04 | `activityToStreamEvent` 映射函数（原 `activityToTaskBoardNode`） | `web/src/features/chat/composables/` | 9 种 ActivityKind 正确映射 | ✅ |
+| AF-FE-05 | Feature flag：`useActivityTimeline` vs 旧路径切换 | `web/src/stores/` | 切换无报错 | 🟡 待验证 |
+| AF-FE-06 | `ConversationTurn.vue` / `TaskBoardSection.vue` 数据源切换（原 `TaskBoard.vue`） | `web/src/components/chat/` | Activity 模式下渲染正确 | 🟡 待验证 |
+| AF-FE-07 | `ThinkingArea.vue` 数据源切换 | `web/src/components/spirit/` | 流式态从 activity_delta 获取 | 🟡 待验证 |
+| AF-FE-08 | `UnifiedExecutionPanel.vue` 数据源切换 | `web/src/components/spirit/` | 三区从 Activity 树过滤 | 🟡 待验证 |
+| AF-FE-09 | `ChatExecutionCard.vue` / `ActionBlock.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action) 渲染正确 | 🟡 待验证 |
+| AF-FE-10 | `ConversationTurn.vue` 数据源切换（原 `TurnBlock.vue`） | `web/src/components/chat/` | Activity 树根节点渲染正确 | 🟡 待验证 |
+| AF-FE-11 | `SpiritStatusBar.vue` 数据源切换 | `web/src/components/spirit/` | Activity 聚合渲染正确 | 🟡 待验证 |
+| AF-FE-12 | `TodoKanbanBoard.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action, toolName=todo_write) 渲染正确 | 🟡 待验证 |
+| AF-FE-13 | `ActionBlock.vue` 数据源切换（原 `ToolCallTimeline.vue`） | `web/src/components/chat/` | Activity(kind=action)[] 按 timestamp 排序 | 🟡 待验证 |
+| AF-FE-14 | 历史消息恢复：从 activities API 加载 | `web/src/features/chat/` | 历史会话 Activity 正确加载 | 🟡 待验证 |
+| AF-FE-15 | WS 事件路由：activity_start/delta/done 分发 | `web/src/features/chat/streamHandlers.ts` | 事件正确分发到 useActivityTimeline | 🟡 待验证 |
+| AF-FE-16 | i18n 新增键（Activity 相关） | `web/src/i18n/` | zh-CN + en-US 完整 | 🟡 待验证 |
+| AF-FE-17 | `useActivityTimeline.spec.ts` 单元测试 | `web/src/features/chat/composables/` | 覆盖所有 ActivityKind 映射 | ✅ |
 
 #### AF-2 任务依赖
 
@@ -1141,12 +1171,12 @@ cd web && pnpm lint && pnpm test && pnpm build
 ### Phase AF-3 — 清理与优化
 
 > **目标**：停发旧事件 + 清理推理逻辑 + 全量回归
-> **状态**：📋 规划中
+> **状态**：📋 规划中（依赖 AF-1 + AF-2 完成）
 
 | ID | 任务 | 影响域 | 验收标准 | 状态 |
 |----|------|--------|----------|------|
 | AF-CL-01 | 停发旧事件（text_delta/reasoning_delta/tool_call/tool_result 等） | `internal/agent/` | 前端仅消费 Activity 事件 | 📋 |
-| AF-CL-02 | 清理 `useAgentBlocks.ts` 推理逻辑（P4 修复的 8 项业务逻辑问题将被 Activity 消费模式替代，无需保留） | `web/src/features/chat/composables/` | 13 层推理全部移除 | 📋 |
+| AF-CL-02 | 清理旧 Message-First 推理逻辑（原 `useAgentBlocks.ts` 已由 `useActivityTimeline.ts` 替代，P4 修复的 8 项业务逻辑问题将被 Activity 消费模式替代，无需保留） | `web/src/features/chat/composables/` | 13 层推理全部移除 | 📋 |
 | AF-CL-03 | 清理 `useConversationTimeline.ts` 推理逻辑 | `web/src/features/chat/composables/` | Activity 直接消费 | 📋 |
 | AF-CL-04 | 清理 `activityPresentation.ts`（classifyActivityKind） | `web/src/features/chat/` | 不再需要 | 📋 |
 | AF-CL-05 | 清理 `messagePlannerPresentation.ts`（resolveAssistantPresentation） | `web/src/features/chat/` | 不再需要 | 📋 |
@@ -1210,7 +1240,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 #### 提示 AF-1: ActivityProjector 修改检查清单
 
 修改 `ActivityProjector` 时，必须检查：
-1. 新增 ActivityKind 后，前端 `activityToTaskBoardNode` 是否有对应映射
+1. 新增 ActivityKind 后，前端 `activityToStreamEvent` 是否有对应映射
 2. `reasoning_as_display` 判断逻辑与 `DisplayMarkdownFromStream` 保持一致
 3. Spirit 扩展字段（spiritSessionId/dagNodeId/dependsOn）在 Team 模式下正确填充
 4. Activity 持久化与 WS 发射在同一事务中
@@ -1218,7 +1248,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 #### 提示 AF-2: 前端组件数据源切换检查清单
 
 切换组件数据源时，必须检查：
-1. Feature flag 关闭时回退到 `useAgentBlocks` 路径
+1. Feature flag 关闭时回退到旧 Message-First 路径（原 `useAgentBlocks` 已由 `useActivityTimeline` 替代）
 2. Activity 模式下所有 M59 验收标准仍通过
 3. 历史消息加载从 activities API 获取
 4. WS 重连后 Activity 状态正确恢复
@@ -1227,6 +1257,6 @@ cd web && pnpm lint && pnpm test && pnpm build
 
 清理推理逻辑时，必须检查：
 1. 被清理的函数无其他调用方
-2. 清理后 `useAgentBlocks` 可完全移除或标记 Deprecated
+2. 清理后旧 Message-First 推理路径（原 `useAgentBlocks`）可完全移除或标记 Deprecated
 3. 清理后 bundle size 减少量可测量
 4. 全量回归测试通过后才可合并

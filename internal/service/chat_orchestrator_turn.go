@@ -320,6 +320,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	var buildResult turnBuildResult
 	var intentRunOpts []trpcagent.RunOption
+	var intentArtifact *intent.Artifact
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	// Goroutine 1: BUILD
@@ -332,7 +333,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// Goroutine 2: Intent Pass (only for non-A2A agents with intent enabled)
 	if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
-			intentRunOpts = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
+			intentRunOpts, intentArtifact = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
 			return nil // Intent Pass failure is non-fatal; it returns empty opts on error
 		})
 	} else if biz.IsA2AProxyAgent(ag) {
@@ -348,6 +349,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
+	// ── PRE-PLANNING GATE (P1-2) ──
+	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
+	// force the planning path by injecting a system instruction.
+	if gateDecision, gateErr := o.runPrePlanningGate(ctx, sessionID, content, intentArtifact); gateErr == nil && gateDecision.ForcePlanning {
+		emitter.LogDone("chat.pre_planning_gate", "强制规划路径", event.P("complexity_level", string(gateDecision.Level)), event.P("complexity_score", gateDecision.Score), event.P("reason", gateDecision.Reason))
+		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
 	}
 	deps := buildResult.deps
 	runner := buildResult.runner

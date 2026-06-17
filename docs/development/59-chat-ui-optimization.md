@@ -398,7 +398,7 @@ pending → running → completed
 **以便** 我能一眼感知团队执行进度
 
 **验收**：
-- 后端 `AgentNodeStatus` 17 种状态聚合为 7 种展示标签：
+- 后端 Agent 运行时状态聚合为 7 种用户可感知的展示标签：
 
 | 聚合标签 | 文案 | 颜色 | 图标 | 动画 |
 |---------|------|------|------|------|
@@ -410,9 +410,11 @@ pending → running → completed
 | Skipped | "已跳过" | 灰色 | ⊘ | 无 |
 | Cancelled | "已取消" | 灰色 | ⊘ | 无 |
 
-- 侧边栏团队卡片使用 `SpiritMember.status`（5 值：idle / working / waiting / completed / failed）
-- 任务执行面板使用 `AgentNodeStatus`（17 值聚合为 7 种标签）
-- **新增 `tool_blocked` 显式状态**：UI 显示"🟡 等待您的输入"徽章（来自 M69 useAgentBlocks 修复）
+- 侧边栏团队卡片使用简化的 5 值状态（idle / working / waiting / completed / failed）
+- 任务执行面板使用完整 7 种聚合标签
+- **新增 `tool_blocked` 显式状态**：UI 显示"🟡 等待您的输入"徽章，区分"系统在等"与"等用户确认"
+
+> 后端状态字段映射（AgentNodeStatus 17 值→7 标签、SpiritMember.status 5 值）详见 [59-chat-ui-optimization.design.md §6.4](./59-chat-ui-optimization.design.md#64-可观测性-ux-设计)（可观测性 UX 设计）
 
 ### US-14 底部状态栏（OBS-04）
 
@@ -554,7 +556,7 @@ pending → running → completed
   - 主题：跟随 `var(--color-bg-elevated)` token，不引入新色
   - 工具栏：仅"复制"按钮（不喧宾夺主）
   - 字号：与主文本一致（`var(--font-size-base)`），不放大
-- **集成位置**：`MarkdownView.vue` 中替换默认的 `<pre><code>` 为 `<CodeBlock :code :lang>`
+- **集成位置**：Markdown 渲染流程中替换默认的 `<pre><code>` 为 `<CodeBlock :code :lang>`（详见设计文档 §6.7.4）
 - **范围**：作用于所有 Agent 回复（不仅精灵），包括思考节点 `kind: 'thinking'` 中的代码块
 - **i18n 键**：`chat.codeBlock.copy` / `chat.codeBlock.copied` / `chat.codeBlock.expandLine` / `chat.codeBlock.collapseLine` / `chat.codeBlock.plaintext`
 
@@ -713,266 +715,81 @@ pending → running → completed
 
 ## 5. 功能规格
 
-### 5.1 任务看板树形嵌套数据结构
+> **文档边界说明**：本节原包含 TypeScript 数据结构、事件协议、状态机、数据模型等设计细节，已迁移至设计文档。以下仅保留用户视角的功能需求摘要。
 
-```typescript
-type TaskBoardNodeKind =
-  | 'task'           // 任务
-  | 'thinking'       // 思考
-  | 'action'         // 工具
-  | 'reply'          // 回复
-  | 'sub_task_board' // 子任务看板（递归）
-  | 'end'            // 结束
-  | 'error'          // 错误
+### 5.1 任务看板树形嵌套（功能需求）
 
-interface TaskBoardNode {
-  kind: TaskBoardNodeKind
-  id: string
-  timestamp: string
-  collapsed: boolean
-  /** task: 任务描述 */
-  content?: string
-  /** thinking: reasoning 内容 */
-  reasoning?: string
-  /** action: 工具调用信息 */
-  toolName?: string
-  toolStatus?: string
-  toolDuration?: number
-  toolCallId?: string
-  toolArguments?: string  // 展开态显示
-  toolResult?: string     // 展开态显示
-  /** sub_task_board: 嵌套的子看板 */
-  childBoard?: AgentBlock
-  /** 节点状态 */
-  status?: 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'failed' | 'partial_failure' | 'cancelled'
-  /** 错误信息 */
-  errorMessage?: string
-  /** turn 完成状态 */
-  turnStatus?: string
-}
+- 任何 agent 的对话输出按"任务-思考-工具-回复"统一结构展示
+- 看板支持递归嵌套子任务看板（sub_task_board），嵌套深度受 `MaxSessionDepth=2` 约束
+- 节点类型：task / thinking / action / reply / sub_task_board / end / error
+- 折叠策略：thinking/action 完成后折叠；task/reply/end 始终展开；已完成回合默认展开
 
-interface AgentBlock {
-  /** 根节点或子看板的根节点 */
-  id: string
-  /** Agent 标识 */
-  agentKey: string
-  agentName: string
-  /** 当前 turn 的时间线条目（不含 progress，progress 在 progressSections 中） */
-  board: TaskBoardNode[]
-  /** 子 agent 子任务看板（递归结构） */
-  childBlocks: AgentBlock[]
-  /** 整体状态 */
-  status: AgentBlockStatus
-  /** 是否有工具失败但最终结果成功 */
-  hasPartialFailure: boolean
-  /** progress section（从 timeline 拆出，渲染在 turn 头部） */
-  progressSections: ProgressSection[]
-  /** 兼容字段：result 不再驱动 UI 单一来源 */
-  result?: string
-}
+> 详见 [59-chat-ui-optimization.design.md §6.2](./59-chat-ui-optimization.design.md#62-任务看板树形嵌套展示模型)（数据结构、渲染规则、折叠策略、组件设计）
 
-type AgentBlockStatus =
-  | 'running'
-  | 'tool_running'
-  | 'tool_blocked'
-  | 'completed'
-  | 'failed'
-  | 'partial_failure'
-  | 'cancelled'
-```
+### 5.2 三层可观测性（功能需求）
 
-### 5.2 三层可观测性架构
+- **L1 环境层**：语境加载消息、Agent 状态标签、侧边栏脉冲、底部状态栏、复杂度标签、检查点步骤
+- **L2 结构层**：对话流自动折叠、可折叠工具输出、中断恢复提示、DAG 依赖图、编排模式标签、验证门禁节点、工具调用时间线
+- **L3 证据层**：ChatExecutionCard 展开态、ChatDiffViewer、TeamRunObservatory Timeline、SynthesisResultCard、TaskBoard 展开态、SubTaskBoard 嵌套下钻
 
-```
-┌─────────────────────────────────────────────────────┐
-│ L1 环境层 (Ambient) — 始终可见，零干扰              │
-│ OBS-02 语境加载消息  OBS-03 Agent 状态标签           │
-│ OBS-05 侧边栏脉冲    OBS-04 底部状态栏              │
-│ SPO-06 复杂度标签    SPO-07 检查点步骤               │
-├─────────────────────────────────────────────────────┤
-│ L2 结构层 (Structural) — 按需查看，不遮挡            │
-│ OBS-01 对话流自动折叠  OBS-06 可折叠工具输出         │
-│ OBS-07 中断恢复提示    OBS-08 折叠增强              │
-│ SPO-02 DAG 依赖图      SPO-03 编排模式标签          │
-│ SPO-08 验证门禁节点    US-20 工具调用时间线         │
-├─────────────────────────────────────────────────────┤
-│ L3 证据层 (Evidential) — 主动展开才可见              │
-│ ChatExecutionCard 展开态  ChatDiffViewer             │
-│ TeamRunObservatory Timeline  SynthesisResultCard     │
-│ TaskBoard 展开态  SubTaskBoard 嵌套下钻             │
-└─────────────────────────────────────────────────────┘
-```
+> 详见 [59-chat-ui-optimization.design.md §6.4](./59-chat-ui-optimization.design.md#64-可观测性-ux-设计)（UX 设计、composable 架构、组件契约）
 
-### 5.3 设计原则
+### 5.3 设计原则（用户视角）
 
-| # | 原则 | 说明 |
-|---|------|------|
+| # | 原则 | 用户感知 |
+|---|------|---------|
 | DP-1 | 环境可观测性优先 | 状态信息以颜色、图标、微动画呈现，不占用主内容区空间 |
 | DP-2 | 渐进式信息披露 | 默认只展示 L1，用户主动交互才展开 L2/L3 |
 | DP-3 | 完成即折叠 | 已完成的步骤/工具/团队自动收起，保持视觉焦点在活跃内容 |
 | DP-4 | 状态即视觉 | 颜色、图标、动画三位一体传达状态 |
 | DP-5 | 证据后置 | 过程信息轻量展示，详细证据仅在用户主动查看时展开 |
-| DP-6 | **已完成回合默认展开** | 已完成回合的看板默认展开，让用户直达最终答案（与 DP-3 作用层级不同：DP-3 针对步骤/工具，DP-6 针对回合/看板） |
-| DP-7 | **树形嵌套** | 子 agent 子任务看板与父看板使用相同结构，递归可下钻 |
+| DP-6 | 已完成回合默认展开 | 已完成回合的看板默认展开，让用户直达最终答案 |
+| DP-7 | 树形嵌套 | 子 agent 子任务看板与父看板使用相同结构，递归可下钻 |
 
-### 5.4 中间面板状态机
+### 5.4 并行团队管理（功能需求）
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  精灵对话面板  │     │  任务执行面板  │     │ 成员只读面板   │
-│              │     │              │     │              │
-│ L1: 语境消息  │     │ L1: Agent标签 │     │ L1: 状态标签  │
-│ L2: 自动折叠  │     │ L2: 进度卡片  │     │ L2: 工具折叠  │
-│ L2: 工具折叠  │     │ L2: 恢复提示  │     │              │
-│ L1: 底部状态栏│     │ L1: 底部状态栏│     │ L1: 底部状态栏│
-│              │     │ L2: 任务看板   │     │ L2: 任务看板   │
-└──────────────┘     └──────────────┘     └──────────────┘
-```
+- 同一精灵 Session 最大并行团队数可配置（默认 3）
+- 单团队内最大并发成员数可配置（默认 2）
+- 团队超时可配置（默认 10min）
+- 完成后自动归档时间可配置（默认 1h）
+- Session 树最大深度可配置（默认 2，约束看板嵌套层级）
 
-### 5.5 并行团队管理
+> 详见 [59-chat-ui-optimization.design.md §3.4](./59-chat-ui-optimization.design.md#34-并行配置)（ParallelConfig 结构定义）
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `MaxConcurrentTeams` | 3 | 同一精灵 Session 最大并行团队数 |
-| `MaxTeamConcurrency` | 2 | 单团队内最大并发成员数 |
-| `TeamTimeout` | 10min | 单团队超时 |
-| `AutoArchiveAfter` | 1h | 完成后自动归档时间 |
-| `MaxSessionDepth` | 2 | Session 树最大深度（看板嵌套层级） |
+### 5.5 编排能力（功能需求）
 
-### 5.6 Task DAG 模型
+- **Task DAG**：复杂任务分解为子任务，形成 DAG 依赖图，按拓扑顺序执行
+- **拓扑路由**：根据 DAG 特征自动选择 parallel / sequential / hybrid / coordinator
+- **Synthesis Engine**：全部成功→完整合成；部分失败→部分合成；全部失败→失败报告
+- **编排进化**：DQ Score > 0.7 缓存编排拓扑；DQ Score < 0.5 生成优化建议
+- **验证门禁**：output_format / task_completion / human_approval 三类验证节点
 
-```
-TaskNode:
-  id: TaskNodeID
-  task_name: string
-  description: string
-  depends_on: []TaskNodeID
-  mode: string
-  agent_keys: []string
+> 详见 [59-chat-ui-optimization.design.md §3.3](./59-chat-ui-optimization.design.md#33-dag-拓扑路由)（DAG 路由）、[§5.2](./59-chat-ui-optimization.design.md#52-dq-score-三元分解)（DQ Score）、[§5.3](./59-chat-ui-optimization.design.md#53-编排进化闭环)（进化闭环）
 
-TaskDAG:
-  nodes: map[TaskNodeID]*TaskNode
-  roots: []TaskNodeID
-```
+### 5.6 精灵工具（功能需求）
 
-**拓扑路由规则**：
-
-| DAG 特征 | 路由结果 |
-|----------|---------|
-| 单节点 | `sequential` |
-| 所有节点无依赖 | `parallel` |
-| 存在依赖但宽度 > 1 | `hybrid` |
-| 依赖链深度 > 3 | `coordinator` |
-
-### 5.7 Synthesis Engine
-
-| 场景 | 策略 |
+| 工具 | 功能 |
 |------|------|
-| 全部成功 | 完整合成 |
-| 部分失败 | 部分合成，标注失败团队 |
-| 全部失败 | 失败报告 |
-| 依赖链中断 | 级联标注 |
+| `plan_and_execute` | 三阶段编排（Plan→Allocate→Orchestrate） |
+| `check_progress` | 查询编排进度 |
+| `cancel_orchestration` | 取消编排 |
+| `synthesize_results` | 合成已完成团队的结果 |
+| `build_orchestration_graph` | 生成 Graph DAG |
 
-### 5.8 精灵工具扩展
+> 旧工具（`assemble_team` / `assess_complexity` / `check_team_progress` / `cancel_team`）已 DEPRECATED。详见 [59-chat-ui-optimization.design.md §1.2](./59-chat-ui-optimization.design.md#12-分层与依赖)（分层与依赖）
 
-| 工具 | 功能 | 状态 |
-|------|------|------|
-| `plan_and_execute` | 三阶段编排（Plan→Allocate→Orchestrate） | ✅ 活跃 |
-| `check_progress` | 查询编排进度 | ✅ 活跃 |
-| `cancel_orchestration` | 取消编排 | ✅ 活跃 |
-| `synthesize_results` | 合成已完成团队的结果 | ✅ 活跃 |
-| `build_orchestration_graph` | 生成 Graph DAG | ✅ 活跃 |
-| `assemble_team` | 组建团队（旧） | DEPRECATED |
-| `assess_complexity` | 评估复杂度（旧） | DEPRECATED |
-| `check_team_progress` | 查询进度（旧） | DEPRECATED |
-| `cancel_team` | 取消团队（旧） | DEPRECATED |
+### 5.7 事件驱动（功能需求）
 
-### 5.9 事件驱动模型
+精灵模式新增 15+ 种 EnvelopeType，覆盖团队生命周期（assembled/completed/failed/interrupted/progress）、三阶段编排（plan_created/allocation_created/orchestration_started/checkpoint/interrupted）、合成完成、Butler 编排等场景。
 
-新增 EnvelopeType（15+）：
+> 详见 [59-chat-ui-optimization.design.md §4.1](./59-chat-ui-optimization.design.md#41-新增-envelopetype)（EnvelopeType 定义）、[§4.2](./59-chat-ui-optimization.design.md#42-事件载荷)（事件载荷）
 
-| EnvelopeType | 触发时机 |
-|-------------|---------|
-| `spirit_team_assembled` | 团队组建完成 |
-| `spirit_team_completed` | 团队执行完成 |
-| `spirit_team_failed` | 团队执行失败 |
-| `spirit_team_interrupted` | 团队执行中断 |
-| `spirit_team_progress` | 团队进度更新 |
-| `spirit_teams_all_completed` | 所有并行团队完成 |
-| `spirit_synthesis_completed` | 合成完成 |
-| `spirit_plan_created` | 任务计划创建 |
-| `spirit_allocation_created` | Agent 分配完成 |
-| `spirit_orchestration_started` | 编排启动 |
-| `spirit_orchestration_checkpoint` | 编排检查点 |
-| `spirit_orchestration_interrupted` | 编排中断 |
-| `butler.orchestration.started` | Butler 编排启动 |
-| `butler.orchestration.completed` | Butler 编排完成 |
-| `butler.orchestration.failed` | Butler 编排失败 |
+### 5.8 TODO 看板与工具时间线（功能需求）
 
-### 5.10 编排进化闭环
+- TODO 看板：三列（Pending/In Progress/Completed），数据源为 `todo_write` 工具结果和 session state
+- 工具时间线：turn 内多工具按发生时间排列，stuck 工具（`error_code=tool_timeout`）显示明确提示
 
-```
-用户需求 → 精灵判断 → 组建团队（基于历史 DQ Score 选择编排模式）
-    → 团队执行 → Session 执行轨迹记录
-        ├──→ DQ Score 计算 → 编排策略优化
-        ├──→ 工具调用模式检测 → Skill 提议
-        └──→ Agent 能力画像更新 → tool_weight 调整
-```
-
-**DQ Score 三元分解**：`Validity(×0.4) + Specificity(×0.3) + Correctness(×0.3)`
-
-### 5.11 验证门禁
-
-| 验证类型 | 触发时机 | FailureAction |
-|---------|---------|---------------|
-| output_format | merge 后 | Skip |
-| task_completion | merge 后 | RetryThenBlock |
-| human_approval | 关键节点前 | interrupt_before |
-
-### 5.12 TODO 任务看板数据契约
-
-```
-TodoBoardState:
-  todos: TodoItem[]
-  lastUpdated: ISO8601
-  source: 'tool_result' | 'session_state' | 'merged'
-
-TodoItem:
-  id: string
-  content: string
-  activeForm: string
-  status: 'pending' | 'in_progress' | 'completed'
-  updatedAt: ISO8601
-
-TodoColumn:
-  key: 'pending' | 'in_progress' | 'completed'
-  label: i18n
-  items: TodoItem[]
-```
-
-### 5.13 工具调用时间线节点模型
-
-```
-ToolCallTimelineNode:
-  event: ToolUseEvent
-  timestamp: HH:mm:ss
-  statusPoint: { color, icon, animated }
-  summary: string
-  argsPreview?: string
-  resultPreview?: string
-  errorText?: string
-  durationLabel: string
-  isStuck: boolean   // event.error_code === 'tool_timeout'
-```
-
-### 5.14 Stuck 工具检测与提示
-
-| 字段 | 取值 |
-|------|------|
-| 触发条件 | `event.error_code === 'tool_timeout'` |
-| 错误文案 | `chat.activity.stuckTool`（i18n） |
-| 范围 | Spirit 模式 + 工具时间线 |
-| 徽章 | `TaskExecutionPanel` 顶部 `SpiritStatusBar` 旁，橙色 chip |
+> 详见 [59-chat-ui-optimization.design.md §6.5](./59-chat-ui-optimization.design.md#65-todo-看板与工具调用时间线p16)（数据契约、组件拆分、替换规则）
 
 ---
 
@@ -1031,191 +848,106 @@ ToolCallTimelineNode:
 
 ## 9. 前端组件架构
 
-### 9.1 组件清单
+> **文档边界说明**：本节原包含组件清单（含路径和状态标记）、数据流图、WS 事件路由等架构设计内容，已迁移至设计文档。
 
-| 组件 | 路径 | 职责 | 状态 |
-|------|------|------|------|
-| UnifiedExecutionPanel.vue | `components/spirit/` | 统一执行面板（任务拆解+依赖关系+团队进度 单卡片纵向分区） | 📋 v7 |
-| ThinkingArea.vue | `components/spirit/` | 思考区域（脑纹SVG+流光+半透明span+闪烁光标+折叠按钮） | 📋 v7 |
-| SpiritEntry.vue | `components/spirit/` | 精灵入口卡片 | ✅ |
-| SpiritStatusBar.vue | `components/spirit/` | 底部状态栏 | ✅ |
-| TeamTaskCard.vue | `components/spirit/` | 侧边栏团队卡片 | ✅ |
-| AgentStatusLabel.vue | `components/spirit/` | Agent 状态标签（7 种聚合 + tool_blocked） | ✅ |
-| OrchestrationModeBadge.vue | `components/spirit/` | 编排模式标签 | ✅ |
-| TeamProgressCard.vue | `components/spirit/` | 团队进度卡片 | ✅ |
-| ParallelTeamOverview.vue | `components/spirit/` | 并行团队概览 | ✅ |
-| DAGDiagramCard.vue | `components/spirit/` | DAG 依赖图 | ✅ |
-| SynthesisResultCard.vue | `components/spirit/` | 综合结果卡片 | ✅ |
-| TaskExecutionPanel.vue | `components/spirit/` | 任务执行面板（集成所有子组件） | ✅ |
-| TeamAssemblyCard.vue | `components/spirit/` | 团队组建卡片 | ✅ |
-| InterruptedTeamCard.vue | `components/spirit/` | 中断恢复提示卡片 | ✅ |
-| TeamMemberTreeNode.vue | `components/spirit/` | 成员树形节点 | ✅ |
-| MemberReadOnlyPanel.vue | `components/spirit/` | 成员只读面板 | ✅ |
-| TaskBoardNode.vue | `components/chat/` | 任务看板单个节点（task/thinking/action/reply/sub_task_board/end/error） | ✅ |
-| TaskBoard.vue | `components/chat/` | 任务看板壳（支持树形嵌套渲染） | ✅ |
-| ChatExecutionCard.vue | `components/chat/` | 工具执行卡片（增强折叠 + 5s 计时） | ✅ |
-| ChatReasoningPeek.vue | `components/chat/` | 思考预览（脉冲+光标闪烁） | ✅ |
-| TodoKanbanBoard.vue | `components/chat/` | TODO 三列任务看板 | 📋 P1.6 |
-| TodoColumn.vue | `components/chat/` | TODO 单列 | 📋 P1.6 |
-| TodoCard.vue | `components/chat/` | TODO 单卡 | 📋 P1.6 |
-| ToolCallTimeline.vue | `components/chat/` | 工具调用纵向时间线 | 📋 P1.6 |
-| ToolCallTimelineItem.vue | `components/chat/` | 时间线单个节点 | 📋 P1.6 |
-| ToolStuckBadge.vue | `components/spirit/` | 任务执行面板 stuck 工具徽章 | 📋 P1.6 |
-| CodeBlock.vue | `components/chat/` | 代码块自动识别语言 + 高亮 + 复制 + 折叠 | 📋 P1.6 |
-| UiConfigToggle.vue | `components/chat/` | 工具调用显示开关按钮（ChatPanel 顶部） | 📋 P1.6 |
-
-### 9.2 数据流
-
-```
-API / Service（features/spirit/api.ts）
-        ↓
-Pinia Store（stores/spirit/index.ts — useSpiritTeamStore）
-        ↓
-Composable（features/chat/composables/useChatWorkspace.ts / useChatTimeline.ts / useAgentBlocks.ts）
-        ↓
-Page（pages/ChatPage.vue）
-        ↓ props
-Component（components/spirit/*.vue + components/chat/*.vue）
-```
-
-### 9.3 WS 事件路由
-
-```
-WebSocket Envelope
-  → useChatInboundSync.handleInboundEnvelope()
-    → env.type.startsWith('spirit_') 或 env.type.startsWith('butler.orchestration.')
-      → useSpiritTeamStore.handleSpiritEnvelope(env)
-        → 更新 teams/planCreated/allocationCreated/orchestrationStarted/lastCheckpoint/synthesisResult 等
-          → ChatPage.vue (spiritStore.sortedTeams / spiritStatusBar computed)
-            → ChatEntitySidebar: SpiritEntry + TeamTaskCard 列表
-            → ChatMessagePanel: TaskExecutionPanel / SynthesisResultCard / SpiritStatusBar
-            → TaskBoard: 任务看板树形嵌套渲染
-```
+> 详见 [59-chat-ui-optimization.design.md §7](./59-chat-ui-optimization.design.md#七前端架构)（目录结构、Store 设计、ChatMessagePanel 三模式、WS 回放兼容）、[§6.3](./59-chat-ui-optimization.design.md#63-任务执行面板布局v7-定稿)（任务执行面板布局）、[§6.2.5](./59-chat-ui-optimization.design.md#625-组件结构)（TaskBoard 组件结构）
 
 ---
 
 ## 10. 验收标准索引
 
+> **文档边界说明**：本节仅列出验收项 ID 与摘要（用户视角）。开发状态标记（✅/📋）和代码锚点已迁移至开发计划文档。
+
+> 详见 [59-chat-ui-optimization.development.md §3](./59-chat-ui-optimization.development.md#3-阶段划分与任务清单)（各 Phase 任务清单与状态）、[§8](./59-chat-ui-optimization.development.md#8-审查修复记录)（M69 修复与 AC 验收状态）
+
 ### 10.1 核心展示
 
-| ID | 摘要 | 阶段 | 状态 |
-|----|------|------|------|
-| US-01 | 左侧列表仅显示精灵 + 团队树 | P0 | ✅ |
-| US-02 | 精灵区分简单/任务型对话 | P0 | ✅ |
-| US-03 | 团队卡片展示名称/状态/成员/进度/Agent标签 | P0 | ✅ |
-| US-04 | 任务执行面板三区布局 + 任务看板 | P0 | ✅ |
-| US-05 | 任务看板树形嵌套展示 | M69 P1 | ✅ |
-| US-06 | 成员树形展开 + 状态 | P1 | ✅ |
-| US-07 | 成员只读面板（无输入框） | P1 | ✅ |
-| US-08 | 多任务并行 + Agent 复用隔离 | P0.5 | ✅ |
-| US-09 | 团队生命周期（归档/取消/重试） | P1 | ✅ |
-| US-10 | 面包屑导航 + 返回精灵 | P1 | ✅ |
-| US-11 | 对话流自动折叠 | OBS P0 | ✅ |
-| US-12 | 语境加载消息 | OBS P0 | ✅ |
-| US-13 | Agent 状态标签（含 tool_blocked） | OBS P0 + M69 P4 | ✅ |
-| US-14 | 底部状态栏 | OBS P1 | ✅ |
-| US-15 | 侧边栏状态脉冲 | OBS P1 | ✅ |
-| US-16 | 可折叠工具输出 | OBS P0 | ✅ |
-| US-17 | ChatExecutionCard 折叠增强 | OBS P1.5 | ✅ |
-| US-18 | 中断恢复提示 | OBS P1 | ✅ |
-| US-19 | TODO 任务看板 | P1.6 | 📋 |
-| US-20 | 工具调用时间线 | P1.6 | 📋 |
-| US-21 | Stuck 工具可观测化 | P1.6 | 📋 |
+| ID | 摘要 |
+|----|------|
+| US-01 | 左侧列表仅显示精灵 + 团队树 |
+| US-02 | 精灵区分简单/任务型对话 |
+| US-03 | 团队卡片展示名称/状态/成员/进度/Agent标签 |
+| US-04 | 任务执行面板三区布局 + 任务看板 |
+| US-05 | 任务看板树形嵌套展示 |
+| US-06 | 成员树形展开 + 状态 |
+| US-07 | 成员只读面板（无输入框） |
+| US-08 | 多任务并行 + Agent 复用隔离 |
+| US-09 | 团队生命周期（归档/取消/重试） |
+| US-10 | 面包屑导航 + 返回精灵 |
+| US-11 | 对话流自动折叠 |
+| US-12 | 语境加载消息 |
+| US-13 | Agent 状态标签（含 tool_blocked） |
+| US-14 | 底部状态栏 |
+| US-15 | 侧边栏状态脉冲 |
+| US-16 | 可折叠工具输出 |
+| US-17 | ChatExecutionCard 折叠增强 |
+| US-18 | 中断恢复提示 |
+| US-19 | TODO 任务看板 |
+| US-20 | 工具调用时间线 |
+| US-21 | Stuck 工具可观测化 |
+| US-22 | 工具显示开关 |
+| US-23 | 代码块自动识别语言与高亮 |
+| US-24 | 思考节点"UI 不喧宾夺主"细化 |
+| US-25 | 统一执行面板（v7 定稿） |
 
 ### 10.2 编排
 
-| ID | 摘要 | 阶段 | 状态 |
-|----|------|------|------|
-| SPO-01 | 多团队并行执行 | M60 P1 | ✅ |
-| SPO-02 | 任务依赖调度 | M60 P2 | ✅ |
-| SPO-03 | 编排模式智能选择 | M60 P2 | ✅ |
-| SPO-04 | 多团队结果合成 | M60 P2 | ✅ |
-| SPO-05 | 编排策略进化 | M60 P2 | ✅ |
-| SPO-06 | 任务复杂度智能评估 | M60 P4 | ✅ |
-| SPO-07 | Graph DAG 编排 | M60 P4 | ✅ |
-| SPO-08 | 编排验证门禁 | M60 P4 | ✅ |
+| ID | 摘要 |
+|----|------|
+| SPO-01 | 多团队并行执行 |
+| SPO-02 | 任务依赖调度 |
+| SPO-03 | 编排模式智能选择 |
+| SPO-04 | 多团队结果合成 |
+| SPO-05 | 编排策略进化 |
+| SPO-06 | 任务复杂度智能评估 |
+| SPO-07 | Graph DAG 编排 |
+| SPO-08 | 编排验证门禁 |
 
 ### 10.3 M69 修复
 
-| ID | 摘要 | 阶段 | 状态 |
-|----|------|------|------|
-| M69-01 | 团队列表数据加载（loadSpiritTeams） | P0 | ✅ |
-| M69-02 | WS 重连团队数据恢复 | P0 | ✅ |
-| M69-03 | 单 Agent 会话按时间线展示 | P1 | ✅ |
-| M69-04 | Team 会话按时间线展示 | P1 | ✅ |
-| M69-05 | 思考和动作元素完成后自动折叠 | P1 | ✅ |
-| M69-06 | TaskExecutionPanel 展示三区布局 | P2 | ✅ |
-| M69-07 | 左侧面板仅显示精灵+团队树 | P2 | ✅ |
-| M69-08 | UI 原型对齐优化（Agent Block Header、嵌套缩进、脉冲圆点等） | P3 | ✅ |
-| M69-09 | useAgentBlocks 业务逻辑修复（F-13~F-21） | P4 | ✅ |
+| ID | 摘要 |
+|----|------|
+| M69-01 | 团队列表数据加载 |
+| M69-02 | WS 重连团队数据恢复 |
+| M69-03 | 单 Agent 会话按时间线展示 |
+| M69-04 | Team 会话按时间线展示 |
+| M69-05 | 思考和动作元素完成后自动折叠 |
+| M69-06 | TaskExecutionPanel 展示三区布局 |
+| M69-07 | 左侧面板仅显示精灵+团队树 |
+| M69-08 | UI 原型对齐优化 |
+| M69-09 | useAgentBlocks 业务逻辑修复 |
 
 ### 10.4 useAgentBlocks 业务逻辑审查（子模块，2026-06-10）
 
-| ID | 验收项 | 优先级 | 文件 |
-|----|--------|--------|------|
-| AC-17 | `SubAgentBuilder.addTool` 必须将对应 message 推入 `allToolMsgs`，使 `allToolsDone` 检查在工具未完成时不返回 `true` | P0 | `useAgentBlocks.ts` |
-| AC-18 | 子代理 block 状态机增加 `tool_blocked` 显式状态；`tool_blocked` 不应被合并到 `running` 中 | P1 | `useAgentBlocks.ts` |
-| AC-19 | `resolvePlanStatus` 在 `planStatus === 'planning' && agentStatus === 'running' && planEntries.length > 0` 时必须返回 `'executing'` | P0 | `useAgentBlocks.ts` |
-| AC-20 | progress envelope 的 sortKey 不得小于 user 消息对应 sortKey；时钟漂移场景使用钳制（`Math.max(0, offset) - 0.5`） | P1 | `useAgentBlocks.ts` |
-| AC-21 | Reply 去重判断必须在 ReAct 模式下也走 `hasExplicitFinalAnswer` 判定（与 `resolveReplyContent` 语义对齐） | P1 | `useAgentBlocks.ts` |
-| AC-22 | `updatePlanEntryStatuses` 的 plan entry 与 sub-agent block 匹配改用 `agentKey` 而非 `agentName || task` | P1 | `useAgentBlocks.ts` |
-| AC-23 | 已完成回合（`status === 'completed'`）的 `collapsed` 默认为 `false`（展开态），让用户直达最终答案 | P2 | `useAgentBlocks.ts` |
-| AC-24 | AgentBlock 暴露 `hasPartialFailure` 字段（`hasFailedTool && hasSuccessfulResult`），UI 在回合头显示"⚠️ 部分工具失败"徽章 | P2 | `useAgentBlocks.ts` |
-| AC-25 | progress section 整体移到 turn 头部（user 消息之后、第一条 timeline 条目之前），与 timeline 主线视觉分离 | P3 | `useAgentBlocks.ts` + `TimelineNode.vue` |
+> **文档边界说明**：本节 AC 验收项的技术实现细节（文件路径、F-13~F-21 问题清单）已迁移至设计/开发文档。以下仅保留用户视角的验收项摘要。
 
-> **文档边界说明（2026-06-10）**：本节 AC 仅约束 M59/M69 整合后时间线展示层（`useAgentBlocks.ts` 构建的 AgentBlock 树）。**AgentBlock.result 与 timeline reply 与 SynthesisResultCard 三方重复展示问题**，因 `SynthesisResultCard` 由 M59 精灵模式拥有，仅在 M59 端给出"单一来源"约束（`AgentBlock.result` 降级为兼容字段），合成卡片的去重属于 M59 范围。
+| ID | 验收项（用户视角） | 优先级 |
+|----|-------------------|--------|
+| AC-17 | 子代理工具未完成时不应被误判为已完成 | P0 |
+| AC-18 | 用户能区分"系统在等"与"等用户确认"（tool_blocked 显式状态） | P1 |
+| AC-19 | PlanCard 在子代理执行时显示"执行中"而非"规划中" | P0 |
+| AC-20 | 进度条目排序正确，不受时钟漂移影响 | P1 |
+| AC-21 | ReAct 模式下回复去重判断正确 | P1 |
+| AC-22 | Plan entry 与子代理匹配准确 | P1 |
+| AC-23 | 已完成回合默认展开，用户直达最终答案 | P2 |
+| AC-24 | 部分工具失败时显示"⚠️ 部分工具失败"徽章 | P2 |
+| AC-25 | 进度区与时间线主线视觉分离 | P3 |
+
+> 详见 [59-chat-ui-optimization.design.md §九](./59-chat-ui-optimization.design.md#九d5-useagentblocks-业务逻辑修复设计2026-06-10)（D5 修复设计）、[59-chat-ui-optimization.development.md §3 Phase P4](./59-chat-ui-optimization.development.md#phase-p4--useagentblocks-业务逻辑审查修复m69-p4-合并)（P4 任务清单与状态）
 
 ---
 
 ## 11. 遗留技术债
 
-| ID | 描述 | 优先级 | 状态 |
-|----|------|--------|------|
-| TD-1 | api.ts 双键名兼容（teamKey/team_key） | P1 | ✅ 已修复 |
-| TD-2 | ListSpiritTeams HTTP 端点未暴露 | P1 | ✅ 已暴露（GET /v1/spirit/{id}/teams） |
-| TD-3 | ArchiveTeam RPC 未定义 | P1 | ✅ 已定义（POST /v1/teams/{id}/archive） |
-| TD-4 | MemberReadOnlyPanel 占位符 | P1 | ✅ 已实现 |
-| TD-5 | TeamMemberTreeNode 未实现 | P1 | ✅ 已实现 |
-| TD-6 | 面包屑导航未实现 | P1 | ✅ 已实现 |
-| TD-7 | 重试失败团队未实现 | P1 | ✅ 已实现 |
-| TD-8 | DQ Score 前端展示 | P2 | ✅ 已实现 |
-| TD-9 | 验证门禁结果前端展示 | P2 | ✅ 已实现 |
-| TD-10 | 条件路由 UI 展示 | P2 | ✅ 已实现 |
-| TD-11 | WriteDeliverablesToSession 使用 ParallelConfigJSON 存储交付物输出，语义不匹配 | P2 | ⚠️ 已标记 TECH-DEBT |
-| TD-12 | resolveVerificationGates 未实现 LinkedGraphID 查询路径 | P2 | ⚠️ |
-| TD-13 | 废弃 Spirit 工具代码残留约 400 行 | P2 | ⚠️ |
-| TD-14 | spiritSessionIDFromCtx 耦合 trpc-agent-go 运行时 API | P3 | ⚠️ |
-| TD-15 | 借调逻辑 submitBorrowRequests 为 best-effort，无回调确认机制 | P3 | ⚠️ |
-| TD-16 | 精灵 Prompt 决策规则无法 system-side 强制执行 | P3 | ⚠️ |
-| TD-TK-1 | `todo_write` 工具结果在前端展示为 `result` 字段嵌套 JSON | P1 | 📋 P1.6 |
-| TD-TK-2 | `stuckToolResultReason` 文案为 Go 常量硬编码，前端无法 i18n | P1 | 📋 P1.6 |
-| TD-TK-3 | `ChatExecutionCard` 与 `ToolCallTimeline` 在多工具时并存 | P2 | 📋 |
-| TD-TK-4 | 看板变更脉冲在虚拟滚动回收后可能丢失 | P2 | 📋 P1.6 验证 |
-| TD-TK-5 | 工具显示开关当前未实现，测试环境与生产环境无法差异化展示 | P1 | 📋 P1.6 (TK-04) |
-| TD-TK-6 | 代码块无高亮，依赖默认 markdown 渲染，长代码无折叠 | P2 | 📋 P1.6 (TK-05) |
-| TD-TK-7 | 思考节点视觉权重过重，与"不喧宾夺主"目标冲突 | P2 | 📋 P1.6 (TK-06) |
+> **文档边界说明**：本节原包含带状态标记和文件路径的技术债清单，已迁移至开发计划文档。
+
+> 详见 [59-chat-ui-optimization.development.md §8](./59-chat-ui-optimization.development.md#8-审查修复记录)（审查修复记录 + 未修复项清单）
 
 ## 12. UX 人性化改进（2026-06-09 实施）
 
-| ID | 改进项 | 优先级 | 状态 |
-|----|--------|--------|------|
-| UX-1 | TeamProgressCard 增加 ETA 预计完成时间 | P1 | ✅ |
-| UX-2 | MemberReadOnlyPanel 增加"返回精灵"快捷按钮 | P1 | ✅ |
-| UX-3 | TeamTaskCard 侧边栏增加实时耗时显示 | P1 | ✅ |
-| UX-4 | TeamTaskCard/TeamProgressCard 失败时显示错误摘要 | P1 | ✅ |
-| UX-5 | ToolStrip `<details>` → `q-expansion-item` 统一折叠动画 | P2 | ✅ |
-| UX-6 | SpiritStatusBar 并行配额迷你进度条 | P2 | ✅ |
-| UX-7 | ChatExecutionCard `aria-expanded`/`aria-controls` 无障碍 | P2 | ✅ |
-| UX-8 | Provide `readonly()` 运行时包装 signal | P3 | ✅ |
-| UX-9 | Summary fallback 语言改中文 | P3 | ✅ |
-| UX-10 | TurnBlock 显示 Agent Block Header（头像+名称+状态徽章+耗时+子任务数） | P1 | ✅（M69） |
-| UX-11 | ChatExecutionCard 显示 agent 首字头像 | P1 | ✅（M69） |
-| UX-12 | 运行中工具耗时显示 `...` 后缀（如 `8s...`） | P2 | ✅（M69） |
-| UX-13 | 思考流式输出显示脉冲圆点指示器和光标闪烁 | P2 | ✅（M69） |
-| UX-14 | 运行中工具卡片显示脉冲圆点指示器 | P2 | ✅（M69） |
-| UX-15 | 全局展开/折叠按钮始终可见（右对齐） | P2 | ✅（M69） |
-| UX-16 | Sub-Agent 嵌套缩进（左边框线+缩进） | P1 | ✅（M69） |
-| UX-17 | 执行结果区段显示"📊 执行结果"标签 | P2 | ✅（M69） |
+> **文档边界说明**：本节原包含带状态标记的 UX 改进清单，已迁移至开发计划文档。
+
+> 详见 [59-chat-ui-optimization.development.md §8](./59-chat-ui-optimization.development.md#8-审查修复记录)（UX 改进实施状态）
 
 ---
 
@@ -1236,42 +968,20 @@ WebSocket Envelope
 
 ## 14. 子模块：useAgentBlocks 业务逻辑审查（2026-06-10）
 
-> **范围**：本前端时间线展示层（`web/src/features/chat/composables/useAgentBlocks.ts`）
-> **触发**：用户报告 CHAT UI 最终回复重复展示 → 排查 → 静态代码审查发现 8 项业务逻辑问题
-> **关联**：[59-chat-ui-optimization.design.md §D5](./59-chat-ui-optimization.design.md)
+> **文档边界说明**：本节原包含文件路径、问题清单（F-13~F-21）和 AC 验收等技术细节，已迁移至设计/开发文档。以下仅保留用户视角的问题摘要。
 
-### 14.1 背景
+### 14.1 背景（用户视角）
 
-`useAgentBlocks.ts` 是任务看板树形嵌套展示的核心 composable，负责将消息流构建为 AgentBlock 树。随 M59 第四轮审查与 M69 修复，timeline 渲染逐步稳定；但**消息→AgentBlock 的构建层**未做系统性审查，遗留若干状态机缺陷与 UX 友好度问题。
+任务看板树形嵌套展示的核心展示层在 M59/M69 整合后逐步稳定，但**消息→AgentBlock 的构建层**存在若干状态机缺陷与 UX 友好度问题，导致：
+- 子代理工具未完成时状态被误判为 `completed`，用户被状态徽章误导
+- `tool_blocked` 被合并入 `running`，用户无法区分"系统在等"与"等用户确认"
+- PlanCard 在 subagents_spawn 路径下永远停在"规划中"，用户无法感知子代理真实执行进展
+- 已完成回合默认折叠，用户翻看历史时找不到最终答案
+- 部分工具失败被掩盖为 `completed`，用户不知道结果好但中途有工具失败
 
-### 14.2 问题清单
+### 14.2 验收追溯
 
-| # | 类型 | 严重度 | 描述 |
-|---|------|--------|------|
-| F-13 | **Bug** | 🔴 P0 | `SubAgentBuilder.addTool` 漏写 `allToolMsgs`，`allToolsDone` 恒为 `true`，子代理在工具未完成时被误判为 `completed` |
-| F-14 | **Bug** | 🔴 P0 | 状态机无 `tool_blocked` 显式状态，被合并入 `running`，与"等用户确认"语义混淆 |
-| F-15 | **Bug** | 🟠 P1 | `resolvePlanStatus` 漏 `running` 转换分支，`subagents_spawn` 路径下 PlanCard 永远停在"规划中" |
-| F-16 | **Bug** | 🟠 P1 | progress sortKey 未钳制，时钟漂移导致 progress 卡片插到 user 消息之前 |
-| F-17 | **Bug** | 🟠 P1 | Reply 去重仅在非 ReAct 模式生效，与 `resolveReplyContent` 语义不一致 |
-| F-18 | **Bug** | 🟠 P1 | Plan entry ↔ sub-agent block 匹配用 `agentName || task`，多子代理相似任务时错配 |
-| F-19 | **UX** | 🟡 P2 | 已完成回合默认折叠，用户看不到 AI 最终答案 |
-| F-20 | **UX** | 🟡 P2 | 部分工具失败被掩盖为 `completed`，无可观测信号 |
-| F-21 | **UX** | 🟢 P3 | progress section 与 timeline 主线混排，破坏线性叙事 |
-
-### 14.3 不纳入范围（边界说明）
-
-| 项 | 原因 | 归属 |
-|----|------|------|
-| AgentBlock.result 与 SynthesisResultCard 重复展示 | `SynthesisResultCard` 由 M59 拥有 | M59 |
-| `findUserTurns` 无 user 消息边界 | 属于消息分组层（`groupMessagesByTurn`） | M1 Chat |
-| `isLongRunning` UI 联动 | 属工具层（`activityPresentation`） | M23 Tools |
-
-### 14.4 验收追溯
-
-| 子模块 AC | 完整 AC 定义 |
-|-----------|--------------|
-| AC-17~AC-25 | 见 §10.4 表格 |
-| F-13~F-21 | 见 §14.2 表格，对应修复点见设计 §D5 和开发计划 Phase P4 |
+> 详见 [59-chat-ui-optimization.design.md §九](./59-chat-ui-optimization.design.md#九d5-useagentblocks-业务逻辑修复设计2026-06-10)（D5 修复设计）、[59-chat-ui-optimization.development.md §3 Phase P4](./59-chat-ui-optimization.development.md#phase-p4--useagentblocks-业务逻辑审查修复m69-p4-合并)（P4 任务清单与状态）
 
 ---
 
@@ -1281,29 +991,15 @@ WebSocket Envelope
 > **方案**：[2026-06-13-activity-first-restructure-optimized-proposal.md](../reports/2026-06-13-activity-first-restructure-optimized-proposal.md)
 > **原则**：后端语义直推前端，M59 展示层保留，渐进式迁移
 
-### 15.1 问题根源
+### 15.1 问题根源（用户视角）
 
-当前系统采用 **Message-First** 模型：后端按 LLM 调用轮次建模（Message），前端需要"用户可理解的活动"（Activity）。两者之间存在语义鸿沟，前端必须执行 13 层推理才能从非结构化载体中恢复语义：
-
-| # | 推理步骤 | 脆弱度 | 来源 |
-|---|---------|--------|------|
-| 1 | `reasoning_as_display` 标志在 `options_json` 中，流式阶段不可见 | 🔴 | `turn_stream_helpers.go` |
-| 2 | ReAct Planner 标签 `/*PLANNING*/` 等嵌入纯文本 Content | 🔴 | `reactPlannerParse.ts` |
-| 3 | Team 成员消息用 `member-${agentKey}` ID 前缀约定 | 🟠 | `messageOrigin.ts` |
-| 4 | `EnvelopeContent` 仅有 Text + Reasoning，无语义标记 | 🔴 | `envelope.go` |
-| 5 | 工具调用触发 `snapshotStreamingMessage()` 转换 ID 前缀 | 🟠 | `streamContentPatch.ts` |
-| 6 | `mergeSessionMessages` 用内容匹配关联本地/服务端消息 | 🟠 | `mergeSessionMessages.ts` |
-| 7 | `classifyActivityKind` 按工具名推断活动类型 | 🟡 | `activityPresentation.ts` |
-| 8 | `resolveAssistantPresentation` 分发器推断展示模式 | 🟡 | `messagePlannerPresentation.ts` |
-| 9 | `isReasoningAsDisplay()` 从持久化后的 `options_json` 读取 | 🔴 | `streamContentPatch.ts` |
-| 10 | `reasoningMarkdown()` 拼接 reasoning + body 作为 fallback | 🟡 | `streamContentPatch.ts` |
-| 11 | `useConversationTimeline` 从 Message 反推 Activity 列表 | 🟠 | `useConversationTimeline.ts` |
-| 12 | `useAgentBlocks` 从 Message 构建 AgentBlock 树 | 🟠 | `useAgentBlocks.ts` |
-| 13 | `computeAgentStatus` 从工具状态推断 Agent 状态 | 🟡 | `useAgentBlocks.ts` |
+当前系统采用 **Message-First** 模型：后端按 LLM 调用轮次建模（Message），前端需要"用户可理解的活动"（Activity）。两者之间存在语义鸿沟，前端必须执行 13 层推理才能从非结构化载体中恢复语义，导致"思考/回复"显示问题反复出现。
 
 M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层的语义鸿沟未根治。Activity-First 是"数据源层治理"，与 M59 的"展示层治理"互补。
 
-### 15.2 ActivityKind 定义
+> 13 层推理详细清单（含文件路径和脆弱度分析）详见 [59-chat-ui-optimization.design.md §14.1](./59-chat-ui-optimization.design.md#141-设计定位)（设计定位）、[§14.6](./59-chat-ui-optimization.design.md#146-13-层推理消除映射)（13 层推理消除映射）
+
+### 15.2 ActivityKind 定义（用户视角）
 
 对齐 M59 TaskBoardNodeKind，扩展为 9 种语义类型：
 
@@ -1318,6 +1014,8 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 | `error` | `error` | ❌ | 错误信息 |
 | `delegate` | — | 🤝 | 精灵委派团队（Spirit→Team） |
 | `notice` | — | 💡 | 系统通知（语境加载消息、状态变更提示） |
+
+> Activity 数据结构（TypeScript interface）详见 [59-chat-ui-optimization.design.md §14.4](./59-chat-ui-optimization.design.md#144-activities-表-schema)（activities 表 Schema + Activity 模型）
 
 ### 15.3 用户故事
 
@@ -1434,53 +1132,15 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 
 ### 15.4 Activity 数据结构
 
-```typescript
-type ActivityKind =
-  | 'task' | 'thinking' | 'action' | 'reply'
-  | 'sub_task_board' | 'end' | 'error'
-  | 'delegate' | 'notice'
+> **文档边界说明**：本节原包含 TypeScript interface 定义，已迁移至设计文档。
 
-type ActivityStatus =
-  | 'pending' | 'running' | 'tool_running' | 'tool_blocked'
-  | 'completed' | 'failed' | 'partial_failure'
-  | 'cancelled' | 'interrupted'
-
-interface Activity {
-  id: string
-  kind: ActivityKind
-  sessionId: string
-  turnId: string
-  parentActivityId: string | null
-  timestamp: string
-  content?: string
-  reasoning?: string
-  toolName?: string
-  toolCallId?: string
-  toolArguments?: string
-  toolResult?: string
-  toolDurationMs?: number
-  toolErrorCode?: string
-  childBoardId?: string
-  spiritSessionId?: string
-  teamId?: string
-  dagNodeId?: string
-  dependsOn?: string[]
-  agentKey?: string
-  agentName?: string
-  status: ActivityStatus
-  collapsed: boolean
-  durationMs: number | null
-  label?: string
-}
-```
+> 详见 [59-chat-ui-optimization.design.md §14.4](./59-chat-ui-optimization.design.md#144-activities-表-schema)（activities 表 Schema + Ent Schema 规范）、[§14.5](./59-chat-ui-optimization.design.md#145-前端-activity-消费层)（前端 Activity 消费层 + Activity → TaskBoardNode 映射）
 
 ### 15.5 迁移需求
 
-| 阶段 | 内容 | 验证 |
-|------|------|------|
-| Phase AF-1 | 后端 Activity 投影 + 双发射 + activities 表 | `make api && make wire && make build && make test && make lint` |
-| Phase AF-2 | 前端 useActivityTimeline + feature flag + 组件切换 | `cd web && pnpm lint && pnpm test && pnpm build` |
-| Phase AF-3 | 停发旧事件 + 清理推理逻辑 + 全量回归 | 全量测试通过 |
+> **文档边界说明**：本节原包含带验证命令的迁移阶段表，已迁移至开发计划文档。
+
+> 详见 [59-chat-ui-optimization.development.md §9](./59-chat-ui-optimization.development.md#9-phase-af--activity-first-全重构2026-06-13-新增)（Phase AF-1/AF-2/AF-3 任务清单、依赖关系、验证命令）
 
 ### 15.6 非功能需求
 

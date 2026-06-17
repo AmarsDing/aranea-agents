@@ -1,10 +1,10 @@
 # M55 — Chat × Channel × Cursor 对标 — 开发计划
 
-> **版本**：2026-05-29 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；**Phase C UX 收口 ✅ 已完成**；**Phase E Reasoning 侧栏 ✅ 已完成**
-> **方案**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md)  
-> **四层解耦（DECO）**：[17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-11/12/13/14 · 衔接 CC-A/C）
-> **蓝图**：[55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南)  
-> **进度真相**：[execution-plan.md §迭代 CC](../guides/execution-plan.md) · **EP**：EP-CC-M55  
+> **版本**：2026-06-17 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；**Phase C UX 收口 ✅ 已完成**；**Phase E Reasoning 侧栏 ✅ 已完成**
+> **需求**：[55-chat-channel-cursor.md](./55-chat-channel-cursor.md)
+> **设计**：[55-chat-channel-cursor.design.md](./55-chat-channel-cursor.design.md)
+> **四层解耦（DECO）**：[17-channel.development.md §14](./17-channel.development.md#14-phase-deco--四层架构解耦deco)（DECO-11/12/13/14 · 衔接 CC-A/C）
+> **进度真相**：[execution-plan.md §迭代 CC](../guides/execution-plan.md) · **EP**：EP-CC-M55
 > **近期 changelog**：[M55 Phase A–D Review](../changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) · [卡 Turn / 入站排查](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md) · [**R-UX 格式化 / 思考 UX**](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)
 
 ---
@@ -13,7 +13,7 @@
 
 在 **不破坏现有架构红线** 前提下，完成三件事：
 
-1. **长任务**：**目标态 §2.6** Interactive Run → 运行时升格 Durable；CC-A-02 关键词→Job 为**过渡**（§13.1）。
+1. **长任务**：**目标态 [设计文档 §5.3](./55-chat-channel-cursor.design.md#53-run-两阶段升格interactive--durable)** Interactive Run → 运行时升格 Durable；CC-A-02 关键词→Job 为**过渡**（见 §13.1）。
 2. **Channel↔Web 同步**：`session_revision` + Channel 入站聚焦，Web 可靠镜像飞书会话。
 3. **Cursor 式 Chat UX**：TurnBlock 分组、工具折叠、Background Job 面板。
 
@@ -21,10 +21,11 @@
 
 | 层 | 现有 | M55 扩展 |
 |----|------|----------|
-| biz | `channel_config_helpers.go` · `channel_peer_session.go` | 长任务路由、`UpdateSessionID` stale rebind |
-| service | `channel_ingress*.go` · `trpc_turn.go` · `chat_jobs.go` | 路由、revision bump、Jobs 聚合 |
-| event | `envelope.go` · `session_revision.go` | `session_revision` / `source` |
-| web/chat | `TurnBlock.vue` · `groupMessagesByTurn.ts` | TurnBlock · 增量 sync · Jobs 面板 |
+| biz | `internal/biz/channel_config_helpers.go` · `internal/biz/channel_peer_session.go` · `internal/biz/session_run.go` | 长任务路由、`UpdateSessionID` stale rebind、Run 生命周期 |
+| service | `internal/service/channel_ingress*.go` · `internal/service/chat_orchestrator_turn.go` · `internal/service/chat_jobs.go` · `internal/service/turn_pipeline.go` | 路由、revision bump、Jobs 聚合 |
+| event | `internal/event/contract/envelope.go` · `internal/event/session_revision.go` · `internal/event/source.go` | `session_revision` / `source` 注入 |
+| data | `internal/data/session_repo.go`（`BumpSessionRevision` L823）· `internal/data/session_run_schema.go` · `internal/data/session_run_repo.go` | revision bump、session_runs DDL |
+| web/chat | `web/src/components/chat/ChatMessagePanel.vue` · `ChatMessageList.vue` · `ChatBackgroundJobsPanel.vue` · `web/src/features/chat/composables/useChatInboundSync.ts` · `web/src/features/chat/mergeSessionMessages.ts` | TurnBlock 渲染 · 增量 sync · Jobs 面板 |
 
 ---
 
@@ -32,7 +33,7 @@
 
 | 项 | 状态 | 说明 |
 |----|------|------|
-| Channel Phase E（ACK/Job/IM Preview） | ✅ | [17-channel-development.md §10](./17-channel-development.md#10-长任务异步执行phase-e) |
+| Channel Phase E（ACK/Job/IM Preview） | ✅ | [17-channel.development.md §10](./17-channel.development.md#10-长任务异步执行phase-e) |
 | 长任务 preset + auto 关键词路由 | 🟡 过渡 | `ShouldRunAsync` 仅 `/async` · CC-R-05 |
 | Run 两阶段升格（Interactive→Durable） | ✅ P0–P1 | Phase R · CC-R-01~05；稳定性见 §Phase R-OPT |
 | `session_revision` 增量 sync | ✅ | API + WS + `useChatInboundSync` |
@@ -41,7 +42,7 @@
 | 飞书 peer bind stale rebind | ✅ | CC-HOT-01 · [changelog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) |
 | UserBubble 来源徽标（Tier 0 platform） | ✅ | CC-B-07 · `source_meta` → `q-chip` 渲染 |
 | 思考/ReAct 互斥 UX | ✅ | CC-C-UX-01~03 · CC-WEB-REASONING-02~04 |
-| 思考流式缓存（Store vs DB） | ✅ | CC-WEB-REASONING-01~04 · `ChatReasoningPeek` live tail |
+| 思考流式缓存（Store vs DB） | ✅ | CC-WEB-REASONING-01~04 · `ThinkingBlock.vue` + `chatStreamingSnapshots` Store live tail |
 | 飞书出站格式化（思考/正文） | ✅ | CC-CHANNEL-FMT-01~06 · [changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) |
 | TurnBlock 思考/正文视觉分离 | ✅ | CC-C-UX-04 · `turn-block__response` 分区 |
 | 圆环点击 Prompt 占比分解 | ✅ | CC-C-UX-05 · `ChatContextBreakdownPopover` + `useContextBreakdown` |
@@ -55,7 +56,7 @@
 | mapPreviewToReport 提取 | ✅ | 纯函数从 `useChatWorkspace` 提取到 `contextBreakdown.ts` |
 | BREAKDOWN_COLORS 迁移 CSS 变量 | ✅ | `--chart-color-*` token 昼夜差异化 |
 | ChatMessagePanel border-radius | ✅ | 内联 style 提取为 `var(--chat-bubble-radius)` |
-| ChatMessagePanel script 瘦身 | ✅ | timeline 逻辑提取到 `useChatTimeline` composable |
+| ChatMessagePanel script 瘦身 | ✅ | timeline 逻辑提取到 `useConversationTimeline` / `useActivityTimeline` composable |
 | Session 顶栏 sync 诊断 | ✅ | CC-C-07 · WS 连接点 + tooltip 显示 rev 号 |
 | completion 增量 hydrate | ✅ | CC-C-06 · `afterRevision` 增量加载 + 安全回退 |
 | UserBubble 来源徽标 | ✅ | CC-B-07 · `source_meta` → `q-chip` 渲染 |
@@ -137,7 +138,7 @@ gantt
 
 | ID | 任务 | 状态 | 验收 |
 |----|------|------|------|
-| CC-C-01 | `TurnBlock` + `ToolStrip` | ✅ | 仍用 `ChatMessageRow` 子组件 |
+| CC-C-01 | `TurnBlock` + `ToolStrip` | ✅ | 渲染于 `ChatMessageList.vue`，复用 `ChatExecutionCard` 子组件 |
 | CC-C-02 | ToolStrip 默认折叠 | ✅ | |
 | CC-C-03 | `groupMessagesByTurn` + 单测 | ✅ | 缺 feishu 115 条 fixture |
 | CC-C-04 | 滚动锚定最后一轮正文 | ✅ | |
@@ -197,7 +198,7 @@ gantt
 
 ### Phase R — Run 两阶段升格（P-1 根本解）— ✅ P0–P1 已落地
 
-> 详设：[55-chat-channel-cursor-solution.md §2.6](../需求/55-chat-channel-cursor-solution.md#26-run-生命周期interactive--durable-升格p-1-根本解)
+> 详设：[55-chat-channel-cursor.design.md §5.3](./55-chat-channel-cursor.design.md#53-run-两阶段升格interactive--durable)
 
 | ID | 任务 | 状态 | 验收 |
 |----|------|------|------|
@@ -207,7 +208,7 @@ gantt
 | **CC-R-04** | Jobs 面板 + Envelope 统一 `run_id` | ✅ | Jobs 面板「跳转 TurnBlock」按钮 |
 | **CC-R-05** | workflow_binding · keyword 降级为建议 | ✅ | `ShouldRunAsync` 仅 `/async`；`SuggestDurableRun` 仅日志/UX 提示 |
 
-**代码锚点**：`internal/biz/session_run*.go` · `internal/data/session_run_*.go` · `chat_orchestrator_session_run.go` · `session_run_durable_worker.go`
+**代码锚点**：`internal/biz/session_run.go` · `internal/biz/session_run_phase_machine.go` · `internal/biz/session_run_checkpoint.go` · `internal/data/session_run_repo.go` · `internal/data/session_run_checkpoint_repo.go` · `internal/data/session_run_schema.go` · `internal/service/chat_orch_session_run_lifecycle.go` · `internal/service/session_run_durable_worker.go` · `internal/service/chat_durable_resume.go`
 
 ---
 
@@ -222,11 +223,11 @@ gantt
 | **CC-R-OPT-02** | 飞书卡片 callback ownership | P1 | ✅ | run.session_id 与 channel 解析 session 一致 |
 | **CC-R-OPT-03** | 硬预算 checkpoint 先于 durable | P1 | ✅ | Worker 首次 scan 必能 GetCheckpoint |
 | **CC-R-OPT-04** | CC-F-02 文档诚实化 | P1 | ✅ | Phase 1 vs CC-F-02b |
-| CC-R-OPT-05 | 抽出 `runDurableResumeTurn` | P2 | ✅ | `chat_orchestrator_durable.go` |
+| CC-R-OPT-05 | 抽出 `durableSessionRunLifecycle` | P2 | ✅ | `chat_orchestrator_durable.go` |
 | CC-R-OPT-06 | escalate FlowLog warn | P2 | ✅ | checkpoint/MarkPhase 失败可观测 |
 | CC-R-OPT-07 | binding 丢失降级 | P2 | ✅ | 重启后 escalate payload 完整 |
 | CC-R-OPT-08 | Jobs scan agent_id | P2 | ✅ | ListForJobs 过滤与字段一致 |
-| **CC-E2E-RUN-01~04** | Run E2E 手工清单 | P2 | ⏳ | 单测 + [17-channel §M55-RUN](./17-channel-development.md) |
+| **CC-E2E-RUN-01~04** | Run E2E 手工清单 | P2 | ⏳ | 单测 + [17-channel §M55-RUN](./17-channel.development.md) |
 | **CC-R-OPT-10** | TurnBlock scroll 高亮 | P3 | ✅ | `turn-block--focused` |
 | **CC-R-OPT-11** | IM 平台矩阵 | P3 | ✅ | 17-channel §M55-RUN |
 
@@ -249,7 +250,7 @@ gantt
 | CC-WEB-NOTIFY-01~03 | Header 铃铛 + MainLayout 全局 WS 通知 | P1 | ✅ |
 | CC-WEB-SESSION-01 | Channel 入站刷新 Agent Session 列表 | P1 | ✅ |
 | CC-WEB-REASONING-01 | `streamingSnapshots` Store 缓存 | P1 | ✅ |
-| CC-WEB-REASONING-02~04 | `ChatReasoningPeek` 思考/正文 · live tail 最后两行 | P1 | ✅ |
+| CC-WEB-REASONING-02~04 | `ThinkingBlock.vue` 思考/正文 · `chatStreamingSnapshots` Store live tail 最后两行 | P1 | ✅ |
 | CC-CHANNEL-FMT-01~06 | IM 格式化 · `【思考过程】`/`【正文】` · 飞书回复 Card | P1 | ✅ |
 | CC-FEISHU-02 | 升格卡片 Card 2.0 +「取消执行」callback | P1 | ✅ |
 | CC-UX-01~02 | 排队与 `/async` 文案去重 | P2 | ✅ |
@@ -327,9 +328,10 @@ gantt
 
 | 文档 | 更新时机 |
 |------|----------|
-| [55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) | §12 后期优化 |
-| [1-chat-development.md](./1-chat-development.md) | Phase 9 M55 状态 |
-| [17-channel-development.md](./17-channel-development.md) | D7 peer rebind |
+| [55-chat-channel-cursor.md](./55-chat-channel-cursor.md) | 需求变更 |
+| [55-chat-channel-cursor.design.md](./55-chat-channel-cursor.design.md) | 架构/协议/UX 规范变更 |
+| [1-chat.development.md](./1-chat.development.md) | Phase 9 M55 状态 |
+| [17-channel.development.md](./17-channel.development.md) | D7 peer rebind |
 | [execution-plan.md](../guides/execution-plan.md) | 迭代 CC 任务板 |
 
 ---

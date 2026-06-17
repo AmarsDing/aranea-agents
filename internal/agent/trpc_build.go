@@ -185,6 +185,16 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		if ts.DeferredManager != nil {
 			deps = deps.WithDeferredManager(ts.DeferredManager)
 		}
+		// Enable TodoEnforcer only when the agent already has the todo_write
+		// tool enabled. The enforcer contributes todo_declare_blocker + enforcement
+		// callbacks (BeforeModel/AfterModel) that prevent the agent from declaring
+		// "done" while open todo items remain. The enforcer's own todo_write tool
+		// is silently dropped by LLMAgent's earlier-wins dedup (user tool wins),
+		// but enforcement still works because both tools write to the same session
+		// state key (temp:todos:<branch>).
+		if hasToolByName(ts.Tools, "todo_write") {
+			opts = append(opts, NewTodoEnforcerOption(nil, lg))
+		}
 	}
 
 	if biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
@@ -486,6 +496,18 @@ func isToolPipeEligible(t trpctool.Tool) bool {
 	case "read_file", "execute_command", "web_fetch", "list_directory",
 		"search_files", "search_code":
 		return true
+	}
+	return false
+}
+
+// hasToolByName reports whether the tool slice contains a tool whose
+// Declaration().Name matches the given name. Returns false for empty slices
+// or nil declarations.
+func hasToolByName(tools []trpctool.Tool, name string) bool {
+	for _, t := range tools {
+		if decl := t.Declaration(); decl != nil && decl.Name == name {
+			return true
+		}
 	}
 	return false
 }

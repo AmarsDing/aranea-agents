@@ -31,7 +31,7 @@
 
 1. **构建期**：`BuildSystemPrompt` + `RuntimeCapabilityCue` → `WithInstruction(sys)`；L4 **不在**构建期注入。
 2. **运行时**：Processor 链 + BeforeModel 注入 **L2 / L3 / L4** 记忆。
-3. **Intent Pass**（`IntentPassEnabled`，默认 false）将结构化意图 JSON 注入 **System 上下文**（`InjectedContextMessages`），User Message 保持原文；`intent_artifact` 仍写入 options JSON 供审计。
+3. **Intent Pass**（`IntentPassEnabled`，默认 true）将结构化意图 JSON 注入 **System 上下文**（`InjectedContextMessages`），User Message 保持原文；`intent_artifact` 仍写入 options JSON 供审计。
 4. **BeforeModel 快照**：每次 LLM 调用前输出 `chat.prompt.compose` FlowLog（各段 est_tokens），可用 `ARANEA_PROMPT_SNAPSHOT=0` 关闭。
 
 详细流程与对照表见 [assembly.md](./assembly.md)。

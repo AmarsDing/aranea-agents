@@ -1,6 +1,6 @@
 # Self-Iteration V2 — 开发计划
 
-> **版本**：2026-06-06-v2 | **状态**：✅ Phase 1–3 已落地
+> **版本**：2026-06-17 | **状态**：✅ Phase 1–3 已落地
 > **需求**：[60-self-iteration-v2.md](./60-self-iteration-v2.md) · **设计**：[60-self-iteration-v2.design.md](./60-self-iteration-v2.design.md)
 > **OpenSpec Change**：`openspec/changes/self-iteration-v2/`
 
@@ -12,18 +12,19 @@
 
 **代码锚点**：
 
-| 层 | 新增路径 |
+| 层 | 路径 |
 |----|----------|
-| Biz | `internal/biz/monitor/root_cause_analyzer.go`、`failure_report.go`、`failure_report_parser.go`、`failure_pattern_repo.go`、`predictive_heal.go`、`pattern_mining.go`、`skill_evolution_loop.go`、`skill_evolution_suggestion_types.go` |
+| Biz | `internal/biz/monitor/root_cause_analyzer.go`、`internal/biz/monitor/failure_report.go`、`internal/biz/monitor/failure_report_parser.go`、`internal/biz/monitor/failure_pattern_repo.go`、`internal/biz/monitor/predictive_heal.go`、`internal/biz/monitor/pattern_mining.go`、`internal/biz/skill_evolution_loop.go`、`internal/biz/skill_evolution_suggestion_types.go` |
 | Biz（扩展） | `internal/biz/skill_intelligence.go`（集成 RootCauseAnalyzer）、`internal/biz/skill_intelligence_repo.go`（新增端口） |
 | Data | `internal/data/ent/schema/failure_pattern.go`、`internal/data/ent/schema/skill_evolution_suggestion.go`、`internal/data/ent/schema/experience_report.go`、`internal/data/failure_pattern_repo.go`、`internal/data/skill_evolution_suggestion.go` |
-| Service | `internal/service/skill_intelligence.go`、`internal/service/skill_curator.go` |
+| Service | `internal/service/skill_intelligence.go`、`internal/service/skill_curator.go`、`internal/service/skill_evolution_suggestion.go` |
 | Tools | `internal/tools/skillrecommend/health_provider.go`、`internal/tools/skillrecommend/rank.go`（扩展）、`internal/tools/skillrecommend/rank_feedback.go` |
-| Cron | `internal/cronrunner/jobs/skill_intelligence_worker.go`、`failure_pattern_sync.go`、`predictive_heal.go`、`pattern_mining.go` |
-| Proto | `api/kratos/skill_intelligence/v1/skill_intelligence.proto` |
+| Cron | `internal/cronrunner/jobs/skill_intelligence_worker.go`、`internal/cronrunner/jobs/failure_pattern_sync.go`、`internal/cronrunner/jobs/predictive_heal.go`、`internal/cronrunner/jobs/pattern_mining.go` |
+| Wire DI | `cmd/admin/wire.go`（Provider + 绑定）、`cmd/admin/workers.go`（Cron Job 启动注册） |
+| Proto | `api/kratos/skill_intelligence/v1/skill_intelligence.proto`、`api/kratos/skill_evolution_suggestion/v1/skill_evolution_suggestion.proto` |
 | CI/CD | `.github/workflows/auto-fix.yml`（改造）、`.auto-fix/scripts/parse-logs.py`（新增） |
-| 前端 | 经验报告列表页、Skill 进化审批 UI |
-| 集成测试 | `internal/service/monitor_integration_test.go`、`skill_intelligence_integration_test.go`、`chat_turn_integration_test.go` |
+| 前端 | `web/src/pages/ExperienceReportListPage.vue`、`web/src/pages/EvolutionSuggestionListPage.vue` |
+| 集成测试 | `internal/service/monitor_integration_test.go`、`internal/service/skill_intelligence_integration_test.go`、`internal/service/chat_turn_integration_test.go` |
 
 ---
 
@@ -84,7 +85,7 @@ Phase 2（Skill Intelligence 落地）← 依赖 Phase 1 完成
 │   8.5 触发条件判定                                     │
 │   8.6 Curator Agent 装配                              │
 │   8.7 Sandbox Runner 验证                             │
-│   8.8 进化建议 API                                    │
+│   8.8 进化建议 API（Proto + Service）                 │
 │   8.9 Skill 元数据扩展                                │
 │   8.10 Wire DI 装配                                   │
 └── 9. 前端 ← 依赖 6.7 + 8.8                           │
@@ -122,7 +123,7 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 |----|------|-----|--------|------|-----|
 | 1.1 | 创建 `internal/biz/monitor/root_cause_analyzer.go`：定义 `RootCauseAnalyzer` 接口 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
 | 1.2 | 修改 `internal/biz/monitor/root_cause_engine.go`：让 `RootCauseEngine` 实现 `RootCauseAnalyzer` 接口 | Biz | P0 | ✅ | `go build ./internal/biz/...` 通过 |
-| 1.3 | Wire 绑定：在 `internal/biz/wire.go` 中添加 `RootCauseAnalyzer` 的 Wire 绑定 | Biz | P0 | ✅ | `make wire && go build ./cmd/admin` 通过 |
+| 1.3 | Wire 绑定：在 `cmd/admin/wire.go` 中添加 `RootCauseAnalyzer` 的 Wire 绑定 | Wire | P0 | ✅ | `make wire && go build ./cmd/admin` 通过 |
 | 1.4 | 验证 | — | P0 | ✅ | `go test ./internal/biz/monitor/... -count=1` 绿色 |
 
 ### Phase 1 — 闭环加固：FailureReport 标准化错误表示
@@ -198,7 +199,7 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 | 8.5 | 修改 `internal/biz/skill_intelligence.go`：触发条件判定 + CreateSuggestion | Biz | P1 | ✅ | `go build ./internal/biz/...` 通过 |
 | 8.6 | 创建 `internal/service/skill_curator.go`：Curator Agent 装配与 invoke | Service | P1 | ✅ | `go build ./internal/service/...` 通过 |
 | 8.7 | 实现 Sandbox Runner 验证 | Service | P1 | ✅ | 隔离执行，不影响生产 |
-| 8.8 | 定义进化建议 API proto + 实现 Service 层 | Proto+Service | P1 | ✅ | `make api && go build ./...` 通过 |
+| 8.8 | 定义进化建议 API：`api/kratos/skill_evolution_suggestion/v1/skill_evolution_suggestion.proto` + `internal/service/skill_evolution_suggestion.go` | Proto+Service | P1 | ✅ | `make api && go build ./...` 通过 |
 | 8.9 | Skill 元数据扩展：新增 parent_version_id / evolution_reason / lifecycle_status | Data | P1 | ✅ | `go generate ./internal/data/ent/...` 无错误 |
 | 8.10 | Wire DI 装配 | Wire | P1 | ✅ | `make wire && make build` 通过 |
 
@@ -206,8 +207,8 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 
 | ID | 任务 | 层 | 优先级 | 状态 | DoD |
 |----|------|-----|--------|------|-----|
-| 9.1 | 前端经验报告列表页：调用 ListExperienceReports API | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
-| 9.2 | 前端 Skill 进化审批 UI：进化建议列表 + Approve/Reject | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
+| 9.1 | 前端经验报告列表页 `web/src/pages/ExperienceReportListPage.vue`：调用 ListExperienceReports API | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
+| 9.2 | 前端 Skill 进化审批 UI `web/src/pages/EvolutionSuggestionListPage.vue`：进化建议列表 + Approve/Reject + 触发 Curator | Web | P1 | ✅ | `pnpm lint && pnpm build` 通过 |
 
 ### Phase 3 — 自我进化闭环：预测性自愈
 
@@ -312,8 +313,8 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 ### 5.3 数据库回滚
 
 - `failure_pattern` 表：`DROP TABLE failure_pattern;`
-- `skill_evolution_suggestion` 表：`DROP TABLE skill_evolution_suggestion;`
-- `experience_report` 扩展字段：Ent migration 回滚
+- `skill_evolution_suggestions` 表：`DROP TABLE skill_evolution_suggestions;`
+- `experience_reports` 扩展字段：Ent migration 回滚
 - Skill 元数据扩展字段：Ent migration 回滚
 
 ---
@@ -330,4 +331,4 @@ Phase 3（自我进化闭环）← 依赖 Phase 2 完成
 
 ---
 
-*文档版本：2026-06-06 — Phase 1–3 全部落地，所有任务状态更新为 ✅。*
+*文档版本：2026-06-17 — Phase 1–3 全部落地，所有任务状态更新为 ✅；修正代码锚点与实际代码一致。*

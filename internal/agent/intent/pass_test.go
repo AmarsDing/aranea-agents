@@ -45,6 +45,25 @@ func TestShouldRun(t *testing.T) {
 	if ShouldRun(ag, "please refactor the auth middleware tests") {
 		t.Fatal("disabled agent should skip")
 	}
+	// P1-1: Agent without settings defaults to intent pass ON.
+	noSettingsAg := biz.Agent{Settings: nil}
+	if !ShouldRun(noSettingsAg, "please refactor the auth middleware tests") {
+		t.Fatal("agent without settings should run intent pass by default")
+	}
+}
+
+// TestIntentPassFromAgent_DefaultOn verifies P1-1: intent pass defaults to ON
+// when an agent has no settings, while still respecting an explicit OFF.
+func TestIntentPassFromAgent_DefaultOn(t *testing.T) {
+	if !IntentPassFromAgent(biz.Agent{Settings: nil}) {
+		t.Fatal("agent without settings should default to intent pass ON")
+	}
+	if !IntentPassFromAgent(biz.Agent{Settings: &biz.AgentRuntimeSettings{IntentPassEnabled: true}}) {
+		t.Fatal("agent with IntentPassEnabled=true should be ON")
+	}
+	if IntentPassFromAgent(biz.Agent{Settings: &biz.AgentRuntimeSettings{IntentPassEnabled: false}}) {
+		t.Fatal("agent with explicit IntentPassEnabled=false should be OFF")
+	}
 }
 
 func TestIntentSystemForAgent(t *testing.T) {

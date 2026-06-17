@@ -1,8 +1,7 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：✅ Phase 0.5–8.8 已落地；**Phase 8.9 待实施**（BL-05/BL-09/FP-02/FP-04/OPS-TRACE-01）
-> **需求**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) · **设计**：[53 team-graph-orchestration.design.md](./53%20team-graph-orchestration.design.md)  
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-TG-01
+> **版本**：2026-06-06 | **状态**：✅ Phase 0.5–8.8 已落地；**Phase 8.9 待实施**（BL-05/BL-09/FP-02/FP-04）
+> **需求**：[53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · **设计**：[53-team-graph-orchestration.design.md](./53-team-graph-orchestration.design.md)
 
 ---
 
@@ -15,10 +14,11 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | 层级 | 路径 | 阶段 |
 |------|------|------|
 | Biz 状态 | `internal/biz/orchestration_status.go` | 0.5 ✅ |
+| Biz 状态机 | `internal/biz/team_run_state_machine.go` | 8.1 ✅ |
 | Team 投影 | `internal/team/status_projector.go` | 0.5 ✅ |
 | Team 编译 | `internal/team/graph_compile.go` | 2 |
 | Event | `internal/event/envelope.go` | 0.5 ✅ |
-| Service | `internal/service/orchestration_observatory.go` | 1 |
+| Service | `internal/service/team_observatory.go` | 1 |
 | Graph 挂钩 | `internal/service/graph.go` | 1 |
 | 前端 | `web/src/features/orchestration/` | 1 |
 | Proto | `api/kratos/team/v1/team.proto` | 2 |
@@ -29,7 +29,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Team 六种 mode 运行时 | ✅ | `internal/team/trpc_build.go`（Deprecated，仅紧急熔断） |
+| Team 六种 mode 运行时 | ✅ | `internal/team/trpc_build.go`（Native 路径已移除） |
 | Team 前端 graph 预览 | ✅ | Observatory / Compile 统一 `BuildCompileSnapshot` |
 | Graph Vue Flow + Run 页 | ✅ | `GraphEditorPage` / `GraphRunPage` |
 | Graph EventBridge | ✅ | `internal/graph/trpc/event_bridge.go` |
@@ -37,12 +37,13 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | 统一 Agent 状态 | ✅ | Phase 0.5 StatusProjector + ActivityHistory |
 | Kanban UI | ✅ | Phase 1 Observatory 页 |
 | mode→Graph 编译器 | ✅ | Phase 2 `graph_compile.go` + Phase 8 模板注册表 |
-| GraphAgent 统一 Team Run | ✅ | Phase 7 Native 退役 + Phase 8 单轨化 |
+| GraphAgent 统一 Team Run | ✅ | Phase 7 Native 移除 + Phase 8 单轨化 |
 | Activity 时间线 | ✅ | `activity_history[]` + `orchestration_steps` 表 + Timeline RPC + 前端 Tab |
 | Graph 属性面板 | ✅ | RetryPolicy / Destinations / Mapper |
 | 架构优化 | ✅ | Phase 8.1–8.8 状态机/协议化/单轨化/模板/配置化/错误规范化 |
+| trace_id 持久化 | ✅ | `team_runs.trace_id` 字段 + `UpdateTeamRunTraceID` |
 
-**离终态差距**：Circuit Breaker 实现、死信表、trace_id 持久化、Step 持久化事件驱动统一、Observer 单订阅化。见 [§8.9](#phase-8-待实施)。
+**离终态差距**：Circuit Breaker 实现、死信表、Step 持久化事件驱动统一、Observer 单订阅化。见 [§8.9](#phase-8-待实施)。
 
 ---
 
@@ -143,8 +144,8 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 |----|------|--------|------|
 | TG-RT-DEFAULT | 新 Team `runtime_engine` 默认 `graph` | `definition` · 前端 | 未显式设置时走 Graph（仍受 env gate） |
 | TG-RT-ENV-DEFAULT | 生产 env **默认开启** Graph gate | 运维 | 移除对 `ARANEA_TEAM_GRAPH_RUNTIME=1` 的依赖或默认 `1` |
-| TG-RT-FALLBACK-ONLY | Native 路径 **仅** fallback | `runner_team_trpc.go` | 非 fallback 场景不调用 `BuildTRPCTeam` |
-| TG-RT-DEPRECATE | `BuildTRPCTeam` 标记 deprecated | `trpc_build.go` | godoc + lint 告警 |
+| TG-RT-FALLBACK-ONLY | Native 路径 **仅** fallback | `runner_team_trpc.go` | 非 fallback 场景不调用 Native 构建 |
+| TG-RT-DEPRECATE | Native 构建路径标记 deprecated | `trpc_build.go` | godoc + lint 告警 |
 | TG-CMP-V2 | OrchestrationSpec **version 2** 类型对齐 | `web/types` · proto 文档 | `linked_graph_id` / `failure_policy` / `graph.entry_point` 一等字段 |
 | TG-RT-CHECKPOINT | Team Graph Run **Checkpoint** | `graph/trpc` · `runner` | 长任务可 resume（对齐 M36） |
 | TG-RT-HITL | Team Graph Run **InterruptBefore/After** | `graph/trpc` · Team 定义 | 与 Graph Run 页 HITL 一致 |
@@ -155,13 +156,13 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 
 | ID | 任务 | 影响域 | 验收 |
 |----|------|--------|------|
-| TG-RT-RETIRE | 移除 `BuildTRPCTeam` 主路径 | `internal/team/trpc_build.go` | ✅ Team Run 默认 GraphAgent；`ARANEA_TEAM_NATIVE=1` 应急 |
+| TG-RT-RETIRE | 移除 Native Team 主路径 | `internal/team/trpc_build.go` | ✅ Team Run 默认 GraphAgent；Native 路径已移除 |
 | TG-RT-TASK | Team 编译支持 **Task / review** 节点 | `embedded_graph` · `team_graph_task_bridge` | ✅ 编译 + Task 创建；resume 待 US-06 |
 | TG-RT-SUBGRAPH | Team **嵌套子图** / Router 节点 | `embedded_graph` · linked_graph | ✅ subgraph 编译 + 循环检测 |
-| TG-0-ARCH | 更新 [0 系统框图](../需求/0%20系统框图.md) Team 执行路径 | 文档 | ✅ |
-| TG-11-SYNC | [11-multi-agent-development.md](./11-multi-agent-development.md) 标注 Native 已退役 | 文档 | ✅ |
+| TG-0-ARCH | 更新 [0-system-diagram.md](./0-system-diagram.md) Team 执行路径 | 文档 | ✅ |
+| TG-11-SYNC | [11-multi-agent.development.md](./11-multi-agent.development.md) 标注 Native 已移除 | 文档 | ✅ |
 
-**跨模块（M36，不阻塞 Phase 5 但阻塞 US-06 全量）**：G1 LLM 节点 · G2 Tool 节点 · G5–G8 执行监控与校验面板 · G9–G14 见 [36-graph-development.md](./36-graph-development.md)。
+**跨模块（M36，不阻塞 Phase 5 但阻塞 US-06 全量）**：G1 LLM 节点 · G2 Tool 节点 · G5–G8 执行监控与校验面板 · G9–G14 见 [36-graph-workflow.development.md](./36-graph-workflow.development.md)。
 
 ---
 
@@ -233,10 +234,10 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | Phase 3 切换运行时回归 | feature flag；Phase 0.5–1 双轨观测先行 | ✅ 已解决（Phase 8 单轨化） |
 | Kanban 与 Chat 工具卡片重复 | 复用 ActivityMeta 结构，不 duplicate 投影逻辑 | ✅ 已解决 |
 | 文档与 11/36 重复 | 53 管融合边界；11/36 管单模块，互链不复制 | ✅ 持续 |
-| Graph 路径 silent fallback Native | Phase 8：`fallback_policy.go` 简化，仅紧急熔断 | ✅ 已解决 |
+| Graph 路径 silent fallback Native | Phase 8：`fallback_policy.go` 简化，Native 路径已移除 | ✅ 已解决 |
 | `teamUtils.parseDefinition` 丢 `runtime_engine` | Phase 5 TG-RT-UI：raw merge 保留未知字段 | ✅ 已解决 |
+| trace_id 跨域关联 | `team_runs.trace_id` 字段 + `UpdateTeamRunTraceID` 持久化 | ✅ 已解决 |
 | Circuit Breaker 未实现 | 类型预留，`circuit_breaker.go` 待创建 | 📋 待实施 |
-| trace_id 未持久化 | `team_runs.trace_id` 字段待添加 | 📋 待实施 |
 
 ---
 
@@ -256,7 +257,7 @@ OrchestrationSpec (definition_json)
                 （同一编译链、同一 WS 状态模型）
 ```
 
-**不再存在**：`BuildTRPCTeam` 按 mode 分发 ChainAgent / ParallelAgent / Swarm 的 **主执行路径**。
+**不再存在**：Native 路径按 mode 分发 ChainAgent / ParallelAgent / Swarm 的 **主执行路径**。
 
 ### 8.2 已完成（一条链的完整实现）
 
@@ -267,11 +268,12 @@ OrchestrationSpec (definition_json)
 | 观测拓扑 | ✅ | `compiled_topology` 后端 Compile；前端不伪造 |
 | FailurePolicy 编译 | ✅ | Retry / skip / fallback_agent / parallel_fail → GraphBuildConfig |
 | Channel team_graph | ✅ | `CompileToGraphRuntimeConfig` 与 Chat 同编译链 |
-| Graph 默认执行 | ✅ | `ARANEA_TEAM_GRAPH_RUNTIME` 默认 true；`ARANEA_TEAM_NATIVE=1` 仅紧急熔断 |
-| Native 退役 | ✅ | `BuildTRPCTeam` Deprecated；编译器统一走 `compileFromEmbeddedGraph` |
+| Graph 默认执行 | ✅ | `ARANEA_TEAM_GRAPH_RUNTIME` 默认 true |
+| Native 移除 | ✅ | Native 主路径已移除；编译器统一走 `compileFromEmbeddedGraph` |
 | Activity 时间线 | ✅ | `activity_history[]` + `orchestration_steps` 表 + Timeline RPC + 前端 Tab |
 | Graph 属性面板 | ✅ | RetryPolicy / Destinations / Mapper |
 | 架构优化 | ✅ | Phase 8.1–8.8 状态机/协议化/单轨化/模板/配置化/错误规范化 |
+| trace_id 持久化 | ✅ | `team_runs.trace_id` 字段 + `UpdateTeamRunTraceID` |
 
 ### 8.3 差距清单（Phase 0.5–8.8 已解决项 + 待实施项）
 
@@ -279,9 +281,9 @@ OrchestrationSpec (definition_json)
 
 | 差距 | 现状 | 目标 Phase |
 |------|------|------------|
-| ~~Team Run **默认 Native**~~ | ✅ Phase 7：`BuildTRPCTeam` Deprecated，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断 | Phase 6 ✅ / Phase 7 ✅ |
+| ~~Team Run **默认 Native**~~ | ✅ Phase 7：Native 主路径移除，统一走 GraphAgent | Phase 6 ✅ / Phase 7 ✅ |
 | ~~**双开关** gate~~ | ✅ Phase 8：`graph_runtime.go` 简化，`ARANEA_TEAM_GRAPH_RUNTIME` 默认 true | Phase 6 ✅ / Phase 8 ✅ |
-| ~~**Silent fallback**~~ | ✅ Phase 8：`fallback_policy.go` 简化，仅紧急熔断 | Phase 5 ✅ / Phase 8 ✅ |
+| ~~**Silent fallback**~~ | ✅ Phase 8：`fallback_policy.go` 简化，Native 路径已移除 | Phase 5 ✅ / Phase 8 ✅ |
 | ~~**Mode parity 未证明**~~ | ✅ Phase 5：parity E2E + run 级 summary 对比 | Phase 5 ✅ |
 
 #### B. OrchestrationSpec 产品化 — ✅ 已解决
@@ -315,7 +317,7 @@ OrchestrationSpec (definition_json)
 | 差距 | 现状 | 目标 Phase |
 |------|------|------------|
 | ~~Rollout playbook~~ | ✅ Phase 5 TG-RT-FLAG 已完成 | Phase 5 ✅ |
-| ~~`trpc_build.go` 退役~~ | ✅ Phase 8：`BuildTRPCTeam` 仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断 | Phase 8 ✅ |
+| ~~Native 路径退役~~ | ✅ Phase 8：Native 主路径已移除 | Phase 8 ✅ |
 | ~~系统框图 / 11 文档~~ | ✅ Phase 8：编译器统一走 `compileFromEmbeddedGraph` | Phase 8 ✅ |
 | ~~灰度桶 / canary~~ | ✅ Phase 8：`graph_runtime_canary.go` 简化 | Phase 8 ✅ |
 | ~~Native fallback 决策树~~ | ✅ Phase 8：`fallback_policy.go` 简化 | Phase 8 ✅ |
@@ -326,7 +328,6 @@ OrchestrationSpec (definition_json)
 |------|------|--------|
 | Circuit Breaker 实现 | 类型预留，`circuit_breaker.go` 待创建 | P1 |
 | 死信表 | `task_dead_letters` 待实施 | P2 |
-| trace_id 持久化 | `team_runs.trace_id` 字段待添加 | P1 |
 | Step 持久化事件驱动统一 | bulk persist 路径待删除 | 中 |
 | Observer 单订阅化 | 当前 4 个订阅，建议 6+ 时再实施 | 低 |
 
@@ -337,7 +338,7 @@ OrchestrationSpec (definition_json)
 ✅ Phase 6  默认 Graph + Checkpoint/HITL + Spec v2
 ✅ Phase 7  移除 Native + Task/Subgraph + 文档/arch 图更新
 ✅ Phase 8.1–8.8  架构优化（状态机 / 协议化 / 单轨化 / mode→template / 配置化 / 错误规范化）
-📋 Phase 8.9  BL-05 / BL-09 / FP-02 / FP-04 / OPS-TRACE-01
+📋 Phase 8.9  BL-05 / BL-09 / FP-02 / FP-04
 ```
 
 **原则**：Phase 0.5–8.8 已完成执行收敛与架构优化；Phase 8.9 为剩余补全项，按优先级逐步实施。
@@ -347,12 +348,9 @@ OrchestrationSpec (definition_json)
 | 层级 | 配置 | 作用 |
 |------|------|------|
 | 进程 env | `ARANEA_TEAM_GRAPH_RUNTIME=0` | 平台级关闭 Graph 执行（默认开启） |
-| 进程 env | `ARANEA_TEAM_NATIVE=1` | 紧急熔断：强制走 Native 路径 |
 | Team JSON | `"runtime_engine":"graph"` 或 `"native"` | Team 级选择（默认 graph） |
 | 验证 | Run.`graph_execution_id` 非空 | 确认走 Graph 路径 |
 | FlowLog | `team.run.graph` vs `team.run.build` | 构建路径可观测 |
-
-详见 [2026-05-23 Phase4 Optimization changelog](../changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) §Feature flag。
 
 
 ---
@@ -412,10 +410,10 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 
 ## 7. 关联文档更新
 
-- [11 multi-agent.md](./11%20multi-agent.md) — 增加 M53 交叉引用（编排融合）
-- [36 graph-workflow.md](./36%20graph-workflow.md) — §0.1 增加 Team 融合路径
-- [execution-plan.md](../guides/execution-plan.md) — 迭代 TG 任务板
-- [README-development.md](./README-development.md) — 索引 M53
+- [11-multi-agent.md](./11-multi-agent.md) — 增加 M53 交叉引用（编排融合）
+- [36-graph-workflow.md](./36-graph-workflow.md) — §0.1 增加 Team 融合路径
+- [0-system-diagram.md](./0-system-diagram.md) — Team 执行路径单链
+- [51-message-mechanism.md](./51-message-mechanism.md) — Envelope 类型同步
 
 ---
 
@@ -427,7 +425,7 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 
 | ID | 任务 | BL | 影响域 | 状态 |
 |----|------|-----|--------|------|
-| BL-07 | `TeamRunStatus` 常量统一真相源 + 状态机 `ValidateTeamRunTransition` | `biz/team_types.go` | ✅ |
+| BL-07 | `TeamRunStatus` 常量统一真相源 + 状态机 `TeamRunStateMachine` | `biz/team_types.go` · `biz/team_run_state_machine.go` | ✅ |
 | BL-06 | `DefinitionJSON` 一次解析 `parseRuntimeOptions`，消除 3 次 `json.Unmarshal` | `team/graph_runtime_options.go` | ✅ |
 | BL-03 | `OrchestrationControlTool` 协议化 + `ParseOrchestrationDecision` + `IsApprovedDecision` | `biz/team_types.go` `team/trpc_build.go` `graph/adapter/critic_loop_cond.go` | ✅ |
 | BL-04a | HITL 超时语义拆分：`watchTimeout`(30min) vs `hitlSLATimeout`(24h) + `maxHITLSLAExtensions`(3) | `team/team_graph_run_coordinator.go` | ✅ |
@@ -439,10 +437,10 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 
 | ID | 任务 | BL | 影响域 | 状态 |
 |----|------|-----|--------|------|
-| BL-01a | `fallback_policy.go` 简化：`DecideNativeFallback` 仅保留 `ARANEA_TEAM_NATIVE=1` 紧急熔断 | `team/fallback_policy.go` | ✅ |
+| BL-01a | `fallback_policy.go` 简化：`DecideNativeFallback` 移除，仅保留诊断错误 | `team/fallback_policy.go` | ✅ |
 | BL-01b | `graph_runtime.go` 简化：删除灰度/桶/百分比逻辑，仅保留 `ARANEA_TEAM_GRAPH_RUNTIME=0` 熔断 | `team/graph_runtime.go` | ✅ |
 | BL-01c | `graph_runtime_canary.go` 简化：`TeamGraphRuntimeEnabledForTeam` 直接委托 `TeamGraphRuntimeEnabled` | `team/graph_runtime_canary.go` | ✅ |
-| BL-01d | `runner_team_compiler.go` 简化：移除 Native fallback 分支，仅紧急熔断时走 `BuildTRPCTeam` | `team/runner_team_compiler.go` | ✅ |
+| BL-01d | `runner_team_compiler.go` 简化：移除 Native fallback 分支，统一走 GraphAgent | `team/runner_team_compiler.go` | ✅ |
 | BL-10a | 编译器统一走 `compileFromEmbeddedGraph`：当 `definition.graph` 为空时 `generateGraphSpecFromMode` 自动生成 spec | `team/graph_compile.go` | ✅ |
 | BL-10b | `compileEmbeddedEdges` 新增条件边生成：critic_loop 自动生成 `ConditionalEdgeDef` | `team/embedded_graph.go` | ✅ |
 | CLEAN | 删除旧 `compileEdges` / `compileEntryFinish` / `compileSequentialEdges` 等 8 个死代码函数（~170 行） | `team/graph_compile.go` | ✅ |
@@ -504,12 +502,14 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 |----|------|-----|--------|------|
 | BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 Native 完全退役 |
 | BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` 接口 | 低 | 减少订阅开销；当前 4 个订阅开销可接受，建议在 Observer 数量增长到 6+ 时再实施 |
+| FP-02 | Circuit Breaker 实现 | P1 | 类型预留，`circuit_breaker.go` 待创建 |
+| FP-04 | 死信表 | P2 | 依赖 M55 Background Job 面板 |
 
 ### Phase 8 关键设计决策
 
 1. **共享类型归 `biz`**：`OrchestrationDecision` / `OrchestrationControlToolName` / `CriticLoopCondFuncRef` / `ExtractScore` 统一定义在 `biz/team_types.go`，`team` 和 `graph/adapter` 包引用 `biz.*`
 2. **编译器统一路径**：`compileToGraphBuildConfigWithLoader` 不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`
-3. **Native 仅紧急熔断**：`ARANEA_TEAM_NATIVE=1` 环境变量为唯一 Native 执行入口，灰度桶/canary/holdout 逻辑全部删除
+3. **Native 路径已移除**：`ARANEA_TEAM_GRAPH_RUNTIME=0` 环境变量为 Graph 执行熔断开关，灰度桶/canary/holdout/Native fallback 逻辑全部删除
 4. **HITL SLA 有界延期**：`maxHITLSLAExtensions = 3`，避免无限延期
 5. **CoordinatorConfig 可配置化**：`WatchTimeout` / `HITLSLATimeout` / `SessionMaxAge` / `CleanupInterval` 统一收敛到 `CoordinatorConfig` 结构体，默认值与原常量一致，支持构造后覆盖
 6. **错误处理规范化**：`fmt.Errorf` 统一替换为 `kerrors.BadRequest`；所有 `_ = xxx.UpdateTeamRun` / `_ = xxx.Create` 静默忽略改为 `FlowLog warn`，确保错误可观测

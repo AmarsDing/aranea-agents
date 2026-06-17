@@ -2,13 +2,49 @@
 
 > **对应需求**：[64-logging-framework.md](./64-logging-framework.md)
 >
-> **状态**：✅ 已完成实现（2026-06）
+> **对应开发计划**：[64-logging-framework.development.md](./64-logging-framework.development.md)
 
 ---
 
 ## 1. 架构总览
 
-### 1.1 三层架构
+### 1.1 双轨制架构
+
+项目采用双轨制日志体系，两者语义不同、入口不同、底层管道统一：
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │            日志调用入口（双轨制）              │
+                    └──────────────┬───────────────────────────────┘
+                                   │
+               ┌───────────────────┼───────────────────┐
+               ▼                                       ▼
+    ┌─────────────────────┐               ┌─────────────────────┐
+    │   loggateway.Logger │               │  TraceEmitter       │
+    │   通用结构化日志      │               │  (→FlowTracker)     │
+    │   "发生了什么"       │               │  "进行到哪了"        │
+    └─────────┬───────────┘               └─────────┬───────────┘
+              │                                     │
+              ▼                                     ▼
+    ┌─────────────────────┐               ┌─────────────────────┐
+    │   logpipeline       │               │   EventBus          │
+    │   异步分发管道        │               │   双总线发布          │
+    └─────────┬───────────┘               └─────────┬───────────┘
+              │                                     │
+    ┌─────────┼─────────┐                 ┌─────────┼─────────┐
+    ▼         ▼         ▼                 ▼         ▼         ▼
+┌───────┐ ┌───────┐ ┌────────┐      ┌──────┐ ┌──────┐ ┌──────┐
+│SinkGrp│ │SinkGrp│ │SinkGrp │      │ WS   │ │JSONL │ │  DB  │
+│ File  │ │Stdout │ │EventBus│      │Push  │ │File  │ │Persist│
+└───────┘ └───────┘ └────────┘      └──────┘ └──────┘ └──────┘
+```
+
+| 系统 | 包路径 | 定位 | 输出目标 |
+|------|--------|------|----------|
+| **loggateway** | `pkg/loggateway` | 通用结构化日志（红线 #16 唯一日志 API） | Pipeline → File/Stdout/EventBus |
+| **Flow Log** | `internal/event` | 业务流程步骤追踪 | EventBus → WS/JSONL/DB |
+
+### 1.2 三层架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -30,7 +66,7 @@
   └─────────┘  └──────────┘  └──────────────┘
 ```
 
-### 1.2 事件子系统（平行轨道）
+### 1.3 事件子系统（平行轨道）
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -41,7 +77,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.3 桥接层
+### 1.4 桥接层
 
 | 桥接器 | 源 | 目标 | 职责 |
 |--------|----|------|------|
@@ -103,14 +139,10 @@ type loggerWith struct {
 ```go
 func Err(err error) Field {
     chain := unwrapChain(err)
-    if len(chain) <= 1 {
+    if len(chain) == 1 {
         return zap.Error(err)
     }
-    msgs := make([]string, len(chain))
-    for i, e := range chain {
-        msgs[i] = e.Error()
-    }
-    return zap.Strings("error_chain", msgs)
+    return zap.Array("error_chain", errorChainArray(chain))
 }
 ```
 
@@ -152,6 +184,8 @@ Pipeline.Emit()
 - 慢 Sink 阻塞不影响其他 SinkGroup
 - DropPolicy：`DropNewest`（默认，丢弃新条目）/ `DropBlock`（阻塞等待）
 - Panic 恢复：`sink.Write()` panic 被 recover，SinkGroup 继续处理后续条目
+
+**Pipeline 集成**：Pipeline 内部维护 `[]*SinkGroup`，`AddSink()` 自动包装为默认 SinkGroup（bufSize=4096, DropNewest），`AddSinkGroup()` 允许自定义参数。
 
 ### 3.3 stepThrottler 令牌桶
 
@@ -216,9 +250,11 @@ TraceEmitter (embedding wrapper)
 
 | 组件 | 单一职责 | 可独立测试 |
 |------|---------|-----------|
-| FlowTracker | 流程追踪 API 签名 | ✅ |
-| SpanCollector | Span 树生命周期 | ✅ |
-| UsageAggregator | 框架事件→usage 元数据 | ✅ |
+| FlowTracker | 流程追踪 API 签名 | 是 |
+| SpanCollector | Span 树生命周期 | 是 |
+| UsageAggregator | 框架事件→usage 元数据 | 是 |
+
+**依赖关系**：`TraceEmitter` → `FlowTracker` → `SpanCollector` + `UsageAggregator`
 
 ### 4.2 FlowTracker.emit 双写
 
@@ -253,7 +289,7 @@ LogStart/LogDone/LogError/...
 | DropOldest | 丢弃最旧事件腾出空间 | 低优先级事件 |
 | BlockUpTo | 阻塞最多指定时间，超时降级 DropOldest | 关键事件（ToolResult/Error/RunnerCompletion 等） |
 
-**关键事件保护**：`criticalTypeSet` 中的事件类型强制使用 `BlockUpTo` 策略。
+**关键事件保护**：通过 `contract.RequiresBlockUpTo(envType)` 判定，基于事件可靠性分级（AS-EVT-01）。Critical 与 Important 级别事件强制使用 `BlockUpTo` 策略，详见 `internal/event/contract/reliability.go`。
 
 ### 4.5 Buffer 环形回放
 
@@ -263,7 +299,7 @@ WS 重连 → Replay(sessionID, lastEventID)
 ```
 
 - 按 sessionID 分区，每分区 200 条
-- 5 分钟未访问的分区自动清理
+- 30 分钟未访问的分区自动清理（每 5 分钟扫描一次）
 
 ---
 
@@ -280,6 +316,8 @@ trpc-agent-go agentlog.Logger
 ```
 
 **Fatal 绕过 Pipeline 的原因**：Pipeline 是异步的，进程即将退出时异步写入无法保证落盘。
+
+**接口适配**：实现 `agentlog.Logger`（Debug/Info/Warn/Error/Fatal 及格式化版本），编译期检查 `var _ agentlog.Logger = (*RuntimeLogAdapter)(nil)`。
 
 ### 5.2 PluginSafeLogger
 
@@ -302,16 +340,72 @@ trpc-agent-go agentlog.Logger
 
 | 层 | 机制 | 说明 |
 |----|------|------|
-| Bus.logDrop() | `fmt.Fprintf(os.Stderr, ...)` + `droppedCount atomic.Uint64` | 丢弃通知不经过 Pipeline/EventBus |
-| EventBusSink 熔断 | 熔断状态转换写 stderr | 熔断事件不经过 Pipeline/EventBus |
+| EventBus 丢弃通知 | `loggateway.Logger.Warn` + Prometheus 指标 `arametrics.EventBusDropped` | 丢弃通知经 loggateway Pipeline 走 FileSink/StdoutSink，但 EventBusSink 自身不会回环（EventBusSink 只接收 LogEntry 不接收 Envelope） |
+| EventBusSink 熔断 | 熔断状态转换写 stderr（`fmt.Fprintf(os.Stderr, ...)`） | 熔断事件不经过 Pipeline/EventBus |
 
-**原则**：任何因日志系统自身问题产生的通知，只走 stderr + 原子计数器，绝不回入日志管道。
+**EventBus 丢弃通知实现**（`internal/event/bus_adapter.go`）：
+
+```go
+dropLogger := frameworkbus.DropLogger[Envelope](func(env Envelope, policy string, totalDrops uint64) {
+    arametrics.EventBusDropped.WithLabelValues(string(env.Type), policy).Inc()
+    if lg != nil {
+        lg.Warn("[event_bus] drop",
+            loggateway.Str("policy", policy),
+            loggateway.Str("type", string(env.Type)),
+            loggateway.Str("channel", env.Channel),
+            loggateway.SessionID(env.SessionID),
+            loggateway.Int64("total_drops", int64(totalDrops)),
+        )
+    }
+})
+```
+
+**原则**：任何因日志系统自身问题产生的通知，只走 stderr + 原子计数器/Prometheus 指标，绝不回入 EventBus（避免递归）。loggateway Pipeline 的丢弃通知虽然走 Pipeline，但 EventBusSink 在熔断/丢弃时不会再次发布到 EventBus，因此不构成反馈环。
 
 ---
 
 ## 7. 配置驱动 Sink 注册
 
-### 7.1 工厂模式
+### 7.1 Proto 契约
+
+```protobuf
+// internal/conf/conf.proto
+
+enum SinkType {
+  SINK_TYPE_UNSPECIFIED = 0;
+  SINK_TYPE_FILE = 1;
+  SINK_TYPE_STDOUT = 2;
+  SINK_TYPE_EVENTBUS = 3;
+}
+
+enum DropPolicy {
+  DROP_POLICY_UNSPECIFIED = 0;
+  DROP_POLICY_NEWEST = 1;
+  DROP_POLICY_BLOCK = 2;
+}
+
+message LoggingSink {
+  string name = 1;
+  SinkType type = 2;
+  int32 buffer_size = 3;
+  DropPolicy drop_policy = 4;
+  map<string, string> config = 5;
+}
+
+message Logging {
+  string level = 1;
+  string output_dir = 2;
+  int32 max_size_mb = 3;
+  int32 max_backups = 4;
+  int32 max_age_days = 5;
+  bool compress = 6;
+  bool stdout_enabled = 7;
+  string hook_level = 8;
+  repeated LoggingSink sinks = 9;
+}
+```
+
+### 7.2 工厂模式
 
 ```
 conf.LoggingSink (proto)
@@ -321,21 +415,53 @@ conf.LoggingSink (proto)
         → FileSink / StdoutSink / EventBusSink
 ```
 
-### 7.2 EventBus 依赖注入
-
-EventBusSink 需要 `Publisher` 接口，此依赖无法从配置推导，通过 `SinkFactoryDeps` 注入：
-
 ```go
-type SinkFactoryDeps struct {
-    EventBusPublisher Publisher
+// pkg/logpipeline/sink_factory.go
+type SinkConfig struct {
+    Name       string
+    Type       string            // "file", "stdout", "eventbus"
+    BufferSize int
+    DropPolicy DropPolicy
+    Config     map[string]string // Sink 特定配置
 }
+
+type SinkFactoryDeps struct {
+    EventBusPublisher Publisher  // EventBus Sink 需要的外部依赖
+}
+
+func NewSinkFromConfig(cfg SinkConfig, deps SinkFactoryDeps) (Sink, error)
 ```
 
-EventBus Sink 延迟到 `BeforeStart` 钩子中注册（此时 eventInfra 已就绪）。
+**设计要点**：
+- `SinkConfig` 与 `internal/conf` proto 解耦，`cmd/admin/logging.go` 负责转换
+- EventBus Sink 的 Publisher 无法从配置推导，通过 `SinkFactoryDeps` 注入
+- 每个 Sink 的 `config` map 支持类型特定参数（如 file 的 output_dir/filename，eventbus 的 hook_level）
+
+### 7.3 EventBus 依赖注入
+
+EventBusSink 需要 `Publisher` 接口，此依赖无法从配置推导，通过 `SinkFactoryDeps` 注入。EventBus Sink 延迟到 `BeforeStart` 钩子中注册（此时 eventInfra 已就绪）。
 
 ---
 
-## 8. 线程安全模型
+## 8. 初始化流程
+
+```
+1. logpipeline.NewPipeline(4096)       → 异步管道（单 worker, buffer=4096）
+2. pipeline.AddSink(fileSink)          → FileSink
+3. pipeline.AddSink(stdoutSink)        → StdoutSink（可配）
+4. loggateway.New(bc.Logging, pipeline)→ Gateway 构造时注入 Pipeline
+5. adapter.NewRuntimeLogAdapter(gw)    → 桥接 trpc-agent-go 运行时日志
+6. agentlog.Default = rla              → 替换框架默认 logger
+7. wireApp(..., lg, pipeline)          → Wire DI
+8. BeforeStart: pipeline.AddSink(eventBusSink)
+9. AfterStop:  pipeline.Close()
+```
+
+> 实现代码锚点见 [开发计划 §6](./64-logging-framework.development.md#6-代码锚点)。
+
+---
+
+## 9. 线程安全模型
 
 | 组件 | 并发安全机制 | 说明 |
 |------|-------------|------|
@@ -350,9 +476,9 @@ EventBus Sink 延迟到 `BeforeStart` 钩子中注册（此时 eventInfra 已就
 
 ---
 
-## 9. 性能设计
+## 10. 性能设计
 
-### 9.1 关键路径优化
+### 10.1 关键路径优化
 
 | 优化 | 实现 |
 |------|------|
@@ -363,7 +489,7 @@ EventBus Sink 延迟到 `BeforeStart` 钩子中注册（此时 eventInfra 已就
 | 读写分离 | stepThrottler RWMutex，淘汰不阻塞热路径 |
 | 原子操作 | 熔断器全 atomic，无锁竞争 |
 
-### 9.2 背压策略
+### 10.2 背压策略
 
 | 场景 | 策略 |
 |------|------|
@@ -372,7 +498,7 @@ EventBus Sink 延迟到 `BeforeStart` 钩子中注册（此时 eventInfra 已就
 | EventBus 发布超时 | 50ms 超时 + 熔断器 |
 | stepThrottler 限流 | 令牌桶不足时丢弃 + `throttled` 计数 |
 
-### 9.3 资源控制
+### 10.3 资源控制
 
 | 资源 | 上限 | 说明 |
 |------|------|------|
@@ -380,13 +506,13 @@ EventBus Sink 延迟到 `BeforeStart` 钩子中注册（此时 eventInfra 已就
 | SinkGroup channel | 4096 (默认) | 可配置 |
 | stepThrottler buckets | 无硬上限 | TTL 淘汰 5 分钟未访问 |
 | Buffer 分区 | 200 条/分区 | 环形覆盖 |
-| Buffer TTL | 30 分钟 | 自动清理 |
+| Buffer TTL | 30 分钟 | 每 5 分钟扫描清理 |
 
 ---
 
-## 10. 可观测性设计
+## 11. 可观测性设计
 
-### 10.1 Pipeline 指标
+### 11.1 Pipeline 指标
 
 ```go
 type PipelineStats struct {
@@ -399,7 +525,7 @@ type PipelineStats struct {
 }
 ```
 
-### 10.2 SinkGroup 指标
+### 11.2 SinkGroup 指标
 
 ```go
 type SinkGroupStats struct {
@@ -410,7 +536,7 @@ type SinkGroupStats struct {
 }
 ```
 
-### 10.3 EventBusSink 熔断器指标
+### 11.3 EventBusSink 熔断器指标
 
 | 指标 | 说明 |
 |------|------|
@@ -418,7 +544,7 @@ type SinkGroupStats struct {
 | `circuit_breaker_skipped` | 熔断器打开期间跳过的写入次数 |
 | `circuit_breaker_half_open_attempts` | 半开状态探测次数 |
 
-### 10.4 Prometheus 指标
+### 11.4 Prometheus 指标
 
 | 指标 | 类型 | 说明 |
 |------|------|------|
@@ -427,7 +553,120 @@ type SinkGroupStats struct {
 
 ---
 
-## 11. 关键文件索引
+## 12. 接口定义
+
+### 12.1 loggateway.Logger
+
+```go
+type Logger interface {
+    Debug(msg string, fields ...Field)
+    Info(msg string, fields ...Field)
+    Warn(msg string, fields ...Field)
+    Error(msg string, fields ...Field)
+    With(fields ...Field) Logger
+}
+```
+
+字段构造函数：`StepID`, `SessionID`, `TraceID`, `RunID`, `Domain`, `AgentKey`, `Phase`, `Duration`, `Source`, `Err`, `Str`, `Int`, `Int64`, `Float64`, `Bool`, `Any`
+
+特殊：`Err(err)` 支持错误链展开（`unwrapChain`），多层错误输出为 `error_chain` 数组。
+
+### 12.2 logpipeline.Pipeline
+
+```go
+type Pipeline interface {
+    Emit(entry LogEntry)
+    AddSink(sink Sink)
+    Close() error
+    Dropped() uint64
+    Throttled() uint64
+    Stats() PipelineStats
+    SetThrottleRules(rules []ThrottleRule)
+}
+```
+
+### 12.3 logpipeline.Sink
+
+```go
+type Sink interface {
+    Write(entry LogEntry)
+    Flush()
+    Close() error
+}
+```
+
+Sink 实现：`FileSink`（lumberjack JSON 落盘）、`StdoutSink`（stdout JSON）、`EventBusSink`（EventBus 发布）
+
+### 12.4 TraceEmitter / FlowTracker
+
+```go
+// TraceEmitter 是 v2 统一写入器：FlowLog (WS) + span buffer (usage metadata)
+// 它嵌入 FlowTracker，并添加 ObserveFrameworkEvent 用于 trpc-agent-go 事件流
+type TraceEmitter struct {
+    *FlowTracker
+}
+
+func (e *TraceEmitter) ObserveFrameworkEvent(ev *trpcevent.Event)  // 桥接 trpc-agent-go 事件流
+func (ft *FlowTracker) LogStart(stepID, message string, extra ...Pair)
+func (ft *FlowTracker) LogDone(stepID, message string, extra ...Pair)
+func (ft *FlowTracker) LogSkip(stepID, message string, extra ...Pair)
+func (ft *FlowTracker) LogWarn(stepID, title, message string, extra ...Pair)
+func (ft *FlowTracker) LogError(stepID, message string, extra ...Pair)
+func (ft *FlowTracker) LogCritical(stepID, message string, extra ...Pair)
+```
+
+### 12.5 FlowLogEntry 数据模型
+
+Schema 版本 `flow_log/v1`，包含：
+- `correlation`（trace_id, session_id, run_id, team_id, domain, agent_key, agent_id）
+- `step`（id, phase, subsystem）
+- `severity`（ok / info / warn / error / critical）
+- `title` / `message` / `hint`
+- `timing`（duration_ms, started_at）
+- `error`（code, message）
+- `extra`（map[string]any）
+
+---
+
+## 13. EventBus 与日志的关系
+
+- 双总线：SessionBus（业务）+ MonitorBus（监控），物理隔离
+- 三级队列：high(64) / normal(128) / low(256)，日志走 low
+- DropNewest 策略：low/normal 队列满时丢弃新消息
+- `flow_log` 不受 `logEnabled` 开关限制；`log` 仍受限制
+
+---
+
+## 14. 模块关联
+
+### 14.1 上游依赖 loggateway 的模块
+
+agent, provider, team, cron, a2a, session/status, plugin
+
+### 14.2 上游依赖 event（日志）的模块
+
+agent, provider, team, cron, a2a, plugin
+
+### 14.3 前端对应
+
+| 后端日志系统 | 前端组件 |
+|-------------|---------|
+| FlowLog (EnvelopeTypeFlowLog) | MonitorPage FlowLogStream.vue, FlowTracePanel.vue, FlowLogExportButton.vue |
+| 进程日志 (EnvelopeTypeLog) | MonitorPage ProcessLogStream.vue |
+| WS 推送 | useLogStreamHub.ts |
+| Flow Log 落库 | ListFlowLogs HTTP API → 前端历史查询 |
+
+### 14.4 数据库与文件
+
+| 表/文件 | 用途 |
+|---------|------|
+| `flow_log_events` | FlowLog 持久化 |
+| `aranea-pipeline.log` | Zap 统一日志文件（lumberjack 轮转，FileSink 默认文件名） |
+| `flow-*.jsonl` / `system-*.jsonl` / `log-*.jsonl` / `trace-*.jsonl` / `alert-*.jsonl` | FlowFileAppender 分类落盘（`internal/biz/monitor/flow_file_appender.go`） |
+
+---
+
+## 15. 关键文件索引
 
 | 文件 | 设计职责 |
 |------|---------|
@@ -438,15 +677,22 @@ type SinkGroupStats struct {
 | `pkg/logpipeline/eventbus_sink.go` | EventBusSink + 三态熔断器 |
 | `pkg/logpipeline/file_sink.go` | FileSink (lumberjack JSON) |
 | `pkg/logpipeline/stdout_sink.go` | StdoutSink (JSON) |
-| `pkg/logpipeline/sink_factory.go` | Sink 工厂 |
+| `pkg/logpipeline/sink_factory.go` | Sink 工厂（配置驱动注册） |
 | `internal/event/flow_tracker.go` | FlowTracker 流程追踪核心 |
 | `internal/event/span_collector.go` | SpanCollector Span 树管理 |
 | `internal/event/usage_aggregator.go` | UsageAggregator 用量聚合 |
 | `internal/event/trace_emitter.go` | TraceEmitter embedding wrapper |
 | `internal/event/flow_log.go` | FlowLogEntry + stepTitleRegistry |
+| `internal/event/flow_context.go` | CtxFlowLog* 快捷函数（已 deprecated） |
 | `internal/event/infra.go` | Infra 双总线路由 |
-| `internal/event/bus.go` | EventBus 实现 + logDrop |
+| `internal/event/bus.go` | EventBus 类型别名 + NewBus |
+| `internal/event/bus_adapter.go` | busAdapter（framework bus 桥接 + DropLogger） |
 | `internal/event/buffer.go` | Buffer 环形回放 |
+| `internal/event/logpipeline_publisher.go` | busPublisher（EventBusSink → contract.Bus 桥接） |
 | `internal/adapter/runtime_log.go` | RuntimeLogAdapter |
 | `internal/plugin/trpc/safe_logger.go` | PluginSafeLogger |
-| `cmd/admin/logging.go` | 初始化流程 |
+| `internal/runtime/deps.go` | TurnDeps.Lg 字段（loggateway.Logger 注入到 chat turn） |
+| `pkg/trpc-agent-go/log/log.go` | Agent 运行时日志（独立 zap.Sugar，Default/ContextDefault） |
+| `pkg/trpc-agent-go/plugin/logging.go` | Agent 生命周期日志插件 |
+| `internal/conf/conf.proto` | Logging 配置 Proto 定义 |
+| `cmd/admin/logging.go` | 初始化流程（initLogging + protoSinkToConfig） |

@@ -1,342 +1,249 @@
-# Logging Framework Spec
+# Logging Framework 需求文档
 
-> Aranea-Agents 日志框架权威规范。精简参考，聚焦规则、约束与结构。
-
----
-
-## 1. 双轨制架构
-
-项目采用双轨制日志体系，两者语义不同、入口不同、底层管道统一：
-
-```
-                    ┌──────────────────────────────────────────────┐
-                    │            日志调用入口（双轨制）              │
-                    └──────────────┬───────────────────────────────┘
-                                   │
-               ┌───────────────────┼───────────────────┐
-               ▼                                       ▼
-    ┌─────────────────────┐               ┌─────────────────────┐
-    │   loggateway.Logger │               │  TraceEmitter       │
-    │   通用结构化日志      │               │  (→FlowTracker)     │
-    │   "发生了什么"       │               │  "进行到哪了"        │
-    └─────────┬───────────┘               └─────────┬───────────┘
-              │                                     │
-              ▼                                     ▼
-    ┌─────────────────────┐               ┌─────────────────────┐
-    │   logpipeline       │               │   EventBus          │
-    │   异步分发管道        │               │   双总线发布          │
-    └─────────┬───────────┘               └─────────┬───────────┘
-              │                                     │
-    ┌─────────┼─────────┐                 ┌─────────┼─────────┐
-    ▼         ▼         ▼                 ▼         ▼         ▼
-┌───────┐ ┌───────┐ ┌────────┐      ┌──────┐ ┌──────┐ ┌──────┐
-│SinkGrp│ │SinkGrp│ │SinkGrp │      │ WS   │ │JSONL │ │  DB  │
-│ File  │ │Stdout │ │EventBus│      │Push  │ │File  │ │Persist│
-└───────┘ └───────┘ └────────┘      └──────┘ └──────┘ └──────┘
-```
-
-| 系统 | 包路径 | 定位 | 输出目标 |
-|------|--------|------|----------|
-| **loggateway** | `pkg/loggateway` | 通用结构化日志（红线 #10 唯一日志 API） | Pipeline → File/Stdout/EventBus |
-| **Flow Log** | `internal/event` | 业务流程步骤追踪 | EventBus → WS/JSONL/DB |
+> Aranea-Agents 日志框架需求规格。聚焦用户故事、功能需求、验收标准与非功能需求。
+>
+> 架构设计、接口契约、Proto 定义、数据模型见 [64-logging-framework.design.md](./64-logging-framework.design.md)；
+> 代码锚点、实施进度、任务清单、已知偏差见 [64-logging-framework.development.md](./64-logging-framework.development.md)。
 
 ---
 
-## 2. 红线约束
+## 1. 概述
 
-| 编号 | 规则 | 验证方式 |
-|------|------|----------|
-| #10 | 禁止 `log/slog`，统一使用 `pkg/loggateway.Logger` | `grep -r "log/slog" internal/` 应为零 |
-| #10a | 禁止直接使用 `zap` 全局 logger，必须通过 `loggateway` | `grep -r "zap\." internal/` 应为零 |
-| #10b | 禁止 `fmt.Print*` 用于日志输出 | 代码审查 |
+Aranea-Agents 日志框架为开发者、运维人员、终端用户提供统一的结构化日志与流程追踪能力。系统采用双轨制：通用结构化日志（loggateway）记录"发生了什么"，流程追踪（FlowTracker/TraceEmitter）记录"进行到哪了"，两者底层共享异步分发管道但语义独立。
+
+### 1.1 用户角色
+
+| 角色 | 关注点 |
+|------|--------|
+| **开发者** | 统一日志 API、结构化字段、错误链展开、构造注入 |
+| **运维人员** | 日志落盘轮转、级别动态调整、监控指标、熔断保护 |
+| **终端用户** | 监控页实时查看 Flow Log、进程日志、执行进度 |
+| **插件/Hook 作者** | 安全日志双写（loggateway + EventBus） |
 
 ---
 
-## 3. 接口定义
+## 2. 用户故事
 
-### 3.1 loggateway.Logger
+### US-1：统一日志 API（开发者）
 
-```go
-type Logger interface {
-    Debug(msg string, fields ...Field)
-    Info(msg string, fields ...Field)
-    Warn(msg string, fields ...Field)
-    Error(msg string, fields ...Field)
-    With(fields ...Field) Logger
-}
-```
+**作为**开发者，**我希望**全项目使用统一的 `loggateway.Logger` API，**以便**我不需要在 `log/slog`、`zap`、`kratos log.Helper` 之间选择，且所有日志走同一条管道。
 
-字段构造函数：`StepID`, `SessionID`, `TraceID`, `RunID`, `Domain`, `AgentKey`, `Phase`, `Duration`, `Source`, `Err`, `Str`, `Int`, `Int64`, `Float64`, `Bool`, `Any`
+**验收**：
+- `internal/` 下 `log/slog` 引用为零（红线 #16）
+- `internal/` 下 `zap.` 直接引用为零（trpc-agent-go 运行时除外）
+- 所有 Usecase/Service 通过构造注入获取 `loggateway.Logger`
 
-特殊：`Err(err)` 支持错误链展开（`unwrapChain`），多层错误输出为 `error_chain` 数组。
+### US-2：结构化字段与上下文关联（开发者）
 
-### 3.2 logpipeline.Pipeline
+**作为**开发者，**我希望**通过 `With()` 预设上下文字段（session_id/step_id/trace_id/run_id 等），**以便**日志可跨服务/跨轮次关联，且字段不可变避免并发问题。
 
-```go
-type Pipeline interface {
-    Emit(entry LogEntry)
-    AddSink(sink Sink)
-    Close() error
-    Dropped() uint64
-    Throttled() uint64
-    Stats() PipelineStats
-    SetThrottleRules(rules []ThrottleRule)
-}
-```
+**验收**：
+- `With()` 返回新实例，原始 Logger 不被修改
+- 字段累积：`child.base = parent.base + newFields`
+- 预定义字段构造函数覆盖 StepID/SessionID/TraceID/RunID/Domain/AgentKey/Phase/Duration/Source/Err/Str/Int/Int64/Float64/Bool/Any
 
-### 3.3 logpipeline.Sink
+### US-3：错误链展开（开发者）
 
-```go
-type Sink interface {
-    Write(entry LogEntry)
-    Flush()
-    Close() error
-}
-```
+**作为**开发者，**我希望**记录错误时自动展开错误链，**以便**多层包装的错误能保留完整上下文。
 
-Sink 实现：`FileSink`（lumberjack JSON 落盘）、`StdoutSink`（stdout JSON）、`EventBusSink`（EventBus 发布）
+**验收**：
+- 单层错误：输出 `error` 字段
+- 多层错误：输出 `error_chain` 数组，按 unwrap 顺序保留每层错误消息
 
-### 3.4 TraceEmitter（已拆分）
+### US-4：日志落盘轮转（运维人员）
 
-TraceEmitter 已从单一 struct 拆分为三层组件，TraceEmitter 现在是 embedding wrapper：
+**作为**运维人员，**我希望**日志自动落盘并按大小/数量/天数轮转，**以便**磁盘不被撑爆且历史日志可追溯。
 
-```go
-// TraceEmitter 是 v2 统一写入器：FlowLog (WS) + span buffer (usage metadata)
-// 它嵌入 FlowTracker，并添加 ObserveFrameworkEvent 用于 trpc-agent-go 事件流
-type TraceEmitter struct {
-    *FlowTracker
-}
-```
+**验收**：
+- FileSink 使用 lumberjack 轮转
+- 可配置：单文件最大 MB、保留旧文件数、最大保留天数、是否压缩
+- 默认输出目录：Linux `/var/log/aranea`，Windows `./logs`，可被 `MONITOR_FLOW_LOG_DIR` 环境变量覆盖
 
-**拆分后的三层组件**：
+### US-5：实时 Flow Log 流（终端用户）
 
-| 组件 | 路径 | 职责 |
+**作为**终端用户，**我希望**在监控页实时查看 Agent 执行流程的步骤日志，**以便**了解长任务的执行进度与状态。
+
+**验收**：
+- FlowLog 通过 WebSocket 实时推送到前端
+- 前端组件：FlowLogStream.vue、FlowTracePanel.vue、FlowLogExportButton.vue
+- WS 重连后可从环形缓冲回放历史事件
+- FlowLog 持久化到数据库，支持历史查询
+
+### US-6：进程日志流（终端用户）
+
+**作为**终端用户，**我希望**在监控页查看系统进程日志，**以便**排查运行时问题。
+
+**验收**：
+- 进程日志（EnvelopeTypeLog）通过 WebSocket 推送
+- 前端组件：ProcessLogStream.vue
+- 受 `logEnabled` 开关限制
+
+### US-7：运行时日志桥接（开发者/运维人员）
+
+**作为**开发者，**我希望** trpc-agent-go 运行时日志自动桥接到 loggateway Pipeline，**以便** Agent 生命周期日志与业务日志统一落盘，不再仅输出到 stdout。
+
+**验收**：
+- `agentlog.Default` / `agentlog.ContextDefault` 被替换为 RuntimeLogAdapter
+- Debug/Info/Warn/Error 走 loggateway Pipeline
+- Fatal/Fatalf 直写 stderr + os.Exit(1)（绕过异步 Pipeline 保证落盘）
+
+### US-8：动态日志级别（运维人员）
+
+**作为**运维人员，**我希望**运行时动态调整日志级别，**以便**排查问题时临时提高详细度，无需重启。
+
+**验收**：
+- Gateway 集成 `zap.AtomicLevel`
+- `SetLevel()` 运行时调整
+
+### US-9：高频步骤限流（运维人员）
+
+**作为**运维人员，**我希望**对高频 step_id 限流，**以便**防止高频日志淹没 Pipeline。
+
+**验收**：
+- 基于 step_id 前缀匹配的令牌桶限流（最长前缀匹配）
+- 限流日志计入 `Throttled()` 计数，不进入 Sink
+- 空闲桶 TTL 淘汰，避免内存无界增长
+
+### US-10：EventBus Sink 熔断保护（运维人员）
+
+**作为**运维人员，**我希望** EventBus Sink 在下游故障时熔断，**以便**不阻塞 Pipeline 且快速失败。
+
+**验收**：
+- 三态熔断器：Closed → Open（5 次连续失败）→ HalfOpen（10 秒后）→ Closed（3 次探测成功）
+- 熔断期间跳过写入并计数
+- Publish 超时 50ms
+
+### US-11：配置驱动 Sink 注册（运维人员）
+
+**作为**运维人员，**我希望**通过配置文件声明式注册 Sink，**以便**不修改代码即可调整日志输出目标。
+
+**验收**：
+- Proto 定义 SinkType（file/stdout/eventbus）+ DropPolicy（newest/block）
+- 每个 Sink 可配置 buffer_size、drop_policy、类型特定参数
+- EventBus Sink 延迟到 BeforeStart 注册（依赖 eventInfra）
+
+### US-12：插件安全日志（插件/Hook 作者）
+
+**作为**插件作者，**我希望**通过 PluginSafeLogger 安全记录日志，**以便**插件日志同时进入 loggateway Pipeline 和 EventBus，且插件异常不影响主流程。
+
+**验收**：
+- PluginSafeLogger 双写：loggateway（同步）+ EventBus（异步 safego.Go）
+- 支持 Info/Warn/Error/Debug 级别
+
+### US-13：反馈环切断（运维人员）
+
+**作为**运维人员，**我希望**日志系统自身的问题不产生反馈环，**以便**日志丢弃/熔断不会触发更多日志导致雪崩。
+
+**验收**：
+- 日志丢弃通知不经过 Pipeline/EventBus（走 loggateway.Warn + Prometheus 指标）
+- 熔断状态转换不经过 Pipeline/EventBus（走 stderr）
+
+---
+
+## 3. 功能需求清单
+
+| 编号 | 需求 | 优先级 |
+|------|------|--------|
+| FR-1 | 统一日志 API（loggateway.Logger：Debug/Info/Warn/Error/With） | P0 |
+| FR-2 | 结构化字段构造函数（StepID/SessionID/TraceID/RunID/Domain/AgentKey/Phase/Duration/Source/Err/Str/Int/Int64/Float64/Bool/Any） | P0 |
+| FR-3 | 错误链展开（单层 error / 多层 error_chain） | P0 |
+| FR-4 | With() 不可变语义（返回新实例，base 切片复制） | P0 |
+| FR-5 | nil Gateway 安全（无 nil 检查） | P0 |
+| FR-6 | 异步分发管道（Pipeline：Emit/AddSink/Close/Dropped/Throttled/Stats） | P0 |
+| FR-7 | Sink 隔离（SinkGroup：独立 goroutine + channel + DropPolicy） | P0 |
+| FR-8 | FileSink（lumberjack JSON 轮转） | P0 |
+| FR-9 | StdoutSink（stdout JSON，可配级别） | P0 |
+| FR-10 | EventBusSink（Pipeline → EventBus，含三态熔断器） | P0 |
+| FR-11 | RuntimeLogAdapter（trpc-agent-go agentlog.Logger → loggateway Pipeline） | P0 |
+| FR-12 | PluginSafeLogger（插件日志双写） | P1 |
+| FR-13 | FlowTracker 流程追踪（LogStart/LogDone/LogSkip/LogWarn/LogError/LogCritical） | P0 |
+| FR-14 | TraceEmitter embedding wrapper（嵌入 FlowTracker + ObserveFrameworkEvent） | P0 |
+| FR-15 | FlowLogEntry 数据模型（schema flow_log/v1） | P0 |
+| FR-16 | step_id 标题注册表（人类可读中文标题） | P1 |
+| FR-17 | 动态日志级别（AtomicLevel + SetLevel） | P1 |
+| FR-18 | step_id 前缀限流（令牌桶 + TTL 淘汰） | P1 |
+| FR-19 | 配置驱动 Sink 注册（SinkConfig + SinkFactoryDeps 工厂） | P1 |
+| FR-20 | Buffer 环形回放（WS 重连历史事件） | P1 |
+| FR-21 | Infra 双总线路由（SessionBus + MonitorBus，split/dual 模式） | P1 |
+| FR-22 | Prometheus 监控指标（published_total / dropped_total） | P2 |
+| FR-23 | Global() deprecated（构造注入替代全局单例） | P1 |
+
+---
+
+## 4. 非功能需求
+
+### 4.1 合规性
+
+| 编号 | 需求 | 验证 |
 |------|------|------|
-| **FlowTracker** | `internal/event/flow_tracker.go` | 流程追踪核心，持有 FlowContext + SpanCollector + UsageAggregator，提供 LogStart/LogDone/LogError 等方法签名 |
-| **SpanCollector** | `internal/event/span_collector.go` | Span 树管理，管理 LLM/Tool span 的生命周期，生成 usage.metadata_json |
-| **UsageAggregator** | `internal/event/usage_aggregator.go` | 用量聚合，观察框架事件并聚合 usage 元数据，桥接 trpc-agent-go 事件流 |
+| NFR-C1 | 红线 #16：禁止 `log/slog`，统一 `pkg/loggateway.Logger` | `grep -r "log/slog" internal/` 为零 |
+| NFR-C2 | 红线 #10a：禁止直接使用 `zap` 全局 logger | `grep -r "zap\." internal/` 为零（trpc-agent-go 运行时除外） |
+| NFR-C3 | 红线 #10b：禁止 `fmt.Print*` 用于日志输出 | 代码审查 |
+| NFR-C4 | `Global()` deprecated，新代码构造注入 | 代码审查无新增 Global() 调用 |
 
-**依赖关系**：`TraceEmitter` → `FlowTracker` → `SpanCollector` + `UsageAggregator`
+### 4.2 性能
 
-**关键方法**：
-```go
-func (e *TraceEmitter) ObserveFrameworkEvent(ev *trpcevent.Event)  // 桥接 trpc-agent-go 事件流
-func (ft *FlowTracker) LogStart(stepID, message string, extra ...Pair)
-func (ft *FlowTracker) LogDone(stepID, message string, extra ...Pair)
-func (ft *FlowTracker) LogSkip(stepID, message string, extra ...Pair)
-func (ft *FlowTracker) LogWarn(stepID, title, message string, extra ...Pair)
-func (ft *FlowTracker) LogError(stepID, message string, extra ...Pair)
-func (ft *FlowTracker) LogCritical(stepID, message string, extra ...Pair)
-```
+| 编号 | 需求 | 说明 |
+|------|------|------|
+| NFR-P1 | Emit 非阻塞 | channel + select/default，满则丢弃 |
+| NFR-P2 | Sink 隔离 | 慢 Sink 不阻塞其他 SinkGroup |
+| NFR-P3 | 读写分离 | stepThrottler RWMutex，淘汰不阻塞热路径 |
+| NFR-P4 | 无锁熔断器 | 全 atomic 操作，无互斥锁竞争 |
 
-### 3.5 FlowLogEntry
+### 4.3 可靠性
 
-Schema 版本 `flow_log/v1`，包含：
-- `correlation`（trace_id, session_id, run_id, domain, agent_key, agent_id）
-- `step`（id, phase, subsystem）
-- `severity`（ok / info / warn / error / critical）
-- `title` / `message` / `hint`
-- `timing`（duration_ms）
-- `error`（code, message）
+| 编号 | 需求 | 说明 |
+|------|------|------|
+| NFR-R1 | Panic 隔离 | dispatchLoop 和 SinkGroup.run() 均 recover |
+| NFR-R2 | 优雅关闭 | Close() 排空 channel → 等待 goroutine → 关闭 Sink |
+| NFR-R3 | 反馈环切断 | 日志系统自身问题不走 Pipeline/EventBus |
+| NFR-R4 | 内存有界 | stepThrottler 桶 TTL 淘汰；Buffer 分区 TTL 清理 |
 
----
+### 4.4 可观测性
 
-## 4. 初始化流程
-
-```
-1. logpipeline.NewPipeline(4096)       → 异步管道（单 worker, buffer=4096）
-2. pipeline.AddSink(fileSink)          → FileSink
-3. pipeline.AddSink(stdoutSink)        → StdoutSink（可配）
-4. loggateway.New(bc.Logging, pipeline)→ Gateway 构造时注入 Pipeline
-5. wireApp(..., lg, pipeline)          → Wire DI
-6. BeforeStart: pipeline.AddSink(eventBusSink)
-7. AfterStop:  pipeline.Close()
-```
+| 编号 | 需求 | 说明 |
+|------|------|------|
+| NFR-O1 | Pipeline 指标 | Dropped/Throttled/ChanLen/ChanCap/SinkCount/SinkErrors |
+| NFR-O2 | SinkGroup 指标 | Name/Dropped/ChanLen/ChanCap |
+| NFR-O3 | 熔断器指标 | open/skipped/half_open_attempts |
+| NFR-O4 | Prometheus 指标 | aranea_event_bus_published_total / aranea_event_bus_dropped_total |
 
 ---
 
-## 4.5 SinkGroup
+## 5. 交互规格（用户视角）
 
-每个 Sink 由独立的 `SinkGroup` 包装，实现 goroutine 隔离 + channel 缓冲 + DropPolicy 策略，确保慢 Sink 不影响其他 Sink。
+### 5.1 监控页日志查看
 
-```go
-type SinkGroup struct {
-    sink       Sink
-    ch         chan LogEntry       // 独立 channel 缓冲
-    wg         sync.WaitGroup
-    dropped    atomic.Uint64
-    dropPolicy DropPolicy
-    name       string
-    ctx        context.Context
-    cancel     context.CancelFunc
-}
-```
+| 场景 | 前端组件 | 后端数据源 |
+|------|---------|-----------|
+| 实时 Flow Log 流 | FlowLogStream.vue | EnvelopeTypeFlowLog → WS 推送 |
+| Flow 追踪面板 | FlowTracePanel.vue | FlowLog span 树渲染 |
+| Flow Log 导出 | FlowLogExportButton.vue | ListFlowLogs HTTP API |
+| 进程日志流 | ProcessLogStream.vue | EnvelopeTypeLog → WS 推送 |
+| WS 连接管理 | useLogStreamHub.ts | 统一 WS Hub |
 
-**设计要点**：
+### 5.2 FlowLog 严重级别（用户可见）
 
-| 特性 | 说明 |
-|------|------|
-| **独立 goroutine** | 每个 SinkGroup 启动独立 goroutine 从 channel 读取并写入 Sink，Sink.Write 的阻塞/慢速不影响 Pipeline 分发 |
-| **DropPolicy** | `DropNewest`（默认）：缓冲区满时丢弃新条目；`DropBlock`：阻塞调用方直到缓冲区有空间 |
-| **Panic 恢复** | `run()` 循环中 Sink.Write 的 panic 会被 recover，不影响 SinkGroup 继续处理后续条目 |
-| **优雅关闭** | `Close()` 取消 context → 关闭 channel → 等待 goroutine 退出 → 关闭底层 Sink |
-| **统计** | `Stats()` 返回 `SinkGroupStats{Name, Dropped, ChanLen, ChanCap}` |
+| 级别 | 含义 | UI 表现 |
+|------|------|--------|
+| ok | 成功 | 绿色 |
+| info | 信息 | 蓝色 |
+| warn | 警告 | 黄色 |
+| error | 错误 | 红色 |
+| critical | 严重 | 红色高亮 |
 
-**Pipeline 集成**：Pipeline 内部维护 `[]*SinkGroup`，`AddSink()` 自动包装为默认 SinkGroup（bufSize=4096, DropNewest），`AddSinkGroup()` 允许自定义参数。
+### 5.3 Flow Log 与聊天错误的关系
 
-**关键文件**：`pkg/logpipeline/sink_group.go`
+- FlowLog error 默认发布为聊天错误 toast（EnvelopeTypeError → SessionBus）
+- `flowStepsSkipChatError` 中的 step_id 不发布为聊天错误（避免噪音，如 `chat.usage_record`、`system.agent.tool_build`）
 
 ---
 
-## 4.6 反馈环切断
+## 6. 配置项（用户可配）
 
-日志系统曾存在反馈环问题：当日志条目被丢弃时，系统尝试记录丢弃事件，可能触发更多丢弃，形成无限循环。现已通过两层机制切断：
-
-**Bus.logDrop() 改造**：
-- `bus.logDrop()` 不再通过 EventBus 发布丢弃通知（避免递归）
-- 改为 `fmt.Fprintf(os.Stderr, ...)` 直写 stderr + `droppedCount atomic.Uint64` 原子计数器
-- 丢弃信息不经过 Pipeline/EventBus，确保不产生反馈环
-- `droppedCount` 通过 `Pipeline.Stats()` 暴露
-
-**EventBusSink 熔断机制**：
-- 三态熔断器：`cbClosed`（正常）→ `cbOpen`（熔断）→ `cbHalfOpen`（探测）
-- 连续 5 次超时/失败后进入 `cbOpen`，所有写入跳过，持续 10 秒
-- 10 秒后进入 `cbHalfOpen`，允许探测写入；半开状态下连续 3 次失败才重新进入 `cbOpen`
-- 熔断状态转换时写入 stderr（不经过 Pipeline/EventBus），确保不产生反馈环
-- 超时控制：`Publish` 调用设置 50ms 超时，超时视为失败
-- 熔断器指标通过 `Pipeline.Stats()` 暴露：`circuit_breaker_open`、`circuit_breaker_skipped`、`circuit_breaker_half_open_attempts`
-
-**关键文件**：`internal/event/bus.go`（logDrop）、`pkg/logpipeline/eventbus_sink.go`（熔断器）
-
----
-
-## 4.7 运行时日志桥接
-
-trpc-agent-go 运行时日志（独立 zap.Sugar）已通过 `RuntimeLogAdapter` 桥接到 loggateway Pipeline。
-
-```go
-// RuntimeLogAdapter 实现 agentlog.Logger，委托给 loggateway.Logger
-// 将 trpc-agent-go 运行时日志桥接到 loggateway Pipeline
-type RuntimeLogAdapter struct {
-    lg    loggateway.Logger
-    base  []loggateway.Field
-    fatal *zap.SugaredLogger  // Fatal/Fatalf 特殊处理：直写 stderr + os.Exit(1)
-}
-```
-
-**设计要点**：
-
-| 特性 | 说明 |
-|------|------|
-| **接口适配** | 实现 `agentlog.Logger`（Debug/Info/Warn/Error/Fatal 及格式化版本），编译期检查 `var _ agentlog.Logger = (*RuntimeLogAdapter)(nil)` |
-| **Fatal 特殊处理** | Fatal/Fatalf 不走异步 Pipeline（进程即将退出），直写 stderr + 独立 zap.SugaredLogger |
-| **With 不可变模式** | `With(fields...)` 返回新实例，原始 adapter 不被修改 |
-| **解决 A-2/A-3 偏差** | 之前 trpc-agent-go 运行时日志仅 stdout 不持久化，现经 Pipeline 统一落盘 |
-
-**关键文件**：`internal/adapter/runtime_log.go`
-
----
-
-## 4.8 配置驱动 Sink 注册
-
-Sink 注册已从硬编码改为配置驱动，通过 `conf.proto` SinkType/DropPolicy enum + `sink_factory.go` 工厂模式实现。
-
-**Proto 定义**（`internal/conf/conf.proto`）：
-
-```protobuf
-enum SinkType {
-  SINK_TYPE_UNSPECIFIED = 0;
-  SINK_TYPE_FILE = 1;
-  SINK_TYPE_STDOUT = 2;
-  SINK_TYPE_EVENTBUS = 3;
-}
-
-enum DropPolicy {
-  DROP_POLICY_UNSPECIFIED = 0;
-  DROP_POLICY_NEWEST = 1;
-  DROP_POLICY_BLOCK = 2;
-}
-
-message LoggingSink {
-  string name = 1;
-  SinkType type = 2;
-  int32 buffer_size = 3;
-  DropPolicy drop_policy = 4;
-  map<string, string> config = 5;
-}
-
-message Logging {
-  // ... 原有字段 ...
-  repeated LoggingSink sinks = 9;  // 配置驱动的 Sink 列表
-}
-```
-
-**工厂模式**（`pkg/logpipeline/sink_factory.go`）：
-
-```go
-type SinkConfig struct {
-    Name       string
-    Type       string            // "file", "stdout", "eventbus"
-    BufferSize int
-    DropPolicy DropPolicy
-    Config     map[string]string // Sink 特定配置
-}
-
-type SinkFactoryDeps struct {
-    EventBusPublisher Publisher  // EventBus Sink 需要的外部依赖
-}
-
-func NewSinkFromConfig(cfg SinkConfig, deps SinkFactoryDeps) (Sink, error)
-```
-
-**设计要点**：
-- `SinkConfig` 与 `internal/conf` proto 解耦，cmd/admin/main.go 负责转换
-- EventBus Sink 的 Publisher 无法从配置推导，通过 `SinkFactoryDeps` 注入
-- 每个 Sink 的 `config` map 支持类型特定参数（如 file 的 output_dir/filename，eventbus 的 hook_level）
-
----
-
-## 4.9 Global() Deprecated
-
-`loggateway.Global()` 已标记 deprecated，新代码应通过构造注入获取 `loggateway.Logger`。
-
-```go
-// Deprecated: use constructor injection instead of global singleton.
-func Global() *Gateway
-```
-
-**迁移方式**：
-- `Gateway` 在 `New()` 时自动设置全局变量（向后兼容），但新代码不应依赖
-- 应通过 Wire 构造注入 `loggateway.Logger` 到需要的 Usecase/Service
-- `SetGlobal()` 保留用于测试和特殊场景
-
----
-
-## 4.10 stepThrottler TTL 淘汰机制
-
-`stepThrottler` 的 `buckets` map 曾无淘汰机制，长时间运行会导致内存无界增长。现已通过 TTL 淘汰机制解决：
-
-**设计要点**：
-
-| 特性 | 说明 |
-|------|------|
-| **lastAccess 追踪** | 每个 bucket 记录 `lastAccess atomic.Int64`（Unix 时间戳），`shouldThrottle` 中更新 |
-| **后台淘汰 goroutine** | 每 5 分钟扫描 buckets，淘汰 `lastAccess > 30min` 的条目 |
-| **生命周期管理** | `Start()`/`Stop()` 方法由 Pipeline 控制，`Pipeline.Close()` 调用 `Stop()` |
-| **可配置 TTL** | `ThrottleConfig` 增加 `TTL` 和 `ScanInterval` 字段 |
-| **淘汰安全性** | 读写锁分离，淘汰不阻塞 `shouldThrottle` 热路径 |
-
-**关键文件**：`pkg/logpipeline/pipeline.go`
-
----
-
-## 5. 配置规格
-
-### 5.1 Proto 定义（conf.Logging）
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| level | string | info | 日志级别 (debug/info/warn/error) |
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| level | string | info | 日志级别（debug/info/warn/error） |
 | output_dir | string | Linux: `/var/log/aranea`, Win: `./logs` | 输出目录 |
 | max_size_mb | int32 | 100 | 单文件最大 MB |
 | max_backups | int32 | 10 | 保留旧文件数 |
@@ -344,18 +251,49 @@ func Global() *Gateway
 | compress | bool | false | 是否压缩旧文件 |
 | stdout_enabled | bool | false | 是否同时输出 stdout |
 | hook_level | string | — | EventBusSink 级别阈值 |
+| sinks | repeated LoggingSink | — | 配置驱动的 Sink 列表 |
 
-### 5.2 环境变量
+### 6.1 环境变量
 
 | 变量 | 用途 |
 |------|------|
 | `MONITOR_FLOW_LOG_DIR` | 覆盖日志输出目录 |
+| `MONITOR_BUS_ROUTING` | Infra 双总线路由模式（split/dual，默认 split） |
+
+> Proto 契约（SinkType/DropPolicy/LoggingSink/Logging message 定义）见 [设计文档 §7](./64-logging-framework.design.md#7-配置驱动-sink-注册)。
 
 ---
 
-## 6. 步骤注册表
+## 7. 验收标准
 
-采用 `{domain}.{subsystem}.{action}` 点分命名，已注册 ~80 个 step_id。
+### 7.1 红线合规
+
+- [x] `grep -r "log/slog" internal/` 为零（红线 #16）
+- [x] `grep -r "zap\." internal/` 为零（红线 #10a，trpc-agent-go 运行时除外）
+- [x] `Global()` 无新增调用（NFR-C4）
+
+### 7.2 功能验证
+
+- [x] `go test ./pkg/loggateway/... -count=1` 通过
+- [x] `go test ./pkg/logpipeline/... -count=1` 通过
+- [x] `go test ./internal/event/... -count=1` 通过
+- [x] `go build ./cmd/admin` 通过
+
+### 7.3 构造注入验证
+
+- [x] Wire 编译通过
+- [x] 所有 Usecase/Service 通过构造注入获取 Logger
+
+### 7.4 桥接验证
+
+- [x] trpc-agent-go 运行时日志经 RuntimeLogAdapter 进入 Pipeline（解决 A-2/A-3 偏差）
+- [x] `agentlog.Default` / `agentlog.ContextDefault` 被替换
+
+---
+
+## 8. 步骤注册表（用户视角）
+
+采用 `{domain}.{subsystem}.{action}` 点分命名，已注册约 80 个 step_id，每个 step_id 映射人类可读中文标题。
 
 | 域 | 示例 step_id | 数量 |
 |----|-------------|------|
@@ -363,178 +301,22 @@ func Global() *Gateway
 | team | team.graph.compile, team.graph.run | ~10 |
 | knowledge | knowledge.search, knowledge.index | ~8 |
 | plugin | plugin.hook.invoke, plugin.guard.check | ~10 |
-| system | system.cron.tick, system.health.check | ~8 |
+| system | system.cron.tick, system.health.check | ~40 |
 | memory | memory.worker.run, memory.deadletter.replay | ~6 |
 | channel | channel.deliver, channel.health | ~8 |
 | model | model.sync, model.apply | ~6 |
 | monitor | monitor.alert, monitor.flow | ~5 |
 | 其他 | a2a.*, session.*, evaluation.* | ~4 |
 
----
-
-## 7. 实施进度
-
-### 7.1 日志统一迁移
-
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| P0 | 基础设施（loggateway + Zap Core + lumberjack + BusHook + KratosAdapter） | ✅ 已完成 |
-| P1 | 迁移 Kratos log.NewHelper（78 处） | ✅ 已完成 |
-| P2 | 迁移 FlowLog SysLog*（262 处 → 调用归零） | ✅ 已完成 |
-| P3 | 迁移 CtxFlowLog* + TraceEmitter（54 处 → 调用归零） | ✅ 已完成 |
-
-P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*，CtxFlowLog*/FlowLog* 函数已标记 deprecated。
-
-### 7.2 LogPipeline 渐进式实施
-
-| Phase | 目标 | 状态 |
-|-------|------|------|
-| 1 | Pipeline 构建 + Bug #1/#2/#4/#5 修复 | ✅ |
-| 2 | EventBusSink 替换 busHook + 消除桥接阻塞 | ✅ |
-| 3 | Flow Log 迁移 + EventBus Bug #6/#7/#9/#11 修复 | ✅ |
-| 4 | 构造函数注入 + 测试覆盖（Bug #8 修复） | ✅ |
-| 5 | 功能增强（AtomicLevel, Pipeline 采样, 监控指标, OTelSink） | ✅ |
-
-### 7.3 Bug 修复记录
-
-11 个 Bug 全部修复，5 轮 aranea-review 验证通过。详见 `openspec/issues/logging-issues.md`。
+> 完整注册表与代码位置见 [开发计划 §代码锚点](./64-logging-framework.development.md#6-代码锚点)。
 
 ---
 
-## 8. 代码量统计
-
-| 指标 | 数值 |
-|------|------|
-| `internal/` 下 loggateway 引用文件数 | ~100+ |
-| `internal/` 下 loggateway 引用总次数 | ~1,146 |
-| `log/slog` 残留 | 0（红线 #10 合规） |
-| `log.Info/Error/Warn` 残留（非 loggateway） | 64 处 / 31 文件 |
-| zap 直接引用 | 7 文件（含 trpc-agent-go 运行时） |
-| 已注册 step_id 标题映射 | ~80 个 |
-| 已删除废弃文件 | 5 个 |
-
-### 8.1 各模块 loggateway 使用分布
-
-| 层/模块 | 引用次数 | 说明 |
-|---------|---------|------|
-| service | ~666 | 最重使用层 |
-| biz | ~663 | 业务逻辑层 |
-| data | ~640 | 数据层 |
-| agent | ~259 | Agent 构建/运行 |
-| tools | ~199 | 工具集 |
-| plugin/trpc | ~149 | trpc 插件 |
-| team | ~184 | 团队编排 |
-| cronrunner | ~176 | 定时任务 |
-| modelregistry | ~168 | 模型注册表 |
-| channel | ~155 | 渠道集成 |
-| 其他（graph/session/skill/...） | ~200+ | 各子系统 |
-
----
-
-## 9. 已知偏差
-
-| 编号 | 严重性 | 描述 | 文件 |
-|------|--------|------|------|
-| R4-2/R5-1 | ~~黄~~ ✅ | ~~TraceEmitter 仍用 `bus Bus` + `boundInfraRef()` 而非 `logpipeline.Pipeline`~~ | 已通过 FlowTracker 构造注入 Infra 解决，`boundInfraRef()` 和 `BindInfra()` 已标记 deprecated |
-| R5-2 | ~~黄~~ ✅ | ~~`stepThrottler.buckets` map 无淘汰机制，长时间运行可能内存增长~~ | 已通过 TTL 淘汰机制解决（详见 §4.10） |
-| F-2 | 黄 | `defaultOutputDir()` 在 gateway.go 和 file_sink.go 重复 | 两文件 |
-| B-1 | 黄 | `Envelope.Clone()` 对 Metadata 浅拷贝，当前 subscriber 只读风险低 | `internal/event/contract/envelope.go` |
-
-### 9.1 架构层面不一致
-
-| 编号 | 描述 | 影响 | 状态 |
-|------|------|------|------|
-| A-1 | Kratos 框架日志未接入 loggateway（`log.NewStdLogger(os.Stdout)`） | 框架中间件日志走 stdout，不经 Pipeline | 待解决 |
-| A-2 | ~~trpc-agent-go 运行时日志未接入 loggateway（独立 zap.Sugar）~~ | ~~Agent 生命周期日志仅 stdout，不持久化~~ | ✅ 已通过 RuntimeLogAdapter 解决 |
-| A-3 | ~~双日志接口并存（loggateway.Logger Field 风格 vs trpc-agent-go/log.Logger fmt 风格）~~ | ~~无桥接，运行时日志和业务日志走不同路径~~ | ✅ 已通过 RuntimeLogAdapter 解决 |
-
----
-
-## 10. 测试覆盖
-
-| 包 | 测试文件 | 场景数 |
-|----|---------|--------|
-| `pkg/loggateway` | `gateway_test.go` | 11 |
-| `pkg/logpipeline` | `pipeline_test.go` + `sink_test.go` | 8 + 9 |
-| `internal/event` | 多个测试文件 | bus/flow_context/session_revision 等 |
-
----
-
-## 11. 模块关联
-
-### 11.1 上游依赖 loggateway 的模块
-
-agent, provider, team, cron, a2a, session/status, plugin
-
-### 11.2 上游依赖 event（日志）的模块
-
-agent, provider, team, cron, a2a, plugin
-
-### 11.3 前端对应
-
-| 后端日志系统 | 前端组件 |
-|-------------|---------|
-| FlowLog (EnvelopeTypeFlowLog) | MonitorPage FlowLogStream.vue, FlowTracePanel.vue, FlowLogExportButton.vue |
-| 进程日志 (EnvelopeTypeLog) | MonitorPage ProcessLogStream.vue |
-| WS 推送 | useLogStreamHub.ts |
-| Flow Log 落库 | ListFlowLogs HTTP API → 前端历史查询 |
-
-### 11.4 数据库
-
-| 表/文件 | 用途 |
-|---------|------|
-| `flow_log_events` | FlowLog 持久化 |
-| `aranea-*.log` | Zap 统一日志文件（lumberjack 轮转） |
-| `flow-*.jsonl` / `system-*.jsonl` / `log-*.jsonl` / `trace-*.jsonl` / `alert-*.jsonl` | FlowFileAppender 分类落盘 |
-
----
-
-## 12. EventBus 与日志的关系
-
-- 双总线：SessionBus（业务）+ MonitorBus（监控），物理隔离
-- 三级队列：high(64) / normal(128) / low(256)，日志走 low
-- DropNewest 策略：low/normal 队列满时丢弃新消息
-- `flow_log` 不受 `logEnabled` 开关限制；`log` 仍受限制
-
----
-
-## 13. 关键文件索引
-
-| 文件 | 作用 |
-|------|------|
-| `pkg/loggateway/logger.go` | Logger 接口 + Field 构造函数 + 错误链展开 |
-| `pkg/loggateway/gateway.go` | Gateway 核心实现（zap 初始化、Pipeline 集成、全局单例） |
-| `pkg/logpipeline/pipeline.go` | Pipeline 接口 + 实现（异步分发、采样、监控） |
-| `pkg/logpipeline/file_sink.go` | FileSink（lumberjack JSON 落盘） |
-| `pkg/logpipeline/stdout_sink.go` | StdoutSink（开发调试） |
-| `pkg/logpipeline/eventbus_sink.go` | EventBusSink（Pipeline → EventBus，含三态熔断器） |
-| `pkg/logpipeline/sink_group.go` | SinkGroup（独立 goroutine + channel + DropPolicy 隔离） |
-| `pkg/logpipeline/sink_factory.go` | Sink 工厂（配置驱动 Sink 注册） |
-| `internal/event/flow_log.go` | FlowLogEntry 数据模型 + stepTitle 注册表 |
-| `internal/event/flow_tracker.go` | FlowTracker（流程追踪核心，替代 TraceEmitter 核心逻辑） |
-| `internal/event/span_collector.go` | SpanCollector（Span 树管理 + usage.metadata_json） |
-| `internal/event/usage_aggregator.go` | UsageAggregator（用量聚合，桥接 trpc-agent-go 事件流） |
-| `internal/event/trace_emitter.go` | TraceEmitter（v2 embedding wrapper，嵌入 FlowTracker） |
-| `internal/event/flow_context.go` | CtxFlowLog* 快捷函数 |
-| `internal/event/logpipeline_publisher.go` | busPublisher（EventBusSink → contract.Bus 桥接） |
-| `internal/adapter/runtime_log.go` | RuntimeLogAdapter（trpc-agent-go 运行时日志 → loggateway Pipeline） |
-| `internal/plugin/trpc/safe_logger.go` | PluginSafeLogger（插件日志 → loggateway + EventBus） |
-| `internal/runtime/deps.go` | TurnDeps.Lg 字段（loggateway.Logger 注入到 chat turn） |
-| `pkg/trpc-agent-go/log/log.go` | Agent 运行时日志（独立 zap.Sugar） |
-| `pkg/trpc-agent-go/plugin/logging.go` | Agent 生命周期日志插件 |
-| `internal/conf/conf.proto` | Logging 配置 Proto 定义 |
-| `cmd/admin/main.go` | 日志初始化 + Pipeline 构造 + 生命周期钩子 |
-
----
-
-## 14. 相关文档
+## 9. 相关文档
 
 | 文档 | 路径 | 定位 |
 |------|------|------|
-| 日志问题审计 | `openspec/issues/logging-issues.md` | 11 Bug + 5 Phase + 5 次审查 |
-| 日志统一迁移 | `openspec/changelog/2026-05-31-Logging-Unification.md` | P0-P3 四期迁移方案 |
-| FlowLogger 需求 | `openspec/requirements/52-flow-logger.md` | FlowLogger v2 需求规格 |
-| FlowLogger 设计 | `openspec/requirements/52-flow-logger.design.md` | TraceEmitter API + 步骤注册表 |
-| FlowLogger 开发 | `openspec/requirements/52-flow-logger-development.md` | Phase 1a/1b/1c/2/3 任务拆分 |
-| SlogBridge 移除 | `openspec/changelog/2026-05-20-FlowLog-V2-SlogRemoval.md` | slog 全量迁移 |
-| FlowLogger 审查 | `docs/review/52-flowlogger-review.md` | 79/100 评分 + P1/P2 风险 |
+| 日志框架设计 | `docs/development/64-logging-framework.design.md` | 架构、接口、Proto、数据模型 |
+| 日志框架开发计划 | `docs/development/64-logging-framework.development.md` | 代码锚点、进度、任务、已知偏差 |
+| 项目规则-日志架构约束 | `.trae/rules/project_rules.md` §日志架构约束 | 红线、组件表、使用规则 |
+| 监控模块 | `docs/development/18-monitor.md` | 监控页 Flow Log 展示需求 |

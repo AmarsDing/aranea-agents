@@ -4,8 +4,14 @@ import "context"
 
 // TaskPlannerPort is the port interface for the TaskPlanner (Phase 1 of Spirit orchestration).
 // Single responsibility: assess task complexity + decompose tasks + output strategy.
+//
+// Stability: evolving
 type TaskPlannerPort interface {
+	// Plan assesses complexity, optionally decomposes, persists, and outputs a strategy.
 	Plan(ctx context.Context, input PlanInput) (*TaskPlan, error)
+	// QuickAssess performs a pure-computation complexity assessment (no LLM, no DB),
+	// used by the pre-planning gate (P1-2) to force planning for Moderate/Complex tasks.
+	QuickAssess(ctx context.Context, input PlanInput) (ComplexityLevel, float64, error)
 	GetPlan(ctx context.Context, planID string) (*TaskPlan, error)
 	ConfirmPlan(ctx context.Context, planID string, adjustments PlanAdjustments) (*TaskPlan, error)
 }

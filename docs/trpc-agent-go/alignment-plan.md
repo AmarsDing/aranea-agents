@@ -66,11 +66,11 @@ Extended（独立，ToolPipe 依赖 Tool）
 | P1-2 | Event | 贡献 EventWAL（WBPF） | 贡献回框架 | 框架获得事件持久化+先写后发能力 | ✅ 已完成 |
 | P1-3 | Event | 贡献事件可靠性分级 | 贡献回框架 | 框架获得 Critical/Important/Informational 三级可靠性保证 | ✅ 已完成 |
 | P1-4 | Tool | 启用 ToolPipe Extension | 启用框架功能 | Token 消耗降低 50-90%（框架 benchmark 数据） | ✅ 已完成 |
-| P1-5 | Knowledge | 实现 VectorStore 适配器 | 新增适配层 | 对接框架 Knowledge 接口，统一向量搜索 | ✅ 已完成 |
-| P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 | ✅ 已完成 |
+| P1-5 | Knowledge | 实现 VectorStore 适配器 | 新增适配层 | 对接框架 Knowledge 接口，统一向量搜索 | 🟡 阻塞：框架 `vectorstore.VectorStore` 接口无消费者（详见 §十一/B-1） |
+| P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 | 🟡 阻塞：框架 `embedder.Embedder` 接口无消费者（详见 §十一/B-2） |
 | P1-7 | Evaluation | 启用框架 LLM Judge | 启用框架功能 | 替换自建 LLM-as-Judge，减少维护 | ✅ 已完成 |
 | P1-8 | Evaluation | 启用 Callbacks | 启用框架功能 | 评估流程获得框架 Callback 能力 | ✅ 已完成 |
-| P1-9 | Prompt | 启用 PromptIter 替换 PromptRefiner | 启用框架功能 | 替换自建 PromptRefiner，获得框架迭代优化能力 | ✅ 已完成 |
+| P1-9 | Prompt | 启用 PromptIter 替换 PromptRefiner | 启用框架功能 | 替换自建 PromptRefiner，获得框架迭代优化能力 | 🟡 阻塞：适配器编译错误 + 框架协作者缺失（详见 §十一/B-3） |
 
 ### P1 执行顺序
 
@@ -102,7 +102,7 @@ P1-9 (PromptIter) ──→ 独立
 | P2-6 | Session | 启用 WithSessionEventLimit | 启用框架功能 | P2-3 | 控制单 Session 事件数量 | ✅ 已完成 |
 | P2-7 | Memory | L2/L3 适配 memory.Service 接口 | 新增适配层 | P1-1 EventBus | 记忆层对接框架接口 | ✅ 已验证（已有实现） |
 | P2-8 | Memory | Extractor Chain 适配 MemoryExtractor | 新增适配层 | P2-7 | 提取器链对接框架接口 | ✅ 已完成 |
-| P2-9 | Tool | DeferredCallableTool 实现 DeferredTool | 替换自建实现 | P1-4 ToolPipe | 延迟加载工具对接框架接口 |
+| P2-9 | Tool | DeferredCallableTool 实现 DeferredTool | 替换自建实现 | P1-4 ToolPipe | ✅ 已完成（`internal/tools/deferred/deferred_tool.go` 实现 `ShouldDefer()` 满足 `trpctool.DeferredTool` 接口） |
 | P2-10 | Tool | 贡献 Circuit Breaker | 贡献回框架 | 无 | ⏭ 跳过（不贡献回框架） |
 | P2-11 | Tool | 贡献 Confirmation Gate | 贡献回框架 | 无 | ⏭ 跳过（不贡献回框架） |
 | P2-12 | Tool | ToolResultGate + ToolPipe 协调 | 新增适配层 | P1-4 ToolPipe | ✅ 已完成 |
@@ -120,18 +120,18 @@ P1-9 (PromptIter) ──→ 独立
 | P2-19 | Team | 借鉴 Swarm 安全机制 | 启用框架功能 | ✅ 已完成 |
 | P2-20 | Team | 借鉴 Session 隔离 | 启用框架功能 | ✅ 已完成 |
 | P2-21 | Knowledge | 实现 Knowledge 接口 | 新增适配层 | ✅ 已完成 |
-| P2-22 | Knowledge | 使用框架 SearchTool | 启用框架功能 | ✅ 已完成 |
+| P2-22 | Knowledge | 使用框架 SearchTool | 启用框架功能 | 🟡 阻塞：双重注册冲突 + 丢失动态 collection 限定能力（详见 §十一/B-4） |
 | P2-23 | Knowledge | 贡献 HybridRetriever | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
 | P2-24 | Knowledge | 贡献 AdaptiveRouter | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
 | P2-25 | Evaluation | 启用 EvalSet Recorder | 启用框架功能 | 评估集持久化走框架 |
-| P2-26 | Evaluation | 启用 PromptIter | 启用框架功能 | ✅ 已完成 |
-| P2-27 | Skill | 启用提示缓存优化 | 启用框架功能 | ✅ 已确认（渐进加载模式下已启用） |
+| P2-26 | Evaluation | 启用 PromptIter | 启用框架功能 | 🟡 阻塞：与 P1-9 同一阻塞点，框架 `promptiter` 需 5 个协作者（详见 §十一/B-3） |
+| P2-27 | Skill | 启用提示缓存优化 | 启用框架功能 | ✅ 已启用（`internal/agent/trpc_build.go:160` 调用 `WithSkillsLoadedContentInToolResults(true)`，渐进加载模式下已启用） |
 | P2-28 | Skill | 贡献 DBRepositoryAdapter | 贡献回框架 | ✅ 已完成（internal 适配层，非框架贡献） |
 | P2-29 | Server | 启用 AG-UI 协议端点 | 启用框架功能 | ✅ 已完成 |
 | P2-30 | Server | 启用 A2A 扩展点 | 启用框架功能 | ✅ 已完成 |
-| P2-31 | Extended | 启用 TodoEnforcer 扩展 | 启用框架功能 | ✅ 已完成 |
-| P2-32 | Prompt | 启用 prompt.Text.Render() | 启用框架功能 | ✅ 已完成 |
-| P2-33 | Prompt | 启用 state.Render() | 启用框架功能 | ✅ 已完成 |
+| P2-31 | Extended | 启用 TodoEnforcer 扩展 | 启用框架功能 | ✅ 已完成（`trpc_build.go` 条件启用：仅当 Agent 已有 `todo_write` 工具时追加 `NewTodoEnforcerOption`，避免向不使用 todo 的 Agent 注入工具。框架 earlier-wins 去重保证用户工具优先，enforcer 通过 session state key `temp:todos:<branch>` 追踪状态） |
+| P2-32 | Prompt | 启用 prompt.Text.Render() | 启用框架功能 | 🟡 阻塞：设计前提不匹配（模板渲染 vs 结构化拼接，详见 §十一/B-5） |
+| P2-33 | Prompt | 启用 state.Render() | 启用框架功能 | 🟡 阻塞：设计前提不匹配（模板渲染 vs RuntimeState 注入，详见 §十一/B-6） |
 
 ### P2 执行顺序
 
@@ -215,8 +215,8 @@ P1-9 (PromptIter) ──→ 独立
 
 | 模块 | 对齐项 | 协同收益 |
 |------|--------|---------|
-| Skill | 启用命令安全限制 | Skill 运行安全增强 | ✅ 已完成 |
-| Skill | 启用输出大小限制 | 防止上下文窗口溢出 | ✅ 已完成 |
+| Skill | 启用命令安全限制 | Skill 运行安全增强 | ✅ 已完成（`ChatOrchestrator` 持有 `CommandSafetyPermissionChecker`，`buildTurnRunOptions` 通过 `WithToolPermissionPolicyFunc` 注入 per-run 权限策略。非保护工具零开销通过，保护工具（exec_command/shell_exec/file 等）访问敏感路径（.aws/.ssh/.kube/.env 等）时拒绝） |
+| Skill | 启用输出大小限制 | 防止上下文窗口溢出 | ✅ 已完成（通过通用 Tool AfterTool 回调实现，覆盖所有工具包括 Skill Run，未使用框架 `WithSkillRunOutputLimits` 但防护范围更广） |
 | Skill | FSRepository 显式实现接口 | 接口合规性 | ✅ 已完成 |
 | Skill | 贡献 artifactSavingExecutor | 框架获得装饰器保存 | ⏭ 跳过（不贡献回框架） |
 | Skill | 评估交互式执行工具 | 支持长时间交互式技能 | |
@@ -232,13 +232,13 @@ P1-9 (PromptIter) ──→ 独立
 | Server | 启用 OpenAI 完整选项 | OpenAI 会话持久化 | ✅ 已完成 |
 | Server | 贡献 WebSocket ServiceFactory | 框架获得 WS 传输 | ⏭ 跳过（不贡献回框架） |
 | Server | 贡献多租户 A2A 路由器 | 框架获得多 Agent 路由 | ⏭ 跳过（不贡献回框架） |
-| Extended | 评估 TaskRun 共存 | Agent 获得异步委派能力 | ✅ 已完成 |
+| Extended | 评估 TaskRun 共存 | Agent 获得异步委派能力 | 🟡 阻塞：缺少 Controller 实例 + 复杂依赖链（详见 §十一/B-7） |
 | Runner | 删除透传包装器 | 代码简化 |
 | Event | Graph 事件用框架 EventEmitter | 事件源统一 |
 | Evaluation | 贡献 SQLite 后端 | 框架获得评估持久化 | ⏭ 跳过（不贡献回框架） |
 | Evaluation | 贡献脚本模拟器 | 框架获得模拟评估 | ⏭ 跳过（不贡献回框架） |
 | Evaluation | 贡献 AfterTurn 触发器 | 框架获得自动评估 | ⏭ 跳过（不贡献回框架） |
-| Prompt | 启用 ValidateRequired() | Prompt 必填校验 | ✅ 已完成（prompt_render.go 启用，graceful degradation） |
+| Prompt | 启用 ValidateRequired() | Prompt 必填校验 | 🟡 阻塞：依赖 P2-32 的 RenderPromptTemplate 接入，而 P2-32 被阻塞（详见 §十一/B-5） |
 | Agent | 评估 structure.Exporter | 结构化导出 |
 | Agent | 评估 TransferController | 传输控制 | ✅ 已完成（transfer_controller.go 实现，原子计数器深度限制+超时） |
 
@@ -701,3 +701,115 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 | Server | `docs/trpc-agent-go/12-server.md` |
 | Skill | `docs/trpc-agent-go/13-skill.md` |
 | Extended | `docs/trpc-agent-go/18-extended-modules.md` |
+
+---
+
+## 十一、未接入适配器阻塞原因详解
+
+> 以下 7 项适配器代码已就绪但无法接入生产路径，每项有明确的阻塞原因。
+> 阻塞原因分为三类：**框架接口无消费者**（框架未提供使用该接口的组件）、**编译/依赖错误**（适配器代码本身有问题）、**设计前提不匹配**（适配器的设计假设与项目实际架构冲突）。
+
+### B-1. VectorStoreAdapter（P1-5）— 框架接口无消费者
+
+**阻塞类型**：框架接口无消费者
+
+**适配器位置**：`internal/knowledge/vectorstore_adapter.go`
+
+**阻塞原因**：
+- 适配器将项目的 `internal/data/vector.VectorStore` 适配到框架的 `vectorstore.VectorStore` 接口
+- 但框架中**没有任何组件消费 `vectorstore.VectorStore` 接口**——框架的 Knowledge 模块使用 `knowledge.Knowledge` 接口（已通过 `KnowledgeAdapter` 适配），不直接使用 `vectorstore.VectorStore`
+- 项目的向量搜索管线（`internal/data/vector.VectorStore` → `MultiProviderEmbedder` → `KnowledgeAdapter`）已完整运行，插入 `VectorStoreAdapter` 不会带来任何功能增益，只会增加一层无意义的包装
+
+**解除阻塞条件**：框架未来版本提供直接消费 `vectorstore.VectorStore` 的组件（如框架级向量索引管理器），或项目决定将向量搜索管线完全迁移到框架。
+
+### B-2. EmbedderAdapter（P1-6）— 框架接口无消费者
+
+**阻塞类型**：框架接口无消费者
+
+**适配器位置**：`internal/knowledge/embedder_adapter.go`
+
+**阻塞原因**：
+- 适配器将项目的 `MultiProviderEmbedder` 适配到框架的 `embedder.Embedder` 接口
+- 与 B-1 同理，框架中**没有任何组件直接消费 `embedder.Embedder` 接口**——框架的 Knowledge 模块通过 `knowledge.Knowledge` 接口抽象了整个检索流程，Embedder 是项目内部实现细节
+- `wire.go` 直接绑定 `MultiProviderEmbedder` 是正确的，因为项目代码直接使用它生成嵌入向量
+
+**解除阻塞条件**：与 B-1 相同，需框架提供消费 `embedder.Embedder` 的组件。
+
+### B-3. PromptIterAdapter（P1-9, P2-26）— 编译错误 + 框架协作者缺失
+
+**阻塞类型**：编译错误 + 框架协作者缺失
+
+**适配器位置**：`internal/agent/prompt_iter_adapter.go`
+
+**阻塞原因**：
+1. **编译错误**：适配器引用了 `TrainEvalSetIDs` 和 `ValidationEvalSetIDs` 字段，但框架的 `promptiter` 包中不存在这些字段（API 已变更或适配器编写时使用了不存在的 API）
+2. **框架协作者缺失**：框架的 `promptiter` 需要 5 个协作者才能运行：
+   - `engine.Engine` — 迭代引擎
+   - `evalset.Recorder` — 评估集记录器
+   - 评估集持久化后端
+   - LLM Judge（已有但未接入此管线）
+   - Prompt 生成器
+   项目缺少评估集基础设施（`EvalSet Recorder`、评估集持久化），无法提供这些协作者
+
+**解除阻塞条件**：
+1. 修复编译错误（对齐框架 `promptiter` 包的实际 API）
+2. 建立评估集基础设施（EvalSet Recorder + 持久化）
+3. 评估是否值得引入完整的 PromptIter 管线（项目自建的 `PromptRefiner` 已满足当前需求）
+
+### B-4. FrameworkSearchTool（P2-22）— 双重注册冲突 + 能力降级
+
+**阻塞类型**：双重注册冲突 + 能力降级
+
+**适配器位置**：`internal/tools/knowledge/framework_searchtool.go`
+
+**阻塞原因**：
+1. **双重注册冲突**：项目已在工具目录注册了自建的 `knowledge_search` 工具（`internal/tools/knowledge/searchtool.go`）。`FrameworkSearchTool` 使用框架的 `knowledge.NewKnowledgeSearchTool` 创建同名工具，会导致 `knowledge_search` 工具双重注册
+2. **能力降级**：项目的 `SearchTool` 支持**动态 collection 限定**——通过 `knowledgetool.WithKnowledgeCollections(runCtx, kbs)` 在 per-run context 中注入允许搜索的 collection 列表。框架的 `KnowledgeSearchTool` 不支持此能力，接入后会丢失动态 collection 过滤
+
+**解除阻塞条件**：框架的 `KnowledgeSearchTool` 支持动态 collection 限定，或项目决定放弃动态 collection 过滤能力。
+
+### B-5. RenderPromptTemplate（P2-32, Prompt P3 ValidateRequired）— 设计前提不匹配
+
+**阻塞类型**：设计前提不匹配
+
+**适配器位置**：`internal/agent/prompt_render.go`
+
+**阻塞原因**：
+- `RenderPromptTemplate` 使用框架的 `prompt.Text.Render()` 进行**模板变量替换**（`{{var}}` → value）
+- 但项目的 `BuildSystemPrompt()` 使用**结构化拼接**——通过 `strings.Builder` 将 capability cues、system prompt sections、runtime cues 等结构化组件按顺序拼接
+- 两种方法本质不同：模板渲染需要一个完整的模板字符串然后替换变量；结构化拼接是从组件动态组装
+- 项目的 system prompt 不是模板，而是运行时动态组装的，无法用 `Render()` 替换
+- `ValidateRequired()` 是 `RenderPromptTemplate` 内部调用的校验函数，因宿主函数本身无法接入而连带阻塞
+
+**解除阻塞条件**：项目将 system prompt 重构为模板化设计（使用模板字符串 + 变量替换），这需要大规模架构变更，当前无业务需求驱动。
+
+### B-6. RenderStateTemplate（P2-33）— 设计前提不匹配
+
+**阻塞类型**：设计前提不匹配
+
+**适配器位置**：`internal/agent/state_render.go`
+
+**阻塞原因**：
+- `RenderStateTemplate` 使用框架的 state 渲染机制（`prompt.Text.Render` + 自定义 Resolver）来渲染运行时状态
+- 但项目的 `runtime_cue_inject.go` 使用 `trpcagent.MergeRuntimeState()` 将运行时线索（时间、会话状态等）注入到 LLM 的 RuntimeState 中，由框架在模型调用时自动处理
+- 两种方法本质不同：`RenderStateTemplate` 是在 prompt 构建时**同步渲染**状态到文本；`MergeRuntimeState` 是在模型调用时**异步注入**状态到框架内部状态管理
+- 项目的 RuntimeState 注入机制已完整运行且更灵活（支持 per-run 覆盖），接入 `RenderStateTemplate` 会造成双重状态注入
+
+**解除阻塞条件**：与 B-5 相同，需项目 prompt 架构重构为模板化设计。
+
+### B-7. TaskRunAdapter（Extended P3）— 缺少 Controller 实例 + 复杂依赖链
+
+**阻塞类型**：缺少核心依赖 + 复杂依赖链
+
+**适配器位置**：`internal/tools/taskrun_adapter.go`
+
+**阻塞原因**：
+1. **缺少 Controller 实例**：`TaskRunAdapter` 需要一个 `taskrun.Controller` 来管理异步任务的生命周期（创建、执行、查询、取消）。项目没有 Controller 基础设施
+2. **复杂依赖链**：创建 `Controller` 需要：
+   - 任务持久化层（存储任务状态和结果）
+   - 任务生命周期管理器（状态机：pending → running → completed/failed/cancelled）
+   - 任务状态追踪（per-session、per-run 的任务索引）
+   - 任务结果回调机制
+   这是一整套异步任务子系统，不是简单的适配器接线
+
+**解除阻塞条件**：项目有异步任务委派的业务需求，并愿意投入资源建设任务管理子系统。当前无此需求。

@@ -186,7 +186,8 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 	return userOpts, nil
 }
 
-// runIntentPass executes the intent recognition pass and returns run options.
+// runIntentPass executes the intent recognition pass and returns run options
+// along with the intent artifact (nil if the pass was skipped or failed).
 // The userOpts merge is deferred to after BUILD completes (see prepareTurnUserOptions).
 // Stability:internal
 func (o *ChatOrchestrator) runIntentPass(
@@ -194,7 +195,7 @@ func (o *ChatOrchestrator) runIntentPass(
 	ag biz.Agent,
 	sessionID, content, prov, mod string,
 	emitter *event.TraceEmitter,
-) []trpcagent.RunOption {
+) ([]trpcagent.RunOption, *intent.Artifact) {
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
 	emitter.EmitProgress(ctx, event.StepIDChatIntentPass, "start", "正在理解意图", "orchestration",
 		event.P("run_id", ""), event.P("content_len", len(content)))
@@ -215,7 +216,7 @@ func (o *ChatOrchestrator) runIntentPass(
 		env.Metadata = intentPayload
 		o.td().Pipeline.Bus.Publish(ctx, env)
 	}
-	return intentRunOpts
+	return intentRunOpts, intRes.Artifact
 }
 
 // persistTurnUserMessage persists the user message and returns it.
@@ -473,6 +474,11 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 		runOpts = append(runOpts, trpcagent.WithStreamMode(trpcagent.StreamModeMessages))
 	}
 	runOpts = append(runOpts, intentRunOpts...)
+	// Install per-run tool permission policy: blocks protected tools
+	// (exec_command/shell_exec/file/etc.) from accessing sensitive paths
+	// (.aws/.ssh/.kube/.env/credentials). Non-protected tools pass through
+	// with zero overhead (immediate AllowPermission).
+	runOpts = append(runOpts, trpcagent.WithToolPermissionPolicyFunc(o.cmdSafetyChecker.CheckPermission))
 	if ag.Settings != nil {
 		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg()); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))

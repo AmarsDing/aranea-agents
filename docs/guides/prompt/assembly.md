@@ -264,7 +264,7 @@ Legacy memory 工具（`memory_search` / `memory_load`）的 `memory_max_results
 
 条件：
 
-- Agent **`IntentPassEnabled`**（**新 Agent 默认 false**；可用 `ARANEA_INTENT_PASS` 环境变量覆盖）
+- Agent **`IntentPassEnabled`**（**新 Agent 默认 true**；可用 `ARANEA_INTENT_PASS` 环境变量覆盖，也可在 agent setting 中显式关闭）
 - 非 A2A Proxy Agent
 - User 文本 ≥ 20 字符（过短消息 skip，outcome=`skipped_trivial`）
 

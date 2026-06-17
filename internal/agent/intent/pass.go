@@ -45,7 +45,7 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 const minIntentPassRunes = 20
 
 // PassEffective returns whether the intent pass should run (extra LLM call).
-// Per-agent default comes from agent_runtime_settings.intent_pass_enabled (default false for new agents).
+// Per-agent default comes from agent_runtime_settings.intent_pass_enabled (default true for new agents, P1-1).
 // ARANEA_INTENT_PASS: unset → follow agent; "0"/"false"/"off"/"no" → off; "1"/"true"/"on"/"yes" → on; other non-empty values → follow agent.
 func PassEffective(agentIntentPassEnabled bool) bool {
 	v := strings.TrimSpace(os.Getenv("ARANEA_INTENT_PASS"))
@@ -62,12 +62,13 @@ func PassEffective(agentIntentPassEnabled bool) bool {
 	return agentIntentPassEnabled
 }
 
-// IntentPassFromAgent returns persisted intent-pass preference; default false when settings are missing.
+// IntentPassFromAgent returns persisted intent-pass preference; default ON when settings are missing (P1-1).
+// An explicit IntentPassEnabled=false still disables the pass (agent setting can turn OFF).
 func IntentPassFromAgent(ag biz.Agent) bool {
 	if ag.Settings != nil {
 		return ag.Settings.IntentPassEnabled
 	}
-	return false
+	return true
 }
 
 // ShouldRun reports whether the intent pass should execute for this agent and user text.

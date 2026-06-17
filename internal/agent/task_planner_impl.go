@@ -252,6 +252,37 @@ func (impl *taskPlannerImpl) GetPlan(ctx context.Context, planID string) (*biz.T
 	return plan, nil
 }
 
+// QuickAssess performs a pure-computation complexity assessment (P1-2).
+// It reuses the six-dimension assessComplexity logic but skips memory cache,
+// LLM decomposition, and DB persistence — making it safe to call before the
+// Spirit LLM runs. Used by PrePlanningGate to force planning for Moderate/Complex.
+func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput) (biz.ComplexityLevel, float64, error) {
+	dimensions := impl.assessComplexity(input)
+	score := dimensions.Semantic*0.25 +
+		dimensions.Structural*0.15 +
+		dimensions.Domain*0.15 +
+		dimensions.Tool*0.10 +
+		dimensions.Context*0.10 +
+		dimensions.Historical*0.25
+
+	var level biz.ComplexityLevel
+	switch {
+	case score >= 0.6:
+		level = biz.ComplexityComplex
+	case score >= 0.3:
+		level = biz.ComplexityModerate
+	default:
+		level = biz.ComplexitySimple
+	}
+
+	impl.lg.Debug("QuickAssess 完成",
+		loggateway.StepID(biz.SpiritStepPlannerAssess),
+		loggateway.Str("complexity_level", string(level)),
+		loggateway.Float64("complexity_score", score),
+	)
+	return level, score, nil
+}
+
 // ConfirmPlan applies adjustments and confirms the plan.
 func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adjustments biz.PlanAdjustments) (*biz.TaskPlan, error) {
 	plan, err := impl.repo.GetByID(ctx, planID)

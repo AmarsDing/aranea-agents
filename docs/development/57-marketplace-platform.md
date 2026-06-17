@@ -1,7 +1,7 @@
 # M57 — 公网商城平台（Marketplace Platform, MKT）
 
 > **版本**：2026-05-26 · **状态**：📋 需求草案 · **优先级**：P1（M56 之后启动）
-> **背景**：[30 ecosystem.md](./30%20ecosystem.md)（站内安装与发现原型）· 本项目已有 `skill / mcp / tools / plugin / agent / team / graph / channel` 等可复用资产
+> **背景**：[30-ecosystem.md](./30-ecosystem.md)（站内安装与发现原型）· 本项目已有 `skill / mcp / tools / plugin / agent / team / graph / channel` 等可复用资产
 > **关联**：M30 Ecosystem（升级为本平台的"客户端"）· M53 Team/Graph · M22 Plugin · M20 Skill · M19 MCP · M23 Tools
 > **影响范围**：**新增独立服务** `cmd/marketplace` + `internal/marketplace/*`；本项目作为「安装目标」新增 `internal/installer` 客户端；Web 新增 `web/src/features/marketplace`
 > **红线**：依赖倒置 · `internal/biz` 不 import `pkg/trpc-agent-go` · 商城后端与 Aranea 主项目通过 **gRPC + 公开 schema** 通信，不共享数据库
@@ -38,38 +38,25 @@ flowchart LR
   Catalog -->|评分/评论/活跃度| Community[社区数据]
 ```
 
+> 现状评估（含 M30 已具备能力、本项目资产成熟度、用户痛点）详见 [开发计划 §1 现状评估](./57-marketplace-platform.development.md#1-现状评估)。
+
 ---
 
-## 2. 现状评估
+## 2. 用户故事与痛点
 
-### 2.1 站内 Ecosystem（M30）已具备
+### 2.1 用户角色
 
-| 能力 | 现状 | 缺口 |
-|------|------|------|
-| 商品类型抽象 | ✅ Agent / Skill / Team 三类 | ⚠️ 缺 MCP / Tool / Plugin / Channel / Knowledge / Workflow / Company |
-| 商品卡片字段 | ✅ 名称/作者/价格/评分/安装量 | ⚠️ 缺活跃度、运行成功率、版本兼容矩阵 |
-| 安装动作 | ⚠️ 落点到本地 `agents/skills/teams` 表 | ❌ 跨实例 / 跨租户的 **远程部署** 缺失 |
-| 发布动作 | ⚠️ 表单录入 → 草稿 | ❌ 缺打包工具、签名、审核流、版本管理、增量更新 |
-| 评分 | ⚠️ 单维分数 | ❌ 缺评论、回复、活跃度衍生指标、举报 |
-| 多租户 | ❌ 单一 workspace | ❌ 商城本身就是多租户服务 |
-| 公网部署 | ❌ 仅作为本项目子页面 | ❌ 缺独立服务、独立域名、独立鉴权 |
+| 角色 | 描述 |
+|------|------|
+| 独立创作者 | 个人开发者，希望分享/变现自己沉淀的 Skill / Agent / Team |
+| 中小团队 | 希望快速搭建场景化解决方案，复用现成资产 |
+| 企业采购 | 批量采购多场景 Skill，需要企业授权与统一计费 |
+| 运维 | 负责部署买回来的资产，关注安装便利性与回滚 |
+| 安全 | 关注买回来的资产是否会窃取凭据/越权 |
+| 平台审核员 | 负责内容审核、安全扫描、违规下架 |
+| 平台运营 | 关注 GMV、活跃度、漏斗、退款率 |
 
-### 2.2 本项目资产成熟度
-
-| 资产 | 模块 | 可打包性 | 备注 |
-|------|------|----------|------|
-| **Skill** | `internal/skill` + `docs/需求/20*` | ✅ 已有 SKILL.md + 版本 | 已是文件型，最容易打包 |
-| **MCP Server** | `internal/mcp` | ✅ 连接配置 + 工具发现规则 | 关键是凭据隔离与代理 |
-| **Tool** | `internal/tools` + `docs/需求/23*` | ✅ schema + 实现脚本 | 内置工具 vs 外部 API 工具 |
-| **Plugin** | `internal/plugin` + `docs/需求/22*` | ⚠️ 当前是代码注入 | 需先做 wasm/script 沙箱 |
-| **Agent** | `internal/agent` + `docs/需求/2*/5*` | ✅ 模板 + 配置 | 依赖项最复杂（模型/工具/skill） |
-| **Team / Graph** | `internal/team / internal/graph` + `docs/需求/11/36/53` | ✅ 编排定义 | 子 agent 依赖需递归解析 |
-| **Channel** | `internal/channel` + `docs/需求/17*` | ✅ 模板化配置 | 凭据由买家配置 |
-| **Knowledge Pack** | `internal/knowledge` + `docs/需求/37*` | ⚠️ 文件 + 索引 | 需要语料许可声明 |
-| **Workflow** | 跨模块 | 📋 概念存在 | 需要正式 manifest |
-| **Company Bundle** | 整 workspace 快照 | 📋 不存在 | M57 新概念 |
-
-### 2.3 用户故事级痛点
+### 2.2 用户故事级痛点
 
 | 角色 | 故事 | 痛点 |
 |------|------|------|
@@ -105,111 +92,26 @@ flowchart LR
 
 ---
 
-## 4. 总体设计（MKT-1 ~ MKT-8 概览）
+## 4. 资产分类与领域细化（MKT-1 核心）
 
-### 4.1 主题与执行顺序
+### 4.1 资产类型（一级）
 
-| 主题 | 名称 | 解锁内容 | 估时 |
-|------|------|----------|------|
-| **MKT-1** | Asset Registry & Schema | 资产规范、打包工具、签名 | 3 周 |
-| **MKT-2** | Catalog & Discovery | 搜索、分类树、排序、详情页 | 2 周 |
-| **MKT-3** | Publish & Review | 发布流、审核流、版本管理 | 2.5 周 |
-| **MKT-4** | Rating / Review / Community | 评分、评论、活跃度计算 | 2 周 |
-| **MKT-5** | Payment & License | 支付、许可证、分账 | 3 周 |
-| **MKT-6** | Auto-Deployment (Installer) | 客户端 Installer + 远程托管 | 4 周 |
-| **MKT-7** | Operations & Telemetry | 创作者中心、运行回流、退款 | 2.5 周 |
-| **MKT-8** | Company Bundle | 整 workspace 快照打包 | 2 周 |
-| 收口 | 公测 + 灰度 + 安全审计 | — | 3 周 |
+| 类型 ID | 中文名 | 安装落点 |
+|---------|--------|----------|
+| `skill` | 技能包 | `internal/skill` |
+| `mcp_server` | MCP 服务 | `internal/mcp` |
+| `tool` | 工具 | `internal/tools` |
+| `plugin` | 插件 | `internal/plugin`（v1 仅企业市场） |
+| `agent` | Agent 模板 | `internal/agent` |
+| `team` | Team/Graph 编排 | `internal/team` + `internal/graph` |
+| `channel_template` | Channel 模板 | `internal/channel` |
+| `knowledge_pack` | 知识包 | `internal/knowledge` |
+| `workflow` | 工作流 | 写入 `agents`/`teams`/`crons` |
+| `company_bundle` | 公司整包 | 全 workspace 初始化 |
 
-> **总估算**：~24 周 / 2 个 Quarter，建议双队列并行（后端 + 客户端 Installer）。
+> 资产包（Bundle）结构、manifest.json 字段定义详见 [设计文档 §二 Asset Schema](./57-marketplace-platform.design.md#二asset-schemamkt-1)。
 
-### 4.2 系统全景
-
-```mermaid
-flowchart TB
-  subgraph PublicNet["公网（marketplace.aranea.dev）"]
-    direction LR
-    GW[gRPC-Gateway + HTTP]
-    Catalog[Catalog Service]
-    Publish[Publish Service]
-    Review[Review Service]
-    Pay[Payment Service]
-    Deploy[Deployment Orchestrator]
-    Storage[(对象存储<br/>S3/MinIO)]
-    DB[(PostgreSQL)]
-    Search[(Meilisearch/PG-FTS)]
-    GW --> Catalog & Publish & Review & Pay & Deploy
-    Catalog & Publish & Review & Pay & Deploy --> DB
-    Publish --> Storage
-    Catalog --> Search
-  end
-  subgraph Creator["创作者：Aranea workspace A"]
-    A_CLI[aranea CLI publish]
-  end
-  subgraph BuyerLocal["买家本地：Aranea workspace B"]
-    B_Web[Web /shop（M30）]
-    B_Installer[Installer Agent]
-    B_Runtime[Aranea Runtime]
-  end
-  subgraph BuyerHosted["买家托管：Aranea SaaS 租户"]
-    H_Tenant[Tenant Runtime Pod]
-  end
-  A_CLI -->|publish| GW
-  B_Web -->|browse/install| GW
-  B_Installer -->|pull| Storage
-  B_Installer -->|落库| B_Runtime
-  Deploy -->|deploy| H_Tenant
-```
-
-### 4.3 数据流主路径
-
-```mermaid
-sequenceDiagram
-  participant C as Creator workspace
-  participant CLI as aranea CLI
-  participant MKT as Marketplace
-  participant Buyer as Buyer Web
-  participant Inst as Installer
-  participant Tgt as Buyer Runtime
-
-  C->>CLI: aranea pack ./my-team
-  CLI->>CLI: 解析依赖 + 签名
-  CLI->>MKT: PublishVersion(metadata, signed bundle url)
-  MKT->>MKT: 审核 (自动 + 人工)
-  MKT-->>C: 上架成功
-
-  Buyer->>MKT: SearchAssets(q, domain, sort)
-  MKT-->>Buyer: 商品列表（评分、活跃度）
-  Buyer->>MKT: InstallAsset(assetID, version)
-  MKT-->>Buyer: 签发 LicenseToken + 下载 URL
-  Buyer->>Inst: trigger install(LicenseToken, url)
-  Inst->>MKT: VerifyLicense(token)
-  Inst->>Storage: download bundle
-  Inst->>Tgt: 解析依赖 + 落库 + 健康检查
-  Tgt-->>Buyer: ready
-  Tgt->>MKT: 回流安装/运行指标
-```
-
----
-
-## 5. 资产分类与领域细化（MKT-1 核心）
-
-### 5.1 资产类型（一级）
-
-| 类型 ID | 中文名 | 包结构关键文件 | 安装落点 |
-|---------|--------|----------------|----------|
-| `skill` | 技能包 | `SKILL.md` + scripts | `internal/skill` |
-| `mcp_server` | MCP 服务 | `mcp.json` + 连接器 | `internal/mcp` |
-| `tool` | 工具 | `tool.yaml` + schema | `internal/tools` |
-| `plugin` | 插件 | `plugin.yaml` + bundle | `internal/plugin`（v1 仅企业市场） |
-| `agent` | Agent 模板 | `agent.yaml` + prompt files | `internal/agent` |
-| `team` | Team/Graph 编排 | `team.yaml` + graph DSL | `internal/team` + `internal/graph` |
-| `channel_template` | Channel 模板 | `channel.yaml` | `internal/channel` |
-| `knowledge_pack` | 知识包 | `knowledge.yaml` + docs/ | `internal/knowledge` |
-| `workflow` | 工作流 | `workflow.yaml`（跨 agent/team/tool） | 写入 `agents`/`teams`/`crons` |
-| `company_bundle` | 公司整包 | `company.yaml` + 所有子资产 | 全 workspace 初始化 |
-
-### 5.2 三级目录树（领域 → 子领域 → 场景）
+### 4.2 三级目录树（领域 → 子领域 → 场景）
 
 > **强制**：每个 Asset 至少绑定 1 个三级类目；最多绑定 3 个。
 
@@ -233,7 +135,7 @@ sequenceDiagram
 | | 翻译 | 多语翻译 / 本地化 |
 | **其它** | 实验性 / 工具集合 / 节日活动 | — |
 
-### 5.3 标签维度（多选）
+### 4.3 标签维度（多选）
 
 | 标签维度 | 取值 |
 |----------|------|
@@ -245,54 +147,15 @@ sequenceDiagram
 | `license` | mit / apache-2.0 / aranea-commercial / 私有 |
 | `compatibility` | aranea>=1.5 |
 
-### 5.4 资产包（Bundle）结构
-
-```
-my-asset/
-├── manifest.json         # 必需：类型、版本、签名、依赖、权限声明
-├── README.md             # 商品描述、截图、Demo
-├── CHANGELOG.md          # 版本日志
-├── LICENSE
-├── icon.png
-├── screenshots/
-├── deps.lock             # 解析后的依赖快照（含商城其它 Asset 的 ID@version）
-├── permissions.json      # 需要的权限：模型/工具/外网/凭据/读写权限
-├── content/              # 类型相关：skill/, mcp/, tool/, agent/, team/, ...
-└── tests/                # 可选：自检脚本（部署后冒烟测试）
-```
-
-`manifest.json` 关键字段：
-
-```json
-{
-  "id": "team.codereview-pr@1.4.2",
-  "type": "team",
-  "name": "PR Code Review Team",
-  "categories": ["研发/编程/代码审查"],
-  "tags": ["capability:tool-use", "integration:github"],
-  "compatibility": "aranea>=1.5",
-  "deps": [
-    {"id": "skill.diff-summarize@^1.0", "kind": "skill"},
-    {"id": "mcp_server.github-mcp@^2.0", "kind": "mcp_server"}
-  ],
-  "permissions": [
-    "model:gpt-4o-mini",
-    "tool:web_fetch",
-    "credential:GITHUB_TOKEN"
-  ],
-  "signature": "ed25519:..."
-}
-```
-
 ---
 
-## 6. 核心功能模块
+## 5. 核心功能需求
 
-### 6.1 MKT-2 Catalog & Discovery（发现）
+### 5.1 MKT-2 Catalog & Discovery（发现）
 
 | 入口 | 能力 |
 |------|------|
-| 关键词搜索 | Meilisearch / PG FTS，按名称/描述/作者/标签匹配 |
+| 关键词搜索 | 按名称/描述/作者/标签匹配 |
 | 三级分类树 | 左侧目录树，按一/二/三级筛选 |
 | 排序 | 热度 / 新上架 / 评分 / 安装数 / 活跃度 / 价格 |
 | 过滤 | 类型、license、价格段、兼容性、language |
@@ -301,23 +164,9 @@ my-asset/
 | 榜单 | 周榜 / 月榜 / 新人榜 / 行业榜 |
 | 推荐 | 基于安装历史与浏览行为（v2 起，v1 用规则） |
 
-### 6.2 MKT-3 Publish & Review（发布与审核）
+### 5.2 MKT-3 Publish & Review（发布与审核）
 
-**发布流程（创作者）**：
-
-```mermaid
-stateDiagram-v2
-  [*] --> Draft: aranea pack
-  Draft --> Submitted: PublishVersion
-  Submitted --> AutoScan: 静态扫描+签名校验
-  AutoScan --> NeedFix: 失败
-  AutoScan --> ManualReview: 通过
-  NeedFix --> Submitted: 修复重提
-  ManualReview --> Rejected: 人工驳回
-  ManualReview --> Published: 通过上架
-  Published --> Deprecated: 主动下架
-  Published --> Removed: 平台违规下架
-```
+**发布流程（创作者）**：草稿 → 提交 → 自动扫描 → 人工审核 → 上架 / 驳回 / 修复重提。
 
 **审核检查项**：
 
@@ -337,7 +186,9 @@ stateDiagram-v2
 - 旧版本至少保留 90 天供已购买用户回滚
 - `deprecated` 状态不再被发现，但已购可继续安装
 
-### 6.3 MKT-4 Rating / Review / Community（社区度量）
+> 发布状态机、自动扫描组件实现详见 [设计文档 §九 审核流程](./57-marketplace-platform.design.md#九审核流程mkt-3)。
+
+### 5.3 MKT-4 Rating / Review / Community（社区度量）
 
 | 指标 | 计算 |
 |------|------|
@@ -355,7 +206,7 @@ stateDiagram-v2
 - 新账号评分需经 7 天冷却期生效
 - 创作者不可给自己 Asset 评分
 
-### 6.4 MKT-5 Payment & License（支付与许可）
+### 5.4 MKT-5 Payment & License（支付与许可）
 
 | 价格模型 | 说明 |
 |----------|------|
@@ -377,55 +228,25 @@ stateDiagram-v2
 - 月度结算，T+15 打款（Stripe Connect / 支付宝 / 微信）
 - 退款窗口：7 天，未启动安装则全额；已安装按使用天数比例
 
-### 6.5 MKT-6 Auto-Deployment（自动部署）
+### 5.5 MKT-6 Auto-Deployment（自动部署）
 
 **两种部署目标**：
 
 #### A. 买家本地部署（Aranea workspace 已存在）
 
-```mermaid
-sequenceDiagram
-  participant Web as Web /shop
-  participant MKT as Marketplace
-  participant Inst as Installer Agent<br/>(in workspace)
-  participant W as Workspace DB/FS
-
-  Web->>MKT: Install(asset_id, version)
-  MKT-->>Web: license_token + bundle_url + deps[]
-  Web->>Inst: trigger(install_plan)
-  loop 依赖拓扑（先叶子后根）
-    Inst->>MKT: VerifyLicense
-    Inst->>MKT: Download(bundle_url)
-    Inst->>Inst: 校验签名
-    Inst->>Inst: 解包到 staging
-    Inst->>W: 写入对应表（agents/teams/skills/...）
-    Inst->>Inst: 运行 tests/ 冒烟测试
-  end
-  Inst->>MKT: ReportInstallResult(success/fail)
-  Inst-->>Web: 安装完成 + 配置向导链接
-```
-
-- **新增模块**：`internal/installer/`（在 Aranea 主项目）
-- **CLI**：`aranea install <asset@version>` 等价命令
-- **依赖解析**：参考 npm/cargo 的拓扑算法，失败任意一项整体回滚（事务 + staging 区）
-- **冲突处理**：检测 ID 冲突时提示「跳过 / 覆盖 / 重命名」
+- 买家在 Web 点击安装 → 商城签发 License + 下发 bundle URL → 客户端 Installer Agent 完成「拉取 → 校验签名 → 依赖解析 → 落库 → 冒烟测试」
+- CLI 等价命令：`aranea install <asset@version>`
+- 依赖解析：参考 npm/cargo 的拓扑算法，失败任意一项整体回滚（事务 + staging 区）
+- 冲突处理：检测 ID 冲突时提示「跳过 / 覆盖 / 重命名」
 
 #### B. 托管租户部署（买家无本地实例，Aranea SaaS 托管）
 
-```mermaid
-flowchart LR
-  Web -->|Install + tenant| Orchestrator
-  Orchestrator -->|provision| K8s["K8s/Nomad"]
-  K8s -->|run pod| TenantRuntime
-  TenantRuntime -->|pull bundle| Storage
-  TenantRuntime -->|落库| TenantDB
-```
-
-- **新增组件**：`cmd/marketplace/orchestrator/`（仅商城团队部署）
-- 多租户隔离：每租户独立 PG schema + 独立对象存储 prefix + 独立模型 API 配额
+- 商城团队部署 K8s/Nomad 编排器，按租户独立 Namespace + PG schema + 对象存储 prefix + 模型 API 配额
 - 计费：托管费 + 模型用量；与 Asset 价格分开
 
-### 6.6 MKT-7 Operations & Telemetry（运营）
+> 安装时序图、Stage 事务/回滚实现、Service 层接入详见 [设计文档 §七 买家侧 Installer](./57-marketplace-platform.design.md#七买家侧-installer主项目-internalinstaller) 与 [§八 自动部署](./57-marketplace-platform.design.md#八自动部署mkt-6托管租户编排)。
+
+### 5.6 MKT-7 Operations & Telemetry（运营）
 
 | 角色 | 工作台能力 |
 |------|------------|
@@ -441,7 +262,7 @@ flowchart LR
 - 商城聚合后产出活跃度 / 健康度
 - 不收集任何业务数据（仅次数 + 错误码 + 版本）
 
-### 6.7 MKT-8 Company Bundle（公司整包）
+### 5.7 MKT-8 Company Bundle（公司整包）
 
 > 把整个 workspace（多 Agent + 多 Team + Skill + Channel + Knowledge + 配置）打成一个最高级别的资产。
 
@@ -452,7 +273,7 @@ flowchart LR
 | 培训/教育 | 教学课程整包，含示例 Team + 测验 |
 | 内部复制 | 总部 → 分公司 workspace 初始化 |
 
-**特殊设计**：
+**特殊需求**：
 
 - Manifest 嵌套展开其它 Asset 引用，可来自商城或随包内嵌
 - 安装时进入「**Workspace 初始化向导**」：用户被引导逐步配置凭据、模型、Channel 绑定
@@ -461,59 +282,27 @@ flowchart LR
 
 ---
 
-## 7. 架构选型与边界
+## 6. 非功能需求
 
-### 7.1 服务边界
-
-| 服务 | 部署位置 | 技术栈 | 备注 |
-|------|----------|--------|------|
-| Marketplace Backend | 公网 SaaS | Go + Kratos v2 + Wire（与 Aranea 同栈） | 独立仓库或 monorepo `cmd/marketplace` |
-| Web Marketplace | 公网 SaaS | Vue 3 + Quasar（复用前端栈）| `web/marketplace/` 独立构建 |
-| Object Storage | 公网 SaaS | S3 兼容（MinIO 自建或云） | bundle 与截图 |
-| Search | 公网 SaaS | Meilisearch（v1） / Elastic（v2） | 商品索引 |
-| Payment Gateway | 第三方 | Stripe / 支付宝 / 微信 | webhook 回调 |
-| **Installer SDK** | 买家侧 | Go 库 + CLI | 编入 Aranea 主项目 `internal/installer` |
-| **Tenant Orchestrator** | 公网 SaaS | K8s Operator | 仅托管场景 |
-
-### 7.2 与主项目的依赖关系（红线）
-
-- 主项目 → 新增 `internal/installer/`，**只依赖商城对外的 gRPC schema**（`api/marketplace/v1/*.proto`），不依赖任何商城内部包
-- 商城后端 → **不依赖** `pkg/trpc-agent-go`（商城不运行 Agent）
-- `internal/biz`（主项目）不 import installer 业务包，installer 走 `service` + Wire
-- Asset Schema 由商城定义，主项目通过 proto + 共享 schema 包 `pkg/aranea-asset` 引入
-
-### 7.3 多租户与鉴权
+### 6.1 多租户与鉴权
 
 - 商城账户体系：邮箱 / OAuth（GitHub / 飞书 / 钉钉）
 - workspace 绑定：一个商城账户可绑定多个 Aranea workspace，安装目标按 workspace 选
 - API 鉴权：JWT + workspace_id scope
 - 创作者实名：必须实名 + 银行/对公账户才可上架付费 Asset
 
----
+### 6.2 安全 & 合规
 
-## 8. 数据模型（关键表）
+- 创作者 KYC（实名 + 银行账户）才可发付费 Asset
+- ed25519 签名：商城颁发创作者公钥/私钥对（私钥本地保存，可轮换）
+- bundle 内容哈希 + manifest 签名 + 商城再签名（双重）
+- v1 Skill / MCP / Tool / Agent / Team / Channel / Knowledge 默认允许，因为运行权限在买家侧 Aranea 已有边界
+- Plugin（代码注入型）**v1 不公开**，仅企业市场或 OSS 白名单
+- 平台用户协议、创作者条款、退款政策、内容合规政策
+- DMCA / 著作权投诉流程
+- 跨境支付：v1 中国大陆与海外分两个独立 Stripe 实体 + 独立部署
 
-| 表 | 关键字段 |
-|----|----------|
-| `mp_account` | id, email, oauth, kyc_status, payout_account |
-| `mp_workspace_binding` | account_id, workspace_id, role |
-| `mp_asset` | id, type, name, slug, author_id, default_price_model, status, created_at |
-| `mp_asset_version` | asset_id, version, manifest_json, bundle_url, signature, scan_report, review_status, published_at |
-| `mp_asset_category` | asset_id, category_id, level（1/2/3） |
-| `mp_asset_tag` | asset_id, dim, value |
-| `mp_rating` | asset_id, version, account_id, score, weight, created_at |
-| `mp_review` | asset_id, account_id, body_md, parent_id, status |
-| `mp_install` | asset_id, version, account_id, workspace_id, license_id, installed_at, last_health |
-| `mp_telemetry_daily` | asset_id, day, install_count, run_success, run_fail, active_workspaces |
-| `mp_license` | id, asset_id, version, buyer_id, plan, expires_at, scope_json |
-| `mp_order` | id, buyer_id, amount, currency, payment_provider, status |
-| `mp_payout` | creator_id, period, gross, fee, net, status |
-| `mp_report` | target_type, target_id, reporter_id, reason, status |
-| `mp_review_task` | asset_version_id, reviewer_id, status, decided_at |
-
----
-
-## 9. 度量与目标 KPI（MKT-7）
+### 6.3 度量与目标 KPI（MKT-7）
 
 | 维度 | 指标 | 6 个月目标 |
 |------|------|------------|
@@ -526,9 +315,11 @@ flowchart LR
 | 安装 | 一键安装成功率 | ≥ 98% |
 | 信任 | 安全事件（含投诉成立） | ≤ 1 / 月 |
 
+> 监控、可观测、SLO 详见 [设计文档 §十二 监控、可观测、SLO](./57-marketplace-platform.design.md#十二监控可观测slo)。
+
 ---
 
-## 10. 风险与对策
+## 7. 风险与对策
 
 | 风险 | 描述 | 对策 |
 |------|------|------|
@@ -542,7 +333,7 @@ flowchart LR
 
 ---
 
-## 11. 与 M30 的关系
+## 8. 与 M30 的关系
 
 | 项 | M30 Ecosystem | M57 Marketplace Platform |
 |----|---------------|--------------------------|
@@ -562,21 +353,7 @@ flowchart LR
 
 ---
 
-## 12. 里程碑节奏（与 M56 协调）
-
-| 季度 | 内容 |
-|------|------|
-| Q-now | M56 收口 + M57 设计评审 + Asset 规范冻结 |
-| Q+1 上 | MKT-1 / MKT-2 / MKT-3（资产规范 + 目录 + 发布） |
-| Q+1 下 | MKT-4 / MKT-6 Phase A（社区度量 + 本地一键安装） |
-| Q+2 上 | MKT-5 / MKT-6 Phase B（支付 + 托管部署） |
-| Q+2 下 | MKT-7 / MKT-8（运营 + Company Bundle） + 公测灰度 |
-
-详细 sprint 拆分见 [57-marketplace-platform-development.md](./57-marketplace-platform-development.md)。
-
----
-
-## 13. 验收标准（DoD）
+## 9. 验收标准（DoD）
 
 - ✅ 10 类 Asset 均有 reference bundle 通过完整发布→审核→安装→运行链路
 - ✅ 任意创作者可在 5 分钟内完成首个 Skill 上架
@@ -589,24 +366,16 @@ flowchart LR
 
 ---
 
-## 14. 附录
+## 10. 附录
 
-### 14.1 命名与编号
+### 10.1 关联需求
 
-- 主题前缀：`MKT-{主题}-{子模块}-{序号}`，例 `MKT-1-PROTO-03`
-- 服务命名：`cmd/marketplace`、`internal/marketplace/{catalog,publish,review,payment,deploy,telemetry}`
-- proto 路径：`api/marketplace/v1/*.proto`
-- 客户端模块：`internal/installer/`（主项目）+ `pkg/aranea-asset/`（schema 共享）
+- [30-ecosystem.md](./30-ecosystem.md) — 本需求的前身与未来客户端
+- [20-skill.md](./20-skill.md) · [19-mcp.md](./19-mcp.md) · [23-tools.md](./23-tools.md)
+- [22-plugin.md](./22-plugin.md) · [11-multi-agent.md](./11-multi-agent.md) · [36-graph-workflow.md](./36-graph-workflow.md)
+- [53-team-graph-orchestration.md](./53-team-graph-orchestration.md) · [17-channel.md](./17-channel.md)
+- [37-knowledge.md](./37-knowledge.md) — Knowledge 资产
+- [56-business-logic-optimization.md](./56-business-logic-optimization.md) — 前置依赖（BackgroundJob）
 
-### 14.2 相关 Review
-
-- [2026-05-26 Tools/Plugin/Skill/MCP 代码审查](../review/2026-05-26-Tools-Plugin-Skill-MCP-Code-Review.md)
-- [2026-05-26 Team/Graph 代码审查](../review/2026-05-26-Team-Graph-Code-Review.md)
-- [2026-05-26 Channel/Chat/AgentTeam Flow 审查](../review/2026-05-26-Channel-Chat-AgentTeam-Flow-Review.md)
-
-### 14.3 关联需求
-
-- [20 skill.md](./20%20skill.md) · [19 mcp.md](./19%20mcp.md) · [23 tools.md](./23%20tools.md)
-- [22 plugin.md](./22%20plugin.md) · [11 multi-agent.md](./11%20multi-agent.md) · [36 graph-workflow.md](./36%20graph-workflow.md)
-- [53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) · [17 channel.md](./17%20channel.md)
-- [30 ecosystem.md](./30%20ecosystem.md) — 本需求的前身与未来客户端
+> 命名与编号、服务边界、依赖红线、Proto 路径、配置等设计细节详见 [设计文档](./57-marketplace-platform.design.md)。
+> 里程碑节奏、sprint 拆分、任务清单详见 [开发计划](./57-marketplace-platform.development.md)。

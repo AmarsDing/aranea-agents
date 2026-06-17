@@ -252,7 +252,7 @@ type AgentRuntimeSettings struct {
 	EvoSystemPromptMaxAppends int
 	// SkillRuntimeJSON is agent_runtime_settings.skill_runtime_json (whitelist/deny/tags + routing caps).
 	SkillRuntimeJSON string
-	// IntentPassEnabled runs the optional pre-turn intent classification pass (see intent package); default false for new agents.
+	// IntentPassEnabled runs the optional pre-turn intent classification pass (see intent package); default true for new agents (P1-1).
 	IntentPassEnabled bool
 	ChannelID         string
 	ChatID            string

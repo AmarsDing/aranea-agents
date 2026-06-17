@@ -18,6 +18,7 @@ import (
 	"aranea-agents/internal/runtime/turn"
 	araneasession "aranea-agents/internal/session"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/security"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -136,7 +137,7 @@ type chatRunManager interface {
 // ChatOrchestrator owns the turn lifecycle: admission, execution, status tracking,
 // and post-turn side effects. ChatService delegates all orchestration work here.
 //
-// Field count: 12 (well under AS-COG-01 limit of 15).
+// Field count: 13 (well under AS-COG-01 limit of 15).
 type ChatOrchestrator struct {
 	core         chatTurnCoreDeps
 	channelDeps  ChatChannelDeps
@@ -150,6 +151,11 @@ type ChatOrchestrator struct {
 	turnLC     chatTurnLifecycle
 	runMgr     chatRunManager
 	agentBuild agentBuildDirector
+
+	// cmdSafetyChecker enforces command safety rules (protected paths like
+	// .aws/.ssh/.env) on every tool call via the framework's per-run
+	// permission policy. Non-protected tools pass through with zero overhead.
+	cmdSafetyChecker *security.CommandSafetyPermissionChecker
 
 	sweepStop chan struct{}
 }
@@ -382,6 +388,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			awaitCoordinator:    awaitCoord,
 			sessionRunLifecycle: sessRunLC,
 		},
+		cmdSafetyChecker: security.NewCommandSafetyPermissionChecker(deps.Infra.LG),
 	}
 	o.agentBuild = newChatAgentBuildDirector(chatAgentBuildDirectorDeps{
 		TurnDeps:    deps.Turn.TurnDeps,
