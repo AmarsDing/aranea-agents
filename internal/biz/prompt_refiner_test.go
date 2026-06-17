@@ -8,25 +8,25 @@ import (
 
 // Tests for PromptRefiner pure helpers (PGO-3-BIZ-05).
 
-// ── estimateTokenCount ────────────────────────────────────────────────────────
+// ── EstimateTokenCount ────────────────────────────────────────────────────────
 
 func TestEstimateTokenCount_Empty(t *testing.T) {
-	if got := estimateTokenCount(""); got != 0 {
+	if got := EstimateTokenCount(""); got != 0 {
 		t.Errorf("empty string: want 0, got %d", got)
 	}
 }
 
 func TestEstimateTokenCount_ShortEnglish(t *testing.T) {
 	// "hello" = 5 chars → (5*10+24)/25 = 74/25 = 2 tokens
-	got := estimateTokenCount("hello")
+	got := EstimateTokenCount("hello")
 	if got < 1 || got > 5 {
-		t.Errorf("estimateTokenCount(%q) = %d; expected 1-5", "hello", got)
+		t.Errorf("EstimateTokenCount(%q) = %d; expected 1-5", "hello", got)
 	}
 }
 
 func TestEstimateTokenCount_LongText(t *testing.T) {
 	text := strings.Repeat("你好世界", 100) // 400 CJK chars
-	got := estimateTokenCount(text)
+	got := EstimateTokenCount(text)
 	if got < 100 {
 		t.Errorf("long CJK text (400 runes): expected >=100 tokens, got %d", got)
 	}
@@ -62,10 +62,10 @@ func TestTruncateAtLineBoundary_NoNewline(t *testing.T) {
 	}
 }
 
-// ── unifiedDiffSimple ─────────────────────────────────────────────────────────
+// ── UnifiedDiffSimple ─────────────────────────────────────────────────────────
 
 func TestUnifiedDiffSimple_NoChange(t *testing.T) {
-	diff := unifiedDiffSimple("hello", "hello")
+	diff := UnifiedDiffSimple("hello", "hello")
 	if strings.Contains(diff, "+hello") || strings.Contains(diff, "-hello") {
 		t.Errorf("identical strings should produce context-only diff, got:\n%s", diff)
 	}
@@ -75,14 +75,14 @@ func TestUnifiedDiffSimple_NoChange(t *testing.T) {
 }
 
 func TestUnifiedDiffSimple_Added(t *testing.T) {
-	diff := unifiedDiffSimple("line one", "line one\nline two")
+	diff := UnifiedDiffSimple("line one", "line one\nline two")
 	if !strings.Contains(diff, "+line two") {
 		t.Errorf("added line not shown in diff:\n%s", diff)
 	}
 }
 
 func TestUnifiedDiffSimple_Changed(t *testing.T) {
-	diff := unifiedDiffSimple("old text", "new text")
+	diff := UnifiedDiffSimple("old text", "new text")
 	if !strings.Contains(diff, "-old text") {
 		t.Errorf("removed line not shown in diff:\n%s", diff)
 	}

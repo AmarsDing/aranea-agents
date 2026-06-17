@@ -117,8 +117,8 @@ func (r *PromptRefiner) Refine(ctx context.Context, req RefineRequest) (*RefineR
 
 	return &RefineResult{
 		Refined:      refined,
-		Diff:         unifiedDiffSimple(req.OriginalText, refined),
-		TokensBefore: estimateTokenCount(req.OriginalText),
+		Diff:         UnifiedDiffSimple(req.OriginalText, refined),
+		TokensBefore: EstimateTokenCount(req.OriginalText),
 		TokensAfter:  totalTok,
 		Provider:     provider,
 		Model:        model,
@@ -234,10 +234,10 @@ func modeLabel(mode string) string {
 	}
 }
 
-// unifiedDiffSimple returns a line-level unified diff for display in the UI.
+// UnifiedDiffSimple returns a line-level unified diff for display in the UI.
 // For a production-quality diff, consider calling `diff -u` via exec; this
 // implementation is intentionally simple to avoid C deps. PGO-3.
-func unifiedDiffSimple(original, revised string) string {
+func UnifiedDiffSimple(original, revised string) string {
 	origLines := strings.Split(original, "\n")
 	revLines := strings.Split(revised, "\n")
 	var b strings.Builder
@@ -269,9 +269,9 @@ func unifiedDiffSimple(original, revised string) string {
 	return b.String()
 }
 
-// estimateTokenCount approximates token count from character count.
+// EstimateTokenCount approximates token count from character count.
 // Assumes ~2.5 chars/token for mixed CJK+English content.
-func estimateTokenCount(s string) int {
+func EstimateTokenCount(s string) int {
 	chars := utf8.RuneCountInString(s)
 	return (chars*10 + 24) / 25 // ≈ chars / 2.5
 }
@@ -360,6 +360,15 @@ func stripCodeFence(s string) string {
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
+
+// Refiner is the interface for prompt refinement strategies.
+// Both PromptRefiner and the agent-layer PromptIterAdapter satisfy this interface.
+type Refiner interface {
+	Refine(ctx context.Context, req RefineRequest) (*RefineResult, error)
+}
+
+// ModelSourcePromptIter indicates the result came from the PromptIter engine.
+const ModelSourcePromptIter ModelSource = "prompt_iter"
 
 // ─── Sentinel errors ─────────────────────────────────────────────────────────
 

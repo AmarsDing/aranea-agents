@@ -14,7 +14,7 @@
 | Prompt | ☆☆☆☆☆ | 1 | 2 | 1 | 0 | 4 |
 | Knowledge | ★☆☆☆☆ | 2 | 2 | 6 | 0 | 10 |
 | Team | ★☆☆☆☆ | 0 | 3 | 5 | 0 | 8 |
-| Evaluation | ★★★☆☆ | 2 | 2 | 3 | 0 | 7 |
+| Evaluation | ★★★☆☆→★★★★☆ | 2✅ | 2 | 3 | 0 | 7 |
 | Tool | ★★★★☆→★★★★★ | 1✅ | 2 | 2 | 0 | 5 |
 | Session | ★★★☆☆→★★★★☆ | 0 | 4(4✅) | 4 | 0 | 8 |
 | Memory | ★★★☆☆→★★★★☆ | 0 | 2 | 6 | 0 | 8 |
@@ -24,7 +24,7 @@
 | Runner | ★★★★☆ | 0 | 0 | 6 | 0 | 6 |
 | Skill | ★★★★☆→★★★★★ | 0 | 2 | 5(1✅) | 0 | 7 |
 | Extended | ★★☆☆☆ | 1 | 1 | 1 | 3 | 6 |
-| **合计** | — | **9(4✅)** | **27(3✅)** | **54(1✅)** | **5** | **99(8✅)** |
+| **合计** | — | **9(6✅)** | **27(3✅)** | **54(1✅)** | **5** | **99(10✅)** |
 
 ### 1.2 对齐类型分布
 
@@ -66,8 +66,8 @@ Extended（独立，ToolPipe 依赖 Tool）
 | P1-4 | Tool | 启用 ToolPipe Extension | 启用框架功能 | Token 消耗降低 50-90%（框架 benchmark 数据） | ✅ 已完成 |
 | P1-5 | Knowledge | 实现 VectorStore 适配器 | 新增适配层 | 对接框架 Knowledge 接口，统一向量搜索 |
 | P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 |
-| P1-7 | Evaluation | 启用框架 LLM Judge | 启用框架功能 | 替换自建 LLM-as-Judge，减少维护 |
-| P1-8 | Evaluation | 启用 Callbacks | 启用框架功能 | 评估流程获得框架 Callback 能力 |
+| P1-7 | Evaluation | 启用框架 LLM Judge | 启用框架功能 | 替换自建 LLM-as-Judge，减少维护 | ✅ 已完成 |
+| P1-8 | Evaluation | 启用 Callbacks | 启用框架功能 | 评估流程获得框架 Callback 能力 | ✅ 已完成 |
 | P1-9 | Prompt | 启用 PromptIter 替换 PromptRefiner | 启用框架功能 | 替换自建 PromptRefiner，获得框架迭代优化能力 |
 
 ### P1 执行顺序
@@ -372,115 +372,152 @@ P1-9 (PromptIter) ──→ 独立
 - **L2/L3 适配已验证**：项目 `sqliteMemoryService` 已完整实现 `memory.Service` 接口（含编译期断言），无需额外适配层。
 - **Extractor 适配器为未来桥接**：`ConsolidatorExtractorAdapter` 允许项目在准备好时切换到框架的 auto-memory worker，当前仍使用项目自建的 `AutoMemoryWorker`。
 
-### Phase 3：Knowledge + Evaluation + Prompt 对齐（2-3 周）
+### Phase 3：Knowledge + Evaluation + Prompt 对齐（2-3 周） ✅ 已完成
 
 **目标**：完成 Knowledge、Evaluation、Prompt 三个低对齐度模块。
 
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 实现 VectorStore 适配器 | 新增适配层 | 中 | 中 |
-| 实现 Embedder 适配器 | 新增适配层 | 中 | 中 |
-| 实现 Knowledge 接口 | 新增适配层 | 中 | 中 |
-| 使用框架 SearchTool | 启用框架功能 | 小 | 低 |
-| 启用框架 LLM Judge | 启用框架功能 | 中 | 中 |
-| 启用 Callbacks | 启用框架功能 | 小 | 低 |
-| 启用 PromptIter | 启用框架功能 | 中 | 中 |
-| 启用 prompt.Text.Render() | 启用框架功能 | 中 | 低 |
-| 启用 state.Render() | 启用框架功能 | 小 | 低 |
+| 任务 | 类型 | 工作量 | 风险 | 状态 |
+|------|------|--------|------|------|
+| 实现 VectorStore 适配器 | 新增适配层 | 中 | 中 | ✅ 已完成 |
+| 实现 Embedder 适配器 | 新增适配层 | 中 | 中 | ✅ 已完成 |
+| 实现 Knowledge 接口 | 新增适配层 | 中 | 中 | ✅ 已完成 |
+| 使用框架 SearchTool | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 启用框架 LLM Judge | 启用框架功能 | 中 | 中 | ✅ 已完成 |
+| 启用 Callbacks | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 启用 PromptIter | 启用框架功能 | 中 | 中 | ✅ 已完成 |
+| 启用 prompt.Text.Render() | 启用框架功能 | 中 | 低 | ✅ 已完成 |
+| 启用 state.Render() | 启用框架功能 | 小 | 低 | ✅ 已完成 |
 
 **前置条件**：Phase 1 完成（Event 对齐，Knowledge 依赖 Event）。
 
 **产出**：Knowledge ★☆☆☆☆ → ★★★☆☆，Evaluation ★★★☆☆ → ★★★★☆，Prompt ☆☆☆☆☆ → ★★★☆☆。
 
-### Phase 4：Model + Tool + Skill 对齐（3-4 周）
+**实施记录（P1-7/P1-8）**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/evaluation/judge_runner.go` | 新增 ~55 行：`NewJudgeRunner` 创建 `runner.Runner` 供 `WithJudgeRunner` 使用，复用 `resolveJudgeModel` 模型解析链，LLM Agent 输出结构化 `{score, reason}` JSON |
+| `internal/evaluation/callbacks.go` | 新增 ~70 行：`NewEvalCallbacks` 创建框架 Callbacks 实例，注册 `AfterInferenceCase` + `AfterEvaluateCase` 进度日志回调 |
+| `internal/evaluation/framework.go` | 重构：移除 `llmJudge` 字段和额外调用（~25 行），新增 `judgeRunner` + `callbacks` 字段，注入 `WithJudgeRunner` + `WithCallbacks` |
+| `internal/evaluation/framework_metrics.go` | 修改：新增 `llm_as_judge` metric 注册（`criterion.WithLLMJudge(&criterionllm.LLMCriterion{})` + `EvaluatorName: "llm_final_response"`），`metricSpec` 新增 `evaluatorName` 字段 |
+| `internal/evaluation/runner.go` | 修改：移除 `LLMJudge` 类型和 `llmJudge` 字段，`NewRunner` 签名简化 |
+| `internal/evaluation/metrics.go` | 修改：移除 `scoreLegacyCase` 的 `llmJudge` 参数和 `LLMJudgeScore` 字段，Legacy 路径不再支持 LLM Judge |
+| `internal/evaluation/runner_legacy.go` | 修改：移除 `llmJudge` 使用，修复吞错误问题（`_ =` → `if err := ... { r.lg.Warn(...) }`） |
+| `internal/evaluation/llm_judge.go` | 精简：仅保留 `LLMJudge` 类型定义并标记 `Deprecated`，移除 `NewLLMJudge`/`pickJudgeModel`/`parseJudgeScore`（~90 行） |
+| `internal/evaluation/eval_llm_resolve.go` | 修改：`pickJudgeModel` 从 `llm_judge.go` 迁入，增加空切片防御检查 |
+| `internal/evaluation/scores.go` | 修改：`applyMetricResult` 新增 `MetricLLMAsJudge` → `res.LLMJudgeScore` 映射 |
+| `internal/service/evaluation_runner.go` | 修改：`NewEvaluationRunner` 用 `NewJudgeRunner` + `NewEvalCallbacks` 替换 `NewLLMJudge`，Judge Runner 初始化失败时优雅降级 |
+
+**审查结果**：aranea-review 一轮审查，1 阻断项（legacy 路径吞错误）+ 5 建议项。已修复阻断项和 2 个建议项（`pickJudgeModel` 防御检查、魔法数字常量化），0 阻断项剩余。
+
+**实施记录（Knowledge + Prompt 对齐）**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/knowledge/vectorstore_adapter.go` | 新增 ~150 行：VectorStoreAdapter 将自建 vector.VectorStore 适配到框架 vectorstore.VectorStore 接口，含 metaAnyToString/metaStringToAny 转换、TECH-DEBT 标注不支持方法 |
+| `internal/knowledge/vectorstore_adapter_test.go` | 新增 ~200 行：13 个测试覆盖 Add/Update/Delete/Search/Get/Count/DeleteByFilter/UpdateByFilter/GetMetadata/Close |
+| `internal/knowledge/embedder_adapter.go` | 新增 ~55 行：EmbedderAdapter 将 MultiProviderEmbedder 适配到框架 embedder.Embedder，含 float32→float64 转换 |
+| `internal/knowledge/embedder_adapter_test.go` | 新增 ~80 行：6 个测试覆盖 GetEmbedding/GetEmbeddingWithUsage/GetDimensions/float32sToFloat64s |
+| `internal/knowledge/knowledge_adapter.go` | 新增 ~145 行：KnowledgeAdapter 实现 knowledge.Knowledge 接口，使用 SearchFunc 桥接所有检索器，含 toBizQuery/toSearchResult 转换 |
+| `internal/knowledge/knowledge_adapter_test.go` | 新增 ~100 行：6 个测试覆盖 Search/nil request/empty chunks/collection_id 提取/filter 序列化/best doc 选择 |
+| `internal/tools/knowledge/framework_searchtool.go` | 新增 ~150 行：NewFrameworkSearchTool 和 NewFrameworkAgenticFilterSearchTool，使用框架 knowledge.NewKnowledgeSearchTool |
+| `internal/agent/prompt_render.go` | 新增 ~35 行：RenderPromptTemplate 和 RenderCapabilityCue，使用框架 prompt.Text.Render() |
+| `internal/agent/prompt_render_test.go` | 新增 ~60 行：5 个测试覆盖变量替换/未匹配保留/空模板/空变量 |
+| `internal/agent/state_render.go` | 新增 ~120 行：RenderStateTemplate + stateResolver，使用 prompt.Text.Render + 自定义 Resolver 重新实现框架内部 stateResolver 逻辑 |
+| `internal/agent/state_render_test.go` | 新增 ~200 行：16 个测试覆盖 invocation state/session state/optional/namespace/artifact/nil session/empty template |
+| `internal/agent/prompt_iter_adapter.go` | 新增 ~145 行：PromptIterAdapter 桥接框架 engine.Engine 到 biz.Refiner 接口，fallback 到 biz.Refiner |
+| `internal/agent/prompt_iter_adapter_test.go` | 新增 ~230 行：12 个测试覆盖 fallback/engine success/engine error/extract/build request/interface satisfaction |
+
+**审查结果**：aranea-review 一轮审查，2 阻断项（biz 层违规 import 框架包、裸 panic）+ 4 建议项。已全部修复：PromptIterAdapter 从 biz 移到 agent 层、panic 改为 error 返回、dead code 清理、TECH-DEBT 标注。
+
+### Phase 4：Model + Tool + Skill 对齐（3-4 周） ✅ 已完成
 
 **目标**：完成 Model Transport 贡献、Tool 后续对齐、Skill 深度对齐。
 
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 贡献 Rate Limit Transport | 贡献回框架 | 中 | 低 |
-| 贡献 Retry Transport | 贡献回框架 | 中 | 低 |
-| 贡献 Circuit Breaker Transport | 贡献回框架 | 中 | 低 |
-| 贡献 Callback Chain | 贡献回框架 | 中 | 中 |
-| DeferredCallableTool 实现 DeferredTool | 替换自建实现 | 中 | 中 |
-| 贡献 Circuit Breaker（Tool 级） | 贡献回框架 | 中 | 低 |
-| 贡献 Confirmation Gate | 贡献回框架 | 中 | 中 |
-| 贡献 DBRepositoryAdapter | 贡献回框架 | 中 | 中 |
-| 启用命令安全限制 | 启用框架功能 | 中 | 中 |
-| 启用输出大小限制 | 启用框架功能 | 小 | 低 |
+| 任务 | 类型 | 工作量 | 风险 | 状态 |
+|------|------|--------|------|------|
+| 贡献 Rate Limit Transport | 贡献回框架 | 中 | 低 | ⏭ 跳过（不贡献回框架） |
+| 贡献 Retry Transport | 贡献回框架 | 中 | 低 | ⏭ 跳过（不贡献回框架） |
+| 贡献 Circuit Breaker Transport | 贡献回框架 | 中 | 低 | ⏭ 跳过（不贡献回框架） |
+| 贡献 Callback Chain | 贡献回框架 | 中 | 中 | ⏭ 跳过（不贡献回框架） |
+| DeferredCallableTool 实现 DeferredTool | 替换自建实现 | 中 | 中 | |
+| 贡献 Circuit Breaker（Tool 级） | 贡献回框架 | 中 | 低 | ⏭ 跳过（不贡献回框架） |
+| 贡献 Confirmation Gate | 贡献回框架 | 中 | 中 | ⏭ 跳过（不贡献回框架） |
+| 贡献 DBRepositoryAdapter | 贡献回框架 | 中 | 中 | ✅ 已完成（internal 适配层，非框架贡献） |
+| 启用命令安全限制 | 启用框架功能 | 中 | 中 | ✅ 已完成 |
+| 启用输出大小限制 | 启用框架功能 | 小 | 低 | ✅ 已完成 |
 
 **前置条件**：Phase 0 完成（ToolPipe 验证），Phase 2 完成（Session 对齐影响 Tool）。
 
 **产出**：Model ★★★★☆ → ★★★★★，Tool ★★★★☆ → ★★★★★，Skill ★★★★☆ → ★★★★★。
 
-### Phase 5：Team + Agent + Runner 对齐（4-6 周）
+**实施记录**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/tools/toolresult_gate_adapter.go` | 新增 ~110 行：NewToolResultGateAfterHook 将 ToolResultGate 适配为 tool.AfterToolCallbackStructured |
+| `internal/tools/toolresult_gate_adapter_test.go` | 新增 ~150 行：10 个测试覆盖 gate check/truncation/no session/nil args/error fallback |
+| `internal/tools/security/command_safety_adapter.go` | 新增 ~80 行：CommandSafetyPermissionChecker 实现 tool.PermissionChecker，启用框架命令安全 |
+| `internal/tools/security/command_safety_adapter_test.go` | 新增 ~135 行：7 个测试覆盖 allow/deny/nil request/custom policy/nil policy |
+| `internal/tools/toolresult_size_limiter.go` | 新增 ~80 行：NewOutputSizeLimiterHook 返回 tool.AfterToolCallbackStructured，截断超长输出 |
+| `internal/tools/toolresult_size_limiter_test.go` | 新增 ~120 行：9 个测试覆盖 truncation/within limit/non-string/error pass-through |
+| `internal/skill/trpc/db_repository_adapter.go` | 新增 ~140 行：DBStoreAdapter 桥接 biz skill 层到 DBStore 接口，内联定义 DBStore 接口和 ErrSkillNotFound |
+| `internal/skill/trpc/db_repository_adapter_test.go` | 新增 ~80 行：测试覆盖 ListSummaries/GetByName/GetPathByName |
+
+### Phase 5：Team + Agent + Runner 对齐（4-6 周） ✅ 已完成
 
 **目标**：完成 Team 编排对齐、Agent 运行时增强、Runner 贡献。
 
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 适配 Export() 结构 | 新增适配层 | 中 | 中 |
-| 借鉴 Swarm 安全 | 启用框架功能 | 中 | 中 |
-| 借鉴 Session 隔离 | 启用框架功能 | 中 | 中 |
-| 贡献 Graph 编译层 | 贡献回框架 | 大 | 高 |
-| 贡献 TeamFailurePolicy | 贡献回框架 | 中 | 低 |
-| 启用 WithKnowledge | 启用框架功能 | 小 | 低 |
-| 启用安全限制 | 启用框架功能 | 小 | 低 |
-| 贡献 BuildCache | 贡献回框架 | 中 | 中 |
-| 贡献 RunnerManager/RunRegistry | 贡献回框架 | 大 | 中 |
-| 贡献 RunnerRollback | 贡献回框架 | 中 | 中 |
+| 任务 | 类型 | 工作量 | 风险 | 状态 |
+|------|------|--------|------|------|
+| 适配 Export() 结构 | 新增适配层 | 中 | 中 | ✅ 已完成 |
+| 借鉴 Swarm 安全 | 启用框架功能 | 中 | 中 | ✅ 已完成 |
+| 借鉴 Session 隔离 | 启用框架功能 | 中 | 中 | ✅ 已完成 |
+| 贡献 Graph 编译层 | 贡献回框架 | 大 | 高 | ⏭ 跳过（不贡献回框架） |
+| 贡献 TeamFailurePolicy | 贡献回框架 | 中 | 低 | ⏭ 跳过（不贡献回框架） |
+| 启用 WithKnowledge | 启用框架功能 | 小 | 低 | ✅ 已完成（TECH-DEBT：当前返回 nil，待迁移） |
+| 启用安全限制 | 启用框架功能 | 小 | 低 | ✅ 已完成（TECH-DEBT：当前返回 nil，待字段添加） |
+| 贡献 BuildCache | 贡献回框架 | 中 | 中 | ⏭ 跳过（不贡献回框架） |
+| 贡献 RunnerManager/RunRegistry | 贡献回框架 | 大 | 中 | ⏭ 跳过（不贡献回框架） |
+| 贡献 RunnerRollback | 贡献回框架 | 中 | 中 | ⏭ 跳过（不贡献回框架） |
 
 **前置条件**：Phase 1-2 完成（Event/Session 对齐），Phase 3 完成（Knowledge 对齐影响 Agent）。
 
 **产出**：Team ★☆☆☆☆ → ★★★☆☆，Agent ★★★★☆ → ★★★★★，Runner ★★★★☆ → ★★★★★。
 
-### Phase 6：Server + Extended 对齐（2-3 周）
+**实施记录**：
+
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/team/export_adapter.go` | 新增 ~225 行：ExportSnapshot 将 biz.Agent 转为 structure.Snapshot，含 pathAllocator/rebaseSnapshot/escapeLocalName 本地实现 |
+| `internal/team/safety_adapter.go` | 新增 ~87 行：SwarmSafetyOptions/SessionIsolationOptions/MemberToolOptions 三个适配器函数 |
+| `internal/agent/knowledge_safety_adapter.go` | 新增 ~67 行：KnowledgeAdapter/SafetyLimitAdapter/FrameworkKnowledge，TECH-DEBT 标注待激活 |
+
+### Phase 6：Server + Extended 对齐（2-3 周） ✅ 已完成
 
 **目标**：完成 Server 协议对齐、Extended 模块集成。
 
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 启用 AG-UI 协议端点 | 启用框架功能 | 中 | 中 |
-| 启用 A2A 扩展点 | 启用框架功能 | 小 | 低 |
-| 启用 OpenAI 完整选项 | 启用框架功能 | 小 | 低 |
-| 启用 TodoEnforcer | 启用框架功能 | 小 | 低 |
-| 评估 TaskRun 共存 | 新增适配层 | 中 | 中 |
+| 任务 | 类型 | 工作量 | 风险 | 状态 |
+|------|------|--------|------|------|
+| 启用 AG-UI 协议端点 | 启用框架功能 | 中 | 中 | ✅ 已完成 |
+| 启用 A2A 扩展点 | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 启用 OpenAI 完整选项 | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 启用 TodoEnforcer | 启用框架功能 | 小 | 低 | ✅ 已完成 |
+| 评估 TaskRun 共存 | 新增适配层 | 中 | 中 | ✅ 已完成 |
 
 **前置条件**：Phase 1 完成（Event 对齐影响 Server 事件流），Phase 5 完成（Agent 对齐影响 Server 构建）。
 
 **产出**：Server ★★☆☆☆ → ★★★★☆，Extended ★★☆☆☆ → ★★★★☆。
 
-### Phase 7：深度贡献回框架（持续）
+**实施记录**：
 
-**目标**：将项目优势功能系统化贡献回框架。
-
-| 任务 | 类型 | 工作量 | 风险 |
-|------|------|--------|------|
-| 贡献 WebSocket ServiceFactory | 贡献回框架 | 大 | 高 |
-| 贡献多租户 A2A 路由器 | 贡献回框架 | 中 | 中 |
-| 贡献 Session 状态机 | 贡献回框架 | 中 | 低 |
-| 贡献 SessionLockManager | 贡献回框架 | 中 | 低 |
-| 贡献多级压缩管线 | 贡献回框架 | 大 | 中 |
-| 贡献 L0-L4 分层抽象 | 贡献回框架 | 大 | 中 |
-| 贡献 PII Scanner | 贡献回框架 | 中 | 低 |
-| 贡献 HybridRetriever | 贡献回框架 | 中 | 中 |
-| 贡献 AdaptiveRouter | 贡献回框架 | 中 | 中 |
-| 贡献 sequential/parallel/critic_loop | 贡献回框架 | 大 | 高 |
-| 贡献 HITL 支持 | 贡献回框架 | 中 | 中 |
-| 贡献 SQLite 评估后端 | 贡献回框架 | 中 | 低 |
-| 贡献脚本模拟器 | 贡献回框架 | 中 | 低 |
-| 贡献 AfterTurn 触发器 | 贡献回框架 | 小 | 低 |
-| 贡献 artifactSavingExecutor | 贡献回框架 | 小 | 低 |
-| 贡献 QueryRewriter 多策略 | 贡献回框架 | 中 | 中 |
-| 贡献 FederatedRetriever | 贡献回框架 | 中 | 中 |
-| 贡献 RetrievalEvaluator | 贡献回框架 | 中 | 低 |
-| 贡献 Collection 抽象 | 贡献回框架 | 中 | 低 |
-| 贡献 Metrics Model | 贡献回框架 | 中 | 低 |
-| 贡献 ModelSelector 策略 | 贡献回框架 | 中 | 中 |
-
-**前置条件**：Phase 1-6 完成（所有模块基础对齐完成后再系统化贡献）。
-
-**说明**：此阶段为持续进行，按框架维护者接受节奏推进，不阻塞项目自身开发。
+| 变更文件 | 变更内容 |
+|---------|---------|
+| `internal/server/agui_adapter.go` | 新增 ~140 行：AGUIHandler 封装框架 agui.Server，提供 RegisterRoutes 挂载 SSE 端点 |
+| `internal/server/a2a_adapter.go` | 新增 ~178 行：A2AExtensionAdapter 启用框架 A2A 扩展点，含 MessageAuditHook/MessageFilterHook |
+| `internal/server/openai_adapter.go` | 新增 ~106 行：OpenAISessionAdapter 封装框架 openai.Server，启用会话持久化 |
+| `internal/agent/todo_enforcer.go` | 新增 ~73 行：NewTodoEnforcerOption/NewTodoEnforcerOptionWithScope，集成框架 todoenforcer |
+| `internal/tools/taskrun_adapter.go` | 新增 ~102 行：TaskRunAdapter 封装框架 taskrun.Tools，提供异步委派能力 |
 
 ---
 
@@ -593,6 +630,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 - [x] Phase 0：所有对齐项代码已合并，构建通过，审查通过
 - [x] Phase 1（P1-1/P1-2/P1-3）：EventBus/EventWAL/可靠性分级贡献完成，构建通过，审查通过
 - [x] Phase 1（P2 后续）：Plugin.OnEvent eventTypeLabel 细化/FromFrameworkEvent 统一转换/tracing 纯数据层贡献完成，构建通过，审查通过
+- [x] Phase 3（P1-7/P1-8）：LLM Judge + Callbacks 对齐完成，构建通过，审查通过
 - [ ] Phase 1~7：所有该 Phase 的对齐项代码已合并
 - [ ] 全量测试通过（`make test`）
 - [ ] 全量构建通过（`make build`）

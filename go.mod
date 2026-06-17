@@ -15,6 +15,8 @@ replace trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf => ./pkg/
 
 replace trpc.group/trpc-go/trpc-agent-go/codeexecutor/container => ./pkg/trpc-agent-go/codeexecutor/container
 
+replace trpc.group/trpc-go/trpc-agent-go/server/agui => ./pkg/trpc-agent-go/server/agui
+
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
@@ -117,6 +119,7 @@ require (
 	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260305114736-115a967b66a9 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.37.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
@@ -287,6 +290,7 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
 	mvdan.cc/sh/v3 v3.8.0 // indirect
+	trpc.group/trpc-go/trpc-agent-go/server/agui v0.0.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 	trpc.group/trpc-go/trpc-mcp-go v0.0.10 // indirect
 )
