@@ -2,8 +2,7 @@
 
 > 对应需求：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md)
 > 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
-> **实现差距与迭代计划**以 [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md) 为准
-> **当前进度**：Phase 0.5–8.8 ✅ | Phase 8.9 待实施
+> **实现差距与迭代计划**以 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md) 为准
 
 ---
 
@@ -17,7 +16,9 @@
 - **Graph 高级视图**：Vue Flow 自由编辑，可 `linked_graph_id` 引用
 - **运行态**：StatusProjector 将异构 Envelope 投影为 `AgentNodeState`；Kanban 与 Graph 共用
 
-**终态（执行单链）**：所有 Team Run 经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；`BuildTRPCTeam`（Native）已退役，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断。Phase 0.5–8.8 已完成编译/观测/执行收敛/架构优化；**剩余差距**见 [53-team-graph-orchestration-development.md §8.9](./53-team-graph-orchestration-development.md)。
+**终态（执行单链）**：所有 Team Run 经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；`BuildTRPCTeam`（Native）已退役，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断。
+
+> 实施进度与剩余差距详见 [53-team-graph-orchestration.development.md §2 现状评估](./53-team-graph-orchestration.development.md#2-现状评估2026-06-06)
 
 ### 1.2 分层与依赖
 
@@ -27,7 +28,7 @@ api/kratos/graph/v1/graph.proto        ← Graph 既有 RPC
         ↓
 internal/service/
   team.go · graph.go
-  orchestration_observatory.go         ← GetTeamRunObservatory（Phase 1）
+  team_observatory.go              ← GetTeamRunObservatory（Phase 1）
         ↓
 internal/biz/
   orchestration_status.go              ← AgentNodeStatus + ApplyEnvelope（纯领域，无 trpc）
@@ -47,17 +48,17 @@ pkg/trpc-agent-go/graph · team         ← 框架真相源
 
 ### 1.3 影响域
 
-| 包 | 变更类型 | 说明 | 状态 |
-|----|----------|------|------|
-| `internal/biz` | 新增 | 状态枚举、归约器、Observatory 读模型 | ✅ |
-| `internal/team` | 新增/修改 | 编译器、StatusProjector、Runner 挂钩、Coordinator、模板注册表 | ✅ |
-| `internal/service` | 新增 | Observatory RPC、Run 锁定 | ✅ |
-| `internal/event` | 扩展 | `orchestration_agent_status` EnvelopeType | ✅ |
-| `internal/graph/trpc` | 修改 | Graph Run 启动投影器、failure_recovery | ✅ |
-| `web/src/features/orchestration` | 新增 | 类型、Kanban、store、Timeline | ✅ |
-| `web/src/components/graph` | 扩展 | 节点细态、边状态、属性面板（Retry/Destinations/Mapper） | ✅ |
-| `api/kratos/team/v1` | 扩展 | Proto 字段 | ✅ |
-| `internal/data` | 新增 | `orchestration_steps` 表、`team_graph_sessions` 表 | ✅ |
+| 包 | 变更类型 | 说明 |
+|----|----------|------|
+| `internal/biz` | 新增 | 状态枚举、归约器、Observatory 读模型 |
+| `internal/team` | 新增/修改 | 编译器、StatusProjector、Runner 挂钩、Coordinator、模板注册表 |
+| `internal/service` | 新增 | Observatory RPC、Run 锁定 |
+| `internal/event` | 扩展 | `orchestration_agent_status` EnvelopeType |
+| `internal/graph/trpc` | 修改 | Graph Run 启动投影器、failure_recovery |
+| `web/src/features/orchestration` | 新增 | 类型、Kanban、store、Timeline |
+| `web/src/components/graph` | 扩展 | 节点细态、边状态、属性面板（Retry/Destinations/Mapper） |
+| `api/kratos/team/v1` | 扩展 | Proto 字段 |
+| `internal/data` | 新增 | `orchestration_steps` 表、`team_graph_sessions` 表 |
 
 **不改动**：`internal/server` 直连 runtime。
 
@@ -103,11 +104,11 @@ Run 开始时由 members + graph.nodes 构建 `OrchestrationRegistry`：
 
 ### 2.3 TeamRun 扩展
 
-| 字段 | 类型 | 说明 | 状态 |
-|------|------|------|------|
-| `definition_snapshot_json` | TEXT | Run 开始时 OrchestrationSpec 冻结 | ✅ |
-| `graph_execution_id` | UUID | 关联 graph_executions | ✅ |
-| `trace_id` | TEXT | 跨域 trace 关联 | 📋 待实施 |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `definition_snapshot_json` | TEXT | Run 开始时 OrchestrationSpec 冻结 |
+| `graph_execution_id` | UUID | 关联 graph_executions |
+| `trace_id` | TEXT | 跨域 trace 关联 |
 
 ---
 
@@ -159,7 +160,7 @@ blocked / waiting_* > retrying > tool_running > thinking > running > queued > id
 终态不可被非 retry/resume 信号覆盖
 ```
 
-实现：`biz.ApplyOrchestrationEnvelope` 纯函数，便于单测。
+实现：`OrchestrationStatusStore.ApplyEnvelope` 纯领域方法，便于单测。
 
 ### 3.4 工作阶段 `WorkPhase`
 
@@ -183,7 +184,7 @@ const (
 
 **不负责**：持久化（由 `ActivityStepFlusher` 异步批 flush 到 `orchestration_steps` 表）、Graph 构建、Team Run 生命周期。
 
-**已实现**：`activity_history[]`（上限 20 条）+ `current_activity`；`ActivityStepFlusher` 异步批 flush。
+**设计要点**：`activity_history[]`（上限 20 条）+ `current_activity`；`ActivityStepFlusher` 异步批 flush。
 
 ### 4.2 事件映射
 
@@ -236,7 +237,7 @@ func StartOrchestrationStatusProjector(
 
 由 `runner_team_trpc.runTeamTRPC` 在 `team_run_started` 之后启动，`defer cancel()` 于 Run 结束。
 
-Graph Run：`internal/service/graph.go` Execute 路径同样启动（Phase 1）。
+Graph Run：`internal/service/graph.go` Execute 路径同样启动。
 
 ---
 
@@ -251,7 +252,7 @@ func CompileToGraphBuildConfig(def Definition) (graph.GraphBuildConfig, error)
 
 对称于前端 `buildGraphFromDefinition()`（`web/src/components/teams/teamUtils.ts`）。
 
-**编译路径（Phase 8 统一）**：不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`。模板注册表（`template_registry.go`）提供 5 个内置模板。
+**编译路径（统一）**：不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`。模板注册表（`template_registry.go`）提供 5 个内置模板。
 
 ### 5.2 映射表
 
@@ -281,9 +282,11 @@ type FailurePolicy struct {
 
 映射 trpc `graph.RetryPolicy`；skip 写 state `_skipped_nodes`；fallback 切换 registry 中 agent_id；`parallel_fail: continue` 时并行 join 分支失败自动 `skip_on_failure`（`ApplyParallelFailContinue`）。
 
-**已实现**：retry / skip / fallback_agent / parallel_fail continue / failure_recovery.go。
+**设计范围**：retry / skip / fallback_agent / parallel_fail continue / failure_recovery.go。
 
-**未实现**：circuit_breaker（类型预留，实现待 Phase 8.9+）、死信表。
+**预留未实现**：circuit_breaker（类型预留）、死信表。
+
+> 实施状态详见 [53-team-graph-orchestration.development.md §8.3 差距清单](./53-team-graph-orchestration.development.md#83-差距清单phase-0588-已解决项--待实施项)
 
 #### 6.1 ParallelFail 与 generic diamond 边界
 
@@ -299,7 +302,7 @@ type FailurePolicy struct {
 
 - **作用范围**：`ApplyParallelFailContinue` 仅对 **并行扇出分支上的 worker 节点**（compile 时标记为 parallel branch member）注入 `failure_action: skip_on_failure`；join / synthesizer 节点本身不自动 skip。
 - **分支失败**：失败分支在 `AfterNode` 回调中走 `skip_on_failure`，写入 `_skipped_nodes`，图执行 **继续**（不 abort 整图）。
-- **Join 语义**：join 节点仍按 trpc graph 调度执行；已 skip 的分支不会重复跑 agent，但 join 可消费其它分支输出。若 join 依赖被 skip 分支的唯一产物且 state 中无替代值，join 可能空跑或失败——**不在 Phase 4 自动补全**，需设计时保证 synthesizer 容忍部分输入缺失。
+- **Join 语义**：join 节点仍按 trpc graph 调度执行；已 skip 的分支不会重复跑 agent，但 join 可消费其它分支输出。若 join 依赖被 skip 分支的唯一产物且 state 中无替代值，join 可能空跑或失败——**不在 ParallelFail 自动补全**，需设计时保证 synthesizer 容忍部分输入缺失。
 - **与 `policy: skip` 区别**：compile-time `policy: skip` 节点 **从不执行**；`skip_on_failure` 是 **运行时** 失败后降级，且会发 `GraphNodeError` 再投影 `GraphNodeEnd(skipped=true)`。
 - **与 `parallel_fail: abort` 对比**：任一并行分支未恢复失败即 **整图失败**，无 `_skipped_nodes` 写入。
 - **回归用例**：`internal/graph/trpc/parallel_fail_test.go`（diamond：`member-1`→`member-2`/`member-3`，`member-2`→`member-3` join）验证失败分支 skip 后图仍可 `Done`。
@@ -310,10 +313,10 @@ type FailurePolicy struct {
 
 ### 7.1 路由
 
-| 路由 | 组件 | 模式 | 状态 |
-|------|------|------|------|
-| `/teams/:id/orchestrate` | `TeamOrchestratePage` | 设计态，Vue Flow | ✅ |
-| `/teams/:id/runs/:runId` | `TeamRunObservatoryPage` | 运行态只读 | ✅ |
+| 路由 | 组件 | 模式 |
+|------|------|------|
+| `/teams/:id/orchestrate` | `TeamOrchestratePage` | 设计态，Vue Flow |
+| `/teams/:id/runs/:runId` | `TeamRunObservatoryPage` | 运行态只读 |
 
 ### 7.2 组件
 
@@ -358,7 +361,7 @@ web/src/features/teams/
 
 ### 7.5 Graph 属性面板
 
-`GraphPropertyPanel.vue` 已实现：
+`GraphPropertyPanel.vue`：
 
 - **RetryPolicy**：`max_attempts` + `failure_action` + `fallback_agent`（agent/router 节点）
 - **Destinations**：多选 GoTo 目标节点（agent/router 节点）
@@ -391,7 +394,7 @@ message GetTeamRunObservatoryResponse {
 
 首屏 REST + WS `orchestration_agent_status` 增量。
 
-**已实现**：`GetTeamRunObservatory` RPC + `GetTeamRunObservatoryTimeline` RPC（Activity 时间线）。
+**RPC 契约**：`GetTeamRunObservatory` RPC + `GetTeamRunObservatoryTimeline` RPC（Activity 时间线）。
 
 ---
 
@@ -422,11 +425,11 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 ## 附录：企业级蓝图与 AI 落地指南
 
 > 原 `需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南` 已并入本文。
-> **进度更新（2026-06-06）**：§6 任务清单中 Phase 5–7 已全部完成，Phase 8.1–8.8 架构优化已完成。剩余待实施任务见 §6.8。迭代任务见 [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md)。
+> **实施进度与任务清单**详见 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md)。
 
 ## 0. 本文是什么
 
-本文是 **M53（Team × Graph 编排融合）企业级落地纲领**，把 Phase 0.5–8 的成果推到 **企业产品级** 终态：
+本文是 **M53（Team × Graph 编排融合）企业级落地纲领**，把成果推到 **企业产品级** 终态：
 
 > **OrchestrationSpec 是唯一编排真相源；GraphAgent 是唯一运行时；Team / Graph / Multi-Agent 是同一引擎的三种产品视图。**
 
@@ -436,7 +439,7 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 2. **设计**：给出 **执行层 / 编排规格 / 观测层 / 容错层 / UX 层** 的目标态与契约。
 3. **落地**：给 AI 编码代理一份按 ID 可执行的任务卡清单（含代码锚点、验收、风险、回滚剧本）。
 
-**当前状态**：Phase 5–7 已完成（执行收敛 / 默认 Graph / Native 退役）；Phase 8.1–8.8 架构优化已完成（状态机 / 协议化 / 单轨化 / 模板 / 配置化 / 错误规范化）。剩余待实施见 §6.8。
+> 当前实施进度详见 [53-team-graph-orchestration.development.md §2 现状评估](./53-team-graph-orchestration.development.md#2-现状评估2026-06-06)
 
 **红线不变**：
 
@@ -449,16 +452,17 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 
 ## 1. 问题陈述（6 类核心症结）
 
-| # | 症结 | 用户可感知 | 根因层 | 现状证据 |
-|---|------|-----------|--------|---------|
-| **T-1** | 执行层双轨：默认 Native，Graph 仅 feature flag | 同一 Team 在 chat 与 channel async 路径走两套执行栈；故障表现不一致 | 架构 | ✅ **已解决**：Phase 7 Native 退役 + Phase 8 单轨化；`ARANEA_TEAM_NATIVE=1` 仅紧急熔断 |
-| **T-2** | OrchestrationSpec 产品化不完整 | 用户改不到 `runtime_engine` / `failure_policy`；前端 `parseDefinition` 白名单丢字段 | 协议/UX | ✅ **已解决**：raw merge + RuntimePanel + 属性面板 |
-| **T-3** | 节点能力缺口（Agent/Router/HITL/Subgraph） | Team 编译只输出 `agent` 节点；Graph 编辑器无属性面板编辑 RetryPolicy / Destinations / Mapper | 后端/前端 | ✅ **已解决**：node_wiring 支持 Agent/Router；属性面板已实现；subgraph 编译+循环检测已实现 |
-| **T-4** | 观测断片：Activity 只有 current，无历史时间线 | Kanban 列「进行中」只显示最后一个工具；之前的工具消失 | 业务 | 🟡 **部分解决**：`activity_history[]` 已实现；Timeline RPC + 前端 Tab 已实现；持久化到 `orchestration_steps` 已实现 |
-| **T-5** | 容错单一：FailurePolicy 已编译 retry/skip，但 fallback / 熔断 / HITL 接管未一等 | 关键 Agent 失败时不能切备用 / 暂停 / 等人工 | 业务/UX | 🟡 **部分解决**：fallback_agent + failure_recovery ✅；circuit_breaker 类型预留但未实现；死信表未实现 |
-| **T-6** | 跨域可观测性：跨 Team / Channel async / Chat 子 turn 无统一 trace | 排障靠 grep；找不到一条 trace 看穿 Team→GraphAgent→子 Agent→Tool→Channel | 平台 | 📋 **未解决**：trace_id 持久化待实施 |
+| # | 症结 | 用户可感知 | 根因层 |
+|---|------|-----------|--------|
+| **T-1** | 执行层双轨：默认 Native，Graph 仅 feature flag | 同一 Team 在 chat 与 channel async 路径走两套执行栈；故障表现不一致 | 架构 |
+| **T-2** | OrchestrationSpec 产品化不完整 | 用户改不到 `runtime_engine` / `failure_policy`；前端 `parseDefinition` 白名单丢字段 | 协议/UX |
+| **T-3** | 节点能力缺口（Agent/Router/HITL/Subgraph） | Team 编译只输出 `agent` 节点；Graph 编辑器无属性面板编辑 RetryPolicy / Destinations / Mapper | 后端/前端 |
+| **T-4** | 观测断片：Activity 只有 current，无历史时间线 | Kanban 列「进行中」只显示最后一个工具；之前的工具消失 | 业务 |
+| **T-5** | 容错单一：FailurePolicy 已编译 retry/skip，但 fallback / 熔断 / HITL 接管未一等 | 关键 Agent 失败时不能切备用 / 暂停 / 等人工 | 业务/UX |
+| **T-6** | 跨域可观测性：跨 Team / Channel async / Chat 子 turn 无统一 trace | 排障靠 grep；找不到一条 trace 看穿 Team→GraphAgent→子 Agent→Tool→Channel | 平台 |
 
 > T-1 / T-2 / T-3 是 **结构性缺口**；T-4 / T-5 是 **业务表达不够**；T-6 是 **平台化债务**。本文按这六类系统级整理目标态与任务。
+> 各症结的解决状态详见 [53-team-graph-orchestration.development.md §8.3 差距清单](./53-team-graph-orchestration.development.md#83-差距清单phase-0588-已解决项--待实施项)
 
 ---
 
@@ -515,11 +519,10 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 
 **Native 路径定位**：
 
-- ~~Phase 5（当前 → 下一冲刺）：parity 验证 + canary。~~ ✅ 已完成
-- ~~Phase 6：新建 Team 默认 `runtime_engine=graph`；env gate 在生产默认开。~~ ✅ 已完成
-- ~~Phase 7：移除 `BuildTRPCTeam` 主路径，保留 emergency 开关 `ARANEA_TEAM_NATIVE=1`。~~ ✅ 已完成
-- Phase 8：架构优化（单轨化 / 模板 / 状态机 / 错误规范化）。✅ 已完成（8.1–8.8）
-- **当前**：`BuildTRPCTeam` 标记 Deprecated，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断时使用。
+- `BuildTRPCTeam` 标记 Deprecated，仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断时使用。
+- 编译器统一走 `compileFromEmbeddedGraph`，不再按 mode 分发。
+
+> 退役实施进度详见 [53-team-graph-orchestration.development.md §8.2 已完成](./53-team-graph-orchestration.development.md#82-已完成一条链的完整实现)
 
 ### 2.2 编排规格 v2 产品化（解决 T-2）
 
@@ -550,7 +553,7 @@ export interface OrchestrationSpec {
 
 | 入口 | 职责 | 锚点 |
 |------|------|------|
-| `/teams/:id/edit` | 成员、模式、`failure_policy`、`runtime_engine` 下拉 | `TeamEditDialog.vue` + 新建 `TeamRuntimeSection.vue` |
+| `/teams/:id/edit` | 成员、模式、`failure_policy`、`runtime_engine` 下拉 | `TeamEditorDialog.vue` + `TeamOrchestrateRuntimePanel.vue` |
 | `/teams/:id/orchestrate` | OrchestrationSpec 自由编辑（Vue Flow）；Run 中 readonly | `TeamOrchestratePage.vue`（已存在） |
 | `/graphs/:id/edit` | 独立 Graph 编辑 + Mapper / Destinations / Retry 属性面板 | `GraphPropertyPanel.vue` |
 | `/team-runs/:id/observatory` | Kanban + Graph 双视图（只读） | 已存在；扩展 §2.3 |
@@ -574,21 +577,23 @@ Graph builder 已经支持的能力（`internal/graph/trpc/node_wiring.go`）：
 
 **未补齐**（前端 + Team 编译 + 文档对齐）：
 
-| 缺口 | 任务 | 优先级 | 状态 |
-|------|------|--------|------|
-| 前端属性面板编辑 `RetryPolicy` / `CachePolicy` / `Destinations` / `Mapper` | Phase G-FE | P0 | ✅ 已实现 |
-| Team 编译生成 `router` 节点（adaptive 模式的 Destinations）| ✅ 已实现；UI 显示 transfer 边 | P1 | ✅ |
-| HITL 节点：与 `InterruptBefore/After` + Chat `AwaitUserReply` 复用 UX | Phase H | P1 | ✅ 已实现 |
-| Subgraph 节点：Team 嵌套 Team（linked_graph 在节点级） | Phase I | P2 | ✅ 已实现（含循环检测） |
-| Function 节点 + CodeExecutor 桥接 | Phase J | P2 | ✅ 编译期校验+降级 |
+| 缺口 | 任务 | 优先级 |
+|------|------|--------|
+| 前端属性面板编辑 `RetryPolicy` / `CachePolicy` / `Destinations` / `Mapper` | Phase G-FE | P0 |
+| Team 编译生成 `router` 节点（adaptive 模式的 Destinations）| UI 显示 transfer 边 | P1 |
+| HITL 节点：与 `InterruptBefore/After` + Chat `AwaitUserReply` 复用 UX | Phase H | P1 |
+| Subgraph 节点：Team 嵌套 Team（linked_graph 在节点级） | Phase I | P2 |
+| Function 节点 + CodeExecutor 桥接 | Phase J | P2 |
+
+> 实施状态详见 [53-team-graph-orchestration.development.md §8.3 差距清单](./53-team-graph-orchestration.development.md#83-差距清单phase-0588-已解决项--待实施项)
 
 ### 2.4 观测层 — 时间线 + 拓扑（解决 T-4）
 
 #### 2.4.1 Activity Timeline
 
-**目标**：`status_projector.go` 把 `current_activity` 升级为 `activity_history[]`，每个 ActivitySnapshot 带 `started_at / finished_at / status`。
+**设计**：`status_projector.go` 把 `current_activity` 升级为 `activity_history[]`，每个 ActivitySnapshot 带 `started_at / finished_at / status`。
 
-**已实现**：`AgentNodeState.ActivityHistory []ActivitySnapshot`（上限 20 条）+ `ActivityStepFlusher` 异步批 flush 到 `orchestration_steps` 表 + Timeline RPC + 前端 `OrchestrationActivityTimeline.vue`。
+**数据结构**：`AgentNodeState.ActivityHistory []ActivitySnapshot`（上限 20 条）+ `ActivityStepFlusher` 异步批 flush 到 `orchestration_steps` 表 + Timeline RPC + 前端 `OrchestrationActivityTimeline.vue`。
 
 ```go
 // internal/biz/orchestration_status.go（增量）
@@ -615,29 +620,31 @@ type AgentNodeState struct {
 - Channel async Team：`trace_id` 来自 `channel_turn_job` 创建时；后续 Graph Execution 共用。
 - Observatory API 返回顶层 `trace_id`；前端 "View Trace" 跳到 Monitor Trace UI（与 FlowLog `chat.turn.*` 关联）。
 
-**状态**：📋 `team_runs.trace_id` 字段待实施。
+> `team_runs.trace_id` 字段已在 Ent Schema 中定义（`internal/data/ent/schema/team_run.go`）。
 
 #### 2.4.3 拓扑统一
 
-| 数据来源 | 用户视图 | 状态 |
-|---------|---------|------|
-| Team `definition.graph` + `embedded_graph` | OrchestratePage Vue Flow | ✅ |
-| `CompileTeamGraph` 后端真相 | Observatory `compiled_topology` | ✅ |
-| GraphExecution.summary | Run 完成态 ExecutionSummary | ✅ |
-| Team Run 中 GraphExecution 实时 step | Observatory Step Tab | ✅ |
-| Cross-Team trace（Team 调子 Team） | Monitor cross-trace | 📋 P2 |
+| 数据来源 | 用户视图 |
+|---------|---------|
+| Team `definition.graph` + `embedded_graph` | OrchestratePage Vue Flow |
+| `CompileTeamGraph` 后端真相 | Observatory `compiled_topology` |
+| GraphExecution.summary | Run 完成态 ExecutionSummary |
+| Team Run 中 GraphExecution 实时 step | Observatory Step Tab |
+| Cross-Team trace（Team 调子 Team） | Monitor cross-trace |
 
 ### 2.5 容错层 — FailurePolicy 完整化（解决 T-5）
 
-| 策略 | 现状 | 目标 |
-|------|------|------|
-| `retry { max_attempts, backoff }` | ✅ `WithRetryPolicy(WithSimpleRetry(N))` | 暴露 backoff strategy（exp / linear） |
-| `skip` | ✅ 编译期 `SkipNodeFuncRef` | ✅ UI 展示 skip 边 + Kanban "skipped" 状态 |
-| `fallback_agent` | ✅ `node_wiring.go` Agent 节点支持 + `failure_recovery.go` | ✅ UI 编辑；envelope `agent_failover` |
-| `continue_on_failure` | ✅ ParallelFail | ✅ UI 标注；统计 partial-success |
-| **circuit_breaker** | 📋 类型预留（`TeamFailurePolicy.circuit_breaker`） | 实现：阈值 N 次连续失败 → 节点冻结 + WS alert |
-| **HITL 接管** | ✅ InterruptBefore/After + `OrchestrationFailureBanner` | ✅ 错误时进入 `waiting_review`；前端 banner + 审核 |
-| **死信** | 📋 | 失败 N 轮后写入 `task_dead_letters` 表 / Job dashboard |
+| 策略 | 设计 |
+|------|------|
+| `retry { max_attempts, backoff }` | `WithRetryPolicy(WithSimpleRetry(N))`；暴露 backoff strategy（exp / linear） |
+| `skip` | 编译期 `SkipNodeFuncRef`；UI 展示 skip 边 + Kanban "skipped" 状态 |
+| `fallback_agent` | `node_wiring.go` Agent 节点支持 + `failure_recovery.go`；UI 编辑；envelope `agent_failover` |
+| `continue_on_failure` | ParallelFail；UI 标注；统计 partial-success |
+| **circuit_breaker** | 类型预留（`TeamFailurePolicy.circuit_breaker`）；目标：阈值 N 次连续失败 → 节点冻结 + WS alert |
+| **HITL 接管** | InterruptBefore/After + `OrchestrationFailureBanner`；错误时进入 `waiting_review`；前端 banner + 审核 |
+| **死信** | 目标：失败 N 轮后写入 `task_dead_letters` 表 / Job dashboard |
+
+> 实施状态详见 [53-team-graph-orchestration.development.md §8.3 差距清单](./53-team-graph-orchestration.development.md#83-差距清单phase-0588-已解决项--待实施项)
 
 **统一错误模型**（前端契约）：
 
@@ -720,20 +727,22 @@ internal/event                        ← Envelope + Bus + Buffer
 
 ### 3.2 数据模型增量
 
-| 表 | 字段 | 用途 | 状态 |
-|----|------|------|------|
-| `team_runs` | `definition_snapshot_json` | Run 期间快照 | ✅ |
-| `team_runs` | `graph_execution_id` | 链入 Graph Run | ✅ |
-| `team_runs` | `trace_id` | 跨域 trace | 📋 待实施 |
-| `orchestration_steps` | `id / team_run_id / graph_execution_id / node_id / activity_snapshot_json / status / started_at / finished_at / created_at` | 持久化 Activity 时间线 | ✅ |
-| `team_graph_sessions` | `exec_id / team_run_id / team_id / session_id / input_preview / definition_json / status / registered_at / last_activity_at` | 进程重启恢复 | ✅ |
-| `team_run_steps` | `tool_call_count` · `latency_ms` | — | ✅ |
+| 表 | 字段 | 用途 |
+|----|------|------|
+| `team_runs` | `definition_snapshot_json` | Run 期间快照 |
+| `team_runs` | `graph_execution_id` | 链入 Graph Run |
+| `team_runs` | `trace_id` | 跨域 trace |
+| `orchestration_steps` | `id / team_run_id / graph_execution_id / node_id / activity_snapshot_json / status / started_at / finished_at / created_at` | 持久化 Activity 时间线 |
+| `team_graph_sessions` | `exec_id / team_run_id / team_id / session_id / input_preview / definition_json / status / registered_at / last_activity_at` | 进程重启恢复 |
+| `team_run_steps` | `tool_call_count` · `duration_ms` | — |
 
 **迁移**：
 
-1. ~~Ent schema 增加 `team_runs.trace_id`、`orchestration_steps` 表；~~ ✅ `orchestration_steps` + `team_graph_sessions` 已完成
-2. ~~`make wire && make api && ent generate`；~~ ✅
-3. 旧记录 `trace_id` 默认空字符串，前端兼容。📋 `trace_id` 字段待实施
+1. Ent schema 增加 `team_runs.trace_id`、`orchestration_steps` 表；
+2. `make wire && make api && ent generate`；
+3. 旧记录 `trace_id` 默认空字符串，前端兼容。
+
+> 迁移实施状态详见 [53-team-graph-orchestration.development.md §8.2 已完成](./53-team-graph-orchestration.development.md#82-已完成一条链的完整实现)
 
 ### 3.3 Envelope 协议增量
 
@@ -934,18 +943,30 @@ Team A 内某 Agent 调 call_agent(b)
 
 ## 6. AI 落地任务清单（按 ID 执行）
 
+> **任务清单（含 Phase 划分、代码锚点、验收标准、状态标记）已迁移至开发计划文档。**
+> 详见 [53-team-graph-orchestration.development.md §3 开发阶段](./53-team-graph-orchestration.development.md#3-开发阶段) 与 [§Phase 8 架构优化](./53-team-graph-orchestration.development.md#phase-8--架构优化2026-05-28启动)
+>
 > 任务编号承接 M53 / M36 已有 ID（TG-RT-* / G-* / TEAM-*）+ 新增前缀 `OPS-` 表示运维/可观测、`UX-` 表示前端体验。
+> 待实施任务（Phase 8.9）：BL-05（Step 持久化事件驱动统一）、BL-09（Observer 单订阅化）、FP-02（Circuit Breaker）、FP-04（死信表）。
+> **注意**：OPS-TRACE-01（trace_id 持久化）已在 Ent Schema 中实现（`team_runs.trace_id` 字段）。
 
-### 6.1 Phase 5 · Parity + UI + Metrics（P0）— ✅ 已完成
+---
 
-#### TG-RT-PARITY：六模式 Native vs Graph 对比 E2E
+## 7. 验证矩阵
 
-- **目标**：`internal/team/parity_test.go` 新建 E2E：相同 Team 定义 + 相同输入，Native 与 Graph 路径执行后，对比：
-  - `team_run.token_in/out`、`duration_ms`
-  - `team_run_steps` 列表（agent_key、tool_call_count）
-  - `team_summary` 字段
-  - WS envelope 序列（member_*、tool_*、team_run_finished）
-- **代码锚点**：`internal/team/runner_team_trpc.go` · `internal/team/graph_runtime_e2e_test.go` · `internal/team/summary.go`。
+### 7.1 CI 必跑
+
+```bash
+make wire && make wire-clean && make api && make build && make test && make lint && make runtime-boundary
+cd web && pnpm i && pnpm lint && pnpm test && pnpm build
+```
+
+### 7.2 单测与集成测试
+
+| 测试 | 位置 | 验证 |
+|------|------|------|
+| `TestParityNativeVsGraph_<mode>` | `internal/team/parity_test.go` | 六模式 parity |
+| `TestActivityHistoryProjection` | `internal/team/status_projector_test.go` | history capped + ordering |
 - **验收**：六种 mode（sequential/parallel/coordinator/critic_loop/swarm/adaptive）输出 parity 报告；diff 文档化。
 - **风险**：Graph 路径事件序列与 Native 不完全 1:1（Graph 多 `graph_node_*`）；接受这一类有文档的 diff。
 

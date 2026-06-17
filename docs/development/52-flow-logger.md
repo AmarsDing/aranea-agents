@@ -2,7 +2,7 @@
 
 > **版本**：2026-05-21 | **状态**：✅ v2 Phase 1a/1b/1c/3 已落地；Phase 2 落库可选  
 > **设计**：[52-flow-logger.design.md](./52-flow-logger.design.md)  
-> **开发计划**：[52-flow-logger-development.md](./52-flow-logger-development.md)（**实现差距以开发计划为准**）  
+> **开发计划**：[52-flow-logger.development.md](./52-flow-logger.development.md)（**实现差距以开发计划为准**）  
 > **关联**：[51 消息机制](./51%20消息机制.md) · [51a 后端](./51a%20后端消息机制.md) · [changelog DocSync](../changelog/2026-05-21-Message-FlowLogger-DocSync.md)  
 > **背景**：[changelog FlowLogger 初版](../changelog/2026-05-20-Agent-No-Response-Debug-And-FlowLogger.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)
 
@@ -10,7 +10,7 @@
 
 ## 1. 背景与问题
 
-v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat Turn 排障，存在局限；**v2 已由 `TraceEmitter` + `EnvelopeTypeFlowLog` 替代**（见开发计划）。历史局限如下：
+v1 `FlowLogger` 曾用于 Chat Turn 排障，存在局限；**v2 已由统一流程日志体系替代**（技术实现见 [设计文档](./52-flow-logger.design.md)）。历史局限如下：
 
 
 | 问题                               | 影响                                   |
@@ -32,12 +32,13 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 项目中目前存在 **三条「跟踪」相关能力**，容易混淆：
 
 
-| 能力                     | 代码锚点                                                            | 主要输出                                           | 面向谁        | 典型 UI                  |
-| ---------------------- | --------------------------------------------------------------- | ---------------------------------------------- | ---------- | ---------------------- |
-| **OTel Tracing**       | `internal/service/turn_trace.go`、`internal/server/telemetry.go` | OTLP → Jaeger/Tempo                            | SRE、跨服务排障  | Jaeger UI              |
-| **Turn Span（业务 Span）** | `TraceEmitter.MetadataJSON()` → `recordTurnUsage`（`turn_spans.go` 已删） | `model_token_usage_events.metadata_json.spans` | 产品运维       | Monitor **Traces** 瀑布图 |
-| **FlowLogger v2（流程日志）** | `internal/event/trace_emitter.go` → WS `monitor` `flow_log`     | `EnvelopeTypeFlowLog`（与进程 `log` 分流）       | 业务用户、AI 排障 | Monitor Logs「流程」+ Traces「流程」Tab |
+| 能力                     | 主要输出                                           | 面向谁        | 典型 UI                  |
+| ---------------------- | ---------------------------------------------- | ---------- | ---------------------- |
+| **OTel Tracing**       | OTLP → Jaeger/Tempo                            | SRE、跨服务排障  | Jaeger UI              |
+| **Turn Span（业务 Span）** | Usage metadata 中的 spans                        | 产品运维       | Monitor **Traces** 瀑布图 |
+| **FlowLogger v2（流程日志）** | Monitor WS 流程日志 + 可选落库                   | 业务用户、AI 排障 | Monitor Logs「流程」+ Traces「流程」Tab |
 
+> 三条能力的代码锚点与架构关系详见 [52-flow-logger.design.md §2](./52-flow-logger.design.md#2-架构总览)
 
 ### 2.1 本质区别
 
@@ -56,19 +57,9 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 
 ### 2.2 推荐：Tracing 作骨干，Flow 作 Monitor 统一输出的「语义层」
 
-**可以且应当统一**，但不是「只保留 Jaeger」，而是：
+**可以且应当统一**，但不是「只保留 Jaeger」，而是 **一次写入、多投影**：业务代码一次打点，同时投影为 FlowLog（Monitor 主输出）、Span（Usage 瀑布图）、OTel（Jaeger，可选）。
 
-```text
-                    ┌─────────────────────────────────────┐
-  业务代码一次打点   │  TraceEmitter（统一写入 API，v2）      │
-                    └──────────────┬──────────────────────┘
-                                   │ 同一 trace_id / run_id
-           ┌───────────────────────┼───────────────────────┐
-           ▼                       ▼                       ▼
-   FlowLog 投影器          Span 投影器              OTel 投影器
-   (Monitor 主输出)    (Usage 瀑布图)          (Jaeger，可选)
-   WS flow_log + DB      metadata.spans         OTLP export
-```
+> 架构图与投影机制详见 [52-flow-logger.design.md §2](./52-flow-logger.design.md#2-架构总览)
 
 
 | Monitor 子模块           | v2 定位            | 数据来源                          |
@@ -92,15 +83,15 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 | -------------------------------------------------------------------- | ---- | ----------------------------------------------------------- |
 | Monitor Logs **仅**展示 OTel/Jaeger 数据                                  | ❌    | 无 severity/中文/hint；依赖外部 Jaeger；无 WS 实时业务语义                  |
 | Monitor Logs **仅**展示 Usage 里 `metadata.spans`                        | ❌    | 仅有耗时条，无步骤说明与告警分级；与 Flow 步骤重复维护                              |
-| **TraceEmitter 一次写、多投影**；Monitor 主 UI 读 **FlowLog**，瀑布图读 **Span 投影** | ✅    | 见 [52-flow-logger.design.md §3](./52-flow-logger.design.md) |
+| **一次写入、多投影**；Monitor 主 UI 读 **FlowLog**，瀑布图读 **Span 投影** | ✅    | 见 [52-flow-logger.design.md §2](./52-flow-logger.design.md#2-架构总览) |
 | FlowLog 条目内嵌 `span_id` / `parent_span_id`，与 OTel TraceID 对齐          | ✅    | 同一链路可跳转 Jaeger（运维高级能力）                                      |
 
 
 ### 2.4 实施对需求的影响
 
 - §3.1 的 `trace_id` **必须与 OTel TraceID（W3C）一致**（有 OTel 上下文时复用，无则生成并在整个 Turn 内固定）。  
-- §3.6 前端「流程日志」与现有 **TraceList/TraceWaterfall** 合并为 **同一 Trace 详情页** 的两个视图（时间线 / 瀑布），而非三个互不关联的入口。  
-- §6「不在范围」补充：FlowLogger v2 **不替代** OTel/Jaeger；而是 **收敛 Monitor 内多套打点** 为一次 `TraceEmitter` 写入。
+- §4.6 前端「流程日志」与现有 **TraceList/TraceWaterfall** 合并为 **同一 Trace 详情页** 的两个视图（时间线 / 瀑布），而非三个互不关联的入口。  
+- §6「不在范围」补充：FlowLogger v2 **不替代** OTel/Jaeger；而是 **收敛 Monitor 内多套打点** 为一次统一写入。
 
 ---
 
@@ -112,7 +103,7 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 | 业务用户         | 聊天无响应时，在会话侧栏查看「本次请求走到哪一步、哪步报错」                                    |
 | 运维 / 管理员     | Monitor 按 `trace_id` / `run_id` 过滤，查看完整链路时间线                      |
 | AI 助手（内置或外部） | 导出结构化 JSON，根据 `severity` + `step` + `hint` 快速定位根因                 |
-| 开发者          | 在 `internal/service` 打点，不触发 SlogBridge 死锁，与 trpc-agent-go 运行时边界一致 |
+| 开发者          | 在业务代码中打点，不触发日志桥接死锁，与 trpc-agent-go 运行时边界一致 |
 
 
 ---
@@ -154,7 +145,7 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 | `mcp`       | `session`                                      | `mcp.session.reconnect`     |
 
 
-**验收**：步骤清单在 design 文档中维护注册表；新增步骤须登记，禁止随意字符串。
+**验收**：步骤清单在设计文档中维护注册表；新增步骤须登记，禁止随意字符串。
 
 ### 4.3 严重级别（告警类别）与展示色
 
@@ -218,10 +209,13 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 
 ### 4.7 框架与架构约束
 
-- 实现位于 `internal/event`，**禁止** `internal/biz` import `trpc-agent-go`。
-- Turn 热路径 **禁止** 使用 `slog`（SlogBridge 已移除）；统一 `TraceEmitter` + `TraceContext`。
-- `internal/service` 创建上下文并注入 `context.Context`；`internal/agent` 仅通过 context 取 logger。
-- 与 [AGENT_RUNTIME_BOUNDARY](../AGENT_RUNTIME_BOUNDARY.md) / [trpc-agent-framework-first](../../.cursor/rules/trpc-agent-framework-first.mdc) 一致。
+> 架构约束、代码分层、import 规则等技术细节详见 [52-flow-logger.design.md §1+§5](./52-flow-logger.design.md#1-设计原则)
+
+**需求层面约束**：
+
+- 流程日志实现不得破坏 trpc-agent-go 运行时边界（业务代码不直接依赖框架内部）。
+- Turn 热路径不得使用已废弃的日志桥接机制；统一使用新的流程日志写入 API。
+- 业务代码（service 层）创建跟踪上下文并注入 `context.Context`；Agent 层仅通过 context 取 logger。
 
 ---
 
@@ -231,8 +225,8 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 | 项   | 要求                                                  |
 | --- | --------------------------------------------------- |
 | 性能  | 单 Turn 日志条数上限可配置（默认 500）；异步发布，不阻塞 LLM               |
-| 存储  | 热数据内存 Buffer + 可选落库 `flow_log_events`（见 design）     |
-| 保留  | 默认 7 天（可配置），与 audit/monitor 策略一致                    |
+| 存储  | 热数据内存 Buffer + 可选落库 `flow_log_events`（见 [设计文档](./52-flow-logger.design.md#43-持久化phase-2)）     |
+| 保留  | 默认 30 天（可配置，`FLOW_LOG_TTL_DAYS`），与 audit/monitor 策略一致                    |
 | 安全  | 不落库完整 Prompt；敏感字段走现有脱敏策略                            |
 | 兼容  | v1 `EnvelopeTypeLog` + `channel=monitor` 只读兼容 1 个版本 |
 
@@ -255,4 +249,3 @@ v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat T
 - 替代 Gateway 文本 Logs 流（`LogStream` 仍服务进程日志）
 - 用 Jaeger 单独替代 Monitor 内流程日志 Tab
 - 跨集群日志聚合与 ELK 对接（后续 Observability 迭代）
-

@@ -64,6 +64,10 @@ func NewGraphExecutionUsecase(
 // On illegal transition, logs a warning and still applies the target state to avoid
 // blocking error-recovery paths (the warning surfaces the bug for later investigation).
 // Caller must hold exec.execMu (write lock).
+//
+// TECH-DEBT(FSM): Currently advisory-only — illegal transitions are logged but not
+// blocked, to avoid breaking error-recovery paths. Future iteration should split
+// authoritative paths (normal complete/cancel) from advisory paths (error recovery).
 func (uc *GraphExecutionUsecase) applyExecTransition(exec *GraphExecution, event GraphExecutionEvent, target GraphExecutionState) {
 	from := ParseGraphExecutionState(exec.Status)
 	newState, err := uc.sm.Transition(from, event)

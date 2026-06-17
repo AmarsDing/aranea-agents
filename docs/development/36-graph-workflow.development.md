@@ -1,7 +1,7 @@
 # Graph 工作流 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：✅ Phase A/B/C/D 已落地，剩余 G14/G18-G22 在 M54 推进
-> **需求**：[36 graph-workflow.md](./36%20graph-workflow.md) · **设计**：[36 graph-workflow.design.md](./36 graph-workflow.design.md) · **外部参考**：[36-graph-external-reference-playbook.md](./36-graph-external-reference-playbook.md)（Flowise + AgentCoord，其他机器无外部源码时可读）
+> **版本**：2026-06-17 | **状态**：✅ Phase A/B/C/D 已落地，剩余 G14/G18-G25 在 M54 推进
+> **需求**：[36 graph-workflow.md](./36-graph-workflow.md) · **设计**：[36 graph-workflow.design.md](./36-graph-workflow.design.md)
 
 ---
 
@@ -10,16 +10,20 @@
 Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。核心命题是"Agent 节点内部自主推理，节点间流转由确定性图规则控制"。
 
 **代码锚点**：
-- `internal/graph/trpc/` — 图引擎核心（Builder/Registry/Checkpoint/EventBridge/Validator/Templates）
-- `internal/graph/adapter/` — 运行时适配器（GraphBuilderFactory）
-- `internal/biz/graph.go` + `task.go` — 业务层（GraphUsecase + TaskUsecase）
-- `internal/data/graph.go` + `task.go` — 数据层（GraphRepo + TaskRepo）
-- `internal/service/graph.go` — 服务层（28 RPC 方法）
-- `api/kratos/graph/v1/graph.proto` — Proto 定义
+- `internal/graph/trpc/` — 图引擎核心（Builder/Registry/Checkpoint/EventBridge/Validator/Templates/NodeWiring/Mapper/FailureRecovery/SkipNode/BuildDeps）
+- `internal/graph/adapter/` — 运行时适配器（GraphBuilderFactory + Resolvers + TeamGraphRoot）
+- `internal/biz/graph.go` + `graph_definition_usecase.go` + `graph_execution_usecase.go` + `graph_runtime.go` + `graph_version.go` + `graph_execution_state_machine.go` — 业务层（GraphUsecase + GraphExecutionUsecase + GraphRuntime 接口 + 版本管理 + 状态机）
+- `internal/biz/task*.go` — 任务系统（TaskUsecase + TaskPlanner + TaskOrchestrator + TaskDispatcher + TaskLinks + TaskDeadLetter + TaskPlan）
+- `internal/data/graph.go` + `task.go` + `task_link.go` + `task_plan_repo.go` — 数据层（GraphRepo + TaskRepo + TaskLinkRepo）
+- `internal/service/graph_*.go` — 服务层（42 个方法：15 定义 + 9 执行 + 16 任务 + 2 异步）
+- `api/kratos/graph/v1/graph.proto` — Proto 定义（40 个 RPC 端点）
 - `web/src/features/graph/` — 前端类型、API、runtime/editor composable
-- `web/src/features/graph/runtime/` — WS 执行投影（`useGraphExecutionStream`）
+- `web/src/features/graph/runtime/` — WS 执行投影（`useGraphExecutionStream` + `useGraphRunStream` + `useGraphStream` + `useGraphTimeTravel`）
 - `web/src/features/graph/editor/` — 布局持久化（`graphLayout.ts`）
-- `web/src/components/graph/` — 前端组件（Vue Flow + Run/HITL/Validation/Template）
+- `web/src/features/graph/tasks/` — 任务投影（`taskStreamProjection.ts` + `kanbanColumns.ts`）
+- `web/src/components/graph/` — 前端组件（30 个：Vue Flow 画布 + Run/HITL/Validation/Template/Checkpoint/TimeTravel/Kanban/Version/Inspector/Detail）
+
+> 架构设计、Proto 契约、数据模型、状态机定义详见 [36-graph-workflow.design.md](./36-graph-workflow.design.md)。
 
 ---
 
@@ -31,11 +35,12 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 |----|------|------|
 | GraphDefinition CRUD | ✅ | `GraphUsecase` + `GraphDefinitionUsecase` Create/Get/Update/Delete/List |
 | 图执行引擎（BSP/DAG） | ✅ | `BuildStateGraph` + `GraphAgent` + `Executor` |
-| Function 节点 | ✅ | `AddNode` + `NodeFunc` + Registry |
+| Function 节点 | ✅ | `AddNode` + `NodeFunc` + Registry + FunctionResolver 降级 |
 | LLM 节点 | ✅ | `node_wiring.go` → `sg.AddLLMNode`，前端属性面板支持 Instruction/Model/Tools |
 | Tool 节点 | ✅ | `node_wiring.go` → `sg.AddToolsNode`，前端属性面板支持 ToolNames |
-| Agent 节点（含 Mapper） | ✅ | `node_wiring.go` → `WithSubgraphInputMapper/OutputMapper` |
+| Agent 节点（含 Mapper） | ✅ | `node_wiring.go` → `sg.AddAgentNode` + `WithSubgraphInputMapper/OutputMapper` |
 | Router 节点 | ✅ | `AddConditionalEdges` + CondFuncRef + PathMap |
+| Task/Review 节点 | ✅ | `node_wiring.go` → `AddNode` + `WithInterruptAfter`（自动中断） |
 | Join 节点 | ✅ | BSP/DAG 引擎自动处理 |
 | Command.GoTo / WithEndsMap | ✅ | `node_wiring.go` → `WithEndsMap(Destinations)` |
 | State Schema + Reducer | ✅ | 4 种 Reducer（Default/Append/Cover/Merge） |
@@ -44,25 +49,27 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 | Checkpoint + TimeTravel | ✅ | InMemory + SQLite Saver + History/GetState/EditState |
 | 事件桥接 | ✅ | 9 种 ObjectType → EnvelopeType 映射 |
 | ExecutionSummary | ✅ | `execution_summary.go` + `event_bridge.go` WS `graph_execution_done` |
-| 设计时校验 | ✅ | `validator.go` 拓扑/Agent引用/StateSchema/循环 |
+| 设计时校验 | ✅ | `validator.go` 16 种错误码（拓扑/Agent引用/StateSchema/循环/Mapper/重试/子图深度） |
 | 设计模式模板 | ✅ | 6 种内置模板 + `CreateGraphFromTemplate` |
 | 用户自定义模板 | ✅ | `SaveGraphAsTemplate` RPC + `metadata.user_template` |
 | Graph 版本管理 | ✅ | `metadata._version_history` + `ListGraphVersions/RollbackGraphVersion` |
 | 导入/导出 | ✅ | `ExportGraph/ImportGraph` RPC + 编辑器 ⋮ 菜单 |
 | RetryPolicy / CachePolicy | ✅ | `node_wiring.go` → `WithRetryPolicy/WithNodeCachePolicy`，前端属性面板支持 |
+| FailureRecovery | ✅ | `failure_recovery.go` → FallbackAgent + failure_action 策略 |
 | Webhook 通知 | ✅ | `GraphTaskRuntime.dispatchGraphTaskWebhook` → `graph.task.status` |
-| 任务系统 | ✅ | `TaskUsecase` + 状态机 + Claim/Submit/Heartbeat/Review/Timeout |
+| 任务系统 | ✅ | `TaskUsecase` + 状态机 + Claim/Submit/Heartbeat/Review/Timeout/Unblock/Link |
 | 可视化 | ✅ | DOT 解析 + 结构化 JSON + `VisualizeGraph` API |
+| GraphExecution 状态机 | ✅ | `graph_execution_state_machine.go` 5 状态显式状态机（AS-FSM-01） |
 | 前端编辑器 | ✅ | Vue Flow + 模板/校验/布局持久化/导入导出/版本管理 |
 | 前端运行监控 | ✅ | `useGraphExecutionStream` + `GraphRunSidebar` + `GraphRunInspector` |
 | 前端 Checkpoint/TimeTravel | ✅ | `GraphCheckpointPanel` + `GraphTimeTravelPanel` + `useGraphTimeTravel` |
 | 前端 Task 看板 | ✅ | `GraphTaskKanban` + `GraphTaskDetailDrawer` + WS 投影 |
 | 节点布局持久化 | ✅ | `metadata.layout` + `graphLayout.ts` + dagre 自动布局 |
-| 前端类型与 API | ✅ | `types.ts` + `api.ts` + `stores/graph` |
-| Ent Schema | ✅ | 7 张表（definition/execution/task/comment/log/run/event） |
-| Proto + Service | ✅ | 32 RPC 端点 + 42 个 service 方法 |
+| 前端类型与 API | ✅ | `types.ts` + `api.ts` + `useGraphsPage` + `useGraphEditorPage` + `useGraphRunPage` |
+| Ent Schema | ✅ | 8 张表（definition/execution/task/task_link/comment/log/run/event） |
+| Proto + Service | ✅ | 40 RPC 端点 + 42 个 service 方法 |
 
-### 2.2 差距清单（2026-06-06 校正）
+### 2.2 差距清单（2026-06-17 校正）
 
 | # | 差距 | 优先级 | 状态 | 说明 |
 |---|------|--------|------|------|
@@ -70,7 +77,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 | G2 | Tool 节点接线 | P1 | ✅ | `node_wiring.go` → `sg.AddToolsNode` |
 | G3 | Agent InputMapper/OutputMapper | P1 | ✅ | `node_wiring.go` → `WithSubgraphInputMapper/OutputMapper` |
 | G4 | Command.GoTo / WithEndsMap | P1 | ✅ | `node_wiring.go` → `WithEndsMap(Destinations)` |
-| G5 | ExecutionSummary WS | P1 | ✅ | `execution_summary.go` + `event_bridge.go` |
+| G5 | ExecutionSummary WS | P1 | ✅ | `execution_summary.go` + `event_bridge.go`（WS JSON，非 Proto message） |
 | G6 | 前端执行监控增强 | P1 | ✅ | `useGraphExecutionStream` + `GraphRunSidebar` + `GraphRunInspector` |
 | G7 | 前端模板选择面板 | P1 | ✅ | `GraphTemplatePicker` |
 | G8 | 前端校验结果面板 | P1 | ✅ | `GraphValidationPanel` + 保存后 validate |
@@ -87,7 +94,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 | G19 | TaskDispatcher | P1 | 🚧 | M54 HK-RT-02 |
 | G20 | kanban_* Agent tools | P1 | 🚧 | M54 HK-TOOLS-01 |
 | G21 | Unblock + 超时 reclaim | P1 | 🚧 | M54 HK-RT-04/05 |
-| G22 | 任务依赖 graph_task_links | P2 | 🚧 | M54 HK-DEP-01 |
+| G22 | 任务依赖 graph_task_links | P2 | 🚧 | M54 HK-DEP-01（Ent Schema 已建表，biz 层 `task_links.go` 已实现） |
 | G23 | 子图嵌套编辑器 UI | P2 | 📋 | 后端 `SubgraphDef` 已支持，前端子图节点编辑器待补 |
 | G24 | 动态任务节点插入 | P2 | 📋 | 无 `DynamicNodeInsert` 事件（BabyAGI 模式） |
 | G25 | ExecutionSummary Proto 映射 | P2 | 📋 | Go 结构体已实现，未映射为 Proto message；前端通过 WS JSON 消费 |
@@ -96,7 +103,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ## 3. 开发阶段（路线图）
 
-> **Phase A/B/C/D** ✅ 2026-05-23 见 [Phase A/B](../changelog/2026-05-23-Graph-Frontend-Phase-A-B.md) · [Phase C](../changelog/2026-05-23-Graph-Frontend-Phase-C.md) · [Phase D](../changelog/2026-05-23-Graph-Frontend-Phase-D.md)
+> **Phase A/B/C/D** ✅ 2026-05-23 已落地
 
 ### 阶段一（已完成）：P1 前端运行态 + 设计态闭环
 
@@ -128,7 +135,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ### 阶段三（已完成）：Phase D — 契约与后端补全
 
-- Proto NodeDef 扩展（retry / cache / mapper）✅
+- Proto NodeDef 扩展（retry / cache / mapper 扁平字段）✅
 - 导入导出、版本管理、用户模板 ✅
 - 前端属性面板 + 编辑器 ⋮ 菜单 ✅
 
@@ -145,14 +152,17 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ### 阶段一（后端）：P1 节点类型补全
 
+#### 步骤 1：LLM 节点接线
+
 **任务**：
-1. 修改 `internal/graph/trpc/builder.go`：在 `BuildStateGraphWithAgents` 中增加 LLM 节点分支
-2. 解析 NodeDef 的 instruction/model/tool_names/user_input_key 字段
-3. 调用 `sg.AddLLMNode(nodeID, instruction, model, opts...)` 接线
-4. 处理 WithLLMNodeTools、WithLLMNodeUserInputKey 选项
+1. 修改 `internal/graph/trpc/node_wiring.go`：在 `wireNode` 中增加 LLM 节点分支
+2. 解析 NodeDef 的 instruction/model_name/tool_names 字段
+3. 调用 `sg.AddLLMNode(nodeID, model, instruction, toolMap, opts...)` 接线
+4. 通过 ModelResolver 解析模型
 
 **涉及文件**：
-- `internal/graph/trpc/builder.go` — 增加 buildLLMNode 分支
+- `internal/graph/trpc/node_wiring.go` — 增加 LLM 节点分支
+- `internal/graph/adapter/resolver_model.go` — ModelResolver 实现
 
 **验证**：
 - 创建包含 LLM 节点的 Graph 定义，执行后验证 LLM 调用正常
@@ -161,12 +171,13 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 #### 步骤 2：Tool 节点接线
 
 **任务**：
-1. 修改 `builder.go`：增加 Tool 节点分支
-2. 解析 NodeDef 的 tool_names/enable_parallel_tools 字段
-3. 调用 `sg.AddToolNode(nodeID, toolNames, opts...)` 接线
+1. 修改 `node_wiring.go`：增加 Tool 节点分支
+2. 解析 NodeDef 的 tool_names 字段
+3. 调用 `sg.AddToolsNode(nodeID, toolMap, opts...)` 接线
 
 **涉及文件**：
-- `internal/graph/trpc/builder.go` — 增加 buildToolNode 分支
+- `internal/graph/trpc/node_wiring.go` — 增加 Tool 节点分支
+- `internal/graph/adapter/resolver_tool.go` — ToolResolver 实现
 
 **验证**：
 - 创建包含 Tool 节点的 Graph 定义，执行后验证工具调用正常
@@ -174,12 +185,14 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 #### 步骤 3：Agent InputMapper/OutputMapper 接线
 
 **任务**：
-1. 修改 `builder.go`：在 Agent 节点构建中解析 input_mapper/output_mapper JSON
+1. 修改 `node_wiring.go`：在 Agent 节点构建中解析 input_mapper_json/output_mapper_json
 2. 传入 `WithSubgraphInputMapper` / `WithSubgraphOutputMapper` 选项
 3. 传入 `WithSubgraphIsolatedMessages` / `WithSubgraphInputFromLastResponse` 选项
 
 **涉及文件**：
-- `internal/graph/trpc/builder.go` — 修改 buildAgentNode 分支
+- `internal/graph/trpc/node_wiring.go` — 修改 Agent 节点分支
+- `internal/graph/trpc/mapper.go` — Mapper JSON 解析
+- `internal/graph/adapter/resolver_agent.go` — AgentResolver 实现
 
 **验证**：
 - 创建包含 Agent 节点的 Graph，配置 InputMapper/OutputMapper
@@ -188,32 +201,33 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 #### 步骤 4：Command.GoTo / WithEndsMap 接线
 
 **任务**：
-1. 修改 `builder.go`：解析 NodeDef.Destinations 字段
+1. 修改 `node_wiring.go`：解析 NodeDef.Destinations 字段
 2. 当 Destinations 非空时，传入 `WithEndsMap` 选项
 3. Command.GoTo 事件通过 EventBridge 已有 `graph_node_custom` 映射
 
 **涉及文件**：
-- `internal/graph/trpc/builder.go` — 增加 WithEndsMap 接线
+- `internal/graph/trpc/node_wiring.go` — 增加 WithEndsMap 接线
 
 **验证**：
 - 创建包含动态路由的 Graph，验证 Command.GoTo 事件推送
 
-#### 步骤 5：ExecutionSummary Proto + 推送
+#### 步骤 5：ExecutionSummary WS 推送
 
 **任务**：
-1. Proto 新增 `ExecutionSummary` / `NodeExecutionSummary` 消息
-2. 修改 `event_bridge.go`：在 `graph_execution_done` 事件中填充 ExecutionSummary
-3. 前端 `types.ts` 新增 ExecutionSummary 类型
-4. 前端 `api.ts` 新增获取 ExecutionSummary 方法
+1. 实现 `ExecutionSummaryTracker` + `NodeExecutionSummary` Go 结构体（`execution_summary.go`）
+2. 修改 `event_bridge.go`：在 `graph_execution_done` 事件中填充 ExecutionSummary 到 metadata JSON
+3. 前端 `types.ts` 新增 `GraphRunExecutionSummary` / `GraphRunNodeSummary` 类型
+4. 前端通过 WS metadata 消费 ExecutionSummary
 
 **涉及文件**：
-- `api/kratos/graph/v1/graph.proto` — 新增消息
-- `internal/graph/trpc/event_bridge.go` — 填充摘要
-- `web/src/features/graph/types.ts` — 新增类型
-- `web/src/features/graph/api.ts` — 新增方法
+- `internal/graph/trpc/execution_summary.go` — ExecutionSummary 结构体与追踪
+- `internal/graph/trpc/event_bridge.go` — WS 集成
+- `web/src/features/graph/types.ts` — 新增前端类型
 
 **验证**：
 - Graph 执行完成后，WS 推送包含 ExecutionSummary 的事件
+
+> **注**：ExecutionSummary 未映射为 Proto message，而是通过 WS 事件 metadata JSON 传递。详见 [36-graph-workflow.design.md §5.4](./36-graph-workflow.design.md#54-executionsummary-已实现)。
 
 #### 步骤 6：前端执行监控增强
 
@@ -240,6 +254,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 **涉及文件**：
 - `web/src/components/graph/GraphNodePalette.vue` — 增加模板区域
+- `web/src/components/graph/GraphTemplatePicker.vue` — 模板选择组件
 
 **验证**：
 - 从模板创建 Graph 正常工作
@@ -253,6 +268,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 **涉及文件**：
 - `web/src/components/graph/GraphPropertyPanel.vue` — 增加校验区域
+- `web/src/components/graph/GraphValidationPanel.vue` — 校验结果组件
 
 **验证**：
 - 保存无效 Graph 时，前端展示校验错误
@@ -266,16 +282,17 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 #### 步骤 9：RetryPolicy / CachePolicy
 
 **任务**：
-1. Proto NodeDef 新增 `retry_policy` / `cache_policy` 字段
+1. Proto NodeDef 新增扁平字段 `retry_max_attempts` / `failure_action` / `fallback_agent` / `cache_enabled` / `cache_ttl_seconds`
 2. 前端 `types.ts` 新增对应类型
-3. 修改 `builder.go`：解析并传入 `WithRetryPolicy` / `WithNodeCachePolicy`
+3. 修改 `node_wiring.go`：解析并传入 `WithRetryPolicy` / `WithNodeCachePolicy`
 4. 前端属性面板增加重试/缓存配置
 
 **涉及文件**：
-- `api/kratos/graph/v1/graph.proto`
-- `internal/graph/trpc/builder.go`
-- `web/src/features/graph/types.ts`
-- `web/src/components/graph/GraphPropertyPanel.vue`
+- `api/kratos/graph/v1/graph.proto` — NodeDef 扁平字段
+- `internal/graph/trpc/node_wiring.go` — 接线
+- `internal/graph/trpc/failure_recovery.go` — FallbackAgent 策略
+- `web/src/features/graph/types.ts` — 前端类型
+- `web/src/components/graph/GraphPropertyPanel.vue` — 属性面板
 
 **验证**：
 - 配置重试策略后，失败节点自动重试
@@ -284,15 +301,14 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 **任务**：
 1. Proto 新增 `SaveGraphAsTemplate` RPC
-2. Biz 层实现：将 Graph 定义转换为模板并持久化
-3. Data 层：新增 `graph_template` 表或复用 `graph_definitions` + 标记
-4. 前端：编辑器中"保存为模板"按钮
+2. Biz 层实现：将 Graph 定义转换为模板并持久化（`metadata.user_template`）
+3. 前端：编辑器中"保存为模板"按钮
 
 **涉及文件**：
 - `api/kratos/graph/v1/graph.proto`
-- `internal/biz/graph.go`
-- `internal/data/graph.go`
-- `web/src/pages/GraphEditorPage.vue`
+- `internal/biz/graph_version.go` — UserTemplateMeta
+- `internal/biz/graph_definition_usecase.go` — SaveGraphAsTemplate
+- `web/src/components/graph/GraphTemplatePicker.vue`
 
 **验证**：
 - 将已有 Graph 保存为模板，从模板创建新 Graph
@@ -300,16 +316,17 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 #### 步骤 11：Graph 版本管理
 
 **任务**：
-1. `graph_definitions` 表新增 `version` / `previous_version_id` 字段
-2. UpdateGraph 时创建新版本而非覆盖
+1. 版本号和快照存储在 `metadata._version` / `metadata._version_history`（非独立 DB 列）
+2. UpdateGraph 时自动创建快照
 3. 新增 `ListGraphVersions` / `RollbackGraphVersion` API
 4. 前端版本历史面板
 
 **涉及文件**：
-- `internal/data/ent/schema/graph_definition.go`
-- `internal/biz/graph.go`
-- `internal/service/graph.go`
+- `internal/biz/graph_version.go` — 版本管理逻辑
+- `internal/biz/graph_definition_usecase.go` — ListGraphVersions/RollbackGraphVersion
+- `internal/service/graph_definition_service.go` — RPC 实现
 - `api/kratos/graph/v1/graph.proto`
+- `web/src/components/graph/GraphVersionPanel.vue`
 
 **验证**：
 - 更新 Graph 后可查看历史版本并回滚
@@ -323,8 +340,9 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 **涉及文件**：
 - `api/kratos/graph/v1/graph.proto`
-- `internal/biz/graph.go`
-- `internal/service/graph.go`
+- `internal/biz/graph_definition_usecase.go`
+- `internal/service/graph_definition_service.go`
+- `web/src/features/graph/useGraphEditorAssets.ts`
 
 **验证**：
 - 导出 Graph 为 JSON，从 JSON 导入创建新 Graph
@@ -332,14 +350,12 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 #### 步骤 13：Webhook 通知
 
 **任务**：
-1. Proto 新增 `WebhookConfig` 消息和 `ConfigureWebhook` RPC
-2. 节点执行完成/失败时触发 Webhook
-3. 前端：节点属性面板增加 Webhook 配置
+1. 节点执行完成/失败时触发 Webhook
+2. `GraphTaskRuntime.dispatchGraphTaskWebhook` → `graph.task.status`
 
 **涉及文件**：
-- `api/kratos/graph/v1/graph.proto`
-- `internal/biz/graph.go`
-- `internal/graph/trpc/event_bridge.go`
+- `internal/service/graph_task_runtime.go` — Webhook 派发
+- `internal/biz/task.go` — 任务状态发布
 
 **验证**：
 - 节点执行完成后 Webhook 正确触发
@@ -348,7 +364,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ### 阶段三：P2 高级能力
 
-#### 步骤 14：熔断策略
+#### 步骤 14：熔断策略（待实现）
 
 **任务**：
 1. 实现 `CircuitBreakerPolicy`（Proto 已定义）
@@ -356,7 +372,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 3. 可选执行补偿节点
 
 **涉及文件**：
-- `internal/graph/trpc/builder.go`
+- `internal/graph/trpc/node_wiring.go` — 接入 NodeDef
 - `internal/biz/graph.go`
 
 **验证**：
@@ -364,7 +380,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ---
 
-## 4. 验收标准
+## 5. 验收标准
 
 ### 阶段一验收（✅ 全部通过）
 
@@ -389,11 +405,11 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 - [ ] `go test ./internal/graph/...` 通过
 - [ ] `go test ./internal/biz/...` 通过（Graph + Task 相关）
-- [ ] 前端 `npm run build` 无类型错误
+- [ ] 前端 `pnpm build` 无类型错误
 
 ---
 
-## 5. 依赖与风险
+## 6. 依赖与风险
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
@@ -415,6 +431,6 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ---
 
-## 6. 外部参考
+## 7. 外部参考
 
-> 详见独立文档 [36-graph-external-reference-playbook.md](./36-graph-external-reference-playbook.md)（Flowise + AgentCoord 借鉴模式、启发清单、明确不做）
+> Flowise + AgentCoord 借鉴模式、启发清单、明确不做（外部参考文档已删除，如需恢复请从 git 历史检索）。

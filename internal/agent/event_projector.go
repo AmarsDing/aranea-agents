@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/event"
@@ -38,6 +39,7 @@ type ProjectMeta struct {
 // Deprecated: Use ActivityProjector instead (Activity-First architecture). EventProjector will be removed after frontend fully migrates to Activity consumption (Phase 3).
 type EventProjector struct {
 	eventBus      event.Bus
+	mu            sync.Mutex
 	memberStarted map[string]bool
 	toolCalls     map[string]toolCallCache
 	streamText    map[string]*strings.Builder
@@ -66,7 +68,25 @@ func (p *EventProjector) Configure(meta ProjectMeta, resolver ActivityMetaResolv
 	p.metaResolver = resolver
 }
 
-func (p *EventProjector) ensureToolCallCache() {
+// toolCallCacheStore stores a tool call cache entry under lock.
+func (p *EventProjector) toolCallCacheStore(id string, cache toolCallCache) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.ensureToolCallCacheLocked()
+	p.toolCalls[id] = cache
+}
+
+// toolCallCacheLoad retrieves a tool call cache entry under lock.
+func (p *EventProjector) toolCallCacheLoad(id string) (toolCallCache, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.ensureToolCallCacheLocked()
+	c, ok := p.toolCalls[id]
+	return c, ok
+}
+
+// ensureToolCallCacheLocked initializes the toolCalls map. Caller must hold p.mu.
+func (p *EventProjector) ensureToolCallCacheLocked() {
 	if p.toolCalls == nil {
 		p.toolCalls = make(map[string]toolCallCache)
 	}
@@ -141,13 +161,12 @@ func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trp
 				if !ev.Timestamp.IsZero() {
 					startedAt = ev.Timestamp.UTC()
 				}
-				p.ensureToolCallCache()
-				p.toolCalls[tc.ID] = toolCallCache{
+				p.toolCallCacheStore(tc.ID, toolCallCache{
 					name:      tc.Function.Name,
 					argsJSON:  argsJSON,
 					author:    ev.Author,
 					startedAt: startedAt,
-				}
+				})
 				_, isLongRunning := ev.LongRunningToolIDs[tc.ID]
 				env.ToolCall = p.buildToolCallEnvelope(ctx, tc.ID, tc.Function.Name, argsJSON, "", "calling", ev.Author, startedAt, nil, 0, "", isLongRunning)
 				p.attachActivityMetadata(&env)
@@ -221,13 +240,12 @@ func (p *EventProjector) projectChatCompletion(ctx context.Context, ev *trpceven
 				if !ev.Timestamp.IsZero() {
 					startedAt = ev.Timestamp.UTC()
 				}
-				p.ensureToolCallCache()
-				p.toolCalls[tc.ID] = toolCallCache{
+				p.toolCallCacheStore(tc.ID, toolCallCache{
 					name:      tc.Function.Name,
 					argsJSON:  argsJSON,
 					author:    ev.Author,
 					startedAt: startedAt,
-				}
+				})
 				env.ToolCall = p.buildToolCallEnvelope(ctx, tc.ID, tc.Function.Name, argsJSON, "", "calling", ev.Author, startedAt, nil, 0, "", false)
 				p.attachActivityMetadata(&env)
 				envelopes = append(envelopes, env)
@@ -347,7 +365,7 @@ func (p *EventProjector) buildToolResultEnvelope(ctx context.Context, ev *trpcev
 	author := ev.Author
 	startedAt := time.Time{}
 	if toolID != "" {
-		if cached, ok := p.toolCalls[toolID]; ok {
+		if cached, ok := p.toolCallCacheLoad(toolID); ok {
 			toolName = coalesceStr(toolName, cached.name)
 			argsJSON = cached.argsJSON
 			author = coalesceStr(author, cached.author)
@@ -629,6 +647,7 @@ func (p *EventProjector) projectMemberText(ev *trpcevent.Event, meta ProjectMeta
 	if author == "" {
 		return nil
 	}
+	p.mu.Lock()
 	if p.memberStarted == nil {
 		p.memberStarted = make(map[string]bool)
 	}
@@ -637,6 +656,7 @@ func (p *EventProjector) projectMemberText(ev *trpcevent.Event, meta ProjectMeta
 		p.memberStarted[author] = true
 		out = append(out, p.BuildMemberMessageStartEnvelope(author, meta.SessionID, meta.TeamID, ev.Branch))
 	}
+	p.mu.Unlock()
 	key := streamKey(author, meta)
 	textDelta := p.visibleStreamDelta(key, text)
 	reasoningDelta := p.visibleStreamDelta(key+":reasoning", reasoning)
@@ -671,6 +691,8 @@ func streamKey(author string, meta ProjectMeta) string {
 }
 
 func (p *EventProjector) streamBuilder(key string) *strings.Builder {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.streamText == nil {
 		p.streamText = make(map[string]*strings.Builder)
 	}
@@ -686,6 +708,8 @@ func (p *EventProjector) streamBuilder(key string) *strings.Builder {
 // Called when a tool_call is detected, so the next LLM round starts with
 // a fresh accumulator and doesn't carry over content from previous rounds.
 func (p *EventProjector) resetStreamBuilder(key string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.streamText == nil {
 		return
 	}

@@ -2,7 +2,7 @@
 
 > 对应需求：`37 knowledge.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> **2026-06-06 校准**：与实际代码对齐；补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）、OCR stub、BM25 双路检索、Biz 子包迁移、KnowledgeSearchDeps 聚合。
+> **2026-06-17 校准**：与实际代码对齐；修正 Embedder 接口/结构体（`Embedder` 为接口，`MultiProviderEmbedder` 为实现）、修正构造函数签名（补充 `lg loggateway.Logger` 参数）、修正 `knowledge_embed_setting.go` 引用（实际逻辑在 `knowledge/knowledge.go` 的 `ApplyEmbedPatch`）、补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分、Advanced RAG（查询重写/混合检索/自适应路由/检索评估）、Agentic RAG（联邦搜索/knowledge_reflect 工具）、OCR stub、BM25 双路检索、Biz 子包迁移、KnowledgeSearchDeps 聚合、GraphRAG/Skill Knowledge 待实现设计。
 
 ---
 
@@ -27,10 +27,9 @@ Agent 调用 knowledge_search ← Tool(搜索工具) ← AdaptiveRouter ← Hybr
 ```
 internal/
 ├── biz/
-│   ├── knowledge.go              # 类型别名转发（KnowledgeRepo = knowledge.Repo 等）
-│   ├── knowledge_embed_setting.go # Embedder DB patch 合并（EP-KN-01）
+│   ├── knowledge.go              # 类型别名转发（KnowledgeRepo = knowledge.Repo 等 + ApplyKnowledgeEmbedPatch 等）
 │   └── knowledge/                # 领域子包
-│       └── knowledge.go          # Collection/Document/Chunk 模型 + Repo/Usecase 接口
+│       └── knowledge.go          # Collection/Document/Chunk 模型 + Repo/Usecase 接口 + EmbedSetting patch 合并
 ├── data/knowledge.go             # KnowledgeRepo 实现（PostgreSQL + pgvector + BM25 双路 raw SQL）
 ├── service/
 │   ├── knowledge.go              # KnowledgeService（Kratos 传输适配，KnowledgeSearchDeps 聚合）
@@ -520,26 +519,60 @@ func ExtractDocumentText(raw []byte, source, mimeType string) (string, error)
 ### 5.3 Embedder（internal/knowledge/embedder.go）
 
 ```go
-type Embedder struct {
+// Embedder 是向量化接口，MultiProviderEmbedder 为默认实现。
+type Embedder interface {
+    Embed(ctx context.Context, text string) ([]float32, error)
+    EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+}
+
+// EmbedderAdmin 扩展运行时配置能力。
+type EmbedderAdmin interface {
+    Embedder
+    UpdateConfig(provider, baseURL, apiKey, model string, dim int) error
+}
+
+type MultiProviderEmbedder struct {
     Provider string    // openai | ollama | gemini | huggingface
     BaseURL  string
     APIKey   string
     Model    string    // 默认 "text-embedding-3-small"
     Dim      int       // 默认 1536
+    // ... lg loggateway.Logger
 }
 
-func NewEmbedder(provider, baseURL, apiKey, model string, dim int) *Embedder
-func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error)
-func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+func NewMultiProviderEmbedder(provider, baseURL, apiKey, model string, dim int, lg loggateway.Logger) *MultiProviderEmbedder
+func (e *MultiProviderEmbedder) Embed(ctx context.Context, text string) ([]float32, error)
+func (e *MultiProviderEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+func (e *MultiProviderEmbedder) EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error)
+func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, texts []string, taskType string) ([][]float32, error)
 ```
 
 **设计决策**：
-- `openai`：`POST /v1/embeddings`，`EmbedBatch` 单次最多 32 条 input。
+- `Embedder` 为接口，`MultiProviderEmbedder` 为多 Provider 统一实现（KB-06 解耦）。
+- `openai`：`POST /v1/embeddings`，`EmbedBatch` 单次最多 32 条 input（`defaultEmbedBatchSize`）。
 - `ollama`：`POST /api/embeddings`，逐条调用。
 - `gemini`：`google.golang.org/genai` `EmbedContent`，批量 contents。
 - `huggingface`：TEI `POST /embed`，`inputs` 数组批量。
-- Wire 工厂 `NewKnowledgeEmbedder(c, SystemSettingRepo)`：env → DB → provider 默认 key（EP-KN-01 ✅）。
-- `PersistKnowledgeEmbed` / `UpdateEmbedderConfig` 写回 `system_settings`；`biz/knowledge_embed_setting.go` 负责 patch 合并。
+- `TaskTypeEmbedder` 接口扩展 `EmbedWithTaskType`/`EmbedBatchWithTaskType`，Gemini 用 `RETRIEVAL_QUERY` task type 分离入库/查询（KB-10）。
+- Wire 工厂 `NewKnowledgeEmbedder(c, SystemSettingRepo, lg)`：env → DB → provider 默认 key（EP-KN-01）。
+- `PersistKnowledgeEmbed` / `UpdateEmbedderConfig` 写回 `system_settings`；patch 合并逻辑在 `internal/biz/knowledge/knowledge.go` 的 `ApplyEmbedPatch` 函数中（`internal/biz/knowledge.go` 通过类型别名 `ApplyKnowledgeEmbedPatch = knowledge.ApplyEmbedPatch` 转发）。
+- Embedder 超时可通过 `KRATOS_KNOWLEDGE_EMBED_TIMEOUT_SEC` 环境变量配置（默认 60s，KB-11）。
+
+**Embedder 配置优先级**（EP-KN-01，高 → 低）：
+
+| 来源 | 说明 |
+|------|------|
+| 环境变量 | `KRATOS_KNOWLEDGE_EMBED_PROVIDER` / `_BASE_URL` / `_API_KEY` / `_MODEL` / `_DIM` |
+| 系统设置 DB | `system_settings.knowledge_embed_*`；`GET/PUT /v1/system-settings` 字段 `knowledge_embed` |
+| Knowledge Admin API | `GET/PUT /v1/knowledge/embedder-config`（运行时 + 写回 DB） |
+| 前端 | `KnowledgeEmbedderPanel.vue`；系统设置页可写 `knowledge_embed` |
+
+| Provider | 典型 model | base_url / key |
+|----------|------------|----------------|
+| `openai` | `text-embedding-3-small` | `OPENAI_API_KEY` |
+| `ollama` | `nomic-embed-text` | 默认 `http://localhost:11434` |
+| `gemini` | `gemini-embedding-001` | `GOOGLE_API_KEY` 或 DB `knowledge_embed_api_key` |
+| `huggingface` | — | TEI `http://localhost:8080`（`knowledge_embed_base_url`） |
 
 ### 5.4 Retriever（internal/knowledge/retriever.go）
 
@@ -556,7 +589,7 @@ type Retriever struct {
     lg       loggateway.Logger
 }
 
-func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker) *Retriever
+func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker, lg loggateway.Logger) *Retriever
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error)
 ```
 
@@ -587,9 +620,10 @@ type QueryRewriter struct {
     llm     biz.LLMCaller
     sys     *biz.SystemSettingUsecase
     catalog *biz.LlmProviderModelUsecase
+    lg      loggateway.Logger
 }
 
-func NewQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase) *QueryRewriter
+func NewQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *QueryRewriter
 func (r *QueryRewriter) Rewrite(ctx context.Context, query string, strategy RewriteStrategy) (*QueryRewriteResult, error)
 ```
 
@@ -620,9 +654,10 @@ type HybridRetriever struct {
     sparse   SparseSearcher
     reranker rerankerForHybrid
     rrfK     int
+    lg       loggateway.Logger
 }
 
-func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher) *HybridRetriever
+func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggateway.Logger) *HybridRetriever
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error)
 ```
 
@@ -674,9 +709,10 @@ type RetrievalEvaluator struct {
     llm     biz.LLMCaller
     sys     *biz.SystemSettingUsecase
     catalog *biz.LlmProviderModelUsecase
+    lg      loggateway.Logger
 }
 
-func NewRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase) *RetrievalEvaluator
+func NewRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *RetrievalEvaluator
 func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks []biz.KnowledgeChunk) (*RetrievalAssessment, error)
 ```
 
@@ -734,8 +770,8 @@ type FederatedRetriever struct {
     lg        loggateway.Logger
 }
 
-func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever) *FederatedRetriever
-func NewFederatedRetrieverWithMeta(router *AdaptiveRouter, retriever *Retriever, meta CollectionMetaFetcher) *FederatedRetriever
+func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever, lg loggateway.Logger) *FederatedRetriever
+func NewFederatedRetrieverWithMeta(router *AdaptiveRouter, retriever *Retriever, meta CollectionMetaFetcher, lg loggateway.Logger) *FederatedRetriever
 func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error)
 func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode, opts FederatedSearchOptions) ([]biz.KnowledgeChunk, error)
 ```
@@ -944,14 +980,14 @@ IngestDocument(req)
 
 ```go
 // internal/service/wire_providers.go — Chunker 默认 512/64 char
-// internal/service/knowledge_embedder.go — NewKnowledgeEmbedder(c *conf.Data)
-// internal/service/knowledge_retriever.go — NewKnowledgeRetriever(emb, repo)
+// internal/service/knowledge_embedder.go — NewKnowledgeEmbedder(c *conf.Data, sys, lg)
+// internal/service/knowledge_retriever.go — NewKnowledgeRetriever(emb, repo, lg)
 // internal/service/knowledge_advanced.go — Advanced RAG 组件工厂（6 个 Provider）
-//   - NewKnowledgeHybridRetriever(retriever, sparse)
-//   - NewKnowledgeQueryRewriter(llm, sys, catalog)
-//   - NewKnowledgeAdaptiveRouter(hybrid, rewriter)
-//   - NewKnowledgeRetrievalEvaluator(llm, sys, catalog)
-//   - NewKnowledgeFederatedRetriever(router, retriever, uc)
+//   - NewKnowledgeHybridRetriever(retriever, sparse, lg)
+//   - NewKnowledgeQueryRewriter(llm, sys, catalog, lg)
+//   - NewKnowledgeAdaptiveRouter(hybrid, rewriter, lg)
+//   - NewKnowledgeRetrievalEvaluator(llm, sys, catalog, lg)
+//   - NewKnowledgeFederatedRetriever(router, retriever, uc, lg)
 //   - ProvideKnowledgeSearchDeps(retriever, router, evaluator) → KnowledgeSearchDeps
 ```
 
@@ -986,11 +1022,44 @@ Embedder + Repo → Retriever → HybridRetriever → AdaptiveRouter → Federat
 | `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框 |
 | `web/src/features/knowledge/useKnowledgeIngestWs.ts` | WS 入库进度（EP-KN-02） |
 
+### 8.3 摄取进度 WS 事件（EP-KN-02）
+
+异步摄取经 Event Bus 发布 `knowledge_ingest` 信封（`EnvelopeTypeKnowledgeIngest`），前端 `useKnowledgeIngestWs` 订阅 `/v1/ws` 频道 `knowledge` 并刷新文档列表。
+
+### 8.4 Reranker 环境变量（KN-01）
+
+| 环境变量 | 说明 |
+|----------|------|
+| `KRATOS_KNOWLEDGE_RERANKER` | `off` \| `topk` \| `cohere` \| `infinity` |
+| `KRATOS_KNOWLEDGE_RERANK_TOP_K` | 重排后保留条数（topk 模式） |
+| `COHERE_*` / `INFINITY_*` | 第三方 Rerank 端点与密钥 |
+
+Search RPC 可选 `use_rerank`、`rerank_candidates` 覆盖单次请求行为。
+
+### 8.5 Prometheus 指标
+
+| 指标 | 类型 | 说明 |
+|------|------|------|
+| `aranea_knowledge_ingest_documents_total` | Counter | 成功索引的文档数 |
+| `aranea_knowledge_search_duration_seconds` | Histogram | 搜索延迟 |
+
+### 8.6 降级与限制
+
+- 需要 pgvector；当 Postgres 未配置时 Repo 为 nil，API 返回 `ErrKnowledgeUnavailable`。
+- 嵌入维度每个集合固定；更改需重建集合。
+- 文档内容必须可文本解码；图片/PDF 需 OCR 提取（当前 OCR 为 stub，`KNOWLEDGE_OCR` 环境变量配置）。
+- 文档级 `metadata_json` 写入每个 Chunk 的 JSONB 列，供 `filter_json` 检索过滤。
+- 查询重写和检索评估依赖 LLM 调用，无可用 LLM 时自动降级（透传原始查询 / 跳过评估）。
+- 联邦搜索支持 Broadcast 和 Route 两种策略，Route 策略基于 Collection 名称/描述相关性评分。
+- Plan-Then-Retrieve 通过 BeforeModel 钩子注入 Collection 摘要，高频场景下可能增加延迟。
+
 ---
 
 ## 九、待实现设计
 
 以下为对标 trpc-agent-go `knowledge` 包但尚未实现的能力，列出设计方向供后续迭代参考。
+
+> 实现状态与任务追踪详见 [37-knowledge.development.md §子模块：Knowledge Evolution Roadmap](./37-knowledge.development.md#子模块knowledge-evolution-roadmap)。
 
 ### 9.1 KnowledgeBaseFactory
 
@@ -1008,31 +1077,11 @@ Factory 负责根据配置构建 `knowledge.Knowledge` 实例：创建 Embedder�
 
 当前实现跳过 Extractor/Reader，直接对 base64 解码后的原始文本分块。
 
-### 9.3 高级分块策略
-
-| 策略 | trpc-agent-go 对应 | 说明 | 状态 |
-|------|---------------------|------|------|
-| Markdown 按标题 | `chunking/markdown.go` | 按标题层级分块 | ✅ |
-| JSON 结构 | `chunking/json.go` | 按 JSON 结构分块 | ✅ |
-| 递归分块 | `chunking/recursive.go` | 递归字符分割 | ✅ |
-
-### 9.4 Reranker
-
-✅ 已实现：`reranker_factory.go` + Retriever 集成（KN-01）。以下为扩展方向：
-
-```go
-type Reranker interface {
-    Rerank(ctx context.Context, query string, documents []string) ([]ScoredDocument, error)
-}
-```
-
-可选扩展：请求级 rerank 策略选择、FlowLog 指标化。
-
-### 9.5 AgenticFilter
+### 9.3 AgenticFilter
 
 集成 trpc-agent-go `searchfilter` 包，LLM 根据查询动态生成 `UniversalFilterCondition`。
 
-### 9.6 OCR / Extractor
+### 9.4 OCR / Extractor
 
 - OCR：`internal/knowledge/ocr.go` 已实现 `OCRProvider` 接口和工厂函数 `NewOCRProviderFromEnv()`。
   - 环境变量 `KNOWLEDGE_OCR`：`stub` / `placeholder` / `tesseract` / `docling`。
@@ -1041,86 +1090,264 @@ type Reranker interface {
   - `ExtractDocumentTextWithOCR` 支持注入自定义 OCR provider。
 - Extractor：集成 `knowledge/extractor/docling`，PDF/图片 → Markdown（未实现）。
 
-### 9.7 多租户隔离
+### 9.5 多租户隔离
 
 SearchFilter 增加 `tenant_id`，向量存储按租户分区，API 层强制注入。
 
-### 9.8 Plan-Then-Retrieve — ✅ 已实现
+### 9.6 GraphRAG — 知识图谱增强
 
-在 Agent 的 System Prompt 中注入知识库结构描述（类似 CORPUS2SKILL 的"鸟瞰图"），让 Agent 先规划检索路径再执行。
+> 目标：引入知识图谱层，支撑多跳推理和实体关系查询。
 
-- 实现：`internal/agent/knowledge_inject.go` — BeforeModel 钩子（优先级 6）
-- 在 `productCallbackChain` 中注册，每次模型调用前注入 Collection 摘要
-- 仅注入 Agent 关联的 Collection（通过 `KnowledgeCollectionsFromContext` 读取 context 中的 scoped IDs）
-- 摘要内容：Collection 名称、ID、描述、文档数、块数 + 搜索策略提示
-- 截断保护：单个描述 ≤120 字符，总摘要 ≤1500 字符，最多 10 个 Collection
-- KnowledgeUsecase 为 nil 或无 Collection 时自动跳过
+#### 9.6.1 知识图谱构建
 
-### 9.9 联邦搜索 Route 策略 — ✅ 已实现
+在文档入库时增加实体和关系提取步骤：
 
-当前 FederatedRetriever 实现了两种策略：
+```
+文档入库管线（升级）：
+  ExtractDocumentText → SplitWithStrategy → EmbedTexts
+    + ExtractEntities → ExtractRelations → BuildKnowledgeGraph
+```
 
-- **Broadcast**（默认）：向所有指定 Collection 并行广播查询，结果合并去重
-- **Route**（可选）：基于 Collection 名称/描述与查询的相关性评分，筛选最相关的 TopN Collection 后再搜索
+```go
+// internal/biz/knowledge/graph.go（新增）
 
-Route 策略实现：
-- `CollectionMetaFetcher` 接口：由 `biz.KnowledgeUsecase` 实现，提供 Collection 元数据
-- `collectionRelevanceScore`：基于名称/描述与查询词的匹配度评分
-- `routeCollections`：按评分排序，取 TopN（默认 3），最低分数阈值（默认 0.3）
-- 路由失败时自动降级为 Broadcast
-- 通过 `SearchWithOptions` 方法使用 Route 策略，`Search` 方法默认 Broadcast
+type Entity struct {
+    ID           string
+    Name         string
+    Type         string
+    Properties   map[string]any
+    CollectionID string
+    DocID        string
+}
+
+type Relation struct {
+    ID           string
+    SourceID     string
+    TargetID     string
+    Type         string
+    Properties   map[string]any
+    CollectionID string
+}
+
+type GraphRepo interface {
+    UpsertEntities(ctx context.Context, entities []Entity) error
+    UpsertRelations(ctx context.Context, relations []Relation) error
+    SearchSubgraph(ctx context.Context, query GraphQuery) (Subgraph, error)
+    Traverse(ctx context.Context, startEntityID string, depth int) (Subgraph, error)
+}
+```
+
+- **实体提取**：LLM-based NER（利用已有 Provider 集成）
+- **关系提取**：LLM-based 关系三元组提取
+- **存储**：PostgreSQL 关系表（`knowledge_entities`、`knowledge_relations`），未来可扩展 Neo4j
+- **架构位置**：`internal/biz/knowledge/graph.go`（新增），`internal/data/knowledge_graph.go`（新增）
+
+**数据库 Schema**：
+
+```sql
+CREATE TABLE IF NOT EXISTS knowledge_entities (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    type          TEXT NOT NULL DEFAULT '',
+    properties    JSONB NOT NULL DEFAULT '{}',
+    collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+    doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_relations (
+    id            TEXT PRIMARY KEY,
+    source_id     TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+    target_id     TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+    type          TEXT NOT NULL DEFAULT '',
+    properties    JSONB NOT NULL DEFAULT '{}',
+    collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_ke_collection ON knowledge_entities(collection_id);
+CREATE INDEX idx_ke_name_type  ON knowledge_entities(name, type);
+CREATE INDEX idx_kr_source     ON knowledge_relations(source_id);
+CREATE INDEX idx_kr_target     ON knowledge_relations(target_id);
+CREATE INDEX idx_kr_type       ON knowledge_relations(type);
+```
+
+#### 9.6.2 图增强检索
+
+向量检索 + 图遍历融合：
+
+```go
+// internal/knowledge/graph_augmented_retriever.go（新增）
+
+type GraphAugmentedRetriever struct {
+    vectorRetriever *Retriever
+    graphRepo       biz.KnowledgeGraphRepo
+}
+
+func (r *GraphAugmentedRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+    // 1. 向量检索获取初始 chunks
+    chunks, _ := r.vectorRetriever.Search(ctx, q)
+    // 2. 从 chunks 中提取实体
+    entities := extractEntitiesFromChunks(chunks)
+    // 3. 图遍历获取关联实体和文档
+    subgraph := r.graphRepo.Traverse(ctx, entities, depth=2)
+    // 4. 融合向量结果和图结果
+    return mergeResults(chunks, subgraphChunks), nil
+}
+```
+
+- 向量检索负责语义相似度
+- 图遍历负责关系推理和多跳连接
+- 融合策略：加权合并或 RRF
+
+#### 9.6.3 图查询工具
+
+```go
+// internal/tools/knowledge/graph_tool.go（新增）
+
+func NewGraphSearchTool() trpctool.CallableTool {
+    // knowledge_graph_search: 搜索知识图谱中的实体和关系
+    // 输入: collection_id, entity_name, relation_type, depth
+    // 输出: entities[], relations[]
+}
+
+func NewGraphTraverseTool() trpctool.CallableTool {
+    // knowledge_graph_traverse: 从指定实体出发遍历关系图
+    // 输入: entity_id, depth, relation_type_filter
+    // 输出: subgraph
+}
+```
+
+**Proto 扩展**：
+
+```protobuf
+message GraphSearchRequest {
+    string collection_id = 1;
+    string entity_name = 2;
+    string relation_type = 3;
+    int32 depth = 4;
+}
+
+message GraphSearchResponse {
+    repeated KnowledgeEntity entities = 1;
+    repeated KnowledgeRelation relations = 2;
+}
+```
+
+### 9.7 Skill Knowledge — 技能知识库
+
+> 目标：从文档知识库演进为技能知识库，与 Aranea 的 Skill 体系深度融合。
+
+#### 9.7.1 三层知识模型
+
+| 层 | 类型 | 存储形式 | 检索方式 |
+|----|------|----------|----------|
+| L1 文档知识 | "知道什么" | Chunk + Embedding | 向量相似度（已实现） |
+| L2 关系知识 | "谁关联谁" | 实体 + 关系（知识图谱） | 图遍历 + 子图检索（GraphRAG） |
+| L3 技能知识 | "如何做" | 技能描述 + 执行轨迹 | 语义匹配 + 层次导航 |
+
+#### 9.7.2 技能知识库构建
+
+借鉴 SkillX 和 CORPUS2SKILL，构建三层技能层次：
+
+```go
+// internal/biz/knowledge/skill_knowledge.go（新增）
+
+type SkillKnowledge struct {
+    ID             string
+    Name           string
+    Description    string
+    Level          SkillLevel
+    ParentID       string
+    CollectionID   string
+    Procedure      string
+    Tools          []string
+    Preconditions  string
+    Postconditions string
+    Embedding      []float32
+}
+
+type SkillLevel int
+
+const (
+    SkillPlanning  SkillLevel = iota  // 高层任务规划
+    SkillFunctional                    // 可复用功能子程序
+    SkillAtomic                        // 原子操作模式
+)
+```
+
+- **离线蒸馏**：从 Agent 执行轨迹中提取技能（与 Memory 的压缩机制协同）
+- **层次导航**：Agent 获得技能目录鸟瞰图 → 逐级钻入 → 获取具体操作步骤
+- **架构位置**：`internal/biz/knowledge/skill_knowledge.go`（新增），与 `internal/biz/skill` 协同
+
+#### 9.7.3 知识导航工具
+
+```go
+// internal/tools/knowledge/navigate_tool.go（新增）
+
+func NewKnowledgeNavigateTool() trpctool.CallableTool {
+    // knowledge_navigate: 浏览知识库的层次结构
+    // 输入: collection_id, path (可选，如 "/技术/后端/Go")
+    // 输出: 当前层级的摘要 + 子主题列表
+}
+
+func NewKnowledgeDrillTool() trpctool.CallableTool {
+    // knowledge_drill: 钻入特定知识分支
+    // 输入: collection_id, topic_id
+    // 输出: 更细粒度的摘要 + 文档列表
+}
+```
+
+Agent 不再"盲目检索"，而是"有地图地导航"。
+
+#### 9.7.4 技能蒸馏管线
+
+从 Agent 执行轨迹中自动提取技能：
+
+```
+Agent 执行轨迹
+  → 轨迹分析（LLM）
+    → 提取 Planning Skills（高层任务组织）
+    → 提取 Functional Skills（可复用功能子程序）
+    → 提取 Atomic Skills（原子操作模式）
+  → 技能去重 + 合并
+  → 写入技能知识库
+```
+
+- 与 Memory 压缩机制协同：Memory 压缩后的轨迹作为技能蒸馏输入
+- 与 Skill 体系协同：蒸馏出的技能可注册为 Agent 可用技能
+- 架构位置：`internal/knowledge/skill_distiller.go`（新增）
 
 ---
 
 ## 十、涉及文件
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `api/kratos/knowledge/v1/knowledge.proto` | ✅ 已实现 | Proto 定义（含 `rewrite_strategy` + `hybrid_search` 字段） |
-| `internal/biz/knowledge.go` | ✅ 已实现 | 类型别名转发（KnowledgeRepo = knowledge.Repo 等） |
-| `internal/biz/knowledge/knowledge.go` | ✅ 已实现 | 领域模型 + Repo/Usecase 接口（子接口拆分） |
-| `internal/data/knowledge.go` | ✅ 已实现 | PostgreSQL + pgvector Repo + `SearchChunksBM25` |
-| `internal/service/knowledge.go` | ✅ 已实现 | Knowledge Service（含 AdaptiveRouter + RetrievalEvaluator 集成） |
-| `internal/service/knowledge_advanced.go` | ✅ 已实现 | Advanced RAG 组件 Wire 工厂（6 个 Provider） |
-| `internal/knowledge/chunker.go` | ✅ 已实现 | 文本分块 |
-| `internal/knowledge/embedder.go` | ✅ 已实现 | 向量化 |
-| `internal/knowledge/ingest.go` | ✅ 已实现 | 分块+向量化流水线 |
-| `internal/knowledge/retriever.go` | ✅ 已实现 | 检索 + 可选 rerank |
-| `internal/knowledge/reranker_factory.go` | ✅ 已实现 | env Reranker 工厂 |
-| `internal/knowledge/query_rewriter.go` | ✅ 已实现 | 查询重写（HyDE/Decomposition/MultiQuery） |
-| `internal/knowledge/hybrid_retriever.go` | ✅ 已实现 | 混合检索（Dense+Sparse+RRF） |
-| `internal/knowledge/adaptive_router.go` | ✅ 已实现 | 自适应检索路由 |
-| `internal/knowledge/retrieval_evaluator.go` | ✅ 已实现 | 检索质量评估（CRAG） |
-| `internal/knowledge/federated_retriever.go` | ✅ 已实现 | 跨 Collection 联邦搜索（Broadcast + Route 策略） |
-| `internal/knowledge/search_helpers.go` | ✅ 已实现 | 检索评估辅助 |
-| `internal/knowledge/llm_resolver.go` | ✅ 已实现 | LLM 模型解析 |
-| `internal/knowledge/ocr.go` | ✅ 已实现 | OCR 提供者接口（stub） |
-| `internal/knowledge/html_text.go` | ✅ 已实现 | HTML 文本剥离 |
-| `internal/knowledge/readers_import.go` | ✅ 已实现 | trpc document reader 注册 |
-| `internal/agent/knowledge_inject.go` | ✅ 已实现 | Plan-Then-Retrieve BeforeModel 钩子 |
-| `internal/service/knowledge_embedder.go` | ✅ 已实现 | Embedder Wire + DB 回落（EP-KN-01） |
-| `internal/biz/knowledge_embed_setting.go` | ✅ 已实现 | Embedder patch 合并 |
-| `api/kratos/system_setting/v1/system_setting.proto` | ✅ 已实现 | `KnowledgeEmbedSettings` |
-| `internal/service/knowledge_retriever.go` | ✅ 已实现 | Retriever Wire（KN-01） |
-| `internal/tools/knowledge/tool.go` | ✅ 已实现 | knowledge_search + knowledge_reflect 工具 |
-| `internal/agent/tool_assembly.go` | ✅ 已修改 | KnowledgeReflect 开关 |
-| `internal/agent/trpc_build.go` | ✅ 已修改 | KnowledgeSearch/KnowledgeReflect 装配 |
-| `internal/biz/agent_mcp_effective.go` | ✅ 已修改 | ToolKeyKnowledgeSearch + ToolKeyKnowledgeReflect |
-| `internal/biz/tool/tool.go` | ✅ 已修改 | ToolKeyKnowledgeReflect 常量 |
-| `internal/biz/tool/tool_catalog_runtime.go` | ✅ 已修改 | KnowledgeReflect 加入 sessionBoundToolKeys |
-| `internal/tools/trpc/effective_config.go` | ✅ 已修改 | KnowledgeReflect 配置映射 |
-| `internal/tools/trpc/toolsets.go` | ✅ 已修改 | KnowledgeReflect 装配 |
-| `internal/service/service.go` | ✅ 已修改 | ProviderSet 增加 Advanced RAG Provider |
-| `internal/service/wire_providers.go` | ✅ 已修改 | Chunker/Embedder 工厂 |
-| `internal/service/chat_orchestrator.go` | ✅ 已修改 | RuntimeTooling 增加 FederatedRetriever/Evaluator |
-| `internal/service/chat_orchestrator_turn.go` | ✅ 已修改 | Context 注入 FederatedRetriever/Evaluator |
-| `internal/team/runner.go` | ✅ 已修改 | Team Runner 增加 FederatedRetriever/Evaluator |
-| `internal/team/runner_team_trpc.go` | ✅ 已修改 | Team context 注入 |
-| `internal/data/builtin_tools_seed.go` | ✅ 已修改 | knowledge_reflect 种子 |
-| `cmd/admin/wire.go` | ✅ 已修改 | provideRuntimeTooling 增加 FederatedRetriever/Evaluator |
-| `internal/data/data.go` | ✅ 已修改 | NewKnowledgeRepoFromData + NewKnowledgeSparseSearcherFromData |
-| `internal/server/http.go` | ✅ 已修改 | HTTP 注册 |
-| `internal/server/grpc.go` | ✅ 已修改 | gRPC 注册 |
-| `web/src/features/knowledge/api.ts` | ✅ 已实现 | 前端 API（含 rewrite_strategy/hybrid_search 参数） |
-| `web/src/stores/knowledge/index.ts` | ✅ 已实现 | 前端 Store |
-| `web/src/components/knowledge/KnowledgeSearchPanel.vue` | ✅ 已修改 | 搜索面板增加混合检索/查询重写控件 |
+> 完整文件清单（含实现状态标记）详见 [37-knowledge.development.md §1 代码锚点](./37-knowledge.development.md#1-模块定位) 和 [§附录 B：新增文件清单](./37-knowledge.development.md#附录-b新增文件清单)。
+
+### 10.1 后端核心文件
+
+| 文件 | 说明 |
+|------|------|
+| `api/kratos/knowledge/v1/knowledge.proto` | Proto 定义（含 `rewrite_strategy` + `hybrid_search` 字段） |
+| `internal/biz/knowledge.go` | 类型别名转发（KnowledgeRepo = knowledge.Repo 等） |
+| `internal/biz/knowledge/knowledge.go` | 领域模型 + Repo/Usecase 接口（子接口拆分）+ EmbedSetting patch 合并 |
+| `internal/data/knowledge.go` | PostgreSQL + pgvector Repo + `SearchChunksBM25` |
+| `internal/service/knowledge.go` | KnowledgeService（KnowledgeSearchDeps 聚合） |
+| `internal/service/knowledge_advanced.go` | Advanced RAG 组件 Wire 工厂（6 个 Provider） |
+| `internal/service/knowledge_embedder.go` | Embedder Wire + DB 回落（EP-KN-01） |
+| `internal/service/knowledge_retriever.go` | Retriever Wire（KN-01） |
+| `internal/knowledge/*.go` | 内部包：chunker/embedder/ingest/retriever/query_rewriter/hybrid_retriever/adaptive_router/retrieval_evaluator/federated_retriever/search_helpers/llm_resolver/ocr/html_text/chunk_strategy/document_extract/readers_import/reranker_factory |
+| `internal/tools/knowledge/tool.go` | knowledge_search + knowledge_reflect 工具 |
+| `internal/agent/knowledge_inject.go` | Plan-Then-Retrieve BeforeModel 钩子 |
+| `internal/agent/tool_assembly.go` | KnowledgeSearch/KnowledgeReflect 装配 |
+| `api/kratos/system_setting/v1/system_setting.proto` | `KnowledgeEmbedSettings` |
+
+### 10.2 前端文件
+
+| 文件 | 说明 |
+|------|------|
+| `web/src/features/knowledge/api.ts` | 前端 API（含 rewrite_strategy/hybrid_search 参数） |
+| `web/src/features/knowledge/useKnowledgeIngestWs.ts` | WS 入库进度（EP-KN-02） |
+| `web/src/stores/knowledge/index.ts` | Pinia Store |
+| `web/src/pages/KnowledgePage.vue` | 管理页（路由 `/knowledge`） |
+| `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框 |

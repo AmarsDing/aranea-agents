@@ -6,22 +6,7 @@
 
 ## 1. 现状分析
 
-项目已集成 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划器的运行时选择逻辑，通过 `planner_kind`、`planner_config_json` 与 `dialogMode` 在 Agent 构建时选择并配置规划器。全部开发阶段（P0–P3 + Phase B/C + Review 打磨）已落地，详见 [39-planner-development.md](./39-planner-development.md)。
-
-**已具备**：
-- 运行时选择与 `planner_config_json` 参数注入（Builtin / A2UI）；A2UI 集成本地 Pipeline
-- `planner_kind` / `planner_config_json` 数据库持久化与 API 往返
-- Web types / wire 字段贯通
-- 迁移 SQL 合并于 `internal/data/sql/migrations/20260607_agent_runtime_patches.sql`
-
-**前端（已落地）**：
-- Agent 设置页「规划模式」表单（`AgentPlannerSection`）；`reasoning_effort` 前后端枚举校验
-- Chat ReAct 步骤卡 + ACTION 内嵌工具卡（`reactToolLinkIndex` 会话级去重）
-- Chat A2UI StandardCatalog 组件树（14 种组件：Text/Divider/Image/Icon/Video/Button/TextField/CheckBox/List/Row/Column/Card/Modal/Tabs）+ Button `userAction` 上行；用户消息友好摘要
-
-**仍待完善**（见 [39-planner-development.md](./39-planner-development.md) backlog）：
-- A2UI 表单字段可编辑（dataModel 双向绑定）
-- StandardCatalog 长尾组件（AudioPlayer / Dropdown / Switch / Carousel / TabBar / WebView 等）
+> 详见 [39-planner.development.md §2 现状评估](./39-planner.development.md#2-现状评估2026-05-21)
 
 ---
 
@@ -33,8 +18,8 @@
 
 **功能规格**：
 - Agent 级别可配置规划模式，可选值：`""`（默认，兼容旧行为）、`builtin`、`react`、`a2ui`
-- 配置通过 `AgentRuntimeSettings.planner_kind` 字段持久化
-- 兼容现有 `DialogMode == "plan"` 的 BuiltinPlanner 行为（planner_kind 为空时回退到 dialogMode 判断）
+- 配置持久化到 Agent 运行时设置，重启后生效
+- 兼容现有「深思考」会话模式的 BuiltinPlanner 行为（规划模式为空时回退到会话模式判断）
 
 **验收标准**：不同 Agent 可配置不同的规划模式，配置持久化且重启后生效
 
@@ -98,4 +83,4 @@
 5. A2UI 模式输出符合 A2UI 协议的 JSONL 结构化结果
 6. Builtin/A2UI 规划器参数可在前端配置
 7. Chat 页面正确展示 ReAct 规划步骤和 A2UI 渲染预览
-8. 兼容现有 `DialogMode == "plan"` 的 BuiltinPlanner 行为
+8. 兼容现有「深思考」会话模式的 BuiltinPlanner 行为

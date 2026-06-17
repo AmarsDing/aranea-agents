@@ -24,3 +24,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_team_runs_active_unique
 --   2. Future table-rebuild migration when schema stabilizes
 -- The partial unique indexes above are the highest-value invariant constraints
 -- and are safe to add without table rebuild.
+-- TECH-DEBT(INV-REF): FK constraints deferred — track in follow-up issue for
+-- table-rebuild migration when schema stabilizes.

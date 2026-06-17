@@ -76,16 +76,20 @@ Surfaces:
 ## 3. GraphTaskCoordinator
 
 ```go
-type GraphTaskCoordinator interface {
-    OnGraphNodeStart(ctx context.Context, exec *GraphExecution, node *NodeDef, inputPreview string) error
-    OnTaskCompleted(ctx context.Context, task *GraphTask) error
+type TaskStatusPublisher interface {
     PublishTaskStatus(ctx context.Context, task *GraphTask, extra map[string]any)
+}
+
+type GraphTaskCoordinator interface {
+    TaskStatusPublisher
+    OnGraphNodeStart(ctx context.Context, exec *GraphExecution, node *NodeDef, meta NodeTaskMeta, inputPreview string) error
+    OnTaskCompleted(ctx context.Context, task *GraphTask) error
 }
 ```
 
-- **OnGraphNodeStart**：对 `agent` / `llm` 节点 CreateTask；幂等 execution+node
+- **OnGraphNodeStart**：对 `agent` / `llm` 节点 CreateTask；幂等 execution+node；`meta NodeTaskMeta` 携带 Team/Graph 节点上下文（定义于 `internal/biz/compiled_team.go`）
 - **OnTaskCompleted**：`waiting_human` / 挂起 → `ResumeExecution`
-- 实现：`internal/service/graph_task_runtime.go`
+- 实现：`internal/service/graph_task_runtime.go`（`GraphTaskRuntime` 同时实现 `TaskStatusPublisher` + `GraphTaskCoordinator` + `TaskDispatchAgentRunner`）
 
 ---
 
@@ -145,18 +149,26 @@ parent_task_id, child_task_id, execution_id
 
 | RPC | HTTP | Hermes 对照 |
 |-----|------|-------------|
-| ListTasks / GetTask | GET | `kanban list/show` |
-| ClaimTask | POST claim | dispatcher claim |
-| SubmitTaskResult | POST submit | `kanban_complete` |
-| Heartbeat | POST heartbeat | `kanban_heartbeat` |
-| ReportBlocked / UnblockTask | POST | block/unblock |
-| CreateTask | POST | `kanban_create` |
-| LinkTasks / UnlinkTasks | POST/DELETE | `kanban_link` |
-| ReviewTask | POST review | review column claim |
-| ListTaskComments / AddTaskComment | — | `kanban_comment` |
-| ListTaskEvents / ListTaskRuns / ListTaskLogs | — | drawer sections |
+| ListTasks | GET `/v1/graph/executions/{execution_id}/tasks` | `kanban list/show` |
+| GetTask | GET `/v1/graph/tasks/{task_id}` | `kanban show` |
+| ClaimTask | POST `/v1/graph/tasks/{task_id}/claim` | dispatcher claim |
+| SubmitTaskResult | POST `/v1/graph/tasks/{task_id}/submit` | `kanban_complete` |
+| Heartbeat | POST `/v1/graph/tasks/{task_id}/heartbeat` | `kanban_heartbeat` |
+| ReportBlocked | POST `/v1/graph/tasks/{task_id}/blocked` | block |
+| UnblockTask | POST `/v1/graph/tasks/{task_id}/unblock` | unblock |
+| CreateTask | POST `/v1/graph/executions/{execution_id}/tasks` | `kanban_create` |
+| LinkTasks | POST `/v1/graph/tasks/link` | `kanban_link` |
+| UnlinkTasks | POST `/v1/graph/tasks/unlink` | unlink |
+| ReviewTask | POST `/v1/graph/tasks/{task_id}/review` | review column claim |
+| ListTaskComments | GET `/v1/graph/tasks/{task_id}/comments` | `kanban_comment` list |
+| AddTaskComment | POST `/v1/graph/tasks/{task_id}/comments` | `kanban_comment` add |
+| ListTaskLogs | GET `/v1/graph/tasks/{task_id}/logs` | drawer logs |
+| ListTaskRuns | GET `/v1/graph/tasks/{task_id}/runs` | drawer runs |
+| ListTaskEvents | GET `/v1/graph/executions/{execution_id}/task-events` | drawer events |
 
-定义：`api/kratos/graph/v1/graph.proto`
+定义：`api/kratos/graph/v1/graph.proto`（TaskService，行 916–993）
+
+> **未实现 RPC**：`ListTaskLinks`（依赖 Tab 需要时通过 `GetTask` 扩展 links 或新增 RPC，见 development §7.1 HK-FE-05b）、`ReleaseTask`（拖拽 reassign 场景，见 §8.4 HK-FE-10）。
 
 ---
 
@@ -176,9 +188,11 @@ parent_task_id, child_task_id, execution_id
 | kanban_create | CreateTask | — |
 | kanban_link | LinkTasks | — |
 
-注册：`internal/tools/trpc/toolsets.go` · `builtin_tools_seed.go`  
+注册：`internal/tools/trpc/toolsets.go`（`ToolsetConfig.Kanban` 开关，行 199–201）  
+Seed：`internal/data/builtin_tools_seed.go`（key=`kanban`，readonly seed，行 83）  
+启用判定：`internal/agent/tool_assembly.go`（`kanbanpkg.Enabled()` 检查，行 73–78）  
 Bridge：`internal/service/kanban_bridge.go`  
-启用：`ARANEA_TASK_ID` 或 `ARANEA_KANBAN_TOOLS=1`（`tools.go` `Enabled()`）
+启用条件：`ARANEA_TASK_ID` 非空 或 `ARANEA_KANBAN_TOOLS=1`（`internal/tools/kanban/tools.go` `Enabled()`，行 263–264）
 
 ---
 
@@ -203,31 +217,36 @@ GraphRunPage / TeamRunObservatoryPage
 ```text
 WS Envelope graph_task_status
   → taskStreamProjection.ts
-  → useGraphRunTasks.ts (merge tasks, adminAction, focusTaskForNode)
+  → useGraphRunTasks.ts (merge tasks, focusTaskForNode)
   → GraphTaskKanban props.tasks
 
 User drag / drawer action
+  → GraphTaskKanban.vue emit('adminAction', {taskId, action})
   → features/graph/api.ts (Claim/Submit/Unblock/Review)
   → store refresh + WS echo
 ```
 
+> `adminAction` 是 `GraphTaskKanban.vue` 的 emit 事件（`'unblock' | 'approve'`），由父组件消费调用对应 RPC。
+
 ### 8.3 Hermes UI → Aranea 组件映射
 
-| Hermes | Aranea 文件 | 状态 |
+| Hermes | Aranea 文件 | 说明 |
 |--------|-------------|------|
-| KanbanPage | `GraphRunInspector` + Observatory tab | ✅ 嵌入非独立页 |
-| BoardSwitcher | Router `execution_id` | ✅ 隐式；无多 board UI |
-| BoardToolbar | — | 📋 HK-FE-06 |
-| BulkActionBar | — | 📋 HK-FE-07 |
-| BoardColumns | `WorkflowKanbanBoard` + `kanbanColumns.ts` | ✅ 5 列 |
-| TaskCard | `GraphTaskKanbanCard.vue` | ✅ 字段较少 |
-| TaskDrawer | `GraphTaskDetailDrawer.vue` | ✅ 缺依赖 Tab |
-| DependencyEditor | — | 📋 HK-FE-05 |
-| InlineCreate | — | 📋 HK-FE-08 |
-| TrashDropZone | — | ❌ 用 Graph 取消 execution |
-| DiagnosticsSection | — | 📋 HK-FE-09 |
-| WS /events | `graph_task_status` | ✅ |
-| Lanes by profile | OrchestrationKanban 列表 | 🟡 非泳道 |
+| KanbanPage | `GraphRunInspector` + Observatory tab | 嵌入非独立页 |
+| BoardSwitcher | Router `execution_id` | 隐式；无多 board UI |
+| BoardToolbar | — | 待补 HK-FE-06 |
+| BulkActionBar | — | 待补 HK-FE-07 |
+| BoardColumns | `WorkflowKanbanBoard` + `kanbanColumns.ts` | 5 列 |
+| TaskCard | `GraphTaskKanbanCard.vue` | 字段较少 |
+| TaskDrawer | `GraphTaskDetailDrawer.vue` | 缺依赖 Tab |
+| DependencyEditor | — | 待补 HK-FE-05 |
+| InlineCreate | — | 待补 HK-FE-08 |
+| TrashDropZone | — | 不实现；用 Graph 取消 execution |
+| DiagnosticsSection | — | 待补 HK-FE-09 |
+| WS /events | `graph_task_status` | 已实现 |
+| Lanes by profile | OrchestrationKanban 列表 | 非泳道布局 |
+
+> 各组件的实施进度（✅/⏳/📋）详见 [开发计划](./54-hermes-kanban-development.md)。
 
 ### 8.4 拖拽 Admin 语义
 
@@ -243,7 +262,7 @@ User drag / drawer action
 
 ### 8.5 Kanban ↔ Graph 画布联动
 
-- `useGraphRunTasks.focusTaskForNode(nodeId)` → `GraphEditorCanvas` `focus-selected-node`
+- `useGraphRunTasks.focusTaskForNode(tasks, nodeId)` → `GraphEditorCanvas` `:focus-selected-node` prop（`GraphRunPage.vue` 行 67）
 - 选卡片 → 高亮对应节点；选节点 → scroll card into view（`GraphTaskKanban` card refs）
 
 ---
@@ -313,14 +332,18 @@ Aranea：Graph 节点 `llm` + `kanban_create/link` 工具链替代；或 Admin�
 
 ## 11. 测试
 
-| 层 | 文件 | 状态 |
-|----|------|------|
-| Biz | `task_dispatcher_test.go`, `task_links_test.go` | ✅ |
-| Service | `graph_task_runtime_test.go` | ✅ |
-| Tools | `kanban/tool_test.go` | 📋 待补 |
-| Frontend | `taskStreamProjection.spec.ts` | ✅ |
-| Frontend | `kanbanColumns.spec.ts` | 📋 待补 |
-| E2E | Graph Run → task appear → complete → resume | 手工 LT |
+| 层 | 文件 |
+|----|------|
+| Biz | `internal/biz/task_dispatch_test.go`（含 `TestAllParentTasksComplete`、`TestIsTaskReadyForDispatch`） |
+| Biz | `internal/biz/graph_node_task_test.go`（`TestShouldCreateTaskForNode`） |
+| Biz | `internal/biz/graph_task_input_test.go` |
+| Tools | `internal/tools/kanban/tools_test.go`（`TestNewToolset_*`、`TestEnabled_*`） |
+| Tools | `internal/tools/kanban/bridge_test.go`（Bridge 接口契约 + env 读取） |
+| Tools | `internal/tools/kanban/bridge_more_test.go`（9 工具 Call 路径覆盖） |
+| Frontend | `web/src/features/graph/tasks/taskStreamProjection.spec.ts` |
+| E2E | Graph Run → task appear → complete → resume（手工 LT） |
+
+> 各测试的通过状态与待补清单（如 `kanbanColumns.spec.ts`、service 层 `graph_task_runtime_test.go`）详见 [开发计划 §7.4 HK-FE-15](./54-hermes-kanban-development.md#74-p3--可选增强)。
 
 ---
 
@@ -330,3 +353,4 @@ Aranea：Graph 节点 `llm` + `kanban_create/link` 工具链替代；或 Admin�
 |------|------|------|
 | 1.0 | 2026-05-23 | Coordinator、Dispatcher、Tools、前端映射 |
 | 1.1 | 2026-05-24 | Hermes 参考架构；UI 组件对照表；Phase 5/G14 实现设计 |
+| 1.2 | 2026-06-17 | 三件套内容边界整理 + 代码核对：修正 `GraphTaskCoordinator` 接口签名（补 `NodeTaskMeta`）；Proto HTTP 方法全量列示（修正 `UnlinkTasks`/`ListTaskComments`/`AddTaskComment`）；修正 `builtin_tools_seed.go` 路径为 `internal/data/`；修正 `adminAction` 归属（`GraphTaskKanban.vue` emit）；测试文件清单与代码对齐（`tools_test.go` 非 `tool_test.go`，无独立 `task_links_test.go`/`graph_task_runtime_test.go`）；§8.3/§11 移除状态标记（迁移至 development） |

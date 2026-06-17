@@ -1,8 +1,8 @@
 # Message 消息 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：✅ 核心 + P2 搜索 + P3 独立消费者 + session_revision 已落地
+> **版本**：2026-06-17 | **状态**：✅ 核心 + P2 搜索 + P3 独立消费者 + session_revision 已落地
 > **M55 增量同步**：✅ session_revision 已实现 — [55-chat-channel-cursor-development.md §Phase B](./55-chat-channel-cursor-development.md#phase-b--session-sync-协议p0约-1-周)
-> **需求**：[51 消息机制](./51-message-mechanism.md)（含后端设计 51a + 前端设计 51b，合并于同一文档）
+> **需求**：[51 消息机制](./51-message-mechanism.md) | **设计**：[51-message-mechanism.design.md](./51-message-mechanism.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
@@ -41,9 +41,9 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 统一事件模型 | ✅ | Envelope + EnvelopeType（**57 种**），Chat/Team/Graph/Monitor/Knowledge/Spirit/Butler/Skill 共享 |
+| 统一事件模型 | ✅ | Envelope + EnvelopeType（**72 种**），Chat/Team/Graph/Monitor/Knowledge/Spirit/Butler/Skill 共享 |
 | 统一事件总线 | ✅ | `event.Bus` 接口，支持 session_id / team_id / channel / filter_key / event_types / selector 路由 |
-| 事件投影 | ✅ | `EventProjector.ProjectAndPublish`，Service 层不再直接处理事件 |
+| 事件投影 | ✅ | `EventProjector.Project`（**Deprecated**；AF 阶段引入 `ActivityProjector`），Service 层不再直接处理事件 |
 | WebSocket 统一传输 | ✅ | 单连接多路复用（chat/monitor/team/graph/system），挂入 Kratos |
 | 双向通信 | ✅ | cancel / user_message / enqueue_message（→ `EnqueueUserMessage` RPC）/ subscribe / enable_log 上行 |
 | 背压控制 | ✅ | 三级 DropPolicy（DropOldest/DropNewest/BlockUpTo）+ ChannelPriority（Critical/Normal）+ Prometheus 丢弃计数 |
@@ -54,7 +54,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | Side Consumers | ✅ | ToolCallConsumer / CallbackConsumer / MessageStoreConsumer / FlowLogPersistConsumer / UserFeedbackConsumer / UsageRollupConsumer |
 | 全局监控模式 | ✅ | `session_id=*` 连接可订阅所有会话的 Monitor/Team/Graph 事件（限 3 连接） |
 | 服务端优雅关闭 | ✅ | `server_shutdown` 系统消息广播 |
-| WS Server 拆分 | ✅ | ws.go → ws.go + ws_conn.go + ws_codec.go + ws_message_handler.go + ws_io_pump.go + ws_event.go + ws_priority.go |
+| WS Server 拆分 | ✅ | ws.go → ws.go + ws_conn.go + ws_conn_manager.go + ws_codec.go + ws_message_handler.go + ws_io_pump.go + ws_event.go + ws_priority.go |
 | 前端传输层提升 | ✅ | 核心传输层从 `features/chat/` 提升到 `realtime/`，原位保留再导出桶 |
 | 前端分发器 | ✅ | `EnvelopeDispatcher` 类（onType/onChannel/on + matchFilterKey） |
 | 前端场景 Hooks | ✅ | useChatStream / useTeamStream / useMonitorStream |

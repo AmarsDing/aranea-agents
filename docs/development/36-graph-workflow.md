@@ -4,6 +4,7 @@
 
 > 对标 `pkg/trpc-agent-go/graph` 包，构建"LangGraph for Go"级别的确定性工作流引擎。
 > 本文档从四个核心维度梳理 Graph 的产品定位、需求层级和演进路线。
+> 架构设计、Proto 契约、数据模型详见 [36-graph-workflow.design.md](./36-graph-workflow.design.md)；代码锚点、现状评估、任务清单详见 [36-graph-workflow.development.md](./36-graph-workflow.development.md)。
 
 ---
 
@@ -32,45 +33,7 @@
 
 ---
 
-## 1. 现状对齐
-
-| 能力 | 状态 | 证据 |
-|------|------|------|
-| GraphDefinition CRUD | ✅ | `GraphUsecase` Create/Get/Update/Delete/List |
-| 图执行引擎（BSP/DAG） | ✅ | `BuildStateGraph` + `GraphAgent` + `Executor` |
-| 条件路由 | ✅ | `ConditionalEdgeDef` + `CondFuncRef` + Registry |
-| State Schema + Reducer | ✅ | 4 种 Reducer（Default/Append/Cover/Merge） |
-| HITL 中断/恢复 | ✅ | `InterruptBefore/After` + `ResumeExecution` |
-| Checkpoint + TimeTravel | ✅ | InMemory + SQLite Saver + History/GetState/EditState |
-| 事件桥接 | ✅ | 9 种 ObjectType → EnvelopeType 映射 |
-| 设计时校验 | ✅ | `validator.go` 拓扑/Agent引用/StateSchema/循环 |
-| 设计模式模板 | ✅ | 6 种内置模板 + `CreateGraphFromTemplate` |
-| 任务系统 | ✅ | `TaskUsecase` + 状态机 + Claim/Submit/Heartbeat/Review |
-| 可视化 | ✅ | DOT 解析 + 结构化 JSON + `VisualizeGraph` API |
-| 前端编辑器 | ✅ | Vue Flow 画布 + 节点面板 + 属性面板 + 撤销重做 + 对齐辅助 |
-| 前端实时校验 | ✅ | useGraphLocalValidation（8 种规则，区分 error/warning） |
-| 变量引用 | ✅ | GraphVariablePicker（`{{nodeId.field}}` 格式，光标位置感知插入） |
-| LLM 节点 | ✅ | `node_wiring.go` → `sg.AddLLMNode`，前端属性面板支持 Instruction/Model/Tools |
-| Tool 节点 | ✅ | `node_wiring.go` → `sg.AddToolsNode`，前端属性面板支持 ToolNames |
-| Agent 节点 InputMapper/OutputMapper | ✅ | `node_wiring.go` → `WithSubgraphInputMapper/OutputMapper`，前端属性面板支持配置 |
-| Command.GoTo / WithEndsMap | ✅ | `node_wiring.go` → `WithEndsMap(Destinations)`，前端属性面板支持 Destinations 编辑 |
-| ExecutionSummary | ✅ | `execution_summary.go` + `event_bridge.go` WS `graph_execution_done` metadata |
-| RetryPolicy / CachePolicy | ✅ | `node_wiring.go` → `WithRetryPolicy/WithNodeCachePolicy`，前端属性面板支持配置 |
-| 用户自定义模板 | ✅ | `SaveGraphAsTemplate` RPC + `GraphTemplatePicker` |
-| Graph 版本管理 | ✅ | `metadata._version_history` 快照 + `ListGraphVersions/RollbackGraphVersion` RPC + `GraphVersionPanel` |
-| 导入/导出 | ✅ | `ExportGraph/ImportGraph` RPC + 编辑器 ⋮ 菜单 |
-| Webhook 通知 | ✅ | `GraphTaskRuntime.dispatchGraphTaskWebhook` → `graph.task.status` |
-| 前端运行监控 | ✅ | `useGraphExecutionStream` + `GraphRunSidebar` + `GraphRunInspector` |
-| 前端 Checkpoint/TimeTravel UI | ✅ | `GraphCheckpointPanel` + `GraphTimeTravelPanel` + `useGraphTimeTravel` |
-| 前端 Task 看板 UI | ✅ | `GraphTaskKanban` + `GraphTaskDetailDrawer` + WS 投影 |
-| 节点布局持久化 | ✅ | `metadata.layout` + `graphLayout.ts` + dagre 自动布局 |
-| 熔断策略 | 🟡 | Proto `CircuitBreakerPolicy` 已定义但未接入 NodeDef；biz 层 `tool/circuit_breaker.go` 已实现 Tool 级熔断 |
-| 子图嵌套编辑器 | ❌ | 后端 `SubgraphDef` 已支持，前端子图节点编辑器待补 |
-| 动态任务节点插入 | ❌ | 无 `DynamicNodeInsert` 事件 |
-
----
-
-## 2. 四维需求架构
+## 1. 四维需求架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -88,11 +51,13 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+> 现状对齐（已实现/待实现能力清单）详见 [36-graph-workflow.development.md §2 现状评估](./36-graph-workflow.development.md#2-现状评估)。
+
 ---
 
-## 3. 维度一：图结构与混合控制
+## 2. 维度一：图结构与混合控制
 
-### 3.1 统一节点类型体系（P1）
+### 2.1 统一节点类型体系（P1）
 
 **用户故事**：作为工作流设计者，我希望在画布上拖拽不同类型的节点（Function/LLM/Tool/Agent/Router/Join），每种节点有对应的属性配置面板，以便灵活构建复杂工作流。
 
@@ -114,7 +79,7 @@
 - [x] 各节点类型支持 InterruptBefore/After 配置
 - [x] 各节点类型支持 RetryPolicy/CachePolicy 配置
 
-### 3.2 Agent 节点的混合控制（P1）
+### 2.2 Agent 节点的混合控制（P1）
 
 **用户故事**：作为工作流设计者，我希望 Agent 节点内部自主推理但节点间流转由图规则控制，以便兼顾灵活性和确定性。
 
@@ -129,7 +94,7 @@
 - [x] `WithSubgraphIsolatedMessages` 可隔离 Agent 会话历史
 - [x] `WithSubgraphInputFromLastResponse` 支持上游 last_response → 下游 user_input
 
-### 3.3 边类型与流转规则（P1）
+### 2.3 边类型与流转规则（P1）
 
 **用户故事**：作为工作流设计者，我希望定义确定性流转、条件路由和动态路由三种边类型，以便精确控制流程走向。
 
@@ -147,7 +112,7 @@
 - [x] Command.GoTo 动态路由事件通过 WS 推送到前端
 - [x] 前端执行监控中动态高亮实际执行路径
 
-### 3.4 执行引擎选择（P2）
+### 2.4 执行引擎选择（P2）
 
 **用户故事**：作为工作流设计者，我希望选择 BSP 或 DAG 执行引擎，以便在不同场景下获得最优性能。
 
@@ -163,7 +128,7 @@
 - [x] BSP 引擎按 Pregel 步骤执行，每步同步
 - [x] DAG 引擎分析节点依赖，无依赖节点并行执行
 
-### 3.5 子图嵌套（P2）
+### 2.5 子图嵌套（P2）
 
 **用户故事**：作为工作流设计者，我希望将常用流程片段封装为子图节点，以便跨 Graph 复用。
 
@@ -180,9 +145,9 @@
 
 ---
 
-## 4. 维度二：动态拓扑与状态共享
+## 3. 维度二：动态拓扑与状态共享
 
-### 4.1 条件路由（✅ 已实现）
+### 3.1 条件路由（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望基于状态动态选择执行路径，以便构建分支逻辑。
 
@@ -191,7 +156,7 @@
 - [x] Router 节点支持编辑路径映射表（PathMap）
 - [x] 前端条件分支以虚线箭头 + 标签展示
 
-### 4.2 动态节点生成（Command.GoTo）（P1）
+### 3.2 动态节点生成（Command.GoTo）（P1）
 
 **用户故事**：作为工作流设计者，我希望节点执行时动态决定下一步，以便处理运行时才能确定的流程走向。
 
@@ -205,7 +170,7 @@
 - [x] `WithEndsMap` 在 builder 中正确接线
 - [x] Command.GoTo 事件通过 WS `graph_node_custom` 推送
 
-### 4.2a 动态任务节点插入（BabyAGI 启发，P2）
+### 3.3 动态任务节点插入（BabyAGI 启发，P2）
 
 > 来源：BabyAGI Task Creation Agent（GitHub 22k+ stars），竞品分析差距 #8
 > 对应需求：`docs/competitive-gap-requirements-2026-05-31.md` P2-7
@@ -227,7 +192,7 @@
 - [ ] 动态节点受预算控制
 - [ ] 动态节点执行结果自动沉淀为记忆（L2 语义召回）
 
-### 4.3 全局共享工作流状态（✅ 已实现）
+### 3.4 全局共享工作流状态（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望所有节点共享同一个 Graph State，以便无感传递上下文。
 
@@ -236,7 +201,7 @@
 - [x] 支持 4 种 Reducer（Default/Append/Cover/Merge）
 - [x] 节点属性面板显示该节点读写的 State 字段
 
-### 4.4 State Schema 校验（✅ 已实现）
+### 3.5 State Schema 校验（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望保存 Graph 时自动校验 State Schema 完整性，以便避免运行时错误。
 
@@ -248,9 +213,9 @@
 
 ---
 
-## 5. 维度三：人机协同与可观测性
+## 4. 维度三：人机协同与可观测性
 
-### 5.1 人工审批节点（✅ 已实现）
+### 4.1 人工审批节点（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望在关键决策点插入人工审批，以便保障流程可控。
 
@@ -259,7 +224,7 @@
 - [x] WS `checkpoint` 事件触发前端确认对话框
 - [x] `ResumeGraph` API 接受用户输入并恢复执行
 
-### 5.2 状态检查点与恢复（✅ 已实现）
+### 4.2 状态检查点与恢复（✅ 已实现）
 
 **用户故事**：作为工作流运维者，我希望查看和恢复历史检查点，以便回溯和调试执行过程。
 
@@ -268,7 +233,7 @@
 - [x] `ListCheckpoints` / `GetStateSnapshot` / `EditState` API
 - [x] SQLite Checkpoint Saver 适配器
 
-### 5.3 时间旅行调试（✅ 已实现）
+### 4.3 时间旅行调试（✅ 已实现）
 
 **用户故事**：作为工作流运维者，我希望回放到任意历史步骤并编辑状态重新执行，以便调试和探索不同路径。
 
@@ -276,7 +241,7 @@
 - [x] TimeTravel API 查询任意步骤状态
 - [x] EditState + Resume 从编辑点重新执行
 
-### 5.4 全链路运行轨迹（P1 增强）
+### 4.4 全链路运行轨迹（P1 增强）
 
 **用户故事**：作为工作流运维者，我希望实时查看每个节点的执行状态、耗时和资源消耗，以便快速定位问题。
 
@@ -297,7 +262,7 @@
 - [x] Graph 执行完成后推送 `graph_execution_done` 事件，包含 ExecutionSummary
 - [x] ExecutionSummary 包含总步骤、总耗时、各节点执行详情
 
-### 5.5 运行时操作（✅ 已实现）
+### 4.5 运行时操作（✅ 已实现）
 
 | 操作 | 状态 | 说明 |
 |------|------|------|
@@ -309,9 +274,9 @@
 
 ---
 
-## 6. 维度四：设计辅助与资产复用
+## 5. 维度四：设计辅助与资产复用
 
-### 6.1 设计时校验（✅ 已实现）
+### 5.1 设计时校验（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望保存 Graph 时自动校验定义的正确性，以便在设计阶段就发现错误。
 
@@ -322,7 +287,7 @@
 - [x] 循环退出校验
 - [x] FuncRef/CondFuncRef 注册校验
 
-### 6.2 设计模式模板（✅ 已实现）
+### 5.2 设计模式模板（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望从预置模板快速创建工作流，以便降低设计门槛。
 
@@ -331,7 +296,7 @@
 - [x] `ListGraphTemplates` / `CreateGraphFromTemplate` API
 - [x] 前端模板选择面板
 
-### 6.3 资产复用（P2）
+### 5.3 资产复用（P2）
 
 **用户故事**：作为工作流设计者，我希望将已有 Graph 保存为模板、导入导出定义、管理版本，以便团队协作和资产积累。
 
@@ -349,7 +314,7 @@
 - [x] Graph 定义支持版本化存储和回滚
 - [x] Graph 定义可导出为 JSON 并从 JSON 导入
 
-### 6.4 节点结果缓存与重试（P2）
+### 5.4 节点结果缓存与重试（P2）
 
 **用户故事**：作为工作流设计者，我希望为节点配置重试策略和缓存策略，以便提高执行可靠性和效率。
 
@@ -365,11 +330,11 @@
 
 ---
 
-## 7. 任务派工与执行规则
+## 6. 任务派工与执行规则
 
 > **Hermes Kanban 闭环（运行时 + Dispatcher + Tools）**：见 [54-hermes-kanban.md](./54-hermes-kanban.md)。本节 RPC/Ent 已实现；Graph 节点自动建任务与 Dispatcher 见 M54 Phase 1。
 
-### 7.1 任务模型与状态机（✅ 已实现）
+### 6.1 任务模型与状态机（✅ 已实现）
 
 **用户故事**：作为工作流运维者，我希望每个节点执行都作为独立任务管理，以便跟踪状态、指派 Agent、记录结果。
 
@@ -378,7 +343,7 @@
 - [x] `CreateTask` / `ClaimTask` / `SubmitTaskResult` / `ReportBlocked` API
 - [x] 任务持久化（Ent Schema: graph_task）
 
-### 7.2 Agent 角色与动态派工（✅ 已实现）
+### 6.2 Agent 角色与动态派工（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望节点可按角色动态指派 Agent，以便实现灵活的人力/Agent 调度。
 
@@ -387,7 +352,7 @@
 - [x] 动态派工按 `assignment_strategy`（least_tasks/random/manual）选择 Agent
 - [x] 无匹配 Agent 时任务状态为 `pending_assignment`
 
-### 7.3 审核与质量门禁（✅ 已实现）
+### 6.3 审核与质量门禁（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望在关键节点设置审核门禁，以便保障输出质量。
 
@@ -397,7 +362,7 @@
 - [x] 审核评论：`AddTaskComment` / `ListTaskComments` API
 - [x] 审核通过 → complete，驳回 → claimed
 
-### 7.4 智能超时与重试（✅ 已实现）
+### 6.4 智能超时与重试（✅ 已实现）
 
 **用户故事**：作为工作流运维者，我希望系统结合心跳感知超时，而非仅依赖挂钟时间，以便避免误判。
 
@@ -406,14 +371,14 @@
 - [x] 心跳感知超时：持续心跳时延长租约
 - [x] 超时后任务标记为 `timed_out`
 
-### 7.5 全链路可观测性（✅ 已实现）
+### 6.5 全链路可观测性（✅ 已实现）
 
 **验收标准**：
 - [x] 结构化日志：`ListTaskLogs` API
 - [x] 运行历史：`ListTaskRuns` API
 - [x] 事件追踪：`ListTaskEvents` API
 
-### 7.6 对外集成（✅ 部分实现）
+### 6.6 对外集成（✅ 部分实现）
 
 | API | 状态 | 说明 |
 |-----|------|------|
@@ -426,15 +391,15 @@
 
 ---
 
-## 8. 编辑器交互需求
+## 7. 编辑器交互需求
 
-### 8.1 编辑器布局
+### 7.1 编辑器布局
 
 - 左侧：组件面板（Function/LLM/Tool/Agent/Router/Join + State Schema + 模板）
 - 中间：Vue Flow 画布区域
 - 右侧：属性面板（节点属性 + State Schema 字段列表 + 校验结果）
 
-### 8.2 节点样式
+### 7.2 节点样式
 
 | NodeType | 形状 | 填充色 | 边框色 |
 |----------|------|--------|--------|
@@ -445,7 +410,7 @@
 | Join | 菱形 | `#f3e5f5` | `#9c27b0` |
 | Function | 矩形 | `#f3e5f5` | `#9c27b0` |
 
-### 8.3 执行状态样式
+### 7.3 执行状态样式
 
 | 状态 | 节点样式 |
 |------|----------|
@@ -458,7 +423,7 @@
 
 ---
 
-## 9. 非功能需求
+## 8. 非功能需求
 
 | 维度 | 要求 |
 |------|------|
@@ -470,14 +435,17 @@
 
 ---
 
-## 10. 数据需求
+## 9. 数据需求
+
+> 数据模型详细设计（Ent Schema、字段定义、表关系）详见 [36-graph-workflow.design.md §8 数据模型](./36-graph-workflow.design.md#八数据模型)。
 
 | 数据模型 | 状态 | 说明 |
 |----------|------|------|
-| 工作流定义模型 | ✅ | `graph_definition` 表：节点集、边集、状态模式、全局配置 |
-| 运行实例模型 | ✅ | `graph_execution` 表：关联定义 ID、当前状态、检查点引用 |
-| 任务模型 | ✅ | `graph_task` 表：指派信息、状态、输入输出 |
-| 事件模型 | ✅ | `graph_task_event` 表：事件类型、源节点、描述 |
-| 日志模型 | ✅ | `graph_task_log` 表：任务级 stdout/stderr 日志 |
-| 运行历史模型 | ✅ | `graph_task_run` 表：启动时间、结束时间、退出码 |
-| 评论模型 | ✅ | `graph_task_comment` 表：审核人、内容、类型 |
+| 工作流定义模型 | ✅ | 节点集、边集、状态模式、全局配置 |
+| 运行实例模型 | ✅ | 关联定义 ID、当前状态、检查点引用 |
+| 任务模型 | ✅ | 指派信息、状态、输入输出 |
+| 事件模型 | ✅ | 事件类型、源节点、描述 |
+| 日志模型 | ✅ | 任务级 stdout/stderr 日志 |
+| 运行历史模型 | ✅ | 启动时间、结束时间、退出码 |
+| 评论模型 | ✅ | 审核人、内容、类型 |
+| 任务依赖模型 | ✅ | 任务间依赖关系 |

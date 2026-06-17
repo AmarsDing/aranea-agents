@@ -4,7 +4,7 @@
 > **读者**：产品、全栈开发、运维
 > **关联**：[11 multi-agent.md](./11%20multi-agent.md) · [36 graph-workflow.md](./36%20graph-workflow.md) · [51 消息机制.md](./51%20消息机制.md) · [0 系统框图.md](./0%20系统框图.md)
 > **技术设计**：[53 team-graph-orchestration.design.md](./53%20team-graph-orchestration.design.md)
-> **开发计划**：[53-team-graph-orchestration.development.md](./53-team-graph-orchestration-development.md)
+> **开发计划**：[53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md)
 
 ---
 
@@ -21,7 +21,7 @@
 
 **目标**：以 **OrchestrationSpec（编排规格）** 为统一真相源，Team 提供模式化简视图，Graph 提供自由拓扑视图；运行态统一观测 Agent 状态与 Kanban 工作阶段。**终态**：GraphAgent 为唯一执行引擎，Team 是 OrchestrationSpec 的编辑视图。
 
-**当前进度**：Phase 0.5–4 ✅ | Phase 5 大部分 ✅ | Phase 6–7 ✅ | Phase 8.1–8.8 ✅ | Phase 8.9 待实施
+> 详见 [53-team-graph-orchestration.development.md §2 现状评估](./53-team-graph-orchestration.development.md#2-现状评估2026-06-06)
 
 ---
 
@@ -99,10 +99,10 @@
 
 **验收**：
 
-- Checkpoint：长时间 Team Run 进程重启后可恢复（Phase 6 ✅）
-- HITL：节点配置 `interrupt_before/after` 后运行时暂停，Observatory 可审核恢复（Phase 6 ✅）
-- 子图：Team 嵌套子图 / Router 节点，编译期循环检测（Phase 7 ✅）
-- Task / review 节点进入 Team 编译（Phase 7 ✅）
+- Checkpoint：长时间 Team Run 进程重启后可恢复
+- HITL：节点配置 `interrupt_before/after` 后运行时暂停，Observatory 可审核恢复
+- 子图：Team 嵌套子图 / Router 节点，编译期循环检测
+- Task / review 节点进入 Team 编译
 
 ### US-07 Activity 时间线与历史
 
@@ -137,10 +137,10 @@
 
 **验收**：
 
-- FailurePolicy 支持 retry（含 backoff）、skip、fallback_agent、parallel_fail continue（Phase 4 ✅）
+- FailurePolicy 支持 retry（含 backoff）、skip、fallback_agent、parallel_fail continue
 - 节点失败时前端展示失败 banner，提供重试 / 切 fallback / 审核 / 终止操作
-- Circuit Breaker：连续失败达阈值后节点冻结 + WS alert（类型预留，实现待 Phase 8.9+）
-- 死信：失败超过 retry 且 policy=halt 的 Job 写入 `task_dead_letters`（待实施）
+- Circuit Breaker：连续失败达阈值后节点冻结 + WS alert
+- 死信：失败超过 retry 且 policy=halt 的 Job 写入 `task_dead_letters`
 
 ### US-10 编排规格产品化
 
@@ -206,9 +206,9 @@
 |----|------|
 | 架构 | `internal/biz` 不 import trpc；状态归约在 biz，投影在 team/service |
 | 性能 | Observatory 首屏 30 节点 < 500ms |
-| 兼容 | Phase 0.5–4 已完成；Phase 5+ 扩大 Graph 执行占比，Native 保留至 Phase 8 为安全网 |
+| 兼容 | OrchestrationSpec v1/v2 双协议并存；Graph 执行为默认路径 |
 | 前端 | 遵循 `aranea-frontend-guide` SKILL §6 token；复用 `GraphFlowNode` |
-| 执行单链 | GraphAgent 为唯一执行引擎；`ARANEA_TEAM_NATIVE=1` 仅紧急熔断 |
+| 执行单链 | GraphAgent 为唯一执行引擎；Native 仅作紧急熔断 |
 
 ---
 
@@ -228,36 +228,5 @@
 
 ## 6. 验收标准索引
 
-| ID | 摘要 | 阶段 | 状态 |
-|----|------|------|------|
-| OBS-01 | Graph Agent 节点聚合 + 细态 badge | Phase 1 | ✅ |
-| OBS-02 | Kanban 三列 + status chip | Phase 1 | ✅ |
-| OBS-03 | Kanban ↔ Graph focus 联动 | Phase 1 | ✅ |
-| OBS-04 | WS 实时状态切换 | Phase 0.5 | ✅ |
-| OBS-05 | retry / skipped 视觉 | Phase 2 | ✅ |
-| OBS-06 | Run 结束状态冻结可回放 | Phase 1 | ✅ |
-| TG-01 | mode → graph 编译器 | Phase 2 | ✅ |
-| TG-02 | TeamRun 绑定 graph_execution | Phase 3 | ✅ |
-| FP-01 | FailurePolicy | Phase 4 | ✅ |
-| RT-01 | Native vs Graph parity E2E | Phase 5 | ✅ |
-| RT-02 | runtime_engine 前端编辑 + raw merge | Phase 5 | ✅ |
-| RT-03 | GraphEditorCanvas readonly | Phase 5 | ✅ |
-| RT-04 | 运行时指标 + Canary | Phase 5 | ✅ |
-| HIST-01 | Activity 时间线 + 持久化 | Phase 5 | ⏳ |
-| CMP-V2 | OrchestrationSpec v2 类型对齐 | Phase 6 | ⏳ |
-| CHK-01 | Team Graph Run Checkpoint | Phase 6 | ⏳ |
-| HITL-01 | Team Graph Run InterruptBefore/After | Phase 6 | ⏳ |
-| FP-02 | Circuit Breaker | Phase 6b | 📋 |
-| FP-03 | HITL 错误接管 | Phase 6b | 📋 |
-| FP-04 | 死信表 | Phase 6b | 📋 |
-| G-RETRY | RetryPolicy 属性面板 | Phase 6c | ✅ |
-| G-GOTO | Destinations 属性面板 | Phase 6c | ✅ |
-| G-AGENT-MAP | Mapper 属性面板 | Phase 6c | ✅ |
-| RETIRE | 移除 Native 主路径 | Phase 7 | ✅ |
-| TASK-01 | Task / review 节点编译 | Phase 7 | ✅ |
-| SUB-01 | 子图 / Router 节点 | Phase 7 | ✅ |
-| BL-01~07 | 架构优化（状态机/协议化/单轨化/模板/配置化/错误规范化） | Phase 8 | ✅ |
-| BL-05 | Step 持久化事件驱动统一 | Phase 8.9 | 📋 |
-| BL-09 | Observer 单订阅化 | Phase 8.9 | 📋 |
-
-完整任务拆分见 [开发计划](./53-team-graph-orchestration-development.md)。
+> 验收标准索引（含 Phase 阶段与实施状态）已迁移至开发计划文档。
+> 详见 [53-team-graph-orchestration.development.md §4 任务板](./53-team-graph-orchestration.development.md#4-任务板当前冲刺)

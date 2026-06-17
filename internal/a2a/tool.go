@@ -57,6 +57,11 @@ func invokerFromContext(ctx context.Context) InvokerFunc {
 }
 
 // loggerKey stores the loggateway.Logger in context for audit error reporting.
+//
+// TECH-DEBT(a2a): Logger is passed via context because NewCallAgentTool() returns
+// trpctool.CallableTool interface, which cannot be extended with constructor params.
+// Ideal solution is constructor injection, but framework interface constraint
+// prevents it. This is an accepted trade-off documented for future framework upgrades.
 type loggerKey struct{}
 
 // WithLogger attaches a loggateway.Logger to ctx.

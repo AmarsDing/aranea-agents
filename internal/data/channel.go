@@ -152,7 +152,7 @@ func (r *channelRepo) Delete(ctx context.Context, id string) error {
 			SetStatus("deleted").
 			SetUpdatedAt(now).
 			Save(txCtx); err != nil {
-			return err
+			return entErrToBizErr(err, "CHANNEL")
 		}
 		return cascadeDeleteByChannel(txCtx, r.data, cleanID)
 	})
@@ -246,7 +246,7 @@ func (r *channelRepo) DeleteCredential(ctx context.Context, channelID, credentia
 		SetDeletedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "CHANNEL")
 }
 
 func deliveryEntToBiz(e *ent.PlatformChannelDelivery) biz.ChannelDelivery {

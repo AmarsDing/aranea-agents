@@ -11,19 +11,24 @@
 
 | 层级 | 路径 |
 |------|------|
-| Task 领域 | `internal/biz/task.go`, `task_dispatch.go`, `task_dispatcher.go`, `task_links.go`, `graph_task_coordinator.go` |
+| Task 领域 | `internal/biz/task.go`, `task_dispatch.go`, `task_dispatcher.go`, `task_links.go`, `graph_task_coordinator.go`, `graph_task_input.go` |
 | Graph 挂钩 | `internal/biz/graph_execution.go`, `internal/service/graph_task_runtime.go` |
 | WS / Webhook | `internal/service/graph_task_status.go` |
 | Tools | `internal/tools/kanban/tools.go`, `bridge.go`, `env.go` |
+| Toolset 注册 | `internal/tools/trpc/toolsets.go`（`ToolsetConfig.Kanban`） |
+| Toolset 启用 | `internal/agent/tool_assembly.go`（`kanbanpkg.Enabled()`） |
+| Toolset Seed | `internal/data/builtin_tools_seed.go`（key=`kanban`） |
 | Service bridge | `internal/service/kanban_bridge.go` |
-| 前端看板 | `web/src/components/graph/GraphTaskKanban*.vue` |
+| 前端看板 | `web/src/components/graph/GraphTaskKanban.vue`, `GraphTaskKanbanCard.vue` |
 | 前端列/投影 | `web/src/features/graph/tasks/kanbanColumns.ts`, `taskStreamProjection.ts` |
-| 前端编排 | `web/src/features/graph/useGraphRunTasks.ts` |
-| Agent 看板 | `web/src/components/orchestration/OrchestrationKanban*.vue` |
+| 前端编排 | `web/src/features/graph/useGraphRunTasks.ts`, `useGraphRunPage.ts` |
+| 前端 API | `web/src/features/graph/api.ts`（claim/submit/unblock/review） |
+| Agent 看板 | `web/src/components/orchestration/OrchestrationKanban.vue`, `OrchestrationKanbanCard.vue` |
 | 壳组件 | `web/src/components/workflow/WorkflowKanbanBoard.vue` |
 | 详情抽屉 | `web/src/components/graph/GraphTaskDetailDrawer.vue` |
-| 观测入口 | `web/src/pages/TeamRunObservatoryPage.vue`, `GraphRunInspector.vue` |
-| Proto | `api/kratos/graph/v1/graph.proto` |
+| 观测入口 | `web/src/pages/TeamRunObservatoryPage.vue`, `web/src/components/graph/GraphRunInspector.vue`, `web/src/pages/GraphRunPage.vue` |
+| Proto | `api/kratos/graph/v1/graph.proto`（TaskService 行 916–993） |
+| Ent Schema | `internal/data/ent/schema/graph_task.go`, `graph_task_link.go`, `graph_task_event.go`, `graph_task_run.go`, `graph_task_log.go`, `graph_task_comment.go` |
 
 **Hermes 对照文件**（UI/行为移植时阅读）：
 
@@ -112,7 +117,7 @@
 | ID | 任务 | 文件 | 状态 | Hermes 参照 |
 |----|------|------|------|-------------|
 | HK-FE-05 | Drawer「依赖」Tab：link/unlink UI | `GraphTaskDetailDrawer.vue`, `features/graph/tasks/useTaskLinks.ts` | ⏳ | DependencyEditor |
-| HK-FE-05b | ListTaskLinks API 或 GetTask 扩展 | `graph.proto` · biz | ⏳ | GET task parents/children |
+| HK-FE-05b | 新增 `ListTaskLinks` RPC 或 `GetTask` 扩展 links 字段（当前 proto 仅有 `LinkTasks`/`UnlinkTasks`，无 list） | `api/kratos/graph/v1/graph.proto` · `internal/biz/task_links.go` | ⏳ | GET task parents/children |
 
 ### 7.2 P2 — 看板工具栏与创建
 
@@ -138,7 +143,10 @@
 | HK-FE-13 | Graph 列表「打开任务板」快捷入口 | ⏳ | `/kanban` 一级 Tab |
 | HK-FE-14 | Running 列 Agent 泳道 | ⏳ | Lanes by profile |
 | HK-ORCH-01 | Admin「分解任务」LLM 按钮 | ⏳ | decompose API |
-| HK-FE-15 | `kanban/tool_test.go` + column 单测 | ⏳ | — |
+| HK-FE-15a | 补 `kanbanColumns.spec.ts` 前端单测 | 📋 | — |
+| HK-FE-15b | 补 service 层 `graph_task_runtime_test.go` | 📋 | — |
+
+> `internal/tools/kanban/tools_test.go` + `bridge_test.go` + `bridge_more_test.go` 已存在且覆盖 9 工具 Call 路径（✅），无需再补。
 
 ---
 
@@ -207,3 +215,4 @@ cd web && pnpm test -- taskStreamProjection kanbanColumns
 |------|------|------|
 | 1.0 | 2026-05-23 | Phase 0–3 任务板 |
 | 1.1 | 2026-05-24 | Hermes UI 对照锚点；Phase 4 G14 spawn；Phase 5 UI 对标；Phase 6 M53 收敛 |
+| 1.2 | 2026-06-17 | 三件套内容边界整理 + 代码核对：§1 代码锚点补全（`builtin_tools_seed.go` 路径修正为 `internal/data/`、新增 `tool_assembly.go`/`api.ts`/`useGraphRunPage.ts`/`GraphRunPage.vue`/Ent Schema 清单）；§7.1 HK-FE-05b 明确 `ListTaskLinks` RPC 不存在；§7.4 HK-FE-15 拆分为 15a/15b（`tools_test.go` 已存在无需补，待补的是 `kanbanColumns.spec.ts` 与 service 层测试） |

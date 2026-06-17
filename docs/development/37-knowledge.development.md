@@ -1,7 +1,7 @@
 # Knowledge 知识库 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：✅ Phase 1-7 已完成，OCR stub/AgenticFilter/多租户待补
-> **需求**：[37 knowledge.md](./37%20knowledge.md) · **设计**：[37 knowledge.design.md](./37%20knowledge.design.md)
+> **版本**：2026-06-17 | **状态**：✅ Phase 1-7 已完成，OCR stub/AgenticFilter/多租户待补
+> **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
 
@@ -11,8 +11,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 **代码锚点**：
 - `api/kratos/knowledge/v1/knowledge.proto` — Knowledge CRUD + Search RPC（含 `rewrite_strategy` + `hybrid_search`）
-- `internal/biz/knowledge.go` — 类型别名转发（KnowledgeRepo = knowledge.Repo 等）
-- `internal/biz/knowledge/knowledge.go` — 领域模型 + Repo/Usecase 接口（子接口拆分）
+- `internal/biz/knowledge.go` — 类型别名转发（KnowledgeRepo = knowledge.Repo 等 + ApplyKnowledgeEmbedPatch 等）
+- `internal/biz/knowledge/knowledge.go` — 领域模型 + Repo/Usecase 接口（子接口拆分）+ EmbedSetting patch 合并
 - `internal/data/knowledge.go` — KnowledgeRepo（PostgreSQL + pgvector + BM25 双路）
 - `internal/service/knowledge.go` — KnowledgeService（KnowledgeSearchDeps 聚合）
 - `internal/service/knowledge_advanced.go` — Advanced RAG Wire 工厂（6 个 Provider）
@@ -34,7 +34,6 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `internal/knowledge/readers_import.go` — trpc reader 注册
 - `internal/knowledge/reranker_factory.go` — env Reranker（KN-01）
 - `internal/service/knowledge_embedder.go` — Embedder Wire（env + DB）
-- `internal/biz/knowledge_embed_setting.go` — Embedder patch 合并
 - `api/kratos/system_setting/v1/system_setting.proto` — `KnowledgeEmbedSettings`
 - `internal/service/knowledge_retriever.go` — Retriever Wire
 - `internal/tools/knowledge/tool.go` — knowledge_search + knowledge_reflect 工具
@@ -276,7 +275,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ## 8. 代码优化记录
 
-> 详细优化记录见 [2026-05-29-Knowledge-Optimization.md](../../changelog/2026-05-29-Knowledge-Optimization.md)
+> 优化记录汇总（原始 changelog 文件已归档）。
 
 ### 第一轮：安全 + 可靠性修复（已完成）
 
@@ -358,8 +357,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ## 子模块：Knowledge Evolution Roadmap
 
-> **版本**：2026-06-06 | **状态**：Phase 1（Advanced RAG）✅ 已实现，Phase 2（Agentic RAG）✅ 已实现
-> **前置**：[37 knowledge.md](./37-knowledge.md) · [37 knowledge.design.md](./37-knowledge.design.md)
+> **版本**：2026-06-17 | **状态**：Phase 1（Advanced RAG）✅ 已实现，Phase 2（Agentic RAG）✅ 已实现
+> **前置**：[37-knowledge.md](./37-knowledge.md) · [37-knowledge.design.md](./37-knowledge.design.md)
 > **学术参考**：见附录 A
 
 ---
@@ -423,47 +422,14 @@ Naive RAG (2023)    Advanced RAG (2024)    Agentic RAG (2025-2026)
 
 ## 二、知识库在 Aranea 中的定位
 
-### 2.1 Agent 认知三角
+> 三层知识模型（L1 文档知识 / L2 关系知识 / L3 技能知识）的架构设计详见 [37-knowledge.design.md §9.7.1](./37-knowledge.design.md#971-三层知识模型)。
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Aranea Agent 运行时                  │
-│                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
-│  │  Memory   │  │  Tools   │  │   Knowledge      │   │
-│  │ (会话记忆) │  │ (工具集)  │  │   (认知基础设施)  │   │
-│  │           │  │          │  │                   │   │
-│  │ • 短期记忆 │  │ • 内置工具│  │ • 文档知识(What) │   │
-│  │ • 长期记忆 │  │ • MCP工具 │  │ • 技能知识(How)  │   │
-│  │ • 事实记忆 │  │ • 自定义  │  │ • 关系知识(Who)  │   │
-│  └──────────┘  └──────────┘  └──────────────────┘   │
-│                                                       │
-│              ↑ 三者协同，构成 Agent 认知三角 ↑          │
-└─────────────────────────────────────────────────────┘
-```
-
+Knowledge 与 Memory、Skill 构成 Agent 认知三角：
 - **Memory**：Agent 自身经验的内化（"我做过什么"）
 - **Knowledge**：外部知识的摄入和组织（"世界是什么样"）
 - **Skill**：从经验/文档中蒸馏的可复用操作流程（"该怎么做"）
 
-### 2.2 三层知识模型
-
-| 层 | 类型 | 存储形式 | 检索方式 | 对应当前实现 |
-|----|------|----------|----------|-------------|
-| **L1 文档知识** | "知道什么" | Chunk + Embedding | 向量相似度 | ✅ 已实现 |
-| **L2 关系知识** | "谁关联谁" | 实体 + 关系（知识图谱） | 图遍历 + 子图检索 | ❌ 未实现 |
-| **L3 技能知识** | "如何做" | 技能描述 + 执行轨迹 | 语义匹配 + 层次导航 | ❌ 未实现 |
-
-### 2.3 与现有模块的关系
-
-```
-Memory (记忆)                    Knowledge (知识)
-├── 短期：当前会话上下文           ├── L1：文档向量检索
-├── 长期：用户偏好/历史摘要        ├── L2：实体关系图谱
-└── 事实：结构化事实向量           └── L3：可复用技能库
-     ↑                                ↑
-     └── 已有 pgvector 存储 ──────────┘── 共用向量基础设施
-```
+当前实现 L1 文档知识（向量检索），L2 关系知识（GraphRAG）和 L3 技能知识（Skill Knowledge）待实现。
 
 ---
 
@@ -471,183 +437,28 @@ Memory (记忆)                    Knowledge (知识)
 
 ### Phase 1：Advanced RAG — 夯实检索质量 ✅ 已实现
 
-> 目标：从 Naive RAG 升级到 Advanced RAG，提升检索精度和召回率。
-> 预期收益：检索精度提升 20-30%
-> **实现日期**：2026-05-28
+> **实现日期**：2026-05-28 | **预期收益**：检索精度提升 20-30%
+> 架构设计详见 [37-knowledge.design.md §5.5-5.9](./37-knowledge.design.md#55-queryrewriterinternalknowledgequery_rewritergo)
 
-#### 1.1 查询重写与分解
-
-**现状**：用户原始 query 直接做 embedding，无任何优化。
-
-**方案**：在 `Retriever.Search` 前插入查询理解层。
-
-```go
-// internal/knowledge/query_rewriter.go（新增）
-
-type QueryRewriter interface {
-    Rewrite(ctx context.Context, query string) ([]string, error)
-}
-
-// HyDE：先用 LLM 生成假设性回答，再用假设回答做 embedding 检索
-type HyDERewriter struct {
-    llm LLM
-}
-
-// Query Decomposition：将复杂查询分解为子问题，分别检索后合并
-type DecompositionRewriter struct {
-    llm LLM
-}
-
-// Multi-Query：生成多个查询变体，合并检索结果（RRF 倒排融合）
-type MultiQueryRewriter struct {
-    llm LLM
-}
-```
-
-**Proto 扩展**：
-
-```protobuf
-message SearchRequest {
-    // ... 现有字段
-    bool enable_query_rewrite = 10;
-    string rewrite_strategy = 11; // hyde | decomposition | multi_query
-}
-```
-
-**架构位置**：`internal/knowledge/query_rewriter.go`（新增），在 Retriever.Search 前调用。
-
-#### 1.2 混合检索
-
-**现状**：纯 pgvector 余弦相似度搜索。
-
-**方案**：增加 BM25 稀疏检索路径，与向量检索融合。
-
-```go
-// internal/knowledge/hybrid_retriever.go（新增）
-
-type HybridRetriever struct {
-    dense  DenseRetriever
-    sparse SparseRetriever
-    fusion FusionStrategy
-}
-
-type FusionStrategy interface {
-    Merge(dense, sparse []ScoredChunk) []ScoredChunk
-}
-
-// RRF 融合：Reciprocal Rank Fusion
-type RRFFusion struct {
-    K int
-}
-```
-
-- **BM25**：PostgreSQL `ts_vector` 全文检索，与 pgvector 向量检索并行
-- **RRF 融合**：合并两路结果，兼顾语义相似度和关键词精确匹配
-- **架构位置**：`internal/knowledge/hybrid_retriever.go`（新增），data 层增加 `SearchChunksBM25`
-
-**Data 层扩展**：
-
-```go
-// internal/data/knowledge.go 扩展
-
-func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
-    // PostgreSQL ts_vector 全文检索
-    // SELECT ... FROM knowledge_chunks
-    // WHERE collection_id = $1 AND to_tsvector('simple', content) @@ plainto_tsquery('simple', $2)
-    // ORDER BY ts_rank DESC LIMIT $3
-}
-```
-
-**Proto 扩展**：
-
-```protobuf
-message SearchRequest {
-    // ... 现有字段
-    bool enable_hybrid_search = 12;
-}
-```
-
-#### 1.3 自适应检索
-
-**现状**：所有查询走同一管线。
-
-**方案**：增加查询复杂度分类器，动态选择检索策略。
-
-```go
-// internal/knowledge/adaptive_router.go（新增）
-
-type QueryComplexity int
-
-const (
-    QuerySimple    QueryComplexity = iota
-    QueryModerate
-    QueryComplex
-)
-
-type AdaptiveRouter struct {
-    classifier QueryClassifier
-    simple     Retriever   // 纯向量检索
-    advanced   Retriever   // 混合检索 + Rerank
-}
-```
-
-- 简单查询：直接向量检索（低延迟 ~50ms）
-- 中等查询：向量 + BM25 混合检索
-- 复杂查询：查询分解 + 多轮迭代检索 + Rerank
-
-**架构位置**：`internal/knowledge/adaptive_router.go`（新增）
-
-#### 1.4 检索质量评估（CRAG 思路）
-
-**现状**：检索结果直接返回，无质量评估。
-
-**方案**：在检索后增加评估环节，不满足阈值时触发补充检索。
-
-```go
-// internal/knowledge/retrieval_evaluator.go（新增）
-
-type RetrievalEvaluator interface {
-    Evaluate(ctx context.Context, query string, chunks []biz.KnowledgeChunk) RetrievalAssessment
-}
-
-type RetrievalAssessment struct {
-    Sufficient      bool
-    Confidence      float32
-    SupplementQuery string
-}
-
-type LLMEvaluator struct {
-    llm LLM
-}
-```
-
-- 评估维度：相关性、完整性、一致性
-- 不满足时：生成补充查询，触发二次检索
-- 架构位置：`internal/knowledge/retrieval_evaluator.go`（新增）
+| 子任务 | 状态 | 代码锚点 |
+|--------|------|----------|
+| 1.1 查询重写与分解（HyDE/Decomposition/MultiQuery） | ✅ | `internal/knowledge/query_rewriter.go` |
+| 1.2 混合检索（Dense+BM25+RRF 融合） | ✅ | `internal/knowledge/hybrid_retriever.go` + `internal/data/knowledge.go` (`SearchChunksBM25`) |
+| 1.3 自适应检索路由（查询复杂度分类） | ✅ | `internal/knowledge/adaptive_router.go` |
+| 1.4 检索质量评估（CRAG 式自校验） | ✅ | `internal/knowledge/retrieval_evaluator.go` |
 
 ---
 
 ### Phase 2：Agentic RAG — 让 Agent 主动检索 ✅ 已实现
 
-> 目标：从被动检索升级为 Agent 主动规划、迭代检索、自校验。
-> 预期收益：复杂查询检索质量提升 40-50%
-> **实现日期**：2026-05-29
+> **实现日期**：2026-05-29 | **预期收益**：复杂查询检索质量提升 40-50%
+> 架构设计详见 [37-knowledge.design.md §5.10](./37-knowledge.design.md#510-federatedretrieverinternalknowledgefederated_retrievergo) 和 [§6.1b](./37-knowledge.design.md#61b-knowledge_reflect-工具internaltoolsknowledgetoolgo)
 
-#### 2.1 多轮迭代检索工具
-
-**现状**：`knowledge_search` 是单次调用工具。
-
-**方案**：升级为支持多轮对话的迭代检索工具集。
-
-```go
-// internal/tools/knowledge/tool.go（已实现 knowledge_reflect）
-
-// knowledge_reflect：让 Agent 评估当前检索结果是否充分
-func NewReflectTool() trpctool.CallableTool { ... }
-
-// knowledge_search 保持兼容，支持 AdaptiveRouter 自动路由
-func NewSearchTool() trpctool.CallableTool { ... }
-```
+| 子任务 | 状态 | 代码锚点 |
+|--------|------|----------|
+| 2.1 多轮迭代检索工具（knowledge_reflect） | ✅ | `internal/tools/knowledge/tool.go` |
+| 2.2 跨 Collection 联邦搜索（Broadcast + Route） | ✅ | `internal/knowledge/federated_retriever.go` |
+| 2.3 Plan-Then-Retrieve（BeforeModel 钩子） | ✅ | `internal/agent/knowledge_inject.go` |
 
 **迭代检索流程**（已实现）：
 
@@ -665,280 +476,31 @@ Agent 调用 knowledge_reflect(query, collection_ids)
 Agent 生成最终回答
 ```
 
-**架构位置**：`internal/tools/knowledge/tool.go`（已实现）
-
-#### 2.2 跨 Collection 联邦搜索 ✅ 已实现
-
-**现状**：每次搜索限定单一 Collection。
-
-**方案**：增加联邦搜索能力，支持跨 Collection 检索。
-
-```go
-// internal/knowledge/federated_retriever.go（已实现）
-
-type FederatedRetriever struct {
-    router    *AdaptiveRouter
-    retriever *Retriever
-}
-
-func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever) *FederatedRetriever
-func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error)
-```
-
-- **Broadcast**（已实现）：向所有指定 Collection 并行广播查询，结果合并去重
-- **Route**（已实现）：先基于 Collection 名称/描述相关性评分路由到最相关的 Collection，再检索
-
-**架构位置**：`internal/knowledge/federated_retriever.go`（已实现）
-
-#### 2.3 Plan-Then-Retrieve 模式 ✅ 已实现
-
-**现状**：Agent 不知道有哪些知识库可用，无法规划检索路径。
-
-**方案**：在 Agent 系统提示中注入 Collection 摘要，让 Agent 先规划再检索。
-
-```go
-// internal/agent/knowledge_inject.go（已实现）
-
-func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase) string
-```
-
-- BeforeModel 钩子（优先级 6），在每次模型调用前注入 Collection 摘要
-- 仅注入 Agent 关联的 Collection（通过 `KnowledgeCollectionsFromContext` 读取 scoped IDs）
-- 摘要包含：Collection 名称、ID、描述、文档数、块数 + 搜索策略提示
-- 截断保护：单个描述 ≤120 字符，总摘要 ≤1500 字符，最多 10 个 Collection
-- KnowledgeUsecase 为 nil 或无 Collection 时自动跳过
-
 ---
 
 ### Phase 3：GraphRAG — 知识图谱增强
 
-> 目标：引入知识图谱层，支撑多跳推理和实体关系查询。
-> 预期收益：多跳/实体关系查询准确率提升 60-70%
+> **预期收益**：多跳/实体关系查询准确率提升 60-70%
+> 架构设计详见 [37-knowledge.design.md §9.6](./37-knowledge.design.md#96-graphrag--知识图谱增强)
 
-#### 3.1 知识图谱构建
-
-**方案**：在文档入库时，增加实体和关系提取步骤。
-
-```
-文档入库管线（升级）：
-  ExtractDocumentText → SplitWithStrategy → EmbedTexts
-    + ExtractEntities → ExtractRelations → BuildKnowledgeGraph
-```
-
-```go
-// internal/biz/knowledge/graph.go（新增）
-
-type Entity struct {
-    ID           string
-    Name         string
-    Type         string
-    Properties   map[string]any
-    CollectionID string
-    DocID        string
-}
-
-type Relation struct {
-    ID           string
-    SourceID     string
-    TargetID     string
-    Type         string
-    Properties   map[string]any
-    CollectionID string
-}
-
-type GraphRepo interface {
-    UpsertEntities(ctx context.Context, entities []Entity) error
-    UpsertRelations(ctx context.Context, relations []Relation) error
-    SearchSubgraph(ctx context.Context, query GraphQuery) (Subgraph, error)
-    Traverse(ctx context.Context, startEntityID string, depth int) (Subgraph, error)
-}
-```
-
-- **实体提取**：LLM-based NER（利用已有 Provider 集成）
-- **关系提取**：LLM-based 关系三元组提取
-- **存储**：PostgreSQL 关系表（`knowledge_entities`、`knowledge_relations`），未来可扩展 Neo4j
-- **架构位置**：`internal/biz/knowledge/graph.go`（新增），`internal/data/knowledge_graph.go`（新增）
-
-**数据库 Schema**：
-
-```sql
--- docs/sql/knowledge_graph.sql（新增）
-
-CREATE TABLE IF NOT EXISTS knowledge_entities (
-    id            TEXT PRIMARY KEY,
-    name          TEXT NOT NULL,
-    type          TEXT NOT NULL DEFAULT '',
-    properties    JSONB NOT NULL DEFAULT '{}',
-    collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
-    doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS knowledge_relations (
-    id            TEXT PRIMARY KEY,
-    source_id     TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
-    target_id     TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
-    type          TEXT NOT NULL DEFAULT '',
-    properties    JSONB NOT NULL DEFAULT '{}',
-    collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_ke_collection ON knowledge_entities(collection_id);
-CREATE INDEX idx_ke_name_type  ON knowledge_entities(name, type);
-CREATE INDEX idx_kr_source     ON knowledge_relations(source_id);
-CREATE INDEX idx_kr_target     ON knowledge_relations(target_id);
-CREATE INDEX idx_kr_type       ON knowledge_relations(type);
-```
-
-#### 3.2 图增强检索
-
-**方案**：向量检索 + 图遍历融合。
-
-```go
-// internal/knowledge/graph_augmented_retriever.go（新增）
-
-type GraphAugmentedRetriever struct {
-    vectorRetriever *Retriever
-    graphRepo       biz.KnowledgeGraphRepo
-}
-
-func (r *GraphAugmentedRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
-    // 1. 向量检索获取初始 chunks
-    chunks, _ := r.vectorRetriever.Search(ctx, q)
-    // 2. 从 chunks 中提取实体
-    entities := extractEntitiesFromChunks(chunks)
-    // 3. 图遍历获取关联实体和文档
-    subgraph := r.graphRepo.Traverse(ctx, entities, depth=2)
-    // 4. 融合向量结果和图结果
-    return mergeResults(chunks, subgraphChunks), nil
-}
-```
-
-- 向量检索负责语义相似度
-- 图遍历负责关系推理和多跳连接
-- 融合策略：加权合并或 RRF
-
-#### 3.3 图查询工具
-
-**方案**：为 Agent 增加图查询工具。
-
-```go
-// internal/tools/knowledge/graph_tool.go（新增）
-
-func NewGraphSearchTool() trpctool.CallableTool {
-    // knowledge_graph_search: 搜索知识图谱中的实体和关系
-    // 输入: collection_id, entity_name, relation_type, depth
-    // 输出: entities[], relations[]
-}
-
-func NewGraphTraverseTool() trpctool.CallableTool {
-    // knowledge_graph_traverse: 从指定实体出发遍历关系图
-    // 输入: entity_id, depth, relation_type_filter
-    // 输出: subgraph
-}
-```
-
-**架构位置**：`internal/tools/knowledge/graph_tool.go`（新增）
-
-**Proto 扩展**：
-
-```protobuf
-message GraphSearchRequest {
-    string collection_id = 1;
-    string entity_name = 2;
-    string relation_type = 3;
-    int32 depth = 4;
-}
-
-message GraphSearchResponse {
-    repeated KnowledgeEntity entities = 1;
-    repeated KnowledgeRelation relations = 2;
-}
-```
+| 子任务 | 状态 | 代码锚点（计划） |
+|--------|------|------------------|
+| 3.1 知识图谱构建（实体/关系提取 + 存储） | ❌ | `internal/biz/knowledge/graph.go`（新增）、`internal/data/knowledge_graph.go`（新增） |
+| 3.2 图增强检索（向量 + 图遍历融合） | ❌ | `internal/knowledge/graph_augmented_retriever.go`（新增） |
+| 3.3 图查询工具（knowledge_graph_search/traverse） | ❌ | `internal/tools/knowledge/graph_tool.go`（新增） |
 
 ---
 
 ### Phase 4：Skill Knowledge — 技能知识库
 
-> 目标：从文档知识库演进为技能知识库，与 Aranea 的 Skill 体系深度融合。
-> 预期收益：Agent 任务执行效率提升 80%+（通过技能复用减少重复推理）
+> **预期收益**：Agent 任务执行效率提升 80%+（通过技能复用减少重复推理）
+> 架构设计详见 [37-knowledge.design.md §9.7](./37-knowledge.design.md#97-skill-knowledge--技能知识库)
 
-#### 4.1 技能知识库构建
-
-**方案**：借鉴 SkillX 和 CORPUS2SKILL，构建三层技能层次。
-
-```go
-// internal/biz/knowledge/skill_knowledge.go（新增）
-
-type SkillKnowledge struct {
-    ID             string
-    Name           string
-    Description    string
-    Level          SkillLevel
-    ParentID       string
-    CollectionID   string
-    Procedure      string
-    Tools          []string
-    Preconditions  string
-    Postconditions string
-    Embedding      []float32
-}
-
-type SkillLevel int
-
-const (
-    SkillPlanning  SkillLevel = iota  // 高层任务规划
-    SkillFunctional                    // 可复用功能子程序
-    SkillAtomic                        // 原子操作模式
-)
-```
-
-- **离线蒸馏**：从 Agent 执行轨迹中提取技能（与 Memory 的压缩机制协同）
-- **层次导航**：Agent 获得技能目录鸟瞰图 → 逐级钻入 → 获取具体操作步骤
-- **架构位置**：`internal/biz/knowledge/skill_knowledge.go`（新增），与 `internal/biz/skill` 协同
-
-#### 4.2 知识导航工具
-
-**方案**：借鉴 CORPUS2SKILL，增加知识导航工具。
-
-```go
-// internal/tools/knowledge/navigate_tool.go（新增）
-
-func NewKnowledgeNavigateTool() trpctool.CallableTool {
-    // knowledge_navigate: 浏览知识库的层次结构
-    // 输入: collection_id, path (可选，如 "/技术/后端/Go")
-    // 输出: 当前层级的摘要 + 子主题列表
-}
-
-func NewKnowledgeDrillTool() trpctool.CallableTool {
-    // knowledge_drill: 钻入特定知识分支
-    // 输入: collection_id, topic_id
-    // 输出: 更细粒度的摘要 + 文档列表
-}
-```
-
-- Agent 不再"盲目检索"，而是"有地图地导航"
-- 架构位置：`internal/tools/knowledge/navigate_tool.go`（新增）
-
-#### 4.3 技能蒸馏管线
-
-**方案**：从 Agent 执行轨迹中自动提取技能。
-
-```
-Agent 执行轨迹
-  → 轨迹分析（LLM）
-    → 提取 Planning Skills（高层任务组织）
-    → 提取 Functional Skills（可复用功能子程序）
-    → 提取 Atomic Skills（原子操作模式）
-  → 技能去重 + 合并
-  → 写入技能知识库
-```
-
-- 与 Memory 压缩机制协同：Memory 压缩后的轨迹作为技能蒸馏输入
-- 与 Skill 体系协同：蒸馏出的技能可注册为 Agent 可用技能
-- 架构位置：`internal/knowledge/skill_distiller.go`（新增）
+| 子任务 | 状态 | 代码锚点（计划） |
+|--------|------|------------------|
+| 4.1 技能知识库构建（三层技能层次） | ❌ | `internal/biz/knowledge/skill_knowledge.go`（新增） |
+| 4.2 知识导航工具（knowledge_navigate/drill） | ❌ | `internal/tools/knowledge/navigate_tool.go`（新增） |
+| 4.3 技能蒸馏管线（轨迹 → 技能提取） | ❌ | `internal/knowledge/skill_distiller.go`（新增） |
 
 ---
 
