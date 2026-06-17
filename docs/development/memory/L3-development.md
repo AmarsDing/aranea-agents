@@ -9,17 +9,17 @@
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Fact CRUD | ✅ | `internal/data/sessionmemory/store_facts_ops.go`（Upsert/Delete/Clear/List） |
+| Fact CRUD | ✅ | `internal/data/memory_shim_l3.go`（Upsert/Delete/Clear/List） |
 | 融合召回 | ✅ | `internal/biz/memory_l3_fused_recall.go`（跨 scope 融合 agent+workspace+global） |
-| Embedding 索引 | ✅ | `internal/data/sessionmemory/store_fact_embedding.go`（UpsertFactEmbedding） |
+| Embedding 索引 | ✅ | `internal/data/memory_shim_l3.go` + `internal/data/memory_fact_index_sync.go`（UpsertFactEmbedding） |
 | 索引同步 (MEM-OPT-01) | ✅ | `internal/data/memory_fact_index_sync.go`（stale/fresh/disabled 状态机 + reconciler） |
-| Legacy 回填 | ✅ | `internal/data/sessionmemory/store_legacy_backfill.go`（BackfillLegacyTRPCMemoryEntities） |
-| Decay | ✅ | `internal/data/sessionmemory/store_l3_decay.go` + `internal/cronrunner/jobs/memory_l3_decay.go`（per-agent importance 衰减） |
-| Cascade 联动 | ✅ | `internal/data/sessionmemory/store_cascade_facts.go`（L4 改名时自动替换 fact） |
+| Legacy 回填 | ✅ | `internal/data/memory_migrate.go`（BackfillLegacyTRPCMemoryEntities） |
+| Decay | ✅ | `internal/data/memory_shim_l3.go` + `internal/cronrunner/jobs/memory_l3_decay.go`（per-agent importance 衰减） |
+| Cascade 联动 | ✅ | `internal/data/memory_shim_cascade.go`（L4 改名时自动替换 fact） |
 | Prompt 注入 | ✅ | `internal/agent/l3_prompt.go`（L3MemoryCue，独立 + 融合两种模式） |
 | Dead Letter | ✅ | `internal/data/memory_job_deadletter.go`（失败任务记录） |
-| 批量写入 | ✅ | `internal/data/sessionmemory/store_consolidate_batch.go`（事务写入 facts + episode） |
-| Facts 唯一写路径 | ✅ | `internal/data/sessionmemory/store_writes.go`（统一通过 UpsertFactRow 写入，ON CONFLICT 幂等） |
+| 批量写入 | ✅ | `internal/data/memory_shim_l3.go`（事务写入 facts + episode） |
+| Facts 唯一写路径 | ✅ | `internal/data/memory_shim_l3.go`（统一通过 UpsertFactRow 写入，ON CONFLICT 幂等） |
 | pgvector 索引同步 | ✅ | `internal/data/memory_fact_index_sync.go` + `internal/cronrunner/jobs/memory_fact_index_reconciler.go`（6h reconciler） |
 | 冲突检测 | ✅ | `internal/biz/memory_admin_usecase.go`（DetectFactConflicts 子句级否定匹配 + 指纹去重前置 + IncrementConflictCount） |
 | 冲突 API | ✅ | `api/kratos/memory/v1/memory.proto`（ListConflictingFacts RPC） |
@@ -42,12 +42,9 @@
 
 ## 代码锚点
 
-- `internal/data/sessionmemory/store_facts_ops.go` — Fact CRUD
-- `internal/data/sessionmemory/store_fact_embedding.go` — Embedding 索引
-- `internal/data/sessionmemory/store_l3_decay.go` — L3 衰减
-- `internal/data/sessionmemory/store_cascade_facts.go` — Cascade 联动
-- `internal/data/sessionmemory/store_writes.go` — 统一写路径
-- `internal/data/sessionmemory/store_consolidate_batch.go` — 批量写入
+- `internal/data/memory_shim_l3.go` — Fact CRUD + Embedding 索引 + L3 衰减 + 统一写路径 + 批量写入
+- `internal/data/memory_shim_cascade.go` — Cascade 联动
+- `internal/data/memory_migrate.go` — Legacy 回填
 - `internal/data/memory_fact_index_sync.go` — 索引同步状态机
 - `internal/data/memory_job_deadletter.go` — Dead Letter
 - `internal/data/memory_shim_l3.go` — quality_score 5维评分

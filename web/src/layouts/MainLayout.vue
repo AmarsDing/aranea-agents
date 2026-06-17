@@ -139,8 +139,8 @@ const isDesktop = computed(() => $q.screen.gt.xs);
 const isDark = computed(() => $q.dark.isActive);
 
 const localeOptions = [
-  { label: '中文', value: 'zh-CN' as const },
-  { label: 'English', value: 'en-US' as const },
+  { label: t('common.localeZhCN'), value: 'zh-CN' as const },
+  { label: t('common.localeEnUS'), value: 'en-US' as const },
 ];
 
 watch(

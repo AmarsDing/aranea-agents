@@ -232,6 +232,52 @@ var (
 		Name: "aranea_safego_panic_recovered_total",
 		Help: "Number of panics recovered by safego, labelled by goroutine name.",
 	}, []string{"name"})
+
+	// Spirit orchestration phase metrics (P3-3).
+	// These histograms measure the three Spirit phases (Plan→Allocate→Orchestrate)
+	// so operators can locate latency bottlenecks across the orchestration pipeline.
+	// See docs/development/70-orchestration-longtask-memory.design.md §7.3.
+
+	// SpiritPlanDuration tracks the planning phase (intent pass + complexity
+	// assessment + task decomposition). Buckets cover sub-second to multi-minute.
+	SpiritPlanDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "aranea_spirit_plan_duration_seconds",
+		Help:    "Duration of Spirit planning phase (intent→assess→decompose).",
+		Buckets: prometheus.DefBuckets,
+	})
+
+	// SpiritAllocDuration tracks the agent allocation phase (4-layer matching +
+	// AgentFactory fallback). Buckets cover sub-second to multi-minute.
+	SpiritAllocDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "aranea_spirit_alloc_duration_seconds",
+		Help:    "Duration of Spirit agent allocation phase (matching + factory).",
+		Buckets: prometheus.DefBuckets,
+	})
+
+	// SpiritOrchDuration tracks the orchestration phase (graph/team execution).
+	// Buckets extend to 1h to capture 24h long-task sub-phases; the upper bound
+	// is intentionally below 24h because a single orchestration phase should
+	// not run uninterrupted for the full task lifetime (checkpoints split it).
+	SpiritOrchDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "aranea_spirit_orch_duration_seconds",
+		Help: "Duration of Spirit orchestration phase (graph/team execution).",
+		Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
+	})
+
+	// AgentFactoryCreated counts dynamically created agents (P1-4 AgentFactory).
+	// Monotonically increasing; used to verify the 4-layer matching fallback rate.
+	AgentFactoryCreated = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_agent_factory_created_total",
+		Help: "Total number of agents dynamically created by AgentFactory.",
+	})
+
+	// GraphReplanTotal counts runtime graph replans by type (P2-2 RuntimeReplanner).
+	// Labels: retry / reroute / insert_fallback / rebuild_subgraph.
+	// Used to monitor graph stability and replan loop prevention (max 3 replans).
+	GraphReplanTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_graph_replan_total",
+		Help: "Total number of runtime graph replans by type.",
+	}, []string{"type"})
 )
 
 // SafegoPanicHook returns a PanicHook function that increments the

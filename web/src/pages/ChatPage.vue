@@ -237,6 +237,7 @@ import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue'
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { confirmActivity } from '../features/chat/api';
 import { useSpiritTeamStore } from '../stores/spirit';
@@ -251,6 +252,7 @@ const spiritStore = useSpiritTeamStore();
 const uiConfig = useUiConfigStore();
 const router = useRouter();
 const $q = useQuasar();
+const { t } = useI18n();
 
 const activeMember = computed(() => {
   const team = spiritStore.activeTeam;
@@ -371,10 +373,13 @@ async function onConfirmActivity(activityId: string, approved: boolean) {
   try {
     const ok = await confirmActivity(sid, activityId, approved);
     if (!ok) {
-      $q.notify({ type: 'warning', message: approved ? '批准操作未被接受' : '拒绝操作未被接受' });
+      $q.notify({
+        type: 'warning',
+        message: approved ? t('chat.confirmActivity.approveRejected') : t('chat.confirmActivity.denyRejected'),
+      });
     }
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '确认操作失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
   }
 }
 </script>

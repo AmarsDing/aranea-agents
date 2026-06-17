@@ -22,6 +22,7 @@ import (
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/taskrun"
+	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
@@ -32,6 +33,11 @@ const (
 	requestIDPrefix    = "taskrun:"
 
 	defaultFinalizerTimeout = time.Minute
+
+	// eventChannelBuffer is the buffer size for event channels returned by
+	// Events. Events are dropped (non-blocking send) when the buffer is
+	// full, so this only bounds memory usage for slow consumers.
+	eventChannelBuffer = 64
 )
 
 // Option configures a Service.
@@ -85,6 +91,9 @@ type Service struct {
 	runs    map[string]*Run
 	running map[string]*runningRun
 	waiters map[string][]chan struct{}
+	// eventChs holds subscriber channels for active runs. Each channel is
+	// closed when the run reaches a terminal state.
+	eventChs map[string]chan *event.Event
 
 	persistMu sync.Mutex
 
@@ -136,6 +145,7 @@ func NewService(r runner.Runner, opts ...Option) (*Service, error) {
 		runs:      make(map[string]*Run, len(loaded)),
 		running:   make(map[string]*runningRun),
 		waiters:   make(map[string][]chan struct{}),
+		eventChs:  make(map[string]chan *event.Event),
 	}
 	for _, run := range loaded {
 		copied := cloneRun(run)
@@ -347,6 +357,75 @@ func (s *Service) Wait(ctx context.Context, runID string) (*Run, error) {
 	}
 }
 
+// Events implements Controller. It returns a read-only channel that
+// forwards events emitted by the child agent for the given run. The
+// channel is closed when the run reaches a terminal state.
+//
+// Returns ErrRunNotFound if the run does not exist, or ErrRunNotActive if
+// the run is already terminal. Events that cannot be forwarded (no
+// consumer or full buffer) are dropped and do not block the run.
+func (s *Service) Events(runID string) (<-chan *event.Event, error) {
+	if s == nil {
+		return nil, ErrRunNotFound
+	}
+	runID = strings.TrimSpace(runID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	run := s.runs[runID]
+	if run == nil {
+		return nil, ErrRunNotFound
+	}
+	if run.Status.IsTerminal() {
+		return nil, ErrRunNotActive
+	}
+	if _, exists := s.eventChs[runID]; exists {
+		return nil, fmt.Errorf(
+			"taskrun: events already subscribed for run %s",
+			runID,
+		)
+	}
+	ch := make(chan *event.Event, eventChannelBuffer)
+	s.eventChs[runID] = ch
+	return ch, nil
+}
+
+// forwardEvent sends evt to the subscriber channel for runID, if one
+// exists. The send is non-blocking: events are dropped when the channel
+// is full or there is no consumer. The lock is held during the send to
+// prevent racing with closeEventChannel (which would close the channel).
+func (s *Service) forwardEvent(runID string, evt *event.Event) {
+	if s == nil || evt == nil {
+		return
+	}
+	s.mu.Lock()
+	ch := s.eventChs[runID]
+	if ch == nil {
+		s.mu.Unlock()
+		return
+	}
+	select {
+	case ch <- evt:
+	default:
+	}
+	s.mu.Unlock()
+}
+
+// closeEventChannel closes and removes the subscriber channel for runID,
+// if one exists. It must be called when a run reaches a terminal state.
+func (s *Service) closeEventChannel(runID string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	ch := s.eventChs[runID]
+	delete(s.eventChs, runID)
+	s.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
 func validateSpawnRequest(req SpawnRequest) error {
 	if strings.TrimSpace(req.OwnerUserID) == "" {
 		return fmt.Errorf("taskrun: empty owner")
@@ -500,6 +579,7 @@ func (s *Service) runChild(
 		if progress != nil && progress.consume(evt, s.clock()) {
 			s.updateProgress(run.ID, progress.snapshot())
 		}
+		s.forwardEvent(run.ID, evt)
 	}
 	if result.err != nil {
 		return result.err
@@ -565,6 +645,7 @@ func (s *Service) finishRun(
 	if run == nil {
 		delete(s.running, runID)
 		s.mu.Unlock()
+		s.closeEventChannel(runID)
 		return
 	}
 	now := s.clock()
@@ -585,6 +666,7 @@ func (s *Service) finishRun(
 	if run == nil {
 		delete(s.running, runID)
 		s.mu.Unlock()
+		s.closeEventChannel(runID)
 		return
 	}
 	delete(s.running, runID)
@@ -592,6 +674,8 @@ func (s *Service) finishRun(
 	view.UpdatedAt = s.clock()
 	*run = cloneRun(view)
 	s.mu.Unlock()
+
+	s.closeEventChannel(runID)
 
 	if err := s.persist(context.Background()); err != nil {
 		log.Warnf("taskrun: persist run %s failed: %v", runID, err)
@@ -744,12 +828,16 @@ func (s *Service) finalizeCanceledRun(
 	run = s.runs[runID]
 	if run == nil {
 		s.mu.Unlock()
+		s.closeEventChannel(runID)
 		return nil, ErrRunNotFound
 	}
 	view = canceledRunView(*run, s.clock())
 	view.Metadata = mergeMetadata(view.Metadata, finalMetadata)
 	*run = cloneRun(view)
 	s.mu.Unlock()
+
+	s.closeEventChannel(runID)
+
 	return &view, nil
 }
 
@@ -808,6 +896,7 @@ func (s *Service) failPersistedRun(
 	if run == nil {
 		delete(s.running, runID)
 		s.mu.Unlock()
+		s.closeEventChannel(runID)
 		return
 	}
 	running := s.running[runID]
@@ -825,6 +914,7 @@ func (s *Service) failPersistedRun(
 	if run == nil {
 		delete(s.running, runID)
 		s.mu.Unlock()
+		s.closeEventChannel(runID)
 		return
 	}
 	delete(s.running, runID)
@@ -832,6 +922,9 @@ func (s *Service) failPersistedRun(
 	view.UpdatedAt = s.clock()
 	*run = cloneRun(view)
 	s.mu.Unlock()
+
+	s.closeEventChannel(runID)
+
 	if err := s.persist(context.Background()); err != nil {
 		log.Warnf("taskrun: persist failed run %s failed: %v", runID, err)
 		s.wake(runID)

@@ -66,6 +66,10 @@ var ErrRunAlreadyExists = taskrun.ErrRunAlreadyExists
 // ErrNotStarted indicates that a task run service has not been started.
 var ErrNotStarted = taskrun.ErrNotStarted
 
+// ErrRunNotActive indicates that a task run is no longer active and cannot
+// stream events.
+var ErrRunNotActive = taskrun.ErrRunNotActive
+
 // Run is the persisted control-plane view of one delegated task run.
 type Run = taskrun.Run
 

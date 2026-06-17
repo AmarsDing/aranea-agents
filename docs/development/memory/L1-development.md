@@ -36,7 +36,7 @@
 
 ## 代码锚点
 
-- `internal/data/sessionmemory/store_l1.go` — L1 表读写
+- `internal/data/memory_shim_l1.go` — L1 表读写（StartL1Task/EndL1Task/UpsertL1Field/DeleteL1Field/PatchL1Fields/ArchiveL1Task）
 - `internal/tools/working_memory/tools.go` — 5 个 working_memory 工具
 - `internal/biz/memory_admin_store.go` — L1Writer 接口
 - `internal/biz/memory_admin_usecase.go` — EndL1Task 归档 hook

@@ -1716,11 +1716,12 @@ func provideAgentAllocator(
 	perfRepo biz.AgentPerformanceRepository,
 	catalog *biz.LlmProviderModelUsecase,
 	bus contract.Bus,
+	embedder knowledge.Embedder,
 	lg loggateway.Logger,
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg, embedder)
 }
 
 func provideTaskOrchestrator(

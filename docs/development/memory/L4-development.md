@@ -9,13 +9,13 @@
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 知识图谱存储 | ✅ | `internal/data/sessionmemory/entity.go` + `relation.go`（memory_entities + memory_relations） |
+| 知识图谱存储 | ✅ | `internal/data/memory_l4.go`（memory_entities + memory_relations） |
 | L4GraphUsecase | ✅ | `internal/biz/memory_l4_usecase.go`（WriteFromUserText 英文+中文 regex + RunDecayWithConfig） |
 | Cascade Saga | ✅ | `internal/biz/memory_l4_cascade.go`（4 步 Saga + 完整补偿回滚：UpsertEntity 恢复旧名称 + TouchAffected 清理元数据 + ReplaceFacts 还原 + SyncIndex 重标记） |
-| Cascade 持久化 | ✅ | `internal/data/sessionmemory/store_cascade.go` + `store_cascade_saga.go`（Proposal + Saga Steps） |
-| Business Decay | ✅ | `internal/data/sessionmemory/entity_lookup.go`（指数衰减 + reinforcement + 归档） |
+| Cascade 持久化 | ✅ | `internal/data/memory_shim_cascade.go`（Proposal + Saga Steps） |
+| Business Decay | ✅ | `internal/data/memory_l4.go`（指数衰减 + reinforcement + 归档） |
 | Decay Worker | ✅ | `internal/cronrunner/jobs/memory_l4_decay.go`（定期衰减） |
-| Neighborhood 查询 | ✅ | `internal/data/sessionmemory/store_more.go`（图遍历） |
+| Neighborhood 查询 | ✅ | `internal/data/memory_l4.go`（图遍历） |
 | Prompt 注入 | ✅ | `internal/agent/l4_prompt.go`（L4MemoryCue，entity + neighborhood JSON） |
 | Evolution Metrics API | ✅ | `internal/service/agent_evolution.go`（tool success rate / retrieval quality） |
 | Name Conflict 检测 | ✅ | `internal/biz/memory_l4_usecase.go`（同 scope person 冲突 gate） |
@@ -46,10 +46,8 @@
 - `internal/biz/memory_l4_cascade.go` — L4CascadeUsecase（4 步 Saga + 补偿）
 - `internal/biz/memory_l4.go` — CascadeProposalStore/CascadeGraphReader/CascadeFactMutator/CascadeSagaStore/L4EntityWriter 子接口
 - `internal/biz/memory_debug_recall.go` — MemoryDebugRecaller/MemoryFactIndexCounter 端口
-- `internal/data/sessionmemory/entity.go` + `relation.go` — 实体/关系存储
-- `internal/data/sessionmemory/store_cascade.go` + `store_cascade_saga.go` — Cascade 持久化
-- `internal/data/sessionmemory/entity_lookup.go` — Business Decay + reinforcement
-- `internal/data/sessionmemory/store_more.go` — Neighborhood 查询
+- `internal/data/memory_l4.go` — 实体/关系存储 + Business Decay + reinforcement + Neighborhood 查询
+- `internal/data/memory_shim_cascade.go` — Cascade 持久化（Proposal + Saga Steps）
 - `internal/data/memory_l4.go` — Data 层适配器
 - `internal/data/memory_debug_recall.go` — Debug Recall 适配器
 - `internal/agent/l4_prompt.go` — L4MemoryCue prompt 注入

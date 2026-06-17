@@ -6,6 +6,9 @@ export default {
     darkMode: 'Dark',
     language: 'Language',
     expandSidebar: 'Expand or collapse sidebar',
+    localeZhCN: '中文',
+    localeEnUS: 'English',
+    browse: 'Browse',
   },
   auth: {
     subtitle:
@@ -26,6 +29,10 @@ export default {
     devBypassHint: 'Dev auth bypass is active — you can enter without signing in, or use dev/dev.',
     devModeBTitle: 'Dev mode B (real login)',
     logout: 'Log out',
+    checkingBackend: 'Checking backend service...',
+    backendStarting: 'Backend service starting, please wait...',
+    recheck: 'Re-check',
+    enterWithoutLogin: 'Enter without login',
   },
   dashboard: {
     totalBalance: 'KPI / overview',
@@ -371,6 +378,14 @@ export default {
       collapse: 'Collapse',
       noEntries: 'No entries yet',
       maxDepthReached: 'Max nesting depth reached',
+    },
+    confirmActivity: {
+      approveRejected: 'Approve action was not accepted',
+      denyRejected: 'Deny action was not accepted',
+      failed: 'Confirm action failed',
+    },
+    transition: {
+      thinkingToReply: 'Generating reply',
     },
   },
   plugins: {

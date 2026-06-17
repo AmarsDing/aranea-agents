@@ -7,7 +7,7 @@
         class="event-stream__transition"
       >
         <span class="event-stream__transition-line" />
-        <span class="event-stream__transition-label">{{ t('chat.transition.thinkingToReply', '生成回复') }}</span>
+        <span class="event-stream__transition-label">{{ t('chat.transition.thinkingToReply') }}</span>
         <span class="event-stream__transition-line" />
       </div>
 

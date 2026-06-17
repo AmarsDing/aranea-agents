@@ -12,14 +12,14 @@
           <template v-if="backendChecking">
             <q-card-section class="text-center q-py-lg">
               <q-spinner-dots color="primary" size="40px" />
-              <div class="text-caption text-grey-7 q-mt-sm">正在检测后端服务...</div>
+              <div class="text-caption text-grey-7 q-mt-sm">{{ t('auth.checkingBackend') }}</div>
             </q-card-section>
           </template>
 
           <template v-else-if="backendStarting">
             <q-card-section class="text-center q-py-lg">
               <q-spinner-dots color="primary" size="40px" />
-              <div class="text-caption text-grey-7 q-mt-sm">后端服务启动中，请稍候...</div>
+              <div class="text-caption text-grey-7 q-mt-sm">{{ t('auth.backendStarting') }}</div>
             </q-card-section>
           </template>
 
@@ -32,7 +32,7 @@
                 {{ t('auth.backendDown') }}
               </q-banner>
               <div class="text-center q-mt-md">
-                <q-btn outline color="primary" :loading="rechecking" label="重新检测" @click="recheckBackend" />
+                <q-btn outline color="primary" :loading="rechecking" :label="t('auth.recheck')" @click="recheckBackend" />
               </div>
             </q-card-section>
           </template>
@@ -109,7 +109,7 @@
                 flat
                 color="primary"
                 class="q-mt-xs"
-                label="进入系统（免登录）"
+                :label="t('auth.enterWithoutLogin')"
                 @click="enterWithoutLogin"
               />
               <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t('auth.backendHint') }}</div>

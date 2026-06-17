@@ -1772,3 +1772,222 @@ func TestServiceWaitHonorsContext(t *testing.T) {
 	_, err = svc.Wait(ctx, run.ID)
 	require.ErrorIs(t, err, context.Canceled)
 }
+
+// burstRunner emits a configurable number of events after being unblocked.
+// It is used to verify the non-blocking drop policy of Events().
+type burstRunner struct {
+	started chan struct{}
+	unblock chan struct{}
+	count   int
+	once    sync.Once
+}
+
+func (r *burstRunner) Run(
+	ctx context.Context,
+	_ string,
+	_ string,
+	_ model.Message,
+	_ ...agent.RunOption,
+) (<-chan *event.Event, error) {
+	r.once.Do(func() {
+		close(r.started)
+	})
+	ch := make(chan *event.Event, r.count)
+	go func() {
+		defer close(ch)
+		select {
+		case <-r.unblock:
+		case <-ctx.Done():
+			return
+		}
+		for i := 0; i < r.count; i++ {
+			ch <- &event.Event{
+				Response: &model.Response{
+					Object: model.ObjectTypeChatCompletion,
+					Choices: []model.Choice{{
+						Message: model.NewAssistantMessage("burst"),
+					}},
+				},
+			}
+		}
+	}()
+	return ch, nil
+}
+
+func (r *burstRunner) Close() error {
+	return nil
+}
+
+// TestServiceEventsReturnsChannelForActiveRun verifies that Events() returns
+// a non-nil channel for a run that is currently active.
+func TestServiceEventsReturnsChannelForActiveRun(t *testing.T) {
+	t.Parallel()
+
+	runner := &blockingRunner{started: make(chan struct{})}
+	svc, err := NewService(runner)
+	require.NoError(t, err)
+	svc.Start(context.Background())
+	t.Cleanup(func() {
+		require.NoError(t, svc.Close())
+	})
+
+	run, err := svc.Spawn(context.Background(), SpawnRequest{
+		OwnerUserID:     "user-a",
+		ParentSessionID: "parent-a",
+		Task:            "active for events",
+	})
+	require.NoError(t, err)
+	requireRunnerStarted(t, runner.started)
+
+	ch, err := svc.Events(run.ID)
+	require.NoError(t, err)
+	require.NotNil(t, ch)
+}
+
+// TestServiceEventsForwardsEvents verifies that events emitted by the runner
+// are forwarded to the external channel returned by Events().
+func TestServiceEventsForwardsEvents(t *testing.T) {
+	t.Parallel()
+
+	runner := &exitGateRunner{
+		started:    make(chan struct{}),
+		unblock:    make(chan struct{}),
+		afterReply: make(chan struct{}),
+	}
+	svc, err := NewService(runner)
+	require.NoError(t, err)
+	svc.Start(context.Background())
+	t.Cleanup(func() {
+		require.NoError(t, svc.Close())
+	})
+
+	run, err := svc.Spawn(context.Background(), SpawnRequest{
+		OwnerUserID:     "user-a",
+		ParentSessionID: "parent-a",
+		Task:            "forward events",
+	})
+	require.NoError(t, err)
+	requireRunnerStarted(t, runner.started)
+
+	ch, err := svc.Events(run.ID)
+	require.NoError(t, err)
+
+	close(runner.unblock)
+	final, err := svc.Wait(context.Background(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, StatusCompleted, final.Status)
+
+	var got []*event.Event
+	for evt := range ch {
+		got = append(got, evt)
+	}
+	require.Len(t, got, 1)
+}
+
+// TestServiceEventsChannelClosesOnCompletion verifies that the channel
+// returned by Events() is closed when the task completes.
+func TestServiceEventsChannelClosesOnCompletion(t *testing.T) {
+	t.Parallel()
+
+	runner := &exitGateRunner{
+		started:    make(chan struct{}),
+		unblock:    make(chan struct{}),
+		afterReply: make(chan struct{}),
+	}
+	svc, err := NewService(runner)
+	require.NoError(t, err)
+	svc.Start(context.Background())
+	t.Cleanup(func() {
+		require.NoError(t, svc.Close())
+	})
+
+	run, err := svc.Spawn(context.Background(), SpawnRequest{
+		OwnerUserID:     "user-a",
+		ParentSessionID: "parent-a",
+		Task:            "close on complete",
+	})
+	require.NoError(t, err)
+	requireRunnerStarted(t, runner.started)
+
+	ch, err := svc.Events(run.ID)
+	require.NoError(t, err)
+
+	close(runner.unblock)
+	_, err = svc.Wait(context.Background(), run.ID)
+	require.NoError(t, err)
+
+	closed := make(chan struct{})
+	go func() {
+		for range ch {
+		}
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("channel was not closed after task completion")
+	}
+}
+
+// TestServiceEventsReturnsErrorForMissingRun verifies that Events() returns
+// ErrRunNotFound for a run ID that does not exist.
+func TestServiceEventsReturnsErrorForMissingRun(t *testing.T) {
+	t.Parallel()
+
+	svc, err := NewService(&captureRunner{})
+	require.NoError(t, err)
+	svc.Start(context.Background())
+	t.Cleanup(func() {
+		require.NoError(t, svc.Close())
+	})
+
+	_, err = svc.Events("nonexistent-run")
+	require.ErrorIs(t, err, ErrRunNotFound)
+}
+
+// TestServiceEventsDoesNotBlockWithoutConsumer verifies that a task run
+// completes even when Events() has been called but the channel is not
+// consumed. Events that cannot be forwarded are dropped (drop policy).
+func TestServiceEventsDoesNotBlockWithoutConsumer(t *testing.T) {
+	t.Parallel()
+
+	runner := &burstRunner{
+		started: make(chan struct{}),
+		unblock: make(chan struct{}),
+		count:   200,
+	}
+	svc, err := NewService(runner)
+	require.NoError(t, err)
+	svc.Start(context.Background())
+	t.Cleanup(func() {
+		require.NoError(t, svc.Close())
+	})
+
+	run, err := svc.Spawn(context.Background(), SpawnRequest{
+		OwnerUserID:     "user-a",
+		ParentSessionID: "parent-a",
+		Task:            "no consumer",
+	})
+	require.NoError(t, err)
+	requireRunnerStarted(t, runner.started)
+
+	ch, err := svc.Events(run.ID)
+	require.NoError(t, err)
+	_ = ch
+
+	close(runner.unblock)
+
+	done := make(chan error, 1)
+	go func() {
+		_, waitErr := svc.Wait(context.Background(), run.ID)
+		done <- waitErr
+	}()
+
+	select {
+	case waitErr := <-done:
+		require.NoError(t, waitErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not complete without event consumer (blocked)")
+	}
+}

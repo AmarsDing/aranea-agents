@@ -38,7 +38,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 |------|------|
 | L0 压缩 | `internal/service/session_compress.go` |
 | Admin API | `internal/service/memory.go` |
-| 存储 | `internal/data/sessionmemory` + `memory_chain.sql` |
+| 存储 | `internal/data/memory_shim_*.go`（L0/L1/L2/L3/L4/Cascade/ActionLog 分文件）+ `internal/data/memory_chain_schema.go` + `internal/data/sql/migrations/` |
 | 框架 Memory | `internal/memory/trpc/sqlite_adapter.go` |
 | L4 图 | `internal/biz/memory_l4_usecase.go` |
 | L4 注入 | `internal/agent/l4_prompt.go` |
@@ -47,8 +47,8 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | L3 索引一致性 | `internal/data/memory_fact_index_sync.go` + `internal/cronrunner/jobs/memory_fact_index_reconciler.go` |
 | Dead-Letter | `internal/data/memory_job_deadletter.go` + `internal/service/memory_deadletter.go` + `internal/cronrunner/jobs/memory_dead_letter_replayer.go` |
 | 优先级队列 | `internal/memory/trpc/auto_memory_queue.go` + `internal/biz/memory_queue_contract.go` |
-| L4 衰减/强化 | `internal/biz/memory_l4.go` + `internal/data/sessionmemory/entity_lookup.go` + `internal/cronrunner/jobs/memory_l4_decay.go` + `internal/agent/l4_prompt.go` |
-| entity_reinforcements | `docs/sql/10_memory_l4_reinforcements.sql` + `internal/data/memory_l4_reinforcements_patch.go` |
+| L4 衰减/强化 | `internal/biz/memory_l4.go` + `internal/data/memory_l4.go`（RecordEntityReinforcement/ApplyBusinessConfidenceDecay/ArchiveLowConfidenceEntities）+ `internal/cronrunner/jobs/memory_l4_decay.go` + `internal/agent/l4_prompt.go` |
+| entity_reinforcements | `internal/data/sql/migrations/20260608_entity_reinforcements_schema.sql` + `internal/data/memory_l4.go`（reinforcement 代码内嵌于此） |
 
 ---
 

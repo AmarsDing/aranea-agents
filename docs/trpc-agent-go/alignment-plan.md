@@ -708,10 +708,12 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 > 以下 7 项适配器代码已就绪但无法接入生产路径，每项有明确的阻塞原因。
 > 阻塞原因分为三类：**框架接口无消费者**（框架未提供使用该接口的组件）、**编译/依赖错误**（适配器代码本身有问题）、**设计前提不匹配**（适配器的设计假设与项目实际架构冲突）。
+>
+> **解除方案关联文档**：`docs/reports/2026-06-17-research-orchestration-longtask-memory-upgrade.md`（以下简称"升级调研报告"），该报告规划了 Phase 0~3 的架构重构路径，部分阻塞项将在重构过程中解除。
 
 ### B-1. VectorStoreAdapter（P1-5）— 框架接口无消费者
 
-**阻塞类型**：框架接口无消费者
+**阻塞类型**：框架接口无消费者（架构设计差异，永久阻塞）
 
 **适配器位置**：`internal/knowledge/vectorstore_adapter.go`
 
@@ -720,11 +722,14 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 - 但框架中**没有任何组件消费 `vectorstore.VectorStore` 接口**——框架的 Knowledge 模块使用 `knowledge.Knowledge` 接口（已通过 `KnowledgeAdapter` 适配），不直接使用 `vectorstore.VectorStore`
 - 项目的向量搜索管线（`internal/data/vector.VectorStore` → `MultiProviderEmbedder` → `KnowledgeAdapter`）已完整运行，插入 `VectorStoreAdapter` 不会带来任何功能增益，只会增加一层无意义的包装
 
-**解除阻塞条件**：框架未来版本提供直接消费 `vectorstore.VectorStore` 的组件（如框架级向量索引管理器），或项目决定将向量搜索管线完全迁移到框架。
+**解除方案**：**不解除（永久阻塞）**
+- 升级调研报告 §6.4 确认记忆系统 5 项前沿技术（Bi-temporal/Ebbinghaus/Sleep-time/主动召回/记忆链接图）均在项目内部实现，对齐的是框架 `memory.Service` 接口而非 `vectorstore.VectorStore`
+- 框架架构设计上通过 `knowledge.Knowledge` 接口抽象了整个检索流程，VectorStore/Embedder 是项目内部实现细节，框架不直接消费
+- **建议**：将适配器代码标记为 `// DEPRECATED: 框架架构差异，永久阻塞`，在下一迭代中删除死代码（CS-B2 死代码即删）
 
 ### B-2. EmbedderAdapter（P1-6）— 框架接口无消费者
 
-**阻塞类型**：框架接口无消费者
+**阻塞类型**：框架接口无消费者（架构设计差异，永久阻塞）
 
 **适配器位置**：`internal/knowledge/embedder_adapter.go`
 
@@ -733,7 +738,9 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 - 与 B-1 同理，框架中**没有任何组件直接消费 `embedder.Embedder` 接口**——框架的 Knowledge 模块通过 `knowledge.Knowledge` 接口抽象了整个检索流程，Embedder 是项目内部实现细节
 - `wire.go` 直接绑定 `MultiProviderEmbedder` 是正确的，因为项目代码直接使用它生成嵌入向量
 
-**解除阻塞条件**：与 B-1 相同，需框架提供消费 `embedder.Embedder` 的组件。
+**解除方案**：**不解除（永久阻塞）**
+- 与 B-1 同理，升级调研报告 §6.4 的记忆系统升级不涉及框架 Embedder 接口消费
+- **建议**：将适配器代码标记为 `// DEPRECATED: 框架架构差异，永久阻塞`，在下一迭代中删除死代码（CS-B2）
 
 ### B-3. PromptIterAdapter（P1-9, P2-26）— 编译错误 + 框架协作者缺失
 
@@ -751,10 +758,13 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
    - Prompt 生成器
    项目缺少评估集基础设施（`EvalSet Recorder`、评估集持久化），无法提供这些协作者
 
-**解除阻塞条件**：
-1. 修复编译错误（对齐框架 `promptiter` 包的实际 API）
-2. 建立评估集基础设施（EvalSet Recorder + 持久化）
-3. 评估是否值得引入完整的 PromptIter 管线（项目自建的 `PromptRefiner` 已满足当前需求）
+**解除方案**：**独立迭代（优先级低，不关联升级调研报告 Phase 0~3）**
+- 升级调研报告未涉及 PromptIter 管线，项目自建的 `PromptRefiner` 已满足当前需求
+- 如需解除：
+  1. 修复编译错误（对齐框架 `promptiter` 包的实际 API）
+  2. 建立评估集基础设施（EvalSet Recorder + 持久化）——这是独立的基础设施投入
+  3. 评估是否值得引入完整的 PromptIter 管线
+- **建议**：保持阻塞状态，待有明确的 Prompt 迭代优化业务需求时再启动
 
 ### B-4. FrameworkSearchTool（P2-22）— 双重注册冲突 + 能力降级
 
@@ -766,7 +776,12 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 1. **双重注册冲突**：项目已在工具目录注册了自建的 `knowledge_search` 工具（`internal/tools/knowledge/searchtool.go`）。`FrameworkSearchTool` 使用框架的 `knowledge.NewKnowledgeSearchTool` 创建同名工具，会导致 `knowledge_search` 工具双重注册
 2. **能力降级**：项目的 `SearchTool` 支持**动态 collection 限定**——通过 `knowledgetool.WithKnowledgeCollections(runCtx, kbs)` 在 per-run context 中注入允许搜索的 collection 列表。框架的 `KnowledgeSearchTool` 不支持此能力，接入后会丢失动态 collection 过滤
 
-**解除阻塞条件**：框架的 `KnowledgeSearchTool` 支持动态 collection 限定，或项目决定放弃动态 collection 过滤能力。
+**解除方案**：**Phase 3 记忆系统升级时重新评估**
+- 升级调研报告 §6.4 + Phase 3 规划了"主动召回触发器"，可能涉及 KnowledgeSearchTool 的能力增强
+- 解除条件：
+  1. 框架的 `KnowledgeSearchTool` 支持动态 collection 限定（需框架演进），或
+  2. 项目决定放弃动态 collection 过滤能力（需评估业务影响）
+- **建议**：Phase 3 实施时检查框架版本是否已支持动态 collection，若支持则接入，否则保持阻塞
 
 ### B-5. RenderPromptTemplate（P2-32, Prompt P3 ValidateRequired）— 设计前提不匹配
 
@@ -781,7 +796,11 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 - 项目的 system prompt 不是模板，而是运行时动态组装的，无法用 `Render()` 替换
 - `ValidateRequired()` 是 `RenderPromptTemplate` 内部调用的校验函数，因宿主函数本身无法接入而连带阻塞
 
-**解除阻塞条件**：项目将 system prompt 重构为模板化设计（使用模板字符串 + 变量替换），这需要大规模架构变更，当前无业务需求驱动。
+**解除方案**：**Phase 1 AgentFactory 实施时重新评估**
+- 升级调研报告 §6.3 + Phase 1 规划了"AgentFactory（LLM 生成 Agent 定义，无需人工审核）"
+- 如果 AgentFactory 引入模板化 Agent 定义（LLM 生成的 Agent 包含模板化 system prompt），则可能需要 `Render()` 进行模板渲染
+- 解除条件：项目将 system prompt 重构为模板化设计（使用模板字符串 + 变量替换）
+- **建议**：Phase 1 AgentFactory 实施时，如果引入模板化 Agent 定义则接入，否则保持阻塞
 
 ### B-6. RenderStateTemplate（P2-33）— 设计前提不匹配
 
@@ -795,7 +814,10 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 - 两种方法本质不同：`RenderStateTemplate` 是在 prompt 构建时**同步渲染**状态到文本；`MergeRuntimeState` 是在模型调用时**异步注入**状态到框架内部状态管理
 - 项目的 RuntimeState 注入机制已完整运行且更灵活（支持 per-run 覆盖），接入 `RenderStateTemplate` 会造成双重状态注入
 
-**解除阻塞条件**：与 B-5 相同，需项目 prompt 架构重构为模板化设计。
+**解除方案**：**Phase 1 AgentFactory 实施时重新评估**
+- 与 B-5 同理，如果 Phase 1 AgentFactory 引入模板化 Agent 定义，则 state 渲染可能需要配合模板化设计
+- 解除条件：与 B-5 相同，需项目 prompt 架构重构为模板化设计
+- **建议**：与 B-5 同步评估，保持阻塞状态
 
 ### B-7. TaskRunAdapter（Extended P3）— 缺少 Controller 实例 + 复杂依赖链
 
@@ -812,4 +834,38 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
    - 任务结果回调机制
    这是一整套异步任务子系统，不是简单的适配器接线
 
-**解除阻塞条件**：项目有异步任务委派的业务需求，并愿意投入资源建设任务管理子系统。当前无此需求。
+**解除方案**：**Phase 1 统一执行引擎实施时解除（关键关联）**
+- 升级调研报告 §6.2 明确规划"基于 trpc-agent-go 框架增强"，补齐三个缺口：
+  1. **taskrun 事件透传**（对外暴露流式事件）——直接对应 TaskRunAdapter 的 Controller 需求
+  2. 跨进程事件流（Postgres-backed EventStore）
+  3. 任务级心跳（run_heartbeat 事件）
+- 升级调研报告 §2.1 确认框架的 `taskrun.Controller` 已原生支持 Spawn/Wait/Cancel + 文件持久化
+- Phase 1 将建设任务管理子系统，提供 TaskRunAdapter 所需的全部依赖：
+  - 任务持久化层 → Postgres 迁移后的 `background_jobs` 表（升级调研报告 §5.5 第 5 项）
+  - 任务生命周期管理器 → 统一执行引擎的状态机
+  - 任务状态追踪 → per-session/per-run 索引
+  - 任务结果回调 → taskrun 事件透传 + 跨进程事件流
+- **实施步骤**：
+  1. Phase 0 完成 Postgres 迁移（提供任务持久化后端）
+  2. Phase 1 建设统一执行引擎，实例化 `taskrun.Controller`
+  3. Phase 1 后期将 `TaskRunAdapter` 接入生产路径，作为 Agent 的异步任务委派工具
+- **建议**：这是 7 个阻塞项中**唯一有明确解除路径**的项，应在 Phase 1 统一执行引擎实施时同步解除
+
+### B-8. 阻塞项解除方案汇总
+
+| 阻塞项 | 阻塞类型 | 解除方案 | 关联 Phase | 优先级 |
+|--------|---------|---------|-----------|--------|
+| B-1 VectorStoreAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，建议标记 DEPRECATED 并删除死代码 | N/A | 低 |
+| B-2 EmbedderAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，建议标记 DEPRECATED 并删除死代码 | N/A | 低 |
+| B-3 PromptIterAdapter | 编译错误 + 协作者缺失 | **独立迭代**，待有明确 Prompt 迭代优化业务需求时启动 | N/A | 低 |
+| B-4 FrameworkSearchTool | 双重注册 + 能力降级 | **Phase 3 重新评估**，检查框架是否支持动态 collection | Phase 3 | 中 |
+| B-5 RenderPromptTemplate | 设计前提不匹配 | **Phase 1 重新评估**，AgentFactory 引入模板化 Agent 定义时接入 | Phase 1 | 中 |
+| B-6 RenderStateTemplate | 设计前提不匹配 | **Phase 1 重新评估**，与 B-5 同步评估 | Phase 1 | 中 |
+| B-7 TaskRunAdapter | 缺少 Controller + 依赖链 | **Phase 1 解除**，统一执行引擎建设时同步接入 | Phase 1 | **高** |
+
+**关键结论**：
+- 7 个阻塞项中，**1 项有明确解除路径**（B-7 TaskRunAdapter → Phase 1）
+- **3 项在架构重构时重新评估**（B-4/B-5/B-6 → Phase 1/3）
+- **2 项永久阻塞**（B-1/B-2 → 框架架构差异，建议删除死代码）
+- **1 项独立迭代**（B-3 → 待业务需求驱动）
+- 升级调研报告（`docs/reports/2026-06-17-research-orchestration-longtask-memory-upgrade.md`）的 Phase 0~3 架构重构将逐步解除可解除的阻塞项

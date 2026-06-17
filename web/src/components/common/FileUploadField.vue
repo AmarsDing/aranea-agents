@@ -15,7 +15,7 @@
         dense
         no-caps
         icon="attach_file"
-        label="浏览"
+        :label="t('common.browse')"
         :disable="disabled"
         class="file-upload-field__btn"
         @click="triggerFilePicker"
@@ -34,6 +34,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{

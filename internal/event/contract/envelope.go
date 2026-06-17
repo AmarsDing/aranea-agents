@@ -70,8 +70,36 @@ const (
 	EnvelopeTypePlanningPhaseStart    EnvelopeType = "planning_phase_start"
 	EnvelopeTypePlanningPhaseProgress EnvelopeType = "planning_phase_progress"
 	EnvelopeTypePlanningPhaseDone     EnvelopeType = "planning_phase_done"
-	EnvelopeTypeTokenUsage                     EnvelopeType = "token_usage"
-	EnvelopeTypeMetricsUpdated                 EnvelopeType = "metrics_updated"
+
+	// Wave 1 batch-registered event types (§12.0 preprocessing).
+	// Registered upfront to avoid merge conflicts when P1-4/P1-7/P2-2/P2-3 land
+	// in parallel waves. Each task will populate the corresponding Content payload.
+
+	// EnvelopeTypeRunHeartbeat carries periodic run progress (percent/current step/ETA).
+	// Published by RunHeartbeatEmitter every 10s so the frontend can detect stale
+	// runs within 30s (P1-7). Classified as Informational (AS-EVT-01): loss only
+	// degrades progress visibility, does not corrupt state.
+	EnvelopeTypeRunHeartbeat EnvelopeType = "run_heartbeat"
+
+	// EnvelopeTypeAgentCreated signals that AgentFactory dynamically created a new
+	// Agent (P1-4). Frontend shows "系统创建了新 Agent [name]" notification.
+	// Classified as Informational (AS-EVT-01): the Agent is already persisted to DB;
+	// this event only drives UI visibility.
+	EnvelopeTypeAgentCreated EnvelopeType = "agent_created"
+
+	// EnvelopeTypeGraphReplanned signals that RuntimeReplanner adjusted the graph
+	// topology after a node failure (P2-2): retry/reroute/insert_fallback/rebuild_subgraph.
+	// Classified as Important (AS-EVT-01): loss causes frontend topology drift but
+	// execution continues; persisted asynchronously.
+	EnvelopeTypeGraphReplanned EnvelopeType = "graph_replanned"
+
+	// EnvelopeTypeGraphTopologyEvolved signals that TopologyEvolver dynamically
+	// added a transfer edge during execution (P2-3). Classified as Important
+	// (AS-EVT-01): same rationale as GraphReplanned.
+	EnvelopeTypeGraphTopologyEvolved EnvelopeType = "graph_topology_evolved"
+
+	EnvelopeTypeTokenUsage     EnvelopeType = "token_usage"
+	EnvelopeTypeMetricsUpdated EnvelopeType = "metrics_updated"
 
 	// EnvelopeTypeExecutionProgress carries a single orchestration step's start/done/error
 	// status. It is published to the chat channel so the AgentTreeTimeline can render
@@ -109,9 +137,9 @@ const (
 	// Activity-First lifecycle events (AF phase)
 	// ActivityProjector projects runtime events into Activity semantic units
 	// and pushes them to the frontend, eliminating frontend inference.
-	EnvelopeTypeActivityStart     EnvelopeType = "activity_start"
-	EnvelopeTypeActivityDelta     EnvelopeType = "activity_delta"
-	EnvelopeTypeActivityDone      EnvelopeType = "activity_done"
+	EnvelopeTypeActivityStart      EnvelopeType = "activity_start"
+	EnvelopeTypeActivityDelta      EnvelopeType = "activity_delta"
+	EnvelopeTypeActivityDone       EnvelopeType = "activity_done"
 	EnvelopeTypeActivityChildStart EnvelopeType = "activity_child_start"
 )
 
@@ -359,6 +387,8 @@ func init() {
 		EnvelopeTypeGraphNodeStart, EnvelopeTypeGraphNodeEnd, EnvelopeTypeCheckpoint,
 		EnvelopeTypeGraphStep, EnvelopeTypeGraphExecutionDone, EnvelopeTypeGraphNodeError,
 		EnvelopeTypeGraphNodeCustom, EnvelopeTypeGraphTaskStatus,
+		// Runtime graph topology changes (P2-2/P2-3): replan + evolution visibility
+		EnvelopeTypeGraphReplanned, EnvelopeTypeGraphTopologyEvolved,
 	)
 
 	// Knowledge channel: ingestion events
@@ -377,6 +407,10 @@ func init() {
 		EnvelopeTypeSpiritOrchestrationInterrupted,
 		// Planning phase timeline (P1-2): gate decision visibility
 		EnvelopeTypePlanningPhaseStart, EnvelopeTypePlanningPhaseProgress, EnvelopeTypePlanningPhaseDone,
+		// Run heartbeat (P1-7): frontend stale-run detection within 30s
+		EnvelopeTypeRunHeartbeat,
+		// AgentFactory notification (P1-4): "系统创建了新 Agent" visibility
+		EnvelopeTypeAgentCreated,
 		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted,
 		EnvelopeTypeButlerOrchestrationFailed,
 		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed,

@@ -167,6 +167,22 @@ func WithPersistInterruptedAssistant(enabled bool) Option {
 	}
 }
 
+// WithMidRunMemoryInterval sets the step interval for mid-run incremental
+// memory extraction. When set to a positive value N, the runner triggers
+// auto memory extraction after every N processed agent events during a run,
+// in addition to the existing turn-end extraction.
+//
+// Set to 0 (the default) to disable mid-run extraction and preserve the
+// existing turn-end-only behavior.
+//
+// For long-running tasks (e.g. 24h orchestration), a value of 10 is a
+// sensible starting point to bound total memory count.
+func WithMidRunMemoryInterval(n int) Option {
+	return func(opts *Options) {
+		opts.midRunMemoryInterval = n
+	}
+}
+
 // Runner is the interface for running agents.
 type Runner interface {
 	Run(
@@ -251,6 +267,7 @@ type runner struct {
 	ralphLoop                          *RalphLoopConfig
 	awaitUserReplyRouting              bool
 	persistInterruptedAssistantDefault bool
+	midRunMemoryInterval               int
 
 	// Resource management fields.
 	ownedSessionService bool      // Indicates if sessionService was created by this runner.
@@ -280,6 +297,7 @@ type Options struct {
 	ralphLoop                          *RalphLoopConfig
 	awaitUserReplyRouting              bool
 	persistInterruptedAssistantDefault bool
+	midRunMemoryInterval               int
 }
 
 // newOptions creates a new Options.
@@ -331,6 +349,7 @@ func NewRunner(appName string, ag agent.Agent, opts ...Option) Runner {
 		ralphLoop:                          options.ralphLoop,
 		awaitUserReplyRouting:              options.awaitUserReplyRouting,
 		persistInterruptedAssistantDefault: options.persistInterruptedAssistantDefault,
+		midRunMemoryInterval:               options.midRunMemoryInterval,
 		ownedSessionService:                ownedSessionService,
 	}
 }
@@ -384,6 +403,7 @@ func NewRunnerWithAgentFactory(
 		ralphLoop:                          options.ralphLoop,
 		awaitUserReplyRouting:              options.awaitUserReplyRouting,
 		persistInterruptedAssistantDefault: options.persistInterruptedAssistantDefault,
+		midRunMemoryInterval:               options.midRunMemoryInterval,
 		ownedSessionService:                ownedSessionService,
 	}
 }
@@ -975,6 +995,11 @@ type eventLoopContext struct {
 	// It is used to avoid echoing the same final assistant message again in the
 	// runner-completion event when graph final model responses are emitted.
 	emittedAssistantResponseIDs map[string]struct{}
+
+	// stepCount tracks the number of agent events processed since the last
+	// mid-run memory extraction. It is reset to 0 each time the configured
+	// midRunMemoryInterval is reached.
+	stepCount int
 }
 
 type interruptedAssistantAccumulator struct {
@@ -1054,6 +1079,7 @@ func (r *runner) runEventLoop(ctx context.Context, loop *eventLoopContext) {
 				log.Errorf("process single agent event: %v", err)
 				return
 			}
+			r.maybeEnqueueMidRunMemory(ctx, loop)
 		case req, ok := <-loop.flushChan:
 			// Flush channel closed, disable further flush handling.
 			if !ok {
@@ -3246,6 +3272,24 @@ func (r *runner) enqueueAutoMemoryJob(ctx context.Context, sess *session.Session
 		log.DebugfContext(ctx, "Auto memory extraction skipped or failed: %v", err)
 		return
 	}
+}
+
+// maybeEnqueueMidRunMemory triggers incremental memory extraction mid-run
+// when the configured step interval is reached. It is a no-op when the
+// interval is 0 (disabled) or the step count has not yet reached the
+// interval. On each trigger the step counter resets so subsequent intervals
+// also fire. Extraction failures are logged by enqueueAutoMemoryJob and do
+// not interrupt the run.
+func (r *runner) maybeEnqueueMidRunMemory(ctx context.Context, loop *eventLoopContext) {
+	if r.midRunMemoryInterval <= 0 || loop == nil || loop.sess == nil {
+		return
+	}
+	loop.stepCount++
+	if loop.stepCount < r.midRunMemoryInterval {
+		return
+	}
+	loop.stepCount = 0
+	r.enqueueAutoMemoryJob(ctx, loop.sess)
 }
 
 func (r *runner) enqueueSessionIngest(

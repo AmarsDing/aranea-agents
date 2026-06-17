@@ -6,6 +6,9 @@ export default {
     darkMode: '深色',
     language: '语言',
     expandSidebar: '展开或收起侧栏',
+    localeZhCN: '中文',
+    localeEnUS: 'English',
+    browse: '浏览',
   },
   auth: {
     subtitle: '使用管理员账号登录，会话由 HttpOnly Cookie 保持（同源代理下自动携带）。',
@@ -26,6 +29,10 @@ export default {
     devBypassHint: '当前为开发免登录模式（auth bypass），可直接进入系统；也可使用 dev/dev 登录。',
     devModeBTitle: '开发模式 B（真实登录）',
     logout: '退出登录',
+    checkingBackend: '正在检测后端服务...',
+    backendStarting: '后端服务启动中，请稍候...',
+    recheck: '重新检测',
+    enterWithoutLogin: '进入系统（免登录）',
   },
   dashboard: {
     totalBalance: '总览指标',
@@ -369,6 +376,14 @@ export default {
       collapse: '折叠',
       noEntries: '暂无执行记录',
       maxDepthReached: '嵌套层级已达上限',
+    },
+    confirmActivity: {
+      approveRejected: '批准操作未被接受',
+      denyRejected: '拒绝操作未被接受',
+      failed: '确认操作失败',
+    },
+    transition: {
+      thinkingToReply: '生成回复',
     },
   },
   plugins: {

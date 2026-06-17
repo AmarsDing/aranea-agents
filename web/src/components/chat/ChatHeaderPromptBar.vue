@@ -44,7 +44,7 @@ const displayLine = computed(() => {
   if (!props.hasMessages) {
     return (props.sessionTitle ?? '').trim() || t('chat.untitledSession');
   }
-  return t('chat.headerPromptPlaceholder', '向上滚动查看该轮提问');
+  return t('chat.headerPromptPlaceholder');
 });
 
 const showTooltip = computed(() => props.fullText.trim().length > 0);

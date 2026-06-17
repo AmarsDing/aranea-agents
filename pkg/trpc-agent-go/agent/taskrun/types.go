@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -40,6 +41,10 @@ var ErrRunAlreadyExists = errors.New("taskrun: run already exists")
 
 // ErrNotStarted indicates that a task run controller has not been started.
 var ErrNotStarted = errors.New("taskrun: not started")
+
+// ErrRunNotActive indicates that a task run is no longer active and cannot
+// stream events.
+var ErrRunNotActive = errors.New("taskrun: run not active")
 
 // Status describes the lifecycle state of a task run.
 type Status string
@@ -155,6 +160,13 @@ type Controller interface {
 	Get(ctx context.Context, runID string) (*Run, error)
 	Cancel(ctx context.Context, runID string) (*Run, bool, error)
 	Wait(ctx context.Context, runID string) (*Run, error)
+	// Events returns a read-only channel that forwards events emitted by
+	// the child agent for the given run. The channel is closed when the
+	// run reaches a terminal state. Returns ErrRunNotFound if the run does
+	// not exist, or ErrRunNotActive if the run is already terminal.
+	// Events that cannot be forwarded (no consumer or full buffer) are
+	// dropped and do not block the run.
+	Events(runID string) (<-chan *event.Event, error)
 }
 
 // Observer receives lifecycle updates after they have been persisted.

@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -27,6 +28,7 @@ type agentAllocatorImpl struct {
 	httpClient  *http.Client
 	bus         contract.Bus
 	lg          loggateway.Logger
+	embedder    knowledge.Embedder
 }
 
 var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
@@ -41,6 +43,7 @@ func NewAgentAllocator(
 	httpClient *http.Client,
 	bus contract.Bus,
 	lg loggateway.Logger,
+	embedder knowledge.Embedder,
 ) biz.AgentAllocatorPort {
 	return &agentAllocatorImpl{
 		repo:        repo,
@@ -51,6 +54,7 @@ func NewAgentAllocator(
 		httpClient:  httpClient,
 		bus:         bus,
 		lg:          lg,
+		embedder:    embedder,
 	}
 }
 
@@ -311,12 +315,109 @@ func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabi
 }
 
 // matchLayer2 performs Layer 2 matching: semantic similarity between task description and agent capabilities.
-// Uses keyword-based TF-IDF-like scoring as a placeholder; TODO: integrate pgvector for true embedding similarity.
+//
+// When an embedder is configured, it uses pgvector-style embedding cosine similarity for true semantic
+// matching. When the embedder is nil or fails, it gracefully falls back to the existing TF-IDF
+// keyword-based matching — no hard error is surfaced to the caller.
 func (impl *agentAllocatorImpl) matchLayer2(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
 	if len(capabilities) == 0 {
 		return biz.AgentCapability{}, 0, ""
 	}
 
+	// Try embedding-based matching first; fall back to TF-IDF on failure or nil embedder.
+	if impl.embedder != nil {
+		if cap, score, reason, ok := impl.matchLayer2Embedding(ctx, subTask, capabilities, traceID); ok {
+			return cap, score, reason
+		}
+	}
+
+	return impl.matchLayer2TFIDF(ctx, subTask, capabilities, traceID)
+}
+
+// matchLayer2Embedding uses embedding cosine similarity for semantic matching.
+// Returns ok=false when the embedder fails or produces unusable vectors; the caller falls back to TF-IDF.
+func (impl *agentAllocatorImpl) matchLayer2Embedding(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string, bool) {
+	taskText := subTask.Name + " " + subTask.Description
+	for _, cap := range subTask.RequiredCapabilities {
+		taskText += " " + cap
+	}
+
+	// Collect non-Spirit candidates and their capability text for batch embedding.
+	var agentCaps []biz.AgentCapability
+	var agentTexts []string
+	for _, cap := range capabilities {
+		if cap.AgentKey == biz.SpiritAgentKey {
+			continue
+		}
+		agentCaps = append(agentCaps, cap)
+		agentTexts = append(agentTexts, buildAgentCapabilityText(cap))
+	}
+	if len(agentCaps) == 0 {
+		return biz.AgentCapability{}, 0, "", false
+	}
+
+	// Batch embed: [taskText, agentText1, agentText2, ...].
+	allTexts := append([]string{taskText}, agentTexts...)
+	vectors, err := impl.embedder.Embed(ctx, allTexts)
+	if err != nil {
+		impl.lg.Warn("Layer 2 embedding 失败，降级为 TF-IDF",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Err(err),
+		)
+		return biz.AgentCapability{}, 0, "", false
+	}
+	if len(vectors) != len(allTexts) || len(vectors[0]) == 0 {
+		impl.lg.Warn("Layer 2 embedding 维度不匹配，降级为 TF-IDF",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Int("expected", len(allTexts)),
+			loggateway.Int("got", len(vectors)),
+		)
+		return biz.AgentCapability{}, 0, "", false
+	}
+
+	taskVec := vectors[0]
+
+	type scored struct {
+		cap   biz.AgentCapability
+		score float64
+	}
+
+	var candidates []scored
+	for i, cap := range agentCaps {
+		sim := cosineSimilarity32(taskVec, vectors[i+1])
+		if sim <= 0 {
+			continue
+		}
+		// Blend with historical success rate (same weighting as TF-IDF path).
+		score := sim
+		if impl.perfRepo != nil {
+			perf, err := impl.perfRepo.Get(ctx, cap.AgentKey, "general")
+			if err == nil && perf != nil {
+				score = score*0.6 + perf.SuccessRate*0.4
+			}
+		}
+		candidates = append(candidates, scored{cap: cap, score: score})
+	}
+
+	if len(candidates) == 0 {
+		return biz.AgentCapability{}, 0, "", false
+	}
+
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if c.score > best.score {
+			best = c
+		}
+	}
+
+	reason := fmt.Sprintf("向量语义匹配 (cosine: %.2f)", best.score)
+	return best.cap, best.score, reason, true
+}
+
+// matchLayer2TFIDF is the TF-IDF keyword-based fallback for Layer 2 matching.
+func (impl *agentAllocatorImpl) matchLayer2TFIDF(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
 	taskText := subTask.Name + " " + subTask.Description
 	for _, cap := range subTask.RequiredCapabilities {
 		taskText += " " + cap
@@ -356,7 +457,7 @@ func (impl *agentAllocatorImpl) matchLayer2(ctx context.Context, subTask biz.Sub
 		}
 	}
 
-	reason := fmt.Sprintf("语义匹配 (score: %.2f)", best.score)
+	reason := fmt.Sprintf("TF-IDF 语义匹配 (score: %.2f)", best.score)
 	return best.cap, best.score, reason
 }
 
@@ -406,15 +507,10 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 // computeSemanticScore computes a TF-IDF-like keyword overlap score between
 // a task description and an agent's capability profile.
 //
-// TODO(embedding-upgrade): The project has an Embedder (internal/knowledge/embedder.go)
-// supporting OpenAI/Ollama/Gemini/HuggingFace backends, but it is not wired into the
-// allocator. To upgrade Layer 2 from TF-IDF to true embedding cosine similarity:
-//  1. Add knowledge.Embedder as a dependency of agentAllocatorImpl
-//  2. Persist agent capability vectors (pre-computed embeddings of role/domain/tool/skill text)
-//  3. Replace this function with embedding cosine similarity via pgvector or in-memory comparison
-//
-// The existing Embedder is only available in the knowledge pipeline, not the agent allocation pipeline.
-// Until wired, TF-IDF remains the Layer 2 strategy.
+// This function powers the TF-IDF fallback path in matchLayer2TFIDF. The
+// primary Layer 2 path now uses embedding cosine similarity via matchLayer2Embedding;
+// this keyword scorer remains as the graceful-degradation fallback when the
+// embedder is unavailable or fails.
 func computeSemanticScore(taskDesc string, cap biz.AgentCapability) float64 {
 	// Build a text corpus from the agent's capability profile
 	agentText := cap.DisplayName + " " + cap.Description
@@ -486,6 +582,38 @@ func tokenizeForSemantic(text string) []string {
 		}
 	}
 	return result
+}
+
+// buildAgentCapabilityText concatenates an agent's capability profile into a
+// single text blob suitable for embedding. The field order matches the
+// TF-IDF corpus built by computeSemanticScore so both paths compare the same text.
+func buildAgentCapabilityText(cap biz.AgentCapability) string {
+	parts := []string{cap.DisplayName, cap.Description}
+	parts = append(parts, cap.Roles...)
+	parts = append(parts, cap.Domains...)
+	parts = append(parts, cap.Tools...)
+	parts = append(parts, cap.Skills...)
+	return strings.Join(parts, " ")
+}
+
+// cosineSimilarity32 computes the cosine similarity between two float32 vectors.
+// Returns 0 for empty or mismatched-length vectors, or when either vector has zero magnitude.
+func cosineSimilarity32(a, b []float32) float64 {
+	if len(a) == 0 || len(b) == 0 || len(a) != len(b) {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		ai := float64(a[i])
+		bi := float64(b[i])
+		dot += ai * bi
+		normA += ai * ai
+		normB += bi * bi
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
 // llmColdStart performs Layer 3 matching: use LLM to select the best agent.
