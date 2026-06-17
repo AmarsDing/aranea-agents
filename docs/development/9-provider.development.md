@@ -11,58 +11,126 @@
 Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider 管理。支持 5 种原生 Provider（OpenAI / Anthropic / Gemini / Ollama / Hunyuan）+ 4 种 OpenAI Variant（OpenAI / DeepSeek / Qwen / Hunyuan）+ Failover/Hedge 高可用模式 + TokenTailor 自动裁剪 + Inspect 远程元数据探测 + Pricing 定价规则。
 
 **代码锚点**：
-- `api/kratos/llm_provider_model/v1/llm_provider_model.proto` — Proto CRUD + Inspect + ValidatePair（含 pricing_configured）
-- `internal/service/llm_provider_model.go` — LlmProviderModelService
-- `internal/biz/llm_provider_model.go` — LlmProviderModelUsecase + InspectMerge + ModelPricingRule + 子接口（Reader/Writer/Validator/Pricing）
-- `internal/biz/credential_key.go` — CredentialCrypto struct（DI 注入，替代全局 SetCredentialKeyResolver）
-- `internal/biz/credential_crypto.go` — CredentialCrypto 方法（加解密 / 存储处理 / 运行时解密 / 凭据揭示）
-- `internal/biz/channel_credential_crypto.go` — CredentialCrypto 方法（渠道凭据加解密）
-- `internal/data/llm_provider_model.go` — LlmProviderModelRepo（Ent ORM + SQLite + 事务 Upsert）
-- `internal/data/ent/schema/llm_provider_model.go` — Ent Schema
-- `internal/data/ent/schema/model_pricing_rule.go` — 定价规则 Schema
-- `internal/provider/trpc_llm.go` — Provider → trpc Model 装配（含 HA + 预检 + 指标 + 故障切换回调）
-- `internal/provider/trpc_llm_options_test.go` — Provider 适配路径单测（37 用例）
-- `internal/provider/catalog.go` — ProviderModelConfig 解析与合并（使用 biz.ModelCapabilities）
-- `internal/provider/roundtrip.go` — HTTP Transport 注入
-- `internal/provider/stream_delta.go` — 流式 Delta 合并
-- `pkg/trpc-agent-go/model/failover/options.go` — failover WithSwitchCallback 选项
-- `pkg/trpc-agent-go/model/hedge/options.go` — hedge WithSwitchCallback 选项
-- `internal/llminspect/inspect.go` — 远程模型元数据探测
-- `internal/agent/trpc_build.go` — Agent 构建时调用 TRPCModelForProviderModel
-- `internal/service/session_title_llm.go` — Session 标题生成调用 TRPCModelForProviderModel
-- `web/src/config/providerPresets.ts` — 前端 Provider 预设（20 个厂商）
-- `web/src/features/platform/types.ts` — 统一类型定义（ProviderConfig / ModelCategory / CapabilityChip）
-- `web/src/features/platform/providerUtils.ts` — 共享工具函数（errorMessage / toNullableNumber / toNumber / getConfig / getCategories / hasPricingConfigured）
-- `web/src/features/platform/useProviderList.ts` — Provider 列表逻辑 composable
-- `web/src/features/platform/useProviderCatalog.ts` — 目录选择逻辑 composable
-- `web/src/features/platform/useProviderCredentials.ts` — 凭据管理逻辑 composable
-- `web/src/features/platform/useProviderInspect.ts` — Inspect 检查逻辑 composable
-- `web/src/features/platform/useProviderPresets.ts` — 预设应用逻辑 composable
-- `web/src/features/platform/useProviderWizard.ts` — Provider 向导编排 composable（527 行）
-- `web/src/features/platform/useProviderSave.ts` — Provider 保存逻辑 composable（205 行）
-- `web/src/features/platform/useResourceManagerPage.ts` — Provider 管理页面编排 composable
-- `web/src/components/platform/ProviderModelsTable.vue` — 列表表格组件（含定价警告图标）
-- `web/src/components/platform/ProviderTrendDialog.vue` — 趋势看板组件
-- `web/src/components/platform/providerModelUi.ts` — 表格列定义 + UI 工具函数
-- `web/src/pages/ResourceManagerPage.vue` — Provider 管理页面（含凭据加密警告）
-- `web/src/features/platform/api.ts` — 前端 API 层
+
+### 后端
+
+| 文件 | 职责 |
+|------|------|
+| `api/kratos/llm_provider_model/v1/llm_provider_model.proto` | Proto CRUD + Inspect + ValidatePair + RevealCredentials（含 pricing_configured / capabilities） |
+| `internal/service/llm_provider_model.go` | LlmProviderModelService（Proto ↔ Biz 转换） |
+| `internal/biz/llm_provider_model.go` | LlmProviderModelUsecase + InspectMerge + ModelPricingRule + ModelCapabilities + 子接口（Reader/Writer/Validator/Pricing） |
+| `internal/biz/credential_crypto.go` | CredentialCrypto 方法（加解密 / 存储处理 / 运行时解密 / 凭据揭示） |
+| `internal/biz/credential_key.go` | CredentialCrypto struct（DI 注入，替代全局 SetCredentialKeyResolver） |
+| `internal/biz/channel_credential_crypto.go` | CredentialCrypto 方法（渠道凭据加解密） |
+| `internal/data/llm_provider_model.go` | LlmProviderModelRepo（Ent ORM + SQLite + 事务 Upsert） |
+| `internal/data/ent/schema/llm_provider_model.go` | Ent Schema（含 capability_* 列 + capabilities_explicit） |
+| `internal/data/ent/schema/model_pricing_rule.go` | 定价规则 Schema（含 USDPer1M + CacheWritePrice） |
+| `internal/provider/trpc_llm.go` | Provider → trpc Model 装配（含 HA + 预检 + 指标 + 故障切换回调） |
+| `internal/provider/catalog.go` | ProviderModelConfig 解析与合并（含 Retry/CB/RateLimit/Capabilities） |
+| `internal/provider/capabilities.go` | 模型能力推导（CapabilitiesForProviderModel） |
+| `internal/provider/roundtrip.go` | HTTP Transport 注入 |
+| `internal/provider/rate_limit_transport.go` | 速率限制 Transport（令牌桶） |
+| `internal/provider/retry_transport.go` | 重试 Transport（指数退避） |
+| `internal/provider/circuit_breaker_transport.go` | 熔断 Transport |
+| `internal/provider/metrics_model.go` | 模型指标装饰（WrapModelWithMetrics） |
+| `internal/provider/stream_delta.go` | 流式 Delta 合并 |
+| `internal/provider/register_extra.go` | HuggingFace/Bedrock Provider 注册预留 |
+| `internal/provider/errors.go` | Provider 错误定义 |
+| `internal/provider/trpc_llm_options_test.go` | Provider 适配路径单测（37 用例） |
+| `internal/provider/trpc_llm_variant_test.go` | Variant 推断单测 |
+| `internal/provider/trpc_llm_fixes_test.go` | Provider 修复单测 |
+| `internal/provider/stream_delta_test.go` | 流式 Delta 单测 |
+| `internal/llminspect/inspect.go` | 远程模型元数据探测（OpenRouter / OpenAI-Compatible / Anthropic / Gemini / Ollama / Hunyuan 路径） |
+| `internal/agent/trpc_build.go` | Agent 构建时调用 TRPCModelForProviderModel |
+| `internal/service/session_title_llm.go` | Session 标题生成调用 TRPCModelForProviderModel |
+| `pkg/trpc-agent-go/model/failover/options.go` | failover WithSwitchCallback 选项 |
+| `pkg/trpc-agent-go/model/hedge/options.go` | hedge WithSwitchCallback 选项 |
+
+### 前端
+
+| 文件 | 职责 |
+|------|------|
+| `web/src/config/providerPresets.ts` | 前端 Provider 预设（13 个 shell + custom） |
+| `web/src/config/providerRuntimeOverlay.ts` | models.dev → trpc 运行时映射 |
+| `web/src/config/providerRuntimeOverlay.types.ts` | 运行时 overlay 类型定义 |
+| `web/src/config/provider_runtime_overlay.json` | overlay 数据（与后端同步） |
+| `web/src/features/platform/types.ts` | 统一类型定义（ProviderConfig / ModelCategory / CapabilityChip） |
+| `web/src/features/platform/providerUtils.ts` | 共享工具函数（errorMessage / toNullableNumber / toNumber / getConfig / getCategories / hasPricingConfigured） |
+| `web/src/features/platform/useProviderList.ts` | Provider 列表逻辑 composable |
+| `web/src/features/platform/useProviderCatalog.ts` | 目录选择逻辑 composable |
+| `web/src/features/platform/useProviderCredentials.ts` | 凭据管理逻辑 composable |
+| `web/src/features/platform/useProviderInspect.ts` | Inspect 检查逻辑 composable |
+| `web/src/features/platform/useProviderPresets.ts` | 预设应用逻辑 composable |
+| `web/src/features/platform/useProviderWizard.ts` | Provider 向导编排 composable（527 行） |
+| `web/src/features/platform/useProviderSave.ts` | Provider 保存逻辑 composable（205 行） |
+| `web/src/features/platform/useResourceManagerPage.ts` | Provider 管理页面编排 composable |
+| `web/src/features/platform/api.ts` | 前端 API 层 |
+| `web/src/components/platform/ProviderModelsTable.vue` | 列表表格组件（含定价警告图标） |
+| `web/src/components/platform/ProviderTrendDialog.vue` | 趋势看板组件 |
+| `web/src/components/platform/ProviderHAConfig.vue` | 高可用配置组件 |
+| `web/src/components/platform/ProviderWizardStep1Connect.vue` | 步骤 1：连接与身份 |
+| `web/src/components/platform/ProviderWizardStep2Specs.vue` | 步骤 2：模型分类与规格 |
+| `web/src/components/platform/ProviderWizardStep3HA.vue` | 步骤 3：高可用配置 |
+| `web/src/components/platform/ProviderWizardStep4Advanced.vue` | 步骤 4：高级选项 |
+| `web/src/components/platform/ProviderLogo.vue` | Provider 图标 |
+| `web/src/components/platform/providerModelUi.ts` | 表格列定义 + UI 工具函数 |
+| `web/src/pages/ResourceManagerPage.vue` | Provider 管理页面（含凭据加密警告） |
 
 ---
 
 ## 2. 现状评估
 
+### 2.1 实现状态快速索引
+
+| 章节 | 需求描述 | 状态 | 代码证据 |
+|------|---------|------|---------|
+| §6.1 | Failover 高可用 | ✅ | `wrapFailover` + `trpcfailover.New` + `WithSwitchCallback` 事件 |
+| §6.2 | Hedge 低延迟 | ✅ | `wrapHedge` + `trpchedge.New` + `WithSwitchCallback` 事件 |
+| §6.3 | TokenTailor | ✅ | `WithEnableTokenTailoring` 透传 + Strategy + SafetyMargin |
+| §6.4 | 多模型注册 | ✅ | 5 种已注册 Provider 可正常调用 |
+| §6.5 | IterModel 优化 | ⏳ 未实现 | 未检查 IterModel 接口支持 |
+| — | 5 种原生 Provider + 4 种 Variant | ✅ | `MapProviderType` + `trpcprovider.Model` 工厂 |
+| — | Provider 专属选项构建 | ✅ | `buildOpenAISpecificOptions` / `buildAnthropicSpecificOptions` / `buildGeminiSpecificOptions` / `buildOllamaSpecificOptions` / `buildHunyuanSpecificOptions` |
+| — | ProviderModelConfig 扩展 | ✅ | `catalog.go` ProviderModelConfig 含 Variant / SecretID / SecretKey / AWSRegion / HA / Retry / CB / RateLimit / Capabilities |
+| — | Inspect 请求扩展字段 | ✅ | Proto 含 variant / secret_id / secret_key / aws_region |
+| — | Inspect 响应扩展字段 | ✅ | Proto 含 variant / enable_token_tailoring / supports_cache / supports_thinking |
+| — | RevealProviderModelCredentials | ✅ | Proto + Service + Usecase 解密返回 |
+| — | providerPresets.ts shell + overlay 架构 | ✅ | 13 个预设 shell + providerRuntimeOverlay |
+| — | ResourceManagerPage 四步表单 | ✅ | QStepper 四步表单 + ProviderHAConfig |
+| — | ProviderModelRow Variant/HA Chip | ✅ | ProviderModelsTable 含 Variant Chip 和 HA Chip |
+| — | catalog.go 扩展 | ✅ | ProviderModelConfig 全字段 + MergeModelConfig 全字段合并 |
+| — | trpc_llm.go 分发构建 | ✅ | `trpcModelFromProviderModelConfig` + `buildProviderOptions` + 5 种 Provider builder |
+| — | biz InspectMerge 扩展 | ✅ | InspectMerge 含 variant / secret_id / secret_key / aws_region；`mergeInspectConfigJSON` 含对应合并 |
+| — | Proto pricing_configured | ✅ | Proto field 16 + Service 映射 |
+| — | Proto capabilities | ✅ | Proto field 15 + `CapabilitiesForProviderModel` 推导 |
+| — | llminspect Gemini/Ollama/Hunyuan 路径 | ✅ | llminspect 专属路径 + 单测 |
+| — | HuggingFace / Bedrock Provider | ⏳ 待上游 | trpc provider 工厂未注册；前端预设已预留；`register_extra.go` + `MapProviderType` 已就绪 |
+| — | 凭据加密 | ✅ | AES-256-GCM（ARANEA_CREDENTIAL_KEY）；List/Get 脱敏；降级警告 |
+| — | Pricing 定价规则 | ✅ | `UpsertModelPricingRule`（事务安全）；Create/Update 时自动同步 |
+| — | Agent 构建链路接入 | ✅ | `internal/agent/trpc_build.go` + `internal/service/session_title_llm.go` |
+| — | 前端趋势看板 | ✅ | `ProviderTrendDialog.vue`：30 天趋势柱状图、汇总卡片、详情表 |
+| — | 速率限制 | ✅ | config_json rate_limit_rpm + RoundTrip 令牌桶 |
+| — | 重试 + 熔断 | ✅ | retry_transport.go + circuit_breaker_transport.go |
+| — | 健康检查 | ✅ | ProviderHealthScanner 5min；safego.Go；UpdateProviderModelStatus |
+| — | 定价缺失提示 | ✅ | 后端 PricingConfigured 字段 + 前端 price_check 警告图标 |
+| — | 凭据加密降级提示 | ✅ | CredentialCrypto.IsAvailable + 启动警告日志 + 前端 q-banner 警告 |
+| — | HA 故障转移事件可视化 | ✅ | failover/hedge `WithSwitchCallback` → `event.CtxFlowLogWarn`；step ID 已注册 |
+
+### 2.2 现状评估表
+
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Provider Model CRUD | ✅ | List / Create / Get / Update / Delete（软删）全链路 |
-| Inspect 远程探测 | ✅ | OpenRouter / OpenAI-Compatible / Anthropic 三条探测路径；DeepSeek 路由 |
+| Inspect 远程探测 | ✅ | OpenRouter / OpenAI-Compatible / Anthropic / Gemini / Ollama / Hunyuan 六条探测路径；DeepSeek 路由 |
 | ValidatePair 校验 | ✅ | 按 provider + model 查询 enabled 行 |
+| RevealProviderModelCredentials | ✅ | 解密返回 api_key / secret_key / ha_candidates 凭据 |
 | trpc Model 装配 | ✅ | `TRPCModelForProviderModel` 按 provider_type 分发构建；5 种原生 Provider + Variant |
 | Failover/Hedge HA | ✅ | `wrapHA` + `wrapFailover` / `wrapHedge`；候选模型构建（含预检 + 指标装饰） |
 | HA 故障切换事件 | ✅ | failover/hedge `WithSwitchCallback` → `event.CtxFlowLogWarn`；step ID 已注册 |
-| TokenTailoring | ✅ | `WithEnableTokenTailoring` 透传 |
+| TokenTailoring | ✅ | `WithEnableTokenTailoring` 透传 + Strategy + SafetyMargin |
 | Provider 专属选项 | ✅ | OpenAI（Cache/Backfill/Delta）、Anthropic（Cache 三项）、Gemini（ClientConfig）、Ollama（KeepAlive）、Hunyuan（SecretId/Key） |
 | Pricing 定价规则 | ✅ | `UpsertModelPricingRule`（事务安全）；Create/Update 时自动同步 |
-| 前端预设 | ✅ | 20 个 Provider 预设；7 种 ProviderType；4 种 Variant；AuthType 联动 |
+| 前端预设 | ✅ | 13 个 Provider 预设 shell + providerRuntimeOverlay；7 种 ProviderType；4 种 Variant；AuthType 联动 |
 | 前端列表行 | ✅ | ProviderModelsTable：类型 Chip、分类 Chip、热度、用量、密钥状态、Toggle、定价警告 |
 | 前端趋势看板 | ✅ | ProviderTrendDialog：30 天趋势柱状图、汇总卡片、详情表 |
 | 前端管理页面 | ✅ | ResourceManagerPage：搜索、分页、创建/编辑弹窗、凭据加密警告 |
@@ -71,11 +139,12 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | mergeInspectConfigJSON 扩展 | ✅ | 含 variant / secret_id / secret_key / aws_region；needInspectMerge 支持混元/Bedrock |
 | 前端 Variant Chip | ✅ | ProviderModelsTable |
 | 前端 HA Chip | ✅ | ProviderModelsTable |
-| 前端四步表单 | ✅ | ResourceManagerPage QStepper + ProviderHAConfig |
+| 前端四步表单 | ✅ | ResourceManagerPage QStepper + ProviderHAConfig + ProviderWizardStep1-4 |
 | Gemini/Ollama/Hunyuan Inspect | ✅ | llminspect 专属路径 + 单测 |
 | HuggingFace/Bedrock Provider | ✅ | register_extra.go + MapProviderType |
 | 凭据加密 | ✅ | AES-256-GCM（ARANEA_CREDENTIAL_KEY）；List/Get 脱敏；降级警告 |
 | 速率限制 | ✅ | config_json rate_limit_rpm + RoundTrip 令牌桶 |
+| 重试 + 熔断 | ✅ | retry_transport.go + circuit_breaker_transport.go |
 | 健康检查 | ✅ | ProviderHealthScanner 5min；safego.Go；UpdateProviderModelStatus |
 | Repo 接口拆分 | ✅ | LlmProviderModelRepo → Reader/Writer/Validator/Pricing 子接口（红线 15 合规） |
 | ModelCapabilities 统一 | ✅ | biz 层唯一定义，provider 层引用 biz.ModelCapabilities |
@@ -92,6 +161,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | 凭据加密降级提示 | ✅ | CredentialCrypto.IsAvailable + 启动警告日志 + 前端 q-banner 警告 |
 | 解密失败日志 | ✅ | DecryptConfigJSONForRuntime 解密失败时 SysLogWarn 记录 |
 | Proto pricing_configured | ✅ | Proto field 16 + Service 映射 + 前端可直接使用 |
+| Proto capabilities | ✅ | Proto field 15 + Service `toProtoPM` 调用 `CapabilitiesForProviderModel` |
 
 ---
 
@@ -216,6 +286,11 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | 40 | DecryptConfigJSONForRuntime 返回 (string, error) | 🟡 | — | ✅ |
 | 41 | RunHealthChecks goroutine ctx 取消修复 | 🟡 | — | ✅ |
 | 42 | service 层 resolveCredentialPlain/ResolveSecretRef 签名修复 | P1 | — | ✅ |
+| 43 | Proto 增加 capabilities 字段（field 15）+ ModelCapabilities message | P1 | — | ✅ |
+| 44 | Proto 增加 RevealProviderModelCredentials RPC | P2 | — | ✅ |
+| 45 | 重试 + 熔断 Transport（retry_transport.go + circuit_breaker_transport.go） | P2 | — | ✅ |
+| 46 | 前端 providerRuntimeOverlay 架构（shell + overlay） | P2 | — | ✅ |
+| 47 | 前端 ProviderWizardStep1-4 组件拆分 | P2 | — | ✅ |
 
 ---
 
@@ -244,11 +319,15 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 - [x] SetCredentialKeyResolver 通过 Wire 构造函数注入（CredentialCrypto）
 - [x] HA 故障转移事件在 Monitor 中可视化
 - [x] Proto pricing_configured 字段已添加
+- [x] Proto capabilities 字段已添加（field 15 + ModelCapabilities message）
+- [x] RevealProviderModelCredentials RPC 已实现
 - [x] 解密失败时有日志记录
 - [x] MCPServerRepo 接口方法 ≤ 5（子接口拆分）
 - [x] DecryptConfigJSONForRuntime 返回 (string, error)
 - [x] RunHealthChecks goroutine 写操作不受父 ctx 取消影响
 - [x] service 层 resolveCredentialPlain/ResolveSecretRef 调用签名正确
+- [x] 重试 + 熔断 Transport 已实现
+- [x] 前端 providerRuntimeOverlay 架构已落地
 
 ---
 
@@ -258,3 +337,101 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 - CredentialCrypto 通过 Wire 注入，所有需要加解密的 Usecase 均需声明依赖
 - IterModel 优化需 trpc-agent-go 框架支持 `model.IterModel` 接口检测
 - useProviderWizard 仍 527 行，可继续拆分表单生命周期逻辑
+- AgentRuntimeSettings / RalphLoopSettings 测试失败（非本次改动引起，需单独排查）
+
+---
+
+## 8. 演进路线
+
+| 阶段 | 内容 | 前置依赖 | 状态 |
+|------|------|----------|------|
+| 当前 | Failover/Hedge 模式已可用；Provider 适配器已实现；5 种原生 Provider + 4 种 Variant；凭据加密；速率限制；重试+熔断；健康检查；HA 事件可视化 | — | ✅ |
+| P1 | 接入层限流与配额统一；决策层路由引擎（能力/成本/延迟策略） | Provider 类型枚举统一 | ⏳ |
+| P2 | 跨厂商降级链配置化；熔断策略 LLM 特化；负载均衡按 token 加权 | P1 | ⏳ |
+| P3 | 语义缓存（可选）；全链路 trace 与成本归因；独立路由服务（可选） | P2 | ⏳ |
+| P3 | IterModel 优化（支持迭代模式减少 channel 开销） | trpc-agent-go 框架支持 | ⏳ |
+| P3 | HuggingFace / Bedrock Provider 启用 | trpc 上游注册到 provider 工厂 | ⏳ |
+
+---
+
+## 9. 涉及文件清单（按层分组）
+
+### Proto 层
+- `api/kratos/llm_provider_model/v1/llm_provider_model.proto`
+
+### Service 层
+- `internal/service/llm_provider_model.go`
+- `internal/service/llm_provider_model_test.go`
+
+### Biz 层
+- `internal/biz/llm_provider_model.go`
+- `internal/biz/llm_provider_model_pricing_test.go`
+- `internal/biz/llm_provider_model_inspect_test.go`
+- `internal/biz/credential_crypto.go`
+- `internal/biz/credential_crypto_test.go`
+- `internal/biz/credential_key.go`
+- `internal/biz/credential_key_test.go`
+- `internal/biz/channel_credential_crypto.go`
+
+### Data 层
+- `internal/data/llm_provider_model.go`
+- `internal/data/ent/schema/llm_provider_model.go`
+- `internal/data/ent/schema/model_pricing_rule.go`
+
+### Provider 桥接层
+- `internal/provider/trpc_llm.go`
+- `internal/provider/catalog.go`
+- `internal/provider/capabilities.go`
+- `internal/provider/roundtrip.go`
+- `internal/provider/rate_limit_transport.go`
+- `internal/provider/retry_transport.go`
+- `internal/provider/circuit_breaker_transport.go`
+- `internal/provider/metrics_model.go`
+- `internal/provider/stream_delta.go`
+- `internal/provider/register_extra.go`
+- `internal/provider/errors.go`
+- `internal/provider/trpc_llm_options_test.go`
+- `internal/provider/trpc_llm_variant_test.go`
+- `internal/provider/trpc_llm_fixes_test.go`
+- `internal/provider/stream_delta_test.go`
+
+### Inspect 层
+- `internal/llminspect/inspect.go`
+- `internal/llminspect/inspect_pure_test.go`
+- `internal/llminspect/inspect_routes_test.go`
+
+### Agent 构建链路
+- `internal/agent/trpc_build.go`
+- `internal/service/session_title_llm.go`
+
+### 前端
+- `web/src/config/providerPresets.ts`
+- `web/src/config/providerRuntimeOverlay.ts`
+- `web/src/config/providerRuntimeOverlay.types.ts`
+- `web/src/config/provider_runtime_overlay.json`
+- `web/src/features/platform/types.ts`
+- `web/src/features/platform/providerUtils.ts`
+- `web/src/features/platform/api.ts`
+- `web/src/features/platform/useProviderList.ts`
+- `web/src/features/platform/useProviderCatalog.ts`
+- `web/src/features/platform/useProviderCredentials.ts`
+- `web/src/features/platform/useProviderInspect.ts`
+- `web/src/features/platform/useProviderPresets.ts`
+- `web/src/features/platform/useProviderWizard.ts`
+- `web/src/features/platform/useProviderSave.ts`
+- `web/src/features/platform/useResourceManagerPage.ts`
+- `web/src/features/platform/usePlatformResource.ts`
+- `web/src/components/platform/ProviderModelsTable.vue`
+- `web/src/components/platform/ProviderTrendDialog.vue`
+- `web/src/components/platform/ProviderHAConfig.vue`
+- `web/src/components/platform/ProviderWizardStep1Connect.vue`
+- `web/src/components/platform/ProviderWizardStep2Specs.vue`
+- `web/src/components/platform/ProviderWizardStep3HA.vue`
+- `web/src/components/platform/ProviderWizardStep4Advanced.vue`
+- `web/src/components/platform/ProviderLogo.vue`
+- `web/src/components/platform/providerModelUi.ts`
+- `web/src/pages/ResourceManagerPage.vue`
+
+### trpc-agent-go 框架包
+- `pkg/trpc-agent-go/model/failover/options.go`
+- `pkg/trpc-agent-go/model/hedge/options.go`

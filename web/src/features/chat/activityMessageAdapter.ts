@@ -64,6 +64,13 @@ export function finalizeStreamingMessageFromDone(msg: Message, md: ActivityDoneM
   if (md.kind === 'thinking' && md.reasoning !== undefined) {
     updates.reasoning_markdown = md.reasoning;
   }
+  // Upgrade origin from 'streaming' to 'streaming_snapshot' to mark this as
+  // a finalized local snapshot. This aligns with reconstructMessagesFromActivities
+  // (which sets streaming_snapshot for API-reconstructed actv-* messages) and
+  // eliminates the need for id-prefix-based checks in mergeSessionMessages.
+  if (msg.origin?.kind === 'streaming') {
+    updates.origin = { kind: 'streaming_snapshot', sessionId: msg.origin.sessionId };
+  }
   return { ...msg, ...updates };
 }
 

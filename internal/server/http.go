@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	nethttp "net/http"
 
@@ -94,7 +95,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readines
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting, s.EcosystemPreset)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -160,6 +161,9 @@ func registerCustomRoutes(
 	a2aPublic *a2atrpc.EndpointRegistry,
 	systemSettingSvc *service.SystemSettingService,
 	ecosystemPresetSvc *service.EcosystemPresetService,
+	aguiCompat *service.AGUICompatService,
+	openaiSession *service.OpenAISessionCompatService,
+	a2aExtension *service.A2AExtensionCompatService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -189,6 +193,45 @@ func registerCustomRoutes(
 		srv.Route("/").POST("/api/v1/admin/ecosystem/preset/unload", ecosystemPresetSvc.HandleUnload())
 		srv.Route("/").GET("/api/v1/admin/ecosystem/preset/status", ecosystemPresetSvc.HandleStatus())
 	}
+	// Compat server adapter routes. Each service lazily initializes its
+	// underlying framework server on the first request via Handler(ctx).
+	if aguiCompat != nil && aguiCompat.Enabled() {
+		srv.HandlePrefix(aguiCompat.Path(), lazyCompatHandler(aguiCompat))
+	}
+	if openaiSession != nil && openaiSession.Enabled() {
+		srv.Handle(openaiSession.Path(), lazyCompatHandler(openaiSession))
+	}
+	if a2aExtension != nil && a2aExtension.Enabled() {
+		srv.HandlePrefix(a2aExtension.Path(), lazyCompatHandler(a2aExtension))
+	}
+}
+
+// compatHandler is the minimal interface satisfied by all three compat
+// service wrappers (AGUICompatService, OpenAISessionCompatService,
+// A2AExtensionCompatService). It allows lazyCompatHandler to wrap any of
+// them uniformly.
+type compatHandler interface {
+	Handler(ctx context.Context) (nethttp.Handler, error)
+}
+
+// lazyCompatHandler returns an http.Handler that lazily resolves the
+// underlying framework handler on the first request. This preserves the
+// double-check locking lazy-init pattern used by the compat services.
+func lazyCompatHandler(svc compatHandler) nethttp.Handler {
+	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		h, err := svc.Handler(r.Context())
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(nethttp.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"code":500,"reason":"COMPAT_INIT","message":"failed to initialize compat server"}`))
+			return
+		}
+		if h == nil {
+			w.WriteHeader(nethttp.StatusServiceUnavailable)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 func registerInfrastructureRoutes(srv *kratoshttp.Server, readiness ReadinessProbe) {

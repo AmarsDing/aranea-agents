@@ -1,6 +1,8 @@
 # Agent 列表页 — 产品设计说明（Quasar）
 
-本文档描述「Agent 管理」主列表界面（标题 **Agent**、副标题 **AI Agent 管理 **），涵盖布局、控件、交互、筛选分页与 **`agents` 主表**字段对应关系。后端 Agent 运行时基于 trpc-agent-go 框架。创建流程见 `2 agents-create.md`。
+本文档描述「Agent 管理」主列表界面（标题 **Agent**、副标题 **管理您的 AI Agent**），涵盖布局、控件、交互、筛选分页与列表项字段对应关系。后端 Agent 运行时基于 trpc-agent-go 框架。创建流程见 `2 agents-create.md`。
+
+> 数据库列映射、API 契约、收藏表设计等技术细节见 [3-agent-list.design.md](./3-agent-list.design.md)。
 
 ---
 
@@ -9,9 +11,9 @@
 | 项目 | 说明 |
 |------|------|
 | **路由建议** | `/agents` |
-| **用户目标** | 浏览、搜索、筛选自己可见的 Agent；创建、迁移、收藏、删除；切换网格/列表视图 |
+| **用户目标** | 浏览、搜索、筛选自己可见的 Agent；创建、迁移、收藏、删除、复制；切换网格/列表视图 |
 | **视觉** | 白昼模式 |
-| **数据主实体** | `agents` 表（未软删 `deleted_at IS NULL` 的行） |
+| **数据主实体** | Agent 实体（不含已软删项） |
 
 ---
 
@@ -43,7 +45,7 @@
 | 页面根 | `QPage` + `q-pa-md`，纵向 `column` 或 `q-layout` 内容区 |
 | 页头 | `div.row.items-center.justify-between`：左侧标题块，右侧 `QBtn` 组 |
 | 筛选行 | `div.row.q-col-gutter-sm.items-center`：`QInput`、`QSelect`（技术类型 + **业务分类** + 创建者）、右侧视图切换；窄屏可 `wrap` 换行 |
-| 内容区 | **网格**：`div.row.q-col-gutter-md` + `div.col-12 col-sm-6 col-md-4` 包裹 `QCard`；**列表**：`QTable` 或 `QList` + `QItem` |
+| 内容区 | **网格**：`div.row.q-col-gutter-md` + `div.col-12 col-sm-6 col-md-4` 包裹 `QCard`；**列表**：`QTable` 或 `QList` + `QItem`；支持三组分组（Built-in / Preset / User） |
 | 页脚 | `div.row.items-center.justify-between`：总数、`QSelect` 每页条数、文案「第 x/y 页」、`QBtn` icon 翻页 |
 
 ---
@@ -78,41 +80,36 @@
 |------|------|
 | **控件** | `QInput`：`outlined` 或 `standout`，圆角；`prepend` 搜索图标 |
 | **占位** | `搜索Agent...` |
-| **绑定** | 查询参数 `q`（或 `search`） |
 | **行为** | 输入防抖（建议 300–500ms）后请求列表接口；清空则恢复无关键字查询 |
-| **后端** | 建议命中 `display_name`、`agent_key`、`frontmatter`、`agent_description`（与 `tsv` / 全文检索设计一致时走 GIN；否则 ILIKE 多列） |
+| **命中字段** | 名称、handle、Provider、Model、描述（具体映射见 [3-agent-list.design.md §八](./3-agent-list.design.md#八列表项字段与数据模型映射)） |
 
 ### 3.5 类型筛选 —「All Types」
 
 | 维度 | 说明 |
 |------|------|
 | **控件** | `QSelect`：`outlined`，圆角，可清空 |
-| **选项** | 全部分类 + 业务类型（与 `agents.agent_type` 或产品定义的枚举一致，如 `open` 等） |
+| **选项** | 全部分类 + 业务类型（与 Agent 归属类型枚举一致，如 `user` / `system_builtin` / `ecosystem_preset` 等） |
 | **行为** | 变更即重置到第 1 页并请求列表 |
-| **库表** | `agents.agent_type` |
 
 ### 3.6 业务分类筛选 —「Agent Type / 业务分类」
 
-与 `4.agent-type.md` 一致：**行业 → 部门 → 职位** 体系；筛选的是 Agent 绑定的 **职位叶子**（`agents.category_position_id`），**不是**上一节的 `agents.agent_type`。
+与 `4.agent-type.md` 一致：**行业 → 部门 → 职位** 体系；筛选的是 Agent 绑定的 **职位叶子**，**不是**上一节的归属类型。
 
 | 维度 | 说明 |
 |------|------|
-| **控件** | **方案 A（推荐 MVP）**：单个 `QSelect`，可清空；选项标签为完整路径（如 `IT行业 / 游戏开发部 / UE5场景设计师`），值为 `category_position_id`。 |
+| **控件** | **方案 A（推荐 MVP）**：单个 `QSelect`，可清空；选项标签为完整路径（如 `IT行业 / 游戏开发部 / UE5场景设计师`），值为职位节点 id。 |
 | **占位** | `业务分类` 或 `全部业务分类` |
-| **数据源** | `GET /agent-categories/positions?workspace_id=` 返回 `{ id, path_label }` 列表，前端由 `tree` 展平叶子节点。 |
-| **绑定** | 查询参数 `category_position_id`；清空表示不按分类过滤。 |
-| **行为** | 变更即 **page 重置为 1** 并请求列表；可与关键字搜索、`agent_type`、创建者组合。 |
-| **可选增强** | 增加按 **行业** 或 **部门** 聚合筛选（参数如 `category_industry_id` / `category_department_id`，服务端匹配子树）。 |
-| **库表** | `agents.category_position_id`（及可选 `category_path` 展示） |
+| **数据源** | 平台资源树接口返回 `{ id, path_label }` 列表，前端由 `tree` 展平叶子节点。 |
+| **行为** | 变更即 **page 重置为 1** 并请求列表；可与关键字搜索、归属类型、创建者组合。 |
+| **可选增强** | 增加按 **行业** 或 **部门** 聚合筛选（服务端匹配子树）。 |
 
 ### 3.7 创建者筛选 —「所有创建者」
 
 | 维度 | 说明 |
 |------|------|
 | **控件** | `QSelect`：占位「所有创建者」 |
-| **选项** | 当前租户/空间下出现过创建者的用户列表（需后端 `created_by` 或审计字段支持） |
+| **选项** | 当前空间下出现过创建者的用户列表；首项为「仅我的」（当前用户） |
 | **行为** | 变更即第 1 页刷新 |
-| **库表** | ✅ 已实现 `agents.created_by`（TEXT，auth `UserID` 字符串）；筛选参数 `created_by` 支持空 / `mine` / 具体用户 id；见 [3-agent-list-development.md](./3-agent-list-development.md) |
 
 ### 3.8 视图切换 — 网格 / 列表
 
@@ -128,21 +125,34 @@
 
 | UI 区块 | 说明 | 行为 |
 |---------|------|------|
-| **左上角头像** | `QAvatar` 方形圆角；`src` 为 **`/avatar-assets/{agents.icon}/thumbnail`**（或 `/file`），`agents.icon` 存 **`avatar_assets.id`**，见 **`50 Avatar.md`** | 可选点击进入详情/编辑 |
-| **名称行** | 粗体：`display_name` | — |
+| **左上角头像** | `QAvatar` 方形圆角；`src` 指向头像资产出图接口（见 `50 Avatar.md`） | 可选点击进入详情/编辑 |
+| **名称行** | 粗体：显示名称 | — |
 | **收藏星标** | `QIcon`/`QBtn` 金色星 | 点击切换收藏；见 §5「收藏」 |
 | **副标题 handle** | 小字灰色：`agent_key` | 可选点击复制 |
+| **归属徽章** | `KindBadge`：`builtin` / `preset` / `user` | 颜色与归属类型映射 |
 | **右上角状态** | `QBadge` 胶囊：如 `active` 绿色 | 颜色与 `status` 映射（`active`/`inactive`/…） |
 | **模型行** | 文案：`{provider} / {model}` | 只读展示 |
 | **描述** | 多行截断，省略号 | 来源见 §4；悬停可选 `QTooltip` 全文 |
 | **底部标签** | `QChip` 多枚 | 来源见 §4「标签」 |
 | **进化状态** | 带闪光图标的按钮/徽章：`进化中` | 当 `self_evolve === true` 且服务端判定「正在进化」时显示；纯关闭进化可不展示 |
+| **运行态** | 文案如 `最近运行：active · 2 小时前` | 来自最近一次会话运行状态 |
 | **上下文** | 文案如 `200K ctx` | 由 `context_window` 格式化为 K/M |
-| **删除** | `QBtn` `flat` + 垃圾桶图标，文案「删除」 | 点击 `QDialog` 确认 → 软删或硬删 API |
+| **复制** | `QBtn` `flat` + 复制图标 | 深拷贝 Agent（含 files）；副本归属当前用户 |
+| **删除** | `QBtn` `flat` + 垃圾桶图标，文案「删除」 | 点击 `QDialog` 确认 → 软删或硬删 API；系统内置 Agent 不可删 |
 
 **列表模式**：用表格列对齐上述字段（名称+星标、handle、状态、模型、描述摘要、标签、ctx、操作列）。
 
-### 3.10 底部分页栏
+### 3.10 三组分组布局
+
+卡片按归属类型分三组展示：
+
+| 分组 | 包含 | 可拖拽排序 |
+|------|------|-----------|
+| **Built-in** | 系统内置（`readonly=true`） | 否 |
+| **Preset** | 生态预设（`kind=ecosystem_preset`） | 否 |
+| **User** | 用户自建（其余） | 是 |
+
+### 3.11 底部分页栏
 
 | 维度 | 说明 |
 |------|------|
@@ -154,52 +164,62 @@
 
 ---
 
-## 4. 列表项展示字段与 `agents` 表映射
+## 4. 列表项展示字段
 
-| 界面展示 | 数据库列 / 来源 | 说明 |
-|----------|-----------------|------|
-| 名称 | `display_name` | 必填展示 |
-| handle | `agent_key` | 唯一业务键展示 |
-| 头像 | `icon` | `avatar_assets.id`；`src` 指向只读出图接口（见 `50 Avatar.md`） |
-| 状态徽章 | `status` | 如 `active` |
-| 模型行 | `provider` + `model` | 拼接为 `provider / model` |
-| 业务分类（可选） | `category_path` 或由 `category_position_id` 解析 | 副文案或 `QChip`，与筛选「Agent Type」同源 |
-| 卡片描述摘要 | 优先 `frontmatter`（短）；若空则用 `agent_description` 截断 | 与创建文档分工一致 |
-| 标签 chips | `other_config.tags` 或独立 `tags` JSONB / 关联表 | 产品枚举如「任务」「完整」需与后端约定 |
-| 进化中 | `self_evolve` + 运行态（可选 `other_config.evolution_status`） | 「进化中」可为异步任务状态 |
-| 200K ctx | `context_window` | UI 格式化为 `200K ctx` |
-| 收藏星标 | 见下节 | 未必在 `agents` 单行 |
+> 数据库列 / 来源映射详见 [3-agent-list.design.md §八](./3-agent-list.design.md#八列表项字段与数据模型映射)。
+
+| 界面展示 | 说明 |
+|----------|------|
+| 名称 | 必填展示 |
+| handle | 唯一业务键展示 |
+| 头像 | 头像资产 id；`src` 指向只读出图接口（见 `50 Avatar.md`） |
+| 归属徽章 | `builtin` / `preset` / `user` |
+| 状态徽章 | 如 `active` |
+| 模型行 | 拼接为 `provider / model` |
+| 业务分类（可选） | 副文案或 `QChip`，与筛选「Agent Type」同源 |
+| 卡片描述摘要 | 优先短描述；若空则用长描述截断 |
+| 标签 chips | 产品枚举如「任务」「完整」需与后端约定 |
+| 进化中 | `self_evolve` + 运行态（可选异步任务状态） |
+| 运行态 | 最近一次会话运行状态 + 时间 |
+| 200K ctx | UI 格式化为 `200K ctx` |
+| 收藏星标 | 见下节 |
 
 ---
 
 ## 5. 收藏（星标）
 
-截图中名称旁有星标，通常为 **用户维度** 偏好，不建议仅存在 `agents` 行内（多用户共享同一 Agent 时语义冲突）。
+截图中名称旁有星标，通常为 **用户维度** 偏好，不建议仅存在 Agent 行内（多用户共享同一 Agent 时语义冲突）。
 
 | 方案 | 说明 |
 |------|------|
-| **推荐** | 表 `user_agent_favorites(user_id, agent_id, created_at)`，唯一 `(user_id, agent_id)` |
+| **推荐** | 独立收藏表（用户 + Agent 唯一约束） |
 | **简化** | MVP 仅前端 `localStorage` 存 id 列表（无跨设备同步） |
+
+> 收藏表设计与 API 详见 [3-agent-list.design.md §九](./3-agent-list.design.md#九收藏设计)。
 
 列表接口可返回 `is_favorite: boolean`（当前用户），或前端根据收藏表/本地集合合并。
 
 ---
 
-## 6. 列表 API 建议（查询参数）
+## 6. 列表 API 查询参数
+
+> 完整 API 契约（请求/响应消息、字段类型、HTTP 路由）详见 [3-agent-list.design.md §二](./3-agent-list.design.md#二proto-层) 与 [§十 列表 API 契约](./3-agent-list.design.md#十列表-api-契约)。
 
 | 参数 | 说明 |
 |------|------|
-| `q` | 搜索关键字 |
-| `agent_type` | **技术**类型筛选（`agents.agent_type`），空表示全部 |
-| `category_position_id` | **业务分类**（Agent Type）：职位叶子 id，与 `4.agent-type.md` 一致；空表示全部 |
-| `created_by` | 创建者 id，空表示全部 |
-| `page` | 从 1 开始 |
-| `page_size` | 每页条数 |
+| `keyword` | 搜索关键字 |
+| `status` | 状态筛选 |
+| `provider` | Provider 筛选 |
+| `org_node_id` | 业务分类职位节点 id 筛选 |
+| `created_by` | 创建者筛选：空 = 全部；`mine` = 当前用户；否则具体用户 id |
+| `limit` / `offset` | 分页 |
 | `sort` | 可选：`updated_at desc` 默认 |
 
-**响应**建议：`{ items: AgentDTO[], total: number, page, page_size }`。`AgentDTO` 含列表所需列 + `is_favorite`。
+**响应**：`{ items: AgentDTO[], total, limit, offset }`。`AgentDTO` 含列表所需列 + `is_favorite` + 运行态富化字段。
 
-**删除**：`DELETE /agents/:id` 或 `PATCH` 软删（与 `deleted_at` 一致）。
+**删除**：`DELETE /v1/agents/:id`（软删）。
+**复制**：`POST /v1/agents/:id/duplicate`。
+**收藏切换**：`PATCH /v1/agents/:id/favorite`。
 
 ---
 
@@ -226,14 +246,17 @@
 
 ## 9. 验收要点（产品）
 
-- [ ] 标题、副标题、主色与截图信息架构一致  
-- [ ] 搜索防抖 + **技术类型 + 业务分类（Agent Type）+ 创建者** 筛选与分页联动正确  
-- [ ] 网格与列表切换可记忆  
-- [ ] 卡片字段与 `agents` 映射正确；描述截断与 Tooltip（若做）合理  
-- [ ] 删除二次确认；软删后列表不再出现  
-- [ ] 收藏状态切换有反馈且与后端或本地策略一致  
-- [ ] 「Agent迁移」入口存在；具体流程可后续文档化  
+- [ ] 标题、副标题、主色与截图信息架构一致
+- [ ] 搜索防抖 + **归属类型 + 业务分类 + 创建者** 筛选与分页联动正确
+- [ ] 网格与列表切换可记忆
+- [ ] 三组分组布局（Built-in / Preset / User）正确展示
+- [ ] 卡片字段映射正确；描述截断与 Tooltip（若做）合理
+- [ ] 删除二次确认；系统内置 Agent 不可删；软删后列表不再出现
+- [ ] 复制入口存在；副本归属当前用户
+- [ ] 收藏状态切换有反馈且与后端或本地策略一致
+- [ ] 运行态（最近运行状态 + 时间）正确展示
+- [ ] 「Agent迁移」入口存在；具体流程可后续文档化
 
 ---
 
-*文档版本：与 `agents` 主表、`2 agents-create.md`、`4.agent-type.md` 对齐；界面以当前 Agent 管理列表线稿为准。*
+*文档版本：与 Agent 主表、`2 agents-create.md`、`4.agent-type.md` 对齐；界面以当前 Agent 管理列表线稿为准。*

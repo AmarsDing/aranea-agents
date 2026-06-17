@@ -1,6 +1,6 @@
 # Session 管理模块 — 实现设计文档
 
-> 对应需求：[10 session.md](./10%20session.md) · 开发计划：[10-session-development.md](./10-session-development.md)
+> 对应需求：[10-session.md](./10-session.md) · 开发计划：[10-session.development.md](./10-session.development.md)
 > 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · 运行时边界：[AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
 
 ---
@@ -12,7 +12,12 @@
 | `api/kratos/session/v1` | 对外 RPC/HTTP 契约 | 业务分支 |
 | `internal/service/session.go` | Proto ↔ biz、Audit、**不含**消息发送/Runner Run | import `pkg/trpc-agent-go` 编排 |
 | `internal/service/session_batch.go` | 批量预览/归档/删除 RPC | 与 Timeline 聚合混写 |
-| `internal/service/session_compress.go` | 异步上下文压缩触发（委托 `biz/session/compression.go`） | 直接写 Ent |
+| `internal/service/session_observability.go` | Export / ListSessionRuns / ListSessionParticipants / ListChildSessions / ListActivities | — |
+| `internal/service/session_status_guard.go` | 状态守卫（running 不可删/归档） | — |
+| `internal/service/session_context_window.go` | 上下文窗口解析 | — |
+| `internal/service/session_projection.go` | Runner 事件投影 | — |
+| `internal/service/session_run_durable_worker.go` | Run 持久化 worker | — |
+| `internal/service/session_title_llm.go` | LLM 标题生成 | — |
 | `internal/biz/session/` | SessionUsecase + 独立子用例（compression/batch/export/pin/participant/timeline/state/turns/messages/metrics/summary/title/status） | import trpc-agent-go |
 | `internal/biz/session_batch.go` | cutoff 解析、scope 扫描、批量命中（与 CRUD 分文件） | SQL |
 | `internal/data/session_repo*.go` | Ent/SQL 持久化 | 业务规则（running 不可删在 biz 校验） |
@@ -30,16 +35,18 @@
 会话历史存储与编排：Session CRUD、Timeline 时间轴、上下文管理、摘要压缩。逐步向 trpc-agent-go `session.Service` 对齐。
 
 核心能力：
-- Session 搜索/创建/删除/归档/恢复/重命名/部分更新
+- Session 搜索/创建/删除/归档/恢复/重命名/部分更新/状态转换
 - Timeline 时间轴聚合（消息 + 工具调用 + Skill 调用 + MCP 调用）
 - 上下文窗口消耗追踪与状态管理
-- 异步摘要压缩（SessionCompressor）
+- 异步摘要压缩（SessionCompressor）+ 手动压缩（CompactSession）
 - Runner Snapshot 持久化与压缩重写
 - Session Summaries 滚动摘要
 - Session Turns 对话轮次记录
 - Session State KV 状态管理
 - 自动标题生成（用户消息截取 + LLM 异步生成）
 - 单 Agent / Team 双模式会话
+- 会话树（parent/root session_id + agent_depth）
+- 编排可观测性（Runs / Participants / Activities）
 
 ---
 
@@ -49,17 +56,11 @@
 
 文件：`api/kratos/session/v1/session.proto`
 
+> 完整定义以仓库内 `api/kratos/session/v1/session.proto` 为准；以下为关键消息与服务索引。
+
+#### Session 消息
+
 ```protobuf
-syntax = "proto3";
-
-package kratos.session.v1;
-
-import "google/api/annotations.proto";
-import "google/api/field_behavior.proto";
-import "google/protobuf/empty.proto";
-
-option go_package = "aranea-agents/api/kratos/session/v1;v1";
-
 message Session {
   string id = 1;
   string workspace_id = 31;
@@ -77,7 +78,9 @@ message Session {
   string last_provider = 37;
   string last_model = 38;
   int32 last_context_window_tokens = 10;
-  string status = 15;              // active/running/completed/failed/archived/deleted
+  string status = 15;              // idle/running/completed/interrupted/awaiting_confirmation/archived/deleted
+  string status_reason = 48;
+  string status_changed_at = 49;
   string visibility = 39;          // private/team/workspace
   int32 message_count = 16;
   int32 run_count = 17;
@@ -105,120 +108,23 @@ message Session {
   string runner_snapshot_json = 44;
   string metadata_json = 45;
   string state_json = 46;
+  string pinned_at = 47;
+  string parent_session_id = 50;
+  string root_session_id = 51;
+  int32 agent_depth = 52;
 }
+```
 
-message SessionTimelineSummary {
-  int32 total = 1;
-  int32 message_count = 2;
-  int32 tool_count = 3;
-  int32 skill_count = 4;
-  int32 mcp_count = 5;
-}
+#### ChatMessageRow 消息
 
-message SessionTimelineItem {
-  string id = 1;
-  string kind = 2;                 // "message" | "tool" | "skill" | "mcp"
-  string side = 3;                 // "left" | "right"
-  string title = 4;
-  string subtitle = 5;
-  string actor_id = 6;
-  string actor_name = 7;
-  string status = 8;
-  string occurred_at = 9;
-  int32 duration_ms = 10;
-  string content_markdown = 11;
-  string preview = 12;
-  string detail_json = 13;
-  repeated string tags = 14;
-}
-
-message SessionTimeline {
-  string session_id = 1;
-  repeated SessionTimelineItem items = 2;
-  SessionTimelineSummary summary = 3;
-}
-
-message SearchSessionsRequest {
-  string owner_type = 1;
-  string agent_id = 2;
-  string team_id = 3;
-  string status = 4;
-  string context_status = 5;
-  string keyword = 6;
-  int32 limit = 7;
-  int32 offset = 8;
-  int32 page = 9;
-  int32 page_size = 10;
-  string user_id = 11;
-  string sort_by = 12;
-  string sort_order = 13;
-}
-
-message SearchSessionsResponse {
-  repeated Session items = 1;
-  int32 total = 2;
-  int32 limit = 3;
-  int32 offset = 4;
-}
-
-message CreateSessionRequest {
-  string owner_type = 1;
-  string agent_id = 2;
-  string team_id = 3;
-  string title = 4 [(google.api.field_behavior) = REQUIRED];
-  string dialog_mode = 5;
-  string default_provider = 6;
-  string default_model = 7;
-  string workspace_id = 8;
-  string user_id = 9;
-  string tags_json = 10;
-  string metadata_json = 11;
-}
-
-message GetSessionRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message UpdateSessionRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-  string title = 2;
-  string tags_json = 3;
-  string visibility = 4;
-  string metadata_json = 5;
-  string dialog_mode = 6;
-  string default_provider = 7;
-  string default_model = 8;
-}
-
-message DeleteSessionRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message DeleteSessionsByAgentRequest {
-  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message ArchiveSessionRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message RestoreSessionRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message GetSessionTimelineRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 limit = 2;
-  int32 offset = 3;
-  string kind_filter = 4;
-  string sort_order = 5;
-}
-
+```protobuf
 message ChatMessageRow {
   string id = 1;
   string session_id = 2;
   string parent_message_id = 3;
-  int32 turn_index = 4;
+  string turn_id = 4;
+  int32 turn_number = 16;
+  int32 seq_in_turn = 17;
   string role = 5;
   string content_markdown = 6;
   string model_name = 7;
@@ -231,23 +137,16 @@ message ChatMessageRow {
   string error_message = 14;
   string created_at = 15;
 }
+```
 
-message ListSessionMessagesRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 limit = 2;
-  int32 offset = 3;
-}
+#### SessionTurn 消息
 
-message ListSessionMessagesResponse {
-  repeated ChatMessageRow items = 1;
-  int32 total = 2;
-}
-
+```protobuf
 message SessionTurn {
   string id = 1;
   string session_id = 2;
   string run_id = 3;
-  int32 turn_index = 4;
+  int32 turn_number = 4;
   string user_message_id = 5;
   string assistant_message_id = 6;
   string owner_type = 7;
@@ -275,68 +174,48 @@ message SessionTurn {
   string created_at = 29;
   string updated_at = 30;
 }
+```
 
-message ListSessionTurnsRequest {
-  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+#### ListSessionMessages 请求/响应
+
+```protobuf
+message ListSessionMessagesRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 limit = 2;
   int32 offset = 3;
+  optional int64 after_revision = 4;
 }
 
-message ListSessionTurnsResponse {
-  repeated SessionTurn items = 1;
+message ListSessionMessagesResponse {
+  repeated ChatMessageRow items = 1;
   int32 total = 2;
-}
-
-service SessionService {
-  rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
-    option (google.api.http) = {get: "/v1/sessions"};
-  }
-  rpc CreateSession(CreateSessionRequest) returns (Session) {
-    option (google.api.http) = {post: "/v1/sessions" body: "*"};
-  }
-  rpc DeleteSessionsByAgent(DeleteSessionsByAgentRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/sessions"};
-  }
-  rpc GetSession(GetSessionRequest) returns (Session) {
-    option (google.api.http) = {get: "/v1/sessions/{id}"};
-  }
-  rpc UpdateSession(UpdateSessionRequest) returns (Session) {
-    option (google.api.http) = {patch: "/v1/sessions/{id}" body: "*"};
-  }
-  rpc DeleteSession(DeleteSessionRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/sessions/{id}"};
-  }
-  rpc ArchiveSession(ArchiveSessionRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {post: "/v1/sessions/{id}/archive" body: "*"};
-  }
-  rpc RestoreSession(RestoreSessionRequest) returns (Session) {
-    option (google.api.http) = {post: "/v1/sessions/{id}/restore" body: "*"};
-  }
-  rpc GetSessionTimeline(GetSessionTimelineRequest) returns (SessionTimeline) {
-    option (google.api.http) = {get: "/v1/sessions/{id}/timeline"};
-  }
-  rpc ListSessionMessages(ListSessionMessagesRequest) returns (ListSessionMessagesResponse) {
-    option (google.api.http) = {get: "/v1/sessions/{id}/messages"};
-  }
-  rpc ListSessionTurns(ListSessionTurnsRequest) returns (ListSessionTurnsResponse) {
-    option (google.api.http) = {get: "/v1/sessions/{session_id}/turns"};
-  }
-  rpc SearchSessionMessages(SearchSessionMessagesRequest) returns (SearchSessionMessagesResponse) {
-    option (google.api.http) = {get: "/v1/sessions/messages/search"};
-  }
-  rpc BatchPreviewSessions(BatchPreviewSessionsRequest) returns (BatchPreviewSessionsResponse) {
-    option (google.api.http) = {post: "/v1/sessions:batchPreview" body: "*"};
-  }
-  rpc BatchArchiveSessions(BatchArchiveSessionsRequest) returns (BatchSessionsResponse) {
-    option (google.api.http) = {post: "/v1/sessions:batchArchive" body: "*"};
-  }
-  rpc BatchDeleteSessions(BatchDeleteSessionsRequest) returns (BatchSessionsResponse) {
-    option (google.api.http) = {post: "/v1/sessions:batchDelete" body: "*"};
-  }
+  int64 current_revision = 3;
 }
 ```
 
-> 完整定义以仓库内 `api/kratos/session/v1/session.proto` 为准；上文为设计索引，非逐字拷贝。
+#### SessionRunRecord 消息（M55 生命周期）
+
+```protobuf
+message SessionRunRecord {
+  string id = 1;
+  string session_id = 2;
+  string turn_id = 3;
+  string runtime_run_id = 4;
+  string source = 5;
+  string phase = 6;
+  int32 soft_budget_sec = 7;   // Deprecated
+  int32 hard_budget_sec = 8;   // Deprecated
+  string checkpoint_id = 9;
+  string workflow_job_id = 10;
+  string agent_id = 11;
+  string error_message = 12;
+  string started_at = 13;
+  string phase_changed_at = 14;
+  string finished_at = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+```
 
 ### 2.2 RPC 与 HTTP 路由映射
 
@@ -349,16 +228,26 @@ service SessionService {
 | `DeleteSession` | `DELETE /v1/sessions/{id}` | 软删除（设置 deleted_at + status=deleted） |
 | `DeleteSessionsByAgent` | `DELETE /v1/sessions` | 按 agent_id 批量软删除 |
 | `ArchiveSession` | `POST /v1/sessions/{id}/archive` | 归档会话（status=archived, archived_at） |
-| `RestoreSession` | `POST /v1/sessions/{id}/restore` | 恢复归档会话（status=active, 清空 archived_at/deleted_at） |
+| `RestoreSession` | `POST /v1/sessions/{id}/restore` | 恢复归档会话（status=idle, 清空 archived_at/deleted_at） |
+| `PinSession` | `POST /v1/sessions/{id}/pin` | 置顶会话（设置 pinned_at） |
+| `UnpinSession` | `POST /v1/sessions/{id}/unpin` | 取消置顶（清空 pinned_at） |
+| `ExportSession` | `GET /v1/sessions/{id}/export` | 导出会话（Markdown/JSON） |
 | `GetSessionTimeline` | `GET /v1/sessions/{id}/timeline` | 聚合消息+工具+Skill+MCP 的时间轴，支持 limit/offset/kind_filter/sort_order |
-| `ListSessionMessages` | `GET /v1/sessions/{id}/messages` | 获取会话消息列表，支持 limit/offset 分页 |
+| `ListSessionMessages` | `GET /v1/sessions/{id}/messages` | 获取会话消息列表，支持 limit/offset/after_revision |
+| `SearchSessionMessages` | `GET /v1/sessions/messages/search` | 消息全文搜索（FTS5 优先，LIKE 回退） |
 | `ListSessionTurns` | `GET /v1/sessions/{session_id}/turns` | 获取会话轮次列表，支持 limit/offset 分页 |
+| `ListSessionRuns` | `GET /v1/sessions/{session_id}/runs` | 获取会话 Run 列表（M55 生命周期） |
+| `ListSessionParticipants` | `GET /v1/sessions/{session_id}/participants` | 获取会话参与者列表 |
+| `CompactSession` | `POST /v1/sessions:compact` | 手动触发上下文压缩 |
+| `GetCompressStatus` | `GET /v1/sessions/{session_id}/compress-status` | 查询压缩状态 |
+| `ListChildSessions` | `GET /v1/sessions/{parent_session_id}/children` | 查询子会话列表（session tree） |
+| `ListActivities` | `GET /v1/sessions/{session_id}/activities` | 查询活动列表（Activity-First 架构） |
 
-### 2.3 批量操作 RPC（Phase 1b — 已实现）
+### 2.3 批量操作 RPC
 
-> 需求来源：会话历史列表批量治理（2026-05-20）。契约以 `api/kratos/session/v1/session.proto` 为准。
+> 需求来源：会话历史列表批量治理。契约以 `api/kratos/session/v1/session.proto` 为准。
 
-#### 2.3.1 Proto（现行）
+#### 2.3.1 Proto
 
 ```protobuf
 message SessionBatchScope {
@@ -424,7 +313,7 @@ message BatchSessionsResponse {
 
 #### 2.3.3 Cutoff 与扫描（Biz 统一）
 
-实现：`internal/biz/session_batch.go`
+实现：`internal/biz/session/batch.go`
 
 | 常量 | 值 | 说明 |
 |------|-----|------|
@@ -445,8 +334,10 @@ message BatchSessionsResponse {
 #### 2.3.4 Repo 扩展
 
 ```go
-// internal/biz — SessionRepository
+// internal/biz — SessionReader
 ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+
+// internal/biz — SessionBatchMutator
 ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 ```
@@ -466,7 +357,7 @@ DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []
 2. 委托 `SessionUsecase.BatchArchive` / `BatchDelete` / `PreviewBatch`
 3. 错误经 `mapSessionErr`；Audit：`archive.session.batch` / `delete.session.batch`（detail 含 matched/processed/skipped/truncated）
 
-单条 `DeleteSession` / `ArchiveSession`：`running` 不可删/归档；已删幂等；列表行操作复用上述 RPC。
+单条 `DeleteSession` / `ArchiveSession`：`running`/`awaiting_confirmation` 不可删/归档；已删幂等；列表行操作复用上述 RPC。
 
 ---
 
@@ -474,7 +365,7 @@ DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []
 
 ### 3.1 领域模型
 
-文件：`internal/biz/session_usecase.go`
+文件：`internal/biz/session/usecase.go`
 
 ```go
 type Session struct {
@@ -494,7 +385,9 @@ type Session struct {
     LastProvider               string
     LastModel                  string
     LastContextWindowTokens    int
-    Status                     string   // active/running/completed/failed/archived/deleted
+    Status                     string   // idle/running/completed/interrupted/awaiting_confirmation/archived/deleted
+    StatusReason               string
+    StatusChangedAt            string
     Visibility                 string   // private/team/workspace
     MessageCount               int
     RunCount                   int
@@ -519,39 +412,24 @@ type Session struct {
     UpdatedAt                  string
     ArchivedAt                 string
     DeletedAt                  string
+    PinnedAt                   string
     RunnerSnapshotJSON         string
     StateJSON                  string
     MetadataJSON               string
-}
-
-type SessionSearchQuery struct {
-    OwnerType     string
-    AgentID       string
-    TeamID        string
-    Status        string
-    ContextStatus string
-    Keyword       string
-    UserID        string
-    Limit         int
-    Offset        int
-    Page          int
-    PageSize      int
-    SortBy        string
-    SortOrder     string
-}
-
-type SessionListResult struct {
-    Items  []Session
-    Total  int
-    Limit  int
-    Offset int
+    SessionRevision            int64
+    CompressVersion            int64
+    ParentSessionID            string
+    RootSessionID              string
+    AgentDepth                 int
 }
 
 type ChatMessage struct {
     ID               string
     SessionID        string
     ParentMessageID  string
-    TurnIndex        int
+    TurnID           string
+    TurnNumber       int
+    SeqInTurn        int
     Role             string   // user/assistant/system/tool
     ContentMarkdown  string
     ModelName        string
@@ -565,97 +443,55 @@ type ChatMessage struct {
     CreatedAt        string
 }
 
-type ToolInvocationView struct {
-    ID               string
-    ToolKey          string
-    ToolDisplayName  string
-    AgentID          string
-    AgentDisplayName string
-    SessionID        string
-    Source           string   // "" | "mcp"
-    Status           string
-    StartedAt        string
-    EndedAt          string
-    DurationMS       int
-    InputPreview     string
-    OutputPreview    string
-    ErrorCode        string
-    ErrorMessage     string
-    MetadataJSON     string
-    CreatedAt        string
-}
-
-type SkillInvocationView struct {
-    ID               string
-    SkillID          string
-    SkillName        string
-    SkillVersion     string
-    AgentID          string
-    AgentDisplayName string
-    SessionID        string
-    Status           string
-    DurationMS       int
-    StartedAt        string
-    EndedAt          string
-    InputPreview     string
-    OutputPreview    string
-    ErrorCode        string
-    ErrorMessage     string
-}
-
-type SessionTimelineItem struct {
-    ID              string
-    Kind            string   // "message" | "tool" | "skill" | "mcp"
-    Side            string   // "left" | "right"
-    Title           string
-    Subtitle        string
-    ActorID         string
-    ActorName       string
-    Status          string
-    OccurredAt      string
-    DurationMS      int
-    ContentMarkdown string
-    Preview         string
-    DetailJSON      string
-    Tags            []string
-}
-
-type SessionTimelineSummary struct {
-    Total        int
-    MessageCount int
-    ToolCount    int
-    SkillCount   int
-    MCPCount     int
-}
-
-type SessionTimeline struct {
-    SessionID string
-    Items     []SessionTimelineItem
-    Summary   SessionTimelineSummary
-}
-
-type SessionSummary struct {
-    ID              string
-    SessionID       string
-    SummaryMarkdown string
-    FromTurn        int
-    ToTurn          int
-    TokenEstimate   int
-    CreatedAt       string
+type SessionTurn struct {
+    ID                  string
+    SessionID           string
+    RunID               string
+    TurnNumber          int
+    UserMessageID       string
+    AssistantMessageID  string
+    OwnerType           string
+    AgentID             string
+    TeamID              string
+    Status              string
+    StartedAt           string
+    EndedAt             string
+    DurationMs          int
+    FirstTokenMs        int
+    ModelCallCount      int
+    ToolCallCount       int
+    SkillCallCount      int
+    MCPCallCount        int
+    InputTokens         int
+    OutputTokens        int
+    TotalTokens         int
+    TotalCostMicroUSD   int64
+    FinalProvider       string
+    FinalModel          string
+    FinalContentPreview string
+    ErrorCode           string
+    ErrorMessage        string
+    MetadataJSON        string
+    CreatedAt           string
+    UpdatedAt           string
 }
 ```
 
 ### 3.2 Repository 接口
 
-文件：`internal/biz/session_usecase.go`
+文件：`internal/biz/session/usecase.go`
+
+> `SessionRepo` 聚合接口仅用于 Wire 绑定，消费者应依赖具体子接口。已标记 `Deprecated` + `TECH-DEBT(COG): interface_methods=17`。
 
 ```go
+// Deprecated: Use fine-grained sub-interfaces instead.
+// Stability:evolving
 type SessionRepo interface {
     SessionReader
+    SessionTreeReader
     SessionWriter
-    SessionBatchWriter
-    SessionPinWriter
-    SessionRevisionWriter
+    SessionMutator
+    SessionBatchMutator
     MessageReader
     MessageSearchReader
     MessageWriter
@@ -670,6 +506,7 @@ type SessionRepo interface {
     CompressRepo
 }
 
+// Stability:stable — 会话读取（5 方法）
 type SessionReader interface {
     SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
     GetSessionByID(ctx context.Context, id string) (Session, error)
@@ -678,55 +515,60 @@ type SessionReader interface {
     ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
 }
 
+// Stability:stable — 会话树读取
+type SessionTreeReader interface {
+    ListByParentSessionID(ctx context.Context, parentSessionID string) ([]Session, error)
+}
+
+// Stability:stable — 会话写入（5 方法）
 type SessionWriter interface {
     CreateSession(ctx context.Context, s Session) (Session, error)
     UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
     UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
     RestoreSession(ctx context.Context, id string) (Session, error)
-    DeleteSession(ctx context.Context, id string) (int, error)
+    BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
 }
 
-type SessionBatchWriter interface {
+// Stability:stable — 会话变更（5 方法：归档/删除/Agent批量删/置顶/取消置顶）
+type SessionMutator interface {
     ArchiveSession(ctx context.Context, id string) (int, error)
-    ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-    DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-}
-
-type SessionPinWriter interface {
+    DeleteSession(ctx context.Context, id string) (int, error)
+    DeleteSessionsByAgentID(ctx context.Context, agentID string) error
     PinSession(ctx context.Context, id string) (Session, error)
     UnpinSession(ctx context.Context, id string) (Session, error)
 }
 
-type SessionRevisionWriter interface {
-    BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
-    DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+// Stability:stable — 批量变更（2 方法）
+type SessionBatchMutator interface {
+    ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+    DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
+// Stability:stable — 消息读取（5 方法）
 type MessageReader interface {
     CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
     ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
     ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
-    ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
     ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+    ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 }
 
+// Stability:stable — 消息搜索 + 增量拉取（3 方法）
 type MessageSearchReader interface {
+    ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
     SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-    ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
     ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
+// Stability:stable — 消息写入（4 方法）
 type MessageWriter interface {
     AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
     AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
     UpdateMessageFeedbackJSON(ctx context.Context, sessionID, messageID, rating, comment string) error
-    UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
+    UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
 }
 
-type MessageStatusWriter interface {
-    UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error
-}
-
+// Stability:stable — Timeline 读取（4 方法）
 type TimelineReader interface {
     ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
     ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
@@ -734,28 +576,34 @@ type TimelineReader interface {
     LookupAgentDisplayNames(ctx context.Context, agentIDs []string) (map[string]string, error)
 }
 
+// Stability:stable — 工具/Skill 调用读取（2 方法）
 type InvocationReader interface {
     ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
     ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
 }
 
+// Stability:stable — 摘要读取（3 方法）
 type SummaryReader interface {
     MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
     ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
     LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
-    SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
+// Stability:stable — 摘要写入（3 方法）
 type SummaryWriter interface {
     InsertSessionSummary(ctx context.Context, row SessionSummary) error
     UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+    SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
+// Stability:stable — KV 状态（3 方法）
 type StateRepo interface {
     GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
     SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+    PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
 }
 
+// Stability:stable — Turn 读写（4 方法）
 type TurnRepo interface {
     CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
     UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
@@ -763,89 +611,74 @@ type TurnRepo interface {
     GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
 }
 
+// Stability:evolving — 上下文更新（5 方法）
 type ContextUpdater interface {
     UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
     UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
     UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
     IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+    ApplyMetricsDelta(ctx context.Context, d *SessionMetricsDelta) error
 }
 
+// Stability:stable — 压缩 CAS + 事务（2 方法）
 type CompressRepo interface {
     TryIncrementCompressVersion(ctx context.Context, sessionID string) (oldVersion int64, err error)
     CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
 }
 ```
 
-### 3.3 Usecase 方法
+> **运行时拆分接口**：`SessionRuntimeWriter`（TransitionSessionStatus 等）与 `SessionMetricsReader`/`SessionMetricsWriter` 在 `internal/biz/session/metrics_repo.go` 等文件中定义，用于高频 metrics 字段与运行时快照字段的独立读写。
+
+### 3.3 Usecase 结构
 
 ```go
-type AgentLookup interface {
-    GetAgentByID(ctx context.Context, id string) (struct{}, error)
-}
-
-type TeamLookup interface {
-    GetTeamByID(ctx context.Context, id string) (struct{}, error)
-}
-
+// SessionUsecase handles session CRUD + timeline.
+// TECH-DEBT(COG): struct_fields=14, limit=15 (AS-COG-01 biz layer); resolved via sub-usecase decomposition
 type SessionUsecase struct {
     sessionReader       SessionReader
+    sessionTreeReader   SessionTreeReader
     sessionWriter       SessionWriter
-    sessionBatchWriter  SessionBatchWriter
-    sessionPinWriter    SessionPinWriter
-    sessionRevWriter    SessionRevisionWriter
-    messageReader       MessageReader
-    messageSearchReader MessageSearchReader
-    messageWriter       MessageWriter
-    messageStatusWriter MessageStatusWriter
-    timelineReader      TimelineReader
-    invocationReader    InvocationReader
-    summaryReader       SummaryReader
-    summaryWriter       SummaryWriter
-    stateRepo           StateRepo
-    turnRepo            TurnRepo
-    contextUpdater      ContextUpdater
-    compressRepo        CompressRepo
+    sessionMutator      SessionMutator
+    sessionBatchMutator SessionBatchMutator
+    runtimeWriter       SessionRuntimeWriter
     agents              AgentLookup
     teams               TeamLookup
-    titleGenerator      SessionTitleGenerator
-    participants        SessionParticipantRepository
+    lg                  loggateway.Logger
+    statusPublisher     SessionStatusPublisher
+
+    // Sub-usecases (Facade pattern — old callers delegate through these).
+    metricsUsecase     *SessionMetricsUsecase
+    compressionUsecase *SessionCompressionUsecase
+    timelineUsecase    *SessionTimelineUsecase
+    messageUsecase     *SessionMessageUsecase
 }
 
-func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase
-
-func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
-func (uc *SessionUsecase) Get(ctx context.Context, id string) (Session, error)
-func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, error)
-func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session, error)
-func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
-func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, error)
-func (uc *SessionUsecase) Archive(ctx context.Context, id string) error
-func (uc *SessionUsecase) Delete(ctx context.Context, id string) error
-func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error
-func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error)
-func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID string, limit, offset int) (MessageListResult, error)
-func (uc *SessionUsecase) ListMessagesAfterTurn / ListMessagesByStatus / ListMessagesRecent(...)
-func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
-func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
-func (uc *SessionUsecase) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
-func (uc *SessionUsecase) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
-func (uc *SessionUsecase) InsertSessionSummary(ctx context.Context, row SessionSummary) error
-func (uc *SessionUsecase) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
-func (uc *SessionUsecase) ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
-func (uc *SessionUsecase) LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
-func (uc *SessionUsecase) UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
-func (uc *SessionUsecase) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
-func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
-func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta DomainStateDelta) error
-func (uc *SessionUsecase) CreateTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
-func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
-func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
-func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQuery) (SessionTimeline, error)
-func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-func (uc *SessionUsecase) PreviewBatch / BatchArchive / BatchDelete(...)  // 见 session_batch.go
-func (uc *SessionUsecase) IncrementInvocationCounts(...)  // 工具/MCP/Skill 计数回填 sessions
+func NewSessionUsecase(
+    sessions SessionRepo,
+    agents AgentLookup,
+    teams TeamLookup,
+    titleGenerator SessionTitleGenerator,
+    participants SessionParticipantRepository,
+    statusPublisher SessionStatusPublisher,
+    metricsUsecase *SessionMetricsUsecase,
+    runtimeWriter SessionRuntimeWriter,
+    lg loggateway.Logger,
+) *SessionUsecase
 ```
+
+主要方法（详见 `internal/biz/session/usecase.go`）：
+
+- `Search` / `Get` / `Create` / `Rename` / `Update` / `Restore` / `Archive` / `Delete` / `DeleteByAgent`
+- `TransitionStatus` — 状态机转换（经 `SessionStatusMachine`）
+- `ListChildSessions` / `GetRootSession` — 会话树
+- `Timeline` / `SearchMessages` / `ListMessages` / `ListMessagesPaged`
+- `AppendChatTurn` / `AppendChatMessage` / `UpdateRunnerSnapshotJSON`
+- `UpdateSessionContextFromLLMUsage` / `UpdateSessionContextAfterCompression`
+- `InsertSessionSummary` / `ListSessionSummaries` / `MaxSessionSummaryToTurn`
+- `GetSessionState` / `SaveSessionState` / `ApplyStateDelta`
+- `CreateTurn` / `UpdateTurn` / `ListTurns`
+- `PreviewBatch` / `BatchArchive` / `BatchDelete`
+- `IncrementInvocationCounts`
 
 ### 3.4 关键业务逻辑
 
@@ -853,7 +686,7 @@ func (uc *SessionUsecase) IncrementInvocationCounts(...)  // 工具/MCP/Skill �
 - `owner_type=agent` 时，`agent_id` 必填且 agent 必须存在
 - `owner_type=team` 时，`team_id` 必填且 team 必须存在
 - 自动生成 `uuid.NewString()` 作为 ID
-- 默认 `status=active`, `context_status=normal`
+- 默认 `status=idle`, `context_status=normal`
 
 **Timeline 聚合**：
 1. 查询 `messages` → `kind=message`, `side=left`
@@ -892,26 +725,18 @@ type SessionTitleGenerator interface {
     Generate(ctx context.Context, content string) (string, error)
 }
 ```
-- `LLMSessionTitleGenerator`：使用轻量模型（如 gpt-4o-mini）生成标题
+- `LLMSessionTitleGenerator`：使用轻量模型生成标题
 - `NoopSessionTitleGenerator`：空实现，用于测试
 
 **Session State KV**：
 - `GetSessionState`/`SaveSessionState`：读写 `sessions.state_json`（JSON 序列化的 `map[string]string`）
+- `PatchSessionState`：支持 `sets`/`deletes` 的增量更新
 - `ApplyStateDelta`：支持 `set`/`append`/`delete` 操作的增量更新
-
-**DomainStateDelta**：
-```go
-type DomainStateDelta struct {
-    Path      string
-    ValueJSON string
-    Operation string  // "set" | "append" | "delete"
-}
-```
 
 **Session Turns**：
 - `CreateTurn`：创建对话轮次，自动生成 UUID 和时间戳
 - `UpdateTurn`：部分更新轮次（status/duration/token/counts 等）
-- `ListTurns`：按 turn_index 升序分页查询
+- `ListTurns`：按 turn_number 升序分页查询
 
 **NativeTurnCompressor 接口**：
 ```go
@@ -920,11 +745,72 @@ type NativeTurnCompressor interface {
 }
 ```
 
+### 3.5 Session 状态机
+
+文件：`internal/biz/session/status_machine.go` + `status.go`
+
+状态枚举：
+
+```go
+const (
+    SessionStatusIdle                 SessionStatus = "idle"
+    SessionStatusRunning              SessionStatus = "running"
+    SessionStatusCompleted            SessionStatus = "completed"
+    SessionStatusInterrupted          SessionStatus = "interrupted"
+    SessionStatusAwaitingConfirmation SessionStatus = "awaiting_confirmation"
+)
+```
+
+合法转换表：
+
+| From | To |
+|------|-----|
+| `idle` | `running` |
+| `running` | `completed` / `interrupted` / `awaiting_confirmation` |
+| `completed` | `running` |
+| `interrupted` | `running` |
+| `awaiting_confirmation` | `running` / `interrupted` |
+
+状态原因（`SessionStatusReason`）：
+
+| 原因 | 说明 |
+|------|------|
+| `user_cancelled` | 用户取消 |
+| `timeout` | 超时 |
+| `user_escalated` | 用户升级 |
+| `error` | 错误 |
+| `context_overflow` | 上下文溢出 |
+| `server_shutdown` | 服务器关闭 |
+| `unexpected_shutdown` | 异常关闭 |
+| `confirmation_timeout` | 确认超时 |
+| `tool_confirmation` | 工具确认 |
+| `agent_awaiting_reply` | Agent 等待回复 |
+| `manual_override` | 手动覆盖 |
+
+**受保护状态**（`IsProtectedStatus`）：`running` / `awaiting_confirmation` — 不可删除/归档。
+
+> 注：`archived` / `deleted` 是通过 `ArchiveSession` / `DeleteSession` 单独设置的状态，不参与状态机转换。
+
 ---
 
-## 四、Data 层
+## 四、数据层
 
-### 4.1 Ent Schema
+### 4.1 数据模型总览
+
+Session 数据分为四层：
+
+| 层级 | 表 | 说明 |
+|------|----|------|
+| 会话主表 | `sessions` | 一条 session 的归属、标题、状态、时间、上下文消耗摘要 |
+| 运行时拆分表 | `session_runtime` | 高频运行时字段拆分（session_revision/state_json/runner_snapshot_json/compress_version） |
+| 指标拆分表 | `session_metrics` | 高频更新 metrics 字段拆分（message_count/token/cost/context_*） |
+| 内容层 | `messages`、`session_turns`、`chat_attachments` | 用户、assistant、system、tool、agent 产出的内容与每轮对话指标 |
+| 编排层 | `session_runs`、`session_run_checkpoints`、`session_participants` | Run 生命周期、检查点、参与者 |
+| 摘要层 | `session_summaries` | 滚动摘要（原生 SQL 表） |
+
+> **拆分表策略**：`session_runtime` 与 `session_metrics` 将高频更新字段从 `sessions` 主表拆出，减少写放大。`sessions` 主表保留查询列表所需字段，拆分表通过 `session_id` 一对一关联。
+
+### 4.2 Ent Schema — Session 主表
 
 文件：`internal/data/ent/schema/session.go`
 
@@ -936,6 +822,18 @@ type Session struct {
 func (Session) Annotations() []schema.Annotation {
     return []schema.Annotation{
         entsql.Annotation{Table: "sessions"},
+    }
+}
+
+func (Session) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("agent_id", "deleted_at", "updated_at").StorageKey("idx_sessions_agent"),
+        index.Fields("team_id", "deleted_at", "updated_at").StorageKey("idx_sessions_team"),
+        index.Fields("last_message_at").StorageKey("idx_sessions_last_message"),
+        index.Fields("deleted_at", "user_id"),
+        index.Fields("deleted_at", "status"),
+        index.Fields("parent_session_id").StorageKey("idx_sessions_parent"),
+        index.Fields("root_session_id").StorageKey("idx_sessions_root"),
     }
 }
 
@@ -957,7 +855,9 @@ func (Session) Fields() []ent.Field {
         field.String("last_provider").Default(""),
         field.String("last_model").Default(""),
         field.Int("last_context_window_tokens").Default(0),
-        field.String("status").Default("active"),
+        field.String("status").Default("idle"),
+        field.String("status_reason").Default(""),
+        field.String("status_changed_at").Default(""),
         field.String("visibility").Default("private"),
         field.Int("message_count").Default(0),
         field.Int("run_count").Default(0),
@@ -969,11 +869,11 @@ func (Session) Fields() []ent.Field {
         field.Int("output_tokens").Default(0),
         field.Int("total_tokens").Default(0),
         field.Int64("total_cost_micro_usd").Default(0),
-        field.Float("avg_latency_ms").Default(0),
+        field.Float("avg_latency_ms").Default(0.0),
         field.Int("error_count").Default(0),
         field.Int("context_used_tokens").Default(0),
-        field.Float("context_used_ratio").Default(0),
-        field.Float("max_context_used_ratio").Default(0),
+        field.Float("context_used_ratio").Default(0.0),
+        field.Float("max_context_used_ratio").Default(0.0),
         field.String("context_status").Default("normal"),
         field.String("first_message_at").Default(""),
         field.String("last_message_at").Default(""),
@@ -982,14 +882,135 @@ func (Session) Fields() []ent.Field {
         field.String("updated_at").Default(""),
         field.String("archived_at").Default(""),
         field.String("deleted_at").Default(""),
+        field.String("pinned_at").Default(""),
         field.Text("runner_snapshot_json").Default(""),
         field.Text("state_json").Default("{}"),
         field.Text("metadata_json").Default("{}"),
+        field.Int64("session_revision").Default(0),
+        field.Int64("compress_version").Default(0),
+        field.String("parent_session_id").Default("").MaxLen(256),
+        field.String("root_session_id").Default("").MaxLen(256),
+        field.Int("agent_depth").Default(0),
     }
 }
 ```
 
-### 4.2 Ent Schema — SessionTurn
+### 4.3 Ent Schema — SessionRuntime（运行时拆分表）
+
+文件：`internal/data/ent/schema/session_runtime.go`
+
+```go
+type SessionRuntime struct {
+    ent.Schema
+}
+
+func (SessionRuntime) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "session_runtime"},
+    }
+}
+
+func (SessionRuntime) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").StorageKey("session_id").Unique().Immutable().MaxLen(256),
+        field.Int("session_revision").Default(0),
+        field.Text("state_json").Default("{}"),
+        field.Text("runner_snapshot_json").Default(""),
+        field.Text("metadata_json").Default("{}"),
+        field.Int("compress_version").Default(0),
+        field.String("updated_at").Default(""),
+    }
+}
+```
+
+### 4.4 Ent Schema — SessionMetrics（指标拆分表）
+
+文件：`internal/data/ent/schema/session_metrics.go`
+
+```go
+type SessionMetrics struct {
+    ent.Schema
+}
+
+func (SessionMetrics) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "session_metrics"},
+    }
+}
+
+func (SessionMetrics) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").StorageKey("session_id").Unique().Immutable().MaxLen(256),
+        field.Int("message_count").Default(0),
+        field.Int("run_count").Default(0),
+        field.Int("model_call_count").Default(0),
+        field.Int("tool_call_count").Default(0),
+        field.Int("skill_call_count").Default(0),
+        field.Int("mcp_call_count").Default(0),
+        field.Int("input_tokens").Default(0),
+        field.Int("output_tokens").Default(0),
+        field.Int("total_tokens").Default(0),
+        field.Int64("total_cost_micro_usd").Default(0),
+        field.Float("avg_latency_ms").Default(0.0),
+        field.Int("error_count").Default(0),
+        field.Int("context_used_tokens").Default(0),
+        field.Float("context_used_ratio").Default(0.0),
+        field.Float("max_context_used_ratio").Default(0.0),
+        field.String("context_status").Default(""),
+        field.String("last_message_at").Default(""),
+        field.String("updated_at").Default(""),
+    }
+}
+```
+
+### 4.5 Ent Schema — Message
+
+文件：`internal/data/ent/schema/message.go`
+
+```go
+type Message struct {
+    ent.Schema
+}
+
+func (Message) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "messages"},
+    }
+}
+
+func (Message) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("session_id"),
+        index.Fields("session_id", "turn_id"),
+        index.Fields("session_id", "turn_number").StorageKey("idx_messages_session_turn"),
+        index.Fields("session_id", "status"),
+    }
+}
+
+func (Message) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("session_id").MaxLen(256),
+        field.String("parent_message_id").Default(""),
+        field.String("turn_id").Default("").MaxLen(256),
+        field.Int("turn_number").Default(0),
+        field.Int("seq_in_turn").Default(0),
+        field.String("role"),
+        field.Text("content_markdown").Default(""),
+        field.String("model_name").Default(""),
+        field.Int("token_in").Default(0),
+        field.Int("token_out").Default(0),
+        field.Int("latency_ms").Default(0),
+        field.String("status").Default("ok"),
+        field.Int("attachments_count").Default(0),
+        field.Text("options_json").Default(""),
+        field.Text("error_message").Default(""),
+        field.String("created_at"),
+    }
+}
+```
+
+### 4.6 Ent Schema — SessionTurn
 
 文件：`internal/data/ent/schema/session_turn.go`
 
@@ -1009,7 +1030,7 @@ func (SessionTurn) Fields() []ent.Field {
         field.String("id").Immutable().Unique().MaxLen(256),
         field.String("session_id").MaxLen(256),
         field.String("run_id").Default(""),
-        field.Int("turn_index").Default(0),
+        field.Int("turn_number").Default(0),
         field.String("user_message_id").Default(""),
         field.String("assistant_message_id").Default(""),
         field.String("owner_type").Default("agent"),
@@ -1041,68 +1062,144 @@ func (SessionTurn) Fields() []ent.Field {
 
 func (SessionTurn) Indexes() []ent.Index {
     return []ent.Index{
-        index.Fields("session_id", "turn_index"),
+        index.Fields("session_id", "turn_number"),
         index.Fields("status", "started_at"),
+        index.Fields("run_id").StorageKey("idx_session_turns_run_id"),
+        index.Fields("agent_id").StorageKey("idx_session_turns_agent_id"),
+        index.Fields("team_id").StorageKey("idx_session_turns_team_id"),
     }
 }
 ```
 
-### 4.3 session_summaries DDL
+### 4.7 Ent Schema — SessionRun（M55 生命周期）
 
-`session_summaries` 表通过 raw SQL 创建（非 Ent Schema），DDL：
+文件：`internal/data/ent/schema/session_run.go`
 
-```sql
-CREATE TABLE IF NOT EXISTS session_summaries (
-  id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
-  summary_markdown TEXT NOT NULL DEFAULT '',
-  from_turn INTEGER NOT NULL DEFAULT 0,
-  to_turn INTEGER NOT NULL DEFAULT 0,
-  token_estimate INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_session_summaries_session
-  ON session_summaries(session_id, created_at);
-```
-
-### 4.4 Ent Schema — Message
-
-文件：`internal/data/ent/schema/message.go`
+> 注：当前 `session_runs` 表为 M55 Run 生命周期模型（phase/budget/checkpoint），与早期设计文档中的编排 runs（run_type/trigger_type/plan_json）字段不同。扩展前需 schema 决策。
 
 ```go
-type Message struct {
+type SessionRun struct {
     ent.Schema
 }
 
-func (Message) Annotations() []schema.Annotation {
+func (SessionRun) Annotations() []schema.Annotation {
     return []schema.Annotation{
-        entsql.Annotation{Table: "messages"},
+        entsql.Annotation{Table: "session_runs"},
     }
 }
 
-func (Message) Fields() []ent.Field {
+func (SessionRun) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("session_id"),
+        index.Fields("phase", "finished_at"),
+    }
+}
+
+func (SessionRun) Fields() []ent.Field {
     return []ent.Field{
         field.String("id").Immutable().Unique().MaxLen(256),
         field.String("session_id").MaxLen(256),
-        field.String("parent_message_id").Default(""),
-        field.Int("turn_index").Default(0),
-        field.String("role"),
-        field.Text("content_markdown").Default(""),
-        field.String("model_name").Default(""),
-        field.Int("token_in").Default(0),
-        field.Int("token_out").Default(0),
-        field.Int("latency_ms").Default(0),
-        field.String("status").Default("ok"),
-        field.Int("attachments_count").Default(0),
-        field.Text("options_json").Default(""),
+        field.String("turn_id").Default(""),
+        field.String("runtime_run_id").Default(""),
+        field.String("source").Default(""),
+        field.String("phase").Default("interactive"),
+        field.Int("soft_budget_sec").Default(0),  // Deprecated: budget mechanism removed
+        field.Int("hard_budget_sec").Default(0),  // Deprecated: budget mechanism removed
+        field.String("checkpoint_id").Default(""),
+        field.String("workflow_job_id").Default(""),
+        field.String("agent_id").Default(""),
         field.Text("error_message").Default(""),
-        field.String("created_at"),
+        field.String("started_at").Default(""),
+        field.String("phase_changed_at").Default(""),
+        field.String("finished_at").Default(""),
+        field.String("resume_started_at").Default(""),
+        field.String("created_at").Default(""),
+        field.String("updated_at").Default(""),
     }
 }
 ```
 
-### 4.3 Session Summaries 表（原生 SQL）
+### 4.8 Ent Schema — SessionRunCheckpoint
+
+文件：`internal/data/ent/schema/session_run_checkpoint.go`
+
+```go
+type SessionRunCheckpoint struct {
+    ent.Schema
+}
+
+func (SessionRunCheckpoint) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "session_run_checkpoints"},
+    }
+}
+
+func (SessionRunCheckpoint) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("session_run_id"),
+        index.Fields("session_id"),
+    }
+}
+
+func (SessionRunCheckpoint) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("session_run_id").Default(""),
+        field.String("session_id").Default(""),
+        field.String("turn_id").Default(""),
+        field.String("agent_id").Default(""),
+        field.Text("payload_json").Default(""),
+        field.String("created_at").Default(""),
+    }
+}
+```
+
+### 4.9 Ent Schema — SessionParticipant
+
+文件：`internal/data/ent/schema/session_participant.go`
+
+```go
+type SessionParticipant struct {
+    ent.Schema
+}
+
+func (SessionParticipant) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "session_participants"},
+    }
+}
+
+func (SessionParticipant) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("session_id"),
+        index.Fields("participant_id").StorageKey("idx_session_participants_participant"),
+    }
+}
+
+func (SessionParticipant) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("session_id").MaxLen(256),
+        field.String("participant_type").Default(""),
+        field.String("participant_id").Default(""),
+        field.String("display_name").Default(""),
+        field.String("role_in_session").Default(""),
+        field.String("status").Default("active"),
+        field.String("first_active_at").Default(""),
+        field.String("last_active_at").Default(""),
+        field.Int("message_count").Default(0),
+        field.Int("run_step_count").Default(0),
+        field.Int("input_tokens").Default(0),
+        field.Int("output_tokens").Default(0),
+        field.Float("context_used_ratio").Default(0.0),
+        field.Text("metadata_json").Default("{}"),
+        field.String("created_at").Default(""),
+        field.String("updated_at").Default(""),
+    }
+}
+```
+
+### 4.10 session_summaries 表（原生 SQL）
 
 通过 `data.EnsureSessionMemorySchema`（`internal/data/sql/memory_chain.sql`）创建，不使用 Ent Schema：
 
@@ -1116,11 +1213,15 @@ CREATE TABLE IF NOT EXISTS session_summaries (
     token_estimate INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_session_summaries_session
+  ON session_summaries(session_id, created_at);
 ```
 
-### 4.4 关键 Data 层实现
+### 4.11 关键 Data 层实现
 
-**SearchSessions** — Ent ORM 查询：
+**SearchSessions** — Ent ORM 查询（`internal/data/session_repo.go`）：
+
 ```go
 func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQuery) (biz.SessionListResult, error) {
     c := r.data.entClient
@@ -1131,190 +1232,43 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
     if q.OwnerType != "" {
         wheres = append(wheres, entsession.OwnerTypeEQ(q.OwnerType))
     }
-    if q.AgentID != "" {
-        wheres = append(wheres, entsession.AgentIDEQ(q.AgentID))
-    }
-    if q.TeamID != "" {
-        wheres = append(wheres, entsession.TeamIDEQ(q.TeamID))
-    }
-    if q.Status != "" {
-        wheres = append(wheres, entsession.StatusEQ(q.Status))
-    }
-    if q.ContextStatus != "" {
-        wheres = append(wheres, entsession.ContextStatusEQ(q.ContextStatus))
-    }
-    if kw := strings.TrimSpace(q.Keyword); kw != "" {
-        wheres = append(wheres, entsession.Or(
-            entsession.TitleContainsFold(kw),
-            entsession.SummaryContainsFold(kw),
-            entsession.IDContainsFold(kw),
-        ))
-    }
+    // ... 其他筛选条件
 
     wherePred := entsession.And(wheres...)
     total, err := c.Session.Query().Where(wherePred).Count(ctx)
-    if err != nil {
-        return biz.SessionListResult{}, err
-    }
-
-    rows, err := c.Session.Query().
-        Where(wherePred).
-        Order(
-            entsession.ByLastMessageAt(entsql.OrderDesc()),
-            entsession.ByUpdatedAt(entsql.OrderDesc()),
-        ).
-        Limit(limit).
-        Offset(offset).
-        All(ctx)
-    if err != nil {
-        return biz.SessionListResult{}, err
-    }
-    items := make([]biz.Session, 0, len(rows))
-    for _, row := range rows {
-        items = append(items, entSessionToBiz(row))
-    }
-    return biz.SessionListResult{Items: items, Total: total, Limit: limit, Offset: offset}, nil
+    // ... 分页查询 + 转换
 }
 ```
 
-**AppendChatTurn** — 事务写入用户+助手消息对：
+**AppendChatTurn** — 事务写入用户+助手消息对（`internal/data/session_message_repo.go`）：
+
 ```go
 func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {
     tx, err := r.data.entClient.Tx(ctx)
-    if err != nil {
-        return err
-    }
-    rollback := func(e error) error { _ = tx.Rollback(); return e }
-
-    if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
-        return rollback(err)
-    }
-    maxTurn, err := r.maxMessageTurnTx(ctx, tx, sessionID)
-    if err != nil {
-        return rollback(err)
-    }
-    user.TurnIndex = maxTurn + 1
-    assistant.TurnIndex = maxTurn + 2
-    if err = r.insertMessageTx(ctx, tx, user); err != nil {
-        return rollback(err)
-    }
-    if err = r.insertMessageTx(ctx, tx, assistant); err != nil {
-        return rollback(err)
-    }
-    upd := tx.Session.UpdateOneID(sessionID).
-        AddMessageCount(2).
-        SetLastMessageAt(assistant.CreatedAt).
-        SetUpdatedAt(nowRFC3339()).
-        AddModelCallCount(1)
-    if tin, tout := assistant.TokenIn, assistant.TokenOut; tin > 0 || tout > 0 {
-        upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin+tout).AddContextUsedTokens(tin+tout)
-    }
-    if _, err = upd.Save(ctx); err != nil {
-        return rollback(err)
-    }
-    return tx.Commit()
+    // ... 事务内写入 user + assistant 消息，更新 session 聚合字段
 }
 ```
 
-**UpdateSessionContextFromLLMUsage** — 上下文消耗更新：
+**UpdateSessionContextFromLLMUsage** — 上下文消耗更新（`internal/data/session_repo.go`）：
+
 ```go
 func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, _ int, contextWindow int) error {
     cur, err := r.GetSessionByID(ctx, sessionID)
-    if err != nil {
-        return err
-    }
-    ratio := cur.ContextUsedRatio
-    if contextWindow > 0 && promptTokens > 0 {
-        ratio = float64(promptTokens) / float64(contextWindow)
-        if ratio > 1 { ratio = 1 }
-    }
-    maxR := cur.MaxContextUsedRatio
-    if ratio > maxR { maxR = ratio }
-    upd := r.data.entClient.Session.Update().
-        Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
-        SetContextUsedRatio(ratio).
-        SetMaxContextUsedRatio(maxR).
-        SetContextStatus(contextStatusForRatio(ratio)).
-        SetUpdatedAt(nowRFC3339())
-    if contextWindow > 0 { upd = upd.SetLastContextWindowTokens(contextWindow) }
-    if promptTokens > 0 { upd = upd.SetContextUsedTokens(promptTokens) }
-    _, err = upd.Save(ctx)
-    return err
+    // ... 计算 ratio = promptTokens / contextWindow，更新 context_used_ratio/max/context_status
 }
 ```
 
-**ListToolInvocationsBySession** — 工具调用查询 + Agent 名称解析：
-```go
-func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]biz.ToolInvocationView, error) {
-    if limit <= 0 || limit > 100 { limit = 100 }
-    rows, err := r.data.entClient.ToolInvocation.Query().
-        Where(toolinvocationpkg.SessionIDEQ(sessionID)).
-        Order(toolinvocationpkg.ByStartedAt(entsql.OrderDesc()), toolinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
-        Limit(limit).
-        All(ctx)
-    if err != nil { return nil, err }
-    if len(rows) == 0 { return nil, nil }
-    // 批量查 Agent 名称
-    agentNames := map[string]string{}
-    agentIDs := dedupeStrings(extractAgentIDs(rows))
-    if len(agentIDs) > 0 {
-        agents, _ := r.data.entClient.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
-        for _, a := range agents { agentNames[a.ID] = a.DisplayName }
-    }
-    // 转换
-    out := make([]biz.ToolInvocationView, 0, len(rows))
-    for _, row := range rows {
-        out = append(out, biz.ToolInvocationView{
-            ID: row.ID, ToolKey: row.ToolKey, ToolDisplayName: row.ToolKey,
-            AgentID: row.AgentID, AgentDisplayName: agentNames[row.AgentID],
-            SessionID: row.SessionID, Source: row.Source, Status: row.Status,
-            StartedAt: row.StartedAt, EndedAt: row.EndedAt, DurationMS: row.DurationMs,
-            InputPreview: row.InputPreview, OutputPreview: row.OutputPreview,
-            ErrorCode: row.ErrorCode, ErrorMessage: row.ErrorMessage,
-            MetadataJSON: row.MetadataJSON, CreatedAt: row.CreatedAt,
-        })
-    }
-    return out, nil
-}
-```
+**Session Summaries CRUD** — 原生 SQL（`internal/data/session_repo_summaries.go`）：
 
-**Session Summaries CRUD** — 原生 SQL：
 ```go
 func (r *sessionRepo) InsertSessionSummary(ctx context.Context, row biz.SessionSummary) error {
     q := `INSERT INTO session_summaries (id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at)
           VALUES (?,?,?,?,?,?,?)`
-    _, err := r.data.entClient.ExecContext(ctx, q,
-        row.ID, row.SessionID, row.SummaryMarkdown, row.FromTurn, row.ToTurn, row.TokenEstimate, row.CreatedAt)
-    return err
-}
-
-func (r *sessionRepo) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
-    var max int
-    err := entQueryRowScan(r.data.entClient, ctx,
-        `SELECT COALESCE(MAX(to_turn), 0) FROM session_summaries WHERE session_id = ?`,
-        []any{sessionID}, &max)
-    return max, err
-}
-
-func (r *sessionRepo) ListSessionSummaries(ctx context.Context, sessionID string) ([]biz.SessionSummary, error) {
-    rows, err := r.data.entClient.QueryContext(ctx,
-        `SELECT id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at
-         FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
-    if err != nil { return nil, err }
-    defer rows.Close()
-    var out []biz.SessionSummary
-    for rows.Next() {
-        var s biz.SessionSummary
-        if err := rows.Scan(&s.ID, &s.SessionID, &s.SummaryMarkdown, &s.FromTurn, &s.ToTurn, &s.TokenEstimate, &s.CreatedAt); err != nil {
-            return nil, err
-        }
-        out = append(out, s)
-    }
-    return out, rows.Err()
+    // ...
 }
 ```
 
-### 4.5 类型转换
+### 4.12 类型转换
 
 ```go
 func entSessionToBiz(e *ent.Session) biz.Session {
@@ -1322,24 +1276,11 @@ func entSessionToBiz(e *ent.Session) biz.Session {
     return biz.Session{
         ID: e.ID, WorkspaceID: e.WorkspaceID, UserID: e.UserID,
         OwnerType: e.OwnerType, AgentID: e.AgentID, TeamID: e.TeamID,
-        Title: e.Title, Summary: e.Summary, TagsJSON: e.TagsJSON,
-        DialogMode: e.DialogMode, DefaultProvider: e.DefaultProvider,
-        DefaultModel: e.DefaultModel, DefaultContextWindowTokens: e.DefaultContextWindowTokens,
-        LastProvider: e.LastProvider, LastModel: e.LastModel,
-        LastContextWindowTokens: e.LastContextWindowTokens,
-        Status: e.Status, Visibility: e.Visibility,
-        MessageCount: e.MessageCount, RunCount: e.RunCount,
-        ModelCallCount: e.ModelCallCount, ToolCallCount: e.ToolCallCount,
-        SkillCallCount: e.SkillCallCount, MCPCallCount: e.McpCallCount,
-        InputTokens: e.InputTokens, OutputTokens: e.OutputTokens,
-        TotalTokens: e.TotalTokens, TotalCostMicroUSD: e.TotalCostMicroUsd,
-        AvgLatencyMs: e.AvgLatencyMs, ErrorCount: e.ErrorCount,
-        ContextUsedTokens: e.ContextUsedTokens, ContextUsedRatio: e.ContextUsedRatio,
-        MaxContextUsedRatio: e.MaxContextUsedRatio, ContextStatus: e.ContextStatus,
-        FirstMessageAt: e.FirstMessageAt, LastMessageAt: e.LastMessageAt,
-        LastRunAt: e.LastRunAt, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
-        ArchivedAt: e.ArchivedAt, DeletedAt: e.DeletedAt,
-        RunnerSnapshotJSON: e.RunnerSnapshotJSON, MetadataJSON: e.MetadataJSON,
+        // ... 全字段映射
+        PinnedAt: e.PinnedAt,
+        SessionRevision: e.SessionRevision, CompressVersion: e.CompressVersion,
+        ParentSessionID: e.ParentSessionID, RootSessionID: e.RootSessionID,
+        AgentDepth: e.AgentDepth,
     }
 }
 ```
@@ -1370,143 +1311,32 @@ func toProtoSession(s biz.Session) *v1.Session {
     return &v1.Session{
         Id: s.ID, WorkspaceId: s.WorkspaceID, UserId: s.UserID,
         OwnerType: s.OwnerType, AgentId: s.AgentID, TeamId: s.TeamID,
-        Title: s.Title, Summary: s.Summary, TagsJson: s.TagsJSON,
-        DialogMode: s.DialogMode, DefaultProvider: s.DefaultProvider,
-        DefaultModel: s.DefaultModel,
-        DefaultContextWindowTokens: int32(s.DefaultContextWindowTokens),
-        LastProvider: s.LastProvider, LastModel: s.LastModel,
-        LastContextWindowTokens: int32(s.LastContextWindowTokens),
-        Status: s.Status, Visibility: s.Visibility,
-        MessageCount: int32(s.MessageCount), RunCount: int32(s.RunCount),
-        ModelCallCount: int32(s.ModelCallCount), ToolCallCount: int32(s.ToolCallCount),
-        SkillCallCount: int32(s.SkillCallCount), McpCallCount: int32(s.MCPCallCount),
-        InputTokens: int32(s.InputTokens), OutputTokens: int32(s.OutputTokens),
-        TotalTokens: int32(s.TotalTokens), TotalCostMicroUsd: s.TotalCostMicroUSD,
-        AvgLatencyMs: s.AvgLatencyMs, ErrorCount: int32(s.ErrorCount),
-        ContextUsedTokens: int32(s.ContextUsedTokens),
-        ContextUsedRatio: s.ContextUsedRatio,
-        MaxContextUsedRatio: s.MaxContextUsedRatio,
-        ContextStatus: s.ContextStatus,
-        FirstMessageAt: s.FirstMessageAt, LastMessageAt: s.LastMessageAt,
-        LastRunAt: s.LastRunAt, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
-        ArchivedAt: s.ArchivedAt, DeletedAt: s.DeletedAt,
-        RunnerSnapshotJson: s.RunnerSnapshotJSON, MetadataJson: s.MetadataJSON,
+        // ... 全字段映射
+        PinnedAt: s.PinnedAt,
+        ParentSessionId: s.ParentSessionID, RootSessionId: s.RootSessionID,
+        AgentDepth: int32(s.AgentDepth),
     }
 }
 
-func toProtoTimeline(t biz.SessionTimeline) *v1.SessionTimeline {
-    items := make([]*v1.SessionTimelineItem, 0, len(t.Items))
-    for i := range t.Items {
-        items = append(items, toProtoTimelineItem(t.Items[i]))
-    }
-    return &v1.SessionTimeline{
-        SessionId: t.SessionID, Items: items,
-        Summary: &v1.SessionTimelineSummary{
-            Total: int32(t.Summary.Total), MessageCount: int32(t.Summary.MessageCount),
-            ToolCount: int32(t.Summary.ToolCount), SkillCount: int32(t.Summary.SkillCount),
-            McpCount: int32(t.Summary.MCPCount),
-        },
-    }
-}
-
-func toProtoTimelineItem(it biz.SessionTimelineItem) *v1.SessionTimelineItem {
-    tags := it.Tags
-    if tags == nil { tags = []string{} }
-    return &v1.SessionTimelineItem{
-        Id: it.ID, Kind: it.Kind, Side: it.Side,
-        Title: it.Title, Subtitle: it.Subtitle,
-        ActorId: it.ActorID, ActorName: it.ActorName,
-        Status: it.Status, OccurredAt: it.OccurredAt,
-        DurationMs: int32(it.DurationMS),
-        ContentMarkdown: it.ContentMarkdown, Preview: it.Preview,
-        DetailJson: it.DetailJSON, Tags: tags,
-    }
-}
-
-func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {
-    return &v1.ChatMessageRow{
-        Id: m.ID, SessionId: m.SessionID, ParentMessageId: m.ParentMessageID,
-        TurnIndex: int32(m.TurnIndex), Role: m.Role,
-        ContentMarkdown: m.ContentMarkdown, ModelName: m.ModelName,
-        TokenIn: int32(m.TokenIn), TokenOut: int32(m.TokenOut),
-        LatencyMs: int32(m.LatencyMS), Status: m.Status,
-        AttachmentsCount: int32(m.AttachmentsCount),
-        OptionsJson: m.OptionsJSON, ErrorMessage: m.ErrorMessage,
-        CreatedAt: m.CreatedAt,
-    }
-}
+func toProtoTimeline(t biz.SessionTimeline) *v1.SessionTimeline { /* ... */ }
+func toProtoTimelineItem(it biz.SessionTimelineItem) *v1.SessionTimelineItem { /* ... */ }
+func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow { /* ... */ }
 ```
 
 ### 5.3 RPC 实现
 
 ```go
-func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessionsRequest) (*v1.SearchSessionsResponse, error) {
-    q := searchQueryFromProto(req)
-    res, err := s.uc.Search(ctx, q)
-    if err != nil { return nil, err }
-    out := &v1.SearchSessionsResponse{
-        Total: int32(res.Total), Limit: int32(res.Limit), Offset: int32(res.Offset),
-        Items: make([]*v1.Session, 0, len(res.Items)),
-    }
-    for i := range res.Items {
-        out.Items = append(out.Items, toProtoSession(res.Items[i]))
-    }
-    return out, nil
-}
-
-func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessionRequest) (*v1.Session, error) {
-    in := biz.Session{
-        WorkspaceID: req.GetWorkspaceId(), UserID: req.GetUserId(),
-        OwnerType: req.GetOwnerType(), AgentID: req.GetAgentId(), TeamID: req.GetTeamId(),
-        Title: req.GetTitle(), DialogMode: req.GetDialogMode(),
-        DefaultProvider: req.GetDefaultProvider(), DefaultModel: req.GetDefaultModel(),
-    }
-    created, err := s.uc.Create(ctx, in)
-    if err != nil { return nil, err }
-    return toProtoSession(created), nil
-}
-
-func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionRequest) (*v1.Session, error) {
-    out, err := s.uc.Get(ctx, req.GetId())
-    if err != nil { return nil, mapSessionErr(err) }
-    return toProtoSession(out), nil
-}
-
-func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessionRequest) (*v1.Session, error) {
-    // 映射 SessionUpdateFields：title / tags_json / visibility / metadata / dialog_mode / default_provider / default_model
-    out, err := s.uc.Update(ctx, req.GetId(), fields)
-    if err != nil { return nil, mapSessionErr(err) }
-    return toProtoSession(out), nil
-}
-
-func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*emptypb.Empty, error) {
-    if err := s.uc.Delete(ctx, req.GetId()); err != nil { return nil, mapSessionErr(err) }
-    return &emptypb.Empty{}, nil
-}
-
-func (s *SessionService) DeleteSessionsByAgent(ctx context.Context, req *v1.DeleteSessionsByAgentRequest) (*emptypb.Empty, error) {
-    if err := s.uc.DeleteByAgent(ctx, req.GetAgentId()); err != nil { return nil, err }
-    return &emptypb.Empty{}, nil
-}
-
-func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSessionRequest) (*emptypb.Empty, error) {
-    if err := s.uc.Archive(ctx, req.GetId()); err != nil { return nil, mapSessionErr(err) }
-    return &emptypb.Empty{}, nil
-}
-
-func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSessionTimelineRequest) (*v1.SessionTimeline, error) {
-    out, err := s.uc.Timeline(ctx, req.GetId())
-    if err != nil { return nil, mapSessionErr(err) }
-    return toProtoTimeline(out), nil
-}
-
-func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSessionMessagesRequest) (*v1.ListSessionMessagesResponse, error) {
-    rows, err := s.uc.ListMessages(ctx, req.GetId())
-    if err != nil { return nil, mapSessionErr(err) }
-    out := make([]*v1.ChatMessageRow, 0, len(rows))
-    for i := range rows { out = append(out, toProtoChatMessageRow(rows[i])) }
-    return &v1.ListSessionMessagesResponse{Items: out}, nil
-}
+func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessionsRequest) (*v1.SearchSessionsResponse, error) { /* ... */ }
+func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessionRequest) (*v1.Session, error) { /* ... */ }
+func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionRequest) (*v1.Session, error) { /* ... */ }
+func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessionRequest) (*v1.Session, error) { /* ... */ }
+func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*emptypb.Empty, error) { /* ... */ }
+func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSessionRequest) (*emptypb.Empty, error) { /* ... */ }
+func (s *SessionService) RestoreSession(ctx context.Context, req *v1.RestoreSessionRequest) (*v1.Session, error) { /* ... */ }
+func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionRequest) (*v1.Session, error) { /* ... */ }
+func (s *SessionService) UnpinSession(ctx context.Context, req *v1.UnpinSessionRequest) (*v1.Session, error) { /* ... */ }
+func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSessionTimelineRequest) (*v1.SessionTimeline, error) { /* ... */ }
+func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSessionMessagesRequest) (*v1.ListSessionMessagesResponse, error) { /* ... */ }
 ```
 
 ### 5.4 SessionCompressionUsecase
@@ -1533,7 +1363,7 @@ func NewSessionCompressionUsecase(
 
 **压缩流程**：
 1. 检查 `context_used_ratio` 是否超过 agent 阈值（默认 0.6）
-2. 100% 满窗时立即压缩，否则检查距上次压缩间隔 ≥ 10 分钟
+2. 100% 满窗时立即压缩，否则检查距上次压缩间隔 ≥ 10 分钟（`L0CompressMinGapSec` 可配置）
 3. 获取消息列表，计算需要压缩的 turn 范围（保留最近 `keepTurns` 轮）
 4. 调用 `compress.Compressor.Compress()` 生成摘要
 5. 写入 `session_summaries` 表
@@ -1550,9 +1380,255 @@ func NewSessionCompressionUsecase(
 
 ---
 
-## 六、运行时层
+## 六、上下文压缩设计
 
-### 6.1 trpc session.Service 桥接（待实现）
+### 6.1 问题与目标
+
+**问题**：单会话消息与 Runner 事件随轮次增长，反复把完整历史送入模型导致 prompt token 线性增长、成本与延迟上升，更易触碰上下文上限。
+
+**目标**：
+
+1. 当历史达到一定规模，将一段可追溯的对话区间交给「压缩模型」梳理为结构化摘要，要求不遗漏对后续决策关键的事实。
+2. 后续用户继续对话时，模型侧上下文改为：**压缩摘要 + 最近若干轮原文 + 本轮输入**。
+3. **账本不变**：`messages`（及必要的 trace）仍保留完整原文；压缩改变的是**送入模型的装配结果**，默认不物理删除历史消息。
+
+**非目标**：不替代 L3/L4 长期记忆检索；不把「压缩」作为唯一降耗手段；首版不要求用户编辑摘要正文。
+
+### 6.2 核心概念
+
+| 术语 | 含义 |
+|------|------|
+| 滚动摘要（Rolling Summary） | 覆盖区间 `[from_turn, to_turn]` 的 Markdown 文本，存于 `session_summaries` |
+| 当前有效摘要（Active Summary） | 某 session 在装配时刻用于头部的摘要集合 |
+| 滑动窗口（Tail） | 摘要区间之后、尚未被摘要覆盖的最近 K 轮或最近 T tokens 的原始对话 |
+| 压缩模型（Compressor Model） | 执行摘要生成的 LLM 调用；可与对话模型同厂商或降级为更小规格 |
+
+### 6.3 触发条件
+
+建议可组合配置（Agent / Team / Session 级覆盖），默认启用「soft + hard」双层：
+
+| 策略 | 条件 | 说明 |
+|------|------|------|
+| 比例触发 | `context_used_ratio ≥ summary_threshold` | 与现有 `sessions.context_*` 字段对齐 |
+| 轮次触发 | 自上次摘要以来新增 `Δturn ≥ compress_every_n_turns` | 防窗口很大但比例尚未告警时长对话不摘要 |
+| Token 估算触发 | 未摘要前缀估算 token ≥ `compress_prefix_token_budget` | 与滑动窗口预算联动 |
+| 手动触发 | UI「生成会话摘要」或 `CompactSession` API | 便于调试与关键节点强制固化 |
+
+**防抖**：同一 session 短时间窗口内（如 5～10 分钟，`L0CompressMinGapSec` 可配置）最多触发 N 次摘要任务。
+
+**并发**：若上一轮摘要尚未完成，后续触发应合并区间或排队，避免交错写入两条重叠 `from_turn/to_turn`。
+
+### 6.4 压缩任务的输入与输出
+
+**输入（发给压缩模型）**：对选定区间，序列化可追溯的对话——角色与时间序、工具调用（工具名、参数摘要、结果摘要或截断后的关键字段）、锚点（session_id、区间、上轮摘要）。
+
+**输出（摘要 schema）**——推荐固定章节：
+
+1. 用户意图与目标
+2. 已确认事实 / 结论（含数字、版本、路径、API 名等硬信息）
+3. 约束与偏好（语言、风格、禁止项）
+4. 未完成事项 / 待澄清问题
+5. 重要工具结果摘录（表格或列表）
+6. 术语与别名
+
+输出写入 `session_summaries.summary_markdown`，并填写 `from_turn`、`to_turn`、`token_estimate`、`created_at`。可同时更新 `sessions.summary` 为列表页/会话卡片用的一句话摘要。
+
+**提示词原则**：明确后续对话仅能看到本摘要 + 最近几轮，要求在无损前提下最大化密度；不得编造；保留可执行细节。
+
+### 6.5 后续轮次装配顺序
+
+在单次模型调用前，L0 装配器按段拼装：
+
+1. 系统 / 开发者固定段（SOUL、策略等）
+2. **`session_summaries` 合并摘要**（标记 `source: session_summaries:<id>`）
+3. L1 工作记忆字段（若有）
+4. **滑动窗口内原始 messages**（摘要区间之后）
+5. L3/L4 检索段（若有）
+6. 本轮 user 输入
+
+被摘要覆盖的旧消息不再重复进入 prompt，但仍可从 DB 读取用于 UI 与合规。
+
+### 6.6 多条 session_summaries 合并策略
+
+- **A. 区间链式（首版推荐）**：保留多条记录，装配时按 `from_turn` 排序拼接为一块「历史摘要」文本。逻辑清晰且易于回放；metadata 中记录 `supersedes_id` 以备迁移。
+- **B. 单条滚动（二期演进）**：每次压缩后把旧摘要 + 新区间对话一并输入，产出一条覆盖 `[0, current_to]` 的新摘要并 supersede 旧指针。token 更省，单次成本高。
+
+### 6.7 与 Runner 会话持久态的关系
+
+| 方案 | 做法 | 优点 | 风险 |
+|------|------|------|------|
+| **装配层优先（首版推荐）** | 不改变 `runner_snapshot_json` 内全量事件；仅在构造发往 LLM 的 messages 时应用摘要 + tail | 实现集中、可逆、与现有 messages 账本一致 | Runner 内部若独立推算上下文，需确认走同一装配入口 |
+| 快照裁剪（可选） | 在摘要固化后，对 snapshot 中早于 `to_turn` 的模型事件做归档或删除 | 持久态更小 | 回放 Runner 历史不完整，需额外归档存储 |
+
+### 6.8 一致性、失败与重试
+
+- **幂等键**：`(session_id, from_turn, to_turn, prompt_hash)`；重复任务返回已有记录。
+- **失败**：摘要失败时不阻断用户发消息；回退为「仅滑动窗口截断」并打 `context_status`/告警日志。
+- **观测**：写入 `memory_l0_assembly_snapshots` 中的 `summarized_turn_from/to`、`summary_token_estimate`、`segments_json` 段来源。
+
+### 6.9 Team 会话
+
+- **隔离**：每个子 Agent 应有独立的摘要区间与 `session_summaries` 维度，避免 Host 与子 Agent 上下文串扰。
+- **Host 摘要**：可仅摘要「路由级」对话；专家会话单独滚动摘要。
+
+### 6.10 API / 配置 / UX
+
+| 层次 | 建议 |
+|------|------|
+| 配置 | 扩展 `agent_runtime_settings`：`summary_threshold`、`compress_every_n_turns`、`recent_window_turns`、`recent_window_tokens`、`compressor_model_profile`；另设 `l0_compress_provider` / `l0_compress_model`（可选），指定专用压缩调用 |
+| API | `CompactSession` RPC 手动触发；`GetCompressStatus` 查询状态 |
+| UI | 会话详情展示「已摘要至第 N 轮」标签；可选展示摘要正文（只读）；手动触发按钮 |
+
+### 6.11 Context Window 计算
+
+核心公式：
+
+```text
+context_used_ratio = prompt_tokens / context_window_tokens
+```
+
+如果 provider 返回精确 token，使用返回值；否则使用本地估算。由于一个 session 可以切换多个模型，`context_window_tokens` 必须按「本次调用的实际模型」计算，而不是只看 session 主表。优先级：
+
+1. 本次调用模型配置中的 `context_window_k * 1000`
+2. 本次消息 options 指定模型的 context window
+3. session 创建时保存的 `default_context_window_tokens`
+4. agent 配置中的 `context_window`
+5. provider preset 的默认值（128000）
+
+**实现**：`llmcontext.ResolveWindow`（`internal/llmcontext/window.go`）在每次 native turn 与 `runner_completion` 投影时解析分母；`context_used_tokens` **仅**由 `UpdateSessionContextFromLLMUsage` 写入本次 LLM 的 `prompt_tokens`（ReAct 多步取 **turn 内最大 prompt**），消息落库时不再累加。
+
+**WS 契约**：`context_usage` 在 ReAct 多步 LLM 每次 prompt 峰值上升时推送（仅更新 context 条，不累加 session total）；`runner_completion.usage` 携带 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`。
+
+**状态阈值单一来源**：Go `internal/llmcontext/metrics.go` 与前端 `web/src/features/session/contextMetrics.ts` 保持同步（0.6 / 0.8 / 0.95）。
+
+**失败可观测**：`UpdateSessionContextFromLLMUsage` / 压缩后 `UpdateSessionContextAfterCompression` 失败时写入 session 系统日志（`context.usage` / `system.session.compress`），不再静默 `_ =` 丢弃。
+
+**100% 后重新计数（Cursor 式）**：
+
+1. **同 turn 内**：tRPC ContextCompaction（Agent 开启 `context_compaction_enabled`）在 LLM 调用前压缩历史，API 返回的 `prompt_tokens` 已是压缩后值。
+2. **turn 后异步**：L0 `SessionCompressor` 生成摘要并重写 snapshot，调用 `UpdateSessionContextAfterCompression` 将 ratio 重置为压缩后估算值。
+3. **实时 UI**：压缩完成 WS 推送 `text_done`（`metadata.kind=system.session.compress`，携带 `context_used_ratio` / `context_used_tokens` / `context_status`）；前端 `sessionContextPatch` 立即 patch store，无需等待 HTTP 刷新。
+
+状态阈值：
+
+| 状态 | 条件 | UI |
+|------|------|----|
+| `normal` | `< 60%` | 绿色 |
+| `warning` | `60% - 80%` | 橙色 |
+| `critical` | `80% - 95%` | 红色 |
+| `exceeded` | `>= 95%` 或模型报 context length exceeded | 紫/红 + 建议新建 session 或摘要 |
+
+Team session 的 context 有两个口径：
+
+| 口径 | 说明 |
+|------|------|
+| Team 总消耗 | 本 session 下所有模型调用的最大 `used_ratio` 或最近 run 的聚合值 |
+| Agent 局部消耗 | 每个 participant / step 自己的 context ratio |
+
+前端列表展示 Team 总消耗；详情页展示每个 Agent 的局部消耗。
+
+### 6.12 聚合更新策略
+
+写入消息、usage、step 后，统一调用聚合函数更新 `sessions` / `session_metrics` 表。高频流式场景不要每个 delta 更新 session，只在以下时机更新：
+
+| 时机 | 是否更新 session 聚合 | 前端 context % |
+|------|----------------------|----------------|
+| 用户消息落库 | 创建 turn 和 `user_message` span，更新 `message_count`、`last_message_at` | 不变 |
+| assistant 最终消息落库 | 写入 `ai_response` span，更新消息、时间、最终内容预览 | 不变 |
+| 工具/Skill/MCP 调用完成 | 更新 span 状态、耗时、输入输出和错误；必要时增量更新 turn 统计 | 不变 |
+| 模型 usage 完成（turn 结束） | 更新 token、费用、context（DB） | **`runner_completion.usage` 乐观 patch**（`web/src/features/chat/sessionContextPatch.ts`） |
+| L0 压缩完成 | 更新 `context_used_*`（DB） | **`text_done` compress notice 乐观 patch** |
+| run 结束 | 更新 run_count、状态、耗时 | HTTP `loadAgentSessions` 与 WS patch 合并校正 |
+
+---
+
+## 七、trpc-agent-go 对齐路径
+
+> 实现状态与任务 ID 详见 [10-session.development.md §8 待优化清单](./10-session.development.md#8-待优化清单全部)
+
+| 阶段 | 内容 |
+|------|------|
+| M5-1 | Ent + SQLite Session CRUD + Timeline |
+| M5-2 | 上下文追踪 + 摘要压缩 |
+| M5-3 | Runner Snapshot 持久化 |
+| M5-3a | Session Turns 对话轮次 |
+| M5-3b | Session State KV + ApplyStateDelta |
+| M5-3c | RestoreSession / UpdateSession 部分更新 |
+| M5-3d | 自动标题生成（LLM + 截取双策略） |
+| M5-4 | Session 置顶功能（pinned_at + PinSession RPC） |
+| M5-5 | Session 导出功能（Markdown/JSON） |
+| M5-6 | 消息搜索功能（全文检索） |
+| M5-7 | session_runs / session_run_steps 编排记录 |
+| M5-8 | session_participants Team 参与者 |
+| M5-9 | session_trace_spans 完整追踪链路 |
+| M5-10 | session_context_snapshots Context 趋势 |
+| M5-11 | session_model_summaries 多模型分布 |
+| M5-12 | 桥接 trpc `session.Service` 接口 |
+| M5-13 | 多后端支持（Redis/PG） |
+| M5-14 | 内置压缩迁移到 trpc 框架 |
+
+### 7.1 trpc session.Service 集成
+
+**trpc 框架**：`session.Service` 提供统一的 Session 存储接口，支持多后端。
+
+**设计**：
+- 新建 `internal/session/trpc/service.go`，桥接 Ent session 到 trpc `session.Service` 接口
+- 先实现 SQLite 后端（项目已有）
+- 后续增加 Redis 后端用于生产环境
+- 最终支持 PostgreSQL/MySQL/ClickHouse 后端
+
+**涉及文件**：`internal/session/trpc/service.go`、`internal/session/trpc/sqlite.go`、`internal/session/trpc/redis.go`
+
+### 7.2 Event 分页
+
+**trpc 框架**：`session.Service.ListEvents` 支持分页查询 Session 事件。
+
+**设计**：
+- 实现 `ListEvents(sessionID, pageSize, pageToken)` 方法
+- 支持按时间正序/倒序
+- 支持按事件类型过滤
+
+### 7.3 Session Track
+
+**trpc 框架**：`session.Service` 支持 Track 操作，记录 Session 级别的元数据。
+
+**设计**：
+- 实现 `Track(sessionID, key, value)` 方法
+- Track 数据存储在 `sessions.metadata_json` 中
+- 前端可查询 Track 数据
+
+### 7.4 Session Ingestor
+
+**trpc 框架**：`session.Ingestor` 接口，Session 完成后自动摄入到外部平台。
+
+**设计**：
+- 新建 `internal/session/trpc/ingestor.go`
+- 实现 `session.Ingestor` 接口
+- 可对接 Mem0 等外部记忆平台
+- Runner 完成后自动调用 Ingestor
+
+### 7.5 多后端支持
+
+**trpc 框架**：`session/sqlite`、`session/redis`、`session/pg`、`session/mysql`、`session/clickhouse` 多后端。
+
+**设计**：
+- 配置文件增加 `session.backend` 字段
+- 可选值：`sqlite`（默认）、`redis`、`postgresql`、`mysql`、`clickhouse`
+- 按配置动态选择后端
+- 提供迁移工具
+
+### 7.6 Runner Snapshot 集成
+
+**trpc 框架**：Runner 执行状态序列化为 `runner_snapshot_json`，用于 Runner 恢复。
+
+**设计**：
+- Runner 每轮执行后更新 `sessions.runner_snapshot_json`
+- Runner 恢复时从 `runner_snapshot_json` 加载状态
+- 摘要压缩后同步更新 snapshot
+
+**涉及文件**：`internal/agent/trpc_runtime.go`、`internal/service/chat_native.go`
+
+### 7.7 运行时层桥接
 
 ```go
 // internal/agent/adksvc/session.go
@@ -1568,7 +1644,7 @@ func (s *BizSessionService) SaveSession(ctx context.Context, sess *session.Sessi
 1. `internal/agent/adksvc` — 将 Ent session 映射到 trpc `session.Service` 接口
 2. 后续可扩展 Redis/PG/MySQL 后端
 
-### 6.2 Runner Snapshot 结构
+### 7.8 Runner Snapshot 结构
 
 `runner_snapshot_json` 存储 trpc-agent-go Runner 会话状态：
 
@@ -1590,31 +1666,6 @@ func (s *BizSessionService) SaveSession(ctx context.Context, sess *session.Sessi
   ],
   "updated_at": "2026-04-26T09:01:00Z"
 }
-```
-
----
-
-## 七、Wire 注入
-
-```go
-// internal/data/data.go
-var ProviderSet = wire.NewSet(
-    NewSessionRepo,
-    // ... 其他 repo
-)
-
-// internal/biz/biz.go
-var ProviderSet = wire.NewSet(
-    NewSessionUsecase,
-    // ... 其他 usecase
-)
-
-// internal/service/service.go
-var ProviderSet = wire.NewSet(
-    NewSessionService,
-    NewSessionCompressor,
-    // ... 其他 service
-)
 ```
 
 ---
@@ -1643,6 +1694,7 @@ web/src/features/session/
 web/src/components/chat/
 ├── ChatSessionSidebar.vue          ← Chat 页右侧 Session 列表
 ├── SessionTimelineDialog.vue       ← 历史追踪弹窗（服务端分页）
+├── SessionEventInspectorPanel.vue  ← 事件检查器面板
 web/src/components/sessions/
 ├── sessionUi.ts                    ← 工具函数（格式化、颜色、列定义）
 ├── SessionsPageHero.vue            ← 页面标题
@@ -1653,8 +1705,18 @@ web/src/components/sessions/
 ├── SessionsTableSection.vue        ← 表格+分页
 ├── SessionsBulkToolbar.vue         ← 批量选择 toggle、按天数按钮
 ├── SessionsBulkSelectionBar.vue    ← 已选 N + 归档/删除
+├── SessionsBulkProgressBar.vue     ← 批量进度条
 ├── SessionDeleteConfirmDialog.vue  ← 单条/批量删除确认
 ├── SessionRetentionDialog.vue      ← 保留天数 + preview + 归档/删除确认
+├── SessionStatusBadge.vue          ← 状态徽章
+├── SessionRunsPanel.vue            ← Runs 面板
+├── SessionTurnsPanel.vue           ← Turns 面板
+├── SessionParticipantsPanel.vue    ← 参与者面板
+├── SessionMessagesPanel.vue        ← 消息面板
+├── SessionTimelinePanel.vue        ← Timeline 面板
+├── SessionTimelineEntry.vue        ← Timeline 条目
+├── SessionTimelineStats.vue        ← Timeline 统计
+├── ContextIndicator.vue            ← 上下文指示器
 web/src/pages/
 ├── SessionsPage.vue                ← Session 管理页面
 ```
@@ -1675,9 +1737,14 @@ export type Session = {
   max_context_used_ratio: number;
   context_status: string;
   dialog_mode: string;
-  provider: string;
-  model: string;
+  default_provider: string;
+  default_model: string;
+  last_provider: string;
+  last_model: string;
   status: string;
+  pinned_at: string;
+  parent_session_id: string;
+  root_session_id: string;
   message_count: number;
   run_count: number;
   model_call_count: number;
@@ -1708,44 +1775,8 @@ export type SessionSearchQuery = {
   offset?: number;
   page?: number;
   page_size?: number;
-};
-
-export type SessionListResult = {
-  items: Session[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-
-export type SessionTimelineItem = {
-  id: string;
-  kind: "message" | "tool" | "skill" | "mcp" | string;
-  side: "left" | "right" | string;
-  title: string;
-  subtitle: string;
-  actor_id: string;
-  actor_name: string;
-  status: string;
-  occurred_at: string;
-  duration_ms: number;
-  content_markdown: string;
-  preview: string;
-  detail_json: string;
-  tags: string[];
-};
-
-export type SessionTimelineSummary = {
-  total: number;
-  message_count: number;
-  tool_count: number;
-  skill_count: number;
-  mcp_count: number;
-};
-
-export type SessionTimeline = {
-  session_id: string;
-  items: SessionTimelineItem[];
-  summary: SessionTimelineSummary;
+  sort_by?: string;
+  sort_order?: string;
 };
 
 export async function listSessions(agentID: string): Promise<Session[]>
@@ -1753,12 +1784,19 @@ export async function listTeamSessions(teamID: string): Promise<Session[]>
 export async function searchSessions(query?: SessionSearchQuery): Promise<SessionListResult>
 export async function getSession(id: string): Promise<Session>
 export async function getSessionTimeline(id: string): Promise<SessionTimeline>
-export async function createSession(payload: { owner_type?; agent_id?; team_id?; title; dialog_mode?; default_provider?; default_model?; workspace_id?; user_id? }): Promise<Session>
+export async function createSession(payload: CreateSessionPayload): Promise<Session>
 export async function deleteSession(id: string): Promise<void>
 export async function archiveSession(id: string): Promise<void>
+export async function restoreSession(id: string): Promise<Session>
+export async function pinSession(id: string): Promise<Session>
+export async function unpinSession(id: string): Promise<Session>
+export async function exportSession(id: string, format: "markdown" | "json"): Promise<ExportResult>
 export async function updateSessionTitle(id: string, title: string): Promise<Session>
 export async function clearAgentSessions(agentID: string): Promise<void>
 export async function listSessionChatMessages(sessionID: string): Promise<Message[]>
+export async function batchPreview(req: BatchPreviewRequest): Promise<BatchPreviewResult>
+export async function batchArchive(req: BatchArchiveRequest): Promise<BatchResult>
+export async function batchDelete(req: BatchDeleteRequest): Promise<BatchResult>
 ```
 
 ### 8.3 ChatSessionSidebar 组件
@@ -1811,7 +1849,7 @@ Pin/Favorite 存储：`localStorage` 键 `chat:pinned-sessions` / `chat:favorite
 
 文件：`web/src/components/chat/SessionTimelineDialog.vue`
 
-> **FE-TL-01 已完成**：Timeline 弹窗已实现服务端分页（`useSessionTimelinePanel`，PAGE_SIZE=100，offset 翻页），与详情页 Timeline Panel 对齐。
+> Timeline 弹窗已实现服务端分页（`useSessionTimelinePanel`，PAGE_SIZE=100，offset 翻页），与详情页 Timeline Panel 对齐。
 
 Props：
 - `modelValue: boolean` — 弹窗开关
@@ -1866,8 +1904,6 @@ Props：
 
 ### 8.5 SessionsPage 管理页面
 
-> **2026-05-20 增量**：行删除、批量选择、按保留天数归档/删除。组件拆分见 §8.5.1。
-
 文件：`web/src/pages/SessionsPage.vue`（编排） + `features/session/useSessionsPage.ts`（状态/composable）
 
 布局：
@@ -1905,26 +1941,7 @@ Props：
 | 按天数归档 | `SessionRetentionDialog` 预览+确认 | 进度条 + notify |
 | 按天数删除 | `SessionRetentionDialog` 预览+确认 | 进度条 + notify |
 
-#### 8.5.1 前端文件结构（新增/变更）
-
-```
-web/src/
-├── pages/SessionsPage.vue                    ← 挂载 composable，不含裸 API
-├── features/session/
-│   ├── api.ts                                ← batchPreview/batchArchive/batchDelete/deleteSession
-│   ├── types.ts                              ← BatchPreviewResult, BulkProgress
-│   └── useSessionsPage.ts                    ← ★ 列表加载、selection、bulk 进度、dialog 状态
-├── components/sessions/
-│   ├── SessionsTableSection.vue              ← checkbox 列、行删除、emit selection
-│   ├── SessionsBulkToolbar.vue               ← 批量选择 toggle、按天数按钮
-│   ├── SessionsBulkSelectionBar.vue          ← 已选 N + 归档/删除
-│   ├── SessionDeleteConfirmDialog.vue        ← 单条/批量删除确认
-│   ├── SessionRetentionDialog.vue            ← 保留天数 + preview + 归档/删除确认
-│   └── sessionUi.ts                          ← 列定义（含 selection 列）
-└── stores/session/index.ts                   ← 可选：bulk 进度全局态（或 composable 内 ref）
-```
-
-**分层纪律**（`frontend-guide.md`）：
+#### 8.5.1 分层纪律
 
 | 层 | 职责 |
 |----|------|
@@ -1998,87 +2015,89 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 | 0.8 - 0.95 | critical | negative (红) |
 | ≥ 0.95 | exceeded | purple (紫) |
 
+### 8.8 Session 详情页
+
+详情页建议左右结构：
+
+| 区域 | 内容 |
+|------|------|
+| 顶部 Header | title、类型 chip、状态、创建时间、最后活跃、继续会话按钮 |
+| 左侧主区 | 消息流 / 对话轮次 / Trace 链路 / 编排 Timeline Tab |
+| 右侧属性栏 | 会话属性、参与 Agent、上下文消耗、Token/费用、模型信息 |
+| 底部或 Tab | Turn traces、Run steps、Context snapshots、Usage events、附件 |
+
+Tab 建议：
+
+| Tab | 内容 |
+|-----|------|
+| 消息 | 用户可见消息，内部消息默认折叠 |
+| 对话轮次 | 每轮对话的耗时、token、状态、模型/工具/Skill/MCP 调用数 |
+| Trace 链路 | 按树或瀑布图展示 `session_trace_spans` |
+| 编排 | `session_runs` + `session_run_steps` 时间线 |
+| 上下文 | context ratio 趋势、摘要/裁剪事件 |
+| 消耗 | 模型调用明细、Token、费用、延迟、工具/Skill/MCP 耗时 |
+| 附件 | 上传文件、工具产物 |
+
+### 8.9 Team Session 专属展示
+
+Team session 需要突出编排结构，而不是只显示聊天气泡。
+
+| 组件 | 内容 |
+|------|------|
+| Participants Panel | 每个 Agent 的头像、角色、状态、Token、context ratio |
+| Timeline | planner → executor → tool → reviewer → final response |
+| Step Drawer | 点击 step 查看输入、输出、错误、模型和工具参数 |
+| Handoff Badge | 展示 Agent A 交给 Agent B 的原因和上下文摘要 |
+| Internal Message Toggle | 「显示内部消息」开关，默认关闭 |
+
+Timeline 节点颜色：
+
+| 状态 | 颜色 |
+|------|------|
+| success | positive |
+| running | primary + spinner |
+| failed | negative |
+| skipped | grey |
+| cancelled | warning |
+
 ---
 
-## 九、trpc-agent-go 对齐路径
+## 九、关键设计原则
 
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| M5-1 | Ent + SQLite Session CRUD + Timeline | ✅ 已实现 |
-| M5-2 | 上下文追踪 + 摘要压缩 | ✅ 已实现 |
-| M5-3 | Runner Snapshot 持久化 | ✅ 已实现 |
-| M5-3a | Session Turns 对话轮次 | ✅ 已实现 |
-| M5-3b | Session State KV + ApplyStateDelta | ✅ 已实现 |
-| M5-3c | RestoreSession / UpdateSession 部分更新 | ✅ 已实现 |
-| M5-3d | 自动标题生成（LLM + 截取双策略） | ✅ 已实现 |
-| M5-4 | Session 置顶功能（pinned_at + PinSession RPC） | ✅ 2026-05-24 |
-| M5-5 | Session 导出功能（Markdown/JSON） | ✅ 2026-05-24 |
-| M5-6 | 消息搜索功能（全文检索） | ✅ |
-| M5-7 | session_runs / session_run_steps 编排记录 | 🟡 M55 runs ✅ · steps ❌ |
-| M5-8 | session_participants Team 参与者 | 🟡 读时聚合 + List RPC + Team Tab |
-| M5-9 | session_trace_spans 完整追踪链路 | 待实现 |
-| M5-10 | session_context_snapshots Context 趋势 | 待实现 |
-| M5-11 | session_model_summaries 多模型分布 | 待实现 |
-| M5-12 | 桥接 trpc `session.Service` 接口 | 待实现 |
-| M5-13 | 多后端支持（Redis/PG） | 待实现 |
-| M5-14 | 内置压缩迁移到 trpc 框架 | 待实现 |
+1. **Session 是事实关联中心，不是所有事实本身**：消息、usage、run、step 各自独立落库，通过 `session_id` 关联。
+2. **明细不可变，聚合可重算**：`model_token_usage_events`、`session_run_steps` 是事实源；`sessions` 上的 token、费用、context 是查询优化字段。
+3. **Team 与 Agent 共用一套 session 模型**：通过 `owner_type` 区分，不要拆成两套历史系统。
+4. **内部编排消息默认可折叠**：Team session 既要可复盘，也不能让用户被内部 step 淹没。
+5. **Context ratio 必须可解释**：列表显示比例，详情能追到哪个 run/step/message 导致消耗升高。
+6. **软删除优先**：session 删除不应破坏成本统计和审计链路。
+7. **模型配置保存快照，但不假设唯一模型**：历史 session 保存默认模型和最近模型；每次实际调用的 provider/model/context window 以 usage 与 step 明细为准。
+8. **框架对齐优先**：先查 trpc-agent-go 框架 API 再实现，不在 biz 重写运行时；`runner_snapshot_json` 是 Runner 状态的唯一持久化格式。
+9. **分层铁律不可违反**：`internal/biz` 不得 import `pkg/trpc-agent-go`；框架运行时交互只在 `internal/service` 和 `internal/agent` 层进行。
+10. **错误处理统一**：biz 层使用 `apierror.BadRequest`/`apierror.NotFound`/`apierror.Conflict`/`apierror.InternalServer`，不用 `fmt.Errorf` 或 `errors.New`。
+11. **高频字段拆表**：`session_runtime` 与 `session_metrics` 将高频更新字段从 `sessions` 主表拆出，减少写放大。
 
 ---
 
-## 十、优化内容与后期开发
+## 十、Wire 注入
 
-### 10.1 代码优化（当前可做）
+```go
+// internal/data/data.go
+var ProviderSet = wire.NewSet(
+    NewSessionRepo,
+    // ... 其他 repo
+)
 
-| # | 优化项 | 说明 | 优先级 |
-|---|--------|------|--------|
-| O1 | `session_repo_summaries.go` 错误处理 | 将 `errors.New` 替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐 §10 原则 10 | ✅ 2026-05-21 |
-| P1 | 消息加载 | `ListMessagesBySession(limit,offset)` + `CountMessagesBySession`；Timeline `ListMessagesRecent`（cap `TimelineMessageMaxFetch`）；压缩 `ListMessagesAfterTurn`；取消 `ListMessagesByStatus` | ✅ 2026-05-21 |
-| P3 | 批量 ids | `ListSessionsByIDs` + biz `loadBatchCandidates` 一次查询 | ✅ 2026-05-21 |
-| O2 | Timeline 超长会话 | SQL UNION 分页；全量按 COUNT 无 2000 cap | ✅ 2026-05-24 |
-| O3 | Timeline 工具/Skill 拉取上限 | `timelineInvocationLimit(q)`：默认 100、最大 500 | ✅ 2026-05-21 |
-| O4 | AppendChatTurn 事务内两次查询 | `maxMessageTurnTx` + session 查询可合并为一次 | P3 |
-| O5 | 压缩防抖策略可配置化 | Agent `L0CompressMinGapSec` · `compress_policy.go` | ✅ 2026-05-24 |
-| O6 | SessionCompressor 压缩模型选择 | 当前 fallback 逻辑分散，应统一为策略模式 | P3 |
+// internal/biz/biz.go
+var ProviderSet = wire.NewSet(
+    NewSessionUsecase,
+    NewSessionMetricsUsecase,
+    // ... 其他 usecase
+)
 
-### 10.2 功能开发（按优先级排序）
-
-| # | 功能 | 需求文档 | 设计要点 | 优先级 |
-|---|------|----------|----------|--------|
-| F1 | Session 置顶 | §9 Phase 1 | `pinned_at` + Pin/Unpin + 前端 | ✅ |
-| F2 | Session 导出 | §9 Phase 2 | ExportSession RPC Markdown/JSON | ✅ |
-| F3 | 消息搜索 | §9 Phase 3 | SearchSessionMessages FTS/LIKE | ✅ |
-| F4 | session_runs 编排记录 | §4.3 | M55 生命周期 + ListSessionRuns；编排 schema 待对齐 | 🟡 |
-| F5 | session_run_steps 步骤记录 | §4.4 | 新表 + step 写入 + List RPC | 待办 |
-| F6 | session_participants | §4.2 | 读时 Sync + Team Tab；增量写待办 | 🟡 |
-| F7 | session_trace_spans | §4.6 | 完整追踪链路 + parent_span_id 树 + Trace API | P3 |
-| F8 | session_context_snapshots | §5.4 | Context ratio 趋势数据 + 快照 API | P3 |
-| F9 | session_model_summaries | §4.7 | 多模型分布汇总 + 模型切换历史 | P3 |
-| F10 | trpc session.Service 适配器 | §12.1 | `internal/session/trpc/service.go` 桥接 | P3 |
-| F11 | Event 分页 | §12.2 | ListEvents 分页查询 | P3 |
-| F12 | Session Track | §12.3 | Track(sessionID, key, value) | P3 |
-| F13 | Session Ingestor | §12.4 | Session 完成后自动摄入外部记忆平台 | P4 |
-| F14 | 多后端支持 | §12.5 | Redis/PG/MySQL/ClickHouse | P4 |
-| F15 | 前端 Trace 链路页 | §7.4 | 树形/瀑布视图 | P3 |
-| F16 | 前端 Context 趋势线 | §7.6 | context ratio 趋势可视化 | P3 |
-| F17 | 前端 Team Session 专属展示 | §7.5 | Participants Panel ✅ · Handoff Badge 待办 | 🟡 |
-
-### 10.3 开发阶段建议
-
-**Phase 1（近期优化）** — ✅ 已完成：
-- O1 · O5 · F1 · F2 · F3 · O2 Timeline UNION
-
-**Phase 2（编排增强）** — 🟡 进行中：
-- F4: session_runs 列表 ✅（M55）
-- F5: session_run_steps 待办
-- F6: session_participants 部分 ✅
-- F17: Team UI 部分 ✅
-
-**Phase 3（可观测性）**：
-- F7: session_trace_spans
-- F8: session_context_snapshots
-- F9: session_model_summaries
-- F15: 前端 Trace 链路页
-- F16: 前端 Context 趋势线
-
-**Phase 4（框架对齐）**：
-- F10-F14: trpc session.Service 适配器 + 多后端
+// internal/service/service.go
+var ProviderSet = wire.NewSet(
+    NewSessionService,
+    NewSessionCompressor,
+    // ... 其他 service
+)
+```

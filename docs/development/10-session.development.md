@@ -1,59 +1,166 @@
 # Session — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 Phase 1–2 核心已落地 · Phase 3+ 待办见 §8
-> **需求**：[10 session.md](./10%20session.md) · **设计**：[10 session.design.md](./10%20session.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **规范**：[docs/README.md](../README.md)
+> **版本**：2026-06-17 | **状态**：🟢 Phase 1–2 核心已落地 · Phase 3+ 待办见 §8
+> **需求**：[10-session.md](./10-session.md) · **设计**：[10-session.design.md](./10-session.design.md)
+> **规范**：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
 
 ---
 
 ## 1. 模块定位
 
-Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除、归档、标题、上下文压缩、轮次、状态、批量治理、消息检索、Timeline、导出、Runs/Participants 观测）。
+Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除、归档、标题、上下文压缩、轮次、状态、批量治理、消息检索、Timeline、导出、Runs/Participants 观测、子会话树、活动列表）。
 
-**代码锚点**（按职责拆分）：
+### 1.1 代码锚点
+
+#### Service 层（`internal/service/`）
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `session.go` | 571 | SessionService：CRUD、Timeline、消息、Turn、Pin/Unpin、Export |
+| `session_batch.go` | 90 | BatchPreview / BatchArchive / BatchDelete + Audit |
+| `session_observability.go` | 103 | Export / ListSessionRuns / ListSessionParticipants / ListChildSessions / ListActivities |
+| `session_status_guard.go` | 85 | 状态守卫（running/awaiting_confirmation 不可删/归档） |
+| `session_context_window.go` | 9 | 上下文窗口解析（薄封装） |
+| `session_projection.go` | 66 | Runner 事件投影 |
+| `session_run_durable_worker.go` | 73 | Run 持久化 worker |
+| `session_run_escalation_notifier.go` | 243 | Run 升级通知 |
+| `session_title_llm.go` | 77 | LLM 标题生成 |
+| `session_revision_publish.go` | 8 | Session 修订发布 |
+
+#### Biz 层（`internal/biz/session/`）
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `usecase.go` | 677 | SessionUsecase 主入口 + SessionRepo 聚合接口（17 子接口） |
+| `status.go` | 26 | SessionStatus 枚举 + SessionStatusReason + IsProtectedStatus |
+| `status_machine.go` | 48 | SessionStatusMachine 实现（合法转换表） |
+| `session_state_machine.go` | 111 | 状态机集成（TransitionStatus 等） |
+| `compression.go` | 68 | SessionCompressionUsecase（窄接口：CompressRepo/ContextUpdater/SummaryReader/SummaryWriter） |
+| `batch.go` | 252 | cutoff 解析、scope 扫描、批量命中 |
+| `export.go` | 117 | Session 导出（Markdown/JSON） |
+| `pin.go` | 19 | Pin/Unpin 业务逻辑 |
+| `timeline.go` | 6 | Timeline 入口（薄封装） |
+| `timeline_items.go` | 170 | Timeline 条目构建 |
+| `timeline_usecase.go` | 204 | Timeline 聚合用例 |
+| `message_usecase.go` | 321 | 消息用例（AppendChatTurn/AppendChatMessage/Search） |
+| `messages.go` | 69 | 消息辅助逻辑 |
+| `turns.go` | 18 | Turn 入口（薄封装） |
+| `turn_usecase.go` | 72 | Turn 用例（Create/Update/List） |
+| `title.go` | 44 | 自动标题生成（截取 + LLM 双策略） |
+| `summary.go` | — | 摘要业务逻辑 |
+| `state.go` | 18 | State KV 入口 |
+| `state_usecase.go` | 52 | State 用例（Get/Save/ApplyStateDelta） |
+| `participant.go` | 27 | Participant 入口 |
+| `participant_usecase.go` | 69 | Participant 用例 |
+| `participants_list.go` | 9 | Participant 列表辅助 |
+| `metrics.go` | 114 | Metrics 业务逻辑 |
+| `metrics_delta.go` | 24 | Metrics 增量计算 |
+| `metrics_flush.go` | 32 | Metrics 刷新 |
+| `metrics_repo.go` | 53 | SessionRuntimeWriter/SessionMetricsReader/Writer 拆分接口 |
+| `recovery.go` | 52 | Session 恢复逻辑 |
+| `limits.go` | 41 | 分页/扫描限制常量 |
+
+#### Data 层（`internal/data/`）
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `session_repo.go` | 843 | 主表 Ent 实现（SessionReader/Writer/Mutator/MessageReader/Writer 等） |
+| `session_message_repo.go` | 409 | 消息子接口实现（AppendChatTurn/搜索） |
+| `session_state_repo.go` | 86 | State KV 实现 |
+| `session_timeline.go` | 257 | Timeline SQL UNION 分页 |
+| `session_participant_repo.go` | 216 | participants 表 + 读时 Sync（SyncFromSession） |
+| `session_participant_schema.go` | — | Participant Schema 辅助 |
+| `session_run_repo.go` | 434 | M55 `session_runs` 生命周期 |
+| `session_run_schema.go` | — | Run Schema 辅助 |
+| `session_run_checkpoint_repo.go` | — | Run Checkpoint 实现 |
+| `session_runtime_repo.go` | 117 | SessionRuntime 拆分表实现 |
+| `session_metrics_repo.go` | 173 | SessionMetrics 拆分表实现 |
+| `session_metrics_cache.go` | — | Metrics 缓存 |
+| `session_repo_batch.go` | 192 | 批量归档/删除实现 |
+| `session_repo_summaries.go` | 104 | session_summaries 原生 SQL CRUD |
+| `session_message_feedback.go` | — | 消息反馈实现 |
+| `session_status_migrate.go` | — | 状态迁移辅助 |
+| `session_turn_repo.go` | — | Turn Repo 实现 |
+
+#### 运行时层
 
 | 文件 | 职责 |
 |------|------|
-| `api/kratos/session/v1/session.proto` | RPC 契约 |
-| `internal/service/session.go` | SessionService：CRUD、Timeline、消息、Turn |
-| `internal/service/session_observability.go` | Export / ListSessionRuns / ListSessionParticipants |
-| `internal/service/session_batch.go` | BatchPreview / BatchArchive / BatchDelete + Audit |
-| `internal/biz/session/` | 领域用例：CRUD、Timeline、Export、Participants、Pin、Turn、Compression、Metrics、State、Status |
-| `internal/biz/session/compression.go` | SessionCompressionUsecase（窄接口：CompressRepo/ContextUpdater/SummaryReader/SummaryWriter） |
 | `internal/biz/native_turn_compressor.go` | NativeTurnCompressor 接口（AfterNativeTurn） |
 | `internal/session/compressor.go` | 压缩触发器（调用 biz SessionCompressionUsecase） |
-| `internal/biz/session/state.go` | State KV / ApplyStateDelta |
-| `internal/data/session_repo.go` | 主表（~705 行） |
-| `internal/data/session_message_repo.go` | 消息子接口实现（~340 行） |
-| `internal/data/session_state_repo.go` | State KV 实现（~45 行） |
-| `internal/data/session_timeline.go` | Timeline SQL UNION 分页 |
-| `internal/data/session_participant_*.go` | participants 表 + 读时聚合 |
-| `internal/data/session_run_*.go` | M55 `session_runs` 生命周期 |
-| `internal/session/` | trpc Runtime、Compressor、KV sync |
-| `web/src/features/session/` | API、composables（`useSessionsPage`/`useSessionDetailPage`/`useSessionTimelinePanel` 等）、详情页 Tab |
+| `internal/session/compress_policy.go` | 压缩策略（L0CompressMinGapSec 防抖） |
+| `internal/session/runtime.go` | trpc Runtime 桥接 |
+| `internal/session/memory_compact.go` | 记忆压缩 |
+| `internal/session/micro_compact.go` | 微压缩 |
+| `internal/session/context_update.go` | 上下文更新 |
+| `internal/session/snapshot.go` | Runner Snapshot 同步 |
+| `internal/session/token_estimate.go` | Token 估算 |
+| `internal/session/provider.go` | Provider 辅助 |
+| `internal/session/key.go` | Key 辅助 |
+| `internal/agent/trpc_runtime.go` | trpc Runtime 集成 |
+| `internal/agent/event_projector.go` | 事件投影 |
+| `internal/agent/activity_projector.go` | 活动投影 |
+| `internal/agent/activity_persist.go` | 活动持久化 |
+| `internal/agent/l0_snapshot_persist.go` | L0 Snapshot 持久化 |
+
+#### 前端（`web/src/`）
+
+| 文件 | 职责 |
+|------|------|
+| `features/session/api.ts` | Kratos API 封装 + 类型定义 |
+| `features/session/types.ts` | 类型定义（BatchPreviewResult, BulkProgress 等） |
+| `features/session/useSessionsPage.ts` | 会话列表页 composable |
+| `features/session/useSessionDetailPage.ts` | 会话详情页 composable |
+| `features/session/useSessionTimelinePanel.ts` | Timeline 面板 composable（服务端分页） |
+| `features/session/useSessionTimelineInspector.ts` | Timeline 检查器 composable |
+| `features/session/useSessionTurnsPanel.ts` | Turn 面板 composable |
+| `features/session/useSessionRunsPanel.ts` | Run 面板 composable |
+| `features/session/useSessionParticipantsPanel.ts` | 参与者面板 composable |
+| `features/session/useSessionMessagesPanel.ts` | 消息面板 composable |
+| `features/session/timelineHelpers.ts` | Timeline 辅助函数 |
+| `features/session/sessionSort.ts` | 排序逻辑 |
+| `features/session/downloadExport.ts` | 导出下载 |
+| `features/session/contextMetrics.ts` | 上下文指标（阈值与 Go llmcontext/metrics.go 同步） |
+| `features/session/batchNotify.ts` | 批量操作通知 |
+| `components/chat/ChatSessionSidebar.vue` | Chat 页右侧 Session 列表 |
+| `components/chat/SessionTimelineDialog.vue` | 历史追踪弹窗（服务端分页） |
+| `components/chat/SessionEventInspectorPanel.vue` | 事件检查器面板 |
+| `components/sessions/sessionUi.ts` | 工具函数（格式化、颜色、列定义） |
+| `components/sessions/Sessions*.vue` | 管理页组件（Hero/SummaryCards/FilterBar/TableSection/BulkToolbar 等） |
+| `components/sessions/Session*.vue` | 详情组件（StatusBadge/RunsPanel/TurnsPanel/ParticipantsPanel/MessagesPanel/TimelinePanel 等） |
+| `pages/SessionsPage.vue` | Session 管理页面 |
+
+> 完整组件设计、UX 规范、API 契约详见 [10-session.design.md §8 Web 前端设计](./10-session.design.md#八web-前端设计)
 
 ---
 
-## 2. 现状评估（2026-06-06）
+## 2. 现状评估（2026-06-17）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Session CRUD / 归档 / 恢复 / 部分更新 | ✅ | Proto + Ent |
-| 列表删除 + 批量治理（Phase 1b） | ✅ | Batch* RPC + `useSessionsPage` |
-| 消息 DB 分页 + FTS 搜索 | ✅ | `ListSessionMessages` / `SearchSessionMessages` |
-| Timeline 混合 kind SQL UNION | ✅ | `session_timeline.go`；全量无 cap |
+| Session CRUD / 归档 / 恢复 / 部分更新 | ✅ | Proto + Ent + Service `session.go` (571 行) |
+| 列表删除 + 批量治理（Phase 1b） | ✅ | Batch* RPC + `session_batch.go` + `useSessionsPage` |
+| 消息 DB 分页 + FTS 搜索 | ✅ | `ListSessionMessages`（含 after_revision）/ `SearchSessionMessages` |
+| Timeline 混合 kind SQL UNION | ✅ | `session_timeline.go` (257 行)；全量无 cap |
 | 上下文压缩 + L0 防抖可配置 | ✅ | `compress_policy.go` · `L0CompressMinGapSec` |
-| Session 置顶 | ✅ | `pinned_at` + Pin/Unpin；Search 排序；聊天侧栏 + 管理页 |
+| Session 置顶 | ✅ | `pinned_at` + Pin/Unpin RPC；Search 排序；聊天侧栏 + 管理页 |
 | Session 导出 Markdown/JSON | ✅ | `ExportSession`；详情页 + 列表详情卡片 |
-| Session Turns / State KV / Summaries | ✅ | 已有 RPC + 表 |
+| Session Turns / State KV / Summaries | ✅ | 已有 RPC + 表 + biz 用例 |
 | Runner Snapshot（Ent + trpc KV） | ✅ | `stateDeltaHandler` · `SyncStateDelta` |
-| M55 session_runs 生命周期 | ✅ | CC-R-01~05；Chat 写入 |
+| M55 session_runs 生命周期 | ✅ | CC-R-01~05；Chat 写入；`session_run_repo.go` (434 行) |
 | ListSessionRuns + Runs 详情 Tab | ✅ | 读 M55 表 |
-| session_participants | 🟡 | 表 + 读时 Sync；Team 详情 Tab；**无 turn 增量写** |
+| ListSessionParticipants + Participants Tab | ✅ | 读时 Sync（`SyncFromSession`） |
+| ListChildSessions（会话树） | ✅ | `SessionTreeReader.ListByParentSessionID` |
+| ListActivities（活动列表） | ✅ | Activity-First 架构 |
+| CompactSession / GetCompressStatus | ✅ | 手动压缩 + 状态查询 RPC |
+| Session 状态机（5 状态） | ✅ | `status_machine.go` + `session_state_machine.go` |
+| SessionRuntime / SessionMetrics 拆分表 | ✅ | 高频字段拆出，减少写放大 |
+| session_participants 增量写 | 🟡 | 表 + 读时 Sync；Team 详情 Tab；**无 turn 增量写** |
 | session_run_steps | ❌ | F5 未建表 |
-| session_trace_spans / snapshots | ❌ | F7–F8 未建表 |
+| session_trace_spans / context_snapshots | ❌ | F7–F8 未建表 |
 | trpc session 多后端 | 🟡 | SQLite 共用池；in-memory 回退有日志 |
 | 前端 Timeline 对话框（Chat） | ✅ | `SessionTimelineDialog` 已实现服务端分页（`useSessionTimelinePanel`） |
+| trpc session.Service 桥接 | ❌ | M5-12 未实施（`BizSessionService` 未创建） |
 
 ---
 
@@ -76,7 +183,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | O7 | Repository 接口拆分 + Deprecated 清理 | P2 | ✅ |
 | O8 | CompressorDeps 窄聚合 + 代码质量修复 | P2 | ✅ |
 | O9 | SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复 | P2 | ✅ |
-| P2-refactor | biz/data 文件拆分收尾 | P2 | 🟡 部分（timeline/export/participant 已拆；接口拆分 ✅ O7；data 拆分 ✅ O9） |
+| P2-refactor | biz/data 文件拆分收尾 | P2 | ✅（timeline/export/participant 已拆；接口拆分 O7；data 拆分 O9） |
 
 ### 3.2 功能差距
 
@@ -85,7 +192,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | F1 | Session 置顶 | P2 | ✅ |
 | F2 | Session 导出 | P3 | ✅ |
 | F3 | 消息搜索 FTS | P3 | ✅ |
-| F4 | session_runs 列表 | P2 | ✅（M55 语义；非 design §4.3 编排 schema） |
+| F4 | session_runs 列表 | P2 | ✅（M55 语义；非 design §4.7 编排 schema） |
 | F5 | session_run_steps | P2 | ❌ |
 | F6 | session_participants | P2 | 🟡 |
 | F7–F9 | trace / context_snapshots / model_summaries | P3 | ❌ |
@@ -100,9 +207,11 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 |------|------|------|
 | Phase 1b | 批量治理 | ✅ |
 | Phase 1 | O1/O3/O5、F1 置顶 | ✅ |
-| Phase 2 | F2 导出、F4 Runs 列表、O2 Timeline UNION、F6 参与者（读时） | 🟡 大部分 ✅ |
+| Phase 2 | F2 导出、F4 Runs 列表、O2 Timeline UNION、F6 参与者（读时）、O7/O8/O9 代码质量 | ✅ 大部分 |
 | Phase 3 | F5 steps、F7 trace、F8 snapshots、F15–F16 前端 | 待办 |
-| Phase 4–5 | F9–F14 trpc 多后端 / Ingestor | 待办 |
+| Phase 4–5 | F9–F14 trpc 多后端 / Ingestor / session.Service 桥接 | 待办 |
+
+> Phase 划分对应 trpc-agent-go 对齐路径 M5-1 至 M5-14，详见 [10-session.design.md §7 trpc-agent-go 对齐路径](./10-session.design.md#七trpc-agent-go-对齐路径)
 
 ---
 
@@ -111,6 +220,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | # | 任务 | 优先级 | 状态 |
 |---|------|--------|------|
 | O1–O5, P1, P3 | 性能与 Timeline | P1–P2 | ✅ |
+| O7–O9 | Repository 拆分 + 代码质量 | P2 | ✅ |
 | F1, F2 | 置顶 + 导出 | P2–P3 | ✅ |
 | F4 | Runs 列表 RPC + UI | P2 | ✅ |
 | F6 | Participants 增量写 + Agent 会话展示 | P2 | 🟡 |
@@ -132,12 +242,19 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 - [x] Export Markdown/JSON
 - [x] Runs 列表（M55 表）
 - [x] Timeline 弹窗服务端分页（`useSessionTimelinePanel`，PAGE_SIZE=100）
+- [x] Session 状态机（5 状态 + 合法转换 + 受保护状态）
+- [x] SessionRuntime / SessionMetrics 拆分表
+- [x] ListChildSessions（会话树）+ ListActivities（活动列表）
+- [x] CompactSession / GetCompressStatus RPC
+- [x] O7 Repository 接口拆分（17 子接口，每个 ≤5 方法）
+- [x] O8 CompressorDeps 窄聚合
+- [x] O9 SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复
 
 ### Phase 2 剩余
 
 - [ ] Participants **turn 完成时增量 upsert**（替代每次 List 全量 Sync）
 - [ ] Agent 单会话也展示参与者（owner 行）
-- [ ] M55 `session_runs` 与 design §4.3 编排字段对齐（或文档定稿双表策略）
+- [ ] M55 `session_runs` 与 design §4.7 编排字段对齐（或文档定稿双表策略）
 - [ ] `session_run_steps` 表 + 写入 + List RPC
 
 ### Phase 3+
@@ -157,57 +274,57 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 - Timeline 全量导出/全量 UNION 在超大会话（10w+ 事件）可能慢；必要时加 export 流式或 cursor。
 - Export 上限受 `MessageListMaxLimit=500` 分批拉消息，Timeline 走 UNION total，整体可完成但耗时长。
 
-### 接口拆分（O7 — 2026-05-29）
+### 7.1 接口拆分（O7 — 2026-05-29）
 
-**变更**：`SessionRepository` 聚合接口（54 方法）拆分为 17 个子接口，每个 ≤5 方法，符合红线 #15。
+**变更**：`SessionRepository` 聚合接口拆分为 17 个子接口，每个 ≤5 方法，符合红线 #15。
 
 | 子接口 | 方法数 | 职责 |
 |--------|--------|------|
-| SessionReader | 5 | 会话读取 |
-| SessionWriter | 5 | 会话写入 |
-| SessionBatchWriter | 3 | 批量归档/删除 |
-| SessionPinWriter | 2 | 置顶操作 |
-| SessionRevisionWriter | 2 | 版本号 + Agent 批量删 |
+| SessionReader | 5 | 会话读取（含 ListSessionsByIDs/ListSessionsForBatch） |
+| SessionTreeReader | 1 | 会话树读取（ListByParentSessionID） |
+| SessionWriter | 5 | 会话写入（Create/UpdateTitle/Update/Restore/BumpRevision） |
+| SessionMutator | 5 | 会话变更（Archive/Delete/DeleteByAgent/Pin/Unpin） |
+| SessionBatchMutator | 2 | 批量变更（ArchiveByIDs/DeleteByIDs） |
 | MessageReader | 5 | 消息读取 |
-| MessageSearchReader | 3 | 消息搜索 + 增量拉取 |
-| MessageWriter | 4 | 消息写入 |
+| MessageSearchReader | 3 | 消息搜索 + 增量拉取（含 ListMessagesAfterRevision） |
+| MessageWriter | 4 | 消息写入（含 UpsertChatActivityMessage） |
 | MessageStatusWriter | 1 | 消息状态更新 |
 | TimelineReader | 4 | 时间线读取 |
 | InvocationReader | 2 | 工具/Skill 调用读取 |
-| SummaryReader | 4 | 摘要读取 |
-| SummaryWriter | 2 | 摘要写入 |
-| StateRepo | 2 | KV 状态 |
+| SummaryReader | 3 | 摘要读取 |
+| SummaryWriter | 3 | 摘要写入 |
+| StateRepo | 3 | KV 状态（Get/Save/Patch） |
 | TurnRepo | 4 | Turn 读写 |
-| ContextUpdater | 4 | 上下文更新 |
+| ContextUpdater | 5 | 上下文更新（含 ApplyMetricsDelta） |
 | CompressRepo | 2 | 压缩 CAS + 事务 |
 
 **其他变更**：
-- `SessionRepository` → `SessionRepo`（移除 Deprecated 标记）
+- `SessionRepository` → `SessionRepo`（保留 Deprecated 标记 + TECH-DEBT(COG): interface_methods=17）
 - `Compressor.Agents` 从 `biz.AgentRepository` 改为 `AgentKeyLookup` 窄接口
 - 新增 `MessageStatusWriter` 接口，消除 `chatMessageStatusUpdater` 运行时类型断言
 - 前端：`buildTimelineStats` 从 components 迁移至 features 层
 - 前端：Store 移除 `turns`/`timeline`/`messages` 冗余子资源状态
 
-### O8 代码质量修复（2026-05-29）
+### 7.2 O8 代码质量修复（2026-05-29）
 
 **变更**：Compressor 构造函数收窄 + data 层规范修复 + 前端统一
 
 | 变更 | 文件 | 说明 |
 |------|------|------|
-| CompressorDeps | internal/session/compressor.go | 7 子接口窄聚合替代 SessionRepo（54 方法） |
+| CompressorDeps | internal/session/compressor.go | 7 子接口窄聚合替代 SessionRepo |
 | RawDB() 访问器 | session_repo.go | rawDB → RawDB()，与项目 40+ 处用法一致 |
 | kerrors 替换 | channel_peer_session.go | fmt.Errorf → kerrors.BadRequest |
 | resolveAgentAuthor | internal/session/compressor.go | 提取重复的 author 解析逻辑 |
 | formatSessionDate | sessionUi.ts + 4 组件 | 统一日期格式化函数 |
 
-### O9 SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复（2026-05-29）
+### 7.3 O9 SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复（2026-05-29）
 
 **变更**：SessionRepo 注释明确 + data 层文件拆分 + 前端 UX 红线修复 + 分层合规
 
 | 变更 | 文件 | 说明 |
 |------|------|------|
 | SessionRepo 注释 | usecase.go | 添加注释明确仅用于 Wire 绑定，消费者应依赖具体子接口 |
-| data 层文件拆分 | session_repo.go → 3 文件 | 主表 ~705 行 + 消息 ~340 行 + 状态 ~45 行 |
+| data 层文件拆分 | session_repo.go → 多文件 | 主表 843 行 + 消息 409 行 + 状态 86 行 + timeline 257 行 + participant 216 行 + run 434 行 + runtime 117 行 + metrics 173 行 + batch 192 行 + summaries 104 行 |
 | deep-purple → teal | sessionUi.ts + SessionTurnsPanel.vue | 修复前端红线 #8（禁止日间用霓虹紫作强调色） |
 | exportSelectedDetail 迁移 | SessionsPage.vue → useSessionsPage.ts | Page 不直接 import features/api，经 composable |
 
@@ -223,7 +340,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 |----|-----|------|------|
 | F6-a | Participants 增量写入 | Turn/Message 完成时 upsert；List 不再全量 Sync | 待办 · Review **SESS-R-P1-01** |
 | F6-b | Agent 会话参与者行 | 单 Agent session 写 owner 参与者 | 待办 |
-| F6-c | Team Handoff Badge | 设计 §7.5；消息 options 展示 handoff | 待办 |
+| F6-c | Team Handoff Badge | 设计 §8.9；消息 options 展示 handoff | 待办 |
 | F5 | session_run_steps | 表 + model/tool/skill/mcp step 写入 + List RPC | 待办 |
 | F4-schema | M55 runs vs 编排 runs | 扩展字段或独立表；与 Chat/Team 写入对齐 | 待办 |
 | FE-TL-01 | Chat `SessionTimelineDialog` 服务端分页 | 对齐 `useSessionTimelinePanel` | ✅ |
@@ -235,10 +352,10 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 |----|-----|------|------|
 | O4 | AppendChatTurn 查询合并 | 事务内 `maxMessageTurnTx` + session 一次查 | 待办 |
 | O6 | Compressor 模型选择收敛 | 统一 L0 provider/model fallback 策略 | 待办 |
-| O7 | Repository 接口拆分 | SessionWriter→5+SessionBatchWriter+SessionPinWriter+SessionRevisionWriter; MessageReader→5+MessageSearchReader; SummaryRepo→SummaryReader+SummaryWriter; SessionRunRepo→SessionRunReader+SessionRunWriter+SessionRunDurableRepo; SessionRepository→SessionRepo; Compressor.Agents→AgentKeyLookup; MessageStatusWriter 新接口 | ✅ |
-| O9 | SessionRepo 注释 + data 拆分 + 前端 UX/分层 | SessionRepo 注释明确 Wire 绑定用途; session_repo.go 拆分 3 文件; deep-purple→teal; exportSelectedDetail 迁移 composable | ✅ |
+| O7 | Repository 接口拆分 | 17 子接口（SessionReader/SessionTreeReader/SessionWriter/SessionMutator/SessionBatchMutator/MessageReader/MessageSearchReader/MessageWriter/MessageStatusWriter/TimelineReader/InvocationReader/SummaryReader/SummaryWriter/StateRepo/TurnRepo/ContextUpdater/CompressRepo） | ✅ |
+| O9 | SessionRepo 注释 + data 拆分 + 前端 UX/分层 | SessionRepo 注释明确 Wire 绑定用途; session_repo.go 拆分多文件; deep-purple→teal; exportSelectedDetail 迁移 composable | ✅ |
 | P2-refactor | 文件拆分收尾 | `session_usecase` 常量迁出；repo 按域分文件 | ✅ data 层已拆分 |
-| SYNC-01 | state_json  bulk sync | event_bus 全量 state 写 trpc（现仅 per-key KV） | 待办 |
+| SYNC-01 | state_json bulk sync | event_bus 全量 state 写 trpc（现仅 per-key KV） | 待办 |
 | SYNC-02 | Ent-only snapshot 路径 | 非 event bus 路径也调 `SyncRunnerSnapshot` | 待办 |
 
 ### 8.3 P3 — 可观测性（Phase 3）
@@ -256,11 +373,12 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 
 | ID | 项 | 说明 | 状态 |
 |----|-----|------|------|
-| F10 | trpc session.Service 适配器 | Ent ↔ trpc 桥接（design §12.1） | 待办 |
+| F10 | trpc session.Service 适配器 | Ent ↔ trpc 桥接（design §7.1） | 待办 |
 | F11 | Event 分页 | ListEvents limit/offset | 待办 |
 | F12 | Session Track | Track(sessionID, key, value) | 待办 |
 | F13 | Session Ingestor | Run 完成后外部记忆摄入 | 待办 |
 | F14 | 多后端 | Redis/PG/MySQL/ClickHouse 可配置 | 待办 |
+| M5-12 | trpc session.Service 桥接 | `BizSessionService` 实现（design §7.7） | 待办 |
 | M5-14 | 压缩迁 trpc 内置 | 与 `internal/session/compressor` 合并策略 | 待办 |
 
 ### 8.5 前端 / UX 待办
@@ -276,7 +394,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 
 | ID | 项 | 说明 | 状态 |
 |----|-----|------|------|
-| ARCH-01 | trpc/Ent 边界文档 | `0-system-development.md` Session 行定稿 | 待办 |
+| ARCH-01 | trpc/Ent 边界文档 | `0-system.development.md` Session 行定稿 | 待办 |
 | ARCH-02 | in-memory session 告警 | SQLite 失败回退监控指标 | 🟡 已有 log |
 | ARCH-03 | Export 大会话限流 | 异步 job + 下载链接 | 待办 · Review **SESS-R-P1-02** |
 
@@ -287,8 +405,11 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | 类别 | 项 |
 |------|-----|
 | 性能 | P1 消息分页、P3 批量 IDs、O1 kerrors、O2 UNION、O3 inv limit、O5 防抖 |
-| 功能 | F1 置顶、F2 导出、F3 FTS、F4 Runs 列表（M55） |
-| 前端 | 置顶（聊天+管理页）、导出（详情+列表卡片）、Runs/Participants/Timeline 详情 Tab、Timeline 弹窗服务端分页 |
+| 功能 | F1 置顶、F2 导出、F3 FTS、F4 Runs 列表（M55）、ListChildSessions、ListActivities、CompactSession/GetCompressStatus |
+| 代码质量 | O7 接口拆分（17 子接口）、O8 CompressorDeps 窄聚合、O9 SessionRepo 注释 + data 拆分 + 前端 UX/分层 |
+| 状态机 | SessionStatusMachine（5 状态 + 合法转换 + IsProtectedStatus） |
+| 拆分表 | SessionRuntime（运行时字段）、SessionMetrics（指标字段） |
+| 前端 | 置顶（聊天+管理页）、导出（详情+列表卡片）、Runs/Participants/Timeline/Turns/Messages 详情 Tab、Timeline 弹窗服务端分页 |
 | 基础设施 | Phase 1b 批量、SQLite 父目录自动创建、trpc `DefaultAppName`、KV state delta sync |
 
 ---
@@ -298,10 +419,8 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | 文档 | 同步策略 |
 |------|----------|
 | **本文** | 待办权威来源（§8） |
-| [10 session.design.md](./10%20session.design.md) | §9 M5 里程碑、§10 优化表 — 与本文对齐 |
-| [10 session.md](./10%20session.md) | 需求 Phase 段落 — 置顶/导出/FTS 改为 ✅ |
-| [0-system-development.md](./0-system-development.md) | Session 架构边界 — ARCH-01 完成后更新 |
-| [2026-05-24-Session-Phase2-Review.md](../review/2026-05-24-Session-Phase2-Review.md) | **代码 Review**（83/100）；P1 风险 SESS-R-P1-01~03 映射 §8 任务 ID |
-| [10-session-review.md](../review/10-session-review.md) | 模块 Review 基线 + Phase 2 增量索引 |
+| [10-session.design.md](./10-session.design.md) | §7 trpc-agent-go 对齐路径、§9 关键设计原则 — 与本文对齐 |
+| [10-session.md](./10-session.md) | 需求文档 — 用户故事/功能需求/验收标准 |
+| [0-system.development.md](./0-system.development.md) | Session 架构边界 — ARCH-01 完成后更新 |
 
-**最后同步**：2026-06-06
+**最后同步**：2026-06-17

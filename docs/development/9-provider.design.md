@@ -1,7 +1,7 @@
 # Provider 模型层 — 实现设计文档
 
-> 对应需求：`9 provider.md`
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+> 对应需求：[9 provider.md](./9%20provider.md)
+> 开发进度与任务清单：[9 provider.development.md](./9%20provider.development.md)
 
 ---
 
@@ -9,56 +9,207 @@
 
 LLM Provider/Model 管理：多厂商注册、模型目录、Failover/Hedge 高可用、TokenTailor 自动裁剪。核心包 `internal/provider` 桥接 trpc-agent-go `model` 包。
 
-**当前实现状态**（2026-06-06 现状对齐）：
-- ✅ Proto CRUD + Inspect + ValidatePair 已实现
-- ✅ `internal/provider/trpc_llm.go` 已实现按 `provider_type` 分发构建 `model.Model`（5 种原生 Provider + 4 种 Variant）
-- ✅ `internal/provider/catalog.go` 已实现 `ProviderModelConfig` 解析和合并（含所有 Provider 专属字段 + HA 配置）
-- ✅ Failover/Hedge 包装已实现（`wrapHA` + `wrapFailover` / `wrapHedge`）
-- ✅ Provider 专属选项构建已实现（OpenAI/Anthropic/Gemini/Ollama/Hunyuan 各自 builder）
-- ✅ `internal/llminspect/inspect.go` 已实现 OpenRouter / OpenAI-Compatible / Anthropic 三条探测路径 + DeepSeek 路由
-- ✅ Pricing 定价规则已实现（`UpsertModelPricingRule`；Create/Update 时自动同步）
-- ✅ `internal/provider/stream_delta.go` 流式 Delta 合并已实现
-- ✅ `internal/provider/roundtrip.go` HTTP Transport 注入已实现
-- ✅ 前端 `providerPresets.ts` 已对齐 trpc Provider 类型枚举（20 个预设）
-- ✅ 前端 `ProviderModelsTable.vue` 列表已实现（Variant Chip + HA Chip + 定价警告图标）
-- ✅ 前端 `ProviderTrendDialog.vue` 趋势看板已实现（30 天趋势柱状图、汇总卡片、详情表）
-- ✅ 前端 `ResourceManagerPage.vue` 管理页面已实现（搜索、分页、创建/编辑弹窗）
-- ✅ Agent 构建链路已接入（`internal/agent/trpc_build.go` + `internal/service/session_title_llm.go`）
-- ✅ Inspect 请求/响应扩展字段（variant、secret_id、secret_key、aws_region、enable_token_tailoring、supports_cache、supports_thinking）
-- ✅ mergeInspectConfigJSON 已支持 variant / secret_id / secret_key / aws_region 合并
-- ✅ 前端添加/编辑弹窗四步表单（QStepper：① 连接与身份 → ② 模型分类与规格 → ③ 高可用配置 → ④ 高级选项）
-- ✅ 前端 Variant Chip 展示（ProviderModelsTable 含 Variant Chip）
-- ✅ 前端 HA Chip 展示（ProviderModelsTable 含 Failover/Hedge Chip）
-- ✅ llminspect 已实现 Gemini / Ollama / Hunyuan 专属探测路径 + 单测
-- ⏳ HuggingFace / Bedrock Provider 未注册到 trpc provider 工厂（前端预设已预留；register_extra.go + MapProviderType 已就绪）
-- ✅ 凭据加密存储（AES-256-GCM / ARANEA_CREDENTIAL_KEY）；List/Get 脱敏；降级警告；CredentialCrypto 构造函数注入
-- ✅ 速率限制（config_json rate_limit_rpm + RoundTrip 令牌桶）
-- ✅ 健康检查（ProviderHealthScanner 5min；safego.Go；UpdateProviderModelStatus）
-- ✅ Repo 接口拆分（LlmProviderModelRepo → Reader/Writer/Validator/Pricing 子接口）
-- ✅ ModelCapabilities 统一到 biz 层
-- ✅ HA 候选模型预检 + 指标装饰（outboundguard.ValidateURL + WrapModelWithMetrics）
-- ✅ 定价缺失提示（后端 PricingConfigured + 前端 price_check 警告图标）
-- ✅ 凭据加密降级提示（IsCredentialEncryptionAvailable + 前端 q-banner 警告）
-- ✅ HA 故障转移事件可视化（WithSwitchCallback → event.CtxFlowLogWarn）
-- ✅ Proto pricing_configured 字段（field 16）
-- ✅ Provider 适配路径单测（37 用例）
-- ✅ 前端 composable 拆分（useProviderList / useProviderCatalog / useProviderCredentials / useProviderInspect / useProviderPresets / useProviderWizard / useProviderSave / useResourceManagerPage）
-- ✅ 前端类型统一到 types.ts（ProviderConfig / ModelCategory / CapabilityChip）
-- ✅ 前端数据流合规（useAgentProviderModelPicker + useProviderWizard 走 Store）
-- ✅ Wire DI 合规（CredentialCrypto 构造函数注入，SetInspector + SetCredentialKeyResolver 已删除）
-- ✅ UpsertModelPricingRule 事务安全
-- ✅ RunHealthChecks 并发安全 + safego 合规
-- ✅ MCPServerRepo 接口拆分（Reader/Writer/MetadataWriter）
-- ✅ DecryptConfigJSONForRuntime 返回 (string, error)
-- ✅ RunHealthChecks goroutine ctx 取消修复
+**分层职责**：
+
+| 层 | 包路径 | 职责 |
+|----|--------|------|
+| Proto | `api/kratos/llm_provider_model/v1/` | HTTP/gRPC 契约：CRUD + Inspect + ValidatePair + RevealCredentials |
+| Service | `internal/service/llm_provider_model.go` | Proto ↔ Biz 转换、HTTP 入口 |
+| Biz | `internal/biz/llm_provider_model.go` | 领域模型、Usecase、Repo 子接口、InspectMerge、ModelPricingRule、ModelCapabilities |
+| Biz（凭据） | `internal/biz/credential_crypto.go`、`credential_key.go`、`channel_credential_crypto.go` | AES-256-GCM 加解密 |
+| Data | `internal/data/llm_provider_model.go` | Ent ORM Repo 实现 |
+| Schema | `internal/data/ent/schema/llm_provider_model.go`、`model_pricing_rule.go` | Ent Schema（唯一真相源） |
+| Provider 桥接 | `internal/provider/trpc_llm.go`、`catalog.go`、`roundtrip.go`、`stream_delta.go` | config_json → trpc model.Model 装配 |
+| Inspect | `internal/llminspect/inspect.go` | 远程模型元数据探测 |
+| 前端 | `web/src/config/providerPresets.ts`、`web/src/features/platform/`、`web/src/components/platform/` | 预设、composable、组件 |
 
 ---
 
-## 二、Proto 层
+## 二、trpc-agent-go Model 体系
 
-### 2.1 现有 Proto（完整定义）
+trpc-agent-go 框架提供统一的 `model.Model` 接口，通过 `model/provider` 工厂按 Provider 类型分发构建：
+
+```go
+// model.Model 核心接口
+type Model interface {
+    GenerateContent(ctx context.Context, request *Request) (<-chan *Response, error)
+    Info() Info  // 返回 Name + ContextWindow
+}
+
+// model.Model 可选扩展接口（同 goroutine 迭代，减少 channel 开销）
+type IterModel interface {
+    Model
+    GenerateContentIter(ctx context.Context, request *Request) (Seq[*Response], error)
+}
+
+// model/provider 统一工厂
+m, err := provider.Model("openai", "gpt-4o",
+    provider.WithAPIKey("sk-..."),
+    provider.WithBaseURL("https://api.openai.com/v1"),
+    provider.WithVariant("deepseek"),
+)
+```
+
+### 2.1 原生 Provider 类型
+
+| Provider 类型 | trpc 包 | 认证方式 | 默认 Base URL | 协议 | `provider.Model()` 第一个参数 |
+|--------------|---------|---------|--------------|------|---------------------------|
+| **OpenAI Compatible** | `model/openai` | API Key | `https://api.openai.com/v1` | OpenAI Chat Completions | `"openai"` |
+| **Anthropic** | `model/anthropic` | API Key | `https://api.anthropic.com` | Anthropic Messages | `"anthropic"` |
+| **Gemini** | `model/gemini` | API Key | `https://generativelanguage.googleapis.com` | Google GenAI | `"gemini"` |
+| **Ollama** | `model/ollama` | 无（本地） | `http://localhost:11434` | Ollama Chat | `"ollama"` |
+| **Hunyuan** | `model/hunyuan` | SecretId + SecretKey | `https://hunyuan.tencentcloudapi.com` | 混元私有协议 | `"hunyuan"` |
+| **HuggingFace** | `model/huggingface` | API Key | `https://router.huggingface.co` | HF Inference | `"huggingface"` |
+| **Bedrock** | `model/bedrock` | AWS Config | — | AWS Bedrock Runtime | `"bedrock"` |
+
+> HuggingFace 和 Bedrock 的 Provider 类型枚举值已预留，待 trpc 上游注册到 `provider` 工厂后即可启用。
+
+### 2.2 OpenAI Compatible 子类型（Variant）
+
+OpenAI Provider 通过 `Variant` 区分子类型行为差异，由 `openai.WithVariant()` 或 `provider.WithVariant()` 设置：
+
+| Variant | 枚举值 | 行为差异 | 默认 Base URL |
+|---------|--------|---------|--------------|
+| **OpenAI** | `openai` | 默认；自动 prompt cache 优化 | `https://api.openai.com/v1` |
+| **DeepSeek** | `deepseek` | 自动回填 `reasoning_content`；思考模式使用 `{"type":"enabled"/"disabled"}` 格式；`textOnlyMessageContent=true` | `https://api.deepseek.com` |
+| **Qwen** | `qwen` | 默认 Base URL 指向阿里云；思考模式使用 `enabled_thinking` key | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| **Hunyuan** | `hunyuan` | 特定文件处理逻辑；文件上传使用 multipart form | — |
+
+**Variant 自动推断**：若未显式设置 Variant，OpenAI Model 会根据 `BaseURL` 自动推断（如 BaseURL 包含 `api.deepseek.com` 则推断为 `deepseek`）。
+
+### 2.3 高可用模式
+
+| 模式 | trpc 包 | 说明 | 关键配置 |
+|------|---------|------|---------|
+| **Failover** | `model/failover` | 按顺序尝试候选模型，首个成功响应即返回；适用于主备切换 | `WithCandidates(m1, m2, ...)`、`WithSwitchCallback(cb)` |
+| **Hedge** | `model/hedge` | 并发发起多个候选请求，首个有效响应即返回；可配置延迟启动偏移；适用于降低尾部延迟 | `WithCandidates(...)`、`WithDelay(100ms)`、`WithDelays(...)`、`WithName(...)`、`WithContextWindow(...)`、`WithSwitchCallback(cb)` |
+
+### 2.4 通用能力（provider.Option）
+
+| 能力 | provider.Option | 说明 |
+|------|----------------|------|
+| **Token Tailoring** | `WithEnableTokenTailoring(bool)` | 自动裁剪输入 Token 以适应上下文窗口 |
+| **Tailoring Strategy** | `WithTailoringStrategy(model.TailoringStrategy)` | 自定义裁剪策略（默认 `MiddleOutStrategy`） |
+| **Token Tailoring Config** | `WithTokenTailoringConfig(*model.TokenTailoringConfig)` | 裁剪预算参数（SafetyMarginRatio 等） |
+| **Context Window** | `WithContextWindow(int)` | 实例级覆盖上下文窗口大小 |
+| **Max Input Tokens** | `WithMaxInputTokens(int)` | 最大输入 Token 限制 |
+| **Channel Buffer Size** | `WithChannelBufferSize(int)` | 响应通道缓冲区大小（默认 256） |
+| **Custom HTTP Transport** | `WithHTTPClientTransport(http.RoundTripper)` | 注入自定义 Transport，用于代理、超时、链路追踪 |
+| **Callbacks** | `WithCallbacks(provider.Callbacks)` | 四阶段回调（Request/Response/Chunk/StreamComplete） |
+
+### 2.5 Provider 专属能力
+
+#### OpenAI 专属
+
+| 能力 | Option | 说明 |
+|------|--------|------|
+| **Variant 选择** | `WithVariant(openai.Variant)` | 选择 OpenAI/DeepSeek/Qwen/Hunyuan 行为模式 |
+| **Prompt Cache 优化** | `WithOptimizeForCache(bool)` | 将 system 消息前置以提高缓存命中率 |
+| **Reasoning 回填** | `WithReasoningContentBackfill(bool)` | DeepSeek Variant 默认启用 |
+| **Tool Call Delta** | `WithShowToolCallDelta(bool)` | 流式响应中暴露 tool_call 增量 |
+
+#### Anthropic 专属
+
+| 能力 | Option | 说明 |
+|------|--------|------|
+| **System Prompt Cache** | `WithCacheSystemPrompt(bool)` | 缓存系统提示（90% 输入折扣） |
+| **Tools Cache** | `WithCacheTools(bool)` | 缓存工具定义（90% 输入折扣） |
+| **Messages Cache** | `WithCacheMessages(bool)` | 多轮对话缓存 |
+| **Tool Call Delta** | `WithShowToolCallDelta(bool)` | 流式响应中暴露 tool_call 增量 |
+
+#### Gemini 专属
+
+| 能力 | Option | 说明 |
+|------|--------|------|
+| **Client Config** | `WithGeminiClientConfig(*genai.ClientConfig)` | 自定义 Gemini 客户端配置（APIKey / Backend / HTTPClient） |
+
+#### Ollama 专属
+
+| 能力 | Option | 说明 |
+|------|--------|------|
+| **Host** | `WithHost(string)` | Ollama 服务地址（默认 `http://localhost:11434`） |
+| **Keep Alive** | `WithKeepAlive(time.Duration)` | 模型保持加载的时长 |
+
+#### Hunyuan 专属
+
+| 能力 | Option | 说明 |
+|------|--------|------|
+| **SecretId** | `WithSecretId(string)` | 腾讯云 SecretId |
+| **SecretKey** | `WithSecretKey(string)` | 腾讯云 SecretKey |
+| **Host** | `WithHost(string)` | 混元服务地址 |
+
+---
+
+## 三、Provider 类型与前端预设映射
+
+### 3.1 前端类型定义
+
+文件：`web/src/config/providerRuntimeOverlay.types.ts`、`web/src/config/providerPresets.ts`
+
+```typescript
+export type AuthType = "api_key" | "secret_id_key" | "aws_config" | "none";
+export type ProviderType = "openai" | "anthropic" | "gemini" | "ollama" | "hunyuan" | "huggingface" | "bedrock";
+export type OpenAIVariant = "openai" | "deepseek" | "qwen" | "hunyuan";
+
+export type ProviderPreset = {
+  key: string;
+  label: string;
+  providerCode: string;
+  providerType: ProviderType;
+  variant?: OpenAIVariant;
+  authType: AuthType;
+  apiBaseUrl: string;
+  metadataApi: "full" | "partial" | "limited" | "none";
+  metadataNote: string;
+  models: ProviderModelPreset[];
+};
+```
+
+### 3.2 预设架构
+
+前端预设采用 **shell + overlay** 架构：
+
+- `providerPresets.ts` 的 `PROVIDER_PRESETS`：13 个预设 shell（OpenAI / Anthropic / Google / DeepSeek / 阿里云百炼 / Moonshot CN / 智谱 AI / OpenRouter / Ollama / 腾讯混元 / HuggingFace / AWS Bedrock / 完全自定义）
+- `providerRuntimeOverlay.ts` + `provider_runtime_overlay.json`：models.dev provider id → trpc 运行时（providerType / variant / authType / apiBaseUrl）映射，与后端 `internal/modelcatalog/runtime_overlay.json` 同步
+- `presetShell(key, label, providerCode, authOverride?)` 工厂函数：从 overlay 加载 runtime profile，构造预设 shell
+
+### 3.3 选项常量
+
+```typescript
+export const PROVIDER_TYPE_OPTIONS: { label: string; value: ProviderType }[] = [
+  { label: "OpenAI Compatible", value: "openai" },
+  { label: "Anthropic", value: "anthropic" },
+  { label: "Gemini", value: "gemini" },
+  { label: "Ollama", value: "ollama" },
+  { label: "Hunyuan", value: "hunyuan" },
+  { label: "HuggingFace", value: "huggingface" },
+  { label: "Bedrock", value: "bedrock" },
+];
+
+export const VARIANT_OPTIONS: { label: string; value: OpenAIVariant }[] = [
+  { label: "OpenAI", value: "openai" },
+  { label: "DeepSeek", value: "deepseek" },
+  { label: "Qwen", value: "qwen" },
+  { label: "Hunyuan", value: "hunyuan" },
+];
+```
+
+### 3.4 authType 与 UI 表单联动
+
+| authType | 显示的认证字段 | 隐藏的认证字段 |
+|----------|--------------|--------------|
+| `api_key` | API 基础 URL、API 密钥 | Secret ID/Key、AWS Region |
+| `secret_id_key` | API 基础 URL、Secret ID、Secret Key | API 密钥、AWS Region |
+| `aws_config` | AWS Region | API 基础 URL、API 密钥、Secret ID/Key |
+| `none` | API 基础 URL（Host） | API 密钥、Secret ID/Key、AWS Region |
+
+---
+
+## 四、Proto 层
 
 文件：`api/kratos/llm_provider_model/v1/llm_provider_model.proto`
+
+### 4.1 完整 Proto 定义
 
 ```protobuf
 syntax = "proto3";
@@ -86,7 +237,19 @@ message ProviderModel {
   string created_at = 12;
   string updated_at = 13;
   string deleted_at = 14;
+  ModelCapabilities capabilities = 15;
   bool pricing_configured = 16;
+}
+
+message ModelCapabilities {
+  bool text = 1;
+  bool vision = 2;
+  bool audio = 3;
+  bool file = 4;
+  bool tool_call = 5;
+  bool cache = 6;
+  bool thinking = 7;
+  bool text_only = 8;
 }
 
 message ListProviderModelsResponse {
@@ -104,6 +267,7 @@ message CreateProviderModelRequest {
   string model = 8;
   string config_json = 9;
   string metadata_json = 10;
+  ModelCapabilities capabilities = 11;
 }
 
 message GetProviderModelRequest {
@@ -142,6 +306,23 @@ message InspectProviderModelRequest {
   string aws_region = 10;
 }
 
+message RevealProviderModelCredentialsRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message HACandidateCredential {
+  string name = 1;
+  string api_key = 2;
+}
+
+message RevealProviderModelCredentialsResponse {
+  string api_key = 1;
+  string secret_key = 2;
+  bool has_api_key = 3;
+  bool has_secret_key = 4;
+  repeated HACandidateCredential ha_candidates = 5;
+}
+
 message InspectProviderModelResponse {
   bool ok = 1;
   string message = 2;
@@ -175,6 +356,9 @@ service LlmProviderModelService {
   rpc GetProviderModel(GetProviderModelRequest) returns (ProviderModel) {
     option (google.api.http) = {get: "/v1/llm-provider-models/{id}"};
   }
+  rpc RevealProviderModelCredentials(RevealProviderModelCredentialsRequest) returns (RevealProviderModelCredentialsResponse) {
+    option (google.api.http) = {get: "/v1/llm-provider-models/{id}/credentials"};
+  }
   rpc UpdateProviderModel(UpdateProviderModelRequest) returns (ProviderModel) {
     option (google.api.http) = {patch: "/v1/llm-provider-models/{id}" body: "provider_model"};
   }
@@ -190,56 +374,65 @@ service LlmProviderModelService {
 }
 ```
 
-### 2.2 已新增 Proto 字段（已实现）
+### 4.2 API 端点表
 
-#### InspectProviderModelRequest 新增字段
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/llm-provider-models` | 列表 |
+| POST | `/v1/llm-provider-models` | 创建 |
+| GET | `/v1/llm-provider-models/{id}` | 详情 |
+| GET | `/v1/llm-provider-models/{id}/credentials` | 揭示解密后的凭据（管理后台编辑用） |
+| PATCH | `/v1/llm-provider-models/{id}` | 更新 |
+| DELETE | `/v1/llm-provider-models/{id}` | 删除（软删） |
+| POST | `/v1/llm-provider-models/inspect` | 检查模型连通性并回填元数据 |
+| POST | `/v1/agents/validate-model` | 验证 Provider+Model 对是否可用 |
 
-```protobuf
-message InspectProviderModelRequest {
-  // ... 现有字段 1-6 ...
-  string variant = 7;       // 已新增：OpenAI Variant: openai/deepseek/qwen/hunyuan
-  string secret_id = 8;     // 已新增：Hunyuan SecretId
-  string secret_key = 9;    // 已新增：Hunyuan SecretKey
-  string aws_region = 10;   // 已新增：Bedrock AWS Region
-}
-```
+### 4.3 关键字段说明
 
-#### InspectProviderModelResponse 新增字段
-
-```protobuf
-message InspectProviderModelResponse {
-  // ... 现有字段 1-16 ...
-  string variant = 17;                // 已新增：检测到的 OpenAI Variant
-  bool enable_token_tailoring = 18;   // 已新增：是否启用 Token Tailoring
-  bool supports_cache = 19;           // 已新增：是否支持 Prompt Cache
-  bool supports_thinking = 20;        // 已新增：是否支持思考/推理模式
-}
-```
+- `ProviderModel.capabilities`（field 15）：模型能力位（text/vision/audio/file/tool_call/cache/thinking/text_only），由后端 `CapabilitiesForProviderModel` 推导
+- `ProviderModel.pricing_configured`（field 16）：是否已配置定价（由 `configJSONHasPricing` 检测）
+- `InspectProviderModelRequest`：含 `variant` / `secret_id` / `secret_key` / `aws_region` 字段，支持 Hunyuan/Bedrock Inspect
+- `InspectProviderModelResponse`：含 `variant` / `enable_token_tailoring` / `supports_cache` / `supports_thinking` 字段
+- `RevealProviderModelCredentials`：管理后台编辑时揭示解密后的 api_key / secret_key / ha_candidates 凭据
 
 ---
 
-## 三、Biz 层
-
-### 3.1 领域模型（当前实现）
+## 五、Biz 层
 
 文件：`internal/biz/llm_provider_model.go`
 
+### 5.1 领域模型
+
 ```go
 type ProviderModel struct {
-    ID           string
-    Key          string
-    Name         string
-    Description  string
-    Status       string
-    Enabled      bool
-    SortOrder    int
-    Provider     string
-    Model        string
-    ConfigJSON   string
-    MetadataJSON string
-    CreatedAt    string
-    UpdatedAt    string
-    DeletedAt    string
+    ID                   string
+    Key                  string // model_key
+    Name                 string
+    Description          string
+    Status               string
+    Enabled              bool
+    SortOrder            int
+    Provider             string
+    Model                string
+    ConfigJSON           string
+    MetadataJSON         string
+    Capabilities         ModelCapabilities
+    CapabilitiesExplicit bool
+    PricingConfigured    bool
+    CreatedAt            string
+    UpdatedAt            string
+    DeletedAt            string
+}
+
+type ModelCapabilities struct {
+    Text     bool `json:"text"`
+    Vision   bool `json:"vision"`
+    Audio    bool `json:"audio"`
+    File     bool `json:"file"`
+    ToolCall bool `json:"tool_call"`
+    Cache    bool `json:"cache"`
+    Thinking bool `json:"thinking"`
+    TextOnly bool `json:"text_only"`
 }
 
 type ModelPricingRule struct {
@@ -250,8 +443,15 @@ type ModelPricingRule struct {
     InputPriceMicroUSDPer1K       int64
     OutputPriceMicroUSDPer1K      int64
     CachedInputPriceMicroUSDPer1K int64
+    CacheWritePriceMicroUSDPer1K  int64
     ReasoningPriceMicroUSDPer1K   int64
     EmbeddingPriceMicroUSDPer1K   int64
+    InputPriceUSDPer1M            float64
+    OutputPriceUSDPer1M           float64
+    CachedInputPriceUSDPer1M      float64
+    CacheWritePriceUSDPer1M       float64
+    ReasoningPriceUSDPer1M        float64
+    EmbeddingPriceUSDPer1M        float64
     EffectiveFrom                 string
     EffectiveTo                   string
     IsActive                      bool
@@ -271,73 +471,102 @@ type InspectMerge struct {
     SecretKey    string
     AWSRegion    string
 }
-```
 
-### 3.2 InspectMerge 扩展（已实现）
-
-`InspectMerge` 已扩展支持 variant / secret_id / secret_key / aws_region 字段，与 Proto 层对齐：
-
-```go
-type InspectMerge struct {
-    ResourceID   string
-    ProviderCode string
-    ProviderType string
-    ModelAPIID   string
-    APIBaseURL   string
-    APIKey       string
-    Variant      string // 已实现：OpenAI Variant
-    SecretID     string // 已实现：Hunyuan SecretId
-    SecretKey    string // 已实现：Hunyuan SecretKey
-    AWSRegion    string // 已实现：Bedrock AWS Region
+type LLMInspectResult struct {
+    OK                            bool
+    Message                       string
+    ProviderCode                  string
+    ProviderType                  string
+    ModelAPIID                    string
+    ModelDisplayName              string
+    ModelSizeLabel                string
+    ContextWindowK                int
+    MaxOutputTokens               int
+    InputPriceMicroUSDPer1K       int64
+    OutputPriceMicroUSDPer1K      int64
+    CachedInputPriceMicroUSDPer1K int64
+    ReasoningPriceMicroUSDPer1K   int64
+    EmbeddingPriceMicroUSDPer1K   int64
+    Source                        string
+    RawMetadataJSON               string
+    Variant                       string
+    EnableTokenTailoring          bool
+    SupportsCache                 bool
+    SupportsThinking              bool
 }
 ```
 
-### 3.3 Repo 接口拆分（已实现）
-
-`LlmProviderModelRepo` 已拆分为 Reader/Writer/Validator/Pricing 子接口 + 组合接口：
+### 5.2 Repo 子接口（Stability:stable）
 
 ```go
-// Reader 只读操作
 type LlmProviderModelReader interface {
     ListProviderModels(ctx context.Context) ([]ProviderModel, error)
     GetProviderModel(ctx context.Context, id string) (ProviderModel, error)
     GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
 }
 
-// Writer 写操作
 type LlmProviderModelWriter interface {
     CreateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
     UpdateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
     DeleteProviderModel(ctx context.Context, id string) error
+    UpdateProviderModelStatus(ctx context.Context, id string, status string) error
 }
 
-// Validator 验证操作
 type LlmProviderModelValidator interface {
     ValidateProviderPair(ctx context.Context, provider, model string) (bool, error)
 }
 
-// Pricing 定价操作
-type LlmProviderModelPricing interface {
+type ModelPricingRepo interface {
     UpsertModelPricingRule(ctx context.Context, rule ModelPricingRule) error
 }
 
-// LlmProviderModelRepo 组合接口
+// 组合接口（仅用于 Wire 绑定与编译期检查）
 type LlmProviderModelRepo interface {
     LlmProviderModelReader
     LlmProviderModelWriter
     LlmProviderModelValidator
-    LlmProviderModelPricing
+    ModelPricingRepo
+}
+
+// 消费方按需依赖窄接口
+type LlmProviderModelReaderWriter interface {
+    LlmProviderModelReader
+    LlmProviderModelWriter
+}
+
+type LlmProviderModelApplyBackend interface {
+    LlmProviderModelReader
+    LlmProviderModelWriter
+    ModelPricingRepo
 }
 ```
 
-### 3.4 Usecase（当前实现）
+### 5.3 Usecase
 
 ```go
 type LlmProviderModelUsecase struct {
-    repo LlmProviderModelRepo
+    reader     LlmProviderModelReader
+    writer     LlmProviderModelWriter
+    validator  LlmProviderModelValidator
+    pricing    ModelPricingRepo
+    inspector  LLMInspector
+    crypto     *CredentialCrypto
+    agentRefs  AgentReferenceChecker
+    lg         loggateway.Logger
 }
 
-func NewLlmProviderModelUsecase(repo LlmProviderModelRepo) *LlmProviderModelUsecase
+func NewLlmProviderModelUsecase(
+    reader LlmProviderModelReader,
+    writer LlmProviderModelWriter,
+    validator LlmProviderModelValidator,
+    pricing ModelPricingRepo,
+    inspector LLMInspector,
+    crypto *CredentialCrypto,
+    agentRefs AgentReferenceChecker,
+    lg loggateway.Logger,
+) *LlmProviderModelUsecase
+
+// 方法
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error)
 func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderModel, error)
 func (u *LlmProviderModelUsecase) GetByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
@@ -345,12 +574,16 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch ProviderModel) (ProviderModel, error)
 func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error
 func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, model string) (bool, string, error)
-func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (llminspect.Result, error)
+func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (LLMInspectResult, error)
 ```
 
-### 3.5 Inspect 方法扩展（已实现）
+**关键行为**：
+- `List` / `Get`：通过 `sanitizeProviderModelForAPI` 脱敏后返回
+- `GetByProviderAndModel`：通过 `crypto.PrepareProviderModelForRuntime` 解密后返回（运行时使用）
+- `Create` / `Update`：通过 `crypto.RequireKeyForPlaintext` + `crypto.ProcessConfigJSONForStorage` 加密后写入；同步调用 `syncProviderModelPricing` 更新定价规则（best-effort，失败不回滚）
+- `Inspect`：通过 `mergeInspectConfigJSON` 合并请求字段与已存 config_json，再调用 `inspector.Run`
 
-`Inspect` 方法已扩展 `mergeInspectConfigJSON` 以支持 variant / secret_id / secret_key / aws_region 字段合并：
+### 5.4 InspectMerge 合并逻辑
 
 ```go
 func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
@@ -366,35 +599,36 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
     if json.Unmarshal([]byte(cfg), &c) != nil {
         return
     }
-    if in.ProviderType == "" {
-        in.ProviderType = c.ProviderType
-    }
-    if in.APIBaseURL == "" {
-        in.APIBaseURL = c.APIBaseURL
-    }
-    if in.APIKey == "" {
-        in.APIKey = c.APIKey
-    }
-    if in.Variant == "" {
-        in.Variant = c.Variant
-    }
-    if in.SecretID == "" {
-        in.SecretID = c.SecretID
-    }
-    if in.SecretKey == "" {
-        in.SecretKey = c.SecretKey
-    }
-    if in.AWSRegion == "" {
-        in.AWSRegion = c.AWSRegion
-    }
+    // 请求字段为空时从已存 config_json 回填
+    if in.ProviderType == "" { in.ProviderType = c.ProviderType }
+    if in.APIBaseURL == ""   { in.APIBaseURL = c.APIBaseURL }
+    if in.APIKey == ""       { in.APIKey = c.APIKey }
+    if in.Variant == ""      { in.Variant = c.Variant }
+    if in.SecretID == ""     { in.SecretID = c.SecretID }
+    if in.SecretKey == ""    { in.SecretKey = c.SecretKey }
+    if in.AWSRegion == ""    { in.AWSRegion = c.AWSRegion }
 }
 ```
 
+### 5.5 凭据加密（CredentialCrypto）
+
+文件：`internal/biz/credential_crypto.go`、`credential_key.go`、`channel_credential_crypto.go`
+
+- 算法：AES-256-GCM，密钥来自 `ARANEA_CREDENTIAL_KEY` 环境变量
+- 注入方式：Wire 构造函数注入（`NewCredentialCrypto`），消除全局 `SetCredentialKeyResolver`
+- 关键方法：
+  - `RequireKeyForPlaintext(ctx, cfg)` — 明文含凭据时强制要求密钥可用
+  - `ProcessConfigJSONForStorage(ctx, cfg)` — 存储前加密 api_key / secret_key / ha_candidates[].api_key
+  - `PrepareProviderModelForRuntime(ctx, m)` — 运行时解密 `(ProviderModel, error)`
+  - `DecryptConfigJSONForRuntime(ctx, cfg)` — 返回 `(string, error)`，解密失败时 SysLogWarn
+  - `IsCredentialEncryptionAvailable()` — 降级提示用
+- 降级策略：密钥未配置时，启动警告 + 前端 q-banner 警告；写入时拒绝明文凭据；读取时返回原 JSON
+
 ---
 
-## 四、Data 层
+## 六、Data 层
 
-### 4.1 Ent Schema（当前实现）
+### 6.1 Ent Schema — `llm_provider_models`
 
 文件：`internal/data/ent/schema/llm_provider_model.go`
 
@@ -422,94 +656,86 @@ func (LlmProviderModel) Fields() []ent.Field {
         field.String("model").Default(""),
         field.Text("config_json").Default(""),
         field.Text("metadata_json").Default(""),
+        field.Bool("capability_text").Default(false),
+        field.Bool("capability_vision").Default(false),
+        field.Bool("capability_audio").Default(false),
+        field.Bool("capability_file").Default(false),
+        field.Bool("capability_tool_call").Default(false),
+        field.Bool("capability_cache").Default(false),
+        field.Bool("capability_thinking").Default(false),
+        field.Bool("capability_text_only").Default(false),
+        field.Bool("capabilities_explicit").Default(false),
         field.String("created_at").Default(""),
         field.String("updated_at").Default(""),
         field.String("deleted_at").Default(""),
     }
 }
+
+func (LlmProviderModel) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("provider", "enabled", "sort_order").StorageKey("idx_provider_models_provider"),
+    }
+}
 ```
 
-**设计说明**：Provider 类型、Variant、认证信息、高可用配置等全部存储在 `config_json` JSON 字段中，不拆分为独立列。这与需求文档 §7.2 的 `config_json` 结构对齐。
+**设计说明**：
+- Provider 类型、Variant、认证信息、高可用配置等全部存储在 `config_json` JSON 字段中，不拆分为独立列
+- 模型能力（`capability_*`）拆分为独立列，便于查询和索引
+- `capabilities_explicit` 标记能力是否由用户显式指定（vs 由 Variant/配置推导）
+- 唯一约束：`model_key` UNIQUE；业务唯一性：`(provider, model)` 由应用层保证
 
-### 4.2 Data 层 Repo 实现（当前实现）
+### 6.2 Ent Schema — `model_pricing_rules`
 
-文件：`internal/data/llm_provider_model.go`
+文件：`internal/data/ent/schema/model_pricing_rule.go`
 
 ```go
-type llmProviderModelRepo struct {
-    data *Data
+type ModelPricingRule struct {
+    ent.Schema
 }
 
-func NewLlmProviderModelRepo(d *Data) biz.LlmProviderModelRepo
-
-func entToBizPM(e *ent.LlmProviderModel) biz.ProviderModel {
-    return biz.ProviderModel{
-        ID: e.ID, Key: e.ModelKey, Name: e.Name,
-        Description: e.Description, Status: e.Status, Enabled: e.Enabled,
-        SortOrder: e.SortOrder, Provider: e.Provider, Model: e.Model,
-        ConfigJSON: e.ConfigJSON, MetadataJSON: e.MetadataJSON,
-        CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt, DeletedAt: e.DeletedAt,
+func (ModelPricingRule) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "model_pricing_rules"},
     }
 }
 
-func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.ProviderModel, error) {
-    rows, err := r.data.entClient.LlmProviderModel.Query().
-        Where(llmprovidermodel.DeletedAtEQ("")).
-        Order(
-            llmprovidermodel.BySortOrder(),
-            llmprovidermodel.ByCreatedAt(entsql.OrderDesc()),
-        ).
-        All(ctx)
-    // ...
+func (ModelPricingRule) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(512),
+        field.String("provider_code").MaxLen(256),
+        field.String("model_api_id").MaxLen(512),
+        field.String("currency").Default("USD"),
+        field.Int64("input_price_micro_usd_per_1k").Default(0),
+        field.Int64("output_price_micro_usd_per_1k").Default(0),
+        field.Int64("cached_input_price_micro_usd_per_1k").Default(0),
+        field.Int64("reasoning_price_micro_usd_per_1k").Default(0),
+        field.Int64("embedding_price_micro_usd_per_1k").Default(0),
+        field.Int64("cache_write_price_micro_usd_per_1k").Default(0),
+        field.Float("input_price_usd_per_1m").Default(0),
+        field.Float("output_price_usd_per_1m").Default(0),
+        field.Float("cached_input_price_usd_per_1m").Default(0),
+        field.Float("reasoning_price_usd_per_1m").Default(0),
+        field.Float("embedding_price_usd_per_1m").Default(0),
+        field.Float("cache_write_price_usd_per_1m").Default(0),
+        field.String("effective_from").Default(""),
+        field.String("effective_to").Default(""),
+        field.Bool("is_active").Default(true),
+        field.String("source").Default("manual"),
+        field.Text("metadata_json").Default("{}"),
+        field.String("created_at").Default(""),
+        field.String("updated_at").Default(""),
+    }
 }
 
-func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error) {
-    row, err := r.data.entClient.LlmProviderModel.Query().
-        Where(
-            llmprovidermodel.ProviderEQ(provider),
-            llmprovidermodel.ModelEQ(model),
-            llmprovidermodel.EnabledEQ(true),
-            llmprovidermodel.DeletedAtEQ(""),
-        ).
-        Only(ctx)
-    // ...
-}
-
-func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error) {
-    saved, err := r.data.entClient.LlmProviderModel.Create().
-        SetID(m.ID).SetModelKey(m.Key).SetName(m.Name).
-        SetDescription(m.Description).SetStatus(m.Status).SetEnabled(m.Enabled).
-        SetSortOrder(m.SortOrder).SetProvider(m.Provider).SetModel(m.Model).
-        SetConfigJSON(m.ConfigJSON).SetMetadataJSON(m.MetadataJSON).
-        SetCreatedAt(m.CreatedAt).SetUpdatedAt(m.UpdatedAt).SetDeletedAt("").
-        Save(ctx)
-    // ...
-}
-
-func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error) {
-    err := r.data.entClient.LlmProviderModel.UpdateOneID(m.ID).
-        SetModelKey(m.Key).SetName(m.Name).
-        SetDescription(m.Description).SetStatus(m.Status).SetEnabled(m.Enabled).
-        SetSortOrder(m.SortOrder).SetProvider(m.Provider).SetModel(m.Model).
-        SetConfigJSON(m.ConfigJSON).SetMetadataJSON(m.MetadataJSON).
-        SetUpdatedAt(m.UpdatedAt).
-        Exec(ctx)
-    // ...
-}
-
-func (r *llmProviderModelRepo) DeleteProviderModel(ctx context.Context, id string) error {
-    now := nowRFC3339()
-    return r.data.entClient.LlmProviderModel.UpdateOneID(id).
-        SetDeletedAt(now).SetStatus("deleted").SetUpdatedAt(now).Exec(ctx)
-}
-
-func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule biz.ModelPricingRule) error {
-    // 先查活跃规则，存在则更新，不存在则创建
-    // ...
+func (ModelPricingRule) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("provider_code", "model_api_id", "effective_from").Unique(),
+        index.Fields("provider_code", "model_api_id", "is_active", "effective_from").StorageKey("idx_pricing_rules_model_active"),
+    }
 }
 ```
 
-### 4.3 `config_json` 结构定义
+### 6.3 `config_json` 结构
 
 `config_json` 存储 Provider 连接配置和 trpc 运行时选项，完整结构如下：
 
@@ -545,6 +771,8 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
   "ha_hedge_delay_ms": 100,
 
   "enable_token_tailoring": true,
+  "token_tailoring_strategy": "middle-out",  // middle-out | head-out | tail-out
+  "token_tailoring_safety_margin": 0.1,
   "optimize_for_cache": false,          // OpenAI 专用
   "reasoning_content_backfill": true,   // OpenAI (DeepSeek) 专用
   "show_tool_call_delta": false,        // OpenAI, Anthropic
@@ -556,6 +784,21 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
   "extra_headers": {},                  // OpenAI, Anthropic, HuggingFace
   "extra_fields": {},                   // OpenAI, HuggingFace
   "channel_buffer_size": 256,
+
+  "rate_limit_rpm": 0,                  // 速率限制（每分钟请求数）
+
+  "retry_max_attempts": 0,
+  "retry_base_delay_ms": 1000,
+  "retry_max_delay_ms": 30000,
+
+  "circuit_breaker_enabled": false,
+  "circuit_breaker_failure_threshold": 3,
+  "circuit_breaker_recovery_sec": 30,
+
+  "capabilities": {                     // 模型能力位（与 capability_* 列同步）
+    "text": true, "vision": false, "audio": false, "file": true,
+    "tool_call": true, "cache": false, "thinking": false, "text_only": false
+  },
 
   "tokens_per_second": null,
   "model_hotness_score": null,
@@ -572,38 +815,70 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 }
 ```
 
+### 6.4 Data 层 Repo 实现
+
+文件：`internal/data/llm_provider_model.go`
+
+```go
+type llmProviderModelRepo struct {
+    data *Data
+}
+
+var _ biz.LlmProviderModelRepo = (*llmProviderModelRepo)(nil)
+
+func NewLlmProviderModelRepo(d *Data) biz.LlmProviderModelRepo
+
+// 关键方法
+func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel
+func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.ProviderModel, error)
+func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) (biz.ProviderModel, error)
+func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error)
+func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error)
+func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error)
+func (r *llmProviderModelRepo) DeleteProviderModel(ctx context.Context, id string) error  // 软删：set deleted_at + status=deleted
+func (r *llmProviderModelRepo) UpdateProviderModelStatus(ctx context.Context, id string, status string) error
+func (r *llmProviderModelRepo) ValidateProviderPair(ctx context.Context, provider, model string) (bool, error)
+func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule biz.ModelPricingRule) error  // 事务安全
+```
+
+**读写分离**：读用 `r.data.RW().Read(ctx)`，写用 `r.data.RW().Write(ctx)`。
+
+**PricingConfigured 计算**：`configJSONHasPricing(lg, cfg)` 检测 config_json 是否含有效定价字段。
+
 ---
 
-## 五、运行时层（Provider 桥接）
+## 七、运行时层（Provider 桥接）
 
-### 5.1 ProviderModelConfig（当前实现）
+### 7.1 ProviderModelConfig
 
 文件：`internal/provider/catalog.go`
 
 ```go
 type ProviderModelConfig struct {
-    ProviderType         string
-    Variant              string
-    BaseURL              string
-    APIKey               string
-    ModelAPI             string
-    SecretID             string
-    SecretKey            string
-    AWSRegion            string
-    EnableTokenTailoring bool
-    ContextWindow        int
-    MaxInputTokens       int
-    OptimizeForCache     bool
-    ReasoningBackfill    bool
-    ShowToolCallDelta    bool
-    CacheSystemPrompt    bool
-    CacheTools           bool
-    CacheMessages        bool
-    KeepAliveMinutes     int
-    ChannelBufferSize    int
-    HAMode               string
-    HACandidates         []HACandidateConfig
-    HAHedgeDelayMs       int
+    ProviderType               string
+    Variant                    string
+    BaseURL                    string
+    APIKey                     string
+    ModelAPI                   string
+    SecretID                   string
+    SecretKey                  string
+    AWSRegion                  string
+    EnableTokenTailoring       bool
+    TokenTailoringStrategy     string  // "middle-out" | "head-out" | "tail-out"
+    TokenTailoringSafetyMargin float64
+    ContextWindow              int
+    MaxInputTokens             int
+    OptimizeForCache           bool
+    ReasoningBackfill          bool
+    ShowToolCallDelta          bool
+    Cache                      CacheConfig
+    KeepAliveMinutes           int
+    ChannelBufferSize          int
+    HA                         HAConfig
+    RateLimitRPM               int
+    Capabilities               biz.ModelCapabilities
+    Retry                      RetryConfig
+    CB                         CBConfig
 }
 
 type HACandidateConfig struct {
@@ -612,227 +887,143 @@ type HACandidateConfig struct {
     BaseURL      string `json:"base_url"`
     APIKey       string `json:"api_key"`
 }
+
+type HAConfig struct {
+    Mode         string
+    Candidates   []HACandidateConfig
+    HedgeDelayMs int
+}
+
+type CacheConfig struct {
+    SystemPrompt bool
+    Tools        bool
+    Messages     bool
+}
+
+type RetryConfig struct {
+    MaxAttempts int
+    BaseDelayMs int
+    MaxDelayMs  int
+}
+
+type CBConfig struct {
+    Enabled          bool
+    FailureThreshold int
+    RecoverySec      int
+}
 ```
 
-### 5.2 trpc Model 构建（当前实现）
+### 7.2 trpc Model 构建
 
 文件：`internal/provider/trpc_llm.go`
 
 ```go
-func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *RoundTrip, prov, modelAPI string) (trpcmodel.Model, error) {
+func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog, rt *RoundTrip, prov, modelAPI string, lg loggateway.Logger) (trpcmodel.Model, error) {
     pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(modelAPI))
-    if err != nil {
-        return nil, err
-    }
-    cfg, err := CatalogFromProviderModel(pm)
-    if err != nil {
-        return nil, err
-    }
-    cfg = MergeModelConfig(cfg, pm.ConfigJSON)
-    return trpcModelFromProviderModelConfig(ctx, cfg, rt)
+    if err != nil { return nil, err }
+    cfg, err := ResolveModelConfig(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
+    if err != nil { return nil, err }
+    return trpcModelFromProviderModelConfig(ctx, cfg, rt, lg)
 }
 
-func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
-    name := strings.TrimSpace(cfg.ModelAPI)
-    providerName := MapProviderType(cfg.ProviderType)
-    opts := buildProviderOptions(cfg, rt)
-    m, err := trpcprovider.Model(providerName, name, opts...)
-    if err != nil {
-        return nil, err
-    }
-    return wrapHA(ctx, m, cfg, rt)
+func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
+    // 1. URL 安全校验（outboundguard.ValidateURL）
+    // 2. MapProviderType 映射 provider_type → trpc provider name
+    // 3. buildProviderOptions 构建通用 + 专属选项
+    // 4. trpcprovider.Model() 工厂创建实例
+    // 5. WrapModelWithMetrics 装饰指标
+    // 6. wrapHA 包装 Failover/Hedge
 }
 
 func MapProviderType(pt string) string {
     switch strings.ToLower(strings.TrimSpace(pt)) {
-    case "anthropic": return "anthropic"
-    case "gemini":    return "gemini"
-    case "ollama":    return "ollama"
-    case "hunyuan":   return "hunyuan"
-    default:          return "openai"
+    case "anthropic":              return "anthropic"
+    case "gemini", "google gemini": return "gemini"
+    case "ollama":                 return "ollama"
+    case "hunyuan":                return "hunyuan"
+    case "huggingface":            return "huggingface"
+    case "bedrock":                return "bedrock"
+    default:                       return "openai"
     }
 }
 ```
 
-### 5.3 Provider 专属选项构建（当前实现）
+### 7.3 Provider 专属选项构建
 
 ```go
-func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
+func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) []trpcprovider.Option {
     var opts []trpcprovider.Option
-    if apiKey := strings.TrimSpace(cfg.APIKey); apiKey != "" {
-        opts = append(opts, trpcprovider.WithAPIKey(apiKey))
-    }
-    if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
-        opts = append(opts, trpcprovider.WithBaseURL(baseURL))
-    }
-    if v := mapVariant(cfg.ProviderType); v != "" {
-        opts = append(opts, trpcprovider.WithVariant(v))
-    } else if v := strings.TrimSpace(cfg.Variant); v != "" {
-        opts = append(opts, trpcprovider.WithVariant(v))
-    }
-    if cfg.ChannelBufferSize > 0 {
-        opts = append(opts, trpcprovider.WithChannelBufferSize(cfg.ChannelBufferSize))
-    }
-    if cfg.EnableTokenTailoring {
-        opts = append(opts, trpcprovider.WithEnableTokenTailoring(true))
-    }
-    if cfg.MaxInputTokens > 0 {
-        opts = append(opts, trpcprovider.WithMaxInputTokens(cfg.MaxInputTokens))
-    }
-    if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
-        opts = append(opts, trpcprovider.WithHTTPClientTransport(rt.HTTP.Transport))
-    }
-    opts = append(opts, buildOpenAISpecificOptions(cfg)...)
-    opts = append(opts, buildAnthropicSpecificOptions(cfg)...)
-    opts = append(opts, buildGeminiSpecificOptions(cfg, rt)...)
-    opts = append(opts, buildOllamaSpecificOptions(cfg)...)
-    opts = append(opts, buildHunyuanSpecificOptions(cfg)...)
+    // 通用选项：APIKey / BaseURL / Variant / ChannelBufferSize / TokenTailoring / MaxInputTokens
+    // 自定义 Transport：rate-limit / retry / circuit-breaker 包装
+    // 专属选项：buildOpenAISpecificOptions / buildAnthropicSpecificOptions / buildGeminiSpecificOptions / buildOllamaSpecificOptions / buildHunyuanSpecificOptions
     return opts
 }
 
-func buildOpenAISpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
-    var providerOpts []trpcopenai.Option
-    if cfg.OptimizeForCache {
-        providerOpts = append(providerOpts, trpcopenai.WithOptimizeForCache(true))
-    }
-    if cfg.ReasoningBackfill {
-        providerOpts = append(providerOpts, trpcopenai.WithReasoningContentBackfill(true))
-    }
-    if cfg.ShowToolCallDelta {
-        providerOpts = append(providerOpts, trpcopenai.WithShowToolCallDelta(true))
-    }
-    if cfg.ContextWindow > 0 {
-        providerOpts = append(providerOpts, trpcopenai.WithContextWindow(cfg.ContextWindow))
-    }
-    if len(providerOpts) == 0 { return nil }
-    return []trpcprovider.Option{trpcprovider.WithOpenAIOption(providerOpts...)}
-}
-
-func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
-    var providerOpts []trpcanthropic.Option
-    if cfg.CacheSystemPrompt {
-        providerOpts = append(providerOpts, trpcanthropic.WithCacheSystemPrompt(true))
-    }
-    if cfg.CacheTools {
-        providerOpts = append(providerOpts, trpcanthropic.WithCacheTools(true))
-    }
-    if cfg.CacheMessages {
-        providerOpts = append(providerOpts, trpcanthropic.WithCacheMessages(true))
-    }
-    if cfg.ShowToolCallDelta {
-        providerOpts = append(providerOpts, trpcanthropic.WithShowToolCallDelta(true))
-    }
-    if len(providerOpts) == 0 { return nil }
-    return []trpcprovider.Option{trpcprovider.WithAnthropicOption(providerOpts...)}
-}
-
-func buildGeminiSpecificOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
-    var providerOpts []trpcgemini.Option
-    apiKey := strings.TrimSpace(cfg.APIKey)
-    if apiKey != "" || (rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil) {
-        gcc := &genai.ClientConfig{APIKey: apiKey, Backend: genai.BackendVertexAI}
-        if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
-            gcc.HTTPClient = &http.Client{Transport: rt.HTTP.Transport}
-        }
-        providerOpts = append(providerOpts, trpcgemini.WithGeminiClientConfig(gcc))
-    }
-    if cfg.ContextWindow > 0 {
-        providerOpts = append(providerOpts, trpcgemini.WithMaxInputTokens(cfg.ContextWindow))
-    }
-    if len(providerOpts) == 0 { return nil }
-    return []trpcprovider.Option{trpcprovider.WithGeminiOption(providerOpts...)}
-}
-
-func buildOllamaSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
-    var providerOpts []trpcollama.Option
-    if cfg.KeepAliveMinutes > 0 {
-        providerOpts = append(providerOpts, trpcollama.WithKeepAlive(time.Duration(cfg.KeepAliveMinutes)*time.Minute))
-    }
-    if cfg.ContextWindow > 0 {
-        providerOpts = append(providerOpts, trpcollama.WithMaxInputTokens(cfg.ContextWindow))
-    }
-    if len(providerOpts) == 0 { return nil }
-    return []trpcprovider.Option{trpcprovider.WithOllamaOption(providerOpts...)}
-}
-
-func buildHunyuanSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option {
-    var providerOpts []trpchunyuan.Option
-    if secretID := strings.TrimSpace(cfg.SecretID); secretID != "" {
-        providerOpts = append(providerOpts, trpchunyuan.WithSecretId(secretID))
-    }
-    if secretKey := strings.TrimSpace(cfg.SecretKey); secretKey != "" {
-        providerOpts = append(providerOpts, trpchunyuan.WithSecretKey(secretKey))
-    }
-    if cfg.ContextWindow > 0 {
-        providerOpts = append(providerOpts, trpchunyuan.WithContextWindow(cfg.ContextWindow))
-    }
-    if len(providerOpts) == 0 { return nil }
-    return []trpcprovider.Option{trpcprovider.WithHunyuanOption(providerOpts...)}
-}
+// 各 Provider 专属 builder 通过 trpcprovider.WithXxxOption(providerOpts...) 注入
+func buildOpenAISpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option    // OptimizeForCache / ReasoningBackfill / ShowToolCallDelta / ContextWindow
+func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option // CacheSystemPrompt / CacheTools / CacheMessages / ShowToolCallDelta
+func buildGeminiSpecificOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option // GeminiClientConfig (APIKey + Backend + HTTPClient) / MaxInputTokens
+func buildOllamaSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option    // KeepAlive / MaxInputTokens
+func buildHunyuanSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Option   // SecretId / SecretKey / ContextWindow
 ```
 
-### 5.4 Failover/Hedge 包装（当前实现）
+### 7.4 Failover/Hedge 包装
 
 ```go
-func wrapHA(ctx context.Context, primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip) (trpcmodel.Model, error) {
-    switch strings.ToLower(strings.TrimSpace(cfg.HAMode)) {
-    case "failover": return wrapFailover(cfg, rt, primary)
-    case "hedge":    return wrapHedge(cfg, rt, primary)
+func wrapHA(primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
+    switch strings.ToLower(strings.TrimSpace(cfg.HA.Mode)) {
+    case "failover": return wrapFailover(cfg, rt, primary, lg)
+    case "hedge":    return wrapHedge(cfg, rt, primary, lg)
     }
     return primary, nil
 }
 
-func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
-    candidates := []trpcmodel.Model{primary}
-    for _, c := range cfg.HACandidates {
-        m, err := trpcModelFromCandidate(c, rt)
-        if err != nil { continue }
-        candidates = append(candidates, m)
-    }
-    if len(candidates) < 2 { return primary, nil }
-    fo, err := trpcfailover.New(trpcfailover.WithCandidates(candidates...))
-    if err != nil { return primary, nil }
-    return fo, nil
+func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
+    // 1. 构建候选模型列表（含 outboundguard.ValidateURL 预检 + WrapModelWithMetrics）
+    // 2. trpcfailover.New(trpcfailover.WithCandidates(candidates...), trpcfailover.WithSwitchCallback(cb))
+    // 3. 回调发射 event.CtxFlowLogWarn（step ID: system.provider.ha_failover）
 }
 
-func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
-    candidates := []trpcmodel.Model{primary}
-    for _, c := range cfg.HACandidates {
-        m, err := trpcModelFromCandidate(c, rt)
-        if err != nil { continue }
-        candidates = append(candidates, m)
-    }
-    if len(candidates) < 2 { return primary, nil }
-    hedgeOpts := []trpchedge.Option{trpchedge.WithCandidates(candidates...)}
-    if cfg.HAHedgeDelayMs > 0 {
-        hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HAHedgeDelayMs)*time.Millisecond))
-    }
-    h, err := trpchedge.New(hedgeOpts...)
-    if err != nil { return primary, nil }
-    return h, nil
+func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
+    // 1. 构建候选模型列表（含预检 + 指标装饰）
+    // 2. trpchedge.New(trpchedge.WithCandidates(...), trpchedge.WithDelay(...), trpchedge.WithSwitchCallback(cb))
+    // 3. 回调发射 event.CtxFlowLogWarn（step ID: system.provider.ha_hedge）
 }
+```
 
-func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip) (trpcmodel.Model, error) {
-    providerName := MapProviderType(c.ProviderType)
-    opts := []trpcprovider.Option{}
-    if apiKey := strings.TrimSpace(c.APIKey); apiKey != "" {
-        opts = append(opts, trpcprovider.WithAPIKey(apiKey))
-    }
-    if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
-        opts = append(opts, trpcprovider.WithBaseURL(baseURL))
-    }
-    if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
-        opts = append(opts, trpcprovider.WithHTTPClientTransport(rt.HTTP.Transport))
-    }
-    return trpcprovider.Model(providerName, c.Name, opts...)
-}
+### 7.5 能力推导
+
+文件：`internal/provider/trpc_llm.go`、`internal/provider/capabilities.go`
+
+```go
+// CapabilitiesForProviderModel 返回 provider-model 行的有效能力集。
+// 显式值优先；否则从 Variant（DeepSeek 强制 TextOnly）和 caching/thinking 标志推导。
+func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities
+
+// ModelSupportsImageAttachments 判断模型是否支持图像附件
+func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string, lg loggateway.Logger) bool
+
+// ModelSupportsFileAttachments 判断模型是否支持文件附件
+func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string, lg loggateway.Logger) bool
+```
+
+### 7.6 HTTP Transport 链
+
+文件：`internal/provider/roundtrip.go`、`rate_limit_transport.go`、`retry_transport.go`、`circuit_breaker_transport.go`
+
+Transport 装饰链（按需启用）：
+
+```
+http.DefaultTransport (或 rt.HTTP.Transport)
+    ↓ wrapRateLimitTransport (若 rate_limit_rpm > 0)
+    ↓ wrapRetryTransport (若 retry_max_attempts > 0)
+    ↓ wrapCircuitBreakerTransport (若 circuit_breaker_enabled)
+    → trpcprovider.WithHTTPClientTransport(transport)
 ```
 
 ---
 
-## 六、Service 层
-
-### 6.1 Service 实现（当前实现）
+## 八、Service 层
 
 文件：`internal/service/llm_provider_model.go`
 
@@ -840,209 +1031,95 @@ func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip) (trpcmodel.Model
 type LlmProviderModelService struct {
     v1.UnimplementedLlmProviderModelServiceServer
     uc *biz.LlmProviderModelUsecase
+    lg loggateway.Logger
 }
 
-func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase) *LlmProviderModelService {
-    return &LlmProviderModelService{uc: uc}
-}
+func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, lg loggateway.Logger) *LlmProviderModelService
 
-func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
-    return &v1.ProviderModel{
-        Id: m.ID, Key: m.Key, Name: m.Name, Description: m.Description,
-        Status: m.Status, Enabled: m.Enabled, SortOrder: int32(m.SortOrder),
-        Provider: m.Provider, Model: m.Model,
-        ConfigJson: m.ConfigJSON, MetadataJson: m.MetadataJSON,
-        CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt, DeletedAt: m.DeletedAt,
-    }
-}
+// Proto ↔ Biz 转换
+func toProtoPM(m biz.ProviderModel) *v1.ProviderModel  // 含 CapabilitiesForProviderModel 推导
+func patchFromProto(pb *v1.ProviderModel) biz.ProviderModel
 
-func patchFromProto(pb *v1.ProviderModel) biz.ProviderModel {
-    if pb == nil { return biz.ProviderModel{} }
-    return biz.ProviderModel{
-        Key: pb.GetKey(), Name: pb.GetName(), Description: pb.GetDescription(),
-        Status: pb.GetStatus(), Enabled: pb.GetEnabled(), SortOrder: int(pb.GetSortOrder()),
-        Provider: pb.GetProvider(), Model: pb.GetModel(),
-        ConfigJSON: pb.GetConfigJson(), MetadataJSON: pb.GetMetadataJson(),
-    }
-}
-
-func (s *LlmProviderModelService) ListProviderModels(ctx context.Context, _ *emptypb.Empty) (*v1.ListProviderModelsResponse, error) {
-    items, err := s.uc.List(ctx)
-    if err != nil { return nil, err }
-    resp := &v1.ListProviderModelsResponse{Items: make([]*v1.ProviderModel, 0, len(items))}
-    for i := range items {
-        resp.Items = append(resp.Items, toProtoPM(items[i]))
-    }
-    return resp, nil
-}
-
-func (s *LlmProviderModelService) CreateProviderModel(ctx context.Context, req *v1.CreateProviderModelRequest) (*v1.ProviderModel, error) {
-    in := biz.ProviderModel{
-        Key: req.GetKey(), Name: req.GetName(), Description: req.GetDescription(),
-        Status: req.GetStatus(), Enabled: req.GetEnabled(), SortOrder: int(req.GetSortOrder()),
-        Provider: req.GetProvider(), Model: req.GetModel(),
-        ConfigJSON: req.GetConfigJson(), MetadataJSON: req.GetMetadataJson(),
-    }
-    out, err := s.uc.Create(ctx, in)
-    if err != nil { return nil, err }
-    return toProtoPM(out), nil
-}
-
-func (s *LlmProviderModelService) GetProviderModel(ctx context.Context, req *v1.GetProviderModelRequest) (*v1.ProviderModel, error) {
-    m, err := s.uc.Get(ctx, req.GetId())
-    if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
-        }
-        return nil, err
-    }
-    return toProtoPM(m), nil
-}
-
-func (s *LlmProviderModelService) UpdateProviderModel(ctx context.Context, req *v1.UpdateProviderModelRequest) (*v1.ProviderModel, error) {
-    if req.GetProviderModel() == nil {
-        return nil, kerrors.BadRequest("LLM_PROVIDER_MODEL", "provider_model body is required")
-    }
-    out, err := s.uc.Update(ctx, req.GetId(), patchFromProto(req.GetProviderModel()))
-    if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
-        }
-        return nil, err
-    }
-    return toProtoPM(out), nil
-}
-
-func (s *LlmProviderModelService) DeleteProviderModel(ctx context.Context, req *v1.DeleteProviderModelRequest) (*emptypb.Empty, error) {
-    if err := s.uc.Delete(ctx, req.GetId()); err != nil { return nil, err }
-    return &emptypb.Empty{}, nil
-}
-
-func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req *v1.InspectProviderModelRequest) (*v1.InspectProviderModelResponse, error) {
-    out, err := s.uc.Inspect(ctx, biz.InspectMerge{
-        ResourceID: req.GetResourceId(), ProviderCode: req.GetProviderCode(),
-        ProviderType: req.GetProviderType(), ModelAPIID: req.GetModelApiId(),
-        APIBaseURL: req.GetApiBaseUrl(), APIKey: req.GetApiKey(),
-    })
-    if err != nil { return nil, err }
-    return &v1.InspectProviderModelResponse{
-        Ok: out.OK, Message: out.Message, ProviderCode: out.ProviderCode,
-        ProviderType: out.ProviderType, ModelApiId: out.ModelAPIID,
-        ModelDisplayName: out.ModelDisplayName, ModelSizeLabel: out.ModelSizeLabel,
-        ContextWindowK: int32(out.ContextWindowK), MaxOutputTokens: int32(out.MaxOutputTokens),
-        InputPriceMicroUsdPer_1K: out.InputPriceMicroUSDPer1K,
-        OutputPriceMicroUsdPer_1K: out.OutputPriceMicroUSDPer1K,
-        CachedInputPriceMicroUsdPer_1K: out.CachedInputPriceMicroUSDPer1K,
-        ReasoningPriceMicroUsdPer_1K: out.ReasoningPriceMicroUSDPer1K,
-        EmbeddingPriceMicroUsdPer_1K: out.EmbeddingPriceMicroUSDPer1K,
-        Source: out.Source, RawMetadataJson: out.RawMetadataJSON,
-    }, nil
-}
-
-func (s *LlmProviderModelService) ValidateProviderPair(ctx context.Context, req *v1.ValidateProviderPairRequest) (*v1.ValidateProviderPairResponse, error) {
-    ok, msg, err := s.uc.ValidatePair(ctx, req.GetProvider(), req.GetModel())
-    if err != nil { return nil, err }
-    return &v1.ValidateProviderPairResponse{Ok: ok, Message: msg}, nil
-}
+// RPC 实现
+func (s *LlmProviderModelService) ListProviderModels(ctx, *emptypb.Empty) (*v1.ListProviderModelsResponse, error)
+func (s *LlmProviderModelService) CreateProviderModel(ctx, *v1.CreateProviderModelRequest) (*v1.ProviderModel, error)
+func (s *LlmProviderModelService) GetProviderModel(ctx, *v1.GetProviderModelRequest) (*v1.ProviderModel, error)
+func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx, *v1.RevealProviderModelCredentialsRequest) (*v1.RevealProviderModelCredentialsResponse, error)
+func (s *LlmProviderModelService) UpdateProviderModel(ctx, *v1.UpdateProviderModelRequest) (*v1.ProviderModel, error)
+func (s *LlmProviderModelService) DeleteProviderModel(ctx, *v1.DeleteProviderModelRequest) (*emptypb.Empty, error)
+func (s *LlmProviderModelService) InspectProviderModel(ctx, *v1.InspectProviderModelRequest) (*v1.InspectProviderModelResponse, error)
+func (s *LlmProviderModelService) ValidateProviderPair(ctx, *v1.ValidateProviderPairRequest) (*v1.ValidateProviderPairResponse, error)
 ```
 
-### 6.2 Inspect 扩展（已实现）
-
-Proto 新增字段后，Service 层已更新 `InspectProviderModel` 方法：
-
-```go
-func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req *v1.InspectProviderModelRequest) (*v1.InspectProviderModelResponse, error) {
-    out, err := s.uc.Inspect(ctx, biz.InspectMerge{
-        ResourceID:   req.GetResourceId(),
-        ProviderCode: req.GetProviderCode(),
-        ProviderType: req.GetProviderType(),
-        ModelAPIID:   req.GetModelApiId(),
-        APIBaseURL:   req.GetApiBaseUrl(),
-        APIKey:       req.GetApiKey(),
-        Variant:      req.GetVariant(),
-        SecretID:     req.GetSecretId(),
-        SecretKey:    req.GetSecretKey(),
-        AWSRegion:    req.GetAwsRegion(),
-    })
-    if err != nil { return nil, err }
-    return &v1.InspectProviderModelResponse{
-        // ... 现有字段 ...
-        Variant:              out.Variant,
-        EnableTokenTailoring: out.EnableTokenTailoring,
-        SupportsCache:        out.SupportsCache,
-        SupportsThinking:     out.SupportsThinking,
-    }, nil
-}
-```
+**关键映射**：
+- `toProtoPM`：调用 `provider.CapabilitiesForProviderModel(m)` 推导能力位，填充 `Capabilities` 和 `PricingConfigured`
+- `InspectProviderModel`：将 Proto 请求字段（含 variant / secret_id / secret_key / aws_region）映射到 `biz.InspectMerge`，调用 `uc.Inspect`
+- `RevealProviderModelCredentials`：调用 Usecase 解密并返回 api_key / secret_key / ha_candidates 凭据
 
 ---
 
-## 七、Wire 注入
-
-已有注入链：
+## 九、Wire 注入
 
 ```
-data.ProviderSet   → NewLlmProviderModelRepo
-biz.ProviderSet    → NewLlmProviderModelUsecase
-service.ProviderSet → NewLlmProviderModelService
+data.ProviderSet   → NewLlmProviderModelRepo → Wire 绑定 biz.LlmProviderModelRepo
+                   → NewCredentialCrypto（凭据加密，构造函数注入）
+                   → NewMCPRepo → Wire 绑定 biz.MCPServerReader
+
+biz.ProviderSet    → NewLlmProviderModelUsecase（接收 reader/writer/validator/pricing/inspector/crypto/agentRefs/lg）
+
+service.ProviderSet → NewLlmProviderModelService（接收 uc + lg）
 ```
 
-新增注入链：
-
-```
-// CredentialCrypto 凭据加密（构造函数注入）
-data.ProviderSet   → NewCredentialCrypto
-biz.ProviderSet    → NewLlmProviderModelUsecase（接收 CredentialCrypto）
-
-// MCPServerReader Wire binding
-data.ProviderSet   → NewMCPRepo → Wire 绑定 biz.MCPServerReader
-```
-
-已删除的注入：
-
-```
-// 以下已删除，改为构造函数注入
-SetInspector + SetCredentialKeyResolver → 已移除
-```
+**DI 合规要点**：
+- `CredentialCrypto` 通过构造函数注入到 `LlmProviderModelUsecase` / `ChannelUsecase` / `MCPServerUsecase` / `SystemSettingService`
+- 已删除全局 `SetInspector` 和 `SetCredentialKeyResolver`（改为构造函数注入）
+- `NewSystemSettingRepo` 不再有全局副作用
 
 ---
 
-## 八、Web 前端设计
+## 十、Web 前端设计
 
-### 8.1 文件结构
+### 10.1 文件结构
 
 ```
 web/src/
 ├── config/
-│   └── providerPresets.ts          ← Provider 预设配置（已实现）
+│   ├── providerPresets.ts              ← Provider 预设配置（13 个 shell）
+│   ├── providerRuntimeOverlay.ts       ← models.dev → trpc 运行时映射
+│   ├── providerRuntimeOverlay.types.ts ← 类型定义
+│   └── provider_runtime_overlay.json   ← overlay 数据（与后端同步）
 ├── features/
 │   └── platform/
-│       ├── api.ts                  ← 平台资源 API（已实现）
-│       ├── types.ts                ← 前端类型定义（ProviderConfig / ModelCategory / CapabilityChip）（已实现）
-│       ├── providerUtils.ts        ← Provider 工具函数（已实现）
-│       ├── useProviderList.ts      ← Provider 列表 composable（已实现）
-│       ├── useProviderCatalog.ts   ← Provider 目录 composable（已实现）
-│       ├── useProviderCredentials.ts ← Provider 凭据 composable（已实现）
-│       ├── useProviderInspect.ts   ← Provider 探测 composable（已实现）
-│       ├── useProviderPresets.ts   ← Provider 预设 composable（已实现）
-│       ├── useProviderWizard.ts    ← Provider 向导 composable（已实现）
-│       ├── useProviderSave.ts      ← Provider 保存 composable（已实现）
-│       ├── useResourceManagerPage.ts ← 资源管理页面 composable（已实现）
-│       └── usePlatformResource.ts  ← 组合式函数（已实现）
+│       ├── api.ts                      ← 平台资源 API
+│       ├── types.ts                    ← 统一类型（ProviderConfig / ModelCategory / CapabilityChip）
+│       ├── providerUtils.ts            ← 共享工具函数
+│       ├── useProviderList.ts          ← Provider 列表 composable
+│       ├── useProviderCatalog.ts       ← 目录选择 composable
+│       ├── useProviderCredentials.ts   ← 凭据管理 composable
+│       ├── useProviderInspect.ts       ← Inspect 检查 composable
+│       ├── useProviderPresets.ts       ← 预设应用 composable
+│       ├── useProviderWizard.ts        ← Provider 向导编排 composable
+│       ├── useProviderSave.ts          ← Provider 保存 composable
+│       ├── useResourceManagerPage.ts   ← 资源管理页面 composable
+│       └── usePlatformResource.ts      ← 组合式函数
 ├── components/
 │   └── platform/
-│       ├── ProviderModelsTable.vue ← 列表表格组件（已实现，含 Variant Chip + HA Chip + 定价警告图标）
-│       ├── providerModelUi.ts      ← Provider 模型 UI 工具函数（已实现）
-│       ├── ProviderTrendDialog.vue ← 趋势看板（已实现）
-│       ├── ProviderFormDialog.vue  ← 添加/编辑弹窗（已实现，集成在 ResourceManagerPage QStepper 中）
-│       └── ProviderHAConfig.vue    ← 高可用配置组件（已实现）
+│       ├── ProviderModelsTable.vue     ← 列表表格（Variant Chip + HA Chip + 定价警告）
+│       ├── ProviderTrendDialog.vue     ← 趋势看板
+│       ├── ProviderHAConfig.vue        ← 高可用配置组件
+│       ├── ProviderWizardStep1Connect.vue ← 步骤 1：连接与身份
+│       ├── ProviderWizardStep2Specs.vue   ← 步骤 2：模型分类与规格
+│       ├── ProviderWizardStep3HA.vue      ← 步骤 3：高可用配置
+│       ├── ProviderWizardStep4Advanced.vue ← 步骤 4：高级选项
+│       ├── ProviderLogo.vue            ← Provider 图标
+│       └── providerModelUi.ts          ← 表格列定义 + UI 工具函数
 └── pages/
-    └── ResourceManagerPage.vue     ← 资源管理页面（已实现）
+    └── ResourceManagerPage.vue         ← 资源管理页面（QStepper 四步表单 + 凭据加密警告）
 ```
 
-### 8.2 providerPresets.ts（已实现）
+### 10.2 类型定义
 
-类型定义：
+文件：`web/src/features/platform/types.ts`、`web/src/config/providerRuntimeOverlay.types.ts`
 
 ```typescript
 export type AuthType = "api_key" | "secret_id_key" | "aws_config" | "none";
@@ -1061,42 +1138,11 @@ export type ProviderPreset = {
   metadataNote: string;
   models: ProviderModelPreset[];
 };
-
-export const PROVIDER_TYPE_OPTIONS: { label: string; value: ProviderType }[] = [
-  { label: "OpenAI Compatible", value: "openai" },
-  { label: "Anthropic", value: "anthropic" },
-  { label: "Gemini", value: "gemini" },
-  { label: "Ollama", value: "ollama" },
-  { label: "Hunyuan", value: "hunyuan" },
-  { label: "HuggingFace", value: "huggingface" },
-  { label: "Bedrock", value: "bedrock" },
-];
-
-export const VARIANT_OPTIONS: { label: string; value: OpenAIVariant }[] = [
-  { label: "OpenAI", value: "openai" },
-  { label: "DeepSeek", value: "deepseek" },
-  { label: "Qwen", value: "qwen" },
-  { label: "Hunyuan", value: "hunyuan" },
-];
 ```
 
-预设映射表（18+ 预设，详见 `providerPresets.ts`）：
+### 10.3 ProviderModelsTable.vue
 
-| 前端预设 key | trpc ProviderType | Variant | authType |
-|-------------|-------------------|---------|----------|
-| `openai` | `openai` | `openai` | `api_key` |
-| `anthropic` | `anthropic` | — | `api_key` |
-| `gemini` | `gemini` | — | `api_key` |
-| `deepseek` | `openai` | `deepseek` | `api_key` |
-| `aliyun-qwen` | `openai` | `qwen` | `api_key` |
-| `tencent-hunyuan` | `hunyuan` | — | `secret_id_key` |
-| `ollama` | `ollama` | — | `none` |
-| `huggingface` | `huggingface` | — | `api_key` |
-| `bedrock` | `bedrock` | — | `aws_config` |
-
-### 8.3 ProviderModelsTable.vue（已实现）
-
-列表表格组件，展示模型信息和操作按钮。已实现 Variant Chip + HA Chip + 定价警告图标。
+列表表格组件，展示模型信息和操作按钮。
 
 **Props**：
 
@@ -1117,10 +1163,10 @@ defineProps<{
 | 使用情况 | 热度进度条 + 30天调用/费用 |
 | 密钥 | API 密钥设置状态 Chip |
 | 高可用 | **Failover 蓝色 Chip / Hedge 紫色 Chip** |
-| 定价 | **定价缺失警告图标**（price_check 未配置时显示） |
+| 定价 | **定价缺失警告图标**（PricingConfigured=false 时显示） |
 | 操作 | 启用 Toggle + 趋势/编辑/删除按钮 |
 
-### 8.4 ProviderTrendDialog.vue（已实现）
+### 10.4 ProviderTrendDialog.vue
 
 模型历史趋势看板弹窗。
 
@@ -1141,167 +1187,15 @@ defineProps<{
 | 趋势柱状图 | 每日 Token 消耗柱状图 |
 | 详情表格 | 成功率 / 平均延迟 / TPS / 上下文 / 最大输出 |
 
-### 8.5 ProviderFormDialog.vue（已实现，集成在 ResourceManagerPage QStepper 中）
+### 10.5 ResourceManagerPage.vue
 
-添加/编辑 Provider 弹窗，四步表单。
+资源管理页面，集成 QStepper 四步表单、Provider 类型筛选、Variant Chip、高可用 Chip、凭据加密降级警告。
 
-**Props**：
-
-```typescript
-defineProps<{
-  modelValue: boolean;
-  editRow?: PlatformResource | null;
-}>();
-
-defineEmits<{
-  "update:modelValue": [value: boolean];
-  saved: [row: PlatformResource];
-}>();
-```
-
-**步骤一：连接与身份**
-
-```vue
-<template>
-  <QCardSection>
-    <div class="text-subtitle1 q-mb-md">① 连接与身份</div>
-    <div class="q-gutter-md">
-      <QSelect
-        v-model="form.presetKey"
-        :options="presetOptions"
-        label="Provider 预设"
-        emit-value
-        map-options
-        outlined
-        dense
-        @update:model-value="onPresetChange"
-      />
-      <QSelect
-        v-model="form.providerType"
-        :options="PROVIDER_TYPE_OPTIONS"
-        label="Provider 类型"
-        emit-value
-        map-options
-        outlined
-        dense
-        @update:model-value="onProviderTypeChange"
-      />
-      <QSelect
-        v-if="form.providerType === 'openai'"
-        v-model="form.variant"
-        :options="VARIANT_OPTIONS"
-        label="Variant"
-        emit-value
-        map-options
-        outlined
-        dense
-        @update:model-value="onVariantChange"
-      />
-      <QInput v-model="form.providerCode" label="Provider 编码" outlined dense
-        :rules="[val => !!val || '必填', val => /^[a-z0-9-]+$/.test(val) || '仅小写字母、数字、连字符']" />
-      <QInput v-model="form.providerDisplayName" label="Provider 显示名" outlined dense />
-      <QInput v-model="form.modelApiId" label="模型 API ID" outlined dense
-        :rules="[val => !!val || '必填']" />
-      <QInput v-model="form.modelDisplayName" label="模型展示名" outlined dense />
-      <QInput v-model="form.apiBaseUrl" label="API 基础 URL" outlined dense />
-      <QInput v-if="authType === 'api_key'" v-model="form.apiKey" label="API 密钥"
-        type="password" outlined dense :placeholder="isEdit ? '留空表示不修改' : ''" />
-      <template v-if="authType === 'secret_id_key'">
-        <QInput v-model="form.secretId" label="Secret ID" outlined dense />
-        <QInput v-model="form.secretKey" label="Secret Key" type="password" outlined dense />
-      </template>
-      <QSelect v-if="authType === 'aws_config'" v-model="form.awsRegion"
-        :options="AWS_REGIONS" label="AWS Region" outlined dense emit-value map-options />
-      <QToggle v-model="form.enabled" label="已启用" />
-    </div>
-  </QCardSection>
-</template>
-```
-
-**步骤二：模型分类与规格**
-
-```vue
-<template>
-  <QCardSection>
-    <div class="text-subtitle1 q-mb-md">② 模型分类与规格</div>
-    <div class="q-gutter-md">
-      <QSelect v-model="form.modelCategory" :options="MODEL_CATEGORY_OPTIONS"
-        label="模型分类" multiple emit-value map-options outlined dense />
-      <QInput v-model="form.modelSizeLabel" label="模型大小标签" outlined dense placeholder="如 7B / 70B" />
-      <QInput v-model.number="form.contextWindowK" label="上下文窗口" type="number"
-        outlined dense suffix="K tokens" />
-      <QInput v-model.number="form.maxOutputTokens" label="最大输出 Token" type="number" outlined dense />
-      <QInput v-model.number="form.inputPrice" label="输入价格" type="number"
-        outlined dense suffix="µ$/1K token" />
-      <QInput v-model.number="form.outputPrice" label="输出价格" type="number"
-        outlined dense suffix="µ$/1K token" />
-      <QInput v-model.number="form.cachedInputPrice" label="缓存输入价格" type="number"
-        outlined dense suffix="µ$/1K token" />
-      <QInput v-model.number="form.reasoningPrice" label="推理价格" type="number"
-        outlined dense suffix="µ$/1K token" />
-      <QInput v-model.number="form.embeddingPrice" label="嵌入价格" type="number"
-        outlined dense suffix="µ$/1K token" />
-      <QBtn label="检查模型" color="primary" outline :loading="inspecting"
-        @click="onInspect" />
-    </div>
-  </QCardSection>
-</template>
-```
-
-**步骤三：高可用配置**
-
-```vue
-<template>
-  <QCardSection>
-    <div class="text-subtitle1 q-mb-md">③ 高可用配置</div>
-    <div class="q-gutter-md">
-      <QSelect v-model="form.haMode" :options="HA_MODE_OPTIONS"
-        label="高可用模式" emit-value map-options outlined dense />
-      <template v-if="form.haMode">
-        <div v-for="(c, idx) in form.haCandidates" :key="idx" class="row q-gutter-sm items-end">
-          <QInput v-model="c.name" label="模型名" outlined dense class="col-3" />
-          <QSelect v-model="c.providerType" :options="PROVIDER_TYPE_OPTIONS"
-            label="Provider 类型" emit-value map-options outlined dense class="col-2" />
-          <QInput v-model="c.baseUrl" label="Base URL" outlined dense class="col-3" />
-          <QInput v-model="c.apiKey" label="API Key" type="password" outlined dense class="col-3" />
-          <QBtn flat round dense icon="delete" color="negative" @click="form.haCandidates.splice(idx, 1)" />
-        </div>
-        <QBtn flat label="+ 添加候选模型" color="primary" @click="form.haCandidates.push({ name: '', providerType: 'openai', baseUrl: '', apiKey: '' })" />
-        <QInput v-if="form.haMode === 'hedge'" v-model.number="form.haHedgeDelayMs"
-          label="Hedge 延迟" type="number" outlined dense suffix="ms" />
-      </template>
-    </div>
-  </QCardSection>
-</template>
-```
-
-**步骤四：高级选项**
-
-```vue
-<template>
-  <QCardSection>
-    <div class="text-subtitle1 q-mb-md">④ 高级选项</div>
-    <div class="q-gutter-md">
-      <QToggle v-model="form.enableTokenTailoring" label="Token Tailoring" />
-      <QToggle v-if="form.providerType === 'openai'" v-model="form.optimizeForCache"
-        label="Prompt Cache 优化" />
-      <QToggle v-if="form.providerType === 'openai' && form.variant === 'deepseek'"
-        v-model="form.reasoningBackfill" label="Reasoning 回填" />
-      <QToggle v-if="['openai', 'anthropic'].includes(form.providerType)"
-        v-model="form.showToolCallDelta" label="Tool Call Delta" />
-      <template v-if="form.providerType === 'anthropic'">
-        <QToggle v-model="form.cacheSystemPrompt" label="System Prompt Cache" />
-        <QToggle v-model="form.cacheTools" label="Tools Cache" />
-        <QToggle v-model="form.cacheMessages" label="Messages Cache" />
-      </template>
-      <QInput v-if="form.providerType === 'ollama'" v-model.number="form.keepAliveMinutes"
-        label="Keep Alive" type="number" outlined dense suffix="分钟" />
-      <QInput v-model.number="form.channelBufferSize" label="Channel Buffer Size"
-        type="number" outlined dense />
-    </div>
-  </QCardSection>
-</template>
-```
+**四步表单组件**：
+- `ProviderWizardStep1Connect.vue` — 连接与身份（Provider 预设 / 类型 / Variant / 编码 / API URL / 密钥 / SecretId/Key / AWS Region）
+- `ProviderWizardStep2Specs.vue` — 模型分类与规格（分类 / 大小 / 上下文 / 最大输出 / 定价 / 检查模型）
+- `ProviderWizardStep3HA.vue` — 高可用配置（HA 模式 / 候选模型 / Hedge 延迟）
+- `ProviderWizardStep4Advanced.vue` — 高级选项（Token Tailoring / Cache / Tool Call Delta / Keep Alive / Channel Buffer）
 
 **表单数据结构**：
 
@@ -1349,82 +1243,11 @@ type ProviderFormData = {
 
 **提交逻辑**：将 `ProviderFormData` 序列化为 `config_json` JSON 字符串，通过 `createPlatformResource` / `updatePlatformResource` 提交。
 
-```typescript
-function buildConfigJson(form: ProviderFormData): string {
-  return JSON.stringify({
-    provider_type: form.providerType,
-    variant: form.variant || undefined,
-    provider_display_name: form.providerDisplayName || undefined,
-    api_base_url: form.apiBaseUrl || undefined,
-    api_key: form.apiKey || undefined,
-    api_key_set: form.apiKey ? true : undefined,
-    secret_id: form.secretId || undefined,
-    secret_key: form.secretKey || undefined,
-    aws_region: form.awsRegion || undefined,
-    model_category: form.modelCategory.map(v => MODEL_CATEGORY_MAP[v]),
-    model_size_label: form.modelSizeLabel || undefined,
-    context_window_k: form.contextWindowK || undefined,
-    max_output_tokens: form.maxOutputTokens || undefined,
-    input_price_micro_usd_per_1k: form.inputPrice || undefined,
-    output_price_micro_usd_per_1k: form.outputPrice || undefined,
-    cached_input_price_micro_usd_per_1k: form.cachedInputPrice || undefined,
-    reasoning_price_micro_usd_per_1k: form.reasoningPrice || undefined,
-    embedding_price_micro_usd_per_1k: form.embeddingPrice || undefined,
-    ha_mode: form.haMode || undefined,
-    ha_candidates: form.haCandidates.filter(c => c.name),
-    ha_hedge_delay_ms: form.haMode === "hedge" ? form.haHedgeDelayMs : undefined,
-    enable_token_tailoring: form.enableTokenTailoring || undefined,
-    optimize_for_cache: form.optimizeForCache || undefined,
-    reasoning_content_backfill: form.reasoningBackfill || undefined,
-    show_tool_call_delta: form.showToolCallDelta || undefined,
-    cache_system_prompt: form.cacheSystemPrompt || undefined,
-    cache_tools: form.cacheTools || undefined,
-    cache_messages: form.cacheMessages || undefined,
-    keep_alive_minutes: form.keepAliveMinutes || undefined,
-    channel_buffer_size: form.channelBufferSize || undefined,
-  });
-}
-```
+### 10.6 ProviderHAConfig.vue
 
-### 8.6 ProviderHAConfig.vue（已实现）
+高可用配置独立组件，供步骤 3 使用。支持候选模型条目的增删改、Hedge 延迟配置。
 
-高可用配置独立组件，供 `ProviderFormDialog.vue` 步骤三使用。
-
-```vue
-<template>
-  <div class="q-gutter-md">
-    <QSelect v-model="modelValue.haMode" :options="haModeOptions"
-      label="高可用模式" emit-value map-options outlined dense
-      @update:model-value="emitChange" />
-    <template v-if="modelValue.haMode">
-      <QCard v-for="(c, idx) in modelValue.haCandidates" :key="idx" flat bordered class="q-pa-sm">
-        <div class="row q-gutter-sm items-center">
-          <QInput v-model="c.name" label="模型名" outlined dense class="col" />
-          <QSelect v-model="c.providerType" :options="PROVIDER_TYPE_OPTIONS"
-            label="Provider" emit-value map-options outlined dense style="min-width: 140px" />
-          <QInput v-model="c.baseUrl" label="Base URL" outlined dense class="col" />
-          <QInput v-model="c.apiKey" label="API Key" type="password" outlined dense style="max-width: 200px" />
-          <QBtn flat round dense icon="close" color="negative" @click="removeCandidate(idx)" />
-        </div>
-      </QCard>
-      <QBtn flat label="+ 添加候选模型" color="primary" icon="add" @click="addCandidate" />
-      <QInput v-if="modelValue.haMode === 'hedge'" v-model.number="modelValue.haHedgeDelayMs"
-        label="Hedge 延迟" type="number" outlined dense suffix="ms" min="0" />
-    </template>
-  </div>
-</template>
-```
-
-### 8.7 ResourceManagerPage.vue 改造（已实现）
-
-ResourceManagerPage 已完成改造，集成 QStepper 四步表单、Provider 类型筛选、Variant Chip、高可用 Chip：
-
-1. **Provider 类型筛选**：`QSelect` 多选，选项为 `PROVIDER_TYPE_OPTIONS`
-2. **ProviderFormDialog 集成**：替换现有添加/编辑弹窗
-3. **Variant Chip**：列表行中 Provider 类型为 openai 且 Variant ≠ openai 时显示
-4. **高可用 Chip**：列表行中配置了 Failover/Hedge 时显示
-
-### 8.8 API 调用（已实现）
+### 10.7 API 调用
 
 文件：`web/src/features/platform/api.ts`
 
@@ -1437,19 +1260,55 @@ export async function inspectProviderModel(input: InspectProviderModelInput): Pr
 export async function validateModel(provider: string, model: string): Promise<ValidateModelResult>
 ```
 
+**数据流合规**：`useAgentProviderModelPicker` + `useProviderWizard` 均走 Store，不直接调 API。
+
 ---
 
-## 九、实现优先级
+## 十一、LLM Gateway 设计参考与演进方向
 
-| 优先级 | 任务 | 涉及文件 | 状态 |
-|--------|------|----------|------|
-| P0 | Proto Inspect 新增字段 | `api/kratos/llm_provider_model/v1/llm_provider_model.proto` | ✅ |
-| P0 | Biz InspectMerge 扩展 | `internal/biz/llm_provider_model.go` | ✅ |
-| P0 | Service Inspect 映射更新 | `internal/service/llm_provider_model.go` | ✅ |
-| P0 | 前端 ProviderFormDialog 四步表单 | `web/src/components/platform/ProviderFormDialog.vue` | ✅ |
-| P1 | 前端 Variant Chip 展示 | `web/src/components/platform/ProviderModelsTable.vue` | ✅ |
-| P1 | 前端高可用 Chip 展示 | `web/src/components/platform/ProviderModelsTable.vue` | ✅ |
-| P1 | 前端 ProviderHAConfig 组件 | `web/src/components/platform/ProviderHAConfig.vue` | ✅ |
-| P2 | ResourceManagerPage Provider 类型筛选 | `web/src/pages/ResourceManagerPage.vue` | ✅ |
-| P2 | 数据兼容性：旧 provider_type 映射 | `internal/provider/catalog.go` | ✅ |
-| P3 | HuggingFace / Bedrock Provider 注册 | `internal/provider/register_extra.go` | ⏳ |
+> 本节整合自 `architecture/platform-architecture.md` 第二篇，描述 LLM Gateway 的三层架构、路由策略、容错降级与本项目落点。
+
+### 11.1 解决的问题
+
+收口全部模型调用，避免：多厂商协议分裂、密钥与路由散落各微服务、无统一容错与配额、成本与 SLA 不可见。核心价值：**统一管控、可配置路由、多层降级、可观测与成本归因**。
+
+### 11.2 三层架构
+
+| 层 | 职责 | Aranea 落点 |
+|----|------|------------|
+| **接入** | 协议/参数归一、鉴权、限流与配额 → 产出内部标准请求 | Kratos HTTP 中间件 + Identity/Capability；入口构造 `RuntimeContext` |
+| **决策** | 路由引擎、实例健康与延迟视图、负载均衡、降级编排；策略应动态可配 | `Capability.Provider` / ModelProfile + Operations（开关、告警）；可为独立路由服务演进 |
+| **出口** | 厂商请求/响应转换、SSE 流式归一、结构化日志与指标 | `internal/provider` + Provider 适配器；结构化日志与 span |
+
+### 11.3 路由策略（多策略组合）
+
+1. **按能力**：任务类型或标签 → 匹配模型族（推理 / 代码 / 长上下文 / 轻量等）
+2. **按成本**：级联——小模型先答，质量闸门不过关再上大模型
+3. **按延迟**：滑动窗口 P95；综合推理时延 + 网络 RTT；实时路径显式标记
+4. **语义路由（可选）**：嵌入 + 阈值 → 任务类型；纳入误判与隐私、运维成本评审
+
+### 11.4 容错：四层降级 + 熔断
+
+1. **同模型**：有限次重试 + 指数退避；只对可重试错误（超时、429 等），参数/鉴权类立即失败
+2. **跨厂商**：降级链预置 + 出口层协议转换，对上游尽量无感
+3. **跨等级**：降级轻量或小上下文（需产品预先接受体验下限）
+4. **兜底**：语义缓存、固定话术、人工接管
+
+**熔断**：LLM 长尾延迟常态，阈值应显著宽于通用 RPC；结合错误率 / 慢请求占比开合，避免误杀。
+
+### 11.5 负载均衡（LLM 特化）
+
+不宜简单轮询：按并发、队列深度、预估 token 吞吐加权；多区域时在地缘就近与实例空闲度间折衷。
+
+### 11.6 统一协议面
+
+对外以主流开放对话 API 为事实标准可显著降改造成本。须统一：SSE 事件形态、工具/函数调用 JSON、token 计数口径、厂商错误码映射为网关错误码，以及厂商专有能力的受限扩展出口。
+
+### 11.7 语义缓存与可观测
+
+- **缓存**：适用于稳态、弱时效问答；强时效资讯、强个性化、合规敏感场景应禁用或短 TTL
+- **可观测**：每请求 trace、路由决策、降级层级、目标模型/厂商、token 与成本；监控成功率、延迟分位、路由命中与降级占比，反哺调参
+
+---
+
+*文档版本：基于 trpc-agent-go `model/provider` 体系设计；与 `8 agent-title.md` §8.1、`2 agents-create.md` 对齐。LLM Gateway 整合自 `architecture/platform-architecture.md`。开发进度与任务清单见 [9-provider.development.md](./9-provider.development.md)。*

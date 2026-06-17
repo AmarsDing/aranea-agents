@@ -18,11 +18,6 @@ import type {
   ConversationTurn,
   AgentWorkProcess,
   Activity,
-  TeamPanel,
-  TaskBoardSection,
-  DagSection,
-  TeamProgressSection,
-  AgentProgress,
 } from '../activityTimelineTypes';
 import type { ReplyEvent, ThinkingEvent } from '../streamEventTypes';
 import type { ActivityTreeNode } from '../activityTypes';
@@ -373,113 +368,6 @@ function buildTreeFromRecords(records: readonly import('../activityTypes').Activ
   return roots;
 }
 
-function buildTeamPanelFromActivityTree(tree: ActivityTreeNode[]): TeamPanel | undefined {
-  if (!tree || tree.length === 0) return undefined;
-
-  const delegateNodes = findNodesByKind(tree, 'delegate');
-  const subTaskBoardNodes = findNodesByKind(tree, 'sub_task_board');
-  const hasTeamStructure = delegateNodes.length > 0 || subTaskBoardNodes.length > 0;
-  if (!hasTeamStructure) return undefined;
-
-  const rootTask = tree[0];
-  const taskBoardEntries: TaskBoardSection['entries'] = [];
-  let num = 1;
-
-  taskBoardEntries.push({
-    id: rootTask.id,
-    task: rootTask.content || rootTask.label || '',
-    status: mapActivityStatusToPlanStatus(rootTask.status),
-    num: num++,
-    agentKey: rootTask.agentKey || null,
-    agentName: rootTask.agentName || null,
-    agentIcon: rootTask.agentName?.charAt(0) || null,
-    agentColor: agentColorFromKey(rootTask.agentKey || ''),
-  });
-
-  for (const child of rootTask.children) {
-    if (child.kind === 'delegate' || child.kind === 'sub_task_board') {
-      taskBoardEntries.push({
-        id: child.id,
-        task: child.content || child.label || '',
-        status: mapActivityStatusToPlanStatus(child.status),
-        num: num++,
-        agentKey: child.agentKey || null,
-        agentName: child.agentName || null,
-        agentIcon: child.agentName?.charAt(0) || null,
-        agentColor: agentColorFromKey(child.agentKey || ''),
-      });
-    }
-  }
-
-  const dagNodes: DagSection['nodes'] = [];
-  const dagEdges: DagSection['edges'] = [];
-  const allNodes = flattenTree(tree);
-  for (const node of allNodes) {
-    if (node.dagNodeId) {
-      dagNodes.push({
-        id: node.dagNodeId,
-        label: node.label || node.content || '',
-        status: mapActivityStatusToDagStatus(node.status),
-      });
-      if (node.dependsOn) {
-        for (const depId of node.dependsOn) {
-          dagEdges.push({ from: depId, to: node.dagNodeId });
-        }
-      }
-    }
-  }
-
-  const teamProgress: TeamProgressSection[] = [];
-  for (const delegateNode of delegateNodes) {
-    const agents = buildAgentProgress(delegateNode);
-    const totalAgents = agents.length;
-    const completedAgents = agents.filter((a) => a.status === 'completed').length;
-    const progressPercent = totalAgents > 0 ? Math.round((completedAgents / totalAgents) * 100) : 0;
-
-    teamProgress.push({
-      teamId: delegateNode.teamId || delegateNode.id,
-      teamName: delegateNode.label || delegateNode.content || '团队',
-      teamIcon: delegateNode.agentName?.charAt(0) || 'T',
-      status: mapActivityStatusToTeamStatus(delegateNode.status),
-      progressPercent,
-      durationMs: delegateNode.durationMs,
-      agents,
-      actions: delegateNode.status === 'interrupted' ? ['resume', 'cancel'] : undefined,
-    });
-  }
-  for (const stbNode of subTaskBoardNodes) {
-    const agents = buildAgentProgress(stbNode);
-    const totalAgents = agents.length;
-    const completedAgents = agents.filter((a) => a.status === 'completed').length;
-    const progressPercent = totalAgents > 0 ? Math.round((completedAgents / totalAgents) * 100) : 0;
-
-    teamProgress.push({
-      teamId: stbNode.teamId || stbNode.id,
-      teamName: stbNode.label || stbNode.content || '子任务',
-      teamIcon: stbNode.agentName?.charAt(0) || 'S',
-      status: mapActivityStatusToTeamStatus(stbNode.status),
-      progressPercent,
-      durationMs: stbNode.durationMs,
-      agents,
-    });
-  }
-
-  return {
-    taskBoard: { entries: taskBoardEntries },
-    dag: dagNodes.length > 0 ? { nodes: dagNodes, edges: dagEdges } : undefined,
-    teamProgress,
-  };
-}
-
-function findNodesByKind(tree: ActivityTreeNode[], kind: string): ActivityTreeNode[] {
-  const result: ActivityTreeNode[] = [];
-  for (const node of tree) {
-    if (node.kind === kind) result.push(node);
-    result.push(...findNodesByKind(node.children, kind));
-  }
-  return result;
-}
-
 function flattenTree(tree: ActivityTreeNode[]): ActivityTreeNode[] {
   const result: ActivityTreeNode[] = [];
   for (const node of tree) {
@@ -487,69 +375,6 @@ function flattenTree(tree: ActivityTreeNode[]): ActivityTreeNode[] {
     result.push(...flattenTree(node.children));
   }
   return result;
-}
-
-function buildAgentProgress(parentNode: ActivityTreeNode): AgentProgress[] {
-  const agents: AgentProgress[] = [];
-  const agentMap = new Map<string, ActivityTreeNode[]>();
-  for (const child of parentNode.children) {
-    const key = child.agentKey || child.id;
-    if (!agentMap.has(key)) agentMap.set(key, []);
-    agentMap.get(key)!.push(child);
-  }
-
-  for (const [key, children] of agentMap) {
-    const firstChild = children[0];
-    const agentActivities: Activity[] = children.map((child) => activityToStreamEvent(child));
-    const hasRunning = children.some((c) => c.status === 'running' || c.status === 'tool_running');
-    const hasFailed = children.some((c) => c.status === 'failed');
-    const allCompleted = children.every((c) => c.status === 'completed');
-
-    agents.push({
-      agentKey: key,
-      agentName: firstChild.agentName || key,
-      agentIcon: firstChild.agentName?.charAt(0) || key.charAt(0),
-      status: hasRunning ? 'running' : (hasFailed ? 'failed' : (allCompleted ? 'completed' : 'waiting')),
-      activities: agentActivities,
-    });
-  }
-
-  return agents;
-}
-
-function mapActivityStatusToPlanStatus(status: string): 'pending' | 'running' | 'completed' | 'failed' {
-  switch (status) {
-    case 'completed': return 'completed';
-    case 'failed':
-    case 'partial_failure': return 'failed';
-    case 'running':
-    case 'tool_running':
-    case 'tool_blocked': return 'running';
-    default: return 'pending';
-  }
-}
-
-function mapActivityStatusToDagStatus(status: string): 'done' | 'running' | 'pending' | 'failed' {
-  switch (status) {
-    case 'completed': return 'done';
-    case 'failed':
-    case 'partial_failure': return 'failed';
-    case 'running':
-    case 'tool_running':
-    case 'tool_blocked': return 'running';
-    default: return 'pending';
-  }
-}
-
-function mapActivityStatusToTeamStatus(status: string): 'running' | 'completed' | 'failed' | 'interrupted' {
-  switch (status) {
-    case 'completed': return 'completed';
-    case 'failed':
-    case 'partial_failure': return 'failed';
-    case 'interrupted':
-    case 'cancelled': return 'interrupted';
-    default: return 'running';
-  }
 }
 
 

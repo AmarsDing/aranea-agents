@@ -4,9 +4,11 @@
 > **Review**：[2026-05-23-Chat-Flow-Full-Review.md](../review/2026-05-23-Chat-Flow-Full-Review.md)  
 > **M55 Cursor 对标**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)  
 > **四层解耦（DECO）**：[0-module-decoupling-architecture.md §3.1](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · 任务板 [17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-06/13/14）
-> **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)  
-> **执行卡片 v2**：[1 chat-execution-trace.md](./1%20chat-execution-trace.md) · [1 chat-execution-trace.design.md](./1%20chat-execution-trace.design.md)
+> **需求**：[1-chat.md](./1-chat.md) · **设计**：[1-chat.design.md](./1-chat.design.md)  
+> **执行卡片 v2**：[1-chat-execution-trace.md](./1-chat-execution-trace.md) · [1-chat-execution-trace.design.md](./1-chat-execution-trace.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
+>
+> **文档边界**：本文档包含模块定位、代码锚点、现状评估、差距/优化、阶段划分、任务清单（含状态）、验收标准、改动文件清单。用户故事、功能需求清单、验收标准见 [1-chat.md](./1-chat.md)；架构设计、代码分层、Proto/API 契约、数据模型、接口定义、状态机、序列图、前端组件设计、UX 规范见 [1-chat.design.md](./1-chat.design.md)。
 
 ---
 
@@ -14,22 +16,31 @@
 
 Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + EventBus 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
 
-**代码锚点**：
+**代码锚点**（已校验存在）：
 - `api/kratos/chat/v1/chat.proto` — Chat RPC（含 `EnqueueUserMessage` → `POST /v1/chat/enqueue`）
 - `internal/runtime/run_registry.go` — 会话级 active run / cancel / run status
 - `internal/runtime/pending_queue.go` — PendingMessageQueue FIFO
 - `internal/server/ws.go` — WebSocket（`user_message` / `cancel` / `enqueue_message`）
+- `internal/server/ws_message_handler.go` — WS 上行消息分发（user_message/enqueue_message/cancel/ping/subscribe/unsubscribe/enable_log）
 - `internal/biz/chat_usecase.go` — Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
-- `internal/service/turn_outcome.go` — `ErrTurnMessageQueued` / `CHAT_TURN_BUSY`
-- `internal/service/chat_run_gateway.go` — Biz 适配器 + `publishMessageQueuedToBus`
+- `internal/service/chat.go` — ChatService 薄传输桥（委托 ChatOrchestrator）
+- `internal/service/chat_orchestrator.go` — ChatOrchestrator 编排核心
+- `internal/service/chat_orchestrator_turn.go` — Turn 编排
 - `internal/service/chat_native.go` — 原生对话入口（admission + team/agent 路由）
-- `internal/service/trpc_turn.go` — trpc-agent-go 单 Agent turn + EventBus 投影
+- `internal/service/chat_run_gateway.go` — Biz 适配器 + `publishMessageQueuedToBus`
+- `internal/service/turn_outcome.go` — `ErrTurnMessageQueued` / `CHAT_TURN_BUSY`
+- `internal/service/turn_pipeline.go` · `turn_pipeline_chat.go` — Turn Pipeline（PersistentTurnService + chatTurnExecutor）
 - `internal/agent/choice_stream.go` · `stream_consumer.go` — 流式 delta 与 turn 消费
 - `internal/agent/event_projector.go` — trpc event → Envelope（含 Team `member_*`）
+- `internal/agent/activity_projector.go` · `activity_meta.go` · `activity_persist.go` — Activity 投影/分类/持久化
 - `internal/event/envelope.go` — WS Envelope 协议与 channel 路由
 - `web/src/features/chat/composables/useChatWorkspace.ts` — Chat 页编排
 - `web/src/features/chat/composables/useChatStreamManager.ts` · `useChatSender.ts` · `useFollowUpQueue.ts` · `useAwaitReply.ts`
 - `web/src/features/chat/ws-transport.ts` — WS 客户端（心跳、重连、控制消息）
+- `web/src/components/chat/ChatExecutionCard.vue` — 执行过程卡片 v2
+- `web/src/components/chat/ConversationTurn.vue` — 对话轮次组件（TurnBlock 后继）
+
+> 代码分层、请求流转、Proto 契约、WebSocket 协议、Biz/Data/Service/运行时层详细设计详见 [1-chat.design.md §二~§七](./1-chat.design.md#二代码分层遵循-ai-development-specificationmd)。
 
 ---
 
@@ -45,7 +56,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | RunStatus + AwaitUserReply | ✅ | RPC + WS；`useAwaitReply` submit（Round2） |
 | Team member_* Envelope | ✅ | `EventProjector` + `useChatWorkspace` 成员流 |
 | WS 控制消息 | 🟡 | `ws-transport`：`connected`/`pong`/`replay_*`/`server_shutdown`；页面无回放提示 |
-| 工具事件 UI | ✅ | `ChatToolCallCard`：参数/结果/耗时/`is_long_running` 折叠卡片 |
+| 工具事件 UI | ✅ | `ChatExecutionCard`：参数/结果/耗时/`is_long_running` 折叠卡片 |
 | Reasoning UI | ✅ | 默认折叠 `<details>` 展示 `reasoning_markdown` |
 | RunStatus | ✅ | WS `run_status` Envelope 驱动；会话切换时 HTTP 快照一次 |
 | WS 回放提示 | ✅ | `replay_start/end` → 顶栏「正在同步历史事件…」 |
@@ -53,6 +64,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 模型选项 | 🟡 | Platform 优先 + `GetChatOptions("model")` 回退 |
 | 附件 / Vision | ✅ | Artifact 上传 + `buildUserMessage` 多 part 装配 |
 | RunStatus 持久化 | ✅ | `state_json` + trpc `PendingAwaitUserReplyRoute`；resume 同步清状态 + `resumeInFlight` 防双 turn |
+
+> API 端点清单、Proto 定义、RunStatus 字段详见 [1-chat.design.md §四](./1-chat.design.md#四proto-层)。
 
 ---
 
@@ -74,34 +87,62 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ### P1 — 体验闭环（原）
 
-1. **工具事件结构化卡片**：`tool_call`/`tool_result` → 参数 JSON、结果、耗时、`is_long_running` 折叠面板（`ChatMessagePanel` + `toolEventMarkdown` 扩展）。
-2. **Reasoning 展示规格**：产品定稿（折叠/内联/侧栏）并在助手气泡渲染 `content.reasoning`。
+1. **工具事件结构化卡片**：`tool_call`/`tool_result` → 参数 JSON、结果、耗时、`is_long_running` 折叠面板（`ChatMessagePanel` + `toolEventMarkdown` 扩展）。✅ 已由 `ChatExecutionCard` v2 实现
+2. **Reasoning 展示规格**：产品定稿（折叠/内联/侧栏）并在助手气泡渲染 `content.reasoning`。✅ 已实现
 
 ### P2 — 实时与 Team UX
 
-3. **RunStatus WS 驱动**：用 `state_delta` 或专用 Envelope 替代 2s `getRunStatus` 轮询。
-4. **Team 成员分栏**：`member-{agent_key}` 消息增加头像、角色标签、独立气泡样式。
-5. **WS 回放 UX**：`ws-transport.onReplayState` → Chat 顶栏「同步历史事件…」提示。
+3. **RunStatus WS 驱动**：用 `state_delta` 或专用 Envelope 替代 2s `getRunStatus` 轮询。✅ 已实现
+4. **Team 成员分栏**：`member-{agent_key}` 消息增加头像、角色标签、独立气泡样式。✅ 已实现
+5. **WS 回放 UX**：`ws-transport.onReplayState` → Chat 顶栏「同步历史事件…」提示。✅ 已实现
 
 ### P3 — 平台级
 
-6. **多模态附件**：上传 API、对象存储、Vision 输入装配。
-7. **RunStatus 可恢复**：`awaiting_user` 持久化或 EventBuffer 恢复策略。
-8. **模型选项单一真相源**：长期统一为 `GetChatOptions` 或 Platform 之一（当前为 Platform 优先 + 回退）。
+6. **多模态附件**：上传 API、对象存储、Vision 输入装配。✅ 已实现
+7. **RunStatus 可恢复**：`awaiting_user` 持久化或 EventBuffer 恢复策略。✅ 已实现
+8. **模型选项单一真相源**：长期统一为 `GetChatOptions` 或 Platform 之一（当前为 Platform 优先 + 回退）。🟡 回退已实现
 
 ### P0 — Cursor 对标（M55，2026-05-23）
 
 > 详案：[55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md) Phase C/E · [UX Backlog changelog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md)
 
-1. **TurnBlock UI**：一轮 = User → ToolStrip（折叠）→ Assistant — **骨架 ✅**（`TurnBlock.vue`）
+1. **ConversationTurn UI**：一轮 = User → ToolStrip（折叠）→ Assistant — **骨架 ✅**（`ConversationTurn.vue`）
 2. **Channel 会话同步**：`session_revision` 增量 hydrate — **✅**
 3. **滚动锚点**：最后一轮正文 — **✅**
-4. **思考/ReAct UX**：互斥呈现、空 reasoning 不展示 — **🟡** IM preview sanitize ✅（CH-BOR-12）；Web CC-C-UX-* 📋
+4. **思考/ReAct UX**：互斥呈现、空 reasoning 不展示 — **✅** IM preview sanitize ✅（CH-BOR-12）；Web CC-C-UX-* ✅
 5. **（P2）@ 上下文引用**、**diff Apply 卡片** — **📋**
 
 ---
 
-## 4. 开发阶段
+## 4. 技术债务与优化方向
+
+> 本节汇总从需求文档与设计文档迁移的技术债务条目，作为后续迭代的输入。
+
+### 4.1 已知技术债务
+
+| 编号 | 问题 | 位置 | 严重度 | 状态 |
+|------|------|------|--------|------|
+| TD-01 | `ChatService` 历史曾承担过多职责（teams/usage/plugin/skill/webhooks 等） | `internal/service/chat.go` | 中 | ✅ 已重构为薄桥（仅 orch/turnPipeline/lg） |
+| TD-02 | 工具卡片曾用 `ChatToolCallCard` 命名，upsert 键易冲突 | 前端 | 中 | ✅ 已升级为 `ChatExecutionCard` v2（`act-{tool_call_id}` 稳定 upsert） |
+| TD-03 | `TurnBlock.vue` 组件命名与 Cursor 对标文档不一致 | 前端 | 低 | ✅ 已重命名为 `ConversationTurn.vue` |
+| TD-04 | 模型选项双源（Platform + GetChatOptions 回退） | `useChatProviderOptions` | 低 | 🟡 回退已实现，长期统一为单一来源 |
+| TD-05 | WS 控制消息页面回放提示缺失 | `ws-transport` | 低 | ✅ 已实现 `replay_start/end` 顶栏提示 |
+
+### 4.2 优化方向（从设计文档 §九 迁移）
+
+| 方向 | 描述 | 优先级 | 状态 |
+|------|------|--------|------|
+| Activity Envelope 独立类型 | 当 tool_call 过载时评估 `activity_*` 专用 Envelope 类型 | P2 | 📋 暂不需要 |
+| Running 态落库 | 执行卡片 running 状态持久化到 session messages | P2 | ✅ running upsert + StopGeneration 取消落库 |
+| catalog display_name 查表 | `ActivityMetaResolver` + ToolUC 统一能力名查表 | P1 | ✅ 已实现 |
+| Team 成员标识 | Envelope author + UI 展示执行成员 Agent | P1 | ✅ 已实现 |
+| messages 持久化 schema | `chat.activity/v1` schema + 历史还原 | P1 | ✅ 已实现 |
+
+> 执行卡片 v2 详细设计、状态机、实施分期详见 [1-chat.design.md 子模块](./1-chat.design.md#子模块chat-执行过程卡片--技术设计)。
+
+---
+
+## 5. 开发阶段
 
 | Phase | 主题 | 状态 |
 |-------|------|------|
@@ -112,13 +153,13 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 5 | Team `member_*` + 成员流消费 | ✅ 协议通；UX 待增强 |
 | 6 | 工具可观测 UI（基础卡片） | ✅ |
 | 6b | 执行过程卡片 v2（Skill/MCP/默认折叠/持久化 schema） | ✅ P0 |
-| 7 | Reasoning 展示 | ⏳ | 折叠 UI 有；空壳/双轨（ReAct vs reasoning）待 CC-C-UX-01 |
-| 8 | 附件 / RunStatus 持久化 | 🟡 |
-| 9 | M55 TurnBlock + Channel 同步 | 🚧 | Phase A–D ✅；UX 收口 CC-C-UX-* 📋 |
+| 7 | Reasoning 展示 | ✅ | 折叠 UI + 空壳/双轨（ReAct vs reasoning）已收口 CC-C-UX-01~03 |
+| 8 | 附件 / RunStatus 持久化 | ✅ |
+| 9 | M55 ConversationTurn + Channel 同步 | ✅ | Phase A–D ✅；UX 收口 CC-C-UX-* ✅ |
 
 ---
 
-## 5. 任务清单
+## 6. 任务清单
 
 | # | 任务 | 优先级 | 状态 |
 |---|------|--------|------|
@@ -145,7 +186,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ---
 
-## 6. 验收标准
+## 7. 验收标准
 
 - [x] 无 `/v1/chat/messages/stream` 当前端点表述
 - [x] WS 控制消息在需求/设计文档中完整描述
@@ -163,7 +204,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ---
 
-## 7. 依赖与风险
+## 8. 依赖与风险
 
 - Team 成员 UX 依赖 `MemberAgentKeys` 在 turn 元数据中完整传递
 - 工具卡片依赖 `EventProjector` 对 `duration_ms` / `is_long_running` 的稳定填充
@@ -231,7 +272,6 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 **Files:**
 - Modify: `web/src/components/chat/ChatMessageAttachments.vue`
-- Modify: `web/src/components/chat/ChatMessageRow.vue`
 - Modify: `web/src/components/chat/ChatMessagePanel.vue`
 - Modify: `web/src/pages/ChatPage.vue`
 - Modify: `web/src/features/chat/composables/useChatWorkspace.ts`
@@ -244,8 +284,10 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 1. 移除 `useArtifactStore` / `useQuasar` import
 2. `onDownload` 改为 `emit('download', meta)`，`onDelete` 改为 `emit('deleted', id)`
-3. ChatMessageRow → ChatMessagePanel → ChatPage 逐层转发 `download-artifact` 事件
+3. `ChatMessagePanel` → ChatPage 逐层转发 `download-artifact` 事件
 4. `useChatWorkspace` 新增 `downloadArtifact` 方法，调用 `useArtifactStore` + 处理通知
+
+> 注：原方案提及 `ChatMessageRow.vue` 作为中间转发层，但该组件在当前代码中不存在；实际转发链路为 `ChatMessageAttachments` → `ChatMessagePanel` → `ChatPage`。
 
 ---
 
@@ -276,7 +318,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 2 | 🔴 严重 | `touchRunActivity` 定义但从未调用，Stall 检测完全失效 | 在 StreamHandlerCtx 新增 `onRunActivity`，WS 事件中调用 |
 | 3 | 🔴 严重 | `formatErrorWithHint` 拼接原始 i18n key | 改为中文文本 |
 | 4 | 🟠 高 | `clearFailedPendingForSession` 清除所有会话 | 改为 `Map<string, string>` 按会话清除 |
-| 5 | 🟠 高 | TurnBlock 缺少 `@retry`/`@dismiss-failed` 事件转发 | 添加事件转发 |
+| 5 | 🟠 高 | ConversationTurn 缺少 `@retry`/`@dismiss-failed` 事件转发 | 添加事件转发 |
 | 6 | 🟡 中 | `regenerateMessage` 未停止活跃 Run | 重生前先 cancel + stop |
 | 7 | 🟢 低 | `isFailedPendingMessage` 导出但无调用者 | 删除死代码 |
 
@@ -284,7 +326,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 | # | 严重度 | 问题 | 修复 |
 |---|--------|------|------|
-| 1 | 🟡 建议 | TurnBlock 成员 ChatMessageRow 缺少事件转发 | 添加 `@retry`/`@dismiss-failed`/`@regenerate` |
+| 1 | 🟡 建议 | ConversationTurn 成员消息组件缺少事件转发 | 添加 `@retry`/`@dismiss-failed`/`@regenerate` |
 | 2 | 🟡 建议 | `sendMessage` 直接 API 调用未标注 TECH-DEBT | 添加标注 |
 | 3 | 🟡 建议 | `ChatMessagePanel` 硬编码 hex fallback `#4caf50` | 记录为剩余项 |
 
@@ -360,9 +402,8 @@ cd web && npx quasar build
 | `web/src/features/chat/streamHandlers.ts` | 修改（withSessionFilter + onRunActivity + errorCodeHints） |
 | `web/src/features/chat/errorCodeHints.ts` | 新建（错误码映射） |
 | `web/src/features/chat/useEnvelopeStream.ts` | 修改（createTeamStream onConnected） |
-| `web/src/components/chat/ChatMessageRow.vue` | 修改（regenerate 按钮 + download-artifact 事件） |
 | `web/src/components/chat/ChatMessagePanel.vue` | 修改（事件转发 + download-artifact） |
-| `web/src/components/chat/TurnBlock.vue` | 修改（事件转发 retry/dismiss-failed/regenerate） |
+| `web/src/components/chat/ConversationTurn.vue` | 修改（事件转发 retry/dismiss-failed/regenerate） |
 | `web/src/components/chat/ChatBackgroundJobsPanel.vue` | 修改（API 调用改为 emit） |
 | `web/src/components/chat/ChatMessageAttachments.vue` | 修改（Store 调用改为 emit） |
 | `web/src/components/chat/ChatComposer.vue` | 修改（cancel-job 事件转发） |
@@ -395,8 +436,9 @@ cd web && npx quasar build
 | `web/src/pages/ChatPage.vue` | 修改（处理 paste-unsupported 通知，传入 favoriteIds/toggle-favorite） | P3-1/P3-2 |
 | `web/src/components/chat/ChatSessionSidebar.vue` | 修改（sessionSync → props favoriteIds + emit toggle-favorite） | P3-2 |
 | `web/src/features/chat/composables/useChatWorkspace.ts` | 修改（新增 favoriteIds/onToggleFavorite） | P3-2 |
-| `web/src/components/chat/ChatMessageRow.vue` | 修改（reasoning v-if 加 trim，合并 thinkingIndicator 进 ChatReasoningPeek） | CC-C-UX-01/02 |
 | `web/src/components/chat/ChatReasoningPeek.vue` | 修改（新增 thinkingOnly prop，thinking-only 模式渲染） | CC-C-UX-02 |
+
+> 注：原方案提及 `ChatMessageRow.vue` 的 reasoning v-if 修复（CC-C-UX-01/02），但该组件在当前代码中不存在；实际 reasoning 展示逻辑由 `ChatReasoningPeek.vue` 承载。
 
 ---
 

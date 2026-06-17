@@ -2075,6 +2075,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		// Memory extractor config providers
 		provideMemoryLLMExtractorConfig,
 		provideMemoryEnhancedExtractorConfig,
+		// Bind *ChatService as OpenAIRunnerBuilder for the compat service
+		// wrappers (AGUI / OpenAI Session / A2A Extension).
+		wire.Bind(new(service.OpenAIRunnerBuilder), new(*service.ChatService)),
 		newApp,
 		provideWireOut,
 	))

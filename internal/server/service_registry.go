@@ -48,6 +48,10 @@ type ServiceRegistry struct {
 	Pack               *service.PackService
 	SkillEvoSuggestion *service.SkillEvolutionSuggestionService
 	EcosystemPreset    *service.EcosystemPresetService
+	// Compat service wrappers: lazily wire trpc-agent-go framework servers.
+	AGUICompat        *service.AGUICompatService
+	OpenAISession     *service.OpenAISessionCompatService
+	A2AExtension      *service.A2AExtensionCompatService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -91,6 +95,9 @@ func NewServiceRegistry(
 	packSvc *service.PackService,
 	skillEvoSuggestion *service.SkillEvolutionSuggestionService,
 	ecosystemPresetSvc *service.EcosystemPresetService,
+	aguiCompat *service.AGUICompatService,
+	openaiSession *service.OpenAISessionCompatService,
+	a2aExtension *service.A2AExtensionCompatService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:          admin,
@@ -131,5 +138,8 @@ func NewServiceRegistry(
 		Pack:           packSvc,
 		SkillEvoSuggestion: skillEvoSuggestion,
 		EcosystemPreset:    ecosystemPresetSvc,
+		AGUICompat:         aguiCompat,
+		OpenAISession:      openaiSession,
+		A2AExtension:       a2aExtension,
 	}
 }

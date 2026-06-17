@@ -1,6 +1,8 @@
 # Agent 设置 —「文件」Tab（Markdown 分片）
 
-本文档描述 **Agent 详情 → 主导航「文件」** 分区：左侧文件列表 + 右侧 Markdown 编辑器、Token 估值、AI 编辑与保存行为；内容与 **`agents` 主表** 中若干 **长文本列** 一一对应。整体页面框架见 **`5 agent-setting.md`**（顶栏、Tab、路由）。
+本文档描述 **Agent 详情 → 主导航「文件」** 分区：左侧文件列表 + 右侧 Markdown 编辑器、Token 估值、AI 编辑与保存行为。整体页面框架见 **`5 agent-setting.md`**（顶栏、Tab、路由）。
+
+> **文档边界**：本文件仅包含用户故事、功能需求、验收标准与交互规格。代码分层、Proto/API 契约、数据模型、运行时组装实现见 [6-agent-setting-file.design.md](./6-agent-setting-file.design.md)；模块定位、代码锚点、现状与任务清单见 [6-agent-setting-file.development.md](./6-agent-setting-file.development.md)。
 
 ---
 
@@ -10,6 +12,8 @@
 |------|------|
 | **路由建议** | `/agents/:id/settings/files`（作为 `settings` 子路由，与 `5` 中 Tab「文件」对应） |
 | **用户目标** | 按「逻辑文件名」编辑 Agent 的人格、操作规则、能力说明、心跳清单等 Markdown；控制 Token 体量；必要时用 AI 辅助改写 |
+| **存储模型** | 文件以 O2M 关系存储于独立表（`agent_prompt_files`），每个 Agent 可有多条 Markdown 分片记录。详见设计文档 §2 |
+
 ---
 
 ## 2. 整体布局
@@ -39,7 +43,7 @@
 
 ### 3.1 列表项结构
 
-每一项对应 **一个 `agents` 表字段**（见 §8），展示：
+每一项对应 **一条提示文件记录**（存储模型详见设计文档 §2），展示：
 
 | 展示元素 | 说明 |
 |----------|------|
@@ -51,15 +55,17 @@
 
 顺序可配置常量数组，便于与 **系统提示组装顺序** 对齐：
 
-1. `AGENTS_CORE.md` — 通用操作规则（语言、系统消息、保存工具约束等）  
-2. `AGENTS_TASK.md` — 任务向规则（memory 路径、cron、MEMORY.md 隐私等）；与 **§8.3** 双列存储对应  
-3. `SOUL.md` — 人格/语调核心  
-4. `IDENTITY.md` — 身份与对外设定  
-5. `USER.md` — 用户侧上下文（见 §8.2）  
-6. `USER_PREDEFINED.md` — 预置用户相关说明  
-7. `CAPABILITIES.md` — 能力边界与工具使用说明  
-8. `RULE.md` — 硬性规则、约束与禁止项；与 AGENTS\_\* 区分：后者偏操作流程，本文件偏「必须遵守」的边界  
-9. `HEARTBEAT.md` — 心跳注入清单（与 **`5 agent-setting.md` §11.1** 同源字段，避免重复存储）
+1. `AGENTS_CORE.md` — 通用操作规则（语言、系统消息、保存工具约束等）
+2. `AGENTS_TASK.md` — 任务向规则（memory 路径、cron、MEMORY.md 隐私等）
+3. `SOUL.md` — 人格/语调核心（Legacy 兼容；PGO V2 默认集已移除，可作为可选文件添加）
+4. `IDENTITY.md` — 身份与对外设定
+5. `USER.md` — 用户侧上下文（Legacy 兼容；PGO V2 以 `USER_CONTEXT.md` 作为可选替代）
+6. `USER_PREDEFINED.md` — 预置用户相关说明（Legacy 兼容；PGO V2 默认集已移除）
+7. `CAPABILITIES.md` — 能力边界与工具使用说明
+8. `RULE.md` — 硬性规则、约束与禁止项；与 AGENTS\_\* 区分：后者偏操作流程，本文件偏「必须遵守」的边界
+9. `HEARTBEAT.md` — 心跳注入清单（Legacy 兼容；PGO V2 已将心跳迁移至 Settings，不再作为默认提示文件）
+
+> **PGO V2 默认文件集**：`AGENTS_CORE.md` / `AGENTS_TASK.md` / `IDENTITY.md` / `CAPABILITIES.md` / `RULE.md`（共 5 个）。`USER_CONTEXT.md` 作为可选文件由用户按需添加。Legacy 9 文件集在 `PGO_DEFAULT_FILES_V2=false` 时保留向后兼容。详见设计文档 §3.3。
 
 ---
 
@@ -76,9 +82,9 @@
 
 | 按钮 | 行为 |
 |------|------|
-| **重新召唤** | 从服务端 **重新拉取** 当前文件对应字段的最新值，覆盖本地编辑器（需二次确认若本地有未保存修改）；可选地同时刷新运行态/缓存（与后端语义对齐） |
-| **AI 编辑** | 打开 **§5** 弹窗；用户输入自然语言指令后，由服务端或编排层 **读取当前正文** 并返回修订稿，写入编辑器（用户可再改后保存） |
-| **保存** | 将当前编辑器内容 **PATCH** 到 `agents` 对应列；**无变更时禁用**（gray） |
+| **重新召唤** | 从服务端 **重新拉取** 当前文件对应记录的最新值，覆盖本地编辑器（需二次确认若本地有未保存修改）；可选地同时刷新运行态/缓存（与后端语义对齐） |
+| **AI 编辑** | 打开 **§5** 弹窗；用户输入自然语言指令后，由服务端 **读取当前正文** 并返回修订稿，写入编辑器（用户可再改后保存） |
+| **保存** | 将当前编辑器内容提交到后端；**无变更时禁用**（gray） |
 
 ### 4.3 可选：联系人插入条
 
@@ -91,7 +97,7 @@
 | `QInput` type=textarea 或 **Markdown 编辑器组件** | 支持 Markdown和预览 |
 | 最小高度 | 占满主内容区剩余高度，`QScrollArea` 包一层避免撑破布局 |
 
-正文可引用其它文件，例如：`AGENTS.md` 内说明「身份详见 SOUL.md、USER.md」——**运行时以组装顺序为准**（见 §9）。
+正文可引用其它文件，例如：`AGENTS.md` 内说明「身份详见 SOUL.md、USER.md」——**运行时以组装顺序为准**（见 §8）。
 
 ---
 
@@ -131,106 +137,38 @@
 
 ---
 
-## 8. 字段 ↔ `agents` 表
+## 8. 文件运行时用途（用户视角）
 
-### 8.1 建议列名与职责
-
-| 侧栏逻辑名 | 建议列名 | 职责摘要 |
-|------------|----------|----------|
-| `AGENTS_CORE.md` | `agents_core_md` | 通用操作规则（语言跟随、内部消息处理、禁止 exec 发消息、须用 write 工具保存等） |
-| `AGENTS_TASK.md` | `agents_task_md` | 任务模式规则（memory 召回/写入路径、MEMORY.md 隐私、cron 约定等） |
-| `AGENTS.md`（可选） | `agents_md` | **单文件聚合**或历史兼容：与 `agents_core_md`+`agents_task_md` **二选一**（见 §8.3） |
-| `SOUL.md` | `soul_md` | 人格、语气、价值观；与 **`self_evolve`** 联动时仅允许演化风格相关段落（产品规则见 `5` §12） |
-| `IDENTITY.md` | `identity_md` | 对外身份、角色名、边界 |
-| `USER.md` | `user_md` | **Agent 级默认/模板**：用户维度的覆盖若存在单独表（如用户实例），运行时 **合并** `user_instance.user_md` 或等价字段；侧栏标注「每用户」表示 **语义** 为每会话用户，不一定整段仅存于本列 |
-| `USER_PREDEFINED.md` | `user_predefined_md` | 预置用户画像、偏好说明 |
-| `CAPABILITIES.md` | `capabilities_md` | 能力描述、可调用工具说明（与 `tools_config` 互补：一文一配置） |
-| `RULE.md` | `rule_md` | 硬性规则、约束清单、禁止项与安全/合规要求；与 `AGENTS.md` 区分：后者偏「如何工作与对话」，**本文件偏「必须遵守、不可突破」的边界**（可与钩子/工具策略互补） |
-| `HEARTBEAT.md` | `heartbeat_md` | 心跳周期注入的 Markdown；**与 `5` §11.1 为同一字段** |
-
-**NULL 与空串**：建议应用层统一「未配置 = 空串或 NULL」一种语义；UI「空」态二者择一显示。
-
-### 8.2 `USER.md` 与「每用户」
-
-| 层级 | 存储建议 |
-|------|----------|
-| **Agent 表 `user_md`** | 模板或全局默认用户上下文 |
-| **用户实例 / 绑定表**（若有） | `user_md` 覆盖层；会话组装时 **模板 + 覆盖** |
-
-若当前版本 **无用户实例表**，则「每用户」仅作产品标签，数据仍只写 `agents.user_md`。
-
-### 8.3 `AGENTS` 拆分与 `agents_md`
-
-与运行时 **FULL / task / minimal** 组装一致（见 **agent-title.md** §4～§6）：
-
-| 策略 | 说明 |
-|------|------|
-| **推荐** | 使用 **`agents_core_md` + `agents_task_md`**；`task` / `minimized` 模式可只注入对应子集（如仅 CORE 或 CORE+TASK） |
-| **单文件** | 仅维护 **`agents_md`**：由服务端按「章节标题」拆成 CORE/TASK，或简化产品只保留一段正文 |
-| **迁移** | 由 `agents_md` 拆列写入 `agents_core_md` / `agents_task_md` 后，可清空 `agents_md` 避免双源 |
-
-侧栏若展示 **两个** 文件 `AGENTS_CORE.md` / `AGENTS_TASK.md`，则不再展示合并项 `AGENTS.md`。
-
----
-
-## 9. 运行时组装顺序（建议）
-
-向 LLM 注入时，建议顺序与侧栏一致，便于作者理解依赖：
+向 LLM 注入时，文件按固定顺序组装为系统提示词，便于作者理解依赖：
 
 `IDENTITY.md` → `SOUL.md` → `USER_PREDEFINED.md` → `USER.md`（及实例覆盖）→ `CAPABILITIES.md` → `AGENTS_CORE.md` → `AGENTS_TASK.md`（或合并为 `AGENTS.md`）→ `RULE.md` → （其它如 `compaction_config` 等）
 
-`HEARTBEAT.md` 仅在 **心跳任务** 注入，不必并入普通轮次系统提示。具体分隔符与标题由 **`前端.md` / 服务端**统一。
+`HEARTBEAT.md` 仅在 **心跳任务** 注入，不必并入普通轮次系统提示。
 
-### 运行时组装实现（trpc-agent-go）
+**系统提示词模式**（与 Agent 设置 `system_prompt_mode` 联动）决定哪些文件被注入：
 
-`BuildSystemPrompt`（`internal/agent/prompt.go`）按以下逻辑组装：
+| 模式 | 注入的文件 |
+|------|-----------|
+| `complete` | 全部文件 |
+| `task` | AGENTS_CORE / AGENTS_TASK / IDENTITY / CAPABILITIES / RULE |
+| `minimized` | AGENTS_CORE / RULE |
+| `none` | 无 |
 
-1. 写入 `agent.AgentDescription`（非空时）
-2. 调用 `biz.FilesForMode(files, mode)` 根据系统提示模式过滤文件
-3. 遍历过滤后的文件，每个文件内容用 `<internal_config name="{Name}">` 标签包裹
-
-**`system_prompt_mode` 过滤**：`FilesForMode` 函数（`internal/biz/agent_catalog_legacy.go`）根据模式过滤文件：
-
-| 模式 | 允许的文件名 |
-|------|------------|
-| `complete` | 全部 |
-| `task` | AGENTS_CORE.md, AGENTS_TASK.md, IDENTITY.md, CAPABILITIES.md, RULE.md, HEARTBEAT.md |
-| `minimized` | AGENTS_CORE.md, IDENTITY.md, RULE.md |
-| `none` | 无（空集） |
-
-**`<internal_config>` 标签包裹**：每个文件内容包裹在 `<internal_config name="{Name}">` 标签中，便于 LLM 区分不同配置块，也支持 Prompt Cache 优化：
-
-```xml
-<internal_config name="IDENTITY.md">
-身份与对外设定内容...
-</internal_config>
-
-<internal_config name="SOUL.md">
-人格/语调核心内容...
-</internal_config>
-```
+> 文件过滤的代码实现、`<internal_config>` 标签包裹规则、模式映射表详见设计文档 §7。
 
 ---
 
-## 10. API 建议
+## 9. 验收标准
 
-| 方法 | 说明 |
-|------|------|
-| `GET /agents/:id` | 详情 DTO 包含上述各 `*_md` 字段及可选 `file_token_estimates` |
-| `PATCH /agents/:id` | 部分更新；可只提交 `{ "soul_md": "..." }` |
-| `POST /agents/:id/files/ai-edit`（可选） | body：`{ "field": "soul_md", "instruction": "...", "current_content": "..." }`；返回 `{ "content": "..." }` |
-
----
-
-## 11. 验收要点
-
-- [ ] 侧栏九个逻辑文件（或 CORE+TASK 合并为单 `AGENTS.md` 时可配置）与 **`agents` 列** 一一对应，切换文件仅切换绑定列，不混数据；**`AGENTS` 双文件** 与 §8.3 策略一致。  
-- [ ] `HEARTBEAT.md` 与 Agent 页心跳卡片 **同源 `heartbeat_md`**，无两套存储。  
-- [ ] **保存** 随脏状态启用；保存后 **Token 估计** 更新。  
-- [ ] **AI 编辑** 弹窗文案、取消/重新生成行为符合 §5。  
-- [ ] **重新召唤** 在有未保存修改时有确认或明确策略。  
-- [ ] `USER.md` 标注「每用户」时，与 **用户实例** 合并规则与文档一致（或标明「未来版本」）。  
+- [ ] 侧栏文件列表与后端记录一一对应，切换文件仅切换绑定记录，不混数据
+- [ ] PGO V2 默认集（5 文件）在新建 Agent 时自动生成；Legacy 9 文件集在兼容模式下可用
+- [ ] 可选文件（如 `USER_CONTEXT.md`）可由用户按需添加
+- [ ] **保存** 随脏状态启用；保存后 **Token 估计** 更新
+- [ ] **AI 编辑** 弹窗文案、取消/重新生成行为符合 §5
+- [ ] **重新召唤** 在有未保存修改时有确认或明确策略
+- [ ] 系统提示词模式过滤（`complete`/`task`/`minimized`/`none`）与运行时行为一致
+- [ ] 运行时注入顺序与侧栏展示顺序一致
 
 ---
 
-*文档版本：与 `5 agent-setting.md`、心跳 §11、`2 agents-create.md`（自我进化与 SOUL）对齐；库表以迁移与 `前端.md` 最终 DDL 为准。*
+*文档版本：与 `5 agent-setting.md`、心跳 §11、`2 agents-create.md`（自我进化与 SOUL）对齐；库表以迁移与设计文档最终定义为准。*

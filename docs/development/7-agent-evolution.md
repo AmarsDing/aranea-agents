@@ -1,6 +1,8 @@
 # Agent 设置 —「进化」Tab
 
-本文档描述 **Agent 详情 → 主导航「进化」** 分区：进化能力开关、**时间范围** 筛选、**工具成功率 / 检索质量** 看板、**建议** 区与 **适应护栏** 数值配置；并与 **`agents` 主表** 列、及 **`5 agent-setting.md` §12**、**`2 agents-create.md`** 对齐。
+本文档描述 **Agent 详情 → 主导航「进化」** 分区：进化能力开关、**时间范围** 筛选、**工具成功率 / 检索质量** 看板、**建议** 区与 **适应护栏** 数值配置；并与 **`agents` 主表** 列、及 **`5 agent-setting.md`** §12、**`2 agents-create.md`** 对齐。
+
+> 本文仅描述用户视角的需求与验收标准。代码分层、Proto/API 契约、数据模型、开发进度等内容分别见 [7-agent-evolution.design.md](./7-agent-evolution.design.md) 与 [7-agent-evolution.development.md](./7-agent-evolution.development.md)。
 
 ---
 
@@ -40,40 +42,19 @@
 
 垂直列表；每项 **标题 + 说明 + `QToggle`**，项间 **分隔线**。
 
-| # | 标题 | 说明（产品） | 字段 | 代码实现状态 |
-|---|------|--------------|------|-------------|
-| 1 | 允许 Agent 进化其沟通风格 | 允许随时间更新 **SOUL.md** 中的语调与风格；**身份与操作指令（如 AGENTS.md / IDENTITY.md）保持锁定** | `self_evolve`（BOOLEAN） | ✅ 已实现 — `AgentRuntimeSettings.SelfEvolve` |
-| — | 信息框 | 强调：仅风格/语调可变，身份与工作流规则不变 | `QBanner` / `QCard` bordered | — |
-| 2 | 允许从经验中创建和管理技能 | `skill_manage` 默认可用；可提示用户将工作流保存为技能 | `skill_evolve` | ✅ 已实现 — `AgentRuntimeSettings.EvolutionSkillEvolve` |
-| 3 | 进化指标 | 记录工具效果、检索质量、反馈等，供看板展示 | `evolution_metrics_enabled` | ✅ 已实现 — `AgentRuntimeSettings.EvolutionMetricsEnabled`；但指标采集逻辑未实现 |
-| 4 | 进化建议 | 基于指标由分析任务生成改进建议 | `evolution_suggestions_enabled` | ✅ 已实现 — `AgentRuntimeSettings.EvolutionSuggestionsEnabled`；但建议生成逻辑未实现 |
+| # | 标题 | 说明（产品） | 字段 |
+|---|------|--------------|------|
+| 1 | 允许 Agent 进化其沟通风格 | 允许随时间更新 **SOUL.md** 中的语调与风格；**身份与操作指令（如 AGENTS.md / IDENTITY.md）保持锁定** | `self_evolve`（BOOLEAN） |
+| — | 信息框 | 强调：仅风格/语调可变，身份与工作流规则不变 | `QBanner` / `QCard` bordered |
+| 2 | 允许从经验中创建和管理技能 | `skill_manage` 默认可用；可提示用户将工作流保存为技能 | `skill_evolve` |
+| 3 | 进化指标 | 记录工具效果、检索质量、反馈等，供看板展示 | `evolution_metrics_enabled` |
+| 4 | 进化建议 | 基于指标由分析任务生成改进建议 | `evolution_suggestions_enabled` |
 
 **与创建页对齐**：默认值与行为见 **`2 agents-create.md`**（如 `self_evolve` 默认 true 等）。
 
 **交互**：切换即 **PATCH**（或与全局 debounce 策略一致）；关闭「进化指标」时，§5～§6 可隐藏或展示禁用遮罩 + 说明。
 
-### 代码实现状态
-
-进化开关字段已在 `AgentRuntimeSettings` 中定义并通过 `settingsFromLegacyConfig` 解析存储。运行时逻辑实现状态：
-
-| 功能 | 开关字段 | 状态 | 说明 |
-|------|---------|------|------|
-| 风格进化 | `SelfEvolve` | ✅ 开关已实现 | 运行时未自动修改 `soul_md`，需后续实现 |
-| 技能进化 | `EvolutionSkillEvolve` | ✅ 开关已实现 | 运行时未实现技能自动创建逻辑 |
-| 进化指标 | `EvolutionMetricsEnabled` | ✅ 开关已实现 | 运行时未对工具调用成功/失败、检索质量进行统计写入 |
-| 进化建议 | `EvolutionSuggestionsEnabled` | ✅ 开关已实现 | 无定时任务基于指标生成改进建议 |
-| 适应护栏 | `GuardrailMaxChangePerPeriod` 等 | ✅ 字段已定义 | 运行时未使用这些参数控制演化幅度 |
-
-**待实现运行时逻辑**：
-- 指标采集：运行时对工具调用成功/失败、检索质量进行统计写入
-- 建议生成：定时任务基于指标生成改进建议
-- SOUL.md 自动演化：运行时自动修改 `soul_md` 的风格段落
-- 适应护栏：使用 `GuardrailMaxChangePerPeriod` 等参数控制演化幅度
-
-**涉及文件**：
-- `internal/biz/agent_catalog_legacy.go` — `AgentRuntimeSettings` 定义 + `settingsFromLegacyConfig` 解析
-- `internal/agent/trpc_build.go` — `BuildTRPCLLMAgent` 读取进化开关
-- 运行时指标采集和建议生成 — 需新增 `internal/agent/evolution/` 包
+> 字段实现状态、运行时逻辑进度等内容见开发文档 §2「现状评估」。
 
 ---
 
@@ -181,16 +162,17 @@
 
 指标与建议的 **写入** 由 **运行时埋点 + 定时任务** 完成，不在此 Tab 内编辑。
 
+> API 契约的 Proto 定义、RPC 方法签名等内容见设计文档 §二「Proto 层」。
+
 ---
 
 ## 11. 验收要点
 
-- [ ] 四项进化开关与 `self_evolve` / `skill_evolve` / `evolution_metrics_enabled` / `evolution_suggestions_enabled` 一致。  
-- [ ] 「仅演化 SOUL 风格」的说明 Banner 与 **`6 agent-setting-file.md`** 中 SOUL 语义一致。  
-- [ ] 时间范围 **7d / 30d / 90d** 切换后重新拉取指标/建议（或正确命中缓存）。  
-- [ ] §5～§7 空态文案与有数据态切换正确；关闭「进化指标/建议」时表现符合 §3。  
-- [ ] **适应护栏** 三项与 `evolution_guardrails` 一致，校验与保存成功。  
-- [ ] 与 **`2 agents-create.md`** 默认策略、`**3 agent-list.md`**「进化中」徽章推导无矛盾。  
+- [ ] 四项进化开关与 `self_evolve` / `skill_evolve` / `evolution_metrics_enabled` / `evolution_suggestions_enabled` 一致。
+- [ ] 「仅演化 SOUL 风格」的说明 Banner 与 **`6 agent-setting-file.md`** 中 SOUL 语义一致。
+- [ ] 时间范围 **7d / 30d / 90d** 切换后重新拉取指标/建议（或正确命中缓存）。
+- [ ] §5～§7 空态文案与有数据态切换正确；关闭「进化指标/建议」时表现符合 §3。
+- [ ] **适应护栏** 三项与 `evolution_guardrails` 一致，校验与保存成功。
+- [ ] 与 **`2 agents-create.md`** 默认策略、`**3 agent-list.md`**「进化中」徽章推导无矛盾。
 
 ---
-

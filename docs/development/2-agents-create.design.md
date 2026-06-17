@@ -1,6 +1,6 @@
 # Agent 创建模块 — 实现设计文档
 
-> 对应需求：`2 agents-create.md`
+> 对应需求：[2 agents-create.md](./2%20agents-create.md)
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 
 ---
@@ -8,6 +8,8 @@
 ## 一、模块概述
 
 Agent 创建弹窗，采集最小字段创建 Agent 行。复用 `AgentService.CreateAgent` RPC，前端为 `QDialog` 表单。创建时同步持久化 `AgentRuntimeSettings` 和 `AgentPromptFile`，并通过 `config_json` 保持向后兼容。
+
+后端 Agent 运行时基于 trpc-agent-go 框架，Agent 构建入口为 `internal/agent/trpc_build.go` → `BuildTRPCLLMAgent`。
 
 ---
 
@@ -174,7 +176,7 @@ rpc CreateAgent(CreateAgentRequest) returns (Agent) {
 
 ### 2.3 待扩展 Proto（Agent Kind / A2A Proxy）
 
-> 需求见 [2 agents-create.md](./2%20agents-create.md) §9；A2A 整体设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §11.2。
+> 需求见 [2 agents-create.md](./2%20agents-create.md) §7；A2A 整体设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §11.2。
 
 ```protobuf
 message A2AProxyConfig {
@@ -198,6 +200,8 @@ message A2AProxyConfig {
 **运行时**：`internal/agent/trpc_build_router.go` → `BuildTRPCAgent`；详见 A2A 设计 §11.3。
 
 ### 2.4 无需新增 RPC（创建本身）
+
+---
 
 ## 三、Biz 层
 
@@ -707,7 +711,18 @@ web/src/features/agents/
     └── AgentCreateDialog.vue ← 创建弹窗
 ```
 
-### 7.2 TypeScript 类型定义
+### 7.2 整体布局（Quasar 映射）
+
+| 区域 | 布局建议 | Quasar 组件 |
+|------|-----------|-------------|
+| 对话框容器 | `max-width` 约 640–720px，圆角 | `QDialog` + `QCard` 或 `QCardSection` |
+| 标题栏 | 左右分布：标题 + 关闭 | `QToolbar` / `QCardSection` + `QBtn` flat icon `close` |
+| 表单主体 | 响应式：`col-12 col-md-6` 两列，小屏单列 | `QForm` + `div.row.q-col-gutter-md` + `QInput` 等 |
+| 描述区 | 全宽 | `QInput type="textarea"` |
+| 高级项 | 全宽条带卡片 | `QCard` flat bordered 或 `QItem` + `QItemSection` |
+| 页脚 | 右对齐按钮组 | `QCardActions` align="right" |
+
+### 7.3 TypeScript 类型定义
 
 ```typescript
 // features/agents/types.ts
@@ -844,7 +859,7 @@ export type AgentListResult = {
 }
 ```
 
-### 7.3 API 调用
+### 7.4 API 调用
 
 ```typescript
 // features/agents/api.ts
@@ -895,7 +910,7 @@ export async function createAgent(payload: {
 }
 ```
 
-### 7.4 数据规范化
+### 7.5 数据规范化
 
 ```typescript
 // features/agents/wireNormalize.ts
@@ -931,7 +946,7 @@ export function promptFileToWire(f: AgentPromptFile): KratosFileWire { ... }
 export function partialAgentToWire(payload: Partial<Agent>): KratosAgentWire { ... }
 ```
 
-### 7.5 Composable
+### 7.6 Composable
 
 ```typescript
 // features/agents/useAgentsPage.ts
@@ -1037,7 +1052,7 @@ export function useAgentsPage() {
 }
 ```
 
-### 7.6 组件设计
+### 7.7 组件设计
 
 **AgentCreateDialog.vue**：
 
@@ -1142,22 +1157,29 @@ export function useAgentsPage() {
 </template>
 ```
 
-### 7.7 控件清单
+### 7.8 控件清单（Quasar 组件映射）
 
-| 控件 | 绑定字段 | 校验 | 说明 |
-|------|----------|------|------|
-| `QInput` 显示名称 | `displayName` | 非空，max 255 | 左侧 prepend 为头像 |
-| `QInput` Agent标识 | `agentKey` | 正则 `^[a-z0-9]+(-[a-z0-9]+)*$`，防抖查重 | 小写字母数字连字符 |
-| `QSelect` 行业 | `categoryIndustry` | 可选 | 级联第一层 |
-| `QSelect` 部门 | `categoryDepartment` | 可选 | 级联第二层，依赖行业 |
-| `QSelect` 职位 | `categoryPositionId` | 可选 | 级联第三层叶子，提交为 `category_position_id` |
-| `QSelect` Provider | `provider` | 必选 | 变更时清空模型 |
-| `QInput` 模型 + 检查按钮 | `model` | 必填 + 检查通过 | 尾部「检查」按钮 |
-| `QChip[]` 模板 | — | — | 点击填充描述 |
-| `QInput` 描述 | `agentDescription` | 可选 | textarea，6行 |
-| `QToggle` 自我进化 | `selfEvolve` | — | 默认 true |
+| 控件 | 绑定字段 | Quasar 组件 | 校验 | 说明 |
+|------|----------|-------------|------|------|
+| 显示名称 | `displayName` | `QInput` + `QAvatar` prepend | 非空，max 255 | 左侧 prepend 为头像 |
+| Agent标识 | `agentKey` | `QInput` | 正则 `^[a-z0-9]+(-[a-z0-9]+)*$`，防抖查重 | 小写字母数字连字符 |
+| 行业 | `categoryIndustry` | `QSelect` | 可选 | 级联第一层 |
+| 部门 | `categoryDepartment` | `QSelect` | 可选 | 级联第二层，依赖行业 |
+| 职位 | `categoryPositionId` | `QSelect` | 可选 | 级联第三层叶子，提交为 `category_position_id` |
+| Provider | `provider` | `QSelect` | 必选 | 变更时清空模型 |
+| 模型 + 检查按钮 | `model` | `QInput` + `QBtn` append | 必填 + 检查通过 | 尾部「检查」按钮 |
+| 模板芯片 | — | `QChip` | — | 点击填充描述 |
+| 描述 | `agentDescription` | `QInput type="textarea"` | 可选 | textarea，6行 |
+| 自我进化 | `selfEvolve` | `QToggle` | — | 默认 true |
+| 头像 | `icon` | `QAvatar` + `AgentAvatarPicker` | — | 点击打开选图流程 |
 
-### 7.8 交互流程
+**业务分类组件**：前端封装为 `TaxonomyPicker.vue`（替代旧 `AgentCategoryCascade.vue`），数据源 `GET /agent-categories/tree` 一次取树前端展开，或按父 id 懒加载 `GET /agent-categories?parent_id=`（与 `4.agent-type.md` §7 一致）。
+
+**模型检查 API**：`POST /v1/agents/validate-model`，body `{ provider, model }`；成功则 `modelCheckPassed = true` 并 toast/绿色提示；失败则错误信息、`modelCheckPassed = false`。
+
+**agent_key 查重 API**：`GET /v1/agent-keys/check`，500ms 防抖。
+
+### 7.9 交互流程
 
 1. 用户点击「创建 Agent」→ 打开 `QDialog`
 2. 填写必填字段 → `agentKey` 失焦时前端正则校验
@@ -1168,7 +1190,7 @@ export function useAgentsPage() {
 7. 成功 → 关闭弹窗，刷新列表，toast「创建成功」
 8. 失败 → 显示 inline error
 
-### 7.9 状态字段
+### 7.10 状态字段
 
 | 状态字段 | 用途 |
 |-----------|------|
@@ -1178,18 +1200,32 @@ export function useAgentsPage() {
 | `categoryIndustry` | 行业选择（级联中间态） |
 | `categoryDepartment` | 部门选择（级联中间态） |
 | `selectedTemplateKey` | 当前选中模板标识 |
+| `agentKeyAvailable` | 可选：标识唯一性校验结果 |
 
 ---
 
-## 八、trpc-agent-go 对齐需求（M2 Agent 构建）
+## 八、API 设计
 
-> 本节补充 `plan.md` M2 模块的对齐需求，确保 Agent 构建完全复刻 trpc-agent-go `llmagent` 能力。
+| 接口 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| 拉取 Provider 列表 | GET | `/providers` | 下拉选项 |
+| 业务分类树 / 子节点 | GET | `/agent-categories/tree` 或 `?parent_id=` | `4.agent-type.md` §7 |
+| 校验模型 | POST | `/v1/agents/validate-model` | Provider + model，返回是否可用及可选 `context_window` 提示 |
+| 检查 agent_key | GET | `/v1/agent-keys/check` | 唯一性 |
+| 创建 Agent | POST | `/v1/agents` | body 为表单 + 默认值合并 |
+| 描述模板列表 | GET | `/v1/agent-templates` | 芯片文案与 icon（若模板走服务端） |
 
-### 8.1 占位符变量
+---
+
+## 九、trpc-agent-go 对齐设计（M2 Agent 构建）
+
+> 需求见 [2 agents-create.md](./2%20agents-create.md) §8。本节描述技术实现设计，确保 Agent 构建完全复刻 trpc-agent-go `llmagent` 能力。
+
+### 9.1 占位符变量
 
 **trpc 框架**：`llmagent.New` 支持 `WithInstruction` 中的 `{key}` 占位符，运行时由 `agent.Invocation` 的 `Variables` 替换。
 
-**需求**：
+**设计**：
 - Agent 的 `system_prompt` 支持 `{variable_name}` 占位符
 - 运行时从 `Invocation.Variables` 注入实际值
 - 内置变量：`{agent_name}`、`{session_id}`、`{user_id}`、`{current_date}`
@@ -1197,101 +1233,101 @@ export function useAgentsPage() {
 
 **涉及文件**：`internal/agent/trpc_build.go`
 
-**验收标准**：Agent Instruction 中 `{key}` 被正确替换为运行时值
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithInstruction` 注入含占位符的 system_prompt，运行时由 `Invocation.Variables` 替换。
 
-### 8.2 ModelInstructions
+### 9.2 ModelInstructions
 
 **trpc 框架**：`llmagent.WithModelInstructions` 为不同模型注入不同的指令片段。
 
-**需求**：
+**设计**：
 - `AgentRuntimeSetting` 增加 `model_instructions_json` 字段
 - 格式：`{"gpt-4o": "你是一个精确的助手", "claude-3": "你是一个有创意的助手"}`
-- `BuildTRPCLLMAgent` 中通过 `WithModelInstructions` 注入
 
 **涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
 
-**验收标准**：不同模型使用不同的指令片段
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithModelInstructions` 注入。
 
-### 8.3 ContextCompaction
+### 9.3 ContextCompaction
 
 **trpc 框架**：`llmagent.WithContextCompaction` 启用上下文自动压缩，当 token 接近上限时自动摘要。
 
-**需求**：
+**设计**：
 - `AgentRuntimeSetting` 增加 `context_compaction` 布尔字段
-- `BuildTRPCLLMAgent` 中通过 `WithContextCompaction` 启用
 - 压缩策略：保留最近 N 轮 + 摘要历史
 
 **涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
 
-**验收标准**：长对话自动压缩，不丢失关键信息
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithContextCompaction` 启用。
 
-### 8.4 SessionSummary
+### 9.4 SessionSummary
 
 **trpc 框架**：`llmagent.WithSessionSummary` 启用会话摘要，新 session 可加载旧 session 摘要。
 
-**需求**：
+**设计**：
 - `AgentRuntimeSetting` 增加 `session_summary` 布尔字段
-- `BuildTRPCLLMAgent` 中通过 `WithSessionSummary` 启用
 - Session 结束时自动生成摘要
 - 新 Session 可通过摘要继承上下文
 
 **涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
 
-**验收标准**：新 Session 可通过摘要继承旧 Session 上下文
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithSessionSummary` 启用。
 
-### 8.5 SkillLoadMode
+### 9.5 SkillLoadMode
 
 **trpc 框架**：`llmagent.WithSkillLoadMode` 控制技能加载策略（auto/manual/none）。
 
-**需求**：
+**设计**：
 - `AgentRuntimeSetting` 增加 `skill_load_mode` 字段
 - 可选值：`auto`（自动匹配）、`manual`（手动指定）、`none`（不加载）
-- `BuildTRPCLLMAgent` 中通过 `WithSkillLoadMode` 注入
 
 **涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
 
-**验收标准**：Agent 按配置策略加载技能
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithSkillLoadMode` 注入。
 
-### 8.6 StructuredOutput
+### 9.6 StructuredOutput
 
 **trpc 框架**：`llmagent.WithStructuredOutput` 强制 LLM 输出符合 JSON Schema。
 
-**需求**：
+**设计**：
 - `AgentRuntimeSetting` 增加 `output_schema_json` 字段
-- `BuildTRPCLLMAgent` 中通过 `WithStructuredOutput` 注入
 - LLM 输出自动校验和解析
 
 **涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
 
-**验收标准**：Agent 输出符合预定义的 JSON Schema
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithStructuredOutput` 注入。
 
-### 8.7 ModelSelector
+### 9.7 ModelSelector
 
 **trpc 框架**：`llmagent.WithModelSelector` 动态选择模型。
 
-**需求**：
+**设计**：
 - `AgentRuntimeSetting` 增加 `model_selector` 字段
 - 可选值：`default`（使用配置模型）、`auto`（根据任务复杂度选择）
-- `BuildTRPCLLMAgent` 中通过 `WithModelSelector` 注入
 
 **涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
 
-**验收标准**：Agent 根据任务复杂度动态选择模型
+**实现方式**：`BuildTRPCLLMAgent` 中通过 `WithModelSelector` 注入。
 
 ---
 
-## 九、表单字段 ↔ 数据库 `agents` 表
+## 十、表单字段 ↔ 数据库 `agents` 表
 
-| 表单字段 / UI | 数据库列 | 类型 | 备注 |
-|---------------|----------|------|------|
+以下为**本弹窗直接相关**列；完整列清单仍以主表设计为准。
+
+| 表单字段 / UI | 数据库列 | 类型（参照 Ent Schema） | 备注 |
+|---------------|----------|----------------------|------|
 | 显示名称 | `display_name` | VARCHAR(1024) | 必填 |
 | Agent 标识 | `agent_key` | VARCHAR(512) | 未软删唯一 |
-| 业务分类（行业→部门→职位） | `category_position_id` | TEXT | 可选；仅绑定职位叶子 |
-| Provider | `provider` | TEXT | 存 slug |
+| 业务分类（行业→部门→职位） | `category_position_id` | TEXT | 可选；仅绑定职位叶子，见 `4.agent-type.md` |
+| 分类展示路径（可选冗余） | `category_path` | TEXT | 可由服务端维护 |
+| Provider | `provider` | TEXT | 存 slug/id |
 | 模型 | `model` | TEXT | 检查通过后写入 |
 | 描述（多行） | `agent_description` | TEXT | 可空；空则服务端按模板默认 |
+| 所选模板 | （扩展）`description_template_key` 或 `other_config.templateId` | VARCHAR / JSON | 便于审计与复现 |
 | 自我进化 | `self_evolve` | BOOLEAN | 存 `agent_runtime_settings`，默认 true |
-| 头像资源 id | `icon` | VARCHAR(255) | 对应 `avatar_assets.id` |
-| — | `id` | UUID | 服务端生成 |
-| — | `status` | VARCHAR(20) | 默认 `active` |
+| 头像资源 id | `icon` | VARCHAR(255) | 对应 `avatar_assets.id`；图片存库 BLOB，非外链 URL |
+| — | `id` | VARCHAR(256) | 服务端生成 |
+| — | `status` | VARCHAR | 默认 `active` |
 | — | `created_at` / `updated_at` | TEXT | 服务端维护 |
+
+**创建时不一定要在表单出现、可由默认填充的列**（与 `2 agent.md` 一致，供接口层默认值）：`context_window`、`max_tool_iterations`、`workspace`、`restrict_to_workspace`、`tools_config`、**`agent_type`（技术类型，如 `open`，≠ 业务分类组件）**、`is_default`、`frontmatter`（可由描述异步生成）、`embedding`（异步任务）等。

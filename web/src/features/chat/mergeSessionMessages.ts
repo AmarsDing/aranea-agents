@@ -24,17 +24,12 @@ function isEphemeralMessage(message: Message): boolean {
 
 /** Whether this row is a local-only in-flight message (not yet persisted by server). */
 export function isInFlightLocalRow(message: Message): boolean {
-  // ws-snap-* messages are finalized snapshots — treat as persisted for sorting
+  // Finalized snapshots (streaming_snapshot origin) — treat as persisted for sorting.
+  // This covers both ws-snap-* (legacy) and actv-* (AF mode finalized) messages,
+  // since finalizeStreamingMessageFromDone upgrades origin to streaming_snapshot.
   if (message.origin?.kind === 'streaming_snapshot') return false;
-  // Finalized Activity messages (actv-* prefix, status='ok') — treat as persisted
-  // regardless of origin kind. This unifies handling for both:
-  //   - Streaming phase: actv-* with origin.kind='streaming' (from WS events)
-  //   - Reconstructed phase: actv-* with origin.kind='streaming_snapshot' (from API)
-  if (message.id.startsWith('actv-') && message.status === 'ok') return false;
   // Reconstructed action messages (tool_activity origin with terminal status)
   // are finalized snapshots from Activity API data — treat as persisted for sorting.
-  // Without this, they get sorted into the in-flight zone, breaking
-  // thinking → action → reply ordering within a turn.
   if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || '')) return false;
   if (isEphemeralMessage(message)) return true;
   return isInFlightStatus(message.status || '');
@@ -57,24 +52,39 @@ export function isInFlightLocalRow(message: Message): boolean {
 function shouldIncludeInMerge(message: Message, excludeMergedAssistant: boolean): boolean {
   // Streaming snapshots: finalized local snapshots carrying round-separated content
   if (message.origin?.kind === 'streaming_snapshot' && excludeMergedAssistant) return true;
-  // AF mode: finalized Activity messages (actv-*) carry per-round content.
-  // When the server's merged assistant message is excluded, these must be
-  // preserved as the source of truth for assistant content.
-  if (excludeMergedAssistant && message.id.startsWith('actv-') && message.status === 'ok') return true;
   return isInFlightLocalRow(message);
 }
 
 function messageOrder(message: Message): [number, string] {
-  // Finalized local messages (streaming snapshots and AF-mode actv-* messages)
-  // should sort alongside persisted messages by timestamp, not be pushed to
-  // the end with active in-flight messages.
+  // Finalized local messages (streaming_snapshot origin) sort alongside
+  // persisted messages by timestamp, not pushed to the end with active in-flight.
   if (message.origin?.kind === 'streaming_snapshot') return [0, message.created_at || ''];
-  if (message.id.startsWith('actv-') && message.status === 'ok') return [0, message.created_at || ''];
   // Reconstructed action messages (tool_activity origin with terminal status)
   // sort alongside persisted messages to maintain thinking → action → reply order.
   if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || '')) return [0, message.created_at || ''];
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
   return [inFlight, message.created_at || ''];
+}
+
+/**
+ * Compare two ISO 8601 timestamps numerically via Date.parse.
+ * Falls back to string comparison when either timestamp is unparseable,
+ * ensuring stable ordering even with mixed precision (seconds / milliseconds / microseconds).
+ */
+function compareTimestamps(a: string, b: string): number {
+  if (!a && !b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isNaN(ta) || Number.isNaN(tb)) {
+    // Fallback: string comparison for non-standard formats
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  if (ta !== tb) return ta - tb;
+  // Same millisecond — compare sub-millisecond precision via string to preserve
+  // microsecond ordering (e.g. addMicroOffset timestamps).
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Drop optimistic user placeholders after the server turn completes. */
@@ -86,17 +96,12 @@ function shouldDropStaleInFlight(message: Message): boolean {
   const origin = message.origin;
   if (isPendingUserOrigin(origin)) return message.status !== 'failed';
   if (isStreamingOrigin(origin)) {
-    // streaming_snapshot messages (ws-snap-*) represent correctly separated
-    // LLM round content. They must NOT be dropped during merge, because the
-    // server-persisted assistant message contains ALL rounds' content merged
-    // into one, and dropping snapshots would lose the round separation.
+    // streaming_snapshot messages (ws-snap-* and finalized actv-*) represent
+    // correctly separated LLM round content. They must NOT be dropped during
+    // merge, because the server-persisted assistant message contains ALL
+    // rounds' content merged into one, and dropping snapshots would lose
+    // the round separation.
     if (origin?.kind === 'streaming_snapshot') return false;
-    // AF mode: when an actv-* streaming message is finalized (status='ok'),
-    // it represents completed per-round content that must be preserved.
-    // Dropping it would lose the round separation that Activity data provides.
-    // Note: ws-stream-* messages with status='ok' should still be droppable
-    // because they are superseded by the server-persisted assistant message.
-    if (message.id.startsWith('actv-') && message.status === 'ok') return false;
     return !isInFlightStatus(message.status || '');
   }
   if (isTeamMemberOrigin(origin)) return false;
@@ -187,23 +192,25 @@ export function mergeSessionMessages(
 
   // Determine whether to exclude the server's merged assistant message.
   //
-  // Two independent triggers:
+  // excludeMergedAssistant is only true when we actually have local
+  // streaming_snapshot assistant messages to replace the server's merged
+  // content. This is a safety guard: if activityFirst=true was passed but
+  // no snapshots exist (e.g. AF API failed and returned no data), falling
+  // back to the server's merged message prevents a blank UI.
+  //
+  // Two triggers for hasSnapshots:
   //   1. **activityFirst** (AF mode): Activity events/data provide complete
   //      per-round content (thinking/reply/action). The server-persisted
   //      assistant ChatMessage merges ALL rounds into one — including it would
   //      duplicate Activity content and cause the UI to show a single merged
   //      block instead of correctly separated rounds.
-  //   2. **hasSnapshots** (legacy mode): When local streaming_snapshot messages
+  //   2. **legacy snapshots**: When local streaming_snapshot messages
   //      exist (ws-snap-*), they carry correctly separated round content from
-  //      the legacy tool_call handler's snapshot mechanism. The merged server
-  //      message must be excluded to avoid duplication.
-  //
-  // AF mode is the primary path; hasSnapshots is a legacy compatibility fallback.
-  // When AF mode is fully migrated (Phase 3 complete), hasSnapshots can be removed.
+  //      the legacy tool_call handler's snapshot mechanism.
   const hasSnapshots = local.some(
     (m) => m.origin?.kind === 'streaming_snapshot' && m.role === 'assistant',
   );
-  const excludeMergedAssistant = opts?.activityFirst || hasSnapshots;
+  const excludeMergedAssistant = hasSnapshots;
 
   const pendingReplacedBy = new Map<string, Message>();
   const matchedServerIDs = new Set<string>();
@@ -251,7 +258,7 @@ export function mergeSessionMessages(
     const [inFlightA, timeA] = messageOrder(a);
     const [inFlightB, timeB] = messageOrder(b);
     if (inFlightA !== inFlightB) return inFlightA - inFlightB;
-    return timeA.localeCompare(timeB);
+    return compareTimestamps(timeA, timeB);
   });
   return merged;
 }

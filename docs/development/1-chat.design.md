@@ -2,6 +2,8 @@
 
 > 对应需求：`1 chat.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+>
+> **文档边界**：本文档包含架构设计、代码分层、Proto/API 契约、数据模型、接口定义、技术选型、状态机、序列图、前端组件设计、UX 规范。用户故事、功能需求清单、验收标准见 [1-chat.md](./1-chat.md)；开发进度、任务清单、技术债务见 [1-chat.development.md](./1-chat.development.md)。
 
 ---
 
@@ -13,9 +15,138 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ---
 
-## 二、Proto 层
+## 二、代码分层（遵循 AI-DEVELOPMENT-SPECIFICATION.md）
 
-### 2.1 主要 Proto 定义
+```
+api/kratos/chat/v1/chat.proto        ← 对话 API 契约（发送、选项、停止、待执行、RunStatus、AwaitUserReply、Enqueue、Feedback、Confirm、Jobs）
+        ↓
+internal/server/ws.go                 ← WebSocket 实时通道（订阅、回放、取消、user_message 上行）
+internal/server/ws_message_handler.go ← WS 上行消息分发（user_message/enqueue_message/cancel/ping/subscribe/unsubscribe/enable_log）
+internal/server/ws_event.go           ← WS 事件订阅、回放、connected 握手
+internal/server/ws_io_pump.go         ← WS read/write/event pump goroutines
+internal/server/ws_priority.go        ← WS 三优先级发送队列 + 背压
+internal/server/ws_codec.go           ← WS 协议类型（wsUpstream/wsDownstream）
+internal/server/ws_conn.go            ← WS 连接生命周期 + connStore
+internal/server/ws_conn_manager.go    ← WS 连接数限制与移除
+        ↓
+internal/service/chat.go              ← ChatService 薄传输桥（委托 ChatOrchestrator）
+internal/service/chat_orchestrator.go ← ChatOrchestrator 编排核心
+internal/service/chat_orchestrator_turn.go          ← Turn 编排
+internal/service/chat_orchestrator_turn_phases.go   ← Turn 阶段实现
+internal/service/chat_orchestrator_turn_dispatch.go ← Turn 分发
+internal/service/chat_orchestrator_turn_api.go      ← Turn API
+internal/service/chat_orchestrator_turn_metrics.go  ← Turn 指标
+internal/service/chat_orchestrator_context_admission.go ← 上下文 admission
+internal/service/chat_orchestrator_session_run.go   ← Session run 生命周期
+internal/service/chat_orch_session_run_lifecycle.go ← Session run 生命周期细节
+internal/service/chat_orch_run_status.go            ← RunStatus 管理
+internal/service/chat_orch_pending_queue.go         ← Pending Queue 编排
+internal/service/chat_orch_await.go                 ← AwaitUserReply 编排
+internal/service/chat_orch_agent_build.go           ← Agent 构建
+internal/service/chat_run_gateway.go                ← Biz 适配器 + publishMessageQueuedToBus
+internal/service/chat_native.go                      ← 原生对话入口（HTTP unary + WS 上行复用）+ hydratedAgent
+internal/service/chat_enqueue.go                     ← EnqueueUserMessage RPC
+internal/service/chat_await_route.go                 ← AwaitUserReply 路由
+internal/service/chat_await_resume.go                ← AwaitUserReply 恢复
+internal/service/chat_durable_resume.go              ← Durable resume
+internal/service/chat_attachments.go                 ← 附件处理
+internal/service/chat_activity.go                    ← Activity 确认
+internal/service/chat_confirm.go                     ← ConfirmActivity RPC
+internal/service/chat_feedback.go                    ← SubmitMessageFeedback RPC
+internal/service/chat_jobs.go                        ← 后台任务 RPC
+internal/service/chat_event_publisher.go             ← Chat 事件发布
+internal/service/chat_turn_admission.go              ← Turn admission（CHAT_TURN_BUSY）
+internal/service/chat_turn_metrics.go                ← Chat turn 指标
+internal/service/chat_usage_ingress.go               ← 用量记录
+internal/service/chat_wire.go                        ← Wire 注入
+internal/service/chat_session_run_cancel.go          ← Session run 取消
+internal/service/turn_outcome.go                     ← ErrTurnMessageQueued / CHAT_TURN_BUSY
+        ↓
+internal/agent/trpc_build.go         ← Agent 构建（BuildTRPCLLMAgent）
+internal/agent/trpc_build_router.go  ← Agent 构建路由
+internal/agent/trpc_runtime.go       ← Runner 构建（NewTRPCRunner + RunTRPCUserTurn）
+internal/agent/event_projector.go    ← trpc-agent-go event → EventBus Envelope
+internal/agent/activity_projector.go ← Activity 投影
+internal/agent/activity_publish.go   ← Activity 发布
+internal/agent/activity_persist.go   ← Activity 持久化
+internal/agent/activity_meta.go      ← ActivityKind 分类
+internal/agent/activity_meta_resolver.go ← ActivityMetaResolver 接口
+internal/agent/choice_stream.go      ← 流式 delta
+internal/agent/stream_consumer.go    ← turn 消费
+internal/agent/options.go            ← options_json 构建
+internal/agent/intent/               ← 意图识别与消息增强
+        ↓
+internal/team/runner.go              ← Team Runner（Coordinator / Swarm）
+internal/team/trpc_build.go          ← Team 构建（BuildTRPCTeam）
+        ↓
+internal/runtime/deps.go             ← 运行时依赖注入 DTO（TurnDeps / Runtime）
+internal/runtime/run_registry.go     ← RunRegistry（active run / cancel / run status）
+internal/runtime/pending_queue.go    ← PendingMessageQueue FIFO
+internal/biz/chat_usecase.go         ← Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
+internal/biz/session/usecase.go      ← Session Usecase（含标题自动生成）
+internal/biz/session/title.go        ← SessionTitleGenerator 接口
+internal/biz/session/                ← Session 子包（status / turns / state / timeline / summary 等）
+```
+
+---
+
+## 三、请求流转
+
+```
+前端 GET /v1/ws?session_id=... 建立 WebSocket
+  → 上行 user_message / enqueue_message / cancel / ping / subscribe / unsubscribe / enable_log
+    → WSServer.handleUserMessage() / handleEnqueueMessage()
+      → ChatService.SendChatMessage() / EnqueueUserMessage()
+        → ChatOrchestrator.nativeSendChatMessage() → runNativeAgentTurn()
+          → session.owner_type == "team"?
+            → team.Runner.RunTurn() → BuildTRPCTeam → trpc Runner → EventBus Envelope
+          → session.owner_type == "agent"?
+            → runSingleAgentViaTRPC()
+              → BuildTRPCLLMAgentCached() → NewTRPCRunner() → RunTRPCUserTurn()
+              → EventProjector → EventBus → WS 下行 Envelope
+
+后台/非流式入口：
+POST /v1/chat/messages
+  → ChatService.SendChatMessage()
+  → 同一 runNativeAgentTurn() 主链路
+
+Channel 入口（飞书/Lark webhook 等）：
+POST /v1/channel/{channel_type}/webhook
+  → ChannelIngress.HandleWebhook()
+    → ChatService.RunNativeTurnUnary()
+      → 同一 runNativeAgentTurn() 主链路
+
+Cron 入口：
+Cron Scheduler
+  → ChatService.RunCronTurn()
+    → 同一 runNativeAgentTurn() 主链路
+```
+
+---
+
+## 四、Proto 层
+
+### 4.1 API 端点
+
+| 方法 | 路径 | 协议 | 说明 |
+|------|------|------|------|
+| POST | `/v1/chat/messages` | unary | 非流式对话 |
+| GET | `/v1/ws?session_id=...` | WebSocket | 实时事件主通道；支持订阅、回放、取消、user_message 上行 |
+| GET | `/v1/chat/options` | unary | 获取对话选项 |
+| POST | `/v1/chat/stop` | unary | 停止生成 |
+| GET | `/v1/chat/pending` | unary | 获取待执行消息列表 |
+| POST | `/v1/chat/pending/cancel` | unary | 取消待执行消息 |
+| POST | `/v1/chat/pending/update` | unary | 编辑待执行消息 |
+| POST | `/v1/chat/pending/interrupt-and-send` | unary | 中断并发送待执行消息 |
+| GET | `/v1/chat/run-status` | unary | 查询当前/最近一次 Run 状态 |
+| POST | `/v1/chat/await-reply` | unary | 提交人工等待回复 |
+| POST | `/v1/chat/enqueue` | unary | 显式入队（WS `enqueue_message` 等价） |
+| GET | `/v1/chat/jobs` | unary | 列出后台任务（按 session/agent/status 过滤） |
+| POST | `/v1/chat/jobs/{id}/cancel` | unary | 取消后台任务 |
+| POST | `/v1/chat/messages/{message_id}/feedback` | unary | 提交 👍/👎 反馈 |
+| POST | `/v1/chat/activities/{activity_id}/confirm` | unary | 提交工具确认（approved=true 恢复，approved=false 取消） |
+
+### 4.2 主要 Proto 定义
 
 文件：`api/kratos/chat/v1/chat.proto`
 
@@ -43,6 +174,8 @@ message SendMessageOptions {
   optional string provider = 2;
   optional string model = 3;
   repeated AttachmentRef attachments = 4;
+  // knowledge_bases limits knowledge_search to these collection IDs for this turn.
+  repeated string knowledge_bases = 5;
 }
 
 message AttachmentRef {
@@ -113,11 +246,31 @@ message UpdatePendingMessageResponse {
   bool updated = 1;
 }
 
+message InterruptAndSendMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string pending_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message InterruptAndSendMessageResponse {
+  bool sent = 1;
+}
+
+// RunStatus represents the lifecycle state of an agent run within a session.
 message RunStatus {
   string run_id = 1;
+  // status is one of: idle | pending | running | awaiting_user | completed | failed | cancelled | sync.
   string status = 2;
   string error_message = 3;
   string updated_at = 4;
+  string invocation_id = 5;
+  string agent_name = 6;
+  string started_at = 7;
+  string last_event_at = 8;
+  int32 event_count = 9;
+  // await_kind distinguishes awaiting_user reasons: "" | "reply" | "tool_confirm".
+  string await_kind = 10;
+  string await_tool_key = 11;
+  string await_tool_call_id = 12;
 }
 
 message GetRunStatusRequest {
@@ -134,50 +287,125 @@ message AwaitUserReplyResponse {
   bool accepted = 1;
 }
 
+message EnqueueUserMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string content = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EnqueueUserMessageResponse {
+  bool accepted = 1;
+  bool queued = 2;
+  string pending_id = 3;
+}
+
+message ListChatBackgroundJobsRequest {
+  optional string session_id = 1;
+  optional string agent_id = 2;
+  optional string status = 3;
+  optional int32 limit = 4;
+}
+
+message ChatBackgroundJob {
+  string id = 1;
+  string source = 2;
+  string session_id = 3;
+  string agent_id = 4;
+  string status = 5;
+  string target_type = 6;
+  string target_id = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  optional string summary = 10;
+  optional string error_message = 11;
+  string channel_id = 12;
+  optional string graph_id = 13;
+  optional string turn_id = 14;
+  optional string session_run_id = 15;
+  optional string phase = 16;
+}
+
+message ListChatBackgroundJobsResponse {
+  repeated ChatBackgroundJob items = 1;
+}
+
+message CancelChatBackgroundJobRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string source = 2;
+}
+
+message CancelChatBackgroundJobResponse {
+  bool cancelled = 1;
+}
+
+message SubmitMessageFeedbackRequest {
+  string message_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string rating = 3 [(google.api.field_behavior) = REQUIRED];
+  optional string comment = 4;
+}
+
+message SubmitMessageFeedbackResponse {
+  bool accepted = 1;
+}
+
+message ConfirmActivityRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string activity_id = 2 [(google.api.field_behavior) = REQUIRED];
+  bool approved = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ConfirmActivityResponse {
+  bool accepted = 1;
+  string status = 2;
+}
+
 service ChatService {
   rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/messages"
-      body: "*"
-    };
+    option (google.api.http) = { post: "/v1/chat/messages" body: "*" };
   }
   rpc GetChatOptions(GetChatOptionsRequest) returns (GetChatOptionsResponse) {
     option (google.api.http) = {get: "/v1/chat/options"};
   }
   rpc StopGeneration(StopGenerationRequest) returns (StopGenerationResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/stop"
-      body: "*"
-    };
+    option (google.api.http) = { post: "/v1/chat/stop" body: "*" };
   }
   rpc GetPendingMessages(GetPendingMessagesRequest) returns (GetPendingMessagesResponse) {
     option (google.api.http) = { get: "/v1/chat/pending" };
   }
   rpc CancelPendingMessage(CancelPendingMessageRequest) returns (CancelPendingMessageResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/pending/cancel"
-      body: "*"
-    };
+    option (google.api.http) = { post: "/v1/chat/pending/cancel" body: "*" };
   }
   rpc UpdatePendingMessage(UpdatePendingMessageRequest) returns (UpdatePendingMessageResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/pending/update"
-      body: "*"
-    };
+    option (google.api.http) = { post: "/v1/chat/pending/update" body: "*" };
+  }
+  rpc InterruptAndSendMessage(InterruptAndSendMessageRequest) returns (InterruptAndSendMessageResponse) {
+    option (google.api.http) = { post: "/v1/chat/pending/interrupt-and-send" body: "*" };
   }
   rpc GetRunStatus(GetRunStatusRequest) returns (RunStatus) {
     option (google.api.http) = {get: "/v1/chat/run-status"};
   }
   rpc AwaitUserReply(AwaitUserReplyRequest) returns (AwaitUserReplyResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/await-reply"
-      body: "*"
-    };
+    option (google.api.http) = { post: "/v1/chat/await-reply" body: "*" };
+  }
+  rpc EnqueueUserMessage(EnqueueUserMessageRequest) returns (EnqueueUserMessageResponse) {
+    option (google.api.http) = { post: "/v1/chat/enqueue" body: "*" };
+  }
+  rpc ListChatBackgroundJobs(ListChatBackgroundJobsRequest) returns (ListChatBackgroundJobsResponse) {
+    option (google.api.http) = {get: "/v1/chat/jobs"};
+  }
+  rpc CancelChatBackgroundJob(CancelChatBackgroundJobRequest) returns (CancelChatBackgroundJobResponse) {
+    option (google.api.http) = { post: "/v1/chat/jobs/{id}/cancel" body: "*" };
+  }
+  rpc SubmitMessageFeedback(SubmitMessageFeedbackRequest) returns (SubmitMessageFeedbackResponse) {
+    option (google.api.http) = { post: "/v1/chat/messages/{message_id}/feedback" body: "*" };
+  }
+  rpc ConfirmActivity(ConfirmActivityRequest) returns (ConfirmActivityResponse) {
+    option (google.api.http) = { post: "/v1/chat/activities/{activity_id}/confirm" body: "*" };
   }
 }
 ```
 
-### 2.2 WebSocket 实时端点（非 Proto 定义，HTTP Server 层注册）
+### 4.3 WebSocket 实时端点（非 Proto 定义，HTTP Server 层注册）
 
 实时对话事件通过 WebSocket + EventBus 下发，不在 Proto 中定义：
 
@@ -187,29 +415,7 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 
 客户端可在 WS 上行发送 `user_message` / `enqueue_message` / `cancel` / `ping` / `subscribe` / `unsubscribe` / `enable_log`，服务端复用 `ChatService.SendChatMessage` 与 `ChatService.CancelRun`，下行统一为 Envelope。
 
-#### WS 上行消息格式
-
-| 上行 type | 载荷字段 | 说明 |
-|-----------|----------|------|
-| `user_message` | `session_id`, `content`, `options` | 发送用户消息，触发 ChatService.SendChatMessage |
-| `enqueue_message` | `session_id`, `content`, `options` | 发送用户消息，若当前有 run 则入队 pendingQueue |
-| `cancel` | `session_id` | 取消当前 run（等同于 HTTP StopGeneration） |
-| `ping` | — | 心跳探测，服务端回复 `pong` |
-| `subscribe` | `session_id` / `team_id` | 订阅指定 session/team 的 EventBus 事件 |
-| `unsubscribe` | `session_id` / `team_id` | 取消订阅 |
-| `enable_log` | `enabled` | 开启/关闭运行日志推送（monitor channel） |
-
-#### WS 下行控制消息
-
-| 下行 type | Channel | 载荷字段 | 说明 |
-|-----------|---------|----------|------|
-| `connected` | system | `session_id`, `connection_id` | WS 连接建立成功 |
-| `pong` | system | — | 心跳回复 |
-| `replay_start` | system | `session_id` | EventBuffer 回放开始标记 |
-| `replay_end` | system | `session_id` | EventBuffer 回放结束标记 |
-| `server_shutdown` | system | `message` | 服务端即将关闭通知 |
-
-### 2.3 消息字段说明
+### 4.4 消息字段说明
 
 | 消息 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
@@ -223,11 +429,6 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 | | `model` | string | ❌ | 模型名覆盖 |
 | | `attachments` | AttachmentRef[] | ❌ | 附件引用列表 |
 | | `knowledge_bases` | string[] | ❌ | 本轮限定的知识库 collection ID（`knowledge_search` 白名单） |
-| `SubmitMessageFeedbackRequest` | `message_id` / `session_id` / `rating` | — | 👍/👎 反馈（positive \| negative） |
-| | `key` | string | — | 选项键（如 default/plan/code） |
-| | `label` | string | — | 显示标签 |
-| | `enabled` | bool | — | 是否启用 |
-| | `sort_order` | int32 | — | 排序 |
 | `StopGenerationRequest` | `session_id` | string | ✅ | 要停止的会话 ID |
 | `GetPendingMessagesRequest` | `session_id` | string | ✅ | 要查询的会话 ID |
 | `CancelPendingMessageRequest` | `session_id` | string | ✅ | 会话 ID |
@@ -235,12 +436,85 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 | `UpdatePendingMessageRequest` | `session_id` | string | ✅ | 会话 ID |
 | | `pending_id` | string | ✅ | 待执行消息 ID |
 | | `content` | string | ✅ | 新消息内容 |
+| `EnqueueUserMessageRequest` | `session_id` | string | ✅ | 会话 ID |
+| | `content` | string | ✅ | 入队内容 |
+| `EnqueueUserMessageResponse` | `accepted` | bool | — | 是否被接受（steer 或 pending） |
+| | `queued` | bool | — | 是否降级到 pending queue |
+| | `pending_id` | string | — | 入队后的 pending ID |
+| `SubmitMessageFeedbackRequest` | `message_id` / `session_id` / `rating` | — | 👍/👎 反馈（positive \| negative） |
+| `ConfirmActivityRequest` | `session_id` / `activity_id` / `approved` | — | 工具确认（true 恢复 / false 取消） |
 
 ---
 
-## 三、Biz 层
+## 五、WebSocket 协议
 
-### 3.1 领域模型
+### 5.1 上行消息类型
+
+| 上行 type | 说明 |
+|-----------|------|
+| `user_message` | 发送用户消息，触发 ChatService.SendChatMessage |
+| `enqueue_message` | 发送用户消息，若当前有 run 则入队 pendingQueue |
+| `cancel` | 取消当前 run（等同于 HTTP StopGeneration） |
+| `ping` | 心跳探测，服务端回复 `pong` |
+| `subscribe` | 订阅指定 session/team 的 EventBus 事件 |
+| `unsubscribe` | 取消订阅 |
+| `enable_log` | 开启运行日志推送（monitor channel） |
+
+### 5.2 下行消息类型
+
+| 下行 type | Channel | 说明 |
+|-----------|---------|------|
+| `connected` | system | WS 连接建立成功，携带 session_id 和连接元信息 |
+| `pong` | system | 心跳回复 |
+| `replay_start` | system | EventBuffer 回放开始标记 |
+| `replay_end` | system | EventBuffer 回放结束标记 |
+| `server_shutdown` | system | 服务端即将关闭通知 |
+| `text_delta` / `text_done` | chat/team | 模型增量文本与最终文本 |
+| `tool_call` / `tool_result` | chat/team | 工具调用与工具结果 |
+| `state_delta` | chat/team | Runner State 增量 |
+| `runner_completion` | chat/team | 一轮 Runner 完成，携带 usage |
+| `error` | chat/system | 错误信息；待执行失败时携带 `pending_id`（见 §5.6） |
+| `intent_pass` | chat/team | 意图识别结果 |
+| `transfer` | team | Team/Swarm 转交 |
+| `team_run_started` / `team_run_finished` / `team_run_failed` | team | Team run 生命周期 |
+| `member_message_start` / `member_delta` / `member_message_done` | team | 成员级实时消息；`EventProjector` 在 `MemberAgentKeys` 下投影，前端 `useChatWorkspace` 消费 |
+| `run_status` | chat/team | 运行生命周期；`metadata.hint=message_queued` 表示 Follow-up 入队成功 |
+| `log` | monitor | 运行日志，需客户端通过 `enable_log` 上行开启订阅 |
+
+### 5.3 下行 Envelope 结构
+
+```json
+{
+  "direction": "server_to_client",
+  "channel": "chat|team|monitor|graph|system",
+  "envelope": {
+    "id": "...",
+    "type": "text_delta",
+    "session_id": "...",
+    "content": {"text": "...", "reasoning": "...", "is_partial": true},
+    "tool_call": {"id": "...", "name": "...", "arguments_json": "...", "status": "...", "is_long_running": false},
+    "state_delta": {"operation": "...", "path": "...", "value_json": "..."},
+    "transfer": {"from_agent": "...", "to_agent": "..."},
+    "error": {"type": "...", "message": "...", "pending_id": "..."},
+    "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+    "tag": "...",
+    "filter_key": "...",
+    "branch": "...",
+    "version": 0,
+    "extensions": {"skip_summarization": false},
+    "actions": {"skip_summarization": false},
+    "trace": {"agent_name": "...", "invocation_id": "...", "step_count": 0, "duration_ms": 0}
+  }
+}
+```
+
+> **字段说明**：`content`/`tool_call`/`state_delta`/`transfer`/`error`/`usage` 为载荷字段，按 `type` 选择性填充；`tag`/`filter_key`/`branch`/`version`/`extensions`/`actions`/`trace` 为元数据字段，所有类型均可能携带。
+
+---
+
+## 六、Biz 层
+
+### 6.1 领域模型
 
 Chat 模块无独立 Biz 模型，依赖以下已有模型：
 
@@ -253,7 +527,7 @@ Chat 模块无独立 Biz 模型，依赖以下已有模型：
 | `biz.TokenUsageEvent` | `internal/biz` | 用量记录事件 |
 | `biz.SessionSummary` | `internal/biz` | 会话摘要 |
 
-### 3.2 依赖的 Usecase/Repo 接口
+### 6.2 依赖的 Usecase/Repo 接口
 
 ```go
 type AgentRepository interface {
@@ -291,7 +565,7 @@ type SystemSettingRepo interface {
 }
 ```
 
-### 3.3 Broker 接口
+### 6.3 Broker 接口
 
 ```go
 type TeamRunEventBroker struct {
@@ -313,7 +587,7 @@ func (b *MonitorLogBroker) Unsubscribe(id string)
 func (b *MonitorLogBroker) Publish(log *MonitorLog)
 ```
 
-### 3.4 NativeTurnCompressor 接口
+### 6.4 NativeTurnCompressor 接口
 
 ```go
 type NativeTurnCompressor interface {
@@ -321,7 +595,7 @@ type NativeTurnCompressor interface {
 }
 ```
 
-### 3.5 SessionTitleGenerator 接口
+### 6.5 SessionTitleGenerator 接口
 
 ```go
 type SessionTitleGenerator interface {
@@ -335,11 +609,11 @@ type SessionTitleGenerator interface {
 
 ---
 
-## 四、Data 层
+## 七、Data 层
 
 Chat 模块无独立 Data 层，通过以下已有表间接使用：
 
-### 4.1 用量记录表
+### 7.1 用量记录表
 
 ```
 model_token_usage_events
@@ -366,7 +640,7 @@ model_token_usage_events
 ├── created_at        TEXT
 ```
 
-### 4.2 工具调用记录表
+### 7.2 工具调用记录表
 
 ```
 tool_invocations
@@ -383,64 +657,77 @@ tool_invocations
 
 ---
 
-## 五、Service 层
+## 八、Service 层
 
-### 5.1 文件结构
+### 8.1 文件结构
 
 ```
 internal/service/
-├── chat.go              ← ChatService RPC；入队/排队委托 chatUC
-├── chat_run_gateway.go  ← Biz 适配器 + publishMessageQueuedToBus
-├── chat_pending.go      ← PendingMessageQueue（Follow-up FIFO，待下沉 runtime）
-├── chat_native.go       ← 原生对话入口（HTTP unary + WS 上行复用）+ hydratedAgent
-├── trpc_turn.go         ← trpc-agent-go 单 Agent turn 执行 + EventBus 投影 + processPendingQueue
-├── chat_usage_ingress.go ← 用量记录
-├── session_compress.go  ← L0 上下文压缩
-├── session_title_llm.go ← LLM 标题生成
+├── chat.go                          ← ChatService 薄传输桥（委托 ChatOrchestrator）
+├── chat_orchestrator.go             ← ChatOrchestrator 编排核心
+├── chat_orchestrator_turn.go        ← Turn 编排
+├── chat_orchestrator_turn_phases.go ← Turn 阶段实现
+├── chat_orchestrator_turn_dispatch.go ← Turn 分发
+├── chat_orchestrator_turn_api.go    ← Turn API
+├── chat_orchestrator_turn_metrics.go ← Turn 指标
+├── chat_orchestrator_context_admission.go ← 上下文 admission
+├── chat_orchestrator_session_run.go ← Session run 生命周期
+├── chat_orch_session_run_lifecycle.go ← Session run 生命周期细节
+├── chat_orch_run_status.go          ← RunStatus 管理
+├── chat_orch_pending_queue.go       ← Pending Queue 编排
+├── chat_orch_await.go               ← AwaitUserReply 编排
+├── chat_orch_agent_build.go         ← Agent 构建
+├── chat_run_gateway.go              ← Biz 适配器 + publishMessageQueuedToBus
+├── chat_native.go                   ← 原生对话入口（admission + team/agent 路由）
+├── chat_enqueue.go                  ← EnqueueUserMessage RPC
+├── chat_await_route.go              ← AwaitUserReply 路由
+├── chat_await_resume.go             ← AwaitUserReply 恢复
+├── chat_durable_resume.go           ← Durable resume
+├── chat_attachments.go              ← 附件处理
+├── chat_activity.go                 ← Activity 确认
+├── chat_confirm.go                  ← ConfirmActivity RPC
+├── chat_feedback.go                 ← SubmitMessageFeedback RPC
+├── chat_jobs.go                     ← 后台任务 RPC
+├── chat_event_publisher.go          ← Chat 事件发布
+├── chat_turn_admission.go           ← Turn admission（CHAT_TURN_BUSY）
+├── chat_turn_metrics.go             ← Chat turn 指标
+├── chat_usage_ingress.go            ← 用量记录
+├── chat_wire.go                     ← Wire 注入
+├── chat_session_run_cancel.go       ← Session run 取消
+├── turn_outcome.go                  ← ErrTurnMessageQueued / CHAT_TURN_BUSY
+└── session_title_llm.go             ← LLM 标题生成
 ```
 
-### 5.2 ChatService 结构体
+### 8.2 ChatService 结构体
 
 ```go
+// ChatService is the thin transport bridge between proto/HTTP/WS and the
+// ChatOrchestrator. It only handles request validation, proto mapping, and
+// delegates all orchestration work to ChatOrchestrator.
 type ChatService struct {
     chatv1.UnimplementedChatServiceServer
 
-    teams          biz.TeamRepository
-    teamsNative    *team.Runner
-    usage          *biz.UsageUsecase
-    td             rt.TurnDeps
-    pluginRT       *plugintrpc.Runtime
-    skillDBRepo    trpcskill.Repository
-    runs           *RunRegistry   // internal/runtime：active run、cancel、run status
-    chatUC         *biz.ChatUsecase // 编排：入队/排队/锁/await（Follow-up Queue）
-    webhooks       *biz.WebhookDispatcher
-    // awaitMetaCache / resumeInFlight — Service 层 resume 语义
+    orch         *ChatOrchestrator
+    turnPipeline *TurnPipeline
+    lg           loggateway.Logger
 }
+
+func NewChatService(deps ChatOrchestratorDeps) *ChatService
 ```
 
-`PendingMessageQueue` 由 `NewChatUsecaseFromDeps` 注入 `chatUC`；`ChatService` 不再直接持有 `pendingQueue sync.Map`。
+`ChatService` 仅做协议桥接，所有编排逻辑下沉到 `ChatOrchestrator`。`PendingMessageQueue` 由 `internal/runtime/pending_queue.go` 提供，`RunRegistry` 由 `internal/runtime/run_registry.go` 提供，均通过 `ChatOrchestrator` 持有。
 
 #### Follow-up Queue（对话阶段连续发送）
 
-详见 [35 gateway.design.md §3.6](./35%20gateway.design.md#36-follow-up-queue对话阶段连续发送) 与 [1 chat.md §1.9](./1%20chat.md#19-对话阶段连续发送follow-up-queue--待发送队列)。
+详见 [35 gateway.design.md §3.6](./35%20gateway.design.md#36-follow-up-queue对话阶段连续发送) 与 [1 chat.md §2.3](./1%20chat.md#23-待执行队列follow-up-queue)。
 
 **入队**：`chat_native` 检测 `HasActive` → `chatUC.EnqueueUserMessage` → Steerable 或 Pending → `PublishMessageQueued`（`run_status` + `hint: message_queued`）。
 
-**出队**：`trpc_turn` / Team defer → `processPendingQueue` → `chatUC.DequeuePendingMessage` → 新 turn。
+**出队**：turn defer → `processPendingQueue` → `chatUC.DequeuePendingMessage` → 新 turn。
 
 **废弃**：`ChatService.publishMessageQueued` — 使用 `ChatUsecase` + `publishMessageQueuedToBus`。
 
-```go
-// 历史结构（已移除）
-type pendingEntry struct {
-    ID        string
-    Content   string
-    Status    string
-    CreatedAt string
-}
-```
-
-### 5.3 RPC 方法实现
+### 8.3 RPC 方法实现
 
 #### SendChatMessage（unary，非流式）
 
@@ -465,15 +752,11 @@ type pendingEntry struct {
 
 ```
 1. 检查 session_id 必填
-2. 从 activeRuns 加载 Runner
-3. 优先尝试 chatagent.CancelTRPCRun(runner, sessionID)
-4. 回退到 runner.Close()
-5. 从 activeRuns 删除
-6. 从 pendingCancels 加载 CancelFunc 并调用（取消待执行队列处理）
-7. 从 pendingCancels 删除
+2. 调用 ChatOrchestrator.CancelRun(sessionID)
+3. 返回 stopped 状态
 ```
 
-当前 `RunRegistry` 由单 Agent **`StoreCancelable` → `StoreRunner`** 与 Team **`StoreCancelable`** 共同登记（2026-05-23 起 Agent 不再使用 `StorePlaceholder`）；`lockSession` per-session 互斥锁保护 admission。Turn 启动中且无 `ActiveRunner` 时返回 **`CHAT_TURN_BUSY`**；运行中追加消息经 `EnqueueUserMessage` 成功返回 **`ErrTurnMessageQueued`**（steer 或 Pending FIFO）。Team / 单 Agent turn 完成后 defer `Finish` 并调用 `processPendingQueue`（加锁；仍 active 则重新入队）。
+当前 `RunRegistry` 由单 Agent **`StoreCancelable` → `StoreRunner`** 与 Team **`StoreCancelable`** 共同登记；`lockSession` per-session 互斥锁保护 admission。Turn 启动中且无 `ActiveRunner` 时返回 **`CHAT_TURN_BUSY`**；运行中追加消息经 `EnqueueUserMessage` 成功返回 **`ErrTurnMessageQueued`**（steer 或 Pending FIFO）。Team / 单 Agent turn 完成后 defer `Finish` 并调用 `processPendingQueue`（加锁；仍 active 则重新入队）。
 
 #### GetPendingMessages
 
@@ -500,7 +783,7 @@ type pendingEntry struct {
 4. 返回 updated 状态
 ```
 
-### 5.4 WebSocket 实时对话（/v1/ws）
+### 8.4 WebSocket 实时对话（/v1/ws）
 
 Chat proto HTTP 路由在 `internal/server/register_chat.go` 中注册；实时通道由 `internal/server/ws.go` 单独注册：
 
@@ -522,8 +805,8 @@ GET /v1/ws?session_id=...
     → 订阅 EventBus（session scoped，可靠订阅）
     → 支持 last_event_id 回放 EventBuffer
     → 上行 user_message / enqueue_message
-      → ChatService.SendChatMessage()
-        → runNativeAgentTurn()
+      → ChatService.SendChatMessage() / EnqueueUserMessage()
+        → ChatOrchestrator.nativeSendChatMessage() → runNativeAgentTurn()
     → 下行 EventBus Envelope
       → wsDownstream{direction, channel, envelope}
 
@@ -539,9 +822,9 @@ Cron Scheduler
     → 同一 runNativeAgentTurn() 主链路
 ```
 
-### 5.5 WebSocket Envelope 事件协议
+### 8.5 WebSocket Envelope 事件协议
 
-#### 5.5.1 Envelope 完整结构
+#### 8.5.1 Envelope 完整结构
 
 ```go
 type Envelope struct {
@@ -623,7 +906,7 @@ type EnvelopeTrace struct {
 }
 ```
 
-#### 5.5.2 事件类型与载荷映射
+#### 8.5.2 事件类型与载荷映射
 
 | Envelope type | Channel | 主要载荷字段 | 说明 |
 |------|------|------|------|
@@ -643,7 +926,7 @@ type EnvelopeTrace struct {
 
 > **pending_id 字段约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前 `processPendingQueue` 中统一使用 `env.Error.PendingID = entry.ID`，metadata 双写已移除。
 
-### 5.6 runNativeAgentTurn 核心流程
+### 8.6 runNativeAgentTurn 核心流程
 
 ```
 1. 校验 session_id 和 content
@@ -659,10 +942,10 @@ type EnvelopeTrace struct {
 ```
 
 注意：
-- 步骤 2 的 `activeRuns` 检查由 ChatService 维护，`lockSession` per-session 互斥锁保护 Load/Store 原子性。Team 路径通过 `teamRunGuard` 接入 `activeRuns`，与单 Agent 的 stop/pending 行为一致。
+- 步骤 2 的 `activeRuns` 检查由 `RunRegistry` 维护，`lockSession` per-session 互斥锁保护 Load/Store 原子性。Team 路径通过 `teamRunGuard` 接入 `activeRuns`，与单 Agent 的 stop/pending 行为一致。
 - Team turn 完成后通过 defer 调用 `processPendingQueue`，内部按 `OwnerType` 路由到 `teamsNative.RunTurn` 或 `runSingleAgentViaTRPC`。
 
-### 5.7 runSingleAgentViaTRPC 核心流程
+### 8.7 runSingleAgentViaTRPC 核心流程
 
 ```
 1. 校验 agent_key 匹配
@@ -692,18 +975,18 @@ type EnvelopeTrace struct {
 17. setRunStatus(completed)
 ```
 
-### 5.7.1 WS 连接与取消
+### 8.8 WS 连接与取消
 
 ```
 1. WSServer 限制每个 session 最多 5 条连接（maxSessionConns=5）
 2. readPump/writePump 使用心跳与写超时维护连接
 3. 客户端上行 cancel → ChatService.CancelRun(sessionID)
-4. StopGeneration RPC 与 WS cancel 共用 activeRuns / pendingCancels
+4. StopGeneration RPC 与 WS cancel 共用 RunRegistry / pendingCancels
 5. last_event_id + EventBuffer 支持断线后的事件回放
 6. 全局监控连接（globalMode，sessionId="*"）可订阅所有 Session 事件流
 ```
 
-### 5.7.2 processPendingQueue 错误处理
+### 8.9 processPendingQueue 错误处理
 
 ```
 1. dequeuePending 取出待执行消息
@@ -715,7 +998,7 @@ type EnvelopeTrace struct {
 
 > **pending_id 约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前 `processPendingQueue` 中统一使用 `env.Error.PendingID = entry.ID`，metadata 双写已移除。
 
-### 5.7.3 pendingQueue 容量控制
+### 8.10 pendingQueue 容量控制
 
 ```
 - maxPendingPerSession = 32
@@ -723,20 +1006,86 @@ type EnvelopeTrace struct {
 - runNativeAgentTurn 中检测空 ID，返回 BadRequest 错误
 ```
 
-### 5.8 用量记录
+### 8.11 上下文管理
 
-```go
-func recordChatIngressUsage(ctx, uc, req, am, streamEnabled) {
-    // 1. 检查 CHAT_RECORD_USAGE_INGRESS 环境变量
-    // 2. 从 agent_message 提取 token_in/token_out/latency_ms
-    // 3. 如果 API 未返回 usage，使用 roughTokenEstimateFromText 估算
-    // 4. 计算 tokens_per_second
-    // 5. 构造 TokenUsageEvent 并写入
-    // 6. 使用独立 context.WithoutCancel 避免请求超时影响记录
-}
-```
+- **上下文用量追踪**：每次 turn 后通过 `UpdateSessionContextFromLLMUsage` 更新 `context_used_tokens` / `context_used_ratio`（`prompt_tokens / context_window`）
+- **Context Window 解析**：`llmcontext.ResolveWindow`（provider model `context_window_k` → session default → agent → 128000）；ChatOrchestrator 在 turn 结束与 `runner_completion` 投影时使用
+- **L0 压缩**：当 `context_used_ratio` 超过阈值（默认 0.6）时，`SessionCompressor.AfterNativeTurn()` 异步触发摘要压缩；完成后 WS 推送带新 ratio 的 `system.session.compress` 通知
+- **实时 UI**：`context_usage`（ReAct 子步）与 `runner_completion.usage`（含 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`）及压缩 notice 经 `sessionContextPatch` 乐观更新 Composer；Composer 副行合并展示 ctx/in/out/Σ/费用（与 Usage 大盘口径一致）
+- **记忆服务**：通过 `runtimedeps.Runtime.SessionMemory` 注入 SQLite 适配器，由 trpc Runner 自动管理 L0-L4
 
-### 5.9 L0 上下文压缩
+### 8.12 用量记录
+
+- 每次对话后通过 `recordTurnUsage()`（`chat_orchestrator_turn` defer）写入 `model_token_usage_events`；`recordChatIngressUsage` 仅 `CHAT_RECORD_USAGE_INGRESS=1` 时备用
+- 支持流式/非流式两种记录路径
+- 可通过 `CHAT_RECORD_USAGE_INGRESS=0` 禁用（用于双写过渡期）
+- 记录字段包含：session_id、agent_key、team_id、model_api_id、input/output_tokens、latency_ms、tokens_per_second、stream_enabled、usage_kind、provider_code、prompt_mode
+
+#### 8.12.1 SessionTurn 持久化
+
+- 单 Agent turn 完成后，`recordSessionTurn()` 写入 `session_turns` 表，记录 turn 索引、角色、模型、token 用量和耗时
+- Team turn 完成后，`recordTeamSessionTurn()` 写入 `session_turns` 表，与单 Agent 行为一致
+
+#### 8.12.2 Team Run 持久化
+
+- Team turn 执行时，`CreateTeamRun()` 写入 `team_runs` 表，记录 team_id、session_id、状态和起止时间
+- Team turn 中每个成员 Agent 执行步骤通过 `CreateTeamRunStep()` 写入 `team_run_steps` 表
+- Team 定义可配置 `intent_anchor_agent_id`（指定意图识别使用的成员 Agent）和 `TurnDeadlineDuration`（turn 超时时间）
+
+#### 8.12.3 可观测性
+
+- Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
+- 意图识别超时为 45 秒
+- Context Window 默认值：当 Agent 配置的 `context_window` ≤ 0 时，默认使用 128000 tokens
+
+### 8.13 停止生成与运行中追加消息
+
+- **`internal/runtime.RunRegistry`** 跟踪每 session 的 active run（`trpcrunner.Runner` 或 Team `context.CancelFunc` 或占位符）、pending 处理 cancel、run status
+- `runSingleAgentViaTRPC`：`RunRegistry.StoreRunner`；defer `Finish` + `runner.Close` + `processPendingQueue`
+- `RunTRPCUserTurn` 使用 `trpcagent.WithRequestID(sessionID)`，与 `ManagedRunner.Cancel(sessionID)` 对齐
+- **停止**：HTTP `StopGeneration` 或 WS `cancel` → `RunRegistry.Cancel`（含 pending 后台 turn 的 cancel）
+- **运行中追加（Follow-up Queue）**：HTTP `POST /v1/chat/enqueue`、`EnqueueUserMessage` RPC，或 WS `user_message` / `enqueue_message`；`SendChatMessage` 在 active run 时自动入队而非拒绝
+- **Team cancel**：`RunRegistry.StoreCancelable` 登记 Team turn，与单 Agent 停止行为一致
+- **连接管理**：`WSServer` 负责心跳、连接数限制、断线回放和 EventBus 订阅
+
+#### 8.13.1 EventBuffer 回放
+
+- WS 连接断线重连时，客户端携带 `last_event_id` 请求回放
+- `EventBuffer` 为 ring buffer，容量 200 条/Session，基于事件 ID 匹配回放起始位置
+- 回放期间依次发送 `replay_start` → 事件序列 → `replay_end` 控制消息
+- **清理策略**：TTL 30min 自动过期 + 5min eviction ticker + `Close()` 优雅停止；`lastAcc` 追踪最后访问时间
+
+#### 8.13.2 EventBus 订阅与背压
+
+- `EventBus.Subscribe()` 支持 `SubscribeOptions`：SessionID / TeamID / Channel / FilterKey / EventTypes / LevelFilter
+- `FilterKey` 采用前缀匹配规则（`MatchFilterKey`）
+- 当订阅者消费速度落后时，EventBus 丢弃非关键事件；关键事件类型（不丢弃）包括：`tool_result`、`error`、`runner_completion`、`graph_node_end`、`team_run_finished`、`team_run_failed`
+- WS 全局监控连接（`globalMode`，sessionId=`*`）可订阅所有 Session 的事件流
+
+#### 8.13.3 Agent Settings Variables 注入
+
+- Agent 配置中的 `variables_json` 字段存储自定义变量
+- `runSingleAgentViaTRPC` 执行时通过 `ParseVariablesJSON` → `MergeRuntimeState` 将变量注入 Runner State
+- 变量可在 System Prompt 中通过占位符引用
+
+### 8.14 RunStatus 与 AwaitUserReply
+
+- `GetRunStatus` 返回 `idle | pending | running | awaiting_user | completed | failed | cancelled | sync`
+- `runStatuses sync.Map` 记录当前/最近一次 run 状态、run_id、错误信息和更新时间
+- `makeAwaitReplyFunc` 注入 service await-reply tool，工具阻塞时将状态置为 `awaiting_user`
+- `AwaitUserReply` 向 `awaitChans` 投递人工回复，恢复正在等待的 run
+- 单 Agent 和 Team 路径均通过 `makeAwaitReplyFunc` 注入 AwaitHook；Team Runner 通过 `SetAwaitHookProvider` 注入，`runCtx` 注入 `serviceawaitreply.WithReplyFunc`
+- 前端：`useEnvelopeStream` / `useChatStreamManager` / `useChatRunStatus` 消费 WS；`useChatWorkspace` 轮询 `GetRunStatus` 并在 `awaiting_user` 时展示提交回复横幅（`ChatMessagePanel` + `AwaitUserReply` RPC）
+- 当前状态通过 `state_json` 持久化；`awaitChans` 仍为进程内结构，服务重启后 awaiting_user 状态可通过 `PendingAwaitUserReplyRoute` 恢复；`resumeInFlight` 防双 turn
+
+### 8.15 Session 标题自动生成
+
+- 首次对话时，`maybeAutoTitleFromUserMessage` 触发标题生成
+- 先用截取方式快速设置标题（用户消息前 22 字符，即时反馈）
+- 异步调用 `LLMSessionTitleGenerator` 生成高质量标题（15s 超时，失败静默）
+- `LLMSessionTitleGenerator` 优先选择轻量模型（mini/flash/lite/small）
+
+### 8.16 L0 上下文压缩
 
 ```go
 type SessionCompressor struct {
@@ -759,7 +1108,7 @@ func (c *SessionCompressor) AfterNativeTurn(ctx, sessionID, ag) {
 }
 ```
 
-### 5.10 Session 标题自动生成
+### 8.17 Session 标题自动生成实现
 
 ```go
 func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx, sessionID, content) error {
@@ -787,7 +1136,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx, userMessage) (string, error) {
 }
 ```
 
-### 5.11 EventBuffer 设计
+### 8.18 EventBuffer 设计
 
 ```go
 type EventBuffer struct {
@@ -810,7 +1159,7 @@ type ringBuffer struct {
 - **回放协议**：`replay_start` → 事件序列 → `replay_end`
 - **清理策略**：TTL 30min 自动过期 + 5min eviction ticker + `Close()` 优雅停止；`lastAcc` 追踪最后访问时间
 
-### 5.12 EventBus 订阅与背压
+### 8.19 EventBus 订阅与背压
 
 ```go
 type SubscribeOptions struct {
@@ -834,9 +1183,9 @@ type Bus interface {
 - **关键事件（不丢弃）**：`tool_result`、`error`、`runner_completion`、`graph_node_end`、`team_run_finished`、`team_run_failed`
 - **全局监控**：WS 连接 `globalMode`（sessionId=`*`）可订阅所有 Session 的事件流
 
-### 5.13 Channel/Cron 入口
+### 8.20 Channel/Cron 入口
 
-#### 5.13.1 Channel Ingress
+#### 8.20.1 Channel Ingress
 
 ```
 POST /v1/channel/{channel_type}/webhook
@@ -851,7 +1200,7 @@ POST /v1/channel/{channel_type}/webhook
 - Channel webhook 为并发入口，多个 webhook 可能同时触发同一 Session 的对话
 - **并发保护**：`lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位，确保 `RunNativeTurnUnary` 受 activeRuns/pendingQueue 保护
 
-#### 5.13.2 Cron Turn
+#### 8.20.2 Cron Turn
 
 ```
 Cron Scheduler
@@ -862,7 +1211,7 @@ Cron Scheduler
 
 - Cron turn 与手动对话共用 `runNativeAgentTurn`，受相同的 activeRuns/pendingQueue 保护
 
-### 5.14 Team Run 持久化
+### 8.21 Team Run 持久化
 
 ```
 team_runs
@@ -892,7 +1241,7 @@ team_run_steps
 - Team turn 中每个成员 Agent 执行步骤通过 `CreateTeamRunStep()` 写入 `team_run_steps` 表
 - Team 定义可配置 `intent_anchor_agent_id`（指定意图识别使用的成员 Agent）和 `TurnDeadlineDuration`（turn 超时时间）
 
-### 5.15 SessionTurn 持久化
+### 8.22 SessionTurn 持久化
 
 ```
 session_turns
@@ -910,7 +1259,7 @@ session_turns
 - 单 Agent turn 完成后，`recordSessionTurn()` 写入 `session_turns` 表
 - Team turn 完成后，`recordTeamSessionTurn()` 写入 `session_turns` 表，与单 Agent 行为一致
 
-### 5.16 Agent Settings Variables 注入
+### 8.23 Agent Settings Variables 注入
 
 ```go
 func ParseVariablesJSON(variablesJSON string) (map[string]interface{}, error)
@@ -921,7 +1270,7 @@ func MergeRuntimeState(state map[string]interface{}, variables map[string]interf
 - `runSingleAgentViaTRPC` 执行时通过 `ParseVariablesJSON` → `MergeRuntimeState` 将变量注入 Runner State
 - 变量可在 System Prompt 中通过占位符引用（如 `{{variable_name}}`）
 
-### 5.17 可观测性
+### 8.24 可观测性
 
 - Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
 - 意图识别超时为 45 秒
@@ -929,9 +1278,9 @@ func MergeRuntimeState(state map[string]interface{}, variables map[string]interf
 
 ---
 
-## 六、运行时层
+## 九、运行时层
 
-### 6.1 Agent 构建
+### 9.1 Agent 构建
 
 ```go
 type TRPCBuilderDeps struct {
@@ -956,7 +1305,7 @@ func BuildTRPCLLMAgent(ctx, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent
 }
 ```
 
-### 6.2 Runner 构建
+### 9.2 Runner 构建
 
 ```go
 type TRPCRunnerDeps struct {
@@ -975,7 +1324,7 @@ func RunTRPCUserTurn(ctx, r trpcrunner.Runner, userID, sessionID, content string
 }
 ```
 
-### 6.3 Team 编排
+### 9.3 Team 编排
 
 ```go
 type Runner struct {
@@ -1004,9 +1353,9 @@ func (r *Runner) RunTurn(ctx, sess biz.Session, req *chatv1.SendChatMessageReque
 
 ---
 
-## 七、Wire 注入
+## 十、Wire 注入
 
-### 7.1 ProviderSet
+### 10.1 ProviderSet
 
 ```go
 var ProviderSet = wire.NewSet(
@@ -1018,7 +1367,7 @@ var ProviderSet = wire.NewSet(
 )
 ```
 
-### 7.2 provideChatServiceDeps
+### 10.2 provideChatServiceDeps
 
 ```go
 func provideChatServiceDeps(
@@ -1042,80 +1391,192 @@ func provideChatServiceDeps(
 
 ---
 
-## 八、Web 前端设计
+## 十一、Web 前端设计
 
-### 8.1 文件结构
+### 11.1 文件结构
 
 ```
 web/src/
 ├── services/index.ts              ← createChatService 导出
 ├── features/chat/
-│   ├── api.ts                     ← Chat API 调用封装（sendMessage/stop/listOptions/getPending/cancelPending/updatePending/getRunStatus/awaitUserReply）
+│   ├── api.ts                     ← Chat API 调用封装（sendMessage/stop/listOptions/getPending/cancelPending/updatePending/getRunStatus/awaitUserReply/enqueue/listJobs/cancelJob/submitFeedback/confirmActivity）
 │   ├── types.ts                   ← TypeScript 类型定义
+│   ├── envelope.ts                ← WS Envelope 类型定义
+│   ├── dispatcher.ts              ← Envelope 分发器
+│   ├── conversationEventDispatcher.ts ← 对话事件分发器
+│   ├── eventFilter.ts             ← 事件过滤
+│   ├── useEventFilter.ts          ← 事件过滤 composable
+│   ├── useEnvelopeStream.ts       ← WS Envelope 底层消费
+│   ├── ws-transport.ts            ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放）
+│   ├── globalWsHub.ts             ← 全局 WS Hub
+│   ├── streamHandlers.ts          ← WS 事件处理器（withSessionFilter + onRunActivity + errorCodeHints）
+│   ├── streamEventTypes.ts        ← 流事件类型
+│   ├── streamContentPatch.ts      ← 流内容补丁
+│   ├── envelopeToolCall.ts        ← Envelope → ToolUseEvent v2 映射 + upsert
+│   ├── envelopeRunStatus.ts       ← Envelope → RunStatus 映射
+│   ├── sessionRunStatus.ts        ← Session RunStatus
+│   ├── activityPresentation.ts    ← activity_kind → icon/label/summary 前端 fallback
+│   ├── activityTypes.ts           ← Activity 类型
+│   ├── activityMessageAdapter.ts  ← Activity 消息适配器
+│   ├── activityTimelineTypes.ts   ← Activity 时间线类型
+│   ├── executionProgress.ts       ← 执行进度
+│   ├── executionCardHelpers.ts    ← 执行卡片辅助函数
 │   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染 + toolEventToMessage 共享转换函数
 │   ├── errorCodeHints.ts          ← 错误码 → 用户可读提示映射
-│   ├── envelopeToolCall.ts        ← Envelope → ToolUseEvent v2 映射 + upsert
-│   ├── activityPresentation.ts    ← activity_kind → icon/label/summary 前端 fallback
-│   ├── useEnvelopeStream.ts       ← WS Envelope 底层消费（EnvelopeDispatcher + 事件分发）
-│   ├── streamHandlers.ts          ← WS 事件处理器（withSessionFilter + onRunActivity + errorCodeHints）
+│   ├── chatMessageMarkdown.ts     ← Chat 消息 Markdown
+│   ├── sessionContextPatch.ts     ← Session 上下文补丁
+│   ├── contextBreakdown.ts        ← 上下文分解
+│   ├── composerUsageMetrics.ts    ← Composer 用量指标
+│   ├── messageSourceMeta.ts       ← 消息来源元数据
+│   ├── messageAttachments.ts      ← 消息附件
+│   ├── messageOrigin.ts           ← 消息来源
+│   ├── messageStoreBatch.ts       ← 消息 Store 批处理
+│   ├── mergeSessionMessages.ts    ← 合并 Session 消息
+│   ├── parseMessageOptions.ts     ← 解析消息选项
+│   ├── modelCapabilities.ts       ← 模型能力
+│   ├── todoPresentation.ts        ← Todo 展示
+│   ├── diffEditHelpers.ts         ← diff 编辑辅助
+│   ├── awaitConstants.ts          ← Await 常量
+│   ├── chatFocusCoordinator.ts    ← Chat 焦点协调
+│   ├── useChatScrollTitle.ts      ← Chat 滚动标题
+│   ├── useTaskDeadLetters.ts      ← Task 死信
+│   ├── useChatBackgroundJobs.ts   ← Chat 后台任务
+│   ├── jobFormatters.ts           ← Job 格式化
+│   ├── inboundSyncRouting.ts      ← 入站同步路由
+│   ├── inboundSyncEnvelope.ts     ← 入站同步 Envelope
+│   ├── channelInboundSession.ts   ← Channel 入站 Session
+│   ├── channelInboundSessionRefresh.ts ← Channel 入站 Session 刷新
+│   ├── channelFocusLoad.ts        ← Channel 焦点加载
+│   ├── channelSessionMeta.ts      ← Channel Session 元数据
+│   ├── channelWsCursor.ts         ← Channel WS 游标
+│   ├── agentPlannerSettings.ts    ← Agent Planner 设置
+│   ├── agentTreeTypes.ts          ← Agent 树类型
+│   ├── agentTreeUtils.ts          ← Agent 树工具
+│   ├── a2uiParse.ts               ← A2UI 解析
+│   ├── a2uiBind.ts                ← A2UI 绑定
+│   ├── a2uiChildren.ts            ← A2UI 子组件
+│   ├── a2uiSurfaceState.ts        ← A2UI Surface 状态
+│   ├── a2uiUserAction.ts          ← A2UI 用户动作
+│   ├── a2uiUserActionDisplay.ts   ← A2UI 用户动作展示
 │   └── composables/
 │       ├── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑；拆分后聚焦编排）
 │       ├── useChatSender.ts       ← 发送策略模式（Agent/Team 统一发送路径 + enqueue_message）
-│       ├── useChatStream.ts       ← 单 Agent WS 事件流消费（text_delta/tool_call/tool_result 等）
-│       ├── useTeamStream.ts       ← Team WS 事件流消费（member_* / team_run_* 等）
-│       ├── useRunStatus.ts        ← RunStatus 轮询 + AwaitUserReply 回复提交
+│       ├── useChatStreamManager.ts ← WS 事件流管理（单 Agent + Team 统一）
+│       ├── useChatRunStatus.ts    ← RunStatus 轮询 + AwaitUserReply 回复提交
 │       ├── useFollowUpQueue.ts    ← Follow-up Queue 状态管理（pending 列表 + WS 刷新）
 │       ├── useAwaitReply.ts       ← AwaitUserReply 交互（提交回复 + 横幅状态）
 │       ├── useChatDialogs.ts      ← dialog 状态聚合 composable
 │       ├── useChatComposerActions.ts ← composer action 方法 composable
-│       └── useChatProviderOptions.ts ← Provider/Model 选项加载（Store 调用）
-├── composables/
-│   ├── useWsTransport.ts          ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放）
-│   └── useEnvelopeDispatcher.ts   ← Envelope 分发器（按 type 分发到对应 handler）
+│       ├── useChatProviderOptions.ts ← Provider/Model 选项加载（Store 调用）
+│       ├── useChatEntityNav.ts    ← Chat 实体导航
+│       ├── useChatEntityCollapse.ts ← Chat 实体折叠
+│       ├── useChatDeleteFlow.ts   ← Chat 删除流程
+│       ├── useChatInboundSync.ts  ← Chat 入站同步
+│       ├── useChatAttachments.ts  ← Chat 附件
+│       ├── useChatTraceAndArtifacts.ts ← Chat 追踪与 Artifact
+│       ├── useChatSettingsDialog.ts ← Chat 设置弹框
+│       ├── useChatEventInspector.ts ← Chat 事件检查器
+│       ├── useChatMessageScroll.ts ← Chat 消息滚动
+│       ├── useConversationTimeline.ts ← 对话时间线
+│       ├── useActivityTimeline.ts ← Activity 时间线
+│       ├── useTodoBoard.ts        ← Todo 看板
+│       ├── useStatusPulse.ts      ← 状态脉冲
+│       ├── useContextualLoadingMessage.ts ← 上下文加载消息
+│       ├── useContextBreakdown.ts ← 上下文分解
+│       ├── useReasoningSidebar.ts ← Reasoning 侧栏
+│       ├── useChatSidebarOrder.ts ← Chat 侧栏顺序
+│       ├── useEventFilter.ts      ← 事件过滤
+│       ├── chatWorkspaceUtils.ts  ← Chat 工作区工具
+│       └── todoColumnFingerprint.ts ← Todo 列指纹
 ├── components/chat/
 │   ├── ChatWorkspaceShell.vue     ← 工作区外壳（标题 + 三栏布局容器）
 │   ├── ChatEntitySidebar.vue      ← 左侧 Agent/Team 列表
+│   ├── ChatEntityGroup.vue        ← Agent/Team 分组
+│   ├── ChatEntityItem.vue         ← Agent/Team 条目
 │   ├── ChatSessionSidebar.vue     ← 右侧 Session 历史
 │   ├── ChatMessagePanel.vue       ← 中间对话内容 + 输入区域（Container: approved）
-│   ├── ChatMessageRow.vue         ← 单条消息行（含 reasoning + regenerate + 事件转发）
+│   ├── ChatMessageList.vue        ← 消息列表
+│   ├── ConversationTurn.vue       ← 一轮对话容器（User → ToolStrip → Assistant）
 │   ├── ChatReasoningPeek.vue      ← Reasoning 折叠展示（live tail + 展开）
+│   ├── ChatReasoningDrawer.vue    ← Reasoning 抽屉
 │   ├── ChatExecutionCard.vue      ← 执行过程卡片（原 ChatToolCallCard；默认折叠 + v2 元数据）
 │   ├── ChatEnqueueMessage.vue     ← 待执行消息条目
+│   ├── ChatPendingQueue.vue       ← 待执行队列
 │   ├── ChatRunnerStatus.vue       ← 运行状态指示
 │   ├── ChatComposer.vue           ← 输入框组件（emit 事件，不直接调 API/Store）
 │   ├── ChatBackgroundJobsPanel.vue ← 后台任务面板（emit 事件，不直接调 API）
 │   ├── ChatMessageAttachments.vue ← 附件展示（emit 事件，不直接调 Store）
-│   ├── TurnBlock.vue              ← TurnBlock 一轮对话容器（User → ToolStrip → Assistant）
 │   ├── ChatSideToggle.vue         ← 侧栏折叠按钮
 │   ├── ChatSettingsDialog.vue     ← Agent/Team 设置弹框
 │   ├── ChatDeleteDialog.vue       ← 删除确认弹框
 │   ├── SessionTimelineDialog.vue  ← Session 历史追踪弹框
-│   └── types.ts                   ← 组件级类型定义
+│   ├── ChatMentionPopup.vue       ← @ 引用弹窗
+│   ├── ChatDiffViewer.vue         ← Diff 查看器
+│   ├── ChatHeaderUsagePanel.vue   ← 头部用量面板
+│   ├── ChatHeaderPromptBar.vue    ← 头部 Prompt 栏
+│   ├── ChatContextBreakdownPopover.vue ← 上下文分解弹窗
+│   ├── ChatSectionHeader.vue      ← 区段标题
+│   ├── ChatSessionArtifactsPanel.vue ← Session Artifact 面板
+│   ├── ChatSkillHintBar.vue       ← Skill 提示栏
+│   ├── ChatSkillCatalogStrip.vue  ← Skill Catalog 条
+│   ├── ChatTeamMemberStrip.vue    ← Team 成员条
+│   ├── ChatA2UIPreview.vue        ← A2UI 预览
+│   ├── ChatA2UISurface.vue        ← A2UI Surface
+│   ├── EventStream.vue            ← 事件流
+│   ├── EventFilterBar.vue         ← 事件过滤栏
+│   ├── SessionEventInspectorPanel.vue ← Session 事件检查器面板
+│   ├── BranchTree.vue             ← 分支树
+│   ├── BranchTreeNode.vue         ← 分支树节点
+│   ├── StateDeltaIndicator.vue    ← State Delta 指示器
+│   ├── TransferBadge.vue          ← 转交徽章
+│   ├── UiConfigToggle.vue         ← UI 配置切换
+│   ├── CodeBlock.vue              ← 代码块
+│   ├── ThinkingBlock.vue          ← 思考块
+│   ├── ReplyBlock.vue             ← 回复块
+│   ├── PlanBlock.vue              ← 计划块
+│   ├── NoticeBlock.vue            ← 通知块
+│   ├── ConfirmBlock.vue           ← 确认块
+│   ├── ActionBlock.vue            ← 动作块
+│   ├── UserMessageBubble.vue      ← 用户消息气泡
+│   ├── ErrorBlock.vue             ← 错误块
+│   ├── AgentWorkPanel.vue         ← Agent 工作面板
+│   ├── TeamPanel.vue              ← Team 面板
+│   ├── TeamProgressSection.vue    ← Team 进度区段
+│   ├── DelegateActivity.vue       ← 委托 Activity
+│   ├── DagSection.vue             ← DAG 区段
+│   ├── TaskBoardSection.vue       ← 任务看板区段
+│   ├── TodoBoardTabs.vue          ← Todo 看板标签
+│   ├── TodoColumn.vue             ← Todo 列
+│   ├── TodoKanbanBoard.vue        ← Todo 看板
+│   ├── TodoCard.vue               ← Todo 卡片
+│   ├── TodoInlineList.vue         ← Todo 内联列表
+│   └── A2UIComponentNode.vue      ← A2UI 组件节点
 ├── config/chatOptions.ts          ← 对话模式/模型配置
 ├── stores/chat/
 │   ├── index.ts                   ← Chat Store re-export（facade 已移除）
 │   ├── messageStore.ts            ← 消息 Store（sessionId 必传，无 sessionStore 硬依赖）
-│   └── runtimeStore.ts            ← 运行时 Store（含 submitFeedback/cancelBackgroundJob/listChatOptions）
+│   ├── runtimeStore.ts            ← 运行时 Store（含 submitFeedback/cancelBackgroundJob/listChatOptions）
+│   ├── sessionStore.ts            ← Session Store
+│   └── conversationStore.ts       ← 对话 Store
 ├── stores/app.ts                  ← 全局状态（含 Agent/Session 选择）
 ```
 
-### 8.1.1 前端事件流架构
+### 11.1.1 前端事件流架构
 
 ```
 WsTransport（WS 连接管理：连接/重连/心跳/last_event_id 回放）
   ↓ Envelope 流
 EnvelopeDispatcher（按 type 分发：text_delta/tool_call/error/state_delta/...）
   ↓ 分流
-useChatStream（单 Agent 事件：text_delta/text_done/tool_call/tool_result/runner_completion）
-useTeamStream（Team 事件：member_*/team_run_*/transfer）
-useRunStatus（RunStatus 轮询 + isAwaiting + submitReply）
+useChatStreamManager（统一管理单 Agent + Team 事件流）
+useChatRunStatus（RunStatus 轮询 + isAwaiting + submitReply）
   ↓ 状态聚合
 useChatWorkspace（对话工作区：消息列表/pending/发送/停止/上下文比）
   ↓ 渲染
 ChatMessagePanel（消息气泡/工具事件/待执行列表/输入框）
 ```
 
-### 8.2 页面布局
+### 11.2 页面布局
 
 ```
 ┌──────────┬─────────────────────────────────┬──────────┐
@@ -1137,7 +1598,7 @@ ChatMessagePanel（消息气泡/工具事件/待执行列表/输入框）
 └──────────┴─────────────────────────────────┴──────────┘
 ```
 
-### 8.3 TypeScript 类型定义
+### 11.3 TypeScript 类型定义
 
 ```typescript
 export type Message = {
@@ -1172,26 +1633,12 @@ export type SendMessageOptions = {
   provider?: string;
   model?: string;
   attachments?: Array<{ id: string }>;
+  knowledge_bases?: string[];
 };
 
 export type SendMessageResult = {
   user_message: Message;
   agent_message: Message;
-};
-
-export type SendMessageStreamCallbacks = {
-  signal?: AbortSignal;
-  onUserMessage?: (message: Message) => void;
-  onDelta?: (content: string) => void;
-  onDone?: (message: Message) => void;
-  onToolEvent?: (event: ToolUseEvent) => void;
-  onMemberMessageStart?: (message: Message) => void;
-  onMemberDelta?: (messageID: string, content: string) => void;
-  onMemberMessageDone?: (message: Message) => void;
-  onIntentPass?: (result: IntentPassResult) => void;
-  onStateDelta?: (sessionId: string, stateDelta: Record<string, unknown>) => void;
-  onExtensions?: (sessionId: string, extensions: Record<string, unknown>) => void;
-  onError?: (message: string, pendingId?: string) => void;
 };
 
 export type IntentPassResult = {
@@ -1223,9 +1670,9 @@ export type ToolUseEvent = {
 };
 ```
 
-> **⚠️ 废弃提示**：上述 `SendMessageStreamCallbacks` 类型来自历史 SSE API，当前 Chat 页面主路径使用 `useEnvelopeStream` / `useChatStream` / `useTeamStream` 消费 WS Envelope。该类型仅作为向后兼容保留，后续应删除或迁移残留 SSE callback 类型，避免误导新开发者。
+> **⚠️ 废弃提示**：历史 `SendMessageStreamCallbacks` 类型来自 SSE API，当前 Chat 页面主路径使用 `useEnvelopeStream` / `useChatStreamManager` 消费 WS Envelope。该类型仅作为向后兼容保留，后续应删除或迁移残留 SSE callback 类型，避免误导新开发者。
 
-### 8.4 API 调用
+### 11.4 API 调用
 
 ```typescript
 export async function sendMessage(payload: {...}): Promise<SendMessageResult>
@@ -1234,13 +1681,19 @@ export async function stopGeneration(sessionId: string): Promise<boolean>
 export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]>
 export async function cancelPendingMessage(sessionId: string, pendingId: string): Promise<boolean>
 export async function updatePendingMessage(sessionId: string, pendingId: string, content: string): Promise<boolean>
+export async function interruptAndSendMessage(sessionId: string, pendingId: string): Promise<boolean>
 export async function getRunStatus(sessionId: string): Promise<RunStatus>
 export async function awaitUserReply(sessionId: string, reply: string, runId?: string): Promise<boolean>
+export async function enqueueUserMessage(sessionId: string, content: string): Promise<EnqueueUserMessageResponse>
+export async function listChatBackgroundJobs(filter?: {...}): Promise<ChatBackgroundJob[]>
+export async function cancelChatBackgroundJob(id: string, source?: string): Promise<boolean>
+export async function submitMessageFeedback(messageId: string, sessionId: string, rating: string, comment?: string): Promise<boolean>
+export async function confirmActivity(sessionId: string, activityId: string, approved: boolean): Promise<ConfirmActivityResponse>
 ```
 
 > **⚠️ 废弃提示**：历史 `sendMessageStream()` 函数基于 SSE 实现，当前 Chat 页面主路径使用 WS `useEnvelopeStream` 消费实时事件。该函数不应在新代码中使用。
 
-### 8.5 组件设计
+### 11.5 组件设计
 
 #### ChatEntitySidebar
 
@@ -1270,6 +1723,7 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | `open` | `boolean` | 是否展开 |
 | `sessions` | `SessionView[]` | Session 列表 |
 | `selectedSessionId` | `string \| null` | 选中 Session ID |
+| `favoriteIds` | `string[]` | 收藏 ID 列表 |
 | `isDark` | `boolean` | 暗黑模式 |
 
 | Emit | 载荷 | 说明 |
@@ -1279,6 +1733,7 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | `rename` | `{id, title}` | 重命名 |
 | `delete` | `kind, id` | 删除 |
 | `trace` | `string` | 历史追踪 |
+| `toggle-favorite` | `string` | 切换收藏 |
 
 #### ChatMessagePanel
 
@@ -1304,8 +1759,14 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | `update:dialogMode` | `string` | 切换对话模式 |
 | `update:modelProvider` | `string` | 切换模型 |
 | `remove-attachment` | `string` | 移除附件 |
+| `download-artifact` | `meta` | 下载附件 |
+| `cancel-job` | `{id, source}` | 取消后台任务 |
+| `paste-unsupported` | — | 粘贴不支持提示 |
+| `retry` | `messageId` | 重试失败消息 |
+| `dismiss-failed` | `messageId` | 忽略失败消息 |
+| `regenerate` | `messageId` | 重新生成 |
 
-### 8.6 UX 规范
+### 11.6 UX 规范
 
 - 玻璃材质：`background: var(--glass-surface); backdrop-filter: blur(var(--glass-blur-default))`
 - 日间主操作色：`var(--color-accent)` = `#E9A23B`
@@ -1314,51 +1775,7 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 - 消息气泡圆角：16-20px
 - 暗黑模式可读性：聊天记录正文、代码块、工具结果、时间戳等文本必须保证对比度
 - 上下文进度颜色阈值：`<0.6` 绿 / `0.6-0.8` 黄 / `>0.8` 红
-
----
-
-## 九、待优化项
-
-| 优先级 | 项目 | 说明 | 状态 |
-|--------|------|------|------|
-| P0 | `NewChatService` 参数封装 | 改为 `ChatServiceDeps` struct | ✅ 已完成 |
-| P0 | `CancelPendingMessage` RPC | 新增取消待执行消息端点 | ✅ 已实现 |
-| P0 | WS 客户端断连与取消 | `WSServer` 心跳、连接上限、cancel 上行、EventBuffer 回放 | ✅ 已实现 |
-| P0 | 实时事件统一投影 | `EventProjector` 将 trpc events 投影为 `text_delta/tool_call/state_delta/runner_completion` 等 Envelope | ✅ 已实现 |
-| P0 | pendingQueue 大小限制 | `enqueuePending` 增加 `maxPendingPerSession=32` 上限，超出返回 `BadRequest` 错误 | ✅ 已修复 |
-| P1 | `firstNonEmpty` 统一 | 6 处重复定义 → `pkg/strutil.FirstNonEmpty` | ✅ 已完成 |
-| P1 | `memory_decode.go` 提取 | `ifaceStr`/`ifaceBool` 等通用函数 → `pkg/jsonutil` | ✅ 已完成 |
-| P1 | `compress_wire.go` 合并 | 仅含一个函数，合并到 `session_compress.go` | ✅ 已完成 |
-| P1 | `err == sql.ErrNoRows` 修正 | 改为 `errors.Is(err, sql.ErrNoRows)` | ✅ 已修复 |
-| P1 | 历史 SSE body 缺少 attachments | 旧 SSE handler 已移除；当前 WS 上行 `buildChatOptions` 已保留 attachments 引用 | ✅ 已替换为 WS 路径 |
-| P1 | `hydratedAgent` 简化 | 逻辑冗余，移除 ephemeral AgentUsecase 分支 | ✅ 已优化 |
-| P1 | `runAgentTurn` 移除 | 冗余中间方法，直接调用 `runSingleAgentViaTRPC` | ✅ 已移除 |
-| P1 | Session 标题 LLM 生成 | 异步 LLM 生成高质量标题 | ✅ 已实现 |
-| P1 | processPendingQueue 错误上报 | 待执行消息执行失败时通过 WS `error` Envelope 通知前端；`pending_id` 字段统一到 `error.pending_id` | ✅ 已修复 |
-| P1 | toolEventMessage 重复定义消除 | 提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块 | ✅ 已修复 |
-| P1 | WS error 事件处理 | `useEnvelopeStream` / `useChatWorkspace` 监听 `error` Envelope 并通知用户 | ✅ 已修复 |
-| P1 | Team stop/pending 行为一致性 | Team turn 通过 `teamRunGuard` 接入 `activeRuns`，`lockSession` per-session 互斥锁保护 | ✅ 已修复 |
-| P1 | Team processPendingQueue 缺失 | Team turn 完成后 defer 调用 `processPendingQueue`，内部按 `OwnerType` 路由 | ✅ 已修复 |
-| P1 | AwaitUserReply 全链路 | 后端：Team Runner 通过 `SetAwaitHookProvider` 注入 `makeAwaitReplyFunc`；前端 Chat 页 UI | ✅ 已实现 |
-| P1 | EnvelopeError.PendingID 统一 | `env.Error.PendingID = entry.ID`，metadata 双写已移除 | ✅ 已修复 |
-| P1 | WS 控制消息文档化 | `connected`/`pong`/`replay_*`/`server_shutdown` 已在本文档 §2.2 和需求文档 §1.4 描述 | ✅ 已完成 |
-| P1 | 工具事件结构化展示 | `ChatExecutionCard` 默认折叠 + Skill/MCP 图标与摘要 + `act-{tool_call_id}` 稳定 upsert | ✅ 已实现 |
-| P1 | Reasoning 展示规格 | `ChatReasoningPeek` 思考/正文分离；live tail + 展开；空 reasoning 不展示 | ✅ 已实现 |
-| P2 | `legacychat` 废弃 | `LEGACY_REST_ORIGIN` 模式已移除，所有 Chat 请求直接由 admin 进程内处理 | ✅ 已移除 |
-| P2 | `GetChatOptions` 动态化 | Provider/Model 选项从 LLM Catalog 动态获取 | ✅ 已实现 |
-| P2 | `processPendingQueue` 超时 | 600 秒超时 + 取消传播（pendingCancels sync.Map） | ✅ 已实现 |
-| P2 | `pendingEntry` ID 生成 | 使用 `github.com/google/uuid` 替代 `UnixNano` | ✅ 已实现 |
-| P2 | `UpdatePendingMessage` RPC | 新增编辑待执行消息端点 | ✅ 已实现 |
-| P2 | 意图识别增强 | 单 Agent/Team 通过 EventBus 发送 `intent_pass` Envelope + 前端展示 | ✅ 已实现 |
-| P2 | state_delta/extensions 前后端覆盖 | Envelope 支持 `state_delta` / `extensions` 字段，前端类型已覆盖 | ✅ 已修复 |
-| P2 | Team 成员级实时事件 | `EventProjector` 在 `MemberAgentKeys` 下稳定投影；前端 `useChatWorkspace` 成员流消费 | ✅ 已实现 |
-| P2 | SessionTurn 一致性 | 新增 `recordTeamSessionTurn`，Team turn 成功后调用 | ✅ 已修复 |
-| P2 | Channel/Cron 并发保护 | `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位 | ✅ 已修复 |
-| P2 | EventBuffer TTL 清理 | TTL 30min + 5min eviction ticker + `Close()` 优雅停止 | ✅ 已修复 |
-| P2 | 前端 RunStatus 事件驱动 | 后端 `run_status` Envelope 驱动；前端监听 WS（切换会话 HTTP 校准） | ✅ 已实现 |
-| P3 | 模型选项来源统一 | 后端 `GetChatOptions("provider"|"model")` 已支持动态选项；Chat 前端主要读取 Platform Resource | 部分（回退已实现） |
-| P3 | 多模态附件闭环 | Artifact 上传已实现；Vision 输入装配与 LLM 多模态调用待闭环 | ⏳ 待实现 |
-| P3 | RunStatus/AwaitUserReply 可恢复性 | `state_json` 持久化 + `PendingAwaitUserReplyRoute`；`awaitChans` 仍为进程内 | ✅ state_json 已持久化 |
+- 成功色 fallback：`#4CAF7C`（不使用 `#4caf50`）
 
 ---
 
@@ -1373,8 +1790,8 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 
 ## 1. 设计原则
 
-1. **复用 WS Envelope 主通道**：不新增 HTTP 轮询；实时与回放均走 `/v1/ws` + EventBuffer（与 [1 chat.design.md §5.5](./1%20chat.design.md) 一致）。
-2. **框架边界不变**：`internal/biz` 不 import `pkg/trpc-agent-go`；投影在 `internal/agent/event_projector.go`，组装在 `internal/service/trpc_turn.go`。
+1. **复用 WS Envelope 主通道**：不新增 HTTP 轮询；实时与回放均走 `/v1/ws` + EventBuffer（与 [1 chat.design.md §8.5](#85-websocket-envelope-事件协议) 一致）。
+2. **框架边界不变**：`internal/biz` 不 import `pkg/trpc-agent-go`；投影在 `internal/agent/event_projector.go`，组装在 `internal/service/chat_orchestrator_turn*.go`。
 3. **与 Monitor 分流**：`flow_log` → Monitor；`tool_call` / `tool_result`（增强元数据）→ Chat。`TraceEmitter.ObserveFrameworkEvent` 继续写 Span 供 Usage / Traces，**不**把 FlowLog 正文塞进 Chat。
 4. **一张调用一张卡片**：以 `tool_call_id`（框架 ToolCall.ID）为 upsert 键；`tool_call` 创建 running 态，`tool_result` 合并完成态。
 5. **默认折叠、按需展开**：UI 层约束；协议层携带完整 `arguments_json` / `result_json`。
@@ -1387,7 +1804,7 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | 能力 | 现状 | 差距 |
 |------|------|------|
 | WS 事件 | `tool_call` / `tool_result` 已投影 | `tool_result` 缺少稳定 `id/name` 时 upsert 失败；无 `activity_kind` / 展示名 |
-| 前端 | `ChatToolCallCard.vue` + `upsertToolMessage` | 参数区 **默认展开**（`details open`）；Skill/MCP 无专用图标与摘要 |
+| 前端 | `ChatExecutionCard.vue` + `upsertToolMessage` | 参数区 **默认展开**（`details open`）；Skill/MCP 无专用图标与摘要 |
 | 持久化 | `options_json.tool_event` 写入 Message | 无独立 `message_kind`；历史加载依赖 markdown 旁路 |
 | Skill / MCP | 走统一 ToolCall 名 | 需映射 `display_label`、`icon_key`、摘要行 |
 | Team | `author` 在 Envelope | 卡片未统一展示成员 |
@@ -1454,7 +1871,7 @@ sequenceDiagram
 | `session` | `await_user_reply` |
 | `tool` | 默认 |
 
-实现位置：`internal/agent/activity_meta.go`（新建，纯函数，可单测）。
+实现位置：`internal/agent/activity_meta.go`（纯函数，可单测）。
 
 ### 4.2 EnvelopeToolCall v2 扩展字段
 
@@ -1528,7 +1945,7 @@ export type ToolUseEvent = {
 
 **落库时机**（Service 层，非 biz）：
 
-1. `tool_result` 投影后、WS 发布前：异步写入或随 turn 结束批量写入（与 assistant 消息同一事务，见 [1 chat.design.md §5.7](./1%20chat.design.md)）。
+1. `tool_result` 投影后、WS 发布前：异步写入或随 turn 结束批量写入（与 assistant 消息同一事务，见 [1 chat.design.md §8.7](#87-runsingleagentviatrpc-核心流程)）。
 2. `running` 态可选择**仅 WS 不落库**，刷新后只见已完成卡片（P0 可接受）；P1 增加 `tool_running` 行软删除或 turn 结束清理。
 
 ---
@@ -1596,7 +2013,7 @@ P0 **不采用**，避免前后端与 EventBuffer 大规模迁移。
 3. runtime name 原样
 ```
 
-实现：`internal/agent/activity_label.go` + 注入 `ToolUC` / 内存 registry。
+实现：`internal/agent/activity_meta_resolver.go` + 注入 `ToolUC` / 内存 registry。
 
 ### 6.3 Summary 一行摘要
 
@@ -1766,7 +2183,7 @@ stateDiagram-v2
 | 文档 | 动作 |
 |------|------|
 | [1 chat.md](./1%20chat.md) | §验收 增加执行卡片条目 |
-| [1 chat.design.md](./1%20chat.design.md) | §5.5 补充 EnvelopeToolCall v2；§前端 替换 ChatToolCallCard 说明 |
+| [1 chat.design.md](./1%20chat.design.md) | §8.5 补充 EnvelopeToolCall v2；§前端 替换 ChatToolCallCard 说明 |
 | [1-chat-development.md](./1-chat-development.md) | 新增迭代任务与勾选 |
 | [frontend-pages.md](./frontend-pages.md) | Chat 页能力描述 |
 | [52-flow-logger.design.md §5.1](./52-flow-logger.design.md) | 可选注册 `chat.activity.project` 步骤（非必须） |

@@ -126,6 +126,12 @@ var ProviderSet = wire.NewSet(
 	NewSkillCuratorService,
 	NewSandboxRunner,
 	NewSkillEvolutionSuggestionService,
+	// Server adapter wrappers: lazily wire trpc-agent-go framework servers
+	// (AG-UI, OpenAI session, A2A extension) to per-session Runners built
+	// via OpenAIRunnerBuilder (implemented by *ChatService).
+	NewAGUICompatService,
+	NewOpenAISessionCompatService,
+	NewA2AExtensionCompatService,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

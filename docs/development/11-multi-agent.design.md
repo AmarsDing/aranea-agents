@@ -1,64 +1,80 @@
 # Multi-Agent Team 编排模块 — 实现设计文档
 
 > 对应需求：[11 multi-agent.md](./11%20multi-agent.md)
-> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · 运行时边界：[AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
-> **实现差距与迭代计划**以 [11-multi-agent-development.md](./11-multi-agent-development.md) 为准
+> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
+> **实现差距与迭代计划**以 [11-multi-agent.development.md](./11-multi-agent.development.md) 为准
 > **M53 编排融合**：[53-team-graph-orchestration.design.md](./53-team-graph-orchestration.design.md) — Graph 编译、观测台、HITL、容错
 
 ---
 
 ## 一、模块概述
 
-Team 多智能体编排：将多个 Agent 按 Definition JSON 组装为 Graph 运行时（默认）或 trpc-agent-go Team / Chain / Parallel / Cycle / Swarm 运行时（应急），经 Chat Service 桥点执行，事件经 EventBus 投影为 WS Envelope。
+Team 多智能体编排：将多个 Agent 按 Definition JSON 组装为 Graph 运行时，经 Chat Service 桥点执行，事件经 EventBus 投影为 WS Envelope。
 
 ### 分层与依赖
 
 ```
-api/kratos/team/v1/team.proto     ← 对外契约（20 RPC）
+api/kratos/team/v1/team.proto     ← 对外契约（24 RPC）
         ↓
 internal/service/team.go          ← Proto ↔ biz；CRUD + RunTeamTest / CancelTeamRun
 internal/service/team_observatory.go  ← 观测台 RPC
 internal/service/team_compile.go      ← 编译预览 RPC
+internal/service/team_compile_view.go ← 编译视图辅助
 internal/service/team_resume.go       ← HITL / Checkpoint 恢复
-internal/service/team_dead_letter.go  ← 死信队列 RPC
+internal/service/team_dead_letter.go  ← 死信队列 + Spirit 集成 RPC
+internal/service/team_orchestration_spec.go ← OrchestrationSpec Proto 映射
+internal/service/team_run_registry_adapter.go ← RunRegistry 适配
+internal/service/team_runner_wire_adapter.go   ← Runner 适配 + Mediator + Coord
+internal/service/team_turn_hooks.go            ← ChatOrchestrator Team hooks
 internal/service/chat_native.go   ← Team Session Turn → team.Runner
         ↓
 internal/biz/team_usecase.go      ← 领域校验与 CRUD（禁止 import trpc-agent-go）
-internal/biz/team_types.go        ← 领域模型 + 窄接口定义
+internal/biz/team_types.go        ← 领域模型 + 状态常量
+internal/biz/team_ports.go        ← biz 层 port 接口（TeamTurnRuntime / TeamMediatorPort 等）
+internal/biz/team_interfaces.go   ← Team 层窄接口（TeamUsageQuerier / TeamAgentLookup 等）
+internal/biz/team_state_machine.go    ← Team 状态机（AS-FSM-01）
+internal/biz/team_run_state_machine.go ← TeamRun 状态机（AS-FSM-01）
 internal/biz/team_summary.go      ← 运行汇总聚合
+internal/biz/team_fallback.go     ← Fallback 策略
+internal/biz/team_compiler.go     ← 编译器 biz 适配
+internal/biz/team_graph.go        ← Graph 集成
+internal/biz/team_graph_constants.go ← Graph 常量
+internal/biz/team_graph_plugin.go    ← Graph 插件
+internal/biz/team_graph_knowledge.go ← Graph 知识
+internal/biz/team_agent_ports.go  ← Agent 依赖端口
         ↓
 internal/data/team_repo.go        ← Ent ORM 持久化
+internal/data/team_graph_session_repo.go ← Graph Session 持久化
+internal/data/team_graph_session_schema.go ← Graph Session DDL
         ↓
 internal/team/                    ← 框架运行时组装（definition / graph_compile / runner / status_projector）
         ↓
-pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源（Native 应急路径）
+pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
 ```
 
 **红线**：`internal/biz` 不 import `pkg/trpc-agent-go`；Team 构建与 `Run` 仅在 `internal/team` + `internal/service`。
 
 ### 编排模式映射
 
-| Definition `mode` | Graph 编译产物 | Native 组件（Deprecated） | 说明 |
-|-------------------|---------------|--------------------------|------|
-| `sequential` | `CompileToGraphBuildConfig` → 线性图 | `chainagent.New` | 顺序链，事件传递给下一成员 |
-| `parallel` | `CompileToGraphBuildConfig` → 并行图 | `parallelagent.New` | 并行 worker，需 synthesizer 成员或 `synthesizer_agent_id` |
-| `coordinator` | `CompileToGraphBuildConfig` → 星形图 | `trpcteam.New` | 首成员为 coordinator，其余为 AgentTool |
-| `critic_loop` | `CompileToGraphBuildConfig` → 循环图 | `cycleagent.New` | 生成-评审循环 + `escalationFunc` |
-| `swarm` | `CompileToGraphBuildConfig` → 全连接图 | `trpcteam.NewSwarm` | 成员间 `transfer_to_agent` |
-| `adaptive` | 与 swarm 相同编译路径 | `trpcteam.NewSwarm` | 与 swarm 相同构建路径，UI 面向用户的 Swarm 别名 |
+| Definition `mode` | Graph 编译产物 | 说明 |
+|-------------------|---------------|------|
+| `sequential` | `CompileToGraphBuildConfig` → 线性图 | 顺序链，事件传递给下一成员 |
+| `parallel` | `CompileToGraphBuildConfig` → 并行图 | 并行 worker，需 synthesizer 成员或 `synthesizer_agent_id` |
+| `coordinator` | `CompileToGraphBuildConfig` → 星形图 | 首成员为 coordinator，其余为 AgentTool |
+| `critic_loop` | `CompileToGraphBuildConfig` → 循环图 | 生成-评审循环 + `escalationFunc` |
+| `swarm` | `CompileToGraphBuildConfig` → 全连接图 | 成员间 `transfer_to_agent` |
+| `adaptive` | 与 swarm 相同编译路径 | 与 swarm 相同构建路径，UI 面向用户的 Swarm 别名 |
 
 前端 `modeOptions` 展示 `adaptive` 而非 `swarm`；API / 校验层两者均合法。
 
 ### 核心执行流
 
-> **M53 Phase 7**：默认 Graph 路径；Native 见 §6.1 应急说明。
-
 ```
 用户消息 → ChatService (owner_type=team)
              ↓
-         team.Runner.runTeamTRPC()
+         team.Runner.runTeamTRPCFromInput()
              ↓
-         CompileToGraphRuntimeConfig(def) → GraphAgent
+         compileTeamRuntime() → CompileToGraphRuntimeConfigFromJSON(def) → GraphAgent
              ↓
          graph_node_start → TeamGraphTaskBridge（task/review 节点建 Task）
              ↓
@@ -67,11 +83,7 @@ pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源（Native 应
          persistStep + UpdateTeamRun + team_summary
 ```
 
-应急 Native（`ARANEA_TEAM_NATIVE=1` 或 Graph 构建失败且显式启用）：
-
-```
-BuildTRPCTeam(def) → trpc-agent-go Agent → ConsumeEventStream → EventProjector
-```
+编译/构建失败不 silent fallback，直接返回错误。
 
 ---
 
@@ -95,8 +107,12 @@ BuildTRPCTeam(def) → trpc-agent-go Agent → ConsumeEventStream → EventProje
 | `ActivityTimelineRow` | 观测台时间线 |
 | `CompileTeamGraphRequest/Response` | 编译预览 |
 | `TaskDeadLetter` | 死信 |
+| `ListSpiritTeamsRequest/Response` | Spirit Team 列表 |
+| `SynthesizeResultsRequest/Response` | Spirit 结果合成 |
+| `ArchiveTeamRequest/Response` | Team 归档 |
+| `RetryTeamRequest/Response` | Team 重试 |
 
-### 2.2 RPC 一览
+### 2.2 RPC 一览（24 个）
 
 | RPC | HTTP | 用途 |
 |-----|------|------|
@@ -120,6 +136,10 @@ BuildTRPCTeam(def) → trpc-agent-go Agent → ConsumeEventStream → EventProje
 | `CompileTeamGraph` | `POST /v1/teams/{team_id}/compile-graph` | 编译预览 |
 | `ListTaskDeadLetters` | `GET /v1/task-dead-letters` | 死信列表 |
 | `ResolveTaskDeadLetter` | `POST /v1/task-dead-letters/{id}/resolve` | 解决死信 |
+| `ListSpiritTeams` | `GET /v1/spirit/{spirit_session_id}/teams` | Spirit Team 列表 |
+| `SynthesizeResults` | `POST /v1/spirit/{spirit_session_id}/synthesize` | Spirit 结果合成 |
+| `ArchiveTeam` | `POST /v1/teams/{team_id}/archive` | 归档 Team |
+| `RetryTeam` | `POST /v1/teams/{team_id}/retry` | 重试 Team |
 
 ---
 
@@ -130,47 +150,59 @@ BuildTRPCTeam(def) → trpc-agent-go Agent → ConsumeEventStream → EventProje
 文件：`internal/biz/team_types.go`
 
 ```go
+// TECH-DEBT(COG): struct字段=23, 上限=15 — 下一迭代拆分
 type Team struct {
-    ID                string
-    TeamKey           string
-    DisplayName       string
-    Status            string   // pending | running | completed | failed | cancelled | interrupted | archived | blocked
-    IsDefault         bool
-    Kind              string   // user | system_builtin | ecosystem_preset | marketplace | certified
-    Source            string   // user | system | imported
-    Readonly          bool
-    DefinitionJSON    string
-    ADKAppName        string
-    DagNodeID         string
-    DependsOn         []string
-    ParallelConfigJSON string
-    CreatedAt         string
-    UpdatedAt         string
-    DeletedAt         string
+    ID                  string
+    TeamKey             string
+    DisplayName         string
+    Status              string   // pending | running | completed | failed | cancelled | interrupted | archived | blocked(virtual)
+    IsDefault           bool
+    DefinitionJSON      string
+    ADKAppName          string
+    DepartmentID        string
+    DeptLeadAgentID     string
+    Deliverables        string
+    InputContract       string
+    CrossDeptMemberIDs  string
+    LinkedGraphID       string
+    SpiritSessionID     string
+    TaskDescription     string
+    AutoCreated         bool
+    DagNodeID           string
+    DependsOn           []string
+    ParallelConfigJSON  string
+    Topology            string
+    Readonly            bool
+    Kind                string   // user | system_builtin | ecosystem_preset | marketplace | certified
+    Source              string   // user | system | imported
+    InterruptReason     string
+    CreatedAt           string
+    UpdatedAt           string
+    DeletedAt           string
 }
 
 type TeamRun struct {
-    ID                      string
-    TeamID                  string
-    SessionID               string
-    MessageID               string
-    Mode                    string
-    Status                  string   // pending | running | success | failed | cancelled | waiting_human
-    InputPreview            string
-    OutputPreview           string
-    TokenIn                 int
-    TokenOut                int
-    CostMicroUSD            int64
-    DurationMS              int
-    ErrorMessage            string
-    TopologyJSON            string
-    GraphExecutionID        string
-    DefinitionSnapshotJSON  string
-    TraceID                 string
-    StartedAt               string
-    FinishedAt              string
-    CreatedAt               string
-    UpdatedAt               string
+    ID                     string
+    TeamID                 string
+    SessionID              string
+    MessageID              string
+    Mode                   string
+    Status                 string   // pending | running | success | failed | cancelled | waiting_human
+    InputPreview           string
+    OutputPreview          string
+    TokenIn                int
+    TokenOut               int
+    CostMicroUSD           int64
+    DurationMS             int
+    ErrorMessage           string
+    TopologyJSON           string
+    GraphExecutionID       string
+    DefinitionSnapshotJSON string
+    TraceID                string
+    StartedAt              string
+    FinishedAt             string
+    CreatedAt              string
+    UpdatedAt              string
 }
 
 type TeamRunStep struct {
@@ -182,7 +214,7 @@ type TeamRunStep struct {
     AgentName     string
     Role          string
     SortOrder     int
-    Status        string
+    Status        string   // ok | error | skipped
     InputPreview  string
     OutputPreview string
     TokenIn       int
@@ -195,102 +227,158 @@ type TeamRunStep struct {
     FinishedAt    string
     CreatedAt     string
 }
-
-type TeamStructureSnapshot struct {
-    EntryNodeID string
-    Nodes       []StructureNode
-    Edges       []StructureEdge
-    Surfaces    []StructureSurface
-}
-
-type TeamRunSummaryData struct { /* ... */ }
-type TeamRunMemberSummaryData struct { /* ... */ }
-type OrchestrationDecision string  // approved | rejected | needs_revision | escalate
 ```
 
-### 3.2 窄接口（已拆分）
+### 3.2 状态机（AS-FSM-01）
+
+**Team 状态机** — 文件：`internal/biz/team_state_machine.go`
+
+```
+Pending → Running (start)
+Pending → Cancelled (cancel)
+Running → Completed (complete)
+Running → Failed (fail)
+Running → Cancelled (cancel)
+Running → Interrupted (interrupt)
+Interrupted → Running (recover)
+Completed → Archived (archive)
+Failed → Archived (archive)
+Failed → Pending (recover)
+Cancelled → Archived (archive)
+Cancelled → Pending (recover)
+```
+
+7 种状态（含虚拟 `blocked`），8 种事件。终端状态：`archived`。
+
+**TeamRun 状态机** — 文件：`internal/biz/team_run_state_machine.go`
+
+```
+Pending → Running (start)
+Pending → Cancelled (cancel)
+Running → WaitingHuman (await_human)
+Running → Success (succeed)
+Running → Failed (fail)
+Running → Cancelled (cancel)
+WaitingHuman → Running (resume)
+WaitingHuman → Success (succeed)
+WaitingHuman → Failed (fail)
+WaitingHuman → Cancelled (cancel)
+```
+
+6 种状态，6 种事件。终端状态：`success` / `failed` / `cancelled`。
+
+### 3.3 窄接口
 
 文件：`internal/biz/team_usecase.go`
 
 ```go
+// Stability:stable
 type TeamReader interface {
-    ListTeams(ctx context.Context) ([]Team, error)
-    ListTeamsByStatus(ctx context.Context, status string) ([]Team, error)
-    GetTeamByID(ctx context.Context, id string) (Team, error)
-    GetTeamByKey(ctx context.Context, key string) (Team, error)
-    ListBySpiritSessionID(ctx context.Context, sessionID string) ([]Team, error)
+    ListTeams(ctx) ([]Team, error)
+    ListTeamsByStatus(ctx, status) ([]Team, error)
+    GetTeamByID(ctx, id) (Team, error)
+    GetTeamByKey(ctx, teamKey) (Team, error)
+    ListBySpiritSessionID(ctx, spiritSessionID) ([]Team, error)
+    ListTeamsByDepartmentID(ctx, deptID) ([]Team, error)
 }
 
+// Stability:stable
 type TeamWriter interface {
-    CreateTeam(ctx context.Context, t Team) (Team, error)
-    UpdateTeam(ctx context.Context, t Team) (Team, error)
-    DeleteTeam(ctx context.Context, id string) error
-    BatchArchiveTeams(ctx context.Context, ids []string) error
+    CreateTeam(ctx, Team) (Team, error)
+    UpdateTeam(ctx, Team) (Team, error)
+    DeleteTeam(ctx, id) error
+    BatchArchiveTeams(ctx, ids) (int, error)
 }
 
+// Stability:stable
 type TeamRunReader interface {
-    ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
-    ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) ([]TeamRun, error)
-    HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
-    GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
-    ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
+    ListTeamRuns(ctx, teamID, limit) ([]TeamRun, error)
+    ListTeamRunsByTeamIDs(ctx, teamIDs, limit) (map[string][]TeamRun, error)
+    HasActiveTeamRun(ctx, teamID) (bool, error)
+    GetTeamRunByID(ctx, id) (TeamRun, error)
+    ListTeamRunSteps(ctx, runID) ([]TeamRunStep, error)
 }
 
+// Stability:stable
 type TeamRunWriter interface {
-    CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
-    UpdateTeamRun(ctx context.Context, r TeamRun) error
-    UpdateTeamRunGraphExecutionID(ctx context.Context, id, graphExecID string) error
-    UpdateTeamRunTraceID(ctx context.Context, id, traceID string) error
-    UpdateTeamRunSummaryJSON(ctx context.Context, id, summaryJSON string) error
-    CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
+    CreateTeamRun(ctx, TeamRun) (TeamRun, error)
+    UpdateTeamRun(ctx, TeamRun) error
+    UpdateTeamRunGraphExecutionID(ctx, runID, graphExecutionID) error
+    UpdateTeamRunTraceID(ctx, runID, traceID) error
+    UpdateTeamRunSummaryJSON(ctx, runID, summaryJSON) error
+    CreateTeamRunStep(ctx, TeamRunStep) (TeamRunStep, error)
 }
 
+// Stability:evolving
 type OrchestrationStepRepo interface {
-    BatchCreateOrchestrationSteps(ctx context.Context, steps []OrchestrationStep) error
-    ListOrchestrationSteps(ctx context.Context, runID, nodeID string) ([]OrchestrationStep, error)
+    BatchCreateOrchestrationSteps(ctx, []OrchestrationStep) error
+    ListOrchestrationSteps(ctx, teamRunID, nodeID, limit) ([]OrchestrationStep, error)
 }
 
+// Stability:evolving
 type TaskDeadLetterRepo interface {
-    CreateTaskDeadLetter(ctx context.Context, dl TaskDeadLetter) error
-    ListTaskDeadLetters(ctx context.Context, req ListTaskDeadLettersReq) ([]TaskDeadLetter, error)
-    ResolveTaskDeadLetter(ctx context.Context, id, resolution string) error
-}
-
-// TeamRepository（Deprecated 聚合接口）组合以上所有窄接口
-type TeamRepository interface {
-    TeamReader
-    TeamWriter
-    TeamRunReader
-    TeamRunWriter
-    OrchestrationStepRepo
-    TaskDeadLetterRepo
+    CreateTaskDeadLetter(ctx, TaskDeadLetter) error
+    ListTaskDeadLetters(ctx, TaskDeadLetterListFilter) ([]TaskDeadLetter, error)
+    ResolveTaskDeadLetter(ctx, id) (TaskDeadLetter, error)
 }
 ```
 
-### 3.3 Definition 结构
+### 3.4 Service 层 port 接口
+
+文件：`internal/biz/team_ports.go`
+
+| 接口 | 用途 | Stability |
+|------|------|-----------|
+| `TeamTurnRuntime` | Team Turn 执行端口 | — |
+| `TeamMediatorPort` | Runner ↔ Coordinator 中介 | evolving |
+| `TeamGraphRunFinisherPort` | Graph 运行终结器 | evolving |
+| `TeamGraphCoordPort` | Graph 运行协调器 | evolving |
+| `TeamTurnRunnerPort` | Team Turn Runner | evolving |
+| `TeamRunnerWirePort` | Runner Wire 组合 | evolving |
+| `RunRegistryPort` | 运行注册表 | evolving |
+| `TeamRunObserver` | 运行生命周期观察 | — |
+| `TeamBuildRunner` | TurnExecutor build hook | — |
+| `TeamPersistTurnRecord` | TurnExecutor persist hook | — |
+| `TeamProjectRuntimeEvent` | TurnExecutor project hook | — |
+| `TeamRunStatusTransitioner` | 运行状态转换 | evolving |
+
+### 3.5 Team 层窄接口
+
+文件：`internal/biz/team_interfaces.go`
+
+| 接口 | 用途 |
+|------|------|
+| `TeamUsageQuerier` | Usage 记录子集 |
+| `TeamSessionManager` | Session 操作子集 |
+| `TeamAgentLookup` | Agent 查询子集 |
+| `TeamToolLookup` | Tool 查询子集 |
+| `TeamModelCatalog` | 模型目录子集 |
+| `TeamSkillLookup` | Skill 查询子集 |
+
+### 3.6 Definition 结构
 
 文件：`internal/team/definition.go`
 
 ```go
 type Definition struct {
-    Version             int               `json:"version"`
-    Mode                string            `json:"mode"`
-    SynthesizerAgentID  string            `json:"synthesizer_agent_id"`
-    Members             []MemberDef       `json:"members"`
-    MaxConcurrency      int               `json:"max_concurrency"`
-    TimeoutSeconds      int               `json:"timeout_seconds"`
-    LoopMaxIterations   int               `json:"loop_max_iterations,omitempty"`
-    CriticLoop          *CriticLoopConfig `json:"critic_loop,omitempty"`
-    IntentAnchorAgentID string            `json:"intent_anchor_agent_id,omitempty"`
-    Swarm               *SwarmConfigDef   `json:"swarm,omitempty"`
-    MemberTool          *MemberToolDef    `json:"member_tool_config,omitempty"`
-    Graph               *EmbeddedGraphDef `json:"graph,omitempty"`
-    FailurePolicy       *FailurePolicy    `json:"failure_policy,omitempty"`
-    CircuitBreaker      *CircuitBreakerPolicyDef `json:"circuit_breaker,omitempty"`
+    Version            int               `json:"version"`
+    Mode               string            `json:"mode"`
+    SynthesizerAgentID string            `json:"synthesizer_agent_id"`
+    Members            []MemberDef       `json:"members"`
+    MaxConcurrency     int               `json:"max_concurrency"`
+    TimeoutSeconds     int               `json:"timeout_seconds"`
+    LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"`
+    RuntimeEngine      string            `json:"runtime_engine,omitempty"`
+    TeamGraphRuntime   bool              `json:"team_graph_runtime,omitempty"`
+    CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
+    IntentAnchorAgentID string           `json:"intent_anchor_agent_id,omitempty"`
+    Swarm              *SwarmConfigDef   `json:"swarm,omitempty"`
+    MemberTool         *MemberToolDef    `json:"member_tool_config,omitempty"`
+    FailurePolicy      *FailurePolicy    `json:"failure_policy,omitempty"`
 }
 ```
 
-### 3.4 校验规则（validateTeamDefinition）
+### 3.7 校验规则
 
 - `mode` ∈ sequential / parallel / coordinator / critic_loop / swarm / adaptive
 - 至少一个 enabled member；member `agent_id` 非空
@@ -303,15 +391,17 @@ type Definition struct {
 
 ## 四、Data 层
 
-文件：`internal/data/team_repo.go` · Ent Schema：`internal/data/ent/schema/team.go` 等
+文件：`internal/data/team_repo.go` · Ent Schema：`internal/data/ent/schema/`
 
-| 表 | 关键字段 |
-|----|----------|
-| `teams` | id, team_key (unique), display_name, status, is_default, kind, source, readonly, definition_json, adk_app_name, deleted_at |
-| `team_runs` | id, team_id, session_id, message_id, mode, status, token_*, cost_micro_usd, duration_ms, topology_json, graph_execution_id, trace_id |
-| `team_run_steps` | id, run_id, team_id, agent_id, agent_key, role, sort_order, status, token_*, tool_call_count, duration_ms |
-| `orchestration_steps` | id, run_id, node_id, agent_key, status, started_at, finished_at |
-| `task_dead_letters` | id, task_id, run_id, node_id, error_message, resolution |
+| 表 | Schema 文件 | 关键字段 |
+|----|------------|----------|
+| `teams` | `team.go` | id, team_key (unique), display_name, status, is_default, kind, source, readonly, definition_json, adk_app_name, department_id, spirit_session_id, task_description, auto_created, dag_node_id, depends_on_json, parallel_config_json, topology, deliverables, input_contract, dept_lead_agent_id, cross_dept_member_ids, linked_graph_id, interrupt_reason, deleted_at |
+| `team_runs` | `team_run.go` | id, team_id, session_id, message_id, mode, status, token_*, cost_micro_usd, duration_ms, topology_json, graph_execution_id, definition_snapshot_json, trace_id |
+| `team_run_steps` | `team_run_step.go` | id, run_id, team_id, agent_id, agent_key, agent_name, role, sort_order, status, token_*, tool_call_count, duration_ms |
+| `orchestration_steps` | `orchestration_step.go` | id, team_run_id, graph_execution_id, node_id, activity_snapshot_json, status, started_at, finished_at |
+| `task_dead_letters` | `task_dead_letter.go` | id, source_type, source_id, team_id, team_run_id, session_id, graph_execution_id, error_message, payload_json, status |
+| `orchestrations` | `orchestration.go` | id, task_plan_id, allocation_id, spirit_session_id, trace_id, strategy, graph_execution_id, team_ids_json, status, checkpoint_id, synthesis_result_json |
+| `team_graph_sessions` | `team_graph_session_schema.go`（DDL） | exec_id, team_run_id, team_id, session_id, input_preview, definition_json, status, registered_at, last_activity_at |
 
 ---
 
@@ -323,11 +413,15 @@ type Definition struct {
 
 ```go
 type TeamService struct {
-    uc         *biz.TeamUsecase
-    sessions   *biz.SessionUsecase      // RunTeamTest 临时 Session
-    teamRunner *team.Runner             // RunTeamTest → RunTurn
-    runs       *rt.RunRegistry          // CancelTeamRun
-    eventBus   event.Bus                // Cancel → run_status Envelope
+    uc          *biz.TeamUsecase
+    graphUC     *biz.GraphUsecase
+    agents      *biz.AgentUsecase
+    sessions    *biz.SessionUsecase
+    teamRunner  biz.TeamTurnRunnerPort
+    runs        biz.RunRegistryPort
+    eventBus    event.Bus
+    lg          loggateway.Logger
+    synthesis   *SpiritSynthesisService
 }
 ```
 
@@ -338,20 +432,28 @@ type TeamService struct {
 | `team.go` | ListTeams, CreateTeam, GetTeam, UpdateTeam, DeleteTeam, DuplicateTeam, ListTeamRuns, GetTeamRun, CancelTeamRun, RunTeamTest, ListTeamRunSteps, UpdateSwarmMembers, ExportTeamStructure, GetTeamRunSummary |
 | `team_observatory.go` | GetTeamRunObservatory, GetTeamRunObservatoryTimeline |
 | `team_compile.go` | CompileTeamGraph |
+| `team_compile_view.go` | 编译视图辅助（buildCompiledGraphNodeViews） |
 | `team_resume.go` | ResumeTeamRunExecution |
-| `team_dead_letter.go` | ListTaskDeadLetters, ResolveTaskDeadLetter |
+| `team_dead_letter.go` | ListTaskDeadLetters, ResolveTaskDeadLetter, ListSpiritTeams, SynthesizeResults, ArchiveTeam, RetryTeam |
+| `team_orchestration_spec.go` | OrchestrationSpec Proto ↔ biz 映射 |
+| `team_run_registry_adapter.go` | RunRegistryPort 适配 |
+| `team_runner_wire_adapter.go` | TeamRunnerWirePort / TeamMediatorPort / TeamGraphCoordPort 适配 |
+| `team_turn_hooks.go` | ChatOrchestrator Team turn hooks |
 
 ### 5.3 关键行为
 
 | RPC | 实现要点 |
 |-----|----------|
-| `RunTeamTest` | 创建 `owner_type=team` 临时 Session → `teamRunner.RunTurn` → 查最近 TeamRun → defer 删除 Session |
-| `CancelTeamRun` | 校验 running/pending → `RunRegistry.Cancel(sessionID)` → `CancelSessionRunSideEffects` → 更新 status=cancelled |
+| `RunTeamTest` | 创建 `owner_type=team` 临时 Session → `teamRunner.RunTurnFromInput` → 查最近 TeamRun → defer 删除 Session |
+| `CancelTeamRun` | 校验 running/pending → `RunRegistryPort.Cancel(sessionID)` → `CancelSessionRunSideEffects` → 更新 status=cancelled |
 | `ExportTeamStructure` | 经编译器 `exportStructureViaCompiler` 生成拓扑 |
 | `CompileTeamGraph` | 调用 `CompileToCompiledTeam` 返回编译后节点/边/校验问题 |
 | `ResumeTeamRunExecution` | HITL 审核后恢复 Graph 运行 |
 | `GetTeamRunObservatory` | 返回 ActivitySnapshot + AgentNodeState 快照 |
-| 其余 CRUD | 直接委托 TeamUsecase |
+| `ArchiveTeam` | 经 TeamUsecase.TransitionStatus → archived |
+| `RetryTeam` | 经 TeamUsecase.RetryTeam → 重置状态并重新启动 |
+| `ListSpiritTeams` | 经 TeamReader.ListBySpiritSessionID |
+| `SynthesizeResults` | SpiritSynthesisService 合成多 Team 结果 |
 
 错误映射：`sql.ErrNoRows` → `kerrors.NotFound("TEAM", ...)`。
 
@@ -363,15 +465,15 @@ type TeamService struct {
 
 | 路径 | 文件 | 说明 |
 |------|------|------|
-| **Graph（默认）** | `graph_compile.go` · `graph_runtime_config.go` · `embedded_graph.go` | `CompileToGraphRuntimeConfig` → `GraphAgent`；embedded `agent`/`task`/`review`/`subgraph`/`function` 节点 |
-| **Native（应急）** | `trpc_build.go` | `BuildTRPCTeam` **Deprecated**；仅 `ARANEA_TEAM_NATIVE=1` |
+| **Graph（唯一路径）** | `graph_compile.go` · `graph_runtime_config.go` · `embedded_graph.go` | `CompileToGraphRuntimeConfig` → `GraphAgent`；embedded `agent`/`task`/`review`/`subgraph`/`function` 节点 |
+| **成员构建** | `trpc_build.go` | `BuildTeamMemberAgents` — 构建成员 trpc Agent + lookup map |
 
 Graph 路径要点：
 
-- `runner_team_trpc.go`：Graph 优先；编译/构建失败 **不 silent fallback**
+- `runner_team_compiler.go`：`compileTeamRuntime` — Graph 编译 + 构建；编译/构建失败不 silent fallback，直接返回错误
 - `team_graph_task_bridge.go` + `task_creator.go`：`graph_node_start` 时为 task/review 节点创建 Task（经 `ChatService` 注入 `TaskUsecase`）
 - `ResumeTeamRunExecution`：Graph checkpoint / HITL resume（见 M53 Phase 6）
-- `graph_runtime.go`：Graph 运行时执行路径
+- `graph_runtime.go`：Graph 运行时开关（`TeamGraphRuntimeEnabled` / `SupportsTeamGraphRuntimeMode`）
 - `graph_runtime_canary.go`：灰度控制
 - `status_projector.go`：WS 状态投影（`orchestration_agent_status` 等）
 - `activity_step_flusher.go`：Activity 步骤刷盘
@@ -380,25 +482,27 @@ Graph 路径要点：
 - `team_graph_run_finisher.go`：Graph 运行终结器
 - `team_graph_run_context.go`：Graph 运行上下文
 - `team_graph_execution_tracker.go`：执行追踪器
-- `fallback_policy.go`：Native fallback 策略
+- `fallback_policy.go`：编译/构建失败诊断错误（不执行 fallback）
 - `template_registry.go`：Mode 模板注册
 - `compile_snapshot.go`：编译快照
+- `graph_definition_json.go`：Definition JSON 图结构解析
+- `graph_structure.go`：图结构工具
+- `graph_loader.go`：图加载器
+- `graph_runtime_options.go`：运行时选项
+- `builder.go`：构建器
+- `agent_keys.go`：Agent Key 解析
+- `llm_catalog.go`：LLM 目录
+- `usage_tokens.go` / `usage_record.go`：Usage 记录
+- `safety_adapter.go` / `export_adapter.go` / `compiler_adapter.go`：适配器
 
-Native 应急（`trpc_build.go`）：
-
-- `BuildTRPCTeam(ctx, def, deps, lookupAgent)`：按 mode 分发
-- `buildSwarmOptions`：SwarmConfig + CrossRequestTransfer + SwarmHandoffInputBuilder
-- `buildCoordinatorOptions`：MemberToolConfig 映射
-- `buildEscalationFunc`：CriticLoop ScoreThreshold + approved 关键字
-
-成员 Agent 经 `chatagent.BuildTRPCAgent( Cached )` 构建，deps 含 `PluginsForAgent`、有效工具集。
+成员 Agent 经 `chatagent.BuildTRPCAgent(Cached)` 构建，deps 含 `PluginsForAgent`、有效工具集。
 
 ### 6.2 执行
 
-文件：`internal/team/runner_team_trpc.go` · `internal/team/runner_helpers.go`
+文件：`internal/team/runner_team_trpc.go` · `internal/team/runner_helpers.go` · `internal/team/runner_finish_steps.go`
 
 - 创建 TeamRun（status=running）→ 发射 `team_run_started`
-- `TraceEmitter`：`team.run.start` / `team.run.execute` / `team.run.finish`（FlowLogger）
+- `TraceEmitter`：`team.run.start` / `team.run.execute` / `team.run.finish`
 - `ConsumeEventStream` + `ProjectMeta.MemberAgentKeys` → `member_message_start` / `member_delta` / `member_message_done`
 - `persistStep` → `team_step_finished` + Usage `team_member`
 - 成功/失败 → `team_run_finished` / `team_run_failed` + `publishTeamRunSummary`
@@ -411,33 +515,6 @@ Native 应急（`trpc_build.go`）：
 | Biz | `internal/biz/team_usecase.go` | `GetRunSummary` — 读路径收拢（GetRun + ListRunSteps） |
 | Runtime | `internal/team/summary.go` | `BuildTeamRunSummary` / `SummaryMapFromData` — WS `team_summary` |
 | Service | `internal/service/team.go` | `toProtoTeamRunSummary` — RPC 映射 |
-
-```go
-// biz
-func BuildTeamRunSummaryData(run biz.TeamRun, steps []biz.TeamRunStep) biz.TeamRunSummaryData
-func (u *TeamUsecase) GetRunSummary(ctx context.Context, runID string) (biz.TeamRunSummaryData, error)
-
-// team（WS）
-func BuildTeamRunSummary(run biz.TeamRun, steps []biz.TeamRunStep) map[string]any
-func TeamSummaryEnvelope(run biz.TeamRun, steps []biz.TeamRunStep) event.Envelope
-
-// service（RPC）
-func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
-```
-
-**汇总字段**（run 级 + 每成员）：
-
-| 字段 | run | member | 说明 |
-|------|-----|--------|------|
-| `run_id` / `team_id` / `session_id` / `mode` / `status` | ✅ | — | 来自 `TeamRun` |
-| `token_in` / `token_out` / `cost_micro_usd` / `duration_ms` | ✅ | ✅ | Usage 聚合 |
-| `tool_call_count` | ✅（求和） | ✅ | TEAM-04，`MemberToolCalls` 落 step 后汇总 |
-| `member_count` | ✅ | — | `len(steps)` |
-| `output_preview` | ✅（512） | ✅（256） | 截断预览 |
-| `error_message` | ✅ | — | run 级错误 |
-| `agent_id` / `agent_key` / `agent_name` / `role` / `sort_order` / `status` | — | ✅ | 成员身份 |
-
-**已有库迁移**：`docs/sql/03_session_team_run_steps_tool_call_count.sql`
 
 **一致性保障**：`internal/service/team_summary_parity_test.go` 断言 WS map 与 RPC proto 字段对齐。
 
@@ -470,7 +547,9 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 | `run_status` | CancelTeamRun 取消 |
 | `orchestration_agent_status` | Agent 节点状态变更（StatusProjector） |
 | `graph_node_start` | Graph 节点开始执行 |
-| `graph_node_finish` | Graph 节点执行完成 |
+| `graph_node_end` | Graph 节点执行完成 |
+| `graph_node_error` | Graph 节点执行错误 |
+| `graph_node_custom` | Graph 节点自定义事件 |
 
 前端映射：
 
@@ -494,15 +573,16 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 
 | 路径 | 职责 |
 |------|------|
-| `web/src/components/teams/TeamCard.vue` | 卡片：模式、成员、操作（编排/观测/测试/Chat/轨迹/复制/编辑/删除） |
+| `web/src/components/teams/TeamCard.vue` | 卡片：模式、成员、操作 |
 | `web/src/components/teams/TeamToolbar.vue` | 搜索 / 模式 / 状态 / 行业筛选 |
 | `web/src/components/teams/TeamEditorDialog.vue` | 新建 / 编辑 / 模板（含编译预览侧栏） |
 | `web/src/components/teams/TeamRunsDialog.vue` | 运行记录 + WS 实时 |
 | `web/src/components/teams/TeamTestDialog.vue` | 运行测试 |
-| `web/src/components/teams/TeamCompilePreview.vue` | 编译预览侧栏（CompileTeamGraph API） |
+| `web/src/components/teams/TeamCompilePreview.vue` | 编译预览侧栏 |
 | `web/src/components/teams/TeamMemberKanban.vue` | 成员看板（按角色分列） |
 | `web/src/components/teams/TeamOrchestrateNodePanel.vue` | 编排页节点详情面板 |
 | `web/src/components/teams/TeamOrchestrateRuntimePanel.vue` | 编排页运行时/容错面板 |
+| `web/src/components/teams/TeamsListSection.vue` | Team 列表区域 |
 | `web/src/components/teams/teamUtils.ts` | 模板、modeOptions、Definition 默认值、校验 |
 | `web/src/components/teams/teamConstants.ts` | 状态/模式/角色/模板/运行时引擎/失败策略常量 |
 | `web/src/components/teams/teamTemplates.ts` | 四种模板工厂 |
@@ -519,6 +599,7 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 | `web/src/features/teams/useTeamsPage.ts` | TeamsPage composable |
 | `web/src/features/teams/useTeamOrchestratePage.ts` | TeamOrchestratePage composable |
 | `web/src/features/teams/useTeamRunObservatoryPage.ts` | TeamRunObservatoryPage composable |
+| `web/src/features/teams/useTeamCompilePreview.ts` | TeamCompilePreview composable |
 
 ### Store
 
@@ -531,6 +612,15 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 | 路径 | 职责 |
 |------|------|
 | `web/src/components/chat/ChatTeamMemberStrip.vue` | Chat 子 Agent 流式状态 chip |
+| `web/src/components/chat/TeamProgressSection.vue` | Chat Team 进度区 |
+| `web/src/components/chat/TeamPanel.vue` | Chat Team 面板 |
+
+### Orchestration 集成
+
+| 路径 | 职责 |
+|------|------|
+| `web/src/features/orchestration/teamGraphAdapter.ts` | Graph 适配器 |
+| `web/src/features/orchestration/teamNodeDisplay.ts` | 节点展示 |
 
 数据流：`TeamsPage` → `features/teams/api` → `services/kratos/team/v1`；实时经 `createEnvelopeStream` + `GLOBAL_WS_SESSION_ID`。
 
@@ -567,7 +657,6 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 | `internal/service/team_observatory_test.go` | 观测台 |
 | `internal/service/team_summary_parity_test.go` | WS map ↔ RPC proto 字段 parity |
 | `internal/service/team_orchestration_spec_test.go` | OrchestrationSpec |
-| `internal/service/service_team_mapping_test.go` | 映射 |
 
 ### Biz 层
 
@@ -583,6 +672,8 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 | `internal/biz/team_graph_linked_test.go` | Linked graph |
 | `internal/biz/graph_team_execution_test.go` | Graph 执行 |
 | `internal/biz/spirit_team_usecase_test.go` | Spirit 集成 |
+| `internal/biz/team_state_machine_test.go` | Team 状态机 |
+| `internal/biz/team_run_state_machine_test.go` | TeamRun 状态机 |
 
 ### Runtime 层
 
@@ -600,7 +691,11 @@ func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 | `internal/team/team_graph_task_bridge_test.go` | Task bridge |
 | `internal/team/team_graph_run_coordinator_test.go` | 运行协调 |
 | `internal/team/team_graph_run_finisher_test.go` | 运行终结 |
-| `internal/team/trpc_build_test.go` | TRPC 构建 |
-| `internal/team/parity_test.go` / `parity_run_test.go` | Native vs Graph 对比 |
-
-Runner 端到端集成测试见开发计划 EP-TEST-01。
+| `internal/team/team_graph_run_context_test.go` | 运行上下文 |
+| `internal/team/graph_structure_test.go` | 图结构 |
+| `internal/team/graph_definition_json_test.go` | Definition JSON 图解析 |
+| `internal/team/graph_runtime_options_test.go` | 运行时选项 |
+| `internal/team/usage_tokens_test.go` | Usage tokens |
+| `internal/team/parity_test.go` / `parity_run_test.go` / `parity_runtime_test.go` / `parity_run_e2e_test.go` | 编译/运行对比 |
+| `internal/team/runner_helpers_test.go` | Runner 辅助 |
+| `internal/team/activity_step_flusher_test.go` | Activity 步骤刷盘 |

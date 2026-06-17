@@ -1,273 +1,143 @@
-# Agent 行业分类 — 数据模型与编辑界面设计
+# Agent 行业分类
 
-本文档定义 Agent 的**业务分类**体系：按 **行业 → 部门 → 职位** 三层组织（与用户可自建的 `agent_category` 区分于 `agents.agent_type` 技术类型，见 §6）。后端基于 trpc-agent-go 框架，Agent 构建时通过 `category_position_id` 关联分类。示例：
+> 本文档为**需求文档**，仅描述用户故事、功能需求、验收标准与交互规格。
+> 架构设计、Proto/API 契约、数据模型见 [4-agent-type.design.md](./4-agent-type.design.md)。
+> 代码锚点、现状评估、任务清单见 [4-agent-type.development.md](./4-agent-type.development.md)。
 
-- `IT行业` / `游戏开发部` / `UE5场景设计师`
-- `IT行业` / `系统开发部` / `golang后端高级工程师`
+Agent 业务画像分类体系：按 **公司 → 部门 → 职位** 三层组织（UI 标签为「公司/部门/职位」；历史称「行业分类」，level 值已由 `industry` 迁移为 `company`）。Agent 绑定叶子（职位）节点，用于展示、筛选与系统提示词上下文注入。与 `agents.agent_type`（技术类型）区分：本分类是业务画像。
 
----
-
-## 1. 设计原则
-
-| 原则 | 说明 |
-|------|------|
-| **三层固定深度** | 层级语义固定为 1=行业、2=部门、3=职位；不允许在中间插入其它层级类型。 |
-| **用户可自建** | 在权限范围内，用户（或工作区）可新增、重命名、排序、软删自己的分类节点；可与系统预置数据并存。 |
-| **单父节点** | 每个节点最多一个父节点；部门必须挂在行业下，职位必须挂在部门下。 |
-| **Agent 绑定叶子** | 一个 Agent 绑定 **职位节点**（第 3 层）；行业、部门由关系推导，便于列表展示与筛选。 |
-| **软删除** | 删除节点使用 `deleted_at`；被引用的叶子节点删除策略见 §4。 |
+示例：
+- `某科技公司` / `游戏开发部` / `UE5场景设计师`
+- `某科技公司` / `系统开发部` / `golang后端高级工程师`
 
 ---
 
-## 2. 数据库表：`agent_category_nodes`
+## 1. 用户故事
 
-采用 **单表自关联** 表达树，避免三表同步层级约束；通过 `level` 与 `parent_id` 强约束三层结构。
-
-**实现库：SQLite 3**（启用外键：`PRAGMA foreign_keys = ON;`）。UUID 用 **TEXT** 存（应用生成 v4/v7 或 ULID）；时间用 **TEXT** 存 ISO8601（`datetime('now')`）或 INTEGER Unix 秒，下文采用 TEXT。
-
-### 2.1 DDL（SQLite 3）
-
-```sql
-CREATE TABLE agent_category_nodes (
-    id                 TEXT PRIMARY KEY,
-    -- id 由应用层生成；若需库内默认可用: lower(hex(randomblob(16))) 近似 UUID v4
-
-    parent_id          TEXT REFERENCES agent_category_nodes (id),
-    level              TEXT NOT NULL CHECK (level IN ('industry', 'department', 'position')),
-
-    name               TEXT NOT NULL,
-    slug               TEXT,
-    sort_order         INTEGER NOT NULL DEFAULT 0,
-    description        TEXT,
-
-    workspace_id       TEXT,
-    owner_user_id      TEXT,
-    is_system          INTEGER NOT NULL DEFAULT 0 CHECK (is_system IN (0, 1)),
-
-    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
-    deleted_at         TEXT,
-
-    CHECK (
-        (level = 'industry' AND parent_id IS NULL)
-        OR (level = 'department' AND parent_id IS NOT NULL)
-        OR (level = 'position' AND parent_id IS NOT NULL)
-    )
-);
-
--- 同级同名防重复（软删行不参与唯一）
-CREATE UNIQUE INDEX uq_agent_category_root_name
-    ON agent_category_nodes (workspace_id, name)
-    WHERE deleted_at IS NULL AND parent_id IS NULL;
-
-CREATE UNIQUE INDEX uq_agent_category_child_name
-    ON agent_category_nodes (parent_id, name)
-    WHERE deleted_at IS NULL AND parent_id IS NOT NULL;
-
-CREATE INDEX idx_agent_category_parent
-    ON agent_category_nodes (parent_id)
-    WHERE deleted_at IS NULL;
-
-CREATE INDEX idx_agent_category_workspace
-    ON agent_category_nodes (workspace_id)
-    WHERE deleted_at IS NULL;
-```
-
-可选：在应用层更新 `updated_at`，或使用触发器：
-
-```sql
-CREATE TRIGGER trg_agent_category_nodes_updated_at
-AFTER UPDATE ON agent_category_nodes
-FOR EACH ROW
-WHEN NEW.updated_at = OLD.updated_at
-BEGIN
-    UPDATE agent_category_nodes SET updated_at = datetime('now') WHERE id = NEW.id;
-END;
-```
-
-（若更新语句已显式写入 `updated_at`，可避免与触发器重复；二选一即可。）
-
-若 `workspace_id` 可为空：SQLite 中 **UNIQUE 视多个 NULL 为互不冲突**，顶层仍可能出现多条 `(NULL, 同名行业)`。处理方式：强制 `workspace_id NOT NULL`、或为顶层增加生成的 **scope_key** 列（如 `COALESCE(workspace_id, owner_user_id, '')`）并建唯一索引、或仅靠应用层校验。
-
-### 2.1a `agents` 外键列（SQLite）
-
-```sql
--- 在 agents 表上增加（列类型与 agent_category_nodes.id 一致，均为 TEXT）
-ALTER TABLE agents ADD COLUMN category_position_id TEXT REFERENCES agent_category_nodes (id);
--- 可选冗余
-ALTER TABLE agents ADD COLUMN category_path TEXT;
-```
-
-SQLite 对 `ALTER TABLE ADD COLUMN` 限制较多；若需复杂 CHECK（如「仅允许引用 level=position」），宜在 **应用层** 校验，或使用重建表迁移。
-
-### 2.1b 与 PostgreSQL 的差异摘要
-
-| 项 | SQLite（本文） | PostgreSQL |
-|----|----------------|-------------|
-| 枚举 | `TEXT` + `CHECK (... IN (...))` | `CREATE TYPE ... AS ENUM` |
-| 主键 / 外键 | `TEXT` UUID 字符串 | `UUID` + `uuid_generate_v7()` 等 |
-| 布尔 | `INTEGER` 0/1 | `BOOLEAN` |
-| 时间 | `TEXT` + `datetime('now')` | `TIMESTAMPTZ` + `now()` |
-| 部分唯一索引 | 支持 `WHERE` | 支持 `WHERE` |
-
-### 2.2 列说明
-
-| 列 | 说明 |
-|----|------|
-| `id` | 主键。 |
-| `parent_id` | 父节点；行业为 `NULL`。 |
-| `level` | `industry` / `department` / `position`，与深度一致。 |
-| `name` | 展示名称，如 `IT行业`、`游戏开发部`、`UE5场景设计师`。 |
-| `slug` | 可选，用于 URL 或导入导出。 |
-| `sort_order` | 同级排序，越小越靠前。 |
-| `workspace_id` | 工作区隔离；若不做多租户可删列，仅用 `owner_user_id`。 |
-| `owner_user_id` | 自建节点记录创建者；`is_system = true` 时通常为空。 |
-| `is_system` | 官方预置分类，仅管理员可改删（策略由应用层控制）。 |
-
-### 2.3 层级校验（应用层或触发器）
-
-- 插入 **部门**：父节点必须 `level = industry`。  
-- 插入 **职位**：父节点必须 `level = department`。  
-- 禁止将节点 `parent_id` 改为跨级或循环引用。
-
----
-
-## 3. `agents` 表扩展
-
-在现有 `agents` 上增加**可选**外键，指向职位（叶子）节点（SQLite 下与 `agent_category_nodes.id` 同为 **TEXT**）：
-
-| 列名 | 类型 | 说明 |
+| 编号 | 角色 | 故事 |
 |------|------|------|
-| `category_position_id` | TEXT NULL，FK → `agent_category_nodes(id)` | 仅允许引用 `level = position` 且未删除的行；为空表示未分类。 |
-
-**展示用完整路径**（`IT行业 / 游戏开发部 / UE5场景设计师`）：
-
-- **推荐**：列表接口服务端递归父链拼接，或维护物化视图/冗余列 `category_path`（更新节点名时批量刷新，可选）。  
-- **不推荐**：仅靠多次请求拼装，延迟高。
-
-可选冗余列（性能优化）：
-
-| 列名 | 类型 | 说明 |
-|------|------|------|
-| `category_path` | TEXT NULL | 物化路径，便于搜索与列表直出；节点改名时由后端任务更新关联 Agent。 |
+| US-01 | 管理员 | 我希望按公司→部门→职位三层维护组织架构树，以便为 Agent 提供业务画像。 |
+| US-02 | 普通用户 | 我希望在自己权限范围内新增、编辑、删除自建分类节点，以便定制本工作区的分类。 |
+| US-03 | 管理员 | 我希望系统预置分类与用户自建分类在界面上有区分（徽章），以便辨认哪些是官方提供。 |
+| US-04 | Agent 创建者 | 我希望在创建/编辑 Agent 时通过三级联动选择职位叶子节点，以便绑定业务画像。 |
+| US-05 | Agent 列表使用者 | 我希望按公司或部门筛选 Agent 列表，以便快速定位目标 Agent。 |
+| US-06 | Agent 运行时 | 我希望 Agent 运行时自动将所属公司/部门/职位上下文注入系统提示词，以便 LLM 理解角色定位。 |
+| US-07 | 管理员 | 我希望删除被 Agent 引用的职位时得到明确提示，避免误删导致 Agent 失去分类。 |
 
 ---
 
-## 4. 删除与引用约束
+## 2. 功能需求清单
 
-| 操作 | 规则 |
+### FR-01 三层固定深度分类树
+- 层级语义固定：第 1 层 = 公司，第 2 层 = 部门，第 3 层 = 职位。
+- 不允许在中间插入其它层级类型。
+- 公司无父节点；部门必须挂在公司下；职位必须挂在部门下。
+
+### FR-02 分类节点 CRUD
+- 新增：指定名称、可选描述、排序；层级可由父节点自动推导。
+- 编辑：修改名称、描述、排序；系统预置节点仅管理员可改。
+- 删除：软删除；删除前校验子节点与 Agent 引用。
+- 排序：同级节点支持排序值调整。
+
+### FR-03 用户自建与系统预置并存
+- 用户可在权限范围内自建分类节点，归属当前工作区。
+- 系统预置分类标记为官方，仅管理员可改删。
+- 界面通过徽章区分「系统」「自建」。
+
+### FR-04 Agent 绑定职位叶子
+- 一个 Agent 绑定一个职位节点（第 3 层）。
+- 公司、部门由关系推导，便于列表展示与筛选。
+- 支持职位方向变体（`agent_variant`，如 `general`/`code_review`/`architect`）及变体描述。
+
+### FR-05 创建/编辑 Agent 时的三级联动选择
+- 创建/编辑 Agent 表单提供三级联动选择器：公司 → 部门 → 职位。
+- 选中公司后加载其下部门；选中部门后加载其下职位。
+- 最终提交职位节点标识给后端。
+
+### FR-06 列表按分类筛选
+- Agent 列表支持按分类筛选。
+- 筛选某公司/部门时，展开其下所有职位对应的 Agent。
+
+### FR-07 行业上下文注入
+- Agent 运行时自动将所属公司/部门/职位的名称与描述注入系统提示词。
+- 未绑定职位的 Agent 不注入上下文。
+
+### FR-08 软删除与引用约束
+- 删除节点使用软删除（标记删除时间，不物理移除）。
+- 删除公司/部门时，若有未删除子节点，阻止删除并提示。
+- 删除职位时，若有 Agent 引用，阻止删除并提示关联数量。
+
+### FR-09 完整路径展示
+- Agent 列表/详情可展示完整分类路径（如 `某科技公司 / 游戏开发部 / UE5场景设计师`）。
+
+---
+
+## 3. 非功能需求
+
+| 编号 | 需求 |
 |------|------|
-| 删除 **行业** | 若有子部门未删，应先处理子树；或统一软删整棵子树（产品决策）。 |
-| 删除 **职位**（叶子） | 若存在 `agents.category_position_id` 指向该节点：**禁止硬删**；可软删并将 Agent 上该字段置 `NULL` 或提示用户先迁移。 |
-| 用户自建节点 | 仅 `owner_user_id` / `workspace_id` 匹配时可编辑删除；`is_system` 需管理员角色。 |
+| NFR-01 | 三层深度固定，应用层强约束，禁止跨级或循环引用。 |
+| NFR-02 | 同级同名在同一父节点下被拒绝（软删除行除外）。 |
+| NFR-03 | 单父节点：每个节点最多一个父节点。 |
+| NFR-04 | 工作区隔离：自建节点仅对本工作区可见。 |
+| NFR-05 | 软删除：删除操作可追溯，不破坏历史数据完整性。 |
 
 ---
 
-## 5. 行业 / 分类编辑界面（Quasar）
+## 4. 交互规格（用户视角）
 
-### 5.1 页面定位
+### 4.1 分类管理页
 
 | 项目 | 说明 |
 |------|------|
-| **路由** | `/settings/agent-categories`（或「Agent 设置 → 行业分类」） |
-| **权限** | 普通用户：管理自己工作区下的自建节点；管理员：含系统预置。 |
-| **目标** | 树形查看与 CRUD；支持搜索过滤；创建 Agent 时三级联动选择同源数据。 |
+| 入口 | 设置 → 组织架构（路由 `/settings/taxonomy`） |
+| 权限 | 普通用户：管理自己工作区下的自建节点；管理员：含系统预置。 |
+| 目标 | 树形查看与 CRUD；支持搜索过滤；创建 Agent 时三级联动选择同源数据。 |
 
-### 5.2 布局
+**布局概要**：
+- 顶部：页面标题「组织架构」、副标题说明、刷新按钮、新增公司按钮。
+- 工具栏：搜索框（按名称过滤）、统计（公司/部门/职位数量）、视图切换。
+- 主体：树形列表，展开公司显示部门，展开部门显示职位。
+- 每个节点行：名称、系统/自建徽章、新增子节点按钮（非职位层）、编辑按钮、删除按钮。
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Agent 行业分类                           [+ 新增行业]  [刷新]   │
-│  按 行业 → 部门 → 职位 组织；自建分类仅对本工作区可见（可配置）    │
-├─────────────────────────────────────────────────────────────────┤
-│  [🔍 搜索名称...]                         [仅看我的自建 □]        │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─ QTree / 手风琴列表 ─────────────────────────────────────┐    │
-│  │ ▼ IT行业 [系统]                          [编辑][+部门][↑↓]    │    │
-│  │     ▼ 游戏开发部                         [编辑][+职位][删]   │    │
-│  │           • UE5场景设计师                [编辑][删]          │    │
-│  │     ▼ 系统开发部                         ...                 │    │
-│  │           • golang后端高级工程师         ...                 │    │
-│  │ ▼ 制造业 [自建]                          ...                 │    │
-│  └────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-```
+**主要操作**：
 
-### 5.3 主要控件与行为
-
-| 控件 | 行为 |
+| 操作 | 行为 |
 |------|------|
-| **新增行业** | 打开 `QDialog`：名称、可选描述、排序；`level=industry`，`parent_id=null`；写入当前 `workspace_id` / `owner_user_id`。 |
-| **某行业下「+部门」** | Dialog：名称、排序；父 id = 该行业；校验父为 `industry`。 |
-| **某部门下「+职位」** | Dialog：名称、排序；父 id = 该部门；校验父为 `department`。 |
-| **编辑** | Dialog 预填名称、描述、排序；系统节点仅管理员可改。 |
-| **删除** | `Confirm` 软删；若职位被 Agent 引用，提示数量并可选「解除关联并删除」或取消。 |
-| **排序** | 同级 `sort_order` 调整（上移/下移或拖拽，二期可做）。 |
-| **搜索** | 前端过滤树节点或后端 `ILIKE name`。 |
-| **仅看我的自建** | 过滤 `is_system = false` 且 `owner_user_id = 当前用户`。 |
+| 新增公司 | 弹窗填写标识、名称、描述、排序；写入当前工作区。 |
+| 某公司下「+」 | 弹窗新增部门，父节点为该公司。 |
+| 某部门下「+」 | 弹窗新增职位，父节点为该部门。 |
+| 编辑 | 弹窗预填名称、描述、排序；系统节点仅管理员可改。 |
+| 删除 | 确认弹窗；若有子节点或 Agent 引用，阻止并提示数量。 |
+| 搜索 | 按名称过滤树节点。 |
 
-### 5.4 Quasar 组件映射
+### 4.2 创建/编辑 Agent 时的分类选择
 
-| 区域 | 组件 |
-|------|------|
-| 树 | `QTree`（`:nodes` 由列表转嵌套 JSON）或左侧 `QList` + 手风琴 |
-| 表单 | `QDialog` + `QForm` + `QInput`（名称、描述）、`QInput type="number"`（排序） |
-| 工具栏 | `QBtn` `QInput` debounce 搜索 |
-| 空状态 | 无行业时引导「新增行业」 |
+- 表单内嵌三级联动选择器：公司 → 部门 → 职位。
+- 选中公司后清空并加载部门选项；选中部门后清空并加载职位选项。
+- 最终绑定职位节点。
+- 可选：职位方向变体选择（如「通用」「代码评审」「架构」）。
 
-### 5.5 与「创建 Agent」联动
+### 4.3 列表筛选
 
-- 创建/编辑 Agent 表单增加 **分类** 三级联动：`QSelect` 行业 → 拉取部门 → 拉取职位；最终提交 `category_position_id`。  
-- 选项接口示例：`GET /agent-categories?parent_id=&level=` 或一次 `GET /agent-categories/tree?workspace_id=`。
+- 筛选区提供分类选择器（复用三级联动）。
+- 选择某公司或部门时，列表展示其下所有职位对应的 Agent。
 
 ---
 
-## 6. 与 `agents.agent_type` 的关系
+## 5. 验收标准
 
-| 字段 | 含义 |
-|------|------|
-| `agents.agent_type` | 技术/开放类型（如 `open`），用于能力、API 策略等。 |
-| `category_position_id` | **业务画像**：行业-部门-职位，用于展示、筛选、推荐模板。 |
-
-列表页「All Types」下拉若原指 `agent_type`，可增加第二筛选项 **「行业分类」**（按行业或按完整路径搜索），避免概念混淆。
-
----
-
-## 7. API 摘要
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/agent-categories/tree` | 当前工作区完整树（或扁平列表前端组树） |
-| POST | `/agent-categories` | body: `parent_id`, `level`, `name`, `sort_order`, … |
-| PATCH | `/agent-categories/:id` | 更新名称、排序、描述 |
-| DELETE | `/agent-categories/:id` | 软删 + 引用检查 |
-
-`level` 可由服务端根据 `parent_id` 推导，避免客户端传错。
+- [ ] 仅能形成合法三层：公司无父；部门父为公司；职位父为部门。
+- [ ] 同级重名在同一父节点下被拒绝（软删除行除外）。
+- [ ] 用户自建节点归属正确，与系统预置在 UI 上有区分（徽章「系统」「自建」）。
+- [ ] Agent 仅绑定职位节点，列表/详情可展示完整路径。
+- [ ] 删除职位时有 Agent 引用则阻止删除并提示数量。
+- [ ] 删除公司/部门时有子节点则阻止删除。
+- [ ] 三级联动选择器在创建/编辑 Agent 表单中正确联动。
+- [ ] 列表可按分类筛选，选择公司/部门时展开其下所有职位对应 Agent。
+- [ ] Agent 运行时自动注入公司/部门/职位上下文到系统提示词。
+- [ ] 职位方向变体可选且描述可编辑。
 
 ---
 
-## 8. 种子数据示例（可选）
-
-```text
-IT行业 (system)
-  ├── 游戏开发部
-  │     └── UE5场景设计师
-  └── 系统开发部
-        └── golang后端高级工程师
-```
-
-导入脚本将 `is_system = true`，`workspace_id` 按产品设为全局或模板工作区。
-
----
-
-## 9. 验收要点
-
-- [ ] 仅能形成合法三层：行业无父；部门父为行业；职位父为部门。  
-- [ ] 同级重名在同一父节点下被拒绝（软删除外）。  
-- [ ] 用户自建节点归属正确，与系统预置在 UI 上有区分（徽章「系统」「自建」）。  
-- [ ] Agent 仅绑定职位节点，列表/详情可展示完整路径。  
-- [ ] 删除职位时有引用则行为符合 §4 约定。  
-
----
-
-*文档版本：与 `agents` 主表及 `3 agent-list.md` 筛选扩展兼容；**DDL 以 SQLite 3 为准**，§2.1b 附 PostgreSQL 对照；界面以 Quasar 为例。*
+*文档版本：需求边界；技术设计见 `4-agent-type.design.md`，开发计划见 `4-agent-type.development.md`。*

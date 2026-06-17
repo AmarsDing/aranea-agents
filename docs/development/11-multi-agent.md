@@ -14,62 +14,59 @@
 - Team 可像单个 Agent 一样在 Chat 中发起会话并运行
 - 编排过程可追踪：展示每个子 Agent 的输入、输出、状态、耗时、错误和成本
 - 支持 Swarm 动态成员管理、Team 结构导出、运行测试与取消
-- 实时观测经 WebSocket Envelope 推送（含子 Agent 流式输出与运行汇总）
+- 实时观测经 WebSocket 推送（含子 Agent 流式输出与运行汇总）
 - Graph 编排画布可视化编辑与编译预览
 - 运行观测台：Agent 工作看板、Timeline、HITL 人工审核、任务看板
 - 失败策略（FailurePolicy）与熔断器（CircuitBreaker）容错机制
 
 ## 2. 范围定义
 
-### 2.1 本期已实现
+### 2.1 功能范围
 
 **Team 管理与配置**
 
 - Team 管理页：列表、搜索、新增、编辑、删除、复制、行业分组、拖拽排序
 - Team 编辑器：基础信息、成员 Agent、编排模式、并发/超时、Swarm 配置、运行时引擎、失败策略、A2A 协议、JSON 预览
 - 编排画布页（TeamOrchestratePage）：Graph 可视化编辑、节点面板、运行时/容错面板、成员看板
-- 编译预览（TeamCompilePreview）：实时 CompileTeamGraph API 展示拓扑与校验
+- 编译预览（TeamCompilePreview）：实时编译展示拓扑与校验
 - 四个内置模板（顺序 / 并行专家组 / 生成评审 / 主控分派）
 - Definition JSON 含 embedded graph 节点（agent / task / review / subgraph / function 五种节点类型）
 
 **编排运行时**
 
 - 五种后端编排模式：`sequential` / `parallel` / `coordinator` / `critic_loop` / `swarm`
-- 前端 UI 以 `adaptive` 对应后端 Swarm 运行时（与 `swarm` 共用 `NewSwarm` 构建）
-- **Graph 为默认执行路径**：`CompileToGraphRuntimeConfig` → `GraphAgent`；Native（`BuildTRPCTeam`）已 Deprecated，仅 `ARANEA_TEAM_NATIVE=1` 应急
+- 前端 UI 以 `adaptive` 对应后端 Swarm 运行时（与 `swarm` 共用构建路径）
+- Graph 为默认执行路径（Native 应急路径已移除）
 - Swarm 安全限制：MaxHandoffs / NodeTimeout / RepetitiveHandoff / CrossRequestTransfer
 - MemberToolConfig：StreamInner / InnerTextMode / HistoryScope / SkipSummarization
 - Critic Loop 支持 ScoreThreshold 结构化评分终止
 - FailurePolicy 容错：重试（RetryPolicy）、熔断器（CircuitBreaker）、节点级覆盖
-- Team 成员构建时接入 `PluginsForAgent` 与有效工具集（含 `call_agent`，需 Agent 启用 A2A 工具）
+- Team 成员构建时接入插件与有效工具集（含 `call_agent`，需 Agent 启用 A2A 工具）
 
-**运行记录与 API**
+**运行记录与运行管理**
 
-- `team_runs` / `team_run_steps` / `orchestration_steps` 持久化
-- Team CRUD + DuplicateTeam
-- ListTeamRuns / GetTeamRun / CancelTeamRun / ListTeamRunSteps
-- UpdateSwarmMembers / ExportTeamStructure
-- RunTeamTest · CancelTeamRun · GetTeamRunSummary RPC
-- GetTeamRunObservatory / GetTeamRunObservatoryTimeline — 运行观测台
-- ResumeTeamRunExecution — HITL 恢复 / Checkpoint 恢复
-- CompileTeamGraph — 编译预览
-- ListTaskDeadLetters / ResolveTaskDeadLetter — 死信队列
-- team_step_started / team_summary WS · tool_call_count 落库
-- Team 管理页 RunTeamTest UI · TeamRuns 汇总与 WS 回放
-- Chat Team 成员 strip（`ChatTeamMemberStrip`）
+- 运行记录持久化（TeamRun / TeamRunStep / OrchestrationStep）
+- Team CRUD + 复制 + 归档 + 重试
+- 运行列表 / 详情 / 取消 / 步骤列表
+- 动态成员管理 / 结构导出
+- 运行测试 / 运行汇总 / 运行观测台 / 时间线
+- HITL 恢复 / Checkpoint 恢复
+- 编译预览
+- 死信队列（TaskDeadLetter）
+- Spirit 集成：列出 Spirit Team / 结果合成
 
 **Chat 与实时观测**
 
 - Chat 选择 Team 创建 `owner_type=team` 会话
 - Channel 路由 `default_team_id` 时同样创建 `owner_type=team` 会话（飞书等 IM 入口）；出站为汇总文本，见 [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)
-- WS Envelope：`team_run_*` / `team_step_started` / `team_step_finished` / `team_summary` / `member_message_*` / `member_delta` / `intent_pass` / `transfer` / `orchestration_agent_status` / `graph_node_start` / `graph_node_finish`
+- WebSocket 实时推送：运行状态、步骤事件、子 Agent 流式输出、汇总
 - 运行观测台（TeamRunObservatoryPage）：Agent 工作看板 / Timeline / Summary / HITL 审核 / 任务看板
-- Monitor EventTimeline 可订阅 Team 相关 Envelope
+- Monitor EventTimeline 可订阅 Team 相关事件
 
-### 2.2 待补全（见开发计划）
+### 2.2 待补全
 
-- 历史 run 在 `tool_call_count` 字段上线前的步骤工具计数为 0（可选 Usage 回填，TEAM-11）
-- TeamRuns 自动加载汇总（展开 run 时，TEAM-10）
+- 历史 run 在 `tool_call_count` 字段上线前的步骤工具计数为 0（可选 Usage 回填）
+- TeamRuns 自动加载汇总（展开 run 时）
 - 拖拽排序后端持久化 API（前端已本地排序）
 
 ### 2.3 未来扩展
@@ -80,7 +77,6 @@
 - 强化学习调度、自动拓扑训练
 - 外部 Team 市场或模板商店
 - 复杂人工审批流
-- Native 执行栈完全移除（M53 Phase 8 单轨化）
 
 ## 3. 用户场景
 
@@ -124,6 +120,14 @@
 
 Team 运行中遇到 task/review 节点时暂停等待人工审核；审核人在观测台 approve/reject/fallback 后，运行通过 ResumeTeamRunExecution 恢复。
 
+### 场景 11：归档与重试
+
+用户对已完成/失败/取消的 Team 执行归档（ArchiveTeam）或重试（RetryTeam），重试会重置状态并重新启动。
+
+### 场景 12：Spirit 集成
+
+Spirit 会话中列出关联 Team（ListSpiritTeams），并将多个 Team 的结果合成为统一输出（SynthesizeResults）。
+
 ## 4. 产品需求
 
 ### 4.1 Team 管理页
@@ -134,10 +138,10 @@ Team 运行中遇到 task/review 节点时暂停等待人工审核；审核人�
 
 - Team 列表：名称、Key、编排模式、成员数、状态、创建时间
 - 搜索与筛选：名称、Key、模式、状态、行业
-- 新增 / 编辑 / 删除（默认 Team 不可删）/ 复制
+- 新增 / 编辑 / 删除（默认 Team 不可删）/ 复制 / 归档 / 重试
 - 行业分组与拖拽排序
 - 运行记录对话框（TeamRunsDialog）：历史 Run、Steps、实时 WS 事件
-- 运行测试（TeamTestDialog）：调用 RunTeamTest RPC
+- 运行测试（TeamTestDialog）：调用 RunTeamTest
 - 导航至编排画布页 / 运行观测台
 
 ### 4.2 Team 编辑器
@@ -163,7 +167,7 @@ Team 运行中遇到 task/review 节点时暂停等待人工审核；审核人�
 
 运行时配置：
 
-- `runtime_engine`：graph（默认）/ native（应急）
+- `runtime_engine`：graph（默认，唯一执行路径）
 - `failure_policy`：重试（RetryPolicy）、熔断器（CircuitBreaker）、节点级覆盖
 - `enable_checkpoint`：长任务 checkpoint 支持
 
@@ -220,7 +224,7 @@ A2A 协议配置：
 
 ### 4.6 编排运行轨迹
 
-**TeamRun**：run id、team id、session id、message id、mode、status、时间、token、成本、topology_json、error_message。
+**TeamRun**：run id、team id、session id、message id、mode、status、时间、token、成本、topology、error_message。
 
 **TeamRunStep**：step id、agent 信息、role、sort_order、status、input/output preview、token、耗时、error。
 
@@ -238,141 +242,57 @@ A2A 协议配置：
 
 - GetTeamRun / CancelTeamRun（running/pending 可取消，经 RunRegistry 中断运行时）
 - RunTeamTest：手动测试运行
-- 运行结束推送 `team_summary` Envelope（成员 token/耗时汇总）
+- 运行结束推送 `team_summary` 事件（成员 token/耗时汇总）
 
-## 5. 后端接口
+### 4.10 Spirit 集成
 
-### 5.1 Team CRUD
+- ListSpiritTeams：列出 Spirit 会话关联的 Team
+- SynthesizeResults：将多个 Team 的结果合成为统一输出
+- ArchiveTeam：归档已完成/失败/取消的 Team
+- RetryTeam：重试失败/取消的 Team
 
-| 方法 | 路径 | 用途 |
-|------|------|------|
-| GET | `/v1/teams` | 列出未删除 Team |
-| POST | `/v1/teams` | 创建 |
-| GET | `/v1/teams/{id}` | 获取 |
-| PATCH | `/v1/teams/{id}` | 更新 |
-| DELETE | `/v1/teams/{id}` | 软删除 |
-| POST | `/v1/teams/{id}/duplicate` | 复制 |
+## 5. 验收标准
 
-### 5.2 Team 运行
+### Team 管理与配置
 
-| 方法 | 路径 | 用途 |
-|------|------|------|
-| GET | `/v1/team-runs` | 列出运行记录 |
-| GET | `/v1/team-runs/{id}` | 运行详情 |
-| POST | `/v1/team-runs/{id}/cancel` | 取消运行 |
-| GET | `/v1/team-runs/{run_id}/steps` | 运行步骤 |
+- 创建、编辑、删除、复制 Team
+- Team 绑定多个 Agent，Definition 持久化
+- 行业分组与拖拽排序
+- 归档与重试 Team
 
-### 5.3 Team 高级功能
+### 编排运行
 
-| 方法 | 路径 | 用途 |
-|------|------|------|
-| POST | `/v1/teams/{team_id}/swarm-members` | Swarm 动态成员 |
-| GET | `/v1/teams/{team_id}/structure` | 结构导出 |
-| POST | `/v1/teams/{id}/run-test` | 运行测试 |
-| GET | `/v1/team-runs/{id}/summary` | 运行结构化汇总 |
-| GET | `/v1/team-runs/{run_id}/observatory` | 运行观测台快照 |
-| GET | `/v1/team-runs/{run_id}/observatory/timeline` | 运行观测台时间线 |
-| POST | `/v1/team-runs/{run_id}/resume` | HITL / Checkpoint 恢复 |
-| POST | `/v1/teams/{team_id}/compile-graph` | 编译预览 |
-| GET | `/v1/task-dead-letters` | 死信列表 |
-| POST | `/v1/task-dead-letters/{id}/resolve` | 解决死信 |
+- 五种后端编排模式可执行（含 adaptive ↔ Swarm）
+- 每次运行记录 run 与 step 摘要
+- 子 Agent 失败时最终结果含失败说明
+- SwarmConfig / MemberToolConfig / CriticLoop ScoreThreshold
+- Graph 为唯一执行路径
+- embedded graph 五种节点类型（agent / task / review / subgraph / function）
+- FailurePolicy 容错（RetryPolicy / CircuitBreaker / 节点级覆盖）
 
-## 6. 数据模型
+### 运行管理 API
 
-### Team Definition JSON（示例）
+- UpdateSwarmMembers / ExportTeamStructure
+- GetTeamRun / CancelTeamRun（含 RunRegistry 取消）
+- RunTeamTest 后端端到端
+- GetTeamRunSummary 结构化汇总（含 tool_call_count）
+- ListSpiritTeams / SynthesizeResults / ArchiveTeam / RetryTeam
 
-```json
-{
-  "version": 1,
-  "mode": "parallel",
-  "max_concurrency": 3,
-  "timeout_seconds": 180,
-  "members": [
-    {
-      "agent_id": "agent_security",
-      "role": "worker",
-      "name": "安全审计",
-      "enabled": true,
-      "sort_order": 10
-    },
-    {
-      "agent_id": "agent_summary",
-      "role": "synthesizer",
-      "name": "汇总报告",
-      "enabled": true,
-      "sort_order": 90
-    }
-  ],
-  "critic_loop": {
-    "max_iterations": 3,
-    "score_threshold": 0.8
-  },
-  "swarm": {
-    "max_handoffs": 10,
-    "node_timeout_seconds": 120,
-    "repetitive_handoff_window": 3,
-    "repetitive_handoff_min_unique": 2,
-    "cross_request_transfer": true
-  },
-  "member_tool_config": {
-    "stream_inner": false,
-    "inner_text_mode": "default",
-    "skip_summarization": false,
-    "history_scope": "default",
-    "tool_set_name": ""
-  },
-  "graph": {
-    "nodes": [
-      { "id": "start", "type": "agent", "ref_member_index": 0 },
-      { "id": "end", "type": "agent", "ref_member_index": 1 }
-    ],
-    "edges": [
-      { "source": "start", "target": "end" }
-    ]
-  },
-  "failure_policy": {
-    "on_error": "retry",
-    "retry": { "max_attempts": 3, "delay_ms": 1000 },
-    "circuit_breaker": { "failure_threshold": 5, "reset_timeout_ms": 30000 }
-  }
-}
-```
+### Chat 与实时观测
 
-## 7. 验收标准
-
-### 已完成
-
-- [x] 创建、编辑、删除、复制 Team
-- [x] Team 绑定多个 Agent，Definition 持久化
-- [x] Chat 选择 Team 并发送消息
-- [x] 五种后端编排模式可执行（含 adaptive ↔ Swarm）
-- [x] 每次运行记录 run 与 step 摘要
-- [x] 子 Agent 失败时最终结果含失败说明
-- [x] SwarmConfig / MemberToolConfig / CriticLoop ScoreThreshold
-- [x] UpdateSwarmMembers / ExportTeamStructure
-- [x] GetTeamRun / CancelTeamRun（含 RunRegistry 取消）
-- [x] RunTeamTest 后端端到端
-- [x] WS 推送 `member_message_*` / `team_summary` / `team_step_finished`
-- [x] `call_agent` 工具在 Agent 有效工具集启用时可注入
-- [x] Team 管理页 RunTeamTest UI
-- [x] team_step_started Envelope
-- [x] GetTeamRunSummary REST RPC
-- [x] 汇总含 tool_call_count
-- [x] Chat Team 成员 strip
-- [x] Runner persistStep 单测
-- [x] Graph 为默认执行路径（Native 已 Deprecated）
-- [x] 编排画布页（TeamOrchestratePage）可视化编辑
-- [x] 编译预览（CompileTeamGraph RPC + TeamCompilePreview）
-- [x] 运行观测台（TeamRunObservatoryPage）
-- [x] HITL 人工审核 + ResumeTeamRunExecution
-- [x] FailurePolicy 容错（RetryPolicy / CircuitBreaker）
-- [x] 死信队列（TaskDeadLetter）
-- [x] embedded graph 五种节点类型（agent / task / review / subgraph / function）
-- [x] OrchestrationSpec v2（含 linked_graph_id / failure_policy / graph）
-- [x] 行业分组与拖拽排序
+- Chat 选择 Team 并发送消息
+- `call_agent` 工具在 Agent 有效工具集启用时可注入
+- Team 管理页 RunTeamTest UI
+- Chat Team 成员 strip
+- WS 推送 `member_message_*` / `team_summary` / `team_step_started` / `team_step_finished`
+- 编排画布页（TeamOrchestratePage）可视化编辑
+- 编译预览（CompileTeamGraph + TeamCompilePreview）
+- 运行观测台（TeamRunObservatoryPage）
+- HITL 人工审核 + ResumeTeamRunExecution
+- 死信队列（TaskDeadLetter）
 
 ### 待验收
 
-- [ ] 历史 run 工具调用数回填（可选，TEAM-11）
-- [ ] TeamRuns 自动加载汇总（展开 run 时，TEAM-10）
-- [ ] 拖拽排序后端持久化 API
+- 历史 run 工具调用数回填（可选）
+- TeamRuns 自动加载汇总（展开 run 时）
+- 拖拽排序后端持久化 API

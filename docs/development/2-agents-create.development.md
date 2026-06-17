@@ -111,9 +111,9 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 | 6 | 前端创建弹窗：agent_key 防抖查重 + inline error | 前端 | P3 | — | 需求 §3.2 | ✅ |
 | 7 | 前端创建弹窗：结构化错误提示（冲突/不可用/校验失败） | 前端 | P2 | — | 需求 §4 | ✅ |
 | 8 | 单测覆盖 AgentUsecase CRUD | 后端 | P1 | EP-TEST-01 | — |
-| 9 | Proto `agent_kind` + `A2AProxyConfig` | 后端 | P1 | — | 需求 §9 | ✅ |
-| 10 | 创建弹窗：Agent 类型 LLM / A2A Proxy | 前端 | P1 | — | 需求 §9 | ✅ |
-| 11 | 创建弹窗：远程 URL + 流式/超时 | 前端 | P1 | — | 需求 §9.3 | ✅ |
+| 9 | Proto `agent_kind` + `A2AProxyConfig` | 后端 | P1 | — | 需求 §7 | ✅ |
+| 10 | 创建弹窗：Agent 类型 LLM / A2A Proxy | 前端 | P1 | — | 需求 §7 | ✅ |
+| 11 | 创建弹窗：远程 URL + 流式/超时 | 前端 | P1 | — | 需求 §7.3 | ✅ |
 | 12 | `DuplicateAgent`（复制 Agent） | 后端 | P2 | — | — | ✅ |
 | 13 | `BatchUpdateAgents` biz 层 | 后端 | P2 | — | — | ✅ |
 | 14 | Planner config 后端字段 | 后端 | P2 | — | — | ✅ |
