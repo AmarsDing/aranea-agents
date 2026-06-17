@@ -607,5 +607,5 @@ it('emits submit on button click', async () => {
 | UX 主题规范（日夜双模、玻璃材质、CSS 变量） | `aranea-frontend-guide` §6 |
 | Dialog 毛玻璃规范 | `aranea-frontend-guide` §7 |
 | Registry 列表表格规范 | `aranea-frontend-guide` §8 |
-| 14 条红线 | `aranea-frontend-guide` §1 |
-| 编程规范 CS-F1~F8 | `aranea-frontend-guide` §13 |
+| 15 条红线（含 4 条已降级） | `aranea-frontend-guide` §1 |
+| 编程规范 CS-F1~F9 | `aranea-frontend-guide` §13 |

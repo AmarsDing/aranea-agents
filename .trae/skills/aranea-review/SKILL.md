@@ -31,9 +31,12 @@ description: "Aranea-Agents 全栈代码审查指导。当审查本项目代码�
 | 所有变更 | 1（架构）、2（质量）、3（正确性）、8（错误处理） |
 | 涉及 DB | + 4（性能） |
 | 涉及外部输入/API | + 5（安全） |
-| 涉及 Usecase | + 6（可测试性）、11（业务逻辑） |
+| 涉及 Usecase | + 6（可测试性）、11（业务逻辑）、**14（业务逻辑正确性：状态机/事件/不变量）** |
+| 涉及状态变更 | + **14（业务逻辑正确性：状态机审查）** |
+| 涉及事件 | + **14（业务逻辑正确性：事件可靠性审查）** |
 | 涉及跨模块 | + 7（可维护性）、12（文档同步） |
 | 涉及前端 | + 9（前端性能）、10（前端安全） |
+| 涉及测试代码 | + **15（测试审查：分层/Mock/覆盖率）** |
 
 完整维度检查清单见 `docs/review-dimension-checklists.md`。
 
@@ -82,10 +85,10 @@ grep -rn "fmt.Errorf" internal/service/
 | # | 检查项 | 严重级别 | 说明 |
 |---|--------|----------|------|
 | BL1 | Service 层类型转换是否用 `toProtoXxx`/`fromProtoXxx` | 🟡 建议 | 禁止在方法内内联转换逻辑 |
-| BL2 | Service 层错误映射是否用 `kerrors` | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误 |
+| BL2 | Service 层错误映射是否用 `apierror` | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误 |
 | BL3 | Biz 层模型是否用纯 Go struct | 🟡 建议 | 字段用基本类型，不用 proto 类型 |
 | BL4 | Biz 层 Repo 接口是否定义在 biz | 🟡 建议 | 实现在 data，接口在 biz |
-| BL5 | Data 层是否仅通过 `d.Ent()`/`d.Postgres()` 访问 | 🔴 阻断 | 禁止另开 SQLite 连接 |
+| BL5 | Data 层是否仅通过 `d.RW()`/`d.RWDB()`/`d.Postgres()` 访问 | 🔴 阻断 | 禁止另开 SQLite 连接，禁止使用已废弃的 `d.Ent()`/`d.RawDB()`/`d.ReadDB()` |
 | BL6 | Data 层转换函数是否 `entXxxToBiz`/`bizXxxToEnt` | 🟡 建议 | 放在对应 Repo 文件中 |
 | BL7 | Data 层是否有编译期接口检查 `var _ biz.XxxRepo = (*xxxRepo)(nil)` | 🟢 提示 | 确保接口实现完整 |
 | BL8 | Service 层构造函数是否只接收接口或具体依赖 | 🔴 阻断 | 不接收"上帝对象" |
@@ -148,11 +151,11 @@ grep -rn "fmt.Errorf" internal/service/
 
 | # | 检查项 | 严重级别 | 判定标准 |
 |---|--------|----------|----------|
-| BC1 | `go func()` 是否走 safego | 🔴 阻断 | 必须用 `pkg/safego.Go` / `pkg/safego.GoRecover` |
+| BC1 | `go func()` 是否走 safego | 🔴 阻断 | 必须用 `pkg/safego.Go` / `pkg/safego.GoRecover`（红线 #13） |
 | BC2 | 跨层调用是否传递 ctx | 🟡 建议 | 所有跨层调用必须传递 `ctx` |
-| BC3 | 共享状态是否有锁保护 | 🔴 阻断 | 共享状态用 `sync.Mutex`/`sync.RWMutex` |
-| BC4 | 是否有竞态条件 | 🔴 阻断 | map 并发读写、slice 并发 append |
-| BC5 | goroutine 是否可取消 | 🟡 建议 | 长期运行的 goroutine 应支持 ctx 取消 |
+| BC3 | 共享状态是否有锁保护 | 🔴 阻断 | 共享状态用 `sync.Mutex`/`sync.RWMutex`（红线 #21） |
+| BC4 | 是否有竞态条件 | 🔴 阻断 | map 并发读写、slice 并发 append（红线 #21） |
+| BC5 | goroutine 是否有退出路径 | 🔴 阻断 | 通过 ctx.Done()/select/done channel 退出，禁止无退出条件的 `for {}`（红线 #23） |
 | BC6 | MCP 子进程是否在 context 取消时清理 | 🟡 建议 | 防止子进程泄漏 |
 | BC7 | WebSocket 流是否处理客户端断连 | 🟡 建议 | 防止资源泄漏 |
 
@@ -160,18 +163,28 @@ grep -rn "fmt.Errorf" internal/service/
 
 | # | 检查项 | 严重级别 | 判定标准 |
 |---|--------|----------|----------|
-| BE1 | 业务错误是否用 kerrors | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误 |
+| BE1 | 业务错误是否用 apierror | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误（红线 #14） |
 | BE2 | 错误是否丢失上下文 | 🟡 建议 | wrap 错误用 `fmt.Errorf("xxx: %w", err)` |
 | BE3 | 错误变量是否 Err 前缀 | 🟢 提示 | `ErrNotFound` 而非 `NotFoundError` |
-| BE4 | 是否吞掉了错误 | 🔴 阻断 | `_ = someFunc()` 忽略 error 返回值 |
+| BE4 | 是否吞掉了错误 | 🔴 阻断 | `_ = someFunc()` 忽略 error 返回值（红线 #22） |
 | BE5 | panic 是否被 recover | 🔴 阻断 | 业务代码禁止裸 panic |
+| BE6 | 外部输入/接口返回值是否 nil 检查 | 🔴 阻断 | proto 请求字段、Repo 返回值、第三方 API 响应使用前判 nil（红线 #26） |
 
-### 5.3 日志
+### 5.3 数据一致性
 
 | # | 检查项 | 严重级别 | 判定标准 |
 |---|--------|----------|----------|
-| BLG1 | 是否使用 `log/slog` | 🔴 阻断 | 统一使用 `pkg/loggateway.Logger`（`event.SysLog*` 已废弃） |
+| BD1 | 跨表/跨 Repo 写操作是否包事务 | 🔴 阻断 | 用 `Data.ExecInTx` 或 biz 层 `XxxTxRepo.ExecInTx`（红线 #24） |
+| BD2 | 事务内是否从 ctx 获取连接 | 🟡 建议 | 用 `EntClientFromCtx`/`TxExecerFromCtx`（DB-N7） |
+| BD3 | DDL 迁移是否幂等 | 🟡 建议 | `IF NOT EXISTS`，"duplicate column" 视为成功（DB-N6） |
+
+### 5.4 日志
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| BLG1 | 是否使用 `log/slog` | 🔴 阻断 | 统一使用 `pkg/loggateway.Logger`（`event.SysLog*` 已废弃，红线 #16） |
 | BLG2 | 是否有 `fmt.Println` / `log.Println` 调试残留 | 🟡 建议 | 清理或替换为 `loggateway.Logger` |
+| BLG3 | 是否输出敏感字段明文 | 🔴 阻断 | credential/api_key/password/token/secret 禁止直出，用 `loggateway.Redacted()` 或 `.Sensitive()`（红线 #25） |
 
 ---
 
@@ -319,7 +332,7 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 | BP6 | 圈复杂度是否超过 15 | 🟡 建议 | CS-B6：超过必须简化 |
 | BP7 | 参数列表是否超过 5 个 | 🟡 建议 | CS-B7：超过用 Option struct |
 | BP8 | 是否有魔法数字 | 🟡 建议 | CS-B8：必须定义命名常量 |
-| BP9 | DB 查询是否带 context 超时 | 🟡 建议 | CS-B9：禁止裸 `d.Ent().Query()` |
+| BP9 | DB 查询是否带 context 超时 | 🟡 建议 | CS-B9：禁止裸 `d.RW().Read(ctx).Query()` |
 | BP10 | 循环内是否有逐条 DB 操作 | 🟡 建议 | CS-B10：必须批量 |
 | BP11 | 外部输入是否校验后才进 biz | 🟡 建议 | CS-B11：Service 层校验 |
 | BP12 | 敏感字段是否在日志中暴露 | 🟡 建议 | CS-B12：key/secret/token 禁止日志 |
@@ -341,6 +354,83 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 | FP6 | 是否有 any 类型 | 🟡 建议 | CS-F6：用具体类型或泛型 |
 | FP7 | 事件处理器命名是否 onXxx | 🟢 提示 | CS-F7：命名约定 |
 | FP8 | 技术债务是否标记 | 🟡 建议 | CS-F8：`// TECH-DEBT:` + issue 编号 |
+| FP9 | 是否存在过度设计 | 🟡 建议 | CS-F9：单一场景不预抽 Composable/Store |
+
+---
+
+## 十四、业务逻辑正确性审查
+
+> 对应 `aranea-coding-guide` §15。审查业务逻辑的准确性保证。
+
+### 14.1 状态机审查（AS-FSM-01）
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| FSM1 | >3 状态实体是否定义显式状态机 | 🔴 阻断 | `*_state_machine.go` 存在，含状态枚举+转换表+Transition 函数 |
+| FSM2 | 状态变更是否经 Transition 函数 | 🔴 阻断 | 禁止直接赋值 `entity.State = "xxx"` |
+| FSM3 | 终态是否无转换 | 🔴 阻断 | Succeeded/Failed/Cancelled 等终态无出口转换 |
+| FSM4 | 守卫条件是否实现 | 🟡 建议 | 关键转换有 Guard（如"Running→Succeeded 需所有 ToolResult 落库"） |
+| FSM5 | 状态机是否有完整测试 | 🔴 阻断 | 覆盖所有合法转换+非法转换被拒绝+终态无转换 |
+
+### 14.2 事件可靠性审查（AS-EVT-01）
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| EVT1 | 新增事件类型是否分级 | 🔴 阻断 | Critical/Important/Informational 三级之一 |
+| EVT2 | Critical 事件是否 WBPF（先写后发） | 🔴 阻断 | ToolResult/Error/RunnerCompletion/Checkpoint 必须先写 EventStore |
+| EVT3 | Important 事件是否 BlockUpTo | 🟡 建议 | StateDelta/RunStatus 等阻塞发送+异步持久化 |
+| EVT4 | Informational 事件是否尽力而为 | 🟢 提示 | TextDelta/FlowLog 直接发，丢弃不报错 |
+
+### 14.3 不变量审查
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| INV1 | 唯一性不变量是否有 DB 约束 | 🔴 阻断 | 如"一 Session 一活跃 Run"有唯一索引 |
+| INV2 | 引用完整性不变量是否有 FK 或代码校验 | 🔴 阻断 | Message→Session 引用完整 |
+| INV3 | 业务规则不变量是否在 Service 校验 | 🟡 建议 | tool_keys 校验为已注册工具 |
+| INV4 | 状态一致性不变量是否有守卫 | 🟡 建议 | 终态后不产生事件 |
+
+### 14.4 边界条件审查
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| BD4 | 空输入是否处理 | 🟡 建议 | 空列表/空字符串/nil 不 panic |
+| BD5 | 并发场景是否测试 | 🔴 阻断 | 同一 Session 并发 StartRun 被拒绝 |
+| BD6 | 外部依赖失败是否处理 | 🟡 建议 | LLM 超时/DB 锁冲突/MCP 不可达有降级 |
+| BD7 | ctx 取消是否正确回滚 | 🔴 阻断 | 事务在 ctx 取消时回滚 |
+
+---
+
+## 十五、测试审查
+
+> 对应 `aranea-coding-guide` §16。审查测试设计的正确性。
+
+### 15.1 分层测试审查
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| TS1 | Service 层是否有集成测试 | 🟡 建议 | mock Runner，验证 proto↔biz 映射+事件投影 |
+| TS2 | Biz 层是否有单元测试 | 🔴 阻断 | mock Repo，验证业务逻辑+状态转换 |
+| TS3 | Data 层是否有仓储测试 | 🟡 建议 | 真实 SQLite 内存模式，验证 Ent 查询+错误翻译 |
+| TS4 | Agent 桥接是否有测试 | 🟡 建议 | mock 框架 Agent，验证 biz→trpc 转换 |
+
+### 15.2 Mock 策略审查
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| MK1 | 项目 Repo 是否手写 Fake | 🟡 建议 | 禁止 mockgen 项目内部接口 |
+| MK2 | 框架接口 Mock 是否实现完整接口 | 🔴 阻断 | `var _ runner.Runner = (*MockRunner)(nil)` |
+| MK3 | 测试是否用 Noop Logger | 🔴 阻断 | 禁止 `loggateway.Global()` |
+| MK4 | Mock 是否放 `*_test.go` 同包 | 🟡 建议 | 不导出 Mock 类型 |
+
+### 15.3 专项测试审查
+
+| # | 检查项 | 严重级别 | 判定标准 |
+|---|--------|----------|----------|
+| TC1 | 事件流是否有序列测试 | 🟡 建议 | 验证事件顺序+类型+负载 |
+| TC2 | 状态机是否有完整转换测试 | 🔴 阻断 | 所有合法转换+非法转换+终态 |
+| TC3 | 并发测试是否通过 race detector | 🔴 阻断 | `go test -race` 通过 |
+| TC4 | 覆盖率是否达标 | 🟡 建议 | Biz ≥80%、Service ≥70%、状态机/不变量 100% |
 
 ---
 
@@ -360,7 +450,9 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 | **后端 — 并发安全** | | | | |
 | **后端 — 错误处理** | | | | |
 | **后端 — 依赖注入** | | | | |
+| **后端 — 业务逻辑正确性** | | | | |
 | **后端 — 编程规范** | | | | |
+| **后端 — 测试** | | | | |
 | **前端 — 数据流合规** | | | | |
 | **前端 — 组件分层** | | | | |
 | **前端 — 业务逻辑归属** | | | | |
@@ -399,14 +491,18 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 - [ ] 跨模块通过窄接口
 - [ ] Wire 绑定在 Service 层
 - [ ] 无工具生成代码的手动修改
-- [ ] goroutine 走 safego
-- [ ] 业务错误用 kerrors
-- [ ] 日志用 loggateway.Logger
-- [ ] 共享状态有锁保护
+- [ ] goroutine 走 safego，有明确退出路径（红线 #13/#23）
+- [ ] 业务错误用 apierror（红线 #14）
+- [ ] 日志用 loggateway.Logger（红线 #16）
+- [ ] 共享状态有锁保护，无并发竞态（红线 #21）
+- [ ] 无 `_ =` 吞错误（红线 #22）
+- [ ] 跨表/跨 Repo 写操作包事务（红线 #24）
+- [ ] 日志无敏感字段明文（红线 #25）
+- [ ] 外部输入/接口返回值有 nil 检查（红线 #26）
 - [ ] 无上帝对象注入
 - [ ] 接口方法 ≤ 5
 - [ ] Repository 接口方法 ≤ 5（否则拆子接口）
-- [ ] 编程规范合规（CS-B1~B17）
+- [ ] 编程规范合规（CS-B1~B18）
 
 ### 前端合规性清单
 
@@ -422,7 +518,7 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 - [ ] Registry 表格用 AppRegistryTable + registryCol()
 - [ ] 表格列定义在 *Ui.ts（非 .vue 内）
 - [ ] Page script ≤~200 行
-- [ ] 编程规范合规（CS-F1~F8）
+- [ ] 编程规范合规（CS-F1~F9）
 ```
 
 ---
@@ -447,13 +543,21 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 
 发现 go func() → 走 safego？ → 否 → 🔴 必须改
                → 传 ctx？ → 否 → 🟡 加 ctx
+               → 有退出路径？ → 否 → 🔴 加 ctx.Done()/select（红线 #23）
 
-发现 error → fmt.Errorf 业务错误？ → 是 → 🔴 改 kerrors
-           → 吞错误？ → 是 → 🔴 必须处理
+发现 error → fmt.Errorf 业务错误？ → 是 → 🔴 改 apierror
+           → 吞错误？ → 是 → 🔴 必须处理（红线 #22）
            → wrap 丢上下文？ → 是 → 🟡 加 %w
 
 发现日志 → log/slog？ → 是 → 🔴 改 loggateway.Logger
          → event.SysLog*？ → 是 → 🔴 改 loggateway.Logger
+         → 敏感字段明文？ → 是 → 🔴 用 Redacted()/.Sensitive()（红线 #25）
+
+发现并发 → 共享 map/slice 无锁读写？ → 是 → 🔴 加锁或 sync.Map（红线 #21）
+
+发现写操作 → 跨表/跨 Repo 多次写？ → 是 → 🔴 包 ExecInTx（红线 #24）
+
+发现指针解引用 → 未判 nil？ → 是 → 🔴 加 nil 检查（红线 #26）
 
 发现 Wire → 手动改 wire_gen.go？ → 是 → 🔴 阻断
           → wire.go 全局副作用？ → 是 → 🔴 阻断

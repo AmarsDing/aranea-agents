@@ -478,6 +478,9 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
 		}
 		// Install TransferController for agent transfer safety (depth limit + timeout).
+		// Created per-turn (per-run) so the depth counter is scoped to a single run,
+		// preventing cross-run leakage while correctly tracking nested transfers
+		// within one run. See TransferControllerImpl docs for details.
 		runOpts = append(runOpts, trpcagent.MergeRuntimeState(
 			chatagent.NewTransferController(o.lg()).RuntimeState()))
 	}

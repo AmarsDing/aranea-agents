@@ -7,15 +7,19 @@
 
 ## 一、模块概述
 
-Agent 管理主列表页，支持搜索、筛选（关键字/状态/Provider/业务分类）、网格/列表视图切换、收藏、删除、迁移入口。后端复用 `AgentService.ListAgents` / `DeleteAgent` RPC，新增 `ToggleFavorite` RPC。
+Agent 管理主列表页，支持搜索、筛选（关键字/状态/Provider/业务分类/创建者/归属类型）、网格/列表视图切换、三组分组（Built-in / Preset / User）+ 拖拽排序、收藏、删除、复制、迁移入口。
+
+后端复用 `AgentService` 下的 `ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators` RPC，并通过 `ListExtrasForAgents` 富化运行态字段（`last_run_status` / `last_run_at` / `pending_evolution_count`）。
+
+`BatchUpdateAgents` / `ReorderAgents` 在 biz 层已实现（`ReorderAgents` 为 stub），尚无 proto RPC 暴露。
 
 ---
 
 ## 二、Proto 层
 
-### 2.1 现有 Proto
-
 文件：`api/kratos/agent/v1/agent.proto`
+
+### 2.1 Agent 消息（列表项相关字段）
 
 ```protobuf
 message Agent {
@@ -29,7 +33,7 @@ message Agent {
   bool is_favorite = 8;
   string icon = 9;
   string agent_description = 10;
-  string category_position_id = 11;
+  string position_id = 11;            // 业务分类职位节点 id
   string system_prompt_mode = 12;
   int32 context_window = 13;
   int32 budget_monthly_cents = 14;
@@ -39,15 +43,33 @@ message Agent {
   string deleted_at = 18;
   AgentRuntimeSettings settings = 19;
   repeated AgentPromptFile files = 20;
+  string agent_kind = 21;             // llm | a2a_proxy
+  A2AProxyConfig a2a_proxy_config = 22;
+  bool a2a_endpoint_enabled = 23;
+  string last_run_status = 24;        // 列表富化：最近会话运行状态
+  string last_run_at = 25;
+  int32 pending_evolution_count = 26;
+  string created_by = 27;             // 创建者用户 id
+  bool readonly = 28;                 // 系统内置不可删
+  string position_key = 29;
+  string agent_variant = 30;
+  string variant_description = 31;
+  string source = 32;                 // user | system | imported
+  string kind = 33;                   // user | system_builtin | ecosystem_preset | marketplace | certified
 }
+```
 
+### 2.2 列表/删除/收藏/复制/创建者 RPC
+
+```protobuf
 message ListAgentsRequest {
   string keyword = 1;
   string status = 2;
   string provider = 3;
-  string category_id = 4;
+  string org_node_id = 4;             // 业务分类职位节点 id
   int32 limit = 5;
   int32 offset = 6;
+  string created_by = 7;              // 空 = 全部；"mine" = 当前用户；否则用户 id
 }
 
 message ListAgentsResponse {
@@ -61,6 +83,23 @@ message DeleteAgentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message ToggleFavoriteRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DuplicateAgentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message AgentCreator {
+  string user_id = 1;
+  string label = 2;
+}
+
+message ListAgentCreatorsResponse {
+  repeated AgentCreator items = 1;
+}
+
 service AgentService {
   rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {
     option (google.api.http) = {get: "/v1/agents"};
@@ -68,19 +107,15 @@ service AgentService {
   rpc DeleteAgent(DeleteAgentRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/agents/{id}"};
   }
-}
-```
-
-### 2.2 待新增 Proto
-
-```protobuf
-message ToggleFavoriteRequest {
-  string id = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-// 在 AgentService 中新增
-rpc ToggleFavorite(ToggleFavoriteRequest) returns (Agent) {
-  option (google.api.http) = { patch: "/v1/agents/{id}/favorite" body: "*" };
+  rpc ToggleFavorite(ToggleFavoriteRequest) returns (Agent) {
+    option (google.api.http) = { patch: "/v1/agents/{id}/favorite" body: "*" };
+  }
+  rpc DuplicateAgent(DuplicateAgentRequest) returns (Agent) {
+    option (google.api.http) = { post: "/v1/agents/{id}/duplicate" body: "*" };
+  }
+  rpc ListAgentCreators(google.protobuf.Empty) returns (ListAgentCreatorsResponse) {
+    option (google.api.http) = {get: "/v1/agents/creators"};
+  }
 }
 ```
 
@@ -91,14 +126,16 @@ rpc ToggleFavorite(ToggleFavoriteRequest) returns (Agent) {
 | `ListAgentsRequest` | `keyword` | string | ❌ | 搜索关键字（命中 display_name/agent_key/provider/model/agent_description） |
 | | `status` | string | ❌ | 状态筛选（active/inactive/deleted） |
 | | `provider` | string | ❌ | Provider 筛选 |
-| | `category_id` | string | ❌ | 业务分类职位 ID 筛选 |
+| | `org_node_id` | string | ❌ | 业务分类职位节点 id 筛选 |
+| | `created_by` | string | ❌ | 空 = 全部；`mine` = 当前用户；否则用户 id |
 | | `limit` | int32 | ❌ | 每页条数，默认 24，最大 100 |
 | | `offset` | int32 | ❌ | 偏移量，默认 0 |
-| `ListAgentsResponse` | `items` | Agent[] | — | Agent 列表（列表页不含 settings/files 水合） |
+| `ListAgentsResponse` | `items` | Agent[] | — | Agent 列表（列表页不含 settings/files 水合，但含运行态富化字段） |
 | | `total` | int32 | — | 总条数 |
 | | `limit` | int32 | — | 实际 limit |
 | | `offset` | int32 | — | 实际 offset |
 | `ToggleFavoriteRequest` | `id` | string | ✅ | Agent ID |
+| `DuplicateAgentRequest` | `id` | string | ✅ | Agent ID |
 
 ---
 
@@ -106,39 +143,57 @@ rpc ToggleFavorite(ToggleFavoriteRequest) returns (Agent) {
 
 ### 3.1 领域模型
 
-列表页使用已有 `biz.Agent`、`biz.AgentListQuery`、`biz.AgentListResult`，无需新增模型。
+文件：`internal/biz/agent_types.go`
 
 ```go
 type Agent struct {
-    ID                 string
-    AgentKey           string
-    DisplayName        string
-    Provider           string
-    Model              string
-    Status             string
-    IsDefault          bool
-    IsFavorite         bool
-    Icon               string
-    AgentDescription   string
-    CategoryPositionID string
-    SystemPromptMode   string
-    ContextWindow      int
-    BudgetMonthlyCents int
-    ConfigJSON         string
-    CreatedAt          string
-    UpdatedAt          string
-    DeletedAt          string
-    Settings           *AgentRuntimeSettings
-    Files              []AgentPromptFile
+    ID                  string
+    AgentKey            string
+    DisplayName         string
+    Provider            string
+    Model               string
+    Status              string
+    IsDefault           *bool  // nil = not set; explicit true/false for merge
+    IsFavorite          *bool
+    Icon                string
+    AgentDescription    string
+    PositionID          string
+    PositionKey         string
+    AgentVariant        string
+    VariantDescription  string
+    SystemPromptMode    string
+    ContextWindow       int
+    BudgetMonthlyCents  int
+    ConfigJSON          string
+    MetadataJSON        string
+    Roles               []string
+    Kind                string // user | system_builtin | ecosystem_preset | marketplace | certified
+    AgentKind           string // llm | a2a_proxy
+    A2AProxy            *A2AProxyConfig
+    A2AEndpointEnabled  bool
+    LastRunStatus       string
+    LastRunAt           string
+    PendingEvolutionCount int
+    CreatedBy           string
+    Readonly            bool
+    Source              string // user | system | imported
+    CreatedAt           string
+    UpdatedAt           string
+    DeletedAt           string
+    Settings            *AgentRuntimeSettings
+    Files               []AgentPromptFile
 }
 
 type AgentListQuery struct {
-    Keyword    string
-    Status     string
-    Provider   string
-    CategoryID string
-    Limit      int
-    Offset     int
+    Keyword   string
+    Status    string
+    Provider  string
+    OrgNodeID string
+    CreatedBy string
+    Role      string
+    Kind      string // user | system_builtin | ecosystem_preset | marketplace | certified
+    Limit     int
+    Offset    int
 }
 
 type AgentListResult struct {
@@ -147,47 +202,85 @@ type AgentListResult struct {
     Limit  int
     Offset int
 }
+
+// AgentListExtras 是列表行富化字段（不持久化在 agents 表）
+type AgentListExtras struct {
+    LastRunStatus         string
+    LastRunAt             string
+    PendingEvolutionCount int
+}
+
+type AgentCreator struct {
+    UserID string
+    Label  string
+}
 ```
 
-### 3.2 已有 Usecase 方法
+### 3.2 Usecase 方法
+
+文件：`internal/biz/agent_usecase.go`、`internal/biz/agent_duplicate.go`
 
 ```go
 func (u *AgentUsecase) List(ctx context.Context, q AgentListQuery) (AgentListResult, error)
 func (u *AgentUsecase) Delete(ctx context.Context, id string) error
+func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, error)
+func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error)  // agent_duplicate.go
+func (u *AgentUsecase) ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
+func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdateInput) (int, error)
+func (u *AgentUsecase) ReorderAgents(ctx context.Context, ids []string) error  // 当前 stub
 ```
 
-### 3.3 新增 Usecase 方法
+`List` 内部调用 `reader.SearchAgents` 取分页结果，再用 `reader.ListExtrasForAgents` 批量富化 `LastRunStatus` / `LastRunAt` / `PendingEvolutionCount`。
+
+### 3.3 创建者筛选解析
+
+文件：`internal/biz/agent_context.go`
 
 ```go
-func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, error) {
-    id = strings.TrimSpace(id)
-    if id == "" {
-        return Agent{}, kerrors.BadRequest("AGENT", "id is required")
-    }
-    a, err := u.repo.GetAgentByID(ctx, id)
-    if err != nil {
-        if stderrors.Is(err, sql.ErrNoRows) {
-            return Agent{}, kerrors.NotFound("AGENT", "agent not found")
-        }
-        return Agent{}, kerrors.InternalServer("AGENT", err.Error())
-    }
-    a.IsFavorite = !a.IsFavorite
-    updated, err := u.repo.UpdateAgent(ctx, a)
-    if err != nil {
-        return Agent{}, kerrors.InternalServer("AGENT", err.Error())
-    }
-    return updated, nil
-}
+const AgentListCreatedByMine = "mine"
+
+func AgentCreatedByFromContext(ctx context.Context) string
+func ResolveListCreatedByFilter(ctx context.Context, filter string) string
 ```
 
-### 3.4 已有 Repo 接口
+`ResolveListCreatedByFilter` 将 `"mine"` 解析为当前 ctx 用户 id，空字符串保持空（全部），其他值透传。
+
+### 3.4 归属类型归一化
+
+文件：`internal/biz/agent_kind.go`
 
 ```go
-type AgentRepository interface {
+func NormalizeAgentKind(raw string) string
+func IsA2AProxyAgent(ag Agent) bool
+func HydrateAgentKind(a *Agent)
+```
+
+### 3.5 Repo 接口（窄接口）
+
+文件：`internal/biz/agent_usecase.go`
+
+```go
+// Stability:stable
+type AgentReader interface {
     SearchAgents(ctx context.Context, q AgentListQuery) (AgentListResult, error)
     GetAgentByID(ctx context.Context, id string) (Agent, error)
+    GetAgentByAgentKey(ctx context.Context, agentKey string) (Agent, error)
+    ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
+}
+
+// Stability:stable
+type AgentWriter interface {
+    CreateAgent(ctx context.Context, a Agent) (Agent, error)
     UpdateAgent(ctx context.Context, a Agent) (Agent, error)
     DeleteAgent(ctx context.Context, id string) error
+    ToggleFavorite(ctx context.Context, id string) (Agent, error)
+}
+
+// Stability:stable
+type AgentPositionRepo interface {
+    ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
+    ReorderAgents(ctx context.Context, ids []string) error
+    ClearPositionByDepartment(ctx context.Context, deptID string) (int, error)
 }
 ```
 
@@ -195,21 +288,16 @@ type AgentRepository interface {
 
 ## 四、Data 层
 
-### 4.1 已有实现
+### 4.1 SearchAgents 实现
 
-`SearchAgents` 已在 `internal/data/agent_repo.go` 中实现：
+文件：`internal/data/agent_repo.go`
 
 ```go
 func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz.AgentListResult, error) {
-    if q.Limit <= 0 {
-        q.Limit = 24
-    }
-    if q.Limit > 100 {
-        q.Limit = 100
-    }
-    if q.Offset < 0 {
-        q.Offset = 0
-    }
+    if q.Limit <= 0 { q.Limit = 24 }
+    if q.Limit > 100 { q.Limit = 100 }
+    if q.Offset < 0 { q.Offset = 0 }
+
     preds := []predicate.Agent{agent.DeletedAtEQ("")}
     if kw := strings.TrimSpace(q.Keyword); kw != "" {
         preds = append(preds, agent.Or(
@@ -220,76 +308,44 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
             agent.AgentDescriptionContainsFold(kw),
         ))
     }
-    if q.Status != "" {
-        preds = append(preds, agent.StatusEQ(q.Status))
+    if q.Status != ""   { preds = append(preds, agent.StatusEQ(q.Status)) }
+    if q.Provider != "" { preds = append(preds, agent.ProviderEQ(q.Provider)) }
+    if q.OrgNodeID != "" {
+        // 解析职位子树，匹配 position_id IN (...)
+        positionIDs, err := r.categoryPositionIDsForFilter(ctx, q.OrgNodeID)
+        // ...
     }
-    if q.Provider != "" {
-        preds = append(preds, agent.ProviderEQ(q.Provider))
+    if cb := strings.TrimSpace(q.CreatedBy); cb != "" {
+        preds = append(preds, agent.CreatedByEQ(cb))
     }
-    if q.CategoryID != "" {
-        preds = append(preds, agent.CategoryPositionIDEQ(q.CategoryID))
+    if role := strings.TrimSpace(q.Role); role != "" {
+        preds = append(preds, agent.RolesJSONContains(role))
     }
+    if q.Kind != "" { preds = append(preds, agent.KindEQ(agent.Kind(q.Kind))) }
+
     where := agent.And(preds...)
-    c := r.data.entClient
+    c := r.data.RW().Read(ctx)  // 读写分离：读走 readClient
     total, err := c.Agent.Query().Where(where).Count(ctx)
-    if err != nil {
-        return biz.AgentListResult{}, err
-    }
+    // ...
     rows, err := c.Agent.Query().Where(where).
         Order(agent.ByIsDefault(entsql.OrderDesc()), agent.ByUpdatedAt(entsql.OrderDesc())).
-        Limit(q.Limit).
-        Offset(q.Offset).
-        All(ctx)
-    if err != nil {
-        return biz.AgentListResult{}, err
-    }
-    items := make([]biz.Agent, 0, len(rows))
-    for _, row := range rows {
-        items = append(items, entAgentToBiz(row))
-    }
-    return biz.AgentListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+        Limit(q.Limit).Offset(q.Offset).All(ctx)
+    // ...
 }
 ```
 
-### 4.2 已有转换函数
+要点：
+- 使用 `r.data.RW().Read(ctx)` 走读连接（WAL 并发读），符合 DB 读写分离规范
+- 默认按 `is_default DESC, updated_at DESC` 排序
+- `OrgNodeID` 通过 `categoryPositionIDsForFilter` 解析为职位 id 列表后用 `PositionIDIn` 匹配
 
-```go
-func entAgentToBiz(a *ent.Agent) biz.Agent {
-    if a == nil {
-        return biz.Agent{}
-    }
-    return biz.Agent{
-        ID:                 a.ID,
-        AgentKey:           a.AgentKey,
-        DisplayName:        a.DisplayName,
-        Provider:           a.Provider,
-        Model:              a.Model,
-        Status:             a.Status,
-        IsDefault:          a.IsDefault,
-        IsFavorite:         a.IsFavorite,
-        Icon:               a.Icon,
-        AgentDescription:   a.AgentDescription,
-        CategoryPositionID: a.CategoryPositionID,
-        SystemPromptMode:   a.SystemPromptMode,
-        ContextWindow:      a.ContextWindow,
-        BudgetMonthlyCents: a.BudgetMonthlyCents,
-        ConfigJSON:         a.ConfigJSON,
-        CreatedAt:          a.CreatedAt,
-        UpdatedAt:          a.UpdatedAt,
-        DeletedAt:          a.DeletedAt,
-    }
-}
-```
-
-### 4.3 DeleteAgent 实现
+### 4.2 DeleteAgent 实现（软删）
 
 ```go
 func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
-    if id == "" {
-        return fmt.Errorf("id is required")
-    }
+    if id == "" { return fmt.Errorf("id is required") }
     now := nowRFC3339()
-    _, err := r.data.entClient.Agent.UpdateOneID(id).
+    _, err := r.data.RW().Write(ctx).Agent.UpdateOneID(id).
         SetDeletedAt(now).
         SetStatus("deleted").
         SetUpdatedAt(now).
@@ -298,36 +354,55 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 }
 ```
 
+### 4.3 ListExtrasForAgents（运行态富化）
+
+文件：`internal/data/agent_repo.go`（同文件）
+
+批量查询每个 Agent 的最近会话运行状态 + pending 进化建议计数，返回 `map[agentID]AgentListExtras`。
+
+### 4.4 ListAgentCreators
+
+```go
+func (r *agentRepo) ListAgentCreators(ctx context.Context) ([]biz.AgentCreator, error) {
+    rows, err := r.data.RW().Read(ctx).Agent.Query().
+        Where(agent.DeletedAtEQ(""), agent.CreatedByNEQ("")).
+        Select(agent.FieldCreatedBy).
+        GroupBy(agent.FieldCreatedBy).
+        Strings(ctx)
+    // 首项追加「仅我的」（当前用户）
+    // ...
+}
+```
+
+### 4.5 ReorderAgents（stub）
+
+```go
+func (r *agentRepo) ReorderAgents(ctx context.Context, ids []string) error {
+    return nil  // TODO: 实现 position 排序持久化
+}
+```
+
 ---
 
 ## 五、Service 层
 
-### 5.1 已有 Service 实现
-
 文件：`internal/service/agent.go`
 
+### 5.1 ListAgents
+
 ```go
-type AgentService struct {
-    v1.UnimplementedAgentServiceServer
-    uc *biz.AgentUsecase
-}
-
-func NewAgentService(uc *biz.AgentUsecase) *AgentService {
-    return &AgentService{uc: uc}
-}
-
 func (s *AgentService) ListAgents(ctx context.Context, req *v1.ListAgentsRequest) (*v1.ListAgentsResponse, error) {
     page, err := s.uc.List(ctx, biz.AgentListQuery{
-        Keyword:    req.GetKeyword(),
-        Status:     req.GetStatus(),
-        Provider:   req.GetProvider(),
-        CategoryID: req.GetCategoryId(),
-        Limit:      int(req.GetLimit()),
-        Offset:     int(req.GetOffset()),
+        Keyword:   req.GetKeyword(),
+        Status:    req.GetStatus(),
+        Provider:  req.GetProvider(),
+        OrgNodeID: req.GetOrgNodeId(),
+        CreatedBy: biz.ResolveListCreatedByFilter(ctx, req.GetCreatedBy()),
+        Limit:     int(req.GetLimit()),
+        Offset:    int(req.GetOffset()),
     })
-    if err != nil {
-        return nil, err
-    }
+    if err != nil { return nil, err }
+    s.enrichEndpointFlags(ctx, page.Items)  // A2A endpoint 富化
     out := &v1.ListAgentsResponse{
         Total:  int32(page.Total),
         Limit:  int32(page.Limit),
@@ -338,61 +413,25 @@ func (s *AgentService) ListAgents(ctx context.Context, req *v1.ListAgentsRequest
     }
     return out, nil
 }
-
-func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentRequest) (*emptypb.Empty, error) {
-    if err := s.uc.Delete(ctx, req.GetId()); err != nil {
-        return nil, err
-    }
-    return &emptypb.Empty{}, nil
-}
 ```
 
-### 5.2 新增 ToggleFavorite 方法
+### 5.2 DeleteAgent / ToggleFavorite / DuplicateAgent / ListAgentCreators
 
 ```go
-func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavoriteRequest) (*v1.Agent, error) {
-    a, err := s.uc.ToggleFavorite(ctx, req.GetId())
-    if err != nil {
-        if stderrors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("AGENT", "agent not found")
-        }
-        return nil, err
-    }
-    return toProtoAgent(a), nil
-}
+func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentRequest) (*emptypb.Empty, error)
+func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavoriteRequest) (*v1.Agent, error)
+func (s *AgentService) DuplicateAgent(ctx context.Context, req *v1.DuplicateAgentRequest) (*v1.Agent, error)
+func (s *AgentService) ListAgentCreators(ctx context.Context, _ *emptypb.Empty) (*v1.ListAgentCreatorsResponse, error)
 ```
 
-### 5.3 类型转换函数
+- `DeleteAgent`：删除后 `invalidateAgentBuildCache` + 审计
+- `ToggleFavorite`：`NotFound` 错误翻译为 `apierror.NotFound`
+- `DuplicateAgent`：调用 `uc.Duplicate`，深拷贝 files，副本 `created_by` = 当前用户
+- `ListAgentCreators`：返回创建者列表（含「仅我的」首项）
 
-```go
-func toProtoAgent(b biz.Agent) *v1.Agent {
-    out := &v1.Agent{
-        Id:                 b.ID,
-        AgentKey:           b.AgentKey,
-        DisplayName:        b.DisplayName,
-        Provider:           b.Provider,
-        Model:              b.Model,
-        Status:             b.Status,
-        IsDefault:          b.IsDefault,
-        IsFavorite:         b.IsFavorite,
-        Icon:               b.Icon,
-        AgentDescription:   b.AgentDescription,
-        CategoryPositionId: b.CategoryPositionID,
-        SystemPromptMode:   b.SystemPromptMode,
-        ContextWindow:      int32(b.ContextWindow),
-        BudgetMonthlyCents: int32(b.BudgetMonthlyCents),
-        ConfigJson:         b.ConfigJSON,
-        CreatedAt:          b.CreatedAt,
-        UpdatedAt:          b.UpdatedAt,
-        DeletedAt:          b.DeletedAt,
-        Settings:           toProtoRuntime(b.Settings),
-    }
-    for i := range b.Files {
-        out.Files = append(out.Files, toProtoFile(b.Files[i]))
-    }
-    return out
-}
-```
+### 5.3 类型转换
+
+`toProtoAgent(b biz.Agent) *v1.Agent` 完成 Biz → Proto 字段映射（含 `LastRunStatus` / `PendingEvolutionCount` / `Kind` / `Source` 等）。
 
 ---
 
@@ -408,37 +447,61 @@ var ProviderSet = wire.NewSet(NewAgentService)
 
 ## 七、Web 前端设计
 
-### 7.1 文件结构
+### 7.1 文件结构（实际）
 
 ```
-web/src/features/agents/
-├── api.ts                     ← API 调用封装
-├── types.ts                   ← TypeScript 类型定义
-├── wireNormalize.ts           ← Proto ↔ TS 数据规范化
-├── useAgentsPage.ts           ← 列表页 composable
-└── components/
-    ├── AgentListPage.vue       ← 列表页主组件
-    ├── AgentCard.vue           ← 网格卡片
-    ├── AgentListItem.vue       ← 列表行
-    ├── AgentCreateDialog.vue   ← 创建弹窗（见 2 agents-create.design.md）
-    └── AgentDeleteConfirm.vue  ← 删除确认弹窗
+web/src/
+├── pages/
+│   └── AgentsPage.vue                    ← 列表页壳（组合 Hero + Filters + List + Pagination + Dialog）
+├── features/agents/
+│   ├── api.ts                            ← API 调用封装
+│   ├── types.ts                          ← TypeScript 类型定义
+│   ├── wireNormalize.ts                  ← Proto ↔ TS 数据规范化
+│   ├── useAgentsPage.ts                  ← 列表页 composable（组合 Pinia Store + 局部 UI）
+│   └── useAgentProviderModelPicker.ts    ← Provider/Model 选择器
+├── components/agents/
+│   ├── AgentsWorkspaceHero.vue           ← 页头 Hero（标题 + 创建/迁移按钮）
+│   ├── AgentsFiltersCard.vue             ← 筛选行（关键字 + 状态 + Provider + 业务分类 + 创建者 + 视图切换）
+│   ├── AgentsListSection.vue             ← 网格/表格/空态/骨架屏/三组分组/拖拽排序
+│   ├── AgentsPaginationBar.vue           ← 底部分页栏
+│   ├── AgentCard.vue                     ← 网格卡片
+│   ├── KindBadge.vue                     ← 归属类型徽章（builtin/preset/user）
+│   └── TaxonomyFilter.vue                ← 分类体系筛选（替代旧 category filter）
+└── stores/
+    └── agents/
+        └── index.ts                    ← Pinia Store `useAgentsPageStore`（列表状态、筛选、分页、CRUD）
 ```
 
 ### 7.2 TypeScript 类型定义
 
+文件：`web/src/features/agents/types.ts`
+
 ```typescript
+export type AgentOwnership = '' | 'user' | 'system_builtin' | 'ecosystem_preset' | 'marketplace' | 'certified';
+export type AgentKind = '' | 'llm' | 'a2a_proxy';
+
 export type Agent = {
   id: string;
   agent_key: string;
   display_name: string;
   provider: string;
   model: string;
+  agent_kind?: AgentKind;
+  kind?: AgentOwnership;
+  a2a_proxy_config?: A2AProxyConfig;
+  a2a_endpoint_enabled?: boolean;
+  last_run_status?: string;
+  last_run_at?: string;
+  pending_evolution_count?: number;
   status: string;
   is_default: boolean;
   is_favorite: boolean;
   icon: string;
   agent_description: string;
-  category_position_id: string;
+  position_key?: string;
+  agent_variant?: string;
+  variant_description?: string;
+  taxonomy_position_id: string;
   system_prompt_mode: string;
   context_window: number;
   budget_monthly_cents: number;
@@ -446,6 +509,9 @@ export type Agent = {
   created_at: string;
   updated_at: string;
   deleted_at: string;
+  created_by?: string;
+  readonly?: boolean;
+  source?: string;
   settings?: AgentRuntimeSettings;
   files?: AgentPromptFile[];
 };
@@ -454,7 +520,8 @@ export type AgentListQuery = {
   keyword?: string;
   status?: string;
   provider?: string;
-  category_id?: string;
+  org_node_id?: string;   // 对应 proto org_node_id
+  created_by?: string;    // 空 | "mine" | 用户 id
   limit?: number;
   offset?: number;
 };
@@ -465,443 +532,134 @@ export type AgentListResult = {
   limit: number;
   offset: number;
 };
+
+export type AgentCreatorOption = {
+  user_id: string;
+  label: string;
+};
 ```
 
 ### 7.3 API 调用
 
-```typescript
-import { createAgentService } from "../../services";
-import type {
-  CreateAgentRequest as KratosCreateAgentRequest
-} from "../../services/kratos/agent/v1/index";
-import type { Agent, AgentListQuery, AgentListResult } from "./types";
-import { normalizeAgentFromService, partialAgentToWire } from "./wireNormalize";
+文件：`web/src/features/agents/api.ts`
 
+```typescript
 export async function listAgentsPaged(query: AgentListQuery = {}): Promise<AgentListResult> {
   const svc = createAgentService();
   const res = await svc.ListAgents({
     keyword: query.keyword,
     status: query.status,
     provider: query.provider,
-    categoryId: query.category_id,
+    orgNodeId: query.org_node_id,
+    createdBy: query.created_by,
     limit: query.limit,
-    offset: query.offset
+    offset: query.offset,
   });
   return {
-    items: (res.items ?? []).map((row) => normalizeAgentFromService(row)),
+    items: (res.items ?? []).map(normalizeAgentFromService),
     total: Number(res.total ?? res.items?.length ?? 0),
     limit: Number(res.limit ?? query.limit ?? 24),
-    offset: Number(res.offset ?? query.offset ?? 0)
+    offset: Number(res.offset ?? query.offset ?? 0),
   };
 }
 
 export async function deleteAgent(id: string): Promise<void> {
-  const svc = createAgentService();
-  await svc.DeleteAgent({ id });
+  await createAgentService().DeleteAgent({ id });
 }
 
-export async function toggleFavorite(id: string): Promise<Agent> {
-  const svc = createAgentService();
-  const data = await svc.ToggleFavorite({ id });
-  return normalizeAgentFromService(data);
+export async function toggleAgentFavorite(id: string): Promise<Agent> {
+  const res = await createAgentService().ToggleFavorite({ id });
+  return normalizeAgentFromService(res);
+}
+
+export async function duplicateAgent(id: string): Promise<Agent> {
+  const res = await createAgentService().DuplicateAgent({ id });
+  return normalizeAgentFromService(res);
+}
+
+export async function listAgentCreators(): Promise<AgentCreatorOption[]> {
+  const res = await createAgentService().ListAgentCreators({});
+  return (res.items ?? []).map((row) => ({
+    user_id: row.userId ?? '',
+    label: row.label ?? row.userId ?? '',
+  }));
 }
 ```
 
-### 7.4 Composable
+### 7.4 Composable（Pinia Store 组合）
+
+文件：`web/src/features/agents/useAgentsPage.ts`
+
+`useAgentsPage` 组合 `useAgentsPageStore`（Pinia）与局部 UI 状态（创建弹窗、删除弹窗、迁移弹窗、表单）。列表/筛选/分页状态由 Store 管理，符合 aranea-frontend-guide §3 数据流铁律。
 
 ```typescript
-import { ref, reactive, computed, watch, onMounted } from "vue";
-import { listAgentsPaged, deleteAgent, toggleFavorite } from "./api";
-import type { Agent, AgentListQuery } from "./types";
-
-type ViewMode = "grid" | "list";
-
 export function useAgentsPage() {
-  const agents = ref<Agent[]>([]);
-  const total = ref(0);
-  const loading = ref(false);
+  const pageStore = useAgentsPageStore();
+  const { agents, keyword, selectedStatus, selectedProvider, selectedTaxonomy,
+          selectedCreator, creatorOptions, page, rowsPerPage, total,
+          listLoading, taxonomyTree, pageMax, providerOptions, tableColumns } = storeToRefs(pageStore);
 
-  const viewMode = ref<ViewMode>(
-    (localStorage.getItem("agents.viewMode") as ViewMode) || "grid"
-  );
-  const filters = reactive<AgentListQuery>({
-    keyword: "",
-    status: "",
-    provider: "",
-    category_id: "",
-    limit: 24,
-    offset: 0
-  });
+  const createOpen = ref(false);
+  const migrationOpen = ref(false);
+  const deleteOpen = ref(false);
+  const viewMode = ref<ViewMode>((localStorage.getItem(LS_VIEW) as ViewMode) || 'grid');
 
-  const currentPage = computed(() =>
-    Math.floor(filters.offset! / filters.limit!) + 1
-  );
-  const totalPages = computed(() =>
-    Math.max(1, Math.ceil(total.value / filters.limit!))
-  );
-
-  async function fetchAgents() {
-    loading.value = true;
-    try {
-      const result = await listAgentsPaged(filters);
-      agents.value = result.items;
-      total.value = result.total;
-    } finally {
-      loading.value = false;
-    }
-  }
-
-  async function onDelete(id: string) {
-    await deleteAgent(id);
-    await fetchAgents();
-  }
-
-  async function onToggleFavorite(id: string) {
-    await toggleFavorite(id);
-    const idx = agents.value.findIndex((a) => a.id === id);
-    if (idx >= 0) {
-      agents.value[idx].is_favorite = !agents.value[idx].is_favorite;
-    }
-  }
-
-  function setViewMode(mode: ViewMode) {
-    viewMode.value = mode;
-    localStorage.setItem("agents.viewMode", mode);
-  }
-
-  function setPage(page: number) {
-    filters.offset = (page - 1) * filters.limit!;
-    fetchAgents();
-  }
-
-  function resetPage() {
-    filters.offset = 0;
-    fetchAgents();
-  }
-
-  watch(
-    () => [filters.keyword, filters.status, filters.provider, filters.category_id],
-    () => resetPage()
-  );
-
-  onMounted(fetchAgents);
-
-  return {
-    agents,
-    total,
-    loading,
-    viewMode,
-    filters,
-    currentPage,
-    totalPages,
-    fetchAgents,
-    onDelete,
-    onToggleFavorite,
-    setViewMode,
-    setPage,
-    resetPage
-  };
+  // ... 创建/删除/复制/收藏/迁移事件处理
 }
 ```
 
-### 7.5 组件设计
+Store 内部 watch `keyword` / `selectedStatus` / `selectedProvider` / `selectedTaxonomy` / `selectedCreator` 变化时重置 page=1 并触发 `loadAgentList`。
 
-**AgentListPage.vue**：
+### 7.5 组件契约
 
-```vue
-<template>
-  <QPage class="q-pa-md">
-    <div class="row items-center justify-between q-mb-md">
-      <div>
-        <div class="text-h5">Agent</div>
-        <div class="text-caption text-grey">管理您的 AI Agent</div>
-      </div>
-      <div class="row q-gutter-sm">
-        <QBtn outline icon="swap_horiz" label="Agent迁移" @click="onMigrate" />
-        <QBtn unelevated color="primary" icon="add" label="创建Agent" @click="createOpen = true" />
-      </div>
-    </div>
+**AgentsListSection.vue**（核心列表区）：
 
-    <div class="row q-col-gutter-sm items-center q-mb-md">
-      <div class="col-12 col-md-3">
-        <QInput
-          v-model="filters.keyword"
-          outlined
-          dense
-          placeholder="搜索Agent..."
-          debounce="400"
-          clearable
-        >
-          <template #prepend><QIcon name="search" /></template>
-        </QInput>
-      </div>
-      <div class="col-6 col-md-2">
-        <QSelect
-          v-model="filters.status"
-          :options="statusOptions"
-          outlined
-          dense
-          emit-value
-          map-options
-          clearable
-          label="状态"
-        />
-      </div>
-      <div class="col-6 col-md-2">
-        <QSelect
-          v-model="filters.provider"
-          :options="providerOptions"
-          outlined
-          dense
-          emit-value
-          map-options
-          clearable
-          label="Provider"
-        />
-      </div>
-      <div class="col-6 col-md-2">
-        <QSelect
-          v-model="filters.category_id"
-          :options="categoryOptions"
-          outlined
-          dense
-          emit-value
-          map-options
-          clearable
-          label="业务分类"
-        />
-      </div>
-      <div class="col-auto">
-        <QBtnToggle
-          v-model="viewMode"
-          :options="[{value:'grid',icon:'grid_view'},{value:'list',icon:'view_list'}]"
-          flat
-          toggle-color="primary"
-          @update:model-value="setViewMode"
-        />
-      </div>
-    </div>
+```typescript
+defineProps<{
+  loading: boolean;
+  agents: Agent[];
+  keyword: string;
+  viewMode: 'grid' | 'list';
+  rowsPerPage: number;
+  tableColumns: QTableColumn<Agent>[];
+  isFavorite: (id: string) => boolean;
+  getCategoryLabel: (taxonomyPositionId: string) => string;
+}>();
 
-    <QInnerLoading :showing="loading" />
-
-    <div v-if="!loading && agents.length === 0" class="column items-center q-pa-xl text-grey">
-      <QIcon name="smart_toy" size="64px" />
-      <div class="text-h6 q-mt-sm">暂无 Agent</div>
-      <QBtn color="primary" label="创建 Agent" class="q-mt-md" @click="createOpen = true" />
-    </div>
-
-    <div v-if="viewMode === 'grid'" class="row q-col-gutter-md">
-      <div v-for="agent in agents" :key="agent.id" class="col-12 col-sm-6 col-md-4 col-lg-3">
-        <AgentCard
-          :agent="agent"
-          @toggle-favorite="onToggleFavorite"
-          @delete="onDelete"
-        />
-      </div>
-    </div>
-
-    <QTable
-      v-else
-      :rows="agents"
-      :columns="listColumns"
-      row-key="id"
-      flat
-      :loading="loading"
-      hide-pagination
-    >
-      <template #body-cell-is_favorite="props">
-        <QTd :props="props">
-          <QBtn
-            flat
-            round
-            dense
-            :icon="props.row.is_favorite ? 'star' : 'star_border'"
-            :color="props.row.is_favorite ? 'amber' : 'grey'"
-            @click="onToggleFavorite(props.row.id)"
-          />
-        </QTd>
-      </template>
-      <template #body-cell-actions="props">
-        <QTd :props="props">
-          <QBtn flat round dense icon="delete" color="negative" @click="onDelete(props.row.id)" />
-        </QTd>
-      </template>
-    </QTable>
-
-    <div class="row items-center justify-between q-mt-md">
-      <div class="text-caption text-grey">{{ total }} 条</div>
-      <div class="row items-center q-gutter-sm">
-        <QSelect
-          v-model="filters.limit"
-          :options="[10, 20, 50]"
-          outlined
-          dense
-          style="width: 80px"
-          @update:model-value="resetPage"
-        />
-        <span class="text-caption">第 {{ currentPage }} / {{ totalPages }} 页</span>
-        <QBtn
-          round
-          flat
-          dense
-          icon="chevron_left"
-          :disable="currentPage <= 1"
-          @click="setPage(currentPage - 1)"
-        />
-        <QBtn
-          round
-          flat
-          dense
-          icon="chevron_right"
-          :disable="currentPage >= totalPages"
-          @click="setPage(currentPage + 1)"
-        />
-      </div>
-    </div>
-
-    <AgentCreateDialog v-model="createOpen" @created="fetchAgents" />
-  </QPage>
-</template>
-
-<script setup lang="ts">
-import { ref } from "vue";
-import { useAgentsPage } from "../useAgentsPage";
-import AgentCard from "./AgentCard.vue";
-import AgentCreateDialog from "./AgentCreateDialog.vue";
-
-const {
-  agents, total, loading, viewMode, filters,
-  currentPage, totalPages, fetchAgents,
-  onDelete, onToggleFavorite, setViewMode, setPage, resetPage
-} = useAgentsPage();
-
-const createOpen = ref(false);
-
-const statusOptions = [
-  { label: "活跃", value: "active" },
-  { label: "停用", value: "inactive" }
-];
-
-const providerOptions = [
-  { label: "OpenAI", value: "openai" },
-  { label: "DeepSeek", value: "deepseek" },
-  { label: "Anthropic", value: "anthropic" },
-  { label: "Gemini", value: "gemini" },
-  { label: "Ollama", value: "ollama" }
-];
-
-const categoryOptions = ref<{ label: string; value: string }[]>([]);
-
-const listColumns = [
-  { name: "is_favorite", label: "", field: "is_favorite", align: "center" as const, sortable: false },
-  { name: "display_name", label: "名称", field: "display_name", align: "left" as const, sortable: true },
-  { name: "agent_key", label: "标识", field: "agent_key", align: "left" as const },
-  { name: "status", label: "状态", field: "status", align: "center" as const },
-  { name: "provider", label: "Provider", field: "provider", align: "left" as const },
-  { name: "model", label: "模型", field: "model", align: "left" as const },
-  { name: "context_window", label: "上下文", field: "context_window", align: "right" as const, format: (v: number) => v ? `${Math.round(v / 1000)}K ctx` : "" },
-  { name: "actions", label: "", field: "actions", align: "center" as const, sortable: false }
-];
-
-function onMigrate() {}
-</script>
+defineEmits<{
+  create: [];
+  'toggle-favorite': [id: string];
+  'copy-key': [key: string];
+  delete: [agent: Agent];
+  duplicate: [agent: Agent];
+  reorder: [ids: string[]];
+}>();
 ```
+
+三组分组逻辑：
+- `builtinAgents` = `agents.filter(a => a.readonly)`
+- `presetAgents` = `agents.filter(a => !a.readonly && a.kind === 'ecosystem_preset')`
+- `userAgents` = `agents.filter(a => !a.readonly && a.kind !== 'ecosystem_preset')`
+
+`userAgents` 通过 `vuedraggable` 支持拖拽排序，拖拽结束触发 `reorder` 事件。
 
 **AgentCard.vue**：
 
-```vue
-<template>
-  <QCard flat bordered class="agent-card cursor-pointer" @click="$emit('click', agent)">
-    <QCardSection class="row items-start q-pb-none">
-      <QAvatar size="40px" rounded class="q-mr-sm">
-        <img v-if="agent.icon" :src="`/avatar-assets/${agent.icon}/thumbnail`" />
-        <QIcon v-else name="smart_toy" size="40px" color="grey" />
-      </QAvatar>
-      <div class="col">
-        <div class="row items-center">
-          <span class="text-subtitle1 text-weight-medium ellipsis">{{ agent.display_name }}</span>
-          <QBtn
-            flat
-            round
-            dense
-            size="sm"
-            :icon="agent.is_favorite ? 'star' : 'star_border'"
-            :color="agent.is_favorite ? 'amber' : 'grey'"
-            class="q-ml-xs"
-            @click.stop="$emit('toggle-favorite', agent.id)"
-          />
-        </div>
-        <div class="text-caption text-grey ellipsis">{{ agent.agent_key }}</div>
-      </div>
-      <QBadge
-        :color="statusColor"
-        :label="agent.status"
-        class="q-ml-sm"
-      />
-    </QCardSection>
-
-    <QCardSection class="q-pt-xs q-pb-xs">
-      <div class="text-caption text-grey-7">{{ agent.provider }} / {{ agent.model }}</div>
-      <div class="text-body2 ellipsis-3-lines q-mt-xs" style="min-height: 40px">
-        {{ agent.agent_description || '暂无描述' }}
-      </div>
-    </QCardSection>
-
-    <QCardSection class="row items-center q-pt-none">
-      <QChip v-if="agent.system_prompt_mode" dense size="sm" :label="agent.system_prompt_mode" />
-      <QSpace />
-      <span class="text-caption text-grey q-mr-sm">
-        {{ agent.context_window ? `${Math.round(agent.context_window / 1000)}K ctx` : '' }}
-      </span>
-      <QBtn flat round dense size="sm" icon="delete" color="negative" @click.stop="confirmDelete = true" />
-    </QCardSection>
-
-    <QDialog v-model="confirmDelete" persistent>
-      <QCard>
-        <QCardSection class="row items-center">
-          <QAvatar icon="warning" color="negative" text-color="white" />
-          <span class="q-ml-sm">确认删除 Agent「{{ agent.display_name }}」？</span>
-        </QCardSection>
-        <QCardActions align="right">
-          <QBtn flat label="取消" @click="confirmDelete = false" />
-          <QBtn unelevated color="negative" label="删除" @click="$emit('delete', agent.id); confirmDelete = false" />
-        </QCardActions>
-      </QCard>
-    </QDialog>
-  </QCard>
-</template>
-
-<script setup lang="ts">
-import { ref, computed } from "vue";
-import type { Agent } from "../types";
-
-const props = defineProps<{ agent: Agent }>();
+```typescript
+defineProps<{ agent: Agent }>();
 defineEmits<{
-  click: [agent: Agent];
-  "toggle-favorite": [id: string];
-  delete: [id: string];
+  'toggle-favorite': [id: string];
+  'copy-key': [key: string];
+  delete: [agent: Agent];
+  duplicate: [agent: Agent];
 }>();
-
-const confirmDelete = ref(false);
-
-const statusColor = computed(() => {
-  switch (props.agent.status) {
-    case "active": return "positive";
-    case "inactive": return "grey";
-    default: return "grey";
-  }
-});
-</script>
-
-<style scoped>
-.ellipsis-3-lines {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-</style>
 ```
+
+系统内置 Agent（`readonly=true`）不显示「复制」「删除」按钮。
+
+**AgentsFiltersCard.vue**：
+
+使用 `defineModel` 双向绑定 `keyword` / `selectedStatus` / `selectedTaxonomy` / `selectedCreator` / `selectedProvider` / `viewMode`。
 
 ### 7.6 状态映射
 
@@ -915,44 +673,178 @@ const statusColor = computed(() => {
 
 ```typescript
 function formatContextWindow(ctx: number): string {
-  if (ctx <= 0) return "";
+  if (ctx <= 0) return '';
   if (ctx >= 1_000_000) return `${(ctx / 1_000_000).toFixed(1)}M ctx`;
   return `${Math.round(ctx / 1000)}K ctx`;
 }
 ```
 
-### 7.8 空状态与异常
+### 7.8 运行态格式化
+
+`formatLastRunContext(agent)` 位于 `components/agents/agentUi.ts`，组合 `last_run_status` + `last_run_at` 输出如 `active · 2 小时前`。
+
+### 7.9 进化中判定
+
+```typescript
+function isAgentEvolving(agent: Agent): boolean {
+  return agent.settings?.self_evolve === true && (agent.pending_evolution_count ?? 0) > 0;
+}
+```
+
+### 7.10 空状态与异常
 
 | 场景 | 处理 |
 |------|------|
 | 无数据 | 插图 + 文案「暂无 Agent」+ 引导「创建 Agent」 |
 | 搜索无结果 | 「未找到匹配的 Agent」+ 清除搜索 |
-| 加载中 | `QInnerLoading` |
+| 加载中 | 骨架屏 `QSkeleton` |
 | 接口失败 | `Notify` 错误信息，保留上次成功数据 |
 | 删除成功 | `Notify` 成功 + 刷新列表 |
 | 收藏切换 | 即时更新本地状态 + 后台同步 |
+| 复制成功 | `Notify` 成功 + 刷新列表 |
 
 ---
 
-## 八、与创建页的衔接
+## 八、列表项字段与数据模型映射
+
+### 8.1 Ent Schema
+
+文件：`internal/data/ent/schema/agent.go`
+
+表名：`agents`（`entsql.Annotation{Table: "agents"}`）
+
+| Ent 字段 | 类型 | 默认 | 说明 |
+|---------|------|------|------|
+| `id` | string(256) | — | Immutable Unique |
+| `agent_key` | string(512) | — | Unique |
+| `display_name` | string(1024) | — | |
+| `provider` | string | — | |
+| `model` | string | — | |
+| `status` | string | `active` | |
+| `is_default` | bool | false | |
+| `is_favorite` | bool | false | |
+| `icon` | string | `""` | 头像资产 id |
+| `agent_description` | text | `""` | |
+| `system_prompt_mode` | string | `""` | |
+| `context_window` | int | 0 | |
+| `budget_monthly_cents` | int | 0 | |
+| `config_json` | text | `""` | |
+| `roles_json` | text | `[]` | |
+| `created_by` | string | `""` | 创建者用户 id |
+| `created_at` / `updated_at` / `deleted_at` | string | `""` | RFC3339 |
+| `readonly` | bool | false | 系统内置不可删 |
+| `kind` | enum | `user` | `user` / `system_builtin` / `ecosystem_preset` / `marketplace` / `certified` |
+| `source` | enum | `user` | `user` / `system` / `imported` |
+| `position_key` | string | `""` | FK to positions.key |
+| `position_id` | string | `""` | FK to organizations(position) |
+| `agent_variant` | string | `general` | |
+| `variant_description` | text | `""` | |
+
+索引：
+- `deleted_at`
+- `deleted_at` + `status`
+- `position_key` + `agent_variant`（Unique）
+
+### 8.2 界面展示 ↔ 数据库列映射
+
+| 界面展示 | 数据库列 / 来源 | 说明 |
+|----------|-----------------|------|
+| 名称 | `display_name` | 必填展示 |
+| handle | `agent_key` | 唯一业务键展示 |
+| 头像 | `icon` | 头像资产 id；`src` 指向只读出图接口 |
+| 归属徽章 | `kind` + `readonly` | `readonly=true` → builtin；`kind=ecosystem_preset` → preset；其余 → user |
+| 状态徽章 | `status` | 如 `active` |
+| 模型行 | `provider` + `model` | 拼接为 `provider / model` |
+| 业务分类 | `position_id` 解析 | 副文案或 `QChip`，与筛选同源 |
+| 卡片描述摘要 | `agent_description` 截断 | |
+| 标签 chips | `roles_json` 或 `config_json.tags` | 产品枚举需与后端约定 |
+| 进化中 | `settings.self_evolve` + `pending_evolution_count` | `self_evolve && pending_evolution_count > 0` |
+| 运行态 | `last_run_status` + `last_run_at` | 来自 `ListExtrasForAgents` 富化 |
+| 200K ctx | `context_window` | UI 格式化为 `200K ctx` |
+| 收藏星标 | `is_favorite` | 见 §九 |
+| 创建者 | `created_by` | 筛选用 |
+
+---
+
+## 九、收藏设计
+
+当前实现：`is_favorite` 字段存储在 `agents` 表行内（单用户维度）。
+
+| 方案 | 说明 | 现状 |
+|------|------|------|
+| **当前** | `agents.is_favorite` bool 字段，`ToggleFavorite` RPC 直接翻转 | ✅ 已实现 |
+| **推荐（多用户）** | 独立表 `user_agent_favorites(user_id, agent_id, created_at)`，唯一 `(user_id, agent_id)` | 未实现 |
+
+`ToggleFavorite` RPC：`PATCH /v1/agents/{id}/favorite`，返回更新后的 `Agent`。
+
+多用户场景需迁移至独立收藏表，列表接口返回 `is_favorite`（当前用户维度）。
+
+---
+
+## 十、列表 API 契约
+
+### 10.1 端点表
+
+| 方法 | 路由 | RPC | 说明 |
+|------|------|-----|------|
+| GET | `/v1/agents` | `ListAgents` | 列表查询 |
+| DELETE | `/v1/agents/{id}` | `DeleteAgent` | 软删 |
+| PATCH | `/v1/agents/{id}/favorite` | `ToggleFavorite` | 收藏切换 |
+| POST | `/v1/agents/{id}/duplicate` | `DuplicateAgent` | 复制 |
+| GET | `/v1/agents/creators` | `ListAgentCreators` | 创建者列表 |
+
+### 10.2 列表查询参数
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `keyword` | string | `""` | 命中 display_name/agent_key/provider/model/agent_description |
+| `status` | string | `""` | active/inactive/deleted |
+| `provider` | string | `""` | |
+| `org_node_id` | string | `""` | 业务分类职位节点 id |
+| `created_by` | string | `""` | 空 = 全部；`mine` = 当前用户；否则用户 id |
+| `limit` | int32 | 24 | 最大 100 |
+| `offset` | int32 | 0 | |
+
+### 10.3 响应
+
+```json
+{
+  "items": [Agent],
+  "total": 100,
+  "limit": 24,
+  "offset": 0
+}
+```
+
+`Agent` 含列表所需列 + `is_favorite` + `last_run_status` + `last_run_at` + `pending_evolution_count` + `kind` + `source` + `readonly`。
+
+---
+
+## 十一、与创建页的衔接
 
 | 事件 | 列表页行为 |
 |------|------------|
 | 创建成功 | 关闭弹窗 + 刷新列表（保持筛选/页码） |
 | 删除成功 | 从列表移除 + 刷新 |
 | 收藏切换 | 即时更新卡片星标状态 |
+| 复制成功 | 刷新列表，新副本出现在用户分组 |
 
 ---
 
-## 九、实现检查清单
+## 十二、设计覆盖与实现差距
 
-- [ ] Proto：`ToggleFavorite` RPC 已添加到 `agent.proto`
-- [ ] `make api` 已执行，Go + TS 生成物已提交
-- [ ] Biz：`AgentUsecase.ToggleFavorite` 已实现
-- [ ] Data：`SearchAgents` 已支持 keyword/status/provider/category_id 筛选
-- [ ] Service：`AgentService.ToggleFavorite` 已实现，含 `sql.ErrNoRows` → `kerrors.NotFound`
-- [ ] Web：`api.ts` 新增 `toggleFavorite` 调用
-- [ ] Web：`useAgentsPage.ts` composable 完整
-- [ ] Web：`AgentListPage.vue` 网格/列表切换 + 筛选 + 分页
-- [ ] Web：`AgentCard.vue` 卡片完整字段 + 收藏 + 删除确认
-- [ ] Wire：`NewAgentService` 注入无需变更
+> 任务清单与进度状态详见 [3-agent-list.development.md §4](./3-agent-list.development.md#4-任务清单)。
+
+**已实现（设计已覆盖）**：
+- Proto：`ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators` RPC
+- Biz：`AgentUsecase.List` / `Delete` / `ToggleFavorite` / `Duplicate` / `ListAgentCreators` / `BatchUpdateAgents`
+- Data：`SearchAgents`（keyword/status/provider/org_node_id/created_by/role/kind 筛选）/ `ListExtrasForAgents` / `ListAgentCreators`
+- Service：`ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators`
+- Web：`api.ts` / `useAgentsPage.ts` / `AgentsPage.vue` / `AgentsListSection.vue` / `AgentCard.vue` / `KindBadge.vue` / `TaxonomyFilter.vue`
+- Wire：`NewAgentService` 注入
+
+**待实现（设计未覆盖，需新增设计）**：
+- Proto：`BatchUpdateAgents` RPC（biz 已实现，缺 proto 暴露）
+- Proto：`ReorderAgents` RPC（biz/data 为 stub，需同步实现 data 层持久化 + proto 暴露）
+- 前端：批量操作 UI（多选 + 批量启用/停用/删除）
+- 前端：Agent 迁移导入/导出流程

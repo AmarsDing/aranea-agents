@@ -4,6 +4,8 @@
 
 **通道与 Chat** 与 **`17 channel.md`** 中的 **`channel` 主表**、通道管理列表/新增流程对齐；高级设置 §8.2 仅描述 **Agent 侧绑定字段与级联 UI**，通道建模以 **`17 channel.md`** 为准。
 
+> 实现细节（缓存边界、`<internal_config>` 注入、AGENTS 双文件存储、运行时注入块、API 契约、数据模型、Proto 定义）见 [8-agent-title.design.md](./8-agent-title.design.md)。
+
 ---
 
 ## 1. 顶栏（摘要）
@@ -42,24 +44,13 @@
 
 ## 3. 缓存边界（cache boundary）
 
-运行时在完整提示中可插入标记（示例）：
-
-```text
-── cache boundary ── stable above · dynamic below
-```
-
-| 区段 | 含义 |
-|------|------|
-| **stable above** | 相对稳态：人格块、工具说明、AGENTS 分片、CAPABILITIES 等（仍可能随 PATCH 变，但同会话内多次请求可缓存复用） |
-| **dynamic below** | 每轮或高频变化：**当前日期**、`<system_context name="TEAM.md">`、**Runtime** 行、会话任务片段等 |
-
-UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
+> 已迁移至设计文档 §3.5 [缓存边界](./8-agent-title.design.md#35-缓存边界cache-boundary)。
 
 ---
 
-## 4. 模式与注入块（runtime 契约）
+## 4. 模式与注入块（用户视角）
 
-下列与 **`5` §5** 绑定；以下为 **产品/实现约定**，便于前后端与 GoClaw 类运行时对齐。
+下列与 **`5` §5** 绑定；以下为 **产品约定**，便于前后端与运行时对齐。注入块来源、`<internal_config>` 包裹等实现细节见设计文档 §3。
 
 | 模式 | `system_prompt_mode` | 典型包含（摘要） |
 |------|----------------------|------------------|
@@ -70,56 +61,25 @@ UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
 
 **Self-Evolution 文案**（完整模式中常见）：允许更新 **SOUL.md**、**CAPABILITIES.md** 的风格与领域表述；**禁止**改名称、身份、联系方式、核心目的、**IDENTITY.md**、**AGENTS\*** 等——与 **`6 agent-setting-file.md`**、**`7 agent-evolution.md`** 一致。
 
+> 各模式实际包含的文件白名单以代码 `FilesForMode` 为准，详见设计文档 §3.6。
+
 ---
 
 ## 5. `<internal_config>` 与「文件」字段
 
-运行时将每个 Markdown 文件包在标签内注入：
-
-```xml
-<internal_config name="IDENTITY.md">
-…
-</internal_config>
-```
-
-实现位置：`BuildSystemPrompt`（`internal/agent/prompt.go`），每个文件内容用 `fmt.Sprintf("<internal_config name=%q>\n", f.Name)` 包裹。
-
-| `name` 属性 | 典型来源列（见 **`6` §8**） |
-|-------------|----------------------------|
-| `IDENTITY.md` | `identity_md` |
-| `SOUL.md` | `soul_md` |
-| `AGENTS_CORE.md` | `agents_core_md`（见 **`6`** AGENTS 拆分） |
-| `AGENTS_TASK.md` | `agents_task_md` |
-| `CAPABILITIES.md` | `capabilities_md` |
-
-**预览对话框**可高亮块头 **或** 与「文件」Tab 联动跳转（选中同名逻辑文件）。
+> 已迁移至设计文档 §3.2 [`<internal_config>` 注入与文件字段](./8-agent-title.design.md#32-internal_config-注入与文件字段)。
 
 ---
 
 ## 6. AGENTS 双文件与 `AGENTS.md`
 
-部分运行时将操作规则拆为：
-
-| 逻辑文件 | 职责摘要 |
-|----------|----------|
-| **AGENTS_CORE.md** | 通用：语言跟随、`[System Message]` 处理、保存须 `write_file`/`edit`、禁止用 exec 发消息等 |
-| **AGENTS_TASK.md** | 任务向：memory 召回/写入路径、MEMORY.md 隐私、cron 使用约定等 |
-
-存储上建议 **`agents_core_md` + `agents_task_md`** 两列；若产品仅提供单一 **`agents_md`**，可由服务端 **按标题拆段** 或 **任务模式只取一段**。详见 **`6 agent-setting-file.md` §8.3**。
+> 已迁移至设计文档 §3.3 [AGENTS 双文件存储](./8-agent-title.design.md#33-agents-双文件存储)。
 
 ---
 
 ## 7. 非「文件」Tab 的注入（运行时生成）
 
-下列 **不必** 在「文件」侧栏以可编辑文件出现（或仅只读展示）：
-
-| 块 | 说明 |
-|----|------|
-| **Tooling** | 来自己册 + `tools_config` 过滤后的工具列表 |
-| **Workspace** | `workspace` 路径文案；团队共享路径来自租户/团队配置 |
-| **`<system_context name="TEAM.md">`** | 团队与成员、委派规则；数据来自 **团队/成员 API**，非 Agent 表长文本 |
-| **Current date** | 动态 |
-| **Runtime** | 如 `Runtime: agent=… \| id=…` |
+> 已迁移至设计文档 §3.4 [运行时生成块](./8-agent-title.design.md#34-运行时生成块非文件-tab)。
 
 ---
 
@@ -136,30 +96,17 @@ UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
 | **供应商** | `QSelect`，`emit-value` `map-options`，可过滤 | 选项来自表 **`llm_provider_models`** 的 **去重 `provider_code`**（或 `GET /llm-providers` 聚合接口）：展示 `provider_display_name` |
 | **模型** | `QSelect` | **级联**：仅在已选供应商后启用；选项为 **同 `provider_code` 下各行的 `model_api_id` / `model_display_name`**。切换供应商时 **清空模型** 并 `GET ...?provider_code=`（见 **`9 provider.md` §5 / §9**） |
 
-| 数据关联（建议） | 说明 |
-|------------------|------|
-| **`llm_provider_models`** | **单表**：Provider 与 Model **不拆表**；每行含 `provider_code`、连接字段、`model_api_id`、分类、评级等；级联下拉 **唯一数据源**，详见 **`9 provider.md` §5** |
-
-**持久化**：`agents.provider`、`agents.model`（**字符串**，与表中 **`provider_code` / `model_api_id`** 对齐，见 **`前端.md`**）。
-
-**管理入口**：表单项旁可选 **「管理供应商与模型」** `QBtn` flat → 跳转 **`/settings/llm-providers`**，编辑 **`llm_provider_models`** 后回到本页 **重新拉取下拉选项**。
+**管理入口**：表单项旁可选 **「管理供应商与模型」** `QBtn`flat → 跳转 **`/settings/llm-providers`**，编辑 **`llm_provider_models`** 后回到本页 **重新拉取下拉选项**。
 
 **校验**：可选复用 **`POST /agents/validate-model`**（`{ provider, model }`），与创建页「检查」一致。
+
+> 数据模型与持久化字段见设计文档 §4.1 [供应商与模型数据模型](./8-agent-title.design.md#41-供应商与模型数据模型)。
 
 ---
 
 ### 8.2 通道与 Chat（级联，与 `channel` 关联）
 
 用于绑定 **Agent 与消息入口**（某 IM / Webhook 通道上的具体会话或默认会话）。**Channel** 下拉选项 **必须** 与 **`17 channel.md`** 定义的 **`channel` 主表** 及 **`GET /channels`** 列表一致；**Chat** 为该通道下的外部会话标识（子资源），与 **`channel` 行**通过 `channel_id` 关联。
-
-#### 与 `17 channel.md` 的对应关系
-
-| 概念 | 来源 | 说明 |
-|------|------|------|
-| **Channel 记录** | 表 **`channel`**（见 **`17` §6.1**） | 一行 = 一个已配置的接入（飞书/Lark、微信、Telegram 等）；在 **通道管理** 中新增/编辑，**非** Agent 详情内嵌创建（Agent 仅「选择已有通道」） |
-| **下拉展示字段** | `channel.name`、`channel.channel_type`（及微信时 `wechat_subtype`） | `QSelect` 选项 label 建议：`{name}` + 副文案 `「飞书」` / `「微信-公众号」` 等，与 **`17` §1.1.1** 列表列一致，便于运营识别 |
-| **选项值（绑定键）** | 建议使用 **`channel.id`**（或 API 统一暴露 **`channel.uuid`**，二选一全项目一致） | Agent 持久化里存 **与 `channel` 主键一致** 的外键，禁止自造与 `channel` 表无关的字符串 |
-| **Chat** | 关联表 **`channel_chats`**（或 `conversations` 等，见下） | 外部平台的 `chat_id` / `thread_id` + 展示名；**级联条件**：`channel_id = 当前选中的 channel` |
 
 #### 控件与行为
 
@@ -168,23 +115,11 @@ UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
 | **Channel** | `QSelect` | `GET /channels`（同上）；`value` = `channel.id`（或 `uuid`）；选项展示：**左侧小图标**（`icon_url` 有则用其 URL，否则内置图标，见 **`17` §6.1 图标**）+ 名称 + 类型 |
 | **Chat ID** | `QSelect`，可 `use-input` 允许粘贴 | **级联**：未选 Channel 时 **禁用**；`GET /channels/:channelId/chats`（或 `?channel_uuid=`）；选项为该平台下已同步/已绑定的会话列表 |
 
-| 数据关联 | 说明 |
-|----------|------|
-| **`channel`** | 字段语义与枚举见 **`17` §6.1**（`channel_type`、`wechat_subtype`、`uuid`、`webhook_path` 等）；Agent **不重复存** AppSecret 等，只引用 `channel_id` |
-| **`channel_chats`**（或等价名） | `channel_id`（FK → `channel.id`）+ 平台侧 `chat_id` + `title`/`name`；第二级下拉 **仅** `WHERE channel_id = :选中` |
-
-#### 持久化（Agent 侧）
-
-| 字段路径 | 类型 | 说明 |
-|----------|------|------|
-| `other_config.messaging` | object | 推荐：`{ "channel_id": <bigint 或 uuid 与 API 一致>, "chat_id": "<string>" }` |
-| 或独立列 | | **`agents.channel_id`**（FK → `channel.id`）+ **`agents.default_chat_id`**（TEXT，平台会话 id）— 与 `other_config.messaging` **二选一**，避免双源 |
-
-**约束**：`channel_id` 必须在 `channel` 表中存在；切换租户或删除通道时，后端应校验或级联提示（见 **`17`** 删除确认文案）。
-
 **管理入口**：**「管理通道」** → **`/channels`**（与 **`17` §1** 列表、新增向导一致）；新建或编辑通道后回到本页 **重新 `GET /channels`** 与 **`GET .../chats`**。
 
 **与供应商–模型（§8.1）关系**：二者独立；若产品需要「某类 `channel_type` 推荐某供应商」，可做 **可选** 下拉筛选或提示，非必须。
+
+> 与 `17 channel.md` 的对应关系、数据模型与持久化字段见设计文档 §4.2 [通道与 Chat 数据模型](./8-agent-title.design.md#42-通道与-chat-数据模型)。
 
 ---
 
@@ -201,12 +136,12 @@ UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
 
 与模型能力元数据相关；**仅当** 所选模型在 provider **models** 接口返回 **显式 reasoning 能力** 时展示高级控件（否则隐藏并提示，如线稿脚注）。
 
-| 维度 | 建议存储 |
-|------|----------|
+| 维度 | 取值 |
+|------|------|
 | **策略** | `provider_default`（跟随厂商） / `custom`（本 Agent 覆盖） |
 | **思考级别** | `off` \| `low` \| `medium` \| `high`（对应约 0 / ~4K / ~10–16K / ~32K **推理侧** token 预算，以后端换算为准） |
 
-建议路径：`other_config.reasoning`：`{ "mode": "provider_default"|"custom", "level": "off"|"low"|"medium"|"high" }`。
+> 持久化路径见设计文档 §4.3 [扩展思考数据模型](./8-agent-title.design.md#43-扩展思考数据模型)。
 
 ---
 
@@ -242,16 +177,7 @@ UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
 
 ## 10. API 建议
 
-| 方法 | 说明 |
-|------|------|
-| GET | `/agents/:id/system-prompt/preview?mode=complete\|task\|minimized\|none` | 返回渲染后全文 + `estimated_tokens` |
-| GET | `/agents/:id` | 顶栏摘要 + 各 `*_md` 与 `other_config` |
-| GET | `/llm-providers` 或 `/llm-provider-models` | 供应商/模型数据；底层 **`llm_provider_models`**（可按 `provider_code` 聚合，见 **`9 provider.md` §9**） |
-| GET | `...?provider_code=` 或 `/llm-providers/:code/models` | 级联模型列表：筛选 **`provider_code`** 下各行 |
-| POST | `/agents/validate-model` | 校验 `{ provider, model }`（与 **`2 agents-create.md`** 一致） |
-| GET | `/channels` | Channel 下拉（§8.2）；数据模型见 **`17 channel.md` §6** |
-| GET | `/channels/:channelId/chats` | 级联 Chat ID 列表；`channelId` 与主表 `id` 或 `uuid` 与 API 约定一致 |
-| PATCH | `/agents/:id` | 更新 `provider`、`model`、`other_config.messaging` 等 |
+> 已迁移至设计文档 §2 [Proto 与 API 契约](./8-agent-title.design.md#二proto-与-api-契约)。
 
 ---
 

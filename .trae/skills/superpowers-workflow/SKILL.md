@@ -181,10 +181,10 @@ Use the project's review skills:
 | Check | Question |
 |-------|----------|
 | Layer compliance | Does code follow the dependency direction? |
-| Red line check | Are any of the 11 backend / 12 frontend red lines violated? |
-| Programming standard check | Are any of the CS-B1~B17 / CS-F1~F8 coding standards violated? |
+| Red line check | Are any of the 23 backend / 11 frontend red lines violated? |
+| Programming standard check | Are any of the CS-B1~B18 / CS-F1~F9 coding standards violated? |
 | OOP compliance | Are structs/interfaces properly designed? |
-| Error handling | Are errors using kerrors (not fmt.Errorf)? |
+| Error handling | Are errors using apierror (not fmt.Errorf)? |
 | Concurrency | Are goroutines using safego? |
 | Logging | Is logging using loggateway.Logger? |
 | Dimension B-side | Are all loaded dimension B-side checklist items passing? |
@@ -221,7 +221,7 @@ Before declaring a task complete, provide EVIDENCE:
 | Build passes | `make build` or `pnpm build` | ✅ Always |
 | Type check | `go build ./...` or `pnpm build` | ✅ Always |
 | No red line violations | Manual check against project_rules.md | ✅ Always |
-| No coding standard violations | Check CS-B1~B17 / CS-F1~F8 | ✅ Always |
+| No coding standard violations | Check CS-B1~B18 / CS-F1~F9 | ✅ Always |
 | Dimension review passed | B-side checklists in docs/review-dimension-checklists.md | ✅ Always |
 | Cross-module impact | Read module-cross-reference.md | ✅ For cross-layer changes |
 | Wire generation | `make wire` | ⚠️ If Wire deps changed |

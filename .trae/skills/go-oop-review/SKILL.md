@@ -189,7 +189,7 @@ func NewUsecase(repo OrderRepository, notifier Notifier) *Usecase { ... }
 
 | # | 检查项 | 严重级别 | 判定标准 |
 |---|--------|----------|----------|
-| E1 | 业务错误是否用 kerrors | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误 |
+| E1 | 业务错误是否用 apierror | 🔴 阻断 | 禁止 `fmt.Errorf` 返回业务错误 |
 | E2 | 错误是否丢失上下文 | 🟡 建议 | wrap 错误用 `fmt.Errorf("xxx: %w", err)` |
 | E3 | 错误变量是否 Err 前缀 | 🟢 提示 | `ErrNotFound` 而非 `NotFoundError` |
 | E4 | 是否吞掉了错误 | 🔴 阻断 | `_ = someFunc()` 忽略 error 返回值 |
@@ -260,7 +260,7 @@ func NewUsecase(repo OrderRepository, notifier Notifier) *Usecase { ... }
 
 ### 错误处理
 
-- [ ] 业务错误用 kerrors
+- [ ] 业务错误用 apierror
 - [ ] 错误 wrap 保留上下文
 - [ ] 无吞错误
 - [ ] 无裸 panic
@@ -283,7 +283,7 @@ func NewUsecase(repo OrderRepository, notifier Notifier) *Usecase { ... }
 发现 go func() → 走 safego？ → 否 → 🔴 必须改
               → 传 ctx？ → 否 → 🟡 加 ctx
 
-发现 error → fmt.Errorf 业务错误？ → 是 → 🔴 改 kerrors
+发现 error → fmt.Errorf 业务错误？ → 是 → 🔴 改 apierror
           → 吞错误？ → 是 → 🔴 必须处理
           → wrap 丢上下文？ → 是 → 🟡 加 %w
 

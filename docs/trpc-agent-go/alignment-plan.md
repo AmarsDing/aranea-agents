@@ -11,20 +11,20 @@
 | 模块 | 对齐度 | P1 项 | P2 项 | P3 项 | P4 项 | 总对齐项 |
 |------|--------|-------|-------|-------|-------|---------|
 | Event | ★★★★★ | 3✅ | 2✅ | 2 | 0 | 7 |
-| Prompt | ★★★☆☆ | 1✅ | 2✅ | 1 | 0 | 4 |
+| Prompt | ★★★☆☆ | 1✅ | 2✅ | 1✅ | 0 | 4 |
 | Knowledge | ★★★☆☆ | 2✅ | 2✅ | 6 | 0 | 10 |
 | Team | ★★★☆☆ | 0 | 3✅ | 5 | 0 | 8 |
 | Evaluation | ★★★★☆ | 2✅ | 2✅ | 3 | 0 | 7 |
 | Tool | ★★★★★ | 1✅ | 2(1✅) | 2 | 0 | 5 |
 | Session | ★★★★☆ | 0 | 4✅ | 4 | 0 | 8 |
 | Memory | ★★★★☆ | 0 | 2✅ | 6 | 0 | 8 |
-| Server | ★★★★☆ | 0 | 2✅ | 3 | 0 | 5 |
-| Model | ★★★★★ | 0 | 3(1✅) | 7 | 0 | 10 |
-| Agent | ★★★★★ | 0 | 0 | 6(4✅) | 2 | 8 |
-| Runner | ★★★★☆ | 0 | 0 | 6 | 0 | 6 |
+| Server | ★★★★☆ | 0 | 2✅ | 3(1✅) | 0 | 5 |
+| Model | ★★★★★ | 0 | 3(1✅) | 7(1✅) | 0 | 10 |
+| Agent | ★★★★★ | 0 | 0 | 7(3✅) | 1 | 8 |
+| Runner | ★★★★★ | 0 | 0 | 6(2✅) | 0 | 6 |
 | Skill | ★★★★★ | 0 | 2✅ | 5(2✅) | 0 | 7 |
 | Extended | ★★★★☆ | 1✅ | 1✅ | 1✅ | 3 | 6 |
-| **合计** | — | **9(6✅)** | **27(14✅)** | **54(7✅)** | **5** | **99(27✅)** |
+| **合计** | — | **9(6✅)** | **27(14✅)** | **54(13✅)** | **4** | **98(33✅)** |
 
 ### 1.2 对齐类型分布
 
@@ -165,15 +165,15 @@ P1-9 (PromptIter) ──→ 独立
 
 | 模块 | 对齐项 | 协同收益 |
 |------|--------|---------|
-| Agent | 启用 WithKnowledge | Agent 获得框架知识注入 | ✅ 已完成（TECH-DEBT：当前返回 nil，待迁移） |
-| Agent | 启用安全限制 | Agent 获得框架安全保护 | ✅ 已完成（TECH-DEBT：当前返回 nil，待字段添加） |
+| Agent | 启用 WithKnowledge | Agent 获得框架知识注入 | ✅ 已完成（KnowledgeAdapter 桥接项目 Retriever 到框架 knowledge.Knowledge） |
+| Agent | 启用安全限制 | Agent 获得框架安全保护 | ✅ 已完成（SafetyLimitAdapter 启用 MaxLLMCalls/MaxToolIterations） |
 | Agent | 启用时间注入 | Agent 获得框架时间感知 | |
 | Agent | 评估 ActivatableToolSets vs DeferredManager | 工具集管理策略统一 | |
 | Agent | 贡献 BuildCache | 框架获得 LRU+singleflight 缓存 | ⏭ 跳过（不贡献回框架） |
 | Agent | 贡献 AgentFactory 增强 | 框架获得 Agent 工厂增强 | ⏭ 跳过（不贡献回框架） |
-| Runner | 评估 WithPersistInterruptedAssistant | 中断恢复能力 | |
+| Runner | 评估 WithPersistInterruptedAssistant | 中断恢复能力 | ✅ 已完成（chat_orchestrator_durable.go 启用） |
 | Runner | 评估 WithDetachedCancel | 取消机制增强 | |
-| Runner | 评估 WithStreamMode | 流式模式标准化 | |
+| Runner | 评估 WithStreamMode | 流式模式标准化 | ✅ 已完成（buildTurnRunOptions 启用 StreamModeMessages） |
 | Runner | 贡献 RunnerManager/RunRegistry | 框架获得运行管理能力 | ⏭ 跳过（不贡献回框架） |
 | Runner | 贡献 RunnerRollback | 框架获得回滚能力 | ⏭ 跳过（不贡献回框架） |
 
@@ -206,7 +206,7 @@ P1-9 (PromptIter) ──→ 独立
 
 | 模块 | 对齐项 | 协同收益 |
 |------|--------|---------|
-| Model | 暴露 TailoringStrategy | Token 裁剪策略可配置 |
+| Model | 暴露 TailoringStrategy | Token 裁剪策略可配置 | ✅ 已完成（resolveTailoringStrategy 函数 + catalog 字段注释） |
 | Model | 暴露 TokenTailoringConfig | 裁剪参数可配置 |
 | Model | 贡献 Metrics Model | 框架获得模型指标 | ⏭ 跳过（不贡献回框架） |
 | Model | 贡献 ModelSelector 策略 | 框架获得 5 种选择策略 | ⏭ 跳过（不贡献回框架） |
@@ -238,16 +238,15 @@ P1-9 (PromptIter) ──→ 独立
 | Evaluation | 贡献 SQLite 后端 | 框架获得评估持久化 | ⏭ 跳过（不贡献回框架） |
 | Evaluation | 贡献脚本模拟器 | 框架获得模拟评估 | ⏭ 跳过（不贡献回框架） |
 | Evaluation | 贡献 AfterTurn 触发器 | 框架获得自动评估 | ⏭ 跳过（不贡献回框架） |
-| Prompt | 启用 ValidateRequired() | Prompt 必填校验 |
+| Prompt | 启用 ValidateRequired() | Prompt 必填校验 | ✅ 已完成（prompt_render.go 启用，graceful degradation） |
 | Agent | 评估 structure.Exporter | 结构化导出 |
-| Agent | 评估 TransferController | 传输控制 |
+| Agent | 评估 TransferController | 传输控制 | ✅ 已完成（transfer_controller.go 实现，原子计数器深度限制+超时） |
 
 ### 4.2 P4 项（保持现状）
 
 | 模块 | 对齐项 | 说明 |
 |------|--------|------|
 | Agent | 评估 structure.Exporter | 当前无业务需求 |
-| Agent | 评估 TransferController | 当前无业务需求 |
 | Extended | Dify Agent 集成预留 | 当前无业务需求 |
 | Extended | N8N Agent 集成预留 | 当前无业务需求 |
 | Extended | Codex Agent 集成预留 | 当前无业务需求 |
@@ -477,8 +476,8 @@ P1-9 (PromptIter) ──→ 独立
 | 借鉴 Session 隔离 | 启用框架功能 | 中 | 中 | ✅ 已完成 |
 | 贡献 Graph 编译层 | 贡献回框架 | 大 | 高 | ⏭ 跳过（不贡献回框架） |
 | 贡献 TeamFailurePolicy | 贡献回框架 | 中 | 低 | ⏭ 跳过（不贡献回框架） |
-| 启用 WithKnowledge | 启用框架功能 | 小 | 低 | ✅ 已完成（TECH-DEBT：当前返回 nil，待迁移） |
-| 启用安全限制 | 启用框架功能 | 小 | 低 | ✅ 已完成（TECH-DEBT：当前返回 nil，待字段添加） |
+| 启用 WithKnowledge | 启用框架功能 | 小 | 低 | ✅ 已完成（KnowledgeAdapter 桥接项目 Retriever 到框架 knowledge.Knowledge） |
+| 启用安全限制 | 启用框架功能 | 小 | 低 | ✅ 已完成（SafetyLimitAdapter 启用 MaxLLMCalls/MaxToolIterations） |
 | 贡献 BuildCache | 贡献回框架 | 中 | 中 | ⏭ 跳过（不贡献回框架） |
 | 贡献 RunnerManager/RunRegistry | 贡献回框架 | 大 | 中 | ⏭ 跳过（不贡献回框架） |
 | 贡献 RunnerRollback | 贡献回框架 | 中 | 中 | ⏭ 跳过（不贡献回框架） |
@@ -493,7 +492,12 @@ P1-9 (PromptIter) ──→ 独立
 |---------|---------|
 | `internal/team/export_adapter.go` | 新增 ~225 行：ExportSnapshot 将 biz.Agent 转为 structure.Snapshot，含 pathAllocator/rebaseSnapshot/escapeLocalName 本地实现 |
 | `internal/team/safety_adapter.go` | 新增 ~87 行：SwarmSafetyOptions/SessionIsolationOptions/MemberToolOptions 三个适配器函数 |
-| `internal/agent/knowledge_safety_adapter.go` | 新增 ~67 行：KnowledgeAdapter/SafetyLimitAdapter/FrameworkKnowledge，TECH-DEBT 标注待激活 |
+| `internal/agent/knowledge_safety_adapter.go` | 新增 ~73 行：KnowledgeAdapter 桥接项目 Retriever 到框架 knowledge.Knowledge（通过 FrameworkKnowledge 包装）+ SafetyLimitAdapter 启用 MaxLLMCalls/MaxToolIterations |
+| `internal/agent/transfer_controller.go` | 新增 ~78 行：TransferControllerImpl 实现 trpcagent.TransferController，原子计数器深度限制（max=3）+ 120s 目标超时 + apierror.Forbidden 错误返回 |
+| `internal/agent/trpc_build.go` | 修改：在 ag.Settings != nil 块内添加 SafetyLimitAdapter(ag) 和 KnowledgeAdapter(ctx, ag, deps, lg) 调用 |
+| `internal/agent/prompt_render.go` | 修改：添加 ValidateRequired() 调用，graceful degradation（校验失败仅 warn 不阻断） |
+| `internal/service/chat_orchestrator_durable.go` | 修改：添加 WithPersistInterruptedAssistant(true) 启用中断恢复 |
+| `internal/service/chat_orchestrator_turn_phases.go` | 修改：buildTurnRunOptions 添加 WithStreamMode(StreamModeMessages) + TransferController 安装（per-turn 创建，原子计数器 run-scoped） |
 
 ### Phase 6：Server + Extended 对齐（2-3 周） ✅ 已完成
 
@@ -520,6 +524,15 @@ P1-9 (PromptIter) ──→ 独立
 | `internal/server/openai_adapter.go` | 新增 ~106 行：OpenAISessionAdapter 封装框架 openai.Server，启用会话持久化 |
 | `internal/agent/todo_enforcer.go` | 新增 ~73 行：NewTodoEnforcerOption/NewTodoEnforcerOptionWithScope，集成框架 todoenforcer |
 | `internal/tools/taskrun_adapter.go` | 新增 ~102 行：TaskRunAdapter 封装框架 taskrun.Tools，提供异步委派能力 |
+| `internal/service/agui_compat.go` | 新增 ~120 行：AGUICompatService 包装框架 agui.Server，OpenAIRunnerBuilder 窄接口 + 懒加载（双重检查锁）解决 Runner per-session 问题 |
+| `internal/service/openai_session_compat.go` | 新增 ~110 行：OpenAISessionCompatService 包装框架 openai.Server，OpenAIRunnerBuilder 窄接口 + 懒加载 |
+| `internal/service/a2a_extension_compat.go` | 新增 ~156 行：A2AExtensionCompatService 包装框架 A2A 扩展服务器，defaultA2AHost 命名常量 + 懒加载 + AgentCard 构建 |
+| `internal/server/http.go` | 修改：添加 lazyCompatHandler 包装器和三个 compat 服务路由注册 |
+| `internal/server/service_registry.go` | 修改：添加 AGUICompatService/OpenAISessionCompatService/A2AExtensionCompatService 字段 |
+| `internal/provider/trpc_llm.go` | 修改：添加 resolveTailoringStrategy 函数，暴露 TailoringStrategy 配置 |
+| `internal/provider/catalog.go` | 修改：更新 TailoringStrategy 字段注释 |
+| `internal/service/prompt_refine.go` | 修改：NewAIRefineService 改为接受 biz.Refiner 接口，支持 PromptIterAdapter fallback |
+| `cmd/admin/wire.go` | 修改：添加 wire.Bind(new(biz.Refiner), new(*biz.PromptRefiner)) 和 wire.Bind(new(service.OpenAIRunnerBuilder), new(*service.ChatService)) |
 
 ---
 
@@ -664,7 +677,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 | Server | ★★☆☆☆ | ★★☆☆☆ | ★★☆☆☆ | ★★☆☆☆ | ★★★★☆ | ★★★★☆ |
 | Model | ★★★★☆ | ★★★★★ | ★★★★★ | ★★★★★ | ★★★★★ | ★★★★★ |
 | Agent | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★★ | ★★★★★ |
-| Runner | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★★ |
+| Runner | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★★ | ★★★★★ |
 | Skill | ★★★★☆ | ★★★★★ | ★★★★★ | ★★★★★ | ★★★★★ | ★★★★★ |
 | Extended | ★★☆☆☆ | ★★☆☆☆ | ★★☆☆☆ | ★★☆☆☆ | ★★★★☆ | ★★★★☆ |
 

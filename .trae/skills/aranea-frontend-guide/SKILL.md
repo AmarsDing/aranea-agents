@@ -29,9 +29,9 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 
 ---
 
-## 第一章：15 条红线
+## 第一章：15 条红线（含 4 条已降级为编程规范）
 
-> 违反即停，不可绕过。
+> 违反即停，不可绕过。其中 #6/#8/#13/#15 已降级为编程规范 CS-F1/F2/F3/F9，保留编号便于追溯。
 
 | # | 红线 | 正确做法 |
 |---|------|----------|
@@ -49,9 +49,9 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 | 12 | 展示组件从 `features/<域>/api.ts` **引类型**（含 re-export） | 共享类型放在 **`features/<域>/types.ts`**，组件只 import types |
 | 13 | 单页 `*Page.vue` 的 `<script setup>` 不宜长期超过 **~200 行**（不含 import）→ **编程规范 CS-F3** | 拆 **Dialog 组件** + **域内 composable** + **子面板组件** |
 | 14 | 前端禁止使用 `turn_index` 做消息分组，聊天消息分组必须使用堆栈模型 | `groupMessagesByTurn` 按 `role=user` 边界 + 时间顺序 |
-| 15 | 禁止过度设计：单一场景不预抽 Composable/Store/类型层级；未请求的配置项/扩展点不添加；不为假设需求预留空组件/占位 Props/泛型参数 | YAGNI：需求出现时再抽象；三处复用前不提取公共函数 |
+| 15 | 禁止过度设计 → **编程规范 CS-F9** | YAGNI：单一场景不预抽 Composable/Store/类型层级；未请求的配置项/扩展点不添加；三处复用前不提取公共函数 |
 
-> **降级说明**：红线 #6（Store 导出）→ CS-F1、#8（UX 视觉）→ CS-F2、#13（Page 行数）→ CS-F3 已降级为编程规范（见第十三章），因可通过 linter/编码约定约束，不属于架构边界违反。红线编号不变，但违反级别从"阻断"降为"建议"。
+> **降级说明**：红线 #6（Store 导出）→ CS-F1、#8（UX 视觉）→ CS-F2、#13（Page 行数）→ CS-F3、#15（YAGNI 过度设计）→ CS-F9 已降级为编程规范（见第十三章），因可通过 linter/编码约定约束或属可维护性问题，不属于架构边界违反。红线编号不变，但违反级别从"阻断"降为"建议"。
 
 ---
 
@@ -719,11 +719,11 @@ registryColActions<Row>();
 
 ### 改动中（逐层检查）
 
-- [ ] **已读模块交叉参考手册**：在 `openspec/specs/module-cross-reference.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
+- [ ] **已读模块交叉参考手册**：在 `docs/development/65-module-cross-reference-full.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
 - [ ] 展示组件是否直接调用 API / Store？若有 → 已上收或已备案例外
 - [ ] **Page** 是否直接 `import` `features/*/api`？若有 → 迁入 Store + composable
 - [ ] 新网络请求是否只出现在 `features/*/api.ts` 或 `services/`，且由 Store action 触发？
-- [ ] 是否存在过度设计：单一场景预抽 Composable/Store、未请求的配置项/扩展点、为假设需求预留空组件（红线 #15）？
+- [ ] 是否存在过度设计：单一场景预抽 Composable/Store、未请求的配置项/扩展点、为假设需求预留空组件（CS-F9）？
 - [ ] 同一数据是否在多组件重复 fetch？若是 → 已合并到 Store 单一数据源
 - [ ] Page 是否仅组合 composable + 传参，无大段业务 if/else？**脚本是否 ≤~200 行**？
 - [ ] 多 Dialog / 多 Tab 是否已拆为 `components/<域>/*Dialog.vue`、`*Panel.vue`？
@@ -744,7 +744,7 @@ registryColActions<Row>();
 - [ ] `pnpm build` 通过
 - [ ] 昼/夜各看一眼（或 `/dev/theme-preview`）
 - [ ] 无红线违反
-- [ ] **编程规范合规**：CS-F4 props 有类型、CS-F6 无 any 类型、CS-F7 事件命名 onXxx、CS-F8 技术债务已标记
+- [ ] **编程规范合规**：CS-F4 props 有类型、CS-F6 无 any 类型、CS-F7 事件命名 onXxx、CS-F8 技术债务已标记、CS-F9 无过度设计
 
 ---
 
@@ -787,6 +787,7 @@ registryColActions<Row>();
 | CS-F6 | 禁止 `any` 类型，必须用具体类型或泛型 | TypeScript strict | 新增 |
 | CS-F7 | 事件处理器命名：`onXxx`（如 `onSubmit`、`onDelete`） | 审查 | 新增 |
 | CS-F8 | 技术债务用 `// TECH-DEBT:` 标记，含 issue 编号 | linter/审查 | 新增 |
+| CS-F9 | 禁止过度设计：单一场景不预抽 Composable/Store/类型层级；未请求的配置项/扩展点不添加；三处复用前不提取公共函数 | 审查 | 原红线 #15 |
 
 ### 13.1 编程规范与红线的关系
 
@@ -826,8 +827,8 @@ registryColActions<Row>();
 
 | 文档 | 路径 | 定位 |
 |------|------|------|
-| **架构蓝图** | `openspec/specs/architecture-blueprint.md` | 前端全貌：43 个 Store、实时层、路由 |
-| **模块交叉参考** | `openspec/specs/module-cross-reference.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
+| **模块交叉参考** | `docs/development/65-module-cross-reference-full.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
+| **系统架构总览** | `docs/development/0-system-diagram.md` | 前端全貌：43 个 Store、实时层、路由 |
 
 ### 12.2 开发前强制步骤
 

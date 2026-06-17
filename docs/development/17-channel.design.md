@@ -3,7 +3,9 @@
 > 对应需求：[17 channel.md](./17%20channel.md)  
 > **跨模块集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [integration.design.md](./17-channel-agent-team-integration.design.md)  
 > 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)、[AGENT_RUNTIME_BOUNDARY.md](../guides/AGENT_RUNTIME_BOUNDARY.md)  
-> 平台连接参考：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/` + `http/`（MIT）；飞书 IM 行为对照 [Hermes Agent](https://github.com/NousResearch/hermes-agent) `gateway/platforms/feishu.py` — 见 **§十四**
+> 平台连接参考：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/` + `http/`（MIT）；飞书 IM 行为对照 [Hermes Agent](https://github.com/NousResearch/hermes-agent) `gateway/platforms/feishu.py` — 见 **§十二**
+
+> **文档边界**：本文档只描述架构设计、代码分层、Proto/API 契约、数据模型、接口定义、技术选型、状态机、序列图。用户故事、功能需求清单见 [17-channel.md](./17-channel.md)；开发进度、Phase 划分、任务清单、改动文件清单见 [17-channel.development.md](./17-channel.development.md)。
 
 ---
 
@@ -18,35 +20,17 @@ Channel 在 **Kratos 传输层** 负责外部 IM 平台连接：凭据管理、�
 3. **双入站路径** — Webhook（✅）+ Runtime 长连接（✅ scaffold，见 `internal/channel/runtime/`）
 4. **`internal/biz` 禁止 import trpc-agent-go** — Agent 调用仅在 `internal/service`
 
-**当前实现状态**（2026-06-11，Phase M 深度审查修复完成）：
+### 1.1 与 MuseBot / Aranea 架构差异
 
-| 能力 | 状态 |
-|------|------|
-| Proto CRUD + Catalog + Test + Credentials | ✅ |
-| Webhook 入站：feishu / dingtalk / wecom / slack / telegram / wechat / onebot / line / mattermost / teams | ✅ |
-| 统一入站：`ProcessInbound` + `processInboundHTTP` | ✅ |
-| 异步 `channel_delivery` + Worker（3 次重试） | ✅ |
-| 长连接 Runtime（larkws / ding stream / socketmode / polling / discord gateway / mattermost websocket） | ✅ |
-| `Manager.Reload` 配置 fingerprint reconcile | ✅ |
-| 流式回复（edit-in-place） | ✅ MVP（Telegram / Feishu / Slack / LINE / Mattermost） |
-| 长任务：Webhook 同步阻塞 Turn | ✅ Phase E1（async execute） |
-| 长任务：入队 IM 反馈 | ✅ Phase E1-4 |
-| 长任务：ChannelTurnJob | ✅ Phase E3 + ListChannelTurnJobs API |
-| wechat 出站（被动 ReplyXML + 主动 API） | ✅ |
-| discord 出站 | ✅ |
-| personal_qq / onebot 出站 | ✅ |
-| qq 官方 botgo | ✅ |
-| LINE 出站 + 流式 | ✅ |
-| Mattermost 出站 + 流式 + WS 长连接 | ✅ |
-| Teams 出站（Bot Framework OAuth2） | ✅ |
-| safego 合规 | ✅ |
-| Service 层 kerrors 合规 | ✅ |
-| Proto 隔离合规 | ✅ |
-| Service 层无直接 Repo | ✅ |
-| 凭据 upsert 原子操作 | ✅ Phase M（OnConflictColumns + UpdateNewValues） |
-| 错误分类类型安全 | ✅ Phase M（ChannelTurnErrorKind 下沉 biz 层） |
-| 超时检测类型安全 | ✅ Phase M（errors.Is 替代字符串匹配） |
-| 出站 payload 序列化错误处理 | ✅ Phase M（marshalOutboundPayload 替代 mustMarshalJSON） |
+| 维度 | MuseBot | Aranea |
+|------|---------|--------|
+| 配置 | 全局 `conf.BaseConfInfo` + 环境变量 | DB `channel` + `channel_credential`（多实例、多 Agent） |
+| 启动 | `StartRobot()` 按非空 token 启 goroutine | `ChannelRuntimeManager` 按 enabled 实例启连接 |
+| 入站 | 平台文件内 `go RobotInfo.Exec()` | 统一 `ChannelIngress` / Runtime → `ChatService` |
+| 出站 | `RobotInfo.SendMsg()` 巨型 type switch | `channel_delivery` worker + 平台 `SendText` |
+| LLM | 耦合在 `Robot` 接口 | **禁止**；`internal/biz` 不触达 LLM |
+
+> **实现状态**：开发进度、Phase 完成情况、红线合规性见 [17-channel.development.md §2 现状评估](./17-channel-development.md#2-现状评估) 与 [§17 Phase I-N](./17-channel-development.md#17-phase-i--代码审查优化go-oop--项目红线合规)。
 
 ---
 
@@ -132,84 +116,7 @@ type StreamOutbound interface {
 
 现有 `internal/channel/surface.go`（`Identified` / `Runner` / `OutboundText`）逐步收敛到上述 port。
 
----
-
-## 四、Proto / Biz / Data
-
-### 4.1 Proto
-
-`api/kratos/channel/v1/channel.proto` — CRUD、Catalog、Test、Credentials、Deliveries。  
-Webhook 路由在 `internal/server/http.go`，不进 Proto。
-
-### 4.2 Biz
-
-| 文件 | 职责 |
-|------|------|
-| `channel.go` | CRUD、Test commit |
-| `channel_catalog.go` | MuseBot 对齐的 10 平台目录 |
-| `channel_routing.go` | Agent/Team/dm_scope/rules |
-| `channel_access.go` | `allowed_user_ids` / `allowed_group_ids` / `require_mention` 策略解析与判定 |
-| `channel_rules.go` | 凭据校验、requiredCredentials |
-
-### 4.3 Data
-
-| 表 | 说明 |
-|----|------|
-| `channel` | 实例主表 |
-| `channel_credential` | `secret_ref`（enc:/env:） |
-| `channel_delivery` | 出站队列 |
-| `channel_peer_session` | peer → session |
-
----
-
-## 五、Service 层
-
-### 5.1 ChannelIngress（Webhook）
-
-`internal/service/channel_ingress*.go` — 平台 switch → `internal/channel/{lark,dingtalk,wecom,slack,telegram}/webhook.go`
-
-**入站访问控制**（`channel_ingress_access.go`，在 Agent Turn 之前）：
-
-```
-InboundEvent + channel.config_json
-  → biz.ParseChannelAccessPolicy
-  → inboundAccessContextFromEvent(ev)   // PeerID, chat_id, chat_type, mentioned
-  → policy.Allows(ctx)
-       ├ false → recordDelivery(access_denied) + enqueueOutboundReply(拒绝文案)
-       └ true  → ResolveChannelTarget → ChatService
-```
-
-| 入站 meta 字段 | 用途 |
-|----------------|------|
-| `sender_open_id` / `sender_user_id` / `PeerID` | 匹配 `allowed_user_ids` |
-| `chat_id` + `chat_type=group` | 匹配 `allowed_group_ids` |
-| `mentioned` / `mentions` | 匹配 `require_mention` |
-
-飞书 WS：`internal/channel/lark/parse_message.go` 写入 `sender_open_id`、`chat_type`、`mentioned`。Webhook 路径由 `channel_ingress.go` 补全 `chat_type`（`InferChatTypeFromChatID`）。
-
-### 5.2 ChannelRuntimeManager（规划）
-
-```go
-// internal/service/channel_runtime.go
-type ChannelRuntimeManager struct {
-    channels *biz.ChannelUsecase
-    ingress  *ChannelIngress  // 复用 runChatTurn / enqueueOutboundReply
-    runners  map[string]context.CancelFunc
-}
-
-func (m *ChannelRuntimeManager) Reload(ctx context.Context) error
-func (m *ChannelRuntimeManager) startInstance(ctx context.Context, ch biz.Channel) error
-```
-
-启动逻辑参考 MuseBot `StartRobot()`：按 `config_json.type` + `receive_mode` 选择 Connector，**每个 DB 实例一个 goroutine**。
-
-Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启。
-
-### 5.3 出站
-
-`channel_delivery_worker.go` — 按 type 分发；钉钉 Webhook 模式用 `session_webhook`（MuseBot 同）；Stream 模式用 OpenAPI（MuseBot `ding.go`）。
-
-#### 5.3.1 OutboundMeta 契约（CH-BOR-10）
+### 3.1 OutboundMeta 契约（CH-BOR-10）
 
 入站 adapter 将平台回复目标写入 `port.InboundEvent.OutboundMeta`；**禁止**在 ingress/service 层散落硬编码路由字段。
 
@@ -233,23 +140,177 @@ Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启
 
 ---
 
+## 四、Proto / Biz / Data
+
+### 4.1 Proto
+
+`api/kratos/channel/v1/channel.proto` — CRUD、Catalog、Test、Credentials、Deliveries、TurnJobs。  
+Webhook 路由在 `internal/server/http.go`，不进 Proto。
+
+**API 端点表**（service `ChannelService`）：
+
+| RPC | HTTP | 说明 |
+|-----|------|------|
+| `ListChannelTypes` | `GET /v1/channels/catalog` | 平台目录（bundled / receive_modes / schema） |
+| `ListChannels` | `GET /v1/channels` | 实例列表 |
+| `GetChannel` | `GET /v1/channels/{id}` | 实例详情 |
+| `CreateChannel` | `POST /v1/channels` | 创建实例 |
+| `UpdateChannel` | `PATCH /v1/channels/{id}` | 更新实例（含路由变更重置 peer 绑定） |
+| `DeleteChannel` | `DELETE /v1/channels/{id}` | 删除实例 |
+| `ToggleChannel` | `POST /v1/channels/{id}/toggle` | 启用/禁用 |
+| `TestChannel` | `POST /v1/channels/{id}/test` | 测试连接 |
+| `ListChannelCredentials` | `GET /v1/channels/{id}/credentials` | 凭据列表（masked） |
+| `UpsertChannelCredentials` | `PUT /v1/channels/{channel_id}/credentials` | 凭据 upsert（原子操作） |
+| `DeleteChannelCredential` | `DELETE /v1/channels/{channel_id}/credentials/{credential_key}` | 删除凭据 |
+| `ListChannelDeliveries` | `GET /v1/channels/{id}/deliveries` | 出站投递记录 |
+| `ListChannelTurnJobs` | `GET /v1/channels/{id}/turn-jobs` | Turn Job 列表（长任务审计） |
+
+### 4.2 Biz
+
+| 文件 | 职责 |
+|------|------|
+| `channel.go` | CRUD、Test commit；`ChannelUsecase` Facade（reader/writer/credentials/deliveries 注入） |
+| `channel_catalog.go` | MuseBot 对齐的 13 平台目录 |
+| `channel_routing.go` | `ParseChannelRouting`、`ResolveChannelTarget`、`PeerKeyForSession` |
+| `channel_access.go` | `allowed_user_ids` / `allowed_group_ids` / `require_mention` 策略解析与判定 |
+| `channel_rules.go` | 凭据校验、requiredCredentials |
+| `channel_config_helpers.go` | `streaming_enabled` / `ChannelLongTaskConfig` / `ChannelTypeFromConfig` 等配置解析 |
+| `channel_turn_job.go` | Turn Job 实体、Repo 接口、状态机、`ParseChannelLongTaskConfig` |
+| `channel_turn_errors.go` | `ChannelTurnErrorKind` 类型 + 分类常量 + `FormatChannelTurnErrorMessage` |
+| `channel_turn_outcome.go` | `TurnOutcome` 枚举（ok / queued / rejected / error） |
+| `channel_delivery.go` | 出站 payload 序列化（`marshalOutboundPayload`）、delivery Repo 接口 |
+| `channel_peer_session.go` | peer → session 绑定 |
+| `channel_inbound_receipt.go` | 入站幂等 receipt |
+| `channel_im_render.go` | `ChannelIMRenderPolicy` 配置解析、legacy `progress_mode` 映射 |
+| `channel_web_origin.go` | `ResolveChannelWebOrigin`（web_app_origin / public_webhook_origin） |
+
+### 4.3 Data
+
+| 表 | Ent Schema | 说明 |
+|----|------------|------|
+| `channel` | `PlatformChannel` | 实例主表（`config_json` / `metadata_json` / `status` / `enabled`） |
+| `channel_credential` | `PlatformChannelCredential` | `secret_ref`（enc:/env:）；`(channel_id, credential_key)` 唯一 |
+| `channel_delivery` | `PlatformChannelDelivery` | 出站队列（含 `idempotency_key` 唯一索引） |
+| `channel_peer_session` | `PlatformChannelPeerSession` | peer → session（`(channel_id, peer_key)` 唯一） |
+| `channel_turn_job` | `ChannelTurnJob` | Turn Job 审计（`(channel_id, idempotency_key)` 唯一） |
+| `channel_inbound_receipt` | `ChannelInboundReceipt` | 入站幂等（`(channel_id, idempotency_key)` 唯一） |
+| `channel_runtime_lease` | `ChannelRuntimeLease` | Runtime 租约（`expires_at` 索引） |
+
+**关键 Schema 字段**：
+
+- `channel.config_json` — `Text` 默认 `"{}"`；存放 routing / access / streaming / long-task 配置
+- `channel_credential.secret_ref` — `String` 默认 `""`；支持 `enc:` / `env:` 前缀
+- `channel_turn_job.status` — `String` 默认 `"accepted"`；状态机见 §12.5
+- `channel_peer_session.peer_key` — `String` 默认 `""` MaxLen 1024；空表示 `dm_scope=main`
+
+---
+
+## 五、Service 层
+
+### 5.1 ChannelIngress（Webhook）
+
+`internal/service/channel_ingress*.go` — 平台 switch → `internal/channel/{lark,dingtalk,wecom,slack,telegram,discord,wechat,onebot,qq,line,mattermost,teams}/webhook.go`
+
+**入站访问控制**（`channel_ingress_access.go`，在 Agent Turn 之前）：
+
+```
+InboundEvent + channel.config_json
+  → biz.ParseChannelAccessPolicy
+  → inboundAccessContextFromEvent(ev)   // PeerID, chat_id, chat_type, mentioned
+  → policy.Allows(ctx)
+       ├ false → recordDelivery(access_denied) + enqueueOutboundReply(拒绝文案)
+       └ true  → ResolveChannelTarget → ChatService
+```
+
+| 入站 meta 字段 | 用途 |
+|----------------|------|
+| `sender_open_id` / `sender_user_id` / `PeerID` | 匹配 `allowed_user_ids` |
+| `chat_id` + `chat_type=group` | 匹配 `allowed_group_ids` |
+| `mentioned` / `mentions` | 匹配 `require_mention` |
+
+飞书 WS：`internal/channel/lark/parse_message.go` 写入 `sender_open_id`、`chat_type`、`mentioned`。Webhook 路径由 `channel_ingress.go` 补全 `chat_type`（`InferChatTypeFromChatID`）。
+
+**入站门禁（2026-05-22 起）**：
+
+- `lark.AcceptFeishuInbound`（`internal/channel/lark/inbound_gate.go`）：WS / Webhook 统一；仅 `sender_type=user`、必须有 `message_id`、群聊需 @
+- `channel_inbound_receipt`（`internal/biz/channel_inbound_receipt.go`）：同一 `feishu:{message_id}` 只 Turn 一次
+- `channel_ingress_guard.go`：`TryClaimInbound` 幂等守卫
+- 审计：`channel.inbound.receive` · `channel.runtime.connector_start`
+
+详见 [changelog/2026-05-22-Channel-Inbound-Root-Cause.md](../changelog/2026-05-22-Channel-Inbound-Root-Cause.md)。
+
+### 5.2 ChannelRuntimeManager
+
+```go
+// internal/service/channel_runtime.go
+type ChannelRuntimeManager struct {
+    channels *biz.ChannelUsecase
+    ingress  *ChannelIngress  // 复用 runChatTurn / enqueueOutboundReply
+    runners  map[string]context.CancelFunc
+}
+
+func (m *ChannelRuntimeManager) Reload(ctx context.Context) error
+func (m *ChannelRuntimeManager) startInstance(ctx context.Context, ch biz.Channel) error
+```
+
+启动逻辑参考 MuseBot `StartRobot()`：按 `config_json.type` + `receive_mode` 选择 Connector，**每个 DB 实例一个 goroutine**。
+
+Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启。
+
+**Runtime 子系统**：
+
+| 文件 | 职责 |
+|------|------|
+| `internal/channel/runtime/manager.go` | `RuntimeManager` + Connector 注册表 + `Reload` reconcile |
+| `internal/channel/runtime/supervisor.go` | `runSupervised` 断线重连（指数退避 1s→5m）+ lease 续约 |
+| `internal/channel/runtime/connection.go` | 连接状态（`connected_since` / `last_disconnect`） |
+| `internal/channel/runtime/credentials.go` | `CredentialsRevision` fingerprint |
+| `internal/channel/runtime/config.go` | `RuntimeConfig` + `defaultReceiveMode` |
+
+### 5.3 出站
+
+`channel_delivery_worker.go` — 按 type 分发；钉钉 Webhook 模式用 `session_webhook`（MuseBot 同）；Stream 模式用 OpenAPI（MuseBot `ding.go`）。
+
+**出站路径**：
+
+| 路径 | 文件 | 说明 |
+|------|------|------|
+| Unary | `channel_ingress_*.go` → `enqueueOutboundReply` → `channel_delivery` 表 → `ChannelDeliveryWorker` | 完整回复异步发送 |
+| Stream | `processInboundStreaming` → `RunNativeTurnStreaming` → `trpc_turn.OnReplyDelta` → 平台 `StreamSender.Update` | edit-in-place PATCH |
+| Tool Card | `TurnPreviewCoordinator` → `lark/interactive_card.go` | 工具终态 Card（`im_tool_card_mode=feishu_append`） |
+
+**流式出站平台实现**：
+
+| 平台 | 首条 | 增量 | 实现 |
+|------|------|------|------|
+| `telegram` | sendMessage | editMessageText（2s 节流） | `internal/channel/telegram/stream_outbound.go` |
+| `feishu` | im.v1 messages POST | im.v1 messages PATCH | `internal/channel/lark/stream_outbound.go` |
+| `slack` | chat.postMessage | chat.update（2s 节流） | `internal/channel/slack/stream_outbound.go` |
+| `line` | push message | update message（2s 节流） | `internal/channel/line/stream_outbound.go` |
+| `mattermost` | create post | patch post（2s 节流） | `internal/channel/mattermost/stream_outbound.go` |
+| 其他 | — | unary 回退 | delivery 队列 |
+
+流式回合不走 outbound delivery 队列；失败写入 `channel_delivery` audit（`status=streamed|error`）。
+
+---
+
 ## 六、MuseBot 平台实现对照
 
-| type | Aranea 包 | 当前 | MuseBot 文件 | MuseBot 连接 | 目标 SDK |
-|------|-----------|------|--------------|-------------|----------|
-| `feishu` | `lark/` | webhook ✅ · WS ✅ · 流式 ✅ | `lark.go` | larkws | `larksuite/oapi-sdk-go/v3` |
-| `dingtalk` | `dingtalk/` | webhook ✅ · stream ✅ | `ding.go` | StreamClient | `open-dingtalk/dingtalk-stream-sdk-go` |
-| `wecom` | `wecom/` | webhook ✅ | `comwechat.go` | HTTP `/com/wechat` | PowerWeChat work |
-| `wecom-app` | `wecom/` | webhook ✅ | 同上 | 同上 | 同上 |
-| `wechat` | `wechat/` | webhook ✅ · outbound ✅ | `wechat.go` | HTTP `/wechat` | PowerWeChat officialAccount |
-| `slack` | `slack/` | Events webhook ✅ · socketmode ✅ · 流式 ✅ | `slack.go` | Socket Mode | `slack-go/slack` + socketmode |
-| `telegram` | `telegram/` | webhook ✅ · polling ✅ · 流式 ✅ | `telegram.go` | Long polling | `go-telegram-bot-api/v5` |
-| `discord` | `discord/` | gateway ✅ · outbound ✅ | `discord.go` | discordgo Open | `bwmarrin/discordgo` |
-| `qq` | `qq/` | webhook ✅ · outbound ✅ | `qq.go` | webhook + botgo WS | `tencent-connect/botgo` |
-| `personal_qq` | `onebot/` | webhook ✅ · outbound ✅ | `personalqq.go` | OneBot POST `/onebot` | 自定义 + OneBot HTTP |
-| `line` | `line/` | webhook ✅ · outbound ✅ · 流式 ✅ | — | — | `line-bot-sdk-go`（仅类型引用） |
-| `mattermost` | `mattermost/` | webhook ✅ · WS ✅ · outbound ✅ · 流式 ✅ | — | — | `gorilla/websocket` + REST API v4 |
-| `teams` | `teams/` | webhook ✅ · outbound ✅ | — | — | Bot Framework OAuth2 + REST API |
+| type | Aranea 包 | MuseBot 文件 | MuseBot 连接 | 目标 SDK |
+|------|-----------|--------------|-------------|----------|
+| `feishu` | `lark/` | `lark.go` | larkws | `larksuite/oapi-sdk-go/v3` |
+| `dingtalk` | `dingtalk/` | `ding.go` | StreamClient | `open-dingtalk/dingtalk-stream-sdk-go` |
+| `wecom` | `wecom/` | `comwechat.go` | HTTP `/com/wechat` | PowerWeChat work |
+| `wecom-app` | `wecom/` | 同上 | 同上 | 同上 |
+| `wechat` | `wechat/` | `wechat.go` | HTTP `/wechat` | PowerWeChat officialAccount |
+| `slack` | `slack/` | `slack.go` | Socket Mode | `slack-go/slack` + socketmode |
+| `telegram` | `telegram/` | `telegram.go` | Long polling | `go-telegram-bot-api/v5` |
+| `discord` | `discord/` | `discord.go` | discordgo Open | `bwmarrin/discordgo` |
+| `qq` | `qq/` | `qq.go` | webhook + botgo WS | `tencent-connect/botgo` |
+| `personal_qq` | `onebot/` | `personalqq.go` | OneBot POST `/onebot` | 自定义 + OneBot HTTP |
+| `line` | `line/` | — | — | `line-bot-sdk-go`（仅类型引用） |
+| `mattermost` | `mattermost/` | — | — | `gorilla/websocket` + REST API v4 |
+| `teams` | `teams/` | — | — | Bot Framework OAuth2 + REST API |
 
 ### 6.1 MuseBot HTTP 路由 → Aranea 映射
 
@@ -282,6 +343,8 @@ Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启
 - `go RobotInfo.Exec()` 无界并发 — 使用 bounded worker pool
 - MuseBot 内置 HTTP `:36060` 混布 — Webhook 挂 Kratos `internal/server`
 
+> **平台扩展进度**：Phase C / Phase H 的任务板与完成状态见 [17-channel.development.md §4 路线图](./17-channel-development.md#4-路线图) 与 [§16 Phase H](./17-channel-development.md#16-phase-h--新平台扩展line--mattermost--teams)。
+
 ---
 
 ## 七、流式回复（Phase 2）
@@ -308,11 +371,17 @@ Aranea 映射：
 ```
 web/src/features/channels/
 web/src/components/channels/
+web/src/domain/channel/        # S23 抽取的纯工具层（re-export stub 在 features）
+web/src/pages/ChannelsPage.vue
+web/src/stores/channels/
 ```
 
 - `receive_mode` 下拉：选项来自 catalog `receive_modes`
 - 非 bundled 平台：Catalog 展示「即将支持」
 - 微信 `active_mode`、钉钉 Stream 凭据分区：Phase 2 schema 驱动
+- `useChannelEditorForm.ts` — MuseBot 布局 + composable
+- `ChannelTurnJobsPanel.vue` — 长任务 Job 面板（M55-JOB-01）
+- `useChatInboundSync.ts` — Web Chat 同步 Channel 入站（DECO-01）
 
 ---
 
@@ -324,13 +393,20 @@ web/src/components/channels/
 | `ChannelIngress` | Webhook |
 | `ChannelRuntimeManager` | 长连接 ✅ |
 | `ChannelDeliveryWorker` | cron 5s |
+| `ChannelHealthScanner` | 10min 健康扫描 |
+| `TurnPreviewCoordinator` | IM Preview 投影（订阅 EventBus） |
 
 | 环境变量 | 作用 |
 |----------|------|
 | `CHANNEL_DELIVERY_DISABLED=1` | 关闭出站 worker |
 | `CHANNEL_HEALTH_DISABLED=1` | 关闭健康扫描 |
-| `CHANNEL_RUNTIME_DISABLED=1` | 关闭长连接 Runtime（规划） |
+| `CHANNEL_RUNTIME_DISABLED=1` | 关闭长连接 Runtime |
+| `CHANNEL_RUNTIME_RELOAD_INTERVAL` | 定期 Reload 间隔（默认 `2m`；`0`/`off` 关闭） |
 | `ARANEA_CREDENTIAL_KEY` | 凭据加密 |
+
+Webhook 默认：`/webhooks/{channel_key}`。
+
+> **Runtime 运维细节**（重连策略、fingerprint、指标）：见 [17-channel.development.md §6 Runtime 运维](./17-channel-development.md#6-runtime-运维)。
 
 ---
 
@@ -340,28 +416,20 @@ web/src/components/channels/
 |------|------|
 | `internal/channel/*/webhook_test.go` | 验签、parse |
 | `internal/channel/*/connector_test.go` | mock SDK 入出站（规划） |
-| `internal/biz/channel_*_test.go` | routing、config |
+| `internal/biz/channel_*_test.go` | routing、config、access、turn_job 状态机 |
+| `internal/service/channel_*_test.go` | ingress accept/execute、preview、delivery |
+| `internal/channel/preview/*_test.go` | transcript、sanitize、split、tool_card |
 | E2E | 各平台 sandbox 账号 |
 
 ---
 
-## 十一、新增平台优先级（已完成）
-
-1. **P0 巩固** ✅：现有 10 平台 Webhook + Runtime  
-2. **P1 连接升级** ✅：飞书 larkws、钉钉 Stream、Slack Socket Mode、Telegram polling  
-3. **P1 国内补全** ✅：微信公众号（PowerWeChat）  
-4. **P1 海外扩展** ✅：LINE、Mattermost、Teams  
-5. **P2 海外/QQ** ✅：Discord、QQ 官方、OneBot  
-
----
-
-## 十二、长任务异步执行设计
+## 十一、长任务异步执行设计
 
 > **需求**：[17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel)  
 > **开发计划**：[17-channel-development.md §10](./17-channel-development.md#10-长任务异步执行phase-e)  
 > **跨模块 Turn**：[17-channel-agent-team-integration.design.md §4.4](./17-channel-agent-team-integration.design.md#44-长任务路径)
 
-### 12.1 设计目标
+### 11.1 设计目标
 
 | 目标 | 手段 |
 |------|------|
@@ -370,7 +438,7 @@ web/src/components/channels/
 | 复用运行时 | `ChatService.RunNativeTurn*`；不新建 Channel 专用 LLM 路径 |
 | biz 不触框架 | Job 状态、配置解析在 `internal/biz`；Runner 仅在 `internal/service` |
 
-### 12.2 现状瓶颈（代码锚点）
+### 11.2 现状瓶颈（代码锚点）
 
 | 瓶颈 | 位置 | 影响 |
 |------|------|------|
@@ -382,7 +450,7 @@ web/src/components/channels/
 
 WS 入站已异步（`lark/ws.go` `safego.Go` + `HandleWSInbound` `WithoutCancel`），Webhook 需对齐。
 
-### 12.3 目标架构
+### 11.3 目标架构
 
 ```
 InboundEvent
@@ -400,7 +468,7 @@ ChannelTurnWorker / safego
 
 **与 Web Chat 边界**：Turn、Session 锁、pending queue 仍在 `ChatService`；Channel 层只增加 **IM 投影**（ACK / 进度 / 最终文本）与 **Job 审计**。
 
-### 12.4 包职责（SRP）
+### 11.4 包职责（SRP）
 
 | 包 / 文件 | 职责 | 禁止 |
 |-----------|------|------|
@@ -411,11 +479,11 @@ ChannelTurnWorker / safego
 | `internal/service/channel_ingress_execute.go` | `executeInboundTurn`：调 `RunNativeTurn*`、更新 Job | 平台 SDK |
 | `internal/service/channel_ingress_http.go` | Webhook：Accept → 200 → async Execute | Turn 逻辑 |
 | `internal/service/channel_turn_worker.go` | 扫 Job / 或仅 async goroutine 调度 | 验签 |
-| `internal/service/channel_progress_projector.go` | 订阅 EventBus → StreamSender 进度 PATCH | 路由 / Session 创建 |
+| `internal/service/channel_progress_projector.go` | 订阅 EventBus → StreamSender 进度 PATCH（已并入 TurnPreviewCoordinator） | 路由 / Session 创建 |
 | `internal/service/trpc_turn.go` | 从 ctx 读取 Channel 注入的 timeout（可选值） | 飞书 API |
 | `internal/channel/lark/stream_outbound.go` | 平台 PATCH（已有） | Agent Turn |
 
-### 12.5 数据模型：`channel_turn_job`
+### 11.5 数据模型：`channel_turn_job`
 
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -433,7 +501,7 @@ SQL 增量：`docs/sql/04_channel.sql`（或新编号文件）；Ent schema 与 
 
 **与现有表**：`channel_inbound_receipt` 保幂等；`channel_delivery` 保 unary 出站重试；Job 表保 **Turn 生命周期** 审计。
 
-### 12.6 配置解析（biz）
+### 11.6 配置解析（biz）
 
 扩展 `ChannelLongTaskConfig`（自 `config_json.config`）：
 
@@ -452,7 +520,7 @@ type ChannelLongTaskConfig struct {
 
 解析函数放 `internal/biz/channel_config_helpers.go`；Ingress 读取后注入 `context` 或 `SendChatMessageRequest` metadata（**不**写入 proto 对外字段，除非后续 Admin API 需要列表 Job）。
 
-### 12.7 Accept 路径（P0）
+### 11.7 Accept 路径（P0）
 
 **Webhook**（`channel_ingress_http.go`）：
 
@@ -465,7 +533,7 @@ type ChannelLongTaskConfig struct {
 
 **幂等**：Accept 阶段已 `TryClaimInbound`；Execute 阶段 Job `idempotency_key` 唯一；重复 Execute  no-op。
 
-### 12.8 Execute 路径与 ChatService 集成
+### 11.8 Execute 路径与 ChatService 集成
 
 **Turn 结果分类**（`executeInboundTurn` 需识别）：
 
@@ -480,11 +548,11 @@ type ChannelLongTaskConfig struct {
 
 **入队检测**：扩展 `runChatTurn` / `runChatTurnStreaming` 返回 `TurnOutcome`（`biz` 或 `service` 小 struct），避免通过「空 reply」猜测。
 
-### 12.9 IM Preview 投影（TurnPreviewCoordinator，2026-05-23）
+### 11.9 IM Preview 投影（TurnPreviewCoordinator，2026-05-23）
 
 > **替代** 原 `ChannelProgressProjector` 与 `OnReplyDelta` 双轨 PATCH；进度语义并入 transcript。
 
-#### 12.9.1 现状 vs 目标
+#### 11.9.1 现状 vs 目标
 
 ```mermaid
 flowchart TB
@@ -514,7 +582,7 @@ flowchart TB
   end
 ```
 
-#### 12.9.2 分层职责（SRP）
+#### 11.9.2 分层职责（SRP）
 
 | 包 | 类型 | 职责 |
 |----|------|------|
@@ -525,7 +593,7 @@ flowchart TB
 
 **禁止**：在 `internal/agent` 或 `trpc_turn` 内嵌 IM 格式逻辑；Channel 仅订阅已投影的 Envelope。
 
-#### 12.9.3 端到端序列
+#### 11.9.3 端到端序列
 
 ```mermaid
 sequenceDiagram
@@ -550,7 +618,7 @@ sequenceDiagram
   IG->>IG: Job.preview_message_id
 ```
 
-#### 12.9.4 Envelope → Transcript 映射
+#### 11.9.4 Envelope → Transcript 映射
 
 | Envelope | Segment |
 |----------|---------|
@@ -558,7 +626,7 @@ sequenceDiagram
 | `tool_call` / `tool_result` | `tool`（DisplayLabel / ActivityKind / Summary） |
 | `member_*` | `member`（`im_team_mode`） |
 
-#### 12.9.5 配置项（`config_json.config`）
+#### 11.9.5 配置项（`config_json.config`）
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -591,7 +659,7 @@ sequenceDiagram
 
 **Card 可观测性**：发送失败写 FlowLog `channel.tool.card`；指标 `aranea_channel_tool_card_total{platform,status}`。
 
-#### 12.9.6 测试锚点
+#### 11.9.6 测试锚点
 
 | 文件 | 覆盖 |
 |------|------|
@@ -603,13 +671,11 @@ sequenceDiagram
 | `service/channel_turn_preview_scenario_test.go` | ACK defer、overflow、终态 Card |
 | `service/channel_ingress_accept_test.go` | streaming 时 ACK defer |
 
----
-
-### 12.10 进度投影器（已合并，deprecated）
+### 11.10 进度投影器（已合并，deprecated）
 
 原 `ChannelProgressProjector` 已并入 `TurnPreviewCoordinator`。`progress_mode=text|steps` 仅作 legacy 映射，新配置请使用 `im_render_mode` / `im_team_mode`。
 
-### 12.11 超长任务 async 模式（P2）
+### 11.11 超长任务 async 模式（P2）
 
 `execution_mode=async|auto` 时 Accept 路径：
 
@@ -620,7 +686,7 @@ sequenceDiagram
 
 **影响域**：Channel Ingress、`GraphService`/`CronService` 触发 API、EventBus 消费者；**不在** Channel 内实现 Graph 节点逻辑。
 
-### 12.12 影响域矩阵
+### 11.12 影响域矩阵
 
 | 变更 | 影响模块 | 风险 |
 |------|----------|------|
@@ -632,7 +698,7 @@ sequenceDiagram
 | ProgressProjector | event 订阅顺序 | 中；需防 goroutine 泄漏，Turn 结束 unregister |
 | async → Graph | Graph/Cron/Event | 高；P2 独立迭代 |
 
-### 12.13 指标与 FlowLog
+### 11.13 指标与 FlowLog
 
 | 指标 | 标签 |
 |------|------|
@@ -648,7 +714,7 @@ FlowLog 步骤（注册表追加）：
 | `channel.turn.start` / `channel.turn.done` | Job 执行 |
 | `channel.preview.patch` | IM preview PATCH（debug 级；原 channel.progress.patch） |
 
-### 12.14 测试策略
+### 11.14 测试策略
 
 | 层级 | 内容 |
 |------|------|
@@ -661,13 +727,13 @@ FlowLog 步骤（注册表追加）：
 
 ---
 
-## 十四、Hermes Agent 对照：消息流转与飞书特殊处理
+## 十二、Hermes Agent 对照：消息流转与飞书特殊处理
 
 > **外部参考**：[Hermes Agent v0.14](https://github.com/NousResearch/hermes-agent) — `gateway/run.py`、`gateway/platforms/feishu.py`、`gateway/session.py`  
 > **Aranea 锚点**：`internal/service/channel_ingress*.go`、`internal/channel/lark/`、`TurnPreviewCoordinator`  
 > **开发 backlog**：[17-channel-development.md §11 Phase F](./17-channel-development.md#11-phase-f--hermes-飞书借鉴p1p2)
 
-### 14.1 产品形态差异（为何对照 Hermes）
+### 12.1 产品形态差异（为何对照 Hermes）
 
 | 维度 | Hermes | Aranea |
 |------|--------|--------|
@@ -679,7 +745,7 @@ FlowLog 步骤（注册表追加）：
 
 Hermes 飞书适配器是 **生产级个人 Gateway 实现**，在文本分批、线程回复、Reaction 代替 typing、WS 重连参数等方面有可借鉴细节；Aranea 在 **IM Preview、Turn Job、Tool Card、长任务 async** 上已超越 Hermes 企业场景需求。
 
-### 14.2 Hermes 端到端消息流转（Channel → Agent → 回复）
+### 12.2 Hermes 端到端消息流转（Channel → Agent → 回复）
 
 ```mermaid
 sequenceDiagram
@@ -725,7 +791,7 @@ sequenceDiagram
 | 流式 | `gateway/stream_consumer.py` + `FeishuAdapter.edit_message` | 首条 create → 后续 update |
 | 出站 | `FeishuAdapter.send` | 8000 字分片；markdown→post |
 
-### 14.3 Aranea 端到端消息流转（对照）
+### 12.3 Aranea 端到端消息流转（对照）
 
 ```mermaid
 sequenceDiagram
@@ -771,9 +837,9 @@ sequenceDiagram
 | 流式 | `lark/stream_outbound.go` `StreamSender` | POST 首条 → PATCH；tenant token 缓存 |
 | 重连 | `channel/runtime/supervisor.go` | 指数退避 1s→5m（**应用层**） |
 
-### 14.4 飞书特殊处理对照
+### 12.4 飞书特殊处理对照
 
-#### 14.4.1 连接层：WS 心跳 / 重连 / 单 App 锁
+#### 12.4.1 连接层：WS 心跳 / 重连 / 单 App 锁
 
 | 机制 | Hermes | Aranea | 建议 |
 |------|--------|--------|------|
@@ -783,7 +849,7 @@ sequenceDiagram
 | Webhook 限流 | 120 req/min/IP + 1MB body | 验签 + 200 快返；**无 IP 限流** | **F-03**：Kratos middleware 或 ingress 层 per-channel_key 限流 |
 | WS/Webhook 双收 | 模式互斥（config） | WS 模式忽略 webhook IM 事件 | 一致；UI 需明确互斥说明 ✅ |
 
-#### 14.4.2 入站：去重、分批、富媒体
+#### 12.4.2 入站：去重、分批、富媒体
 
 | 机制 | Hermes | Aranea | 建议 |
 |------|--------|--------|------|
@@ -793,7 +859,7 @@ sequenceDiagram
 | 群 @ | adapter `_admit` + require_mention | `AcceptFeishuInbound` + `checkInboundAccess` | 双层合理 ✅ |
 | Card 入站 | 按钮 → synthetic `/card` COMMAND | `card.action.trigger` → background/cancel | Aranea 卡片动作更贴近 M55 ✅ |
 
-#### 14.4.3 会话隔离（Peer / Thread）
+#### 12.4.3 会话隔离（Peer / Thread）
 
 | 场景 | Hermes `build_session_key` | Aranea `PeerKeyForSession` |
 |------|---------------------------|----------------------------|
@@ -804,7 +870,7 @@ sequenceDiagram
 
 Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open_id → user_id → chat_id，群聊场景建议文档化 **union_id** 字段采集（若 SDK 事件含 union_id）。
 
-#### 14.4.4 出站：流式、分片、线程回复
+#### 12.4.4 出站：流式、分片、线程回复
 
 | 机制 | Hermes | Aranea | 建议 |
 |------|--------|--------|------|
@@ -815,7 +881,7 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 | 线程回复 | `reply_in_thread` + `thread_id` receive | `ResolveReceiveTarget` chat_id 为主 | **F-06** 同上 |
 | Markdown | post 类型；table→plain | `RenderPlainText` 纯文本 | **F-08** P2：Hermes 式 post 出站（保留粗体/链接） |
 
-#### 14.4.5 「Processing」反馈（typing / reaction）
+#### 12.4.5 「Processing」反馈（typing / reaction）
 
 | 机制 | Hermes | Aranea |
 |------|--------|--------|
@@ -825,7 +891,7 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 
 **建议 F-09（P2）**：长 Turn 首字节前（`first_byte_timeout_sec` 内无 delta）对入站 `message_id` 添加飞书 emoji reaction（如 THUMBSUP/Typing 等价物），Turn 结束移除 — 补充「用户尚未看到 preview 前」的即时反馈。需评估 API 权限与频率。
 
-#### 14.4.6 并发与中断
+#### 12.4.6 并发与中断
 
 | 机制 | Hermes | Aranea |
 |------|--------|--------|
@@ -835,7 +901,7 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 
 **建议 F-10（P2）**：Channel 配置 `busy_input_mode: queue | interrupt`（Hermes 对齐）；interrupt 时调用 `ChatService.StopGeneration` + 合并 pending 文本。
 
-#### 14.4.7 Token 与凭据
+#### 12.4.7 Token 与凭据
 
 | 机制 | Hermes | Aranea |
 |------|--------|--------|
@@ -845,7 +911,7 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 
 **建议 F-11（P1）**：飞书开放平台「加密配置」开启时，Webhook 路径增加 `decrypt_event`（与 MuseBot/Hermes 一致），避免生产只能关加密。
 
-### 14.5 能力矩阵：Hermes vs Aranea（飞书 Channel）
+### 12.5 能力矩阵：Hermes vs Aranea（飞书 Channel）
 
 | 能力 | Hermes | Aranea | 优势方 |
 |------|--------|--------|--------|
@@ -862,7 +928,7 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 | Webhook IP 限流 | ✅ | ❌ | Hermes |
 | 同 app 跨进程锁 | ✅ | 部分 | Hermes |
 
-### 14.6 建议优先级（摘要）
+### 12.6 建议优先级（摘要）
 
 | ID | 优先级 | 建议 | 落点 |
 |----|--------|------|------|
@@ -889,300 +955,4 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 | 1.0 | 2026-05-22 | §十二 长任务异步执行：Accept/Execute 分离、Job 模型、ProgressProjector、影响域 |
 | 1.1 | 2026-05-24 | §十四 Hermes Agent 对照：消息流转、飞书 WS/心跳/分批/Reaction、借鉴项 F-01–F-11 |
 | 1.2 | 2026-06-06 | §一 实现状态更新：13 平台全部 bundled ✅；§二 Runtime 补 mattermost；§六 平台矩阵 10→13 行，状态全部 ✅；§九 ChannelRuntimeManager ✅；§十一 优先级全部完成 |
-
-
----
-
-## 子模块：Channel  Agent  Team  会话消息  集成设计
-
-> 对应业务说明：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)  
-> **目标态架构（1 Turn + 2 Projections + 3 Anchors）**：[55-chat-channel-cursor-solution.md §1.5](../需求/55-chat-channel-cursor-solution.md#15-架构收敛模型1-turn--2-projections--3-anchors)  
-> 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)  
-> **运行时边界**：Channel 与 Chat 均在 `internal/service` 组装 `trpc-agent-go`；`internal/biz` 不 import 框架。
-
----
-
-## 一、模块职责矩阵（实现视角）
-
-| 层 | 包/锚点 | 职责 | 禁止 |
-|----|---------|------|------|
-| 接入 | `internal/channel/lark/*`、`channel_ingress*.go` | 验签、解析 `InboundEvent`、出站/流式 | 调用 LLM、解析 Agent 配置 |
-| 路由 | `internal/biz/channel_routing.go` | `ParseChannelRouting`、`ResolveChannelTarget`、`PeerKeyForSession` | 创建 Runner |
-| 会话绑定 | `channel_peer_session` + `channel_ingress_session.go` | peer → `session_id` 稳定映射 | 修改已存在 Session 的 owner |
-| 运行时 | `ChatService.RunNativeTurn*`、`chat_native.go` | Agent Turn / Team Turn、落库、EventBus | — |
-| 编排 | `internal/team` | Team 定义 → trpc Team Runner | — |
-| 能力 | `internal/agent` + `internal/biz/agent_*` | `BuildTRPCLLMAgent`、工具/记忆装配 | — |
-| 消息 | `internal/biz/session_usecase`、Event 投影 | `ChatMessage`、Envelope | Channel 专用消息表（无，复用 Session） |
-| 实时 | `internal/event` + `/v1/ws` | Envelope 多路复用 | Channel 独立 Broker |
-
----
-
-## 二、端到端数据流（飞书 WS）
-
-```
-larkws / webhook
-  → port.InboundEvent { PeerID, Text, OutboundMeta, ... }
-  → ChannelIngress.ProcessInbound
-       ├ channel_ingress_access.go   (allowed_* / require_mention)
-       ├ ParseChannelRouting
-       ├ PeerKeyForSession(dm_scope, peer_id)
-       ├ ensureChannelSession → sessions.Create(owner_type, agent_id|team_id)
-       ├ prepareChannelChatRequest → SendChatMessageRequest{ session_id, content, team_id? }
-       └ runChatTurn / runChatTurnStreaming
-            → ChatService.RunNativeTurnUnary|Streaming
-                 ├ owner_type=agent → runSingleAgentViaTRPC
-                 └ owner_type=team  → teamsNative.RunTurn
-  → assistant ContentMarkdown
-  → enqueueOutboundReply | StreamSender.Update (streaming_enabled)
-```
-
-**关键代码锚点**：
-
-```62:88:internal/service/channel_ingress_session.go
-func (h *ChannelIngress) prepareChannelChatRequest(...) (*chatv1.SendChatMessageRequest, error) {
-	// ParseChannelRouting → ensureChannelSession → SendChatMessageRequest
-	// team 会话时设置 req.TeamId
-}
-```
-
-```85:113:internal/biz/channel_routing.go
-func ResolveChannelTarget(...) (ownerType, agentID, teamID string, err error) {
-	// rules → default_team_id → default_agent_id (UUID 或 agent_key)
-}
-```
-
-```218:251:internal/service/chat_native.go
-	if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
-		// teamsNative.RunTurn — 与 Web Chat Team 会话同路径
-	}
-```
-
----
-
-## 三、绑定模型
-
-### 3.1 三张表语义
-
-| 表 | 键 | 值 | 说明 |
-|----|----|----|------|
-| `channel` | `id` / `key` | `config_json`（含 routing、access、streaming） | 一个飞书应用实例 |
-| `channel_peer_session` | `(channel_id, peer_key)` | `session_id` | IM 对端与会话 1:1（在 dm_scope 语义下） |
-| `sessions` | `id` | `owner_type`, `agent_id`, `team_id` | 会话归属**创建时**写入 |
-
-### 3.2 `dm_scope` 与 `peer_key`
-
-| dm_scope | peer_key | 业务含义 |
-|----------|----------|----------|
-| `main` | `""` | 全 Channel 共用一个 Session（适合全群广播助手） |
-| `per-channel-peer`（默认） | `peer_id` | 每个 IM 对端独立 Session（私聊用户 / 群 ID 各一会话） |
-| `per-peer` | `peer_id` | MVP 与 per-channel-peer 相同 |
-
-飞书 WS 入站：`PeerID` 多为 `open_id`；群场景 `OutboundMeta.chat_id` 用于群白名单与出站 recipient。
-
-### 3.3 路由变更策略（现状 vs 建议）
-
-| 策略 | 现状 | 建议（产品+实现） |
-|------|------|-------------------|
-| 修改 `default_agent_id` | 已存在 `channel_peer_session` **不变** | 文档明确；可选提供「重置 peer 绑定」运维操作 |
-| 修改 `default_team_id` | 同上 | 同上 |
-| 修改 `rules` | 仅影响**新 peer 模式**下未建绑定的入站 | 规则变更审计日志 |
-| Agent 删除 | `ResolveChannelTarget` NotFound | Channel 保存时校验 + 列表展示引用 |
-
----
-
-## 四、Team 与消息机制在 Channel 路径上的行为
-
-### 4.1 Team Turn
-
-- Channel 准备的 Session 若 `owner_type=team`，`runNativeAgentTurn` 走 `teamsNative.RunTurn`，与 Web Chat 选择 Team 一致。
-- `team_runs` / `team_run_steps` 正常写入；`EventProjector` 仍会向 `EventBus` 发布 `member_delta` 等。
-- **IM 出站**：`processInboundCore` 仅取 `assistantMsg.ContentMarkdown` 全文；**不**把成员条投影到飞书（除非后续做「卡片分段」产品）。
-
-### 4.2 单 Agent Turn
-
-- `sess.AgentID` 驱动 `hydratedAgent` → `BuildTRPCLLMAgent` → `runSingleAgentViaTRPC`。
-- 工具调用、FlowLog 仍产生 Envelope；飞书用户默认只见文本（或流式 PATCH 的文本）。
-
-### 4.3 与 [51 消息机制](./51%20消息机制.md) 的关系
-
-```mermaid
-flowchart LR
-  subgraph ChannelPath["Channel 入站"]
-    IN[InboundEvent]
-    NT[RunNativeTurn]
-  end
-  subgraph Runtime["共享运行时"]
-    TRPC[trpc event.Event]
-    EP[EventProjector]
-    EB[EventBus]
-    DB[(Session Messages)]
-  end
-  subgraph Clients["消费者"]
-    WS[WebSocket /v1/ws]
-    IM[飞书 outbound]
-  end
-  IN --> NT
-  NT --> TRPC
-  TRPC --> EP
-  EP --> EB
-  EP --> DB
-  NT --> IM
-  EB --> WS
-```
-
-- **真相源**：trpc `event.Event` → 投影 → Envelope + DB 消息。
-- **Channel 额外约束**：出站适配器只消费**文本聚合结果**（流式时由 `OnReplyDelta` 推平台）。
-- **可观测**：运维应用 `session_id`（来自 `channel_peer_session`）在 Monitor / Session 页订阅 WS，与 Web Chat 共用 Envelope 类型。
-
-### 4.4 长任务路径
-
-> **需求**：[17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel) · **设计**：[17 channel.design.md §十二](./17%20channel.design.md#十二长任务异步执行设计)
-
-**现状问题**（2026-05-22）：
-
-```
-Webhook: processInboundHTTP 同步 ProcessInbound → 阻塞至 Turn 结束
-Channel: runChatTurn → RunNativeTurnUnary → 最长 5min
-入队:    hasActive → EnqueueUserMessage → reply="" → 无 IM 出站
-Team:    teamsNative.RunTurn 数分钟 → 仅最终 ContentMarkdown 回飞书
-```
-
-**目标数据流（Phase E）**：
-
-```mermaid
-sequenceDiagram
-  participant IM as 飞书
-  participant IG as ChannelIngress
-  participant JOB as channel_turn_job
-  participant RT as ChatService
-  participant EB as EventBus
-  participant PR as ProgressProjector
-
-  IM->>IG: 入站消息
-  IG->>IG: acceptInbound（幂等+ACK）
-  IG->>JOB: status=accepted
-  IG-->>IM: ACK 文案
-  Note over IG,IM: Webhook HTTP 200
-
-  IG->>RT: executeInboundTurn（async）
-  IG->>JOB: status=running
-  RT->>EB: tool/member/delta 事件
-  EB->>PR: 进度 PATCH
-  PR->>IM: 流式/进度消息
-  RT->>IG: assistant 完成
-  IG->>JOB: status=completed
-  IG->>IM: flush 最终文本
-```
-
-**与 Team / Chat 边界**：
-
-| 层 | 长任务职责 |
-|----|------------|
-| `ChatService` | Session 锁、Turn 超时（可被 Channel ctx 覆盖）、pending queue |
-| `teamsNative.RunTurn` | 成员编排、落库、`member_*` Envelope（不变） |
-| `ChannelIngress` | ACK、Job、IM 投影；**不**解析 Team 图 |
-| `ChannelProgressProjector` | 消费 Envelope → 飞书 PATCH；Web Chat UI 不变 |
-
-**TurnOutcome 契约**（service 层，Web RPC 兼容）：
-
-| Outcome | IM 动作 | Session 消息 |
-|---------|---------|--------------|
-| `completed` | flush 回复 | user + assistant 落库 |
-| `queued` | `ack_on_queued` | 仅 user 入 pending |
-| `failed` / `timeout` | 错误文案 | 按 Turn 错误策略 |
-
----
-
-## 五、差距清单与实现建议
-
-| ID | 项 | 状态 | 建议实现 |
-|----|-----|------|----------|
-| I-01 | 路由 UI：`dm_scope`、`rules` | 🟡 | `dm_scope` 下拉 ✅；`rules` 表 ⏳ |
-| I-02 | 路由变更迁移 | ✅ | `UpdateChannel` 在 `RoutingTargetChanged` 时 `DeleteByChannelID` |
-| I-03 | Agent 被 Channel 引用列表 | ✅ | `biz.ListChannelsReferencingAgent` + `AgentChannelRefsSection.vue` |
-| I-08 | Web Chat 同步 Channel Turn | ✅ | `web/.../useChatInboundSync.ts` + `sessions.metadata_json.source=channel` |
-| I-04 | Team 飞书卡片化中间步骤 | ❌ | 可选：`config_json.config.team_notify_mode=summary|steps` |
-| I-05 | Channel Turn 与 WS 默认订阅 | 🟡 | 文档约定；可选在 Envelope 加 `source=channel` |
-| I-06 | `ensureChannelSession` 忽略 routing 解析的 agent/team | 代码 smell | 创建 Session 时已用 `ResolveChannelTarget`；删除无用 `_ = ownerType` 或用于校验一致性 |
-| I-07 | 并发入站 | 🟡 Session 锁 | 与 Web Chat 相同：`lockSession` + enqueue；飞书侧重试由平台保证 |
-| I-09 | Webhook 同步阻塞 Turn | ❌ Phase E1 | `acceptInbound` + HTTP 200 后 async execute |
-| I-10 | 入队无 IM 反馈 | ❌ Phase E1-4 | `TurnOutcome=queued` → `ack_on_queued` |
-| I-11 | 长静默无进度 | ❌ Phase E4 | `ChannelProgressProjector` + `progress_mode` |
-| I-12 | Turn Job 审计 | ❌ Phase E3 | `channel_turn_job` 表 |
-| I-13 | Channel 级 Turn 超时 | ❌ Phase E2 | `turn_timeout_sec` / `first_byte_timeout_sec` |
-| I-14 | 超长任务 async | ❌ Phase E6 | `execution_mode` → Graph/Cron |
-
----
-
-## 六、推荐业务配置模板（飞书）
-
-### 6.1 单 Agent 客服
-
-```json
-{
-  "routing": {
-    "default_agent_id": "customer-service",
-    "dm_scope": "per-channel-peer"
-  },
-  "config": {
-    "require_mention": true,
-    "streaming_enabled": true
-  }
-}
-```
-
-### 6.2 Team 流水线（群聊）
-
-```json
-{
-  "routing": {
-    "default_team_id": "<team-uuid>",
-    "dm_scope": "per-channel-peer"
-  },
-  "config": {
-    "require_mention": true,
-    "allowed_group_ids": ["oc_xxx"],
-    "streaming_enabled": true,
-    "turn_timeout_sec": 900,
-    "progress_mode": "steps",
-    "ack_message": "收到，Team 流水线已启动…"
-  }
-}
-```
-
-### 6.3 多群分流（规则）
-
-```json
-{
-  "routing": {
-    "default_agent_id": "main",
-    "rules": [
-      { "peer_pattern": "oc_sales_*", "team_id": "<sales-team-uuid>" },
-      { "peer_pattern": "oc_support_*", "agent_id": "support-bot" }
-    ]
-  }
-}
-```
-
----
-
-## 七、测试与验收映射
-
-| 验收 ID | 测试建议 |
-|---------|----------|
-| CAT-01 | 集成：`ProcessInbound` + 同 peer 二次入站同 `session_id` |
-| CAT-02 | `owner_type=team` + `team_runs` 计数 + 飞书 mock outbound |
-| CAT-03 | 改 routing 后旧 peer session `agent_id` 不变 |
-| CAT-04 | `channel_ingress_access_test.go` |
-| CAT-05 | `streaming_enabled` + `stream_outbound` 假客户端 |
-| LT-01 | mock 慢 Turn + ACK 时序断言 |
-| LT-03 | active run + 第二条入站 → queued outbound |
-
----
-
-## 八、文档修订记录
-
-| 版本 | 日期 | 说明 |
-|------|------|------|
-| 1.0 | 2026-05-22 | 集成设计首版：数据流、绑定模型、Team/消息机制、差距表 |
-| 1.1 | 2026-05-22 | §4.4 长任务路径；差距 I-09–I-14；Team 模板增长任务配置 |
+| 1.3 | 2026-06-17 | 三件套内容边界重组：§一 当前实现状态表迁移至 `.development.md §2`；§十一 新增平台优先级迁移至 `.development.md §4/§16`；§一 增补「与 MuseBot/Aranea 架构差异」表（从 `.md` 迁入）；§四 增补 API 端点表与 Ent Schema 表；§五 增补入站门禁/幂等代码锚点（从 `.md` 迁入）；§五.3 增补流式出站平台实现表；子模块「Channel Agent Team 集成设计」移除（独立文档 `17-channel-agent-team-integration.design.md`）；章节编号统一（原 §十二 长任务 → §十一；原 §十四 Hermes → §十二） |

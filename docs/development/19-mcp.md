@@ -1,226 +1,117 @@
 # MCP 服务器管理
 
-> **2026-06-06 现状对齐**：
-> - ✅ 控制台 CRUD + 测试连接 + 状态灯（`metadata_json.health_*`）。
-> - ✅ API：`/v1/mcp-servers`（`MCPServerService`）；存储为 `mcp_server` + `config_json` / `metadata_json` 拆分（非扁平列）。
-> - ✅ 运行时装配：`AgentMCPTooling` → `tool_assembly.resolveMCPServers` → `tools.buildMCPToolSet` / `buildMCPBrokerTools`。
-> - ✅ 后台探活：`internal/mcp/health`；OAuth2 静态/Client Credentials/Refresh（`config_json.auth`）。
-> - ✅ `mcp_call_count` 会话统计：`classify` 分类 + Prometheus `aranea_mcp_invocation_total` 指标。
-> - ✅ 按用户动态凭据（`require_user_credentials`）：`platform_mcp_user_credential` 表 + API + 前端 `McpUserCredentialDialog`。
-> - ✅ URL 预检：`POST /v1/mcp-servers/validate`（不持久化，仅校验连通性）。
-> - ✅ Probe 策略化：`ProbeStrategy` 接口 + `ConnectivityProbe` / `AuthAwareProbe` + `probe_mode` 配置。
-> - ✅ MCP 子系统架构优化：Transport 类型化、defaults 集中、context.WithoutCancel、bounded concurrency 等。
->
-> 进度以 [19-mcp-development.md](./19-mcp.development.md) 与 [execution-plan.md](../guides/execution-plan.md) 为准。
+> 需求文档。设计见 [19-mcp.design.md](./19-mcp.design.md)，开发计划见 [19-mcp.development.md](./19-mcp.development.md)。
 
-本文档描述 **Model Context Protocol（MCP）服务器** 在控制台中的 **列表、CRUD、状态灯、添加/编辑表单** 的 UI 设计，以及 **持久化模型** 与 **HTTP API**。前端采用 **Quasar（Vue 3）**，与 Monitor 控制台风格一致。
+本文档描述 **Model Context Protocol（MCP）服务器** 在控制台中管理的 **用户故事、功能需求、验收标准与非功能需求**（用户视角）。前端采用 **Quasar（Vue 3）**，与 Monitor 控制台风格一致。
+
+> 实现进度/状态、代码锚点见 [19-mcp.development.md](./19-mcp.development.md)；架构、Proto/API 契约、数据模型、UX 规范、前端组件设计见 [19-mcp.design.md](./19-mcp.design.md)。
 
 ---
 
-## 1. 信息架构与路由
+## 1. 用户故事
 
-| 页面 | 路由（示例） | 说明 |
-|------|--------------|------|
-| MCP 服务器列表 |  `/mcp-servers` | 搜索、**`QList`** 列表（每项一个 MCP 组件）、空态、刷新、添加 |
-| 新建 | 列表内 **「+ 添加服务器」** → **`QDialog`** 或独立路由 `/mcp-servers/new` | 表单同编辑 |
-| 编辑 | **编辑** → 同上对话框预填 或 `/mcp-servers/:id/edit` | 与创建共用组件 `McpServerForm` |
+- **作为平台管理员**，我希望注册外部 MCP 服务器（stdio / SSE / Streamable HTTP），以便 Agent 可以挂载并调用其工具。
+- **作为平台管理员**，我希望在列表页查看所有 MCP 服务器的健康状态（状态灯），以便快速识别异常。
+- **作为平台管理员**，我希望在添加/编辑表单中测试连接，以便在保存前验证配置是否可用。
+- **作为平台管理员**，我希望对启用了 `require_user_credentials` 的服务器配置我自己的凭据，以便 Agent 代表我调用工具时使用我的身份。
+- **作为平台管理员**，我希望对 URL 进行预检（不持久化），以便在表单填写阶段就发现 SSRF / 网络问题。
 
 ---
 
-## 2. 列表页 UI
+## 2. 功能需求
 
-### 2.1 顶栏与工具条
+### 2.1 列表页
 
-| 区域 | 内容 |
+| 需求 | 说明 |
 |------|------|
-| **标题** | 「MCP 服务器」 |
-| **副标题** | 「管理 Model Context Protocol 服务器连接」 |
-| **右上** | **「+ 添加服务器」**（`QBtn` color=primary）；**「刷新」**（`QBtn` outline + `refresh` 图标） |
-| **搜索** | `QInput` `debounce` + `clearable`，占位「搜索服务器…」；按 `name`、`display_name` 前端过滤或 `GET ...?q=` |
+| 列表展示 | 展示所有 MCP 服务器（每项一个 MCP 组件），含名称、传输类型、地址/命令、工具前缀、超时、启用状态 |
+| 搜索 | 按 `name`、`display_name` 过滤 |
+| 状态灯 | 灰=未检测、绿=健康、红=失败、黄=降级；Tooltip 展示最近错误或成功时间 |
+| 空态 | 中央插头图标 + 主文案「暂无 MCP 服务器」+ 副文案 + 添加按钮 |
+| 刷新 | 手动刷新列表 |
+| 添加入口 | 右上「+ 添加服务器」按钮 |
 
-### 2.2 有数据时：`QList` + 单项 MCP 组件（推荐）
-
-不使用表格；外层 **`QList`** `padding`/`separator`，**每个 `QItem` 内嵌一个独立 MCP 展示组件**（如 `McpServerItem.vue` / `McpServerCard`），便于样式复用与响应式换行。
-
-| 层级 | Quasar / 结构 | 内容 |
-|------|----------------|------|
-| 列表容器 | **`QList`** + 可选 **`QScrollArea`**（列表很长时） | `v-for="server in filteredServers"` → 一条 `QItem` 对应一条 `mcp_server` 记录 |
-| 单项 | **`QItem`** `clickable`（可选：点击进入编辑） | `key=server.id` |
-| 单项内部 | **`QItemSection`** `side` **top** | **状态灯**（§2.4），与列表左缘对齐 |
-|  | **`QItemSection`** | 主体：包一层自定义 **MCP 组件**（见下） |
-| MCP 组件（每个 list 一项一个） | 自定义组件根节点可用 **`QCard`** `flat` `bordered` 或纯 `div.row` | 内含该服务器的全部摘要与操作 |
-
-**MCP 组件（每个 `QItem` 内一份）建议布局**：
-
-| 区块 | 内容 |
-|------|------|
-| **标题行** | `display_name` 或 `name`（主标题）；`name` 可作 `text-caption` 副标 |
-| **元信息行** | **传输**：`stdio` / `SSE` / `Streamable HTTP`；**地址/命令**：`url` 或 `command` 单行截断 + `QTooltip` |
-| **次要行** | **工具前缀** `tool_prefix`；**超时** `timeout_sec` + `s`；**启用** `QChip` 或只读 `QToggle` |
-| **操作行** | **编辑**、**删除**、可选 **测试连接**（`QBtn` `flat` `dense`），见 §2.5 |
-
-列表项之间可用 **`QSeparator`** `inset` 或 MCP 卡片自带 `margin` 区分层次。
-
-### 2.3 空态
-
-与线稿一致：中央 **插头图标**（`QIcon` 或插画）、主文案「暂无 MCP 服务器」、副文案「添加您的第一个 MCP 服务器以开始使用。」、可选主按钮复用「添加服务器」。
-
-### 2.4 状态灯（连接/健康）
-
-| 灯色 | 含义 | 数据来源 |
-|------|------|----------|
-| **灰** | 未检测 / 从未成功连接 | `last_health_at` 为空且 `enabled=false` 或未跑过检测 |
-| **绿** | 最近一次 **测试连接** 或 **后台探活** 成功 | `health_status=ok` |
-| **红** | 最近一次失败或初始化错误 | `health_status=error` 或存在 `last_error_message` |
-| **黄**（可选） | 已启用但超过 N 分钟未探活成功 | `health_status=degraded` 或超时策略 |
-
-**实现**：在 **MCP 组件** 左侧或 `QItemSection` side 内放 **`QBadge`** `rounded` 小圆点，或 `span` 8px 圆 + `bg-positive`/`bg-negative`/`bg-grey`；**`QTooltip`** 展示最近错误摘要或「最近成功：时间」。
-
-探活可由用户点击该项 **「测试连接」** 或定时任务写入 `last_health_at`、`health_status`。
-
-### 2.5 行内操作（CRUD）
+### 2.2 CRUD
 
 | 操作 | 行为 |
 |------|------|
-| **编辑** | 打开 **`QDialog`** 表单，`GET /mcp-servers/:id` 预填 |
-| **删除** | **`QDialog`** 确认：「删除后依赖该服务器的工具将不可用」；`DELETE /mcp-servers/:id` |
-| **测试连接**（可选，在 MCP 组件操作行） | `POST /mcp-servers/:id/test`，结果 **`Notify`** 或该项内短暂提示 |
+| 创建 | 打开对话框表单，`key` + `name` 必填 |
+| 编辑 | 打开对话框表单预填 |
+| 删除 | 确认对话框：「删除后依赖该服务器的工具将不可用」；软删除 |
+| 测试连接 | 探活并写入健康元数据，结果 Notify 提示 |
 
+### 2.3 添加/编辑表单字段
 
----
+| 字段（逻辑名） | 必填 | 校验 / 说明 |
+|----------------|------|-------------|
+| `name`（表单）→ API `key` | 是 | Slug：仅小写字母、数字、连字符；平台内唯一 |
+| `display_name`（表单）→ API `name` | 否 | 展示用 |
+| `transport` | 是 | `stdio` \| `sse` \| `streamable_http` |
+| `url` | `sse`/`streamable_http` 必填 | HTTP(S) URL；服务端 SSRF 校验 |
+| `command` / `args` | `stdio` 必填 | 可执行路径与参数 |
+| `headers` | 否 | 动态键值行 |
+| `env` | 否 | 动态键值行 |
+| `tool_prefix` | 否 | 空则服务端从 `name` 派生 |
+| `timeout_sec` | 否 | 默认 60 |
+| `enabled` | 否 | 默认开 |
+| `require_user_credentials` | 否 | 为真时需用户级凭据 |
+| `probe_mode` | 否 | `connectivity`（默认）\| `auth_aware` |
 
-## 3. 添加 / 编辑表单（对话框）
+**传输与字段显隐**：`streamable_http`/`sse` 展示 URL；`stdio` 展示 command/args。
 
-标题：**「添加 MCP 服务器」** / **「编辑 MCP 服务器」**；内容区 **`QScrollArea`**；底栏按钮：**测试连接**（左）、**取消**、**创建/保存**（主色）。
+> 字段控件映射（Quasar 组件）、表单对话框 UX 细节见设计文档 §10.3。
 
-### 3.1 字段与控件
+### 2.4 用户凭据管理
 
-| 字段（逻辑名） | 控件 | 必填 | 校验 / 说明 |
-|----------------|------|------|-------------|
-| `name`（表单）→ API `key` | `QInput` | 是 | **Slug**：仅小写字母、数字、连字符；平台内唯一；占位 `my-mcp-server` |
-| `display_name`（表单）→ API `name` | `QInput` | 否 | 展示用，如 `SQL Server` |
-| `transport` | **`QBtnToggle`** 或 `QOptionGroup` `inline` | 是 | **`stdio`** \| **`sse`** \| **`streamable_http`**（界面对应 Streamable HTTP） |
-| `url` | `QInput` | `sse`/`streamable_http` 必填 | HTTP(S) URL；**服务端 SSRF 校验**（截图错误示例：`resolve "mysql": no such host`） |
-| `command` / `args` | `QInput` + 多行或数组编辑 | `stdio` 时必填 | 可执行路径与参数；无 URL |
-| `headers` | 动态键值行 | 否 | 每行 key + value（敏感 value 用 `password` 或掩码）；**+ 添加请求头**；行内删除 |
-| `env` | 动态键值行 | 否 | 占位「变量名称」「值」；**+ 添加变量** |
-| `tool_prefix` | `QInput`，前缀可视化 `mcp_` + 输入 | 否 | 空则服务端从 `name` 派生；说明文案：`Tools: mcp_{prefix}__{tool}` |
-| `timeout_sec` | `QInput` `type=number` 或 `QSlider` | 否 | 默认 `60` |
-| `enabled` | `QToggle` | 否 | 默认开 |
-| `require_user_credentials` | `QToggle` | 否 | 副文案：每个用户须配置自己的凭据，否则无法使用 |
-| `probe_mode` | `QSelect` 或 `QBtnToggle` | 否 | `connectivity`（默认）\| `auth_aware`；控制探活策略 |
-
-**动态键值**：`v-for` 行 + `QInput`×2 + `QBtn` `icon="delete"`；或用小型 **`QTable`** `hide-pagination` 内嵌编辑。
-
-### 3.2 传输与字段显隐
-
-| `transport` | 展示 URL | 展示 command/args |
-|-------------|----------|-------------------|
-| `streamable_http` / `sse` | 是 | 否 |
-| `stdio` | 否 | 是 |
-
-### 3.3 校验与错误展示
-
-- 表单底部或字段下方：**红色** `div.text-negative` 展示服务端返回（如 URL 非法、SSRF、传输初始化失败）。
-- **测试连接**：`POST` 不持久化或先保存草稿再测（产品二选一）；失败时保留错误在对话框内。
-
-### 3.4 Quasar 映射摘要
-
-**列表**：`QList` → `QItem` → **`McpServerItem`（MCP 组件）**；**表单对话框**：`QDialog` + `QCard` + `QCardSection` + `QScrollArea` + `QForm`（`@submit.prevent`）；`QBtnToggle` `spread`/`no-caps`；`Notify` 成功/失败。
-
----
-
-## 4. 持久化模型（实现对齐）
-
-### 4.1 表：`mcp_server`
-
-| 列 | 说明 |
-|----|------|
-| `id` | 主键（随机 hex） |
-| `server_key` | Slug，对应表单 `name`、API `key`；Agent 策略前缀 `mcp:<server_key>` |
-| `name` | 展示名，对应表单 `display_name` |
-| `description` | 描述 |
-| `status` | `active` / `error` / `deleted`（探活失败时可为 `error`） |
-| `enabled` | 是否启用 |
-| `sort_order` | 排序 |
-| `config_json` | 连接配置（见下） |
-| `metadata_json` | 健康与重连元数据（见下） |
-| `created_at` / `updated_at` / `deleted_at` | 软删除时间戳 |
-
-### 4.2 `config_json` 字段（逻辑）
-
-| 字段 | 说明 |
+| 需求 | 说明 |
 |------|------|
-| `transport` | `stdio` \| `sse` \| `streamable_http` |
-| `url` / `command` / `args` | 按传输类型二选一 |
-| `headers` / `env` | 键值对 |
-| `auth` | `api_key` / `oauth2_*`（运行时注入 Authorization） |
-| `tool_prefix` | MCP 工具名前缀 |
-| `timeout_sec` | 默认 60s，传入 trpc `ConnectionConfig.Timeout` |
-| `session_reconnect_max` | SSE/Streamable 重连次数（0=关闭） |
-| `allow_adhoc_http` | Broker AdHoc，需叠加系统设置 `mcp_allow_adhoc_http` |
-| `require_user_credentials` | 产品标记；为真时需用户级凭据（`platform_mcp_user_credential`） |
-| `probe_mode` | `connectivity`（默认）\| `auth_aware`；控制探活策略 |
-| `adhoc_timeout_sec` | Broker AdHoc 请求超时 |
+| 列出凭据 | 列出当前用户在某 MCP 服务器上的凭据 |
+| 新增/更新凭据 | 提交 `credential_key` + `secret`，密钥加密存储 |
+| 删除凭据 | 按 `credential_key` 删除 |
+| 触发条件 | 仅 `require_user_credentials=true` 的服务器需要 |
 
-### 4.3 `metadata_json` 字段（逻辑）
+### 2.5 URL 预检
 
-| 字段 | 说明 |
+| 需求 | 说明 |
 |------|------|
-| `health_status` | `ok` / `error` / `unknown` |
-| `last_health_at` | RFC3339 |
-| `last_error_message` | 列表状态灯 Tooltip |
-| `health_error_since` | 健康错误起始时间（用于持续告警判定） |
-| `last_health_alert_at` | 最近一次健康告警时间 |
-| `last_reconnect_at` / `reconnect_count` | `mcpobserve` 重连可观测 |
-
-**说明**：敏感 `headers` / `auth` 不落日志明文；列表 API 可对值脱敏。
-
+| 预检 API | `POST /v1/mcp-servers/validate`，不持久化，仅校验连通性 |
+| 表单集成 | 表单填写阶段可触发预检，失败时保留错误在对话框内 |
 
 ---
 
-## 5. API（已实现）
+## 3. 非功能需求
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/v1/mcp-servers` | 列表（前端本地 `q` 过滤） |
-| GET | `/v1/mcp-servers/{id}` | 详情 |
-| POST | `/v1/mcp-servers` | 创建（`key` + `name` 必填） |
-| PATCH | `/v1/mcp-servers/{id}` | 更新（body `mcp_server`） |
-| DELETE | `/v1/mcp-servers/{id}` | 软删除 |
-| POST | `/v1/mcp-servers/{id}/test` | 探活并写入 `metadata_json` |
-| POST | `/v1/mcp-servers/validate` | URL 预检（不持久化，仅校验连通性） |
-| GET | `/v1/mcp-servers/{mcp_server_id}/user-credentials` | 列出用户凭据 |
-| POST | `/v1/mcp-servers/{mcp_server_id}/user-credentials` | 新增/更新用户凭据 |
-| DELETE | `/v1/mcp-servers/{mcp_server_id}/user-credentials/{id}` | 删除用户凭据 |
+- **SSRF 防护**：对 `url` 做解析与白名单/内网限制；错误信息不泄露内网拓扑。
+- **敏感头保护**：`Authorization`、`token` 等不落日志明文；列表接口可对 `headers` 脱敏。
+- **stdio 注入防护**：校验 `command` 路径与参数，防止注入。
+- **健康可观测**：后台定时探活更新健康元数据；持续错误触发告警。
 
 ---
 
-## 6. 安全与运维
+## 4. 验收标准
 
-- **SSRF**：对 `url` 做解析与白名单/内网限制；错误信息可返回「URL 校验失败」而不泄露内网拓扑。
-- **敏感头**：`Authorization`、`token` 等不落日志明文；列表接口可对 `headers` 脱敏为 `***`。
-- **stdio**：校验 `command` 路径与参数，防止注入。
-
----
-
-## 7. 验收要点
-
-- [x] 列表：**`QList`** 每项挂载 **McpServerItem/MCP 组件**；搜索、状态灯、空态、刷新、添加入口。
+- [x] 列表：搜索、状态灯、空态、刷新、添加入口齐全。
 - [x] CRUD：创建、编辑、删除确认；`name` slug 校验。
 - [x] 传输切换：`url` vs `command`/`args` 显隐正确。
 - [x] 测试连接与错误文案（含 SSRF/网络失败）可感知。
-- [x] 数据库字段与表单一致；`require_user_credentials` 为真时有用户凭据入口（`McpUserCredentialDialog`）。
-- [x] URL 预检 API（`POST /v1/mcp-servers/validate`）可用。
-- [x] MCP 调用统计闭环（`classify` + Prometheus 指标）。
-- [x] 健康持续告警（`mcp/alert` + Monitor 事件 `mcp.health_alert`）。
+- [x] `require_user_credentials` 为真时有用户凭据入口。
+- [x] URL 预检 API 可用。
+- [x] MCP 调用统计闭环。
+- [x] 健康持续告警。
 
 ---
 
-## 8. 参考截图（本地）
+## 5. 参考截图（本地）
 
 线稿与空态、添加对话框可参考工作区 `assets/` 下对应 `image-*.png`。
 
 ---
 
-*文档版本：2.0 — 2026-06-06 与代码实现对齐：用户凭据、URL 预检、Probe 策略化、metadata 字段补全。*
+## 6. 相关文档
+
+- 设计文档：[19-mcp.design.md](./19-mcp.design.md) — 架构、Proto/API 契约、数据模型、UX 规范、前端组件设计
+- 开发计划：[19-mcp.development.md](./19-mcp.development.md) — 代码锚点、现状评估、任务清单、进度状态
+
+---
+
+*文档版本：3.0 — 2026-06-17 按三件套边界重组：UX 规范/数据模型/API 契约/实现状态迁至设计与开发文档。*

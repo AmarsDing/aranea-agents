@@ -13,6 +13,10 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
+// defaultA2AHost is the fallback public base URL when Server config does not
+// provide one. It matches the default admin HTTP listen address.
+const defaultA2AHost = "http://localhost:8080"
+
 // A2AExtensionCompatService wraps the framework's A2A extension server with
 // lazy initialization. The trpc-agent-go Runner is per-session, so the
 // underlying A2A server is created on the first request via
@@ -97,7 +101,7 @@ func (s *A2AExtensionCompatService) ensureServer(ctx context.Context) error {
 		return err
 	}
 
-	host := "http://localhost:8080"
+	host := defaultA2AHost
 	if s.cfg != nil {
 		if url := s.cfg.GetA2APublicBaseUrl(); url != "" {
 			host = url

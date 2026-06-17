@@ -1,9 +1,11 @@
 # System 系统 — 架构健康度诊断与综合开发计划
 
-> **版本**：2026-05-21（Agent 优化）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
-> **系统总览**：[0 系统框图.md](./0%20系统框图.md)  
+> **版本**：2026-06-17（Agent 优化）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
+> **系统总览**：[0-system-diagram.md](./0-system-diagram.md)  
 > **模块索引**：[README-development.md](./README-development.md)  
 > **进度真相**：[../guides/execution-plan.md](../guides/execution-plan.md)
+>
+> **文档性质**：开发计划（模块定位、代码锚点、现状评估、差距与优化、Phase 划分、任务清单、验收标准、改动文件清单）。架构设计、Proto/API 契约、模块关系见 [0-system-diagram.md](./0-system-diagram.md)。
 
 ## 1. 目标
 
@@ -18,19 +20,19 @@
 
 ## 2. 标杆架构对照
 
-`pkg/trpc-agent-go` 是运行时框架真相源；OpenClaw 是产品化装配参考；GoClaw 是独立 Gateway 调度/IM 工程参考（非 vendored，见 [17-channel-external-reference-playbook.md](./17-channel-external-reference-playbook.md)）。
+`pkg/trpc-agent-go` 是运行时框架真相源；OpenClaw 是产品化装配参考；GoClaw 是独立 Gateway 调度/IM 工程参考（非 vendored，见 [17-channel-external-reference-playbook.md](./17-channel-external-reference-playbook.md)）。架构对齐位置与模块关系见 [0-system-diagram.md](./0-system-diagram.md)。
 
-| 标杆能力 | Aranea 对齐位置 | 当前差距 | 康复方向 |
-|----------|-----------------|----------|----------|
-| Runner | `internal/agent/trpc_runtime.go` + `internal/runtime/runner_manager.go` | ✅ RunnerRegistry（per-session cancel/status/enqueue）+ RunnerManager（统一装配）已落地；ArtifactService/SessionIngestor/AgentFactory/AwaitUserReplyRouting 已注入；RalphLoop 仍为 OpenClaw 侧实现 | 已通：Chat/Team/Cron/Channel 共用 RunGateway |
-| Agent | `internal/agent/trpc_build.go` + `builder_deps.go` | Builder 汇聚 Provider / Tool / Skill / Memory / Callback；`TRPC*Deps` 分组类型已落地 | 保持 Builder；`AgentSettingsPage` 拆分、列表运行态聚合 |
-| Session | `internal/session/trpc` + `biz.SessionUsecase` | 框架 session 与业务 session 边界需更清晰 | Session transcript 与业务索引分工定稿 |
-| Memory | `internal/memory/trpc` + L0-L4 | 框架 MemoryService 与 Aranea L0-L4 双轨 | L0-L4 作为 MemoryService 的产品实现 |
-| Tool/MCP | `internal/tools` + `internal/tools/trpc` | ✅ ToolOverride/requires_confirmation/调用统计/TestTool/MCP 默认超时60s 已落地；MCP 认证/重连/Broker 默认发现仍待闭环 | 工具能力矩阵已通主路径；MCP 工程化待补 |
-| Event | `internal/agent/event_projector.go` + `internal/event` | ✅ `/v1/ws` + 31 EnvelopeType；Consumer 已拆 + P3 侧效订阅（Tool/Callback/MessageStore/FlowLog） | SSE 仅限 A2A/MCP |
-| Plugin/Callback | `internal/plugin/trpc` + `internal/agent/callbacks` | 9 内置插件 + Chain+Hook+OnEvent ✅；治理类插件多为策略/记录层 | 产品化：UpdateScope、运行记录表、`model_router` 真改模型 |
-| Team/Graph | `internal/team`、`internal/graph` | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点、ExecutionSummary 待补 | 编排输出统一 Envelope；Graph 节点类型补全 |
-| Evaluation/A2A | `internal/evaluation`、`internal/a2a` | ✅ Phase 5：FrameworkBridge、扩展指标、LLM UserSim、趋势/A/B、Eval LLM 系统配置；A2A Invoke + 联邦 Gateway | 质量门禁产品化、A2A Phase 4 Cron/限流 |
+| 标杆能力 | 当前差距 | 康复方向 |
+|----------|----------|----------|
+| Runner | ✅ RunnerRegistry（per-session cancel/status/enqueue）+ RunnerManager（统一装配）已落地；ArtifactService/SessionIngestor/AgentFactory/AwaitUserReplyRouting 已注入；RalphLoop 仍为 OpenClaw 侧实现 | 已通：Chat/Team/Cron/Channel 共用 RunGateway |
+| Agent | Builder 汇聚 Provider / Tool / Skill / Memory / Callback；`TRPC*Deps` 分组类型已落地 | 保持 Builder；`AgentSettingsPage` 拆分、列表运行态聚合 |
+| Session | 框架 session 与业务 session 边界需更清晰 | Session transcript 与业务索引分工定稿 |
+| Memory | 框架 MemoryService 与 Aranea L0-L4 双轨 | L0-L4 作为 MemoryService 的产品实现 |
+| Tool/MCP | ✅ ToolOverride/requires_confirmation/调用统计/TestTool/MCP 默认超时60s 已落地；MCP 认证/重连/Broker 默认发现仍待闭环 | 工具能力矩阵已通主路径；MCP 工程化待补 |
+| Event | ✅ `/v1/ws` + 31 EnvelopeType；Consumer 已拆 + P3 侧效订阅（Tool/Callback/MessageStore/FlowLog） | SSE 仅限 A2A/MCP |
+| Plugin/Callback | 9 内置插件 + Chain+Hook+OnEvent ✅；治理类插件多为策略/记录层 | 产品化：UpdateScope、运行记录表、`model_router` 真改模型 |
+| Team/Graph | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点、ExecutionSummary 待补 | 编排输出统一 Envelope；Graph 节点类型补全 |
+| Evaluation/A2A | ✅ Phase 5：FrameworkBridge、扩展指标、LLM UserSim、趋势/A/B、Eval LLM 系统配置；A2A Invoke + 联邦 Gateway | 质量门禁产品化、A2A Phase 4 Cron/限流 |
 
 OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。吸收三件事：
 1. Runner 为执行中心（session-scoped run control）—— Aranea 已用 `RunRegistry` + `RunnerManager` 实现对应模式；
@@ -62,7 +64,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 
 | 关系 | 当前状态 | 健康度 | 风险 | 重构方向 |
 |------|----------|--------|------|----------|
-| `server -> service` | 大体成立 | 良好 | `skill_import_http.go` 旁路 service | Skill Import 迁入 proto + `SkillService` |
+| `server -> service` | 大体成立 | 良好 | `service/skill_import_http.go` 旁路 proto service | Skill Import 迁入 proto + `SkillService` |
 | `service -> biz` | 大体成立 | 中等 | `service` 还直接拿部分 data store | Store 访问经 biz 或 infra 端口 |
 | `service -> runtime adapter` | 成立 | 良好 | ChatService 直接管理 Runner 生命周期 | 引入 RunnerManager |
 | `biz -> data` | 通过 Repo 接口 | 良好 | Data import biz 是 Kratos 常见实现方式 | 保持，不让 biz 反向 import data |
@@ -90,17 +92,12 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 
 ## 4. 目标架构：乐高式模块模型
 
-每个模块都应被定义为一个可组合“积木”，包含五个面：
+> 模块五面定义（Contract / Domain / Runtime / Persistence / UI/Operate）与架构原则已迁移到 [0-system-diagram.md §十二、§十三](./0-system-diagram.md)。本节仅保留与开发计划相关的判断规则。
 
-| 面 | 必须回答的问题 | 产物 |
-|----|----------------|------|
-| Contract | 对外承诺是什么？ | `api/kratos/*.proto`、前端 `types.ts` |
-| Domain | 领域规则在哪里？ | `internal/biz/*Usecase`、Repo 接口 |
-| Runtime | 是否需要接入 `trpc-agent-go`？ | `internal/<domain>/trpc` 或 `internal/agent/team/tools` |
-| Persistence | 状态在哪里？ | `internal/data`、Ent schema、文件/向量存储 |
-| UI/Operate | 用户如何配置、运行、观测？ | `web/src/features/<domain>`、page、store、monitor |
+模块五面完整性判断规则（用于任务拆解时评估模块闭环状态）：
 
-AI 新增或优化模块时，必须先填这五个面。缺任一面则只能标为 API-only、runtime-only 或 UI-mock，不能标为“完成”。
+- 缺任一面则只能标为 API-only、runtime-only 或 UI-mock，不能标为"完成"。
+- AI 接到模块任务时，必须先定位模块五面，判断任务类型（边界修复、能力闭环、UI 闭环、观测闭环、文档口径），再写出变更影响半径。
 
 ## 5. 康复原则
 
@@ -110,7 +107,7 @@ AI 新增或优化模块时，必须先填这五个面。缺任一面则只能�
 4. `internal/biz` 不 import `trpc-agent-go`；`internal/server` 不 import Agent runtime。
 5. 实时主通道是 `/v1/ws` + Envelope；SSE 只可用于外部协议明确要求的 A2A/MCP 等。
 6. 前端新增域统一 `features/<domain>/{api,types,mappers,composables,ui}`，store 策略必须明确。
-7. 文档状态优先级：`0 系统框图.md` + 本计划 + `execution-plan.md` > 模块 development > design > 历史需求正文。
+7. 文档状态优先级：`0-system-diagram.md` + 本计划 + `execution-plan.md` > 模块 development > design > 历史需求正文。
 
 ## 6. 综合开发路线图
 
@@ -135,7 +132,7 @@ AI 新增或优化模块时，必须先填这五个面。缺任一面则只能�
 | 1 | ✅ Gateway 状态机独立 | `RunRegistry` + `RunnerManager` + `ChatUsecase`；出站 Webhook Phase 3 ✅ | Chat/Team/Cron/Channel 共用 `RunGateway`；`GatewayService` 管理回调配置 |
 | 2 | ✅ Runner 生命周期统一 | 单 Agent / Team / Cron / Channel 共用 `RunGateway`（`RunRegistry`）入口 | cancel/status/enqueue 行为一致；Cron/Channel 经 `RunNativeTurnUnary`/`RunCronTurn` 接入 |
 | 3 | ✅ Runner 框架能力补齐 | ArtifactService（`provideArtifactRuntimeService`）、SessionIngestor（`BizSessionIngestor`）、AgentFactory（`BizAgentFactoryOptions`）、AwaitUserReplyRouting（`AwaitHook` 配置时启用）均已注入；RalphLoop 为 OpenClaw 侧能力，Aranea 不复制 | `40-runner-development.md` P1/P2 已验收 |
-| 4 | Memory 端口统一 | 收敛 `sessionmemory.Store` 直连，定稿 L0-L4 与 MemoryService 主从 | service/agent 不直接 import data store |
+| 4 | Memory 端口统一 | 收敛 `SessionAdminStore` 直连，定稿 L0-L4 与 MemoryService 主从 | service/agent 不直接 import data store |
 | 5 | Data 运行时绑定上移 | trpc session / graph checkpoint provider 移出 data 主 provider | data 保持 Ent/SQL Repo 边界 |
 | 6 | Provider 拆环 | 抽 `internal/llminspect` 或 biz 端口接口 | `biz` 与 `provider` 不再概念互绑 |
 | 7 | Skill Import service 化 | 导入 API 进入 proto + `SkillService` | server 不直接依赖 importer |
@@ -182,8 +179,8 @@ AI 新增或优化模块时，必须先填这五个面。缺任一面则只能�
 
 AI 接到任何模块任务时，必须按以下顺序拆解：
 
-1. 读取 `docs/README.md`、`0 系统框图.md`、本计划、`execution-plan.md`。
-2. 定位模块五面：Contract、Domain、Runtime、Persistence、UI/Operate。
+1. 读取 `docs/README.md`、`0-system-diagram.md`、本计划、`execution-plan.md`。
+2. 定位模块五面：Contract、Domain、Runtime、Persistence、UI/Operate（定义见 [0-system-diagram.md §十二](./0-system-diagram.md)）。
 3. 判断任务类型：边界修复、能力闭环、UI 闭环、观测闭环、文档口径。
 4. 写出变更影响半径：会触碰哪些 proto、service、biz、data、runtime adapter、web feature。
 5. 先补或更新模块 development 文档，再改代码。
@@ -346,7 +343,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 - [x] `internal/data` 不直接绑定 Runner / Agent / Graph runtime 组装（Data 层 provider 已上移至 runtime）。
 - [x] Chat / Team / Graph / Monitor 实时主链路统一为 `/v1/ws`（Monitor/Team 全局 `session_id=*`；旧 SSE 主链路已清理）。
 - [x] Runner 可统一处理 status、cancel、enqueue、artifact、session ingest（RunRegistry + RunnerManager 已通）。
-- [x] Memory L0-L4 与框架 MemoryService 主从关系清晰（`memory.RuntimeSet` 已统一端口）。
+- [x] Memory L0-L4 与框架 MemoryService 主从关系清晰（`runtime.MemorySet` 已统一端口）。
 - [ ] 每个核心模块都有明确五面定义（Graph/Channel 仍缺 UI 或 Runtime 面定稿；Ecosystem 已有五面但市场模型待补）。
 - [ ] `internal/service` 不承载复杂运行状态机（await/pending 仍在 ChatService；可接受短期存在）。
 - [ ] 前端新增模块遵循统一 feature 模板，mapper 有真实单测。
@@ -395,7 +392,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | 1 | `PR-Doc-Architecture` | ✅ 已完成 | 系统图、开发计划、执行计划、模块五面模板 |
 | 2 | `PR-Runner-Registry` | ✅ 已完成 | RunRegistry + RunnerManager |
 | 3 | `PR-Runner-Control` | ✅ 已完成 | EnqueueUserMessage / StopGeneration+WS cancel / RunStatus 对齐 |
-| 4 | `PR-Memory-Boundary` | ✅ 已完成 | Memory 端口统一；`memory.RuntimeSet` + SessionAdminStore |
+| 4 | `PR-Memory-Boundary` | ✅ 已完成 | Memory 端口统一；`runtime.MemorySet` + SessionAdminStore |
 | 5 | `PR-Boundary-Cleanup` | ✅ 已完成 | Data provider 上移、Provider 拆环、Skill Import service 化 |
 | 6 | `PR-Team-Observability` | ✅ 已完成 | RunTeamTest、CancelTeamRun、member_* WS Envelope |
 | 7 | `PR-Plugin-Callback` | ✅ 已完成 | 9 内置插件实现、Chain+Hook+OnEvent、种子+Schema+Scope 过滤 |
@@ -808,7 +805,8 @@ Lane E（Team）    : TG-Q-01/02/05（P1 速胜）→ 04/03 → 07/08/09
 - Memory OPT：[`memory/memory-optimization-2026-05-26.md`](./memory/memory-optimization-2026-05-26.md)
 - Monitor OPT：[`18 monitor-optimization-2026-05-26.md`](./18%20monitor-optimization-2026-05-26.md)
 - Team Graph Review backlog：[`../review/2026-05-26-Team-Graph-Code-Review.md`](../review/2026-05-26-Team-Graph-Code-Review.md)
-- 系统级路线图：[`0-system-development.md`](./0-system-development.md)
+- 系统级架构总览：[`0-system-diagram.md`](./0-system-diagram.md)
+- 系统级开发计划：[`0-system.development.md`](./0-system.development.md)
 - 红线规则：[`.cursor/rules/trpc-agent-framework-first.mdc`](../../.cursor/rules/trpc-agent-framework-first.mdc)
 - 执行纪律：[`AGENTS.md`](../../AGENTS.md)
 
@@ -1009,15 +1007,13 @@ Lane E（Team）    : TG-Q-01/02/05（P1 速胜）→ 04/03 → 07/08/09
 
 ## 四、架构原则
 
-所有模块设计必须遵循以下原则：
+> 架构原则已迁移到 [0-system-diagram.md §十三](./0-system-diagram.md)。本节仅保留与开发计划相关的执行约束。
 
-1. **框架真相源**：`pkg/trpc-agent-go` 是 Agent 运行时的唯一真相源，先查框架 API 后再实现
-2. **四层分层**：Server → Service → Biz → Data，跨层只允许向内依赖
-3. **端口-适配器**：biz 层定义接口，data 层实现，框架依赖收口在 agent/tools 层
-4. **Agent 运行时铁律 A1-A6**：所有 Agent 必须实现 agent.Agent 接口、事件发射走 EmitEvent、工具构建走 NewFunctionTool 等
-5. **Wire DI**：每层一个 ProviderSet，禁止手动编辑 wire_gen.go
-6. **safego**：所有 goroutine 必须走 `pkg/safego.Go`
-7. **日志**：统一使用 `pkg/loggateway.Logger`，禁止 `log/slog`；`event.SysLog*` 已废弃
+开发执行约束（与架构原则配套使用）：
+
+- 所有模块设计必须遵循 [0-system-diagram.md §十三](./0-system-diagram.md) 中的架构原则。
+- 任务拆解时，先确认模块五面（见 [0-system-diagram.md §十二](./0-system-diagram.md)），再判断任务类型。
+- 边界 PR 不混功能，功能 PR 不混 UI 大重构（见本文 §7）。
 
 ---
 

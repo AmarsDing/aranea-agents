@@ -4,6 +4,8 @@
 
 > 2026-05-19 更新：监控实时事件口径统一为 WebSocket + EventBus。历史 `team-run-events` SSE / 独立 SSE Broker 已从当前主链路移除，后续不得作为新实现入口。
 
+> 实现状态、代码锚点、任务进度见 [18-monitor.development.md](./18-monitor.development.md)；架构设计、Proto 契约、数据模型、前端组件设计见 [18-monitor.design.md](./18-monitor.design.md)。
+
 **术语区分**
 
 | 概念 | 含义 |
@@ -17,33 +19,22 @@
 
 ### 0.1 监控模块要回答的问题
 
-| 用户问题 | 对应页面 / Tab | 数据来源 | 实现状态 |
-|----------|----------------|----------|----------|
-| 系统最近发生了哪些管理操作？ | 活动日志 Audit | `audit_logs` / `/api/v1/monitor/audit` | ✅ 已实现 |
-| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `/v1/ws`（`team_run_*`、`alert.fired` 等） | ✅ 基础已实现；Phase 1d 收窄 Chat `runner.completion` 列表展示 |
-| 刚才那轮对话是否成功结束？耗时/Token 多少？ | **Runs（Traces Tab）** | `model_token_usage_events`（`recordTurnUsage`） | ✅ 已实现；Phase 1d 增强关联与跳转 |
-| Runner 窗口内成功率/错误率？ | Usage → **Runner 指标** | `GET /v1/monitor/runner-metrics` | ✅ 已实现；点击下钻 Runs；Latency P50/P95/P99 |
-| 哪些模型调用慢、失败、成本高？ | Usage 总览 + **Runs** | `model_token_usage_events` 聚合 + 单次运行列表 | ✅ 已实现 |
-| 错误率超阈如何告警？ | **Alerts** 规则 | `monitor_alert_rules` + `alert.fired` + Webhook/Channel | ✅ 已实现；冷却持久化 + 评估批量化 |
-| 某次对话为什么失败？ | **Runs 详情**（原 Trace 详情） | Summary + Flow（trace_id）+ Waterfall + Span | ✅ 已实现 |
-| 某次对话/Team 执行卡在哪一步？ | Logs → **流程日志** | WS `flow_log`（`TraceEmitter`） | ✅ 已实现；文件落盘 + gzip |
-| Gateway / 插件底层 stderr 是否正常？ | Logs → **进程日志** | WS `log` + `enable_log` | ✅ 已实现 |
-| 能否自动诊断问题根因？ | **AI 诊断** | `GenerateDiagnosticBundle` + `RootCauseEngine` | ✅ 已实现 |
+| 用户问题 | 对应页面 / Tab | 数据来源（高层） |
+|----------|----------------|------------------|
+| 系统最近发生了哪些管理操作？ | 活动日志 Audit | 审计日志表 + HTTP 查询 |
+| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | WebSocket 实时推送（团队运行、告警等） |
+| 刚才那轮对话是否成功结束？耗时/Token 多少？ | **Runs（Traces Tab）** | 用量事件记录（含 spans 元数据） |
+| Runner 窗口内成功率/错误率？ | Usage → **Runner 指标** | Runner 完成事件聚合 |
+| 哪些模型调用慢、失败、成本高？ | Usage 总览 + **Runs** | 用量事件聚合 + 单次运行列表 |
+| 错误率超阈如何告警？ | **Alerts** 规则 | 告警规则表 + 告警事件 + Webhook/Channel 出站 |
+| 某次对话为什么失败？ | **Runs 详情**（原 Trace 详情） | Summary + Flow（trace_id）+ Waterfall + Span |
+| 某次对话/Team 执行卡在哪一步？ | Logs → **流程日志** | WebSocket 流程日志推送 |
+| Gateway / 插件底层 stderr 是否正常？ | Logs → **进程日志** | WebSocket 进程日志推送 |
+| 能否自动诊断问题根因？ | **AI 诊断** | 诊断包生成 + 根因分析引擎 |
 
-### 0.2 模块实现状态
+> 具体数据表结构、API 端点、Proto 契约见 [18 monitor.design.md](./18%20monitor.design.md) §二~§四。
 
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| Audit | ✅ 已实现 | 表格、刷新、分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、详情弹窗、扩展字段（actor/ip/user_agent/severity/metadata_json） |
-| Alerts | ✅ 已实现 | `MonitorAlertRules`：规则 CRUD、`runner.error_rate`、Webhook/Channel 出站、`cooldown_minutes`；MON-OPT-02 冷却持久化 + firing 状态机；MON-OPT-03 评估批量化 + RingBuffer；MON-OPT-06 告警注册表 |
-| Events | ✅ 已实现 | WS 实时流 + `alert.fired`；**方案 C**：已关联 Runs 的 Chat `runner.completion` 默认不出现在主列表 |
-| Runs（路由 Tab 名 `traces`，列表标题 Runs） | ✅ 单次运行真相源 | `ListUsageEvents` 列表 + 详情（Flow/Waterfall/Span/JSONL 导出）；「打开会话」+ `usage_event_id` 深链；MON-OPT-05 Trace 写入回路 + 历史回填 |
-| Usage | ✅ 已实现 | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink`（完整大盘在 `/overview`）；Runner 下钻 Traces；Latency P50/P95/P99 |
-| Logs | ✅ 已实现 | **二级 Tab**：流程日志（默认连接）+ 进程日志（`process_log_enabled`）；共享一条 WS；流程 Tab 可暂停/清除；进程 Tab 切离丢弃入站、切回恢复；LOG-01 文件落盘 + gzip + 30 天清理 |
-| AI 诊断 | ✅ 已实现 | DIAG-01 诊断包 + DIAG-02 根因分析引擎（5 条内置规则 + 置信度评分） |
-| 自检与自愈 | ✅ 已实现 | SelfCheck 周期性检查（5 min）+ SelfCheckRepairDispatcher（4 个修复器）+ SelfHealObserver（事件驱动修复）+ PredictiveHeal（预测性自愈）+ PatternMining（故障模式挖掘） |
-
-### 0.3 非目标
+### 0.2 非目标
 
 - **用量/成本大盘**在独立概览 `/overview`，见 [18 monitor-dashboard.md](./18%20monitor-dashboard.md)（非本页）。
 - 不在监控页修改 Agent、Channel、Provider 配置；只跳转到对应管理页。
@@ -60,8 +51,6 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 |----------|------|----------|----------|
 | **流程日志** | 业务用户 / 产品运维：「这次对话卡在哪？」 | `flow_log` | 进入 Tab 即连接 WS，**无需手动开启** |
 | **进程日志** | 开发 / SRE：Gateway、插件 stderr | `log` | **`server.monitor.process_log_enabled`**（默认 `true`）；进入进程 Tab 自动恢复接收；无 UI 开关 |
-
-> 实现状态：✅ 已实现。`LogStreamPanel.vue` + 共享 `useLogStreamHub`（一条 `session_id=*` WS，全局上限 3 连接）。
 
 ### 1.1 页面结构（Logs 一级 Tab）
 
@@ -87,15 +76,15 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 12:00:01 [WARN][hook] execute failed tool=search error=timeout
 ```
 
-### 1.3 数据来源与行为
+### 1.3 用户视角的过滤与缓冲
 
 | 项 | 流程日志 | 进程日志 |
 |------|----------|----------|
-| 传输 | WS `flow_log`，channel=`monitor` | WS `log`；服务端 `process_log_enabled` + 客户端 `enable_log` |
-| HTTP 快照 | 无（Phase 2 `ListFlowLogs` 规划） | `GET /v1/monitor/logs` 返回 `enabled`（镜像 config）+ hint |
 | 过滤 | trace_id / step_id / title / 关键字 | source / 级别 / 关键字 |
 | 缓冲 | 各 Tab 独立，最多 5,000 行 | 同左 |
 | 暂停 | 不断 WS，仅停止追加本 Tab 缓冲 | 离开进程 Tab 时 **丢弃** 入站行（不缓冲）；切回 Tab 自动恢复 |
+
+> 数据来源、传输协议、配置项等技术细节见 [18-monitor.design.md §一/§七](./18-monitor.design.md)。
 
 ### 1.4 连接状态
 
@@ -117,33 +106,21 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | WS 429 | 提示「全局监控连接已达上限(3)，请关闭其他 Monitor/Chat 页签」 |
 | 大量日志 | 各 Tab 缓冲最多 5,000 行 |
 
-### 1.6 进程日志配置
+### 1.6 进程日志开关说明（用户视角）
 
 | 项 | 说明 |
 |----|------|
 | 配置项 | `configs/config.yaml` → `server.monitor.process_log_enabled` |
 | 默认值 | `true`（省略 `monitor` 块时同 true） |
-| HTTP | `GET /v1/monitor/logs` 的 `enabled` 字段镜像该配置 |
-| WS | globalMode（`session_id=*`）连接时，若 config 为 true 则自动 `logEnabled`；客户端 `enable_log(true)` 在 config 为 false 时被服务端忽略 |
 | UI | 无「开启进程日志」按钮；进程 Tab 切离时暂停（丢弃入站），切回自动恢复 |
 
-### 1.7 Quasar 映射
-
-| 区域 | Quasar 组件 |
-|------|-------------|
-| 二级 Tab | `QTabs` + `QTabPanels`（嵌在 Logs 一级 Tab 内） |
-| 状态 | `QBadge` |
-| 工具行 | `QInput`、`QBtnToggle`、`QBtn` |
-| 日志主体 | `QCard` + 等宽行列表（流程行带 severity class） |
+> 配置项与 WS 联动细节见 [18-monitor.design.md §七](./18-monitor.design.md)。
 
 ---
 
 ## 2. 活动日志（Audit / Activity Log）
 
 面向管理员：**配置与管理层面的审计**，非逐行运行时日志。
-
-> 实现状态：✅ 已实现。通过 `AuditTable.vue` 组件 + `MonitorService.ListAuditLogs` API。
-> 增强项：分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、扩展字段（actor/ip/user_agent/severity/metadata_json）、详情弹窗。
 
 ### 2.1 页面结构
 
@@ -167,15 +144,7 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | **详情** | 变更详情 |
 | **时间** | 本地化时间 |
 
-### 2.3 数据与 API
-
-| 方法 | 说明 |
-|------|------|
-| GET | `/api/v1/monitor/audit?limit=200&offset=0&action=&resource=&actor=&keyword=` |
-| 字段 | `id`、`action`、`resource`、`resource_id`、`request_id`、`detail`、`created_at`、`actor`、`ip`、`user_agent`、`severity`、`metadata_json` |
-| 响应 | `{ items: AuditLog[], total: number }` |
-
-### 2.4 Audit 详情弹窗
+### 2.3 Audit 详情弹窗
 
 点击行打开 `QDialog`，展示：
 
@@ -187,14 +156,13 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | Detail | `detail` 原文；若是 JSON 字符串则格式化展示 |
 | 操作 | 复制 JSON |
 
+> API 字段与查询参数见 [18-monitor.design.md §二](./18-monitor.design.md)。
+
 ---
 
 ## 3. 实时事件（Real-time Events）
 
 展示 **Team 编排实时动态**、**告警触发** 及 **无 Runs 记录时的运行结束降级提示**；**不**作为 Chat 单次对话排障的主入口（见 §4 Runs）。
-
-> 实现状态：✅ 已实现（`RealtimeEvents.vue` + `ListMonitorEvents` + WS + `runCorrelation.ts`）。
-> **方案 C**（Phase 1d ✅）：Events 与 Runs 分工、correlation 落库、统一 Runs 详情；见 [18 monitor.design.md §九](./18%20monitor.design.md#九方案-cruns--events--runnercompletion) · [changelog](../changelog/2026-05-20-Monitor-Phase1d-PlanC.md)。
 
 ### 3.0 产品定位（方案 C：Runs 列表 + Events 实时流）
 
@@ -247,7 +215,7 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | RUN-01 | 作为运维，Chat 结束后在 Runs 看到这次运行 | 发一条 Chat 后 Runs（Traces）列表出现一行，含 Agent/Token/延迟/status |
 | RUN-02 | 作为运维，从 Runs 详情排障 | 详情含 Flow（trace_id 过滤）、Waterfall、Span；可 **打开会话** |
 | RUN-03 | 作为运维，Events 不重复刷屏 | Events 主列表不出现与 Runs 重复的 Chat `runner.completion` |
-| RUN-04 | 作为运维，告警与 Runner 指标仍准确 | `runner.error_rate`、`RunnerMetricsPanel` 仍基于 `monitor_events` 计数 |
+| RUN-04 | 作为运维，告警与 Runner 指标仍准确 | 告警规则（错误率）与 Runner 指标面板仍基于事件计数，不受方案 C 影响 |
 | RUN-05 | 作为运维，无 Usage 时仍有信号 | 无 Runs 行时 Events 显示降级 completion + 会话链接 |
 | RUN-06 | 数据质量 | 同一 `session_id`+`invocation_id` 不重复插入 completion；metadata 含 `trace_id` / `usage_event_id` |
 
@@ -265,45 +233,42 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 
 ## 4. Runs（单次运行 · UI 标签 Traces）与 Usage 总览
 
-**方案 C 真相源**：单次 Agent/Team **运行**以本 Tab 为主（数据源 `model_token_usage_events`，`trpc_turn` → `recordTurnUsage`）。与 Events 中 `runner.completion` 的关系为 **关联键 + 告警计数**，非平行详情页。
+**方案 C 真相源**：单次 Agent/Team **运行**以本 Tab 为主（数据源为用量事件记录）。与 Events 中运行完成事件的关系为 **关联键 + 告警计数**，非平行详情页。
 
-> 实现状态：✅ 已实现。
-> - Usage Tab：Runner + 跳转概览；用量大盘见 `/overview`（[18 monitor-dashboard.md](./18%20monitor-dashboard.md)）
-> - Runs 列表：`TraceList.vue` + `ListUsageEvents`（即 `/v1/usage/events`）
-> - Phase 1d：Runner 指标下钻、详情「打开会话」、`runner.completion` metadata 关联
+> 方案 C 详细设计（数据流、关联键、落库幂等）见 [18 monitor.design.md](./18%20monitor.design.md) §九。
 
 ### 4.0 Runs 与 Events 分工（方案 C）
 
 | 维度 | Runs（Traces） | Events |
 |------|----------------|--------|
-| 主数据 | `model_token_usage_events` | WS + `monitor_events`（告警、降级 completion） |
+| 主数据 | 用量事件记录 | 实时推送 + 事件表（告警、降级 completion） |
 | Chat 排障 | ✅ 默认入口 | ❌ 不重复列表 |
 | 详情壳 | `TraceList` 最大化对话框（Flow/Waterfall/Span） | 仅非 Runs 类事件 |
-| `runner.completion` | 通过 `trace_id` / `usage_event_id` 关联 | 落库但不主显 |
+| 运行完成事件 | 通过 `trace_id` / `usage_event_id` 关联 | 落库但不主显 |
 
 **默认用户路径**：发起对话 → Monitor → **Traces（Runs）** → 打开行详情 → Flow / Waterfall。
 
-### 4.0 Usage Tab（Runner + 跳转概览）
+### 4.1 Usage Tab（Runner + 跳转概览）
 
 **Usage Tab** 自上而下：`MonitorRunnerMetrics` → `MonitorUsageDashboardLink`。
 
 | 区域 | 内容 |
 |------|------|
-| **Runner 指标** | 滑动窗口（15 分～24 小时）；`useRunnerMetrics` → Store → `GET /v1/monitor/runner-metrics`；点击下钻 `?tab=traces` |
+| **Runner 指标** | 滑动窗口（15 分～24 小时）；点击下钻 `?tab=traces` |
 | **跳转** | 「打开概览」→ `/overview?range=`（与页面顶栏 `filters.range` 一致）；「查看明细」→ `/usage/events` |
 
 完整用量/趋势/Top/占比见 [18 monitor-dashboard.md](./18%20monitor-dashboard.md)（`/overview`）。
 
-### 4.1 Runs 列表（路由 Tab：`traces`）
+### 4.2 Runs 列表（路由 Tab：`traces`）
 
 | 区域 | 内容 |
 |------|------|
 | **标题** | 「Runs」（侧栏/路由 Tab 标签仍为 Traces） |
 | **副标题** | 单次对话运行真相源（Token + Flow / Waterfall / Span） |
-| **筛选** | 关键字搜索；数据来自 `listMonitorTraceEvents` → `UsageService.ListUsageEvents` |
+| **筛选** | 关键字搜索 |
 | **表格列** | Agent/Provider/Model、令牌 in/out、延迟、成本、错误、时间、详情操作 |
 
-### 4.2 Runs 详情弹窗（最大化对话框）
+### 4.3 Runs 详情弹窗（最大化对话框）
 
 | 区块 | 内容 |
 |------|------|
@@ -314,20 +279,11 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | **Span 树** | 嵌套 agent → llm_call（有 spans 时） |
 | **错误** | 失败时展示 `error_message` |
 
-### 4.3 数据与 API
+> API 端点与请求参数见 [18-monitor.design.md §二](./18-monitor.design.md)。
 
-| 方法 | 说明 |
-|------|------|
-| GET | `/api/v1/monitor/traces?limit=100&offset=0&agent_id=&provider=&model=&status=` |
-| GET | `/api/v1/monitor/traces/:traceId` | 详情 + spans 树 |
-| GET | `/api/v1/usage/events?agent_id=&provider=&model=&limit=` | 模型调用事件表 |
-| GET | `/api/v1/monitor/runner-metrics?window_minutes=` | Runner 窗口指标（`MonitorService`） |
-
-### 4.5 告警规则（Alerts Tab）
+### 4.4 告警规则（Alerts Tab）
 
 面向运维：配置 `runner.error_rate` 等规则，超阈后写入 `alert.fired` 事件并可选出站通知。
-
-> 实现状态：✅ 已实现。`MonitorAlertRules.vue` + `ListMonitorAlertRules` / `PutMonitorAlertRules`。
 
 | 区域 | 内容 |
 |------|------|
@@ -336,12 +292,7 @@ Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同�
 | **冷却** | `cooldown_minutes`（默认 60）；同规则冷却期内不重复出站 |
 | **操作** | 刷新、保存 |
 
-| API | 说明 |
-|-----|------|
-| GET | `/api/v1/monitor/alert-rules` |
-| PUT | `/api/v1/monitor/alert-rules`（body: `items[]`） |
-
-评估时机：`runner.completion` 落库后 `MonitorUsecase.EvaluateAlerts`；出站见 `internal/service/monitor_notify.go`（`alert.notify`）。
+> API 端点见 [18-monitor.design.md §二](./18-monitor.design.md)；评估与出站逻辑见设计文档 §五。
 
 ---
 
@@ -373,70 +324,35 @@ Tab 与深链 query（刷新可保留）：
 
 ---
 
-## 6. 统一数据契约与前端状态
-
-### 6.1 API 返回格式
-
-| 类型 | 字段 |
-|------|------|
-| `PaginatedResult<T>` | `items: T[]`、`total: number` |
-| `LoadState` | `idle` / `loading` / `success` / `empty` / `error` |
-| `StreamState` | `connecting` / `connected` / `live` / `paused` / `error` |
-
-### 6.2 前端模块
-
-| 文件 | 职责 |
-|------|------|
-| `pages/MonitorPage.vue` | 页面壳、6 Tab；`tab` / `usage_event_id` query 同步 |
-| `components/monitor/MonitorRunnerMetrics.vue` | 容器：`useRunnerMetrics` + `RunnerMetricsPanel` |
-| `components/monitor/RunnerMetricsPanel.vue` | Runner 指标纯展示（props/emits） |
-| `components/monitor/MonitorUsageDashboardLink.vue` | 跳转 `/overview`、`/usage/events` |
-| `components/monitor/MonitorAlertRules.vue` | 告警规则编辑与保存 |
-| `features/monitor/useRunnerMetrics.ts` | Runner 指标 composable（调 Store） |
-| `components/monitor/AuditTable.vue` | 活动日志表格（筛选 + 分页） |
-| `components/monitor/RealtimeEvents.vue` | WS 事件流 + 方案 C completion 过滤 |
-| `components/monitor/TraceList.vue` | Runs 列表与详情（Flow/Waterfall/Span） |
-| `components/monitor/TraceWaterfall.vue` | 详情瀑布图 |
-| `components/monitor/FlowTracePanel.vue` | 详情流程 Tab（`flow_log` 过滤） |
-| `components/monitor/FlowLogExportButton.vue` | Flow JSONL 导出 |
-| `components/monitor/LogStreamPanel.vue` | Logs 二级 Tab 容器 + 共享 WS Hub |
-| `components/monitor/FlowLogStream.vue` | 流程日志流 |
-| `components/monitor/ProcessLogStream.vue` | 进程日志流 |
-| `features/monitor/api.ts` | Monitor API（audit/events/traces/logs/alerts/runner-metrics） |
-| `features/monitor/runCorrelation.ts` | 方案 C：completion 过滤与 Runs 关联 |
-| `features/monitor/useMonitorRunNavigation.ts` | 会话 / Runs Tab / 详情深链 |
-| `features/monitor/useLogStreamHub.ts` | 共享 Logs WS Hub |
-| `features/monitor/types.ts` | 类型定义（含 AuditQuery/PaginatedResult/MonitorAlertRule） |
-| `features/monitor/utils.ts` | 格式化工具 |
-| `features/usage/api.ts` | Usage API |
-| `features/usage/types.ts` | Usage 类型 |
-| `stores/monitor/index.ts` | Pinia Store |
-
-### 6.3 数据保留与脱敏
+## 6. 数据保留与脱敏（用户视角）
 
 - JSON 详情默认折叠大字段，单字段超过 2,000 字符时显示「展开」。
 - 密钥、Token、Authorization、Cookie、API Key 等字段统一用 `******` 脱敏。
 - WS 前端缓冲默认最多 1,000 条事件；Logs 默认最多 5,000 行。
 
+> API 返回格式、前端模块文件结构见 [18-monitor.design.md §七](./18-monitor.design.md)。
+
 ---
 
 ## 7. 验收要点
 
-- [x] 页面进入 `/monitor/logs` 后能正常加载 Audit / Events / Traces / Usage 数据，失败时显示可读错误。
-- [x] 活动日志：表格列与 API 字段一致；支持刷新、分页、事件类型/实体类型/操作者/关键字筛选、详情查看。
-- [x] 实时事件：WS 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
-- [x] Usage：Runner 指标 + 总览卡、Top 模型、Top Agent、最近异常能从 `/api/v1/usage/*` 与 `/api/v1/monitor/runner-metrics` 加载。
-- [x] Alerts：规则可加载/保存；超阈产生 `alert.fired`；Webhook/Channel 出站（冷却生效）。
-- [x] 方案 C（Phase 1d）：Runs 主排障；Events 不重复已关联 Chat `runner.completion`；Runs 详情可打开会话。
-- [x] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树。
-- [x] 日志流：流程/进程二级 Tab 独立缓冲；流程默认连接；进程 `enable_log` 开关；级别/关键字过滤；连接状态含 `connected`。
-- [x] 所有 JSON 详情支持复制，复制成功有 `Notify`。
-- [x] 大量数据场景不明显卡顿：长列表使用分页、虚拟滚动或限制前端缓冲。
-- [x] 敏感字段已脱敏，不展示明文密钥、Token、Cookie。
+- [ ] 页面进入 `/monitor/logs` 后能正常加载 Audit / Events / Traces / Usage 数据，失败时显示可读错误。
+- [ ] 活动日志：表格列与 API 字段一致；支持刷新、分页、事件类型/实体类型/操作者/关键字筛选、详情查看。
+- [ ] 实时事件：WS 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
+- [ ] Usage：Runner 指标 + 总览卡、Top 模型、Top Agent、最近异常能从 `/api/v1/usage/*` 与 `/api/v1/monitor/runner-metrics` 加载。
+- [ ] Alerts：规则可加载/保存；超阈产生 `alert.fired`；Webhook/Channel 出站（冷却生效）。
+- [ ] 方案 C（Phase 1d）：Runs 主排障；Events 不重复已关联 Chat `runner.completion`；Runs 详情可打开会话。
+- [ ] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树。
+- [ ] 日志流：流程/进程二级 Tab 独立缓冲；流程默认连接；进程 `enable_log` 开关；级别/关键字过滤；连接状态含 `connected`。
+- [ ] 所有 JSON 详情支持复制，复制成功有 `Notify`。
+- [ ] 大量数据场景不明显卡顿：长列表使用分页、虚拟滚动或限制前端缓冲。
+- [ ] 敏感字段已脱敏，不展示明文密钥、Token、Cookie。
+
+> 实现进度与状态标记见 [18-monitor.development.md §6](./18-monitor.development.md)。
 
 ---
 
-*文档版本：2026-06-06 — 对齐代码：6 Tab（含 Alerts）、Runner 指标、方案 C Phase 1d ✅、Logs 流程/进程二级 Tab、MON-OPT-01~06 ✅、LOG-01/TRACE-01/DIAG-01/02 ✅、Latency P50/P95/P99 ✅、LOG-03 P0/P1/P2 ✅、REDLINE ✅、QUALITY ✅、自检/自愈 ✅、LOOP-01 FR-01 ✅ FR-02 🟡 FR-03 ❌。实现差距见 [18-monitor-development.md](./18-monitor-development.md)。*
+*文档版本：2026-06-17 — 用户故事、功能需求、验收标准。实现状态/代码锚点见 [18-monitor-development.md](./18-monitor-development.md)；架构/Proto/数据模型见 [18-monitor.design.md](./18-monitor.design.md)。*
 
 
 ---
@@ -456,7 +372,7 @@ Tab 与深链 query（刷新可保留）：
 |------|------|------------|
 | **监控 Dashboard（本文）** | `/overview` | 今天花了多少 Token/钱？趋势如何？哪个模型/Agent 最贵？有无异常调用？ |
 | **Monitor 运维页** | `/monitor/logs` | 谁在改配置？实时告警？单次运行卡在哪？进程日志？ |
-| **用量明细** | `/usage/events` | 逐条 `model_token_usage_events` 对账与导出 |
+| **用量明细** | `/usage/events` | 逐条用量事件对账与导出 |
 
 **非目标**
 
@@ -483,7 +399,7 @@ Tab 与深链 query（刷新可保留）：
 
 ## 2. 信息架构
 
-### 2.1 页面结构（当前实现）
+### 2.1 页面结构
 
 ```
 OverviewPage
@@ -540,87 +456,78 @@ flowchart LR
 
 ### 3.3 趋势与摘要
 
-| 区块 | 规格 | 实现状态 |
-|------|------|----------|
-| 消耗趋势 | `UsageTrendChart`：metric 切换 Token / 调用 / 费用 / 成功率（成功+失败堆叠 %） | ✅ ECharts |
-| 趋势粒度 | 按天（overview 内建）/ 按小时（`ListUsageTrends`） | ✅ |
-| 区间摘要 | 筛选范围内总调用/Token/费用/成功率 | ✅ |
+| 区块 | 规格 |
+|------|------|
+| 消耗趋势 | `UsageTrendChart`：metric 切换 Token / 调用 / 费用 / 成功率（成功+失败堆叠 %） |
+| 趋势粒度 | 按天（overview 内建）/ 按小时（`ListUsageTrends`） |
+| 区间摘要 | 筛选范围内总调用/Token/费用/成功率 |
 
 ### 3.4 费用占比
 
-| 图表 | 口径 | 状态 |
-|------|------|------|
-| 模型费用占比 | Top 5 模型（按 `top_models` 费用排序） | ✅ |
-| Provider 费用占比 | 由 Top 模型行聚合（**非全量 Provider**，UI 已标注） | ✅ |
+| 图表 | 口径 |
+|------|------|
+| 模型费用占比 | Top 5 模型（按 `top_models` 费用排序） |
+| Provider 费用占比 | 由 Top 模型行聚合（**非全量 Provider**，UI 已标注） |
 
 ### 3.5 排行与异常
 
-| 模块 | 字段 | 实现状态 |
-|------|------|----------|
-| Top 模型 | provider、model、调用、Token、费用、成功率 | ✅ |
-| Top Agent | agent、调用、Token、费用、成功率 | ✅ |
-| 低性价比模型 | 高费用低成功率模型提示 | ✅ |
-| 异常请求 | 时间、Agent、Provider、状态、错误摘要 | ✅ |
+| 模块 | 字段 |
+|------|------|
+| Top 模型 | provider、model、调用、Token、费用、成功率 |
+| Top Agent | agent、调用、Token、费用、成功率 |
+| 低性价比模型 | 高费用低成功率模型提示 |
+| 异常请求 | 时间、Agent、Provider、状态、错误摘要 |
 
 ### 3.6 统计口径（与 Token 模块一致）
 
 概览、排行、配额已用额 **仅计可计费行**：`chat_turn` + `team_member`（**不含** `team_turn`）。  
 明细页 `/usage/events` 展示全部 `usage_kind`。详见 [29 token.md §3.6](./29%20token.md)。
 
----
-
-## 4. 数据契约（摘要）
-
-| API | 用途 |
-|-----|------|
-| `GET /v1/usage/overview` | 指标卡、区间、Top、异常、低性价比、`quota_dashboard` |
-| `GET /v1/usage/trends?granularity=hour` | 小时趋势（概览内二次请求） |
-| `GET /v1/usage/events` | 明细页（非本页主数据） |
-| `GET /v1/monitor/runner-metrics` | Runner 窗口指标（经 `useMonitorStore`） |
-
-写入真相源：`trpc_turn` → `recordTurnUsage`（`usage_kind=chat_turn` 等）。
+> API 契约与数据流见 [18-monitor.design.md §子模块 Monitor Dashboard](./18-monitor.design.md)。
 
 ---
 
-## 5. 与 Monitor Usage Tab 的关系
+## 4. 与 Monitor Usage Tab 的关系
 
 | 页面 | Usage 相关 UI |
 |------|----------------|
 | `/overview`（本文） | 完整用量大盘 + Runner 条 + 运维快捷入口 |
 | `/monitor/logs` Usage Tab | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink`（打开概览/明细） |
 
-**产品原则（已实现）**
+**产品原则**
 
 - 用量卡片/趋势/Top **仅在** `/overview` 维护；Monitor 不再嵌入 `UsageOverview`。
 - Runner 指标两页共用 `RunnerMetricsPanel`（纯展示）+ `useRunnerMetrics`（Store）；时间范围：Runner 用滑动窗口，用量用 `range` 筛选。
 
 ---
 
-## 6. 验收要点
+## 5. 验收要点
 
-- [x] 默认路由 `/` → `/overview`；页面可加载 overview API。
-- [x] 筛选变更后指标、趋势、Top、异常一致刷新。
-- [x] 「查看明细」跳转 `/usage/events` 并带 `range`。
-- [x] 有配额时展示月预算使用率卡。
-- [x] 统计口径不含 `team_turn`（与 29 token 一致）。
-- [x] ECharts 多指标趋势 + 成功率堆叠。
-- [x] 费用占比环图（Provider 样本口径已披露）。
-- [x] Runner 指标条 + 跳转 Monitor Traces。
-- [x] Monitor Usage Tab 与概览去重；请求经 Store/composable。
+- [ ] 默认路由 `/` → `/overview`；页面可加载 overview API。
+- [ ] 筛选变更后指标、趋势、Top、异常一致刷新。
+- [ ] 「查看明细」跳转 `/usage/events` 并带 `range`。
+- [ ] 有配额时展示月预算使用率卡。
+- [ ] 统计口径不含 `team_turn`（与 29 token 一致）。
+- [ ] ECharts 多指标趋势 + 成功率堆叠。
+- [ ] 费用占比环图（Provider 样本口径已披露）。
+- [ ] Runner 指标条 + 跳转 Monitor Traces。
+- [ ] Monitor Usage Tab 与概览去重；请求经 Store/composable。
 - [ ] 待办：Provider 全量占比 API；异常行深链；自动刷新（见开发计划 Phase 4）。
+
+> 实现进度见 [18-monitor.development.md §子模块 Monitor Dashboard](./18-monitor.development.md)。
 
 ---
 
-*文档版本：2026-05-21 — 与 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) 同步。*
+*文档版本：2026-06-17 — 与 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) 同步。*
 
 
 ---
 
 ## 子模块：Monitor Loop 01 需求
 
-> **版本**：2026-06-06-v3 | **状态**：🟡 部分实施 | **优先级**：P2
+> **版本**：2026-06-06-v3 | **优先级**：P2
 > **关联**：[`18-monitor-development.md`](./18-monitor-development.md) · [`18-monitor-ai-closed-loop-2026-05-28.md`](./18-monitor-ai-closed-loop-2026-05-28.md)
-> **设计**：[`18-monitor-loop-01-design.md`](./18-monitor-loop-01-design.md)
+> **设计**：[`18-monitor.design.md`](./18-monitor.design.md) §子模块 Monitor Loop 01 设计
 
 ---
 
@@ -640,12 +547,12 @@ flowchart LR
 
 ### 2.1 核心诉求
 
-| 子需求 | 含义 | 当前状态 |
-|--------|------|----------|
-| **系统各节点有调试日志** | 关键运行路径都有 FlowLog 输出 | 🟡 88 个 step_id 已注册，但仍有缺口（见 §4） |
-| **调试日志显示在前端** | Monitor Logs 页面实时展示系统运行状态 | ✅ WS 推送 + FlowFileAppender 落盘 |
-| **替代 fmt/log 调试** | 开发者不再需要 `fmt.Println`/`log.Printf` | 🟡 `log.Printf` 已清零；cronrunner 仍有 7 处 Kratos `log.Helper` |
-| **AI 辅助分析** | AI 读取日志，分析问题，给出修复/优化建议 | ✅ DIAG-01 诊断包 + DIAG-02 根因引擎 + 自检/自愈体系 |
+| 子需求 | 含义 |
+|--------|------|
+| **系统各节点有调试日志** | 关键运行路径都有 FlowLog 输出 |
+| **调试日志显示在前端** | Monitor Logs 页面实时展示系统运行状态 |
+| **替代 fmt/log 调试** | 开发者不再需要 `fmt.Println`/`log.Printf` |
+| **AI 辅助分析** | AI 读取日志，分析问题，给出修复/优化建议 |
 
 ### 2.2 用户角色与场景
 
@@ -672,124 +579,77 @@ flowchart LR
 
 ### 3.2 价值量化目标
 
-| 指标 | 目标 | 当前 |
-|------|------|------|
-| 系统关键路径 FlowLog 覆盖率 | ≥ 95% | 🟡 88 个 step_id 已注册，22 个待补 |
-| `log.Printf`/`log.Infof` 在 biz/service 层 | 0 处 | ✅ 已清零 |
-| cronrunner Kratos `log.Helper` | 0 处 | 🟡 7 处残留 |
-| step_id 注册率 | 100%（使用的 step_id 全部注册中文标题） | 🟡 LOOP-01 的 22 个 step_id 未注册 |
-| 开发者使用 Monitor Logs 定位问题 | 替代 80% 的 `fmt.Println` 调试 | ✅ 基本达成 |
+| 指标 | 目标 |
+|------|------|
+| 系统关键路径 FlowLog 覆盖率 | ≥ 95% |
+| `log.Printf`/`log.Infof` 在 biz/service 层 | 0 处 |
+| cronrunner Kratos `log.Helper` | 0 处 |
+| step_id 注册率 | 100%（使用的 step_id 全部注册中文标题） |
+| 开发者使用 Monitor Logs 定位问题 | 替代 80% 的 `fmt.Println` 调试 |
+
+> 当前缺口与进度见 [18-monitor.development.md §子模块 LOOP-01](./18-monitor.development.md)。
 
 ---
 
-## 4. 当前缺口（扫描结果，2026-06-06 更新）
+## 4. 功能需求
 
-### 4.1 ~~P0 — 红线违规：biz 层使用 `log.Printf`~~ ✅ 已修复
+### 4.1 FR-01：消除 `log.Printf`/`log.Infof` 红线违规
 
-`internal/biz/evolution.go` 的 4 处 `log.Printf` 已替换为 `event.SysLogWarn`。
+- 业务层（biz/service）所有 `log.Printf`/`log.Infof`/`log.Warnf`/`log.Errorf` 调用必须替换为 FlowLog（`event.SysLogWarn`/`SysLogInfo`/`SysLogError`）
+- 已完成模块重构，遗留模块已移除
 
-### 4.2 ~~P0 — 红线违规：modelcatalog 使用 `log.Logger`~~ ✅ 已修复
+### 4.2 FR-02：清理定时任务双重日志
 
-`internal/modelcatalog/runner.go` 已随模块重构移除，5 处 `r.logger.Printf` 红线违规已不存在。
+- 定时任务（cronrunner）中所有 Kratos `log.Helper` 调用必须替换为 FlowLog
+- 最终移除定时任务结构体中的 `*log.Helper` 字段，统一日志出口
 
-### 4.3 P1 — 冗余日志：cronrunner 7 处 Kratos `log.Helper` 残留
+### 4.3 FR-03：补全 step_id 注册表
 
-从原 29 处已清理至 7 处（5 个文件）：
+- 所有已使用的 step_id 必须在注册表中注册中文标题
+- 确保前端 Monitor Logs 界面显示中文标题，而非原始 step_id
 
-| 文件 | 调用 | 应替换为 |
-|------|------|----------|
-| `monitor_alert_cooldown.go` | `w.log.Debugf(...)` | 可删除（调试日志，已有 FlowLog） |
-| `memory_dead_letter_replayer.go` | `w.log.Warnf(...)` + `w.log.Infof(...)` | `event.SysLogWarn`/`SysLogInfo` |
-| `provider_health.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
-| `channel_health.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
-| `evolution_scanner.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
-| `channel_delivery.go` | `w.log.Warnf(...)` | `event.SysLogWarn` |
+### 4.4 FR-04（远期→已实现）：AI 辅助分析
 
-### 4.4 P2 — stepTitleRegistry 缺口：22 个已使用但未注册的 step_id
+- ✅ 诊断包：自动聚合错误上下文，生成 AI 可消费的诊断包
+- ✅ 根因分析引擎：基于规则匹配错误根因，给出修复建议
+- ✅ 自检体系：周期性健康检查 + 自动修复
+- ✅ 自愈体系：事件驱动修复 + 预测性自愈
+- ✅ 模式挖掘：故障聚类 + 自动修复模板生成
 
-| step_id | 使用位置 | 建议中文标题 |
-|---------|---------|------------|
-| `system.evolution.metrics_fail` | evolution.go | 进化指标查询失败 |
-| `system.model_catalog.resolve_fail` | modelcatalog/runner.go | 模型目录解析失败 |
-| `system.model_catalog.sync_fail` | modelcatalog/runner.go | 模型目录同步失败 |
-| `system.model_catalog.sync_ok` | modelcatalog/runner.go | 模型目录同步完成 |
-| `memory.l4_decay` | memory_l4_decay.go | L4 图谱衰减 |
-| `memory.l2_decay` | memory_l2_decay.go | L2 情景衰减 |
-| `memory.l3_decay` | memory_l3_decay.go | L3 事实衰减 |
-| `memory.index_reconcile` | memory_fact_index_reconciler.go | 记忆索引对账 |
-| `memory.dead_letter_replay` | memory_dead_letter_replayer.go | 记忆死信重放 |
-| `memory.data_migration` | memory_data_migration.go | 记忆数据迁移 |
-| `memory.episode_backfill` | memory_episode_backfill.go | 情景嵌入回填 |
-| `event_store.cleanup` | event_store_cleanup.go | 事件存储清理 |
-| `flow_log.cleanup` | flow_log_cleanup.go | 流程日志清理 |
-| `tool_audit.cleanup` | tool_audit_cleanup.go | 工具审计清理 |
-| `channel.delivery` | channel_delivery.go | 渠道投递 |
-| `channel.health` | channel_health.go | 渠道健康检查 |
-| `provider.health` | provider_health.go | 模型供应商健康检查 |
-| `evolution.scanner` | evolution_scanner.go | 进化扫描 |
-| `monitor.alert_cooldown_cleanup` | monitor_alert_cooldown.go | 告警冷却清理 |
-| `webresearch.proxy_parse` | tools/webresearch/http_client.go | 网络研究代理解析 |
-| `knowledge_reflect.eval_fail` | tools/knowledge/tool.go | 知识反思评估失败 |
-| `graph.event_bridge` | graph/trpc/event_bridge.go | 图事件桥接 |
+> 修复方案与代码改动见 [18-monitor.design.md §子模块 Monitor Loop 01 设计](./18-monitor.design.md)。
 
 ---
 
-## 5. 功能需求
+## 5. 验收标准
 
-### 5.1 ~~FR-01：消除 `log.Printf`/`log.Infof` 红线违规~~ ✅ 已完成
+- [x] 业务层（biz/service）中 0 处 `log.Printf`/`log.Infof`/`log.Warnf`/`log.Errorf`
+- [x] 已移除的遗留模块中 0 处 `log.Logger.Printf`
+- [ ] 定时任务（cronrunner）中 0 处 Kratos `log.Helper` 调用（剩余 7 处）
+- [ ] 所有已使用的 step_id 在注册表中有中文标题（22 个待注册）
+- [x] 后端编译通过（`go build`）
+- [x] 后端静态检查通过（`go vet`）
 
-- `internal/biz/evolution.go` 的 4 处 `log.Printf` 已替换为 `event.SysLogWarn`
-- `internal/modelcatalog/runner.go` 已随模块重构移除
-
-### 5.2 FR-02：清理 cronrunner 双重日志（🟡 部分完成）
-
-- 已清理 22 处（从 29 处降至 7 处）
-- 剩余 5 个文件 7 处 `w.log.*` 调用需替换为 `event.SysLogWarn`/`SysLogInfo`
-- 最终移除 cronrunner 中 `*log.Helper` 字段
-
-### 5.3 FR-03：补全 stepTitleRegistry（❌ 未实施）
-
-- 在 `internal/event/flow_log.go` 的 `stepTitleRegistry` 中注册 22 个缺失 step_id
-- 确保前端 Monitor Logs 界面显示中文标题
-
-### 5.4 FR-04（远期→✅ 已实现）：AI 辅助分析
-
-- ✅ DIAG-01 诊断包：`DiagBundleGenerator` + `GenerateDiagnosticBundle` API
-- ✅ DIAG-02 根因分析引擎：`RootCauseEngine` 5 条内置规则 + 置信度评分
-- ✅ 自检体系：`SelfCheckScheduler` + `SelfCheckRepairDispatcher`（4 个修复器）
-- ✅ 自愈体系：`SelfHealObserver`（事件驱动修复）+ `PredictiveHeal`（预测性自愈）
-- ✅ 模式挖掘：`PatternMiningUsecase`（故障聚类 + 自动修复模板生成）
+> 实现进度见 [18-monitor.development.md §子模块 LOOP-01](./18-monitor.development.md)。
 
 ---
 
-## 6. 验收标准
-
-- [x] `internal/biz/` 中 0 处 `log.Printf`/`log.Infof`/`log.Warnf`/`log.Errorf`
-- [x] `internal/modelcatalog/` 中 0 处 `log.Logger.Printf`（模块已移除）
-- [ ] `internal/cronrunner/jobs/` 中 0 处 Kratos `log.Helper` 调用（剩余 7 处）
-- [ ] 所有已使用的 step_id 在 `stepTitleRegistry` 中有中文标题（22 个待注册）
-- [x] `go build ./internal/...` 通过
-- [x] `go vet ./internal/...` 通过
-
----
-
-## 7. 不在本需求范围
+## 6. 不在本需求范围
 
 | 项 | 理由 |
 |----|------|
 | AI 自动分析日志 | 远期目标，前置条件是日志覆盖率达标 |
 | AI 修改代码 | 远期目标，需独立设计安全审批机制 |
 | 前端闭环 UI | 无闭环概念，本需求仅涉及日志覆盖 |
-| `internal/data/data.go` 启动日志 | 启动阶段 FlowLog 未初始化，可接受 |
-| `internal/cli/` CLI 日志 | CLI 工具不在服务器运行时路径上 |
+| 服务启动阶段日志 | 启动阶段 FlowLog 未初始化，可接受 |
+| CLI 工具日志 | CLI 工具不在服务器运行时路径上 |
 
 ---
 
-## 8. 与已有功能的关系
+## 7. 与已有功能的关系
 
 | 已有功能 | 关系 |
 |----------|------|
 | LOG-03（P0/P1/P2 红线修复） | **延续**：LOOP-01 是 LOG-03 的扩展，覆盖更多模块 |
-| FlowFileAppender（LOG-01） | **消费者**：FlowLog 输出后由 FlowFileAppender 落盘 |
+| LOG-01（FlowLog 文件落盘） | **消费者**：FlowLog 输出后由文件落盘模块持久化 |
 | Monitor Logs 前端页面 | **展示层**：所有 FlowLog 通过 WS 推送到前端 |
-| `stepTitleRegistry` | **注册层**：新增 step_id 需在此注册中文标题 |
+| step_id 注册表 | **注册层**：新增 step_id 需在注册表中注册中文标题 |

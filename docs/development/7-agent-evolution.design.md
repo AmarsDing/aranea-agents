@@ -1,7 +1,8 @@
 # Agent 进化 Tab — 实现设计文档
 
-> 对应需求：`7 agent-evolution.md`
+> 对应需求：[7 agent-evolution.md](./7%20agent-evolution.md)
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+> 开发进度与代码锚点：[7-agent-evolution.development.md](./7-agent-evolution.development.md)
 
 ---
 
@@ -9,13 +10,15 @@
 
 Agent 设置页「进化」Tab：进化开关、指标看板、建议列表、适应护栏配置。数据来自 `agent_runtime_settings` 的 `evolution_*` / `evo_*` / `guardrail_*` 字段和运行时指标聚合。
 
-开关字段已在 `AgentRuntimeSettings` 中定义并通过 `settingsFromLegacyConfig` 解析存储，运行时逻辑（指标采集、建议生成、SOUL.md 自动演化、护栏控制）待实现。
+开关字段在 `AgentRuntimeSettings` 中定义并通过 `settingsFromLegacyConfig` 解析存储。运行时指标采集通过查询 `tool_invocations` 表实现，建议生成由 `EvolutionScanner` 定时任务驱动。
 
 ---
 
 ## 二、Proto 层
 
 ### 2.1 现有 Proto（`api/kratos/agent/v1/agent.proto`）
+
+`AgentRuntimeSettings` 消息中已定义进化相关字段：
 
 ```protobuf
 message AgentRuntimeSettings {
@@ -37,22 +40,23 @@ message AgentRuntimeSettings {
   int32 evo_persona_max_chars = 74;
   int32 evo_system_prompt_max_appends = 75;
 }
-
-service AgentService {
-  rpc GetAgent(GetAgentRequest) returns (Agent) { ... }
-  rpc UpdateAgent(UpdateAgentRequest) returns (Agent) { ... }
-  // ... 其他 RPC ...
-}
 ```
 
-### 2.2 待新增 Proto
+`Agent` 消息中包含 `int32 pending_evolution_count = 26;` 用于列表徽章推导。
 
-在 `agent.proto` 中新增进化指标和建议相关消息与 RPC：
+### 2.2 进化指标与建议 RPC（已实现）
+
+`AgentService` 中已定义以下 RPC，对应需求文档 §10 的 API 端点：
 
 ```protobuf
 message GetAgentEvolutionMetricsRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
   string time_range = 2; // "7d" | "30d" | "90d"
+}
+
+message MetricDataPoint {
+  string date = 1; // "2026-05-01"
+  double value = 2;
 }
 
 message EvolutionMetricsResponse {
@@ -66,11 +70,6 @@ message EvolutionMetricsResponse {
   repeated MetricDataPoint retrieval_quality_series = 8;
 }
 
-message MetricDataPoint {
-  string date = 1; // "2026-05-01"
-  double value = 2;
-}
-
 message GetAgentEvolutionSuggestionsRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
   string status = 2; // "pending" | "applied" | "rejected" | ""
@@ -82,7 +81,7 @@ message EvolutionSuggestion {
   string type = 3; // "persona" | "skill" | "prompt"
   string title = 4;
   string content = 5;
-  string status = 6; // "pending" | "applied" | "rejected"
+  string status = 6; // "pending" | "applied" | "rejected" | "rolled_back"
   string diff_preview = 7;
   string created_at = 8;
   string applied_at = 9;
@@ -102,7 +101,6 @@ message RejectEvolutionSuggestionRequest {
   string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
-// 在 AgentService 中新增：
 service AgentService {
   // ... 现有 RPC ...
 
@@ -131,14 +129,17 @@ service AgentService {
 // internal/biz/evolution.go
 
 type EvolutionMetrics struct {
-    AgentID              string
-    TimeRange            string
-    ToolSuccessRate      float64
-    RetrievalQuality     float64
-    TotalEpisodes        int
-    NegativeFeedback     int
-    ToolSuccessSeries    []MetricDataPoint
+    AgentID                string
+    TimeRange              string
+    ToolSuccessRate        float64
+    RetrievalQuality       float64
+    TotalEpisodes          int
+    NegativeFeedback       int
+    ToolSuccessSeries      []MetricDataPoint
     RetrievalQualitySeries []MetricDataPoint
+    // 标记指标数据因部分查询失败而不完整
+    Partial       bool
+    PartialErrors []string
 }
 
 type MetricDataPoint struct {
@@ -147,15 +148,16 @@ type MetricDataPoint struct {
 }
 
 type EvolutionSuggestion struct {
-    ID           string
-    AgentID      string
-    Type         string // "persona" | "skill" | "prompt"
-    Title        string
-    Content      string
-    Status       string // "pending" | "applied" | "rejected"
-    DiffPreview  string
-    CreatedAt    string
-    AppliedAt    string
+    ID               string
+    AgentID          string
+    Type             string // "persona" | "skill" | "prompt"
+    Title            string
+    Content          string
+    Status           string // "pending" | "applied" | "rejected" | "rolled_back"
+    DiffPreview      string
+    PreApplySnapshot string // JSON-encoded map[filename]content，用于 Rollback
+    CreatedAt        string
+    AppliedAt        string
 }
 ```
 
@@ -164,6 +166,7 @@ type EvolutionSuggestion struct {
 ```go
 // internal/biz/evolution.go
 
+// Stability:stable
 type EvolutionMetricsRepo interface {
     GetToolSuccessRate(ctx context.Context, agentID string, since time.Time) (float64, []MetricDataPoint, error)
     GetRetrievalQuality(ctx context.Context, agentID string, since time.Time) (float64, []MetricDataPoint, error)
@@ -171,11 +174,13 @@ type EvolutionMetricsRepo interface {
     GetNegativeFeedbackCount(ctx context.Context, agentID string, since time.Time) (int, error)
 }
 
+// Stability:stable
 type EvolutionSuggestionRepo interface {
     ListByAgent(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error)
     GetByID(ctx context.Context, id string) (EvolutionSuggestion, error)
     Create(ctx context.Context, s EvolutionSuggestion) (EvolutionSuggestion, error)
     UpdateStatus(ctx context.Context, id string, status string) (EvolutionSuggestion, error)
+    UpdateSnapshot(ctx context.Context, id string, snapshot string) error
 }
 ```
 
@@ -185,84 +190,67 @@ type EvolutionSuggestionRepo interface {
 // internal/biz/evolution.go
 
 type EvolutionUsecase struct {
-    metricsRepo     EvolutionMetricsRepo
-    suggestionRepo  EvolutionSuggestionRepo
-    agents          AgentRepository
+    metricsRepo      EvolutionMetricsRepo
+    suggestionRepo   EvolutionSuggestionRepo
+    agents           AgentRepository
+    coordinator      *EvolutionCoordinator      // 遗留：跨流水线去重
+    orchestrator     *SkillEvolutionOrchestrator // 统一：跨流水线去重
+    orchestratorOnce sync.Once
+    lg               loggateway.Logger
+    evolutionSM      *EvolutionStateMachine
 }
 
 func NewEvolutionUsecase(
     metricsRepo EvolutionMetricsRepo,
     suggestionRepo EvolutionSuggestionRepo,
     agents AgentRepository,
+    lg loggateway.Logger,
 ) *EvolutionUsecase
-
-func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (EvolutionMetrics, error) {
-    since := timeRangeToSince(timeRange)
-    toolRate, toolSeries, _ := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
-    retrievalRate, retrievalSeries, _ := uc.metricsRepo.GetRetrievalQuality(ctx, agentID, since)
-    episodes, _ := uc.metricsRepo.GetEpisodeCount(ctx, agentID, since)
-    negFeedback, _ := uc.metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
-    return EvolutionMetrics{
-        AgentID: agentID, TimeRange: timeRange,
-        ToolSuccessRate: toolRate, RetrievalQuality: retrievalRate,
-        TotalEpisodes: episodes, NegativeFeedback: negFeedback,
-        ToolSuccessSeries: toolSeries, RetrievalQualitySeries: retrievalSeries,
-    }, nil
-}
-
-func (uc *EvolutionUsecase) GetEvolutionSuggestions(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error) {
-    return uc.suggestionRepo.ListByAgent(ctx, agentID, status)
-}
-
-func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string, suggestionID string) error {
-    s, err := uc.suggestionRepo.GetByID(ctx, suggestionID)
-    if err != nil {
-        return err
-    }
-    if s.AgentID != agentID {
-        return ErrNotFound
-    }
-    if s.Status != "pending" {
-        return ErrInvalidArgument
-    }
-    switch s.Type {
-    case "persona":
-        ag, _ := uc.agents.Get(ctx, agentID)
-        files, _ := uc.agents.ListAgentPromptFiles(ctx, agentID)
-        for i, f := range files {
-            if f.Name == "SOUL.md" {
-                f.Body = s.Content
-                files[i] = f
-                break
-            }
-        }
-        uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files)
-    case "prompt":
-        // 应用到指定 prompt file
-    }
-    _, err = uc.suggestionRepo.UpdateStatus(ctx, suggestionID, "applied")
-    return err
-}
-
-func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string, suggestionID string) error {
-    _, err := uc.suggestionRepo.UpdateStatus(ctx, suggestionID, "rejected")
-    return err
-}
-
-func timeRangeToSince(tr string) time.Time {
-    now := time.Now()
-    switch tr {
-    case "7d":
-        return now.AddDate(0, 0, -7)
-    case "30d":
-        return now.AddDate(0, 0, -30)
-    case "90d":
-        return now.AddDate(0, 0, -90)
-    default:
-        return now.AddDate(0, 0, -30)
-    }
-}
 ```
+
+核心方法：
+
+- `GetEvolutionMetrics(ctx, agentID, timeRange)` — 聚合四项指标，部分查询失败时标记 `Partial=true` 并记录 `PartialErrors`
+- `GetEvolutionSuggestions(ctx, agentID, status)` — 列表查询
+- `ApplySuggestion(ctx, agentID, suggestionID)` — 应用建议：
+  - 校验状态机转换 `Pending → Applied`
+  - 保存 `PreApplySnapshot`（应用前的 prompt files 快照）
+  - `type=persona`：写入 `IDENTITY.md` 的 `## Persona` 段（PGO V2 后替代 SOUL.md，保留 SOUL.md 作为遗留兜底）
+  - `type=prompt`：写入 `AGENTS_CORE.md` 或首匹配 `AGENTS*.md` 文件
+- `RejectSuggestion(ctx, agentID, suggestionID)` — 拒绝建议，状态机转换 `Pending → Rejected`
+- `RollbackSuggestion(ctx, agentID, suggestionID)` — 回滚建议，状态机转换 `Applied → RolledBack`，从 `PreApplySnapshot` 恢复 prompt files
+- `ScanAll(ctx)` / `ScanAgent(ctx, agentID)` — 扫描指标并生成建议（由 `EvolutionScanner` 定时调用）
+
+### 3.4 状态机（AS-FSM-01）
+
+`EvolutionSuggestion` 实体拥有 4 种状态，已定义显式状态机 `internal/biz/evolution_state_machine.go`：
+
+```
+┌─────────┐  apply   ┌─────────┐  rollback  ┌────────────┐
+│ Pending │ ───────► │ Applied │ ─────────► │ RolledBack │
+└────┬────┘          └─────────┘            └────────────┘
+     │ reject
+     ▼
+┌──────────┐
+│ Rejected │
+└──────────┘
+```
+
+| From | Event | To |
+|------|-------|----|
+| Pending | apply | Applied |
+| Pending | reject | Rejected |
+| Applied | rollback | RolledBack |
+
+终态：`Rejected`、`RolledBack`。所有状态转换经 `EvolutionStateMachine.Transition()` 校验，非法转换返回错误。
+
+### 3.5 跨流水线去重
+
+`EvolutionCoordinator`（`internal/biz/evolution_coordinator.go`）与 `SkillEvolutionOrchestrator`（`internal/biz/skill_evolution_unified.go`）提供跨流水线的 pending 建议去重：
+
+- `ScanAgent` 优先委托 `orchestrator.HasPendingForTarget(ctx, "agent", agentID)` 检查
+- 回退到 `coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type, ID})`
+- 已有 pending 同 type 建议时跳过扫描
 
 ---
 
@@ -273,7 +261,15 @@ func timeRangeToSince(tr string) time.Time {
 ```go
 // internal/data/ent/schema/evolution_suggestion.go
 
-type EvolutionSuggestion struct{}
+type EvolutionSuggestion struct {
+    ent.Schema
+}
+
+func (EvolutionSuggestion) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "evolution_suggestions"},
+    }
+}
 
 func (EvolutionSuggestion) Fields() []ent.Field {
     return []ent.Field{
@@ -281,9 +277,10 @@ func (EvolutionSuggestion) Fields() []ent.Field {
         field.String("agent_id").MaxLen(256),
         field.String("type").MaxLen(64),   // "persona" | "skill" | "prompt"
         field.String("title").MaxLen(512),
-        field.Text("content"),
-        field.String("status").MaxLen(32).Default("pending"), // "pending" | "applied" | "rejected"
+        field.Text("content").Default(""),
+        field.String("status").MaxLen(32).Default("pending"), // "pending" | "applied" | "rejected" | "rolled_back"
         field.Text("diff_preview").Default(""),
+        field.Text("pre_apply_snapshot").Default(""), // JSON map[filename]content，用于 Rollback
         field.String("created_at").Default(""),
         field.String("applied_at").Default(""),
     }
@@ -306,73 +303,21 @@ type evolutionMetricsRepo struct {
     data *Data
 }
 
-func NewEvolutionMetricsRepo(data *Data) biz.EvolutionMetricsRepo {
-    return &evolutionMetricsRepo{data: data}
-}
+func NewEvolutionMetricsRepo(data *Data) biz.EvolutionMetricsRepo
 
-func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx context.Context, agentID string, since time.Time) (float64, []biz.MetricDataPoint, error) {
-    var total, success int
-    r.data.entClient.ToolInvocation.Query().
-        Where(
-            toolinvocation.AgentIDEQ(agentID),
-            toolinvocation.CreatedAtGTE(since.Format(time.RFC3339)),
-        ).
-        Select(toolinvocation.FieldStatus).
-        ForEach(ctx, func(row *ent.ToolInvocation) error {
-            total++
-            if row.Status == "success" {
-                success++
-            }
-            return nil
-        })
-    rate := 0.0
-    if total > 0 {
-        rate = float64(success) / float64(total)
-    }
-    series := r.aggregateByDay(ctx, agentID, since, "tool_success")
-    return rate, series, nil
-}
+// GetToolSuccessRate 从 tool_invocations 表聚合工具成功率
+// 使用 r.data.RW().Read(ctx) 事务感知读连接
+// 按日聚合返回 []MetricDataPoint
+func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx, agentID, since) (float64, []biz.MetricDataPoint, error)
 
-func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx context.Context, agentID string, since time.Time) (float64, []biz.MetricDataPoint, error) {
-    // 从 memory_entities 或 session 上下文快照聚合检索命中率
-    series := r.aggregateByDay(ctx, agentID, since, "retrieval_quality")
-    avg := 0.0
-    if len(series) > 0 {
-        sum := 0.0
-        for _, p := range series {
-            sum += p.Value
-        }
-        avg = sum / float64(len(series))
-    }
-    return avg, series, nil
-}
+// GetRetrievalQuality 聚合检索质量（基于记忆工具调用成功率）
+func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx, agentID, since) (float64, []biz.MetricDataPoint, error)
 
-func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID string, since time.Time) (int, error) {
-    count, err := r.data.entClient.Session.Query().
-        Where(
-            session.AgentIDEQ(agentID),
-            session.CreatedAtGTE(since.Format(time.RFC3339)),
-        ).
-        Count(ctx)
-    return count, err
-}
+// GetEpisodeCount 统计 Session 数量
+func (r *evolutionMetricsRepo) GetEpisodeCount(ctx, agentID, since) (int, error)
 
-func (r *evolutionMetricsRepo) GetNegativeFeedbackCount(ctx context.Context, agentID string, since time.Time) (int, error) {
-    // 从消息中统计负反馈（如 thumbs_down 标记）
-    count, _ := r.data.entClient.Message.Query().
-        Where(
-            message.AgentIDEQ(agentID),
-            message.CreatedAtGTE(since.Format(time.RFC3339)),
-            message.HasFeedbackWith(feedback.TypeEQ("negative")),
-        ).
-        Count(ctx)
-    return count, nil
-}
-
-func (r *evolutionMetricsRepo) aggregateByDay(ctx context.Context, agentID string, since time.Time, metricType string) []biz.MetricDataPoint {
-    // 按 created_at 日期分组聚合，返回每日数据点
-    return nil // 实际实现用 raw SQL 或 Ent group by
-}
+// GetNegativeFeedbackCount 统计负反馈数
+func (r *evolutionMetricsRepo) GetNegativeFeedbackCount(ctx, agentID, since) (int, error)
 ```
 
 ### 4.3 建议存储实现
@@ -384,71 +329,25 @@ type evolutionSuggestionRepo struct {
     data *Data
 }
 
-func NewEvolutionSuggestionRepo(data *Data) biz.EvolutionSuggestionRepo {
-    return &evolutionSuggestionRepo{data: data}
-}
+func NewEvolutionSuggestionRepo(data *Data) biz.EvolutionSuggestionRepo
 
-func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID string, status string) ([]biz.EvolutionSuggestion, error) {
-    query := r.data.entClient.EvolutionSuggestion.Query().
-        Where(evolutionsuggestion.AgentIDEQ(agentID))
-    if status != "" {
-        query = query.Where(evolutionsuggestion.StatusEQ(status))
-    }
-    rows, err := query.Order(ent.Desc(evolutionsuggestion.FieldCreatedAt)).All(ctx)
-    if err != nil {
-        return nil, err
-    }
-    out := make([]biz.EvolutionSuggestion, 0, len(rows))
-    for _, row := range rows {
-        out = append(out, entSuggestionToBiz(row))
-    }
-    return out, nil
-}
+// ListByAgent 按 agent_id 查询，可选 status 过滤，按 created_at 倒序
+func (r *evolutionSuggestionRepo) ListByAgent(ctx, agentID, status) ([]biz.EvolutionSuggestion, error)
 
-func (r *evolutionSuggestionRepo) GetByID(ctx context.Context, id string) (biz.EvolutionSuggestion, error) {
-    row, err := r.data.entClient.EvolutionSuggestion.Get(ctx, id)
-    if err != nil {
-        return biz.EvolutionSuggestion{}, err
-    }
-    return entSuggestionToBiz(row), nil
-}
+// GetByID 单条查询，ent.IsNotFound 时返回 fmt.Errorf("suggestion not found")
+func (r *evolutionSuggestionRepo) GetByID(ctx, id) (biz.EvolutionSuggestion, error)
 
-func (r *evolutionSuggestionRepo) Create(ctx context.Context, s biz.EvolutionSuggestion) (biz.EvolutionSuggestion, error) {
-    row, err := r.data.entClient.EvolutionSuggestion.Create().
-        SetID(s.ID).SetAgentID(s.AgentID).SetType(s.Type).
-        SetTitle(s.Title).SetContent(s.Content).SetStatus(s.Status).
-        SetDiffPreview(s.DiffPreview).
-        Save(ctx)
-    if err != nil {
-        return biz.EvolutionSuggestion{}, err
-    }
-    return entSuggestionToBiz(row), nil
-}
+// Create 创建建议，自动填充 created_at
+func (r *evolutionSuggestionRepo) Create(ctx, s) (biz.EvolutionSuggestion, error)
 
-func (r *evolutionSuggestionRepo) UpdateStatus(ctx context.Context, id string, status string) (biz.EvolutionSuggestion, error) {
-    row, err := r.data.entClient.EvolutionSuggestion.UpdateOneID(id).
-        SetStatus(status).
-        Save(ctx)
-    if err != nil {
-        return biz.EvolutionSuggestion{}, err
-    }
-    return entSuggestionToBiz(row), nil
-}
+// UpdateStatus 更新状态，status="applied" 时同步填充 applied_at
+func (r *evolutionSuggestionRepo) UpdateStatus(ctx, id, status) (biz.EvolutionSuggestion, error)
 
-func entSuggestionToBiz(row *ent.EvolutionSuggestion) biz.EvolutionSuggestion {
-    return biz.EvolutionSuggestion{
-        ID:          row.ID,
-        AgentID:     row.AgentID,
-        Type:        row.Type,
-        Title:       row.Title,
-        Content:     row.Content,
-        Status:      row.Status,
-        DiffPreview: row.DiffPreview,
-        CreatedAt:   row.CreatedAt,
-        AppliedAt:   row.AppliedAt,
-    }
-}
+// UpdateSnapshot 更新 pre_apply_snapshot 字段
+func (r *evolutionSuggestionRepo) UpdateSnapshot(ctx, id, snapshot) error
 ```
+
+所有读写均通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器，遵循 DB-R6 红线。
 
 ---
 
@@ -457,167 +356,107 @@ func entSuggestionToBiz(row *ent.EvolutionSuggestion) biz.EvolutionSuggestion {
 ```go
 // internal/service/agent_evolution.go
 
-func (s *AgentService) GetAgentEvolutionMetrics(ctx context.Context, req *v1.GetAgentEvolutionMetricsRequest) (*v1.EvolutionMetricsResponse, error) {
-    m, err := s.evoUC.GetEvolutionMetrics(ctx, req.GetAgentId(), req.GetTimeRange())
-    if err != nil {
-        return nil, err
-    }
-    resp := &v1.EvolutionMetricsResponse{
-        AgentId:          m.AgentID,
-        TimeRange:        m.TimeRange,
-        ToolSuccessRate:  m.ToolSuccessRate,
-        RetrievalQuality: m.RetrievalQuality,
-        TotalEpisodes:    int32(m.TotalEpisodes),
-        NegativeFeedback: int32(m.NegativeFeedback),
-    }
-    for _, p := range m.ToolSuccessSeries {
-        resp.ToolSuccessSeries = append(resp.ToolSuccessSeries, &v1.MetricDataPoint{Date: p.Date, Value: p.Value})
-    }
-    for _, p := range m.RetrievalQualitySeries {
-        resp.RetrievalQualitySeries = append(resp.RetrievalQualitySeries, &v1.MetricDataPoint{Date: p.Date, Value: p.Value})
-    }
-    return resp, nil
-}
-
-func (s *AgentService) GetAgentEvolutionSuggestions(ctx context.Context, req *v1.GetAgentEvolutionSuggestionsRequest) (*v1.ListEvolutionSuggestionsResponse, error) {
-    items, err := s.evoUC.GetEvolutionSuggestions(ctx, req.GetAgentId(), req.GetStatus())
-    if err != nil {
-        return nil, err
-    }
-    resp := &v1.ListEvolutionSuggestionsResponse{}
-    for _, item := range items {
-        resp.Items = append(resp.Items, toProtoSuggestion(item))
-    }
-    return resp, nil
-}
-
-func (s *AgentService) ApplyEvolutionSuggestion(ctx context.Context, req *v1.ApplyEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
-    err := s.evoUC.ApplySuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
-    if err != nil {
-        return nil, err
-    }
-    item, _ := s.evoUC.GetSuggestionByID(ctx, req.GetSuggestionId())
-    return toProtoSuggestion(item), nil
-}
-
-func (s *AgentService) RejectEvolutionSuggestion(ctx context.Context, req *v1.RejectEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
-    err := s.evoUC.RejectSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
-    if err != nil {
-        return nil, err
-    }
-    item, _ := s.evoUC.GetSuggestionByID(ctx, req.GetSuggestionId())
-    return toProtoSuggestion(item), nil
-}
-
-func toProtoSuggestion(s biz.EvolutionSuggestion) *v1.EvolutionSuggestion {
-    return &v1.EvolutionSuggestion{
-        Id:          s.ID,
-        AgentId:     s.AgentID,
-        Type:        s.Type,
-        Title:       s.Title,
-        Content:     s.Content,
-        Status:      s.Status,
-        DiffPreview: s.DiffPreview,
-        CreatedAt:   s.CreatedAt,
-        AppliedAt:   s.AppliedAt,
-    }
-}
+func (s *AgentService) GetAgentEvolutionMetrics(ctx, req) (*v1.EvolutionMetricsResponse, error)
+func (s *AgentService) GetAgentEvolutionSuggestions(ctx, req) (*v1.ListEvolutionSuggestionsResponse, error)
+func (s *AgentService) ApplyEvolutionSuggestion(ctx, req) (*v1.EvolutionSuggestion, error)
+func (s *AgentService) RejectEvolutionSuggestion(ctx, req) (*v1.EvolutionSuggestion, error)
 ```
+
+`AgentService` 通过 `evoUC *biz.EvolutionUsecase` 字段持有 usecase（见 `internal/service/agent.go`）。
+
+**关键设计**：`ApplyEvolutionSuggestion` 在应用建议后调用 `invalidateAgentBuildCache(req.GetAgentId())` 失效 Agent 构建缓存，避免下次加载 Agent 时使用过期的 prompt files。
 
 ---
 
 ## 六、Wire 注入
 
 ```go
-// internal/data/data.go — ProviderSet 新增
+// internal/data/data.go — ProviderSet
 var ProviderSet = wire.NewSet(
     // ... 现有 ...
     NewEvolutionMetricsRepo,
     NewEvolutionSuggestionRepo,
 )
 
-// internal/biz/biz.go — ProviderSet 新增
+// internal/biz/biz.go — ProviderSet
 var ProviderSet = wire.NewSet(
     // ... 现有 ...
     NewEvolutionUsecase,
 )
 
-// internal/service/service.go — AgentService 新增 evoUC 字段
-type AgentService struct {
-    uc     *biz.AgentUsecase
-    evoUC  *biz.EvolutionUsecase
-    // ... 其他字段 ...
+// internal/service/agent.go — AgentService 构造
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, ...) *AgentService
+
+// cmd/admin/wire.go — EvolutionScanner Provider
+func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
+    if strings.TrimSpace(os.Getenv("EVOLUTION_SCANNER_DISABLED")) == "1" {
+        return nil
+    }
+    return jobs.NewEvolutionScanner(0, evo, logger)
 }
 ```
 
 ---
 
-## 七、运行时层（待实现）
+## 七、运行时层
 
 ### 7.1 指标采集
 
-```go
-// internal/agent/evolution/collector.go
+指标采集通过查询 `tool_invocations` 表实现（非 hook 方式）：
 
-type MetricsCollector struct {
-    metricsRepo biz.EvolutionMetricsRepo
-}
+- `GetToolSuccessRate` 查询 `tool_invocations` 表，按 `agent_id` + `created_at >= since` 过滤，统计 `status="success"` 比例
+- `GetRetrievalQuality` 基于记忆工具调用成功率聚合
+- `GetEpisodeCount` 查询 `session` 表
+- `GetNegativeFeedbackCount` 统计负反馈消息
 
-// AfterToolInvocation 在工具调用完成后采集指标
-func (c *MetricsCollector) AfterToolInvocation(ctx context.Context, agentID string, toolKey string, status string, durationMs int) {
-    // 写入 tool_invocations 记录（已有），此处可触发聚合缓存更新
-}
-
-// AfterMemoryRecall 在记忆召回后采集检索质量
-func (c *MetricsCollector) AfterMemoryRecall(ctx context.Context, agentID string, query string, score float64, hitCount int) {
-    // 写入 memory_recall_events 或更新聚合
-}
-```
+按日聚合返回 `[]MetricDataPoint`，供前端绘制趋势图。
 
 ### 7.2 建议生成（定时任务）
 
 ```go
-// internal/agent/evolution/suggester.go
+// internal/cronrunner/jobs/evolution_scanner.go
 
-type Suggester struct {
-    suggestionRepo biz.EvolutionSuggestionRepo
-    metricsRepo    biz.EvolutionMetricsRepo
-    agents         biz.AgentRepository
+type EvolutionScanner struct {
+    interval time.Duration
+    evo      *biz.EvolutionUsecase
+    log      *log.Helper
 }
 
-// GenerateSuggestions 由 cron 任务触发，为启用进化建议的 Agent 生成建议
-func (s *Suggester) GenerateSuggestions(ctx context.Context) error {
-    // 1. 查询所有 evolution_suggestions_enabled = true 的 Agent
-    // 2. 对每个 Agent 获取近期指标
-    // 3. 基于规则或 LLM 分析生成改进建议
-    // 4. 写入 evolution_suggestions 表
-    return nil
-}
+// NewEvolutionScanner 创建扫描器，interval ≤ 0 时默认 30 分钟
+func NewEvolutionScanner(interval time.Duration, evo *biz.EvolutionUsecase, logger log.Logger) *EvolutionScanner
+
+// Start 阻塞运行直到 ctx 取消，使用 safego.Go 隔离 panic
+func (w *EvolutionScanner) Start(ctx context.Context)
 ```
 
-### 7.3 SOUL.md 自动演化
+`EvolutionUsecase.ScanAgent` 扫描逻辑（`internal/biz/evolution_scan.go`）：
 
-```go
-// internal/agent/evolution/evolver.go
+1. 跨流水线去重：检查 orchestrator / coordinator 是否已有 pending 建议
+2. 读取 `AgentRuntimeSettings`，校验 `EvolutionSuggestionsEnabled` 或 `EvoEnabled`
+3. 获取近 30d 指标，校验 `EvoMinEpisodes`（默认 3）/ `EvoMinNegativeFeedback`（默认 2）阈值
+4. 阈值触发：
+   - 工具成功率 < 0.75 → 生成 `type=prompt` 建议
+   - 检索质量 < 0.60 → 生成 `type=skill` 建议
+   - 负反馈累积 → 生成 `type=persona` 建议
+5. `ensurePendingSuggestion` 去重：同 agent + 同 type + 同 title 的 pending 建议已存在则跳过
 
-type Evolver struct {
-    agents    biz.AgentRepository
-    suggester *Suggester
-}
+启动注册：`cmd/admin/workers.go` 中 `goAfterReady("evolution", ...)` 在 ReadinessGate 通过后启动。
 
-// EvolvePersona 在满足条件时自动修改 SOUL.md 的风格段落
-// 条件：evo_enabled && evo_auto_apply && episodes >= evo_min_episodes && negative_feedback >= evo_min_negative_feedback
-func (e *Evolver) EvolvePersona(ctx context.Context, agentID string) error {
-    ag, _ := e.agents.Get(ctx, agentID)
-    if ag.Settings == nil || !ag.Settings.EvoEnabled || !ag.Settings.EvoAutoApply {
-        return nil
-    }
-    // 检查护栏：guardrail_max_change_per_period / guardrail_min_data_points / guardrail_rollback_on_decline_percent
-    // 生成 persona 变更建议
-    // 应用到 SOUL.md
-    return nil
-}
-```
+### 7.3 SOUL.md / IDENTITY.md 演化
+
+`ApplySuggestion` 的 `type=persona` 分支已实现 prompt file 写入：
+
+- PGO V2 后：优先写入 `IDENTITY.md` 的 `## Persona` 段（`replaceOrAppendPersona` 函数处理段替换/追加）
+- 遗留兜底：若 `IDENTITY.md` 不存在则写入 `SOUL.md`
+- 都不存在时：追加新的 `IDENTITY.md`，包含 `# IDENTITY\n\n## Persona\n\n<content>`
+
+**未实现**：运行时自动触发 persona 演化（`Evolver.EvolvePersona`），目前仅由用户手动应用建议触发。
+
+### 7.4 适应护栏
+
+`guardrail_max_change_per_period` / `guardrail_min_data_points` / `guardrail_rollback_on_decline_percent` 字段已在 Schema 与 Proto 中定义，前端可配置。
+
+**未实现**：扫描器未读取护栏参数控制演化幅度；`RollbackSuggestion` 已实现手动回滚，但未基于护栏自动触发。
 
 ---
 
@@ -626,18 +465,31 @@ func (e *Evolver) EvolvePersona(ctx context.Context, agentID string) error {
 ### 8.1 文件结构
 
 ```
-web/src/features/agents/
-├── api.ts                          ← 新增进化相关 API
-├── types.ts                        ← 新增进化相关类型
-└── components/
-    └── settings/
-        └── AgentEvolutionTab.vue   ← 进化 Tab 主组件
+web/src/
+├── components/agents/
+│   ├── AgentEvolutionPanel.vue          ← 进化 Tab 主组件
+│   ├── AgentLearningLoopPanel.vue       ← Learning Loop 面板
+│   ├── LearningLoopOverview.vue         ← Learning Loop 概览
+│   ├── LearningObservationList.vue      ← 观察列表
+│   ├── LearningPatternList.vue          ← 模式列表
+│   └── LearningProposalList.vue         ← 提议列表
+├── features/agents/
+│   ├── api.ts                           ← Agent 通用 API
+│   ├── api.learning.ts                  ← Learning Loop API
+│   ├── types.ts                         ← 类型定义
+│   ├── useAgentEvolutionPanel.ts        ← 进化面板 composable
+│   ├── useAgentEvolutionSettings.ts     ← 进化设置 composable
+│   └── useLearningLoopPanel.ts          ← Learning Loop composable
+└── stores/
+    ├── agents/detail.ts                 ← Agent 详情 store（含 fetchEvolutionMetrics）
+    ├── skillEvolution/index.ts          ← 技能进化 store（含建议列表）
+    └── learningLoop/index.ts            ← Learning Loop store
 ```
 
 ### 8.2 TypeScript 类型
 
 ```typescript
-// web/src/features/agents/types.ts 新增
+// web/src/features/agents/types.ts
 
 export type EvolutionMetrics = {
   agent_id: string;
@@ -661,366 +513,54 @@ export type EvolutionSuggestion = {
   type: "persona" | "skill" | "prompt";
   title: string;
   content: string;
-  status: "pending" | "applied" | "rejected";
+  status: "pending" | "applied" | "rejected" | "rolled_back";
   diff_preview: string;
   created_at: string;
   applied_at: string;
 };
 ```
 
-### 8.3 API 调用
+### 8.3 Vue 组件 — AgentEvolutionPanel.vue
+
+组件结构（自上而下）：
+
+1. **进化开关** — `q-list` + `q-toggle`，四项开关（`self_evolve` / `skill_evolve` / `evolution_metrics_enabled` / `evolution_suggestions_enabled`），附说明 Banner
+2. **自动提议流水线** — `evo_enabled` / `evo_auto_apply` 开关 + `evo_min_episodes` / `evo_min_negative_feedback` / `evo_throttle_hours` / `evo_proposal_ttl_days` / `evo_persona_max_chars` / `evo_system_prompt_max_appends` 数值输入
+3. **指标与建议** — `q-btn-toggle` 时间范围（7d/30d/90d）+ 三张 KPI 卡片（工具成功率 / 检索质量 / 待处理建议数）+ 工具成功率趋势迷你柱状图
+4. **进化建议列表** — `q-list` 列表，pending 项显示应用/拒绝按钮，其他状态显示徽章
+5. **适应护栏** — 三项数值输入（`max_change_per_period` / `min_data_points` / `rollback_on_decline_percent`）
+
+**数据流**：
+
+- `props.evolution` / `props.evolutionSettings` / `props.guardrails` 由父组件 `AgentSettingsPage` 通过 `agentRuntimeConfig` 表单双向绑定
+- 指标与建议通过 `useAgentEvolutionPanel(agentId, range)` composable 加载
+- 建议列表从 `useSkillEvolutionStore()` 过滤 `targetType === 'agent' && targetId === agentId` 的 pending 项
+- 应用/拒绝建议调用 `evolutionStore.approveSuggestion(id, 'agent-panel')` / `rejectSuggestion(id, 'agent-panel', '')`
+
+### 8.4 API 调用
 
 ```typescript
-// web/src/features/agents/api.ts 新增
+// web/src/features/agents/api.ts 与 stores/agents/detail.ts
 
-export async function getEvolutionMetrics(
-  agentId: string,
-  timeRange: string
-): Promise<EvolutionMetrics> {
-  const { data } = await http.get(`/v1/agents/${agentId}/evolution/metrics`, {
-    params: { time_range: timeRange },
-  });
-  return normalizeEvolutionMetrics(data);
-}
+// 指标查询通过 agentDetailStore.fetchEvolutionMetrics(id, range) 触发
+// 实际 HTTP 调用：GET /v1/agents/{agentId}/evolution/metrics?time_range={range}
 
-export async function getEvolutionSuggestions(
-  agentId: string,
-  status?: string
-): Promise<EvolutionSuggestion[]> {
-  const params: Record<string, string> = {};
-  if (status) params.status = status;
-  const { data } = await http.get(
-    `/v1/agents/${agentId}/evolution/suggestions`,
-    { params }
-  );
-  return (data?.items ?? []).map(normalizeSuggestion);
-}
+// web/src/features/agents/api.learning.ts 与 stores/skillEvolution/index.ts
 
-export async function applySuggestion(
-  agentId: string,
-  suggestionId: string
-): Promise<EvolutionSuggestion> {
-  const { data } = await http.post(
-    `/v1/agents/${agentId}/evolution/suggestions/${suggestionId}/apply`
-  );
-  return normalizeSuggestion(data);
-}
-
-export async function rejectSuggestion(
-  agentId: string,
-  suggestionId: string
-): Promise<EvolutionSuggestion> {
-  const { data } = await http.post(
-    `/v1/agents/${agentId}/evolution/suggestions/${suggestionId}/reject`
-  );
-  return normalizeSuggestion(data);
-}
-```
-
-### 8.4 Vue 组件 — AgentEvolutionTab.vue
-
-```vue
-<template>
-  <QScrollArea style="height: calc(100vh - 120px)">
-    <div class="q-pa-md q-gutter-md">
-
-      <!-- §3 进化开关 -->
-      <QCard flat bordered>
-        <QCardSection>
-          <div class="text-subtitle1 q-mb-md">进化开关</div>
-
-          <div class="q-gutter-sm">
-            <div class="row items-center justify-between">
-              <div>
-                <div class="text-body2">允许 Agent 进化其沟通风格</div>
-                <div class="text-caption text-grey">
-                  允许随时间更新 SOUL.md 中的语调与风格；身份与操作指令保持锁定
-                </div>
-              </div>
-              <QToggle v-model="settings.evolution_self_evolve" @update:model-value="onSettingChange" />
-            </div>
-
-            <QSeparator />
-
-            <QBanners v-if="settings.evolution_self_evolve" inline-actions rounded class="bg-info text-white q-mb-sm">
-              <template #avatar>
-                <QIcon name="info" />
-              </template>
-              仅风格/语调可变，身份与工作流规则不变
-            </QBanners>
-
-            <div class="row items-center justify-between">
-              <div>
-                <div class="text-body2">允许从经验中创建和管理技能</div>
-                <div class="text-caption text-grey">可提示用户将工作流保存为技能</div>
-              </div>
-              <QToggle v-model="settings.evolution_skill_evolve" @update:model-value="onSettingChange" />
-            </div>
-
-            <QSeparator />
-
-            <div class="row items-center justify-between">
-              <div>
-                <div class="text-body2">进化指标</div>
-                <div class="text-caption text-grey">记录工具效果、检索质量、反馈等，供看板展示</div>
-              </div>
-              <QToggle v-model="settings.evolution_metrics_enabled" @update:model-value="onSettingChange" />
-            </div>
-
-            <QSeparator />
-
-            <div class="row items-center justify-between">
-              <div>
-                <div class="text-body2">进化建议</div>
-                <div class="text-caption text-grey">基于指标由分析任务生成改进建议</div>
-              </div>
-              <QToggle v-model="settings.evolution_suggestions_enabled" @update:model-value="onSettingChange" />
-            </div>
-          </div>
-        </QCardSection>
-      </QCard>
-
-      <!-- §4 时间范围 -->
-      <div class="row items-center q-mb-none">
-        <span class="text-body2 q-mr-sm">时间范围:</span>
-        <QBtnToggle
-          v-model="timeRange"
-          no-caps
-          rounded
-          toggle-color="primary"
-          :options="[
-            { label: '7天', value: '7d' },
-            { label: '30天', value: '30d' },
-            { label: '90天', value: '90d' },
-          ]"
-          @update:model-value="onTimeRangeChange"
-        />
-      </div>
-
-      <!-- §5 工具成功率 -->
-      <QCard flat bordered v-if="settings.evolution_metrics_enabled">
-        <QCardSection>
-          <div class="text-subtitle1 q-mb-sm">工具成功率</div>
-          <template v-if="metrics.tool_success_series.length > 0">
-            <div class="text-h4 text-primary">{{ (metrics.tool_success_rate * 100).toFixed(1) }}%</div>
-            <!-- 图表占位：可接入 Chart.js / ECharts -->
-            <div class="text-caption text-grey q-mt-sm">
-              共 {{ metrics.total_episodes }} 次调用
-            </div>
-          </template>
-          <template v-else>
-            <div class="column items-center q-pa-lg text-grey-6">
-              <QIcon name="trending_up" size="48px" class="q-mb-sm" />
-              <div>在 Agent 处理足够请求后，此处将展示工具调用相关成功率等指标</div>
-            </div>
-          </template>
-        </QCardSection>
-      </QCard>
-
-      <!-- §6 检索质量 -->
-      <QCard flat bordered v-if="settings.evolution_metrics_enabled">
-        <QCardSection>
-          <div class="text-subtitle1 q-mb-sm">检索质量</div>
-          <template v-if="metrics.retrieval_quality_series.length > 0">
-            <div class="text-h4 text-primary">{{ (metrics.retrieval_quality * 100).toFixed(1) }}%</div>
-            <!-- 图表占位 -->
-          </template>
-          <template v-else>
-            <div class="column items-center q-pa-lg text-grey-6">
-              <QIcon name="search" size="48px" class="q-mb-sm" />
-              <div>在 Agent 产生足够检索/记忆相关请求后展示</div>
-            </div>
-          </template>
-        </QCardSection>
-      </QCard>
-
-      <!-- §7 建议 -->
-      <QCard flat bordered v-if="settings.evolution_suggestions_enabled">
-        <QCardSection>
-          <div class="text-subtitle1 q-mb-sm">建议</div>
-          <template v-if="suggestions.length > 0">
-            <QList separator>
-              <QItem v-for="s in suggestions" :key="s.id">
-                <QItemSection>
-                  <QItemLabel>{{ s.title }}</QItemLabel>
-                  <QItemLabel caption>{{ s.type }} · {{ s.created_at }}</QItemLabel>
-                </QItemSection>
-                <QItemSection side>
-                  <QBadge v-if="s.status === 'applied'" color="positive">已应用</QBadge>
-                  <QBadge v-else-if="s.status === 'rejected'" color="grey">已忽略</QBadge>
-                  <div v-else class="q-gutter-xs">
-                    <QBtn flat dense label="应用" color="primary" @click="onApplySuggestion(s.id)" />
-                    <QBtn flat dense label="忽略" color="grey" @click="onRejectSuggestion(s.id)" />
-                  </div>
-                </QItemSection>
-              </QItem>
-            </QList>
-          </template>
-          <template v-else>
-            <div class="column items-center q-pa-lg text-grey-6">
-              <QIcon name="lightbulb_outline" size="48px" class="q-mb-sm" />
-              <div>建议由每日分析定时任务生成后展示于此</div>
-            </div>
-          </template>
-        </QCardSection>
-      </QCard>
-
-      <!-- §8 适应护栏 -->
-      <QCard flat bordered>
-        <QCardSection>
-          <div class="row items-center q-mb-md">
-            <QIcon name="security" size="24px" class="q-mr-sm" />
-            <div class="text-subtitle1">适应护栏</div>
-          </div>
-
-          <div class="q-gutter-md">
-            <div class="row items-center q-gutter-md">
-              <div class="col text-body2">每周期最大变化</div>
-              <QInput
-                v-model.number="settings.guardrail_max_change_per_period"
-                type="number"
-                dense
-                outlined
-                style="max-width: 120px"
-                step="0.01"
-                min="0"
-                max="1"
-                @change="onSettingChange"
-              />
-            </div>
-
-            <div class="row items-center q-gutter-md">
-              <div class="col text-body2">最少数据点</div>
-              <QInput
-                v-model.number="settings.guardrail_min_data_points"
-                type="number"
-                dense
-                outlined
-                style="max-width: 120px"
-                min="1"
-                @change="onSettingChange"
-              />
-            </div>
-
-            <div class="row items-center q-gutter-md">
-              <div class="col text-body2">下降时回滚</div>
-              <QInput
-                v-model.number="settings.guardrail_rollback_on_decline_percent"
-                type="number"
-                dense
-                outlined
-                style="max-width: 120px"
-                suffix="%"
-                min="0"
-                max="100"
-                @change="onSettingChange"
-              />
-            </div>
-          </div>
-        </QCardSection>
-      </QCard>
-
-    </div>
-  </QScrollArea>
-</template>
-
-<script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
-import { useQuasar } from "quasar";
-import type { AgentRuntimeSettings, EvolutionMetrics, EvolutionSuggestion } from "../types";
-import {
-  getEvolutionMetrics,
-  getEvolutionSuggestions,
-  applySuggestion,
-  rejectSuggestion,
-} from "../api";
-
-const props = defineProps<{
-  agentId: string;
-  settings: AgentRuntimeSettings;
-}>();
-
-const emit = defineEmits<{
-  (e: "settings-changed", settings: AgentRuntimeSettings): void;
-}>();
-
-const $q = useQuasar();
-const timeRange = ref<string>("30d");
-const metrics = ref<EvolutionMetrics>({
-  agent_id: "",
-  time_range: "30d",
-  tool_success_rate: 0,
-  retrieval_quality: 0,
-  total_episodes: 0,
-  negative_feedback: 0,
-  tool_success_series: [],
-  retrieval_quality_series: [],
-});
-const suggestions = ref<EvolutionSuggestion[]>([]);
-
-onMounted(() => {
-  loadMetrics();
-  loadSuggestions();
-});
-
-watch(() => props.settings.evolution_metrics_enabled, (v) => {
-  if (v) loadMetrics();
-});
-watch(() => props.settings.evolution_suggestions_enabled, (v) => {
-  if (v) loadSuggestions();
-});
-
-function onTimeRangeChange() {
-  loadMetrics();
-  loadSuggestions();
-}
-
-async function loadMetrics() {
-  if (!props.settings.evolution_metrics_enabled) return;
-  try {
-    metrics.value = await getEvolutionMetrics(props.agentId, timeRange.value);
-  } catch { /* ignore */ }
-}
-
-async function loadSuggestions() {
-  if (!props.settings.evolution_suggestions_enabled) return;
-  try {
-    suggestions.value = await getEvolutionSuggestions(props.agentId, "pending");
-  } catch { /* ignore */ }
-}
-
-function onSettingChange() {
-  emit("settings-changed", { ...props.settings });
-}
-
-async function onApplySuggestion(id: string) {
-  try {
-    await applySuggestion(props.agentId, id);
-    $q.notify({ type: "positive", message: "建议已应用" });
-    loadSuggestions();
-  } catch {
-    $q.notify({ type: "negative", message: "应用失败" });
-  }
-}
-
-async function onRejectSuggestion(id: string) {
-  try {
-    await rejectSuggestion(props.agentId, id);
-    loadSuggestions();
-  } catch { /* ignore */ }
-}
-</script>
+// 建议列表通过 evolutionStore.loadSuggestions({ targetType, targetId, status }) 触发
+// 应用建议：evolutionStore.approveSuggestion(id, source)
+// 拒绝建议：evolutionStore.rejectSuggestion(id, source, reason)
 ```
 
 ---
 
-## 九、验收要点
+## 九、设计验收要点
 
-- [ ] 四项进化开关与 `evolution_self_evolve` / `evolution_skill_evolve` / `evolution_metrics_enabled` / `evolution_suggestions_enabled` 一致
-- [ ] 「仅演化 SOUL 风格」的说明 Banner 与 `6 agent-setting-file.md` 中 SOUL 语义一致
-- [ ] 时间范围 7d / 30d / 90d 切换后重新拉取指标/建议
-- [ ] 工具成功率和检索质量空态文案与有数据态切换正确；关闭「进化指标」时隐藏对应卡片
-- [ ] 建议列表在关闭「进化建议」时隐藏或展示禁用遮罩
-- [ ] 适应护栏三项与 `guardrail_max_change_per_period` / `guardrail_min_data_points` / `guardrail_rollback_on_decline_percent` 一致
-- [ ] 应用建议时正确修改 SOUL.md 并更新建议状态
-- [ ] 与 `2 agents-create.md` 默认策略、`3 agent-list.md`「进化中」徽章推导无矛盾
+- [ ] Proto 中 `evolution_*` / `evo_*` / `guardrail_*` 字段与 `AgentRuntimeSettings` Go struct 一一对应
+- [ ] `EvolutionStateMachine` 覆盖所有合法状态转换，终态无出边
+- [ ] `ApplySuggestion` 在写入 prompt files 前保存 `PreApplySnapshot`，支持 `RollbackSuggestion` 恢复
+- [ ] `EvolutionScanner` 通过 `safego.Go` 隔离 panic，失败时聚合错误并由 worker 打 Warn 日志
+- [ ] Repo 层所有读写通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器
+- [ ] `ApplyEvolutionSuggestion` Service 方法在应用后调用 `invalidateAgentBuildCache` 失效缓存
+- [ ] 前端 `AgentEvolutionPanel.vue` 与 `useAgentEvolutionPanel.ts` 数据流单向：composable → store → 组件
+- [ ] 跨流水线去重优先使用 `SkillEvolutionOrchestrator`，回退到 `EvolutionCoordinator`

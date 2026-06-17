@@ -1,7 +1,7 @@
 # MCP 协议 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 Phase 6 大部分已落地，仅 Lifecycle FSM 待规划
-> **需求**：[19 mcp.md](./19%20mcp.md) · **设计**：[19 mcp.design.md](./19%20mcp.design.md)
+> **版本**：2026-06-17 | **状态**：🟢 Phase 6 大部分已落地，仅 Lifecycle FSM 待规划
+> **需求**：[19-mcp.md](./19-mcp.md) · **设计**：[19-mcp.design.md](./19-mcp.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：I4-MCP-01 / I5-MCP-01 ✅
 > **优化计划**：[38-tools-plugin-skill-mcp-optimization.development.md](./38-tools-plugin-skill-mcp-optimization.development.md)
 
@@ -33,15 +33,15 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 |----|------|------|
 | MCPServer CRUD + Test | ✅ | `MCPServerService` + 前端对话框 |
 | 连通性探测 + SSRF | ✅ | `mcp/probe.Evaluate` |
-| 健康定时探活 | ✅ | `mcp/health/runner.go` → `PersistHealth` |
+| 健康定时探活 | ✅ | `mcp/health/runner.go` → `TestMCPServer`（内部 `persistHealth`） |
 | 健康元数据 | ✅ | `metadata_json`：`health_status` / `last_health_at` |
 | MCP ToolSet 挂载 | ✅ | `buildMCPToolSet` + `timeout_sec` 默认 60s |
-| MCPBroker | ✅ | 有服务器行时 `buildMCPBrokerFromServers` 自动挂载 |
+| MCPBroker | ✅ | 需 `mcp_broker` 工具键启用且有服务器行时 `buildMCPBrokerFromServers` 挂载 |
 | Effective MCP 策略 | ✅ | `mcp:<server_key>` allow/deny |
 | OAuth2 / API Key | ✅ | `config_json.auth` + `mcp_oauth.go`；OAuth2 refresh 失败强失败不再 fallback |
 | 会话重连可观测 | ✅ | `mcpobserve` + `RecordReconnectMetadata` + 前端 chip |
 | AdHoc HTTP 门禁 | ✅ | 服务器 flag + `system_settings.mcp_allow_adhoc_http` |
-| 按用户凭据 | ✅ | `platform_mcp_user_credential` + API + 前端对话框 |
+| 按用户凭据 | ✅ | `mcp_server_user_credential` 表 + API + 前端对话框 |
 | MCP 调用统计闭环 | ✅ | `classify` + `mcp_call_count` + `aranea_mcp_invocation_total` |
 | 健康持续告警 | ✅ | `mcp/alert` + Monitor 事件 `mcp.health_alert` |
 | URL 预检 | ✅ | `POST /v1/mcp-servers/validate` + 表单预检 |
@@ -70,7 +70,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | 方向 | 状态 | 说明 |
 |------|------|------|
 | MCP 统计闭环 | ✅ | `classify` + `mcp_call_count` + Prometheus `aranea_mcp_invocation_total` |
-| 按用户凭据 | ✅ | `platform_mcp_user_credential` + API + `McpUserCredentialDialog` |
+| 按用户凭据 | ✅ | `mcp_server_user_credential` + API + `McpUserCredentialDialog` |
 | 探活告警 | ✅ | `mcp/alert` + Monitor 事件 `mcp.health_alert` + 持续错误判定 |
 | URL 预检 API | ✅ | `POST /v1/mcp-servers/validate` 复用 probe |
 | Probe 策略化 | ✅ | `ProbeStrategy` 接口 + `ConnectivityProbe` / `AuthAwareProbe` |

@@ -1,7 +1,9 @@
 # Agent 文件 Tab — 实现设计文档
 
-> 对应需求：`6 agent-setting-file.md`
+> 对应需求：[6 agent-setting-file.md](./6%20agent-setting-file.md)
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+
+> **文档边界**：本文件包含架构设计、Proto/API 契约、数据模型、接口定义、技术选型、运行时组装、前端组件设计。用户故事与功能需求见需求文档；模块定位、代码锚点、现状评估与任务清单见 [6-agent-setting-file.development.md](./6-agent-setting-file.development.md)。
 
 ---
 
@@ -11,9 +13,70 @@ Agent 设置页「文件」Tab：左侧 Markdown 文件列表 + 右侧编辑器�
 
 ---
 
-## 二、Proto 层
+## 二、数据模型
 
-### 2.1 现有 Proto
+### 2.1 Ent Schema
+
+文件：`internal/data/ent/schema/agent_prompt_file.go`
+
+表名：`agent_prompt_files`（通过 `entsql.Annotation{Table: "agent_prompt_files"}` 显式映射）
+
+```go
+func (AgentPromptFile) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("agent_id").MaxLen(256),
+        field.String("file_name").MaxLen(512),
+        field.Text("body").Default(""),
+        field.Int("sort_order").Default(0),
+        field.String("created_at").Default(""),
+        field.String("updated_at").Default(""),
+    }
+}
+
+func (AgentPromptFile) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("agent_id", "sort_order").StorageKey("idx_agent_prompt_files_agent"),
+    }
+}
+```
+
+**字段映射注意**：Ent schema 中字段名为 `file_name`，biz 模型中为 `Name`，转换函数需映射（见 §4.3）。
+
+### 2.2 逻辑文件名与职责
+
+| 逻辑文件名 | 职责 | PGO V2 默认集 |
+|------------|------|:---:|
+| `AGENTS_CORE.md` | 通用操作规则（语言跟随、内部消息处理、禁止 exec 发消息、须用 write 工具保存等） | 是 |
+| `AGENTS_TASK.md` | 任务模式规则（memory 召回/写入路径、MEMORY.md 隐私、cron 约定等） | 是 |
+| `IDENTITY.md` | 对外身份、角色名、边界 | 是 |
+| `CAPABILITIES.md` | 能力描述、可调用工具说明（与 `tools_config` 互补：一文一配置） | 是 |
+| `RULE.md` | 硬性规则、约束清单、禁止项与安全/合规要求；与 `AGENTS.md` 区分：后者偏「如何工作与对话」，本文件偏「必须遵守、不可突破」的边界 | 是 |
+| `SOUL.md` | 人格、语气、价值观；与 `self_evolve` 联动时仅允许演化风格相关段落 | 否（Legacy） |
+| `USER.md` | Agent 级默认/模板：用户维度的上下文 | 否（Legacy） |
+| `USER_PREDEFINED.md` | 预置用户画像、偏好说明 | 否（Legacy） |
+| `HEARTBEAT.md` | 心跳周期注入的 Markdown；PGO V2 已将心跳迁移至 Settings | 否（Legacy） |
+| `USER_CONTEXT.md` | 用户上下文（替代 Legacy USER + USER_PREDEFINED） | 否（可选添加） |
+
+**NULL 与空串**：应用层统一「未配置 = 空串」语义；UI「空」态显示「空」。
+
+### 2.3 AGENTS 拆分策略
+
+与运行时 **FULL / task / minimal** 组装一致：
+
+| 策略 | 说明 |
+|------|------|
+| **推荐（PGO V2）** | 使用 **`agents_core_md` + `agents_task_md`** 分离；`task` / `minimized` 模式可只注入对应子集 |
+| **单文件** | 仅维护 **`agents_md`**：由服务端按「章节标题」拆成 CORE/TASK，或简化产品只保留一段正文 |
+| **迁移** | 由 `agents_md` 拆列写入 `agents_core_md` / `agents_task_md` 后，可清空 `agents_md` 避免双源 |
+
+侧栏若展示 **两个** 文件 `AGENTS_CORE.md` / `AGENTS_TASK.md`，则不再展示合并项 `AGENTS.md`。
+
+---
+
+## 三、Proto 层
+
+### 3.1 现有 Proto
 
 文件：`api/kratos/agent/v1/agent.proto`
 
@@ -35,7 +98,7 @@ message Agent {
 
 message CreateAgentRequest {
   // ... 其他字段
-  repeated AgentPromptFile files = 14;
+  repeated AgentPromptFile files = 13;
 }
 
 message UpdateAgentRequest {
@@ -46,16 +109,17 @@ message UpdateAgentRequest {
 
 文件通过 `CreateAgentRequest.files` 和 `UpdateAgentRequest.agent.files` 提交，后端使用 `ReplaceAgentPromptFiles` 整体替换策略。
 
-### 2.2 待新增 RPC
+### 3.2 PromptFile 专属 RPC（已实现）
 
-| RPC | 路径 | 用途 |
-|-----|------|------|
+| RPC | HTTP 路径 | 用途 |
+|-----|-----------|------|
 | `CreateAgentPromptFile` | `POST /v1/agents/{agent_id}/files` | 新增单个文件 |
 | `UpdateAgentPromptFile` | `PATCH /v1/agents/{agent_id}/files/{id}` | 更新文件内容 |
 | `DeleteAgentPromptFile` | `DELETE /v1/agents/{agent_id}/files/{id}` | 删除文件 |
 | `EstimateTokens` | `POST /v1/agents/{agent_id}/files/estimate-tokens` | Token 估算 |
+| `EditPromptFileByAI` | `POST /v1/agents/{agent_id}/files/{file_id}/ai-edit` | AI 编辑文件 |
 
-### 2.3 待新增 Proto Message
+### 3.3 Proto Message 定义
 
 ```protobuf
 message CreateAgentPromptFileRequest {
@@ -92,15 +156,28 @@ message FileTokenEstimate {
   string file_name = 2;
   int32 estimated_tokens = 3;
 }
+
+message EditPromptFileByAIRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string file_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string instruction = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EditPromptFileByAIResponse {
+  AgentPromptFile file = 1;
+}
 ```
 
 ---
 
-## 三、Biz 层
+## 四、Biz 层
 
-### 3.1 领域模型
+### 4.1 领域模型
+
+文件：`internal/biz/agent_types.go`
 
 ```go
+// AgentPromptFile is one row in agent_prompt_files (API name field maps to file_name).
 type AgentPromptFile struct {
     ID        string
     AgentID   string
@@ -110,404 +187,383 @@ type AgentPromptFile struct {
     CreatedAt string
     UpdatedAt string
 }
-```
 
-### 3.2 Repo 接口（已定义在 AgentRepository 中）
-
-```go
-type AgentRepository interface {
-    // ... 其他方法
-    ListAgentPromptFiles(ctx context.Context, agentID string) ([]AgentPromptFile, error)
-    ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []AgentPromptFile) ([]AgentPromptFile, error)
-}
-```
-
-### 3.3 待新增独立 Repo 接口
-
-```go
-type AgentPromptFileRepository interface {
-    ListByAgent(ctx context.Context, agentID string) ([]AgentPromptFile, error)
-    GetByID(ctx context.Context, id string) (AgentPromptFile, error)
-    Create(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
-    Update(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
-    Delete(ctx context.Context, id string) error
-    Reorder(ctx context.Context, agentID string, ids []string) error
-    EstimateTokens(ctx context.Context, agentID string) (TokenEstimate, error)
-}
-
-type TokenEstimate struct {
-    TotalTokens     int
-    FileEstimates   []FileTokenEstimate
-}
-
+// FileTokenEstimate is the token estimate for a single prompt file.
 type FileTokenEstimate struct {
     FileID          string
     FileName        string
     EstimatedTokens int
 }
-```
 
-### 3.4 Usecase 方法
-
-```go
-func (uc *AgentUsecase) ListPromptFiles(ctx context.Context, agentID string) ([]AgentPromptFile, error)
-func (uc *AgentUsecase) CreatePromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
-func (uc *AgentUsecase) UpdatePromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
-func (uc *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string) error
-func (uc *AgentUsecase) ReorderPromptFiles(ctx context.Context, agentID string, ids []string) error
-func (uc *AgentUsecase) EstimateFileTokens(ctx context.Context, agentID string) (TokenEstimate, error)
-```
-
-### 3.5 系统提示词模式过滤
-
-```go
-func FilesForMode(files []AgentPromptFile, mode string) []AgentPromptFile {
-    if mode == "complete" || mode == "" {
-        return files
-    }
-    allowed := map[string]bool{}
-    switch mode {
-    case "task":
-        allowed = map[string]bool{
-            "AGENTS_CORE.md": true, "AGENTS_TASK.md": true,
-            "IDENTITY.md": true, "CAPABILITIES.md": true,
-            "RULE.md": true, "HEARTBEAT.md": true,
-        }
-    case "minimized":
-        allowed = map[string]bool{
-            "AGENTS_CORE.md": true, "IDENTITY.md": true, "RULE.md": true,
-        }
-    case "none":
-        return nil
-    }
-    var out []AgentPromptFile
-    for _, f := range files {
-        if allowed[f.Name] {
-            out = append(out, f)
-        }
-    }
-    return out
+// FileTokenEstimates is the aggregate token estimate for all prompt files of an agent.
+type FileTokenEstimates struct {
+    TotalTokens   int
+    FileEstimates []FileTokenEstimate
 }
 ```
+
+### 4.2 Repo 接口
+
+文件：`internal/biz/agent_usecase.go`（`AgentPromptFileRepo` 接口，`Stability:stable`）
+
+```go
+type AgentPromptFileRepo interface {
+    ListAgentPromptFiles(ctx context.Context, agentID string) ([]AgentPromptFile, error)
+    ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []AgentPromptFile) ([]AgentPromptFile, error)
+    CreateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
+    UpdateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
+    DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
+}
+```
+
+> 注：Token 估算逻辑在 `AgentUsecase.EstimateTokens` 中实现（基于 `ListAgentPromptFiles` 结果计算），Repo 层不单独提供 `EstimateTokens` 方法。AI 编辑在 Service 层通过 `PromptFileAIEditor` 实现，Biz 层不涉及。
+
+### 4.3 Usecase 方法
+
+文件：`internal/biz/agent_usecase.go`
+
+```go
+func (u *AgentUsecase) CreatePromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
+func (u *AgentUsecase) UpdatePromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
+func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string) error
+func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (FileTokenEstimates, error)
+```
+
+每个方法在调用 Repo 前会先 `u.Get(ctx, agentID)` 校验 Agent 存在性，返回 `apierror.NotFound` 当 Agent 不存在。
+
+### 4.4 默认文件集与可选文件
+
+文件：`internal/biz/agent_settings_helpers.go`
+
+```go
+// defaultPromptFiles returns the V2 default set (5 core files) when
+// PGO_DEFAULT_FILES_V2 is enabled, otherwise returns the legacy 9-file set.
+func defaultPromptFiles() []AgentPromptFile
+
+// defaultPromptFilesV2 is the PGO-1 canonical 5-file set.
+// SOUL/USER/USER_PREDEFINED are removed; HEARTBEAT moves to Settings.
+// USER_CONTEXT.md is available as an optional file via OptionalPromptFileTemplates.
+func defaultPromptFilesV2() []AgentPromptFile
+
+// defaultPromptFilesLegacy is the pre-PGO 9-file set, preserved for backward compatibility.
+func defaultPromptFilesLegacy() []AgentPromptFile
+
+// OptionalPromptFileTemplates holds optional files that users can add on demand.
+// PGO-1-BIZ-01: USER_CONTEXT replaces legacy USER + USER_PREDEFINED.
+var OptionalPromptFileTemplates = map[string]AgentPromptFile{
+    "USER_CONTEXT.md": { ... },
+}
+```
+
+**PGO V2 默认集（5 文件）**：`AGENTS_CORE.md` / `AGENTS_TASK.md` / `IDENTITY.md` / `CAPABILITIES.md` / `RULE.md`
+
+**Legacy 兼容集（9 文件）**：上述 5 个 + `SOUL.md` / `USER.md` / `USER_PREDEFINED.md` / `HEARTBEAT.md`
+
+### 4.5 系统提示词模式过滤
+
+文件：`internal/biz/agent_settings_helpers.go`
+
+```go
+// FilesForMode filters prompt files by system_prompt_mode.
+// PGO-1-BIZ-02: task mode no longer includes HEARTBEAT.md (moved to Settings).
+// Whitelist per mode:
+//   - complete / "": all files
+//   - task:        AGENTS_CORE, IDENTITY, RULE, AGENTS_TASK, CAPABILITIES
+//   - minimized:   AGENTS_CORE, RULE
+//   - none:        empty
+//   - unknown:     AGENTS_CORE, RULE (same as minimized, safe default)
+func FilesForMode(files []AgentPromptFile, mode string) []AgentPromptFile
+```
+
+**模式映射表**（与代码一致）：
+
+| 逻辑文件名 | `complete` | `task` | `minimized` | `none` | unknown |
+|------------|:----------:|:------:|:-----------:|:------:|:-------:|
+| `AGENTS_CORE.md` | ✅ | ✅ | ✅ | ❌ | ✅ |
+| `AGENTS_TASK.md` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `SOUL.md` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `IDENTITY.md` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `USER.md` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `USER_PREDEFINED.md` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `CAPABILITIES.md` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `RULE.md` | ✅ | ✅ | ✅ | ❌ | ✅ |
+| `HEARTBEAT.md` | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+> 注：`minimized` 模式仅包含 `AGENTS_CORE.md` + `RULE.md`（不含 `IDENTITY.md`）。`task` 模式不含 `HEARTBEAT.md`（PGO-1-BIZ-02 已移除）。未知模式回退到 `minimized` 安全默认。
 
 ---
 
-## 四、Data 层
+## 五、Data 层
 
-### 4.1 Ent Schema（已存在）
-
-文件：`internal/data/ent/schema/agent_prompt_file.go`
-
-```go
-func (AgentPromptFile) Fields() []ent.Field {
-    return []ent.Field{
-        field.String("id").Immutable().Unique().MaxLen(256),
-        field.String("agent_id").MaxLen(256),
-        field.String("file_name").MaxLen(512),
-        field.Text("body").Default(""),
-        field.Int("sort_order").Default(0),
-        field.String("created_at").Default(""),
-        field.String("updated_at").Default(""),
-    }
-}
-```
-
-注意：Ent schema 中字段名为 `file_name`，biz 模型中为 `Name`，转换函数需映射。
-
-### 4.2 已有 Data 层实现
+### 5.1 已有 Data 层实现
 
 文件：`internal/data/agent_repo.go`
 
 ```go
 func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([]biz.AgentPromptFile, error) {
-    rows, err := r.data.entClient.AgentPromptFile.Query().
+    rows, err := r.data.RW().Read(ctx).AgentPromptFile.Query().
         Where(agentpromptfile.AgentIDEQ(agentID)).
-        Order(ent.Asc(agentpromptfile.FieldSortOrder)).
+        Order(agentpromptfile.BySortOrder(), agentpromptfile.ByFileName()).
         All(ctx)
     if err != nil {
         return nil, err
     }
     out := make([]biz.AgentPromptFile, 0, len(rows))
     for _, row := range rows {
-        out = append(out, entPromptFileToBiz(row))
+        out = append(out, entPromptToBiz(row))
     }
     return out, nil
 }
 
 func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error) {
-    tx, _ := r.data.entClient.Tx(ctx)
-    tx.AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(ctx)
-    for i, file := range files {
-        id := file.ID
-        if id == "" {
-            id = fmt.Sprintf("%s_%s", agentID, sanitizePromptFileID(file.Name))
-        }
-        sortOrder := file.SortOrder
-        if sortOrder == 0 {
-            sortOrder = (i + 1) * 10
-        }
-        tx.AgentPromptFile.Create().
-            SetID(id).SetAgentID(agentID).SetFileName(file.Name).
-            SetBody(file.Body).SetSortOrder(sortOrder).
-            Save(ctx)
+    if agentID == "" {
+        return nil, apierror.BadRequest("AGENT", "agent id is required")
     }
-    tx.Commit()
+    err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+        if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(txCtx); err != nil {
+            return err
+        }
+        now := nowRFC3339()
+        builders := make([]*ent.AgentPromptFileCreate, 0, len(files))
+        for i, file := range files {
+            if strings.TrimSpace(file.Name) == "" {
+                continue
+            }
+            id := file.ID
+            if id == "" {
+                id = fmt.Sprintf("%s_%s", agentID, sanitizePromptFileID(file.Name))
+            }
+            sortOrder := file.SortOrder
+            if sortOrder == 0 {
+                sortOrder = (i + 1) * 10
+            }
+            builders = append(builders, r.data.RW().Write(txCtx).AgentPromptFile.Create().
+                SetID(id).SetAgentID(agentID).SetFileName(strings.TrimSpace(file.Name)).
+                SetBody(file.Body).SetSortOrder(sortOrder).
+                SetCreatedAt(now).SetUpdatedAt(now))
+        }
+        if len(builders) > 0 {
+            if _, err := r.data.RW().Write(txCtx).AgentPromptFile.CreateBulk(builders...).Save(txCtx); err != nil {
+                return err
+            }
+        }
+        return nil
+    })
+    if err != nil {
+        return nil, err
+    }
     return r.ListAgentPromptFiles(ctx, agentID)
 }
 ```
 
-### 4.3 Ent ↔ Biz 转换函数
+**访问器规范**：使用 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)`（事务感知读写分离），禁止使用已废弃的 `r.data.entClient` 直连。
+
+**事务管理**：`ReplaceAgentPromptFiles` 通过 `r.data.ExecInTx` 包裹删除+创建，保证原子性。
+
+### 5.2 Ent ↔ Biz 转换函数
+
+文件：`internal/data/agent_repo.go`
 
 ```go
-func entPromptFileToBiz(row *ent.AgentPromptFile) biz.AgentPromptFile {
+func entPromptToBiz(e *ent.AgentPromptFile) biz.AgentPromptFile {
     return biz.AgentPromptFile{
-        ID:        row.ID,
-        AgentID:   row.AgentID,
-        Name:      row.FileName,
-        Body:      row.Body,
-        SortOrder: row.SortOrder,
-        CreatedAt: row.CreatedAt,
-        UpdatedAt: row.UpdatedAt,
+        ID:        e.ID,
+        AgentID:   e.AgentID,
+        Name:      e.FileName,
+        Body:      e.Body,
+        SortOrder: e.SortOrder,
+        CreatedAt: e.CreatedAt,
+        UpdatedAt: e.UpdatedAt,
     }
 }
 ```
 
-### 4.4 待新增 Data 层方法
+### 5.3 ID 生成
+
+文件：`internal/data/agent_repo.go`
 
 ```go
-func (r *agentPromptFileRepo) GetByID(ctx context.Context, id string) (biz.AgentPromptFile, error) {
-    row, err := r.data.entClient.AgentPromptFile.Get(ctx, id)
-    if ent.IsNotFound(err) {
-        return biz.AgentPromptFile{}, sql.ErrNoRows
-    }
-    return entPromptFileToBiz(row), nil
-}
-
-func (r *agentPromptFileRepo) Create(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
-    id := f.ID
-    if id == "" {
-        id = fmt.Sprintf("%s_%s", f.AgentID, sanitizePromptFileID(f.Name))
-    }
-    row, err := r.data.entClient.AgentPromptFile.Create().
-        SetID(id).SetAgentID(f.AgentID).SetFileName(f.Name).
-        SetBody(f.Body).SetSortOrder(f.SortOrder).
-        Save(ctx)
-    if err != nil {
-        return biz.AgentPromptFile{}, err
-    }
-    return entPromptFileToBiz(row), nil
-}
-
-func (r *agentPromptFileRepo) Update(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
-    update := r.data.entClient.AgentPromptFile.UpdateOneID(f.ID)
-    if f.Name != "" {
-        update.SetFileName(f.Name)
-    }
-    if f.Body != "" {
-        update.SetBody(f.Body)
-    }
-    update.SetSortOrder(f.SortOrder)
-    row, err := update.Save(ctx)
-    if ent.IsNotFound(err) {
-        return biz.AgentPromptFile{}, sql.ErrNoRows
-    }
-    return entPromptFileToBiz(row), nil
-}
-
-func (r *agentPromptFileRepo) Delete(ctx context.Context, id string) error {
-    return r.data.entClient.AgentPromptFile.DeleteOneID(id).Exec(ctx)
-}
-
-func (r *agentPromptFileRepo) Reorder(ctx context.Context, agentID string, ids []string) error {
-    for i, id := range ids {
-        r.data.entClient.AgentPromptFile.UpdateOneID(id).
-            SetSortOrder((i + 1) * 10).
-            Save(ctx)
-    }
-    return nil
-}
-
-func (r *agentPromptFileRepo) EstimateTokens(ctx context.Context, agentID string) (biz.TokenEstimate, error) {
-    files, err := r.ListByAgent(ctx, agentID)
-    if err != nil {
-        return biz.TokenEstimate{}, err
-    }
-    total := 0
-    estimates := make([]biz.FileTokenEstimate, 0, len(files))
-    for _, f := range files {
-        tokens := len([]rune(f.Body)) / 4
-        total += tokens
-        estimates = append(estimates, biz.FileTokenEstimate{
-            FileID:          f.ID,
-            FileName:        f.Name,
-            EstimatedTokens: tokens,
-        })
-    }
-    return biz.TokenEstimate{TotalTokens: total, FileEstimates: estimates}, nil
-}
+func sanitizePromptFileID(value string) string
 ```
+
+当 `file.ID` 为空时，按 `{agentID}_{sanitizePromptFileID(file.Name)}` 规则生成确定性 ID。
 
 ---
 
-## 五、Service 层
+## 六、Service 层
 
-### 5.1 已有 Service 方法
+### 6.1 已有 Service 方法
 
 文件：`internal/service/agent.go`
 
 ```go
-func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentRequest) (*v1.Agent, error) {
-    // ... req.Files 通过 toProtoAgent/fromProtoAgent 转换
-}
-
-func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentRequest) (*v1.Agent, error) {
-    // ... req.Agent.Files 通过 ReplaceAgentPromptFiles 整体替换
-}
+func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.CreateAgentPromptFileRequest) (*v1.AgentPromptFile, error)
+func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.UpdateAgentPromptFileRequest) (*v1.AgentPromptFile, error)
+func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.DeleteAgentPromptFileRequest) (*emptypb.Empty, error)
+func (s *AgentService) EstimateTokens(ctx context.Context, req *v1.EstimateTokensRequest) (*v1.EstimateTokensResponse, error)
+func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromptFileByAIRequest) (*v1.EditPromptFileByAIResponse, error)
 ```
 
-### 5.2 类型转换函数
+所有写操作（Create/Update/Delete/AIEdit）完成后调用 `invalidateAgentBuildCache(req.GetAgentId())` 失效构建缓存。
+
+错误处理：`apierror.IsCode(err, apierror.CodeNotFound)` 时返回 `apierror.NotFound("AGENT_FILE", ...)`。
+
+### 6.2 类型转换函数
+
+文件：`internal/service/agent.go`
 
 ```go
-func toProtoPromptFile(f biz.AgentPromptFile) *v1.AgentPromptFile {
-    return &v1.AgentPromptFile{
-        Id:        f.ID,
-        AgentId:   f.AgentID,
-        Name:      f.Name,
-        Body:      f.Body,
-        SortOrder: int32(f.SortOrder),
-        CreatedAt: f.CreatedAt,
-        UpdatedAt: f.UpdatedAt,
+func fromProtoFile(pb *v1.AgentPromptFile) biz.AgentPromptFile {
+    if pb == nil {
+        return biz.AgentPromptFile{}
     }
-}
-
-func fromProtoPromptFile(f *v1.AgentPromptFile) biz.AgentPromptFile {
     return biz.AgentPromptFile{
-        ID:        f.GetId(),
-        AgentID:   f.GetAgentId(),
-        Name:      f.GetName(),
-        Body:      f.GetBody(),
-        SortOrder: int(f.GetSortOrder()),
-        CreatedAt: f.GetCreatedAt(),
-        UpdatedAt: f.GetUpdatedAt(),
+        ID:        pb.GetId(),
+        AgentID:   pb.GetAgentId(),
+        Name:      pb.GetName(),
+        Body:      pb.GetBody(),
+        SortOrder: int(pb.GetSortOrder()),
+        CreatedAt: pb.GetCreatedAt(),
+        UpdatedAt: pb.GetUpdatedAt(),
+    }
+}
+
+func toProtoFile(b biz.AgentPromptFile) *v1.AgentPromptFile {
+    return &v1.AgentPromptFile{
+        Id:        b.ID,
+        AgentId:   b.AgentID,
+        Name:      b.Name,
+        Body:      b.Body,
+        SortOrder: int32(b.SortOrder),
+        CreatedAt: b.CreatedAt,
+        UpdatedAt: b.UpdatedAt,
     }
 }
 ```
 
-### 5.3 待新增 Service 方法
+### 6.3 AI 编辑实现
+
+文件：`internal/service/agent_prompt_ai.go`
 
 ```go
-func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.CreateAgentPromptFileRequest) (*v1.AgentPromptFile, error) {
-    f := biz.AgentPromptFile{
-        AgentID:   req.GetAgentId(),
-        Name:      req.GetName(),
-        Body:      req.GetBody(),
-        SortOrder: int(req.GetSortOrder()),
-    }
-    out, err := s.uc.CreatePromptFile(ctx, f)
-    if err != nil {
-        return nil, err
-    }
-    return toProtoPromptFile(out), nil
+type PromptFileAIEditor struct {
+    catalog *biz.LlmProviderModelUsecase
+    rt      *provider.RoundTrip
+    lg      loggateway.Logger
 }
 
-func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.UpdateAgentPromptFileRequest) (*v1.AgentPromptFile, error) {
-    f := biz.AgentPromptFile{
-        ID:        req.GetId(),
-        AgentID:   req.GetAgentId(),
-        Name:      req.GetName(),
-        Body:      req.GetBody(),
-        SortOrder: int(req.GetSortOrder()),
-    }
-    out, err := s.uc.UpdatePromptFile(ctx, f)
-    if stderrors.Is(err, sql.ErrNoRows) {
-        return nil, kerrors.NotFound("AGENT_PROMPT_FILE", "file not found")
-    }
-    return toProtoPromptFile(out), nil
-}
-
-func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.DeleteAgentPromptFileRequest) (*emptypb.Empty, error) {
-    err := s.uc.DeletePromptFile(ctx, req.GetAgentId(), req.GetId())
-    if err != nil {
-        return nil, err
-    }
-    return &emptypb.Empty{}, nil
-}
-
-func (s *AgentService) EstimateTokens(ctx context.Context, req *v1.EstimateTokensRequest) (*v1.EstimateTokensResponse, error) {
-    est, err := s.uc.EstimateFileTokens(ctx, req.GetAgentId())
-    if err != nil {
-        return nil, err
-    }
-    resp := &v1.EstimateTokensResponse{TotalTokens: int32(est.TotalTokens)}
-    for _, fe := range est.FileEstimates {
-        resp.FileEstimates = append(resp.FileEstimates, &v1.FileTokenEstimate{
-            FileId:          fe.FileID,
-            FileName:        fe.FileName,
-            EstimatedTokens: int32(fe.EstimatedTokens),
-        })
-    }
-    return resp, nil
-}
+func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName, fileName, currentBody, instruction string) (string, error)
 ```
+
+**AI 编辑流程**（`AgentService.EditPromptFileByAI`）：
+1. 校验 `agent_id` / `file_id` / `instruction` 非空
+2. `s.uc.Get(ctx, agentID)` 加载 Agent
+3. 在 `a.Files` 中查找 `target`（按 `fileID`）
+4. `s.promptAI.Revise(ctx, a.Provider, a.Model, target.Name, target.Body, instruction)` 调用 LLM 修订
+5. `s.uc.UpdatePromptFile(ctx, *target)` 持久化修订结果
+6. `invalidateAgentBuildCache(agentID)` 失效缓存
+7. 日志：`agent.prompt.ai_edit` FlowLog
+
+**LLM 调用**：`PromptFileAIEditor.resolveModel` 从 catalog 解析 provider/model，90s 超时，流式接收响应并去除 markdown 代码围栏。
 
 ---
 
-## 六、Wire 注入
+## 七、Wire 注入
 
 已有（通过 `AgentService` + `AgentUsecase` + `agentRepo`），无需新增 Provider。
 
-若新增独立 `AgentPromptFileRepository`，需在 `data.ProviderSet` 添加 `NewAgentPromptFileRepo`，在 `biz.ProviderSet` 更新 `NewAgentUsecase` 参数。
+`PromptFileAIEditor` 通过 `NewPromptFileAIEditor(catalog, rt, lg)` 注入到 `AgentService.promptAI` 字段。
 
 ---
 
-## 七、运行时层
+## 八、运行时层
 
-### 7.1 系统提示词组装
+### 8.1 系统提示词组装
 
 文件：`internal/agent/prompt.go`
 
 ```go
-func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string) string {
+// BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
+// PGO-1-AGENT-01: optional categoryResponsibility parameter prepended as
+// <role_responsibility source="category"> block when non-empty.
+func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string, categoryResponsibility ...string) string {
+    filtered := biz.FilesForMode(files, mode)
     var b strings.Builder
-    if agent.AgentDescription != "" {
-        b.WriteString(agent.AgentDescription)
+
+    // 1. 可选：categoryResponsibility 块（PGO-1-AGENT-01）
+    if len(categoryResponsibility) > 0 {
+        if cr := strings.TrimSpace(categoryResponsibility[0]); cr != "" {
+            b.WriteString("<role_responsibility source=\"category\">\n")
+            b.WriteString(cr)
+            b.WriteString("\n</role_responsibility>\n\n")
+        }
+    }
+
+    // 2. 可选：行业上下文（PositionKey + VariantDescription）
+    if pk := strings.TrimSpace(agent.PositionKey); pk != "" {
+        if vd := strings.TrimSpace(agent.VariantDescription); vd != "" {
+            b.WriteString("<industry_context>\n")
+            fmt.Fprintf(&b, "## 当前定位\n你是本岗位的 %s 方向专家。\n%s\n", agent.AgentVariant, vd)
+            b.WriteString("</industry_context>\n\n")
+        } else if av := strings.TrimSpace(agent.AgentVariant); av != "" && av != "general" {
+            b.WriteString("<industry_context>\n")
+            fmt.Fprintf(&b, "## 当前定位\n你是本岗位的 %s 方向专家。\n", av)
+            b.WriteString("</industry_context>\n\n")
+        }
+    }
+
+    // 3. Agent 描述
+    if d := strings.TrimSpace(agent.AgentDescription); d != "" {
+        b.WriteString(d)
         b.WriteString("\n\n")
     }
-    filtered := biz.FilesForMode(files, mode)
+
+    // 4. 过滤后的提示文件，每个用 <internal_config> 包裹
     for _, f := range filtered {
-        fmt.Fprintf(&b, "<internal_config name=%q>\n", f.Name)
-        b.WriteString(f.Body)
-        b.WriteString("\n</internal_config>\n\n")
+        if body := strings.TrimSpace(f.Body); body != "" {
+            b.WriteString(fmt.Sprintf("<internal_config name=%q>\n", f.Name))
+            b.WriteString(body)
+            b.WriteString("\n</internal_config>\n\n")
+        }
     }
-    return b.String()
+    return strings.TrimSpace(b.String())
 }
 ```
 
-### 7.2 文件名与模式映射
+**`<internal_config>` 标签包裹**：每个文件内容包裹在 `<internal_config name="{Name}">` 标签中，便于 LLM 区分不同配置块，也支持 Prompt Cache 优化：
 
-| 逻辑文件名 | `complete` | `task` | `minimized` | `none` |
-|------------|:----------:|:------:|:-----------:|:------:|
-| `AGENTS_CORE.md` | ✅ | ✅ | ✅ | ❌ |
-| `AGENTS_TASK.md` | ✅ | ✅ | ❌ | ❌ |
-| `SOUL.md` | ✅ | ❌ | ❌ | ❌ |
-| `IDENTITY.md` | ✅ | ✅ | ✅ | ❌ |
-| `USER.md` | ✅ | ❌ | ❌ | ❌ |
-| `USER_PREDEFINED.md` | ✅ | ❌ | ❌ | ❌ |
-| `CAPABILITIES.md` | ✅ | ✅ | ❌ | ❌ |
-| `RULE.md` | ✅ | ✅ | ✅ | ❌ |
-| `HEARTBEAT.md` | ✅ | ✅ | ❌ | ❌ |
+```xml
+<internal_config name="IDENTITY.md">
+身份与对外设定内容...
+</internal_config>
 
-### 7.3 运行时注入顺序
+<internal_config name="SOUL.md">
+人格/语调核心内容...
+</internal_config>
+```
+
+### 8.2 构建时文件加载
+
+文件：`internal/agent/trpc_build.go`
+
+`BuildTRPCLLMAgent` 在构建 Agent 时：
+1. 优先使用 `ag.Files`（内存中的文件）
+2. 若为空且 `deps.Agents != nil`，调用 `deps.Agents.ListAgentPromptFiles(ctx, ag.ID)` 从持久层加载
+3. 调用 `BuildSystemPrompt(ag, files, ag.SystemPromptMode, catResp)` 组装系统提示词
+
+### 8.3 运行时注入顺序
 
 `IDENTITY.md` → `SOUL.md` → `USER_PREDEFINED.md` → `USER.md` → `CAPABILITIES.md` → `AGENTS_CORE.md` → `AGENTS_TASK.md` → `RULE.md`
 
 `HEARTBEAT.md` 仅在心跳任务注入，不并入普通轮次系统提示。
 
+具体分隔符与标题由服务端统一，注入顺序受 `FilesForMode` 过滤结果影响（见 §4.5）。
+
 ---
 
-## 八、Web 前端设计
+## 九、Web 前端设计
 
-### 8.1 TypeScript 类型（已存在）
+### 9.1 TypeScript 类型
 
 文件：`web/src/features/agents/types.ts`
 
@@ -523,77 +579,19 @@ export type AgentPromptFile = {
 };
 ```
 
-### 8.2 API 调用（已存在部分）
+### 9.2 API 调用
 
 文件：`web/src/features/agents/api.ts`
 
-```typescript
-export async function updateAgent(id: string, payload: Partial<Agent>): Promise<Agent> {
-  const svc = createAgentService();
-  const data = await svc.UpdateAgent({
-    id,
-    agent: partialAgentToWire(payload)
-  });
-  return normalizeAgentFromService(data);
-}
-```
+已有：
+- `updateAgent(id, payload)` — 通过 `UpdateAgent` 整体提交 `files` 列表
+- `getAgent(id)` — 详情包含 `files`
 
-### 8.3 待新增 API 调用
+PromptFile 专属 API 通过 `useAgentPromptFiles` composable + `detailStore` 调用：
+- `detailStore.estimateTokens(id)` — Token 估算
+- `detailStore.editPromptFile(formId, fileId, instruction)` — AI 编辑
 
-```typescript
-export async function createPromptFile(
-  agentId: string,
-  req: { name: string; body?: string; sort_order?: number }
-): Promise<AgentPromptFile> {
-  const svc = createAgentService();
-  const data = await svc.CreateAgentPromptFile({
-    agentId,
-    name: req.name,
-    body: req.body ?? "",
-    sortOrder: req.sort_order ?? 0
-  });
-  return normalizePromptFileFromWire(data);
-}
-
-export async function updatePromptFile(
-  agentId: string,
-  id: string,
-  req: { name?: string; body?: string; sort_order?: number }
-): Promise<AgentPromptFile> {
-  const svc = createAgentService();
-  const data = await svc.UpdateAgentPromptFile({
-    agentId,
-    id,
-    name: req.name,
-    body: req.body,
-    sortOrder: req.sort_order
-  });
-  return normalizePromptFileFromWire(data);
-}
-
-export async function deletePromptFile(agentId: string, id: string): Promise<void> {
-  const svc = createAgentService();
-  await svc.DeleteAgentPromptFile({ agentId, id });
-}
-
-export async function estimateFileTokens(agentId: string): Promise<{
-  total_tokens: number;
-  file_estimates: { file_id: string; file_name: string; estimated_tokens: number }[];
-}> {
-  const svc = createAgentService();
-  const res = await svc.EstimateTokens({ agentId });
-  return {
-    total_tokens: res.totalTokens ?? 0,
-    file_estimates: (res.fileEstimates ?? []).map((e) => ({
-      file_id: e.fileId ?? "",
-      file_name: e.fileName ?? "",
-      estimated_tokens: e.estimatedTokens ?? 0
-    }))
-  };
-}
-```
-
-### 8.4 Wire Normalize（已存在）
+### 9.3 Wire Normalize
 
 文件：`web/src/features/agents/wireNormalize.ts`
 
@@ -624,9 +622,30 @@ export function promptFileToWire(f: AgentPromptFile): KratosFileWire {
 }
 ```
 
-### 8.5 Vue 组件设计
+### 9.4 Composable 设计
 
-#### AgentFilesTab.vue
+文件：`web/src/features/agents/useAgentPromptFiles.ts`
+
+核心状态与方法：
+- `fileSplitter` / `activeFile` / `initialFileBodies` — 编辑器状态
+- `aiEditOpen` / `aiEditing` / `aiInstruction` — AI 编辑弹窗状态
+- `fileTokenByName` — Token 估算缓存
+- `files` — 响应式文件列表（基于 `coreAgentFiles` 初始化）
+- `availableOptionalFiles` / `addOptionalFile(name)` — 可选文件管理
+- `hydrateFiles(savedFiles)` — 从后端数据填充
+- `refreshFileTokenEstimates(formId)` — 调用 `EstimateTokens` API
+- `applyAiEdit(formId)` — 调用 `EditPromptFileByAI` API
+- `filesForSave()` — 生成保存负载
+
+文件：`web/src/features/agents/useAgentPromptPreview.ts` — 提示词预览 composable
+文件：`web/src/features/agents/aiRefine.ts` — AI Refine 逻辑（diff preview）
+文件：`web/src/features/agents/fieldGuides.ts` — FieldGuide（6 file scopes）
+
+### 9.5 Vue 组件设计
+
+#### AgentFilesPanel.vue
+
+文件：`web/src/components/agents/AgentFilesPanel.vue`
 
 ```vue
 <template>
@@ -669,7 +688,7 @@ export function promptFileToWire(f: AgentPromptFile): KratosFileWire {
           </div>
           <QSpace />
           <QBtn flat label="重新召唤" icon="refresh" @click="onRecall" />
-          <QBtn flat label="AI 编辑" icon="auto_fix_high" @click="showAiEdit = true" />
+          <AIRefineButton ... />
           <QBtn
             unelevated
             label="保存"
@@ -687,34 +706,8 @@ export function promptFileToWire(f: AgentPromptFile): KratosFileWire {
           class="editor-textarea"
         />
       </div>
-      <div v-else class="column items-center justify-center" style="height: 100%">
-        <QIcon name="description" size="48px" color="grey-6" />
-        <div class="text-grey-6 q-mt-sm">选择左侧文件开始编辑</div>
-      </div>
     </template>
   </QSplitter>
-
-  <QDialog v-model="showAiEdit">
-    <QCard style="min-width: 480px">
-      <QCardSection class="row items-center">
-        <QIcon name="auto_fix_high" class="q-mr-sm" />
-        <span class="text-h6">AI 编辑</span>
-        <QSpace />
-        <QBtn flat round dense icon="close" @click="showAiEdit = false" />
-      </QCardSection>
-      <QCardSection>
-        <div class="text-caption q-mb-sm">
-          描述您想要更改的内容。AI 将读取当前文件并相应更新。
-        </div>
-        <QInput v-model="aiInstruction" type="textarea" filled rows="4"
-          placeholder="使 Agent 更正式、添加中文支持、将名称改为 Luna…" />
-      </QCardSection>
-      <QCardActions align="right">
-        <QBtn flat label="取消" @click="showAiEdit = false" />
-        <QBtn unelevated label="重新生成" color="primary" @click="onAiEdit" />
-      </QCardActions>
-    </QCard>
-  </QDialog>
 </template>
 ```
 
@@ -730,81 +723,28 @@ const FILE_SUBTITLES: Record<string, string> = {
   "USER_PREDEFINED.md": "预置用户相关说明",
   "CAPABILITIES.md": "能力边界与工具使用说明",
   "RULE.md": "硬性规则、约束与禁止项",
-  "HEARTBEAT.md": "心跳注入清单"
+  "HEARTBEAT.md": "心跳注入清单",
+  "USER_CONTEXT.md": "用户上下文（可选）"
 };
-
-function fileSubtitle(name: string): string {
-  return FILE_SUBTITLES[name] ?? "";
-}
 ```
 
-#### 交互逻辑
+#### 关联组件
 
-```typescript
-const props = defineProps<{ agent: Agent }>();
-const emit = defineEmits<{ (e: "update", agent: Agent): void }>();
-
-const sortedFiles = computed(() =>
-  [...(props.agent.files ?? [])].sort((a, b) => a.sort_order - b.sort_order)
-);
-const selectedFile = ref<AgentPromptFile | null>(null);
-const editBody = ref("");
-const originalBody = ref("");
-const isDirty = computed(() => editBody.value !== originalBody.value);
-const showAiEdit = ref(false);
-const aiInstruction = ref("");
-
-function selectFile(file: AgentPromptFile) {
-  if (isDirty.value) {
-    confirmUnsaved();
-  }
-  selectedFile.value = file;
-  editBody.value = file.body;
-  originalBody.value = file.body;
-}
-
-async function onSave() {
-  if (!selectedFile.value || !isDirty.value) return;
-  const updatedFiles = (props.agent.files ?? []).map((f) =>
-    f.name === selectedFile.value!.name ? { ...f, body: editBody.value } : f
-  );
-  const updated = await updateAgent(props.agent.id, { files: updatedFiles });
-  emit("update", updated);
-  originalBody.value = editBody.value;
-}
-
-async function onRecall() {
-  const fresh = await getAgent(props.agent.id);
-  emit("update", fresh);
-  if (selectedFile.value) {
-    const reloaded = fresh.files?.find((f) => f.name === selectedFile.value!.name);
-    if (reloaded) {
-      selectedFile.value = reloaded;
-      editBody.value = reloaded.body;
-      originalBody.value = reloaded.body;
-    }
-  }
-}
-
-async function onAiEdit() {
-  // TODO: 调用后端 AI 编辑接口，返回修订稿写入编辑器
-}
-
-function estimateFor(file: AgentPromptFile): number {
-  return Math.ceil((file.body?.length ?? 0) / 4);
-}
-```
+- `web/src/components/agents/AIRefineButton.vue` — AI Refine 按钮（带 diff preview）
+- `web/src/components/agents/MemoryOptionalFilesSection.vue` — 可选文件添加区
+- `web/src/pages/AgentSettingsPage.vue` — `files` Tab 宿主
 
 ---
 
-## 九、验收要点
+## 十、设计验收要点
 
 - [ ] 左侧文件列表按 `sort_order` 排序，显示逻辑文件名 + Token 估算
 - [ ] 点击文件 → 右侧加载内容，编辑后脏状态标记，保存按钮启用
 - [ ] 保存通过 `UpdateAgent` 整体提交 `files` 列表，后端 `ReplaceAgentPromptFiles` 替换
 - [ ] 「重新召唤」从服务端重新拉取最新值，未保存时有确认提示
-- [ ] AI 编辑弹窗：输入指令 → 后端返回修订稿 → 写入编辑器
+- [ ] AI 编辑弹窗：输入指令 → 后端 `EditPromptFileByAI` 返回修订稿 → 写入编辑器
 - [ ] Token 估算：前端近似（字符/4）或调用 `EstimateTokens` API
-- [ ] `HEARTBEAT.md` 与 Agent 页心跳卡片同源字段，无两套存储
+- [ ] `HEARTBEAT.md` 与 Agent 页心跳卡片同源字段，无两套存储（PGO V2 已迁移至 Settings）
 - [ ] 系统提示词模式过滤（`complete`/`task`/`minimized`/`none`）与运行时 `FilesForMode` 一致
 - [ ] 运行时注入顺序与侧栏展示顺序一致
+- [ ] `BuildSystemPrompt` 正确包裹 `<internal_config>` 标签，空 body 文件跳过

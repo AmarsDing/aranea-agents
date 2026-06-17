@@ -1,6 +1,8 @@
-# Agent 设置页 — 产品设计说明（Quasar）
+# Agent 设置页 — 产品需求文档
 
-本文档描述 **单 Agent 详情/设置** 界面：顶栏、主导航 Tab、各分区控件与行为，并与 **`agents` 主表**、JSON 策略列及 **`2 agents-create.md` / `50 Avatar.md` / `4.agent-type.md`** 对齐。入口一般为列表点击卡片或 `GET /agents/:id` 后进入。
+本文档描述 **单 Agent 详情/设置** 界面的用户故事、功能需求与验收标准。界面交互规格（用户视角）见本文，技术实现（Proto/API 契约、数据模型、代码分层、运行时映射）见 [5 agent-setting.design.md](./5%20agent-setting.design.md)，开发计划见 [5 agent-setting.development.md](./5%20agent-setting.development.md)。
+
+入口一般为列表点击卡片或 `GET /agents/:id` 后进入。与 **`2 agents-create.md` / `50 Avatar.md` / `4.agent-type.md`** 对齐。
 
 ---
 
@@ -23,7 +25,7 @@
 ├──────────────────────────────────────────────────────────────────────────┤
 │  Agent │ 文件 │ 权限 │ 进化 │ 钩子 │ 用户实例        （QTabs / QRouteTab）   │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  （当前 Tab 内容区：见 §3～§9）                                              │
+│  （当前 Tab 内容区：见 §3～§13）                                             │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -34,14 +36,14 @@
 | 控件 | 行为 | 数据 |
 |------|------|------|
 | **返回** | `QBtn` flat，`router.back()` 或回列表 | — |
-| **头像** | `QAvatar` 方形圆角；`src` 见 `50 Avatar.md`；**点击**打开 `AgentAvatarPicker`，保存后刷新 `agents.icon` | `icon` → `avatar_assets.id` |
-| **显示名 + 在线点** | 主标题；绿点表示 `status === active` 等 | `display_name`、`status` |
-| **标签 chips** | 如「任务」「V3」「进化中」；只读或跳转对应配置 | `tags`、`agent_type` 版本、`self_evolve` 等推导 |
+| **头像** | `QAvatar` 方形圆角；`src` 见 `50 Avatar.md`；**点击**打开 `AgentAvatarPicker`，保存后刷新 Agent 头像 | 头像字段 |
+| **显示名 + 在线点** | 主标题；绿点表示 `status === active` 等 | 显示名、状态 |
+| **标签 chips** | 如「任务」「V3」「进化中」；只读或跳转对应配置 | 标签、Agent 类型版本、自我进化等推导 |
 | **副标题** | `{agent_key} · {provider} / {model}` | 只读摘要 |
-| **系统提示词** | 眼形图标 + 文案；打开侧滑/对话框展示当前系统提示全文（只读或编辑视权限） | 运行态生成或 `compaction_config` / 派生存储 |
-| **收藏** | 心形；未设置/已收藏 | 同列表 `user_agent_favorites` |
+| **系统提示词** | 眼形图标 + 文案；打开侧滑/对话框展示当前系统提示全文（只读或编辑视权限） | 运行态生成或派生存储 |
+| **收藏** | 心形；未设置/已收藏 | 收藏标记 |
 | **设置齿轮** | 可打开「高级」抽屉或跳转子路由（与 Tab 不重复则省略） | — |
-| **删除** | `QBtn`；二次确认后软删，回列表 | `deleted_at` |
+| **删除** | `QBtn`；二次确认后软删，回列表 | 删除时间戳 |
 
 ---
 
@@ -52,10 +54,10 @@
 | **Agent** | 系统提示模式、Agent 个性、模型与预算、能力（子 Agent / 工具策略）、记忆、TTS、心跳/技能/编排等（见各节；可 `QScrollArea` 长页） |
 | **文件** | 工作区文件浏览（`workspace`、`restrict_to_workspace`）；单独 PRD |
 | **权限** | 谁能使用该 Agent；单独 PRD |
-| **进化** | §7 |
+| **进化** | §12 |
 | **钩子** | 钩子列表与编辑（与 Agent 区内「钩子」摘要卡片可二选一或互链） |
 | **用户实例** | 多租户/用户级覆盖；单独 PRD |
-| **A2A** | LLM Agent：Endpoint（暴露为 A2A 服务 + AgentCard）；A2A Proxy Agent：只读远程连接与 Card（见 §10） |
+| **A2A** | LLM Agent：Endpoint（暴露为 A2A 服务 + AgentCard）；A2A Proxy Agent：只读远程连接与 Card（见 §13） |
 
 实现：`QTabs` + `QTabPanels` 或 Vue Router 子路由 `children`。
 
@@ -75,26 +77,10 @@
 | 维度 | 说明 |
 |------|------|
 | **展示** | 每卡：标题、描述、特性 tag 列表、约 **~XK tokens** 估值（服务端可返回） |
-| **绑定** | `system_prompt_mode`：`complete` \| `task` \| `minimized` \| `none`（存 `agents` 主表 `system_prompt_mode` 列） |
-| **行为** | 切换即 PATCH；可 `Notify`「已切换模式」 |
+| **绑定** | `system_prompt_mode`：`complete` \| `task` \| `minimized` \| `none` |
+| **行为** | 切换即保存；可 `Notify`「已切换模式」 |
 
-### 运行时映射（trpc-agent-go）
-
-`system_prompt_mode` 在 `BuildTRPCLLMAgent` 中控制哪些 `AgentPromptFile` 注入到系统提示：
-
-| 模式 | 注入的文件 | 代码实现 |
-|------|-----------|---------|
-| `complete` | 全部文件（AGENTS_CORE + AGENTS_TASK + SOUL + IDENTITY + USER + USER_PREDEFINED + CAPABILITIES + RULE + HEARTBEAT） | `FilesForMode(files, "complete")` → 返回全部 |
-| `task` | AGENTS_CORE + AGENTS_TASK + IDENTITY + CAPABILITIES + RULE + HEARTBEAT | `FilesForMode(files, "task")` → allowed 集合 |
-| `minimized` | AGENTS_CORE + IDENTITY + RULE | `FilesForMode(files, "minimized")` → allowed 集合 |
-| `none` | 无文件注入 | `FilesForMode(files, "none")` → 空集 |
-
-**代码实现**：
-
-- `BuildTRPCLLMAgent`（`internal/agent/trpc_build.go`）读取 `ag.SystemPromptMode` 并传递给 `BuildSystemPrompt`
-- `BuildSystemPrompt`（`internal/agent/prompt.go`）接收 mode 参数，调用 `biz.FilesForMode` 过滤文件
-- `FilesForMode`（`internal/biz/agent_catalog_legacy.go`）已导出，根据模式返回允许的文件子集
-- 每个文件内容用 `<internal_config name="{Name}">` 标签包裹，便于 LLM 区分配置块
+> 运行时映射（各模式注入哪些 AgentPromptFile、代码实现路径）见设计文档 §八「运行时映射」。
 
 ---
 
@@ -102,14 +88,14 @@
 
 | 控件 | Quasar | 字段 |
 |------|--------|------|
-| **图标** | `QAvatar` + 点击 → **`50 Avatar.md`** | `icon` |
-| **显示名称** | `QInput` | `display_name` |
-| **专业摘要** | `QInput` textarea + 下方「LLM 预览」辅助行 | `frontmatter` 或 `agent_description`（与 `2 agents-create` 分工一致：短摘要优先 `frontmatter`） |
-| **状态** | `QSelect`：活跃/停用… | `status` |
-| **默认 Agent** | `QToggle` | `is_default` |
-| **Agent 标识** | `QInput` **只读** + 复制 `QBtn` | `agent_key` |
+| **图标** | `QAvatar` + 点击 → **`50 Avatar.md`** | 头像 |
+| **显示名称** | `QInput` | 显示名 |
+| **专业摘要** | `QInput` textarea + 下方「LLM 预览」辅助行 | 专业摘要（与 `2 agents-create` 分工一致：短摘要优先） |
+| **状态** | `QSelect`：活跃/停用… | 状态 |
+| **默认 Agent** | `QToggle` | 是否默认 |
+| **Agent 标识** | `QInput` **只读** + 复制 `QBtn` | Agent Key |
 
-**业务分类**：若创建页已支持 `category_position_id`，本页可只读展示路径或同级 `AgentCategoryCascade` 只编辑分类；见 **`4.agent-type.md`**。
+**业务分类**：若创建页已支持分类，本页可只读展示路径或同级分类级联选择只编辑分类；见 **`4.agent-type.md`**。
 
 ---
 
@@ -117,11 +103,11 @@
 
 | 控件 | 字段 |
 |------|------|
-| **Provider** | `QSelect` | `provider` |
-| **模型** | `QSelect` + 校验 | `model` |
-| **上下文窗口** | `QInput` type=number + 辅助说明 | `context_window` |
-| **最大工具迭代** | `QInput` type=number | `max_tool_iterations` |
-| **预算限额 (USD)** | `QInput` 前缀 `$` | `budget_monthly_cents`（分为单位存储时换算）或 `budget` |
+| **Provider** | `QSelect` | Provider |
+| **模型** | `QSelect` + 校验 | 模型 |
+| **上下文窗口** | `QInput` type=number + 辅助说明 | 上下文窗口 |
+| **最大工具迭代** | `QInput` type=number | 最大工具迭代 |
+| **预算限额 (USD)** | `QInput` 前缀 `$` | 月度预算（分为单位存储时换算）或预算 |
 
 变更 Provider/模型建议复用创建页 **模型检查** 逻辑（可选）。
 
@@ -133,7 +119,7 @@
 |------|------|
 | 空态 | 静音图标 +「未配置 TTS」+ 说明文案 |
 | **配置 TTS** | `QBtn` → 打开对话框：选择 TTS Provider、音色、密钥等 |
-| **存储** | `tts` 或 `sandbox_config` 扩展，结构由后端约定 |
+| **存储** | TTS 配置或沙箱配置扩展，结构由后端约定 |
 
 ---
 
@@ -151,16 +137,16 @@
 | **布局** | 开关开启后，参数置于浅色描边容器内；**两列栅格**（`QGrid` / `row` + `col-12 col-md-6`）排列字段 |
 | **标签** | 各字段标签旁 **`(i)`** → `QTooltip` / `QMenu` 说明 |
 
-| 字段 | Quasar | 示例 / 占位 | `subagents_config` 建议键（与后端对齐） |
-|------|--------|---------------|----------------------------------------|
-| **最大并发数** | `QInput` type=number，min≥1 | `20` | `max_concurrency` |
-| **最大生成深度** | `QSelect` 或 `QInput`（正整数） | `1` | `max_generation_depth` |
-| **每 Agent 最大子数** | `QInput` type=number，min≥1 | `5` | `max_children_per_agent` |
-| **归档时间（分钟）** | `QInput` type=number，min≥1 | `60` | `archive_after_minutes` |
-| **最大重试次数** | `QInput` type=number，min≥0 | `2` | `max_retries` |
-| **模型覆盖** | `QInput` 或 `QSelect`（可选模型列表） | 占位「继承自 Agent」：空表示不覆盖，沿用本 Agent 的 `provider` / `model` | `model_override`（空串或 `null` 表示继承） |
+| 字段 | Quasar | 示例 / 占位 |
+|------|--------|---------------|
+| **最大并发数** | `QInput` type=number，min≥1 | `20` |
+| **最大生成深度** | `QSelect` 或 `QInput`（正整数） | `1` |
+| **每 Agent 最大子数** | `QInput` type=number，min≥1 | `5` |
+| **归档时间（分钟）** | `QInput` type=number，min≥1 | `60` |
+| **最大重试次数** | `QInput` type=number，min≥0 | `2` |
+| **模型覆盖** | `QInput` 或 `QSelect`（可选模型列表） | 占位「继承自 Agent」：空表示不覆盖，沿用本 Agent 的 Provider/模型 |
 
-**继承逻辑**：未填写「模型覆盖」时，运行时子 Agent 使用父 Agent 在 §7 中配置的 Provider/模型；填写后仅子 Agent 调用链使用该覆盖值（具体以 `前端.md` / 服务端约定为准）。
+**继承逻辑**：未填写「模型覆盖」时，运行时子 Agent 使用父 Agent 在 §7 中配置的 Provider/模型；填写后仅子 Agent 调用链使用该覆盖值。
 
 ### 9.2 工具策略
 
@@ -170,16 +156,16 @@
 |------|------|
 | **总开关** | 右上 `QToggle`；关闭时整块策略不生效（或回退系统默认），可隐藏内部表单 |
 | **表单容器** | 开启后，配置项置于 **深色描边/卡片** 内，与截图一致 |
-| **底部操作** | 右下 **`保存更改`**（磁盘图标 + 主色按钮）：若本区未做自动保存，点此提交 PATCH；与全局 debounce 策略二选一并在产品中统一 |
+| **底部操作** | 右下 **`保存更改`**（磁盘图标 + 主色按钮）：若本区未做自动保存，点此提交；与全局 debounce 策略二选一并在产品中统一 |
 
 #### 9.2.1 配置文件与工具名前缀
 
-| 字段 | Quasar | 说明 / 占位 | `tools_config` 建议键 |
-|------|--------|-------------|----------------------|
-| **配置文件** | `QSelect` | 预置策略包，示例值 **`full`**（完整内置工具能力）；选项由后端/注册表下发 | `profile` 或 `config_profile` |
-| **工具调用前缀** | `QInput` | 占位 `e.g. proxy_`；**辅助说明**（字段下方小字）：从模型的工具调用名称中去除此前缀后再查找注册表 | `tool_call_prefix`（空串表示不剥离） |
+| 字段 | Quasar | 说明 / 占位 |
+|------|--------|-------------|
+| **配置文件** | `QSelect` | 预置策略包，示例值 **`full`**（完整内置工具能力）；选项由后端/注册表下发 |
+| **工具调用前缀** | `QInput` | 占位 `e.g. proxy_`；**辅助说明**（字段下方小字）：从模型的工具调用名称中去除此前缀后再查找注册表 |
 
-**「工具调用前缀」`(i)` 文案（可与界面中英混排一致）**：在根据注册表解析工具前，先剥离模型返回的工具名前缀。示例：前缀为 `proxy_` 时，`proxy_exec` 解析为 `exec`。支持 `{tool_name}` 等占位符（具体以后端实现为准）。
+**「工具调用前缀」`(i)` 文案**：在根据注册表解析工具前，先剥离模型返回的工具名前缀。示例：前缀为 `proxy_` 时，`proxy_exec` 解析为 `exec`。支持 `{tool_name}` 等占位符（具体以后端实现为准）。
 
 #### 9.2.2 允许 / 拒绝 / 同时允许
 
@@ -209,22 +195,12 @@
 | Read Video | `read_video` |
 | Speech-to-Text | `stt` |
 
-
-| 键 | 类型 | 说明 |
-|----|------|------|
-| `enabled` | boolean | 对应总开关 |
-| `profile` | string | 如 `full` |
-| `tool_call_prefix` | string | 前缀剥离 |
-| `allow` | string[] | 工具 id |
-| `deny` | string[] | 工具 id |
-| `concurrent_allow`（或 `simultaneous_allow`） | string[] | 「同时允许」列表 |
-
 #### 9.2.3 冲突与校验（产品必做）
 
 截图中 **同一 `tool_id` 同时出现在「允许」与「拒绝」** 属于无效配置。建议至少满足其一：
 
-1. **保存时校验**：提示冲突项，禁止提交或要求用户修正；  
-2. **运行时规则**：约定 **拒绝优先于允许**（最终可调用集合 = `(allow 语义 ∩ profile) − deny`），并在 UI 上以 **Banner** 提示「以下工具在允许与拒绝中重复，已按拒绝处理：…」；  
+1. **保存时校验**：提示冲突项，禁止提交或要求用户修正；
+2. **运行时规则**：约定 **拒绝优先于允许**（最终可调用集合 = `(allow 语义 ∩ profile) − deny`），并在 UI 上以 **Banner** 提示「以下工具在允许与拒绝中重复，已按拒绝处理：…」；
 3. **输入时联动**：向「拒绝」添加某 id 时自动从「允许」移除（或反之），避免并存。
 
 **「同时允许」** 中的 id 若不在「最终可调用集合」内，应 **警告** 或 **自动剔除**，避免并行白名单引用不可用工具。
@@ -239,18 +215,18 @@
 
 | 控件 | 存储 |
 |------|------|
-| 「已启用」`QToggle` | `memory_config.enabled`（或顶层约定键） |
+| 「已启用」`QToggle` | 记忆配置启用标记 |
 
 ### 10.2 检索参数（栅格）
 
-| 字段 | 示例值 | `memory_config` 键 |
-|------|--------|---------------------|
-| 最大块长度 | 1000 | `max_chunk_length` |
-| 块重叠 | 200 | `chunk_overlap` |
-| 最大结果数 | 6 | `max_results` |
-| 最低分数 | 0.35 | `min_score` |
-| 向量权重 | 0.7 | `vector_weight` |
-| 文本权重 | 0.3 | `text_weight` |
+| 字段 | 示例值 |
+|------|--------|
+| 最大块长度 | 1000 |
+| 块重叠 | 200 |
+| 最大结果数 | 6 |
+| 最低分数 | 0.35 |
+| 向量权重 | 0.7 |
+| 文本权重 | 0.3 |
 
 标签旁 `(i)` → 工具提示。
 
@@ -259,10 +235,14 @@
 | 控件 | 存储 |
 |------|------|
 | 说明文案 | 后台将会话摘要提升为长期记忆 |
-| 「已启用」`QToggle` | `memory_config.dreaming.enabled` |
-| 阈值 | `memory_config.dreaming.threshold`（如 5） |
-| 防抖间隔 (ms) | `memory_config.dreaming.debounce_ms`（如 600000） |
-| 「详细日志」`QToggle` | `memory_config.dreaming.verbose_logs` |
+| 「已启用」`QToggle` | Dreaming 启用标记 |
+| 阈值 | Dreaming 阈值（如 5） |
+| 防抖间隔 (ms) | Dreaming 防抖（如 600000） |
+| 「详细日志」`QToggle` | Dreaming 详细日志标记 |
+
+### 10.4 L0–L4 分层配置
+
+记忆配置按 L0（感官层）、L1（工作层）、L2（情景层）、L3（语义层）、L4（持久层）分组折叠展示，各层可独立启用/停用并配置参数。各层具体字段以设计文档数据模型为准。
 
 ---
 
@@ -270,15 +250,13 @@
 
 纵向 **多张 `QCard`**，与截图一致。
 
-
 | 卡片 | 内容 | 存储 |
 |------|------|------|
-| **心跳** | 见 §11.1 | 上表三字段  |
-| **钩子** | 空态 +「+ 添加钩子」；列表与表单见 **`16. hook.md`** | `hooks` 表 + `hook_agents`（替代 `hooks`） |
-| **技能** | 搜索框「筛选 Skill…」+ 列表 `0/0` | 技能注册表 + `skills` |
-| **Pinned Skills** | 英文说明 + `0/10` | `pinned_skills` 数组 |
-| **Orchestration** | 标签 `team` + Team 展示如「研究院」 | `subagents_config`（团队/编排） |
-
+| **心跳** | 见 §11.1 | 心跳三字段 |
+| **钩子** | 空态 +「+ 添加钩子」；列表与表单见 **`16. hook.md`** | 钩子表 + Agent 钩子关联 |
+| **技能** | 搜索框「筛选 Skill…」+ 列表 `0/0` | 技能注册表 + 技能列表 |
+| **Pinned Skills** | 英文说明 + `0/10` | 固定技能数组 |
+| **Orchestration** | 标签 `team` + Team 展示如「研究院」 | 子 Agent 配置（团队/编排） |
 
 ### 11.1 心跳
 
@@ -290,15 +268,16 @@
 | **编辑区说明** | 每次心跳运行时注入的指令，支持 Markdown。 |
 | **正文编辑** | `QInput` textarea 或 Markdown 编辑器；典型内容如一级标题「心跳检查清单」、待办 bullet（检查待处理任务、报告状态等） |
 
-**Agent 设置侧持久化（`agents` 或与 Agent 设置等价表）— 心跳相关字段建议：**
+**心跳相关字段（产品含义）**：
 
-| 字段（产品含义） | 类型 | 建议列名或 JSON 路径 |
-|------------------|------|----------------------|
-| 是否开启 | boolean | `heartbeat_enabled` |
-| 时间间隔（分钟） | integer，≥1 | `heartbeat_interval_minutes`  |
-| HEARTBEAT.MD  | text（Markdown） | 库表列常用 `heartbeat_md`；产品与文件命名对齐时常称 **heartbeat.md**  |
+| 字段（产品含义） | 类型 | 说明 |
+|------------------|------|------|
+| 是否开启 | boolean | 心跳启用标记 |
+| 时间间隔（分钟） | integer，≥1 | 心跳间隔，默认 30 |
+| HEARTBEAT.MD | text（Markdown） | 心跳检查清单正文 |
 
-**调度执行**：间隔与是否开启由运行时读库触发；注入内容每次心跳从 `heartbeat_md`读取。
+**调度执行**：间隔与是否开启由运行时读库触发；注入内容每次心跳从 HEARTBEAT.MD 读取。
+
 ---
 
 ## 12. Tab「进化」
@@ -307,85 +286,54 @@
 
 | 项 | 标题 | 说明 | 字段 |
 |----|------|------|------|
-| 1 | 允许 Agent 进化其沟通风格 | SOUL.md 更新语调与风格；身份与操作指令锁定 | `self_evolve` |
+| 1 | 允许 Agent 进化其沟通风格 | SOUL.md 更新语调与风格；身份与操作指令锁定 | 自我进化 |
 | | 信息框 | 强调仅风格/语调变，身份与工作流规则固定 | `QBanner` / `QCard` bordered |
-| 2 | 允许从经验中创建和管理技能 | `skill_manage` 默认可用；提醒保存工作流为技能 | `skill_evolve`、`skill_nudge_interval`（见扩展列） |
-| 3 | 进化指标 | 记录工具效果、检索质量、反馈 | `evolution_metrics_enabled` |
-| 4 | 进化建议 | 基于指标生成改进建议 | `evolution_suggestions_enabled` |
+| 2 | 允许从经验中创建和管理技能 | 技能管理默认可用；提醒保存工作流为技能 | 技能进化、技能提醒间隔 |
+| 3 | 进化指标 | 记录工具效果、检索质量、反馈 | 进化指标启用 |
+| 4 | 进化建议 | 基于指标生成改进建议 | 进化建议启用 |
 
 与 **`2 agents-create.md`** 中「自我进化」默认值策略对齐；本页为后续修改入口。
 
 ---
 
-## 13. 字段 ↔ `agents` 与 JSON 汇总
+## 13. Tab「A2A」— Endpoint 与 Proxy 视图
 
-| UI 区域 | 列或 JSON |
-|---------|-----------|
-| 顶栏 / 个性 | `display_name`、`agent_key`、`icon`、`status`、`is_default`、`frontmatter` / `agent_description` |
-| 模型与预算 | `provider`、`model`、`context_window`、`max_tool_iterations`、`budget_monthly_cents` |
-| 系统提示模式 | `system_prompt_mode`（建议） |
-| TTS | `tts` |
-| 能力 | `tools_config`（`enabled`、`profile`、`tool_call_prefix`、`allow`、`deny`、`concurrent_allow` / `simultaneous_allow` 等）；`subagents_config`（见 §9.1）；键名以 `前端.md` 为准 |
-| 记忆 | `memory_config` |
-| 进化 Tab | `self_evolve`、`skill_evolve`、`*` |
-| 心跳 | `heartbeat_enabled`、`heartbeat_interval_minutes`、`heartbeat_md`（**heartbeat.md** 清单正文）；或 `heartbeat` 内 `enabled` / `interval_minutes` / `markdown` |
-| 钩子 | `hooks`、`hook_agents`（**`16. hook.md`**） |
-| 技能/编排 | `skills` 等；编排见 `subagents_config` |
-| 分类 | `category_position_id`、`category_path`（`4.agent-type.md`） |
+> A2A 产品语义见 [26 a2a-protocol.md](./26%20a2a-protocol.md) §2.5。
 
-完整列清单仍以 **`前端.md`** / 迁移脚本为准。
+### 13.1 显示条件
 
----
-
-## 14. API 建议
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/agents/:id` 或 `/:agentKey` | 详情 DTO（含解析后的标签、模式、记忆配置等） |
-| PATCH | `/agents/:id` | 部分更新；各区块提交合并 JSON 时注意深度 merge |
-| DELETE | `/agents/:id` | 软删 |
-| GET | `/avatar-assets/...` | 头像出图（`50 Avatar.md`） |
-
----
-
-## 10. Tab「A2A」— Endpoint 与 Proxy 视图（2026-05-20）
-
-> A2A 产品语义见 [26 a2a-protocol.md](./26%20a2a-protocol.md) §2.5。实现设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §11.6。
-
-### 10.1 显示条件
-
-| `agent_kind` | Tab 内容 |
+| Agent 类型 | Tab 内容 |
 |--------------|----------|
 | `llm`（默认） | **A2A Endpoint** 完整配置 |
 | `a2a_proxy` | 远程连接信息 + 只读 AgentCard +「测试连接」 |
 
-### 10.2 LLM Agent — Endpoint 配置
+### 13.2 LLM Agent — Endpoint 配置
 
 | 控件 | 说明 |
 |------|------|
-| **启用 A2A** | `QToggle`；默认关；对应 `a2a_agent_cards.enabled` |
+| **启用 A2A** | `QToggle`；默认关；对应 A2A AgentCard 启用标记 |
 | **Capabilities** | 能力列表 CRUD（name、description、input/output schema） |
 | **流式能力** | 是否声明 `Streaming`（写入 AgentCard） |
 | **暴露地址** | 只读展示平台分配的 A2A URL / AgentCard 路径 |
 | **Discover 预览** | 展示其他 Agent 调用此 Endpoint 时看到的 Card |
 
-保存：调用现有 `UpdateAgentCard` API；启用后列表卡片可选展示 `A2A ↙` 徽章。
+保存：调用现有 UpdateAgentCard API；启用后列表卡片可选展示 `A2A ↙` 徽章。
 
-### 10.3 A2A Proxy Agent — 只读视图
+### 13.3 A2A Proxy Agent — 只读视图
 
 | 控件 | 说明 |
 |------|------|
-| 远程 URL | 可编辑 PATCH（变更后重新发现 Card） |
+| 远程 URL | 可编辑保存（变更后重新发现 Card） |
 | 鉴权 | 编辑 auth_type / auth_config（敏感字段掩码） |
 | AgentCard | 只读展示远程发现结果 |
 | 测试连接 | 触发一次远程 Invoke 或 Card 拉取 |
 
-### 10.4 与 `/a2a` 页关系
+### 13.4 与 `/a2a` 页关系
 
 - **本 Tab**：配置「我这个 Agent」的 A2A 身份（提供方或代理连接）
 - **`/a2a` 注册表页**：工作区级 Discover、Audit、Invoke 测试；不重复编辑单个 Agent 的全部 Endpoint 字段
 
-### 10.5 验收要点（A2A Tab）
+### 13.5 验收要点（A2A Tab）
 
 - [ ] LLM Agent 可启用/禁用 A2A 并编辑 capabilities
 - [ ] 启用后出现在 `/a2a` Discover 列表
@@ -394,20 +342,18 @@
 
 ---
 
-## 15. 验收要点
+## 14. 验收要点
 
-- [ ] 顶栏信息与列表/详情一致；头像点击打开 **`AgentAvatarPicker`**。  
-- [ ] Tab 切换保留未保存策略符合产品（自动保存或提示）。  
-- [ ] 系统提示模式四选一与 `other_config`（或等价列）持久化一致。  
-- [ ] 模型、预算、记忆数值校验与后端一致。  
-- [ ] 工具策略：总开关、`profile`、`tool_call_prefix`、允许/拒绝/同时允许 与 `tools_config` 一致；内置工具选项与注册表 id 一致；**允许∩拒绝** 有明确校验或「拒绝优先」提示。  
-- [ ] 子 Agent 总开关、六项参数（并发、深度、每 Agent 子数、归档分钟、重试、模型覆盖）与 `subagents_config` 一致。  
-- [ ] 进化四项与 `self_evolve` / `skill_evolve` / `other_config` 一致。  
-- [ ] 心跳：未配置空心 / 已配置红色实心；**是否开启**、**间隔（分钟）**、**HEARTBEAT.MD 正文** 与库表或 `heartbeat` 一致。  
-- [ ] 与 **`3 agent-list.md`** 卡片展示字段可互推（同一 `AgentDTO` 子集）。  
-
----
-
-*文档版本：基于 Agent 设置线稿整理；库表以 `前端.md` `agents` 为准；头像 **`50 Avatar.md`**，分类 **`4.agent-type.md`**，创建表单 **`2 agents-create.md`**，A2A **`26 a2a-protocol.md` §3.11**。*
+- [ ] 顶栏信息与列表/详情一致；头像点击打开 **`AgentAvatarPicker`**。
+- [ ] Tab 切换保留未保存策略符合产品（自动保存或提示）。
+- [ ] 系统提示模式四选一与持久化一致。
+- [ ] 模型、预算、记忆数值校验与后端一致。
+- [ ] 工具策略：总开关、配置文件、工具调用前缀、允许/拒绝/同时允许 与配置一致；内置工具选项与注册表 id 一致；**允许∩拒绝** 有明确校验或「拒绝优先」提示。
+- [ ] 子 Agent 总开关、六项参数（并发、深度、每 Agent 子数、归档分钟、重试、模型覆盖）与配置一致。
+- [ ] 进化四项与配置一致。
+- [ ] 心跳：未配置空心 / 已配置红色实心；**是否开启**、**间隔（分钟）**、**HEARTBEAT.MD 正文** 与库表一致。
+- [ ] 与 **`3 agent-list.md`** 卡片展示字段可互推（同一 Agent DTO 子集）。
 
 ---
+
+*文档版本：基于 Agent 设置线稿整理；头像 **`50 Avatar.md`**，分类 **`4.agent-type.md`**，创建表单 **`2 agents-create.md`**，A2A **`26 a2a-protocol.md`** §3.11。技术实现细节见 [5 agent-setting.design.md](./5%20agent-setting.design.md)。*

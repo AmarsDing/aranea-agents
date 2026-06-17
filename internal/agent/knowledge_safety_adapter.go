@@ -51,10 +51,9 @@ func SafetyLimitAdapter(ag biz.Agent) []llmagent.Option {
 }
 
 // FrameworkKnowledge wraps a knowledge.Knowledge implementation to satisfy
-// the framework's WithKnowledge option.
-//
-// TECH-DEBT: Placeholder for future integration when the project migrates
-// from custom knowledge tools to the framework's native knowledge support.
+// the framework's WithKnowledge option. It is actively used by
+// KnowledgeAdapter to bridge the project's retriever to the framework's
+// native knowledge_search tool.
 type FrameworkKnowledge struct {
 	inner knowledge.Knowledge
 }

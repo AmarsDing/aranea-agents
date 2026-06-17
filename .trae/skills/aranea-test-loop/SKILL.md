@@ -58,8 +58,8 @@ description: "Automated test-fix-commit loop with architecture awareness. Invoke
 
 | 文件 | 路径 | 读取内容 |
 |------|------|---------|
-| 架构蓝图 | `openspec/specs/architecture-blueprint.md` | 模块职责、分层关系、双框架分工 |
-| 模块交叉参考 | `openspec/specs/module-cross-reference.md` | 上游依赖、下游影响、共享契约 |
+| 系统架构总览 | `docs/development/0-system-diagram.md` | 模块职责、分层关系、双框架分工 |
+| 模块交叉参考 | `docs/development/65-module-cross-reference-full.md` | 上游依赖、下游影响、共享契约 |
 | 项目规则 | `.trae/rules/project_rules.md` | 验证命令、审查纪律、红线 |
 
 ### 3.2 架构约束检查

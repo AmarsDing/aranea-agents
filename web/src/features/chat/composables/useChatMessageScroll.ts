@@ -118,6 +118,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   // scroll so the view doesn't get stuck mid-stream.
   let scrollStickRaf = 0;
   let scrollStickLastRun = 0;
+  let scrollStickTrailingTimer: ReturnType<typeof setTimeout> | null = null;
   const SCROLL_STICK_THROTTLE_MS = 50;
   function scheduleScrollToBottom() {
     if (scrollStickRaf) return;
@@ -140,7 +141,9 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
       } else {
         // Within throttle window — schedule a trailing scroll after the
         // remaining wait so the final position is always correct.
-        setTimeout(() => {
+        if (scrollStickTrailingTimer) clearTimeout(scrollStickTrailingTimer);
+        scrollStickTrailingTimer = setTimeout(() => {
+          scrollStickTrailingTimer = null;
           if (!stickToBottom.value) return;
           scheduleScrollToBottom();
         }, SCROLL_STICK_THROTTLE_MS - elapsed);
@@ -150,6 +153,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
 
   onBeforeUnmount(() => {
     if (scrollStickRaf) cancelAnimationFrame(scrollStickRaf);
+    if (scrollStickTrailingTimer) clearTimeout(scrollStickTrailingTimer);
     if (highlightTimer) clearTimeout(highlightTimer);
   });
 

@@ -201,25 +201,23 @@
 
 ---
 
-## 6. 列表 API 查询参数
+## 6. 列表查询能力
 
 > 完整 API 契约（请求/响应消息、字段类型、HTTP 路由）详见 [3-agent-list.design.md §二](./3-agent-list.design.md#二proto-层) 与 [§十 列表 API 契约](./3-agent-list.design.md#十列表-api-契约)。
 
-| 参数 | 说明 |
-|------|------|
-| `keyword` | 搜索关键字 |
-| `status` | 状态筛选 |
-| `provider` | Provider 筛选 |
-| `org_node_id` | 业务分类职位节点 id 筛选 |
-| `created_by` | 创建者筛选：空 = 全部；`mine` = 当前用户；否则具体用户 id |
-| `limit` / `offset` | 分页 |
-| `sort` | 可选：`updated_at desc` 默认 |
+| 筛选维度 | 说明 |
+|----------|------|
+| 关键字 | 搜索命中名称、handle、Provider、Model、描述 |
+| 状态 | 状态筛选 |
+| Provider | Provider 筛选 |
+| 业务分类 | 业务分类职位节点筛选 |
+| 创建者 | 空 = 全部；`mine` = 当前用户；否则具体用户 id |
+| 分页 | 每页条数 + 偏移量 |
+| 排序 | 默认按更新时间倒序 |
 
-**响应**：`{ items: AgentDTO[], total, limit, offset }`。`AgentDTO` 含列表所需列 + `is_favorite` + 运行态富化字段。
+**响应**：包含 Agent 列表 + 总数 + 分页信息。每个 Agent 含列表所需字段 + 收藏标记 + 运行态富化字段。
 
-**删除**：`DELETE /v1/agents/:id`（软删）。
-**复制**：`POST /v1/agents/:id/duplicate`。
-**收藏切换**：`PATCH /v1/agents/:id/favorite`。
+**操作端点**：列表查询、删除（软删）、收藏切换、复制、创建者列表。具体路由见设计文档。
 
 ---
 

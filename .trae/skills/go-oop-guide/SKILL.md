@@ -317,7 +317,7 @@ func (o *Order) Validate() error {
 
 | 内容 | 位置 |
 |------|------|
-| 错误处理（kerrors） | `aranea-coding-guide` §7.1 |
+| 错误处理（apierror） | `aranea-coding-guide` §7.1 |
 | 并发（safego、ctx 传递） | `aranea-coding-guide` §7.3 |
 | 日志（loggateway.Logger） | `aranea-coding-guide` §7.4 |
 | 依赖注入（Wire） | `aranea-coding-guide` §7.2 |

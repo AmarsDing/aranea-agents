@@ -31,13 +31,11 @@
 
 | 任务 | SKILL | 说明 |
 |------|-------|------|
-| 统一入口 | `sddflow` | OpenSpec + Superpowers 编排器，自动路由阶段 |
-| 需求探索 | `sddflow-brainstorming` | `/sddflow brainstorming` — 探索需求+设计 |
-| 生成规格 | `sddflow-spec` | `/sddflow spec` — specs + plan-ready.md |
-| TDD 实施 | `sddflow-build` | `/sddflow build` — 子代理执行+两阶段审查 |
-| 需求变更 | `sddflow-amend` | `/sddflow amend` — 回退修改规格 |
-| 验证归档 | `sddflow-close` | `/sddflow close` — 全量验证+归档 |
 | 测试循环 | `aranea-test-loop` | 运行测试、修复失败、生成报告 |
+
+### Superpowers 辅助（按需使用）
+
+`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`verification-before-completion`、`systematic-debugging`、`executing-plans`、`requesting-code-review`、`receiving-code-review`、`finishing-a-development-branch`
 
 ### 其他
 
@@ -67,8 +65,9 @@
 
 | 文档 | 路径 | 何时读 |
 |------|------|--------|
-| 架构蓝图 | `openspec/specs/architecture-blueprint.md` | 了解项目全貌和每个模块的静态职责 |
-| 模块交叉参考 | `openspec/specs/module-cross-reference-full.md` | **每次开发前必读**——查找目标模块的所有上游依赖、下游影响、共享契约、事件、数据库、前端对应 |
+| 模块交叉参考 | `docs/development/65-module-cross-reference-full.md` | **每次开发前必读**——查找目标模块的所有上游依赖、下游影响、共享契约、事件、数据库、前端对应 |
+| 系统架构总览 | `docs/development/0-system-diagram.md` | 了解项目全貌和每个模块的静态职责 |
+| 数据库架构 | `docs/development/66-database-architecture.md` | 数据库设计与访问模式 |
 
 ## 架构评判标准（AS 系列）
 
@@ -85,10 +84,10 @@
 
 ## 任务执行
 
-- **新变更必须走 sddflow 流程**：`/sddflow brainstorming` → `/sddflow spec` → `/sddflow build` → `/sddflow close`
-- 需求变更时用 `/sddflow amend`，禁止直接改代码
+- **新变更推荐流程**：需求探索 → 规格设计 → TDD 实施 → 验证归档
+- 需求变更时回退到设计阶段，禁止直接改代码适应新需求
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
-- **开发前必读模块交叉参考手册**（`openspec/specs/module-cross-reference-full.md`），确认所有关联影响面
+- **开发前必读模块交叉参考手册**（`docs/development/65-module-cross-reference-full.md`），确认所有关联影响面
 
 ## docs 目录规范
 
@@ -131,11 +130,3 @@
 **豁免**：纯 bug 修复、不改变行为的重构、测试代码、配置调参。
 
 > 详细规则见 `project_rules.md` §六「文档同步纪律」
-
-## OpenSpec 文档维护纪律（红线）
-
-- **OpenSpec 文档必须通过 OpenSpec 命令维护**，禁止手动创建、编辑、移动、删除、重命名 `openspec/` 目录下的任何文件
-- 主规格库 `openspec/specs/` 的更新只能通过 `openspec archive` 同步，禁止直接编辑
-- **`openspec archive` 会自动创建 specs 目录并同步 delta specs，禁止在归档前手动创建目录或复制文件**
-- 如需修复格式问题，必须通过 OpenSpec 命令操作
-- **唯一例外**：用户明确要求手动操作时，须在操作前确认并记录原因
